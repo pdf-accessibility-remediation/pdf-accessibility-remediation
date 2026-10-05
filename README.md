@@ -9,7 +9,7 @@ original.pdf ─► audit.py ─► decide.py (Claude via OpenRouter) ─► app
 
 ## Setup (once)
 
-1. **Python packages:** First cd to pipeline, then `pip install -r requirements.txt` (pdfplumber must be 0.11.9: `plumb_fix.py` patches its internals).
+1. **Python packages:** First cd to pipeline, then create and activate the virtual environment with `python3 -m venv .venv && source .venv/bin/activate`. Then `pip install -r requirements.txt` (pdfplumber must be 0.11.9: `plumb_fix.py` patches its internals).
 2. **Key:** put `OPENROUTER_API_KEY=…` in a `.env` file in `pipeline/` or any folder above it (e.g. the repo root). Keep `.env` in `.gitignore`.
 3. **Check the key (free):** `python3 decide.py --check-key`.
 4. **Prompt:** `workorder_v4.md` goes in `pipeline/prompts/` or in `prompts/` beside `pipeline/`. Older versions are kept only as a record.
@@ -24,7 +24,7 @@ bash run_api.sh ../samples/group1/clans.pdf clanstest apirun1
 
 The script audits the PDF and shows the cost estimate and your available credit. It **asks before calling the API**, then applies Claude's work order, verifies the result and writes the report. Use a new run label (`api-run2` …) for each run. `KEEP=1 bash run_api.sh …` keeps the working files for debugging.
 
-The short name (`cadaverous`) names the run folder. The result is named after the original with `_remediated` added (`<file>_remediated.pdf`); `OUT=cadaverous.pdf bash run_api.sh …` names it yourself.
+The short name (`clans`) names the run folder. The result is named after the original with `_remediated` added (`<file>_remediated.pdf`); `OUT=clans.pdf bash run_api.sh …` names it yourself.
 
 ## Options
 
