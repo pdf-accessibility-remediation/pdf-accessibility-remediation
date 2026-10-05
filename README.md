@@ -1,4 +1,4 @@
-# 04_pipeline: Claude decides, code executes
+# PDF Accessibility Remediation Pipeline
 
 Claude reads a compact summary of a tagged PDF and returns a **work order**: a JSON file of decisions (heading levels, alt text, what to artifact, language, reading-order fixes). The code carries those decisions out, checks the result, writes a review for a person, and never changes the original. The only paid step is the model call in `decide.py`.
 
@@ -9,17 +9,17 @@ original.pdf ─► audit.py ─► decide.py (Claude via OpenRouter) ─► app
 
 ## Setup (once)
 
-1. **Python packages:** `pip install -r requirements.txt` (pdfplumber must be 0.11.9: `plumb_fix.py` patches its internals).
-2. **Key:** put `OPENROUTER_API_KEY=…` in a `.env` file in `04_pipeline/` or any folder above it (e.g. the repo root). Keep `.env` in `.gitignore`.
+1. **Python packages:** First cd to pipeline, then `pip install -r requirements.txt` (pdfplumber must be 0.11.9: `plumb_fix.py` patches its internals).
+2. **Key:** put `OPENROUTER_API_KEY=…` in a `.env` file in `pipeline/` or any folder above it (e.g. the repo root). Keep `.env` in `.gitignore`.
 3. **Check the key (free):** `python3 decide.py --check-key`.
-4. **Prompt:** `workorder_v4.md` goes in `04_pipeline/prompts/` or in `prompts/` beside `04_pipeline/`. Older versions are kept only as a record.
-5. **PDFs:** originals go in `02_samples/<name>/` and are never written to. Outputs go in `runs/<name>/<run-label>/` (single runs) or `runs/batches/<label>/<name>/` (batches) beside `04_pipeline/` (set `RUNS_DIR` to put them elsewhere). Keep both out of git: the books are in copyright.
+4. **Prompt:** `workorder_v4.md` goes in `pipeline/prompts/` or in `prompts/` beside `pipeline/`. Older versions are kept only as a record.
+5. **PDFs:** originals go in `samples/<name>/` and are never written to. Outputs go in `runs/<name>/<run-label>/` (single runs) or `runs/batches/<label>/<name>/` (batches) beside `pipeline/` (set `RUNS_DIR` to put them elsewhere). Keep both out of git: the books are in copyright.
 
 ## Run
 
 ```bash
-cd 04_pipeline
-bash run_api.sh ../02_samples/cadaverous/<file>.pdf cadaverous api-run1
+cd pipeline
+bash run_api.sh ../samples/group1/clans.pdf clanstest apirun1
 ```
 
 The script audits the PDF and shows the cost estimate and your available credit. It **asks before calling the API**, then applies Claude's work order, verifies the result and writes the report. Use a new run label (`api-run2` …) for each run. `KEEP=1 bash run_api.sh …` keeps the working files for debugging.
@@ -51,9 +51,9 @@ The output limit: change the default once in `decide.py` (the line `ap.add_argum
 ## Batch runs
 
 ```bash
-AUTO=1 bash batch_api.sh batch1                                         # every PDF under 02_samples (all subfolders)
-AUTO=1 bash batch_api.sh batch1 ../02_samples/group1                    # one folder
-AUTO=1 bash batch_api.sh batch1 ../02_samples/group1 ../02_samples/group3   # several folders
+AUTO=1 bash batch_api.sh batch1                                         # every PDF under samples (all subfolders)
+AUTO=1 bash batch_api.sh batch1 ../samples/group1                    # one folder
+AUTO=1 bash batch_api.sh batch1 ../samples/group1 ../samples/group3   # several folders
 AUTO=1 bash batch_api.sh batch1 ../books.txt                            # a list, to choose names yourself
 ```
 
@@ -71,15 +71,15 @@ PDFREM/runs/batches/batch1/
 
 Names, when you point at folders:
 
-- **Book folder:** a folder holding one PDF gives its folder name (`02_samples/cadaverous/x.pdf` → `batches/batch1/cadaverous/`). A folder holding several gives each file's name without `.pdf`.
+- **Book folder:** a folder holding one PDF gives its folder name (`samples/cadaverous/x.pdf` → `batches/batch1/cadaverous/`). A folder holding several gives each file's name without `.pdf`.
 - **Result:** always the original file name with `_remediated` added (`x.pdf` → `x_remediated.pdf`).
 
 A book list sets the book folder, and optionally the result name after a `|`:
 
 ```
 # <short-name> <path to pdf> [| <result name>]
-clan        02_samples/group3/3-most-accessible_9798880703333.pdf | Korea Five Clans.pdf
-cadaverous  02_samples/cadaverous/Cadaverous.pdf
+clan        samples/group3/3-most-accessible_9798880703333.pdf | Korea Five Clans.pdf
+cadaverous  samples/cadaverous/Cadaverous.pdf
 ```
 
 `batch_api.sh` refuses to start without `AUTO=1`, because it calls the API without asking. It works in three steps:
@@ -91,7 +91,7 @@ cadaverous  02_samples/cadaverous/Cadaverous.pdf
 A label that already holds a batch is refused, unless you add `RETRY=1`: then only the books without a finished result run again, and `summary.md` is rewritten for the whole batch. Give the same folders or list as the first time. When books fail, the summary prints the exact command to use, with `MAX_TOKENS` doubled if a reply was cut off:
 
 ```bash
-RETRY=1 MAX_TOKENS=32000 AUTO=1 bash batch_api.sh g2-run2 ../02_samples/group2
+RETRY=1 MAX_TOKENS=32000 AUTO=1 bash batch_api.sh g2-run2 ../samples/group2
 ```
 
 The summary's API cost includes calls whose reply was cut off (they are paid for). Credit left is OpenRouter's balance, or, when OpenRouter hasn't caught up with the batch's calls yet, the credit before the batch minus what the batch spent.
@@ -114,7 +114,7 @@ Nothing else is kept. The working files (digest, figure crops, raw request and r
 ## Step by step (what `run_api.sh` does)
 
 ```bash
-S=../02_samples/cadaverous/<file>.pdf
+S=../samples/cadaverous/<file>.pdf
 R=../runs/cadaverous/api-run1;  A=$R/_audit
 python3 audit.py  $S $A                                   # no model, ~30 s
 python3 decide.py $A $R --dry-run                         # cost estimate + available credit; sends nothing

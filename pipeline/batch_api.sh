@@ -3,12 +3,12 @@
 #
 #   AUTO=1 bash batch_api.sh <run-label> [folder | books.txt | file.pdf] …
 #
-#   nothing        every PDF under ../02_samples (all subfolders)
-#   a folder       every PDF in that folder and its subfolders, e.g. ../02_samples/group1
+#   nothing        every PDF under ../samples (all subfolders)
+#   a folder       every PDF in that folder and its subfolders, e.g. ../samples/group1
 #                  (several folders, lists and PDFs can be given together)
 #   books.txt      one book per line: <short-name> <path/to/file.pdf> [| <result name>.pdf]
 #                  (paths may contain spaces; # starts a comment; relative paths count from the folder books.txt is in)
-#   short names    the run folder: a folder holding a single PDF gives its folder name (02_samples/cadaverous/x.pdf →
+#   short names    the run folder: a folder holding a single PDF gives its folder name (samples/cadaverous/x.pdf →
 #                  cadaverous); a folder holding several gives each file's name without .pdf
 #   result name    <original file name>_remediated.pdf, unless a book list line names it after a |
 #
@@ -44,7 +44,7 @@ now() { python3 -c 'import time; print(f"{time.time():.2f}")'; }
 T0=$(now)
 
 # ---- the book list → books.tsv (name <TAB> absolute path <TAB> result name, or - for the default)
-python3 - "$START_DIR" "$HERE/../02_samples" ${SOURCES[@]+"${SOURCES[@]}"} > "$B/books.tsv" <<'PY'
+python3 - "$START_DIR" "$HERE/../samples" ${SOURCES[@]+"${SOURCES[@]}"} > "$B/books.tsv" <<'PY'
 import sys, os, re
 start, samples, sources = sys.argv[1], sys.argv[2], sys.argv[3:] or [sys.argv[2]]
 def stem(p): return re.sub(r'[^A-Za-z0-9_-]+', '_', os.path.splitext(os.path.basename(p))[0])
@@ -200,7 +200,7 @@ else: L.append('Credit left: could not check (no key, or OpenRouter unreachable)
 L.append('')
 if failed:
     mt = f'MAX_TOKENS={max(cut_at) * 2} ' if cut_at else ''
-    L += [f'To run only the {len(failed)} unfinished book(s) again, from 04_pipeline:', '', f'    RETRY=1 {mt}{again}', '']
+    L += [f'To run only the {len(failed)} unfinished book(s) again, from pipeline:', '', f'    RETRY=1 {mt}{again}', '']
 L += [f'Results are relative to {B}/', '',
       'Checks flagged = rows marked CHECK in each review.md. Open the review.md of any book with flags before running PAC.']
 out = os.path.join(B, 'summary.md'); open(out, 'w', encoding='utf-8').write('\n'.join(L) + '\n')

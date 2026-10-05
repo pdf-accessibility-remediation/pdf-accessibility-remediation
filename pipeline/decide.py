@@ -25,7 +25,7 @@ import sys, os, re, json, time, base64, hashlib, argparse, datetime, urllib.requ
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 def load_env():
-    """Read KEY=value lines from the nearest .env: 04_pipeline/, then each folder above it. Real env vars win."""
+    """Read KEY=value lines from the nearest .env: pipeline/, then each folder above it. Real env vars win."""
     d = HERE
     while True:
         path = os.path.join(d, '.env')
@@ -84,10 +84,10 @@ ap = argparse.ArgumentParser()
 ap.add_argument('audit_dir'); ap.add_argument('run_dir')
 ap.add_argument('--model', default='auto:sonnet', help='OpenRouter model id, or auto:sonnet / auto:opus / auto:haiku (newest of that family)')
 PROMPT_NAME = 'workorder_v4.md'
-DEFAULT_PROMPT = next((p for p in (os.path.join(HERE, 'prompts', PROMPT_NAME),                    # 04_pipeline/prompts/
-                                   os.path.join(os.path.dirname(HERE), 'prompts', PROMPT_NAME))   # prompts/ next to 04_pipeline
+DEFAULT_PROMPT = next((p for p in (os.path.join(HERE, 'prompts', PROMPT_NAME),                    # pipeline/prompts/
+                                   os.path.join(os.path.dirname(HERE), 'prompts', PROMPT_NAME))   # prompts/ next to pipeline
                        if os.path.isfile(p)), os.path.join(HERE, 'prompts', PROMPT_NAME))
-ap.add_argument('--prompt', default=DEFAULT_PROMPT, help=f'system prompt file (default: {PROMPT_NAME} in 04_pipeline/prompts/ or ../prompts/)')
+ap.add_argument('--prompt', default=DEFAULT_PROMPT, help=f'system prompt file (default: {PROMPT_NAME} in pipeline/prompts/ or ../prompts/)')
 ap.add_argument('--max-usd', type=float, default=2.0, help='refuse to send if the worst-case cost estimate is higher')
 ap.add_argument('--max-tokens', type=int, default=16000)
 ap.add_argument('--no-images', action='store_true')
@@ -97,7 +97,7 @@ ap.add_argument('--response-file', help='parse a saved OpenRouter response (or r
 args = ap.parse_args()
 os.makedirs(args.run_dir, exist_ok=True)
 digest = json.load(open(os.path.join(args.audit_dir, 'digest.json'), encoding='utf-8'))
-if not os.path.isfile(args.prompt): sys.exit(f'prompt not found: {PROMPT_NAME} must be in 04_pipeline/prompts/ or in prompts/ next to 04_pipeline')
+if not os.path.isfile(args.prompt): sys.exit(f'prompt not found: {PROMPT_NAME} must be in pipeline/prompts/ or in prompts/ next to pipeline')
 prompt = open(args.prompt, encoding='utf-8').read()
 run = {'started': datetime.datetime.now().isoformat(timespec='seconds'), 'source': digest['source'],
        'prompt_file': os.path.basename(args.prompt), 'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest()[:16],

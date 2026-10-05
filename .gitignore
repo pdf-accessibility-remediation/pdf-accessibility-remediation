@@ -3,7 +3,7 @@
 .env.*
 
 # in-copyright books and everything derived from them (crops, digests, remediated copies)
-**/04_pipeline/runs/
+**/pipeline/runs/
 runs/
 
 # python and OS clutter
