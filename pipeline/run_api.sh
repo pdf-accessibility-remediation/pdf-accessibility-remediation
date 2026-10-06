@@ -9,6 +9,7 @@
 # ESTIMATE=1 bash run_api.sh …   audit + cost estimate only; a later run with the same label reuses the audit
 # OUT=clan.pdf bash run_api.sh …   names the result; by default it is <original file name>_remediated.pdf
 # MAX_TOKENS=32000 bash run_api.sh …   output limit for Claude's reply, reasoning included (default 16000, set in decide.py)
+# MODEL=openai/gpt-5 bash run_api.sh …   any OpenRouter model id for this run (default: DEFAULT_MODEL in decide.py)
 #
 # Rerunning a label that did not finish picks up where it stopped: the audit is reused; a reply that was cut off
 # is logged with its cost (attempts.json, folded into record.json) and a new call is made; a reply that was fine
@@ -27,6 +28,8 @@ R=${RUN_DIR:-$RUNS/$NAME/$RUN}; A=$R/_audit
 if [[ -f $R/record.json ]]; then echo "$R already holds a finished run: choose another run label"; exit 1; fi
 if [[ -n ${MAX_TOKENS:-} && ! $MAX_TOKENS =~ ^[0-9]+$ ]]; then echo "MAX_TOKENS must be a whole number: $MAX_TOKENS"; exit 1; fi
 MT=(); [[ -z ${MAX_TOKENS:-} ]] || MT=(--max-tokens "$MAX_TOKENS")
+[[ -z ${MODEL:-} ]] || MT+=(--model "$MODEL")
+USE_MODEL=${MODEL:-$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")}
 NEW=; [[ -d $R ]] || NEW=1
 mkdir -p "$R"
 
@@ -78,19 +81,24 @@ else
 fi
 if [[ -n ${ESTIMATE:-} && -n ${REPLY:-} ]]; then echo "estimate only: no cost, a saved reply will be reused"; summary; exit 0; fi
 if [[ -n ${REPLY:-} ]]; then
-  stage "2/5 reuse saved reply (no cost)" python3 decide.py "$A" "$R" --response-file "$REPLY"
+  stage "2/5 reuse saved reply (no cost)" python3 decide.py "$A" "$R" --response-file "$REPLY" ${MT[@]+"${MT[@]}"}
 else
   stage "2/5 cost estimate (no model)"  python3 decide.py "$A" "$R" --dry-run ${MT[@]+"${MT[@]}"}
   if [[ -n ${ESTIMATE:-} ]]; then echo "estimate only: $R/run.json (audit kept for the real run)"; summary; exit 0; fi
   if [[ -n ${AUTO:-} ]]; then
-    ok=y; echo "AUTO=1: sending without asking (decide.py still refuses anything over the cap or your credit)"
+    ok=y
+    if [[ $USE_MODEL == anthropic/* ]]; then
+      echo "AUTO=1: sending without asking (decide.py still refuses a Claude estimate over the \$2 cap or your credit)"
+    else
+      echo "AUTO=1: sending without asking. The \$2 cap applies to Claude models only: the $USE_MODEL estimate is approximate and not capped; the OpenRouter bill is the real cost"
+    fi
   else
     read -r -p "Send to OpenRouter now? [y/N] " ok
   fi
   if [[ ${ok:-n} != [yY]* ]]; then
     echo "stopped before the API call"; [[ -z ${KEEP:-} && -n $NEW ]] && rm -rf "$R"; summary; exit 0
   fi
-  stage "3/5 Claude via OpenRouter"     python3 decide.py "$A" "$R" ${MT[@]+"${MT[@]}"}
+  stage "3/5 $USE_MODEL via OpenRouter" python3 decide.py "$A" "$R" ${MT[@]+"${MT[@]}"}
 fi
 stage "4/5 apply (no model)"            python3 apply.py "$SRC" "$R/workorder.json" "$R/$OUT"
 stage "4/5 verify (no model)"           bash -c 'python3 verify.py "$1" "$2" > /dev/null' _ "$SRC" "$R/$OUT"
