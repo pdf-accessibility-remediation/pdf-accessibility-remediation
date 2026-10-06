@@ -1,24 +1,11 @@
 # PDF Accessibility Remediation Pipeline
 
-[![CI](https://github.com/pdf-accessibility-remediation/pdf-accessibility-remediation/actions/workflows/ci.yml/badge.svg)](https://github.com/pdf-accessibility-remediation/pdf-accessibility-remediation/actions/workflows/ci.yml)
-
 Claude reads a compact summary of a tagged PDF and returns a **work order**: a JSON file of decisions (heading levels, alt text, what to artifact, language, reading-order fixes). The code carries those decisions out, checks the result, writes a review for a person, and never changes the original. The only paid step is the model call in `decide.py`.
 
 ```
-original.pdf ─► audit.py ─► decide.py (Claude via OpenRouter) ─► apply.py ─► verify.py ─► report.py
+original.pdf ─► audit.py ─► decide.py (model via OpenRouter) ─► apply.py ─► verify.py ─► report.py
                  digest        work order                        original_remediated.pdf review.md + record.json
 ```
-
-## Automated checks
-
-GitHub Actions runs the following checks:
-
-- **CI** — Compiles Python sources, validates shell-script syntax, installs dependencies, and runs `pip-audit`.
-- **PDF validation** — Runs `audit.py` against a sample PDF when pipeline or sample files change.
-- **Dependency review** — Reviews dependency changes in pull requests and fails on high-severity vulnerabilities.
-- **CodeQL** — Performs static security analysis of the Python code on pushes, pull requests, and weekly.
-
-These workflows do not run `run_api.sh` or make OpenRouter API calls automatically.
 
 ## Setup (once)
 
@@ -43,13 +30,15 @@ The short name (`clans`) names the run folder. The result is named after the ori
 
 | Before the command | Effect |
 |---|---|
-| `AUTO=1` | No y/N question: sends straight away if the estimate is within the $2 cap and your credit |
+| `AUTO=1` | No y/N question: sends straight away. For a Claude model only if the estimate is within the $2 cap and your credit; for any other model the estimate is approximate and not capped (the line printed before sending says which) |
 | `ESTIMATE=1` | Audit and cost estimate only; a later run with the same label reuses the audit |
 | `REPLY=path/to/reply.txt` | Reuses a saved Claude reply instead of calling the API (no cost) |
 | `KEEP=1` | Keeps the working files (digest, figure crops, raw reply, logs) |
 | `OUT=name.pdf` | Names the result (default: `<original name>_remediated.pdf`) |
-| `MAX_TOKENS=32000` | Output limit for Claude's reply, reasoning included (default 16,000). Raise it when a reply is cut off |
+| `MODEL=openai/gpt-5` | Any OpenRouter model id for this run or batch (default: `DEFAULT_MODEL` in `decide.py`, `anthropic/claude-sonnet-5.5`) |
+| `MAX_TOKENS=32000` | Output limit for the model's reply, reasoning included (default 16,000). Raise it when a reply is cut off |
 | `RUNS_DIR=/path` | Writes runs somewhere other than `PDFREM/runs/` |
+| `JOBS=1` | Batches only: books run at the same time (default 3). Use 1 after a rate limit (see "When the model call fails") |
 
 A run label that already holds a finished run is refused, so earlier results are never overwritten.
 
@@ -97,15 +86,30 @@ cadaverous  samples/cadaverous/Cadaverous.pdf
 
 `batch_api.sh` refuses to start without `AUTO=1`, because it calls the API without asking. It works in three steps:
 
-1. **Estimate (no model).** It audits every book and adds up the worst-case cost. It stops before any API call if the total is over `BATCH_MAX_USD` (default $5) or over your credit. The audits are kept, so a rerun with a higher cap reuses them.
-2. **Run.** It runs every book through the full pipeline, `JOBS` at a time (default 3; each book needs about 0.5–1.5 GB of memory). A failed book doesn't stop the others.
-3. **Summary.** It prints a table of book, status, pages, API cost, time, checks flagged and result, then the total cost and the credit you have left, and saves it as `summary.md`. A book's log is kept beside it (`<name>.log`) only if that book failed; `KEEP=1` keeps every log and working file.
+1. **Estimate (no model).** It audits every book and adds up the worst-case cost. It stops before any API call if the Claude total is over `BATCH_MAX_USD` (default $5) or over your credit. The audits are kept, so a rerun with a higher cap reuses them. Only Claude models count against the cap and the credit check (see "Choosing the model"), so the total line depends on the model:
 
-A label that already holds a batch is refused, unless you add `RETRY=1`: then only the books without a finished result run again, and `summary.md` is rewritten for the whole batch. Give the same folders or list as the first time. When books fail, the summary prints the exact command to use, with `MAX_TOKENS` doubled if a reply was cut off:
+   ```
+   # Claude batch
+     total worst case             $0.75   batch cap $5.00   credit $11.46
+   # non-Claude batch: one approximate line, nothing capped
+     worst case                   about $0.75, approximate, not capped (the OpenRouter bill is the real cost)   credit $11.46
+   # mixed (e.g. a RETRY with another model): the Claude line is the capped portion
+     worst case, capped (Claude)  $0.50   batch cap $5.00   credit $11.46
+     worst case, non-Claude       about $0.25, approximate, not capped (the OpenRouter bill is the real cost)
+   ```
+2. **Run.** It runs every book through the full pipeline, `JOBS` at a time (default 3; each book needs about 0.5–1.5 GB of memory). A failed book doesn't stop the others.
+3. **Summary.** It prints the batch start time, model and prompt file, then a table of book, status, pages, API cost, time, checks flagged and result, then the total cost and the credit you have left, and saves it as `summary.md`. A failed book's status says why: `reply cut off at 16,000 tokens`, `OpenRouter 429, model rate-limited (nothing charged)`, or OpenRouter's error code and message. Its log is kept beside the summary (`<name>.log`) only if that book failed; `KEEP=1` keeps every log and working file.
+
+A label that already holds a batch is refused, unless you add `RETRY=1`: then only the books without a finished result run again, and `summary.md` is rewritten for the whole batch. Give the same folders or list as the first time. When books fail, the summary prints the exact command to use. It repeats the batch's `MODEL=`, `FROM=` and `MAX_TOKENS=`, doubles `MAX_TOKENS` if a reply was cut off, and adds `JOBS=1` (with a note to wait a few minutes) if the model was rate-limited:
 
 ```bash
+# a reply was cut off
 RETRY=1 MAX_TOKENS=32000 AUTO=1 bash batch_api.sh g2-run2 ../samples/group2
+# a non-default model was rate-limited (429): wait, then one book at a time, same model
+RETRY=1 JOBS=1 MODEL=openai/gpt-6.1-sol AUTO=1 bash batch_api.sh group1SOL ../samples/group1
 ```
+
+Copy the printed command rather than retyping it: a `RETRY=1` without the original `MODEL=` would finish the books with the default model.
 
 The summary's API cost includes calls whose reply was cut off (they are paid for). Credit left is OpenRouter's balance, or, when OpenRouter hasn't caught up with the batch's calls yet, the credit before the batch minus what the batch spent.
 
@@ -138,7 +142,24 @@ python3 verify.py $S $O                                   # no model, ~3 min
 python3 report.py $R $A                                   # review.md, record.json, han_review.csv; add --keep to keep working files
 ```
 
-If `decide.py` fails after the API call, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and a higher `MAX_TOKENS` (see above).
+If `decide.py` fails after the API call, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and a higher `MAX_TOKENS` (see above). For errors from OpenRouter itself, see "When the model call fails".
+
+## When the model call fails
+
+`decide.py` prints OpenRouter's own message and code, and says whether anything was charged. The error is also saved in `run.json` (and the full reply in `response.json` or `error.txt`), so a batch summary shows the reason in the book's row. OpenRouter sometimes sends an error inside a normal-looking reply (for example a 429); it is caught the same way.
+
+| What you see | What it means | What to do |
+|---|---|---|
+| `OpenRouter error 429 … rate-limited … Nothing was charged` | The model's maker is throttling requests, often when a batch sends several at once | Wait a few minutes. Single run: the same command again. Batch: `RETRY=1 JOBS=1 MODEL=<same model> AUTO=1 bash batch_api.sh <label> <same folders>` (the summary prints it) |
+| `reply was cut off at 16000 output tokens` | The reply ran out of output tokens; it was paid for | The same command with `MAX_TOKENS=32000` (batches: add `RETRY=1`). The earlier cost stays in the record |
+| `rejected the temperature setting … Add "<model>" … to OMIT_TEMPERATURE` | The model refuses a temperature value; nothing was charged or retried | Add the model id (or its prefix) to `OMIT_TEMPERATURE` in `decide.py`, then run again |
+| `no provider of <model> accepts our "don't keep or train on the data" setting` | No provider will serve the model under `data_collection: deny`; nothing was sent | Choose another model |
+| `OpenRouter error 402` | Not enough credit for the request | Add credit, or lower `MAX_TOKENS` |
+| `OpenRouter error 413` | The request was too large | Report it: the figure images are already shrunk to fit |
+| `refusing: …` (before sending) | The model check failed: unknown id, no image input, output limit under `MAX_TOKENS`, or the request too large for its context window | Choose another model or adjust `MAX_TOKENS`; nothing was sent |
+| `OpenRouter error <other code>: <message>` | Any other error from OpenRouter or the provider | Read the message; usually run again later |
+
+A failed call that OpenRouter did charge for is logged with its cost and counted in the record and the summary; a rerun with the same label makes a new call.
 
 ## Files
 
@@ -156,7 +177,66 @@ If `decide.py` fails after the API call, the raw reply is in `$R/reply.txt` and 
 
 **Figure images** are sent as JPEG (long side 800 px). If a book's images together pass 20 MB they are made smaller step by step, because OpenRouter refuses requests with more than 30 MB of images (HTTP 413). At most 100 images go in one request (Anthropic's limit); in a book with more figures, the alt text for the rest goes to a person, listed in the review under the AI's deferrals. What was sent is recorded in `record.json` under `run.images`.
 
-**Settings recorded in each run:** temperature 0, `data_collection: deny` (OpenRouter routes only to providers that don't keep or train on the data), at most 16,000 output tokens unless `MAX_TOKENS` says otherwise, $2 spending cap per book.
+## Choosing the model
+
+The default is one line near the top of `decide.py`: `DEFAULT_MODEL = 'anthropic/claude-sonnet-5.5'`. Change it to any id from https://openrouter.ai/models. For one run or one batch, put `MODEL=` in front instead:
+
+```bash
+# default model (DEFAULT_MODEL in decide.py), with the y/N question
+bash run_api.sh ../samples/group1/clans.pdf clans api-run3
+# another model for one book, no question
+MODEL=openai/gpt-5 AUTO=1 bash run_api.sh ../samples/group1/clans.pdf clans gpt-run1
+# the cost estimate only, to see what a model would cost (free)
+MODEL=google/gemini-3.8-flash ESTIMATE=1 bash run_api.sh ../samples/group1/clans.pdf clans gem-run1
+# the same group with two models, to compare
+AUTO=1 bash batch_api.sh g1-sonnet ../samples/group1
+MODEL=anthropic/claude-opus-5.5 AUTO=1 bash batch_api.sh g1-opus ../samples/group1
+# a bigger output limit as well
+MODEL=openai/gpt-5 MAX_TOKENS=32000 AUTO=1 bash batch_api.sh g3-gpt ../samples/group3
+# finish the books a batch couldn't (keep the same MODEL as the first try; the summary prints this command)
+RETRY=1 MODEL=openai/gpt-5 AUTO=1 bash batch_api.sh g3-gpt ../samples/group3
+# the model was rate-limited (429): wait a few minutes, then one book at a time
+RETRY=1 JOBS=1 MODEL=openai/gpt-6.1-sol AUTO=1 bash batch_api.sh group1SOL ../samples/group1
+# re-apply saved replies for free; each keeps the model that wrote it, so no MODEL= needed
+FROM=g1-opus AUTO=1 bash batch_api.sh g1-opus-rerun ../samples/group1
+```
+
+Ids that exist on OpenRouter and take images: `anthropic/claude-sonnet-5.5`, `anthropic/claude-opus-5.5`, `google/gemini-3.8-flash`, `openai/gpt-5`.
+
+Before anything is sent, `decide.py` looks the model up on OpenRouter and refuses it if:
+
+- the id is not on OpenRouter
+- it cannot take images (the figure crops are part of every request)
+- its output limit is under `MAX_TOKENS`
+- the request (input estimate + `MAX_TOKENS`) does not fit its context window
+
+**Costs with other models.** The cost estimate uses Claude's token math (calibrated on Sonnet bills), so for any non-Claude model it is marked approximate. The $2 per-book cap, the batch cap and the credit check are not applied to it; the estimate is printed and the request is sent. If your credit is too low, OpenRouter refuses the request (HTTP 402) and nothing is charged. The OpenRouter bill, shown in the review and the summary, is the real cost. With `AUTO=1`, the line printed before sending says which case applies:
+
+```
+AUTO=1: sending without asking (decide.py still refuses a Claude estimate over the $2 cap or your credit)
+AUTO=1: sending without asking. The $2 cap applies to Claude models only: the openai/gpt-5 estimate is approximate and not capped; the OpenRouter bill is the real cost
+```
+
+**Where the model shows:** `review.md` (top line), `record.json` (`run.model`), the batch header and the top of `summary.md`, with the batch start time and the prompt file. `FROM=` and `REPLY=` re-runs keep the model that wrote the saved reply.
+
+If no provider of a model accepts the "don't keep or train on the data" setting, OpenRouter refuses the request before anything is charged, and `decide.py` says so.
+
+## Temperature
+
+One line near the top of `decide.py` sets it for every run: `TEMPERATURE = 0`. There is no command-line override; changing the number changes every run that sends a temperature.
+
+No temperature is sent when the model's maker says to leave it at the default, or the model rejects other values. That is the case when:
+
+- the model id starts with an entry in `OMIT_TEMPERATURE` (in `decide.py`): Opus 4.7 and later, OpenAI reasoning models (`openai/o1`, `o3`, `o4`, `gpt-5`), and `google/gemini-3` (every Gemini 3 model). Add a line there for any other model
+- or OpenRouter lists the model as not accepting a temperature setting
+
+Sonnet matches neither, so it gets `0`.
+
+Every new run writes `run.temperature` in `record.json`: the number sent, or `"omitted: …"` with the reason. `FROM=` and `REPLY=` re-runs send nothing, so they keep the original run's value, and add none where the original had none. Records written before this setting existed are not changed (those runs were sent with temperature 0).
+
+If a model that is not on the list, and not flagged by OpenRouter, still rejects the setting, the run stops: OpenRouter charges nothing for the refused request, nothing is retried, and the message says to add the model to `OMIT_TEMPERATURE`.
+
+**Settings recorded in each run:** temperature (`TEMPERATURE`, or omitted as above), `data_collection: deny` (OpenRouter routes only to providers that don't keep or train on the data), at most 16,000 output tokens unless `MAX_TOKENS` says otherwise, $2 spending cap per book (Claude models).
 
 ## What the executor always does by itself
 
