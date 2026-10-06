@@ -1,0 +1,41 @@
+name: PDF validation
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "pipeline/**"
+      - "samples/**"
+      - ".github/workflows/pdf-validation.yml"
+  pull_request:
+    paths:
+      - "pipeline/**"
+      - "samples/**"
+      - ".github/workflows/pdf-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit-sample:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r pipeline/requirements.txt
+
+      - name: Audit a sample PDF
+        working-directory: pipeline
+        run: |
+          audit_dir="$(mktemp -d)"
+          trap 'rm -rf "$audit_dir"' EXIT
+          python audit.py ../samples/group1/clans.pdf "$audit_dir"
