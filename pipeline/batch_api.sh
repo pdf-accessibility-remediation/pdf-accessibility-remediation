@@ -15,6 +15,8 @@
 #   JOBS=3           books processed at the same time (each needs about 0.5–1.5 GB of memory)
 #   BATCH_MAX_USD=5  refuse to start if the summed worst-case estimate is higher
 #   KEEP=1           keep each run's working files and every log
+#   MODEL=<id>       any OpenRouter model id for every book in this batch (default: DEFAULT_MODEL in decide.py).
+#                    The batch cap only counts Claude models: for others the estimate is approximate and not capped
 #   MAX_TOKENS=32000 output limit for each Claude reply, reasoning included (default 16000, set in decide.py)
 #   RETRY=1          reuse a label that already ran: only the books without a finished result run again (give the
 #                    same folders/lists as the first time), then summary.md is rewritten for the whole batch. A reply
@@ -41,7 +43,9 @@ if [[ -z ${RETRY:-} ]] && { [[ -f $B/summary.md ]] || compgen -G "$B/*/record.js
 fi
 mkdir -p "$B"
 now() { python3 -c 'import time; print(f"{time.time():.2f}")'; }
-T0=$(now)
+T0=$(now); STARTED=$(date '+%Y-%m-%d %H:%M')
+DEFAULT_MODEL=$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")
+export MODEL=${MODEL:-}
 
 # ---- the book list → books.tsv (name <TAB> absolute path <TAB> result name, or - for the default)
 python3 - "$START_DIR" "$HERE/../samples" ${SOURCES[@]+"${SOURCES[@]}"} > "$B/books.tsv" <<'PY'
@@ -86,7 +90,7 @@ while IFS=$'\t' read -r name rest; do
 done < "$B/books.tsv"
 TODO=$(wc -l < "$B/todo.tsv" | tr -d ' ')
 if [[ $TODO == 0 ]]; then echo "every book in batch $LABEL has already finished: nothing to run"; rm -f "$B/books.tsv" "$B/todo.tsv"; exit 0; fi
-echo "Batch $LABEL: $TODO of $N books to run, $JOBS at a time${MAX_TOKENS:+, MAX_TOKENS=$MAX_TOKENS} → $B/"
+echo "Batch $LABEL: $TODO of $N books to run, $JOBS at a time, model $( [[ -n ${FROM:-} ]] && echo "as recorded under $FROM" || echo "${MODEL:-$DEFAULT_MODEL}")${MAX_TOKENS:+, MAX_TOKENS=$MAX_TOKENS} → $B/"
 cut -f1 "$B/todo.tsv" | sed 's/^/  · /'
 
 # run one step for every book, JOBS at a time; each book's output goes to its own log
@@ -108,7 +112,7 @@ each() {   # each <step: estimate|run>
 FROM=${FROM:-}; KEEP=${KEEP:-}; export B LABEL STEP FROM KEEP
 
 if [[ -n ${FROM:-} ]]; then
-  echo; echo "1/3 reusing the Claude replies saved under run label $FROM (no API calls, no cost)"
+  echo; echo "1/3 reusing the replies saved under run label $FROM (no API calls, no cost; each record keeps its original model)"
   python3 - "$B/todo.tsv" "$RUNS_DIR" "$FROM" "$B" <<'PY' || exit 1
 import sys, json, os, math
 books, runs, src, B = sys.argv[1:5]; bad = []
@@ -117,7 +121,10 @@ for line in open(books):
     p = next((q for q in (os.path.join(runs, 'batches', src, name, 'record.json'), os.path.join(runs, name, src, 'record.json'))
               if os.path.exists(q) and json.load(open(q)).get('raw_reply')), None)
     if not p: bad.append(name); continue
-    open(os.path.join(B, f'{name}.reply.txt'), 'w', encoding='utf-8').write(json.load(open(p))['raw_reply'])
+    r = json.load(open(p))
+    open(os.path.join(B, f'{name}.reply.txt'), 'w', encoding='utf-8').write(r['raw_reply'])
+    json.dump({k: r['run'][k] for k in ('model', 'temperature') if k in r['run']},      # the new record keeps the original's
+              open(os.path.join(B, f'{name}.reply.txt.meta.json'), 'w'))
 if bad: sys.exit(f'stopped: no saved reply under {src} for {", ".join(bad)}')
 print('  saved replies found for every book')
 PY
@@ -127,38 +134,48 @@ STEP=estimate each
 python3 - "$B/todo.tsv" "$RUNS_DIR" "$LABEL" "$MAX" <<'PY' || exit 1
 import sys, json, os, math
 books, runs, label, cap = sys.argv[1], sys.argv[2], sys.argv[3], float(sys.argv[4])
-total, credit, rows, bad = 0.0, None, [], []
+total, credit, rows, bad, approx, capped_n = 0.0, None, [], [], 0.0, 0
 for line in open(books):
     name = line.split('\t')[0]; R = os.path.join(runs, 'batches', label, name)
     if os.path.exists(os.path.join(R, 'workorder.json')) and os.path.exists(os.path.join(R, 'response.json')):
         rows.append(f'  {name:28} $0.00: reuses its earlier complete reply'); continue
     p = os.path.join(R, 'run.json')
     if not os.path.exists(p): bad.append(name); continue
-    e = json.load(open(p))['estimate']; total += e['worst_case_total_usd']
+    e = json.load(open(p))['estimate']
+    if e.get('approximate'): approx += e['worst_case_total_usd']        # not a Claude model: not counted against the cap
+    else: total += e['worst_case_total_usd']; capped_n += 1
     if e.get('credit_available_usd') is not None: credit = e['credit_available_usd'] if credit is None else min(credit, e['credit_available_usd'])
-    rows.append(f'  {name:28} worst case ${e["worst_case_total_usd"]:.2f}  ({e["input_tokens"]:,} input tokens, {e["images"]} images)')
+    rows.append(f'  {name:28} worst case ${e["worst_case_total_usd"]:.2f}{" (approximate)" if e.get("approximate") else ""}  ({e["input_tokens"]:,} input tokens, {e["images"]} images)')
 print('\n'.join(rows))
-print(f'  {"total worst case":28} ${total:.2f}   batch cap ${cap:.2f}' + ('' if credit is None else f'   credit ${credit:.2f}'))
+cr = '' if credit is None else f'   credit ${credit:.2f}'
+if capped_n:                                     # at least one Claude book counts toward the cap
+    print(f'  {"worst case, capped (Claude)" if approx else "total worst case":28} ${total:.2f}   batch cap ${cap:.2f}{cr}')
+    if approx: print(f'  {"worst case, non-Claude":28} about ${approx:.2f}, approximate, not capped (the OpenRouter bill is the real cost)')
+elif approx:                                     # every book is non-Claude: no cap bucket to show
+    print(f'  {"worst case":28} about ${approx:.2f}, approximate, not capped (the OpenRouter bill is the real cost){cr}')
+else: print(f'  {"total worst case":28} $0.00 (nothing new to send){cr}')
 if bad: sys.exit(f'stopped: no estimate for {", ".join(bad)} (see their .estimate.log)')
 if total > cap: sys.exit(f'stopped: worst case ${total:.2f} is over BATCH_MAX_USD ${cap:.2f}. Raise it (BATCH_MAX_USD={math.ceil(total)}) or run fewer books; the audits are kept and will be reused')
 if credit is not None and total > credit: sys.exit(f'stopped: worst case ${total:.2f} is more than your ${credit:.2f} credit. Add credit or run fewer books')
 PY
 
 fi
-echo; echo "2/3 $( [[ -n ${FROM:-} ]] && echo 'saved replies' || echo 'Claude via OpenRouter'), apply, verify, report: $JOBS books at a time"
+echo; echo "2/3 $( [[ -n ${FROM:-} ]] && echo 'saved replies' || echo "${MODEL:-$DEFAULT_MODEL} via OpenRouter"), apply, verify, report: $JOBS books at a time"
 STEP=run each
 
 echo; echo "3/3 summary"
 WALL=$(python3 -c "print($(now)-$T0)"); CREDIT=$(python3 decide.py --credit 2>/dev/null || true)
-AGAIN="AUTO=1 bash batch_api.sh $LABEL$( [[ ${#SOURCES[@]} -gt 0 ]] && printf ' %q' "${SOURCES[@]}" )"
-python3 - "$B/books.tsv" "$B/todo.tsv" "$B" "$LABEL" "$WALL" "$CREDIT" "$AGAIN" <<'PY'
-import sys, json, os
-books, todo, B, label, wall, credit, again = sys.argv[1:8]; wall = float(wall)
+AGAIN="${FROM:+FROM=$FROM }${MODEL:+MODEL=$MODEL }AUTO=1 bash batch_api.sh $LABEL$( [[ ${#SOURCES[@]} -gt 0 ]] && printf ' %q' "${SOURCES[@]}" )"
+python3 - "$B/books.tsv" "$B/todo.tsv" "$B" "$LABEL" "$WALL" "$CREDIT" "$AGAIN" "$STARTED" "${MAX_TOKENS:-}" <<'PY'
+import sys, json, os, collections
+books, todo, B, label, wall, credit, again, started, cur_mt = sys.argv[1:10]; wall = float(wall)
+rate_limited = False
 def fmt(s): return f'{s:.0f}s' if s < 60 else f'{int(s // 60)}m {s % 60:02.0f}s'
 def load(p): return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else None
 ran = {l.split('\t')[0] for l in open(todo)}             # books run by this command (the others finished earlier)
 L = [f'# Batch {label}', '', '| Book | Status | Pages | API cost | Time | Checks flagged | Result |', '|---|---|---:|---:|---:|---:|---|']
 total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; cut_at = []
+models, prompts, runs_at = collections.Counter(), collections.Counter(), []
 for line in open(books):
     name = line.split('\t')[0]; R = os.path.join(B, name); n += 1
     rec = load(os.path.join(R, 'record.json'))
@@ -171,6 +188,9 @@ for line in open(books):
         earlier = sum(a.get('cost_usd') or 0 for a in load(os.path.join(R, 'attempts.json')) or [])
         if run.get('finish_reason') == 'length': wasted += this
     wasted += earlier; total += this + earlier
+    if run.get('model'): models[run['model']] += 1
+    if run.get('prompt_file'): prompts[f'`{run["prompt_file"]}` ({run.get("prompt_sha256")})'] += 1
+    if run.get('started'): runs_at.append(run['started'])
     if name in ran:                                       # money spent by this command, for the credit line
         if not run.get('response_from'): new_spend += this
         c0 = (run.get('estimate') or {}).get('credit_available_usd')
@@ -181,6 +201,10 @@ for line in open(books):
         if run.get('finish_reason') == 'length':
             mt = (run.get('estimate') or {}).get('max_tokens') or 16000; cut_at.append(mt)
             why = f'**failed**: reply cut off at {mt:,} tokens'
+        elif run.get('error'):                            # OpenRouter refused or failed the call
+            er = run['error']; code = str(er.get('code'))
+            if code == '429': rate_limited = True; why = '**failed**: OpenRouter 429, model rate-limited' + ('' if this else ' (nothing charged)')
+            else: why = f'**failed**: OpenRouter {code}: {(er.get("message") or "")[:70].replace("|", "/")} (see `{name}.log`)'
         else: why = f'**failed**: see `{name}.log`'
         L.append(f'| {name} | {why} | | {cost if this + earlier else ""} | | | |'); continue
     done += 1
@@ -188,6 +212,11 @@ for line in open(books):
     rv = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
     checks = sum(1 for l in rv.splitlines() if l.startswith('|') and '**CHECK**' in l)
     L.append(f'| {name} | done | {rec["document"]["pages"]} | {cost} | {fmt(t)} | {checks} | `{name}/{rec["document"].get("output") or ""}` |')
+def each_(c): return ', '.join(f'{k}' + (f' ×{v}' if len(c) > 1 else '') for k, v in c.items()) or '?'
+span = sorted({r[:16].replace('T', ' ') for r in runs_at})
+L[1:1] = ['', f'Batch started {started}' + (f' (books run from {span[0]} to {span[-1]})' if len(span) > 1 else '')
+          + f' · model {", ".join(f"`{k}`" + (f" ×{v}" if len(models) > 1 else "") for k, v in models.items()) or "?"}'
+          + f' · prompt {each_(prompts)}']
 L += ['', f'{done} of {n} books done · API cost ${total:.3f}' + (f' (includes ${wasted:.3f} for replies that were cut off)' if wasted else '')
       + f' · wall time {fmt(wall)}', '']
 # OpenRouter's balance can lag behind new calls, so also work it out: credit seen before the calls minus what they cost
@@ -199,8 +228,10 @@ elif live is not None: L.append(f'Credit left: ${live:.2f}')
 else: L.append('Credit left: could not check (no key, or OpenRouter unreachable)')
 L.append('')
 if failed:
-    mt = f'MAX_TOKENS={max(cut_at) * 2} ' if cut_at else ''
-    L += [f'To run only the {len(failed)} unfinished book(s) again, from pipeline:', '', f'    RETRY=1 {mt}{again}', '']
+    mt = f'MAX_TOKENS={max(cut_at) * 2} ' if cut_at else (f'MAX_TOKENS={cur_mt} ' if cur_mt else '')
+    jobs = 'JOBS=1 ' if rate_limited else ''
+    L += [f'To run only the {len(failed)} unfinished book(s) again, from pipeline'
+          + (' (wait a few minutes first: the model was rate-limited)' if rate_limited else '') + ':', '', f'    RETRY=1 {jobs}{mt}{again}', '']
 L += [f'Results are relative to {B}/', '',
       'Checks flagged = rows marked CHECK in each review.md. Open the review.md of any book with flags before running PAC.']
 out = os.path.join(B, 'summary.md'); open(out, 'w', encoding='utf-8').write('\n'.join(L) + '\n')
@@ -208,4 +239,4 @@ print('\n'.join(L[2:]))
 print(f'\nsaved: {out}')
 PY
 # tidy: the book lists and copied replies were only working files
-[[ -n $KEEP ]] || rm -f "$B/books.tsv" "$B/todo.tsv" "$B"/*.reply.txt
+[[ -n $KEEP ]] || rm -f "$B/books.tsv" "$B/todo.tsv" "$B"/*.reply.txt "$B"/*.reply.txt.meta.json

@@ -1,6 +1,6 @@
 """decide.py: step 2 of the API pipeline. The only step that calls a model.
 
-    python decide.py AUDIT_DIR RUN_DIR [--model auto:sonnet] [--max-usd 2] [--dry-run]
+    python decide.py AUDIT_DIR RUN_DIR [--model <openrouter id>] [--max-usd 2] [--dry-run]
     python decide.py AUDIT_DIR RUN_DIR --response-file saved_response.json     # re-parse, no call
 
 Sends digest.json plus the figure crops to Claude through OpenRouter with the system prompt
@@ -21,6 +21,21 @@ in this folder or any folder above it. It is never printed or written.
 The model's reply is only parsed as JSON data; nothing in it is ever executed.
 """
 import sys, os, re, json, time, base64, hashlib, argparse, datetime, urllib.request, urllib.error
+
+# The model used when no --model / MODEL= is given. Any OpenRouter model id (https://openrouter.ai/models).
+DEFAULT_MODEL = 'anthropic/claude-sonnet-5.5'
+
+# The temperature sent with every request. Changing it changes every run that sends one; there is no command-line override.
+TEMPERATURE = 0
+# Models whose maker says to leave temperature at its default, or that reject any other value: no temperature is sent.
+# An id matches if it starts with an entry. A model OpenRouter lists as not accepting temperature is also left out.
+OMIT_TEMPERATURE = [
+    'anthropic/claude-opus-4.7', 'anthropic/claude-opus-4.8', 'anthropic/claude-opus-4.9',   # Opus 4.7 and later
+    'anthropic/claude-opus-5',                                                               # (add each new Opus major here)
+    'openai/o1', 'openai/o3', 'openai/o4',                                                   # OpenAI reasoning models
+    'openai/gpt-5',                                                                          # GPT-5 family (reasoning)
+    'google/gemini-3',                                                                       # every Gemini 3 model
+]
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -82,13 +97,13 @@ if sys.argv[1:] == ['--check-key']:
     sys.exit('could not check the key')
 ap = argparse.ArgumentParser()
 ap.add_argument('audit_dir'); ap.add_argument('run_dir')
-ap.add_argument('--model', default='auto:sonnet', help='OpenRouter model id, or auto:sonnet / auto:opus / auto:haiku (newest of that family)')
+ap.add_argument('--model', default=DEFAULT_MODEL, help=f'OpenRouter model id (default {DEFAULT_MODEL}); auto:sonnet / auto:opus / auto:haiku pick the newest Claude of that family')
 PROMPT_NAME = 'workorder_v4.md'
 DEFAULT_PROMPT = next((p for p in (os.path.join(HERE, 'prompts', PROMPT_NAME),                    # pipeline/prompts/
                                    os.path.join(os.path.dirname(HERE), 'prompts', PROMPT_NAME))   # prompts/ next to pipeline
                        if os.path.isfile(p)), os.path.join(HERE, 'prompts', PROMPT_NAME))
 ap.add_argument('--prompt', default=DEFAULT_PROMPT, help=f'system prompt file (default: {PROMPT_NAME} in pipeline/prompts/ or ../prompts/)')
-ap.add_argument('--max-usd', type=float, default=2.0, help='refuse to send if the worst-case cost estimate is higher')
+ap.add_argument('--max-usd', type=float, default=2.0, help='refuse to send if the worst-case cost estimate is higher (Claude models only: the estimate uses Claude token math)')
 ap.add_argument('--max-tokens', type=int, default=16000)
 ap.add_argument('--no-images', action='store_true')
 ap.add_argument('--max-images', type=int, default=100, help="figure images sent per request (Anthropic's limit is 100); the rest go to a person")
@@ -149,30 +164,70 @@ save('request.json', {'messages': [messages[0], {'role': 'user', 'content': [con
 def get(url):
     with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'pdfremproto1'}), timeout=30) as r:
         return json.load(r)
-model, price = args.model, None
+# Token math below is Claude's (calibrated on Sonnet bills), so for other models the estimate is approximate and
+# the caps don't apply: the estimate is printed and the request is sent. The OpenRouter bill is the real cost.
+CHARS_PER_TOKEN = 2.2   # calibrated: Cadaverous run 1 billed 44,227 input tokens where chars/3.5 predicted 29,165
+text_tokens = (len(prompt) + sum(len(c.get('text', '')) for c in content)) / CHARS_PER_TOKEN
+image_tokens = sum(w * h / 750 for w, h in images)
+model, price, m = args.model, None, None
+reused, kept = None, {}
+if args.response_file:                             # a saved reply: no call, so model and temperature are the original run's
+    try: reused = json.load(open(args.response_file, encoding='utf-8')).get('model')
+    except Exception: reused = None
+    meta = args.response_file + '.meta.json'       # written by batch_api.sh FROM= from the earlier record
+    prev = os.path.join(args.run_dir, 'run.json')  # or the earlier attempt in this folder whose reply is reused
+    if os.path.exists(meta): kept = json.load(open(meta, encoding='utf-8'))
+    elif os.path.exists(prev):
+        try:
+            pr = json.load(open(prev, encoding='utf-8'))          # only a run.json from a call that was really sent
+            kept = {k: v for k, v in pr.items() if k in ('model', 'temperature')} if pr.get('usage') and not pr.get('response_from') else {}
+        except Exception: kept = {}
+    reused = kept.get('model') or reused
 try:
     models = get('https://openrouter.ai/api/v1/models')['data']
     if model.startswith('auto:'):
         fam = model.split(':', 1)[1]
-        cand = sorted([m for m in models if m['id'].startswith('anthropic/') and fam in m['id']], key=lambda m: -m.get('created', 0))
+        cand = sorted([x for x in models if x['id'].startswith('anthropic/') and fam in x['id']], key=lambda x: -x.get('created', 0))
         if not cand: sys.exit(f'no anthropic model matching "{fam}" on OpenRouter')
         model = cand[0]['id']
-    m = next((m for m in models if m['id'] == model), None)
-    if m is None: sys.exit(f'model "{model}" not found on OpenRouter; use --model with an id from https://openrouter.ai/models')
-    price = {'prompt': float(m['pricing']['prompt']), 'completion': float(m['pricing']['completion'])}
-    run['price_source'] = 'openrouter /models'
-except (urllib.error.URLError, TimeoutError, KeyError) as e:
-    if not (args.dry_run or args.response_file): sys.exit(f'could not reach OpenRouter to resolve the model and price: {e}')
-    price = {'prompt': 3e-6, 'completion': 15e-6}; run['price_source'] = 'ASSUMED $3 / $15 per million tokens (offline)'
+    m = next((x for x in models if x['id'] == model), None)
+    if m is None and not args.response_file:
+        sys.exit(f'refusing: model "{model}" is not on OpenRouter. Use an id from https://openrouter.ai/models')
+    if m: price = {'prompt': float(m['pricing']['prompt']), 'completion': float(m['pricing']['completion'])}; run['price_source'] = 'openrouter /models'
+except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as e:
+    if not (args.dry_run or args.response_file): sys.exit(f'could not reach OpenRouter to look up the model: {e}')
+if price is None: price = {'prompt': 3e-6, 'completion': 15e-6}; run['price_source'] = 'ASSUMED $3 / $15 per million tokens (offline)'
+model = reused or model
 run['model'] = model
-CHARS_PER_TOKEN = 2.2   # calibrated: Cadaverous run 1 billed 44,227 input tokens where chars/3.5 predicted 29,165
-text_tokens = (len(prompt) + sum(len(c.get('text', '')) for c in content)) / CHARS_PER_TOKEN
-image_tokens = sum(w * h / 750 for w, h in images)
+IS_CLAUDE = model.startswith('anthropic/')
+if m and not args.response_file:                   # can this model take this request at all?
+    mods = (m.get('architecture') or {}).get('input_modalities') or []
+    if 'image' not in mods:
+        sys.exit(f'refusing: {model} cannot take images (input: {", ".join(mods) or "unknown"}); the figure crops are part of every request')
+    out_cap = (m.get('top_provider') or {}).get('max_completion_tokens')
+    if out_cap and out_cap < args.max_tokens:
+        sys.exit(f'refusing: {model} writes at most {out_cap:,} output tokens, under MAX_TOKENS {args.max_tokens:,}. Lower MAX_TOKENS or choose another model')
+    ctx = m.get('context_length') or (m.get('top_provider') or {}).get('context_length')
+    need = round(text_tokens + image_tokens) + args.max_tokens
+    if ctx and need > ctx:
+        sys.exit(f'refusing: the request needs about {need:,} tokens (input estimate + MAX_TOKENS), over {model}\'s {ctx:,}-token context window')
+    run['model_limits'] = {'context_length': ctx, 'max_completion_tokens': out_cap, 'input_modalities': mods}
+if args.response_file:
+    if 'temperature' in kept: run['temperature'] = kept['temperature']      # nothing is added where there was none
+else:
+    listed = next((p for p in OMIT_TEMPERATURE if model.startswith(p)), None)
+    if listed: run['temperature'] = f'omitted: listed in OMIT_TEMPERATURE ({listed})'
+    elif m and m.get('supported_parameters') is not None and 'temperature' not in m['supported_parameters']:
+        run['temperature'] = 'omitted: OpenRouter lists this model as not accepting a temperature setting'
+    else: run['temperature'] = TEMPERATURE
 est_in = (text_tokens + image_tokens) * price['prompt']; worst_out = args.max_tokens * price['completion']
 run['estimate'] = {'input_tokens': round(text_tokens + image_tokens), 'images': len(images), 'image_tokens': round(image_tokens),
                    'input_usd': round(est_in, 4), 'worst_case_output_usd': round(worst_out, 4), 'worst_case_total_usd': round(est_in + worst_out, 4),
-                   'cap_usd': args.max_usd, 'max_tokens': args.max_tokens}
+                   'cap_usd': args.max_usd if IS_CLAUDE else None, 'max_tokens': args.max_tokens, 'approximate': not IS_CLAUDE}
 print(json.dumps(run['estimate']), '| model', model, '|', run['price_source'])
+if not IS_CLAUDE:
+    print(f'note: {model} is not a Claude model. The estimate uses Claude token math, so it is approximate and the '
+          f'${args.max_usd:.2f} cap is not applied. The OpenRouter bill is the real cost.')
 
 credit = available_credit()
 worst = est_in + worst_out
@@ -180,7 +235,8 @@ if credit is None: print('credit: could not check (no key, or OpenRouter unreach
 else:
     run['estimate']['credit_available_usd'] = round(credit, 4)
     print(f'credit available: ${credit:.2f}' + ('' if credit >= worst else
-          f'  ⚠ less than the worst case ${worst:.2f}: OpenRouter will refuse with HTTP 402. Add credit, or lower --max-tokens'))
+          (f'  ⚠ less than the worst case ${worst:.2f}: OpenRouter will refuse with HTTP 402. Add credit, or lower --max-tokens'
+           if model.startswith('anthropic/') or args.response_file else f'  ⚠ less than the approximate worst case ${worst:.2f}: OpenRouter may refuse with HTTP 402 (nothing is charged then)')))
 
 # ------------------------------------------------------------------ call, or reuse a saved reply
 if args.dry_run:
@@ -191,23 +247,49 @@ if args.response_file:
     except json.JSONDecodeError: resp = {'choices': [{'message': {'content': raw}}]}
     run['response_from'] = args.response_file
 else:
-    if est_in + worst_out > args.max_usd: sys.exit(f'refusing: worst-case ${est_in + worst_out:.2f} is over the ${args.max_usd:.2f} cap')
-    if credit is not None and credit < worst: sys.exit(f'refusing: ${credit:.2f} credit available, worst case is ${worst:.2f} (OpenRouter would answer 402). Add credit or lower --max-tokens')
+    if IS_CLAUDE and est_in + worst_out > args.max_usd: sys.exit(f'refusing: worst-case ${est_in + worst_out:.2f} is over the ${args.max_usd:.2f} cap')
+    if IS_CLAUDE and credit is not None and credit < worst: sys.exit(f'refusing: ${credit:.2f} credit available, worst case is ${worst:.2f} (OpenRouter would answer 402). Add credit or lower --max-tokens')
     key = os.environ.get('OPENROUTER_API_KEY')
     if not key: sys.exit('no OPENROUTER_API_KEY: put it in PDFREMPROTO1/.env (see .env.example) or export it')
-    body = {'model': model, 'messages': messages, 'max_tokens': args.max_tokens, 'temperature': 0,
+    body = {'model': model, 'messages': messages, 'max_tokens': args.max_tokens,
             'usage': {'include': True}, 'provider': {'data_collection': 'deny'}}
+    if isinstance(run['temperature'], (int, float)): body['temperature'] = run['temperature']
+    else: print(f'note: no temperature sent ({run["temperature"]})')
     req = urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', data=json.dumps(body).encode(),
                                  headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json',
                                           'X-Title': 'UH PDF remediation prototype'})
+    def openrouter_error(code, message, usage=None):
+        """Stop with OpenRouter's own message; record it in run.json so the batch summary can show it."""
+        cost = (usage or {}).get('cost') or 0
+        run['error'] = {'code': code, 'message': (message or '')[:500]}
+        if cost: run['usage'] = {'prompt_tokens': usage.get('prompt_tokens'), 'completion_tokens': usage.get('completion_tokens'), 'cost_usd': cost}
+        save('run.json', run)
+        charged = f'OpenRouter reported a cost of ${cost:.4f}' if cost else 'Nothing was charged'
+        hint = ''
+        if str(code) == '429':
+            hint = (' The model is rate-limited: wait a few minutes and run the same command again'
+                    ' (in a batch: RETRY=1 JOBS=1 … so the books go one at a time).')
+        sys.exit(f'OpenRouter error {code}: {message or "(no message)"}. {charged}.{hint} See response.json / error.txt')
     t0 = time.time()
     try:
         with urllib.request.urlopen(req, timeout=900) as r: resp = json.load(r)
     except urllib.error.HTTPError as e:
-        save('error.txt', e.read().decode('utf-8', 'replace')); sys.exit(f'OpenRouter error {e.code}: see error.txt')
+        err = e.read().decode('utf-8', 'replace'); save('error.txt', err)
+        if 'data policy' in err.lower() or 'data_collection' in err.lower():
+            sys.exit(f'OpenRouter error {e.code}: no provider of {model} accepts our "don\'t keep or train on the data" setting '
+                     '(provider data_collection: deny), so nothing was sent or charged. See error.txt')
+        if 'temperature' in body and 'temperature' in err.lower():
+            sys.exit(f'OpenRouter error {e.code}: {model} rejected the temperature setting ({body["temperature"]}). Nothing was charged and '
+                     f'nothing was retried. Add "{model}" (or its prefix) to OMIT_TEMPERATURE in decide.py and run again. See error.txt')
+        try: msg = (json.loads(err).get('error') or {}).get('message')
+        except Exception: msg = err[:300]
+        openrouter_error(e.code, msg)
     run['seconds'] = round(time.time() - t0, 1)
 save('response.json', resp)
-if 'choices' not in resp: save('run.json', run); sys.exit('no choices in the response: see response.json')
+if 'choices' not in resp:                         # OpenRouter can send an error (e.g. 429) inside a normal response
+    if args.response_file: save('run.json', run); sys.exit('no choices in the saved response: see response.json')
+    er = resp.get('error') or {}
+    openrouter_error(er.get('code', '?'), er.get('message') or 'no choices in the response', resp.get('usage'))
 reply = resp['choices'][0]['message'].get('content') or ''
 if isinstance(reply, list): reply = ''.join(p.get('text', '') for p in reply)
 save('reply.txt', reply)
