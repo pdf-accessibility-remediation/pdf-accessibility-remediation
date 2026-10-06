@@ -1,11 +1,24 @@
 # PDF Accessibility Remediation Pipeline
 
+[![CI](https://github.com/pdf-accessibility-remediation/pdf-accessibility-remediation/actions/workflows/ci.yml/badge.svg)](https://github.com/pdf-accessibility-remediation/pdf-accessibility-remediation/actions/workflows/ci.yml)
+
 Claude reads a compact summary of a tagged PDF and returns a **work order**: a JSON file of decisions (heading levels, alt text, what to artifact, language, reading-order fixes). The code carries those decisions out, checks the result, writes a review for a person, and never changes the original. The only paid step is the model call in `decide.py`.
 
 ```
 original.pdf ─► audit.py ─► decide.py (Claude via OpenRouter) ─► apply.py ─► verify.py ─► report.py
                  digest        work order                        original_remediated.pdf review.md + record.json
 ```
+
+## Automated checks
+
+GitHub Actions runs the following checks:
+
+- **CI** — Compiles Python sources, validates shell-script syntax, installs dependencies, and runs `pip-audit`.
+- **PDF validation** — Runs `audit.py` against a sample PDF when pipeline or sample files change.
+- **Dependency review** — Reviews dependency changes in pull requests and fails on high-severity vulnerabilities.
+- **CodeQL** — Performs static security analysis of the Python code on pushes, pull requests, and weekly.
+
+These workflows do not run `run_api.sh` or make OpenRouter API calls automatically.
 
 ## Setup (once)
 
