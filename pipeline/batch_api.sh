@@ -29,12 +29,16 @@
 # 1. audits every book and adds up the worst-case cost (no model); stops if it exceeds BATCH_MAX_USD or your credit
 # 2. runs every book (AUTO=1 run_api.sh, reusing the audits), JOBS at a time
 # 3. prints the summary and saves it as summary.md. A book's log is kept only if that book failed
+# summary.md is also written when the batch stops early or is interrupted, and RETRY=1 on a batch whose books have
+# all finished just rewrites it (no cost). A missing library stops the batch before any paid call.
 set -euo pipefail
 [[ -n ${AUTO:-} ]] || { echo "batch runs call the API without asking: start with  AUTO=1 bash batch_api.sh <run-label> [folder | books.txt] …"; exit 1; }
 LABEL=${1:?run label used for every book, e.g. batch1}; shift
 SOURCES=("$@")
 START_DIR=$(pwd)
 cd "$(dirname "$0")"; HERE=$(pwd)
+python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
+  echo "missing Python libraries in $(command -v python3): from pipeline/, run  python3 -m pip install -r requirements.txt"; exit 1; }
 export RUNS_DIR=${RUNS_DIR:-$(cd .. && pwd)/runs}
 JOBS=${JOBS:-3}; MAX=${BATCH_MAX_USD:-5}
 B=$RUNS_DIR/batches/$LABEL
@@ -46,6 +50,102 @@ now() { python3 -c 'import time; print(f"{time.time():.2f}")'; }
 T0=$(now); STARTED=$(date '+%Y-%m-%d %H:%M')
 DEFAULT_MODEL=$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")
 export MODEL=${MODEL:-}
+
+# ---- summary.md: written at the end, when a RETRY finds nothing left to run, and when a batch stops early
+SUMMARY_DONE=; RUNNING=; FAILED_AT=
+AGAIN="${FROM:+FROM=$FROM }${MODEL:+MODEL=$MODEL }AUTO=1 bash batch_api.sh $LABEL"
+if [[ ${#SOURCES[@]} -gt 0 ]]; then AGAIN="$AGAIN$(printf ' %q' "${SOURCES[@]}")"; fi
+write_summary() {
+  local WALL CREDIT
+  WALL=$(python3 -c "print($(now)-$T0)"); CREDIT=$(python3 decide.py --credit 2>/dev/null || true)
+python3 - "$B/books.tsv" "$B/todo.tsv" "$B" "$LABEL" "$WALL" "$CREDIT" "$AGAIN" "$STARTED" "${MAX_TOKENS:-}" <<'PY'
+import sys, json, os, collections
+books, todo, B, label, wall, credit, again, started, cur_mt = sys.argv[1:10]; wall = float(wall)
+rate_limited = False
+def fmt(s): return f'{s:.0f}s' if s < 60 else f'{int(s // 60)}m {s % 60:02.0f}s'
+def load(p): return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else None
+ran = {l.split('\t')[0] for l in open(todo)}             # books run by this command (the others finished earlier)
+L = [f'# Batch {label}', '', '| Book | Status | Pages | API cost | Time | Checks flagged | Result |', '|---|---|---:|---:|---:|---:|---|']
+total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; cut_at = []
+models, prompts, runs_at = collections.Counter(), collections.Counter(), []
+for line in open(books):
+    name = line.split('\t')[0]; R = os.path.join(B, name); n += 1
+    rec = load(os.path.join(R, 'record.json'))
+    if rec:                                               # finished: this call + any earlier cut-off calls
+        run = rec['run']; this = (run.get('usage') or {}).get('cost_usd') or 0
+        earlier = sum(a.get('cost_usd') or 0 for a in rec.get('earlier_attempts') or [])
+    else:                                                 # not finished: a paid call may still have happened
+        run = load(os.path.join(R, 'run.json')) or {}
+        this = 0 if run.get('response_from') else ((run.get('usage') or {}).get('cost_usd') or 0)
+        earlier = sum(a.get('cost_usd') or 0 for a in load(os.path.join(R, 'attempts.json')) or [])
+        if run.get('finish_reason') == 'length': wasted += this
+    wasted += earlier; total += this + earlier
+    if run.get('model'): models[run['model']] += 1
+    if run.get('prompt_file'): prompts[f'`{run["prompt_file"]}` ({run.get("prompt_sha256") or "hash not recorded"})'] += 1
+    if run.get('started'): runs_at.append(run['started'])
+    if name in ran:                                       # money spent by this command, for the credit line
+        if not run.get('response_from'): new_spend += this
+        c0 = (run.get('estimate') or {}).get('credit_available_usd')
+        if c0 is not None: starts.append(c0)
+    cost = f'${this + earlier:.3f}'
+    if not rec:
+        failed.append(name)
+        if run.get('finish_reason') == 'length':
+            mt = (run.get('estimate') or {}).get('max_tokens') or 16000; cut_at.append(mt)
+            why = f'**failed**: reply cut off at {mt:,} tokens'
+        elif run.get('error'):                            # OpenRouter refused or failed the call
+            er = run['error']; code = str(er.get('code'))
+            if code == '429': rate_limited = True; why = '**failed**: OpenRouter 429, model rate-limited' + ('' if this else ' (nothing charged)')
+            else: why = f'**failed**: OpenRouter {code}: {(er.get("message") or "")[:70].replace("|", "/")} (see `{name}.log`)'
+        elif not run and not os.path.exists(os.path.join(B, f'{name}.log')): why = '**not finished**: the batch stopped before this book ran'
+        else: why = f'**failed**: see `{name}.log`'
+        L.append(f'| {name} | {why} | | {cost if this + earlier else ""} | | | |'); continue
+    done += 1
+    t = sum((rec.get('timing_seconds') or {}).values())
+    rv = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
+    checks = sum(1 for l in rv.splitlines() if l.startswith('|') and '**CHECK**' in l)
+    L.append(f'| {name} | done | {rec["document"]["pages"]} | {cost} | {fmt(t)} | {checks} | `{name}/{rec["document"].get("output") or ""}` |')
+def each_(c): return ', '.join(f'{k}' + (f' ×{v}' if len(c) > 1 else '') for k, v in c.items()) or 'not recorded'
+span = sorted({r[:16].replace('T', ' ') for r in runs_at})
+L[1:1] = ['', f'Batch started {started}' + (f' (books run from {span[0]} to {span[-1]})' if len(span) > 1 else '')
+          + f' · model {", ".join(f"`{k}`" + (f" ×{v}" if len(models) > 1 else "") for k, v in models.items()) or "not recorded"}'
+          + f' · prompt {each_(prompts)}']
+L += ['', f'{done} of {n} books done · API cost ${total:.3f}' + (f' (includes ${wasted:.3f} for replies that were cut off)' if wasted else '')
+      + f' · wall time {fmt(wall)}', '']
+# OpenRouter's balance can lag behind new calls, so also work it out: credit seen before the calls minus what they cost
+live = float(credit.split()[0]) if credit.strip() else None
+worked = max(starts) - new_spend if starts else None
+if worked is not None and (live is None or worked < live - 0.005):
+    L.append(f'Credit left: ${worked:.2f}' + ('' if live is None else f' (OpenRouter still shows ${live:.2f}; it catches up within a minute or so)'))
+elif live is not None: L.append(f'Credit left: ${live:.2f}')
+else: L.append('Credit left: could not check (no key, or OpenRouter unreachable)')
+L.append('')
+if failed:
+    mt = f'MAX_TOKENS={max(cut_at) * 2} ' if cut_at else (f'MAX_TOKENS={cur_mt} ' if cur_mt else '')
+    jobs = 'JOBS=1 ' if rate_limited else ''
+    L += [f'To run only the {len(failed)} unfinished book(s) again, from pipeline'
+          + (' (wait a few minutes first: the model was rate-limited)' if rate_limited else '') + ':', '', f'    RETRY=1 {jobs}{mt}{again}', '']
+L += [f'Results are relative to {B}/', '',
+      'Checks flagged = rows marked CHECK in each review.md. Open the review.md of any book with flags before running PAC.']
+out = os.path.join(B, 'summary.md'); open(out, 'w', encoding='utf-8').write('\n'.join(L) + '\n')
+print('\n'.join(L[2:]))
+print(f'\nsaved: {out}')
+PY
+  SUMMARY_DONE=1
+}
+tidy() {   # the book lists and copied replies were only working files
+  [[ -n ${KEEP:-} ]] || rm -f "$B/books.tsv" "$B/todo.tsv" "$B"/*.reply.txt "$B"/*.reply.txt.meta.json
+}
+finish() {
+  local rc=$?; trap - EXIT
+  if [[ $rc != 0 ]]; then echo; echo "batch stopped (exit $rc)${FAILED_AT:+ at $FAILED_AT}" >&2; fi
+  if [[ -n $RUNNING && -z $SUMMARY_DONE ]]; then echo "writing summary.md for what did finish"; write_summary || true; fi
+  [[ -z $RUNNING ]] || tidy
+  exit $rc
+}
+trap finish EXIT
+trap 'FAILED_AT="line $LINENO: $BASH_COMMAND"' ERR
+trap 'exit 130' INT TERM
 
 # ---- the book list → books.tsv (name <TAB> absolute path <TAB> result name, or - for the default)
 python3 - "$START_DIR" "$HERE/../samples" ${SOURCES[@]+"${SOURCES[@]}"} > "$B/books.tsv" <<'PY'
@@ -89,7 +189,10 @@ while IFS=$'\t' read -r name rest; do
   if [[ -f $B/$name/record.json ]]; then echo "  · $name: already finished, skipped"; else printf '%s\t%s\n' "$name" "$rest" >> "$B/todo.tsv"; fi
 done < "$B/books.tsv"
 TODO=$(wc -l < "$B/todo.tsv" | tr -d ' ')
-if [[ $TODO == 0 ]]; then echo "every book in batch $LABEL has already finished: nothing to run"; rm -f "$B/books.tsv" "$B/todo.tsv"; exit 0; fi
+if [[ $TODO == 0 ]]; then
+  echo "every book in batch $LABEL has already finished: nothing to run; summary.md is rewritten"
+  RUNNING=1; echo; echo "summary"; write_summary; exit 0
+fi
 echo "Batch $LABEL: $TODO of $N books to run, $JOBS at a time, model $( [[ -n ${FROM:-} ]] && echo "as recorded under $FROM" || echo "${MODEL:-$DEFAULT_MODEL}")${MAX_TOKENS:+, MAX_TOKENS=$MAX_TOKENS} → $B/"
 cut -f1 "$B/todo.tsv" | sed 's/^/  · /'
 
@@ -100,11 +203,16 @@ each() {   # each <step: estimate|run>
     if [[ $3 == - ]]; then unset OUT; else export OUT=$3; fi
     if [[ $STEP == estimate ]]; then
       log=$B/$name.estimate.log
-      RUN_DIR=$B/$name ESTIMATE=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && st=ok || st="FAILED (see $name.estimate.log)"
+      RUN_DIR=$B/$name ESTIMATE=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
+      st="FAILED (see $name.estimate.log)"
     else
       if [[ -n ${FROM:-} ]]; then export REPLY="$B/$name.reply.txt"; fi
       log=$B/$name.log
-      RUN_DIR=$B/$name AUTO=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && st=ok || st="FAILED (see $name.log)"
+      RUN_DIR=$B/$name AUTO=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
+      st="FAILED (see $name.log)"
+    fi
+    if [[ $rc == 0 ]]; then st=ok
+    elif (( rc > 128 )); then echo "  ✗ $name: interrupted"; exit 255     # Ctrl-C: stop the whole batch, not only this book
     fi
     [[ $st == ok && -z ${KEEP:-} ]] && rm -f "$log"
     echo "  $( [[ $st == ok ]] && echo ✓ || echo ✗ ) $name: $st, $(( $(date +%s) - s ))s"' _
@@ -161,82 +269,9 @@ PY
 
 fi
 echo; echo "2/3 $( [[ -n ${FROM:-} ]] && echo 'saved replies' || echo "${MODEL:-$DEFAULT_MODEL} via OpenRouter"), apply, verify, report: $JOBS books at a time"
+RUNNING=1
 STEP=run each
 
 echo; echo "3/3 summary"
-WALL=$(python3 -c "print($(now)-$T0)"); CREDIT=$(python3 decide.py --credit 2>/dev/null || true)
-AGAIN="${FROM:+FROM=$FROM }${MODEL:+MODEL=$MODEL }AUTO=1 bash batch_api.sh $LABEL$( [[ ${#SOURCES[@]} -gt 0 ]] && printf ' %q' "${SOURCES[@]}" )"
-python3 - "$B/books.tsv" "$B/todo.tsv" "$B" "$LABEL" "$WALL" "$CREDIT" "$AGAIN" "$STARTED" "${MAX_TOKENS:-}" <<'PY'
-import sys, json, os, collections
-books, todo, B, label, wall, credit, again, started, cur_mt = sys.argv[1:10]; wall = float(wall)
-rate_limited = False
-def fmt(s): return f'{s:.0f}s' if s < 60 else f'{int(s // 60)}m {s % 60:02.0f}s'
-def load(p): return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else None
-ran = {l.split('\t')[0] for l in open(todo)}             # books run by this command (the others finished earlier)
-L = [f'# Batch {label}', '', '| Book | Status | Pages | API cost | Time | Checks flagged | Result |', '|---|---|---:|---:|---:|---:|---|']
-total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; cut_at = []
-models, prompts, runs_at = collections.Counter(), collections.Counter(), []
-for line in open(books):
-    name = line.split('\t')[0]; R = os.path.join(B, name); n += 1
-    rec = load(os.path.join(R, 'record.json'))
-    if rec:                                               # finished: this call + any earlier cut-off calls
-        run = rec['run']; this = (run.get('usage') or {}).get('cost_usd') or 0
-        earlier = sum(a.get('cost_usd') or 0 for a in rec.get('earlier_attempts') or [])
-    else:                                                 # not finished: a paid call may still have happened
-        run = load(os.path.join(R, 'run.json')) or {}
-        this = 0 if run.get('response_from') else ((run.get('usage') or {}).get('cost_usd') or 0)
-        earlier = sum(a.get('cost_usd') or 0 for a in load(os.path.join(R, 'attempts.json')) or [])
-        if run.get('finish_reason') == 'length': wasted += this
-    wasted += earlier; total += this + earlier
-    if run.get('model'): models[run['model']] += 1
-    if run.get('prompt_file'): prompts[f'`{run["prompt_file"]}` ({run.get("prompt_sha256")})'] += 1
-    if run.get('started'): runs_at.append(run['started'])
-    if name in ran:                                       # money spent by this command, for the credit line
-        if not run.get('response_from'): new_spend += this
-        c0 = (run.get('estimate') or {}).get('credit_available_usd')
-        if c0 is not None: starts.append(c0)
-    cost = f'${this + earlier:.3f}'
-    if not rec:
-        failed.append(name)
-        if run.get('finish_reason') == 'length':
-            mt = (run.get('estimate') or {}).get('max_tokens') or 16000; cut_at.append(mt)
-            why = f'**failed**: reply cut off at {mt:,} tokens'
-        elif run.get('error'):                            # OpenRouter refused or failed the call
-            er = run['error']; code = str(er.get('code'))
-            if code == '429': rate_limited = True; why = '**failed**: OpenRouter 429, model rate-limited' + ('' if this else ' (nothing charged)')
-            else: why = f'**failed**: OpenRouter {code}: {(er.get("message") or "")[:70].replace("|", "/")} (see `{name}.log`)'
-        else: why = f'**failed**: see `{name}.log`'
-        L.append(f'| {name} | {why} | | {cost if this + earlier else ""} | | | |'); continue
-    done += 1
-    t = sum((rec.get('timing_seconds') or {}).values())
-    rv = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
-    checks = sum(1 for l in rv.splitlines() if l.startswith('|') and '**CHECK**' in l)
-    L.append(f'| {name} | done | {rec["document"]["pages"]} | {cost} | {fmt(t)} | {checks} | `{name}/{rec["document"].get("output") or ""}` |')
-def each_(c): return ', '.join(f'{k}' + (f' ×{v}' if len(c) > 1 else '') for k, v in c.items()) or '?'
-span = sorted({r[:16].replace('T', ' ') for r in runs_at})
-L[1:1] = ['', f'Batch started {started}' + (f' (books run from {span[0]} to {span[-1]})' if len(span) > 1 else '')
-          + f' · model {", ".join(f"`{k}`" + (f" ×{v}" if len(models) > 1 else "") for k, v in models.items()) or "?"}'
-          + f' · prompt {each_(prompts)}']
-L += ['', f'{done} of {n} books done · API cost ${total:.3f}' + (f' (includes ${wasted:.3f} for replies that were cut off)' if wasted else '')
-      + f' · wall time {fmt(wall)}', '']
-# OpenRouter's balance can lag behind new calls, so also work it out: credit seen before the calls minus what they cost
-live = float(credit.split()[0]) if credit.strip() else None
-worked = max(starts) - new_spend if starts else None
-if worked is not None and (live is None or worked < live - 0.005):
-    L.append(f'Credit left: ${worked:.2f}' + ('' if live is None else f' (OpenRouter still shows ${live:.2f}; it catches up within a minute or so)'))
-elif live is not None: L.append(f'Credit left: ${live:.2f}')
-else: L.append('Credit left: could not check (no key, or OpenRouter unreachable)')
-L.append('')
-if failed:
-    mt = f'MAX_TOKENS={max(cut_at) * 2} ' if cut_at else (f'MAX_TOKENS={cur_mt} ' if cur_mt else '')
-    jobs = 'JOBS=1 ' if rate_limited else ''
-    L += [f'To run only the {len(failed)} unfinished book(s) again, from pipeline'
-          + (' (wait a few minutes first: the model was rate-limited)' if rate_limited else '') + ':', '', f'    RETRY=1 {jobs}{mt}{again}', '']
-L += [f'Results are relative to {B}/', '',
-      'Checks flagged = rows marked CHECK in each review.md. Open the review.md of any book with flags before running PAC.']
-out = os.path.join(B, 'summary.md'); open(out, 'w', encoding='utf-8').write('\n'.join(L) + '\n')
-print('\n'.join(L[2:]))
-print(f'\nsaved: {out}')
-PY
-# tidy: the book lists and copied replies were only working files
-[[ -n $KEEP ]] || rm -f "$B/books.tsv" "$B/todo.tsv" "$B"/*.reply.txt "$B"/*.reply.txt.meta.json
+write_summary
+

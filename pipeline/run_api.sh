@@ -23,6 +23,8 @@ SRC=$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")      # absolute, so it w
 BASE=$(basename "$SRC"); OUT=${OUT:-${BASE%.*}_remediated.pdf}; [[ $OUT == *.[pP][dD][fF] ]] || OUT=$OUT.pdf
 [[ $OUT != */* ]] || { echo "OUT is a file name, not a path: $OUT"; exit 1; }
 cd "$(dirname "$0")"
+python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
+  echo "missing Python libraries in $(command -v python3): from pipeline/, run  python3 -m pip install -r requirements.txt"; exit 1; }
 RUNS=${RUNS_DIR:-$(cd .. && pwd)/runs}
 R=${RUN_DIR:-$RUNS/$NAME/$RUN}; A=$R/_audit
 if [[ -f $R/record.json ]]; then echo "$R already holds a finished run: choose another run label"; exit 1; fi
@@ -34,10 +36,7 @@ NEW=; [[ -d $R ]] || NEW=1
 mkdir -p "$R"
 
 # an earlier attempt in this folder that did not finish
-if [[ -z ${REPLY:-} && -f $R/workorder.json && -f $R/response.json ]]; then
-  REPLY=$R/response.json
-  echo "▶ the earlier attempt's reply was complete (a later step failed): reusing it, no new API call"
-elif [[ -f $R/run.json ]]; then
+log_attempt() {                # a paid call whose reply could not be used: keep its cost on record, then a new call is made
   python3 - "$R" <<'PY2'
 import sys, os, json, datetime
 R = sys.argv[1]; run = json.load(open(os.path.join(R, 'run.json'), encoding='utf-8'))
@@ -51,6 +50,18 @@ if cost and not run.get('response_from'):                       # a paid call wh
     os.remove(os.path.join(R, 'run.json'))
     print(f'▶ earlier attempt logged: ${cost:.3f} spent, reply {"cut off" if run.get("finish_reason") == "length" else "unusable"}; making a new call')
 PY2
+}
+SAVED=
+if [[ -z ${REPLY:-} && -f $R/workorder.json && -f $R/response.json ]]; then
+  REPLY=$R/response.json
+  echo "▶ the earlier attempt's reply was complete (a later step failed): reusing it, no new API call"
+elif [[ -f $R/run.json ]]; then
+  # a complete paid reply that could not be read: try it again with the current reader before paying for a new call
+  if [[ -z ${REPLY:-} && -f $R/response.json ]] && python3 -c "import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if (r.get('usage') or {}).get('cost_usd') and r.get('finish_reason') not in (None, 'length') and not r.get('error') and not r.get('response_from') else 1)" "$R/run.json"; then
+    SAVED=1
+  else
+    log_attempt
+  fi
 fi
 
 now() { python3 -c 'import time; print(f"{time.time():.2f}")'; }
@@ -79,8 +90,22 @@ if same_source; then
 else
   stage "1/5 audit (no model)"          python3 audit.py "$SRC" "$A"
 fi
+if [[ -n $SAVED ]]; then
+  echo "▶ 2/5 the earlier attempt's reply was complete but could not be read: reading it again (no cost)"
+  cp "$R/run.json" "$R/run.prev.json"; s=$(now)
+  if python3 decide.py "$A" "$R" --response-file "$R/response.json" ${MT[@]+"${MT[@]}"}; then
+    rm -f "$R/run.prev.json"; e=$(now); d=$(python3 -c "print(f'{$e-$s:.2f}')")
+    TIMES+=("2/5 reuse saved reply (no cost)|$d"); echo "  ✓ 2/5 reuse saved reply (no cost): $(fmt "$d")"
+    REPLY=$R/response.json; REUSED=1
+  else
+    mv "$R/run.prev.json" "$R/run.json"; rm -f "$R/workorder.json"
+    echo "▶ the saved reply still cannot be read: its cost is logged and a new call is made"; log_attempt
+  fi
+fi
 if [[ -n ${ESTIMATE:-} && -n ${REPLY:-} ]]; then echo "estimate only: no cost, a saved reply will be reused"; summary; exit 0; fi
-if [[ -n ${REPLY:-} ]]; then
+if [[ -n ${REUSED:-} ]]; then
+  :
+elif [[ -n ${REPLY:-} ]]; then
   stage "2/5 reuse saved reply (no cost)" python3 decide.py "$A" "$R" --response-file "$REPLY" ${MT[@]+"${MT[@]}"}
 else
   stage "2/5 cost estimate (no model)"  python3 decide.py "$A" "$R" --dry-run ${MT[@]+"${MT[@]}"}
