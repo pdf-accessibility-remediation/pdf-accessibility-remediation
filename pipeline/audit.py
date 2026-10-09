@@ -30,7 +30,7 @@ class _Page:                                    # what the audit needs from a pa
     def __init__(self, p):
         self.width, self.height = float(p.width), float(p.height)
         self.chars = [{k: c.get(k) for k in KEEP_KEYS} for c in p.chars]
-        self.images = [{k: i.get(k) for k in ('x0', 'x1', 'top', 'bottom', 'mcid')} for i in p.images]
+        self.images = [{k: i.get(k) for k in ('x0', 'x1', 'top', 'bottom', 'mcid', 'tag')} for i in p.images]
 class _PL:
     def __init__(self, path):
         self.pages = []
@@ -154,6 +154,45 @@ for e in elems:
     if f['alt'] and '\x00' in f['alt']: f['alt_has_nul'] = True; f['alt'] = f['alt'].replace('\x00', '\\x00')
     figures.append(f)
 
+# ---- pages with no tags at all that hold a drawing (a full-page map, plate or cover): the executor wraps each
+#      whole page in one Figure; the model sees the page image and writes its alt text (page_figures)
+PAINT = {'S', 's', 'f', 'F', 'f*', 'B', 'B*', 'b', 'b*'}; PATHB = {'m', 'l', 'c', 'v', 'y', 're', 'h', 'W', 'W*'}; SHOW = {'Tj', 'TJ', "'", '"'}
+def page_inventory(page):
+    inv = collections.Counter()
+    def walk(stream, res, tr, depth=0):
+        if depth > 12: return
+        xo = (res or {}).get('/XObject') or {}; gs = []; path = False
+        for ins in pikepdf.parse_content_stream(stream):
+            op, ops = str(ins.operator), ins.operands
+            if op in ('BDC', 'BMC'):
+                if str(ops[0]) == '/Artifact': inv['artifact'] += 1
+                if len(ops) > 1 and isinstance(ops[1], pikepdf.Dictionary) and '/MCID' in ops[1]: inv['mcid'] += 1
+            elif op == 'q': gs.append(tr)
+            elif op == 'Q': tr = gs.pop() if gs else tr
+            elif op == 'Tr': tr = int(ops[0])
+            elif op in PATHB: path = True
+            elif op == 'n': path = False
+            elif op in PAINT and path: inv['paths'] += 1; path = False
+            elif op in SHOW: inv['hidden_text' if tr == 3 else 'text'] += 1
+            elif op in ('BI', 'INLINE IMAGE', 'sh'): inv['images'] += 1
+            elif op == 'Do':
+                x = xo.get(ops[0])
+                if x is None: continue
+                if str(x.get('/Subtype')) == '/Image': inv['images'] += 1
+                elif str(x.get('/Subtype')) == '/Form': walk(x, x.get('/Resources') or res, tr, depth + 1)
+    walk(page, page.obj.get('/Resources'), 0)
+    return inv
+page_figures = []
+for pno, p in enumerate(PL.pages, 1):
+    if any(c.get('mcid') is not None or c.get('tag') == 'Artifact' for c in p.chars + p.images): continue
+    inv = page_inventory(pages[pno - 1])
+    if inv['mcid'] or inv['artifact'] or inv['hidden_text'] or pages[pno - 1].obj.get('/Annots'): continue
+    if not (inv['images'] or inv['paths']): continue
+    name = f'page_{pno:03d}.png'
+    page_figures.append({'page': pno, 'label': labels.get(pno), 'images': inv['images'], 'paths': inv['paths'], 'text_operators': inv['text'],
+                         'sample_text': clip(''.join(c['text'] for c in p.chars), 80), 'image': 'figures/' + name,
+                         'image_px': crop(pno, [0, 0, p.width, p.height], name)})
+
 # ---- page map, repeated top/bottom lines, front matter
 def lines(pno, tagged_only=True):
     cs = [c for c in PL.pages[pno - 1].chars if (c.get('mcid') is not None) or not tagged_only]
@@ -224,7 +263,8 @@ for e in elems:
         headings.append({'obj': ref(e['el']), 'style': e['style'], 'level': m, 'page': first_page(e), 'label': labels.get(first_page(e)),
                          'text': clip(t, 110), 'size': size, 'bold': bold,
                          'next': None if nxt is None else f'{nxt["style"]}: {clip(text_of(nxt), 50)}'})
-    elif m == 'P' and 2 <= len(t) <= 90 and not in_band(e):
+    elif m == 'P' and 2 <= len(t) <= 90 and (not in_band(e) or (font_of(e)[0] or 0) >= BODY * 1.3):
+        # a large line in the top band is a chapter opener's title (running heads are body size or smaller)
         size, bold = font_of(e)
         if size and (size >= BODY * 1.15 or (size >= BODY + 0.5 and len(t) <= 40) or (bold >= 0.9 and len(t) <= 70 and not t.endswith('.'))):
             candidates.append({'obj': ref(e['el']), 'style': e['style'], 'page': first_page(e), 'label': labels.get(first_page(e)),
@@ -281,6 +321,7 @@ for pno, p in enumerate(PL.pages, 1):
     runs_listed = [{'kind': k[0], 'band': band_of(cs), 'text': clip(''.join(c['text'] for c in cs), 50)}
                    for k, cs in sorted(runs.items(), key=lambda kv: min(c['top'] for c in kv[1]))[:6]]
     unowned.append({'page': pno, 'label': labels[pno], 'orphan_runs': kinds['orphan'], 'untagged_runs': kinds['untagged'],
+                    **({'page_figure': True} if any(f['page'] == pno for f in page_figures) else {}),
                     'by_band': {b: bands[b] for b in ('top', 'body', 'bottom') if bands[b]}, 'in_figure': infig,
                     'runs': runs_listed})
 
@@ -322,6 +363,8 @@ digest = {
     'lists': lists[:200],
     'tables': tables[:100],
     'figures': figures,
+    'page_figures_format': 'pages with no tags at all that hold a drawing (map, plate, cover); the executor wraps each whole page in one Figure. Its letters are labels, not body text. Write page_figures alt text from the page image.',
+    'page_figures': page_figures,
     'unowned_content_format': 'per page: counts of orphan runs (marked, no tag owns them) and untagged runs (not marked), by band; runs inside figures; up to 6 runs, top to bottom, EACH ITEM ONE SEPARATE RUN',
     'unowned_content_totals': dict(unowned_tot),
     'unowned_content': unowned[:300],
@@ -337,4 +380,5 @@ digest = {
 json.dump(digest, open(os.path.join(OUT, 'digest.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 print(f'digest: {len(styles)} styles · {len(headings)} headings + {len(candidates)} candidates · {len(lists)} lists · {len(tables)} tables · '
       f'unowned {dict(unowned_tot)} · {len(rare)} other listed · {len(figures)} figures ({sum(1 for f in figures if f["image"])} crops) · '
+      f'{len(page_figures)} page figures · '
       f'{len(repeated)} repeated lines · {len(page_map)} pages · {os.path.getsize(os.path.join(OUT, "digest.json")) // 1024} KB')
