@@ -6,13 +6,15 @@ Reads the original PDF and writes the compact view Claude decides from:
 
     OUT_DIR/digest.json         document facts, tag styles, rare elements, figures, page map
     OUT_DIR/figures/*.png       one crop per figure, long side at most 800 px
+    OUT_DIR/verapdf.json        veraPDF (WCAG 2.2 machine profile) on the original: the "before" for review.md.
+                                Kept out of digest.json, so it costs no tokens.
 
 Every element Claude may refer to is listed with its object number in the ORIGINAL file
 ("1234 0"); apply.py resolves those numbers against the same file. Text from the book is
 included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix  # noqa: E401
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, vera  # noqa: E401
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -24,6 +26,7 @@ pages = list(pdf.pages); pidx = {p.obj.objgen: i + 1 for i, p in enumerate(pages
 labels = {i + 1: str(p.label) for i, p in enumerate(pages)}
 st = pdf.Root.get('/StructTreeRoot')
 if st is None: sys.exit('untagged PDF: this pipeline repairs an existing tag tree; run a tagging step first')
+VERA = vera.start(SRC)                          # runs alongside the audit; collected at the end
 RM = {str(k).lstrip('/'): str(v).lstrip('/') for k, v in (st.get('/RoleMap') or {}).items()}
 KEEP_KEYS = ('text', 'x0', 'x1', 'top', 'bottom', 'size', 'fontname', 'mcid', 'tag')
 class _Page:                                    # what the audit needs from a page; the full pdfplumber page is released
@@ -378,6 +381,10 @@ digest = {
               'per_page_top': [[p, n] for p, n in sorted(link_pages.items(), key=lambda x: -x[1])[:15]]},
 }
 json.dump(digest, open(os.path.join(OUT, 'digest.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+vr = vera.finish(VERA)
+json.dump(vr, open(os.path.join(OUT, 'verapdf.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+print(vr['not_run'] if 'not_run' in vr else f'{vr["tool"]}: {vr["totals"]["wcag_failed_rules"]} WCAG rules failed · '
+      f'{vr["totals"]["ua_only_failed_rules"]} PDF/UA-only rules failed (verapdf.json)')
 print(f'digest: {len(styles)} styles · {len(headings)} headings + {len(candidates)} candidates · {len(lists)} lists · {len(tables)} tables · '
       f'unowned {dict(unowned_tot)} · {len(rare)} other listed · {len(figures)} figures ({sum(1 for f in figures if f["image"])} crops) · '
       f'{len(page_figures)} page figures · '

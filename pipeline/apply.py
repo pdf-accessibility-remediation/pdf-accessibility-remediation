@@ -1128,6 +1128,10 @@ def fix_flags():
     if not pdf.Root.MarkInfo.get('/Marked', False): pdf.Root.MarkInfo.Marked = True; ok('document: marked as tagged')
     if '/ViewerPreferences' not in pdf.Root: pdf.Root.ViewerPreferences = pikepdf.Dictionary()
     if not pdf.Root.ViewerPreferences.get('/DisplayDocTitle', False): pdf.Root.ViewerPreferences.DisplayDocTitle = True; ok('document: DisplayDocTitle')
+    tabs = 0                                     # WCAG 2.4.3: links and fields are visited in tag-tree order
+    for p in pdf.pages:
+        if p.obj.get('/Annots') and str(p.obj.get('/Tabs')) != '/S': p.obj.Tabs = pikepdf.Name.S; tabs += 1
+    if tabs: ok('pages with links or fields: tab order follows the tag tree (/Tabs /S)', tabs)
     if '/Metadata' in pdf.Root and b'pdfuaid' in pdf.Root.Metadata.read_bytes():
         log['deferred'].append({'what': 'the source file already claims PDF/UA conformance', 'why': 'not verified by this pipeline; check it with PAC before relying on it'})
 
