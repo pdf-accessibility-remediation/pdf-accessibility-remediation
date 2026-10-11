@@ -14,7 +14,7 @@ original.pdf ─► audit.py ─► decide.py (model via OpenRouter) ─► appl
 GitHub Actions runs the following checks:
 
 - **CI** — Compiles Python sources, validates shell-script syntax, installs dependencies, and runs `pip-audit`.
-- **PDF validation** — Runs `audit.py` against a sample PDF when pipeline or sample files change.
+- **PDF validation** — Installs Java 17 and veraPDF, then runs `audit.py` (with veraPDF on the original) against a sample PDF when pipeline or sample files change.
 - **Dependency review** — Reviews dependency changes in pull requests and fails on high-severity vulnerabilities.
 - **CodeQL** — Performs static security analysis of the Python code on pushes, pull requests, and weekly.
 
@@ -26,7 +26,8 @@ These workflows do not run `run_api.sh` or make OpenRouter API calls automatical
 2. **Key:** put `OPENROUTER_API_KEY=…` in a `.env` file in `pipeline/` or any folder above it (e.g. the repo root). Keep `.env` in `.gitignore`.
 3. **Check the key (free):** `python3 decide.py --check-key`.
 4. **Prompt:** `workorder_v6.md` goes in `pipeline/prompts/` or in `prompts/` beside `pipeline/`. Older versions are kept only as a record.
-5. **PDFs:** originals go in `samples/<name>/` and are never written to. Outputs go in `runs/<name>/<run-label>/` (single runs) or `runs/batches/<label>/<name>/` (batches) beside `pipeline/` (set `RUNS_DIR` to put them elsewhere). Keep both out of git: the books are in copyright.
+5. **veraPDF** (WCAG checks, see "Verification with veraPDF"): needs Java 17 (`sudo apt install openjdk-17-jre-headless`, or any Java 17 runtime on `PATH`). Then, from `pipeline/`, `bash verapdf/install.sh` installs veraPDF 1.30.3 in `~/.local/opt/verapdf` and prints the line to add to your shell profile: `export VERAPDF=~/.local/opt/verapdf/verapdf`. `python3 vera.py --check` prints the version. Every run checks it before any paid call and stops if it is missing; `VERAPDF=off` runs without it.
+6. **PDFs:** originals go in `samples/<name>/` and are never written to. Outputs go in `runs/<name>/<run-label>/` (single runs) or `runs/batches/<label>/<name>/` (batches) beside `pipeline/` (set `RUNS_DIR` to put them elsewhere). Keep both out of git: the books are in copyright.
 
 ## Run
 
@@ -51,6 +52,7 @@ The short name (`clans`) names the run folder. The result is named after the ori
 | `MODEL=openai/gpt-5` | Any OpenRouter model id for this run or batch (default: `DEFAULT_MODEL` in `decide.py`, `anthropic/claude-sonnet-5.5`) |
 | `MAX_TOKENS=32000` | Output limit for the model's reply, reasoning included (default 16,000). Raise it when a reply is cut off |
 | `RUNS_DIR=/path` | Writes runs somewhere other than `PDFREM/runs/` |
+| `VERAPDF=off` | Runs without veraPDF; review.md says its rows were not run. `VERAPDF=/path/to/verapdf` uses a launcher not on `PATH`; `VERAPDF_TIMEOUT` (seconds, default 900) limits each veraPDF run |
 | `JOBS=1` | Batches only: books run at the same time (default 3). Use 1 after a rate limit (see "When the model call fails") |
 
 A run label that already holds a finished run is refused, so earlier results are never overwritten.
@@ -135,7 +137,7 @@ In a book list, relative paths count from the list file's folder. Short names mu
 
 | File | For | What it is |
 |---|---|---|
-| `<original>_remediated.pdf` | everyone | The result. Run PAC on this (named by `OUT` or the book list if you set one) |
+| `<original>_remediated.pdf` | everyone | The result. Run PAC 2026 on this (named by `OUT` or the book list if you set one) |
 | `review.md` | the human reviewer | Automated checks (including exactly one H1, bookmarks present, every decision applied, nothing deferred: a green row is evidence, not proof); every alt text the AI wrote (before and after) and the ones it left alone; heading levels and spoken heading text; what was hidden as decoration; reading-order moves; what the AI and the executor deferred; anything not applied |
 | `record.json` | the archive | Everything vital in one file: source fingerprint, model, prompt version, tokens, cost, the full work order, what was applied, rejected and deferred, the verification results, and Claude's raw reply. `apply.py` accepts it in place of a work order, to re-apply a run |
 | `han_review.csv` | a Japanese / Chinese reader | Only when the book has Han-only CJK runs: one row per run, with a blank decision column |
@@ -147,16 +149,44 @@ Nothing else is kept. The working files (digest, figure crops, raw request and r
 ```bash
 S=../samples/cadaverous/<file>.pdf
 R=../runs/cadaverous/api-run1;  A=$R/_audit
-python3 audit.py  $S $A                                   # no model, ~30 s
+python3 audit.py  $S $A                                   # no model, ~30 s; also veraPDF on the original → $A/verapdf.json
 python3 decide.py $A $R --dry-run                         # cost estimate + available credit; sends nothing
 python3 decide.py $A $R                                   # the API call
 O=$R/<file>_remediated.pdf
 python3 apply.py  $S $R/workorder.json $O                 # no model, ~80 s
-python3 verify.py $S $O                                   # no model, ~3 min
+python3 verify.py $S $O                                   # no model, ~3 min; veraPDF on the result runs alongside
 python3 report.py $R $A                                   # review.md, record.json, han_review.csv; add --keep to keep working files
 ```
 
 If `decide.py` fails after the API call, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and a higher `MAX_TOKENS` (see above). For errors from OpenRouter itself, see "When the model call fails".
+
+## Verification with veraPDF
+
+The goal is WCAG 2.2 AA. [veraPDF](https://github.com/veraPDF) checks the original (in `audit.py`) and the result (in `verify.py`) with its **WCAG 2.2 machine** profile, pinned in `pipeline/verapdf/WCAG-2-2-Machine.xml` (from veraPDF-validation-profiles branch `rel/1.30`). That profile holds every machine-checkable PDF/UA-1 rule and a few WCAG-only ones (contrast, small text, link descriptions, redundant tags). veraPDF's CLI has no flavour for it, so it is passed with `-p`.
+
+Not every PDF/UA rule matters for WCAG. `pipeline/verapdf/rules.json` sorts every rule in the profile:
+
+- **wcag**: a failure fails a success criterion (listed per rule). Counted in review.md.
+- **ua_only**: a PDF/UA requirement with no success criterion behind it (XMP metadata and dc:title, Note IDs, font program embedding, widths and encodings, optional content, embedded files, XFA, print-production annotations). Listed apart and not counted.
+
+A rule veraPDF reports that is not in `rules.json` counts as WCAG and is named as unclassified in review.md, so someone adds it. After updating the profile, re-check that every rule is listed.
+
+review.md gets two rows (no WCAG failures after; no WCAG rule newly failing) and a "veraPDF" section with each failed rule's before and after counts and pages. `record.json` keeps both summaries under `verapdf`.
+
+**WCAG checks veraPDF does not make** are in `verify.py` (`wcag` in `record.json`), each a row in review.md and listed under "WCAG checks veraPDF does not make". They find things to look at, not proven failures:
+
+| SC | Check |
+|---|---|
+| 1.1.1 | Alt text that looks like a file name, has no letters or digits, or is the same on 3+ figures |
+| 1.3.1 | A table with content and no header cell (TH) |
+| 1.3.2 | Pages where the tagged text, in tag-tree order, jumps back up the same column 2+ times (notes, figures and captions skipped) |
+| 2.4.2 | A title that looks like a file name or placeholder |
+| 2.4.4 | Link text like "click here" or "more" |
+| 2.4.6 | Headings with no text, over 200 characters, or the same twice in a row |
+
+The executor sets `/Tabs /S` on every page with links or fields (2.4.3), so tab order follows the tag tree.
+
+**PAC 2026** ([pac.pdf-accessibility.org](https://pac.pdf-accessibility.org/en), Windows, no command line) is the final manual check. review.md ends with what to run and the criteria no automated check covers (alt-text accuracy, meaningful order, colour, contrast over images, images of text, descriptive headings, language of parts). A PAC failure not listed in review.md is a gap in the automated checks: open an issue.
 
 ## When the model call fails
 
@@ -184,7 +214,9 @@ A failed call that OpenRouter did charge for is logged with its cost and counted
 | `prompts/workorder_v6.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run. v5 and older are kept as a record |
 | `decide.py` | The API call. Estimates cost, checks available credit, sends the digest and crops, parses and validates the reply. `--dry-run`, `--response-file`, `--check-key`, `--credit` (credit left), `--max-images` (default 100), `--max-tokens` (default 16,000, set on the `ap.add_argument('--max-tokens' …)` line; the model's reasoning counts against it) |
 | `apply.py` | The executor. Original + work order → `<original>_remediated.pdf`. pikepdf only; checks each target first and rejects what doesn't fit |
-| `verify.py` | Checks the result against the original |
+| `verify.py` | Checks the result against the original, adds the WCAG checks veraPDF does not make, and runs veraPDF on the result |
+| `vera.py` | Runs veraPDF with the pinned WCAG 2.2 machine profile and sorts its failures into WCAG and PDF/UA-only. `--check`; or `vera.py FILE.pdf OUT.json` on its own |
+| `verapdf/` | `WCAG-2-2-Machine.xml` (the pinned profile), `rules.json` (each rule's WCAG success criteria, or why it is PDF/UA-only), `install.sh` |
 | `report.py` | Writes `review.md`, `record.json` and `han_review.csv`, then removes the working files |
 | `plumb_fix.py` | Fix for pdfplumber's nested marked-content bug (required) |
 | `run_api.sh` | All of the above in one command |
@@ -259,6 +291,7 @@ These are mechanical, so they never wait for the model:
 
 - makes sure there is exactly one Document root (Auto-Tag output often has none; some exports have two)
 - sets the "tagged" flag and shows the title in the window
+- sets the tab order to follow the tag tree (`/Tabs /S`) on every page with links or fields (WCAG 2.4.3)
 - ties every link annotation to its text and gives it a description, creating Link tags where the tagger left none
 - removes references to annotations that sit on no page
 - rebuilds the tag-tree index (ParentTree) from the tree where entries are missing or wrong

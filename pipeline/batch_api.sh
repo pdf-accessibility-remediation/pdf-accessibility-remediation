@@ -39,6 +39,8 @@ START_DIR=$(pwd)
 cd "$(dirname "$0")"; HERE=$(pwd)
 python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
   echo "missing Python libraries in $(command -v python3): from pipeline/, run  python3 -m pip install -r requirements.txt"; exit 1; }
+VERA=$(python3 vera.py --check) || {
+  echo "$VERA"; echo "veraPDF is needed for the WCAG checks: bash verapdf/install.sh (see README), or run with VERAPDF=off to skip them"; exit 1; }
 export RUNS_DIR=${RUNS_DIR:-$(cd .. && pwd)/runs}
 JOBS=${JOBS:-3}; MAX=${BATCH_MAX_USD:-5}
 B=$RUNS_DIR/batches/$LABEL

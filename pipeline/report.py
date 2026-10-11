@@ -33,6 +33,7 @@ def load(name, base=R, default=None):
 run = load('run.json', default={}); wo = load('workorder.json', default={}); val = load('validation.json', default={'dropped': []})
 log = load(PDF + '.log.json', default={}); ver = load(PDF + '.verify.json', default={})
 digest = load('digest.json', base=A, default={})
+vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the original, from the audit
 reply = open(os.path.join(R, 'reply.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(R, 'reply.txt')) else None
 timing = load('timing.json', default=None)
 attempts = load('attempts.json', default=[])          # earlier paid calls in this folder whose reply couldn't be used
@@ -55,7 +56,8 @@ record = {
     'run': run, 'workorder': wo, 'validation_dropped': val.get('dropped', []),
     'apply': {'applied': log.get('applied'), 'rejected': log.get('rejected'), 'failed': log.get('failed'),
               'deferred': log.get('deferred'), 'han_only_runs': len(han), 'empty_notes_removed': log.get('empty_notes_removed', [])},
-    'verify': ver, 'timing_seconds': timing, 'raw_reply': reply, 'environment': log.get('environment'),
+    'verify': {k: v for k, v in ver.items() if k != 'verapdf'},
+    'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, 'raw_reply': reply, 'environment': log.get('environment'),
     'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier, 6),
 }
 json.dump(record, open(os.path.join(R, 'record.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
@@ -99,6 +101,16 @@ pfw_bad = [p for p, x in vpf.items() if x.get('figures') != 1 or x.get('untagged
 stc = ver.get('structure'); idx = ver.get('index'); et = log.get('empty_tags') or {}
 et_lost = [h for h in et.get('headings') or [] if not h.get('found')]
 rb = run.get('reply_blocks')
+# veraPDF, WCAG 2.2 machine profile: before (original) and after (result). Only rules in WCAG scope count.
+va, vb = vera_before, ver.get('verapdf')
+def v_ran(v): return bool(v) and 'not_run' not in v
+def v_wcag(v): return {r['id']: r for r in v['rules'] if r['scope'] == 'wcag'} if v_ran(v) else {}
+def v_state(v, when):
+    if v is None: return f'{when}: not recorded (made before veraPDF was added to the pipeline)'
+    if 'not_run' in v: return f'{when}: {v["not_run"]}'
+    t_ = v['totals']; return f'{when}: {t_["wcag_failed_rules"]} WCAG rule{"" if t_["wcag_failed_rules"] == 1 else "s"} failed ({t_["wcag_failed_checks"]} checks)'
+v_new = sorted(set(v_wcag(vb)) - set(v_wcag(va))) if v_ran(va) and v_ran(vb) else []
+wc = ver.get('wcag')
 checks = [
     ('Every page looks the same as the original', ok(ver.get('pixel_pages_differing') == []), f'{len(ver.get("pixel_pages_differing") or [])} pages differ'),
     ('Published text unchanged', ok(ver.get('text_pages_changed') == []), f'{len(ver.get("text_pages_changed") or [])} pages changed'),
@@ -166,6 +178,23 @@ checks = [
      f'{len(fo.get("not_embedded") or [])} not embedded · {len(fo.get("no_ToUnicode") or [])} without ToUnicode'
      + (f' ({len(fo["no_ToUnicode_not_needed"])} more have none and need none: standard encoding, non-symbolic)' if fo.get('no_ToUnicode_not_needed') else '')),
     ('Title and language set', ok(bool(doc.get('title')) and bool(doc.get('lang'))), (f'"{doc["title"]}"' if doc.get('title') else 'title not set') + ' · ' + (doc.get('lang') or 'language not set')),
+    ('veraPDF WCAG 2.2 (machine): no WCAG failures', ok(v_ran(vb) and not v_wcag(vb)),
+     v_state(va, 'before') + ' → ' + v_state(vb, 'after') + (f' · {vb["totals"]["ua_only_failed_rules"]} PDF/UA-only rules not counted' if v_ran(vb) and vb['totals']['ua_only_failed_rules'] else '')
+     + (' (listed under "veraPDF")' if v_wcag(va) or v_wcag(vb) else '')),
+    ('veraPDF: no WCAG rule newly failing', ok(v_ran(va) and v_ran(vb) and not v_new),
+     ('newly failing: ' + ', '.join(v_new) if v_new else 'none') if v_ran(va) and v_ran(vb) else 'not compared: veraPDF did not run on both files'),
+    ('Alt text: none like a file name or repeated on many figures (1.1.1)', ok(wc is not None and not wc['alt_text']['flagged']),
+     f'{wc["alt_text"]["flagged"]} of {wc["alt_text"]["figures"]} figures flagged' if wc else 'not checked'),
+    ('Tables: every table has header cells (1.3.1)', ok(wc is not None and not wc['tables_without_header']),
+     (pgs([x['page'] for x in wc['tables_without_header']]) or 'none without') if wc else 'not checked'),
+    ('Reading order: no page jumps back up a column (1.3.2)', ok(wc is not None and not wc['reading_order']['flagged_count']),
+     f'{wc["reading_order"]["flagged_count"]} of {wc["reading_order"]["pages_checked"]} pages flagged' if wc else 'not checked'),
+    ('Title is not a file name or placeholder (2.4.2)', ok(wc is not None and not wc['title_generic']),
+     (f'"{doc["title"]}"' if doc.get('title') else 'title not set') if wc else 'not checked'),
+    ('Link text: none like "click here" (2.4.4)', ok(wc is not None and not wc['links_generic']),
+     f'{len(wc["links_generic"])} generic' if wc else 'not checked'),
+    ('Headings: none empty, very long or repeated in a row (2.4.6)', ok(wc is not None and not any(wc['headings'][k] for k in ('empty', 'long', 'repeated'))),
+     ' · '.join(f'{len(wc["headings"][k])} {k}' for k in ('empty', 'long', 'repeated')) if wc else 'not checked'),
 ]
 u = run.get('usage') or {}
 L = [f'# Remediation review: {src.get("file") or "file name not recorded"}', '', f'Result: `{PDF}`', '',
@@ -414,6 +443,42 @@ if cp:
     n += 1; L += [f'### {n}. Captions paired by position ({len(cp)})', '',
                   'Pages with several figures: each caption was tied to the figure right next to it. Check the pairs.', '']
     L += [f'- {pg(c["page"])}: "{c["caption"]}"' for c in by_page(cp)] + ['']
+vw_a, vw_b = v_wcag(va), v_wcag(vb)
+v_ua = [r for r in vb['rules'] if r['scope'] != 'wcag'] if v_ran(vb) else []
+if vw_a or vw_b or v_ua or (vb and not v_ran(vb)):
+    n += 1; L += [f'### {n}. veraPDF (WCAG 2.2 machine profile)', '',
+                  (f'{vb["tool"]}, profile "{vb["profile"]}" ({vb["profile_sha256"]}). ' if v_ran(vb) else v_state(vb, 'After') + '. ')
+                  + 'Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. '
+                  'Rules that only PDF/UA requires are listed apart and do not count.', '']
+    if vw_a or vw_b:
+        L += ['| Rule | WCAG | What it checks | Before | After | Pages (after, else before) |', '|---|---|---|---:|---:|---|']
+        for rid in sorted(set(vw_a) | set(vw_b), key=lambda r: (r not in vw_b, -(vw_b.get(r) or vw_a.get(r))['failed'])):
+            r = vw_b.get(rid) or vw_a[rid]
+            before = vw_a[rid]['failed'] if rid in vw_a else (0 if v_ran(va) else 'not run')
+            L.append(f'| {r["spec"]} {rid}{" (unclassified)" if r["unclassified"] else ""} | {", ".join(r["wcag"]) or "not mapped"} | {r["description"][:140]}'
+                     + f'{" e.g. " + chr(34) + r["example"][:100] + chr(34) if r.get("example") and rid in vw_b else ""} | {before} | {vw_b[rid]["failed"] if rid in vw_b else (0 if v_ran(vb) else "not run")} | '
+                     + (pgs(r['pages'][:12]) + (' …' if len(r['pages']) > 12 else '') if r['pages'] else NO_PAGE) + ' |')
+        L.append('')
+    if v_new: L += [f'**Newly failing after this run: {", ".join(v_new)}.** The run made these; look at them first.', '']
+    if v_ran(vb) and vb['totals']['unclassified']:
+        L += [f'Not yet classified as WCAG or PDF/UA-only (counted as WCAG until someone adds them to `pipeline/verapdf/rules.json`): {", ".join(vb["totals"]["unclassified"])}.', '']
+    if v_ua:
+        L += ['PDF/UA-only, not required for WCAG (not counted):', '']
+        L += [f'- {r["id"]}: {r["why"]} ({r["failed"]} checks' + (f', {pgs(r["pages"][:8])}' if r['pages'] else '') + ')' for r in v_ua] + ['']
+if wc and (wc['alt_text']['flagged'] or wc['tables_without_header'] or wc['reading_order']['flagged_count'] or wc['title_generic']
+           or wc['links_generic'] or any(wc['headings'][k] for k in ('empty', 'long', 'repeated'))):
+    n += 1; L += [f'### {n}. WCAG checks veraPDF does not make', '', 'Each item is something to look at, not a proven failure.', '']
+    L += [f'- 1.1.1 {pg(x["page"])}: alt text "{x["alt"]}{"…" if len(x["alt"]) >= 80 else ""}": {x["why"]}' for x in by_page(wc['alt_text']['examples'])]
+    L += [f'- 1.3.1 {pg(x["page"])}: a table with no header cells (TH). Mark the header row or column, or flatten it if it is not a real table.' for x in by_page(wc['tables_without_header'])]
+    if wc['reading_order']['flagged_count']:
+        L.append(f'- 1.3.2 the reading order jumps back up the same column on {wc["reading_order"]["flagged_count"]} page{"" if wc["reading_order"]["flagged_count"] == 1 else "s"}. Listen through them with a screen reader '
+                 '(or the PAC screen-reader preview): ' + ', '.join(f'{pg(x["page"])} ({x["jumps_up"]} jumps)' for x in by_page(wc['reading_order']['flagged'])))
+    if wc['title_generic']: L.append(f'- 2.4.2 the title "{doc.get("title")}" looks like a file name or a placeholder. Use the book\'s real title.')
+    L += [f'- 2.4.4 {pg(x["page"])}: link text "{x["text"]}" does not say where the link goes' for x in by_page(wc['links_generic'])]
+    L += [f'- 2.4.6 {pg(x["page"])}: a heading with no text' for x in by_page(wc['headings']['empty'])]
+    L += [f'- 2.4.6 {pg(x["page"])}: a {x["chars"]}-character heading ("{x["text"]}…"): probably body text tagged as a heading' for x in by_page(wc['headings']['long'])]
+    L += [f'- 2.4.6 {pg(x["page"])}: the heading "{x["text"]}" twice in a row' for x in by_page(wc['headings']['repeated'])]
+    L.append('')
 d_ai = wo.get('deferrals', [])
 if d_ai or wo.get('notes_for_reviewer'):
     n += 1; L += [f'### {n}. Deferred by the AI', '']
@@ -439,6 +504,18 @@ if bad:
 if n == 0: L.append('Nothing flagged.')
 
 L += ['## What was changed', '', '| Change | Count |', '|---|---:|'] + [f'| {k} | {v} |' for k, v in (log.get('applied') or {}).items()]
+L += ['', '## Final check with PAC 2026', '',
+      f'Open `{PDF}` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG and PDF/UA checks. Anything PAC fails that is not '
+      'listed above is a gap in the automated checks: note it in the issue tracker. PAC\'s PDF/UA-only failures (e.g. the missing PDF/UA '
+      'identifier, font details) do not block WCAG conformance.', '',
+      'No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC\'s screen-reader and structure previews:', '',
+      '- 1.1.1: alt text is accurate and gives the figure\'s purpose; decorative images are artifacts',
+      '- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense',
+      '- 1.4.1: no information is given by colour alone',
+      '- 1.4.3: contrast of text over images and coloured backgrounds (PAC\'s contrast checker)',
+      '- 1.4.5: no images of text where real text could be used (scanned pages: the OCR layer stands in)',
+      '- 2.4.6: headings describe their section',
+      '- 3.1.2: passages in another language carry their language (see `han_review.csv` if present)']
 # A list line with no page puts the page wording at the end ("- what, page: not on this tag"), never first, and identical
 # lines of that kind are written once with a count. Lines that have a page are left exactly as they are.
 def _tidy_no_page(lines):
