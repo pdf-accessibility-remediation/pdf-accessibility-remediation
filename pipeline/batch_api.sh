@@ -17,16 +17,19 @@
 #   KEEP=1           keep each run's working files and every log
 #   MODEL=<id>       any OpenRouter model id for every book in this batch (default: DEFAULT_MODEL in decide.py).
 #                    The batch cap only counts Claude models: for others the estimate is approximate and not capped
-#   MAX_TOKENS=32000 output limit for each Claude reply, reasoning included (default 16000, set in decide.py)
+#   MAX_TOKENS=64000 output limit for each Claude reply, reasoning included (default 48000, set in decide.py)
 #   RETRY=1          reuse a label that already ran: only the books without a finished result run again (give the
 #                    same folders/lists as the first time), then summary.md is rewritten for the whole batch. A reply
 #                    that was cut off stays on record with its cost; a complete reply whose later step failed is reused free
+#   FORCE_OCR=1, OCR_LANG=…, OCR=off, INTAKE=off   passed to every book's intake step (see run_api.sh)
 #   FROM=<label>     no API calls: reuse each book's Claude reply saved in an earlier record.json, from the batch
 #                    runs/batches/<label>/<name>/ or the single run runs/<name>/<label>/ (free re-run after
 #                    pipeline changes); skips the cost step
 #
 # Everything goes in ../runs/batches/<run-label>/: summary.md and one folder per book.
-# 1. audits every book and adds up the worst-case cost (no model); stops if it exceeds BATCH_MAX_USD or your credit
+# 1. intake (untagged books: OCR where needed, auto-tag; local, no cost), then audits every book and adds up the
+#    worst-case cost (no model); stops if it exceeds BATCH_MAX_USD or your credit. A book flagged at intake (e.g. an
+#    unusable text layer without FORCE_OCR=1) is not sent; summary.md lists it with the reason
 # 2. runs every book (AUTO=1 run_api.sh, reusing the audits), JOBS at a time
 # 3. prints the summary and saves it as summary.md. A book's log is kept only if that book failed
 # summary.md is also written when the batch stops early or is interrupted, and RETRY=1 on a batch whose books have
@@ -67,8 +70,12 @@ rate_limited = False
 def fmt(s): return f'{s:.0f}s' if s < 60 else f'{int(s // 60)}m {s % 60:02.0f}s'
 def load(p): return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else None
 ran = {l.split('\t')[0] for l in open(todo)}             # books run by this command (the others finished earlier)
-L = [f'# Batch {label}', '', '| Book | Status | Pages | API cost | Time | Checks flagged | Result |', '|---|---|---:|---:|---:|---:|---|']
-total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; cut_at = []
+L = [f'# Batch {label}', '', '| Book | Status | Intake | Pages | API cost | $/page | Time | Checks flagged | PDF/UA rules (veraPDF) | Result |', '|---|---|---|---:|---:|---:|---:|---:|---|---|']
+done_pages = 0
+def intake_of(R):
+    j = load(os.path.join(R, '_intake', 'intake.json')) or {}
+    return j, (j.get('summary') or ('not run' if not j else j.get('status') or 'not recorded')).replace('|', '/')
+total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; flagged = []; cut_at = []
 models, prompts, runs_at = collections.Counter(), collections.Counter(), []
 for line in open(books):
     name = line.split('\t')[0]; R = os.path.join(B, name); n += 1
@@ -90,10 +97,14 @@ for line in open(books):
         c0 = (run.get('estimate') or {}).get('credit_available_usd')
         if c0 is not None: starts.append(c0)
     cost = f'${this + earlier:.3f}'
+    ij, intake = intake_of(R)
     if not rec:
+        if ij.get('status') == 'stopped':                 # flagged at intake: not sent to the model, nothing spent
+            flagged.append(name); L.append(f'| {name} | **flagged at intake**: {ij.get("summary", "").replace("|", "/")} | stopped | | | | | | |'); continue
         failed.append(name)
-        if run.get('finish_reason') == 'length':
-            mt = (run.get('estimate') or {}).get('max_tokens') or 16000; cut_at.append(mt)
+        if ij.get('status') == 'failed': why = f'**failed at intake**: {(ij.get("summary") or "")[:90].replace("|", "/")}'
+        elif run.get('finish_reason') == 'length':
+            mt = (run.get('estimate') or {}).get('max_tokens') or 48000; cut_at.append(mt)
             why = f'**failed**: reply cut off at {mt:,} tokens'
         elif run.get('error'):                            # OpenRouter refused or failed the call
             er = run['error']; code = str(er.get('code'))
@@ -101,19 +112,26 @@ for line in open(books):
             else: why = f'**failed**: OpenRouter {code}: {(er.get("message") or "")[:70].replace("|", "/")} (see `{name}.log`)'
         elif not run and not os.path.exists(os.path.join(B, f'{name}.log')): why = '**not finished**: the batch stopped before this book ran'
         else: why = f'**failed**: see `{name}.log`'
-        L.append(f'| {name} | {why} | | {cost if this + earlier else ""} | | | |'); continue
+        L.append(f'| {name} | {why} | {intake if ij else ""} | | {cost if this + earlier else ""} | | | | | |'); continue
     done += 1
     t = sum((rec.get('timing_seconds') or {}).values())
     rv = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
     checks = sum(1 for l in rv.splitlines() if l.startswith('|') and '**CHECK**' in l)
-    L.append(f'| {name} | done | {rec["document"]["pages"]} | {cost} | {fmt(t)} | {checks} | `{name}/{rec["document"].get("output") or ""}` |')
+    pages = rec['document']['pages'] or 0; done_pages += pages
+    vb, va = ((rec.get('verapdf') or {}).get(k) or {} for k in ('before', 'after'))
+    if vb.get('rules') is not None and va.get('rules') is not None:
+        new_ = sum(1 for r in va['rules'] if r['id'] not in {x['id'] for x in vb['rules']})
+        ua = f'{len(vb["rules"])} → {len(va["rules"])}' + (f' (**{new_} new**)' if new_ else '')
+    else: ua = 'not run'
+    L.append(f'| {name} | done | {intake} | {pages} | {cost} | ${(this + earlier) / max(pages, 1):.4f} | {fmt(t)} | {checks} | {ua} | `{name}/{rec["document"].get("output") or ""}` |')
 def each_(c): return ', '.join(f'{k}' + (f' ×{v}' if len(c) > 1 else '') for k, v in c.items()) or 'not recorded'
 span = sorted({r[:16].replace('T', ' ') for r in runs_at})
 L[1:1] = ['', f'Batch started {started}' + (f' (books run from {span[0]} to {span[-1]})' if len(span) > 1 else '')
           + f' · model {", ".join(f"`{k}`" + (f" ×{v}" if len(models) > 1 else "") for k, v in models.items()) or "not recorded"}'
           + f' · prompt {each_(prompts)}']
-L += ['', f'{done} of {n} books done · API cost ${total:.3f}' + (f' (includes ${wasted:.3f} for replies that were cut off)' if wasted else '')
-      + f' · wall time {fmt(wall)}', '']
+L += ['', f'{done} of {n} books done' + (f' · {len(flagged)} flagged at intake (not sent)' if flagged else '')
+      + f' · API cost ${total:.3f}' + (f' (includes ${wasted:.3f} for replies that were cut off)' if wasted else '')
+      + (f' · ${total / done_pages:.4f} per page over {done_pages:,} pages' if done_pages else '') + f' · wall time {fmt(wall)}', '']
 # OpenRouter's balance can lag behind new calls, so also work it out: credit seen before the calls minus what they cost
 live = float(credit.split()[0]) if credit.strip() else None
 worked = max(starts) - new_spend if starts else None
@@ -128,7 +146,11 @@ if failed:
     L += [f'To run only the {len(failed)} unfinished book(s) again, from pipeline'
           + (' (wait a few minutes first: the model was rate-limited)' if rate_limited else '') + ':', '', f'    RETRY=1 {jobs}{mt}{again}', '']
 L += [f'Results are relative to {B}/', '',
-      'Checks flagged = rows marked CHECK in each review.md. Open the review.md of any book with flags before running PAC.']
+      'Checks flagged = rows marked CHECK in each review.md. Open the review.md of any book with flags before running PAC.',
+      'PDF/UA rules = veraPDF rules (WCAG 2.2 machine profile, PDF/UA-1 rules included) failing on the original → on the result; "new" = rules the result fails and the original passed.']
+if flagged:
+    L += ['', 'Flagged at intake = stopped before any model call; `<book>/_intake/intake.json` has the measurements. '
+          'For an unusable text layer, FORCE_OCR=1 with RETRY=1 OCRs every page instead (page images + OCR text).']
 out = os.path.join(B, 'summary.md'); open(out, 'w', encoding='utf-8').write('\n'.join(L) + '\n')
 print('\n'.join(L[2:]))
 print(f'\nsaved: {out}')
@@ -208,16 +230,17 @@ each() {   # each <step: estimate|run>
       RUN_DIR=$B/$name ESTIMATE=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
       st="FAILED (see $name.estimate.log)"
     else
-      if [[ -n ${FROM:-} ]]; then export REPLY="$B/$name.reply.txt"; fi
+      if [[ -n ${FROM:-} ]]; then export REPLY="$B/$name.reply.txt" INTAKE_REUSE=1; fi
       log=$B/$name.log
       RUN_DIR=$B/$name AUTO=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
       st="FAILED (see $name.log)"
     fi
     if [[ $rc == 0 ]]; then st=ok
+    elif [[ $rc == 3 ]]; then st="flagged at intake (see $name/_intake/intake.json)"
     elif (( rc > 128 )); then echo "  ✗ $name: interrupted"; exit 255     # Ctrl-C: stop the whole batch, not only this book
     fi
-    [[ $st == ok && -z ${KEEP:-} ]] && rm -f "$log"
-    echo "  $( [[ $st == ok ]] && echo ✓ || echo ✗ ) $name: $st, $(( $(date +%s) - s ))s"' _
+    [[ ( $st == ok || $rc == 3 ) && -z ${KEEP:-} ]] && rm -f "$log"
+    echo "  $( [[ $st == ok ]] && echo ✓ || { [[ $rc == 3 ]] && echo ⚑ || echo ✗; } ) $name: $st, $(( $(date +%s) - s ))s"' _
 }
 FROM=${FROM:-}; KEEP=${KEEP:-}; export B LABEL STEP FROM KEEP
 
@@ -225,6 +248,7 @@ if [[ -n ${FROM:-} ]]; then
   echo; echo "1/3 reusing the replies saved under run label $FROM (no API calls, no cost; each record keeps its original model)"
   python3 - "$B/todo.tsv" "$RUNS_DIR" "$FROM" "$B" <<'PY' || exit 1
 import sys, json, os, math
+import shutil
 books, runs, src, B = sys.argv[1:5]; bad = []
 for line in open(books):
     name = line.split('\t')[0]
@@ -232,6 +256,11 @@ for line in open(books):
               if os.path.exists(q) and json.load(open(q)).get('raw_reply')), None)
     if not p: bad.append(name); continue
     r = json.load(open(p))
+    old_in = os.path.join(os.path.dirname(p), '_intake')     # the reply was written for the intake result: reuse it
+    if os.path.exists(os.path.join(old_in, 'intake.json')):
+        new_in = os.path.join(B, name, '_intake'); os.makedirs(new_in, exist_ok=True)
+        for f in ('intake.json', 'intake.pdf'):
+            if os.path.exists(os.path.join(old_in, f)): shutil.copyfile(os.path.join(old_in, f), os.path.join(new_in, f))
     open(os.path.join(B, f'{name}.reply.txt'), 'w', encoding='utf-8').write(r['raw_reply'])
     json.dump({k: r['run'][k] for k in ('model', 'temperature') if k in r['run']},      # the new record keeps the original's
               open(os.path.join(B, f'{name}.reply.txt.meta.json'), 'w'))
@@ -244,11 +273,14 @@ STEP=estimate each
 python3 - "$B/todo.tsv" "$RUNS_DIR" "$LABEL" "$MAX" <<'PY' || exit 1
 import sys, json, os, math
 books, runs, label, cap = sys.argv[1], sys.argv[2], sys.argv[3], float(sys.argv[4])
-total, credit, rows, bad, approx, capped_n = 0.0, None, [], [], 0.0, 0
+total, credit, rows, bad, approx, capped_n, flagged = 0.0, None, [], [], 0.0, 0, []
 for line in open(books):
     name = line.split('\t')[0]; R = os.path.join(runs, 'batches', label, name)
     if os.path.exists(os.path.join(R, 'workorder.json')) and os.path.exists(os.path.join(R, 'response.json')):
         rows.append(f'  {name:28} $0.00: reuses its earlier complete reply'); continue
+    ij = os.path.join(R, '_intake', 'intake.json')
+    if os.path.exists(ij) and json.load(open(ij)).get('status') == 'stopped':
+        rows.append(f'  {name:28} flagged at intake, not sent: {json.load(open(ij)).get("summary")}'); flagged.append(name); continue
     p = os.path.join(R, 'run.json')
     if not os.path.exists(p): bad.append(name); continue
     e = json.load(open(p))['estimate']
@@ -265,6 +297,10 @@ elif approx:                                     # every book is non-Claude: no 
     print(f'  {"worst case":28} about ${approx:.2f}, approximate, not capped (the OpenRouter bill is the real cost){cr}')
 else: print(f'  {"total worst case":28} $0.00 (nothing new to send){cr}')
 if bad: sys.exit(f'stopped: no estimate for {", ".join(bad)} (see their .estimate.log)')
+if flagged:                                      # not run: drop them from the to-do list (summary.md lists them)
+    keep = [l for l in open(books) if l.split('\t')[0] not in flagged]
+    open(books, 'w').writelines(keep)
+    if not keep: sys.exit(f'stopped: every book was flagged at intake ({", ".join(flagged)}); see summary.md')
 if total > cap: sys.exit(f'stopped: worst case ${total:.2f} is over BATCH_MAX_USD ${cap:.2f}. Raise it (BATCH_MAX_USD={math.ceil(total)}) or run fewer books; the audits are kept and will be reused')
 if credit is not None and total > credit: sys.exit(f'stopped: worst case ${total:.2f} is more than your ${credit:.2f} credit. Add credit or run fewer books')
 PY
