@@ -13,7 +13,7 @@ look the way the work order assumes, is skipped and logged under "rejected" — 
 stops the run and never half-applies.
 """
 import sys, os, json, re, collections, hashlib
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix  # noqa: E401
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext  # noqa: E401
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
 
@@ -39,17 +39,21 @@ def PGR(a, b):
     la, lb = str(labels.get(a) or ''), str(labels.get(b) or '')
     return f'PDF {a}–{b}' + (f' (printed {la}–{lb})' if la and lb and (la != str(a) or lb != str(b)) else '')
 st = pdf.Root.StructTreeRoot
-KEEP_KEYS = ('text', 'x0', 'x1', 'top', 'bottom', 'size', 'fontname', 'mcid', 'tag')
+KEEP_KEYS = ('text', 'x0', 'x1', 'top', 'bottom', 'size', 'fontname', 'mcid', 'tag', 'upright')
 class _Page:                                    # chars, image boxes and size only; each pdfplumber page is released after reading
     def __init__(self, p):
         self.width, self.height = p.width, p.height
+        mb, cb = p.mediabox, p.cropbox                 # the visible area (CropBox), in the reader's top-left coordinates
+        self.vis = (max(cb[0], mb[0]) - mb[0], mb[3] - min(cb[3], mb[3]), min(cb[2], mb[2]) - mb[0], mb[3] - max(cb[1], mb[1]))
         self.chars = [{k: c.get(k) for k in KEEP_KEYS} for c in p.chars]
         self.images = [{k: i.get(k) for k in ('x0', 'x1', 'top', 'bottom', 'mcid', 'tag')} for i in p.images]
 class _PL:
     def __init__(self, path):
         self.pages = []
         with pdfplumber.open(path) as pl:
-            for p in pl.pages: self.pages.append(_Page(p)); p.close()
+            for n, p in enumerate(pl.pages, 1):
+                self.pages.append(_Page(p)); p.close()
+                for c in self.pages[-1].chars: c['pg'] = n          # gaptext: a gap filled by another glyph is no space
 PL = _PL(SRC)
 log = {'applied': collections.Counter(), 'rejected': [], 'deferred': [], 'failed': [], 'empty_notes_removed': [],
        'rolemap': {}, 'bookmarks': None}
@@ -238,10 +242,42 @@ def op_artifacts(spec):
         if hit is None: reject(f'artifact {item["obj"]}', 'not in the structure tree'); continue
         take(*hit, pikepdf.Dictionary(Type=pikepdf.Name('/' + item.get('type', 'Layout'))), item.get('label', 'element'))
     owned_now = {pm for _, _, ms in elems for pm in ms}
-    def in_band(band, top, H): return not (band == 'top' and top >= 70 or band == 'bottom' and top <= H - 60)
+    def in_band(band, top, pno):                      # measured from the visible page area (CropBox)
+        vt, vb = PL.pages[pno - 1].vis[1], PL.pages[pno - 1].vis[3]; t = top - vt
+        return not (band == 'top' and t >= 70 or band == 'bottom' and t <= (vb - vt) - 60)
     forms_done, form_mcids = {}, collections.defaultdict(set)      # form objgen -> gone elements; page -> MCIDs drawn by an artifacted form
+    def rule_hits(rule, pno, by):
+        """MCIDs on page pno that this rule's pattern, band and top_max match (forms aside)."""
+        rx = re.compile(rule.get('regex', '.*'), re.S); rxl = re.compile(gaptext.loosen(rule.get('regex', '.*')), re.S); out = set()
+        for m, cs in by.items():
+            raw = ''.join(c['text'] for c in cs); top = min(c['top'] for c in cs)
+            if top < rule.get('top_max', 1e9) and in_band(rule.get('band', 'any'), top, pno) and \
+                    any(r.fullmatch(x) for r in (rx, rxl) for x in (raw.strip(), norm_ws(raw), GT(cs))): out.add(m)
+        return out
+    band_match = collections.defaultdict(set)          # page -> MCIDs any band rule matches: a running head may need two rules
+    for rule in spec.get('text_rules', []):
+        if rule.get('band', 'any') not in ('top', 'bottom'): continue
+        for pno in range(rule['pages'][0], rule['pages'][1] + 1):
+            by_ = collections.defaultdict(list)
+            for c in PL.pages[pno - 1].chars:
+                if c.get('mcid') is not None: by_[c['mcid']].append(c)
+            band_match[pno] |= rule_hits(rule, pno, by_)
+    def line_blocker(pno, m, cs, allowed):
+        """A band rule may hide a run only when everything else on its line is matched too (or already decoration): a
+        superscript note number on a body line near the top or bottom is matched by a page-number pattern, but the body
+        text beside it is not. Returns the text of the first glyph that blocks, or None."""
+        top, bot = min(c['top'] for c in cs), max(c['bottom'] for c in cs)
+        for c in PL.pages[pno - 1].chars:
+            if c.get('mcid') == m or not c['text'].strip() or c.get('tag') == 'Artifact': continue
+            if min(bot, c['bottom']) - max(top, c['top']) <= 0.05: continue     # any vertical overlap: a superscript barely touches its line
+            if c.get('mcid') is None or c['mcid'] not in allowed:
+                line = [d for d in PL.pages[pno - 1].chars if min(bot, d['bottom']) - max(top, d['top']) > 0.05]
+                return GT(sorted(line, key=lambda d: d['x0']))[:60]
+        return None
+    guard = log.setdefault('text_rule_guard', [])
     for rule in spec.get('text_rules', []):
         rx = re.compile(rule.get('regex', '.*'), re.S); orphans = bool(rule.get('orphans'))
+        rxl = re.compile(gaptext.loosen(rule.get('regex', '.*')), re.S)          # every space optional
         band = rule.get('band', 'any'); label = rule.get('label', 'orphan rule' if orphans else 'text rule'); matched = 0
         props = pikepdf.Dictionary(Type=pikepdf.Name('/' + rule.get('type', 'Pagination')))
         if rule.get('subtype'): props.Subtype = pikepdf.Name('/' + rule['subtype'])
@@ -255,22 +291,29 @@ def op_artifacts(spec):
                         form_mcids[pno] |= set(form_runs(form, pages[pno - 1])); continue
                     runs = {m: norm_ws(t) for m, t in form_runs(form, pages[pno - 1]).items()}
                     texts = [t for t in runs.values() if t]
-                    if texts and all(rx.fullmatch(t) for t in texts):
+                    if texts and all(rx.fullmatch(t) or rxl.fullmatch(t) for t in texts):
                         forms_done[form.objgen] = artifact_form(form, props, label); form_mcids[pno] |= set(runs); matched += len(texts)
             for m, cs in by.items():
                 raw = ''.join(c['text'] for c in cs); t = raw.strip(); top = min(c['top'] for c in cs)
-                if top >= rule.get('top_max', 1e9) or not (rx.fullmatch(t) or rx.fullmatch(norm_ws(raw))): continue
-                if not in_band(band, top, H): continue
+                cands = (t, norm_ws(raw), GT(cs))       # as found, spaces normalised, spaces from gaps
+                if top >= rule.get('top_max', 1e9) or not any(r.fullmatch(x) for r in (rx, rxl) for x in cands): continue
+                if not in_band(band, top, pno): continue
                 if m in form_mcids[pno]: continue
+                hit = [] if orphans else [(n, par, ms) for n, par, ms in elems if (pno, m) in ms]
+                if band in ('top', 'bottom'):        # the rest of the line must be matched too (the run's own tag counts)
+                    own = {p2 for _, _, ms_ in hit[:1] for p_, p2 in ms_ if p_ == pno and p2 in by        # its own tag's other runs count,
+                           and in_band(band, min(c['top'] for c in by[p2]), pno)}                         # but only those in the band
+                    blocker = line_blocker(pno, m, cs, band_match[pno] | own)
+                    if blocker is not None:
+                        guard.append({'page': pno, 'rule': label, 'text': norm_ws(raw)[:30], 'line': blocker}); continue
                 matched += 1
                 if orphans:                         # marked content that no tag-tree element owns
                     if (pno, m) not in owned_now: targets[(pno, m)] = (None, None, props, label)
                     continue
-                hit = [(n, par, ms) for n, par, ms in elems if (pno, m) in ms]
                 if len(hit) != 1: continue
                 n, par, ms = hit[0]
                 if len(ms) > 1 and band != 'any' and len(kids(n)) == len(ms) and all(p == pno and p2 in by and
-                        in_band(band, min(c['top'] for c in by[p2]), H) for p, p2 in ms):
+                        in_band(band, min(c['top'] for c in by[p2]), pno) for p, p2 in ms):
                     for pm in ms: targets[pm] = (n, par, props, label)      # a running head split into several runs, all in the band
                 else: take(n, par, ms, props, label)
         if matched == 0:
@@ -297,8 +340,8 @@ def op_artifacts(spec):
             for c in PL.pages[pno - 1].chars:
                 if c.get('mcid') is not None and (pno, c['mcid']) not in owned_now: by[c['mcid']].append(c)
             for m, cs in by.items():
-                top = min(c['top'] for c in cs)
-                inband = top < 70 if rule['band'] == 'top' else top > H - 60
+                vt, vb = PL.pages[pno - 1].vis[1], PL.pages[pno - 1].vis[3]; top = min(c['top'] for c in cs) - vt
+                inband = top < 70 if rule['band'] == 'top' else top > (vb - vt) - 60
                 if inband and (pno, m) not in targets: missed.append((pno, ''.join(c['text'] for c in cs).strip()[:30]))
         if missed:
             log['deferred'].append({'what': f'{len(missed)} orphan runs in the {rule["band"]} band were not matched by rule "{rule.get("label")}"',
@@ -346,12 +389,13 @@ def untagged_rule(rule):
     the regex fully matches, or text lying entirely inside Figures that carry alt text. Each page is all-or-nothing:
     every untagged character on it must qualify, and then every free text-showing operator on it is wrapped as an artifact."""
     label = rule.get('label', 'untagged text'); where = rule.get('where'); rx = re.compile(rule['regex'], re.S) if rule.get('regex') else None
+    rxl = re.compile(gaptext.loosen(rule['regex']), re.S) if rule.get('regex') else None
     props = pikepdf.Dictionary(Type=pikepdf.Name('/' + rule.get('type', 'Layout')))
     for pno in range(rule['pages'][0], rule['pages'][1] + 1):
         U = [c for c in PL.pages[pno - 1].chars if c.get('mcid') is None and c.get('tag') != 'Artifact']
         if not U: continue
         if rx is not None:
-            if not rx.fullmatch(norm_ws(''.join(c['text'] for c in U))):
+            if not any(r.fullmatch(x) for r in (rx, rxl) for x in (norm_ws(''.join(c['text'] for c in U)), GT(U))):
                 reject(f'untagged {PG(pno)}', f'the untagged text on the page does not fully match the rule "{label}"'); continue
         elif where == 'in_figure':
             boxes = [(f, box_of(f, pno)) for f, _ in all_elems() if mapped(S(f)) == 'Figure']
@@ -383,6 +427,179 @@ def untagged_rule(rule):
         page.obj.Contents = pdf.make_stream(pikepdf.unparse_content_stream(out))
         for c in U: c['tag'] = 'Artifact'
         ok(f'artifact: "{label}" (untagged text)', len(U)); log.setdefault('untagged_artifacts', []).append({'page': pno, 'label': label, 'chars': len(U)})
+
+# ================================================================== always: text outside the visible page area
+OFFPAGE_GAP = 2.0           # em: a wider gap along a line splits it (a cover spread: back cover and front cover side by side)
+OFFPAGE_LIST = 300          # a page with more off-page characters than this has each line listed in review.md (a cropped cover)
+def _glyph_bytes(font):
+    """Bytes per glyph in a text string of this font: 1 for simple fonts, 2 for Identity-encoded Type0, else unknown."""
+    if not isinstance(font, pikepdf.Dictionary): return None
+    if str(font.get('/Subtype')) == '/Type0': return 2 if str(font.get('/Encoding')) in ('/Identity-H', '/Identity-V') else None
+    return 1
+def _shown(op, operands):
+    if op == 'TJ': return [bytes(x) for x in operands[0] if isinstance(x, pikepdf.String)]
+    return [bytes(operands[-1])]
+def _offpage_lines(chars):
+    """Lines of characters: same orientation, baselines within 30% of the type size, no gap along the line wider than
+    OFFPAGE_GAP em. Returns lists of indices into chars."""
+    by_dir = collections.defaultdict(list)
+    for i, c in enumerate(chars):
+        up = c.get('upright', True) is not False
+        by_dir[up].append(((c['bottom'] if up else (c['x0'] + c['x1']) / 2), i))
+    lines = []
+    for up, items in by_dir.items():
+        items.sort(); cluster, last = [], None
+        for pos, i in items + [(None, None)]:
+            size = max(float(chars[i].get('size') or 0), 1.0) if i is not None else 0
+            if cluster and (pos is None or pos - last > 0.3 * size):
+                along = sorted(cluster, key=lambda j: chars[j]['x0'] if up else chars[j]['top'])
+                seg = [along[0]]
+                for j, k in zip(along, along[1:]):
+                    gap = (chars[k]['x0'] - chars[j]['x1']) if up else (chars[k]['top'] - chars[j]['bottom'])
+                    if gap > OFFPAGE_GAP * max(float(chars[k].get('size') or 0), 1.0): lines.append(seg); seg = []
+                    seg.append(k)
+                lines.append(seg); cluster = []
+            if pos is not None: cluster.append(i); last = pos
+    return lines
+def _offpage_text(chars, ix):
+    """The characters as one readable string: a space where the reader found a gap but no space character. A gap
+    counts when it is over 15% of the type size and over twice the typical gap in the line (letter-spaced display type)."""
+    ix = sorted(ix)
+    def gap(p, c):                                                # either direction along the line (rotated text runs up)
+        if c.get('upright', True) is not False: return max(c['x0'] - p['x1'], p['x0'] - c['x1'])
+        return max(c['top'] - p['bottom'], p['top'] - c['bottom'])
+    gaps = sorted(gap(chars[a], chars[b]) for a, b in zip(ix, ix[1:]) if chars[a]['text'] != ' ' and chars[b]['text'] != ' ')
+    typical = max(gaps[len(gaps) // 2], 0) if gaps else 0
+    out, prev = '', None
+    for i in ix:
+        c = chars[i]
+        if prev is not None and out and not out.endswith(' ') and c['text'] != ' ':
+            g = gap(prev, c)
+            if g > 0.15 * max(float(c.get('size') or 0), 1.0) and g > 2 * typical: out += ' '
+        out += c['text']; prev = c
+    return re.sub(r'\s+', ' ', out).strip()
+def fix_offpage_text(_spec=None):
+    """Text lying entirely outside the visible page area (CropBox): a printer's slug in the margin, or the back cover
+    and spine of a cover spread cropped to its front. Nobody sees it on screen or in print, but a screen reader reads
+    it. It becomes an artifact (/Page: production aids outside the page itself). A line counts only as a whole: a line
+    that starts inside the page and runs past the edge is real content and is left, and listed. Before a page is
+    changed, its text-showing operators are matched one for one with the characters the reader found (count and marked
+    content); any mismatch leaves the page exactly as it was."""
+    res = log['offpage'] = {'artifacted': [], 'left': [], 'rejected': [], 'already': []}
+    props = pikepdf.Dictionary(Type=pikepdf.Name('/Page'))
+    for pno, page in enumerate(pages, 1):
+        chars = PL.pages[pno - 1].chars
+        if not chars: continue
+        mb = [float(v) for v in page.mediabox]; cb = [float(v) for v in page.cropbox]
+        vx0, vx1 = max(cb[0], mb[0]) - mb[0], min(cb[2], mb[2]) - mb[0]          # visible area, reader coordinates
+        vt, vb = mb[3] - min(cb[3], mb[3]), mb[3] - max(cb[1], mb[1])
+        def outside(c): return c['x1'] <= vx0 or c['x0'] >= vx1 or c['bottom'] <= vt or c['top'] >= vb
+        def live(i): return chars[i]['text'].strip() and chars[i].get('tag') != 'Artifact'
+        hidden = [c for c in chars if c['text'].strip() and c.get('tag') == 'Artifact' and outside(c)]
+        if len(hidden) > OFFPAGE_LIST:                # already decoration (e.g. by the auto-tagger), but worth listing:
+            res['already'].append({'page': pno, 'chars': len(hidden),     # a cropped cover's hidden back and spine
+                                   'lines': [l[:120] for l in (_offpage_text(hidden, seg) for seg in sorted(_offpage_lines(hidden), key=min)) if l]})
+        if not any(outside(chars[i]) for i in range(len(chars)) if live(i)): continue
+        off = set()
+        for seg in _offpage_lines(chars):
+            vis = [i for i in seg if live(i)]
+            o = [i for i in vis if outside(chars[i])]
+            if not o: continue
+            if len(o) == len(vis): off.update(seg)
+            else: res['left'].append({'page': pno, 'why': 'a line that starts on the page and runs past its edge: real content, left as it is',
+                                      'text': _offpage_text(chars, seg)[:100]})
+        off = {i for i in off if chars[i].get('tag') != 'Artifact'}
+        if not any(chars[i]['text'].strip() for i in off): continue
+        # match operators to characters
+        ops = list(pikepdf.parse_content_stream(page)); res_ = page.obj.get('/Resources') or pikepdf.Dictionary()
+        pos = [0]; op_chars, ctx, form_chars, form_art = {}, {}, set(), set()
+        def walk(seq, resources, top, depth):
+            fonts = resources.get('/Font') or {}; xo = resources.get('/XObject') or {}
+            font, fstack, mc = None, [], []
+            for idx, ins in enumerate(seq):
+                o = str(ins.operator); a = ins.operands
+                if o == 'q': fstack.append(font)
+                elif o == 'Q': font = fstack.pop() if fstack else font
+                elif o == 'Tf': font = fonts.get(str(a[0]))
+                elif o in ('BDC', 'BMC'):
+                    m = int(a[1].MCID) if o == 'BDC' and len(a) > 1 and isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1] else None
+                    mc.append((str(a[0]), m))
+                elif o == 'EMC':
+                    if mc: mc.pop()
+                elif o == 'Do':
+                    x = xo.get(a[0])
+                    if x is not None and str(x.get('/Subtype')) == '/Form':
+                        if depth >= 4: raise ValueError('forms nested too deeply')
+                        start = pos[0]; walk(list(pikepdf.parse_content_stream(x)), x.get('/Resources') or resources, False, depth + 1)
+                        if any(t == '/Artifact' for t, _ in mc): form_art.update(range(start, pos[0]))      # the whole form drawn as decoration
+                        form_chars.update(range(start, pos[0]))
+                elif o in TEXT_OPS:
+                    gb = _glyph_bytes(font)
+                    if gb is None: raise ValueError('a font whose strings are not 1 or 2 bytes per glyph')
+                    n = sum(len(s) for s in _shown(o, a)) // gb
+                    take = list(range(pos[0], pos[0] + n)); pos[0] += n
+                    if pos[0] > len(chars): raise ValueError('more glyphs than characters')
+                    cur = next((m for _, m in reversed(mc) if m is not None), None)
+                    if not top and any(t == '/Artifact' for t, _ in mc): form_art.update(take)   # already decoration inside a form
+                    if top:
+                        for i in take:
+                            if chars[i].get('mcid') != cur: raise ValueError('characters and marked content do not line up')
+                        op_chars[idx] = take; ctx[idx] = (cur, any(t == '/Artifact' for t, _ in mc))
+        try:
+            walk(ops, res_, True, 0)
+            if pos[0] != len(chars): raise ValueError(f'{pos[0]} glyphs drawn, {len(chars)} characters read')
+        except Exception as e:
+            res['rejected'].append({'page': pno, 'why': f'not changed: {e}'}); reject(f'off-page text {PG(pno)}', str(e)); continue
+        bdc_at = {}
+        for idx, ins in enumerate(ops):
+            if str(ins.operator) == 'BDC' and len(ins.operands) > 1 and isinstance(ins.operands[1], pikepdf.Dictionary) and '/MCID' in ins.operands[1]:
+                bdc_at[int(ins.operands[1].MCID)] = idx
+        runs = collections.defaultdict(list)
+        for idx, (m, art) in ctx.items():
+            if m is not None and not art: runs[m] += op_chars[idx]
+        def real(ix): return [i for i in ix if chars[i]['text'].strip()]
+        art_runs, wrap_ops, done = [], [], set()
+        for m, ix in runs.items():
+            hit = [i for i in real(ix) if i in off]
+            if not hit: continue
+            if len(hit) == len(real(ix)) and m in bdc_at: art_runs.append(m); done.update(ix)
+            else: res['left'].append({'page': pno, 'why': 'a tagged run that holds both visible and off-page text: left as it is',
+                                      'text': _offpage_text(chars, hit)[:100]})
+        for idx, (m, art) in ctx.items():
+            if m is not None or art: continue
+            ix = real(op_chars[idx]); hit = [i for i in ix if i in off]
+            if not hit: continue
+            if len(hit) == len(ix): wrap_ops.append(idx); done.update(op_chars[idx])
+            else: res['left'].append({'page': pno, 'why': 'one text operation draws both visible and off-page text: left as it is',
+                                      'text': _offpage_text(chars, hit)[:100]})
+        inform = [i for i in off if i in form_chars and i not in form_art]
+        if any(chars[i]['text'].strip() for i in inform):
+            res['left'].append({'page': pno, 'why': 'off-page text inside a form XObject (shared drawing): left as it is',
+                                'text': _offpage_text(chars, inform)[:100]})
+        if not art_runs and not wrap_ops: continue
+        out, wrap, arts = [], set(wrap_ops), {bdc_at[m] for m in art_runs}
+        for idx, ins in enumerate(ops):
+            if idx in arts: out.append(pikepdf.ContentStreamInstruction([pikepdf.Name('/Artifact'), props], pikepdf.Operator('BDC')))
+            elif idx in wrap:
+                out.append(pikepdf.ContentStreamInstruction([pikepdf.Name('/Artifact'), props], pikepdf.Operator('BDC')))
+                out.append(ins); out.append(pikepdf.ContentStreamInstruction([], pikepdf.Operator('EMC')))
+            else: out.append(ins)
+        page.obj.Contents = pdf.make_stream(pikepdf.unparse_content_stream(out))
+        arr = pt_arr(pno)
+        for m in art_runs:
+            el = owner.get((pno, m))
+            if el is not None:
+                j = mc_entry_index(el, pno, m)
+                if j is not None: set_kids(el, [k for n_, k in enumerate(kids(el)) if n_ != j])
+            if arr is not None and m < len(arr): arr[m] = None
+        for i in done: chars[i]['mcid'] = None; chars[i]['tag'] = 'Artifact'
+        n = sum(1 for i in done if chars[i]['text'].strip())
+        sub = [chars[i] for i in sorted(done)]
+        lines = [_offpage_text(sub, seg) for seg in sorted(_offpage_lines(sub), key=min)]
+        res['artifacted'].append({'page': pno, 'chars': n, 'tagged_runs': len(art_runs), 'untagged_operations': len(wrap_ops),
+                                  'lines': [l[:120] for l in lines if l] if n > OFFPAGE_LIST else [l[:120] for l in lines if l][:1]})
+        ok('artifact: text outside the visible page area (printer\'s slug, cropped-away cover)', n)
+    reindex()
 
 # ================================================================== orphans: real content adopted into the tree
 BLOCK_PARENTS = {'Document', 'Div', 'Sect', 'Art', 'Part', 'NonStruct', 'BlockQuote', 'Note'}
@@ -509,8 +726,51 @@ def set_attr(item, key, value):
     o = obj(item['obj'])
     if o.objgen not in parent_of: reject(f'{key} {item["obj"]}', 'not in the structure tree'); return
     o[key] = value
+def GT(cs): return gaptext.gap_text(cs, lambda pg: PL.pages[pg - 1].chars)
+def elem_chars(el, depth=0):
+    """The element's characters, in content order (its own marked content, then its children's)."""
+    if depth > 30: return []
+    pg = eff_pg.get(el.objgen); out = []
+    for k in kids(el):
+        if isinstance(k, int): out += [c for c in PL.pages[pg - 1].chars if c.get('mcid') == k]
+        elif is_pmcr(k):
+            p = pidx[k.Pg.objgen] if '/Pg' in k else pg; out += [c for c in PL.pages[p - 1].chars if c.get('mcid') == int(k.MCID)]
+        elif is_elem(k): out += elem_chars(k, depth + 1)
+    return out
+def elem_gaptext(el): return GT(elem_chars(el))
+HYPH_ANY = '-\u2010\u2011\u00ad\u2012'
+def spoken_matches_print(spoken, chars):
+    """Sponsor rule 1: a spoken text (ActualText) may differ from the printed characters only in white space, letter case,
+    and line-end hyphens (kept or dropped). Ligatures count as their letters (NFKC)."""
+    import unicodedata
+    def norm(t): return unicodedata.normalize('NFKC', t).casefold().translate({ord(h): '-' for h in HYPH_ANY})
+    parts = []
+    for i, c in enumerate(chars):
+        t = norm(c['text'])
+        if not t.strip(): continue
+        nxt = next((d for d in chars[i + 1:] if d['text'].strip()), None)
+        line_end = t == '-' and nxt is not None and nxt['top'] > c['top'] + 0.5 * max(float(c.get('size') or 0), 1.0)
+        parts.append(re.escape(t) + ('?' if line_end else ''))
+    return bool(parts) and re.fullmatch(''.join(parts), re.sub(r'\s+', '', norm(spoken))) is not None
 def op_actual_text(spec):
-    for it in spec: set_attr(it, '/ActualText', pikepdf.String(it['text'])); ok('heading: ActualText')
+    res = log.setdefault('actual_text_checked', {'accepted_different': [], 'rejected': []})
+    for it in spec:
+        try: o = obj(it['obj'])
+        except Exception: reject(f'actual_text {it.get("obj")}', 'not an object in the file'); continue
+        cs = elem_chars(o) if o.objgen in parent_of else []
+        printed = ''.join(c['text'] for c in cs); spoken = str(it.get('text', ''))
+        shown = GT(cs)                                   # for people: a space where the print breaks onto a new line
+        page = eff_pg.get(o.objgen)
+        if not cs:
+            reject(f'actual_text {it["obj"]}', 'no printed text found under this element to compare with (sponsor rule 1)')
+            res['rejected'].append({'obj': it['obj'], 'page': page, 'printed': '', 'spoken': spoken[:120]}); continue
+        if not spoken_matches_print(spoken, cs):
+            reject(f'actual_text {it["obj"]}', f'the spoken text adds or changes words or punctuation (sponsor rule 1): printed '
+                   f'"{shown[:80]}", spoken "{spoken[:80]}"')
+            res['rejected'].append({'obj': it['obj'], 'page': page, 'printed': shown[:120], 'raw': printed[:120], 'spoken': spoken[:120]}); continue
+        set_attr(it, '/ActualText', pikepdf.String(spoken)); ok('heading: ActualText')
+        if norm_ws(spoken) != norm_ws(printed):
+            res['accepted_different'].append({'obj': it['obj'], 'page': page, 'printed': shown[:120], 'raw': printed[:120], 'spoken': spoken[:120]})
 def op_retype(spec):
     for it in spec:
         if it['type'] not in STD_HEADINGS | {'Figure'}: reject(f'retype {it["obj"]}', 'type not allowed'); continue
@@ -1128,8 +1388,6 @@ def fix_flags():
     if not pdf.Root.MarkInfo.get('/Marked', False): pdf.Root.MarkInfo.Marked = True; ok('document: marked as tagged')
     if '/ViewerPreferences' not in pdf.Root: pdf.Root.ViewerPreferences = pikepdf.Dictionary()
     if not pdf.Root.ViewerPreferences.get('/DisplayDocTitle', False): pdf.Root.ViewerPreferences.DisplayDocTitle = True; ok('document: DisplayDocTitle')
-    for p in pages:                                  # PDF/UA 7.18.3: a page with annotations visits them in structure order
-        if p.obj.get('/Annots') and str(p.obj.get('/Tabs', '')) != '/S': p.obj.Tabs = pikepdf.Name('/S'); ok('pages: annotation tab order set to structure order')
     if '/Metadata' in pdf.Root and b'pdfuaid' in pdf.Root.Metadata.read_bytes():
         log['deferred'].append({'what': 'the source file already claims PDF/UA conformance', 'why': 'not verified by this pipeline; check it with PAC before relying on it'})
 
@@ -1156,6 +1414,7 @@ def op_flatten(spec):
     for it in spec:
         o = obj(it['obj'])
         if o.objgen in done: ok('flatten: nested list/table already flattened with its parent'); continue
+        if o.objgen in LIST_RULE: ok('flatten: already a paragraph by the one-item list rule'); continue
         if o.objgen not in parent_of: reject(f'flatten {it["obj"]}', 'not in the structure tree'); continue
         if mapped(S(o)) not in ('L', 'Table'): reject(f'flatten {it["obj"]}', f'{S(o)} is not a list or table'); continue
         mark(o)
@@ -1163,6 +1422,53 @@ def op_flatten(spec):
     FLATTENED.update(done)
     reindex()
 FLATTENED = set()                             # everything inside a list or table the work order flattened
+LIST_RULE = set()                             # lists the one-item list rule turned into paragraphs
+def op_list_rule(_spec=None):
+    """One-item lists that are really paragraphs: OpenDataLoader sometimes takes a paragraph's first word ("as", "at",
+    a year) for a list label. An L with exactly one LI made of one Lbl and one LBody, whose label is not a list marker
+    (listrule.py), becomes one P holding the label and body content in reading order. Always runs; a list the work order
+    names in keep_lists stays a list. The list keeps its ID; the ParentTree points its content at the new P."""
+    keep = set()
+    for it in wo.get('keep_lists') or []:
+        try: keep.add(obj(it['obj']).objgen)
+        except Exception: reject(f'keep_lists {it}', 'not an object in the file')
+    res = log['list_rule'] = {'flattened': [], 'kept': [], 'skipped': []}
+    for el, par in all_elems():
+        if mapped(S(el)) != 'L': continue
+        lis = [k for k in kids(el) if is_elem(k)]
+        if len(lis) != 1 or len(kids(el)) != 1 or mapped(S(lis[0])) != 'LI': continue
+        li = lis[0]; parts = [k for k in kids(li) if is_elem(k)]
+        if len(parts) != len(kids(li)): continue
+        lbl = next((k for k in parts if mapped(S(k)) == 'Lbl'), None)
+        label = norm_ws(elem_text(lbl)) if lbl is not None else ''
+        if not listrule.is_false_one_item_list(1, [mapped(S(k)) for k in parts], label): continue
+        body = next(k for k in parts if mapped(S(k)) == 'LBody'); epg = eff_pg.get(el.objgen)
+        entry = {'obj': f'{el.objgen[0]} {el.objgen[1]}', 'page': epg, 'label': label[:20]}
+        if el.objgen in keep: res['kept'].append(entry); ok('one-item list kept as a list (work order)'); continue
+        if any(is_elem(k) for k in kids(lbl) + kids(body)):
+            res['skipped'].append({**entry, 'why': 'label or body holds tags of its own'}); continue
+        new = []
+        for part in (lbl, body):
+            ppg = eff_pg.get(part.objgen)
+            for k in kids(part):
+                if isinstance(k, int): new.append(k if ppg == epg else mcr(ppg, k))
+                else:
+                    if is_mcr(k) and '/Pg' not in k and ppg != epg: k.Pg = pages[ppg - 1].obj
+                    new.append(k)
+        set_kids(el, new); el.S = pikepdf.Name('/P')
+        if '/A' in el: del el['/A']
+        for k in new:
+            if isinstance(k, int): pt_set_mcid(epg, k, el)
+            elif is_pmcr(k): pt_set_mcid(pidx[k.Pg.objgen] if '/Pg' in k else epg, int(k.MCID), el)
+            elif is_objr(k) and '/StructParent' in k.Obj: pt_set_key(int(k.Obj.StructParent), el)
+            elif is_mcr(k) and '/Stm' in k:                      # content inside a form XObject: its own ParentTree array
+                fx = k.Stm
+                if '/StructParents' in fx:
+                    r = nt_find(st.ParentTree, int(fx.StructParents))
+                    if r and isinstance(r[0].Nums[r[1]], pikepdf.Array) and int(k.MCID) < len(r[0].Nums[r[1]]): r[0].Nums[r[1]][int(k.MCID)] = el
+        LIST_RULE.add(el.objgen)
+        res['flattened'].append({**entry, 'text': elem_gaptext(el)[:60]}); ok('one-item list → paragraph (rule)')
+    reindex()
 
 
 
@@ -1948,9 +2254,184 @@ def fix_index():
     if res['parenttree']: ok('tag tree index: entries pointing outside the tree cleared (ParentTree)', len(res['parenttree']))
     if res['idtree']: ok('tag tree index: entries pointing outside the tree removed (IDTree)', len(res['idtree']))
 
+def fix_tabs():
+    """Every page with annotations (links, notes) gets /Tabs /S: the keyboard and a screen reader move through them in
+    the order of the tag structure, not by position or by the order they were added (PDF/UA, WCAG 2.4.3)."""
+    n = 0
+    for page in pages:
+        if page.obj.get('/Annots') and str(page.obj.get('/Tabs')) != '/S': page.obj.Tabs = pikepdf.Name('/S'); n += 1
+    if n: ok('tab order: /Tabs /S set on pages with annotations', n)
+    log['tabs_set'] = n
+
+# ================================================================== always: font maps (3.6)
+DIGIT_PUA = {**{0xF730 + n: n for n in range(10)},                      # Adobe old-style digits zerooldstyle…nineoldstyle
+             0xF639: 0, 0xF6DC: 1, **{0xF63A + k: k + 2 for k in range(8)}}   # Minion Pro lining digits (identified by rendering)
+NAME_DIGIT = {w: n for n, w in enumerate(('zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'))}
+DIGIT_CONF, DIGIT_CTX_CONF, DASH_MIN_EM, DASH_MAX_EM = 90, 60, 2.5, 0.15
+def _cmap_entries(data):
+    """code -> Unicode hex string, from a ToUnicode CMap (bfchar and bfrange, both range forms)."""
+    s = data.decode('latin-1'); m = {}
+    for blk in re.findall(r'beginbfchar(.*?)endbfchar', s, re.S):
+        for a, b in re.findall(r'<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]*)>', blk): m[int(a, 16)] = b.upper()
+    for blk in re.findall(r'beginbfrange(.*?)endbfrange', s, re.S):
+        for a, b, rest in re.findall(r'<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(\[[^\]]*\]|<[0-9A-Fa-f]+>)', blk):
+            lo, hi = int(a, 16), int(b, 16)
+            if rest.startswith('['):
+                for k, v in zip(range(lo, hi + 1), re.findall(r'<([0-9A-Fa-f]+)>', rest)): m[k] = v.upper()
+            else:
+                v0 = rest.strip('<>'); start = int(v0, 16)
+                for k in range(lo, hi + 1): m[k] = f'{start + k - lo:0{len(v0)}X}'
+    space = re.search(r'begincodespacerange(.*?)endcodespacerange', s, re.S)
+    return m, (space.group(1).strip() if space else '<00> <FF>')
+def _cmap_stream(entries, space):
+    items = sorted(entries.items()); out = ['/CIDInit /ProcSet findresource begin', '12 dict begin', 'begincmap',
+           '/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def', '/CMapName /Adobe-Identity-UCS def', '/CMapType 2 def',
+           f'{len(space.splitlines())} begincodespacerange', space, 'endcodespacerange']
+    for i in range(0, len(items), 100):
+        chunk = items[i:i + 100]; out.append(f'{len(chunk)} beginbfchar')
+        out += [f'<{k:02X}> <{v}>' for k, v in chunk]; out.append('endbfchar')
+    out += ['endcmap', 'CMapName currentdict /CMap defineresource pop', 'end', 'end']
+    return pdf.make_stream('\n'.join(out).encode('latin-1'))
+def _render_glyph(font, codes, size=200):
+    """The glyphs (one code or a list) set alone on a scratch page at 1 px per point, cropped to their ink with a margin."""
+    import pypdfium2 as pdfium, io
+    codes = codes if isinstance(codes, list) else [codes]
+    tmp = pikepdf.new(); f = tmp.copy_foreign(font)
+    tmp.add_blank_page(page_size=(size * (len(codes) + 2) + 200, size * 2))
+    tmp.pages[0].obj.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(F=f))
+    tmp.pages[0].obj.Contents = tmp.make_stream(f'BT /F {size} Tf 60 {size // 2} Td <{"".join(f"{c:02X}" for c in codes)}> Tj ET'.encode())
+    buf = io.BytesIO(); tmp.save(buf); buf.seek(0)
+    img = pdfium.PdfDocument(buf)[0].render(scale=1, grayscale=True).to_pil()
+    box = img.point(lambda v: 255 if v < 128 else 0).getbbox()
+    return img.crop((box[0] - 30, box[1] - 30, box[2] + 30, box[3] + 30)) if box else img
+def _read_digits(img):
+    """Tesseract's reading of a one-line image, digits only: (text, mean word confidence)."""
+    import subprocess, tempfile, csv, io
+    with tempfile.TemporaryDirectory() as d:
+        pth = os.path.join(d, 'g.png'); img.save(pth)
+        r = subprocess.run(['tesseract', pth, 'stdout', '--psm', '7', '-c', 'tessedit_char_whitelist=0123456789', 'tsv'], capture_output=True, text=True)
+    rows = [w for w in csv.DictReader(io.StringIO(r.stdout), delimiter='\t', quoting=csv.QUOTE_NONE) if (w.get('text') or '').strip()]
+    return ''.join(w['text'].strip() for w in rows), (sum(float(w['conf']) for w in rows) / len(rows) if rows else 0.0)
+DIGIT_CACHE = {}
+def _check_digits(font, cand):
+    """cand: {code: (expected digit, glyph name)}. A glyph alone is often misread (an old-style 0 looks like o, a 1 like I),
+    so each one is read between two other digit glyphs of the same font ("2?2", "3?3"): both lines must read exactly as
+    expected, at least one of them with DIGIT_CTX_CONF confidence (Tesseract sometimes reports 0 for an exact reading). The context glyphs are taken from those whose name agrees with their expected digit, so a wrongly mapped
+    glyph never serves as context: a wrong mapping can only make a glyph "not confirmed", never a false pass.
+    Returns {code: (confirmed, what was read, best confidence, contradicted: read cleanly as another digit)}."""
+    fd = font.get('/FontDescriptor'); prog = next((fd[k] for k in ('/FontFile', '/FontFile2', '/FontFile3') if fd is not None and k in fd), None)
+    key = prog.objgen if prog is not None and prog.is_indirect else None
+    def stated(nm): return next((n for w, n in NAME_DIGIT.items() if nm.startswith(w)), None)
+    good = [c for c, (want, nm) in cand.items() if stated(nm) in (None, want)]
+    order = sorted(good, key=lambda c: (cand[c][0] not in (2, 3, 4, 5, 6, 7), c))     # digits that read well alone first
+    out = {}
+    for code, (want, nm) in cand.items():
+        ctx = []
+        for c in order:                                       # up to four context glyphs other than this one, distinct digits
+            if c != code and cand[c][0] not in [cand[a][0] for a in ctx]: ctx.append(c)
+            if len(ctx) == 4: break
+        ck = (key, code, tuple(ctx)) if key else None
+        if ck and ck in DIGIT_CACHE: out[code] = DIGIT_CACHE[ck]; continue
+        if len(ctx) < 2:                                      # too few digits in the font for context: read it alone
+            t, cf = _read_digits(_render_glyph(font, code)); r = (t == str(want) and cf >= DIGIT_CONF, t, round(cf), t != str(want) and len(t) == 1 and cf >= DIGIT_CONF)
+        else:
+            exact, contra, reads, confs = 0, False, [], []
+            for a in ctx:                                     # two exact readings confirm; Tesseract sometimes drops or swaps one
+                t, cf = _read_digits(_render_glyph(font, [a, code, a])); d = str(cand[a][0]); reads.append(t); confs.append(cf)
+                if t == f'{d}{want}{d}': exact += 1
+                elif len(t) == 3 and t[0] == t[2] == d and t[1] != str(want) and cf >= DIGIT_CTX_CONF: contra = True   # clean: another digit
+                if exact == 2 or contra: break
+            r = (exact >= 2 and not contra and max(confs) >= DIGIT_CTX_CONF, ' / '.join(reads), round(max(confs)), contra)
+        out[code] = r
+        if ck: DIGIT_CACHE[ck] = r
+    return out
+def _dash_shape(img, size=200):
+    """Width and height of the glyph's ink in em: a three-em dash is one bar about 3 em wide and very thin."""
+    box = img.point(lambda v: 255 if v < 128 else 0).getbbox()
+    return ((box[2] - box[0]) / size, (box[3] - box[1]) / size) if box else (0.0, 0.0)
+def fix_font_maps():
+    """Characters whose font maps them to the wrong Unicode value (3.6): private-use digits (Adobe old-style U+F730–F739,
+    Minion lining U+F639–F641/F6DC) become 0–9, and a glyph named threeemdash with no map entry becomes three em dashes.
+    Every glyph is confirmed by rendering it alone: a digit must be read as that digit by Tesseract (and agree with the
+    digit its glyph name states, if it states one); the dash must be one bar at least 2.5 em wide and under 0.15 em tall.
+    Only the font's ToUnicode map changes (a new copy per font), never the page content, so pages look exactly the same.
+    Without Tesseract the step is skipped with a note."""
+    import shutil
+    res = log['font_maps'] = {'fonts': [], 'for_verify': [], 'review': []}
+    fonts, seen = [], set()
+    for page in pages:
+        for res_ in [page.obj.get('/Resources') or {}] + [x.get('/Resources') or {} for x in ((page.obj.get('/Resources') or {}).get('/XObject') or {}).values()
+                                                          if isinstance(x, pikepdf.Stream) and str(x.get('/Subtype')) == '/Form']:
+            for f in (res_.get('/Font') or {}).values():
+                if isinstance(f, pikepdf.Dictionary) and f.objgen not in seen: seen.add(f.objgen); fonts.append(f)
+    todo = []
+    for f in fonts:
+        if str(f.get('/Subtype')) not in ('/Type1', '/TrueType', '/MMType1') or '/ToUnicode' not in f: continue
+        try: entries, space = _cmap_entries(f.ToUnicode.read_bytes())
+        except Exception: continue
+        names = {}
+        enc = f.get('/Encoding')
+        if isinstance(enc, pikepdf.Dictionary) and '/Differences' in enc:
+            code = 0
+            for x in enc.Differences:
+                if isinstance(x, int) or (hasattr(x, '_type_code') and x._type_code == pikepdf.ObjectType.integer): code = int(x)
+                else: names[code] = str(x).lstrip('/'); code += 1
+        cand = {}
+        for code, v in entries.items():
+            if len(v) == 4 and int(v, 16) in DIGIT_PUA: cand[code] = ('digit', DIGIT_PUA[int(v, 16)], v)
+        for code, nm in names.items():
+            if nm == 'threeemdash' and (code not in entries or not entries[code] or int(entries[code][:4], 16) < 32): cand[code] = ('dash', None, entries.get(code))
+        if cand: todo.append((f, entries, space, names, cand))
+    if not todo: return
+    if not shutil.which('tesseract'):
+        res['skipped'] = 'Tesseract is not installed: font maps not checked (private-use digits and three-em dashes left as they are)'
+        log['deferred'].append({'what': 'font maps not checked (3.6)', 'why': res['skipped']}); return
+    # one decision per font (BaseFont), map value and glyph name, across all its objects (the same glyph in every copy):
+    # corrected when at least one copy confirms it and contradictions are at most a quarter of the confirmations
+    verdict = collections.defaultdict(lambda: {'ok': 0, 'contra': 0})    # copies that confirm / contradict
+    checked = {}
+    for f, entries, space, names, cand in todo:
+        bf = str(f.get('/BaseFont', '')).lstrip('/')
+        checked[f.objgen] = _check_digits(f, {c: (want, names.get(c, '')) for c, (kind, want, _) in cand.items() if kind == 'digit'})
+        for c, (confirmed, _, _, contra) in checked[f.objgen].items():
+            v = verdict[(bf, cand[c][2], names.get(c, ''))]; v['ok'] += bool(confirmed); v['contra'] += bool(contra)
+    for f, entries, space, names, cand in todo:
+        bf = str(f.get('/BaseFont', '')).lstrip('/'); fixed, failed = {}, []
+        def agreed(v): return v['ok'] > 0 and v['contra'] * 4 <= v['ok']    # Tesseract can misread one copy confidently
+        digits = {c: (agreed(verdict[(bf, cand[c][2], names.get(c, ''))]), r[1], r[2], r[3]) for c, r in checked[f.objgen].items()}
+        for code, (kind, want, old) in sorted(cand.items()):
+            nm = names.get(code, '')
+            if kind == 'digit':
+                confirmed, read, conf, _ = digits[code]
+                stated = next((n for w, n in NAME_DIGIT.items() if nm.startswith(w)), None)
+                if confirmed and stated in (None, want): fixed[code] = f'{0x30 + want:04X}'
+                else:
+                    item = {'font': bf, 'code': code, 'glyph': nm, 'expected': str(want), 'read': read, 'confidence': conf, 'mapped_to': f'U+{old}'}
+                    failed.append(item)
+                    if stated is not None:
+                        res['review'].append({**item, 'why': 'the glyph name states a different digit than the map' if stated != want
+                                              else 'the glyph name states this digit but rendering did not confirm it'})
+            else:
+                w, h = _dash_shape(_render_glyph(f, code))
+                if w >= DASH_MIN_EM and h <= DASH_MAX_EM: fixed[code] = '201420142014'
+                else: failed.append({'font': bf, 'code': code, 'glyph': nm, 'expected': 'three-em dash', 'read': f'{w:.2f} × {h:.2f} em', 'mapped_to': old and f'U+{old}' or 'nothing'})
+        for code in [c for c in fixed if any(o != c and entries.get(o) == entries.get(c) and fixed.get(o) != fixed[c] for o in entries)]:
+            failed.append({'font': bf, 'code': code, 'glyph': names.get(code, ''), 'expected': bytes.fromhex(fixed[code]).decode('utf-16-be'),
+                           'read': 'confirmed', 'mapped_to': f'U+{entries.get(code)}'})
+            res['review'].append({**failed[-1], 'why': 'another code in this font has the same map value and is not corrected the same way'})
+            del fixed[code]                                    # verify could not tell the two apart: leave both as they are
+        if fixed:
+            new = dict(entries); new.update(fixed); f.ToUnicode = _cmap_stream(new, space)
+            for code, v in fixed.items():
+                oldv = entries.get(code); new_text = bytes.fromhex(v).decode('utf-16-be')
+                res['for_verify'].append({'font': bf, 'old': chr(int(oldv, 16)) if oldv and len(oldv) == 4 and int(oldv, 16) >= 32 else f'(cid:{code})', 'new': new_text})
+            ok(f'font map: {len(fixed)} characters corrected in {bf}', 1)
+        res['fonts'].append({'font': bf, 'obj': f'{f.objgen[0]} {f.objgen[1]}', 'checked': len(cand), 'passed': len(fixed), 'failed': failed,
+                             'fixed': {str(c): bytes.fromhex(v).decode('utf-16-be') for c, v in fixed.items()}})
+
 # ================================================================== run, in a fixed order
-STEPS = [('artifacts', op_artifacts), ('document', op_document), ('adopt_orphans', op_adopt_orphans), ('rolemap', op_rolemap), ('merges', op_merges),
-         ('actual_text', op_actual_text), ('ocr_words', op_ocr_words), ('rolemap', op_rolemap_standard), ('retype', op_retype), ('flatten', op_flatten), ('alt', op_alt),
+STEPS = [('artifacts', op_artifacts), ('offpage', fix_offpage_text), ('document', op_document), ('adopt_orphans', op_adopt_orphans), ('rolemap', op_rolemap), ('merges', op_merges),
+         ('actual_text', op_actual_text), ('ocr_words', op_ocr_words), ('rolemap', op_rolemap_standard), ('retype', op_retype), ('list_rule', op_list_rule), ('flatten', op_flatten), ('alt', op_alt),
          ('move_to_document_start', op_move_to_document_start), ('captions', op_captions), ('lists', op_lists),
          ('toc', op_toc), ('notes', op_notes), ('language', op_language), ('links', op_links),
          ('move_section', op_move_section), ('fix_figure_order', op_fix_figure_order),
@@ -1959,7 +2440,7 @@ wo.setdefault('links', {})                 # links are always tied to their text
 for fn in (fix_root, fix_flags):
     try: fn()
     except Exception as e: log['failed'].append({'op': fn.__name__, 'error': f'{type(e).__name__}: {e}'[:300]})
-ALWAYS = {'fix_figure_order'}               # mechanical: run whether or not the work order asks
+ALWAYS = {'fix_figure_order', 'offpage', 'list_rule'}    # mechanical: run whether or not the work order asks
 for key, fn in STEPS:
     if key in ALWAYS or (key in wo and wo[key] not in (None, False)):
         try: fn(wo.get(key))
@@ -1980,6 +2461,10 @@ try: fix_index()
 except Exception as e: log['failed'].append({'op': 'fix_index', 'error': f'{type(e).__name__}: {e}'[:300]})
 try: fix_ocr_fonts()
 except Exception as e: log['failed'].append({'op': 'fix_ocr_fonts', 'error': f'{type(e).__name__}: {e}'[:300]})
+try: fix_tabs()
+except Exception as e: log['failed'].append({'op': 'fix_tabs', 'error': f'{type(e).__name__}: {e}'[:300]})
+try: fix_font_maps()
+except Exception as e: log['failed'].append({'op': 'fix_font_maps', 'error': f'{type(e).__name__}: {e}'[:300]})
 left = [S(k) for k in kids(st) if is_elem(k) and not same(k, DOC)]
 if left: log['deferred'].append({'what': 'elements still outside the Document', 'count': len(left)})
 pdf.save(OUT)
