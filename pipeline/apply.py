@@ -1128,6 +1128,8 @@ def fix_flags():
     if not pdf.Root.MarkInfo.get('/Marked', False): pdf.Root.MarkInfo.Marked = True; ok('document: marked as tagged')
     if '/ViewerPreferences' not in pdf.Root: pdf.Root.ViewerPreferences = pikepdf.Dictionary()
     if not pdf.Root.ViewerPreferences.get('/DisplayDocTitle', False): pdf.Root.ViewerPreferences.DisplayDocTitle = True; ok('document: DisplayDocTitle')
+    for p in pages:                                  # PDF/UA 7.18.3: a page with annotations visits them in structure order
+        if p.obj.get('/Annots') and str(p.obj.get('/Tabs', '')) != '/S': p.obj.Tabs = pikepdf.Name('/S'); ok('pages: annotation tab order set to structure order')
     if '/Metadata' in pdf.Root and b'pdfuaid' in pdf.Root.Metadata.read_bytes():
         log['deferred'].append({'what': 'the source file already claims PDF/UA conformance', 'why': 'not verified by this pipeline; check it with PAC before relying on it'})
 
@@ -1626,6 +1628,102 @@ def fix_paths():
                     'left_pages': {PATH_LEAVE[k]: sorted(v)[:12] for k, v in left_pages.items()},
                     'underlines': [{'page': p, 'count': c} for p, c in sorted(ul.items())]}
 
+# ================================================================== OCR words: a misread word given its printed spelling as ActualText
+def _tounicode(f):
+    """{code bytes: text} from a font's ToUnicode CMap (bfchar and bfrange entries); None if it has none."""
+    tu = f.get('/ToUnicode')
+    if not isinstance(tu, pikepdf.Stream): return None
+    data = tu.read_bytes().decode('latin-1'); m = {}
+    def hx(h): return bytes.fromhex(h if len(h) % 2 == 0 else '0' + h)
+    def u16(b): return b.decode('utf-16-be', 'replace')
+    for block in re.findall(r'beginbfchar(.*?)endbfchar', data, re.S):
+        for a, b in re.findall(r'<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]*)>', block): m[hx(a)] = u16(hx(b))
+    for block in re.findall(r'beginbfrange(.*?)endbfrange', data, re.S):
+        for a, b, dst in re.findall(r'<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(<[0-9A-Fa-f]*>|\[[^\]]*\])', block):
+            lo, hi, n = int(a, 16), int(b, 16), len(hx(a))
+            if hi < lo or hi - lo > 65535: continue
+            if dst.startswith('['):
+                for k, d in enumerate(re.findall(r'<([0-9A-Fa-f]*)>', dst)): m[(lo + k).to_bytes(n, 'big')] = u16(hx(d))
+            else:
+                base = hx(dst[1:-1]); v = int.from_bytes(base, 'big')
+                for k in range(hi - lo + 1): m[(lo + k).to_bytes(n, 'big')] = u16((v + k).to_bytes(len(base), 'big'))
+    return m
+def _decoder(f):
+    """bytes shown with font f → text, the way text extraction reads it (ToUnicode first, then the encoding). None if it
+    can't be read (a CID font with no ToUnicode map)."""
+    cm = _tounicode(f)
+    if str(f.get('/Subtype')) == '/Type0':
+        if cm is None: return None
+        return lambda b: ''.join(cm.get(b[i:i + 2], '�') for i in range(0, len(b) - 1, 2))
+    enc = f.get('/Encoding'); diffs = {}
+    name = enc if isinstance(enc, pikepdf.Name) else enc.get('/BaseEncoding') if isinstance(enc, pikepdf.Dictionary) else None
+    if isinstance(enc, pikepdf.Dictionary) and '/Differences' in enc:
+        from fontTools import agl
+        code = 0
+        for x in enc.Differences:
+            if isinstance(x, int): code = int(x)
+            else: diffs[code] = agl.toUnicode(str(x).lstrip('/')); code += 1
+    codec = {'/WinAnsiEncoding': 'cp1252', '/MacRomanEncoding': 'mac_roman'}.get(str(name), 'latin-1')
+    def dec(b):
+        return ''.join(cm[bytes([c])] if cm is not None and bytes([c]) in cm else diffs[c] if c in diffs else bytes([c]).decode(codec, 'replace') for c in b)
+    return dec
+def op_ocr_words(spec):
+    """Each work-order item names an OCR word form ("nibbiina") and how the scan prints it ("nibbāna"). Every text-showing
+    operator in tagged content whose words include that form is wrapped in /Span <</ActualText (…)>> BDC … EMC, the
+    ActualText being the operator's own text with the form respelled (punctuation and spaces kept). Screen readers speak
+    the ActualText and copying gives it; the OCR text, its fonts and the page stay exactly as they were. Only operators
+    drawn on a page (not inside a form XObject), inside marked content with an MCID, not inside an artifact and not
+    already inside an ActualText span are changed."""
+    fixes = {it['text']: it['reads'] for it in spec or [] if isinstance(it, dict) and it.get('text') and it.get('reads')}
+    if not fixes: return
+    expected = {it['text']: it.get('count') for it in spec if isinstance(it, dict) and it.get('text') in fixes}
+    found, per_page, no_decoder = collections.Counter(), {}, set()
+    def respell(text):
+        def one(m):
+            pre, core, post = re.match(r'^(\W*)(.*?)(\W*)$', m.group(0), re.S).groups()
+            if core not in fixes:                     # a footnote number after the word ("viida).26"); OCR also turns letters into digits, so only as a second try
+                pre, core, post = re.match(r'^(\W*)(.*?)(\W+\d+\W*)$', m.group(0), re.S).groups() if re.search(r'\W\d+\W*$', m.group(0)) else (pre, core, post)
+            if core in fixes: found[core] += 1; return pre + fixes[core] + post
+            return m.group(0)
+        return re.sub(r'\S+', one, text)
+    for pno, page in enumerate(pages, 1):
+        fonts = (page.obj.get('/Resources') or {}).get('/Font') or {}
+        decs, out, changed, stack, gs, cur = {}, [], 0, [], [], None
+        for ins in pikepdf.parse_content_stream(page):
+            op, ops = str(ins.operator), ins.operands
+            if op in ('BDC', 'BMC'):
+                props = ops[1] if len(ops) > 1 and isinstance(ops[1], pikepdf.Dictionary) else None
+                stack.append('art' if str(ops[0]) == '/Artifact' else 'at' if props is not None and '/ActualText' in props
+                             else 'mc' if props is not None and '/MCID' in props else 'x')
+            elif op == 'EMC':
+                if stack: stack.pop()
+            elif op == 'q': gs.append(cur)
+            elif op == 'Q':
+                if gs: cur = gs.pop()
+            elif op == 'Tf': cur = fonts.get(ops[0])
+            elif op in TEXT_OPS and cur is not None and 'mc' in stack and 'art' not in stack and 'at' not in stack:
+                key = cur.objgen if cur.objgen != (0, 0) else id(cur)
+                if key not in decs: decs[key] = _decoder(cur)
+                if decs[key] is None: no_decoder.add(_font_name(cur)); out.append(ins); continue
+                strs = [ops[-1]] if op != 'TJ' else [y for y in ops[0] if isinstance(y, pikepdf.String)]
+                text = ''.join(decs[key](bytes(s)) for s in strs); new = respell(text)
+                if new != text:
+                    out += [pikepdf.ContentStreamInstruction([pikepdf.Name('/Span'), pikepdf.Dictionary(ActualText=pikepdf.String(new))],
+                                                              pikepdf.Operator('BDC')),
+                            ins, pikepdf.ContentStreamInstruction([], pikepdf.Operator('EMC'))]
+                    changed += 1; continue
+            out.append(ins)
+        if changed:
+            page.obj.Contents = pdf.make_stream(pikepdf.unparse_content_stream(out)); per_page[pno] = changed
+    log['ocr_words'] = {'forms': len(fixes), 'operators': sum(per_page.values()), 'pages': sorted(per_page),
+                        'by_form': [{'text': t, 'reads': r, 'found': found[t], 'expected': expected.get(t)} for t, r in fixes.items()],
+                        'fonts_without_map': sorted(no_decoder)}
+    if per_page: ok('OCR words: printed spelling given as ActualText', sum(found.values()))
+    missing = [t for t in fixes if found[t] == 0]
+    if missing:
+        log['deferred'].append({'what': f'{len(missing)} OCR word forms with a reading were not found in the page text',
+                                'why': 'each may be split across text operators or drawn inside a form; a person checks them: ' + ', '.join(missing[:12])})
+
 # ================================================================== always: an invisible OCR text layer whose font defines no glyphs
 OCR_FONT_NAMES = {'HiddenHorzOCR', 'HiddenVertOCR', 'GlyphLessFont'}
 def _font_name(f): return str(f.get('/BaseFont', '')).lstrip('/').split('+')[-1]
@@ -1852,7 +1950,7 @@ def fix_index():
 
 # ================================================================== run, in a fixed order
 STEPS = [('artifacts', op_artifacts), ('document', op_document), ('adopt_orphans', op_adopt_orphans), ('rolemap', op_rolemap), ('merges', op_merges),
-         ('actual_text', op_actual_text), ('rolemap', op_rolemap_standard), ('retype', op_retype), ('flatten', op_flatten), ('alt', op_alt),
+         ('actual_text', op_actual_text), ('ocr_words', op_ocr_words), ('rolemap', op_rolemap_standard), ('retype', op_retype), ('flatten', op_flatten), ('alt', op_alt),
          ('move_to_document_start', op_move_to_document_start), ('captions', op_captions), ('lists', op_lists),
          ('toc', op_toc), ('notes', op_notes), ('language', op_language), ('links', op_links),
          ('move_section', op_move_section), ('fix_figure_order', op_fix_figure_order),

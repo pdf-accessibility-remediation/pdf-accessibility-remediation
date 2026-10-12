@@ -65,7 +65,7 @@ rate_limited = False
 def fmt(s): return f'{s:.0f}s' if s < 60 else f'{int(s // 60)}m {s % 60:02.0f}s'
 def load(p): return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else None
 ran = {l.split('\t')[0] for l in open(todo)}             # books run by this command (the others finished earlier)
-L = [f'# Batch {label}', '', '| Book | Status | Pages | API cost | Time | Checks flagged | Result |', '|---|---|---:|---:|---:|---:|---|']
+L = [f'# Batch {label}', '', '| Book | Status | Pages | API cost | Time | Checks flagged | PDF/UA rules (veraPDF) | Result |', '|---|---|---:|---:|---:|---:|---|---|']
 total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; cut_at = []
 models, prompts, runs_at = collections.Counter(), collections.Counter(), []
 for line in open(books):
@@ -99,12 +99,17 @@ for line in open(books):
             else: why = f'**failed**: OpenRouter {code}: {(er.get("message") or "")[:70].replace("|", "/")} (see `{name}.log`)'
         elif not run and not os.path.exists(os.path.join(B, f'{name}.log')): why = '**not finished**: the batch stopped before this book ran'
         else: why = f'**failed**: see `{name}.log`'
-        L.append(f'| {name} | {why} | | {cost if this + earlier else ""} | | | |'); continue
+        L.append(f'| {name} | {why} | | {cost if this + earlier else ""} | | | | |'); continue
     done += 1
     t = sum((rec.get('timing_seconds') or {}).values())
     rv = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
     checks = sum(1 for l in rv.splitlines() if l.startswith('|') and '**CHECK**' in l)
-    L.append(f'| {name} | done | {rec["document"]["pages"]} | {cost} | {fmt(t)} | {checks} | `{name}/{rec["document"].get("output") or ""}` |')
+    vb, va = ((rec.get('pdfua') or {}).get(k) or {} for k in ('before', 'after'))
+    if vb.get('rules') is not None and va.get('rules') is not None:
+        new_ = sum(1 for r in va['rules'] if r['rule'] not in {x['rule'] for x in vb['rules']})
+        ua = f'{len(vb["rules"])} → {len(va["rules"])}' + (f' (**{new_} new**)' if new_ else '')
+    else: ua = 'not run'
+    L.append(f'| {name} | done | {rec["document"]["pages"]} | {cost} | {fmt(t)} | {checks} | {ua} | `{name}/{rec["document"].get("output") or ""}` |')
 def each_(c): return ', '.join(f'{k}' + (f' ×{v}' if len(c) > 1 else '') for k, v in c.items()) or 'not recorded'
 span = sorted({r[:16].replace('T', ' ') for r in runs_at})
 L[1:1] = ['', f'Batch started {started}' + (f' (books run from {span[0]} to {span[-1]})' if len(span) > 1 else '')
@@ -126,7 +131,8 @@ if failed:
     L += [f'To run only the {len(failed)} unfinished book(s) again, from pipeline'
           + (' (wait a few minutes first: the model was rate-limited)' if rate_limited else '') + ':', '', f'    RETRY=1 {jobs}{mt}{again}', '']
 L += [f'Results are relative to {B}/', '',
-      'Checks flagged = rows marked CHECK in each review.md. Open the review.md of any book with flags before running PAC.']
+      'Checks flagged = rows marked CHECK in each review.md. Open the review.md of any book with flags before running PAC.',
+      'PDF/UA rules = veraPDF PDF/UA-1 rules failing on the original → on the result; "new" = rules the result fails and the original passed.']
 out = os.path.join(B, 'summary.md'); open(out, 'w', encoding='utf-8').write('\n'.join(L) + '\n')
 print('\n'.join(L[2:]))
 print(f'\nsaved: {out}')

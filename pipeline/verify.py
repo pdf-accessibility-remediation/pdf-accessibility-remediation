@@ -357,5 +357,10 @@ for i, p in enumerate(pages, 1):
     elif free_pages.get(i) and not any(pg_ == i for pg_, _ in owner) and b'/Artifact' not in raw:
         uo_pages.append({'page': i, 'untagged': dict(free_pages[i]), 'same_as_source': raw == _raw(src.pages[i - 1])})
 out['page_figures'] = pf; out['untagged_only_pages'] = uo_pages
+# 7 ActualText spans in page content (OCR words given their printed spelling), and the same validator as the audit's
+out['actual_text_spans'] = {'original': sum(_raw(p).count(b'/ActualText') for p in src.pages), 'result': sum(_raw(p).count(b'/ActualText') for p in pages)}
+import vera
+out['pdfua'] = vera.run(B)
+print(vera.line(out['pdfua']), file=sys.stderr)
 json.dump(out, open(B + '.verify.json', 'w'), ensure_ascii=False, indent=1)
 print(json.dumps(out, ensure_ascii=False, indent=1))

@@ -7,7 +7,10 @@ Claude reads a compact summary of a tagged PDF and returns a **work order**: a J
 ```
 original.pdf ─► audit.py ─► decide.py (model via OpenRouter) ─► apply.py ─► verify.py ─► report.py
                  digest        work order                        original_remediated.pdf review.md + record.json
+                 + veraPDF (before)                                          + veraPDF (after)
 ```
+
+The same validator, veraPDF's PDF/UA-1 profile, runs on the original during the audit and on the result during verify. `review.md` sorts every failed rule into fixed, still failing, or **newly failing** (something the run broke, flagged as a CHECK). See [PDF/UA validation (veraPDF)](#pdfua-validation-verapdf).
 
 ## Automated checks
 
@@ -25,8 +28,9 @@ These workflows do not run `run_api.sh` or make OpenRouter API calls automatical
 1. **Python packages:** First cd to pipeline, then create and activate the virtual environment with `python3 -m venv .venv && source .venv/bin/activate`. Then `pip install -r requirements.txt` (pdfplumber must be 0.11.9: `plumb_fix.py` patches its internals). Every run first checks that the required libraries import in the Python that runs the pipeline: if one is missing, it stops before any audit or paid call and prints the install command. Each `record.json` (`environment`) and the top of each `review.md` record the Python and library versions used.
 2. **Key:** put `OPENROUTER_API_KEY=…` in a `.env` file in `pipeline/` or any folder above it (e.g. the repo root). Keep `.env` in `.gitignore`.
 3. **Check the key (free):** `python3 decide.py --check-key`.
-4. **Prompt:** `workorder_v6.md` goes in `pipeline/prompts/` or in `prompts/` beside `pipeline/`. Older versions are kept only as a record.
-5. **PDFs:** originals go in `samples/<name>/` and are never written to. Outputs go in `runs/<name>/<run-label>/` (single runs) or `runs/batches/<label>/<name>/` (batches) beside `pipeline/` (set `RUNS_DIR` to put them elsewhere). Keep both out of git: the books are in copyright.
+4. **veraPDF (recommended):** `brew install verapdf` on a Mac (it needs Java), or the installer from https://verapdf.org. Without it the pipeline still runs; the before/after PDF/UA comparison is skipped and `review.md` says so.
+5. **Prompt:** `workorder_v7.md` goes in `pipeline/prompts/` or in `prompts/` beside `pipeline/`. Older versions are kept only as a record.
+6. **PDFs:** originals go in `samples/<name>/` and are never written to. Outputs go in `runs/<name>/<run-label>/` (single runs) or `runs/batches/<label>/<name>/` (batches) beside `pipeline/` (set `RUNS_DIR` to put them elsewhere). Keep both out of git: the books are in copyright.
 
 ## Run
 
@@ -180,17 +184,40 @@ A failed call that OpenRouter did charge for is logged with its cost and counted
 
 | File | Role |
 |---|---|
-| `audit.py` | Original → digest (styles, listed elements, figures with crops, page map, reading order, front matter). No model |
-| `prompts/workorder_v6.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run. v5 and older are kept as a record |
-| `decide.py` | The API call. Estimates cost, checks available credit, sends the digest and crops, parses and validates the reply. `--dry-run`, `--response-file`, `--check-key`, `--credit` (credit left), `--max-images` (default 100), `--max-tokens` (default 16,000, set on the `ap.add_argument('--max-tokens' …)` line; the model's reasoning counts against it) |
+| `audit.py` | Original → digest (styles, listed elements, figures with crops, page map, reading order, front matter; in scanned books, suspect OCR words on word sheets; veraPDF's PDF/UA failures). No model |
+| `prompts/workorder_v7.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run. v6 and older are kept as a record |
+| `decide.py` | The API call. Estimates cost, checks available credit, sends the digest and crops, parses and validates the reply. `--dry-run`, `--response-file`, `--check-key`, `--credit` (credit left), `--max-images` (default 100), `--max-tokens` (default 16,000 plus 45 per OCR word form sent; the model's reasoning counts against it) |
 | `apply.py` | The executor. Original + work order → `<original>_remediated.pdf`. pikepdf only; checks each target first and rejects what doesn't fit |
-| `verify.py` | Checks the result against the original |
+| `verify.py` | Checks the result against the original, and runs veraPDF on the result |
+| `vera.py` | Runs veraPDF (PDF/UA-1) on one file and condenses its report to one entry per failed rule, with who can fix it |
 | `report.py` | Writes `review.md`, `record.json` and `han_review.csv`, then removes the working files |
 | `plumb_fix.py` | Fix for pdfplumber's nested marked-content bug (required) |
 | `run_api.sh` | All of the above in one command |
 | `batch_api.sh` | Several books in parallel, with a batch cost gate and a summary (needs `AUTO=1`) |
 
 **Figure images** are sent as JPEG (long side 800 px). If a book's images together pass 20 MB they are made smaller step by step, because OpenRouter refuses requests with more than 30 MB of images (HTTP 413). At most 100 images go in one request (Anthropic's limit); in a book with more figures, the alt text for the rest goes to a person, listed in the review under the AI's deferrals. What was sent is recorded in `record.json` under `run.images`.
+
+## OCR words in scanned books
+
+OCR engines read letters they don't know as look-alikes. In romanized Pali, Sanskrit and Japanese this is constant: ā and ū become "ii" (*nibbāna* → `nibbiina`, *rūpa* → `riipa`), ṇḍ becomes `t;l¢`, ü becomes "ii" (`Miiller`). A screen reader then says the wrong word, and copying gives it.
+
+In a scanned book (the producer says OCR, or most pages are full-page images), `audit.py` lists every distinct word form that looks misread (`ii` inside a word, or `;` `¢` `£` between letters), most frequent first, up to 700. Each form is cropped once from the page image and placed on numbered **word sheets** (PNG, sent at full size: a macron is a few pixels). The model reads each crop and returns `ocr_words`: the id and the word exactly as printed, for the forms whose letters differ. Forms the OCR read correctly (`Hawaii`) are left out.
+
+`decide.py` drops a reading that isn't one word, is the same as the OCR text, or is too different from it to be a misreading: after removing diacritics, the edits from the OCR text to the reading may not pass a third of the reading's length, where changing or dropping a character OCR produces from unknown letters (`i l 1 J ; : t f z` …) counts a quarter. On *Buddhist* this kept all 593 readings and let through 12 of 570 deliberately mismatched pairs, so the review's table is still checked by a person. `apply.py` then wraps every text operator that shows the form in `/Span <</ActualText (…)>> BDC … EMC`. Screen readers speak the printed spelling and copying gives it; the OCR text, its fonts and the page are unchanged, so `verify.py`'s pixel and text checks still hold (a text search still finds the OCR spelling). `review.md` lists every respelled form with its first pages for a person to check against the scan.
+
+It costs about 1,400 input tokens per sheet (31 words) and about 37 output tokens per word, reasoning included (about 11 of them are the reading itself; the output limit allows 45). *Buddhist* (648 forms, 21 sheets) cost $0.51 in all, against $0.19–0.24 for books with no OCR words.
+
+## PDF/UA validation (veraPDF)
+
+`vera.py` runs `verapdf -f ua1` and keeps one entry per failed rule, not one per failure (a scanned book can fail 70,000 checks): the rule, what it checks, how many checks failed, five examples with their object and PDF page, and who can fix it:
+
+| Who fixes | Rules | How it is used |
+|---|---|---|
+| the pipeline | flags, `DisplayDocTitle`, links tied and described, tab order, note IDs, the OCR layer's undefined glyphs | not sent to the model: the executor fixes these whatever the work order says |
+| the AI | figure alt text, heading levels, natural language, untagged content, role mapping, document title | sent to the model in the digest (`pdfua_check`) as rule, count and example objects |
+| a person | fonts, tables, list and contents structure, the PDF/UA claim | not sent; listed in `review.md` as known gaps |
+
+The audit's run is the "before"; it is printed with the audit, so a file that already passes (or fails thousands of checks) shows up before anything is spent. Verify's run is the "after". `review.md` has a row "PDF/UA (veraPDF): nothing newly failing" (a CHECK when a rule fails that the original passed, or fails more often) and a table of every rule, newly failing first. `summary.md` shows each book's failing rules before → after. `VERAPDF=off` skips it; `VERAPDF=/path/to/verapdf` picks a copy that is not on the PATH. veraPDF checks only machine-checkable PDF/UA rules: PAC (WCAG) and a person are still the final check.
 
 ## Choosing the model
 
@@ -259,6 +286,7 @@ These are mechanical, so they never wait for the model:
 
 - makes sure there is exactly one Document root (Auto-Tag output often has none; some exports have two)
 - sets the "tagged" flag and shows the title in the window
+- sets the tab order of every page with annotations to the structure order (`/Tabs /S`, PDF/UA 7.18.3)
 - ties every link annotation to its text and gives it a description, creating Link tags where the tagger left none
 - removes references to annotations that sit on no page
 - rebuilds the tag-tree index (ParentTree) from the tree where entries are missing or wrong
