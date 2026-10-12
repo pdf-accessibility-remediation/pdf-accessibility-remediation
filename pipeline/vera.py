@@ -9,6 +9,16 @@ audit.py runs it on the original and verify.py on the result, each in the backgr
 veraPDF is found from $VERAPDF (path to the `verapdf` launcher), else `verapdf` on PATH; VERAPDF=off skips it.
 The profile is pinned in verapdf/WCAG-2-2-Machine.xml; verapdf/rules.json says which success criterion each rule
 belongs to, or why it is PDF/UA-only. A rule not listed there counts as WCAG and is listed as unclassified.
+The profile includes the PDF/UA-1 rules, so one run serves both the WCAG count and the PDF/UA view.
+
+Each failed rule also says who can fix it:
+
+    executor   apply.py fixes it by itself, whatever the work order says (flags, links, note IDs, the OCR layer's font)
+    model      it needs a decision the work order can carry (alt text, headings, language, untagged content, role map)
+    person     nothing in the pipeline fixes it (fonts, tables, list and contents structure, the PDF/UA claim)
+
+The full summary goes to verapdf.json (audit) and the verify JSON (verify); report.py compares the two.
+pdfua_check(summary) is the digest's view, in the shape decide.py reads (it sends the model only the 'model' rules).
 """
 import sys, os, re, json, shutil, subprocess, tempfile, time, hashlib
 
@@ -18,6 +28,18 @@ RULES = json.load(open(os.path.join(HERE, 'verapdf', 'rules.json'), encoding='ut
 TIMEOUT = int(os.environ.get('VERAPDF_TIMEOUT', '900'))     # seconds; the largest sample takes under 10
 SHOWN = 20                                                  # failed checks veraPDF lists per rule (pages come from these)
 SEVERITY = ('critical', 'major', 'minor', 'cosmetic')
+
+EXECUTOR = {'6.2-1', '7.1-10', '7.1-11', '7.9-1', '7.9-2', '7.18.1-2', '7.18.3-1', '7.18.5-1', '7.18.5-2', '7.21.8-1'}
+MODEL = {'7.1-3', '7.1-5', '7.1-9'}
+PERSON = {'5-1'}                 # the pipeline never claims PDF/UA conformance: that is a person's sign-off
+def who(rule, tags):
+    if rule in EXECUTOR: return 'executor'
+    if rule in MODEL: return 'model'
+    if rule in PERSON: return 'person'
+    tags = set(tags or [])
+    if tags & {'alt-text', 'figure', 'heading'} and not tags & {'annotation', 'table'}: return 'model'
+    if 'lang' in tags: return 'model'
+    return 'person'
 
 
 def find():
@@ -74,6 +96,17 @@ def run(pdf): return finish(start(pdf))
 
 _PAGE = re.compile(r'pages\[(\d+)\]')
 _OBJ = re.compile(r'\((\d+) 0 obj (?:SE|SA|PD)\w*')
+_EX = re.compile(r'\((\d+) (\d+) obj (?:SE\w+ )?([^)]*)\)')
+
+
+def _example(check):
+    """One failed check as an example object: its obj, tag type, PDF page (if the context names one) and message."""
+    ctx = check.get('context') or ''
+    pg = _PAGE.findall(ctx)
+    objs = _EX.findall(ctx)
+    o = objs[-1] if objs else None
+    return {'obj': f'{o[0]} {o[1]}' if o else None, 'type': o[2] if o else None, 'page': int(pg[-1]) + 1 if pg else None,
+            'message': (check.get('errorMessage') or '')[:160]}
 
 
 def _struct_pages(pdf, objnums):
@@ -125,7 +158,8 @@ def summarize(rep, pdf, seconds):
                       'description': rs.get('description', ''), 'severity': next((t for t in SEVERITY if t in (rs.get('tags') or [])), None),
                       'failed': rs.get('failedChecks', 0), 'shown': len(rs.get('checks') or []),
                       'scope': cls['scope'] if cls else 'wcag', 'wcag': cls.get('wcag', []) if cls else [],
-                      'why': cls.get('why') if cls else None, 'unclassified': cls is None,
+                      'why': cls.get('why') if cls else None, 'unclassified': cls is None, 'tags': rs.get('tags') or [],
+                      'who': who(rid, rs.get('tags')), 'examples': [_example(c) for c in (rs.get('checks') or [])[:5]],
                       'pages': sorted(pages), '_objs': sorted(rule_objs), 'example': msgs[0][:240] if msgs else None})
     obj_page = _struct_pages(pdf, objs)
     for r in rules:
@@ -142,6 +176,26 @@ def summarize(rep, pdf, seconds):
             'rules': rules}
 
 
+def pdfua_check(s):
+    """The digest's view of a summary, or {'skipped': why}: every failed rule with who fixes it. decide.py sends the
+    model only the 'model' rules."""
+    if 'not_run' in s: return {'skipped': s['not_run']}
+    return {'tool': s['tool'], 'profile': s['profile'], 'compliant': s['compliant'], 'failed_rules': s['failed_rules'],
+            'rules': [{'rule': r['id'], 'description': r['description'][:240], 'tags': r['tags'], 'failed': r['failed'],
+                       'who': r['who'], 'examples': r['examples']} for r in s['rules']]}
+
+
+def line(s):
+    """One line for the terminal."""
+    if 'not_run' in s: return s['not_run']
+    if s['compliant']: return f'{s["tool"]}: passes ({s["passed_rules"]} rules)'
+    t, by = s['totals'], {}
+    for r in s['rules']: by[r['who']] = by.get(r['who'], 0) + 1
+    return (f'{s["tool"]}: {t["wcag_failed_rules"]} WCAG rules failed ({t["wcag_failed_checks"]} checks) · '
+            f'{t["ua_only_failed_rules"]} PDF/UA-only rules failed · fixed by ' + ' · '.join(f'{k} {by[k]}' for k in ('executor', 'model', 'person') if k in by)
+            + (f' · {s["seconds"]} s' if s['seconds'] is not None else ''))
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--check']:
         v, why = version()
@@ -150,6 +204,4 @@ if __name__ == '__main__':
     if len(sys.argv) != 3: sys.exit(__doc__)
     s = run(sys.argv[1])
     json.dump(s, open(sys.argv[2], 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    t = s.get('totals')
-    print(s['not_run'] if 'not_run' in s else f'{s["tool"]}: {t["wcag_failed_rules"]} WCAG rules failed ({t["wcag_failed_checks"]} checks) · '
-          f'{t["ua_only_failed_rules"]} PDF/UA-only rules failed' + (f' · {s["seconds"]} s' if s['seconds'] is not None else ''))
+    print(line(s))
