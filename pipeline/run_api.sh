@@ -8,8 +8,13 @@
 # AUTO=1 bash run_api.sh …   no y/N question: sends if the estimate is within the $2 cap and your credit
 # ESTIMATE=1 bash run_api.sh …   audit + cost estimate only; a later run with the same label reuses the audit
 # OUT=clan.pdf bash run_api.sh …   names the result; by default it is <original file name>_remediated.pdf
-# MAX_TOKENS=32000 bash run_api.sh …   output limit for Claude's reply, reasoning included (default 16000, set in decide.py)
+# MAX_TOKENS=64000 bash run_api.sh …   output limit for Claude's reply, reasoning included (default 48000, set in decide.py)
 # MODEL=openai/gpt-5 bash run_api.sh …   any OpenRouter model id for this run (default: DEFAULT_MODEL in decide.py)
+# Untagged PDFs first go through intake.py (local, no cost): OCR where pages have no text, then auto-tagging. Its
+# result (_intake/intake.pdf) is what the rest of the run works on; the original is never written to.
+# FORCE_OCR=1 bash run_api.sh …   if the text layer fails the OCR comparison, OCR every page anyway (else the book stops)
+# OCR_LANG=jpn+eng bash run_api.sh …   Tesseract languages for OCR (default: chosen from the scripts found)
+# OCR=off / INTAKE=off bash run_api.sh …   no OCR (image-only pages are only listed) / no intake step at all
 #
 # Rerunning a label that did not finish picks up where it stopped: the audit is reused; a reply that was cut off
 # is logged with its cost (attempts.json, folded into record.json) and a new call is made; a reply that was fine
@@ -84,11 +89,17 @@ summary() {
   return 0
 }
 
-same_source() { [[ -f $A/digest.json ]] && python3 -c "import json,hashlib,sys; d=json.load(open('$A/digest.json')); sys.exit(0 if d['source']['sha256'] == hashlib.sha256(open('$SRC','rb').read()).hexdigest() else 1)"; }
+# 0. intake (untagged PDFs only): OCR where needed, then auto-tag. Exit 3 = flagged for a person: the book stops here
+PSRC=$SRC                                      # the file the pipeline works on: the original, or the intake result
+if [[ ${INTAKE:-auto} != off ]]; then
+  stage "0/5 intake (local, no model)" python3 intake.py "$SRC" "$R/_intake"
+  [[ -f $R/_intake/intake.pdf ]] && PSRC=$R/_intake/intake.pdf
+fi
+same_source() { [[ -f $A/digest.json ]] && python3 -c "import json,hashlib,sys; d=json.load(open('$A/digest.json')); sys.exit(0 if d['source']['sha256'] == hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest() else 1)" "$PSRC"; }
 if same_source; then
   echo "▶ 1/5 audit: reusing the audit already in $A"
 else
-  stage "1/5 audit (no model)"          python3 audit.py "$SRC" "$A"
+  stage "1/5 audit (no model)"          python3 audit.py "$PSRC" "$A"
 fi
 if [[ -n $SAVED ]]; then
   echo "▶ 2/5 the earlier attempt's reply was complete but could not be read: reading it again (no cost)"
@@ -125,8 +136,8 @@ else
   fi
   stage "3/5 $USE_MODEL via OpenRouter" python3 decide.py "$A" "$R" ${MT[@]+"${MT[@]}"}
 fi
-stage "4/5 apply (no model)"            python3 apply.py "$SRC" "$R/workorder.json" "$R/$OUT"
-stage "4/5 verify (no model)"           bash -c 'python3 verify.py "$1" "$2" > /dev/null' _ "$SRC" "$R/$OUT"
+stage "4/5 apply (no model)"            python3 apply.py "$PSRC" "$R/workorder.json" "$R/$OUT"
+stage "4/5 verify (no model)"           bash -c 'python3 verify.py "$1" "$2" > /dev/null' _ "$PSRC" "$R/$OUT"
 python3 -c "import json,sys; json.dump({l.split('|')[0]: round(float(l.split('|')[1]), 1) for l in sys.argv[1:]}, open('$R/timing.json', 'w'), indent=1)" "${TIMES[@]}"
 stage "5/5 report"                      python3 report.py "$R" "$A" "--pdf=$OUT" ${KEEP:+--keep}
 summary

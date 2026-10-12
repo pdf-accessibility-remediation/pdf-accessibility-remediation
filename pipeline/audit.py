@@ -12,7 +12,7 @@ Every element Claude may refer to is listed with its object number in the ORIGIN
 included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix  # noqa: E401
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext  # noqa: E401
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -29,15 +29,30 @@ KEEP_KEYS = ('text', 'x0', 'x1', 'top', 'bottom', 'size', 'fontname', 'mcid', 't
 class _Page:                                    # what the audit needs from a page; the full pdfplumber page is released
     def __init__(self, p):
         self.width, self.height = float(p.width), float(p.height)
+        mb, cb = p.mediabox, p.cropbox                 # the visible area (CropBox), in the reader's top-left coordinates
+        self.vis = (max(cb[0], mb[0]) - mb[0], mb[3] - min(cb[3], mb[3]), min(cb[2], mb[2]) - mb[0], mb[3] - max(cb[1], mb[1]))
         self.chars = [{k: c.get(k) for k in KEEP_KEYS} for c in p.chars]
         self.images = [{k: i.get(k) for k in ('x0', 'x1', 'top', 'bottom', 'mcid', 'tag')} for i in p.images]
 class _PL:
     def __init__(self, path):
         self.pages = []
         with pdfplumber.open(path) as pl:
-            for p in pl.pages:
+            for n, p in enumerate(pl.pages, 1):
                 self.pages.append(_Page(p)); p.close()
+                for c in self.pages[-1].chars: c['pg'] = n          # gaptext: a gap filled by another glyph is no space
 PL = _PL(SRC)
+def page_chars(pg): return PL.pages[pg - 1].chars
+def band(pno, top):
+    """'top', 'bottom' or 'body' for a line starting at top (reader coordinates): measured from the visible page area
+    (CropBox), whose top and bottom edges are where running heads and page numbers sit."""
+    vx0, vt, vx1, vb = PL.pages[pno - 1].vis; t = top - vt
+    return 'top' if t < 70 else 'bottom' if t > (vb - vt) - 60 else 'body'
+def vis_area(pno):
+    vx0, vt, vx1, vb = PL.pages[pno - 1].vis; return max(vx1 - vx0, 0) * max(vb - vt, 0)
+def vis_part(pno, x0, t, x1, b):
+    """Area of a box (reader coordinates) that lies inside the visible page area."""
+    vx0, vt, vx1, vb = PL.pages[pno - 1].vis
+    return max(min(x1, vx1) - max(x0, vx0), 0) * max(min(b, vb) - max(t, vt), 0)
 ref = lambda n: f'{n.objgen[0]} {n.objgen[1]}'
 def kids(n):
     k = n.get('/K'); return [] if k is None else (list(k) if isinstance(k, pikepdf.Array) else [k])
@@ -54,7 +69,8 @@ mc_chars = collections.defaultdict(list)
 for pno, p in enumerate(PL.pages, 1):
     for c in p.chars:
         if c.get('mcid') is not None: mc_chars[(pno, c['mcid'])].append(c)
-def mc_text(pg, m): return ''.join(c['text'] for c in mc_chars.get((pg, m), []))
+def GT(cs): return gaptext.gap_text(cs, page_chars)
+def mc_text(pg, m): return GT(mc_chars.get((pg, m), []))          # what a reader hears (spaces from gaps)
 
 # ---- walk the tree once
 elems = []                 # dicts in reading order
@@ -73,10 +89,16 @@ while stack:
     elems.append(e); info[n.objgen] = e
     if par is not None: info[par.objgen]['kids'].append(e)
     for k in reversed(kids(n)): stack.append((k, n, pg, depth + 1))
-def text_of(e, depth=0):
+def _chars(e, depth=0):
+    out = [c for p, m in e['mcids'] for c in mc_chars.get((p, m), [])]
+    if depth < 40:
+        for k in e['kids']: out += _chars(k, depth + 1)
+    return out
+def raw_text(e, depth=0):
+    """The characters as stored (no spaces where the file has none): used where the audit decides by length."""
     if depth > 40: return ''
-    s = ''.join(mc_text(p, m) for p, m in e['mcids'])
-    return s + ''.join(text_of(k, depth + 1) for k in e['kids'])
+    return ''.join(c['text'] for p, m in e['mcids'] for c in mc_chars.get((p, m), [])) + ''.join(raw_text(k, depth + 1) for k in e['kids'])
+def text_of(e): return GT(_chars(e))           # what the digest shows: spaces from gaps (gaptext.py)
 def first_page(e):
     if e['mcids']: return min(p for p, _ in e['mcids'])
     ps = [first_page(k) for k in e['kids']]; ps = [p for p in ps if p]
@@ -103,7 +125,7 @@ SKIP = {'Document', 'Story', 'Sect', 'Art', 'Part', 'Link', 'Index', 'Reference'
 rare = []
 for s, es in by_style.items():
     if len(es) > RARE or s in SKIP or mapped(s) in ('Span', 'Link'): continue
-    avg = sum(len(text_of(e)) for e in es) / max(1, len(es))
+    avg = sum(len(raw_text(e)) for e in es) / max(1, len(es))
     if re.fullmatch(r'H[1-6]?', mapped(s)): continue                         # listed under headings
     if mapped(s) in ('L', 'LI', 'LBody', 'Lbl', 'Table', 'TR', 'TD', 'TH', 'THead', 'TBody', 'TFoot'): continue   # under lists / tables
     if avg > 110: continue                                                    # long body paragraphs: samples are enough
@@ -129,8 +151,13 @@ for e in elems:
 # ---- figures, with crops
 docs = pdfium.PdfDocument(SRC); renders = {}
 def crop(pg, box, name):
+    """Crop box (reader coordinates, measured from the full sheet) out of the rendering, which shows only the visible
+    area (CropBox): the box is shifted by the visible area's offset and clipped to it. None when nothing of it is visible."""
     if pg not in renders: renders[pg] = docs[pg - 1].render(scale=2).to_pil()
-    im = renders[pg]; x0, t, x1, b = [v * 2 for v in box]
+    im = renders[pg]; vx0, vt, vx1, vb = PL.pages[pg - 1].vis
+    x0, t, x1, b = max(box[0], vx0), max(box[1], vt), min(box[2], vx1), min(box[3], vb)
+    if x1 <= x0 or b <= t: return None
+    x0, t, x1, b = [v * 2 for v in (x0 - vx0, t - vt, x1 - vx0, b - vt)]
     c = im.crop((max(0, x0 - 4), max(0, t - 4), min(im.width, x1 + 4), min(im.height, b + 4)))
     if max(c.size) > 800: c.thumbnail((800, 800))
     c.convert('RGB').save(os.path.join(OUT, 'figures', name)); return c.size
@@ -148,9 +175,10 @@ for e in elems:
          'single_run': len(e['mcids']) == 1 and not e['kids'],
          'bbox_pt': [round(v) for v in box] if box else None, 'next': brief(nxt), 'image': None}
     if box and pg:
-        W, H = float(PL.pages[pg - 1].width), float(PL.pages[pg - 1].height)
-        f['area_pct'] = round(100 * (box[2] - box[0]) * (box[3] - box[1]) / (W * H), 1)
-        name = f'p{pg:03d}_{e["el"].objgen[0]}.png'; f['image'] = 'figures/' + name; f['image_px'] = crop(pg, box, name)
+        f['area_pct'] = round(100 * vis_part(pg, *box) / max(vis_area(pg), 1), 1)        # share of the visible page
+        name = f'p{pg:03d}_{e["el"].objgen[0]}.png'; px = crop(pg, box, name)
+        if px: f['image'] = 'figures/' + name; f['image_px'] = px
+        else: f['outside_visible_area'] = True            # drawn only outside the visible page area: no crop
     if f['alt'] and '\x00' in f['alt']: f['alt_has_nul'] = True; f['alt'] = f['alt'].replace('\x00', '\\x00')
     figures.append(f)
 
@@ -190,8 +218,8 @@ for pno, p in enumerate(PL.pages, 1):
     if not (inv['images'] or inv['paths']): continue
     name = f'page_{pno:03d}.png'
     page_figures.append({'page': pno, 'label': labels.get(pno), 'images': inv['images'], 'paths': inv['paths'], 'text_operators': inv['text'],
-                         'sample_text': clip(''.join(c['text'] for c in p.chars), 80), 'image': 'figures/' + name,
-                         'image_px': crop(pno, [0, 0, p.width, p.height], name)})
+                         'sample_text': clip(GT(p.chars), 80), 'image': 'figures/' + name,
+                         'image_px': crop(pno, [p.vis[0], p.vis[1], p.vis[2], p.vis[3]], name)})
 
 # ---- page map, repeated top/bottom lines, front matter
 def lines(pno, tagged_only=True):
@@ -200,18 +228,18 @@ def lines(pno, tagged_only=True):
     for c in sorted(cs, key=lambda c: (round(c['top']), c['x0'])):
         if rows and abs(rows[-1][0] - c['top']) < 3: rows[-1][1].append(c)
         else: rows.append([c['top'], [c]])
-    return [(top, ''.join(x['text'] for x in sorted(r, key=lambda x: x['x0']))) for top, r in rows]
+    return [(top, GT(sorted(r, key=lambda x: x['x0']))) for top, r in rows]
 page_map, rep = [], collections.defaultdict(list)
 for pno in range(1, len(pages) + 1):
-    ls = lines(pno); H = float(PL.pages[pno - 1].height)
+    ls = lines(pno)
     page_map.append(f'{pno}|{labels[pno]}|{clip(ls[0][1], 70) if ls else "(no tagged text)"}')
     by = collections.defaultdict(list)
     for c in PL.pages[pno - 1].chars:
         if c.get('mcid') is not None: by[c['mcid']].append(c)
     for m, cs in by.items():
-        top = min(c['top'] for c in cs); t = clip(''.join(c['text'] for c in cs), 80)
-        if top < 70 or top > H - 60:
-            rep[(re.sub(r'[0-9ivxlc]+', '#', t.lower()), 'top' if top < 70 else 'bottom')].append((pno, t, m))
+        top = min(c['top'] for c in cs); t = clip(GT(cs), 80)
+        if band(pno, top) != 'body':
+            rep[(re.sub(r'[0-9ivxlc]+', '#', t.lower()), band(pno, top))].append((pno, t, m))
 repeated = [{'pattern': k[0], 'position': k[1], 'count': len(v), 'pages': [v[0][0], v[-1][0]], 'example': v[0][1], 'runs': [(x[0], x[2]) for x in v]}
             for k, v in rep.items() if len(v) >= 3 and len(re.sub(r'[^a-z]', '', k[0])) >= 3]
 front = [{'page': p, 'label': labels[p], 'text': clip(' / '.join(t for _, t in lines(p)), 900)} for p in range(1, min(12, len(pages)) + 1)]
@@ -251,22 +279,22 @@ def font_of(e):
 def in_band(e):
     cs = chars_of(e)
     if not cs: return False
-    p = e['page'] or first_page(e) or 1; H = float(PL.pages[p - 1].height); top = min(c['top'] for c in cs)
-    return top < 70 or top > H - 60
+    p = e['page'] or first_page(e) or 1; top = min(c['top'] for c in cs)
+    return band(p, top) != 'body'
 
 # ---- every heading, whatever its count; and short body lines that look like headings
 headings, candidates = [], []
 for e in elems:
-    m = mapped(e['style']); t = text_of(e).strip()
+    m = mapped(e['style']); t = text_of(e).strip(); tr = raw_text(e).strip()     # tr: decisions by length, as before
     if re.fullmatch(r'H[1-6]?', m):
         size, bold = font_of(e); _, nxt = siblings(e)
         headings.append({'obj': ref(e['el']), 'style': e['style'], 'level': m, 'page': first_page(e), 'label': labels.get(first_page(e)),
                          'text': clip(t, 110), 'size': size, 'bold': bold,
                          'next': None if nxt is None else f'{nxt["style"]}: {clip(text_of(nxt), 50)}'})
-    elif m == 'P' and 2 <= len(t) <= 90 and (not in_band(e) or (font_of(e)[0] or 0) >= BODY * 1.3):
+    elif m == 'P' and 2 <= len(tr) <= 90 and (not in_band(e) or (font_of(e)[0] or 0) >= BODY * 1.3):
         # a large line in the top band is a chapter opener's title (running heads are body size or smaller)
         size, bold = font_of(e)
-        if size and (size >= BODY * 1.15 or (size >= BODY + 0.5 and len(t) <= 40) or (bold >= 0.9 and len(t) <= 70 and not t.endswith('.'))):
+        if size and (size >= BODY * 1.15 or (size >= BODY + 0.5 and len(tr) <= 40) or (bold >= 0.9 and len(tr) <= 70 and not tr.endswith('.'))):
             candidates.append({'obj': ref(e['el']), 'style': e['style'], 'page': first_page(e), 'label': labels.get(first_page(e)),
                                'text': clip(t, 90), 'size': size, 'bold': bold})
 candidates = sorted(candidates, key=lambda c: (-c['size'], c['page'] or 0))[:200]
@@ -278,9 +306,12 @@ lists = []
 for e in elems:
     if mapped(e['style']) != 'L': continue
     items = kids_mapped(e, 'LI')
+    lbl = kids_mapped(items[0], 'Lbl') if len(items) == 1 else []
+    rule = len(items) == 1 and len(e['kids']) == 1 and listrule.is_false_one_item_list(
+        1, [mapped(k['style']) for k in items[0]['kids']], text_of(lbl[0]) if lbl else '') and not items[0]['mcids']
     lists.append({'obj': ref(e['el']), 'style': e['style'], 'page': first_page(e), 'label': labels.get(first_page(e)), 'items': len(items),
                   'has_labels': any(kids_mapped(i, 'Lbl') for i in items),
-                  'first_items': [clip(text_of(i), 70) for i in items[:2]]})
+                  'first_items': [clip(text_of(i), 70) for i in items[:2]], **({'flattened_by_rule': True} if rule else {})})
 tables = []
 def rows_of(e):
     out = []
@@ -305,7 +336,7 @@ for f in figures:
     if f.get('bbox_pt') and f['page']: fig_boxes[f['page']].append(f['bbox_pt'])
 unowned, unowned_tot = [], collections.Counter()
 for pno, p in enumerate(PL.pages, 1):
-    H = float(p.height); runs = collections.defaultdict(list)
+    runs = collections.defaultdict(list)
     for c in p.chars:
         if c.get('mcid') is not None and (pno, c['mcid']) not in owned: runs[('orphan', c['mcid'])].append(c)
         elif c.get('mcid') is None and c.get('tag') != 'Artifact': runs[('untagged', round(c['top']))].append(c)
@@ -313,12 +344,12 @@ for pno, p in enumerate(PL.pages, 1):
     kinds = collections.Counter(k[0] for k in runs); bands = collections.Counter()
     infig = 0
     for k, cs in runs.items():
-        top = min(c['top'] for c in cs); bands['top' if top < 70 else 'bottom' if top > H - 60 else 'body'] += 1
+        top = min(c['top'] for c in cs); bands[band(pno, top)] += 1
         cx, cy = (cs[0]['x0'] + cs[0]['x1']) / 2, (cs[0]['top'] + cs[0]['bottom']) / 2
         infig += any(b[0] <= cx <= b[2] and b[1] <= cy <= b[3] for b in fig_boxes.get(pno, []))
     unowned_tot.update(kinds)
-    def band_of(cs): top = min(c['top'] for c in cs); return 'top' if top < 70 else 'bottom' if top > H - 60 else 'body'
-    runs_listed = [{'kind': k[0], 'band': band_of(cs), 'text': clip(''.join(c['text'] for c in cs), 50)}
+    def band_of(cs): return band(pno, min(c['top'] for c in cs))
+    runs_listed = [{'kind': k[0], 'band': band_of(cs), 'text': clip(GT(cs), 50)}
                    for k, cs in sorted(runs.items(), key=lambda kv: min(c['top'] for c in kv[1]))[:6]]
     unowned.append({'page': pno, 'label': labels[pno], 'orphan_runs': kinds['orphan'], 'untagged_runs': kinds['untagged'],
                     **({'page_figure': True} if any(f['page'] == pno for f in page_figures) else {}),
@@ -326,7 +357,7 @@ for pno, p in enumerate(PL.pages, 1):
                     'runs': runs_listed})
 
 # ---- scan and OCR signals
-full_page_imgs = sum(1 for p in PL.pages if any((i['x1'] - i['x0']) * (i['bottom'] - i['top']) > 0.8 * float(p.width) * float(p.height) for i in p.images))
+full_page_imgs = sum(1 for n, p in enumerate(PL.pages, 1) if any(vis_part(n, i['x0'], i['top'], i['x1'], i['bottom']) > 0.8 * vis_area(n) for i in p.images))
 tok_bad = tok_all = 0; worst = []
 for pno, p in enumerate(PL.pages, 1):
     toks = re.findall(r'\S+', ''.join(c['text'] if c['text'] != '\n' else ' ' for c in p.chars).replace('  ', ' '))
@@ -360,6 +391,9 @@ digest = {
     'headings': headings[:400],
     'heading_candidates_format': 'body-tagged lines whose size or weight looks like a heading',
     'heading_candidates': candidates,
+    'lists_format': 'a list marked flattened_by_rule has one item whose label is not a list marker (a paragraph\'s first word or a year '
+                    'taken for a label): the executor turns it into one paragraph by itself, so do not list it under flatten. To keep one '
+                    'as a real list, add {"obj": "…", "why": "…"} to "keep_lists"',
     'lists': lists[:200],
     'tables': tables[:100],
     'figures': figures,
