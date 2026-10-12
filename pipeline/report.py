@@ -54,9 +54,11 @@ record = {
                  'before': digest.get('document')},
     'run': run, 'workorder': wo, 'validation_dropped': val.get('dropped', []),
     'apply': {'applied': log.get('applied'), 'rejected': log.get('rejected'), 'failed': log.get('failed'),
-              'deferred': log.get('deferred'), 'han_only_runs': len(han), 'empty_notes_removed': log.get('empty_notes_removed', [])},
+              'deferred': log.get('deferred'), 'han_only_runs': len(han), 'empty_notes_removed': log.get('empty_notes_removed', []),
+              'ocr_words': log.get('ocr_words')},
     'verify': ver, 'timing_seconds': timing, 'raw_reply': reply, 'environment': log.get('environment'),
     'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier, 6),
+    'pdfua': {'before': digest.get('pdfua_check'), 'after': ver.get('pdfua')},
 }
 json.dump(record, open(os.path.join(R, 'record.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 if han:
@@ -99,7 +101,20 @@ pfw_bad = [p for p, x in vpf.items() if x.get('figures') != 1 or x.get('untagged
 stc = ver.get('structure'); idx = ver.get('index'); et = log.get('empty_tags') or {}
 et_lost = [h for h in et.get('headings') or [] if not h.get('found')]
 rb = run.get('reply_blocks')
+ow = log.get('ocr_words') or {}; ow_forms = ow.get('by_form') or []; ow_missing = [x for x in ow_forms if not x.get('found')]
+ow_run = run.get('ocr_words') or {}
+# veraPDF PDF/UA-1 before (audit) and after (verify), rule by rule: fixed, still failing, newly failing, or failing more
+vb, va = digest.get('pdfua_check') or {}, ver.get('pdfua') or {}
+vera_ok = vb.get('rules') is not None and va.get('rules') is not None
+VB = {r['rule']: r for r in vb.get('rules') or []}; VA = {r['rule']: r for r in va.get('rules') or []}
+v_fixed = [k for k in VB if k not in VA]; v_new = [k for k in VA if k not in VB]
+v_worse = [k for k in VA if k in VB and VA[k]['failed'] > VB[k]['failed']]; v_still = [k for k in VA if k in VB]
+def v_tot(s): return f'{s.get("failed_rules", 0)} rules ({s.get("failed_checks", 0):,} checks)' if not s.get('compliant') else 'passes'
 checks = [
+    ('PDF/UA (veraPDF): nothing newly failing', ok(not v_new and not v_worse) if vera_ok else 'not run',
+     (f'before {v_tot(vb)} → after {v_tot(va)} · {len(v_fixed)} fixed · {len(v_still)} still failing · {len(v_new)} newly failing'
+      + (f' · {len(v_worse)} failing more often' if v_worse else '') + ' (see "PDF/UA validation")') if vera_ok
+     else (va.get('skipped') or vb.get('skipped') or 'no result recorded')),
     ('Every page looks the same as the original', ok(ver.get('pixel_pages_differing') == []), f'{len(ver.get("pixel_pages_differing") or [])} pages differ'),
     ('Published text unchanged', ok(ver.get('text_pages_changed') == []), f'{len(ver.get("text_pages_changed") or [])} pages changed'),
     ('All content tagged or marked as decoration', ok(ver.get('untagged_chars') == 0 and not uo.get('total')),
@@ -113,6 +128,11 @@ checks = [
      or ('; '.join(f'{x}: its font program could not be read, so it was not checked' for x in ocr_unread))
      or ('; '.join(f'{x["font"]}: blank glyphs added for {x["glyph_references"]} glyph references on {x["pages"]} pages (replay: no page changed)'
                    for x in (log.get('ocr_fonts') or {}).get('replaced') or []) or 'no undefined glyphs in invisible text')),
+    *([('OCR words: every printed spelling attached', ok(not ow_missing and not ow_run.get('not_sent') and not digest.get('ocr_words_not_sent')),
+        f'{len(ow_forms)} misread forms given their printed spelling in {sum(x.get("found") or 0 for x in ow_forms)} places'
+        + (f' · {len(ow_missing)} not found in the page text' if ow_missing else '')
+        + (f' · {ow_run["not_sent"] + digest.get("ocr_words_not_sent", 0)} suspect forms not read by the AI' if ow_run.get('not_sent') or digest.get('ocr_words_not_sent') else ''))]
+      if ow_forms or digest.get('ocr_words') else []),
     ('Page-level figure wrap', ok(not pfw_noalt and not pfw_left and not pfw_bad),
      (pgs([w['page'] for w in pfw_wrapped]) + ' wrapped as one Figure' if pfw_wrapped else 'no page with only an untagged drawing')
      + (' · no alt text yet: ' + '; '.join(f'{pg(w["page"])} is a figure wrap. Write the alt text.' for w in pfw_noalt) if pfw_noalt else '')
@@ -183,6 +203,22 @@ L += [f'| {a} | {b} | {c} |' for a, b, c in checks]
 
 L += ['', '## For a person to check', '']
 n = 0
+if vera_ok and (VB or VA):
+    n += 1
+    WHO = {'executor': 'the pipeline', 'model': 'the AI', 'person': 'a person'}
+    def v_pages(r): ps = [e['page'] for e in r.get('examples') or [] if e.get('page')]; return ' (e.g. ' + pgs(ps[:3]) + ')' if ps else ''
+    L += [f'### {n}. PDF/UA validation (veraPDF), before and after', '',
+          f'{va.get("tool") or "veraPDF"}, PDF/UA-1 profile, on the original and on the result: before {v_tot(vb)}, after {v_tot(va)}. '
+          '"Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. '
+          '**Newly failing** means this run broke something the original passed. veraPDF checks machine-checkable rules only; PAC and a person still check the rest.', '',
+          '| Rule | What it checks | Who fixes | Before | After | Status |', '|---|---|---|---:|---:|---|']
+    order = [(k, '**newly failing**') for k in v_new] + [(k, '**failing more often**') for k in v_worse] \
+            + [(k, '**still failing**') for k in v_still if k not in v_worse] + [(k, 'fixed') for k in v_fixed]
+    for k, status in order:
+        r = VA.get(k) or VB[k]
+        L.append(f'| {k} | {r["description"][:110].replace("|", "/")} | {WHO.get(r["who"], r["who"])} | {VB[k]["failed"] if k in VB else 0} | '
+                 f'{VA[k]["failed"] if k in VA else 0} | {status}{v_pages(VA[k]) if k in VA else ""} |')
+    L.append('')
 if rb:
     n += 1; L += [f'### {n}. The model\'s reply held {rb["count"]} work orders', '',
                   f'The reply held {rb["count"]} JSON work orders. The last one, the model\'s final answer, was used exactly as written; '
@@ -262,7 +298,29 @@ if tq.get('producer_says_ocr') or (tq.get('pages_with_full_page_image', 0) > 0.5
     n += 1; L += [f'### {n}. Scanned book: the text layer comes from OCR', '',
                   f'{nc(tq.get("pages_with_full_page_image"))} of {nc(src.get("pages"))} pages are full-page images. Screen readers read the OCR text, '
                   f'which may contain recognition errors (suspect-token rate {nc(tq.get("suspect_tokens_per_1000"))} per 1,000). '
-                  f'Spot-check these pages against the scan: {pgs(tq.get("worst_pages", []))}. Corrections are an editorial decision.', '']
+                  f'Spot-check these pages against the scan: {pgs(tq.get("worst_pages", []))}. '
+                  + ('Misread words the AI could read from the scan are listed under "OCR words given their printed spelling"; other errors stay. '
+                     if ow_forms else '') + 'Corrections to the text itself are an editorial decision.', '']
+dw = {w['text']: w for w in digest.get('ocr_words') or []}
+if ow_forms or digest.get('ocr_words'):
+    n += 1; checked = ow_run.get('sent', len(dw))
+    L += [f'### {n}. OCR words given their printed spelling ({len(ow_forms)} forms, {sum(x.get("found") or 0 for x in ow_forms)} places)', '',
+          'The OCR misread these words, mostly letters with diacritics (ā or ū read as "ii"). The AI read each word from a crop of the scan. '
+          'Screen readers now speak the printed spelling, and copying gives it (ActualText); the OCR text underneath is unchanged, '
+          'so a text search still finds the OCR spelling. Apps that ignore ActualText (Preview and other PDFKit readers, some checkers) '
+          'still show the OCR spelling. Check each reading against the scan on its first page.', '']
+    if ow_forms:
+        L += ['| OCR text | Printed (AI\'s reading) | Places | First pages |', '|---|---|---:|---|']
+        L += [f'| {x["text"]} | {x["reads"]} | ' + (str(x['found']) if x.get('found') else '**not found**')
+              + f' | {pgs(dw.get(x["text"], {}).get("pages") or [])} |' for x in sorted(ow_forms, key=lambda x: -(x.get('found') or 0))]
+        L.append('')
+    L.append(f'- {checked} suspect forms were checked by the AI; {max(0, checked - len(ow_forms))} were judged correct as the OCR read them, or unreadable '
+             '(e.g. "Hawaii"), and left alone.')
+    if ow_missing: L.append(f'- **{len(ow_missing)} forms with a reading were not found in the page text** (split across text operators, or drawn inside a form): '
+                            + ', '.join(x['text'] for x in ow_missing[:15]) + '. A person checks these.')
+    unread = (ow_run.get('not_sent') or 0) + (digest.get('ocr_words_not_sent') or 0)
+    if unread: L.append(f'- **{unread} suspect forms were not read by the AI** (over the image limit, or past the audit\'s cap). A person checks them against the scan.')
+    L.append('')
 uc = digest.get('unowned_content', [])
 if uc:
     n += 1; tot = digest.get('unowned_content_totals', {})

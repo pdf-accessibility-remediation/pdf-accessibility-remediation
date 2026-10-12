@@ -337,6 +337,77 @@ text_quality = {'producer_says_ocr': 'Paper Capture' in str(pdf.docinfo.get('/Pr
                 'pages_with_full_page_image': full_page_imgs, 'suspect_tokens_per_1000': round(1000 * tok_bad / max(1, tok_all), 1),
                 'worst_pages': [p for _, p in sorted(worst, reverse=True)[:8]]}
 
+# ---- OCR words that look misread (scanned books only). OCR engines read letters they don't know as look-alikes:
+#      ā / ū → "ii" (nibbāna → "nibbiina", rūpa → "riipa"), ṇḍ → "t;l¢". Each distinct word form is cropped once from the
+#      page image (the scan the reader sees) onto numbered word sheets; the model reads the printed word from its crop
+#      and the executor gives every occurrence that spelling as ActualText. The OCR text itself is never changed.
+OCR_WORDS_MAX = 700             # distinct word forms sent, most frequent first; the rest are listed for a person
+SHEET_W, SHEET_H, CELL_W = 1200, 900, 600
+SUSPECT = re.compile(r'(?<=[A-Za-z])ii|ii(?=[a-z])|[A-Za-z][;:¢£·|][A-Za-z¢£]|[¢£]')
+def word_core(t):
+    """The word without the punctuation around it (the executor splits words the same way)."""
+    return re.sub(r'^\W+|\W+$', '', t)
+ocr_words, ocr_word_sheets, ocr_words_not_sent = [], [], 0
+is_scan = text_quality['producer_says_ocr'] or full_page_imgs > 0.5 * len(pages)
+if is_scan:
+    forms = collections.OrderedDict()
+    for pno, p in enumerate(PL.pages, 1):
+        word = []
+        def flush():
+            if not word: return
+            core = word_core(''.join(c['text'] for c in word))
+            if core and SUSPECT.search(core) and not re.fullmatch(r'[ivxlcdm]+', core.lower()):
+                f = forms.setdefault(core, {'count': 0, 'pages': [], 'at': None})
+                f['count'] += 1
+                if pno not in f['pages']: f['pages'].append(pno)
+                if f['at'] is None:
+                    f['at'] = (pno, [min(c['x0'] for c in word), min(c['top'] for c in word), max(c['x1'] for c in word), max(c['bottom'] for c in word)])
+            word.clear()
+        for c in p.chars:
+            if c.get('mcid') is None or c['text'].isspace() or (word and abs(c['top'] - word[-1]['top']) > 3): flush()
+            if c.get('mcid') is not None and not c['text'].isspace(): word.append(c)
+        flush()
+    ranked = sorted(forms.items(), key=lambda kv: -kv[1]['count'])
+    ocr_words_not_sent = max(0, len(ranked) - OCR_WORDS_MAX)
+    ranked = ranked[:OCR_WORDS_MAX]
+    from PIL import Image, ImageDraw, ImageFont
+    os.makedirs(os.path.join(OUT, 'ocr_words'), exist_ok=True)
+    crops = {}
+    by_pg = collections.defaultdict(list)
+    for i, (core, f) in enumerate(ranked, 1): by_pg[f['at'][0]].append((i, f['at'][1]))
+    for pg, items in sorted(by_pg.items()):                      # one page rendered at a time: a 300-page scan never sits in memory
+        im = docs[pg - 1].render(scale=3).to_pil().convert('L')
+        for i, (x0, t, x1, b) in items:
+            c = im.crop((max(0, int((x0 - 4) * 3)), max(0, int((t - 3) * 3)), min(im.width, int((x1 + 4) * 3)), min(im.height, int((b + 3) * 3))))
+            if c.width > CELL_W - 70: c = c.resize((CELL_W - 70, max(1, c.height * (CELL_W - 70) // c.width)))
+            crops[i] = c
+        im.close()
+    try: font = ImageFont.load_default(size=22)
+    except TypeError: font = ImageFont.load_default()
+    sheet, n_sheet, x, y, row_h, first = None, 0, 0, 0, 0, 1
+    def save_sheet(last):
+        global n_sheet
+        n_sheet += 1; name = f'ocr_words/sheet_{n_sheet:02d}.png'
+        sheet.save(os.path.join(OUT, name), optimize=True)
+        ocr_word_sheets.append({'image': name, 'ids': [first, last]})
+    for i, (core, f) in enumerate(ranked, 1):
+        ocr_words.append({'id': i, 'text': core, 'count': f['count'], 'pages': f['pages'][:3]})
+        c = crops[i]; h = max(c.height, 30) + 10
+        if sheet is not None and y + h > SHEET_H:                  # next column, or a new sheet
+            x, y = x + CELL_W, 0
+            if x >= SHEET_W: save_sheet(i - 1); sheet, first = None, i
+        if sheet is None: sheet = Image.new('L', (SHEET_W, SHEET_H), 255); x = y = 0; draw = ImageDraw.Draw(sheet)
+        draw.text((x + 4, y + (h - 24) // 2), str(i), fill=0, font=font)
+        sheet.paste(c, (x + 66, y + 5)); draw.line((x, y + h - 1, x + CELL_W - 10, y + h - 1), fill=200)
+        y += h
+    if sheet is not None: save_sheet(len(ranked))
+
+# ---- the same validator before and after: veraPDF PDF/UA-1 on the original (verify.py runs it on the result).
+#      Every failed rule is kept here for the before/after comparison; decide.py sends the model only the rules it can
+#      act on, and report.py lists the rest for the executor or a person.
+import vera
+pdfua_check = vera.run(SRC)
+
 af = pdf.Root.get('/AcroForm')
 with pdf.open_metadata(set_pikepdf_as_editor=False, update_docinfo=False) as meta: xmp_title = meta.get('dc:title')
 digest = {
@@ -369,6 +440,14 @@ digest = {
     'unowned_content_totals': dict(unowned_tot),
     'unowned_content': unowned[:300],
     'text_quality': text_quality,
+    'ocr_words_format': 'scanned books only: distinct OCR word forms that look misread (ii for ā/ū, stray ; ¢ £ inside a word), most frequent first; '
+                        'each is cropped from the scan on a word sheet (ocr_word_sheets), labelled with its id. count = occurrences; pages = first PDF pages',
+    'ocr_words': ocr_words,
+    'ocr_word_sheets': ocr_word_sheets,
+    'ocr_words_not_sent': ocr_words_not_sent,
+    'pdfua_check_format': 'veraPDF PDF/UA-1 on this file, one entry per failed rule: what it checks, failed checks, up to 5 examples '
+                          '(obj, tag type, PDF page). Only rules a work-order decision can fix are listed here',
+    'pdfua_check': pdfua_check,
     'repeated_lines': sorted(repeated, key=lambda r: -r['count'])[:25],
     'page_map_format': 'page|printed label|first tagged line',
     'page_map': page_map,
@@ -381,4 +460,8 @@ json.dump(digest, open(os.path.join(OUT, 'digest.json'), 'w', encoding='utf-8'),
 print(f'digest: {len(styles)} styles · {len(headings)} headings + {len(candidates)} candidates · {len(lists)} lists · {len(tables)} tables · '
       f'unowned {dict(unowned_tot)} · {len(rare)} other listed · {len(figures)} figures ({sum(1 for f in figures if f["image"])} crops) · '
       f'{len(page_figures)} page figures · '
-      f'{len(repeated)} repeated lines · {len(page_map)} pages · {os.path.getsize(os.path.join(OUT, "digest.json")) // 1024} KB')
+      + (f'{len(ocr_words)} suspect OCR words on {len(ocr_word_sheets)} sheets · ' if ocr_words else '')
+      + f'{len(repeated)} repeated lines · {len(page_map)} pages · {os.path.getsize(os.path.join(OUT, "digest.json")) // 1024} KB')
+print(vera.line(pdfua_check))
+if pdfua_check.get('compliant'):
+    print('  this file already passes veraPDF PDF/UA-1: a light review may be all it needs (PAC still checks more)')
