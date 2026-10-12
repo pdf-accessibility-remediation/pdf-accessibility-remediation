@@ -24,6 +24,7 @@ import sys, os, re, json, time, base64, hashlib, argparse, datetime, urllib.requ
 
 # The model used when no --model / MODEL= is given. Any OpenRouter model id (https://openrouter.ai/models).
 DEFAULT_MODEL = 'anthropic/claude-sonnet-5.5'
+API_TIMEOUT = 1800        # seconds to wait for the reply: 48,000 output tokens at ~40 tokens/s is ~20 minutes
 
 # The temperature sent with every request. Changing it changes every run that sends one; there is no command-line override.
 TEMPERATURE = 0
@@ -98,13 +99,13 @@ if sys.argv[1:] == ['--check-key']:
 ap = argparse.ArgumentParser()
 ap.add_argument('audit_dir'); ap.add_argument('run_dir')
 ap.add_argument('--model', default=DEFAULT_MODEL, help=f'OpenRouter model id (default {DEFAULT_MODEL}); auto:sonnet / auto:opus / auto:haiku pick the newest Claude of that family')
-PROMPT_NAME = 'workorder_v6.md'
+PROMPT_NAME = 'workorder_v7.md'
 DEFAULT_PROMPT = next((p for p in (os.path.join(HERE, 'prompts', PROMPT_NAME),                    # pipeline/prompts/
                                    os.path.join(os.path.dirname(HERE), 'prompts', PROMPT_NAME))   # prompts/ next to pipeline
                        if os.path.isfile(p)), os.path.join(HERE, 'prompts', PROMPT_NAME))
 ap.add_argument('--prompt', default=DEFAULT_PROMPT, help=f'system prompt file (default: {PROMPT_NAME} in pipeline/prompts/ or ../prompts/)')
 ap.add_argument('--max-usd', type=float, default=2.0, help='refuse to send if the worst-case cost estimate is higher (Claude models only: the estimate uses Claude token math)')
-ap.add_argument('--max-tokens', type=int, default=16000)
+ap.add_argument('--max-tokens', type=int, default=48000)
 ap.add_argument('--no-images', action='store_true')
 ap.add_argument('--max-images', type=int, default=100, help="figure images sent per request (Anthropic's limit is 100); the rest go to a person")
 ap.add_argument('--dry-run', action='store_true', help='write the request and the cost estimate; do not call the API')
@@ -274,7 +275,7 @@ else:
         sys.exit(f'OpenRouter error {code}: {message or "(no message)"}. {charged}.{hint} See response.json / error.txt')
     t0 = time.time()
     try:
-        with urllib.request.urlopen(req, timeout=900) as r: resp = json.load(r)
+        with urllib.request.urlopen(req, timeout=API_TIMEOUT) as r: resp = json.load(r)
     except urllib.error.HTTPError as e:
         err = e.read().decode('utf-8', 'replace'); save('error.txt', err)
         if 'data policy' in err.lower() or 'data_collection' in err.lower():
@@ -297,6 +298,9 @@ if isinstance(reply, list): reply = ''.join(p.get('text', '') for p in reply)
 save('reply.txt', reply)
 u = resp.get('usage') or {}
 run['usage'] = {'prompt_tokens': u.get('prompt_tokens'), 'completion_tokens': u.get('completion_tokens'), 'cost_usd': u.get('cost')}
+_rt = (u.get('completion_tokens_details') or {}).get('reasoning_tokens')      # OpenRouter's split of the output tokens
+if _rt is not None and u.get('completion_tokens') is not None:
+    run['usage'].update(reasoning_tokens=_rt, visible_tokens=u['completion_tokens'] - _rt)
 run['finish_reason'] = resp['choices'][0].get('finish_reason')
 
 # ------------------------------------------------------------------ parse and validate
@@ -349,7 +353,8 @@ styles = {s['style'] for s in digest['styles']}
 ALLOWED = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'Span', 'Caption', 'Note', 'Div', 'Figure'}
 KNOWN = {'schema', 'sections', 'artifacts', 'document', 'rolemap', 'merges', 'actual_text', 'retype', 'flatten', 'alt',
          'move_to_document_start', 'captions', 'lists', 'toc', 'notes', 'language', 'links', 'move_section',
-         'fix_figure_order', 'remove_empty_containers', 'deferrals', 'notes_for_reviewer', 'adopt_orphans', 'page_figures'}
+         'fix_figure_order', 'remove_empty_containers', 'deferrals', 'notes_for_reviewer', 'adopt_orphans', 'page_figures',
+         'keep_lists'}
 dropped = []
 def drop(where, item, why): dropped.append({'where': where, 'item': item, 'why': why})
 def page_ok(p): return isinstance(p, int) and 1 <= p <= N
@@ -410,6 +415,10 @@ if not_sent:
                                            'why': 'Claude could not see them; a person writes these alts. Objects: ' + ', '.join(sorted(not_sent))})
 if 'flatten' in wo:
     wo['flatten'] = keep('flatten', wo['flatten'], lambda it: None if isinstance(it, dict) and it.get('obj') in flat_objs else 'not a list or table listed in the digest')
+if 'keep_lists' in wo:
+    rule_objs = {l['obj'] for l in digest.get('lists') or [] if l.get('flattened_by_rule')}
+    wo['keep_lists'] = keep('keep_lists', wo['keep_lists'], lambda it: None if isinstance(it, dict) and it.get('obj') in rule_objs
+                            else 'not a list the one-item rule would flatten')
 if 'merges' in wo:
     wo['merges'] = keep('merges', wo['merges'], lambda r: None if r.get('style') in styles and r.get('direction') in ('next', 'prev')
                         and all(w in styles for w in r.get('with', [])) else 'unknown style or direction')

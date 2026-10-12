@@ -11,18 +11,47 @@ da, db = pdfium.PdfDocument(A), pdfium.PdfDocument(B)
 out['pixel_pages_differing'] = [i + 1 for i in range(len(da)) if ImageChops.difference(
     da[i].render(scale=1.2).to_pil().convert('RGB'), db[i].render(scale=1.2).to_pil().convert('RGB')).getbbox()]
 # 2 text + marking
-tdiff, untag, art = [], 0, 0
+tdiff, untag, art, offp = [], 0, 0, {}
+_alog = json.load(open(B + '.log.json')) if os.path.exists(B + '.log.json') else {}   # apply.py's log: font-map corrections
+FONTMAP = {(x['font'], x['old']): x['new'] for x in (_alog.get('font_maps') or {}).get('for_verify') or []}
+def _as_fixed(c): return FONTMAP.get((c.get('fontname'), c['text']), c['text'])     # the original's text with those corrections
+nouni, pua = collections.Counter(), collections.Counter(); pua_pages = collections.Counter()   # 3.6, read-aloud text only
+def _no_unicode(t): return t.startswith('(cid:') or t == '\ufffd' or (len(t) == 1 and ord(t) < 32 and t not in '\t\n\r')
 _CM = set()
 with pdfplumber.open(A) as pa, pdfplumber.open(B) as pb:
     for i in range(len(pa.pages)):
         PA, PB = pa.pages[i], pb.pages[i]
         ca, cb = PA.chars, PB.chars
-        if ''.join(c['text'] for c in ca) != ''.join(c['text'] for c in cb): tdiff.append(i + 1)
+        if ''.join(_as_fixed(c) for c in ca) != ''.join(c['text'] for c in cb): tdiff.append(i + 1)
         untag += sum(1 for c in cb if c.get('mcid') is None and c.get('tag') != 'Artifact')
         art += sum(1 for c in cb if c.get('tag') == 'Artifact')
+        mb, crop = PB.mediabox, PB.cropbox            # text outside the visible page area that is not an artifact
+        vx0, vx1, vt, vb = max(crop[0], mb[0]) - mb[0], min(crop[2], mb[2]) - mb[0], mb[3] - min(crop[3], mb[3]), mb[3] - max(crop[1], mb[1])
+        n_off = sum(1 for c in cb if c['text'].strip() and c.get('tag') != 'Artifact'
+                    and (c['x1'] <= vx0 or c['x0'] >= vx1 or c['bottom'] <= vt or c['top'] >= vb))
+        if n_off: offp[i + 1] = n_off
+        for c in cb:
+            if c.get('tag') == 'Artifact': continue
+            t = c['text']
+            if _no_unicode(t): nouni[i + 1] += 1
+            elif len(t) == 1 and 0xE000 <= ord(t) <= 0xF8FF: pua[ord(t)] += 1; pua_pages[i + 1] += 1
         content_mcids_page = {(i + 1, c['mcid']) for c in cb if c.get('mcid') is not None}
         _CM.update(content_mcids_page); PA.close(); PB.close()
 out['text_pages_changed'] = tdiff; out['untagged_chars'] = untag; out['artifact_chars'] = art
+out['offpage_chars_read_aloud'] = sum(offp.values()); out['offpage_pages'] = sorted(offp)[:50]
+with pikepdf.open(B) as _p:                       # pages with annotations, and those without /Tabs /S (WCAG 2.4.3)
+    _ann = [i + 1 for i, pg in enumerate(_p.pages) if pg.obj.get('/Annots')]
+    _nots = [i + 1 for i, pg in enumerate(_p.pages) if pg.obj.get('/Annots') and str(pg.obj.get('/Tabs')) != '/S']
+out['tabs_missing'] = {'count': len(_nots), 'pages_with_annotations': len(_ann), 'pages': _nots[:50]}
+def _ranges(counter):
+    out_, run = [], []
+    for o in sorted(counter) + [None]:
+        if run and (o is None or o != run[-1] + 1):
+            out_.append({'range': f'U+{run[0]:04X}' + (f'–U+{run[-1]:04X}' if len(run) > 1 else ''), 'count': sum(counter[x] for x in run)}); run = []
+        if o is not None: run.append(o)
+    return sorted(out_, key=lambda r: -r['count'])
+out['no_unicode_chars'] = {'count': sum(nouni.values()), 'pages': sorted(nouni)[:50]}
+out['private_use_chars'] = {'count': sum(pua.values()), 'pages': sorted(pua_pages)[:50], 'ranges': _ranges(pua)[:8]}
 # 3 tree
 pdf = pikepdf.open(B); st = pdf.Root.StructTreeRoot
 pages = list(pdf.pages); pidx = {p.obj.objgen: i + 1 for i, p in enumerate(pages)}
@@ -40,6 +69,7 @@ def mapped(s):
         if s in RM: s = RM[s]
     return s
 owner, objr_owner, stale, types, nested_links, seq = {}, {}, 0, collections.Counter(), 0, []
+owner_stm = {}                                     # (form objgen, MCID) → tag, for MCRs that point into a form XObject
 root_kids = [str(k.get('/S')) for k in (st.K if isinstance(st.K, pikepdf.Array) else [st.K])]
 stack = [(k, st, None, False) for k in reversed(list(st.K) if isinstance(st.K, pikepdf.Array) else [st.K])]
 while stack:
@@ -49,6 +79,7 @@ while stack:
     t = str(n.get('/Type'))
     if t == '/MCR':
         if '/Stm' not in n: owner[(pidx[n.Pg.objgen] if '/Pg' in n else pg, int(n.MCID))] = par.objgen   # /Stm: numbered inside a form XObject
+        else: owner_stm[(n.Stm.objgen, int(n.MCID))] = par.objgen
         continue
     if t == '/OBJR':
         if n.Obj.objgen in live: objr_owner[n.Obj.objgen] = par.objgen
@@ -68,7 +99,30 @@ for (pg, m), og in owner.items():
     if got is None: missing += 1
     elif got.objgen != og: mism += 1
 content_mcids = _CM                                # collected in the single pass above
-unowned = len(content_mcids - set(owner))
+# A form XObject with its own /StructParents numbers its marked content itself (OCRmyPDF's text layer once tagged by
+# OpenDataLoader is one). pdfplumber reports those MCIDs as if they were the page's, so they are counted here against
+# the MCRs that point into the form (/Stm) instead. Files without such forms are not affected (no extra pass).
+form_mc = set(); page_mc_seen = set()
+if any(isinstance(o, pikepdf.Stream) and o.get('/Subtype') == '/Form' and '/StructParents' in o for o in pdf.objects):
+    def _mc(owner_, res, pno, form, depth):
+        try: ops = pikepdf.parse_content_stream(owner_)
+        except Exception: return
+        for a, o in ops:
+            o = str(o)
+            if o == 'BDC' and len(a) > 1 and isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1]:
+                (form_mc.add((form.objgen, pno, int(a[1].MCID))) if form is not None else page_mc_seen.add((pno, int(a[1].MCID))))
+            elif o == 'Do' and depth < 4 and res is not None:
+                x = (res.get('/XObject') or {}).get(a[0])
+                if x is not None and x.get('/Subtype') == '/Form':
+                    _mc(x, x.get('/Resources', res), pno, x if '/StructParents' in x else form, depth + 1)
+    for i_, p_ in enumerate(pages, 1): _mc(p_, p_.obj.get('/Resources'), i_, None, 0)
+    content_mcids = {x for x in content_mcids if x in page_mc_seen or x not in {(pn, m) for _, pn, m in form_mc}}
+    for fo, pn, m in form_mc:
+        arr = PT.get(int(pdf.get_object(fo).StructParents)); og = owner_stm.get((fo, m))
+        got = arr[m] if arr is not None and m < len(arr) else None
+        if og is not None and got is None: missing += 1
+        elif og is not None and got.objgen != og: mism += 1
+unowned = len(content_mcids - set(owner)) + len({(fo, m) for fo, _, m in form_mc} - set(owner_stm))
 annot_bad = [(live[og], og) for og in live if og not in objr_owner or
              (PT.get(int(pdf.get_object(og).get('/StructParent', -1))) is None) or
              PT[int(pdf.get_object(og).StructParent)].objgen != objr_owner[og]]
@@ -124,7 +178,8 @@ def _count_outline():
         def c(items): return sum(1 + c(i.children) for i in items)
         return c(ol.root)
 out['bookmarks'] = {'items': _count_outline(), 'pages': len(pages)}
-out['doc'] = {'title': str(pdf.docinfo.Title), 'lang': str(pdf.Root.Lang), 'DisplayDocTitle': bool(pdf.Root.ViewerPreferences.DisplayDocTitle),
+out['doc'] = {'title': str(pdf.docinfo.get('/Title', '')), 'lang': str(pdf.Root.get('/Lang', '')),          # missing → '' (shown as not set)
+              'DisplayDocTitle': bool((pdf.Root.get('/ViewerPreferences') or {}).get('/DisplayDocTitle', False)),
               'acroform': '/AcroForm' in pdf.Root, 'encrypted': pdf.is_encrypted}
 with pdf.open_metadata(set_pikepdf_as_editor=False, update_docinfo=False) as m: out['doc']['xmp_title'] = str(m.get('dc:title')); out['doc']['pdfua_stamped'] = any('pdfuaid' in k for k in m.keys())
 # 4 content that is neither tagged nor an artifact (text, paths, images), and font problems, in one pass over

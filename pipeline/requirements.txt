@@ -3,3 +3,4 @@ pdfplumber==0.11.9
 pypdfium2==5.7.1
 pillow==12.3.0
 fonttools==4.62.1
+opendataloader-pdf==2.5.12
