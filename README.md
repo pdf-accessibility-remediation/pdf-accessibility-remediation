@@ -12,14 +12,14 @@ original.pdf ─► intake.py ─► audit.py ─► decide.py (model via OpenRo
 
 An **untagged** PDF first goes through `intake.py` (local tools, no model, no cost): OCR where pages have no text, then auto-tagging, with checks after each step (see "Intake: untagged PDFs"). A tagged PDF skips it.
 
-The same validator, veraPDF's PDF/UA-1 profile, runs on the original during the audit and on the result during verify. `review.md` sorts every failed rule into fixed, still failing, or **newly failing** (something the run broke, flagged as a CHECK). See [PDF/UA validation (veraPDF)](#pdfua-validation-verapdf).
+The same validator, veraPDF's WCAG 2.2 machine profile (which includes the PDF/UA-1 rules), runs on the original during the audit and on the result during verify. `review.md` sorts every failed rule into fixed, still failing, or **newly failing** (something the run broke, flagged as a CHECK). See [Verification with veraPDF](#verification-with-verapdf).
 
 ## Automated checks
 
 GitHub Actions runs the following checks:
 
 - **CI** — Compiles Python sources, validates shell-script syntax, installs dependencies, and runs `pip-audit`.
-- **PDF validation** — Runs `audit.py` against a sample PDF when pipeline or sample files change.
+- **PDF validation** — Installs Java 17 and veraPDF, then runs `audit.py` (with veraPDF on the original) against a sample PDF when pipeline or sample files change.
 - **Dependency review** — Reviews dependency changes in pull requests and fails on high-severity vulnerabilities.
 - **CodeQL** — Performs static security analysis of the Python code on pushes, pull requests, and weekly.
 
@@ -31,8 +31,8 @@ These workflows do not run `run_api.sh` or make OpenRouter API calls automatical
 2. **For untagged PDFs (intake), once:** `brew install ocrmypdf tesseract-lang` (OCRmyPDF 17 brings Tesseract and Ghostscript; `tesseract-lang` adds the language packs, including `chi_sim`, `chi_tra`, `jpn`, `kor`) and Java 11 or later for auto-tagging (for example `brew install --cask temurin`; any Java 11+ install works, e.g. Homebrew's `openjdk@21`). OCRmyPDF is installed by Homebrew, not pip, because its pip package needs newer pikepdf and pdfminer versions than this pipeline pins. `opendataloader-pdf` (the auto-tagger) comes with `requirements.txt`. These are checked only when a book needs them: tagged books, teammates who only run tagged books and the GitHub checks need none of them.
 3. **Key:** put `OPENROUTER_API_KEY=…` in a `.env` file in `pipeline/` or any folder above it (e.g. the repo root). Keep `.env` in `.gitignore`.
 4. **Check the key (free):** `python3 decide.py --check-key`.
-5. **veraPDF (recommended):** `brew install verapdf` on a Mac (it needs Java, like the auto-tagger), or the installer from https://verapdf.org. pip can't install it: it is a Java program, not a Python package. Without it the pipeline still runs; the before/after PDF/UA comparison is skipped and `review.md` says so.
-6. **Prompt:** `workorder_v7.md` goes in `pipeline/prompts/` or in `prompts/` beside `pipeline/`. Older versions are kept only as a record.
+5. **veraPDF** (WCAG and PDF/UA checks, see "Verification with veraPDF"): needs Java 17 (`sudo apt install openjdk-17-jre-headless`, or any Java 17 runtime on `PATH`; the auto-tagger's Java works too if it is 17 or later). Then, from `pipeline/`, `bash verapdf/install.sh` installs veraPDF 1.30.3 in `~/.local/opt/verapdf` and prints the line to add to your shell profile: `export VERAPDF=~/.local/opt/verapdf/verapdf`. pip can't install it: it is a Java program, not a Python package. `python3 vera.py --check` prints the version. Every run checks it before any paid call and stops if it is missing; `VERAPDF=off` runs without it, and `review.md` then says its rows were not run.
+6. **Prompt:** `workorder_v8.md` goes in `pipeline/prompts/` or in `prompts/` beside `pipeline/`. Older versions are kept only as a record.
 7. **PDFs:** originals go in `samples/<name>/` and are never written to. Outputs go in `runs/<name>/<run-label>/` (single runs) or `runs/batches/<label>/<name>/` (batches) beside `pipeline/` (set `RUNS_DIR` to put them elsewhere). Keep both out of git: the books are in copyright.
 
 ## Run
@@ -58,6 +58,8 @@ The short name (`clans`) names the run folder. The result is named after the ori
 | `MODEL=openai/gpt-5` | Any OpenRouter model id for this run or batch (default: `DEFAULT_MODEL` in `decide.py`, `anthropic/claude-sonnet-5.5`) |
 | `MAX_TOKENS=64000` | Output limit for the model's reply, reasoning included (default 48,000; Sonnet 5.5 allows up to 128,000 on OpenRouter). Raise it when a reply is cut off |
 | `RUNS_DIR=/path` | Writes runs somewhere other than `PDFREM/runs/` |
+| `ALLOW_PDF20=1` | Lets a PDF 2.0 book (or one with namespaced tags) through instead of stopping it. Only for building PDF 2.0 support; never on real work (see "Not supported yet: PDF 2.0") |
+| `VERAPDF=off` | Runs without veraPDF; review.md says its rows were not run. `VERAPDF=/path/to/verapdf` uses a launcher not on `PATH`; `VERAPDF_TIMEOUT` (seconds, default 900) limits each veraPDF run |
 | `FORCE_OCR=1` | Intake: when the text-layer test says a book's text layer is unusable, OCR every page anyway (page images + new invisible OCR text; the old text is replaced). Without it such a book stops, flagged for a person. **Unverified:** in testing, force OCR stopped at its own after-OCR check on every page (see "Intake") |
 | `OCR_LANG=jpn+eng` | Intake: Tesseract languages. By default: `eng`, plus `jpn` when kana are found and `kor` for hangul; Chinese characters with no kana are never guessed as Chinese or Japanese, so set this for them (e.g. `chi_tra+eng`) |
 | `OCR=off` | Intake: no OCR; image-only pages are listed as having no text |
@@ -146,7 +148,7 @@ In a book list, relative paths count from the list file's folder. Short names mu
 
 | File | For | What it is |
 |---|---|---|
-| `<original>_remediated.pdf` | everyone | The result. Run PAC on this (named by `OUT` or the book list if you set one) |
+| `<original>_remediated.pdf` | everyone | The result. Run PAC 2026 on this (named by `OUT` or the book list if you set one) |
 | `review.md` | the human reviewer | Automated checks (including exactly one H1, bookmarks present, every decision applied, nothing deferred: a green row is evidence, not proof); every alt text the AI wrote (before and after) and the ones it left alone; heading levels and spoken heading text; what was hidden as decoration; reading-order moves; what the AI and the executor deferred; anything not applied |
 | `record.json` | the archive | Everything vital in one file: source fingerprint, model, prompt version, tokens, cost, the full work order, what was applied, rejected and deferred, the verification results, and Claude's raw reply. `apply.py` accepts it in place of a work order, to re-apply a run |
 | `han_review.csv` | a Japanese / Chinese reader | Only when the book has Han-only CJK runs: one row per run, with a blank decision column |
@@ -162,16 +164,91 @@ Nothing else is kept. The working files (digest, figure crops, raw request and r
 S=../samples/cadaverous/<file>.pdf
 R=../runs/cadaverous/api-run1;  A=$R/_audit
 python3 intake.py $S $R/_intake                           # untagged only: OCR + auto-tag; then S=$R/_intake/intake.pdf
-python3 audit.py  $S $A                                   # no model, ~30 s
+python3 audit.py  $S $A                                   # no model, ~30 s; also veraPDF on the original → $A/verapdf.json
 python3 decide.py $A $R --dry-run                         # cost estimate + available credit; sends nothing
 python3 decide.py $A $R                                   # the API call
 O=$R/<file>_remediated.pdf
 python3 apply.py  $S $R/workorder.json $O                 # no model, ~80 s
-python3 verify.py $S $O                                   # no model, ~3 min
+python3 verify.py $S $O                                   # no model, ~3 min; veraPDF on the result runs alongside
 python3 report.py $R $A                                   # review.md, record.json, han_review.csv; add --keep to keep working files
 ```
 
 If `decide.py` fails after the API call, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and a higher `MAX_TOKENS` (see above). For errors from OpenRouter itself, see "When the model call fails".
+
+## Verification with veraPDF
+
+The goal is WCAG 2.2 AA. [veraPDF](https://github.com/veraPDF) checks the original (in `audit.py`) and the result (in `verify.py`) with its **WCAG 2.2 machine** profile, pinned in `pipeline/verapdf/WCAG-2-2-Machine.xml` (from veraPDF-validation-profiles branch `rel/1.30`). That profile holds every machine-checkable PDF/UA-1 rule and a few WCAG-only ones (contrast, small text, link descriptions, redundant tags). veraPDF's CLI has no flavour for it, so it is passed with `-p`.
+
+Not every PDF/UA rule matters for WCAG. `pipeline/verapdf/rules.json` sorts every rule in the profile:
+
+- **wcag**: a failure fails a success criterion (listed per rule). Counted in review.md.
+- **ua_only**: a PDF/UA requirement with no success criterion behind it (XMP metadata and dc:title, Note IDs, font program embedding, widths and encodings, optional content, embedded files, XFA, print-production annotations). Listed apart and not counted.
+
+A rule veraPDF reports that is not in `rules.json` counts as WCAG and is named as unclassified in review.md, so someone adds it. After updating the profile, re-check that every rule is listed.
+
+`vera.py` keeps one entry per failed rule, not one per failure (a scanned book can fail 70,000 checks): the rule, what it checks, how many checks failed, its pages, five examples with their object and PDF page, and who can fix it:
+
+| Who fixes | Rules | How it is used |
+|---|---|---|
+| the pipeline | flags, `DisplayDocTitle`, links tied and described, tab order, note IDs, the OCR layer's undefined glyphs, role-map loops (7.1-6), standard tags remapped (7.1-7), malformed `/Lang` spelling (7.2-29) | not sent to the model: the executor fixes these whatever the work order says, and review.md says how many it changed |
+| the AI | figure alt text, heading levels, natural language, untagged content, role mapping (including styles with no mapping), document title, table headers (7.5-x), broken table, list and contents structure | sent to the model in the digest (`pdfua_check`) as rule, count, example objects, the work-order `key` that fixes it and `objs` (up to 20 tags it failed on) |
+| a person | fonts, Formula alt, Figure bounding boxes, the PDF/UA claim | not sent; listed in `review.md` as known gaps |
+
+Which rules belong to whom, and which work-order key fixes each AI rule, is set in `pipeline/vera.py` (`EXECUTOR`, `KEY`, `PERSON`). The AI must address every rule it is sent with its key, or defer it naming the rule (prompt v8, step 9).
+
+**Targeting from the original's results.** The audit uses veraPDF's findings to make the flagged tags reachable: a Figure with no alt and no image of its own (a vector logo or drawing) gets a crop of its whole page (`image_is_whole_page`), so the model can see it; a table whose cells veraPDF flags is marked with `pdfua_rules` (and kept even past the 100-table cap).
+
+**Executor fixes for veraPDF rules** run on every book (after the work order, before the index rebuild) and change no page's look or text. Each records what it changed under `rule_fixes` in the apply log, shown in review.md's "Who fixes" column:
+
+| Rule | Fix |
+|---|---|
+| 7.1-6 | A RoleMap chain that loops is cut where it closes (that style → P) and listed for a person |
+| 7.1-7 | A standard tag remapped in the RoleMap (sands: `Caption → P`): its elements are retyped to what the RoleMap made them, and the entry removed |
+| 7.2-29 | `/Lang` spelling tidied (`en_US` → `en-US`, case, spaces; `langtag.py`); an empty `/Lang` on a tag removed; anything else listed, never guessed |
+| 7.5-1/2 | A header cell (TH) with no direction gets one where the table makes it plain: a row of only TH → Column, a row whose only TH is its first cell → Row; others are listed |
+
+The work order's `tables` key (`op_tables`) marks the header rows and columns the AI names in a real table as TH with their Scope; spans that cross the header edge are rejected for a person. `rolemap` may add a mapping for a style the source never mapped (7.1-5).
+
+veraPDF runs once per step, in the background while the step's own checks run. The audit's run is the "before" (`verapdf.json`, plus its `pdfua_check` view in the digest); it is printed with the audit, so a file that already passes (or fails thousands of checks) shows up before anything is spent. Verify's run is the "after". review.md gets two rows (no WCAG failures after; no rule newly failing or failing more often) and a "veraPDF" section with each failed rule's before and after counts, who fixes it, its status (newly failing, failing more often, still failing, fixed) and pages. `record.json` keeps both summaries under `verapdf`; `summary.md` shows each book's failing rules before → after.
+
+**WCAG checks veraPDF does not make** are in `verify.py` (`wcag` in `record.json`), each a row in review.md and listed under "WCAG checks veraPDF does not make". They find things to look at, not proven failures:
+
+| SC | Check |
+|---|---|
+| 1.1.1 | Alt text that looks like a file name, has no letters or digits, or is the same on 3+ figures |
+| 1.3.1 | A table with content and no header cell (TH) |
+| 1.3.2 | Pages where the tagged text, in tag-tree order, jumps back up the same column 2+ times (notes, figures and captions skipped) |
+| 2.4.2 | A title that looks like a file name or placeholder |
+| 2.4.4 | Link text like "click here" or "more" |
+| 2.4.6 | Headings with no text, over 200 characters, or the same twice in a row |
+
+The executor sets `/Tabs /S` on every page with annotations (2.4.3), so tab order follows the tag tree.
+
+When an audit is reused and has no `verapdf.json` yet, `run_api.sh` runs veraPDF on the file the audit was made from (the intake result, if intake ran), and `decide.py` builds `pdfua_check` from it.
+
+**PAC 2026** ([pac.pdf-accessibility.org](https://pac.pdf-accessibility.org/en), Windows, no command line) is the final manual check. review.md ends with what to run and the criteria no automated check covers (alt-text accuracy, meaningful order, colour, contrast over images, images of text, descriptive headings, language of parts). A PAC failure not listed in review.md is a gap in the automated checks: open an issue.
+
+## Not supported yet: PDF 2.0
+
+The pipeline is built for PDF 1.x tagging (PDF/UA-1): veraPDF runs the PDF 1.x WCAG profile, and the audit, executor and checks read only the plain `/RoleMap`. Every sample book is PDF 1.3–1.7, and the auto-tagger writes PDF 1.x. A PDF 2.0 book is therefore **stopped before any paid call and before any change**, and goes to a person.
+
+**What happens now** (`support.py`):
+
+- A book is unsupported when its PDF version is 2.0 or later (the catalog's `/Version` counts when it is later than the header), or when its tag tree declares namespaces (`/Namespaces` in the structure tree root: PDF 2.0 tagging, even under a 1.7 header).
+- `intake.py` checks first, tagged or not: it stops with status `stopped` and exit 3, and `intake.md` / `intake.json` give the reason. A batch shows the book as **flagged at intake** and leaves it out of the cost estimate.
+- `audit.py` and `apply.py` check again (exit 3) for runs that skip intake (`INTAKE=off`) or reuse an older audit or a saved reply (`FROM=`, `REPLY=`), so no output file is written for such a book.
+- `scan.py` shows each book's support in a **Supported** column, and counts unsupported books in its totals.
+- `ALLOW_PDF20=1` lets a book through. It is only for building PDF 2.0 support; never use it on real work.
+
+**Why it stops instead of running.** A copy of clans saved as PDF 2.0 gets exactly the PDF/UA-1 result (4 rules), while veraPDF's PDF/UA-2 check (`-f ua2`) fails 8 (structure destinations for internal links, `Ref` on contents entries, the Document tag's namespace, the PDF/UA-2 identifier …): review.md would describe the book against the wrong standard. Worse, PDF 2.0 types (`FENote`, `Title`, `Aside`, `Em`, `Strong`, `Sub`, `DocumentFragment`) are not standard in PDF 1.7, so they can be reported as unmapped (7.1-5) and sent to the model as `rolemap` decisions; the executor would then retype correct PDF 2.0 tags into PDF 1.7 ones (e.g. every `FENote` into `Note`, which PDF 2.0 no longer has).
+
+**Future implementation** (what full support needs, then remove the guard for PDF 2.0):
+
+1. **veraPDF profile by version:** pin `WCAG-2-2-Machine-PDF20.xml` (veraPDF-validation-profiles `rel/1.30`), have `vera.start()` choose it for PDF 2.0, and classify its ISO 14289-2 rules in `verapdf/rules.json` (WCAG or PDF/UA-only) and in `vera.py` (`EXECUTOR`, `KEY`, `PERSON`).
+2. **Namespace-aware role mapping:** read `/NS` on tags and `/Namespaces` with `RoleMapNS` in `audit.py` (`mapped`, styles), `apply.py` (`mapped`, `RMAP`, `op_rolemap`, `fix_standard_remaps`, `fix_rolemap_cycles`) and `verify.py`.
+3. **PDF 2.0 types:** treat `FENote`, `Title`, `Aside`, `Em`, `Strong`, `Sub` and `DocumentFragment` as standard and never map them back to PDF 1.7 types; teach the prompt (a new version) the PDF 2.0 equivalents for notes, titles and lists.
+4. **PDF/UA-2 requirements the executor could meet:** structure destinations for internal links (8.8-2), `Ref` on TOCI (8.2.5.8-1), the Document tag in the PDF 2.0 namespace (8.2.5.2-2), `Lbl`/`LI` rules, and MathML for formulas (associated files).
+5. **Test files:** at least one real PDF 2.0 tagged book; there is none in `samples/` yet.
 
 ## When the model call fails
 
@@ -201,11 +278,14 @@ A failed call that OpenRouter did charge for is logged with its cost and counted
 | `review_ocr.py` | Records a person's verdict on a book's OCR text (checklist rule 2): `python3 review_ocr.py <run>/<book> --verdict approved\|"not approved" --reviewer NAME --reason TEXT [--pages 381-386] [--date YYYY-MM-DD]`. Writes `_intake/intake.json`, `record.json` and the review.md row; the row is OK only on "approved"; FROM= reruns carry the verdict |
 | `scan.py` | Fast read-only checks on a folder of PDFs (no OCR, no model): tagged or not, producer, page triage, private-use characters, text outside the visible page area and word breaks, per book (`books/*.json`) and in `summary.md`: `python3 scan.py <folder> <out_dir>` |
 | `audit.py` | Original → digest (styles, listed elements, figures with crops, page map, reading order, front matter; in scanned books, suspect OCR words on word sheets; veraPDF's PDF/UA failures). No model. Positions are measured in the visible page area (CropBox): running-head bands (top 70 pt, bottom 60 pt), figure sizes and crops; a figure drawn only outside it gets no crop and is marked `outside_visible_area` |
-| `prompts/workorder_v7.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run. v7 changes the ActualText wording (spoken text only where printed glyphs read wrongly; equal to the print apart from spacing, case and line-end hyphens; merges join a label and its title) and adds `ocr_words` (the printed spelling of misread OCR words in scanned books, read from word sheets) and `pdfua_check` (the veraPDF failures the model can act on). v6 and older are kept as a record |
+| `prompts/workorder_v8.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run. v8 adds `tables` (header rows and columns of a real table), lets `rolemap` map a style the source never mapped, tells the model the work-order key and tags for each `pdfua_check` rule, and requires every such rule to be fixed or deferred by name (step 9). v7 changes the ActualText wording (spoken text only where printed glyphs read wrongly; equal to the print apart from spacing, case and line-end hyphens; merges join a label and its title) and adds `ocr_words` (the printed spelling of misread OCR words in scanned books, read from word sheets) and `pdfua_check` (the veraPDF failures the model can act on). v7 and older are kept as a record |
 | `decide.py` | The API call. Estimates cost, checks available credit, sends the digest and crops, parses and validates the reply. `--dry-run`, `--response-file`, `--check-key`, `--credit` (credit left), `--max-images` (default 100), `--max-tokens` (default 48,000, or 16,000 plus 45 per OCR word form sent when that is more; the model's reasoning counts against it) |
 | `apply.py` | The executor. Original + work order → `<original>_remediated.pdf`. pikepdf only; checks each target first and rejects what doesn't fit |
-| `verify.py` | Checks the result against the original, and runs veraPDF on the result |
-| `vera.py` | Runs veraPDF (PDF/UA-1) on one file and condenses its report to one entry per failed rule, with who can fix it |
+| `verify.py` | Checks the result against the original, adds the WCAG checks veraPDF does not make, and runs veraPDF on the result |
+| `vera.py` | Runs veraPDF with the pinned WCAG 2.2 machine profile (which includes the PDF/UA-1 rules) and condenses its report to one entry per failed rule: WCAG or PDF/UA-only, and who can fix it (and, for the AI, the work-order key). `--check`; or `vera.py FILE.pdf OUT.json` on its own |
+| `support.py` | Says whether the pipeline supports a PDF: PDF 2.0 and namespaced tags are not supported yet. `intake.py` stops such a book for a person; `audit.py` and `apply.py` check again; `scan.py` reports it |
+| `langtag.py` | Checks and tidies a BCP 47 language tag; used by `apply.py` (`/Lang` spelling) and `decide.py` (the work order's `document.lang`) |
+| `verapdf/` | `WCAG-2-2-Machine.xml` (the pinned profile), `rules.json` (each rule's WCAG success criteria, or why it is PDF/UA-only), `install.sh` |
 | `report.py` | Writes `review.md`, `record.json` and `han_review.csv`, then removes the working files |
 | `plumb_fix.py` | Fix for pdfplumber's nested marked-content bug (required) |
 | `run_api.sh` | All of the above in one command |
@@ -222,18 +302,6 @@ In a scanned book (the producer says OCR, or most pages are full-page images), `
 `decide.py` drops a reading that isn't one word, is the same as the OCR text, or is too different from it to be a misreading: after removing diacritics, the edits from the OCR text to the reading may not pass a third of the reading's length, where changing or dropping a character OCR produces from unknown letters (`i l 1 J ; : t f z` …) counts a quarter. On *Buddhist* this kept all 593 readings and let through 12 of 570 deliberately mismatched pairs, so the review's table is still checked by a person. `apply.py` then wraps every text operator that shows the form in `/Span <</ActualText (…)>> BDC … EMC`. Screen readers speak the printed spelling and copying gives it; the OCR text, its fonts and the page are unchanged, so `verify.py`'s pixel and text checks still hold (a text search still finds the OCR spelling). `review.md` lists every respelled form with its first pages for a person to check against the scan.
 
 It costs about 1,400 input tokens per sheet (31 words) and about 37 output tokens per word, reasoning included (about 11 of them are the reading itself; the output limit allows 45). *Buddhist* (648 forms, 21 sheets) cost $0.51 in all, against $0.19–0.24 for books with no OCR words.
-
-## PDF/UA validation (veraPDF)
-
-`vera.py` runs `verapdf -f ua1` and keeps one entry per failed rule, not one per failure (a scanned book can fail 70,000 checks): the rule, what it checks, how many checks failed, five examples with their object and PDF page, and who can fix it:
-
-| Who fixes | Rules | How it is used |
-|---|---|---|
-| the pipeline | flags, `DisplayDocTitle`, links tied and described, tab order, note IDs, the OCR layer's undefined glyphs | not sent to the model: the executor fixes these whatever the work order says |
-| the AI | figure alt text, heading levels, natural language, untagged content, role mapping, document title | sent to the model in the digest (`pdfua_check`) as rule, count and example objects |
-| a person | fonts, tables, list and contents structure, the PDF/UA claim | not sent; listed in `review.md` as known gaps |
-
-The audit's run is the "before"; it is printed with the audit, so a file that already passes (or fails thousands of checks) shows up before anything is spent. Verify's run is the "after". `review.md` has a row "PDF/UA (veraPDF): nothing newly failing" (a CHECK when a rule fails that the original passed, or fails more often) and a table of every rule, newly failing first. `summary.md` shows each book's failing rules before → after. `VERAPDF=off` skips it; `VERAPDF=/path/to/verapdf` picks a copy that is not on the PATH. veraPDF checks only machine-checkable PDF/UA rules: PAC (WCAG) and a person are still the final check.
 
 ## Choosing the model
 
@@ -318,7 +386,7 @@ The result, `_intake/intake.pdf`, is what audit, decide, apply and verify then w
 
 **In review.md:** an "Intake:" line under the header; check rows for the text-layer test, word breaks, the OCR (with any low-resolution, language or unmapped-character issue) and **"OCR text reviewed by a person"**, which stays CHECK until someone records "approved" with `review_ocr.py` (`record.json` → `intake.review.ocr_text_approved`: verdict, reviewer, date, reason, pages; checklist rule 2); and an "Intake: OCR and auto-tagging" section with the per-page text-layer scores (a page that was not scored shows why, and which page replaced it), the OCR'd pages and every flag.
 
-**Not done (yet):** OpenDataLoader's hybrid mode (a second, Docling-based server, which may handle complex tables better: 5.6–5.8), deskew/despeckle of degraded scans (2.2), re-reading low-confidence OCR lines (3.2), and personal-information flagging (1.1); veraPDF (11.2) is done (see "PDF/UA validation (veraPDF)"). Accuracy of the OCR itself (CER/WER) needs a hand-corrected reference (11.1); the first candidate is `9780824882402.pdf`, PDF 381–386. Thresholds (5% / 15%, 15 words / 60%, the 25% image and 300-character rules, 5 pages, 100 private-use characters) are named constants at the top of `intake.py` and recorded in every `intake.json` (`settings.thresholds`); they are starting points to tune on real scores.
+**Not done (yet):** OpenDataLoader's hybrid mode (a second, Docling-based server, which may handle complex tables better: 5.6–5.8), deskew/despeckle of degraded scans (2.2), re-reading low-confidence OCR lines (3.2), personal-information flagging (1.1), and PDF 2.0 books (stopped for a person: see "Not supported yet: PDF 2.0"); veraPDF (11.2) is done (see "Verification with veraPDF"). Accuracy of the OCR itself (CER/WER) needs a hand-corrected reference (11.1); the first candidate is `9780824882402.pdf`, PDF 381–386. Thresholds (5% / 15%, 15 words / 60%, the 25% image and 300-character rules, 5 pages, 100 private-use characters) are named constants at the top of `intake.py` and recorded in every `intake.json` (`settings.thresholds`); they are starting points to tune on real scores.
 
 To see what intake would do to a folder of books without changing anything:
 
@@ -332,7 +400,7 @@ These are mechanical, so they never wait for the model:
 
 - makes sure there is exactly one Document root (Auto-Tag output often has none; some exports have two)
 - sets the "tagged" flag and shows the title in the window
-- sets the tab order of every page with annotations to the structure order (`/Tabs /S`, PDF/UA 7.18.3)
+- sets the tab order of every page with annotations to the structure order (`/Tabs /S`; WCAG 2.4.3, PDF/UA 7.18.3)
 - ties every link annotation to its text and gives it a description, creating Link tags where the tagger left none
 - removes references to annotations that sit on no page
 - rebuilds the tag-tree index (ParentTree) from the tree where entries are missing or wrong

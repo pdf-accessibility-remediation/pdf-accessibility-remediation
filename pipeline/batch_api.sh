@@ -42,6 +42,8 @@ START_DIR=$(pwd)
 cd "$(dirname "$0")"; HERE=$(pwd)
 python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
   echo "missing Python libraries in $(command -v python3): from pipeline/, run  python3 -m pip install -r requirements.txt"; exit 1; }
+VERA=$(python3 vera.py --check) || {
+  echo "$VERA"; echo "veraPDF is needed for the WCAG checks: bash verapdf/install.sh (see README), or run with VERAPDF=off to skip them"; exit 1; }
 export RUNS_DIR=${RUNS_DIR:-$(cd .. && pwd)/runs}
 JOBS=${JOBS:-3}; MAX=${BATCH_MAX_USD:-5}
 B=$RUNS_DIR/batches/$LABEL
@@ -116,9 +118,9 @@ for line in open(books):
     rv = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
     checks = sum(1 for l in rv.splitlines() if l.startswith('|') and '**CHECK**' in l)
     pages = rec['document']['pages'] or 0; done_pages += pages
-    vb, va = ((rec.get('pdfua') or {}).get(k) or {} for k in ('before', 'after'))
+    vb, va = ((rec.get('verapdf') or {}).get(k) or {} for k in ('before', 'after'))
     if vb.get('rules') is not None and va.get('rules') is not None:
-        new_ = sum(1 for r in va['rules'] if r['rule'] not in {x['rule'] for x in vb['rules']})
+        new_ = sum(1 for r in va['rules'] if r['id'] not in {x['id'] for x in vb['rules']})
         ua = f'{len(vb["rules"])} → {len(va["rules"])}' + (f' (**{new_} new**)' if new_ else '')
     else: ua = 'not run'
     L.append(f'| {name} | done | {intake} | {pages} | {cost} | ${(this + earlier) / max(pages, 1):.4f} | {fmt(t)} | {checks} | {ua} | `{name}/{rec["document"].get("output") or ""}` |')
@@ -145,7 +147,7 @@ if failed:
           + (' (wait a few minutes first: the model was rate-limited)' if rate_limited else '') + ':', '', f'    RETRY=1 {jobs}{mt}{again}', '']
 L += [f'Results are relative to {B}/', '',
       'Checks flagged = rows marked CHECK in each review.md. Open the review.md of any book with flags before running PAC.',
-      'PDF/UA rules = veraPDF PDF/UA-1 rules failing on the original → on the result; "new" = rules the result fails and the original passed.']
+      'PDF/UA rules = veraPDF rules (WCAG 2.2 machine profile, PDF/UA-1 rules included) failing on the original → on the result; "new" = rules the result fails and the original passed.']
 if flagged:
     L += ['', 'Flagged at intake = stopped before any model call; `<book>/_intake/intake.json` has the measurements. '
           'For an unusable text layer, FORCE_OCR=1 with RETRY=1 OCRs every page instead (page images + OCR text).']

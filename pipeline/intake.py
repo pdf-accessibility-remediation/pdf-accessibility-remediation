@@ -40,6 +40,7 @@ intake.json) · 1 error.
 """
 import sys, os, re, json, time, shutil, hashlib, subprocess, tempfile, unicodedata, difflib, collections, datetime, statistics, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import support
 import pikepdf, pypdfium2 as pdfium, pypdfium2.raw as pdfium_raw
 
 SCHEMA = 'intake/0.2'
@@ -603,6 +604,10 @@ def main():
     if '/PageLabels' in pdf.Root:
         try: page_labels.update({i: str(pg.label) for i, pg in enumerate(pdf.pages, 1)})
         except Exception: pass
+    rec['original']['pdf_version'] = support.version(pdf)
+    why = support.unsupported(pdf)                     # PDF 2.0 / namespaced tags: tagged or not, a person takes it
+    if why:
+        pdf.close(); flag('Not supported yet: PDF 2.0', why); return stop('stopped', why, 3)
     if tagged(pdf):
         pdf.close(); rec['summary'] = 'none (already tagged)'; rec['status'] = 'skipped'; save()
         print('intake: already tagged, nothing to do'); return 0

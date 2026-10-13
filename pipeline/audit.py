@@ -6,13 +6,15 @@ Reads the original PDF and writes the compact view Claude decides from:
 
     OUT_DIR/digest.json         document facts, tag styles, rare elements, figures, page map
     OUT_DIR/figures/*.png       one crop per figure, long side at most 800 px
+    OUT_DIR/verapdf.json        veraPDF (WCAG 2.2 machine profile) on the original: the "before" for review.md.
+                                digest.json carries only its pdfua_check view (failed rules and who fixes them).
 
 Every element Claude may refer to is listed with its object number in the ORIGINAL file
 ("1234 0"); apply.py resolves those numbers against the same file. Text from the book is
 included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext  # noqa: E401
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext, vera, support  # noqa: E401
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -20,10 +22,12 @@ RARE = 30            # styles with at most this many elements are listed one by 
 os.makedirs(os.path.join(OUT, 'figures'), exist_ok=True)
 
 pdf = pikepdf.open(SRC)
+support.stop_if_unsupported(pdf, 'audit')       # PDF 2.0 / namespaced tags (runs with INTAKE=off): exit 3 before any work
 pages = list(pdf.pages); pidx = {p.obj.objgen: i + 1 for i, p in enumerate(pages)}
 labels = {i + 1: str(p.label) for i, p in enumerate(pages)}
 st = pdf.Root.get('/StructTreeRoot')
 if st is None: sys.exit('untagged PDF: this pipeline repairs an existing tag tree; run a tagging step first')
+VERA = vera.start(SRC)                          # runs alongside the audit; collected at the end
 RM = {str(k).lstrip('/'): str(v).lstrip('/') for k, v in (st.get('/RoleMap') or {}).items()}
 KEEP_KEYS = ('text', 'x0', 'x1', 'top', 'bottom', 'size', 'fontname', 'mcid', 'tag')
 class _Page:                                    # what the audit needs from a page; the full pdfplumber page is released
@@ -435,11 +439,29 @@ if is_scan:
         y += h
     if sheet is not None: save_sheet(len(ranked))
 
-# ---- the same validator before and after: veraPDF PDF/UA-1 on the original (verify.py runs it on the result).
-#      Every failed rule is kept here for the before/after comparison; decide.py sends the model only the rules it can
-#      act on, and report.py lists the rest for the executor or a person.
-import vera
-pdfua_check = vera.run(SRC)
+# ---- the same validator before and after: veraPDF on the original (started at the top; verify.py runs it on the result).
+#      The full summary goes to verapdf.json for the before/after comparison; the digest gets every failed rule with
+#      who fixes it, and decide.py sends the model only the rules it can act on.
+vr = vera.finish(VERA)
+json.dump(vr, open(os.path.join(OUT, 'verapdf.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+pdfua_check = vera.pdfua_check(vr)
+# Tags veraPDF names in a rule the model can fix must be ones the model can see and refer to: a Figure with no alt that
+# has no image of its own (a vector drawing, a logo) gets a crop of its whole page; a flagged table past the cap is kept.
+flagged = {o for r in pdfua_check.get('rules') or [] if r.get('who') == 'model' for o in r.get('objs') or []}
+for f in figures:
+    if f['obj'] in flagged and not f['image'] and f['page'] and not f.get('outside_visible_area'):
+        name = f'p{f["page"]:03d}_{f["obj"].split()[0]}_page.png'; px = crop(f['page'], PL.pages[f['page'] - 1].vis, name)
+        if px: f.update(image='figures/' + name, image_px=px, image_is_whole_page=True)
+by_ref = {ref(e['el']): e for e in elems}
+def desc_refs(e, acc):
+    acc.add(ref(e['el']))
+    for k in e['kids']: desc_refs(k, acc)
+    return acc
+for t in tables:                       # veraPDF names cells (TD, TH): tell the model which table they are in
+    inside = desc_refs(by_ref[t['obj']], set()) if t['obj'] in by_ref else {t['obj']}
+    rs = sorted({r['rule'] for r in pdfua_check.get('rules') or [] if r.get('who') == 'model' for o in r.get('objs') or [] if o in inside})
+    if rs: t['pdfua_rules'] = rs
+tables_sent = tables[:100] + [t for t in tables[100:] if t.get('pdfua_rules')]
 
 af = pdf.Root.get('/AcroForm')
 with pdf.open_metadata(set_pikepdf_as_editor=False, update_docinfo=False) as meta: xmp_title = meta.get('dc:title')
@@ -468,7 +490,7 @@ digest = {
                     'taken for a label): the executor turns it into one paragraph by itself, so do not list it under flatten. To keep one '
                     'as a real list, add {"obj": "…", "why": "…"} to "keep_lists"',
     'lists': lists[:200],
-    'tables': tables[:100],
+    'tables': tables_sent,
     'figures': figures,
     'page_figures_format': 'pages with no tags at all that hold a drawing (map, plate, cover); the executor wraps each whole page in one Figure. Its letters are labels, not body text. Write page_figures alt text from the page image.',
     'page_figures': page_figures,
@@ -481,8 +503,10 @@ digest = {
     'ocr_words': ocr_words,
     'ocr_word_sheets': ocr_word_sheets,
     'ocr_words_not_sent': ocr_words_not_sent,
-    'pdfua_check_format': 'veraPDF PDF/UA-1 on this file, one entry per failed rule: what it checks, failed checks, up to 5 examples '
-                          '(obj, tag type, PDF page). Only rules a work-order decision can fix are listed here',
+    'pdfua_check_format': 'veraPDF (WCAG 2.2 machine profile, which includes the PDF/UA-1 rules) on this file, one entry per failed rule: '
+                          'what it checks, failed checks, up to 5 examples (obj, tag type, PDF page), key (the work-order key that fixes it) and '
+                          'objs (the tags it failed on, up to 20). Only rules a work-order decision can fix are listed here. A figure in objs with '
+                          'image_is_whole_page has no image of its own: its crop is the whole page; find the drawing on it',
     'pdfua_check': pdfua_check,
     'repeated_lines': sorted(repeated, key=lambda r: -r['count'])[:25],
     'page_map_format': 'page|printed label|first tagged line',
@@ -498,6 +522,6 @@ print(f'digest: {len(styles)} styles · {len(headings)} headings + {len(candidat
       f'{len(page_figures)} page figures · '
       + (f'{len(ocr_words)} suspect OCR words on {len(ocr_word_sheets)} sheets · ' if ocr_words else '')
       + f'{len(repeated)} repeated lines · {len(page_map)} pages · {os.path.getsize(os.path.join(OUT, "digest.json")) // 1024} KB')
-print(vera.line(pdfua_check))
-if pdfua_check.get('compliant'):
-    print('  this file already passes veraPDF PDF/UA-1: a light review may be all it needs (PAC still checks more)')
+print(vera.line(vr) + ' (verapdf.json)')
+if vr.get('compliant'):
+    print('  this file already passes veraPDF: a light review may be all it needs (PAC still checks more)')
