@@ -10,7 +10,7 @@ and word breaks that are only gaps between letters (3.4), with narrow gaps count
 import sys, os, json, time, collections, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pikepdf, pypdfium2 as pdfium
-import intake as I
+import intake as I, support
 
 def scan(path):
     r = {'file': os.path.basename(path), 'folder': os.path.dirname(path)}
@@ -20,6 +20,7 @@ def scan(path):
     except Exception as e: r['error'] = f'could not be opened ({str(e)[:100]})'; return r
     with pdf:
         r['pages'] = len(pdf.pages); r['tagged'] = I.tagged(pdf)
+        r['pdf_version'] = support.version(pdf); r['unsupported'] = support.unsupported(pdf)     # PDF 2.0: intake stops it
         info = pdf.docinfo if '/Info' in pdf.trailer else {}
         r['producer'] = str(info.get('/Producer', '')).strip() or None
         r['creator'] = str(info.get('/Creator', '')).strip() or None
@@ -65,6 +66,7 @@ def main():
          '## Totals', '',
          f'- Opened: {len(ok)} of {len(files)}' + (f' (not opened: {", ".join(r["file"] + ": " + r["error"] for r in rows if "error" in r)})' if len(ok) < len(files) else ''),
          f'- Already tagged: {sum(1 for r in ok if r["tagged"])}; untagged: {sum(1 for r in ok if not r["tagged"])}',
+         f'- Not supported yet (PDF 2.0 or namespaced tags; the pipeline stops them at intake for a person): {sum(1 for r in ok if r.get("unsupported"))}',
          f'- With image-only pages (scans or picture pages): {sum(1 for r in ok if r["triage"].get("image-only"))}',
          f'- Private-use characters over {I.PUA_CHECK}: {sum(1 for r in ok if r["private_use"]["count"] > I.PUA_CHECK)} books',
          f'- Text outside the visible page area: {sum(1 for r in ok if r["outside_page_area"]["chars"])} books',
@@ -78,13 +80,14 @@ def main():
         L.append(f'| {esc(p)} | {len(rs)} | {sum(1 for r in rs if r["tagged"])} | {sum(1 for r in rs if r["private_use"]["count"] > I.PUA_CHECK)} | '
                  f'{sum(1 for r in rs if r["outside_page_area"]["chars"])} | {sum(1 for r in rs if r["word_breaks"]["share_of_text_pages"] > 0.5)} | '
                  f'{sum(1 for r in rs if r["word_breaks"]["check"])} |')
-    L += ['', '## Books', '', '| File | Pages | Tagged | Producer | Text / image-only / blank | Private-use (most common range) | Outside page area | Pages relying on gaps | Narrow gaps per text page |',
-          '|---|---:|---|---|---|---|---|---:|---|']
+    L += ['', '## Books', '', '| File | Pages | Supported | Tagged | Producer | Text / image-only / blank | Private-use (most common range) | Outside page area | Pages relying on gaps | Narrow gaps per text page |',
+          '|---|---:|---|---|---|---|---|---|---:|---|']
     for r in rows:
-        if 'error' in r: L.append(f'| {r["file"]} | — | — | — | not opened: {r["error"]} | — | — | — | — |'); continue
+        if 'error' in r: L.append(f'| {r["file"]} | — | — | — | — | not opened: {r["error"]} | — | — | — | — |'); continue
         t, pu, op, wb = r['triage'], r['private_use'], r['outside_page_area'], r['word_breaks']
         top = f' ({pu["ranges"][0]["range"]}, {pu["ranges"][0]["what"]})' if pu['ranges'] else ''
-        L.append(f'| {r["file"]} | {r["pages"]} | {"yes" if r["tagged"] else "no"} | {esc(r["producer"])} | '
+        sup = 'yes' if not r.get('unsupported') else '**no: ' + ('PDF ' + r['pdf_version'] if r['unsupported'].startswith('PDF') else 'namespaced tags') + '**'
+        L.append(f'| {r["file"]} | {r["pages"]} | {sup} | {"yes" if r["tagged"] else "no"} | {esc(r["producer"])} | '
                  f'{t.get("text", 0) + t.get("ocr-layer", 0)} / {t.get("image-only", 0)} / {t.get("blank", 0)} | '
                  f'{pu["count"]}{top}' + (' **CHECK**' if pu['count'] > I.PUA_CHECK else '') + ' | '
                  + (f'{op["chars"]} characters on {op["pages"]} pages' if op['chars'] else 'none') + ' | '
