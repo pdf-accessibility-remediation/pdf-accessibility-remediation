@@ -13,7 +13,7 @@ look the way the work order assumes, is skipped and logged under "rejected" — 
 stops the run and never half-applies.
 """
 import sys, os, json, re, collections, hashlib
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext, langtag  # noqa: E401
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext, langtag, support  # noqa: E401
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
 
@@ -26,6 +26,7 @@ if want and hashlib.sha256(open(SRC, 'rb').read()).hexdigest() != want:
     sys.exit('work order was written for a different file (sha256 mismatch)')
 
 pdf = pikepdf.open(SRC)
+support.stop_if_unsupported(pdf, 'apply')       # PDF 2.0 / namespaced tags (a reused audit, FROM=/REPLY=): exit 3, nothing written
 pages = list(pdf.pages); pidx = {p.obj.objgen: i + 1 for i, p in enumerate(pages)}
 labels = {i + 1: p.label for i, p in enumerate(pages)}
 def PG(n):

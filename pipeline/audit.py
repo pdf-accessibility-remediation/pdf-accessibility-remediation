@@ -14,7 +14,7 @@ Every element Claude may refer to is listed with its object number in the ORIGIN
 included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext, vera  # noqa: E401
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext, vera, support  # noqa: E401
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -22,6 +22,7 @@ RARE = 30            # styles with at most this many elements are listed one by 
 os.makedirs(os.path.join(OUT, 'figures'), exist_ok=True)
 
 pdf = pikepdf.open(SRC)
+support.stop_if_unsupported(pdf, 'audit')       # PDF 2.0 / namespaced tags (runs with INTAKE=off): exit 3 before any work
 pages = list(pdf.pages); pidx = {p.obj.objgen: i + 1 for i, p in enumerate(pages)}
 labels = {i + 1: str(p.label) for i, p in enumerate(pages)}
 st = pdf.Root.get('/StructTreeRoot')

@@ -58,6 +58,7 @@ The short name (`clans`) names the run folder. The result is named after the ori
 | `MODEL=openai/gpt-5` | Any OpenRouter model id for this run or batch (default: `DEFAULT_MODEL` in `decide.py`, `anthropic/claude-sonnet-5.5`) |
 | `MAX_TOKENS=64000` | Output limit for the model's reply, reasoning included (default 48,000; Sonnet 5.5 allows up to 128,000 on OpenRouter). Raise it when a reply is cut off |
 | `RUNS_DIR=/path` | Writes runs somewhere other than `PDFREM/runs/` |
+| `ALLOW_PDF20=1` | Lets a PDF 2.0 book (or one with namespaced tags) through instead of stopping it. Only for building PDF 2.0 support; never on real work (see "Not supported yet: PDF 2.0") |
 | `VERAPDF=off` | Runs without veraPDF; review.md says its rows were not run. `VERAPDF=/path/to/verapdf` uses a launcher not on `PATH`; `VERAPDF_TIMEOUT` (seconds, default 900) limits each veraPDF run |
 | `FORCE_OCR=1` | Intake: when the text-layer test says a book's text layer is unusable, OCR every page anyway (page images + new invisible OCR text; the old text is replaced). Without it such a book stops, flagged for a person. **Unverified:** in testing, force OCR stopped at its own after-OCR check on every page (see "Intake") |
 | `OCR_LANG=jpn+eng` | Intake: Tesseract languages. By default: `eng`, plus `jpn` when kana are found and `kor` for hangul; Chinese characters with no kana are never guessed as Chinese or Japanese, so set this for them (e.g. `chi_tra+eng`) |
@@ -227,6 +228,28 @@ When an audit is reused and has no `verapdf.json` yet, `run_api.sh` runs veraPDF
 
 **PAC 2026** ([pac.pdf-accessibility.org](https://pac.pdf-accessibility.org/en), Windows, no command line) is the final manual check. review.md ends with what to run and the criteria no automated check covers (alt-text accuracy, meaningful order, colour, contrast over images, images of text, descriptive headings, language of parts). A PAC failure not listed in review.md is a gap in the automated checks: open an issue.
 
+## Not supported yet: PDF 2.0
+
+The pipeline is built for PDF 1.x tagging (PDF/UA-1): veraPDF runs the PDF 1.x WCAG profile, and the audit, executor and checks read only the plain `/RoleMap`. Every sample book is PDF 1.3–1.7, and the auto-tagger writes PDF 1.x. A PDF 2.0 book is therefore **stopped before any paid call and before any change**, and goes to a person.
+
+**What happens now** (`support.py`):
+
+- A book is unsupported when its PDF version is 2.0 or later (the catalog's `/Version` counts when it is later than the header), or when its tag tree declares namespaces (`/Namespaces` in the structure tree root: PDF 2.0 tagging, even under a 1.7 header).
+- `intake.py` checks first, tagged or not: it stops with status `stopped` and exit 3, and `intake.md` / `intake.json` give the reason. A batch shows the book as **flagged at intake** and leaves it out of the cost estimate.
+- `audit.py` and `apply.py` check again (exit 3) for runs that skip intake (`INTAKE=off`) or reuse an older audit or a saved reply (`FROM=`, `REPLY=`), so no output file is written for such a book.
+- `scan.py` shows each book's support in a **Supported** column, and counts unsupported books in its totals.
+- `ALLOW_PDF20=1` lets a book through. It is only for building PDF 2.0 support; never use it on real work.
+
+**Why it stops instead of running.** A copy of clans saved as PDF 2.0 gets exactly the PDF/UA-1 result (4 rules), while veraPDF's PDF/UA-2 check (`-f ua2`) fails 8 (structure destinations for internal links, `Ref` on contents entries, the Document tag's namespace, the PDF/UA-2 identifier …): review.md would describe the book against the wrong standard. Worse, PDF 2.0 types (`FENote`, `Title`, `Aside`, `Em`, `Strong`, `Sub`, `DocumentFragment`) are not standard in PDF 1.7, so they can be reported as unmapped (7.1-5) and sent to the model as `rolemap` decisions; the executor would then retype correct PDF 2.0 tags into PDF 1.7 ones (e.g. every `FENote` into `Note`, which PDF 2.0 no longer has).
+
+**Future implementation** (what full support needs, then remove the guard for PDF 2.0):
+
+1. **veraPDF profile by version:** pin `WCAG-2-2-Machine-PDF20.xml` (veraPDF-validation-profiles `rel/1.30`), have `vera.start()` choose it for PDF 2.0, and classify its ISO 14289-2 rules in `verapdf/rules.json` (WCAG or PDF/UA-only) and in `vera.py` (`EXECUTOR`, `KEY`, `PERSON`).
+2. **Namespace-aware role mapping:** read `/NS` on tags and `/Namespaces` with `RoleMapNS` in `audit.py` (`mapped`, styles), `apply.py` (`mapped`, `RMAP`, `op_rolemap`, `fix_standard_remaps`, `fix_rolemap_cycles`) and `verify.py`.
+3. **PDF 2.0 types:** treat `FENote`, `Title`, `Aside`, `Em`, `Strong`, `Sub` and `DocumentFragment` as standard and never map them back to PDF 1.7 types; teach the prompt (a new version) the PDF 2.0 equivalents for notes, titles and lists.
+4. **PDF/UA-2 requirements the executor could meet:** structure destinations for internal links (8.8-2), `Ref` on TOCI (8.2.5.8-1), the Document tag in the PDF 2.0 namespace (8.2.5.2-2), `Lbl`/`LI` rules, and MathML for formulas (associated files).
+5. **Test files:** at least one real PDF 2.0 tagged book; there is none in `samples/` yet.
+
 ## When the model call fails
 
 `decide.py` prints OpenRouter's own message and code, and says whether anything was charged. The error is also saved in `run.json` (and the full reply in `response.json` or `error.txt`), so a batch summary shows the reason in the book's row. OpenRouter sometimes sends an error inside a normal-looking reply (for example a 429); it is caught the same way.
@@ -260,6 +283,7 @@ A failed call that OpenRouter did charge for is logged with its cost and counted
 | `apply.py` | The executor. Original + work order → `<original>_remediated.pdf`. pikepdf only; checks each target first and rejects what doesn't fit |
 | `verify.py` | Checks the result against the original, adds the WCAG checks veraPDF does not make, and runs veraPDF on the result |
 | `vera.py` | Runs veraPDF with the pinned WCAG 2.2 machine profile (which includes the PDF/UA-1 rules) and condenses its report to one entry per failed rule: WCAG or PDF/UA-only, and who can fix it (and, for the AI, the work-order key). `--check`; or `vera.py FILE.pdf OUT.json` on its own |
+| `support.py` | Says whether the pipeline supports a PDF: PDF 2.0 and namespaced tags are not supported yet. `intake.py` stops such a book for a person; `audit.py` and `apply.py` check again; `scan.py` reports it |
 | `langtag.py` | Checks and tidies a BCP 47 language tag; used by `apply.py` (`/Lang` spelling) and `decide.py` (the work order's `document.lang`) |
 | `verapdf/` | `WCAG-2-2-Machine.xml` (the pinned profile), `rules.json` (each rule's WCAG success criteria, or why it is PDF/UA-only), `install.sh` |
 | `report.py` | Writes `review.md`, `record.json` and `han_review.csv`, then removes the working files |
@@ -362,7 +386,7 @@ The result, `_intake/intake.pdf`, is what audit, decide, apply and verify then w
 
 **In review.md:** an "Intake:" line under the header; check rows for the text-layer test, word breaks, the OCR (with any low-resolution, language or unmapped-character issue) and **"OCR text reviewed by a person"**, which stays CHECK until someone records "approved" with `review_ocr.py` (`record.json` → `intake.review.ocr_text_approved`: verdict, reviewer, date, reason, pages; checklist rule 2); and an "Intake: OCR and auto-tagging" section with the per-page text-layer scores (a page that was not scored shows why, and which page replaced it), the OCR'd pages and every flag.
 
-**Not done (yet):** OpenDataLoader's hybrid mode (a second, Docling-based server, which may handle complex tables better: 5.6–5.8), deskew/despeckle of degraded scans (2.2), re-reading low-confidence OCR lines (3.2), and personal-information flagging (1.1); veraPDF (11.2) is done (see "Verification with veraPDF"). Accuracy of the OCR itself (CER/WER) needs a hand-corrected reference (11.1); the first candidate is `9780824882402.pdf`, PDF 381–386. Thresholds (5% / 15%, 15 words / 60%, the 25% image and 300-character rules, 5 pages, 100 private-use characters) are named constants at the top of `intake.py` and recorded in every `intake.json` (`settings.thresholds`); they are starting points to tune on real scores.
+**Not done (yet):** OpenDataLoader's hybrid mode (a second, Docling-based server, which may handle complex tables better: 5.6–5.8), deskew/despeckle of degraded scans (2.2), re-reading low-confidence OCR lines (3.2), personal-information flagging (1.1), and PDF 2.0 books (stopped for a person: see "Not supported yet: PDF 2.0"); veraPDF (11.2) is done (see "Verification with veraPDF"). Accuracy of the OCR itself (CER/WER) needs a hand-corrected reference (11.1); the first candidate is `9780824882402.pdf`, PDF 381–386. Thresholds (5% / 15%, 15 words / 60%, the 25% image and 300-character rules, 5 pages, 100 private-use characters) are named constants at the top of `intake.py` and recorded in every `intake.json` (`settings.thresholds`); they are starting points to tune on real scores.
 
 To see what intake would do to a folder of books without changing anything:
 
