@@ -444,6 +444,23 @@ if is_scan:
 vr = vera.finish(VERA)
 json.dump(vr, open(os.path.join(OUT, 'verapdf.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 pdfua_check = vera.pdfua_check(vr)
+# Tags veraPDF names in a rule the model can fix must be ones the model can see and refer to: a Figure with no alt that
+# has no image of its own (a vector drawing, a logo) gets a crop of its whole page; a flagged table past the cap is kept.
+flagged = {o for r in pdfua_check.get('rules') or [] if r.get('who') == 'model' for o in r.get('objs') or []}
+for f in figures:
+    if f['obj'] in flagged and not f['image'] and f['page'] and not f.get('outside_visible_area'):
+        name = f'p{f["page"]:03d}_{f["obj"].split()[0]}_page.png'; px = crop(f['page'], PL.pages[f['page'] - 1].vis, name)
+        if px: f.update(image='figures/' + name, image_px=px, image_is_whole_page=True)
+by_ref = {ref(e['el']): e for e in elems}
+def desc_refs(e, acc):
+    acc.add(ref(e['el']))
+    for k in e['kids']: desc_refs(k, acc)
+    return acc
+for t in tables:                       # veraPDF names cells (TD, TH): tell the model which table they are in
+    inside = desc_refs(by_ref[t['obj']], set()) if t['obj'] in by_ref else {t['obj']}
+    rs = sorted({r['rule'] for r in pdfua_check.get('rules') or [] if r.get('who') == 'model' for o in r.get('objs') or [] if o in inside})
+    if rs: t['pdfua_rules'] = rs
+tables_sent = tables[:100] + [t for t in tables[100:] if t.get('pdfua_rules')]
 
 af = pdf.Root.get('/AcroForm')
 with pdf.open_metadata(set_pikepdf_as_editor=False, update_docinfo=False) as meta: xmp_title = meta.get('dc:title')
@@ -472,7 +489,7 @@ digest = {
                     'taken for a label): the executor turns it into one paragraph by itself, so do not list it under flatten. To keep one '
                     'as a real list, add {"obj": "…", "why": "…"} to "keep_lists"',
     'lists': lists[:200],
-    'tables': tables[:100],
+    'tables': tables_sent,
     'figures': figures,
     'page_figures_format': 'pages with no tags at all that hold a drawing (map, plate, cover); the executor wraps each whole page in one Figure. Its letters are labels, not body text. Write page_figures alt text from the page image.',
     'page_figures': page_figures,
@@ -486,7 +503,9 @@ digest = {
     'ocr_word_sheets': ocr_word_sheets,
     'ocr_words_not_sent': ocr_words_not_sent,
     'pdfua_check_format': 'veraPDF (WCAG 2.2 machine profile, which includes the PDF/UA-1 rules) on this file, one entry per failed rule: '
-                          'what it checks, failed checks, up to 5 examples (obj, tag type, PDF page). Only rules a work-order decision can fix are listed here',
+                          'what it checks, failed checks, up to 5 examples (obj, tag type, PDF page), key (the work-order key that fixes it) and '
+                          'objs (the tags it failed on, up to 20). Only rules a work-order decision can fix are listed here. A figure in objs with '
+                          'image_is_whole_page has no image of its own: its crop is the whole page; find the drawing on it',
     'pdfua_check': pdfua_check,
     'repeated_lines': sorted(repeated, key=lambda r: -r['count'])[:25],
     'page_map_format': 'page|printed label|first tagged line',

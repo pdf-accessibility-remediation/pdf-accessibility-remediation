@@ -391,6 +391,9 @@ if fl or kept_tables:
         x = lists_.get(f['obj']) or tables_.get(f['obj']) or {}
         kind = 'list' if f['obj'] in lists_ else 'table'
         L.append(f'- Flattened {kind} {on_pg(x.get("page"))}: "{" / ".join(x.get("first_items") or x.get("first_rows") or [])[:100]}" ({f.get("why", "")})')
+    for x in log.get('tables') or []:
+        L.append(f'- Header cells marked by the AI {on_pg(x.get("page"))}: {x["header_rows"]} header row(s), {x["header_cols"]} header column(s), '
+                 f'{x["cells_to_TH"]} cells changed to header cells. Check they are the real headers.')
     if kept_tables:
         L += ['', f'Tables kept as tables ({len(kept_tables)}): check header cells and reading order.', '']
         L += [f'- {pg(t.get("page"))}: {t["rows"]} rows × {t["cols"]} columns, {t["header_cells"]} header cells. "{(t.get("first_rows") or [""])[0][:90]}"' for t in by_page(kept_tables)]
@@ -638,6 +641,11 @@ vw_afterefore, vw_after = v_wcag(v_before), v_wcag(v_after)
 v_ua = [r for r in v_after['rules'] if r['scope'] != 'wcag'] if v_ran(v_after) else []
 if vw_afterefore or vw_after or v_ua or (v_after and not v_ran(v_after)):
     WHO = {'executor': 'the pipeline', 'model': 'the AI', 'person': 'a person'}
+    RF = log.get('rule_fixes') or {}
+    def who_cell(rid, r):                  # who can fix it, and what the pipeline changed for it in this run
+        w = WHO.get(r.get('who'), 'not recorded') + (f' (`{r["key"]}`)' if r.get('who') == 'model' and r.get('key') else '')
+        n_ = (RF.get(rid) or RF.get({'7.5-2': '7.5-1'}.get(rid, '')) or {}).get('changed')
+        return w + (f'; the pipeline changed {n_}' if n_ and r.get('who') != 'executor' else f' ({n_} changed)' if n_ else '')
     n += 1; L += [f'### {n}. veraPDF (WCAG 2.2 machine profile), before and after', '',
                   (f'{v_after["tool"]}, profile "{v_after["profile"]}" ({v_after["profile_sha256"]}). ' if v_ran(v_after) else v_state(v_after, 'After') + '. ')
                   + 'Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. '
@@ -649,10 +657,12 @@ if vw_afterefore or vw_after or v_ua or (v_after and not v_ran(v_after)):
             r = vw_after.get(rid) or vw_afterefore[rid]
             before = vw_afterefore[rid]['failed'] if rid in vw_afterefore else (0 if v_ran(v_before) else 'not run')
             L.append(f'| {r["spec"]} {rid}{" (unclassified)" if r["unclassified"] else ""} | {", ".join(r["wcag"]) or "not mapped"} | {r["description"][:140].replace("|", "/")}'
-                     + f'{" e.g. " + chr(34) + r["example"][:100] + chr(34) if r.get("example") and rid in vw_after else ""} | {WHO.get(r.get("who"), "not recorded")} | {before} | {vw_after[rid]["failed"] if rid in vw_after else (0 if v_ran(v_after) else "not run")} | {v_status(rid)} | '
+                     + f'{" e.g. " + chr(34) + r["example"][:100] + chr(34) if r.get("example") and rid in vw_after else ""} | {who_cell(rid, r)} | {before} | {vw_after[rid]["failed"] if rid in vw_after else (0 if v_ran(v_after) else "not run")} | {v_status(rid)} | '
                      + (pgs(r['pages'][:12]) + (' …' if len(r['pages']) > 12 else '') if r['pages'] else NO_PAGE) + ' |')
         L.append('')
     if v_new: L += [f'**Newly failing after this run: {", ".join(v_new)}.** The run made these; look at them first.', '']
+    nokey = sorted({rid for rid, r in {**vw_afterefore, **vw_after}.items() if r.get('who') == 'model' and not r.get('key')})
+    if nokey: L += [f'The AI was told about these rules without a work-order key to fix them (add one to `KEY` in `pipeline/vera.py`): {", ".join(nokey)}.', '']
     if v_ran(v_after) and v_after['totals']['unclassified']:
         L += [f'Not yet classified as WCAG or PDF/UA-only (counted as WCAG until someone adds them to `pipeline/verapdf/rules.json`): {", ".join(v_after["totals"]["unclassified"])}.', '']
     if v_ua:

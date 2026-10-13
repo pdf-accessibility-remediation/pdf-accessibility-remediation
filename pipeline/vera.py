@@ -13,9 +13,11 @@ The profile includes the PDF/UA-1 rules, so one run serves both the WCAG count a
 
 Each failed rule also says who can fix it:
 
-    executor   apply.py fixes it by itself, whatever the work order says (flags, links, note IDs, the OCR layer's font)
-    model      it needs a decision the work order can carry (alt text, headings, language, untagged content, role map)
-    person     nothing in the pipeline fixes it (fonts, tables, list and contents structure, the PDF/UA claim)
+    executor   apply.py fixes it by itself, whatever the work order says (flags, links, note IDs, the OCR layer's font,
+               role-map loops and remaps of standard tags, Lang spelling, header-cell scope)
+    model      it needs a decision the work order can carry (alt text, headings, language, untagged content, role map,
+               broken table or list structure); 'key' names the work-order key and 'objs' the tags it failed on
+    person     nothing in the pipeline fixes it (fonts, Formula alt, the PDF/UA claim)
 
 The full summary goes to verapdf.json (audit) and the verify JSON (verify); report.py compares the two.
 pdfua_check(summary) is the digest's view, in the shape decide.py reads (it sends the model only the 'model' rules).
@@ -29,9 +31,17 @@ TIMEOUT = int(os.environ.get('VERAPDF_TIMEOUT', '900'))     # seconds; the large
 SHOWN = 20                                                  # failed checks veraPDF lists per rule (pages come from these)
 SEVERITY = ('critical', 'major', 'minor', 'cosmetic')
 
-EXECUTOR = {'6.2-1', '7.1-10', '7.1-11', '7.9-1', '7.9-2', '7.18.1-2', '7.18.3-1', '7.18.5-1', '7.18.5-2', '7.21.8-1'}
-MODEL = {'7.1-3', '7.1-5', '7.1-9'}
-PERSON = {'5-1'}                 # the pipeline never claims PDF/UA conformance: that is a person's sign-off
+EXECUTOR = {'6.2-1', '7.1-10', '7.1-11', '7.9-1', '7.9-2', '7.18.1-2', '7.18.3-1', '7.18.5-1', '7.18.5-2', '7.21.8-1',
+            '7.1-6', '7.1-7', '7.2-29'}     # apply.py: role-map loops and remaps of standard tags, Lang spelling
+# A rule the work order can fix, and the work-order key that fixes it (the model is told the key). A model rule with no
+# key here (other than a language rule, fixed by document.lang) is sent with key null and listed in review.md.
+KEY = {'7.1-1': 'artifacts', '7.1-2': 'artifacts', '7.1-3': 'artifacts', '7.1-5': 'rolemap', '7.1-9': 'document', '7.3-1': 'alt',
+       '7.5-1': 'tables', '7.5-2': 'tables',     # fix_th_scope sets the plain cases; header rows the table lacks are a decision
+       '7.4.4-1': 'rolemap', '7.4.4-2': 'rolemap', '7.4.4-3': 'rolemap', '4.1.2-18': 'retype', '4.1.2-19': 'retype',
+       **{f'7.2-{n}': 'flatten' for n in (*range(3, 21), *range(36, 44))},       # broken table or list structure
+       **{f'7.2-{n}': 'toc' for n in (26, 27, 28)}}
+MODEL = {'7.1-3', '7.1-5', '7.1-9', *KEY}
+PERSON = {'5-1', '7.7-1', '1.4.10-1', '7.18.6.2-2'}   # PDF/UA claim (a person's sign-off); Formula alt, Figure BBox, media alt: no key fixes them
 def who(rule, tags):
     if rule in EXECUTOR: return 'executor'
     if rule in MODEL: return 'model'
@@ -40,6 +50,7 @@ def who(rule, tags):
     if tags & {'alt-text', 'figure', 'heading'} and not tags & {'annotation', 'table'}: return 'model'
     if 'lang' in tags: return 'model'
     return 'person'
+def key_for(rule, tags): return KEY.get(rule) or ('document' if 'lang' in (tags or []) else None)
 
 
 def find():
@@ -97,6 +108,7 @@ def run(pdf): return finish(start(pdf))
 _PAGE = re.compile(r'pages\[(\d+)\]')
 _OBJ = re.compile(r'\((\d+) 0 obj (?:SE|SA|PD)\w*')
 _EX = re.compile(r'\((\d+) (\d+) obj (?:SE\w+ )?([^)]*)\)')
+_SE = re.compile(r'\((\d+) (\d+) obj SE\w+ [^)]*\)')      # a structure element (tag) in a check's context
 
 
 def _example(check):
@@ -154,12 +166,15 @@ def summarize(rep, pdf, seconds):
                 if o: rule_objs.add(int(o[-1]))
         objs |= rule_objs
         msgs = [c.get('errorMessage') for c in rs.get('checks') or [] if c.get('errorMessage')]
+        se_objs = {f'{m[0]} {m[1]}' for c in rs.get('checks') or [] for m in _SE.findall(c.get('context', ''))[-1:]}
         rules.append({'id': rid, 'spec': 'WCAG 2.2' if 'WCAG' in rs.get('specification', '') else 'ISO 14289-1',
                       'description': rs.get('description', ''), 'severity': next((t for t in SEVERITY if t in (rs.get('tags') or [])), None),
                       'failed': rs.get('failedChecks', 0), 'shown': len(rs.get('checks') or []),
                       'scope': cls['scope'] if cls else 'wcag', 'wcag': cls.get('wcag', []) if cls else [],
                       'why': cls.get('why') if cls else None, 'unclassified': cls is None, 'tags': rs.get('tags') or [],
-                      'who': who(rid, rs.get('tags')), 'examples': [_example(c) for c in (rs.get('checks') or [])[:5]],
+                      'who': who(rid, rs.get('tags')), 'key': key_for(rid, rs.get('tags')) if who(rid, rs.get('tags')) == 'model' else None,
+                      'objs': sorted(se_objs, key=lambda o: int(o.split()[0]))[:SHOWN],
+                      'examples': [_example(c) for c in (rs.get('checks') or [])[:5]],
                       'pages': sorted(pages), '_objs': sorted(rule_objs), 'example': msgs[0][:240] if msgs else None})
     obj_page = _struct_pages(pdf, objs)
     for r in rules:
@@ -182,7 +197,8 @@ def pdfua_check(s):
     if 'not_run' in s: return {'skipped': s['not_run']}
     return {'tool': s['tool'], 'profile': s['profile'], 'compliant': s['compliant'], 'failed_rules': s['failed_rules'],
             'rules': [{'rule': r['id'], 'description': r['description'][:240], 'tags': r['tags'], 'failed': r['failed'],
-                       'who': r['who'], 'examples': r['examples']} for r in s['rules']]}
+                       'who': r['who'], 'key': r.get('key'), 'examples': r['examples'],
+                       **({'objs': r.get('objs') or []} if r['who'] == 'model' else {})} for r in s['rules']]}
 
 
 def line(s):

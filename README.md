@@ -32,7 +32,7 @@ These workflows do not run `run_api.sh` or make OpenRouter API calls automatical
 3. **Key:** put `OPENROUTER_API_KEY=…` in a `.env` file in `pipeline/` or any folder above it (e.g. the repo root). Keep `.env` in `.gitignore`.
 4. **Check the key (free):** `python3 decide.py --check-key`.
 5. **veraPDF** (WCAG and PDF/UA checks, see "Verification with veraPDF"): needs Java 17 (`sudo apt install openjdk-17-jre-headless`, or any Java 17 runtime on `PATH`; the auto-tagger's Java works too if it is 17 or later). Then, from `pipeline/`, `bash verapdf/install.sh` installs veraPDF 1.30.3 in `~/.local/opt/verapdf` and prints the line to add to your shell profile: `export VERAPDF=~/.local/opt/verapdf/verapdf`. pip can't install it: it is a Java program, not a Python package. `python3 vera.py --check` prints the version. Every run checks it before any paid call and stops if it is missing; `VERAPDF=off` runs without it, and `review.md` then says its rows were not run.
-6. **Prompt:** `workorder_v7.md` goes in `pipeline/prompts/` or in `prompts/` beside `pipeline/`. Older versions are kept only as a record.
+6. **Prompt:** `workorder_v8.md` goes in `pipeline/prompts/` or in `prompts/` beside `pipeline/`. Older versions are kept only as a record.
 7. **PDFs:** originals go in `samples/<name>/` and are never written to. Outputs go in `runs/<name>/<run-label>/` (single runs) or `runs/batches/<label>/<name>/` (batches) beside `pipeline/` (set `RUNS_DIR` to put them elsewhere). Keep both out of git: the books are in copyright.
 
 ## Run
@@ -189,9 +189,24 @@ A rule veraPDF reports that is not in `rules.json` counts as WCAG and is named a
 
 | Who fixes | Rules | How it is used |
 |---|---|---|
-| the pipeline | flags, `DisplayDocTitle`, links tied and described, tab order, note IDs, the OCR layer's undefined glyphs | not sent to the model: the executor fixes these whatever the work order says |
-| the AI | figure alt text, heading levels, natural language, untagged content, role mapping, document title | sent to the model in the digest (`pdfua_check`) as rule, count and example objects |
-| a person | fonts, tables, list and contents structure, the PDF/UA claim | not sent; listed in `review.md` as known gaps |
+| the pipeline | flags, `DisplayDocTitle`, links tied and described, tab order, note IDs, the OCR layer's undefined glyphs, role-map loops (7.1-6), standard tags remapped (7.1-7), malformed `/Lang` spelling (7.2-29) | not sent to the model: the executor fixes these whatever the work order says, and review.md says how many it changed |
+| the AI | figure alt text, heading levels, natural language, untagged content, role mapping (including styles with no mapping), document title, table headers (7.5-x), broken table, list and contents structure | sent to the model in the digest (`pdfua_check`) as rule, count, example objects, the work-order `key` that fixes it and `objs` (up to 20 tags it failed on) |
+| a person | fonts, Formula alt, Figure bounding boxes, the PDF/UA claim | not sent; listed in `review.md` as known gaps |
+
+Which rules belong to whom, and which work-order key fixes each AI rule, is set in `pipeline/vera.py` (`EXECUTOR`, `KEY`, `PERSON`). The AI must address every rule it is sent with its key, or defer it naming the rule (prompt v8, step 9).
+
+**Targeting from the original's results.** The audit uses veraPDF's findings to make the flagged tags reachable: a Figure with no alt and no image of its own (a vector logo or drawing) gets a crop of its whole page (`image_is_whole_page`), so the model can see it; a table whose cells veraPDF flags is marked with `pdfua_rules` (and kept even past the 100-table cap).
+
+**Executor fixes for veraPDF rules** run on every book (after the work order, before the index rebuild) and change no page's look or text. Each records what it changed under `rule_fixes` in the apply log, shown in review.md's "Who fixes" column:
+
+| Rule | Fix |
+|---|---|
+| 7.1-6 | A RoleMap chain that loops is cut where it closes (that style → P) and listed for a person |
+| 7.1-7 | A standard tag remapped in the RoleMap (sands: `Caption → P`): its elements are retyped to what the RoleMap made them, and the entry removed |
+| 7.2-29 | `/Lang` spelling tidied (`en_US` → `en-US`, case, spaces; `langtag.py`); an empty `/Lang` on a tag removed; anything else listed, never guessed |
+| 7.5-1/2 | A header cell (TH) with no direction gets one where the table makes it plain: a row of only TH → Column, a row whose only TH is its first cell → Row; others are listed |
+
+The work order's `tables` key (`op_tables`) marks the header rows and columns the AI names in a real table as TH with their Scope; spans that cross the header edge are rejected for a person. `rolemap` may add a mapping for a style the source never mapped (7.1-5).
 
 veraPDF runs once per step, in the background while the step's own checks run. The audit's run is the "before" (`verapdf.json`, plus its `pdfua_check` view in the digest); it is printed with the audit, so a file that already passes (or fails thousands of checks) shows up before anything is spent. Verify's run is the "after". review.md gets two rows (no WCAG failures after; no rule newly failing or failing more often) and a "veraPDF" section with each failed rule's before and after counts, who fixes it, its status (newly failing, failing more often, still failing, fixed) and pages. `record.json` keeps both summaries under `verapdf`; `summary.md` shows each book's failing rules before → after.
 
@@ -207,6 +222,8 @@ veraPDF runs once per step, in the background while the step's own checks run. T
 | 2.4.6 | Headings with no text, over 200 characters, or the same twice in a row |
 
 The executor sets `/Tabs /S` on every page with annotations (2.4.3), so tab order follows the tag tree.
+
+When an audit is reused and has no `verapdf.json` yet, `run_api.sh` runs veraPDF on the file the audit was made from (the intake result, if intake ran), and `decide.py` builds `pdfua_check` from it.
 
 **PAC 2026** ([pac.pdf-accessibility.org](https://pac.pdf-accessibility.org/en), Windows, no command line) is the final manual check. review.md ends with what to run and the criteria no automated check covers (alt-text accuracy, meaningful order, colour, contrast over images, images of text, descriptive headings, language of parts). A PAC failure not listed in review.md is a gap in the automated checks: open an issue.
 
@@ -238,11 +255,12 @@ A failed call that OpenRouter did charge for is logged with its cost and counted
 | `review_ocr.py` | Records a person's verdict on a book's OCR text (checklist rule 2): `python3 review_ocr.py <run>/<book> --verdict approved\|"not approved" --reviewer NAME --reason TEXT [--pages 381-386] [--date YYYY-MM-DD]`. Writes `_intake/intake.json`, `record.json` and the review.md row; the row is OK only on "approved"; FROM= reruns carry the verdict |
 | `scan.py` | Fast read-only checks on a folder of PDFs (no OCR, no model): tagged or not, producer, page triage, private-use characters, text outside the visible page area and word breaks, per book (`books/*.json`) and in `summary.md`: `python3 scan.py <folder> <out_dir>` |
 | `audit.py` | Original → digest (styles, listed elements, figures with crops, page map, reading order, front matter; in scanned books, suspect OCR words on word sheets; veraPDF's PDF/UA failures). No model. Positions are measured in the visible page area (CropBox): running-head bands (top 70 pt, bottom 60 pt), figure sizes and crops; a figure drawn only outside it gets no crop and is marked `outside_visible_area` |
-| `prompts/workorder_v7.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run. v7 changes the ActualText wording (spoken text only where printed glyphs read wrongly; equal to the print apart from spacing, case and line-end hyphens; merges join a label and its title) and adds `ocr_words` (the printed spelling of misread OCR words in scanned books, read from word sheets) and `pdfua_check` (the veraPDF failures the model can act on). v6 and older are kept as a record |
+| `prompts/workorder_v8.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run. v8 adds `tables` (header rows and columns of a real table), lets `rolemap` map a style the source never mapped, tells the model the work-order key and tags for each `pdfua_check` rule, and requires every such rule to be fixed or deferred by name (step 9). v7 changes the ActualText wording (spoken text only where printed glyphs read wrongly; equal to the print apart from spacing, case and line-end hyphens; merges join a label and its title) and adds `ocr_words` (the printed spelling of misread OCR words in scanned books, read from word sheets) and `pdfua_check` (the veraPDF failures the model can act on). v7 and older are kept as a record |
 | `decide.py` | The API call. Estimates cost, checks available credit, sends the digest and crops, parses and validates the reply. `--dry-run`, `--response-file`, `--check-key`, `--credit` (credit left), `--max-images` (default 100), `--max-tokens` (default 48,000, or 16,000 plus 45 per OCR word form sent when that is more; the model's reasoning counts against it) |
 | `apply.py` | The executor. Original + work order → `<original>_remediated.pdf`. pikepdf only; checks each target first and rejects what doesn't fit |
 | `verify.py` | Checks the result against the original, adds the WCAG checks veraPDF does not make, and runs veraPDF on the result |
-| `vera.py` | Runs veraPDF with the pinned WCAG 2.2 machine profile (which includes the PDF/UA-1 rules) and condenses its report to one entry per failed rule: WCAG or PDF/UA-only, and who can fix it. `--check`; or `vera.py FILE.pdf OUT.json` on its own |
+| `vera.py` | Runs veraPDF with the pinned WCAG 2.2 machine profile (which includes the PDF/UA-1 rules) and condenses its report to one entry per failed rule: WCAG or PDF/UA-only, and who can fix it (and, for the AI, the work-order key). `--check`; or `vera.py FILE.pdf OUT.json` on its own |
+| `langtag.py` | Checks and tidies a BCP 47 language tag; used by `apply.py` (`/Lang` spelling) and `decide.py` (the work order's `document.lang`) |
 | `verapdf/` | `WCAG-2-2-Machine.xml` (the pinned profile), `rules.json` (each rule's WCAG success criteria, or why it is PDF/UA-only), `install.sh` |
 | `report.py` | Writes `review.md`, `record.json` and `han_review.csv`, then removes the working files |
 | `plumb_fix.py` | Fix for pdfplumber's nested marked-content bug (required) |

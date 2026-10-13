@@ -100,7 +100,7 @@ fi
 same_source() { [[ -f $A/digest.json ]] && python3 -c "import json,hashlib,sys; d=json.load(open('$A/digest.json')); sys.exit(0 if d['source']['sha256'] == hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest() else 1)" "$PSRC"; }
 if same_source; then
   echo "▶ 1/5 audit: reusing the audit already in $A"
-  [[ -f $A/verapdf.json ]] || stage "1/5 veraPDF on the original (audit made before veraPDF was added)" python3 vera.py "$SRC" "$A/verapdf.json"
+  [[ -f $A/verapdf.json ]] || stage "1/5 veraPDF on the original (audit made before veraPDF was added)" python3 vera.py "$PSRC" "$A/verapdf.json"
 else
   stage "1/5 audit (no model)"          python3 audit.py "$PSRC" "$A"
 fi
