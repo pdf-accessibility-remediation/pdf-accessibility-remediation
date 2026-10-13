@@ -30,6 +30,8 @@ BASE=$(basename "$SRC"); OUT=${OUT:-${BASE%.*}_remediated.pdf}; [[ $OUT == *.[pP
 cd "$(dirname "$0")"
 python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
   echo "missing Python libraries in $(command -v python3): from pipeline/, run  python3 -m pip install -r requirements.txt"; exit 1; }
+VERA=$(python3 vera.py --check) || {                                                         # also before any paid call
+  echo "$VERA"; echo "veraPDF is needed for the WCAG checks: bash verapdf/install.sh (see README), or run with VERAPDF=off to skip them"; exit 1; }
 RUNS=${RUNS_DIR:-$(cd .. && pwd)/runs}
 R=${RUN_DIR:-$RUNS/$NAME/$RUN}; A=$R/_audit
 if [[ -f $R/record.json ]]; then echo "$R already holds a finished run: choose another run label"; exit 1; fi
@@ -98,6 +100,7 @@ fi
 same_source() { [[ -f $A/digest.json ]] && python3 -c "import json,hashlib,sys; d=json.load(open('$A/digest.json')); sys.exit(0 if d['source']['sha256'] == hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest() else 1)" "$PSRC"; }
 if same_source; then
   echo "▶ 1/5 audit: reusing the audit already in $A"
+  [[ -f $A/verapdf.json ]] || stage "1/5 veraPDF on the original (audit made before veraPDF was added)" python3 vera.py "$PSRC" "$A/verapdf.json"
 else
   stage "1/5 audit (no model)"          python3 audit.py "$PSRC" "$A"
 fi

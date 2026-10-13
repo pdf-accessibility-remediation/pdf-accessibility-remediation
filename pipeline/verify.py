@@ -1,11 +1,12 @@
 """Verify work/remediated.pdf against the original. Read-only."""
 import sys, json, re, collections
-import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix
+import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, vera
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 import fontTools.cffLib, fontTools.ttLib  # noqa: F401  required: a font that can't be read must not pass as OK
 from PIL import ImageChops
 A, B = sys.argv[1], sys.argv[2]
 out = {}
+VERA = vera.start(B)                        # veraPDF on the result runs alongside these checks; collected in 7
 # 1 pixels, every page
 da, db = pdfium.PdfDocument(A), pdfium.PdfDocument(B)
 out['pixel_pages_differing'] = [i + 1 for i in range(len(da)) if ImageChops.difference(
@@ -18,6 +19,7 @@ def _as_fixed(c): return FONTMAP.get((c.get('fontname'), c['text']), c['text']) 
 nouni, pua = collections.Counter(), collections.Counter(); pua_pages = collections.Counter()   # 3.6, read-aloud text only
 def _no_unicode(t): return t.startswith('(cid:') or t == '\ufffd' or (len(t) == 1 and ord(t) < 32 and t not in '\t\n\r')
 _CM = set()
+_TXT, _POS = collections.defaultdict(list), {}     # per (page, MCID) in the result: its text, and where its first character sits
 with pdfplumber.open(A) as pa, pdfplumber.open(B) as pb:
     for i in range(len(pa.pages)):
         PA, PB = pa.pages[i], pb.pages[i]
@@ -36,6 +38,10 @@ with pdfplumber.open(A) as pa, pdfplumber.open(B) as pb:
             if _no_unicode(t): nouni[i + 1] += 1
             elif len(t) == 1 and 0xE000 <= ord(t) <= 0xF8FF: pua[ord(t)] += 1; pua_pages[i + 1] += 1
         content_mcids_page = {(i + 1, c['mcid']) for c in cb if c.get('mcid') is not None}
+        for c in cb:
+            if c.get('mcid') is None: continue
+            k = (i + 1, c['mcid']); _TXT[k].append(c['text'])
+            if k not in _POS: _POS[k] = (c['top'], c['x0'], c['size'])
         _CM.update(content_mcids_page); PA.close(); PB.close()
 out['text_pages_changed'] = tdiff; out['untagged_chars'] = untag; out['artifact_chars'] = art
 out['offpage_chars_read_aloud'] = sum(offp.values()); out['offpage_pages'] = sorted(offp)[:50]
@@ -412,10 +418,78 @@ for i, p in enumerate(pages, 1):
     elif free_pages.get(i) and not any(pg_ == i for pg_, _ in owner) and b'/Artifact' not in raw:
         uo_pages.append({'page': i, 'untagged': dict(free_pages[i]), 'same_as_source': raw == _raw(src.pages[i - 1])})
 out['page_figures'] = pf; out['untagged_only_pages'] = uo_pages
-# 7 ActualText spans in page content (OCR words given their printed spelling), and the same validator as the audit's
+# 7 WCAG 2.2 AA checks veraPDF does not make. Each finds something for a person to look at, not a proven failure.
+#   veraPDF itself (WCAG 2.2 machine profile, started at the top) is collected after 8.
+def _el_text(n, pg=None, acc=None, d=0):    # a tag's ActualText, else the text of the marked content inside it, in tree order
+    acc = [] if acc is None else acc
+    if d > 60: return acc
+    if '/ActualText' in n: acc.append(str(n.ActualText)); return acc
+    pg = _own_pg(n) or pg
+    for k in _kids(n):
+        if isinstance(k, int): acc.extend(_TXT.get((pg, k), ()))
+        elif isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR' and '/Stm' not in k: acc.extend(_TXT.get((_own_pg(k) or pg, int(k.MCID)), ()))
+        elif _is_el(k): _el_text(k, pg, acc, d + 1)
+    return acc
+def _text(n): return re.sub(r'\s+', ' ', ''.join(_el_text(n))).strip()
+def _mcids(n, pg=None, acc=None, d=0):
+    acc = set() if acc is None else acc
+    pg = _own_pg(n) or pg
+    for k in _kids(n):
+        if isinstance(k, int): acc.add((pg, k))
+        elif isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR' and '/MCID' in k: acc.add((_own_pg(k) or pg, int(k.MCID)))
+        elif _is_el(k) and d < 60: _mcids(k, pg, acc, d + 1)
+    return acc
+W = collections.defaultdict(list)
+stk = list(reversed(_kids(st)))
+while stk:
+    n = stk.pop()
+    if not _is_el(n): continue
+    s_ = el_type.get(n.objgen) or mapped(str(n.S).lstrip('/'))
+    W['H' if re.fullmatch(r'H[1-6]?', s_) else s_].append(n)
+    stk.extend(reversed(_kids(n)))
+wc = {}
+# 1.1.1 alt text that is there but says nothing (empty and placeholder alt is counted in figures above)
+FILE_ALT = re.compile(r'\.(jpe?g|png|gif|tiff?|bmp|eps|svg|psd|ai)\b|^(img|image|dsc|scan|fig|figure|untitled|picture)[\s_-]*\d*$', re.I)
+alts = [(n, str(n.get('/Alt', '')).strip()) for n in W['Figure'] + W['Formula']]
+alt_n = collections.Counter(a for _, a in alts if a)
+bad_alt = []
+for n, a in alts:
+    if a.lower() in ('', 'illustration', 'image'): continue
+    why = ('looks like a file name' if FILE_ALT.search(a) else 'no letters or digits' if not re.search(r'\w', a)
+           else f'the same alt text on {alt_n[a]} figures' if alt_n[a] >= 3 else None)     # no length limit: WCAG sets none, and maps need long alt
+    if why: bad_alt.append({'page': _first_pg(n), 'alt': a[:80], 'why': why})
+wc['alt_text'] = {'figures': len(alts), 'flagged': len(bad_alt), 'examples': bad_alt[:15]}
+# 1.3.1 a table with no header cell: a screen reader can't say which column or row a cell belongs to
+def _has_th(n, d=0): return any(_is_el(k) and (mapped(str(k.S).lstrip('/')) == 'TH' or (d < 8 and _has_th(k, d + 1))) for k in _kids(n))
+wc['tables_without_header'] = [{'page': _first_pg(n)} for n in W['Table'] if _has_content(n) and not _has_th(n)]
+# 1.3.2 reading order: on each page, follow the tagged text in tag-tree order and count jumps back UP the same column.
+#   Notes, figures and captions are skipped: they are placed where they are referred to, not where they are drawn.
+placed = set()
+for n in W['Note'] + W['Figure'] + W['Caption']: _mcids(n, acc=placed)
+seq = collections.defaultdict(list)
+for k in owner:                                # filled in tag-tree order in 3
+    if k in _POS and k not in placed and _TXT[k] and ''.join(_TXT[k]).strip(): seq[k[0]].append(_POS[k])
+ro = []
+for p, s in sorted(seq.items()):
+    up = sum(1 for (t0, x0, z0), (t1, x1, z1) in zip(s, s[1:]) if t1 < t0 - 2 * max(z0, 6) and abs(x1 - x0) < 72)
+    if up >= 2: ro.append({'page': p, 'jumps_up': up, 'runs': len(s)})
+wc['reading_order'] = {'pages_checked': len(seq), 'flagged': sorted(ro, key=lambda x: -x['jumps_up'])[:20], 'flagged_count': len(ro)}
+# 2.4.2 a title that is a file name or a placeholder
+title = str(pdf.docinfo.get('/Title', '')).strip()
+wc['title_generic'] = bool(title) and bool(re.search(r'\.(pdf|docx?|indd|qxd|rtf|txt)$|^untitled\b|^microsoft (word|powerpoint)\s*-|^document\s*\d*$|^[\d\s_.-]+$', title, re.I))
+# 2.4.4 link text that says nothing about where the link goes
+GENERIC = re.compile(r'(click |tap )?(here|more|read more|learn more|link|this link|this|details|go|continue|website)\W*', re.I)
+wc['links_generic'] = [{'page': _first_pg(n), 'text': t[:60]} for n in W['Link'] if (t := _text(n)) and GENERIC.fullmatch(t)][:20]
+# 2.4.6 headings with no text, very long headings, and the same heading twice in a row
+hs = [(n, _text(n)) for n in W['H']]
+wc['headings'] = {'count': len(hs),
+                  'empty': [{'page': _first_pg(n)} for n, t in hs if not t and '/Alt' not in n][:15],
+                  'long': [{'page': _first_pg(n), 'chars': len(t), 'text': t[:80]} for n, t in hs if len(t) > 200][:15],
+                  'repeated': [{'page': _first_pg(b), 'text': tb[:80]} for (a, ta), (b, tb) in zip(hs, hs[1:]) if ta and ta.lower() == tb.lower()][:15]}
+out['wcag'] = wc
+# 8 ActualText spans in page content (OCR words given their printed spelling)
 out['actual_text_spans'] = {'original': sum(_raw(p).count(b'/ActualText') for p in src.pages), 'result': sum(_raw(p).count(b'/ActualText') for p in pages)}
-import vera
-out['pdfua'] = vera.run(B)
-print(vera.line(out['pdfua']), file=sys.stderr)
+out['verapdf'] = vera.finish(VERA)
+print(vera.line(out['verapdf']), file=sys.stderr)
 json.dump(out, open(B + '.verify.json', 'w'), ensure_ascii=False, indent=1)
 print(json.dumps(out, ensure_ascii=False, indent=1))

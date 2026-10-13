@@ -13,7 +13,7 @@ look the way the work order assumes, is skipped and logged under "rejected" — 
 stops the run and never half-applies.
 """
 import sys, os, json, re, collections, hashlib
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext  # noqa: E401
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext, langtag, support  # noqa: E401
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
 
@@ -26,6 +26,7 @@ if want and hashlib.sha256(open(SRC, 'rb').read()).hexdigest() != want:
     sys.exit('work order was written for a different file (sha256 mismatch)')
 
 pdf = pikepdf.open(SRC)
+support.stop_if_unsupported(pdf, 'apply')       # PDF 2.0 / namespaced tags (a reused audit, FROM=/REPLY=): exit 3, nothing written
 pages = list(pdf.pages); pidx = {p.obj.objgen: i + 1 for i, p in enumerate(pages)}
 labels = {i + 1: p.label for i, p in enumerate(pages)}
 def PG(n):
@@ -56,7 +57,7 @@ class _PL:
                 for c in self.pages[-1].chars: c['pg'] = n          # gaptext: a gap filled by another glyph is no space
 PL = _PL(SRC)
 log = {'applied': collections.Counter(), 'rejected': [], 'deferred': [], 'failed': [], 'empty_notes_removed': [],
-       'rolemap': {}, 'bookmarks': None}
+       'rolemap': {}, 'bookmarks': None, 'rule_fixes': {}}
 def _versions():                               # recorded in record.json and at the top of review.md
     from importlib.metadata import version
     out = {'python': sys.version.split()[0], 'executable': sys.executable}
@@ -67,6 +68,10 @@ def _versions():                               # recorded in record.json and at 
 log['environment'] = _versions()
 def ok(k, n=1): log['applied'][k] += n
 def reject(op, why): log['rejected'].append({'op': op, 'why': why})
+def rule_fix(rule, n, example=None):            # what the executor changed for a veraPDF rule (review.md: "Who fixes")
+    if not n: return
+    r = log['rule_fixes'].setdefault(rule, {'changed': 0, 'examples': []}); r['changed'] += n
+    if example and len(r['examples']) < 5: r['examples'].append(example)
 def guarded(label):
     def deco(fn):
         def run(*a, **kw):
@@ -682,7 +687,11 @@ def op_rolemap(spec):
         if v not in STD_HEADINGS: reject(f'rolemap {k}', f'{v} is not an allowed target'); continue
         if '/' + k not in RM:
             if k in STANDARD_TYPES and k != v: PENDING_STD[k] = v; continue      # done by op_rolemap_standard, after merges
-            reject(f'rolemap {k}', 'style not in RoleMap'); continue
+            if k in STANDARD_TYPES: reject(f'rolemap {k}', 'already this standard tag'); continue
+            n = sum(1 for e, _ in all_elems() if S(e) == k)
+            if not n: reject(f'rolemap {k}', 'style not in RoleMap and no element carries it'); continue
+            RM['/' + k] = pikepdf.Name('/' + v); RMAP[k] = v; ok('role map: style with no mapping mapped')   # veraPDF 7.1-5
+            log['rolemap'][k] = {'to': v, 'how': 'RoleMap (added: the style had no mapping)', 'elements': n}; continue
         n = sum(1 for e, _ in all_elems() if S(e) == k)
         if str(RM['/' + k]) != '/' + v: RM['/' + k] = pikepdf.Name('/' + v); ok('heading: RoleMap level')
         log['rolemap'][k] = {'to': v, 'how': 'RoleMap', 'elements': n}
@@ -1385,9 +1394,10 @@ def fix_root():
     reindex()
 def fix_flags():
     if '/MarkInfo' not in pdf.Root: pdf.Root.MarkInfo = pikepdf.Dictionary()
-    if not pdf.Root.MarkInfo.get('/Marked', False): pdf.Root.MarkInfo.Marked = True; ok('document: marked as tagged')
+    if not pdf.Root.MarkInfo.get('/Marked', False): pdf.Root.MarkInfo.Marked = True; ok('document: marked as tagged'); rule_fix('6.2-1', 1)
     if '/ViewerPreferences' not in pdf.Root: pdf.Root.ViewerPreferences = pikepdf.Dictionary()
-    if not pdf.Root.ViewerPreferences.get('/DisplayDocTitle', False): pdf.Root.ViewerPreferences.DisplayDocTitle = True; ok('document: DisplayDocTitle')
+    if not pdf.Root.ViewerPreferences.get('/DisplayDocTitle', False):
+        pdf.Root.ViewerPreferences.DisplayDocTitle = True; ok('document: DisplayDocTitle'); rule_fix('7.1-10', 1)
     if '/Metadata' in pdf.Root and b'pdfuaid' in pdf.Root.Metadata.read_bytes():
         log['deferred'].append({'what': 'the source file already claims PDF/UA conformance', 'why': 'not verified by this pipeline; check it with PAC before relying on it'})
 
@@ -1470,6 +1480,148 @@ def op_list_rule(_spec=None):
         res['flattened'].append({**entry, 'text': elem_gaptext(el)[:60]}); ok('one-item list → paragraph (rule)')
     reindex()
 
+# ================================================================== tables: header cells (work order) and their direction (always)
+def table_rows(t):
+    rows = []
+    for k in kids(t):
+        if not is_elem(k): continue
+        if mapped(S(k)) == 'TR': rows.append(k)
+        elif mapped(S(k)) in ('THead', 'TBody', 'TFoot'): rows += [r for r in kids(k) if is_elem(r) and mapped(S(r)) == 'TR']
+    return rows
+def row_cells(r): return [c for c in kids(r) if is_elem(c) and mapped(S(c)) in ('TD', 'TH')]
+def _table_dicts(cell):
+    a = cell.get('/A')
+    return [d for d in (a if isinstance(a, pikepdf.Array) else [a] if a is not None else []) if isinstance(d, pikepdf.Dictionary)]
+def table_attr(cell, key):                       # a value from the cell's /O /Table attributes, or None
+    return next((d[key] for d in _table_dicts(cell) if str(d.get('/O')) == '/Table' and key in d), None)
+def set_table_attr(cell, key, value):
+    """Set key in the cell's own /O /Table attribute dict. One shared with other cells (indirect) is copied first, so
+    no other cell changes; a cell with no such dict gets one beside its other attributes."""
+    a = cell.get('/A'); arr = a if isinstance(a, pikepdf.Array) else None
+    for i, d in enumerate(arr if arr is not None else [a] if a is not None else []):
+        if isinstance(d, pikepdf.Dictionary) and str(d.get('/O')) == '/Table':
+            if d.is_indirect:
+                d = pikepdf.Dictionary({k_: v_ for k_, v_ in d.items()})
+                if arr is not None: arr[i] = d
+                else: cell.A = d
+            d[key] = value; return
+    new = pikepdf.Dictionary(O=pikepdf.Name('/Table')); new[key] = value
+    if a is None: cell.A = new
+    elif arr is not None: arr.append(new)
+    else: cell.A = pikepdf.Array([a, new])
+def span(cell, key):
+    v = table_attr(cell, key)
+    try: return max(1, int(v)) if v is not None else 1
+    except (TypeError, ValueError): return 1
+def op_tables(spec):
+    """Real tables: the work order names their header rows and columns ({obj, header_rows, header_cols}). Those cells
+    become TH with a Scope (Column, Row, or Both where they meet). Only the tags change, never the content; a table
+    whose spans cross the header edge is rejected for a person (WCAG 1.3.1)."""
+    reindex()
+    for it in spec or []:
+        what = f'tables {it.get("obj")}'
+        try: t = obj(it['obj'])
+        except Exception: reject(what, 'no such object'); continue
+        if not is_elem(t) or mapped(S(t)) != 'Table': reject(what, 'not a table (or it was flattened)'); continue
+        hr, hc = int(it.get('header_rows', 0)), int(it.get('header_cols', 0))
+        grid = [row_cells(r) for r in table_rows(t)]
+        if hr >= len(grid) or (hc and min((len(c) for c in grid), default=0) <= hc): reject(what, 'the table has too few rows or columns'); continue
+        if any(i + span(c, '/RowSpan') > hr for i in range(hr) for c in grid[i]): reject(what, 'a header cell spans into the body rows'); continue
+        if hc and any(span(c, '/RowSpan') > 1 for cells in grid for c in cells):
+            reject(what, 'a cell spans rows, so which cells start each row is unclear'); continue
+        if hc and any(sum(span(c, '/ColSpan') for c in cells[:hc]) != hc for cells in grid):
+            reject(what, 'a cell spans across the header column edge'); continue
+        n = 0
+        for i, cells in enumerate(grid):
+            for j, c in enumerate(cells):
+                if not (i < hr or j < hc): continue
+                if mapped(S(c)) != 'TH': c.S = pikepdf.Name('/TH'); n += 1
+                if table_attr(c, '/Scope') is None and table_attr(c, '/Headers') is None:
+                    set_table_attr(c, '/Scope', pikepdf.Name('/Both' if i < hr and j < hc else '/Column' if i < hr else '/Row'))
+        ok('table: header cells marked (work order)', n)
+        log.setdefault('tables', []).append({'obj': it['obj'], 'page': cell_page(t), 'header_rows': hr, 'header_cols': hc, 'cells_to_TH': n})
+def cell_page(c): return min(pages_of(c, eff_pg.get(c.objgen)) - {None}, default=None)
+def fix_th_scope():
+    """veraPDF 7.5-1/2 (WCAG 1.3.1): a header cell needs a direction (Scope) unless Headers/IDs give it. Set only where
+    the table says it plainly: a row of nothing but TH (a header row, at the top or repeated further down, or one cell
+    spanning the width) → Column; a row whose only TH is its first cell → Row. Any other TH is listed for a person.
+    A table whose body rows have no header above them is the work order's decision (tables), not this fix."""
+    reindex(); n, unclear = 0, []
+    for t, _ in all_elems():
+        if mapped(S(t)) != 'Table': continue
+        for r in table_rows(t):
+            cells = row_cells(r); ths = [mapped(S(x)) == 'TH' for x in cells]
+            for j, c in enumerate(cells):
+                if not ths[j] or table_attr(c, '/Scope') is not None or table_attr(c, '/Headers') is not None: continue
+                if all(ths): scope = '/Column'
+                elif j == 0 and not any(ths[1:]): scope = '/Row'
+                else: unclear.append(cell_page(c)); continue
+                set_table_attr(c, '/Scope', pikepdf.Name(scope)); n += 1
+    if n: ok('table: header cells given a direction (Scope)', n)
+    rule_fix('7.5-1', n)
+    for p in sorted({p for p in unclear if p is not None}) + ([None] if None in unclear else []):
+        log['deferred'].append({'what': f'{unclear.count(p)} header cell(s) (TH) whose direction is unclear: give each a Scope or Headers', 'page': p})
+
+# ================================================================== role map: loops, and standard tags remapped (always)
+def _rm():
+    return {str(k).lstrip('/'): str(v).lstrip('/') for k, v in (st.get('/RoleMap') or {}).items()}
+def fix_rolemap_cycles():
+    """veraPDF 7.1-6: a RoleMap chain that loops never reaches a standard tag. The loop is cut where it closes, by
+    mapping that style to P (or, for a standard tag, removing its entry), and listed for a person."""
+    if '/RoleMap' not in st: return
+    rm, n = _rm(), 0
+    for k in list(rm):
+        seen, t = [k], rm.get(k)
+        while t in rm and t not in seen: seen.append(t); t = rm[t]
+        if t not in seen: continue
+        if t in STANDARD_TYPES: del st.RoleMap['/' + t]; rm.pop(t)
+        else: st.RoleMap['/' + t] = pikepdf.Name('/P'); rm[t] = 'P'
+        n += 1; log['deferred'].append({'what': f'the role map looped ({" → ".join(seen + [t])}); {t} now maps to {"itself" if t in STANDARD_TYPES else "P"}',
+                                        'why': 'check what these tags should be'})
+    if n: RMAP.clear(); RMAP.update(_rm()); ok('role map: loop cut', n)
+    rule_fix('7.1-6', n)
+def fix_standard_remaps():
+    """veraPDF 7.1-7: a standard tag may not be remapped (sands: Caption → P). Each element with that tag is retyped to
+    what the RoleMap already made it, and the entry is removed: a screen reader hears the same thing as before."""
+    if '/RoleMap' not in st: return
+    RMAP.clear(); RMAP.update(_rm())
+    todo = {}
+    for k in list(RMAP):
+        if k not in STANDARD_TYPES: continue
+        seen, t = {k}, RMAP[k]
+        while t in RMAP and t not in seen: seen.add(t); t = RMAP[t]
+        if t in STANDARD_TYPES and t != k: todo[k] = t
+    if not todo: return
+    cnt = collections.Counter()
+    for e, _ in all_elems():
+        if S(e) in todo: cnt[S(e)] += 1; e.S = pikepdf.Name('/' + todo[S(e)])
+    for k, t in todo.items():
+        del st.RoleMap['/' + k]; RMAP.pop(k, None)
+        ok(f'role map: standard tag {k} was remapped to {t}; retyped', cnt[k]); rule_fix('7.1-7', cnt[k] or 1, f'{k} → {t} ({cnt[k]} tags)')
+    reindex()
+def fix_lang_values():
+    """veraPDF 7.2-29: a /Lang value must be a language tag. Spelling only is tidied (en_US → en-US, case, spaces); an
+    empty /Lang on a tag is removed (it inherits); anything else is listed for a person, never guessed."""
+    reindex(); n, bad = 0, []
+    def tidy(d, where, page, root=False):
+        nonlocal n
+        v = d.get('/Lang')
+        if v is None: return
+        raw = str(v)
+        if not raw.strip():
+            if not root: del d['/Lang']; n += 1
+            else: bad.append((where, raw, page))
+            return
+        tag = langtag.norm(raw)
+        if tag is None: bad.append((where, raw, page))
+        elif tag != raw: d.Lang = pikepdf.String(tag); n += 1
+    tidy(pdf.Root, 'document', None, root=True)
+    for e, _ in all_elems(): tidy(e, S(e), eff_pg.get(e.objgen))
+    if n: ok('language: /Lang spelling tidied', n)
+    rule_fix('7.2-29', n)
+    for where, raw, page in bad[:20]:
+        log['deferred'].append({'what': f'/Lang "{raw[:40]}" on {where} is not a language tag', 'why': 'set the right tag (e.g. en, ja, zh-Hant)', **({'page': page} if page else {})})
+    if len(bad) > 20: log['deferred'].append({'what': f'{len(bad) - 20} more /Lang values that are not language tags'})
 
 
 # ================================================================== always, near the end: every Note has a unique ID
@@ -2261,7 +2413,7 @@ def fix_tabs():
     for page in pages:
         if page.obj.get('/Annots') and str(page.obj.get('/Tabs')) != '/S': page.obj.Tabs = pikepdf.Name('/S'); n += 1
     if n: ok('tab order: /Tabs /S set on pages with annotations', n)
-    log['tabs_set'] = n
+    log['tabs_set'] = n; rule_fix('7.18.3-1', n)
 
 # ================================================================== always: font maps (3.6)
 DIGIT_PUA = {**{0xF730 + n: n for n in range(10)},                      # Adobe old-style digits zerooldstyle…nineoldstyle
@@ -2431,7 +2583,7 @@ def fix_font_maps():
 
 # ================================================================== run, in a fixed order
 STEPS = [('artifacts', op_artifacts), ('offpage', fix_offpage_text), ('document', op_document), ('adopt_orphans', op_adopt_orphans), ('rolemap', op_rolemap), ('merges', op_merges),
-         ('actual_text', op_actual_text), ('ocr_words', op_ocr_words), ('rolemap', op_rolemap_standard), ('retype', op_retype), ('list_rule', op_list_rule), ('flatten', op_flatten), ('alt', op_alt),
+         ('actual_text', op_actual_text), ('ocr_words', op_ocr_words), ('rolemap', op_rolemap_standard), ('retype', op_retype), ('list_rule', op_list_rule), ('flatten', op_flatten), ('tables', op_tables), ('alt', op_alt),
          ('move_to_document_start', op_move_to_document_start), ('captions', op_captions), ('lists', op_lists),
          ('toc', op_toc), ('notes', op_notes), ('language', op_language), ('links', op_links),
          ('move_section', op_move_section), ('fix_figure_order', op_fix_figure_order),
@@ -2455,6 +2607,9 @@ try: fix_outline()
 except Exception as e: log['failed'].append({'op': 'fix_outline', 'error': f'{type(e).__name__}: {e}'[:300]})
 try: fix_paths()
 except Exception as e: log['failed'].append({'op': 'fix_paths', 'error': f'{type(e).__name__}: {e}'[:300]})
+for fn in (fix_rolemap_cycles, fix_standard_remaps, fix_th_scope, fix_lang_values):   # veraPDF rules the executor fixes by itself
+    try: fn()
+    except Exception as e: log['failed'].append({'op': fn.__name__, 'error': f'{type(e).__name__}: {e}'[:300]})
 try: fix_parenttree()
 except Exception as e: log['failed'].append({'op': 'fix_parenttree', 'error': f'{type(e).__name__}: {e}'[:300]})
 try: fix_index()
