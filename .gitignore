@@ -5,6 +5,7 @@
 # in-copyright books and everything derived from them (crops, digests, remediated copies)
 **/pipeline/runs/
 runs/
+samples/
 
 # python and OS clutter
 __pycache__/
