@@ -1,0 +1,27 @@
+name: Docs dispatch
+
+# Tells the pdf-accessibility-remediation.github.io repo to rebuild the site
+# when docs/ changes on main.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send repository_dispatch to the site repo
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          # Fine-grained token limited to the .github.io repo, Contents: read and write
+          token: ${{ secrets.DOCS_DISPATCH_TOKEN }}
+          repository: pdf-accessibility-remediation/pdf-accessibility-remediation.github.io
+          event-type: docs-updated
+          client-payload: '{"sha": "${{ github.sha }}"}'
