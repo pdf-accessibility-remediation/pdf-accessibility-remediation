@@ -14,3 +14,4 @@ Closes #
 - [ ] `bash -n pipeline/run_api.sh`
 - [ ] `bash -n pipeline/batch_api.sh`
 - [ ] Relevant tests or PDF validation completed
+- [ ] Docs updated in `docs/`, or not needed because: ___
