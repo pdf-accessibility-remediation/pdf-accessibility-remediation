@@ -151,3 +151,4 @@ echo "  review.md     what a person should check"
 echo "  record.json   the full record: decisions, cost, timing, checks"
 CREDIT=$(python3 decide.py --credit "$R/record.json" 2>/dev/null || true)
 if [[ -n $CREDIT ]]; then echo; echo "credit left: \$$CREDIT"; else echo; echo "credit left: could not check (no key, or OpenRouter unreachable)"; fi
+# docs-check test, do not merge
