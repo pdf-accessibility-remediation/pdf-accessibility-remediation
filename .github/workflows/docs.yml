@@ -1,0 +1,51 @@
+name: Docs
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  docs-check:
+    # A PR that changes pipeline/ or prompts/ must change docs/ too, unless it has the
+    # no-docs-needed label (refactors and fixes that don't change behavior).
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-docs-needed') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check that docs/ changed with pipeline/ or prompts/
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
+          code=$(echo "$changed" | grep -E '^(pipeline|prompts)/' || true)
+          docs=$(echo "$changed" | grep -E '^docs/' || true)
+          if [ -n "$code" ] && [ -z "$docs" ]; then
+            echo "::error::This PR changes pipeline/ or prompts/ but not docs/."
+            echo "Changed code files:"
+            echo "$code"
+            echo "Update the matching page in docs/, or add the 'no-docs-needed' label if the PR doesn't change behavior."
+            exit 1
+          fi
+          echo "OK"
+
+  link-check:
+    if: ${{ github.event.action != 'labeled' && github.event.action != 'unlabeled' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check links in docs/ and README.md
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --no-progress --include-fragments README.md 'docs/**/*.md'
+          fail: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
