@@ -20,7 +20,8 @@ jobs:
       - name: Send repository_dispatch to the site repo
         uses: peter-evans/repository-dispatch@v3
         with:
-          # Fine-grained token limited to the .github.io repo, Contents: read and write
+          # Fine-grained token limited to the .github.io repo, Contents: read and write.
+          # Who owns it and how to replace it: "Dispatch token" in the .github.io repo's README.
           token: ${{ secrets.DOCS_DISPATCH_TOKEN }}
           repository: pdf-accessibility-remediation/pdf-accessibility-remediation.github.io
           event-type: docs-updated
