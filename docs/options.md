@@ -10,6 +10,7 @@ nav_order: 4
 | `AUTO=1` | No y/N question: sends straight away. For a Claude model only if the estimate is within the $2 cap and your credit; for any other model the estimate is approximate and not capped (the line printed before sending says which) |
 | `ESTIMATE=1` | Audit and cost estimate only; a later run with the same label reuses the audit |
 | `REPLY=path/to/reply.txt` | Reuses a saved Claude reply instead of calling the API (no cost) |
+| `REVIEW=1` | Stops after the AI's decisions so a person can approve, change or reject each one before anything is applied; rerunning the same label (without it) applies the reviewed work order. One book at a time, not in batches (see [Reviewing the work order](review-step.md)) |
 | `KEEP=1` | Keeps the working files (digest, figure crops, raw reply, logs) |
 | `OUT=name.pdf` | Names the result (default: `<original name>_remediated.pdf`) |
 | `MODEL=openai/gpt-5` | Any OpenRouter model id for this run or batch (default: `DEFAULT_MODEL` in `decide.py`, `anthropic/claude-sonnet-5.5`) |

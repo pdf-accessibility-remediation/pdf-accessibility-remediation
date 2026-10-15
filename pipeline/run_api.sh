@@ -5,6 +5,8 @@
 # Needs OPENROUTER_API_KEY in a .env file in or above this folder. Asks before spending anything.
 # KEEP=1  bash run_api.sh …   keeps the working files (digest, figure crops, raw reply, logs) for debugging
 # REPLY=path/to/reply.txt bash run_api.sh …   reuses a saved Claude reply instead of calling the API (no cost)
+# REVIEW=1 bash run_api.sh …   stops after the AI's decisions so a person can review them first (review_workorder.py --serve);
+#   rerunning the same label afterwards applies the reviewed work order. Not for batches.
 # AUTO=1 bash run_api.sh …   no y/N question: sends if the estimate is within the $2 cap and your credit
 # ESTIMATE=1 bash run_api.sh …   audit + cost estimate only; a later run with the same label reuses the audit
 # OUT=clan.pdf bash run_api.sh …   names the result; by default it is <original file name>_remediated.pdf
@@ -58,8 +60,14 @@ if cost and not run.get('response_from'):                       # a paid call wh
     print(f'▶ earlier attempt logged: ${cost:.3f} spent, reply {"cut off" if run.get("finish_reason") == "length" else "unusable"}; making a new call')
 PY2
 }
-SAVED=
-if [[ -z ${REPLY:-} && -f $R/workorder.json && -f $R/response.json ]]; then
+SAVED=; REVIEWED=
+if [[ -f $R/workorder.ai.json ]]; then         # stopped for a person's review (REVIEW=1): never decide again over it
+  if [[ ! -f $R/review.json ]]; then
+    echo "the AI's work order in $R is waiting for a review. Finish it first:"
+    echo "  python3 $(pwd)/review_workorder.py \"$R\" --serve"; exit 1
+  fi
+  REVIEWED=1; echo "▶ the work order was reviewed by a person: applying the reviewed version (no API call)"
+elif [[ -z ${REPLY:-} && -f $R/workorder.json && -f $R/response.json ]]; then
   REPLY=$R/response.json
   echo "▶ the earlier attempt's reply was complete (a later step failed): reusing it, no new API call"
 elif [[ -f $R/run.json ]]; then
@@ -116,8 +124,8 @@ if [[ -n $SAVED ]]; then
     echo "▶ the saved reply still cannot be read: its cost is logged and a new call is made"; log_attempt
   fi
 fi
-if [[ -n ${ESTIMATE:-} && -n ${REPLY:-} ]]; then echo "estimate only: no cost, a saved reply will be reused"; summary; exit 0; fi
-if [[ -n ${REUSED:-} ]]; then
+if [[ -n ${ESTIMATE:-} && ( -n ${REPLY:-} || -n $REVIEWED ) ]]; then echo "estimate only: no cost, a saved reply will be reused"; summary; exit 0; fi
+if [[ -n ${REUSED:-} || -n $REVIEWED ]]; then
   :
 elif [[ -n ${REPLY:-} ]]; then
   stage "2/5 reuse saved reply (no cost)" python3 decide.py "$A" "$R" --response-file "$REPLY" ${MT[@]+"${MT[@]}"}
@@ -138,6 +146,16 @@ else
     echo "stopped before the API call"; [[ -z ${KEEP:-} && -n $NEW ]] && rm -rf "$R"; summary; exit 0
   fi
   stage "3/5 $USE_MODEL via OpenRouter" python3 decide.py "$A" "$R" ${MT[@]+"${MT[@]}"}
+fi
+if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews the AI's decisions before anything is applied
+  cp "$R/workorder.json" "$R/workorder.ai.json"
+  stage "review: page images (no model)" python3 review_workorder.py "$R" --prepare --pdf "$PSRC"
+  summary
+  echo
+  echo "stopped for review: nothing has been applied yet"
+  echo "  1. python3 $(pwd)/review_workorder.py \"$R\" --serve     opens the review page"
+  echo "  2. ${RUN_DIR:+RUN_DIR=$R }bash $(pwd)/run_api.sh \"$SRC\" $NAME $(basename "$R")     afterwards (without REVIEW=1): applies the reviewed work order"
+  exit 0
 fi
 stage "4/5 apply (no model)"            python3 apply.py "$PSRC" "$R/workorder.json" "$R/$OUT"
 stage "4/5 verify (no model)"           bash -c 'python3 verify.py "$1" "$2" > /dev/null' _ "$PSRC" "$R/$OUT"

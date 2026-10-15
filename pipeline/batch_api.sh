@@ -35,6 +35,7 @@
 # summary.md is also written when the batch stops early or is interrupted, and RETRY=1 on a batch whose books have
 # all finished just rewrites it (no cost). A missing library stops the batch before any paid call.
 set -euo pipefail
+[[ -z ${REVIEW:-} ]] || { echo "REVIEW=1 is for one book at a time (bash run_api.sh): a batch runs unattended and cannot stop for a review"; exit 1; }
 [[ -n ${AUTO:-} ]] || { echo "batch runs call the API without asking: start with  AUTO=1 bash batch_api.sh <run-label> [folder | books.txt] …"; exit 1; }
 LABEL=${1:?run label used for every book, e.g. batch1}; shift
 SOURCES=("$@")
