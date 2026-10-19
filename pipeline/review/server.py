@@ -3,7 +3,9 @@
 Routes (all call review/core.py; a later front end can replace this file and page.html without touching the pipeline):
     GET  /                       the page, with review_items.json built in
     GET  /review_pages/…  /_audit/figures/…  /_audit/ocr_words/…   page images, figure crops, OCR word sheets
-                                 (nothing else in the run folder is served). A page image is rendered the first time it is asked for.
+                                 (nothing else in the run folder is served: the files are listed when the server starts, and a
+                                 request path is only looked up in that list, never joined onto a folder). A page image is
+                                 rendered the first time it is asked for.
     GET  /word/<id>.png          one OCR word cut from its word sheet (the image the AI read)
     POST /save    {reviewer, decisions, additions, saved_at}  → saved to review_decisions.json; returns what the check
                                  would drop, additions refused, and gaps (no H1, figures without alt)
@@ -13,14 +15,12 @@ Routes (all call review/core.py; a later front end can replace this file and pag
 Requests must come from the page itself: the Host must be this server's, and a POST must be JSON from the same origin,
 so another web page open in the browser cannot submit a review (a plain form or a no-cors fetch cannot send JSON).
 """
-import os, re, json, datetime, threading, webbrowser, mimetypes
+import os, json, datetime, threading, webbrowser, mimetypes
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from . import core
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'page.html')
-SERVED = ('review_pages', os.path.join('_audit', 'figures'), os.path.join('_audit', 'ocr_words'))
-PAGE_IMG = re.compile(r'/review_pages/page_(\d{3,})\.png')
-WORD_IMG = re.compile(r'/word/(\d+)\.png')
+SERVED = ('figures', 'ocr_words')                     # folders under _audit/ whose files the page shows
 
 def serve(R, date, port=8765, open_browser=True):
     R = os.path.abspath(R)
@@ -37,6 +37,12 @@ def serve(R, date, port=8765, open_browser=True):
     render_lock = threading.Lock()                    # pdfium is not thread-safe: one page image at a time
     cells = {i: (sh['image'], sh['cells'][str(i)]) for sh in digest.get('ocr_word_sheets') or [] if sh.get('cells')
              for i in range(sh['ids'][0], sh['ids'][1] + 1) if str(i) in sh['cells']}
+    # what GET serves, keyed by URL. The file and its content type come from our own listing, never from the request
+    static = {f'/_audit/{d}/{n}': (os.path.join(R, '_audit', d, n), mimetypes.guess_type(n)[0] or 'application/octet-stream')
+              for d in SERVED if os.path.isdir(os.path.join(R, '_audit', d))
+              for n in os.listdir(os.path.join(R, '_audit', d)) if os.path.isfile(os.path.join(R, '_audit', d, n))}
+    page_urls = {f'/review_pages/page_{n:03d}.png': n for n in range(1, data.get('pages', 0) + 1)}
+    word_urls = {f'/word/{i}.png': i for i in cells}
 
     def page_image(n):
         """Path of PDF page n's image, rendered now if this is the first time it is asked for. None if it can't be made."""
@@ -82,14 +88,12 @@ def serve(R, date, port=8765, open_browser=True):
             if path in ('/', '/index.html'):
                 boot = json.dumps({**data, 'saved': saved, 'date': date}, ensure_ascii=False).replace('</', '<\\/')
                 return self.send(200, open(PAGE, encoding='utf-8').read().replace('/*REVIEW_DATA*/null', boot), 'text/html; charset=utf-8')
-            m = PAGE_IMG.fullmatch(path) or WORD_IMG.fullmatch(path)
-            if m:
-                f = (page_image if path.startswith('/review_pages/') else word_image)(int(m.group(1)))
+            if path in page_urls or path in word_urls:
+                f = page_image(page_urls[path]) if path in page_urls else word_image(word_urls[path])
                 return self.send(200, open(f, 'rb').read(), 'image/png') if f else self.send(404, {'error': 'no such image'})
-            rel = os.path.normpath(path.lstrip('/'))
-            full = os.path.realpath(os.path.join(R, rel))
-            if any(full.startswith(os.path.realpath(os.path.join(R, d)) + os.sep) for d in SERVED) and os.path.isfile(full):
-                return self.send(200, open(full, 'rb').read(), mimetypes.guess_type(full)[0] or 'application/octet-stream')
+            if path in static:
+                f, ctype = static[path]
+                return self.send(200, open(f, 'rb').read(), ctype)
             self.send(404, {'error': 'not found'})
 
         def do_POST(self):
