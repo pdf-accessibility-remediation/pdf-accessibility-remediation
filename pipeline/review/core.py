@@ -42,6 +42,9 @@ def build_items(wo, digest):
     figs = {f['obj']: f for f in digest.get('figures') or []}
     pfigs = {pf['page']: pf for pf in digest.get('page_figures') or []}
     words = {w['id']: w for w in digest.get('ocr_words') or []}
+    sheet_of = {}                                       # word id -> (sheet image, its cell on the sheet, when the audit recorded it)
+    for sh in digest.get('ocr_word_sheets') or []:
+        for i in range(sh['ids'][0], sh['ids'][1] + 1): sheet_of[i] = (sh['image'], (sh.get('cells') or {}).get(str(i)))
     doc = digest.get('document') or {}
     items = []
 
@@ -112,8 +115,10 @@ def build_items(wo, digest):
                 regex=it.get('regex'), band=it.get('band'), where=it.get('where'), type=it.get('type'))
     for i, it in enumerate(wo.get('ocr_words') or []):
         w = words.get(it.get('id')) or {}
+        sheet, cell = sheet_of.get(it.get('id'), (None, None))
         add(f'ocr_words:{it.get("id")}', 'ocr_words', 'OCR words', ['ocr_words', i], it.get('reads'), f'OCR read "{it.get("text")}"',
-            page=(w.get('pages') or [None])[0], before=it.get('text'), edit='text', field='reads', count=it.get('count'))
+            page=(w.get('pages') or [None])[0], before=it.get('text'), edit='text', field='reads', count=it.get('count'),
+            word=f'word/{it.get("id")}.png' if cell else None, sheet=None if cell else sheet, word_id=it.get('id'))
     for i, it in enumerate(wo.get('deferrals') or []):
         ps = [p for p in it.get('pages') or [] if isinstance(p, int)] if isinstance(it, dict) else []
         add(f'deferrals:{i}', 'deferrals', 'Deferred by the AI', ['deferrals', i], it, (it or {}).get('what') or 'Deferral',
@@ -149,8 +154,9 @@ def order(items):
         return (g, -(it['context'].get('count') or 0) if g == 2 else 0, it['page'] if it['page'] is not None else 10 ** 9)
     return sorted([it for it in items if it['priority']], key=key)
 
-def pages_to_render(items, N, limit=80):
-    """Pages to show beside the priority items: the item's page, and the pages either side of a heading decision."""
+def pages_to_render(items, N):
+    """Pages to show beside the priority items: the item's page, and the pages either side of a heading decision.
+    They are not rendered here: the review server renders each page the first time the browser asks for it."""
     want = []
     for it in order(items):
         ps = [it['page']] if it['page'] else []
@@ -159,7 +165,7 @@ def pages_to_render(items, N, limit=80):
         ps = [p for p in ps if 1 <= p <= N]
         it['images'] = [f'review_pages/page_{p:03d}.png' for p in ps]
         want += [p for p in ps if p not in want]
-    return want[:limit]
+    return want
 
 def render_pages(pdf, pages, out_dir, scale=1.0):
     import pypdfium2 as pdfium
@@ -172,17 +178,17 @@ def render_pages(pdf, pages, out_dir, scale=1.0):
     finally: doc.close()
 
 def prepare(R, pdf):
-    """Write review_items.json and the page images. Runs when run_api.sh stops for review."""
+    """Write review_items.json, and render the pages of the first group so the page opens with them. Runs when run_api.sh
+    stops for review. Every other page image is rendered by the server as the reviewer scrolls to it."""
     ai = load(os.path.join(R, 'workorder.ai.json'))
     digest = load(os.path.join(R, '_audit', 'digest.json'))
     if ai is None or digest is None: sys.exit(f'{R} has no workorder.ai.json or _audit/digest.json: run run_api.sh with REVIEW=1 first')
     items = build_items(ai, digest)
-    pages = pages_to_render(items, digest['source']['pages'])
-    render_pages(pdf, pages, os.path.join(R, 'review_pages'))
-    have = set(os.listdir(os.path.join(R, 'review_pages')))
-    for it in items: it['images'] = [x for x in it['images'] if os.path.basename(x) in have]
+    pages_to_render(items, digest['source']['pages'])
+    first = sorted({int(x[-7:-4]) for it in items if it['priority'] == 1 for x in it['images']})
+    render_pages(pdf, first, os.path.join(R, 'review_pages'))
     data = {'book': digest['source'].get('file'), 'run': os.path.basename(os.path.normpath(R)), 'pages': digest['source']['pages'],
-            'groups': GROUPS, 'levels': LEVELS, 'items': items}
+            'pdf': os.path.abspath(pdf), 'groups': GROUPS, 'levels': LEVELS, 'items': items}
     save(os.path.join(R, 'review_items.json'), data)
     return data
 
