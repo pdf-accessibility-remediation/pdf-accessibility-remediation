@@ -39,6 +39,8 @@ reply = open(os.path.join(R, 'reply.txt'), encoding='utf-8').read() if os.path.e
 timing = load('timing.json', default=None)
 attempts = load('attempts.json', default=[])
 rv = load('review.json')                              # a person's review of the work order before it was applied (REVIEW=1)
+# gaps the reviewer left open with no reason given (a hand edit without --note); an explained gap counts as handled
+rv_unexplained = [g for g in (rv or {}).get('gaps') or [] if str(g.get('reason') or '').startswith('hand edit: no reason asked for')]
 wo_ai = load('workorder.ai.json') if rv else None     # the AI's version, kept for comparison          # earlier paid calls in this folder whose reply couldn't be used
 cost_this = (run.get('usage') or {}).get('cost_usd') or 0
 cost_earlier = round(sum(a.get('cost_usd') or 0 for a in attempts), 6)
@@ -238,10 +240,12 @@ checks = [
     ('Bookmarks present (documents over 9 pages)', ok(bm.get('pages', 0) <= 9 or bm.get('items', 0) > 0),
      (f'{bm["items"]} bookmarks' if bm.get('items') is not None else 'bookmarks: not counted') + (f' (built from {log["bookmarks"]["items"]} heading tags)' if (log.get('bookmarks') or {}).get('built') else '')),
     *([('Work order reviewed by a person before it was applied',
-        ok(not rv.get('dropped_on_check') and not (rv.get('counts') or {}).get('accepted_unreviewed')),
+        ok(not rv.get('dropped_on_check') and not (rv.get('counts') or {}).get('accepted_unreviewed') and not rv_unexplained),
         f'{rv["reviewer"]} on {rv["date"]} · {len(rv.get("changes") or [])} changes'
         + (' · ' + ' · '.join(f'{v} {k.replace("_", " ")}' for k, v in rv['counts'].items() if v) if rv.get('counts') else '')
         + (f' · {len(rv["dropped_on_check"])} edits not accepted by the check' if rv.get('dropped_on_check') else '')
+        + (f' · {len(rv["gaps"])} gap{"s" if len(rv["gaps"]) != 1 else ""} left open'
+           + (f', {len(rv_unexplained)} without a reason' if rv_unexplained else ', with a reason' if len(rv['gaps']) == 1 else ', with reasons') if rv.get('gaps') else '')
         + ' (see "Work order reviewed by a person")')] if rv else []),
     ('Model reply held one work order', ok(not rb),
      f'{rb["count"]} work orders; the last one (the model\'s final answer) was used, as written (see "The model\'s reply held {rb["count"]} work orders")' if rb else 'one'),
@@ -346,6 +350,8 @@ if rv:
         L += ['', f'**{rv["counts"]["accepted_unreviewed"]} decisions were accepted without being reviewed.**']
     if rv.get('dropped_on_check'):
         L += ['', 'Edits not accepted by the check (not applied):', ''] + [f'- {d["where"]}: {d["why"]} ({_v(d["item"])})' for d in rv['dropped_on_check']]
+    if rv.get('gaps'):
+        L += ['', 'Gaps the reviewer left open, with their reason:', ''] + [f'- {g["what"]} Reason: {g["reason"]}' for g in rv['gaps']]
     if rv.get('notes') or rv.get('note'):
         L += ['', 'Reviewer notes:', ''] + ([f'- {rv["note"]}'] if rv.get('note') else []) + [f'- `{k}`: {t}' for k, t in (rv.get('notes') or {}).items()]
     L.append('')

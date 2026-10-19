@@ -36,7 +36,20 @@ nav { flex: 0 0 232px; padding-right: 12px; scrollbar-gutter: stable; position: 
 nav h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 4px; }
 nav a { display: flex; justify-content: space-between; color: var(--ink); text-decoration: none; padding: 2px 4px; border-radius: 4px; }
 nav a:hover { background: var(--line); }
-#cards { flex: 1; min-width: 0; }
+.col { flex: 1; min-width: 0; }
+.card.added { border-left-color: var(--accent); }
+#addPanel { background: var(--panel); border: 2px solid var(--accent); border-radius: 8px; padding: 10px 14px; margin: 0 0 16px; }
+#addPanel h2 { font-size: 16px; margin: 0 0 4px; }
+#addPanel .pick { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 6px 0; }
+#addPanel select[data-add=target] { width: 100%; }
+#addPanel .buttons { display: flex; gap: 10px; margin-top: 8px; }
+dialog { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; max-width: min(680px, 94vw); padding: 14px 18px; }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog h2 { font-size: 16px; margin: 0 0 6px; }
+dialog .gap { border-top: 1px solid var(--line); padding: 8px 0; }
+dialog .buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+#msg a { color: var(--accent); }
+#gapErr { color: var(--reject); }
 section > h2 { font-size: 16px; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
 .card { background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 10px; }
 .card[data-status=approved] { border-left-color: var(--ok); }
@@ -104,7 +117,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
       <label><input type="radio" name="view" value="all"> All</label>
       <label><input type="radio" name="view" value="left"> Not reviewed</label>
     </span>
-    <span class="actions"><button id="save">Save</button>
+    <span class="actions"><button id="addBtn" type="button">Add a decision</button> <button id="save">Save</button>
     <button id="finish" class="primary">Finish review</button></span>
   </div>
   <div id="msg" role="status"></div>
@@ -114,22 +127,32 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 <div id="navBackdrop" hidden></div>
 <main>
   <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close sections">×</button></div><div id="navList"></div></nav>
-  <div id="cards"></div>
+  <div class="col"><div id="addPanel" hidden></div><div id="cards"></div></div>
 </main>
 <div id="zoom"><img alt=""></div>
+<dialog id="gapDialog" aria-labelledby="gapTitle"></dialog>
 <script>
 const DATA = /*REVIEW_DATA*/null;
 const KEY = 'review:' + DATA.book + ':' + DATA.run;
 const SEEN_ONLY = new Set(['deferrals', 'notes_for_reviewer']);
 const items = DATA.items, byId = Object.fromEntries(items.map(it => [it.id, it]));
-let state = { reviewer: (DATA.saved && DATA.saved.reviewer) || '', decisions: (DATA.saved && DATA.saved.decisions) || {} };
-try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.decisions) state = s; } catch (e) {}
+const ADDABLE = DATA.addable || {}, ADD_KINDS = DATA.add_kinds || {};
+const addById = Object.fromEntries(Object.values(ADDABLE).flat().map(t => [t.id, t]));
+const aid = a => 'add:' + a.kind + ':' + a.target;
+// the server's saved choices, or this browser's when they are newer (both stamped with the browser's clock)
+const srv = DATA.saved || {};
+let state = { reviewer: srv.reviewer || '', decisions: srv.decisions || {}, additions: srv.additions || [], saved_at: srv.saved_at || '' };
+try {
+  const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+  if (s && s.decisions && (!state.saved_at || (s.saved_at && new Date(s.saved_at) >= new Date(state.saved_at)))) state = Object.assign({ additions: [] }, s);
+} catch (e) {}
+state.additions = (state.additions || []).filter(a => addById[aid(a)]);
 let view = 'priority', finished = false;
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pg = (p, lab) => p == null ? '' : 'PDF p. ' + p + (lab && String(lab) !== String(p) ? ' (printed ' + lab + ')' : '');
 const show = v => v == null || v === '' ? '—' : (typeof v === 'object' ? JSON.stringify(v) : String(v));
-function persist() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+function persist() { state.saved_at = new Date().toISOString(); try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 function dec(id) { return state.decisions[id] || (state.decisions[id] = {}); }
 
 document.getElementById('title').textContent = 'Work order review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
@@ -137,6 +160,10 @@ const rv = document.getElementById('reviewer'); rv.value = state.reviewer;
 rv.addEventListener('input', () => { state.reviewer = rv.value; persist(); });
 
 function sections() {
+  const mine = view !== 'left' && state.additions.length ? [{ id: 'added', title: 'Added by you', adds: true, items: state.additions }] : [];
+  return mine.concat(aiSections());
+}
+function aiSections() {
   if (view === 'priority') {
     const out = [];
     for (const g of Object.keys(DATA.groups).map(Number)) {
@@ -178,19 +205,19 @@ const KEY_WORDS = {
   fix_figure_order: 'Puts figures back on their own page in the reading order.',
   remove_empty_containers: 'Removes empty structure tags.',
 };
-const h1Note = (a, b) => a === 'H1' || b === 'H1' ? ' This page can only approve, change or reject the AI\'s decisions, not add one: to make a different element the H1, edit workorder.json by hand and record it with --reviewer (see the docs).' : '';
+const h1Note = (a, b, it) => (a === 'H1' || b === 'H1') && !it.added ? ' To make a different element the H1 instead, use “Add a decision” at the top of the page.' : '';
 function explain(it) {
   const b = it.before, a = it.ai, c = it.context;
   switch (it.key) {
     case 'retype':
-      if (a === b) return 'Keeps this one element as ' + article(a) + ', even where a style mapping changes the other elements of its style.' + h1Note(a, b);
+      if (a === b) return 'Keeps this one element as ' + article(a) + ', even where a style mapping changes the other elements of its style.' + h1Note(a, b, it);
       return 'Changes this one element from ' + article(b) + ' to ' + article(a) + '. ' +
         (isHeading(a) && !isHeading(b) ? 'Screen readers will announce it as a heading and list it in their headings menu.'
          : isHeading(b) && !isHeading(a) ? 'Screen readers will no longer announce it as a heading or list it in the headings menu.'
-         : isHeading(a) && isHeading(b) ? 'It moves to level ' + a.slice(1) + ' in the document outline.' : '') + h1Note(a, b);
+         : isHeading(a) && isHeading(b) ? 'It moves to level ' + a.slice(1) + ' in the document outline.' : '') + h1Note(a, b, it);
     case 'rolemap':
       return 'Changes what the style “' + c.style + '” means: all ' + (c.count ?? 'its') + ' elements with this style are read as ' + article(a) +
-             ' instead of ' + article(b) + '. One wrong element in the style means one wrong heading.' + h1Note(a, b);
+             ' instead of ' + article(b) + '. One wrong element in the style means one wrong heading.' + h1Note(a, b, it);
     case 'actual_text': return 'Sets the words screen readers speak for this element in place of the printed characters. The page does not change. The executor only accepts words that are printed under the element: if they come from a heading merge (for example “Chapter Two”), they depend on that merge being approved.';
     case 'alt': return 'Sets the description screen readers give for this figure (its alt text). The page does not change.';
     case 'page_figures': return 'Wraps this whole page as one figure, with this description for screen readers.';
@@ -233,6 +260,50 @@ function editor(it, d) {
   return '';
 }
 
+const WHAT = { retype: 'Text on the page', actual_text: 'Text on the page', rolemap: 'Style', alt: 'Figure', page_figures: 'Figure',
+               document: 'Document setting', tables: 'Table', ocr_words: 'OCR word', deferrals: 'What the AI left to a person',
+               notes_for_reviewer: 'From', artifacts: 'Rule', flatten: 'Element', keep_lists: 'Element', merges: 'Merge' };
+function imagesHtml(it) {
+  const c = it.context, imgs = [];
+  if (c.word) imgs.push('<figure class="word"><img loading="lazy" src="' + esc(c.word) + '" alt="The word in the scan"><figcaption>the word in the scan (as the AI saw it)</figcaption></figure>');
+  else if (c.sheet) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.sheet) + '" alt="OCR word sheet"><figcaption>word sheet: find word ' + esc(c.word_id) + '</figcaption></figure>');
+  if (c.figure) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.figure) + '" alt="The figure"><figcaption>figure</figcaption></figure>');
+  for (const src of it.images || []) {
+    const p = +src.match(/(\d+)\.png$/)[1];
+    imgs.push('<figure' + (p === it.page ? ' class="here"' : '') + '><img loading="lazy" src="' + esc(src) + '" alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure>');
+  }
+  return imgs.length ? '<div class="imgs">' + imgs.join('') + '</div>' : '';
+}
+// an addable target with a value, shaped like an item so explain() and editor() work on it
+const asItem = (t, value) => Object.assign({}, t, { key: t.kind, ai: value, loc: [t.kind, t.target], field: null, added: true });
+function targetRows(t, row) {
+  const c = t.context;
+  const where = pg(t.page, t.page_label);
+  row('Page', esc(where || 'not on one page'));
+  if (t.kind === 'retype' || t.kind === 'rolemap') row('Now', '<b>' + esc(tagWord(t.before)) + '</b>');
+  else if (t.kind === 'tables') row('Now', esc(show((t.before || {}).header_cells)) + ' header cells');
+  else row('Now', t.before == null || t.before === '' ? 'none' : esc(show(t.before)));
+  if (c.style && t.kind === 'retype') row('Style', esc(c.style) + (c.size ? ' · ' + esc(c.size) + ' pt' : ''));
+  if (c.next) row('Text after it', '“' + esc(String(c.next).slice(0, 120)) + '”');
+  if (c.count != null) row(t.kind === 'ocr_words' ? 'Occurs' : 'Elements', esc(c.count) + (t.kind === 'ocr_words' ? ' times in the book' : ' in this style'));
+  if (c.samples) row('Samples', c.samples.map(x => '“' + esc(String(x).slice(0, 120)) + '”').join(' · '));
+  if (c.first_rows) row('First rows', c.first_rows.map(x => '“' + esc(String(x).slice(0, 100)) + '”').join(' · '));
+}
+function addCard(a) {
+  const id = aid(a), t = addById[id], it = asItem(t, a.value), rows = [];
+  const row = (k, v) => rows.push('<dt>' + k + '</dt><dd>' + v + '</dd>');
+  row('Decision type', esc(ADD_KINDS[t.kind] || t.kind) + ' · <b>added by you</b>');
+  row(WHAT[t.kind] || 'Decision', '<b>' + esc(t.label) + '</b>');
+  row('What this does', esc(explain(it)));
+  targetRows(t, row);
+  let h = '<article class="card added" id="card-' + esc(id) + '" data-aid="' + esc(id) + '"><dl class="fields">' + rows.join('') + '</dl>' + imagesHtml(t);
+  if (t.kind === 'retype' || t.kind === 'rolemap') h += '<div class="h1flag" hidden></div>';
+  h += '<div class="edit"><div class="edit-label">Your value</div>' + editor(it, { status: 'changed', value: a.value }) + '</div>';
+  h += '<div class="note"><textarea data-act="note" placeholder="Note (optional)" aria-label="Note">' + esc(a.note || '') + '</textarea></div>';
+  h += '<div class="controls"><button type="button" data-act="remove">Remove</button></div>';
+  return h + '<div class="id">ID <code>' + esc(id) + '</code></div></article>';
+}
+
 function card(it) {
   const d = state.decisions[it.id] || {}, c = it.context, st = d.status || '';
   let h = '<article class="card" id="card-' + esc(it.id) + '" data-id="' + esc(it.id) + '"' + (st ? ' data-status="' + st + '"' : '') + '>';
@@ -242,10 +313,7 @@ function card(it) {
   const span = it.pages && it.pages[0] != null && it.pages[1] !== it.pages[0] ? 'PDF pp. ' + it.pages[0] + '–' + it.pages[1] : '';
   row('Page', esc(span || where || 'not on one page'));
   row('Decision type', esc(it.kind) + (c.confidence != null && c.confidence < 1 ? ' <span class="flag">AI confidence ' + esc(c.confidence) + ' (below 1: the AI was unsure)</span>' : ''));
-  const what = { retype: 'Text on the page', actual_text: 'Text on the page', rolemap: 'Style', alt: 'Figure', page_figures: 'Figure',
-                 document: 'Document setting', tables: 'Table', ocr_words: 'OCR word', deferrals: 'What the AI left to a person',
-                 notes_for_reviewer: 'From', artifacts: 'Rule', flatten: 'Element', keep_lists: 'Element', merges: 'Merge' }[it.key] || 'Decision';
-  row(what, '<b>' + esc(it.label) + '</b>');
+  row(WHAT[it.key] || 'Decision', '<b>' + esc(it.label) + '</b>');
   row('What this does', esc(explain(it)));
   let exact = false;                                   // show the AI's exact entry under "details" instead of in the card
   if (it.key === 'retype' || it.key === 'rolemap')
@@ -272,15 +340,8 @@ function card(it) {
   if (c.page_refs) row('Pages named', esc(c.page_refs.join(', ')));
   h += '<dl class="fields">' + rows.join('') + '</dl>';
   if (exact) h += '<details class="exact"><summary>The AI\'s exact entry</summary><pre>' + esc(JSON.stringify(it.ai, null, 1)) + '</pre></details>';
-  const imgs = [];
-  if (c.word) imgs.push('<figure class="word"><img loading="lazy" src="' + esc(c.word) + '" alt="The word in the scan"><figcaption>the word in the scan (as the AI saw it)</figcaption></figure>');
-  else if (c.sheet) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.sheet) + '" alt="OCR word sheet"><figcaption>word sheet: find word ' + esc(c.word_id) + '</figcaption></figure>');
-  if (c.figure) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.figure) + '" alt="The figure"><figcaption>figure</figcaption></figure>');
-  for (const src of it.images || []) {
-    const p = +src.match(/(\d+)\.png$/)[1];
-    imgs.push('<figure' + (p === it.page ? ' class="here"' : '') + '><img loading="lazy" src="' + esc(src) + '" alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure>');
-  }
-  if (imgs.length) h += '<div class="imgs">' + imgs.join('') + '</div>';
+  h += imagesHtml(it);
+  if (it.key === 'retype' || it.key === 'rolemap') h += '<div class="h1flag" hidden></div>';
   const opts = SEEN_ONLY.has(it.key) ? [['seen', 'Seen']] : [['approved', 'Approve'], ...(it.edit ? [['changed', 'Change']] : []), ['rejected', 'Reject']];
   h += '<div class="controls" role="radiogroup" aria-label="Decision">' + opts.map(([v, l]) =>
     '<label><input type="radio" name="st-' + esc(it.id) + '" data-act="status" value="' + v + '"' + (st === v ? ' checked' : '') + '> ' + l + '</label>').join('') +
@@ -294,9 +355,25 @@ function card(it) {
 function render() {
   const secs = sections();
   document.getElementById('cards').innerHTML = (finished ? '<div class="done">Review finished. Go back to the terminal to continue the run.</div>' : '') +
-    (secs.length ? secs.map(s => '<section id="' + s.id + '"><h2>' + esc(s.title) + ' (' + s.items.length + ')</h2>' + s.items.map(card).join('') + '</section>').join('')
+    (secs.length ? secs.map(s => '<section id="' + s.id + '"><h2>' + esc(s.title) + ' (' + s.items.length + ')</h2>' + s.items.map(s.adds ? addCard : card).join('') + '</section>').join('')
                  : '<p>Nothing to show here.</p>');
-  nav(); progress();
+  nav(); progress(); refreshH1();
+}
+
+// ---------------------------------------------------------------- H1: a book has one; flag the cards when decisions make more
+function current(it) {
+  const d = state.decisions[it.id] || {};
+  return d.status === 'rejected' ? null : d.status === 'changed' && 'value' in d ? d.value : it.ai;
+}
+function refreshH1() {
+  const makers = items.filter(it => (it.key === 'retype' || it.key === 'rolemap') && current(it) === 'H1').map(it => ['card-' + it.id, it.label])
+    .concat(state.additions.filter(a => (a.kind === 'retype' || a.kind === 'rolemap') && a.value === 'H1').map(a => ['card-' + aid(a), addById[aid(a)].label]));
+  document.querySelectorAll('.h1flag').forEach(el => {
+    const me = el.closest('.card').id, others = makers.filter(m => m[0] !== me);
+    el.hidden = !(makers.some(m => m[0] === me) && others.length);
+    if (!el.hidden) el.innerHTML = '<span class="flag">Another decision also makes an H1: ' + others.slice(0, 3).map(m => '“' + esc(String(m[1]).slice(0, 60)) + '”').join(', ') +
+      (others.length > 3 ? ' and ' + (others.length - 3) + ' more' : '') + '. A book should have one H1, the title: change or reject the others.</span>';
+  });
 }
 
 function nav() {
@@ -304,7 +381,8 @@ function nav() {
   const kinds = []; for (const it of items) if (!kinds.includes(it.kind)) kinds.push(it.kind);
   const pages = {};
   for (const it of items) if (it.priority && it.page != null) (pages[it.page] = pages[it.page] || []).push(it.id);
-  let h = '<h2>Check first</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(DATA.groups[n]) + '</span><span>' + c + '</span></a>').join('');
+  let h = state.additions.length ? '<h2>Your additions</h2><a href="#added" data-view="' + (view === 'left' ? 'priority' : view) + '"><span>Added by you</span><span>' + state.additions.length + '</span></a>' : '';
+  h += '<h2>Check first</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(DATA.groups[n]) + '</span><span>' + c + '</span></a>').join('');
   h += '<h2>All decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(k) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
   h += '<h2>Page index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
     '<a href="#card-' + esc(pages[p][0]) + '" data-view="priority"><span>p. ' + p + '</span><span>' + pages[p].length + '</span></a>').join('');
@@ -313,7 +391,7 @@ function nav() {
 
 function progress() {
   const n = items.filter(it => (state.decisions[it.id] || {}).status).length;
-  document.getElementById('progress').textContent = n + ' of ' + items.length + ' reviewed';
+  document.getElementById('progress').textContent = n + ' of ' + items.length + ' reviewed' + (state.additions.length ? ' · ' + state.additions.length + ' added' : '');
   document.getElementById('bar').style.width = (items.length ? 100 * n / items.length : 0) + '%';
 }
 
@@ -326,9 +404,26 @@ function clearChoice(art) {
   art.querySelector('.clear').hidden = true;
   persist(); progress();
 }
+function readValue(box, base) {                          // the value typed in an editor (editor() markup) inside box
+  const fs = box.querySelectorAll('[data-act=value][data-f]');
+  if (fs.length) {
+    const v = Object.assign({}, base);
+    fs.forEach(f => { const n = f.value.trim(); v[f.dataset.f] = /^\d+$/.test(n) ? +n : n; });
+    return v;
+  }
+  const el = box.querySelector('[data-act=value]'); return el ? el.value : null;
+}
+function onAddEdit(el, art) {
+  const a = state.additions.find(x => aid(x) === art.dataset.aid); if (!a) return;
+  if (el.dataset.act === 'note') a.note = el.value;
+  else if (el.dataset.act === 'value') a.value = readValue(art.querySelector('.edit'), addById[aid(a)].default);
+  persist(); refreshH1();
+}
 function onEdit(e) {
   const el = e.target, act = el.dataset.act; if (!act || finished) return;
-  const art = el.closest('.card'), it = byId[art.dataset.id], d = dec(it.id);
+  const art = el.closest('.card');
+  if (art.dataset.aid) return onAddEdit(el, art);
+  const it = byId[art.dataset.id], d = dec(it.id);
   if (act === 'status') {
     d.status = el.value;
     if (el.value === 'changed' && !('value' in d)) d.value = it.ai;
@@ -342,7 +437,7 @@ function onEdit(e) {
     d.status = 'changed';
   }
   if (d.status) { art.dataset.status = d.status; art.querySelector('.clear').hidden = false; }
-  persist(); progress();
+  persist(); progress(); refreshH1();
 }
 cards.addEventListener('change', onEdit);
 cards.addEventListener('input', e => { if (e.target.tagName === 'TEXTAREA' || e.target.type === 'text') onEdit(e); });
@@ -356,7 +451,13 @@ cards.addEventListener('click', e => {
   const t = e.target;
   if (t.dataset && t.dataset.act === 'status' && t.dataset.was === '1') { t.dataset.was = ''; clearChoice(t.closest('.card')); return; }
   if (t.dataset && t.dataset.act === 'clear') { clearChoice(t.closest('.card')); return; }
-  if (t.tagName === 'IMG') { const z = document.getElementById('zoom'); z.querySelector('img').src = e.target.src; z.querySelector('img').alt = e.target.alt; z.style.display = 'flex'; }
+  if (t.dataset && t.dataset.act === 'remove') {
+    const id = t.closest('.card').dataset.aid; state.additions = state.additions.filter(a => aid(a) !== id); persist(); render(); return;
+  }
+});
+document.addEventListener('click', e => {               // any image on the page (cards, the add form) opens enlarged
+  const t = e.target; if (t.tagName !== 'IMG' || !t.closest('.imgs')) return;
+  const z = document.getElementById('zoom'); z.querySelector('img').src = t.src; z.querySelector('img').alt = t.alt; z.style.display = 'flex';
 });
 document.getElementById('zoom').addEventListener('click', e => { e.currentTarget.style.display = 'none'; });
 document.addEventListener('keydown', e => {
@@ -389,35 +490,141 @@ document.getElementById('nav').addEventListener('click', e => {
   }
 });
 
+// ---------------------------------------------------------------- add a decision the AI did not make
+const panel = document.getElementById('addPanel');
+let addKind = null, addSel = null;
+const addTargets = k => (ADDABLE[k] || []).filter(t => !state.additions.some(a => aid(a) === t.id));
+const blockedBy = t => t.context.decoration && (state.decisions[t.context.decoration] || {}).status !== 'rejected' ? t.context.decoration : null;
+function openAdd(kind, target) {
+  if (finished) return;
+  const kinds = Object.keys(ADDABLE).filter(k => addTargets(k).length);
+  if (!kinds.length) { panel.hidden = true; return msg('Nothing left to add: every target the review knows of has a decision.', true); }
+  addKind = kinds.includes(kind) ? kind : kinds[0];
+  addSel = target != null ? 'add:' + addKind + ':' + target : null;
+  panel.innerHTML = '<h2>Add a decision</h2><div class="ctx">For something the AI did not decide: an element it did not retype, a figure with no alt text, a table with no headers. ' +
+    'A decision the AI made is changed on its own card. Only the elements, figures, tables and styles the audit listed can be chosen; artifact rules and other keys need a hand edit of workorder.json.</div>' +
+    '<div class="pick"><label>Kind <select data-add="kind">' + kinds.map(k => '<option value="' + esc(k) + '"' + (k === addKind ? ' selected' : '') + '>' +
+      esc(ADD_KINDS[k] + (k === 'page_figures' ? ' (whole page)' : k === 'alt' ? ' (figure)' : '')) + ' (' + addTargets(k).length + ')</option>').join('') + '</select></label>' +
+    '<label>Find <input type="text" data-add="filter" placeholder="text, page or object" size="24"></label></div>' +
+    '<select data-add="target" size="8" aria-label="Target"></select><div id="addDetail"></div>';
+  panel.hidden = false; fillTargets(); fillDetail();
+  panel.scrollIntoView({ block: 'start' });
+}
+function fillTargets() {
+  const q = (panel.querySelector('[data-add=filter]').value || '').trim().toLowerCase();
+  const all = addTargets(addKind).filter(t => !q || [t.label, t.target, t.before, t.page, t.page_label].some(x => x != null && String(x).toLowerCase().includes(q)));
+  const shown = all.slice(0, 500);
+  panel.querySelector('[data-add=target]').innerHTML = shown.map(t => '<option value="' + esc(t.id) + '"' + (t.id === addSel ? ' selected' : '') + '>' +
+    esc((t.page != null ? 'p. ' + t.page + ' · ' : '') + (t.kind === 'retype' ? (t.before || '—') + ' · ' : '') + String(t.label).slice(0, 90) + (blockedBy(t) ? ' (marked as decoration by the AI)' : '')) + '</option>').join('') +
+    (all.length > shown.length ? '<option disabled>… ' + (all.length - shown.length) + ' more: narrow with Find</option>' : '') +
+    (all.length ? '' : '<option disabled>nothing matches</option>');
+}
+function fillDetail() {
+  const box = document.getElementById('addDetail'), t = addById[addSel];
+  if (!t || t.kind !== addKind) { box.innerHTML = '<div class="buttons"><button type="button" data-add="cancel">Cancel</button></div>'; return; }
+  const rows = [], row = (k, v) => rows.push('<dt>' + k + '</dt><dd>' + v + '</dd>');
+  row(WHAT[t.kind] || 'Decision', '<b>' + esc(t.label) + '</b>');
+  targetRows(t, row);
+  const blk = blockedBy(t);
+  let h = '<dl class="fields">' + rows.join('') + '</dl>' + imagesHtml(t);
+  if (blk) h += '<div class="flag">The AI marked this figure as decoration, so screen readers skip it. Reject that decision (<code>' + esc(blk) + '</code>) first, then add its alt text.</div>';
+  else h += '<div class="edit"><div class="edit-label">Value</div>' + editor(asItem(t, t.default), {}) + '</div>' +
+            '<div class="note"><textarea data-add="note" placeholder="Note (optional)" aria-label="Note"></textarea></div>';
+  h += '<div class="buttons">' + (blk ? '' : '<button type="button" class="primary" data-add="add">Add</button>') + '<button type="button" data-add="cancel">Cancel</button></div>';
+  box.innerHTML = h;
+}
+panel.addEventListener('change', e => {
+  const k = e.target.dataset.add;
+  if (k === 'kind') { addKind = e.target.value; addSel = null; fillTargets(); fillDetail(); }
+  if (k === 'target') { addSel = e.target.value; fillDetail(); }
+});
+panel.addEventListener('input', e => { if (e.target.dataset.add === 'filter') fillTargets(); });
+panel.addEventListener('click', e => {
+  const k = e.target.dataset.add;
+  if (k === 'cancel') panel.hidden = true;
+  if (k === 'add') {
+    const t = addById[addSel]; if (!t) return;
+    const value = readValue(document.getElementById('addDetail'), t.default);
+    if (value === '' || value == null) return msg('Enter a value first.', true);
+    const note = panel.querySelector('[data-add=note]').value;
+    state.additions.push(Object.assign({ kind: t.kind, target: t.target, value }, note ? { note } : {}));
+    persist(); panel.hidden = true;
+    if (view === 'left') { view = 'priority'; document.querySelector('input[name=view][value=priority]').checked = true; }
+    render(); msg('Added. Save checks it with the same rules as the AI\'s decisions.');
+    const c = document.getElementById('card-' + t.id); if (c) c.scrollIntoView();
+  }
+});
+document.getElementById('addBtn').addEventListener('click', () => panel.hidden ? openAdd() : (panel.hidden = true));
+
 const msg = (t, err) => { const m = document.getElementById('msg'); m.innerHTML = t; m.className = err ? 'err' : ''; };
+document.getElementById('msg').addEventListener('click', e => {
+  const a = e.target.closest('a[data-add-kind]'); if (!a) return;
+  e.preventDefault(); openAdd(a.dataset.addKind, a.dataset.addTarget);
+});
 const dropText = d => d.length ? ' · <b>' + d.length + ' not accepted by the check, so not applied at all</b> (the AI\'s value is not used either; change or approve it to keep a value): ' + d.map(x => esc(x.where) + ' (' + esc(x.why) + ')').join('; ') : ' · nothing dropped by the check';
+const refusedText = r => (r || []).length ? ' · <b>' + r.length + ' additions refused</b>: ' + r.map(x => esc(x.id) + ' (' + esc(x.why) + ')').join('; ') : '';
+const addLink = g => g.add ? ' <a href="#" data-add-kind="' + esc(g.add.kind) + '"' + (g.add.target != null ? ' data-add-target="' + esc(g.add.target) + '"' : '') + '>Add</a>' : '';
+const gapText = g => (g || []).length ? ' · <b>' + g.length + ' gap' + (g.length === 1 ? '' : 's') + '</b>: ' + g.map(x => esc(x.what) + addLink(x)).join(' · ') : ' · no gaps';
 async function post(path, extra) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(Object.assign({ reviewer: state.reviewer, decisions: state.decisions }, extra || {})) });
+    body: JSON.stringify(Object.assign({ reviewer: state.reviewer, decisions: state.decisions, additions: state.additions, saved_at: state.saved_at }, extra || {})) });
   return [r.status, await r.json()];
 }
 document.getElementById('save').addEventListener('click', async () => {
   try {
     const [s, b] = await post('/save');
     if (s !== 200) return msg(esc(b.error || 'Save failed'), true);
-    msg('Saved · ' + b.changes + ' changes from the AI · ' + b.unreviewed + ' not reviewed yet' + dropText(b.dropped), b.dropped.length > 0);
+    msg('Saved · ' + b.changes + ' changes from the AI · ' + b.unreviewed + ' not reviewed yet' + refusedText(b.refused) + dropText(b.dropped) + gapText(b.gaps),
+        b.dropped.length > 0 || (b.refused || []).length > 0);
   } catch (e) { msg('Could not reach the review server: is it still running in the terminal? Your choices are kept in this browser.', true); }
 });
+// gaps left open at Finish: the reviewer gives a reason for each, or goes back to add what is missing
+function askGaps(gaps) {
+  const dlg = document.getElementById('gapDialog');
+  dlg.innerHTML = '<h2 id="gapTitle">Still missing</h2><div class="ctx">The review can finish with these open, but each needs a reason; it goes into review.json and review.md next to the gap.</div>' +
+    gaps.map(g => '<div class="gap"><div>' + esc(g.what) + '</div><textarea data-gap="' + esc(g.id) + '" placeholder="Why it is left open (for example: decorative, or someone else writes these)" aria-label="Reason"></textarea>' +
+      (g.add ? '<button type="button" data-addinstead="' + esc(g.add.kind) + '"' + (g.add.target != null ? ' data-target="' + esc(g.add.target) + '"' : '') + '>Add instead</button>' : '') + '</div>').join('') +
+    '<div class="err" id="gapErr"></div><div class="buttons"><button type="button" data-g="back">Back</button><button type="button" class="primary" data-g="finish">Finish with these reasons</button></div>';
+  return new Promise(done => {
+    const close = v => { dlg.close(); dlg.onclick = null; done(v); };
+    dlg.onclick = e => {
+      const t = e.target;
+      if (t.dataset.g === 'back') close(null);
+      if (t.dataset.addinstead) { close(null); openAdd(t.dataset.addinstead, t.dataset.target); }
+      if (t.dataset.g === 'finish') {
+        const ack = {}; dlg.querySelectorAll('textarea[data-gap]').forEach(x => { if (x.value.trim()) ack[x.dataset.gap] = x.value.trim(); });
+        if (Object.keys(ack).length < gaps.length) { document.getElementById('gapErr').textContent = 'Give a reason for each, or go back and add what is missing.'; return; }
+        close(ack);
+      }
+    };
+    dlg.oncancel = () => done(null);
+    dlg.showModal();
+  });
+}
 document.getElementById('finish').addEventListener('click', async () => {
   if (!state.reviewer.trim()) { rv.focus(); return msg('Enter your name as the reviewer first.', true); }
   try {
-    let [s, b] = await post('/finish');
-    if (s === 409) {
+    const extra = {};
+    let [s, b] = await post('/finish', extra);
+    if (s === 409 && b.unreviewed) {
       if (!confirm(b.unreviewed.length + ' items are not reviewed. Accept them as the AI wrote them, and record that they were not reviewed?')) {
         view = 'left'; document.querySelector('input[name=view][value=left]').checked = true; render();
         return msg(esc(b.error) + ' They are listed under "Not reviewed".', true);
       }
-      [s, b] = await post('/finish', { accept_unreviewed: true });
+      extra.accept_unreviewed = true;
+      [s, b] = await post('/finish', extra);
+    }
+    if (s === 409 && b.gaps) {
+      const ack = await askGaps(b.gaps);
+      if (!ack) return msg('Not finished' + gapText(b.gaps), true);
+      extra.gaps_ack = ack;
+      [s, b] = await post('/finish', extra);
     }
     if (s !== 200) return msg(esc(b.error || 'Finish failed'), true);
-    finished = true;
-    document.querySelectorAll('#save, #finish').forEach(x => x.disabled = true);
-    msg('Review finished · ' + b.changes + ' changes recorded' + dropText(b.dropped) + '. Go back to the terminal to continue the run.', b.dropped.length > 0);
+    finished = true; panel.hidden = true;
+    document.querySelectorAll('#save, #finish, #addBtn').forEach(x => x.disabled = true);
+    msg('Review finished · ' + b.changes + ' changes recorded' + dropText(b.dropped) + (b.gaps.length ? ' · ' + b.gaps.length + ' gaps left open, with your reasons' : '') +
+        '. Go back to the terminal to continue the run.', b.dropped.length > 0);
     try { localStorage.removeItem(KEY); } catch (e) {}
     render();
   } catch (e) { msg('Could not reach the review server: is it still running in the terminal?', true); }

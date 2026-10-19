@@ -1,7 +1,8 @@
 """review_workorder.py: a person reviews the AI's work order before apply.py uses it. No model, nothing sent.
 
     REVIEW=1 bash run_api.sh <original.pdf> <name> <label>         # stops after the AI's decisions (runs --prepare itself)
-    python3 review_workorder.py <run_dir> --serve [--port 8765]    # the review page: approve, change or reject each decision
+    python3 review_workorder.py <run_dir> --serve [--port 8765]    # the review page: approve, change or reject each decision,
+                                                                   # and add what the AI left out (an H1, alt text, …)
     bash run_api.sh <original.pdf> <name> <label>                  # same label: applies the reviewed work order
 
     python3 review_workorder.py <run_dir> --prepare --pdf <file.pdf>   # review_items.json and page images (run_api.sh does this)
@@ -10,6 +11,8 @@
 The AI's version stays in workorder.ai.json. Either way the reviewed order goes through the same checks as the AI's
 (workorder_check.py), and review.json records who reviewed it, when, and every change. report.py folds it into
 record.json (review.workorder) and review.md. A later review replaces the earlier one; the earlier one is kept under history.
+Gaps left in the reviewed order (no H1, figures without alt) are recorded with the reviewer's reason: on the page the
+reviewer gives one; for a hand edit the --note is the reason.
 """
 import sys, os, json, argparse, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,15 +48,17 @@ def main():
         from review import server
         v = server.serve(R, a.date, a.port, open_browser=not a.no_browser)
         if v: print(f'review recorded: {v["reviewer"]} on {v["date"]} · {len(v["changes"])} changes · '
-                    f'{len(v["dropped_on_check"])} dropped by the check\nnext: {rerun}')
+                    f'{len(v["dropped_on_check"])} dropped by the check · {len(v.get("gaps") or [])} gaps left open\nnext: {rerun}')
         return
     if not a.reviewer: sys.exit('give --serve for the review page, or --reviewer NAME to record a hand-edited workorder.json')
     try: wo = json.load(open(os.path.join(R, 'workorder.json'), encoding='utf-8'))
     except json.JSONDecodeError as e: sys.exit(f'workorder.json is not valid JSON: line {e.lineno}, column {e.colno}: {e.msg}')
-    try: v = core.finish(R, ai, wo, a.reviewer, a.date, 'hand-edit', note=a.note)
+    gap_default = f'hand edit: --note says: {a.note}' if a.note else 'hand edit: no reason asked for'
+    try: v = core.finish(R, ai, wo, a.reviewer, a.date, 'hand-edit', note=a.note, gap_default=gap_default)
     except ValueError as e: sys.exit(str(e))
     for c in v['changes']: print(f'  {c["change"]}: {c["where"]}' + (f' [{c["id"]}]' if c.get('id') else ''))
     for d in v['dropped_on_check']: print(f'  dropped by the check: {d["where"]}: {d["why"]}')
+    for g in v.get('gaps') or []: print(f'  warning, left open: {g["what"]}')
     print(f'review recorded: {v["reviewer"]} on {v["date"]} · {len(v["changes"])} changes · {len(v["dropped_on_check"])} dropped by the check\nnext: {rerun}')
 
 if __name__ == '__main__':
