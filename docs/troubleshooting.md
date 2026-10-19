@@ -27,7 +27,7 @@ A failed call that OpenRouter did charge for is logged with its cost and counted
 
 The pipeline is built for PDF 1.x tagging (PDF/UA-1): veraPDF runs the PDF 1.x WCAG profile, and the audit, executor and checks read only the plain `/RoleMap`. Every sample book is PDF 1.3–1.7, and the auto-tagger writes PDF 1.x. A PDF 2.0 book is therefore **stopped before any paid call and before any change**, and goes to a person.
 
-**What happens now** (`support.py`):
+**What happens now** (`lib/support.py`):
 
 - A book is unsupported when its PDF version is 2.0 or later (the catalog's `/Version` counts when it is later than the header), or when its tag tree declares namespaces (`/Namespaces` in the structure tree root: PDF 2.0 tagging, even under a 1.7 header).
 - `intake.py` checks first, tagged or not: it stops with status `stopped` and exit 3, and `intake.md` / `intake.json` give the reason. A batch shows the book as **flagged at intake** and leaves it out of the cost estimate.
