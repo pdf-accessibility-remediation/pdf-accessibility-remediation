@@ -35,7 +35,7 @@ The following steps are sufficient for processing tagged PDFs. Untagged PDFs nee
     source .venv/bin/activate
     pip install -r requirements.txt
     ```
-    The pipeline requires `pdfplumber 0.11.9` because `plumb_fix.py` patches its internals.
+    The pipeline requires `pdfplumber 0.11.9` because `lib/plumb_fix.py` patches its internals.
 
 2. **Configure your OpenRouter API key.** Add `OPENROUTER_API_KEY=...` to a `.env` file in `pipeline/` or a parent directory, such as the repository root. Keep `.env` out of version control.
 

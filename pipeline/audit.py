@@ -14,8 +14,9 @@ Every element Claude may refer to is listed with its object number in the ORIGIN
 included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext, vera, support  # noqa: E401
-import pikepdf, pdfplumber, pypdfium2 as pdfium
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
+from lib import plumb_fix, listrule, gaptext, support, plpages  # plumb_fix first: it patches pdfplumber
+import pikepdf, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
 RARE = 30            # styles with at most this many elements are listed one by one
@@ -29,22 +30,7 @@ st = pdf.Root.get('/StructTreeRoot')
 if st is None: sys.exit('untagged PDF: this pipeline repairs an existing tag tree; run a tagging step first')
 VERA = vera.start(SRC)                          # runs alongside the audit; collected at the end
 RM = {str(k).lstrip('/'): str(v).lstrip('/') for k, v in (st.get('/RoleMap') or {}).items()}
-KEEP_KEYS = ('text', 'x0', 'x1', 'top', 'bottom', 'size', 'fontname', 'mcid', 'tag')
-class _Page:                                    # what the audit needs from a page; the full pdfplumber page is released
-    def __init__(self, p):
-        self.width, self.height = float(p.width), float(p.height)
-        mb, cb = p.mediabox, p.cropbox                 # the visible area (CropBox), in the reader's top-left coordinates
-        self.vis = (max(cb[0], mb[0]) - mb[0], mb[3] - min(cb[3], mb[3]), min(cb[2], mb[2]) - mb[0], mb[3] - max(cb[1], mb[1]))
-        self.chars = [{k: c.get(k) for k in KEEP_KEYS} for c in p.chars]
-        self.images = [{k: i.get(k) for k in ('x0', 'x1', 'top', 'bottom', 'mcid', 'tag')} for i in p.images]
-class _PL:
-    def __init__(self, path):
-        self.pages = []
-        with pdfplumber.open(path) as pl:
-            for n, p in enumerate(pl.pages, 1):
-                self.pages.append(_Page(p)); p.close()
-                for c in self.pages[-1].chars: c['pg'] = n          # gaptext: a gap filled by another glyph is no space
-PL = _PL(SRC)
+PL = plpages.Pages(SRC)                         # what the audit needs from each page (lib/plpages.py)
 def page_chars(pg): return PL.pages[pg - 1].chars
 def band(pno, top):
     """'top', 'bottom' or 'body' for a line starting at top (reader coordinates): measured from the visible page area

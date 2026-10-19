@@ -18,7 +18,7 @@ import os, re, sys, copy, json, datetime
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
-import workorder_check  # noqa: E402
+from lib import workorder_check  # noqa: E402
 
 LEVELS = sorted(workorder_check.ALLOWED - {'Figure'}, key=lambda t: (not t.startswith('H'), t))
 HEADING = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6'}

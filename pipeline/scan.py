@@ -10,7 +10,8 @@ and word breaks that are only gaps between letters (3.4), with narrow gaps count
 import sys, os, json, time, collections, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pikepdf, pypdfium2 as pdfium
-import intake as I, support
+import intake as I
+from lib import support
 
 def scan(path):
     r = {'file': os.path.basename(path), 'folder': os.path.dirname(path)}
