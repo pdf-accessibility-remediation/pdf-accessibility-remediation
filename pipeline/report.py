@@ -13,7 +13,8 @@ Reads the working files that audit.py, decide.py, apply.py and verify.py left be
     han_review.csv   only when Han-only CJK runs need a ja/zh decision
 
 Then it deletes the working files (request.json, response.json, reply.txt, run.json,
-validation.json, workorder.json, the apply log, the verify JSON) and the AUDIT_DIR
+validation.json, workorder.json, the apply log, the verify JSON; after a REVIEW=1 run also workorder.ai.json,
+review.json, review_items.json, review_decisions.json and review_pages/, whose content is in record.json) and the AUDIT_DIR
 (digest and figure crops, which are copies of book pages). --keep leaves them all in place.
 It only runs after a complete run, so a failed run keeps its working files for debugging.
 """
@@ -36,7 +37,11 @@ digest = load('digest.json', base=A, default={})
 vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the original, from the audit
 reply = open(os.path.join(R, 'reply.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(R, 'reply.txt')) else None
 timing = load('timing.json', default=None)
-attempts = load('attempts.json', default=[])          # earlier paid calls in this folder whose reply couldn't be used
+attempts = load('attempts.json', default=[])
+rv = load('review.json')                              # a person's review of the work order before it was applied (REVIEW=1)
+# gaps the reviewer left open with no reason given (a hand edit without --note); an explained gap counts as handled
+rv_unexplained = [g for g in (rv or {}).get('gaps') or [] if str(g.get('reason') or '').startswith('hand edit: no reason asked for')]
+wo_ai = load('workorder.ai.json') if rv else None     # the AI's version, kept for comparison          # earlier paid calls in this folder whose reply couldn't be used
 cost_this = (run.get('usage') or {}).get('cost_usd') or 0
 cost_earlier = round(sum(a.get('cost_usd') or 0 for a in attempts), 6)
 for need, name in ((wo, 'workorder.json'), (log, PDF + '.log.json'), (ver, PDF + '.verify.json')):
@@ -71,6 +76,8 @@ record = {
     'verify': {k: v for k, v in ver.items() if k != 'verapdf'},
     'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, 'raw_reply': reply, 'environment': log.get('environment'),
     'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier, 6),
+    **({'review': {'workorder': rv}} if rv else {}),
+    **({'workorder_ai': wo_ai} if rv and wo_ai is not None and rv.get('changes') else {}),
 }
 json.dump(record, open(os.path.join(R, 'record.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 if han:
@@ -232,6 +239,14 @@ checks = [
      + (f' · {len(log.get("empty_notes_removed") or [])} empty Note tags removed' if log.get('empty_notes_removed') else '')),
     ('Bookmarks present (documents over 9 pages)', ok(bm.get('pages', 0) <= 9 or bm.get('items', 0) > 0),
      (f'{bm["items"]} bookmarks' if bm.get('items') is not None else 'bookmarks: not counted') + (f' (built from {log["bookmarks"]["items"]} heading tags)' if (log.get('bookmarks') or {}).get('built') else '')),
+    *([('Work order reviewed by a person before it was applied',
+        ok(not rv.get('dropped_on_check') and not (rv.get('counts') or {}).get('accepted_unreviewed') and not rv_unexplained),
+        f'{rv["reviewer"]} on {rv["date"]} · {len(rv.get("changes") or [])} changes'
+        + (' · ' + ' · '.join(f'{v} {k.replace("_", " ")}' for k, v in rv['counts'].items() if v) if rv.get('counts') else '')
+        + (f' · {len(rv["dropped_on_check"])} edits not accepted by the check' if rv.get('dropped_on_check') else '')
+        + (f' · {len(rv["gaps"])} gap{"s" if len(rv["gaps"]) != 1 else ""} left open'
+           + (f', {len(rv_unexplained)} without a reason' if rv_unexplained else ', with a reason' if len(rv['gaps']) == 1 else ', with reasons') if rv.get('gaps') else '')
+        + ' (see "Work order reviewed by a person")')] if rv else []),
     ('Model reply held one work order', ok(not rb),
      f'{rb["count"]} work orders; the last one (the model\'s final answer) was used, as written (see "The model\'s reply held {rb["count"]} work orders")' if rb else 'one'),
     ('Executor applied every decision', ok(not log.get('rejected') and not log.get('failed')),
@@ -320,6 +335,25 @@ if intake and intake.get('status') == 'done':
         L += ['- The whole-page scan image on ' + pgs(o['scan_images_marked_decoration']) + ' is marked as decoration: it is the page itself, not a figure (checklist 5.1).']
     for f in intake.get('flags') or []:
         L.append(f'- **{f["what"]}**: {f["why"]}' + (f' ({pgs(f["pages"])})' if f.get('pages') else ''))
+    L.append('')
+if rv:
+    def _v(x): return json.dumps(x, ensure_ascii=False)[:200] if isinstance(x, (dict, list)) else f'"{x}"' if isinstance(x, str) else str(x)
+    n += 1; L += [f'### {n}. Work order reviewed by a person', '',
+                  f'{rv["reviewer"]} reviewed the AI\'s work order on {rv["date"]}, before it was applied ({rv.get("method")}). '
+                  'The result is what was applied; the AI\'s version is in `record.json` (`workorder_ai`).', '']
+    if rv.get('changes'):
+        L += ['| Decision | Change | AI | Person |', '|---|---|---|---|']
+        L += [f'| {c["where"]}' + (f' `{c["id"]}`' if c.get('id') else '') + f' | {c["change"]} | '
+              + (_v(c['ai']) if 'ai' in c else '—') + ' | ' + (_v(c['person']) if 'person' in c else '—') + ' |' for c in rv['changes']]
+    else: L.append('No changes: every decision was kept as the AI wrote it.')
+    if (rv.get('counts') or {}).get('accepted_unreviewed'):
+        L += ['', f'**{rv["counts"]["accepted_unreviewed"]} decisions were accepted without being reviewed.**']
+    if rv.get('dropped_on_check'):
+        L += ['', 'Edits not accepted by the check (not applied):', ''] + [f'- {d["where"]}: {d["why"]} ({_v(d["item"])})' for d in rv['dropped_on_check']]
+    if rv.get('gaps'):
+        L += ['', 'Gaps the reviewer left open, with their reason:', ''] + [f'- {g["what"]} Reason: {g["reason"]}' for g in rv['gaps']]
+    if rv.get('notes') or rv.get('note'):
+        L += ['', 'Reviewer notes:', ''] + ([f'- {rv["note"]}'] if rv.get('note') else []) + [f'- `{k}`: {t}' for k, t in (rv.get('notes') or {}).items()]
     L.append('')
 if rb:
     n += 1; L += [f'### {n}. The model\'s reply held {rb["count"]} work orders', '',
@@ -745,9 +779,11 @@ open(os.path.join(R, 'review.md'), 'w', encoding='utf-8').write('\n'.join(L) + '
 # ------------------------------------------------------------------ tidy
 if not KEEP:
     for name in ('request.json', 'response.json', 'reply.txt', 'run.json', 'validation.json', 'workorder.json',
-                 PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'attempts.json'):
+                 PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'attempts.json',
+                 'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json'):
         p = os.path.join(R, name)
         if os.path.exists(p): os.remove(p)
     if os.path.isdir(A) and os.path.exists(os.path.join(A, 'digest.json')): shutil.rmtree(A)
+    if os.path.isdir(os.path.join(R, 'review_pages')): shutil.rmtree(os.path.join(R, 'review_pages'))   # page images: copies of book pages
 print(f'review: {os.path.join(R, "review.md")} · record: {os.path.join(R, "record.json")}' + (f' · han_review.csv ({len(han)} rows)' if han else '')
       + ('' if KEEP else ' · working files removed'))
