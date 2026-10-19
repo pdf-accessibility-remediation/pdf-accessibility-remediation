@@ -9,7 +9,7 @@ wo is changed in place: items that fail are removed and listed in `dropped` as {
 not_sent: figure objs (and "page N" for page figures) whose image was not sent to the model.
 words_sent: ids of the OCR word forms whose word sheet was sent.
 """
-import os, re, sys, unicodedata
+import re, unicodedata
 
 ALLOWED = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'Span', 'Caption', 'Note', 'Div', 'Figure'}
 KNOWN = {'schema', 'sections', 'artifacts', 'document', 'rolemap', 'merges', 'actual_text', 'retype', 'flatten', 'alt',
@@ -122,7 +122,7 @@ def check(wo, digest, not_sent, words_sent):
         seen_t = set()
         wo['tables'] = keep('tables', wo['tables'], lambda it: 'the same table twice' if it['obj'] in seen_t else seen_t.add(it['obj']))
     if isinstance(wo.get('document'), dict) and 'lang' in wo['document']:     # a BCP 47 tag; spelling tidied (en_US -> en-US), never guessed
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import langtag
+        from . import langtag
         tag = langtag.norm(wo['document']['lang'])
         if tag: wo['document']['lang'] = tag
         else: drop('document.lang', wo['document'].pop('lang'), 'not a BCP 47 language tag')

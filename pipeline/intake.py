@@ -40,7 +40,7 @@ intake.json) · 1 error.
 """
 import sys, os, re, json, time, shutil, hashlib, subprocess, tempfile, unicodedata, difflib, collections, datetime, statistics, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import support
+from lib import support
 import pikepdf, pypdfium2 as pdfium, pypdfium2.raw as pdfium_raw
 
 SCHEMA = 'intake/0.2'

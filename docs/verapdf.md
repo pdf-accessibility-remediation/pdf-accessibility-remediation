@@ -32,7 +32,7 @@ Which rules belong to whom, and which work-order key fixes each AI rule, is set 
 |---|---|
 | 7.1-6 | A RoleMap chain that loops is cut where it closes (that style → P) and listed for a person |
 | 7.1-7 | A standard tag remapped in the RoleMap (sands: `Caption → P`): its elements are retyped to what the RoleMap made them, and the entry removed |
-| 7.2-29 | `/Lang` spelling tidied (`en_US` → `en-US`, case, spaces; `langtag.py`); an empty `/Lang` on a tag removed; anything else listed, never guessed |
+| 7.2-29 | `/Lang` spelling tidied (`en_US` → `en-US`, case, spaces; `lib/langtag.py`); an empty `/Lang` on a tag removed; anything else listed, never guessed |
 | 7.5-1/2 | A header cell (TH) with no direction gets one where the table makes it plain: a row of only TH → Column, a row whose only TH is its first cell → Row; others are listed |
 
 The work order's `tables` key (`op_tables`) marks the header rows and columns the AI names in a real table as TH with their Scope; spans that cross the header edge are rejected for a person. `rolemap` may add a mapping for a style the source never mapped (7.1-5).

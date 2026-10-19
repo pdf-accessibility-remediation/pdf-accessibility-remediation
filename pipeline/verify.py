@@ -1,6 +1,7 @@
 """Verify work/remediated.pdf against the original. Read-only."""
 import sys, json, re, collections
-import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, vera
+import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
+from lib import plumb_fix  # noqa: F401  before pdfplumber reads a page: it patches pdfplumber
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 import fontTools.cffLib, fontTools.ttLib  # noqa: F401  required: a font that can't be read must not pass as OK
 from PIL import ImageChops

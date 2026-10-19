@@ -13,7 +13,8 @@ look the way the work order assumes, is skipped and logged under "rejected" — 
 stops the run and never half-applies.
 """
 import sys, os, json, re, collections, hashlib
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import plumb_fix, listrule, gaptext, langtag, support  # noqa: E401
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages  # plumb_fix first: it patches pdfplumber
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
 
@@ -40,22 +41,7 @@ def PGR(a, b):
     la, lb = str(labels.get(a) or ''), str(labels.get(b) or '')
     return f'PDF {a}–{b}' + (f' (printed {la}–{lb})' if la and lb and (la != str(a) or lb != str(b)) else '')
 st = pdf.Root.StructTreeRoot
-KEEP_KEYS = ('text', 'x0', 'x1', 'top', 'bottom', 'size', 'fontname', 'mcid', 'tag', 'upright')
-class _Page:                                    # chars, image boxes and size only; each pdfplumber page is released after reading
-    def __init__(self, p):
-        self.width, self.height = p.width, p.height
-        mb, cb = p.mediabox, p.cropbox                 # the visible area (CropBox), in the reader's top-left coordinates
-        self.vis = (max(cb[0], mb[0]) - mb[0], mb[3] - min(cb[3], mb[3]), min(cb[2], mb[2]) - mb[0], mb[3] - max(cb[1], mb[1]))
-        self.chars = [{k: c.get(k) for k in KEEP_KEYS} for c in p.chars]
-        self.images = [{k: i.get(k) for k in ('x0', 'x1', 'top', 'bottom', 'mcid', 'tag')} for i in p.images]
-class _PL:
-    def __init__(self, path):
-        self.pages = []
-        with pdfplumber.open(path) as pl:
-            for n, p in enumerate(pl.pages, 1):
-                self.pages.append(_Page(p)); p.close()
-                for c in self.pages[-1].chars: c['pg'] = n          # gaptext: a gap filled by another glyph is no space
-PL = _PL(SRC)
+PL = plpages.Pages(SRC)                         # chars, image boxes and size only (lib/plpages.py)
 log = {'applied': collections.Counter(), 'rejected': [], 'deferred': [], 'failed': [], 'empty_notes_removed': [],
        'rolemap': {}, 'bookmarks': None, 'rule_fixes': {}}
 def _versions():                               # recorded in record.json and at the top of review.md

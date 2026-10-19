@@ -376,7 +376,7 @@ if not isinstance(wo, dict):
 if len(blocks) > 1:
     print(f'note: the reply held {len(blocks)} JSON work orders; the last one (the model\'s final answer) is used. review.md shows this as a CHECK')
 
-sys.path.insert(0, HERE); import workorder_check
+sys.path.insert(0, HERE); from lib import workorder_check
 dropped = workorder_check.check(wo, digest, not_sent, words_sent)      # the same checks run on a work order a person reviewed
 if words_unsent:
     wo.setdefault('deferrals', []).append({'what': f'{len(words_unsent)} suspect OCR word forms were not read by the AI (over the image limit or budget)',
