@@ -422,11 +422,12 @@ if is_scan:
     try: font = ImageFont.load_default(size=22)
     except TypeError: font = ImageFont.load_default()
     sheet, n_sheet, x, y, row_h, first = None, 0, 0, 0, 0, 1
+    cells = {}                                         # id -> [x, y, w, h] of its crop on the sheet, for the review page (never sent to the model)
     def save_sheet(last):
         global n_sheet
         n_sheet += 1; name = f'ocr_words/sheet_{n_sheet:02d}.png'
         sheet.save(os.path.join(OUT, name), optimize=True)
-        ocr_word_sheets.append({'image': name, 'ids': [first, last]})
+        ocr_word_sheets.append({'image': name, 'ids': [first, last], 'cells': dict(cells)}); cells.clear()
     for i, (core, f) in enumerate(ranked, 1):
         ocr_words.append({'id': i, 'text': core, 'count': f['count'], 'pages': f['pages'][:3]})
         c = crops[i]; h = max(c.height, 30) + 10
@@ -436,6 +437,7 @@ if is_scan:
         if sheet is None: sheet = Image.new('L', (SHEET_W, SHEET_H), 255); x = y = 0; draw = ImageDraw.Draw(sheet)
         draw.text((x + 4, y + (h - 24) // 2), str(i), fill=0, font=font)
         sheet.paste(c, (x + 66, y + 5)); draw.line((x, y + h - 1, x + CELL_W - 10, y + h - 1), fill=200)
+        cells[str(i)] = [x + 60, y, CELL_W - 70, h - 1]
         y += h
     if sheet is not None: save_sheet(len(ranked))
 

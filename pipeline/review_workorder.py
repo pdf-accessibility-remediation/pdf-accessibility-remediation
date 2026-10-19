@@ -38,7 +38,7 @@ def main():
         if not a.pdf or not os.path.isfile(a.pdf): sys.exit('--prepare needs --pdf <the PDF the pipeline works on>')
         d = core.prepare(R, a.pdf)
         n = sum(1 for it in d['items'] if it['priority'])
-        print(f'review ready: {len(d["items"])} decisions, {n} to check first · {len(os.listdir(os.path.join(R, "review_pages")))} page images')
+        print(f'review ready: {len(d["items"])} decisions, {n} to check first · page images are made as the reviewer scrolls to them')
         return
     if a.serve:
         if not os.path.exists(os.path.join(R, 'review_items.json')): sys.exit('no review_items.json: run with --prepare --pdf <file.pdf> first')

@@ -6,6 +6,7 @@
 <title>Work order review</title>
 <style>
 :root {
+  color-scheme: light dark;            /* scrollbars and form controls follow the theme */
   --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #5f5f5a; --line: #d9d9d4;
   --accent: #1f5fae; --ok: #1d7a3e; --change: #9a5b00; --reject: #b3261e; --seen: #5a4fa8; --flag: #fff4d6;
 }
@@ -14,10 +15,13 @@
           --accent: #7fb0f0; --ok: #6fcf8f; --change: #f0b45c; --reject: #f08a80; --seen: #b3a9f5; --flag: #3a3220; }
 }
 * { box-sizing: border-box; }
+html { scroll-padding-top: calc(var(--top, 0px) + 8px); }   /* a jump to a card lands below the sticky header */
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 header.top { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; }
 .top h1 { font-size: 17px; margin: 0 0 6px; }
-.row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 32px; align-items: center; }
+.actions { display: flex; gap: 10px; }
+.show label { margin-left: 8px; }
 .bar { width: 160px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
 .bar i { display: block; height: 100%; background: var(--accent); }
 button { font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
@@ -28,7 +32,7 @@ textarea { width: 100%; min-height: 3.2em; }
 #msg { margin-top: 6px; font-size: 14px; }
 #msg.err { color: var(--reject); }
 main { display: flex; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
-nav { flex: 0 0 220px; position: sticky; top: 110px; align-self: flex-start; max-height: calc(100vh - 130px); overflow: auto; font-size: 14px; }
+nav { flex: 0 0 232px; padding-right: 12px; scrollbar-gutter: stable; position: sticky; top: calc(var(--top, 0px) + 8px); align-self: flex-start; max-height: calc(100vh - var(--top, 0px) - 24px); overflow: auto; font-size: 14px; }
 nav h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 4px; }
 nav a { display: flex; justify-content: space-between; color: var(--ink); text-decoration: none; padding: 2px 4px; border-radius: 4px; }
 nav a:hover { background: var(--line); }
@@ -59,6 +63,14 @@ pre { font-size: 12px; background: var(--bg); padding: 6px; border-radius: 6px; 
 .imgs figure.here img { outline: 3px solid var(--accent); }
 .controls { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-top: 6px; }
 .controls label { cursor: pointer; }
+button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
+.navbar { display: none; }
+#navToggle { display: inline-flex; align-items: center; gap: 8px; border-color: var(--accent); color: var(--accent); font-weight: 600; }
+#navToggle svg { width: 18px; height: 18px; }
+.nav-head { display: none; }
+#navBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 15; }
+#navBackdrop[hidden] { display: none; }
+.imgs figure.word img { max-height: 90px; }
 .edit { margin-top: 6px; }
 .edit textarea { min-height: 4.5em; }
 .note { margin-top: 6px; }
@@ -66,7 +78,19 @@ pre { font-size: 12px; background: var(--bg); padding: 6px; border-radius: 6px; 
 #zoom { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: none; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out; }
 #zoom img { max-width: 96vw; max-height: 96vh; background: #fff; }
 .done { padding: 12px 16px; background: var(--flag); border-radius: 8px; margin: 10px 0; }
-@media (max-width: 800px) { main { flex-direction: column; padding: 16px; } nav { position: static; max-height: none; flex: none; } header.top { position: static; } }
+@media (max-width: 800px) {
+  main { flex-direction: column; padding: 16px; }
+  header.top { position: static; }
+  .navbar { display: block; position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 8px 16px; }
+  /* the side list becomes a drawer over the page: the cards never move */
+  /* align-self: stretch, or the desktop flex-start makes the drawer as tall as its list and nothing scrolls */
+  nav { position: fixed; top: 0; bottom: 0; left: 0; align-self: stretch; width: min(300px, 85vw); max-height: none; overscroll-behavior: contain; z-index: 20; background: var(--panel);
+        box-shadow: 2px 0 16px rgba(0,0,0,.35); padding: 8px 16px 16px; transform: translateX(-100%); visibility: hidden;
+        transition: transform .2s ease, visibility 0s linear .2s; }
+  body.nav-open nav { transform: none; visibility: visible; transition: transform .2s ease; }
+  .nav-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 4px; }
+}
+@media (prefers-reduced-motion: reduce) { nav { transition: none !important; } }
 </style>
 </head>
 <body>
@@ -75,18 +99,21 @@ pre { font-size: 12px; background: var(--bg); padding: 6px; border-radius: 6px; 
   <div class="row">
     <label>Reviewer <input type="text" id="reviewer" placeholder="your name" size="18"></label>
     <span><span class="bar"><i id="bar"></i></span> <span id="progress"></span></span>
-    <span role="radiogroup" aria-label="Show">Show:
+    <span class="show" role="radiogroup" aria-label="Show">Show:
       <label><input type="radio" name="view" value="priority" checked> Check first</label>
       <label><input type="radio" name="view" value="all"> All</label>
       <label><input type="radio" name="view" value="left"> Not reviewed</label>
     </span>
-    <button id="save">Save</button>
-    <button id="finish" class="primary">Finish review</button>
+    <span class="actions"><button id="save">Save</button>
+    <button id="finish" class="primary">Finish review</button></span>
   </div>
   <div id="msg" role="status"></div>
 </header>
+<div class="navbar"><button id="navToggle" type="button" aria-expanded="false" aria-controls="nav">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>Sections</button></div>
+<div id="navBackdrop" hidden></div>
 <main>
-  <nav id="nav" aria-label="Sections"></nav>
+  <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close sections">×</button></div><div id="navList"></div></nav>
   <div id="cards"></div>
 </main>
 <div id="zoom"><img alt=""></div>
@@ -151,18 +178,20 @@ const KEY_WORDS = {
   fix_figure_order: 'Puts figures back on their own page in the reading order.',
   remove_empty_containers: 'Removes empty structure tags.',
 };
+const h1Note = (a, b) => a === 'H1' || b === 'H1' ? ' This page can only approve, change or reject the AI\'s decisions, not add one: to make a different element the H1, edit workorder.json by hand and record it with --reviewer (see the docs).' : '';
 function explain(it) {
   const b = it.before, a = it.ai, c = it.context;
   switch (it.key) {
     case 'retype':
+      if (a === b) return 'Keeps this one element as ' + article(a) + ', even where a style mapping changes the other elements of its style.' + h1Note(a, b);
       return 'Changes this one element from ' + article(b) + ' to ' + article(a) + '. ' +
         (isHeading(a) && !isHeading(b) ? 'Screen readers will announce it as a heading and list it in their headings menu.'
          : isHeading(b) && !isHeading(a) ? 'Screen readers will no longer announce it as a heading or list it in the headings menu.'
-         : isHeading(a) && isHeading(b) ? 'It moves to level ' + a.slice(1) + ' in the document outline.' : '');
+         : isHeading(a) && isHeading(b) ? 'It moves to level ' + a.slice(1) + ' in the document outline.' : '') + h1Note(a, b);
     case 'rolemap':
       return 'Changes what the style “' + c.style + '” means: all ' + (c.count ?? 'its') + ' elements with this style are read as ' + article(a) +
-             ' instead of ' + article(b) + '. One wrong element in the style means one wrong heading.';
-    case 'actual_text': return 'Sets the words screen readers speak for this element in place of the printed characters (used where the print reads wrongly). The page does not change.';
+             ' instead of ' + article(b) + '. One wrong element in the style means one wrong heading.' + h1Note(a, b);
+    case 'actual_text': return 'Sets the words screen readers speak for this element in place of the printed characters. The page does not change. The executor only accepts words that are printed under the element: if they come from a heading merge (for example “Chapter Two”), they depend on that merge being approved.';
     case 'alt': return 'Sets the description screen readers give for this figure (its alt text). The page does not change.';
     case 'page_figures': return 'Wraps this whole page as one figure, with this description for screen readers.';
     case 'document':
@@ -173,7 +202,7 @@ function explain(it) {
     case 'tables': return 'Marks the first ' + a.header_rows + ' row(s) and first ' + a.header_cols + ' column(s) as headers, so screen readers announce them with each cell.';
     case 'flatten': return 'Removes the list or table structure; its contents are read as plain paragraphs.';
     case 'keep_lists': return 'Keeps this one-item list as a list (an automatic rule would otherwise turn it into a paragraph).';
-    case 'merges': return 'Joins two pieces into one heading, for example a chapter number and its title, so they are read together.';
+    case 'merges': return 'Joins two pieces into one heading, for example a chapter number and its title, so they are read together. If you reject it, spoken text the AI wrote for those headings (for example “Chapter Two …”) no longer matches the print, and the executor will refuse it too.';
     case 'artifacts':
       return it.loc[1] === 'elements' ? 'Marks this figure as decoration, so screen readers skip it. Right for ornaments and backgrounds with no information.'
         : 'Marks matching text as decoration, so screen readers skip it. Right for running heads and page numbers; if the pattern also matches real content, that content is hidden too.';
@@ -200,7 +229,7 @@ function editor(it, d) {
   if (it.edit === 'text') return '<textarea data-act="value" aria-label="New value">' + esc(v) + '</textarea>';
   if (it.edit === 'lang') return '<input type="text" data-act="value" value="' + esc(v) + '" size="12"> <span class="ctx">a language tag such as en-US, ja, haw</span>';
   if (it.edit === 'table') return 'Header rows <input type="text" data-act="value" data-f="header_rows" size="2" value="' + esc((v || {}).header_rows) + '"> ' +
-    'Header columns <input type="text" data-act="value" data-f="header_cols" size="2" value="' + esc((v || {}).header_cols) + '"> <span class="ctx">0–3 each</span>';
+    'Header columns <input type="text" data-act="value" data-f="header_cols" size="2" value="' + esc((v || {}).header_cols) + '"> <span class="ctx">0–3 each. Header columns are refused by the executor when any row has that many cells or fewer, such as a one-cell title row across the table.</span>';
   return '';
 }
 
@@ -237,13 +266,15 @@ function card(it) {
     if (r.type || r.subtype) row('Marked as', esc(artifactWord(r.type, r.subtype)));
   } else { if (it.key !== 'flatten' && it.key !== 'keep_lists') row('AI\'s choice', esc(entryWords(it))); exact = true; }
   if (c.why && it.key !== 'deferrals') row('AI\'s reason', esc(c.why));
-  if (c.count != null) row(it.key === 'ocr_words' ? 'Occurs' : 'Elements', esc(c.count) + (it.key === 'ocr_words' ? ' times in the book' : ' in this style'));
+  if (c.count != null) row(it.key === 'ocr_words' ? 'Occurs' : 'Elements', it.key === 'ocr_words' ? (c.count === 1 ? 'once in the book' : esc(c.count) + ' times in the book') : esc(c.count) + ' in this style');
   if (c.samples) row('Samples', c.samples.map(x => '“' + esc(String(x).slice(0, 120)) + '”').join(' · '));
   if (c.first || c.first_rows) row('First rows', (c.first || c.first_rows).map(x => '“' + esc(String(x).slice(0, 100)) + '”').join(' · '));
   if (c.page_refs) row('Pages named', esc(c.page_refs.join(', ')));
   h += '<dl class="fields">' + rows.join('') + '</dl>';
   if (exact) h += '<details class="exact"><summary>The AI\'s exact entry</summary><pre>' + esc(JSON.stringify(it.ai, null, 1)) + '</pre></details>';
   const imgs = [];
+  if (c.word) imgs.push('<figure class="word"><img loading="lazy" src="' + esc(c.word) + '" alt="The word in the scan"><figcaption>the word in the scan (as the AI saw it)</figcaption></figure>');
+  else if (c.sheet) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.sheet) + '" alt="OCR word sheet"><figcaption>word sheet: find word ' + esc(c.word_id) + '</figcaption></figure>');
   if (c.figure) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.figure) + '" alt="The figure"><figcaption>figure</figcaption></figure>');
   for (const src of it.images || []) {
     const p = +src.match(/(\d+)\.png$/)[1];
@@ -252,7 +283,8 @@ function card(it) {
   if (imgs.length) h += '<div class="imgs">' + imgs.join('') + '</div>';
   const opts = SEEN_ONLY.has(it.key) ? [['seen', 'Seen']] : [['approved', 'Approve'], ...(it.edit ? [['changed', 'Change']] : []), ['rejected', 'Reject']];
   h += '<div class="controls" role="radiogroup" aria-label="Decision">' + opts.map(([v, l]) =>
-    '<label><input type="radio" name="st-' + esc(it.id) + '" data-act="status" value="' + v + '"' + (st === v ? ' checked' : '') + '> ' + l + '</label>').join('') + '</div>';
+    '<label><input type="radio" name="st-' + esc(it.id) + '" data-act="status" value="' + v + '"' + (st === v ? ' checked' : '') + '> ' + l + '</label>').join('') +
+    '<button type="button" class="clear" data-act="clear"' + (st ? '' : ' hidden') + ' title="Clear this choice: back to not reviewed">Clear</button></div>';
   if (it.edit && !SEEN_ONLY.has(it.key)) h += '<div class="edit"' + (st === 'changed' ? '' : ' hidden') + '><div class="edit-label">New value</div>' + editor(it, d) + '</div>';
   h += '<div class="note"><textarea data-act="note" placeholder="Note (optional)" aria-label="Note">' + esc(d.note || '') + '</textarea></div>';
   h += '<div class="id">ID <code>' + esc(it.id) + '</code></div>';
@@ -276,7 +308,7 @@ function nav() {
   h += '<h2>All decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(k) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
   h += '<h2>Page index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
     '<a href="#card-' + esc(pages[p][0]) + '" data-view="priority"><span>p. ' + p + '</span><span>' + pages[p].length + '</span></a>').join('');
-  document.getElementById('nav').innerHTML = h;
+  document.getElementById('navList').innerHTML = h;
 }
 
 function progress() {
@@ -286,6 +318,14 @@ function progress() {
 }
 
 const cards = document.getElementById('cards');
+function clearChoice(art) {
+  const d = state.decisions[art.dataset.id]; if (d) delete d.status;                     // the note and a typed value stay
+  art.removeAttribute('data-status');
+  art.querySelectorAll('input[data-act=status]').forEach(r => { r.checked = false; });
+  const ed = art.querySelector('.edit'); if (ed) ed.hidden = true;
+  art.querySelector('.clear').hidden = true;
+  persist(); progress();
+}
 function onEdit(e) {
   const el = e.target, act = el.dataset.act; if (!act || finished) return;
   const art = el.closest('.card'), it = byId[art.dataset.id], d = dec(it.id);
@@ -301,19 +341,48 @@ function onEdit(e) {
     } else d.value = el.value;
     d.status = 'changed';
   }
-  if (d.status) art.dataset.status = d.status;
+  if (d.status) { art.dataset.status = d.status; art.querySelector('.clear').hidden = false; }
   persist(); progress();
 }
 cards.addEventListener('change', onEdit);
 cards.addEventListener('input', e => { if (e.target.tagName === 'TEXTAREA' || e.target.type === 'text') onEdit(e); });
+// clicking the option that is already selected clears it (the browser does not fire "change" then)
+cards.addEventListener('pointerdown', e => {
+  const lab = e.target.closest('label'); const r = lab ? lab.querySelector('input[data-act=status]') : null;
+  if (r) r.dataset.was = r.checked ? '1' : '';
+});
 cards.addEventListener('click', e => {
-  if (e.target.tagName === 'IMG') { const z = document.getElementById('zoom'); z.querySelector('img').src = e.target.src; z.querySelector('img').alt = e.target.alt; z.style.display = 'flex'; }
+  if (finished) return;
+  const t = e.target;
+  if (t.dataset && t.dataset.act === 'status' && t.dataset.was === '1') { t.dataset.was = ''; clearChoice(t.closest('.card')); return; }
+  if (t.dataset && t.dataset.act === 'clear') { clearChoice(t.closest('.card')); return; }
+  if (t.tagName === 'IMG') { const z = document.getElementById('zoom'); z.querySelector('img').src = e.target.src; z.querySelector('img').alt = e.target.alt; z.style.display = 'flex'; }
 });
 document.getElementById('zoom').addEventListener('click', e => { e.currentTarget.style.display = 'none'; });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') document.getElementById('zoom').style.display = 'none'; });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  document.getElementById('zoom').style.display = 'none';
+  if (document.body.classList.contains('nav-open')) setNav(false);
+});
 document.querySelectorAll('input[name=view]').forEach(r => r.addEventListener('change', () => { view = r.value; render(); }));
+const header = document.querySelector('header.top'), navBtn = document.getElementById('navToggle');
+const narrow = () => window.matchMedia('(max-width: 800px)').matches;
+function setTop() {                                    // the sticky header's height, so jumps land below it
+  document.documentElement.style.setProperty('--top', (getComputedStyle(header).position === 'sticky' ? header.offsetHeight : 0) + 'px');
+}
+setTop(); window.addEventListener('resize', setTop);
+try { new ResizeObserver(setTop).observe(header); } catch (e) {}
+const backdrop = document.getElementById('navBackdrop');
+function setNav(open) {
+  document.body.classList.toggle('nav-open', open); backdrop.hidden = !open; navBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  (open ? document.getElementById('navClose') : navBtn).focus();
+}
+navBtn.addEventListener('click', () => setNav(!document.body.classList.contains('nav-open')));
+document.getElementById('navClose').addEventListener('click', () => setNav(false));
+backdrop.addEventListener('click', () => setNav(false));
 document.getElementById('nav').addEventListener('click', e => {
   const a = e.target.closest('a'); if (!a) return;
+  if (narrow()) setNav(false);
   if (a.dataset.view && a.dataset.view !== view && !(view === 'left' && a.dataset.view === 'all')) {
     view = a.dataset.view; document.querySelector('input[name=view][value=' + view + ']').checked = true; render();
     e.preventDefault(); const t = document.querySelector(a.getAttribute('href')); if (t) t.scrollIntoView();
@@ -321,7 +390,7 @@ document.getElementById('nav').addEventListener('click', e => {
 });
 
 const msg = (t, err) => { const m = document.getElementById('msg'); m.innerHTML = t; m.className = err ? 'err' : ''; };
-const dropText = d => d.length ? ' · <b>' + d.length + ' not accepted by the check</b>: ' + d.map(x => esc(x.where) + ' (' + esc(x.why) + ')').join('; ') : ' · nothing dropped by the check';
+const dropText = d => d.length ? ' · <b>' + d.length + ' not accepted by the check, so not applied at all</b> (the AI\'s value is not used either; change or approve it to keep a value): ' + d.map(x => esc(x.where) + ' (' + esc(x.why) + ')').join('; ') : ' · nothing dropped by the check';
 async function post(path, extra) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(Object.assign({ reviewer: state.reviewer, decisions: state.decisions }, extra || {})) });
