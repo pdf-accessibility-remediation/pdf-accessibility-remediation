@@ -746,9 +746,8 @@ if n == 0: L.append('Nothing flagged.')
 
 L += ['## What was changed', '', '| Change | Count |', '|---|---:|'] + [f'| {k} | {v} |' for k, v in (log.get('applied') or {}).items()]
 L += ['', '## Final check with PAC 2026', '',
-      f'Open `{PDF}` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG and PDF/UA checks. Anything PAC fails that is not '
-      'listed above is a gap in the automated checks: note it in the issue tracker. PAC\'s PDF/UA-only failures (e.g. the missing PDF/UA '
-      'identifier, font details) do not block WCAG conformance.', '',
+      f'Open `{PDF}` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not '
+      'listed above is a gap in the automated checks: note it in the issue tracker.', '',
       'No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC\'s screen-reader and structure previews:', '',
       '- 1.1.1: alt text is accurate and gives the figure\'s purpose; decorative images are artifacts',
       '- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense',
@@ -774,7 +773,17 @@ def _tidy_no_page(lines):
         out.append(l)
     return out
 L = _tidy_no_page(L)
-open(os.path.join(R, 'review.md'), 'w', encoding='utf-8').write('\n'.join(L) + '\n')
+# "At a glance": its numbers are computed once (lib/glance.py), kept in record.json, and shown by review.md and review.html
+from lib import glance as G
+md = '\n'.join(L) + '\n'
+record['glance'] = G.glance(record, md, PLAB, [h['page'] for h in han])
+json.dump(record, open(os.path.join(R, 'record.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+md = G.replace_block(md, G.glance_md(record['glance']))
+open(os.path.join(R, 'review.md'), 'w', encoding='utf-8').write(md)
+try:
+    import report_html
+    report_html.review_html(R, record, md, PLAB)
+except Exception as e: print(f'note: review.html not written ({type(e).__name__}: {e})')
 
 # ------------------------------------------------------------------ tidy
 if not KEEP:

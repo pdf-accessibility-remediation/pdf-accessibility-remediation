@@ -150,7 +150,7 @@ while st2:
     if not isinstance(n, pikepdf.Dictionary) or str(n.get('/Type')) in ('/MCR', '/OBJR'): continue
     if mapped(str(n.get('/S')).lstrip('/')) == 'Figure': figs.append(str(n.get('/Alt', '')))
     if '/K' in n: st2.append(n.K)
-out['figures'] = {'count': len(figs), 'generic_or_empty': sum(1 for a in figs if a.strip().lower() in ('', 'illustration', 'image')),
+out['figures'] = {'count': len(figs), 'generic_or_empty': sum(1 for a in figs if re.fullmatch(r'(illustration|image|img|picture)?[\s_-]*\d*', a.strip(), re.I)),
                   'with_nul': sum('\x00' in a for a in figs)}
 def _ids(node, acc):
     if '/Names' in node:

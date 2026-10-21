@@ -417,6 +417,29 @@ def coverage(path):
     return {'tagged': tot['tagged'], 'artifact': tot['artifact'], 'untagged': tot['untagged'], 'untagged_pages': untagged_pages[:50]}
 
 # ------------------------------------------------------------------ post-steps on our own intermediate files
+PLACEHOLDER_ALT = {'/Figure': re.compile(r'image \d+'), '/Link': re.compile(r'Annotation')}   # OpenDataLoader 2.5.12's own words
+
+def drop_placeholder_alt(path):
+    """Remove the alt text OpenDataLoader writes on every Figure ("image 12") and Link ("Annotation"): a screen reader
+    would say it instead of describing the figure or reading the link's text. Exact matches only; any other alt is kept.
+    Changes no page content (checklist 8.2, 2.4.4)."""
+    n = {'figures': 0, 'links': 0}
+    with pikepdf.open(path, allow_overwriting_input=True) as pdf:
+        st = pdf.Root.get('/StructTreeRoot'); todo = [st] if st is not None else []; seen = set()
+        while todo:
+            e = todo.pop()
+            if not isinstance(e, pikepdf.Dictionary): continue
+            if e.is_indirect:
+                if e.objgen in seen: continue
+                seen.add(e.objgen)
+            pat = PLACEHOLDER_ALT.get(str(e.get('/S')))
+            if pat and '/Alt' in e and pat.fullmatch(str(e.Alt)):
+                del e['/Alt']; n['figures' if str(e.S) == '/Figure' else 'links'] += 1
+            K = e.get('/K')
+            todo.extend(k for k in (list(K) if isinstance(K, pikepdf.Array) else [K]) if isinstance(k, pikepdf.Dictionary) and '/S' in k)
+        if n['figures'] or n['links']: pdf.save(path)
+    return n
+
 def strip_ocr_layer(path, pages):
     """Remove OCRmyPDF's invisible text (its /OCR-… form, drawn as q /OCR-… Do Q) from the given pages."""
     with pikepdf.open(path, allow_overwriting_input=True) as p:
@@ -505,6 +528,79 @@ def _pages(ps, labels):
         if la and lb and (la != str(a) or lb != str(b)): txt += f' (printed {la})' if a == b else f' (printed {la}–{lb})'
         out.append(txt); i = j + 1
     return ', '.join(out) if out else 'none'
+def intake_glance(rec):
+    """The numbers behind intake.md's "At a glance", kept in intake.json (and so in record.json) as `glance`."""
+    o, tt, fl = rec.get('ocr') or {}, rec.get('text_test') or {}, rec.get('flags') or []
+    ocr_pages = o.get('pages_with_ocr_text') or []
+    v = (rec.get('review') or {}).get('ocr_text_approved')
+    ocr_open = bool(ocr_pages) and not (isinstance(v, dict) and v.get('verdict') == 'approved')
+    sc = [p for p in tt.get('pages') or [] if p.get('cer') is not None]
+    return {'schema': 'intake-glance/0.1', 'status': rec.get('status'),
+            'needs_person': sum(1 for f in fl if f.get('check')) + (1 if ocr_open else 0), 'notes': sum(1 for f in fl if not f.get('check')),
+            'ocr_pages': ocr_pages, 'picture_pages': o.get('image_pages_without_text') or [],
+            'placeholder_alt_removed': (rec.get('checks') or {}).get('placeholder_alt_removed'),
+            'text_test': {'verdict': tt.get('verdict'), 'median_cer': tt.get('median_cer'), 'sampled': len(sc),
+                          'suspicious_added': sum(1 for p in sc if p.get('suspicious')), 'front_matter_skipped': bool(tt.get('front_matter_skipped')),
+                          'best': min(sc, key=lambda p: p['cer'])['page'] if sc else None, 'best_cer': min(p['cer'] for p in sc) if sc else None,
+                          'worst': max(sc, key=lambda p: p['cer'])['page'] if sc else None, 'worst_cer': max(p['cer'] for p in sc) if sc else None,
+                          'over_ok': sorted(p['page'] for p in sc if p['cer'] > CER_OK), 'over_bad': sorted(p['page'] for p in sc if p['cer'] > CER_BAD)}}
+
+def glance_lines(rec, labels):
+    """intake.md's "## At a glance" block (checklist 1.2, 3.1, rule 2), from rec['glance']."""
+    g = rec.get('glance') or intake_glance(rec); st = g['status']; t = g['text_test']
+    def P(ps): return _pages(ps, labels)
+    def pl(n, w): return f'{n} {w}{"" if n == 1 else "s"}'
+    if st == 'done':
+        parts = ['auto-tagged']
+        if g['ocr_pages']: parts.append(f'OCR text added on {pl(len(g["ocr_pages"]), "page")} ({P(g["ocr_pages"])})')
+        if g['picture_pages']: parts.append(f'{pl(len(g["picture_pages"]), "picture page")} left for alt text ({P(g["picture_pages"])})')
+        ph = g.get('placeholder_alt_removed') or {}
+        if ph.get('figures') or ph.get('links'):
+            parts.append(f'placeholder alt text removed from {ph.get("figures", 0):,} figures and {ph.get("links", 0):,} links')
+        result = 'ready for the pipeline: ' + ' · '.join(parts)
+    else:
+        result = {'planned': 'plan only, nothing changed', 'stopped': 'stopped for a person', 'failed': 'failed'}.get(st, st or 'not finished') \
+                 + f': {rec.get("summary") or "no summary recorded"}'
+    L = ['## At a glance', '', f'**Result:** {result}  ', f'**Needs a person:** {g["needs_person"]} (below) · **Notes:** {g["notes"]}  ']
+    v = (rec.get('review') or {}).get('ocr_text_approved')
+    if g['ocr_pages']:
+        L.append('**OCR text reviewed by a person:** ' + (
+            f'{v.get("verdict")} by {v.get("reviewer")} on {v.get("date")}' + (f' (PDF {v["pages"]})' if v.get('pages') else '') + f': {v.get("reason")}'
+            if isinstance(v, dict) else 'not yet reviewed (on the review page, or with review_ocr.py)'))
+    L.append('')
+    if t['sampled']:
+        n_ok = len(t['over_ok'])
+        head = {'usable': 'Yes, usable.' if not n_ok else f'Usable overall, with {pl(n_ok, "page")} to check by eye.',
+                'doubtful': 'Doubtful: a person decides.', 'unusable': 'No: unusable.'}.get(t['verdict'], f'{t["verdict"]}.')
+        L += [f'**Is the existing text trustworthy?** {head}',
+              f'{pl(t["sampled"], "sample page")} {"was" if t["sampled"] == 1 else "were"} read by OCR and compared with the PDF\'s own text.',
+              'The samples are spread evenly through the book' + (', skipping the front matter.' if t['front_matter_skipped'] else '.')
+              + (f' {pl(t["suspicious_added"], "page")} that looked suspicious {"was" if t["suspicious_added"] == 1 else "were"} added.' if t['suspicious_added'] else '')]
+        if t['median_cer'] is not None:
+            L.append(f'On a typical page, {100 - 100 * t["median_cer"]:.1f}% of characters matched (median error {t["median_cer"]:.1%}).')
+        L.append(f'Best page {t["best_cer"]:.1%} ({P([t["best"]])}) · worst {t["worst_cer"]:.1%} ({P([t["worst"]])})'
+                 + (f' · {pl(n_ok, "page")} over 5%: {P(t["over_ok"])}' + (f' ({len(t["over_bad"])} of them over 15%: {P(t["over_bad"])})' if t['over_bad'] else '')
+                    if n_ok else ' · no page over 5%') + '.')
+        L += ['How to read this: 5% or less = usable · 5–15% = a person decides · over 15% = unusable.',
+              'The book is judged on the median, so a few bad pages don\'t stop it; they are listed for a person.',
+              'Even a perfect text layer doesn\'t score 0%: OCR makes its own mistakes.',
+              'A bad page can mean the text layer is wrong there, or that OCR misread the page (tables, pictures, phonetic symbols, foreign words).', '']
+    elif t['verdict'] == 'not tested': L += ['**Is the existing text trustworthy?** Not tested: no page had a text layer.', '']
+    items = []
+    for f in rec.get('flags') or []:
+        if not f.get('check'): continue
+        w, why, ps = f['what'], f.get('why') or '', f.get('pages') or []
+        if w == 'Text layer' and 'unusable' in why: txt = f'Text layer unusable on {pl(len(ps), "sample page")}'
+        elif w == 'Text layer' and 'partly disagree' in why: txt = f'Text layer doubtful on {pl(len(ps), "sample page")}'
+        elif w == 'CJK OCR: needs a person': txt = 'CJK OCR text needs a person'
+        elif w == 'Low-resolution scans': txt = 'Low-resolution scan' + ('s' if len(ps) != 1 else '') + ', read enlarged by OCR'
+        else: txt = w
+        items.append(txt + (f': {P(ps)}' if ps else ''))
+    if g['ocr_pages'] and not (isinstance(v, dict) and v.get('verdict') == 'approved'):
+        items.append(('OCR text not approved' if isinstance(v, dict) else 'OCR text not yet reviewed') + f': {P(g["ocr_pages"])}')
+    if items: L += ['**Needs a person**'] + [f'{i}. {x}' for i, x in enumerate(items, 1)] + ['']
+    return L
+
 def write_md(rec, path):
     """intake.md beside intake.json: the same record for a person, for every outcome (planned, done, stopped, failed,
     skipped). Rewritten whenever intake.json is saved, and by review_ocr.py when a verdict is recorded."""
@@ -520,6 +616,7 @@ def write_md(rec, path):
     if st == 'skipped':
         L += ['', 'The PDF already has a tag tree: intake leaves it alone and the pipeline works on the original.']
         open(path, 'w', encoding='utf-8').write('\n'.join(L) + '\n'); return
+    L += [''] + glance_lines(rec, labels)
     rows = []
     if t: rows.append(('Pages', ' · '.join(f'{v} {k.replace("-", " ")}' for k, v in t.items())))
     if tt:
@@ -579,7 +676,9 @@ def main():
             same = True                                  # FROM= rerun: the saved reply was written for this intake result
         if same and old.get('status') == 'skipped' or same and old.get('status') == 'done' and (not old.get('result', {}).get('pdf') or
                 (os.path.exists(PDF_OUT) and sha256(PDF_OUT) == old['result'].get('sha256'))):
-            if not os.path.exists(os.path.join(OUTD, 'intake.md')): write_md(old, os.path.join(OUTD, 'intake.md'))
+            if old.get('status') == 'done':             # derived only: the glance and intake.md follow the current code
+                old['glance'] = intake_glance(old); json.dump(old, open(J, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
+            write_md(old, os.path.join(OUTD, 'intake.md'))
             print(f'intake: reusing the earlier intake ({old["status"]}: {old.get("summary")})'); return 0
     rec = {'schema': SCHEMA, 'written': now(), 'original': {'file': os.path.basename(SRC), 'sha256': src_sha},
            'settings': settings, 'tools': {}, 'status': None, 'summary': None, 'flags': [], 'steps': [], 'checks': {},
@@ -587,8 +686,10 @@ def main():
     page_labels = {}
     def save():
         cited = {int(p) for f in rec['flags'] for p in f.get('pages') or []} | set((rec.get('plan') or {}).get('ocr_pages') or []) \
-            | {int(p) for k in ('pages_with_ocr_text', 'image_pages_without_text') for p in (rec.get('ocr') or {}).get(k) or []}
+            | {int(p) for k in ('pages_with_ocr_text', 'image_pages_without_text') for p in (rec.get('ocr') or {}).get(k) or []} \
+            | {int(r['page']) for r in (rec.get('text_test') or {}).get('pages') or [] if r.get('page') is not None}
         rec['cited_labels'] = {str(p): page_labels[p] for p in sorted(cited) if p in page_labels}    # printed labels for intake.md
+        if rec.get('status') != 'skipped': rec['glance'] = intake_glance(rec)   # intake.md's "At a glance" numbers
         json.dump(rec, open(J, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
         write_md(rec, os.path.join(OUTD, 'intake.md'))
     def flag(what, why, pages=None, check=True):
@@ -918,6 +1019,11 @@ def main():
             rec['ocr']['scan_images_marked_decoration'] = art
             cmp = compare(cur, tagged_out, near=True)
             if cmp['pixels'] or cmp['text']: return stop('failed', 'marking page scans as decoration changed a page: stopped', 1)
+        ph = drop_placeholder_alt(tagged_out); rec['checks']['placeholder_alt_removed'] = ph
+        if ph['figures'] or ph['links']:
+            flag('Placeholder alt text removed', f'the auto-tagger wrote alt text that says nothing ({ph["figures"]} figures "image N", '
+                 f'{ph["links"]} links "Annotation"); it was removed, so those figures count as having no alt text (the AI or a '
+                 'person writes it) and each link is read by its own text', check=False)
         cov = coverage(tagged_out); rec['checks']['coverage'] = cov
         total = cov['tagged'] + cov['artifact'] + cov['untagged']
         if cov['untagged'] and cov['untagged'] / max(total, 1) > 0.02:

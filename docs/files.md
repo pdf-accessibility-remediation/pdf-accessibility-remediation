@@ -18,7 +18,8 @@ The pipeline lives in `pipeline/`; paths below are relative to it, apart from `p
 | `decide.py` | The API call. Estimates cost, checks available credit, sends the digest and crops, parses and validates the reply. `--dry-run`, `--response-file`, `--check-key`, `--credit` (credit left), `--max-images` (default 100), `--max-tokens` (default 48,000, or 16,000 plus 45 per OCR word form sent when that is more; the model's reasoning counts against it) |
 | `apply.py` | The executor. Original + work order → `<original>_remediated.pdf`. pikepdf only; checks each target first and rejects what doesn't fit |
 | `verify.py` | Checks the result against the original, adds the WCAG checks veraPDF does not make, and runs veraPDF on the result |
-| `report.py` | Writes `review.md`, `record.json` and `han_review.csv`, then removes the working files |
+| `report.py` | Writes `review.md` (with its "At a glance"), `record.json` (with `glance`), `han_review.csv` and `review.html`, then removes the working files |
+| `report_html.py` | The offline dashboards: `review.html` for a run (`report.py` runs it) and, with `--summary <batch>`, `summary.html` for a batch (`batch_api.sh` runs it). Also rebuilds them for any finished run. See [Output files](output-files.md) |
 | `vera.py` | Runs veraPDF with the pinned WCAG 2.2 machine profile (which includes the PDF/UA-1 rules) and condenses its report to one entry per failed rule: WCAG or PDF/UA-only, and who can fix it (and, for the AI, the work-order key). `--check`; or `vera.py FILE.pdf OUT.json` on its own |
 
 ## Review and tools
@@ -26,8 +27,8 @@ The pipeline lives in `pipeline/`; paths below are relative to it, apart from `p
 | File | Role |
 |---|---|
 | `review_workorder.py` | The review step (`REVIEW=1`): `--prepare --pdf FILE` (run by `run_api.sh`: review items and page images), `--serve` (the review page on localhost), or `--reviewer NAME` after editing `workorder.json` by hand. Writes `review.json` and the reviewed `workorder.json`. See [Reviewing the work order](review-step.md) |
-| `review/` | The review step's code: `core.py` (items, priority groups, decisions, diff, record; no web code), `server.py` (standard-library web server on 127.0.0.1), `page.html` (the page; no external libraries) |
-| `review_ocr.py` | Records a person's verdict on a book's OCR text (checklist rule 2): `python3 review_ocr.py <run>/<book> --verdict approved\|"not approved" --reviewer NAME --reason TEXT [--pages 381-386] [--date YYYY-MM-DD]`. Writes `_intake/intake.json`, `record.json` and the review.md row; the row is OK only on "approved"; FROM= reruns carry the verdict |
+| `review/` | The review step's code: `core.py` (items, priority groups, decisions, diff, record; no web code), `server.py` (standard-library web server on 127.0.0.1), `page.html` (the page; no external libraries), `palette.css` (the dashboards' colours, light and dark, copied from `page.html`; `report_html.py` inlines it; keep the two in step) |
+| `review_ocr.py` | Records a person's verdict on a book's OCR text (checklist rule 2): `python3 review_ocr.py <run>/<book> --verdict approved\|"not approved" --reviewer NAME --reason TEXT [--pages 381-386] [--date YYYY-MM-DD]`. Writes `_intake/intake.json`, `record.json` and the review.md row, and refreshes "At a glance" and `review.html`; the row is OK only on "approved"; FROM= reruns carry the verdict. The review page's planned OCR section will write the same record |
 | `scan.py` | Fast read-only checks on a folder of PDFs (no OCR, no model): tagged or not, producer, page triage, private-use characters, text outside the visible page area and word breaks, per book (`books/*.json`) and in `summary.md`: `python3 scan.py <folder> <out_dir>` |
 
 ## Shared helpers (`lib/`)
@@ -39,6 +40,7 @@ The pipeline lives in `pipeline/`; paths below are relative to it, apart from `p
 | `lib/gaptext.py` | Text as a reader hears it: a space where the PDF has a gap but no space character (over 0.10 em and 2.5 × the line's typical gap; not where another tag's glyph fills the gap). Used for the digest and review.md, and for matching text rules; never changes the PDF |
 | `lib/listrule.py` | The one-item list rule, shared by `audit.py` (marks the lists in the digest) and `apply.py` (applies it) |
 | `lib/langtag.py` | Checks and tidies a BCP 47 language tag; used by `apply.py` (`/Lang` spelling) and `decide.py` (the work order's `document.lang`) |
+| `lib/glance.py` | The "At a glance" numbers for a finished run (ready to ship, safety, needs a person, AI decisions, fixed automatically, veraPDF, top issues), from `record.json` and `review.md`; shared by `report.py`, `report_html.py` and `review_ocr.py` |
 | `lib/plpages.py` | Reads each page once with pdfplumber and keeps only what `audit.py` and `apply.py` use: characters, image boxes, size and the visible area (CropBox) |
 | `lib/plumb_fix.py` | Fix for pdfplumber's nested marked-content bug (required; imported before pdfplumber reads a page) |
 

@@ -1010,6 +1010,9 @@ def tag_run(pno, m, lang):
     ks[i] = sp; set_kids(o, ks); pt_set_mcid(pno, m, sp); owner[(pno, m)] = sp; eff_pg[sp.objgen] = pno
     ok(f'language: {lang} Span')
 def op_language(spec):
+    """CJK runs: kana runs and explicit runs get the AI's language; Han-only runs are listed for a person (never guessed).
+    Runs on every book (ALWAYS), with or without a `language` key, so Han-only text is never left unlisted (3.1.2)."""
+    spec = spec or {}
     reindex()
     explicit = {(r['page'], r['mcid']): r['lang'] for r in spec.get('runs', [])}
     han = []
@@ -1024,7 +1027,8 @@ def op_language(spec):
                 log['deferred'].append({'page': pno, 'mcid': m, 'what': 'CJK mixed with Latin in one run'}); continue
             if spec.get('kana_runs') and KANA.search(t): tag_run(pno, m, spec['kana_runs']); continue
             han.append({'page': pno, 'label': labels.get(pno), 'mcid': m, 'text': t.strip()})
-    log['deferred'].append({'what': 'Han-only runs (ja vs zh)', 'count': len(han)}); log['han_only'] = han
+    if han: log['deferred'].append({'what': 'Han-only runs (ja vs zh)', 'count': len(han)})
+    log['han_only'] = han
 
 # ================================================================== 7. links
 NAMED = {}
@@ -2578,7 +2582,7 @@ wo.setdefault('links', {})                 # links are always tied to their text
 for fn in (fix_root, fix_flags):
     try: fn()
     except Exception as e: log['failed'].append({'op': fn.__name__, 'error': f'{type(e).__name__}: {e}'[:300]})
-ALWAYS = {'fix_figure_order', 'offpage', 'list_rule'}    # mechanical: run whether or not the work order asks
+ALWAYS = {'fix_figure_order', 'offpage', 'list_rule', 'language'}    # mechanical: run whether or not the work order asks
 for key, fn in STEPS:
     if key in ALWAYS or (key in wo and wo[key] not in (None, False)):
         try: fn(wo.get(key))
