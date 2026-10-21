@@ -1,0 +1,12 @@
+/* Colours for the dashboards only (review.html, summary.html): report_html.py inlines this file, so each page stays one
+   offline file. They are copied from the :root blocks of review/page.html (the review page, which keeps its own copy):
+   keep the two in step when either changes. */
+:root {
+  color-scheme: light dark;            /* scrollbars and form controls follow the theme */
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #5f5f5a; --line: #d9d9d4;
+  --accent: #1f5fae; --ok: #1d7a3e; --change: #9a5b00; --reject: #b3261e; --seen: #5a4fa8; --flag: #fff4d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161615; --panel: #1f1f1e; --ink: #ecece8; --muted: #a3a39c; --line: #3a3a37;
+          --accent: #7fb0f0; --ok: #6fcf8f; --change: #f0b45c; --reject: #f08a80; --seen: #b3a9f5; --flag: #3a3220; }
+}
