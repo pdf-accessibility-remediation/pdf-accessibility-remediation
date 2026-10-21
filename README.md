@@ -29,9 +29,9 @@ The pipeline uses veraPDF's WCAG 2.2 machine profile for validation during both 
 
 The following steps are sufficient for processing tagged PDFs. Untagged PDFs need additional intake dependencies.
 
-1. **Install Python dependencies.** From the `pipeline/` directory, create and activate a virtual environment, then install the requirements:
+1. **Install Python dependencies.** From the `pipeline/` directory, create and activate a virtual environment with Python 3.13, then install the requirements. Don't use Python 3.15: pikepdf 10.5.1, which the pipeline pins, has no ready-made Python 3.15 build.
     ```
-    python3 -m venv .venv
+    python3.13 -m venv .venv
     source .venv/bin/activate
     pip install -r requirements.txt
     ```
