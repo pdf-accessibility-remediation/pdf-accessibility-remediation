@@ -71,7 +71,7 @@ rate_limited = False
 def fmt(s): return f'{s:.0f}s' if s < 60 else f'{int(s // 60)}m {s % 60:02.0f}s'
 def load(p): return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else None
 ran = {l.split('\t')[0] for l in open(todo)}             # books run by this command (the others finished earlier)
-L = [f'# Batch {label}', '', '| Book | Status | Intake | Pages | API cost | $/page | Time | Checks flagged | PDF/UA rules (veraPDF) | Result |', '|---|---|---|---:|---:|---:|---:|---:|---|---|']
+L = [f'# Batch {label}', '', '| Book | Status | Intake | Pages | API cost | $/page | Time | Checks flagged | WCAG rules (veraPDF) | Result |', '|---|---|---|---:|---:|---:|---:|---:|---|---|']
 done_pages = 0
 def intake_of(R):
     j = load(os.path.join(R, '_intake', 'intake.json')) or {}
@@ -120,16 +120,18 @@ for line in open(books):
     checks = sum(1 for l in rv.splitlines() if l.startswith('|') and '**CHECK**' in l)
     pages = rec['document']['pages'] or 0; done_pages += pages
     vb, va = ((rec.get('verapdf') or {}).get(k) or {} for k in ('before', 'after'))
-    if vb.get('rules') is not None and va.get('rules') is not None:
-        new_ = sum(1 for r in va['rules'] if r['id'] not in {x['id'] for x in vb['rules']})
-        ua = f'{len(vb["rules"])} → {len(va["rules"])}' + (f' (**{new_} new**)' if new_ else '')
+    if vb.get('rules') is not None and va.get('rules') is not None:          # WCAG rules only
+        wb, wa = ([r for r in v['rules'] if r.get('scope') == 'wcag'] for v in (vb, va))
+        new_ = sum(1 for r in wa if r['id'] not in {x['id'] for x in wb})
+        ua = f'{len(wb)} → {len(wa)}' + (f' (**{new_} new**)' if new_ else '')
     else: ua = 'not run'
-    L.append(f'| {name} | done | {intake} | {pages} | {cost} | ${(this + earlier) / max(pages, 1):.4f} | {fmt(t)} | {checks} | {ua} | `{name}/{rec["document"].get("output") or ""}` |')
+    dash = f' · [dashboard]({name}/review.html)' if os.path.exists(os.path.join(R, 'review.html')) else ''
+    L.append(f'| {name} | done | {intake} | {pages} | {cost} | ${(this + earlier) / max(pages, 1):.4f} | {fmt(t)} | {checks} | {ua} | `{name}/{rec["document"].get("output") or ""}`{dash} |')
 def each_(c): return ', '.join(f'{k}' + (f' ×{v}' if len(c) > 1 else '') for k, v in c.items()) or 'not recorded'
 span = sorted({r[:16].replace('T', ' ') for r in runs_at})
 L[1:1] = ['', f'Batch started {started}' + (f' (books run from {span[0]} to {span[-1]})' if len(span) > 1 else '')
           + f' · model {", ".join(f"`{k}`" + (f" ×{v}" if len(models) > 1 else "") for k, v in models.items()) or "not recorded"}'
-          + f' · prompt {each_(prompts)}']
+          + f' · prompt {each_(prompts)}', '', '[Open the batch dashboard](summary.html): ready to ship, needs a person and veraPDF per book, sortable']
 L += ['', f'{done} of {n} books done' + (f' · {len(flagged)} flagged at intake (not sent)' if flagged else '')
       + f' · API cost ${total:.3f}' + (f' (includes ${wasted:.3f} for replies that were cut off)' if wasted else '')
       + (f' · ${total / done_pages:.4f} per page over {done_pages:,} pages' if done_pages else '') + f' · wall time {fmt(wall)}', '']
@@ -148,7 +150,7 @@ if failed:
           + (' (wait a few minutes first: the model was rate-limited)' if rate_limited else '') + ':', '', f'    RETRY=1 {jobs}{mt}{again}', '']
 L += [f'Results are relative to {B}/', '',
       'Checks flagged = rows marked CHECK in each review.md. Open the review.md of any book with flags before running PAC.',
-      'PDF/UA rules = veraPDF rules (WCAG 2.2 machine profile, PDF/UA-1 rules included) failing on the original → on the result; "new" = rules the result fails and the original passed.']
+      'WCAG rules = veraPDF\'s WCAG 2.2 machine-check rules failing on the original → on the result; "new" = rules the result fails and the original passed.']
 if flagged:
     L += ['', 'Flagged at intake = stopped before any model call; `<book>/_intake/intake.json` has the measurements. '
           'For an unusable text layer, FORCE_OCR=1 with RETRY=1 OCRs every page instead (page images + OCR text).']
@@ -156,6 +158,7 @@ out = os.path.join(B, 'summary.md'); open(out, 'w', encoding='utf-8').write('\n'
 print('\n'.join(L[2:]))
 print(f'\nsaved: {out}')
 PY
+  python3 report_html.py --summary "$B" > /dev/null || echo "note: summary.html not written"
   SUMMARY_DONE=1
 }
 tidy() {   # the book lists and copied replies were only working files
