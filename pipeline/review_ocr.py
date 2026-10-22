@@ -4,7 +4,8 @@
 
 <book_run_dir> is a finished run (the folder with review.md, record.json and _intake/). The verdict is written to
 _intake/intake.json (and shown in _intake/intake.md) and record.json (intake → review → ocr_text_approved: verdict, reviewer, date, reason, pages) and
-shown in review.md: the row "OCR text reviewed by a person" turns OK only on "approved". A later verdict replaces the
+shown in review.md: the row "OCR text reviewed by a person" turns OK only on "approved", and "Overview" (review.md,
+record.json `glance`, review.html) is refreshed, since "Ready to ship?" depends on it. A later verdict replaces the
 earlier one; the earlier one is kept under review.history. FROM= reruns carry the verdict with the intake they reuse;
 a fresh intake (new OCR text) starts unreviewed.
 """
@@ -37,21 +38,45 @@ def main():
         old = rv.get('ocr_text_approved')
         if isinstance(old, dict): rv.setdefault('history', []).append(old)
         rv['ocr_text_approved'] = v; rv.pop('approved_by', None)
-    put(intake); json.dump(intake, open(ij, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    put(intake)
     try:                                               # intake.md beside it shows the verdict too
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import intake as I
+        import intake as I
+        intake['glance'] = I.intake_glance(intake)
         I.write_md(intake, os.path.join(R, '_intake', 'intake.md'))
     except Exception as e: print(f'note: intake.md not rewritten ({e})')
-    if os.path.exists(rj):
-        rec = json.load(open(rj, encoding='utf-8'))
-        if isinstance(rec.get('intake'), dict): put(rec['intake']); json.dump(rec, open(rj, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
-    md = os.path.join(R, 'review.md')
-    if os.path.exists(md):
+    json.dump(intake, open(ij, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
+    rec = json.load(open(rj, encoding='utf-8')) if os.path.exists(rj) else None
+    if rec is not None and isinstance(rec.get('intake'), dict): put(rec['intake']); rec['intake']['glance'] = intake.get('glance')
+    md = os.path.join(R, 'review.md'); text = None
+    if rec is not None and rec.get('sections_version') == 1:     # review.md is drawn from record.json `sections`: change the row there
+        row = next((it for x in rec['sections'] for it in x['items'] if it.get('key') == f'check:{ROW}'), None)
+        if row is not None: row['text'] = row_text(v); row.pop('parts', None)
+        else: print('note: review.md has no OCR review row; record.json and intake.json were updated')
+        try:
+            from lib import glance as G
+            import report_html as H
+            labels = H.labels_of(R, rec)
+            text = G.refresh(rec, labels, H.han_pages(R))
+            H.review_html(R, rec, text, labels)
+        except Exception as e: print(f'note: "Overview" and review.html not refreshed ({type(e).__name__}: {e})')
+    elif os.path.exists(md):
         lines = open(md, encoding='utf-8').read().split('\n'); hit = False
         for i, l in enumerate(lines):
             if l.startswith(f'| {ROW} |'): lines[i] = row_text(v); hit = True
         if not hit: print('note: review.md has no OCR review row; record.json and intake.json were updated')
-        open(md, 'w', encoding='utf-8').write('\n'.join(lines))
+        text = '\n'.join(lines)
+    if rec is not None and text is not None and rec.get('sections_version') != 1:   # older runs: refresh the glance in review.md's text
+        try:
+            from lib import glance as G
+            import report_html as H
+            labels = H.labels_of(R, rec)
+            rec['glance'] = G.glance(rec, text, labels, H.han_pages(R))
+            text = G.replace_block(text, G.glance_md(rec['glance']))
+            H.review_html(R, rec, text, labels)
+        except Exception as e: print(f'note: "Overview" and review.html not refreshed ({type(e).__name__}: {e})')
+    if rec is not None: json.dump(rec, open(rj, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
+    if text is not None: open(md, 'w', encoding='utf-8').write(text)
     print(f'recorded: {a.verdict} by {a.reviewer} on {a.date}' + (f' (pages {a.pages})' if a.pages else '') + f' in {R}')
 
 if __name__ == '__main__':

@@ -15,6 +15,7 @@ stops the run and never half-applies.
 import sys, os, json, re, collections, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import plumb_fix, listrule, gaptext, langtag, support, plpages  # plumb_fix first: it patches pdfplumber
+from lib.sections import excerpt
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
 
@@ -263,7 +264,7 @@ def op_artifacts(spec):
             if min(bot, c['bottom']) - max(top, c['top']) <= 0.05: continue     # any vertical overlap: a superscript barely touches its line
             if c.get('mcid') is None or c['mcid'] not in allowed:
                 line = [d for d in PL.pages[pno - 1].chars if min(bot, d['bottom']) - max(top, d['top']) > 0.05]
-                return GT(sorted(line, key=lambda d: d['x0']))[:60]
+                return GT(sorted(line, key=lambda d: d['x0']))          # the whole line (review.md shows an excerpt)
         return None
     guard = log.setdefault('text_rule_guard', [])
     for rule in spec.get('text_rules', []):
@@ -296,7 +297,7 @@ def op_artifacts(spec):
                            and in_band(band, min(c['top'] for c in by[p2]), pno)}                         # but only those in the band
                     blocker = line_blocker(pno, m, cs, band_match[pno] | own)
                     if blocker is not None:
-                        guard.append({'page': pno, 'rule': label, 'text': norm_ws(raw)[:30], 'line': blocker}); continue
+                        guard.append({'page': pno, 'rule': label, 'text': norm_ws(raw), 'line': blocker}); continue
                 matched += 1
                 if orphans:                         # marked content that no tag-tree element owns
                     if (pno, m) not in owned_now: targets[(pno, m)] = (None, None, props, label)
@@ -333,10 +334,10 @@ def op_artifacts(spec):
             for m, cs in by.items():
                 vt, vb = PL.pages[pno - 1].vis[1], PL.pages[pno - 1].vis[3]; top = min(c['top'] for c in cs) - vt
                 inband = top < 70 if rule['band'] == 'top' else top > (vb - vt) - 60
-                if inband and (pno, m) not in targets: missed.append((pno, ''.join(c['text'] for c in cs).strip()[:30]))
+                if inband and (pno, m) not in targets: missed.append((pno, excerpt(''.join(c['text'] for c in cs))))
         if missed:
             log['deferred'].append({'what': f'{len(missed)} orphan runs in the {rule["band"]} band were not matched by rule "{rule.get("label")}"',
-                                    'why': 'still unreachable; examples: ' + '; '.join(f'{PG(p)} "{t}"' for p, t in missed[:8])})
+                                    'why': 'still unreachable: ' + '; '.join(f'{PG(p)} "{t}"' for p, t in missed)})
     by_page = collections.defaultdict(set)
     for (pg, m) in targets: by_page[pg].add(m)
     done = []
@@ -489,7 +490,7 @@ def fix_offpage_text(_spec=None):
         hidden = [c for c in chars if c['text'].strip() and c.get('tag') == 'Artifact' and outside(c)]
         if len(hidden) > OFFPAGE_LIST:                # already decoration (e.g. by the auto-tagger), but worth listing:
             res['already'].append({'page': pno, 'chars': len(hidden),     # a cropped cover's hidden back and spine
-                                   'lines': [l[:120] for l in (_offpage_text(hidden, seg) for seg in sorted(_offpage_lines(hidden), key=min)) if l]})
+                                   'lines': [l for l in (_offpage_text(hidden, seg) for seg in sorted(_offpage_lines(hidden), key=min)) if l]})
         if not any(outside(chars[i]) for i in range(len(chars)) if live(i)): continue
         off = set()
         for seg in _offpage_lines(chars):
@@ -498,7 +499,7 @@ def fix_offpage_text(_spec=None):
             if not o: continue
             if len(o) == len(vis): off.update(seg)
             else: res['left'].append({'page': pno, 'why': 'a line that starts on the page and runs past its edge: real content, left as it is',
-                                      'text': _offpage_text(chars, seg)[:100]})
+                                      'text': _offpage_text(chars, seg)})
         off = {i for i in off if chars[i].get('tag') != 'Artifact'}
         if not any(chars[i]['text'].strip() for i in off): continue
         # match operators to characters
@@ -555,18 +556,18 @@ def fix_offpage_text(_spec=None):
             if not hit: continue
             if len(hit) == len(real(ix)) and m in bdc_at: art_runs.append(m); done.update(ix)
             else: res['left'].append({'page': pno, 'why': 'a tagged run that holds both visible and off-page text: left as it is',
-                                      'text': _offpage_text(chars, hit)[:100]})
+                                      'text': _offpage_text(chars, hit)})
         for idx, (m, art) in ctx.items():
             if m is not None or art: continue
             ix = real(op_chars[idx]); hit = [i for i in ix if i in off]
             if not hit: continue
             if len(hit) == len(ix): wrap_ops.append(idx); done.update(op_chars[idx])
             else: res['left'].append({'page': pno, 'why': 'one text operation draws both visible and off-page text: left as it is',
-                                      'text': _offpage_text(chars, hit)[:100]})
+                                      'text': _offpage_text(chars, hit)})
         inform = [i for i in off if i in form_chars and i not in form_art]
         if any(chars[i]['text'].strip() for i in inform):
             res['left'].append({'page': pno, 'why': 'off-page text inside a form XObject (shared drawing): left as it is',
-                                'text': _offpage_text(chars, inform)[:100]})
+                                'text': _offpage_text(chars, inform)})
         if not art_runs and not wrap_ops: continue
         out, wrap, arts = [], set(wrap_ops), {bdc_at[m] for m in art_runs}
         for idx, ins in enumerate(ops):
@@ -588,7 +589,7 @@ def fix_offpage_text(_spec=None):
         sub = [chars[i] for i in sorted(done)]
         lines = [_offpage_text(sub, seg) for seg in sorted(_offpage_lines(sub), key=min)]
         res['artifacted'].append({'page': pno, 'chars': n, 'tagged_runs': len(art_runs), 'untagged_operations': len(wrap_ops),
-                                  'lines': [l[:120] for l in lines if l] if n > OFFPAGE_LIST else [l[:120] for l in lines if l][:1]})
+                                  'lines': [l for l in lines if l] if n > OFFPAGE_LIST else [l for l in lines if l][:1]})
         ok('artifact: text outside the visible page area (printer\'s slug, cropped-away cover)', n)
     reindex()
 
@@ -642,7 +643,7 @@ def op_adopt_orphans(spec):
             reindex()
             ok(f'orphans: adopted as paragraphs ("{label}")', len(paras))
             log.setdefault('adopted', []).append({'page': pno, 'label': label, 'runs': len(order), 'paragraphs': len(paras),
-                                                  'first': norm_ws(''.join(c['text'] for c in by[order[0]]))[:50]})
+                                                  'first': norm_ws(''.join(c['text'] for c in by[order[0]]))})
 
 # ================================================================== 2. document properties
 def op_document(spec):
@@ -758,14 +759,14 @@ def op_actual_text(spec):
         page = eff_pg.get(o.objgen)
         if not cs:
             reject(f'actual_text {it["obj"]}', 'no printed text found under this element to compare with (sponsor rule 1)')
-            res['rejected'].append({'obj': it['obj'], 'page': page, 'printed': '', 'spoken': spoken[:120]}); continue
+            res['rejected'].append({'obj': it['obj'], 'page': page, 'printed': '', 'spoken': spoken}); continue
         if not spoken_matches_print(spoken, cs):
             reject(f'actual_text {it["obj"]}', f'the spoken text adds or changes words or punctuation (sponsor rule 1): printed '
-                   f'"{shown[:80]}", spoken "{spoken[:80]}"')
-            res['rejected'].append({'obj': it['obj'], 'page': page, 'printed': shown[:120], 'raw': printed[:120], 'spoken': spoken[:120]}); continue
+                   f'"{excerpt(shown)}", spoken "{spoken}"')
+            res['rejected'].append({'obj': it['obj'], 'page': page, 'printed': shown, 'raw': printed, 'spoken': spoken}); continue
         set_attr(it, '/ActualText', pikepdf.String(spoken)); ok('heading: ActualText')
         if norm_ws(spoken) != norm_ws(printed):
-            res['accepted_different'].append({'obj': it['obj'], 'page': page, 'printed': shown[:120], 'raw': printed[:120], 'spoken': spoken[:120]})
+            res['accepted_different'].append({'obj': it['obj'], 'page': page, 'printed': shown, 'raw': printed, 'spoken': spoken})
 def op_retype(spec):
     for it in spec:
         if it['type'] not in STD_HEADINGS | {'Figure'}: reject(f'retype {it["obj"]}', 'type not allowed'); continue
@@ -840,7 +841,7 @@ def tie_caption(cap, wrapper_style):
         prv.S = pikepdf.Name('/Div'); detach(cap); cap.P = prv; set_kids(prv, kids(prv) + [cap]); reindex()
         ok('figure: caption tied (figure holder just before it → Div)')
         if len(kids(prv)) > 2: log.setdefault('captions_grouped', []).append({'page': cpg, 'figures': len(kids(prv)) - 1,
-                                                                            'caption': norm_ws(elem_text(cap))[:60]})
+                                                                            'caption': norm_ws(elem_text(cap))})
         return
     fig = [e for e, _ in all_elems() if S(e) == 'Figure' and eff_pg.get(e.objgen) == cpg]
     if len(fig) == 1: f = fig[0]
@@ -849,7 +850,7 @@ def tie_caption(cap, wrapper_style):
         if f is None:
             ok('figure: caption retyped only'); log['deferred'].append({'page': cpg, 'what': 'caption', 'why': f'{len(fig)} figures on page'}); return
         ok('figure: caption paired by position (several figures on the page)')
-        log.setdefault('captions_paired', []).append({'page': cpg, 'caption': norm_ws(elem_text(cap))[:60]})
+        log.setdefault('captions_paired', []).append({'page': cpg, 'caption': norm_ws(elem_text(cap))})
     CLAIMED.add(f.objgen)
     fpar = parent_of[f.objgen]
     blk = fpar if not (is_container(fpar) or S(fpar) == 'Document') else f
@@ -1010,6 +1011,9 @@ def tag_run(pno, m, lang):
     ks[i] = sp; set_kids(o, ks); pt_set_mcid(pno, m, sp); owner[(pno, m)] = sp; eff_pg[sp.objgen] = pno
     ok(f'language: {lang} Span')
 def op_language(spec):
+    """CJK runs: kana runs and explicit runs get the AI's language; Han-only runs are listed for a person (never guessed).
+    Runs on every book (ALWAYS), with or without a `language` key, so Han-only text is never left unlisted (3.1.2)."""
+    spec = spec or {}
     reindex()
     explicit = {(r['page'], r['mcid']): r['lang'] for r in spec.get('runs', [])}
     han = []
@@ -1024,7 +1028,8 @@ def op_language(spec):
                 log['deferred'].append({'page': pno, 'mcid': m, 'what': 'CJK mixed with Latin in one run'}); continue
             if spec.get('kana_runs') and KANA.search(t): tag_run(pno, m, spec['kana_runs']); continue
             han.append({'page': pno, 'label': labels.get(pno), 'mcid': m, 'text': t.strip()})
-    log['deferred'].append({'what': 'Han-only runs (ja vs zh)', 'count': len(han)}); log['han_only'] = han
+    if han: log['deferred'].append({'what': 'Han-only runs (ja vs zh)', 'count': len(han)})
+    log['han_only'] = han
 
 # ================================================================== 7. links
 NAMED = {}
@@ -1153,7 +1158,7 @@ def op_links(spec):
         set_kids(st, [k for k in kids(st) if not same(k, W)])
         if under and not all((pno, m) in owner for m in under):      # the link's text is not in the tag tree
             log['deferred'].append({'page': pno, 'what': 'link on text that is missing from the tag tree',
-                                    'why': f'tied to the nearest tagged text instead: "{re.sub(chr(10), " ", text)[:60]}"'})
+                                    'why': f'tied to the nearest tagged text instead: "{excerpt(text)}"'})
             under = []
         whole = bool(under) and all(all(c in chars for c in pagechars if c.get('mcid') == m) for m in under)
         if under:
@@ -1385,7 +1390,8 @@ def fix_flags():
     if not pdf.Root.ViewerPreferences.get('/DisplayDocTitle', False):
         pdf.Root.ViewerPreferences.DisplayDocTitle = True; ok('document: DisplayDocTitle'); rule_fix('7.1-10', 1)
     if '/Metadata' in pdf.Root and b'pdfuaid' in pdf.Root.Metadata.read_bytes():
-        log['deferred'].append({'what': 'the source file already claims PDF/UA conformance', 'why': 'not verified by this pipeline; check it with PAC before relying on it'})
+        log['deferred'].append({'what': 'the source file already claims PDF/UA conformance', 'why': 'not verified by this pipeline; check it with PAC before relying on it',
+                                'scope': 'pdfua'})   # PDF/UA only: review.md keeps it; review.html and its counts leave it out
 
 # ================================================================== flatten: false lists and false tables become plain paragraphs
 BLOCK = {'P', 'H', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'L', 'Table', 'Div', 'BlockQuote', 'Figure', 'Note', 'TOC'}
@@ -1439,7 +1445,7 @@ def op_list_rule(_spec=None):
         label = norm_ws(elem_text(lbl)) if lbl is not None else ''
         if not listrule.is_false_one_item_list(1, [mapped(S(k)) for k in parts], label): continue
         body = next(k for k in parts if mapped(S(k)) == 'LBody'); epg = eff_pg.get(el.objgen)
-        entry = {'obj': f'{el.objgen[0]} {el.objgen[1]}', 'page': epg, 'label': label[:20]}
+        entry = {'obj': f'{el.objgen[0]} {el.objgen[1]}', 'page': epg, 'label': label}
         if el.objgen in keep: res['kept'].append(entry); ok('one-item list kept as a list (work order)'); continue
         if any(is_elem(k) for k in kids(lbl) + kids(body)):
             res['skipped'].append({**entry, 'why': 'label or body holds tags of its own'}); continue
@@ -1463,7 +1469,7 @@ def op_list_rule(_spec=None):
                     r = nt_find(st.ParentTree, int(fx.StructParents))
                     if r and isinstance(r[0].Nums[r[1]], pikepdf.Array) and int(k.MCID) < len(r[0].Nums[r[1]]): r[0].Nums[r[1]][int(k.MCID)] = el
         LIST_RULE.add(el.objgen)
-        res['flattened'].append({**entry, 'text': elem_gaptext(el)[:60]}); ok('one-item list → paragraph (rule)')
+        res['flattened'].append({**entry, 'text': elem_gaptext(el)}); ok('one-item list → paragraph (rule)')
     reindex()
 
 # ================================================================== tables: header cells (work order) and their direction (always)
@@ -1729,7 +1735,7 @@ def fix_empty_tags():
     res = log['empty_tags'] = {'removed': [], 'tables_removed': [], 'kept': [], 'headings': [], 'notable': []}
     removed_ids = set()
     def blockers(n):
-        why = [f'carries {k} "{str(n[k])[:40]}"' for k in ('/Alt', '/ActualText', '/E', '/ID') if k in n]
+        why = [f'carries {k} "{str(n[k])}"' for k in ('/Alt', '/ActualText', '/E', '/ID') if k in n]
         return why + refs.get(n.objgen, [])
     def scan_subtree(n, acc, depth=0):
         """acc: {'content': bool, 'blocked': [(tag, why)]} for a whole subtree."""
@@ -2166,7 +2172,7 @@ def op_ocr_words(spec):
     missing = [t for t in fixes if found[t] == 0]
     if missing:
         log['deferred'].append({'what': f'{len(missing)} OCR word forms with a reading were not found in the page text',
-                                'why': 'each may be split across text operators or drawn inside a form; a person checks them: ' + ', '.join(missing[:12])})
+                                'why': 'each may be split across text operators or drawn inside a form; a person checks them: ' + ', '.join(missing)})
 
 # ================================================================== always: an invisible OCR text layer whose font defines no glyphs
 OCR_FONT_NAMES = {'HiddenHorzOCR', 'HiddenVertOCR', 'GlyphLessFont'}
@@ -2302,7 +2308,7 @@ def _swap_and_replay(todo, use, undo, before, res_log):
     if differ or changed:
         for f, d, bf in undo: f.DescendantFonts = d; f.BaseFont = bf
         log['deferred'].append({'what': 'invisible OCR-layer font with no defined glyphs: blank-glyph replacement undone',
-                                'why': f'the replay showed {len(differ)} pages looking different ({", ".join(map(PG, differ[:8]))}) and {len(changed)} pages with changed text ({", ".join(map(PG, changed[:8]))}); a person must fix the font'})
+                                'why': f'the replay showed {len(differ)} pages looking different ({", ".join(map(PG, differ))}) and {len(changed)} pages with changed text ({", ".join(map(PG, changed))}); a person must fix the font'})
         res_log['left'] += [{'font': f_name[f.objgen], 'why': 'replay showed a change; replacement undone'} for f, _, _ in undo]
         _group_left(res_log); return
     names = collections.Counter(f_name[f.objgen] for f, _, _ in undo)
@@ -2578,7 +2584,7 @@ wo.setdefault('links', {})                 # links are always tied to their text
 for fn in (fix_root, fix_flags):
     try: fn()
     except Exception as e: log['failed'].append({'op': fn.__name__, 'error': f'{type(e).__name__}: {e}'[:300]})
-ALWAYS = {'fix_figure_order', 'offpage', 'list_rule'}    # mechanical: run whether or not the work order asks
+ALWAYS = {'fix_figure_order', 'offpage', 'list_rule', 'language'}    # mechanical: run whether or not the work order asks
 for key, fn in STEPS:
     if key in ALWAYS or (key in wo and wo[key] not in (None, False)):
         try: fn(wo.get(key))
