@@ -68,4 +68,6 @@ The summary's API cost includes calls whose reply was cut off (they are paid for
 
 `FROM=<earlier-label>` re-runs a batch from the Claude replies saved in earlier `record.json` files: no API calls and no cost. Use it to apply pipeline fixes to past decisions. It looks for each book in the batch `runs/batches/<label>/<name>/` first, then in the single run `runs/<name>/<label>/`, so the book folder names must match the earlier run.
 
+To check that a code change left every `review.md` as it was, rerun the same books with `FROM=` before and after the change, then compare the two labels: `python3 tools/compare_runs.py <label-before> <label-after>` prints one line per book (identical, or how many lines differ and the first difference) and exits with 1 when any book differs. Only the "Time:" line and the run-start line are left out of the comparison.
+
 In a book list, relative paths count from the list file's folder. Short names must be unique across the batch.

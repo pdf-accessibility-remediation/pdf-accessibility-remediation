@@ -92,7 +92,7 @@ bash run_api.sh ../samples/group1/clans.pdf clanstest apirun1
 
 The short name sets the output folder, `runs/<short-name>/<run-label>/`. The run label is optional and defaults to a timestamp.
 
-The script audits the PDF, displays a cost estimate and available credit, and asks for confirmation before calling the API. It then applies the model's work order, verifies the result, and generates the review report: `review.md`, which opens with an "At a glance" summary (including "Ready to ship?"), and `review.html`, the same run as an offline dashboard. A batch also gets `summary.html`. See [Output files](docs/output-files.md).
+The script audits the PDF, displays a cost estimate and available credit, and asks for confirmation before calling the API. It then applies the model's work order, verifies the result, and generates the review report: `review.md`, which opens with an "Overview" summary (including "Ready to ship?"), and `review.html`, the same run as an offline dashboard. A batch also gets `summary.html`. See [Output files](docs/output-files.md).
 
 A label that already holds a finished run is refused, so use a new label for each new run. If a run stops partway, rerun the same command with the same label: it picks up where it stopped, reusing the audit and any usable reply already paid for.
 

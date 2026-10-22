@@ -45,11 +45,11 @@ with pdfplumber.open(A) as pa, pdfplumber.open(B) as pb:
             if k not in _POS: _POS[k] = (c['top'], c['x0'], c['size'])
         _CM.update(content_mcids_page); PA.close(); PB.close()
 out['text_pages_changed'] = tdiff; out['untagged_chars'] = untag; out['artifact_chars'] = art
-out['offpage_chars_read_aloud'] = sum(offp.values()); out['offpage_pages'] = sorted(offp)[:50]
+out['offpage_chars_read_aloud'] = sum(offp.values()); out['offpage_pages'] = sorted(offp)
 with pikepdf.open(B) as _p:                       # pages with annotations, and those without /Tabs /S (WCAG 2.4.3)
     _ann = [i + 1 for i, pg in enumerate(_p.pages) if pg.obj.get('/Annots')]
     _nots = [i + 1 for i, pg in enumerate(_p.pages) if pg.obj.get('/Annots') and str(pg.obj.get('/Tabs')) != '/S']
-out['tabs_missing'] = {'count': len(_nots), 'pages_with_annotations': len(_ann), 'pages': _nots[:50]}
+out['tabs_missing'] = {'count': len(_nots), 'pages_with_annotations': len(_ann), 'pages': _nots}
 def _ranges(counter):
     out_, run = [], []
     for o in sorted(counter) + [None]:
@@ -57,8 +57,8 @@ def _ranges(counter):
             out_.append({'range': f'U+{run[0]:04X}' + (f'–U+{run[-1]:04X}' if len(run) > 1 else ''), 'count': sum(counter[x] for x in run)}); run = []
         if o is not None: run.append(o)
     return sorted(out_, key=lambda r: -r['count'])
-out['no_unicode_chars'] = {'count': sum(nouni.values()), 'pages': sorted(nouni)[:50]}
-out['private_use_chars'] = {'count': sum(pua.values()), 'pages': sorted(pua_pages)[:50], 'ranges': _ranges(pua)[:8]}
+out['no_unicode_chars'] = {'count': sum(nouni.values()), 'pages': sorted(nouni)}
+out['private_use_chars'] = {'count': sum(pua.values()), 'pages': sorted(pua_pages), 'ranges': _ranges(pua)}
 # 3 tree
 pdf = pikepdf.open(B); st = pdf.Root.StructTreeRoot
 pages = list(pdf.pages); pidx = {p.obj.objgen: i + 1 for i, p in enumerate(pages)}
@@ -399,8 +399,8 @@ def _id_nulls(node, acc):                          # an ID that maps to nothing 
     for k in node.get('/Kids') or []: _id_nulls(k, acc)
     return acc
 for idk in (_id_nulls(st.IDTree, []) if '/IDTree' in st else []): dangling.append({'index': 'IDTree', 'id': idk, 'page': None})
-out['index'] = {'dangling': len(dangling), 'dangling_examples': dangling[:12], 'stale_entries': stale}
-out['structure'] = {'empty_tags': len(empty_el), 'empty_tag_examples': empty_el[:12], 'empty_tables': empty_tables,
+out['index'] = {'dangling': len(dangling), 'dangling_examples': dangling, 'stale_entries': stale}
+out['structure'] = {'empty_tags': len(empty_el), 'empty_tag_examples': empty_el, 'empty_tables': empty_tables,
                     'paragraphs_holding_only_figures': fig_only, 'captions_not_grouped': cap_loose, 'links_url_only': url_links}
 # 6 pages wrapped whole as one Figure, and pages with no tags at all that still hold drawn content
 src = pikepdf.open(A)
@@ -458,8 +458,8 @@ for n, a in alts:
     if a.lower() in ('', 'illustration', 'image'): continue
     why = ('looks like a file name' if FILE_ALT.search(a) else 'no letters or digits' if not re.search(r'\w', a)
            else f'the same alt text on {alt_n[a]} figures' if alt_n[a] >= 3 else None)     # no length limit: WCAG sets none, and maps need long alt
-    if why: bad_alt.append({'page': _first_pg(n), 'alt': a[:80], 'why': why})
-wc['alt_text'] = {'figures': len(alts), 'flagged': len(bad_alt), 'examples': bad_alt[:15]}
+    if why: bad_alt.append({'page': _first_pg(n), 'alt': a, 'why': why})        # the whole alt text
+wc['alt_text'] = {'figures': len(alts), 'flagged': len(bad_alt), 'examples': bad_alt}
 # 1.3.1 a table with no header cell: a screen reader can't say which column or row a cell belongs to
 def _has_th(n, d=0): return any(_is_el(k) and (mapped(str(k.S).lstrip('/')) == 'TH' or (d < 8 and _has_th(k, d + 1))) for k in _kids(n))
 wc['tables_without_header'] = [{'page': _first_pg(n)} for n in W['Table'] if _has_content(n) and not _has_th(n)]
@@ -474,19 +474,19 @@ ro = []
 for p, s in sorted(seq.items()):
     up = sum(1 for (t0, x0, z0), (t1, x1, z1) in zip(s, s[1:]) if t1 < t0 - 2 * max(z0, 6) and abs(x1 - x0) < 72)
     if up >= 2: ro.append({'page': p, 'jumps_up': up, 'runs': len(s)})
-wc['reading_order'] = {'pages_checked': len(seq), 'flagged': sorted(ro, key=lambda x: -x['jumps_up'])[:20], 'flagged_count': len(ro)}
+wc['reading_order'] = {'pages_checked': len(seq), 'flagged': sorted(ro, key=lambda x: -x['jumps_up']), 'flagged_count': len(ro)}
 # 2.4.2 a title that is a file name or a placeholder
 title = str(pdf.docinfo.get('/Title', '')).strip()
 wc['title_generic'] = bool(title) and bool(re.search(r'\.(pdf|docx?|indd|qxd|rtf|txt)$|^untitled\b|^microsoft (word|powerpoint)\s*-|^document\s*\d*$|^[\d\s_.-]+$', title, re.I))
 # 2.4.4 link text that says nothing about where the link goes
 GENERIC = re.compile(r'(click |tap )?(here|more|read more|learn more|link|this link|this|details|go|continue|website)\W*', re.I)
-wc['links_generic'] = [{'page': _first_pg(n), 'text': t[:60]} for n in W['Link'] if (t := _text(n)) and GENERIC.fullmatch(t)][:20]
+wc['links_generic'] = [{'page': _first_pg(n), 'text': t} for n in W['Link'] if (t := _text(n)) and GENERIC.fullmatch(t)]
 # 2.4.6 headings with no text, very long headings, and the same heading twice in a row
 hs = [(n, _text(n)) for n in W['H']]
 wc['headings'] = {'count': len(hs),
-                  'empty': [{'page': _first_pg(n)} for n, t in hs if not t and '/Alt' not in n][:15],
-                  'long': [{'page': _first_pg(n), 'chars': len(t), 'text': t[:80]} for n, t in hs if len(t) > 200][:15],
-                  'repeated': [{'page': _first_pg(b), 'text': tb[:80]} for (a, ta), (b, tb) in zip(hs, hs[1:]) if ta and ta.lower() == tb.lower()][:15]}
+                  'empty': [{'page': _first_pg(n)} for n, t in hs if not t and '/Alt' not in n],
+                  'long': [{'page': _first_pg(n), 'chars': len(t), 'text': t} for n, t in hs if len(t) > 200],
+                  'repeated': [{'page': _first_pg(b), 'text': tb} for (a, ta), (b, tb) in zip(hs, hs[1:]) if ta and ta.lower() == tb.lower()]}
 out['wcag'] = wc
 # 8 ActualText spans in page content (OCR words given their printed spelling)
 out['actual_text_spans'] = {'original': sum(_raw(p).count(b'/ActualText') for p in src.pages), 'result': sum(_raw(p).count(b'/ActualText') for p in pages)}
