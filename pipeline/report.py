@@ -18,7 +18,9 @@ review.json, review_items.json, review_decisions.json and review_pages/, whose c
 (digest and figure crops, which are copies of book pages). --keep leaves them all in place.
 It only runs after a complete run, so a failed run keeps its working files for debugging.
 """
-import sys, os, csv, json, shutil, datetime, collections
+import sys, os, re, csv, json, shutil, datetime, collections
+from lib.sections import line, pdfua, nolink, excerpt, to_sections, render_md, VERSION as SECTIONS_VERSION
+from lib.glance import WCAG_NAMES
 
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 KEEP = '--keep' in sys.argv
@@ -34,6 +36,7 @@ def load(name, base=R, default=None):
 run = load('run.json', default={}); wo = load('workorder.json', default={}); val = load('validation.json', default={'dropped': []})
 log = load(PDF + '.log.json', default={}); ver = load(PDF + '.verify.json', default={})
 digest = load('digest.json', base=A, default={})
+fulltext = load('fulltext.json', base=A, default={}) or {}   # the whole texts the digest shortens (local only, never sent)
 vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the original, from the audit
 reply = open(os.path.join(R, 'reply.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(R, 'reply.txt')) else None
 timing = load('timing.json', default=None)
@@ -104,6 +107,17 @@ def pgr(a, b):
     return f'PDF {a}–{b}' + (f' (printed {la}–{lb})' if la and lb and (la != str(a) or lb != str(b)) else '')
 def pgs(ns): return ', '.join([pg(n) for n in sorted({n for n in ns if n is not None}, key=int)] + ([NO_PAGE] if any(n is None for n in ns) else []))
 def nc(v): return 'not counted' if v is None else v      # a count the verify file left empty
+def xl(build, **kw):
+    """A line built by build(X), where X(text) is an excerpt of book text (about 100 characters, at a word boundary);
+    each excerpt's whole text goes with the line, for review.html's \"show full text\"."""
+    f = []; return line(build(lambda t: excerpt(t, f)), full=f, **kw)
+def page_ranges(ns):
+    """Every page, as collapsed ranges where they exist (\"PDF 12–40 (printed 3–31), PDF 52\")."""
+    ps = sorted({int(n) for n in ns if n is not None}); runs = []
+    for n in ps:
+        if runs and n == runs[-1][1] + 1: runs[-1][1] = n
+        else: runs.append([n, n])
+    return ', '.join(pgr(a, b) for a, b in runs)
 def on_pg(n): return f'on {pg(n)}' if n is not None else f'({NO_PAGE})'
 def by_page(items, key=lambda x: x.get('page')):
     return sorted(items, key=lambda x: (key(x) is None, key(x) or 0))
@@ -210,16 +224,16 @@ checks = [
      + (f' · {len(et["kept"])} kept: something refers to them or they carry an attribute (listed)' if et.get('kept') else '')
      + (f' · {len(et_lost)} empty heading(s) with no heading text on their page' if et_lost else '') if et else 'not run'),
     ('Tag-tree index points only into the tree', ok(idx is not None and idx['dangling'] == 0),
-     (f'{idx["dangling"]} dangling entries' + (' (' + ', '.join(f'{d["index"]} ' + (f'key {d["key"]}' if 'key' in d else f'"{d.get("id")}"') for d in idx['dangling_examples'][:6]) + ')' if idx['dangling'] else '')
+     (f'{idx["dangling"]} dangling entries' + (' (' + ', '.join(f'{d["index"]} ' + (f'key {d["key"]}' if 'key' in d else f'"{d.get("id")}"') for d in idx['dangling_examples']) + ')' if idx['dangling'] else '')
       + f' · {idx["stale_entries"]} stale entries (marked content no longer drawn)') if idx else 'not checked'),
     ('No empty tables', ok(stc is not None and not stc.get('empty_tables')),
      (pgs([x['page'] for x in stc['empty_tables']]) if stc.get('empty_tables') else 'none') if stc else 'not checked'),
     ('No empty tags', ok(stc is not None and stc['empty_tags'] == 0),
      f'{stc["empty_tags"]} empty tag' + ('s' if stc['empty_tags'] != 1 else '') + (' (' + pgs([e['page'] for e in stc['empty_tag_examples']]) + (' …' if stc['empty_tags'] > len(stc['empty_tag_examples']) else '') + ')' if stc['empty_tags'] else '') if stc else 'not checked'),
     ('No paragraph holding only figures', ok(stc is not None and not stc['paragraphs_holding_only_figures']),
-     (', '.join(f'{pg(x["page"])} ({x["figures"]} figures in {x["tag"]})' for x in by_page(stc['paragraphs_holding_only_figures'])[:10]) or 'none') if stc else 'not checked'),
+     (', '.join(f'{pg(x["page"])} ({x["figures"]} figures in {x["tag"]})' for x in by_page(stc['paragraphs_holding_only_figures'])) or 'none') if stc else 'not checked'),
     ('Every caption grouped with its figure', ok(stc is not None and not stc['captions_not_grouped']),
-     (', '.join(f'{pg(x["page"])} (caption inside {x["parent"]})' for x in by_page(stc['captions_not_grouped'])[:10]) or 'all grouped') if stc else 'not checked'),
+     (', '.join(f'{pg(x["page"])} (caption inside {x["parent"]})' for x in by_page(stc['captions_not_grouped'])) or 'all grouped') if stc else 'not checked'),
     ('No link whose only text is a URL', ok(stc is not None and not stc['links_url_only']),
      (f'{len(stc["links_url_only"])}: ' + pgs([x['page'] for x in stc['links_url_only']]) if stc['links_url_only'] else 'none') if stc else 'not checked'),
     ('Tag tree consistent', ok(t.get('parenttree_missing') == 0 and t.get('parenttree_mismatched') == 0),
@@ -251,8 +265,13 @@ checks = [
      f'{rb["count"]} work orders; the last one (the model\'s final answer) was used, as written (see "The model\'s reply held {rb["count"]} work orders")' if rb else 'one'),
     ('Executor applied every decision', ok(not log.get('rejected') and not log.get('failed')),
      f'{len(log.get("rejected") or [])} rejected · {len(log.get("failed") or [])} failed (listed under "Decisions not applied")'),
-    ('Nothing deferred by the executor', ok(not log.get('deferred')),
-     f'{len(log.get("deferred") or [])} deferred (listed under "Deferred by the executor")'),
+    ('Nothing deferred by the executor',
+     ok(not log.get('deferred')) if not any(d.get('scope') == 'pdfua' for d in log.get('deferred') or []) else    # review.html: WCAG deferrals only
+     line(pdfua(ok(not log.get('deferred')), ok(not [d for d in log['deferred'] if d.get('scope') != 'pdfua']))),
+     f'{len(log.get("deferred") or [])} deferred (listed under "Deferred by the executor")'
+     if not any(d.get('scope') == 'pdfua' for d in log.get('deferred') or []) else
+     line(pdfua(f'{len(log.get("deferred") or [])} deferred (listed under "Deferred by the executor")',
+                f'{sum(1 for d in log["deferred"] if d.get("scope") != "pdfua")} deferred' + (' (listed under "Deferred by the executor")' if any(d.get('scope') != 'pdfua' for d in log['deferred']) else '')))),
     ('Fonts: every glyph defined (no .notdef)', ok(not fo.get('only_notdef')),
      '; '.join(f'{x["font"]}: {x["glyph_references"]} undefined glyph references on {x["pages"]} pages' for x in fo.get('only_notdef') or []) or 'none found'),
     ('Fonts: every embedded font program could be read', ok(not fo.get('unreadable')),
@@ -271,15 +290,16 @@ checks = [
      + (f' (log: {log["tabs_set"]} set by this run)' if log.get('tabs_set') else '')),
     ('Characters with no Unicode value (checklist 3.6)', ok((ver.get('no_unicode_chars') or {}).get('count') == 0),
      f'{nc((ver.get("no_unicode_chars") or {}).get("count"))} read-aloud characters with no Unicode value'
-     + (f' on {pgs((ver["no_unicode_chars"]["pages"])[:20])}' if (ver.get('no_unicode_chars') or {}).get('count') else '')),
+     + (f' on {pgs(ver["no_unicode_chars"]["pages"])}' if (ver.get('no_unicode_chars') or {}).get('count') else '')),
     ('Private-use characters (checklist 3.6)', ok((ver.get('private_use_chars') or {}).get('count') == 0),
      f'{nc((ver.get("private_use_chars") or {}).get("count"))} read-aloud characters with private-use codes'
-     + (' (' + ', '.join(f'{r["range"]}: {r["count"]}' for r in ver['private_use_chars']['ranges'][:4]) + f') on {len(ver["private_use_chars"]["pages"])} pages or more'
+     + (' (' + ', '.join(f'{r["range"]}: {r["count"]}' for r in ver['private_use_chars']['ranges']) + f') on {len(ver["private_use_chars"]["pages"])} page{"" if len(ver["private_use_chars"]["pages"]) == 1 else "s"}'
         if (ver.get('private_use_chars') or {}).get('count') else '')),
     ('Title and language set', ok(bool(doc.get('title')) and bool(doc.get('lang'))), (f'"{doc["title"]}"' if doc.get('title') else 'title not set') + ' · ' + (doc.get('lang') or 'language not set')),
     ('veraPDF WCAG 2.2 (machine): no WCAG failures', ok(v_ran(v_after) and not v_wcag(v_after)),
-     v_state(v_before, 'before') + ' → ' + v_state(v_after, 'after') + (f' · {v_after["totals"]["ua_only_failed_rules"]} PDF/UA-only rules not counted' if v_ran(v_after) and v_after['totals']['ua_only_failed_rules'] else '')
-     + (' (listed under "veraPDF")' if v_wcag(v_before) or v_wcag(v_after) else '')),
+     line(v_state(v_before, 'before') + ' → ' + v_state(v_after, 'after'),
+          pdfua(f' · {v_after["totals"]["ua_only_failed_rules"]} PDF/UA-only rules not counted' if v_ran(v_after) and v_after['totals']['ua_only_failed_rules'] else ''),
+          ' (listed under "veraPDF")' if v_wcag(v_before) or v_wcag(v_after) else '')),
     ('veraPDF: no rule newly failing or failing more often', ok(v_both and not v_new and not v_worse),
      (f'{len(v_fixed)} fixed · {len(v_still)} still failing · {len(v_new)} newly failing' + (f' · {len(v_worse)} failing more often' if v_worse else '')
       + (' (' + ', '.join(v_new + v_worse) + ')' if v_new or v_worse else '')) if v_both else 'not compared: veraPDF did not run on both files'),
@@ -310,7 +330,8 @@ L = [f'# Remediation review: {src.get("file") or "file name not recorded"}', '',
      *([('Time: ' + ' · '.join(f'{k.split(" ", 1)[1].split(" (")[0]} {v}s' for k, v in timing.items()) + f' · total {round(sum(timing.values()), 1)}s'), ''] if timing else []),
      'Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.', '',
      '## Automated checks', '', '| Check | Result | Detail |', '|---|---|---|']
-L += [f'| {a} | {b} | {c} |' for a, b, c in checks]
+def _parts(v): return [tuple(x) for x in v.parts] if getattr(v, 'parts', None) else [v]
+L += [line(f'| {a} | ', *_parts(b), ' | ', *_parts(c), ' |', key=f'check:{a}') for a, b, c in checks]
 
 L += ['', '## For a person to check', '']
 n = 0
@@ -326,18 +347,18 @@ if intake and intake.get('status') == 'done':
               + (f': {r["reason"]}' if r.get('reason') else '')
               + (f' (replaced by {pg(r["replaced_by"])})' if r.get('replaced_by') is not None else '') + ' |' for r in tt['pages']] + ['']
     if o.get('pages_with_ocr_text'):
-        L += [f'- OCR text added ({o.get("mode")} mode) on ' + pgs(o['pages_with_ocr_text'])
-              + '. It is machine output: compare it with the page image before it ships.']
+        L += [line(f'- OCR text added ({o.get("mode")} mode) on ' + pgs(o['pages_with_ocr_text'])
+              + '. It is machine output: compare it with the page image before it ships.', key='intake:ocr', pages=o['pages_with_ocr_text'])]
     for r in ((intake.get('checks') or {}).get('after_autotag') or {}).get('reordered') or []:
         L += [f'- Text reordered by auto-tagging on {pg(r["page"])} (same characters, different extraction order; the tag tree sets the reading order). '
               'Moved: ' + '; '.join(f'"{x}"' for x in r['moved'])]
     if o.get('scan_images_marked_decoration'):
         L += ['- The whole-page scan image on ' + pgs(o['scan_images_marked_decoration']) + ' is marked as decoration: it is the page itself, not a figure (checklist 5.1).']
     for f in intake.get('flags') or []:
-        L.append(f'- **{f["what"]}**: {f["why"]}' + (f' ({pgs(f["pages"])})' if f.get('pages') else ''))
+        L.append(line(f'- **{f["what"]}**: ', nolink(f['why']), f' ({pgs(f["pages"])})' if f.get('pages') else '', pages=f.get('pages')))   # why: general text
     L.append('')
 if rv:
-    def _v(x): return json.dumps(x, ensure_ascii=False)[:200] if isinstance(x, (dict, list)) else f'"{x}"' if isinstance(x, str) else str(x)
+    def _v(x): return json.dumps(x, ensure_ascii=False) if isinstance(x, (dict, list)) else f'"{x}"' if isinstance(x, str) else str(x)
     n += 1; L += [f'### {n}. Work order reviewed by a person', '',
                   f'{rv["reviewer"]} reviewed the AI\'s work order on {rv["date"]}, before it was applied ({rv.get("method")}). '
                   'The result is what was applied; the AI\'s version is in `record.json` (`workorder_ai`).', '']
@@ -380,14 +401,14 @@ if alts:
     n += 1; L += [f'### {n}. Alt text written or changed by the AI ({len(alts)})', '', '| Page | Before | After |', '|---|---|---|']
     for a in by_page(alts, key=lambda a: figs.get(a['obj'], {}).get('page')):
         f = figs.get(a['obj'], {})
-        L.append(f'| {pg(f.get("page"))} | {(f.get("alt") or "—")[:160]} | {a["alt"]} |')
+        L.append(f'| {pg(f.get("page"))} | {f.get("alt") or "—"} | {a["alt"]} |')
     L.append('')
 kept = [f for o, f in figs.items() if o not in {a['obj'] for a in alts}
         and o not in {e['obj'] for e in wo.get('artifacts', {}).get('elements', [])}]
 if kept:
     n += 1; L += [f'### {n}. Figures that kept their existing alt text ({len(kept)})', '', 'Not changed by the AI. Check they are adequate.', '',
                   '| Page | Alt text |', '|---|---|']
-    L += [f'| {pg(f.get("page"))} | {(f.get("alt") or "—")[:200]} |' for f in by_page(kept)]
+    L += [f'| {pg(f.get("page"))} | {f.get("alt") or "—"} |' for f in by_page(kept)]
     L.append('')
 ats = wo.get('actual_text', [])
 if ats or wo.get('rolemap'):
@@ -412,10 +433,11 @@ if ats or wo.get('rolemap'):
 rt = wo.get('retype', [])
 if rt:
     n += 1; L += [f'### {n}. Elements retyped by the AI ({len(rt)})', '', 'Check each one is (or is not) a heading as decided.', '',
-                  '| Page | Text | Was | Now |', '|---|---|---|---|']
+                  '| Page | Text | Before | After |', '|---|---|---|---|']
     for r in by_page(rt, key=lambda r: elems.get(r['obj'], {}).get('page')):
         e = elems.get(r['obj'], {})
-        L.append(f'| {pg(e.get("page"))} | {(e.get("text") or "(no text)")[:80]} | {e.get("level") or e.get("style") or "(no style)"} | {r["type"]} |')
+        t_ = (fulltext.get('elements') or {}).get(r['obj']) or e.get('text')
+        L.append(xl(lambda X: f'| {pg(e.get("page"))} | {X(t_) if t_ else "(no text)"} | {e.get("level") or e.get("style") or "(no style)"} | {r["type"]} |'))
     L.append('')
 fl = wo.get('flatten', [])
 kept_tables = [t for o, t in tables_.items() if o not in {f['obj'] for f in fl}]
@@ -424,13 +446,15 @@ if fl or kept_tables:
     for f in fl:
         x = lists_.get(f['obj']) or tables_.get(f['obj']) or {}
         kind = 'list' if f['obj'] in lists_ else 'table'
-        L.append(f'- Flattened {kind} {on_pg(x.get("page"))}: "{" / ".join(x.get("first_items") or x.get("first_rows") or [])[:100]}" ({f.get("why", "")})')
+        t_ = " / ".join((fulltext.get('lists' if kind == 'list' else 'tables') or {}).get(f['obj']) or x.get("first_items") or x.get("first_rows") or [])
+        L.append(xl(lambda X: f'- Flattened {kind} {on_pg(x.get("page"))}: "{X(t_)}" ({f.get("why", "")})'))
     for x in log.get('tables') or []:
         L.append(f'- Header cells marked by the AI {on_pg(x.get("page"))}: {x["header_rows"]} header row(s), {x["header_cols"]} header column(s), '
                  f'{x["cells_to_TH"]} cells changed to header cells. Check they are the real headers.')
     if kept_tables:
         L += ['', f'Tables kept as tables ({len(kept_tables)}): check header cells and reading order.', '']
-        L += [f'- {pg(t.get("page"))}: {t["rows"]} rows × {t["cols"]} columns, {t["header_cells"]} header cells. "{(t.get("first_rows") or [""])[0][:90]}"' for t in by_page(kept_tables)]
+        L += [xl(lambda X: f'- {pg(t.get("page"))}: {t["rows"]} rows × {t["cols"]} columns, {t["header_cells"]} header cells. '
+                 f'"{X(((fulltext.get("tables") or {}).get(t["obj"]) or t.get("first_rows") or [""])[0])}"') for t in by_page(kept_tables)]
     L.append('')
 tq = digest.get('text_quality', {})
 if tq.get('producer_says_ocr') or (tq.get('pages_with_full_page_image', 0) > 0.5 * (src.get('pages') or 1)):
@@ -453,12 +477,12 @@ if ow_forms or digest.get('ocr_words'):
         L += [f'| {x["text"]} | {x["reads"]} | ' + (str(x['found']) if x.get('found') else '**not found**')
               + f' | {pgs(dw.get(x["text"], {}).get("pages") or [])} |' for x in sorted(ow_forms, key=lambda x: -(x.get('found') or 0))]
         L.append('')
-    L.append(f'- {checked} suspect forms were checked by the AI; {max(0, checked - len(ow_forms))} were judged correct as the OCR read them, or unreadable '
-             '(e.g. "Hawaii"), and left alone.')
-    if ow_missing: L.append(f'- **{len(ow_missing)} forms with a reading were not found in the page text** (split across text operators, or drawn inside a form): '
-                            + ', '.join(x['text'] for x in ow_missing[:15]) + '. A person checks these.')
+    L.append(line(f'- {checked} suspect forms were checked by the AI; {max(0, checked - len(ow_forms))} were judged correct as the OCR read them, or unreadable '
+             '(e.g. "Hawaii"), and left alone.', entry=False))
+    if ow_missing: L.append(line(f'- **{len(ow_missing)} forms with a reading were not found in the page text** (split across text operators, or drawn inside a form): '
+                            + ', '.join(x['text'] for x in ow_missing) + '. A person checks these.', entry=False))
     unread = (ow_run.get('not_sent') or 0) + (digest.get('ocr_words_not_sent') or 0)
-    if unread: L.append(f'- **{unread} suspect forms were not read by the AI** (over the image limit, or past the audit\'s cap). A person checks them against the scan.')
+    if unread: L.append(line(f'- **{unread} suspect forms were not read by the AI** (over the image limit, or past the audit\'s cap). A person checks them against the scan.', entry=False))
     L.append('')
 uc = digest.get('unowned_content', [])
 if uc:
@@ -467,7 +491,8 @@ if uc:
           f'{len(uc)} pages had text outside the tag tree: {tot.get("orphan", 0)} orphan runs (marked, but no tag owns them) and '
           f'{tot.get("untagged", 0)} untagged runs. Running heads and page numbers among them can be hidden as decoration; real content '
           f'must be added to the tag tree by a person. After this run: {nc(ver.get("untagged_chars"))} untagged characters, '
-          f'{nc(t.get("content_mcids_not_in_tree"))} orphan runs remain.', '', 'Pages (first 25): ' + pgs([x['page'] if isinstance(x, dict) else int(x.split('|')[0]) for x in uc[:25]]), '']
+          f'{nc(t.get("content_mcids_not_in_tree"))} orphan runs remain.', '', line('Pages: ' + page_ranges([x['page'] if isinstance(x, dict) else int(x.split('|')[0]) for x in uc]),
+               pages=[x['page'] if isinstance(x, dict) else int(x.split('|')[0]) for x in uc]), '']
 art = wo.get('artifacts', {})
 if art.get('elements') or art.get('text_rules') or art.get('untagged'):
     n += 1; L += [f'### {n}. Hidden from screen readers (artifacts)', '']
@@ -503,20 +528,20 @@ if fx or fo.get('not_embedded') or fo.get('no_ToUnicode') or ocr.get('replaced')
         L += ([''] if L[-1] else []) + ['The pipeline changes no other font: it never embeds one, replaces a visible one, or rewrites text. These need a person:', '']
     for x in fx:
         hidden = set(x.get('render_modes') or {}) == {'3'}
-        L += [f'- **{x["font"]}**: its embedded font program holds only the `.notdef` glyph, so every one of its {x["glyph_references"]} '
+        L += [line(f'- **{x["font"]}**: its embedded font program holds only the `.notdef` glyph, so every one of its {x["glyph_references"]} '
               f'glyph references ({x["text_operators"]} text operators on {x["pages"]} pages, from {pgs(x["first_pages"])} …) '
-              f'is an undefined character (ISO 14289-1 7.21.8, PDF/UA). '
+              f'is an undefined character', pdfua(' (ISO 14289-1 7.21.8, PDF/UA)'), '. '
               + ('It has a ToUnicode map, so the text is extracted and read aloud; adding or changing a map cannot define a glyph, '
                  'so no map was added. ' if x.get('has_ToUnicode') else 'It has no ToUnicode map either. ')
               + ('Its text is invisible (render mode 3): it is the hidden OCR layer laid over words recognized in a scanned image. ' if hidden else '')
               + 'A person must regenerate that text with a font that contains the glyphs (re-run OCR, or replace the font in Acrobat '
-                'or another PDF tool), then re-check with PAC. Both change the file, so they are outside this pipeline.']
+                'or another PDF tool), then re-check with PAC. Both change the file, so they are outside this pipeline.', pages=x['first_pages'])]
     if fo.get('not_embedded'):
-        L.append(f'- **Not embedded** ({len(fo["not_embedded"])}): {", ".join(fo["not_embedded"])}. PDF/UA requires embedded fonts (7.21.4.1); '
-                 'a person must embed them with a PDF tool (e.g. Acrobat Preflight) and check that no page changes.')
+        L.append(line(f'- **Not embedded** ({len(fo["not_embedded"])}): {", ".join(fo["not_embedded"])}. ', pdfua('PDF/UA requires embedded fonts (7.21.4.1); a', 'A'),
+                      ' person must embed them with a PDF tool (e.g. Acrobat Preflight) and check that no page changes.', key='fonts:not_embedded'))
     if fo.get('no_ToUnicode'):
-        L.append(f'- **No ToUnicode map** ({len(fo["no_ToUnicode"])}): {", ".join(fo["no_ToUnicode"])}. Text in these fonts may not be read correctly; '
-                 'a map can only be added where every character code\'s meaning is certain.')
+        L.append(line(f'- **No ToUnicode map** ({len(fo["no_ToUnicode"])}): {", ".join(fo["no_ToUnicode"])}. Text in these fonts may not be read correctly; '
+                 'a map can only be added where every character code\'s meaning is certain.', key='fonts:no_tounicode'))
     L.append('')
 if pl.get('artifacted') or pl.get('left'):
     n += 1; L += [f'### {n}. Untagged paths (rules, borders, lines)', '',
@@ -526,7 +551,7 @@ if pl.get('artifacted') or pl.get('left'):
     if pl.get('underlines'):
         L += ['Strokes directly under text, marked as decoration. An underline can carry meaning (emphasis, a sound in a romanization); '
               'if it does here, that meaning must be given another way (e.g. ActualText or a note):', '']
-        L += [f'- {pg(u["page"])}: {u["count"]}' for u in by_page(pl['underlines'])[:30]] + ['']
+        L += [f'- {pg(u["page"])}: {u["count"]}' for u in by_page(pl['underlines'])] + ['']
     if pl.get('left'):
         L += ['Left as they are:', '']
         L += [f'- {c} paths: {w}' + (f' ({pgs((pl.get("left_pages") or {}).get(w, []))})' if (pl.get('left_pages') or {}).get(w) else '')
@@ -540,7 +565,7 @@ ad = log.get('adopted') or []
 if ad:
     n += 1; L += [f'### {n}. Orphan content added to the tag tree ({sum(a["paragraphs"] for a in ad)} paragraphs)', '',
                   'Real content that was marked but in no tag, now read in page order after the last tagged block on its page. Listen through these pages:', '']
-    L += [f'- {pg(a["page"])} ("{a["label"]}"): {a["runs"]} runs → {a["paragraphs"]} paragraphs, starting "{a["first"]}"' for a in by_page(ad)] + ['']
+    L += [xl(lambda X: f'- {pg(a["page"])} ("{a["label"]}"): {a["runs"]} runs → {a["paragraphs"]} paragraphs, starting "{X(a["first"])}"') for a in by_page(ad)] + ['']
 if ofp.get('artifacted') or ofp.get('left') or ofp.get('rejected') or ofp.get('already'):
     art = ofp.get('artifacted') or []
     n += 1; L += [f'### {n}. Text outside the visible page area ({sum(a["chars"] for a in art)} characters marked as decoration)', '',
@@ -549,18 +574,18 @@ if ofp.get('artifacted') or ofp.get('left') or ofp.get('rejected') or ofp.get('a
     small = [a for a in art if len(a.get('lines') or []) <= 1]
     if small:
         ex = next((a['lines'][0] for a in small if a.get('lines')), '')
-        L += [f'- {len(small)} pages with a short off-page line (a printer\'s slug or similar), e.g. "{ex}": {pgs([a["page"] for a in small])}']
+        L += [xl(lambda X: f'- {len(small)} pages with a short off-page line (a printer\'s slug or similar), e.g. "{X(ex)}": {pgs([a["page"] for a in small])}')]
     for a in by_page([a for a in art if len(a.get('lines') or []) > 1]):
         L += [f'- {pg(a["page"])}: {a["chars"]} characters, for example a cover spread cropped to the front cover. '
               'Whoever writes this page\'s alt text should know what the hidden part says:', '']
-        L += [f'  > {x}' for x in a['lines']] + ['']
+        L += [xl(lambda X: f'  > {X(x)}') for x in a['lines']] + ['']
     for a in by_page(ofp.get('already') or []):
         L += [f'- {pg(a["page"])}: {a["chars"]} characters outside the visible area were already marked as decoration (by the '
               'auto-tagger or the source file), for example a cover spread cropped to the front cover. Whoever writes this '
               'page\'s alt text should know what the hidden part says:', '']
-        L += [f'  > {x}' for x in a['lines']] + ['']
+        L += [xl(lambda X: f'  > {X(x)}') for x in a['lines']] + ['']
     for x in by_page(ofp.get('left') or []):
-        L.append(f'- **Left as it is** on {pg(x["page"])}: {x["why"]}: "{x["text"]}"')
+        L.append(xl(lambda X: f'- **Left as it is** on {pg(x["page"])}: {x["why"]}: "{X(x["text"])}"'))
     for x in by_page(ofp.get('rejected') or []):
         L.append(f'- **Page not changed** {pg(x["page"])}: {x["why"]}')
     L.append('')
@@ -570,16 +595,15 @@ if atc.get('accepted_different') or atc.get('rejected'):
                   f'{len(atc.get("rejected") or [])} rejected)', '',
                   'A spoken text may differ from the printed characters only in spacing, letter case and line-end hyphens (sponsor rule 1). '
                   'Accepted ones that differ are listed so a person can listen to them; rejected ones added or changed words or punctuation.', '']
-    L += [f'- Accepted, {pg(x["page"])}: printed "{x["printed"]}" → spoken "{x["spoken"]}"' for x in by_page(atc.get('accepted_different') or [])]
-    L += [f'- **Rejected**, {pg(x["page"])}: printed "{x["printed"]}" → spoken "{x["spoken"]}"' for x in by_page(atc.get('rejected') or [])] + ['']
+    L += [xl(lambda X: f'- Accepted, {pg(x["page"])}: printed "{X(x["printed"])}" → spoken "{x["spoken"]}"') for x in by_page(atc.get('accepted_different') or [])]
+    L += [xl(lambda X: f'- **Rejected**, {pg(x["page"])}: printed "{X(x["printed"])}" → spoken "{x["spoken"]}"') for x in by_page(atc.get('rejected') or [])] + ['']
 tg = log.get('text_rule_guard') or []
 if tg:
     n += 1; L += [f'### {n}. Text a running-head or page-number rule matched but left visible ({len(tg)})', '',
                   'A rule for the top or bottom band hides a run only when everything else on that line is matched too. These runs matched '
                   'the rule but share their line with other text (for example a note number in the first line of body text), so they were '
                   'left as they are.', '']
-    L += [f'- {pg(x["page"])}: rule "{x["rule"]}" matched "{x["text"]}" on the line "{x["line"]}"' for x in by_page(tg)[:30]]
-    if len(tg) > 30: L.append(f'- … and {len(tg) - 30} more (record.json → apply → text_rule_guard)')
+    L += [xl(lambda X: f'- {pg(x["page"])}: rule "{x["rule"]}" matched "{X(x["text"])}" on the line "{X(x["line"])}"') for x in by_page(tg)]
     L.append('')
 fm = log.get('font_maps') or {}
 if fm.get('fonts') or fm.get('skipped'):
@@ -588,7 +612,7 @@ if fm.get('fonts') or fm.get('skipped'):
     L += ['Characters the font mapped to the wrong Unicode value now read as the printed glyph: private-use digits as 0–9, a three-em '
           'dash glyph as three em dashes. Each glyph was confirmed by rendering it alone; only the font\'s map changed, never the page.', '']
     L += [f'- {x["font"]}: {x["passed"]} of {x["checked"]} confirmed and corrected' + (f', {len(x["failed"])} not changed' if x['failed'] else '')
-          + (' (' + ', '.join(f'code {c} → "{t}"' for c, t in list(x['fixed'].items())[:10]) + ')' if x['fixed'] else '') for x in fm.get('fonts') or []]
+          + (' (' + ', '.join(f'code {c} → "{t}"' for c, t in x['fixed'].items()) + ')' if x['fixed'] else '') for x in fm.get('fonts') or []]
     L += [f'- **For a person:** {x["font"]} code {x["code"]} (glyph {x["glyph"]}): the name says {x["expected"]}, rendering read "{x["read"]}" '
           f'({x.get("confidence", "")}%); left as {x["mapped_to"]}' for x in fm.get('review') or []] + ['']
 lr = (log.get('list_rule') or {})
@@ -597,17 +621,17 @@ if lr.get('flattened') or lr.get('kept') or lr.get('skipped'):
     n += 1; L += [f'### {n}. One-item lists turned into paragraphs by rule ({len(fl)})', '',
                   'A list with one item whose label is not a list marker (the auto-tagger took a paragraph\'s first word or a year for a label) '
                   'was made one paragraph, label and text together. Listen to a few; a real one-item list can be kept with `keep_lists`.', '']
-    L += [f'- {pg(x["page"])}: label "{x["label"]}": "{x.get("text", "")}"' for x in by_page(fl)[:30]]
-    if len(fl) > 30: L.append(f'- … and {len(fl) - 30} more (record.json → apply → list_rule)')
+    L += [xl(lambda X: f'- {pg(x["page"])}: label "{x["label"]}": "{X(x.get("text", ""))}"') for x in by_page(fl)]
     L += [f'- Kept as a list (work order): {pg(x["page"])} "{x["label"]}"' for x in by_page(lr.get('kept') or [])]
-    L += [f'- Not changed: {pg(x["page"])} "{x["label"]}": {x["why"]}' for x in by_page(lr.get('skipped') or [])] + ['']
+    L += [line(f'- Not changed: {pg(x["page"])} "{x["label"]}": {x["why"]}', entry=False) for x in by_page(lr.get('skipped') or [])] + ['']
 ua = log.get('untagged_artifacts') or []
 if ua:
     n += 1; L += [f'### {n}. Untagged text marked as decoration ({sum(a["chars"] for a in ua)} characters)', '']
     L += [f'- {pg(a["page"])}: "{a["label"]}" ({a["chars"]} characters)' for a in by_page(ua)] + ['']
 ld = log.get('link_descriptions') or []; la = log.get('link_addresses_suspect') or []
 if ld or la:
-    n += 1; L += [f'### {n}. Links whose description was only a URL ({len(ld)})', '',
+    n += 1; L += [f'### {n}. Links whose description was only a URL ({len(ld)}'
+                  + (f', and {len(la)} address{"" if len(la) == 1 else "es"} that look{"s" if len(la) == 1 else ""} broken' if la else '') + ')', '',
                   'The description (what a screen reader announces) was set to the book\'s own sentence around the link, with the URL removed. '
                   'No words were added and the visible URL is unchanged. Replace any of these with a better description if needed.', '']
     if ld:
@@ -635,9 +659,9 @@ if et.get('removed') or et.get('kept'):
         L.append(f'- {pg(h["page"])}: an empty {h["tag"]} heading tag was removed. ' + (f'Title tagged elsewhere on the page: "{h["found"]}".' if h.get('found')
                  else '**No heading text on this page: the title may be lost. Check the page.**'))
     nt_ = by_page(et.get('notable') or [])
-    if nt_: L.append('- Empty ' + ', '.join(f'{x["tag"]} {on_pg(x["page"])}' for x in nt_[:20]) + ' removed (no content under them)')
+    if nt_: L.append('- Empty ' + ', '.join(f'{x["tag"]} {on_pg(x["page"])}' for x in nt_) + ' removed (no content under them)')
     for k in by_page(et.get('kept') or []):
-        L.append(f'- **Kept, empty: {k["tag"]} {on_pg(k["page"])}**, because ' + '; '.join(k['why'][:4]) + ('…' if len(k['why']) > 4 else '') + '.')
+        L.append(f'- **Kept, empty: {k["tag"]} {on_pg(k["page"])}**, because ' + '; '.join(k['why']) + '.')
     L.append('')
 ic = log.get('index_cleanup') or {}
 if ic.get('parenttree') or ic.get('idtree'):
@@ -649,88 +673,107 @@ if ic.get('parenttree') or ic.get('idtree'):
         on_pages = [x for x in pt_ if x.get('page')]; other = [x for x in pt_ if not x.get('page')]
         by_pg = collections.defaultdict(list)
         for x in on_pages: by_pg[x['page']].append(x)
-        L += [f'- ParentTree, {pg(p)}: ' + ', '.join(f'MCID {x["mcid"]} ({x["tag"]})' for x in xs) for p, xs in sorted(by_pg.items())]
-        if other: L.append('- ParentTree, entries not tied to page content (annotations, forms, or keys nothing uses): ' + ', '.join(f'key {x["key"]}' + (f' MCID {x["mcid"]}' if 'mcid' in x else '') + f' ({x["tag"]})' for x in other))
-    if ic.get('idtree'): L.append('- IDTree: ' + ', '.join(f'"{x["id"]}" ({x["tag"]})' for x in ic['idtree']))
+        L += [line(f'- ParentTree, {pg(p)}: ' + ', '.join(f'MCID {x["mcid"]} ({x["tag"]})' for x in xs), n_entries=len(xs)) for p, xs in sorted(by_pg.items())]
+        if other: L.append(line('- ParentTree, entries not tied to page content (annotations, forms, or keys nothing uses): ' + ', '.join(f'key {x["key"]}' + (f' MCID {x["mcid"]}' if 'mcid' in x else '') + f' ({x["tag"]})' for x in other), n_entries=len(other)))
+    if ic.get('idtree'): L.append(line('- IDTree: ' + ', '.join(f'"{x["id"]}" ({x["tag"]})' for x in ic['idtree']), n_entries=len(ic['idtree'])))
     L.append('')
 hr = log.get('empty_holders_removed') or []; cg = log.get('captions_grouped') or []
 if hr or cg:
     n += 1; L += [f'### {n}. Figure holders', '']
-    L += [f'- {pg(x["page"])}: caption grouped with the {x["figures"]} figures in the holder just above it: "{x["caption"]}"' for x in cg]
+    L += [xl(lambda X: f'- {pg(x["page"])}: caption grouped with the {x["figures"]} figures in the holder just above it: "{X(x["caption"])}"') for x in cg]
     L += [f'- {pg(x["page"])}: empty figure-holder paragraph ({x["tag"]}) removed after its figure moved out (proven empty)' for x in hr]
     L.append('')
 if stc and (stc['empty_tags'] or stc['paragraphs_holding_only_figures'] or stc['captions_not_grouped'] or stc['links_url_only']):
     n += 1; L += [f'### {n}. Structure left for a person', '']
-    if stc['empty_tags']: L.append(f'- {stc["empty_tags"]} empty tags, e.g. ' + ', '.join(f'{e["tag"]} {on_pg(e["page"])}' for e in by_page(stc['empty_tag_examples'])[:8]))
+    if stc['empty_tags']: L.append(f'- {stc["empty_tags"]} empty tag{"" if stc["empty_tags"] == 1 else "s"}: ' + ', '.join(f'{e["tag"]} {on_pg(e["page"])}' for e in by_page(stc['empty_tag_examples'])))
     L += [f'- {pg(x["page"])}: a {x["tag"]} paragraph holds only {x["figures"]} figure(s)' for x in stc['paragraphs_holding_only_figures']]
     L += [f'- {pg(x["page"])}: a caption is not grouped with a figure (it sits inside {x["parent"]})' for x in stc['captions_not_grouped']]
-    L += [f'- {pg(x["page"])}: a link\'s description is only its URL ({x["contents"][:80]})' for x in stc['links_url_only']]
+    L += [f'- {pg(x["page"])}: a link\'s description is only its URL ({x["contents"]})' for x in stc['links_url_only']]
     L.append('')
 cp = log.get('captions_paired') or []
 if cp:
     n += 1; L += [f'### {n}. Captions paired by position ({len(cp)})', '',
                   'Pages with several figures: each caption was tied to the figure right next to it. Check the pairs.', '']
-    L += [f'- {pg(c["page"])}: "{c["caption"]}"' for c in by_page(cp)] + ['']
+    L += [xl(lambda X: f'- {pg(c["page"])}: "{X(c["caption"])}"') for c in by_page(cp)] + ['']
 vw_afterefore, vw_after = v_wcag(v_before), v_wcag(v_after)
 v_ua = [r for r in v_after['rules'] if r['scope'] != 'wcag'] if v_ran(v_after) else []
 if vw_afterefore or vw_after or v_ua or (v_after and not v_ran(v_after)):
     WHO = {'executor': 'the pipeline', 'model': 'the AI', 'person': 'a person'}
     RF = log.get('rule_fixes') or {}
+    def who_split():                       # one sentence from the "Who fixes" column: WCAG rules failing before, by who can act; after
+        if not v_ran(v_before): before = 'Before: veraPDF did not run on the original.'
+        else:
+            grp = collections.Counter(r.get('who') for r in vw_afterefore.values())
+            other = sum(v for k, v in grp.items() if k not in ('model', 'executor', 'person'))
+            nb = len(vw_afterefore)
+            before = (f'Before: {nb} rule{"" if nb == 1 else "s"} failing (the AI can act on {grp["model"]}, the pipeline on {grp["executor"]}, '
+                      f'only a person on {grp["person"]}' + (f', {other} not classified' if other else '') + ').')
+        return before + (f' After: {len(vw_after)}.' if v_ran(v_after) else ' After: veraPDF did not run on the result.')
     def who_cell(rid, r):                  # who can fix it, and what the pipeline changed for it in this run
         w = WHO.get(r.get('who'), 'not recorded') + (f' (`{r["key"]}`)' if r.get('who') == 'model' and r.get('key') else '')
         n_ = (RF.get(rid) or RF.get({'7.5-2': '7.5-1'}.get(rid, '')) or {}).get('changed')
         return w + (f'; the pipeline changed {n_}' if n_ and r.get('who') != 'executor' else f' ({n_} changed)' if n_ else '')
     n += 1; L += [f'### {n}. veraPDF (WCAG 2.2 machine profile), before and after', '',
                   (f'{v_after["tool"]}, profile "{v_after["profile"]}" ({v_after["profile_sha256"]}). ' if v_ran(v_after) else v_state(v_after, 'After') + '. ')
-                  + 'Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. '
-                  'Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, '
-                  'the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed.', '']
+                  + 'Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. ',
+                  # the intro is one line: rebuild it with its PDF/UA sentence as a PDF/UA part
+                  ]
+    L[-1] = line(L[-1], pdfua('Rules that only PDF/UA requires are listed apart and do not count. '), '"Who fixes" is who can act on the rule: the pipeline by itself, '
+                 'the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. '
+                 + who_split())
+    L.append('')
     if vw_afterefore or vw_after:
         L += ['| Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |', '|---|---|---|---|---:|---:|---|---|']
-        for rid in sorted(set(vw_afterefore) | set(vw_after), key=lambda r: (r not in vw_after, -(vw_after.get(r) or vw_afterefore.get(r))['failed'])):
+        for rid in sorted(set(vw_afterefore) | set(vw_after), key=lambda r: (r not in vw_after, -(vw_after.get(r) or vw_afterefore.get(r))['failed'],
+                                                                 [int(x) for x in re.findall(r'\d+', r)])):   # ties: by rule number, so runs compare
             r = vw_after.get(rid) or vw_afterefore[rid]
             before = vw_afterefore[rid]['failed'] if rid in vw_afterefore else (0 if v_ran(v_before) else 'not run')
-            L.append(f'| {r["spec"]} {rid}{" (unclassified)" if r["unclassified"] else ""} | {", ".join(r["wcag"]) or "not mapped"} | {r["description"][:140].replace("|", "/")}'
-                     + f'{" e.g. " + chr(34) + r["example"][:100] + chr(34) if r.get("example") and rid in vw_after else ""} | {who_cell(rid, r)} | {before} | {vw_after[rid]["failed"] if rid in vw_after else (0 if v_ran(v_after) else "not run")} | {v_status(rid)} | '
-                     + (pgs(r['pages'][:12]) + (' …' if len(r['pages']) > 12 else '') if r['pages'] else NO_PAGE) + ' |')
+            desc = r['description'].replace('|', '/')
+            L.append(line('| ', pdfua(f'{r["spec"]} '), f'{rid}{" (unclassified)" if r["unclassified"] else ""} | {", ".join(r["wcag"]) or "not mapped"} | ',
+                     pdfua(desc, WCAG_NAMES[rid]) if rid in WCAG_NAMES else desc,
+                     f'{" e.g. " + chr(34) + r["example"].replace('|', '/') + chr(34) if r.get("example") and rid in vw_after else ""} | {who_cell(rid, r)} | {before} | {vw_after[rid]["failed"] if rid in vw_after else (0 if v_ran(v_after) else "not run")} | {v_status(rid)} | '
+                     + (pgs(r['pages']) if r['pages'] else NO_PAGE) + ' |', key=f'vera:{rid}', pages=r['pages']))
         L.append('')
     if v_new: L += [f'**Newly failing after this run: {", ".join(v_new)}.** The run made these; look at them first.', '']
     nokey = sorted({rid for rid, r in {**vw_afterefore, **vw_after}.items() if r.get('who') == 'model' and not r.get('key')})
     if nokey: L += [f'The AI was told about these rules without a work-order key to fix them (add one to `KEY` in `pipeline/vera.py`): {", ".join(nokey)}.', '']
     if v_ran(v_after) and v_after['totals']['unclassified']:
-        L += [f'Not yet classified as WCAG or PDF/UA-only (counted as WCAG until someone adds them to `pipeline/verapdf/rules.json`): {", ".join(v_after["totals"]["unclassified"])}.', '']
+        L += [line('Not yet classified as WCAG', pdfua(' or PDF/UA-only'), f' (counted as WCAG until someone adds them to `pipeline/verapdf/rules.json`): {", ".join(v_after["totals"]["unclassified"])}.'), '']
     if v_ua:
-        L += ['PDF/UA-only, not required for WCAG (not counted):', '']
-        L += [f'- {r["id"]}: {r["why"]} ({r["failed"]} checks' + (f', {pgs(r["pages"][:8])}' if r['pages'] else '') + ')'
-              + (f', {v_status(r["id"])}' if v_status(r['id']) else '') for r in v_ua]
+        L += [line('PDF/UA-only, not required for WCAG (not counted):', scope='pdfua'), line('', scope='pdfua')]
+        L += [line(f'- {r["id"]}: {r["why"]} ({r["failed"]} checks' + (f', {pgs(r["pages"])}' if r['pages'] else '') + ')'
+              + (f', {v_status(r["id"])}' if v_status(r['id']) else ''), scope='pdfua') for r in v_ua]
         if v_both and [k for k in v_fixed if VB[k]['scope'] != 'wcag']:
-            L.append('- fixed by this run: ' + ', '.join(k for k in v_fixed if VB[k]['scope'] != 'wcag'))
+            L.append(line('- fixed by this run: ' + ', '.join(k for k in v_fixed if VB[k]['scope'] != 'wcag'), scope='pdfua'))
         L.append('')
 if wc and (wc['alt_text']['flagged'] or wc['tables_without_header'] or wc['reading_order']['flagged_count'] or wc['title_generic']
            or wc['links_generic'] or any(wc['headings'][k] for k in ('empty', 'long', 'repeated'))):
     n += 1; L += [f'### {n}. WCAG checks veraPDF does not make', '', 'Each item is something to look at, not a proven failure.', '']
-    L += [f'- 1.1.1 {pg(x["page"])}: alt text "{x["alt"]}{"…" if len(x["alt"]) >= 80 else ""}": {x["why"]}' for x in by_page(wc['alt_text']['examples'])]
-    L += [f'- 1.3.1 {pg(x["page"])}: a table with no header cells (TH). Mark the header row or column, or flatten it if it is not a real table.' for x in by_page(wc['tables_without_header'])]
+    L += [line(f'- 1.1.1 {pg(x["page"])}: alt text "{x["alt"]}": {x["why"]}', key='wcag:1.1.1', pages=[x['page']]) for x in by_page(wc['alt_text']['examples'])]
+    L += [line(f'- 1.3.1 {pg(x["page"])}: a table with no header cells (TH). Mark the header row or column, or flatten it if it is not a real table.', key='wcag:1.3.1', pages=[x['page']]) for x in by_page(wc['tables_without_header'])]
     if wc['reading_order']['flagged_count']:
-        L.append(f'- 1.3.2 the reading order jumps back up the same column on {wc["reading_order"]["flagged_count"]} page{"" if wc["reading_order"]["flagged_count"] == 1 else "s"}. Listen through them with a screen reader '
-                 '(or the PAC screen-reader preview): ' + ', '.join(f'{pg(x["page"])} ({x["jumps_up"]} jumps)' for x in by_page(wc['reading_order']['flagged'])))
-    if wc['title_generic']: L.append(f'- 2.4.2 the title "{doc.get("title")}" looks like a file name or a placeholder. Use the book\'s real title.')
-    L += [f'- 2.4.4 {pg(x["page"])}: link text "{x["text"]}" does not say where the link goes' for x in by_page(wc['links_generic'])]
-    L += [f'- 2.4.6 {pg(x["page"])}: a heading with no text' for x in by_page(wc['headings']['empty'])]
-    L += [f'- 2.4.6 {pg(x["page"])}: a {x["chars"]}-character heading ("{x["text"]}…"): probably body text tagged as a heading' for x in by_page(wc['headings']['long'])]
-    L += [f'- 2.4.6 {pg(x["page"])}: the heading "{x["text"]}" twice in a row' for x in by_page(wc['headings']['repeated'])]
+        L.append(line(f'- 1.3.2 the reading order jumps back up the same column on {wc["reading_order"]["flagged_count"]} page{"" if wc["reading_order"]["flagged_count"] == 1 else "s"}. Listen through them with a screen reader '
+                 '(or the PAC screen-reader preview): ' + ', '.join(f'{pg(x["page"])} ({x["jumps_up"]} jumps)' for x in by_page(wc['reading_order']['flagged'])),
+                 key='wcag:1.3.2', pages=[x['page'] for x in wc['reading_order']['flagged']]))
+    if wc['title_generic']: L.append(line(f'- 2.4.2 the title "{doc.get("title")}" looks like a file name or a placeholder. Use the book\'s real title.', key='wcag:2.4.2'))
+    L += [xl(lambda X: f'- 2.4.4 {pg(x["page"])}: link text "{X(x["text"])}" does not say where the link goes', key='wcag:2.4.4', pages=[x['page']]) for x in by_page(wc['links_generic'])]
+    L += [line(f'- 2.4.6 {pg(x["page"])}: a heading with no text', key='wcag:2.4.6', pages=[x['page']]) for x in by_page(wc['headings']['empty'])]
+    L += [xl(lambda X: f'- 2.4.6 {pg(x["page"])}: a {x["chars"]}-character heading ("{X(x["text"])}"): probably body text tagged as a heading', key='wcag:2.4.6', pages=[x['page']]) for x in by_page(wc['headings']['long'])]
+    L += [xl(lambda X: f'- 2.4.6 {pg(x["page"])}: the heading "{X(x["text"])}" twice in a row', key='wcag:2.4.6', pages=[x['page']]) for x in by_page(wc['headings']['repeated'])]
     L.append('')
 d_ai = wo.get('deferrals', [])
 if d_ai or wo.get('notes_for_reviewer'):
     n += 1; L += [f'### {n}. Deferred by the AI', '']
-    L += [f'- **{d.get("what") or "(not described)"}**: {d.get("why") or "(no reason given)"}' + (f' [{pgs([p for p in d["pages"] if isinstance(p, int)])}]' if d.get('pages') else '') for d in d_ai]
+    L += [line(f'- **{d.get("what") or "(not described)"}**: {d.get("why") or "(no reason given)"}' + (f' [{pgs([p for p in d["pages"] if isinstance(p, int)])}]' if d.get('pages') else ''),
+               key=f'ai:{i}', pages=[p for p in d.get('pages') or [] if isinstance(p, int)]) for i, d in enumerate(d_ai)]
     if wo.get('notes_for_reviewer'): L += ['', f'Reviewer note from the AI: {wo["notes_for_reviewer"]}']
     L.append('')
 d_ex = [d for d in log.get('deferred', []) if d.get('what') != 'Han-only runs (ja vs zh)']
 if han or d_ex:
     n += 1; L += [f'### {n}. Deferred by the executor', '']
-    if han: L.append(f'- **{len(han)} Han-only CJK runs** need a Japanese / Chinese decision: fill in `han_review.csv`.')
-    L += [f'- {d.get("what") or "(not described)"}' + (f' ({pg(d["page"])})' if 'page' in d else '') + (f': {d["why"]}' if 'why' in d else '') for d in d_ex[:40]]
+    if han: L.append(line(f'- **{len(han)} Han-only CJK runs** need a Japanese / Chinese decision: fill in `han_review.csv`.', key='exec:han', pages=[h['page'] for h in han]))
+    L += [line(f'- {d.get("what") or "(not described)"}' + (f' ({pg(d["page"])})' if 'page' in d else '') + (f': {d["why"]}' if 'why' in d else ''),
+               key=f'exec:{d.get("what") or "not described"}', pages=[d.get('page')], scope=d.get('scope')) for d in d_ex]
     L.append('')
 bad = log.get('rejected', []) + log.get('failed', []) + val.get('dropped', [])
 if bad:
@@ -739,8 +782,8 @@ if bad:
     grp = collections.Counter((_re.sub(r'[\d(][\d, )]*', '#', _re.sub(r'PDF \d+(?:–\d+)?(?: \(printed [^)]*\))?', 'PDF', str(b.get('op') or b.get('where') or '(no operation recorded)'))).split(' #')[0],
                                b.get('why') or b.get('error') or '(no reason recorded)') for b in bad)
     if len(bad) > 10:
-        L += ['| What | Why | Count |', '|---|---|---:|'] + [f'| {o} | {w[:120]} | {c} |' for (o, w), c in grp.most_common(15)] + ['', 'First examples:', '']
-    L += [f'- {json.dumps(b, ensure_ascii=False)[:220]}' for b in bad[:30 if len(bad) > 10 else 60]]
+        L += ['| What | Why | Count |', '|---|---|---:|'] + [line(f'| {o} | {w.replace("|", "/")} | {c} |', entry=False) for (o, w), c in grp.most_common()] + ['', 'Each one:', '']
+    L += [f'- {json.dumps(b, ensure_ascii=False)}' for b in bad]
     L.append('')
 if n == 0: L.append('Nothing flagged.')
 
@@ -773,12 +816,15 @@ def _tidy_no_page(lines):
         out.append(l)
     return out
 L = _tidy_no_page(L)
-# "At a glance": its numbers are computed once (lib/glance.py), kept in record.json, and shown by review.md and review.html
+# review.md as data: sections of items (record.json `sections`); review.md and review.html are both drawn from them.
+# "Overview" is computed once from them (lib/glance.py), kept in record.json, and placed before the evidence line.
 from lib import glance as G
-md = '\n'.join(L) + '\n'
-record['glance'] = G.glance(record, md, PLAB, [h['page'] for h in han])
+record['glance'] = G.glance(record, None, PLAB, [h['page'] for h in han], sections=to_sections(L))
+at = next((k for k, l in enumerate(L) if l.startswith('Automated checks are evidence, not legal sign-off')), len(L))
+L[at:at] = G.glance_md(record['glance'])
+record['sections_version'] = SECTIONS_VERSION; record['sections'] = to_sections(L)
 json.dump(record, open(os.path.join(R, 'record.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-md = G.replace_block(md, G.glance_md(record['glance']))
+md = '\n'.join(render_md(record['sections'])) + '\n'
 open(os.path.join(R, 'review.md'), 'w', encoding='utf-8').write(md)
 try:
     import report_html

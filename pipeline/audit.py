@@ -53,6 +53,9 @@ def mapped(s):
     while s in RM and s not in seen: seen.add(s); s = RM[s]
     return s
 def clip(t, n): t = re.sub(r'\s+', ' ', t).strip(); return t if len(t) <= n else t[:n - 1] + '…'
+# the whole texts the digest shortens, for review.md / review.html only: written to fulltext.json, never sent to the model
+FULL = {'elements': {}, 'lists': {}, 'tables': {}}
+def full(t): return re.sub(r'\s+', ' ', t).strip()
 
 # ---- characters by (page, mcid)
 mc_chars = collections.defaultdict(list)
@@ -121,6 +124,7 @@ for s, es in by_style.items():
     if avg > 110: continue                                                    # long body paragraphs: samples are enough
     for e in es:
         _, nxt = siblings(e)
+        FULL['elements'][ref(e['el'])] = full(text_of(e))
         rare.append({'obj': ref(e['el']), 'style': s, 'page': first_page(e), 'label': labels.get(first_page(e)),
                      'text': clip(text_of(e), 110), 'next': None if nxt is None else f'{nxt["style"]}: {clip(text_of(nxt), 50)}'})
 
@@ -277,7 +281,7 @@ headings, candidates = [], []
 for e in elems:
     m = mapped(e['style']); t = text_of(e).strip(); tr = raw_text(e).strip()     # tr: decisions by length, as before
     if re.fullmatch(r'H[1-6]?', m):
-        size, bold = font_of(e); _, nxt = siblings(e)
+        size, bold = font_of(e); _, nxt = siblings(e); FULL['elements'][ref(e['el'])] = full(t)
         headings.append({'obj': ref(e['el']), 'style': e['style'], 'level': m, 'page': first_page(e), 'label': labels.get(first_page(e)),
                          'text': clip(t, 110), 'size': size, 'bold': bold,
                          'next': None if nxt is None else f'{nxt["style"]}: {clip(text_of(nxt), 50)}'})
@@ -285,6 +289,7 @@ for e in elems:
         # a large line in the top band is a chapter opener's title (running heads are body size or smaller)
         size, bold = font_of(e)
         if size and (size >= BODY * 1.15 or (size >= BODY + 0.5 and len(tr) <= 40) or (bold >= 0.9 and len(tr) <= 70 and not tr.endswith('.'))):
+            FULL['elements'][ref(e['el'])] = full(t)
             candidates.append({'obj': ref(e['el']), 'style': e['style'], 'page': first_page(e), 'label': labels.get(first_page(e)),
                                'text': clip(t, 90), 'size': size, 'bold': bold})
 candidates = sorted(candidates, key=lambda c: (-c['size'], c['page'] or 0))[:200]
@@ -299,6 +304,7 @@ for e in elems:
     lbl = kids_mapped(items[0], 'Lbl') if len(items) == 1 else []
     rule = len(items) == 1 and len(e['kids']) == 1 and listrule.is_false_one_item_list(
         1, [mapped(k['style']) for k in items[0]['kids']], text_of(lbl[0]) if lbl else '') and not items[0]['mcids']
+    FULL['lists'][ref(e['el'])] = [full(text_of(i)) for i in items[:2]]
     lists.append({'obj': ref(e['el']), 'style': e['style'], 'page': first_page(e), 'label': labels.get(first_page(e)), 'items': len(items),
                   'has_labels': any(kids_mapped(i, 'Lbl') for i in items),
                   'first_items': [clip(text_of(i), 70) for i in items[:2]], **({'flattened_by_rule': True} if rule else {})})
@@ -313,6 +319,7 @@ for e in elems:
     if mapped(e['style']) != 'Table': continue
     rows = rows_of(e); cols = max((len([c for c in r['kids'] if mapped(c['style']) in ('TD', 'TH')]) for r in rows), default=0)
     ps = sorted({first_page(r) for r in rows if first_page(r)})
+    FULL['tables'][ref(e['el'])] = [full(' | '.join(text_of(c) for c in r['kids'])) for r in rows[:2]]
     tables.append({'obj': ref(e['el']), 'page': first_page(e), 'label': labels.get(first_page(e)), 'pages': [ps[0], ps[-1]] if ps else None,
                    'rows': len(rows), 'cols': cols, 'header_cells': sum(1 for r in rows for c in r['kids'] if mapped(c['style']) == 'TH'),
                    'first_rows': [clip(' | '.join(text_of(c) for c in r['kids']), 100) for r in rows[:2]]})
@@ -505,6 +512,7 @@ digest = {
               'per_page_top': [[p, n] for p, n in sorted(link_pages.items(), key=lambda x: -x[1])[:15]]},
 }
 json.dump(digest, open(os.path.join(OUT, 'digest.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+json.dump(FULL, open(os.path.join(OUT, 'fulltext.json'), 'w', encoding='utf-8'), ensure_ascii=False)   # local only, never sent
 print(f'digest: {len(styles)} styles · {len(headings)} headings + {len(candidates)} candidates · {len(lists)} lists · {len(tables)} tables · '
       f'unowned {dict(unowned_tot)} · {len(rare)} other listed · {len(figures)} figures ({sum(1 for f in figures if f["image"])} crops) · '
       f'{len(page_figures)} page figures · '

@@ -529,7 +529,7 @@ def _pages(ps, labels):
         out.append(txt); i = j + 1
     return ', '.join(out) if out else 'none'
 def intake_glance(rec):
-    """The numbers behind intake.md's "At a glance", kept in intake.json (and so in record.json) as `glance`."""
+    """The numbers behind intake.md's "Overview", kept in intake.json (and so in record.json) as `glance`."""
     o, tt, fl = rec.get('ocr') or {}, rec.get('text_test') or {}, rec.get('flags') or []
     ocr_pages = o.get('pages_with_ocr_text') or []
     v = (rec.get('review') or {}).get('ocr_text_approved')
@@ -546,7 +546,7 @@ def intake_glance(rec):
                           'over_ok': sorted(p['page'] for p in sc if p['cer'] > CER_OK), 'over_bad': sorted(p['page'] for p in sc if p['cer'] > CER_BAD)}}
 
 def glance_lines(rec, labels):
-    """intake.md's "## At a glance" block (checklist 1.2, 3.1, rule 2), from rec['glance']."""
+    """intake.md's "## Overview" block (checklist 1.2, 3.1, rule 2), from rec['glance']."""
     g = rec.get('glance') or intake_glance(rec); st = g['status']; t = g['text_test']
     def P(ps): return _pages(ps, labels)
     def pl(n, w): return f'{n} {w}{"" if n == 1 else "s"}'
@@ -561,7 +561,7 @@ def glance_lines(rec, labels):
     else:
         result = {'planned': 'plan only, nothing changed', 'stopped': 'stopped for a person', 'failed': 'failed'}.get(st, st or 'not finished') \
                  + f': {rec.get("summary") or "no summary recorded"}'
-    L = ['## At a glance', '', f'**Result:** {result}  ', f'**Needs a person:** {g["needs_person"]} (below) · **Notes:** {g["notes"]}  ']
+    L = ['## Overview', '', f'**Result:** {result}  ', f'**Needs a person:** {g["needs_person"]} (below) · **Notes:** {g["notes"]}  ']
     v = (rec.get('review') or {}).get('ocr_text_approved')
     if g['ocr_pages']:
         L.append('**OCR text reviewed by a person:** ' + (
@@ -689,7 +689,7 @@ def main():
             | {int(p) for k in ('pages_with_ocr_text', 'image_pages_without_text') for p in (rec.get('ocr') or {}).get(k) or []} \
             | {int(r['page']) for r in (rec.get('text_test') or {}).get('pages') or [] if r.get('page') is not None}
         rec['cited_labels'] = {str(p): page_labels[p] for p in sorted(cited) if p in page_labels}    # printed labels for intake.md
-        if rec.get('status') != 'skipped': rec['glance'] = intake_glance(rec)   # intake.md's "At a glance" numbers
+        if rec.get('status') != 'skipped': rec['glance'] = intake_glance(rec)   # intake.md's "Overview" numbers
         json.dump(rec, open(J, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
         write_md(rec, os.path.join(OUTD, 'intake.md'))
     def flag(what, why, pages=None, check=True):

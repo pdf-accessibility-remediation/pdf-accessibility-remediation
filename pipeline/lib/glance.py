@@ -1,8 +1,8 @@
-"""glance.py: the "At a glance" numbers for one finished run, computed once and shared by review.md, review.html,
+"""glance.py: the "Overview" numbers for one finished run, computed once and shared by review.md, review.html,
 summary.html and record.json (`glance`), so no two of them can disagree.
 
     g = glance(record, review_md, labels=None, han_pages=None)    # a dict; stored in record.json as `glance`
-    lines = glance_md(g)                                          # the "## At a glance" block of review.md
+    lines = glance_md(g)                                          # the "## Overview" block of review.md
 
 It reads only what a finished run keeps: record.json and review.md (its "Automated checks" table and its numbered
 "For a person to check" sections), so a dashboard can be rebuilt for any finished run. `labels` is the remediated
@@ -18,7 +18,7 @@ Definitions (docs/output-files.md):
 """
 import re
 
-SCHEMA = 'glance/0.2'
+SCHEMA = 'glance/0.3'
 NO_PAGE = 'page: not on this tag'
 SAFETY = [('Every page looks the same as the original', 'pages look the same'),
           ('Published text unchanged', 'text unchanged'),
@@ -40,6 +40,8 @@ EXECUTOR = [('links: /Contents set', 'links tied and described'), ('links: URL-o
             ('document: DisplayDocTitle', 'title shown in the window'), ('document: marked as tagged', 'marked as tagged'),
             ('document: Document root created', 'Document root'), ('document: second Document root merged', 'Document root'),
             ('figure: moved into Document', 'Document root')]
+# WCAG rules whose veraPDF description is worded for PDF/UA: the name review.html shows (review.md keeps veraPDF's wording)
+WCAG_NAMES = {'7.21.8-1': 'Text drawn with a glyph the font does not define (.notdef)'}
 SHORT = {'7.1-3': 'Content neither tagged nor marked as decoration', '7.3-1': 'Figures without alt text',
          '7.21.7-1': 'Characters a font cannot map to Unicode', '7.1-5': 'Styles with no standard tag',
          '7.2-34': 'Untagged or wrongly nested text', '7.18.5-1': 'Links not tagged as Link',
@@ -81,9 +83,25 @@ def n_decisions(wo):
         else: n += 1
     return n
 
-def glance(record, md, labels=None, han_pages=None):
+def from_sections(secs):
+    """rows and sections as parse_md gives them, read from record.json `sections` instead of review.md's text."""
+    rows, out = [], []
+    for s in secs:
+        if s.get('n') is not None: out.append({'n': s['n'], 'title': s['title'].split('. ', 1)[1], 'anchor': s['anchor']})
+        if s.get('key') == 'automated-checks':
+            for it in s['items']:
+                if it['kind'] != 'row': continue
+                cells = it['text'][2:].rstrip(' |').split(' | ', 2)
+                if len(cells) == 3: rows.append({'name': cells[0], 'ok': cells[1] == 'OK', 'detail': cells[2]})
+    return rows, out
+
+def glance(record, md, labels=None, han_pages=None, sections=None):
     labels = {int(k): v for k, v in (labels or {}).items() if str(k).isdigit()}
-    rows, secs = parse_md(md)
+    rows, secs = from_sections(sections) if sections is not None else parse_md(md)
+    keymap = {}
+    for s_ in sections or []:
+        for it in s_['items']:
+            if it.get('key') and it.get('id') and it['key'] not in keymap: keymap[it['key']] = it['id']
     byname = {r['name']: r for r in rows}
     def sec(*words):
         for s in secs:
@@ -126,32 +144,36 @@ def glance(record, md, labels=None, han_pages=None):
 
     # ---- issues: everything that needs a person, ranked (0 safety, 1 ship conditions, 2 CHECK rows, 3 executor, 4 AI)
     issues = []
-    def add(rank, kind, text, pages, s, count=1, find=None):
-        issues.append({'rank': rank, 'kind': kind, 'text': text, 'pages': sorted({int(p) for p in pages or [] if str(p).lstrip('-').isdigit()}),
-                       'where': where(s), 'count': count, 'find': find})   # find: the start of its own line in that review.md section
+    def add(rank, kind, text, pages, s, count=1, find=None, key=None):
+        x = {'rank': rank, 'kind': kind, 'text': text, 'pages': sorted({int(p) for p in pages or [] if str(p).lstrip('-').isdigit()}),
+             'where': where(s), 'count': count, 'find': find}       # find: the start of its own line (for runs made before `sections`)
+        if keymap.get(key): x['item'] = keymap[key]                 # item: the id of its own line in record.json `sections`
+        elif kind in ('check', 'safety', 'ship') and keymap.get(f'check:{rowname}'): x['item'] = keymap[f'check:{rowname}']   # else: its checks row
+        issues.append(x)
     wc = ve.get('wcag') or {}
     vrules = {r['id']: r for r in (va or {}).get('rules') or []} if isinstance(va, dict) else {}
     brules = {r['id']: r for r in (vb or {}).get('rules') or []} if isinstance(vb, dict) else {}
     n_check = 0
+    rowname = None
     for r in rows:
         if r['ok'] or r['name'] in POINTER_ROWS: continue
-        n_check += 1; name, det = r['name'], r['detail']
+        n_check += 1; name, det = r['name'], r['detail']; rowname = name
         found = [int(x) for x in re.findall(r'PDF (\d+)', det)]
-        if name in dict(SAFETY): add(0, 'safety', f'{name}: {det}', found, None, find=f'| {name} |')
+        if name in dict(SAFETY): add(0, 'safety', f'{name}: {det}', found, None, find=f'| {name} |', key=f'check:{name}')
         elif name == 'veraPDF: no rule newly failing or failing more often': add(0, 'safety', f'veraPDF: {det}', [], sec('veraPDF'))
         elif name == 'OCR text reviewed by a person':
-            add(1, 'ship', 'OCR text ' + ('not approved' if isinstance(v, dict) else 'not yet reviewed'), ocr_pages, sec('Intake'), find='- OCR text added')
+            add(1, 'ship', 'OCR text ' + ('not approved' if isinstance(v, dict) else 'not yet reviewed'), ocr_pages, sec('Intake'), find='- OCR text added', key='intake:ocr')
         elif name in GATE_ROWS: add(1, 'ship', f'{name}: {det}', [], sec('Work order reviewed'))
         elif name.startswith('veraPDF WCAG'):
             wr = [x for x in vrules.values() if x.get('scope') == 'wcag']
             for x in wr or [None]:
                 if x is None: add(2, 'check', f'veraPDF: {det}', [], sec('veraPDF')); continue
                 tail = f' (veraPDF {x["id"]}, {x["failed"]} check{"" if x["failed"] == 1 else "s"})'
-                add(2, 'check', SHORT.get(x['id'], x.get('description') or x['id']) + tail, x.get('pages') or [], sec('veraPDF'), find=f' {x["id"]}')
+                add(2, 'check', (SHORT.get(x['id']) or WCAG_NAMES.get(x['id']) or x.get('description') or x['id']) + tail, x.get('pages') or [], sec('veraPDF'), find=f' {x["id"]}', key=f'vera:{x["id"]}')
                 if x['id'] not in SHORT: issues[-1]['text_md'] = (x.get('description') or x['id'])[:70] + tail   # review.md's short form
         elif name.startswith('Reading order'):
             fl = (wc.get('reading_order') or {}).get('flagged') or []
-            add(2, 'check', f'Reading order jumps back up a column ({sum(x.get("jumps_up") or 0 for x in fl)} jumps)', [x['page'] for x in fl], sec('WCAG checks veraPDF'), find='- 1.3.2 ')
+            add(2, 'check', f'Reading order jumps back up a column ({sum(x.get("jumps_up") or 0 for x in fl)} jumps)', [x['page'] for x in fl], sec('WCAG checks veraPDF'), find='- 1.3.2 ', key='wcag:1.3.2')
         elif name.startswith('Figures: none with empty'):
             if '7.3-1' in vrules: continue             # counted, but listed once: as veraPDF's 7.3-1 below
             m = re.search(r'(\d+) placeholder', det); k = int(m.group(1)) if m else None
@@ -170,26 +192,29 @@ def glance(record, md, labels=None, han_pages=None):
                  sec('Links') if 'link' in name.lower() else None)
             hint = (('- **No ToUnicode map**' if re.search(r'[1-9]\d* without ToUnicode', det) else '- **Not embedded**')
                     if name == 'Fonts: embedded and mapped to Unicode' else None)
-            add(2, 'check', f'{name}: {re.sub(r"[*`]", "", det)}', found, s, find=hint if s else f'| {name} |')
+            add(2, 'check', f'{name}: {re.sub(r"[*`]", "", det)}', found, s, find=hint if s else f'| {name} |',
+                key=({'- **No ToUnicode map**': 'fonts:no_tounicode', '- **Not embedded**': 'fonts:not_embedded'}.get(hint) if hint
+                     else f'wcag:{wsc.group(1)}' if (wsc := re.search(r'\((1\.1\.1|1\.3\.1|2\.4\.\d)\)$', name))
+                     else 'intake:ocr' if name.startswith('OCR text added') else f'check:{name}'))
     han_n = ap.get('han_only_runs') or 0
     groups = {}
     for d in ap.get('deferred') or []:
-        if d.get('what') == 'Han-only runs (ja vs zh)': continue
+        if d.get('what') == 'Han-only runs (ja vs zh)' or d.get('scope') == 'pdfua': continue    # WCAG only: a PDF/UA-only deferral is not counted
         groups.setdefault(d.get('what') or 'not described', []).append(d.get('page'))
     n_exec = 0
     s_ex = sec('Deferred by the executor')
     if han_n:
         hp = han_pages or []; n_exec += 1
-        add(3, 'executor', f'{han_n} Han-only runs need Japanese or Chinese (han_review.csv)', hp, s_ex, han_n, find='Han-only CJK runs')
+        add(3, 'executor', f'{han_n} Han-only runs need Japanese or Chinese (han_review.csv)', hp, s_ex, han_n, find='Han-only CJK runs', key='exec:han')
     for what, ps in groups.items():
         real = [p for p in ps if p is not None]; n_exec += len(set(real)) + (1 if len(real) < len(ps) and not real else 0)
         txt = f'{len(ps)} captions not grouped: several figures on the page' if what == 'caption' else (what if len(ps) == 1 else f'{what} ({len(ps)})')
-        add(3, 'executor', txt, real, s_ex, len(ps), find='- caption (' if what == 'caption' else f'- {what}')
+        add(3, 'executor', txt, real, s_ex, len(ps), find='- caption (' if what == 'caption' else f'- {what}', key=f'exec:{what}')
     d_ai = wo.get('deferrals') or []
     s_ai = sec('Deferred by the AI')
-    for d in d_ai:
+    for i_, d in enumerate(d_ai):
         t = re.sub(r'\*\*', '', str(d.get('what') or 'not described')).strip()           # in full: the AI's sentence as written
-        add(4, 'ai', t, [p for p in d.get('pages') or [] if isinstance(p, int)], s_ai, find='- ' + t[:60])
+        add(4, 'ai', t, [p for p in d.get('pages') or [] if isinstance(p, int)], s_ai, find='- ' + t[:60], key=f'ai:{i_}')
     issues.sort(key=lambda x: x['rank'])
     for x in issues: x['pages_text'] = pages_text(x['pages'], labels) if x['pages'] else ''
 
@@ -236,8 +261,8 @@ def glance(record, md, labels=None, han_pages=None):
 
 def _n(x): return f'{x:,}'
 def glance_md(g, html_name='review.html', top=5):
-    """The "## At a glance" block (a list of lines) for review.md."""
-    L = ['## At a glance', '', f'[Open the dashboard]({html_name})', '', f'**Ready to ship?** {"Yes" if g["ready"] else "No"}']
+    """The "## Overview" block (a list of lines) for review.md (called "At a glance" before 2026-10-21)."""
+    L = ['## Overview', '', f'[Open the dashboard]({html_name})', '', f'**Ready to ship?** {"Yes" if g["ready"] else "No"}']
     L += [f'- {s["what"]}: {s["text"]}' for s in g['ship']] + ['']
     if g['safety']:
         L.append('**Safety checks:** ' + ' · '.join(f'{"OK ✔" if x["ok"] else "FAILED ✘"} {x["what"]}' for x in g['safety']) + '  ')
@@ -274,13 +299,29 @@ def glance_md(g, html_name='review.html', top=5):
     return L + ['']
 
 def replace_block(md, block_lines):
-    """review.md with its "## At a glance" block replaced (or inserted before the evidence line above "## Automated checks")."""
+    """review.md with its "## Overview" block (or an older run's "## At a glance") replaced, or inserted before the evidence
+    line above "## Automated checks"."""
     lines = md.split('\n')
-    if '## At a glance' in lines:                      # take the old block out: up to the evidence line or the next section
-        i = lines.index('## At a glance')
+    old = next((h for h in ('## Overview', '## At a glance') if h in lines), None)
+    if old:                                            # take the old block out: up to the evidence line or the next section
+        i = lines.index(old)
         j = next((k for k in range(i + 1, len(lines)) if lines[k].startswith('## ')
                   or lines[k].startswith('Automated checks are evidence, not legal sign-off')), len(lines))
         lines = lines[:i] + lines[j:]
     anchor = next((k for k, l in enumerate(lines) if l.startswith('Automated checks are evidence, not legal sign-off')), None)
     if anchor is None: anchor = next((k for k, l in enumerate(lines) if l == '## Automated checks'), len(lines))
     return '\n'.join(lines[:anchor] + block_lines + lines[anchor:])
+
+def refresh(record, labels=None, han_pages=None):
+    """For a run with record.json `sections`: recompute the glance from them and put the new "Overview" block in place
+    (the lines after it, the evidence line and the blank, are kept). Returns review.md's text, drawn from the sections."""
+    from lib import sections as S
+    secs = record['sections']
+    record['glance'] = glance(record, None, labels, han_pages, sections=secs)
+    new = next(x for x in S.to_sections(glance_md(record['glance'])) if x['key'] == 'overview')
+    for k, x in enumerate(secs):
+        if x.get('key') in ('overview', 'at-a-glance'):          # 'at-a-glance': runs made before the rename
+            tail = next((j for j, it in enumerate(x['items']) if it['text'].startswith('Automated checks are evidence, not legal sign-off')), len(x['items']))
+            new['items'] = new['items'] + x['items'][tail:]
+            secs[k] = new; break
+    return '\n'.join(S.render_md(secs)) + '\n'
