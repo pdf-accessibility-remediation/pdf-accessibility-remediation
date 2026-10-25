@@ -120,6 +120,11 @@ MARKED_VOWELS, MARKS_LAYER_SHARE = 5, 0.10  # OCR layer: the script model reads 
                                            #   page is then judged on its letters.
                                            #   Calibrated on henrycukim (about 20 a page, layer 0) and gelfand/liouville
                                            #   (1-2 stray marks a page, mostly on consonants)
+SPREAD_ASPECT, SPREAD_BAND = 1.15, (0.40, 0.60)   # two printed pages per PDF page: as displayed, width >= 1.15 x height,
+GUTTER_INK, GUTTER_MIN, SPREAD_SIDE = 0.10, 0.006, 0.25   # a gutter in the middle 40-60% (columns under 10% of the median
+                                           #   ink, 0.6%+ of the width) and 25%+ of the ink on each side; a landscape page of
+                                           #   the same size next to one counts too (a chapter end leaves a half blank).
+                                           #   Calibrated: mohr 16+1 of 17, reynolds-magazines 10 of 10, 0 in the 148 and the 30
 BORN_DIGITAL = re.compile(r'(?i)pdftex|xetex|luatex|prince|microsoft|adobe pdf library|indesign')
                                            # producers that write text, not scan it: an "unusable" verdict on them is no
                                            #   reason to suggest FORCE_OCR
@@ -248,6 +253,132 @@ def strip_empty_text(path, pages):
         p.save(path)
     return done, left
 
+# ------------------------------------------------------------------ two printed pages per PDF page (4.1, 4.2, 6.1-6.4)
+def _gutter(img):
+    """The gutter of a two-page spread in a rendered page image (as displayed), as a share of the width, or None."""
+    w, h = img.size; px = img.load()
+    ink = [sum(1 for y in range(0, h, 2) if px[x, y] < 128) for x in range(w)]
+    inked = sorted(v for v in ink if v > 0)
+    if not inked: return None
+    med = inked[len(inked) // 2]; best, run_, start = None, 0, None
+    for x in range(int(SPREAD_BAND[0] * w), int(SPREAD_BAND[1] * w)):
+        if ink[x] < GUTTER_INK * med:
+            run_ += 1; start = x if run_ == 1 else start
+            if not best or run_ > best[1]: best = (start, run_)
+        else: run_ = 0
+    if not best or best[1] < GUTTER_MIN * w: return None
+    mid = best[0] + best[1] // 2; tot = sum(ink) or 1
+    if sum(ink[:mid]) / tot < SPREAD_SIDE or sum(ink[mid:]) / tot < SPREAD_SIDE: return None
+    return round(mid / w, 3)
+def detect_spreads(path):
+    """Pages that hold two printed pages side by side: {'pages', 'gutter': {page: share}, 'vertical_fonts', 'printed'}.
+    Never splits a page. 'printed' holds the two printed page numbers when the halves' top/bottom bands show a pair that
+    differ by one (not guessed otherwise)."""
+    doc = pdfium.PdfDocument(path); size, gut = {}, {}
+    try:
+        for i in range(len(doc)):
+            W, H = doc[i].get_size(); size[i + 1] = (round(W), round(H))
+            if W >= SPREAD_ASPECT * H:
+                g = _gutter(doc[i].render(scale=50 / 72, grayscale=True).to_pil())
+                if g: gut[i + 1] = g
+    finally: doc.close()
+    if not gut: return None
+    for p in list(gut):                                  # a landscape neighbour of the same size: a spread with a blank half
+        for q in (p - 1, p + 1):
+            if q in size and q not in gut and size[q][0] >= SPREAD_ASPECT * size[q][1] \
+                    and abs(size[q][0] - size[p][0]) <= 0.03 * size[p][0] and abs(size[q][1] - size[p][1]) <= 0.03 * size[p][1]:
+                gut[q] = 0.5
+    pages = sorted(gut); vert = []
+    with pikepdf.open(path) as pdf:
+        for p in pages:
+            fonts = ((pdf.pages[p - 1].obj.get('/Resources') or {}).get('/Font') or {}).values()
+            if any(str(f.get('/Encoding')) == '/Identity-V' or 'Vert' in str(f.get('/BaseFont') or '') for f in fonts): vert.append(p)
+        rot = {p: int(pdf.pages[p - 1].obj.get('/Rotate', 0)) % 360 for p in pages}
+    from lib import plumb_fix  # noqa: F401
+    import pdfplumber
+    printed = {}
+    with pdfplumber.open(path) as pl:
+        for p in pages:
+            if rot[p]: continue                         # rotated page: the bands are not where the reader sees them
+            pg = pl.pages[p - 1]; W, H = float(pg.width), float(pg.height); x = gut[p] * W; nums = {'L': set(), 'R': set()}
+            for top, bottom in ((0, 0.08 * H), (0.92 * H, H)):
+                for side, (x0, x1) in (('L', (0, x)), ('R', (x, W))):
+                    for w in pg.crop((x0, top, x1, bottom)).extract_words():
+                        if re.fullmatch(r'\d{1,4}', w['text']): nums[side].add(int(w['text']))
+            rf = p in vert
+            pair = [(r, l) for r in nums['R'] for l in nums['L'] if (l == r + 1 if rf else r == l + 1)]
+            if len(pair) == 1:
+                r, l = pair[0]; printed[p] = f'{r}–{l}' if rf else f'{l}–{r}'
+    return {'pages': pages, 'gutter': gut, 'rotation': {p: r for p, r in rot.items() if r}, 'vertical_fonts': vert, 'printed': printed}
+def reorder_spreads(path, spreads, right_first):
+    """After auto-tag, on spread pages only: reorder the tagger's elements of each page by half (the right half first for
+    vertical CJK, else the left). Within a half, vertical CJK runs right to left by position; otherwise the tagger's order stays. Only the tree order changes, never page content.
+    Returns per page the half sequence switches before and after, and the elements that span the gutter."""
+    from lib import plumb_fix  # noqa: F401
+    import pdfplumber
+    out = {}
+    with pikepdf.open(path, allow_overwriting_input=True) as pdf:
+        st = pdf.Root.get('/StructTreeRoot')
+        if st is None: return out
+        doc_el = st.K[0] if isinstance(st.K, pikepdf.Array) and len(st.K) == 1 else st.K
+        if not isinstance(doc_el, pikepdf.Dictionary) or not isinstance(doc_el.get('/K'), pikepdf.Array): return out
+        kids = list(doc_el.K); idx = _page_index(pdf); changed = False
+        with pdfplumber.open(path) as pl:
+            for p in spreads['pages']:
+                pobj = pdf.pages[p - 1].obj; slots = [k for k, c in enumerate(kids) if isinstance(c, pikepdf.Dictionary)
+                                                     and '/Pg' in c and idx.get(c.Pg.objgen) == p]
+                if len(slots) < 2: continue
+                pg = pl.pages[p - 1]; W, H = float(pg.width), float(pg.height); rot = spreads.get('rotation', {}).get(p, 0)
+                def share(x, top):                       # position across the page as displayed (after /Rotate)
+                    return {0: x / W, 90: 1 - top / H, 180: 1 - x / W, 270: top / H}.get(rot, x / W)
+                xs = collections.defaultdict(list)
+                for c in pg.chars:
+                    if c.get('mcid') is not None and c['text'].strip(): xs[c['mcid']].append(share((c['x0'] + c['x1']) / 2, (c['top'] + c['bottom']) / 2))
+                boxes = None; g = spreads['gutter'][p]; side, span, ctr = {}, [], {}
+                for k in slots:
+                    mc, todo = [], [kids[k]]
+                    while todo:                          # the element's MCIDs on this page
+                        e = todo.pop()
+                        if isinstance(e, int): mc.append(int(e)); continue
+                        if isinstance(e, pikepdf.Array): todo.extend(list(e)); continue
+                        if not isinstance(e, pikepdf.Dictionary): continue
+                        if e.get('/Type') == '/MCR' and '/MCID' in e: mc.append(int(e.MCID)); continue
+                        if '/K' in e: todo.append(e.K)
+                    v = [x for m in mc for x in xs.get(m, [])]
+                    if not v and mc:                     # a figure: its image box
+                        boxes = boxes if boxes is not None else _mcid_image_boxes(pdf.pages[p - 1], None)
+                        v = [share((b[0] + b[2]) / 2, H - (b[1] + b[3]) / 2) for m in mc for b in [boxes.get(m)] if b]
+                    if not v: side[k] = None; continue
+                    ctr[k] = sum(v) / len(v)
+                    first = [s > g if right_first else s < g for s in v]
+                    side[k] = sum(first) * 2 >= len(first)
+                    if min(sum(first), len(first) - sum(first)) >= 0.2 * len(first): span.append(k)
+                known = [side[k] for k in slots if side[k] is not None]
+                if not known: continue
+                last = known[0]
+                for k in slots:                          # an element with no content of its own goes with the one before it
+                    if side[k] is None: side[k] = last
+                    last = side[k]
+                seq = lambda order: ''.join('A' if side[k] else 'B' for k in order)
+                before = seq(slots)
+                for k in slots: ctr.setdefault(k, None)
+                lastc = next((ctr[k] for k in slots if ctr[k] is not None), 0.5)
+                for k in slots:                          # likewise for position
+                    if ctr[k] is None: ctr[k] = lastc
+                    lastc = ctr[k]
+                # vertical CJK: columns run right to left within a half too (the tagger's xycut reads them left to right)
+                new = sorted(slots, key=lambda k: (0 if side[k] else 1, -ctr[k] if right_first else 0, slots.index(k)))
+                after = seq(new); span_names = [str(kids[k].get('/S')) for k in span][:10]
+                reordered = [kids[k] for k in new]
+                for slot, el in zip(slots, reordered): kids[slot] = el
+                sw = lambda s: sum(1 for a, b in zip(s, s[1:]) if a != b)
+                out[p] = {'switches_before': sw(before), 'switches_after': sw(after), 'elements': len(slots),
+                          'spanning': span_names}
+                changed = changed or before != after
+        if changed:
+            doc_el.K = pikepdf.Array(kids); pdf.save(path)
+    return out
+
 # ------------------------------------------------------------------ the existing tag tree (checklist 10.5)
 def _page_index(pdf):
     return {pg.obj.objgen: n for n, pg in enumerate(pdf.pages, 1)}
@@ -265,7 +396,7 @@ def _mcid_image_boxes(page, mcids):
         elif o == 'BDC': open_mc.append(int(a[1].MCID) if isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1] else None)
         elif o == 'BMC': open_mc.append(None)
         elif o == 'EMC' and open_mc: open_mc.pop()
-        elif o == 'Do' and open_mc and open_mc[-1] in mcids:
+        elif o == 'Do' and open_mc and (mcids is None or open_mc[-1] in mcids):      # None: every MCID
             x = xo.get(a[0])
             if x is None or x.get('/Subtype') != '/Image': continue
             pts = [(ctm[0] * u + ctm[2] * v + ctm[4], ctm[1] * u + ctm[3] * v + ctm[5]) for u, v in ((0, 0), (1, 0), (0, 1), (1, 1))]
@@ -712,7 +843,8 @@ def _pages(ps, labels):
         while j + 1 < len(ps) and ps[j + 1] == ps[j] + 1: j += 1
         a, b = ps[i], ps[j]; la, lb = lab(a), lab(b)
         txt = f'PDF {a}' if a == b else f'PDF {a}–{b}'
-        if la and lb and (la != str(a) or lb != str(b)): txt += f' (printed {la})' if a == b else f' (printed {la}–{lb})'
+        if la and lb and (la != str(a) or lb != str(b)):
+            txt += f' (printed {la})' if a == b else (f' (printed {la} to {lb})' if '–' in la + lb else f' (printed {la}–{lb})')   # spreads: "210–211"
         out.append(txt); i = j + 1
     return ', '.join(out) if out else 'none'
 def intake_glance(rec):
@@ -889,6 +1021,8 @@ def main():
             | {int(p) for k in ('pages_with_ocr_text', 'image_pages_without_text') for p in (rec.get('ocr') or {}).get(k) or []} \
             | {int(r['page']) for r in (rec.get('text_test') or {}).get('pages') or [] if r.get('page') is not None}
         rec['cited_labels'] = {str(p): page_labels[p] for p in sorted(cited) if p in page_labels}    # printed labels for intake.md
+        for p, lab in ((rec.get('spreads') or {}).get('printed') or {}).items():   # a spread: both printed numbers
+            if int(p) in cited and page_labels.get(int(p), str(p)) == str(p): rec['cited_labels'][str(p)] = lab
         if rec.get('status') != 'skipped': rec['glance'] = intake_glance(rec)   # intake.md's "Overview" numbers
         json.dump(rec, open(J, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
         write_md(rec, os.path.join(OUTD, 'intake.md'))
@@ -939,6 +1073,8 @@ def main():
     for i, x in enumerate(inv, 1): kinds[x['kind']].append(i)
     rec['triage'] = {'pages': {k: v for k, v in kinds.items()}, 'counts': {k: len(v) for k, v in kinds.items()},
                      'seconds': round(time.time() - t0, 1)}
+    sp = detect_spreads(SRC)                             # 4.1: two printed pages per PDF page (never split)
+    if sp: rec['spreads'] = sp
     if empty:
         rec['triage']['empty_text_pages'] = empty
         flag('Text objects with no characters', f'{len(empty)} pages have text operators that draw no character (e.g. an empty '
@@ -1270,6 +1406,15 @@ def main():
                     flag('CJK OCR: needs a person', f'these pages hold CJK text, OCR\'d with OCR_LANG={ocr_lang}: CJK OCR is often wrong '
                          '(sojourners\' glossary: many entries junk) and multi-column CJK lists may be read across the columns; a person '
                          'checks the text and its reading order', cjk_pages)
+        if rec.get('spreads'):                           # 6.1-6.4: the tag tree reads a spread half by half
+            vt = ((rec.get('cjk_probe') or {}).get('vertical_trial') or {}).get('vertical_pages')
+            right_first = bool(rec['spreads']['vertical_fonts'] or vt or '_vert' in ocr_lang)
+            rec['spreads']['order'] = 'right half first (vertical CJK)' if right_first else 'left half first'
+            pr = rec['spreads']['printed']
+            flag('Two printed pages per PDF page', f'these pages each hold two printed pages side by side (a spread; pages are never '
+                 f'split). After auto-tagging the tag tree reads each spread half by half, {rec["spreads"]["order"]}'
+                 + (f'; both printed page numbers were read on {len(pr)} of them and are cited as "PDF N (printed a–b)"' if pr else '')
+                 + ': a person checks the reading order and the page numbers', rec['spreads']['pages'][:20])
         if PLAN_ONLY:                                    # at run time these are raised for the pages that keep OCR text
             lowp = [p for p in plan['ocr_pages'] if p in low]
             if lowp: flag('Low-resolution scans', f'scanned below {OCR_DPI} dpi (checklist 2.1): OCR will read them enlarged, '
@@ -1393,6 +1538,11 @@ def main():
             cmp = compare(cur, tagged_out, near=True)
             if cmp['pixels'] or cmp['text']: return stop('failed', 'marking page scans as decoration changed a page: stopped', 1)
         ph = drop_placeholder_alt(tagged_out); rec['checks']['placeholder_alt_removed'] = ph
+        if rec.get('spreads'):                           # each spread read half by half: tree order only, checked
+            res = reorder_spreads(tagged_out, rec['spreads'], rec['spreads']['order'].startswith('right'))
+            cmp = compare(cur, tagged_out, near=True)
+            rec['checks']['spreads_reordered'] = {'pages': {str(k): v for k, v in res.items()}, 'pixels_differ': cmp['pixels'], 'text_differs': cmp['text']}
+            if cmp['pixels'] or cmp['text']: return stop('failed', 'reordering spread pages changed a page: stopped', 1)
         if ph['figures'] or ph['links']:
             flag('Placeholder alt text removed', f'the auto-tagger wrote alt text that says nothing ({ph["figures"]} figures "image N", '
                  f'{ph["links"]} links "Annotation"); it was removed, so those figures count as having no alt text (the AI or a '
