@@ -172,6 +172,23 @@ def intake_rows():
               'doubtful': f'doubtful: median character error {med:.1%} (5–15%): compare a few pages by eye' if med is not None else 'doubtful',
               'unusable': f'unusable (median character error {med:.1%}): FORCE_OCR=1 replaced it with OCR text over page images' if med is not None else 'unusable',
               'not scored': 'not scored (too little text, or mostly CJK, on the sample pages)'}.get(v, v or 'not tested'))]
+    ol = intake.get('ocr_layer_test')
+    if ol:                                             # an existing OCR layer on scanned pages, read again by a different model
+        d, med_o = ol.get('diacritics'), ol.get('median_cer')
+        bad = sorted(r['page'] for r in ol.get('pages') or [] if r.get('cer') is not None and r['cer'] > 0.05)
+        txt = ({'usable': 'usable', 'doubtful': 'doubtful', 'unusable': 'unusable'}.get(ol.get('verdict'), 'not checked: no sample page could be scored')
+               + (f': median character error {med_o:.1%} on {ol.get("scored")} sample pages' if med_o is not None else '')
+               + (f'; pages over 5%: {pgs(bad)}' if bad and ol.get('verdict') != 'usable' else '')
+               + (f'; diacritics missing from the layer ({d["marked_vowels_ocr"]} marked vowels read, {d["marked_vowels_layer"]} in the layer: '
+                  f'{pgs(d.get("pages") or [])})' if d else ''))
+        rows.append(('Existing OCR layer agrees with a fresh OCR reading (checklist 1.2, 3.1)', ok(ol.get('verdict') == 'usable' and not d), txt))
+    sp = intake.get('spreads')
+    if sp:                                             # two printed pages per PDF page: read half by half after auto-tagging
+        rr = ((intake.get('checks') or {}).get('spreads_reordered') or {}).get('pages') or {}
+        moved = [int(p) for p, v in rr.items() if v.get('switches_before') != v.get('switches_after')]
+        rows.append(('One printed page per PDF page (checklist 4.1, 6.1–6.4)', ok(False),
+                     f'{len(sp["pages"])} PDF pages hold two printed pages ({pgs(sp["pages"])}); tag tree reordered half by half, '
+                     f'{sp.get("order", "left half first")}, on {len(moved)} of them; the rest left in the tagger\'s order'))
     runs = fpages('Words run together')
     if o.get('mode') == 'force':
         rows.append(('Words separated in the text layer (checklist 3.4)', 'OK', 'the original text layer was replaced by OCR text'))
@@ -181,7 +198,7 @@ def intake_rows():
     if o:
         n = len(o.get('pages_with_ocr_text') or [])
         issues = [x for x in ('Low-resolution scans', 'OCR language', 'OCR characters not mapped', 'OCR', 'CJK OCR: needs a person',
-                              'OCR text looks like junk') if any(f['what'] == x for f in fl)]
+                              'OCR text looks like junk', 'Empty text objects left') if any(f['what'] == x for f in fl)]
         rows.append(('OCR text added where pages had none (checklist 3.1)', ok(not issues),
                      (f'{n} page{"s" if n != 1 else ""} ({o.get("mode")} mode, Tesseract {intake["tools"].get("tesseract")}, '
                       f'{(intake.get("language") or {}).get("ocr_lang")})' if n else 'no image-only page held text')

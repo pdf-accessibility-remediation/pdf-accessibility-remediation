@@ -185,7 +185,8 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
                  sec('WCAG checks veraPDF') if re.search(r'\((1\.1\.1|1\.3\.1|2\.4\.\d)\)$', name) else
                  sec('Decisions not applied') if name.startswith('Executor applied') else
                  sec('OCR words') if name.startswith('OCR words') else
-                 sec('Intake') if name.startswith(('Text layer', 'Words separated', 'OCR text added', 'Auto-tagging')) else
+                 sec('Intake') if name.startswith(('Text layer', 'Words separated', 'OCR text added', 'Auto-tagging', 'Existing OCR layer',
+                                                   'One printed page')) else
                  sec('Text outside') if name.startswith('Text outside') else
                  sec('Empty tags') if 'empty tag' in name.lower() else
                  sec('Structure left', 'Captions') if 'caption' in name.lower() else

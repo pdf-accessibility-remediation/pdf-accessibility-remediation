@@ -1326,6 +1326,10 @@ def main():
                          'only roughly, so a person compares the pages; the layer is not changed', mark_pages[:20] or None)
             else:
                 ol['verdict'] = 'not enough pages scored'
+                why_ = sorted({str(r.get('reason')) for r in ol['pages'] if r.get('reason')})
+                flag('OCR layer not checked', 'the existing OCR layer on the scanned pages could not be compared with a fresh OCR '
+                     'reading on any sample page (' + ('; '.join(why_)[:300] or 'no sample page') + '): a person compares a few pages with '
+                     'the page image', [r['page'] for r in ol['pages']][:20])
             rec['ocr_layer_test'] = ol
         # ---- the plan
         force = tt['verdict'] == 'unusable'
