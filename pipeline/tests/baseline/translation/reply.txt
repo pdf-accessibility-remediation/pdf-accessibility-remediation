@@ -1,0 +1,119 @@
+```json
+{
+  "schema": "workorder/0.1",
+  "sections": {
+    "toc_pages": [10],
+    "notes_pages": [206, 231],
+    "index_from": 246
+  },
+  "artifacts": {
+    "elements": [
+      {"obj": "7004 0", "type": "Layout", "label": "duplicate whole-page figure of the title page (PDF 4); the title-page text is tagged and the other whole-page Figure carries the alt text", "confidence": 0.7}
+    ],
+    "text_rules": [
+      {"label": "stray two-letter token blocks (tagged), not real content", "pages": [1, 257], "regex": "hn|hk|io|il|sy|SY|ek|eh", "band": "any", "type": "Layout", "why": "Blocks of the tokens hn hk io il sy SY ek eh repeat on page after page; no reading sense, apparently a font or test pattern", "confidence": 0.8},
+      {"label": "stray two-letter token blocks (orphans), not real content", "pages": [1, 257], "regex": "hn|hk|io|il|sy|SY|ek|eh", "band": "any", "type": "Layout", "orphans": true, "confidence": 0.8},
+      {"label": "running head, notes", "pages": [207, 231], "regex": "\\d* ?Notes to Pages \\d+–\\d+ ?\\d*", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head page number, notes", "pages": [207, 231], "regex": "\\d+", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head, Preface", "pages": [13, 13], "regex": "(\\d+|[ivxlc]+)|((\\d+ |[ivxlc]+ )?(Preface|Acknowl ?edgments|Introduction|Chapter 1|Meetings|Index)( \\d+| [ivxlc]+)?)", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head, Acknowledgments", "pages": [16, 16], "regex": "(\\d+|[ivxlc]+)|((\\d+ |[ivxlc]+ )?(Preface|Acknowl ?edgments|Introduction|Chapter 1|Meetings|Index)( \\d+| [ivxlc]+)?)", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head, Introduction", "pages": [23, 24], "regex": "(\\d+|[ivxlc]+)|((\\d+ |[ivxlc]+ )?(Preface|Acknowl ?edgments|Introduction|Chapter 1|Meetings|Index)( \\d+| [ivxlc]+)?)", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head, Chapter 1", "pages": [35, 36], "regex": "(\\d+|[ivxlc]+)|((\\d+ |[ivxlc]+ )?(Preface|Acknowl ?edgments|Introduction|Chapter 1|Meetings|Index)( \\d+| [ivxlc]+)?)", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head, Index", "pages": [247, 248], "regex": "(\\d+|[ivxlc]+)|((\\d+ |[ivxlc]+ )?(Preface|Acknowl ?edgments|Introduction|Chapter 1|Meetings|Index)( \\d+| [ivxlc]+)?)", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "folio at chapter opening and section opening pages", "pages": [10, 10], "regex": "[ivxlc]+|\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio at chapter opening pages", "pages": [22, 22], "regex": "[ivxlc]+|\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio at chapter opening pages", "pages": [34, 34], "regex": "[ivxlc]+|\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio at chapter opening pages", "pages": [129, 129], "regex": "[ivxlc]+|\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio at chapter opening pages", "pages": [193, 193], "regex": "[ivxlc]+|\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio at notes opening page", "pages": [206, 206], "regex": "[ivxlc]+|\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio at index opening page", "pages": [246, 246], "regex": "[ivxlc]+|\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"}
+    ]
+  },
+  "document": {
+    "title": "Found in Translation: Many Meanings on a North Australian Mission",
+    "lang": "en-US",
+    "display_doc_title": true
+  },
+  "rolemap": {
+    "TPT": "H1",
+    "FMHS": "H2",
+    "FMH": "H2",
+    "CTINT": "H2",
+    "CT": "H2",
+    "BMH": "H2",
+    "ATAH": "H2",
+    "H1": "H3",
+    "ENH": "H3",
+    "BMSH": "H3"
+  },
+  "merges": [
+    {"style": "CN", "direction": "next", "with": ["CT"]},
+    {"style": "CST", "direction": "prev", "with": ["CT"]}
+  ],
+  "actual_text": [
+    {"obj": "9840 0", "text": "1 MEETINGS New Meanings on Southern Shores"},
+    {"obj": "9904 0", "text": "2 TRANSLATING THE LANDSCAPE Negotiating the Mission"},
+    {"obj": "10007 0", "text": "3 EARS TO HEAR The Sounds of Speech"},
+    {"obj": "10115 0", "text": "4 THE LETTER KILLS Writing in English"},
+    {"obj": "10210 0", "text": "5 THE MAMARIKA WINDS Turning to Anindilyakwa"},
+    {"obj": "10280 0", "text": "6 SPEAKING TO THE HEART The Language of Faith"},
+    {"obj": "10350 0", "text": "7 SINGING IN TONGUES Translation through Song"},
+    {"obj": "15330 0", "text": "Acknowledgments"},
+    {"obj": "10319 0", "text": "Anindilyakwa Ownership of the Heart Language"},
+    {"obj": "10149 0", "text": "English Literacy and Australian Citizenship"},
+    {"obj": "10161 0", "text": "Anindilyakwa Uses of English Literacy"}
+  ],
+  "flatten": [
+    {"obj": "15544 0", "why": "stray token block, not a table"},
+    {"obj": "15423 0", "why": "stray token block, not a table"},
+    {"obj": "15154 0", "why": "stray token block, not a table"},
+    {"obj": "15033 0", "why": "stray token block, not a table"},
+    {"obj": "14912 0", "why": "stray token block, not a table"},
+    {"obj": "14791 0", "why": "stray token block, not a table"},
+    {"obj": "14670 0", "why": "stray token block, not a table"},
+    {"obj": "14549 0", "why": "stray token block, not a table"},
+    {"obj": "9559 0", "why": "stray token block, not a table"},
+    {"obj": "9438 0", "why": "stray token block, not a table"},
+    {"obj": "7085 0", "why": "stray token block, not a table"}
+  ],
+  "tables": [
+    {"obj": "9720 0", "header_rows": 2, "header_cols": 0, "why": "Table 1 title row, then the CLAN NAME / ASSOCIATED SURNAMES header row", "confidence": 0.8}
+  ],
+  "alt": [
+    {"obj": "7001 0", "alt": "Series page: the Indigenous Pacifics series logo (a black block with a line graph over a map-like shape and the words INDIGENOUS PACIFICS), above the series editors, Noelani Goodyear-Ka‘ōpua and April K. Henderson."},
+    {"obj": "7003 0", "alt": "Title page of Found in Translation: Many Meanings on a North Australian Mission by Laura Rademaker, with the University of Hawai‘i Press logo and the imprint Honolulu."},
+    {"obj": "7021 0", "alt": "Black-and-white photograph of missionary Alfred Dyer, in a pith helmet and shorts with hands on hips, standing in bushland on Groote Eylandt behind three Anindilyakwa men seated on the ground."},
+    {"obj": "7023 0", "alt": "Map of northern Australia locating Groote Eylandt, an island in the Gulf of Carpentaria off the east of Arnhem Land. Darwin, Pine Creek and Katherine are marked on the mainland, and an inset shows the region's place on the Australian continent."},
+    {"obj": "7026 0", "alt": "Black-and-white 1928 photograph of a large group posed outdoors: girls in light dresses seated and standing at the front, boys and men at the right, and a man in a suit at the centre, with palm trees and a thatched building behind."},
+    {"obj": "7028 0", "alt": "Hand-drawn archival map of Groote Eylandt and nearby islands showing the Aboriginal Reserve, the Church Missionary Society mission lease in the northwest tinted pink, and an area tinted green excluded for the Flying Boat Base. A handwritten note gives the legend and the scale of ten miles to an inch."},
+    {"obj": "7030 0", "alt": "Black-and-white photograph of Anindilyakwa men pushing and lifting timber on a building frame at Angurugu while a man in a hat at right looks through a camera on a tripod."},
+    {"obj": "7032 0", "alt": "Plan of the Groote Eylandt mission station layout. Roads radiate from a circle around a central church. Around it are the mission houses, school, boys' and girls' dormitories, hospital, maternity block, store, pump house, saw mill, native camp, people's houses, playing field and gardens, with a river to the north and an air strip road at upper right."},
+    {"obj": "7034 0", "alt": "Black-and-white photograph of a large group of people standing in front of the long white-roofed Angurugu church among trees, 1951."},
+    {"obj": "7036 0", "alt": "Photograph of a missionary in a white shirt holding up a picture board to a circle of Aboriginal boys seated on the ground outdoors at the Sunday school."},
+    {"obj": "7038 0", "alt": "Black-and-white photograph of Anindilyakwa adults and children standing in front of bark and tin huts in the village, 1951."},
+    {"obj": "7040 0", "alt": "Photograph of Judith Stokes, a smiling woman with glasses and a sleeveless checked dress, leaning on a verandah rail with trees behind her."},
+    {"obj": "7042 0", "alt": "Photograph of two Anindilyakwa schoolchildren at classroom desks, the boy at left looking at an open book and the boy at right resting his cheek on his hand, with other children behind them."},
+    {"obj": "7044 0", "alt": "Photograph of Judith Stokes, Lawrence Jaragba and Gula Lalara seated side by side on chairs in front of curtains, with a radio behind them."},
+    {"obj": "7046 0", "alt": "Photograph of Johnny, a man in a singlet, sitting on a boat holding an accordion, with a sail, mast and the sea behind him."},
+    {"obj": "7048 0", "alt": "Photograph of two men with body paint and ceremonial headdress dancing in a dirt clearing in a funeral dance for Quartpot in 1968, with onlookers and a tin-roofed shed behind them."},
+    {"obj": "7050 0", "alt": "Missionary poster titled The 2 Ways, contrasting two paths. At left a broad road runs among flames and scenes of fighting, gambling and violence. At right a narrow path leads past a cross toward a heavenly city. A signpost reads Broadway and a text panel reads Enter ye in at the strait gate."}
+  ],
+  "page_figures": [
+    {"page": 1, "alt": "Front cover of Found in Translation: Many Meanings on a North Australian Mission by Laura Rademaker. A sepia photograph shows a large group of Anindilyakwa men and boys with two missionaries standing and crouching outdoors. Above them is a tinted archival map of Groote Eylandt. The title is in large brown and grey letters and the author's name is at the bottom."}
+  ],
+  "captions": {"style": "CAP"},
+  "toc": {"item_styles": ["CFMH", "CCTF", "CCT", "CBMHF", "CBMH"], "pages": [10, 10]},
+  "notes": {"styles": ["NTX"], "id_prefix": "note-"},
+  "remove_empty_containers": true,
+  "deferrals": [
+    {"what": "Stray token blocks (hn hk io il sy SY ek eh) on many pages, as orphan runs, tagged paragraphs and 11 tables, treated as junk and artifacted", "why": "They are not meaningful text, but a person should confirm nothing real was hidden and that no empty tags remain (veraPDF 7.1-3 failures may remain where content is neither tagged nor artifact)", "pages": [3, 257]},
+    {"what": "veraPDF 7.1-3: the 1653 unmarked-content failures", "why": "Only runs matching the artifact rules are fixed. Any remaining untagged page content on PDF 1 and 3 needs a person.", "pages": [1, 3]},
+    {"what": "Running heads and folios other than those targeted", "why": "Only the pages whose running heads or folios appear in the digest are covered. Page numbers on other pages could not be identified from the digest.", "pages": [13, 248]},
+    {"what": "Anindilyakwa text (epigraphs, hymns, quotations) has no language tag", "why": "No reliable BCP 47 code is given in the digest, so a person should decide whether to tag these runs", "pages": [34, 193]},
+    {"what": "Duplicate whole-page Figures on the title page and series page (PDF 3, PDF 4)", "why": "The title-page text is tagged and also covered by a whole-page Figure. 7003 0 was given alt text and 7004 0 artifacted. A person should check how the page reads.", "pages": [3, 4]},
+    {"what": "Chapter heading merges (number + title + subtitle)", "why": "The merged headings carry ActualText. A person should check heading text and the outline.", "pages": [34, 167]},
+    {"what": "Contents entry 'Note on Terminology and Language xv ii' has a garbled page number", "why": "The text layer reads 'xv ii'; this may need a person to fix", "pages": [10]}
+  ],
+  "notes_for_reviewer": "Heading outline: the book title (TPT, PDF 4) is H1. Front and back matter titles, Introduction, Conclusion, Epilogue, and the merged chapter number/title/subtitle headings are H2. The publisher's H1-styled section headings are mapped to H3, as are the endnote chapter headings and the bibliography subheadings. The table on PDF 27 is given two header rows (title row plus column heads). Photo captions use the CAP style and are tied to their figures. Alt text was written from the figure images and captions. The 'hn hk io il…' blocks are treated as junk and hidden, then flattened tables are emptied and removed."
+}
+```

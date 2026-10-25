@@ -2,13 +2,13 @@
 
 Result: `clans_remediated.pdf`
 
-194 pages · run 2026-10-25T02:51:57 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost: call did not finish · tokens: call did not finish
+194 pages · run 2026-10-25T03:26:38 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.3s · audit 17.8s · reuse saved reply 1.1s · apply 20.5s · verify 29.2s · total 68.9s
+Time: intake 0.3s · audit 20.1s · reuse saved reply 1.0s · apply 18.9s · verify 22.8s · total 63.1s
 
 ## Overview
 

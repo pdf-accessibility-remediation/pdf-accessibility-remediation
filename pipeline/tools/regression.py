@@ -152,7 +152,7 @@ def main():
             R, r = results[b]
             shutil.copyfile(os.path.join(R, 'review.md'), os.path.join(BASE, b, 'review.md'))
             json.dump(fingerprint(r), open(os.path.join(BASE, b, 'expect.json'), 'w', encoding='utf-8'), indent=1, ensure_ascii=False, sort_keys=True)
-        meta.update({'books': books, 'python': '.'.join(r['environment']['python'].split('.')[:2]) if a.from_dir else py,
+        meta.update({'books': list(dict.fromkeys((meta.get('books') or []) + books)), 'python': '.'.join(r['environment']['python'].split('.')[:2]) if a.from_dir else py,
                      'prompt': meta.get('prompt') or prompt_name()})
         json.dump(meta, open(meta_p, 'w'), indent=1)
         log = os.path.join(BASE, 'UPDATES.md')

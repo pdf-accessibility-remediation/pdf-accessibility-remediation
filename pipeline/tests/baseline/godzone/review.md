@@ -2,13 +2,13 @@
 
 Result: `godzone_remediated.pdf`
 
-217 pages · run 2026-10-25T02:50:52 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost: call did not finish · tokens: call did not finish
+217 pages · run 2026-10-25T03:25:32 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.3s · audit 28.9s · reuse saved reply 1.2s · apply 18.2s · verify 24.1s · total 72.7s
+Time: intake 0.3s · audit 27.4s · reuse saved reply 1.1s · apply 16.6s · verify 24.8s · total 70.2s
 
 ## Overview
 

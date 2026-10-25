@@ -68,6 +68,12 @@ jobs:
 
   regression:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        book: [godzone, clans, translation]     # the books in pipeline/tests/baseline/meta.json, one job each (in parallel)
+        python: ["3.13", "3.14"]                # the baseline was made with 3.14; 3.13 checks the version docs/setup.md also allows
+    name: regression (${{ matrix.book }}, Python ${{ matrix.python }})
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -75,7 +81,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.14"        # the version in pipeline/tests/baseline/meta.json: the baseline was made with it
+          python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: pipeline/requirements.txt
 
@@ -101,12 +107,12 @@ jobs:
 
       - name: Regression test (saved replies, no API call)
         working-directory: pipeline
-        run: VERAPDF="$HOME/verapdf/verapdf" python tools/regression.py --out "$RUNNER_TEMP/regression"
+        run: VERAPDF="$HOME/verapdf/verapdf" python tools/regression.py --books ${{ matrix.book }} --out "$RUNNER_TEMP/regression"
 
       - name: Keep the runs for a failed comparison
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: regression-runs
+          name: regression-runs-${{ matrix.book }}-py${{ matrix.python }}
           path: ${{ runner.temp }}/regression
           retention-days: 7

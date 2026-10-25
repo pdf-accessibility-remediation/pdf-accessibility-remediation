@@ -10,7 +10,7 @@ There are three kinds of tests. None of them calls the model, and none costs any
 | Test | What it checks | Run it (from `pipeline/`) | Time |
 |---|---|---|---|
 | **Unit tests** | That each small rule in `lib/` does its job, using made-up inputs (no PDF) | `python -m pytest tests -q` | about 1 second |
-| **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py` | about 2.5 minutes |
+| **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py` | about 6 minutes (`--books godzone` about 1) |
 | **Intake cases** | That intake sorts pages and tag trees correctly, using small synthetic PDFs | `python3 tools/intake_cases.py <out_dir>` | under a minute |
 
 Install the test tools once, in the same virtual environment: `pip install -r requirements-dev.txt` (it includes `requirements.txt` and adds pytest).
@@ -29,7 +29,7 @@ The expected values come from the module docstrings and from [Work order](work-o
 
 ## Regression test
 
-`tools/regression.py` runs the books in `pipeline/tests/baseline/` (godzone and clans) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved model reply is used instead of an API call. Each book's folder holds:
+`tools/regression.py` runs the books in `pipeline/tests/baseline/` (godzone, clans and translation) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved model reply is used instead of an API call. Each book's folder holds:
 
 | File | What it is |
 |---|---|
@@ -51,9 +51,9 @@ Each run is compared with the baseline in three ways:
 
 The test prints one line per book (identical, or the fields and lines that differ) and exits with 1 when any book differs. It needs veraPDF (see [Verification with veraPDF](verapdf.md)). Run folders go to a temporary folder, which is kept when something differs; `--out DIR` puts them in `DIR` instead.
 
-`meta.json` records the prompt and the Python version the baseline was made with (Python 3.14, the version CI uses). Another Python version prints a note, because a difference may come from the version and not from the code.
+`meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code. CI runs every book on both Python 3.13 and 3.14, the two versions [Setup](setup.md) allows, so a difference between them shows up there. Run one book with `--books translation`; `--update --books X` adds X to the baseline and keeps the others.
 
-**What it does not cover.** Both books are already tagged, so intake, OCR, tables, footnotes and CJK text are not tested here. Some rules never fire on these two books, for example the one-item list rule and the word-gap rule (their text has real spaces). Those rules are covered by the unit tests. To check all nine tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
+**What it covers, and what it does not.** godzone and clans cover alt text, artifacts, document settings, flattened lists and tables, retyped headings, the role map and sections. translation adds tables, notes, captions, the table of contents, whole-page figures, merged headings, ActualText, empty containers and untagged lines and borders. Not covered: `language`, `lists`, `fix_figure_order`, `adopt_orphans` and `ocr_words` (the saved replies of these books don't use them); the one-item list rule, which only fires on books OpenDataLoader tagged (untagged input), and the word-gap rule (these books' text has real spaces), both covered only by the unit tests; and the whole untagged path (OCR, auto-tagging) and CJK text. To check all nine tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
 
 ```bash
 FROM=all9-v8 AUTO=1 bash batch_api.sh before ../samples/group1 ../samples/group2 ../samples/group3most   # on main
@@ -82,11 +82,11 @@ In the example above, if the diff also showed two headings gone (`verify.tree_ty
 
 Make one update per PR, with its own reason. Don't fold several unrelated changes into one update.
 
-**After a failed CI run:** the regression job uploads its run folders as the `regression-runs` artifact. To adopt them without rerunning, download the artifact and run `python3 tools/regression.py --update --from-dir <downloaded folder> --reason "…"`.
+**After a failed CI run:** each failed regression job uploads its run folder as the `regression-runs-<book>-py<version>` artifact. To adopt it without rerunning, download the artifact and run `python3 tools/regression.py --update --books <book> --from-dir <downloaded folder> --reason "…"` (take the Python 3.14 artifact: the baseline's version).
 
 **After a prompt change:** the saved replies were written for one prompt version (`meta.json` → `prompt`). When `decide.py` uses a new prompt, the test stops and asks for a re-seed instead of showing a diff. To re-seed:
 
-1. Run the two books with the new prompt. This is a paid call, about $0.25; ask first.
+1. Run the baseline books with the new prompt. This is a paid call, about $0.60 for the three; ask first.
 2. Run `python3 tools/regression.py --update --seed ../runs/<batch folder> --reason "prompt vN"`, where the batch folder is the one holding `<book>/record.json`.
 
 `--seed` copies each book's `raw_reply` from its `record.json`.
@@ -110,7 +110,7 @@ The Japanese and Korean pages need a CJK font to draw their text: Arial Unicode 
 | Change | Unit tests | Regression | Intake cases |
 |---|---|---|---|
 | New rule or check in `lib/` | Add tests | Maybe update the baseline | — |
-| Changes the output for godzone or clans | — | Update the baseline (free) | — |
+| Changes the output for a baseline book | — | Update the baseline (free) | — |
 | New prompt version | — | Re-seed (a small paid run) | — |
 | Intake change | — | — | Update or add cases |
 | Refactor with no change in behaviour | Must pass unchanged | Must pass unchanged | Must pass unchanged |
@@ -123,4 +123,4 @@ The Japanese and Korean pages need a CJK font to draw their text: Arial Unicode 
   - a second job that installs Tesseract with its CJK packs and `fonts-noto-cjk`, then runs the intake cases
 - **`pdf-validation.yml`, when `pipeline/`, `prompts/` or `samples/` change:**
   - the existing veraPDF audit of one sample
-  - a `regression` job (Python 3.14, Java 17, veraPDF 1.30.3) that runs `tools/regression.py`, and uploads the run folders when it fails
+  - a `regression` job per book and Python version (godzone, clans, translation × 3.13, 3.14; in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)
