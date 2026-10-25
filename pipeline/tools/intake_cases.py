@@ -138,6 +138,29 @@ def build(out):
     return made
 
 
+def reorder_saved_case(out):
+    """reorder_spreads on a tagged spread whose halves are already right-first but whose columns run left to right (as a
+    tagger reads them): the order must change within the half, be saved, and be what is recorded. No tagger involved."""
+    import intake as I
+    cols = [(420, 'Right half, left column'), (600, 'Right half, right column'), (60, 'Left half, left column'), (230, 'Left half, right column')]
+    content = ''.join(f'/P <</MCID {k}>> BDC\n' + ''.join(f'BT /F1 10 Tf {x} {560 - n * 14} Td ({t} {n + 1}) Tj ET\n' for n in range(20)) + 'EMC\n'
+                      for k, (x, t) in enumerate(cols))
+    pdf = pikepdf.new(); pg = new_page(pdf, content, font=True, size=(792, 612))
+    root = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+    doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
+    els = [pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=doc, Pg=pg.obj, K=k)) for k in range(4)]
+    doc.K = pikepdf.Array(els); root.K = pikepdf.Array([doc])
+    root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=pikepdf.Array([0, pikepdf.Array(els)])))
+    pg.obj.StructParents = 0; pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True)
+    path = os.path.join(out, 'reorder-saved.pdf'); pdf.save(path)
+    res, left = I.reorder_spreads(path, {'pages': [1], 'gutter': {1: 0.5}, 'rotation': {}}, True)
+    with pikepdf.open(path) as p:
+        d = p.Root.StructTreeRoot.K[0]; saved = [int(e.K) for e in d.K]
+    want = [1, 0, 3, 2]                              # right half first, its columns right to left, then the left half
+    ok = res.get(1, {}).get('reordered') is True and saved == want
+    return ok, f'recorded reordered={res.get(1, {}).get("reordered")}, saved order {saved} (want {want})'
+
+
 def triage(j): return (j.get('triage') or {}).get('pages') or {}
 CASES = [  # (case, pdf, OCR_LANG, what is expected, test on intake.json)
     ('empty text over a scan → image-only, OCR planned', 'empty-text-over-scan', None, 'image-only p1, empty_text_pages [1], OCR planned',
@@ -201,6 +224,8 @@ def main():
         j = run_intake(made[case], os.path.join(out, 'plan', f'{k:02d}-{case}' + (f'-{lang}' if lang else '')), lang)
         ok = test(j); bad += not ok
         print(f'{"PASS" if ok else "FAIL"}  {what}  (expected: {expect}; got: {j["status"]}: {j.get("summary")})', flush=True)
+    ok, got = reorder_saved_case(out); bad += not ok
+    print(f'{"PASS" if ok else "FAIL"}  right-first spread already in half order, columns left to right → reorder saved  (got: {got})', flush=True)
     if '--full' in sys.argv:
         j = run_intake(made['empty-text-over-scan'], os.path.join(out, 'full', 'empty-text-over-scan'), None, plan=False)
         ok = j['status'] == 'done' and (j.get('ocr') or {}).get('pages_with_ocr_text') == [1] \

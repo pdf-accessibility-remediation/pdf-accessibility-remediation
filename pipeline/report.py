@@ -186,7 +186,8 @@ def intake_rows():
         moved = [int(p) for p, v in rr.items() if v.get('reordered', v.get('switches_before') != v.get('switches_after'))]
         rows.append(('One printed page per PDF page (checklist 4.1, 6.1–6.4)', ok(False),
                      f'{len(sp["pages"])} PDF pages hold two printed pages ({pgs(sp["pages"])}); tag tree reordered half by half, '
-                     f'{sp.get("order", "left half first")}, on {len(moved)} of them; the rest kept the tagger\'s order'))
+                     f'{sp.get("order", "left half first")}, on {len(moved)} of them'
+                     + ('; the rest kept the tagger\'s order' if len(moved) < len(sp['pages']) else '')))
     runs = fpages('Words run together')
     if o.get('mode') == 'force':
         rows.append(('Words separated in the text layer (checklist 3.4)', 'OK', 'the original text layer was replaced by OCR text'))
