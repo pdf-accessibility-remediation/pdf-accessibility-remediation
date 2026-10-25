@@ -1,0 +1,99 @@
+```json
+{
+  "schema": "workorder/0.1",
+  "sections": {
+    "toc_pages": [9],
+    "notes_pages": [253, 282],
+    "index_from": 307
+  },
+  "artifacts": {
+    "elements": [
+      {"obj": "18592 0", "type": "Layout", "label": "ornament"},
+      {"obj": "18501 0", "type": "Layout", "label": "ornament"},
+      {"obj": "18485 0", "type": "Layout", "label": "ornament"},
+      {"obj": "18480 0", "type": "Layout", "label": "ornament"},
+      {"obj": "19463 0", "type": "Layout", "label": "ornament"},
+      {"obj": "17890 0", "type": "Layout", "label": "ornament"},
+      {"obj": "17156 0", "type": "Layout", "label": "ornament"},
+      {"obj": "16571 0", "type": "Layout", "label": "ornament"},
+      {"obj": "16308 0", "type": "Layout", "label": "ornament"},
+      {"obj": "15580 0", "type": "Layout", "label": "ornament"},
+      {"obj": "14945 0", "type": "Layout", "label": "ornament"},
+      {"obj": "14213 0", "type": "Layout", "label": "ornament"},
+      {"obj": "14118 0", "type": "Layout", "label": "ornament"},
+      {"obj": "14023 0", "type": "Layout", "label": "ornament"},
+      {"obj": "14020 0", "type": "Layout", "label": "ornament"},
+      {"obj": "12773 0", "type": "Layout", "label": "ornament"}
+    ],
+    "text_rules": [
+      {"label": "running head (Notes to Pages)", "pages": [254, 282], "regex": "Notes to Pages? [\\d–]+", "band": "top", "type": "Pagination", "subtype": "Header"}
+    ]
+  },
+  "document": {
+    "title": "Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism",
+    "lang": "en-US",
+    "display_doc_title": true
+  },
+  "rolemap": {
+    "pre_tit": "H2",
+    "pre_tit.autre": "H2",
+    "part_n": "H2",
+    "part_tit": "H2",
+    "chap_n": "H2",
+    "chap_tit": "H2",
+    "chap_tit.seul": "H2",
+    "chap_tit.autre": "H2",
+    "chap_stit": "H2",
+    "appen_tit": "H2",
+    "appen_tit.autre": "H2",
+    "dev_int1": "H3",
+    "dev_int1.autre": "H3",
+    "dev_int1.biblio": "H3",
+    "nfniv1_int": "H3",
+    "dev_int2": "H4"
+  },
+  "merges": [
+    {"style": "part_n", "direction": "next", "with": ["part_tit"]},
+    {"style": "chap_n", "direction": "next", "with": ["chap_tit.seul", "chap_tit", "chap_tit.autre"]},
+    {"style": "chap_stit", "direction": "prev", "with": ["chap_tit.autre"]}
+  ],
+  "actual_text": [
+    {"obj": "17893 0", "text": "Cadaverous"},
+    {"obj": "18621 0", "text": "Part I Spirit Disease"},
+    {"obj": "16318 0", "text": "Part II Corpse Disease"},
+    {"obj": "18623 0", "text": "Chapter 1 Ritual Healing in the Jimon Lineage"},
+    {"obj": "17159 0", "text": "Chapter 2 Evil Dead in the Aristocratic Mansion"},
+    {"obj": "16574 0", "text": "Chapter 3 The Ghostbusters of Onjōji"},
+    {"obj": "16320 0", "text": "Chapter 4 The Ritual of Shōmen Kongō for Expelling Demons and Māras"},
+    {"obj": "15590 0", "text": "Chapter 5 Corpse Influx in a Defiled Capital"},
+    {"obj": "14949 0", "text": "Chapter 6 Demons, Māras, and Corpse-Worms"},
+    {"obj": "14216 0", "text": "Chapter 7 Playing with Fire Therapeutic Violence Through Ritual Pyrotechnics"}
+  ],
+  "retype": [
+    {"obj": "17893 0", "type": "H1", "why": "book title on the title page; the only H1"}
+  ],
+  "alt": [
+    {"obj": "18614 0", "alt": "University of Hawai‘i Press logo"},
+    {"obj": "6374 0", "alt": "Book cover of Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism by Andrew Macomber. A brown-toned sketch of a decomposing human corpse lying on its back with long hair and exposed ribs, on a mottled parchment-colored background. The title appears above the image and the author's name below it."}
+  ],
+  "move_to_document_start": ["6374 0"],
+  "captions": {"style": "dev_fig_leg"},
+  "lists": [
+    {"first_style": "liste_p.premier", "item_prefix": "liste_p", "last_style": "liste_p.dernier", "numbering": "Decimal"}
+  ],
+  "toc": {"item_styles": ["tdm1_p", "tdm1_p.chap", "tdm1_p.part"], "pages": [9, 9]},
+  "notes": {"styles": ["ntf_p", "ntf_p.1", "ntf_p.2"], "id_prefix": "note-"},
+  "language": {"kana_runs": "ja", "runs": []},
+  "fix_figure_order": true,
+  "remove_empty_containers": true,
+  "deferrals": [
+    {"what": "Drop caps at the start of chapter and section openings (dev_let paragraphs, e.g. \"his project began…\" for \"This project began…\") are extracted without their first letter or as a separate run. A person should check how the first word is read.", "why": "The digest does not show the drop-cap runs, so ActualText for these paragraphs cannot be written safely.", "pages": [11, 17, 49, 78, 112, 141, 154, 182, 211, 246]},
+    {"what": "The Index (1793 Index elements at the tree root) and the Link elements at the root are moved into the Document by the executor. Check that the index reads after the bibliography in the right order.", "why": "The digest does not show where in the Document they will land.", "pages": [307, 321]},
+    {"what": "Han-only Chinese-character runs, such as the mantra on the dedication page and many terms in the text, notes and bibliography, are ambiguous between Japanese and Chinese.", "why": "Left to the executor's automatic deferral; a human must set the language.", "pages": [7, 17, 284, 323]},
+    {"what": "The text layer has quirks that suggest hyphenation or italic extraction problems (suspect-token rate 23.8 per 1000), for example in notes and bibliography entries such as \"O“nmyōji\" and \"Mak-\".", "why": "The text must not be changed here; a person should spot-check these pages.", "pages": [152, 262, 267, 270, 275, 285, 294, 318]},
+    {"what": "veraPDF reports 2 failed rules that are not listed with any work-order key, so they were not addressed.", "why": "pdfua_check.rules is empty, so there is no key or target to act on.", "pages": [1, 323]},
+    {"what": "Figure 3, Figure 4 and Figure 5 style frames (dev_fig_img paragraphs) and their captions were tied together by the captions key; check that each caption sits with the correct figure.", "why": "Some captions sit in Story containers at different depths.", "pages": [62, 66, 124, 142, 144, 152, 160, 218, 239]}
+  ],
+  "notes_for_reviewer": "The publisher's rolemap mapped nearly every title style to H1. I made the half-title-page book title (ident_tit, PDF 5 (printed iii)) the only H1. Part, chapter, front-matter and back-matter titles are H2. Part and chapter number labels are merged into their titles, and the Chapter 7 subtitle is merged into its title. Section heads are H3 and subsections are H4. The notes chapter heads (nfniv1_int) and the bibliography heads are H3. Existing alt text on the content figures was kept. The 16 decorative flourishes near chapter titles are artifacted. The cover figure at the root had a NUL character in its alt text, which I replaced, and I moved the cover to the start of the Document. The Notes running heads are artifacted on PDF 254–282 (printed 238–266)."
+}
+```

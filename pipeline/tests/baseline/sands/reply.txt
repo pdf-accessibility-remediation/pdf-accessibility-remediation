@@ -1,0 +1,95 @@
+```json
+{
+  "schema": "workorder/0.1",
+  "sections": {
+    "toc_pages": [6, 7],
+    "index_from": 322
+  },
+  "artifacts": {
+    "elements": [
+      {"obj": "8704 0", "type": "Layout", "label": "decorative landscape engraving behind half-title text"},
+      {"obj": "8706 0", "type": "Layout", "label": "decorative landscape vignette on title page"},
+      {"obj": "8709 0", "type": "Layout", "label": "decorative landscape engraving behind Part I opener"},
+      {"obj": "12982 0", "type": "Layout", "label": "wave ornament"},
+      {"obj": "12723 0", "type": "Layout", "label": "wave ornament"},
+      {"obj": "11761 0", "type": "Layout", "label": "wave ornament"},
+      {"obj": "11407 0", "type": "Layout", "label": "wave ornament"},
+      {"obj": "10956 0", "type": "Layout", "label": "wave ornament"},
+      {"obj": "10029 0", "type": "Layout", "label": "wave ornament"},
+      {"obj": "9674 0", "type": "Layout", "label": "wave ornament"}
+    ]
+  },
+  "document": {
+    "title": "Countless Sands: Medieval Buddhists and Their Environments",
+    "lang": "en-US",
+    "display_doc_title": true
+  },
+  "rolemap": {
+    "part_n": "H2",
+    "part_tit": "H2",
+    "chap_n": "H2",
+    "chap_tit": "H2",
+    "chap_stit": "H2",
+    "h1": "H3",
+    "BMT_notes": "H3",
+    "BMT_works_cited": "H3",
+    "bibh1": "H4",
+    "FMT_BMT": "H2"
+  },
+  "merges": [
+    {"style": "part_n", "direction": "next", "with": ["part_tit"]},
+    {"style": "chap_n", "direction": "next", "with": ["chap_tit"]},
+    {"style": "chap_stit", "direction": "prev", "with": ["chap_tit"]}
+  ],
+  "retype": [
+    {"obj": "13058 0", "type": "H1", "why": "book title on the title page; the only H1"},
+    {"obj": "14048 0", "type": "P", "why": "empty element styled as a chapter title"}
+  ],
+  "alt": [
+    {"obj": "8707 0", "alt": "University of Hawai‘i Press logo"},
+    {"obj": "8699 0", "alt": "Cover of Countless Sands: Medieval Buddhists and Their Environments, edited by Jeffrey Moser and Jason Protass. A tinted carbon-print photograph shows a pagoda-topped pavilion on a small island beside a large tree, reflected in still water. The sky fades from blue at the top to orange-yellow at the bottom."},
+    {"obj": "8716 0", "alt": "Close-up of the boxed section of the Nāgārjunakoṇḍa slab: a small relief of a stupa on a base, flanked by two figures who venerate it"},
+    {"obj": "8718 0", "alt": "Low-relief Amarāvatī drum slab showing a domed stupa. A white box marks a section beside the circumambulatory path where a partial image of another stupa appears"},
+    {"obj": "8719 0", "alt": "Close-up of the boxed section of the Amarāvatī slab: a partial relief of another stupa image set into the circumambulatory path"},
+    {"obj": "10276 0", "alt": "Photograph (a) of the exterior of Cave 29 (Dumar Lena): a pillared porch cut into a rock face. The photo is rotated sideways on the page."},
+    {"obj": "10275 0", "alt": "Photograph (c) of a steep rock face at Cave 29 with a cave opening and a stepped path running along it. The photo is rotated sideways on the page."},
+    {"obj": "10280 0", "alt": "Photograph (b) looking down a narrow rock-cut passage with stepped ledges at Cave 29"},
+    {"obj": "10281 0", "alt": "Plan of Cave 29 (Dumar Lena) with a compass rose. It shows a long pillared hall with a central shrine and the entrances marked a, b and c."},
+    {"obj": "10271 0", "alt": "Photograph (d) of a rock-cut relief panel of deities between pillars inside Cave 29. The photo is rotated sideways on the page."},
+    {"obj": "10268 0", "alt": "Photograph (f) of a rock-cut relief panel with seated figures between pillars inside Cave 29. The photo is rotated sideways on the page."},
+    {"obj": "10263 0", "alt": "Photograph (a) of a rock-cut relief of Śiva and attendant figures in a panel inside Cave 29, with a visitor at lower right. The photo is rotated sideways on the page."},
+    {"obj": "10260 0", "alt": "Photograph (c) of a weathered rock-cut relief with rows of small figures inside Cave 29"},
+    {"obj": "10252 0", "alt": "Plan of Cave 29 (Dumar Lena) with a compass rose, rotated sideways. It marks the locations a–f of the sculpture panels around the central pillared hall."},
+    {"obj": "10257 0", "alt": "Photograph (b) of a rock-cut relief of a dancing Śiva with attendants in a panel inside Cave 29. The photo is rotated sideways on the page."}
+  ],
+  "captions": {"style": "Caption", "wrapper_style": "Sect"},
+  "toc": {"item_styles": ["Content_FMT", "Content_num_part", "Content_Chap", "Content_auteur"], "pages": [6, 7]},
+  "adopt_orphans": [
+    {"label": "chapter 1 notes and works cited", "pages": [20, 20]},
+    {"label": "chapter 2 notes", "pages": [54, 54]},
+    {"label": "chapter 3 notes", "pages": [78, 78]},
+    {"label": "chapter 4 notes", "pages": [95, 95]},
+    {"label": "chapter 5 notes", "pages": [120, 120]},
+    {"label": "chapter 6 notes", "pages": [138, 138]},
+    {"label": "chapter 7 notes", "pages": [169, 169]},
+    {"label": "chapter 8 notes", "pages": [200, 200]},
+    {"label": "chapter 9 notes and works cited", "pages": [225, 225]},
+    {"label": "chapter 10 works cited", "pages": [248, 248]},
+    {"label": "chapter 11 notes", "pages": [267, 267]},
+    {"label": "chapter 12 notes", "pages": [288, 288]},
+    {"label": "chapter 13 notes", "pages": [314, 314]}
+  ],
+  "notes": {"styles": ["Endnote_text", "Endnote_text_first"], "id_prefix": "note-"},
+  "language": {"kana_runs": "ja"},
+  "remove_empty_containers": true,
+  "deferrals": [
+    {"what": "Remaining veraPDF 7.1-3 failures (content neither marked as artifact nor tagged)", "why": "The failures are reported on content streams (examples on PDF 10, 12 and 20), not on specific tags, and the digest shows no untagged text runs there. The orphan runs on the notes pages are handled by adopt_orphans. What remains is probably vector decoration or page-level drawing, and a person should check it in Acrobat.", "pages": [10, 12, 20]},
+    {"what": "Reading order of adopted orphan notes and bibliography text", "why": "These runs were in no tag and are appended in drawing order after the last block on each page. Their order, and any note numbers that were split off, need a check.", "pages": [20, 54, 78, 95, 120, 138, 169, 200, 225, 248, 267, 288, 314]},
+    {"what": "Cover figure is read last", "why": "The cover Article (PDF 1) is the last child of the Document, so a screen reader meets it at the end. It is not at the tree root, so move_to_document_start cannot move it. A person should move it to the front.", "pages": [1]},
+    {"what": "Han-only CJK runs (about 230) in the Glossary and in the endnotes", "why": "Japanese or Chinese cannot be told apart from Han characters alone, so these are left to a human or to the executor's automatic deferral.", "pages": [59, 138, 197, 198, 316, 317, 318, 319]},
+    {"what": "OCR text quality", "why": "The file was run through Paper Capture and shows about 16 suspect tokens per 1000. The text layer looks worst on PDF 152, 266, 315, 84, 290, 123, 136 and 4, and there are stray punctuation fragments in the notes. The text was not changed.", "pages": [4, 84, 123, 136, 152, 266, 290, 315]},
+    {"what": "Glossary and index structure", "why": "The glossary (224 paragraphs) and the index (1,543 Index elements at the tree root) were left as they are. They need a spot check after the executor moves them into the Document.", "pages": [316, 319, 322, 329]}
+  ],
+  "notes_for_reviewer": "Heading plan: the book title on the title page (PDF 4) is the only H1. Part titles, chapter titles and front/back-matter titles (Contents, Acknowledgments, Glossary, Contributors, Index) are H2. Section heads (style h1) and NOTES are H3. The bibliography subheads (Abbreviations, Secondary) are H4. Part and chapter labels, and chapter subtitles, are merged into their titles. I set no actual_text on the merged headings, since the printed text of each chapter title and subtitle could not be checked from the digest. The decorative landscape engravings on PDF 2, 4 and 10 and the seven small wave ornaments are artifacts. Their titles are separate tagged text. The cover alt text had NUL characters and was rewritten. The OCR word forms (Shiina, Kii, xiii–xxi, Chiiki) all match the scan, so no ocr_words were returned. No lists or tables were found."
+}
+```

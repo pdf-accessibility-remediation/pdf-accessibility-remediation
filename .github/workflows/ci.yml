@@ -66,3 +66,14 @@ jobs:
       - name: Intake classification cases (synthetic PDFs, plan only)
         working-directory: pipeline
         run: python tools/intake_cases.py "$RUNNER_TEMP/intake-cases"
+
+      - name: Set up Java (OpenDataLoader auto-tagging)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Full intake on the placeholder-tree cases (auto-tagging)
+        continue-on-error: true                 # new on Linux CI: make it blocking once it has passed a few times
+        working-directory: pipeline
+        run: python tools/intake_cases.py "$RUNNER_TEMP/intake-full" --full

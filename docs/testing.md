@@ -9,8 +9,8 @@ There are three kinds of tests. None of them calls the model, and none costs any
 
 | Test | What it checks | Run it (from `pipeline/`) | Time |
 |---|---|---|---|
-| **Unit tests** | That each small rule in `lib/` does its job, using made-up inputs (no PDF) | `python -m pytest tests -q` | about 1 second |
-| **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py` | about 6 minutes (`--books godzone` about 1) |
+| **Unit tests** | That each small rule in `lib/` does its job, using made-up inputs; plus a few one-page synthetic PDFs through the real pdfplumber, `audit.py` and `apply.py` | `python -m pytest tests -q` | a few seconds |
+| **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py` | about 15 minutes for all seven books (`--books godzone` about 1) |
 | **Intake cases** | That intake sorts pages and tag trees correctly, using small synthetic PDFs | `python3 tools/intake_cases.py <out_dir>` | under a minute |
 
 Install the test tools once, in the same virtual environment: `pip install -r requirements-dev.txt` (it includes `requirements.txt` and adds pytest).
@@ -24,17 +24,19 @@ The tests in `pipeline/tests/` call one function at a time with hand-made inputs
 - `test_langtag.py`: language tags that are tidied (`en_US` → `en-US`), and values that are not tags (`english`).
 - `test_workorder_check.py`: one test for each reason the work-order checks drop an item. That includes unknown keys and objects, tag types that are not allowed, bad regexes and page ranges, table header counts, alt text for an image that was not sent, and language tags. It also covers the [OCR word](ocr-words.md) readings, including the one-third limit and the quarter cost of OCR junk characters.
 - `test_sections.py`: `review.md` turned into sections and back gives the same lines, and the WCAG-only view leaves out the PDF/UA-only parts.
+- `test_synthetic.py`: one-page PDFs built by the test, for two rules no tagged sample reaches. One page sets its words with no space characters, as TeX does (moves between words, or kerning inside one `TJ`); read through pdfplumber, the words must come out with spaces between them. One page has a tagged one-item list made from a paragraph's first word ("as …") next to a real list ("1.", "2."). `audit.py` must mark only the first for the rule, and `apply.py` with an empty work order must turn it into a paragraph, or keep it when `keep_lists` names it. These run the real scripts with `VERAPDF=off`.
 
 The expected values come from the module docstrings and from [Work order](work-order.md) and [OCR words](ocr-words.md), not from what the code happens to return. A failing unit test means a rule changed. If the change was intended, update the test's expected value in the same PR.
 
 ## Regression test
 
-`tools/regression.py` runs the books in `pipeline/tests/baseline/` (godzone, clans and translation) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved model reply is used instead of an API call. Each book's folder holds:
+`tools/regression.py` runs the books in `pipeline/tests/baseline/` (godzone, clans, translation, cadaverous, sands, buddhist and ilokano) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved model reply is used instead of an API call. Each book's folder holds:
 
 | File | What it is |
 |---|---|
 | `reply.txt`, `reply.txt.meta.json` | The saved model reply, with the model and temperature that produced it. This is the run's fixed input |
 | `review.md` | The report the last accepted run wrote |
+| `_intake/` | Untagged books only (ilokano): `intake.json` and `intake.pdf`, the intake result the reply was written for. It is reused (`INTAKE_REUSE=1`, as `FROM=` batches do) instead of rerunning OCR and auto-tagging, whose output varies with the Tesseract and OpenDataLoader versions. A note is printed when `requirements.txt` pins another OpenDataLoader than the one that made it; re-seed then |
 | `expect.json` | A fingerprint of that run's `record.json`: veraPDF rules before and after, what `apply.py` did, what the work-order checks dropped, the tag counts, headings and figures `verify.py` found |
 
 Each run is compared with the baseline in three ways:
@@ -51,9 +53,20 @@ Each run is compared with the baseline in three ways:
 
 The test prints one line per book (identical, or the fields and lines that differ) and exits with 1 when any book differs. It needs veraPDF (see [Verification with veraPDF](verapdf.md)). Run folders go to a temporary folder, which is kept when something differs; `--out DIR` puts them in `DIR` instead.
 
-`meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code. CI runs every book on both Python 3.13 and 3.14, the two versions [Setup](setup.md) allows, so a difference between them shows up there. Run one book with `--books translation`; `--update --books X` adds X to the baseline and keeps the others.
+`meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code. CI runs godzone, clans, translation and buddhist on both Python 3.13 and 3.14, the two versions [Setup](setup.md) allows. buddhist is the one where the version could matter: its OCR word readings are checked with Python's Unicode tables (Unicode 15.1 in 3.13, 16.0 in 3.14). The other books run on 3.14 only. Run one book with `--books translation`; `--update --books X` adds X to the baseline and keeps the others.
 
-**What it covers, and what it does not.** godzone and clans cover alt text, artifacts, document settings, flattened lists and tables, retyped headings, the role map and sections. translation adds tables, notes, captions, the table of contents, whole-page figures, merged headings, ActualText, empty containers and untagged lines and borders. Not covered: `language`, `lists`, `fix_figure_order`, `adopt_orphans` and `ocr_words` (the saved replies of these books don't use them); the one-item list rule, which only fires on books OpenDataLoader tagged (untagged input), and the word-gap rule (these books' text has real spaces), both covered only by the unit tests; and the whole untagged path (OCR, auto-tagging) and CJK text. To check all nine tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
+**What it covers, and what it does not.**
+
+| Book | Adds |
+|---|---|
+| godzone, clans | alt text, artifacts, document settings, flattened lists and tables, retyped headings, the role map, sections |
+| translation | tables, notes, captions, the table of contents, whole-page figures, merged headings, ActualText, empty containers, untagged lines and borders |
+| cadaverous | `language`, `lists`, `fix_figure_order` |
+| sands | `adopt_orphans` |
+| buddhist | `ocr_words` (its OCR text layer) |
+| ilokano | an untagged book: an OpenDataLoader tag tree, so the one-item list rule (15 lists) and word breaks that rely on gaps |
+
+Not covered: `move_section` (no saved reply uses it), intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), OCR on a real book, and CJK text. To check all nine tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
 
 ```bash
 FROM=all9-v8 AUTO=1 bash batch_api.sh before ../samples/group1 ../samples/group2 ../samples/group3most   # on main
@@ -86,8 +99,8 @@ Make one update per PR, with its own reason. Don't fold several unrelated change
 
 **After a prompt change:** the saved replies were written for one prompt version (`meta.json` → `prompt`). When `decide.py` uses a new prompt, the test stops and asks for a re-seed instead of showing a diff. To re-seed:
 
-1. Run the baseline books with the new prompt. This is a paid call, about $0.60 for the three; ask first.
-2. Run `python3 tools/regression.py --update --seed ../runs/<batch folder> --reason "prompt vN"`, where the batch folder is the one holding `<book>/record.json`.
+1. Run the baseline books with the new prompt. This is a paid call, about $1.70 for the seven; ask first. ilokano is a single run (`bash run_api.sh ../samples/untagged/ilokano.pdf ilokano <label>`), the others a batch.
+2. Run `python3 tools/regression.py --update --seed ../runs/batches/<label> --reason "prompt vN"` for the tagged books, and `--update --books ilokano --seed ../runs/ilokano/<label>` for ilokano (a single run folder; its `_intake/` is copied too).
 
 `--seed` copies each book's `raw_reply` from its `record.json`.
 
@@ -101,7 +114,7 @@ Make one update per PR, with its own reason. Don't fold several unrelated change
 - placeholder and real tag trees
 - Japanese, vertical Japanese and Korean scans
 
-It prints PASS, FAIL or SKIP per case, a summary line, and exits with 1 on any FAIL.
+It prints PASS, FAIL or SKIP per case, a summary line, and exits with 1 on any FAIL. `--full` also runs the whole intake on the two placeholder-tree cases: the old tree must be set aside and OpenDataLoader must make a real one (needs Java 11 or later; no OCR). This is what tests intake itself, since the regression test reuses ilokano's frozen intake result.
 
 The Japanese and Korean pages need a CJK font to draw their text: Arial Unicode on macOS, or Noto Sans CJK on Linux (`sudo apt install fonts-noto-cjk`). `INTAKE_CASES_FONT=/path/to/font` overrides both. Without such a font, the CJK cases are SKIPped, and the summary line counts them separately, so a skip is never mistaken for a pass. These cases also need Tesseract's `osd`, `jpn`, `kor`, `chi_sim` and `chi_tra` packs, each with its `_vert` pack.
 
@@ -112,7 +125,7 @@ The Japanese and Korean pages need a CJK font to draw their text: Arial Unicode 
 | New rule or check in `lib/` | Add tests | Maybe update the baseline | — |
 | Changes the output for a baseline book | — | Update the baseline (free) | — |
 | New prompt version | — | Re-seed (a small paid run) | — |
-| Intake change | — | — | Update or add cases |
+| Intake change, or a new OpenDataLoader version | — | Re-seed ilokano (a small paid run), since its frozen intake no longer matches | Update or add cases |
 | Refactor with no change in behaviour | Must pass unchanged | Must pass unchanged | Must pass unchanged |
 
 ## In CI
@@ -120,7 +133,7 @@ The Japanese and Korean pages need a CJK font to draw their text: Arial Unicode 
 - **`ci.yml`, on every push and PR:**
   - compile check, shell syntax and `pip-audit`, as before
   - the unit tests
-  - a second job that installs Tesseract with its CJK packs and `fonts-noto-cjk`, then runs the intake cases
+  - a second job that installs Tesseract with its CJK packs and `fonts-noto-cjk`, then runs the intake cases, then `--full` with Java 17 (not yet blocking: `continue-on-error` until it has passed a few times on Linux CI)
 - **`pdf-validation.yml`, when `pipeline/`, `prompts/` or `samples/` change:**
   - the existing veraPDF audit of one sample
-  - a `regression` job per book and Python version (godzone, clans, translation × 3.13, 3.14; in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)
+  - a `regression` job per book and Python version (all seven books on 3.14; godzone, clans, translation and buddhist also on 3.13: 11 jobs in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)
