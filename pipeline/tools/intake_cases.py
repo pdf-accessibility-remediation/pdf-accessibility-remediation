@@ -47,11 +47,11 @@ def image_xobject(pdf, img):
                           Filter=pikepdf.Name.FlateDecode)
 
 
-def new_page(pdf, content, images=(), font=False, size=None):
+def new_page(pdf, content, images=(), font=False, size=None, font_name='Helvetica'):
     res = pikepdf.Dictionary()
     if images: res.XObject = pikepdf.Dictionary({f'/Im{i}': image_xobject(pdf, im) for i, im in enumerate(images)})
     if font: res.Font = pikepdf.Dictionary(F1=pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1,
-                                                                BaseFont=pikepdf.Name.Helvetica, Encoding=pikepdf.Name.WinAnsiEncoding))
+                                                                BaseFont=pikepdf.Name('/' + font_name), Encoding=pikepdf.Name.WinAnsiEncoding))
     page = pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, *(size or (W_IN * 72, H_IN * 72))], Resources=res,
                               Contents=pikepdf.Stream(pdf, content.encode('latin-1')))
     pdf.pages.append(pikepdf.Page(page))
@@ -110,8 +110,14 @@ def build(out):
     pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + layer_lines(RO_PLAIN), [text_image(RO_PLAIN)], font=True); save('ocr-layer-matching', pdf)
     def lines_at(x, text, n=24):                    # born-digital lines on a landscape page (11 x 8.5 in)
         return ''.join(f'BT /F1 11 Tf {x} {560 - k * 20} Td ({text} {k + 1}) Tj ET\n' for k in range(n))
-    pdf = pikepdf.new(); new_page(pdf, lines_at(50, 'Left page, line') + lines_at(450, 'Right page, line'), font=True, size=(792, 612))
-    save('spread-two-up', pdf)
+    def blocks(x, side):                             # three blocks per half, the gaps between them wider than the gutter,
+        out = ''                                     #   so the tagger's xycut cuts across the page first and interleaves
+        for b, top in enumerate((580, 340, 100)):
+            out += ''.join(f'BT /F1 10 Tf {x} {top - k * 14} Td ({side} page, block {b + 1}, line {k + 1}: some words to fill the half) Tj ET\n' for k in range(4))
+        return out
+    pdf = pikepdf.new(); new_page(pdf, blocks(36, 'Left') + blocks(340, 'Right'), font=True, size=(792, 612)); save('spread-two-up', pdf)
+    pdf = pikepdf.new(); new_page(pdf, blocks(36, 'Left') + blocks(340, 'Right'), font=True, size=(792, 612), font_name='HiddenVertOCR')
+    save('spread-two-up-vertical', pdf)            # a 'Vert' font, as Acrobat's vertical OCR has: read right half first
     pdf = pikepdf.new(); new_page(pdf, lines_at(50, 'One wide column of text runs across the whole width of this landscape page, line'),
                                   font=True, size=(792, 612)); save('landscape-one-column', pdf)
     ja_img, en_img2 = text_image(JA), text_image(EN)
@@ -152,6 +158,8 @@ CASES = [  # (case, pdf, OCR_LANG, what is expected, test on intake.json)
     ('two printed pages side by side → spread CHECK', 'spread-two-up', None, 'spreads [1], left half first, CHECK',
      lambda j: (j.get('spreads') or {}).get('pages') == [1] and j['spreads'].get('order') == 'left half first'
      and any(f['what'] == 'Two printed pages per PDF page' for f in j['flags'])),
+    ('two printed pages, vertical font → spread, right half first', 'spread-two-up-vertical', None, 'spreads [1], right half first',
+     lambda j: (j.get('spreads') or {}).get('pages') == [1] and j['spreads'].get('order', '').startswith('right half first')),
     ('one wide column on a landscape page → not a spread', 'landscape-one-column', None, 'no spreads',
      lambda j: not j.get('spreads')),
     ('Japanese scan, OCR_LANG unset → stops', 'japanese-scan', None, 'stopped: CJK text, set OCR_LANG',
@@ -192,12 +200,27 @@ def main():
         bad += not ok
         print(f'{"PASS" if ok else "FAIL"}  full intake on empty-text-over-scan: empty text object removed, OCR text added, '
               f'auto-tagged (got: {j["status"]}: {j.get("summary")})', flush=True)
-        j = run_intake(made['spread-two-up'], os.path.join(out, 'full', 'spread-two-up'), None, plan=False)
-        r = ((j['checks'].get('spreads_reordered') or {}).get('pages') or {}).get('1') or {}
-        ok = j['status'] == 'done' and r.get('switches_after', 9) <= 1 and not j['checks']['spreads_reordered'].get('pixels_differ')
-        bad += not ok
-        print(f'{"PASS" if ok else "FAIL"}  full intake on spread-two-up: tag tree reads the left half, then the right '
-              f'(got: {j["status"]}: switches {r.get("switches_before")} → {r.get("switches_after")})', flush=True)
+        for case, first, before in (('spread-two-up', 'Left', 3), ('spread-two-up-vertical', 'Right', 1)):   # left-first: the tagger
+            j = run_intake(made[case], os.path.join(out, 'full', case), None, plan=False)   #   interleaves the halves; right-first: it reads
+                                                                                          #   left then right, the reorder must turn it round
+            r = ((j['checks'].get('spreads_reordered') or {}).get('pages') or {}).get('1') or {}
+            with pikepdf.open(os.path.join(out, 'full', case, 'intake.pdf')) as p:
+                import pdfplumber, intake as I
+                st = p.Root.StructTreeRoot; doc_el = st.K[0] if isinstance(st.K, pikepdf.Array) else st.K
+                with pdfplumber.open(os.path.join(out, 'full', case, 'intake.pdf')) as pl:
+                    by = {}
+                    for c in pl.pages[0].chars:
+                        if c.get('mcid') is not None: by.setdefault(c['mcid'], []).append(c['text'])
+                def text_of(e):
+                    k = e.get('/K'); ks = list(k) if isinstance(k, pikepdf.Array) else [k]
+                    return ''.join(''.join(by.get(int(x), [])) if isinstance(x, int) else text_of(x) if isinstance(x, pikepdf.Dictionary) else '' for x in ks)
+                first_text = next((t for t in (text_of(e) for e in doc_el.K) if t.strip()), '')
+            ok = j['status'] == 'done' and r.get('switches_before', 0) >= before and r.get('switches_after', 9) <= 1 and r.get('reordered') \
+                and first_text.startswith(first) and not j['checks']['spreads_reordered'].get('pixels_differ')
+            bad += not ok
+            print(f'{"PASS" if ok else "FAIL"}  full intake on {case}: '
+                  + ('the tagger interleaves the halves, the reorder reads the left half first' if first == 'Left' else 'the reorder puts the right half first')
+                  + f' (got: {j["status"]}: switches {r.get("switches_before")} → {r.get("switches_after")}, first element "{first_text[:30]}")', flush=True)
         for case in ('tree-document-part', 'tree-figures-only'):
             j = run_intake(made[case], os.path.join(out, 'full', case), None, plan=False)
             ok = j['status'] == 'done' and not any((j['checks'].get('placeholder_tree_removed') or {}).get(k) for k in ('pixels_differ', 'text_differs'))
