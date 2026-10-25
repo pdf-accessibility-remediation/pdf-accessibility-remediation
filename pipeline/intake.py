@@ -210,10 +210,33 @@ def page_inventory(page, text_drawn=True):
             'image_cover': round(total, 3), 'math_fonts': any(MATH_FONT.search(f) for f in out['fonts'])}
 def empty_text_pages(path, inv):
     """Pages triaged as text (or an OCR layer) whose text operators draw no character: PDFium finds nothing but white
-    space and invisible marks on them (e.g. an empty text object over a scan). Checklist 1.2, 2.1."""
+    space and invisible marks on them (e.g. an empty text object over a scan), and neither does pdfplumber (PDFium misses
+    most of Acrobat's hidden vertical OCR text, Identity-V: such a page is not empty). Checklist 1.2, 2.1."""
     doc = pdfium.PdfDocument(path)
-    try: return [i for i, x in enumerate(inv, 1) if x['kind'] in ('text', 'ocr-layer') and not INVISIBLE.sub('', doc[i - 1].get_textpage().get_text_range())]
+    try: cand = [i for i, x in enumerate(inv, 1) if x['kind'] in ('text', 'ocr-layer') and not INVISIBLE.sub('', doc[i - 1].get_textpage().get_text_range())]
     finally: doc.close()
+    if not cand: return []
+    from lib import plumb_fix  # noqa: F401  (patches pdfplumber; import before it)
+    import pdfplumber
+    with pdfplumber.open(path) as pl:
+        return [i for i in cand if not any(c['text'].strip() for c in pl.pages[i - 1].chars)]
+def strip_empty_text(path, pages):
+    """On intake's own working copy only: remove the text objects (BT … ET) from pages whose text draws no character, so
+    OCRmyPDF's --mode skip, which passes over any page with a text object, OCRs them. Returns the pages changed and the
+    pages that still have text operators (inside form XObjects: left as they are). The caller checks nothing visible moved."""
+    done, left = [], []
+    with pikepdf.open(path, allow_overwriting_input=True) as p:
+        for n in pages:
+            pg = p.pages[n - 1]; ops = list(pikepdf.parse_content_stream(pg)); keep, inside = [], False
+            for a, o in ops:
+                if str(o) == 'BT': inside = True; continue
+                if str(o) == 'ET': inside = False; continue
+                if not inside: keep.append((a, o))
+            if len(keep) != len(ops):
+                pg.obj.Contents = p.make_stream(pikepdf.unparse_content_stream(keep)); done.append(n)
+            if page_inventory(pg)['visible_ops'] or page_inventory(pg)['invisible_ops']: left.append(n)
+        p.save(path)
+    return done, left
 
 # ------------------------------------------------------------------ the existing tag tree (checklist 10.5)
 def _page_index(pdf):
@@ -1162,6 +1185,15 @@ def main():
             rec['checks']['placeholder_tree_removed'] = {'pixels_differ': cmp['pixels'], 'text_differs': cmp['text'], 'page_count': cmp['page_count']}
             if cmp['page_count'] or cmp['pixels'] or cmp['text']:
                 return stop('failed', f'removing the placeholder tag tree changed pages (appearance {cmp["pixels"][:8]}, text {cmp["text"][:8]}): stopped', 1)
+        strip = [p for p in (rec['triage'].get('empty_text_pages') or []) if p in plan['ocr_pages']] if plan['ocr_mode'] == 'skip' else []
+        if strip:                                        # OCRmyPDF skips a page with any text object: drop the empty ones first
+            done, left = strip_empty_text(cur, strip); cmp = compare(SRC, cur)
+            rec['checks']['empty_text_removed'] = {'pages': done, 'left_in_forms': left, 'pixels_differ': cmp['pixels'],
+                                                   'text_differs': cmp['text'], 'page_count': cmp['page_count']}
+            if cmp['page_count'] or cmp['pixels'] or cmp['text']:
+                return stop('failed', f'removing empty text objects changed pages (appearance {cmp["pixels"][:8]}, text {cmp["text"][:8]}): stopped', 1)
+            if left: flag('Empty text objects left', 'on these pages the empty text objects sit inside form XObjects and were left as '
+                          'they are, so OCRmyPDF may skip the pages: a person checks that they got OCR text', left)
         # ---- 3. OCR
         if plan['ocr_mode']:
             out = os.path.join(tmp, 'ocr.pdf')

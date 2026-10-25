@@ -5,7 +5,8 @@ intake.py does with each (no book content; nothing is sent anywhere; no model).
 
 Builds each case in <out_dir>/<case>.pdf, runs `intake.py --plan-only` on it (with the case's OCR_LANG), and compares
 intake.json with what the case expects: PASS or FAIL per case, exit 1 on any FAIL. --full also runs the whole intake
-(OCR + auto-tag, local) on the two placeholder-tree cases, to check that the old tree is set aside and a real one made.
+(OCR + auto-tag, local) on the empty-text scan (the empty text object is removed so OCR text is added) and on the two
+placeholder-tree cases (the old tree is set aside and a real one made).
 Japanese and Korean pages are drawn with a system font (Arial Unicode); text is the test's own.
 """
 import json, os, subprocess, sys, zlib
@@ -153,6 +154,12 @@ def main():
         ok = test(j); bad += not ok
         print(f'{"PASS" if ok else "FAIL"}  {what}  (expected: {expect}; got: {j["status"]}: {j.get("summary")})', flush=True)
     if '--full' in sys.argv:
+        j = run_intake(made['empty-text-over-scan'], os.path.join(out, 'full', 'empty-text-over-scan'), None, plan=False)
+        ok = j['status'] == 'done' and (j.get('ocr') or {}).get('pages_with_ocr_text') == [1] \
+            and (j['checks'].get('empty_text_removed') or {}).get('pages') == [1]
+        bad += not ok
+        print(f'{"PASS" if ok else "FAIL"}  full intake on empty-text-over-scan: empty text object removed, OCR text added, '
+              f'auto-tagged (got: {j["status"]}: {j.get("summary")})', flush=True)
         for case in ('tree-document-part', 'tree-figures-only'):
             j = run_intake(made[case], os.path.join(out, 'full', case), None, plan=False)
             ok = j['status'] == 'done' and not any((j['checks'].get('placeholder_tree_removed') or {}).get(k) for k in ('pixels_differ', 'text_differs'))
