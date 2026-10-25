@@ -2,9 +2,11 @@
 
     python3 scan.py <folder> <out_dir>
 
-For each PDF (searched recursively): tagged or not, producer, page triage (text / image only / blank), and the text-layer
-checks intake.py runs on every text page: private-use characters (3.6), text outside the visible page area (CropBox),
-and word breaks that are only gaps between letters (3.4), with narrow gaps counted separately. Writes
+For each PDF (searched recursively): tagged, a placeholder tag tree (no text structure: intake treats it as untagged) or
+untagged, MarkInfo, producer, page triage (text / image only / blank; a page whose text draws no character counts by
+its images), and the text-layer checks intake.py runs on every text page: private-use characters (3.6), text outside
+the visible page area (CropBox), and word breaks that are only gaps between letters (3.4), with narrow gaps counted
+separately. Writes
 <out_dir>/books/<name>.json per book and <out_dir>/summary.md. A book that cannot be opened is listed with the reason.
 """
 import sys, os, json, time, collections, datetime
@@ -20,12 +22,15 @@ def scan(path):
     except pikepdf.PasswordError: r['error'] = 'needs a password'; return r
     except Exception as e: r['error'] = f'could not be opened ({str(e)[:100]})'; return r
     with pdf:
-        r['pages'] = len(pdf.pages); r['tagged'] = I.tagged(pdf)
+        ts, ti = I.tag_status(pdf)                   # a placeholder tree (no text structure) counts as untagged, as in intake
+        r['pages'] = len(pdf.pages); r['tagged'] = ts == 'tagged'; r['tag_tree'] = ts; r['markinfo'] = ti['markinfo']
         r['pdf_version'] = support.version(pdf); r['unsupported'] = support.unsupported(pdf)     # PDF 2.0: intake stops it
         info = pdf.docinfo if '/Info' in pdf.trailer else {}
         r['producer'] = str(info.get('/Producer', '')).strip() or None
         r['creator'] = str(info.get('/Creator', '')).strip() or None
         inv = [I.page_inventory(pg) for pg in pdf.pages]
+        r['empty_text_pages'] = I.empty_text_pages(path, inv)
+        for i in r['empty_text_pages']: inv[i - 1] = I.page_inventory(pdf.pages[i - 1], text_drawn=False)
     kinds = collections.defaultdict(list)
     for i, x in enumerate(inv, 1): kinds[x['kind']].append(i)
     r['triage'] = {k: len(v) for k, v in kinds.items()}
@@ -66,7 +71,10 @@ def main():
          f'they average {I.NARROW_BOOK_RATE} or more per text page. Total time {time.time() - t0:.0f} s.', '',
          '## Totals', '',
          f'- Opened: {len(ok)} of {len(files)}' + (f' (not opened: {", ".join(r["file"] + ": " + r["error"] for r in rows if "error" in r)})' if len(ok) < len(files) else ''),
-         f'- Already tagged: {sum(1 for r in ok if r["tagged"])}; untagged: {sum(1 for r in ok if not r["tagged"])}',
+         f'- Already tagged: {sum(1 for r in ok if r["tagged"])}; untagged: {sum(1 for r in ok if not r["tagged"])}, of which '
+         f'{sum(1 for r in ok if r.get("tag_tree") == "placeholder")} have a placeholder tag tree (no text structure: intake treats them as untagged)',
+         f'- Tagged, with MarkInfo missing or Marked false: {sum(1 for r in ok if r["tagged"] and r.get("markinfo") is not True)}',
+         f'- With pages whose text operators draw no character (triaged by their images): {sum(1 for r in ok if r.get("empty_text_pages"))}',
          f'- Not supported yet (PDF 2.0 or namespaced tags; the pipeline stops them at intake for a person): {sum(1 for r in ok if r.get("unsupported"))}',
          f'- With image-only pages (scans or picture pages): {sum(1 for r in ok if r["triage"].get("image-only"))}',
          f'- Private-use characters over {I.PUA_CHECK}: {sum(1 for r in ok if r["private_use"]["count"] > I.PUA_CHECK)} books',
@@ -88,7 +96,7 @@ def main():
         t, pu, op, wb = r['triage'], r['private_use'], r['outside_page_area'], r['word_breaks']
         top = f' ({pu["ranges"][0]["range"]}, {pu["ranges"][0]["what"]})' if pu['ranges'] else ''
         sup = 'yes' if not r.get('unsupported') else '**no: ' + ('PDF ' + r['pdf_version'] if r['unsupported'].startswith('PDF') else 'namespaced tags') + '**'
-        L.append(f'| {r["file"]} | {r["pages"]} | {sup} | {"yes" if r["tagged"] else "no"} | {esc(r["producer"])} | '
+        L.append(f'| {r["file"]} | {r["pages"]} | {sup} | {"yes" if r["tagged"] else ("placeholder tree" if r.get("tag_tree") == "placeholder" else "no")} | {esc(r["producer"])} | '
                  f'{t.get("text", 0) + t.get("ocr-layer", 0)} / {t.get("image-only", 0)} / {t.get("blank", 0)} | '
                  f'{pu["count"]}{top}' + (' **CHECK**' if pu['count'] > I.PUA_CHECK else '') + ' | '
                  + (f'{op["chars"]} characters on {op["pages"]} pages' if op['chars'] else 'none') + ' | '
