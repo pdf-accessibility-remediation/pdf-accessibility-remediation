@@ -321,8 +321,9 @@ L = [f'# Remediation review: {src.get("file") or "file name not recorded"}', '',
      f'{nc(src.get("pages"))} pages · run {run.get("started") or "start time not recorded"} · '
      + (f'model `{run["model"]}`' if run.get('model') else 'model not recorded') + ' · '
      + (f'prompt `{run["prompt_file"]}` ({run.get("prompt_sha256") or "hash not recorded"})' if run.get('prompt_file') else 'prompt not recorded') + ' · '
-     + (f'cost ${u["cost_usd"]}' if u.get('cost_usd') is not None else 'cost: call did not finish') + ' · '
-     + (f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None else 'tokens: call did not finish')
+     + (f'cost ${u["cost_usd"]}' if u.get('cost_usd') is not None else 'cost $0 (saved reply reused, no new call)' if run.get('response_from') else 'cost: call did not finish') + ' · '
+     + (f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None
+        else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: call did not finish')
      + (f' · plus ${cost_earlier:.3f} for {len(attempts)} earlier call(s) whose reply was cut off or unusable (total ${cost_this + cost_earlier:.3f})' if attempts else ''), '',
      *([f'Intake: {intake.get("summary")}' + (f' · tagged by OpenDataLoader {intake["tools"].get("opendataloader_pdf")}' if intake.get('status') == 'done' else '')
         + (' · the pipeline worked on `_intake/intake.pdf`; the original was not changed' if (intake.get('result') or {}).get('pdf') else ''), ''] if intake else []),

@@ -2,7 +2,8 @@
  "prompt": "workorder_v8.md",
  "books": [
   "godzone",
-  "clans"
+  "clans",
+  "translation"
  ],
  "python": "3.14"
 }
