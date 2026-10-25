@@ -21,6 +21,7 @@ It only runs after a complete run, so a failed run keeps its working files for d
 import sys, os, re, csv, json, shutil, datetime, collections
 from lib.sections import line, pdfua, nolink, excerpt, to_sections, render_md, VERSION as SECTIONS_VERSION
 from lib.glance import WCAG_NAMES
+from lib import glance as G0
 
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 KEEP = '--keep' in sys.argv
@@ -211,6 +212,14 @@ def intake_rows():
                              f'{"approved" if v.get("verdict") == "approved" else "not approved"} by {who}: {v.get("reason")}'))
             else: rows.append(('OCR text reviewed by a person', ok(False), f'machine OCR on {n} page{"s" if n != 1 else ""}: not yet reviewed '
                                '(checklist rule 2; record a verdict with review_ocr.py)'))
+    if not (o and o.get('pages_with_ocr_text')) and G0.ocr_layer_flagged(intake):   # the existing OCR layer needs the approval
+        v = (intake.get('review') or {}).get('ocr_text_approved')
+        if isinstance(v, dict):
+            who = f'{v.get("reviewer")} on {v.get("date")}' + (f' (pages {v["pages"]})' if v.get('pages') else '')
+            rows.append(('OCR text reviewed by a person', ok(v.get('verdict') == 'approved'),
+                         f'{"approved" if v.get("verdict") == "approved" else "not approved"} by {who}: {v.get("reason")}'))
+        else: rows.append(('OCR text reviewed by a person', ok(False), f'the existing OCR layer is {G0.ocr_layer_finding(intake)}: not yet '
+                           'reviewed (checklist rule 2; record a verdict with review_ocr.py)'))
     cov = (intake.get('checks') or {}).get('coverage') or {}
     rows.append(('Auto-tagging kept every page as it was', 'OK', f'appearance and text unchanged on all {intake["original"].get("pages")} pages'
                  + (' (OCR\'d pages: text added)' if o else '')))
