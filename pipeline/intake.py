@@ -76,6 +76,10 @@ NARROW_GAP = 0.19                          # a gap-only word break narrower than
 NARROW_BOOK_RATE = 10                      # narrow breaks per text page, averaged over the book: at or above, a CHECK; below, a note
 CJK_PROBE_LANGS = 'chi_tra+chi_sim+jpn+kor'  # before OCR, each planned page is read once with these Tesseract packs:
 CJK_PROBE_MIN, CJK_PROBE_CONF = 10, 60     #   10 or more CJK characters at 60% confidence or more = the page holds CJK text.
+PROBE_ALL_MAX, PROBE_SAMPLE = 12, 8        #   18-60 s a page on a newspaper scan: with more than 12 pages to OCR, the probe stops at
+                                           #   the first CJK page when OCR_LANG has no CJK pack (the book stops either way) and reads
+                                           #   8 spread pages when it has one (a full run then lists the CJK pages from the OCR text);
+                                           #   with no CJK found, every page is still read (a CJK glossary must not be missed)
                                            #   Calibrated: sojourners' glossary 47-229, every cover and Part opener 0-1
 JUNK_SHARE, JUNK_MIN_TOKENS = 0.05, 30     # after OCR: a page with 30+ tokens, 5% or more of them junk (symbols such as # @ (R),
                                            #   or capital clusters without vowels like "MBH"), is flagged. Calibrated: clean
@@ -1365,12 +1369,17 @@ def main():
                 flag('CJK check not run', f'none of the Tesseract packs {CJK_PROBE_LANGS} is installed: CJK text on the OCR pages '
                      'cannot be detected (brew install tesseract-lang)')
             else:
-                found = {}
-                for p in plan['ocr_pages']:
+                found = {}; cjk_lang = any(l in ocr_lang for l in ('chi', 'jpn', 'kor')); ps = plan['ocr_pages']
+                sample = sorted({ps[int(k * (len(ps) - 1) / (PROBE_SAMPLE - 1))] for k in range(PROBE_SAMPLE)})   # spread through the book
+                if len(ps) <= PROBE_ALL_MAX: mode, todo = 'all', ps
+                elif cjk_lang: mode, todo = 'sample', sample
+                else: mode, todo = 'until the first CJK page', sample + [p for p in ps if p not in sample]
+                checked = 0
+                for p in todo:
                     img = os.path.join(tmp, f'cjk{p}.png'); render(doc, p - 1, OCR_DPI, img)
-                    n = cjk_probe(img, '+'.join(have)); os.remove(img)
+                    n = cjk_probe(img, '+'.join(have)); os.remove(img); checked += 1
                     if n: found[p] = n
-                cjk_lang = any(l in ocr_lang for l in ('chi', 'jpn', 'kor'))
+                    if mode == 'until the first CJK page' and n >= CJK_PROBE_MIN: break
                 vhave = [l for l in VERT_PROBE_LANGS.split('+') if l in tv['tesseract_langs']]
                 vt = {}                                  # vertical packs on a few sample pages only: up to VERT_SAMPLE of the
                 weak = [p for p in plan['ocr_pages'] if CJK_PROBE_MIN // 2 <= found.get(p, 0) < CJK_PROBE_MIN]
@@ -1380,8 +1389,10 @@ def main():
                         vt[p] = cjk_probe(img, '+'.join(vhave)); os.remove(img)
                 weak_cjk = any(n >= CJK_PROBE_MIN for n in vt.values())   # one confirmed: every such page counts as CJK
                 cjk_pages = sorted(p for p in plan['ocr_pages'] if found.get(p, 0) >= CJK_PROBE_MIN or weak_cjk and p in weak)
-                rec['cjk_probe'] = {'langs': '+'.join(have), 'min_chars': CJK_PROBE_MIN, 'min_conf': CJK_PROBE_CONF,
+                rec['cjk_probe'] = {'langs': '+'.join(have), 'min_chars': CJK_PROBE_MIN, 'min_conf': CJK_PROBE_CONF, 'mode': mode,
+                                    'pages_checked': checked, 'pages_to_ocr': len(ps),
                                     'cjk_characters': {str(p): n for p, n in found.items()}, 'cjk_pages': cjk_pages}
+                part = f' ({checked} of {len(ps)} pages to OCR checked)' if checked < len(ps) else ''
                 vert = []
                 if cjk_pages and vhave and '_vert' not in ocr_lang:
                     for p in sorted([p for p in cjk_pages if p not in vt], key=lambda p: -found.get(p, 0))[:max(0, VERT_SAMPLE - len(vt))]:
@@ -1397,13 +1408,13 @@ def main():
                          'chi_tra_vert+chi_tra+eng') if vert else ''
                 if cjk_pages and not cjk_lang:
                     flag('OCR language needed', 'these pages to be OCR\'d hold Chinese, Japanese or Korean text, and the language is never '
-                         'guessed: set OCR_LANG (e.g. chi_tra+eng, chi_sim+eng, jpn+eng, kor+eng) and run again.' + vhint, cjk_pages)
-                    return stop('stopped', f'CJK text on pages to be OCR\'d ({", ".join(map(str, cjk_pages))}): set OCR_LANG and run again'
+                         f'guessed: set OCR_LANG (e.g. chi_tra+eng, chi_sim+eng, jpn+eng, kor+eng) and run again.{part}' + vhint, cjk_pages)
+                    return stop('stopped', f'CJK text on pages to be OCR\'d ({", ".join(map(str, cjk_pages))}{"; " + part.strip(" ()") if part else ""}): set OCR_LANG and run again'
                                 + (' (vertical text likely: add a _vert pack)' if vert else ''), 3)
                 if vert:
                     flag('Vertical text likely', f'OCR_LANG={ocr_lang} has no _vert pack, but these pages read better with one.' + vhint, vert)
-                if cjk_pages:
-                    flag('CJK OCR: needs a person', f'these pages hold CJK text, OCR\'d with OCR_LANG={ocr_lang}: CJK OCR is often wrong '
+                if cjk_pages and not (mode == 'sample' and not PLAN_ONLY):   # a full run with a sample: listed from the OCR text
+                    flag('CJK OCR: needs a person', f'these pages hold CJK text{part}, OCR\'d with OCR_LANG={ocr_lang}: CJK OCR is often wrong '
                          '(sojourners\' glossary: many entries junk) and multi-column CJK lists may be read across the columns; a person '
                          'checks the text and its reading order', cjk_pages)
         if rec.get('spreads'):                           # 6.1-6.4: the tag tree reads a spread half by half
@@ -1492,6 +1503,14 @@ def main():
                 n = sum(1 for ch in t if ch == '\ufffd' or 0xe000 <= ord(ch) <= 0xf8ff)
                 if n: bad[p_] = n
             junk = {p_: junk_stats(od[p_ - 1].get_textpage().get_text_range()) for p_ in ocr_pages}
+            cp = rec.get('cjk_probe') or {}
+            if cp.get('mode') == 'sample':               # the probe read a sample: the CJK pages come from the OCR text itself
+                cnt = {p_: sum(1 for ch in od[p_ - 1].get_textpage().get_text_range() if cjk_char(ch)) for p_ in ocr_pages}
+                cp['cjk_pages_from_ocr'] = sorted(p_ for p_, n in cnt.items() if n >= CJK_PROBE_MIN)
+                if cp['cjk_pages_from_ocr']:
+                    flag('CJK OCR: needs a person', f'these pages hold CJK text (from the OCR text), OCR\'d with OCR_LANG={ocr_lang}: CJK OCR '
+                         'is often wrong and multi-column CJK lists may be read across the columns; a person checks the text and its '
+                         'reading order', cp['cjk_pages_from_ocr'])
             od.close(); rec['ocr']['unmapped_characters'] = bad
             rec['ocr']['junk'] = {str(p_): j for p_, j in junk.items()}
             jp = sorted(p_ for p_, j in junk.items() if j['tokens'] >= JUNK_MIN_TOKENS and j['share'] >= JUNK_SHARE)

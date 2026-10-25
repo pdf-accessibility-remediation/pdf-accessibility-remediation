@@ -114,6 +114,13 @@ def build(out):
     save('spread-two-up', pdf)
     pdf = pikepdf.new(); new_page(pdf, lines_at(50, 'One wide column of text runs across the whole width of this landscape page, line'),
                                   font=True, size=(792, 612)); save('landscape-one-column', pdf)
+    ja_img, en_img2 = text_image(JA), text_image(EN)
+    pdf = pikepdf.new()
+    for _ in range(14): new_page(pdf, FULL_IMAGE, [ja_img])
+    save('japanese-scan-14', pdf)
+    pdf = pikepdf.new()
+    for k in range(14): new_page(pdf, FULL_IMAGE, [ja_img if k == 12 else en_img2])
+    save('english-scan-cjk-on-13', pdf)
     for name, txt, vert in (('japanese-scan', JA, False), ('japanese-vertical-scan', JA, True), ('korean-scan', KO, False)):
         pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE, [text_image(txt, vertical=vert)]); save(name, pdf)
     return made
@@ -153,6 +160,10 @@ CASES = [  # (case, pdf, OCR_LANG, what is expected, test on intake.json)
      lambda j: j['status'] == 'planned' and any(f['what'] == 'CJK OCR: needs a person' for f in j['flags'])),
     ('vertical Japanese scan, OCR_LANG unset → stops, suggests _vert', 'japanese-vertical-scan', None, 'stopped, vertical text likely',
      lambda j: j['status'] == 'stopped' and 'vertical' in j['summary']),
+    ('14-page Japanese scan, OCR_LANG unset → stops after the first CJK page', 'japanese-scan-14', None, 'stopped; 1 page checked',
+     lambda j: j['status'] == 'stopped' and (j.get('cjk_probe') or {}).get('pages_checked') == 1),
+    ('14-page English scan with CJK only on page 13 → still found', 'english-scan-cjk-on-13', None, 'stopped; CJK page [13]',
+     lambda j: j['status'] == 'stopped' and (j.get('cjk_probe') or {}).get('cjk_pages') == [13]),
     ('Korean scan, OCR_LANG unset → stops, no _vert hint', 'korean-scan', None, 'stopped, no vertical hint',
      lambda j: j['status'] == 'stopped' and 'set OCR_LANG' in j['summary'] and 'vertical' not in j['summary']),
 ]
