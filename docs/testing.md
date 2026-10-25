@@ -10,7 +10,7 @@ There are three kinds of tests. None of them calls the model, and none costs any
 | Test | What it checks | Run it (from `pipeline/`) | Time |
 |---|---|---|---|
 | **Unit tests** | That each small rule in `lib/` does its job, using made-up inputs; plus a few one-page synthetic PDFs through the real pdfplumber, `audit.py` and `apply.py` | `python -m pytest tests -q` | a few seconds |
-| **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py` | about 15 minutes for all seven books (`--books godzone` about 1) |
+| **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py --jobs 3` | about 7 minutes for all seven books (18 one at a time; `--books godzone` about 1) |
 | **Intake cases** | That intake sorts pages and tag trees correctly, using small synthetic PDFs | `python3 tools/intake_cases.py <out_dir>` | under a minute |
 
 Install the test tools once, in the same virtual environment: `pip install -r requirements-dev.txt` (it includes `requirements.txt` and adds pytest).
@@ -52,6 +52,8 @@ Each run is compared with the baseline in three ways:
    - the original PDF is unchanged
 
 The test prints one line per book (identical, or the fields and lines that differ) and exits with 1 when any book differs. It needs veraPDF (see [Verification with veraPDF](verapdf.md)). Run folders go to a temporary folder, which is kept when something differs; `--out DIR` puts them in `DIR` instead.
+
+**Running books in parallel.** `--jobs N` runs N books at once (default: the `JOBS` environment variable, as for `batch_api.sh`, else 1). The biggest books start first, and the report still lists the books in their usual order. A book whose run fails is reported with the end of its log while the others carry on. Each book needs about 0.5–1.5 GB of memory: with 8 GB, `--jobs 3` peaked at about 5 GB used and took 7 minutes for all seven books, against 18 one at a time. No run can be shorter than the slowest book (buddhist, about 4 minutes). On WSL, check `free -h`; if memory is short, raise `memory=` in `C:\Users\<you>\.wslconfig` and run `wsl --shutdown`. CI does not use `--jobs`: each book is its own job there.
 
 `meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code. CI runs godzone, clans, translation and buddhist on both Python 3.13 and 3.14, the two versions [Setup](setup.md) allows. buddhist is the one where the version could matter: its OCR word readings are checked with Python's Unicode tables (Unicode 15.1 in 3.13, 16.0 in 3.14). The other books run on 3.14 only. Run one book with `--books translation`; `--update --books X` adds X to the baseline and keeps the others.
 
