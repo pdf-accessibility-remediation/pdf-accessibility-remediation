@@ -5,16 +5,22 @@ on:
     branches: ["**"]
     paths:
       - "pipeline/**"
+      - "prompts/**"
       - "samples/**"
       - ".github/workflows/pdf-validation.yml"
   pull_request:
     paths:
       - "pipeline/**"
+      - "prompts/**"
       - "samples/**"
       - ".github/workflows/pdf-validation.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   audit-sample:
@@ -59,3 +65,48 @@ jobs:
           trap 'rm -rf "$audit_dir"' EXIT
           python audit.py ../samples/group1/clans.pdf "$audit_dir"
           python -c 'import json, sys; v = json.load(open(sys.argv[1])); "not_run" in v and sys.exit(v["not_run"]); print(v["totals"])' "$audit_dir/verapdf.json"
+
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"        # the version in pipeline/tests/baseline/meta.json: the baseline was made with it
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r pipeline/requirements.txt
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache veraPDF
+        id: verapdf-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/verapdf
+          key: verapdf-1.30.3-${{ hashFiles('pipeline/verapdf/install.sh') }}
+
+      - name: Install veraPDF
+        if: steps.verapdf-cache.outputs.cache-hit != 'true'
+        run: VERAPDF_VERSION=1.30.3 bash pipeline/verapdf/install.sh ~/verapdf
+
+      - name: Regression test (saved replies, no API call)
+        working-directory: pipeline
+        run: VERAPDF="$HOME/verapdf/verapdf" python tools/regression.py --out "$RUNNER_TEMP/regression"
+
+      - name: Keep the runs for a failed comparison
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-runs
+          path: ${{ runner.temp }}/regression
+          retention-days: 7

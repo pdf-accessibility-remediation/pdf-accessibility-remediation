@@ -23,7 +23,7 @@ jobs:
           cache-dependency-path: pipeline/requirements.txt
 
       - name: Install dependencies
-        run: python -m pip install -r pipeline/requirements.txt
+        run: python -m pip install -r pipeline/requirements-dev.txt
 
       - name: Compile Python sources
         run: python -m compileall -q pipeline
@@ -34,5 +34,35 @@ jobs:
           bash -n pipeline/batch_api.sh
           bash -n pipeline/verapdf/install.sh
 
+      - name: Unit tests
+        run: python -m pytest pipeline/tests -q
+
       - name: Audit dependencies
-        run: python -m pip install pip-audit && pip-audit -r pipeline/requirements.txt
+        run: python -m pip install pip-audit && pip-audit -r pipeline/requirements.txt && pip-audit -r pipeline/requirements-dev.txt
+
+  intake-cases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r pipeline/requirements.txt
+
+      - name: Install Tesseract with CJK packs and a CJK font
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr fonts-noto-cjk \
+            tesseract-ocr-jpn tesseract-ocr-jpn-vert tesseract-ocr-kor tesseract-ocr-kor-vert \
+            tesseract-ocr-chi-sim tesseract-ocr-chi-sim-vert tesseract-ocr-chi-tra tesseract-ocr-chi-tra-vert
+
+      - name: Intake classification cases (synthetic PDFs, plan only)
+        working-directory: pipeline
+        run: python tools/intake_cases.py "$RUNNER_TEMP/intake-cases"

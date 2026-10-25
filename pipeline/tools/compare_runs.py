@@ -28,8 +28,10 @@ def books(runs, label):
                 out[b] = p
     return out
 
-def kept(path):
-    return [l for l in open(path, encoding='utf-8').read().split('\n') if not any(rx.match(l) for rx in VOLATILE)]
+def kept(path, extra=()):
+    """review.md's lines without the volatile ones (and without lines matching any of the extra patterns)."""
+    skip = VOLATILE + list(extra)
+    return [l for l in open(path, encoding='utf-8').read().split('\n') if not any(rx.match(l) for rx in skip)]
 
 def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
