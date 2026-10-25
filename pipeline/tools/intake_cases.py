@@ -19,6 +19,8 @@ FONT = next((p for p in ('/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
 EN = 'This page is a scanned test page with a few lines of plain English text on it.'
 JA = 'これは試験用の日本語の文章です。縦書きと横書きの両方を確認します。'
 KO = '이것은 시험용 한국어 문장입니다. 가로쓰기와 세로쓰기를 확인합니다.'
+RO = 'Sŏngwŏn met Hŏ Chŏk and Pak Yŏng-man in Ch\'ŏngju; Wŏllyang wrote to Kŭmsŏng.'   # McCune-Reischauer breves
+RO_PLAIN = 'Songwon met Ho Chok and Pak Yong-man in Ch\'ongju; Wollyang wrote to Kumsong.'
 W_IN, H_IN, DPI = 6, 8, 300
 
 
@@ -102,6 +104,10 @@ def build(out):
     pdf = pikepdf.new(); pg = new_page(pdf, figs, [pic, pic, pic], font=True)
     tree(pdf, pg, 'figures', True, ('A grey oval on a light background.', ' Decorative Element ', 'Photo of a grey oval.'))
     save('tree-figures-only', pdf)
+    def layer_lines(text, n=12, size=44):        # invisible text over text_image's lines, same text, same places
+        return '3 Tr\n' + ''.join(f'BT /F1 10.5 Tf 36 {H_IN * 72 - 36 - 10.5 - k * size * 1.8 * 72 / DPI:.1f} Td ({text.replace(chr(39), chr(92) + chr(39))}) Tj ET\n' for k in range(n))
+    pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + layer_lines(RO_PLAIN), [text_image(RO)], font=True); save('ocr-layer-missing-marks', pdf)
+    pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + layer_lines(RO_PLAIN), [text_image(RO_PLAIN)], font=True); save('ocr-layer-matching', pdf)
     for name, txt, vert in (('japanese-scan', JA, False), ('japanese-vertical-scan', JA, True), ('korean-scan', KO, False)):
         pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE, [text_image(txt, vertical=vert)]); save(name, pdf)
     return made
@@ -126,6 +132,10 @@ CASES = [  # (case, pdf, OCR_LANG, what is expected, test on intake.json)
     ('full tree, Marked false → tagged (skipped)', 'tree-full-marked-false', None, 'skipped',
      lambda j: j['status'] == 'skipped' and j['tag_tree']['markinfo'] is False),
     ('full tree, Marked true → tagged (skipped)', 'tree-full', None, 'skipped', lambda j: j['status'] == 'skipped'),
+    ('OCR layer without the breves the scan shows → diacritics CHECK', 'ocr-layer-missing-marks', None, 'OCR layer test: diacritics flagged',
+     lambda j: bool((j.get('ocr_layer_test') or {}).get('diacritics')) and any(f['what'] == 'OCR layer: diacritics' for f in j['flags'])),
+    ('OCR layer matching its scan → usable, no CHECK', 'ocr-layer-matching', None, 'OCR layer test: usable, no OCR-layer flag',
+     lambda j: (j.get('ocr_layer_test') or {}).get('verdict') == 'usable' and not any(f['what'].startswith('OCR layer') for f in j['flags'])),
     ('Japanese scan, OCR_LANG unset → stops', 'japanese-scan', None, 'stopped: CJK text, set OCR_LANG',
      lambda j: j['status'] == 'stopped' and 'set OCR_LANG' in j['summary']),
     ('Japanese scan, OCR_LANG=jpn+eng → planned', 'japanese-scan', 'jpn+eng', 'planned, CJK OCR needs a person',

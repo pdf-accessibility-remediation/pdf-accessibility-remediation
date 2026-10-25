@@ -110,6 +110,16 @@ MARKS_MISSED, MARKS_MIN = 1.5, 20          # 1.2 test: the text layer has 20+ le
                                            #   read, and the score without diacritics is usable: OCR missed the marks, the
                                            #   page is not scored (a layer missing marks that OCR read still scores badly).
                                            #   A note on born-digital text; a CHECK on an existing OCR layer
+OCRL_SAMPLE = 10                           # existing OCR layer on scanned pages: up to 10 sample pages, read again by Tesseract's
+SCRIPT_MODELS = {'latin': 'script/Latin', 'kana': 'script/Japanese_vert+script/Japanese',      #   script model for the
+                 'hangul': 'script/Hangul_vert+script/Hangul',                                 #   layer's script (a different
+                 'han': 'script/HanS_vert+script/HanS+script/HanT_vert+script/HanT'}           #   model from the book packs)
+MARKED_VOWELS, MARKS_LAYER_SHARE = 5, 0.10  # OCR layer: the script model reads 5+ marked vowels a page on average and the layer
+                                           #   has under 10% as many, counted on pages whose letters agree (error without the
+                                           #   marks 15% or less): the page images show diacritics the layer lacks (CHECK); such a
+                                           #   page is then judged on its letters.
+                                           #   Calibrated on henrycukim (about 20 a page, layer 0) and gelfand/liouville
+                                           #   (1-2 stray marks a page, mostly on consonants)
 BORN_DIGITAL = re.compile(r'(?i)pdftex|xetex|luatex|prince|microsoft|adobe pdf library|indesign')
                                            # producers that write text, not scan it: an "unusable" verdict on them is no
                                            #   reason to suggest FORCE_OCR
@@ -415,6 +425,27 @@ def marked_letters(t):
     return sum(1 for ch in t if ch.isalpha() and any(unicodedata.combining(c) for c in unicodedata.normalize('NFD', ch)))
 def strip_marks(t):
     return ''.join(c for c in unicodedata.normalize('NFD', t) if not unicodedata.combining(c))
+def marked_vowels(t):
+    """Vowels carrying a mark (ö ŏ ù ā …): what romanized and accented text has, and stray OCR marks rarely are."""
+    return sum(1 for ch in t if ch.isalpha() and unicodedata.normalize('NFD', ch)[0].lower() in 'aeiouy'
+               and any(unicodedata.combining(c) for c in unicodedata.normalize('NFD', ch)))
+def norm_cjk(t):
+    """norm() with CJK characters kept: for comparing CJK OCR layers."""
+    t = unicodedata.normalize('NFKC', t).translate(QUOTES)
+    t = re.sub(r'-\s*\n\s*', '', t)
+    return ''.join(ch for ch in t.lower() if not ch.isspace() and ch != '_')
+def tesseract_words(img, lang):
+    """Tesseract's words with their confidence, and the text they make (one line per Tesseract line)."""
+    import csv, io
+    r = run(['tesseract', img, 'stdout', '-l', lang, '--psm', '3', 'tsv'])
+    if r.returncode: raise RuntimeError(f'tesseract failed: {r.stderr.strip()[:200]}')
+    words, lines = [], collections.OrderedDict()
+    for w in csv.DictReader(io.StringIO(r.stdout), delimiter='\t', quoting=csv.QUOTE_NONE):
+        t = (w.get('text') or '').strip()
+        if not t: continue
+        words.append((t, float(w.get('conf') or -1)))
+        lines.setdefault((w.get('block_num'), w.get('par_num'), w.get('line_num')), []).append(t)
+    return words, '\n'.join(' '.join(v) for v in lines.values())
 def math_symbols(t):
     """Math symbols (Unicode Sm, apart from + = < > | ~ ¬ and arrows, which glosses use: dakine's →), Greek letters and
     math alphanumerics in a text."""
@@ -784,6 +815,11 @@ def write_md(rec, path):
     if tt:
         v = tt.get('verdict') or 'not tested'
         rows.append(('Text-layer test (1.2)', v + (f": median {tt['median_cer']:.1%} on {tt.get('scored')} pages" if tt.get('median_cer') is not None and tt.get('scored') else '')))
+    olt = rec.get('ocr_layer_test') or {}
+    if olt:
+        rows.append(('Existing OCR layer (scanned pages)', olt.get('verdict', 'not tested') + (f": median {olt['median_cer']:.1%} on {olt.get('scored')} "
+                     'pages against a fresh reading by a different OCR model' if olt.get('median_cer') is not None else '')
+                     + ('; diacritics missing from the layer' if olt.get('diacritics') else '')))
     cp = rec.get('cjk_probe') or {}
     if cp: rows.append(('CJK on pages to be OCR\'d', _pages(cp.get('cjk_pages'), labels) if cp.get('cjk_pages') else 'none found'))
     if st == 'planned' or not o:
@@ -1082,6 +1118,75 @@ def main():
                          'a screen reader may read several words as one', runs)
             tt['seconds'] = round(time.time() - t1, 1)
         rec['text_test'] = tt
+        # ---- 2b. an existing OCR layer on scanned pages (1.2, 3.1, 3.7): read again by a different model, CHECK only
+        ocrl = [i for i in text_pages if inv[i - 1]['kind'] == 'ocr-layer'
+                or inv[i - 1]['invisible_ops'] and inv[i - 1]['image_cover'] >= OCR_LAYER_COVER]
+        if ocrl:
+            ol = {'pages': [], 'verdict': 'not tested', 'median_cer': None, 'sample': OCRL_SAMPLE}
+            skip = max(FRONT_SKIP_MIN, math.ceil(FRONT_SKIP_SHARE * len(ocrl))) if len(ocrl) >= FRONT_SKIP_FROM else 0
+            body = ocrl[skip:] or ocrl; ns = min(OCRL_SAMPLE, len(body))
+            pick = sorted({body[int(k * (len(body) - 1) / max(ns - 1, 1))] for k in range(ns)})
+            from lib import plumb_fix  # noqa: F401
+            import pdfplumber
+            t1 = time.time(); mv_ocr = mv_layer = 0; mark_pages = []
+            with pdfplumber.open(SRC) as pl:
+                for i in pick:
+                    page = doc[i - 1]; layer = page.get_textpage().get_text_bounded(*page.get_cropbox())
+                    alt = ''.join(c['text'] for c in pl.pages[i - 1].chars)
+                    src_ = 'pdfium'
+                    if len(INVISIBLE.sub('', alt)) > 2 * len(INVISIBLE.sub('', layer)) + 20:   # e.g. Acrobat's hidden vertical OCR
+                        layer, src_ = alt, 'pdfplumber'
+                    s = scripts(layer)
+                    script = max(('kana', 'hangul', 'han'), key=lambda k: s[k]) if s['kana'] + s['hangul'] + s['han'] >= CJK_CHARS else 'latin'
+                    if s['kana'] >= CJK_CHARS: script = 'kana'
+                    model = SCRIPT_MODELS[script]
+                    if any(m not in tv['tesseract_langs'] for m in model.split('+')):
+                        ol['pages'].append({'page': i, 'verdict': 'not scored', 'reason': f'Tesseract model {model} is not installed'}); continue
+                    f = norm if script == 'latin' else norm_cjk
+                    if len(f(layer)) < SCORE_MIN_CHARS:
+                        ol['pages'].append({'page': i, 'verdict': 'not scored', 'reason': f'only {len(f(layer))} characters in the OCR layer'}); continue
+                    img = os.path.join(tmp, f'ol{i}.png'); render(doc, i - 1, OCR_DPI, img)
+                    words, ocr = tesseract_words(img, model); os.remove(img)
+                    m = max(math_symbols(ocr), math_symbols(layer))
+                    if script == 'latin' and m >= MATH_SYMBOLS:            # (CJK text uses ～ and stray Greek: not math)
+                        ol['pages'].append({'page': i, 'verdict': 'not scored', 'reason': f'math on the page ({m} math symbols or Greek letters)'}); continue
+                    a, b = f(ocr), f(layer); c = min(cer(a, b), bag_diff(a, b))
+                    a2, b2 = strip_marks(a), strip_marks(b); c2 = min(cer(a2, b2), bag_diff(a2, b2))   # the letters alone
+                    mo, ml_ = (marked_vowels(ocr), marked_vowels(layer)) if script == 'latin' and c2 <= CER_BAD else (None, None)
+                    lacks = mo is not None and mo >= MARKED_VOWELS and ml_ < MARKS_LAYER_SHARE * mo
+                    c_marks = c
+                    if lacks: c = c2                     # the marks are what differ: the page is judged on its letters, the marks CHECKed
+                    toks = set(re.sub(r'\W', '', x.lower()) for x in layer.split())
+                    conf = [re.sub(r'\W', '', t.lower()) for t, cf in words if cf >= 90 and len(re.sub(r'\W', '', t)) >= 3]
+                    row = {'page': i, 'script': script, 'model': model, 'layer_read_with': src_, 'chars': len(b), 'cer': round(c, 3),
+                           'verdict': 'usable' if c <= CER_OK else ('unusable' if c > CER_BAD else 'doubtful'),
+                           'confident_words_missing': round(sum(1 for t in conf if t not in toks) / len(conf), 3) if conf and script == 'latin' else None}
+                    if mo is not None:                   # marks count only where the letters agree (junk pages have stray marks)
+                        row['marked_vowels_ocr'], row['marked_vowels_layer'] = mo, ml_; mv_ocr += mo; mv_layer += ml_
+                        if lacks: mark_pages.append(i); row['cer_with_marks'] = round(c_marks, 3)
+                    ol['pages'].append(row)
+            scored = [r for r in ol['pages'] if 'cer' in r]; ol['scored'] = len(scored); ol['seconds'] = round(time.time() - t1, 1)
+            if any(r.get('layer_read_with') == 'pdfplumber' for r in scored): ol['note'] = 'PDFium reads little of this OCR layer; read with pdfplumber'
+            if scored:
+                med = statistics.median(r['cer'] for r in scored); ol['median_cer'] = round(med, 3)
+                ol['verdict'] = 'usable' if med <= CER_OK else ('unusable' if med > CER_BAD else 'doubtful')
+                worst = [r['page'] for r in sorted(scored, key=lambda r: -r['cer']) if r['cer'] > CER_OK]
+                if ol['verdict'] != 'usable':
+                    flag('OCR layer', f'the existing OCR layer on the scanned pages and a fresh reading by a different OCR model disagree '
+                         f'(median character error {med:.0%} on {len(scored)} sample pages; worst first): a person compares these pages '
+                         'with the page image. The layer is kept as it is (it may be the library\'s record)', worst[:20])
+                elif worst:
+                    flag('OCR layer', f'on these sample pages the existing OCR layer and a fresh OCR reading partly disagree (over '
+                         f'{CER_OK:.0%}): compare them by eye', worst[:20])
+                n_lat = sum(1 for r in scored if 'marked_vowels_ocr' in r)
+                if n_lat and mv_ocr / n_lat >= MARKED_VOWELS and mv_layer < MARKS_LAYER_SHARE * mv_ocr:
+                    ol['diacritics'] = {'marked_vowels_ocr': mv_ocr, 'marked_vowels_layer': mv_layer, 'pages': mark_pages}
+                    flag('OCR layer: diacritics', f'the page images show diacritics the existing OCR layer lacks ({mv_ocr} marked vowels '
+                         f'read on {n_lat} sample pages, {mv_layer} in the layer: e.g. ŏ/ŭ lost as o/u). The OCR model reads the marks '
+                         'only roughly, so a person compares the pages; the layer is not changed', mark_pages[:20] or None)
+            else:
+                ol['verdict'] = 'not enough pages scored'
+            rec['ocr_layer_test'] = ol
         # ---- the plan
         force = tt['verdict'] == 'unusable'
         plan = {'ocr_mode': None, 'ocr_pages': [], 'autotag': True}
@@ -1329,6 +1434,9 @@ def describe(rec):
     v = (rec.get('text_test') or {}).get('verdict')
     if v == 'not enough pages scored': parts.append('text layer: not enough pages scored')
     elif v and v not in ('usable', 'not tested'): parts.append(f'text layer {v}')
+    ol = rec.get('ocr_layer_test') or {}
+    if ol.get('verdict') in ('doubtful', 'unusable'): parts.append(f'OCR layer {ol["verdict"]}')
+    if ol.get('diacritics'): parts.append('OCR layer lacks diacritics')
     return ' · '.join(parts)
 
 if __name__ == '__main__':
