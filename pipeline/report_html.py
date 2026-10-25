@@ -177,8 +177,9 @@ def page(title, body, script=''):
 def labels_of(R, rec):
     try:
         import pikepdf
-        with pikepdf.open(os.path.join(R, rec['document']['output'])) as p: return {i + 1: str(pg.label) for i, pg in enumerate(p.pages)}
-    except Exception: return {}
+        with pikepdf.open(os.path.join(R, rec['document']['output'])) as p: labels = {i + 1: str(pg.label) for i, pg in enumerate(p.pages)}
+    except Exception: labels = {}
+    return G.with_spread_labels(labels, rec.get('intake'))     # the same spread labels as report.py
 
 def han_pages(R):
     p = os.path.join(R, 'han_review.csv')
