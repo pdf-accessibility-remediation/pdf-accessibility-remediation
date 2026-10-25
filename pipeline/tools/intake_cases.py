@@ -118,6 +118,12 @@ def build(out):
     pdf = pikepdf.new(); new_page(pdf, blocks(36, 'Left') + blocks(340, 'Right'), font=True, size=(792, 612)); save('spread-two-up', pdf)
     pdf = pikepdf.new(); new_page(pdf, blocks(36, 'Left') + blocks(340, 'Right'), font=True, size=(792, 612), font_name='HiddenVertOCR')
     save('spread-two-up-vertical', pdf)            # a 'Vert' font, as Acrobat's vertical OCR has: read right half first
+    pdf = pikepdf.new()                              # years in every running head, page numbers at the foot: only the
+    for k in range(2):                               #   numbers rise by 2 from spread to spread
+        heads = 'BT /F1 9 Tf 60 590 Td (1994) Tj ET\nBT /F1 9 Tf 700 590 Td (1995) Tj ET\n'
+        feet = f'BT /F1 9 Tf 180 20 Td ({12 + 2 * k}) Tj ET\nBT /F1 9 Tf 560 20 Td ({13 + 2 * k}) Tj ET\n'
+        new_page(pdf, heads + feet + blocks(36, 'Left') + blocks(340, 'Right'), font=True, size=(792, 612))
+    save('spreads-years-in-heads', pdf)
     pdf = pikepdf.new(); new_page(pdf, lines_at(50, 'One wide column of text runs across the whole width of this landscape page, line'),
                                   font=True, size=(792, 612)); save('landscape-one-column', pdf)
     ja_img, en_img2 = text_image(JA), text_image(EN)
@@ -160,6 +166,8 @@ CASES = [  # (case, pdf, OCR_LANG, what is expected, test on intake.json)
      and any(f['what'] == 'Two printed pages per PDF page' for f in j['flags'])),
     ('two printed pages, vertical font → spread, right half first', 'spread-two-up-vertical', None, 'spreads [1], right half first',
      lambda j: (j.get('spreads') or {}).get('pages') == [1] and j['spreads'].get('order', '').startswith('right half first')),
+    ('spreads with years in the running heads → page numbers, not years', 'spreads-years-in-heads', None, 'printed 12–13, 14–15',
+     lambda j: ((j.get('spreads') or {}).get('printed') or {}) == {1: '12–13', 2: '14–15'} or ((j.get('spreads') or {}).get('printed') or {}) == {'1': '12–13', '2': '14–15'}),
     ('one wide column on a landscape page → not a spread', 'landscape-one-column', None, 'no spreads',
      lambda j: not j.get('spreads')),
     ('Japanese scan, OCR_LANG unset → stops', 'japanese-scan', None, 'stopped: CJK text, set OCR_LANG',
