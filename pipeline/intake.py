@@ -980,7 +980,9 @@ def write_md(rec, path):
                      'pages against a fresh reading by a different OCR model' if olt.get('median_cer') is not None else '')
                      + ('; diacritics missing from the layer' if olt.get('diacritics') else '')))
     cp = rec.get('cjk_probe') or {}
-    if cp: rows.append(('CJK on pages to be OCR\'d', _pages(cp.get('cjk_pages'), labels) if cp.get('cjk_pages') else 'none found'))
+    if cp: rows.append(('CJK on pages to be OCR\'d', (_pages(cp['cjk_pages_from_ocr'], labels) + ' (from the OCR text)') if cp.get('cjk_pages_from_ocr')
+                        else (_pages(cp.get('cjk_pages'), labels) + (f' ({cp["pages_checked"]} of {cp["pages_to_ocr"]} pages checked)' if cp.get('pages_checked', 0) < cp.get('pages_to_ocr', 0) else ''))
+                        if cp.get('cjk_pages') else 'none found'))
     if st == 'planned' or not o:
         pl = rec.get('plan') or {}
         rows.append(('Plan', (f"OCR ({pl.get('ocr_mode')} mode) on {_pages(pl.get('ocr_pages'), labels)}" if pl.get('ocr_pages') else 'no OCR')
