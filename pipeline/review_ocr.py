@@ -31,7 +31,7 @@ def main():
     intake = json.load(open(ij, encoding='utf-8'))
     from lib.glance import ocr_layer_flagged
     if not (intake.get('ocr') or {}).get('pages_with_ocr_text') and not ocr_layer_flagged(intake):
-        sys.exit('this book has no OCR text to review (intake added none, and its existing OCR layer was not flagged)')
+        sys.exit('this book has no OCR text to review (intake added none, and its existing OCR layer was not flagged or unchecked)')
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', a.date): sys.exit('--date must be YYYY-MM-DD')
     v = {'verdict': a.verdict, 'reviewer': a.reviewer, 'date': a.date, 'reason': a.reason, **({'pages': a.pages} if a.pages else {}),
          'recorded': datetime.datetime.now().isoformat(timespec='seconds')}
