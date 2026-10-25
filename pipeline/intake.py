@@ -382,7 +382,7 @@ def reorder_spreads(path, spreads, right_first):
                 sw = lambda s: sum(1 for a, b in zip(s, s[1:]) if a != b)
                 out[p] = {'switches_before': sw(before), 'switches_after': sw(after), 'elements': len(slots), 'reordered': new != slots,
                           'spanning': span_names}
-                changed = changed or before != after
+                changed = changed or new != slots           # saved when any page's order changed (also only within a half)
         if changed:
             doc_el.K = pikepdf.Array(kids); pdf.save(path)
     return out, left
