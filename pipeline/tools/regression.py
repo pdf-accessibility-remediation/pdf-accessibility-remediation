@@ -1,6 +1,6 @@
 """regression.py: does the pipeline still turn the baseline books into the same result? No model, no cost.
 
-    python3 tools/regression.py [--books godzone,clans] [--out DIR] [--keep]
+    python3 tools/regression.py [--books godzone,clans] [--jobs N] [--out DIR] [--keep]
     python3 tools/regression.py --update --reason "why the output changed" [--seed RUNS_BATCH_DIR] [--from-dir DIR]
 
 Each baseline book (tests/baseline/<book>/) holds a saved model reply (reply.txt, with reply.txt.meta.json: the
@@ -16,6 +16,7 @@ An untagged book's folder also holds _intake/ (intake.json, intake.pdf): the int
 reused with INTAKE_REUSE=1, so OCR and auto-tagging (which vary with the Tesseract and OpenDataLoader versions) are not
 rerun; tools/intake_cases.py tests intake itself.
 Exit 0 when every book matches, 1 otherwise. Needs veraPDF (vera.py --check); without it nothing is compared.
+--jobs N (default: $JOBS, as for batch_api.sh, else 1) runs N books at once; each needs about 0.5-1.5 GB of memory.
 
 --update reruns the books (or reads finished runs from --from-dir DIR/<book>/, e.g. a CI artifact) and writes their
 review.md and expect.json as the new baseline, adding the reason to tests/baseline/UPDATES.md. Use it only when every
@@ -23,7 +24,8 @@ difference is one the change meant to make. --seed DIR copies each book's reply 
 (DIR is a batch folder such as ../runs/batches/all9-v8, or one run folder such as ../runs/ilokano/base1 for a single
 --books entry; an untagged book's _intake/ is copied too): needed once, and again whenever the prompt version changes.
 """
-import sys, os, re, json, shutil, hashlib, argparse, datetime, subprocess, tempfile, difflib
+import sys, os, re, json, shutil, hashlib, argparse, datetime, subprocess, tempfile, difflib, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 HERE = os.path.dirname(os.path.abspath(__file__)); PIPE = os.path.dirname(HERE); ROOT = os.path.dirname(PIPE)
 sys.path.insert(0, HERE)
 import compare_runs
@@ -72,7 +74,8 @@ def diff(a, b, path=''):
     return [] if a == b else [(path, a, b)]
 
 def run_book(book, run_dir):
-    """run_api.sh on the sample with the saved reply; the finished run folder, or exit with its log."""
+    """run_api.sh on the sample with the saved reply: None when it finished, else why not (with the end of its log).
+    Runs in a worker thread with --jobs, so it reports instead of exiting."""
     env = dict(os.environ, REPLY=os.path.join(BASE, book, 'reply.txt'), RUN_DIR=run_dir, AUTO='1')
     frozen = os.path.join(BASE, book, '_intake')
     if os.path.exists(os.path.join(frozen, 'intake.json')):    # an untagged book: reuse the intake result the reply was written for
@@ -82,9 +85,8 @@ def run_book(book, run_dir):
     with open(log, 'w') as f:
         rc = subprocess.run(['bash', os.path.join(PIPE, 'run_api.sh'), sample(book), book, 'regression'], env=env, stdout=f, stderr=subprocess.STDOUT).returncode
     if rc != 0 or not os.path.exists(os.path.join(run_dir, 'record.json')):
-        sys.stdout.write(''.join(open(log).readlines()[-30:]))
-        sys.exit(f'{book}: run_api.sh failed (exit {rc}); log: {log}')
-    return run_dir
+        return ''.join(open(log).readlines()[-30:]) + f'run_api.sh failed (exit {rc}); log: {log}'
+    return None
 
 def seed(src_dir, books):
     for b in books:
@@ -124,6 +126,7 @@ def main():
     ap.add_argument('--seed', metavar='RUNS_BATCH_DIR', help='with --update: copy each book\'s reply from RUNS_BATCH_DIR/<book>/record.json first')
     ap.add_argument('--from-dir', metavar='DIR', help='with --update: take finished runs from DIR/<book>/ (a CI artifact) instead of running')
     ap.add_argument('--show', type=int, default=5, help='differences to show per book (default 5)')
+    ap.add_argument('--jobs', type=int, default=int(os.environ.get('JOBS') or 1), help='books run at once (default $JOBS, else 1)')
     a = ap.parse_args()
     if (a.seed or a.from_dir) and not a.update: sys.exit('--seed and --from-dir go with --update')
     if a.update and not (a.reason or '').strip(): sys.exit('--update needs --reason "why the output changed"')
@@ -144,12 +147,24 @@ def main():
         if v.returncode != 0: sys.exit(f'veraPDF is needed (vera.py --check: {v.stdout.strip() or v.stderr.strip()}); see docs/verapdf.md')
     out = os.path.abspath(a.out) if a.out else tempfile.mkdtemp(prefix='regression-')
     os.makedirs(out, exist_ok=True)
-    same, results = 0, {}
+    same, results, failed = 0, {}, {}
+    if not a.from_dir:                     # run every book first (in parallel with --jobs), then compare them in order
+        def one(b):
+            R = os.path.join(out, b)
+            if os.path.exists(R): shutil.rmtree(R)
+            t = time.time(); err = run_book(b, R); return b, err, time.time() - t
+        jobs = max(1, min(a.jobs, len(books)))
+        print(f'running {len(books)} book{"" if len(books) == 1 else "s"} from saved replies (no API call), {jobs} at a time …', flush=True)
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            biggest_first = sorted(books, key=lambda b: -os.path.getsize(sample(b)))   # the long runs don't end up queued last
+            for f in as_completed([pool.submit(one, b) for b in biggest_first]):
+                b, err, secs = f.result()
+                if err: failed[b] = err
+                print(f'{b:10} {"run failed" if err else "done"}, {secs:.0f} s', flush=True)
     for b in books:
         R = os.path.join(a.from_dir, b) if a.from_dir else os.path.join(out, b)
-        if not a.from_dir:
-            if os.path.exists(R): shutil.rmtree(R)
-            print(f'{b:10} running (saved reply, no API call) …', flush=True); run_book(b, R)
+        if b in failed:
+            print(f'{b:10} RUN FAILED:'); print('    ' + failed[b].rstrip().replace('\n', '\n    ')); continue
         r = json.load(open(os.path.join(R, 'record.json'), encoding='utf-8'))
         results[b] = (R, r)
         drift = intake_drift(b)
@@ -169,6 +184,7 @@ def main():
         for l in md[:2 * a.show]: print(f'    {l[:200]}')
     n = len(books)
     print(f'{same} of {n} books identical')
+    if a.update and failed: sys.exit(f'not updated: {", ".join(failed)} did not run (above)')
     if a.update:
         broken_books = [b for b in books if invariants(results[b][1], sample(b))]
         if broken_books: sys.exit(f'not updated: {", ".join(broken_books)} break checks that must always hold (above); that is a bug, not a new baseline')
