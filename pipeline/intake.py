@@ -278,7 +278,7 @@ def _gutter(img):
 def detect_spreads(path):
     """Pages that hold two printed pages side by side: {'pages', 'gutter': {page: share}, 'vertical_fonts', 'printed'}.
     Never splits a page. 'printed' holds the two printed page numbers when the halves' top/bottom bands show a pair that
-    differ by one (not guessed otherwise)."""
+    differ by one, and a neighbouring spread's pair is 2 higher or lower (not guessed otherwise)."""
     doc = pdfium.PdfDocument(path); size, gut = {}, {}
     try:
         for i in range(len(doc)):
@@ -301,7 +301,7 @@ def detect_spreads(path):
         rot = {p: int(pdf.pages[p - 1].obj.get('/Rotate', 0)) % 360 for p in pages}
     from lib import plumb_fix  # noqa: F401
     import pdfplumber
-    printed = {}
+    printed, cand = {}, {}
     with pdfplumber.open(path) as pl:
         for p in pages:
             if rot[p]: continue                         # rotated page: the bands are not where the reader sees them
@@ -310,10 +310,11 @@ def detect_spreads(path):
                 for side, (x0, x1) in (('L', (0, x)), ('R', (x, W))):
                     for w in pg.crop((x0, top, x1, bottom)).extract_words():
                         if re.fullmatch(r'\d{1,4}', w['text']): nums[side].add(int(w['text']))
-            rf = p in vert
-            pair = [(r, l) for r in nums['R'] for l in nums['L'] if (l == r + 1 if rf else r == l + 1)]
-            if len(pair) == 1:
-                r, l = pair[0]; printed[p] = f'{r}–{l}' if rf else f'{l}–{r}'
+            rf = p in vert                               # (first, second) in reading order, the second one higher
+            cand[p] = [(r, l) if rf else (l, r) for r in nums['R'] for l in nums['L'] if (l == r + 1 if rf else r == l + 1)]
+    for p, pairs in cand.items():                       # a pair counts only when a neighbouring spread's pair is 2 higher or
+        ok_ = [(a, b) for a, b in pairs if any((a + 2 * (q - p), b + 2 * (q - p)) in cand.get(q, []) for q in (p - 1, p + 1))]
+        if len(ok_) == 1: printed[p] = f'{ok_[0][0]}–{ok_[0][1]}'   # lower (years in running heads do not rise by 2)
     return {'pages': pages, 'gutter': gut, 'rotation': {p: r for p, r in rot.items() if r}, 'vertical_fonts': vert, 'printed': printed}
 def reorder_spreads(path, spreads, right_first):
     """After auto-tag, on spread pages only: reorder the tagger's elements of each page by half (the right half first for
