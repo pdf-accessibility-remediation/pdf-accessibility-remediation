@@ -71,8 +71,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        book: [godzone, clans, translation]     # the books in pipeline/tests/baseline/meta.json, one job each (in parallel)
+        book: [godzone, clans, translation, cadaverous, sands, buddhist, ilokano]   # pipeline/tests/baseline/meta.json, one job each
         python: ["3.13", "3.14"]                # the baseline was made with 3.14; 3.13 checks the version docs/setup.md also allows
+        exclude:                                # 3.13 only where the version could matter: buddhist's ocr_words go through
+          - {book: cadaverous, python: "3.13"}  #   unicodedata (Unicode 15.1 in 3.13, 16.0 in 3.14)
+          - {book: sands, python: "3.13"}
+          - {book: ilokano, python: "3.13"}
     name: regression (${{ matrix.book }}, Python ${{ matrix.python }})
     steps:
       - name: Check out repository

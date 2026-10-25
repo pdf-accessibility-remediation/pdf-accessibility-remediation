@@ -12,12 +12,16 @@ Each book is run again with run_api.sh REPLY= (the saved reply, so no API call) 
     with the Python version: tools/compare_runs.py's rule, plus Libraries);
   - checks that hold whatever the baseline says: veraPDF ran, no more WCAG rules fail after than before, nothing failed
     in apply, no page looks different, no page's text changed, the original is unchanged.
+An untagged book's folder also holds _intake/ (intake.json, intake.pdf): the intake result its reply was written for,
+reused with INTAKE_REUSE=1, so OCR and auto-tagging (which vary with the Tesseract and OpenDataLoader versions) are not
+rerun; tools/intake_cases.py tests intake itself.
 Exit 0 when every book matches, 1 otherwise. Needs veraPDF (vera.py --check); without it nothing is compared.
 
 --update reruns the books (or reads finished runs from --from-dir DIR/<book>/, e.g. a CI artifact) and writes their
 review.md and expect.json as the new baseline, adding the reason to tests/baseline/UPDATES.md. Use it only when every
 difference is one the change meant to make. --seed DIR copies each book's reply from DIR/<book>/record.json first
-(DIR is a batch folder such as ../runs/batches/all9-v8): needed once, and again whenever the prompt version changes.
+(DIR is a batch folder such as ../runs/batches/all9-v8, or one run folder such as ../runs/ilokano/base1 for a single
+--books entry; an untagged book's _intake/ is copied too): needed once, and again whenever the prompt version changes.
 """
 import sys, os, re, json, shutil, hashlib, argparse, datetime, subprocess, tempfile, difflib
 HERE = os.path.dirname(os.path.abspath(__file__)); PIPE = os.path.dirname(HERE); ROOT = os.path.dirname(PIPE)
@@ -70,6 +74,9 @@ def diff(a, b, path=''):
 def run_book(book, run_dir):
     """run_api.sh on the sample with the saved reply; the finished run folder, or exit with its log."""
     env = dict(os.environ, REPLY=os.path.join(BASE, book, 'reply.txt'), RUN_DIR=run_dir, AUTO='1')
+    frozen = os.path.join(BASE, book, '_intake')
+    if os.path.exists(os.path.join(frozen, 'intake.json')):    # an untagged book: reuse the intake result the reply was written for
+        shutil.copytree(frozen, os.path.join(run_dir, '_intake')); env['INTAKE_REUSE'] = '1'   # (as batch_api.sh FROM= does)
     env['PATH'] = os.path.dirname(sys.executable) + os.pathsep + env.get('PATH', '')   # run_api.sh's python3 is this one
     log = run_dir + '.log'
     with open(log, 'w') as f:
@@ -82,6 +89,7 @@ def run_book(book, run_dir):
 def seed(src_dir, books):
     for b in books:
         p = os.path.join(src_dir, b, 'record.json')
+        if not os.path.exists(p) and len(books) == 1: p = os.path.join(src_dir, 'record.json')    # a single run folder: runs/<name>/<label>
         if not os.path.exists(p): sys.exit(f'--seed: no {p}')
         r = json.load(open(p, encoding='utf-8'))
         if not r.get('raw_reply'): sys.exit(f'--seed: {p} holds no raw_reply')
@@ -90,7 +98,21 @@ def seed(src_dir, books):
         json.dump({k: r['run'][k] for k in ('model', 'temperature') if k in r['run']}, open(os.path.join(BASE, b, 'reply.txt.meta.json'), 'w'), indent=1)
         prompt = os.path.basename(r['run'].get('prompt_file') or '')
         if prompt and prompt != prompt_name(): sys.exit(f'--seed: {b}\'s reply was made with {prompt}, but decide.py uses {prompt_name()}')
-        print(f'{b:10} reply seeded from {p}')
+        old_in, new_in = os.path.join(os.path.dirname(p), '_intake'), os.path.join(BASE, b, '_intake')
+        if os.path.exists(os.path.join(old_in, 'intake.pdf')):       # untagged: the reply refers to objects in this intake.pdf
+            os.makedirs(new_in, exist_ok=True)
+            for f in ('intake.json', 'intake.pdf'): shutil.copyfile(os.path.join(old_in, f), os.path.join(new_in, f))
+        print(f'{b:10} reply seeded from {p}' + (' (with its intake result)' if os.path.exists(new_in) else ''))
+
+def intake_drift(book):
+    """A note when the frozen intake was made by another OpenDataLoader than requirements.txt pins: the regression test
+    reuses the frozen result, so the newer auto-tagger is not tested here (tools/intake_cases.py --full tests it)."""
+    j = os.path.join(BASE, book, '_intake', 'intake.json')
+    if not os.path.exists(j): return None
+    made = (json.load(open(j, encoding='utf-8')).get('tools') or {}).get('opendataloader_pdf')
+    pin = re.search(r'^opendataloader-pdf==(\S+)', open(os.path.join(PIPE, 'requirements.txt')).read(), re.M)
+    if pin and made != pin.group(1):
+        return f'its frozen intake was made with OpenDataLoader {made}, requirements.txt pins {pin.group(1)}: re-seed it (docs/testing.md)'
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
@@ -130,6 +152,8 @@ def main():
             print(f'{b:10} running (saved reply, no API call) …', flush=True); run_book(b, R)
         r = json.load(open(os.path.join(R, 'record.json'), encoding='utf-8'))
         results[b] = (R, r)
+        drift = intake_drift(b)
+        if drift: print(f'{b:10} note: {drift}')
         broken = invariants(r, sample(b))
         for x in broken: print(f'{b:10} BROKEN: {x}')
         exp_p, md_p = os.path.join(BASE, b, 'expect.json'), os.path.join(BASE, b, 'review.md')

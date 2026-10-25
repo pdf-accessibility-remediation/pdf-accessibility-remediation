@@ -3,7 +3,11 @@
  "books": [
   "godzone",
   "clans",
-  "translation"
+  "translation",
+  "cadaverous",
+  "sands",
+  "buddhist",
+  "ilokano"
  ],
  "python": "3.14"
 }

@@ -1,0 +1,75 @@
+```json
+{
+  "schema": "workorder/0.1",
+  "sections": {
+    "toc_pages": [6]
+  },
+  "document": {
+    "title": "Ilokano Reference Grammar",
+    "lang": "en-US",
+    "display_doc_title": true
+  },
+  "retype": [
+    {"obj": "150 0", "type": "P", "why": "Copyright notice on PDF 5, tagged H2 by mistake", "confidence": 0.95},
+    {"obj": "151 0", "type": "H2", "why": "Front-matter title CONTENTS; only the book title stays H1"},
+    {"obj": "155 0", "type": "H2", "why": "Front-matter title PREFACE"},
+    {"obj": "162 0", "type": "H2", "why": "Chapter title INTRODUCTION"},
+    {"obj": "165 0", "type": "H2", "why": "Chapter title PHONOLOGY"},
+    {"obj": "230 0", "type": "H2", "why": "Chapter 3 title"},
+    {"obj": "247 0", "type": "H2", "why": "Chapter 4 title"},
+    {"obj": "268 0", "type": "H2", "why": "Chapter 5 title"},
+    {"obj": "369 0", "type": "H2", "why": "Chapter 6 title"},
+    {"obj": "392 0", "type": "H2", "why": "Chapter 7 title"},
+    {"obj": "421 0", "type": "H2", "why": "Chapter 8 title"},
+    {"obj": "463 0", "type": "H2", "why": "Chapter 9 title"},
+    {"obj": "480 0", "type": "H2", "why": "Chapter 10 title"},
+    {"obj": "504 0", "type": "H2", "why": "Chapter 11 title"}
+  ],
+  "flatten": [
+    {"obj": "166 0", "why": "numbered section paragraphs (2.0, 2.1), not a list"},
+    {"obj": "224 0", "why": "numbered section paragraphs (2.7, 2.8), not a list"},
+    {"obj": "231 0", "why": "numbered section paragraphs (3.0, 3.1), not a list"},
+    {"obj": "248 0", "why": "numbered section paragraphs (4.0, 4.1 ...), not a list"},
+    {"obj": "290 0", "why": "numbered section paragraphs (5.1.5, 5.1.6), not a list"},
+    {"obj": "357 0", "why": "numbered section paragraphs (5.8.2, 5.8.3), not a list"},
+    {"obj": "388 0", "why": "numbered section paragraphs (6.4, 6.5), not a list"},
+    {"obj": "393 0", "why": "numbered section paragraphs (7.0, 7.1), not a list"},
+    {"obj": "404 0", "why": "numbered section paragraphs (7.2, 7.3), not a list"},
+    {"obj": "475 0", "why": "numbered section paragraphs (9.1.3, 9.1.4), not a list"},
+    {"obj": "493 0", "why": "numbered section paragraphs (10.2.2, 10.3), not a list"}
+  ],
+  "alt": [
+    {"obj": "135 0", "alt": "Book cover: a tan upper panel with the green University of Hawaiʻi Press logo, over a black panel. The author's name, Ernesto Constantino, appears above the title Ilokano Reference Grammar."},
+    {"obj": "141 0", "alt": "University of Hawaiʻi Press Open Access logo"},
+    {"obj": "142 0", "alt": "Humanities Open Book logo, showing the National Endowment for the Humanities and Andrew W. Mellon Foundation marks"},
+    {"obj": "145 0", "alt": "Creative Commons BY-NC-SA license icons"}
+  ],
+  "deferrals": [
+    {
+      "what": "Reading order and page assignment of the OCR-generated tag tree",
+      "why": "Heading page numbers disagree with page_map. For example, the chapter 3 heading is on PDF 15 while 'PARTS OF SPEECH' is the first tagged line on PDF 17. The reading_order list is empty, so I cannot confirm any order and made no move_section decision. A person should check the order of the chapter-title pages.",
+      "pages": [15, 17, 18, 19, 31, 33, 34, 35, 42, 43, 44, 45, 47, 49]
+    },
+    {
+      "what": "Poor OCR text layer",
+      "why": "The suspect-token rate is about 393 per 1000. Examples include running text such as 'senten#es' and '#hapter'. The text was not changed.",
+      "pages": [47, 44, 42, 37, 34, 31, 21, 18]
+    },
+    {
+      "what": "repeated_lines entries",
+      "why": "These are ordinary first words of pages ('The', 'CHAPTER', 'and'), not running heads, so no artifact rules were made. No running heads or page numbers were identified."
+    },
+    {
+      "what": "Contents page (PDF 6)",
+      "why": "The contents entries are already tagged as L/LI with links. I left them as they are. A person should check that the listed page numbers match the actual pagination, which differs from the PDF page order.",
+      "pages": [6]
+    },
+    {
+      "what": "Language of Ilokano example sentences",
+      "why": "Ilokano words and sentences are embedded throughout the English text. They can't be language-tagged by run with this work order (no language code is given for them). A human could tag them as 'ilo' if desired.",
+      "pages": [9, 49]
+    }
+  ],
+  "notes_for_reviewer": "Only the book title (137 0) stays H1. The front-matter and chapter titles were individually retyped to H2, and the copyright line was demoted to P. Single-item lists (flattened_by_rule) are left to the executor. Numbered example-sentence lists such as '(1) ...' and the '(a)–(d)' lists were kept as real lists. The 1971 grammar's OCR layer is of poor quality."
+}
+```
