@@ -10,7 +10,7 @@ PDF's page-label table ({page: label}); `han_pages` the PDF pages of the Han-onl
 
 Definitions (docs/output-files.md):
   ready to ship      the work order approved on the review page, the OCR text approved (when intake added OCR text, or
-                     found an existing OCR layer doubtful, unusable or missing diacritics),
+                     found an existing OCR layer doubtful, unusable or missing diacritics, or could not check it),
                      and the safety checks OK. PAC is the manual check after it; its line is information only.
   needs a person     the AI's deferrals + the executor's deferrals (counted by kind and page) + CHECK rows, leaving out
                      the "Nothing deferred by the executor" row, which only points at that list.
@@ -28,14 +28,17 @@ def with_spread_labels(labels, intake):
         if str(out.get(int(p), str(p))) == str(p): out[int(p)] = lab
     return out
 def ocr_layer_flagged(intake):
-    """Intake's test of an existing OCR layer on scanned pages found it doubtful, unusable or missing diacritics: then its
-    OCR text needs a person's approval before the book ships, as added OCR text does (decided 2026-10-25)."""
+    """Intake's test of an existing OCR layer on scanned pages found it doubtful, unusable or missing diacritics, or could
+    not check it (no sample page scored: an unknown layer is not "not needed"): then its OCR text needs a person's
+    approval before the book ships, as added OCR text does (decided 2026-10-25). A book with no existing OCR layer has no
+    `ocr_layer_test` and is not flagged."""
     ol = (intake or {}).get('ocr_layer_test') or {}
-    return ol.get('verdict') in ('doubtful', 'unusable') or bool(ol.get('diacritics'))
+    return ol.get('verdict') in ('doubtful', 'unusable', 'not enough pages scored') or bool(ol.get('diacritics'))
 def ocr_layer_finding(intake):
     """A few words on what the OCR-layer test found, for the ready-to-ship line."""
     ol = (intake or {}).get('ocr_layer_test') or {}
     return ' and '.join(x for x in [f'{ol["verdict"]} ({ol["median_cer"]:.0%} character error)' if ol.get('verdict') in ('doubtful', 'unusable') and ol.get('median_cer') is not None else None,
+                                    'not checked (no sample page could be scored)' if ol.get('verdict') == 'not enough pages scored' else None,
                                     'missing diacritics' if ol.get('diacritics') else None] if x)   # reads after "the existing OCR layer is"
 NO_PAGE = 'page: not on this tag'
 SAFETY = [('Every page looks the same as the original', 'pages look the same'),

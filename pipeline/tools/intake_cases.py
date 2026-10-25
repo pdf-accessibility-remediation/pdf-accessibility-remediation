@@ -108,6 +108,8 @@ def build(out):
         return '3 Tr\n' + ''.join(f'BT /F1 10.5 Tf 36 {H_IN * 72 - 36 - 10.5 - k * size * 1.8 * 72 / DPI:.1f} Td ({text.replace(chr(39), chr(92) + chr(39))}) Tj ET\n' for k in range(n))
     pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + layer_lines(RO_PLAIN), [text_image(RO)], font=True); save('ocr-layer-missing-marks', pdf)
     pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + layer_lines(RO_PLAIN), [text_image(RO_PLAIN)], font=True); save('ocr-layer-matching', pdf)
+    pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + layer_lines(RO_PLAIN, n=2), [text_image(RO_PLAIN)], font=True)   # 2 lines of 12:
+    save('ocr-layer-too-short', pdf)                 #   under 300 characters, so no page can be scored
     def lines_at(x, text, n=24):                    # born-digital lines on a landscape page (11 x 8.5 in)
         return ''.join(f'BT /F1 11 Tf {x} {560 - k * 20} Td ({text} {k + 1}) Tj ET\n' for k in range(n))
     def blocks(x, side):                             # three blocks per half, the gaps between them wider than the gutter,
@@ -193,6 +195,10 @@ CASES = [  # (case, pdf, OCR_LANG, what is expected, test on intake.json)
      lambda j: ((j.get('spreads') or {}).get('printed') or {}) == {1: '12–13', 2: '14–15'} or ((j.get('spreads') or {}).get('printed') or {}) == {'1': '12–13', '2': '14–15'}),
     ('one wide column on a landscape page → not a spread', 'landscape-one-column', None, 'no spreads',
      lambda j: not j.get('spreads')),
+    ('OCR layer too short to score → "OCR layer not checked" CHECK, OCR text approval needed', 'ocr-layer-too-short', None,
+     'verdict not enough pages scored; CHECK; intake glance asks for the OCR review',
+     lambda j: (j.get('ocr_layer_test') or {}).get('verdict') == 'not enough pages scored'
+     and any(f['what'] == 'OCR layer not checked' and f['check'] for f in j['flags']) and (j.get('glance') or {}).get('ocr_layer_flagged') is True),
     ('Japanese scan, OCR_LANG unset → stops', 'japanese-scan', None, 'stopped: CJK text, set OCR_LANG',
      lambda j: j['status'] == 'stopped' and 'set OCR_LANG' in j['summary']),
     ('Japanese scan, OCR_LANG=jpn+eng → planned', 'japanese-scan', 'jpn+eng', 'planned, CJK OCR needs a person',

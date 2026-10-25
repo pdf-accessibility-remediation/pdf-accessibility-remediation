@@ -89,7 +89,7 @@ Each gap in the Save message has an **Add** link that opens the form at the righ
 
 ## Sign-off: when a book is ready to ship
 
-The review page is the final sign-off (checklist rule 2: a person approves AI output before it ships). A book counts as ready to ship only when a person has approved its work order on the review page and, if intake added OCR text or found the book's existing OCR layer doubtful, unusable or missing diacritics, its OCR text as well.
+The review page is the final sign-off (checklist rule 2: a person approves AI output before it ships). A book counts as ready to ship only when a person has approved its work order on the review page and, if intake added OCR text or found the book's existing OCR layer doubtful, unusable or missing diacritics, or could not check it, its OCR text as well.
 
 - **OCR text verdicts** are kept in one record, `intake.review.ocr_text_approved` (in `_intake/intake.json` and `record.json`): verdict, reviewer, date, reason, pages. The planned OCR section of the review page will write that record. `review_ocr.py` writes the same record and stays as a fallback for runs without the review page (see [Intake](intake.md)). The latest verdict wins; earlier ones are kept under `history`.
 - **`REVIEW=1` is optional for now.** A book run without it is still processed and reported, but it is never shown as ready to ship. Once the pipeline is in official use, the review step becomes the standard workflow; the default has not changed yet.
