@@ -6,7 +6,7 @@ intake.py does with each (no book content; nothing is sent anywhere; no model).
 Builds each case in <out_dir>/<case>.pdf, runs `intake.py --plan-only` on it (with the case's OCR_LANG), and compares
 intake.json with what the case expects: PASS or FAIL per case, exit 1 on any FAIL. --full also runs the whole intake
 (OCR + auto-tag, local) on the empty-text scan (the empty text object is removed so OCR text is added) and on the two
-placeholder-tree cases (the old tree is set aside and a real one made).
+placeholder-tree cases (the old tree is set aside and a real one made) and on the two-up page (read half by half).
 Japanese and Korean pages are drawn with a system font (Arial Unicode); text is the test's own.
 """
 import json, os, subprocess, sys, zlib
@@ -47,12 +47,12 @@ def image_xobject(pdf, img):
                           Filter=pikepdf.Name.FlateDecode)
 
 
-def new_page(pdf, content, images=(), font=False):
+def new_page(pdf, content, images=(), font=False, size=None):
     res = pikepdf.Dictionary()
     if images: res.XObject = pikepdf.Dictionary({f'/Im{i}': image_xobject(pdf, im) for i, im in enumerate(images)})
     if font: res.Font = pikepdf.Dictionary(F1=pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1,
                                                                 BaseFont=pikepdf.Name.Helvetica, Encoding=pikepdf.Name.WinAnsiEncoding))
-    page = pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, W_IN * 72, H_IN * 72], Resources=res,
+    page = pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, *(size or (W_IN * 72, H_IN * 72))], Resources=res,
                               Contents=pikepdf.Stream(pdf, content.encode('latin-1')))
     pdf.pages.append(pikepdf.Page(page))
     return pdf.pages[-1]
@@ -108,6 +108,12 @@ def build(out):
         return '3 Tr\n' + ''.join(f'BT /F1 10.5 Tf 36 {H_IN * 72 - 36 - 10.5 - k * size * 1.8 * 72 / DPI:.1f} Td ({text.replace(chr(39), chr(92) + chr(39))}) Tj ET\n' for k in range(n))
     pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + layer_lines(RO_PLAIN), [text_image(RO)], font=True); save('ocr-layer-missing-marks', pdf)
     pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + layer_lines(RO_PLAIN), [text_image(RO_PLAIN)], font=True); save('ocr-layer-matching', pdf)
+    def lines_at(x, text, n=24):                    # born-digital lines on a landscape page (11 x 8.5 in)
+        return ''.join(f'BT /F1 11 Tf {x} {560 - k * 20} Td ({text} {k + 1}) Tj ET\n' for k in range(n))
+    pdf = pikepdf.new(); new_page(pdf, lines_at(50, 'Left page, line') + lines_at(450, 'Right page, line'), font=True, size=(792, 612))
+    save('spread-two-up', pdf)
+    pdf = pikepdf.new(); new_page(pdf, lines_at(50, 'One wide column of text runs across the whole width of this landscape page, line'),
+                                  font=True, size=(792, 612)); save('landscape-one-column', pdf)
     for name, txt, vert in (('japanese-scan', JA, False), ('japanese-vertical-scan', JA, True), ('korean-scan', KO, False)):
         pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE, [text_image(txt, vertical=vert)]); save(name, pdf)
     return made
@@ -136,6 +142,11 @@ CASES = [  # (case, pdf, OCR_LANG, what is expected, test on intake.json)
      lambda j: bool((j.get('ocr_layer_test') or {}).get('diacritics')) and any(f['what'] == 'OCR layer: diacritics' for f in j['flags'])),
     ('OCR layer matching its scan → usable, no CHECK', 'ocr-layer-matching', None, 'OCR layer test: usable, no OCR-layer flag',
      lambda j: (j.get('ocr_layer_test') or {}).get('verdict') == 'usable' and not any(f['what'].startswith('OCR layer') for f in j['flags'])),
+    ('two printed pages side by side → spread CHECK', 'spread-two-up', None, 'spreads [1], left half first, CHECK',
+     lambda j: (j.get('spreads') or {}).get('pages') == [1] and j['spreads'].get('order') == 'left half first'
+     and any(f['what'] == 'Two printed pages per PDF page' for f in j['flags'])),
+    ('one wide column on a landscape page → not a spread', 'landscape-one-column', None, 'no spreads',
+     lambda j: not j.get('spreads')),
     ('Japanese scan, OCR_LANG unset → stops', 'japanese-scan', None, 'stopped: CJK text, set OCR_LANG',
      lambda j: j['status'] == 'stopped' and 'set OCR_LANG' in j['summary']),
     ('Japanese scan, OCR_LANG=jpn+eng → planned', 'japanese-scan', 'jpn+eng', 'planned, CJK OCR needs a person',
@@ -170,6 +181,12 @@ def main():
         bad += not ok
         print(f'{"PASS" if ok else "FAIL"}  full intake on empty-text-over-scan: empty text object removed, OCR text added, '
               f'auto-tagged (got: {j["status"]}: {j.get("summary")})', flush=True)
+        j = run_intake(made['spread-two-up'], os.path.join(out, 'full', 'spread-two-up'), None, plan=False)
+        r = ((j['checks'].get('spreads_reordered') or {}).get('pages') or {}).get('1') or {}
+        ok = j['status'] == 'done' and r.get('switches_after', 9) <= 1 and not j['checks']['spreads_reordered'].get('pixels_differ')
+        bad += not ok
+        print(f'{"PASS" if ok else "FAIL"}  full intake on spread-two-up: tag tree reads the left half, then the right '
+              f'(got: {j["status"]}: switches {r.get("switches_before")} → {r.get("switches_after")})', flush=True)
         for case in ('tree-document-part', 'tree-figures-only'):
             j = run_intake(made[case], os.path.join(out, 'full', case), None, plan=False)
             ok = j['status'] == 'done' and not any((j['checks'].get('placeholder_tree_removed') or {}).get(k) for k in ('pixels_differ', 'text_differs'))

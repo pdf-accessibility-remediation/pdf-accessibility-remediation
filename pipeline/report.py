@@ -95,6 +95,10 @@ try:
     import pikepdf as _pk
     with _pk.open(os.path.join(R, PDF)) as _p: PLAB = {i + 1: str(pg_.label) for i, pg_ in enumerate(_p.pages)}
 except Exception: PLAB = {}
+try:                                              # a spread (two printed pages per PDF page): intake's "210–211" where the PDF has no label
+    for _p, _l in ((json.load(open(os.path.join(R, '_intake', 'intake.json'))).get('spreads') or {}).get('printed') or {}).items():
+        if PLAB.get(int(_p), str(_p)) == str(_p): PLAB[int(_p)] = _l
+except Exception: pass
 NO_PAGE = 'page: not on this tag'                 # a missing page is never printed as "unknown" (the record keeps null)
 def pg(n):
     try: n = int(n)
@@ -104,7 +108,7 @@ def pg(n):
 def pgr(a, b):
     if a == b: return pg(a)
     la, lb = PLAB.get(int(a), ''), PLAB.get(int(b), '')
-    return f'PDF {a}–{b}' + (f' (printed {la}–{lb})' if la and lb and (la != str(a) or lb != str(b)) else '')
+    return f'PDF {a}–{b}' + ((f' (printed {la} to {lb})' if '–' in la + lb else f' (printed {la}–{lb})') if la and lb and (la != str(a) or lb != str(b)) else '')
 def pgs(ns): return ', '.join([pg(n) for n in sorted({n for n in ns if n is not None}, key=int)] + ([NO_PAGE] if any(n is None for n in ns) else []))
 def nc(v): return 'not counted' if v is None else v      # a count the verify file left empty
 def xl(build, **kw):
