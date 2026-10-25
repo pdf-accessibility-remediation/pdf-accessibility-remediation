@@ -1,0 +1,105 @@
+{
+ "apply": {
+  "applied": {
+   "artifact: \"decorative wave ornament on title page\"": 1,
+   "artifact: \"running head Fishing with Maui\"": 4,
+   "artifact: \"running head Preface\"": 1,
+   "bookmarks: built from heading tags": 39,
+   "document: /Lang": 1,
+   "document: DisplayDocTitle": 2,
+   "document: Document root created": 1,
+   "document: title": 1,
+   "figure: alt text": 3,
+   "flatten: false list → paragraphs": 1,
+   "flatten: false table → paragraphs": 1,
+   "flatten: nested list/table already flattened with its parent": 1,
+   "heading: standard tag H4 → H3 (retyped)": 25,
+   "links: /Contents set": 281,
+   "links: joined existing Link": 2,
+   "links: new Link element created": 279,
+   "links: placed after shared text": 279,
+   "retype → H1": 1,
+   "retype → H2": 5,
+   "retype → P": 4,
+   "structure: empty tag removed (proven empty)": 2,
+   "tag tree index: entries pointing outside the tree removed (IDTree)": 6
+  },
+  "deferred": 0,
+  "empty_notes_removed": 0,
+  "failed": 0,
+  "rejected": 0
+ },
+ "validation_dropped": [],
+ "verapdf": {
+  "after": {
+   "failed": {},
+   "totals": {
+    "ua_only_failed_checks": 0,
+    "ua_only_failed_rules": 0,
+    "unclassified": [],
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
+   }
+  },
+  "before": {
+   "failed": {
+    "7.1-10": 1,
+    "7.18.5-1": 281,
+    "7.2-21": 904,
+    "7.2-33": 1,
+    "7.2-34": 12960,
+    "7.3-1": 4
+   },
+   "totals": {
+    "ua_only_failed_checks": 1,
+    "ua_only_failed_rules": 1,
+    "unclassified": [],
+    "wcag_failed_checks": 14150,
+    "wcag_failed_rules": 5
+   }
+  }
+ },
+ "verify": {
+  "artifact_chars": 6836,
+  "figures": {
+   "count": 3,
+   "generic_or_empty": 0,
+   "with_nul": 0
+  },
+  "headings": {
+   "H1": 1,
+   "H2": 14,
+   "H3": 24
+  },
+  "pixel_pages_differing": [],
+  "skipped_levels": [],
+  "structure": {
+   "captions_not_grouped": 0,
+   "empty_tables": 0,
+   "empty_tags": 1,
+   "links_url_only": 0,
+   "paragraphs_holding_only_figures": 0
+  },
+  "text_pages_changed": [],
+  "tree_types": {
+   "Div": 15,
+   "Document": 1,
+   "Figure": 3,
+   "H1": 1,
+   "H2": 14,
+   "H3": 24,
+   "L": 2,
+   "LBody": 3,
+   "LI": 4,
+   "Lbl": 3,
+   "Link": 303,
+   "P": 1382,
+   "Part": 1,
+   "Sect": 40,
+   "Span": 1150,
+   "TOC": 1,
+   "TOCI": 12
+  },
+  "untagged_chars": 0
+ }
+}

@@ -1,0 +1,51 @@
+```json
+{
+  "schema": "workorder/0.1",
+  "sections": {"toc_pages": [8], "index_from": 210},
+  "artifacts": {
+    "elements": [
+      {"obj": "3921 0", "type": "Layout", "label": "decorative wave ornament on title page", "confidence": 0.95}
+    ],
+    "text_rules": [
+      {"label": "running head Fishing with Maui", "pages": [22, 28], "regex": "Fishing with Maui", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head Preface", "pages": [11, 11], "regex": "Preface", "band": "top", "type": "Pagination", "subtype": "Header", "confidence": 0.7}
+    ]
+  },
+  "document": {
+    "title": "Mapping the Godzone: A Primer on New Zealand Literature and Culture",
+    "lang": "en-US",
+    "display_doc_title": true
+  },
+  "rolemap": {"H4": "H3"},
+  "retype": [
+    {"obj": "1154 0", "type": "H1", "why": "half-title is the book title; the only H1"},
+    {"obj": "3920 0", "type": "P", "why": "subtitle line on title page"},
+    {"obj": "3806 0", "type": "P", "why": "author name on title page"},
+    {"obj": "3810 0", "type": "P", "why": "dedication"},
+    {"obj": "3813 0", "type": "P", "why": "CIP data label, not a heading"},
+    {"obj": "3823 0", "type": "H2", "why": "Contents heading"},
+    {"obj": "3718 0", "type": "H2", "why": "Preface is front-matter title"},
+    {"obj": "1169 0", "type": "H2", "why": "Bibliography is back-matter title"},
+    {"obj": "1206 0", "type": "H2", "why": "Index heading"},
+    {"obj": "1150 0", "type": "H2", "why": "About the Author is back-matter title"}
+  ],
+  "flatten": [
+    {"obj": "3815 0", "why": "CIP catalog data laid out as a table; it is plain text lines, not a data table"},
+    {"obj": "1891 0", "why": "dialogue line introduced by a dash, not a list"},
+    {"obj": "2021 0", "why": "dialogue lines introduced by a dash, not a list"}
+  ],
+  "alt": [
+    {"obj": "4081 0", "alt": "Front cover of Mapping the Godzone: A Primer on New Zealand Literature and Culture by William J. Schafer. A painting of a small New Zealand town street with weatherboard houses, a red fence, power poles and a water tower under a blue sky with clouds, beside a turquoise Maori-style spiral border on the left."},
+    {"obj": "3807 0", "alt": "University of Hawai‘i Press logo"},
+    {"obj": "3825 0", "alt": "Outline map of Aotearoa New Zealand showing the North Island and South Island, with places labelled and linked to authors and novels set there: Bay of Islands (Maurice Shadbolt, The House of Strife); Waipu (Fiona Kidman, The Book of Secrets); Taranaki (Shadbolt, Monday's Warriors); Hawera (Ronald Hugh Morrieson, The Scarecrow, Came a Hot Friday, Predicament); Wellington and Marlborough Sound (Ian Wedde, Symmes Hole); Urewera (Barry Crump, Wild Pork and Watercress); Kaimanawa (John Mulgan, Man Alone); Waituhi (Witi Ihimaera, The Matriarch; Shadbolt, Season of the Jew); Oamaru and Dunedin (Janet Frame, To the Is-Land, An Angel at My Table). Hamilton, Rotorua, Christchurch and Invercargill are also marked."}
+  ],
+  "move_to_document_start": ["4081 0"],
+  "deferrals": [
+    {"what": "Chapter-number paragraphs (1–8) that open each chapter appear as separate first tagged lines, apparently not part of the chapter heading", "why": "The digest gives no obj for them, so I cannot safely merge or retype them; a person should check that they are folded into or placed with the chapter titles", "pages": [33, 56, 75, 112, 135, 156, 179, 194]},
+    {"what": "Two lists on page 59 split one three-item enumeration (1)-(3) across two L elements, one item without a label", "why": "Unclear how the author intended the list; kept as lists for a person to check", "pages": [59]},
+    {"what": "Possible running heads/folios in the index (e.g. 'Index 197' as first tagged line) and in other chapters (e.g. page 119 'Concepts of Holy War', 148, 179 headings) were not artifacted", "why": "Cannot tell from the digest whether they are running heads or real headings", "pages": [197, 119, 148, 179]},
+    {"what": "Chapter running heads other than 'Fishing with Maui' (pages 22–28) not identified", "why": "repeated_lines lists only one pattern", "pages": [22, 28]}
+  ],
+  "notes_for_reviewer": "Outline: H1 = book title (half-title, PDF 2); chapters, Contents, Preface, Bibliography, Index and About the Author = H2; the former H4 section heads = H3. Title-page lines, dedication and CIP label were demoted to P. The CIP table and two dialogue 'lists' were flattened. The wave ornament on PDF 4 is artifacted. Document language set to en-US, which should resolve the language failures (veraPDF 7.2-34, 7.2-21, 7.2-33). Alt text was added for the cover, press logo and map (veraPDF 7.3-1). The existing TOC/TOCI structure was left as is."
+}
+```

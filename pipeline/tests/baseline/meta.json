@@ -1,0 +1,8 @@
+{
+ "prompt": "workorder_v8.md",
+ "books": [
+  "godzone",
+  "clans"
+ ],
+ "python": "3.14"
+}
