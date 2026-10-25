@@ -318,21 +318,23 @@ def detect_spreads(path):
 def reorder_spreads(path, spreads, right_first):
     """After auto-tag, on spread pages only: reorder the tagger's elements of each page by half (the right half first for
     vertical CJK, else the left). Within a half, vertical CJK runs right to left by position; otherwise the tagger's order stays. Only the tree order changes, never page content.
-    Returns per page the half sequence switches before and after, and the elements that span the gutter."""
+    Returns (per page: the switches between halves before and after, the elements that span the gutter;
+    the pages left in the tagger's order, with the reason)."""
     from lib import plumb_fix  # noqa: F401
     import pdfplumber
     out = {}
     with pikepdf.open(path, allow_overwriting_input=True) as pdf:
         st = pdf.Root.get('/StructTreeRoot')
-        if st is None: return out
+        if st is None: return out, {p: 'no tag tree' for p in spreads['pages']}
         doc_el = st.K[0] if isinstance(st.K, pikepdf.Array) and len(st.K) == 1 else st.K
-        if not isinstance(doc_el, pikepdf.Dictionary) or not isinstance(doc_el.get('/K'), pikepdf.Array): return out
-        kids = list(doc_el.K); idx = _page_index(pdf); changed = False
+        if not isinstance(doc_el, pikepdf.Dictionary) or not isinstance(doc_el.get('/K'), pikepdf.Array):
+            return out, {p: 'the tag tree is not one flat list under Document' for p in spreads['pages']}
+        kids = list(doc_el.K); idx = _page_index(pdf); changed = False; left = {}
         with pdfplumber.open(path) as pl:
             for p in spreads['pages']:
                 pobj = pdf.pages[p - 1].obj; slots = [k for k, c in enumerate(kids) if isinstance(c, pikepdf.Dictionary)
                                                      and '/Pg' in c and idx.get(c.Pg.objgen) == p]
-                if len(slots) < 2: continue
+                if len(slots) < 2: left[p] = 'fewer than 2 tagged elements on the page'; continue
                 pg = pl.pages[p - 1]; W, H = float(pg.width), float(pg.height); rot = spreads.get('rotation', {}).get(p, 0)
                 def share(x, top):                       # position across the page as displayed (after /Rotate)
                     return {0: x / W, 90: 1 - top / H, 180: 1 - x / W, 270: top / H}.get(rot, x / W)
@@ -359,7 +361,7 @@ def reorder_spreads(path, spreads, right_first):
                     side[k] = sum(first) * 2 >= len(first)
                     if min(sum(first), len(first) - sum(first)) >= 0.2 * len(first): span.append(k)
                 known = [side[k] for k in slots if side[k] is not None]
-                if not known: continue
+                if not known: left[p] = 'no element with text or an image on the page'; continue
                 last = known[0]
                 for k in slots:                          # an element with no content of its own goes with the one before it
                     if side[k] is None: side[k] = last
@@ -377,12 +379,29 @@ def reorder_spreads(path, spreads, right_first):
                 reordered = [kids[k] for k in new]
                 for slot, el in zip(slots, reordered): kids[slot] = el
                 sw = lambda s: sum(1 for a, b in zip(s, s[1:]) if a != b)
-                out[p] = {'switches_before': sw(before), 'switches_after': sw(after), 'elements': len(slots),
+                out[p] = {'switches_before': sw(before), 'switches_after': sw(after), 'elements': len(slots), 'reordered': new != slots,
                           'spanning': span_names}
                 changed = changed or before != after
         if changed:
             doc_el.K = pikepdf.Array(kids); pdf.save(path)
-    return out
+    return out, left
+
+def spread_why(sp, done):
+    """The CHECK text for spread pages: what is planned (done=None, plan-only or before auto-tagging) or what the reorder did."""
+    rf = sp.get('order', '').startswith('right')
+    how = (f'half by half, {sp.get("order")}' + ('; within a half the body columns run right to left by position, and running heads, '
+           'page numbers, ruby and stray OCR fragments go where their position falls' if rf else '; within a half the tagger\'s order is kept'))
+    if done is None: what = f'Planned: after auto-tagging, the tag tree is put in reading order {how}'
+    else:
+        moved = [p for p, v in (done.get('pages') or {}).items() if v.get('reordered')]
+        left = done.get('left_as_tagged') or {}
+        what = (f'The tag tree was reordered on {len(moved)} of the {len(sp["pages"])} pages: {how}'
+                + (f'; {len(left)} left in the tagger\'s order ({"; ".join(sorted(set(left.values())))})' if left else '')
+                + (f'; on {len(sp["pages"]) - len(moved) - len(left)} the tagger\'s order was already right' if len(sp['pages']) - len(moved) - len(left) else ''))
+    pr = sp.get('printed') or {}
+    return ('these pages each hold two printed pages side by side (a spread; pages are never split). ' + what
+            + (f'. Both printed page numbers were read on {len(pr)} of them and are cited as "PDF N (printed a–b)"' if pr else '')
+            + ': a person checks the reading order and the page numbers')
 
 # ------------------------------------------------------------------ the existing tag tree (checklist 10.5)
 def _page_index(pdf):
@@ -1429,10 +1448,7 @@ def main():
             right_first = bool(rec['spreads']['vertical_fonts'] or vt or '_vert' in ocr_lang)
             rec['spreads']['order'] = 'right half first (vertical CJK)' if right_first else 'left half first'
             pr = rec['spreads']['printed']
-            flag('Two printed pages per PDF page', f'these pages each hold two printed pages side by side (a spread; pages are never '
-                 f'split). After auto-tagging the tag tree reads each spread half by half, {rec["spreads"]["order"]}'
-                 + (f'; both printed page numbers were read on {len(pr)} of them and are cited as "PDF N (printed a–b)"' if pr else '')
-                 + ': a person checks the reading order and the page numbers', rec['spreads']['pages'][:20])
+            flag('Two printed pages per PDF page', spread_why(rec['spreads'], None), rec['spreads']['pages'][:20])
         if PLAN_ONLY:                                    # at run time these are raised for the pages that keep OCR text
             lowp = [p for p in plan['ocr_pages'] if p in low]
             if lowp: flag('Low-resolution scans', f'scanned below {OCR_DPI} dpi (checklist 2.1): OCR will read them enlarged, '
@@ -1565,9 +1581,12 @@ def main():
             if cmp['pixels'] or cmp['text']: return stop('failed', 'marking page scans as decoration changed a page: stopped', 1)
         ph = drop_placeholder_alt(tagged_out); rec['checks']['placeholder_alt_removed'] = ph
         if rec.get('spreads'):                           # each spread read half by half: tree order only, checked
-            res = reorder_spreads(tagged_out, rec['spreads'], rec['spreads']['order'].startswith('right'))
+            res, left = reorder_spreads(tagged_out, rec['spreads'], rec['spreads']['order'].startswith('right'))
             cmp = compare(cur, tagged_out, near=True)
-            rec['checks']['spreads_reordered'] = {'pages': {str(k): v for k, v in res.items()}, 'pixels_differ': cmp['pixels'], 'text_differs': cmp['text']}
+            rec['checks']['spreads_reordered'] = {'pages': {str(k): v for k, v in res.items()}, 'left_as_tagged': {str(k): v for k, v in left.items()},
+                                                  'pixels_differ': cmp['pixels'], 'text_differs': cmp['text']}
+            for f in rec['flags']:
+                if f['what'] == 'Two printed pages per PDF page': f['why'] = spread_why(rec['spreads'], rec['checks']['spreads_reordered'])
             if cmp['pixels'] or cmp['text']: return stop('failed', 'reordering spread pages changed a page: stopped', 1)
         if ph['figures'] or ph['links']:
             flag('Placeholder alt text removed', f'the auto-tagger wrote alt text that says nothing ({ph["figures"]} figures "image N", '
