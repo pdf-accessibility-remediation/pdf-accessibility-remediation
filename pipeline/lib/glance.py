@@ -9,7 +9,8 @@ It reads only what a finished run keeps: record.json and review.md (its "Automat
 PDF's page-label table ({page: label}); `han_pages` the PDF pages of the Han-only runs (from han_review.csv).
 
 Definitions (docs/output-files.md):
-  ready to ship      the work order approved on the review page, the OCR text approved (when intake added OCR text),
+  ready to ship      the work order approved on the review page, the OCR text approved (when intake added OCR text, or
+                     found an existing OCR layer doubtful, unusable or missing diacritics),
                      and the safety checks OK. PAC is the manual check after it; its line is information only.
   needs a person     the AI's deferrals + the executor's deferrals (counted by kind and page) + CHECK rows, leaving out
                      the "Nothing deferred by the executor" row, which only points at that list.
@@ -19,6 +20,16 @@ Definitions (docs/output-files.md):
 import re
 
 SCHEMA = 'glance/0.3'
+def ocr_layer_flagged(intake):
+    """Intake's test of an existing OCR layer on scanned pages found it doubtful, unusable or missing diacritics: then its
+    OCR text needs a person's approval before the book ships, as added OCR text does (decided 2026-10-25)."""
+    ol = (intake or {}).get('ocr_layer_test') or {}
+    return ol.get('verdict') in ('doubtful', 'unusable') or bool(ol.get('diacritics'))
+def ocr_layer_finding(intake):
+    """A few words on what the OCR-layer test found, for the ready-to-ship line."""
+    ol = (intake or {}).get('ocr_layer_test') or {}
+    return ' and '.join(x for x in [f'{ol["verdict"]} ({ol["median_cer"]:.0%} character error)' if ol.get('verdict') in ('doubtful', 'unusable') and ol.get('median_cer') is not None else None,
+                                    'missing diacritics' if ol.get('diacritics') else None] if x)   # reads after "the existing OCR layer is"
 NO_PAGE = 'page: not on this tag'
 SAFETY = [('Every page looks the same as the original', 'pages look the same'),
           ('Published text unchanged', 'text unchanged'),
@@ -126,11 +137,13 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
         wo_ok, wo_txt = False, 'no (run without REVIEW=1)'
     ocr_pages = (intake.get('ocr') or {}).get('pages_with_ocr_text') or []
     v = (intake.get('review') or {}).get('ocr_text_approved')
-    if ocr_pages:
+    flagged = ocr_layer_flagged(intake)                 # an existing OCR layer that step A flagged needs the approval too
+    if ocr_pages or flagged:
         if isinstance(v, dict):
             ocr_ok = v.get('verdict') == 'approved'
             ocr_txt = f'{"yes" if ocr_ok else "no"} ({v.get("verdict")} by {v.get("reviewer")} on {v.get("date")})'
-        else: ocr_ok, ocr_txt = False, f'no (not yet reviewed: OCR text on {pages_text(ocr_pages, labels)})'
+        else: ocr_ok, ocr_txt = False, ('no (not yet reviewed: ' + '; '.join(x for x in [f'OCR text on {pages_text(ocr_pages, labels)}' if ocr_pages else None,
+                                         f'the existing OCR layer is {ocr_layer_finding(intake)}' if flagged else None] if x) + ')')
     else:
         ocr_ok, s = True, sec('the text layer comes from OCR')
         ocr_txt = 'not needed (intake added no OCR text' + (f'; the publisher\'s text layer is OCR, see §{s["n"]})' if s else ')')

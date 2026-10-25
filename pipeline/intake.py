@@ -49,6 +49,7 @@ intake.json) · 1 error.
 import sys, os, re, json, time, shutil, hashlib, subprocess, tempfile, unicodedata, difflib, collections, datetime, statistics, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import support
+from lib.glance import ocr_layer_flagged
 import pikepdf, pypdfium2 as pdfium, pypdfium2.raw as pdfium_raw
 
 SCHEMA = 'intake/0.2'
@@ -856,11 +857,12 @@ def intake_glance(rec):
     o, tt, fl = rec.get('ocr') or {}, rec.get('text_test') or {}, rec.get('flags') or []
     ocr_pages = o.get('pages_with_ocr_text') or []
     v = (rec.get('review') or {}).get('ocr_text_approved')
-    ocr_open = bool(ocr_pages) and not (isinstance(v, dict) and v.get('verdict') == 'approved')
+    flagged = ocr_layer_flagged(rec)                   # an existing OCR layer the test flagged needs the same approval
+    ocr_open = bool(ocr_pages or flagged) and not (isinstance(v, dict) and v.get('verdict') == 'approved')
     sc = [p for p in tt.get('pages') or [] if p.get('cer') is not None]
     return {'schema': 'intake-glance/0.1', 'status': rec.get('status'),
             'needs_person': sum(1 for f in fl if f.get('check')) + (1 if ocr_open else 0), 'notes': sum(1 for f in fl if not f.get('check')),
-            'ocr_pages': ocr_pages, 'picture_pages': o.get('image_pages_without_text') or [],
+            'ocr_pages': ocr_pages, 'picture_pages': o.get('image_pages_without_text') or [], 'ocr_layer_flagged': flagged,
             'placeholder_alt_removed': (rec.get('checks') or {}).get('placeholder_alt_removed'),
             'text_test': {'verdict': tt.get('verdict'), 'median_cer': tt.get('median_cer'), 'sampled': len(sc),
                           'suspicious_added': sum(1 for p in sc if p.get('suspicious')), 'front_matter_skipped': bool(tt.get('front_matter_skipped')),
@@ -886,7 +888,7 @@ def glance_lines(rec, labels):
                  + f': {rec.get("summary") or "no summary recorded"}'
     L = ['## Overview', '', f'**Result:** {result}  ', f'**Needs a person:** {g["needs_person"]} (below) · **Notes:** {g["notes"]}  ']
     v = (rec.get('review') or {}).get('ocr_text_approved')
-    if g['ocr_pages']:
+    if g['ocr_pages'] or g.get('ocr_layer_flagged'):
         L.append('**OCR text reviewed by a person:** ' + (
             f'{v.get("verdict")} by {v.get("reviewer")} on {v.get("date")}' + (f' (PDF {v["pages"]})' if v.get('pages') else '') + f': {v.get("reason")}'
             if isinstance(v, dict) else 'not yet reviewed (on the review page, or with review_ocr.py)'))
@@ -919,8 +921,9 @@ def glance_lines(rec, labels):
         elif w == 'Low-resolution scans': txt = 'Low-resolution scan' + ('s' if len(ps) != 1 else '') + ', read enlarged by OCR'
         else: txt = w
         items.append(txt + (f': {P(ps)}' if ps else ''))
-    if g['ocr_pages'] and not (isinstance(v, dict) and v.get('verdict') == 'approved'):
-        items.append(('OCR text not approved' if isinstance(v, dict) else 'OCR text not yet reviewed') + f': {P(g["ocr_pages"])}')
+    if (g['ocr_pages'] or g.get('ocr_layer_flagged')) and not (isinstance(v, dict) and v.get('verdict') == 'approved'):
+        items.append(('OCR text not approved' if isinstance(v, dict) else 'OCR text not yet reviewed')
+                     + (f': {P(g["ocr_pages"])}' if g['ocr_pages'] else ' (the existing OCR layer was flagged)'))
     if items: L += ['**Needs a person**'] + [f'{i}. {x}' for i, x in enumerate(items, 1)] + ['']
     return L
 
