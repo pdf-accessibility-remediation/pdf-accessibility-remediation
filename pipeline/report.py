@@ -96,10 +96,7 @@ try:
     import pikepdf as _pk
     with _pk.open(os.path.join(R, PDF)) as _p: PLAB = {i + 1: str(pg_.label) for i, pg_ in enumerate(_p.pages)}
 except Exception: PLAB = {}
-try:                                              # a spread (two printed pages per PDF page): intake's "210–211" where the PDF has no label
-    for _p, _l in ((json.load(open(os.path.join(R, '_intake', 'intake.json'))).get('spreads') or {}).get('printed') or {}).items():
-        if PLAB.get(int(_p), str(_p)) == str(_p): PLAB[int(_p)] = _l
-except Exception: pass
+PLAB = G0.with_spread_labels(PLAB, intake)       # a spread (two printed pages per PDF page): "210–211" where the PDF has no label
 NO_PAGE = 'page: not on this tag'                 # a missing page is never printed as "unknown" (the record keeps null)
 def pg(n):
     try: n = int(n)

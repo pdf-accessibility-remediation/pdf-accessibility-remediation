@@ -20,6 +20,13 @@ Definitions (docs/output-files.md):
 import re
 
 SCHEMA = 'glance/0.3'
+def with_spread_labels(labels, intake):
+    """The page-label table with intake's spread labels ("210–211": two printed pages on one PDF page) on the pages that have no
+    label of their own. The one place report.py and report_html.py (a rebuilt dashboard, summary.html) take them from."""
+    out = dict(labels or {})
+    for p, lab in (((intake or {}).get('spreads') or {}).get('printed') or {}).items():
+        if str(out.get(int(p), str(p))) == str(p): out[int(p)] = lab
+    return out
 def ocr_layer_flagged(intake):
     """Intake's test of an existing OCR layer on scanned pages found it doubtful, unusable or missing diacritics: then its
     OCR text needs a person's approval before the book ships, as added OCR text does (decided 2026-10-25)."""
