@@ -1,6 +1,7 @@
 """review/core.py: the review step's logic, with no web server and no HTML (a later front end can call it directly).
 
-    items = build_items(wo, digest)                   # every decision in the work order, with its context and priority group
+    ro    = reading_order(digest, fulltext)          # the original's reading order, for the page's reading-order list
+    items = build_items(wo, digest, ro['entries'])    # every decision in the work order, with its context and priority group
     adds  = addable(wo, digest)                       # what a person can add that the AI did not decide (an H1, an alt, …)
     wo2   = apply_decisions(ai_wo, items, decisions)  # a person's approve / change / reject applied to a copy of the AI's order
     refused = add_entries(wo2, additions, adds, reviewer)   # the person's own decisions added to it
@@ -13,17 +14,19 @@ The formats a front end needs (also in docs/review-step.md):
   addable:   {kind: [{id, kind, target, label, page, page_label, before, default, edit, options, context, images}]}
   decisions: {id: {status: approved | changed | rejected | seen, value?, note?}}
   additions: [{kind, target, value, note?}]
+  reading order: {entries: [lib/readorder.py entries], flagged: [{i, first, last, prev, next}], flat, detail}
 """
 import os, re, sys, copy, json, datetime
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
-from lib import workorder_check  # noqa: E402
+from lib import workorder_check, readorder  # noqa: E402
 
 LEVELS = sorted(workorder_check.ALLOWED - {'Figure'}, key=lambda t: (not t.startswith('H'), t))
 HEADING = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6'}
 GROUPS = {1: 'H1 and title', 2: 'Style-wide mappings', 3: 'Heading-level changes', 4: 'Rules that can hide text',
-          5: 'Pages the AI asked about', 6: 'General'}
+          5: 'Reading order', 6: 'Pages the AI asked about', 7: 'General'}
+READING = ('move_section', 'move_to_document_start', 'adopt_orphans')   # decisions that change the reading order
 SEEN_ONLY = {'deferrals', 'notes_for_reviewer'}       # not applied by apply.py: a person marks them seen, with a note
 PAGE_REF = re.compile(r'PDF (\d+)(?:\s*[–-]\s*(\d+))?')
 PAGE_PNG = re.compile(r'(\d+)\.png$')
@@ -53,7 +56,7 @@ def _index(digest):
     return (labels, by_obj, {s['style']: s for s in digest.get('styles') or []}, {f['obj']: f for f in digest.get('figures') or []},
             {pf['page']: pf for pf in digest.get('page_figures') or []}, {w['id']: w for w in digest.get('ocr_words') or []}, sheet_of)
 
-def build_items(wo, digest):
+def build_items(wo, digest, order=None):
     N = digest['source']['pages']
     labels, by_obj, styles, figs, pfigs, words, sheet_of = _index(digest)
     doc = digest.get('document') or {}
@@ -134,12 +137,29 @@ def build_items(wo, digest):
         ps = [p for p in it.get('pages') or [] if isinstance(p, int)] if isinstance(it, dict) else []
         add(f'deferrals:{i}', 'deferrals', 'Deferred by the AI', ['deferrals', i], it, (it or {}).get('what') or 'Deferral',
             page=min(ps) if ps else None, pages=[min(ps), max(ps)] if ps else None, why=(it or {}).get('why'))
+    ms = wo.get('move_section')
+    if isinstance(ms, dict) and isinstance(ms.get('pages'), list) and len(ms['pages']) == 2:
+        (a, b), c = ms['pages'], ms.get('before_page')
+        add('move_section', 'move_section', 'Reading order', ['move_section'], ms, f'Section on PDF {a}–{b} read before PDF {c}',
+            page=a if isinstance(a, int) else None, pages=[a, b] if all(isinstance(x, int) for x in (a, b)) else None,
+            before_page=c, why=ms.get('why'), **move_preview(order, a, b, c))
+    for i, o in enumerate(wo.get('move_to_document_start') or []):
+        f = figs.get(o) or {}
+        add(f'move_to_document_start:{i}', 'move_to_document_start', 'Reading order', ['move_to_document_start', i], o,
+            f'{"Figure" if f else "Element"} {o} read first', page=f.get('page') or 1, figure=f.get('image'), area_pct=f.get('area_pct'))
+    for i, r in enumerate(wo.get('adopt_orphans') or []):
+        ps = r.get('pages') if isinstance(r, dict) else None
+        ps = ps if isinstance(ps, list) and len(ps) == 2 and all(isinstance(p, int) for p in ps) else None
+        runs = [{'page': u['page'], 'runs': [x['text'] for x in u.get('runs') or [] if x.get('kind') == 'orphan' and (x.get('text') or '').strip()], 'count': u.get('orphan_runs')}
+                for u in digest.get('unowned_content') or [] if ps and ps[0] <= u.get('page', 0) <= ps[1] and u.get('orphan_runs')]
+        add(f'adopt_orphans:{i}', 'adopt_orphans', 'Reading order', ['adopt_orphans', i], r, (r or {}).get('label') or 'Orphan text',
+            page=ps[0] if ps else None, pages=ps, orphans=runs[:6])
     if wo.get('notes_for_reviewer'):
         refs = sorted({int(m.group(1)) for m in PAGE_REF.finditer(wo['notes_for_reviewer']) if 1 <= int(m.group(1)) <= N})
         add('notes_for_reviewer', 'notes_for_reviewer', 'Deferred by the AI', ['notes_for_reviewer'], wo['notes_for_reviewer'],
             'Note to the reviewer from the AI', page=refs[0] if refs else None, page_refs=refs)
     listed = {'retype', 'rolemap', 'actual_text', 'merges', 'document', 'alt', 'page_figures', 'tables', 'flatten', 'keep_lists',
-              'artifacts', 'ocr_words', 'deferrals', 'notes_for_reviewer', 'schema'} | workorder_check.META
+              'artifacts', 'ocr_words', 'deferrals', 'notes_for_reviewer', 'schema', *READING} | workorder_check.META
     for k, v in wo.items():
         if k not in listed:
             add(f'key:{k}', k, 'Other decisions', [k], v, k)
@@ -152,10 +172,11 @@ def build_items(wo, digest):
         elif k == 'rolemap': it['priority'] = 2
         elif k == 'retype' and b != ai and (b in HEADING or ai in HEADING): it['priority'] = 3
         elif k == 'artifacts' and it['loc'][1] in ('text_rules', 'untagged'): it['priority'] = 4
+        elif k in READING: it['priority'] = 5
         elif k == 'deferrals':
             p = it['pages']
-            it['priority'] = 5 if p and (p[1] - p[0] + 1) <= N / 2 else 6
-        elif k == 'notes_for_reviewer': it['priority'] = 5 if it['context'].get('page_refs') else 6
+            it['priority'] = 6 if p and (p[1] - p[0] + 1) <= N / 2 else 7
+        elif k == 'notes_for_reviewer': it['priority'] = 6 if it['context'].get('page_refs') else 7
     return items
 
 def order(items):
@@ -170,7 +191,56 @@ def page_images(it, N):
     ps = [it['page']] if it['page'] else []
     if it['page'] and (it.get('priority') in (1, 3) or it['key'] == 'retype'): ps = [it['page'] - 1, it['page'], it['page'] + 1]
     if it['key'] == 'notes_for_reviewer': ps = it['context'].get('page_refs', [])[:6]
+    if it['key'] in READING and it.get('pages'):
+        c = it['context'].get('before_page')
+        ps = sorted(set(it['pages'] + ([c - 1, c] if it['key'] == 'move_section' and isinstance(c, int) else [])))[:6]
     return [f'review_pages/page_{p:03d}.png' for p in ps if 1 <= p <= N]
+
+# ------------------------------------------------------------------ reading order
+def reading_order(digest, fulltext=None):
+    """The original's reading order for the page's list: {entries, flagged, flat, detail}. From fulltext.json when the audit
+    wrote it there (every container, with what move_section needs), else from the digest's lines (runs audited before
+    that: sections only, and no move preview). flat: fewer than two containers, so there is no order to show."""
+    es = (fulltext or {}).get('reading_order')
+    detail = es is not None
+    if es is None: es = readorder.parse_lines(digest.get('reading_order'))
+    return {'entries': es, 'flagged': readorder.out_of_order(es), 'flat': len(es) < 2, 'detail': detail}
+
+def _under(order, by, e, host):
+    """True when entry e lies inside the container host (following each entry's nearest container above it)."""
+    p, seen = e.get('parent'), set()
+    while p is not None and p not in seen:
+        if p == host: return True
+        seen.add(p); p = (by.get(p) or {}).get('parent')
+    return False
+
+def move_preview(order, a, b, before):
+    """What move_section would do, worked out on the original's tags with the executor's own match (lib/readorder.py):
+    {candidates, host_found, moved, lands_before, siblings_before, siblings_after, flags_before, flags_after}. apply.py
+    matches again on the tree it edits, which earlier steps may have changed, so this is a preview. Empty when the order
+    has no detail (an older run) or the pages are not numbers."""
+    if not order or not all(isinstance(x, int) for x in (a, b, before)) or not any('group' in e for e in order): return {}
+    by = {e['id']: e for e in order}
+    groups = {}
+    for e in order:
+        if e.get('group'): groups.setdefault(None if e.get('top') else e.get('under'), []).append(e['id'])
+    cand, host = readorder.section_move(None, lambda n: groups.get(n, []), lambda n: by[n].get('firsts') or [],
+                                        lambda n: (by[n]['first'], by[n]['last']) if by[n].get('first') is not None else None, a, b, before)
+    out = {'candidates': len(cand), 'host_found': host is not None, 'flags_before': len(readorder.out_of_order(order))}
+    if len(cand) != 1 or host is None: return out
+    s = cand[0][0]
+    block = [e for e in order if e['id'] == s or _under(order, by, e, s)]
+    ids = {e['id'] for e in block}
+    rest = [e for e in order if e['id'] not in ids]
+    hi = next(i for i, e in enumerate(rest) if e['id'] == host)
+    inside = [i for i in range(hi + 1, len(rest)) if _under(rest, by, rest[i], host)]
+    j = next((i for i in inside if rest[i].get('parent') == host and (rest[i].get('first') or 0) >= before), (inside[-1] + 1) if inside else hi + 1)
+    shift = by[host]['depth'] + 1 - by[s]['depth']
+    moved = [{**e, 'depth': e['depth'] + shift, **({'parent': host} if e['id'] == s else {})} for e in block]
+    after = rest[:j] + moved + rest[j:]
+    def kids_of(es): return [{k: e.get(k) for k in ('id', 'style', 'first', 'last', 'text')} for e in es if e.get('parent') == host]
+    return {**out, 'moved': s, 'lands_before': rest[j]['id'] if j < len(rest) else None,
+            'siblings_before': kids_of(order), 'siblings_after': kids_of(after), 'flags_after': len(readorder.out_of_order(after))}
 
 def pages_to_render(items, N):
     """Sets every item's page images; returns the priority items' pages, in review order.
@@ -257,13 +327,14 @@ def prepare(R, pdf):
     ai = load(os.path.join(R, 'workorder.ai.json'))
     digest = load(os.path.join(R, '_audit', 'digest.json'))
     if ai is None or digest is None: sys.exit(f'{R} has no workorder.ai.json or _audit/digest.json: run run_api.sh with REVIEW=1 first')
-    items = build_items(ai, digest)
+    ro = reading_order(digest, load(os.path.join(R, '_audit', 'fulltext.json')))
+    items = build_items(ai, digest, ro['entries'])
     pages_to_render(items, digest['source']['pages'])
     first = sorted({int(PAGE_PNG.search(x).group(1)) for it in items if it['priority'] == 1 for x in it['images']})
     render_pages(pdf, first, os.path.join(R, 'review_pages'))
     data = {'book': digest['source'].get('file'), 'run': os.path.basename(os.path.normpath(R)), 'pages': digest['source']['pages'],
             'pdf': os.path.abspath(pdf), 'groups': GROUPS, 'levels': LEVELS, 'add_kinds': ADD_KINDS, 'items': items,
-            'addable': addable(ai, digest)}
+            'addable': addable(ai, digest), 'reading_order': ro}
     save(os.path.join(R, 'review_items.json'), data)
     return data
 
@@ -292,7 +363,8 @@ def apply_decisions(ai_wo, items, decisions):
         for k in loc[:-1]: parent = parent[k]
         if isinstance(parent, list): del parent[loc[-1]]
         else: parent.pop(loc[-1], None)
-    for k in ('retype', 'alt', 'page_figures', 'tables', 'actual_text', 'merges', 'flatten', 'keep_lists', 'ocr_words', 'document', 'rolemap'):
+    for k in ('retype', 'alt', 'page_figures', 'tables', 'actual_text', 'merges', 'flatten', 'keep_lists', 'ocr_words', 'document', 'rolemap',
+              'adopt_orphans', 'move_to_document_start'):
         if k in wo and wo[k] in ([], {}) and ai_wo.get(k): del wo[k]       # a key with every item rejected is left out, as the AI would
     return wo
 

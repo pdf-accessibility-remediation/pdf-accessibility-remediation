@@ -15,7 +15,7 @@ included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, listrule, gaptext, support, plpages  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, support, plpages, readorder  # plumb_fix first: it patches pdfplumber
 import pikepdf, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -54,7 +54,7 @@ def mapped(s):
     return s
 def clip(t, n): t = re.sub(r'\s+', ' ', t).strip(); return t if len(t) <= n else t[:n - 1] + '…'
 # the whole texts the digest shortens, for review.md / review.html only: written to fulltext.json, never sent to the model
-FULL = {'elements': {}, 'lists': {}, 'tables': {}}
+FULL = {'elements': {}, 'lists': {}, 'tables': {}, 'reading_order': []}
 def full(t): return re.sub(r'\s+', ' ', t).strip()
 
 # ---- characters by (page, mcid)
@@ -140,7 +140,24 @@ for e in elems:
         ps = page_span(e)
         if ps:
             first = next((text_of(k) for k in e['kids'] if text_of(k).strip()), '')
-            reading_order.append(f'{e["style"]} pp{min(ps)}-{max(ps)} depth{e["depth"]}: {clip(first, 40)}')
+            reading_order.append(readorder.line(e['style'], min(ps), max(ps), e['depth'], clip(first, 40)))
+# the same order for the review page (fulltext.json, never sent): every container (lib/readorder.py), with its
+# parent container, the first page of each child (where move_section can put a section) and whether it is placed elsewhere
+def container_above(e):
+    p = e['par']
+    while p is not None and not readorder.is_container(S(p), mapped(S(p))): p = info[p.objgen]['par']
+    return p
+for e in elems:
+    if not readorder.is_container(e['style'], mapped(e['style'])): continue
+    ps = page_span(e); par = container_above(e); top = e['par'] is None or mapped(S(e['par'])) == 'Document'
+    FULL['reading_order'].append({
+        'id': ref(e['el']), 'parent': ref(par) if par is not None else None, 'style': e['style'],
+        'first': min(ps) if ps else None, 'last': max(ps) if ps else None, 'depth': e['depth'],
+        'text': clip(next((text_of(k) for k in e['kids'] if text_of(k).strip()), ''), 80),
+        'skip': readorder.skip(mapped(e['style']), [mapped(k['style']) for k in e['kids']]),
+        'group': e['style'] in readorder.GROUPING or mapped(e['style']) in readorder.GROUPING,
+        'under': ref(e['par']) if e['par'] is not None and top is False else None, 'top': top,
+        'firsts': [min(x) for k in e['kids'] if (x := page_span(k))]})
 
 # ---- figures, with crops
 docs = pdfium.PdfDocument(SRC); renders = {}

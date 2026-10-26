@@ -91,6 +91,17 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 #zoom { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: none; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out; }
 #zoom img { max-width: 96vw; max-height: 96vh; background: #fff; }
 .done { padding: 12px 16px; background: var(--flag); border-radius: 8px; margin: 10px 0; }
+#readingOrder { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; margin: 0 0 16px; }
+#readingOrder summary { cursor: pointer; font-weight: 600; }
+#readingOrder ol { list-style: none; margin: 6px 0 0; padding: 0; font-size: 14px; }
+#readingOrder li { border-top: 1px solid var(--line); padding: 2px 0; }
+.ro-row { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 2px 4px; color: var(--ink); overflow-wrap: anywhere; }
+.ro-row:hover { background: var(--bg); }
+.ro-skip .ro-row { color: var(--muted); }
+.ro-cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+.ro-cmp ol { margin: 2px 0; padding-left: 22px; font-size: 13px; }
+.ro-cmp .moved { font-weight: 600; }
+@media (max-width: 560px) { .ro-cmp { grid-template-columns: 1fr; } }
 @media (max-width: 800px) {
   main { flex-direction: column; padding: 16px; }
   header.top { position: static; }
@@ -127,7 +138,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 <div id="navBackdrop" hidden></div>
 <main>
   <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close sections">×</button></div><div id="navList"></div></nav>
-  <div class="col"><div id="addPanel" hidden></div><div id="cards"></div></div>
+  <div class="col"><div id="addPanel" hidden></div><div id="readingOrder"></div><div id="cards"></div></div>
 </main>
 <div id="zoom"><img alt=""></div>
 <dialog id="gapDialog" aria-labelledby="gapTitle"></dialog>
@@ -199,9 +210,6 @@ const KEY_WORDS = {
   captions: 'Groups captions with the figures they describe.',
   lists: 'Rebuilds lists the source tagged as separate paragraphs.',
   notes: 'Tags footnotes or endnotes as notes.',
-  move_section: 'Moves a run of pages to another place in the reading order.',
-  move_to_document_start: 'Moves these elements to the start of the reading order.',
-  adopt_orphans: 'Attaches text that no tag owns to the tags around it, so screen readers can reach it.',
   fix_figure_order: 'Puts figures back on their own page in the reading order.',
   remove_empty_containers: 'Removes empty structure tags.',
 };
@@ -234,6 +242,9 @@ function explain(it) {
       return it.loc[1] === 'elements' ? 'Marks this figure as decoration, so screen readers skip it. Right for ornaments and backgrounds with no information.'
         : 'Marks matching text as decoration, so screen readers skip it. Right for running heads and page numbers; if the pattern also matches real content, that content is hidden too.';
     case 'ocr_words': return 'Tells screen readers to read this OCR word with the corrected spelling. The page does not change.';
+    case 'move_section': return 'Moves the section on these pages so a screen reader reaches it just before PDF ' + c.before_page + ', inside the section that holds the pages around it. Nothing on the page changes. The executor makes the move only when exactly one section holds exactly these pages.';
+    case 'move_to_document_start': return 'Moves this element to the start of the reading order, so a screen reader reaches it first (for a cover figure read at the end). Nothing on the page changes.';
+    case 'adopt_orphans': return 'Adds the text on these pages that no tag owns to the tags, as paragraphs in the order it is drawn, after the last tagged block on each page, so screen readers can reach it. Right for notes, references or body text; running heads and page numbers should be decoration instead. Listen through these pages in the finished file: this changes the reading order.';
     case 'deferrals': return 'The AI did not decide this and left it to a person. Nothing is applied; mark it Seen once you have looked.';
     case 'notes_for_reviewer': return 'The AI\'s general note to the reviewer. Nothing is applied; mark it Seen once you have read it.';
   }
@@ -262,7 +273,8 @@ function editor(it, d) {
 
 const WHAT = { retype: 'Text on the page', actual_text: 'Text on the page', rolemap: 'Style', alt: 'Figure', page_figures: 'Figure',
                document: 'Document setting', tables: 'Table', ocr_words: 'OCR word', deferrals: 'What the AI left to a person',
-               notes_for_reviewer: 'From', artifacts: 'Rule', flatten: 'Element', keep_lists: 'Element', merges: 'Merge' };
+               notes_for_reviewer: 'From', artifacts: 'Rule', flatten: 'Element', keep_lists: 'Element', merges: 'Merge',
+               move_section: 'Section', move_to_document_start: 'Element', adopt_orphans: 'Pages' };
 function imagesHtml(it) {
   const c = it.context, imgs = [];
   if (c.word) imgs.push('<figure class="word"><img loading="lazy" src="' + esc(c.word) + '" alt="The word in the scan"><figcaption>the word in the scan (as the AI saw it)</figcaption></figure>');
@@ -304,6 +316,69 @@ function addCard(a) {
   return h + '<div class="id">ID <code>' + esc(id) + '</code></div></article>';
 }
 
+// ---------------------------------------------------------------- reading order: the original's, and what a section move does to it
+const RO = DATA.reading_order || { entries: [], flagged: [], flat: true, detail: false };
+const roFlag = Object.fromEntries((RO.flagged || []).map(f => [f.i, f]));
+const roPages = e => e.first == null ? 'no marked content' : 'PDF ' + e.first + (e.last !== e.first ? '–' + e.last : '');
+const roAway = f => 'read ' + (f.prev != null && f.next != null ? 'between PDF ' + f.prev + ' and PDF ' + f.next : f.prev != null ? 'after PDF ' + f.prev : 'before PDF ' + f.next) +
+  ', away from its printed place';
+const roName = e => esc(e.style || 'line') + ' · ' + esc(roPages(e)) + (e.text ? ' · “' + esc(String(e.text).slice(0, 60)) + '”' : '');
+const moveItem = items.find(it => it.key === 'move_section');
+function moveRows(it, row) {
+  const c = it.context;
+  row('Moves', 'PDF ' + esc(it.ai.pages[0]) + '–' + esc(it.ai.pages[1]) + ' to read before PDF ' + esc(it.ai.before_page));
+  if (c.candidates == null) { row('Preview', 'not available for this run (audited before the reading order was recorded in full)'); return; }
+  if (c.candidates !== 1 || !c.host_found) {
+    row('Preview', '<span class="flag">The executor will refuse this move: ' + (c.candidates !== 1 ? c.candidates + ' sections hold pages inside this range (exactly one is needed)' : '') +
+      (c.candidates !== 1 && !c.host_found ? ', and ' : '') + (!c.host_found ? 'no section holds both pages before PDF ' + esc(it.ai.pages[0]) + ' and pages from PDF ' + esc(it.ai.before_page) + ' on' : '') + '.</span>');
+    return;
+  }
+  const li = e => '<li' + (e.id === c.moved ? ' class="moved"' : '') + '>' + roName(e) + '</li>';
+  const around = es => {                               // the sections next to the moved one (and where it lands), not all of them
+    const at = es.findIndex(e => e.id === c.moved), keep = new Set();
+    for (const k of [at, es.findIndex(e => e.id === c.lands_before)]) for (let j = k - 2; j <= k + 2; j++) if (k >= 0 && j >= 0 && j < es.length) keep.add(j);
+    let h = '', gap = 0;
+    es.forEach((e, j) => { if (keep.has(j)) { if (gap) h += '<li class="ctx">… ' + gap + ' more</li>'; gap = 0; h += li(e); } else gap++; });
+    return h + (gap ? '<li class="ctx">… ' + gap + ' more</li>' : '');
+  };
+  row('Preview', '<div class="ctx">On the original\'s tags; the executor matches again on the file it edits.</div><div class="ro-cmp"><div>Now:<ol>' +
+    around(c.siblings_before) + '</ol></div><div>After the move:<ol>' + around(c.siblings_after) + '</ol></div></div>');
+  row('Read away from their place', 'in the whole book: ' + esc(c.flags_before) + ' now, ' + esc(c.flags_after) + ' after this move');
+}
+function renderOrder() {
+  const box = document.getElementById('readingOrder'), open = (box.querySelector('details') || {}).open;
+  const es = RO.entries || [], n = (RO.flagged || []).length;
+  let h = '<details' + (open ? ' open' : '') + '><summary>Reading order in the original (before changes): ' + (RO.flat ? 'no sections' :
+    es.length + ' sections and blocks, ' + n + ' read away from their printed place') + '</summary>';
+  h += '<div class="ctx">The order a screen reader meets the book\'s sections in the original file. Figure moves and added orphan text happen after this review; the final order is checked in review.md (1.3.2).' +
+    (RO.detail ? '' : ' This run was audited before the order was recorded in full: sections only.') + '</div>';
+  if (RO.flat) h += '<p>This book\'s tags have no sections, so the order can\'t be shown here. Check it in the finished PDF; review.md\'s page-by-page check (1.3.2) still runs.</p>';
+  else {
+    const d = moveItem ? (state.decisions[moveItem.id] || {}).status : null, mc = moveItem ? moveItem.context : {};
+    const moveNote = (d === 'rejected' ? 'rejected' : d === 'approved' ? 'approved' : 'not reviewed yet');
+    h += '<label><input type="checkbox" id="roOnly"' + (roOnly ? ' checked' : '') + '> only those read away from their place</label><ol>';
+    es.forEach((e, i) => {
+      const f = roFlag[i];
+      if (roOnly && !f && e.id !== mc.moved && e.id !== mc.lands_before) return;
+      h += '<li' + (e.skip ? ' class="ro-skip"' : '') + ' style="padding-left:' + Math.min(e.depth || 0, 12) * 12 + 'px">' +
+        '<button type="button" class="ro-row" data-ro="' + i + '"' + (e.first == null ? ' disabled' : '') + '>' + roName(e) +
+        (f ? ' <span class="flag">' + esc(roAway(f)) + '</span>' : '') + (e.skip ? ' (placed where it is referred to)' : '') +
+        (e.id === mc.moved ? ' <span class="flag">the AI moves this section (' + moveNote + ')</span>' : '') +
+        (e.id === mc.lands_before && d !== 'rejected' ? ' <span class="flag">the moved section goes just before this</span>' : '') + '</button></li>';
+    });
+    h += '</ol>';
+  }
+  box.innerHTML = h + '</details>';
+}
+let roOnly = (RO.entries || []).length > 300;
+document.getElementById('readingOrder').addEventListener('change', e => { if (e.target.id === 'roOnly') { roOnly = e.target.checked; renderOrder(); } });
+document.getElementById('readingOrder').addEventListener('click', e => {             // a row shows its first page under it
+  const b = e.target.closest('.ro-row'); if (!b) return;
+  const li = b.parentElement, had = li.querySelector('.imgs'); if (had) { had.remove(); return; }
+  const p = RO.entries[+b.dataset.ro].first;
+  li.insertAdjacentHTML('beforeend', '<div class="imgs"><figure><img loading="lazy" src="review_pages/page_' + String(p).padStart(3, '0') + '.png" alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure></div>');
+});
+
 function card(it) {
   const d = state.decisions[it.id] || {}, c = it.context, st = d.status || '';
   let h = '<article class="card" id="card-' + esc(it.id) + '" data-id="' + esc(it.id) + '"' + (st ? ' data-status="' + st + '"' : '') + '>';
@@ -325,6 +400,12 @@ function card(it) {
     row('Change', 'Original: <b>' + esc(show(it.before.header_cells)) + '</b> header cells → AI: <b>' + esc(it.ai.header_rows) + '</b> header rows, <b>' + esc(it.ai.header_cols) + '</b> header columns');
   else if (it.key === 'deferrals') row('Why', esc(c.why || '—'));
   else if (it.key === 'notes_for_reviewer') row('Note', esc(it.ai));
+  else if (it.key === 'move_section') { exact = true; moveRows(it, row); }
+  else if (it.key === 'adopt_orphans') {
+    exact = true;
+    row('Text no tag owns', (c.orphans || []).length ? c.orphans.map(o => 'PDF ' + o.page + ' (' + esc(o.count) + ' runs): ' +
+      o.runs.map(x => '“' + esc(String(x).slice(0, 50)) + '”').join(' · ')).join('<br>') : 'none listed in the audit for these pages');
+  } else if (it.key === 'move_to_document_start') { exact = true; row('AI\'s choice', 'read <b>' + esc(it.ai) + '</b> first'); }
   else if (it.key === 'artifacts') {
     const r = it.ai || {}; exact = true;
     if (r.regex) row('Hides', 'text matching <code>' + esc(r.regex) + '</code>');
@@ -357,7 +438,7 @@ function render() {
   document.getElementById('cards').innerHTML = (finished ? '<div class="done">Review finished. Go back to the terminal to continue the run.</div>' : '') +
     (secs.length ? secs.map(s => '<section id="' + s.id + '"><h2>' + esc(s.title) + ' (' + s.items.length + ')</h2>' + s.items.map(s.adds ? addCard : card).join('') + '</section>').join('')
                  : '<p>Nothing to show here.</p>');
-  nav(); progress(); refreshH1();
+  nav(); progress(); refreshH1(); renderOrder();
 }
 
 // ---------------------------------------------------------------- H1: a book has one; flag the cards when decisions make more
@@ -382,7 +463,7 @@ function nav() {
   const pages = {};
   for (const it of items) if (it.priority && it.page != null) (pages[it.page] = pages[it.page] || []).push(it.id);
   let h = state.additions.length ? '<h2>Your additions</h2><a href="#added" data-view="' + (view === 'left' ? 'priority' : view) + '"><span>Added by you</span><span>' + state.additions.length + '</span></a>' : '';
-  h += '<h2>Check first</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(DATA.groups[n]) + '</span><span>' + c + '</span></a>').join('');
+  h += '<h2>Check first</h2><a href="#readingOrder"><span>Reading order (original)</span><span>' + (RO.flat ? '–' : (RO.flagged || []).length) + '</span></a>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(DATA.groups[n]) + '</span><span>' + c + '</span></a>').join('');
   h += '<h2>All decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(k) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
   h += '<h2>Page index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
     '<a href="#card-' + esc(pages[p][0]) + '" data-view="priority"><span>p. ' + p + '</span><span>' + pages[p].length + '</span></a>').join('');
@@ -402,7 +483,7 @@ function clearChoice(art) {
   art.querySelectorAll('input[data-act=status]').forEach(r => { r.checked = false; });
   const ed = art.querySelector('.edit'); if (ed) ed.hidden = true;
   art.querySelector('.clear').hidden = true;
-  persist(); progress();
+  persist(); progress(); if (art.dataset.id === 'move_section') renderOrder();
 }
 function readValue(box, base) {                          // the value typed in an editor (editor() markup) inside box
   const fs = box.querySelectorAll('[data-act=value][data-f]');
@@ -437,7 +518,7 @@ function onEdit(e) {
     d.status = 'changed';
   }
   if (d.status) { art.dataset.status = d.status; art.querySelector('.clear').hidden = false; }
-  persist(); progress(); refreshH1();
+  persist(); progress(); refreshH1(); if (it.key === 'move_section') renderOrder();
 }
 cards.addEventListener('change', onEdit);
 cards.addEventListener('input', e => { if (e.target.tagName === 'TEXTAREA' || e.target.type === 'text') onEdit(e); });
@@ -484,6 +565,7 @@ backdrop.addEventListener('click', () => setNav(false));
 document.getElementById('nav').addEventListener('click', e => {
   const a = e.target.closest('a'); if (!a) return;
   if (narrow()) setNav(false);
+  if (a.getAttribute('href') === '#readingOrder') document.querySelector('#readingOrder details').open = true;
   if (a.dataset.view && a.dataset.view !== view && !(view === 'left' && a.dataset.view === 'all')) {
     view = a.dataset.view; document.querySelector('input[name=view][value=' + view + ']').checked = true; render();
     e.preventDefault(); const t = document.querySelector(a.getAttribute('href')); if (t) t.scrollIntoView();

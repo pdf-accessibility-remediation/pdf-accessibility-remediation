@@ -9,7 +9,7 @@ There are three kinds of tests. None of them calls the model, and none costs any
 
 | Test | What it checks | Run it (from `pipeline/`) | Time |
 |---|---|---|---|
-| **Unit tests** | That each small rule in `lib/` does its job, using made-up inputs; plus a few one-page synthetic PDFs through the real pdfplumber, `audit.py` and `apply.py` | `python -m pytest tests -q` | a few seconds |
+| **Unit tests** | That each small rule in `lib/` does its job, using made-up inputs; plus a few small synthetic PDFs through the real pdfplumber, `audit.py`, `apply.py` and `verify.py` | `python -m pytest tests -q` | a few seconds |
 | **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py --jobs 3` | about 7 minutes for all seven books (18 one at a time; `--books godzone` about 1) |
 | **Intake cases** | That intake sorts pages and tag trees correctly, using small synthetic PDFs | `python3 tools/intake_cases.py <out_dir>` | under a minute |
 
@@ -23,8 +23,10 @@ The tests in `pipeline/tests/` call one function at a time with hand-made inputs
 - `test_listrule.py`: real list markers (`•`, `1.`, `(a)`, `iv)`), and the false one-item list made from a paragraph's first word.
 - `test_langtag.py`: language tags that are tidied (`en_US` → `en-US`), and values that are not tags (`english`).
 - `test_workorder_check.py`: one test for each reason the work-order checks drop an item. That includes unknown keys and objects, tag types that are not allowed, bad regexes and page ranges, table header counts, alt text for an image that was not sent, and language tags. It also covers the [OCR word](ocr-words.md) readings, including the one-third limit and the quarter cost of OCR junk characters.
+- `test_readorder.py`: which sections are read away from their printed place (a small misplaced story is flagged, not the chapter it sits in; a child is never compared with its parent; Divs around figures are skipped), the digest's line format read back, and the `move_section` match with one, none or several candidates.
+- `test_review_core.py`: the review page's reading-order cards (group 5, their pages, the move preview, orphan text for their pages only), rejecting them, and the reading-order list from `fulltext.json` or from the digest's lines.
 - `test_sections.py`: `review.md` turned into sections and back gives the same lines, and the WCAG-only view leaves out the PDF/UA-only parts.
-- `test_synthetic.py`: one-page PDFs built by the test, for two rules no tagged sample reaches. One page sets its words with no space characters, as TeX does (moves between words, or kerning inside one `TJ`); read through pdfplumber, the words must come out with spaces between them. One page has a tagged one-item list made from a paragraph's first word ("as …") next to a real list ("1.", "2."). `audit.py` must mark only the first for the rule, and `apply.py` with an empty work order must turn it into a paragraph, or keep it when `keep_lists` names it. These run the real scripts with `VERAPDF=off`.
+- `test_synthetic.py`: small PDFs built by the test, for rules no tagged sample reaches. One page sets its words with no space characters, as TeX does (moves between words, or kerning inside one `TJ`); read through pdfplumber, the words must come out with spaces between them. One page has a tagged one-item list made from a paragraph's first word ("as …") next to a real list ("1.", "2."). `audit.py` must mark only the first for the rule, and `apply.py` with an empty work order must turn it into a paragraph, or keep it when `keep_lists` names it. A four-page book with one section read out of printed order goes through `audit.py`, the review page's preview, `apply.py` with a `move_section` and `verify.py`: the preview must show the order `apply.py` makes, and verify's section check must mark the original's flag as "already in the original" and a bad move's flag as new. These run the real scripts with `VERAPDF=off`.
 
 The expected values come from the module docstrings and from [Work order](work-order.md) and [OCR words](ocr-words.md), not from what the code happens to return. A failing unit test means a rule changed. If the change was intended, update the test's expected value in the same PR.
 
@@ -68,7 +70,7 @@ The test prints one line per book (identical, or the fields and lines that diffe
 | buddhist | `ocr_words` (its OCR text layer) |
 | ilokano | an untagged book: an OpenDataLoader tag tree, so the one-item list rule (15 lists) and word breaks that rely on gaps |
 
-Not covered: `move_section` (no saved reply uses it), intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), OCR on a real book, and CJK text. To check all nine tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
+Not covered: `move_section` on a real book (no saved reply uses it; the synthetic test above covers it), intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), OCR on a real book, and CJK text. To check all nine tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
 
 ```bash
 FROM=all9-v8 AUTO=1 bash batch_api.sh before ../samples/group1 ../samples/group2 ../samples/group3most   # on main

@@ -14,7 +14,7 @@ stops the run and never half-applies.
 """
 import sys, os, json, re, collections, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import plumb_fix, listrule, gaptext, langtag, support, plpages  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder  # plumb_fix first: it patches pdfplumber
 from lib.sections import excerpt
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
@@ -97,7 +97,7 @@ def mapped(t):
     seen = set()
     while t in RMAP and t not in seen: seen.add(t); t = RMAP[t]
     return t
-GROUPING = {'Sect', 'Art', 'Part', 'Story', 'Article'}
+GROUPING = readorder.GROUPING
 def is_container(n): return S(n) in GROUPING or mapped(S(n)) in GROUPING
 DOC = next((k for k in kids(st) if is_elem(k) and S(k) == 'Document'), None)   # fix_root() makes sure there is exactly one
 eff_pg, parent_of, owner = {}, {}, {}
@@ -1280,11 +1280,9 @@ def containers():
     return out
 def op_move_section(spec):
     a, b = spec['pages']; before = spec['before_page']
-    sec = [(c, p) for c, p in containers() if pp(c) and min(pp(c)) >= a and max(pp(c)) <= b]
-    host = None
-    for c, p in containers():
-        firsts = [min(pp(k)) for k in kids(c) if is_elem(k) and pp(k)]
-        if any(x >= before for x in firsts) and any(x < a for x in firsts): host = c; break
+    sec, host = readorder.section_move(DOC, lambda n: [k for k in kids(n) if is_elem(k) and is_container(k)],
+                                       lambda c: [min(pp(k)) for k in kids(c) if is_elem(k) and pp(k)],
+                                       lambda c: (min(pp(c)), max(pp(c))) if pp(c) else None, a, b, before)
     if len(sec) != 1 or host is None: reject('move_section', f'{len(sec)} candidate sections, host found: {host is not None}'); return
     s, spar = sec[0]; set_kids(spar, [k for k in kids(spar) if not same(k, s)])
     hk = kids(host); j = next(i for i, k in enumerate(hk) if is_elem(k) and pp(k) and min(pp(k)) >= before)
