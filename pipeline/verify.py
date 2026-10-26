@@ -1,7 +1,7 @@
 """Verify work/remediated.pdf against the original. Read-only."""
 import sys, json, re, collections
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix  # noqa: F401  before pdfplumber reads a page: it patches pdfplumber
+from lib import plumb_fix, fontname  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 import fontTools.cffLib, fontTools.ttLib  # noqa: F401  required: a font that can't be read must not pass as OK
 from PIL import ImageChops
@@ -274,7 +274,7 @@ def _unicode_from_encoding(f):
     return std and d is not None and not (int(d.get('/Flags', 0)) & 4)     # bit 3: symbolic
 fonts_out = {'no_ToUnicode': [], 'not_embedded': [], 'only_notdef': [], 'no_ToUnicode_not_needed': [], 'unreadable': []}
 for og, f in font_obj.items():
-    name = str(f.get('/BaseFont')).lstrip('/').split('+')[-1]; u = font_use[og]
+    name = fontname.short(f); u = font_use[og]
     d = f.DescendantFonts[0].get('/FontDescriptor') if str(f.get('/Subtype')) == '/Type0' else f.get('/FontDescriptor')
     embedded = d is not None and any(k in d for k in ('/FontFile', '/FontFile2', '/FontFile3'))
     if '/ToUnicode' not in f: fonts_out['no_ToUnicode_not_needed' if _unicode_from_encoding(f) else 'no_ToUnicode'].append(name)
@@ -289,7 +289,7 @@ for x in fonts_out['only_notdef']:
     a = agg[x['font']]; a['font'] = x['font']; a['glyph_references'] += x['glyph_references']; a['text_operators'] += x['text_operators']
     a['pages'] |= set(x['first_pages']); a['render_modes'].update(x['render_modes']); a['has_ToUnicode'] &= x['has_ToUnicode']
 pages_by_font = collections.defaultdict(set)
-for og, f in font_obj.items(): pages_by_font[str(f.get('/BaseFont')).lstrip('/').split('+')[-1]] |= font_use[og]['pages']
+for og, f in font_obj.items(): pages_by_font[fontname.short(f)] |= font_use[og]['pages']
 out['fonts'] = {'no_ToUnicode': sorted(set(fonts_out['no_ToUnicode'])), 'not_embedded': sorted(set(fonts_out['not_embedded'])),
                 'no_ToUnicode_not_needed': sorted(set(fonts_out['no_ToUnicode_not_needed'])),
                 'unreadable': fonts_out['unreadable'],

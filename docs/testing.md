@@ -42,7 +42,7 @@ The expected values come from the module docstrings and from [Work order](work-o
 Each run is compared with the baseline in three ways:
 
 1. **`expect.json`**, field by field.
-2. **`review.md`**, line by line. Three lines are left out: `Time:` and the run-start line, which change on every run, and `Libraries:`, which changes with the Python version.
+2. **`review.md`**, line by line. Three lines are left out: `Time:` and the run-start line, which change on every run, and `Libraries:`, which changes with the Python version. In the veraPDF line, only the version number is left out: it is whatever veraPDF is installed (Homebrew's 1.30.3 calls itself 1.30.0), while the profile hash on the same line is still compared.
 3. **Checks that must always hold, whatever the baseline says:**
    - veraPDF ran
    - no more WCAG rules fail after the run than before it
