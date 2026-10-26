@@ -194,6 +194,10 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
                 tail = f' (veraPDF {x["id"]}, {x["failed"]} check{"" if x["failed"] == 1 else "s"})'
                 add(2, 'check', (SHORT.get(x['id']) or WCAG_NAMES.get(x['id']) or x.get('description') or x['id']) + tail, x.get('pages') or [], sec('veraPDF'), find=f' {x["id"]}', key=f'vera:{x["id"]}')
                 if x['id'] not in SHORT: issues[-1]['text_md'] = (x.get('description') or x['id'])[:70] + tail   # review.md's short form
+        elif name.startswith('Reading order: no section'):
+            fl = [x for x in (wc.get('section_order') or {}).get('flagged') or [] if x.get('new')]
+            add(2, 'check', f'Sections read away from their printed place by this run ({len(fl)})', [x['page'] for x in fl], sec('WCAG checks veraPDF'),
+                find='- 1.3.2 ', key='wcag:1.3.2-sections')
         elif name.startswith('Reading order'):
             fl = (wc.get('reading_order') or {}).get('flagged') or []
             add(2, 'check', f'Reading order jumps back up a column ({sum(x.get("jumps_up") or 0 for x in fl)} jumps)', [x['page'] for x in fl], sec('WCAG checks veraPDF'), find='- 1.3.2 ', key='wcag:1.3.2')

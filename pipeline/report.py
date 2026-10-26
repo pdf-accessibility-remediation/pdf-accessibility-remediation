@@ -156,6 +156,7 @@ def v_status(k):
     return ('**newly failing**' if k in v_new else '**failing more often**' if k in v_worse else 'still failing' if k in v_still
             else 'fixed' if k in v_fixed else '')
 wc = ver.get('wcag')
+so = (wc or {}).get('section_order')              # sections read away from their printed place (verify.py, lib/readorder.py)
 ow = log.get('ocr_words') or {}; ow_forms = ow.get('by_form') or []; ow_missing = [x for x in ow_forms if not x.get('found')]
 ow_run = run.get('ocr_words') or {}
 def intake_rows():
@@ -337,6 +338,10 @@ checks = [
      (pgs([x['page'] for x in wc['tables_without_header']]) or 'none without') if wc else 'not checked'),
     ('Reading order: no page jumps back up a column (1.3.2)', ok(wc is not None and not wc['reading_order']['flagged_count']),
      f'{wc["reading_order"]["flagged_count"]} of {wc["reading_order"]["pages_checked"]} pages flagged' if wc else 'not checked'),
+    ('Reading order: no section moved away from its printed place by this run (1.3.2)', ok(so is not None and not so['new_count']),
+     ('no sections to compare: the tag tree has none' if so['flat'] else
+      f'{so["new_count"]} new · {len(so["flagged"]) - so["new_count"]} already in the original, of {so["containers"]} sections and blocks') if so
+     else 'not checked: run made before this check' if wc else 'not checked'),
     ('Title is not a file name or placeholder (2.4.2)', ok(wc is not None and not wc['title_generic']),
      (f'"{doc["title"]}"' if doc.get('title') else 'title not set') if wc else 'not checked'),
     ('Link text: none like "click here" (2.4.4)', ok(wc is not None and not wc['links_generic']),
@@ -775,7 +780,7 @@ if vw_afterefore or vw_after or v_ua or (v_after and not v_ran(v_after)):
         if v_both and [k for k in v_fixed if VB[k]['scope'] != 'wcag']:
             L.append(line('- fixed by this run: ' + ', '.join(k for k in v_fixed if VB[k]['scope'] != 'wcag'), scope='pdfua'))
         L.append('')
-if wc and (wc['alt_text']['flagged'] or wc['tables_without_header'] or wc['reading_order']['flagged_count'] or wc['title_generic']
+if wc and (wc['alt_text']['flagged'] or wc['tables_without_header'] or wc['reading_order']['flagged_count'] or (so and so['flagged']) or wc['title_generic']
            or wc['links_generic'] or any(wc['headings'][k] for k in ('empty', 'long', 'repeated'))):
     n += 1; L += [f'### {n}. WCAG checks veraPDF does not make', '', 'Each item is something to look at, not a proven failure.', '']
     L += [line(f'- 1.1.1 {pg(x["page"])}: alt text "{x["alt"]}": {x["why"]}', key='wcag:1.1.1', pages=[x['page']]) for x in by_page(wc['alt_text']['examples'])]
@@ -784,6 +789,18 @@ if wc and (wc['alt_text']['flagged'] or wc['tables_without_header'] or wc['readi
         L.append(line(f'- 1.3.2 the reading order jumps back up the same column on {wc["reading_order"]["flagged_count"]} page{"" if wc["reading_order"]["flagged_count"] == 1 else "s"}. Listen through them with a screen reader '
                  '(or the PAC screen-reader preview): ' + ', '.join(f'{pg(x["page"])} ({x["jumps_up"]} jumps)' for x in by_page(wc['reading_order']['flagged'])),
                  key='wcag:1.3.2', pages=[x['page'] for x in wc['reading_order']['flagged']]))
+    def _away(x): return ('between ' + pg(x['prev']) + ' and ' + pg(x['next']) if x['prev'] is not None and x['next'] is not None
+                          else 'after ' + pg(x['prev']) if x['prev'] is not None else 'before ' + pg(x['next']))
+    for new in (True, False):
+        fs = [x for x in (so or {}).get('flagged') or [] if x['new'] is new]
+        if not fs: continue
+        one = len(fs) == 1; its = 'its' if one else 'their'
+        L.append(line(f'- 1.3.2 {len(fs)} section{"" if one else "s"} ' + (f'read away from {its} printed place, a change this run made. ' if new else
+                      f'read away from {its} printed place, as in the original (this run did not move {"it" if one else "them"}). ') +
+                      'Listen through each where it is read, or move it with move_section:', key='wcag:1.3.2-sections' + ('' if new else '-original'),
+                      pages=[x['page'] for x in fs]))
+        L += [xl(lambda X: f'  - {pgr(x["page"], x["last"])}: {x["style"]}' + (f' "{X(x["text"])}"' if x.get('text') else '') + f', read {_away(x)}',
+                 key='wcag:1.3.2-sections' + ('' if new else '-original'), pages=[x['page']]) for x in by_page(fs)]
     if wc['title_generic']: L.append(line(f'- 2.4.2 the title "{doc.get("title")}" looks like a file name or a placeholder. Use the book\'s real title.', key='wcag:2.4.2'))
     L += [xl(lambda X: f'- 2.4.4 {pg(x["page"])}: link text "{X(x["text"])}" does not say where the link goes', key='wcag:2.4.4', pages=[x['page']]) for x in by_page(wc['links_generic'])]
     L += [line(f'- 2.4.6 {pg(x["page"])}: a heading with no text', key='wcag:2.4.6', pages=[x['page']]) for x in by_page(wc['headings']['empty'])]
