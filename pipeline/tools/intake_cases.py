@@ -7,8 +7,9 @@ Builds each case in <out_dir>/<case>.pdf, runs `intake.py --plan-only` on it (wi
 intake.json with what the case expects: PASS or FAIL per case, exit 1 on any FAIL. --full also runs the whole intake
 (OCR + auto-tag, local) on the empty-text scan (the empty text object is removed so OCR text is added) and on the two
 placeholder-tree cases (the old tree is set aside and a real one made) and on the two-up page (read half by half).
-The empty-text scan needs OCRmyPDF 17; without it that case is SKIPped. The OCR-layer cases need Tesseract's
-script/Latin model (tesseract-ocr-script-latn on Debian/Ubuntu).
+The empty-text scan needs OCRmyPDF 17; without it that case is SKIPped. Two OCR-layer cases need Tesseract's
+script/Latin model (tesseract-ocr-script-latn on Debian/Ubuntu); without it they are SKIPped. A failing OCR-layer case
+prints intake's OCR-layer test (verdict, each sample page's score or why it was not scored).
 Japanese and Korean pages are drawn with a system font (Arial Unicode on macOS, Noto Sans CJK on Linux: the
 fonts-noto-cjk package; INTAKE_CASES_FONT=/path/to/font overrides); text is the test's own. Without such a font the
 CJK cases, the breves case and the full empty-text scan are SKIPped (the default font draws no CJK and no breves, and
@@ -26,6 +27,22 @@ FONT = next((p for p in (os.environ.get('INTAKE_CASES_FONT') or '', '/System/Lib
                           '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc') if p and os.path.exists(p)), None)
 FONT_CASES = {'japanese-scan', 'japanese-vertical-scan', 'korean-scan', 'japanese-scan-14', 'english-scan-cjk-on-13',   # need FONT: the
               'ocr-layer-missing-marks'}   # default font draws no CJK and no breves, and its text is too small to OCR
+LATIN_CASES = {'ocr-layer-missing-marks', 'ocr-layer-matching'}   # scored with Tesseract's script/Latin model
+
+
+def tesseract_langs():
+    """The models `tesseract --list-langs` shows, as intake.py reads them (empty if Tesseract is missing)."""
+    try: return {x.strip() for x in subprocess.run(['tesseract', '--list-langs'], capture_output=True, text=True).stdout.split('\n')[1:] if x.strip()}
+    except OSError: return set()
+
+
+def ocr_layer_details(j):
+    """intake's OCR-layer test in one line: its verdict and each sample page's score or why it was not scored."""
+    ol = j.get('ocr_layer_test')
+    if not ol: return 'no OCR-layer test in intake.json (no page counted as an OCR layer)'
+    pages = '; '.join(f'p{r["page"]}: ' + (f'cer {r["cer"]} ({r.get("model")})' if 'cer' in r else r.get('reason') or r.get('verdict', ''))
+                      for r in ol.get('pages') or [])
+    return f'verdict {ol.get("verdict")}, median cer {ol.get("median_cer")}' + (f', diacritics {ol["diacritics"]}' if ol.get('diacritics') else '') + f'; {pages}'
 EN = 'This page is a scanned test page with a few lines of plain English text on it.'
 JA = 'これは試験用の日本語の文章です。縦書きと横書きの両方を確認します。'
 KO = '이것은 시험용 한국어 문장입니다. 가로쓰기와 세로쓰기를 확인합니다.'
@@ -236,12 +253,16 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     if len(args) != 1: sys.exit(__doc__.split('\n\n')[1])
     out = os.path.abspath(args[0]); made = build(os.path.join(out, 'pdfs')); bad = good = skipped = 0
+    latin = 'script/Latin' in tesseract_langs()
     for k, (what, case, lang, expect, test) in enumerate(CASES, 1):
         if case in FONT_CASES and not FONT:
             skipped += 1; print(f'SKIP  {what}  (no font for its text: install fonts-noto-cjk or set INTAKE_CASES_FONT)', flush=True); continue
+        if case in LATIN_CASES and not latin:
+            skipped += 1; print(f'SKIP  {what}  (Tesseract\'s script/Latin model is not installed: tesseract-ocr-script-latn)', flush=True); continue
         j = run_intake(made[case], os.path.join(out, 'plan', f'{k:02d}-{case}' + (f'-{lang}' if lang else '')), lang)
         ok = test(j); bad += not ok; good += ok
         print(f'{"PASS" if ok else "FAIL"}  {what}  (expected: {expect}; got: {j["status"]}: {j.get("summary")})', flush=True)
+        if not ok and case.startswith('ocr-layer'): print(f'      OCR-layer test: {ocr_layer_details(j)}', flush=True)
     ok, got = reorder_saved_case(out); bad += not ok; good += ok
     print(f'{"PASS" if ok else "FAIL"}  right-first spread already in half order, columns left to right → reorder saved  (got: {got})', flush=True)
     if '--full' in sys.argv:
