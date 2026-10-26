@@ -2,13 +2,13 @@
 
 Result: `godzone_remediated.pdf`
 
-217 pages · run 2026-10-25T03:25:32 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+217 pages · run 2026-10-25T15:30:50 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.3s · audit 27.4s · reuse saved reply 1.1s · apply 16.6s · verify 24.8s · total 70.2s
+Time: intake 0.2s · audit 22.5s · reuse saved reply 0.8s · apply 17.1s · verify 24.9s · total 65.5s
 
 ## Overview
 
@@ -81,6 +81,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 3 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
 | Reading order: no page jumps back up a column (1.3.2) | OK | 0 of 211 pages flagged |
+| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 0 already in the original, of 56 sections and blocks |
 | Title is not a file name or placeholder (2.4.2) | OK | "Mapping the Godzone: A Primer on New Zealand Literature and Culture" |
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |

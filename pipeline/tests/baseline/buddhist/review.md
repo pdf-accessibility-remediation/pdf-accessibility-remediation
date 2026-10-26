@@ -2,13 +2,13 @@
 
 Result: `buddhist_remediated.pdf`
 
-213 pages · run 2026-10-25T04:02:42 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+213 pages · run 2026-10-25T15:27:36 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.4s · audit 63.0s · reuse saved reply 1.9s · apply 66.8s · verify 106.2s · total 238.3s
+Time: intake 0.3s · audit 73.3s · reuse saved reply 0.9s · apply 48.3s · verify 102.2s · total 225.0s
 
 ## Overview
 
@@ -82,6 +82,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 1 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
 | Reading order: no page jumps back up a column (1.3.2) | OK | 0 of 203 pages flagged |
+| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 0 already in the original, of 22 sections and blocks |
 | Title is not a file name or placeholder (2.4.2) | OK | "Buddhist Philosophy: A Historical Analysis" |
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |

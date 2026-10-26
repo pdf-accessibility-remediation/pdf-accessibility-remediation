@@ -9,3 +9,7 @@ Why each regression baseline update was made (newest last). Written by `tools/re
 - 2026-10-25 · cadaverous, sands, buddhist · Python 3.14 · workorder_v8.md: Add cadaverous (language, lists, fix_figure_order), sands (adopt_orphans, language) and buddhist (ocr_words, tables)
 
 - 2026-10-25 · ilokano · Python 3.14 · workorder_v8.md: Add ilokano: an untagged book (frozen OpenDataLoader intake), one-item list rule, gap-only word breaks; reply from a paid v8 run ($0.09)
+
+- 2026-10-25 · godzone, clans, translation, cadaverous, sands, buddhist, ilokano · Python 3.14 · workorder_v8.md: book-wide reading-order check (1.3.2): one new row in the checks table (verify.py wcag.section_order, lib/readorder.py)
+
+- 2026-10-25 · sands · Python 3.14 · workorder_v8.md: section-order note: singular wording
