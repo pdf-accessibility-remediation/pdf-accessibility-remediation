@@ -110,15 +110,15 @@ Make one update per PR, with its own reason. Don't fold several unrelated change
 
 `tools/intake_cases.py` builds synthetic PDFs with no book content and checks what `intake.py --plan-only` decides for each:
 
-- an empty text object over a scan
-- an OCR layer
-- a text page
+- an empty text object over a scan, an OCR layer, a text page
 - placeholder and real tag trees
-- Japanese, vertical Japanese and Korean scans
+- existing OCR layers scored against their scan: one that matches, one missing the breves the scan shows (ŏ, ŭ), and one too short to score
+- two printed pages side by side (two-up spreads, a vertical-OCR spread, spreads with years in the running heads) and a landscape page with one wide column, which is not a spread
+- Japanese, vertical Japanese and Korean scans, and 14-page scans for the sampled CJK check
 
-It prints PASS, FAIL or SKIP per case, a summary line, and exits with 1 on any FAIL. `--full` also runs the whole intake on the two placeholder-tree cases: the old tree must be set aside and OpenDataLoader must make a real one (needs Java 11 or later; no OCR). This is what tests intake itself, since the regression test reuses ilokano's frozen intake result.
+It also checks that a spread's reading order is reordered and saved. It prints PASS, FAIL or SKIP per case, a summary line, and exits with 1 on any FAIL. `--full` also runs the whole intake on the empty-text scan (the empty text object is removed and OCR text added; needs OCRmyPDF 17), on the two placeholder-tree cases (the old tree is set aside and OpenDataLoader makes a real one) and on the two-up spreads (read half by half); auto-tagging needs Java 11 or later. This is what tests intake itself, since the regression test reuses ilokano's frozen intake result.
 
-The Japanese and Korean pages need a CJK font to draw their text: Arial Unicode on macOS, or Noto Sans CJK on Linux (`sudo apt install fonts-noto-cjk`). `INTAKE_CASES_FONT=/path/to/font` overrides both. Without such a font, the CJK cases are SKIPped, and the summary line counts them separately, so a skip is never mistaken for a pass. These cases also need Tesseract's `osd`, `jpn`, `kor`, `chi_sim` and `chi_tra` packs, each with its `_vert` pack.
+Several scans are drawn with a font: the Japanese and Korean text, the breves, and the page the full empty-text case OCRs. On macOS that is Arial Unicode, on Linux Noto Sans CJK (`sudo apt install fonts-noto-cjk`); `INTAKE_CASES_FONT=/path/to/font` overrides both. Without such a font, PIL's default font draws no CJK and no breves, and its text is too small to OCR, so those cases are SKIPped. The summary line counts skips separately, so a skip is never mistaken for a pass. The CJK cases also need Tesseract's `osd`, `jpn`, `kor`, `chi_sim` and `chi_tra` packs, each with its `_vert` pack. The OCR-layer cases need the `script/Latin` model (`tesseract-ocr-script-latn`; see [Setup](setup.md)).
 
 ## Updating the tests
 
@@ -135,7 +135,7 @@ The Japanese and Korean pages need a CJK font to draw their text: Arial Unicode 
 - **`ci.yml`, on every push and PR:**
   - compile check, shell syntax and `pip-audit`, as before
   - the unit tests
-  - a second job that installs Tesseract with its CJK packs and `fonts-noto-cjk`, then runs the intake cases, then `--full` with Java 17 (not yet blocking: `continue-on-error` until it has passed a few times on Linux CI)
+  - a second job that installs Tesseract with its CJK packs, the `script/Latin` model and `fonts-noto-cjk`, then runs the intake cases, then `--full` with Java 17 and OCRmyPDF 17 (installed with pipx; not yet blocking: `continue-on-error` until it has passed a few times on Linux CI)
 - **`pdf-validation.yml`, when `pipeline/`, `prompts/` or `samples/` change:**
   - the existing veraPDF audit of one sample
   - a `regression` job per book and Python version (all seven books on 3.14; godzone, clans, translation and buddhist also on 3.13: 11 jobs in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)

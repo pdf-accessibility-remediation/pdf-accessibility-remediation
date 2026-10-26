@@ -21,6 +21,7 @@ It only runs after a complete run, so a failed run keeps its working files for d
 import sys, os, re, csv, json, shutil, datetime, collections
 from lib.sections import line, pdfua, nolink, excerpt, to_sections, render_md, VERSION as SECTIONS_VERSION
 from lib.glance import WCAG_NAMES
+from lib import glance as G0
 
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 KEEP = '--keep' in sys.argv
@@ -95,6 +96,7 @@ try:
     import pikepdf as _pk
     with _pk.open(os.path.join(R, PDF)) as _p: PLAB = {i + 1: str(pg_.label) for i, pg_ in enumerate(_p.pages)}
 except Exception: PLAB = {}
+PLAB = G0.with_spread_labels(PLAB, intake)       # a spread (two printed pages per PDF page): "210–211" where the PDF has no label
 NO_PAGE = 'page: not on this tag'                 # a missing page is never printed as "unknown" (the record keeps null)
 def pg(n):
     try: n = int(n)
@@ -104,7 +106,7 @@ def pg(n):
 def pgr(a, b):
     if a == b: return pg(a)
     la, lb = PLAB.get(int(a), ''), PLAB.get(int(b), '')
-    return f'PDF {a}–{b}' + (f' (printed {la}–{lb})' if la and lb and (la != str(a) or lb != str(b)) else '')
+    return f'PDF {a}–{b}' + ((f' (printed {la} to {lb})' if '–' in la + lb else f' (printed {la}–{lb})') if la and lb and (la != str(a) or lb != str(b)) else '')
 def pgs(ns): return ', '.join([pg(n) for n in sorted({n for n in ns if n is not None}, key=int)] + ([NO_PAGE] if any(n is None for n in ns) else []))
 def nc(v): return 'not counted' if v is None else v      # a count the verify file left empty
 def xl(build, **kw):
@@ -168,6 +170,24 @@ def intake_rows():
               'doubtful': f'doubtful: median character error {med:.1%} (5–15%): compare a few pages by eye' if med is not None else 'doubtful',
               'unusable': f'unusable (median character error {med:.1%}): FORCE_OCR=1 replaced it with OCR text over page images' if med is not None else 'unusable',
               'not scored': 'not scored (too little text, or mostly CJK, on the sample pages)'}.get(v, v or 'not tested'))]
+    ol = intake.get('ocr_layer_test')
+    if ol:                                             # an existing OCR layer on scanned pages, read again by a different model
+        d, med_o = ol.get('diacritics'), ol.get('median_cer')
+        bad = sorted(r['page'] for r in ol.get('pages') or [] if r.get('cer') is not None and r['cer'] > 0.05)
+        txt = ({'usable': 'usable', 'doubtful': 'doubtful', 'unusable': 'unusable'}.get(ol.get('verdict'), 'not checked: no sample page could be scored')
+               + (f': median character error {med_o:.1%} on {ol.get("scored")} sample pages' if med_o is not None else '')
+               + (f'; pages over 5%: {pgs(bad)}' if bad and ol.get('verdict') != 'usable' else '')
+               + (f'; diacritics missing from the layer ({d["marked_vowels_ocr"]} marked vowels read, {d["marked_vowels_layer"]} in the layer: '
+                  f'{pgs(d.get("pages") or [])})' if d else ''))
+        rows.append(('Existing OCR layer agrees with a fresh OCR reading (checklist 1.2, 3.1)', ok(ol.get('verdict') == 'usable' and not d), txt))
+    sp = intake.get('spreads')
+    if sp:                                             # two printed pages per PDF page: read half by half after auto-tagging
+        rr = ((intake.get('checks') or {}).get('spreads_reordered') or {}).get('pages') or {}
+        moved = [int(p) for p, v in rr.items() if v.get('reordered', v.get('switches_before') != v.get('switches_after'))]
+        rows.append(('One printed page per PDF page (checklist 4.1, 6.1–6.4)', ok(False),
+                     f'{len(sp["pages"])} PDF pages hold two printed pages ({pgs(sp["pages"])}); tag tree reordered half by half, '
+                     f'{sp.get("order", "left half first")}, on {len(moved)} of them'
+                     + ('; the rest kept the tagger\'s order' if len(moved) < len(sp['pages']) else '')))
     runs = fpages('Words run together')
     if o.get('mode') == 'force':
         rows.append(('Words separated in the text layer (checklist 3.4)', 'OK', 'the original text layer was replaced by OCR text'))
@@ -177,7 +197,7 @@ def intake_rows():
     if o:
         n = len(o.get('pages_with_ocr_text') or [])
         issues = [x for x in ('Low-resolution scans', 'OCR language', 'OCR characters not mapped', 'OCR', 'CJK OCR: needs a person',
-                              'OCR text looks like junk') if any(f['what'] == x for f in fl)]
+                              'OCR text looks like junk', 'Empty text objects left') if any(f['what'] == x for f in fl)]
         rows.append(('OCR text added where pages had none (checklist 3.1)', ok(not issues),
                      (f'{n} page{"s" if n != 1 else ""} ({o.get("mode")} mode, Tesseract {intake["tools"].get("tesseract")}, '
                       f'{(intake.get("language") or {}).get("ocr_lang")})' if n else 'no image-only page held text')
@@ -190,6 +210,14 @@ def intake_rows():
                              f'{"approved" if v.get("verdict") == "approved" else "not approved"} by {who}: {v.get("reason")}'))
             else: rows.append(('OCR text reviewed by a person', ok(False), f'machine OCR on {n} page{"s" if n != 1 else ""}: not yet reviewed '
                                '(checklist rule 2; record a verdict with review_ocr.py)'))
+    if not (o and o.get('pages_with_ocr_text')) and G0.ocr_layer_flagged(intake):   # the existing OCR layer needs the approval
+        v = (intake.get('review') or {}).get('ocr_text_approved')
+        if isinstance(v, dict):
+            who = f'{v.get("reviewer")} on {v.get("date")}' + (f' (pages {v["pages"]})' if v.get('pages') else '')
+            rows.append(('OCR text reviewed by a person', ok(v.get('verdict') == 'approved'),
+                         f'{"approved" if v.get("verdict") == "approved" else "not approved"} by {who}: {v.get("reason")}'))
+        else: rows.append(('OCR text reviewed by a person', ok(False), f'the existing OCR layer is {G0.ocr_layer_finding(intake)}: not yet '
+                           'reviewed (checklist rule 2; record a verdict with review_ocr.py)'))
     cov = (intake.get('checks') or {}).get('coverage') or {}
     rows.append(('Auto-tagging kept every page as it was', 'OK', f'appearance and text unchanged on all {intake["original"].get("pages")} pages'
                  + (' (OCR\'d pages: text added)' if o else '')))
