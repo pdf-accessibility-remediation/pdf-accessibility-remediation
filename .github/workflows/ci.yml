@@ -63,6 +63,12 @@ jobs:
             tesseract-ocr-jpn tesseract-ocr-jpn-vert tesseract-ocr-kor tesseract-ocr-kor-vert \
             tesseract-ocr-chi-sim tesseract-ocr-chi-sim-vert tesseract-ocr-chi-tra tesseract-ocr-chi-tra-vert
 
+      - name: Show Tesseract's version and script models
+        run: |
+          tesseract --version | head -1
+          echo "script models Tesseract lists:"; tesseract --list-langs 2>&1 | grep '^script/' || echo "  none"
+          echo "where apt put script/Latin:"; dpkg -L tesseract-ocr-script-latn | grep traineddata || echo "  not installed"
+
       - name: Intake classification cases (synthetic PDFs, plan only)
         working-directory: pipeline
         run: python tools/intake_cases.py "$RUNNER_TEMP/intake-cases"
