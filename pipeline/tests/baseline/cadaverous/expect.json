@@ -1,0 +1,114 @@
+{
+ "apply": {
+  "applied": {
+   "artifact: \"ornament\"": 16,
+   "artifact: \"running head (Notes to Pages)\"": 29,
+   "contents: TOC built": 1,
+   "contents: TOC entries": 16,
+   "contents: annotation-less Link → Span": 24,
+   "contents: entry wrapped in Reference": 16,
+   "document: /Lang": 1,
+   "document: DisplayDocTitle": 1,
+   "document: title": 1,
+   "figure: alt text": 2,
+   "figure: caption tied (figure holder just before it → Div)": 6,
+   "figure: caption tied (figure moved out of its paragraph)": 3,
+   "figure: moved into Document, first": 1,
+   "heading: ActualText": 10,
+   "heading: RoleMap level": 16,
+   "heading: merged into next": 9,
+   "heading: merged into prev": 1,
+   "language: ja Span": 177,
+   "links: /Contents set": 3252,
+   "links: URL-only description replaced by the sentence around it": 6,
+   "links: joined existing Link": 735,
+   "links: note reference wrapped": 4,
+   "links: placed after shared text": 1888,
+   "links: wraps its text": 625,
+   "list: built": 1,
+   "notes: Note with /ID": 713,
+   "notes: empty Note shell removed": 141,
+   "order: empty container removed": 29,
+   "order: figure moved to its page": 3,
+   "retype → H1": 1,
+   "tag tree index: entries pointing outside the tree cleared (ParentTree)": 2
+  },
+  "deferred": 1,
+  "empty_notes_removed": 141,
+  "failed": 0,
+  "rejected": 0
+ },
+ "validation_dropped": [],
+ "verapdf": {
+  "after": {
+   "failed": {},
+   "totals": {
+    "ua_only_failed_checks": 0,
+    "ua_only_failed_rules": 0,
+    "unclassified": [],
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
+   }
+  },
+  "before": {
+   "failed": {
+    "7.18.5-1": 1793,
+    "7.9-1": 141
+   },
+   "totals": {
+    "ua_only_failed_checks": 141,
+    "ua_only_failed_rules": 1,
+    "unclassified": [],
+    "wcag_failed_checks": 1793,
+    "wcag_failed_rules": 1
+   }
+  }
+ },
+ "verify": {
+  "artifact_chars": 6764,
+  "figures": {
+   "count": 12,
+   "generic_or_empty": 0,
+   "with_nul": 0
+  },
+  "headings": {
+   "H1": 1,
+   "H2": 18,
+   "H3": 50,
+   "H4": 17
+  },
+  "pixel_pages_differing": [],
+  "skipped_levels": [],
+  "structure": {
+   "captions_not_grouped": 0,
+   "empty_tables": 0,
+   "empty_tags": 0,
+   "links_url_only": 0,
+   "paragraphs_holding_only_figures": 0
+  },
+  "text_pages_changed": [],
+  "tree_types": {
+   "Art": 1,
+   "Caption": 9,
+   "Div": 9,
+   "Document": 1,
+   "Figure": 12,
+   "H1": 1,
+   "H2": 18,
+   "H3": 50,
+   "H4": 17,
+   "L": 1,
+   "LBody": 11,
+   "LI": 11,
+   "Link": 3252,
+   "Note": 713,
+   "P": 1927,
+   "Reference": 733,
+   "Sect": 12,
+   "Span": 1921,
+   "TOC": 1,
+   "TOCI": 16
+  },
+  "untagged_chars": 0
+ }
+}

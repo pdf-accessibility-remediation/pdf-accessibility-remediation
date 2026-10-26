@@ -23,7 +23,7 @@ jobs:
           cache-dependency-path: pipeline/requirements.txt
 
       - name: Install dependencies
-        run: python -m pip install -r pipeline/requirements.txt
+        run: python -m pip install -r pipeline/requirements-dev.txt
 
       - name: Compile Python sources
         run: python -m compileall -q pipeline
@@ -34,5 +34,55 @@ jobs:
           bash -n pipeline/batch_api.sh
           bash -n pipeline/verapdf/install.sh
 
+      - name: Unit tests
+        run: python -m pytest pipeline/tests -q
+
       - name: Audit dependencies
-        run: python -m pip install pip-audit && pip-audit -r pipeline/requirements.txt
+        run: python -m pip install pip-audit && pip-audit -r pipeline/requirements.txt && pip-audit -r pipeline/requirements-dev.txt
+
+  intake-cases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r pipeline/requirements.txt
+
+      - name: Install Tesseract with CJK packs and a CJK font
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr fonts-noto-cjk ghostscript tesseract-ocr-script-latn \
+            tesseract-ocr-jpn tesseract-ocr-jpn-vert tesseract-ocr-kor tesseract-ocr-kor-vert \
+            tesseract-ocr-chi-sim tesseract-ocr-chi-sim-vert tesseract-ocr-chi-tra tesseract-ocr-chi-tra-vert
+
+      - name: Show Tesseract's version and script models
+        run: |
+          tesseract --version | head -1
+          echo "script models Tesseract lists:"; tesseract --list-langs 2>&1 | grep '^script/' || echo "  none"
+          echo "where apt put script/Latin:"; dpkg -L tesseract-ocr-script-latn | grep traineddata || echo "  not installed"
+
+      - name: Intake classification cases (synthetic PDFs, plan only)
+        working-directory: pipeline
+        run: python tools/intake_cases.py "$RUNNER_TEMP/intake-cases"
+
+      - name: Set up Java (OpenDataLoader auto-tagging)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install OCRmyPDF 17 with pipx (kept apart, as it needs a newer pikepdf than the pipeline pins)
+        run: pipx install ocrmypdf==17.13.0
+
+      - name: Full intake (OCR of a scan, placeholder trees, two-up pages)
+        continue-on-error: true                 # new on Linux CI: make it blocking once it has passed a few times
+        working-directory: pipeline
+        run: python tools/intake_cases.py "$RUNNER_TEMP/intake-full" --full

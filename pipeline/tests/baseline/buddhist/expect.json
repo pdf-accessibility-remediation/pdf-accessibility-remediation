@@ -1,0 +1,119 @@
+{
+ "apply": {
+  "applied": {
+   "OCR words: printed spelling given as ActualText": 1014,
+   "artifact: \"blank page scan\"": 9,
+   "artifact: \"running feet (title and page number)\"": 156,
+   "contents: TOC built": 3,
+   "contents: TOC entries": 13,
+   "contents: entry wrapped in Reference": 13,
+   "document: /Lang": 1,
+   "document: DisplayDocTitle": 2,
+   "document: Document root created": 1,
+   "document: title": 1,
+   "figure: alt text": 1,
+   "fonts: invisible OCR-layer font given defined blank glyphs": 61,
+   "links: /Contents set": 57,
+   "links: joined existing Link": 57,
+   "retype → H1": 1,
+   "retype → H2": 23,
+   "retype → H3": 24,
+   "retype → P": 3,
+   "table: header cells given a direction (Scope)": 7,
+   "table: header cells marked (work order)": 25,
+   "tag tree index: entries pointing outside the tree cleared (ParentTree)": 57,
+   "tag tree index: entries pointing outside the tree removed (IDTree)": 165
+  },
+  "deferred": 1,
+  "empty_notes_removed": 0,
+  "failed": 0,
+  "rejected": 0
+ },
+ "validation_dropped": [
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it"
+ ],
+ "verapdf": {
+  "after": {
+   "failed": {},
+   "totals": {
+    "ua_only_failed_checks": 0,
+    "ua_only_failed_rules": 0,
+    "unclassified": [],
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
+   }
+  },
+  "before": {
+   "failed": {
+    "7.1-10": 1,
+    "7.1-9": 1,
+    "7.2-2": 22,
+    "7.2-21": 19,
+    "7.2-34": 68241,
+    "7.21.8-1": 1057,
+    "7.3-1": 10
+   },
+   "totals": {
+    "ua_only_failed_checks": 1,
+    "ua_only_failed_rules": 1,
+    "unclassified": [],
+    "wcag_failed_checks": 69350,
+    "wcag_failed_rules": 6
+   }
+  }
+ },
+ "verify": {
+  "artifact_chars": 3113,
+  "figures": {
+   "count": 1,
+   "generic_or_empty": 0,
+   "with_nul": 0
+  },
+  "headings": {
+   "H1": 1,
+   "H2": 23,
+   "H3": 24
+  },
+  "pixel_pages_differing": [],
+  "skipped_levels": [],
+  "structure": {
+   "captions_not_grouped": 0,
+   "empty_tables": 0,
+   "empty_tags": 0,
+   "links_url_only": 1,
+   "paragraphs_holding_only_figures": 0
+  },
+  "text_pages_changed": [],
+  "tree_types": {
+   "Document": 1,
+   "Figure": 1,
+   "H1": 1,
+   "H2": 23,
+   "H3": 24,
+   "L": 36,
+   "LBody": 109,
+   "LI": 109,
+   "Lbl": 109,
+   "Link": 57,
+   "P": 1245,
+   "Part": 2,
+   "Reference": 13,
+   "Sect": 20,
+   "Span": 116,
+   "TD": 122,
+   "TH": 34,
+   "TOC": 3,
+   "TOCI": 13,
+   "TR": 47,
+   "Table": 3
+  },
+  "untagged_chars": 0
+ }
+}
