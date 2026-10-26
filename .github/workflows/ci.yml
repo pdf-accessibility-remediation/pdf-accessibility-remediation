@@ -59,7 +59,7 @@ jobs:
       - name: Install Tesseract with CJK packs and a CJK font
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends tesseract-ocr fonts-noto-cjk \
+          sudo apt-get install -y --no-install-recommends tesseract-ocr fonts-noto-cjk ghostscript tesseract-ocr-script-latn \
             tesseract-ocr-jpn tesseract-ocr-jpn-vert tesseract-ocr-kor tesseract-ocr-kor-vert \
             tesseract-ocr-chi-sim tesseract-ocr-chi-sim-vert tesseract-ocr-chi-tra tesseract-ocr-chi-tra-vert
 
@@ -73,7 +73,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Full intake on the placeholder-tree cases (auto-tagging)
+      - name: Install OCRmyPDF 17 with pipx (kept apart, as it needs a newer pikepdf than the pipeline pins)
+        run: pipx install ocrmypdf==17.13.0
+
+      - name: Full intake (OCR of a scan, placeholder trees, two-up pages)
         continue-on-error: true                 # new on Linux CI: make it blocking once it has passed a few times
         working-directory: pipeline
         run: python tools/intake_cases.py "$RUNNER_TEMP/intake-full" --full
