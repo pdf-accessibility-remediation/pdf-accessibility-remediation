@@ -2,13 +2,13 @@
 
 Result: `sands_remediated.pdf`
 
-329 pages · run 2026-10-25T03:59:02 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+329 pages · run 2026-10-25T19:14:47 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.5 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.1s · audit 66.5s · reuse saved reply 2.9s · apply 98.4s · verify 52.3s · total 221.2s
+Time: intake 1.4s · audit 38.5s · reuse saved reply 1.1s · apply 96.6s · verify 40.3s · total 177.9s
 
 ## Overview
 
@@ -231,7 +231,7 @@ Check each one is (or is not) a heading as decided.
 
 The OCR misread these words, mostly letters with diacritics (ā or ū read as "ii"). The AI read each word from a crop of the scan. Screen readers now speak the printed spelling, and copying gives it (ActualText); the OCR text underneath is unchanged, so a text search still finds the OCR spelling. Apps that ignore ActualText (Preview and other PDFKit readers, some checkers) still show the OCR spelling. Check each reading against the scan on its first page.
 
-- 4 suspect forms were checked by the AI; 4 were judged correct as the OCR read them, or unreadable (e.g. "Hawaii"), and left alone.
+- 8 suspect forms were checked by the AI; 8 were judged correct as the OCR read them, or unreadable (e.g. "Hawaii"), and left alone.
 
 ### 7. Text a screen reader could not reach (before this run)
 
@@ -337,7 +337,7 @@ Pages with several figures: each caption was tied to the figure right next to it
 
 ### 16. veraPDF (WCAG 2.2 machine profile), before and after
 
-veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 3 rules failing (the AI can act on 1, the pipeline on 2, only a person on 0). After: 1.
+veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 3 rules failing (the AI can act on 1, the pipeline on 2, only a person on 0). After: 1.
 
 | Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |
 |---|---|---|---|---:|---:|---|---|

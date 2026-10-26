@@ -1,9 +1,10 @@
 {
  "apply": {
   "applied": {
-   "OCR words: printed spelling given as ActualText": 1014,
+   "OCR words: printed spelling given as ActualText": 1020,
    "artifact: \"blank page scan\"": 9,
-   "artifact: \"running feet (title and page number)\"": 156,
+   "artifact: \"front matter running foot\"": 7,
+   "artifact: \"running foot (chapter titles with page number)\"": 139,
    "contents: TOC built": 3,
    "contents: TOC entries": 13,
    "contents: entry wrapped in Reference": 13,
@@ -22,7 +23,7 @@
    "table: header cells given a direction (Scope)": 7,
    "table: header cells marked (work order)": 25,
    "tag tree index: entries pointing outside the tree cleared (ParentTree)": 57,
-   "tag tree index: entries pointing outside the tree removed (IDTree)": 165
+   "tag tree index: entries pointing outside the tree removed (IDTree)": 155
   },
   "deferred": 1,
   "empty_notes_removed": 0,
@@ -30,6 +31,9 @@
   "rejected": 0
  },
  "validation_dropped": [
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
   "ocr_words: too different from the OCR text to be a misreading of it",
   "ocr_words: too different from the OCR text to be a misreading of it",
   "ocr_words: too different from the OCR text to be a misreading of it",
@@ -70,7 +74,7 @@
   }
  },
  "verify": {
-  "artifact_chars": 3113,
+  "artifact_chars": 2833,
   "figures": {
    "count": 1,
    "generic_or_empty": 0,
@@ -102,7 +106,7 @@
    "LI": 109,
    "Lbl": 109,
    "Link": 57,
-   "P": 1245,
+   "P": 1255,
    "Part": 2,
    "Reference": 13,
    "Sect": 20,

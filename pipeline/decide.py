@@ -163,6 +163,11 @@ words = {w['id']: w for w in digest.get('ocr_words') or []}
 words_unsent = sorted(set(words) - words_sent)
 run['ocr_words'] = {'forms': len(words), 'sent': len(words_sent), 'sheets': len(sheets), 'not_sent': len(words_unsent),
                     'not_found_by_audit': digest.get('ocr_words_not_sent', 0)}
+# The model answers OCR words by id, and an id is a place in this list. A saved reply replayed against a different list
+# (REPLY= / FROM= / the regression test after the audit changed) would put its readings on the wrong words, so the list
+# the reply was written for is fingerprinted and checked when the reply is reused (below, after the reply is read).
+if words_sent:
+    run['ocr_words']['fingerprint'] = hashlib.sha256('\n'.join(f'{i}\t{words[i]["text"]}' for i in sorted(words_sent)).encode()).hexdigest()[:16]
 if args.max_tokens is None: args.max_tokens = max(48000, 16000 + 45 * len(words_sent))   # room for the reasoning, and a reading per OCR word form (Buddhist used ~37 each)
 to_send = dict(digest)
 to_send['ocr_words'] = [{k: v for k, v in w.items() if k != 'pages'} for w in digest.get('ocr_words') or [] if w['id'] in words_sent]
@@ -217,6 +222,7 @@ if args.response_file:                             # a saved reply: no call, so 
         try:
             pr = json.load(open(prev, encoding='utf-8'))          # only a run.json from a call that was really sent
             kept = {k: v for k, v in pr.items() if k in ('model', 'temperature')} if pr.get('usage') and not pr.get('response_from') else {}
+            if kept and (pr.get('ocr_words') or {}).get('fingerprint'): kept['ocr_words_fingerprint'] = pr['ocr_words']['fingerprint']
         except Exception: kept = {}
     reused = kept.get('model') or reused
 try:
@@ -377,7 +383,16 @@ if len(blocks) > 1:
     print(f'note: the reply held {len(blocks)} JSON work orders; the last one (the model\'s final answer) is used. review.md shows this as a CHECK')
 
 sys.path.insert(0, HERE); from lib import workorder_check
-dropped = workorder_check.check(wo, digest, not_sent, words_sent)      # the same checks run on a work order a person reviewed
+stale = []                                         # a reused reply's OCR-word ids point into a list that has since changed
+if args.response_file and 'ocr_words' in wo:
+    then, now_fp = kept.get('ocr_words_fingerprint'), run['ocr_words'].get('fingerprint')
+    run['ocr_words']['reply_check'] = ('same list' if then == now_fp else 'list changed: readings dropped') if then else 'not checked (the saved reply has no fingerprint)'
+    if then and then != now_fp:
+        stale.append({'where': 'ocr_words', 'item': f'{len(wo["ocr_words"])} readings', 'why': 'the OCR word list changed since this reply was written, so its ids name other words'})
+        wo.pop('ocr_words')
+        wo.setdefault('deferrals', []).append({'what': 'OCR word readings from the saved reply were not used',
+                                               'why': 'the audit now lists different OCR words, so the reply\'s ids would put readings on the wrong words; a new call reads them'})
+dropped = stale + workorder_check.check(wo, digest, not_sent, words_sent)      # the same checks run on a work order a person reviewed
 if words_unsent:
     wo.setdefault('deferrals', []).append({'what': f'{len(words_unsent)} suspect OCR word forms were not read by the AI (over the image limit or budget)',
                                            'why': 'their word sheets were not sent; a person checks them against the scan. First: '
