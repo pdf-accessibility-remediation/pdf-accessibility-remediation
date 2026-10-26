@@ -15,7 +15,7 @@
 # Untagged PDFs first go through intake.py (local, no cost): OCR where pages have no text, then auto-tagging. Its
 # result (_intake/intake.pdf) is what the rest of the run works on; the original is never written to.
 # FORCE_OCR=1 bash run_api.sh …   if the text layer fails the OCR comparison, OCR every page anyway (else the book stops)
-# OCR_LANG=jpn+eng bash run_api.sh …   Tesseract languages for OCR (default: chosen from the scripts found)
+# OCR_LANG=jpn+eng bash run_api.sh …   Tesseract languages for OCR (default eng; a scan with CJK text stops until this names a CJK pack; vertical Japanese: jpn_vert+jpn+eng)
 # OCR=off / INTAKE=off bash run_api.sh …   no OCR (image-only pages are only listed) / no intake step at all
 #
 # Rerunning a label that did not finish picks up where it stopped: the audit is reused; a reply that was cut off

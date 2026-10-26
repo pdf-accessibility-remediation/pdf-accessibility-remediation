@@ -14,7 +14,7 @@ stops the run and never half-applies.
 """
 import sys, os, json, re, collections, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import plumb_fix, listrule, gaptext, langtag, support, plpages  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, scripts, fontname  # plumb_fix first: it patches pdfplumber
 from lib.sections import excerpt
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
@@ -997,8 +997,6 @@ def op_notes(spec):
         st.IDTree.Names = pikepdf.Array(flat)
 
 # ================================================================== 6. language
-KANA = re.compile(r'[぀-ヿㇰ-ㇿｦ-ﾟ]')
-CJK = re.compile(r'[　-ヿ㐀-䶿一-鿿＀-￯]')
 def tag_run(pno, m, lang):
     o = owner.get((pno, m))
     if o is None: reject(f'lang {PG(pno)} m{m}', 'run not in tree'); return
@@ -1011,25 +1009,31 @@ def tag_run(pno, m, lang):
     ks[i] = sp; set_kids(o, ks); pt_set_mcid(pno, m, sp); owner[(pno, m)] = sp; eff_pg[sp.objgen] = pno
     ok(f'language: {lang} Span')
 def op_language(spec):
-    """CJK runs: kana runs and explicit runs get the AI's language; Han-only runs are listed for a person (never guessed).
-    Runs on every book (ALWAYS), with or without a `language` key, so Han-only text is never left unlisted (3.1.2)."""
+    """CJK runs (lib/scripts.py): a run in the document's own language needs no tag (Han-only text in a Chinese, Japanese
+    or Korean document; hangul in a Korean one; kana in a Japanese one). Otherwise hangul runs get ko, kana runs the AI's
+    kana_runs (ja when it gave none), explicit runs the AI's language; Han-only runs are listed for a person (never
+    guessed). Runs on every book (ALWAYS), with or without a `language` key, so no CJK run is left unlisted (3.1.2)."""
     spec = spec or {}
     reindex()
     explicit = {(r['page'], r['mcid']): r['lang'] for r in spec.get('runs', [])}
-    han = []
+    doc_lang = str(pdf.Root.get('/Lang', ''))                     # set by op_document, which runs before this step
+    han, counts = [], collections.Counter()
     for pno in range(1, len(pages) + 1):
         by = collections.defaultdict(str)
         for c in PL.pages[pno - 1].chars:
             if c.get('mcid') is not None: by[c['mcid']] += c['text']
         for m, t in by.items():
             if (pno, m) in explicit: tag_run(pno, m, explicit[(pno, m)]); continue
-            if not CJK.search(t): continue
-            if re.sub(r'[\s\W\d_]', '', CJK.sub('', t)):
-                log['deferred'].append({'page': pno, 'mcid': m, 'what': 'CJK mixed with Latin in one run'}); continue
-            if spec.get('kana_runs') and KANA.search(t): tag_run(pno, m, spec['kana_runs']); continue
-            han.append({'page': pno, 'label': labels.get(pno), 'mcid': m, 'text': t.strip()})
+            k = scripts.kind(t)
+            if k is None: continue
+            what, val = scripts.action(k, t, doc_lang, spec.get('kana_runs'))
+            counts[f'{k}: {what}'] += 1
+            if what == 'tag': tag_run(pno, m, val)
+            elif what == 'defer' and k == 'han_only': han.append({'page': pno, 'label': labels.get(pno), 'mcid': m, 'text': t.strip()})
+            elif what == 'defer': log['deferred'].append({'page': pno, 'mcid': m, 'what': val})
     if han: log['deferred'].append({'what': 'Han-only runs (ja vs zh)', 'count': len(han)})
     log['han_only'] = han
+    log['language_runs'] = {'document_lang': doc_lang, 'runs': dict(counts)}
 
 # ================================================================== 7. links
 NAMED = {}
@@ -2176,7 +2180,7 @@ def op_ocr_words(spec):
 
 # ================================================================== always: an invisible OCR text layer whose font defines no glyphs
 OCR_FONT_NAMES = {'HiddenHorzOCR', 'HiddenVertOCR', 'GlyphLessFont'}
-def _font_name(f): return str(f.get('/BaseFont', '')).lstrip('/').split('+')[-1]
+def _font_name(f): return fontname.short(f)
 def _glyph_count(f):
     """Glyphs in the embedded font program of a font; None if it has none; 'unreadable' if it can't be read."""
     import io
@@ -2535,12 +2539,12 @@ def fix_font_maps():
     verdict = collections.defaultdict(lambda: {'ok': 0, 'contra': 0})    # copies that confirm / contradict
     checked = {}
     for f, entries, space, names, cand in todo:
-        bf = str(f.get('/BaseFont', '')).lstrip('/')
+        bf = fontname.base(f)
         checked[f.objgen] = _check_digits(f, {c: (want, names.get(c, '')) for c, (kind, want, _) in cand.items() if kind == 'digit'})
         for c, (confirmed, _, _, contra) in checked[f.objgen].items():
             v = verdict[(bf, cand[c][2], names.get(c, ''))]; v['ok'] += bool(confirmed); v['contra'] += bool(contra)
     for f, entries, space, names, cand in todo:
-        bf = str(f.get('/BaseFont', '')).lstrip('/'); fixed, failed = {}, []
+        bf = fontname.base(f); fixed, failed = {}, []
         def agreed(v): return v['ok'] > 0 and v['contra'] * 4 <= v['ok']    # Tesseract can misread one copy confidently
         digits = {c: (agreed(verdict[(bf, cand[c][2], names.get(c, ''))]), r[1], r[2], r[3]) for c, r in checked[f.objgen].items()}
         for code, (kind, want, old) in sorted(cand.items()):
