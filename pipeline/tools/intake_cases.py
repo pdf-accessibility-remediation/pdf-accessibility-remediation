@@ -253,7 +253,7 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     if len(args) != 1: sys.exit(__doc__.split('\n\n')[1])
     out = os.path.abspath(args[0]); made = build(os.path.join(out, 'pdfs')); bad = good = skipped = 0
-    latin = 'script/Latin' in tesseract_langs()
+    latin = bool({'script/Latin', 'Latin'} & tesseract_langs())     # Debian/Ubuntu packages list it as "Latin"
     for k, (what, case, lang, expect, test) in enumerate(CASES, 1):
         if case in FONT_CASES and not FONT:
             skipped += 1; print(f'SKIP  {what}  (no font for its text: install fonts-noto-cjk or set INTAKE_CASES_FONT)', flush=True); continue
