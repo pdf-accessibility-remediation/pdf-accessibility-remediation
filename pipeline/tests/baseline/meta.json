@@ -1,0 +1,13 @@
+{
+ "prompt": "workorder_v8.md",
+ "books": [
+  "godzone",
+  "clans",
+  "translation",
+  "cadaverous",
+  "sands",
+  "buddhist",
+  "ilokano"
+ ],
+ "python": "3.14"
+}

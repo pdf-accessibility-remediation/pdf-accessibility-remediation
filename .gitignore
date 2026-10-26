@@ -2,7 +2,8 @@
 .env
 .env.*
 
-# in-copyright books and everything derived from them (crops, digests, remediated copies)
+# run output and book files. The tagged samples (samples/group*), samples/untagged/ilokano.pdf and the regression baseline (pipeline/tests/baseline/)
+# are open-source material committed on purpose; samples/ stays ignored so new books are added deliberately (git add -f)
 **/pipeline/runs/
 runs/
 samples/

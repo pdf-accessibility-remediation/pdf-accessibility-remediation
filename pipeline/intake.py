@@ -1304,7 +1304,8 @@ def main():
                     s = scripts(layer)
                     script = max(('kana', 'hangul', 'han'), key=lambda k: s[k]) if s['kana'] + s['hangul'] + s['han'] >= CJK_CHARS else 'latin'
                     if s['kana'] >= CJK_CHARS: script = 'kana'
-                    model = SCRIPT_MODELS[script]
+                    model = '+'.join(m if m in tv['tesseract_langs'] or m.split('/')[-1] not in tv['tesseract_langs'] else m.split('/')[-1]
+                                     for m in SCRIPT_MODELS[script].split('+'))   # Debian/Ubuntu packages list script/Latin as "Latin"
                     if any(m not in tv['tesseract_langs'] for m in model.split('+')):
                         ol['pages'].append({'page': i, 'verdict': 'not scored', 'reason': f'Tesseract model {model} is not installed'}); continue
                     f = norm if script == 'latin' else norm_cjk
