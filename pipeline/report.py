@@ -158,6 +158,9 @@ def v_status(k):
 wc = ver.get('wcag')
 ow = log.get('ocr_words') or {}; ow_forms = ow.get('by_form') or []; ow_missing = [x for x in ow_forms if not x.get('found')]
 ow_run = run.get('ocr_words') or {}
+# a reused reply written for another OCR-word list (decide.py: list changed, or no fingerprint): none of today's forms was read by it
+ow_stale = bool(run.get('response_from')) and ow_run.get('reply_check') not in (None, 'same list')
+ow_stale_why = ow_run.get('reply_check_why') or 'the word list it was written for could not be checked'
 def intake_rows():
     tt = intake.get('text_test') or {}; o = intake.get('ocr') or {}; fl = intake.get('flags') or []
     ns = len([r for r in tt.get('pages', []) if 'cer' in r])
@@ -237,7 +240,10 @@ checks = [
      or ('; '.join(f'{x}: its font program could not be read, so it was not checked' for x in ocr_unread))
      or ('; '.join(f'{x["font"]}: blank glyphs added for {x["glyph_references"]} glyph references on {x["pages"]} pages (replay: no page changed)'
                    for x in (log.get('ocr_fonts') or {}).get('replaced') or []) or 'no undefined glyphs in invisible text')),
-    *([('OCR words: every printed spelling attached', ok(not ow_missing and not ow_run.get('not_sent') and not digest.get('ocr_words_not_sent')),
+    *([('OCR words: every printed spelling attached', ok(False),
+        ('the saved reply\'s readings were not used' if ow_run.get('reply_readings_dropped') else 'the saved reply gave no readings')
+        + f': {ow_stale_why}; {nc(ow_run.get("sent"))} suspect forms not read by the AI')] if ow_stale and (ow_forms or digest.get('ocr_words')) else
+      [('OCR words: every printed spelling attached', ok(not ow_missing and not ow_run.get('not_sent') and not digest.get('ocr_words_not_sent')),
         f'{len(ow_forms)} misread forms given their printed spelling in {sum(x.get("found") or 0 for x in ow_forms)} places'
         + (f' · {len(ow_missing)} not found in the page text' if ow_missing else '')
         + (f' · {ow_run["not_sent"] + digest.get("ocr_words_not_sent", 0)} suspect forms not read by the AI' if ow_run.get('not_sent') or digest.get('ocr_words_not_sent') else ''))]
@@ -506,8 +512,17 @@ if ow_forms or digest.get('ocr_words'):
         L += [f'| {x["text"]} | {x["reads"]} | ' + (str(x['found']) if x.get('found') else '**not found**')
               + f' | {pgs(dw.get(x["text"], {}).get("pages") or [])} |' for x in sorted(ow_forms, key=lambda x: -(x.get('found') or 0))]
         L.append('')
-    L.append(line(f'- {checked} suspect forms were checked by the AI; {max(0, checked - len(ow_forms))} were judged correct as the OCR read them, or unreadable '
-             '(e.g. "Hawaii"), and left alone.', entry=False))
+    if ow_stale:                                 # the reply was written for another list: say what it read, not today's count
+        rr, dropped_n = ow_run.get('reply_read'), ow_run.get('reply_readings_dropped')
+        L.append(line((f'- The saved reply read {rr} suspect forms (the word list when it was written)' if rr is not None else
+                       '- The saved reply was written for an earlier word list (its size was not recorded)')
+                      + (f' and gave {dropped_n} readings' if dropped_n else ' and gave no readings') + f'; {checked} are listed now. '
+                      + (f'Its readings were not used: {ow_stale_why}. ' if dropped_n else f'{ow_stale_why[:1].upper()}{ow_stale_why[1:]}. ')
+                      + f'None of today\'s {checked} forms counts as read by the AI: a person checks them against the scan, or a new call reads them.',
+                      entry=False))
+    else:
+        L.append(line(f'- {checked} suspect forms were checked by the AI; {max(0, checked - len(ow_forms))} were judged correct as the OCR read them, or unreadable '
+                 '(e.g. "Hawaii"), and left alone.', entry=False))
     if ow_missing: L.append(line(f'- **{len(ow_missing)} forms with a reading were not found in the page text** (split across text operators, or drawn inside a form): '
                             + ', '.join(x['text'] for x in ow_missing) + '. A person checks these.', entry=False))
     unread = (ow_run.get('not_sent') or 0) + (digest.get('ocr_words_not_sent') or 0)
