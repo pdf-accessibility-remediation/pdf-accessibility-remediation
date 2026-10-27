@@ -69,8 +69,8 @@ def test_replay_verdict(saved, now, then_n, now_n, verdict, why):
     assert (w is None) if why is None else why in w
 
 def test_carried_from_a_call():
-    run = {'ocr_words': {'forms': 8, 'sent': 8, 'fingerprint': 'f8'}}
-    assert ocrwords.carried(run) == {'ocr_words_fingerprint': 'f8', 'ocr_words_sent': 8}
+    run = {'ocr_words': {'forms': 8, 'sent': 8, 'fingerprint': 'f8', 'list': {'1': 'Kii'}}}
+    assert ocrwords.carried(run) == {'ocr_words_fingerprint': 'f8', 'ocr_words_sent': 8, 'ocr_words_list': {'1': 'Kii'}}
 
 def test_carried_from_a_replay_passes_on_the_reply_list_not_todays():
     run = {'response_from': 'x/reply.txt', 'ocr_words': {'sent': 645, 'fingerprint': 'today', 'reply_read': 648}}

@@ -27,7 +27,8 @@ Only when the audit lists OCR-word forms ([OCR words](ocr-words.md)); other book
 |---|---|
 | `forms`, `sent`, `sheets`, `not_sent`, `not_found_by_audit` | today's audit: forms listed, forms whose word sheet was sent, sheets, forms over the image limit, forms past the audit's cap |
 | `fingerprint` | a hash of today's list of sent forms (id and form) |
-| `reply_fingerprint`, `reply_read` | a reused reply only (`REPLY=`, `FROM=`, the regression test): the fingerprint and size of the word list the reply was written for, as far as they were recorded with it (none for replies made before the fingerprint; `reply_read` from the earlier record's `sent`) |
+| `list` | that list itself, `{id: form}` (from 2026-10-27), so a later change could re-match a reply's readings by form |
+| `reply_fingerprint`, `reply_read`, `reply_list` | a reused reply only (`REPLY=`, `FROM=`, the regression test): the fingerprint, size and list of the word list the reply was written for, as far as they were recorded with it (none for replies made before the fingerprint; `reply_read` from the earlier record's `sent`) |
 | `reply_check` | a reused reply only: `same list` (its readings are used), or `list changed` / `no fingerprint` followed by `: readings dropped` or `: the reply gave no readings` |
 | `reply_check_why` | the reason in words, e.g. "the word list changed since (4 forms then, 8 now)"; review.md quotes it |
 | `reply_readings_dropped` | how many readings were not used |

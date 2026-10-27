@@ -69,10 +69,10 @@ def replay_verdict(saved_fp, now_fp, then_n=None, now_n=None):
     return 'no fingerprint', 'the reply predates the OCR-word fingerprint, so its ids cannot be checked against the current word list'
 
 def carried(run):
-    """What a saved reply takes with it into a later reuse (FROM=, regression.py --seed): the fingerprint and size of
-    the OCR-word list the reply was written for. A run that made the call passes on its own list; a run that reused a
-    reply passes on what it was given, never the list it was replayed against."""
+    """What a saved reply takes with it into a later reuse (FROM=, regression.py --seed): the fingerprint, size and
+    list (id → form) of the OCR-word list the reply was written for. A run that made the call passes on its own list;
+    a run that reused a reply passes on what it was given, never the list it was replayed against."""
     ow = run.get('ocr_words') or {}
-    if run.get('response_from'): fp, n = ow.get('reply_fingerprint'), ow.get('reply_read')
-    else: fp, n = ow.get('fingerprint'), ow.get('sent') or None
-    return {k: v for k, v in (('ocr_words_fingerprint', fp), ('ocr_words_sent', n)) if v is not None}
+    if run.get('response_from'): fp, n, lst = ow.get('reply_fingerprint'), ow.get('reply_read'), ow.get('reply_list')
+    else: fp, n, lst = ow.get('fingerprint'), ow.get('sent') or None, ow.get('list')
+    return {k: v for k, v in (('ocr_words_fingerprint', fp), ('ocr_words_sent', n), ('ocr_words_list', lst)) if v is not None}
