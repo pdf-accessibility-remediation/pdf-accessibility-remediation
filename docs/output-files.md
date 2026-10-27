@@ -19,6 +19,19 @@ nav_order: 7
 
 A batch folder also holds `summary.md` and `summary.html`: one row per book (ready to ship, needs a person, AI decisions, safety, veraPDF WCAG rules before → after, cost, pages), sorted with the most work first and sortable by any column; each book's name opens its `review.html`. To rebuild the dashboards of a finished run or batch: `python3 report_html.py <run>` or `python3 report_html.py --summary <batch>`.
 
+## `record.json` `run.ocr_words` (scanned books with OCR words)
+
+Only when the audit lists OCR-word forms ([OCR words](ocr-words.md)); other books have just the counts.
+
+| Field | What it is |
+|---|---|
+| `forms`, `sent`, `sheets`, `not_sent`, `not_found_by_audit` | today's audit: forms listed, forms whose word sheet was sent, sheets, forms over the image limit, forms past the audit's cap |
+| `fingerprint` | a hash of today's list of sent forms (id and form) |
+| `reply_fingerprint`, `reply_read` | a reused reply only (`REPLY=`, `FROM=`, the regression test): the fingerprint and size of the word list the reply was written for, as far as they were recorded with it (none for replies made before the fingerprint; `reply_read` from the earlier record's `sent`) |
+| `reply_check` | a reused reply only: `same list` (its readings are used), or `list changed` / `no fingerprint` followed by `: readings dropped` or `: the reply gave no readings` |
+| `reply_check_why` | the reason in words, e.g. "the word list changed since (4 forms then, 8 now)" |
+| `reply_readings_dropped` | how many readings were not used |
+
 ## "Overview"
 
 `review.md` opens with an "Overview" block (called "At a glance" in runs made before 2026-10-21), and `_intake/intake.md` with its own. Their numbers are computed once (`lib/glance.py`; for intake, `intake.py`) and kept in `record.json` as `glance` (intake's in `intake.json`, and so in `record.json` under `intake`), so review.md, review.html and summary.html always agree.

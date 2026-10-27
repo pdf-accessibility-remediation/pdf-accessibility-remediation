@@ -28,8 +28,9 @@ difference is one the change meant to make. --seed DIR copies each book's reply 
 import sys, os, re, json, shutil, hashlib, argparse, datetime, subprocess, tempfile, difflib, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 HERE = os.path.dirname(os.path.abspath(__file__)); PIPE = os.path.dirname(HERE); ROOT = os.path.dirname(PIPE)
-sys.path.insert(0, HERE)
+sys.path.insert(0, HERE); sys.path.insert(1, PIPE)
 import compare_runs
+from lib import ocrwords
 
 BASE = os.path.join(PIPE, 'tests', 'baseline')
 BOOKS = ['godzone', 'clans']
@@ -101,7 +102,7 @@ def seed(src_dir, books):
         os.makedirs(os.path.join(BASE, b), exist_ok=True)
         open(os.path.join(BASE, b, 'reply.txt'), 'w', encoding='utf-8').write(r['raw_reply'])
         json.dump({**{k: r['run'][k] for k in ('model', 'temperature') if k in r['run']},
-                   **({'ocr_words_fingerprint': r['run']['ocr_words']['fingerprint']} if (r['run'].get('ocr_words') or {}).get('fingerprint') else {})},
+                   **ocrwords.carried(r['run'])},       # the OCR-word list the reply was written for
                   open(os.path.join(BASE, b, 'reply.txt.meta.json'), 'w'), indent=1)
         prompt = os.path.basename(r['run'].get('prompt_file') or '')
         if prompt and prompt != prompt_name(): sys.exit(f'--seed: {b}\'s reply was made with {prompt}, but decide.py uses {prompt_name()}')
