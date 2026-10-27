@@ -253,6 +253,7 @@ if [[ -n ${FROM:-} ]]; then
   python3 - "$B/todo.tsv" "$RUNS_DIR" "$FROM" "$B" <<'PY' || exit 1
 import sys, json, os, math
 import shutil
+from lib import ocrwords
 books, runs, src, B = sys.argv[1:5]; bad = []
 for line in open(books):
     name = line.split('\t')[0]
@@ -267,7 +268,7 @@ for line in open(books):
             if os.path.exists(os.path.join(old_in, f)): shutil.copyfile(os.path.join(old_in, f), os.path.join(new_in, f))
     open(os.path.join(B, f'{name}.reply.txt'), 'w', encoding='utf-8').write(r['raw_reply'])
     json.dump({**{k: r['run'][k] for k in ('model', 'temperature') if k in r['run']},      # the new record keeps the original's
-               **({'ocr_words_fingerprint': r['run']['ocr_words']['fingerprint']} if (r['run'].get('ocr_words') or {}).get('fingerprint') else {})},
+               **ocrwords.carried(r['run'])},      # the OCR-word list the reply was written for (never the one it was replayed against)
               open(os.path.join(B, f'{name}.reply.txt.meta.json'), 'w'))
 if bad: sys.exit(f'stopped: no saved reply under {src} for {", ".join(bad)}')
 print('  saved replies found for every book')
