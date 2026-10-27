@@ -168,6 +168,7 @@ run['ocr_words'] = {'forms': len(words), 'sent': len(words_sent), 'sheets': len(
 # the reply was written for is fingerprinted and checked when the reply is reused (below, after the reply is read).
 if words_sent:
     run['ocr_words']['fingerprint'] = hashlib.sha256('\n'.join(f'{i}\t{words[i]["text"]}' for i in sorted(words_sent)).encode()).hexdigest()[:16]
+    run['ocr_words']['list'] = {str(i): words[i]['text'] for i in sorted(words_sent)}   # the list itself (id → form), so readings could later be re-matched by form
 if args.max_tokens is None: args.max_tokens = max(48000, 16000 + 45 * len(words_sent))   # room for the reasoning, and a reading per OCR word form (Buddhist used ~37 each)
 to_send = dict(digest)
 to_send['ocr_words'] = [{k: v for k, v in w.items() if k != 'pages'} for w in digest.get('ocr_words') or [] if w['id'] in words_sent]
@@ -386,7 +387,7 @@ sys.path.insert(0, HERE); from lib import workorder_check, ocrwords
 stale = []                                         # a reused reply's OCR-word ids may point into a list that has since changed
 if args.response_file and words:                   # only a book whose audit lists OCR-word forms (the rest get no new field)
     ow_ = run['ocr_words']
-    for k_new, k_meta in (('reply_fingerprint', 'ocr_words_fingerprint'), ('reply_read', 'ocr_words_sent')):
+    for k_new, k_meta in (('reply_fingerprint', 'ocr_words_fingerprint'), ('reply_read', 'ocr_words_sent'), ('reply_list', 'ocr_words_list')):
         if kept.get(k_meta) is not None: ow_[k_new] = kept[k_meta]
     verdict, why = ocrwords.replay_verdict(kept.get('ocr_words_fingerprint'), ow_.get('fingerprint'), kept.get('ocr_words_sent'), ow_['sent'])
     has = bool(wo.get('ocr_words'))
