@@ -7,6 +7,7 @@ Routes (all call review/core.py; a later front end can replace this file and pag
                                  request path is only looked up in that list, never joined onto a folder). A page image is
                                  rendered the first time it is asked for.
     GET  /word/<id>.png          one OCR word cut from its word sheet (the image the AI read)
+    GET  /result/review.html …   files the caller lists (files=): a reopened review links the run's current result
     POST /save    {reviewer, decisions, additions, saved_at}  → saved to review_decisions.json; returns what the check
                                  would drop, additions refused, and gaps (no H1, figures without alt)
     POST /finish  {…, accept_unreviewed, gaps_ack}            → review.json and the reviewed workorder.json; the server stops.
@@ -22,7 +23,8 @@ from . import core
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'page.html')
 SERVED = ('figures', 'ocr_words')                     # folders under _audit/ whose files the page shows
 
-def serve(R, date, port=8765, open_browser=True):
+def serve(R, date, port=8765, open_browser=True, files=None):
+    """files: {url: path} served as they are, beside the review's own (review_workorder.py --reopen: the current result)."""
     R = os.path.abspath(R)
     data = core.load(os.path.join(R, 'review_items.json'))
     ai = core.load(os.path.join(R, 'workorder.ai.json'))
@@ -41,6 +43,7 @@ def serve(R, date, port=8765, open_browser=True):
     static = {f'/_audit/{d}/{n}': (os.path.join(R, '_audit', d, n), mimetypes.guess_type(n)[0] or 'application/octet-stream')
               for d in SERVED if os.path.isdir(os.path.join(R, '_audit', d))
               for n in os.listdir(os.path.join(R, '_audit', d)) if os.path.isfile(os.path.join(R, '_audit', d, n))}
+    static.update({u: (f, mimetypes.guess_type(f)[0] or 'application/octet-stream') for u, f in (files or {}).items() if os.path.isfile(f)})
     page_urls = {f'/review_pages/page_{n:03d}.png': n for n in range(1, data.get('pages', 0) + 1)}
     word_urls = {f'/word/{i}.png': i for i in cells}
 
