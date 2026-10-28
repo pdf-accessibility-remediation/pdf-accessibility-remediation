@@ -102,7 +102,13 @@ summary() {
 # 0. intake (untagged PDFs only): OCR where needed, then auto-tag. Exit 3 = flagged for a person: the book stops here
 PSRC=$SRC                                      # the file the pipeline works on: the original, or the intake result
 if [[ ${INTAKE:-auto} != off ]]; then
-  stage "0/5 intake (local, no model)" python3 intake.py "$SRC" "$R/_intake"
+  if [[ -n $REVIEWED && -f $R/_intake/intake.json ]]; then   # applying a reviewed order: the intake it was decided on, never a new one
+    python3 -c "import json,hashlib,sys; o=json.load(open(sys.argv[1])).get('original') or {}; sys.exit(0 if o.get('sha256') == hashlib.sha256(open(sys.argv[2],'rb').read()).hexdigest() else 1)" "$R/_intake/intake.json" "$SRC" \
+      || { echo "$SRC is not the original this run's intake was made from (sha256 differs): give the same original PDF"; exit 1; }
+    echo "▶ 0/5 intake: not re-run; applying to the intake result saved before the review stop"
+  else
+    stage "0/5 intake (local, no model)" python3 intake.py "$SRC" "$R/_intake"
+  fi
   [[ -f $R/_intake/intake.pdf ]] && PSRC=$R/_intake/intake.pdf
 fi
 same_source() { [[ -f $A/digest.json ]] && python3 -c "import json,hashlib,sys; d=json.load(open('$A/digest.json')); sys.exit(0 if d['source']['sha256'] == hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest() else 1)" "$PSRC"; }
