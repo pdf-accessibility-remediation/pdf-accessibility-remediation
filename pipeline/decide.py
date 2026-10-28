@@ -395,10 +395,10 @@ if args.response_file and words:                   # only a book whose audit lis
     if why: ow_['reply_check_why'] = why
     if verdict != 'same list' and has:             # no fingerprint is treated like a changed list: a reading could land on another word
         n_ = len(wo['ocr_words']); ow_['reply_readings_dropped'] = n_
-        stale.append({'where': 'ocr_words', 'item': f'{n_} readings', 'why': f'{why}, so the reply\'s ids could name other words'})
+        stale.append({'where': 'ocr_words', 'item': f'{n_} readings', 'why': f'{why}; the reply\'s ids could name other words'})
         wo.pop('ocr_words')
         wo.setdefault('deferrals', []).append({'what': 'OCR word readings from the saved reply were not used',
-                                               'why': f'{why}, so the reply\'s ids could put readings on the wrong words; a new call reads them'})
+                                               'why': f'{why}; the reply\'s ids could put readings on the wrong words, so a new call reads them'})
 dropped = stale + workorder_check.check(wo, digest, not_sent, words_sent)      # the same checks run on a work order a person reviewed
 if words_unsent:
     wo.setdefault('deferrals', []).append({'what': f'{len(words_unsent)} suspect OCR word forms were not read by the AI (over the image limit or budget)',
