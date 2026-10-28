@@ -56,6 +56,13 @@ def P(R):
 class Refused(Exception):
     """A check failed: nothing was written."""
 
+def readable(fn, *a):
+    """fn(*a) on the kept digest; a digest this version of the review step cannot read is refused, not a traceback."""
+    try: return fn(*a)
+    except (KeyError, TypeError, ValueError, AttributeError, IndexError) as e:
+        raise Refused(f'the kept digest cannot be read by this version of the review step ({type(e).__name__}: {e}): '
+                      'start a new label with REPLY= and REVIEW=1')
+
 # ------------------------------------------------------------------ the basis
 def ai_order(rec):
     """The AI's validated work order of a finished run, from its record; None when it cannot be recovered."""
@@ -108,7 +115,8 @@ def pin(R, pdf=None, say=say_):
     word sheets) with a basis record. Writes only reviews/basis.json and reviews/_audit/{digest.json, ocr_words/}; never
     touches record.json, review.md, review.html or the PDF. Returns 'pinned' or 'already pinned'; raises Refused."""
     R = os.path.abspath(R); p = P(R)
-    if os.path.exists(p['basis']): return 'already pinned'
+    if os.path.exists(p['basis']) and os.path.exists(os.path.join(p['audit'], 'digest.json')): return 'already pinned'
+    old = basis(R)                                         # a basis with no digest (a KEEP=1 review run): keep its run id
     rec = load(os.path.join(R, 'record.json'))
     if rec is None: raise Refused(f'{R} is not a finished run (no record.json)')
     want = (rec.get('run') or {}).get('digest_sha256')
@@ -123,10 +131,12 @@ def pin(R, pdf=None, say=say_):
         got = sha_file(os.path.join(tmp, 'digest.json'))[:16]
         if got != want:
             raise Refused(f'the audit changed since the AI decided: digest {got}, the record says {want} (audit code, veraPDF or Python): nothing kept')
-        os.makedirs(p['audit'])
+        os.makedirs(p['audit'], exist_ok=True)
         shutil.copy2(os.path.join(tmp, 'digest.json'), os.path.join(p['audit'], 'digest.json'))
         if os.path.isdir(os.path.join(tmp, 'ocr_words')): shutil.copytree(os.path.join(tmp, 'ocr_words'), os.path.join(p['audit'], 'ocr_words'))
-        save(p['basis'], new_basis(R, inp, inp_sha, os.path.join(p['audit'], 'digest.json'), ai, 'pin'))
+        b = new_basis(R, inp, inp_sha, os.path.join(p['audit'], 'digest.json'), ai, 'pin')
+        if old and old.get('run_id'): b['run_id'] = old['run_id']
+        save(p['basis'], b)
         return 'pinned'
     finally: shutil.rmtree(tmp, ignore_errors=True)
 
@@ -387,9 +397,10 @@ def open_session(R, rec, src=None, pdf=None, discard_open=False, say=say_):
     p = P(R)
     b, inp, ai = check_basis(R, rec, pdf)
     digest = load(os.path.join(p['audit'], 'digest.json'))
+    readable(core.build_items, ai, digest); readable(core.addable, ai, digest)   # before anything is written
     ss = sessions(R)
     if not ss and (rec.get('review') or {}).get('workorder'):
-        s1 = adopt_summary(R, rec, ai, digest); ss = [s1]
+        s1 = readable(adopt_summary, R, rec, ai, digest); ss = [s1]
         say('  ' + summary_text(s1))
     op = [s for s in ss if s.get('status') == 'open']
     if op and src is None and not discard_open:
@@ -406,7 +417,7 @@ def open_session(R, rec, src=None, pdf=None, discard_open=False, say=say_):
             if not any(s['id'] == src for s in done): raise Refused(f'no finished session {src} (see --sessions)')
         s = {'id': next_id(R), 'from': src, 'status': 'open', 'started': now(), 'basis': {k: b.get(k) for k in ('run_id', 'digest_sha256', 'workorder_ai_sha256')},
              'input_sha256': b['input']['sha256']}
-        data = core.prepare(p['dir'], inp)
+        data = readable(core.prepare, p['dir'], inp)
         items = data['items']; s['items_sha256'] = sha_obj([[it['id'], it['ai']] for it in items])
         start, additions, gaps_ack, missed = {}, [], {}, []
         if src != 'ai':
@@ -419,7 +430,7 @@ def open_session(R, rec, src=None, pdf=None, discard_open=False, say=say_):
         save(p['draft'], {'reviewer': '', 'decisions': page_decisions(start), 'additions': additions,
                           'saved_at': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')})
     data = load(p['items'])
-    if data is None: data = core.prepare(p['dir'], inp)
+    if data is None: data = readable(core.prepare, p['dir'], inp)
     render_figures(inp, digest, p['audit'])
     src_s = session(R, s['from']) if s['from'] not in ('ai', None) else None
     data['run'] = os.path.relpath(R, os.path.dirname(HERE))
@@ -568,7 +579,7 @@ def reapply(R, s, pdf=None, say=say_):
     t = {'4/5 apply (no model)': _run(['apply.py', inp, os.path.join(W, 'workorder.json'), os.path.join(W, out)], say, 'apply (no model)')}
     t['4/5 verify (no model)'] = _run(['verify.py', inp, os.path.join(W, out)], say, 'verify (no model)', quiet=True)
     save(os.path.join(W, 'timing.json'), t)
-    items = core.build_items(ai, load(os.path.join(p['audit'], 'digest.json')))
+    items = readable(core.build_items, ai, load(os.path.join(p['audit'], 'digest.json')))
     s2 = dict(s, status='applied')
     info = {'session': s['id'], 'sessions': [summary_row(x if x['id'] != s['id'] else s2) for x in sessions(R)],
             'decisions': decision_list(items, s.get('decisions') or {}), 'run_id': b['run_id'], 'run': os.path.relpath(R, HERE)}

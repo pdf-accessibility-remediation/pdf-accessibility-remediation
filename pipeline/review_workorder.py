@@ -52,7 +52,7 @@ def finished(R, a):
         if not (a.reopen or a.apply): sys.exit('a finished run: give --reopen, --apply, --sessions or --pin')
         with S.Lock(R, 'reopen' if a.reopen else 'apply'):
             if os.path.exists(S.P(R)['promoting']): print('completing an interrupted promotion'); S.promote(R, None, None); rec = core.load(os.path.join(R, 'record.json'))
-            if S.basis(R) is None:
+            if S.basis(R) is None or not os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json')):
                 print('this run has no reviews/basis.json yet: pinning it first (free re-audit)'); print(S.pin(R, a.pdf))
             if a.apply:
                 fin = [x for x in S.sessions(R) if x.get('status') == 'finished']
