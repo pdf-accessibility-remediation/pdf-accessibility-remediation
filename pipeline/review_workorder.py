@@ -16,6 +16,8 @@ A finished run can be reviewed again (review/sessions.py keeps every session and
     python3 review_workorder.py <run_dir> --apply        # re-apply the latest finished session (after --no-apply or a failed apply)
     python3 review_workorder.py <run_dir> --pin [--pdf <original.pdf>]   # once, for runs made before every run kept its digest:
                                     # re-audit, check the digest's fingerprint against the record, keep the digest (free)
+    python3 review_workorder.py <run_dir> --replay-to <new run folder>   # a run whose audit is not today's (pin refused):
+                                    # copy its _intake/ and saved reply for a new run of the book on today's code (not a review)
 
 The AI's version stays in workorder.ai.json. Either way the reviewed order goes through the same checks as the AI's
 (workorder_check.py), and review.json records who reviewed it, when, and every change. report.py folds it into
@@ -37,6 +39,10 @@ def finished(R, a):
     try:
         if a.pin:
             print(f'{R}: {S.pin(R, a.pdf)}'); return
+        if a.replay_to:
+            reply, cmd = S.replay_to(R, a.replay_to)
+            print(f'written: {os.path.abspath(a.replay_to)}/_intake/ (if this run had one), {reply} and its .meta.json\n'
+                  f'a new run of the book on today\'s code (not a review of {R}): from pipeline/, run\n  {cmd}'); return
         if a.sessions:
             ss = S.sessions(R); cur = S.current_id(rec)
             if not ss: print('no review sessions' + (f' kept (reviewed before sessions were kept: --reopen records it as session 1)' if (rec.get('review') or {}).get('workorder') else ' (never reviewed)'))
@@ -49,7 +55,7 @@ def finished(R, a):
                       + (' · summary only' if r['summary_only'] and not r['inferred'] else ' · inferred from the summary' if r['inferred'] else ''))
             vs = sorted(os.listdir(S.P(R)['versions'])) if os.path.isdir(S.P(R)['versions']) else []
             print(f'current result: {S.label(cur)}' + (f' · earlier results in reviews/versions/: {", ".join(vs)}' if vs else '')); return
-        if not (a.reopen or a.apply): sys.exit('a finished run: give --reopen, --apply, --sessions or --pin')
+        if not (a.reopen or a.apply): sys.exit('a finished run: give --reopen, --apply, --sessions, --pin or --replay-to')
         with S.Lock(R, 'reopen' if a.reopen else 'apply'):
             if os.path.exists(S.P(R)['promoting']): print('completing an interrupted promotion'); S.promote(R, None, None); rec = core.load(os.path.join(R, 'record.json'))
             if S.basis(R) is None or not os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json')):
@@ -100,12 +106,14 @@ def main():
     ap.add_argument('--apply', action='store_true', help='re-apply the latest finished session')
     ap.add_argument('--sessions', action='store_true', help='list the review sessions of a run')
     ap.add_argument('--pin', action='store_true', help='keep a finished run\'s digest after checking its fingerprint (free re-audit)')
+    ap.add_argument('--replay-to', metavar='DIR', help='a run that can no longer be reviewed: prepare a new run of the book in DIR '
+                    'from its intake and saved reply (no API call), and print the command')
     a = ap.parse_args()
     R = os.path.abspath(a.run_dir)
     ai_path = os.path.join(R, 'workorder.ai.json')
     if os.path.exists(os.path.join(R, 'record.json')):
         return finished(R, a)
-    if a.reopen or a.apply or a.sessions or a.pin: sys.exit(f'{R} is not a finished run (no record.json)')
+    if a.reopen or a.apply or a.sessions or a.pin or a.replay_to: sys.exit(f'{R} is not a finished run (no record.json)')
     if not os.path.exists(ai_path): sys.exit(f'{R} is not waiting for a review: run run_api.sh with REVIEW=1 first (no workorder.ai.json)')
     ai = core.load(ai_path)
     rerun = f'bash run_api.sh <original.pdf> <name> {os.path.basename(R)}   (the same command as before, without REVIEW=1)'
