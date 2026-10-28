@@ -160,7 +160,7 @@ fi
 stage "4/5 apply (no model)"            python3 apply.py "$PSRC" "$R/workorder.json" "$R/$OUT"
 stage "4/5 verify (no model)"           bash -c 'python3 verify.py "$1" "$2" > /dev/null' _ "$PSRC" "$R/$OUT"
 python3 -c "import json,sys; json.dump({l.split('|')[0]: round(float(l.split('|')[1]), 1) for l in sys.argv[1:]}, open('$R/timing.json', 'w'), indent=1)" "${TIMES[@]}"
-stage "5/5 report"                      python3 report.py "$R" "$A" "--pdf=$OUT" ${KEEP:+--keep}
+stage "5/5 report"                      python3 report.py "$R" "$A" "--pdf=$OUT" "--input=$PSRC" ${KEEP:+--keep}
 summary
 echo
 echo "done: $R"
