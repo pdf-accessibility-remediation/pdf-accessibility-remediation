@@ -264,10 +264,44 @@ def test_pin_keeps_the_run_id_of_a_basis_without_a_digest(tmp_path, monkeypatch)
     os.remove(os.path.join(S.P(R)['audit'], 'digest.json'))               # a KEEP=1 review run: basis written, digest not kept
     def fake_audit(inp, out):
         os.makedirs(out, exist_ok=True); S.save(os.path.join(out, 'digest.json'), dg)
+        S.save(os.path.join(out, 'fulltext.json'), {'elements': {'10 0 R': 'Introduction, in full'}})
     monkeypatch.setattr(S, 'reaudit', fake_audit)
     assert S.pin(R, say=lambda *a: None) == 'pinned'
     assert S.basis(R)['run_id'] == run_id and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json'))
+    assert os.path.exists(os.path.join(S.P(R)['audit'], 'fulltext.json'))           # --pin keeps fulltext.json too
     assert S.pin(R, say=lambda *a: None) == 'already pinned'
+
+def files_of(R):
+    """Every file under R with its sha256: what a top-up may and may not change."""
+    out = {}
+    for d, _, fs in os.walk(R):
+        for f in fs: out[os.path.relpath(os.path.join(d, f), R)] = S.sha_file(os.path.join(d, f))
+    return out
+
+def test_top_up_adds_only_fulltext_and_a_second_run_changes_nothing(tmp_path, monkeypatch):
+    R, rec, ai, dg = run_folder(tmp_path)                                           # pinned before --pin kept fulltext.json
+    kept = open(os.path.join(S.P(R)['audit'], 'digest.json'), 'rb').read()
+    def fake_audit(inp, out):                                                        # today's audit: the same digest, byte for byte
+        os.makedirs(out, exist_ok=True); open(os.path.join(out, 'digest.json'), 'wb').write(kept)
+        S.save(os.path.join(out, 'fulltext.json'), {'elements': {'10 0 R': 'Introduction, in full'}})
+    monkeypatch.setattr(S, 'reaudit', fake_audit)
+    before = files_of(R)
+    assert S.pin(R, say=lambda *a: None) == 'already pinned; fulltext.json added'
+    after = files_of(R)
+    assert set(after) - set(before) == {os.path.join('reviews', '_audit', 'fulltext.json')}
+    assert all(after[k] == v for k, v in before.items())                             # nothing else changed
+    assert S.pin(R, say=lambda *a: None) == 'already pinned'
+    assert files_of(R) == after                                                      # a second run changes nothing
+
+def test_top_up_keeps_nothing_when_the_audit_does_not_reproduce(tmp_path, monkeypatch):
+    R, rec, ai, dg = run_folder(tmp_path)
+    def fake_audit(inp, out):                                                        # today's audit differs from the kept digest
+        os.makedirs(out, exist_ok=True); S.save(os.path.join(out, 'digest.json'), dict(dg, changed=True))
+        S.save(os.path.join(out, 'fulltext.json'), {'elements': {}})
+    monkeypatch.setattr(S, 'reaudit', fake_audit)
+    before = files_of(R)
+    assert 'does not reproduce' in S.pin(R, say=lambda *a: None)
+    assert files_of(R) == before
 
 # ------------------------------------------------------------------ the fallback for a run that can no longer be reviewed
 def test_replay_to_copies_intake_and_reply_with_its_meta(tmp_path):

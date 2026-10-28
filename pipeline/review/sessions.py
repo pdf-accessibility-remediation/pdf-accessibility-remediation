@@ -6,7 +6,7 @@ later review needs is kept beside it, in reviews/:
     reviews/basis.json            what every session is checked against: the run id (the review page's browser-draft key),
                                   the pipeline input (path, sha256), the digest's fingerprint (decide.py's run.digest_sha256),
                                   the AI's validated work order's sha256, decided_by
-    reviews/_audit/               digest.json, fulltext.json (runs made on this branch), ocr_words/ (books with OCR words);
+    reviews/_audit/               digest.json, fulltext.json (when the audit that pinned it reproduced the digest), ocr_words/ (books with OCR words);
                                   never the figure crops: they are re-rendered from the input PDF when a review opens
     reviews/workorder.ai.json     the AI's validated work order (written when a review opens; reviewed runs keep it)
     reviews/sessions/NNN.json     one per review: who, when, from which session, every choice (status, value, note, the AI
@@ -114,12 +114,32 @@ def reaudit(inp, out):
     if r.returncode != 0 or not os.path.exists(os.path.join(out, 'digest.json')):
         raise Refused(f'the re-audit failed (exit {r.returncode}): ' + (r.stdout or '').strip()[-400:])
 
+def top_up(R, pdf=None, say=say_):
+    """A run pinned before --pin kept fulltext.json: add it, only when today's audit reproduces the kept digest byte for
+    byte. Writes only reviews/_audit/fulltext.json. Returns what happened, as a sentence."""
+    p = P(R); b = basis(R); ft = os.path.join(p['audit'], 'fulltext.json')
+    if os.path.exists(ft): return 'already pinned'
+    inp = (b.get('input') or {}).get('path')
+    if pdf or not inp or not os.path.isfile(inp) or sha_file(inp) != (b.get('input') or {}).get('sha256'):
+        inp = input_of(R, load(os.path.join(R, 'record.json')) or {}, pdf)[0]
+    tmp = tempfile.mkdtemp(prefix='pin-')
+    try:
+        say(f'  already pinned, without fulltext.json: re-auditing {os.path.relpath(inp, R) if inp.startswith(R) else inp} (no model)…')
+        reaudit(inp, tmp)
+        if sha_file(os.path.join(tmp, 'digest.json')) != sha_file(os.path.join(p['audit'], 'digest.json')):
+            return 'already pinned; fulltext.json not kept: today\'s audit does not reproduce the kept digest'
+        if not os.path.exists(os.path.join(tmp, 'fulltext.json')): return 'already pinned; the audit wrote no fulltext.json'
+        shutil.copy2(os.path.join(tmp, 'fulltext.json'), ft)
+        return 'already pinned; fulltext.json added'
+    finally: shutil.rmtree(tmp, ignore_errors=True)
+
 def pin(R, pdf=None, say=say_):
-    """Re-audit a finished run's input, check the digest's fingerprint against the record, and keep the digest (and the OCR
-    word sheets) with a basis record. Writes only reviews/basis.json and reviews/_audit/{digest.json, ocr_words/}; never
-    touches record.json, review.md, review.html or the PDF. Returns 'pinned' or 'already pinned'; raises Refused."""
+    """Re-audit a finished run's input, check the digest's fingerprint against the record, and keep the digest, fulltext.json
+    (the whole texts review.md quotes) and the OCR word sheets with a basis record. Writes only reviews/basis.json and
+    reviews/_audit/{digest.json, fulltext.json, ocr_words/}; never touches record.json, review.md, review.html or the PDF.
+    A run already pinned without fulltext.json gets it added (top_up). Returns what happened; raises Refused."""
     R = os.path.abspath(R); p = P(R)
-    if os.path.exists(p['basis']) and os.path.exists(os.path.join(p['audit'], 'digest.json')): return 'already pinned'
+    if os.path.exists(p['basis']) and os.path.exists(os.path.join(p['audit'], 'digest.json')): return top_up(R, pdf, say)
     old = basis(R)                                         # a basis with no digest (a KEEP=1 review run): keep its run id
     rec = load(os.path.join(R, 'record.json'))
     if rec is None: raise Refused(f'{R} is not a finished run (no record.json)')
@@ -138,6 +158,7 @@ def pin(R, pdf=None, say=say_):
                           f'Python); nothing was kept, so {FALLBACK}')
         os.makedirs(p['audit'], exist_ok=True)
         shutil.copy2(os.path.join(tmp, 'digest.json'), os.path.join(p['audit'], 'digest.json'))
+        if os.path.exists(os.path.join(tmp, 'fulltext.json')): shutil.copy2(os.path.join(tmp, 'fulltext.json'), os.path.join(p['audit'], 'fulltext.json'))
         if os.path.isdir(os.path.join(tmp, 'ocr_words')): shutil.copytree(os.path.join(tmp, 'ocr_words'), os.path.join(p['audit'], 'ocr_words'))
         b = new_basis(R, inp, inp_sha, os.path.join(p['audit'], 'digest.json'), ai, 'pin')
         if old and old.get('run_id'): b['run_id'] = old['run_id']
