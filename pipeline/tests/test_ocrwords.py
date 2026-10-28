@@ -51,3 +51,31 @@ def test_words_split_at_gaps_with_no_space_character():
 def test_words_split_at_line_and_untagged_text():
     cs = [ch('k', 0), ch('a', 5), ch('m', 0, top=120), ch('e', 5, top=120), ch('x', 10, top=120, mcid=None), ch('o', 15, top=120)]
     assert as_text(ocrwords.words(cs)) == ['ka', 'me', 'o']
+
+# ---- a reused reply's OCR-word readings (docs/ocr-words.md, "Reused replies")
+@pytest.mark.parametrize('saved, now, then_n, now_n, verdict, why', [
+    ('abc', 'abc', 4, 4, 'same list', None),
+    ('abc', 'abc', None, 4, 'same list', None),
+    ('abc', 'xyz', 4, 4, 'list changed', 'the word list changed since'),
+    ('abc', 'xyz', 4, 8, 'list changed', 'the word list changed since (4 forms then, 8 now)'),
+    (None, 'xyz', 4, 8, 'list changed', 'the word list changed since (4 forms then, 8 now)'),     # sands: counts known, no fingerprint
+    (None, 'xyz', 645, 645, 'no fingerprint', 'predates'),                                        # same size proves nothing
+    (None, 'xyz', None, 645, 'no fingerprint', 'predates'),
+    (None, None, None, 0, 'no fingerprint', 'predates'),
+])
+def test_replay_verdict(saved, now, then_n, now_n, verdict, why):
+    v, w = ocrwords.replay_verdict(saved, now, then_n, now_n)
+    assert v == verdict
+    assert (w is None) if why is None else why in w
+
+def test_carried_from_a_call():
+    run = {'ocr_words': {'forms': 8, 'sent': 8, 'fingerprint': 'f8', 'list': {'1': 'Kii'}}}
+    assert ocrwords.carried(run) == {'ocr_words_fingerprint': 'f8', 'ocr_words_sent': 8, 'ocr_words_list': {'1': 'Kii'}}
+
+def test_carried_from_a_replay_passes_on_the_reply_list_not_todays():
+    run = {'response_from': 'x/reply.txt', 'ocr_words': {'sent': 645, 'fingerprint': 'today', 'reply_read': 648}}
+    assert ocrwords.carried(run) == {'ocr_words_sent': 648}          # no fingerprint was given, so none is passed on
+
+def test_carried_nothing_without_ocr_words():
+    assert ocrwords.carried({'ocr_words': {'forms': 0, 'sent': 0}}) == {}
+    assert ocrwords.carried({}) == {}
