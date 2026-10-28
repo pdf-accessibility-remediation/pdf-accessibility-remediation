@@ -34,7 +34,7 @@ The expected values come from the module docstrings and from [Work order](work-o
 
 | File | What it is |
 |---|---|
-| `reply.txt`, `reply.txt.meta.json` | The saved model reply, with the model and temperature that produced it. This is the run's fixed input |
+| `reply.txt`, `reply.txt.meta.json` | The saved model reply, with the model and temperature that produced it, and for a scanned book the OCR-word list the reply was written for (`ocr_words_fingerprint`, `ocr_words_sent`, `ocr_words_list`). This is the run's fixed input. A reply whose list does not match today's audit, or has no fingerprint, has its OCR-word readings dropped on replay ([OCR words](ocr-words.md)): re-seed such a book with a new reply. sands' `ocr_words_sent: 4` was added by hand (UPDATES.md, 2026-10-27) |
 | `review.md` | The report the last accepted run wrote |
 | `_intake/` | Untagged books only (ilokano): `intake.json` and `intake.pdf`, the intake result the reply was written for. It is reused (`INTAKE_REUSE=1`, as `FROM=` batches do) instead of rerunning OCR and auto-tagging, whose output varies with the Tesseract and OpenDataLoader versions. A note is printed when `requirements.txt` pins another OpenDataLoader than the one that made it; re-seed then |
 | `expect.json` | A fingerprint of that run's `record.json`: veraPDF rules before and after, what `apply.py` did, what the work-order checks dropped, the tag counts, headings and figures `verify.py` found |
