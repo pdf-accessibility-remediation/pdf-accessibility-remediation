@@ -102,7 +102,13 @@ summary() {
 # 0. intake (untagged PDFs only): OCR where needed, then auto-tag. Exit 3 = flagged for a person: the book stops here
 PSRC=$SRC                                      # the file the pipeline works on: the original, or the intake result
 if [[ ${INTAKE:-auto} != off ]]; then
-  stage "0/5 intake (local, no model)" python3 intake.py "$SRC" "$R/_intake"
+  if [[ -n $REVIEWED && -f $R/_intake/intake.json ]]; then   # applying a reviewed order: the intake it was decided on, never a new one
+    python3 -c "import json,hashlib,sys; o=json.load(open(sys.argv[1])).get('original') or {}; sys.exit(0 if o.get('sha256') == hashlib.sha256(open(sys.argv[2],'rb').read()).hexdigest() else 1)" "$R/_intake/intake.json" "$SRC" \
+      || { echo "$SRC is not the original this run's intake was made from (sha256 differs): give the same original PDF"; exit 1; }
+    echo "▶ 0/5 intake: not re-run; applying to the intake result saved before the review stop"
+  else
+    stage "0/5 intake (local, no model)" python3 intake.py "$SRC" "$R/_intake"
+  fi
   [[ -f $R/_intake/intake.pdf ]] && PSRC=$R/_intake/intake.pdf
 fi
 same_source() { [[ -f $A/digest.json ]] && python3 -c "import json,hashlib,sys; d=json.load(open('$A/digest.json')); sys.exit(0 if d['source']['sha256'] == hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest() else 1)" "$PSRC"; }
@@ -154,13 +160,13 @@ if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews 
   echo
   echo "stopped for review: nothing has been applied yet"
   echo "  1. python3 $(pwd)/review_workorder.py \"$R\" --serve     opens the review page"
-  echo "  2. ${RUN_DIR:+RUN_DIR=$R }bash $(pwd)/run_api.sh \"$SRC\" $NAME $(basename "$R")     afterwards (without REVIEW=1): applies the reviewed work order"
+  echo "  2. ${INTAKE_REUSE:+INTAKE_REUSE=$INTAKE_REUSE }${OCR_LANG:+OCR_LANG=$OCR_LANG }${RUN_DIR:+RUN_DIR=$R }bash $(pwd)/run_api.sh \"$SRC\" $NAME $(basename "$R")     afterwards (without REVIEW=1): applies the reviewed work order"
   exit 0
 fi
 stage "4/5 apply (no model)"            python3 apply.py "$PSRC" "$R/workorder.json" "$R/$OUT"
 stage "4/5 verify (no model)"           bash -c 'python3 verify.py "$1" "$2" > /dev/null' _ "$PSRC" "$R/$OUT"
 python3 -c "import json,sys; json.dump({l.split('|')[0]: round(float(l.split('|')[1]), 1) for l in sys.argv[1:]}, open('$R/timing.json', 'w'), indent=1)" "${TIMES[@]}"
-stage "5/5 report"                      python3 report.py "$R" "$A" "--pdf=$OUT" ${KEEP:+--keep}
+stage "5/5 report"                      python3 report.py "$R" "$A" "--pdf=$OUT" "--input=$PSRC" ${KEEP:+--keep}
 summary
 echo
 echo "done: $R"
