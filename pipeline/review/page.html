@@ -31,6 +31,8 @@ input[type=text], textarea, select { font: inherit; color: var(--ink); backgroun
 textarea { width: 100%; min-height: 3.2em; }
 #msg { margin-top: 6px; font-size: 14px; }
 #msg.err { color: var(--reject); }
+#session { margin-top: 6px; font-size: 14px; color: var(--muted); }
+#session b { color: inherit; } #session a { color: var(--accent); }
 main { display: flex; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
 nav { flex: 0 0 232px; padding-right: 12px; scrollbar-gutter: stable; position: sticky; top: calc(var(--top, 0px) + 8px); align-self: flex-start; max-height: calc(100vh - var(--top, 0px) - 24px); overflow: auto; font-size: 14px; }
 nav h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 4px; }
@@ -121,6 +123,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
     <button id="finish" class="primary">Finish review</button></span>
   </div>
   <div id="msg" role="status"></div>
+  <div id="session" hidden></div>
 </header>
 <div class="navbar"><button id="navToggle" type="button" aria-expanded="false" aria-controls="nav">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>Sections</button></div>
@@ -133,7 +136,9 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 <dialog id="gapDialog" aria-labelledby="gapTitle"></dialog>
 <script>
 const DATA = /*REVIEW_DATA*/null;
-const KEY = 'review:' + DATA.book + ':' + DATA.run;
+// the browser draft belongs to one run and one session (the run id is written once, in reviews/basis.json)
+const SESSION = DATA.session || null;
+const KEY = SESSION && SESSION.key ? 'review:' + SESSION.key : 'review:' + DATA.book + ':' + DATA.run;
 const SEEN_ONLY = new Set(['deferrals', 'notes_for_reviewer']);
 const items = DATA.items, byId = Object.fromEntries(items.map(it => [it.id, it]));
 const ADDABLE = DATA.addable || {}, ADD_KINDS = DATA.add_kinds || {};
@@ -156,6 +161,17 @@ function persist() { state.saved_at = new Date().toISOString(); try { localStora
 function dec(id) { return state.decisions[id] || (state.decisions[id] = {}); }
 
 document.getElementById('title').textContent = 'Work order review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
+if (SESSION && SESSION.reopened) {                    // a finished run reviewed again: where this session started, the current result, OCR
+  const sn = id => 'session ' + Number(id), nc = SESSION.not_carried || [], o = SESSION.ocr;
+  const ocr = !o ? '' : ' · OCR text: ' + (o.current ? '<b>' + esc(o.current.verdict) + '</b> by ' + esc(o.current.reviewer) + ' on ' + esc(o.current.date) : '<b>not yet reviewed</b>') +
+    (o.snapshots && o.snapshots.length ? ' (at each finish: ' + o.snapshots.map(x => sn(x.session) + ' ' + esc(x.verdict ? x.verdict.verdict : 'none')).join(', ') + ')' : '') +
+    '; this review keeps it as it is: change it with review_ocr.py';
+  const el = document.getElementById('session'); el.hidden = false;
+  el.innerHTML = 'Reviewing again: <b>' + sn(SESSION.id) + '</b>, started from ' + esc(SESSION.from_text) +
+    (SESSION.from !== 'ai' ? ' · ' + SESSION.carried + ' choices preloaded' + (nc.length ? ' · <b>' + nc.length + ' not carried</b> (the decision is not the same; shown as not reviewed): ' + nc.slice(0, 6).map(x => esc(x.id)).join(', ') + (nc.length > 6 ? ' …' : '') : '') : '') +
+    ' · <a href="' + esc(SESSION.result) + '" target="_blank" rel="noopener">Current result (' + esc(SESSION.current) + ')</a>' + ocr +
+    ' · Finish re-applies the reviewed order (no AI call).';
+}
 const rv = document.getElementById('reviewer'); rv.value = state.reviewer;
 rv.addEventListener('input', () => { state.reviewer = rv.value; persist(); });
 
@@ -338,6 +354,8 @@ function card(it) {
   if (c.samples) row('Samples', c.samples.map(x => '“' + esc(String(x).slice(0, 120)) + '”').join(' · '));
   if (c.first || c.first_rows) row('First rows', (c.first || c.first_rows).map(x => '“' + esc(String(x).slice(0, 100)) + '”').join(' · '));
   if (c.page_refs) row('Pages named', esc(c.page_refs.join(', ')));
+  const was = SESSION && SESSION.set_in && SESSION.set_in[it.id];
+  if (was) row('Earlier review', 'preloaded from session ' + Number(was) + (SESSION.inferred && SESSION.inferred[it.id] ? ': ' + esc(SESSION.inferred[it.id]) + ' (inferred from that session\'s recorded changes and counts)' : ''));
   h += '<dl class="fields">' + rows.join('') + '</dl>';
   if (exact) h += '<details class="exact"><summary>The AI\'s exact entry</summary><pre>' + esc(JSON.stringify(it.ai, null, 1)) + '</pre></details>';
   h += imagesHtml(it);
@@ -582,7 +600,7 @@ document.getElementById('save').addEventListener('click', async () => {
 function askGaps(gaps) {
   const dlg = document.getElementById('gapDialog');
   dlg.innerHTML = '<h2 id="gapTitle">Still missing</h2><div class="ctx">The review can finish with these open, but each needs a reason; it goes into review.json and review.md next to the gap.</div>' +
-    gaps.map(g => '<div class="gap"><div>' + esc(g.what) + '</div><textarea data-gap="' + esc(g.id) + '" placeholder="Why it is left open (for example: decorative, or someone else writes these)" aria-label="Reason"></textarea>' +
+    gaps.map(g => '<div class="gap"><div>' + esc(g.what) + '</div><textarea data-gap="' + esc(g.id) + '" placeholder="Why it is left open (for example: decorative, or someone else writes these)" aria-label="Reason">' + esc(((SESSION || {}).gaps_ack || {})[g.id] || '') + '</textarea>' +
       (g.add ? '<button type="button" data-addinstead="' + esc(g.add.kind) + '"' + (g.add.target != null ? ' data-target="' + esc(g.add.target) + '"' : '') + '>Add instead</button>' : '') + '</div>').join('') +
     '<div class="err" id="gapErr"></div><div class="buttons"><button type="button" data-g="back">Back</button><button type="button" class="primary" data-g="finish">Finish with these reasons</button></div>';
   return new Promise(done => {
@@ -624,7 +642,7 @@ document.getElementById('finish').addEventListener('click', async () => {
     finished = true; panel.hidden = true;
     document.querySelectorAll('#save, #finish, #addBtn').forEach(x => x.disabled = true);
     msg('Review finished · ' + b.changes + ' changes recorded' + dropText(b.dropped) + (b.gaps.length ? ' · ' + b.gaps.length + ' gaps left open, with your reasons' : '') +
-        '. Go back to the terminal to continue the run.', b.dropped.length > 0);
+        (SESSION && SESSION.reopened ? '. The terminal is re-applying it now (no AI call); the current result is replaced when that finishes.' : '. Go back to the terminal to continue the run.'), b.dropped.length > 0);
     try { localStorage.removeItem(KEY); } catch (e) {}
     render();
   } catch (e) { msg('Could not reach the review server: is it still running in the terminal?', true); }
