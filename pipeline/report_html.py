@@ -20,6 +20,8 @@ CSS = PALETTE + """
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 a { color: var(--accent); }
+.replaced { border: 2px solid var(--change); border-radius: 8px; padding: 8px 12px; margin: 8px 0; background: var(--panel); }
+.card-review { margin: 0 0 16px; } .card-review pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow-x: auto; }
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .skip { position: absolute; left: -999px; } .skip:focus { left: 8px; top: 8px; background: var(--panel); padding: 4px 8px; z-index: 9; }
 header.top { background: var(--panel); border-bottom: 1px solid var(--line); padding: 12px 16px; }
@@ -280,7 +282,65 @@ def _plain(t): return re.sub(r'[*`]', '', t)
 SEARCH_MIN = 20                       # a section with this many items or more gets a search box
 KIND = {'safety': 'Safety', 'ship': 'Ship condition', 'check': 'Automated check', 'executor': 'Deferred by the executor', 'ai': 'Deferred by the AI'}
 
-def review_html(R, rec=None, md=None, labels=None):
+STATUS_WORDS = {'approved': 'Approved', 'changed': 'Changed', 'rejected': 'Rejected', 'seen': 'Seen (deferrals and notes)',
+                'accepted_unreviewed': 'Accepted without review'}
+
+def review_card(R, rec):
+    """The "Review" section: the sessions, each decision's review status, and the command that reopens the review."""
+    rv = rec.get('review') or {}; wo = rec.get('workorder') or {}
+    run = rv.get('run') or os.path.relpath(R, HERE)
+    B = ['<section class="card-review" aria-labelledby="rev-h"><h2 id="rev-h">Review of the AI\'s decisions</h2>']
+    pend = rv.get('pending') or {}
+    if pend.get('status') == 'finished':
+        B.append(f'<p><strong>Session {int(pend["session"])} ({E(pend.get("reviewer") or "")}) is finished but not applied</strong>: this result is older '
+                 f'than the latest sign-off. Apply it: <code>python3 review_workorder.py {E(run)} --apply</code></p>')
+    ss = rv.get('sessions') or []
+    if ss:
+        cur = rv.get('session')
+        def frm(x):
+            f = x.get('from')
+            return 'the AI\'s decisions' if f in ('ai', None) else 'the recorded summary' if f == 'summary' else f'session {int(f)}'
+        rows = []
+        for x in ss:
+            c = x.get('counts') or {}
+            what = ('summary only: ' if x.get('summary_only') and not x.get('inferred') else 'inferred from the summary: ' if x.get('inferred') else '') + \
+                (', '.join(f'{v} {k.replace("_", " ")}' for k, v in c.items() if v) or 'no counts recorded')
+            carried = (f'carried: {x["carried"]} from {frm(x)}' if x.get('carried') else '') + (f' · not carried: {x["not_carried"]}' if x.get('not_carried') else '')
+            mark = ' <strong>(current)</strong>' if x['id'] == cur else ''
+            rows.append(f'<tr><td>{int(x["id"])}{mark}</td><td>{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td>{E(x.get("date") or "")}</td>'
+                        f'<td>{E(x.get("status") or "")}</td><td>{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td></tr>')
+        B.append('<div class="tw" tabindex="0"><table><caption class="vh">Review sessions</caption><thead><tr><th scope="col">Session</th><th scope="col">From</th>'
+                 '<th scope="col">Reviewer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Carried</th>'
+                 '<th scope="col">Changed in the session</th><th scope="col">Changes from the AI</th><th scope="col">Choices</th></tr></thead><tbody>'
+                 + ''.join(rows) + '</tbody></table></div>')
+    ds = rv.get('decisions')
+    if ds:
+        by = {}
+        for d in ds: by.setdefault(d['status'], []).append(d)
+        B.append('<p>' + ' · '.join(f'{len(by[k])} {STATUS_WORDS.get(k, k).lower()}' for k in STATUS_WORDS if k in by) + '</p>')
+        for k in STATUS_WORDS:
+            if k not in by: continue
+            trs = ''.join(f'<tr><td>{E(d["kind"])}</td><td>{E(d["label"])}</td><td>{E(("PDF " + str(d["page"]) + (" (printed " + str(d["page_label"]) + ")" if d.get("page_label") and str(d["page_label"]) != str(d["page"]) else "")) if d.get("page") else "")}</td>'
+                          f'<td>{E(STATUS_WORDS.get(k, k).split(" (")[0].lower() + (" (inferred)" if d.get("inferred") else ""))}'
+                          f'{E(", session " + str(int(d["set_in"]))) if d.get("set_in") else ""}</td><td>{E(d.get("note") or "")}</td></tr>' for d in by[k])
+            B.append(f'<details class="fold"><summary>{E(STATUS_WORDS[k])}: {len(by[k])}</summary><div class="tw" tabindex="0"><table><thead><tr>'
+                     '<th scope="col">Kind</th><th scope="col">Decision</th><th scope="col">Page</th><th scope="col">Status, set in</th><th scope="col">Note</th></tr></thead>'
+                     f'<tbody>{trs}</tbody></table></div></details>')
+    elif rv.get('workorder'):
+        c = rv['workorder'].get('counts') or {}
+        B.append('<p>Per-decision choices were not recorded for this review (' + E(', '.join(f'{v} {k.replace("_", " ")}' for k, v in c.items() if v) or 'no counts') + ').</p>')
+    else:
+        kinds = {k: G.n_decisions({k: v}) for k, v in wo.items() if k not in G.META}
+        kinds = {k: c for k, c in kinds.items() if c}; n = G.n_decisions(wo)
+        B.append(f'<p>{n:,} decisions, all applied without review by a person: ' + E(', '.join(f'{v} {k.replace("_", " ")}' for k, v in kinds.items())) + '.</p>')
+    B.append('<p>' + ('To review again' if ss or rv.get('workorder') else 'To review them') + ', from <code>pipeline/</code> (venv active):</p>'
+             f'<pre><code>python3 review_workorder.py {E(run)} --reopen</code></pre>'
+             '<p class="note">The review page opens at <code>http://localhost:8765/</code> while that command runs, with the earlier choices preloaded; '
+             'Finish re-applies the reviewed order (no AI call) and this page is rebuilt. <code>--sessions</code> lists every session; '
+             '<code>--from 001</code> starts from an earlier one.</p></section>')
+    return B
+
+def review_html(R, rec=None, md=None, labels=None, banner=None):
     rec = rec or json.load(open(os.path.join(R, 'record.json'), encoding='utf-8'))
     md = md if md is not None else open(os.path.join(R, 'review.md'), encoding='utf-8').read()
     labels = labels if labels is not None else labels_of(R, rec)
@@ -324,7 +384,7 @@ def review_html(R, rec=None, md=None, labels=None):
         return next((iid for iid, raw in b['items'] if f in _plain(raw)), None)
 
     B = [f'<header class="top"><h1>Review: {E(book)}</h1><div class="meta">'
-         + ' · '.join(E(x) for x in [f'run {os.path.basename(os.path.dirname(os.path.normpath(R)))}/{os.path.basename(os.path.normpath(R))}', f'{doc.get("pages") or "pages not counted"} pages',
+         + ' · '.join(E(x) for x in [f'run {"/".join(os.path.normpath((rec.get("review") or {}).get("run") or R).split(os.sep)[-2:])}', f'{doc.get("pages") or "pages not counted"} pages',
                                       f'model {run.get("model") or "not recorded"}', f'prompt {run.get("prompt_file") or "not recorded"}',
                                       f'cost ${rec.get("cost_total_usd"):.3f}' if rec.get('cost_total_usd') is not None else 'cost: call did not finish',
                                       f'run {run.get("started") or "start time not recorded"}'])
@@ -332,10 +392,11 @@ def review_html(R, rec=None, md=None, labels=None):
     # ---- ready to ship
     B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to ship? {"Yes" if g["ready"] else "No"}</h2><ul>'
              + ''.join(f'<li>{E(s["what"])}: <strong>{E(s["text"])}</strong></li>' for s in g['ship']) + '</ul>')
-    if not g['ship'][0]['ok']:
-        B.append('<p class="note">The review page is the final sign-off. To review this book\'s AI decisions there, run it again with its saved reply '
-                 'and <code>REVIEW=1</code>, then <code>python3 review_workorder.py &lt;run&gt; --serve</code> (docs: review-step.md, "Sign-off").</p>')
+    if not g['ship'][0]['ok'] and not banner:
+        B.append('<p class="note">The review page is the final sign-off: see "Review of the AI\'s decisions" below (docs: review-step.md, "Sign-off").</p>')
     B.append('</section>')
+    if banner: B.insert(1, f'<p class="replaced" role="note">{banner}</p>')
+    else: B += review_card(R, rec)
     # ---- four cards; the safety card holds its checks in a fold (open, failed first, when one fails)
     np_, ad, vg = g['needs_person'], g['ai_decisions'], g['verapdf']
     saf = sorted(g['safety'], key=lambda x: x['ok']); saf_bad = [x for x in saf if not x['ok']]
