@@ -268,3 +268,26 @@ def test_pin_keeps_the_run_id_of_a_basis_without_a_digest(tmp_path, monkeypatch)
     assert S.pin(R, say=lambda *a: None) == 'pinned'
     assert S.basis(R)['run_id'] == run_id and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json'))
     assert S.pin(R, say=lambda *a: None) == 'already pinned'
+
+# ------------------------------------------------------------------ the fallback for a run that can no longer be reviewed
+def test_replay_to_copies_intake_and_reply_with_its_meta(tmp_path):
+    R, rec, ai, dg = run_folder(tmp_path)
+    rec = dict(rec, raw_reply='{"retype": []}', intake={'result': {'pdf': 'intake.pdf'}})
+    rec['run'] = dict(rec['run'], temperature=0, ocr_words={'fingerprint': 'abc123', 'sent': 2, 'list': {'1': 'Maiiana', '2': 'Kaimuki'}})
+    S.save(os.path.join(R, 'record.json'), rec)
+    S.save(os.path.join(R, '_intake', 'intake.json'), {'status': 'done'})
+    D = str(tmp_path / 'new')
+    reply, cmd = S.replay_to(R, D)
+    assert open(reply, encoding='utf-8').read() == '{"retype": []}' and reply == D + '.reply.txt'
+    assert sorted(os.listdir(os.path.join(D, '_intake'))) == ['intake.json', 'intake.pdf']
+    meta = S.load(reply + '.meta.json')
+    assert meta['model'] == 'm' and meta['temperature'] == 0
+    assert meta['ocr_words_fingerprint'] == 'abc123' and meta['ocr_words_sent'] == 2        # the list the reply was written for
+    assert 'INTAKE_REUSE=1' in cmd and f'RUN_DIR={D}' in cmd and 'REVIEW=1' in cmd
+    with pytest.raises(S.Refused, match='not empty'): S.replay_to(R, D)                     # never into a used folder
+
+def test_refusals_name_the_fallback(tmp_path):
+    R, rec, ai, dg = run_folder(tmp_path)
+    rec2 = dict(rec, run=dict(rec['run'], digest_sha256='0' * 16))
+    with pytest.raises(S.Refused, match='--replay-to'): S.check_basis(R, rec2)
+    with pytest.raises(S.Refused, match='--replay-to'): S.readable(lambda: {}['x'])

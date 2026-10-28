@@ -56,12 +56,16 @@ def P(R):
 class Refused(Exception):
     """A check failed: nothing was written."""
 
+# what to do when a run can no longer be reviewed (its audit is not today's): a new run of the book from its saved reply
+FALLBACK = ('this run cannot be reviewed again. A new run of the book on today\'s code can be (it is not a review of this '
+            'result): python3 review_workorder.py <this run> --replay-to <new run folder> copies its _intake/ and saved reply, '
+            'then run the command it prints (INTAKE_REUSE=1 REPLY=… REVIEW=1, no API call)')
+
 def readable(fn, *a):
     """fn(*a) on the kept digest; a digest this version of the review step cannot read is refused, not a traceback."""
     try: return fn(*a)
     except (KeyError, TypeError, ValueError, AttributeError, IndexError) as e:
-        raise Refused(f'the kept digest cannot be read by this version of the review step ({type(e).__name__}: {e}): '
-                      'start a new label with REPLY= and REVIEW=1')
+        raise Refused(f'the kept digest cannot be read by this version of the review step ({type(e).__name__}: {e}): {FALLBACK}')
 
 # ------------------------------------------------------------------ the basis
 def ai_order(rec):
@@ -130,7 +134,8 @@ def pin(R, pdf=None, say=say_):
         reaudit(inp, tmp)
         got = sha_file(os.path.join(tmp, 'digest.json'))[:16]
         if got != want:
-            raise Refused(f'the audit changed since the AI decided: digest {got}, the record says {want} (audit code, veraPDF or Python): nothing kept')
+            raise Refused(f'the audit changed since the AI decided: digest {got}, the record says {want} (audit code, veraPDF or '
+                          f'Python); nothing was kept, so {FALLBACK}')
         os.makedirs(p['audit'], exist_ok=True)
         shutil.copy2(os.path.join(tmp, 'digest.json'), os.path.join(p['audit'], 'digest.json'))
         if os.path.isdir(os.path.join(tmp, 'ocr_words')): shutil.copytree(os.path.join(tmp, 'ocr_words'), os.path.join(p['audit'], 'ocr_words'))
@@ -139,6 +144,34 @@ def pin(R, pdf=None, say=say_):
         save(p['basis'], b)
         return 'pinned'
     finally: shutil.rmtree(tmp, ignore_errors=True)
+
+def replay_to(R, D):
+    """The fallback for a run that can no longer be reviewed: what a new run of the same book needs to reuse this run's
+    intake result and saved reply (no API call), as batch_api.sh FROM= does. Writes D/_intake/ (intake.json, intake.pdf),
+    and beside D the reply (<D>.reply.txt) and its meta (model, temperature, the OCR-word list it was written for).
+    Without the intake copy, run_api.sh would redo OCR and auto-tagging and the reply's ids could name other elements.
+    The new run is on today's code: it is not a review of R's result. Returns (reply path, the command to run)."""
+    R, D = os.path.abspath(R), os.path.abspath(D)
+    rec = load(os.path.join(R, 'record.json'))
+    if not rec or not rec.get('raw_reply'): raise Refused(f'{R} has no record.json with a saved reply (raw_reply)')
+    if os.path.exists(D) and os.listdir(D): raise Refused(f'{D} is not empty: give a new run folder')
+    reply = D.rstrip(os.sep) + '.reply.txt'
+    if os.path.exists(reply): raise Refused(f'{reply} exists already')
+    from lib import ocrwords
+    os.makedirs(D, exist_ok=True)
+    old_in = os.path.join(R, '_intake')
+    if os.path.exists(os.path.join(old_in, 'intake.json')):
+        os.makedirs(os.path.join(D, '_intake'))
+        for f in ('intake.json', 'intake.pdf'):
+            if os.path.exists(os.path.join(old_in, f)): shutil.copyfile(os.path.join(old_in, f), os.path.join(D, '_intake', f))
+    open(reply, 'w', encoding='utf-8').write(rec['raw_reply'])
+    run = rec.get('run') or {}
+    json.dump({**{k: run[k] for k in ('model', 'temperature') if k in run}, **ocrwords.carried(run)},
+              open(reply + '.meta.json', 'w'))
+    doc = rec.get('document') or {}
+    cmd = (f'INTAKE_REUSE=1 REPLY={reply} REVIEW=1 RUN_DIR={D} bash run_api.sh <the original PDF: {doc.get("file")}, '
+           f'sha256 {str(doc.get("sha256"))[:16]}…> <name> {os.path.basename(D)}')
+    return reply, cmd
 
 def keep_audit(R, A, ai, inp=None, made_by='report'):
     """report.py's tidy: keep the digest, fulltext.json and the OCR word sheets in reviews/_audit (not the crops), and write
@@ -177,7 +210,7 @@ def check_basis(R, rec, pdf=None):
     if not os.path.exists(dg): raise Refused('reviews/_audit/digest.json is missing')
     if sha_file(dg)[:16] != b['digest_sha256'] or ((rec.get('run') or {}).get('digest_sha256') not in (None, b['digest_sha256'])):
         raise Refused(f'the kept digest is not the one the AI decided on ({sha_file(dg)[:16]}; basis {b["digest_sha256"]}, '
-                      f'record {(rec.get("run") or {}).get("digest_sha256")}): start a new label with REPLY= and REVIEW=1')
+                      f'record {(rec.get("run") or {}).get("digest_sha256")}): {FALLBACK}')
     want = {(b.get('input') or {}).get('sha256'), ((rec.get('workorder') or {}).get('source') or {}).get('sha256')} - {None}
     own = os.path.join(R, '_intake', 'intake.pdf')        # the run's own intake result first: a run folder can be moved
     inp = os.path.abspath(pdf) if pdf else own if os.path.isfile(own) and sha_file(own) in want else (b.get('input') or {}).get('path')
