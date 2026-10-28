@@ -245,3 +245,26 @@ def test_server_save_and_finish_in_a_reviews_folder(tmp_path):
     t.join(5)
     assert out['v']['reviewer'] == 'Kim'
     assert S.load(os.path.join(p['dir'], 'workorder.json'))['alt'][0]['alt'] == 'A map of Oʻahu'
+
+# ------------------------------------------------------------------ digests this version cannot read, and KEEP=1 review runs
+def test_a_digest_the_review_step_cannot_read_is_refused(tmp_path):
+    R, rec, ai, dg = run_folder(tmp_path)
+    bad = copy.deepcopy(dg); del bad['source']                              # e.g. a digest schema change
+    S.save(os.path.join(S.P(R)['audit'], 'digest.json'), bad)
+    b = S.basis(R); b['digest_sha256'] = S.sha_file(os.path.join(S.P(R)['audit'], 'digest.json'))[:16]; S.save(S.P(R)['basis'], b)
+    rec = dict(rec, run=dict(rec['run'], digest_sha256=b['digest_sha256']))
+    with S.Lock(R, 'reopen'):
+        with pytest.raises(S.Refused, match='cannot be read by this version'): S.open_session(R, rec, say=lambda *a: None)
+    assert not os.path.exists(S.P(R)['lock'])
+    assert sorted(os.listdir(S.P(R)['dir'])) == ['_audit', 'basis.json', 'workorder.ai.json']   # no session, no review files
+
+def test_pin_keeps_the_run_id_of_a_basis_without_a_digest(tmp_path, monkeypatch):
+    R, rec, ai, dg = run_folder(tmp_path)
+    run_id = S.basis(R)['run_id']
+    os.remove(os.path.join(S.P(R)['audit'], 'digest.json'))               # a KEEP=1 review run: basis written, digest not kept
+    def fake_audit(inp, out):
+        os.makedirs(out, exist_ok=True); S.save(os.path.join(out, 'digest.json'), dg)
+    monkeypatch.setattr(S, 'reaudit', fake_audit)
+    assert S.pin(R, say=lambda *a: None) == 'pinned'
+    assert S.basis(R)['run_id'] == run_id and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json'))
+    assert S.pin(R, say=lambda *a: None) == 'already pinned'
