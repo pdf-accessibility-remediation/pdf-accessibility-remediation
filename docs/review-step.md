@@ -27,6 +27,29 @@ bash run_api.sh ../samples/group1/godzone.pdf godzone rv1            # same labe
 
 Until the review is finished, rerunning the label is refused, so a half-reviewed work order never reaches `apply.py`. Batches (`batch_api.sh`) refuse `REVIEW=1`, because they run unattended.
 
+The first review is kept as **session 1** in the run's `reviews/` folder (see [Reviewing again](#reviewing-again)).
+
+## Reviewing again
+
+A finished run (with or without `REVIEW=1`) can be reviewed again: the page opens with every earlier choice preloaded, you change only what is needed, and Finish applies the reviewed order at once, with no AI call. The result is a new remediated PDF, `review.md` and `review.html`. Nothing earlier is overwritten.
+
+```bash
+cd pipeline
+python3 review_workorder.py ../runs/godzone/rv1 --reopen              # the latest session's choices, preloaded
+python3 review_workorder.py ../runs/godzone/rv1 --reopen --from 1     # start from an earlier session (--from ai: the AI's decisions)
+python3 review_workorder.py ../runs/godzone/rv1 --sessions            # every session: who, when, from where, what changed, which is current
+python3 review_workorder.py ../runs/godzone/rv1 --apply               # apply a finished session that was not applied (--no-apply, or a failed apply)
+```
+
+- **The page** says which session it is, where it started, how many choices were preloaded, and any that could not be carried. Each preloaded card says which session set its choice. It links the current result's `review.html` (served by the review server, as a browser cannot open a local file from the page), and keeps the gap reasons given last time.
+- **Finish** records the session and applies it: apply, verify and report run in the terminal, each with its time. The current result moves to `reviews/versions/<session>/` (or `versions/ai/` for a result applied without review) only after all three succeed; if one fails, the current result is unchanged and the session stays *finished*: run `--apply` again. `--no-apply` stops after Finish. Until the session is applied, "Ready to ship?" says **No** ("the latest review … is finished but not applied"), because the PDF on disk is older than the sign-off.
+- **One review at a time per run:** `reviews/.lock` is held from the moment the page opens until the re-apply ends. Ctrl+C leaves the session *open*; `--reopen` carries on with it. `--reopen --from N` while a session is open is refused unless `--discard-open` (the open session is kept, marked *abandoned*).
+- **The OCR text verdict** is one per run (the latest wins) and reopening never rolls it back. The page shows the current verdict (who, when) and the one in force at each earlier finish; it is changed with `review_ocr.py`, not on this page (an OCR section is planned).
+- **Exactness.** The decisions point at objects, styles and list positions. A session is opened and applied only when the input PDF, the kept digest (`reviews/_audit/digest.json`, its fingerprint the one `decide.py` recorded as `run.digest_sha256`) and the AI's order are exactly the ones the run was made with; anything else is refused, never re-matched. A preloaded choice is carried only onto the same decision with the same AI value; one that is not (after a change to how the review page lists decisions) is shown as not reviewed and listed.
+- **Runs finished before every run kept its digest** need it pinned once: `python3 review_workorder.py <run> --pin [--pdf <original.pdf>]` re-audits the run's input (free, no model), checks the digest against the record and keeps it. A book with no intake result needs `--pdf` (its sha256 is checked). `--reopen` pins first by itself; if today's audit no longer matches (audit code, veraPDF or Python changed), the run cannot be reviewed again: start a new label with its saved reply (`REPLY=`, free) and `REVIEW=1`.
+- **Reviews made before sessions were kept** (`record.json` has the review's changes and counts, not each card's choice) become session 1, *summary only*: "Session 1 (summary only): 159 approved, 8 seen, no changes; per-decision choices were not recorded before 2026-10-27". When nothing was accepted without review, each card's choice is rebuilt from the recorded changes, and kept only if the rebuilt order gives exactly the recorded changes and counts; those cards show "approved (inferred)" and point to session 1. Otherwise the new session starts from the AI's decisions, with the summary on the page.
+- **Batches:** re-applying a book in a batch folder rebuilds the batch's `summary.html`; `summary.md` stays as the batch run wrote it.
+
 ## What the page shows
 
 - **Check these first.** Decisions in categories where a mistake is likely or affects much of the book. They are chosen by fixed rules (no model), grouped in this order, and sorted by page within each group:
@@ -84,14 +107,17 @@ Each gap in the Save message has an **Add** link that opens the form at the righ
 ## What is recorded
 
 - `review.json` (folded into `record.json` as `review.workorder`): reviewer, date, `method` (`page` or `hand-edit`), every change (`where`, `id`, `changed` / `removed` / `added`, the AI's value and the person's), edits not accepted by the check, counts (approved, changed, rejected, seen, accepted without review, added), gaps left open with the reviewer's reason (`gaps`), the reviewer's notes (an addition's note is keyed `add:<kind>:<target>`), and earlier reviews under `history`. A decision marked **Change** but left at the AI's value counts as approved.
-- `record.json` also keeps the AI's version as `workorder_ai` when the person changed anything. `workorder` is what was applied, and carries `reviewed_by`.
-- `review.md` gets a row in the automated checks ("Work order reviewed by a person before it was applied"). The row is a CHECK when decisions were accepted without review, an edit was dropped, or a gap was left open without a reason (a hand edit with no `--note`). It also gets a section listing each change (AI → person) and each open gap with its reason.
+- `record.json` also keeps the AI's version as `workorder_ai`. `workorder` is what was applied, and carries `reviewed_by`. `review.session` is the session this result comes from, `review.sessions` one line per session (who, when, from where, status, counts, how many choices were carried and from where, how many changed in the session), and `review.decisions` one line per decision (its review status, the session that set it, `inferred`, its note), which `review.html` shows.
+- `reviews/sessions/NNN.json`: each session in full: every choice with the AI value it was judged against and the session that set it, additions, what changed since the session's start, the review as `review.json` had it, and the OCR verdict at Finish; `NNN.workorder.json` is the order it applied. `reviews/basis.json` holds the run id (the page's browser-draft key), the input PDF's path and sha256, the digest's fingerprint and the AI order's sha256.
+- `review.md` gets a row in the automated checks ("Work order reviewed by a person before it was applied"). The row is a CHECK when decisions were accepted without review, an edit was dropped, or a gap was left open without a reason (a hand edit with no `--note`). It also gets a section listing each change (AI → person), each open gap with its reason, and which session the result comes from.
+- `review.html` has a "Review of the AI's decisions" section: the session table (the current one marked), each decision's status (approved, changed, rejected, seen, accepted without review; "(inferred)" for a summary-only session's rebuilt choices) with the session that set it, and the command that reopens the review. A run never reviewed shows its decision count by kind, all applied without review.
 
 ## Sign-off: when a book is ready to ship
 
 The review page is the final sign-off (checklist rule 2: a person approves AI output before it ships). A book counts as ready to ship only when a person has approved its work order on the review page and, if intake added OCR text or found the book's existing OCR layer doubtful, unusable or missing diacritics, or could not check it, its OCR text as well.
 
 - **OCR text verdicts** are kept in one record, `intake.review.ocr_text_approved` (in `_intake/intake.json` and `record.json`): verdict, reviewer, date, reason, pages. The planned OCR section of the review page will write that record. `review_ocr.py` writes the same record and stays as a fallback for runs without the review page (see [Intake](intake.md)). The latest verdict wins; earlier ones are kept under `history`.
+- **"Ready to ship?" always reflects the latest session:** a session finished but not applied makes it No until `--apply`.
 - **`REVIEW=1` is optional for now.** A book run without it is still processed and reported, but it is never shown as ready to ship. Once the pipeline is in official use, the review step becomes the standard workflow; the default has not changed yet.
 
 ## Without the page
