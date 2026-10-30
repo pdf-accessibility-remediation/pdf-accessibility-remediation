@@ -78,6 +78,7 @@ pre { font-size: 12px; background: var(--bg); padding: 6px; border-radius: 6px; 
 .imgs figure { margin: 0; text-align: center; font-size: 12px; color: var(--muted); }
 .imgs img { max-height: 220px; max-width: 100%; border: 1px solid var(--line); background: #fff; cursor: zoom-in; display: block; }
 .imgs figure.here img { outline: 3px solid var(--accent); }
+[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }   /* a section, card or heading focused by script: no outline */
 .controls { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-top: 6px; }
 .controls label { cursor: pointer; }
 button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
@@ -132,11 +133,11 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>Sections</button></div>
 <div id="navBackdrop" hidden></div>
 <main>
-  <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close Sections">×</button></div><div id="navList"></div></nav>
+  <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close Sections"><span aria-hidden="true">×</span></button></div><div id="navList"></div></nav>
   <div class="col"><div id="addPanel" hidden></div><div id="cards"></div></div>
 </main>
 <div id="zoom"><img alt=""></div>
-<dialog id="gapDialog" aria-labelledby="gapTitle"></dialog>
+<dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>
 <script>
 const DATA = /*REVIEW_DATA*/null;
 // the browser draft belongs to one run and one session (the run id is written once, in reviews/basis.json)
@@ -519,13 +520,21 @@ function setNav(open) {
 navBtn.addEventListener('click', () => setNav(!document.body.classList.contains('nav-open')));
 document.getElementById('navClose').addEventListener('click', () => setNav(false));
 backdrop.addEventListener('click', () => setNav(false));
+// a jump to a section or card: the target takes focus (tabindex="-1", no outline), so a screen reader's cursor follows
+function goTo(t) {
+  if (!t) return;
+  if (!t.hasAttribute('tabindex')) t.setAttribute('tabindex', '-1');
+  t.scrollIntoView(); t.focus({ preventScroll: true });
+}
 document.getElementById('nav').addEventListener('click', e => {
   const a = e.target.closest('a'); if (!a) return;
+  e.preventDefault();
   if (narrow()) setNav(false);
   if (a.dataset.view && a.dataset.view !== view && !(view === 'left' && a.dataset.view === 'all')) {
     view = a.dataset.view; document.querySelector('input[name=view][value=' + view + ']').checked = true; render();
-    e.preventDefault(); const t = document.querySelector(a.getAttribute('href')); if (t) t.scrollIntoView();
   }
+  goTo(document.querySelector(a.getAttribute('href')));
+  history.replaceState(null, '', a.getAttribute('href'));
 });
 
 // ---------------------------------------------------------------- add a decision the AI did not make
@@ -589,7 +598,7 @@ panel.addEventListener('click', e => {
     persist(); panel.hidden = true;
     if (view === 'left') { view = 'priority'; document.querySelector('input[name=view][value=priority]').checked = true; }
     render(); msg('Added. Save checks it with the same rules as the AI\'s decisions.');
-    const c = document.getElementById('card-' + t.id); if (c) c.scrollIntoView();
+    goTo(document.getElementById('card-' + t.id));                // the new card, with focus
   }
 });
 document.getElementById('addBtn').addEventListener('click', () => panel.hidden ? openAdd() : (panel.hidden = true));
@@ -619,10 +628,10 @@ document.getElementById('save').addEventListener('click', async () => {
 // gaps left open at Finish: the reviewer gives a reason for each, or goes back to add what is missing
 function askGaps(gaps) {
   const dlg = document.getElementById('gapDialog');
-  dlg.innerHTML = '<h2 id="gapTitle">Still Missing</h2><div class="ctx">The review can finish with these open, but each needs a reason; it goes into review.json and review.md next to the gap.</div>' +
+  dlg.innerHTML = '<h2 id="gapTitle" tabindex="-1">Still Missing</h2><div class="ctx" id="gapCtx">The review can finish with these open, but each needs a reason; it goes into review.json and review.md next to the gap.</div>' +
     gaps.map(g => '<div class="gap"><div>' + esc(g.what) + '</div><textarea data-gap="' + esc(g.id) + '" placeholder="Why it is left open (for example: decorative, or someone else writes these)" aria-label="Reason">' + esc(((SESSION || {}).gaps_ack || {})[g.id] || '') + '</textarea>' +
       (g.add ? '<button type="button" data-addinstead="' + esc(g.add.kind) + '"' + (g.add.target != null ? ' data-target="' + esc(g.add.target) + '"' : '') + '>Add Instead</button>' : '') + '</div>').join('') +
-    '<div class="err" id="gapErr"></div><div class="buttons"><button type="button" data-g="back">Back</button><button type="button" class="primary" data-g="finish">Finish with These Reasons</button></div>';
+    '<div class="err" id="gapErr" role="alert"></div><div class="buttons"><button type="button" data-g="back">Back</button><button type="button" class="primary" data-g="finish">Finish with These Reasons</button></div>';
   return new Promise(done => {
     const close = v => { dlg.close(); dlg.onclick = null; done(v); };
     dlg.onclick = e => {
@@ -636,7 +645,7 @@ function askGaps(gaps) {
       }
     };
     dlg.oncancel = () => done(null);
-    dlg.showModal();
+    dlg.showModal(); document.getElementById('gapTitle').focus();   // read from the top: the title, then its explanation
   });
 }
 document.getElementById('finish').addEventListener('click', async () => {
@@ -644,21 +653,22 @@ document.getElementById('finish').addEventListener('click', async () => {
   try {
     const extra = {};
     let [s, b] = await post('/finish', extra);
-    if (s === 409 && b.unreviewed) {
+    // not finished yet, a normal step (200, needs): first the unreviewed decisions, then the open gaps
+    if (s === 200 && b.needs === 'unreviewed') {
       if (!confirm(b.unreviewed.length + ' items are not reviewed. Accept them as the AI wrote them, and record that they were not reviewed?')) {
         view = 'left'; document.querySelector('input[name=view][value=left]').checked = true; render();
-        return msg(esc(b.error) + ' They are listed under "Not reviewed".', true);
+        return msg(esc(b.error) + ' They are listed under "Not Reviewed".', true);
       }
       extra.accept_unreviewed = true;
       [s, b] = await post('/finish', extra);
     }
-    if (s === 409 && b.gaps) {
+    if (s === 200 && b.needs === 'gaps') {
       const ack = await askGaps(b.gaps);
       if (!ack) return msg('Not finished' + gapText(b.gaps), true);
       extra.gaps_ack = ack;
       [s, b] = await post('/finish', extra);
     }
-    if (s !== 200) return msg(esc(b.error || 'Finish failed'), true);
+    if (s !== 200 || !b.finished) return msg(esc(b.error || 'Finish failed'), true);
     finished = true; panel.hidden = true;
     document.querySelectorAll('#save, #finish, #addBtn').forEach(x => x.disabled = true);
     msg('Review finished · ' + b.changes + ' changes recorded' + dropText(b.dropped) + (b.gaps.length ? ' · ' + b.gaps.length + ' gaps left open, with your reasons' : '') +

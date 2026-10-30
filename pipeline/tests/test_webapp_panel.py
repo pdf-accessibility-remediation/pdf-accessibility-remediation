@@ -436,7 +436,8 @@ def test_ctrl_c_before_finish_still_stops(tmp_path):
     pr = subprocess.Popen([sys.executable, str(script), HERE, p['dir'], str(port)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     assert wait(lambda: get(port, '/')[0] == 200, 20)
     st, b, _ = get(port, '/finish', method='POST', headers={'Content-Type': 'application/json'}, body=json.dumps({'reviewer': 'Kim', 'decisions': {}, 'additions': []}))
-    assert st == 409                                                                  # refused before core.finish: Ctrl+C must not wait
+    b = json.loads(b)
+    assert st == 200 and b['finished'] is False and b['needs'] == 'unreviewed'          # not finished, before core.finish: Ctrl+C must not wait
     pr.send_signal(signal.SIGINT)
     out = pr.communicate(timeout=10)[0]
     assert 'stopped: the review is not finished' in out and 'RESULT none' in out, out
@@ -656,7 +657,7 @@ def test_fourth_pass_details():
 # ------------------------------------------------------------------ Patrick's fifth pass
 def test_messages_can_be_dismissed_and_are_neutral():
     js, css = src('webapp/panel.js'), src('webapp/panel.css')
-    assert '<button type="button" class="pp-x" data-act="dismiss" aria-label="Dismiss message">×</button>' in js
+    assert '<button type="button" class="pp-x" data-act="dismiss" aria-label="Dismiss message">' in js and '<span aria-hidden="true">×</span></button>' in js
     assert "if (act === 'dismiss') { msg(''); $('pp-h').focus(); return; }" in js                     # focus to the Run Actions heading
     assert js.index("if (act === 'dismiss')") < js.index("msg('');                                                       // any other panel button")
     assert '<div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>' in js and '<p id="pp-msg"' not in js
@@ -665,3 +666,49 @@ def test_messages_can_be_dismissed_and_are_neutral():
     assert '.pp .pp-msg { border-left: 4px solid var(--reject);' in css                                # an error keeps its red
     assert '.pp .pp-warn { border-left: 4px solid var(--change);' in css                               # Setup keeps its orange
     assert '.pp .pp-msg:not([hidden]) { display: flex;' in css                                         # hidden still hides it
+
+# ------------------------------------------------------------------ the VoiceOver pass in Safari
+def test_no_dismiss_or_close_button_has_an_unlabeled_glyph():
+    import re
+    for f in ('webapp/panel.js', 'review/page.html', 'webapp/server.py', 'report_html.py'):
+        t = src(f)
+        for m in re.finditer(r'<button[^>]*>(.*?)</button>', t):
+            if '×' in m.group(1):                                                     # the glyph, if any, only inside aria-hidden
+                assert 'aria-label="' in m.group(0) and re.fullmatch(r'<span aria-hidden="true">×</span>', m.group(1)), (f, m.group(0))
+    assert "aria-label=\"Dismiss message\">' +\n                       '<span aria-hidden=\"true\">×</span></button>'" in src('webapp/panel.js')
+    assert 'aria-label="Close Sections"><span aria-hidden="true">×</span></button>' in src('review/page.html')
+
+def test_in_page_link_targets_take_focus():
+    import report_html as H
+    assert '<main id="main" tabindex="-1">' in src('report_html.py') and src('report_html.py').count('<main id="main" tabindex="-1">') == 2
+    assert "el.setAttribute('tabindex', '-1'); el.classList.add('hit'); el.scrollIntoView({block: 'center'}); el.focus({preventScroll: true});" in src('report_html.py')
+    js, page, srv = src('webapp/panel.js'), src('review/page.html'), src('webapp/server.py')
+    assert "if (!t.hasAttribute('tabindex')) t.setAttribute('tabindex', '-1');\n  t.scrollIntoView(); t.focus({ preventScroll: true });" in js
+    assert 'if (e.defaultPrevented || e.button) return;' in js                            # review.html's own handler goes first
+    assert "goTo(document.querySelector(a.getAttribute('href')));" in page and "goTo(document.getElementById('card-' + t.id));" in page
+    assert '[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }' in page
+    assert srv.count('<main id="main" tabindex="-1">') == 2 and '<script src="/app/panel.js" defer></script></body></html>' in srv
+
+def test_finish_not_yet_is_200_with_needs(tmp_path):
+    R, rec, ai, dg = run_folder(tmp_path)
+    from review import core
+    p = S.P(R)
+    S.save(p['items'], {'book': 'book.pdf', 'run': 'run', 'pages': 5, 'pdf': '', 'groups': core.GROUPS, 'levels': core.LEVELS, 'add_kinds': core.ADD_KINDS,
+                        'items': core.build_items(ai, dg), 'addable': core.addable(ai, dg), 'session': {'key': 'abc:002', 'id': '002', 'reopened': True}})
+    S.save(os.path.join(p['dir'], 'workorder.ai.json'), ai)
+    port = free_port()
+    th = threading.Thread(target=lambda: RS.serve(p['dir'], '2026-10-30', port, open_browser=False), daemon=True); th.start()
+    assert wait(lambda: get(port, '/')[0] == 200, 10)
+    def fin(body):
+        st, b, _ = get(port, '/finish', method='POST', headers={'Content-Type': 'application/json'}, body=json.dumps(body)); return st, json.loads(b)
+    st, b = fin({'reviewer': 'Kim', 'decisions': {}, 'additions': []})
+    assert st == 200 and b['finished'] is False and b['needs'] == 'unreviewed' and b['unreviewed']
+    st, b = fin({'reviewer': 'Kim', 'decisions': ALL, 'additions': []})
+    assert st == 200 and b['finished'] is False and b['needs'] == 'gaps' and b['gaps']
+    st, b = fin({'reviewer': 'Kim', 'decisions': ALL, 'additions': [], 'gaps_ack': {g['id']: 'later' for g in b['gaps']}})
+    assert st == 200 and b['finished'] is True
+    th.join(5)
+    page = src('review/page.html')
+    assert "if (s === 200 && b.needs === 'unreviewed')" in page and "if (s === 200 && b.needs === 'gaps')" in page and 's === 409' not in page
+    assert '<h2 id="gapTitle" tabindex="-1">' in page and "document.getElementById('gapTitle').focus();" in page
+    assert 'aria-describedby="gapCtx"' in page and 'id="gapErr" role="alert"' in page
