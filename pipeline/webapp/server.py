@@ -35,6 +35,7 @@ import os, re, json, html, base64, hashlib, traceback, urllib.parse, datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from review.server import local_request
 from review import sessions as S
+from lib.titles import title_case as TC
 from . import config, jobs, runs
 
 FILES = ('review.html', 'review.md', 'han_review.csv')
@@ -115,9 +116,9 @@ def with_version(page, run, sid):
 def md_page(text, run, sid, base):
     """review.md inside a page with a way back (the run page; for an earlier result, that result's dashboard too) and a
     link to the plain file. The text is shown as written, escaped."""
-    which = f'an earlier result ({S.label(sid)})' if sid else 'the current result'
-    links = [f'<a href="{base}">Back to the run page</a>'] + ([f'<a href="review.html">This earlier result\'s dashboard</a>'] if sid else []) + \
-            ['<a href="review.md?raw=1">The plain file</a>']
+    which = TC(f'an earlier result ({S.label(sid)})' if sid else 'the current result')
+    links = [f'<a href="{base}">Back to the Run Page</a>'] + ([f'<a href="review.html">This Earlier Result\'s Dashboard</a>'] if sid else []) + \
+            ['<a href="review.md?raw=1">The Plain File</a>']
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             f'<title>review.md: {html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
             f'</head><body class="pp-page">\n{SKIP}<header><h1>review.md of {html.escape(run)}: {which}</h1></header>'
@@ -271,6 +272,6 @@ def no_dashboard(run, R, current=None):
                       f'<p>This run has no dashboard (review.html): it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current)
 
 def home_stub(s):
-    return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>PDF remediation</title></head><body><main>'
-            '<h1>PDF remediation</h1><p>Open a run: <code>python3 app.py ../runs/&lt;name&gt;/&lt;label&gt;</code>. '
+    return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>PDF Remediation</title></head><body><main>'
+            '<h1>PDF Remediation</h1><p>Open a run: <code>python3 app.py ../runs/&lt;name&gt;/&lt;label&gt;</code>. '
             'The home page with books and runs comes in a later version.</p></main></body></html>')

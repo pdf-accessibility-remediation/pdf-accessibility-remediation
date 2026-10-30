@@ -477,7 +477,8 @@ def test_the_page_shows_no_log_or_command_and_every_job(app):
     assert runs.shown_path(os.path.join(config.ROOT, 'runs', '.app', 'jobs', 'x.log')) == os.path.join('runs', '.app', 'jobs', 'x.log')
     assert v['reason'] == 'The command ended with an error (exit 1).' and v['title'] == 'Apply 11 → failed (10:00)'
     js = src('webapp/panel.js')
-    assert 'Log and command' not in js and 'The same from a terminal' not in js and 'Earlier jobs (' in js and 'Its log is saved in' in js
+    assert 'Log and command' not in js and 'The same from a terminal' not in js and 'Previous Jobs (' in js and 'Its log is saved in' in js
+    assert 'Earlier jobs' not in js and v['action'] == 'Apply 11' and v['result'] == 'failed (10:00)'
     assert 'aria-hidden="true"></span>' in js and 'pp-spin' in js
     assert 'prefers-reduced-motion: reduce) { .pp .pp-spin { animation: none; } }' in src('webapp/panel.css')
 
@@ -489,14 +490,14 @@ def test_every_report_has_a_way_back(app):
     assert st == 200 and '<div id="pdfrem-version" data-run="book/r1" data-session="001">' in page and '/app/panel.js' in page
     assert page.index('</header>') < page.index('pdfrem-version') and 'pdfrem-panel' not in page
     js = src('webapp/panel.js')
-    assert "You\\'re viewing" in js and 'Back to the current result' in js and 'Review again from this session' in js
+    assert "You\\'re viewing" in js and 'Back to the Current Result' in js and 'Review Again from This Session' in js
     st, b, hd = get(port, '/run/book/r1/review.md')
-    assert st == 200 and hd['Content-Type'].startswith('text/html') and '<a href="/run/book/r1/">Back to the run page</a>' in b.decode()
+    assert st == 200 and hd['Content-Type'].startswith('text/html') and '<a href="/run/book/r1/">Back to the Run Page</a>' in b.decode()
     assert '<pre class="pp-md"># Review</pre>' in b.decode() and 'href="review.md?raw=1"' in b.decode()
     st, b, hd = get(port, '/run/book/r1/review.md?raw=1')
     assert hd['Content-Type'].startswith('text/plain') and b == b'# Review'
     st, b, hd = get(port, '/run/book/r1/reviews/versions/001/review.md')
-    assert 'an earlier result (session 1)' in b.decode() and '<a href="review.html">This earlier result' in b.decode()
+    assert 'An Earlier Result (Session 1)' in b.decode() and '<a href="review.html">This Earlier Result' in b.decode()
     assert get(port, '/run/book/r1/review.html')[2].get('Location') == '/run/book/r1/'
 
 def test_review_again_names_where_it_starts(setup):
@@ -547,7 +548,10 @@ def test_code_fingerprint_covers_the_app_code():
 def test_panel_and_review_page_details():
     js, css, page = src('webapp/panel.js'), src('webapp/panel.css'), src('review/page.html')
     assert "'Waiting for you: the review page is open'" in js and 'Ready to ship?</b>' not in js            # the report's card says it
-    assert '.pp [tabindex="-1"]:focus { outline: none; } .pp [tabindex="-1"]:focus-visible {' in css
+    assert '[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }' in css                  # never, on any app page
+    assert '.pp summary { cursor: pointer; font-size: 15px; color: var(--ink); }' in css
+    assert 'placeholder="Your name"' in page and '<h1 id="title">Work Order Review</h1>' in page and 'Back to the Run Page' in page
+    assert ": done' + (s.time ? ', ' + esc(s.time) : '') : j.status === 'running' ? '' : ': did not finish'" in js   # no ": running"
     assert 'html { scroll-padding-top' not in page and 'main [id] { scroll-margin-top: calc(var(--top, 0px) + 8px); }' in page
 
 def test_the_report_review_section(tmp_path):
@@ -559,11 +563,41 @@ def test_the_report_review_section(tmp_path):
     rec = {'review': {'session': '002', 'sessions': ss, 'run': '../runs/b/r', 'decisions': [{'id': 'x', 'kind': 'retype', 'label': 'A', 'page': 2, 'status': 'approved'}]}}
     out = ''.join(H.review_card(str(tmp_path), rec))
     assert '<p><strong>Session 2</strong> · sss · 2026-10-29 · 9 approved · 0 rejected · 2 accepted without review</p>' in out
-    assert out.count('<td class="nowrap">2 <strong>(current)</strong></td>') == 1 and '<td>3 from session 1</td>' in out and '<td>none</td>' in out
-    assert '<details class="fold"><summary>Earlier sessions (1)</summary>' in out and '<td class="nowrap">2026-10-28</td>' in out
-    assert out.index('Earlier sessions (1)') < out.index('<td class="nowrap">1</td>')                      # session 1 only inside the fold
-    assert '<details class="fold"><summary>From a terminal</summary>' in out and 'review_workorder.py ../runs/b/r --reopen' in out
+    assert out.count('<td class="nowrap">2 <strong>(current)</strong></td>') == 1 and '<td class="nowrap">3 from session 1</td>' in out
+    assert '<td class="nowrap">none</td>' in out and '<td class="nowrap">session 1</td>' in out                # From and Carried never wrap
+    assert '<details class="fold"><summary>Previous Sessions (1)</summary>' in out and '<td class="nowrap">2026-10-28</td>' in out
+    assert out.index('Previous Sessions (1)') < out.index('<td class="nowrap">1</td>')                     # session 1 only inside the fold
+    assert 'From a terminal' not in out and 'review_workorder.py' not in out and 'Earlier sessions' not in out
+    assert '<h2 id="rev-h">Review of the AI\'s Decisions</h2>' in out and '<summary>Approved: 1</summary>' in out
+    assert '<th scope="col">Changed in the Session</th>' in out and '<th scope="col">Status, Set In</th>' in out
     assert 'accepted unreviewed' not in out and 'carried:' not in out
     assert H.counts_text({'approved': 1, 'accepted_unreviewed': 2}) == '1 approved, 2 accepted without review'
-    assert 'details.fold summary { cursor: pointer; color: var(--ink); }' in H.CSS and '.strip:focus-visible' in H.CSS
+    assert 'details.fold summary { cursor: pointer; color: var(--ink); font-size: 15px; }' in H.CSS and '.strip:focus-visible' in H.CSS
+    assert '[tabindex="-1"]:focus { outline: none; }' in H.CSS
     assert S.summary_text({'id': '001', 'review': {'counts': {'accepted_unreviewed': 4}, 'changes': []}}).startswith('Session 1 (summary only): 4 accepted without review')
+
+# ------------------------------------------------------------------ Patrick's third pass: capitalization
+@pytest.mark.parametrize('s,want', [
+    ("Review of the AI's decisions", "Review of the AI's Decisions"), ('Ready to ship? No', 'Ready to Ship? No'),
+    ('Current result: session 5', 'Current Result: Session 5'), ('veraPDF (WCAG rules)', 'veraPDF (WCAG Rules)'),
+    ('Previous jobs (2)', 'Previous Jobs (2)'), ('Review again from session 4', 'Review Again from Session 4'),
+    ("Start over from the AI's decisions", "Start Over from the AI's Decisions"), ('review.md of a run', 'review.md of a Run'),
+    ('H1 and title', 'H1 and Title'), ('a word to', 'A Word To'), ('Pages with something listed (4)', 'Pages with Something Listed (4)')])
+def test_title_case(s, want):
+    from lib.titles import title_case
+    assert title_case(s) == want
+
+def test_the_same_title_case_rule_in_the_pages():
+    """panel.js and page.html carry the same small-word list and skip rules as lib/titles.py."""
+    from lib.titles import SMALL
+    for f in ('webapp/panel.js', 'review/page.html'):
+        t = src(f)
+        assert "const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with']);" in t
+        assert "/[./_@\\d]/.test(core)" in t and 'edge = /[:?—]$/.test(x);' in t
+    assert SMALL == {'a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with'}
+
+def test_a_job_card_and_its_one_line_forms():
+    js = src('webapp/panel.js')
+    assert "esc(tc(j.action || j.title))" in js                                   # card heading: the action, Title Case
+    assert "return /^done\\b/.test(r) ? cap(r) : 'Done: ' + r;" in js            # status line: "Done: session 5 applied (…)"
+    assert "<b>Last Job:</b> ' + esc(cap(last.title))" in js and "'<li>' + esc(cap(j.title))" in js
