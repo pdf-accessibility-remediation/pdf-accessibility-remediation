@@ -29,6 +29,10 @@ Until the review is finished, rerunning the label is refused, so a half-reviewed
 
 The first review is kept as **session 1** in the run's `reviews/` folder (see [Reviewing again](#reviewing-again)).
 
+## From the browser
+
+`python3 app.py <run folder>` opens a finished run's page with buttons for everything below: **Review again**, **Start over from the AI's decisions**, **Review again from session N**, **Apply session N** and the session history. Each button runs the command shown here, and **Finish** goes back to the run page, which shows the re-apply and then the new result. See [The app](app.md). The commands below work as before.
+
 ## Reviewing again
 
 A finished run (with or without `REVIEW=1`) can be reviewed again: the page opens with every earlier choice preloaded, you change only what is needed, and Finish applies the reviewed order at once, with no AI call. The result is a new remediated PDF, `review.md` and `review.html`. Nothing earlier is overwritten.
@@ -40,6 +44,8 @@ python3 review_workorder.py ../runs/godzone/rv1 --reopen --from 1     # start fr
 python3 review_workorder.py ../runs/godzone/rv1 --sessions            # every session: who, when, from where, what changed, which is current
 python3 review_workorder.py ../runs/godzone/rv1 --apply               # apply a finished session that was not applied (--no-apply, or a failed apply)
 ```
+
+`--return-to URL` (with `--serve` or `--reopen`) makes the review page go to that page after Finish, and link back to it. The app passes its run page. Only `http://127.0.0.1:<port>/…` or `http://localhost:<port>/…` is accepted.
 
 - **The page** says which session it is, where it started, how many choices were preloaded, and any that could not be carried. Each preloaded card says which session set its choice. It links the current result's `review.html` (served by the review server, as a browser cannot open a local file from the page), and keeps the gap reasons given last time.
 - **Finish** records the session and applies it: apply, verify and report run in the terminal, each with its time. The current result moves to `reviews/versions/<session>/` (or `versions/ai/` for a result applied without review) only after all three succeed; if one fails, the current result is unchanged and the session stays *finished*: run `--apply` again. `--no-apply` stops after Finish. Until the session is applied, "Ready to ship?" says **No** ("the latest review … is finished but not applied"), because the PDF on disk is older than the sign-off.

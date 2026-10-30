@@ -49,7 +49,7 @@ def main():
     other = ping(s['port'])
     if isinstance(other, dict):
         if other.get('root') == config.ROOT and other.get('settings') == s['sha']:
-            print(f'the app is already running at {url}/: opening it')
+            print(f'the app is already running at {url}/' + ('' if a.no_browser else ': opening it'))
             if not a.no_browser: webbrowser.open(url + target)
             return
         sys.exit(f'another app answers at {url}/ with other settings (or from another checkout, {other.get("root")}): start this one with --port N')

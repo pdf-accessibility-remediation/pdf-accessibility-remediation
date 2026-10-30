@@ -49,6 +49,7 @@ function jobWords(j) {
     const cur = (j.steps || []).filter(s => s.state === 'running').pop();
     return 'Running' + (cur ? ': ' + cur.label : '');
   }
+  if (j.status === 'done' && j.kind === 'review' && / stays open$/.test(j.outcome || '')) return 'Closed: the session stays open';
   if (j.status === 'failed') return 'Failed' + (j.exit != null ? ' (exit ' + j.exit + ')' : '');
   if (j.status === 'interrupted') return j.interrupted && j.interrupted.state === 'done' ? 'Done (the app lost track of the job)' : 'Interrupted: the job stopped without finishing';
   return STATUS[j.status] || j.status;
@@ -188,7 +189,7 @@ function announce(s) {
     const was = seen[j.id]; seen[j.id] = key;
     if (!primed || was === key) continue;
     const t = jobTitle(j) + ' (' + RUN + ')';
-    if (j.status === 'done') live(t + ': done' + (j.outcome ? '. ' + j.outcome : ''));
+    if (j.status === 'done') live(t + ': ' + (jobWords(j) === 'Done' ? 'done' + (j.outcome ? '. ' + j.outcome : '') : jobWords(j).toLowerCase()));
     else if (j.status === 'failed') live(t + ': failed' + (j.outcome ? '. ' + j.outcome : ''));
     else if (j.status === 'interrupted') live(t + ': ' + (j.interrupted ? jobWords(j).toLowerCase() + '. ' + j.interrupted.text : 'interrupted'));
     else if (j.kind === 'review' && j.url && !j.past_finish && (!was || !was.includes(j.url))) live(t + ': the review page is ready');
