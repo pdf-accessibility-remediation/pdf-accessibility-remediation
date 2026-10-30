@@ -52,34 +52,46 @@ def update(J, jid, **kw):
         job.update(kw); save(J, job); return job
 
 # ------------------------------------------------------------------ liveness
-def _marks(job):
-    m = ['webapp/jobrun.py']
+def _marks(J, job):
+    """What a process of this job has in its command line, each a tuple of parts that must all be there: the wrapper
+    with its jobs folder and job id; the command's script with the run folder (when the command names it)."""
+    m = [(f'webapp/jobrun.py {J} {job["id"]}',)]
     for a in job['argv'][:3]:
-        if a.endswith(('.py', '.sh')): m.append(os.path.basename(a))
+        if a.endswith(('.py', '.sh')): m.append((os.path.basename(a), job['dir']) if job.get('dir') and job['dir'] in job['argv'] else (os.path.basename(a),))
     return m
 
-def group_alive(job):
+def group_alive(J, job):
     pg = job.get('pgid')
     if not pg: return False
     try: os.killpg(pg, 0)
     except ProcessLookupError: return False
     except PermissionError: pass
-    try: out = subprocess.run(['ps', '-A', '-o', 'pgid=,command='], capture_output=True, text=True, timeout=10).stdout
+    try: out = subprocess.run(['ps', '-A', '-ww', '-o', 'pgid=,command='], capture_output=True, text=True, timeout=10).stdout
     except (OSError, subprocess.TimeoutExpired): return True                # cannot tell: never call a live job interrupted
-    marks = _marks(job)
+    marks = _marks(J, job)
     for line in out.splitlines():
         g, _, cmd = line.strip().partition(' ')
-        if g == str(pg) and any(m in cmd for m in marks): return True
+        if g == str(pg) and any(all(p in cmd for p in m) for m in marks): return True
     return False
 
 # ------------------------------------------------------------------ the run's own state
+def _at(since):
+    try: return datetime.datetime.fromisoformat(since).timestamp() if since else None
+    except ValueError: return None
+
 def review_past_finish(R, since=None):
-    """A review child is past Finish (it records the session, then applies): never signal it from then on. From disk only:
-    the review's review.json (written when Finish is accepted), the work or promotion folder of a re-apply, or a session
-    finished since the job started."""
+    """A review child is past Finish (it records the session, then applies): never signal it from then on. From disk only,
+    and only what appeared since the job started (a failed apply leaves reviews/work/ behind; an old review.json is not
+    this review's Finish): the review's review.json (written when Finish is accepted), the work folder or promotion
+    marker of a re-apply, or a session finished since then."""
+    if not R: return True                               # the run is not known: never signal
+    t = _at(since)
+    def new(p):
+        try: return os.path.exists(p) and (t is None or os.path.getmtime(p) >= t)
+        except OSError: return False
     rv = os.path.join(R, 'reviews')
-    if any(os.path.exists(os.path.join(rv, n)) for n in ('review.json', 'work', 'promoting.json')): return True
-    if not os.path.exists(os.path.join(R, 'record.json')) and os.path.exists(os.path.join(R, 'review.json')): return True   # a first review
+    if any(new(os.path.join(rv, n)) for n in ('review.json', 'work', 'promoting.json')): return True
+    if not os.path.exists(os.path.join(R, 'record.json')) and new(os.path.join(R, 'review.json')): return True   # a first review
     sd = os.path.join(rv, 'sessions')
     if os.path.isdir(sd):
         ns = sorted(n for n in os.listdir(sd) if n[:3].isdigit() and n.endswith('.json') and not n.endswith('.workorder.json'))
@@ -118,16 +130,19 @@ def create(J, kind, run, argv, env, env_set=None, counted=True, then=None, paid=
             why = busy(J, run, R)
             if why: raise ValueError(why)
         jid = f'{datetime.datetime.now():%Y%m%d-%H%M%S-%f}-{kind}'
-        job = {'id': jid, 'kind': kind, 'run': run, 'argv': list(argv), 'env': env, 'env_set': env_set or {}, 'counted': counted,
-               'then': then, 'paid': paid, 'status': 'queued', 'created': now(), 'started': None, 'ended': None, 'exit': None,
-               'pid': None, 'pgid': None, 'log': os.path.basename(log_path(J, jid)), **extra}
+        job = {'id': jid, 'kind': kind, 'run': run, 'dir': os.path.abspath(R) if R is not None else None, 'argv': list(argv), 'env': env,
+               'env_set': env_set or {}, 'counted': counted, 'then': then, 'paid': paid, 'status': 'queued', 'created': now(), 'started': None,
+               'ended': None, 'exit': None, 'pid': None, 'pgid': None, 'log': os.path.basename(log_path(J, jid)), **extra}
         save(J, job)
         return job
+
+def run_dir(job, runs=None):
+    return job.get('dir') or (os.path.join(runs, *job['run'].split('/')) if runs else None)
 
 def counts(job, runs):
     """A running job takes one of max_jobs: work jobs always, a review job once it is past Finish (it is applying)."""
     if job.get('counted'): return True
-    return job['kind'] == 'review' and review_past_finish(os.path.join(runs, job['run']), job.get('started'))
+    return job['kind'] == 'review' and review_past_finish(run_dir(job, runs), job.get('started'))
 
 def _start(J, job):
     lp = log_path(J, job['id'])
@@ -142,14 +157,14 @@ def tick(J, s):
     with locked(J):
         jobs = all_jobs(J)
         for j in jobs:
-            if j['status'] == 'running' and not j.get('ended') and not group_alive(j):
+            if j['status'] == 'running' and not j.get('ended') and not group_alive(J, j):
                 j.update(status='interrupted', ended=now()); save(J, j)
             if j['kind'] == 'review' and j['status'] == 'running' and not j.get('url'):       # the review page is up: keep its URL
                 u = logs.review_url(read_log(J, j['id'])[0])
                 if u: j['url'] = u; save(J, j)
             if j['status'] == 'done' and j.get('then') and not j.get('then_job'):
                 t = j['then']
-                nxt = {'id': f'{datetime.datetime.now():%Y%m%d-%H%M%S-%f}-{t["kind"]}', 'kind': t['kind'], 'run': j['run'], 'argv': t['argv'],
+                nxt = {'id': f'{datetime.datetime.now():%Y%m%d-%H%M%S-%f}-{t["kind"]}', 'kind': t['kind'], 'run': j['run'], 'dir': j.get('dir'), 'argv': t['argv'],
                        'env': t['env'], 'env_set': t.get('env_set') or {}, 'counted': t.get('counted', True), 'then': t.get('then'),
                        'paid': t.get('paid', False), 'status': 'queued', 'created': now(), 'started': None, 'ended': None, 'exit': None,
                        'pid': None, 'pgid': None, 'after': j['id'], **(t.get('extra') or {})}
@@ -186,11 +201,18 @@ def read_log(J, jid, offset=0, limit=256 * 1024):
     job = load(J, jid) or {}
     if job.get('status') in ACTIVE and b and not b.endswith(b'\n'):
         cut = b.rfind(b'\n'); b = b[:cut + 1] if cut >= 0 else b''
+    try: b.decode('utf-8')
+    except UnicodeDecodeError as e:                     # a character cut at the read limit: leave it for the next read
+        if e.start >= len(b) - 3: b = b[:e.start]
     return b.decode('utf-8', 'replace'), int(offset) + len(b)
 
-def interrupt(J, jid):
-    """Ctrl+C (SIGINT) to a job's process group, as the terminal's Ctrl+C. The caller decides whether that is allowed."""
+def interrupt(J, jid, runs=None):
+    """Ctrl+C (SIGINT) to a job's process group, as the terminal's Ctrl+C. (True, None), or (False, why). A review job
+    past Finish is never signalled (it is recording its session or applying it); the check is here, so no caller can
+    skip it."""
     job = load(J, jid)
-    if not job or job['status'] != 'running' or not group_alive(job): return False
-    try: os.killpg(job['pgid'], signal.SIGINT); return True
-    except OSError: return False
+    if not job or job['status'] != 'running' or not group_alive(J, job): return False, 'the job is not running'
+    if job['kind'] == 'review' and review_past_finish(run_dir(job, runs), job.get('started')):
+        return False, 'this review is past Finish and is being applied: it cannot be stopped now'
+    try: os.killpg(job['pgid'], signal.SIGINT); return True, None
+    except OSError as e: return False, f'the job could not be reached ({e})'

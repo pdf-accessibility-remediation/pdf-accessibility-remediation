@@ -191,7 +191,7 @@ def test_ctrl_c_reaches_the_command_and_the_wrapper_records_it(setup):
     j = fake(setup, s, 'a/r', 30)
     jobs.tick(s['jobs'], s)
     assert wait(lambda: (jobs.load(s['jobs'], j['id']) or {}).get('child_pid'))
-    assert jobs.interrupt(s['jobs'], j['id'])
+    assert jobs.interrupt(s['jobs'], j['id']) == (True, None)
     assert wait(lambda: jobs.load(s['jobs'], j['id'])['status'] == 'failed')
     j = jobs.load(s['jobs'], j['id'])
     assert j['exit'] in (-signal.SIGINT, 1, 130) and j['ended']                          # the command got KeyboardInterrupt
