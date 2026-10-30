@@ -288,7 +288,7 @@ def summary_row(s):
 def summary_text(s):
     """'Session 1 (summary only): 159 approved, 8 seen, no changes; per-decision choices weren't recorded before …'"""
     rv = s.get('review') or {}; c = rv.get('counts') or {}
-    parts = [f'{v} {k.replace("_", " ")}' for k, v in c.items() if v] + [(lambda n: f'{n} change{"s" if n != 1 else ""} from the AI')(len(rv['changes'])) if rv.get('changes') else 'no changes']
+    parts = [f'{v} {"accepted without review" if k == "accepted_unreviewed" else k.replace("_", " ")}' for k, v in c.items() if v] + [(lambda n: f'{n} change{"s" if n != 1 else ""} from the AI')(len(rv['changes'])) if rv.get('changes') else 'no changes']
     return (f'Session {int(s["id"])} (summary only): ' + ', '.join(parts) +
             f'; per-decision choices were not recorded before {SINCE}' + ('' if not s.get('inferred') else ' (rebuilt from the recorded changes and counts, marked inferred)'))
 

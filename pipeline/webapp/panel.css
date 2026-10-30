@@ -25,7 +25,8 @@
 .pp button.pp-primary, .pp a.pp-btn.pp-primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
 .pp button:hover, .pp a.pp-btn:hover { text-decoration: underline; }
 .pp :focus-visible, .pp-dlg :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.pp [tabindex="-1"]:focus { outline: 2px dotted var(--muted); outline-offset: 2px; }
+/* a heading or message the script moves focus to: an outline only when the person is using the keyboard */
+.pp [tabindex="-1"]:focus { outline: none; } .pp [tabindex="-1"]:focus-visible { outline: 2px dotted var(--muted); outline-offset: 2px; }
 .pp .pp-note { color: var(--muted); font-size: 14px; }
 .pp .pp-msg { border-left: 4px solid var(--reject); padding: 4px 10px; background: var(--flag); }
 .pp .pp-msg.pp-okmsg { border-left-color: var(--ok); }

@@ -124,9 +124,13 @@ def md_page(text, run, sid, base):
             f'<nav class="pp-wrap" aria-label="Pages of this run"><p class="pp pp-bar">' + ' · '.join(links) + '</p></nav>'
             f'<main id="main"><pre class="pp-md">{html.escape(text)}</pre></main></body></html>')
 
-def make(s, setup):
-    """The server, bound to 127.0.0.1:port (no fallback: a busy port is an error the caller reports)."""
+def make(s, setup, code=None):
+    """The server, bound to 127.0.0.1:port (no fallback: a busy port is an error the caller reports). The panel's files are
+    read once, here, so the pages always match the code this server runs, even if the files on disk change under it;
+    `code` is the fingerprint of that code (config.code_fingerprint), which /api/ping reports."""
     J = s['jobs']
+    assets = {n: (open(p, 'rb').read(), TYPES.get(os.path.splitext(p)[1].lower(), 'application/octet-stream')) for n, p in STATIC.items()}
+    code = code or config.code_fingerprint()
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
@@ -191,7 +195,7 @@ def make(s, setup):
             if not self.ours(): return self.send(403, {'error': f'open the app at http://127.0.0.1:{self.server.server_address[1]}/'})
             url = urllib.parse.urlsplit(self.path); q = urllib.parse.parse_qs(url.query)
             p = url.path
-            if p == '/api/ping': return self.send(200, {'app': 'pdfrem', 'root': config.ROOT, 'settings': s['sha']})
+            if p == '/api/ping': return self.send(200, {'app': 'pdfrem', 'root': config.ROOT, 'settings': s['sha'], 'code': code})
             if p == '/api/setup': return self.send(200, setup)
             if p == '/api/jobs':                             # the newest first, up to ?limit= (default 50, at most 500)
                 lim = (q.get('limit') or ['50'])[0]                   # isdecimal: '²' is a digit but not a number int() reads
@@ -208,7 +212,7 @@ def make(s, setup):
                 hit = find_run(s['runs'], segs) if segs else None
                 if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
                 return self.send(200, runs.state(s, hit[0], hit[1]))
-            if p.startswith('/app/') and p[len('/app/'):] in STATIC: return self.file(STATIC[p[len('/app/'):]])
+            if p.startswith('/app/') and p[len('/app/'):] in assets: return self.send(200, *assets[p[len('/app/'):]])
             if p.startswith('/batch/'):
                 segs = segments(p[len('/batch/'):])
                 if not segs: return self.send(404, {'error': 'no such batch'})

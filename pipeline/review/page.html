@@ -15,7 +15,9 @@
           --accent: #7fb0f0; --ok: #6fcf8f; --change: #f0b45c; --reject: #f08a80; --seen: #b3a9f5; --flag: #3a3220; }
 }
 * { box-sizing: border-box; }
-html { scroll-padding-top: calc(var(--top, 0px) + 8px); }   /* a jump to a card lands below the sticky header */
+/* a jump to a card or section lands below the sticky header. On the targets, not as html's scroll-padding: that padding
+   also covered the header's own reviewer field, so the browser scrolled the list on every key typed there */
+main [id] { scroll-margin-top: calc(var(--top, 0px) + 8px); }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 header.top { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; }
 .top h1 { font-size: 17px; margin: 0 0 6px; }

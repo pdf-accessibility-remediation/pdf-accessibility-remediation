@@ -46,9 +46,12 @@ def main():
             sys.exit(f'{a.run_dir} is not a finished run under {s["runs"]} (no record.json there)')
         target = '/run/' + '/'.join(urllib.parse.quote(x) for x in os.path.relpath(R, os.path.realpath(s['runs'])).split(os.sep)) + '/'
     url = f'http://127.0.0.1:{s["port"]}'
+    code = config.code_fingerprint()                             # the code on disk now: the server keeps this one
     other = ping(s['port'])
     if isinstance(other, dict):
         if other.get('root') == config.ROOT and other.get('settings') == s['sha']:
+            if other.get('code') != code:                        # its pages and routes would not match the code on disk
+                sys.exit(f'the running app is older than the code on disk: stop it and start again (it answers at {url}/)')
             print(f'the app is already running at {url}/' + ('' if a.no_browser else ': opening it'))
             if not a.no_browser: webbrowser.open(url + target)
             return
@@ -61,7 +64,7 @@ def main():
     if miss: sys.exit(f'the app cannot start: {", ".join(x["name"] for x in miss)} missing (fix above)')
     os.makedirs(s['jobs'], exist_ok=True)
     jobs.recover(s['jobs'])
-    try: srv = server.make(s, items)
+    try: srv = server.make(s, items, code)
     except OSError as e: sys.exit(f'the app cannot listen on 127.0.0.1:{s["port"]} ({e}): start it with --port N')
     signal.signal(signal.SIGINT, signal.default_int_handler)     # Ctrl+C works even when started from a script
     signal.signal(signal.SIGTERM, interrupted)                    # a plain kill stops it the same way
