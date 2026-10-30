@@ -31,7 +31,7 @@ The first review is kept as **session 1** in the run's `reviews/` folder (see [R
 
 ## From the browser
 
-`python3 app.py <run folder>` opens a finished run's page with buttons for everything below: **Review again**, **Start over from the AI's decisions**, **Review again from session N**, **Apply session N** and the session history. Each button runs the command shown here, and **Finish** goes back to the run page, which shows the re-apply and then the new result. See [The app](app.md). The commands below work as before.
+`python3 app.py <run folder>` opens a finished run's page with buttons for everything below: **Review again**, **Start over from the AI's decisions**, **Review again from session N**, **Apply session N** and the session history. Each button runs the command shown here, and **Finish** goes back to the run page, which shows the re-apply; when it ends, the page says "New result ready" and a **Show the new result** button loads it (the page never reloads by itself). Ctrl+C on the review page while Finish is being recorded waits until the review is recorded. See [The app](app.md). The commands below work as before.
 
 ## Reviewing again
 

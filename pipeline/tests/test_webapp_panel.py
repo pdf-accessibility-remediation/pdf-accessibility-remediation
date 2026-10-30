@@ -6,7 +6,7 @@ panel added at serve time, and the log lines the panel reads (pinned against the
 No book, no model. The review page itself is tested on a synthetic run (as test_review_sessions.py does); a real
 Review again → Finish → apply is in the real-run tests of the builder report.
 """
-import os, sys, json, time, signal, threading, subprocess, urllib.request
+import os, sys, json, time, signal, threading, subprocess, urllib.request, urllib.parse
 import pytest
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # pipeline/
@@ -362,3 +362,81 @@ def test_api_jobs_has_a_limit(app):
     for i in ids: jobs.update(s['jobs'], i, status='done')
     got = json.loads(get(app['port'], '/api/jobs?limit=2')[1])
     assert [j['id'] for j in got] == ids[::-1][:2]
+
+# ------------------------------------------------------------------ reviews 06 and 07
+def test_the_newest_finished_session_with_a_later_one_open(app):
+    """Pinned as it is (review 06): the newest finished session is still the one Apply would take while a later session
+    is open; the panel hides the button while a session is open, and the route accepts it."""
+    port, R = app['port'], str(app['R'])
+    ses(R, '001', 'applied'); ses(R, '002', 'finished', finished='2026-10-29T10:00:00'); ses(R, '003', 'open')
+    os.makedirs(os.path.join(R, 'reviews', '_audit')); os.makedirs(os.path.join(R, '_intake'))      # pinned, with its input: no --pdf needed
+    open(os.path.join(R, 'reviews', '_audit', 'digest.json'), 'w').write('{}'); open(os.path.join(R, 'reviews', 'basis.json'), 'w').write('{"input": {}}')
+    open(os.path.join(R, '_intake', 'intake.pdf'), 'wb').write(b'%PDF')
+    d = json.loads(get(port, '/api/run/book/r1')[1])
+    assert d['unapplied']['id'] == '002' and d['open']['id'] == '003'
+    assert "if (s.unapplied && !s.open) h += '<button type=\"button\" id=\"pp-apply\"" in src('webapp/panel.js')
+    st, b = post(port, '/api/run/book/r1/apply')
+    assert st == 202 and b['job']['kind'] == 'apply' and b['job']['what'] == 'Apply session 2'
+
+def test_a_run_whose_name_needs_encoding_is_served(app):
+    R = app['t'] / 'runs' / 'odd name#1' / 'r?x'; R.mkdir(parents=True); (R / 'record.json').write_text('{}'); (R / 'review.md').write_text('# x')
+    st, b, _ = get(app['port'], '/run/odd%20name%231/r%3Fx/')
+    assert st == 200 and 'data-run="odd name#1/r?x"' in b.decode()
+    assert json.loads(get(app['port'], '/api/run/odd%20name%231/r%3Fx')[1])['run'] == 'odd name#1/r?x'
+
+@pytest.mark.parametrize('q', ['²', '٣', '99999999999999999999', '-1', '0', 'x'])
+def test_odd_numbers_in_the_query_never_break_a_route(app, q):
+    assert get(app['port'], '/api/jobs?limit=' + urllib.parse.quote(q))[0] == 200
+    j = jobs.create(str(app['t'] / 'runs' / '.app'), 'apply', 'q/r', [sys.executable, '-c', 'pass'], {}, counted=True)
+    jobs.update(str(app['t'] / 'runs' / '.app'), j['id'], status='done')
+    assert get(app['port'], f'/api/job/{j["id"]}?from=' + urllib.parse.quote(q))[0] == 200
+
+def test_core_save_never_leaves_a_cut_short_file(tmp_path):
+    from review import core
+    p = str(tmp_path / 'review.json'); core.save(p, {'a': 1}); core.save(p, {'a': 2})
+    assert json.load(open(p)) == {'a': 2} and os.listdir(tmp_path) == ['review.json']
+
+CTRL_C_AT_FINISH = r'''
+import sys, os, time, json, threading, signal
+sys.path.insert(0, sys.argv[1]); R, port = sys.argv[2], int(sys.argv[3])
+from review import core, server
+real = core.finish
+def slow(*a, **k):
+    print('finish started', flush=True); time.sleep(1.5); return real(*a, **k)
+core.finish = slow
+v = server.serve(R, '2026-10-29', port, open_browser=False)
+print('RESULT', 'recorded' if v else 'none', flush=True)
+'''
+
+def test_ctrl_c_during_finish_waits_for_the_record(tmp_path):
+    R, rec, ai, dg = run_folder(tmp_path)
+    from review import core
+    p = S.P(R)
+    S.save(p['items'], {'book': 'book.pdf', 'run': 'run', 'pages': 5, 'pdf': '', 'groups': core.GROUPS, 'levels': core.LEVELS, 'add_kinds': core.ADD_KINDS,
+                        'items': core.build_items(ai, dg), 'addable': core.addable(ai, dg), 'session': {'key': 'abc:002', 'id': '002', 'reopened': True}})
+    S.save(os.path.join(p['dir'], 'workorder.ai.json'), ai)
+    port = free_port(); script = tmp_path / 'c.py'; script.write_text(CTRL_C_AT_FINISH)
+    pr = subprocess.Popen([sys.executable, str(script), HERE, p['dir'], str(port)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    assert wait(lambda: get(port, '/')[0] == 200, 20)
+    body = json.dumps({'reviewer': 'Kim', 'decisions': ALL, 'additions': [], 'gaps_ack': {'figures_without_alt': 'later', 'h1': 'later'}})
+    th = threading.Thread(target=lambda: get(port, '/finish', method='POST', headers={'Content-Type': 'application/json'}, body=body), daemon=True); th.start()
+    time.sleep(0.6); pr.send_signal(signal.SIGINT)                                   # Ctrl+C while core.finish is running
+    out = pr.communicate(timeout=30)[0]
+    assert 'finish started' in out and 'review is recorded' in out and 'RESULT recorded' in out, out
+    assert json.load(open(os.path.join(p['dir'], 'review.json')))['reviewer'] == 'Kim'          # whole, not cut short
+
+def test_ctrl_c_before_finish_still_stops(tmp_path):
+    R, rec, ai, dg = run_folder(tmp_path)
+    from review import core
+    p = S.P(R)
+    S.save(p['items'], {'book': 'book.pdf', 'run': 'run', 'pages': 5, 'pdf': '', 'groups': core.GROUPS, 'levels': core.LEVELS, 'add_kinds': core.ADD_KINDS,
+                        'items': core.build_items(ai, dg), 'addable': core.addable(ai, dg), 'session': {'key': 'abc:002', 'id': '002', 'reopened': True}})
+    S.save(os.path.join(p['dir'], 'workorder.ai.json'), ai)
+    port = free_port(); script = tmp_path / 'c.py'; script.write_text(CTRL_C_AT_FINISH)
+    pr = subprocess.Popen([sys.executable, str(script), HERE, p['dir'], str(port)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    assert wait(lambda: get(port, '/')[0] == 200, 20)
+    st, b, _ = get(port, '/finish', method='POST', headers={'Content-Type': 'application/json'}, body=json.dumps({'reviewer': 'Kim', 'decisions': {}, 'additions': []}))
+    assert st == 409                                                                  # refused before core.finish: Ctrl+C must not wait
+    pr.send_signal(signal.SIGINT)
+    out = pr.communicate(timeout=10)[0]
+    assert 'stopped: the review is not finished' in out and 'RESULT none' in out, out

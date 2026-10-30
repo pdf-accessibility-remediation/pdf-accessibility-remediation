@@ -54,7 +54,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
     if 'addable' not in data: data['addable'] = core.addable(ai, digest); data['add_kinds'] = core.ADD_KINDS
     adds = data['addable']
     saved = core.load(os.path.join(R, 'review_decisions.json'), {}) or {}
-    done = threading.Event(); result = {}
+    done = threading.Event(); finishing = threading.Event(); result = {}
     render_lock = threading.Lock()                    # pdfium is not thread-safe: one page image at a time
     cells = {i: (sh['image'], sh['cells'][str(i)]) for sh in digest.get('ocr_word_sheets') or [] if sh.get('cells')
              for i in range(sh['ids'][0], sh['ids'][1] + 1) if str(i) in sh['cells']}
@@ -149,12 +149,17 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
                 ack = body.get('gaps_ack') if isinstance(body.get('gaps_ack'), dict) else {}
                 gaps = [g for g in core.preview(R, wo)[1] if not str(ack.get(g['id']) or '').strip()]
                 if gaps: return self.send(409, {'error': f'{len(gaps)} gaps are open.', 'gaps': gaps})
-                try: v = core.finish(R, ai, wo, reviewer, date, 'page', decisions=decisions, items=items, additions=additions, gaps_ack=ack)
-                except ValueError as e: return self.send(400, {'error': str(e)})
-                result.update(v)
-                self.send(200, {'finished': True, 'changes': len(v['changes']), 'dropped': v['dropped_on_check'], 'counts': v.get('counts'),
-                                'gaps': v.get('gaps') or []})
-                done.set(); return
+                finishing.set(); ok = False                  # Ctrl+C now waits until the review is recorded (or refused)
+                try:
+                    try: v = core.finish(R, ai, wo, reviewer, date, 'page', decisions=decisions, items=items, additions=additions, gaps_ack=ack)
+                    except ValueError as e: return self.send(400, {'error': str(e)})
+                    result.update(v); ok = True
+                    self.send(200, {'finished': True, 'changes': len(v['changes']), 'dropped': v['dropped_on_check'], 'counts': v.get('counts'),
+                                    'gaps': v.get('gaps') or []})
+                finally:
+                    if ok: done.set()
+                    else: finishing.clear()
+                return
             self.send(404, {'error': 'not found'})
 
     srv = None
@@ -172,6 +177,9 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
     try:
         while not done.wait(0.5): pass                 # a short wait, so Ctrl+C is seen
     except KeyboardInterrupt:
-        print('\nstopped: the review is not finished. Run the same command again to carry on.'); srv.shutdown(); return None
+        while finishing.is_set() and not done.is_set(): done.wait(0.2)   # Ctrl+C during Finish: let the record be written
+        if not done.is_set():
+            print('\nstopped: the review is not finished. Run the same command again to carry on.'); srv.shutdown(); return None
+        print('\nCtrl+C came while Finish was being recorded: the review is recorded')
     srv.shutdown()
     return result

@@ -166,14 +166,15 @@ def make(s, setup):
             if p == '/api/ping': return self.send(200, {'app': 'pdfrem', 'root': config.ROOT, 'settings': s['sha']})
             if p == '/api/setup': return self.send(200, setup)
             if p == '/api/jobs':                             # the newest first, up to ?limit= (default 50, at most 500)
-                lim = (q.get('limit') or ['50'])[0]; lim = min(int(lim), 500) if lim.isdigit() and int(lim) > 0 else 50
+                lim = (q.get('limit') or ['50'])[0]                   # isdecimal: '²' is a digit but not a number int() reads
+                lim = min(int(lim), 500) if lim.isdecimal() and len(lim) <= 4 and int(lim) > 0 else 50
                 return self.send(200, [runs.job_view(s, j) for j in reversed(jobs.all_jobs(J)[-lim:])])
             if p.startswith('/api/job/'):
                 jid = p[len('/api/job/'):]
                 job = jobs.load(J, jid) if re.fullmatch(r'[0-9A-Za-z_-]+', jid or '') else None
                 if not job: return self.send(404, {'error': 'no such job'})
                 off = (q.get('from') or ['0'])[0]
-                return self.send(200, runs.job_view(s, job, with_text=True, offset=int(off) if off.isdigit() else 0))
+                return self.send(200, runs.job_view(s, job, with_text=True, offset=int(off) if off.isdecimal() and len(off) <= 12 else 0))
             if p.startswith('/api/run/'):
                 segs = segments(p[len('/api/run/'):])
                 hit = find_run(s['runs'], segs) if segs else None
