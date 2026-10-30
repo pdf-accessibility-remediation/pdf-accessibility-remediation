@@ -102,7 +102,7 @@ const stepWords = j => j.step ? j.step.words + ' (' + j.step.n + ' of ' + j.step
 function jobWords(j) {
   if (j.status === 'queued') return 'Waiting' + (j.position ? ': ' + ordinal(j.position) + ' in line' : '');
   if (j.status === 'running') {
-    if (j.kind === 'review' && !j.past_finish) return j.url ? 'The review page is open' : 'Opening the review page';
+    if (j.kind === 'review' && !j.past_finish) return j.url ? 'Waiting for you: the review page is open' : 'Opening the review page';
     return 'Running' + (j.step ? ': ' + stepWords(j) : '');
   }
   if (j.status === 'done' && j.kind === 'review' && / stays open$/.test(j.outcome || '')) return 'Stopped (the session stays open)';
@@ -189,10 +189,9 @@ function historyBlock(s) {
 
 function render() {
   const s = st, keepFocus = document.activeElement && document.activeElement.id, opened = [...box.querySelectorAll('details[open]')].map(d => d.id);
-  const r = s.ready, ready = r.answer ? r.answer : r.text;
+  // "Ready to ship?" is not repeated here: the report's own card, right below, says it
   let h = setupBlock() + (s.batch ? '<p>Part of batch ' + esc(s.batch) + ': <a href="/batch/' + encodeURIComponent(s.batch) + '/">every book in the batch</a></p>' : '') +
-    '<h3 id="pp-cur" tabindex="-1">Current result: ' + esc(s.current.label) + '</h3>' +
-    '<p><b>Ready to ship?</b> ' + esc(ready) + '</p>' + (r.lines.length ? '<ul>' + r.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '');
+    '<h3 id="pp-cur" tabindex="-1">Current result: ' + esc(s.current.label) + '</h3>';
   if (s.pending) h += '<p>' + esc(sn(s.pending.session)) + ' is ' + esc(s.pending.status) + ' and not applied yet, so "Ready to ship?" says No until it is.</p>';
   if (newResult) h += '<p><b>New result ready:</b> ' + esc(s.current.label) + ' is now the current result; the report below is the earlier one.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the new result</button></div>';

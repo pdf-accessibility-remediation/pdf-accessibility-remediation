@@ -506,3 +506,64 @@ def test_review_again_names_where_it_starts(setup):
     (R / '_intake' / 'intake.pdf').write_bytes(b'%PDF')
     ses(str(R), '001', 'applied'); ses(str(R), '002', 'applied')
     assert runs.start_review(s, 'b/r', str(R), 8760)['what'] == 'Review again from session 2'
+
+# ------------------------------------------------------------------ Patrick's second pass
+def test_a_second_start_refuses_an_app_running_other_code(setup):
+    """A running app with the same settings but other code (started before the code changed) is refused, not opened."""
+    import http.server
+    s = settings(setup)
+    port = json.loads((setup / 'app.json').read_text())['port']
+    class P(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self):
+            b = json.dumps({'app': 'pdfrem', 'root': config.ROOT, 'settings': s['sha'], 'code': 'older'}).encode()
+            self.send_response(200); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(b))); self.end_headers(); self.wfile.write(b)
+    srv = http.server.HTTPServer(('127.0.0.1', port), P); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        env = {k: v for k, v in os.environ.items() if k != 'VERAPDF'}
+        r = subprocess.run([sys.executable, 'app.py', '--config', str(setup / 'app.json'), '--no-browser'], cwd=HERE, env=env, capture_output=True, text=True, timeout=60)
+        assert r.returncode != 0 and 'the running app is older than the code on disk: stop it and start again' in r.stderr
+    finally: srv.shutdown()
+
+def test_the_panel_files_are_read_once_at_start(setup, monkeypatch):
+    s = settings(setup)
+    js = setup / 'panel.js'; js.write_text('/* v1 */')
+    monkeypatch.setitem(W.STATIC, 'panel.js', str(js))
+    srv = W.make(dict(s, port=free_port()), [], code='c0ffee')
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        port = srv.server_address[1]
+        assert get(port, '/app/panel.js')[1] == b'/* v1 */'
+        js.write_text('/* v2, written while the app runs */')
+        assert get(port, '/app/panel.js')[1] == b'/* v1 */'                                  # the pages keep matching the running code
+        assert json.loads(get(port, '/api/ping')[1])['code'] == 'c0ffee'
+    finally: srv.shutdown(); srv.server_close()
+
+def test_code_fingerprint_covers_the_app_code():
+    a = config.code_fingerprint()
+    assert len(a) == 16 and a == config.code_fingerprint()
+    assert set(config.CODE) == {'app.py', 'webapp', 'review'}
+
+def test_panel_and_review_page_details():
+    js, css, page = src('webapp/panel.js'), src('webapp/panel.css'), src('review/page.html')
+    assert "'Waiting for you: the review page is open'" in js and 'Ready to ship?</b>' not in js            # the report's card says it
+    assert '.pp [tabindex="-1"]:focus { outline: none; } .pp [tabindex="-1"]:focus-visible {' in css
+    assert 'html { scroll-padding-top' not in page and 'main [id] { scroll-margin-top: calc(var(--top, 0px) + 8px); }' in page
+
+def test_the_report_review_section(tmp_path):
+    import report_html as H
+    ss = [{'id': '001', 'from': 'ai', 'status': 'applied', 'reviewer': 'Kim', 'date': '2026-10-28', 'carried': 0, 'since_start': 4, 'changes': 2,
+           'counts': {'approved': 5, 'changed': 2, 'rejected': 1, 'accepted_unreviewed': 3}},
+          {'id': '002', 'from': '001', 'status': 'applied', 'reviewer': 'sss', 'date': '2026-10-29', 'carried': 3, 'since_start': 1, 'changes': 2,
+           'counts': {'approved': 9, 'rejected': 0, 'accepted_unreviewed': 2}}]
+    rec = {'review': {'session': '002', 'sessions': ss, 'run': '../runs/b/r', 'decisions': [{'id': 'x', 'kind': 'retype', 'label': 'A', 'page': 2, 'status': 'approved'}]}}
+    out = ''.join(H.review_card(str(tmp_path), rec))
+    assert '<p><strong>Session 2</strong> · sss · 2026-10-29 · 9 approved · 0 rejected · 2 accepted without review</p>' in out
+    assert out.count('<td class="nowrap">2 <strong>(current)</strong></td>') == 1 and '<td>3 from session 1</td>' in out and '<td>none</td>' in out
+    assert '<details class="fold"><summary>Earlier sessions (1)</summary>' in out and '<td class="nowrap">2026-10-28</td>' in out
+    assert out.index('Earlier sessions (1)') < out.index('<td class="nowrap">1</td>')                      # session 1 only inside the fold
+    assert '<details class="fold"><summary>From a terminal</summary>' in out and 'review_workorder.py ../runs/b/r --reopen' in out
+    assert 'accepted unreviewed' not in out and 'carried:' not in out
+    assert H.counts_text({'approved': 1, 'accepted_unreviewed': 2}) == '1 approved, 2 accepted without review'
+    assert 'details.fold summary { cursor: pointer; color: var(--ink); }' in H.CSS and '.strip:focus-visible' in H.CSS
+    assert S.summary_text({'id': '001', 'review': {'counts': {'accepted_unreviewed': 4}, 'changes': []}}).startswith('Session 1 (summary only): 4 accepted without review')

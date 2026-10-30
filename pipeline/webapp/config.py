@@ -71,6 +71,20 @@ def load(config=None, base=HERE, environ=None):
     s['sha'] = fingerprint(s)
     return s
 
+CODE = ('app.py', 'webapp', 'review')                       # what the running app is made of (its pages included)
+
+def code_fingerprint():
+    """The app's code on disk now: sha256 over app.py and every .py/.js/.css/.html file in webapp/ and review/. A running
+    app keeps the one it started with, so a second start can tell that the code changed under it."""
+    h = hashlib.sha256()
+    for c in CODE:
+        p = os.path.join(PIPELINE, c)
+        files = [p] if os.path.isfile(p) else sorted(os.path.join(d, f) for d, _, fs in os.walk(p) for f in fs
+                                                     if f.endswith(('.py', '.js', '.css', '.html')) and '__pycache__' not in d)
+        for f in files:
+            h.update(os.path.relpath(f, PIPELINE).encode() + b'\0' + open(f, 'rb').read() + b'\0')
+    return h.hexdigest()[:16]
+
 def fingerprint(s):
     """Same folders and tools = the same app (the port is left out: --port starts a second server on purpose)."""
     return hashlib.sha256(json.dumps({k: v for k, v in s.items() if k not in ('port', 'sha')}, sort_keys=True).encode()).hexdigest()[:16]

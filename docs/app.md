@@ -67,7 +67,7 @@ On Linux or WSL, Java is usually on PATH already. If it is not, use the folder `
 `http://127.0.0.1:8760/run/<run>/` is the run's `review.html` with a **Run actions** panel at the top. The panel is added when the app serves the page; the file on disk is not changed. Opened as a file, `review.html` is the same report as before, with the command that reopens the review.
 
 The panel shows:
-- **The current result:** which session it comes from, and **Ready to ship?** with its reasons. These come from the record; for an older run, from `review.md`'s Overview; otherwise "not recorded for this run".
+- **The current result:** which session it comes from. "Ready to ship?" is not repeated in the panel: the report's own card, right below, says it.
 - **The buttons:**
 
   | Button | Runs (from `pipeline/`) |
@@ -81,7 +81,7 @@ The panel shows:
   - **"Review again from session N" starts a new session** preloaded with session N's choices. Nothing is rolled back: the current result changes only when that new session is finished and applied, and every earlier result stays in `reviews/versions/`.
   - **A run never pinned** first gets a free re-audit (`--pin`), as a job of its own. The review follows when it succeeds.
   - **The run's original PDF.** When the command needs it (a tagged book never pinned, or a basis whose path no longer holds the file), the app finds it by its sha256 in `samples/` (read only) and passes `--pdf`. If no copy is there, the click is refused, naming the file and its sha256.
-- **While a review page is open:** **Open the review page** and **Stop reviewing (the session stays open)** instead of the buttons. Stop is the terminal's Ctrl+C. It is refused once Finish has been accepted (the review is then being recorded and applied).
+- **While a review page is open:** the job says "Waiting for you: the review page is open" (no spinner: it waits on a person, not the machine), with **Open the review page** and **Stop reviewing (the session stays open)** instead of the buttons. This holds after the app restarts, and after the review tab was closed without Finish: the review page is still running until Stop. Stop is the terminal's Ctrl+C. It is refused once Finish has been accepted (the review is then being recorded and applied).
 - **Jobs for this run:**
   - **Cards** for jobs that are running or waiting, and for failed or interrupted jobs that no later job of the run has succeeded after.
   - **One line** for the last finished job.
@@ -136,7 +136,7 @@ A run made before the dashboards existed (no `review.html`) gets a page with the
 | A job killed or cut off by a restart | **Interrupted**, with what is left (above). |
 | Jobs waiting in line | They stay queued and start in order after the new start. |
 
-**Starting the app twice** opens the one already running when it has the same settings. With other settings it is refused. `--port N` starts a separate app on purpose; both share the jobs folder and its limit.
+**Starting the app twice** opens the one already running when it has the same settings and the same code. With other settings it is refused. When the code on disk has changed since the running app started (after a `git pull`, or a branch switch), it is refused too: "the running app is older than the code on disk: stop it and start again". The running app keeps the panel's files it read at start, so its pages always match the code it runs. `--port N` starts a separate app on purpose; both share the jobs folder and its limit.
 
 ## Accessibility of the panel
 

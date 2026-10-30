@@ -54,7 +54,7 @@ li.need { list-style: none; position: relative; } li.need > .dot { position: abs
 .key { font-size: 13px; color: var(--ink); margin: 4px 0 10px; }
 .tag.ok { color: var(--ok); background: transparent; border-color: var(--ok); }
 .strip { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
-.strip:focus { outline: 3px solid var(--accent); outline-offset: 2px; }
+.strip:focus { outline: none; } .strip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }   /* keyboard only */
 .cell { width: 9px; height: 18px; background: var(--line); border-radius: 2px; }
 .cell.person { background: var(--change); }
 .cell.safety { background: repeating-linear-gradient(45deg, var(--reject) 0 3px, var(--panel) 3px 5px); }
@@ -74,8 +74,9 @@ code { font-size: 13px; background: var(--bg); padding: 0 3px; border-radius: 3p
 .filter { margin: 6px 0; } select, button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
 th button { border: 0; background: none; padding: 0; font-weight: 700; cursor: pointer; text-align: left; }
 .note { color: var(--muted); font-size: 13px; }
-details.fold { margin-top: 6px; font-size: 13px; } details.fold summary { cursor: pointer; color: var(--accent); }
-details.fold.plain summary { color: var(--muted); }          /* all five passed: a plain toggle, still with its arrow */
+details.fold { margin-top: 6px; font-size: 13px; } details.fold summary { cursor: pointer; color: var(--ink); }   /* blue is for links only */
+details.fold.plain summary { color: var(--ink); }            /* all five passed: a plain toggle, still with its arrow */
+td.nowrap { white-space: nowrap; }
 ul.checks { list-style: none; padding-left: 4px; margin: 4px 0 0; }
 h2.inline { display: inline; font-size: 15px; border: 0; margin: 0; padding: 0; }
 .nw { white-space: nowrap; }
@@ -284,9 +285,19 @@ KIND = {'safety': 'Safety', 'ship': 'Ship condition', 'check': 'Automated check'
 
 STATUS_WORDS = {'approved': 'Approved', 'changed': 'Changed', 'rejected': 'Rejected', 'seen': 'Seen (deferrals and notes)',
                 'accepted_unreviewed': 'Accepted without review'}
+COUNT_WORDS = {'approved': 'approved', 'changed': 'changed', 'rejected': 'rejected', 'seen': 'seen', 'accepted_unreviewed': 'accepted without review'}
+
+def counts_text(c, sep=', '):
+    """A review's counts in words, the same wording everywhere on the page: "12 approved, 70 accepted without review"."""
+    return sep.join(f'{v} {COUNT_WORDS.get(k, k.replace("_", " "))}' for k, v in (c or {}).items() if v)
+
+SESSION_TABLE = ('<div class="tw" tabindex="0"><table><caption class="vh">{cap}</caption><thead><tr><th scope="col">Session</th><th scope="col">From</th>'
+                 '<th scope="col">Reviewer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Carried</th>'
+                 '<th scope="col">Changed in the session</th><th scope="col">Changes from the AI</th><th scope="col">Choices</th></tr></thead><tbody>{rows}</tbody></table></div>')
 
 def review_card(R, rec):
-    """The "Review" section: the sessions, each decision's review status, and the command that reopens the review."""
+    """The "Review" section: one line for the current session, its row (earlier sessions folded), each decision's review
+    status, and the command that reopens the review (folded)."""
     rv = rec.get('review') or {}; wo = rec.get('workorder') or {}
     run = rv.get('run') or os.path.relpath(R, HERE)
     B = ['<section class="card-review" aria-labelledby="rev-h"><h2 id="rev-h">Review of the AI\'s decisions</h2>']
@@ -300,19 +311,25 @@ def review_card(R, rec):
         def frm(x):
             f = x.get('from')
             return 'the AI\'s decisions' if f in ('ai', None) else 'the recorded summary' if f == 'summary' else f'session {int(f)}'
-        rows = []
-        for x in ss:
+        def row(x):
             c = x.get('counts') or {}
             what = ('summary only: ' if x.get('summary_only') and not x.get('inferred') else 'inferred from the summary: ' if x.get('inferred') else '') + \
-                (', '.join(f'{v} {k.replace("_", " ")}' for k, v in c.items() if v) or 'no counts recorded')
-            carried = (f'carried: {x["carried"]} from {frm(x)}' if x.get('carried') else '') + (f' · not carried: {x["not_carried"]}' if x.get('not_carried') else '')
+                (counts_text(c) or 'no counts recorded')
+            carried = (f'{x["carried"]} from {frm(x)}' if x.get('carried') else 'none') + (f' · not carried: {x["not_carried"]}' if x.get('not_carried') else '')
             mark = ' <strong>(current)</strong>' if x['id'] == cur else ''
-            rows.append(f'<tr><td>{int(x["id"])}{mark}</td><td>{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td>{E(x.get("date") or "")}</td>'
-                        f'<td>{E(x.get("status") or "")}</td><td>{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td></tr>')
-        B.append('<div class="tw" tabindex="0"><table><caption class="vh">Review sessions</caption><thead><tr><th scope="col">Session</th><th scope="col">From</th>'
-                 '<th scope="col">Reviewer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Carried</th>'
-                 '<th scope="col">Changed in the session</th><th scope="col">Changes from the AI</th><th scope="col">Choices</th></tr></thead><tbody>'
-                 + ''.join(rows) + '</tbody></table></div>')
+            return (f'<tr><td class="nowrap">{int(x["id"])}{mark}</td><td>{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(x.get("date") or "")}</td>'
+                    f'<td>{E(x.get("status") or "")}</td><td>{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td></tr>')
+        now = [x for x in ss if x['id'] == cur]; earlier = [x for x in ss if x['id'] != cur]
+        if now:
+            x = now[0]; c = x.get('counts') or {}
+            parts = [f'{c.get("approved") or 0} approved'] + ([f'{c["changed"]} changed'] if c.get('changed') else []) + \
+                    [f'{c.get("rejected") or 0} rejected', f'{c.get("accepted_unreviewed") or 0} accepted without review']
+            B.append(f'<p><strong>Session {int(x["id"])}</strong> · {E(x.get("reviewer") or "reviewer not recorded")} · '
+                     f'{E(x.get("date") or "date not recorded")} · ' + ' · '.join(parts) + '</p>')
+            B.append(SESSION_TABLE.format(cap='The current review session', rows=row(x)))
+        if earlier:
+            B.append(f'<details class="fold"><summary>Earlier sessions ({len(earlier)})</summary>'
+                     + SESSION_TABLE.format(cap='Earlier review sessions', rows=''.join(row(x) for x in earlier)) + '</details>')
     ds = rv.get('decisions')
     if ds:
         by = {}
@@ -328,16 +345,17 @@ def review_card(R, rec):
                      f'<tbody>{trs}</tbody></table></div></details>')
     elif rv.get('workorder'):
         c = rv['workorder'].get('counts') or {}
-        B.append('<p>Per-decision choices were not recorded for this review (' + E(', '.join(f'{v} {k.replace("_", " ")}' for k, v in c.items() if v) or 'no counts') + ').</p>')
+        B.append('<p>Per-decision choices were not recorded for this review (' + E(counts_text(c) or 'no counts') + ').</p>')
     else:
         kinds = {k: G.n_decisions({k: v}) for k, v in wo.items() if k not in G.META}
         kinds = {k: c for k, c in kinds.items() if c}; n = G.n_decisions(wo)
         B.append(f'<p>{n:,} decisions, all applied without review by a person: ' + E(', '.join(f'{v} {k.replace("_", " ")}' for k, v in kinds.items())) + '.</p>')
-    B.append('<p>' + ('To review again' if ss or rv.get('workorder') else 'To review them') + ', from <code>pipeline/</code> (venv active):</p>'
+    B.append('<details class="fold"><summary>From a terminal</summary>'
+             '<p>' + ('To review again' if ss or rv.get('workorder') else 'To review them') + ', from <code>pipeline/</code> (venv active):</p>'
              f'<pre><code>python3 review_workorder.py {E(run)} --reopen</code></pre>'
              '<p class="note">The review page opens at <code>http://localhost:8765/</code> while that command runs, with the earlier choices preloaded; '
              'Finish re-applies the reviewed order (no AI call) and this page is rebuilt. <code>--sessions</code> lists every session; '
-             '<code>--from 001</code> starts from an earlier one.</p></section>')
+             '<code>--from 001</code> starts from an earlier one.</p></details></section>')
     return B
 
 def review_html(R, rec=None, md=None, labels=None, banner=None):
@@ -387,7 +405,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
          + ' · '.join(E(x) for x in [f'run {"/".join(os.path.normpath((rec.get("review") or {}).get("run") or R).split(os.sep)[-2:])}', f'{doc.get("pages") or "pages not counted"} pages',
                                       f'model {run.get("model") or "not recorded"}', f'prompt {run.get("prompt_file") or "not recorded"}',
                                       f'cost ${rec.get("cost_total_usd"):.3f}' if rec.get('cost_total_usd') is not None else 'cost: call did not finish',
-                                      f'run {run.get("started") or "start time not recorded"}'])
+                                      f'run {(run.get("started") or "").replace("T", " ") or "start time not recorded"}'])
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main">']
     # ---- ready to ship
     B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to ship? {"Yes" if g["ready"] else "No"}</h2><ul>'

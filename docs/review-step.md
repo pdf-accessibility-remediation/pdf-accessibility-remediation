@@ -121,7 +121,12 @@ Each gap in the Save message has an **Add** link that opens the form at the righ
 - `record.json` also keeps the AI's version as `workorder_ai`. `workorder` is what was applied, and carries `reviewed_by`. `review.session` is the session this result comes from, `review.sessions` one line per session (who, when, from where, status, counts, how many choices were carried and from where, how many changed in the session), and `review.decisions` one line per decision (its review status, the session that set it, `inferred`, its note), which `review.html` shows.
 - `reviews/sessions/NNN.json`: each session in full: every choice with the AI value it was judged against and the session that set it, additions, what changed since the session's start, the review as `review.json` had it, and the OCR verdict at Finish; `NNN.workorder.json` is the order it applied. `reviews/basis.json` holds the run id (the page's browser-draft key), the input PDF's path and sha256, the digest's fingerprint and the AI order's sha256.
 - `review.md` gets a row in the automated checks ("Work order reviewed by a person before it was applied"). The row is a CHECK when decisions were accepted without review, an edit was dropped, or a gap was left open without a reason (a hand edit with no `--note`). It also gets a section listing each change (AI → person), each open gap with its reason, and which session the result comes from.
-- `review.html` has a "Review of the AI's decisions" section: the session table (the current one marked), each decision's status (approved, changed, rejected, seen, accepted without review; "(inferred)" for a summary-only session's rebuilt choices) with the session that set it, and the command that reopens the review. A run never reviewed shows its decision count by kind, all applied without review.
+- `review.html` has a "Review of the AI's decisions" section. A run never reviewed shows its decision count by kind, all applied without review. A reviewed run shows:
+  - one line for the current session: who, when, and how many decisions were approved, changed, rejected and accepted without review;
+  - its row of the session table, with earlier sessions folded under **Earlier sessions (N)**;
+  - each decision's status (approved, changed, rejected, seen, accepted without review; "(inferred)" for a summary-only session's rebuilt choices), with the session that set it;
+  - the command that reopens the review, folded under **From a terminal**.
+  Reports written before 2026-10-29 keep the earlier layout until their next apply.
 
 ## Sign-off: when a book is ready to ship
 
