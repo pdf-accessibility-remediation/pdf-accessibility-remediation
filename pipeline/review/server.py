@@ -23,6 +23,13 @@ from . import core
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'page.html')
 SERVED = ('figures', 'ocr_words')                     # folders under _audit/ whose files the page shows
 
+def local_request(handler, port):
+    """The request names this server as its host (no DNS rebinding) and, if it says where it comes from, the page.
+    Shared with the app (webapp/server.py)."""
+    hosts = {f'localhost:{port}', f'127.0.0.1:{port}'}
+    origin = handler.headers.get('Origin')
+    return handler.headers.get('Host') in hosts and (origin is None or origin in {f'http://{h}' for h in hosts})
+
 def serve(R, date, port=8765, open_browser=True, files=None):
     """files: {url: path} served as they are, beside the review's own (review_workorder.py --reopen: the current result)."""
     R = os.path.abspath(R)
@@ -78,12 +85,7 @@ def serve(R, date, port=8765, open_browser=True, files=None):
             self.send_response(code); self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(len(b)))
             self.send_header('Cache-Control', 'no-store'); self.end_headers(); self.wfile.write(b)
 
-        def ours(self):
-            """The request names this server as its host (no DNS rebinding) and, if it says where it comes from, the page."""
-            port = self.server.server_address[1]
-            hosts = {f'localhost:{port}', f'127.0.0.1:{port}'}
-            origin = self.headers.get('Origin')
-            return self.headers.get('Host') in hosts and (origin is None or origin in {f'http://{h}' for h in hosts})
+        def ours(self): return local_request(self, self.server.server_address[1])
 
         def do_GET(self):
             if not self.ours(): return self.send(403, {'error': 'open the page at the address the terminal printed'})
