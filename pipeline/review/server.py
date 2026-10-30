@@ -11,7 +11,9 @@ Routes (all call review/core.py; a later front end can replace this file and pag
     POST /save    {reviewer, decisions, additions, saved_at}  → saved to review_decisions.json; returns what the check
                                  would drop, additions refused, and gaps (no H1, figures without alt)
     POST /finish  {…, accept_unreviewed, gaps_ack}            → review.json and the reviewed workorder.json; the server stops.
-                                 409 while items are unreviewed or a gap has no reason, unless the body accepts them
+                                 Not finished yet, but nothing wrong: 200 with needs: "unreviewed" (and the list) while
+                                 items are unreviewed, or needs: "gaps" while a gap has no reason, unless the body accepts
+                                 them (a normal step of the flow, so not an HTTP error the browser logs)
 
 Requests must come from the page itself: the Host must be this server's, and a POST must be JSON from the same origin,
 so another web page open in the browser cannot submit a review (a plain form or a no-cors fetch cannot send JSON). Every
@@ -142,13 +144,13 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
                 keep()
                 left = core.unreviewed(items, decisions)
                 if left and not body.get('accept_unreviewed'):
-                    return self.send(409, {'error': f'{len(left)} items are not reviewed yet.', 'unreviewed': left})
+                    return self.send(200, {'finished': False, 'needs': 'unreviewed', 'error': f'{len(left)} items are not reviewed yet.', 'unreviewed': left})
                 wo, refused = build()
                 if refused: return self.send(400, {'error': 'Some of your additions cannot be applied: '
                                                    + '; '.join(f'{r["id"]}: {r["why"]}' for r in refused), 'refused': refused})
                 ack = body.get('gaps_ack') if isinstance(body.get('gaps_ack'), dict) else {}
                 gaps = [g for g in core.preview(R, wo)[1] if not str(ack.get(g['id']) or '').strip()]
-                if gaps: return self.send(409, {'error': f'{len(gaps)} gaps are open.', 'gaps': gaps})
+                if gaps: return self.send(200, {'finished': False, 'needs': 'gaps', 'error': f'{len(gaps)} gaps are open.', 'gaps': gaps})
                 finishing.set(); ok = False                  # Ctrl+C now waits until the review is recorded (or refused)
                 try:
                     try: v = core.finish(R, ai, wo, reviewer, date, 'page', decisions=decisions, items=items, additions=additions, gaps_ack=ack)

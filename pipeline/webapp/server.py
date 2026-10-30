@@ -126,7 +126,8 @@ def md_page(text, run, sid, base):
             f'<title>review.md: {html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
             f'</head><body class="pp-page">\n{SKIP}<header><h1>review.md of {html.escape(run)}: {which}</h1></header>'
             f'<nav class="pp-wrap" aria-label="Pages of this run"><p class="pp pp-bar">' + ' · '.join(links) + '</p></nav>'
-            f'<main id="main"><pre class="pp-md">{html.escape(text)}</pre></main></body></html>')
+            f'<main id="main" tabindex="-1"><pre class="pp-md">{html.escape(text)}</pre></main>'
+            f'<script src="/app/panel.js" defer></script></body></html>')                 # panel.js: in-page links move focus
 
 def make(s, setup, code=None):
     """The server, bound to 127.0.0.1:port (no fallback: a busy port is an error the caller reports). The panel's files are
@@ -272,7 +273,7 @@ def no_dashboard(run, R, current=None):
     md = '<p><a href="review.md">review.md</a>: what a person should check.</p>' if os.path.isfile(os.path.join(R, 'review.md')) else ''
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
                       f'<title>{html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
-                      f'<header><h1>{html.escape(run)}</h1></header><main id="main">'
+                      f'<header><h1>{html.escape(run)}</h1></header><main id="main" tabindex="-1">'
                       f'<p>This run has no dashboard (review.html): it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current)
 
 def home_stub(s):

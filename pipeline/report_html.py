@@ -404,7 +404,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
                                       f'model {run.get("model") or "not recorded"}', f'prompt {run.get("prompt_file") or "not recorded"}',
                                       f'cost ${rec.get("cost_total_usd"):.3f}' if rec.get('cost_total_usd') is not None else 'cost: call did not finish',
                                       f'run {(run.get("started") or "").replace("T", " ") or "start time not recorded"}'])
-         + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main">']
+         + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus
     # ---- ready to ship
     B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? {"Yes" if g["ready"] else "No"}</h2><ul>'
              + ''.join(f'<li>{E(s["what"])}: <strong>{E(s["text"])}</strong></li>' for s in g['ship']) + '</ul>')
@@ -677,7 +677,7 @@ def summary_html(Bdir):
     mx = max([1] + [r['needs'] for r in rows if r['done']])
     label = os.path.basename(os.path.normpath(Bdir))
     B = [f'<header class="top"><h1>Batch {E(label)}</h1><div class="meta">{len(rows)} books · <a href="summary.md">summary.md</a> (cost, time and model per book)'
-         ' · each book name opens its dashboard</div></header><main id="main">',
+         ' · each book name opens its dashboard</div></header><main id="main" tabindex="-1">',
          f'<p><strong>Ready to ship:</strong> {sum(1 for r in rows if r.get("ready"))} of {len(rows)} · '
          f'<strong>Needs a person:</strong> {sum(r.get("needs") or 0 for r in rows):,} items · '
          f'<strong>Safety checks failed:</strong> {sum(1 for r in rows if r["done"] and not r["safety"])} books</p>',

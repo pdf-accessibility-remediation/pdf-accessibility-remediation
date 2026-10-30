@@ -51,13 +51,27 @@ function confirmDlg(title, text, yes, opener) {
 // style. An empty text hides it.
 function showMsg(m, text, ok, focus) {
   m.hidden = !text; m.classList.toggle('pp-okmsg', !!ok);
-  m.innerHTML = text ? '<span class="pp-msg-t">' + esc(text) + '</span><button type="button" class="pp-x" data-act="dismiss" aria-label="Dismiss message">×</button>' : '';
+  m.innerHTML = text ? '<span class="pp-msg-t">' + esc(text) + '</span><button type="button" class="pp-x" data-act="dismiss" aria-label="Dismiss message">' +
+                       '<span aria-hidden="true">×</span></button>' : '';    // the glyph hidden: VoiceOver read it as "times"
   if (text && focus) m.focus();
 }
 function abandonText(open, from) {
   return cap(sn(open.id)) + ' is open (started ' + (open.started || '').replace('T', ' ') + '). Starting from ' +
          (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; it is kept in reviews/sessions/' + open.id + '.json.';
 }
+
+// ================================================================ in-page links
+// A link to "#…" moves focus to its target (tabindex="-1", no outline), so a screen reader's cursor follows, as the page map
+// does. review.html's own script already does this for its links and stops the event (defaultPrevented); this covers the
+// app's own pages (the review.md page, the no-dashboard page) and any link it leaves.
+document.addEventListener('click', e => {
+  if (e.defaultPrevented || e.button) return;
+  const a = e.target.closest && e.target.closest('a[href^="#"]'); if (!a || a.getAttribute('href').length < 2) return;
+  const t = document.getElementById(decodeURIComponent(a.getAttribute('href').slice(1))); if (!t) return;
+  e.preventDefault();
+  if (!t.hasAttribute('tabindex')) t.setAttribute('tabindex', '-1');
+  t.scrollIntoView(); t.focus({ preventScroll: true }); history.replaceState(null, '', '#' + t.id);
+});
 
 // ================================================================ a previous result: the bar
 const vbox = $('pdfrem-version');
