@@ -1,7 +1,7 @@
 /* The run page's panel (webapp/panel.js), added to review.html when the app serves it. Colours are review.html's own
    (review/palette.css): text on panel and the accent meet 4.5:1 in both themes; status is always said in words too. */
 .pp-page { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-.pp-page main { padding: 0 16px 24px; max-width: 1100px; }
+.pp-page main { padding: 0 16px 24px; max-width: 1100px; } .pp-page header { padding: 4px 16px 0; }
 .pp-page a { color: var(--accent); }
 .pp-page .skip { position: absolute; left: -999px; } .pp-page .skip:focus { left: 8px; top: 8px; background: var(--panel); padding: 4px 8px; z-index: 9; }
 .pp { margin: 12px 16px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink);

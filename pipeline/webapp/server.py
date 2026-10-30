@@ -18,14 +18,19 @@ POST (JSON from the app's own pages only), each answered 202 {job} or 409 {error
     /api/run/<run>/stop        Stop reviewing: Ctrl+C to the open review page, only before Finish
 Reserved for later pages (not built): /run/<run>/ocr, /run/<run>/release, /run/<run>/screen-reader.
 
+Every response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none'), so another site cannot show a run
+page in a frame and trick a click. HTML pages also get script-src 'self' plus the sha256 of the page's one inline script,
+computed when it is served, so a javascript: link or any other script in a report's text never runs.
+
 A run is named by its path under the runs folder (godzone/rv1, batches/d1/clans): the shortest prefix of the request
 path that is a folder holding record.json. Every segment is checked (no empty, ".", "..", dot-names or backslashes),
 the folder and every file are resolved with realpath and must stay inside the runs folder, and a file is served only
 when its name is in the run's list. Nothing outside the runs folder is ever served (.env, samples/, pipeline/).
 """
-import os, re, json, html, traceback, urllib.parse, datetime
+import os, re, json, html, base64, hashlib, traceback, urllib.parse, datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from review.server import local_request
+from review import sessions as S
 from . import config, jobs, runs
 
 FILES = ('review.html', 'review.md', 'han_review.csv')
@@ -65,13 +70,27 @@ STATIC = {'panel.js': os.path.join(config.HERE, 'panel.js'), 'panel.css': os.pat
           'palette.css': os.path.join(config.PIPELINE, 'review', 'palette.css')}
 SKIP = '<a class="skip" href="#main">Skip to the content</a>'
 
-def with_panel(page, run):
-    """review.html as served: the panel's stylesheet, its place (after the skip link) and its script added. The file on disk
-    is never changed; opened as a file it is the plain report."""
-    box = f'\n<div id="pdfrem-panel" data-run="{html.escape(run)}"></div>\n'
+FRAME = {'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'"}   # every response: never in a frame
+SCRIPT = re.compile(r'<script(\s[^>]*)?>(.*?)</script>', re.S | re.I)
+
+def csp(page):
+    """An HTML page's policy: no framing, and scripts only from the app itself plus the page's one inline script by its
+    sha256 (review.html and summary.html have exactly one; a JSON data block is not a script). A page with any other
+    count of inline scripts gets none allowed. A javascript: link in the report's text never runs."""
+    inline = [body for attrs, body in SCRIPT.findall(page)
+              if 'src=' not in (attrs or '').lower() and not re.search(r'type\s*=\s*["\']?application/(ld\+)?json', attrs or '', re.I)]
+    h = f" 'sha256-{base64.b64encode(hashlib.sha256(inline[0].encode('utf-8')).digest()).decode()}'" if len(inline) == 1 else ''
+    return f"frame-ancestors 'none'; script-src 'self'{h}"
+
+def with_panel(page, run, current=None):
+    """review.html as served: the panel's stylesheet, its place (after the page's header, so its h2 follows the page's h1;
+    else after the skip link) and its script added. `current`: the session whose result the page shows, so the panel can
+    tell when an apply has made a newer one. The file on disk is never changed; opened as a file it is the plain report."""
+    box = f'\n<div id="pdfrem-panel" data-run="{html.escape(run)}"' + (f' data-current="{html.escape(str(current))}"' if current else '') + '></div>\n'
     head = '<link rel="stylesheet" href="/app/panel.css">\n'
     i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
-    if SKIP in page: page = page.replace(SKIP, SKIP + box, 1)
+    if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
+    elif SKIP in page: page = page.replace(SKIP, SKIP + box, 1)
     else:
         m = re.search(r'<body[^>]*>', page); page = page[:m.end()] + box + page[m.end():] if m else box + page
     i = page.rfind('</body>'); js = '<script src="/app/panel.js" defer></script>\n'
@@ -83,17 +102,20 @@ def make(s, setup):
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
+        def headers_(self, ctype, length, policy=None):
+            self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(length))
+            self.send_header('Cache-Control', 'no-store'); self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('X-Frame-Options', FRAME['X-Frame-Options'])
+            self.send_header('Content-Security-Policy', policy or FRAME['Content-Security-Policy'])
         def send(self, code, body, ctype='application/json; charset=utf-8', extra=None):
             b = body if isinstance(body, bytes) else (body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)).encode('utf-8')
-            self.send_response(code); self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(len(b)))
-            self.send_header('Cache-Control', 'no-store'); self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_response(code); self.headers_(ctype, len(b), csp(b.decode('utf-8', 'replace')) if ctype.startswith('text/html') else None)
             for k, v in (extra or {}).items(): self.send_header(k, v)
             self.end_headers(); self.wfile.write(b)
         def file(self, p):
             ctype = TYPES.get(os.path.splitext(p)[1].lower(), 'application/octet-stream')
-            size = os.path.getsize(p)
-            self.send_response(200); self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(size))
-            self.send_header('Cache-Control', 'no-store'); self.send_header('X-Content-Type-Options', 'nosniff'); self.end_headers()
+            policy = csp(open(p, encoding='utf-8', errors='replace').read()) if ctype.startswith('text/html') else None
+            self.send_response(200); self.headers_(ctype, os.path.getsize(p), policy); self.end_headers()
             with open(p, 'rb') as f:
                 for b in iter(lambda: f.read(1 << 20), b''): self.wfile.write(b)
         def redirect(self, to): self.send(302, b'', 'text/plain', {'Location': to})
@@ -143,7 +165,9 @@ def make(s, setup):
             p = url.path
             if p == '/api/ping': return self.send(200, {'app': 'pdfrem', 'root': config.ROOT, 'settings': s['sha']})
             if p == '/api/setup': return self.send(200, setup)
-            if p == '/api/jobs': return self.send(200, [runs.job_view(s, j) for j in jobs.all_jobs(J)])
+            if p == '/api/jobs':                             # the newest first, up to ?limit= (default 50, at most 500)
+                lim = (q.get('limit') or ['50'])[0]; lim = min(int(lim), 500) if lim.isdigit() and int(lim) > 0 else 50
+                return self.send(200, [runs.job_view(s, j) for j in reversed(jobs.all_jobs(J)[-lim:])])
             if p.startswith('/api/job/'):
                 jid = p[len('/api/job/'):]
                 job = jobs.load(J, jid) if re.fullmatch(r'[0-9A-Za-z_-]+', jid or '') else None
@@ -192,19 +216,20 @@ def make(s, setup):
 
         def run_page(self, run, R):
             f = os.path.join(R, 'review.html')
-            if os.path.isfile(f): return self.send(200, with_panel(open(f, encoding='utf-8', errors='replace').read(), run), 'text/html; charset=utf-8')
-            return self.send(200, no_dashboard(run, R), 'text/html; charset=utf-8')
+            cur = S.current_id(runs.load(os.path.join(R, 'record.json')) or {})
+            if os.path.isfile(f): return self.send(200, with_panel(open(f, encoding='utf-8', errors='replace').read(), run, cur), 'text/html; charset=utf-8')
+            return self.send(200, no_dashboard(run, R, cur), 'text/html; charset=utf-8')
 
     return ThreadingHTTPServer(('127.0.0.1', s['port']), H)
 
-def no_dashboard(run, R):
+def no_dashboard(run, R, current=None):
     """A run with no review.html (older runs): the panel, the review.md link and a line saying there is no dashboard.
     No rebuild: report_html.py would write into the run."""
     md = '<p><a href="review.md">review.md</a>: what a person should check.</p>' if os.path.isfile(os.path.join(R, 'review.md')) else ''
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
                       f'<title>{html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
-                      f'<main id="main"><h1>{html.escape(run)}</h1>'
-                      f'<p>This run has no dashboard (review.html): it was made before the dashboards, or without one.</p>{md}</main></body></html>', run)
+                      f'<header><h1>{html.escape(run)}</h1></header><main id="main">'
+                      f'<p>This run has no dashboard (review.html): it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current)
 
 def home_stub(s):
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>PDF remediation</title></head><body><main>'

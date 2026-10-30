@@ -75,7 +75,7 @@ The panel shows:
   | **Review again** (from the latest finished session; **Continue review** when a session is open) | `review_workorder.py <run> --reopen` |
   | **Start over from the AI's decisions** | `… --reopen --from ai` |
   | **Review again from session N** (in **Session history**) | `… --reopen --from N` |
-  | **Apply session N** (only while a finished session is not applied) | `… --apply` |
+  | **Apply session N** (only while the newest session is finished and not applied) | `… --apply` |
 
   - **Starting over or going back with a session open** asks first. The dialog names the open session and the file it is kept in. OK adds `--discard-open`: the open session is marked abandoned, never deleted.
   - **"Review again from session N" starts a new session** preloaded with session N's choices. Nothing is rolled back: the current result changes only when that new session is finished and applied, and every earlier result stays in `reviews/versions/`.
@@ -88,7 +88,9 @@ The panel shows:
 
 A run made before the dashboards existed (no `review.html`) gets a page with the panel, the `review.md` link and a line saying it has no dashboard. There is no rebuild button: rebuilding would write into the run.
 
-**The flow:** **Review again** → the review page opens by itself → **Finish review** → the run page, showing apply, verify and report with their times → when they end, the page loads the new result. The review page also has **Back to the run page**, which leaves the review open.
+**The flow:** **Review again** → the review page opens by itself → **Finish review** → the run page, showing apply, verify and report with their times → when they end, "New result ready" and a **Show the new result** button, which loads it. The page never reloads by itself. The review page also has **Back to the run page**, which leaves the review open.
+
+**Apply is offered only for the newest session.** A session whose apply failed stays finished. If a later session is then reviewed and applied, the earlier one is never offered again: applying it would replace the newer result with older decisions.
 
 ## Jobs and the queue
 
@@ -128,12 +130,21 @@ The panel follows WCAG 2.1 AA, the project's standard:
 - **Keyboard:** every action is a real button or link, works by keyboard, and shows a visible focus.
 - **Status:** always said in words, never by colour alone. A failed job's card says "Failed".
 - **Announcements:** one polite live region, and only for a step change, a job's start, "the review page is ready", and a job's end. It never reads out log lines.
-- **Focus:** it moves only after your own action. After a click it goes to the new job's heading, or to the refusal message. After Finish it goes to the apply's heading on the run page, then to "Current result" on the new result. When a job ends in the background it is announced, and focus stays where it is.
-- **Going on by itself:** the page goes on by itself (to the review page, or to the new result) only while you have not pressed a key or clicked since starting it. Otherwise it says the page is ready and shows a button.
+- **Focus:** it moves only after your own action. After a click it goes to the new job's heading, or to the refusal message. After Finish it goes to the apply's heading on the run page; after **Show the new result**, to "Current result". When a job ends in the background it is announced ("New result ready" when an apply has made one), and focus stays where it is.
+- **Going on by itself:** only one thing does, the review page after your own **Review again**, and only within 30 seconds of the click while you have not pressed a key or clicked since. Otherwise it says the page is ready and shows **Open the review page**. A new result never replaces the page you are reading.
+- **Status words:** a review closed with **Stop reviewing** says "Stopped (the session stays open)".
+- **The panel's place:** it comes after the report's own heading and before its content, so the page's h1 comes first.
+
+## Security
+
+- **Only `127.0.0.1`.** No logins, no access from other computers. The settings keep the host and the folders in one place for a shared machine later.
+- **Only the app's own pages can act:** every request must name the app as its host, and every button's request must be JSON from the app's own pages.
+- **No framing:** every response of the app, and of the review page, says it may not be shown inside another page (`X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`). So another site cannot frame a run page and trick a click on a button.
+- **Scripts:** a run page (and any report page the app serves) runs only the app's own panel script and the page's one inline script, identified by its sha256 when it is served. A `javascript:` link in a report's text, or any other script, does not run. review.html on disk is unchanged; opened as a file it has no such policy, and no buttons.
+- **Files:** only the files the run's pages need are served, and nothing outside the runs folder (never `.env`).
 
 ## Limits
 
-- **Only `127.0.0.1`.** No logins, no access from other computers. The settings keep the host and the folders in one place for a shared machine later.
 - **The review page is still review/server.py,** on its own port. The app starts it and sends the browser there.
 - **The lock does not cover `--pin` or `run_api.sh`.** The app checks its own jobs, but a pin or a run started in a terminal on the same run at the same time is not stopped.
 - **Planned pages** have reserved addresses but are not built: `/run/<run>/ocr` (approving OCR text), `/run/<run>/release` (the release sign-off) and `/run/<run>/screen-reader` (the after-ship check).

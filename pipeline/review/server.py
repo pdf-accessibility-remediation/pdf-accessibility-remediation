@@ -14,7 +14,9 @@ Routes (all call review/core.py; a later front end can replace this file and pag
                                  409 while items are unreviewed or a gap has no reason, unless the body accepts them
 
 Requests must come from the page itself: the Host must be this server's, and a POST must be JSON from the same origin,
-so another web page open in the browser cannot submit a review (a plain form or a no-cors fetch cannot send JSON).
+so another web page open in the browser cannot submit a review (a plain form or a no-cors fetch cannot send JSON). Every
+response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none'), so another page cannot show this one in a
+frame and trick a click on Finish.
 """
 import os, json, datetime, threading, webbrowser, mimetypes, urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -93,7 +95,9 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
         def send(self, code, body, ctype='application/json; charset=utf-8'):
             b = body if isinstance(body, bytes) else (body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)).encode('utf-8')
             self.send_response(code); self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(len(b)))
-            self.send_header('Cache-Control', 'no-store'); self.end_headers(); self.wfile.write(b)
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Frame-Options', 'DENY'); self.send_header('Content-Security-Policy', "frame-ancestors 'none'")   # never inside another page's frame
+            self.end_headers(); self.wfile.write(b)
 
         def ours(self): return local_request(self, self.server.server_address[1])
 

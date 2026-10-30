@@ -215,7 +215,7 @@ def post(port, path, body=None, origin=None):
 def test_the_run_page_has_the_panel_and_the_file_is_unchanged(app):
     disk = (app['R'] / 'review.html').read_text(); before = sha(app['R'] / 'review.html')
     st, b, _ = get(app['port'], '/run/book/r1/'); page = b.decode()
-    assert st == 200 and '<div id="pdfrem-panel" data-run="book/r1">' in page and '<script src="/app/panel.js" defer>' in page
+    assert st == 200 and '<div id="pdfrem-panel" data-run="book/r1" data-current="ai">' in page and '<script src="/app/panel.js" defer>' in page
     assert '<link rel="stylesheet" href="/app/panel.css">' in page and '<title>r1</title>' in page and 'review.md</a>' in page
     assert sha(app['R'] / 'review.html') == before and 'pdfrem-panel' not in disk
     for f in ('panel.js', 'panel.css', 'palette.css'): assert get(app['port'], '/app/' + f)[0] == 200
@@ -272,3 +272,93 @@ def test_stop_only_before_finish(app):
     (R / 'reviews' / 'review.json').unlink()
     st, b = post(port, '/api/run/book/r1/stop')
     assert st == 200 and wait(lambda: jobs.load(s['jobs'], j['id'])['status'] == 'failed')
+
+# ------------------------------------------------------------------ review 05
+def ses(R, sid, status, **kw):
+    os.makedirs(os.path.join(R, 'reviews', 'sessions'), exist_ok=True)
+    json.dump({'id': sid, 'status': status, **kw}, open(os.path.join(R, 'reviews', 'sessions', f'{sid}.json'), 'w'))
+
+def test_apply_is_offered_only_for_the_newest_session(app):
+    port, R = app['port'], str(app['R'])
+    ses(R, '001', 'applied'); ses(R, '002', 'finished', finished='2026-10-29T10:00:00')
+    assert json.loads(get(port, '/api/run/book/r1')[1])['unapplied']['id'] == '002'               # the newest: offered
+    ses(R, '003', 'applied', applied='2026-10-29T11:00:00')                                       # 002's apply failed, 003 replaced it
+    d = json.loads(get(port, '/api/run/book/r1')[1])
+    assert d['unapplied'] is None and d['latest']['id'] == '003'
+    st, b = post(port, '/api/run/book/r1/apply')
+    assert st == 409 and b['error'] == 'session 2 was replaced by session 3: Apply is offered only for the newest session'
+    ses(R, '004', 'open')                                                                          # an open session changes nothing
+    assert runs.unapplied(S.sessions(R)) is None
+    assert runs.after_interrupt(R, {'kind': 'apply', 'started': '2026-10-29T12:00:00'})['state'] != 'apply'
+
+INLINE = 'document.title = "x";'
+PAGE = (f'<!doctype html><html><head><title>r1</title></head><body><a class="skip" href="#main">Skip to the content</a>\n'
+        f'<header class="top"><h1>Review: book.pdf</h1></header><main id="main"><a href="javascript:alert(1)">x</a>'
+        f'<script type="application/json" id="mentions">{{"1": []}}</script></main>\n<script>{INLINE}</script>\n</body></html>\n')
+
+def test_csp_hashes_the_one_inline_script():
+    import base64, hashlib
+    h = base64.b64encode(hashlib.sha256(INLINE.encode()).digest()).decode()
+    assert W.csp(PAGE) == f"frame-ancestors 'none'; script-src 'self' 'sha256-{h}'"
+    assert W.csp(PAGE.replace('</main>', f'<script>{INLINE}</script></main>')) == "frame-ancestors 'none'; script-src 'self'"   # two: none allowed
+    assert W.csp('<p>no script</p><script src="/app/panel.js"></script>') == "frame-ancestors 'none'; script-src 'self'"
+
+def test_every_response_refuses_framing_and_run_pages_get_the_script_policy(app):
+    import base64, hashlib
+    (app['R'] / 'review.html').write_text(PAGE)
+    h = base64.b64encode(hashlib.sha256(INLINE.encode()).digest()).decode()
+    for path, method in (('/run/book/r1/', 'GET'), ('/run/book/r1/review.html', 'GET'), ('/run/book/r1/review.md', 'GET'), ('/app/panel.js', 'GET'),
+                         ('/batch/b1/', 'GET'), ('/api/ping', 'GET'), ('/api/run/book/r1', 'GET'), ('/run/nope/', 'GET'), ('/run/book/r1', 'GET'),
+                         ('/api/run/book/r1/apply', 'POST')):
+        st, b, hd = get(app['port'], path, method=method, headers={'Content-Type': 'application/json'} if method == 'POST' else None,
+                        body='{}' if method == 'POST' else None)
+        assert hd.get('X-Frame-Options') == 'DENY' and "frame-ancestors 'none'" in hd.get('Content-Security-Policy', ''), (path, hd)
+        if path in ('/run/book/r1/', '/run/book/r1/review.html'):
+            assert hd['Content-Security-Policy'] == f"frame-ancestors 'none'; script-src 'self' 'sha256-{h}'", path
+    st, b, hd = get(app['port'], '/run/book/r1/')
+    page = b.decode()
+    assert page.index('</header>') < page.index('id="pdfrem-panel"') < page.index('<main id="main">')    # the panel's h2 follows the h1
+    assert 'data-current="ai"' in page and f'<script>{INLINE}</script>' in page                        # the inline script unchanged, so its hash holds
+    st, b, hd = get(app['port'], '/run/old/r0/')
+    assert hd['Content-Security-Policy'] == "frame-ancestors 'none'; script-src 'self'" and b.decode().index('</header>') < b.decode().index('pdfrem-panel')
+
+def test_the_review_page_refuses_framing(tmp_path):
+    R, rec, ai, dg = run_folder(tmp_path)
+    from review import core
+    p = S.P(R)
+    S.save(p['items'], {'book': 'book.pdf', 'run': 'run', 'pages': 5, 'pdf': '', 'groups': core.GROUPS, 'levels': core.LEVELS, 'add_kinds': core.ADD_KINDS,
+                        'items': core.build_items(ai, dg), 'addable': core.addable(ai, dg), 'session': {'key': 'abc:002', 'id': '002', 'reopened': True}})
+    S.save(os.path.join(p['dir'], 'workorder.ai.json'), ai)
+    port = free_port()
+    threading.Thread(target=lambda: RS.serve(p['dir'], '2026-10-29', port, open_browser=False), daemon=True).start()
+    assert wait(lambda: get(port, '/')[0] == 200, 10)
+    for path in ('/', '/nope'):
+        hd = get(port, path)[2]
+        assert hd.get('X-Frame-Options') == 'DENY' and hd.get('Content-Security-Policy') == "frame-ancestors 'none'"
+    r = urllib.request.Request(f'http://127.0.0.1:{port}/finish', data=json.dumps({'reviewer': 'Kim', 'decisions': ALL, 'additions': [],
+                               'gaps_ack': {'figures_without_alt': 'later', 'h1': 'later'}}).encode(), headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(r) as x: assert json.load(x)['finished']
+
+def test_the_return_to_url_is_percent_encoded(setup):
+    s = settings(setup)
+    R = setup / 'runs' / 'odd name#1' / 'r?x'; (R / 'reviews' / '_audit').mkdir(parents=True); (R / '_intake').mkdir()
+    (R / 'record.json').write_text('{}'); (R / 'reviews' / 'basis.json').write_text('{"input": {}}'); (R / 'reviews' / '_audit' / 'digest.json').write_text('{}')
+    (R / '_intake' / 'intake.pdf').write_bytes(b'%PDF')
+    j = runs.start_review(s, 'odd name#1/r?x', str(R), 8760)
+    assert j['argv'][-1] == 'http://127.0.0.1:8760/run/odd%20name%231/r%3Fx/?after=finish'
+    RS.check_return_to(j['argv'][-1])
+
+def test_a_missing_intake_result_is_named(setup):
+    s = settings(setup)
+    R = setup / 'runs' / 'u' / 'r'; (R / 'reviews' / '_audit').mkdir(parents=True); (R / 'reviews' / '_audit' / 'digest.json').write_text('{}')
+    gone = str(R / '_intake' / 'intake.pdf')
+    (R / 'reviews' / 'basis.json').write_text(json.dumps({'input': {'path': gone, 'sha256': 'b' * 64}}))
+    p, why = runs.pdf_needed(s, str(R), {'document': {'file': 'book.pdf'}})
+    assert p is None and gone in why and 'intake result' in why and 'original PDF' not in why
+
+def test_api_jobs_has_a_limit(app):
+    s = config.load(str(app['t'] / 'app.json'), environ={})
+    ids = [jobs.create(s['jobs'], 'apply', f'x{i}/r', [sys.executable, '-c', 'pass'], {}, counted=True)['id'] for i in range(3)]
+    for i in ids: jobs.update(s['jobs'], i, status='done')
+    got = json.loads(get(app['port'], '/api/jobs?limit=2')[1])
+    assert [j['id'] for j in got] == ids[::-1][:2]
