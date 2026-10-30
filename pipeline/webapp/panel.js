@@ -67,7 +67,8 @@ function abandonText(open, from) {
 document.addEventListener('click', e => {
   if (e.defaultPrevented || e.button) return;
   const a = e.target.closest && e.target.closest('a[href^="#"]'); if (!a || a.getAttribute('href').length < 2) return;
-  const t = document.getElementById(decodeURIComponent(a.getAttribute('href').slice(1))); if (!t) return;
+  let id; try { id = decodeURIComponent(a.getAttribute('href').slice(1)); } catch (err) { return; }   // a malformed #%E0: leave it
+  const t = document.getElementById(id); if (!t) return;
   e.preventDefault();
   if (!t.hasAttribute('tabindex')) t.setAttribute('tabindex', '-1');
   t.scrollIntoView(); t.focus({ preventScroll: true }); history.replaceState(null, '', '#' + t.id);

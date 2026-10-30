@@ -90,7 +90,7 @@ button.ftb { font: inherit; font-size: 13px; color: var(--accent); background: n
              display: inline-block; min-height: 24px; min-width: 24px; line-height: 24px; vertical-align: baseline; }   /* WCAG 2.5.8 target size */
 button.ftb .tri::before { content: "▸"; display: inline-block; width: 1em; }      /* closed */
 button.ftb[aria-expanded="true"] .tri::before { content: "▾"; }                    /* open */
-.hit { outline: 3px solid var(--accent); outline-offset: 1px; }
+.hit, .hit:focus { outline: 2px solid var(--accent); outline-offset: 1px; }   /* where a Details or § link landed: kept while it has focus */
 @media (max-width: 640px) { main { padding: 10px; } .chart { grid-template-columns: 1fr; } }
 """
 E = html.escape
@@ -325,8 +325,8 @@ def review_card(R, rec):
         now = [x for x in ss if x['id'] == cur]; earlier = [x for x in ss if x['id'] != cur]
         if now:
             x = now[0]; c = x.get('counts') or {}
-            parts = [f'{c.get("approved") or 0} approved'] + ([f'{c["changed"]} changed'] if c.get('changed') else []) + \
-                    [f'{c.get("rejected") or 0} rejected', f'{c.get("accepted_unreviewed") or 0} accepted without review']
+            parts = ([f'{c.get("approved") or 0} approved'] + ([f'{c["changed"]} changed'] if c.get('changed') else []) +
+                     [f'{c.get("rejected") or 0} rejected', f'{c.get("accepted_unreviewed") or 0} accepted without review']) if c else ['counts not recorded']
             B.append(f'<p><strong>Session {int(x["id"])}</strong> · {E(x.get("reviewer") or "reviewer not recorded")} · '
                      f'{E(x.get("date") or "date not recorded")} · ' + ' · '.join(parts) + '</p>')
             B.append(SESSION_TABLE.format(cap='The current review session', rows=row(x)))

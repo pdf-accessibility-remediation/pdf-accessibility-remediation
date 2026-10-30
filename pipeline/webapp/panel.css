@@ -31,7 +31,8 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .pp :focus-visible, .pp-dlg :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 /* a heading or message the script moves focus to never shows an outline, on any page the app serves (Tab focus on
    buttons, links and fields keeps its own) */
-[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }
+/* not .hit: review.html's landing highlight (the row a Details or § link landed on) keeps its blue outline */
+[tabindex="-1"]:not(.hit):focus, [tabindex="-1"]:not(.hit):focus-visible { outline: none; }
 .pp .pp-note { color: var(--muted); font-size: 14px; }
 .pp .pp-msg { border-left: 4px solid var(--reject); padding: 4px 4px 4px 10px; background: var(--flag); }   /* an error */
 .pp .pp-msg:not([hidden]) { display: flex; align-items: flex-start; gap: 8px; } .pp .pp-msg-t { flex: 1; padding-top: 2px; }

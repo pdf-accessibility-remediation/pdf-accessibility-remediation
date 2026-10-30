@@ -544,12 +544,12 @@ def test_the_panel_files_are_read_once_at_start(setup, monkeypatch):
 def test_code_fingerprint_covers_the_app_code():
     a = config.code_fingerprint()
     assert len(a) == 16 and a == config.code_fingerprint()
-    assert set(config.CODE) == {'app.py', 'webapp', 'review'}
+    assert set(config.CODE) == {'app.py', 'webapp', 'review', 'lib/titles.py', 'lib/glance.py'}
 
 def test_panel_and_review_page_details():
     js, css, page = src('webapp/panel.js'), src('webapp/panel.css'), src('review/page.html')
     assert "'Waiting for you: the review page is open'" in js and 'Ready to ship?</b>' not in js            # the report's card says it
-    assert '[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }' in css                  # never, on any app page
+    assert '[tabindex="-1"]:not(.hit):focus, [tabindex="-1"]:not(.hit):focus-visible { outline: none; }' in css   # any app page, not .hit
     assert '.pp summary { cursor: pointer; font-size: 15px; color: var(--ink); }' in css
     assert 'placeholder="Your name"' in page and '<h1 id="title">Work Order Review</h1>' in page and 'Back to the Run Page' in page
     assert ": done' + (s.time ? ', ' + esc(s.time) : '') : j.status === 'running' ? '' : ': did not finish'" in js   # no ": running"
@@ -712,3 +712,36 @@ def test_finish_not_yet_is_200_with_needs(tmp_path):
     assert "if (s === 200 && b.needs === 'unreviewed')" in page and "if (s === 200 && b.needs === 'gaps')" in page and 's === 409' not in page
     assert '<h2 id="gapTitle" tabindex="-1">' in page and "document.getElementById('gapTitle').focus();" in page
     assert 'aria-describedby="gapCtx"' in page and 'id="gapErr" role="alert"' in page
+
+# ------------------------------------------------------------------ review 08
+def test_the_landing_highlight_keeps_its_outline_and_the_page_map_is_unchanged():
+    import re, report_html as H
+    css = src('webapp/panel.css')
+    assert '.hit, .hit:focus { outline: 2px solid var(--accent); outline-offset: 1px; }' in H.CSS          # 2 px, kept while focused
+    # nothing in either stylesheet removes .hit's outline: every no-outline rule for script-focused targets excludes .hit
+    for sheet in (H.CSS, css):
+        for rule in re.findall(r'[^{}]*\[tabindex="-1"\][^{}]*\{[^}]*outline:\s*none[^}]*\}', sheet):
+            sel = rule.split('{')[0]
+            assert ':not(.hit)' in sel or sheet is H.CSS, rule                                                 # panel.css: must exclude .hit
+    # in the report the no-outline rule comes before .hit, so .hit:focus wins there too (equal specificity, later rule)
+    assert H.CSS.index('[tabindex="-1"]:focus { outline: none; }') < H.CSS.index('.hit, .hit:focus {')
+    # the page map is exactly as it was: its own rules, and land() never marks a cell
+    for rule in ('.cell.active { outline: 2px dotted var(--ink); outline-offset: 1px; }', '.cell.pinned { outline: 2px solid var(--accent); outline-offset: 2px; }',
+                 '.strip:focus { outline: none; } .strip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }'):
+        assert rule in H.CSS
+    assert "if (el.classList.contains('cell')) { clearHit(); goPage(el); } else land(el);" in src('report_html.py')
+
+@pytest.mark.parametrize('flag', [['--apply'], ['--pin'], ['--sessions'], ['--replay-to', '/tmp/x']])
+def test_discard_open_is_refused_with_another_action(tmp_path, flag):
+    R, rec, ai, dg = run_folder(tmp_path)
+    S.save_session(R, {'id': '002', 'status': 'open', 'started': '2026-10-30T10:00:00'})
+    r = subprocess.run([sys.executable, 'review_workorder.py', R, '--discard-open'] + flag, cwd=HERE, capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0 and f'--discard-open goes on its own (or with --reopen --from), not with {flag[0]}' in r.stderr
+    assert S.session(R, '002')['status'] == 'open'                                       # nothing was done
+
+def test_review_08_small_items():
+    import report_html as H
+    assert "try { id = decodeURIComponent(a.getAttribute('href').slice(1)); } catch (err) { return; }" in src('webapp/panel.js')
+    rec = {'review': {'session': '001', 'sessions': [{'id': '001', 'from': 'ai', 'status': 'applied', 'reviewer': 'K', 'date': '2026-10-30'}]}}
+    out = ''.join(H.review_card('/tmp', rec))
+    assert '<p><strong>Session 1</strong> · K · 2026-10-30 · counts not recorded</p>' in out and '0 approved' not in out
