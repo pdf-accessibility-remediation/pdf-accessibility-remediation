@@ -14,6 +14,7 @@ reach it. Liveness is the process group: os.killpg(pgid, 0), and a process in th
 wrapper or the job's own script (a reused process-group id is not mistaken for the job).
 """
 import os, sys, json, time, fcntl, signal, datetime, subprocess, contextlib
+from . import logs
 
 ACTIVE = ('queued', 'running')
 WRAPPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'jobrun.py')
@@ -143,6 +144,9 @@ def tick(J, s):
         for j in jobs:
             if j['status'] == 'running' and not j.get('ended') and not group_alive(j):
                 j.update(status='interrupted', ended=now()); save(J, j)
+            if j['kind'] == 'review' and j['status'] == 'running' and not j.get('url'):       # the review page is up: keep its URL
+                u = logs.review_url(read_log(J, j['id'])[0])
+                if u: j['url'] = u; save(J, j)
             if j['status'] == 'done' and j.get('then') and not j.get('then_job'):
                 t = j['then']
                 nxt = {'id': f'{datetime.datetime.now():%Y%m%d-%H%M%S-%f}-{t["kind"]}', 'kind': t['kind'], 'run': j['run'], 'argv': t['argv'],

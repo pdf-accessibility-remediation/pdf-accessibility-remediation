@@ -19,6 +19,9 @@ A finished run can be reviewed again (review/sessions.py keeps every session and
     python3 review_workorder.py <run_dir> --replay-to <new run folder>   # a run whose audit is not today's (pin refused):
                                     # copy its _intake/ and saved reply for a new run of the book on today's code (not a review)
 
+--return-to URL (with --serve or --reopen; the app, app.py, passes it): after Finish the review page goes to that page,
+and it links back to it. Only http://127.0.0.1:<port>/… or http://localhost:<port>/… is accepted.
+
 The AI's version stays in workorder.ai.json. Either way the reviewed order goes through the same checks as the AI's
 (workorder_check.py), and review.json records who reviewed it, when, and every change. report.py folds it into
 record.json (review.workorder) and review.md. A later review replaces the earlier one; the earlier one is kept under history.
@@ -27,7 +30,7 @@ reviewer gives one; for a hand edit the --note is the reason.
 """
 import sys, os, json, argparse, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from review import core, sessions  # noqa: E402
+from review import core, sessions, server  # noqa: E402
 
 def finished(R, a):
     """A finished run: --pin, --sessions, --reopen, --apply."""
@@ -69,9 +72,9 @@ def finished(R, a):
                 print(f'  {len(s["not_carried"])} earlier choices not carried (the decision is not the same): ' + ', '.join(x['id'] for x in s['not_carried'][:8]))
             print(f'{S.label(s["id"])} from {S.from_label(s["from"])}'
                   + (f': {s.get("carried", 0)} choices preloaded' if s['from'] != 'ai' else ''))
-            from review import server
             v = server.serve(S.P(R)['dir'], a.date, a.port, open_browser=not a.no_browser,
-                             files={'/result/review.html': os.path.join(R, 'review.html'), '/result/review.md': os.path.join(R, 'review.md')})
+                             files={'/result/review.html': os.path.join(R, 'review.html'), '/result/review.md': os.path.join(R, 'review.md')},
+                             return_to=a.return_to)
             if not v:
                 print(f'{S.label(s["id"])} stays open: run the same command again to carry on'); return
             s = S.finish_session(R, s, rec)
@@ -108,7 +111,12 @@ def main():
     ap.add_argument('--pin', action='store_true', help='keep a finished run\'s digest after checking its fingerprint (free re-audit)')
     ap.add_argument('--replay-to', metavar='DIR', help='a run that can no longer be reviewed: prepare a new run of the book in DIR '
                     'from its intake and saved reply (no API call), and print the command')
+    ap.add_argument('--return-to', metavar='URL', help='with --serve or --reopen: the page the review page goes to after Finish, and '
+                    'links back to (the app\'s run page; http://127.0.0.1:<port>/… or http://localhost:<port>/… only)')
     a = ap.parse_args()
+    if a.return_to:
+        try: server.check_return_to(a.return_to)
+        except ValueError as e: sys.exit(f'--return-to: {e}')
     R = os.path.abspath(a.run_dir)
     ai_path = os.path.join(R, 'workorder.ai.json')
     if os.path.exists(os.path.join(R, 'record.json')):
@@ -132,8 +140,7 @@ def main():
         if not (d.get('session') or {}).get('key') and os.path.isfile(d.get('pdf') or ''):   # prepared before runs had an id
             b = sessions.first_basis(R, d['pdf'])
             d['session'] = {'key': f'{b["run_id"]}:001', 'id': '001', 'first': True}; core.save(os.path.join(R, 'review_items.json'), d)
-        from review import server
-        v = server.serve(R, a.date, a.port, open_browser=not a.no_browser)
+        v = server.serve(R, a.date, a.port, open_browser=not a.no_browser, return_to=a.return_to)
         if v: print(f'review recorded: {v["reviewer"]} on {v["date"]} · {len(v["changes"])} changes · '
                     f'{len(v["dropped_on_check"])} dropped by the check · {len(v.get("gaps") or [])} gaps left open\nnext: {rerun}')
         return

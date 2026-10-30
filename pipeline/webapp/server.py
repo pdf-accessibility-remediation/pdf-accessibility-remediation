@@ -6,10 +6,16 @@ Routes (GET; requests must name this server as their host, as review/server.py c
     /api/jobs                  every job (status, place in line); no environments
     /api/job/<id>?from=N       one job and its log from byte N
     /api/run/<run>             a run's state for the panel
-    /run/<run>/                the run's review.html as it is on disk
+    /run/<run>/                the run's review.html with the panel added at serve time (the file is not changed); a run
+                               with no review.html: the panel, review.md and a line saying there is no dashboard
     /run/<run>/<file>          the run's own files from a fixed list: review.html, review.md, han_review.csv, the
                                remediated PDF named in record.json; the same under reviews/versions/<id>/
     /batch/<label>/            a batch's summary.html (and summary.md); its <name>/review.html links go to /run/batches/<label>/<name>/
+    /app/panel.js|panel.css|palette.css   the panel's own files
+POST (JSON from the app's own pages only), each answered 202 {job} or 409 {error} with the reason:
+    /api/run/<run>/review      {from: null | "ai" | "003", discard_open}: Review again (a pin job first on an unpinned run)
+    /api/run/<run>/apply       Apply the finished session that was not applied
+    /api/run/<run>/stop        Stop reviewing: Ctrl+C to the open review page, only before Finish
 Reserved for later pages (not built): /run/<run>/ocr, /run/<run>/release, /run/<run>/screen-reader.
 
 A run is named by its path under the runs folder (godzone/rv1, batches/d1/clans): the shortest prefix of the request
@@ -17,13 +23,14 @@ path that is a folder holding record.json. Every segment is checked (no empty, "
 the folder and every file are resolved with realpath and must stay inside the runs folder, and a file is served only
 when its name is in the run's list. Nothing outside the runs folder is ever served (.env, samples/, pipeline/).
 """
-import os, json, html, traceback, urllib.parse, datetime
+import os, re, json, html, traceback, urllib.parse, datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from review.server import local_request
-from . import config, jobs
+from . import config, jobs, runs
 
 FILES = ('review.html', 'review.md', 'han_review.csv')
-TYPES = {'.html': 'text/html; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.pdf': 'application/pdf'}
+TYPES = {'.html': 'text/html; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.pdf': 'application/pdf',
+         '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8'}
 RESERVED = ('ocr', 'release', 'screen-reader')
 
 def segments(p):
@@ -54,16 +61,21 @@ def served(d):
         out[pdf] = os.path.join(d, pdf)
     return {n: p for n, p in out.items() if os.path.isfile(p)}
 
-def public(job):
-    j = {k: v for k, v in job.items() if k not in ('env', 'then')}
-    return j
+STATIC = {'panel.js': os.path.join(config.HERE, 'panel.js'), 'panel.css': os.path.join(config.HERE, 'panel.css'),
+          'palette.css': os.path.join(config.PIPELINE, 'review', 'palette.css')}
+SKIP = '<a class="skip" href="#main">Skip to the content</a>'
 
-def run_state(s, run, R):
-    """What the panel needs from disk (stage 2 adds the sessions)."""
-    h = jobs.lock_holder(R)
-    return {'run': run, 'review_html': os.path.isfile(os.path.join(R, 'review.html')), 'review_md': os.path.isfile(os.path.join(R, 'review.md')),
-            'lock': {'pid': h[0], 'what': h[1], 'since': h[2]} if h else None,
-            'jobs': [public(j) for j in jobs.all_jobs(s['jobs']) if j['run'] == run]}
+def with_panel(page, run):
+    """review.html as served: the panel's stylesheet, its place (after the skip link) and its script added. The file on disk
+    is never changed; opened as a file it is the plain report."""
+    box = f'\n<div id="pdfrem-panel" data-run="{html.escape(run)}"></div>\n'
+    head = '<link rel="stylesheet" href="/app/panel.css">\n'
+    i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
+    if SKIP in page: page = page.replace(SKIP, SKIP + box, 1)
+    else:
+        m = re.search(r'<body[^>]*>', page); page = page[:m.end()] + box + page[m.end():] if m else box + page
+    i = page.rfind('</body>'); js = '<script src="/app/panel.js" defer></script>\n'
+    return page[:i] + js + page[i:] if i >= 0 else page + js
 
 def make(s, setup):
     """The server, bound to 127.0.0.1:port (no fallback: a busy port is an error the caller reports)."""
@@ -95,10 +107,35 @@ def make(s, setup):
                 self.send(500, {'error': 'the app hit an error: see runs/.app/server.log'})
 
         def do_POST(self):
+            try: self.post()
+            except BrokenPipeError: pass
+            except Exception:
+                with open(os.path.join(J, 'server.log'), 'a', encoding='utf-8') as f: f.write(f'{datetime.datetime.now().isoformat(timespec="seconds")} POST {self.path}\n{traceback.format_exc()}\n')
+                self.send(500, {'error': 'the app hit an error: see runs/.app/server.log'})
+
+        def post(self):
             if not self.ours(): return self.send(403, {'error': 'not from the app\'s own pages'})
             if (self.headers.get('Content-Type') or '').split(';')[0].strip().lower() != 'application/json':
                 return self.send(415, {'error': 'the app\'s pages send JSON'})
-            self.send(404, {'error': 'not found'})
+            try: body = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)) or b'{}')
+            except ValueError: return self.send(400, {'error': 'not JSON'})
+            if not isinstance(body, dict): return self.send(400, {'error': 'not a JSON object'})
+            p = urllib.parse.urlsplit(self.path).path
+            segs = segments(p[len('/api/run/'):]) if p.startswith('/api/run/') else None
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop'): return self.send(404, {'error': 'not found'})
+            hit = find_run(s['runs'], segs[:-1])
+            if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
+            run, R, _ = hit
+            try:
+                if segs[-1] == 'review':
+                    src = body.get('from')
+                    j = runs.start_review(s, run, R, self.server.server_address[1], None if src in (None, '', 'latest') else str(src),
+                                          bool(body.get('discard_open')), app_pid=os.getpid())
+                elif segs[-1] == 'apply': j = runs.start_apply(s, run, R)
+                else: j = runs.stop_review(s, run, R); return self.send(200, {'stopped': j['id']})
+            except ValueError as e: return self.send(409, {'error': str(e)})
+            jobs.tick(J, s)                                   # start it now if a place is free, rather than within the second
+            self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
 
         def get(self):
             if not self.ours(): return self.send(403, {'error': f'open the app at http://127.0.0.1:{self.server.server_address[1]}/'})
@@ -106,19 +143,19 @@ def make(s, setup):
             p = url.path
             if p == '/api/ping': return self.send(200, {'app': 'pdfrem', 'root': config.ROOT, 'settings': s['sha']})
             if p == '/api/setup': return self.send(200, setup)
-            if p == '/api/jobs':
-                return self.send(200, [dict(public(j), position=jobs.position(J, j['id'])) for j in jobs.all_jobs(J)])
+            if p == '/api/jobs': return self.send(200, [runs.job_view(s, j) for j in jobs.all_jobs(J)])
             if p.startswith('/api/job/'):
                 jid = p[len('/api/job/'):]
-                job = jobs.load(J, jid) if jid and '/' not in jid and not jid.startswith('.') else None
+                job = jobs.load(J, jid) if re.fullmatch(r'[0-9A-Za-z_-]+', jid or '') else None
                 if not job: return self.send(404, {'error': 'no such job'})
-                text, nxt = jobs.read_log(J, jid, (q.get('from') or ['0'])[0] if (q.get('from') or ['0'])[0].isdigit() else 0)
-                return self.send(200, {'job': public(job), 'position': jobs.position(J, jid), 'text': text, 'next': nxt})
+                off = (q.get('from') or ['0'])[0]
+                return self.send(200, runs.job_view(s, job, with_text=True, offset=int(off) if off.isdigit() else 0))
             if p.startswith('/api/run/'):
                 segs = segments(p[len('/api/run/'):])
                 hit = find_run(s['runs'], segs) if segs else None
                 if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
-                return self.send(200, run_state(s, hit[0], hit[1]))
+                return self.send(200, runs.state(s, hit[0], hit[1]))
+            if p.startswith('/app/') and p[len('/app/'):] in STATIC: return self.file(STATIC[p[len('/app/'):]])
             if p.startswith('/batch/'):
                 segs = segments(p[len('/batch/'):])
                 if not segs: return self.send(404, {'error': 'no such batch'})
@@ -155,17 +192,19 @@ def make(s, setup):
 
         def run_page(self, run, R):
             f = os.path.join(R, 'review.html')
-            if os.path.isfile(f): return self.file(f)
+            if os.path.isfile(f): return self.send(200, with_panel(open(f, encoding='utf-8', errors='replace').read(), run), 'text/html; charset=utf-8')
             return self.send(200, no_dashboard(run, R), 'text/html; charset=utf-8')
 
     return ThreadingHTTPServer(('127.0.0.1', s['port']), H)
 
 def no_dashboard(run, R):
-    """A run with no review.html (older runs): a plain page with review.md (the panel is added in stage 2)."""
+    """A run with no review.html (older runs): the panel, the review.md link and a line saying there is no dashboard.
+    No rebuild: report_html.py would write into the run."""
     md = '<p><a href="review.md">review.md</a>: what a person should check.</p>' if os.path.isfile(os.path.join(R, 'review.md')) else ''
-    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<title>{html.escape(run)}</title></head><body><main><h1>{html.escape(run)}</h1>'
-            f'<p>This run has no dashboard (review.html): it was made before the dashboards, or without one.</p>{md}</main></body></html>')
+    return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+                      f'<title>{html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
+                      f'<main id="main"><h1>{html.escape(run)}</h1>'
+                      f'<p>This run has no dashboard (review.html): it was made before the dashboards, or without one.</p>{md}</main></body></html>', run)
 
 def home_stub(s):
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>PDF remediation</title></head><body><main>'
