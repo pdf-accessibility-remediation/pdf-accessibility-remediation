@@ -8,8 +8,12 @@ Routes (GET; requests must name this server as their host, as review/server.py c
     /api/run/<run>             a run's state for the panel
     /run/<run>/                the run's review.html with the panel added at serve time (the file is not changed); a run
                                with no review.html: the panel, review.md and a line saying there is no dashboard
-    /run/<run>/<file>          the run's own files from a fixed list: review.html, review.md, han_review.csv, the
-                               remediated PDF named in record.json; the same under reviews/versions/<id>/
+    /run/<run>/<file>          the run's own files from a fixed list: review.md, han_review.csv, the remediated PDF named
+                               in record.json; the same under reviews/versions/<id>/. Every page has a way back:
+                               /run/<run>/review.html goes to the run page; an earlier result's review.html gets a bar
+                               (earlier result, Back to the current result, Review again from this session); review.md is
+                               shown inside a page with links back (?raw=1: the plain file). A PDF opens in the browser's
+                               own viewer.
     /batch/<label>/            a batch's summary.html (and summary.md); its <name>/review.html links go to /run/batches/<label>/<name>/
     /app/panel.js|panel.css|palette.css   the panel's own files
 POST (JSON from the app's own pages only), each answered 202 {job} or 409 {error} with the reason:
@@ -95,6 +99,30 @@ def with_panel(page, run, current=None):
         m = re.search(r'<body[^>]*>', page); page = page[:m.end()] + box + page[m.end():] if m else box + page
     i = page.rfind('</body>'); js = '<script src="/app/panel.js" defer></script>\n'
     return page[:i] + js + page[i:] if i >= 0 else page + js
+
+def with_version(page, run, sid):
+    """An earlier result's review.html (reviews/versions/<id>/) as served: a bar after its header saying it is an earlier
+    result, with "Back to the current result" and "Review again from this session" (webapp/panel.js draws it)."""
+    box = f'\n<div id="pdfrem-version" data-run="{html.escape(run)}" data-session="{html.escape(sid)}"></div>\n'
+    head = '<link rel="stylesheet" href="/app/panel.css">\n'
+    i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
+    if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
+    else:
+        m = re.search(r'<body[^>]*>', page); page = page[:m.end()] + box + page[m.end():] if m else box + page
+    i = page.rfind('</body>'); js = '<script src="/app/panel.js" defer></script>\n'
+    return page[:i] + js + page[i:] if i >= 0 else page + js
+
+def md_page(text, run, sid, base):
+    """review.md inside a page with a way back (the run page; for an earlier result, that result's dashboard too) and a
+    link to the plain file. The text is shown as written, escaped."""
+    which = f'an earlier result ({S.label(sid)})' if sid else 'the current result'
+    links = [f'<a href="{base}">Back to the run page</a>'] + ([f'<a href="review.html">This earlier result\'s dashboard</a>'] if sid else []) + \
+            ['<a href="review.md?raw=1">The plain file</a>']
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+            f'<title>review.md: {html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
+            f'</head><body class="pp-page">\n{SKIP}<header><h1>review.md of {html.escape(run)}: {which}</h1></header>'
+            f'<nav class="pp-wrap" aria-label="Pages of this run"><p class="pp pp-bar">' + ' · '.join(links) + '</p></nav>'
+            f'<main id="main"><pre class="pp-md">{html.escape(text)}</pre></main></body></html>')
 
 def make(s, setup):
     """The server, bound to 127.0.0.1:port (no fallback: a busy port is an error the caller reports)."""
@@ -206,11 +234,17 @@ def make(s, setup):
                     if not p.endswith('/'): return self.redirect(p + '/')
                     return self.run_page(run, R)
                 if len(rest) == 1 and rest[0] in RESERVED: return self.send(404, {'error': 'this page is not built yet'})
-                d, name = R, rest[-1]
-                if len(rest) == 4 and rest[:2] == ['reviews', 'versions']: d = os.path.join(R, 'reviews', 'versions', rest[2])
+                d, name, sid = R, rest[-1], None
+                if len(rest) == 4 and rest[:2] == ['reviews', 'versions']: d, sid = os.path.join(R, 'reviews', 'versions', rest[2]), rest[2]
                 elif len(rest) != 1: return self.send(404, {'error': 'not found'})
                 f = served(d).get(name) if os.path.isdir(d) and inside(R, d) else None
                 if not f or not inside(R, f): return self.send(404, {'error': 'not found'})
+                base = '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
+                if name == 'review.html' and sid is None: return self.redirect(base)      # the run page, with the panel
+                if name == 'review.html':                                                  # an earlier result: its bar
+                    return self.send(200, with_version(open(f, encoding='utf-8', errors='replace').read(), run, sid), 'text/html; charset=utf-8')
+                if name == 'review.md' and (q.get('raw') or [''])[0] != '1':                # review.md inside a page with a way back
+                    return self.send(200, md_page(open(f, encoding='utf-8', errors='replace').read(), run, sid, base), 'text/html; charset=utf-8')
                 return self.file(f)
             if p == '/': return self.send(200, home_stub(s), 'text/html; charset=utf-8')
             self.send(404, {'error': 'not found'})

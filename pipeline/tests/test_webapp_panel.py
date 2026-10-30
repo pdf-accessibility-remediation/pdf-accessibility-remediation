@@ -305,15 +305,15 @@ def test_csp_hashes_the_one_inline_script():
 
 def test_every_response_refuses_framing_and_run_pages_get_the_script_policy(app):
     import base64, hashlib
-    (app['R'] / 'review.html').write_text(PAGE)
+    (app['R'] / 'review.html').write_text(PAGE); (app['R'] / 'reviews' / 'versions' / '001' / 'review.html').write_text(PAGE)
     h = base64.b64encode(hashlib.sha256(INLINE.encode()).digest()).decode()
-    for path, method in (('/run/book/r1/', 'GET'), ('/run/book/r1/review.html', 'GET'), ('/run/book/r1/review.md', 'GET'), ('/app/panel.js', 'GET'),
+    for path, method in (('/run/book/r1/', 'GET'), ('/run/book/r1/reviews/versions/001/review.html', 'GET'), ('/run/book/r1/review.md', 'GET'), ('/app/panel.js', 'GET'),
                          ('/batch/b1/', 'GET'), ('/api/ping', 'GET'), ('/api/run/book/r1', 'GET'), ('/run/nope/', 'GET'), ('/run/book/r1', 'GET'),
                          ('/api/run/book/r1/apply', 'POST')):
         st, b, hd = get(app['port'], path, method=method, headers={'Content-Type': 'application/json'} if method == 'POST' else None,
                         body='{}' if method == 'POST' else None)
         assert hd.get('X-Frame-Options') == 'DENY' and "frame-ancestors 'none'" in hd.get('Content-Security-Policy', ''), (path, hd)
-        if path in ('/run/book/r1/', '/run/book/r1/review.html'):
+        if path in ('/run/book/r1/', '/run/book/r1/reviews/versions/001/review.html'):
             assert hd['Content-Security-Policy'] == f"frame-ancestors 'none'; script-src 'self' 'sha256-{h}'", path
     st, b, hd = get(app['port'], '/run/book/r1/')
     page = b.decode()
@@ -440,3 +440,69 @@ def test_ctrl_c_before_finish_still_stops(tmp_path):
     pr.send_signal(signal.SIGINT)
     out = pr.communicate(timeout=10)[0]
     assert 'stopped: the review is not finished' in out and 'RESULT none' in out, out
+
+# ------------------------------------------------------------------ Patrick's pass on the run page
+def test_steps_in_plain_words():
+    assert logs.plain('apply (no model)') == 'applying the reviewed decisions' and logs.plain('verify (no model)') == 'checking the result'
+    assert logs.plain('report') == 'writing the report' and logs.plain('1/5 audit (no model)') == 'auditing the PDF'
+    steps = logs.steps('▶ apply (no model)\n  ✓ apply (no model): 12.0s\n▶ verify (no model)\n')
+    assert logs.now_step('review', steps) == {'words': 'checking the result', 'n': 2, 'total': 3}
+    assert logs.now_step('pin', []) == {'words': 're-auditing the run to pin it (free)', 'n': 1, 'total': 1}
+    assert logs.now_step('apply', logs.steps('▶ apply (no model)\n  ✓ apply (no model): 1.0s\n')) is None
+
+def test_job_titles_say_what_happened(tmp_path):
+    R = str(tmp_path); ses(R, '003', 'applied', reviewer='sss')
+    v = {'outcome': 'done: session 3 is the current result'}
+    j = {'kind': 'review', 'what': 'Review again from session 2', 'status': 'done', 'ended': '2026-10-29T18:19:44'}
+    assert runs.title(R, j, v) == 'Review again from session 2 → session 3 applied (sss, 18:19)'
+    assert runs.title(R, dict(j, status='running'), {}) == 'Review again from session 2'
+    assert runs.title(R, dict(j, status='failed'), {}) == 'Review again from session 2 → failed (18:19)'
+    assert runs.title(R, j, {'outcome': 'session 4 stays open'}) == 'Review again from session 2 → session 4 left open (18:19)'
+    assert runs.title(R, dict(j, kind='pin', what='Pin the run'), {}) == 'Pin the run → pinned (18:19)'
+    lost = {'interrupted': {'state': 'done', 'text': 'done (the app lost track of the job): session 3 is the current result'}}
+    assert runs.title(R, dict(j, kind='apply', what='Apply session 3', status='interrupted'), lost) == 'Apply session 3 → session 3 applied (sss, 18:19)'
+    assert runs.reason({'status': 'failed', 'outcome': 'refused: apply (no model) failed (exit 1): the current result is unchanged', 'exit': 1}) == \
+        'Apply (no model) failed (exit 1): the current result is unchanged'
+    assert runs.reason({'status': 'failed', 'outcome': None, 'exit': 2}) == 'The command ended with an error (exit 2).'
+
+def test_the_page_shows_no_log_or_command_and_every_job(app):
+    s = config.load(str(app['t'] / 'app.json'), environ={})
+    for i in range(12):
+        j = jobs.create(s['jobs'], 'apply', 'book/r1', [sys.executable, '-c', 'pass'], {}, counted=True, what=f'Apply {i}')
+        jobs.update(s['jobs'], j['id'], status='failed' if i == 11 else 'done', ended='2026-10-29T10:00:00', exit=1 if i == 11 else 0)
+    d = json.loads(get(app['port'], '/api/run/book/r1')[1])
+    assert len(d['jobs']) == 12                                                               # none drop off
+    v = d['jobs'][-1]
+    assert 'tail' not in v and 'command' not in v and v['log'] == os.path.join(s['jobs'], 'jobs', v['id'] + '.log')   # outside the repo: absolute
+    assert runs.shown_path(os.path.join(config.ROOT, 'runs', '.app', 'jobs', 'x.log')) == os.path.join('runs', '.app', 'jobs', 'x.log')
+    assert v['reason'] == 'The command ended with an error (exit 1).' and v['title'] == 'Apply 11 → failed (10:00)'
+    js = src('webapp/panel.js')
+    assert 'Log and command' not in js and 'The same from a terminal' not in js and 'Earlier jobs (' in js and 'Its log is saved in' in js
+    assert 'aria-hidden="true"></span>' in js and 'pp-spin' in js
+    assert 'prefers-reduced-motion: reduce) { .pp .pp-spin { animation: none; } }' in src('webapp/panel.css')
+
+def test_every_report_has_a_way_back(app):
+    port, R = app['port'], app['R']
+    (R / 'reviews' / 'versions' / '001' / 'review.html').write_text(PAGE)
+    st, b, hd = get(port, '/run/book/r1/reviews/versions/001/review.html')
+    page = b.decode()
+    assert st == 200 and '<div id="pdfrem-version" data-run="book/r1" data-session="001">' in page and '/app/panel.js' in page
+    assert page.index('</header>') < page.index('pdfrem-version') and 'pdfrem-panel' not in page
+    js = src('webapp/panel.js')
+    assert "You\\'re viewing" in js and 'Back to the current result' in js and 'Review again from this session' in js
+    st, b, hd = get(port, '/run/book/r1/review.md')
+    assert st == 200 and hd['Content-Type'].startswith('text/html') and '<a href="/run/book/r1/">Back to the run page</a>' in b.decode()
+    assert '<pre class="pp-md"># Review</pre>' in b.decode() and 'href="review.md?raw=1"' in b.decode()
+    st, b, hd = get(port, '/run/book/r1/review.md?raw=1')
+    assert hd['Content-Type'].startswith('text/plain') and b == b'# Review'
+    st, b, hd = get(port, '/run/book/r1/reviews/versions/001/review.md')
+    assert 'an earlier result (session 1)' in b.decode() and '<a href="review.html">This earlier result' in b.decode()
+    assert get(port, '/run/book/r1/review.html')[2].get('Location') == '/run/book/r1/'
+
+def test_review_again_names_where_it_starts(setup):
+    s = settings(setup)
+    R = setup / 'runs' / 'b' / 'r'; (R / 'reviews' / '_audit').mkdir(parents=True); (R / '_intake').mkdir()
+    (R / 'record.json').write_text('{}'); (R / 'reviews' / 'basis.json').write_text('{"input": {}}'); (R / 'reviews' / '_audit' / 'digest.json').write_text('{}')
+    (R / '_intake' / 'intake.pdf').write_bytes(b'%PDF')
+    ses(str(R), '001', 'applied'); ses(str(R), '002', 'applied')
+    assert runs.start_review(s, 'b/r', str(R), 8760)['what'] == 'Review again from session 2'

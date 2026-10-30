@@ -252,7 +252,7 @@ def test_the_run_page_is_review_html_with_the_panel(app):
     before = sha(app['R'] / 'review.html')
     st, b, h = get(app['port'], '/run/book/r1/')
     assert st == 200 and b'pdfrem-panel' in b and h['Content-Type'].startswith('text/html')
-    assert get(app['port'], '/run/book/r1/review.html')[1] == (app['R'] / 'review.html').read_bytes()     # the file itself, as on disk
+    assert get(app['port'], '/run/book/r1/review.html')[2].get('Location') == '/run/book/r1/'          # the file's own name: the run page
     assert sha(app['R'] / 'review.html') == before
     assert get(app['port'], '/run/book/r1')[2].get('Location') == '/run/book/r1/'
 

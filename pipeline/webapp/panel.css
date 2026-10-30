@@ -1,12 +1,22 @@
 /* The run page's panel (webapp/panel.js), added to review.html when the app serves it. Colours are review.html's own
    (review/palette.css): text on panel and the accent meet 4.5:1 in both themes; status is always said in words too. */
 .pp-page { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-.pp-page main { padding: 0 16px 24px; max-width: 1100px; } .pp-page header { padding: 4px 16px 0; }
+.pp-page main { padding: 0 16px 24px; max-width: 1200px; margin: 0 auto; box-sizing: border-box; }
+.pp-page header { padding: 4px 16px 0; max-width: 1200px; margin: 0 auto; box-sizing: border-box; } .pp-page h1 { font-size: 19px; }
 .pp-page a { color: var(--accent); }
 .pp-page .skip { position: absolute; left: -999px; } .pp-page .skip:focus { left: 8px; top: 8px; background: var(--panel); padding: 4px 8px; z-index: 9; }
-.pp { margin: 12px 16px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink);
-      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 1100px; }
-.pp h2 { font-size: 18px; margin: 0 0 6px; } .pp h3 { font-size: 16px; margin: 0 0 4px; } .pp h4 { font-size: 15px; margin: 8px 0 4px; }
+/* the panel, the earlier-result bar and the review.md page's links line up with the report's main column: 1200 px at most,
+   centred, with the report's own 16 px (10 px on a narrow screen) side padding */
+#pdfrem-panel, #pdfrem-version, .pp-wrap { max-width: 1200px; margin: 0 auto; padding: 0 16px; box-sizing: border-box; }
+.pp { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; box-sizing: border-box; }
+.pp h2 { font-size: 18px; margin: 0 0 6px; } .pp h3 { font-size: 16px; margin: 10px 0 4px; } .pp h4 { font-size: 15px; margin: 0 0 4px; }
+.pp-bar { border-left: 6px solid var(--change); } .pp-bar p { margin: 2px 0; }
+.pp-md { white-space: pre-wrap; word-break: break-word; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+.pp .pp-spin { display: inline-block; width: .9em; height: .9em; margin-right: 6px; vertical-align: -2px; border: 2px solid var(--line);
+               border-top-color: var(--accent); border-radius: 50%; animation: pp-spin 1s linear infinite; }
+@keyframes pp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pp .pp-spin { animation: none; } }
 .pp p { margin: 4px 0; } .pp ul, .pp ol { margin: 4px 0; padding-left: 22px; }
 .pp a { color: var(--accent); }
 .pp .pp-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
@@ -37,4 +47,5 @@
 .pp-dlg button { font: inherit; padding: 6px 12px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); cursor: pointer; margin-right: 8px; }
 .pp-dlg button.pp-primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
 .pp-dlg::backdrop { background: rgba(0, 0, 0, .45); }
-@media (max-width: 600px) { .pp { margin: 8px; padding: 10px; } .pp button, .pp a.pp-btn { width: 100%; text-align: left; } }
+@media (max-width: 640px) { #pdfrem-panel, #pdfrem-version, .pp-wrap, .pp-page main, .pp-page header { padding-left: 10px; padding-right: 10px; } }
+@media (max-width: 600px) { .pp { margin: 8px 0; padding: 10px; } .pp button, .pp a.pp-btn { width: 100%; text-align: left; } }
