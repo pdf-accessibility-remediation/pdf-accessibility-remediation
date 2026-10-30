@@ -10,7 +10,7 @@ run folder (record.json, review.md, reviews/) and the job files; the commands ar
 names no path), or a basis whose path no longer holds the file. The original is then found by its sha256 in samples/
 and uploads/ (read only; sha256s cached in <jobs>/sha256-cache.json by path, size and mtime).
 """
-import os, re, sys, json
+import os, re, sys, json, urllib.parse
 from review import sessions as S
 from . import config, jobs, logs
 
@@ -71,6 +71,9 @@ def pdf_needed(s, R, rec):
         inp = b.get('input') or {}
         if inp.get('path') and os.path.isfile(inp['path']): return None, None
         sha = inp.get('sha256')
+        if inp.get('path') and os.path.basename(os.path.dirname(inp['path'])) == '_intake':     # the run's own intake result
+            return None, (f'this run\'s input, {inp["path"]} (its intake result, sha256 {(sha or "")[:16]}), is missing: it was made by '
+                          'intake and is not in samples/; the run cannot be reviewed again without it')
     else:
         if ((rec.get('intake') or {}).get('result') or {}).get('pdf'): return None, None
         sha = ((rec.get('workorder') or {}).get('source') or {}).get('sha256') or (rec.get('document') or {}).get('sha256')
@@ -78,7 +81,7 @@ def pdf_needed(s, R, rec):
     if not sha: return None, 'the record names no input sha256, so the original cannot be looked for'
     p = find_original(s, sha, name)
     if p: return p, None
-    return None, (f'the original of this run ({name or "its PDF"}, sha256 {sha[:16]}) is not in {s["samples"]} or {s["uploads"]}: '
+    return None, (f'the original PDF of this run ({name or "its PDF"}, sha256 {sha[:16]}) is not in {s["samples"]} or {s["uploads"]}: '
                   f'put a copy there, or run the command in a terminal with --pdf <the original>')
 
 # ------------------------------------------------------------------ the panel's view of a run
@@ -112,13 +115,21 @@ def after_interrupt(R, j):
                                           'session again. Earlier results stay in reviews/versions/.'}
     if applied:
         return {'state': 'done', 'text': f'done (the app lost track of the job): {S.label(applied[-1]["id"])} is the current result'}
-    fin = [x for x in ss if x.get('status') == 'finished']
-    if fin: return {'state': 'apply', 'text': f'{S.label(fin[-1]["id"]).capitalize()} is finished and not applied: Apply applies it.'}
+    u = unapplied(ss)
+    if u: return {'state': 'apply', 'text': f'{u["label"].capitalize()} is finished and not applied: Apply applies it.'}
     op = [x for x in ss if x.get('status') == 'open']
     if j['kind'] == 'review' and op: return {'state': 'continue', 'text': f'{S.label(op[-1]["id"]).capitalize()} stays open: Continue review carries on with it.'}
     return {'state': 'none', 'text': 'The run shows no change from this job: start it again.'}
 
 def run_path(run): return os.path.join(*run.split('/'))
+
+def unapplied(ss):
+    """The session Apply is offered for: the newest finished-or-applied one, when it is finished and not applied. A
+    finished session that a later one replaced (its apply failed, then the person reviewed again) is never offered."""
+    done = [x for x in ss if x.get('status') in ('finished', 'applied')]
+    if not done or done[-1].get('status') != 'finished': return None
+    x = done[-1]
+    return {'id': x['id'], 'label': S.label(x['id']), 'finished': x.get('finished')}
 
 def state(s, run, R):
     rec = load(os.path.join(R, 'record.json')) or {}
@@ -148,7 +159,7 @@ def state(s, run, R):
         'sessions': rows, 'ai_result': 'reviews/versions/ai/' + ('review.html' if os.path.isfile(os.path.join(ai_v, 'review.html')) else 'review.md') if os.path.isdir(ai_v) and cur != 'ai' else None,
         'open': {'id': op[-1]['id'], 'label': S.label(op[-1]['id']), 'started': op[-1].get('started')} if op else None,
         'latest': {'id': done[-1]['id'], 'label': S.label(done[-1]['id'])} if done else None,
-        'unapplied': {'id': fin[-1]['id'], 'label': S.label(fin[-1]['id']), 'finished': fin[-1].get('finished')} if fin else None,
+        'unapplied': unapplied(ss),
         'lock': {'pid': h[0], 'what': h[1], 'since': h[2]} if h else None,
         'live_review': job_view(s, live) if live else None,
         'jobs': [job_view(s, j) for j in rj[-8:]],
@@ -162,7 +173,7 @@ def start_review(s, run, R, port, src=None, discard_open=False, app_pid=None):
     pdf, why = pdf_needed(s, R, rec)
     if why: raise ValueError(why)
     if src not in (None, 'ai') and not re.fullmatch(r'\d{1,3}', str(src)): raise ValueError(f'no such session: {src}')
-    back = f'http://127.0.0.1:{port}/run/' + '/'.join(run.split('/')) + '/?after=finish'
+    back = f'http://127.0.0.1:{port}/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/?after=finish'
     py = [sys.executable, 'review_workorder.py', R]
     argv = py + ['--reopen'] + (['--from', str(src)] if src else []) + (['--discard-open'] if discard_open else []) + \
            (['--pdf', pdf] if pdf else []) + ['--no-browser', '--return-to', back]
@@ -176,12 +187,17 @@ def start_review(s, run, R, port, src=None, discard_open=False, app_pid=None):
 
 def start_apply(s, run, R):
     rec = load(os.path.join(R, 'record.json')) or {}
-    fin = [x for x in S.sessions(R) if x.get('status') == 'finished']
-    if not fin: raise ValueError('no finished session is waiting to be applied')
+    ss = S.sessions(R); u = unapplied(ss)
+    if not u:
+        fin = [x for x in ss if x.get('status') == 'finished']
+        if not fin: raise ValueError('no finished session is waiting to be applied')
+        newer = [x for x in ss if x.get('status') == 'applied' and S.sid_n(x['id']) > S.sid_n(fin[-1]['id'])]
+        raise ValueError(f'{S.label(fin[-1]["id"])} was replaced by {S.label(newer[-1]["id"]) if newer else "a later session"}: '
+                         'Apply is offered only for the newest session')
     pdf, why = pdf_needed(s, R, rec)
     if why: raise ValueError(why)
     argv = [sys.executable, 'review_workorder.py', R, '--apply'] + (['--pdf', pdf] if pdf else [])
-    return jobs.create(s['jobs'], 'apply', run, argv, config.child_env(s), R=R, what=f'Apply {S.label(fin[-1]["id"])}')
+    return jobs.create(s['jobs'], 'apply', run, argv, config.child_env(s), R=R, what=f'Apply {u["label"]}')
 
 def stop_review(s, run, R):
     """Stop reviewing: Ctrl+C to the live review child, only while it is before Finish (decided from disk)."""

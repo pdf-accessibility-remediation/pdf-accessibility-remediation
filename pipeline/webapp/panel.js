@@ -14,12 +14,14 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const sn = id => /^\d+$/.test(String(id)) ? 'session ' + Number(id) : id === 'ai' ? 'the result applied without review' : String(id);
 const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
 
-// "quiet": the person has not pressed a key or a pointer since their last action here. Only then may the page go on by
-// itself to what that action asked for (the review page once it is up; the new result after Finish).
-let quiet = true;
+// The page opens the review page by itself only right after the person's own Review again: within 30 s of the click and
+// while they have not pressed a key or a pointer since. Otherwise it says the page is ready and shows the link. A new
+// result never reloads the page by itself: "New result ready" is announced and a button loads it.
+let quiet = true, wantAt = 0;
 ['keydown', 'pointerdown'].forEach(e => addEventListener(e, () => { quiet = false; }, true));
 let want = q.get('after') === 'finish' ? 'result' : null;      // what the person's last action is waiting for
-let st = null, setup = null, primed = false, offline = false, timer = null;
+let st = null, setup = null, primed = false, offline = false, failing = false, timer = null, newResult = false;
+const SHOWN = box.dataset.current || null;                     // the session whose result this page shows (set when served)
 const seen = {};                                                // per job: the last step and status announced
 
 box.innerHTML = '<section class="pp" aria-labelledby="pp-h"><h2 id="pp-h" tabindex="-1">Run actions</h2>' +
@@ -49,7 +51,7 @@ function jobWords(j) {
     const cur = (j.steps || []).filter(s => s.state === 'running').pop();
     return 'Running' + (cur ? ': ' + cur.label : '');
   }
-  if (j.status === 'done' && j.kind === 'review' && / stays open$/.test(j.outcome || '')) return 'Closed: the session stays open';
+  if (j.status === 'done' && j.kind === 'review' && / stays open$/.test(j.outcome || '')) return 'Stopped (the session stays open)';
   if (j.status === 'failed') return 'Failed' + (j.exit != null ? ' (exit ' + j.exit + ')' : '');
   if (j.status === 'interrupted') return j.interrupted && j.interrupted.state === 'done' ? 'Done (the app lost track of the job)' : 'Interrupted: the job stopped without finishing';
   return STATUS[j.status] || j.status;
@@ -132,7 +134,8 @@ function render() {
   h += actions(s);
   const shown = (s.jobs || []).slice().reverse().filter((j, i) => i < 3 || j.status === 'queued' || j.status === 'running');
   if (shown.length) h += '<h3>Jobs for this run</h3>' + shown.map(jobCard).join('');
-  if (want === 'shown') h += '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the new result</button></div>';
+  if (newResult) h += '<p><b>New result ready:</b> ' + esc(s.current.label) + ' is now the current result; the report below is the earlier one.</p>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the new result</button></div>';
   h += historyBlock(s) +'<details id="pp-cmd"><summary>The same from a terminal</summary><p>From pipeline/: <code>' + esc(s.commands.reopen) +
        '</code> · <code>' + esc(s.commands.sessions) + '</code></p></details>';
   $('pp-body').innerHTML = h;
@@ -161,7 +164,7 @@ box.addEventListener('click', async e => {
         body.discard_open = true;
       }
       [s, r] = await api(API + '/review', body);
-      if (s === 202) want = 'review';
+      if (s === 202) { want = 'review'; wantAt = Date.now(); }
     }
     if (s !== 202) return msg(r.error || 'The app refused this', false, true);
     quiet = true;                                                // set after this click's own keydown/pointerdown
@@ -175,7 +178,8 @@ function confirmDlg(title, text, yes, opener) {
     const d = $('pp-dlg');
     d.innerHTML = '<h2 id="pp-dlg-h">' + esc(title) + '</h2><p>' + esc(text) + '</p><div><button type="button" class="pp-primary" value="yes">' + esc(yes) +
                   '</button><button type="button" value="no">Cancel</button></div>';
-    const done = v => { d.close(); opener.focus(); res(v); };
+    const id = opener.id;                                       // a re-render while the dialog is open replaces the element
+    const done = v => { d.close(); ($(id) || opener).focus(); res(v); };
     d.querySelectorAll('button').forEach(x => x.addEventListener('click', () => done(x.value === 'yes')));
     d.oncancel = ev => { ev.preventDefault(); done(false); };
     d.showModal(); d.querySelector('button[value=no]').focus();
@@ -201,25 +205,32 @@ function announce(s) {
 
 async function poll(force) {
   clearTimeout(timer);
-  try {
-    const [s, b] = await api(API);
-    if (s !== 200) throw new Error(b.error || String(s));
-    if (offline) { offline = false; const o = $('pp-offline'); if (o) o.remove(); live('The app is running again.'); }
-    const before = st; st = b;
-    announce(b);
-    followUp(before, b);
-    if (force || JSON.stringify(strip(before)) !== JSON.stringify(strip(b))) render();
-    else refreshLogs(b);
-  } catch (e) {
-    if (!offline) {
-      offline = true;
-      const o = document.createElement('p'); o.id = 'pp-offline'; o.className = 'pp-offline';
-      o.textContent = 'The app is not running, so this page cannot start or follow jobs. Start it from pipeline/ with python3 app.py; jobs already running carry on.';
-      box.prepend(o); live(o.textContent);
+  let s, b;
+  try { [s, b] = await api(API); }
+  catch (e) {                                                    // no answer at all: the app is not running
+    banner('pp-offline', 'The app is not running, so this page cannot start or follow jobs. Start it from pipeline/ with python3 app.py; jobs already running carry on.');
+    offline = true;
+  }
+  if (s !== undefined) {
+    if (offline) { offline = false; banner('pp-offline', null); live('The app is running again.'); }
+    if (s !== 200) { if (!failing) banner('pp-error', 'This run cannot be read by the app (' + (b.error || 'HTTP ' + s) + '): it may have been moved or removed. Reload the page to try again.'); failing = true; }
+    else {
+      if (failing) { failing = false; banner('pp-error', null); }
+      const before = st; st = b;
+      announce(b);
+      followUp(before, b);
+      if (force || JSON.stringify(strip(before)) !== JSON.stringify(strip(b))) render();
+      else refreshLogs(b);
     }
   }
   const busy = st && ((st.jobs || []).some(j => j.status === 'queued' || j.status === 'running') || st.live_review);
   timer = setTimeout(poll, busy ? 1000 : 5000);
+}
+function banner(id, text) {                                     // one banner per kind, announced once when it appears
+  const o = $(id);
+  if (!text) { if (o) o.remove(); return; }
+  if (o) return;
+  const p = document.createElement('p'); p.id = id; p.className = 'pp-offline'; p.textContent = text; box.prepend(p); live(text);
 }
 const strip = s => s && Object.assign({}, s, { jobs: (s.jobs || []).map(j => Object.assign({}, j, { tail: null })), live_review: s.live_review && Object.assign({}, s.live_review, { tail: null }) });
 function refreshLogs(s) {
@@ -230,20 +241,17 @@ function followUp(before, s) {
   const lr = s.live_review;
   if (want === 'review' && lr && lr.url && !lr.past_finish) {
     want = null;
-    if (quiet) { location.assign(lr.url); return; }          // the person's Review again opens the review page
+    if (quiet && Date.now() - wantAt < 30000) { location.assign(lr.url); return; }   // right after the person's Review again
     live('The review page is ready: Open the review page.');
   }
-  if (want === 'result' || want === 'result-wait') {
+  if (want === 'result') {                                     // the page the person's Finish opened: focus its job's heading
     const j = (s.jobs || []).slice().reverse().find(x => x.kind === 'review' || x.kind === 'apply');
-    if (!j) return;
-    if (want === 'result') {                                   // the page the person's Finish opened: focus its job's heading
-      want = 'result-wait'; history.replaceState(null, '', location.pathname);
-      setTimeout(() => { const hd = $('jh-' + j.id); if (hd) hd.focus(); }, 0);
-    }
-    if (j.status === 'done' || (j.interrupted && j.interrupted.state === 'done')) {
-      if (quiet) { location.replace(location.pathname + '?landed=1'); return; }
-      want = 'shown';                                           // background end: announced, focus stays; a button to load it
-    } else if (j.status === 'failed' || j.status === 'interrupted') want = null;
+    want = null; history.replaceState(null, '', location.pathname);
+    if (j) setTimeout(() => { const hd = $('jh-' + j.id); if (hd) hd.focus(); }, 0);
+  }
+  if (!newResult && SHOWN && s.current && s.current.id !== SHOWN) {   // an apply made a new result: say so, never reload
+    newResult = true;
+    setTimeout(() => live('New result ready: ' + s.current.label + '. Show the new result loads it.'), 400);   // after the job's own end
   }
 }
 
