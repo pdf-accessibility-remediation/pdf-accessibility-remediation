@@ -107,29 +107,99 @@ def test_the_original_is_found_by_sha256_and_never_written(setup):
     assert runs.pdf_needed(s, str(R), {'intake': {'result': {'pdf': 'intake.pdf'}}}) == (None, None)
 
 # ------------------------------------------------------------------ past Finish, from disk
-def test_review_past_finish_is_read_from_disk(tmp_path):
+START = '2026-10-29T10:00:00'
+OLD, NEW = time.mktime((2026, 10, 29, 9, 0, 0, 0, 0, -1)), time.mktime((2026, 10, 29, 10, 0, 5, 0, 0, -1))   # before / after START
+
+def marker(tmp_path, name, where, when):
+    """A run folder with one Finish marker, its mtime set to `when`."""
+    F = tmp_path / f'{name}-{int(when)}'; (F / 'reviews').mkdir(parents=True)
+    if where != 'first': (F / 'record.json').write_text('{}')
+    p = (F / 'review.json') if where == 'first' else (F / 'reviews' / name)
+    p.mkdir() if name == 'work' else p.write_text('{}')
+    os.utime(p, (when, when)); return str(F)
+
+@pytest.mark.parametrize('name,where', [('review.json', 'reviews'), ('work', 'reviews'), ('promoting.json', 'reviews'), ('review.json', 'first')])
+def test_a_finish_marker_counts_only_from_the_job_start(tmp_path, name, where):
+    assert jobs.review_past_finish(marker(tmp_path, name, where, NEW), START)              # this review's Finish
+    assert not jobs.review_past_finish(marker(tmp_path, name, where, OLD), START)          # stale: a failed apply's work/, an old review.json
+
+def test_a_session_finished_since_the_job_start(tmp_path):
     R = tmp_path / 'r'; (R / 'reviews' / 'sessions').mkdir(parents=True); (R / 'record.json').write_text('{}')
-    assert not jobs.review_past_finish(str(R))
+    assert not jobs.review_past_finish(str(R), START)
     (R / 'reviews' / 'sessions' / '003.json').write_text(json.dumps({'id': '003', 'status': 'open'}))
-    assert not jobs.review_past_finish(str(R), '2026-10-29T10:00:00')
+    assert not jobs.review_past_finish(str(R), START)
     (R / 'reviews' / 'sessions' / '003.json').write_text(json.dumps({'id': '003', 'status': 'finished', 'finished': '2026-10-29T10:05:00'}))
-    assert jobs.review_past_finish(str(R), '2026-10-29T10:00:00') and not jobs.review_past_finish(str(R), '2026-10-29T11:00:00')
-    for n in ('review.json', 'work', 'promoting.json'):
-        F = tmp_path / n; F.mkdir(); (F / 'record.json').write_text('{}'); (F / 'reviews').mkdir()
-        (F / 'reviews' / n).mkdir() if n == 'work' else (F / 'reviews' / n).write_text('{}')
-        assert jobs.review_past_finish(str(F))
-    first = tmp_path / 'first'; first.mkdir(); (first / 'review.json').write_text('{}')     # a first review (no record.json yet)
-    assert jobs.review_past_finish(str(first))
+    assert jobs.review_past_finish(str(R), START) and not jobs.review_past_finish(str(R), '2026-10-29T11:00:00')
+    (R / 'reviews' / 'sessions' / '003.json').write_text(json.dumps({'id': '003', 'status': 'finished', 'finished': '2026-10-29T09:05:00'}))
+    assert not jobs.review_past_finish(str(R), START)                                       # finished before this job started
+
+def test_interrupt_itself_refuses_a_review_past_finish(setup):
+    s = settings(setup)
+    R = setup / 'runs' / 'a' / 'r'; (R / 'reviews').mkdir(parents=True)
+    j = fake(setup, s, 'a/r', 30, R=str(R)); jobs.update(s['jobs'], j['id'], kind='review', counted=False)
+    jobs.tick(s['jobs'], s)
+    assert wait(lambda: (jobs.load(s['jobs'], j['id']) or {}).get('child_pid'))
+    (R / 'reviews' / 'work').mkdir()                                                       # the re-apply has started
+    assert jobs.interrupt(s['jobs'], j['id'], s['runs']) == (False, 'this review is past Finish and is being applied: it cannot be stopped now')
+    assert jobs.counts(jobs.load(s['jobs'], j['id']), s['runs'])                           # and it takes a place in max_jobs now
+    os.utime(R / 'reviews' / 'work', (OLD, OLD))                                           # the same folder, stale: a failed apply's
+    assert not jobs.counts(jobs.load(s['jobs'], j['id']), s['runs'])
+    assert jobs.interrupt(s['jobs'], j['id'], s['runs']) == (True, None)
+    assert wait(lambda: jobs.load(s['jobs'], j['id'])['status'] == 'failed')
+
+def test_liveness_marks_name_the_job(setup):
+    s = settings(setup)
+    Ra, Rb = setup / 'runs' / 'a' / 'r', setup / 'runs' / 'b' / 'r'; Ra.mkdir(parents=True); Rb.mkdir(parents=True)
+    out = str(setup / 'times.txt')
+    a = jobs.create(s['jobs'], 'apply', 'a/r', [sys.executable, str(setup / 'bin' / 'fakejob.py'), out, '30', str(Ra)], config.child_env(s), R=str(Ra))
+    jobs.tick(s['jobs'], s)
+    assert wait(lambda: (jobs.load(s['jobs'], a['id']) or {}).get('child_pid'))
+    b = jobs.create(s['jobs'], 'apply', 'b/r', [sys.executable, str(setup / 'bin' / 'fakejob.py'), out, '30', str(Rb)], config.child_env(s), R=str(Rb))
+    pg = jobs.load(s['jobs'], a['id'])['pgid']
+    jobs.update(s['jobs'], b['id'], status='running', pid=pg, pgid=pg, started=jobs.now())   # a dead job whose group id is now another job's
+    assert jobs.group_alive(s['jobs'], jobs.load(s['jobs'], a['id'])) and not jobs.group_alive(s['jobs'], jobs.load(s['jobs'], b['id']))
+    os.killpg(pg, signal.SIGKILL)
+
+def test_an_interrupted_job_says_what_is_left_from_disk(tmp_path):
+    R = tmp_path / 'r'; (R / 'reviews' / 'sessions').mkdir(parents=True)
+    j = {'kind': 'apply', 'started': START}
+    def ses(**kw): (R / 'reviews' / 'sessions' / '002.json').write_text(json.dumps({'id': '002', **kw}))
+    assert runs.after_interrupt(str(R), j)['state'] == 'none'
+    ses(status='finished', finished='2026-10-29T09:59:00')
+    assert runs.after_interrupt(str(R), j) == {'state': 'apply', 'text': 'Session 2 is finished and not applied: Apply applies it.'}
+    ses(status='applied', applied='2026-10-29T10:03:00')                                    # the orphan finished alone
+    assert runs.after_interrupt(str(R), j) == {'state': 'done', 'text': 'done (the app lost track of the job): session 2 is the current result'}
+    ses(status='applied', applied='2026-10-29T09:00:00')                                    # applied before this job: not its doing
+    assert runs.after_interrupt(str(R), j)['state'] == 'none'
+    (R / 'reviews' / 'promoting.json').write_text('{}')
+    t = runs.after_interrupt(str(R), j)
+    assert t['state'] == 'apply' and 'Apply finishes it; it may apply the session again' in t['text'] and 'completes the promotion' not in t['text']
+    (R / 'reviews' / 'promoting.json').unlink(); ses(status='open')
+    assert runs.after_interrupt(str(R), {'kind': 'review', 'started': START})['state'] == 'continue'
+
+def test_read_log_never_cuts_a_character(setup):
+    s = settings(setup); j = fake(setup, s, 'a/r'); jobs.update(s['jobs'], j['id'], status='done')
+    open(jobs.log_path(s['jobs'], j['id']), 'wb').write('ab ✓ cd\n'.encode())             # ✓ is 3 bytes, at offsets 3–5
+    t, n = jobs.read_log(s['jobs'], j['id'], 0, limit=5)
+    assert (t, n) == ('ab ', 3) and jobs.read_log(s['jobs'], j['id'], n)[0] == '✓ cd\n'
+
+def test_config_may_not_be_a_settings_file(setup):
+    from webapp import config as C
+    for f in ('settings.json', 'settings.local.json'):
+        p = os.path.join(C.HERE, f)
+        if not os.path.exists(p): continue
+        with pytest.raises(C.Bad, match='one of the settings files'): C.load(p, environ={})
+    with pytest.raises(C.Bad, match='one of the settings files'): C.load(os.path.join(C.HERE, '..', 'webapp', 'settings.json'), environ={})
 
 def test_shutdown_signals_only_its_own_reviews_before_finish(setup, monkeypatch):
     s = settings(setup)
     for n in ('mine', 'other', 'applying'): (setup / 'runs' / n / 'r' / 'reviews').mkdir(parents=True)
-    (setup / 'runs' / 'applying' / 'r' / 'reviews' / 'review.json').write_text('{}')
     ids = {}
     for n, pid in (('mine', os.getpid()), ('other', 1), ('applying', os.getpid())):
         j = fake(setup, s, f'{n}/r', 30); jobs.update(s['jobs'], j['id'], kind='review', counted=False, app_pid=pid); ids[n] = j['id']
     jobs.tick(s['jobs'], s)
     assert wait(lambda: all((jobs.load(s['jobs'], i) or {}).get('child_pid') for i in ids.values()))
+    (setup / 'runs' / 'applying' / 'r' / 'reviews' / 'review.json').write_text('{}')      # its Finish, after the job started
     APP.close_reviews(s)
     assert wait(lambda: jobs.load(s['jobs'], ids['mine'])['status'] == 'failed')
     time.sleep(0.5)

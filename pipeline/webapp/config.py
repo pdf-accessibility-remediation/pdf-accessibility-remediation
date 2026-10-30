@@ -42,12 +42,14 @@ def _merge(a, b):
 def load(config=None, base=HERE, environ=None):
     """The merged settings, checked, with absolute folders. Raises Bad with the reason."""
     environ = os.environ if environ is None else environ
-    layers = [('webapp/settings.json', _read(os.path.join(base, 'settings.json'), required=True)),
-              ('webapp/settings.local.json', _read(os.path.join(base, 'settings.local.json')))]
-    if config: layers.append((config, _read(os.path.abspath(config), required=True)))
+    files = [os.path.join(base, 'settings.json'), os.path.join(base, 'settings.local.json')]
+    if config and os.path.realpath(config) in {os.path.realpath(f) for f in files}:
+        raise Bad(f'--config {config} is one of the settings files the app always reads: give a file of your own')
+    layers = [('webapp/settings.json', _read(files[0], required=True), False), ('webapp/settings.local.json', _read(files[1]), False)]
+    if config: layers.append((config, _read(os.path.abspath(config), required=True), True))
     s = {}
-    for name, d in layers:
-        if 'test_reply_dir' in d and name != config: raise Bad(f'test_reply_dir is set in {name}: it may only come from --config')
+    for name, d, given in layers:
+        if 'test_reply_dir' in d and not given: raise Bad(f'test_reply_dir is set in {name}: it may only come from --config')
         if str((d.get('tools') or {}).get('VERAPDF', '')).strip().lower() == 'off': raise Bad(f'{name} sets VERAPDF=off: the app always runs veraPDF')
         s = _merge(s, d)
     if 'VERAPDF' in environ:

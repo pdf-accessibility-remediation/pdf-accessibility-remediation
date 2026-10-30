@@ -50,14 +50,15 @@ function jobWords(j) {
     return 'Running' + (cur ? ': ' + cur.label : '');
   }
   if (j.status === 'failed') return 'Failed' + (j.exit != null ? ' (exit ' + j.exit + ')' : '');
-  if (j.status === 'interrupted') return 'Interrupted: the job stopped without finishing';
+  if (j.status === 'interrupted') return j.interrupted && j.interrupted.state === 'done' ? 'Done (the app lost track of the job)' : 'Interrupted: the job stopped without finishing';
   return STATUS[j.status] || j.status;
 }
 const ordinal = n => n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || 'th');
 const jobTitle = j => j.what || ({ apply: 'Apply', review: 'Review', pin: 'Pin' }[j.kind] || j.kind);
 
 function jobCard(j) {
-  const cls = j.status === 'failed' || j.status === 'interrupted' ? ' pp-failed' : j.status === 'done' ? ' pp-done' : '';
+  const lost = j.status === 'interrupted' && j.interrupted && j.interrupted.state === 'done';
+  const cls = lost || j.status === 'done' ? ' pp-done' : j.status === 'failed' || j.status === 'interrupted' ? ' pp-failed' : '';
   let h = '<article class="pp-job" id="job-' + esc(j.id) + '" aria-labelledby="jh-' + esc(j.id) + '">' +
     '<h3 id="jh-' + esc(j.id) + '" tabindex="-1">' + esc(jobTitle(j)) + '</h3>' +
     '<p><span class="pp-state' + cls + '">' + esc(jobWords(j)) + '</span>' + (j.started ? ' <span class="pp-note">· started ' + esc(j.started.replace('T', ' ')) + '</span>' : '') + '</p>';
@@ -73,9 +74,8 @@ function jobCard(j) {
   h += '<details id="log-' + esc(j.id) + '"><summary>Log and command</summary><p><code>' + esc(j.command) + '</code></p><pre id="logt-' + esc(j.id) + '">' + esc((j.tail || []).join('\n')) + '</pre></details>';
   return h + '</article>';
 }
-function interruptedNote(j) {
-  if (j.kind === 'review') return 'Stopped before Finish: the session stays open, and Continue review carries on with it. Stopped while applying: the session stays finished, and Apply repeats it (the current result is unchanged unless the apply had reached its last step, which the next Apply or Review again completes).';
-  if (j.kind === 'apply') return 'The current result is unchanged unless the apply had reached its last step, which the next Apply or Review again completes. The session stays finished: Apply repeats it.';
+function interruptedNote(j) {                                   // what is left comes from the run's state on disk (runs.after_interrupt)
+  if (j.interrupted) return j.interrupted.text;
   if (j.kind === 'pin') return 'Nothing was kept: Review again pins the run again.';
   return 'Start it again.';
 }
@@ -190,7 +190,7 @@ function announce(s) {
     const t = jobTitle(j) + ' (' + RUN + ')';
     if (j.status === 'done') live(t + ': done' + (j.outcome ? '. ' + j.outcome : ''));
     else if (j.status === 'failed') live(t + ': failed' + (j.outcome ? '. ' + j.outcome : ''));
-    else if (j.status === 'interrupted') live(t + ': interrupted');
+    else if (j.status === 'interrupted') live(t + ': ' + (j.interrupted ? jobWords(j).toLowerCase() + '. ' + j.interrupted.text : 'interrupted'));
     else if (j.kind === 'review' && j.url && !j.past_finish && (!was || !was.includes(j.url))) live(t + ': the review page is ready');
     else if (cur) live(t + ': ' + cur.label);
     else if (j.status === 'running' && (!was || was.startsWith('queued'))) live(t + ': started');
@@ -239,7 +239,7 @@ function followUp(before, s) {
       want = 'result-wait'; history.replaceState(null, '', location.pathname);
       setTimeout(() => { const hd = $('jh-' + j.id); if (hd) hd.focus(); }, 0);
     }
-    if (j.status === 'done') {
+    if (j.status === 'done' || (j.interrupted && j.interrupted.state === 'done')) {
       if (quiet) { location.replace(location.pathname + '?landed=1'); return; }
       want = 'shown';                                           // background end: announced, focus stays; a button to load it
     } else if (j.status === 'failed' || j.status === 'interrupted') want = null;

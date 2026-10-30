@@ -81,9 +81,8 @@ def close_reviews(s):
     session stays open). One past Finish is applying and is left to finish (decided from disk, never from the log)."""
     for j in jobs.all_jobs(s['jobs']):
         if j['kind'] != 'review' or j['status'] != 'running' or j.get('app_pid') != os.getpid(): continue
-        if jobs.review_past_finish(os.path.join(s['runs'], *j['run'].split('/')), j.get('started')):
-            print(f'  {j["run"]}: the review is past Finish and is being applied: left to finish'); continue
-        if jobs.interrupt(s['jobs'], j['id']): print(f'  {j["run"]}: review page closed; its session stays open (Review again carries on with it)')
+        ok, why = jobs.interrupt(s['jobs'], j['id'], s['runs'])
+        print(f'  {j["run"]}: ' + ('review page closed; its session stays open (Review again carries on with it)' if ok else f'left as it is: {why}'))
 
 if __name__ == '__main__':
     main()

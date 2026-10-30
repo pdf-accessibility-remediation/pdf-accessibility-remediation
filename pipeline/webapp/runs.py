@@ -94,10 +94,29 @@ def job_view(s, j, with_text=False, offset=0):
     v.update(position=jobs.position(s['jobs'], j['id']), steps=logs.steps(text), outcome=logs.outcome(text), tail=logs.tail(text),
              command=' '.join(x if x != sys.executable else 'python3' for x in j['argv']))
     if j['kind'] == 'review' and j['status'] == 'running':
-        v['past_finish'] = jobs.review_past_finish(os.path.join(s['runs'], run_path(j['run'])), j.get('started'))
+        v['past_finish'] = jobs.review_past_finish(jobs.run_dir(j, s['runs']), j.get('started'))
+    if j['status'] == 'interrupted' and j['kind'] in ('apply', 'review'):
+        v['interrupted'] = after_interrupt(jobs.run_dir(j, s['runs']), j)
     if with_text:
         t, nxt = jobs.read_log(s['jobs'], j['id'], offset); v.update(text=t, next=nxt)
     return v
+
+def after_interrupt(R, j):
+    """An interrupted apply or review: what is left, from the run's state on disk, not from the job status (a killed wrapper
+    can leave its command to finish alone). {state: apply | done | continue | none, text}."""
+    ss = S.sessions(R) if R else []
+    since = j.get('started') or ''
+    applied = [x for x in ss if x.get('status') == 'applied' and (x.get('applied') or '') >= since]
+    if os.path.exists(os.path.join(R, 'reviews', 'promoting.json')):
+        return {'state': 'apply', 'text': 'The apply stopped partway (reviews/promoting.json is there). Apply finishes it; it may apply the '
+                                          'session again. Earlier results stay in reviews/versions/.'}
+    if applied:
+        return {'state': 'done', 'text': f'done (the app lost track of the job): {S.label(applied[-1]["id"])} is the current result'}
+    fin = [x for x in ss if x.get('status') == 'finished']
+    if fin: return {'state': 'apply', 'text': f'{S.label(fin[-1]["id"]).capitalize()} is finished and not applied: Apply applies it.'}
+    op = [x for x in ss if x.get('status') == 'open']
+    if j['kind'] == 'review' and op: return {'state': 'continue', 'text': f'{S.label(op[-1]["id"]).capitalize()} stays open: Continue review carries on with it.'}
+    return {'state': 'none', 'text': 'The run shows no change from this job: start it again.'}
 
 def run_path(run): return os.path.join(*run.split('/'))
 
@@ -168,6 +187,6 @@ def stop_review(s, run, R):
     """Stop reviewing: Ctrl+C to the live review child, only while it is before Finish (decided from disk)."""
     j = live_review(s, run)
     if not j: raise ValueError('no review page is open for this run')
-    if jobs.review_past_finish(R, j.get('started')): raise ValueError('this review is past Finish and is being applied: it cannot be stopped now')
-    if not jobs.interrupt(s['jobs'], j['id']): raise ValueError('the review page could not be reached: it may have just ended')
+    ok, why = jobs.interrupt(s['jobs'], j['id'], s['runs'])
+    if not ok: raise ValueError(why)
     return j
