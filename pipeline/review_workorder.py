@@ -121,6 +121,9 @@ def main():
     ap.add_argument('--return-to', metavar='URL', help='with --serve or --reopen: the page the review page goes to after Finish, and '
                     'links back to (the app\'s run page; http://127.0.0.1:<port>/… or http://localhost:<port>/… only)')
     a = ap.parse_args()
+    clash = [f for f, on in (('--apply', a.apply), ('--pin', a.pin), ('--sessions', a.sessions), ('--replay-to', a.replay_to)) if on]
+    if a.discard_open and clash:                         # alone, or with --reopen --from: never silently one of the two
+        sys.exit(f'--discard-open goes on its own (or with --reopen --from), not with {", ".join(clash)}')
     if a.return_to:
         try: server.check_return_to(a.return_to)
         except ValueError as e: sys.exit(f'--return-to: {e}')

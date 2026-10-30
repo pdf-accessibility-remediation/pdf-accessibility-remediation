@@ -71,10 +71,11 @@ def load(config=None, base=HERE, environ=None):
     s['sha'] = fingerprint(s)
     return s
 
-CODE = ('app.py', 'webapp', 'review')                       # what the running app is made of (its pages included)
+CODE = ('app.py', 'webapp', 'review', 'lib/titles.py', 'lib/glance.py')   # what the running app is made of (its pages included)
 
 def code_fingerprint():
-    """The app's code on disk now: sha256 over app.py and every .py/.js/.css/.html file in webapp/ and review/. A running
+    """The app's code on disk now: sha256 over app.py, every .py/.js/.css/.html file in webapp/ and review/, and the lib/
+    modules they import for what the pages show (titles.py, glance.py). A running
     app keeps the one it started with, so a second start can tell that the code changed under it."""
     h = hashlib.sha256()
     for c in CODE:
