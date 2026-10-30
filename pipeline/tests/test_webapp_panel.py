@@ -770,20 +770,28 @@ def test_paths_are_checked_where_they_are_used(setup):
     srv = src('webapp/server.py')
     for line in ("rp = os.path.realpath(p)                     # only files inside the runs folder",
                  "if not rp.startswith(RUNS + os.sep) or not os.path.isfile(rp)",
-                 "if not B.startswith(BB + os.sep)", "if p.startswith(base + os.sep) and os.path.isfile(p): out[n] = p",
+                 "return B if B.startswith(BB + os.sep)", "if p.startswith(base + os.sep) and os.path.isfile(p): out[n] = p",
                  "if rec.startswith(base + os.sep):"):
         assert line in srv, line
-    assert "if not p.startswith(os.path.realpath(folder(J)) + os.sep): return None" in src('webapp/jobs.py')
+    assert "p = config.entry(folder(J), f'{jid}.json')" in src('webapp/jobs.py')
 
-def test_request_paths_are_checked_before_any_isdir_or_isfile():
-    """CodeQL (PR #46): the inline realpath + startswith check comes before any isdir/isfile on a request-built path."""
+def test_no_request_string_is_joined_onto_a_path():
+    """CodeQL (PR #46): each request segment only picks an entry from the real folder's listing (config.entry); the
+    folders the handlers open, list or test are built from names on disk only."""
     srv = src('webapp/server.py')
-    assert "d = os.path.realpath(os.path.join(runs, *segs[:i]))" in srv and "if not d.startswith(base + os.sep) or not os.path.isdir(d): return None" in srv
-    v = srv.index("d, sid = os.path.realpath(os.path.join(R, 'reviews', 'versions', rest[2])), rest[2]")
-    assert v < srv.index("if not d.startswith(os.path.realpath(os.path.join(R, 'reviews', 'versions')) + os.sep)", v) < srv.index("if os.path.isdir(d) else None", v)
-    assert "t = self.text(f) if f.startswith(RUNS + os.sep) and os.path.isfile(f) else None" in srv
-    assert "if rm.startswith(os.path.realpath(R) + os.sep) and os.path.isfile(rm)" in srv
-    assert "os.path.isdir(d) and inside(R, d)" not in srv
+    for gone in ("os.path.join(runs, *segs", "rest[2]))", "os.path.join(BB, segs[0])", "if os.path.isdir(d) else None"):
+        assert gone not in srv, gone
+    for fn in ('def find_run', 'def version_dir', 'def batch_dir'):
+        assert 'config.entry(' in srv[srv.index(fn):srv.index('\ndef ', srv.index(fn) + 1)], fn
+    assert "d, sid = version_dir(R, rest[2]), rest[2]" in srv and "B = batch_dir(s['runs'], segs[0])" in srv
+
+def test_entry_picks_only_a_listed_name(tmp_path):
+    (tmp_path / 'runs' / 'a').mkdir(parents=True); (tmp_path / 'secret').write_text('x')
+    R = str(tmp_path / 'runs')
+    assert config.entry(R, 'a') == os.path.join(R, 'a')
+    for bad in ('..', '.', '../secret', 'a/', 'A', '', 'nope'):
+        assert config.entry(R, bad) is None, bad
+    assert config.entry(str(tmp_path / 'missing'), 'a') is None
 
 def test_a_version_folder_outside_versions_is_refused(app):
     R = app['R']; os.makedirs(R / 'reviews' / 'versions' / '001', exist_ok=True)

@@ -27,7 +27,7 @@ def free_port():
     with socket.socket() as k: k.bind(('127.0.0.1', 0)); return k.getsockname()[1]
 
 def stub_vera(d, answer='veraPDF 1.30.3'):
-    p = os.path.join(d, 'verapdf'); open(p, 'w').write(f'#!/bin/sh\nif [ "$1" = "--version" ]; then echo "{answer}"; exit 0; fi\nexit 1\n'); os.chmod(p, 0o755)
+    p = os.path.join(d, 'verapdf'); open(p, 'w').write(f'#!/bin/sh\nif [ "$1" = "--version" ]; then echo "{answer}"; exit 0; fi\nexit 1\n'); os.chmod(p, 0o700)
     return p
 
 @pytest.fixture
