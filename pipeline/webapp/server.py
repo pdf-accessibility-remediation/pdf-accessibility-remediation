@@ -59,9 +59,10 @@ def inside(root, p):
 
 def find_run(runs, segs):
     """(run name, its folder, the remaining segments) for the shortest prefix holding record.json, or None."""
+    base = os.path.realpath(runs)
     for i in range(1, len(segs) + 1):
-        d = os.path.join(runs, *segs[:i])
-        if not inside(runs, d) or not os.path.isdir(d): return None
+        d = os.path.realpath(os.path.join(runs, *segs[:i]))  # resolved and checked inside runs before any isdir/isfile
+        if not d.startswith(base + os.sep) or not os.path.isdir(d): return None
         if os.path.isfile(os.path.join(d, 'record.json')): return '/'.join(segs[:i]), d, segs[i:]
     return None
 
@@ -281,9 +282,12 @@ def make(s, setup, code=None):
                     return self.run_page(run, R)
                 if len(rest) == 1 and rest[0] in RESERVED: return self.send(404, {'error': 'this page is not built yet'})
                 d, name, sid = R, rest[-1], None
-                if len(rest) == 4 and rest[:2] == ['reviews', 'versions']: d, sid = os.path.join(R, 'reviews', 'versions', rest[2]), rest[2]
+                if len(rest) == 4 and rest[:2] == ['reviews', 'versions']:
+                    d, sid = os.path.realpath(os.path.join(R, 'reviews', 'versions', rest[2])), rest[2]
+                    if not d.startswith(os.path.realpath(os.path.join(R, 'reviews', 'versions')) + os.sep):   # checked first,
+                        return self.send(404, {'error': 'not found'})                                         # before isdir
                 elif len(rest) != 1: return self.send(404, {'error': 'not found'})
-                f = served(d, s['runs']).get(name) if os.path.isdir(d) and inside(R, d) else None
+                f = served(d, s['runs']).get(name) if os.path.isdir(d) else None
                 if not f or not inside(R, f): return self.send(404, {'error': 'not found'})
                 base = '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
                 if name == 'review.html' and sid is None: return self.redirect(base)      # the run page, with the panel
@@ -299,8 +303,10 @@ def make(s, setup, code=None):
 
         def run_page(self, run, R):
             f = os.path.join(R, 'review.html')
-            cur = S.current_id(runs.load(os.path.join(R, 'record.json')) or {})
-            t = self.text(f) if os.path.isfile(f) else None                          # checked inside the runs folder
+            rec = os.path.realpath(os.path.join(R, 'record.json'))
+            cur = S.current_id((runs.load(rec) if rec.startswith(RUNS + os.sep) else None) or {})
+            f = os.path.realpath(f)                                                  # checked inside the runs folder first
+            t = self.text(f) if f.startswith(RUNS + os.sep) and os.path.isfile(f) else None
             if t is not None: return self.send(200, with_panel(t, run, cur), 'text/html; charset=utf-8')
             return self.send(200, no_dashboard(run, R, cur), 'text/html; charset=utf-8')
 
@@ -309,7 +315,8 @@ def make(s, setup, code=None):
 def no_dashboard(run, R, current=None):
     """A run with no review.html (older runs): the panel, the review.md link and a line saying there is no dashboard.
     No rebuild: report_html.py would write into the run."""
-    md = '<p><a href="review.md">review.md</a>: what a person should check.</p>' if os.path.isfile(os.path.join(R, 'review.md')) else ''
+    rm = os.path.realpath(os.path.join(R, 'review.md'))           # checked inside the run folder before isfile
+    md = '<p><a href="review.md">review.md</a>: what a person should check.</p>' if rm.startswith(os.path.realpath(R) + os.sep) and os.path.isfile(rm) else ''
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
                       f'<title>{html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
                       f'<header><h1>{html.escape(run)}</h1></header><main id="main" tabindex="-1">'

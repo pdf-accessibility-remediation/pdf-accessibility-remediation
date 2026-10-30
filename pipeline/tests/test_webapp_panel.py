@@ -774,3 +774,22 @@ def test_paths_are_checked_where_they_are_used(setup):
                  "if rec.startswith(base + os.sep):"):
         assert line in srv, line
     assert "if not p.startswith(os.path.realpath(folder(J)) + os.sep): return None" in src('webapp/jobs.py')
+
+def test_request_paths_are_checked_before_any_isdir_or_isfile():
+    """CodeQL (PR #46): the inline realpath + startswith check comes before any isdir/isfile on a request-built path."""
+    srv = src('webapp/server.py')
+    assert "d = os.path.realpath(os.path.join(runs, *segs[:i]))" in srv and "if not d.startswith(base + os.sep) or not os.path.isdir(d): return None" in srv
+    v = srv.index("d, sid = os.path.realpath(os.path.join(R, 'reviews', 'versions', rest[2])), rest[2]")
+    assert v < srv.index("if not d.startswith(os.path.realpath(os.path.join(R, 'reviews', 'versions')) + os.sep)", v) < srv.index("if os.path.isdir(d) else None", v)
+    assert "t = self.text(f) if f.startswith(RUNS + os.sep) and os.path.isfile(f) else None" in srv
+    assert "if rm.startswith(os.path.realpath(R) + os.sep) and os.path.isfile(rm)" in srv
+    assert "os.path.isdir(d) and inside(R, d)" not in srv
+
+def test_a_version_folder_outside_versions_is_refused(app):
+    R = app['R']; os.makedirs(R / 'reviews' / 'versions' / '001', exist_ok=True)
+    assert get(app['port'], '/run/book/r1/reviews/versions/001/review.md')[0] == 200
+    for bad in ('/run/book/r1/reviews/versions/%2e%2e/review.md', '/run/book/r1/reviews/versions/..%2f..%2fr1/review.md',
+                '/run/book/r1/reviews/versions/nope/review.md'):
+        assert get(app['port'], bad)[0] == 404, bad
+    os.symlink(app['t'] / 'outside', R / 'reviews' / 'versions' / 'out')                    # a version folder that is a symlink out
+    assert get(app['port'], '/run/book/r1/reviews/versions/out/review.html')[0] == 404
