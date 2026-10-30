@@ -288,7 +288,7 @@ def summary_row(s):
 def summary_text(s):
     """'Session 1 (summary only): 159 approved, 8 seen, no changes; per-decision choices weren't recorded before …'"""
     rv = s.get('review') or {}; c = rv.get('counts') or {}
-    parts = [f'{v} {k.replace("_", " ")}' for k, v in c.items() if v] + [(lambda n: f'{n} change{"s" if n != 1 else ""} from the AI')(len(rv['changes'])) if rv.get('changes') else 'no changes']
+    parts = [f'{v} {"accepted without review" if k == "accepted_unreviewed" else k.replace("_", " ")}' for k, v in c.items() if v] + [(lambda n: f'{n} change{"s" if n != 1 else ""} from the AI')(len(rv['changes'])) if rv.get('changes') else 'no changes']
     return (f'Session {int(s["id"])} (summary only): ' + ', '.join(parts) +
             f'; per-decision choices were not recorded before {SINCE}' + ('' if not s.get('inferred') else ' (rebuilt from the recorded changes and counts, marked inferred)'))
 
@@ -444,6 +444,20 @@ def tidy_open(R):
     for d in (os.path.join(p['dir'], 'review_pages'), os.path.join(p['audit'], 'figures')):
         shutil.rmtree(d, ignore_errors=True)
 
+def abandon(R, s, say=say_):
+    """An open session marked abandoned: its draft (the choices so far) is kept in its record, the open working files
+    are removed; nothing else changes (the current result stays)."""
+    p = P(R)
+    s['draft'] = load(p['draft']); s['status'] = 'abandoned'; s['abandoned'] = now(); save_session(R, s); tidy_open(R)
+    say(f'  {label(s["id"])} marked abandoned (kept in reviews/sessions/{s["id"]}.json)')
+
+def discard_open(R, say=say_):
+    """--discard-open on its own: every open session marked abandoned, no new session opened. Returns their ids."""
+    op = [s for s in sessions(R) if s.get('status') == 'open']
+    if not op: raise Refused('no session is open')
+    for s in op: abandon(R, s, say)
+    return [s['id'] for s in op]
+
 def open_session(R, rec, src=None, pdf=None, discard_open=False, say=say_):
     """Open a review of a finished run: a new session preloaded from src ('ai', an earlier session id, or None: the latest
     finished or applied one), or the open one carried on. Writes reviews/review_items.json (with the page's session
@@ -460,10 +474,8 @@ def open_session(R, rec, src=None, pdf=None, discard_open=False, say=say_):
     if op and src is None and not discard_open:
         s = op[-1]; say(f'  carrying on with the open {label(s["id"])} (started {s.get("started")})')
     else:
-        for s in op:
-            if not discard_open: raise Refused(f'{label(s["id"])} is open: run --reopen without --from to carry on with it, or add --discard-open')
-            s['draft'] = load(p['draft']); s['status'] = 'abandoned'; s['abandoned'] = now(); save_session(R, s); tidy_open(R)
-            say(f'  {label(s["id"])} marked abandoned (kept in reviews/sessions/{s["id"]}.json)')
+        if op and not discard_open: raise Refused(f'{label(op[-1]["id"])} is open: run --reopen without --from to carry on with it, or add --discard-open')
+        for s in op: abandon(R, s, say)
         done = [s for s in sessions(R) if s.get('status') in ('finished', 'applied')]
         if src is None: src = done[-1]['id'] if done else 'ai'
         if src != 'ai':

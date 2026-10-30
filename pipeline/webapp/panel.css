@@ -1,0 +1,60 @@
+/* The run page's panel (webapp/panel.js), added to review.html when the app serves it. Colours are review.html's own
+   (review/palette.css): text on panel and the accent meet 4.5:1 in both themes; status is always said in words too. */
+.pp-page { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.pp-page main { padding: 0 16px 24px; max-width: 1200px; margin: 0 auto; box-sizing: border-box; }
+.pp-page header { padding: 4px 16px 0; max-width: 1200px; margin: 0 auto; box-sizing: border-box; } .pp-page h1 { font-size: 19px; }
+.pp-page a { color: var(--accent); }
+.pp-page .skip { position: absolute; left: -999px; } .pp-page .skip:focus { left: 8px; top: 8px; background: var(--panel); padding: 4px 8px; z-index: 9; }
+/* the panel, the earlier-result bar and the review.md page's links line up with the report's main column: 1200 px at most,
+   centred, with the report's own 16 px (10 px on a narrow screen) side padding */
+#pdfrem-panel, #pdfrem-version, .pp-wrap { max-width: 1200px; margin: 0 auto; padding: 0 16px; box-sizing: border-box; }
+.pp { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; box-sizing: border-box; }
+.pp h2 { font-size: 18px; margin: 0 0 6px; } .pp h3 { font-size: 16px; margin: 10px 0 4px; } .pp h4 { font-size: 15px; margin: 0 0 4px; }
+.pp-bar { border-left: 6px solid var(--change); } .pp-bar p { margin: 2px 0; }
+#pp-vreview { margin-left: 12px; }                              /* apart from "Back to the Current Result" */
+body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar replaces the file's own "replaced by" note */
+.pp .pp-warn { border-left: 4px solid var(--change); padding-left: 10px; }   /* setup: only shown when a tool is missing */
+.pp .pp-nw { white-space: nowrap; }
+.pp-md { white-space: pre-wrap; word-break: break-word; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+.pp .pp-spin { display: inline-block; width: .9em; height: .9em; margin-right: 6px; vertical-align: -2px; border: 2px solid var(--line);
+               border-top-color: var(--accent); border-radius: 50%; animation: pp-spin 1s linear infinite; }
+@keyframes pp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pp .pp-spin { animation: none; } }
+.pp p { margin: 4px 0; } .pp ul, .pp ol { margin: 4px 0; padding-left: 22px; }
+.pp a { color: var(--accent); }
+.pp .pp-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.pp button, .pp a.pp-btn { font: inherit; font-size: 14px; padding: 6px 12px; min-height: 32px; border: 1px solid var(--muted); border-radius: 4px;
+      background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-block; }
+.pp button.pp-primary, .pp a.pp-btn.pp-primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+.pp button:hover, .pp a.pp-btn:hover { text-decoration: underline; }
+.pp :focus-visible, .pp-dlg :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* a heading or message the script moves focus to never shows an outline, on any page the app serves (Tab focus on
+   buttons, links and fields keeps its own) */
+/* not .hit: review.html's landing highlight (the row a Details or § link landed on) keeps its blue outline */
+[tabindex="-1"]:not(.hit):focus, [tabindex="-1"]:not(.hit):focus-visible { outline: none; }
+.pp .pp-note { color: var(--muted); font-size: 14px; }
+.pp .pp-msg { border-left: 4px solid var(--reject); padding: 4px 4px 4px 10px; background: var(--flag); }   /* an error */
+.pp .pp-msg:not([hidden]) { display: flex; align-items: flex-start; gap: 8px; } .pp .pp-msg-t { flex: 1; padding-top: 2px; }
+.pp .pp-msg.pp-okmsg { border: 1px solid var(--line); background: var(--panel); }   /* a message: neutral, no coloured border */
+.pp button.pp-x { min-height: 28px; min-width: 28px; padding: 0 6px; border: 0; background: none; color: var(--ink); font-size: 18px; line-height: 1; }
+.pp .pp-job { border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; margin: 8px 0; }
+.pp .pp-state { font-weight: 600; } .pp .pp-failed { color: var(--reject); } .pp .pp-done { color: var(--ok); }
+.pp .pp-steps li[aria-current="step"] { font-weight: 600; }
+.pp pre { white-space: pre-wrap; word-break: break-word; font-size: 13px; background: var(--bg); padding: 6px 8px; border-radius: 4px; max-height: 320px; overflow: auto; }
+.pp code { font-size: 13px; background: var(--bg); padding: 0 3px; border-radius: 3px; word-break: break-all; }
+.pp details { margin: 6px 0; } .pp summary { cursor: pointer; font-size: 15px; color: var(--ink); }   /* the body text size and colour */
+.pp .pp-tw { overflow-x: auto; max-width: 100%; } .pp .pp-tw:focus-visible { outline: 3px solid var(--accent); }
+.pp table { border-collapse: collapse; font-size: 14px; margin: 4px 0; } .pp caption { text-align: left; font-weight: 600; padding: 4px 0; }
+.pp th, .pp td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; } .pp th { background: var(--bg); }
+.pp td button { white-space: nowrap; width: auto; } .pp td:last-child { white-space: nowrap; }
+.pp-offline { margin: 12px 16px; padding: 8px 12px; border: 2px solid var(--reject); border-radius: 4px; background: var(--flag); color: var(--ink); }
+.pp-sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.pp-dlg { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); max-width: 560px; padding: 16px;
+          font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.pp-dlg h2 { font-size: 18px; margin: 0 0 8px; }
+.pp-dlg button { font: inherit; padding: 6px 12px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); cursor: pointer; margin-right: 8px; }
+.pp-dlg button.pp-primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+.pp-dlg::backdrop { background: rgba(0, 0, 0, .45); }
+@media (max-width: 640px) { #pdfrem-panel, #pdfrem-version, .pp-wrap, .pp-page main, .pp-page header { padding-left: 10px; padding-right: 10px; } }
+@media (max-width: 600px) { .pp { margin: 8px 0; padding: 10px; } .pp button, .pp a.pp-btn { width: 100%; text-align: left; } }
