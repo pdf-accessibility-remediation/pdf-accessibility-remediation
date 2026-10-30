@@ -30,8 +30,10 @@ computed when it is served, so a javascript: link or any other script in a repor
 
 A run is named by its path under the runs folder (godzone/rv1, batches/d1/clans): the shortest prefix of the request
 path that is a folder holding record.json. Every segment is checked (no empty, ".", "..", dot-names or backslashes),
-the folder and every file are resolved with realpath and must stay inside the runs folder, and a file is served only
-when its name is in the run's list. Nothing outside the runs folder is ever served (.env, samples/, pipeline/).
+and no request string is ever joined onto a path: each segment (a run's folders, a batch, a previous result's id, a job
+id) only picks an entry from the real folder's listing (config.entry). The folder and every file are then resolved
+with realpath and must stay inside the runs folder, and a file is served only when its name is in the run's list.
+Nothing outside the runs folder is ever served (.env, samples/, pipeline/).
 """
 import os, re, json, html, base64, hashlib, traceback, urllib.parse, datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -58,13 +60,34 @@ def inside(root, p):
     return p == root or p.startswith(root + os.sep)
 
 def find_run(runs, segs):
-    """(run name, its folder, the remaining segments) for the shortest prefix holding record.json, or None."""
-    base = os.path.realpath(runs)
-    for i in range(1, len(segs) + 1):
-        d = os.path.realpath(os.path.join(runs, *segs[:i]))  # resolved and checked inside runs before any isdir/isfile
+    """(run name, its folder, the remaining segments) for the shortest prefix holding record.json, or None. Each segment
+    picks an entry from the folder's own listing (config.entry): the folder is built from names on disk only, then
+    resolved and kept inside the runs folder (a symlink out of it is refused)."""
+    base = os.path.realpath(runs); d = base
+    for i, x in enumerate(segs, 1):
+        d = config.entry(d, x)
+        if d is None: return None
+        d = os.path.realpath(d)
         if not d.startswith(base + os.sep) or not os.path.isdir(d): return None
         if os.path.isfile(os.path.join(d, 'record.json')): return '/'.join(segs[:i]), d, segs[i:]
     return None
+
+def version_dir(R, sid):
+    """A previous result's folder, reviews/versions/<sid>, picked from that folder's listing; None when it is not there
+    or resolves outside it."""
+    V = os.path.realpath(os.path.join(R, 'reviews', 'versions'))
+    d = config.entry(V, sid)
+    if d is None: return None
+    d = os.path.realpath(d)
+    return d if d.startswith(V + os.sep) and os.path.isdir(d) else None
+
+def batch_dir(runs, label):
+    """A batch's folder, runs/batches/<label>, picked from the batches folder's listing, holding summary.html; or None."""
+    BB = os.path.realpath(os.path.join(runs, 'batches'))
+    B = config.entry(BB, label)
+    if B is None: return None
+    B = os.path.realpath(B)
+    return B if B.startswith(BB + os.sep) and os.path.isfile(os.path.join(B, 'summary.html')) else None
 
 def served(d, runs):
     """{name: path} of the files a run (or a version under reviews/versions/) serves. Every path is resolved and checked
@@ -257,9 +280,8 @@ def make(s, setup, code=None):
             if p.startswith('/batch/'):
                 segs = segments(p[len('/batch/'):])
                 if not segs: return self.send(404, {'error': 'no such batch'})
-                BB = os.path.realpath(os.path.join(s['runs'], 'batches'))
-                B = os.path.realpath(os.path.join(BB, segs[0]))
-                if not B.startswith(BB + os.sep) or not os.path.isfile(os.path.join(B, 'summary.html')): return self.send(404, {'error': 'no such batch'})
+                B = batch_dir(s['runs'], segs[0])
+                if not B: return self.send(404, {'error': 'no such batch'})
                 rest = segs[1:]
                 if not rest:
                     if not p.endswith('/'): return self.redirect(p + '/')
@@ -283,11 +305,10 @@ def make(s, setup, code=None):
                 if len(rest) == 1 and rest[0] in RESERVED: return self.send(404, {'error': 'this page is not built yet'})
                 d, name, sid = R, rest[-1], None
                 if len(rest) == 4 and rest[:2] == ['reviews', 'versions']:
-                    d, sid = os.path.realpath(os.path.join(R, 'reviews', 'versions', rest[2])), rest[2]
-                    if not d.startswith(os.path.realpath(os.path.join(R, 'reviews', 'versions')) + os.sep):   # checked first,
-                        return self.send(404, {'error': 'not found'})                                         # before isdir
+                    d, sid = version_dir(R, rest[2]), rest[2]
+                    if d is None: return self.send(404, {'error': 'not found'})
                 elif len(rest) != 1: return self.send(404, {'error': 'not found'})
-                f = served(d, s['runs']).get(name) if os.path.isdir(d) else None
+                f = served(d, s['runs']).get(name)
                 if not f or not inside(R, f): return self.send(404, {'error': 'not found'})
                 base = '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
                 if name == 'review.html' and sid is None: return self.redirect(base)      # the run page, with the panel

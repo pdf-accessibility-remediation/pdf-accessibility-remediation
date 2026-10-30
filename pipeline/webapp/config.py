@@ -22,6 +22,16 @@ FOLDERS = ('runs', 'samples', 'uploads', 'jobs')
 BASE_ENV = ('PATH', 'HOME', 'LANG', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL')
 JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD')
 
+def entry(folder, name):
+    """The path of folder's entry called `name`, taken from the folder's own listing, or None. A name from a request is
+    never joined onto a path: it only picks one of the names that are already on disk."""
+    try:
+        with os.scandir(folder) as it:
+            for e in it:
+                if e.name == name: return e.path
+    except OSError: pass
+    return None
+
 class Bad(Exception):
     """The settings cannot be used: the app does not start."""
 

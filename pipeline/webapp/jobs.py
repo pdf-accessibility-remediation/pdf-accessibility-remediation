@@ -14,7 +14,7 @@ reach it. Liveness is the process group: os.killpg(pgid, 0), and a process in th
 wrapper or the job's own script (a reused process-group id is not mistaken for the job).
 """
 import os, sys, json, time, fcntl, signal, datetime, subprocess, contextlib
-from . import logs
+from . import logs, config
 
 ACTIVE = ('queued', 'running')
 WRAPPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'jobrun.py')
@@ -33,19 +33,24 @@ def locked(J):
         try: yield
         finally: fcntl.flock(f, fcntl.LOCK_UN)
 
-def load(J, jid):
-    p = os.path.realpath(path(J, jid))                   # a job id from a request: its file must be in the jobs folder
-    if not p.startswith(os.path.realpath(folder(J)) + os.sep): return None
+def _read(p):
     try: return json.load(open(p, encoding='utf-8'))
     except (OSError, ValueError): return None
+
+def load(J, jid):
+    """A job by id. The file is picked from the jobs folder's own listing (an id from a request is never joined onto a
+    path), so the job and its id come from the disk."""
+    p = config.entry(folder(J), f'{jid}.json')
+    return _read(p) if p else None
 
 def save(J, job):
     p = path(J, job['id']); tmp = p + '.tmp'
     json.dump(job, open(tmp, 'w', encoding='utf-8'), indent=1, ensure_ascii=False); os.replace(tmp, p)
 
 def all_jobs(J):
-    if not os.path.isdir(folder(J)): return []
-    return [j for j in (load(J, n[:-5]) for n in sorted(os.listdir(folder(J))) if n.endswith('.json')) if j]
+    F = folder(J)
+    if not os.path.isdir(F): return []
+    return [j for j in (_read(os.path.join(F, n)) for n in sorted(os.listdir(F)) if n.endswith('.json')) if j]
 
 def update(J, jid, **kw):
     with locked(J):
@@ -195,7 +200,8 @@ def position(J, jid):
     return q.index(jid) + 1 if jid in q else None
 
 def read_log(J, jid, offset=0, limit=256 * 1024):
-    """(text, next offset) from byte offset; whole lines only while the job may still write."""
+    """(text, next offset) from byte offset; whole lines only while the job may still write. jid is a loaded job's own id
+    (from the disk, never from a request: /api/job/<id> finds the job with load() first)."""
     lp = os.path.realpath(log_path(J, jid))
     if not lp.startswith(os.path.realpath(folder(J)) + os.sep): return '', offset
     try:
