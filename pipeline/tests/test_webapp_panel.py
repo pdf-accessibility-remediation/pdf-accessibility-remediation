@@ -497,7 +497,7 @@ def test_every_report_has_a_way_back(app):
     st, b, hd = get(port, '/run/book/r1/review.md?raw=1')
     assert hd['Content-Type'].startswith('text/plain') and b == b'# Review'
     st, b, hd = get(port, '/run/book/r1/reviews/versions/001/review.md')
-    assert 'An Earlier Result (Session 1)' in b.decode() and '<a href="review.html">This Earlier Result' in b.decode()
+    assert 'A Previous Result (Session 1)' in b.decode() and '<a href="review.html">This Previous Result' in b.decode()
     assert get(port, '/run/book/r1/review.html')[2].get('Location') == '/run/book/r1/'
 
 def test_review_again_names_where_it_starts(setup):
@@ -599,5 +599,57 @@ def test_the_same_title_case_rule_in_the_pages():
 def test_a_job_card_and_its_one_line_forms():
     js = src('webapp/panel.js')
     assert "esc(tc(j.action || j.title))" in js                                   # card heading: the action, Title Case
-    assert "return /^done\\b/.test(r) ? cap(r) : 'Done: ' + r;" in js            # status line: "Done: session 5 applied (…)"
+    assert "return /^(done|pinned|discarded)\\b/.test(r) ? cap(r) : 'Done: ' + r;" in js   # status line: "Done: session 5 applied (…)"
     assert "<b>Last Job:</b> ' + esc(cap(last.title))" in js and "'<li>' + esc(cap(j.title))" in js
+
+# ------------------------------------------------------------------ Patrick's fourth pass
+def test_discard_open_marks_the_session_abandoned_and_keeps_it(tmp_path):
+    R, rec, ai, dg = run_folder(tmp_path)
+    with pytest.raises(S.Refused, match='no session is open'): S.discard_open(R)
+    S.save_session(R, {'id': '002', 'status': 'open', 'started': '2026-10-29T10:00:00'})
+    S.save(S.P(R)['draft'], {'reviewer': 'Kim', 'decisions': {'x': {'status': 'approved'}}})
+    before = sha(os.path.join(R, 'record.json'))
+    assert S.discard_open(R, say=lambda *a: None) == ['002']
+    s = S.session(R, '002')
+    assert s['status'] == 'abandoned' and s['abandoned'] and s['draft']['decisions'] == {'x': {'status': 'approved'}}   # kept, not deleted
+    assert not os.path.exists(S.P(R)['draft']) and sha(os.path.join(R, 'record.json')) == before                       # the result is unchanged
+
+def test_discard_open_from_the_command_line(tmp_path):
+    R, rec, ai, dg = run_folder(tmp_path)
+    S.save_session(R, {'id': '002', 'status': 'open', 'started': '2026-10-29T10:00:00'})
+    r = subprocess.run([sys.executable, 'review_workorder.py', R, '--discard-open'], cwd=HERE, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and 'discarded: session 2' in r.stdout and 'is unchanged' in r.stdout and S.session(R, '002')['status'] == 'abandoned'
+    r = subprocess.run([sys.executable, 'review_workorder.py', R, '--discard-open'], cwd=HERE, capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0 and 'refused: no session is open' in r.stderr
+
+def test_the_discard_route(app):
+    port, t, R = app['port'], app['t'], app['R']
+    s = config.load(str(t / 'app.json'), environ={})
+    st, b = post(port, '/api/run/book/r1/discard')
+    assert st == 409 and b['error'] == 'no session is open'
+    ses(str(R), '002', 'open', started='2026-10-29T10:00:00')
+    j = fake(t, s, 'book/r1', 30); jobs.update(s['jobs'], j['id'], kind='review', counted=False)          # its review page is open
+    assert wait(lambda: (jobs.load(s['jobs'], j['id']) or {}).get('child_pid'), 20)
+    st, b = post(port, '/api/run/book/r1/discard')
+    assert st == 409 and b['error'] == 'the review page is open: press Stop Reviewing first, then Discard'
+    (R / 'reviews' / 'review.json').write_text('{}')                                                       # past Finish
+    st, b = post(port, '/api/run/book/r1/discard')
+    assert st == 409 and 'past Finish' in b['error']
+    os.killpg(jobs.load(s['jobs'], j['id'])['pgid'], signal.SIGKILL); (R / 'reviews' / 'review.json').unlink()
+    assert wait(lambda: jobs.load(s['jobs'], j['id'])['status'] != 'running', 20)
+    st, b = post(port, '/api/run/book/r1/discard')
+    assert st == 202 and b['job']['kind'] == 'discard' and b['job']['what'] == 'Discard session 2'
+    assert jobs.load(s['jobs'], b['job']['id'])['argv'][1:] == ['review_workorder.py', str(R), '--discard-open']
+
+def test_fourth_pass_details():
+    import report_html as H
+    js, css = src('webapp/panel.js'), src('webapp/panel.css')
+    assert 'Its choices are kept in Session History as abandoned; the current result (' in js and "esc(tc('Discard ' + s.open.label))" in js
+    assert "'The review page is closed. ' + open + ' stays open: press Continue Review to carry on.'" in js
+    assert "if (!miss.length) return '';" in js and 'previous result' in js and 'earlier result' not in js
+    assert '#pdfrem-panel > .pp { border-left: 6px solid var(--accent); }' in css and 'body:has(#pdfrem-version) .replaced { display: none; }' in css
+    assert '.pp .pp-msg.pp-okmsg { border-left-color: var(--accent);' in css and '#pp-vreview { margin-left: 12px; }' in css
+    rec = {'review': {'session': '001', 'sessions': [{'id': '001', 'from': 'ai', 'status': 'applied', 'reviewer': 'K', 'date': '2026-10-29',
+           'counts': {'approved': 1}}], 'decisions': [{'id': 'x', 'kind': 'retype', 'label': 'A', 'page': 2, 'status': 'approved'}]}}
+    out = ''.join(H.review_card('/tmp', rec))
+    assert '<hr class="thin"><h3 class="rev-sub">Decisions in This Session</h3>' in out and '<p>1 approved</p>' not in out

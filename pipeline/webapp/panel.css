@@ -11,7 +11,12 @@
 .pp { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink);
       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; box-sizing: border-box; }
 .pp h2 { font-size: 18px; margin: 0 0 6px; } .pp h3 { font-size: 16px; margin: 10px 0 4px; } .pp h4 { font-size: 15px; margin: 0 0 4px; }
+#pdfrem-panel > .pp { border-left: 6px solid var(--accent); }   /* Run Actions: the primary button's blue, like the report's cards (green/orange/red mean status) */
 .pp-bar { border-left: 6px solid var(--change); } .pp-bar p { margin: 2px 0; }
+#pp-vreview { margin-left: 12px; }                              /* apart from "Back to the Current Result" */
+body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar replaces the file's own "replaced by" note */
+.pp .pp-warn { border-left: 4px solid var(--change); padding-left: 10px; }   /* setup: only shown when a tool is missing */
+.pp .pp-nw { white-space: nowrap; }
 .pp-md { white-space: pre-wrap; word-break: break-word; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
 .pp .pp-spin { display: inline-block; width: .9em; height: .9em; margin-right: 6px; vertical-align: -2px; border: 2px solid var(--line);
                border-top-color: var(--accent); border-radius: 50%; animation: pp-spin 1s linear infinite; }
@@ -31,7 +36,7 @@
 [tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }
 .pp .pp-note { color: var(--muted); font-size: 14px; }
 .pp .pp-msg { border-left: 4px solid var(--reject); padding: 4px 10px; background: var(--flag); }
-.pp .pp-msg.pp-okmsg { border-left-color: var(--ok); }
+.pp .pp-msg.pp-okmsg { border-left-color: var(--accent); background: var(--panel); }   /* neutral, like Run Actions (not green) */
 .pp .pp-job { border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; margin: 8px 0; }
 .pp .pp-state { font-weight: 600; } .pp .pp-failed { color: var(--reject); } .pp .pp-done { color: var(--ok); }
 .pp .pp-steps li[aria-current="step"] { font-weight: 600; }

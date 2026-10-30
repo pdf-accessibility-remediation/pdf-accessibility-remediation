@@ -131,6 +131,7 @@ def result(R, j, v):
     if st == 'failed': return 'failed' + when
     if st == 'interrupted' and not lost: return 'stopped without finishing' + when
     if j['kind'] == 'pin': return 'pinned' + when
+    if j['kind'] == 'discard': return 'discarded' + when
     m = SESSION_IN.search(out if out else (v.get('interrupted') or {}).get('text', ''))
     if not m: return 'done' + when
     sid = f'{int(m.group(1)):03d}'
@@ -250,6 +251,19 @@ def start_apply(s, run, R):
     if why: raise ValueError(why)
     argv = [sys.executable, 'review_workorder.py', R, '--apply'] + (['--pdf', pdf] if pdf else [])
     return jobs.create(s['jobs'], 'apply', run, argv, config.child_env(s), R=R, what=f'Apply {u["label"]}')
+
+def start_discard(s, run, R):
+    """Discard Session N: the open session marked abandoned (review_workorder.py --discard-open on its own; nothing
+    deleted, the current result unchanged). Refused while its review page is open (Stop it first) or past Finish."""
+    j = live_review(s, run)
+    if j:
+        if jobs.review_past_finish(jobs.run_dir(j, s['runs']), j.get('started')):
+            raise ValueError('this review is past Finish and is being applied: it cannot be discarded now')
+        raise ValueError('the review page is open: press Stop Reviewing first, then Discard')
+    op = [x for x in S.sessions(R) if x.get('status') == 'open']
+    if not op: raise ValueError('no session is open')
+    argv = [sys.executable, 'review_workorder.py', R, '--discard-open']
+    return jobs.create(s['jobs'], 'discard', run, argv, config.child_env(s), R=R, what=f'Discard {S.label(op[-1]["id"])}')
 
 def stop_review(s, run, R):
     """Stop reviewing: Ctrl+C to the live review child, only while it is before Finish (decided from disk)."""
