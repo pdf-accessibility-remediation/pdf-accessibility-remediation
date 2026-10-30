@@ -144,8 +144,7 @@ def state(s, run, R):
                                if os.path.isdir(v) and x['id'] != cur else None})
     ai_v = os.path.join(vers, 'ai')
     op = [x for x in ss if x.get('status') == 'open']
-    fin = [x for x in ss if x.get('status') == 'finished']
-    done = [x for x in ss if x.get('status') in ('finished', 'applied')]
+    done =[x for x in ss if x.get('status') in ('finished', 'applied')]
     rj = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]
     live = live_review(s, run)
     h = jobs.lock_holder(R)

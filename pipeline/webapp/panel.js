@@ -193,6 +193,10 @@ function announce(s) {
     const was = seen[j.id]; seen[j.id] = key;
     if (!primed || was === key) continue;
     const t = jobTitle(j) + ' (' + RUN + ')';
+    const ended = j.status === 'done' || (j.status === 'interrupted' && j.interrupted && j.interrupted.state === 'done');
+    if (ended && !newResult && SHOWN && s.current && s.current.id !== SHOWN) {    // one message, not two in a row
+      newResult = true; live(t + ': done. New result ready: ' + s.current.label + '. Show the new result loads it.'); continue;
+    }
     if (j.status === 'done') live(t + ': ' + (jobWords(j) === 'Done' ? 'done' + (j.outcome ? '. ' + j.outcome : '') : jobWords(j).toLowerCase()));
     else if (j.status === 'failed') live(t + ': failed' + (j.outcome ? '. ' + j.outcome : ''));
     else if (j.status === 'interrupted') live(t + ': ' + (j.interrupted ? jobWords(j).toLowerCase() + '. ' + j.interrupted.text : 'interrupted'));
@@ -249,9 +253,8 @@ function followUp(before, s) {
     want = null; history.replaceState(null, '', location.pathname);
     if (j) setTimeout(() => { const hd = $('jh-' + j.id); if (hd) hd.focus(); }, 0);
   }
-  if (!newResult && SHOWN && s.current && s.current.id !== SHOWN) {   // an apply made a new result: say so, never reload
-    newResult = true;
-    setTimeout(() => live('New result ready: ' + s.current.label + '. Show the new result loads it.'), 400);   // after the job's own end
+  if (!newResult && SHOWN && s.current && s.current.id !== SHOWN) {   // a new result with no job end seen here (a terminal apply)
+    newResult = true; live('New result ready: ' + s.current.label + '. Show the new result loads it.');
   }
 }
 
