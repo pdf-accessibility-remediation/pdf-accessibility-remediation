@@ -13,6 +13,7 @@ A finished run can be reviewed again (review/sessions.py keeps every session and
                                     # the page, preloaded with the latest (or the named) session's choices; Finish re-applies
                                     # the reviewed order at once (no AI call): a new remediated PDF, review.md and review.html
     python3 review_workorder.py <run_dir> --sessions     # every session: who, when, from where, what changed, which is current
+    python3 review_workorder.py <run_dir> --discard-open # the open session marked abandoned (kept); the current result stays
     python3 review_workorder.py <run_dir> --apply        # re-apply the latest finished session (after --no-apply or a failed apply)
     python3 review_workorder.py <run_dir> --pin [--pdf <original.pdf>]   # once, for runs made before every run kept its digest:
                                     # re-audit, check the digest's fingerprint against the record, keep the digest (free)
@@ -58,7 +59,12 @@ def finished(R, a):
                       + (' · summary only' if r['summary_only'] and not r['inferred'] else ' · inferred from the summary' if r['inferred'] else ''))
             vs = sorted(os.listdir(S.P(R)['versions'])) if os.path.isdir(S.P(R)['versions']) else []
             print(f'current result: {S.label(cur)}' + (f' · earlier results in reviews/versions/: {", ".join(vs)}' if vs else '')); return
-        if not (a.reopen or a.apply): sys.exit('a finished run: give --reopen, --apply, --sessions, --pin or --replay-to')
+        if a.discard_open and not a.reopen:                  # on its own: the open session marked abandoned, nothing else
+            with S.Lock(R, 'discard'):
+                ids = S.discard_open(R)
+            print(f'discarded: {", ".join(S.label(i) for i in ids)} (kept in reviews/sessions/ as abandoned); the current result '
+                  f'({S.label(S.current_id(rec))}) is unchanged'); return
+        if not (a.reopen or a.apply): sys.exit('a finished run: give --reopen, --apply, --sessions, --pin, --replay-to or --discard-open')
         with S.Lock(R, 'reopen' if a.reopen else 'apply'):
             if os.path.exists(S.P(R)['promoting']): print('completing an interrupted promotion'); S.promote(R, None, None); rec = core.load(os.path.join(R, 'record.json'))
             if S.basis(R) is None or not os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json')):
@@ -105,7 +111,8 @@ def main():
     ap.add_argument('--reopen', action='store_true', help='a finished run: review it again, with the earlier choices preloaded')
     ap.add_argument('--from', dest='src', help='with --reopen: the session to start from (001, 002, …), or ai for the AI\'s decisions')
     ap.add_argument('--no-apply', action='store_true', help='with --reopen: stop after Finish (re-apply later with --apply)')
-    ap.add_argument('--discard-open', action='store_true', help='with --reopen --from: mark an open session abandoned (it is kept)')
+    ap.add_argument('--discard-open', action='store_true', help='with --reopen --from: mark an open session abandoned (it is kept); '
+                    'on its own: only that, no new session')
     ap.add_argument('--apply', action='store_true', help='re-apply the latest finished session')
     ap.add_argument('--sessions', action='store_true', help='list the review sessions of a run')
     ap.add_argument('--pin', action='store_true', help='keep a finished run\'s digest after checking its fingerprint (free re-audit)')

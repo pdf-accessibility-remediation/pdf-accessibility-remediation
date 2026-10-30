@@ -16,7 +16,7 @@ After this one start command the terminal can be left alone. Everything the page
 
 ## Setup
 
-The app needs what the pipeline needs ([Setup](setup.md)). At start it checks each item and prints it as ready or missing, with the command that fixes it; the run page shows the same list under **Setup**.
+The app needs what the pipeline needs ([Setup](setup.md)). At start it checks each item and prints it as ready or missing, with the command that fixes it. The run page shows a **Setup** warning only when a tool is missing (nothing when every tool is ready).
 
 - **Required** (the app does not start without them): the Python libraries, veraPDF (its version line, for example `veraPDF 1.30.3`) and Java.
 - **Untagged books only** (a warning): OCRmyPDF, Tesseract and its language packs.
@@ -80,25 +80,26 @@ The panel shows:
   | **Apply Session N** (only while the newest session is finished and not applied) | `… --apply` |
 
   - **Starting over or going back with a session open** asks first. The dialog names the open session and the file it is kept in. OK adds `--discard-open`: the open session is marked abandoned, never deleted.
-  - **"Review Again from Session N" starts a new session** preloaded with session N's choices. Nothing is rolled back: the current result changes only when that new session is finished and applied, and every earlier result stays in `reviews/versions/`.
+  - **"Review Again from Session N" starts a new session** preloaded with session N's choices. Nothing is rolled back: the current result changes only when that new session is finished and applied, and every previous result stays in `reviews/versions/`.
+  - **Discard Session N** (next to **Continue Review**, while a session is open) asks first: "Discard session N? Its choices are kept in Session History as abandoned; the current result (session M) doesn't change." It runs `review_workorder.py <run> --discard-open`, which marks the session abandoned (nothing is deleted), and the panel goes back to **Review Again (from Session M)**. It is refused while the session's review page is open (press **Stop Reviewing** first) or past Finish.
   - **A run never pinned** first gets a free re-audit (`--pin`), as a job of its own. The review follows when it succeeds.
   - **The run's original PDF.** When the command needs it (a tagged book never pinned, or a basis whose path no longer holds the file), the app finds it by its sha256 in `samples/` (read only) and passes `--pdf`. If no copy is there, the click is refused, naming the file and its sha256.
-- **While a review page is open:** the job says "Waiting for you: the review page is open" (no spinner: it waits on a person, not the machine), with **Open the Review Page** and **Stop Reviewing (the Session Stays Open)** instead of the buttons. This holds after the app restarts, and after the review tab was closed without Finish: the review page is still running until Stop. Stop is the terminal's Ctrl+C. It is refused once Finish has been accepted (the review is then being recorded and applied).
+- **While a review page is open:** the job says "Waiting for you: the review page is open" (no spinner: it waits on a person, not the machine), with **Open the Review Page** and **Stop Reviewing (the Session Stays Open)** instead of the buttons. This holds after the app restarts, and after the review tab was closed without Finish: the review page is still running until Stop. Stop is the terminal's Ctrl+C; afterwards the panel says "The review page is closed. Session N stays open: press Continue Review to carry on." It is refused once Finish has been accepted (the review is then being recorded and applied).
 - **Jobs for This Run:**
   - **Cards** for jobs that are running or waiting, and for failed or interrupted jobs that no later job of the run has succeeded after. A card's heading is the action in Title Case ("Review Again from Session 4"); its status line says what came of it, in sentence case ("Done: session 5 applied (Kim, 21:04)").
   - **One line** for the last finished job, after the label **Last Job:**, in sentence case: "Review again from session 4 → session 5 applied (Kim, 21:04)".
   - **Every other job** folded under **Previous Jobs (N)**, one line each in the same form. Nothing drops off.
   - **A running job** says its step in words, with a small spinner: "Running: checking the result (2 of 3)". Its list of steps shows the finished ones with their times ("Applying the reviewed decisions: done, 15.0s") and the current one by name only. The spinner is decorative: screen readers skip it, and it stands still when the system asks for reduced motion.
   - **A failed or interrupted job** says why in plain words, and one line says where its log is saved (`runs/.app/jobs/<id>.log`). The page shows no log lines and no commands.
-- **Session History:** every session (who, when, where it started, changes from the AI, what changed in that session), with a link to each earlier result.
+- **Session History:** every session (who, when, where it started, changes from the AI, what changed in that session), with a link to each previous result.
 - **A book in a batch** links to the batch's page (`/batch/<label>/`).
 
 A run made before the dashboards existed (no `review.html`) gets a page with the panel, the `review.md` link and a line saying it has no dashboard. There is no rebuild button: rebuilding would write into the run.
 
 **Every page has a way back,** so the browser's Back button is never the only one:
-- `/run/<run>/review.html` (which the "replaced by" note on an earlier result links to) goes to the run page.
-- **An earlier result** (`reviews/versions/<id>/review.html`) shows a bar: "You're viewing an earlier result (session N)", with **Back to the Current Result** and **Review Again from This Session** (for the result applied without review, **Start Over from the AI's Decisions**). The button starts the review and goes to the run page, which follows it.
-- **review.md** opens inside a page with **Back to the Run Page** (and, for an earlier result, its dashboard), and **The Plain File**.
+- `/run/<run>/review.html` (which the "replaced by" note in a previous result's file links to) goes to the run page.
+- **A previous result** (`reviews/versions/<id>/review.html`) shows a bar: "You're viewing a previous result (session N)", with **Back to the Current Result** and **Review Again from This Session** (for the result applied without review, **Start Over from the AI's Decisions**). The button starts the review and goes to the run page, which follows it. The file's own "replaced by" note is hidden in the app (the bar says it); it stays in the file.
+- **review.md** opens inside a page with **Back to the Run Page** (and, for a previous result, its dashboard), and **The Plain File**.
 - **A PDF** opens in the browser's own viewer; its tab or Back button returns.
 
 **The same from a terminal** (not shown on the page), from `pipeline/`: `python3 review_workorder.py <run folder> --reopen [--from N|ai]`, `--sessions`, `--apply` (see [Reviewing the work order](review-step.md)).
@@ -122,7 +123,7 @@ A run made before the dashboards existed (no `review.html`) gets a page with the
 - **A refusal before anything starts** (the run is busy, no original found, nothing to apply): a message under the buttons, and focus moves to it. Nothing was started.
 - **A job that fails:** its card says **Failed**, with the reason in the command's own words (for example "Apply (no model) failed (exit 1): the current result is unchanged; the session stays finished") and where its log is saved. The button to use next is in the panel (**Apply** for a failed apply).
 - **A job that stopped without finishing** (the machine restarted, or the job was killed): **Interrupted**, with what is left, read from the run on disk, not from the job:
-  - an apply that stopped partway: **Apply** finishes it (it may apply the session again; earlier results stay in `reviews/versions/`);
+  - an apply that stopped partway: **Apply** finishes it (it may apply the session again; previous results stay in `reviews/versions/`);
   - a session finished and not applied: **Apply**;
   - an apply that finished on its own after the app lost track of it: **Done (the app lost track of the job)**;
   - a review stopped before Finish: **Continue review** carries on with the open session.

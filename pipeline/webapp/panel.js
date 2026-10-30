@@ -1,4 +1,4 @@
-/* webapp/panel.js: the run page's panel (review.html served by the app), and the bar on an earlier result's dashboard.
+/* webapp/panel.js: the run page's panel (review.html served by the app), and the bar on a previous result's dashboard.
    Every button starts one of review_workorder.py's own commands as a job (webapp/runs.py); everything shown comes from
    /api/run/<run>, which reads the run folder. No log lines or commands are shown: a failed job says why in plain words,
    and where its log is saved.
@@ -52,12 +52,12 @@ function abandonText(open, from) {
          (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; it is kept in reviews/sessions/' + open.id + '.json.';
 }
 
-// ================================================================ an earlier result: the bar
+// ================================================================ a previous result: the bar
 const vbox = $('pdfrem-version');
 if (vbox) {
   const RUN = vbox.dataset.run, SID = vbox.dataset.session, API = '/api/run/' + encRun(RUN), BASE = '/run/' + encRun(RUN) + '/';
-  const what = SID === 'ai' ? 'the result applied without review' : 'an earlier result (' + sn(SID) + ')';
-  vbox.innerHTML = '<nav class="pp pp-bar" aria-label="Earlier result"><p><b>You\'re viewing ' + esc(what) + '.</b> ' +
+  const what = SID === 'ai' ? 'the result applied without review' : 'a previous result (' + sn(SID) + ')';
+  vbox.innerHTML = '<nav class="pp pp-bar" aria-label="Previous result"><p><b>You\'re viewing ' + esc(what) + '.</b> ' +
     '<a href="' + BASE + '">Back to the Current Result</a> <span id="pp-vact"></span></p>' +
     '<p id="pp-msg" class="pp-msg" tabindex="-1" hidden></p></nav><dialog class="pp-dlg" id="pp-dlg" aria-labelledby="pp-dlg-h"></dialog>';
   const label = SID === 'ai' ? 'Start Over from the AI\'s Decisions' : 'Review Again from This Session';
@@ -93,7 +93,7 @@ const q = new URLSearchParams(location.search);
 let quiet = true, wantAt = 0;
 ['keydown', 'pointerdown'].forEach(e => addEventListener(e, () => { quiet = false; }, true));
 let want = q.get('after') === 'finish' ? 'result' : q.get('opening') ? 'review' : null;   // what the person's last action is waiting for
-if (want === 'review') wantAt = Date.now();                    // Review again from an earlier result's bar
+if (want === 'review') wantAt = Date.now();                    // Review again from a previous result's bar
 let st = null, setup = null, primed = false, offline = false, failing = false, timer = null, newResult = false;
 const SHOWN = box.dataset.current || null;                     // the session whose result this page shows (set when served)
 const seen = {};                                                // per job: the last step and status announced
@@ -125,7 +125,7 @@ function jobWords(j) {
   if (j.status === 'done' && j.kind === 'review' && / left open /.test(r)) return 'Stopped: ' + r;
   if (j.status === 'failed' || (j.status === 'interrupted' && !lost(j))) return cap(r || j.status);
   if (lost(j)) return 'Done (the app lost track of the job): ' + r;
-  return /^done\b/.test(r) ? cap(r) : 'Done: ' + r;
+  return /^(done|pinned|discarded)\b/.test(r) ? cap(r) : 'Done: ' + r;
 }
 const spins = j => j.status === 'running' && !(j.kind === 'review' && !j.past_finish && j.url);   // not while a person reviews
 function jobCard(j) {                                           // heading: the action (Title Case); outcome on the status line
@@ -161,12 +161,13 @@ function jobsBlock(s) {
   return h;
 }
 
-function setupBlock() {
+function setupBlock() {                                         // shown only when a tool is missing, as a warning
   if (!setup) return '';
   const miss = setup.filter(x => !x.ok), req = miss.filter(x => x.required);
+  if (!miss.length) return '';
   const sum = req.length ? 'Setup: ' + req.length + ' required tool' + (req.length > 1 ? 's' : '') + ' missing' :
               miss.length ? 'Setup: ready (tools for untagged books missing: ' + miss.length + ')' : 'Setup: every tool ready';
-  return '<details id="pp-setup"><summary>' + esc(tc(sum)) + '</summary><ul>' + setup.map(x => '<li>' + (x.ok ? 'Ready' : x.required ? 'Missing (required)' : 'Missing') +
+  return '<details id="pp-setup" class="pp-warn"><summary>' + esc(tc(sum)) + '</summary><ul>' + setup.map(x => '<li>' + (x.ok ? 'Ready' : x.required ? 'Missing (required)' : 'Missing') +
     ': ' + esc(x.name) + ' · ' + esc(x.detail) + (x.fix ? '<br>Fix: <code>' + esc(x.fix) + '</code>' : '') + '</li>').join('') + '</ul></details>';
 }
 
@@ -180,7 +181,8 @@ function actions(s) {
   const from = s.open ? null : s.latest ? sn(s.latest.id) : s.legacy_review ? 'the review recorded before sessions were kept' : 'the AI\'s decisions';
   h += s.open ? '<button type="button" class="pp-primary" id="pp-review" data-act="review">' + esc(tc('Continue review (' + s.open.label + ', open)')) + '</button>'
               : '<button type="button" class="pp-primary" id="pp-review" data-act="review">' + esc(tc('Review again (from ' + from + ')')) + '</button>';
-  if (s.latest || s.open) h += '<button type="button" id="pp-ai" data-act="review" data-from="ai">Start Over from the AI\'s Decisions</button>';
+  if (s.open) h += '<button type="button" id="pp-discard" data-act="discard">' + esc(tc('Discard ' + s.open.label)) + '</button>';
+  if (s.latest || s.open) h +='<button type="button" id="pp-ai" data-act="review" data-from="ai">Start Over from the AI\'s Decisions</button>';
   if (s.unapplied && !s.open) h += '<button type="button" id="pp-apply" data-act="apply">' + esc(tc('Apply ' + s.unapplied.label)) + '</button>';
   h += '</div>';
   if (!s.pinned) h += '<p class="pp-note">Review again first re-audits this run to pin it (free, a minute or more).</p>';
@@ -194,9 +196,9 @@ function historyBlock(s) {
   else h += '<div class="pp-tw" tabindex="0" role="region" aria-label="Session History Table"><table><caption>Review Sessions of This Run</caption><thead><tr>' +
     '<th scope="col">Session</th><th scope="col">Status</th><th scope="col">Reviewer</th><th scope="col">Date</th><th scope="col">Started From</th>' +
     '<th scope="col">Changes from the AI</th><th scope="col">Set in This Session</th><th scope="col">Result</th><th scope="col">Action</th></tr></thead><tbody>' +
-    rows.map(r => '<tr><th scope="row">' + esc(r.label) + (r.current ? ' (current)' : '') + '</th><td>' + esc(r.status) + (r.summary_only ? ' (summary only)' : r.inferred ? ' (inferred)' : '') +
-      '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td>' + esc(r.date || (r.started || '').slice(0, 10) || 'not recorded') + '</td><td>' + esc(r.from_label) +
-      '</td><td>' + esc(r.changes) + '</td><td>' + esc(r.since_start) + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">earlier result</a>' : 'none') +
+    rows.map(r => '<tr><th scope="row" class="pp-nw">' + esc(cap(r.label)) + (r.current ? ' (current)' : '') + '</th><td>' + esc(r.status) + (r.summary_only ? ' (summary only)' : r.inferred ? ' (inferred)' : '') +
+      '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td class="pp-nw">' + esc(r.date || (r.started || '').slice(0, 10) || 'not recorded') + '</td><td class="pp-nw">' + esc(r.from_label) +
+      '</td><td>' + esc(r.changes) + '</td><td>' + esc(r.since_start) + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') +
       '</td><td>' + ((r.status === 'finished' || r.status === 'applied') && !s.live_review && !s.lock ? '<button type="button" id="pp-from-' + esc(r.id) + '" data-act="review" data-from="' + esc(r.id) + '">' + esc(tc('Review again from ' + r.label)) + '</button>' : '') +
       '</td></tr>').join('') + '</tbody></table></div>';
   if (s.ai_result) h += '<p><a href="' + esc(s.ai_result) + '">The result applied without review</a> (kept in reviews/versions/ai/).</p>';
@@ -225,8 +227,26 @@ box.addEventListener('click', async e => {
   msg('');
   try {
     let s, r;
-    if (act === 'stop') { [s, r] = await api(API + '/stop', {}); if (s !== 200) return msg(r.error || 'Stop failed', false, true);
-                          msg('Review page closed. Its session stays open: Continue review carries on with it.', true, true); return poll(); }
+    if (act === 'stop') {
+      const open = st.open ? cap(sn(st.open.id)) : 'The session';
+      [s, r] = await api(API + '/stop', {}); if (s !== 200) return msg(r.error || 'Stop failed', false, true);
+      msg('The review page is closed. ' + open + ' stays open: press Continue Review to carry on.', true, true); return poll();
+    }
+    if (act === 'discard') {                                     // asks first; nothing is deleted, the current result stays
+      const n = sn(st.open.id);
+      if (!await confirmDlg('Discard ' + n + '?', 'Its choices are kept in Session History as abandoned; the current result (' +
+                            sn(st.current.id) + ') doesn\'t change.', 'Discard ' + n, b)) return;
+      [s, r] = await api(API + '/discard', {}); if (s !== 202) return msg(r.error || 'Discard failed', false, true);
+      for (let i = 0; i < 30; i++) {                             // a moment: it only marks the session
+        await poll(true); const j = (st.jobs || []).find(x => x.id === r.job.id);
+        if (j && j.status !== 'queued' && j.status !== 'running') {
+          return j.status === 'done' ? msg(cap(n) + ' is discarded: its choices are kept in Session History as abandoned.', true, true)
+                                     : msg(cap(n) + ' could not be discarded: ' + (j.reason || j.status), false, true);
+        }
+        await new Promise(res => setTimeout(res, 500));
+      }
+      return;
+    }
     if (act === 'apply') { [s, r] = await api(API + '/apply', {}); }
     else {
       const body = { from: b.dataset.from || null };
@@ -313,6 +333,6 @@ if (q.get('landed') === '1' || q.get('opening')) history.replaceState(null, '', 
 api('/api/setup').then(([s, b]) => { if (s === 200) { setup = b; if (st) render(); } }).catch(() => {});
 poll(true).then(() => {
   if (q.get('landed') === '1') { const h = $('pp-cur'); if (h) h.focus(); }
-  if (q.get('opening')) { const h = $('jh-' + q.get('opening')); if (h) h.focus(); }      // from an earlier result's bar
+  if (q.get('opening')) { const h = $('jh-' + q.get('opening')); if (h) h.focus(); }      // from a previous result's bar
 });
 })();

@@ -79,6 +79,7 @@ details.fold { margin-top: 6px; font-size: 13px; } details.fold summary { cursor
 [tabindex="-1"]:focus { outline: none; }                     /* a heading or message focused by script: no outline (Tab focus keeps its own) */
 details.fold.plain summary { color: var(--ink); }            /* all five passed: a plain toggle, still with its arrow */
 td.nowrap { white-space: nowrap; }
+hr.thin { border: 0; border-top: 1px solid var(--line); margin: 14px 0 8px; } h3.rev-sub { font-size: 15px; margin: 0 0 4px; }
 ul.checks { list-style: none; padding-left: 4px; margin: 4px 0 0; }
 h2.inline { display: inline; font-size: 15px; border: 0; margin: 0; padding: 0; }
 .nw { white-space: nowrap; }
@@ -336,7 +337,7 @@ def review_card(R, rec):
     if ds:
         by = {}
         for d in ds: by.setdefault(d['status'], []).append(d)
-        B.append('<p>' + ' · '.join(f'{len(by[k])} {STATUS_WORDS.get(k, k).lower()}' for k in STATUS_WORDS if k in by) + '</p>')
+        B.append('<hr class="thin"><h3 class="rev-sub">Decisions in This Session</h3>')   # the counts are in the session's line above
         for k in STATUS_WORDS:
             if k not in by: continue
             trs = ''.join(f'<tr><td>{E(d["kind"])}</td><td>{E(d["label"])}</td><td>{E(("PDF " + str(d["page"]) + (" (printed " + str(d["page_label"]) + ")" if d.get("page_label") and str(d["page_label"]) != str(d["page"]) else "")) if d.get("page") else "")}</td>'

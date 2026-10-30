@@ -10,8 +10,8 @@ Routes (GET; requests must name this server as their host, as review/server.py c
                                with no review.html: the panel, review.md and a line saying there is no dashboard
     /run/<run>/<file>          the run's own files from a fixed list: review.md, han_review.csv, the remediated PDF named
                                in record.json; the same under reviews/versions/<id>/. Every page has a way back:
-                               /run/<run>/review.html goes to the run page; an earlier result's review.html gets a bar
-                               (earlier result, Back to the current result, Review again from this session); review.md is
+                               /run/<run>/review.html goes to the run page; a previous result's review.html gets a bar
+                               (previous result, Back to the Current Result, Review Again from This Session); review.md is
                                shown inside a page with links back (?raw=1: the plain file). A PDF opens in the browser's
                                own viewer.
     /batch/<label>/            a batch's summary.html (and summary.md); its <name>/review.html links go to /run/batches/<label>/<name>/
@@ -20,6 +20,8 @@ POST (JSON from the app's own pages only), each answered 202 {job} or 409 {error
     /api/run/<run>/review      {from: null | "ai" | "003", discard_open}: Review again (a pin job first on an unpinned run)
     /api/run/<run>/apply       Apply the finished session that was not applied
     /api/run/<run>/stop        Stop reviewing: Ctrl+C to the open review page, only before Finish
+    /api/run/<run>/discard     Discard the open session: review_workorder.py --discard-open (marked abandoned, kept);
+                               refused while its review page is open or past Finish
 Reserved for later pages (not built): /run/<run>/ocr, /run/<run>/release, /run/<run>/screen-reader.
 
 Every response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none'), so another site cannot show a run
@@ -102,8 +104,9 @@ def with_panel(page, run, current=None):
     return page[:i] + js + page[i:] if i >= 0 else page + js
 
 def with_version(page, run, sid):
-    """An earlier result's review.html (reviews/versions/<id>/) as served: a bar after its header saying it is an earlier
-    result, with "Back to the current result" and "Review again from this session" (webapp/panel.js draws it)."""
+    """A previous result's review.html (reviews/versions/<id>/) as served: a bar after its header saying it is a previous
+    result, with "Back to the Current Result" and "Review Again from This Session" (webapp/panel.js draws it). The file's
+    own "replaced by" note is hidden there (panel.css), and stays in the file."""
     box = f'\n<div id="pdfrem-version" data-run="{html.escape(run)}" data-session="{html.escape(sid)}"></div>\n'
     head = '<link rel="stylesheet" href="/app/panel.css">\n'
     i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
@@ -114,10 +117,10 @@ def with_version(page, run, sid):
     return page[:i] + js + page[i:] if i >= 0 else page + js
 
 def md_page(text, run, sid, base):
-    """review.md inside a page with a way back (the run page; for an earlier result, that result's dashboard too) and a
+    """review.md inside a page with a way back (the run page; for a previous result, that result's dashboard too) and a
     link to the plain file. The text is shown as written, escaped."""
-    which = TC(f'an earlier result ({S.label(sid)})' if sid else 'the current result')
-    links = [f'<a href="{base}">Back to the Run Page</a>'] + ([f'<a href="review.html">This Earlier Result\'s Dashboard</a>'] if sid else []) + \
+    which = TC(f'a previous result ({S.label(sid)})' if sid else 'the current result')
+    links = [f'<a href="{base}">Back to the Run Page</a>'] + ([f'<a href="review.html">This Previous Result\'s Dashboard</a>'] if sid else []) + \
             ['<a href="review.md?raw=1">The Plain File</a>']
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             f'<title>review.md: {html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
@@ -177,7 +180,7 @@ def make(s, setup, code=None):
             if not isinstance(body, dict): return self.send(400, {'error': 'not a JSON object'})
             p = urllib.parse.urlsplit(self.path).path
             segs = segments(p[len('/api/run/'):]) if p.startswith('/api/run/') else None
-            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop'): return self.send(404, {'error': 'not found'})
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'discard'): return self.send(404, {'error': 'not found'})
             hit = find_run(s['runs'], segs[:-1])
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
             run, R, _ = hit
@@ -187,6 +190,7 @@ def make(s, setup, code=None):
                     j = runs.start_review(s, run, R, self.server.server_address[1], None if src in (None, '', 'latest') else str(src),
                                           bool(body.get('discard_open')), app_pid=os.getpid())
                 elif segs[-1] == 'apply': j = runs.start_apply(s, run, R)
+                elif segs[-1] == 'discard': j = runs.start_discard(s, run, R)
                 else: j = runs.stop_review(s, run, R); return self.send(200, {'stopped': j['id']})
             except ValueError as e: return self.send(409, {'error': str(e)})
             jobs.tick(J, s)                                   # start it now if a place is free, rather than within the second
@@ -246,7 +250,7 @@ def make(s, setup, code=None):
                 if not f or not inside(R, f): return self.send(404, {'error': 'not found'})
                 base = '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
                 if name == 'review.html' and sid is None: return self.redirect(base)      # the run page, with the panel
-                if name == 'review.html':                                                  # an earlier result: its bar
+                if name == 'review.html':                                                  # a previous result: its bar
                     return self.send(200, with_version(open(f, encoding='utf-8', errors='replace').read(), run, sid), 'text/html; charset=utf-8')
                 if name == 'review.md' and (q.get('raw') or [''])[0] != '1':                # review.md inside a page with a way back
                     return self.send(200, md_page(open(f, encoding='utf-8', errors='replace').read(), run, sid, base), 'text/html; charset=utf-8')
