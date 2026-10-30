@@ -104,7 +104,7 @@ def job_view(s, j, with_text=False, offset=0):
     if j['status'] == 'interrupted' and j['kind'] in ('apply', 'review'):
         v['interrupted'] = after_interrupt(R, j)
     v['step'] = logs.now_step(j['kind'], steps) if j['status'] == 'running' else None
-    v['title'] = title(R, j, v)
+    v['title'] = title(R, j, v); v['action'] = action(j); v['result'] = result(R, j, v)
     v['reason'] = reason(v) if j['status'] in ('failed', 'interrupted') else None
     if with_text:
         t, nxt = jobs.read_log(s['jobs'], j['id'], offset); v.update(text=t, next=nxt)
@@ -117,22 +117,32 @@ def shown_path(p):
 
 SESSION_IN = re.compile(r'session (\d+)')
 
-def title(R, j, v):
-    """What the job did, in one line: "Review again from session 2 → session 3 applied (Kim, 18:19)"."""
-    what = j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin'}.get(j['kind'], j['kind'])
+def action(j):
+    """The job's action, as it was asked for: "Review again from session 2"."""
+    return j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin'}.get(j['kind'], j['kind'])
+
+def result(R, j, v):
+    """What came of a job that has ended, in sentence case: "session 3 applied (Kim, 18:19)"; None while it is active."""
     st, out = j['status'], v.get('outcome') or ''
     at = (j.get('ended') or '')[11:16]
+    when = f' ({at})' if at else ''
     lost = st == 'interrupted' and (v.get('interrupted') or {}).get('state') == 'done'
-    if st in ('queued', 'running', 'needs-spend'): return what
-    if st == 'failed': return f'{what} → failed' + (f' ({at})' if at else '')
-    if st == 'interrupted' and not lost: return f'{what} → stopped without finishing' + (f' ({at})' if at else '')
-    if j['kind'] == 'pin': return f'{what} → pinned' + (f' ({at})' if at else '')
+    if st in ('queued', 'running', 'needs-spend'): return None
+    if st == 'failed': return 'failed' + when
+    if st == 'interrupted' and not lost: return 'stopped without finishing' + when
+    if j['kind'] == 'pin': return 'pinned' + when
     m = SESSION_IN.search(out if out else (v.get('interrupted') or {}).get('text', ''))
-    if not m: return what + (f' → done ({at})' if at else ' → done')
+    if not m: return 'done' + when
     sid = f'{int(m.group(1)):03d}'
     who = ((S.session(R, sid) or {}).get('reviewer') if R else None) or 'reviewer not recorded'
     done = 'left open' if out.endswith('stays open') else 'applied'
-    return f'{what} → {S.label(sid)} {done} (' + (f'{who}, {at}' if done == 'applied' else at or 'time not recorded') + ')'
+    return f'{S.label(sid)} {done} (' + (f'{who}, {at}' if done == 'applied' else at or 'time not recorded') + ')'
+
+def title(R, j, v):
+    """What the job did, in one line (sentence case, for "Last Job:" and Previous Jobs):
+    "Review again from session 2 → session 3 applied (Kim, 18:19)". A job card shows the two halves apart."""
+    r = result(R, j, v)
+    return action(j) + (f' → {r}' if r else '')
 
 def reason(v):
     """A failed or interrupted job's reason, in the tool's own words where it gave one, never log lines."""

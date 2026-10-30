@@ -22,7 +22,7 @@ bash run_api.sh ../samples/group1/godzone.pdf godzone rv1            # same labe
 2. **`--serve` opens the review page** at `http://localhost:8765/`. It runs on this computer only. On WSL, open the printed link in a Windows browser. The terminal must stay open while you review. Ctrl+C stops it without finishing; your choices are kept in the browser, and in `review_decisions.json` after each **Save**, so running the command again carries on where you left off.
 3. **On the page,** enter your name, then go through the cards. Each decision has **Approve**, **Change** or **Reject**, and a note. Deferrals and the AI's note to the reviewer have **Seen** only, because nothing applies them. **Add a decision** adds what the AI left out (see [Adding a decision](#adding-a-decision)).
    - **Save** checks your choices with the same rules `decide.py` uses on the AI's reply, and shows anything that would be dropped. For example, `english` as a language is not a BCP 47 tag. It also lists any **gaps**: things still missing once the review is applied (see [Gaps](#gaps)).
-   - **Finish review** records the review and stops the server. If some decisions are not reviewed, it asks whether to accept them unchanged; they are then recorded as *accepted without review*. If gaps are open, it asks for a reason for each, or you can go back and add what is missing.
+   - **Finish Review** records the review and stops the server. If some decisions are not reviewed, it asks whether to accept them unchanged; they are then recorded as *accepted without review*. If gaps are open, it asks for a reason for each, or you can go back and add what is missing.
 4. **Rerun the same command** (same label, no `REVIEW=1`). `decide.py` is skipped (no API call) and the reviewed `workorder.json` is applied. Intake is not run again: the reviewed order is applied to the intake result saved before the stop (`_intake/intake.pdf`, or the original for a tagged book), the one the decisions were made on. The original given must be the same file (its sha256 is checked against `_intake/intake.json`), and `apply.py` checks the input against the work order's `source.sha256`.
 
 Until the review is finished, rerunning the label is refused, so a half-reviewed work order never reaches `apply.py`. Batches (`batch_api.sh`) refuse `REVIEW=1`, because they run unattended.
@@ -31,7 +31,7 @@ The first review is kept as **session 1** in the run's `reviews/` folder (see [R
 
 ## From the browser
 
-`python3 app.py <run folder>` opens a finished run's page with buttons for everything below: **Review again**, **Start over from the AI's decisions**, **Review again from session N**, **Apply session N** and the session history. Each button runs the command shown here, and **Finish** goes back to the run page, which shows the re-apply; when it ends, the page says "New result ready" and a **Show the new result** button loads it (the page never reloads by itself). Ctrl+C on the review page while Finish is being recorded waits until the review is recorded. See [The app](app.md). The commands below work as before.
+`python3 app.py <run folder>` opens a finished run's page with buttons for everything below: **Review Again**, **Start Over from the AI's Decisions**, **Review Again from Session N**, **Apply Session N** and **Session History**. Each button runs the command shown here, and **Finish** goes back to the run page, which shows the re-apply; when it ends, the page says "New result ready" and a **Show the New Result** button loads it (the page never reloads by itself). Ctrl+C on the review page while Finish is being recorded waits until the review is recorded. See [The app](app.md). The commands below work as before.
 
 ## Reviewing again
 
@@ -121,12 +121,11 @@ Each gap in the Save message has an **Add** link that opens the form at the righ
 - `record.json` also keeps the AI's version as `workorder_ai`. `workorder` is what was applied, and carries `reviewed_by`. `review.session` is the session this result comes from, `review.sessions` one line per session (who, when, from where, status, counts, how many choices were carried and from where, how many changed in the session), and `review.decisions` one line per decision (its review status, the session that set it, `inferred`, its note), which `review.html` shows.
 - `reviews/sessions/NNN.json`: each session in full: every choice with the AI value it was judged against and the session that set it, additions, what changed since the session's start, the review as `review.json` had it, and the OCR verdict at Finish; `NNN.workorder.json` is the order it applied. `reviews/basis.json` holds the run id (the page's browser-draft key), the input PDF's path and sha256, the digest's fingerprint and the AI order's sha256.
 - `review.md` gets a row in the automated checks ("Work order reviewed by a person before it was applied"). The row is a CHECK when decisions were accepted without review, an edit was dropped, or a gap was left open without a reason (a hand edit with no `--note`). It also gets a section listing each change (AI → person), each open gap with its reason, and which session the result comes from.
-- `review.html` has a "Review of the AI's decisions" section. A run never reviewed shows its decision count by kind, all applied without review. A reviewed run shows:
+- `review.html` has a "Review of the AI's Decisions" section. A run never reviewed shows its decision count by kind, all applied without review. A reviewed run shows:
   - one line for the current session: who, when, and how many decisions were approved, changed, rejected and accepted without review;
-  - its row of the session table, with earlier sessions folded under **Earlier sessions (N)**;
-  - each decision's status (approved, changed, rejected, seen, accepted without review; "(inferred)" for a summary-only session's rebuilt choices), with the session that set it;
-  - the command that reopens the review, folded under **From a terminal**.
-  Reports written before 2026-10-29 keep the earlier layout until their next apply.
+  - its row of the session table, with the other sessions folded under **Previous Sessions (N)**;
+  - each decision's status (approved, changed, rejected, seen, accepted without review; "(inferred)" for a summary-only session's rebuilt choices), with the session that set it.
+  The command that reopens the review is not on the page: it is the one above (`--reopen`). Reports written before 2026-10-29 keep the earlier layout until their next apply.
 
 ## Sign-off: when a book is ready to ship
 

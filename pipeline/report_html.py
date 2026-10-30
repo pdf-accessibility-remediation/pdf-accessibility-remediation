@@ -13,6 +13,7 @@ import sys, os, re, json, csv, html
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import glance as G  # noqa: E402
 from lib import sections as S  # noqa: E402
+from lib.titles import title_case as TC  # noqa: E402   (headings, toggles, column headers, card titles: Title Case)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PALETTE = open(os.path.join(HERE, 'review', 'palette.css'), encoding='utf-8').read()
@@ -74,7 +75,8 @@ code { font-size: 13px; background: var(--bg); padding: 0 3px; border-radius: 3p
 .filter { margin: 6px 0; } select, button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
 th button { border: 0; background: none; padding: 0; font-weight: 700; cursor: pointer; text-align: left; }
 .note { color: var(--muted); font-size: 13px; }
-details.fold { margin-top: 6px; font-size: 13px; } details.fold summary { cursor: pointer; color: var(--ink); }   /* blue is for links only */
+details.fold { margin-top: 6px; font-size: 13px; } details.fold summary { cursor: pointer; color: var(--ink); font-size: 15px; }   /* blue is for links only; the toggle at the body text size */
+[tabindex="-1"]:focus { outline: none; }                     /* a heading or message focused by script: no outline (Tab focus keeps its own) */
 details.fold.plain summary { color: var(--ink); }            /* all five passed: a plain toggle, still with its arrow */
 td.nowrap { white-space: nowrap; }
 ul.checks { list-style: none; padding-left: 4px; margin: 4px 0 0; }
@@ -161,7 +163,7 @@ def md_html(lines, prefix=None):
             out.append('<div class="tw"><table>')
             for k, r in enumerate(body):
                 cells = [c.strip() for c in r.strip().strip('|').split(' | ')]
-                if head and k == 0: out.append('<tr>' + ''.join(f'<th scope="col">{inline(c)}</th>' for c in cells) + '</tr>')
+                if head and k == 0: out.append('<tr>' + ''.join(f'<th scope="col">{inline(TC(c))}</th>' for c in cells) + '</tr>')
                 else: out.append(f'<tr{nid(r)}>' + ''.join(td(c) for c in cells) + '</tr>')
             out.append('</table></div>'); continue
         if l.startswith('- '):
@@ -242,7 +244,7 @@ def items_html(items, need=()):
             while i < len(items) and items[i]['kind'] in ('head', 'row', 'sep'):
                 x = items[i]; i += 1
                 if x['kind'] == 'sep': continue
-                if x['kind'] == 'head': out.append('<tr>' + ''.join(f'<th scope="col">{inline(c)}</th>' for c in cells(S.text_wcag(x))) + '</tr>')
+                if x['kind'] == 'head': out.append('<tr>' + ''.join(f'<th scope="col">{inline(TC(c))}</th>' for c in cells(S.text_wcag(x))) + '</tr>')
                 else:
                     raw = cells(S.text_wcag(x)); cs = [td(c) for c in raw]
                     if x.get('full'):                       # the toggle goes into the cell that holds the first excerpt
@@ -293,14 +295,14 @@ def counts_text(c, sep=', '):
 
 SESSION_TABLE = ('<div class="tw" tabindex="0"><table><caption class="vh">{cap}</caption><thead><tr><th scope="col">Session</th><th scope="col">From</th>'
                  '<th scope="col">Reviewer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Carried</th>'
-                 '<th scope="col">Changed in the session</th><th scope="col">Changes from the AI</th><th scope="col">Choices</th></tr></thead><tbody>{rows}</tbody></table></div>')
+                 '<th scope="col">Changed in the Session</th><th scope="col">Changes from the AI</th><th scope="col">Choices</th></tr></thead><tbody>{rows}</tbody></table></div>')
 
 def review_card(R, rec):
     """The "Review" section: one line for the current session, its row (earlier sessions folded), each decision's review
     status, and the command that reopens the review (folded)."""
     rv = rec.get('review') or {}; wo = rec.get('workorder') or {}
     run = rv.get('run') or os.path.relpath(R, HERE)
-    B = ['<section class="card-review" aria-labelledby="rev-h"><h2 id="rev-h">Review of the AI\'s decisions</h2>']
+    B = ['<section class="card-review" aria-labelledby="rev-h"><h2 id="rev-h">Review of the AI\'s Decisions</h2>']
     pend = rv.get('pending') or {}
     if pend.get('status') == 'finished':
         B.append(f'<p><strong>Session {int(pend["session"])} ({E(pend.get("reviewer") or "")}) is finished but not applied</strong>: this result is older '
@@ -317,8 +319,8 @@ def review_card(R, rec):
                 (counts_text(c) or 'no counts recorded')
             carried = (f'{x["carried"]} from {frm(x)}' if x.get('carried') else 'none') + (f' · not carried: {x["not_carried"]}' if x.get('not_carried') else '')
             mark = ' <strong>(current)</strong>' if x['id'] == cur else ''
-            return (f'<tr><td class="nowrap">{int(x["id"])}{mark}</td><td>{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(x.get("date") or "")}</td>'
-                    f'<td>{E(x.get("status") or "")}</td><td>{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td></tr>')
+            return (f'<tr><td class="nowrap">{int(x["id"])}{mark}</td><td class="nowrap">{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(x.get("date") or "")}</td>'
+                    f'<td>{E(x.get("status") or "")}</td><td class="nowrap">{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td></tr>')
         now = [x for x in ss if x['id'] == cur]; earlier = [x for x in ss if x['id'] != cur]
         if now:
             x = now[0]; c = x.get('counts') or {}
@@ -328,8 +330,8 @@ def review_card(R, rec):
                      f'{E(x.get("date") or "date not recorded")} · ' + ' · '.join(parts) + '</p>')
             B.append(SESSION_TABLE.format(cap='The current review session', rows=row(x)))
         if earlier:
-            B.append(f'<details class="fold"><summary>Earlier sessions ({len(earlier)})</summary>'
-                     + SESSION_TABLE.format(cap='Earlier review sessions', rows=''.join(row(x) for x in earlier)) + '</details>')
+            B.append(f'<details class="fold"><summary>Previous Sessions ({len(earlier)})</summary>'
+                     + SESSION_TABLE.format(cap='Previous review sessions', rows=''.join(row(x) for x in earlier)) + '</details>')
     ds = rv.get('decisions')
     if ds:
         by = {}
@@ -340,8 +342,8 @@ def review_card(R, rec):
             trs = ''.join(f'<tr><td>{E(d["kind"])}</td><td>{E(d["label"])}</td><td>{E(("PDF " + str(d["page"]) + (" (printed " + str(d["page_label"]) + ")" if d.get("page_label") and str(d["page_label"]) != str(d["page"]) else "")) if d.get("page") else "")}</td>'
                           f'<td>{E(STATUS_WORDS.get(k, k).split(" (")[0].lower() + (" (inferred)" if d.get("inferred") else ""))}'
                           f'{E(", session " + str(int(d["set_in"]))) if d.get("set_in") else ""}</td><td>{E(d.get("note") or "")}</td></tr>' for d in by[k])
-            B.append(f'<details class="fold"><summary>{E(STATUS_WORDS[k])}: {len(by[k])}</summary><div class="tw" tabindex="0"><table><thead><tr>'
-                     '<th scope="col">Kind</th><th scope="col">Decision</th><th scope="col">Page</th><th scope="col">Status, set in</th><th scope="col">Note</th></tr></thead>'
+            B.append(f'<details class="fold"><summary>{E(TC(STATUS_WORDS[k]))}: {len(by[k])}</summary><div class="tw" tabindex="0"><table><thead><tr>'
+                     '<th scope="col">Kind</th><th scope="col">Decision</th><th scope="col">Page</th><th scope="col">Status, Set In</th><th scope="col">Note</th></tr></thead>'
                      f'<tbody>{trs}</tbody></table></div></details>')
     elif rv.get('workorder'):
         c = rv['workorder'].get('counts') or {}
@@ -350,12 +352,7 @@ def review_card(R, rec):
         kinds = {k: G.n_decisions({k: v}) for k, v in wo.items() if k not in G.META}
         kinds = {k: c for k, c in kinds.items() if c}; n = G.n_decisions(wo)
         B.append(f'<p>{n:,} decisions, all applied without review by a person: ' + E(', '.join(f'{v} {k.replace("_", " ")}' for k, v in kinds.items())) + '.</p>')
-    B.append('<details class="fold"><summary>From a terminal</summary>'
-             '<p>' + ('To review again' if ss or rv.get('workorder') else 'To review them') + ', from <code>pipeline/</code> (venv active):</p>'
-             f'<pre><code>python3 review_workorder.py {E(run)} --reopen</code></pre>'
-             '<p class="note">The review page opens at <code>http://localhost:8765/</code> while that command runs, with the earlier choices preloaded; '
-             'Finish re-applies the reviewed order (no AI call) and this page is rebuilt. <code>--sessions</code> lists every session; '
-             '<code>--from 001</code> starts from an earlier one.</p></details></section>')
+    B.append('</section>')                                       # the terminal commands are in docs/app.md and review-step.md
     return B
 
 def review_html(R, rec=None, md=None, labels=None, banner=None):
@@ -408,7 +405,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
                                       f'run {(run.get("started") or "").replace("T", " ") or "start time not recorded"}'])
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main">']
     # ---- ready to ship
-    B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to ship? {"Yes" if g["ready"] else "No"}</h2><ul>'
+    B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? {"Yes" if g["ready"] else "No"}</h2><ul>'
              + ''.join(f'<li>{E(s["what"])}: <strong>{E(s["text"])}</strong></li>' for s in g['ship']) + '</ul>')
     if not g['ship'][0]['ok'] and not banner:
         B.append('<p class="note">The review page is the final sign-off: see "Review of the AI\'s decisions" below (docs: review-step.md, "Sign-off").</p>')
@@ -418,7 +415,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
     # ---- four cards; the safety card holds its checks in a fold (open, failed first, when one fails)
     np_, ad, vg = g['needs_person'], g['ai_decisions'], g['verapdf']
     saf = sorted(g['safety'], key=lambda x: x['ok']); saf_bad = [x for x in saf if not x['ok']]
-    safety_fold = (f'<details class="fold{"" if saf_bad else " plain"}"{" open" if saf_bad else ""}><summary>The {len(saf)} safety checks</summary><ul class="checks">'
+    safety_fold = (f'<details class="fold{"" if saf_bad else " plain"}"{" open" if saf_bad else ""}><summary>The {len(saf)} Safety Checks</summary><ul class="checks">'
                    + ''.join(f'<li>{"<strong>FAILED ✘</strong>" if not x["ok"] else "OK ✔"} {E(x["what"])}</li>' for x in saf) + '</ul></details>') if saf else ''
     cards = [('Safety', 'good' if g['safety_ok'] else 'bad', 'OK' if g['safety_ok'] else ('Failed' if saf else 'Not checked'),
               f'{len(saf) - len(saf_bad)} of {len(saf)} checks OK', safety_fold),
@@ -434,17 +431,17 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
         t = {"good": "OK", "muted": "OK", "bad": "Failed", "warn": "Needs attention"}[cls]
         return '' if t.lower() == big.lower() else f'<p class="lab">{E(t)}</p>'
     B.append('<section aria-labelledby="st-h"><h2 id="st-h" class="vh">Status</h2><div class="cards">' + ''.join(
-        f'<div class="card {cls}"><h3>{E(t)}</h3><div class="big">{E(big)}</div>{lab(cls, big)}<p>{E(sub)}</p>{extra}</div>'
+        f'<div class="card {cls}"><h3>{E(TC(t))}</h3><div class="big">{E(big)}</div>{lab(cls, big)}<p>{E(sub)}</p>{extra}</div>'
         for t, cls, big, sub, extra in cards) + '</div></section>')
     if g['fixed_automatically']:
         B.append('<p><strong>Fixed automatically (no AI):</strong> ' + ' · '.join(E(f'{x["what"]} {x["count"]:,}') for x in sorted(g['fixed_automatically'], key=lambda x: -x['count'])) + '</p>')
     B.append('<p class="note">Automated checks are evidence, not sign-off. PAC 2026 is the final manual check.</p>')
     if run_details:
-        B.append('<details class="sec" id="run-details"><summary><h2 class="inline">Run details</h2></summary><ul>'
+        B.append('<details class="sec" id="run-details"><summary><h2 class="inline">Run Details</h2></summary><ul>'
                  + ''.join(f'<li>{inline(l)}</li>' for l in run_details) + '</ul></details>')
     # ---- issues, in full; "Details" opens the folded section at the very item (without JavaScript: the section)
     iss = g['issues']
-    B.append(f'<section aria-labelledby="iss-h"><h2 id="iss-h">What needs a person ({len(iss)})</h2>')
+    B.append(f'<section aria-labelledby="iss-h"><h2 id="iss-h">What Needs a Person ({len(iss)})</h2>')
     if iss:
         kinds = [k for k in KIND if any(x['kind'] == k for x in iss)]
         if len(kinds) > 1:
@@ -481,14 +478,14 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
             '<div id="stripinfo" aria-live="polite"></div><div id="strippreview" aria-live="polite"></div><div id="stripstatus" class="vh" role="status"></div>'
             '<script type="application/json" id="mentions">' + json.dumps({p: [[i, t] for i, _, t in v] for p, v in mentions.items()}).replace('</', '<\\/') + '</script>')
         listed = sorted(lv, key=int)
-        B.append(f'<details id="pagelist"><summary>Pages with something listed ({len(listed)})</summary><ul>'
+        B.append(f'<details id="pagelist"><summary>Pages with Something Listed ({len(listed)})</summary><ul>'
                  + ''.join(f'<li><a class="pg" href="#pg-{p}">{E(pgl(p))}</a>: {"safety check failed: " if lv[p] == "safety" else ""}{E("; ".join(notes.get(p, [])))}</li>' for p in listed) + '</ul></details></section>')
     # ---- review.md's sections, collapsible, in the same order (WCAG only)
     B.append('<section aria-labelledby="secs-h"><h2 id="secs-h">Details</h2>'
              '<p class="key"><span class="dot" aria-hidden="true"></span>needs a person</p>')
     for b in blocks:
         if b['h2'] and b['title'] == 'For a person to check':
-            if any(x.strip() for x in b['lines']): B.append('<h2>For a person to check</h2>')
+            if any(x.strip() for x in b['lines']): B.append('<h2>For a Person to Check</h2>')
             continue
         n_items = b['entries'] if 'entries' in b else len(re.findall(r'<(?:li|tr) id=', b['html']))   # real entries: rows and list items, not notes
         cnt = f'{n_items} item{"" if n_items == 1 else "s"}' if n_items else ''
@@ -496,10 +493,10 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
         needb = (f'<span class="vh"> · </span><span class="count need"><span aria-hidden="true">{nn}</span>'
                  f'<span class="vh">{nn} need{"s" if nn == 1 else ""} a person</span></span>') if nn else ''
         opened = ''                                                   # every section starts closed
-        search = (f'<div class="secsearch" hidden><label for="q-{E(b["anchor"])}">Search this section</label> '
+        search = (f'<div class="secsearch" hidden><label for="q-{E(b["anchor"])}">Search This Section</label> '
                   f'<input type="search" id="q-{E(b["anchor"])}"> <span class="found note" aria-live="polite"></span></div>') if n_items >= SEARCH_MIN else ''
         shown_t = re.sub(r' \((\d+)\)$', '', b['title']) if re.search(r' \((\d+)\)$', b['title']) and int(re.search(r'\((\d+)\)$', b['title']).group(1)) == n_items else b['title']
-        B.append(f'<details class="sec" id="{E(b["anchor"])}"{opened}><summary><h3>{E(shown_t)}</h3>' + (f'<span class="count">{E(cnt)}</span>' if cnt else '') + needb + '</summary>'
+        B.append(f'<details class="sec" id="{E(b["anchor"])}"{opened}><summary><h3>{E(TC(shown_t))}</h3>' + (f'<span class="count">{E(cnt)}</span>' if cnt else '') + needb + '</summary>'
                  + search + b['html'] + '</details>')
     B.append('</section></main>')
     script = r"""
@@ -685,8 +682,8 @@ def summary_html(Bdir):
          f'<strong>Safety checks failed:</strong> {sum(1 for r in rows if r["done"] and not r["safety"])} books</p>',
          '<p class="note">Sorted by "Needs a person", most work first. Automated checks are evidence, not sign-off.</p>',
          '<div class="tw"><table id="books"><thead><tr>' + ''.join(f'<th scope="col"{" class=\"num\"" if n else ""} data-k="{k}"{" aria-sort=\"descending\"" if k == "needs" else ""}>{E(t)}</th>'
-                                                  for t, k, n in (('Book', 'name', 0), ('Ready to ship?', 'ready', 0), ('Needs a person', 'needs', 1), ('AI decisions', 'ai', 1),
-                                                                  ('Safety', 'safety', 0), ('veraPDF WCAG rules', 'va', 1), ('Cost', 'cost', 1), ('Pages', 'pages', 1))) + '</tr></thead><tbody>']
+                                                  for t, k, n in (('Book', 'name', 0), ('Ready to Ship?', 'ready', 0), ('Needs a Person', 'needs', 1), ('AI Decisions', 'ai', 1),
+                                                                  ('Safety', 'safety', 0), ('veraPDF WCAG Rules', 'va', 1), ('Cost', 'cost', 1), ('Pages', 'pages', 1))) + '</tr></thead><tbody>']
     for r in rows:
         if not r['done']:
             B.append(f'<tr><td>{E(r["name"])}</td><td colspan="7">{E(r["status"])}</td></tr>'); continue
