@@ -18,6 +18,8 @@ nav_order: 7
 | `_intake/intake.md` | a person | Untagged originals only: the intake record in plain words (status, pages OCR'd, picture pages, CHECKs and notes with their pages, the OCR review verdict). Written for every outcome, also by `intake.py <pdf> <dir>` on its own and by `--plan-only` |
 | `_intake/intake.pdf` | the pipeline | Untagged originals only, when intake changed anything: the OCR'd and auto-tagged copy the rest of the run worked on. Kept so `FROM=` reruns apply saved replies to the very same file |
 
+The app ([The app](app.md)) keeps its own files in `runs/.app/`, never in a run folder: `jobs/<id>.json` and `<id>.log` (each job: its command, the environment it was given, its status and times, and its output), `dispatch.lock` (the queue's lock), `sha256-cache.json` (sha256s of the PDFs in `samples/`, by path, size and time, for finding a run's original) and `server.log` (errors in the app itself).
+
 A batch folder also holds `summary.md` and `summary.html`: one row per book (ready to ship, needs a person, AI decisions, safety, veraPDF WCAG rules before → after, cost, pages), sorted with the most work first and sortable by any column; each book's name opens its `review.html`. To rebuild the dashboards of a finished run or batch: `python3 report_html.py <run>` or `python3 report_html.py --summary <batch>`.
 
 ## `record.json` `run.ocr_words` (scanned books with OCR words)
