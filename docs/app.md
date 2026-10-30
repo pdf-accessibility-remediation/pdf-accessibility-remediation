@@ -147,6 +147,7 @@ A run made before the dashboards existed (no `review.html`) gets a page with the
 The panel follows WCAG 2.1 AA, the project's standard:
 - **Keyboard:** every action is a real button or link, works by keyboard, and shows a visible focus.
 - **Status:** always said in words, never by colour alone. A failed job's card says "Failed".
+- **Messages** (for example "Session 9 is discarded: …" or "The review page is closed. …") have a **×** button named "Dismiss message". Dismissing moves focus to the **Run Actions** heading; any other panel button clears the message too. A message has a neutral box; an error keeps its red border and has the same button.
 - **Announcements:** one polite live region, and only for a step change, a job's start, "the review page is ready", and a job's end. It never reads out log lines.
 - **Focus:** it moves only after your own action. After a click it goes to the new job's heading, or to the refusal message. After Finish it goes to the apply's heading on the run page; after **Show the New Result**, to "Current Result". When a job ends in the background it is announced ("New result ready" when an apply has made one), and focus stays where it is.
 - **Going on by itself:** only one thing does, the review page after your own **Review Again**, and only within 30 seconds of the click while you have not pressed a key or clicked since. Otherwise it says the page is ready and shows **Open the Review Page**. A new result never replaces the page you are reading.

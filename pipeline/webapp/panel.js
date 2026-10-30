@@ -47,6 +47,13 @@ function confirmDlg(title, text, yes, opener) {
     d.showModal(); d.querySelector('button[value=no]').focus();
   });
 }
+// a message in the panel or the bar: its text and a "×" button (accessible name "Dismiss message"); an error keeps its red
+// style. An empty text hides it.
+function showMsg(m, text, ok, focus) {
+  m.hidden = !text; m.classList.toggle('pp-okmsg', !!ok);
+  m.innerHTML = text ? '<span class="pp-msg-t">' + esc(text) + '</span><button type="button" class="pp-x" data-act="dismiss" aria-label="Dismiss message">×</button>' : '';
+  if (text && focus) m.focus();
+}
 function abandonText(open, from) {
   return cap(sn(open.id)) + ' is open (started ' + (open.started || '').replace('T', ' ') + '). Starting from ' +
          (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; it is kept in reviews/sessions/' + open.id + '.json.';
@@ -59,7 +66,11 @@ if (vbox) {
   const what = SID === 'ai' ? 'the result applied without review' : 'a previous result (' + sn(SID) + ')';
   vbox.innerHTML = '<nav class="pp pp-bar" aria-label="Previous result"><p><b>You\'re viewing ' + esc(what) + '.</b> ' +
     '<a href="' + BASE + '">Back to the Current Result</a> <span id="pp-vact"></span></p>' +
-    '<p id="pp-msg" class="pp-msg" tabindex="-1" hidden></p></nav><dialog class="pp-dlg" id="pp-dlg" aria-labelledby="pp-dlg-h"></dialog>';
+    '<div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div></nav><dialog class="pp-dlg" id="pp-dlg" aria-labelledby="pp-dlg-h"></dialog>';
+  vbox.addEventListener('click', e => {                          // dismiss: the message goes, focus to the bar's first link
+    if (!e.target.closest('button[data-act="dismiss"]')) return;
+    showMsg($('pp-msg'), ''); vbox.querySelector('a').focus();
+  });
   const label = SID === 'ai' ? 'Start Over from the AI\'s Decisions' : 'Review Again from This Session';
   api(API).then(([s, st]) => {
     if (s !== 200) return;
@@ -76,8 +87,8 @@ if (vbox) {
       try {
         const [c, r] = await api(API + '/review', body);
         if (c === 202) { location.assign(BASE + '?opening=' + encodeURIComponent(r.job.id)); return; }   // the person's click: to the run page
-        m.hidden = false; m.textContent = r.error || 'The app refused this'; m.focus();
-      } catch (e) { m.hidden = false; m.textContent = 'The app is not running: start it with python3 app.py, then try again.'; m.focus(); }
+        showMsg(m, r.error || 'The app refused this', false, true);
+      } catch (e) { showMsg(m, 'The app is not running: start it with python3 app.py, then try again.', false, true); }
     });
   }).catch(() => {});
 }
@@ -99,14 +110,11 @@ const SHOWN = box.dataset.current || null;                     // the session wh
 const seen = {};                                                // per job: the last step and status announced
 
 box.innerHTML = '<section class="pp" aria-labelledby="pp-h"><h2 id="pp-h" tabindex="-1">Run Actions</h2>' +
-  '<div id="pp-body"><p>Loading…</p></div><p id="pp-msg" class="pp-msg" tabindex="-1" hidden></p>' +
+  '<div id="pp-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>' +
   '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section>' +
   '<dialog class="pp-dlg" id="pp-dlg" aria-labelledby="pp-dlg-h"></dialog>';
 const live = t => { const l = $('pp-live'); l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
-function msg(text, ok, focus) {
-  const m = $('pp-msg'); m.hidden = !text; m.textContent = text || ''; m.classList.toggle('pp-okmsg', !!ok);
-  if (text && focus) m.focus();
-}
+function msg(text, ok, focus) { showMsg($('pp-msg'), text, ok, focus); }
 
 // ---------------------------------------------------------------- the view
 const ordinal = n => n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || 'th');
@@ -223,8 +231,9 @@ function render() {
 box.addEventListener('click', async e => {
   const b = e.target.closest('button[data-act]'); if (!b) return;
   const act = b.dataset.act;
+  if (act === 'dismiss') { msg(''); $('pp-h').focus(); return; }   // the message goes; focus to the Run Actions heading
+  msg('');                                                       // any other panel button clears the message too
   if (act === 'reload') { location.replace(location.pathname + '?landed=1'); return; }
-  msg('');
   try {
     let s, r;
     if (act === 'stop') {
