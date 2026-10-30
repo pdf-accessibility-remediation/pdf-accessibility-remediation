@@ -82,11 +82,25 @@ The panel shows:
   - **A run never pinned** first gets a free re-audit (`--pin`), as a job of its own. The review follows when it succeeds.
   - **The run's original PDF.** When the command needs it (a tagged book never pinned, or a basis whose path no longer holds the file), the app finds it by its sha256 in `samples/` (read only) and passes `--pdf`. If no copy is there, the click is refused, naming the file and its sha256.
 - **While a review page is open:** **Open the review page** and **Stop reviewing (the session stays open)** instead of the buttons. Stop is the terminal's Ctrl+C. It is refused once Finish has been accepted (the review is then being recorded and applied).
-- **Jobs for this run:** each job's state in words (Waiting, with its place in line; Running, with the current step; Done; Failed; Interrupted), its steps with their times, the command's last word (for example `done: session 4 is the current result` or `refused: …`), and the full log and command under a fold.
+- **Jobs for this run:**
+  - **Cards** for jobs that are running or waiting, and for failed or interrupted jobs that no later job of the run has succeeded after.
+  - **One line** for the last finished job.
+  - **Every other job** folded under **Earlier jobs (N)**. Nothing drops off.
+  - **Titles say what happened,** for example "Review again from session 2 → session 3 applied (Kim, 18:19)" or "Apply session 2 → failed (10:04)".
+  - **A running job** says its step in words, with a small spinner: "Running: checking the result (2 of 3)". The spinner is decorative: screen readers skip it, and it stands still when the system asks for reduced motion.
+  - **A failed or interrupted job** says why in plain words, and one line says where its log is saved (`runs/.app/jobs/<id>.log`). The page shows no log lines and no commands.
 - **Session history:** every session (who, when, where it started, changes from the AI, what changed in that session), with a link to each earlier result.
-- **The same from a terminal:** the commands to copy.
+- **A book in a batch** links to the batch's page (`/batch/<label>/`).
 
 A run made before the dashboards existed (no `review.html`) gets a page with the panel, the `review.md` link and a line saying it has no dashboard. There is no rebuild button: rebuilding would write into the run.
+
+**Every page has a way back,** so the browser's Back button is never the only one:
+- `/run/<run>/review.html` (which the "replaced by" note on an earlier result links to) goes to the run page.
+- **An earlier result** (`reviews/versions/<id>/review.html`) shows a bar: "You're viewing an earlier result (session N)", with **Back to the current result** and **Review again from this session** (for the result applied without review, **Start over from the AI's decisions**). The button starts the review and goes to the run page, which follows it.
+- **review.md** opens inside a page with **Back to the run page** (and, for an earlier result, its dashboard), and a link to the plain file.
+- **A PDF** opens in the browser's own viewer; its tab or Back button returns.
+
+**The same from a terminal** (not shown on the page), from `pipeline/`: `python3 review_workorder.py <run folder> --reopen [--from N|ai]`, `--sessions`, `--apply` (see [Reviewing the work order](review-step.md)).
 
 **The flow:** **Review again** → the review page opens by itself → **Finish review** → the run page, showing apply, verify and report with their times → when they end, "New result ready" and a **Show the new result** button, which loads it. The page never reloads by itself. The review page also has **Back to the run page**, which leaves the review open.
 
@@ -103,7 +117,7 @@ A run made before the dashboards existed (no `review.html`) gets a page with the
 ## When something goes wrong
 
 - **A refusal before anything starts** (the run is busy, no original found, nothing to apply): a message under the buttons, and focus moves to it. Nothing was started.
-- **A job that fails:** its card says **Failed (exit N)**, with the command's own message (for example `refused: apply (no model) failed … run --apply again`) and its last lines. The button to use next is in the panel (**Apply** for a failed apply).
+- **A job that fails:** its card says **Failed**, with the reason in the command's own words (for example "Apply (no model) failed (exit 1): the current result is unchanged; the session stays finished") and where its log is saved. The button to use next is in the panel (**Apply** for a failed apply).
 - **A job that stopped without finishing** (the machine restarted, or the job was killed): **Interrupted**, with what is left, read from the run on disk, not from the job:
   - an apply that stopped partway: **Apply** finishes it (it may apply the session again; earlier results stay in `reviews/versions/`);
   - a session finished and not applied: **Apply**;

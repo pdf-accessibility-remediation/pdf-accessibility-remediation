@@ -91,18 +91,56 @@ def live_review(s, run):
     return None
 
 def job_view(s, j, with_text=False, offset=0):
-    """A job for the page: no environment; its steps, outcome and the last lines of its log."""
+    """A job for the page: no environment, no log lines and no command (the page shows none: the log stays on disk, at
+    `log`); its steps in plain words, the step running now, its title (what happened), and for a failure the reason."""
     text = jobs.read_log(s['jobs'], j['id'])[0]
+    R = jobs.run_dir(j, s['runs'])
     v = {k: j.get(k) for k in ('id', 'kind', 'run', 'status', 'created', 'started', 'ended', 'exit', 'url', 'paid', 'after', 'then_job', 'note', 'what')}
-    v.update(position=jobs.position(s['jobs'], j['id']), steps=logs.steps(text), outcome=logs.outcome(text), tail=logs.tail(text),
-             command=' '.join(x if x != sys.executable else 'python3' for x in j['argv']))
+    steps = logs.steps(text)
+    v.update(position=jobs.position(s['jobs'], j['id']), steps=[dict(x, words=logs.plain(x['label'])) for x in steps], outcome=logs.outcome(text),
+             log=shown_path(jobs.log_path(s['jobs'], j['id'])))
     if j['kind'] == 'review' and j['status'] == 'running':
-        v['past_finish'] = jobs.review_past_finish(jobs.run_dir(j, s['runs']), j.get('started'))
+        v['past_finish'] = jobs.review_past_finish(R, j.get('started'))
     if j['status'] == 'interrupted' and j['kind'] in ('apply', 'review'):
-        v['interrupted'] = after_interrupt(jobs.run_dir(j, s['runs']), j)
+        v['interrupted'] = after_interrupt(R, j)
+    v['step'] = logs.now_step(j['kind'], steps) if j['status'] == 'running' else None
+    v['title'] = title(R, j, v)
+    v['reason'] = reason(v) if j['status'] in ('failed', 'interrupted') else None
     if with_text:
         t, nxt = jobs.read_log(s['jobs'], j['id'], offset); v.update(text=t, next=nxt)
     return v
+
+def shown_path(p):
+    """A file's path as a person reads it: from the repo root (runs/.app/jobs/…) when it is inside it, else absolute."""
+    p = os.path.abspath(p)
+    return os.path.relpath(p, config.ROOT) if p.startswith(config.ROOT + os.sep) else p
+
+SESSION_IN = re.compile(r'session (\d+)')
+
+def title(R, j, v):
+    """What the job did, in one line: "Review again from session 2 → session 3 applied (Kim, 18:19)"."""
+    what = j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin'}.get(j['kind'], j['kind'])
+    st, out = j['status'], v.get('outcome') or ''
+    at = (j.get('ended') or '')[11:16]
+    lost = st == 'interrupted' and (v.get('interrupted') or {}).get('state') == 'done'
+    if st in ('queued', 'running', 'needs-spend'): return what
+    if st == 'failed': return f'{what} → failed' + (f' ({at})' if at else '')
+    if st == 'interrupted' and not lost: return f'{what} → stopped without finishing' + (f' ({at})' if at else '')
+    if j['kind'] == 'pin': return f'{what} → pinned' + (f' ({at})' if at else '')
+    m = SESSION_IN.search(out if out else (v.get('interrupted') or {}).get('text', ''))
+    if not m: return what + (f' → done ({at})' if at else ' → done')
+    sid = f'{int(m.group(1)):03d}'
+    who = ((S.session(R, sid) or {}).get('reviewer') if R else None) or 'reviewer not recorded'
+    done = 'left open' if out.endswith('stays open') else 'applied'
+    return f'{what} → {S.label(sid)} {done} (' + (f'{who}, {at}' if done == 'applied' else at or 'time not recorded') + ')'
+
+def reason(v):
+    """A failed or interrupted job's reason, in the tool's own words where it gave one, never log lines."""
+    if v.get('interrupted'): return v['interrupted']['text']
+    if v['status'] == 'interrupted': return 'The job stopped without finishing (the computer restarted, or the job was stopped).'
+    out = v.get('outcome') or ''
+    if out.startswith('refused: '): return out[len('refused: '):][:1].upper() + out[len('refused: ') + 1:]
+    return f'The command ended with an error (exit {v.get("exit")}).'
 
 def after_interrupt(R, j):
     """An interrupted apply or review: what is left, from the run's state on disk, not from the job status (a killed wrapper
@@ -161,8 +199,10 @@ def state(s, run, R):
         'unapplied': unapplied(ss),
         'lock': {'pid': h[0], 'what': h[1], 'since': h[2]} if h else None,
         'live_review': job_view(s, live) if live else None,
-        'jobs': [job_view(s, j) for j in rj[-8:]],
+        'jobs': [job_view(s, j) for j in rj],               # every job of the run: the page folds the earlier ones, none drop off
         'commands': {'reopen': f'python3 review_workorder.py {rel} --reopen', 'sessions': f'python3 review_workorder.py {rel} --sessions'},
+        'batch': run.split('/')[1] if run.startswith('batches/') and len(run.split('/')) == 3 and
+                 os.path.isfile(os.path.join(os.path.dirname(R), 'summary.html')) else None,
     }
 
 # ------------------------------------------------------------------ starting jobs
@@ -176,7 +216,10 @@ def start_review(s, run, R, port, src=None, discard_open=False, app_pid=None):
     py = [sys.executable, 'review_workorder.py', R]
     argv = py + ['--reopen'] + (['--from', str(src)] if src else []) + (['--discard-open'] if discard_open else []) + \
            (['--pdf', pdf] if pdf else []) + ['--no-browser', '--return-to', back]
-    what = ('Review again from the AI\'s decisions' if src == 'ai' else f'Review again from {S.label(f"{int(src):03d}")}' if src else 'Review again')
+    ss = S.sessions(R); op = [x for x in ss if x.get('status') == 'open']; done = [x for x in ss if x.get('status') in ('finished', 'applied')]
+    what = ('Review again from the AI\'s decisions' if src == 'ai' else f'Review again from {S.label(f"{int(src):03d}")}' if src else
+            f'Continue review ({S.label(op[-1]["id"])})' if op else f'Review again from {S.label(done[-1]["id"])}' if done else
+            'Review again from the AI\'s decisions')
     review = {'kind': 'review', 'argv': argv, 'env': config.child_env(s), 'counted': False, 'extra': {'what': what, 'app_pid': app_pid}}
     pinned = S.basis(R) and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json'))
     if pinned:

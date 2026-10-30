@@ -36,6 +36,27 @@ def steps(text):
             else: out.append({'label': m.group(1), 'state': 'done', 'time': m.group(2)})
     return out
 
+PLAIN = {'apply': 'applying the reviewed decisions', 'verify': 'checking the result', 'report': 'writing the report',
+         'intake': 'reading and tagging the PDF', 'audit': 'auditing the PDF', 'cost estimate': 'estimating the cost',
+         'reuse saved reply': 'reading the saved reply'}
+NUMBERED = re.compile(r'^(\d+)/(\d+) ')
+
+def plain(label):
+    """A step's label in plain words: "apply (no model)" → "applying the reviewed decisions"; others without their notes."""
+    core = re.sub(r'\s*\((?:no model|local, no model|no cost)\)', '', NUMBERED.sub('', label)).split(':')[0].strip()
+    return PLAIN.get(core, core)
+
+STEPS_OF = {'apply': 3, 'review': 3}                    # a re-apply's steps: apply, verify, report (review/sessions.py reapply)
+
+def now_step(kind, steps):
+    """The step running now, as {words, n, total} ("checking the result", 2 of 3), or None."""
+    run = [i for i, s in enumerate(steps) if s['state'] == 'running']
+    if kind == 'pin' and not steps: return {'words': 're-auditing the run to pin it (free)', 'n': 1, 'total': 1}
+    if not run: return None
+    i = run[-1]; m = NUMBERED.match(steps[i]['label'])
+    if m: return {'words': plain(steps[i]['label']), 'n': int(m.group(1)) + 1, 'total': int(m.group(2)) + 1}
+    return {'words': plain(steps[i]['label']), 'n': i + 1, 'total': max(STEPS_OF.get(kind, len(steps)), len(steps))}
+
 def outcome(text):
     """The tool's own last word: a refusal, the re-apply's done line, a session left open; else None."""
     for rx, fmt in ((REFUSED, 'refused: {}'), (DONE, 'done: {}'), (STAYS_OPEN, '{} stays open')):
