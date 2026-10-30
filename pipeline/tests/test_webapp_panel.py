@@ -745,3 +745,32 @@ def test_review_08_small_items():
     rec = {'review': {'session': '001', 'sessions': [{'id': '001', 'from': 'ai', 'status': 'applied', 'reviewer': 'K', 'date': '2026-10-30'}]}}
     out = ''.join(H.review_card('/tmp', rec))
     assert '<p><strong>Session 1</strong> · K · 2026-10-30 · counts not recorded</p>' in out and '0 approved' not in out
+
+# ------------------------------------------------------------------ CodeQL on PR #46
+def test_csp_finds_a_script_closed_with_a_space_and_never_hangs():
+    import base64, hashlib, time
+    body = '\nif (a < b && c > d) { x = "</p>"; }\n'
+    h = base64.b64encode(hashlib.sha256(body.encode()).digest()).decode()
+    assert W.csp(f'<p>x</p><script>{body}</script >tail') == f"frame-ancestors 'none'; script-src 'self' 'sha256-{h}'"   # "</script >"
+    assert W.csp(f'<SCRIPT>{body}</SCRIPT>') == f"frame-ancestors 'none'; script-src 'self' 'sha256-{h}'"
+    assert W.csp('<script type="application/json">{}</script><script src="/app/panel.js"></script>') == "frame-ancestors 'none'; script-src 'self'"
+    t = time.time(); W.csp('<script ' * 50000); W.csp('<body ' * 50000); W.with_panel('<body ' * 50000, 'r')
+    assert time.time() - t < 2                                                               # linear: no polynomial regex left
+
+def test_after_body_finds_the_tag_without_a_regex():
+    assert W.after_body('<html><BODY class="x">t', '[B]') == '<html><BODY class="x">[B]t'
+    assert W.after_body('<html>no body', '[B]') == '[B]<html>no body'
+    assert 're.search(r\'<body' not in src('webapp/server.py') and 'SCRIPT = re.compile' not in src('webapp/server.py')
+
+def test_paths_are_checked_where_they_are_used(setup):
+    s = settings(setup)
+    os.makedirs(os.path.join(s['jobs'], 'jobs'), exist_ok=True)
+    open(os.path.join(s['jobs'], 'secret.json'), 'w').write('{"x": 1}')
+    assert jobs.load(s['jobs'], '../secret') is None and jobs.read_log(s['jobs'], '../secret') == ('', 0)
+    srv = src('webapp/server.py')
+    for line in ("rp = os.path.realpath(p)                     # only files inside the runs folder",
+                 "if not rp.startswith(RUNS + os.sep) or not os.path.isfile(rp)",
+                 "if not B.startswith(BB + os.sep)", "if p.startswith(base + os.sep) and os.path.isfile(p): out[n] = p",
+                 "if rec.startswith(base + os.sep):"):
+        assert line in srv, line
+    assert "if not p.startswith(os.path.realpath(folder(J)) + os.sep): return None" in src('webapp/jobs.py')

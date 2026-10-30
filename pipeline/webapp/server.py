@@ -35,6 +35,7 @@ when its name is in the run's list. Nothing outside the runs folder is ever serv
 """
 import os, re, json, html, base64, hashlib, traceback, urllib.parse, datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from html.parser import HTMLParser
 from review.server import local_request
 from review import sessions as S
 from lib.titles import title_case as TC
@@ -64,30 +65,57 @@ def find_run(runs, segs):
         if os.path.isfile(os.path.join(d, 'record.json')): return '/'.join(segs[:i]), d, segs[i:]
     return None
 
-def served(d):
-    """{name: path} of the files a run (or a version under reviews/versions/) serves."""
-    out = {n: os.path.join(d, n) for n in FILES}
-    try: pdf = ((json.load(open(os.path.join(d, 'record.json'), encoding='utf-8')).get('document') or {}).get('output'))
-    except (OSError, ValueError): pdf = None
+def served(d, runs):
+    """{name: path} of the files a run (or a version under reviews/versions/) serves. Every path is resolved and checked
+    to be inside the runs folder right where it is used (realpath + startswith)."""
+    base = os.path.realpath(runs)
+    rec = os.path.realpath(os.path.join(d, 'record.json')); pdf = None
+    if rec.startswith(base + os.sep):
+        try: pdf = ((json.load(open(rec, encoding='utf-8')).get('document') or {}).get('output'))
+        except (OSError, ValueError): pdf = None
+    names = list(FILES)
     if isinstance(pdf, str) and pdf.lower().endswith('.pdf') and '/' not in pdf and '\\' not in pdf and not pdf.startswith('.'):
-        out[pdf] = os.path.join(d, pdf)
-    return {n: p for n, p in out.items() if os.path.isfile(p)}
+        names.append(pdf)
+    out = {}
+    for n in names:
+        p = os.path.realpath(os.path.join(d, n))
+        if p.startswith(base + os.sep) and os.path.isfile(p): out[n] = p
+    return out
 
 STATIC = {'panel.js': os.path.join(config.HERE, 'panel.js'), 'panel.css': os.path.join(config.HERE, 'panel.css'),
           'palette.css': os.path.join(config.PIPELINE, 'review', 'palette.css')}
 SKIP = '<a class="skip" href="#main">Skip to the content</a>'
 
 FRAME = {'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'"}   # every response: never in a frame
-SCRIPT = re.compile(r'<script(\s[^>]*)?>(.*?)</script>', re.S | re.I)
+class Scripts(HTMLParser):
+    """The page's inline scripts as the browser sees them (html.parser, not a regex: it handles "</script >" and runs in
+    linear time): the exact text of each <script> with no src and no JSON type."""
+    def __init__(self):
+        super().__init__(convert_charrefs=False); self.found = []; self.cur = None
+    def handle_starttag(self, tag, attrs):
+        if tag != 'script': return
+        a = {k.lower(): (v or '') for k, v in attrs}
+        self.cur = None if 'src' in a or a.get('type', '').strip().lower() in ('application/json', 'application/ld+json') else []
+    def handle_data(self, data):
+        if self.cur is not None: self.cur.append(data)
+    def handle_endtag(self, tag):
+        if tag == 'script':
+            if self.cur is not None: self.found.append(''.join(self.cur))
+            self.cur = None
 
 def csp(page):
     """An HTML page's policy: no framing, and scripts only from the app itself plus the page's one inline script by its
     sha256 (review.html and summary.html have exactly one; a JSON data block is not a script). A page with any other
     count of inline scripts gets none allowed. A javascript: link in the report's text never runs."""
-    inline = [body for attrs, body in SCRIPT.findall(page)
-              if 'src=' not in (attrs or '').lower() and not re.search(r'type\s*=\s*["\']?application/(ld\+)?json', attrs or '', re.I)]
+    p = Scripts(); p.feed(page); p.close(); inline = p.found
     h = f" 'sha256-{base64.b64encode(hashlib.sha256(inline[0].encode('utf-8')).digest()).decode()}'" if len(inline) == 1 else ''
     return f"frame-ancestors 'none'; script-src 'self'{h}"
+
+def after_body(page, box):
+    """box inserted right after the <body …> tag (str.find, not a regex), or at the start when there is none."""
+    i = page.lower().find('<body')
+    j = page.find('>', i) if i >= 0 else -1
+    return page[:j + 1] + box + page[j + 1:] if j >= 0 else box + page
 
 def with_panel(page, run, current=None):
     """review.html as served: the panel's stylesheet, its place (after the page's header, so its h2 follows the page's h1;
@@ -98,8 +126,7 @@ def with_panel(page, run, current=None):
     i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
     if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
     elif SKIP in page: page = page.replace(SKIP, SKIP + box, 1)
-    else:
-        m = re.search(r'<body[^>]*>', page); page = page[:m.end()] + box + page[m.end():] if m else box + page
+    else: page = after_body(page, box)
     i = page.rfind('</body>'); js = '<script src="/app/panel.js" defer></script>\n'
     return page[:i] + js + page[i:] if i >= 0 else page + js
 
@@ -111,8 +138,7 @@ def with_version(page, run, sid):
     head = '<link rel="stylesheet" href="/app/panel.css">\n'
     i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
     if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
-    else:
-        m = re.search(r'<body[^>]*>', page); page = page[:m.end()] + box + page[m.end():] if m else box + page
+    else: page = after_body(page, box)
     i = page.rfind('</body>'); js = '<script src="/app/panel.js" defer></script>\n'
     return page[:i] + js + page[i:] if i >= 0 else page + js
 
@@ -134,7 +160,8 @@ def make(s, setup, code=None):
     read once, here, so the pages always match the code this server runs, even if the files on disk change under it;
     `code` is the fingerprint of that code (config.code_fingerprint), which /api/ping reports."""
     J = s['jobs']
-    assets = {n: (open(p, 'rb').read(), TYPES.get(os.path.splitext(p)[1].lower(), 'application/octet-stream')) for n, p in STATIC.items()}
+    RUNS = os.path.realpath(s['runs'])                   # every file the server reads for a request is inside this folder
+    assets ={n: (open(p, 'rb').read(), TYPES.get(os.path.splitext(p)[1].lower(), 'application/octet-stream')) for n, p in STATIC.items()}
     code = code or config.code_fingerprint()
 
     class H(BaseHTTPRequestHandler):
@@ -150,11 +177,18 @@ def make(s, setup, code=None):
             for k, v in (extra or {}).items(): self.send_header(k, v)
             self.end_headers(); self.wfile.write(b)
         def file(self, p):
-            ctype = TYPES.get(os.path.splitext(p)[1].lower(), 'application/octet-stream')
-            policy = csp(open(p, encoding='utf-8', errors='replace').read()) if ctype.startswith('text/html') else None
-            self.send_response(200); self.headers_(ctype, os.path.getsize(p), policy); self.end_headers()
-            with open(p, 'rb') as f:
+            rp = os.path.realpath(p)                     # only files inside the runs folder, checked here, where they are opened
+            if not rp.startswith(RUNS + os.sep) or not os.path.isfile(rp): return self.send(404, {'error': 'not found'})
+            ctype = TYPES.get(os.path.splitext(rp)[1].lower(), 'application/octet-stream')
+            policy = csp(open(rp, encoding='utf-8', errors='replace').read()) if ctype.startswith('text/html') else None
+            self.send_response(200); self.headers_(ctype, os.path.getsize(rp), policy); self.end_headers()
+            with open(rp, 'rb') as f:
                 for b in iter(lambda: f.read(1 << 20), b''): self.wfile.write(b)
+        def text(self, p):
+            """A served file's text, for a page built around it; None when it is not inside the runs folder."""
+            rp = os.path.realpath(p)
+            if not rp.startswith(RUNS + os.sep): return None
+            return open(rp, encoding='utf-8', errors='replace').read()
         def redirect(self, to): self.send(302, b'', 'text/plain', {'Location': to})
         def ours(self): return local_request(self, self.server.server_address[1])
 
@@ -222,13 +256,15 @@ def make(s, setup, code=None):
             if p.startswith('/batch/'):
                 segs = segments(p[len('/batch/'):])
                 if not segs: return self.send(404, {'error': 'no such batch'})
-                B = os.path.join(s['runs'], 'batches', segs[0])
-                if not inside(os.path.join(s['runs'], 'batches'), B) or not os.path.isfile(os.path.join(B, 'summary.html')): return self.send(404, {'error': 'no such batch'})
+                BB = os.path.realpath(os.path.join(s['runs'], 'batches'))
+                B = os.path.realpath(os.path.join(BB, segs[0]))
+                if not B.startswith(BB + os.sep) or not os.path.isfile(os.path.join(B, 'summary.html')): return self.send(404, {'error': 'no such batch'})
                 rest = segs[1:]
                 if not rest:
                     if not p.endswith('/'): return self.redirect(p + '/')
                     return self.file(os.path.join(B, 'summary.html'))
-                if rest in (['summary.html'], ['summary.md']) and os.path.isfile(os.path.join(B, rest[0])): return self.file(os.path.join(B, rest[0]))
+                if rest in (['summary.html'], ['summary.md']):
+                    return self.file(os.path.join(B, 'summary.html' if rest[0] == 'summary.html' else 'summary.md'))
                 if len(rest) >= 1 and find_run(s['runs'], ['batches', segs[0], rest[0]]):
                     return self.redirect('/run/' + '/'.join(urllib.parse.quote(x) for x in ['batches', segs[0], rest[0]]) + '/')
                 return self.send(404, {'error': 'not found'})
@@ -247,14 +283,16 @@ def make(s, setup, code=None):
                 d, name, sid = R, rest[-1], None
                 if len(rest) == 4 and rest[:2] == ['reviews', 'versions']: d, sid = os.path.join(R, 'reviews', 'versions', rest[2]), rest[2]
                 elif len(rest) != 1: return self.send(404, {'error': 'not found'})
-                f = served(d).get(name) if os.path.isdir(d) and inside(R, d) else None
+                f = served(d, s['runs']).get(name) if os.path.isdir(d) and inside(R, d) else None
                 if not f or not inside(R, f): return self.send(404, {'error': 'not found'})
                 base = '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
                 if name == 'review.html' and sid is None: return self.redirect(base)      # the run page, with the panel
-                if name == 'review.html':                                                  # a previous result: its bar
-                    return self.send(200, with_version(open(f, encoding='utf-8', errors='replace').read(), run, sid), 'text/html; charset=utf-8')
-                if name == 'review.md' and (q.get('raw') or [''])[0] != '1':                # review.md inside a page with a way back
-                    return self.send(200, md_page(open(f, encoding='utf-8', errors='replace').read(), run, sid, base), 'text/html; charset=utf-8')
+                if name in ('review.html', 'review.md') and not (name == 'review.md' and (q.get('raw') or [''])[0] == '1'):
+                    t = self.text(f)
+                    if t is None: return self.send(404, {'error': 'not found'})
+                    if name == 'review.html':                                              # a previous result: its bar
+                        return self.send(200, with_version(t, run, sid), 'text/html; charset=utf-8')
+                    return self.send(200, md_page(t, run, sid, base), 'text/html; charset=utf-8')   # review.md with a way back
                 return self.file(f)
             if p == '/': return self.send(200, home_stub(s), 'text/html; charset=utf-8')
             self.send(404, {'error': 'not found'})
@@ -262,7 +300,8 @@ def make(s, setup, code=None):
         def run_page(self, run, R):
             f = os.path.join(R, 'review.html')
             cur = S.current_id(runs.load(os.path.join(R, 'record.json')) or {})
-            if os.path.isfile(f): return self.send(200, with_panel(open(f, encoding='utf-8', errors='replace').read(), run, cur), 'text/html; charset=utf-8')
+            t = self.text(f) if os.path.isfile(f) else None                          # checked inside the runs folder
+            if t is not None: return self.send(200, with_panel(t, run, cur), 'text/html; charset=utf-8')
             return self.send(200, no_dashboard(run, R, cur), 'text/html; charset=utf-8')
 
     return ThreadingHTTPServer(('127.0.0.1', s['port']), H)
