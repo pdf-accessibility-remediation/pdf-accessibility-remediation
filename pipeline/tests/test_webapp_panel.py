@@ -647,9 +647,21 @@ def test_fourth_pass_details():
     assert 'Its choices are kept in Session History as abandoned; the current result (' in js and "esc(tc('Discard ' + s.open.label))" in js
     assert "'The review page is closed. ' + open + ' stays open: press Continue Review to carry on.'" in js
     assert "if (!miss.length) return '';" in js and 'previous result' in js and 'earlier result' not in js
-    assert '#pdfrem-panel > .pp { border-left: 6px solid var(--accent); }' in css and 'body:has(#pdfrem-version) .replaced { display: none; }' in css
-    assert '.pp .pp-msg.pp-okmsg { border-left-color: var(--accent);' in css and '#pp-vreview { margin-left: 12px; }' in css
+    assert 'body:has(#pdfrem-version) .replaced { display: none; }' in css and '#pp-vreview { margin-left: 12px; }' in css
     rec = {'review': {'session': '001', 'sessions': [{'id': '001', 'from': 'ai', 'status': 'applied', 'reviewer': 'K', 'date': '2026-10-29',
            'counts': {'approved': 1}}], 'decisions': [{'id': 'x', 'kind': 'retype', 'label': 'A', 'page': 2, 'status': 'approved'}]}}
     out = ''.join(H.review_card('/tmp', rec))
     assert '<hr class="thin"><h3 class="rev-sub">Decisions in This Session</h3>' in out and '<p>1 approved</p>' not in out
+
+# ------------------------------------------------------------------ Patrick's fifth pass
+def test_messages_can_be_dismissed_and_are_neutral():
+    js, css = src('webapp/panel.js'), src('webapp/panel.css')
+    assert '<button type="button" class="pp-x" data-act="dismiss" aria-label="Dismiss message">×</button>' in js
+    assert "if (act === 'dismiss') { msg(''); $('pp-h').focus(); return; }" in js                     # focus to the Run Actions heading
+    assert js.index("if (act === 'dismiss')") < js.index("msg('');                                                       // any other panel button")
+    assert '<div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>' in js and '<p id="pp-msg"' not in js
+    assert '#pdfrem-panel > .pp {' not in css and 'border-left: 6px solid var(--accent)' not in css     # Run Actions: the thin border only
+    assert '.pp .pp-msg.pp-okmsg { border: 1px solid var(--line); background: var(--panel); }' in css  # a message: neutral
+    assert '.pp .pp-msg { border-left: 4px solid var(--reject);' in css                                # an error keeps its red
+    assert '.pp .pp-warn { border-left: 4px solid var(--change);' in css                               # Setup keeps its orange
+    assert '.pp .pp-msg:not([hidden]) { display: flex;' in css                                         # hidden still hides it
