@@ -34,7 +34,9 @@ def locked(J):
         finally: fcntl.flock(f, fcntl.LOCK_UN)
 
 def load(J, jid):
-    try: return json.load(open(path(J, jid), encoding='utf-8'))
+    p = os.path.realpath(path(J, jid))                   # a job id from a request: its file must be in the jobs folder
+    if not p.startswith(os.path.realpath(folder(J)) + os.sep): return None
+    try: return json.load(open(p, encoding='utf-8'))
     except (OSError, ValueError): return None
 
 def save(J, job):
@@ -194,8 +196,10 @@ def position(J, jid):
 
 def read_log(J, jid, offset=0, limit=256 * 1024):
     """(text, next offset) from byte offset; whole lines only while the job may still write."""
+    lp = os.path.realpath(log_path(J, jid))
+    if not lp.startswith(os.path.realpath(folder(J)) + os.sep): return '', offset
     try:
-        with open(log_path(J, jid), 'rb') as f:
+        with open(lp, 'rb') as f:
             f.seek(max(0, int(offset))); b = f.read(limit)
     except OSError: return '', offset
     job = load(J, jid) or {}
