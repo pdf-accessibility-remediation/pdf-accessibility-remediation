@@ -16,7 +16,7 @@ Routes (all call review/core.py; a later front end can replace this file and pag
 Requests must come from the page itself: the Host must be this server's, and a POST must be JSON from the same origin,
 so another web page open in the browser cannot submit a review (a plain form or a no-cors fetch cannot send JSON).
 """
-import os, json, datetime, threading, webbrowser, mimetypes
+import os, json, datetime, threading, webbrowser, mimetypes, urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from . import core
 
@@ -30,9 +30,19 @@ def local_request(handler, port):
     origin = handler.headers.get('Origin')
     return handler.headers.get('Host') in hosts and (origin is None or origin in {f'http://{h}' for h in hosts})
 
-def serve(R, date, port=8765, open_browser=True, files=None):
-    """files: {url: path} served as they are, beside the review's own (review_workorder.py --reopen: the current result)."""
+def check_return_to(url):
+    """--return-to: an http URL on this computer (127.0.0.1 or localhost, with a port), so the page never sends the reviewer
+    elsewhere. Returns the URL; raises ValueError."""
+    u = urllib.parse.urlsplit(url)
+    if u.scheme != 'http' or u.hostname not in ('127.0.0.1', 'localhost') or u.username or u.password or not u.port or u.netloc not in (f'127.0.0.1:{u.port}', f'localhost:{u.port}'):
+        raise ValueError(f'only http://127.0.0.1:<port>/… or http://localhost:<port>/… is accepted, not {url!r}')
+    return url
+
+def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
+    """files: {url: path} served as they are, beside the review's own (review_workorder.py --reopen: the current result).
+    return_to: the app's run page, which the page goes to after Finish and links back to."""
     R = os.path.abspath(R)
+    if return_to: check_return_to(return_to)
     data = core.load(os.path.join(R, 'review_items.json'))
     ai = core.load(os.path.join(R, 'workorder.ai.json'))
     if data is None or ai is None: raise SystemExit(f'{R} is not waiting for a review (no review_items.json / workorder.ai.json)')
@@ -91,7 +101,7 @@ def serve(R, date, port=8765, open_browser=True, files=None):
             if not self.ours(): return self.send(403, {'error': 'open the page at the address the terminal printed'})
             path = self.path.split('?', 1)[0]
             if path in ('/', '/index.html'):
-                boot = json.dumps({**data, 'saved': saved, 'date': date}, ensure_ascii=False).replace('</', '<\\/')
+                boot = json.dumps({**data, 'saved': saved, 'date': date, 'return_to': return_to}, ensure_ascii=False).replace('</', '<\\/')
                 return self.send(200, open(PAGE, encoding='utf-8').read().replace('/*REVIEW_DATA*/null', boot), 'text/html; charset=utf-8')
             if path in page_urls or path in word_urls:
                 f = page_image(page_urls[path]) if path in page_urls else word_image(word_urls[path])

@@ -8,7 +8,8 @@ webapp/settings.json < webapp/settings.local.json (this machine; git-ignored) < 
 
 If an app with the same settings already answers on the port, its page is opened and this command ends. --port N starts
 a separate one on purpose. Ctrl+C stops the app: running jobs carry on and finish (their state is on disk); queued jobs
-wait for the next start.
+wait for the next start; a review page this app opened gets Ctrl+C too, as in a terminal (its session stays open), unless
+it is past Finish (then it is applying, and is left to finish).
 """
 import os, sys, json, signal, argparse, threading, webbrowser, urllib.request, urllib.parse, datetime, traceback
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -71,7 +72,18 @@ def main():
         except Exception: pass
     try: srv.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt: print('\nthe app stopped')
-    finally: stop.set(); srv.server_close()
+    finally:
+        stop.set(); srv.server_close()
+        close_reviews(s)
+
+def close_reviews(s):
+    """At stop: Ctrl+C to the review pages this app started that are still before Finish, as Ctrl+C in a terminal (the
+    session stays open). One past Finish is applying and is left to finish (decided from disk, never from the log)."""
+    for j in jobs.all_jobs(s['jobs']):
+        if j['kind'] != 'review' or j['status'] != 'running' or j.get('app_pid') != os.getpid(): continue
+        if jobs.review_past_finish(os.path.join(s['runs'], *j['run'].split('/')), j.get('started')):
+            print(f'  {j["run"]}: the review is past Finish and is being applied: left to finish'); continue
+        if jobs.interrupt(s['jobs'], j['id']): print(f'  {j["run"]}: review page closed; its session stays open (Review again carries on with it)')
 
 if __name__ == '__main__':
     main()
