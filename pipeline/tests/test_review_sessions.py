@@ -424,6 +424,33 @@ def test_ctrl_c_during_an_auto_save_waits_for_it(tmp_path):
     finally:
         if pr.poll() is None: pr.kill()
 
+def test_an_older_draft_never_overwrites_a_newer_one(tmp_path):
+    """Review 14 L5: /keep and the Finish dialog's /save skip a draft whose saved_at is older than the one on disk (a
+    request handled late can't put an older draft back); /keep says so and still gives the open gaps; Finish always writes."""
+    R, rec, ai, dg = run_folder(tmp_path)
+    S.check_basis(R, rec)
+    p = S.P(R); items = core.build_items(ai, dg)
+    S.save(p['items'], {'book': 'book.pdf', 'run': 'run', 'pages': 5, 'pdf': '', 'groups': core.GROUPS, 'levels': core.LEVELS,
+                        'add_kinds': core.ADD_KINDS, 'items': items, 'addable': core.addable(ai, dg),
+                        'session': {'key': 'abc:002', 'id': '002', 'reopened': True, 'name_default': 'Session 2'}})
+    port = free_port()
+    t = threading.Thread(target=lambda: __import__('review.server', fromlist=['serve']).serve(p['dir'], '2026-10-31', port, open_browser=False), daemon=True)
+    t.start(); time.sleep(0.8)
+    def call(path, body):
+        req = urllib.request.Request(f'http://127.0.0.1:{port}{path}', data=json.dumps(body).encode(),
+                                     headers={'Content-Type': 'application/json', 'Host': f'127.0.0.1:{port}'})
+        with urllib.request.urlopen(req, timeout=20) as r: return r.status, json.loads(r.read())
+    base = {'reviewer': 'Kim', 'decisions': ALL, 'additions': []}
+    st, b = call('/keep', dict(base, session_notes='newer', saved_at='2026-10-31T12:00:05.000Z'))
+    assert st == 200 and b['kept'] is True and isinstance(b['gaps'], list)
+    st, b = call('/keep', dict(base, session_notes='older', saved_at='2026-10-31T12:00:01.000Z'))   # handled late
+    assert st == 200 and b['kept'] is False and b['older'] is True and S.load(p['draft'])['session_notes'] == 'newer'
+    call('/save', dict(base, session_notes='older too', saved_at='2026-10-31T12:00:02+00:00'))
+    assert S.load(p['draft'])['session_notes'] == 'newer'
+    st, b = call('/finish', dict(base, session_notes='final', saved_at='2026-10-31T11:00:00.000Z', gaps_ack={'figures_without_alt': 'later'}))
+    t.join(5)
+    assert b['finished'] and S.load(p['draft'])['session_notes'] == 'final'                          # Finish: the last word
+
 def test_keep_and_save_together_never_cut_the_draft(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)
     S.check_basis(R, rec)

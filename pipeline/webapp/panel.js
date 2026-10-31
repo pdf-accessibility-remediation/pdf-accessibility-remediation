@@ -190,7 +190,7 @@ const stepWords = j => j.step ? j.step.words + ' (' + j.step.n + ' of ' + j.step
 function jobWords(j) {
   if (j.status === 'queued') return 'Waiting' + (j.position ? ': ' + ordinal(j.position) + ' in line' : '');
   if (j.status === 'running') {
-    if (j.kind === 'ocr') return j.url ? 'Waiting for you: the OCR review page is open' : 'Opening the OCR review page';
+    if (j.kind === 'ocr') return j.url ? 'Waiting for you: the OCR Text Review page is open' : 'Opening the OCR Text Review page';
     if (j.kind === 'review' && !j.past_finish) return j.url ? 'Waiting for you: the review page is open' : 'Opening the review page';
     return 'Running' + (j.step ? ': ' + stepWords(j) : '');
   }
@@ -216,7 +216,7 @@ function jobCard(j) {                                           // heading: the 
     h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the Review Page</a>' +
          '<button type="button" id="pp-stop" data-act="stop">Stop Reviewing (the Session Stays Open)</button></div>';
   if (j.kind === 'ocr' && j.status === 'running' && j.url)
-    h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the OCR Review Page</a>' +
+    h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the OCR Text Review Page</a>' +
          '<button type="button" id="pp-stop" data-act="stop">Close Without a Verdict</button></div>';
   if (j.reason) h += '<p><b>Why:</b> ' + esc(j.reason) + '</p><p class="pp-note">The job\'s full output, for whoever looks after the app, is saved in ' + esc(j.log) + '.</p>';
   return h + '</article>';
@@ -322,7 +322,7 @@ box.addEventListener('click', async e => {
     if (act === 'stop') {
       const open = st.open ? cap(sn(st.open.id)) : 'The session', ocr = st.live_review && st.live_review.kind === 'ocr';
       [s, r] = await api(API + '/stop', {}); if (s !== 200) return msg(r.error || 'Stop failed', false, true);
-      msg(ocr ? 'The OCR review page is closed without a verdict.'
+      msg(ocr ? 'The OCR Text Review page is closed without a verdict.'
               : 'The review page is closed. ' + open + ' stays open: press "Continue Review" to carry on.', true, true); return poll();
     }
     if (act === 'stop-other') {                                  // a review page the app did not start (a terminal's): asks first
@@ -378,7 +378,7 @@ function announce(s) {
       newResult = true; live(t + ': ' + low(jobWords(j)) + '. New result ready: ' + s.current.label + '. "Show the New Result" loads it.'); continue;
     }
     if (ended(j) || j.status === 'failed' || j.status === 'interrupted') live(t + ': ' + low(jobWords(j)) + (j.reason ? '. ' + j.reason : ''));
-    else if (person(j) && j.url && !j.past_finish && (!was || !was.includes(j.url))) live(t + ': the ' + (j.kind === 'ocr' ? 'OCR review page' : 'review page') + ' is ready');
+    else if (person(j) && j.url && !j.past_finish && (!was || !was.includes(j.url))) live(t + ': the ' + (j.kind === 'ocr' ? 'OCR Text Review page' : 'review page') + ' is ready');
     else if (j.step) live(t + ': ' + stepWords(j));
     else if (j.status === 'running' && (!was || was.startsWith('queued'))) live(t + ': started');
   }

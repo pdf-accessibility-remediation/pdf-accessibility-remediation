@@ -59,6 +59,7 @@ dialog.npad textarea { flex: 1; resize: none; border: 0; border-radius: 0 0 8px 
 /* "All changes saved" / "Saving…" / "Not saved": right of Finish Review, in a fixed width, so nothing moves when it changes */
 .save-state { align-self: center; font-size: 13px; color: var(--muted); white-space: nowrap; display: inline-block; width: 9.5em; }
 .save-state[hidden] { display: none; }
+.gap-state { align-self: center; font-size: 13px; color: var(--muted); white-space: nowrap; } .gap-state:empty, .gap-state[hidden] { display: none; }
 .save-alert:empty { display: none; } .save-alert { margin-top: 6px; font-size: 14px; color: var(--reject); font-weight: 600; }
 .fin-check { border-left: 4px solid var(--change); background: var(--bg); padding: 6px 10px; margin: 8px 0; font-size: 14px; }
 .fin-check ul { margin: 4px 0 0; padding-left: 20px; } .fin-check.err { border-left-color: var(--reject); }
@@ -193,7 +194,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
     </span>
     <span class="actions"><button id="addBtn" type="button">Add a Decision</button>
     <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close Without a Verdict</button>
-    <span id="saveState" class="save-state">All changes saved</span></span>
+    <span id="saveState" class="save-state">All changes saved</span><span id="gapState" class="gap-state"></span></span>
   </div>
   <div id="saveAlert" role="alert" class="save-alert"></div>
   <div id="msg" role="status"></div>
@@ -291,7 +292,7 @@ async function saveNow() {
   saving = true; dirty = false; let ok = false;
   try {
     const [s, b] = await post('/keep');
-    if (s === 200) { ok = true; saveAlert(''); }
+    if (s === 200) { ok = true; saveAlert(''); showGaps(b.gaps); }   // kept, or skipped as older than the draft on disk
     else if (s === 409) ok = true;                     // Finish has started: it records the draft itself
     else saveAlert('Your last changes could not be saved to the run: ' + (b.error || 'the server refused them') + ' Change it and they are saved again.');
   } catch (e) {
@@ -302,10 +303,24 @@ async function saveNow() {
     else if (ok) saveState('All changes saved');
   }
 }
-addEventListener('pagehide', () => {                   // a tab closed within the second: the last edits still go
-  if (!dirty || finished || DATA.mode === 'ocr') return;
-  try { fetch('/keep', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, state)) }); } catch (e) {}
+// Leaving the page while a change hasn't reached the run (waiting for its save, or a save in flight): the browser asks
+// first (its leave-page prompt). If the person leaves anyway, the last edits are sent as the page goes (keepalive). A
+// browser sends at most 64 KiB that way: a bigger draft is not sent then, which is why the prompt comes first; the
+// browser's own copy keeps it either way.
+const unsaved = () => (dirty || saving) && !finished && DATA.mode !== 'ocr';
+addEventListener('beforeunload', e => { if (unsaved()) { e.preventDefault(); e.returnValue = ''; } });
+addEventListener('pagehide', () => {
+  if (!unsaved()) return;
+  const body = JSON.stringify(Object.assign({}, state));
+  if (body.length > 60000) return;                     // over the keepalive limit: the browser's copy has it
+  try { fetch('/keep', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body }); } catch (e) {}
 });
+// the gaps still open (from each auto-save), beside the save status: not announced; the Finish dialog lists them with Add links
+function showGaps(g) {
+  const el = document.getElementById('gapState'); if (!el || !Array.isArray(g)) return;
+  el.textContent = g.length ? g.length + (g.length === 1 ? ' gap open' : ' gaps open') : '';
+  el.title = g.map(x => x.what).join(' · ');
+}
 function dec(id) { return state.decisions[id] || (state.decisions[id] = {}); }
 
 document.getElementById('title').textContent = 'Work Order Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
@@ -473,7 +488,7 @@ ocrBox.addEventListener('submit', async e => {
     if (b.closed) {                                    // back to the run page, which loads the updated report; else the terminal
       ocrBox.querySelectorAll('input, button').forEach(x => { x.disabled = true; }); document.getElementById('closeOcr').disabled = true;
       if (RETURN_TO) return location.assign(RETURN_TO.split('?')[0] + '?after=ocr');
-      return ocrSay(said + ' The OCR review page is closed: go back to the terminal.');
+      return ocrSay(said + ' The OCR Text Review page is closed: go back to the terminal.');
     }
     ocrSay(said);
   } catch (err) { ocrSay('Could not reach the review server: is it still running?', true); }
@@ -503,14 +518,14 @@ if (OCR_ONLY) {                                        // the OCR section alone:
   const back = document.getElementById('back');
   if (!back.hidden) back.innerHTML = '<a href="' + esc(RETURN_TO.split('?')[0]) + '" class="btnlink">Back to the Run Page</a> (this page stays open until you close it here or there)';
   [document.getElementById('sessionName').closest('span'), document.getElementById('progress').parentNode, document.querySelector('.show'),
-   document.getElementById('addBtn'), document.getElementById('saveState'), document.getElementById('finish'),
+   document.getElementById('addBtn'), document.getElementById('saveState'), document.getElementById('gapState'), document.getElementById('finish'),
    document.getElementById('this-session'), document.getElementById('cards')].forEach(x => { x.hidden = true; });
   const c = document.getElementById('closeOcr'); c.hidden = false;
   c.addEventListener('click', async () => {
     try { await fetch('/close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch (e) {}
     c.disabled = true;
     if (RETURN_TO) return location.assign(RETURN_TO.split('?')[0]);
-    msg('The OCR review page is closed. Go back to the terminal.');
+    msg('The OCR Text Review page is closed. Go back to the terminal.');
   });
 }
 
@@ -1007,7 +1022,7 @@ function checkHtml(c) {
     dr.map(d => '<li>' + link(d.card, name(d)) + ': ' + esc(d.why) + '</li>').join('') + '</ul></div>';
   if (rf.length) h += '<div class="fin-check"><b>' + rf.length + (rf.length === 1 ? ' addition can\'t be applied' : ' additions can\'t be applied') + '</b>:<ul>' +
     rf.map(r => '<li>' + link(r.id, (addById[r.id] || {}).label || r.id) + ': ' + esc(r.why) + '</li>').join('') + '</ul></div>';
-  if (gp.length) h += '<div class="fin-check"><b>' + gp.length + (gp.length === 1 ? ' gap is' : ' gaps are') + ' still open</b>: ' + gp.map(g => esc(g.what)).join(' · ') +
+  if (gp.length) h += '<div class="fin-check"><b>' + gp.length + (gp.length === 1 ? ' gap is' : ' gaps are') + ' still open</b>: ' + gp.map(g => esc(g.what) + addLink(g)).join(' · ') +
     '. "Finish Review" asks for a reason for each.</div>';
   return h;
 }
@@ -1015,7 +1030,7 @@ async function askFinish() {
   const dlg = document.getElementById('finishDialog');
   clearTimeout(saveTimer);                             // the check saves the draft too (/save keeps it, under the write lock)
   let chk = null;
-  try { const [s, b] = await post('/save'); if (s === 200) { chk = b; if (!saving) { dirty = false; saveAlert(''); saveState('All changes saved'); } } } catch (e) {}
+  try { const [s, b] = await post('/save'); if (s === 200) { chk = b; showGaps(b.gaps); if (!saving) { dirty = false; saveAlert(''); saveState('All changes saved'); } } } catch (e) {}
   const n = items.filter(it => !(state.decisions[it.id] || {}).status).length, one = n === 1;
   const ov = OCR && OCR.current ? verdictText(OCR.current) : 'Not yet reviewed';
   dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2>' + checkHtml(chk) + '<div class="ctx" id="finCtx">' +
@@ -1029,10 +1044,12 @@ async function askFinish() {
     '<button type="button" class="primary" data-f="finish">Finish Review</button></div>';
   document.getElementById('finName').value = sName.value; document.getElementById('finNotes').value = sNotes.value;
   return new Promise(done => {
-    let answer = null, toCard = null;
+    let answer = null, toCard = null, toAdd = null;
     dlg.onclick = e => {
       const a = e.target.closest('a[data-card]');
       if (a) { e.preventDefault(); toCard = a.dataset.card; dlg.close(); return; }   // a way back: to the choice's card
+      const ad = e.target.closest('a[data-add-kind]');   // a gap's Add: the form for what is missing
+      if (ad) { e.preventDefault(); toAdd = [ad.dataset.addKind, ad.dataset.addTarget]; dlg.close(); return; }
       const f = e.target.dataset.f; if (!f) return;
       if (f === 'finish') {                            // the dialog's name and notes are the session's from now on
         sName.value = state.session_name = document.getElementById('finName').value;
@@ -1049,6 +1066,7 @@ async function askFinish() {
         if (view !== 'all') { view = 'all'; document.querySelector('input[name=view][value=all]').checked = true; render(); }
         goTo(document.getElementById('card-' + toCard));
       }
+      else if (toAdd) openAdd(toAdd[0], toAdd[1]);      // the Add a Decision form, at the right kind
       else if (!answer) finBtn.focus();                // Back or Escape: where the person was
       done(answer && answer !== 'left' ? answer : null);
     };
@@ -1084,6 +1102,7 @@ finBtn.addEventListener('click', async () => {
 renderOcr();
 render();
 if (state.saved_at && state.saved_at !== (srv.saved_at || '')) saveSoon();   // this browser's copy is newer than the run's: save it
+else if (DATA.mode !== 'ocr') saveNow();               // nothing new: one quiet save, which also brings the count of open gaps
 </script>
 </body>
 </html>

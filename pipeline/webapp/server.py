@@ -23,7 +23,7 @@ POST (JSON from the app's own pages only), each answered 202 {job} or 409 {error
     /api/run/<run>/stop-other  Stop the Other Review: Ctrl+C to a review page the app did not start (the lock's holder)
     /api/run/<run>/discard     Discard the open session: review_workorder.py --discard-open (marked abandoned, kept);
                                refused while its review page is open or past Finish
-    /api/run/<run>/ocr         Review OCR text: the OCR-only review page (review_ocr.py --serve), a job that waits on a person
+    /api/run/<run>/ocr         Review OCR Text: the OCR-only review page (review_ocr.py --serve), a job that waits on a person
 Reserved for later pages (not built): /run/<run>/release, /run/<run>/screen-reader. /run/<run>/ocr stays reserved (404):
 OCR text is approved on the review page, or on the OCR-only page, both on the review server.
 
