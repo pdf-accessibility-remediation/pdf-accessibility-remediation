@@ -15,7 +15,7 @@ included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, listrule, gaptext, support, plpages, readorder  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords  # plumb_fix first: it patches pdfplumber
 import pikepdf, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -282,12 +282,11 @@ for p in contents_pages:
     front.append({'page': p, 'label': labels[p], 'text': clip(' / '.join(t for _, t in lines(p)), 2500), 'why': 'contents page'})
 
 # ---- CJK and links (summaries only; the executor handles them by rule)
-KANA = re.compile(r'[぀-ヿㇰ-ㇿｦ-ﾟ]'); CJK = re.compile(r'[　-ヿ㐀-䶿一-鿿＀-￯]')
-cjk = collections.Counter(); cjk_ex = []
+cjk = collections.Counter(); cjk_ex = []                    # the same script test as apply.py's language step (lib/scripts.py)
 for (p, m), cs in mc_chars.items():
     t = ''.join(c['text'] for c in cs)
-    if not CJK.search(t): continue
-    kind = 'mixed_with_latin' if re.sub(r'[\s\W\d_]', '', CJK.sub('', t)) else ('kana' if KANA.search(t) else 'han_only')
+    kind = scripts.kind(t)
+    if kind is None: continue
     cjk[kind] += 1
     if len(cjk_ex) < 12 and kind == 'han_only': cjk_ex.append({'page': p, 'text': clip(t, 30)})
 link_pages = collections.Counter()
@@ -410,30 +409,19 @@ text_quality = {'producer_says_ocr': 'Paper Capture' in str(pdf.docinfo.get('/Pr
 #      and the executor gives every occurrence that spelling as ActualText. The OCR text itself is never changed.
 OCR_WORDS_MAX = 700             # distinct word forms sent, most frequent first; the rest are listed for a person
 SHEET_W, SHEET_H, CELL_W = 1200, 900, 600
-SUSPECT = re.compile(r'(?<=[A-Za-z])ii|ii(?=[a-z])|[A-Za-z][;:¢£·|][A-Za-z¢£]|[¢£]')
-def word_core(t):
-    """The word without the punctuation around it (the executor splits words the same way)."""
-    return re.sub(r'^\W+|\W+$', '', t)
 ocr_words, ocr_word_sheets, ocr_words_not_sent = [], [], 0
 is_scan = text_quality['producer_says_ocr'] or full_page_imgs > 0.5 * len(pages)
 if is_scan:
     forms = collections.OrderedDict()
     for pno, p in enumerate(PL.pages, 1):
-        word = []
-        def flush():
-            if not word: return
-            core = word_core(''.join(c['text'] for c in word))
-            if core and SUSPECT.search(core) and not re.fullmatch(r'[ivxlcdm]+', core.lower()):
-                f = forms.setdefault(core, {'count': 0, 'pages': [], 'at': None})
-                f['count'] += 1
-                if pno not in f['pages']: f['pages'].append(pno)
-                if f['at'] is None:
-                    f['at'] = (pno, [min(c['x0'] for c in word), min(c['top'] for c in word), max(c['x1'] for c in word), max(c['bottom'] for c in word)])
-            word.clear()
-        for c in p.chars:
-            if c.get('mcid') is None or c['text'].isspace() or (word and abs(c['top'] - word[-1]['top']) > 3): flush()
-            if c.get('mcid') is not None and not c['text'].isspace(): word.append(c)
-        flush()
+        for word in ocrwords.words(p.chars, page_chars):         # split at spaces and at gaps (lib/ocrwords.py)
+            core = ocrwords.core(''.join(c['text'] for c in word))
+            if not ocrwords.suspect(core): continue
+            f = forms.setdefault(core, {'count': 0, 'pages': [], 'at': None})
+            f['count'] += 1
+            if pno not in f['pages']: f['pages'].append(pno)
+            if f['at'] is None:
+                f['at'] = (pno, [min(c['x0'] for c in word), min(c['top'] for c in word), max(c['x1'] for c in word), max(c['bottom'] for c in word)])
     ranked = sorted(forms.items(), key=lambda kv: -kv[1]['count'])
     ocr_words_not_sent = max(0, len(ranked) - OCR_WORDS_MAX)
     ranked = ranked[:OCR_WORDS_MAX]

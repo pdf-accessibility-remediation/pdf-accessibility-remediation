@@ -50,26 +50,38 @@ def _filled(p, c, page_chars):
             if abs(o['bottom'] - c['bottom']) <= 0.5 * size and min(o['x1'], hi) - max(o['x0'], lo) > 0.5 * (hi - lo): return True
     return False
 
-def gap_text(chars, page_chars=None):
-    """chars: pdfplumber-style dicts (text, x0, x1, top, bottom, size, upright; 'pg' optional) in content order.
-    page_chars(pg): every character on that page, so a gap filled by a glyph outside this text is not taken for a space."""
+def breaks(chars, page_chars=None):
+    """The characters gap_text() reads (those with text), and for each one whether a word break comes before it: a gap
+    wider than GAP_EM of the type size and GAP_TYPICAL times the line's typical gap, or a new line (except after a hyphen).
+    Used by gap_text() and by ocrwords.py, which splits OCR words the same way."""
     cs = [c for c in chars if c.get('text') is not None]
-    if not cs: return ''
+    if not cs: return cs, []
     typical, start = [0.0] * len(cs), 0                # the typical gap of each line (a letter-spaced line has its own)
     for i in range(1, len(cs) + 1):
         if i == len(cs) or not _same_line(cs[i - 1], cs[i]):
             g = sorted(_gap(cs[j - 1], cs[j]) for j in range(start + 1, i) if cs[j - 1]['text'].strip() and cs[j]['text'].strip())
             for j in range(start, i): typical[j] = g[len(g) // 2] if g else 0.0
             start = i
-    out = [cs[0]['text']]
+    brk, last = [False] * len(cs), cs[0]['text']
     for i, (p, c) in enumerate(zip(cs, cs[1:]), 1):
         t = c['text']
-        if t.strip() and out[-1] and not out[-1][-1].isspace():
+        if t.strip() and last and not last[-1].isspace():
             if _same_line(p, c):
                 g = _gap(p, c); size = max(float(c.get('size') or 0), 1.0)
-                if g > GAP_EM * size and g > GAP_TYPICAL * typical[i] and not _filled(p, c, page_chars): out.append(' ')
-            elif out[-1][-1] not in HYPHENS: out.append(' ')
-        out.append(t)
+                brk[i] = g > GAP_EM * size and g > GAP_TYPICAL * typical[i] and not _filled(p, c, page_chars)
+            else: brk[i] = last[-1] not in HYPHENS
+        last = t
+    return cs, brk
+
+def gap_text(chars, page_chars=None):
+    """chars: pdfplumber-style dicts (text, x0, x1, top, bottom, size, upright; 'pg' optional) in content order.
+    page_chars(pg): every character on that page, so a gap filled by a glyph outside this text is not taken for a space."""
+    cs, brk = breaks(chars, page_chars)
+    if not cs: return ''
+    out = [cs[0]['text']]
+    for i in range(1, len(cs)):
+        if brk[i]: out.append(' ')
+        out.append(cs[i]['text'])
     return re.sub(r'\s+', ' ', ''.join(out)).strip()
 
 def loosen(pattern):

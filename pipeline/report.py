@@ -17,6 +17,14 @@ validation.json, workorder.json, the apply log, the verify JSON; after a REVIEW=
 review.json, review_items.json, review_decisions.json and review_pages/, whose content is in record.json) and the AUDIT_DIR
 (digest and figure crops, which are copies of book pages). --keep leaves them all in place.
 It only runs after a complete run, so a failed run keeps its working files for debugging.
+Every run keeps its digest, fulltext.json and OCR word sheets (not the figure crops) in reviews/_audit/, with
+reviews/basis.json, so it can be reviewed again later (review_workorder.py --reopen; review/sessions.py). After a REVIEW=1
+run the review is kept as session 001 in reviews/sessions/ and the AI's order as reviews/workorder.ai.json.
+
+    --input=PATH         the pipeline input (run_api.sh passes it): recorded in reviews/basis.json
+    --from-record=PATH   a re-apply (review_workorder.py): run, validation, reply, attempts and veraPDF "before" come from
+                         that record.json instead of the working files, so the AI call's model, prompt and cost carry over
+    --intake=DIR         where the run's _intake/ is (a re-apply works in reviews/work/)
 """
 import sys, os, re, csv, json, shutil, datetime, collections
 from lib.sections import line, pdfua, nolink, excerpt, to_sections, render_md, VERSION as SECTIONS_VERSION
@@ -27,7 +35,8 @@ from lib import readorder
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 KEEP = '--keep' in sys.argv
 R, A = args[0], args[1]
-PDF = next((a.split('=', 1)[1] for a in sys.argv[1:] if a.startswith('--pdf=')), None)
+def opt(name): return next((a.split('=', 1)[1] for a in sys.argv[1:] if a.startswith(f'--{name}=')), None)
+PDF, INPUT, FROM_RECORD, INTAKE_DIR = opt('pdf'), opt('input'), opt('from-record'), opt('intake')
 if not PDF:
     found = sorted(f[:-len('.log.json')] for f in os.listdir(R) if f.lower().endswith('.pdf.log.json'))
     if len(found) != 1: sys.exit(f'expected one remediated PDF with an apply log in {R}, found {len(found)}: pass --pdf=NAME.pdf')
@@ -36,6 +45,7 @@ def load(name, base=R, default=None):
     p = os.path.join(base, name)
     return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else default
 run = load('run.json', default={}); wo = load('workorder.json', default={}); val = load('validation.json', default={'dropped': []})
+prev = json.load(open(FROM_RECORD, encoding='utf-8')) if FROM_RECORD else None   # a re-apply: the AI call's own record
 log = load(PDF + '.log.json', default={}); ver = load(PDF + '.verify.json', default={})
 digest = load('digest.json', base=A, default={})
 fulltext = load('fulltext.json', base=A, default={}) or {}   # the whole texts the digest shortens (local only, never sent)
@@ -43,11 +53,14 @@ vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the orig
 reply = open(os.path.join(R, 'reply.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(R, 'reply.txt')) else None
 timing = load('timing.json', default=None)
 attempts = load('attempts.json', default=[])
+if prev is not None:
+    run, val, reply, attempts = prev.get('run') or {}, {'dropped': prev.get('validation_dropped') or []}, prev.get('raw_reply'), prev.get('earlier_attempts') or []
+    vera_before = (prev.get('verapdf') or {}).get('before')
 rv = load('review.json')                              # a person's review of the work order before it was applied (REVIEW=1)
 ri = load('review_items.json') if rv else None        # what the review page showed, e.g. its move_section preview
 # gaps the reviewer left open with no reason given (a hand edit without --note); an explained gap counts as handled
 rv_unexplained = [g for g in (rv or {}).get('gaps') or [] if str(g.get('reason') or '').startswith('hand edit: no reason asked for')]
-wo_ai = load('workorder.ai.json') if rv else None     # the AI's version, kept for comparison          # earlier paid calls in this folder whose reply couldn't be used
+wo_ai = load('workorder.ai.json') if rv else None     # the AI's version: kept in record.json for every reviewed run          # earlier paid calls in this folder whose reply couldn't be used
 cost_this = (run.get('usage') or {}).get('cost_usd') or 0
 cost_earlier = round(sum(a.get('cost_usd') or 0 for a in attempts), 6)
 for need, name in ((wo, 'workorder.json'), (log, PDF + '.log.json'), (ver, PDF + '.verify.json')):
@@ -57,11 +70,17 @@ figs = {f['obj']: f for f in digest.get('figures', [])}
 elems = {e['obj']: e for e in digest.get('elements', []) + digest.get('headings', []) + digest.get('heading_candidates', [])}
 lists_ = {x['obj']: x for x in digest.get('lists', [])}; tables_ = {x['obj']: x for x in digest.get('tables', [])}
 src = digest.get('source', run.get('source', {}))
-intake = load('intake.json', base=os.path.join(R, '_intake'))   # intake.py: OCR and auto-tagging of an untagged original
+intake = load('intake.json', base=INTAKE_DIR or os.path.join(R, '_intake'))   # intake.py: OCR and auto-tagging of an untagged original
 in_src = dict(src)                                     # the file the pipeline worked on (the intake result, when there is one)
 if intake and (intake.get('result') or {}).get('pdf'):
     src = {**src, 'file': intake['original']['file'], 'sha256': intake['original']['sha256']}
 han = log.get('han_only', [])
+# the review's sessions (reviews/sessions/): a re-apply brings them in review_session.json; after a first review
+# (REVIEW=1) session 001 is recorded here, before the working files are tidied
+rv_session = load('review_session.json')
+if rv and rv_session is None and not KEEP:
+    from review import sessions as RS
+    rv_session = RS.first_session(R, A, PDF)
 
 # ------------------------------------------------------------------ record.json
 record = {
@@ -83,8 +102,8 @@ record = {
     'verify': {k: v for k, v in ver.items() if k != 'verapdf'},
     'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, 'raw_reply': reply, 'environment': log.get('environment'),
     'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier, 6),
-    **({'review': {'workorder': rv}} if rv else {}),
-    **({'workorder_ai': wo_ai} if rv and wo_ai is not None and rv.get('changes') else {}),
+    **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),
+    **({'workorder_ai': wo_ai} if rv and wo_ai is not None else {}),
 }
 json.dump(record, open(os.path.join(R, 'record.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 if han:
@@ -162,6 +181,9 @@ wc = ver.get('wcag')
 so = (wc or {}).get('section_order')              # sections read away from their printed place (verify.py, lib/readorder.py)
 ow = log.get('ocr_words') or {}; ow_forms = ow.get('by_form') or []; ow_missing = [x for x in ow_forms if not x.get('found')]
 ow_run = run.get('ocr_words') or {}
+# a reused reply written for another OCR-word list (decide.py: list changed, or no fingerprint): none of today's forms was read by it
+ow_stale = bool(run.get('response_from')) and ow_run.get('reply_check') not in (None, 'same list')
+ow_stale_why = ow_run.get('reply_check_why') or 'the word list it was written for could not be checked'
 def intake_rows():
     tt = intake.get('text_test') or {}; o = intake.get('ocr') or {}; fl = intake.get('flags') or []
     ns = len([r for r in tt.get('pages', []) if 'cer' in r])
@@ -241,7 +263,10 @@ checks = [
      or ('; '.join(f'{x}: its font program could not be read, so it was not checked' for x in ocr_unread))
      or ('; '.join(f'{x["font"]}: blank glyphs added for {x["glyph_references"]} glyph references on {x["pages"]} pages (replay: no page changed)'
                    for x in (log.get('ocr_fonts') or {}).get('replaced') or []) or 'no undefined glyphs in invisible text')),
-    *([('OCR words: every printed spelling attached', ok(not ow_missing and not ow_run.get('not_sent') and not digest.get('ocr_words_not_sent')),
+    *([('OCR words: every printed spelling attached', ok(False),
+        ('the saved reply\'s readings were not used' if ow_run.get('reply_readings_dropped') else 'the saved reply gave no readings')
+        + f': {ow_stale_why}; {nc(ow_run.get("sent"))} suspect forms not read by the AI')] if ow_stale and (ow_forms or digest.get('ocr_words')) else
+      [('OCR words: every printed spelling attached', ok(not ow_missing and not ow_run.get('not_sent') and not digest.get('ocr_words_not_sent')),
         f'{len(ow_forms)} misread forms given their printed spelling in {sum(x.get("found") or 0 for x in ow_forms)} places'
         + (f' · {len(ow_missing)} not found in the page text' if ow_missing else '')
         + (f' · {ow_run["not_sent"] + digest.get("ocr_words_not_sent", 0)} suspect forms not read by the AI' if ow_run.get('not_sent') or digest.get('ocr_words_not_sent') else ''))]
@@ -399,6 +424,17 @@ if rv:
     n += 1; L += [f'### {n}. Work order reviewed by a person', '',
                   f'{rv["reviewer"]} reviewed the AI\'s work order on {rv["date"]}, before it was applied ({rv.get("method")}). '
                   'The result is what was applied; the AI\'s version is in `record.json` (`workorder_ai`).', '']
+    if rv_session:
+        sid, ss = rv_session['session'], {x['id']: x for x in rv_session.get('sessions') or []}
+        me = ss.get(sid) or {}; frm = me.get('from')
+        start = ('the AI\'s decisions' if frm in ('ai', None) else 'the recorded summary of an earlier review' if frm == 'summary'
+                 else f'session {int(frm)}' + (' (summary only)' if (ss.get(frm) or {}).get('summary_only') else ''))
+        L += [f'This result comes from review session {int(sid)}, started from {start}'
+              + (f': {me["carried"]} choices carried from it, {me.get("since_start", 0)} changed in this session' if me.get('carried') else '')
+              + (f'; {me["not_carried"]} earlier choices did not carry (their decision is not the same)' if me.get('not_carried') else '')
+              + f'. Every session is kept in `reviews/sessions/` and every earlier result in `reviews/versions/`: '
+              f'`python3 review_workorder.py {rv_session.get("run") or "<run>"} --sessions` (from `pipeline/`) lists them, '
+              '`--reopen` reviews again.', '']
     if rv.get('changes'):
         L += ['| Decision | Change | AI | Person |', '|---|---|---|---|']
         L += [f'| {c["where"]}' + (f' `{c["id"]}`' if c.get('id') else '') + f' | {c["change"]} | '
@@ -514,8 +550,17 @@ if ow_forms or digest.get('ocr_words'):
         L += [f'| {x["text"]} | {x["reads"]} | ' + (str(x['found']) if x.get('found') else '**not found**')
               + f' | {pgs(dw.get(x["text"], {}).get("pages") or [])} |' for x in sorted(ow_forms, key=lambda x: -(x.get('found') or 0))]
         L.append('')
-    L.append(line(f'- {checked} suspect forms were checked by the AI; {max(0, checked - len(ow_forms))} were judged correct as the OCR read them, or unreadable '
-             '(e.g. "Hawaii"), and left alone.', entry=False))
+    if ow_stale:                                 # the reply was written for another list: say what it read, not today's count
+        rr, dropped_n = ow_run.get('reply_read'), ow_run.get('reply_readings_dropped')
+        L.append(line((f'- The saved reply read {rr} suspect forms (the word list when it was written)' if rr is not None else
+                       '- The saved reply was written for an earlier word list (its size was not recorded)')
+                      + (f' and gave {dropped_n} readings' if dropped_n else ' and gave no readings') + f'; {checked} are listed now. '
+                      + (f'Its readings were not used: {ow_stale_why}. ' if dropped_n else f'{ow_stale_why[:1].upper()}{ow_stale_why[1:]}. ')
+                      + f'None of today\'s {checked} forms counts as read by the AI: a person checks them against the scan, or a new call reads them.',
+                      entry=False))
+    else:
+        L.append(line(f'- {checked} suspect forms were checked by the AI; {max(0, checked - len(ow_forms))} were judged correct as the OCR read them, or unreadable '
+                 '(e.g. "Hawaii"), and left alone.', entry=False))
     if ow_missing: L.append(line(f'- **{len(ow_missing)} forms with a reading were not found in the page text** (split across text operators, or drawn inside a form): '
                             + ', '.join(x['text'] for x in ow_missing) + '. A person checks these.', entry=False))
     unread = (ow_run.get('not_sent') or 0) + (digest.get('ocr_words_not_sent') or 0)
@@ -901,6 +946,9 @@ except Exception as e: print(f'note: review.html not written ({type(e).__name__}
 
 # ------------------------------------------------------------------ tidy
 if not KEEP:
+    from review import sessions as RS                 # the digest, fulltext and OCR word sheets stay, for a later review
+    if rv: RS.keep_first(R, A)
+    if os.path.exists(os.path.join(A, 'digest.json')): RS.keep_audit(R, A, wo_ai if rv and wo_ai is not None else wo, INPUT)
     for name in ('request.json', 'response.json', 'reply.txt', 'run.json', 'validation.json', 'workorder.json',
                  PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'attempts.json',
                  'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json'):

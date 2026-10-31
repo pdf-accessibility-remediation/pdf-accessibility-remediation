@@ -145,6 +145,10 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
         wo_ok, wo_txt = False, f'no (reviewed by hand edit by {rv.get("reviewer")} on {rv.get("date")}, not on the review page)'
     else:
         wo_ok, wo_txt = False, 'no (run without REVIEW=1)'
+    pend = (record.get('review') or {}).get('pending') or {}
+    if pend.get('status') == 'finished':                # a later review is signed off but not applied: the PDF on disk is older
+        wo_ok, wo_txt = False, (f'no (the latest review, session {int(pend["session"])} by {pend.get("reviewer")}, is finished but not applied: '
+                                'run review_workorder.py <run> --apply)')
     ocr_pages = (intake.get('ocr') or {}).get('pages_with_ocr_text') or []
     v = (intake.get('review') or {}).get('ocr_text_approved')
     flagged = ocr_layer_flagged(intake)                 # an existing OCR layer that step A flagged needs the approval too
@@ -278,7 +282,8 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
         for p in x['pages']:
             page_level.setdefault(p, 'safety' if x['rank'] == 0 else 'person'); page_notes.setdefault(p, []).append(x['text'])
     reviewed = None
-    if rv: reviewed = {'reviewer': rv.get('reviewer'), 'date': rv.get('date'), 'method': rv.get('method'), 'changed': len(rv.get('changes') or [])}
+    if rv: reviewed = {'reviewer': rv.get('reviewer'), 'date': rv.get('date'), 'method': rv.get('method'), 'changed': len(rv.get('changes') or []),
+                       **({'session': record['review']['session']} if (record.get('review') or {}).get('session') else {})}
     return {'schema': SCHEMA, 'ready': ready, 'ship': ship, 'safety': saf, 'safety_ok': saf_ok,
             'needs_person': {'total': len(d_ai) + n_exec + n_check, 'ai_deferrals': len(d_ai), 'executor_deferrals': n_exec, 'check_rows': n_check},
             'ai_decisions': {'count': n_decisions(wo), 'reviewed': reviewed},
