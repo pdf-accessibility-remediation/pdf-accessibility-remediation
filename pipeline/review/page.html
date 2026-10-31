@@ -147,7 +147,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 <div id="navBackdrop" hidden></div>
 <main>
   <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close Sections"><span aria-hidden="true">×</span></button></div><div id="navList"></div></nav>
-  <div class="col"><div id="addPanel" hidden></div><div id="readingOrder"></div><div id="cards"></div></div>
+  <div class="col"><div id="addPanel" hidden></div><div id="roPark" hidden><div id="readingOrder"></div></div><div id="cards"></div></div>
 </main>
 <div id="zoom"><img alt=""></div>
 <dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>
@@ -158,6 +158,7 @@ const SESSION = DATA.session || null;
 const KEY = SESSION && SESSION.key ? 'review:' + SESSION.key : 'review:' + DATA.book + ':' + DATA.run;
 const SEEN_ONLY = new Set(['deferrals', 'notes_for_reviewer', 'reading_order']);
 const items = DATA.items, byId = Object.fromEntries(items.map(it => [it.id, it]));
+const RO_GROUP = Number(Object.keys(DATA.groups).find(g => DATA.groups[g] === 'Reading order'));   // review/core.py GROUPS
 const ADDABLE = DATA.addable || {}, ADD_KINDS = DATA.add_kinds || {};
 const addById = Object.fromEntries(Object.values(ADDABLE).flat().map(t => [t.id, t]));
 const aid = a => 'add:' + a.kind + ':' + a.target;
@@ -219,7 +220,7 @@ function aiSections() {
     for (const g of Object.keys(DATA.groups).map(Number)) {
       let its = items.filter(it => it.priority === g);
       its.sort((a, b) => g === 2 ? (b.context.count || 0) - (a.context.count || 0) : (a.page ?? 1e9) - (b.page ?? 1e9));
-      if (its.length) out.push({ id: 'grp-' + g, title: g + '. ' + DATA.groups[g], items: its });
+      if (its.length || g === RO_GROUP) out.push({ id: 'grp-' + g, title: g + '. ' + DATA.groups[g], items: its });   // the reading-order group holds the panel
     }
     return out;
   }
@@ -430,7 +431,7 @@ function renderOrder() {
   let h = '<details' + (open ? ' open' : '') + '><summary>' + tc('Reading order in the original (before changes)') + ': ' +
     (n ? plural(n, 'finding', 'findings') + ' to check' : 'nothing to check') + '</summary>';
   h += '<p>This is the order in which a screen reader reads the book\'s sections in the original file, before any of the AI\'s changes. ' +
-    'Each finding below has its own card under Check First, where you mark it seen and can add a note for review.md. ' +
+    'Each finding below has its own card in this group, where you mark it seen and can add a note for review.md. ' +
     'Changes made after this review, such as figures moved to their page and orphan text added to the tags, are not shown here; review.md checks the final order after the changes are applied.</p>';
   if (!RO.detail && !RO.flat) h += '<p>This run was audited before the full reading order was recorded, so only the main sections are listed and the section-move preview is not available.</p>';
   const li = [];
@@ -551,11 +552,20 @@ function card(it) {
 }
 
 function render() {
+  document.getElementById('roPark').appendChild(RO_BOX);   // out of #cards before it is replaced, so the panel survives
   const secs = sections();
   document.getElementById('cards').innerHTML = (finished ? '<div class="done">Review finished. Go back to ' + NEXT + ' to continue the run.</div>' : '') +
     (secs.length ? secs.map(s => '<section id="' + s.id + '"><h2>' + esc(tc(s.title)) + ' (' + s.items.length + ')</h2>' + s.items.map(s.adds ? addCard : card).join('') + '</section>').join('')
                  : '<p>Nothing to show here.</p>');
-  nav(); progress(); refreshH1(); renderOrder();
+  placeOrder(); nav(); progress(); refreshH1(); renderOrder();
+}
+// the reading-order panel opens its group (Check First) or the reading-order decisions (All); Not reviewed lists cards only.
+// It is one element, parked while render replaces #cards and moved here after, so it keeps its listeners and its fold.
+const RO_BOX = document.getElementById('readingOrder');
+function placeOrder() {
+  const at = view === 'priority' ? document.querySelector('#grp-' + RO_GROUP + ' > h2')
+    : view === 'all' ? document.querySelector('#kind-Reading-order-check > h2, #kind-Reading-order > h2') : null;
+  if (at) at.after(RO_BOX);
 }
 
 // ---------------------------------------------------------------- H1: a book has one; flag the cards when decisions make more
@@ -575,12 +585,12 @@ function refreshH1() {
 }
 
 function nav() {
-  const g = Object.keys(DATA.groups).map(Number).map(n => [n, items.filter(it => it.priority === n).length]).filter(x => x[1]);
+  const g = Object.keys(DATA.groups).map(Number).map(n => [n, items.filter(it => it.priority === n).length]).filter(x => x[1] || x[0] === RO_GROUP);
   const kinds = []; for (const it of items) if (!kinds.includes(it.kind)) kinds.push(it.kind);
   const pages = {};
   for (const it of items) if (it.priority && it.page != null) (pages[it.page] = pages[it.page] || []).push(it.id);
   let h = state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + (view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
-  h += '<h2>Check First</h2><a href="#readingOrder"><span>Reading Order (Original)</span><span>' + roCount(roFindings()) + '</span></a>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
+  h += '<h2>Check First</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
   h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
   h += '<h2>Page Index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
     '<a href="#card-' + esc(pages[p][0]) + '" data-view="priority"><span>p. ' + p + '</span><span>' + pages[p].length + '</span></a>').join('');
@@ -603,7 +613,7 @@ function clearChoice(art) {
   persist(); progress(); orderChanged(byId[art.dataset.id]);
 }
 // the reading-order panel follows the section move and the text rules (a rejected rule no longer hides its sections)
-function orderChanged(it) { if (it && (it.key === 'move_section' || it.id.startsWith('artifacts.text_rules:'))) { renderOrder(); nav(); } }
+function orderChanged(it) { if (it && (it.key === 'move_section' || it.id.startsWith('artifacts.text_rules:'))) renderOrder(); }
 function readValue(box, base) {                          // the value typed in an editor (editor() markup) inside box
   const fs = box.querySelectorAll('[data-act=value][data-f]');
   if (fs.length) {
@@ -696,7 +706,6 @@ document.getElementById('nav').addEventListener('click', e => {
   const a = e.target.closest('a'); if (!a) return;
   e.preventDefault();
   if (narrow()) setNav(false);
-  if (a.getAttribute('href') === '#readingOrder') document.querySelector('#readingOrder details').open = true;
   if (a.dataset.view && a.dataset.view !== view && !(view === 'left' && a.dataset.view === 'all')) {
     view = a.dataset.view; document.querySelector('input[name=view][value=' + view + ']').checked = true; render();
   }
