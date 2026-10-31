@@ -316,12 +316,20 @@ def session_name(x):
     """'Session 5: Chapters 1–4 pass', or 'Session 5' (records made before sessions had names have none). Escaped."""
     return f'Session {int(x["id"])}' + (f': {E(x["name"])}' if x.get('name') else '')
 
+REVIEWED_BY = re.compile(r'no \(reviewed by .*? on [^:]*: (.*)\)$')
+
+def ship_words(s):
+    """A "Ready to Ship?" line as review.html says it (review.md keeps glance's text): the work order's "no (reviewed by Kim
+    on 2026-10-30: 205 decisions accepted without review)" reads "no (205 decisions not reviewed)"."""
+    m = REVIEWED_BY.match(s['text']) if s['what'].startswith('Work order') else None
+    return 'no (' + m.group(1).replace('decisions accepted without review', 'decisions not reviewed') + ')' if m else s['text']
+
 def notes_open(x, label='Notes'):
     """A session's notes: a button that opens them, read-only, in the page's pop-up box (the script's notes box), with the
     text beside it, hidden (plain text, never through inline(): a person's text is not markdown); 'none' without."""
     if not x.get('notes'): return 'none'
     title = f'Notes: Session {int(x["id"])}' + (f' · {x["name"]}' if x.get('name') else '')
-    return (f'<button type="button" class="nopen" data-title="{E(title)}">{label}</button>'
+    return (f'<button type="button" class="nopen" data-session="{int(x["id"])}" data-title="{E(title)}">{label}</button>'
             f'<span class="ntext" hidden>{E(x["notes"])}</span>')
 
 def review_card(R, rec):
@@ -437,9 +445,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus
     # ---- ready to ship
     B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? {"Yes" if g["ready"] else "No"}</h2><ul>'
-             + ''.join(f'<li>{E(s["what"])}: <strong>{E(s["text"])}</strong></li>' for s in g['ship']) + '</ul>')
-    if not g['ship'][0]['ok'] and not banner:
-        B.append('<p class="note">The review page is the final sign-off: see "Review of the AI\'s decisions" below (docs: review-step.md, "Sign-off").</p>')
+             + ''.join(f'<li>{E(s["what"])}: <strong>{E(ship_words(s))}</strong></li>' for s in g['ship']) + '</ul>')
     B.append('</section>')
     if banner: B.insert(1, f'<p class="replaced" role="note">{banner}</p>')
     else: B += review_card(R, rec)
@@ -455,7 +461,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
              ('AI decisions', 'good' if g['ship'][0]['ok'] else 'warn', f'{ad["count"]:,}',
               (f'approved by {ad["reviewed"]["reviewer"]} on {ad["reviewed"]["date"]}' if ad.get('reviewed') and g['ship'][0]['ok']
                else 'reviewed, not signed off' if ad.get('reviewed') else 'Not reviewed by a person'), ''),
-             ('veraPDF (WCAG rules)', ('good' if vg.get('after_rules') == 0 else 'warn') if vg.get('ran_after') else 'warn',
+             ('veraPDF (WCAG Rules)',('good' if vg.get('after_rules') == 0 else 'warn') if vg.get('ran_after') else 'warn',
               (f'{vg.get("before_rules", "–")} → {vg["after_rules"]}' if vg.get('ran_after') else 'Not run'),
               (f'{vg.get("before_checks", 0):,} → {vg["after_checks"]:,} failed checks · {len(vg.get("newly_failing") or [])} newly failing' if vg.get('ran_after') else (vg.get('not_run') or '')), '')]
     def lab(cls, big):
@@ -682,23 +688,26 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
   });
 })();
 (function () {
-  // a session's notes in a pop-up box, read-only (the app's run page has the same box, webapp/panel.js notesBox). Not modal:
-  // the page stays usable beside it. It moves by its title bar, resizes from its corner, and closes with × or Escape.
-  // Focus goes into its text on open and back to the button that opened it on close. Moving it is never needed to read
-  // the notes, which scroll inside it.
-  var d = null, opener = null;
-  function put(x, y) {                  // kept inside the window
-    d.style.left = Math.max(0, Math.min(innerWidth - 80, x)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
-  }
-  function close() { d.close(); if (opener) opener.focus(); }
-  function make() {
-    d = document.createElement('dialog'); d.className = 'ndlg'; d.setAttribute('aria-labelledby', 'ndlg-h');
-    d.innerHTML = '<div class="nbar"><h2 id="ndlg-h"></h2>' +
+  // a session's notes in a pop-up box, read-only (the app's run page has the same box, webapp/panel.js notesBox). One box
+  // per session, several open at once; opening one already open brings it to the front. Not modal: the page stays usable
+  // beside them. A box moves by its title bar, resizes from its corner, and closes with × or Escape (Escape closes the box
+  // that has focus). Focus goes into its text on open and back to the button that opened it on close. Moving it is never
+  // needed to read the notes, which scroll inside it.
+  var boxes = {}, top = 50;
+  function make(key) {
+    var d = document.createElement('dialog'), id = 'ndlg-' + key;   // d.opener: the button that opened it last
+    d.className = 'ndlg'; d.setAttribute('aria-labelledby', id + '-h');
+    d.innerHTML = '<div class="nbar"><h2 id="' + id + '-h"></h2>' +
       '<button type="button" class="nx" aria-label="Close the notes"><span aria-hidden="true">×</span></button></div>' +
-      '<div class="nbody" tabindex="0" role="region" aria-labelledby="ndlg-h"></div>';
+      '<div class="nbody" tabindex="0" role="region" aria-labelledby="' + id + '-h"></div>';
     document.body.appendChild(d);
+    function put(x, y) {                // kept inside the window
+      d.style.left = Math.max(0, Math.min(innerWidth - 80, x)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
+    }
+    function close() { d.close(); if (d.opener) d.opener.focus(); }
     d.querySelector('.nx').addEventListener('click', close);
     d.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    d.addEventListener('pointerdown', function () { d.style.zIndex = ++top; });   // a click brings it to the front
     d.querySelector('.nbar').addEventListener('pointerdown', function (e) {   // drag by the title bar (not its close button)
       if (e.button || e.target.closest('.nx')) return;
       var dx = e.clientX - d.offsetLeft, dy = e.clientY - d.offsetTop, bar = e.currentTarget;
@@ -707,17 +716,20 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
       function up() { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); bar.removeEventListener('pointercancel', up); }
       bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up); bar.addEventListener('pointercancel', up);
     });
+    return d;
   }
   Array.prototype.forEach.call(document.querySelectorAll('button.nopen'), function (b) {
     b.addEventListener('click', function () {
-      if (!d) make();
-      opener = b;
-      d.querySelector('h2').textContent = b.getAttribute('data-title'); d.querySelector('.nbody').textContent = b.nextElementSibling.textContent;
+      var key = b.getAttribute('data-session'), d = boxes[key] || (boxes[key] = make(key));
+      d.opener = b; d.style.zIndex = ++top;
       if (!d.open) {
+        d.querySelector('h2').textContent = b.getAttribute('data-title'); d.querySelector('.nbody').textContent = b.nextElementSibling.textContent;
+        var n = document.querySelectorAll('dialog.ndlg[open]').length;   // each new box a little lower and to the right
         d.show();
-        d.style.left = Math.max(0, (innerWidth - d.offsetWidth) / 2) + 'px'; d.style.top = Math.max(0, (innerHeight - d.offsetHeight) / 3) + 'px';
+        d.style.left = Math.max(0, (innerWidth - d.offsetWidth) / 2 + 24 * n) + 'px'; d.style.top = Math.max(0, (innerHeight - d.offsetHeight) / 3 + 24 * n) + 'px';
+        d.querySelector('.nbody').scrollTop = 0;
       }
-      d.querySelector('.nbody').scrollTop = 0; d.querySelector('.nbody').focus();
+      d.querySelector('.nbody').focus();
     });
   });
 })();"""

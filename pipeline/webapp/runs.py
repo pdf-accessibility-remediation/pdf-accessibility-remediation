@@ -78,11 +78,11 @@ def pdf_needed(s, R, rec):
         if ((rec.get('intake') or {}).get('result') or {}).get('pdf'): return None, None
         sha = ((rec.get('workorder') or {}).get('source') or {}).get('sha256') or (rec.get('document') or {}).get('sha256')
     name = (rec.get('document') or {}).get('file')
-    if not sha: return None, 'the record names no input sha256, so the original cannot be looked for'
+    if not sha: return None, 'This run\'s record doesn\'t say which PDF it was made from, so its original PDF can\'t be found.'
     p = find_original(s, sha, name)
     if p: return p, None
-    return None, (f'the original PDF of this run ({name or "its PDF"}, sha256 {sha[:16]}) is not in {s["samples"]} or {s["uploads"]}: '
-                  f'put a copy there, or run the command in a terminal with --pdf <the original>')
+    return None, (f'The book\'s original PDF ({name or "its file"}) wasn\'t found in the folder of original PDFs or of uploads. '
+                  'Put a copy of it in one of them, then try again.')
 
 # ------------------------------------------------------------------ the panel's view of a run
 def live_review(s, run):
@@ -160,6 +160,7 @@ def reason(v):
     if v.get('interrupted'): return v['interrupted']['text']
     if v['status'] == 'interrupted': return 'The job stopped without finishing (the computer restarted, or the job was stopped).'
     out = v.get('outcome') or ''
+    if S.FALLBACK.split('.')[0] in out: return S.FALLBACK_PAGE     # the pin refused: the command stays in the job's log
     if out.startswith('refused: '): return out[len('refused: '):][:1].upper() + out[len('refused: ') + 1:]
     return f'The command ended with an error (exit {v.get("exit")}).'
 
@@ -223,7 +224,7 @@ def state(s, run, R):
         'latest': {'id': done[-1]['id'], 'label': S.label(done[-1]['id'])} if done else None,
         'unapplied': unapplied(ss),
         'ocr': ocr_state(R),
-        'lock': {'pid': h[0], 'what': h[1], 'since': h[2]} if h else None,
+        'lock': {'pid': h[0], 'what': h[1], 'since': h[2], 'words': jobs.lock_words(h[1], h[2])} if h else None,
         'live_review': job_view(s, live) if live else None,
         'jobs': [job_view(s, j) for j in rj],               # every job of the run: the page folds the earlier ones, none drop off
         'commands': {'reopen': f'python3 review_workorder.py {rel} --reopen', 'sessions': f'python3 review_workorder.py {rel} --sessions'},
@@ -267,14 +268,15 @@ def start_ocr(s, run, R, port, app_pid=None):
     """Queue Review OCR text: the OCR-only page (review_ocr.py --serve), which waits on a person, so it is not counted in
     max_jobs. Refused when the book needs no OCR approval, or when the run has no intake.pdf and no original is found."""
     st = ocr_state(R)
-    if not st or not st['needed']: raise ValueError('this book has no OCR text to review (intake added none, and its existing OCR layer was not flagged)')
+    if not st or not st['needed']: raise ValueError('This book has no OCR text that needs approval.')
     rec = load(os.path.join(R, 'record.json')) or {}
     argv = [sys.executable, 'review_ocr.py', R, '--serve', '--no-browser', '--return-to',
             f'http://127.0.0.1:{port}/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/']
     if not os.path.isfile(os.path.join(R, '_intake', 'intake.pdf')):
         doc = rec.get('document') or {}
         pdf = find_original(s, doc.get('sha256'), doc.get('file'))
-        if not pdf: raise ValueError(f'the original PDF ({doc.get("file")}, sha256 {str(doc.get("sha256"))[:16]}…) is not in the samples folder')
+        if not pdf: raise ValueError(f'The book\'s original PDF ({doc.get("file") or "its file"}) wasn\'t found in the folder of original PDFs, '
+                                     'so its pages can\'t be shown.')
         argv += ['--pdf', pdf]
     return jobs.create(s['jobs'], 'ocr', run, argv, config.child_env(s), counted=False, R=R, what='Review OCR text', app_pid=app_pid)
 

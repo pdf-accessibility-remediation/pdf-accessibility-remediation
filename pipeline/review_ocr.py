@@ -63,7 +63,7 @@ def serve(R, a):
                         'run': os.path.relpath(R, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'pages': n, 'pdf': pdf,
                         'items': [], 'groups': {}, 'levels': [], 'add_kinds': {}, 'addable': {},
                         'session': {'key': f'{(S.basis(R) or {}).get("run_id") or "run"}:ocr', 'id': None}}
-                server.serve(tmp, a.date, a.port, open_browser=not a.no_browser, return_to=a.return_to, run_dir=R, lock_held=True,
+                server.serve(tmp, datetime.date.today().isoformat(), a.port, open_browser=not a.no_browser, return_to=a.return_to, run_dir=R, lock_held=True,
                              data=data, wo=rec.get('workorder'))
             finally: shutil.rmtree(tmp, ignore_errors=True)
     except S.Refused as e: sys.exit(f'refused: {e}')
@@ -77,7 +77,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('run_dir')
     ap.add_argument('--verdict', choices=list(O.VERDICTS)); ap.add_argument('--reviewer'); ap.add_argument('--reason')
-    ap.add_argument('--date', default=datetime.date.today().isoformat()); ap.add_argument('--pages')
+    ap.add_argument('--date', help='with --verdict (default today); refused with --serve, where a verdict is dated the day it is recorded')
+    ap.add_argument('--pages')
     ap.add_argument('--reads', action='append', metavar='LANGUAGE', help='the language the reviewer reads (needed to approve non-Latin pages)')
     ap.add_argument('--to', metavar='WHO', help='with "sent to a language reader": who or which team')
     ap.add_argument('--serve', action='store_true', help='the OCR-only review page (no work-order session)')
@@ -88,6 +89,7 @@ def main():
     if not os.path.exists(os.path.join(R, '_intake', 'intake.json')): sys.exit(f'no _intake/intake.json in {R}: this book had no intake (already tagged?)')
     if a.serve:
         if a.verdict: sys.exit('--serve opens the page, where the verdict is given: leave out --verdict')
+        if a.date: sys.exit('--serve: a verdict on the page is dated the day it is recorded: leave out --date')
         if a.return_to:
             try: server.check_return_to(a.return_to)
             except ValueError as e: sys.exit(f'--return-to: {e}')

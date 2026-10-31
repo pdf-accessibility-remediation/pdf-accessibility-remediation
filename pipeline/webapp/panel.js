@@ -53,19 +53,23 @@ function confirmDlg(title, text, yes, opener) {
     d.showModal(); d.querySelector('button[value=no]').focus();
   });
 }
-// A session's notes in a pop-up box, read-only (review.html's own script has the same box for the report's Notes). Not
-// modal: the page stays usable beside it. It moves by its title bar, resizes from its corner, and closes with × or
-// Escape. Focus goes into its text on open and back to the Notes button on close (found by id: the panel may have
-// redrawn it meanwhile). Moving it is never needed to read the notes, which scroll inside it.
-function notesBox(title, text, opener) {
-  let d = $('pp-notes');
+// A session's notes in a pop-up box, read-only (review.html's own script has the same box for the report's Notes). One
+// box per session, several open at once; opening one already open brings it to the front. Not modal: the page stays
+// usable beside them. A box moves by its title bar, resizes from its corner, and closes with × or Escape (Escape closes
+// the box that has focus). Focus goes into its text on open and back to its own Notes button on close (found by id: the
+// panel may have redrawn it meanwhile). Moving it is never needed to read the notes, which scroll inside it.
+let notesTop = 50;                                              // the z-index of the box in front
+function notesBox(title, text, opener, key) {
+  const id = 'pp-notes-box-' + key;
+  let d = $(id);
   if (!d) {
-    d = document.createElement('dialog'); d.id = 'pp-notes'; d.className = 'pp-ndlg'; d.setAttribute('aria-labelledby', 'pp-notes-h');
-    d.innerHTML = '<div class="pp-nbar"><h2 id="pp-notes-h"></h2>' +
+    d = document.createElement('dialog'); d.id = id; d.className = 'pp-ndlg'; d.setAttribute('aria-labelledby', id + '-h');
+    d.innerHTML = '<div class="pp-nbar"><h2 id="' + id + '-h"></h2>' +
       '<button type="button" class="pp-nx" aria-label="Close the notes"><span aria-hidden="true">×</span></button></div>' +
-      '<div class="pp-nbody" tabindex="0" role="region" aria-labelledby="pp-notes-h"></div>';
+      '<div class="pp-nbody" tabindex="0" role="region" aria-labelledby="' + id + '-h"></div>';
     document.body.appendChild(d);
-    const close = () => { d.close(); const o = $(d.dataset.opener); if (o) o.focus(); };
+    const close = () => { d.close(); d.remove(); const o = $(d.dataset.opener); if (o) o.focus(); };
+    d.addEventListener('pointerdown', () => { d.style.zIndex = ++notesTop; });   // a click brings it to the front
     d.querySelector('.pp-nx').addEventListener('click', close);
     d.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
     const put = (x, y) => {                                      // kept inside the window
@@ -80,12 +84,15 @@ function notesBox(title, text, opener) {
       bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up); bar.addEventListener('pointercancel', up);
     });
   }
-  d.querySelector('h2').textContent = title; d.querySelector('.pp-nbody').textContent = text; d.dataset.opener = opener.id;
+  d.dataset.opener = opener.id; d.style.zIndex = ++notesTop;
   if (!d.open) {
+    d.querySelector('h2').textContent = title; d.querySelector('.pp-nbody').textContent = text;
+    const n = document.querySelectorAll('dialog.pp-ndlg[open]').length;   // each new box a little lower and to the right
     d.show();
-    d.style.left = Math.max(0, (innerWidth - d.offsetWidth) / 2) + 'px'; d.style.top = Math.max(0, (innerHeight - d.offsetHeight) / 3) + 'px';
+    d.style.left = Math.max(0, (innerWidth - d.offsetWidth) / 2 + 24 * n) + 'px'; d.style.top = Math.max(0, (innerHeight - d.offsetHeight) / 3 + 24 * n) + 'px';
+    d.querySelector('.pp-nbody').scrollTop = 0;
   }
-  d.querySelector('.pp-nbody').scrollTop = 0; d.querySelector('.pp-nbody').focus();
+  d.querySelector('.pp-nbody').focus();
 }
 // a message in the panel or the bar: its text and a "×" button (accessible name "Dismiss message"); an error keeps its red
 // style. An empty text hides it.
@@ -97,7 +104,7 @@ function showMsg(m, text, ok, focus) {
 }
 function abandonText(open, from) {
   return cap(sn(open.id)) + ' is open (started ' + (open.started || '').replace('T', ' ') + '). Starting from ' +
-         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; its choices stay in Session History.';
+         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; its choices stay in "Session History".';
 }
 
 // ================================================================ in-page links
@@ -245,8 +252,7 @@ function setupBlock() {                                         // shown only wh
 function actions(s) {
   const lr = s.live_review, active = (s.jobs || []).filter(j => j.status === 'queued' || j.status === 'running');
   if (lr) return '';                                             // its own card has Open / Stop
-  if (s.lock) return '<p>Another review of this run is running (process ' + esc(s.lock.pid) + ', ' + esc(s.lock.what) + ', since ' + esc(s.lock.since) +
-                     '), probably from a terminal. The buttons come back when it ends.</p>';
+  if (s.lock) return '<p>' + esc(s.lock.words) + ' The buttons come back then.</p>';   // who or what, since when (webapp/jobs.py lock_words)
   if (active.length) return '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '. One job at a time per run.</p>';
   let h = '<div class="pp-row">';
   // in parentheses tc() leaves words as written: a session is named "Session N" there
@@ -267,7 +273,7 @@ function actions(s) {
 function historyBlock(s) {
   const rows = (s.sessions || []).slice().sort((a, b) => Number(b.id) - Number(a.id));   // newest first
   let h = '<details id="pp-hist"><summary>Session History (' + rows.length + ')</summary>';
-  if (!rows.length) h += '<p>' + (s.legacy_review ? 'Reviewed before sessions were kept: Review again records that review as session 1.' : 'Never reviewed: the result was applied without review.') + '</p>';
+  if (!rows.length) h += '<p>' + (s.legacy_review ? 'Reviewed before sessions were kept: "Review Again" records that review as Session 1.' : 'Never reviewed: the result was applied without review.') + '</p>';
   else h += '<div class="pp-tw" tabindex="0" role="region" aria-label="Session History Table"><table><caption>Review Sessions of This Run</caption><thead><tr>' +
     '<th scope="col">Session</th><th scope="col">Status</th><th scope="col">Reviewer</th><th scope="col">Date</th><th scope="col">Started From</th>' +
     '<th scope="col">Changes from the AI</th><th scope="col">Set in This Session</th><th scope="col">Notes</th><th scope="col">Result</th><th scope="col">Action</th></tr></thead><tbody>' +
@@ -306,7 +312,7 @@ box.addEventListener('click', async e => {
   if (act === 'dismiss') { msg(''); $('pp-h').focus(); return; }   // the message goes; focus to the Run Actions heading
   if (act === 'notes') {                                         // a session's notes, read-only, in the pop-up box
     const r = (st.sessions || []).find(x => String(x.id) === b.dataset.id); if (!r) return;
-    return notesBox(tc('Notes: ' + r.label) + (r.name ? ' · ' + r.name : ''), r.notes || '', b);
+    return notesBox(tc('Notes: ' + r.label) + (r.name ? ' · ' + r.name : ''), r.notes || '', b, String(r.id));
   }
   msg('');                                                       // any other panel button clears the message too
   if (act === 'reload') { location.replace(location.pathname + '?landed=1'); return; }
@@ -316,17 +322,17 @@ box.addEventListener('click', async e => {
       const open = st.open ? cap(sn(st.open.id)) : 'The session', ocr = st.live_review && st.live_review.kind === 'ocr';
       [s, r] = await api(API + '/stop', {}); if (s !== 200) return msg(r.error || 'Stop failed', false, true);
       msg(ocr ? 'The OCR review page is closed without a verdict.'
-              : 'The review page is closed. ' + open + ' stays open: press Continue Review to carry on.', true, true); return poll();
+              : 'The review page is closed. ' + open + ' stays open: press "Continue Review" to carry on.', true, true); return poll();
     }
     if (act === 'discard') {                                     // asks first; nothing is deleted, the current result stays
       const n = sn(st.open.id);
-      if (!await confirmDlg('Discard ' + n + '?', 'Its choices are kept in Session History as abandoned; the current result (' +
+      if (!await confirmDlg('Discard ' + n + '?', 'Its choices are kept in "Session History" as abandoned; the current result (' +
                             sn(st.current.id) + ') doesn\'t change.', 'Discard ' + n, b)) return;
       [s, r] = await api(API + '/discard', {}); if (s !== 202) return msg(r.error || 'Discard failed', false, true);
       for (let i = 0; i < 30; i++) {                             // a moment: it only marks the session
         await poll(true); const j = (st.jobs || []).find(x => x.id === r.job.id);
         if (j && j.status !== 'queued' && j.status !== 'running') {
-          return j.status === 'done' ? msg(cap(n) + ' is discarded: its choices are kept in Session History as abandoned.', true, true)
+          return j.status === 'done' ? msg(cap(n) + ' is discarded: its choices are kept in "Session History" as abandoned.', true, true)
                                      : msg(cap(n) + ' could not be discarded: ' + (j.reason || j.status), false, true);
         }
         await new Promise(res => setTimeout(res, 500));
@@ -363,7 +369,7 @@ function announce(s) {
     const t = cap(j.action || j.title) + ' (' + RUN + ')';      // the action; the outcome follows from jobWords
     const low = x => x.charAt(0).toLowerCase() + x.slice(1);
     if (ended(j) && !newResult && SHOWN && s.current && s.current.id !== SHOWN) {    // one message, not two in a row
-      newResult = true; live(t + ': ' + low(jobWords(j)) + '. New result ready: ' + s.current.label + '. Show the New Result loads it.'); continue;
+      newResult = true; live(t + ': ' + low(jobWords(j)) + '. New result ready: ' + s.current.label + '. "Show the New Result" loads it.'); continue;
     }
     if (ended(j) || j.status === 'failed' || j.status === 'interrupted') live(t + ': ' + low(jobWords(j)) + (j.reason ? '. ' + j.reason : ''));
     else if (person(j) && j.url && !j.past_finish && (!was || !was.includes(j.url))) live(t + ': the ' + (j.kind === 'ocr' ? 'OCR review page' : 'review page') + ' is ready');
@@ -408,7 +414,7 @@ function followUp(s) {
   if (want === 'review' && lr && lr.url && !lr.past_finish) {
     want = null;
     if (quiet && Date.now() - wantAt < 30000) { location.assign(lr.url); return; }   // right after the person's Review again
-    live('The review page is ready: Open the review page.');
+    live('The review page is ready: "Open the Review Page".');
   }
   if (want === 'result') {                                     // the page the person's Finish opened: focus its job's heading
     const j = (s.jobs || []).slice().reverse().find(x => x.kind === 'review' || x.kind === 'apply');
@@ -424,7 +430,7 @@ function followUp(s) {
     }
   }
   if (!newResult && SHOWN && s.current && s.current.id !== SHOWN) {   // a new result with no job end seen here (a terminal apply)
-    newResult = true; live('New result ready: ' + s.current.label + '. Show the New Result loads it.');
+    newResult = true; live('New result ready: ' + s.current.label + '. "Show the New Result" loads it.');
   }
 }
 

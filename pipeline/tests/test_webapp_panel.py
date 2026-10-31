@@ -103,7 +103,7 @@ def test_the_original_is_found_by_sha256_and_never_written(setup):
     assert runs.pdf_needed(s, str(R), rec) == (str(b), None)                    # unpinned, tagged: --pdf
     rec['workorder']['source']['sha256'] = 'f' * 64
     p, why = runs.pdf_needed(s, str(R), rec)
-    assert p is None and 'book.pdf' in why and 'ffffffffffffffff' in why and 'not in' in why
+    assert p is None and 'book.pdf' in why and 'wasn\'t found' in why and 'ffff' not in why and 'sha256' not in why   # plain words on the page
     assert runs.pdf_needed(s, str(R), {'intake': {'result': {'pdf': 'intake.pdf'}}}) == (None, None)
 
 # ------------------------------------------------------------------ past Finish, from disk
@@ -234,7 +234,7 @@ def test_review_needs_the_original_and_then_queues_a_pin_and_the_review(app):
     rec = json.loads((R / 'record.json').read_text()); rec['document'].update(file='book.pdf', sha256='a' * 64)
     rec['workorder'] = {'source': {'sha256': 'a' * 64}}; (R / 'record.json').write_text(json.dumps(rec))
     st, b = post(port, '/api/run/book/r1/review')
-    assert st == 409 and 'book.pdf' in b['error'] and 'aaaaaaaaaaaaaaaa' in b['error']
+    assert st == 409 and 'book.pdf' in b['error'] and 'aaaa' not in b['error'] and 'samples' not in b['error']
     orig = t / 'samples' / 'book.pdf'; orig.write_bytes(b'%PDF the book')
     rec['workorder']['source']['sha256'] = rec['document']['sha256'] = sha(orig); (R / 'record.json').write_text(json.dumps(rec))
     st, b = post(port, '/api/run/book/r1/review', {'from': 'ai'})
@@ -551,7 +551,7 @@ def test_panel_and_review_page_details():
     assert "'Waiting for you: the review page is open'" in js and 'Ready to ship?</b>' not in js            # the report's card says it
     assert '[tabindex="-1"]:not(.hit):focus, [tabindex="-1"]:not(.hit):focus-visible { outline: none; }' in css   # any app page, not .hit
     assert '.pp summary { cursor: pointer; font-size: 15px; color: var(--ink); }' in css
-    assert 'placeholder="Your name"' in page and '<h1 id="title">Work Order Review</h1>' in page and 'Back to the Run Page' in page
+    assert 'placeholder="Your name"' in page and '<h1 id="title" tabindex="-1">Work Order Review</h1>' in page and 'Back to the Run Page' in page
     assert ": done' + (s.time ? ', ' + esc(s.time) : '') : j.status === 'running' ? '' : ': did not finish'" in js   # no ": running"
     assert 'html { scroll-padding-top' not in page and 'main [id] { scroll-margin-top: calc(var(--top, 0px) + 8px); }' in page
 
@@ -597,6 +597,9 @@ def test_the_same_title_case_rule_in_the_pages():
         t = src(f)
         assert "const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with']);" in t
         assert "/[./_@\\d]/.test(core)" in t and 'edge = /[:?—]$/.test(x);' in t
+        # words in parentheses are left as written (review 10 L2: pinned so the pages can't drift from lib/titles.py)
+        assert "const inside = depth > 0 || /^[\"'*[`]*\\(/.test(x);" in t and 'if (inside) return x;' in t
+        assert "depth = Math.max(0, depth + (x.match(/\\(/g) || []).length - (x.match(/\\)/g) || []).length);" in t
     assert SMALL == {'a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with'}
 
 def test_a_job_card_and_its_one_line_forms():
@@ -647,8 +650,8 @@ def test_the_discard_route(app):
 def test_fourth_pass_details():
     import report_html as H
     js, css = src('webapp/panel.js'), src('webapp/panel.css')
-    assert 'Its choices are kept in Session History as abandoned; the current result (' in js and "esc(tc('Discard ' + s.open.label))" in js
-    assert "'The review page is closed. ' + open + ' stays open: press Continue Review to carry on.'" in js
+    assert 'Its choices are kept in "Session History" as abandoned; the current result (' in js and "esc(tc('Discard ' + s.open.label))" in js
+    assert "'The review page is closed. ' + open + ' stays open: press \"Continue Review\" to carry on.'" in js
     assert "if (!miss.length) return '';" in js and 'previous result' in js and 'earlier result' not in js
     assert 'body:has(#pdfrem-version) .replaced { display: none; }' in css and '#pp-vreview { margin-left: 12px; }' in css
     rec = {'review': {'session': '001', 'sessions': [{'id': '001', 'from': 'ai', 'status': 'applied', 'reviewer': 'K', 'date': '2026-10-29',
@@ -846,7 +849,7 @@ def test_ocr_refusals_have_a_page_wording():
     from review import ocr as O
     import pytest as P
     it = {'original': {'pages': 3}, 'ocr': {'pages_with_ocr_text': [1]}, 'cjk_probe': {'cjk_pages': [1]}, 'settings': {'OCR_LANG': 'jpn'}}
-    cases = [({'verdict': 'approved', 'reviewer': 'K', 'reason': 'r'}, '--reads', 'to approve them, tick "I read Japanese".'),
+    cases = [({'verdict': 'approved', 'reviewer': 'K', 'reason': 'r'}, '--reads', 'to approve them, tick "I can read Japanese".'),
              ({'verdict': 'approved', 'reviewer': 'K', 'reason': 'a | b', 'reads': ['Japanese']}, "review.md's table", 'The reason can\'t contain the character "|"'),
              ({'verdict': 'approved', 'reviewer': 'K', 'reason': '[x](y)', 'reads': ['Japanese']}, 'review.html', 'Put a space between them.'),
              ({'verdict': 'approved', 'reviewer': 'K', 'reason': 'r', 'reads': ['Japanese'], 'pages': 'p3'}, 'for example', 'ex. 381-386'),
@@ -855,3 +858,34 @@ def test_ocr_refusals_have_a_page_wording():
         with P.raises(ValueError) as e: O.check(fields, it, 3)
         assert terminal in str(e.value) and page in e.value.page
         for word in ('review.md', 'review.html', '--reads', 'review_ocr.py', '.json'): assert word not in e.value.page
+
+def test_review_10_plain_messages_from_python():
+    """Review 10 L1: text built in Python that the pages show is in plain words: the lock (who or what, since when, no
+    process id), a refused pin (no command: that is in the job's log), an error in the app (no log path), the 403."""
+    from webapp import jobs as Jb, runs as Rn, server as W
+    from review import sessions as S
+    assert Jb.lock_words('reopen', '2026-10-31T14:02:11') == 'Someone is already reviewing this run (since 14:02). Try again when they\'re done.'
+    assert Jb.lock_words('apply', '2026-10-31T14:02:11') == 'This run is being applied (since 14:02). Try again when it\'s done.'
+    refused = {'status': 'failed', 'outcome': 'refused: the kept digest cannot be read …: ' + S.FALLBACK}
+    assert Rn.reason(refused) == S.FALLBACK_PAGE and 'python3' not in S.FALLBACK_PAGE and '--replay-to' in S.FALLBACK
+    assert 'server.log' not in W.ERROR_500 and 'runs/' not in W.ERROR_500
+    srv = src('review/server.py')
+    assert 'the terminal printed' not in srv and 'timeout = 30' in srv                     # review 10 L3: a stalled request gives up
+    assert 'Another review of this run is running' not in src('webapp/panel.js') and "esc(s.lock.words)" in src('webapp/panel.js')
+
+def test_review_10_boxes_and_report_wording():
+    """Patrick's pass on review 10: one notes box per session (several open, the front one by z-index, Escape closes the box
+    with focus); the notepad (the same note as the Session Notes box, minimize and restore); Hide/Show Header with
+    aria-expanded, kept in the browser; the report's work-order line "no (N decisions not reviewed)"."""
+    import report_html as H
+    js, page, rh = src('webapp/panel.js'), src('review/page.html'), src('report_html.py')
+    assert "const id = 'pp-notes-box-' + key;" in js and 'd.style.zIndex = ++notesTop' in js
+    assert "boxes[key] || (boxes[key] = make(key))" in rh and 'data-session=' in rh
+    assert 'id="notepad"' in page and 'id="npadMin"' in page and 'id="npadRestore"' in page and "(box === sNotes ? padNotes : sNotes).value = box.value" in page
+    assert 'id="hideHdr"' in page and 'id="showHdr"' in page and "localStorage.setItem('review:header'" in page and "setAttribute('aria-expanded', String(shown))" in page
+    assert 'overscroll-behavior: contain; font-size: 14px' in page and 'Current result (' not in page and 'Show "Not Reviewed"' in page
+    assert 'OCR Text Approved:' not in page and 'Previous Verdicts (' in page and 'I can read ' in page and 'final sign-off' not in rh
+    s = {'what': 'Work order approved on the review page', 'text': 'no (reviewed by Kim on 2026-10-30: 205 decisions accepted without review)'}
+    assert H.ship_words(s) == 'no (205 decisions not reviewed)'
+    assert H.ship_words(dict(s, text='no (run without REVIEW=1)')) == 'no (run without REVIEW=1)'
+    assert H.ship_words({'what': 'OCR text approved', 'text': 'yes (approved by K on D)'}) == 'yes (approved by K on D)'

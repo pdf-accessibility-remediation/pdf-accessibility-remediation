@@ -113,6 +113,8 @@ STATIC = {'panel.js': os.path.join(config.HERE, 'panel.js'), 'panel.css': os.pat
 SKIP = '<a class="skip" href="#main">Skip to the content</a>'
 
 FRAME = {'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'"}   # every response: never in a frame
+# an error in the app itself, as the page says it; the details (and where they are) are in runs/.app/server.log only
+ERROR_500 = 'The app hit an error and couldn\'t do this. Try again; if it happens again, tell whoever looks after the app.'
 class Scripts(HTMLParser):
     """The page's inline scripts as the browser sees them (html.parser, not a regex: it handles "</script >" and runs in
     linear time): the exact text of each <script> with no src and no JSON type."""
@@ -223,14 +225,14 @@ def make(s, setup, code=None):
             except BrokenPipeError: pass
             except Exception:
                 with open(os.path.join(J, 'server.log'), 'a', encoding='utf-8') as f: f.write(f'{datetime.datetime.now().isoformat(timespec="seconds")} GET {self.path}\n{traceback.format_exc()}\n')
-                self.send(500, {'error': 'the app hit an error: see runs/.app/server.log'})
+                self.send(500, {'error': ERROR_500})
 
         def do_POST(self):
             try: self.post()
             except BrokenPipeError: pass
             except Exception:
                 with open(os.path.join(J, 'server.log'), 'a', encoding='utf-8') as f: f.write(f'{datetime.datetime.now().isoformat(timespec="seconds")} POST {self.path}\n{traceback.format_exc()}\n')
-                self.send(500, {'error': 'the app hit an error: see runs/.app/server.log'})
+                self.send(500, {'error': ERROR_500})
 
         def post(self):
             if not self.ours(): return self.send(403, {'error': 'not from the app\'s own pages'})

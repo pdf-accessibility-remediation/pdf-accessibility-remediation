@@ -3,13 +3,14 @@ card titles, buttons). Explanatory text stays in sentence case and is never pass
 
     title_case("Review of the AI's decisions") == "Review of the AI's Decisions"
     title_case("Ready to ship? No")             == "Ready to Ship? No"
-    title_case("veraPDF (WCAG rules)")          == "veraPDF (WCAG rules)"
+    title_case("veraPDF (WCAG Rules)")          == "veraPDF (WCAG Rules)"
     title_case("Pages (optional)")              == "Pages (optional)"
 
 Articles, conjunctions and short prepositions stay lowercase unless first, last, or first after a colon or question mark.
 A word already written with a capital inside it (veraPDF, WCAG, iOS), or holding a dot, slash, underscore or digit
 (review.md, H1, 2026-10-29), is left as written, and so is everything in parentheses: a qualifier stays lowercase
-("Sent to (optional)", decided 2026-10-31). The same rule is in webapp/panel.js and review/page.html (tc()).
+("Sent to (optional)", decided 2026-10-31), and a name there is written in Title Case in the source ("(WCAG Rules)",
+"(Session 2, open)"). The same rule is in webapp/panel.js and review/page.html (tc()).
 """
 import re
 

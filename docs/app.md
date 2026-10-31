@@ -94,7 +94,7 @@ The panel shows:
   - **A running job** says its step in words, with a small spinner: "Running: checking the result (2 of 3)". Its list of steps shows the finished ones with their times ("Applying the reviewed decisions: done, 15.0s") and the current one by name only. The spinner is decorative: screen readers skip it, and it stands still when the system asks for reduced motion.
   - **A failed or interrupted job** says why in plain words, and one line says where the job's full output is saved, for whoever looks after the app (`runs/.app/jobs/<id>.log`). The page shows no log lines and no commands.
 - **Plain words** (CLAUDE.md's interface rule): the pages name no folders, files or command-line options. The one command a person may need is starting the app again: when the app is not running, the page says to open a terminal in the project's pipeline folder and type `python3 app.py`.
-- **Session History**, newest first: every session (its name under its number, who, when, where it started ("Session 1", or the AI's decisions), changes from the AI, what changed in that session, a **Notes** button that opens its notes in a pop-up box: see [Session names and notes](review-step.md#session-names-and-notes)), with a link to each previous result. An open session shows its name and notes as last saved. See [Session names and notes](review-step.md#session-names-and-notes).
+- **Session History**, newest first: every session (its name under its number, who, when, where it started ("Session 1", or the AI's decisions), changes from the AI, what changed in that session, a **Notes** button that opens its notes in a pop-up box, one box per session and several at once: see [Session names and notes](review-step.md#session-names-and-notes)), with a link to each previous result. An open session shows its name and notes as last saved. See [Session names and notes](review-step.md#session-names-and-notes).
 - **A book in a batch** links to the batch's page (`/batch/<label>/`).
 
 A run made before the dashboards existed (no `review.html`) gets a page with the panel, the `review.md` link and a line saying it has no dashboard. There is no rebuild button: rebuilding would write into the run.
@@ -130,7 +130,9 @@ A run made before the dashboards existed (no `review.html`) gets a page with the
   - a session finished and not applied: **Apply**;
   - an apply that finished on its own after the app lost track of it: **Done (the app lost track of the job)**;
   - a review stopped before Finish: **Continue review** carries on with the open session.
-- **An error in the app itself:** one line on the page; the details go to `runs/.app/server.log`.
+- **An error in the app itself:** one line on the page ("The app hit an error and couldn't do this. Try again; if it happens again, tell whoever looks after the app."); the details go to `runs/.app/server.log`, which the page doesn't name.
+- **A run someone else is working on:** the page says who or what and since when, never a process id: "Someone is already reviewing this run (since 14:02). Try again when they're done." (for an apply: "This run is being applied …").
+- **Messages that name a button, view or section** put the name in quotes, as it appears on screen: 'press "Continue Review" to carry on'.
 - **The app not running:** a banner says so, with the start command. Jobs already running carry on.
 
 ## Stopping and starting again
