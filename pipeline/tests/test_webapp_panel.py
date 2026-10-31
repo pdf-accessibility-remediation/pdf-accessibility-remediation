@@ -568,7 +568,7 @@ def test_the_report_review_section(tmp_path):
     assert '<td class="nowrap">none</td>' in out and '<td class="nowrap">session 1</td>' in out                # From and Carried never wrap
     assert '<details class="fold"><summary>Previous Sessions (1)</summary>' in out and '<td class="nowrap">2026-10-28</td>' in out
     assert out.index('Previous Sessions (1)') < out.index('<td><span class="nowrap">1</span></td>')         # session 1 only inside the fold
-    assert '<th scope="col">Notes</th>' in out and out.count('<td>none</td>') == 2 and 'Session Notes' not in out   # no names, no notes: as before
+    assert '<th scope="col">Notes</th>' in out and out.count('<td class="notes">none</td>') == 2 and 'Session Notes' not in out   # no names, no notes
     assert 'From a terminal' not in out and 'review_workorder.py' not in out and 'Earlier sessions' not in out
     assert '<h2 id="rev-h">Review of the AI\'s Decisions</h2>' in out and '<summary>Approved: 1</summary>' in out
     assert '<th scope="col">Changed in the Session</th>' in out and '<th scope="col">Status, Set In</th>' in out
@@ -804,3 +804,17 @@ def test_a_version_folder_outside_versions_is_refused(app):
         assert get(app['port'], bad)[0] == 404, bad
     os.symlink(app['t'] / 'outside', R / 'reviews' / 'versions' / 'out')                    # a version folder that is a symlink out
     assert get(app['port'], '/run/book/r1/reviews/versions/out/review.html')[0] == 404
+
+def test_ocr_page_and_notes_box_wording():
+    """Patrick's pass on sojourners (handoff 07–08): Finish OCR Review on the OCR-only page goes straight back to the run page
+    (after=ocr, the report already updated); Close Without a Verdict on both; a session's recorded notes open in a pop-up box
+    (not a fold) that closes with × or Escape and gives focus back; no side-list entry for This Session."""
+    js, page = src('webapp/panel.js'), src('review/page.html')
+    assert "'Finish OCR Review' : 'Record Verdict'" in page and "location.assign(RETURN_TO.split('?')[0] + '?after=ocr')" in page
+    assert "q.get('after') === 'ocr' ? 'ocr'" in js and 'Close Without a Verdict' in js and 'Close Without a Verdict' in page
+    assert 'Close the OCR Review' not in js + page and 'Name and Notes' not in page and 'placeholder="Where you stopped' not in page
+    assert 'Session Notes (Optional)' in page and 'resize: vertical' in page and 'Sent to (Optional)' in page and 'Current Verdict:' in page
+    assert 'Ready to ship? ' not in page and "' OCR text approved: '" in page
+    assert 'data-act="notes"' in js and '<details id="pp-notes-' not in js
+    for code in (js, src('report_html.py')):                               # the same box in the panel and in review.html
+        assert "e.key === 'Escape'" in code and 'resize it' in code and '.focus()' in code

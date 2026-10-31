@@ -47,6 +47,47 @@ function confirmDlg(title, text, yes, opener) {
     d.showModal(); d.querySelector('button[value=no]').focus();
   });
 }
+// A session's notes in a pop-up box, read-only (review.html's own script has the same box for the report's Notes). Not
+// modal: the page stays usable beside it. It moves by its title bar (or, by keyboard, the arrow keys on its Move button;
+// Shift with an arrow key resizes it), resizes from its corner, and closes with × or Escape. Focus goes into its text on
+// open and back to the Notes button on close (found by id: the panel may have redrawn it meanwhile).
+function notesBox(title, text, opener) {
+  let d = $('pp-notes');
+  if (!d) {
+    d = document.createElement('dialog'); d.id = 'pp-notes'; d.className = 'pp-ndlg'; d.setAttribute('aria-labelledby', 'pp-notes-h');
+    d.innerHTML = '<div class="pp-nbar"><h2 id="pp-notes-h"></h2>' +
+      '<button type="button" class="pp-nmove" aria-label="Move the box: arrow keys; Shift and arrow keys resize it"><span aria-hidden="true">✥</span></button>' +
+      '<button type="button" class="pp-nx" aria-label="Close the notes"><span aria-hidden="true">×</span></button></div>' +
+      '<div class="pp-nbody" tabindex="0" role="region" aria-labelledby="pp-notes-h"></div>';
+    document.body.appendChild(d);
+    const close = () => { d.close(); const o = $(d.dataset.opener); if (o) o.focus(); };
+    d.querySelector('.pp-nx').addEventListener('click', close);
+    d.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    const put = (x, y) => {                                      // kept inside the window
+      d.style.left = Math.max(0, Math.min(innerWidth - 80, x)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
+    };
+    d.querySelector('.pp-nmove').addEventListener('keydown', e => {
+      const k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key]; if (!k) return;
+      e.preventDefault();
+      if (e.shiftKey) { d.style.width = Math.max(220, d.offsetWidth + 20 * k[0]) + 'px'; d.style.height = Math.max(120, d.offsetHeight + 20 * k[1]) + 'px'; }
+      else put(d.offsetLeft + 20 * k[0], d.offsetTop + 20 * k[1]);
+    });
+    d.querySelector('.pp-nbar').addEventListener('pointerdown', e => {   // drag by the title bar (not its close button)
+      if (e.button || e.target.closest('.pp-nx')) return;
+      const dx = e.clientX - d.offsetLeft, dy = e.clientY - d.offsetTop, bar = e.currentTarget;
+      bar.setPointerCapture(e.pointerId); e.preventDefault();
+      const move = ev => put(ev.clientX - dx, ev.clientY - dy);
+      const up = () => { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); bar.removeEventListener('pointercancel', up); };
+      bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up); bar.addEventListener('pointercancel', up);
+    });
+  }
+  d.querySelector('h2').textContent = title; d.querySelector('.pp-nbody').textContent = text; d.dataset.opener = opener.id;
+  if (!d.open) {
+    d.show();
+    d.style.left = Math.max(0, (innerWidth - d.offsetWidth) / 2) + 'px'; d.style.top = Math.max(0, (innerHeight - d.offsetHeight) / 3) + 'px';
+  }
+  d.querySelector('.pp-nbody').scrollTop = 0; d.querySelector('.pp-nbody').focus();
+}
 // a message in the panel or the bar: its text and a "×" button (accessible name "Dismiss message"); an error keeps its red
 // style. An empty text hides it.
 function showMsg(m, text, ok, focus) {
@@ -118,7 +159,9 @@ const q = new URLSearchParams(location.search);
 // result never reloads the page by itself: "New result ready" is announced and a button loads it.
 let quiet = true, wantAt = 0;
 ['keydown', 'pointerdown'].forEach(e => addEventListener(e, () => { quiet = false; }, true));
-let want = q.get('after') === 'finish' ? 'result' : q.get('opening') ? 'review' : null;   // what the person's last action is waiting for
+// what the person's last action is waiting for: after=finish (the review page's Finish), after=ocr (Finish OCR Review: this
+// page was loaded after the verdict was written, so its report already has it)
+let want = q.get('after') === 'finish' ? 'result' : q.get('after') === 'ocr' ? 'ocr' : q.get('opening') ? 'review' : null;
 if (want === 'review') wantAt = Date.now();                    // Review again from a previous result's bar
 let st = null, setup = null, primed = false, offline = false, failing = false, timer = null, newResult = false;
 const SHOWN = box.dataset.current || null;                     // the session whose result this page shows (set when served)
@@ -168,7 +211,7 @@ function jobCard(j) {                                           // heading: the 
          '<button type="button" id="pp-stop" data-act="stop">Stop Reviewing (the Session Stays Open)</button></div>';
   if (j.kind === 'ocr' && j.status === 'running' && j.url)
     h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the OCR Review Page</a>' +
-         '<button type="button" id="pp-stop" data-act="stop">Close the OCR Review</button></div>';
+         '<button type="button" id="pp-stop" data-act="stop">Close Without a Verdict</button></div>';
   if (j.reason) h += '<p><b>Why:</b> ' + esc(j.reason) + '</p><p class="pp-note">Its log is saved in ' + esc(j.log) + '.</p>';
   return h + '</article>';
 }
@@ -232,7 +275,7 @@ function historyBlock(s) {
     rows.map(r => '<tr><th scope="row"><span class="pp-nw">' + esc(cap(r.label)) + (r.current ? ' (current)' : '') + '</span>' + (r.name ? '<span class="pp-name">' + esc(r.name) + '</span>' : '') + '</th><td>' + esc(r.status) + (r.summary_only ? ' (summary only)' : r.inferred ? ' (inferred)' : '') +
       '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td class="pp-nw">' + esc(r.date || (r.started || '').slice(0, 10) || 'not recorded') + '</td><td class="pp-nw">' + esc(r.from_label) +
       '</td><td>' + esc(r.changes) + '</td><td>' + esc(r.since_start) + '</td><td>' +
-      (r.notes ? '<details id="pp-notes-' + esc(r.id) + '"><summary>Notes</summary><div class="pp-notes">' + esc(r.notes) + '</div></details>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') +
+      (r.notes ? '<button type="button" class="pp-link" id="pp-notes-' + esc(r.id) + '" data-act="notes" data-id="' + esc(r.id) + '">Notes</button>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') +
       '</td><td>' + ((r.status === 'finished' || r.status === 'applied') && !s.live_review && !s.lock ? '<button type="button" id="pp-from-' + esc(r.id) + '" data-act="review" data-from="' + esc(r.id) + '">' + esc(tc('Review again from ' + r.label)) + '</button>' : '') +
       '</td></tr>').join('') + '</tbody></table></div>';
   if (s.ai_result) h += '<p><a href="' + esc(s.ai_result) + '">The result applied without review</a> (kept in reviews/versions/ai/).</p>';
@@ -261,6 +304,10 @@ box.addEventListener('click', async e => {
   const b = e.target.closest('button[data-act]'); if (!b) return;
   const act = b.dataset.act;
   if (act === 'dismiss') { msg(''); $('pp-h').focus(); return; }   // the message goes; focus to the Run Actions heading
+  if (act === 'notes') {                                         // a session's notes, read-only, in the pop-up box
+    const r = (st.sessions || []).find(x => String(x.id) === b.dataset.id); if (!r) return;
+    return notesBox(tc('Notes: ' + r.label) + (r.name ? ' · ' + r.name : ''), r.notes || '', b);
+  }
   msg('');                                                       // any other panel button clears the message too
   if (act === 'reload') { location.replace(location.pathname + '?landed=1'); return; }
   try {
@@ -268,7 +315,7 @@ box.addEventListener('click', async e => {
     if (act === 'stop') {
       const open = st.open ? cap(sn(st.open.id)) : 'The session', ocr = st.live_review && st.live_review.kind === 'ocr';
       [s, r] = await api(API + '/stop', {}); if (s !== 200) return msg(r.error || 'Stop failed', false, true);
-      msg(ocr ? 'The OCR review page is closed. A verdict recorded on it is kept.'
+      msg(ocr ? 'The OCR review page is closed without a verdict.'
               : 'The review page is closed. ' + open + ' stays open: press Continue Review to carry on.', true, true); return poll();
     }
     if (act === 'discard') {                                     // asks first; nothing is deleted, the current result stays
@@ -367,6 +414,14 @@ function followUp(s) {
     const j = (s.jobs || []).slice().reverse().find(x => x.kind === 'review' || x.kind === 'apply');
     want = null; history.replaceState(null, '', location.pathname);
     if (j) setTimeout(() => { const hd = $('jh-' + j.id); if (hd) hd.focus(); }, 0);
+  }
+  if (want === 'ocr') {                                        // Finish OCR Review: the job's heading once its page has closed
+    const j = (s.jobs || []).slice().reverse().find(x => x.kind === 'ocr');
+    if (!j || j.status !== 'running') {
+      want = null; history.replaceState(null, '', location.pathname);
+      if (s.ocr && s.ocr.verdict) live('OCR verdict recorded: ' + s.ocr.verdict + '. The report on this page includes it.');
+      setTimeout(() => { const hd = j && $('jh-' + j.id); (hd || $('pp-cur')).focus(); }, 0);   // a finished job is one line: the result's heading
+    }
   }
   if (!newResult && SHOWN && s.current && s.current.id !== SHOWN) {   // a new result with no job end seen here (a terminal apply)
     newResult = true; live('New result ready: ' + s.current.label + '. Show the New Result loads it.');

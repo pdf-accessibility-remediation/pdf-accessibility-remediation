@@ -20,7 +20,9 @@ review.history. FROM= reruns carry the verdict with the intake they reuse; a fre
 
 --serve opens the OCR-only review page: the same OCR Text section as the work-order review page (each page's image, its
 text and intake's findings, and the verdict form), with no work-order session. For runs that cannot be reviewed again
-(their pin was refused) and for recording a verdict without opening a session. It holds reviews/.lock while open.
+(their pin was refused) and for recording a verdict without opening a session. Finish OCR Review records the verdict
+and closes the page; Close Without a Verdict closes it with none. It holds reviews/.lock while open (and removes a
+reviews/ folder it had to make for that).
 """
 import sys, os, json, argparse, datetime, tempfile, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -52,6 +54,7 @@ def serve(R, a):
         import pypdfium2 as pdfium
         doc = pdfium.PdfDocument(pdf); n = len(doc); doc.close()
     except Exception as e: sys.exit(f'{pdf} cannot be read ({type(e).__name__}: {e})')
+    made = not os.path.isdir(S.P(R)['dir'])            # a run with no reviews/ yet (never pinned): leave none behind, as record() does
     try:
         with S.Lock(R, 'ocr review'):
             tmp = tempfile.mkdtemp(prefix='ocr-review-')
@@ -64,6 +67,10 @@ def serve(R, a):
                              data=data, wo=rec.get('workorder'))
             finally: shutil.rmtree(tmp, ignore_errors=True)
     except S.Refused as e: sys.exit(f'refused: {e}')
+    finally:
+        if made:
+            try: os.rmdir(S.P(R)['dir'])
+            except OSError: pass                       # something else was put there meanwhile (or it was never made): keep it
     print('closed: the OCR review page is closed')
 
 def main():
