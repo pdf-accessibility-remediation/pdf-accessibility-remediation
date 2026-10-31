@@ -455,13 +455,16 @@ def test_job_titles_say_what_happened(tmp_path):
     R = str(tmp_path); ses(R, '003', 'applied', reviewer='sss')
     v = {'outcome': 'done: session 3 is the current result'}
     j = {'kind': 'review', 'what': 'Review again from session 2', 'status': 'done', 'ended': '2026-10-29T18:19:44'}
-    assert runs.title(R, j, v) == 'Review again from session 2 → session 3 applied (sss, 18:19)'
-    assert runs.title(R, dict(j, status='running'), {}) == 'Review again from session 2'
-    assert runs.title(R, dict(j, status='failed'), {}) == 'Review again from session 2 → failed (18:19)'
-    assert runs.title(R, j, {'outcome': 'session 4 stays open'}) == 'Review again from session 2 → session 4 left open (18:19)'
+    # a title stored before the rule ("session 2") is shown with "Session 2": formatted when shown (handoff 15)
+    assert runs.title(R, j, v) == 'Review again from Session 2 → Session 3 applied (sss, 18:19)'
+    assert runs.title(R, dict(j, status='running'), {}) == 'Review again from Session 2'
+    assert runs.title(R, dict(j, status='failed'), {}) == 'Review again from Session 2 → failed (18:19)'
+    assert runs.title(R, j, {'outcome': 'session 4 stays open'}) == 'Review again from Session 2 → Session 4 left open (18:19)'
+    assert runs.title(R, {'kind': 'ocr', 'what': 'Review OCR text', 'status': 'done', 'ended': '2026-10-29T10:24:00'}, {}) == \
+        'Review OCR Text → closed (10:24); no verdict recorded'
     assert runs.title(R, dict(j, kind='pin', what='Pin the run'), {}) == 'Pin the run → pinned (18:19)'
     lost = {'interrupted': {'state': 'done', 'text': 'done (the app lost track of the job): session 3 is the current result'}}
-    assert runs.title(R, dict(j, kind='apply', what='Apply session 3', status='interrupted'), lost) == 'Apply session 3 → session 3 applied (sss, 18:19)'
+    assert runs.title(R, dict(j, kind='apply', what='Apply session 3', status='interrupted'), lost) == 'Apply Session 3 → Session 3 applied (sss, 18:19)'
     assert runs.reason({'status': 'failed', 'outcome': 'refused: apply (no model) failed (exit 1): the current result is unchanged', 'exit': 1}) == \
         'Apply (no model) failed (exit 1): the current result is unchanged'
     assert runs.reason({'status': 'failed', 'outcome': None, 'exit': 2}) == 'The command ended with an error (exit 2).'
@@ -605,7 +608,7 @@ def test_the_same_title_case_rule_in_the_pages():
 def test_a_job_card_and_its_one_line_forms():
     js = src('webapp/panel.js')
     assert "esc(tc(j.action || j.title))" in js                                   # card heading: the action, Title Case
-    assert "return /^(done|pinned|discarded)\\b/.test(r) ? cap(r) : 'Done: ' + r;" in js   # status line: "Done: session 5 applied (…)"
+    assert "return /^(done|pinned|discarded)\\b/.test(r) ? cap(r) : 'Done: ' + r;" in js   # status line: "Done: Session 5 applied (…)"
     assert "<b>Last Job:</b> ' + esc(cap(last.title))" in js and "'<li>' + esc(cap(j.title))" in js
 
 # ------------------------------------------------------------------ Patrick's fourth pass
@@ -937,3 +940,18 @@ def test_last_polish():
     assert '<span class="sname">' + 'x' * 40 + '</span>' in out and '<span class="sname long">a name a name' in out
     assert '<th scope="col">Type</th>' in out and '<th scope="col">Kind</th>' not in out
     assert '<li class="met"><span class="tick" aria-hidden="true">✓</span>' in src('report_html.py')
+
+def test_review_14_and_the_last_pass():
+    """Review 14: gaps in the Finish dialog with their Add links, and a count beside the save status (L1); no Save
+    button named anywhere (L2); leaving with unsaved changes asks first, and the last edits go as the page closes when a
+    save is waiting or in flight (L3). Patrick's pass: the check mark in the text's colour; "OCR Text" naming the page."""
+    import report_html as H
+    page, js, srv = src('review/page.html'), src('webapp/panel.js'), src('review/server.py')
+    assert "gp.map(g => esc(g.what) + addLink(g))" in page and 'id="gapState"' in page and 'showGaps(b.gaps)' in page
+    assert "if (ad) { e.preventDefault(); toAdd = [ad.dataset.addKind, ad.dataset.addTarget]; dlg.close(); return; }" in page
+    assert 'after each Save' not in srv and '(Save, Keep' not in srv and 'Save message' not in src('../docs/review-step.md') and 'Save does not know' not in src('../docs/review-step.md')
+    assert "const unsaved = () => (dirty || saving) && !finished && DATA.mode !== 'ocr';" in page
+    assert "addEventListener('beforeunload', e => { if (unsaved())" in page and 'if (body.length > 60000) return;' in page
+    assert '64 KiB' in src('../docs/review-step.md')
+    assert 'color: var(--ink); }   /* a check mark' in H.CSS and 'padding: 9px 14px 11px' in H.CSS
+    assert 'OCR review page' not in js and 'Open the OCR Text Review Page' in js and 'OCR review page' not in page

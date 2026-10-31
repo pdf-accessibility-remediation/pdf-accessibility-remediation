@@ -30,10 +30,10 @@ header.top h1 { font-size: 19px; margin: 0 0 4px; overflow-wrap: anywhere; }
 .meta { color: var(--muted); font-size: 13px; }
 main { max-width: 1200px; margin: 0 auto; padding: 16px; }
 h2 { font-size: 17px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
-.ship { background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--reject); border-radius: 8px; padding: 10px 14px; }
+.ship { background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--reject); border-radius: 8px; padding: 9px 14px 11px; }   /* the text 1 px up, the card the same height */
 .ship.yes { border-left-color: var(--ok); }
 .ship h2 { margin: 0 0 4px; font-size: 17px; border: 0; padding: 0; } .ship p { margin: 6px 0 0; } .ship ul { margin: -2px 0 0; padding-left: 20px; }
-.ship li.met { list-style: none; } .ship li.met .tick { display: inline-block; width: 20px; margin-left: -20px; color: var(--ok); }   /* a check mark in the bullet's place */
+.ship li.met { list-style: none; } .ship li.met .tick { display: inline-block; width: 20px; margin-left: -20px; color: var(--ink); }   /* a check mark in the bullet's place, in the text's colour */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }
 .card { background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--line); border-radius: 8px; padding: 10px 14px; }
 .card.good { border-top-color: var(--ok); } .card.bad { border-top-color: var(--reject); } .card.warn { border-top-color: var(--change); }

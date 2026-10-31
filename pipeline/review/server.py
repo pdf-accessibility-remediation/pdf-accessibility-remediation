@@ -12,7 +12,8 @@ Routes (all call review/core.py; a later front end can replace this file and pag
                                  returns what the check would drop (each with the card it came from), additions refused, and
                                  gaps (no H1, figures without alt): the Finish dialog's check. Refused once Finish has started
     POST /keep    the same body → saved to review_decisions.json only: the page's auto-save, about a second after each
-                                 change (the browser's copy stays as a backup); refused once Finish has started
+                                 change (the browser's copy stays as a backup); refused once Finish has started; a draft
+                                 older than the one on disk (saved_at) is not written. Returns the gaps still open
     POST /finish  {…, accept_unreviewed, gaps_ack}            → review.json and the reviewed workorder.json; the server stops.
                                  Not finished yet, but nothing wrong: 200 with needs: "unreviewed" (and the list) while
                                  items are unreviewed, or needs: "gaps" while a gap has no reason, unless the body accepts
@@ -51,6 +52,10 @@ def local_request(handler, port):
     origin = handler.headers.get('Origin')
     return handler.headers.get('Host') in hosts and (origin is None or origin in {f'http://{h}' for h in hosts})
 
+def when(stamp):
+    """A draft's saved_at as a moment: the browser's ISO time (2026-10-31T12:51:59.343Z) or the server's (…+00:00)."""
+    return datetime.datetime.fromisoformat(str(stamp).replace('Z', '+00:00'))
+
 def check_return_to(url):
     """--return-to: an http URL on this computer (127.0.0.1 or localhost, with a port), so the page never sends the reviewer
     elsewhere. Returns the URL; raises ValueError."""
@@ -82,7 +87,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     saved = core.load(os.path.join(R, 'review_decisions.json'), {}) or {}
     done = threading.Event(); finishing = threading.Event(); result = {}
     render_lock = threading.Lock()                    # pdfium is not thread-safe: one page image at a time
-    write_lock = threading.Lock()                     # every write of this server, one at a time (Save, Keep and Finish race on a blur)
+    write_lock = threading.Lock()                     # every write of this server, one at a time (auto-save, the Finish check and Finish can race)
     gate = threading.Condition(); inside = {'n': 0, 'closed': False}   # POSTs under way; closed: the server is stopping
 
     def enter():
@@ -215,19 +220,29 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             if ocr_only or self.path not in ('/save', '/keep', '/finish'): return self.send(404, {'error': 'not found'})
             try: name, notes = core.session_fields(body, sid)
             except ValueError as e: return self.send(400, {'error': str(e)})
-            def keep():                                  # the caller holds write_lock
+            def keep(last_word=False):                   # the caller holds write_lock
+                """The draft to review_decisions.json. An auto-save or check whose draft is older than the one on disk
+                (saved_at, the browser's clock) is skipped, so a request handled late never puts an older draft back;
+                Finish's own keep() is the session's last word and always writes. Returns whether it wrote."""
+                if not last_word:
+                    on = (core.load(os.path.join(R, 'review_decisions.json'), {}) or {}).get('saved_at')
+                    try:
+                        if on and when(saved_at) < when(on): return False
+                    except (ValueError, TypeError): pass       # a stamp that can't be read or compared: write, as before
                 core.save(os.path.join(R, 'review_decisions.json'),
                           {'reviewer': reviewer, 'decisions': decisions, 'additions': additions,
                            **({'session_name': name} if name else {}), **({'session_notes': notes} if notes else {}), 'saved_at': saved_at})
+                return True
             def build():
                 wo = core.apply_decisions(ai, items, decisions)
                 return wo, core.add_entries(wo, additions, adds, reviewer)
             if self.path == '/keep':
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: nothing more is kept.'})
-                    keep()
-                return self.send(200, {'kept': True})
-            if self.path == '/save':                        # the Finish dialog's check (Save is gone: auto-save uses /keep)
+                    wrote = keep()
+                gaps = core.preview(R, build()[0])[1]          # the gaps still open, for the count beside the save status
+                return self.send(200, {'kept': wrote, **({} if wrote else {'older': True}), 'gaps': gaps})   # older: a newer draft is on disk
+            if self.path == '/save':                        # the Finish dialog's check (it saves the draft too; auto-save uses /keep)
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: nothing more is saved.'})
                     keep()
@@ -250,11 +265,11 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 ack = body.get('gaps_ack') if isinstance(body.get('gaps_ack'), dict) else {}
                 gaps = [g for g in core.preview(R, wo)[1] if not str(ack.get(g['id']) or '').strip()]
                 if gaps: return self.send(200, {'finished': False, 'needs': 'gaps', 'error': f'{len(gaps)} gaps are open.', 'gaps': gaps})
-                with write_lock:                             # a Keep or Save after this point is refused
+                with write_lock:                             # an auto-save or a check after this point is refused
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started already.'})
                     finishing.set(); ok = False              # Ctrl+C now waits until the review is recorded (or refused)
                     try:
-                        keep()                               # the last word of the page, with the Finish dialog's name and notes
+                        keep(last_word=True)                 # the last word of the page, with the Finish dialog's name and notes
                         try: v = core.finish(R, ai, wo, reviewer, date, 'page', decisions=decisions, items=items, additions=additions, gaps_ack=ack)
                         except ValueError as e: return self.send(400, {'error': str(e)})
                         result.update(v); ok = True
@@ -273,7 +288,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     url = f'http://localhost:{srv.server_address[1]}/'
     print(f'review page: {url}\n  open it in a browser (from WSL, a Windows browser works too). ' +
           ('Finish OCR Review records the verdict and closes it; Ctrl+C or Close Without a Verdict closes it with none.' if ocr_only else
-           'Ctrl+C stops without finishing; your choices so far are kept in the browser and in review_decisions.json after each Save.'), flush=True)
+           'Ctrl+C stops without finishing; your choices are saved to review_decisions.json as you make them, and kept in the browser.'), flush=True)
     if open_browser:
         try: webbrowser.open(url)
         except Exception: pass
