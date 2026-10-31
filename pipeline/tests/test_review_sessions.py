@@ -9,7 +9,7 @@ when the rebuilt order gives exactly the recorded changes and counts; the basis 
 finished session waits to be applied; the server's /save and /finish in a reviews/ folder; and that two runs of the
 same input get different browser-draft keys.
 """
-import os, json, copy, threading, time, urllib.request, socket
+import os, sys, json, copy, threading, time, urllib.request, socket, subprocess
 import pytest
 from review import core, sessions as S
 
@@ -199,10 +199,16 @@ def test_an_interrupted_promotion_is_completed(tmp_path):
 # ------------------------------------------------------------------ the lock
 def test_lock_refuses_a_second_review_and_takes_over_a_dead_one(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)
-    with S.Lock(R, 'reopen'):
+    other = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'review_workorder.py'])   # a live review process
+    try:
+        S.save(S.P(R)['lock'], {'pid': other.pid, 'since': 'then', 'what': 'reopen'})
         with pytest.raises(S.Refused, match='another review'): S.Lock(R, 'apply')
+    finally: other.kill(); other.wait()
     S.save(S.P(R)['lock'], {'pid': 999999, 'since': 'then', 'what': 'reopen'})   # a process that has ended
     S.Lock(R, 'apply').release()
+    assert not os.path.exists(S.P(R)['lock'])
+    S.save(S.P(R)['lock'], {'pid': os.getpid(), 'since': 'then', 'what': 'reopen'})   # a live pid that is not a review (a reused pid)
+    S.Lock(R, 'apply').release()                                                       # taken over: it never blocks the run
     assert not os.path.exists(S.P(R)['lock'])
 
 # ------------------------------------------------------------------ ready to ship
@@ -325,3 +331,164 @@ def test_refusals_name_the_fallback(tmp_path):
     rec2 = dict(rec, run=dict(rec['run'], digest_sha256='0' * 16))
     with pytest.raises(S.Refused, match='--replay-to'): S.check_basis(R, rec2)
     with pytest.raises(S.Refused, match='--replay-to'): S.readable(lambda: {}['x'])
+
+# ------------------------------------------------------------------ session names and notes (#47)
+def test_name_and_notes_are_cleaned_and_limited():
+    bidi = ''.join(chr(c) for c in (0x202a, 0x202e, 0x2066, 0x2069))
+    assert core.clean_text(f'a{bidi}b\r\nc\x07‍d‌  ') == 'ab\nc‍d‌'          # ZWJ and ZWNJ stay
+    assert core.clean_text(' two\n lines\t', one_line=True) == 'two lines'
+    for n in ('Session 5', ' session  5 ', 'SESSION 5', ''):                                     # up to case and spacing: no name
+        assert core.session_fields({'session_name': n}, '005') == (None, None)
+    assert core.session_fields({'session_name': 'Session 4'}, '005')[0] == 'Session 4'         # another number is a name
+    astral = '𠀀' * 80                                                                           # 80 code points, 160 UTF-16 units
+    assert core.session_fields({'session_name': astral}, '001')[0] == astral
+    with pytest.raises(ValueError, match='at most 80'): core.session_fields({'session_name': astral + 'x'}, '001')
+    assert core.session_fields({'session_notes': 'n' * 4000}, '001')[1] == 'n' * 4000
+    with pytest.raises(ValueError, match='at most 4,000'): core.session_fields({'session_notes': 'n' * 4001}, '001')
+    assert S.name_notes({'session_name': 'x' * 81}, '001') == {}                                # a hand-written draft over the limit: nothing kept
+
+def test_finish_and_abandon_keep_the_name_and_notes(tmp_path):
+    R, rec, ai, dg = run_folder(tmp_path)
+    S.check_basis(R, rec)
+    p = S.P(R); items = core.build_items(ai, dg); os.makedirs(p['sessions'], exist_ok=True)
+    S.save(p['items'], {'items': items})
+    S.save(p['draft'], {'reviewer': 'Kim', 'decisions': ALL, 'additions': [], 'session_name': 'Chapters 1–4', 'session_notes': 'Stopped at PDF 40.\nCheck the maps.'})
+    wo = core.apply_decisions(ai, items, ALL); S.save(os.path.join(p['dir'], 'workorder.json'), wo)
+    S.save(os.path.join(p['dir'], 'review.json'), {'reviewer': 'Kim', 'date': '2026-10-31', 'method': 'page', 'changes': []})
+    s = S.finish_session(R, {'id': '002', 'from': 'ai', 'status': 'open', 'start': {}, 'start_additions': []}, rec)
+    assert (s['name'], s['notes']) == ('Chapters 1–4', 'Stopped at PDF 40.\nCheck the maps.')
+    assert 'session_name' not in json.dumps(S.load(os.path.join(p['sessions'], '002.workorder.json')))   # never in the order
+    assert 'Chapters' not in json.dumps(s['review'])                                                   # nor in review.json
+    row = S.summary_row(s); assert (row['name'], row['notes']) == ('Chapters 1–4', 'Stopped at PDF 40.\nCheck the maps.')
+    # an open session discarded: its name and notes stay with it
+    S.save(p['draft'], {'reviewer': 'Lee', 'decisions': {}, 'additions': [], 'session_name': 'Session 3', 'session_notes': 'half done'})
+    s3 = {'id': '003', 'from': '002', 'status': 'open'}; S.save_session(R, s3)
+    S.abandon(R, s3, say=lambda *a: None)
+    kept = S.session(R, '003')
+    assert kept['status'] == 'abandoned' and kept['notes'] == 'half done' and 'name' not in kept    # "Session 3" is no name
+
+def test_report_shows_names_and_notes_as_text(tmp_path):
+    import report_html as H
+    ss = [{'id': '001', 'from': 'ai', 'status': 'applied', 'reviewer': 'Kim', 'date': '2026-10-28', 'counts': {'approved': 5},
+           'name': '<script>alert(1)</script>', 'notes': '[x](javascript:alert(1))\nline two'},
+          {'id': '002', 'from': '001', 'status': 'applied', 'reviewer': 'Lee', 'date': '2026-10-29', 'counts': {'approved': 5}}]
+    out = ''.join(H.review_card(str(tmp_path), {'review': {'session': '001', 'sessions': ss}}))
+    assert '<script>' not in out and 'href="javascript' not in out
+    assert '<strong>Session 1: &lt;script&gt;alert(1)&lt;/script&gt;</strong>' in out
+    # the notes: a button that opens the pop-up box, right under the session's line; the text beside it, hidden, as typed
+    note = ('<button type="button" class="nopen" data-session="1" data-title="Notes: Session 1 · &lt;script&gt;alert(1)&lt;/script&gt;">{}</button>'
+            '<span class="ntext" hidden>[x](javascript:alert(1))\nline two</span>')
+    assert '</p><p class="snotes">' + note.format('Session Notes') + '</p>' in out and '<td class="notes">' + note.format('Notes') + '</td>' in out
+    assert '<p class="sumline"><strong>Session 1:' in out and '<details class="fold"><summary>Session Notes' not in out
+    assert 'Session 2</strong>' not in out and '<td><span class="nowrap">2</span></td>' in out    # no name: the number alone
+
+SLOW_KEEP = r'''
+import sys, time
+sys.path.insert(0, sys.argv[1])
+from review import core, server
+real = core.save
+def slow(path, obj):
+    if path.endswith('review_decisions.json'): print('saving', flush=True); time.sleep(2); real(path, obj); print('saved', flush=True)
+    else: real(path, obj)
+core.save = slow
+server.serve(sys.argv[2], '2026-10-31', int(sys.argv[3]), open_browser=False)
+print('ended', flush=True)
+'''
+
+def test_ctrl_c_during_an_auto_save_waits_for_it(tmp_path):
+    """Handoff 13 (b): an auto-save (POST /keep) under way when Stop or Ctrl+C comes is written whole: the server's gate
+    lets it end before the server stops, and the draft on disk is that save's."""
+    import signal, subprocess, sys
+    R, rec, ai, dg = run_folder(tmp_path)
+    S.check_basis(R, rec)
+    p = S.P(R); items = core.build_items(ai, dg)
+    S.save(p['items'], {'book': 'book.pdf', 'run': 'run', 'pages': 5, 'pdf': '', 'groups': core.GROUPS, 'levels': core.LEVELS,
+                        'add_kinds': core.ADD_KINDS, 'items': items, 'addable': core.addable(ai, dg),
+                        'session': {'key': 'abc:002', 'id': '002', 'reopened': True, 'name_default': 'Session 2'}})
+    port = free_port()
+    pr = subprocess.Popen([sys.executable, '-c', SLOW_KEEP, os.path.dirname(os.path.dirname(os.path.abspath(__file__))), p['dir'], str(port)],
+                          stdout=subprocess.PIPE, text=True)
+    try:
+        assert 'review page:' in pr.stdout.readline(); pr.stdout.readline()
+        res = {}
+        def keep():
+            req = urllib.request.Request(f'http://127.0.0.1:{port}/keep', data=json.dumps({'reviewer': 'Kim', 'decisions': ALL, 'additions': [],
+                                         'session_notes': 'the last edit'}).encode(), headers={'Content-Type': 'application/json', 'Host': f'127.0.0.1:{port}'})
+            with urllib.request.urlopen(req, timeout=20) as r: res['st'] = r.status
+        th = threading.Thread(target=keep); th.start()
+        assert pr.stdout.readline().strip() == 'saving'
+        pr.send_signal(signal.SIGINT)                                          # Ctrl+C in the middle of the auto-save
+        th.join(15); rest = pr.communicate(timeout=20)[0]
+        assert res.get('st') == 200 and rest.index('saved') < rest.index('stopped:') < rest.index('ended')
+        assert S.load(p['draft'])['session_notes'] == 'the last edit'
+    finally:
+        if pr.poll() is None: pr.kill()
+
+def test_an_older_draft_never_overwrites_a_newer_one(tmp_path):
+    """Review 14 L5: /keep and the Finish dialog's /save skip a draft whose saved_at is older than the one on disk (a
+    request handled late can't put an older draft back); /keep says so and still gives the open gaps; Finish always writes."""
+    R, rec, ai, dg = run_folder(tmp_path)
+    S.check_basis(R, rec)
+    p = S.P(R); items = core.build_items(ai, dg)
+    S.save(p['items'], {'book': 'book.pdf', 'run': 'run', 'pages': 5, 'pdf': '', 'groups': core.GROUPS, 'levels': core.LEVELS,
+                        'add_kinds': core.ADD_KINDS, 'items': items, 'addable': core.addable(ai, dg),
+                        'session': {'key': 'abc:002', 'id': '002', 'reopened': True, 'name_default': 'Session 2'}})
+    port = free_port()
+    t = threading.Thread(target=lambda: __import__('review.server', fromlist=['serve']).serve(p['dir'], '2026-10-31', port, open_browser=False), daemon=True)
+    t.start(); time.sleep(0.8)
+    def call(path, body):
+        req = urllib.request.Request(f'http://127.0.0.1:{port}{path}', data=json.dumps(body).encode(),
+                                     headers={'Content-Type': 'application/json', 'Host': f'127.0.0.1:{port}'})
+        with urllib.request.urlopen(req, timeout=20) as r: return r.status, json.loads(r.read())
+    base = {'reviewer': 'Kim', 'decisions': ALL, 'additions': []}
+    st, b = call('/keep', dict(base, session_notes='newer', saved_at='2026-10-31T12:00:05.000Z'))
+    assert st == 200 and b['kept'] is True and isinstance(b['gaps'], list)
+    st, b = call('/keep', dict(base, session_notes='older', saved_at='2026-10-31T12:00:01.000Z'))   # handled late
+    assert st == 200 and b['kept'] is False and b['older'] is True and S.load(p['draft'])['session_notes'] == 'newer'
+    call('/save', dict(base, session_notes='older too', saved_at='2026-10-31T12:00:02+00:00'))
+    assert S.load(p['draft'])['session_notes'] == 'newer'
+    st, b = call('/finish', dict(base, session_notes='final', saved_at='2026-10-31T11:00:00.000Z', gaps_ack={'figures_without_alt': 'later'}))
+    t.join(5)
+    assert b['finished'] and S.load(p['draft'])['session_notes'] == 'final'                          # Finish: the last word
+
+def test_keep_and_save_together_never_cut_the_draft(tmp_path):
+    R, rec, ai, dg = run_folder(tmp_path)
+    S.check_basis(R, rec)
+    p = S.P(R); items = core.build_items(ai, dg)
+    S.save(p['items'], {'book': 'book.pdf', 'run': 'run', 'pages': 5, 'pdf': '', 'groups': core.GROUPS, 'levels': core.LEVELS,
+                        'add_kinds': core.ADD_KINDS, 'items': items, 'addable': core.addable(ai, dg),
+                        'session': {'key': 'abc:002', 'id': '002', 'reopened': True, 'name_default': 'Session 2'}})
+    port = free_port(); out = {}
+    t = threading.Thread(target=lambda: out.update(v=__import__('review.server', fromlist=['serve']).serve(
+        p['dir'], '2026-10-31', port, open_browser=False)), daemon=True)
+    t.start(); time.sleep(0.8)
+    def call(path, body):
+        req = urllib.request.Request(f'http://127.0.0.1:{port}{path}', data=json.dumps(body).encode(),
+                                     headers={'Content-Type': 'application/json', 'Host': f'127.0.0.1:{port}'})
+        try:
+            with urllib.request.urlopen(req) as r: return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e: return e.code, json.loads(e.read())
+        except OSError: return None, None                                  # the server stopped after Finish
+    base = {'reviewer': 'Kim', 'decisions': ALL, 'additions': []}
+    assert call('/save', dict(base, session_notes='n' * 4001))[0] == 400
+    errs = []
+    def hammer(path, i):
+        st, b = call(path, dict(base, session_name=f'pass {i}', session_notes='x' * 3000))
+        if st not in (200, 409): errs.append((path, st, b))
+        S.load(p['draft'])                                                 # parses at every moment: never cut short
+    for wave in range(6):                                                  # 4 at a time: the server's listen queue is 5
+        th = [threading.Thread(target=hammer, args=(('/keep', '/save')[i % 2], wave * 4 + i)) for i in range(4)]
+        for x in th: x.start()
+        for x in th: x.join()
+    assert not errs and S.load(p['draft'])['session_notes'] == 'x' * 3000
+    assert not [n for n in os.listdir(p['dir']) if n.endswith('.tmp')]
+    # Finish with Keeps racing it: every Keep is kept before Finish or refused after, so the draft is Finish's
+    fin = dict(base, session_name='final', session_notes='done', gaps_ack={'figures_without_alt': 'drawn later'})
+    th = [threading.Thread(target=hammer, args=('/keep', i)) for i in range(6)]
+    for x in th[:3]: x.start()
+    st, b = call('/finish', fin)
+    for x in th[3:]: x.start()                                             # after Finish: refused, or the server has stopped
+    for x in th: x.join()
+    t.join(5)
+    assert st == 200 and b['finished'] and not [e for e in errs if e[1] is not None]
+    assert S.load(p['draft'])['session_name'] == 'final' and S.load(p['draft'])['session_notes'] == 'done'

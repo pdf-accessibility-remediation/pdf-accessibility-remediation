@@ -14,7 +14,7 @@ The formats a front end needs (also in docs/review-step.md):
   decisions: {id: {status: approved | changed | rejected | seen, value?, note?}}
   additions: [{kind, target, value, note?}]
 """
-import os, re, sys, copy, json, datetime
+import os, re, sys, copy, json, datetime, threading, unicodedata
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
@@ -32,13 +32,39 @@ ADD_KINDS = {'retype': 'Heading or tag change', 'alt': 'Alt text', 'page_figures
 MAPPABLE = workorder_check.ALLOWED - {'Figure'} | {'H'}  # a style mapped to one of these can be given a new level
 
 def save(path, obj):
-    """Through a temp file and os.replace, so a stop mid-write never leaves a cut-short JSON file."""
-    tmp = path + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f: f.write(json.dumps(obj, ensure_ascii=False, indent=1))
-    os.replace(tmp, path)
+    """Through a temp file and os.replace, so a stop mid-write never leaves a cut-short JSON file. The temp file is this
+    process and thread's own, so two writers never share one."""
+    tmp = f'{path}.{os.getpid()}.{threading.get_ident()}.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f: f.write(json.dumps(obj, ensure_ascii=False, indent=1))
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp): os.remove(tmp)
 
 def load(path, default=None):
     return json.load(open(path, encoding='utf-8')) if os.path.exists(path) else default
+
+# ------------------------------------------------------------------ session names and notes (plain text a person types)
+NAME_MAX, NOTES_MAX = 80, 4000                         # in code points; the page's maxlength (UTF-16 units) is the stricter
+BIDI = re.compile(f'[{chr(0x202a)}-{chr(0x202e)}{chr(0x2066)}-{chr(0x2069)}]')   # direction overrides (U+202A–202E, U+2066–2069):
+                                                       # they can make a name read differently elsewhere
+
+def clean_text(s, one_line=False):
+    """A person's text as kept: CRLF as LF, no control characters but newline and tab, no direction overrides (ZWJ and
+    ZWNJ stay: some scripts need them); one_line: every run of white space as one space."""
+    s = BIDI.sub('', str(s or '').replace('\r\n', '\n').replace('\r', '\n'))
+    s = ''.join(c for c in s if c in '\n\t' or unicodedata.category(c) != 'Cc')
+    return ' '.join(s.split()) if one_line else s.strip()
+
+def session_fields(body, sid):
+    """(name, notes) from the page's session_name / session_notes, cleaned; a name that is only "Session N" (up to case and
+    spacing) or empty is no name. Raises ValueError over the limits."""
+    name = clean_text(body.get('session_name'), one_line=True)
+    notes = clean_text(body.get('session_notes'))
+    if len(name) > NAME_MAX: raise ValueError(f'The session name is {len(name)} characters long; at most {NAME_MAX}.')
+    if len(notes) > NOTES_MAX: raise ValueError(f'The session notes are {len(notes):,} characters long; at most {NOTES_MAX:,}.')
+    if name.lower() in ('', f'session {int(sid)}' if str(sid).isdigit() else ''): name = ''
+    return name or None, notes or None
 
 # ------------------------------------------------------------------ items
 def _index(digest):
@@ -422,6 +448,17 @@ def check(R, wo):
     sees the page: they are off here. The AI's own unseen decisions were already dropped by decide.py."""
     digest = load(os.path.join(R, '_audit', 'digest.json'))
     return workorder_check.check(wo, digest, set(), {w['id'] for w in digest.get('ocr_words') or []})
+
+def card_of(items, entry):
+    """The id of the card a dropped entry ({where, item, why}) came from, or None: the items under the same key (and field),
+    then the one whose target is named in the dropped entry."""
+    parts = str(entry.get('where') or '').split('.')
+    same = [it for it in items if it['loc'] and it['loc'][0] == parts[0] and (len(parts) < 2 or len(it['loc']) < 2 or str(it['loc'][1]) == parts[1])]
+    if len(same) == 1: return same[0]['id']
+    text = json.dumps(entry.get('item'), ensure_ascii=False)
+    hits = [it for it in same if it['id'].partition(':')[2] and (json.dumps(it['id'].partition(':')[2], ensure_ascii=False) in text
+                                                                 or json.dumps(it.get('ai'), ensure_ascii=False) == text)]
+    return hits[0]['id'] if len(hits) == 1 else None
 
 def preview(R, wo):
     """What the check would drop from wo, and the gaps left after it, without changing wo."""

@@ -226,18 +226,16 @@ def intake_rows():
                      + ('; ' + '; '.join(issues).lower() + ' (see "Intake")' if issues else '')))
         if n:
             v = (intake.get('review') or {}).get('ocr_text_approved')
-            if isinstance(v, dict):                    # recorded with review_ocr.py
-                who = f'{v.get("reviewer")} on {v.get("date")}' + (f' (pages {v["pages"]})' if v.get('pages') else '')
-                rows.append(('OCR text reviewed by a person', ok(v.get('verdict') == 'approved'),
-                             f'{"approved" if v.get("verdict") == "approved" else "not approved"} by {who}: {v.get("reason")}'))
+            if isinstance(v, dict):                    # recorded on the review page or with review_ocr.py
+                good, text = G0.ocr_verdict_row(v)
+                rows.append((G0.OCR_ROW, ok(good), text))
             else: rows.append(('OCR text reviewed by a person', ok(False), f'machine OCR on {n} page{"s" if n != 1 else ""}: not yet reviewed '
                                '(checklist rule 2; record a verdict with review_ocr.py)'))
     if not (o and o.get('pages_with_ocr_text')) and G0.ocr_layer_flagged(intake):   # the existing OCR layer needs the approval
         v = (intake.get('review') or {}).get('ocr_text_approved')
         if isinstance(v, dict):
-            who = f'{v.get("reviewer")} on {v.get("date")}' + (f' (pages {v["pages"]})' if v.get('pages') else '')
-            rows.append(('OCR text reviewed by a person', ok(v.get('verdict') == 'approved'),
-                         f'{"approved" if v.get("verdict") == "approved" else "not approved"} by {who}: {v.get("reason")}'))
+            good, text = G0.ocr_verdict_row(v)
+            rows.append((G0.OCR_ROW, ok(good), text))
         else: rows.append(('OCR text reviewed by a person', ok(False), f'the existing OCR layer is {G0.ocr_layer_finding(intake)}: not yet '
                            'reviewed (checklist rule 2; record a verdict with review_ocr.py)'))
     cov = (intake.get('checks') or {}).get('coverage') or {}

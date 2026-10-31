@@ -30,9 +30,13 @@ header.top h1 { font-size: 19px; margin: 0 0 4px; overflow-wrap: anywhere; }
 .meta { color: var(--muted); font-size: 13px; }
 main { max-width: 1200px; margin: 0 auto; padding: 16px; }
 h2 { font-size: 17px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
-.ship { background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--reject); border-radius: 8px; padding: 10px 14px; }
+.ship { background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--reject); border-radius: 8px; padding: 9px 14px 11px; }   /* the text 1 px up, the card the same height */
 .ship.yes { border-left-color: var(--ok); }
-.ship h2 { margin: 0 0 6px; font-size: 17px; border: 0; padding: 0; } .ship p { margin: 6px 0 0; } .ship ul { margin: 0; padding-left: 20px; }
+.ship h2 { margin: 0 0 4px; font-size: 17px; border: 0; padding: 0; } .ship p { margin: 6px 0 0; } .ship ul { margin: -2px 0 0; padding-left: 20px; }
+/* each condition's mark (a bullet, or a check mark when met) centred in one 20px column, in the text's colour */
+.ship li { list-style: none; position: relative; }
+.ship li .mark { position: absolute; left: -20px; top: 0; width: 20px; height: 1.5em; display: flex; align-items: center; justify-content: center; color: var(--ink); }
+.ship li .mark .bul { display: block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }   /* not .dot: the cards use that name */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }
 .card { background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--line); border-radius: 8px; padding: 10px 14px; }
 .card.good { border-top-color: var(--ok); } .card.bad { border-top-color: var(--reject); } .card.warn { border-top-color: var(--change); }
@@ -78,7 +82,24 @@ th button { border: 0; background: none; padding: 0; font-weight: 700; cursor: p
 details.fold { margin-top: 6px; font-size: 13px; } details.fold summary { cursor: pointer; color: var(--ink); font-size: 15px; }   /* blue is for links only; the toggle at the body text size */
 [tabindex="-1"]:focus { outline: none; }                     /* a heading or message focused by script: no outline (Tab focus keeps its own) */
 details.fold.plain summary { color: var(--ink); }            /* all five passed: a plain toggle, still with its arrow */
-td.nowrap { white-space: nowrap; }
+td.nowrap, span.nowrap { white-space: nowrap; }
+/* a session's own name, under its number: one line up to about 40 characters; a longer one wraps at spaces in a 26em
+   column, and only a single word too long for it breaks (never cut short with "…") */
+.sname { display: block; white-space: nowrap; }
+.sname.long { white-space: normal; width: 26em; max-width: 26em; overflow-wrap: break-word; }
+p.sumline { margin-bottom: 0; } p.snotes { margin-top: 0; }   /* a session's Session Notes button, right under its line */
+td.notes { vertical-align: middle; }
+button.nopen { font: inherit; color: var(--accent); background: none; border: 0; padding: 0 2px; min-height: 24px; text-decoration: underline; cursor: pointer; }
+/* a session's notes: a pop-up box (the script's notes box), not modal, moved by its title bar, resized from its corner */
+dialog.ndlg { position: fixed; margin: 0; padding: 0; inset: auto; width: min(520px, 92vw); height: 300px; min-width: 220px; min-height: 120px;
+              max-width: 100vw; max-height: 100vh; resize: both; overflow: hidden; z-index: 50; border: 1px solid var(--muted); border-radius: 6px;
+              background: var(--panel); color: var(--ink); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
+dialog.ndlg[open] { display: flex; flex-direction: column; }
+.nbar { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; background: var(--bg); border-bottom: 1px solid var(--line); cursor: move; user-select: none; touch-action: none; }
+.nbar h2 { flex: 1; font-size: 15px; margin: 0; padding: 0; border: 0; overflow-wrap: anywhere; }
+dialog.ndlg button { min-width: 28px; min-height: 28px; padding: 0 6px; border: 0; background: none; color: var(--ink); font-size: 18px; line-height: 1; cursor: pointer; }
+.nbody { flex: 1; overflow: auto; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+dialog.ndlg :focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 hr.thin { border: 0; border-top: 1px solid var(--line); margin: 14px 0 8px; } h3.rev-sub { font-size: 15px; margin: 0 0 4px; }
 ul.checks { list-style: none; padding-left: 4px; margin: 4px 0 0; }
 h2.inline { display: inline; font-size: 15px; border: 0; margin: 0; padding: 0; }
@@ -296,39 +317,73 @@ def counts_text(c, sep=', '):
 
 SESSION_TABLE = ('<div class="tw" tabindex="0"><table><caption class="vh">{cap}</caption><thead><tr><th scope="col">Session</th><th scope="col">From</th>'
                  '<th scope="col">Reviewer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Carried</th>'
-                 '<th scope="col">Changed in the Session</th><th scope="col">Changes from the AI</th><th scope="col">Choices</th></tr></thead><tbody>{rows}</tbody></table></div>')
+                 '<th scope="col">Changed in the Session</th><th scope="col">Changes from the AI</th><th scope="col">Choices</th><th scope="col">Notes</th></tr></thead><tbody>{rows}</tbody></table></div>')
+
+NAME_LINE = 40                                         # a session name up to this many characters stays on one line in the tables
+
+def session_name(x):
+    """'Session 5: Chapters 1–4 pass', or 'Session 5' (records made before sessions had names have none). Escaped."""
+    return f'Session {int(x["id"])}' + (f': {E(x["name"])}' if x.get('name') else '')
+
+# the "Ready to Ship?" card's condition names in review.html (review.md keeps glance's): an exception to the capitalization
+# rule, decided 2026-10-31 (CLAUDE.md)
+SHIP_NAMES = {'Work order approved on the review page': 'Work Order approved on the review page', 'OCR text approved': 'OCR Text approved',
+              'Safety checks': 'Safety Checks', 'Manual check (PAC)': 'Manual Check (PAC)'}
+
+REVIEWED_BY = re.compile(r'no \(reviewed by .*? on [^:]*: (.*)\)$')
+
+def ship_words(s):
+    """A "Ready to Ship?" line as review.html says it (review.md keeps glance's text): the work order's "no (reviewed by Kim
+    on 2026-10-30: 205 decisions accepted without review)" reads "no (205 decisions not reviewed)", and "no (run without
+    REVIEW=1)" reads "no (applied without a review)" (no setting names on the page)."""
+    if not s['what'].startswith('Work order'): return s['text']
+    if s['text'] == 'no (run without REVIEW=1)': return 'no (applied without a review)'
+    m = REVIEWED_BY.match(s['text'])
+    return 'no (' + m.group(1).replace('decisions accepted without review', 'decisions not reviewed') + ')' if m else s['text']
+
+def notes_open(x, label='Notes'):
+    """A session's notes: a button that opens them, read-only, in the page's pop-up box (the script's notes box), with the
+    text beside it, hidden (plain text, never through inline(): a person's text is not markdown); 'none' without."""
+    if not x.get('notes'): return 'none'
+    title = f'Notes: Session {int(x["id"])}' + (f' · {x["name"]}' if x.get('name') else '')
+    return (f'<button type="button" class="nopen" data-session="{int(x["id"])}" data-title="{E(title)}">{label}</button>'
+            f'<span class="ntext" hidden>{E(x["notes"])}</span>')
 
 def review_card(R, rec):
     """The "Review" section: one line for the current session, its row (earlier sessions folded), each decision's review
     status, and the command that reopens the review (folded)."""
     rv = rec.get('review') or {}; wo = rec.get('workorder') or {}
-    run = rv.get('run') or os.path.relpath(R, HERE)
     B = ['<section class="card-review" aria-labelledby="rev-h"><h2 id="rev-h">Review of the AI\'s Decisions</h2>']
     pend = rv.get('pending') or {}
     if pend.get('status') == 'finished':
         B.append(f'<p><strong>Session {int(pend["session"])} ({E(pend.get("reviewer") or "")}) is finished but not applied</strong>: this result is older '
-                 f'than the latest sign-off. Apply it: <code>python3 review_workorder.py {E(run)} --apply</code></p>')
+                 f'than the latest sign-off. To apply it, open this book\'s run page in the app and select '
+                 f'"Apply Session {int(pend["session"])}".</p>')
     ss = rv.get('sessions') or []
     if ss:
         cur = rv.get('session')
         def frm(x):
             f = x.get('from')
-            return 'the AI\'s decisions' if f in ('ai', None) else 'the recorded summary' if f == 'summary' else f'session {int(f)}'
+            return 'the AI\'s decisions' if f in ('ai', None) else 'the recorded summary' if f == 'summary' else f'Session {int(f)}'
         def row(x):
             c = x.get('counts') or {}
             what = ('summary only: ' if x.get('summary_only') and not x.get('inferred') else 'inferred from the summary: ' if x.get('inferred') else '') + \
                 (counts_text(c) or 'no counts recorded')
             carried = (f'{x["carried"]} from {frm(x)}' if x.get('carried') else 'none') + (f' · not carried: {x["not_carried"]}' if x.get('not_carried') else '')
             mark = ' <strong>(current)</strong>' if x['id'] == cur else ''
-            return (f'<tr><td class="nowrap">{int(x["id"])}{mark}</td><td class="nowrap">{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(x.get("date") or "")}</td>'
-                    f'<td>{E(x.get("status") or "")}</td><td class="nowrap">{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td></tr>')
-        now = [x for x in ss if x['id'] == cur]; earlier = [x for x in ss if x['id'] != cur]
+            name = f'<span class="sname{" long" if len(x["name"]) > NAME_LINE else ""}">{E(x["name"])}</span>' if x.get('name') else ''
+            return (f'<tr><td><span class="nowrap">{int(x["id"])}{mark}</span>{name}</td><td class="nowrap">{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(x.get("date") or "")}</td>'
+                    f'<td>{E(x.get("status") or "")}</td><td class="nowrap">{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td>'
+                    f'<td class="notes">{notes_open(x)}</td></tr>')
+        now = [x for x in ss if x['id'] == cur]; earlier = sorted((x for x in ss if x['id'] != cur), key=lambda x: int(x['id']), reverse=True)   # newest first
         if now:
             x = now[0]; c = x.get('counts') or {}
             parts = ([f'{c.get("approved") or 0} approved'] + ([f'{c["changed"]} changed'] if c.get('changed') else []) +
                      [f'{c.get("rejected") or 0} rejected', f'{c.get("accepted_unreviewed") or 0} accepted without review']) if c else ['counts not recorded']
-            B.append(f'<p><strong>Session {int(x["id"])}</strong> · {E(x.get("reviewer") or "reviewer not recorded")} · '
+            sl = ' class="sumline"' if x.get('notes') else ''
+            B.append(f'<p{sl}><strong>{session_name(x)}</strong> · {E(x.get("reviewer") or "reviewer not recorded")} · '
                      f'{E(x.get("date") or "date not recorded")} · ' + ' · '.join(parts) + '</p>')
+            if x.get('notes'): B.append(f'<p class="snotes">{notes_open(x, "Session Notes")}</p>')   # right under the line
             B.append(SESSION_TABLE.format(cap='The current review session', rows=row(x)))
         if earlier:
             B.append(f'<details class="fold"><summary>Previous Sessions ({len(earlier)})</summary>'
@@ -344,7 +399,7 @@ def review_card(R, rec):
                           f'<td>{E(STATUS_WORDS.get(k, k).split(" (")[0].lower() + (" (inferred)" if d.get("inferred") else ""))}'
                           f'{E(", session " + str(int(d["set_in"]))) if d.get("set_in") else ""}</td><td>{E(d.get("note") or "")}</td></tr>' for d in by[k])
             B.append(f'<details class="fold"><summary>{E(TC(STATUS_WORDS[k]))}: {len(by[k])}</summary><div class="tw" tabindex="0"><table><thead><tr>'
-                     '<th scope="col">Kind</th><th scope="col">Decision</th><th scope="col">Page</th><th scope="col">Status, Set In</th><th scope="col">Note</th></tr></thead>'
+                     '<th scope="col">Type</th><th scope="col">Decision</th><th scope="col">Page</th><th scope="col">Status, Set In</th><th scope="col">Note</th></tr></thead>'
                      f'<tbody>{trs}</tbody></table></div></details>')
     elif rv.get('workorder'):
         c = rv['workorder'].get('counts') or {}
@@ -406,10 +461,12 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
                                       f'run {(run.get("started") or "").replace("T", " ") or "start time not recorded"}'])
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus
     # ---- ready to ship
-    B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? {"Yes" if g["ready"] else "No"}</h2><ul>'
-             + ''.join(f'<li>{E(s["what"])}: <strong>{E(s["text"])}</strong></li>' for s in g['ship']) + '</ul>')
-    if not g['ship'][0]['ok'] and not banner:
-        B.append('<p class="note">The review page is the final sign-off: see "Review of the AI\'s decisions" below (docs: review-step.md, "Sign-off").</p>')
+    B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? {"Yes" if g["ready"] else "No"}</h2><ul role="list">'
+             # each condition's mark in one centred column: a check mark when met (yes / OK), else a bullet; hidden from screen
+             # readers (the words say it). role="list": Safari drops a list's role when its bullets are styled away
+             + ''.join(('<li class="met"><span class="mark" aria-hidden="true">✓</span>' if s.get('ok') is True else
+                        '<li><span class="mark" aria-hidden="true"><i class="bul"></i></span>')
+                       + f'{E(SHIP_NAMES.get(s["what"], s["what"]))}: <strong>{E(ship_words(s))}</strong></li>' for s in g['ship']) + '</ul>')
     B.append('</section>')
     if banner: B.insert(1, f'<p class="replaced" role="note">{banner}</p>')
     else: B += review_card(R, rec)
@@ -425,7 +482,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
              ('AI decisions', 'good' if g['ship'][0]['ok'] else 'warn', f'{ad["count"]:,}',
               (f'approved by {ad["reviewed"]["reviewer"]} on {ad["reviewed"]["date"]}' if ad.get('reviewed') and g['ship'][0]['ok']
                else 'reviewed, not signed off' if ad.get('reviewed') else 'Not reviewed by a person'), ''),
-             ('veraPDF (WCAG rules)', ('good' if vg.get('after_rules') == 0 else 'warn') if vg.get('ran_after') else 'warn',
+             ('veraPDF (WCAG Rules)',('good' if vg.get('after_rules') == 0 else 'warn') if vg.get('ran_after') else 'warn',
               (f'{vg.get("before_rules", "–")} → {vg["after_rules"]}' if vg.get('ran_after') else 'Not run'),
               (f'{vg.get("before_checks", 0):,} → {vg["after_checks"]:,} failed checks · {len(vg.get("newly_failing") or [])} newly failing' if vg.get('ran_after') else (vg.get('not_run') or '')), '')]
     def lab(cls, big):
@@ -650,9 +707,57 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
       out.textContent = v ? n + ' of ' + total + ' shown' + (notes ? ', and ' + notes + ' note' + (notes === 1 ? '' : 's') : '') : '';
     });
   });
+})();
+(function () {
+  // a session's notes in a pop-up box, read-only (the app's run page has the same box, webapp/panel.js notesBox). One box
+  // per session, several open at once; opening one already open brings it to the front. Not modal: the page stays usable
+  // beside them. A box moves by its title bar, resizes from its corner, and closes with × or Escape (Escape closes the box
+  // that has focus). Focus goes into its text on open and back to the button that opened it on close. Moving it is never
+  // needed to read the notes, which scroll inside it.
+  var boxes = {}, top = 50, openers = new WeakMap();    // a box → the button that opened it last (no expando on the element)
+  function make(key) {
+    var d = document.createElement('dialog'), id = 'ndlg-' + key;   // openers.get(d): the button that opened it last
+    d.className = 'ndlg'; d.setAttribute('aria-labelledby', id + '-h');
+    d.innerHTML = '<div class="nbar"><h2 id="' + id + '-h"></h2>' +
+      '<button type="button" class="nx" aria-label="Close the notes"><span aria-hidden="true">×</span></button></div>' +
+      '<div class="nbody" tabindex="0" role="region" aria-labelledby="' + id + '-h"></div>';
+    document.body.appendChild(d);
+    function put(x, y) {                // kept inside the window
+      d.style.left = Math.max(0, Math.min(innerWidth - 80, x)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
+    }
+    function close() { d.close(); var o = openers.get(d); if (o) o.focus(); }
+    d.querySelector('.nx').addEventListener('click', close);
+    d.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    d.addEventListener('pointerdown', function () { d.style.zIndex = ++top; });   // a click brings it to the front
+    d.querySelector('.nbar').addEventListener('pointerdown', function (e) {   // drag by the title bar (not its close button)
+      if (e.button || e.target.closest('.nx')) return;
+      var dx = e.clientX - d.offsetLeft, dy = e.clientY - d.offsetTop, bar = e.currentTarget;
+      bar.setPointerCapture(e.pointerId); e.preventDefault();
+      function move(ev) { put(ev.clientX - dx, ev.clientY - dy); }
+      function up() { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); bar.removeEventListener('pointercancel', up); }
+      bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up); bar.addEventListener('pointercancel', up);
+    });
+    return d;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('button.nopen'), function (b) {
+    b.addEventListener('click', function () {
+      var key = b.getAttribute('data-session'), d = boxes[key] || (boxes[key] = make(key));
+      openers.set(d, b); d.style.zIndex = ++top;
+      if (!d.open) {
+        d.querySelector('h2').textContent = b.getAttribute('data-title'); d.querySelector('.nbody').textContent = b.nextElementSibling.textContent;
+        var n = document.querySelectorAll('dialog.ndlg[open]').length;   // each new box a little lower and to the right
+        d.show();
+        d.style.left = Math.max(0, (innerWidth - d.offsetWidth) / 2 + 24 * n) + 'px'; d.style.top = Math.max(0, (innerHeight - d.offsetHeight) / 3 + 24 * n) + 'px';
+        d.querySelector('.nbody').scrollTop = 0;
+      }
+      d.querySelector('.nbody').focus();
+    });
+  });
 })();"""
     out = os.path.join(R, 'review.html')
-    open(out, 'w', encoding='utf-8').write(page(f'Review: {book}', '\n'.join(B), script))
+    tmp = f'{out}.{os.getpid()}.tmp'                 # whole or not at all: a stop mid-write never leaves half a page
+    with open(tmp, 'w', encoding='utf-8') as f: f.write(page(f'Review: {book}', '\n'.join(B), script))
+    os.replace(tmp, out)
     return out
 
 def summary_html(Bdir):

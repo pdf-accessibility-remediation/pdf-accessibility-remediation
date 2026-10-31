@@ -34,6 +34,21 @@ def ocr_layer_flagged(intake):
     `ocr_layer_test` and is not flagged."""
     ol = (intake or {}).get('ocr_layer_test') or {}
     return ol.get('verdict') in ('doubtful', 'unusable', 'not enough pages scored') or bool(ol.get('diacritics'))
+def ocr_review_needed(intake):
+    """The OCR-text gate's condition, in one place (review.md, review_ocr.py, the review page): intake added OCR text, or
+    flagged the book's existing OCR layer."""
+    return bool(((intake or {}).get('ocr') or {}).get('pages_with_ocr_text')) or ocr_layer_flagged(intake)
+
+OCR_ROW = 'OCR text reviewed by a person'
+SENT = 'sent to a language reader'                   # the third verdict (2026-10-31): not approved yet, waiting for a reader
+def ocr_verdict_row(v):
+    """(ok, text) of review.md's "OCR text reviewed by a person" row for a recorded verdict. The wording of the first two
+    is the one review_ocr.py and report.py have always written."""
+    who = f'{v.get("reviewer")} on {v.get("date")}' + (f' (pages {v["pages"]})' if v.get('pages') else '')
+    if v.get('verdict') == SENT:
+        return False, f'{SENT}{" (" + v["to"] + ")" if v.get("to") else ""} by {who}' + (f': {v["reason"]}' if v.get('reason') else '')
+    return v.get('verdict') == 'approved', f'{"approved" if v.get("verdict") == "approved" else "not approved"} by {who}: {v.get("reason")}'
+
 def ocr_layer_finding(intake):
     """A few words on what the OCR-layer test found, for the ready-to-ship line."""
     ol = (intake or {}).get('ocr_layer_test') or {}
@@ -153,7 +168,10 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
     v = (intake.get('review') or {}).get('ocr_text_approved')
     flagged = ocr_layer_flagged(intake)                 # an existing OCR layer that step A flagged needs the approval too
     if ocr_pages or flagged:
-        if isinstance(v, dict):
+        if isinstance(v, dict) and v.get('verdict') == SENT:
+            ocr_ok, ocr_txt = False, (f'no (waiting for a language reader{": " + v["to"] if v.get("to") else ""}; '
+                                      f'sent by {v.get("reviewer")} on {v.get("date")})')
+        elif isinstance(v, dict):
             ocr_ok = v.get('verdict') == 'approved'
             ocr_txt = f'{"yes" if ocr_ok else "no"} ({v.get("verdict")} by {v.get("reviewer")} on {v.get("date")})'
         else: ocr_ok, ocr_txt = False, ('no (not yet reviewed: ' + '; '.join(x for x in [f'OCR text on {pages_text(ocr_pages, labels)}' if ocr_pages else None,
@@ -189,7 +207,8 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
         if name in dict(SAFETY): add(0, 'safety', f'{name}: {det}', found, None, find=f'| {name} |', key=f'check:{name}')
         elif name == 'veraPDF: no rule newly failing or failing more often': add(0, 'safety', f'veraPDF: {det}', [], sec('veraPDF'))
         elif name == 'OCR text reviewed by a person':
-            add(1, 'ship', 'OCR text ' + ('not approved' if isinstance(v, dict) else 'not yet reviewed'), ocr_pages, sec('Intake'), find='- OCR text added', key='intake:ocr')
+            add(1, 'ship', 'OCR text ' + (('waiting for a language reader' if v.get('verdict') == SENT else 'not approved') if isinstance(v, dict) else 'not yet reviewed'),
+                ocr_pages, sec('Intake'), find='- OCR text added', key='intake:ocr')
         elif name in GATE_ROWS: add(1, 'ship', f'{name}: {det}', [], sec('Work order reviewed'))
         elif name.startswith('veraPDF WCAG'):
             wr = [x for x in vrules.values() if x.get('scope') == 'wcag']
