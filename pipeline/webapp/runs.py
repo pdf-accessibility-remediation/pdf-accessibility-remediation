@@ -308,7 +308,7 @@ def start_discard(s, run, R):
         if jobs.review_past_finish(jobs.run_dir(j, s['runs']), j.get('started')):
             raise ValueError('This review is past "Finish Review" and is being applied: it can\'t be discarded now.')
         op = [x for x in S.sessions(R) if x.get('status') == 'open']
-        raise ValueError('The review page is open: press "Stop Reviewing" first, then "' + (f'Discard {S.label(op[-1]["id"]).capitalize()}' if op else 'Discard') + '".')
+        raise ValueError('The review page is open: select "Stop Reviewing" first, then "' + (f'Discard {S.label(op[-1]["id"]).capitalize()}' if op else 'Discard') + '".')
     op = [x for x in S.sessions(R) if x.get('status') == 'open']
     if not op: raise ValueError('no session is open')
     argv = [sys.executable, 'review_workorder.py', R, '--discard-open']

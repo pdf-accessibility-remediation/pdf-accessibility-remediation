@@ -323,7 +323,7 @@ box.addEventListener('click', async e => {
       const open = st.open ? cap(sn(st.open.id)) : 'The session', ocr = st.live_review && st.live_review.kind === 'ocr';
       [s, r] = await api(API + '/stop', {}); if (s !== 200) return msg(r.error || 'Stop failed', false, true);
       msg(ocr ? 'The OCR Text Review page is closed without a verdict.'
-              : 'The review page is closed. ' + open + ' stays open: press "Continue Review" to carry on.', true, true); return poll();
+              : 'The review page is closed. ' + open + ' stays open. Select "Continue Review" to pick up where you left off.', true, true); return poll();
     }
     if (act === 'stop-other') {                                  // a review page the app did not start (a terminal's): asks first
       if (!await confirmDlg('Stop the other review?', 'The other review\'s session stays open; nothing is lost.', 'Stop the other review', b)) return;
