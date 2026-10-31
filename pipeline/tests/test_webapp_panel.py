@@ -564,10 +564,11 @@ def test_the_report_review_section(tmp_path):
     rec = {'review': {'session': '002', 'sessions': ss, 'run': '../runs/b/r', 'decisions': [{'id': 'x', 'kind': 'retype', 'label': 'A', 'page': 2, 'status': 'approved'}]}}
     out = ''.join(H.review_card(str(tmp_path), rec))
     assert '<p><strong>Session 2</strong> · sss · 2026-10-29 · 9 approved · 0 rejected · 2 accepted without review</p>' in out
-    assert out.count('<td class="nowrap">2 <strong>(current)</strong></td>') == 1 and '<td class="nowrap">3 from session 1</td>' in out
+    assert out.count('<td><span class="nowrap">2 <strong>(current)</strong></span></td>') == 1 and '<td class="nowrap">3 from session 1</td>' in out
     assert '<td class="nowrap">none</td>' in out and '<td class="nowrap">session 1</td>' in out                # From and Carried never wrap
     assert '<details class="fold"><summary>Previous Sessions (1)</summary>' in out and '<td class="nowrap">2026-10-28</td>' in out
-    assert out.index('Previous Sessions (1)') < out.index('<td class="nowrap">1</td>')                     # session 1 only inside the fold
+    assert out.index('Previous Sessions (1)') < out.index('<td><span class="nowrap">1</span></td>')         # session 1 only inside the fold
+    assert '<th scope="col">Notes</th>' in out and out.count('<td>none</td>') == 2 and 'Session Notes' not in out   # no names, no notes: as before
     assert 'From a terminal' not in out and 'review_workorder.py' not in out and 'Earlier sessions' not in out
     assert '<h2 id="rev-h">Review of the AI\'s Decisions</h2>' in out and '<summary>Approved: 1</summary>' in out
     assert '<th scope="col">Changed in the Session</th>' in out and '<th scope="col">Status, Set In</th>' in out

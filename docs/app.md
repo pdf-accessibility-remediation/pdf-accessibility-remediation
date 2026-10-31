@@ -91,7 +91,7 @@ The panel shows:
   - **Every other job** folded under **Previous Jobs (N)**, one line each in the same form. Nothing drops off.
   - **A running job** says its step in words, with a small spinner: "Running: checking the result (2 of 3)". Its list of steps shows the finished ones with their times ("Applying the reviewed decisions: done, 15.0s") and the current one by name only. The spinner is decorative: screen readers skip it, and it stands still when the system asks for reduced motion.
   - **A failed or interrupted job** says why in plain words, and one line says where its log is saved (`runs/.app/jobs/<id>.log`). The page shows no log lines and no commands.
-- **Session History:** every session (who, when, where it started, changes from the AI, what changed in that session), with a link to each previous result.
+- **Session History:** every session (its name under its number, who, when, where it started, changes from the AI, what changed in that session, its notes in a **Notes** fold), with a link to each previous result. An open session shows its name and notes as last saved. See [Session names and notes](review-step.md#session-names-and-notes).
 - **A book in a batch** links to the batch's page (`/batch/<label>/`).
 
 A run made before the dashboards existed (no `review.html`) gets a page with the panel, the `review.md` link and a line saying it has no dashboard. There is no rebuild button: rebuilding would write into the run.

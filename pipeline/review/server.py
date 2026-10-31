@@ -8,8 +8,10 @@ Routes (all call review/core.py; a later front end can replace this file and pag
                                  rendered the first time it is asked for.
     GET  /word/<id>.png          one OCR word cut from its word sheet (the image the AI read)
     GET  /result/review.html …   files the caller lists (files=): a reopened review links the run's current result
-    POST /save    {reviewer, decisions, additions, saved_at}  → saved to review_decisions.json; returns what the check
-                                 would drop, additions refused, and gaps (no H1, figures without alt)
+    POST /save    {reviewer, decisions, additions, session_name, session_notes, saved_at}  → saved to review_decisions.json;
+                                 returns what the check would drop, additions refused, and gaps (no H1, figures without alt)
+    POST /keep    the same body → saved to review_decisions.json only (the page sends it when the session name or notes
+                                 lose focus, so they survive a closed tab and a new port); refused once Finish has started
     POST /finish  {…, accept_unreviewed, gaps_ack}            → review.json and the reviewed workorder.json; the server stops.
                                  Not finished yet, but nothing wrong: 200 with needs: "unreviewed" (and the list) while
                                  items are unreviewed, or needs: "gaps" while a gap has no reason, unless the body accepts
@@ -58,6 +60,8 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
     saved = core.load(os.path.join(R, 'review_decisions.json'), {}) or {}
     done = threading.Event(); finishing = threading.Event(); result = {}
     render_lock = threading.Lock()                    # pdfium is not thread-safe: one page image at a time
+    write_lock = threading.Lock()                     # every write of this server, one at a time (Save, Keep and Finish race on a blur)
+    sid = (data.get('session') or {}).get('id') or '001'
     cells = {i: (sh['image'], sh['cells'][str(i)]) for sh in digest.get('ocr_word_sheets') or [] if sh.get('cells')
              for i in range(sh['ids'][0], sh['ids'][1] + 1) if str(i) in sh['cells']}
     # what GET serves, keyed by URL. The file and its content type come from our own listing, never from the request
@@ -128,20 +132,34 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
             additions = [a for a in body.get('additions') or [] if isinstance(a, dict)] if isinstance(body.get('additions'), list) else []
             reviewer = str(body.get('reviewer') or '').strip()
             saved_at = str(body.get('saved_at') or '') or datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
-            def keep(): core.save(os.path.join(R, 'review_decisions.json'),
-                                  {'reviewer': reviewer, 'decisions': decisions, 'additions': additions, 'saved_at': saved_at})
+            if self.path not in ('/save', '/keep', '/finish'): return self.send(404, {'error': 'not found'})
+            try: name, notes = core.session_fields(body, sid)
+            except ValueError as e: return self.send(400, {'error': str(e)})
+            def keep():                                  # the caller holds write_lock
+                core.save(os.path.join(R, 'review_decisions.json'),
+                          {'reviewer': reviewer, 'decisions': decisions, 'additions': additions,
+                           **({'session_name': name} if name else {}), **({'session_notes': notes} if notes else {}), 'saved_at': saved_at})
             def build():
                 wo = core.apply_decisions(ai, items, decisions)
                 return wo, core.add_entries(wo, additions, adds, reviewer)
+            if self.path == '/keep':
+                with write_lock:
+                    if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: nothing more is kept.'})
+                    keep()
+                return self.send(200, {'kept': True})
             if self.path == '/save':
-                keep()
+                with write_lock:
+                    if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: nothing more is saved.'})
+                    keep()
                 wo, refused = build()
                 dropped, gaps = core.preview(R, wo)
                 return self.send(200, {'saved': True, 'changes': len(core.diff(ai, wo)), 'dropped': dropped, 'refused': refused,
                                        'gaps': gaps, 'unreviewed': len(core.unreviewed(items, decisions))})
             if self.path == '/finish':
                 if not reviewer: return self.send(400, {'error': 'Enter your name as the reviewer first.'})
-                keep()
+                with write_lock:
+                    if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started already.'})
+                    keep()
                 left = core.unreviewed(items, decisions)
                 if left and not body.get('accept_unreviewed'):
                     return self.send(200, {'finished': False, 'needs': 'unreviewed', 'error': f'{len(left)} items are not reviewed yet.', 'unreviewed': left})
@@ -151,18 +169,20 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
                 ack = body.get('gaps_ack') if isinstance(body.get('gaps_ack'), dict) else {}
                 gaps = [g for g in core.preview(R, wo)[1] if not str(ack.get(g['id']) or '').strip()]
                 if gaps: return self.send(200, {'finished': False, 'needs': 'gaps', 'error': f'{len(gaps)} gaps are open.', 'gaps': gaps})
-                finishing.set(); ok = False                  # Ctrl+C now waits until the review is recorded (or refused)
-                try:
-                    try: v = core.finish(R, ai, wo, reviewer, date, 'page', decisions=decisions, items=items, additions=additions, gaps_ack=ack)
-                    except ValueError as e: return self.send(400, {'error': str(e)})
-                    result.update(v); ok = True
-                    self.send(200, {'finished': True, 'changes': len(v['changes']), 'dropped': v['dropped_on_check'], 'counts': v.get('counts'),
-                                    'gaps': v.get('gaps') or []})
-                finally:
-                    if ok: done.set()
-                    else: finishing.clear()
+                with write_lock:                             # a Keep or Save after this point is refused
+                    if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started already.'})
+                    finishing.set(); ok = False              # Ctrl+C now waits until the review is recorded (or refused)
+                    try:
+                        keep()                               # the last word of the page, with the Finish dialog's name and notes
+                        try: v = core.finish(R, ai, wo, reviewer, date, 'page', decisions=decisions, items=items, additions=additions, gaps_ack=ack)
+                        except ValueError as e: return self.send(400, {'error': str(e)})
+                        result.update(v); ok = True
+                        self.send(200, {'finished': True, 'changes': len(v['changes']), 'dropped': v['dropped_on_check'], 'counts': v.get('counts'),
+                                        'gaps': v.get('gaps') or []})
+                    finally:
+                        if ok: done.set()
+                        else: finishing.clear()
                 return
-            self.send(404, {'error': 'not found'})
 
     srv = None
     for p in range(port, port + 20):

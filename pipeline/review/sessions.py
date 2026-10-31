@@ -276,10 +276,17 @@ def decision_list(items, decisions):
                     **({'inferred': True} if d.get('inferred') else {}), **({'note': d['note']} if d.get('note') else {})})
     return out
 
+def name_notes(draft, sid):
+    """{name, notes} from a page draft (review_decisions.json), as a session record keeps them: only what is set. A draft
+    with text over the limits (written by hand) keeps nothing rather than failing the finish."""
+    try: name, notes = core.session_fields(draft or {}, sid)
+    except ValueError: return {}
+    return {**({'name': name} if name else {}), **({'notes': notes} if notes else {})}
+
 def summary_row(s):
     """One line of the session table (record.json review.sessions)."""
     rv = s.get('review') or {}
-    return {'id': s['id'], 'from': s.get('from'), 'status': s.get('status'), 'reviewer': s.get('reviewer') or rv.get('reviewer'),
+    return {'id': s['id'], 'name': s.get('name'), 'notes': s.get('notes'), 'from': s.get('from'), 'status': s.get('status'), 'reviewer': s.get('reviewer') or rv.get('reviewer'),
             'date': rv.get('date'), 'started': s.get('started'), 'finished': s.get('finished'), 'applied': s.get('applied'),
             'method': s.get('method') or rv.get('method'), 'summary_only': bool(s.get('summary_only')), 'inferred': bool(s.get('inferred')),
             'counts': rv.get('counts'), 'changes': len(rv.get('changes') or []), 'since_start': len(s.get('since_start') or []),
@@ -448,7 +455,8 @@ def abandon(R, s, say=say_):
     """An open session marked abandoned: its draft (the choices so far) is kept in its record, the open working files
     are removed; nothing else changes (the current result stays)."""
     p = P(R)
-    s['draft'] = load(p['draft']); s['status'] = 'abandoned'; s['abandoned'] = now(); save_session(R, s); tidy_open(R)
+    s['draft'] = load(p['draft']); s.update(name_notes(s['draft'], s['id']))     # its name and notes stay with it
+    s['status'] = 'abandoned'; s['abandoned'] = now(); save_session(R, s); tidy_open(R)
     say(f'  {label(s["id"])} marked abandoned (kept in reviews/sessions/{s["id"]}.json)')
 
 def discard_open(R, say=say_):
@@ -500,7 +508,8 @@ def open_session(R, rec, src=None, pdf=None, discard_open=False, say=say_):
     render_figures(inp, digest, p['audit'])
     src_s = session(R, s['from']) if s['from'] not in ('ai', None) else None
     data['run'] = os.path.relpath(R, os.path.dirname(HERE))
-    data['session'] = {'key': f'{b["run_id"]}:{s["id"]}', 'id': s['id'], 'from': s['from'],
+    data['session'] = {'key': f'{b["run_id"]}:{s["id"]}', 'id': s['id'], 'from': s['from'], 'name_default': f'Session {int(s["id"])}',
+                       'from_name': (src_s or {}).get('name'), 'from_notes': (src_s or {}).get('notes'),   # shown read-only
                        'from_text': ('the AI\'s decisions' if s['from'] == 'ai' else
                                      (summary_text(src_s) if src_s and src_s.get('summary_only') else label(s['from']).capitalize())),
                        'carried': s.get('carried', 0), 'not_carried': s.get('not_carried') or [], 'gaps_ack': s.get('gaps_ack') or {},
@@ -530,6 +539,8 @@ def finish_session(R, s, rec):
     adds = draft.get('additions') or []
     if norm(adds) != norm(s.get('start_additions') or []): since.append({'id': 'additions', 'was': len(s.get('start_additions') or []), 'now': len(adds)})
     intake = load(os.path.join(R, '_intake', 'intake.json'))
+    for k in ('name', 'notes'): s.pop(k, None)
+    s.update(name_notes(draft, s['id']))
     s.update(status='finished', finished=now(), reviewer=v.get('reviewer'), method=v.get('method'), review=v, decisions=dec, additions=adds,
              since_start=since, carried=sum(1 for d in dec.values() if d['set_in'] != s['id']),
              ocr_verdict=((intake or {}).get('review') or {}).get('ocr_text_approved') if intake else None)
@@ -559,6 +570,7 @@ def first_session(R, A, PDF):
     dec = {k: {**{x: d[x] for x in ('status', 'value', 'note') if x in d}, 'ai': by[k]['ai'], 'set_in': sid}
            for k, d in got.items() if (d or {}).get('status') and k in by}
     intake = load(os.path.join(R, '_intake', 'intake.json'))
+    s.update(name_notes(draft, sid))
     s.update(status='applied', finished=v.get('recorded'), applied=now(), reviewer=v.get('reviewer'), method=v.get('method'), review=v,
              decisions=dec, additions=draft.get('additions') or [], carried=0, since_start=[],
              ocr_verdict=((intake or {}).get('review') or {}).get('ocr_text_approved') if intake else None,
