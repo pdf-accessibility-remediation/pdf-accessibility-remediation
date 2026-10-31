@@ -5,7 +5,9 @@ it works on plain entries and on callables the caller passes, so each script kee
     readorder.is_container(style, mapped)          # a tag the order is shown and checked over (Sect, Story, Div, …)
     readorder.line(style, first, last, depth, text) / readorder.parse_line(s)   # the digest's one-line form, and back
     readorder.out_of_order(entries)                # the entries read away from their printed place
+    readorder.read_late(entries)                   # small entries read well after their page, inside a longer one's span
     readorder.section_move(root, groups, firsts, span, a, b, before)   # the move_section match (apply.py, review page)
+    readorder.page_jumps(seq)                      # pages whose text, in tag order, jumps back up a column (audit, verify)
 
 An entry is {id, parent, style, first, last, depth, text, skip}: one container, in tree order (a parent before its
 children). parent is the id of the nearest container above it (None at the top). first/last are its PDF pages (None
@@ -47,12 +49,20 @@ def parse_lines(lines):
 def _backbone(sib):
     """Indexes of the heaviest run of siblings whose first pages never go back, weighted by the pages each covers:
     what reads in printed order. The rest are what is out of place. Ties go to the earliest entries."""
+    if not sib: return set()
+    pages = sorted({e['first'] for e in sib}); rank = {p: k + 1 for k, p in enumerate(pages)}
+    tree = [None] * (len(pages) + 1)       # Fenwick tree over first pages: the best (weight, -index) ending at or below a page
     best, prev = [], []
     for i, e in enumerate(sib):
-        w = e['last'] - e['first'] + 1
-        j = max((j for j in range(i) if sib[j]['first'] <= e['first']), key=lambda j: (best[j], -j), default=None)
-        best.append(w + (best[j] if j is not None else 0)); prev.append(j)
-    if not sib: return set()
+        k, top = rank[e['first']], None
+        while k > 0:
+            if tree[k] is not None and (top is None or tree[k] > top): top = tree[k]
+            k -= k & -k
+        best.append(e['last'] - e['first'] + 1 + (top[0] if top else 0)); prev.append(-top[1] if top else None)
+        k = rank[e['first']]
+        while k <= len(pages):
+            if tree[k] is None or (best[i], -i) > tree[k]: tree[k] = (best[i], -i)
+            k += k & -k
     i = max(range(len(sib)), key=lambda k: (best[k], -k)); keep = set()
     while i is not None: keep.add(i); i = prev[i]
     return keep
@@ -74,6 +84,36 @@ def out_of_order(entries):
             before = [entries[idx[j]] for j in sorted(keep) if j < k]; after = [entries[idx[j]] for j in sorted(keep) if j > k]
             out.append({'i': i, 'first': entries[i]['first'], 'last': entries[i]['last'],
                         'prev': before[-1]['last'] if before else None, 'next': after[0]['first'] if after else None})
+    return sorted(out, key=lambda x: x['i'])
+
+def page_jumps(seq):
+    """seq: {page: [(top, x0, size) of each tagged text run's first character, in tag-tree order]}, leaving out runs in
+    PLACED_ELSEWHERE tags. A jump is a run that starts more than two lines above the previous one (twice its size, at
+    least 6 pt) in the same column (within 72 pt across). Pages with 2+ jumps: [{page, jumps_up, runs}], most jumps first."""
+    ro = []
+    for p, s in sorted(seq.items()):
+        up = sum(1 for (t0, x0, z0), (t1, x1, z1) in zip(s, s[1:]) if t1 < t0 - 2 * max(z0, 6) and abs(x1 - x0) < 72)
+        if up >= 2: ro.append({'page': p, 'jumps_up': up, 'runs': len(s)})
+    return sorted(ro, key=lambda x: -x['jumps_up'])
+
+LATE_PAGES = 5            # read_late: how many pages past its own a small entry may be read before it is listed
+def read_late(entries, flagged=None, small=2, n=LATE_PAGES):
+    """Small entries (at most `small` pages) that out_of_order does not flag but that are read more than n pages after their
+    printed page: an earlier sibling already reached that far, for example a figure section read after the whole chapter
+    it sits in. Overlapping stories are normal in InDesign books, so these are listed, never failed. flagged: the
+    indexes out_of_order returned (left out here). Returns [{i, first, last, after}]: after is the furthest page read before it."""
+    flagged = {x['i'] for x in out_of_order(entries)} if flagged is None else set(flagged)
+    groups = {}
+    for i, e in enumerate(entries):
+        if e.get('first') is not None and not e.get('skip'): groups.setdefault(e.get('parent'), []).append(i)
+    out = []
+    for idx in groups.values():
+        reach = None
+        for i in idx:
+            e = entries[i]
+            if reach is not None and i not in flagged and e['last'] - e['first'] < small and reach - e['first'] > n:
+                out.append({'i': i, 'first': e['first'], 'last': e['last'], 'after': reach})
+            reach = e['last'] if reach is None else max(reach, e['last'])
     return sorted(out, key=lambda x: x['i'])
 
 def section_move(root, groups, firsts, span, a, b, before):

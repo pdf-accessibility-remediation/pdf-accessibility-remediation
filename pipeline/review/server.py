@@ -8,7 +8,8 @@ Routes (all call review/core.py; a later front end can replace this file and pag
                                  rendered the first time it is asked for.
     GET  /word/<id>.png          one OCR word cut from its word sheet (the image the AI read)
     POST /save    {reviewer, decisions, additions, saved_at}  → saved to review_decisions.json; returns what the check
-                                 would drop, additions refused, and gaps (no H1, figures without alt)
+                                 would drop, additions refused, and gaps (no H1, figures without alt); for a section move
+                                 the reviewer changed, its new preview (move_preview)
     POST /finish  {…, accept_unreviewed, gaps_ack}            → review.json and the reviewed workorder.json; the server stops.
                                  409 while items are unreviewed or a gap has no reason, unless the body accepts them
 
@@ -117,7 +118,8 @@ def serve(R, date, port=8765, open_browser=True):
                 wo, refused = build()
                 dropped, gaps = core.preview(R, wo)
                 return self.send(200, {'saved': True, 'changes': len(core.diff(ai, wo)), 'dropped': dropped, 'refused': refused,
-                                       'gaps': gaps, 'unreviewed': len(core.unreviewed(items, decisions))})
+                                       'gaps': gaps, 'unreviewed': len(core.unreviewed(items, decisions)),
+                                       'move_preview': core.changed_move(wo, data, decisions)})
             if self.path == '/finish':
                 if not reviewer: return self.send(400, {'error': 'Enter your name as the reviewer first.'})
                 keep()

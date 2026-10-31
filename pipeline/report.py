@@ -22,6 +22,7 @@ import sys, os, re, csv, json, shutil, datetime, collections
 from lib.sections import line, pdfua, nolink, excerpt, to_sections, render_md, VERSION as SECTIONS_VERSION
 from lib.glance import WCAG_NAMES
 from lib import glance as G0
+from lib import readorder
 
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 KEEP = '--keep' in sys.argv
@@ -43,6 +44,7 @@ reply = open(os.path.join(R, 'reply.txt'), encoding='utf-8').read() if os.path.e
 timing = load('timing.json', default=None)
 attempts = load('attempts.json', default=[])
 rv = load('review.json')                              # a person's review of the work order before it was applied (REVIEW=1)
+ri = load('review_items.json') if rv else None        # what the review page showed, e.g. its move_section preview
 # gaps the reviewer left open with no reason given (a hand edit without --note); an explained gap counts as handled
 rv_unexplained = [g for g in (rv or {}).get('gaps') or [] if str(g.get('reason') or '').startswith('hand edit: no reason asked for')]
 wo_ai = load('workorder.ai.json') if rv else None     # the AI's version, kept for comparison          # earlier paid calls in this folder whose reply couldn't be used
@@ -75,6 +77,7 @@ record = {
               **({'offpage': log['offpage']} if any((log.get('offpage') or {}).get(k) for k in ('artifacted', 'left', 'rejected', 'already')) else {}),
               **({'list_rule': log['list_rule']} if any((log.get('list_rule') or {}).get(k) for k in ('flattened', 'kept', 'skipped')) else {}),
               **({'actual_text_checked': log['actual_text_checked']} if log.get('actual_text_checked') else {}),
+              **({'section_move': log['section_move']} if log.get('section_move') else {}),   # where move_section put the section
               **({'font_maps': log['font_maps']} if (log.get('font_maps') or {}).get('fonts') or (log.get('font_maps') or {}).get('skipped') else {}),
               'tabs_set': log.get('tabs_set'), **({'text_rule_guard': log['text_rule_guard']} if log.get('text_rule_guard') else {})},
     'verify': {k: v for k, v in ver.items() if k != 'verapdf'},
@@ -340,7 +343,7 @@ checks = [
      f'{wc["reading_order"]["flagged_count"]} of {wc["reading_order"]["pages_checked"]} pages flagged' if wc else 'not checked'),
     ('Reading order: no section moved away from its printed place by this run (1.3.2)', ok(so is not None and not so['new_count']),
      ('no sections to compare: the tag tree has none' if so['flat'] else
-      f'{so["new_count"]} new · {len(so["flagged"]) - so["new_count"]} already in the original, of {so["containers"]} sections and blocks') if so
+      f'{so["new_count"]} new' + (f' (of them {m} moved again)' if (m := sum(1 for x in so['flagged'] if x.get('state') == 'moved')) else '') + f' · {len(so["flagged"]) - so["new_count"]} already in the original, of {so["containers"]} sections and blocks') if so
      else 'not checked: run made before this check' if wc else 'not checked'),
     ('Title is not a file name or placeholder (2.4.2)', ok(wc is not None and not wc['title_generic']),
      (f'"{doc["title"]}"' if doc.get('title') else 'title not set') if wc else 'not checked'),
@@ -540,7 +543,17 @@ if art.get('elements') or art.get('text_rules') or art.get('untagged'):
         L.append(f'- "{r.get("label") or "(no label given)"}": untagged text ' + (f'matching `{r["regex"]}`' if r.get('regex') else 'inside Figures') + f' on {pgr(r["pages"][0], r["pages"][1])}')
     L.append('')
 moves = []
-if wo.get('move_section'): moves.append(f'Section on {pgr(wo["move_section"]["pages"][0], wo["move_section"]["pages"][1])} moved to read before {pg(wo["move_section"]["before_page"])}')
+sm = log.get('section_move')                          # where apply.py put the section (None: not moved)
+pv = next((it.get('context') or {} for it in (ri or {}).get('items') or [] if it.get('id') == 'move_section'), {})
+if sm:
+    moves.append(f'Section on {pgr(*sm["pages"])} moved to read before {pg(sm["before_page"])}' + (f', after {pg(sm["after_page"])}' if sm.get('after_page') else '')
+                 + f', inside the {sm["host"]} on {pgr(*sm["host_pages"])}')
+    if pv.get('moved_pages') and (pv['moved_pages'] != sm['pages'] or pv.get('host_pages') != sm['host_pages']):
+        moves.append(f'The executor matched differently from the review page\'s preview, which moved {pgr(*pv["moved_pages"])} into the '
+                     f'{pv.get("host")} on {pgr(*pv["host_pages"])}: earlier steps changed the tag tree. Listen through both places')
+elif wo.get('move_section') and pv.get('candidates') == 1 and pv.get('host_found'):
+    moves.append('The section move was not made, though the review page\'s preview expected it to work: earlier steps changed the tag tree '
+                 '(the reason is under "Decisions not applied")')
 if (log.get('applied') or {}).get('order: figure moved to its page') and not log.get('figure_moves'): moves.append(f'{log["applied"]["order: figure moved to its page"]} figure(s) moved to read on their printed page')
 if wo.get('move_to_document_start'): moves.append('Cover figure moved to the start of the document')
 for fm in by_page(log.get('figure_moves') or []):
@@ -780,7 +793,7 @@ if vw_afterefore or vw_after or v_ua or (v_after and not v_ran(v_after)):
         if v_both and [k for k in v_fixed if VB[k]['scope'] != 'wcag']:
             L.append(line('- fixed by this run: ' + ', '.join(k for k in v_fixed if VB[k]['scope'] != 'wcag'), scope='pdfua'))
         L.append('')
-if wc and (wc['alt_text']['flagged'] or wc['tables_without_header'] or wc['reading_order']['flagged_count'] or (so and so['flagged']) or wc['title_generic']
+if wc and (wc['alt_text']['flagged'] or wc['tables_without_header'] or wc['reading_order']['flagged_count'] or (so and (so['flagged'] or so.get('late'))) or wc['title_generic']
            or wc['links_generic'] or any(wc['headings'][k] for k in ('empty', 'long', 'repeated'))):
     n += 1; L += [f'### {n}. WCAG checks veraPDF does not make', '', 'Each item is something to look at, not a proven failure.', '']
     L += [line(f'- 1.1.1 {pg(x["page"])}: alt text "{x["alt"]}": {x["why"]}', key='wcag:1.1.1', pages=[x['page']]) for x in by_page(wc['alt_text']['examples'])]
@@ -791,16 +804,25 @@ if wc and (wc['alt_text']['flagged'] or wc['tables_without_header'] or wc['readi
                  key='wcag:1.3.2', pages=[x['page'] for x in wc['reading_order']['flagged']]))
     def _away(x): return ('between ' + pg(x['prev']) + ' and ' + pg(x['next']) if x['prev'] is not None and x['next'] is not None
                           else 'after ' + pg(x['prev']) if x['prev'] is not None else 'before ' + pg(x['next']))
-    for new in (True, False):
-        fs = [x for x in (so or {}).get('flagged') or [] if x['new'] is new]
+    late = (so or {}).get('late') or []
+    if late:
+        nf = sum(1 for x in late if x['figure'])
+        L.append(line(f'- 1.3.2 {len(late)} small section{"" if len(late) == 1 else "s"} ' + ('is' if len(late) == 1 else 'are') +
+                      f' read more than {readorder.LATE_PAGES} pages after {"its" if len(late) == 1 else "their"} printed page, after a longer section that covers {"it" if len(late) == 1 else "them"}'
+                      + (f' ({nf} holding figures)' if nf else '') + '. Not a failure (long stories overlap in InDesign books), but a screen reader '
+                      'hears them far from where they are printed: ' + '; '.join(f'{pg(x["page"])} read after {pg(x["after"])}' for x in by_page(late)[:12])
+                      + (f' and {len(late) - 12} more' if len(late) > 12 else ''), key='wcag:1.3.2-late', pages=[x['page'] for x in late]))
+    WHY = {'new': 'a change this run made', 'moved': 'out of place in the original too, but this run moved {it}',
+           'original': 'as in the original (this run did not move {it})'}
+    for state in ('new', 'moved', 'original'):
+        fs = [x for x in (so or {}).get('flagged') or [] if x.get('state', 'new' if x['new'] else 'original') == state]
         if not fs: continue
-        one = len(fs) == 1; its = 'its' if one else 'their'
-        L.append(line(f'- 1.3.2 {len(fs)} section{"" if one else "s"} ' + (f'read away from {its} printed place, a change this run made. ' if new else
-                      f'read away from {its} printed place, as in the original (this run did not move {"it" if one else "them"}). ') +
-                      'Listen through each where it is read, or move it with move_section:', key='wcag:1.3.2-sections' + ('' if new else '-original'),
-                      pages=[x['page'] for x in fs]))
+        one = len(fs) == 1; tail = '' if state == 'new' else '-' + state
+        L.append(line(f'- 1.3.2 {len(fs)} section{"" if one else "s"} read away from {"its" if one else "their"} printed place, '
+                      + WHY[state].format(it='it' if one else 'them') + '. Listen through each where it is read, or move it with move_section:',
+                      key='wcag:1.3.2-sections' + tail, pages=[x['page'] for x in fs]))
         L += [xl(lambda X: f'  - {pgr(x["page"], x["last"])}: {x["style"]}' + (f' "{X(x["text"])}"' if x.get('text') else '') + f', read {_away(x)}',
-                 key='wcag:1.3.2-sections' + ('' if new else '-original'), pages=[x['page']]) for x in by_page(fs)]
+                 key='wcag:1.3.2-sections' + tail, pages=[x['page']]) for x in by_page(fs)]
     if wc['title_generic']: L.append(line(f'- 2.4.2 the title "{doc.get("title")}" looks like a file name or a placeholder. Use the book\'s real title.', key='wcag:2.4.2'))
     L += [xl(lambda X: f'- 2.4.4 {pg(x["page"])}: link text "{X(x["text"])}" does not say where the link goes', key='wcag:2.4.4', pages=[x['page']]) for x in by_page(wc['links_generic'])]
     L += [line(f'- 2.4.6 {pg(x["page"])}: a heading with no text', key='wcag:2.4.6', pages=[x['page']]) for x in by_page(wc['headings']['empty'])]

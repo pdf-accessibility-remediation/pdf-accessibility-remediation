@@ -1287,6 +1287,9 @@ def op_move_section(spec):
     s, spar = sec[0]; set_kids(spar, [k for k in kids(spar) if not same(k, s)])
     hk = kids(host); j = next(i for i, k in enumerate(hk) if is_elem(k) and pp(k) and min(pp(k)) >= before)
     set_kids(host, hk[:j] + [s] + hk[j:]); s.P = host; ok('order: section moved')
+    prev = next((max(pp(k)) for k in reversed(hk[:j]) if is_elem(k) and pp(k)), None)
+    log['section_move'] = {'pages': [min(pp(s)), max(pp(s))], 'host': S(host), 'host_pages': [min(pp(host)), max(pp(host))],
+                           'before_page': min(pp(hk[j])), 'after_page': prev}     # where it went: report.py checks it against the preview
 def walk_blocks():
     out, stack = [], [(DOC, None)]
     while stack:

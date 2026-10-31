@@ -1,6 +1,6 @@
 """review/core.py: the review step's logic, with no web server and no HTML (a later front end can call it directly).
 
-    ro    = reading_order(digest, fulltext)          # the original's reading order, for the page's reading-order list
+    ro    = reading_order(digest, fulltext, wo)      # the original's reading order, for the page's reading-order list
     items = build_items(wo, digest, ro['entries'])    # every decision in the work order, with its context and priority group
     adds  = addable(wo, digest)                       # what a person can add that the AI did not decide (an H1, an alt, …)
     wo2   = apply_decisions(ai_wo, items, decisions)  # a person's approve / change / reject applied to a copy of the AI's order
@@ -14,13 +14,14 @@ The formats a front end needs (also in docs/review-step.md):
   addable:   {kind: [{id, kind, target, label, page, page_label, before, default, edit, options, context, images}]}
   decisions: {id: {status: approved | changed | rejected | seen, value?, note?}}
   additions: [{kind, target, value, note?}]
-  reading order: {entries: [lib/readorder.py entries], flagged: [{i, first, last, prev, next}], flat, detail}
+  reading order: {entries: [lib/readorder.py entries], flagged: [{i, first, last, prev, next, hidden_by?}], late: [{i, first, last, after, hidden_by?}],
+                 flat, detail, page_jumps}
 """
 import os, re, sys, copy, json, datetime
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
-from lib import workorder_check, readorder  # noqa: E402
+from lib import workorder_check, readorder, gaptext  # noqa: E402
 
 LEVELS = sorted(workorder_check.ALLOWED - {'Figure'}, key=lambda t: (not t.startswith('H'), t))
 HEADING = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6'}
@@ -141,7 +142,7 @@ def build_items(wo, digest, order=None):
     if isinstance(ms, dict) and isinstance(ms.get('pages'), list) and len(ms['pages']) == 2:
         (a, b), c = ms['pages'], ms.get('before_page')
         add('move_section', 'move_section', 'Reading order', ['move_section'], ms, f'Section on PDF {a}–{b} read before PDF {c}',
-            page=a if isinstance(a, int) else None, pages=[a, b] if all(isinstance(x, int) for x in (a, b)) else None,
+            page=a if isinstance(a, int) else None, pages=[a, b] if all(isinstance(x, int) for x in (a, b)) else None, edit='move',
             before_page=c, why=ms.get('why'), **move_preview(order, a, b, c))
     for i, o in enumerate(wo.get('move_to_document_start') or []):
         f = figs.get(o) or {}
@@ -197,14 +198,39 @@ def page_images(it, N):
     return [f'review_pages/page_{p:03d}.png' for p in ps if 1 <= p <= N]
 
 # ------------------------------------------------------------------ reading order
-def reading_order(digest, fulltext=None):
+def reading_order(digest, fulltext=None, wo=None):
     """The original's reading order for the page's list: {entries, flagged, flat, detail}. From fulltext.json when the audit
     wrote it there (every container, with what move_section needs), else from the digest's lines (runs audited before
-    that: sections only, and no move preview). flat: fewer than two containers, so there is no order to show."""
+    that: sections only, and no move preview). flat: fewer than two containers, so there is no order to show. page_jumps:
+    the original's pages whose text jumps back up a column (the 1.3.2 page check; None for older runs). late: small entries
+    read well after their page (readorder.read_late). A flagged or late
+    entry every run of which one of the work order's text rules would hide gets hidden_by (the rule's label)."""
     es = (fulltext or {}).get('reading_order')
     detail = es is not None
     if es is None: es = readorder.parse_lines(digest.get('reading_order'))
-    return {'entries': es, 'flagged': readorder.out_of_order(es), 'flat': len(es) < 2, 'detail': detail}
+    fl = readorder.out_of_order(es)
+    for x in fl:
+        lab = hidden_by(es[x['i']], wo)
+        if lab: x['hidden_by'] = lab
+    late = readorder.read_late(es, [x['i'] for x in fl])
+    for x in late:
+        lab = hidden_by(es[x['i']], wo)
+        if lab: x['hidden_by'] = lab
+    return {'entries': es, 'flagged': fl, 'late': late, 'flat': len(es) < 2, 'detail': detail, 'page_jumps': (fulltext or {}).get('page_jumps')}
+
+def hidden_by(e, wo):
+    """The label of the text rule that would mark every run of this one-page entry as decoration, as apply.py matches it
+    (the whole run, the pattern as written or with its spaces optional), or None. Only for entries the audit kept the runs of."""
+    runs = [t.strip() for t in e.get('runs') or [] if t.strip()]
+    if not runs: return None
+    for r in ((wo or {}).get('artifacts') or {}).get('text_rules') or []:
+        ps = r.get('pages') if isinstance(r, dict) else None
+        if not (isinstance(ps, list) and len(ps) == 2 and ps[0] <= e['first'] <= ps[1]): continue
+        try: rx = [re.compile(r.get('regex', '.*'), re.S), re.compile(gaptext.loosen(r.get('regex', '.*')), re.S)]
+        except re.error: continue
+        if all(any(x.fullmatch(t) or x.fullmatch(re.sub(r'\s+', ' ', t)) for x in rx) for t in runs):
+            return r.get('label') or 'text rule'
+    return None
 
 def _under(order, by, e, host):
     """True when entry e lies inside the container host (following each entry's nearest container above it)."""
@@ -214,9 +240,17 @@ def _under(order, by, e, host):
         seen.add(p); p = (by.get(p) or {}).get('parent')
     return False
 
+def changed_move(wo, data, decisions):
+    """The preview for a section move the reviewer changed, worked out the same way as the AI's (for /save), or None."""
+    ms = wo.get('move_section')
+    if (decisions.get('move_section') or {}).get('status') != 'changed' or not isinstance(ms, dict) or len(ms.get('pages') or []) != 2: return None
+    return {'pages': ms['pages'], 'before_page': ms.get('before_page'),
+            **move_preview((data.get('reading_order') or {}).get('entries'), ms['pages'][0], ms['pages'][1], ms.get('before_page'))}
+
 def move_preview(order, a, b, before):
     """What move_section would do, worked out on the original's tags with the executor's own match (lib/readorder.py):
-    {candidates, host_found, moved, lands_before, siblings_before, siblings_after, flags_before, flags_after}. apply.py
+    {candidates, host_found, moved, moved_pages, host, host_pages, lands_before, siblings_before, siblings_after, flags_before,
+    flags_after}. apply.py
     matches again on the tree it edits, which earlier steps may have changed, so this is a preview. Empty when the order
     has no detail (an older run) or the pages are not numbers."""
     if not order or not all(isinstance(x, int) for x in (a, b, before)) or not any('group' in e for e in order): return {}
@@ -229,6 +263,7 @@ def move_preview(order, a, b, before):
     out = {'candidates': len(cand), 'host_found': host is not None, 'flags_before': len(readorder.out_of_order(order))}
     if len(cand) != 1 or host is None: return out
     s = cand[0][0]
+    out.update(moved_pages=[by[s]['first'], by[s]['last']], host=by[host]['style'], host_pages=[by[host]['first'], by[host]['last']])
     block = [e for e in order if e['id'] == s or _under(order, by, e, s)]
     ids = {e['id'] for e in block}
     rest = [e for e in order if e['id'] not in ids]
@@ -327,7 +362,7 @@ def prepare(R, pdf):
     ai = load(os.path.join(R, 'workorder.ai.json'))
     digest = load(os.path.join(R, '_audit', 'digest.json'))
     if ai is None or digest is None: sys.exit(f'{R} has no workorder.ai.json or _audit/digest.json: run run_api.sh with REVIEW=1 first')
-    ro = reading_order(digest, load(os.path.join(R, '_audit', 'fulltext.json')))
+    ro = reading_order(digest, load(os.path.join(R, '_audit', 'fulltext.json')), ai)
     items = build_items(ai, digest, ro['entries'])
     pages_to_render(items, digest['source']['pages'])
     first = sorted({int(PAGE_PNG.search(x).group(1)) for it in items if it['priority'] == 1 for x in it['images']})
@@ -356,6 +391,13 @@ def apply_decisions(ai_wo, items, decisions):
                 for f in ('header_rows', 'header_cols'):
                     try: parent[last][f] = int((v or {}).get(f, parent[last].get(f, 0)))
                     except (TypeError, ValueError): parent[last][f] = (v or {}).get(f)
+            elif it['edit'] == 'move':                  # {pages: [a, b], before_page}: whole numbers, else left for the check to refuse
+                v = v or {}
+                def num(x):
+                    try: return int(x)
+                    except (TypeError, ValueError): return x
+                ps = v.get('pages') if isinstance(v.get('pages'), list) else parent[last].get('pages')
+                parent[last] = {**parent[last], 'pages': [num(x) for x in ps], 'before_page': num(v.get('before_page', parent[last].get('before_page')))}
             elif it['field']: parent[last][it['field']] = v
             else: parent[last] = v
     for loc in sorted(drop, key=lambda l: [str(x) if not isinstance(x, int) else f'{x:09d}' for x in l], reverse=True):

@@ -106,11 +106,11 @@ def test_one_item_list_kept_when_the_work_order_says_so(tmp_path):
 
 # ---- reading order: a section read out of printed order, moved back with move_section (no sample book has one)
 def sections_pdf(path, order=(1, 3, 2, 4)):
-    """Four pages, one paragraph each, each in its own Sect under one Part, read in the given page order."""
+    """One page per entry of order, one paragraph each, each in its own Sect under one Part, read in the given page order."""
     pdf = pikepdf.new()
     font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica,
                               Encoding=pikepdf.Name.WinAnsiEncoding)
-    for n in range(1, 5):
+    for n in range(1, len(order) + 1):
         content = f'/P <</MCID 0>> BDC BT /F1 11 Tf 72 500 Td (Section {n} opens on page {n}.) Tj ET EMC\n'
         pdf.pages.append(pikepdf.Page(pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 432, 576], StructParents=n - 1,
                          Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font)), Contents=pikepdf.Stream(pdf, content.encode('latin-1')))))
@@ -118,7 +118,7 @@ def sections_pdf(path, order=(1, 3, 2, 4)):
     doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
     part = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Part, P=doc))
     nums, sects = pikepdf.Array(), {}
-    for n in range(1, 5):
+    for n in range(1, len(order) + 1):
         pg = pdf.pages[n - 1].obj
         sect = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Sect, P=part, Pg=pg))
         p = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=sect, Pg=pg, K=0))
@@ -157,15 +157,24 @@ def test_section_read_out_of_order_is_flagged_and_moved_back(tmp_path):
     out, so = apply_and_verify(tmp_path, src, {'move_section': move}, 'moved')
     assert part_pages(out) == [e['first'] for e in c['siblings_after']] == [1, 2, 3, 4]
     assert so['flagged'] == [] and so['new_count'] == 0 and so['original_flagged'] == 1
+    log = json.load(open(str(out) + '.log.json', encoding='utf-8'))['section_move']        # where it went, for report.py
+    assert log == {'pages': [2, 2], 'host': 'Part', 'host_pages': [1, 4], 'before_page': 3, 'after_page': 1}
+    assert (c['moved_pages'], c['host'], c['host_pages']) == ([2, 2], 'Part', [1, 4])     # the preview says the same
 
 def test_section_out_of_order_in_the_original_is_not_new(tmp_path):
     src = sections_pdf(tmp_path / 'sections.pdf')
     out, so = apply_and_verify(tmp_path, src, {}, 'kept')
     assert part_pages(out) == [1, 3, 2, 4]
-    assert [(x['page'], x['new']) for x in so['flagged']] == [(2, False)] and so['new_count'] == 0
+    assert [(x['page'], x['state']) for x in so['flagged']] == [(2, 'original')] and so['new_count'] == 0
 
 def test_a_move_that_puts_a_section_out_of_order_is_new(tmp_path):
     src = sections_pdf(tmp_path / 'sections.pdf', order=(1, 2, 3, 4))
     out, so = apply_and_verify(tmp_path, src, {'move_section': {'pages': [4, 4], 'before_page': 2}}, 'wrong')
     assert part_pages(out) == [1, 4, 2, 3]
-    assert [(x['page'], x['new']) for x in so['flagged']] == [(4, True)] and so['new_count'] == 1
+    assert [(x['page'], x['state']) for x in so['flagged']] == [(4, 'new')] and so['new_count'] == 1
+
+def test_a_misplaced_section_moved_to_another_wrong_place_counts_as_new(tmp_path):
+    src = sections_pdf(tmp_path / 'sections.pdf', order=(1, 2, 3, 5, 6, 4))           # PDF 4 read last
+    out, so = apply_and_verify(tmp_path, src, {'move_section': {'pages': [4, 4], 'before_page': 2}}, 'again')
+    assert part_pages(out) == [1, 4, 2, 3, 5, 6]                                     # still out of place, somewhere else
+    assert [(x['page'], x['state'], x['new']) for x in so['flagged']] == [(4, 'moved', True)] and so['new_count'] == 1

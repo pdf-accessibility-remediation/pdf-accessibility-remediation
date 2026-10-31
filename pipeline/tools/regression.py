@@ -179,7 +179,8 @@ def main():
         x, y = compare_runs.kept(md_p, IGNORE), compare_runs.kept(os.path.join(R, 'review.md'), IGNORE)
         md = [l for l in difflib.unified_diff(x, y, lineterm='', n=0) if l[:1] in '+-' and not l.startswith(('+++', '---'))]
         if not d and not md and not broken: same += 1; print(f'{b:10} identical'); continue
-        print(f'{b:10} {len(d)} record fields differ, {sum(1 for l in md if l.startswith("-"))} review.md lines differ (- baseline / + now)')
+        print(f'{b:10} {len(d)} record fields differ, review.md: {sum(1 for l in md if l.startswith("-"))} lines removed, '
+              f'{sum(1 for l in md if l.startswith("+"))} added (- baseline / + now)')
         for f, old, new in d[:a.show]: print(f'    {f}: {json.dumps(old, ensure_ascii=False)[:150]} → {json.dumps(new, ensure_ascii=False)[:150]}')
         for l in md[:2 * a.show]: print(f'    {l[:200]}')
     n = len(books)

@@ -470,13 +470,11 @@ for n in (x for t in readorder.PLACED_ELSEWHERE for x in W[t]): _mcids(n, acc=pl
 seq = collections.defaultdict(list)
 for k in owner:                                # filled in tag-tree order in 3
     if k in _POS and k not in placed and _TXT[k] and ''.join(_TXT[k]).strip(): seq[k[0]].append(_POS[k])
-ro = []
-for p, s in sorted(seq.items()):
-    up = sum(1 for (t0, x0, z0), (t1, x1, z1) in zip(s, s[1:]) if t1 < t0 - 2 * max(z0, 6) and abs(x1 - x0) < 72)
-    if up >= 2: ro.append({'page': p, 'jumps_up': up, 'runs': len(s)})
-wc['reading_order'] = {'pages_checked': len(seq), 'flagged': sorted(ro, key=lambda x: -x['jumps_up']), 'flagged_count': len(ro)}
+ro = readorder.page_jumps(seq)
+wc['reading_order'] = {'pages_checked': len(seq), 'flagged': ro, 'flagged_count': len(ro)}
 # 1.3.2 across the book: a section (or Div) read away from its printed place among its siblings (lib/readorder.py),
-#   in the result and in the original, so a person can tell what this run caused from what the book already had
+#   in the result and in the original, so a person can tell what this run caused from what the book already had:
+#   state new (not out of place in the original), moved (out of place there too, but now read somewhere else) or original
 def _order(p):
     root = p.Root.get('/StructTreeRoot')
     if root is None: return [], []
@@ -509,16 +507,30 @@ def _order(p):
         for k in reversed(_kids(n)): stk.append((k, above, g, d + 1))
     return es, nodes
 _res, _res_nodes = _order(pdf)
-_src = readorder.out_of_order(_order(src)[0])
-_was = {(x['first'], x['last']) for x in _src}                 # matched by pages: object numbers change on save
+_src_es = _order(src)[0]
+_src = readorder.out_of_order(_src_es)
+def _key(x): return (x['style'], x['first'], x['last'])        # sections matched by tag and pages: object numbers change on save
+_alive = {_key(x) for x in _res if x['first'] is not None}
+def _place(es, i):
+    """Where entry i is read: its parent's tag and first page, and the nearest earlier sibling that still holds content in
+    the result (a neighbour this run emptied, such as a page-number story now marked as decoration, does not count)."""
+    e = es[i]; par = es[e['parent']] if e['parent'] is not None else None
+    sib = next((_key(x) for x in reversed(es[:i]) if x['parent'] == e['parent'] and x['first'] is not None and _key(x) in _alive), None)
+    return ((par['style'], par['first']) if par else None, sib)
+_was = {}
+for x in _src: _was.setdefault(_key(_src_es[x['i']]), set()).add(_place(_src_es, x['i']))
 def _first_text(n): return next((t for k in _kids(n) if _is_el(k) and (t := _text(k))), '')
 so = []
 for x in readorder.out_of_order(_res):
-    e = _res[x['i']]
+    e = _res[x['i']]; k = _key(e)
+    state = 'new' if k not in _was else 'original' if _place(_res, x['i']) in _was[k] else 'moved'
     so.append({'page': x['first'], 'last': x['last'], 'prev': x['prev'], 'next': x['next'], 'style': e['style'],
-               'text': _first_text(_res_nodes[x['i']])[:80], 'new': (x['first'], x['last']) not in _was})
+               'text': _first_text(_res_nodes[x['i']])[:80], 'state': state, 'new': state != 'original'})
+_late = [{'page': x['first'], 'last': x['last'], 'after': x['after'], 'style': _res[x['i']]['style'],
+          'figure': _first_figure(_res_nodes[x['i']]) is not None, 'text': _first_text(_res_nodes[x['i']])[:80]}
+         for x in readorder.read_late(_res)]                 # listed, never failed: overlapping stories are normal in InDesign
 wc['section_order'] = {'containers': len(_res), 'flat': len(_res) < 2, 'flagged': so, 'new_count': sum(x['new'] for x in so),
-                       'original_flagged': len(_src)}
+                       'original_flagged': len(_src), 'late': _late}
 # 2.4.2 a title that is a file name or a placeholder
 title = str(pdf.docinfo.get('/Title', '')).strip()
 wc['title_generic'] = bool(title) and bool(re.search(r'\.(pdf|docx?|indd|qxd|rtf|txt)$|^untitled\b|^microsoft (word|powerpoint)\s*-|^document\s*\d*$|^[\d\s_.-]+$', title, re.I))
