@@ -1,7 +1,8 @@
 """review/core.py: the review step's logic, with no web server and no HTML (a later front end can call it directly).
 
     ro    = reading_order(digest, fulltext, wo)      # the original's reading order, for the page's reading-order list
-    items = build_items(wo, digest, ro['entries'])    # every decision in the work order, with its context and priority group
+    items = build_items(wo, digest, ro['entries'], ro)   # every decision in the work order, with its context and priority group,
+                                                      # and the reading order's findings no decision answers (seen only)
     adds  = addable(wo, digest)                       # what a person can add that the AI did not decide (an H1, an alt, …)
     wo2   = apply_decisions(ai_wo, items, decisions)  # a person's approve / change / reject applied to a copy of the AI's order
     refused = add_entries(wo2, additions, adds, reviewer)   # the person's own decisions added to it
@@ -14,7 +15,8 @@ The formats a front end needs (also in docs/review-step.md):
   addable:   {kind: [{id, kind, target, label, page, page_label, before, default, edit, options, context, images}]}
   decisions: {id: {status: approved | changed | rejected | seen, value?, note?}}
   additions: [{kind, target, value, note?}]
-  reading order: {entries: [lib/readorder.py entries], flagged: [{i, first, last, prev, next, hidden_by?}], late: [{i, first, last, after, hidden_by?}],
+  reading order: {entries: [lib/readorder.py entries], flagged: [{i, first, last, prev, next, hidden_by?, hidden_by_rules?}],
+                 late: [{i, first, last, after, hidden_by?, hidden_by_rules?}],
                  flat, detail, page_jumps}
 """
 import os, re, sys, copy, json, datetime
@@ -28,7 +30,8 @@ HEADING = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6'}
 GROUPS = {1: 'H1 and title', 2: 'Style-wide mappings', 3: 'Heading-level changes', 4: 'Rules that can hide text',
           5: 'Reading order', 6: 'Pages the AI asked about', 7: 'General'}
 READING = ('move_section', 'move_to_document_start', 'adopt_orphans')   # decisions that change the reading order
-SEEN_ONLY = {'deferrals', 'notes_for_reviewer'}       # not applied by apply.py: a person marks them seen, with a note
+SEEN_ONLY = {'deferrals', 'notes_for_reviewer', 'reading_order'}   # not applied by apply.py: a person marks them seen, with a note
+LATE_LISTED = 12                                       # sections named on the "read late" card (the panel lists them all)
 PAGE_REF = re.compile(r'PDF (\d+)(?:\s*[–-]\s*(\d+))?')
 PAGE_PNG = re.compile(r'(\d+)\.png$')
 ADD_KINDS = {'retype': 'Heading or tag change', 'alt': 'Alt text', 'page_figures': 'Alt text', 'tables': 'Table headers',
@@ -60,7 +63,9 @@ def _index(digest):
     return (labels, by_obj, {s['style']: s for s in digest.get('styles') or []}, {f['obj']: f for f in digest.get('figures') or []},
             {pf['page']: pf for pf in digest.get('page_figures') or []}, {w['id']: w for w in digest.get('ocr_words') or []}, sheet_of)
 
-def build_items(wo, digest, order=None):
+def build_items(wo, digest, order=None, ro=None):
+    """order: the reading order's entries, for the move preview. ro: the whole reading order (reading_order()); with it,
+    each finding no decision answers becomes a card (seen only), and each text rule's card lists what it hides."""
     N = digest['source']['pages']
     labels, by_obj, styles, figs, pfigs, words, sheet_of = _index(digest)
     doc = digest.get('document') or {}
@@ -167,6 +172,7 @@ def build_items(wo, digest, order=None):
     for k, v in wo.items():
         if k not in listed:
             add(f'key:{k}', k, 'Other decisions', [k], v, k)
+    if ro: _order_findings(ro, add, items)
 
     # priority groups: fixed rules, no model
     for it in items:
@@ -176,7 +182,7 @@ def build_items(wo, digest, order=None):
         elif k == 'rolemap': it['priority'] = 2
         elif k == 'retype' and b != ai and (b in HEADING or ai in HEADING): it['priority'] = 3
         elif k == 'artifacts' and it['loc'][1] in ('text_rules', 'untagged'): it['priority'] = 4
-        elif k in READING: it['priority'] = 5
+        elif k in READING or k == 'reading_order': it['priority'] = 5
         elif k == 'deferrals':
             p = it['pages']
             it['priority'] = 6 if p and (p[1] - p[0] + 1) <= N / 2 else 7
@@ -195,6 +201,7 @@ def page_images(it, N):
     ps = [it['page']] if it['page'] else []
     if it['page'] and (it.get('priority') in (1, 3) or it['key'] == 'retype'): ps = [it['page'] - 1, it['page'], it['page'] + 1]
     if it['key'] == 'notes_for_reviewer': ps = it['context'].get('page_refs', [])[:6]
+    if it['key'] == 'reading_order': ps = it['context'].get('show_pages', [])[:6]
     if it['key'] in READING and it.get('pages'):
         c = it['context'].get('before_page')
         ps = sorted(set(it['pages'] + ([c - 1, c] if it['key'] == 'move_section' and isinstance(c, int) else [])))[:6]
@@ -206,34 +213,70 @@ def reading_order(digest, fulltext=None, wo=None):
     wrote it there (every container, with what move_section needs), else from the digest's lines (runs audited before
     that: sections only, and no move preview). flat: fewer than two containers, so there is no order to show. page_jumps:
     the original's pages whose text jumps back up a column (the 1.3.2 page check; None for older runs). late: small entries
-    read well after their page (readorder.read_late). A flagged or late
-    entry every run of which one of the work order's text rules would hide gets hidden_by (the rule's label)."""
+    read well after their page (readorder.read_late). A flagged or late entry every run of which one of the work order's
+    text rules would hide gets hidden_by_rules ([{id, label}]: every such rule, by its card id) and hidden_by (the first
+    one's label)."""
     es = (fulltext or {}).get('reading_order')
     detail = es is not None
     if es is None: es = readorder.parse_lines(digest.get('reading_order'))
     fl = readorder.out_of_order(es)
-    for x in fl:
-        lab = hidden_by(es[x['i']], wo)
-        if lab: x['hidden_by'] = lab
     late = readorder.read_late(es, [x['i'] for x in fl])
-    for x in late:
-        lab = hidden_by(es[x['i']], wo)
-        if lab: x['hidden_by'] = lab
+    for x in fl + late:
+        rs = hidden_rules(es[x['i']], wo)
+        if rs: x['hidden_by_rules'] = rs; x['hidden_by'] = rs[0]['label']
     return {'entries': es, 'flagged': fl, 'late': late, 'flat': len(es) < 2, 'detail': detail, 'page_jumps': (fulltext or {}).get('page_jumps')}
 
-def hidden_by(e, wo):
-    """The label of the text rule that would mark every run of this one-page entry as decoration, as apply.py matches it
-    (the whole run, the pattern as written or with its spaces optional), or None. Only for entries the audit kept the runs of."""
+def reading_order_for(audit_dir, digest, wo):
+    """reading_order() from an audit folder's fulltext.json (when there is one)."""
+    return reading_order(digest, load(os.path.join(audit_dir, 'fulltext.json')), wo)
+
+def hidden_rules(e, wo):
+    """Every text rule that would mark every run of this one-page entry as decoration, as apply.py matches it (the whole
+    run, the pattern as written or with its spaces optional): [{id: its card id, label}]. Only for entries the audit kept
+    the runs of."""
     runs = [t.strip() for t in e.get('runs') or [] if t.strip()]
-    if not runs: return None
-    for r in ((wo or {}).get('artifacts') or {}).get('text_rules') or []:
+    if not runs: return []
+    out = []
+    for i, r in enumerate(((wo or {}).get('artifacts') or {}).get('text_rules') or []):
         ps = r.get('pages') if isinstance(r, dict) else None
         if not (isinstance(ps, list) and len(ps) == 2 and ps[0] <= e['first'] <= ps[1]): continue
         try: rx = [re.compile(r.get('regex', '.*'), re.S), re.compile(gaptext.loosen(r.get('regex', '.*')), re.S)]
         except re.error: continue
         if all(any(x.fullmatch(t) or x.fullmatch(re.sub(r'\s+', ' ', t)) for x in rx) for t in runs):
-            return r.get('label') or 'text rule'
-    return None
+            out.append({'id': f'artifacts.text_rules:{i}', 'label': r.get('label') or 'text rule'})
+    return out
+
+def _order_findings(ro, add, items):
+    """The reading order's findings as cards (seen only, with a note: nothing is applied), for what no decision answers: a
+    section read away from its printed place that no text rule hides, each page whose text jumps back up a column, and one
+    card for the small sections read late. Findings a text rule hides are listed on that rule's card instead (hides)."""
+    es = ro.get('entries') or []
+    def short(e): return str(e.get('text') or '').strip()[:60] or None
+    hides = {}
+    for kind, xs in (('away', ro.get('flagged') or []), ('late', ro.get('late') or [])):
+        for x in xs:
+            for r in x.get('hidden_by_rules') or []:
+                hides.setdefault(r['id'], []).append({'page': x['first'], 'text': short(es[x['i']]), 'late': kind == 'late'})
+    for it in items:
+        if it['id'] in hides: it['context']['hides'] = hides[it['id']]
+    for x in ro.get('flagged') or []:
+        if x.get('hidden_by_rules'): continue
+        e = es[x['i']]
+        add(f'reading_order:away:{e["id"]}', 'reading_order', 'Reading order check', None,
+            {'finding': 'away', 'entry': e['id'], 'pages': [x['first'], x['last']], 'prev': x.get('prev'), 'next': x.get('next')},
+            f'{e.get("style") or "Section"} on PDF {x["first"]}' + (f': “{short(e)}”' if short(e) else ''),
+            page=x['first'], pages=[x['first'], x['last']], style=e.get('style'), text=short(e), prev=x.get('prev'), next=x.get('next'),
+            show_pages=sorted({x['first']} | ({x['prev']} if x.get('prev') is not None else set())))
+    for j in ro.get('page_jumps') or []:
+        add(f'reading_order:jump:{j["page"]}', 'reading_order', 'Reading order check', None,
+            {'finding': 'jump', 'page': j['page'], 'jumps_up': j['jumps_up']}, f'Text on PDF {j["page"]} jumps back up the page',
+            page=j['page'], jumps_up=j['jumps_up'], show_pages=[j['page']])
+    late = [x for x in ro.get('late') or [] if not x.get('hidden_by_rules')]
+    if late:
+        add('reading_order:late', 'reading_order', 'Reading order check', None,
+            {'finding': 'late', 'count': len(late), 'pages': [x['first'] for x in late]}, f'{len(late)} small sections read late',
+            page=late[0]['first'], pages=[min(x['first'] for x in late), max(x['first'] for x in late)], count_late=len(late),
+            late=[{'page': x['first'], 'after': x['after'], 'text': short(es[x['i']])} for x in late[:LATE_LISTED]])
 
 def _under(order, by, e, host):
     """True when entry e lies inside the container host (following each entry's nearest container above it)."""
@@ -365,8 +408,8 @@ def prepare(R, pdf):
     ai = load(os.path.join(R, 'workorder.ai.json'))
     digest = load(os.path.join(R, '_audit', 'digest.json'))
     if ai is None or digest is None: sys.exit(f'{R} has no workorder.ai.json or _audit/digest.json: run run_api.sh with REVIEW=1 first')
-    ro = reading_order(digest, load(os.path.join(R, '_audit', 'fulltext.json')), ai)
-    items = build_items(ai, digest, ro['entries'])
+    ro = reading_order_for(os.path.join(R, '_audit'), digest, ai)
+    items = build_items(ai, digest, ro['entries'], ro)
     pages_to_render(items, digest['source']['pages'])
     first = sorted({int(PAGE_PNG.search(x).group(1)) for it in items if it['priority'] == 1 for x in it['images']})
     render_pages(pdf, first, os.path.join(R, 'review_pages'))
@@ -384,6 +427,7 @@ def apply_decisions(ai_wo, items, decisions):
     for it in items:
         d = decisions.get(it['id']) or {}
         st = d.get('status')
+        if it['loc'] is None: continue                   # a reading-order finding: not in the work order
         if st == 'rejected' and it['key'] not in SEEN_ONLY: drop.append(it['loc'])
         elif st == 'changed' and it['edit']:
             v = d.get('value')
