@@ -438,9 +438,18 @@ const roName = e => esc(e.style || 'line') + ' · ' + esc(roPages(e)) + (e.text 
 const moveItem = items.find(it => it.key === 'move_section');
 let movePv = null;                                   // the preview /save worked out for the reviewer's changed pages
 const samePv = (pv, v) => pv && String(pv.before_page) === String(v.before_page) && String(pv.pages) === String(v.pages);
+// a text rule the reviewer rejected: its blocks stay, so the trial run (made with the AI's order) no longer applies
+const rulesRejected = () => Object.entries(state.decisions).some(([k, d]) => k.startsWith('artifacts.text_rules:') && d && d.status === 'rejected');
 function moveRows(it, row) {
   const d = state.decisions[it.id] || {}, mine = d.status === 'changed' && d.value, v = mine ? d.value : it.ai;
-  moveRowsFor(v, mine ? (samePv(movePv, v) ? movePv : {}) : it.context, mine ? ' <b>(your change)</b>' : '', row);
+  // the preview /save worked out with the reviewed rules, once there is one for these pages; before that, the AI's
+  moveRowsFor(v, samePv(movePv, v) ? movePv : mine ? {} : it.context, mine ? ' <b>(your change)</b>' : '', row);
+  const t = it.context.trial;
+  if (!t || mine || rulesRejected()) return;
+  const m = t.made, pv = samePv(movePv, v) ? movePv : it.context, ok = pv.candidates === 1 && pv.host_found;
+  row('Trial run', m ? 'the executor moved PDF ' + esc(m.pages[0]) + '–' + esc(m.pages[1]) + ' to read before PDF ' + esc(m.before_page) +
+      ', inside the ' + esc(m.host) + ' on PDF ' + esc(m.host_pages[0]) + '–' + esc(m.host_pages[1]) + (ok ? '' : ' <span class="flag">(the preview expected a refusal: the trial run is what will happen)</span>')
+    : '<span class="flag">the executor refused this move: ' + esc(t.refused) + '</span>' + (ok ? ' <span class="flag">(the preview expected it to work: the trial run is what will happen)</span>' : ''));
 }
 let addMovePv = null;                                // the preview /save worked out for a move the reviewer added
 // an added move's preview: the one /save worked out, or the target's own (the suggested pages) while those are unchanged
@@ -452,7 +461,9 @@ function moveRowsFor(v, c, mine, row) {
   if (c.candidates == null) { row('Preview', 'not available for this run (audited before the reading order was recorded in full)'); return; }
   if (c.candidates !== 1 || !c.host_found) {
     row('Preview', '<span class="flag">The executor will refuse this move: ' + (c.candidates !== 1 ? c.candidates + ' sections hold pages inside this range (exactly one is needed)' : '') +
-      (c.candidates !== 1 && !c.host_found ? ', and ' : '') + (!c.host_found ? 'no section holds both pages before PDF ' + esc(v.pages[0]) + ' and pages from PDF ' + esc(v.before_page) + ' on' : '') + '.</span>');
+      (c.candidates !== 1 && !c.host_found ? ', and ' : '') + (!c.host_found ? 'no section holds both pages before PDF ' + esc(v.pages[0]) + ' and pages from PDF ' + esc(v.before_page) + ' on' : '') +
+      ((c.refused_by_rules || []).length ? ', because the text ' + (c.refused_by_rules.length === 1 ? 'rule' : 'rules') + ' “' + c.refused_by_rules.map(esc).join('”, “') +
+        '” remove that block first. Reject the rule, or choose other pages' : '') + '.</span>');
     return;
   }
   const li = e => '<li' + (e.id === c.moved ? ' class="moved"' : '') + '>' + roName(e) + '</li>';

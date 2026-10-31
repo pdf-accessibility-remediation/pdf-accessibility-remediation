@@ -181,7 +181,11 @@ def test_the_trial_run_reports_the_executors_figure_moves(tmp_path):
     src = sections_pdf(tmp_path / 'sections.pdf')
     (tmp_path / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.1'}))
     res = core.dry_run(str(tmp_path), str(src))
-    assert res['figure_moves'] == [] and res['seconds'] >= 0                  # no figures: nothing to move
+    assert res['figure_moves'] == [] and res['seconds'] >= 0 and res['section_move'] is None   # no figures, no move asked
+    (tmp_path / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.1', 'move_section': {'pages': [2, 2], 'before_page': 3}}))
+    assert core.dry_run(str(tmp_path), str(src))['section_move']['made']['before_page'] == 3       # what the move card shows
+    (tmp_path / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.1', 'move_section': {'pages': [2, 2], 'before_page': 99}}))
+    assert 'host found: False' in core.dry_run(str(tmp_path), str(src))['section_move']['refused']
     bad = core.dry_run(str(tmp_path), str(tmp_path / 'missing.pdf'))
     assert bad['figure_moves'] is None and 'stopped' in bad['why']             # the card then says they were not worked out
 
