@@ -15,19 +15,25 @@ const sn = id => /^\d+$/.test(String(id)) ? 'session ' + Number(id) : id === 'ai
 const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
 // Title Case for labels (headings, toggles, column headers, buttons); explanatory text stays in sentence case. The rule of
 // lib/titles.py: a, an, the, and, or, of, to, in, on, for, by, from, with stay lowercase unless first, last, or first after a
-// colon or question mark; a word with a capital inside, a dot, slash, underscore or digit is left as written.
+// colon or question mark; a word with a capital inside, a dot, slash, underscore or digit is left as written, and so is
+// everything in parentheses (a qualifier stays lowercase: "Sent to (optional)").
 const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with']);
 function tc(s) {
-  const w = String(s).split(' '); let edge = true;
+  const w = String(s).split(' '); let edge = true, depth = 0;
   return w.map((x, n) => {
     const i = x.search(/[^("'*[`]/), core = i < 0 ? '' : x.slice(i), first = edge || n === w.length - 1;
+    const inside = depth > 0 || /^["'*[`]*\(/.test(x);
+    depth = Math.max(0, depth + (x.match(/\(/g) || []).length - (x.match(/\)/g) || []).length);
     edge = /[:?—]$/.test(x);
+    if (inside) return x;
     if (!core || !/^\p{L}/u.test(core) || /[./_@\d]/.test(core) || /\p{Lu}/u.test(core.slice(1))) return x;
     if (!first && SMALL.has(core.replace(/[:?!.,;)"'*`\]]+$/, ''))) return x;
     return x.slice(0, i) + core[0].toUpperCase() + core.slice(1);
   }).join(' ');
 }
 const $ = id => document.getElementById(id);
+// the one command a person needs here, with what it does and where to type it
+const START = 'To start the app again, open a terminal in the project\'s pipeline folder and type python3 app.py; this page then works again.';
 const encRun = run => run.split('/').map(encodeURIComponent).join('/');
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? { cache: 'no-store' } :
@@ -48,15 +54,14 @@ function confirmDlg(title, text, yes, opener) {
   });
 }
 // A session's notes in a pop-up box, read-only (review.html's own script has the same box for the report's Notes). Not
-// modal: the page stays usable beside it. It moves by its title bar (or, by keyboard, the arrow keys on its Move button;
-// Shift with an arrow key resizes it), resizes from its corner, and closes with × or Escape. Focus goes into its text on
-// open and back to the Notes button on close (found by id: the panel may have redrawn it meanwhile).
+// modal: the page stays usable beside it. It moves by its title bar, resizes from its corner, and closes with × or
+// Escape. Focus goes into its text on open and back to the Notes button on close (found by id: the panel may have
+// redrawn it meanwhile). Moving it is never needed to read the notes, which scroll inside it.
 function notesBox(title, text, opener) {
   let d = $('pp-notes');
   if (!d) {
     d = document.createElement('dialog'); d.id = 'pp-notes'; d.className = 'pp-ndlg'; d.setAttribute('aria-labelledby', 'pp-notes-h');
     d.innerHTML = '<div class="pp-nbar"><h2 id="pp-notes-h"></h2>' +
-      '<button type="button" class="pp-nmove" aria-label="Move the box: arrow keys; Shift and arrow keys resize it"><span aria-hidden="true">✥</span></button>' +
       '<button type="button" class="pp-nx" aria-label="Close the notes"><span aria-hidden="true">×</span></button></div>' +
       '<div class="pp-nbody" tabindex="0" role="region" aria-labelledby="pp-notes-h"></div>';
     document.body.appendChild(d);
@@ -66,12 +71,6 @@ function notesBox(title, text, opener) {
     const put = (x, y) => {                                      // kept inside the window
       d.style.left = Math.max(0, Math.min(innerWidth - 80, x)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
     };
-    d.querySelector('.pp-nmove').addEventListener('keydown', e => {
-      const k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key]; if (!k) return;
-      e.preventDefault();
-      if (e.shiftKey) { d.style.width = Math.max(220, d.offsetWidth + 20 * k[0]) + 'px'; d.style.height = Math.max(120, d.offsetHeight + 20 * k[1]) + 'px'; }
-      else put(d.offsetLeft + 20 * k[0], d.offsetTop + 20 * k[1]);
-    });
     d.querySelector('.pp-nbar').addEventListener('pointerdown', e => {   // drag by the title bar (not its close button)
       if (e.button || e.target.closest('.pp-nx')) return;
       const dx = e.clientX - d.offsetLeft, dy = e.clientY - d.offsetTop, bar = e.currentTarget;
@@ -98,7 +97,7 @@ function showMsg(m, text, ok, focus) {
 }
 function abandonText(open, from) {
   return cap(sn(open.id)) + ' is open (started ' + (open.started || '').replace('T', ' ') + '). Starting from ' +
-         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; it is kept in reviews/sessions/' + open.id + '.json.';
+         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; its choices stay in Session History.';
 }
 
 // ================================================================ in-page links
@@ -144,7 +143,7 @@ if (vbox) {
         const [c, r] = await api(API + '/review', body);
         if (c === 202) { location.assign(BASE + '?opening=' + encodeURIComponent(r.job.id)); return; }   // the person's click: to the run page
         showMsg(m, r.error || 'The app refused this', false, true);
-      } catch (e) { showMsg(m, 'The app is not running: start it with python3 app.py, then try again.', false, true); }
+      } catch (e) { showMsg(m, 'The app is not running. ' + START + ' Then try again.', false, true); }
     });
   }).catch(() => {});
 }
@@ -212,7 +211,7 @@ function jobCard(j) {                                           // heading: the 
   if (j.kind === 'ocr' && j.status === 'running' && j.url)
     h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the OCR Review Page</a>' +
          '<button type="button" id="pp-stop" data-act="stop">Close Without a Verdict</button></div>';
-  if (j.reason) h += '<p><b>Why:</b> ' + esc(j.reason) + '</p><p class="pp-note">Its log is saved in ' + esc(j.log) + '.</p>';
+  if (j.reason) h += '<p><b>Why:</b> ' + esc(j.reason) + '</p><p class="pp-note">The job\'s full output, for whoever looks after the app, is saved in ' + esc(j.log) + '.</p>';
   return h + '</article>';
 }
 
@@ -226,7 +225,7 @@ function jobsBlock(s) {
   const last = lastOk >= 0 ? all[lastOk] : null;
   const previous = all.filter(j => !card.includes(j) && j !== last);
   if (!card.length && !last && !previous.length) return '';
-  let h = '<h3>Jobs for This Run</h3>' + card.map(jobCard).join('');
+  let h = card.map(jobCard).join('');
   if (last) h += '<p class="pp-last"><b>Last Job:</b> ' + esc(cap(last.title)) + '</p>';
   if (previous.length) h += '<details id="pp-previous"><summary>Previous Jobs (' + previous.length + ')</summary><ul>' +
     previous.map(j => '<li>' + esc(cap(j.title)) + (j.reason ? ' <span class="pp-note">' + esc(j.reason) + ' Log: ' + esc(j.log) + '</span>' : '') + '</li>').join('') + '</ul></details>';
@@ -250,8 +249,9 @@ function actions(s) {
                      '), probably from a terminal. The buttons come back when it ends.</p>';
   if (active.length) return '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '. One job at a time per run.</p>';
   let h = '<div class="pp-row">';
-  const from = s.open ? null : s.latest ? sn(s.latest.id) : s.legacy_review ? 'the review recorded before sessions were kept' : 'the AI\'s decisions';
-  h += s.open ? '<button type="button" class="pp-primary" id="pp-review" data-act="review">' + esc(tc('Continue review (' + s.open.label + ', open)')) + '</button>'
+  // in parentheses tc() leaves words as written: a session is named "Session N" there
+  const from = s.open ? null : s.latest ? cap(sn(s.latest.id)) : s.legacy_review ? 'the review recorded before sessions were kept' : 'the AI\'s decisions';
+  h += s.open ? '<button type="button" class="pp-primary" id="pp-review" data-act="review">' + esc(tc('Continue review (' + cap(s.open.label) + ', open)')) + '</button>'
               : '<button type="button" class="pp-primary" id="pp-review" data-act="review">' + esc(tc('Review again (from ' + from + ')')) + '</button>';
   if (s.open) h += '<button type="button" id="pp-discard" data-act="discard">' + esc(tc('Discard ' + s.open.label)) + '</button>';
   if (s.latest || s.open) h +='<button type="button" id="pp-ai" data-act="review" data-from="ai">Start Over from the AI\'s Decisions</button>';
@@ -259,13 +259,13 @@ function actions(s) {
   h += '</div>';
   if (s.ocr && s.ocr.needed)                                     // the OCR text verdict, on its own (no work-order session)
     h += '<div class="pp-row"><button type="button" id="pp-ocr" data-act="ocr">Review OCR Text</button>' +
-         '<span class="pp-note">OCR text: ' + esc(s.ocr.verdict || 'not yet reviewed') + '. The review page has the same OCR Text section.</span></div>';
+         '<span class="pp-note">OCR Text: ' + esc(tc(s.ocr.verdict || 'not yet reviewed')) + '</span></div>';
   if (!s.pinned) h += '<p class="pp-note">Review again first re-audits this run to pin it (free, a minute or more).</p>';
   return h;
 }
 
 function historyBlock(s) {
-  const rows = s.sessions || [];
+  const rows = (s.sessions || []).slice().sort((a, b) => Number(b.id) - Number(a.id));   // newest first
   let h = '<details id="pp-hist"><summary>Session History (' + rows.length + ')</summary>';
   if (!rows.length) h += '<p>' + (s.legacy_review ? 'Reviewed before sessions were kept: Review again records that review as session 1.' : 'Never reviewed: the result was applied without review.') + '</p>';
   else h += '<div class="pp-tw" tabindex="0" role="region" aria-label="Session History Table"><table><caption>Review Sessions of This Run</caption><thead><tr>' +
@@ -273,12 +273,12 @@ function historyBlock(s) {
     '<th scope="col">Changes from the AI</th><th scope="col">Set in This Session</th><th scope="col">Notes</th><th scope="col">Result</th><th scope="col">Action</th></tr></thead><tbody>' +
     // a session's name and notes are a person's own text: escaped, never Title Cased
     rows.map(r => '<tr><th scope="row"><span class="pp-nw">' + esc(cap(r.label)) + (r.current ? ' (current)' : '') + '</span>' + (r.name ? '<span class="pp-name">' + esc(r.name) + '</span>' : '') + '</th><td>' + esc(r.status) + (r.summary_only ? ' (summary only)' : r.inferred ? ' (inferred)' : '') +
-      '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td class="pp-nw">' + esc(r.date || (r.started || '').slice(0, 10) || 'not recorded') + '</td><td class="pp-nw">' + esc(r.from_label) +
+      '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td class="pp-nw">' + esc(r.date || (r.started || '').slice(0, 10) || 'not recorded') + '</td><td class="pp-nw">' + esc(/^session \d/.test(r.from_label) ? cap(r.from_label) : r.from_label) +
       '</td><td>' + esc(r.changes) + '</td><td>' + esc(r.since_start) + '</td><td>' +
       (r.notes ? '<button type="button" class="pp-link" id="pp-notes-' + esc(r.id) + '" data-act="notes" data-id="' + esc(r.id) + '">Notes</button>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') +
       '</td><td>' + ((r.status === 'finished' || r.status === 'applied') && !s.live_review && !s.lock ? '<button type="button" id="pp-from-' + esc(r.id) + '" data-act="review" data-from="' + esc(r.id) + '">' + esc(tc('Review again from ' + r.label)) + '</button>' : '') +
       '</td></tr>').join('') + '</tbody></table></div>';
-  if (s.ai_result) h += '<p><a href="' + esc(s.ai_result) + '">The result applied without review</a> (kept in reviews/versions/ai/).</p>';
+  if (s.ai_result) h += '<p><a href="' + esc(s.ai_result) + '">The result applied without review</a> (kept with the run).</p>';
   return h + '</details>';
 }
 
@@ -351,7 +351,7 @@ box.addEventListener('click', async e => {
     quiet = true;                                                // set after this click's own keydown/pointerdown
     await poll(true);
     const hd = $('jh-' + r.job.id); if (hd) hd.focus();
-  } catch (err) { msg('The app is not running: start it with python3 app.py, then try again.', false, true); }
+  } catch (err) { msg('The app is not running. ' + START + ' Then try again.', false, true); }
 });
 
 // ---------------------------------------------------------------- following the jobs
@@ -378,7 +378,7 @@ async function poll(force) {
   let s, b;
   try { [s, b] = await api(API); }
   catch (e) {                                                    // no answer at all: the app is not running
-    banner('pp-offline', 'The app is not running, so this page cannot start or follow jobs. Start it from pipeline/ with python3 app.py; jobs already running carry on.');
+    banner('pp-offline', 'The app is not running, so this page cannot start or follow jobs; jobs already running carry on. ' + START);
     offline = true;
   }
   if (s !== undefined) {

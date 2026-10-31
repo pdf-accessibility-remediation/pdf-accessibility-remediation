@@ -478,7 +478,7 @@ def test_the_page_shows_no_log_or_command_and_every_job(app):
     assert runs.shown_path(os.path.join(config.ROOT, 'runs', '.app', 'jobs', 'x.log')) == os.path.join('runs', '.app', 'jobs', 'x.log')
     assert v['reason'] == 'The command ended with an error (exit 1).' and v['title'] == 'Apply 11 → failed (10:00)'
     js = src('webapp/panel.js')
-    assert 'Log and command' not in js and 'The same from a terminal' not in js and 'Previous Jobs (' in js and 'Its log is saved in' in js
+    assert 'Log and command' not in js and 'The same from a terminal' not in js and 'Previous Jobs (' in js and "The job\\'s full output, for whoever looks after the app, is saved in" in js
     assert 'Earlier jobs' not in js and v['action'] == 'Apply 11' and v['result'] == 'failed (10:00)'
     assert 'aria-hidden="true"></span>' in js and 'pp-spin' in js
     assert 'prefers-reduced-motion: reduce) { .pp .pp-spin { animation: none; } }' in src('webapp/panel.css')
@@ -564,8 +564,8 @@ def test_the_report_review_section(tmp_path):
     rec = {'review': {'session': '002', 'sessions': ss, 'run': '../runs/b/r', 'decisions': [{'id': 'x', 'kind': 'retype', 'label': 'A', 'page': 2, 'status': 'approved'}]}}
     out = ''.join(H.review_card(str(tmp_path), rec))
     assert '<p><strong>Session 2</strong> · sss · 2026-10-29 · 9 approved · 0 rejected · 2 accepted without review</p>' in out
-    assert out.count('<td><span class="nowrap">2 <strong>(current)</strong></span></td>') == 1 and '<td class="nowrap">3 from session 1</td>' in out
-    assert '<td class="nowrap">none</td>' in out and '<td class="nowrap">session 1</td>' in out                # From and Carried never wrap
+    assert out.count('<td><span class="nowrap">2 <strong>(current)</strong></span></td>') == 1 and '<td class="nowrap">3 from Session 1</td>' in out
+    assert '<td class="nowrap">none</td>' in out and '<td class="nowrap">Session 1</td>' in out                # From and Carried never wrap
     assert '<details class="fold"><summary>Previous Sessions (1)</summary>' in out and '<td class="nowrap">2026-10-28</td>' in out
     assert out.index('Previous Sessions (1)') < out.index('<td><span class="nowrap">1</span></td>')         # session 1 only inside the fold
     assert '<th scope="col">Notes</th>' in out and out.count('<td class="notes">none</td>') == 2 and 'Session Notes' not in out   # no names, no notes
@@ -581,7 +581,8 @@ def test_the_report_review_section(tmp_path):
 # ------------------------------------------------------------------ Patrick's third pass: capitalization
 @pytest.mark.parametrize('s,want', [
     ("Review of the AI's decisions", "Review of the AI's Decisions"), ('Ready to ship? No', 'Ready to Ship? No'),
-    ('Current result: session 5', 'Current Result: Session 5'), ('veraPDF (WCAG rules)', 'veraPDF (WCAG Rules)'),
+    ('Current result: session 5', 'Current Result: Session 5'), ('veraPDF (WCAG rules)', 'veraPDF (WCAG rules)'),
+    ('Pages (optional)', 'Pages (optional)'), ('Sent to (optional)', 'Sent to (optional)'), ('Continue review (Session 2, open)', 'Continue Review (Session 2, open)'),
     ('Previous jobs (2)', 'Previous Jobs (2)'), ('Review again from session 4', 'Review Again from Session 4'),
     ("Start over from the AI's decisions", "Start Over from the AI's Decisions"), ('review.md of a run', 'review.md of a Run'),
     ('H1 and title', 'H1 and Title'), ('a word to', 'A Word To'), ('Pages with something listed (4)', 'Pages with Something Listed (4)')])
@@ -813,8 +814,44 @@ def test_ocr_page_and_notes_box_wording():
     assert "'Finish OCR Review' : 'Record Verdict'" in page and "location.assign(RETURN_TO.split('?')[0] + '?after=ocr')" in page
     assert "q.get('after') === 'ocr' ? 'ocr'" in js and 'Close Without a Verdict' in js and 'Close Without a Verdict' in page
     assert 'Close the OCR Review' not in js + page and 'Name and Notes' not in page and 'placeholder="Where you stopped' not in page
-    assert 'Session Notes (Optional)' in page and 'resize: vertical' in page and 'Sent to (Optional)' in page and 'Current Verdict:' in page
+    assert 'Session Notes (optional)' in page and 'resize: vertical' in page and 'Sent to (optional)' in page and 'Current Verdict:' in page
     assert 'Ready to ship? ' not in page and "' OCR text approved: '" in page
     assert 'data-act="notes"' in js and '<details id="pp-notes-' not in js
     for code in (js, src('report_html.py')):                               # the same box in the panel and in review.html
-        assert "e.key === 'Escape'" in code and 'resize it' in code and '.focus()' in code
+        assert "e.key === 'Escape'" in code and '.focus()' in code and 'pointerdown' in code
+        assert '✥' not in code and 'nmove' not in code and 'ArrowLeft: [-1, 0]' not in code   # no move handle or arrow-key moving (handoff 09)
+
+def test_the_pages_name_no_files_or_commands():
+    """Handoff 09: the app's pages are for library staff (CLAUDE.md): no folder paths or file names on the run page, the
+    review page or review.html's pending-apply note; the one command a person needs (starting the app) comes with what it
+    does and where to type it. Session History newest first, "Session 1" capitalized; the OCR row says only the verdict."""
+    import report_html as H
+    js, page = src('webapp/panel.js'), src('review/page.html')
+    for s in ('reviews/versions/ai/', 'reviews/sessions/', 'Start it from pipeline/', 'start it with python3 app.py', 'Jobs for This Run',
+              'The review page has the same OCR Text section'):
+        assert s not in js, s
+    assert "open a terminal in the project\\'s pipeline folder and type python3 app.py; this page then works again." in js
+    assert "OCR Text: ' + esc(tc(s.ocr.verdict || 'not yet reviewed'))" in js and 'Number(b.id) - Number(a.id)' in js
+    for s in ('workorder.json', 'review.json and review.md', 'editorial decision', 'This Session</h2>', '(Optional)'):
+        assert s not in page, s
+    assert 'The text is shown as OCR read it and isn\\\'t edited on this page.' in page
+    ss = [{'id': f'00{i}', 'from': 'ai' if i == 1 else f'00{i - 1}', 'status': 'applied', 'reviewer': 'K', 'date': '2026-10-31', 'counts': {}} for i in (1, 2, 3)]
+    out = ''.join(H.review_card('.', {'review': {'session': '003', 'sessions': ss, 'pending': {'status': 'finished', 'session': '004', 'reviewer': 'K'}}}))
+    assert 'review_workorder.py' not in out and 'press <strong>Apply Session 4</strong>' in out
+    assert out.index('<span class="nowrap">2</span>') < out.index('<span class="nowrap">1</span>')       # Previous Sessions: newest first
+    assert '<td class="nowrap">Session 2</td>' in out
+
+def test_ocr_refusals_have_a_page_wording():
+    """The review server shows each OCR refusal in plain words; review_ocr.py keeps its own wording (with --reads)."""
+    from review import ocr as O
+    import pytest as P
+    it = {'original': {'pages': 3}, 'ocr': {'pages_with_ocr_text': [1]}, 'cjk_probe': {'cjk_pages': [1]}, 'settings': {'OCR_LANG': 'jpn'}}
+    cases = [({'verdict': 'approved', 'reviewer': 'K', 'reason': 'r'}, '--reads', 'to approve them, tick "I read Japanese".'),
+             ({'verdict': 'approved', 'reviewer': 'K', 'reason': 'a | b', 'reads': ['Japanese']}, "review.md's table", 'The reason can\'t contain the character "|"'),
+             ({'verdict': 'approved', 'reviewer': 'K', 'reason': '[x](y)', 'reads': ['Japanese']}, 'review.html', 'Put a space between them.'),
+             ({'verdict': 'approved', 'reviewer': 'K', 'reason': 'r', 'reads': ['Japanese'], 'pages': 'p3'}, 'for example', 'ex. 381-386'),
+             ({'verdict': 'not approved', 'reviewer': '', 'reason': 'r'}, 'is needed', 'Enter your name as the reviewer first.')]
+    for fields, terminal, page in cases:
+        with P.raises(ValueError) as e: O.check(fields, it, 3)
+        assert terminal in str(e.value) and page in e.value.page
+        for word in ('review.md', 'review.html', '--reads', 'review_ocr.py', '.json'): assert word not in e.value.page

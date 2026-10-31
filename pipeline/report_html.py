@@ -91,7 +91,6 @@ dialog.ndlg[open] { display: flex; flex-direction: column; }
 .nbar { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; background: var(--bg); border-bottom: 1px solid var(--line); cursor: move; user-select: none; touch-action: none; }
 .nbar h2 { flex: 1; font-size: 15px; margin: 0; padding: 0; border: 0; overflow-wrap: anywhere; }
 dialog.ndlg button { min-width: 28px; min-height: 28px; padding: 0 6px; border: 0; background: none; color: var(--ink); font-size: 18px; line-height: 1; cursor: pointer; }
-dialog.ndlg .nmove { cursor: move; }
 .nbody { flex: 1; overflow: auto; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 dialog.ndlg :focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 hr.thin { border: 0; border-top: 1px solid var(--line); margin: 14px 0 8px; } h3.rev-sub { font-size: 15px; margin: 0 0 4px; }
@@ -329,18 +328,18 @@ def review_card(R, rec):
     """The "Review" section: one line for the current session, its row (earlier sessions folded), each decision's review
     status, and the command that reopens the review (folded)."""
     rv = rec.get('review') or {}; wo = rec.get('workorder') or {}
-    run = rv.get('run') or os.path.relpath(R, HERE)
     B = ['<section class="card-review" aria-labelledby="rev-h"><h2 id="rev-h">Review of the AI\'s Decisions</h2>']
     pend = rv.get('pending') or {}
     if pend.get('status') == 'finished':
         B.append(f'<p><strong>Session {int(pend["session"])} ({E(pend.get("reviewer") or "")}) is finished but not applied</strong>: this result is older '
-                 f'than the latest sign-off. Apply it: <code>python3 review_workorder.py {E(run)} --apply</code></p>')
+                 f'than the latest sign-off. To apply it, open this book\'s run page in the app and press '
+                 f'<strong>Apply Session {int(pend["session"])}</strong>.</p>')
     ss = rv.get('sessions') or []
     if ss:
         cur = rv.get('session')
         def frm(x):
             f = x.get('from')
-            return 'the AI\'s decisions' if f in ('ai', None) else 'the recorded summary' if f == 'summary' else f'session {int(f)}'
+            return 'the AI\'s decisions' if f in ('ai', None) else 'the recorded summary' if f == 'summary' else f'Session {int(f)}'
         def row(x):
             c = x.get('counts') or {}
             what = ('summary only: ' if x.get('summary_only') and not x.get('inferred') else 'inferred from the summary: ' if x.get('inferred') else '') + \
@@ -351,7 +350,7 @@ def review_card(R, rec):
             return (f'<tr><td><span class="nowrap">{int(x["id"])}{mark}</span>{name}</td><td class="nowrap">{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(x.get("date") or "")}</td>'
                     f'<td>{E(x.get("status") or "")}</td><td class="nowrap">{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td>'
                     f'<td class="notes">{notes_open(x)}</td></tr>')
-        now = [x for x in ss if x['id'] == cur]; earlier = [x for x in ss if x['id'] != cur]
+        now = [x for x in ss if x['id'] == cur]; earlier = sorted((x for x in ss if x['id'] != cur), key=lambda x: int(x['id']), reverse=True)   # newest first
         if now:
             x = now[0]; c = x.get('counts') or {}
             parts = ([f'{c.get("approved") or 0} approved'] + ([f'{c["changed"]} changed'] if c.get('changed') else []) +
@@ -684,9 +683,9 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
 })();
 (function () {
   // a session's notes in a pop-up box, read-only (the app's run page has the same box, webapp/panel.js notesBox). Not modal:
-  // the page stays usable beside it. It moves by its title bar (or, by keyboard, the arrow keys on its Move button; Shift
-  // with an arrow key resizes it), resizes from its corner, and closes with × or Escape. Focus goes into its text on open
-  // and back to the button that opened it on close.
+  // the page stays usable beside it. It moves by its title bar, resizes from its corner, and closes with × or Escape.
+  // Focus goes into its text on open and back to the button that opened it on close. Moving it is never needed to read
+  // the notes, which scroll inside it.
   var d = null, opener = null;
   function put(x, y) {                  // kept inside the window
     d.style.left = Math.max(0, Math.min(innerWidth - 80, x)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
@@ -695,18 +694,11 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
   function make() {
     d = document.createElement('dialog'); d.className = 'ndlg'; d.setAttribute('aria-labelledby', 'ndlg-h');
     d.innerHTML = '<div class="nbar"><h2 id="ndlg-h"></h2>' +
-      '<button type="button" class="nmove" aria-label="Move the box: arrow keys; Shift and arrow keys resize it"><span aria-hidden="true">✥</span></button>' +
       '<button type="button" class="nx" aria-label="Close the notes"><span aria-hidden="true">×</span></button></div>' +
       '<div class="nbody" tabindex="0" role="region" aria-labelledby="ndlg-h"></div>';
     document.body.appendChild(d);
     d.querySelector('.nx').addEventListener('click', close);
     d.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); close(); } });
-    d.querySelector('.nmove').addEventListener('keydown', function (e) {
-      var k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key]; if (!k) return;
-      e.preventDefault();
-      if (e.shiftKey) { d.style.width = Math.max(220, d.offsetWidth + 20 * k[0]) + 'px'; d.style.height = Math.max(120, d.offsetHeight + 20 * k[1]) + 'px'; }
-      else put(d.offsetLeft + 20 * k[0], d.offsetTop + 20 * k[1]);
-    });
     d.querySelector('.nbar').addEventListener('pointerdown', function (e) {   // drag by the title bar (not its close button)
       if (e.button || e.target.closest('.nx')) return;
       var dx = e.clientX - d.offsetLeft, dy = e.clientY - d.offsetTop, bar = e.currentTarget;

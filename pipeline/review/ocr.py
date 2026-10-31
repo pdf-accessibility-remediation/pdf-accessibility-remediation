@@ -73,31 +73,47 @@ def and_list(xs):
     return ' and '.join(xs) if len(xs) < 3 else ', '.join(xs[:-1]) + ' and ' + xs[-1]
 
 # ------------------------------------------------------------------ checking a verdict
+# Every refusal has two wordings: the terminal's (review_ocr.py, its options named) and the page's (`page`: plain words for
+# library staff, no file names or options), which the review server shows.
+PAGE_NAMES = {'the reviewer\'s name': 'Your name', 'the reason': 'The reason', 'who it is sent to': '"Sent to"',
+              'the language read': 'The language you read'}
+
+def refusal(terminal, page):
+    e = ValueError(terminal); e.page = page
+    return e
+
 def one_line(name, s, limit, required=False):
     """A person's text that goes into review.md's table row: one line, within the limit, no '|' (it would end the table
     cell) and no '](' (review.html turns [text](link) into a link)."""
-    s = core.clean_text(s, one_line=True)
-    if required and not s: raise ValueError(f'{name} is needed')
-    if len(s) > limit: raise ValueError(f'{name} is {len(s)} characters long; at most {limit}')
-    if '|' in s: raise ValueError(f'{name} cannot contain "|" (it would break review.md\'s table): use another character')
-    if '](' in s: raise ValueError(f'{name} cannot contain "](" (review.html would read it as a link)')
+    s = core.clean_text(s, one_line=True); who = PAGE_NAMES.get(name, name[:1].upper() + name[1:])
+    if required and not s:
+        raise refusal(f'{name} is needed', 'Enter your name as the reviewer first.' if name == 'the reviewer\'s name' else f'{who} is needed.')
+    if len(s) > limit: raise refusal(f'{name} is {len(s)} characters long; at most {limit}', f'{who} is too long: {len(s):,} characters, at most {limit:,}.')
+    if '|' in s: raise refusal(f'{name} cannot contain "|" (it would break review.md\'s table): use another character',
+                               f'{who} can\'t contain the character "|". Use another one, such as a comma or a slash.')
+    if '](' in s: raise refusal(f'{name} cannot contain "](" (review.html would read it as a link)',
+                                f'{who} can\'t contain "](" (a closing square bracket right before an opening parenthesis). Put a space between them.')
     return s
 
 def check_pages(s, n):
     """'381-386' or '5, 9-12': the format review_ocr.py has always taken, each page within the book and each range in order."""
     s = core.clean_text(s, one_line=True)
     if not s: return None
-    if not PAGES.fullmatch(s): raise ValueError(f'pages "{s}": give PDF page numbers and ranges, for example 381-386 or 5, 9-12')
+    if not PAGES.fullmatch(s): raise refusal(f'pages "{s}": give PDF page numbers and ranges, for example 381-386 or 5, 9-12',
+                                             'Pages: give PDF page numbers and ranges, ex. 381-386 or 5, 9-12.')
     for part in s.split(','):
         a, _, b = part.strip().partition('-')
         a, b = int(a), int(b or a)
-        if not 1 <= a <= b <= n: raise ValueError(f'pages "{part.strip()}": the book has PDF pages 1 to {n}' + (' and a range goes up' if a > b else ''))
+        if not 1 <= a <= b <= n:
+            raise refusal(f'pages "{part.strip()}": the book has PDF pages 1 to {n}' + (' and a range goes up' if a > b else ''),
+                          f'Pages {part.strip()}: ' + ('a range goes from the lower page to the higher one, ex. 5-9.' if a > b else f'this book has PDF pages 1 to {n:,}.'))
     return s
 
 def check(fields, intake, n_pages, date=None):
-    """The verdict as it is recorded, from the page's or the command line's fields; raises ValueError."""
+    """The verdict as it is recorded, from the page's or the command line's fields; raises ValueError (with `page`, the
+    page's wording)."""
     verdict = str(fields.get('verdict') or '').strip().lower()
-    if verdict not in VERDICTS: raise ValueError(f'the verdict is one of: {", ".join(VERDICTS)}')
+    if verdict not in VERDICTS: raise refusal(f'the verdict is one of: {", ".join(VERDICTS)}', 'Choose a verdict first.')
     date = date or datetime.date.today().isoformat()
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ValueError('the date must be YYYY-MM-DD')
     v = {'verdict': verdict, 'reviewer': one_line('the reviewer\'s name', fields.get('reviewer'), WHO_MAX, required=True), 'date': date}
@@ -111,8 +127,9 @@ def check(fields, intake, n_pages, date=None):
     reads = [one_line('the language read', x, READS_MAX) for x in (fields.get('reads') or []) if str(x or '').strip()]
     lang = languages(intake, listed_pages(intake))
     if verdict == APPROVED and lang['non_latin'] and not reads:
-        raise ValueError(f'these pages are in a non-Latin script: approving needs the reviewer to say they read {lang["label"]}'
-                         ' (on the page: the "I read" box; review_ocr.py: --reads)')
+        raise refusal(f'these pages are in a non-Latin script: approving needs the reviewer to say they read {lang["label"]}'
+                      ' (on the page: the "I read" box; review_ocr.py: --reads)',
+                      f'These pages are in a non-Latin script: to approve them, tick "I read {lang["label"]}".')
     if reads: v['reads'] = reads
     return v
 
