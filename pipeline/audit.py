@@ -178,6 +178,7 @@ for e in elems:
         'group': e['style'] in readorder.GROUPING or mapped(e['style']) in readorder.GROUPING,
         'under': ref(e['par']) if e['par'] is not None and top is False else None, 'top': top,
         'firsts': [min(x) for k in e['kids'] if (x := page_span(k))],
+        'kid_styles': sorted({k['style'] for k in e['kids']}),   # the review page: a container of captions only is tied to its figure
         # a small one-page container's runs, so the review page can tell which of the AI's text rules would hide it
         **({'runs': [mc_text(p, m) for p, m in rs]} if ps and len(ps) == 1 and len(rs := own_runs(e, [])) <= 100 else {})})
 

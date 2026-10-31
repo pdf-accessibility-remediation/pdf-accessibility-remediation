@@ -187,6 +187,15 @@ def test_reading_order_cards_carry_and_reach_the_record(tmp_path):
     wo = core.apply_decisions(ai, items, dec)
     assert wo == ai                                            # nothing applied: a finding is not in the work order
 
+def test_reviewer_notes_are_named_by_their_card():
+    rv = {'notes': {'reading_order:jump:10': 'fix the column order in Acrobat', 'add:alt:21 0 R': 'map', 'gone:1': 'old card'}}
+    decisions = [{'id': 'reading_order:jump:10', 'label': 'Text on PDF 10 jumps back up the page', 'status': 'seen'}]
+    rows = S.note_rows(rv, decisions, [{'id': 'gone:2', 'label': 'from the page'}])
+    assert rows == [('Text on PDF 10 jumps back up the page', 'reading_order:jump:10', 'fix the column order in Acrobat'),
+                    ('Your addition: alt text, 21 0 R', 'add:alt:21 0 R', 'map'),
+                    (None, 'gone:1', 'old card')]                         # no label known: review.md prints the id alone
+    assert S.note_rows(rv, None, [{'id': 'reading_order:jump:10', 'label': 'from review_items.json'}])[0][0] == 'from review_items.json'
+
 # ------------------------------------------------------------------ promotion
 def test_promote_moves_the_old_result_and_keeps_a_record_at_the_top(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)
