@@ -4,12 +4,14 @@
     python3 tools/regression.py --update --reason "why the output changed" [--seed RUNS_BATCH_DIR] [--from-dir DIR]
 
 Each baseline book (tests/baseline/<book>/) holds a saved model reply (reply.txt, with reply.txt.meta.json: the
-original model and temperature), the review.md it gave, and expect.json: a fingerprint of its record.json (veraPDF
+original model and temperature, and for a scanned book the OCR-word list the reply was written for: fingerprint,
+size, list), the review.md it gave, and expect.json: a fingerprint of its record.json (veraPDF
 rules before and after, what apply.py did, what the work-order checks dropped, the tag tree verify.py counted).
 Each book is run again with run_api.sh REPLY= (the saved reply, so no API call) and compared:
   - expect.json, field by field;
   - review.md, line by line, leaving out "Time:", the run-start line and "Libraries:" (they change on every run or
-    with the Python version: tools/compare_runs.py's rule, plus Libraries);
+    with the Python version: tools/compare_runs.py's rule, plus Libraries), and the version number in the veraPDF line
+    (whatever veraPDF is installed; its profile hash is still compared);
   - checks that hold whatever the baseline says: veraPDF ran, no more WCAG rules fail after than before, nothing failed
     in apply, no page looks different, no page's text changed, the original is unchanged.
 An untagged book's folder also holds _intake/ (intake.json, intake.pdf): the intake result its reply was written for,
@@ -27,12 +29,15 @@ difference is one the change meant to make. --seed DIR copies each book's reply 
 import sys, os, re, json, shutil, hashlib, argparse, datetime, subprocess, tempfile, difflib, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 HERE = os.path.dirname(os.path.abspath(__file__)); PIPE = os.path.dirname(HERE); ROOT = os.path.dirname(PIPE)
-sys.path.insert(0, HERE)
+sys.path.insert(0, HERE); sys.path.insert(1, PIPE)
 import compare_runs
+from lib import ocrwords
 
 BASE = os.path.join(PIPE, 'tests', 'baseline')
 BOOKS = ['godzone', 'clans']
 IGNORE = [re.compile(r'^Libraries: ')]       # with compare_runs.VOLATILE: Time and the run-start line
+VERAPDF_VERSION = re.compile(r'^(veraPDF )\d+(?:\.\d+)+')   # the installed veraPDF's version (Homebrew's 1.30.3 calls itself 1.30.0):
+def same_tool(lines): return [VERAPDF_VERSION.sub(r'\1(version)', l) for l in lines]   # compared without it; the profile hash still counts
 
 def prompt_name():
     return re.search(r"^PROMPT_NAME = '([^']+)'", open(os.path.join(PIPE, 'decide.py'), encoding='utf-8').read(), re.M).group(1)
@@ -97,7 +102,9 @@ def seed(src_dir, books):
         if not r.get('raw_reply'): sys.exit(f'--seed: {p} holds no raw_reply')
         os.makedirs(os.path.join(BASE, b), exist_ok=True)
         open(os.path.join(BASE, b, 'reply.txt'), 'w', encoding='utf-8').write(r['raw_reply'])
-        json.dump({k: r['run'][k] for k in ('model', 'temperature') if k in r['run']}, open(os.path.join(BASE, b, 'reply.txt.meta.json'), 'w'), indent=1)
+        json.dump({**{k: r['run'][k] for k in ('model', 'temperature') if k in r['run']},
+                   **ocrwords.carried(r['run'])},       # the OCR-word list the reply was written for
+                  open(os.path.join(BASE, b, 'reply.txt.meta.json'), 'w'), indent=1)
         prompt = os.path.basename(r['run'].get('prompt_file') or '')
         if prompt and prompt != prompt_name(): sys.exit(f'--seed: {b}\'s reply was made with {prompt}, but decide.py uses {prompt_name()}')
         old_in, new_in = os.path.join(os.path.dirname(p), '_intake'), os.path.join(BASE, b, '_intake')
@@ -176,7 +183,7 @@ def main():
             print(f'{b:10} no baseline yet' + ('' if a.update else ': run --update'))
             continue
         d = diff(json.load(open(exp_p, encoding='utf-8')), fingerprint(r))
-        x, y = compare_runs.kept(md_p, IGNORE), compare_runs.kept(os.path.join(R, 'review.md'), IGNORE)
+        x, y = same_tool(compare_runs.kept(md_p, IGNORE)), same_tool(compare_runs.kept(os.path.join(R, 'review.md'), IGNORE))
         md = [l for l in difflib.unified_diff(x, y, lineterm='', n=0) if l[:1] in '+-' and not l.startswith(('+++', '---'))]
         if not d and not md and not broken: same += 1; print(f'{b:10} identical'); continue
         print(f'{b:10} {len(d)} record fields differ, review.md: {sum(1 for l in md if l.startswith("-"))} lines removed, '

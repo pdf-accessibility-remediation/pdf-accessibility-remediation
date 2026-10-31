@@ -36,7 +36,10 @@ ADD_KINDS = {'retype': 'Heading or tag change', 'alt': 'Alt text', 'page_figures
 MAPPABLE = workorder_check.ALLOWED - {'Figure'} | {'H'}  # a style mapped to one of these can be given a new level
 
 def save(path, obj):
-    with open(path, 'w', encoding='utf-8') as f: f.write(json.dumps(obj, ensure_ascii=False, indent=1))
+    """Through a temp file and os.replace, so a stop mid-write never leaves a cut-short JSON file."""
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f: f.write(json.dumps(obj, ensure_ascii=False, indent=1))
+    os.replace(tmp, path)
 
 def load(path, default=None):
     return json.load(open(path, encoding='utf-8')) if os.path.exists(path) else default

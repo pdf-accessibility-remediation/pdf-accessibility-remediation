@@ -2,13 +2,13 @@
 
 Result: `sands_remediated.pdf`
 
-329 pages · run 2026-10-25T23:55:42 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+329 pages · run 2026-10-27T13:32:39 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.8s · audit 73.7s · reuse saved reply 2.8s · apply 103.2s · verify 64.8s · total 245.3s
+Time: intake 1.9s · audit 40.2s · reuse saved reply 2.0s · apply 76.4s · verify 42.6s · total 163.1s
 
 ## Overview
 
@@ -21,7 +21,7 @@ Time: intake 0.8s · audit 73.7s · reuse saved reply 2.8s · apply 103.2s · ve
 - Manual check (PAC): not run
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 13 (6 deferred by the AI · 5 deferred by the executor · 2 CHECK rows)  
+**Needs a person:** 14 (6 deferred by the AI · 5 deferred by the executor · 3 CHECK rows)  
 **AI decisions:** 71 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 2,309 · tag-tree index entries 1,182 · note IDs 495 · standard tags un-remapped (7.1-7) 83 · empty tags removed 69 · decorative lines marked 53 · figures moved to their page 15 · link descriptions that were only a URL 13 · title shown in the window 1  
 **veraPDF (WCAG 2.2 machine checks):** 3 WCAG rules failing before (3,130 checks) → 1 after (1 check) · 0 newly failing
@@ -30,12 +30,12 @@ Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
+| OCR words: every printed spelling attached: the saved reply gave no readings: the word list changed since (4 forms then, 8 now); 8 suspect forms not read by the AI | see §6 | [§6](#6-ocr-words-given-their-printed-spelling-0-forms-0-places) |
 | Content neither tagged nor marked as decoration (veraPDF 7.1-3, 1 check) | PDF 152 (printed 143) | [§16](#16-verapdf-wcag-22-machine-profile-before-and-after) |
 | Reading order jumps back up a column (6 jumps) | PDF 149 (printed 140) | [§17](#17-wcag-checks-verapdf-does-not-make) |
 | 230 Han-only runs need Japanese or Chinese (han_review.csv) | 9 pages, PDF 59 (printed 50) to PDF 319 (printed 310) | [§19](#19-deferred-by-the-executor) |
 | 13 captions not grouped: several figures on the page | PDF 149 (printed 140), PDF 152 (printed 143), PDF 232 (printed 223), PDF 284 (printed 275) | [§19](#19-deferred-by-the-executor) |
-| Remaining veraPDF 7.1-3 failures (content neither marked as artifact nor tagged) | PDF 10 (printed 1), PDF 12 (printed 3), PDF 20 (printed 11) | [§18](#18-deferred-by-the-ai) |
-| … and 5 more | | §18 |
+| … and 6 more | | §18 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -48,7 +48,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | All content tagged or marked as decoration | OK | 0 untagged characters · 0 untagged objects |
 | Untagged paths: none left | OK | 0 untagged paths · 53 rules, borders and lines marked as decoration by this run |
 | Invisible OCR text: every glyph defined | OK | no undefined glyphs in invisible text |
-| OCR words: every printed spelling attached | OK | 0 misread forms given their printed spelling in 0 places |
+| OCR words: every printed spelling attached | **CHECK** | the saved reply gave no readings: the word list changed since (4 forms then, 8 now); 8 suspect forms not read by the AI |
 | Page-level figure wrap | OK | no page with only an untagged drawing |
 | Empty tags removed when proven empty | OK | 69 removed |
 | Tag-tree index points only into the tree | OK | 0 dangling entries · 21 stale entries (marked content no longer drawn) |
@@ -232,7 +232,7 @@ Check each one is (or is not) a heading as decided.
 
 The OCR misread these words, mostly letters with diacritics (ā or ū read as "ii"). The AI read each word from a crop of the scan. Screen readers now speak the printed spelling, and copying gives it (ActualText); the OCR text underneath is unchanged, so a text search still finds the OCR spelling. Apps that ignore ActualText (Preview and other PDFKit readers, some checkers) still show the OCR spelling. Check each reading against the scan on its first page.
 
-- 4 suspect forms were checked by the AI; 4 were judged correct as the OCR read them, or unreadable (e.g. "Hawaii"), and left alone.
+- The saved reply read 4 suspect forms (the word list when it was written) and gave no readings; 8 are listed now. The word list changed since (4 forms then, 8 now). None of today's 8 forms counts as read by the AI: a person checks them against the scan, or a new call reads them.
 
 ### 7. Text a screen reader could not reach (before this run)
 

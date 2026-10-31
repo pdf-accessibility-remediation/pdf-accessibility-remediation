@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Work order review</title>
+<title>Work Order Review</title>
 <style>
 :root {
   color-scheme: light dark;            /* scrollbars and form controls follow the theme */
@@ -15,7 +15,9 @@
           --accent: #7fb0f0; --ok: #6fcf8f; --change: #f0b45c; --reject: #f08a80; --seen: #b3a9f5; --flag: #3a3220; }
 }
 * { box-sizing: border-box; }
-html { scroll-padding-top: calc(var(--top, 0px) + 8px); }   /* a jump to a card lands below the sticky header */
+/* a jump to a card or section lands below the sticky header. On the targets, not as html's scroll-padding: that padding
+   also covered the header's own reviewer field, so the browser scrolled the list on every key typed there */
+main [id] { scroll-margin-top: calc(var(--top, 0px) + 8px); }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 header.top { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; }
 .top h1 { font-size: 17px; margin: 0 0 6px; }
@@ -31,6 +33,8 @@ input[type=text], textarea, select { font: inherit; color: var(--ink); backgroun
 textarea { width: 100%; min-height: 3.2em; }
 #msg { margin-top: 6px; font-size: 14px; }
 #msg.err { color: var(--reject); }
+#session { margin-top: 6px; font-size: 14px; color: var(--muted); }
+#session b { color: inherit; } #session a { color: var(--accent); }
 main { display: flex; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
 nav { flex: 0 0 232px; padding-right: 12px; scrollbar-gutter: stable; position: sticky; top: calc(var(--top, 0px) + 8px); align-self: flex-start; max-height: calc(100vh - var(--top, 0px) - 24px); overflow: auto; font-size: 14px; }
 nav h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 4px; }
@@ -74,6 +78,7 @@ pre { font-size: 12px; background: var(--bg); padding: 6px; border-radius: 6px; 
 .imgs figure { margin: 0; text-align: center; font-size: 12px; color: var(--muted); }
 .imgs img { max-height: 220px; max-width: 100%; border: 1px solid var(--line); background: #fff; cursor: zoom-in; display: block; }
 .imgs figure.here img { outline: 3px solid var(--accent); }
+[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }   /* a section, card or heading focused by script: no outline */
 .controls { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-top: 6px; }
 .controls label { cursor: pointer; }
 button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
@@ -119,32 +124,36 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 </head>
 <body>
 <header class="top">
-  <h1 id="title">Work order review</h1>
+  <h1 id="title">Work Order Review</h1>
   <div class="row">
-    <label>Reviewer <input type="text" id="reviewer" placeholder="your name" size="18"></label>
+    <label>Reviewer <input type="text" id="reviewer" placeholder="Your name" size="18"></label>
     <span><span class="bar"><i id="bar"></i></span> <span id="progress"></span></span>
     <span class="show" role="radiogroup" aria-label="Show">Show:
-      <label><input type="radio" name="view" value="priority" checked> Check first</label>
+      <label><input type="radio" name="view" value="priority" checked> Check First</label>
       <label><input type="radio" name="view" value="all"> All</label>
-      <label><input type="radio" name="view" value="left"> Not reviewed</label>
+      <label><input type="radio" name="view" value="left"> Not Reviewed</label>
     </span>
-    <span class="actions"><button id="addBtn" type="button">Add a decision</button> <button id="save">Save</button>
-    <button id="finish" class="primary">Finish review</button></span>
+    <span class="actions"><button id="addBtn" type="button">Add a Decision</button> <button id="save">Save</button>
+    <button id="finish" class="primary">Finish Review</button></span>
   </div>
   <div id="msg" role="status"></div>
+  <div id="session" hidden></div>
+  <p id="back" hidden><a href="">Back to the Run Page</a> (this review stays open; continue it from there)</p>
 </header>
 <div class="navbar"><button id="navToggle" type="button" aria-expanded="false" aria-controls="nav">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>Sections</button></div>
 <div id="navBackdrop" hidden></div>
 <main>
-  <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close sections">×</button></div><div id="navList"></div></nav>
+  <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close Sections"><span aria-hidden="true">×</span></button></div><div id="navList"></div></nav>
   <div class="col"><div id="addPanel" hidden></div><div id="readingOrder"></div><div id="cards"></div></div>
 </main>
 <div id="zoom"><img alt=""></div>
-<dialog id="gapDialog" aria-labelledby="gapTitle"></dialog>
+<dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>
 <script>
 const DATA = /*REVIEW_DATA*/null;
-const KEY = 'review:' + DATA.book + ':' + DATA.run;
+// the browser draft belongs to one run and one session (the run id is written once, in reviews/basis.json)
+const SESSION = DATA.session || null;
+const KEY = SESSION && SESSION.key ? 'review:' + SESSION.key : 'review:' + DATA.book + ':' + DATA.run;
 const SEEN_ONLY = new Set(['deferrals', 'notes_for_reviewer']);
 const items = DATA.items, byId = Object.fromEntries(items.map(it => [it.id, it]));
 const ADDABLE = DATA.addable || {}, ADD_KINDS = DATA.add_kinds || {};
@@ -159,14 +168,42 @@ try {
 } catch (e) {}
 state.additions = (state.additions || []).filter(a => addById[aid(a)]);
 let view = 'priority', finished = false;
+const RETURN_TO = DATA.return_to || null;             // the app's run page (review_workorder.py --return-to), else the terminal
+if (RETURN_TO) { const b = document.getElementById('back'); b.hidden = false; b.querySelector('a').href = RETURN_TO.split('?')[0]; }
+const NEXT = RETURN_TO ? 'the run page' : 'the terminal';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Title Case for labels (headings, row labels, toggles, buttons); explanatory text stays in sentence case. The rule of
+// lib/titles.py: a, an, the, and, or, of, to, in, on, for, by, from, with stay lowercase unless first, last, or first after a
+// colon or question mark; a word with a capital inside, a dot, slash, underscore or digit is left as written.
+const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with']);
+function tc(s) {
+  const w = String(s).split(' '); let edge = true;
+  return w.map((x, n) => {
+    const i = x.search(/[^("'*[`]/), core = i < 0 ? '' : x.slice(i), first = edge || n === w.length - 1;
+    edge = /[:?—]$/.test(x);
+    if (!core || !/^\p{L}/u.test(core) || /[./_@\d]/.test(core) || /\p{Lu}/u.test(core.slice(1))) return x;
+    if (!first && SMALL.has(core.replace(/[:?!.,;)"'*`\]]+$/, ''))) return x;
+    return x.slice(0, i) + core[0].toUpperCase() + core.slice(1);
+  }).join(' ');
+}
 const pg = (p, lab) => p == null ? '' : 'PDF p. ' + p + (lab && String(lab) !== String(p) ? ' (printed ' + lab + ')' : '');
 const show = v => v == null || v === '' ? '—' : (typeof v === 'object' ? JSON.stringify(v) : String(v));
 function persist() { state.saved_at = new Date().toISOString(); try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 function dec(id) { return state.decisions[id] || (state.decisions[id] = {}); }
 
-document.getElementById('title').textContent = 'Work order review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
+document.getElementById('title').textContent = 'Work Order Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
+if (SESSION && SESSION.reopened) {                    // a finished run reviewed again: where this session started, the current result, OCR
+  const sn = id => 'session ' + Number(id), nc = SESSION.not_carried || [], o = SESSION.ocr;
+  const ocr = !o ? '' : ' · OCR text: ' + (o.current ? '<b>' + esc(o.current.verdict) + '</b> by ' + esc(o.current.reviewer) + ' on ' + esc(o.current.date) : '<b>not yet reviewed</b>') +
+    (o.snapshots && o.snapshots.length ? ' (at each finish: ' + o.snapshots.map(x => sn(x.session) + ' ' + esc(x.verdict ? x.verdict.verdict : 'none')).join(', ') + ')' : '') +
+    '; this review keeps it as it is: change it with review_ocr.py';
+  const el = document.getElementById('session'); el.hidden = false;
+  el.innerHTML = 'Reviewing again: <b>' + sn(SESSION.id) + '</b>, started from ' + esc(SESSION.from_text) +
+    (SESSION.from !== 'ai' ? ' · ' + SESSION.carried + ' choices preloaded' + (nc.length ? ' · <b>' + nc.length + ' not carried</b> (the decision is not the same; shown as not reviewed): ' + nc.slice(0, 6).map(x => esc(x.id)).join(', ') + (nc.length > 6 ? ' …' : '') : '') : '') +
+    ' · <a href="' + esc(SESSION.result) + '" target="_blank" rel="noopener">Current result (' + esc(SESSION.current) + ')</a>' + ocr +
+    ' · Finish re-applies the reviewed order (no AI call).';
+}
 const rv = document.getElementById('reviewer'); rv.value = state.reviewer;
 rv.addEventListener('input', () => { state.reviewer = rv.value; persist(); });
 
@@ -306,7 +343,7 @@ function targetRows(t, row) {
 }
 function addCard(a) {
   const id = aid(a), t = addById[id], it = asItem(t, a.value), rows = [];
-  const row = (k, v) => rows.push('<dt>' + k + '</dt><dd>' + v + '</dd>');
+  const row = (k, v) => rows.push('<dt>' + tc(k) + '</dt><dd>' + v + '</dd>');
   row('Decision type', esc(ADD_KINDS[t.kind] || t.kind) + ' · <b>added by you</b>');
   row(WHAT[t.kind] || 'Decision', '<b>' + esc(t.label) + '</b>');
   row('What this does', esc(explain(it)));
@@ -355,7 +392,7 @@ function renderOrder() {
   const box = document.getElementById('readingOrder'), open = (box.querySelector('details') || {}).open;
   const es = RO.entries || [], n = (RO.flagged || []).length, nh = (RO.flagged || []).filter(f => f.hidden_by).length;
   const npj = (RO.page_jumps || []).length;
-  let h = '<details' + (open ? ' open' : '') + '><summary>Reading order in the original (before changes): ' + (RO.flat ? 'no sections' :
+  let h = '<details' + (open ? ' open' : '') + '><summary>Reading Order in the Original (Before Changes): ' + (RO.flat ? 'no sections' :
     es.length + ' sections and blocks, ' + n + ' read away from their printed place' +
     (nh ? ' (' + (nh === n ? 'all' : nh) + ' of them page numbers or running heads the AI\'s decoration rules hide)' : '') +
     ((RO.late || []).length ? ', ' + RO.late.length + ' small ones read well after their page' : '')) +
@@ -371,7 +408,7 @@ function renderOrder() {
     const d = moveItem ? (state.decisions[moveItem.id] || {}).status : null;
     const mc = !moveItem ? {} : d === 'changed' ? (movePv || {}) : moveItem.context;
     const moveNote = (d === 'rejected' ? 'rejected' : d === 'approved' ? 'approved' : d === 'changed' ? 'your changed pages' : 'not reviewed yet');
-    h += '<label><input type="checkbox" id="roOnly"' + (roOnly ? ' checked' : '') + '> only those read away from their place or late</label><ol>';
+    h += '<label><input type="checkbox" id="roOnly"' + (roOnly ? ' checked' : '') + '> ' + tc('only those read away from their place or late') + '</label><ol>';
     es.forEach((e, i) => {
       const f = roFlag[i];
       const lt = roLate[i];
@@ -406,7 +443,7 @@ function card(it) {
   const d = state.decisions[it.id] || {}, c = it.context, st = d.status || '';
   let h = '<article class="card" id="card-' + esc(it.id) + '" data-id="' + esc(it.id) + '"' + (st ? ' data-status="' + st + '"' : '') + '>';
   const rows = [];
-  const row = (k, v) => rows.push('<dt>' + k + '</dt><dd>' + v + '</dd>');
+  const row = (k, v) => rows.push('<dt>' + tc(k) + '</dt><dd>' + v + '</dd>');
   const where = pg(it.page, it.page_label);
   const span = it.pages && it.pages[0] != null && it.pages[1] !== it.pages[0] ? 'PDF pp. ' + it.pages[0] + '–' + it.pages[1] : '';
   row('Page', esc(span || where || 'not on one page'));
@@ -442,15 +479,17 @@ function card(it) {
   if (c.samples) row('Samples', c.samples.map(x => '“' + esc(String(x).slice(0, 120)) + '”').join(' · '));
   if (c.first || c.first_rows) row('First rows', (c.first || c.first_rows).map(x => '“' + esc(String(x).slice(0, 100)) + '”').join(' · '));
   if (c.page_refs) row('Pages named', esc(c.page_refs.join(', ')));
+  const was = SESSION && SESSION.set_in && SESSION.set_in[it.id];
+  if (was) row('Earlier review', 'preloaded from session ' + Number(was) + (SESSION.inferred && SESSION.inferred[it.id] ? ': ' + esc(SESSION.inferred[it.id]) + ' (inferred from that session\'s recorded changes and counts)' : ''));
   h += '<dl class="fields">' + rows.join('') + '</dl>';
-  if (exact) h += '<details class="exact"><summary>The AI\'s exact entry</summary><pre>' + esc(JSON.stringify(it.ai, null, 1)) + '</pre></details>';
+  if (exact) h += '<details class="exact"><summary>The AI\'s Exact Entry</summary><pre>' + esc(JSON.stringify(it.ai, null, 1)) + '</pre></details>';
   h += imagesHtml(it);
   if (it.key === 'retype' || it.key === 'rolemap') h += '<div class="h1flag" hidden></div>';
   const opts = SEEN_ONLY.has(it.key) ? [['seen', 'Seen']] : [['approved', 'Approve'], ...(it.edit ? [['changed', 'Change']] : []), ['rejected', 'Reject']];
   h += '<div class="controls" role="radiogroup" aria-label="Decision">' + opts.map(([v, l]) =>
     '<label><input type="radio" name="st-' + esc(it.id) + '" data-act="status" value="' + v + '"' + (st === v ? ' checked' : '') + '> ' + l + '</label>').join('') +
     '<button type="button" class="clear" data-act="clear"' + (st ? '' : ' hidden') + ' title="Clear this choice: back to not reviewed">Clear</button></div>';
-  if (it.edit && !SEEN_ONLY.has(it.key)) h += '<div class="edit"' + (st === 'changed' ? '' : ' hidden') + '><div class="edit-label">New value</div>' + editor(it, d) + '</div>';
+  if (it.edit && !SEEN_ONLY.has(it.key)) h += '<div class="edit"' + (st === 'changed' ? '' : ' hidden') + '><div class="edit-label">New Value</div>' + editor(it, d) + '</div>';
   h += '<div class="note"><textarea data-act="note" placeholder="Note (optional)" aria-label="Note">' + esc(d.note || '') + '</textarea></div>';
   h += '<div class="id">ID <code>' + esc(it.id) + '</code></div>';
   return h + '</article>';
@@ -458,8 +497,8 @@ function card(it) {
 
 function render() {
   const secs = sections();
-  document.getElementById('cards').innerHTML = (finished ? '<div class="done">Review finished. Go back to the terminal to continue the run.</div>' : '') +
-    (secs.length ? secs.map(s => '<section id="' + s.id + '"><h2>' + esc(s.title) + ' (' + s.items.length + ')</h2>' + s.items.map(s.adds ? addCard : card).join('') + '</section>').join('')
+  document.getElementById('cards').innerHTML = (finished ? '<div class="done">Review finished. Go back to ' + NEXT + ' to continue the run.</div>' : '') +
+    (secs.length ? secs.map(s => '<section id="' + s.id + '"><h2>' + esc(tc(s.title)) + ' (' + s.items.length + ')</h2>' + s.items.map(s.adds ? addCard : card).join('') + '</section>').join('')
                  : '<p>Nothing to show here.</p>');
   nav(); progress(); refreshH1(); renderOrder();
 }
@@ -485,10 +524,10 @@ function nav() {
   const kinds = []; for (const it of items) if (!kinds.includes(it.kind)) kinds.push(it.kind);
   const pages = {};
   for (const it of items) if (it.priority && it.page != null) (pages[it.page] = pages[it.page] || []).push(it.id);
-  let h = state.additions.length ? '<h2>Your additions</h2><a href="#added" data-view="' + (view === 'left' ? 'priority' : view) + '"><span>Added by you</span><span>' + state.additions.length + '</span></a>' : '';
-  h += '<h2>Check first</h2><a href="#readingOrder"><span>Reading order (original)</span><span>' + (RO.flat ? '–' : (RO.flagged || []).length) + '</span></a>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(DATA.groups[n]) + '</span><span>' + c + '</span></a>').join('');
-  h += '<h2>All decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(k) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
-  h += '<h2>Page index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
+  let h = state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + (view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
+  h += '<h2>Check First</h2><a href="#readingOrder"><span>Reading Order (Original)</span><span>' + (RO.flat ? '–' : (RO.flagged || []).length) + '</span></a>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
+  h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
+  h += '<h2>Page Index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
     '<a href="#card-' + esc(pages[p][0]) + '" data-view="priority"><span>p. ' + p + '</span><span>' + pages[p].length + '</span></a>').join('');
   document.getElementById('navList').innerHTML = h;
 }
@@ -590,14 +629,22 @@ function setNav(open) {
 navBtn.addEventListener('click', () => setNav(!document.body.classList.contains('nav-open')));
 document.getElementById('navClose').addEventListener('click', () => setNav(false));
 backdrop.addEventListener('click', () => setNav(false));
+// a jump to a section or card: the target takes focus (tabindex="-1", no outline), so a screen reader's cursor follows
+function goTo(t) {
+  if (!t) return;
+  if (!t.hasAttribute('tabindex')) t.setAttribute('tabindex', '-1');
+  t.scrollIntoView(); t.focus({ preventScroll: true });
+}
 document.getElementById('nav').addEventListener('click', e => {
   const a = e.target.closest('a'); if (!a) return;
+  e.preventDefault();
   if (narrow()) setNav(false);
   if (a.getAttribute('href') === '#readingOrder') document.querySelector('#readingOrder details').open = true;
   if (a.dataset.view && a.dataset.view !== view && !(view === 'left' && a.dataset.view === 'all')) {
     view = a.dataset.view; document.querySelector('input[name=view][value=' + view + ']').checked = true; render();
-    e.preventDefault(); const t = document.querySelector(a.getAttribute('href')); if (t) t.scrollIntoView();
   }
+  goTo(document.querySelector(a.getAttribute('href')));
+  history.replaceState(null, '', a.getAttribute('href'));
 });
 
 // ---------------------------------------------------------------- add a decision the AI did not make
@@ -611,7 +658,7 @@ function openAdd(kind, target) {
   if (!kinds.length) { panel.hidden = true; return msg('Nothing left to add: every target the review knows of has a decision.', true); }
   addKind = kinds.includes(kind) ? kind : kinds[0];
   addSel = target != null ? 'add:' + addKind + ':' + target : null;
-  panel.innerHTML = '<h2>Add a decision</h2><div class="ctx">For something the AI did not decide: an element it did not retype, a figure with no alt text, a table with no headers. ' +
+  panel.innerHTML = '<h2>Add a Decision</h2><div class="ctx">For something the AI did not decide: an element it did not retype, a figure with no alt text, a table with no headers. ' +
     'A decision the AI made is changed on its own card. Only the elements, figures, tables and styles the audit listed can be chosen; artifact rules and other keys need a hand edit of workorder.json.</div>' +
     '<div class="pick"><label>Kind <select data-add="kind">' + kinds.map(k => '<option value="' + esc(k) + '"' + (k === addKind ? ' selected' : '') + '>' +
       esc(ADD_KINDS[k] + (k === 'page_figures' ? ' (whole page)' : k === 'alt' ? ' (figure)' : '')) + ' (' + addTargets(k).length + ')</option>').join('') + '</select></label>' +
@@ -632,7 +679,7 @@ function fillTargets() {
 function fillDetail() {
   const box = document.getElementById('addDetail'), t = addById[addSel];
   if (!t || t.kind !== addKind) { box.innerHTML = '<div class="buttons"><button type="button" data-add="cancel">Cancel</button></div>'; return; }
-  const rows = [], row = (k, v) => rows.push('<dt>' + k + '</dt><dd>' + v + '</dd>');
+  const rows = [], row = (k, v) => rows.push('<dt>' + tc(k) + '</dt><dd>' + v + '</dd>');
   row(WHAT[t.kind] || 'Decision', '<b>' + esc(t.label) + '</b>');
   targetRows(t, row);
   const blk = blockedBy(t);
@@ -661,7 +708,7 @@ panel.addEventListener('click', e => {
     persist(); panel.hidden = true;
     if (view === 'left') { view = 'priority'; document.querySelector('input[name=view][value=priority]').checked = true; }
     render(); msg('Added. Save checks it with the same rules as the AI\'s decisions.');
-    const c = document.getElementById('card-' + t.id); if (c) c.scrollIntoView();
+    goTo(document.getElementById('card-' + t.id));                // the new card, with focus
   }
 });
 document.getElementById('addBtn').addEventListener('click', () => panel.hidden ? openAdd() : (panel.hidden = true));
@@ -697,10 +744,10 @@ document.getElementById('save').addEventListener('click', async () => {
 // gaps left open at Finish: the reviewer gives a reason for each, or goes back to add what is missing
 function askGaps(gaps) {
   const dlg = document.getElementById('gapDialog');
-  dlg.innerHTML = '<h2 id="gapTitle">Still missing</h2><div class="ctx">The review can finish with these open, but each needs a reason; it goes into review.json and review.md next to the gap.</div>' +
-    gaps.map(g => '<div class="gap"><div>' + esc(g.what) + '</div><textarea data-gap="' + esc(g.id) + '" placeholder="Why it is left open (for example: decorative, or someone else writes these)" aria-label="Reason"></textarea>' +
-      (g.add ? '<button type="button" data-addinstead="' + esc(g.add.kind) + '"' + (g.add.target != null ? ' data-target="' + esc(g.add.target) + '"' : '') + '>Add instead</button>' : '') + '</div>').join('') +
-    '<div class="err" id="gapErr"></div><div class="buttons"><button type="button" data-g="back">Back</button><button type="button" class="primary" data-g="finish">Finish with these reasons</button></div>';
+  dlg.innerHTML = '<h2 id="gapTitle" tabindex="-1">Still Missing</h2><div class="ctx" id="gapCtx">The review can finish with these open, but each needs a reason; it goes into review.json and review.md next to the gap.</div>' +
+    gaps.map(g => '<div class="gap"><div>' + esc(g.what) + '</div><textarea data-gap="' + esc(g.id) + '" placeholder="Why it is left open (for example: decorative, or someone else writes these)" aria-label="Reason">' + esc(((SESSION || {}).gaps_ack || {})[g.id] || '') + '</textarea>' +
+      (g.add ? '<button type="button" data-addinstead="' + esc(g.add.kind) + '"' + (g.add.target != null ? ' data-target="' + esc(g.add.target) + '"' : '') + '>Add Instead</button>' : '') + '</div>').join('') +
+    '<div class="err" id="gapErr" role="alert"></div><div class="buttons"><button type="button" data-g="back">Back</button><button type="button" class="primary" data-g="finish">Finish with These Reasons</button></div>';
   return new Promise(done => {
     const close = v => { dlg.close(); dlg.onclick = null; done(v); };
     dlg.onclick = e => {
@@ -714,7 +761,7 @@ function askGaps(gaps) {
       }
     };
     dlg.oncancel = () => done(null);
-    dlg.showModal();
+    dlg.showModal(); document.getElementById('gapTitle').focus();   // read from the top: the title, then its explanation
   });
 }
 document.getElementById('finish').addEventListener('click', async () => {
@@ -722,27 +769,30 @@ document.getElementById('finish').addEventListener('click', async () => {
   try {
     const extra = {};
     let [s, b] = await post('/finish', extra);
-    if (s === 409 && b.unreviewed) {
+    // not finished yet, a normal step (200, needs): first the unreviewed decisions, then the open gaps
+    if (s === 200 && b.needs === 'unreviewed') {
       if (!confirm(b.unreviewed.length + ' items are not reviewed. Accept them as the AI wrote them, and record that they were not reviewed?')) {
         view = 'left'; document.querySelector('input[name=view][value=left]').checked = true; render();
-        return msg(esc(b.error) + ' They are listed under "Not reviewed".', true);
+        return msg(esc(b.error) + ' They are listed under "Not Reviewed".', true);
       }
       extra.accept_unreviewed = true;
       [s, b] = await post('/finish', extra);
     }
-    if (s === 409 && b.gaps) {
+    if (s === 200 && b.needs === 'gaps') {
       const ack = await askGaps(b.gaps);
       if (!ack) return msg('Not finished' + gapText(b.gaps), true);
       extra.gaps_ack = ack;
       [s, b] = await post('/finish', extra);
     }
-    if (s !== 200) return msg(esc(b.error || 'Finish failed'), true);
+    if (s !== 200 || !b.finished) return msg(esc(b.error || 'Finish failed'), true);
     finished = true; panel.hidden = true;
     document.querySelectorAll('#save, #finish, #addBtn').forEach(x => x.disabled = true);
     msg('Review finished · ' + b.changes + ' changes recorded' + dropText(b.dropped) + (b.gaps.length ? ' · ' + b.gaps.length + ' gaps left open, with your reasons' : '') +
-        '. Go back to the terminal to continue the run.', b.dropped.length > 0);
+        (RETURN_TO ? '. Going to the run page, which shows what happens next.' :
+         SESSION && SESSION.reopened ? '. The terminal is re-applying it now (no AI call); the current result is replaced when that finishes.' : '. Go back to the terminal to continue the run.'), b.dropped.length > 0);
     try { localStorage.removeItem(KEY); } catch (e) {}
     render();
+    if (RETURN_TO) location.assign(RETURN_TO);         // the person's own Finish opens the run page, with the re-apply's progress
   } catch (e) { msg('Could not reach the review server: is it still running in the terminal?', true); }
 });
 render();

@@ -8,6 +8,9 @@
 runs/
 samples/
 
+# the app's machine-specific settings (veraPDF and Java paths): docs/app.md
+pipeline/webapp/settings.local.json
+
 # python and OS clutter
 __pycache__/
 *.pyc

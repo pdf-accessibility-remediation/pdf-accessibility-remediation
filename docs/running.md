@@ -16,6 +16,8 @@ The script audits the PDF and shows the cost estimate and your available credit.
 
 To have a person check the AI's decisions before they are applied, start with `REVIEW=1`: the run stops after the model call, and `review_workorder.py --serve` opens a review page (see [Reviewing the work order](review-step.md)).
 
+To review a finished run again from the browser, with no further commands, start the app: `python3 app.py ../runs/<name>/<label>` (see [The app](app.md)).
+
 The short name (`clans`) names the run folder. The result is named after the original with `_remediated` added (`<file>_remediated.pdf`); `OUT=clans.pdf bash run_api.sh …` names it yourself.
 
 ## Step by step (what `run_api.sh` does)
