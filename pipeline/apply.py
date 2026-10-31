@@ -1282,18 +1282,28 @@ def containers():
         for k in kids(n):
             if is_elem(k) and is_container(k): out.append((k, n)); stack.append(k)
     return out
-def op_move_section(spec):
-    a, b = spec['pages']; before = spec['before_page']
-    sec, host = readorder.section_move(DOC, lambda n: [k for k in kids(n) if is_elem(k) and is_container(k)],
-                                       lambda c: [min(pp(k)) for k in kids(c) if is_elem(k) and pp(k)],
-                                       lambda c: (min(pp(c)), max(pp(c))) if pp(c) else None, a, b, before)
-    if len(sec) != 1 or host is None: reject('move_section', f'{len(sec)} candidate sections, host found: {host is not None}'); return
-    s, spar = sec[0]; set_kids(spar, [k for k in kids(spar) if not same(k, s)])
-    hk = kids(host); j = next(i for i, k in enumerate(hk) if is_elem(k) and pp(k) and min(pp(k)) >= before)
-    set_kids(host, hk[:j] + [s] + hk[j:]); s.P = host; ok('order: section moved')
-    prev = next((max(pp(k)) for k in reversed(hk[:j]) if is_elem(k) and pp(k)), None)
-    log['section_move'] = {'pages': [min(pp(s)), max(pp(s))], 'host': S(host), 'host_pages': [min(pp(host)), max(pp(host))],
-                           'before_page': min(pp(hk[j])), 'after_page': prev}     # where it went: report.py checks it against the preview
+def op_move_section(_spec):
+    """Each section move in the order listed (one, or up to readorder.MAX_MOVES), each matched on the tree as the earlier
+    ones left it. Where each went: log section_moves (report.py checks them against the review page's preview);
+    section_move is the first, as before."""
+    ms = readorder.moves(wo)
+    for i, spec in enumerate(ms, 1):
+        a, b = spec['pages']; before = spec['before_page']
+        tag = f'move {i} (PDF {a}–{b}): ' if len(ms) > 1 else ''
+        sec, host = readorder.section_move(DOC, lambda n: [k for k in kids(n) if is_elem(k) and is_container(k)],
+                                           lambda c: [min(pp(k)) for k in kids(c) if is_elem(k) and pp(k)],
+                                           lambda c: (min(pp(c)), max(pp(c))) if pp(c) else None, a, b, before)
+        if len(sec) != 1 or host is None:
+            reject('move_section', f'{tag}{len(sec)} candidate sections, host found: {host is not None}')
+            log.setdefault('section_moves', []).append(None); continue
+        s, spar = sec[0]; set_kids(spar, [k for k in kids(spar) if not same(k, s)])
+        hk = kids(host); j = next(i for i, k in enumerate(hk) if is_elem(k) and pp(k) and min(pp(k)) >= before)
+        set_kids(host, hk[:j] + [s] + hk[j:]); s.P = host; ok('order: section moved')
+        prev = next((max(pp(k)) for k in reversed(hk[:j]) if is_elem(k) and pp(k)), None)
+        done = {'pages': [min(pp(s)), max(pp(s))], 'host': S(host), 'host_pages': [min(pp(host)), max(pp(host))],
+                'before_page': min(pp(hk[j])), 'after_page': prev}
+        log.setdefault('section_moves', []).append(done)
+        log.setdefault('section_move', done)
 def walk_blocks():
     out, stack = [], [(DOC, None)]
     while stack:
@@ -2589,9 +2599,11 @@ wo.setdefault('links', {})                 # links are always tied to their text
 for fn in (fix_root, fix_flags):
     try: fn()
     except Exception as e: log['failed'].append({'op': fn.__name__, 'error': f'{type(e).__name__}: {e}'[:300]})
-ALWAYS = {'fix_figure_order', 'offpage', 'list_rule', 'language'}    # mechanical: run whether or not the work order asks
+ALWAYS = {'offpage', 'list_rule', 'language'}    # mechanical: run whether or not the work order asks
+ON_UNLESS_FALSE = {'fix_figure_order'}            # runs unless the work order turns it off for this book (false)
+if wo.get('fix_figure_order') is False: log['figure_order_off'] = True
 for key, fn in STEPS:
-    if key in ALWAYS or (key in wo and wo[key] not in (None, False)):
+    if key in ALWAYS or (key in ON_UNLESS_FALSE and wo.get(key) is not False) or (key in wo and wo[key] not in (None, False)):
         try: fn(wo.get(key))
         except Exception as e: log['failed'].append({'op': key, 'error': f'{type(e).__name__}: {e}'[:300]})
 try: fix_page_figures()

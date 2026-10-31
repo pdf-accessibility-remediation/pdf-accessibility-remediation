@@ -125,3 +125,24 @@ def test_deferral_pages():
     wo = {'deferrals': [{'what': 'a', 'pages': [2, 0, 11]}, {'what': 'b', 'pages': 'x'}]}
     assert whys(check(wo)) == ['not PDF page numbers in range'] * 2
     assert wo['deferrals'] == [{'what': 'a', 'pages': [2]}, {'what': 'b'}]
+
+# move_section: one move (prompt v8) or a list of up to 3 (v9), each checked; the shape is kept
+def test_a_single_move_stays_a_single_move():
+    wo = {'move_section': {'pages': [2, 3], 'before_page': 5}}
+    assert check(wo) == [] and wo['move_section'] == {'pages': [2, 3], 'before_page': 5}
+    wo = {'move_section': {'pages': [2, 30], 'before_page': 5}}
+    assert whys(check(wo), 'move_section') == ['bad pages'] and 'move_section' not in wo
+
+def test_moves_past_the_third_are_dropped():
+    wo = {'move_section': [{'pages': [p, p], 'before_page': p + 1} for p in (1, 3, 5, 7)]}
+    assert whys(check(wo), 'move_section') == ['more than 3 section moves'] and len(wo['move_section']) == 3
+
+def test_moves_that_overlap_or_land_inside_another_are_dropped():
+    wo = {'move_section': [{'pages': [2, 4], 'before_page': 8}, {'pages': [4, 5], 'before_page': 9},
+                           {'pages': [6, 6], 'before_page': 3}, {'pages': [9, 9], 'before_page': 1}]}
+    assert whys(check(wo), 'move_section') == ['its pages overlap another section move', 'it lands inside the pages of another section move']
+    assert [m['pages'] for m in wo['move_section']] == [[2, 4], [9, 9]]
+
+def test_a_bad_move_in_a_list_is_dropped_alone():
+    wo = {'move_section': [{'pages': [2], 'before_page': 5}, {'pages': [6, 6], 'before_page': 8}]}
+    assert whys(check(wo), 'move_section') == ['bad pages'] and wo['move_section'] == [{'pages': [6, 6], 'before_page': 8}]

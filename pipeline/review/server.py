@@ -9,8 +9,9 @@ Routes (all call review/core.py; a later front end can replace this file and pag
     GET  /word/<id>.png          one OCR word cut from its word sheet (the image the AI read)
     GET  /result/review.html …   files the caller lists (files=): a reopened review links the run's current result
     POST /save    {reviewer, decisions, additions, saved_at}  → saved to review_decisions.json; returns what the check
-                                 would drop, additions refused, and gaps (no H1, figures without alt); for the section move
-                                 as reviewed, its preview with the reviewed text rules (move_preview), and for one they added (add_move_preview)
+                                 would drop, additions refused, and gaps (no H1, figures without alt); and each section move
+                                 as reviewed (the AI's, changed or not, and added ones): its preview, in the order the
+                                 executor makes them and with the reviewed text rules (move_previews: {card id: preview})
     POST /finish  {…, accept_unreviewed, gaps_ack}            → review.json and the reviewed workorder.json; the server stops.
                                  Not finished yet, but nothing wrong: 200 with needs: "unreviewed" (and the list) while
                                  items are unreviewed, or needs: "gaps" while a gap has no reason, unless the body accepts
@@ -140,7 +141,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
                 dropped, gaps = core.preview(R, wo)
                 return self.send(200, {'saved': True, 'changes': len(core.diff(ai, wo)), 'dropped': dropped, 'refused': refused,
                                        'gaps': gaps, 'unreviewed': len(core.unreviewed(items, decisions)),
-                                       'move_preview': core.changed_move(wo, data, decisions), 'add_move_preview': core.added_move(data, additions, wo)})
+                                       'move_previews': core.move_previews(data, decisions, additions, wo)})
             if self.path == '/finish':
                 if not reviewer: return self.send(400, {'error': 'Enter your name as the reviewer first.'})
                 keep()
