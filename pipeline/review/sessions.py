@@ -60,6 +60,9 @@ class Refused(Exception):
 FALLBACK = ('this run cannot be reviewed again. A new run of the book on today\'s code can be (it is not a review of this '
             'result): python3 review_workorder.py <this run> --replay-to <new run folder> copies its _intake/ and saved reply, '
             'then run the command it prints (INTAKE_REUSE=1 REPLY=… REVIEW=1, no API call)')
+# the same for the app's pages (library staff): no command there; it is in the job's log and in docs/review-step.md
+FALLBACK_PAGE = ('This run can\'t be reviewed again: the pipeline has changed since it was made. A new run of the book from '
+                 'its saved AI reply is needed (free, no AI call); whoever looks after the app can make it.')
 
 def readable(fn, *a):
     """fn(*a) on the kept digest; a digest this version of the review step cannot read is refused, not a traceback."""
@@ -276,10 +279,17 @@ def decision_list(items, decisions):
                     **({'inferred': True} if d.get('inferred') else {}), **({'note': d['note']} if d.get('note') else {})})
     return out
 
+def name_notes(draft, sid):
+    """{name, notes} from a page draft (review_decisions.json), as a session record keeps them: only what is set. A draft
+    with text over the limits (written by hand) keeps nothing rather than failing the finish."""
+    try: name, notes = core.session_fields(draft or {}, sid)
+    except ValueError: return {}
+    return {**({'name': name} if name else {}), **({'notes': notes} if notes else {})}
+
 def summary_row(s):
     """One line of the session table (record.json review.sessions)."""
     rv = s.get('review') or {}
-    return {'id': s['id'], 'from': s.get('from'), 'status': s.get('status'), 'reviewer': s.get('reviewer') or rv.get('reviewer'),
+    return {'id': s['id'], 'name': s.get('name'), 'notes': s.get('notes'), 'from': s.get('from'), 'status': s.get('status'), 'reviewer': s.get('reviewer') or rv.get('reviewer'),
             'date': rv.get('date'), 'started': s.get('started'), 'finished': s.get('finished'), 'applied': s.get('applied'),
             'method': s.get('method') or rv.get('method'), 'summary_only': bool(s.get('summary_only')), 'inferred': bool(s.get('inferred')),
             'counts': rv.get('counts'), 'changes': len(rv.get('changes') or []), 'since_start': len(s.get('since_start') or []),
@@ -448,7 +458,8 @@ def abandon(R, s, say=say_):
     """An open session marked abandoned: its draft (the choices so far) is kept in its record, the open working files
     are removed; nothing else changes (the current result stays)."""
     p = P(R)
-    s['draft'] = load(p['draft']); s['status'] = 'abandoned'; s['abandoned'] = now(); save_session(R, s); tidy_open(R)
+    s['draft'] = load(p['draft']); s.update(name_notes(s['draft'], s['id']))     # its name and notes stay with it
+    s['status'] = 'abandoned'; s['abandoned'] = now(); save_session(R, s); tidy_open(R)
     say(f'  {label(s["id"])} marked abandoned (kept in reviews/sessions/{s["id"]}.json)')
 
 def discard_open(R, say=say_):
@@ -500,7 +511,8 @@ def open_session(R, rec, src=None, pdf=None, discard_open=False, say=say_):
     render_figures(inp, digest, p['audit'])
     src_s = session(R, s['from']) if s['from'] not in ('ai', None) else None
     data['run'] = os.path.relpath(R, os.path.dirname(HERE))
-    data['session'] = {'key': f'{b["run_id"]}:{s["id"]}', 'id': s['id'], 'from': s['from'],
+    data['session'] = {'key': f'{b["run_id"]}:{s["id"]}', 'id': s['id'], 'from': s['from'], 'name_default': f'Session {int(s["id"])}',
+                       'from_name': (src_s or {}).get('name'), 'from_notes': (src_s or {}).get('notes'),   # shown read-only
                        'from_text': ('the AI\'s decisions' if s['from'] == 'ai' else
                                      (summary_text(src_s) if src_s and src_s.get('summary_only') else label(s['from']).capitalize())),
                        'carried': s.get('carried', 0), 'not_carried': s.get('not_carried') or [], 'gaps_ack': s.get('gaps_ack') or {},
@@ -530,6 +542,8 @@ def finish_session(R, s, rec):
     adds = draft.get('additions') or []
     if norm(adds) != norm(s.get('start_additions') or []): since.append({'id': 'additions', 'was': len(s.get('start_additions') or []), 'now': len(adds)})
     intake = load(os.path.join(R, '_intake', 'intake.json'))
+    for k in ('name', 'notes'): s.pop(k, None)
+    s.update(name_notes(draft, s['id']))
     s.update(status='finished', finished=now(), reviewer=v.get('reviewer'), method=v.get('method'), review=v, decisions=dec, additions=adds,
              since_start=since, carried=sum(1 for d in dec.values() if d['set_in'] != s['id']),
              ocr_verdict=((intake or {}).get('review') or {}).get('ocr_text_approved') if intake else None)
@@ -559,6 +573,7 @@ def first_session(R, A, PDF):
     dec = {k: {**{x: d[x] for x in ('status', 'value', 'note') if x in d}, 'ai': by[k]['ai'], 'set_in': sid}
            for k, d in got.items() if (d or {}).get('status') and k in by}
     intake = load(os.path.join(R, '_intake', 'intake.json'))
+    s.update(name_notes(draft, sid))
     s.update(status='applied', finished=v.get('recorded'), applied=now(), reviewer=v.get('reviewer'), method=v.get('method'), review=v,
              decisions=dec, additions=draft.get('additions') or [], carried=0, since_start=[],
              ocr_verdict=((intake or {}).get('review') or {}).get('ocr_text_approved') if intake else None,
@@ -580,8 +595,27 @@ def keep_first(R, A):
         os.makedirs(p['dir'], exist_ok=True); shutil.copy2(os.path.join(R, 'workorder.ai.json'), p['ai'])
 
 # ------------------------------------------------------------------ the lock
+REVIEW_SCRIPTS = ('review_workorder.py', 'review_ocr.py')     # the processes that take reviews/.lock
+
+def command_of(pid):
+    """The command line of a live process, '' when it has ended, None when it cannot be told (no ps)."""
+    try: os.kill(int(pid), 0)
+    except ProcessLookupError: return ''
+    except PermissionError: pass
+    except (TypeError, ValueError, OverflowError): return ''
+    try: r = subprocess.run(['ps', '-p', str(int(pid)), '-ww', '-o', 'command='], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired): return None
+    return r.stdout.strip() if r.returncode == 0 else ''
+
+def review_process(pid):
+    """A lock's holder is alive and a pipeline review process (its command line names a review script), so a pid the
+    system has reused for something else never blocks a run. When the command line cannot be read, alive counts."""
+    cmd = command_of(pid)
+    return cmd is None or any(s in cmd for s in REVIEW_SCRIPTS)
+
 class Lock:
-    """reviews/.lock: one review (open, or being applied) per run. A lock left by a process that has ended is taken over."""
+    """reviews/.lock: one review (open, or being applied) per run. A lock left by a process that has ended, or whose pid
+    now belongs to something other than a review process, is taken over."""
     def __init__(self, R, what):
         self.path = P(R)['lock']; os.makedirs(os.path.dirname(self.path), exist_ok=True)
         for _ in range(2):
@@ -591,9 +625,7 @@ class Lock:
                 return
             except FileExistsError:
                 old = load(self.path) or {}
-                try: os.kill(int(old.get('pid')), 0); alive = True
-                except (OSError, TypeError, ValueError): alive = False
-                if alive: raise Refused(f'another review of this run is running (process {old.get("pid")}, {old.get("what")}, since {old.get("since")})')
+                if old.get('pid') is not None and review_process(old.get('pid')): raise Refused(f'another review of this run is running (process {old.get("pid")}, {old.get("what")}, since {old.get("since")})')
                 os.remove(self.path)
         raise Refused('could not take the review lock')
     def release(self):
