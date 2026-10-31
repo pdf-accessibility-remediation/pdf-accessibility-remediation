@@ -449,6 +449,17 @@ def check(R, wo):
     digest = load(os.path.join(R, '_audit', 'digest.json'))
     return workorder_check.check(wo, digest, set(), {w['id'] for w in digest.get('ocr_words') or []})
 
+def card_of(items, entry):
+    """The id of the card a dropped entry ({where, item, why}) came from, or None: the items under the same key (and field),
+    then the one whose target is named in the dropped entry."""
+    parts = str(entry.get('where') or '').split('.')
+    same = [it for it in items if it['loc'] and it['loc'][0] == parts[0] and (len(parts) < 2 or len(it['loc']) < 2 or str(it['loc'][1]) == parts[1])]
+    if len(same) == 1: return same[0]['id']
+    text = json.dumps(entry.get('item'), ensure_ascii=False)
+    hits = [it for it in same if it['id'].partition(':')[2] and (json.dumps(it['id'].partition(':')[2], ensure_ascii=False) in text
+                                                                 or json.dumps(it.get('ai'), ensure_ascii=False) == text)]
+    return hits[0]['id'] if len(hits) == 1 else None
+
 def preview(R, wo):
     """What the check would drop from wo, and the gaps left after it, without changing wo."""
     wo = copy.deepcopy(wo)

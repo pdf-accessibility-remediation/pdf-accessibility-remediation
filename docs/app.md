@@ -131,7 +131,8 @@ A run made before the dashboards existed (no `review.html`) gets a page with the
   - an apply that finished on its own after the app lost track of it: **Done (the app lost track of the job)**;
   - a review stopped before Finish: **Continue review** carries on with the open session.
 - **An error in the app itself:** one line on the page ("The app hit an error and couldn't do this. Try again; if it happens again, tell whoever looks after the app."); the details go to `runs/.app/server.log`, which the page doesn't name.
-- **A run someone else is working on:** the page says who or what and since when, never a process id: "Someone is already reviewing this run (since 14:02). Try again when they're done." (for an apply: "This run is being applied …").
+- **A run someone else is working on:** the page says who or what and since when, never a process id: "Someone is already reviewing this run (since 14:02). Try again when they're done." (for an apply: "This run is being applied …"). When that other review is a review page the app didn't start (a terminal's `--reopen` or `review_ocr.py --serve`), **Stop the Other Review** asks first ("The other review's session stays open; nothing is lost.") and sends it Ctrl+C, as Stop does; it is refused once that review is past Finish. The lock counts only while its process is alive and is a review process (its command line names `review_workorder.py` or `review_ocr.py`), so a process id the system has reused for something else never blocks a run.
+- **Is a job still running?** The app looks for the job's own command (its process id, recorded by the job's wrapper) and for any process of the job's group whose command line is this job's: the wrapper with the job's id, or the command's script with the run folder, compared as the filesystem compares paths (`~/downloads` and `~/Downloads` are one folder on a Mac). When it cannot tell, it counts the job as running. A job marked interrupted whose process turns out to be alive is shown as running again, with **Open the Review Page** and **Stop Reviewing**.
 - **Messages that name a button, view or section** put the name in quotes, as it appears on screen: 'press "Continue Review" to carry on'.
 - **The app not running:** a banner says so, with the start command. Jobs already running carry on.
 
@@ -139,7 +140,7 @@ A run made before the dashboards existed (no `review.html`) gets a page with the
 
 | What was happening | After Ctrl+C on the app (or a crash) and a new start |
 |---|---|
-| A review page that this app opened, before Finish | It gets Ctrl+C, as in a terminal. The session stays open, and **Continue review** carries on with it. The page's choices are kept in `review_decisions.json` after each **Save**, and in the browser. The browser's copy is per page address, and the review page's port can differ next time, so count on what was saved. |
+| A review page that this app opened, before Finish | It gets Ctrl+C, as in a terminal. The session stays open, and **Continue review** carries on with it. The page's choices are saved to `review_decisions.json` about a second after each change (a save under way is written whole first), and kept in the browser. The browser's copy is per page address, and the review page's port can differ next time, so count on what was saved. |
 | A review page, after an app crash | It may still be running. The panel shows **Open the review page** and **Stop reviewing** for it. |
 | A review past Finish, or any other running job | It carries on and finishes; its end is written to its job file. After the new start, the page shows it. |
 | A job killed or cut off by a restart | **Interrupted**, with what is left (above). |

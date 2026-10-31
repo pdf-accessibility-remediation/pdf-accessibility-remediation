@@ -595,8 +595,27 @@ def keep_first(R, A):
         os.makedirs(p['dir'], exist_ok=True); shutil.copy2(os.path.join(R, 'workorder.ai.json'), p['ai'])
 
 # ------------------------------------------------------------------ the lock
+REVIEW_SCRIPTS = ('review_workorder.py', 'review_ocr.py')     # the processes that take reviews/.lock
+
+def command_of(pid):
+    """The command line of a live process, '' when it has ended, None when it cannot be told (no ps)."""
+    try: os.kill(int(pid), 0)
+    except ProcessLookupError: return ''
+    except PermissionError: pass
+    except (TypeError, ValueError, OverflowError): return ''
+    try: r = subprocess.run(['ps', '-p', str(int(pid)), '-ww', '-o', 'command='], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired): return None
+    return r.stdout.strip() if r.returncode == 0 else ''
+
+def review_process(pid):
+    """A lock's holder is alive and a pipeline review process (its command line names a review script), so a pid the
+    system has reused for something else never blocks a run. When the command line cannot be read, alive counts."""
+    cmd = command_of(pid)
+    return cmd is None or any(s in cmd for s in REVIEW_SCRIPTS)
+
 class Lock:
-    """reviews/.lock: one review (open, or being applied) per run. A lock left by a process that has ended is taken over."""
+    """reviews/.lock: one review (open, or being applied) per run. A lock left by a process that has ended, or whose pid
+    now belongs to something other than a review process, is taken over."""
     def __init__(self, R, what):
         self.path = P(R)['lock']; os.makedirs(os.path.dirname(self.path), exist_ok=True)
         for _ in range(2):
@@ -606,9 +625,7 @@ class Lock:
                 return
             except FileExistsError:
                 old = load(self.path) or {}
-                try: os.kill(int(old.get('pid')), 0); alive = True
-                except (OSError, TypeError, ValueError): alive = False
-                if alive: raise Refused(f'another review of this run is running (process {old.get("pid")}, {old.get("what")}, since {old.get("since")})')
+                if old.get('pid') is not None and review_process(old.get('pid')): raise Refused(f'another review of this run is running (process {old.get("pid")}, {old.get("what")}, since {old.get("since")})')
                 os.remove(self.path)
         raise Refused('could not take the review lock')
     def release(self):

@@ -137,14 +137,76 @@ def test_the_child_gets_exactly_the_recorded_environment(setup, monkeypatch):
     assert {k: v for k, v in got.items() if k != '__CF_USER_TEXT_ENCODING'} == rec      # macOS adds that one to every process
     assert not {'MODEL', 'REPLY', 'OPENROUTER_API_KEY'} & set(got) and got['VERAPDF'] == s['tools']['VERAPDF'] and got['OCR_LANG'] == 'eng'
 
+def test_a_live_job_is_found_whatever_the_folder_case(setup):
+    """Handoff 13 (Patrick's sojourners copy: a live review marked interrupted): the job's process is found by its job id
+    and its script with the run folder compared as the filesystem does, so a folder spelled in another case (~/downloads
+    against ~/Downloads on macOS) still matches; and its own child pid alone is enough."""
+    R = setup / 'runs' / 'Book' / 'Run1'; R.mkdir(parents=True)
+    blind = jobs._case_blind(str(R))
+    other = str(R).swapcase() if blind else str(R)          # the run folder as another app may spell it
+    p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)', 'review_workorder.py', str(R)], start_new_session=True)
+    try:
+        job = {'id': '20261031-012337-739120-review', 'kind': 'review', 'argv': [sys.executable, 'review_workorder.py', other, '--reopen'],
+               'dir': other, 'pgid': p.pid}
+        assert jobs.group_alive(str(setup), job)
+        if blind: assert jobs.path_in(f'python review_workorder.py {R} --reopen', other) and not jobs.path_in('python review_workorder.py /elsewhere', other)
+        assert jobs.group_alive(str(setup), dict(job, pgid=999999, child_pid=p.pid))      # its own pid, whatever the group
+    finally: p.kill(); p.wait()
+    assert not jobs.group_alive(str(setup), job) and not jobs.group_alive(str(setup), dict(job, child_pid=p.pid))
+
+def test_a_job_marked_interrupted_by_mistake_runs_again(setup):
+    """Handoff 13, item 2: a job the app marked interrupted (no exit written by its wrapper) whose process is alive is
+    shown as running again at the next pass; a job that has really ended stays as it is."""
+    s = settings(setup)
+    j = fake(setup, s, 'c/r', 20)
+    jobs.tick(s['jobs'], s)
+    assert wait(lambda: (jobs.load(s['jobs'], j['id']) or {}).get('child_pid'), 20)
+    jobs.update(s['jobs'], j['id'], status='interrupted', ended=jobs.now())                  # the mistake
+    jobs.tick(s['jobs'], s)
+    got = jobs.load(s['jobs'], j['id'])
+    assert got['status'] == 'running' and got['ended'] is None
+    os.killpg(got['pgid'], signal.SIGKILL)
+    assert wait(lambda: not jobs.group_alive(s['jobs'], jobs.load(s['jobs'], j['id'])), 20)
+    jobs.tick(s['jobs'], s)
+    assert jobs.load(s['jobs'], j['id'])['status'] == 'interrupted'                          # really ended: stays so
+    jobs.tick(s['jobs'], s)
+    assert jobs.load(s['jobs'], j['id'])['status'] == 'interrupted'
+
+def test_stop_the_other_review(setup):
+    """Handoff 13, item 3: a review page the app did not start (a terminal's), holding the run's lock: "Stop the Other
+    Review" sends it Ctrl+C; refused for an apply, past Finish, and with no other review."""
+    from webapp import runs
+    s = settings(setup)
+    R = setup / 'runs' / 'd' / 'r'; (R / 'reviews').mkdir(parents=True)
+    with pytest.raises(ValueError, match='No other review'): runs.stop_other(s, 'd/r', str(R))
+    other = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'review_workorder.py', str(R), '--reopen'], stderr=subprocess.DEVNULL)
+    lock = R / 'reviews' / '.lock'
+    since = jobs.datetime.datetime.fromtimestamp(time.time() - 60).isoformat(timespec='seconds')   # the other review began a minute ago
+    try:
+        lock.write_text(json.dumps({'pid': other.pid, 'since': since, 'what': 'apply'}))
+        with pytest.raises(ValueError, match='This run is being applied'): runs.stop_other(s, 'd/r', str(R))
+        lock.write_text(json.dumps({'pid': other.pid, 'since': since, 'what': 'reopen'}))
+        (R / 'reviews' / 'review.json').write_text('{}')                                       # past Finish
+        with pytest.raises(ValueError, match='past "Finish Review"'): runs.stop_other(s, 'd/r', str(R))
+        (R / 'reviews' / 'review.json').unlink()
+        assert runs.stop_other(s, 'd/r', str(R)) == {'pid': other.pid, 'what': 'reopen'}
+        assert other.wait(10) != 0                                                             # Ctrl+C ended it
+    finally:
+        if other.poll() is None: other.kill(); other.wait()
+
 def test_one_job_per_run_and_a_held_lock_refuse(setup):
     s = settings(setup)
     R = setup / 'runs' / 'a' / 'r'; (R / 'reviews').mkdir(parents=True)
     fake(setup, s, 'a/r', R=str(R))
     with pytest.raises(ValueError, match=r'A job for this run is already waiting \(since \d\d:\d\d\)\. One job at a time per run\.'): fake(setup, s, 'a/r', R=str(R))
     R2 = setup / 'runs' / 'b' / 'r'; (R2 / 'reviews').mkdir(parents=True)
-    (R2 / 'reviews' / '.lock').write_text(json.dumps({'pid': os.getpid(), 'since': 'x', 'what': 'reopen'}))
-    with pytest.raises(ValueError, match=r'^Someone is already reviewing this run( \(since \d\d:\d\d\))?\. Try again when they\'re done\.$'): fake(setup, s, 'b/r', R=str(R2))
+    other = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'review_workorder.py'])   # a live review process
+    try:
+        (R2 / 'reviews' / '.lock').write_text(json.dumps({'pid': other.pid, 'since': 'x', 'what': 'reopen'}))
+        with pytest.raises(ValueError, match=r'^Someone is already reviewing this run( \(since \d\d:\d\d\))?\. Try again when they\'re done\.$'): fake(setup, s, 'b/r', R=str(R2))
+    finally: other.kill(); other.wait()
+    (R2 / 'reviews' / '.lock').write_text(json.dumps({'pid': os.getpid(), 'since': 'x', 'what': 'reopen'}))   # a live pid, not a review
+    assert jobs.lock_holder(str(R2)) is None                                                                  # (a reused pid): not held
     p = subprocess.Popen([sys.executable, '-c', 'pass']); p.wait()                        # a lock left by an ended process
     (R2 / 'reviews' / '.lock').write_text(json.dumps({'pid': p.pid, 'since': 'x', 'what': 'reopen'}))
     assert fake(setup, s, 'b/r', R=str(R2))['status'] == 'queued'

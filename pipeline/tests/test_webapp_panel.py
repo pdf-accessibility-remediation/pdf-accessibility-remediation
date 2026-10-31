@@ -637,10 +637,10 @@ def test_the_discard_route(app):
     j = fake(t, s, 'book/r1', 30); jobs.update(s['jobs'], j['id'], kind='review', counted=False)          # its review page is open
     assert wait(lambda: (jobs.load(s['jobs'], j['id']) or {}).get('child_pid'), 20)
     st, b = post(port, '/api/run/book/r1/discard')
-    assert st == 409 and b['error'] == 'the review page is open: press Stop Reviewing first, then Discard'
+    assert st == 409 and b['error'] == 'The review page is open: press "Stop Reviewing" first, then "Discard Session 2".'
     (R / 'reviews' / 'review.json').write_text('{}')                                                       # past Finish
     st, b = post(port, '/api/run/book/r1/discard')
-    assert st == 409 and 'past Finish' in b['error']
+    assert st == 409 and b['error'] == 'This review is past "Finish Review" and is being applied: it can\'t be discarded now.'
     os.killpg(jobs.load(s['jobs'], j['id'])['pgid'], signal.SIGKILL); (R / 'reviews' / 'review.json').unlink()
     assert wait(lambda: jobs.load(s['jobs'], j['id'])['status'] != 'running', 20)
     st, b = post(port, '/api/run/book/r1/discard')
@@ -716,7 +716,8 @@ def test_finish_not_yet_is_200_with_needs(tmp_path):
     assert st == 200 and b['finished'] is True
     th.join(5)
     page = src('review/page.html')
-    assert "if (s === 200 && b.needs === 'unreviewed')" in page and "if (s === 200 && b.needs === 'gaps')" in page and 's === 409' not in page
+    assert "if (s === 200 && b.needs === 'unreviewed')" in page and "if (s === 200 && b.needs === 'gaps')" in page
+    assert 's === 409' not in page.split('finBtn.addEventListener')[1]           # Finish handles no 409 (only auto-save does, silently)
     assert '<h2 id="gapTitle" tabindex="-1">' in page and "document.getElementById('gapTitle').focus();" in page
     assert 'aria-describedby="gapCtx"' in page and 'id="gapErr" role="alert"' in page
 
@@ -887,5 +888,35 @@ def test_review_10_boxes_and_report_wording():
     assert 'OCR Text Approved:' not in page and 'Previous Verdicts (' in page and 'I can read ' in page and 'final sign-off' not in rh
     s = {'what': 'Work order approved on the review page', 'text': 'no (reviewed by Kim on 2026-10-30: 205 decisions accepted without review)'}
     assert H.ship_words(s) == 'no (205 decisions not reviewed)'
-    assert H.ship_words(dict(s, text='no (run without REVIEW=1)')) == 'no (run without REVIEW=1)'
+    assert H.ship_words(dict(s, text='no (run without REVIEW=1)')) == 'no (applied without a review)'          # review 12 L2
+    assert H.ship_words(dict(s, text='no (reviewed by hand edit by K on D, not on the review page)')).startswith('no (reviewed by hand edit')
     assert H.ship_words({'what': 'OCR text approved', 'text': 'yes (approved by K on D)'}) == 'yes (approved by K on D)'
+
+def test_auto_save_and_the_finish_check():
+    """Handoff 13 (#48, the smaller part): no Save button; every change is saved about a second after it is made (POST
+    /keep), one save at a time, an edit made meanwhile carried by the next save; the status line is not announced, a
+    failed save is (role="alert"); the Finish dialog runs the check first and links each choice it would drop to its card."""
+    from review import core
+    page, srv = src('review/page.html'), src('review/server.py')
+    assert 'id="save"' not in page and 'id="saveState"' in page and 'All changes saved' in page and 'Saving…' in page
+    assert 'id="saveAlert" role="alert"' in page and 'id="saveState" class="save-state"' in page          # the state itself: no live region
+    assert 'saveTimer = setTimeout(saveNow, 1000)' in page and 'if (saving || finished) return;' in page
+    assert "if (dirty && !finished) { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }" in page   # an edit made while saving: next, one timer
+    assert "else if (s === 409) ok = true;" in page and "keepalive: true" in page
+    assert "await post('/save')" in page.split('async function askFinish')[1][:600] and 'data-card=' in page
+    assert "d['card'] = core.card_of(items, d)" in srv
+    items = [{'id': 'document:lang', 'loc': ['document', 'lang'], 'ai': 'en'}, {'id': 'document:title', 'loc': ['document', 'title'], 'ai': 'T'},
+             {'id': 'rolemap:Heading 1', 'loc': ['rolemap', 'Heading 1'], 'ai': 'H1'}, {'id': 'rolemap:Body', 'loc': ['rolemap', 'Body'], 'ai': 'P'}]
+    assert core.card_of(items, {'where': 'document.lang', 'item': 'english', 'why': 'not a BCP 47 language tag'}) == 'document:lang'
+    assert core.card_of(items, {'where': 'rolemap', 'item': {'Body': 'Q'}, 'why': 'target not allowed'}) == 'rolemap:Body'
+    assert core.card_of(items, {'where': 'toc', 'item': {}, 'why': 'no such style'}) is None
+
+def test_handoff_13_small_changes():
+    """The OCR section's helper lines name buttons, choices and sections in semi-bold, without quotes, and the choices
+    themselves are normal weight; the status line's "OCR Text" is plain text; the heading shows the book's own file name;
+    review 12's L1 (quotes in the Discard refusal), L3 (no expando on the notes box)."""
+    page, rh, rn = src('review/page.html'), src('report_html.py'), src('webapp/runs.py')
+    assert '<b>Approved</b> passes this part of <b>Ready to Ship?</b>' in page and 'needed for <b>Approved</b> and <b>Not Approved</b>' in page
+    assert '<b>Approved</b> needs this box' in page and 'white-space: nowrap; font-weight: 600; }' not in page
+    assert 'id="hdrOcrLink"' not in page and "if original: data['book'] = original" in src('review/server.py')
+    assert 'press "Stop Reviewing" first, then "' in rn and 'd.opener' not in rh and 'openers = new WeakMap()' in rh

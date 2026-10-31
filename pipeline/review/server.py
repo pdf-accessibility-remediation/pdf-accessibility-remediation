@@ -9,9 +9,10 @@ Routes (all call review/core.py; a later front end can replace this file and pag
     GET  /word/<id>.png          one OCR word cut from its word sheet (the image the AI read)
     GET  /result/review.html …   files the caller lists (files=): a reopened review links the run's current result
     POST /save    {reviewer, decisions, additions, session_name, session_notes, saved_at}  → saved to review_decisions.json;
-                                 returns what the check would drop, additions refused, and gaps (no H1, figures without alt)
-    POST /keep    the same body → saved to review_decisions.json only (the page sends it when the session name or notes
-                                 lose focus, so they survive a closed tab and a new port); refused once Finish has started
+                                 returns what the check would drop (each with the card it came from), additions refused, and
+                                 gaps (no H1, figures without alt): the Finish dialog's check. Refused once Finish has started
+    POST /keep    the same body → saved to review_decisions.json only: the page's auto-save, about a second after each
+                                 change (the browser's copy stays as a backup); refused once Finish has started
     POST /finish  {…, accept_unreviewed, gaps_ack}            → review.json and the reviewed workorder.json; the server stops.
                                  Not finished yet, but nothing wrong: 200 with needs: "unreviewed" (and the list) while
                                  items are unreviewed, or needs: "gaps" while a gap has no reason, unless the body accepts
@@ -101,6 +102,8 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     ocr_wo = wo if ocr_only else ai
     def ocr_section(): return O.section(run_dir, digest, ocr_wo)
     intake = core.load(os.path.join(run_dir, '_intake', 'intake.json')) or {}
+    original = (intake.get('original') or {}).get('file')
+    if original: data['book'] = original                # the book's own file name, not intake.pdf (the copy the decisions were made on)
     page_text = O.Text(data.get('pdf')) if O.needed(intake) and os.path.isfile(data.get('pdf') or '') else None
     text_urls = {f'/ocr/text/{n}.json': n for n in O.showable_pages(intake)} if page_text else {}
     cells = {i: (sh['image'], sh['cells'][str(i)]) for sh in digest.get('ocr_word_sheets') or [] if sh.get('cells')
@@ -224,12 +227,13 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: nothing more is kept.'})
                     keep()
                 return self.send(200, {'kept': True})
-            if self.path == '/save':
+            if self.path == '/save':                        # the Finish dialog's check (Save is gone: auto-save uses /keep)
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: nothing more is saved.'})
                     keep()
                 wo, refused = build()
                 dropped, gaps = core.preview(R, wo)
+                for d in dropped: d['card'] = core.card_of(items, d)   # the card a dropped choice belongs to, for a link
                 return self.send(200, {'saved': True, 'changes': len(core.diff(ai, wo)), 'dropped': dropped, 'refused': refused,
                                        'gaps': gaps, 'unreviewed': len(core.unreviewed(items, decisions))})
             if self.path == '/finish':

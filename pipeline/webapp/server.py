@@ -20,6 +20,7 @@ POST (JSON from the app's own pages only), each answered 202 {job} or 409 {error
     /api/run/<run>/review      {from: null | "ai" | "003", discard_open}: Review again (a pin job first on an unpinned run)
     /api/run/<run>/apply       Apply the finished session that was not applied
     /api/run/<run>/stop        Stop reviewing: Ctrl+C to the open review page, only before Finish
+    /api/run/<run>/stop-other  Stop the Other Review: Ctrl+C to a review page the app did not start (the lock's holder)
     /api/run/<run>/discard     Discard the open session: review_workorder.py --discard-open (marked abandoned, kept);
                                refused while its review page is open or past Finish
     /api/run/<run>/ocr         Review OCR text: the OCR-only review page (review_ocr.py --serve), a job that waits on a person
@@ -243,7 +244,7 @@ def make(s, setup, code=None):
             if not isinstance(body, dict): return self.send(400, {'error': 'not a JSON object'})
             p = urllib.parse.urlsplit(self.path).path
             segs = segments(p[len('/api/run/'):]) if p.startswith('/api/run/') else None
-            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'discard', 'ocr'): return self.send(404, {'error': 'not found'})
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr'): return self.send(404, {'error': 'not found'})
             hit = find_run(s['runs'], segs[:-1])
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
             run, R, _ = hit
@@ -255,6 +256,7 @@ def make(s, setup, code=None):
                 elif segs[-1] == 'apply': j = runs.start_apply(s, run, R)
                 elif segs[-1] == 'ocr': j = runs.start_ocr(s, run, R, self.server.server_address[1], app_pid=os.getpid())
                 elif segs[-1] == 'discard': j = runs.start_discard(s, run, R)
+                elif segs[-1] == 'stop-other': return self.send(200, {'stopped': runs.stop_other(s, run, R)})
                 else: j = runs.stop_review(s, run, R); return self.send(200, {'stopped': j['id']})
             except ValueError as e: return self.send(409, {'error': str(e)})
             jobs.tick(J, s)                                   # start it now if a place is free, rather than within the second

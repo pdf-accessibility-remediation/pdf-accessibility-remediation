@@ -32,8 +32,9 @@ button.primary { background: var(--accent); color: #fff; border-color: var(--acc
 input[type=text], textarea, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 textarea { width: 100%; max-width: 100%; min-height: 3.2em; resize: vertical; }   /* taller only: never wider than its box */
 .sname { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 0; } .sname[hidden] { display: none; }
-.sname { margin-left: -14px; }   /* closer to the Reviewer box than the row's 32 px gap; what follows moves with it */
-@media (max-width: 560px) { .sname { margin-left: 0; } }   /* a phone: it starts its own line */
+/* Reviewer and Session Name as one group, 18 px apart (closer than the row's 32 px); on a narrow screen each starts at
+   the left edge of its own line */
+.who { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
 .sname label { margin-right: 4px; } .sname #notesBtn { margin-left: 18px; }   /* the name close to its box; the notes button apart */
 /* "Back to the Run Page": a link (it goes to another page) that looks like the header's buttons */
 a.btnlink { display: inline-block; font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); text-decoration: none; }
@@ -55,6 +56,10 @@ dialog.npad[open] { display: flex; flex-direction: column; }
 dialog.npad textarea { flex: 1; resize: none; border: 0; border-radius: 0 0 8px 8px; min-height: 0; }
 .npad-restore { position: fixed; right: 16px; bottom: 16px; z-index: 30; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
 .npad-restore[hidden] { display: none; }
+.save-state { align-self: center; font-size: 13px; color: var(--muted); white-space: nowrap; }   /* "All changes saved" / "Saving…" */
+.save-alert:empty { display: none; } .save-alert { margin-top: 6px; font-size: 14px; color: var(--reject); font-weight: 600; }
+.fin-check { border-left: 4px solid var(--change); background: var(--bg); padding: 6px 10px; margin: 8px 0; font-size: 14px; }
+.fin-check ul { margin: 4px 0 0; padding-left: 20px; } .fin-check.err { border-left-color: var(--reject); }
 #msg { margin-top: 6px; font-size: 14px; }
 #msg:has(.msg-x) { display: flex; align-items: flex-start; gap: 8px; } #msg .msg-t { flex: 1; padding-top: 4px; }
 #msg.err { color: var(--reject); }
@@ -140,7 +145,8 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 #ocr-text fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 8px 0; padding: 0 10px 6px; }
 #ocr-text legend { font-weight: 600; padding: 0 4px; margin-bottom: -2px; }
 /* each choice: its radio centred on its label, the name semi-bold */
-#ocr-text fieldset label { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; white-space: nowrap; font-weight: 600; }
+#ocr-text fieldset label { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; white-space: nowrap; }
+#ocr-text .ctx b { font-weight: 600; }   /* in the section's helper lines, names of buttons, choices and sections: semi-bold, no quotes */
 #ocr-text fieldset input[type=radio] { margin: 0; }
 #ocr-text .cur-verdict { margin-bottom: 2px; }
 #ocr-text .prev-verdicts { margin: 0 0 10px; } #ocr-text .prev-verdicts ul { margin-top: 2px; }
@@ -175,17 +181,18 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 <header class="top" id="top">
   <h1 id="title" tabindex="-1">Work Order Review</h1>
   <div class="row">
-    <label>Reviewer <input type="text" id="reviewer" placeholder="Your name" size="18"></label>
-    <span class="sname"><label for="sessionName">Session Name</label><input type="text" id="sessionName" maxlength="80" size="18"><button type="button" id="notesBtn" aria-expanded="false" aria-controls="notepad">Session Notes</button></span>
+    <span class="who"><label>Reviewer <input type="text" id="reviewer" placeholder="Your name" size="18"></label>
+    <span class="sname"><label for="sessionName">Session Name</label><input type="text" id="sessionName" maxlength="80" size="18"><button type="button" id="notesBtn" aria-expanded="false" aria-controls="notepad">Session Notes</button></span></span>
     <span><span class="bar"><i id="bar"></i></span> <span id="progress"></span></span>
     <span class="show" role="radiogroup" aria-label="Show">Show:
       <label><input type="radio" name="view" value="priority" checked> Check First</label>
       <label><input type="radio" name="view" value="all"> All</label>
       <label><input type="radio" name="view" value="left"> Not Reviewed</label>
     </span>
-    <span class="actions"><button id="addBtn" type="button">Add a Decision</button> <button id="save">Save</button>
+    <span class="actions"><button id="addBtn" type="button">Add a Decision</button> <span id="saveState" class="save-state">All changes saved</span>
     <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close Without a Verdict</button></span>
   </div>
+  <div id="saveAlert" role="alert" class="save-alert"></div>
   <div id="msg" role="status"></div>
   <div id="session" hidden></div>
   <div class="hdr-foot"><p id="back" hidden><a href="" class="btnlink">Back to the Run Page</a> (this review stays open; continue it from there)</p>
@@ -260,28 +267,62 @@ function tc(s) {
 }
 const pg = (p, lab) => p == null ? '' : 'PDF p. ' + p + (lab && String(lab) !== String(p) ? ' (printed ' + lab + ')' : '');
 const show = v => v == null || v === '' ? '—' : (typeof v === 'object' ? JSON.stringify(v) : String(v));
-function persist() { state.saved_at = new Date().toISOString(); try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+function persist() { state.saved_at = new Date().toISOString(); try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} saveSoon(); }
+
+// ---------------------------------------------------------------- saving: automatic (there is no Save button)
+// Every change goes to the run about a second after it is made (POST /keep: review_decisions.json, under the server's
+// write lock, refused once Finish has started); the browser's copy above stays as a backup. One save at a time: an edit
+// made while a save is in flight marks the draft dirty, and the save after it (which sends the whole draft) carries it,
+// so no edit is lost. The header says "All changes saved" or "Saving…" (not announced); only a failed save is
+// announced, as an alert saying what to do.
+let saveTimer = null, saving = false, dirty = false;
+const saveState = t => { const el = document.getElementById('saveState'); if (el) el.textContent = t; };
+function saveAlert(t) { document.getElementById('saveAlert').textContent = t || ''; if (t) saveState('Not saved'); }
+function saveSoon() {
+  if (finished || DATA.mode === 'ocr') return;         // the OCR-only page has no draft to save
+  dirty = true; saveState('Saving…'); clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 1000);
+}
+async function saveNow() {
+  clearTimeout(saveTimer); saveTimer = null;
+  if (saving || finished) return;                      // the save in flight looks at `dirty` when it ends
+  saving = true; dirty = false; let ok = false;
+  try {
+    const [s, b] = await post('/keep');
+    if (s === 200) { ok = true; saveAlert(''); }
+    else if (s === 409) ok = true;                     // Finish has started: it records the draft itself
+    else saveAlert('Your last changes could not be saved to the run: ' + (b.error || 'the server refused them') + ' Change it and they are saved again.');
+  } catch (e) {
+    saveAlert('Your last changes could not be saved to the run: the review page has closed, or the app stopped. They are kept in this browser; open the review again from the run page to carry on.');
+  } finally {
+    saving = false;
+    if (dirty && !finished) { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }   // edits made meanwhile: saved next (one timer)
+    else if (ok) saveState('All changes saved');
+  }
+}
+addEventListener('pagehide', () => {                   // a tab closed within the second: the last edits still go
+  if (!dirty || finished || DATA.mode === 'ocr') return;
+  try { fetch('/keep', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, state)) }); } catch (e) {}
+});
 function dec(id) { return state.decisions[id] || (state.decisions[id] = {}); }
 
 document.getElementById('title').textContent = 'Work Order Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
 if (SESSION && SESSION.reopened) {                    // a finished run reviewed again: where this session started, OCR
   const sn = id => 'Session ' + Number(id), nc = SESSION.not_carried || [];
-  const ocr = DATA.ocr ? ' · <a href="#ocr-text" id="hdrOcrLink">OCR Text</a>: <span id="hdrOcr"></span>' : '';   // filled by renderOcr()
+  const ocr = DATA.ocr ? ' · OCR Text: <span id="hdrOcr"></span>' : '';   // filled by renderOcr()
   const el = document.getElementById('session'); el.hidden = false;
   el.innerHTML = 'Reviewing again: <b>' + sn(SESSION.id) + '</b>, started from ' + esc(SESSION.from_text) +
     (SESSION.from !== 'ai' ? ' · ' + SESSION.carried + ' choices preloaded' + (nc.length ? ' · <b>' + nc.length + ' not carried</b> (the decision is not the same; shown as not reviewed): ' + nc.slice(0, 6).map(x => esc(x.id)).join(', ') + (nc.length > 6 ? ' …' : '') : '') : '') +
     ocr + ' · "Finish Review" re-applies the reviewed order (no AI call).';
 } else if (DATA.ocr && DATA.mode !== 'ocr') {            // a first review: the status line has the OCR verdict alone
   const el = document.getElementById('session'); el.hidden = false;
-  el.innerHTML = '<a href="#ocr-text" id="hdrOcrLink">OCR Text</a>: <span id="hdrOcr"></span>';
+  el.innerHTML = 'OCR Text: <span id="hdrOcr"></span>';
 }
 // the OCR verdict is recorded on its own: never counted in "N of M reviewed" or in Finish's count of decisions not reviewed
 const rv = document.getElementById('reviewer'); rv.value = state.reviewer;
 rv.addEventListener('input', () => { state.reviewer = rv.value; persist(); });
 
 // ---------------------------------------------------------------- this session's name and notes
-// prefilled "Session N"; kept in the browser on every key, and on the server when a field loses focus (the review page's
-// port can change, and the browser's copy is per port), with Save, and with Finish
+// prefilled "Session N"; kept in the browser on every key, and saved to the run with every other change (auto-save above)
 const NAME_DEFAULT = (SESSION && SESSION.name_default) || 'Session 1';
 const sName = document.getElementById('sessionName'), sNotes = document.getElementById('sessionNotes');
 sName.value = state.session_name || NAME_DEFAULT; sNotes.value = state.session_notes || '';
@@ -291,14 +332,6 @@ const padNotes = document.getElementById('padNotes'); padNotes.value = sNotes.va
 [sNotes, padNotes].forEach(box => box.addEventListener('input', () => {
   state.session_notes = box.value; (box === sNotes ? padNotes : sNotes).value = box.value; persist();
 }));
-async function keepNow() {
-  if (finished) return;
-  try {
-    const [s, b] = await post('/keep');
-    if (s === 400) msg(esc(b.error), true);            // over a limit; 409 (Finish has started) needs no word
-  } catch (e) {}
-}
-sName.addEventListener('change', keepNow); sNotes.addEventListener('change', keepNow); padNotes.addEventListener('change', keepNow);
 
 // the notepad: "Session Notes" in the header opens it beside the page (not modal), moved by its title bar, resized from its
 // corner; "–" shrinks it to a small "Session Notes" button at the bottom right, which brings it back; × or Escape closes
@@ -390,19 +423,20 @@ function renderOcr() {
   if (ocrPagesOpen === null) ocrPagesOpen = !cur;
   ocrBox.hidden = false;
   let h = '<h2 id="ocrTitle" tabindex="-1">OCR Text</h2><div class="ctx">' + OCR.what.map(esc).join(' ') +
-    ' The text is shown as OCR read it and isn\'t edited on this page. Approving it is one of the conditions for "Ready to Ship?"</div>' +
+    ' The text is shown as OCR read it and isn\'t edited on this page. Approving it is one of the conditions for <b>Ready to Ship?</b></div>' +
     '<p class="cur-verdict"><b>Current Verdict:</b> ' + esc(verdictText(cur)) + '</p>' +
     (hist.length ? '<details class="from-notes prev-verdicts"><summary>Previous Verdicts (' + hist.length + ')</summary><ul>' +
       hist.slice().reverse().map(v => '<li>' + esc(verdictText(v)) + '</li>').join('') + '</ul></details>' : '') +
     (OCR.ship ? '' : '<p class="ctx">This run has not finished yet: the verdict is kept, and the report shows it once the run finishes.</p>') +
     '<form id="ocrForm" novalidate><fieldset><legend>Record a Verdict</legend>' +
     OCR.verdicts.map(v => '<label><input type="radio" name="ocrV" value="' + esc(v) + '"> ' + esc(VERDICT_LABEL[v] || v) + '</label>').join('') + '</fieldset>' +
-    '<div class="ctx" id="ocrHelp">"Approved" passes this part of "Ready to Ship?" "Not Approved" keeps it closed. "Sent to a Language Reader" keeps it closed and says it is waiting for a reader, who then records "Approved" or "Not Approved".' +
-      (OCR_ONLY ? ' "Finish OCR Review" records the verdict and closes this page.' : ' "Record Verdict" records it at once, on its own; this page stays open.') + '</div>' +
-    '<div class="field"><label for="ocrReason">Reason</label><input type="text" id="ocrReason" maxlength="' + OCR.limits.reason + '" aria-describedby="ocrReasonHelp"><div class="ctx" id="ocrReasonHelp">One line; needed for Approved and Not Approved.</div></div>' +
+    // the OCR section's helper lines name buttons, choices and sections in semi-bold, without quotes (CLAUDE.md's exception)
+    '<div class="ctx" id="ocrHelp"><b>Approved</b> passes this part of <b>Ready to Ship?</b> <b>Not Approved</b> keeps it closed. <b>Sent to a Language Reader</b> keeps it closed and says it is waiting for a reader, who then records <b>Approved</b> or <b>Not Approved</b>.' +
+      (OCR_ONLY ? ' <b>Finish OCR Review</b> records the verdict and closes this page.' : ' <b>Record Verdict</b> records it at once, on its own; this page stays open.') + '</div>' +
+    '<div class="field"><label for="ocrReason">Reason</label><input type="text" id="ocrReason" maxlength="' + OCR.limits.reason + '" aria-describedby="ocrReasonHelp"><div class="ctx" id="ocrReasonHelp">One line; needed for <b>Approved</b> and <b>Not Approved</b>.</div></div>' +
     '<div class="field" id="ocrToRow" hidden><label for="ocrTo">Sent to (optional)</label><input type="text" id="ocrTo" maxlength="' + OCR.limits.to + '" placeholder="A person or a team"></div>' +
     '<div class="field"><label for="ocrPagesIn">Pages (optional)</label><input type="text" id="ocrPagesIn" placeholder="ex. 381-386" aria-describedby="ocrPagesHelp"><div class="ctx" id="ocrPagesHelp">PDF page numbers and ranges the verdict covers.</div></div>' +
-    (L.non_latin ? '<div class="field"><label><input type="checkbox" id="ocrReads"> I can read ' + esc(L.label) + '</label><div class="ctx">These pages are in a non-Latin script: "Approved" needs this box.</div></div>' : '') +
+    (L.non_latin ? '<div class="field"><label><input type="checkbox" id="ocrReads"> I can read ' + esc(L.label) + '</label><div class="ctx">These pages are in a non-Latin script: <b>Approved</b> needs this box.</div></div>' : '') +
     '<button type="submit" class="primary">' + (OCR_ONLY ? 'Finish OCR Review' : 'Record Verdict') + '</button></form><div id="ocrMsg" role="status" tabindex="-1"></div>' +
     '<details id="ocrPagesFold"' + (ocrPagesOpen ? ' open' : '') + '><summary>' + esc(tc('Pages (' + OCR.pages.length + ')')) + '</summary>' +
     (OCR.lang ? '' : '<p class="ctx">The text isn\'t marked with a language for screen readers: ' + esc(OCR.lang_why) + '.</p>') +
@@ -466,7 +500,7 @@ if (OCR_ONLY) {                                        // the OCR section alone:
   const back = document.getElementById('back');
   if (!back.hidden) back.innerHTML = '<a href="' + esc(RETURN_TO.split('?')[0]) + '" class="btnlink">Back to the Run Page</a> (this page stays open until you close it here or there)';
   [document.getElementById('sessionName').closest('span'), document.getElementById('progress').parentNode, document.querySelector('.show'),
-   document.getElementById('addBtn'), document.getElementById('save'), document.getElementById('finish'),
+   document.getElementById('addBtn'), document.getElementById('saveState'), document.getElementById('finish'),
    document.getElementById('this-session'), document.getElementById('cards')].forEach(x => { x.hidden = true; });
   const c = document.getElementById('closeOcr'); c.hidden = false;
   c.addEventListener('click', async () => {
@@ -900,7 +934,7 @@ panel.addEventListener('click', e => {
     state.additions.push(Object.assign({ kind: t.kind, target: t.target, value }, note ? { note } : {}));
     persist(); panel.hidden = true;
     if (view === 'left') { view = 'priority'; document.querySelector('input[name=view][value=priority]').checked = true; }
-    render(); msg('Added. Save checks it with the same rules as the AI\'s decisions.');
+    render(); msg('Added. "Finish Review" checks it with the same rules as the AI\'s decisions.');
     goTo(document.getElementById('card-' + t.id));                // the new card, with focus
   }
 });
@@ -927,14 +961,6 @@ async function post(path, extra) {
       session_name: state.session_name, session_notes: state.session_notes, saved_at: state.saved_at }, extra || {})) });
   return [r.status, await r.json()];
 }
-document.getElementById('save').addEventListener('click', async () => {
-  try {
-    const [s, b] = await post('/save');
-    if (s !== 200) return msg(esc(b.error || 'Save failed'), true);
-    msg('Saved · ' + b.changes + ' changes from the AI · ' + b.unreviewed + ' not reviewed yet' + refusedText(b.refused) + dropText(b.dropped) + gapText(b.gaps),
-        b.dropped.length > 0 || (b.refused || []).length > 0);
-  } catch (e) { msg('This page can\'t reach its server: the review was closed, or the app stopped. Your choices are kept in this browser.', true); }
-});
 // gaps left open at Finish: the reviewer gives a reason for each, or goes back to add what is missing
 function askGaps(gaps) {
   const dlg = document.getElementById('gapDialog');
@@ -965,11 +991,31 @@ function showLeft(text) {
   msg(text + ' They are listed under "Not Reviewed".', true, true);
 }
 // names of buttons, views and sections in quotes, as they appear on screen (CLAUDE.md's interface rule)
-function askFinish() {
+// The check Save used to run, now here, before anything is applied: choices the check would drop (each linked to its
+// card: the link closes the dialog and goes there), additions refused, and gaps still open (asked about after Finish).
+function checkHtml(c) {
+  if (!c) return '<div class="fin-check err">The check could not run (the page can\'t reach its server). "Finish Review" runs it again and says what it drops.</div>';
+  const link = (id, words) => id && (byId[id] || addById[id]) ? '<a href="#card-' + esc(id) + '" data-card="' + esc(id) + '">' + esc(words) + '</a>' : esc(words);
+  const name = d => d.card && byId[d.card] ? byId[d.card].kind + ': ' + String(byId[d.card].label).slice(0, 80) : d.where;
+  const dr = c.dropped || [], rf = c.refused || [], gp = c.gaps || [];
+  let h = '';
+  if (dr.length) h += '<div class="fin-check"><b>' + dr.length + (dr.length === 1 ? ' choice would be dropped' : ' choices would be dropped') + '</b>: the check doesn\'t accept ' +
+    (dr.length === 1 ? 'it, so it is' : 'them, so they are') + ' not applied at all, and the AI\'s value isn\'t used either. Change or approve ' + (dr.length === 1 ? 'it' : 'them') + ' to keep a value.<ul>' +
+    dr.map(d => '<li>' + link(d.card, name(d)) + ': ' + esc(d.why) + '</li>').join('') + '</ul></div>';
+  if (rf.length) h += '<div class="fin-check"><b>' + rf.length + (rf.length === 1 ? ' addition can\'t be applied' : ' additions can\'t be applied') + '</b>:<ul>' +
+    rf.map(r => '<li>' + link(r.id, (addById[r.id] || {}).label || r.id) + ': ' + esc(r.why) + '</li>').join('') + '</ul></div>';
+  if (gp.length) h += '<div class="fin-check"><b>' + gp.length + (gp.length === 1 ? ' gap is' : ' gaps are') + ' still open</b>: ' + gp.map(g => esc(g.what)).join(' · ') +
+    '. "Finish Review" asks for a reason for each.</div>';
+  return h;
+}
+async function askFinish() {
   const dlg = document.getElementById('finishDialog');
+  clearTimeout(saveTimer);                             // the check saves the draft too (/save keeps it, under the write lock)
+  let chk = null;
+  try { const [s, b] = await post('/save'); if (s === 200) { chk = b; if (!saving) { dirty = false; saveAlert(''); saveState('All changes saved'); } } } catch (e) {}
   const n = items.filter(it => !(state.decisions[it.id] || {}).status).length, one = n === 1;
   const ov = OCR && OCR.current ? verdictText(OCR.current) : 'Not yet reviewed';
-  dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2><div class="ctx" id="finCtx">' +
+  dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2>' + checkHtml(chk) + '<div class="ctx" id="finCtx">' +
     (n ? n + (one ? ' decision is' : ' decisions are') + ' not reviewed: "Finish Review" records ' + (one ? 'it' : 'them') + ' as the AI wrote ' + (one ? 'it' : 'them') +
          ', marked "accepted without review", and "Ready to Ship?" stays No.' : 'Every decision has a choice.') +
     (SESSION && SESSION.reopened ? ' "Finish Review" re-applies the reviewed order (no AI call).' : '') + ' The name and notes go to "Session History".' +
@@ -980,8 +1026,10 @@ function askFinish() {
     '<button type="button" class="primary" data-f="finish">Finish Review</button></div>';
   document.getElementById('finName').value = sName.value; document.getElementById('finNotes').value = sNotes.value;
   return new Promise(done => {
-    let answer = null;
+    let answer = null, toCard = null;
     dlg.onclick = e => {
+      const a = e.target.closest('a[data-card]');
+      if (a) { e.preventDefault(); toCard = a.dataset.card; dlg.close(); return; }   // a way back: to the choice's card
       const f = e.target.dataset.f; if (!f) return;
       if (f === 'finish') {                            // the dialog's name and notes are the session's from now on
         sName.value = state.session_name = document.getElementById('finName').value;
@@ -994,6 +1042,10 @@ function askFinish() {
     dlg.onclose = () => {
       dlg.onclick = dlg.onclose = null;
       if (answer === 'left') showLeft(n + ' decisions are not reviewed.');
+      else if (toCard) {                               // the card of a choice the check would drop, in the All view
+        if (view !== 'all') { view = 'all'; document.querySelector('input[name=view][value=all]').checked = true; render(); }
+        goTo(document.getElementById('card-' + toCard));
+      }
       else if (!answer) finBtn.focus();                // Back or Escape: where the person was
       done(answer && answer !== 'left' ? answer : null);
     };
@@ -1003,6 +1055,7 @@ function askFinish() {
 finBtn.addEventListener('click', async () => {
   if (!state.reviewer.trim()) return needName();
   const go = await askFinish(); if (!go) return;
+  clearTimeout(saveTimer);                             // Finish's own save (the server's keep()) carries the whole draft
   try {
     const extra = go.unreviewed ? { accept_unreviewed: true } : {};
     let [s, b] = await post('/finish', extra);
@@ -1015,8 +1068,8 @@ finBtn.addEventListener('click', async () => {
       [s, b] = await post('/finish', extra);
     }
     if (s !== 200 || !b.finished) return msg(esc(b.error || 'Finish failed'), true);
-    finished = true; panel.hidden = true;
-    document.querySelectorAll('#save, #finish, #addBtn, #sessionName, #sessionNotes, #padNotes').forEach(x => x.disabled = true);
+    finished = true; panel.hidden = true; dirty = false; saveAlert(''); saveState('All changes saved');
+    document.querySelectorAll('#finish, #addBtn, #sessionName, #sessionNotes, #padNotes').forEach(x => x.disabled = true);
     msg('Review finished · ' + b.changes + ' changes recorded' + dropText(b.dropped) + (b.gaps.length ? ' · ' + b.gaps.length + ' gaps left open, with your reasons' : '') +
         (RETURN_TO ? '. Going to the run page, which shows what happens next.' :
          SESSION && SESSION.reopened ? '. The terminal is re-applying it now (no AI call); the current result is replaced when that finishes.' : '. Go back to the terminal to continue the run.'), b.dropped.length > 0);
@@ -1027,6 +1080,7 @@ finBtn.addEventListener('click', async () => {
 });
 renderOcr();
 render();
+if (state.saved_at && state.saved_at !== (srv.saved_at || '')) saveSoon();   // this browser's copy is newer than the run's: save it
 </script>
 </body>
 </html>
