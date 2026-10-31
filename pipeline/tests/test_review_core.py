@@ -76,3 +76,22 @@ def test_reading_order_from_fulltext_or_digest_lines():
 
 def test_a_flat_tree_has_no_order_to_show():
     assert core.reading_order({'reading_order': []}, {'reading_order': []})['flat']
+
+def test_a_changed_section_move_keeps_its_reason_and_gets_whole_numbers():
+    its = list(items().values())
+    wo = core.apply_decisions(WO, its, {'move_section': {'status': 'changed', 'value': {'pages': ['11', 100], 'before_page': '231'}}})
+    assert wo['move_section'] == {'pages': [11, 100], 'before_page': 231, 'why': 'test'}
+
+def test_save_previews_the_reviewers_pages_with_the_same_match():
+    wo = {'move_section': {'pages': [101, 200], 'before_page': 11}}                 # ch2 before ch1
+    pv = core.changed_move(wo, {'reading_order': {'entries': order()}}, {'move_section': {'status': 'changed'}})
+    assert pv['pages'] == [101, 200] and pv['candidates'] == 1 and pv['moved'] == 'ch2'
+    assert [e['id'] for e in pv['siblings_after']] == ['ch2', 'ch1']
+    assert core.changed_move(wo, {'reading_order': {'entries': order()}}, {'move_section': {'status': 'approved'}}) is None
+
+def test_flags_a_text_rule_will_hide_are_marked():
+    es = [entry('body', 10, 60), dict(entry('folio', 6, 6), runs=['vi', ' Contents ']), dict(entry('real', 3, 3), runs=['A real paragraph'])]
+    wo = {'artifacts': {'text_rules': [{'label': 'running head', 'pages': [1, 50], 'regex': r'\d+|[ivx]+|Contents', 'band': 'top'}]}}
+    fl = core.reading_order({}, {'reading_order': es}, wo)['flagged']
+    assert [(es[x['i']]['id'], x.get('hidden_by')) for x in fl] == [('folio', 'running head'), ('real', None)]
+    assert all('hidden_by' not in x for x in core.reading_order({}, {'reading_order': es})['flagged'])   # no work order, no marks

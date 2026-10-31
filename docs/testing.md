@@ -11,6 +11,7 @@ There are three kinds of tests. None of them calls the model, and none costs any
 |---|---|---|---|
 | **Unit tests** | That each small rule in `lib/` does its job, using made-up inputs; plus a few small synthetic PDFs through the real pdfplumber, `audit.py`, `apply.py` and `verify.py` | `python -m pytest tests -q` | a few seconds |
 | **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py --jobs 3` | about 7 minutes for all seven books (18 one at a time; `--books godzone` about 1) |
+| **Reorder case** | That `move_section` works on a real book's tag tree, from a hand-written reply | `python3 tools/reorder_case.py` | about 3 minutes |
 | **Intake cases** | That intake sorts pages and tag trees correctly, using small synthetic PDFs | `python3 tools/intake_cases.py <out_dir>` | under a minute |
 
 Install the test tools once, in the same virtual environment: `pip install -r requirements-dev.txt` (it includes `requirements.txt` and adds pytest).
@@ -70,7 +71,7 @@ The test prints one line per book (identical, or the fields and lines that diffe
 | buddhist | `ocr_words` (its OCR text layer) |
 | ilokano | an untagged book: an OpenDataLoader tag tree, so the one-item list rule (15 lists) and word breaks that rely on gaps |
 
-Not covered: `move_section` on a real book (no saved reply uses it; the synthetic test above covers it), intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), OCR on a real book, and CJK text. To check all nine tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
+Not covered by the regression test: `move_section` (no saved reply uses it; the synthetic test above and `tools/reorder_case.py` cover it), intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), OCR on a real book, and CJK text. To check all nine tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
 
 ```bash
 FROM=all9-v8 AUTO=1 bash batch_api.sh before ../samples/group1 ../samples/group2 ../samples/group3most   # on main
@@ -107,6 +108,10 @@ Make one update per PR, with its own reason. Don't fold several unrelated change
 2. Run `python3 tools/regression.py --update --seed ../runs/batches/<label> --reason "prompt vN"` for the tagged books, and `--update --books ilokano --seed ../runs/ilokano/<label>` for ilokano (a single run folder; its `_intake/` is copied too).
 
 `--seed` copies each book's `raw_reply` from its `record.json`.
+
+## Reorder case
+
+`tools/reorder_case.py` covers `move_section` on a real tag tree without a model reply. It swaps one section with the next under a section host in a copy of a tagged sample (godzone by default: a chapter on PDF 10–18 under the Part), then runs the pipeline with a reply that holds only the `move_section` putting it back. It checks that the audit flags the pair, that the review page's preview finds one section and its host, that `apply.py` makes the move and logs the same section and host, that the host's sections read in the book's order again, that the preview's order is the one `apply.py` made, and that verify's section check finds nothing new. Run it after a change to `lib/readorder.py`, `op_move_section` or the review page's preview.
 
 ## Intake cases
 

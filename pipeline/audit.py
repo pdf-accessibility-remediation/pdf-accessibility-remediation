@@ -143,10 +143,30 @@ for e in elems:
             reading_order.append(readorder.line(e['style'], min(ps), max(ps), e['depth'], clip(first, 40)))
 # the same order for the review page (fulltext.json, never sent): every container (lib/readorder.py), with its
 # parent container, the first page of each child (where move_section can put a section) and whether it is placed elsewhere
+def own_runs(e, acc, d=0):
+    acc.extend(e['mcids'])
+    if d < 40:
+        for k in e['kids']: own_runs(k, acc, d + 1)
+    return acc
 def container_above(e):
     p = e['par']
     while p is not None and not readorder.is_container(S(p), mapped(S(p))): p = info[p.objgen]['par']
     return p
+# the page check verify.py makes after the changes (1.3.2, lib/readorder.py), on the original: tagged text runs in
+# tag-tree order, the runs inside notes, figures and captions left out
+jump_seq, stk = collections.defaultdict(list), [(k, None, False) for k in reversed(kids(st))]
+while stk:
+    n, pg, out_of_flow = stk.pop()
+    if isinstance(n, int) or (isinstance(n, pikepdf.Dictionary) and str(n.get('/Type')) == '/MCR' and '/Stm' not in n):
+        p, m = (pg, n) if isinstance(n, int) else (pidx[n.Pg.objgen] if '/Pg' in n else pg, int(n.MCID))
+        cs = mc_chars.get((p, m))
+        if not out_of_flow and cs and ''.join(c['text'] for c in cs).strip(): jump_seq[p].append((cs[0]['top'], cs[0]['x0'], cs[0]['size']))
+        continue
+    if not is_elem(n): continue
+    pg = pidx[n.Pg.objgen] if '/Pg' in n else pg
+    flow = out_of_flow or mapped(S(n)) in readorder.PLACED_ELSEWHERE
+    for k in reversed(kids(n)): stk.append((k, pg, flow))
+FULL['page_jumps'] = readorder.page_jumps(jump_seq)
 for e in elems:
     if not readorder.is_container(e['style'], mapped(e['style'])): continue
     ps = page_span(e); par = container_above(e); top = e['par'] is None or mapped(S(e['par'])) == 'Document'
@@ -157,7 +177,9 @@ for e in elems:
         'skip': readorder.skip(mapped(e['style']), [mapped(k['style']) for k in e['kids']]),
         'group': e['style'] in readorder.GROUPING or mapped(e['style']) in readorder.GROUPING,
         'under': ref(e['par']) if e['par'] is not None and top is False else None, 'top': top,
-        'firsts': [min(x) for k in e['kids'] if (x := page_span(k))]})
+        'firsts': [min(x) for k in e['kids'] if (x := page_span(k))],
+        # a small one-page container's runs, so the review page can tell which of the AI's text rules would hide it
+        **({'runs': [mc_text(p, m) for p, m in rs]} if ps and len(ps) == 1 and len(rs := own_runs(e, [])) <= 100 else {})})
 
 # ---- figures, with crops
 docs = pdfium.PdfDocument(SRC); renders = {}

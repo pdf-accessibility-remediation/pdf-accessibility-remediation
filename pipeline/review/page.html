@@ -242,7 +242,7 @@ function explain(it) {
       return it.loc[1] === 'elements' ? 'Marks this figure as decoration, so screen readers skip it. Right for ornaments and backgrounds with no information.'
         : 'Marks matching text as decoration, so screen readers skip it. Right for running heads and page numbers; if the pattern also matches real content, that content is hidden too.';
     case 'ocr_words': return 'Tells screen readers to read this OCR word with the corrected spelling. The page does not change.';
-    case 'move_section': return 'Moves the section on these pages so a screen reader reaches it just before PDF ' + c.before_page + ', inside the section that holds the pages around it. Nothing on the page changes. The executor makes the move only when exactly one section holds exactly these pages.';
+    case 'move_section': return 'Moves the section on these pages so a screen reader reaches it just before the page named, inside the section that holds the pages around it. Nothing on the page changes. The executor makes the move only when exactly one section holds exactly these pages.';
     case 'move_to_document_start': return 'Moves this element to the start of the reading order, so a screen reader reaches it first (for a cover figure read at the end). Nothing on the page changes.';
     case 'adopt_orphans': return 'Adds the text on these pages that no tag owns to the tags, as paragraphs in the order it is drawn, after the last tagged block on each page, so screen readers can reach it. Right for notes, references or body text; running heads and page numbers should be decoration instead. Listen through these pages in the finished file: this changes the reading order.';
     case 'deferrals': return 'The AI did not decide this and left it to a person. Nothing is applied; mark it Seen once you have looked.';
@@ -266,6 +266,9 @@ function editor(it, d) {
     (it.key === 'rolemap' && it.context.count ? ' <span class="flag">changes all ' + it.context.count + ' elements of this style</span>' : '');
   if (it.edit === 'text') return '<textarea data-act="value" aria-label="New value">' + esc(v) + '</textarea>';
   if (it.edit === 'lang') return '<input type="text" data-act="value" value="' + esc(v) + '" size="12"> <span class="ctx">a language tag such as en-US, ja, haw</span>';
+  if (it.edit === 'move') return 'Pages <input type="text" data-act="value" data-f="a" size="4" value="' + esc(((v || {}).pages || [])[0]) + '"> to ' +
+    '<input type="text" data-act="value" data-f="b" size="4" value="' + esc(((v || {}).pages || [])[1]) + '"> read before page ' +
+    '<input type="text" data-act="value" data-f="before_page" size="4" value="' + esc((v || {}).before_page) + '"> <span class="ctx">PDF page numbers. Save to see the preview for these pages.</span>';
   if (it.edit === 'table') return 'Header rows <input type="text" data-act="value" data-f="header_rows" size="2" value="' + esc((v || {}).header_rows) + '"> ' +
     'Header columns <input type="text" data-act="value" data-f="header_cols" size="2" value="' + esc((v || {}).header_cols) + '"> <span class="ctx">0–3 each. Header columns are refused by the executor when any row has that many cells or fewer, such as a one-cell title row across the table.</span>';
   return '';
@@ -318,19 +321,22 @@ function addCard(a) {
 
 // ---------------------------------------------------------------- reading order: the original's, and what a section move does to it
 const RO = DATA.reading_order || { entries: [], flagged: [], flat: true, detail: false };
-const roFlag = Object.fromEntries((RO.flagged || []).map(f => [f.i, f]));
+const roFlag = Object.fromEntries((RO.flagged || []).map(f => [f.i, f])), roLate = Object.fromEntries((RO.late || []).map(f => [f.i, f]));
 const roPages = e => e.first == null ? 'no marked content' : 'PDF ' + e.first + (e.last !== e.first ? '–' + e.last : '');
 const roAway = f => 'read ' + (f.prev != null && f.next != null ? 'between PDF ' + f.prev + ' and PDF ' + f.next : f.prev != null ? 'after PDF ' + f.prev : 'before PDF ' + f.next) +
   ', away from its printed place';
 const roName = e => esc(e.style || 'line') + ' · ' + esc(roPages(e)) + (e.text ? ' · “' + esc(String(e.text).slice(0, 60)) + '”' : '');
 const moveItem = items.find(it => it.key === 'move_section');
+let movePv = null;                                   // the preview /save worked out for the reviewer's changed pages
 function moveRows(it, row) {
-  const c = it.context;
-  row('Moves', 'PDF ' + esc(it.ai.pages[0]) + '–' + esc(it.ai.pages[1]) + ' to read before PDF ' + esc(it.ai.before_page));
+  const d = state.decisions[it.id] || {}, mine = d.status === 'changed' && d.value, v = mine ? d.value : it.ai;
+  const c = mine ? (movePv && movePv.before_page === v.before_page && String(movePv.pages) === String(v.pages) ? movePv : {}) : it.context;
+  row('Moves', 'PDF ' + esc(v.pages[0]) + '–' + esc(v.pages[1]) + ' to read before PDF ' + esc(v.before_page) + (mine ? ' <b>(your change)</b>' : ''));
+  if (mine && c.candidates == null) { row('Preview', 'press Save to see the preview for your pages'); return; }
   if (c.candidates == null) { row('Preview', 'not available for this run (audited before the reading order was recorded in full)'); return; }
   if (c.candidates !== 1 || !c.host_found) {
     row('Preview', '<span class="flag">The executor will refuse this move: ' + (c.candidates !== 1 ? c.candidates + ' sections hold pages inside this range (exactly one is needed)' : '') +
-      (c.candidates !== 1 && !c.host_found ? ', and ' : '') + (!c.host_found ? 'no section holds both pages before PDF ' + esc(it.ai.pages[0]) + ' and pages from PDF ' + esc(it.ai.before_page) + ' on' : '') + '.</span>');
+      (c.candidates !== 1 && !c.host_found ? ', and ' : '') + (!c.host_found ? 'no section holds both pages before PDF ' + esc(v.pages[0]) + ' and pages from PDF ' + esc(v.before_page) + ' on' : '') + '.</span>');
     return;
   }
   const li = e => '<li' + (e.id === c.moved ? ' class="moved"' : '') + '>' + roName(e) + '</li>';
@@ -347,22 +353,36 @@ function moveRows(it, row) {
 }
 function renderOrder() {
   const box = document.getElementById('readingOrder'), open = (box.querySelector('details') || {}).open;
-  const es = RO.entries || [], n = (RO.flagged || []).length;
+  const es = RO.entries || [], n = (RO.flagged || []).length, nh = (RO.flagged || []).filter(f => f.hidden_by).length;
+  const npj = (RO.page_jumps || []).length;
   let h = '<details' + (open ? ' open' : '') + '><summary>Reading order in the original (before changes): ' + (RO.flat ? 'no sections' :
-    es.length + ' sections and blocks, ' + n + ' read away from their printed place') + '</summary>';
+    es.length + ' sections and blocks, ' + n + ' read away from their printed place' +
+    (nh ? ' (' + (nh === n ? 'all' : nh) + ' of them page numbers or running heads the AI\'s decoration rules hide)' : '') +
+    ((RO.late || []).length ? ', ' + RO.late.length + ' small ones read well after their page' : '')) +
+    (npj ? ', ' + npj + ' page' + (npj === 1 ? '' : 's') + ' whose order jumps back up a column' : '') + '</summary>';
   h += '<div class="ctx">The order a screen reader meets the book\'s sections in the original file. Figure moves and added orphan text happen after this review; the final order is checked in review.md (1.3.2).' +
     (RO.detail ? '' : ' This run was audited before the order was recorded in full: sections only.') + '</div>';
-  if (RO.flat) h += '<p>This book\'s tags have no sections, so the order can\'t be shown here. Check it in the finished PDF; review.md\'s page-by-page check (1.3.2) still runs.</p>';
+  const pj = RO.page_jumps || [];
+  if (pj.length) h += '<p>Pages where the text, in tag order, jumps back up the same column two or more times (the page check review.md makes again after the changes): ' +
+    pj.map(x => '<button type="button" class="clear" data-page="' + x.page + '">PDF ' + x.page + ' (' + x.jumps_up + ')</button>').join(' ') + '</p><div id="pjImg"></div>';
+  else if (RO.page_jumps) h += '<p class="ctx">No page\'s text jumps back up a column in the original.</p>';
+  if (RO.flat) h += '<p>This book\'s tags have no sections, so the order of sections can\'t be shown here. Check it in the finished PDF; review.md\'s page-by-page check (1.3.2) still runs.</p>';
   else {
-    const d = moveItem ? (state.decisions[moveItem.id] || {}).status : null, mc = moveItem ? moveItem.context : {};
-    const moveNote = (d === 'rejected' ? 'rejected' : d === 'approved' ? 'approved' : 'not reviewed yet');
-    h += '<label><input type="checkbox" id="roOnly"' + (roOnly ? ' checked' : '') + '> only those read away from their place</label><ol>';
+    const d = moveItem ? (state.decisions[moveItem.id] || {}).status : null;
+    const mc = !moveItem ? {} : d === 'changed' ? (movePv || {}) : moveItem.context;
+    const moveNote = (d === 'rejected' ? 'rejected' : d === 'approved' ? 'approved' : d === 'changed' ? 'your changed pages' : 'not reviewed yet');
+    h += '<label><input type="checkbox" id="roOnly"' + (roOnly ? ' checked' : '') + '> only those read away from their place or late</label><ol>';
     es.forEach((e, i) => {
       const f = roFlag[i];
-      if (roOnly && !f && e.id !== mc.moved && e.id !== mc.lands_before) return;
+      const lt = roLate[i];
+      if (roOnly && !f && !lt && e.id !== mc.moved && e.id !== mc.lands_before) return;
       h += '<li' + (e.skip ? ' class="ro-skip"' : '') + ' style="padding-left:' + Math.min(e.depth || 0, 12) * 12 + 'px">' +
         '<button type="button" class="ro-row" data-ro="' + i + '"' + (e.first == null ? ' disabled' : '') + '>' + roName(e) +
-        (f ? ' <span class="flag">' + esc(roAway(f)) + '</span>' : '') + (e.skip ? ' (placed where it is referred to)' : '') +
+        (f ? (f.hidden_by ? ' <span class="ctx">' + esc(roAway(f)) + '; the AI\'s rule “' + esc(f.hidden_by) + '” marks it as decoration, if approved</span>'
+                          : ' <span class="flag">' + esc(roAway(f)) + '</span>') : '') +
+        (lt ? ' <span class="ctx">read ' + (lt.after - lt.first) + ' pages after its page (after PDF ' + lt.after + ')' +
+               (lt.hidden_by ? '; the AI\'s rule “' + esc(lt.hidden_by) + '” marks it as decoration, if approved' : '') + '</span>' : '') +
+        (e.skip ? ' (placed where it is referred to)' : '') +
         (e.id === mc.moved ? ' <span class="flag">the AI moves this section (' + moveNote + ')</span>' : '') +
         (e.id === mc.lands_before && d !== 'rejected' ? ' <span class="flag">the moved section goes just before this</span>' : '') + '</button></li>';
     });
@@ -373,6 +393,9 @@ function renderOrder() {
 let roOnly = (RO.entries || []).length > 300;
 document.getElementById('readingOrder').addEventListener('change', e => { if (e.target.id === 'roOnly') { roOnly = e.target.checked; renderOrder(); } });
 document.getElementById('readingOrder').addEventListener('click', e => {             // a row shows its first page under it
+  const pb = e.target.closest('[data-page]');
+  if (pb) { const p = +pb.dataset.page; document.getElementById('pjImg').innerHTML = '<div class="imgs"><figure><img loading="lazy" src="review_pages/page_' +
+    String(p).padStart(3, '0') + '.png" alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure></div>'; return; }
   const b = e.target.closest('.ro-row'); if (!b) return;
   const li = b.parentElement, had = li.querySelector('.imgs'); if (had) { had.remove(); return; }
   const p = RO.entries[+b.dataset.ro].first;
@@ -514,6 +537,11 @@ function onEdit(e) {
     if (it.edit === 'table') {
       const v = Object.assign({}, it.ai, d.value || {}); const n = el.value.trim();
       v[el.dataset.f] = /^\d+$/.test(n) ? +n : n; d.value = v;
+    } else if (it.edit === 'move') {
+      const v = Object.assign({}, it.ai, d.value || {}), n = el.value.trim(), x = /^\d+$/.test(n) ? +n : n;
+      v.pages = (v.pages || []).slice();
+      if (el.dataset.f === 'before_page') v.before_page = x; else v.pages[el.dataset.f === 'a' ? 0 : 1] = x;
+      d.value = v;
     } else d.value = el.value;
     d.status = 'changed';
   }
@@ -656,6 +684,12 @@ document.getElementById('save').addEventListener('click', async () => {
   try {
     const [s, b] = await post('/save');
     if (s !== 200) return msg(esc(b.error || 'Save failed'), true);
+    if (moveItem) {
+      movePv = b.move_preview || null;
+      const old = document.getElementById('card-move_section'), open = old && !old.querySelector('.edit').hidden;
+      if (old) { old.outerHTML = card(moveItem); if (open) document.querySelector('#card-move_section .edit').hidden = false; }
+      renderOrder();
+    }
     msg('Saved · ' + b.changes + ' changes from the AI · ' + b.unreviewed + ' not reviewed yet' + refusedText(b.refused) + dropText(b.dropped) + gapText(b.gaps),
         b.dropped.length > 0 || (b.refused || []).length > 0);
   } catch (e) { msg('Could not reach the review server: is it still running in the terminal? Your choices are kept in this browser.', true); }

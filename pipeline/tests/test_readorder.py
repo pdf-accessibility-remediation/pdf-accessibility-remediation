@@ -89,3 +89,12 @@ def test_section_move_two_candidates_when_sections_nest_inside_the_range():
 def test_section_move_no_host():
     cand, host = move(201, 230, 500)
     assert cand == [('notes', 'root')] and host is None
+
+# read_late
+def test_a_small_section_read_after_the_long_one_it_sits_in_is_listed():
+    es = [E('ch', 2, 60), E('fig', 30), E('fig2', 58), E('next', 61, 80)]
+    assert [(es[x['i']]['id'], x['after']) for x in ro.read_late(es)] == [('fig', 60)]    # 58 is only 2 pages early
+
+def test_read_late_leaves_out_long_flagged_and_skipped_entries():
+    es = [E('ch', 2, 60), E('long', 10, 20), E('div', 30, skip=True), E('next', 61, 80), E('back', 1)]
+    assert ro.read_late(es) == []                         # long: more than 2 pages; div: skipped; back: flagged by out_of_order
