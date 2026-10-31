@@ -56,7 +56,9 @@ dialog.npad[open] { display: flex; flex-direction: column; }
 dialog.npad textarea { flex: 1; resize: none; border: 0; border-radius: 0 0 8px 8px; min-height: 0; }
 .npad-restore { position: fixed; right: 16px; bottom: 16px; z-index: 30; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
 .npad-restore[hidden] { display: none; }
-.save-state { align-self: center; font-size: 13px; color: var(--muted); white-space: nowrap; }   /* "All changes saved" / "Saving…" */
+/* "All changes saved" / "Saving…" / "Not saved": right of Finish Review, in a fixed width, so nothing moves when it changes */
+.save-state { align-self: center; font-size: 13px; color: var(--muted); white-space: nowrap; display: inline-block; width: 9.5em; }
+.save-state[hidden] { display: none; }
 .save-alert:empty { display: none; } .save-alert { margin-top: 6px; font-size: 14px; color: var(--reject); font-weight: 600; }
 .fin-check { border-left: 4px solid var(--change); background: var(--bg); padding: 6px 10px; margin: 8px 0; font-size: 14px; }
 .fin-check ul { margin: 4px 0 0; padding-left: 20px; } .fin-check.err { border-left-color: var(--reject); }
@@ -145,7 +147,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 #ocr-text fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 8px 0; padding: 0 10px 6px; }
 #ocr-text legend { font-weight: 600; padding: 0 4px; margin-bottom: -2px; }
 /* each choice: its radio centred on its label, the name semi-bold */
-#ocr-text fieldset label { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; white-space: nowrap; }
+#ocr-text fieldset label { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; white-space: nowrap; position: relative; top: 1px; }
 #ocr-text .ctx b { font-weight: 600; }   /* in the section's helper lines, names of buttons, choices and sections: semi-bold, no quotes */
 #ocr-text fieldset input[type=radio] { margin: 0; }
 #ocr-text .cur-verdict { margin-bottom: 2px; }
@@ -189,8 +191,9 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
       <label><input type="radio" name="view" value="all"> All</label>
       <label><input type="radio" name="view" value="left"> Not Reviewed</label>
     </span>
-    <span class="actions"><button id="addBtn" type="button">Add a Decision</button> <span id="saveState" class="save-state">All changes saved</span>
-    <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close Without a Verdict</button></span>
+    <span class="actions"><button id="addBtn" type="button">Add a Decision</button>
+    <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close Without a Verdict</button>
+    <span id="saveState" class="save-state">All changes saved</span></span>
   </div>
   <div id="saveAlert" role="alert" class="save-alert"></div>
   <div id="msg" role="status"></div>

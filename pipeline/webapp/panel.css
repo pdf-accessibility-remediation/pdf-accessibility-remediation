@@ -48,7 +48,10 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .pp table { border-collapse: collapse; font-size: 14px; margin: 4px 0; } .pp caption { text-align: left; font-weight: 600; padding: 4px 0; }
 .pp th, .pp td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; } .pp th { background: var(--bg); }
 .pp td button { white-space: nowrap; width: auto; } .pp td:last-child { white-space: nowrap; }
-.pp .pp-name { display: block; font-weight: 400; max-width: 22em; overflow-wrap: anywhere; }   /* a session's own name, under its number */
+/* a session's own name, under its number: one line up to about 40 characters; a longer one wraps at spaces in a 26em
+   column, and only a single word too long for it breaks (never cut short with "…"); the same rule as review.html's */
+.pp .pp-name { display: block; font-weight: 400; white-space: nowrap; }
+.pp .pp-name.pp-long { white-space: normal; width: 26em; max-width: 26em; overflow-wrap: break-word; }
 .pp button.pp-link { border: 0; background: none; padding: 0 2px; min-height: 24px; color: var(--accent); text-decoration: underline; font-weight: 400; }
 /* a session's notes: a pop-up box (panel.js notesBox), not modal, moved by its title bar, resized from its corner */
 .pp-ndlg { position: fixed; margin: 0; padding: 0; inset: auto; width: min(520px, 92vw); height: 300px; min-width: 220px; min-height: 120px;

@@ -920,3 +920,20 @@ def test_handoff_13_small_changes():
     assert '<b>Approved</b> needs this box' in page and 'white-space: nowrap; font-weight: 600; }' not in page
     assert 'id="hdrOcrLink"' not in page and "if original: data['book'] = original" in src('review/server.py')
     assert 'press "Stop Reviewing" first, then "' in rn and 'd.opener' not in rh and 'openers = new WeakMap()' in rh
+
+def test_last_polish():
+    """Patrick's last pass: the save status right of Finish Review in a fixed width; session names on one line up to 40
+    characters, longer ones wrapping at spaces in a 26em column (never cut with "…"); a check mark for a met "Ready to
+    Ship?" condition, hidden from screen readers; "Type" for the decision tables' column."""
+    import report_html as H
+    page, js, css = src('review/page.html'), src('webapp/panel.js'), src('webapp/panel.css')
+    assert page.index('id="finish"') < page.index('id="saveState"') and 'display: inline-block; width: 9.5em;' in page and '.save-state[hidden]' in page
+    assert "([...r.name].length > 40 ? ' pp-long' : '')" in js and '.pp .pp-name.pp-long { white-space: normal; width: 26em;' in css
+    assert 'ellipsis' not in H.CSS + css and '.sname.long { white-space: normal; width: 26em; max-width: 26em; overflow-wrap: break-word; }' in H.CSS
+    ss = [{'id': '001', 'from': 'ai', 'status': 'applied', 'reviewer': 'K', 'date': 'D', 'counts': {}, 'name': 'x' * 40},
+          {'id': '002', 'from': '001', 'status': 'applied', 'reviewer': 'K', 'date': 'D', 'counts': {}, 'name': 'a name ' * 6}]
+    out = ''.join(H.review_card('.', {'review': {'session': '002', 'sessions': ss,
+                                                 'decisions': [{'id': 'x', 'kind': 'retype', 'label': 'A', 'page': 2, 'status': 'approved'}]}}))
+    assert '<span class="sname">' + 'x' * 40 + '</span>' in out and '<span class="sname long">a name a name' in out
+    assert '<th scope="col">Type</th>' in out and '<th scope="col">Kind</th>' not in out
+    assert '<li class="met"><span class="tick" aria-hidden="true">✓</span>' in src('report_html.py')
