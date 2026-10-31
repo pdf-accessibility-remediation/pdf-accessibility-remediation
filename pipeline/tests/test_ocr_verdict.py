@@ -75,7 +75,25 @@ def test_non_latin_pages_need_i_read_to_approve():
     kana = {'ocr_layer_test': {'verdict': 'unusable', 'pages': [{'page': 3, 'script': 'kana'}]}, 'ocr': {}}
     assert O.languages(kana, [3])['names'] == ['Japanese']                       # kana is Japanese (team rule)
     assert not O.languages(intake(), [1])['non_latin']
-    assert O.text_lang(cjk) == (None, 'OCR_LANG is chi_tra+eng (more than one language)') and O.text_lang(intake(ocr_lang='jpn'))[0] == 'ja'
+    assert O.text_lang(cjk) == (None, 'it was read as more than one language') and O.text_lang(intake(ocr_lang='jpn'))[0] == 'ja'
+
+def test_the_section_speaks_plainly(tmp_path):
+    """The page is for library staff: language names, not OCR_LANG codes; no tool names or technical terms; "ex." for examples."""
+    it = intake(added=(1, 2), cjk=(2,), ocr_lang='chi_tra+eng')
+    it['ocr']['image_pages_without_text'] = [3]
+    R = run_folder(tmp_path, it=it, pdf=False)
+    s = O.section(R)
+    assert s['what'] == ['During intake, OCR added text to 2 pages, read as Chinese (Traditional) and English.', 'PDF 3 is a picture with no text.']
+    assert s['pages'][1]['findings'] == ['12 words read by OCR', '1 of 14 words and symbols look like junk (7%), ex. #', '40 Chinese, Japanese or Korean characters']
+    text = json.dumps([s['what'], [p['findings'] for p in s['pages']], s['lang_why']])
+    for word in ('OCR_LANG', 'chi_tra', 'tokens', 'CJK', 'layer', 'for example', 'PDFium', 'pdfplumber', 'Tesseract', '.json'):
+        assert word not in text, word
+    assert O.and_list([1, 5, 9]) == '1, 5 and 9'
+    layer = {'verdict': 'unusable', 'median_cer': 1.6, 'scored': 9, 'sample': 10, 'diacritics': {'pages': [3]}}
+    assert O.layer_words(layer) == ('The book came with its own OCR text. During intake it was compared with a new OCR reading on 9 of 10 sample pages: '
+                                    'it looks unusable (almost none of its characters match). It is missing accent marks on letters (ex. ā, ō) that a new OCR reading found.')
+    assert O.plain_reason({'reason': 'Tesseract model haw is not installed'}) == 'the OCR language needed to check it is not installed on this computer'
+    assert O.plain_reason({'reason': 'only 128 characters in the OCR layer'}) == 'only 128 characters in its OCR text'
 
 def test_row_wording_for_each_verdict():
     base = {'reviewer': 'Kim', 'date': '2026-10-31', 'reason': 'checked', 'pages': '1-3'}
@@ -189,5 +207,50 @@ def test_ctrl_c_during_a_verdict_write_waits_for_it(tmp_path):
         assert res['r'][0] == 200
         assert rest.index('written') < rest.index('stopped: the OCR review page is closed.') < rest.index('ended')
         assert core.load(os.path.join(R, '_intake', 'intake.json'))['review']['ocr_text_approved']['reason'] == 'garbled'
+    finally:
+        if p.poll() is None: p.kill()
+
+SLOW_CHECK = SLOW_WRITE.replace('real = O.write', 'real_section = O.section\ndef slow_section(*a, **k):\n'
+                                '    print("checking", flush=True); time.sleep(2); return real_section(*a, **k)\nO.section = slow_section\nreal = O.write')
+
+def test_ctrl_c_before_a_verdict_reaches_its_lock_waits_too(tmp_path):
+    """Review 07 L2: a Ctrl+C that comes while the request is still being checked (before the write lock) waits for it too."""
+    R = run_folder(tmp_path)
+    port = free_port(); img = tmp_path / 'img'; img.mkdir()
+    p = subprocess.Popen([sys.executable, '-c', SLOW_CHECK, HERE, R, str(img), str(port)], stdout=subprocess.PIPE, text=True)
+    try:
+        assert 'review page:' in p.stdout.readline()
+        res = {}
+        th = threading.Thread(target=lambda: res.update(r=call(port, '/ocr-verdict', {'verdict': 'not approved', 'reviewer': 'Kim', 'reason': 'garbled'})))
+        th.start()
+        lines = [p.stdout.readline()]
+        while 'checking' not in lines[-1]: lines.append(p.stdout.readline())
+        p.send_signal(signal.SIGINT)                                           # Ctrl+C before the handler has taken the write lock
+        th.join(15); rest = p.communicate(timeout=20)[0]
+        assert res['r'][0] == 200
+        assert rest.index('written') < rest.index('stopped: the OCR review page is closed.') < rest.index('ended')
+        assert core.load(os.path.join(R, '_intake', 'intake.json'))['review']['ocr_text_approved']['reason'] == 'garbled'
+    finally:
+        if p.poll() is None: p.kill()
+
+def test_finish_ocr_review_records_closes_and_leaves_no_reviews_folder(tmp_path):
+    """review_ocr.py --serve on a finished run never pinned: Finish OCR Review (close: true) records the verdict, dated the
+    day it is recorded (not the date given when the page opened), the page closes, and no empty reviews/ stays (review 07 L3)."""
+    import datetime
+    R = run_folder(tmp_path)
+    core.save(os.path.join(R, 'record.json'), {'document': {'file': 'book.pdf', 'pages': 3}, 'intake': {}})
+    port = free_port()
+    p = subprocess.Popen([sys.executable, 'review_ocr.py', R, '--serve', '--no-browser', '--port', str(port), '--date', '2020-01-01'],
+                         cwd=HERE, stdout=subprocess.PIPE, text=True)
+    try:
+        assert 'review page:' in p.stdout.readline()
+        assert os.path.exists(os.path.join(R, 'reviews', '.lock'))             # held while the page is open
+        st, b = call(port, '/ocr-verdict', {'verdict': 'not approved', 'reviewer': 'Kim', 'reason': 'garbled', 'close': True})
+        got = json.loads(b)
+        assert st == 200 and got['closed'] is True and got['recorded']['date'] == datetime.date.today().isoformat()
+        out = p.communicate(timeout=20)[0]
+        assert p.returncode == 0 and 'closed: the OCR review page is closed' in out
+        assert not os.path.exists(os.path.join(R, 'reviews'))
+        assert core.load(os.path.join(R, 'record.json'))['intake']['review']['ocr_text_approved']['verdict'] == 'not approved'
     finally:
         if p.poll() is None: p.kill()

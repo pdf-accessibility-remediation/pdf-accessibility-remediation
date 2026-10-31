@@ -30,7 +30,9 @@ button { font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid
 button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 @media (prefers-color-scheme: dark) { button.primary { color: #111; } }
 input[type=text], textarea, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
-textarea { width: 100%; min-height: 3.2em; }
+textarea { width: 100%; max-width: 100%; min-height: 3.2em; resize: vertical; }   /* taller only: never wider than its box */
+.sname { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 0; } .sname[hidden] { display: none; }
+.sname label { margin-right: 4px; } .sname a { margin-left: 18px; }   /* the name close to its box; the notes link apart from it */
 #msg { margin-top: 6px; font-size: 14px; }
 #msg.err { color: var(--reject); }
 #session { margin-top: 6px; font-size: 14px; color: var(--muted); }
@@ -143,7 +145,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
   <h1 id="title">Work Order Review</h1>
   <div class="row">
     <label>Reviewer <input type="text" id="reviewer" placeholder="Your name" size="18"></label>
-    <span><label>Session Name <input type="text" id="sessionName" maxlength="80" size="18"></label> <a href="#this-session" id="notesLink">Session Notes</a></span>
+    <span class="sname"><label for="sessionName">Session Name</label><input type="text" id="sessionName" maxlength="80" size="18"><a href="#this-session" id="notesLink">Session Notes</a></span>
     <span><span class="bar"><i id="bar"></i></span> <span id="progress"></span></span>
     <span class="show" role="radiogroup" aria-label="Show">Show:
       <label><input type="radio" name="view" value="priority" checked> Check First</label>
@@ -151,7 +153,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
       <label><input type="radio" name="view" value="left"> Not Reviewed</label>
     </span>
     <span class="actions"><button id="addBtn" type="button">Add a Decision</button> <button id="save">Save</button>
-    <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close the OCR Review</button></span>
+    <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close Without a Verdict</button></span>
   </div>
   <div id="msg" role="status"></div>
   <div id="session" hidden></div>
@@ -164,9 +166,8 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
   <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close Sections"><span aria-hidden="true">×</span></button></div><div id="navList"></div></nav>
   <div class="col">
     <section id="this-session" aria-labelledby="tsTitle"><h2 id="tsTitle">This Session</h2>
-      <div class="ctx">The name is in the header. Name and notes are kept with Save and whenever you leave either field, and go to Session History when you finish.</div>
-      <label for="sessionNotes">Session Notes</label>
-      <textarea id="sessionNotes" maxlength="4000" placeholder="Where you stopped, what to check next, who takes over"></textarea>
+      <label for="sessionNotes">Session Notes (Optional)</label>
+      <textarea id="sessionNotes" maxlength="4000"></textarea>
       <div id="fromNotes"></div>
     </section>
     <section id="ocr-text" aria-labelledby="ocrTitle" hidden></section>
@@ -222,13 +223,17 @@ function dec(id) { return state.decisions[id] || (state.decisions[id] = {}); }
 document.getElementById('title').textContent = 'Work Order Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
 if (SESSION && SESSION.reopened) {                    // a finished run reviewed again: where this session started, the current result, OCR
   const sn = id => 'session ' + Number(id), nc = SESSION.not_carried || [];
-  const ocr = DATA.ocr ? ' · <a href="#ocr-text" id="hdrOcrLink">OCR text</a>: <span id="hdrOcr"></span>' : '';   // filled by renderOcr()
+  const ocr = DATA.ocr ? ' · <a href="#ocr-text" id="hdrOcrLink">OCR Text</a>: <span id="hdrOcr"></span>' : '';   // filled by renderOcr()
   const el = document.getElementById('session'); el.hidden = false;
   el.innerHTML = 'Reviewing again: <b>' + sn(SESSION.id) + '</b>, started from ' + esc(SESSION.from_text) +
     (SESSION.from !== 'ai' ? ' · ' + SESSION.carried + ' choices preloaded' + (nc.length ? ' · <b>' + nc.length + ' not carried</b> (the decision is not the same; shown as not reviewed): ' + nc.slice(0, 6).map(x => esc(x.id)).join(', ') + (nc.length > 6 ? ' …' : '') : '') : '') +
     ' · <a href="' + esc(SESSION.result) + '" target="_blank" rel="noopener">Current result (' + esc(SESSION.current) + ')</a>' + ocr +
     ' · Finish re-applies the reviewed order (no AI call).';
+} else if (DATA.ocr && DATA.mode !== 'ocr') {            // a first review: the status line has the OCR verdict alone
+  const el = document.getElementById('session'); el.hidden = false;
+  el.innerHTML = '<a href="#ocr-text" id="hdrOcrLink">OCR Text</a>: <span id="hdrOcr"></span>';
 }
+// the OCR verdict is recorded on its own: never counted in "N of M reviewed" or in Finish's count of decisions not reviewed
 const rv = document.getElementById('reviewer'); rv.value = state.reviewer;
 rv.addEventListener('input', () => { state.reviewer = rv.value; persist(); });
 
@@ -271,8 +276,11 @@ function verdictText(v) {                              // sentence case: "approv
   if (!v) return 'not yet reviewed';
   return v.verdict + (v.to ? ' (' + v.to + ')' : '') + ' by ' + v.reviewer + ' on ' + v.date + (v.pages ? ' (pages ' + v.pages + ')' : '') +
     (v.reason ? ': ' + v.reason : '') + (v.reads && v.reads.length ? '; reads ' + v.reads.join(', ') : '') +
-    (v.via === 'review_ocr.py' ? ' (recorded with review_ocr.py)' : '');
+    (v.via === 'review_ocr.py' ? ' (recorded outside the review page)' : '');
 }
+// the report's "OCR text approved" line, once the run has a report; before any verdict only "no (not yet reviewed)": the
+// report's reason there names intake's technical findings, which the section's opening lines say in plain words
+const ocrShip = () => !(OCR.ship && OCR.ship.ocr) ? null : OCR.current ? OCR.ship.ocr : OCR.ship.ocr.replace(/^no \(not yet reviewed:.*$/, 'no (not yet reviewed)');
 function ocrWord(w) {                                  // an OCR-word reading: the card's current choice here, else the AI's
   const it = byId['ocr_words:' + w.id];
   const reads = it ? current(it) : w.reads;
@@ -280,7 +288,7 @@ function ocrWord(w) {                                  // an OCR-word reading: t
   return it ? '<a href="#card-' + esc(it.id) + '" data-view="all">' + t + '</a>' : t + (reads ? ' (the AI\'s reading, reviewed on the work-order review page)' : '');
 }
 function ocrCard(p) {
-  return '<article class="card ocr-card" id="ocr-page-' + p.page + '"><h3>PDF ' + p.page + ' · ' + esc(p.source === 'intake OCR' ? 'OCR text added by intake' : 'the book\'s existing OCR layer') + '</h3>' +
+  return '<article class="card ocr-card" id="ocr-page-' + p.page + '"><h3>PDF ' + p.page + ' · ' + esc(p.source === 'intake OCR' ? 'OCR Text Added during Intake' : 'The Book\'s Own OCR Text') + '</h3>' +
     '<div class="ocr-pair"><div class="imgs"><img loading="lazy" src="' + png(p.page) + '" alt="PDF ' + p.page + ', the page as scanned"></div>' +
     '<div><div class="edit-label">Text in the PDF</div><pre class="ocrtext" data-page="' + p.page + '"' + (OCR.lang ? ' lang="' + esc(OCR.lang) + '"' : '') + '>Loading the text…</pre></div></div>' +
     ((p.findings || []).length ? '<ul>' + p.findings.map(f => '<li>' + esc(f) + '</li>').join('') + '</ul>' : '') +
@@ -301,25 +309,26 @@ function renderOcr() {
   if (ocrPagesOpen === null) ocrPagesOpen = !cur;
   ocrBox.hidden = false;
   let h = '<h2 id="ocrTitle" tabindex="-1">OCR Text</h2><div class="ctx">' + OCR.what.map(esc).join(' ') +
-    ' The text is shown as it is in the PDF and is never edited here: correcting it is an editorial decision. Approving it is part of "Ready to ship?".</div>' +
-    '<p><b>Current verdict:</b> ' + esc(verdictText(cur)) + '</p>' +
-    (OCR.ship ? '<p>Ready to ship? ' + (OCR.ship.ready ? 'Yes' : 'No') + (OCR.ship.ocr ? ' · OCR text approved: ' + esc(OCR.ship.ocr) : '') + '</p>'
-              : '<p class="ctx">This run is not applied yet: the verdict is kept in _intake/intake.json, and the report shows it after the run.</p>') +
+    ' The text is shown exactly as it appears in the PDF and isn\'t edited here; correcting it is an editorial decision. Approving it is one of the conditions for "Ready to Ship?"</div>' +
+    '<p><b>Current Verdict:</b> ' + esc(verdictText(cur)) + '</p>' +
+    (ocrShip() ? '<p><b>OCR Text Approved:</b> ' + esc(ocrShip()) + '</p>'
+               : OCR.ship ? '' : '<p class="ctx">This run has not finished yet: the verdict is kept, and the report shows it once the run finishes.</p>') +
     (hist.length ? '<details class="from-notes"><summary>Earlier Verdicts (' + hist.length + ')</summary><ul>' +
       hist.slice().reverse().map(v => '<li>' + esc(verdictText(v)) + '</li>').join('') + '</ul></details>' : '') +
     '<form id="ocrForm" novalidate><fieldset><legend>Record a Verdict</legend>' +
     OCR.verdicts.map(v => '<label><input type="radio" name="ocrV" value="' + esc(v) + '"> ' + esc(VERDICT_LABEL[v] || v) + '</label>').join('') + '</fieldset>' +
-    '<div class="ctx" id="ocrHelp">Approved passes this part of "Ready to ship?". Not Approved keeps it closed. Sent to a Language Reader keeps it closed and says it is waiting for a reader, who then records Approved or Not Approved.</div>' +
+    '<div class="ctx" id="ocrHelp">Approved passes this part of "Ready to Ship?" Not Approved keeps it closed. Sent to a Language Reader keeps it closed and says it is waiting for a reader, who then records Approved or Not Approved.' +
+      (OCR_ONLY ? ' Finish OCR Review records the verdict and closes this page.' : ' Record Verdict records it at once, on its own; this page stays open.') + '</div>' +
     '<div class="field"><label for="ocrReason">Reason</label><input type="text" id="ocrReason" maxlength="' + OCR.limits.reason + '" aria-describedby="ocrReasonHelp"><div class="ctx" id="ocrReasonHelp">One line; needed for Approved and Not Approved.</div></div>' +
-    '<div class="field" id="ocrToRow" hidden><label for="ocrTo">Sent To (Optional)</label><input type="text" id="ocrTo" maxlength="' + OCR.limits.to + '" placeholder="A person or a team"></div>' +
-    '<div class="field"><label for="ocrPagesIn">Pages (Optional)</label><input type="text" id="ocrPagesIn" placeholder="for example 381-386" aria-describedby="ocrPagesHelp"><div class="ctx" id="ocrPagesHelp">PDF page numbers and ranges the verdict covers.</div></div>' +
+    '<div class="field" id="ocrToRow" hidden><label for="ocrTo">Sent to (Optional)</label><input type="text" id="ocrTo" maxlength="' + OCR.limits.to + '" placeholder="A person or a team"></div>' +
+    '<div class="field"><label for="ocrPagesIn">Pages (Optional)</label><input type="text" id="ocrPagesIn" placeholder="ex. 381-386" aria-describedby="ocrPagesHelp"><div class="ctx" id="ocrPagesHelp">PDF page numbers and ranges the verdict covers.</div></div>' +
     (L.non_latin ? '<div class="field"><label><input type="checkbox" id="ocrReads"> I read ' + esc(L.label) + '</label><div class="ctx">These pages are in a non-Latin script: Approved needs this box.</div></div>' : '') +
-    '<button type="submit" class="primary">Record Verdict</button></form><div id="ocrMsg" role="status" tabindex="-1"></div>' +
+    '<button type="submit" class="primary">' + (OCR_ONLY ? 'Finish OCR Review' : 'Record Verdict') + '</button></form><div id="ocrMsg" role="status" tabindex="-1"></div>' +
     '<details id="ocrPagesFold"' + (ocrPagesOpen ? ' open' : '') + '><summary>' + esc(tc('Pages (' + OCR.pages.length + ')')) + '</summary>' +
-    (OCR.lang ? '' : '<p class="ctx">The text is not marked with a language for screen readers: ' + esc(OCR.lang_why) + '.</p>') +
+    (OCR.lang ? '' : '<p class="ctx">The text isn\'t marked with a language for screen readers: ' + esc(OCR.lang_why) + '.</p>') +
     '<div id="ocrCards">' + OCR.pages.map(ocrCard).join('') + '</div>' +
     (OCR.flagged && (OCR.showable || []).length > OCR.pages.length ? '<div class="field"><label for="ocrMore">Show Another Page</label><input type="text" inputmode="numeric" id="ocrMore" size="6"> <button type="button" id="ocrMoreBtn">Show Page</button><div class="ctx">' +
-      (OCR.showable.length) + ' pages have this OCR layer.</div></div>' : '') + '</details>';
+      (OCR.showable.length) + ' pages have the book\'s own OCR text.</div></div>' : '') + '</details>';
   ocrBox.innerHTML = h;
   ocrBox.querySelectorAll('pre.ocrtext').forEach(x => textSeen.observe(x));
   document.getElementById('ocrPagesFold').addEventListener('toggle', e => { ocrPagesOpen = e.target.open; });
@@ -337,12 +346,19 @@ ocrBox.addEventListener('submit', async e => {
   const body = { verdict: pick.value, reviewer: state.reviewer, reason: document.getElementById('ocrReason').value,
                  pages: document.getElementById('ocrPagesIn').value, to: pick.value === 'sent to a language reader' ? document.getElementById('ocrTo').value : '',
                  reads: reads && reads.checked ? [OCR.languages.label] : [] };
+  if (OCR_ONLY) body.close = true;                     // Finish OCR Review: recorded, then the page closes
   try {
     const r = await fetch('/ocr-verdict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const b = await r.json();
     if (!r.ok) return ocrSay(esc(b.error || 'The verdict was not recorded.'), true);
     OCR = b.ocr; renderOcr(); nav();
-    ocrSay('Recorded: ' + esc(verdictText(b.recorded)) + '.' + (OCR.ship ? ' Ready to ship? ' + (OCR.ship.ready ? 'Yes' : 'No') + '.' : ''));
+    const said = 'Recorded: ' + esc(verdictText(b.recorded)) + '.' + (ocrShip() ? ' OCR text approved: ' + esc(ocrShip()) + '.' : '');
+    if (b.closed) {                                    // back to the run page, which loads the updated report; else the terminal
+      ocrBox.querySelectorAll('input, button').forEach(x => { x.disabled = true; }); document.getElementById('closeOcr').disabled = true;
+      if (RETURN_TO) return location.assign(RETURN_TO.split('?')[0] + '?after=ocr');
+      return ocrSay(said + ' The OCR review page is closed: go back to the terminal.');
+    }
+    ocrSay(said);
   } catch (err) { ocrSay('Could not reach the review server: is it still running?', true); }
 });
 ocrBox.addEventListener('click', e => {
@@ -604,10 +620,10 @@ function nav() {
   const kinds = []; for (const it of items) if (!kinds.includes(it.kind)) kinds.push(it.kind);
   const pages = {};
   for (const it of items) if (it.priority && it.page != null) (pages[it.page] = pages[it.page] || []).push(it.id);
-  const ocrNav = !OCR ? '' : '<h2>OCR Text</h2><a href="#ocr-text"><span>Verdict</span><span>' + esc(OCR.current ? (VERDICT_LABEL[OCR.current.verdict] || '') : 'None') + '</span></a>' +
+  const ocrNav = !OCR ? '' : '<h2>OCR Text</h2><a href="#ocr-text"><span>Verdict</span><span>' + esc(OCR.current ? (VERDICT_LABEL[OCR.current.verdict] || '') : 'Not Reviewed') + '</span></a>' +
     OCR.pages.map(p => '<a href="#ocr-page-' + p.page + '"><span>PDF ' + p.page + '</span><span></span></a>').join('');
   if (OCR_ONLY) { document.getElementById('navList').innerHTML = ocrNav; return; }
-  let h = '<h2>This Session</h2><a href="#this-session"><span>Name and Notes</span><span></span></a>' + ocrNav;
+  let h = ocrNav;
   h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + (view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
   h += '<h2>Check First</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
   h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
@@ -854,7 +870,7 @@ function askFinish() {
     (SESSION && SESSION.reopened ? ' Finish re-applies the reviewed order (no AI call).' : '') + ' The name and notes go to Session History.' +
     (OCR ? ' OCR text: ' + esc(verdictText(OCR.current)) + '; a verdict is recorded on its own under OCR Text, not with Finish.' : '') + '</div>' +
     '<label for="finName">Session Name</label><input type="text" id="finName" maxlength="80">' +
-    '<label for="finNotes">Session Notes</label><textarea id="finNotes" maxlength="4000"></textarea>' +
+    '<label for="finNotes">Session Notes (Optional)</label><textarea id="finNotes" maxlength="4000"></textarea>' +
     '<div class="buttons"><button type="button" data-f="back">Back</button>' + (n ? '<button type="button" data-f="left">Show Not Reviewed</button>' : '') +
     '<button type="button" class="primary" data-f="finish">Finish Review</button></div>';
   document.getElementById('finName').value = sName.value; document.getElementById('finNotes').value = sNotes.value;

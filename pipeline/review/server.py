@@ -18,9 +18,14 @@ Routes (all call review/core.py; a later front end can replace this file and pag
                                  them (a normal step of the flow, so not an HTTP error the browser logs)
     GET  /ocr/text/<n>.json      the text of PDF page n, for the OCR Text section: only pages the section can show
                                  (review/ocr.py showable_pages), from an exact-path list made at start
-    POST /ocr-verdict {verdict, reviewer, reason, pages, reads, to}  → review/ocr.py record(): written at once, on its own
-                                 (not with Finish); Ctrl+C waits until it is written
-    POST /close                  OCR-only mode (review_ocr.py --serve): the page is done, the server stops
+    POST /ocr-verdict {verdict, reviewer, reason, pages, reads, to, close}  → review/ocr.py record(): written at once, on its
+                                 own (not with Finish), dated the day it is recorded. close (OCR-only mode, Finish OCR Review):
+                                 the server stops once it is written
+    POST /close                  OCR-only mode (review_ocr.py --serve): Close Without a Verdict, the server stops
+
+Every request passes a gate: once the server is stopping (Ctrl+C, Stop, Finish done) a new one is refused, and serve()
+returns only after every request already inside has ended, so a write is never cut off between its files, and no page
+image is still being rendered by PDFium when the process ends (that crashed it on exit, code 139).
 
 Modes: the work-order review (review_items.json in R; the first review serves the run folder, a reopen serves
 reviews/), and the OCR-only page (data= given, no decisions). run_dir is the run folder (for the OCR verdict and text).
@@ -30,7 +35,7 @@ so another web page open in the browser cannot submit a review (a plain form or 
 response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none'), so another page cannot show this one in a
 frame and trick a click on Finish.
 """
-import os, json, time, datetime, threading, webbrowser, mimetypes, urllib.parse
+import os, json, datetime, threading, webbrowser, mimetypes, urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from . import core
 
@@ -73,9 +78,24 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     if not ocr_only and 'addable' not in data: data['addable'] = core.addable(ai, digest); data['add_kinds'] = core.ADD_KINDS
     adds = data['addable']
     saved = core.load(os.path.join(R, 'review_decisions.json'), {}) or {}
-    done = threading.Event(); finishing = threading.Event(); recording = threading.Event(); result = {}
+    done = threading.Event(); finishing = threading.Event(); result = {}
     render_lock = threading.Lock()                    # pdfium is not thread-safe: one page image at a time
     write_lock = threading.Lock()                     # every write of this server, one at a time (Save, Keep and Finish race on a blur)
+    gate = threading.Condition(); inside = {'n': 0, 'closed': False}   # POSTs under way; closed: the server is stopping
+
+    def enter():
+        with gate:
+            if inside['closed']: return False
+            inside['n'] += 1; return True
+
+    def leave():
+        with gate: inside['n'] -= 1; gate.notify_all()
+
+    def close_gate():
+        """No new POST from now on; returns once every POST under way has ended (its files all written, or refused)."""
+        with gate:
+            inside['closed'] = True
+            while inside['n']: gate.wait(0.2)
     sid = (data.get('session') or {}).get('id') or '001'
     ocr_wo = wo if ocr_only else ai
     def ocr_section(): return O.section(run_dir, digest, ocr_wo)
@@ -127,7 +147,12 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
 
         def ours(self): return local_request(self, self.server.server_address[1])
 
-        def do_GET(self):
+        def do_GET(self):                              # through the gate too: a page image PDFium is still rendering when the
+            if not enter(): return self.send(503, {'error': 'The review page is closing.'})   # process ends crashes it (exit 139)
+            try: self.get()
+            finally: leave()
+
+        def get(self):
             if not self.ours(): return self.send(403, {'error': 'open the page at the address the terminal printed'})
             path = self.path.split('?', 1)[0]
             if path in ('/', '/index.html'):
@@ -147,6 +172,11 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             self.send(404, {'error': 'not found'})
 
         def do_POST(self):
+            if not enter(): return self.send(503, {'error': 'The review page is closing.'})
+            try: self.post()
+            finally: leave()
+
+        def post(self):
             if not self.ours(): return self.send(403, {'error': 'not from the review page'})
             if (self.headers.get('Content-Type') or '').split(';')[0].strip().lower() != 'application/json':
                 return self.send(415, {'error': 'the review page sends JSON'})
@@ -163,11 +193,12 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 fields['reads'] = [str(x) for x in body.get('reads') or []] if isinstance(body.get('reads'), list) else []
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'The page is finishing: record the verdict from the run page.'})
-                    recording.set()                        # Ctrl+C and Stop wait until the verdict is written
-                    try: v, _ = O.record(run_dir, fields, via='page', held=lock_held, session=None if ocr_only else sid, date=date)
+                    try: v, _ = O.record(run_dir, fields, via='page', held=lock_held, session=None if ocr_only else sid)   # today's date
                     except (ValueError, S.Refused) as e: return self.send(400, {'error': str(e)[:1].upper() + str(e)[1:]})
-                    finally: recording.clear()
-                return self.send(200, {'recorded': v, 'ocr': ocr_section()})
+                    closing = ocr_only and body.get('close') is True   # Finish OCR Review: recorded, then the page closes
+                    self.send(200, {'recorded': v, 'ocr': ocr_section(), 'closed': closing})
+                    if closing: done.set()
+                return
             if self.path == '/close':
                 if not ocr_only: return self.send(404, {'error': 'not found'})
                 with write_lock: done.set()
@@ -231,7 +262,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     if srv is None: raise SystemExit(f'no free port between {port} and {port + 19}: pass --port')
     url = f'http://localhost:{srv.server_address[1]}/'
     print(f'review page: {url}\n  open it in a browser (from WSL, a Windows browser works too). ' +
-          ('Ctrl+C or Close closes it; a verdict is recorded when you press Record Verdict.' if ocr_only else
+          ('Finish OCR Review records the verdict and closes it; Ctrl+C or Close Without a Verdict closes it with none.' if ocr_only else
            'Ctrl+C stops without finishing; your choices so far are kept in the browser and in review_decisions.json after each Save.'), flush=True)
     if open_browser:
         try: webbrowser.open(url)
@@ -240,13 +271,15 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     try:
         while not done.wait(0.5): pass                 # a short wait, so Ctrl+C is seen
     except KeyboardInterrupt:
-        while (finishing.is_set() and not done.is_set()) or recording.is_set(): time.sleep(0.2)   # let a Finish or a verdict be written
+        close_gate()                                   # a Finish or a verdict under way is written whole first
+        srv.shutdown()
+        if page_text: page_text.close()
         if not done.is_set() or ocr_only:
-            if page_text: page_text.close()
             print('\nstopped: ' + ('the OCR review page is closed.' if ocr_only else 'the review is not finished. Run the same command again to carry on.'))
-            srv.shutdown(); return None
+            return None
         print('\nCtrl+C came while Finish was being recorded: the review is recorded')
+        return result
+    close_gate()                                       # a request that came in as the page closed: let it end
     srv.shutdown()
-    while recording.is_set(): time.sleep(0.2)         # a verdict being written as the page closed: let it end
     if page_text: page_text.close()
     return result

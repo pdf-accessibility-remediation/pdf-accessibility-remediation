@@ -35,6 +35,9 @@ BCP = {'chi_tra': 'zh-Hant', 'chi_sim': 'zh-Hans', 'jpn': 'ja', 'kor': 'ko', 'en
        'por': 'pt', 'ita': 'it', 'nld': 'nl', 'haw': 'haw', 'tgl': 'tl', 'ilo': 'ilo', 'vie': 'vi', 'ind': 'id', 'mri': 'mi',
        'smo': 'sm', 'ton': 'to', 'ara': 'ar', 'heb': 'he', 'rus': 'ru', 'ell': 'el', 'tha': 'th'}
 SCRIPT_NAMES = {'kana': 'Japanese', 'hangul': 'Korean'}       # kana is Japanese and Hangul Korean (team rule, PR #39); Han is not named
+LATIN_NAMES = {'eng': 'English', 'fra': 'French', 'deu': 'German', 'spa': 'Spanish', 'por': 'Portuguese', 'ita': 'Italian',
+               'nld': 'Dutch', 'lat': 'Latin', 'haw': 'Hawaiian', 'tgl': 'Tagalog', 'fil': 'Filipino', 'ilo': 'Ilokano',
+               'vie': 'Vietnamese', 'ind': 'Indonesian', 'msa': 'Malay', 'mri': 'Māori', 'smo': 'Samoan', 'ton': 'Tongan'}
 
 def ocr_codes(intake):
     """The Tesseract languages OCR_LANG named for this book (a person set them), without the _vert models."""
@@ -53,12 +56,21 @@ def languages(intake, pages):
     return {'non_latin': non_latin, 'names': names,
             'label': ' and '.join(names) if names else 'the language of these pages'} if non_latin else {'non_latin': False, 'names': [], 'label': None}
 
+def language_names(intake):
+    """Every language OCR_LANG named, by name (as on the "I read" box), in its order; a code with no name is left out (the
+    page shows no codes)."""
+    return [n for n in ((NAMES | LATIN_NAMES).get(c) for c in ocr_codes(intake)) if n]
+
 def text_lang(intake):
-    """The lang attribute for the OCR text: only when OCR_LANG names one language; (tag or None, why not)."""
+    """The lang attribute for the OCR text: only when OCR_LANG names one language; (tag or None, why not, in plain words)."""
     codes = ocr_codes(intake)
-    if not (intake.get('ocr') or {}).get('pages_with_ocr_text'): return None, 'the book\'s own OCR layer: its language is not recorded'
+    if not (intake.get('ocr') or {}).get('pages_with_ocr_text'): return None, 'the book\'s own OCR text does not record its language'
     if len(codes) == 1 and codes[0] in BCP: return BCP[codes[0]], None
-    return None, (f'OCR_LANG is {"+".join(codes)} (more than one language)' if len(codes) > 1 else 'OCR_LANG is not set')
+    return None, ('it was read as more than one language' if len(codes) > 1 else 'no OCR language was set for this book')
+
+def and_list(xs):
+    xs = [str(x) for x in xs]
+    return ' and '.join(xs) if len(xs) < 3 else ', '.join(xs[:-1]) + ' and ' + xs[-1]
 
 # ------------------------------------------------------------------ checking a verdict
 def one_line(name, s, limit, required=False):
@@ -217,6 +229,31 @@ def write(R, intake, rec, v, say=print):
         except Exception as e: say(f'note: review.html not refreshed ({type(e).__name__}: {e})')
 
 # ------------------------------------------------------------------ the page's OCR Text section
+def differ(cer, other=''):
+    """A character error rate in words, against `other` when given; it can pass 100% when the two texts hardly match."""
+    return f'{cer:.0%} of its characters differ' + (f' from {other}' if other else '') if cer < 1 else 'almost none of its characters match' + (f' {other}' if other else '')
+
+def plain_reason(t):
+    """Why the layer test could not score a page, in plain words (intake's own reason, with its terms replaced)."""
+    r = str(t.get('reason') or 'no reason recorded')
+    if r.startswith('Tesseract model'): return 'the OCR language needed to check it is not installed on this computer'
+    if t.get('marks'): return 'a new OCR reading missed the accent marks that the book\'s OCR text has, so the two cannot be compared fairly'
+    return r.replace('in the OCR layer', 'in its OCR text').replace('Greek letters', 'Greek letters on it')
+
+def layer_words(ol):
+    """The intro's sentence on a flagged existing OCR layer (the review.md wording, ocr_layer_finding, stays as it is)."""
+    scored, sample, v = ol.get('scored'), ol.get('sample'), ol.get('verdict')
+    on = f' on {scored} of {sample} sample pages' if scored is not None and sample else ''
+    if v in ('doubtful', 'unusable'):
+        s = (f'The book came with its own OCR text. During intake it was compared with a new OCR reading{on}: it looks {v}'
+             + (f' ({"about " if ol["median_cer"] < 1 else ""}{differ(ol["median_cer"])})' if ol.get('median_cer') is not None else '') + '.')
+    elif v == 'not enough pages scored':
+        s = (f'The book came with its own OCR text, which could not be checked during intake: '
+             + (f'only {scored} of {sample} sample pages could be compared with a new OCR reading.' if scored is not None and sample else 'too few sample pages could be compared with a new OCR reading.'))
+    else: s = 'The book came with its own OCR text.'
+    if ol.get('diacritics'): s += ' It is missing accent marks on letters (ex. ā, ō) that a new OCR reading found.'
+    return s
+
 def ship_line(rec):
     """What "Ready to ship?" says now, and its OCR line, from a record's glance; None without a record."""
     g = (rec or {}).get('glance') or {}
@@ -243,27 +280,28 @@ def section(R, digest=None, wo=None):
         for p in w.get('pages') or []:
             by_page.setdefault(p, []).append({'id': w['id'], 'text': w.get('text'), 'count': w.get('count'), 'reads': readings.get(w['id'])})
 
+    # in plain words for library staff (no file names, codes or tool names); examples after "ex."
     def findings(p):
         f = []
         if p in added:
             w = words.get(p) or {}
             if w.get('words') is not None: f.append(f'{w["words"]:,} words read by OCR')
             j = junk.get(str(p)) or {}
-            if j.get('junk'): f.append(f'{j["junk"]} of {j.get("tokens")} tokens look like junk ({j.get("share", 0):.0%})'
-                                      + (', for example ' + ' '.join(j.get('examples')[:6]) if j.get('examples') else ''))
+            if j.get('junk'): f.append(f'{j["junk"]} of {j.get("tokens")} words and symbols look like junk ({j.get("share", 0):.0%})'
+                                      + (', ex. ' + ' '.join(j.get('examples')[:6]) if j.get('examples') else ''))
             n = (cj.get('cjk_characters') or {}).get(str(p))
-            if n: f.append(f'{n:,} CJK characters')
+            if n: f.append(f'{n:,} Chinese, Japanese or Korean characters')
         if flagged and p in tested:
             t = tested[p]
-            if t.get('verdict') == 'not scored': f.append(f'existing OCR layer not scored: {t.get("reason") or "no reason recorded"}')
+            if t.get('verdict') == 'not scored': f.append(f'the book\'s own OCR text could not be checked on this page: {plain_reason(t)}')
             elif t.get('verdict'):
-                f.append(f'existing OCR layer {t["verdict"]}' + (f' ({t["cer"]:.0%} character error against a fresh OCR)' if t.get('cer') is not None else ''))
+                f.append(f'the book\'s own OCR text looks {t["verdict"]}' + (f' ({differ(t["cer"], "a new OCR reading")})' if t.get('cer') is not None else ''))
             if t.get('marked_vowels_ocr'):
-                f.append(f'{t["marked_vowels_ocr"]} marked vowels in a fresh OCR, {t.get("marked_vowels_layer") or 0} in the layer')
-            if t.get('confident_words_missing'): f.append(f'{t["confident_words_missing"]:.0%} of the words a fresh OCR read confidently are missing from the layer')
+                f.append(f'{t["marked_vowels_ocr"]} letters with accent marks (ex. ā, ō) in a new OCR reading, {t.get("marked_vowels_layer") or 0} in the book\'s OCR text')
+            if t.get('confident_words_missing'): f.append(f'{t["confident_words_missing"]:.0%} of the words a new OCR reading was sure of are missing from the book\'s OCR text')
             if t.get('layer_read_with') == 'pdfium':
-                f.append('the layer test read this layer with PDFium; the text below is read with pdfplumber, and the two can differ')
-        if p in vertical: f.append('vertical text')
+                f.append('the check read this page\'s text with a different tool from the one that shows it here, so the two can differ slightly')
+        if p in vertical: f.append('text set vertically')
         if p in spreads: f.append('two printed pages on this PDF page')
         return f
 
@@ -271,12 +309,15 @@ def section(R, digest=None, wo=None):
     lang, lang_why = text_lang(intake)
     av = (intake.get('review') or {}).get('ocr_text_approved')
     what = []
-    if added: what.append(f'Intake added OCR text on {len(added)} page{"s" if len(added) != 1 else ""}'
-                          + (f' (OCR_LANG {"+".join(ocr_codes(intake))})' if ocr_codes(intake) else '') + '.')
-    if flagged: what.append(f'The book\'s existing OCR layer is {ocr_layer_finding(intake)}'
-                            + (f'; the test scored {ol["scored"]} of {ol.get("sample")} sample pages' if ol.get('scored') is not None else '') + '.')
+    if added:
+        names = language_names(intake)
+        what.append(f'During intake, OCR added text to {len(added)} page{"s" if len(added) != 1 else ""}'
+                    + (f', read as {and_list(names)}' if names else '') + '.')
+    if flagged: what.append(layer_words(ol))
     pics = o.get('image_pages_without_text') or []
-    if pics: what.append(f'{len(pics)} picture page{"s" if len(pics) != 1 else ""} with no OCR text: PDF {", ".join(str(x) for x in pics[:12])}.')
+    if pics:
+        shown = pics[:12] + ([f'{len(pics) - 12} more'] if len(pics) > 12 else [])
+        what.append(f'PDF {and_list(shown)} {"is a picture" if len(pics) == 1 else "are pictures"} with no text.')
     snaps = [{'session': s['id'], 'verdict': s.get('ocr_verdict')} for s in S.sessions(R) if 'ocr_verdict' in s] if rec else []
     return {'what': what, 'pages': [{'page': p, 'source': 'intake OCR' if p in added else 'existing OCR layer', 'findings': findings(p),
                                      'words': by_page.get(p, [])} for p in pages],

@@ -80,7 +80,20 @@ details.fold { margin-top: 6px; font-size: 13px; } details.fold summary { cursor
 details.fold.plain summary { color: var(--ink); }            /* all five passed: a plain toggle, still with its arrow */
 td.nowrap, span.nowrap { white-space: nowrap; }
 .sname { display: block; max-width: 22em; overflow-wrap: anywhere; }   /* a session's own name, under its number */
-div.pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 60em; }   /* a person's notes, as typed */
+p.sumline { margin-bottom: 0; } p.snotes { margin-top: 0; }   /* a session's Session Notes button, right under its line */
+td.notes { vertical-align: middle; }
+button.nopen { font: inherit; color: var(--accent); background: none; border: 0; padding: 0 2px; min-height: 24px; text-decoration: underline; cursor: pointer; }
+/* a session's notes: a pop-up box (the script's notes box), not modal, moved by its title bar, resized from its corner */
+dialog.ndlg { position: fixed; margin: 0; padding: 0; inset: auto; width: min(520px, 92vw); height: 300px; min-width: 220px; min-height: 120px;
+              max-width: 100vw; max-height: 100vh; resize: both; overflow: hidden; z-index: 50; border: 1px solid var(--muted); border-radius: 6px;
+              background: var(--panel); color: var(--ink); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
+dialog.ndlg[open] { display: flex; flex-direction: column; }
+.nbar { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; background: var(--bg); border-bottom: 1px solid var(--line); cursor: move; user-select: none; touch-action: none; }
+.nbar h2 { flex: 1; font-size: 15px; margin: 0; padding: 0; border: 0; overflow-wrap: anywhere; }
+dialog.ndlg button { min-width: 28px; min-height: 28px; padding: 0 6px; border: 0; background: none; color: var(--ink); font-size: 18px; line-height: 1; cursor: pointer; }
+dialog.ndlg .nmove { cursor: move; }
+.nbody { flex: 1; overflow: auto; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+dialog.ndlg :focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 hr.thin { border: 0; border-top: 1px solid var(--line); margin: 14px 0 8px; } h3.rev-sub { font-size: 15px; margin: 0 0 4px; }
 ul.checks { list-style: none; padding-left: 4px; margin: 4px 0 0; }
 h2.inline { display: inline; font-size: 15px; border: 0; margin: 0; padding: 0; }
@@ -304,9 +317,13 @@ def session_name(x):
     """'Session 5: Chapters 1–4 pass', or 'Session 5' (records made before sessions had names have none). Escaped."""
     return f'Session {int(x["id"])}' + (f': {E(x["name"])}' if x.get('name') else '')
 
-def notes_fold(x, summary='Notes'):
-    """A session's notes, plain text in a fold (never through inline(): a person's text is not markdown); 'none' without."""
-    return f'<details class="fold"><summary>{summary}</summary><div class="pre">{E(x["notes"])}</div></details>' if x.get('notes') else 'none'
+def notes_open(x, label='Notes'):
+    """A session's notes: a button that opens them, read-only, in the page's pop-up box (the script's notes box), with the
+    text beside it, hidden (plain text, never through inline(): a person's text is not markdown); 'none' without."""
+    if not x.get('notes'): return 'none'
+    title = f'Notes: Session {int(x["id"])}' + (f' · {x["name"]}' if x.get('name') else '')
+    return (f'<button type="button" class="nopen" data-title="{E(title)}">{label}</button>'
+            f'<span class="ntext" hidden>{E(x["notes"])}</span>')
 
 def review_card(R, rec):
     """The "Review" section: one line for the current session, its row (earlier sessions folded), each decision's review
@@ -333,15 +350,16 @@ def review_card(R, rec):
             name = f'<span class="sname">{E(x["name"])}</span>' if x.get('name') else ''
             return (f'<tr><td><span class="nowrap">{int(x["id"])}{mark}</span>{name}</td><td class="nowrap">{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(x.get("date") or "")}</td>'
                     f'<td>{E(x.get("status") or "")}</td><td class="nowrap">{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td>'
-                    f'<td>{notes_fold(x)}</td></tr>')
+                    f'<td class="notes">{notes_open(x)}</td></tr>')
         now = [x for x in ss if x['id'] == cur]; earlier = [x for x in ss if x['id'] != cur]
         if now:
             x = now[0]; c = x.get('counts') or {}
             parts = ([f'{c.get("approved") or 0} approved'] + ([f'{c["changed"]} changed'] if c.get('changed') else []) +
                      [f'{c.get("rejected") or 0} rejected', f'{c.get("accepted_unreviewed") or 0} accepted without review']) if c else ['counts not recorded']
-            B.append(f'<p><strong>{session_name(x)}</strong> · {E(x.get("reviewer") or "reviewer not recorded")} · '
+            sl = ' class="sumline"' if x.get('notes') else ''
+            B.append(f'<p{sl}><strong>{session_name(x)}</strong> · {E(x.get("reviewer") or "reviewer not recorded")} · '
                      f'{E(x.get("date") or "date not recorded")} · ' + ' · '.join(parts) + '</p>')
-            if x.get('notes'): B.append(notes_fold(x, 'Session Notes'))
+            if x.get('notes'): B.append(f'<p class="snotes">{notes_open(x, "Session Notes")}</p>')   # right under the line
             B.append(SESSION_TABLE.format(cap='The current review session', rows=row(x)))
         if earlier:
             B.append(f'<details class="fold"><summary>Previous Sessions ({len(earlier)})</summary>'
@@ -661,6 +679,53 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
           });
       });
       out.textContent = v ? n + ' of ' + total + ' shown' + (notes ? ', and ' + notes + ' note' + (notes === 1 ? '' : 's') : '') : '';
+    });
+  });
+})();
+(function () {
+  // a session's notes in a pop-up box, read-only (the app's run page has the same box, webapp/panel.js notesBox). Not modal:
+  // the page stays usable beside it. It moves by its title bar (or, by keyboard, the arrow keys on its Move button; Shift
+  // with an arrow key resizes it), resizes from its corner, and closes with × or Escape. Focus goes into its text on open
+  // and back to the button that opened it on close.
+  var d = null, opener = null;
+  function put(x, y) {                  // kept inside the window
+    d.style.left = Math.max(0, Math.min(innerWidth - 80, x)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
+  }
+  function close() { d.close(); if (opener) opener.focus(); }
+  function make() {
+    d = document.createElement('dialog'); d.className = 'ndlg'; d.setAttribute('aria-labelledby', 'ndlg-h');
+    d.innerHTML = '<div class="nbar"><h2 id="ndlg-h"></h2>' +
+      '<button type="button" class="nmove" aria-label="Move the box: arrow keys; Shift and arrow keys resize it"><span aria-hidden="true">✥</span></button>' +
+      '<button type="button" class="nx" aria-label="Close the notes"><span aria-hidden="true">×</span></button></div>' +
+      '<div class="nbody" tabindex="0" role="region" aria-labelledby="ndlg-h"></div>';
+    document.body.appendChild(d);
+    d.querySelector('.nx').addEventListener('click', close);
+    d.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    d.querySelector('.nmove').addEventListener('keydown', function (e) {
+      var k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key]; if (!k) return;
+      e.preventDefault();
+      if (e.shiftKey) { d.style.width = Math.max(220, d.offsetWidth + 20 * k[0]) + 'px'; d.style.height = Math.max(120, d.offsetHeight + 20 * k[1]) + 'px'; }
+      else put(d.offsetLeft + 20 * k[0], d.offsetTop + 20 * k[1]);
+    });
+    d.querySelector('.nbar').addEventListener('pointerdown', function (e) {   // drag by the title bar (not its close button)
+      if (e.button || e.target.closest('.nx')) return;
+      var dx = e.clientX - d.offsetLeft, dy = e.clientY - d.offsetTop, bar = e.currentTarget;
+      bar.setPointerCapture(e.pointerId); e.preventDefault();
+      function move(ev) { put(ev.clientX - dx, ev.clientY - dy); }
+      function up() { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); bar.removeEventListener('pointercancel', up); }
+      bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up); bar.addEventListener('pointercancel', up);
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('button.nopen'), function (b) {
+    b.addEventListener('click', function () {
+      if (!d) make();
+      opener = b;
+      d.querySelector('h2').textContent = b.getAttribute('data-title'); d.querySelector('.nbody').textContent = b.nextElementSibling.textContent;
+      if (!d.open) {
+        d.show();
+        d.style.left = Math.max(0, (innerWidth - d.offsetWidth) / 2) + 'px'; d.style.top = Math.max(0, (innerHeight - d.offsetHeight) / 3) + 'px';
+      }
+      d.querySelector('.nbody').scrollTop = 0; d.querySelector('.nbody').focus();
     });
   });
 })();"""
