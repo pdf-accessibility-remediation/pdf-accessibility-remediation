@@ -171,7 +171,7 @@ def with_version(page, run, sid):
 def md_page(text, run, sid, base):
     """review.md inside a page with a way back (the run page; for a previous result, that result's dashboard too) and a
     link to the plain file. The text is shown as written, escaped."""
-    which = TC(f'a previous result ({S.label(sid)})' if sid else 'the current result')
+    which = TC(f'a previous result ({S.label(sid).capitalize()})' if sid else 'the current result')   # TC leaves parentheses as written
     links = [f'<a href="{base}">Back to the Run Page</a>'] + ([f'<a href="review.html">This Previous Result\'s Dashboard</a>'] if sid else []) + \
             ['<a href="review.md?raw=1">The Plain File</a>']
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'

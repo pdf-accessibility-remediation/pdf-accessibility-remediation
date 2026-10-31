@@ -32,6 +32,8 @@ button.primary { background: var(--accent); color: #fff; border-color: var(--acc
 input[type=text], textarea, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 textarea { width: 100%; max-width: 100%; min-height: 3.2em; resize: vertical; }   /* taller only: never wider than its box */
 .sname { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 0; } .sname[hidden] { display: none; }
+.sname { margin-left: -14px; }   /* closer to the Reviewer box than the row's 32 px gap; what follows moves with it */
+@media (max-width: 560px) { .sname { margin-left: 0; } }   /* a phone: it starts its own line */
 .sname label { margin-right: 4px; } .sname a { margin-left: 18px; }   /* the name close to its box; the notes link apart from it */
 #msg { margin-top: 6px; font-size: 14px; }
 #msg.err { color: var(--reject); }
@@ -98,10 +100,13 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 #zoom { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: none; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out; }
 #zoom img { max-width: 96vw; max-height: 96vh; background: #fff; }
 .done { padding: 12px 16px; background: var(--flag); border-radius: 8px; margin: 10px 0; }
-/* This Session: the session's name (in the header) and notes; the notes of the session this one started from, read-only */
+/* the session's notes (its name is in the header); the notes of the session this one started from, read-only. The box is a
+   block, so no line gap under it: the fold below sits centred between the box and the section's edge */
+#this-session textarea { display: block; }
 #this-session { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 16px; }
 #this-session > h2 { margin-top: 0; }
-#this-session label, #finishDialog label { display: block; font-weight: 600; margin: 6px 0 2px; }
+#this-session h2 label { display: block; cursor: pointer; }   /* the section's heading is the notes box's label */
+#finishDialog label { display: block; font-weight: 600; margin: 6px 0 2px; }
 #this-session textarea, #finishDialog textarea { min-height: 5em; }
 #finishDialog input[type=text] { width: 100%; }
 .pre { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -165,8 +170,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 <main>
   <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close Sections"><span aria-hidden="true">×</span></button></div><div id="navList"></div></nav>
   <div class="col">
-    <section id="this-session" aria-labelledby="tsTitle"><h2 id="tsTitle">This Session</h2>
-      <label for="sessionNotes">Session Notes (Optional)</label>
+    <section id="this-session" aria-labelledby="tsTitle"><h2 id="tsTitle"><label for="sessionNotes">Session Notes (optional)</label></h2>
       <textarea id="sessionNotes" maxlength="4000"></textarea>
       <div id="fromNotes"></div>
     </section>
@@ -203,13 +207,17 @@ const NEXT = RETURN_TO ? 'the run page' : 'the terminal';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // Title Case for labels (headings, row labels, toggles, buttons); explanatory text stays in sentence case. The rule of
 // lib/titles.py: a, an, the, and, or, of, to, in, on, for, by, from, with stay lowercase unless first, last, or first after a
-// colon or question mark; a word with a capital inside, a dot, slash, underscore or digit is left as written.
+// colon or question mark; a word with a capital inside, a dot, slash, underscore or digit is left as written, and so is
+// everything in parentheses (a qualifier stays lowercase: "Sent to (optional)").
 const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with']);
 function tc(s) {
-  const w = String(s).split(' '); let edge = true;
+  const w = String(s).split(' '); let edge = true, depth = 0;
   return w.map((x, n) => {
     const i = x.search(/[^("'*[`]/), core = i < 0 ? '' : x.slice(i), first = edge || n === w.length - 1;
+    const inside = depth > 0 || /^["'*[`]*\(/.test(x);
+    depth = Math.max(0, depth + (x.match(/\(/g) || []).length - (x.match(/\)/g) || []).length);
     edge = /[:?—]$/.test(x);
+    if (inside) return x;
     if (!core || !/^\p{L}/u.test(core) || /[./_@\d]/.test(core) || /\p{Lu}/u.test(core.slice(1))) return x;
     if (!first && SMALL.has(core.replace(/[:?!.,;)"'*`\]]+$/, ''))) return x;
     return x.slice(0, i) + core[0].toUpperCase() + core.slice(1);
@@ -309,7 +317,7 @@ function renderOcr() {
   if (ocrPagesOpen === null) ocrPagesOpen = !cur;
   ocrBox.hidden = false;
   let h = '<h2 id="ocrTitle" tabindex="-1">OCR Text</h2><div class="ctx">' + OCR.what.map(esc).join(' ') +
-    ' The text is shown exactly as it appears in the PDF and isn\'t edited here; correcting it is an editorial decision. Approving it is one of the conditions for "Ready to Ship?"</div>' +
+    ' The text is shown as OCR read it and isn\'t edited on this page. Approving it is one of the conditions for "Ready to Ship?"</div>' +
     '<p><b>Current Verdict:</b> ' + esc(verdictText(cur)) + '</p>' +
     (ocrShip() ? '<p><b>OCR Text Approved:</b> ' + esc(ocrShip()) + '</p>'
                : OCR.ship ? '' : '<p class="ctx">This run has not finished yet: the verdict is kept, and the report shows it once the run finishes.</p>') +
@@ -320,8 +328,8 @@ function renderOcr() {
     '<div class="ctx" id="ocrHelp">Approved passes this part of "Ready to Ship?" Not Approved keeps it closed. Sent to a Language Reader keeps it closed and says it is waiting for a reader, who then records Approved or Not Approved.' +
       (OCR_ONLY ? ' Finish OCR Review records the verdict and closes this page.' : ' Record Verdict records it at once, on its own; this page stays open.') + '</div>' +
     '<div class="field"><label for="ocrReason">Reason</label><input type="text" id="ocrReason" maxlength="' + OCR.limits.reason + '" aria-describedby="ocrReasonHelp"><div class="ctx" id="ocrReasonHelp">One line; needed for Approved and Not Approved.</div></div>' +
-    '<div class="field" id="ocrToRow" hidden><label for="ocrTo">Sent to (Optional)</label><input type="text" id="ocrTo" maxlength="' + OCR.limits.to + '" placeholder="A person or a team"></div>' +
-    '<div class="field"><label for="ocrPagesIn">Pages (Optional)</label><input type="text" id="ocrPagesIn" placeholder="ex. 381-386" aria-describedby="ocrPagesHelp"><div class="ctx" id="ocrPagesHelp">PDF page numbers and ranges the verdict covers.</div></div>' +
+    '<div class="field" id="ocrToRow" hidden><label for="ocrTo">Sent to (optional)</label><input type="text" id="ocrTo" maxlength="' + OCR.limits.to + '" placeholder="A person or a team"></div>' +
+    '<div class="field"><label for="ocrPagesIn">Pages (optional)</label><input type="text" id="ocrPagesIn" placeholder="ex. 381-386" aria-describedby="ocrPagesHelp"><div class="ctx" id="ocrPagesHelp">PDF page numbers and ranges the verdict covers.</div></div>' +
     (L.non_latin ? '<div class="field"><label><input type="checkbox" id="ocrReads"> I read ' + esc(L.label) + '</label><div class="ctx">These pages are in a non-Latin script: Approved needs this box.</div></div>' : '') +
     '<button type="submit" class="primary">' + (OCR_ONLY ? 'Finish OCR Review' : 'Record Verdict') + '</button></form><div id="ocrMsg" role="status" tabindex="-1"></div>' +
     '<details id="ocrPagesFold"' + (ocrPagesOpen ? ' open' : '') + '><summary>' + esc(tc('Pages (' + OCR.pages.length + ')')) + '</summary>' +
@@ -755,7 +763,7 @@ function openAdd(kind, target) {
   addKind = kinds.includes(kind) ? kind : kinds[0];
   addSel = target != null ? 'add:' + addKind + ':' + target : null;
   panel.innerHTML = '<h2>Add a Decision</h2><div class="ctx">For something the AI did not decide: an element it did not retype, a figure with no alt text, a table with no headers. ' +
-    'A decision the AI made is changed on its own card. Only the elements, figures, tables and styles the audit listed can be chosen; artifact rules and other keys need a hand edit of workorder.json.</div>' +
+    'A decision the AI made is changed on its own card. Only the elements, figures, tables and styles the audit listed can be chosen; other kinds of decisions can\'t be added here.</div>' +
     '<div class="pick"><label>Kind <select data-add="kind">' + kinds.map(k => '<option value="' + esc(k) + '"' + (k === addKind ? ' selected' : '') + '>' +
       esc(ADD_KINDS[k] + (k === 'page_figures' ? ' (whole page)' : k === 'alt' ? ' (figure)' : '')) + ' (' + addTargets(k).length + ')</option>').join('') + '</select></label>' +
     '<label>Find <input type="text" data-add="filter" placeholder="text, page or object" size="24"></label></div>' +
@@ -835,7 +843,7 @@ document.getElementById('save').addEventListener('click', async () => {
 // gaps left open at Finish: the reviewer gives a reason for each, or goes back to add what is missing
 function askGaps(gaps) {
   const dlg = document.getElementById('gapDialog');
-  dlg.innerHTML = '<h2 id="gapTitle" tabindex="-1">Still Missing</h2><div class="ctx" id="gapCtx">The review can finish with these open, but each needs a reason; it goes into review.json and review.md next to the gap.</div>' +
+  dlg.innerHTML = '<h2 id="gapTitle" tabindex="-1">Still Missing</h2><div class="ctx" id="gapCtx">The review can finish with these open, but each needs a reason; it is recorded with the review and shown in the report next to the gap.</div>' +
     gaps.map(g => '<div class="gap"><div>' + esc(g.what) + '</div><textarea data-gap="' + esc(g.id) + '" placeholder="Why it is left open (for example: decorative, or someone else writes these)" aria-label="Reason">' + esc(((SESSION || {}).gaps_ack || {})[g.id] || '') + '</textarea>' +
       (g.add ? '<button type="button" data-addinstead="' + esc(g.add.kind) + '"' + (g.add.target != null ? ' data-target="' + esc(g.add.target) + '"' : '') + '>Add Instead</button>' : '') + '</div>').join('') +
     '<div class="err" id="gapErr" role="alert"></div><div class="buttons"><button type="button" data-g="back">Back</button><button type="button" class="primary" data-g="finish">Finish with These Reasons</button></div>';
@@ -870,7 +878,7 @@ function askFinish() {
     (SESSION && SESSION.reopened ? ' Finish re-applies the reviewed order (no AI call).' : '') + ' The name and notes go to Session History.' +
     (OCR ? ' OCR text: ' + esc(verdictText(OCR.current)) + '; a verdict is recorded on its own under OCR Text, not with Finish.' : '') + '</div>' +
     '<label for="finName">Session Name</label><input type="text" id="finName" maxlength="80">' +
-    '<label for="finNotes">Session Notes (Optional)</label><textarea id="finNotes" maxlength="4000"></textarea>' +
+    '<label for="finNotes">Session Notes (optional)</label><textarea id="finNotes" maxlength="4000"></textarea>' +
     '<div class="buttons"><button type="button" data-f="back">Back</button>' + (n ? '<button type="button" data-f="left">Show Not Reviewed</button>' : '') +
     '<button type="button" class="primary" data-f="finish">Finish Review</button></div>';
   document.getElementById('finName').value = sName.value; document.getElementById('finNotes').value = sNotes.value;
