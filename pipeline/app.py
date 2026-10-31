@@ -83,7 +83,7 @@ def close_reviews(s):
     """At stop: Ctrl+C to the review pages this app started that are still before Finish, as Ctrl+C in a terminal (the
     session stays open). One past Finish is applying and is left to finish (decided from disk, never from the log)."""
     for j in jobs.all_jobs(s['jobs']):
-        if j['kind'] != 'review' or j['status'] != 'running' or j.get('app_pid') != os.getpid(): continue
+        if j['kind'] not in jobs.PERSON or j['status'] != 'running' or j.get('app_pid') != os.getpid(): continue
         ok, why = jobs.interrupt(s['jobs'], j['id'], s['runs'])
         print(f'  {j["run"]}: ' + ('review page closed; its session stays open (Review again carries on with it)' if ok else f'left as it is: {why}'))
 

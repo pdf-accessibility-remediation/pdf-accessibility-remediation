@@ -122,6 +122,7 @@ let want = q.get('after') === 'finish' ? 'result' : q.get('opening') ? 'review' 
 if (want === 'review') wantAt = Date.now();                    // Review again from a previous result's bar
 let st = null, setup = null, primed = false, offline = false, failing = false, timer = null, newResult = false;
 const SHOWN = box.dataset.current || null;                     // the session whose result this page shows (set when served)
+let ocrSeen;                                                    // the OCR verdict's `recorded` when this page's report was read
 const seen = {};                                                // per job: the last step and status announced
 
 box.innerHTML = '<section class="pp" aria-labelledby="pp-h"><h2 id="pp-h" tabindex="-1">Run Actions</h2>' +
@@ -140,6 +141,7 @@ const stepWords = j => j.step ? j.step.words + ' (' + j.step.n + ' of ' + j.step
 function jobWords(j) {
   if (j.status === 'queued') return 'Waiting' + (j.position ? ': ' + ordinal(j.position) + ' in line' : '');
   if (j.status === 'running') {
+    if (j.kind === 'ocr') return j.url ? 'Waiting for you: the OCR review page is open' : 'Opening the OCR review page';
     if (j.kind === 'review' && !j.past_finish) return j.url ? 'Waiting for you: the review page is open' : 'Opening the review page';
     return 'Running' + (j.step ? ': ' + stepWords(j) : '');
   }
@@ -150,7 +152,8 @@ function jobWords(j) {
   if (lost(j)) return 'Done (the app lost track of the job): ' + r;
   return /^(done|pinned|discarded)\b/.test(r) ? cap(r) : 'Done: ' + r;
 }
-const spins = j => j.status === 'running' && !(j.kind === 'review' && !j.past_finish && j.url);   // not while a person reviews
+const person = j => j.kind === 'review' || j.kind === 'ocr';    // a page open for a person: the work-order review, the OCR-only page
+const spins = j => j.status === 'running' && !(person(j) && !j.past_finish && j.url);   // not while a person reviews
 function jobCard(j) {                                           // heading: the action (Title Case); outcome on the status line
   const cls = j.status === 'failed' || j.status === 'interrupted' ? ' pp-failed' : '';
   let h = '<article class="pp-job" id="job-' + esc(j.id) + '" aria-labelledby="jh-' + esc(j.id) + '">' +
@@ -163,6 +166,9 @@ function jobCard(j) {                                           // heading: the 
   if (j.kind === 'review' && j.status === 'running' && !j.past_finish && j.url)
     h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the Review Page</a>' +
          '<button type="button" id="pp-stop" data-act="stop">Stop Reviewing (the Session Stays Open)</button></div>';
+  if (j.kind === 'ocr' && j.status === 'running' && j.url)
+    h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the OCR Review Page</a>' +
+         '<button type="button" id="pp-stop" data-act="stop">Close the OCR Review</button></div>';
   if (j.reason) h += '<p><b>Why:</b> ' + esc(j.reason) + '</p><p class="pp-note">Its log is saved in ' + esc(j.log) + '.</p>';
   return h + '</article>';
 }
@@ -208,6 +214,9 @@ function actions(s) {
   if (s.latest || s.open) h +='<button type="button" id="pp-ai" data-act="review" data-from="ai">Start Over from the AI\'s Decisions</button>';
   if (s.unapplied && !s.open) h += '<button type="button" id="pp-apply" data-act="apply">' + esc(tc('Apply ' + s.unapplied.label)) + '</button>';
   h += '</div>';
+  if (s.ocr && s.ocr.needed)                                     // the OCR text verdict, on its own (no work-order session)
+    h += '<div class="pp-row"><button type="button" id="pp-ocr" data-act="ocr">Review OCR Text</button>' +
+         '<span class="pp-note">OCR text: ' + esc(s.ocr.verdict || 'not yet reviewed') + '. The review page has the same OCR Text section.</span></div>';
   if (!s.pinned) h += '<p class="pp-note">Review again first re-audits this run to pin it (free, a minute or more).</p>';
   return h;
 }
@@ -238,6 +247,9 @@ function render() {
   if (s.pending) h += '<p>' + esc(sn(s.pending.session)) + ' is ' + esc(s.pending.status) + ' and not applied yet, so "Ready to ship?" says No until it is.</p>';
   if (newResult) h += '<p><b>New Result Ready:</b> ' + esc(cap(s.current.label)) + ' is now the current result; the report below is the earlier one.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the New Result</button></div>';
+  else if (s.ocr && ocrSeen !== undefined && s.ocr.recorded !== ocrSeen)   // a verdict recorded since this page loaded: never reloads by itself
+    h += '<p><b>OCR Verdict Recorded:</b> ' + esc(s.ocr.verdict || 'a new verdict') + '. The report below was made before it.</p>' +
+      '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Updated Report</button></div>';
   h += actions(s) + jobsBlock(s) + historyBlock(s);
   $('pp-body').innerHTML = h;
   opened.forEach(id => { const d = $(id); if (d) d.open = true; });
@@ -254,9 +266,10 @@ box.addEventListener('click', async e => {
   try {
     let s, r;
     if (act === 'stop') {
-      const open = st.open ? cap(sn(st.open.id)) : 'The session';
+      const open = st.open ? cap(sn(st.open.id)) : 'The session', ocr = st.live_review && st.live_review.kind === 'ocr';
       [s, r] = await api(API + '/stop', {}); if (s !== 200) return msg(r.error || 'Stop failed', false, true);
-      msg('The review page is closed. ' + open + ' stays open: press Continue Review to carry on.', true, true); return poll();
+      msg(ocr ? 'The OCR review page is closed. A verdict recorded on it is kept.'
+              : 'The review page is closed. ' + open + ' stays open: press Continue Review to carry on.', true, true); return poll();
     }
     if (act === 'discard') {                                     // asks first; nothing is deleted, the current result stays
       const n = sn(st.open.id);
@@ -274,6 +287,10 @@ box.addEventListener('click', async e => {
       return;
     }
     if (act === 'apply') { [s, r] = await api(API + '/apply', {}); }
+    else if (act === 'ocr') {
+      [s, r] = await api(API + '/ocr', {});
+      if (s === 202) { want = 'review'; wantAt = Date.now(); }  // goes to the OCR page when it is up, as Review again does
+    }
     else {
       const body = { from: b.dataset.from || null };
       if (st.open && b.dataset.from) {
@@ -302,7 +319,7 @@ function announce(s) {
       newResult = true; live(t + ': ' + low(jobWords(j)) + '. New result ready: ' + s.current.label + '. Show the New Result loads it.'); continue;
     }
     if (ended(j) || j.status === 'failed' || j.status === 'interrupted') live(t + ': ' + low(jobWords(j)) + (j.reason ? '. ' + j.reason : ''));
-    else if (j.kind === 'review' && j.url && !j.past_finish && (!was || !was.includes(j.url))) live(t + ': the review page is ready');
+    else if (person(j) && j.url && !j.past_finish && (!was || !was.includes(j.url))) live(t + ': the ' + (j.kind === 'ocr' ? 'OCR review page' : 'review page') + ' is ready');
     else if (j.step) live(t + ': ' + stepWords(j));
     else if (j.status === 'running' && (!was || was.startsWith('queued'))) live(t + ': started');
   }
@@ -323,6 +340,7 @@ async function poll(force) {
     else {
       if (failing) { failing = false; banner('pp-error', null); }
       const before = st; st = b;
+      if (ocrSeen === undefined) ocrSeen = b.ocr ? b.ocr.recorded : null;
       announce(b);
       followUp(b);
       if (force || JSON.stringify(before) !== JSON.stringify(b)) render();

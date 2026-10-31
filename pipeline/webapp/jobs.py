@@ -143,6 +143,8 @@ def create(J, kind, run, argv, env, env_set=None, counted=True, then=None, paid=
         save(J, job)
         return job
 
+PERSON = ('review', 'ocr')          # jobs that open a page and wait on a person (the work-order review, the OCR-only page)
+
 def run_dir(job, runs=None):
     return job.get('dir') or (os.path.join(runs, *job['run'].split('/')) if runs else None)
 
@@ -166,7 +168,7 @@ def tick(J, s):
         for j in jobs:
             if j['status'] == 'running' and not j.get('ended') and not group_alive(J, j):
                 j.update(status='interrupted', ended=now()); save(J, j)
-            if j['kind'] == 'review' and j['status'] == 'running' and not j.get('url'):       # the review page is up: keep its URL
+            if j['kind'] in PERSON and j['status'] == 'running' and not j.get('url'):        # the review page is up: keep its URL
                 u = logs.review_url(read_log(J, j['id'])[0])
                 if u: j['url'] = u; save(J, j)
             if j['status'] == 'done' and j.get('then') and not j.get('then_job'):

@@ -86,8 +86,9 @@ def pdf_needed(s, R, rec):
 
 # ------------------------------------------------------------------ the panel's view of a run
 def live_review(s, run):
+    """The run's open review page: a work-order review, or the OCR-only page (review_ocr.py --serve)."""
     for j in reversed(jobs.all_jobs(s['jobs'])):
-        if j['run'] == run and j['kind'] == 'review' and j['status'] == 'running': return j
+        if j['run'] == run and j['kind'] in jobs.PERSON and j['status'] == 'running': return j
     return None
 
 def job_view(s, j, with_text=False, offset=0):
@@ -99,9 +100,9 @@ def job_view(s, j, with_text=False, offset=0):
     steps = logs.steps(text)
     v.update(position=jobs.position(s['jobs'], j['id']), steps=[dict(x, words=logs.plain(x['label'])) for x in steps], outcome=logs.outcome(text),
              log=shown_path(jobs.log_path(s['jobs'], j['id'])))
-    if j['kind'] == 'review' and j['status'] == 'running':
-        v['past_finish'] = jobs.review_past_finish(R, j.get('started'))
-    if j['status'] == 'interrupted' and j['kind'] in ('apply', 'review'):
+    if j['kind'] in jobs.PERSON and j['status'] == 'running':      # the OCR-only page has no Finish
+        v['past_finish'] = j['kind'] == 'review' and jobs.review_past_finish(R, j.get('started'))
+    if j['status'] == 'interrupted' and j['kind'] in ('apply', 'review', 'ocr'):
         v['interrupted'] = after_interrupt(R, j)
     v['step'] = logs.now_step(j['kind'], steps) if j['status'] == 'running' else None
     v['title'] = title(R, j, v); v['action'] = action(j); v['result'] = result(R, j, v)
@@ -119,7 +120,13 @@ SESSION_IN = re.compile(r'session (\d+)')
 
 def action(j):
     """The job's action, as it was asked for: "Review again from session 2"."""
-    return j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin'}.get(j['kind'], j['kind'])
+    return j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin', 'ocr': 'Review OCR text'}.get(j['kind'], j['kind'])
+
+def ocr_recorded(R, since=''):
+    """The OCR verdict recorded since a time (a job's start), for its outcome line: "approved (Kim, 19:30)"; None."""
+    v = (((load(os.path.join(R, '_intake', 'intake.json')) or {}).get('review') or {}).get('ocr_text_approved')) if R else None
+    if not isinstance(v, dict) or (v.get('recorded') or '') < (since or ''): return None
+    return f'{v.get("verdict")} ({v.get("reviewer")}, {(v.get("recorded") or "")[11:16] or "time not recorded"})'
 
 def result(R, j, v):
     """What came of a job that has ended, in sentence case: "session 3 applied (Kim, 18:19)"; None while it is active."""
@@ -132,6 +139,9 @@ def result(R, j, v):
     if st == 'interrupted' and not lost: return 'stopped without finishing' + when
     if j['kind'] == 'pin': return 'pinned' + when
     if j['kind'] == 'discard': return 'discarded' + when
+    if j['kind'] == 'ocr':
+        got = ocr_recorded(R, j.get('started'))
+        return 'closed' + when + (f'; OCR verdict recorded: {got}' if got else '; no verdict recorded')
     m = SESSION_IN.search(out if out else (v.get('interrupted') or {}).get('text', ''))
     if not m: return 'done' + when
     sid = f'{int(m.group(1)):03d}'
@@ -156,6 +166,9 @@ def reason(v):
 def after_interrupt(R, j):
     """An interrupted apply or review: what is left, from the run's state on disk, not from the job status (a killed wrapper
     can leave its command to finish alone). {state: apply | done | continue | none, text}."""
+    if j['kind'] == 'ocr':                             # nothing to finish: a verdict is written whole or not at all
+        got = ocr_recorded(R, j.get('started'))
+        return {'state': 'none', 'text': 'The OCR review page closed without Close' + (f'; the verdict recorded is kept: {got}.' if got else '; no verdict was recorded.')}
     ss = S.sessions(R) if R else []
     since = j.get('started') or ''
     applied = [x for x in ss if x.get('status') == 'applied' and (x.get('applied') or '') >= since]
@@ -209,6 +222,7 @@ def state(s, run, R):
         'open': {'id': op[-1]['id'], 'label': S.label(op[-1]['id']), 'started': op[-1].get('started')} if op else None,
         'latest': {'id': done[-1]['id'], 'label': S.label(done[-1]['id'])} if done else None,
         'unapplied': unapplied(ss),
+        'ocr': ocr_state(R),
         'lock': {'pid': h[0], 'what': h[1], 'since': h[2]} if h else None,
         'live_review': job_view(s, live) if live else None,
         'jobs': [job_view(s, j) for j in rj],               # every job of the run: the page folds the earlier ones, none drop off
@@ -238,6 +252,31 @@ def start_review(s, run, R, port, src=None, discard_open=False, app_pid=None):
         return jobs.create(s['jobs'], 'review', run, argv, review['env'], counted=False, R=R, what=what, app_pid=app_pid)
     return jobs.create(s['jobs'], 'pin', run, py + ['--pin'] + (['--pdf', pdf] if pdf else []), config.child_env(s), R=R, then=review,
                        what='Pin the run (a free re-audit), then ' + what[0].lower() + what[1:])
+
+def ocr_state(R):
+    """{needed, verdict, recorded} for the panel: Review OCR Text is offered when needed; `recorded` changing tells the run
+    page that its report is older than the verdict. None when the run has no intake."""
+    intake = load(os.path.join(R, '_intake', 'intake.json'))
+    if not intake: return None
+    from review import ocr as O
+    v = (intake.get('review') or {}).get('ocr_text_approved')
+    return {'needed': O.needed(intake), 'verdict': v.get('verdict') if isinstance(v, dict) else None,
+            'recorded': v.get('recorded') if isinstance(v, dict) else None}
+
+def start_ocr(s, run, R, port, app_pid=None):
+    """Queue Review OCR text: the OCR-only page (review_ocr.py --serve), which waits on a person, so it is not counted in
+    max_jobs. Refused when the book needs no OCR approval, or when the run has no intake.pdf and no original is found."""
+    st = ocr_state(R)
+    if not st or not st['needed']: raise ValueError('this book has no OCR text to review (intake added none, and its existing OCR layer was not flagged)')
+    rec = load(os.path.join(R, 'record.json')) or {}
+    argv = [sys.executable, 'review_ocr.py', R, '--serve', '--no-browser', '--return-to',
+            f'http://127.0.0.1:{port}/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/']
+    if not os.path.isfile(os.path.join(R, '_intake', 'intake.pdf')):
+        doc = rec.get('document') or {}
+        pdf = find_original(s, doc.get('sha256'), doc.get('file'))
+        if not pdf: raise ValueError(f'the original PDF ({doc.get("file")}, sha256 {str(doc.get("sha256"))[:16]}…) is not in the samples folder')
+        argv += ['--pdf', pdf]
+    return jobs.create(s['jobs'], 'ocr', run, argv, config.child_env(s), counted=False, R=R, what='Review OCR text', app_pid=app_pid)
 
 def start_apply(s, run, R):
     rec = load(os.path.join(R, 'record.json')) or {}

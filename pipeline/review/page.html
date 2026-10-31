@@ -106,6 +106,23 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 .from-notes { margin-top: 10px; }
 .from-notes summary { cursor: pointer; }
 .from-notes .pre { background: var(--bg); border-radius: 6px; padding: 6px 8px; margin-top: 4px; }
+/* OCR Text: the book's OCR text, shown as it is, and a person's verdict on it (never an edit of the text) */
+#ocr-text { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 16px; }
+#ocr-text > h2 { margin-top: 0; }
+#ocr-text fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 8px 0; padding: 6px 10px; }
+#ocr-text legend { font-weight: 600; padding: 0 4px; }
+#ocr-text fieldset label { margin-right: 16px; white-space: nowrap; }
+#ocr-text .field { margin: 6px 0; }
+#ocr-text .field > label { display: block; font-weight: 600; margin-bottom: 2px; }
+#ocr-text .field input[type=text] { width: 100%; max-width: 40em; }
+#ocr-text #ocrMsg { margin: 8px 0; }
+#ocr-text #ocrMsg.err { color: var(--reject); }
+.ocr-card h3 { font-size: 15px; margin: 0 0 6px; }
+.ocr-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.ocr-pair img { max-width: 100%; border: 1px solid var(--line); background: #fff; cursor: zoom-in; display: block; }
+.ocr-pair pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 520px; font-size: 13px; margin: 0; }
+.ocr-card ul { margin: 6px 0; padding-left: 20px; font-size: 14px; }
+@media (max-width: 800px) { .ocr-pair { grid-template-columns: 1fr; } }
 @media (max-width: 800px) {
   main { flex-direction: column; padding: 16px; }
   header.top { position: static; }
@@ -134,7 +151,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
       <label><input type="radio" name="view" value="left"> Not Reviewed</label>
     </span>
     <span class="actions"><button id="addBtn" type="button">Add a Decision</button> <button id="save">Save</button>
-    <button id="finish" class="primary">Finish Review</button></span>
+    <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close the OCR Review</button></span>
   </div>
   <div id="msg" role="status"></div>
   <div id="session" hidden></div>
@@ -152,6 +169,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
       <textarea id="sessionNotes" maxlength="4000" placeholder="Where you stopped, what to check next, who takes over"></textarea>
       <div id="fromNotes"></div>
     </section>
+    <section id="ocr-text" aria-labelledby="ocrTitle" hidden></section>
     <div id="addPanel" hidden></div><div id="cards"></div></div>
 </main>
 <div id="zoom"><img alt=""></div>
@@ -203,10 +221,8 @@ function dec(id) { return state.decisions[id] || (state.decisions[id] = {}); }
 
 document.getElementById('title').textContent = 'Work Order Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
 if (SESSION && SESSION.reopened) {                    // a finished run reviewed again: where this session started, the current result, OCR
-  const sn = id => 'session ' + Number(id), nc = SESSION.not_carried || [], o = SESSION.ocr;
-  const ocr = !o ? '' : ' · OCR text: ' + (o.current ? '<b>' + esc(o.current.verdict) + '</b> by ' + esc(o.current.reviewer) + ' on ' + esc(o.current.date) : '<b>not yet reviewed</b>') +
-    (o.snapshots && o.snapshots.length ? ' (at each finish: ' + o.snapshots.map(x => sn(x.session) + ' ' + esc(x.verdict ? x.verdict.verdict : 'none')).join(', ') + ')' : '') +
-    '; this review keeps it as it is: change it with review_ocr.py';
+  const sn = id => 'session ' + Number(id), nc = SESSION.not_carried || [];
+  const ocr = DATA.ocr ? ' · <a href="#ocr-text" id="hdrOcrLink">OCR text</a>: <span id="hdrOcr"></span>' : '';   // filled by renderOcr()
   const el = document.getElementById('session'); el.hidden = false;
   el.innerHTML = 'Reviewing again: <b>' + sn(SESSION.id) + '</b>, started from ' + esc(SESSION.from_text) +
     (SESSION.from !== 'ai' ? ' · ' + SESSION.carried + ' choices preloaded' + (nc.length ? ' · <b>' + nc.length + ' not carried</b> (the decision is not the same; shown as not reviewed): ' + nc.slice(0, 6).map(x => esc(x.id)).join(', ') + (nc.length > 6 ? ' …' : '') : '') : '') +
@@ -240,6 +256,128 @@ if (SESSION && /^\d+$/.test(String(SESSION.from || ''))) {   // the session this
   document.getElementById('fromNotes').innerHTML = SESSION.from_notes
     ? '<details class="from-notes"><summary>Notes from ' + esc(nm) + '</summary><div class="pre">' + esc(SESSION.from_notes) + '</div></details>'
     : '<p class="ctx">This session started from ' + esc(nm) + ', which has no notes.</p>';
+}
+
+// ---------------------------------------------------------------- OCR Text: the book's OCR text and a person's verdict on it
+// The text is shown as it is in the PDF and never edited here (checklist note 3.1). The verdict is recorded at once, on its
+// own (POST /ocr-verdict), not with Finish: one per run, the latest wins. OCR-only mode (review_ocr.py --serve) is this
+// section alone.
+const OCR_ONLY = DATA.mode === 'ocr';
+let OCR = DATA.ocr || null, ocrPagesOpen = null;
+const ocrBox = document.getElementById('ocr-text');
+const VERDICT_LABEL = { 'approved': 'Approved', 'not approved': 'Not Approved', 'sent to a language reader': 'Sent to a Language Reader' };
+const png = n => '/review_pages/page_' + String(n).padStart(3, '0') + '.png';
+function verdictText(v) {                              // sentence case: "approved by Kim on 2026-10-31 (pages 381-386): read against the scans"
+  if (!v) return 'not yet reviewed';
+  return v.verdict + (v.to ? ' (' + v.to + ')' : '') + ' by ' + v.reviewer + ' on ' + v.date + (v.pages ? ' (pages ' + v.pages + ')' : '') +
+    (v.reason ? ': ' + v.reason : '') + (v.reads && v.reads.length ? '; reads ' + v.reads.join(', ') : '') +
+    (v.via === 'review_ocr.py' ? ' (recorded with review_ocr.py)' : '');
+}
+function ocrWord(w) {                                  // an OCR-word reading: the card's current choice here, else the AI's
+  const it = byId['ocr_words:' + w.id];
+  const reads = it ? current(it) : w.reads;
+  const t = '“' + esc(w.text) + '”' + (reads ? ' read as “' + esc(reads) + '”' : ' (no reading)') + (w.count > 1 ? ' (' + w.count + ' times in the book)' : '');
+  return it ? '<a href="#card-' + esc(it.id) + '" data-view="all">' + t + '</a>' : t + (reads ? ' (the AI\'s reading, reviewed on the work-order review page)' : '');
+}
+function ocrCard(p) {
+  return '<article class="card ocr-card" id="ocr-page-' + p.page + '"><h3>PDF ' + p.page + ' · ' + esc(p.source === 'intake OCR' ? 'OCR text added by intake' : 'the book\'s existing OCR layer') + '</h3>' +
+    '<div class="ocr-pair"><div class="imgs"><img loading="lazy" src="' + png(p.page) + '" alt="PDF ' + p.page + ', the page as scanned"></div>' +
+    '<div><div class="edit-label">Text in the PDF</div><pre class="ocrtext" data-page="' + p.page + '"' + (OCR.lang ? ' lang="' + esc(OCR.lang) + '"' : '') + '>Loading the text…</pre></div></div>' +
+    ((p.findings || []).length ? '<ul>' + p.findings.map(f => '<li>' + esc(f) + '</li>').join('') + '</ul>' : '') +
+    ((p.words || []).length ? '<div class="ctx">OCR words on this page: ' + p.words.map(ocrWord).join(' · ') + '</div>' : '') + '</article>';
+}
+const textSeen = new IntersectionObserver(es => es.forEach(async e => {
+  if (!e.isIntersecting) return;
+  const pre = e.target; textSeen.unobserve(pre);
+  try {
+    const r = await fetch('/ocr/text/' + pre.dataset.page + '.json'), b = await r.json();
+    pre.textContent = r.ok ? (b.text || '(no text on this page)') : (b.error || 'The text could not be read.');
+  } catch (err) { pre.textContent = 'The text could not be loaded: is the review page still running?'; }
+}), { rootMargin: '400px' });
+function renderOcr() {
+  if (!OCR) { ocrBox.hidden = true; return; }
+  const L = OCR.languages || {}, cur = OCR.current, hist = OCR.history || [];
+  const hdr = document.getElementById('hdrOcr'); if (hdr) hdr.innerHTML = '<b>' + esc(cur ? cur.verdict : 'not yet reviewed') + '</b>';
+  if (ocrPagesOpen === null) ocrPagesOpen = !cur;
+  ocrBox.hidden = false;
+  let h = '<h2 id="ocrTitle" tabindex="-1">OCR Text</h2><div class="ctx">' + OCR.what.map(esc).join(' ') +
+    ' The text is shown as it is in the PDF and is never edited here: correcting it is an editorial decision. Approving it is part of "Ready to ship?".</div>' +
+    '<p><b>Current verdict:</b> ' + esc(verdictText(cur)) + '</p>' +
+    (OCR.ship ? '<p>Ready to ship? ' + (OCR.ship.ready ? 'Yes' : 'No') + (OCR.ship.ocr ? ' · OCR text approved: ' + esc(OCR.ship.ocr) : '') + '</p>'
+              : '<p class="ctx">This run is not applied yet: the verdict is kept in _intake/intake.json, and the report shows it after the run.</p>') +
+    (hist.length ? '<details class="from-notes"><summary>Earlier Verdicts (' + hist.length + ')</summary><ul>' +
+      hist.slice().reverse().map(v => '<li>' + esc(verdictText(v)) + '</li>').join('') + '</ul></details>' : '') +
+    '<form id="ocrForm" novalidate><fieldset><legend>Record a Verdict</legend>' +
+    OCR.verdicts.map(v => '<label><input type="radio" name="ocrV" value="' + esc(v) + '"> ' + esc(VERDICT_LABEL[v] || v) + '</label>').join('') + '</fieldset>' +
+    '<div class="ctx" id="ocrHelp">Approved passes this part of "Ready to ship?". Not Approved keeps it closed. Sent to a Language Reader keeps it closed and says it is waiting for a reader, who then records Approved or Not Approved.</div>' +
+    '<div class="field"><label for="ocrReason">Reason</label><input type="text" id="ocrReason" maxlength="' + OCR.limits.reason + '" aria-describedby="ocrReasonHelp"><div class="ctx" id="ocrReasonHelp">One line; needed for Approved and Not Approved.</div></div>' +
+    '<div class="field" id="ocrToRow" hidden><label for="ocrTo">Sent To (Optional)</label><input type="text" id="ocrTo" maxlength="' + OCR.limits.to + '" placeholder="A person or a team"></div>' +
+    '<div class="field"><label for="ocrPagesIn">Pages (Optional)</label><input type="text" id="ocrPagesIn" placeholder="for example 381-386" aria-describedby="ocrPagesHelp"><div class="ctx" id="ocrPagesHelp">PDF page numbers and ranges the verdict covers.</div></div>' +
+    (L.non_latin ? '<div class="field"><label><input type="checkbox" id="ocrReads"> I read ' + esc(L.label) + '</label><div class="ctx">These pages are in a non-Latin script: Approved needs this box.</div></div>' : '') +
+    '<button type="submit" class="primary">Record Verdict</button></form><div id="ocrMsg" role="status" tabindex="-1"></div>' +
+    '<details id="ocrPagesFold"' + (ocrPagesOpen ? ' open' : '') + '><summary>' + esc(tc('Pages (' + OCR.pages.length + ')')) + '</summary>' +
+    (OCR.lang ? '' : '<p class="ctx">The text is not marked with a language for screen readers: ' + esc(OCR.lang_why) + '.</p>') +
+    '<div id="ocrCards">' + OCR.pages.map(ocrCard).join('') + '</div>' +
+    (OCR.flagged && (OCR.showable || []).length > OCR.pages.length ? '<div class="field"><label for="ocrMore">Show Another Page</label><input type="text" inputmode="numeric" id="ocrMore" size="6"> <button type="button" id="ocrMoreBtn">Show Page</button><div class="ctx">' +
+      (OCR.showable.length) + ' pages have this OCR layer.</div></div>' : '') + '</details>';
+  ocrBox.innerHTML = h;
+  ocrBox.querySelectorAll('pre.ocrtext').forEach(x => textSeen.observe(x));
+  document.getElementById('ocrPagesFold').addEventListener('toggle', e => { ocrPagesOpen = e.target.open; });
+}
+function ocrSay(t, err) { const m = document.getElementById('ocrMsg'); m.innerHTML = t; m.className = err ? 'err' : ''; m.focus({ preventScroll: false }); }
+ocrBox.addEventListener('change', e => {
+  if (e.target.name === 'ocrV') document.getElementById('ocrToRow').hidden = e.target.value !== 'sent to a language reader';
+});
+ocrBox.addEventListener('submit', async e => {
+  e.preventDefault();
+  const pick = ocrBox.querySelector('input[name=ocrV]:checked');
+  if (!state.reviewer.trim()) { rv.focus(); return msg('Enter your name as the reviewer first.', true); }
+  if (!pick) return ocrSay('Choose a verdict first.', true);
+  const reads = document.getElementById('ocrReads');
+  const body = { verdict: pick.value, reviewer: state.reviewer, reason: document.getElementById('ocrReason').value,
+                 pages: document.getElementById('ocrPagesIn').value, to: pick.value === 'sent to a language reader' ? document.getElementById('ocrTo').value : '',
+                 reads: reads && reads.checked ? [OCR.languages.label] : [] };
+  try {
+    const r = await fetch('/ocr-verdict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const b = await r.json();
+    if (!r.ok) return ocrSay(esc(b.error || 'The verdict was not recorded.'), true);
+    OCR = b.ocr; renderOcr(); nav();
+    ocrSay('Recorded: ' + esc(verdictText(b.recorded)) + '.' + (OCR.ship ? ' Ready to ship? ' + (OCR.ship.ready ? 'Yes' : 'No') + '.' : ''));
+  } catch (err) { ocrSay('Could not reach the review server: is it still running?', true); }
+});
+ocrBox.addEventListener('click', e => {
+  const a = e.target.closest('a[data-view]');
+  if (a) {                                             // an OCR word's card, in the All view
+    e.preventDefault();
+    if (view !== 'all') { view = 'all'; document.querySelector('input[name=view][value=all]').checked = true; render(); }
+    return goTo(document.getElementById(a.getAttribute('href').slice(1)));     // ids hold ':' and spaces: not a CSS selector
+  }
+  if (e.target.id !== 'ocrMoreBtn') return;
+  const n = Number((document.getElementById('ocrMore').value || '').trim());
+  if (!(OCR.showable || []).includes(n)) return ocrSay('PDF ' + esc(String(n || '?')) + ' has no OCR layer to show: give a page between ' + OCR.showable[0] + ' and ' + OCR.showable[OCR.showable.length - 1] + ' that has one.', true);
+  let card = document.getElementById('ocr-page-' + n);
+  if (!card) {
+    document.getElementById('ocrCards').insertAdjacentHTML('beforeend', ocrCard({ page: n, source: 'existing OCR layer', findings: [],
+      words: (OCR.words_by_page || {})[String(n)] || [] }));
+    card = document.getElementById('ocr-page-' + n); textSeen.observe(card.querySelector('pre.ocrtext'));
+  }
+  goTo(card);
+});
+if (OCR_ONLY) {                                        // the OCR section alone: no session, no decisions
+  document.getElementById('title').textContent = 'OCR Text Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
+  document.title = 'OCR Text Review';
+  const back = document.getElementById('back');
+  if (!back.hidden) back.innerHTML = '<a href="' + esc(RETURN_TO.split('?')[0]) + '">Back to the Run Page</a> (this page stays open until you close it here or there)';
+  [document.getElementById('sessionName').closest('span'), document.getElementById('progress').parentNode, document.querySelector('.show'),
+   document.getElementById('addBtn'), document.getElementById('save'), document.getElementById('finish'),
+   document.getElementById('this-session'), document.getElementById('cards')].forEach(x => { x.hidden = true; });
+  const c = document.getElementById('closeOcr'); c.hidden = false;
+  c.addEventListener('click', async () => {
+    try { await fetch('/close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch (e) {}
+    c.disabled = true;
+    if (RETURN_TO) return location.assign(RETURN_TO.split('?')[0]);
+    msg('The OCR review page is closed. Go back to the terminal.');
+  });
 }
 
 function sections() {
@@ -466,7 +604,10 @@ function nav() {
   const kinds = []; for (const it of items) if (!kinds.includes(it.kind)) kinds.push(it.kind);
   const pages = {};
   for (const it of items) if (it.priority && it.page != null) (pages[it.page] = pages[it.page] || []).push(it.id);
-  let h = '<h2>This Session</h2><a href="#this-session"><span>Name and Notes</span><span></span></a>';
+  const ocrNav = !OCR ? '' : '<h2>OCR Text</h2><a href="#ocr-text"><span>Verdict</span><span>' + esc(OCR.current ? (VERDICT_LABEL[OCR.current.verdict] || '') : 'None') + '</span></a>' +
+    OCR.pages.map(p => '<a href="#ocr-page-' + p.page + '"><span>PDF ' + p.page + '</span><span></span></a>').join('');
+  if (OCR_ONLY) { document.getElementById('navList').innerHTML = ocrNav; return; }
+  let h = '<h2>This Session</h2><a href="#this-session"><span>Name and Notes</span><span></span></a>' + ocrNav;
   h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + (view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
   h += '<h2>Check First</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
   h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
@@ -580,7 +721,9 @@ document.getElementById('nav').addEventListener('click', e => {
   if (a.dataset.view && a.dataset.view !== view && !(view === 'left' && a.dataset.view === 'all')) {
     view = a.dataset.view; document.querySelector('input[name=view][value=' + view + ']').checked = true; render();
   }
-  goTo(document.querySelector(a.getAttribute('href')));
+  const t = document.getElementById(a.getAttribute('href').slice(1));   // by id: card ids hold ':' and spaces, not a CSS selector
+  const fold = t && t.closest('details'); if (fold) fold.open = true;   // an OCR page inside the folded page list
+  goTo(t);
   history.replaceState(null, '', a.getAttribute('href'));
 });
 
@@ -708,7 +851,8 @@ function askFinish() {
   dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2><div class="ctx" id="finCtx">' +
     (n ? n + (n === 1 ? ' decision is' : ' decisions are') + ' not reviewed: finishing records ' + (n === 1 ? 'it' : 'them') + ' as the AI wrote ' + (n === 1 ? 'it' : 'them') + ', marked "accepted without review", and "Ready to ship?" stays No.'
        : 'Every decision has a choice.') +
-    (SESSION && SESSION.reopened ? ' Finish re-applies the reviewed order (no AI call).' : '') + ' The name and notes go to Session History.</div>' +
+    (SESSION && SESSION.reopened ? ' Finish re-applies the reviewed order (no AI call).' : '') + ' The name and notes go to Session History.' +
+    (OCR ? ' OCR text: ' + esc(verdictText(OCR.current)) + '; a verdict is recorded on its own under OCR Text, not with Finish.' : '') + '</div>' +
     '<label for="finName">Session Name</label><input type="text" id="finName" maxlength="80">' +
     '<label for="finNotes">Session Notes</label><textarea id="finNotes" maxlength="4000"></textarea>' +
     '<div class="buttons"><button type="button" data-f="back">Back</button>' + (n ? '<button type="button" data-f="left">Show Not Reviewed</button>' : '') +
@@ -760,6 +904,7 @@ finBtn.addEventListener('click', async () => {
     if (RETURN_TO) location.assign(RETURN_TO);         // the person's own Finish opens the run page, with the re-apply's progress
   } catch (e) { msg('Could not reach the review server: is it still running in the terminal?', true); }
 });
+renderOcr();
 render();
 </script>
 </body>
