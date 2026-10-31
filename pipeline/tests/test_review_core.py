@@ -174,3 +174,76 @@ def test_no_tie_without_a_captions_decision_or_child_styles():
     assert not any('tied_by' in x for x in ro['late'])
     ro, _ = caption_case({'captions': {'style': 'CAP'}}, kid_styles=('CAP', 'P'))  # not captions only
     assert not any('tied_by' in x for x in ro['late'])
+
+# ------------------------------------------------------------------ adding a section move; the figures the executor moves
+def away_case(wo=None):
+    """Under one part: front (PDF 1), body 10-60, then 'about' (PDF 3) read after it, then 'end' (PDF 70): about belongs
+    before PDF 10 (the executor needs a page of the part before the moved section, here the front)."""
+    es = [entry('part', 1, 70, firsts=[1, 10, 3, 70]), entry('front', 1, 1, 'part', 2, False, 'part', [1]),
+          entry('body', 10, 60, 'part', 2, False, 'part', [10]),
+          entry('about', 3, 3, 'part', 2, False, 'part', [3]), entry('end', 70, 70, 'part', 2, False, 'part', [70])]
+    return es, core.reading_order({}, {'reading_order': es}, wo or {})
+
+def test_a_move_can_be_added_for_a_section_out_of_place_when_the_ai_made_none():
+    es, ro = away_case()
+    t = core.addable({}, {'source': {'pages': 70}}, ro)['move_section'][0]
+    assert t['id'] == 'add:move_section:about' and t['edit'] == 'move'
+    assert t['default'] == {'pages': [3, 3], 'before_page': 10} and t['context']['candidates'] == 1 and t['context']['host_found']
+    assert 'move_section' not in core.addable({'move_section': {'pages': [1, 2], 'before_page': 5}}, {'source': {'pages': 70}}, ro)
+    assert 'move_section' not in core.addable({}, {'source': {'pages': 70}})              # no reading order given
+
+def test_an_added_move_is_written_and_a_second_one_refused():
+    es, ro = away_case()
+    adds = core.addable({}, {'source': {'pages': 70}}, ro)
+    wo = {}
+    add = [{'kind': 'move_section', 'target': 'about', 'value': {'pages': ['3', 3], 'before_page': '10'}}]
+    assert core.add_entries(wo, add, adds, 'Kim') == []
+    assert wo['move_section'] == {'pages': [3, 3], 'before_page': 10, 'why': 'added by Kim in review'}
+    refused = core.add_entries({'move_section': {'pages': [1, 2], 'before_page': 5}}, add, adds)
+    assert refused and 'one section move' in refused[0]['why']
+
+def test_saved_added_move_gets_its_preview():
+    es, _ = away_case()
+    data = {'reading_order': {'entries': es}}
+    pv = core.added_move(data, [{'kind': 'move_section', 'target': 'about', 'value': {'pages': ['3', 3], 'before_page': '10'}}])
+    assert pv['pages'] == [3, 3] and pv['before_page'] == 10 and pv['candidates'] == 1
+    pv = core.added_move(data, [{'kind': 'move_section', 'target': 'about', 'value': {'pages': [3, 3], 'before_page': 999}}])
+    assert pv['candidates'] == 1 and pv['host_found'] is False             # nothing holds pages from PDF 999 on: refused
+    assert core.added_move({'reading_order': {'entries': es}}, []) is None
+
+def test_captions_are_in_the_reading_order_group():
+    its = items({'captions': {'style': 'CAP'}})
+    assert its['key:captions']['priority'] == 5 and its['key:captions']['kind'] == 'Reading order'
+
+def test_figure_moves_from_the_trial_run_get_one_card():
+    es, ro = away_case()
+    moves = [{'page': 12, 'label': '3', 'was_after_page': 60, 'now_after_page': 12}]
+    def card(dr):
+        r = dict(ro, dryrun=dr)
+        return {it['id']: it for it in core.build_items({}, {'source': {'pages': 70}}, es, r)}.get('reading_order:figures')
+    c = card({'figure_moves': moves, 'seconds': 1.0})
+    assert c['priority'] == 5 and c['context']['count_moves'] == 1 and c['context']['moves'] == moves and c['pages'] == [12, 12]
+    assert card({'figure_moves': []}) is None                                                     # no moves: no card
+    assert card(None) is None                                                                     # no trial run (an older run)
+    c = card({'figure_moves': None, 'why': 'skipped: REVIEW_DRYRUN=off'})
+    assert c['label'] == 'Figure moves not worked out' and c['context']['not_worked_out'].startswith('skipped')
+
+def test_no_move_is_offered_where_the_executor_would_refuse_it():
+    """A top-level section (sands' cover): no section around it to move it within."""
+    es = [entry('body', 10, 60, firsts=[10]), entry('about', 3, 3, firsts=[3]), entry('end', 70, 70, firsts=[70])]
+    ro = core.reading_order({}, {'reading_order': es}, {})
+    assert ro['flagged'] and 'move_section' not in core.addable({}, {'source': {'pages': 70}}, ro)
+
+def test_a_flag_that_only_a_removed_block_causes_is_cleared():
+    """translation's About the Author (PDF 254) read after a stray block on PDF 255 that a rule removes: in place after."""
+    es = [entry('part', 1, 255, firsts=[1, 255, 254]), entry('book', 1, 250, 'part', 2, False, 'part', [1]),
+          dict(entry('stray', 255, 255, 'part', 2, False, 'part', [255]), runs=['hn hk io']),
+          dict(entry('about', 254, 254, 'part', 2, False, 'part', [254]), runs=['About the Author'])]
+    wo = {'artifacts': {'text_rules': [{'label': 'stray', 'pages': [1, 257], 'regex': r'(hn|hk|io| )+'}]}}
+    ro = core.reading_order({}, {'reading_order': es}, wo)
+    about = next(x for x in ro['flagged'] if es[x['i']]['id'] == 'about')
+    assert about['cleared_by'] == [[['artifacts.text_rules:0']]] and ro['removed'] == [2]
+    its = {it['id']: it for it in core.build_items(wo, {'source': {'pages': 257}}, es, ro)}
+    assert 'reading_order:away:about' not in its
+    assert {'page': 254, 'text': 'about', 'late': False, 'cleared': True} in its['artifacts.text_rules:0']['context']['hides']
+    assert 'reading_order:away:about' in {it['id'] for it in core.build_items({}, {'source': {'pages': 257}}, es, core.reading_order({}, {'reading_order': es}, {}))}
