@@ -198,7 +198,7 @@ def keep_audit(R, A, ai, inp=None, made_by='report'):
     """report.py's tidy: keep the digest, fulltext.json and the OCR word sheets in reviews/_audit (not the crops), and write
     the basis when there is none yet. inp: the pipeline input's path (run_api.sh passes it; else _intake/intake.pdf)."""
     p = P(R); os.makedirs(p['audit'], exist_ok=True)
-    for n in ('digest.json', 'fulltext.json'):
+    for n in ('digest.json', 'fulltext.json', 'dryrun.json'):
         if os.path.exists(os.path.join(A, n)): shutil.copy2(os.path.join(A, n), os.path.join(p['audit'], n))
     if os.path.isdir(os.path.join(A, 'ocr_words')):
         shutil.rmtree(os.path.join(p['audit'], 'ocr_words'), ignore_errors=True)

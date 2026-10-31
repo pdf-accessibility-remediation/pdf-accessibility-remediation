@@ -593,6 +593,10 @@ if art.get('elements') or art.get('text_rules') or art.get('untagged'):
 moves = []
 sm = log.get('section_move')                          # where apply.py put the section (None: not moved)
 pv = next((it.get('context') or {} for it in (ri or {}).get('items') or [] if it.get('id') == 'move_section'), {})
+ms = wo.get('move_section') if isinstance(wo.get('move_section'), dict) else {}
+if ri and not pv and len(ms.get('pages') or []) == 2:   # a move the reviewer added: the same preview, from the page's reading order
+    from review import core as RC
+    pv = RC.move_preview((ri.get('reading_order') or {}).get('entries'), ms['pages'][0], ms['pages'][1], ms.get('before_page'))
 if sm:
     moves.append(f'Section on {pgr(*sm["pages"])} moved to read before {pg(sm["before_page"])}' + (f', after {pg(sm["after_page"])}' if sm.get('after_page') else '')
                  + f', inside the {sm["host"]} on {pgr(*sm["host_pages"])}')

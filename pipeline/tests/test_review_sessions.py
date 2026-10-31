@@ -196,6 +196,19 @@ def test_reviewer_notes_are_named_by_their_card():
                     (None, 'gone:1', 'old card')]                         # no label known: review.md prints the id alone
     assert S.note_rows(rv, None, [{'id': 'reading_order:jump:10', 'label': 'from review_items.json'}])[0][0] == 'from review_items.json'
 
+def test_an_added_move_carries_to_a_reopened_session(tmp_path):
+    """A reopen copies the session's additions; the page keeps one only while today's addable lists its target, which
+    for a section move is the flagged section's id: stable while the kept digest and fulltext are the same."""
+    dg = digest(); ai = ai_order(); A = str(tmp_path)
+    es = [{'id': 'part', 'parent': None, 'style': 'Part', 'first': 1, 'last': 5, 'depth': 1, 'text': 'Front', 'skip': False, 'group': True, 'firsts': [1, 3, 2, 5]},
+          {'id': 'front', 'parent': 'part', 'style': 'Sect', 'first': 1, 'last': 1, 'depth': 2, 'text': 'Front', 'skip': False, 'group': True, 'firsts': [1]},
+          {'id': 'body', 'parent': 'part', 'style': 'Sect', 'first': 3, 'last': 4, 'depth': 2, 'text': 'Body', 'skip': False, 'group': True, 'firsts': [3]},
+          {'id': 'about', 'parent': 'part', 'style': 'Sect', 'first': 2, 'last': 2, 'depth': 2, 'text': 'About', 'skip': False, 'group': True, 'firsts': [2]},
+          {'id': 'end', 'parent': 'part', 'style': 'Sect', 'first': 5, 'last': 5, 'depth': 2, 'text': 'End', 'skip': False, 'group': True, 'firsts': [5]}]
+    S.save(os.path.join(A, 'fulltext.json'), {'reading_order': es})
+    ids = lambda: [t['id'] for t in core.addable(ai, dg, core.reading_order_for(A, dg, ai)).get('move_section', [])]
+    assert ids() == ['add:move_section:about'] == ids()
+
 # ------------------------------------------------------------------ promotion
 def test_promote_moves_the_old_result_and_keeps_a_record_at_the_top(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)

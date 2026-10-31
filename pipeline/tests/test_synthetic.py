@@ -161,6 +161,30 @@ def test_section_read_out_of_order_is_flagged_and_moved_back(tmp_path):
     assert log == {'pages': [2, 2], 'host': 'Part', 'host_pages': [1, 4], 'before_page': 3, 'after_page': 1}
     assert (c['moved_pages'], c['host'], c['host_pages']) == ([2, 2], 'Part', [1, 4])     # the preview says the same
 
+def test_a_move_the_reviewer_adds_is_made_like_the_ais(tmp_path):
+    """No AI move: the review page offers one for the flagged section, with the suggested page; the reviewer's addition
+    goes into the work order and apply.py makes it, as the preview shows."""
+    from review import core
+    src = sections_pdf(tmp_path / 'sections.pdf')
+    run('audit.py', src, tmp_path / 'audit')
+    digest = json.load(open(tmp_path / 'audit' / 'digest.json', encoding='utf-8'))
+    ro = core.reading_order(digest, json.load(open(tmp_path / 'audit' / 'fulltext.json', encoding='utf-8')))
+    t = core.addable({}, digest, ro)['move_section'][0]
+    assert t['default'] == {'pages': [2, 2], 'before_page': 3} and t['context']['candidates'] == 1 and t['context']['host_found']
+    wo = {}
+    assert core.add_entries(wo, [{'kind': 'move_section', 'target': t['target'], 'value': t['default']}], {'move_section': [t]}, 'Kim') == []
+    out, so = apply_and_verify(tmp_path, src, wo, 'added')
+    assert part_pages(out) == [e['first'] for e in t['context']['siblings_after']] == [1, 2, 3, 4] and so['flagged'] == []
+
+def test_the_trial_run_reports_the_executors_figure_moves(tmp_path):
+    from review import core
+    src = sections_pdf(tmp_path / 'sections.pdf')
+    (tmp_path / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.1'}))
+    res = core.dry_run(str(tmp_path), str(src))
+    assert res['figure_moves'] == [] and res['seconds'] >= 0                  # no figures: nothing to move
+    bad = core.dry_run(str(tmp_path), str(tmp_path / 'missing.pdf'))
+    assert bad['figure_moves'] is None and 'stopped' in bad['why']             # the card then says they were not worked out
+
 def test_section_out_of_order_in_the_original_is_not_new(tmp_path):
     src = sections_pdf(tmp_path / 'sections.pdf')
     out, so = apply_and_verify(tmp_path, src, {}, 'kept')
