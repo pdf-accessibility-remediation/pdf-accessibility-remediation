@@ -96,6 +96,16 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 #zoom { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: none; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out; }
 #zoom img { max-width: 96vw; max-height: 96vh; background: #fff; }
 .done { padding: 12px 16px; background: var(--flag); border-radius: 8px; margin: 10px 0; }
+/* This Session: the session's name (in the header) and notes; the notes of the session this one started from, read-only */
+#this-session { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 16px; }
+#this-session > h2 { margin-top: 0; }
+#this-session label, #finishDialog label { display: block; font-weight: 600; margin: 6px 0 2px; }
+#this-session textarea, #finishDialog textarea { min-height: 5em; }
+#finishDialog input[type=text] { width: 100%; }
+.pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.from-notes { margin-top: 10px; }
+.from-notes summary { cursor: pointer; }
+.from-notes .pre { background: var(--bg); border-radius: 6px; padding: 6px 8px; margin-top: 4px; }
 @media (max-width: 800px) {
   main { flex-direction: column; padding: 16px; }
   header.top { position: static; }
@@ -116,6 +126,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
   <h1 id="title">Work Order Review</h1>
   <div class="row">
     <label>Reviewer <input type="text" id="reviewer" placeholder="Your name" size="18"></label>
+    <span><label>Session Name <input type="text" id="sessionName" maxlength="80" size="18"></label> <a href="#this-session" id="notesLink">Session Notes</a></span>
     <span><span class="bar"><i id="bar"></i></span> <span id="progress"></span></span>
     <span class="show" role="radiogroup" aria-label="Show">Show:
       <label><input type="radio" name="view" value="priority" checked> Check First</label>
@@ -134,10 +145,18 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 <div id="navBackdrop" hidden></div>
 <main>
   <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close Sections"><span aria-hidden="true">×</span></button></div><div id="navList"></div></nav>
-  <div class="col"><div id="addPanel" hidden></div><div id="cards"></div></div>
+  <div class="col">
+    <section id="this-session" aria-labelledby="tsTitle"><h2 id="tsTitle">This Session</h2>
+      <div class="ctx">The name is in the header. Name and notes are kept with Save and whenever you leave either field, and go to Session History when you finish.</div>
+      <label for="sessionNotes">Session Notes</label>
+      <textarea id="sessionNotes" maxlength="4000" placeholder="Where you stopped, what to check next, who takes over"></textarea>
+      <div id="fromNotes"></div>
+    </section>
+    <div id="addPanel" hidden></div><div id="cards"></div></div>
 </main>
 <div id="zoom"><img alt=""></div>
 <dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>
+<dialog id="finishDialog" aria-labelledby="finTitle" aria-describedby="finCtx"></dialog>
 <script>
 const DATA = /*REVIEW_DATA*/null;
 // the browser draft belongs to one run and one session (the run id is written once, in reviews/basis.json)
@@ -150,7 +169,8 @@ const addById = Object.fromEntries(Object.values(ADDABLE).flat().map(t => [t.id,
 const aid = a => 'add:' + a.kind + ':' + a.target;
 // the server's saved choices, or this browser's when they are newer (both stamped with the browser's clock)
 const srv = DATA.saved || {};
-let state = { reviewer: srv.reviewer || '', decisions: srv.decisions || {}, additions: srv.additions || [], saved_at: srv.saved_at || '' };
+let state = { reviewer: srv.reviewer || '', decisions: srv.decisions || {}, additions: srv.additions || [],
+              session_name: srv.session_name || '', session_notes: srv.session_notes || '', saved_at: srv.saved_at || '' };
 try {
   const s = JSON.parse(localStorage.getItem(KEY) || 'null');
   if (s && s.decisions && (!state.saved_at || (s.saved_at && new Date(s.saved_at) >= new Date(state.saved_at)))) state = Object.assign({ additions: [] }, s);
@@ -195,6 +215,32 @@ if (SESSION && SESSION.reopened) {                    // a finished run reviewed
 }
 const rv = document.getElementById('reviewer'); rv.value = state.reviewer;
 rv.addEventListener('input', () => { state.reviewer = rv.value; persist(); });
+
+// ---------------------------------------------------------------- this session's name and notes
+// prefilled "Session N"; kept in the browser on every key, and on the server when a field loses focus (the review page's
+// port can change, and the browser's copy is per port), with Save, and with Finish
+const NAME_DEFAULT = (SESSION && SESSION.name_default) || 'Session 1';
+const sName = document.getElementById('sessionName'), sNotes = document.getElementById('sessionNotes');
+sName.value = state.session_name || NAME_DEFAULT; sNotes.value = state.session_notes || '';
+sName.addEventListener('input', () => { state.session_name = sName.value; persist(); });
+sNotes.addEventListener('input', () => { state.session_notes = sNotes.value; persist(); });
+async function keepNow() {
+  if (finished) return;
+  try {
+    const [s, b] = await post('/keep');
+    if (s === 400) msg(esc(b.error), true);            // over a limit; 409 (Finish has started) needs no word
+  } catch (e) {}
+}
+sName.addEventListener('change', keepNow); sNotes.addEventListener('change', keepNow);
+document.getElementById('notesLink').addEventListener('click', e => {
+  e.preventDefault(); sNotes.scrollIntoView({ block: 'center' }); sNotes.focus({ preventScroll: true });
+});
+if (SESSION && /^\d+$/.test(String(SESSION.from || ''))) {   // the session this one started from: its name and notes, read-only
+  const k = 'Session ' + Number(SESSION.from), nm = SESSION.from_name ? k + ': ' + SESSION.from_name : k;
+  document.getElementById('fromNotes').innerHTML = SESSION.from_notes
+    ? '<details class="from-notes"><summary>Notes from ' + esc(nm) + '</summary><div class="pre">' + esc(SESSION.from_notes) + '</div></details>'
+    : '<p class="ctx">This session started from ' + esc(nm) + ', which has no notes.</p>';
+}
 
 function sections() {
   const mine = view !== 'left' && state.additions.length ? [{ id: 'added', title: 'Added by you', adds: true, items: state.additions }] : [];
@@ -420,7 +466,8 @@ function nav() {
   const kinds = []; for (const it of items) if (!kinds.includes(it.kind)) kinds.push(it.kind);
   const pages = {};
   for (const it of items) if (it.priority && it.page != null) (pages[it.page] = pages[it.page] || []).push(it.id);
-  let h = state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + (view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
+  let h = '<h2>This Session</h2><a href="#this-session"><span>Name and Notes</span><span></span></a>';
+  h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + (view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
   h += '<h2>Check First</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
   h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
   h += '<h2>Page Index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
@@ -614,7 +661,8 @@ const addLink = g => g.add ? ' <a href="#" data-add-kind="' + esc(g.add.kind) + 
 const gapText = g => (g || []).length ? ' · <b>' + g.length + ' gap' + (g.length === 1 ? '' : 's') + '</b>: ' + g.map(x => esc(x.what) + addLink(x)).join(' · ') : ' · no gaps';
 async function post(path, extra) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(Object.assign({ reviewer: state.reviewer, decisions: state.decisions, additions: state.additions, saved_at: state.saved_at }, extra || {})) });
+    body: JSON.stringify(Object.assign({ reviewer: state.reviewer, decisions: state.decisions, additions: state.additions,
+      session_name: state.session_name, session_notes: state.session_notes, saved_at: state.saved_at }, extra || {})) });
   return [r.status, await r.json()];
 }
 document.getElementById('save').addEventListener('click', async () => {
@@ -648,20 +696,53 @@ function askGaps(gaps) {
     dlg.showModal(); document.getElementById('gapTitle').focus();   // read from the top: the title, then its explanation
   });
 }
-document.getElementById('finish').addEventListener('click', async () => {
-  if (!state.reviewer.trim()) { rv.focus(); return msg('Enter your name as the reviewer first.', true); }
-  try {
-    const extra = {};
-    let [s, b] = await post('/finish', extra);
-    // not finished yet, a normal step (200, needs): first the unreviewed decisions, then the open gaps
-    if (s === 200 && b.needs === 'unreviewed') {
-      if (!confirm(b.unreviewed.length + ' items are not reviewed. Accept them as the AI wrote them, and record that they were not reviewed?')) {
-        view = 'left'; document.querySelector('input[name=view][value=left]').checked = true; render();
-        return msg(esc(b.error) + ' They are listed under "Not Reviewed".', true);
+// every Finish: the session's name and notes for a last edit, and what finishing does with decisions not reviewed
+const finBtn = document.getElementById('finish');
+function showLeft(text) {
+  view = 'left'; document.querySelector('input[name=view][value=left]').checked = true; render();
+  msg(text + ' They are listed under "Not Reviewed".', true);
+}
+function askFinish() {
+  const dlg = document.getElementById('finishDialog');
+  const n = items.filter(it => !(state.decisions[it.id] || {}).status).length;
+  dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2><div class="ctx" id="finCtx">' +
+    (n ? n + (n === 1 ? ' decision is' : ' decisions are') + ' not reviewed: finishing records ' + (n === 1 ? 'it' : 'them') + ' as the AI wrote ' + (n === 1 ? 'it' : 'them') + ', marked "accepted without review", and "Ready to ship?" stays No.'
+       : 'Every decision has a choice.') +
+    (SESSION && SESSION.reopened ? ' Finish re-applies the reviewed order (no AI call).' : '') + ' The name and notes go to Session History.</div>' +
+    '<label for="finName">Session Name</label><input type="text" id="finName" maxlength="80">' +
+    '<label for="finNotes">Session Notes</label><textarea id="finNotes" maxlength="4000"></textarea>' +
+    '<div class="buttons"><button type="button" data-f="back">Back</button>' + (n ? '<button type="button" data-f="left">Show Not Reviewed</button>' : '') +
+    '<button type="button" class="primary" data-f="finish">Finish Review</button></div>';
+  document.getElementById('finName').value = sName.value; document.getElementById('finNotes').value = sNotes.value;
+  return new Promise(done => {
+    let answer = null;
+    dlg.onclick = e => {
+      const f = e.target.dataset.f; if (!f) return;
+      if (f === 'finish') {                            // the dialog's name and notes are the session's from now on
+        sName.value = state.session_name = document.getElementById('finName').value;
+        sNotes.value = state.session_notes = document.getElementById('finNotes').value; persist();
+        answer = { unreviewed: n };
       }
-      extra.accept_unreviewed = true;
-      [s, b] = await post('/finish', extra);
-    }
+      if (f === 'left') answer = 'left';
+      dlg.close();
+    };
+    dlg.onclose = () => {
+      dlg.onclick = dlg.onclose = null;
+      if (answer === 'left') showLeft(n + ' decisions are not reviewed.');
+      else if (!answer) finBtn.focus();                // Back or Escape: where the person was
+      done(answer && answer !== 'left' ? answer : null);
+    };
+    dlg.showModal(); document.getElementById('finTitle').focus();   // read from the top: the title, then what finishing does
+  });
+}
+finBtn.addEventListener('click', async () => {
+  if (!state.reviewer.trim()) { rv.focus(); return msg('Enter your name as the reviewer first.', true); }
+  const go = await askFinish(); if (!go) return;
+  try {
+    const extra = go.unreviewed ? { accept_unreviewed: true } : {};
+    let [s, b] = await post('/finish', extra);
+    // not finished yet, a normal step (200, needs): decisions not reviewed that the dialog did not count, then the open gaps
+    if (s === 200 && b.needs === 'unreviewed') return showLeft(esc(b.error));
     if (s === 200 && b.needs === 'gaps') {
       const ack = await askGaps(b.gaps);
       if (!ack) return msg('Not finished' + gapText(b.gaps), true);
@@ -670,7 +751,7 @@ document.getElementById('finish').addEventListener('click', async () => {
     }
     if (s !== 200 || !b.finished) return msg(esc(b.error || 'Finish failed'), true);
     finished = true; panel.hidden = true;
-    document.querySelectorAll('#save, #finish, #addBtn').forEach(x => x.disabled = true);
+    document.querySelectorAll('#save, #finish, #addBtn, #sessionName, #sessionNotes').forEach(x => x.disabled = true);
     msg('Review finished · ' + b.changes + ' changes recorded' + dropText(b.dropped) + (b.gaps.length ? ' · ' + b.gaps.length + ' gaps left open, with your reasons' : '') +
         (RETURN_TO ? '. Going to the run page, which shows what happens next.' :
          SESSION && SESSION.reopened ? '. The terminal is re-applying it now (no AI call); the current result is replaced when that finishes.' : '. Go back to the terminal to continue the run.'), b.dropped.length > 0);

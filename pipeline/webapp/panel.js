@@ -218,10 +218,12 @@ function historyBlock(s) {
   if (!rows.length) h += '<p>' + (s.legacy_review ? 'Reviewed before sessions were kept: Review again records that review as session 1.' : 'Never reviewed: the result was applied without review.') + '</p>';
   else h += '<div class="pp-tw" tabindex="0" role="region" aria-label="Session History Table"><table><caption>Review Sessions of This Run</caption><thead><tr>' +
     '<th scope="col">Session</th><th scope="col">Status</th><th scope="col">Reviewer</th><th scope="col">Date</th><th scope="col">Started From</th>' +
-    '<th scope="col">Changes from the AI</th><th scope="col">Set in This Session</th><th scope="col">Result</th><th scope="col">Action</th></tr></thead><tbody>' +
-    rows.map(r => '<tr><th scope="row" class="pp-nw">' + esc(cap(r.label)) + (r.current ? ' (current)' : '') + '</th><td>' + esc(r.status) + (r.summary_only ? ' (summary only)' : r.inferred ? ' (inferred)' : '') +
+    '<th scope="col">Changes from the AI</th><th scope="col">Set in This Session</th><th scope="col">Notes</th><th scope="col">Result</th><th scope="col">Action</th></tr></thead><tbody>' +
+    // a session's name and notes are a person's own text: escaped, never Title Cased
+    rows.map(r => '<tr><th scope="row"><span class="pp-nw">' + esc(cap(r.label)) + (r.current ? ' (current)' : '') + '</span>' + (r.name ? '<span class="pp-name">' + esc(r.name) + '</span>' : '') + '</th><td>' + esc(r.status) + (r.summary_only ? ' (summary only)' : r.inferred ? ' (inferred)' : '') +
       '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td class="pp-nw">' + esc(r.date || (r.started || '').slice(0, 10) || 'not recorded') + '</td><td class="pp-nw">' + esc(r.from_label) +
-      '</td><td>' + esc(r.changes) + '</td><td>' + esc(r.since_start) + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') +
+      '</td><td>' + esc(r.changes) + '</td><td>' + esc(r.since_start) + '</td><td>' +
+      (r.notes ? '<details id="pp-notes-' + esc(r.id) + '"><summary>Notes</summary><div class="pp-notes">' + esc(r.notes) + '</div></details>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') +
       '</td><td>' + ((r.status === 'finished' || r.status === 'applied') && !s.live_review && !s.lock ? '<button type="button" id="pp-from-' + esc(r.id) + '" data-act="review" data-from="' + esc(r.id) + '">' + esc(tc('Review again from ' + r.label)) + '</button>' : '') +
       '</td></tr>').join('') + '</tbody></table></div>';
   if (s.ai_result) h += '<p><a href="' + esc(s.ai_result) + '">The result applied without review</a> (kept in reviews/versions/ai/).</p>';

@@ -78,7 +78,9 @@ th button { border: 0; background: none; padding: 0; font-weight: 700; cursor: p
 details.fold { margin-top: 6px; font-size: 13px; } details.fold summary { cursor: pointer; color: var(--ink); font-size: 15px; }   /* blue is for links only; the toggle at the body text size */
 [tabindex="-1"]:focus { outline: none; }                     /* a heading or message focused by script: no outline (Tab focus keeps its own) */
 details.fold.plain summary { color: var(--ink); }            /* all five passed: a plain toggle, still with its arrow */
-td.nowrap { white-space: nowrap; }
+td.nowrap, span.nowrap { white-space: nowrap; }
+.sname { display: block; max-width: 22em; overflow-wrap: anywhere; }   /* a session's own name, under its number */
+div.pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 60em; }   /* a person's notes, as typed */
 hr.thin { border: 0; border-top: 1px solid var(--line); margin: 14px 0 8px; } h3.rev-sub { font-size: 15px; margin: 0 0 4px; }
 ul.checks { list-style: none; padding-left: 4px; margin: 4px 0 0; }
 h2.inline { display: inline; font-size: 15px; border: 0; margin: 0; padding: 0; }
@@ -296,7 +298,15 @@ def counts_text(c, sep=', '):
 
 SESSION_TABLE = ('<div class="tw" tabindex="0"><table><caption class="vh">{cap}</caption><thead><tr><th scope="col">Session</th><th scope="col">From</th>'
                  '<th scope="col">Reviewer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Carried</th>'
-                 '<th scope="col">Changed in the Session</th><th scope="col">Changes from the AI</th><th scope="col">Choices</th></tr></thead><tbody>{rows}</tbody></table></div>')
+                 '<th scope="col">Changed in the Session</th><th scope="col">Changes from the AI</th><th scope="col">Choices</th><th scope="col">Notes</th></tr></thead><tbody>{rows}</tbody></table></div>')
+
+def session_name(x):
+    """'Session 5: Chapters 1–4 pass', or 'Session 5' (records made before sessions had names have none). Escaped."""
+    return f'Session {int(x["id"])}' + (f': {E(x["name"])}' if x.get('name') else '')
+
+def notes_fold(x, summary='Notes'):
+    """A session's notes, plain text in a fold (never through inline(): a person's text is not markdown); 'none' without."""
+    return f'<details class="fold"><summary>{summary}</summary><div class="pre">{E(x["notes"])}</div></details>' if x.get('notes') else 'none'
 
 def review_card(R, rec):
     """The "Review" section: one line for the current session, its row (earlier sessions folded), each decision's review
@@ -320,15 +330,18 @@ def review_card(R, rec):
                 (counts_text(c) or 'no counts recorded')
             carried = (f'{x["carried"]} from {frm(x)}' if x.get('carried') else 'none') + (f' · not carried: {x["not_carried"]}' if x.get('not_carried') else '')
             mark = ' <strong>(current)</strong>' if x['id'] == cur else ''
-            return (f'<tr><td class="nowrap">{int(x["id"])}{mark}</td><td class="nowrap">{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(x.get("date") or "")}</td>'
-                    f'<td>{E(x.get("status") or "")}</td><td class="nowrap">{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td></tr>')
+            name = f'<span class="sname">{E(x["name"])}</span>' if x.get('name') else ''
+            return (f'<tr><td><span class="nowrap">{int(x["id"])}{mark}</span>{name}</td><td class="nowrap">{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(x.get("date") or "")}</td>'
+                    f'<td>{E(x.get("status") or "")}</td><td class="nowrap">{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td>'
+                    f'<td>{notes_fold(x)}</td></tr>')
         now = [x for x in ss if x['id'] == cur]; earlier = [x for x in ss if x['id'] != cur]
         if now:
             x = now[0]; c = x.get('counts') or {}
             parts = ([f'{c.get("approved") or 0} approved'] + ([f'{c["changed"]} changed'] if c.get('changed') else []) +
                      [f'{c.get("rejected") or 0} rejected', f'{c.get("accepted_unreviewed") or 0} accepted without review']) if c else ['counts not recorded']
-            B.append(f'<p><strong>Session {int(x["id"])}</strong> · {E(x.get("reviewer") or "reviewer not recorded")} · '
+            B.append(f'<p><strong>{session_name(x)}</strong> · {E(x.get("reviewer") or "reviewer not recorded")} · '
                      f'{E(x.get("date") or "date not recorded")} · ' + ' · '.join(parts) + '</p>')
+            if x.get('notes'): B.append(notes_fold(x, 'Session Notes'))
             B.append(SESSION_TABLE.format(cap='The current review session', rows=row(x)))
         if earlier:
             B.append(f'<details class="fold"><summary>Previous Sessions ({len(earlier)})</summary>'

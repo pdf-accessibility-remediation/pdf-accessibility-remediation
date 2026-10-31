@@ -187,6 +187,7 @@ def state(s, run, R):
     rows = []
     for x in ss:
         r = S.summary_row(x)
+        if x.get('status') == 'open': r.update(S.name_notes(load(S.P(R)['draft']), x['id']))   # the open session: as last saved
         v = os.path.join(vers, x['id'])
         rows.append({**r, 'current': x['id'] == cur, 'from_label': S.from_label(r['from']), 'label': S.label(x['id']),
                      'result': (f'reviews/versions/{x["id"]}/' + ('review.html' if os.path.isfile(os.path.join(v, 'review.html')) else 'review.md'))
