@@ -645,7 +645,9 @@ def reapply(R, s, pdf=None, say=say_):
     t = {'4/5 apply (no model)': _run(['apply.py', inp, os.path.join(W, 'workorder.json'), os.path.join(W, out)], say, 'apply (no model)')}
     t['4/5 verify (no model)'] = _run(['verify.py', inp, os.path.join(W, out)], say, 'verify (no model)', quiet=True)
     save(os.path.join(W, 'timing.json'), t)
-    items = readable(core.build_items, ai, load(os.path.join(p['audit'], 'digest.json')))
+    dg = load(os.path.join(p['audit'], 'digest.json'))
+    ro = readable(core.reading_order_for, p['audit'], dg, ai)
+    items = readable(core.build_items, ai, dg, ro['entries'], ro)     # the same cards the page showed, reading-order checks too
     s2 = dict(s, status='applied')
     info = {'session': s['id'], 'sessions': [summary_row(x if x['id'] != s['id'] else s2) for x in sessions(R)],
             'decisions': decision_list(items, s.get('decisions') or {}), 'run_id': b['run_id'], 'run': os.path.relpath(R, HERE)}

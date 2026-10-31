@@ -166,6 +166,27 @@ def test_finish_session_records_who_set_each_choice(tmp_path):
     row = S.summary_row(s)
     assert row['carried'] == 4 and row['since_start'] == 1
 
+def test_reading_order_cards_carry_and_reach_the_record(tmp_path):
+    """A reading-order finding is a card like any other: its choice (seen, with a note) carries to the next session, is
+    listed in record.json review.decisions, and its note goes to review.json's notes, as review/core.py finish writes them."""
+    dg = digest(); ai = ai_order(); A = str(tmp_path)
+    es = [{'id': 'body', 'parent': None, 'style': 'Sect', 'first': 1, 'last': 5, 'depth': 1, 'text': 'Body', 'skip': False},
+          {'id': 'ab', 'parent': None, 'style': 'Sect', 'first': 2, 'last': 2, 'depth': 1, 'text': 'About', 'skip': False},
+          {'id': 'end', 'parent': None, 'style': 'Sect', 'first': 4, 'last': 4, 'depth': 1, 'text': 'End', 'skip': False}]
+    S.save(os.path.join(A, 'fulltext.json'), {'reading_order': es, 'page_jumps': [{'page': 3, 'jumps_up': 2, 'runs': 9}]})
+    ro = core.reading_order_for(A, dg, ai)
+    items = core.build_items(ai, dg, ro['entries'], ro)
+    ids = {it['id'] for it in items if it['key'] == 'reading_order'}
+    assert ids == {'reading_order:jump:3'}                     # the sections read in page order: only the page jump is a finding
+    dec = dict(ALL, **{'reading_order:jump:3': {'status': 'seen', 'note': 'fix the column order in Acrobat'}})
+    src = {k: dict(v, ai=next(it['ai'] for it in items if it['id'] == k), set_in='001') for k, v in dec.items()}
+    carried, missed = S.carry(items, src)
+    assert carried['reading_order:jump:3']['status'] == 'seen' and not missed
+    row = next(r for r in S.decision_list(items, dec) if r['id'] == 'reading_order:jump:3')
+    assert row['status'] == 'seen' and row['note'] == 'fix the column order in Acrobat' and row['kind'] == 'Reading order check'
+    wo = core.apply_decisions(ai, items, dec)
+    assert wo == ai                                            # nothing applied: a finding is not in the work order
+
 # ------------------------------------------------------------------ promotion
 def test_promote_moves_the_old_result_and_keeps_a_record_at_the_top(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)

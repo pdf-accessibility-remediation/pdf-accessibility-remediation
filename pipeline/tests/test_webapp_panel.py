@@ -685,7 +685,8 @@ def test_in_page_link_targets_take_focus():
     js, page, srv = src('webapp/panel.js'), src('review/page.html'), src('webapp/server.py')
     assert "if (!t.hasAttribute('tabindex')) t.setAttribute('tabindex', '-1');\n  t.scrollIntoView(); t.focus({ preventScroll: true });" in js
     assert 'if (e.defaultPrevented || e.button) return;' in js                            # review.html's own handler goes first
-    assert "goTo(document.querySelector(a.getAttribute('href')));" in page and "goTo(document.getElementById('card-' + t.id));" in page
+    assert "goTo(href.startsWith('#card-') ? document.getElementById(href.slice(1)) : document.querySelector(href));" in page   # card ids: not CSS selectors
+    assert "goTo(document.getElementById('card-' + t.id));" in page
     assert '[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }' in page
     assert srv.count('<main id="main" tabindex="-1">') == 2 and '<script src="/app/panel.js" defer></script></body></html>' in srv
 

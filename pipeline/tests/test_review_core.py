@@ -95,3 +95,50 @@ def test_flags_a_text_rule_will_hide_are_marked():
     fl = core.reading_order({}, {'reading_order': es}, wo)['flagged']
     assert [(es[x['i']]['id'], x.get('hidden_by')) for x in fl] == [('folio', 'running head'), ('real', None)]
     assert all('hidden_by' not in x for x in core.reading_order({}, {'reading_order': es})['flagged'])   # no work order, no marks
+
+# ------------------------------------------------------------------ findings no decision answers: cards marked seen, with a note
+RULES = {'artifacts': {'text_rules': [{'label': 'running head', 'pages': [1, 50], 'regex': r'\d+|[ivx]+|Contents'},
+                                      {'label': 'roman folios', 'pages': [1, 50], 'regex': r'[ivx]+'}]}}
+
+def findings_case(wo=RULES):
+    """body 10-60 read first; folio (6, a rule hides it), real (3, nothing hides it) and a figure caption on 12, read after
+    the body, then a page jump on PDF 7."""
+    es = [entry('body', 10, 60), dict(entry('folio', 6, 6), runs=['vi']), dict(entry('real', 3, 3), runs=['A real paragraph']),
+          dict(entry('cap', 12, 12), runs=['Figure 1'])]
+    ro = core.reading_order({}, {'reading_order': es, 'page_jumps': [{'page': 7, 'jumps_up': 3, 'runs': 20}]}, wo)
+    return ro, {it['id']: it for it in core.build_items(wo, {'source': {'pages': 60}}, es, ro)}
+
+def test_an_entry_two_rules_hide_names_both_by_card_id():
+    ro, _ = findings_case()
+    folio = next(x for x in ro['flagged'] if x['first'] == 6)
+    assert [r['id'] for r in folio['hidden_by_rules']] == ['artifacts.text_rules:0', 'artifacts.text_rules:1']
+    assert folio['hidden_by'] == 'running head'
+
+def test_findings_no_rule_hides_get_seen_only_cards_in_group_5():
+    ro, its = findings_case()
+    f = {i: it for i, it in its.items() if it['key'] == 'reading_order'}
+    assert set(f) == {'reading_order:away:real', 'reading_order:jump:7', 'reading_order:late'}
+    assert all(it['priority'] == 5 and it['loc'] is None and it['edit'] is None for it in f.values())
+    assert f['reading_order:away:real']['ai'] == {'finding': 'away', 'entry': 'real', 'pages': [3, 3], 'prev': 60, 'next': 12}
+    assert f['reading_order:jump:7']['context']['jumps_up'] == 3
+    assert f['reading_order:late']['context']['count_late'] == 1 and f['reading_order:late']['context']['late'][0]['page'] == 12
+    assert 'reading_order:away:folio' not in its                       # a rule hides it: listed on the rule's card instead
+
+def test_a_rule_card_lists_what_it_hides():
+    _, its = findings_case()
+    assert its['artifacts.text_rules:0']['context']['hides'] == [{'page': 6, 'text': 'folio', 'late': False}]
+    assert its['artifacts.text_rules:1']['context']['hides'] == [{'page': 6, 'text': 'folio', 'late': False}]
+
+def test_no_late_card_when_a_rule_hides_every_late_entry():
+    wo = {'artifacts': {'text_rules': RULES['artifacts']['text_rules'] + [{'label': 'figure labels', 'pages': [1, 50], 'regex': r'Figure \d+'}]}}
+    _, its = findings_case(wo)
+    assert 'reading_order:late' not in its and its['artifacts.text_rules:2']['context']['hides'] == [{'page': 12, 'text': 'cap', 'late': True}]
+
+def test_findings_change_nothing_in_the_work_order():
+    _, its = findings_case()
+    for st in ('seen', 'rejected'):
+        wo = core.apply_decisions(RULES, list(its.values()), {i: {'status': st, 'note': 'fix by hand'} for i in its if i.startswith('reading_order:')})
+        assert wo == RULES
+
+def test_without_the_reading_order_there_are_no_finding_cards():
+    assert not any(i.startswith('reading_order:') for i in items())
