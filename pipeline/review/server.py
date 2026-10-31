@@ -16,13 +16,21 @@ Routes (all call review/core.py; a later front end can replace this file and pag
                                  Not finished yet, but nothing wrong: 200 with needs: "unreviewed" (and the list) while
                                  items are unreviewed, or needs: "gaps" while a gap has no reason, unless the body accepts
                                  them (a normal step of the flow, so not an HTTP error the browser logs)
+    GET  /ocr/text/<n>.json      the text of PDF page n, for the OCR Text section: only pages the section can show
+                                 (review/ocr.py showable_pages), from an exact-path list made at start
+    POST /ocr-verdict {verdict, reviewer, reason, pages, reads, to}  → review/ocr.py record(): written at once, on its own
+                                 (not with Finish); Ctrl+C waits until it is written
+    POST /close                  OCR-only mode (review_ocr.py --serve): the page is done, the server stops
+
+Modes: the work-order review (review_items.json in R; the first review serves the run folder, a reopen serves
+reviews/), and the OCR-only page (data= given, no decisions). run_dir is the run folder (for the OCR verdict and text).
 
 Requests must come from the page itself: the Host must be this server's, and a POST must be JSON from the same origin,
 so another web page open in the browser cannot submit a review (a plain form or a no-cors fetch cannot send JSON). Every
 response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none'), so another page cannot show this one in a
 frame and trick a click on Finish.
 """
-import os, json, datetime, threading, webbrowser, mimetypes, urllib.parse
+import os, json, time, datetime, threading, webbrowser, mimetypes, urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from . import core
 
@@ -44,24 +52,36 @@ def check_return_to(url):
         raise ValueError(f'only http://127.0.0.1:<port>/… or http://localhost:<port>/… is accepted, not {url!r}')
     return url
 
-def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
+def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run_dir=None, lock_held=False, data=None, wo=None):
     """files: {url: path} served as they are, beside the review's own (review_workorder.py --reopen: the current result).
-    return_to: the app's run page, which the page goes to after Finish and links back to."""
-    R = os.path.abspath(R)
+    return_to: the app's run page, which the page goes to after Finish and links back to. run_dir: the run folder (default
+    R). lock_held: this process holds the run's reviews/.lock (a reopen, the OCR-only page). data (with wo, the work order
+    whose OCR-word readings the OCR section shows): the OCR-only page, which has no decisions."""
+    from . import ocr as O, sessions as S
+    R = os.path.abspath(R); run_dir = os.path.abspath(run_dir or R)
     if return_to: check_return_to(return_to)
-    data = core.load(os.path.join(R, 'review_items.json'))
-    ai = core.load(os.path.join(R, 'workorder.ai.json'))
-    if data is None or ai is None: raise SystemExit(f'{R} is not waiting for a review (no review_items.json / workorder.ai.json)')
+    ocr_only = data is not None
+    if ocr_only: ai = None
+    else:
+        data = core.load(os.path.join(R, 'review_items.json'))
+        ai = core.load(os.path.join(R, 'workorder.ai.json'))
+        if data is None or ai is None: raise SystemExit(f'{R} is not waiting for a review (no review_items.json / workorder.ai.json)')
     items = data['items']
     digest = core.load(os.path.join(R, '_audit', 'digest.json'), {}) or {}
+    if ocr_only and not digest: digest = core.load(os.path.join(S.P(run_dir)['audit'], 'digest.json'), {}) or {}   # the kept digest, if any
     core.pages_to_render(items, data.get('pages', 0))        # also for runs prepared before every card had page images
-    if 'addable' not in data: data['addable'] = core.addable(ai, digest); data['add_kinds'] = core.ADD_KINDS
+    if not ocr_only and 'addable' not in data: data['addable'] = core.addable(ai, digest); data['add_kinds'] = core.ADD_KINDS
     adds = data['addable']
     saved = core.load(os.path.join(R, 'review_decisions.json'), {}) or {}
-    done = threading.Event(); finishing = threading.Event(); result = {}
+    done = threading.Event(); finishing = threading.Event(); recording = threading.Event(); result = {}
     render_lock = threading.Lock()                    # pdfium is not thread-safe: one page image at a time
     write_lock = threading.Lock()                     # every write of this server, one at a time (Save, Keep and Finish race on a blur)
     sid = (data.get('session') or {}).get('id') or '001'
+    ocr_wo = wo if ocr_only else ai
+    def ocr_section(): return O.section(run_dir, digest, ocr_wo)
+    intake = core.load(os.path.join(run_dir, '_intake', 'intake.json')) or {}
+    page_text = O.Text(data.get('pdf')) if O.needed(intake) and os.path.isfile(data.get('pdf') or '') else None
+    text_urls = {f'/ocr/text/{n}.json': n for n in O.showable_pages(intake)} if page_text else {}
     cells = {i: (sh['image'], sh['cells'][str(i)]) for sh in digest.get('ocr_word_sheets') or [] if sh.get('cells')
              for i in range(sh['ids'][0], sh['ids'][1] + 1) if str(i) in sh['cells']}
     # what GET serves, keyed by URL. The file and its content type come from our own listing, never from the request
@@ -111,8 +131,13 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
             if not self.ours(): return self.send(403, {'error': 'open the page at the address the terminal printed'})
             path = self.path.split('?', 1)[0]
             if path in ('/', '/index.html'):
-                boot = json.dumps({**data, 'saved': saved, 'date': date, 'return_to': return_to}, ensure_ascii=False).replace('</', '<\\/')
+                boot = json.dumps({**data, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': ocr_section()},
+                                  ensure_ascii=False).replace('</', '<\\/')
                 return self.send(200, open(PAGE, encoding='utf-8').read().replace('/*REVIEW_DATA*/null', boot), 'text/html; charset=utf-8')
+            if path in text_urls:                      # the OCR text of a page the section can show; any other number: 404
+                n = text_urls[path]
+                try: return self.send(200, {'page': n, 'text': page_text(n)})
+                except Exception as e: return self.send(500, {'error': f'the text of PDF {n} could not be read ({type(e).__name__})'})
             if path in page_urls or path in word_urls:
                 f = page_image(page_urls[path]) if path in page_urls else word_image(word_urls[path])
                 return self.send(200, open(f, 'rb').read(), 'image/png') if f else self.send(404, {'error': 'no such image'})
@@ -132,7 +157,22 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
             additions = [a for a in body.get('additions') or [] if isinstance(a, dict)] if isinstance(body.get('additions'), list) else []
             reviewer = str(body.get('reviewer') or '').strip()
             saved_at = str(body.get('saved_at') or '') or datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
-            if self.path not in ('/save', '/keep', '/finish'): return self.send(404, {'error': 'not found'})
+            if self.path == '/ocr-verdict':                # on its own, at once; never during or after Finish
+                if not ocr_section(): return self.send(400, {'error': 'This book has no OCR text to review.'})
+                fields = {k: body.get(k) for k in ('verdict', 'reviewer', 'reason', 'pages', 'to')}
+                fields['reads'] = [str(x) for x in body.get('reads') or []] if isinstance(body.get('reads'), list) else []
+                with write_lock:
+                    if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'The page is finishing: record the verdict from the run page.'})
+                    recording.set()                        # Ctrl+C and Stop wait until the verdict is written
+                    try: v, _ = O.record(run_dir, fields, via='page', held=lock_held, session=None if ocr_only else sid, date=date)
+                    except (ValueError, S.Refused) as e: return self.send(400, {'error': str(e)[:1].upper() + str(e)[1:]})
+                    finally: recording.clear()
+                return self.send(200, {'recorded': v, 'ocr': ocr_section()})
+            if self.path == '/close':
+                if not ocr_only: return self.send(404, {'error': 'not found'})
+                with write_lock: done.set()
+                return self.send(200, {'closed': True})
+            if ocr_only or self.path not in ('/save', '/keep', '/finish'): return self.send(404, {'error': 'not found'})
             try: name, notes = core.session_fields(body, sid)
             except ValueError as e: return self.send(400, {'error': str(e)})
             def keep():                                  # the caller holds write_lock
@@ -190,8 +230,9 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
         except OSError: continue
     if srv is None: raise SystemExit(f'no free port between {port} and {port + 19}: pass --port')
     url = f'http://localhost:{srv.server_address[1]}/'
-    print(f'review page: {url}\n  open it in a browser (from WSL, a Windows browser works too). Ctrl+C stops without finishing;'
-          ' your choices so far are kept in the browser and in review_decisions.json after each Save.', flush=True)
+    print(f'review page: {url}\n  open it in a browser (from WSL, a Windows browser works too). ' +
+          ('Ctrl+C or Close closes it; a verdict is recorded when you press Record Verdict.' if ocr_only else
+           'Ctrl+C stops without finishing; your choices so far are kept in the browser and in review_decisions.json after each Save.'), flush=True)
     if open_browser:
         try: webbrowser.open(url)
         except Exception: pass
@@ -199,9 +240,13 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None):
     try:
         while not done.wait(0.5): pass                 # a short wait, so Ctrl+C is seen
     except KeyboardInterrupt:
-        while finishing.is_set() and not done.is_set(): done.wait(0.2)   # Ctrl+C during Finish: let the record be written
-        if not done.is_set():
-            print('\nstopped: the review is not finished. Run the same command again to carry on.'); srv.shutdown(); return None
+        while (finishing.is_set() and not done.is_set()) or recording.is_set(): time.sleep(0.2)   # let a Finish or a verdict be written
+        if not done.is_set() or ocr_only:
+            if page_text: page_text.close()
+            print('\nstopped: ' + ('the OCR review page is closed.' if ocr_only else 'the review is not finished. Run the same command again to carry on.'))
+            srv.shutdown(); return None
         print('\nCtrl+C came while Finish was being recorded: the review is recorded')
     srv.shutdown()
+    while recording.is_set(): time.sleep(0.2)         # a verdict being written as the page closed: let it end
+    if page_text: page_text.close()
     return result

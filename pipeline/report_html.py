@@ -665,7 +665,9 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
   });
 })();"""
     out = os.path.join(R, 'review.html')
-    open(out, 'w', encoding='utf-8').write(page(f'Review: {book}', '\n'.join(B), script))
+    tmp = f'{out}.{os.getpid()}.tmp'                 # whole or not at all: a stop mid-write never leaves half a page
+    with open(tmp, 'w', encoding='utf-8') as f: f.write(page(f'Review: {book}', '\n'.join(B), script))
+    os.replace(tmp, out)
     return out
 
 def summary_html(Bdir):

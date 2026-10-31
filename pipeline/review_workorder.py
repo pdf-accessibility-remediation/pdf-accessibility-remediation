@@ -82,7 +82,7 @@ def finished(R, a):
                   + (f': {s.get("carried", 0)} choices preloaded' if s['from'] != 'ai' else ''))
             v = server.serve(S.P(R)['dir'], a.date, a.port, open_browser=not a.no_browser,
                              files={'/result/review.html': os.path.join(R, 'review.html'), '/result/review.md': os.path.join(R, 'review.md')},
-                             return_to=a.return_to)
+                             return_to=a.return_to, run_dir=R, lock_held=True)    # this process holds reviews/.lock
             if not v:
                 print(f'{S.label(s["id"])} stays open: run the same command again to carry on'); return
             s = S.finish_session(R, s, rec)

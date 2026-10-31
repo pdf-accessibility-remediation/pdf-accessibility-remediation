@@ -22,7 +22,9 @@ POST (JSON from the app's own pages only), each answered 202 {job} or 409 {error
     /api/run/<run>/stop        Stop reviewing: Ctrl+C to the open review page, only before Finish
     /api/run/<run>/discard     Discard the open session: review_workorder.py --discard-open (marked abandoned, kept);
                                refused while its review page is open or past Finish
-Reserved for later pages (not built): /run/<run>/ocr, /run/<run>/release, /run/<run>/screen-reader.
+    /api/run/<run>/ocr         Review OCR text: the OCR-only review page (review_ocr.py --serve), a job that waits on a person
+Reserved for later pages (not built): /run/<run>/release, /run/<run>/screen-reader. /run/<run>/ocr stays reserved (404):
+OCR text is approved on the review page, or on the OCR-only page, both on the review server.
 
 Every response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none'), so another site cannot show a run
 page in a frame and trick a click. HTML pages also get script-src 'self' plus the sha256 of the page's one inline script,
@@ -239,7 +241,7 @@ def make(s, setup, code=None):
             if not isinstance(body, dict): return self.send(400, {'error': 'not a JSON object'})
             p = urllib.parse.urlsplit(self.path).path
             segs = segments(p[len('/api/run/'):]) if p.startswith('/api/run/') else None
-            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'discard'): return self.send(404, {'error': 'not found'})
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'discard', 'ocr'): return self.send(404, {'error': 'not found'})
             hit = find_run(s['runs'], segs[:-1])
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
             run, R, _ = hit
@@ -249,6 +251,7 @@ def make(s, setup, code=None):
                     j = runs.start_review(s, run, R, self.server.server_address[1], None if src in (None, '', 'latest') else str(src),
                                           bool(body.get('discard_open')), app_pid=os.getpid())
                 elif segs[-1] == 'apply': j = runs.start_apply(s, run, R)
+                elif segs[-1] == 'ocr': j = runs.start_ocr(s, run, R, self.server.server_address[1], app_pid=os.getpid())
                 elif segs[-1] == 'discard': j = runs.start_discard(s, run, R)
                 else: j = runs.stop_review(s, run, R); return self.send(200, {'stopped': j['id']})
             except ValueError as e: return self.send(409, {'error': str(e)})
