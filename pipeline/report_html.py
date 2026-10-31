@@ -32,7 +32,8 @@ main { max-width: 1200px; margin: 0 auto; padding: 16px; }
 h2 { font-size: 17px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
 .ship { background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--reject); border-radius: 8px; padding: 10px 14px; }
 .ship.yes { border-left-color: var(--ok); }
-.ship h2 { margin: 0 0 6px; font-size: 17px; border: 0; padding: 0; } .ship p { margin: 6px 0 0; } .ship ul { margin: 0; padding-left: 20px; }
+.ship h2 { margin: 0 0 4px; font-size: 17px; border: 0; padding: 0; } .ship p { margin: 6px 0 0; } .ship ul { margin: -2px 0 0; padding-left: 20px; }
+.ship li.met { list-style: none; } .ship li.met .tick { display: inline-block; width: 20px; margin-left: -20px; color: var(--ok); }   /* a check mark in the bullet's place */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }
 .card { background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--line); border-radius: 8px; padding: 10px 14px; }
 .card.good { border-top-color: var(--ok); } .card.bad { border-top-color: var(--reject); } .card.warn { border-top-color: var(--change); }
@@ -79,7 +80,10 @@ details.fold { margin-top: 6px; font-size: 13px; } details.fold summary { cursor
 [tabindex="-1"]:focus { outline: none; }                     /* a heading or message focused by script: no outline (Tab focus keeps its own) */
 details.fold.plain summary { color: var(--ink); }            /* all five passed: a plain toggle, still with its arrow */
 td.nowrap, span.nowrap { white-space: nowrap; }
-.sname { display: block; max-width: 22em; overflow-wrap: anywhere; }   /* a session's own name, under its number */
+/* a session's own name, under its number: one line up to about 40 characters; a longer one wraps at spaces in a 26em
+   column, and only a single word too long for it breaks (never cut short with "…") */
+.sname { display: block; white-space: nowrap; }
+.sname.long { white-space: normal; width: 26em; max-width: 26em; overflow-wrap: break-word; }
 p.sumline { margin-bottom: 0; } p.snotes { margin-top: 0; }   /* a session's Session Notes button, right under its line */
 td.notes { vertical-align: middle; }
 button.nopen { font: inherit; color: var(--accent); background: none; border: 0; padding: 0 2px; min-height: 24px; text-decoration: underline; cursor: pointer; }
@@ -312,6 +316,8 @@ SESSION_TABLE = ('<div class="tw" tabindex="0"><table><caption class="vh">{cap}<
                  '<th scope="col">Reviewer</th><th scope="col">Date</th><th scope="col">Status</th><th scope="col">Carried</th>'
                  '<th scope="col">Changed in the Session</th><th scope="col">Changes from the AI</th><th scope="col">Choices</th><th scope="col">Notes</th></tr></thead><tbody>{rows}</tbody></table></div>')
 
+NAME_LINE = 40                                         # a session name up to this many characters stays on one line in the tables
+
 def session_name(x):
     """'Session 5: Chapters 1–4 pass', or 'Session 5' (records made before sessions had names have none). Escaped."""
     return f'Session {int(x["id"])}' + (f': {E(x["name"])}' if x.get('name') else '')
@@ -357,7 +363,7 @@ def review_card(R, rec):
                 (counts_text(c) or 'no counts recorded')
             carried = (f'{x["carried"]} from {frm(x)}' if x.get('carried') else 'none') + (f' · not carried: {x["not_carried"]}' if x.get('not_carried') else '')
             mark = ' <strong>(current)</strong>' if x['id'] == cur else ''
-            name = f'<span class="sname">{E(x["name"])}</span>' if x.get('name') else ''
+            name = f'<span class="sname{" long" if len(x["name"]) > NAME_LINE else ""}">{E(x["name"])}</span>' if x.get('name') else ''
             return (f'<tr><td><span class="nowrap">{int(x["id"])}{mark}</span>{name}</td><td class="nowrap">{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(x.get("date") or "")}</td>'
                     f'<td>{E(x.get("status") or "")}</td><td class="nowrap">{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td>'
                     f'<td class="notes">{notes_open(x)}</td></tr>')
@@ -385,7 +391,7 @@ def review_card(R, rec):
                           f'<td>{E(STATUS_WORDS.get(k, k).split(" (")[0].lower() + (" (inferred)" if d.get("inferred") else ""))}'
                           f'{E(", session " + str(int(d["set_in"]))) if d.get("set_in") else ""}</td><td>{E(d.get("note") or "")}</td></tr>' for d in by[k])
             B.append(f'<details class="fold"><summary>{E(TC(STATUS_WORDS[k]))}: {len(by[k])}</summary><div class="tw" tabindex="0"><table><thead><tr>'
-                     '<th scope="col">Kind</th><th scope="col">Decision</th><th scope="col">Page</th><th scope="col">Status, Set In</th><th scope="col">Note</th></tr></thead>'
+                     '<th scope="col">Type</th><th scope="col">Decision</th><th scope="col">Page</th><th scope="col">Status, Set In</th><th scope="col">Note</th></tr></thead>'
                      f'<tbody>{trs}</tbody></table></div></details>')
     elif rv.get('workorder'):
         c = rv['workorder'].get('counts') or {}
@@ -448,7 +454,9 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus
     # ---- ready to ship
     B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? {"Yes" if g["ready"] else "No"}</h2><ul>'
-             + ''.join(f'<li>{E(s["what"])}: <strong>{E(ship_words(s))}</strong></li>' for s in g['ship']) + '</ul>')
+             # a met condition (yes / OK) shows a check mark in its bullet's place, hidden from screen readers (the words say it)
+             + ''.join((f'<li class="met"><span class="tick" aria-hidden="true">✓</span>' if s.get('ok') is True else '<li>')
+                       + f'{E(s["what"])}: <strong>{E(ship_words(s))}</strong></li>' for s in g['ship']) + '</ul>')
     B.append('</section>')
     if banner: B.insert(1, f'<p class="replaced" role="note">{banner}</p>')
     else: B += review_card(R, rec)
