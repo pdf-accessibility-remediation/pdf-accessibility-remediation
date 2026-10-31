@@ -594,9 +594,10 @@ moves = []
 sm = log.get('section_move')                          # where apply.py put the section (None: not moved)
 pv = next((it.get('context') or {} for it in (ri or {}).get('items') or [] if it.get('id') == 'move_section'), {})
 ms = wo.get('move_section') if isinstance(wo.get('move_section'), dict) else {}
-if ri and not pv and len(ms.get('pages') or []) == 2:   # a move the reviewer added: the same preview, from the page's reading order
+if ri and len(ms.get('pages') or []) == 2:   # the move as reviewed (changed, or added): the same preview, with the reviewed text rules
     from review import core as RC
-    pv = RC.move_preview((ri.get('reading_order') or {}).get('entries'), ms['pages'][0], ms['pages'][1], ms.get('before_page'))
+    es_ = (ri.get('reading_order') or {}).get('entries')
+    pv = RC.move_preview(es_, ms['pages'][0], ms['pages'][1], ms.get('before_page'), RC.removed_ids(es_, wo)) or pv
 if sm:
     moves.append(f'Section on {pgr(*sm["pages"])} moved to read before {pg(sm["before_page"])}' + (f', after {pg(sm["after_page"])}' if sm.get('after_page') else '')
                  + f', inside the {sm["host"]} on {pgr(*sm["host_pages"])}')

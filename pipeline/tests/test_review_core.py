@@ -87,7 +87,8 @@ def test_save_previews_the_reviewers_pages_with_the_same_match():
     pv = core.changed_move(wo, {'reading_order': {'entries': order()}}, {'move_section': {'status': 'changed'}})
     assert pv['pages'] == [101, 200] and pv['candidates'] == 1 and pv['moved'] == 'ch2'
     assert [e['id'] for e in pv['siblings_after']] == ['ch2', 'ch1']
-    assert core.changed_move(wo, {'reading_order': {'entries': order()}}, {'move_section': {'status': 'approved'}}) is None
+    assert core.changed_move(wo, {'reading_order': {'entries': order()}}, {'move_section': {'status': 'approved'}})['moved'] == 'ch2'
+    assert core.changed_move({}, {'reading_order': {'entries': order()}}, {}) is None              # no move in the order
 
 def test_flags_a_text_rule_will_hide_are_marked():
     es = [entry('body', 10, 60), dict(entry('folio', 6, 6), runs=['vi', ' Contents ']), dict(entry('real', 3, 3), runs=['A real paragraph'])]
@@ -247,3 +248,55 @@ def test_a_flag_that_only_a_removed_block_causes_is_cleared():
     assert 'reading_order:away:about' not in its
     assert {'page': 254, 'text': 'about', 'late': False, 'cleared': True} in its['artifacts.text_rules:0']['context']['hides']
     assert 'reading_order:away:about' in {it['id'] for it in core.build_items({}, {'source': {'pages': 257}}, es, core.reading_order({}, {'reading_order': es}, {}))}
+
+# ------------------------------------------------------------------ the preview leaves out what the text rules remove first
+def stray_case():
+    """translation: About the Author (PDF 254) read after a block on PDF 255 that the letters rule removes. apply.py removes
+    the block before it moves sections, so a move of 254 before 255 finds nothing on 255 and is refused."""
+    es = [entry('part', 1, 255, firsts=[1, 255, 254]), entry('book', 1, 250, 'part', 2, False, 'part', [1]),
+          dict(entry('stray', 255, 255, 'part', 2, False, 'part', [255]), runs=['hn hk io']),
+          dict(entry('about', 254, 254, 'part', 2, False, 'part', [254]), runs=['About the Author'])]
+    wo = {'artifacts': {'text_rules': [{'label': 'letters', 'pages': [1, 257], 'regex': r'(hn|hk|io| )+'}]},
+          'move_section': {'pages': [254, 254], 'before_page': 255, 'why': 'test'}}
+    return es, wo
+
+def test_removed_ids_are_the_entries_reading_order_removes():
+    es, wo = stray_case()
+    ro = core.reading_order({}, {'reading_order': es}, wo)
+    assert core.removed_ids(es, wo) == ro['removed_by'] == {'stray': ['letters']}
+    assert core.removed_ids(es, {}) == {}
+
+def test_a_move_onto_a_block_the_rules_remove_is_refused_and_says_why():
+    es, wo = stray_case()
+    assert core.move_preview(es, 254, 254, 255)['host_found']                       # on the original's tags it would work
+    pv = core.move_preview(es, 254, 254, 255, core.removed_ids(es, wo))
+    assert pv['candidates'] == 1 and pv['host_found'] is False and pv['refused_by_rules'] == ['letters']
+    ro = core.reading_order({}, {'reading_order': es}, wo)
+    c = {it['id']: it for it in core.build_items(wo, {'source': {'pages': 257}}, es, ro)}['move_section']['context']
+    assert c['host_found'] is False and c['refused_by_rules'] == ['letters']
+
+def test_a_section_the_rules_remove_is_no_candidate():
+    es, wo = stray_case()
+    pv = core.move_preview(es, 255, 255, 254, core.removed_ids(es, wo))
+    assert pv['candidates'] == 0 and pv['refused_by_rules'] == ['letters']
+
+def test_rejecting_the_rule_brings_the_block_back_in_the_saved_preview():
+    es, wo = stray_case()
+    data = {'reading_order': {'entries': es}}
+    assert core.changed_move(wo, data, {})['host_found'] is False
+    reviewed = {'move_section': wo['move_section']}                               # the letters rule rejected
+    pv = core.changed_move(reviewed, data, {})
+    assert pv['host_found'] and pv['lands_before'] == 'stray' and 'refused_by_rules' not in pv
+    add = [{'kind': 'move_section', 'target': 'about', 'value': {'pages': [254, 254], 'before_page': 255}}]
+    assert core.added_move(data, add, wo)['host_found'] is False and core.added_move(data, add, {})['host_found']
+
+def test_removed_siblings_are_left_out_of_the_preview_lists():
+    es, _ = stray_case()
+    pv = core.move_preview(es, 254, 254, 1, {'stray': ['letters']})
+    assert 'stray' not in [e['id'] for e in pv['siblings_before'] + pv['siblings_after']]
+
+def test_the_move_card_carries_the_trial_run():
+    es, wo = stray_case()
+    ro = dict(core.reading_order({}, {'reading_order': es}, wo), dryrun={'figure_moves': [], 'section_move': {'refused': '1 candidate sections, host found: False'}})
+    c = {it['id']: it for it in core.build_items(wo, {'source': {'pages': 257}}, es, ro)}['move_section']['context']
+    assert c['trial'] == {'refused': '1 candidate sections, host found: False'}
