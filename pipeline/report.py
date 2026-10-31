@@ -447,7 +447,10 @@ if rv:
     if rv.get('gaps'):
         L += ['', 'Gaps the reviewer left open, with their reason:', ''] + [f'- {g["what"]} Reason: {g["reason"]}' for g in rv['gaps']]
     if rv.get('notes') or rv.get('note'):
-        L += ['', 'Reviewer notes:', ''] + ([f'- {rv["note"]}'] if rv.get('note') else []) + [f'- `{k}`: {t}' for k, t in (rv.get('notes') or {}).items()]
+        from review import sessions as RS                # each note named by its card (its id after it, for record.json)
+        L += ['', 'Reviewer notes:', ''] + ([f'- {rv["note"]}'] if rv.get('note') else []) + [
+            f'- {lab} (`{k}`): {t}' if lab else f'- `{k}`: {t}'
+            for lab, k, t in RS.note_rows(rv, (rv_session or {}).get('decisions'), (ri or {}).get('items'))]
     L.append('')
 if rb:
     n += 1; L += [f'### {n}. The model\'s reply held {rb["count"]} work orders', '',

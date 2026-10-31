@@ -366,13 +366,24 @@ const roFlag = Object.fromEntries((RO.flagged || []).map(f => [f.i, f])), roLate
 const roPages = e => e.first == null ? 'no marked content' : 'PDF ' + e.first + (e.last !== e.first ? '–' + e.last : '');
 const roWhere = f => 'it is read ' + (f.prev != null && f.next != null ? 'between PDF ' + f.prev + ' and PDF ' + f.next : f.prev != null ? 'after PDF ' + f.prev : 'before PDF ' + f.next);
 const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
-// a finding a text rule hides counts only while one of those rules is not rejected (the rules are approved or rejected, never edited)
-const activeRule = x => (x.hidden_by_rules || []).find(r => (state.decisions[r.id] || {}).status !== 'rejected');
+// a finding the work order takes care of counts only while the decisions that do it stand (text rules and the captions
+// decision are approved or rejected on this page, never edited): every run still matched by a rule not rejected, or the tie
+const live = id => (state.decisions[id] || {}).status !== 'rejected';
+function settledBy(x) {
+  const rs = x.hidden_by_rules || [];
+  if (rs.length && (x.run_rules || [rs.map(r => r.id)]).every(ids => ids.some(live))) { const on = rs.filter(r => live(r.id)); return { rules: on, id: on[0].id }; }
+  if (x.tied_by && live(x.tied_by.id)) return { tie: x.tied_by, id: x.tied_by.id };
+  return null;
+}
+const settleWords = st => st.tie ? 'the AI\'s captions decision ties it to its figure if you approve it'
+  : (st.rules.length === 1 ? 'the AI\'s rule “' + esc(st.rules[0].label) + '” removes it' : 'the AI\'s rules ' + st.rules.map(r => '“' + esc(r.label) + '”').join(' and ') + ' remove it') +
+    ' from the reading order if you approve ' + (st.rules.length === 1 ? 'the rule' : 'them');
+const unsettled = x => (x.hidden_by_rules || []).length || x.tied_by ? ' The AI\'s decision that would take care of it is rejected.' : '';
 const cardLink = (id, text) => byId[id] ? '<a href="#card-' + esc(id) + '" data-card="card-' + esc(id) + '">' + text + '</a>' : text;
 function findingRows(it, row) {                        // a reading-order finding: what was found, and what a person can do
   const c = it.context, a = it.ai;
   if (a.finding === 'away') {
-    row('What was found', 'This section is printed on PDF ' + esc(a.pages[0]) + ', but ' + esc(roWhere(a)) + '. None of the AI\'s decoration rules removes it from the reading order.');
+    row('What was found', 'This section is printed on PDF ' + esc(a.pages[0]) + ', but ' + esc(roWhere(a)) + '. None of the AI\'s decisions takes care of it: no decoration rule removes it, and it is not a caption the AI ties to its figure.');
     row('What you can do', 'The review page cannot move a section yet. Look at the pages, then mark this seen and say in a note what should happen, for example “move it by hand in Acrobat” or “fine as it is”. Your note is recorded in review.md.');
   } else if (a.finding === 'jump') {
     row('What was found', 'In reading order, the text on this page jumps back up the same column ' + plural(a.jumps_up, 'time', 'times') + '. A screen reader may read lines or entries on this page out of order.');
@@ -382,16 +393,22 @@ function findingRows(it, row) {                        // a reading-order findin
       'This is common in InDesign books and is not a failure.');
     row('Sections', (c.late || []).map(x => 'PDF ' + esc(x.page) + ', read after PDF ' + esc(x.after) + (x.text ? ': “' + esc(x.text) + '”' : '')).join('<br>') +
       (c.count_late > (c.late || []).length ? '<br>and ' + (c.count_late - c.late.length) + ' more. The Reading Order panel lists them all.' : ''));
+    const done = [c.removed ? plural(c.removed, 'is text', 'are text') + ' the AI\'s decoration rules remove' : '',
+                  c.tied ? plural(c.tied, 'is a caption', 'are captions') + ' its captions decision ties to ' + (c.tied === 1 ? 'its figure' : 'their figures') : ''].filter(Boolean);
+    if (done.length) row('Not listed', esc(plural(c.removed + c.tied, 'more small section', 'more small sections')) + ' read late ' + (c.removed + c.tied === 1 ? 'is' : 'are') +
+      ' not listed, because the AI\'s decisions take care of them: ' + done.join(', and ') + '. After the changes they are no longer read late. ' +
+      'If you reject one of those decisions, the Reading Order panel lists its sections again.');
     row('What you can do', 'Nothing is required. Mark this seen, and add a note if any of them should be moved by hand.');
   }
 }
-function hidesWords(hs) {                              // a text rule's card: the reading-order findings it removes
+function settlesWords(hs, tie) {                       // a text rule's card, or the captions decision's: the reading-order findings it takes care of
   const away = hs.filter(x => !x.late), late = hs.filter(x => x.late);
   const list = xs => xs.slice(0, 6).map(x => 'PDF ' + esc(x.page) + (x.text ? ' “' + esc(x.text.slice(0, 30)) + '”' : '')).join(', ') + (xs.length > 6 ? ' and ' + (xs.length - 6) + ' more' : '');
-  const one = hs.length === 1;
-  return 'This rule also removes ' + [away.length ? plural(away.length, 'section that is', 'sections that are') + ' read out of ' + (away.length === 1 ? 'its' : 'their') + ' printed place (' + list(away) + ')' : '',
-    late.length ? plural(late.length, 'small section', 'small sections') + ' read late (' + list(late) + ')' : ''].filter(Boolean).join(' and ') +
-    ' from the reading order. If you reject it, ' + (one ? 'it stays' : 'they stay') + ' in the reading order, out of place, unless another of the AI\'s rules also removes ' + (one ? 'it' : 'them') + '.';
+  const what = [away.length ? plural(away.length, 'section that is', 'sections that are') + ' read out of ' + (away.length === 1 ? 'its' : 'their') + ' printed place (' + list(away) + ')' : '',
+    late.length ? plural(late.length, 'small section', 'small sections') + ' read late (' + list(late) + ')' : ''].filter(Boolean).join(' and ');
+  return tie ? 'This decision also ties ' + what + ' to ' + (hs.length === 1 ? 'its figure' : 'their figures') + ', so after the changes ' + (hs.length === 1 ? 'it is' : 'they are') +
+      ' read with ' + (hs.length === 1 ? 'its figure' : 'their figures') + '. If you reject it, ' + (hs.length === 1 ? 'it stays' : 'they stay') + ' where ' + (hs.length === 1 ? 'it is' : 'they are') + ' read now.'
+    : 'This rule, alone or with the AI\'s other rules, removes ' + what + ' from the reading order. If you reject it, the ones no other rule covers stay in the reading order, out of place.';
 }
 const roName = e => esc(e.style || 'line') + ' · ' + esc(roPages(e)) + (e.text ? ' · “' + esc(String(e.text).slice(0, 60)) + '”' : '');
 const moveItem = items.find(it => it.key === 'move_section');
@@ -419,10 +436,10 @@ function moveRows(it, row) {
     around(c.siblings_before) + '</ol></div><div>After the move:<ol>' + around(c.siblings_after) + '</ol></div></div>');
   row('Read away from their place', 'in the whole book: ' + esc(c.flags_before) + ' now, ' + esc(c.flags_after) + ' after this move');
 }
-// the findings, as the reviewer's current decisions leave them: a rule the reviewer rejects no longer hides its sections
+// the findings, as the reviewer's current decisions leave them: a rejected rule or captions decision no longer takes care of its sections
 function roFindings() {
   const fl = RO.flagged || [], late = RO.late || [];
-  return { away: fl.filter(f => !activeRule(f)), hidden: fl.filter(f => activeRule(f)), late: late.filter(x => !activeRule(x)), jumps: RO.page_jumps || [] };
+  return { away: fl.filter(f => !settledBy(f)), hidden: fl.filter(settledBy), late: late.filter(x => !settledBy(x)), lateDone: late.filter(settledBy), jumps: RO.page_jumps || [] };
 }
 const roCount = F => F.away.length + F.jumps.length + (F.late.length ? 1 : 0);
 function renderOrder() {
@@ -436,19 +453,21 @@ function renderOrder() {
   if (!RO.detail && !RO.flat) h += '<p>This run was audited before the full reading order was recorded, so only the main sections are listed and the section-move preview is not available.</p>';
   const li = [];
   if (F.away.length) li.push(plural(F.away.length, 'section is', 'sections are') + ' read out of ' + (F.away.length === 1 ? 'its' : 'their') +
-    ' printed place, and none of the AI\'s decoration rules removes ' + (F.away.length === 1 ? 'it' : 'them') + ': ' +
+    ' printed place, and none of the AI\'s decisions takes care of ' + (F.away.length === 1 ? 'it' : 'them') + ': ' +
     F.away.map(f => { const e = es[f.i], t = esc((e.text ? String(e.text).slice(0, 40) : e.style || 'A section') + ' (PDF ' + f.first + ')');
       return byId['reading_order:away:' + e.id] ? cardLink('reading_order:away:' + e.id, t)
-        : t + ' (it has no card of its own, because the AI\'s rule that would remove it is rejected: add a note on that rule\'s card instead)'; }).join('; ') + '.');
-  if (F.hidden.length) li.push(plural(F.hidden.length, 'more section is', 'more sections are') + ' read out of place, but ' + (F.hidden.length === 1 ? 'it is' : 'they are') +
-    ' text that the AI\'s decoration rules remove from the reading order, such as page numbers and running heads. If you approve those rules, a screen reader skips ' +
-    (F.hidden.length === 1 ? 'it' : 'them') + '. If you reject a rule, its sections are listed here as out of place again.');
+        : t + ' (it has no card of its own, because the AI\'s decision that would take care of it is rejected: add a note on that decision\'s card instead)'; }).join('; ') + '.');
+  if (F.hidden.length) li.push(plural(F.hidden.length, 'more section is', 'more sections are') + ' read out of place, but the AI\'s decisions take care of ' +
+    (F.hidden.length === 1 ? 'it' : 'them') + ': text its decoration rules remove from the reading order, such as page numbers and running heads, or captions it ties to their figures. ' +
+    'If you reject one of those decisions, its sections are listed here as out of place again.');
   if (F.jumps.length) li.push('On ' + plural(F.jumps.length, 'page', 'pages') + ', the text jumps back up the same column two or more times in reading order: ' +
     F.jumps.map(j => cardLink('reading_order:jump:' + j.page, 'PDF ' + j.page + ' (' + plural(j.jumps_up, 'time', 'times') + ')')).join(', ') +
     '. A screen reader may read the lines on ' + (F.jumps.length === 1 ? 'that page' : 'those pages') + ' out of order.');
-  if (F.late.length) li.push(plural(F.late.length, 'small section, such as a caption, is', 'small sections, such as captions, are') +
+  if (F.late.length) li.push(plural(F.late.length, 'small section is', 'small sections are') +
     ' read more than 5 pages after ' + (F.late.length === 1 ? 'its' : 'their') + ' printed page, because a longer section before ' + (F.late.length === 1 ? 'it' : 'them') +
-    ' already reads past it. This is common in InDesign books and is not a failure. ' + cardLink('reading_order:late', 'Go to the Small Sections Read Late card') + '.');
+    ' already reads past it. This is common in InDesign books and is not a failure. ' + cardLink('reading_order:late', 'Go to the Small Sections Read Late card') + '.' +
+    (F.lateDone.length ? ' ' + plural(F.lateDone.length, 'more is', 'more are') + ' not counted, because the AI\'s decisions take care of ' + (F.lateDone.length === 1 ? 'it' : 'them') +
+      ' (text its decoration rules remove, or captions it ties to their figures).' : ''));
   if (!RO.flat) h += li.length ? '<ul class="ro-find">' + li.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '<p>Nothing in the original\'s reading order needs a look.</p>';
   if (RO.flat) h += '<p>This book\'s tags have no sections, so there is no section order to show. review.md still checks every page for text that jumps back up a column (1.3.2).</p>' +
     (li.length ? '<ul class="ro-find">' + li.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '');
@@ -459,28 +478,30 @@ function renderOrder() {
     h += '<label><input type="checkbox" id="roAll"' + (roAll ? ' checked' : '') + '> ' + tc('Show every section in the book') + '</label>' +
       '<p class="ctx">When this is off, only the sections named in the findings above are listed. Select a row to show its first page.</p><ol>';
     es.forEach((e, i) => {
-      const f = roFlag[i], lt = roLate[i], fr = f && activeRule(f), lr = lt && activeRule(lt);
+      const f = roFlag[i], lt = roLate[i], fr = f && settledBy(f), lr = lt && settledBy(lt);
       if (!roAll && !(f && !fr) && e.id !== mc.moved && e.id !== mc.lands_before) return;
-      const gone = x => (x.hidden_by_rules || []).length && !activeRule(x) ? ' The AI\'s rule “' + esc(x.hidden_by) + '” would remove it, but you rejected the rule.' : '';
       h += '<li' + (e.skip ? ' class="ro-skip"' : '') + ' style="padding-left:' + Math.min(e.depth || 0, 12) * 12 + 'px">' +
         '<button type="button" class="ro-row" data-ro="' + i + '"' + (e.first == null ? ' disabled' : '') + '>' + roName(e) +
-        (f ? (fr ? ' <span class="ctx">Read out of place, but the AI\'s rule “' + esc(fr.label) + '” removes it from the reading order if you approve the rule.</span>'
-                 : ' <span class="flag">Read out of place: ' + esc(roWhere(f)) + '.' + gone(f) + '</span>') : '') +
+        (f ? (fr ? ' <span class="ctx">Read out of place, but ' + settleWords(fr) + '.</span>'
+                 : ' <span class="flag">Read out of place: ' + esc(roWhere(f)) + '.' + unsettled(f) + '</span>') : '') +
         (lt ? ' <span class="ctx">Read ' + plural(lt.after - lt.first, 'page', 'pages') + ' after its printed page (after PDF ' + lt.after + ').' +
-               (lr ? ' The AI\'s rule “' + esc(lr.label) + '” removes it from the reading order if you approve the rule.' : gone(lt)) + '</span>' : '') +
+               (lr ? ' But ' + settleWords(lr) + '.' : unsettled(lt)) + '</span>' : '') +
         (e.skip ? ' <span class="ctx">Not compared: a figure or note that is placed where the text refers to it.</span>' : '') +
         (e.id === mc.moved ? ' <span class="flag">The AI moves this section (' + moveNote + ').</span>' : '') +
         (e.id === mc.lands_before && d !== 'rejected' ? ' <span class="flag">The moved section is placed just before this one.</span>' : '') + '</button>' +
-        ((fr || lr) ? ' ' + cardLink((fr || lr).id, 'Go to the rule') : '') + '</li>';
+        ((fr || lr) ? ' ' + cardLink((fr || lr).id, (fr || lr).tie ? 'Go to the captions decision' : 'Go to the rule') : '') + '</li>';
     });
     h += '</ol>';
   }
   box.innerHTML = h + '</details>';
 }
 let roAll = false;
-function goCard(id) {                                  // a card from the panel: back to the priority view when it is not shown
+function goCard(id) {                                  // a card from the panel: the view that shows it (a decision with no group is only in All)
   let t = document.getElementById(id);
-  if (!t) { view = 'priority'; document.querySelector('input[name=view][value=priority]').checked = true; render(); t = document.getElementById(id); }
+  for (const v of ['priority', 'all']) {
+    if (t) break;
+    view = v; document.querySelector('input[name=view][value=' + v + ']').checked = true; render(); t = document.getElementById(id);
+  }
   goTo(t);
 }
 document.getElementById('readingOrder').addEventListener('change', e => { if (e.target.id === 'roAll') { roAll = e.target.checked; renderOrder(); } });
@@ -528,8 +549,9 @@ function card(it) {
     else if (it.loc[1] === 'elements') row('Hides', 'this whole figure');
     if (r.band) row('Where on the page', esc({ top: 'top of the page (running-head area)', bottom: 'bottom of the page (footer area)', any: 'anywhere on the page' }[r.band] || r.band));
     if (r.type || r.subtype) row('Marked as', esc(artifactWord(r.type, r.subtype)));
-    if (c.hides) row('Reading order', hidesWords(c.hides));
+    if (c.hides) row('Reading order', settlesWords(c.hides));
   } else { if (it.key !== 'flatten' && it.key !== 'keep_lists') row('AI\'s choice', esc(entryWords(it))); exact = true; }
+  if (c.ties) row('Reading order', settlesWords(c.ties, true));
   if (c.why && it.key !== 'deferrals') row('AI\'s reason', esc(c.why));
   if (c.count != null) row(it.key === 'ocr_words' ? 'Occurs' : 'Elements', it.key === 'ocr_words' ? (c.count === 1 ? 'once in the book' : esc(c.count) + ' times in the book') : esc(c.count) + ' in this style');
   if (c.samples) row('Samples', c.samples.map(x => '“' + esc(String(x).slice(0, 120)) + '”').join(' · '));
@@ -613,7 +635,7 @@ function clearChoice(art) {
   persist(); progress(); orderChanged(byId[art.dataset.id]);
 }
 // the reading-order panel follows the section move and the text rules (a rejected rule no longer hides its sections)
-function orderChanged(it) { if (it && (it.key === 'move_section' || it.id.startsWith('artifacts.text_rules:'))) renderOrder(); }
+function orderChanged(it) { if (it && (it.key === 'move_section' || it.key === 'captions' || it.id.startsWith('artifacts.text_rules:'))) renderOrder(); }
 function readValue(box, base) {                          // the value typed in an editor (editor() markup) inside box
   const fs = box.querySelectorAll('[data-act=value][data-f]');
   if (fs.length) {

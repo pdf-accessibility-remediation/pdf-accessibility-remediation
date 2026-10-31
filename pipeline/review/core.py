@@ -213,54 +213,64 @@ def reading_order(digest, fulltext=None, wo=None):
     wrote it there (every container, with what move_section needs), else from the digest's lines (runs audited before
     that: sections only, and no move preview). flat: fewer than two containers, so there is no order to show. page_jumps:
     the original's pages whose text jumps back up a column (the 1.3.2 page check; None for older runs). late: small entries
-    read well after their page (readorder.read_late). A flagged or late entry every run of which one of the work order's
-    text rules would hide gets hidden_by_rules ([{id, label}]: every such rule, by its card id) and hidden_by (the first
-    one's label)."""
+    read well after their page (readorder.read_late). The work order takes care of some flagged and late entries:
+      - every run matched by one of its text rules (one rule, or several together, as a running head's page number and
+        its title): hidden_by_rules ([{id, label}]: those rules, by card id), run_rules (each run's rule ids, so the page
+        can tell which rejections bring the entry back) and hidden_by (the first rule's label);
+      - else made only of its captions style (and figures): captions tie it to its figure, so it is read with the figure
+        (tied_by: {id: the captions card, label}). Needs the entry's kid_styles, from audits since they were recorded."""
     es = (fulltext or {}).get('reading_order')
     detail = es is not None
     if es is None: es = readorder.parse_lines(digest.get('reading_order'))
     fl = readorder.out_of_order(es)
     late = readorder.read_late(es, [x['i'] for x in fl])
+    trs = ((wo or {}).get('artifacts') or {}).get('text_rules') or []
+    labels = {f'artifacts.text_rules:{i}': (r.get('label') if isinstance(r, dict) else None) or 'text rule' for i, r in enumerate(trs)}
+    cap = ((wo or {}).get('captions') or {}).get('style') if isinstance((wo or {}).get('captions'), dict) else None
     for x in fl + late:
-        rs = hidden_rules(es[x['i']], wo)
-        if rs: x['hidden_by_rules'] = rs; x['hidden_by'] = rs[0]['label']
+        e = es[x['i']]; per = run_rules(e, wo)
+        if per and all(per):
+            ids = list(dict.fromkeys(i for p in per for i in p))
+            x.update(run_rules=per, hidden_by_rules=[{'id': i, 'label': labels[i]} for i in ids], hidden_by=labels[ids[0]])
+        elif cap and e.get('kid_styles') and set(e['kid_styles']) <= {cap, 'Figure'}:
+            x['tied_by'] = {'id': 'key:captions', 'label': f'captions (style “{cap}”) tied to their figures'}
     return {'entries': es, 'flagged': fl, 'late': late, 'flat': len(es) < 2, 'detail': detail, 'page_jumps': (fulltext or {}).get('page_jumps')}
 
 def reading_order_for(audit_dir, digest, wo):
     """reading_order() from an audit folder's fulltext.json (when there is one)."""
     return reading_order(digest, load(os.path.join(audit_dir, 'fulltext.json')), wo)
 
-def hidden_rules(e, wo):
-    """Every text rule that would mark every run of this one-page entry as decoration, as apply.py matches it (the whole
-    run, the pattern as written or with its spaces optional): [{id: its card id, label}]. Only for entries the audit kept
-    the runs of."""
+def run_rules(e, wo):
+    """For each run of this one-page entry, the text rules that would mark it as decoration, as apply.py matches it (the
+    whole run, the pattern as written or with its spaces optional): [[card id, …], …]. [] when the audit kept no runs."""
     runs = [t.strip() for t in e.get('runs') or [] if t.strip()]
     if not runs: return []
-    out = []
+    rules = []
     for i, r in enumerate(((wo or {}).get('artifacts') or {}).get('text_rules') or []):
         ps = r.get('pages') if isinstance(r, dict) else None
         if not (isinstance(ps, list) and len(ps) == 2 and ps[0] <= e['first'] <= ps[1]): continue
-        try: rx = [re.compile(r.get('regex', '.*'), re.S), re.compile(gaptext.loosen(r.get('regex', '.*')), re.S)]
+        try: rules.append((f'artifacts.text_rules:{i}', [re.compile(r.get('regex', '.*'), re.S), re.compile(gaptext.loosen(r.get('regex', '.*')), re.S)]))
         except re.error: continue
-        if all(any(x.fullmatch(t) or x.fullmatch(re.sub(r'\s+', ' ', t)) for x in rx) for t in runs):
-            out.append({'id': f'artifacts.text_rules:{i}', 'label': r.get('label') or 'text rule'})
-    return out
+    return [[rid for rid, rx in rules if any(x.fullmatch(t) or x.fullmatch(re.sub(r'\s+', ' ', t)) for x in rx)] for t in runs]
 
 def _order_findings(ro, add, items):
     """The reading order's findings as cards (seen only, with a note: nothing is applied), for what no decision answers: a
-    section read away from its printed place that no text rule hides, each page whose text jumps back up a column, and one
-    card for the small sections read late. Findings a text rule hides are listed on that rule's card instead (hides)."""
+    section read away from its printed place that the work order does not take care of, each page whose text jumps back up
+    a column, and one card for the small sections read late. Findings the work order takes care of are listed on the
+    cards that do it instead: each text rule's (hides) and the captions decision's (ties)."""
     es = ro.get('entries') or []
     def short(e): return str(e.get('text') or '').strip()[:60] or None
-    hides = {}
+    def settled(x): return x.get('hidden_by_rules') or x.get('tied_by')
+    by = {}
     for kind, xs in (('away', ro.get('flagged') or []), ('late', ro.get('late') or [])):
         for x in xs:
-            for r in x.get('hidden_by_rules') or []:
-                hides.setdefault(r['id'], []).append({'page': x['first'], 'text': short(es[x['i']]), 'late': kind == 'late'})
+            row = {'page': x['first'], 'text': short(es[x['i']]), 'late': kind == 'late'}
+            for r in x.get('hidden_by_rules') or []: by.setdefault(r['id'], []).append(row)
+            if x.get('tied_by'): by.setdefault(x['tied_by']['id'], []).append(row)
     for it in items:
-        if it['id'] in hides: it['context']['hides'] = hides[it['id']]
+        if it['id'] in by: it['context']['ties' if it['key'] == 'captions' else 'hides'] = by[it['id']]
     for x in ro.get('flagged') or []:
-        if x.get('hidden_by_rules'): continue
+        if settled(x): continue
         e = es[x['i']]
         add(f'reading_order:away:{e["id"]}', 'reading_order', 'Reading order check', None,
             {'finding': 'away', 'entry': e['id'], 'pages': [x['first'], x['last']], 'prev': x.get('prev'), 'next': x.get('next')},
@@ -271,11 +281,13 @@ def _order_findings(ro, add, items):
         add(f'reading_order:jump:{j["page"]}', 'reading_order', 'Reading order check', None,
             {'finding': 'jump', 'page': j['page'], 'jumps_up': j['jumps_up']}, f'Text on PDF {j["page"]} jumps back up the page',
             page=j['page'], jumps_up=j['jumps_up'], show_pages=[j['page']])
-    late = [x for x in ro.get('late') or [] if not x.get('hidden_by_rules')]
+    alls = ro.get('late') or []
+    late = [x for x in alls if not settled(x)]
     if late:
         add('reading_order:late', 'reading_order', 'Reading order check', None,
             {'finding': 'late', 'count': len(late), 'pages': [x['first'] for x in late]}, f'{len(late)} small sections read late',
             page=late[0]['first'], pages=[min(x['first'] for x in late), max(x['first'] for x in late)], count_late=len(late),
+            removed=sum(1 for x in alls if x.get('hidden_by_rules')), tied=sum(1 for x in alls if x.get('tied_by')),
             late=[{'page': x['first'], 'after': x['after'], 'text': short(es[x['i']])} for x in late[:LATE_LISTED]])
 
 def _under(order, by, e, host):

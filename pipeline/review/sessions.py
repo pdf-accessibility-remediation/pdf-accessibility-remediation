@@ -276,6 +276,20 @@ def decision_list(items, decisions):
                     **({'inferred': True} if d.get('inferred') else {}), **({'note': d['note']} if d.get('note') else {})})
     return out
 
+def note_rows(rv, decisions=None, items=None):
+    """review.md's "Reviewer notes": [(label, id, note)], each note named by its card's label (from the session's
+    decision list, else from review_items.json); an addition by its kind and target; else None (the id alone)."""
+    labels = {it['id']: it['label'] for it in items or [] if isinstance(it.get('label'), str)}
+    labels.update({d['id']: d['label'] for d in decisions or [] if d.get('label')})
+    out = []
+    for k, t in ((rv or {}).get('notes') or {}).items():
+        lab = labels.get(k)
+        if lab is None and k.startswith('add:'):
+            kind, _, target = k[4:].partition(':')
+            lab = f'Your addition: {core.ADD_KINDS.get(kind, kind).lower()}, {target}'
+        out.append((lab, k, t))
+    return out
+
 def summary_row(s):
     """One line of the session table (record.json review.sessions)."""
     rv = s.get('review') or {}

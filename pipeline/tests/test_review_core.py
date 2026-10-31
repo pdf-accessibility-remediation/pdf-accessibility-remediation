@@ -142,3 +142,35 @@ def test_findings_change_nothing_in_the_work_order():
 
 def test_without_the_reading_order_there_are_no_finding_cards():
     assert not any(i.startswith('reading_order:') for i in items())
+
+def test_rules_that_each_match_part_of_a_section_remove_it_together():
+    """A running head whose page number one rule matches and whose title another does: removed by the two together."""
+    es = [entry('body', 10, 60), dict(entry('rh', 3, 3), runs=['186', 'Notes to Pages 7–11'])]
+    wo = {'artifacts': {'text_rules': [{'label': 'notes heads', 'pages': [1, 50], 'regex': r'Notes to Pages \d+–\d+'},
+                                       {'label': 'page numbers', 'pages': [1, 50], 'regex': r'\d+'}]}}
+    x = core.reading_order({}, {'reading_order': es}, wo)['flagged'][0]
+    assert x['run_rules'] == [['artifacts.text_rules:1'], ['artifacts.text_rules:0']]
+    assert [r['id'] for r in x['hidden_by_rules']] == ['artifacts.text_rules:1', 'artifacts.text_rules:0']
+    one = {'artifacts': {'text_rules': wo['artifacts']['text_rules'][:1]}}                # the title alone: not removed
+    assert 'hidden_by_rules' not in core.reading_order({}, {'reading_order': es}, one)['flagged'][0]
+
+def caption_case(wo, kid_styles=('CAP',)):
+    es = [entry('body', 10, 60), dict(entry('cap', 12, 12), kid_styles=list(kid_styles), runs=['Map of the island']),
+          dict(entry('tbl', 14, 14), kid_styles=['TN'], runs=['Table 1'])]
+    ro = core.reading_order({}, {'reading_order': es}, wo)
+    return ro, {it['id']: it for it in core.build_items(wo, {'source': {'pages': 60}}, es, ro)}
+
+def test_a_late_caption_the_captions_decision_ties_is_left_off_the_late_card():
+    ro, its = caption_case({'captions': {'style': 'CAP'}})
+    assert [x.get('tied_by', {}).get('id') for x in ro['late']] == ['key:captions', None]
+    c = its['reading_order:late']['context']
+    assert c['count_late'] == 1 and c['late'][0]['page'] == 14 and c['tied'] == 1 and c['removed'] == 0
+    assert its['key:captions']['context']['ties'] == [{'page': 12, 'text': 'cap', 'late': True}]
+
+def test_no_tie_without_a_captions_decision_or_child_styles():
+    ro, _ = caption_case({})
+    assert not any('tied_by' in x for x in ro['late'])
+    ro, _ = caption_case({'captions': {'style': 'CAP'}}, kid_styles=())          # an audit from before kid_styles
+    assert not any('tied_by' in x for x in ro['late'])
+    ro, _ = caption_case({'captions': {'style': 'CAP'}}, kid_styles=('CAP', 'P'))  # not captions only
+    assert not any('tied_by' in x for x in ro['late'])
