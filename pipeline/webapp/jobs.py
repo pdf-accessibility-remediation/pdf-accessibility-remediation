@@ -119,13 +119,24 @@ def lock_holder(R):
     except (TypeError, ValueError): return None
     return d.get('pid'), d.get('what'), d.get('since')
 
+LOCK_WORDS = {'reopen': 'Someone is already reviewing this run', 'ocr review': 'Someone is already reviewing this run\'s OCR text',
+              'ocr verdict': 'An OCR verdict is being recorded for this run', 'apply': 'This run is being applied',
+              'discard': 'A session of this run is being discarded'}
+
+def lock_words(what, since):
+    """The run's review lock in plain words for the pages: who or what holds it and since when, no process id."""
+    at = str(since or '')[11:16]
+    return (LOCK_WORDS.get(what, 'Someone is already working on this run') + (f' (since {at})' if at else '') + '. Try again when '
+            + ('they\'re' if what in ('reopen', 'ocr review') else 'it\'s') + ' done.')
+
 def busy(J, run, R):
-    """Why nothing new may start for this run now, or None."""
+    """Why nothing new may start for this run now, or None (in plain words: the pages show it)."""
     h = lock_holder(R)
-    if h: return f'another review of this run is running (process {h[0]}, {h[1]}, since {h[2]})'
+    if h: return lock_words(h[1], h[2])
     for j in all_jobs(J):
         if j['run'] == run and j['status'] in ACTIVE + ('needs-spend',):
-            return f'a job for this run is already {"waiting" if j["status"] != "running" else "running"}: {j["kind"]}, since {j.get("started") or j["created"]}'
+            at = str(j.get('started') or j['created'])[11:16]
+            return f'A job for this run is already {"waiting" if j["status"] != "running" else "running"}' + (f' (since {at})' if at else '') + '. One job at a time per run.'
     return None
 
 # ------------------------------------------------------------------ queue

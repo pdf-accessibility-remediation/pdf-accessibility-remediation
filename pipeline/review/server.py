@@ -24,7 +24,8 @@ Routes (all call review/core.py; a later front end can replace this file and pag
     POST /close                  OCR-only mode (review_ocr.py --serve): Close Without a Verdict, the server stops
 
 Every request passes a gate: once the server is stopping (Ctrl+C, Stop, Finish done) a new one is refused, and serve()
-returns only after every request already inside has ended, so a write is never cut off between its files, and no page
+returns only after every request already inside has ended (a request that stalls gives up after 30 s, the handler's
+socket timeout), so a write is never cut off between its files, and no page
 image is still being rendered by PDFium when the process ends (that crashed it on exit, code 139).
 
 Modes: the work-order review (review_items.json in R; the first review serves the run folder, a reopen serves
@@ -137,6 +138,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
         return path
 
     class H(BaseHTTPRequestHandler):
+        timeout = 30                                  # a request that stalls (headers but no body) gives up, so Stop never waits forever
         def log_message(self, *a): pass
         def send(self, code, body, ctype='application/json; charset=utf-8'):
             b = body if isinstance(body, bytes) else (body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)).encode('utf-8')
@@ -153,7 +155,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             finally: leave()
 
         def get(self):
-            if not self.ours(): return self.send(403, {'error': 'open the page at the address the terminal printed'})
+            if not self.ours(): return self.send(403, {'error': 'This page opens only at the address it was started at: use the link on the run page.'})
             path = self.path.split('?', 1)[0]
             if path in ('/', '/index.html'):
                 boot = json.dumps({**data, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': ocr_section()},
@@ -182,6 +184,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 return self.send(415, {'error': 'the review page sends JSON'})
             try: body = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)) or b'{}')
             except ValueError: return self.send(400, {'error': 'not JSON'})
+            except TimeoutError: self.close_connection = True; return   # the body never came (timeout): nothing is written
             if not isinstance(body, dict): return self.send(400, {'error': 'not a JSON object'})
             decisions = body.get('decisions') if isinstance(body.get('decisions'), dict) else {}
             additions = [a for a in body.get('additions') or [] if isinstance(a, dict)] if isinstance(body.get('additions'), list) else []

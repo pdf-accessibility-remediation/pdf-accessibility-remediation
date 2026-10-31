@@ -235,12 +235,15 @@ def test_ctrl_c_before_a_verdict_reaches_its_lock_waits_too(tmp_path):
 
 def test_finish_ocr_review_records_closes_and_leaves_no_reviews_folder(tmp_path):
     """review_ocr.py --serve on a finished run never pinned: Finish OCR Review (close: true) records the verdict, dated the
-    day it is recorded (not the date given when the page opened), the page closes, and no empty reviews/ stays (review 07 L3)."""
+    day it is recorded, the page closes, and no empty reviews/ stays (review 07 L3). --date with --serve is refused
+    (review 10 L4): a page verdict always takes the day it is recorded."""
     import datetime
     R = run_folder(tmp_path)
     core.save(os.path.join(R, 'record.json'), {'document': {'file': 'book.pdf', 'pages': 3}, 'intake': {}})
+    r = subprocess.run([sys.executable, 'review_ocr.py', R, '--serve', '--no-browser', '--date', '2020-01-01'], cwd=HERE, capture_output=True, text=True)
+    assert r.returncode == 1 and 'leave out --date' in r.stderr and not os.path.exists(os.path.join(R, 'reviews'))
     port = free_port()
-    p = subprocess.Popen([sys.executable, 'review_ocr.py', R, '--serve', '--no-browser', '--port', str(port), '--date', '2020-01-01'],
+    p = subprocess.Popen([sys.executable, 'review_ocr.py', R, '--serve', '--no-browser', '--port', str(port)],
                          cwd=HERE, stdout=subprocess.PIPE, text=True)
     try:
         assert 'review page:' in p.stdout.readline()

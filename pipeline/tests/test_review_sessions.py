@@ -370,7 +370,7 @@ def test_report_shows_names_and_notes_as_text(tmp_path):
     assert '<script>' not in out and 'href="javascript' not in out
     assert '<strong>Session 1: &lt;script&gt;alert(1)&lt;/script&gt;</strong>' in out
     # the notes: a button that opens the pop-up box, right under the session's line; the text beside it, hidden, as typed
-    note = ('<button type="button" class="nopen" data-title="Notes: Session 1 · &lt;script&gt;alert(1)&lt;/script&gt;">{}</button>'
+    note = ('<button type="button" class="nopen" data-session="1" data-title="Notes: Session 1 · &lt;script&gt;alert(1)&lt;/script&gt;">{}</button>'
             '<span class="ntext" hidden>[x](javascript:alert(1))\nline two</span>')
     assert '</p><p class="snotes">' + note.format('Session Notes') + '</p>' in out and '<td class="notes">' + note.format('Notes') + '</td>' in out
     assert '<p class="sumline"><strong>Session 1:' in out and '<details class="fold"><summary>Session Notes' not in out

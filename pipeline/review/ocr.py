@@ -129,7 +129,7 @@ def check(fields, intake, n_pages, date=None):
     if verdict == APPROVED and lang['non_latin'] and not reads:
         raise refusal(f'these pages are in a non-Latin script: approving needs the reviewer to say they read {lang["label"]}'
                       ' (on the page: the "I read" box; review_ocr.py: --reads)',
-                      f'These pages are in a non-Latin script: to approve them, tick "I read {lang["label"]}".')
+                      f'These pages are in a non-Latin script: to approve them, tick "I can read {lang["label"]}".')
     if reads: v['reads'] = reads
     return v
 

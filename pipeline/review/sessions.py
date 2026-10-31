@@ -60,6 +60,9 @@ class Refused(Exception):
 FALLBACK = ('this run cannot be reviewed again. A new run of the book on today\'s code can be (it is not a review of this '
             'result): python3 review_workorder.py <this run> --replay-to <new run folder> copies its _intake/ and saved reply, '
             'then run the command it prints (INTAKE_REUSE=1 REPLY=… REVIEW=1, no API call)')
+# the same for the app's pages (library staff): no command there; it is in the job's log and in docs/review-step.md
+FALLBACK_PAGE = ('This run can\'t be reviewed again: the pipeline has changed since it was made. A new run of the book from '
+                 'its saved AI reply is needed (free, no AI call); whoever looks after the app can make it.')
 
 def readable(fn, *a):
     """fn(*a) on the kept digest; a digest this version of the review step cannot read is refused, not a traceback."""

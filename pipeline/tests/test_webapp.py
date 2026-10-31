@@ -141,10 +141,10 @@ def test_one_job_per_run_and_a_held_lock_refuse(setup):
     s = settings(setup)
     R = setup / 'runs' / 'a' / 'r'; (R / 'reviews').mkdir(parents=True)
     fake(setup, s, 'a/r', R=str(R))
-    with pytest.raises(ValueError, match='already waiting: apply'): fake(setup, s, 'a/r', R=str(R))
+    with pytest.raises(ValueError, match=r'A job for this run is already waiting \(since \d\d:\d\d\)\. One job at a time per run\.'): fake(setup, s, 'a/r', R=str(R))
     R2 = setup / 'runs' / 'b' / 'r'; (R2 / 'reviews').mkdir(parents=True)
     (R2 / 'reviews' / '.lock').write_text(json.dumps({'pid': os.getpid(), 'since': 'x', 'what': 'reopen'}))
-    with pytest.raises(ValueError, match=f'another review of this run is running \\(process {os.getpid()}, reopen'): fake(setup, s, 'b/r', R=str(R2))
+    with pytest.raises(ValueError, match=r'^Someone is already reviewing this run( \(since \d\d:\d\d\))?\. Try again when they\'re done\.$'): fake(setup, s, 'b/r', R=str(R2))
     p = subprocess.Popen([sys.executable, '-c', 'pass']); p.wait()                        # a lock left by an ended process
     (R2 / 'reviews' / '.lock').write_text(json.dumps({'pid': p.pid, 'since': 'x', 'what': 'reopen'}))
     assert fake(setup, s, 'b/r', R=str(R2))['status'] == 'queued'
