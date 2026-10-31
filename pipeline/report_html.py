@@ -320,8 +320,11 @@ REVIEWED_BY = re.compile(r'no \(reviewed by .*? on [^:]*: (.*)\)$')
 
 def ship_words(s):
     """A "Ready to Ship?" line as review.html says it (review.md keeps glance's text): the work order's "no (reviewed by Kim
-    on 2026-10-30: 205 decisions accepted without review)" reads "no (205 decisions not reviewed)"."""
-    m = REVIEWED_BY.match(s['text']) if s['what'].startswith('Work order') else None
+    on 2026-10-30: 205 decisions accepted without review)" reads "no (205 decisions not reviewed)", and "no (run without
+    REVIEW=1)" reads "no (applied without a review)" (no setting names on the page)."""
+    if not s['what'].startswith('Work order'): return s['text']
+    if s['text'] == 'no (run without REVIEW=1)': return 'no (applied without a review)'
+    m = REVIEWED_BY.match(s['text'])
     return 'no (' + m.group(1).replace('decisions accepted without review', 'decisions not reviewed') + ')' if m else s['text']
 
 def notes_open(x, label='Notes'):
@@ -693,9 +696,9 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
   // beside them. A box moves by its title bar, resizes from its corner, and closes with × or Escape (Escape closes the box
   // that has focus). Focus goes into its text on open and back to the button that opened it on close. Moving it is never
   // needed to read the notes, which scroll inside it.
-  var boxes = {}, top = 50;
+  var boxes = {}, top = 50, openers = new WeakMap();    // a box → the button that opened it last (no expando on the element)
   function make(key) {
-    var d = document.createElement('dialog'), id = 'ndlg-' + key;   // d.opener: the button that opened it last
+    var d = document.createElement('dialog'), id = 'ndlg-' + key;   // openers.get(d): the button that opened it last
     d.className = 'ndlg'; d.setAttribute('aria-labelledby', id + '-h');
     d.innerHTML = '<div class="nbar"><h2 id="' + id + '-h"></h2>' +
       '<button type="button" class="nx" aria-label="Close the notes"><span aria-hidden="true">×</span></button></div>' +
@@ -704,7 +707,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
     function put(x, y) {                // kept inside the window
       d.style.left = Math.max(0, Math.min(innerWidth - 80, x)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
     }
-    function close() { d.close(); if (d.opener) d.opener.focus(); }
+    function close() { d.close(); var o = openers.get(d); if (o) o.focus(); }
     d.querySelector('.nx').addEventListener('click', close);
     d.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); close(); } });
     d.addEventListener('pointerdown', function () { d.style.zIndex = ++top; });   // a click brings it to the front
@@ -721,7 +724,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
   Array.prototype.forEach.call(document.querySelectorAll('button.nopen'), function (b) {
     b.addEventListener('click', function () {
       var key = b.getAttribute('data-session'), d = boxes[key] || (boxes[key] = make(key));
-      d.opener = b; d.style.zIndex = ++top;
+      openers.set(d, b); d.style.zIndex = ++top;
       if (!d.open) {
         d.querySelector('h2').textContent = b.getAttribute('data-title'); d.querySelector('.nbody').textContent = b.nextElementSibling.textContent;
         var n = document.querySelectorAll('dialog.ndlg[open]').length;   // each new box a little lower and to the right

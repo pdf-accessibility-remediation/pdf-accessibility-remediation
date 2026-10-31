@@ -126,12 +126,15 @@ def test_review_ocr_is_refused_while_a_review_page_holds_the_lock(tmp_path):
     R = run_folder(tmp_path, pdf=False)
     core.save(os.path.join(R, 'record.json'), {'intake': {}})                    # a finished run
     os.makedirs(os.path.join(R, 'reviews'))
-    json.dump({'pid': os.getpid(), 'since': '2026-10-31T10:00:00', 'what': 'reopen'}, open(os.path.join(R, 'reviews', '.lock'), 'w'))
-    r = subprocess.run([sys.executable, 'review_ocr.py', R, '--verdict', 'approved', '--reviewer', 'K', '--reason', 'r'],
-                       cwd=HERE, capture_output=True, text=True)
-    assert r.returncode == 1 and 'refused: another review of this run is running' in r.stderr
-    assert core.load(os.path.join(R, '_intake', 'intake.json'))['review']['ocr_text_approved'] is None   # nothing written
-    with pytest.raises(S.Refused): O.record(R, {'verdict': 'approved', 'reviewer': 'K', 'reason': 'r'}, via='page')
+    other = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'review_workorder.py'])   # a live review process
+    try:
+        json.dump({'pid': other.pid, 'since': '2026-10-31T10:00:00', 'what': 'reopen'}, open(os.path.join(R, 'reviews', '.lock'), 'w'))
+        r = subprocess.run([sys.executable, 'review_ocr.py', R, '--verdict', 'approved', '--reviewer', 'K', '--reason', 'r'],
+                           cwd=HERE, capture_output=True, text=True)
+        assert r.returncode == 1 and 'refused: another review of this run is running' in r.stderr
+        assert core.load(os.path.join(R, '_intake', 'intake.json'))['review']['ocr_text_approved'] is None   # nothing written
+        with pytest.raises(S.Refused): O.record(R, {'verdict': 'approved', 'reviewer': 'K', 'reason': 'r'}, via='page')
+    finally: other.kill(); other.wait()
     # the holder itself (held=True) records it
     O.record(R, {'verdict': 'not approved', 'reviewer': 'K', 'reason': 'r'}, via='page', held=True)
     assert core.load(os.path.join(R, '_intake', 'intake.json'))['review']['ocr_text_approved']['verdict'] == 'not approved'

@@ -9,7 +9,7 @@ when the rebuilt order gives exactly the recorded changes and counts; the basis 
 finished session waits to be applied; the server's /save and /finish in a reviews/ folder; and that two runs of the
 same input get different browser-draft keys.
 """
-import os, json, copy, threading, time, urllib.request, socket
+import os, sys, json, copy, threading, time, urllib.request, socket, subprocess
 import pytest
 from review import core, sessions as S
 
@@ -199,10 +199,16 @@ def test_an_interrupted_promotion_is_completed(tmp_path):
 # ------------------------------------------------------------------ the lock
 def test_lock_refuses_a_second_review_and_takes_over_a_dead_one(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)
-    with S.Lock(R, 'reopen'):
+    other = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'review_workorder.py'])   # a live review process
+    try:
+        S.save(S.P(R)['lock'], {'pid': other.pid, 'since': 'then', 'what': 'reopen'})
         with pytest.raises(S.Refused, match='another review'): S.Lock(R, 'apply')
+    finally: other.kill(); other.wait()
     S.save(S.P(R)['lock'], {'pid': 999999, 'since': 'then', 'what': 'reopen'})   # a process that has ended
     S.Lock(R, 'apply').release()
+    assert not os.path.exists(S.P(R)['lock'])
+    S.save(S.P(R)['lock'], {'pid': os.getpid(), 'since': 'then', 'what': 'reopen'})   # a live pid that is not a review (a reused pid)
+    S.Lock(R, 'apply').release()                                                       # taken over: it never blocks the run
     assert not os.path.exists(S.P(R)['lock'])
 
 # ------------------------------------------------------------------ ready to ship
@@ -375,6 +381,48 @@ def test_report_shows_names_and_notes_as_text(tmp_path):
     assert '</p><p class="snotes">' + note.format('Session Notes') + '</p>' in out and '<td class="notes">' + note.format('Notes') + '</td>' in out
     assert '<p class="sumline"><strong>Session 1:' in out and '<details class="fold"><summary>Session Notes' not in out
     assert 'Session 2</strong>' not in out and '<td><span class="nowrap">2</span></td>' in out    # no name: the number alone
+
+SLOW_KEEP = r'''
+import sys, time
+sys.path.insert(0, sys.argv[1])
+from review import core, server
+real = core.save
+def slow(path, obj):
+    if path.endswith('review_decisions.json'): print('saving', flush=True); time.sleep(2); real(path, obj); print('saved', flush=True)
+    else: real(path, obj)
+core.save = slow
+server.serve(sys.argv[2], '2026-10-31', int(sys.argv[3]), open_browser=False)
+print('ended', flush=True)
+'''
+
+def test_ctrl_c_during_an_auto_save_waits_for_it(tmp_path):
+    """Handoff 13 (b): an auto-save (POST /keep) under way when Stop or Ctrl+C comes is written whole: the server's gate
+    lets it end before the server stops, and the draft on disk is that save's."""
+    import signal, subprocess, sys
+    R, rec, ai, dg = run_folder(tmp_path)
+    S.check_basis(R, rec)
+    p = S.P(R); items = core.build_items(ai, dg)
+    S.save(p['items'], {'book': 'book.pdf', 'run': 'run', 'pages': 5, 'pdf': '', 'groups': core.GROUPS, 'levels': core.LEVELS,
+                        'add_kinds': core.ADD_KINDS, 'items': items, 'addable': core.addable(ai, dg),
+                        'session': {'key': 'abc:002', 'id': '002', 'reopened': True, 'name_default': 'Session 2'}})
+    port = free_port()
+    pr = subprocess.Popen([sys.executable, '-c', SLOW_KEEP, os.path.dirname(os.path.dirname(os.path.abspath(__file__))), p['dir'], str(port)],
+                          stdout=subprocess.PIPE, text=True)
+    try:
+        assert 'review page:' in pr.stdout.readline(); pr.stdout.readline()
+        res = {}
+        def keep():
+            req = urllib.request.Request(f'http://127.0.0.1:{port}/keep', data=json.dumps({'reviewer': 'Kim', 'decisions': ALL, 'additions': [],
+                                         'session_notes': 'the last edit'}).encode(), headers={'Content-Type': 'application/json', 'Host': f'127.0.0.1:{port}'})
+            with urllib.request.urlopen(req, timeout=20) as r: res['st'] = r.status
+        th = threading.Thread(target=keep); th.start()
+        assert pr.stdout.readline().strip() == 'saving'
+        pr.send_signal(signal.SIGINT)                                          # Ctrl+C in the middle of the auto-save
+        th.join(15); rest = pr.communicate(timeout=20)[0]
+        assert res.get('st') == 200 and rest.index('saved') < rest.index('stopped:') < rest.index('ended')
+        assert S.load(p['draft'])['session_notes'] == 'the last edit'
+    finally:
+        if pr.poll() is None: pr.kill()
 
 def test_keep_and_save_together_never_cut_the_draft(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)

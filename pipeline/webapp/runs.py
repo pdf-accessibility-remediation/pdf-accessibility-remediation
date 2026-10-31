@@ -10,7 +10,7 @@ run folder (record.json, review.md, reviews/) and the job files; the commands ar
 names no path), or a basis whose path no longer holds the file. The original is then found by its sha256 in samples/
 and uploads/ (read only; sha256s cached in <jobs>/sha256-cache.json by path, size and mtime).
 """
-import os, re, sys, json, urllib.parse
+import os, re, sys, json, signal, urllib.parse
 from review import sessions as S
 from . import config, jobs, logs
 
@@ -245,7 +245,7 @@ def start_review(s, run, R, port, src=None, discard_open=False, app_pid=None):
            (['--pdf', pdf] if pdf else []) + ['--no-browser', '--return-to', back]
     ss = S.sessions(R); op = [x for x in ss if x.get('status') == 'open']; done = [x for x in ss if x.get('status') in ('finished', 'applied')]
     what = ('Review again from the AI\'s decisions' if src == 'ai' else f'Review again from {S.label(f"{int(src):03d}")}' if src else
-            f'Continue review ({S.label(op[-1]["id"])})' if op else f'Review again from {S.label(done[-1]["id"])}' if done else
+            f'Continue review ({S.label(op[-1]["id"]).capitalize()})' if op else f'Review again from {S.label(done[-1]["id"])}' if done else
             'Review again from the AI\'s decisions')
     review = {'kind': 'review', 'argv': argv, 'env': config.child_env(s), 'counted': False, 'extra': {'what': what, 'app_pid': app_pid}}
     pinned = S.basis(R) and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json'))
@@ -300,8 +300,9 @@ def start_discard(s, run, R):
     j = live_review(s, run)
     if j:
         if jobs.review_past_finish(jobs.run_dir(j, s['runs']), j.get('started')):
-            raise ValueError('this review is past Finish and is being applied: it cannot be discarded now')
-        raise ValueError('the review page is open: press Stop Reviewing first, then Discard')
+            raise ValueError('This review is past "Finish Review" and is being applied: it can\'t be discarded now.')
+        op = [x for x in S.sessions(R) if x.get('status') == 'open']
+        raise ValueError('The review page is open: press "Stop Reviewing" first, then "' + (f'Discard {S.label(op[-1]["id"]).capitalize()}' if op else 'Discard') + '".')
     op = [x for x in S.sessions(R) if x.get('status') == 'open']
     if not op: raise ValueError('no session is open')
     argv = [sys.executable, 'review_workorder.py', R, '--discard-open']
@@ -314,3 +315,19 @@ def stop_review(s, run, R):
     ok, why = jobs.interrupt(s['jobs'], j['id'], s['runs'])
     if not ok: raise ValueError(why)
     return j
+
+STOPPABLE = ('reopen', 'ocr review')                   # lock holders that serve a review page (Ctrl+C closes it, nothing lost)
+
+def stop_other(s, run, R):
+    """Stop the Other Review: Ctrl+C to the review process holding reviews/.lock that the app did not start (a terminal's
+    review_workorder.py --reopen or review_ocr.py --serve), as Stop does for the app's own; refused past Finish, for an
+    apply or a discard, and when the app's own job holds it (its card has Stop)."""
+    if live_review(s, run): raise ValueError('This review was started here: use "Stop Reviewing" on its card.')
+    h = jobs.lock_holder(R)                            # alive and a review process (review/sessions.py review_process)
+    if not h: raise ValueError('No other review of this run is open now.')
+    pid, what, since = h
+    if what not in STOPPABLE: raise ValueError(jobs.lock_words(what, since))
+    if jobs.review_past_finish(R, since): raise ValueError('This review is past "Finish Review" and is being applied: it can\'t be stopped now.')
+    try: os.kill(int(pid), signal.SIGINT)
+    except OSError: raise ValueError('The other review could not be reached; it may have just ended.')
+    return {'pid': pid, 'what': what}

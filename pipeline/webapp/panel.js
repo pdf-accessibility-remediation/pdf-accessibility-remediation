@@ -252,7 +252,8 @@ function setupBlock() {                                         // shown only wh
 function actions(s) {
   const lr = s.live_review, active = (s.jobs || []).filter(j => j.status === 'queued' || j.status === 'running');
   if (lr) return '';                                             // its own card has Open / Stop
-  if (s.lock) return '<p>' + esc(s.lock.words) + ' The buttons come back then.</p>';   // who or what, since when (webapp/jobs.py lock_words)
+  if (s.lock) return '<p>' + esc(s.lock.words) + ' The buttons come back then.</p>' +   // who or what, since when (webapp/jobs.py lock_words)
+    (['reopen', 'ocr review'].includes(s.lock.what) ? '<div class="pp-row"><button type="button" id="pp-stop-other" data-act="stop-other">Stop the Other Review</button></div>' : '');
   if (active.length) return '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '. One job at a time per run.</p>';
   let h = '<div class="pp-row">';
   // in parentheses tc() leaves words as written: a session is named "Session N" there
@@ -323,6 +324,11 @@ box.addEventListener('click', async e => {
       [s, r] = await api(API + '/stop', {}); if (s !== 200) return msg(r.error || 'Stop failed', false, true);
       msg(ocr ? 'The OCR review page is closed without a verdict.'
               : 'The review page is closed. ' + open + ' stays open: press "Continue Review" to carry on.', true, true); return poll();
+    }
+    if (act === 'stop-other') {                                  // a review page the app did not start (a terminal's): asks first
+      if (!await confirmDlg('Stop the other review?', 'The other review\'s session stays open; nothing is lost.', 'Stop the other review', b)) return;
+      [s, r] = await api(API + '/stop-other', {}); if (s !== 200) return msg(r.error || 'Stop failed', false, true);
+      msg('The other review is stopping. Its session stays open: "Continue Review" carries it on here.', true, true); return poll(true);
     }
     if (act === 'discard') {                                     // asks first; nothing is deleted, the current result stays
       const n = sn(st.open.id);
