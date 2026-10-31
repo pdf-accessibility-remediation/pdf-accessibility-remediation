@@ -640,7 +640,7 @@ def test_the_discard_route(app):
     j = fake(t, s, 'book/r1', 30); jobs.update(s['jobs'], j['id'], kind='review', counted=False)          # its review page is open
     assert wait(lambda: (jobs.load(s['jobs'], j['id']) or {}).get('child_pid'), 20)
     st, b = post(port, '/api/run/book/r1/discard')
-    assert st == 409 and b['error'] == 'The review page is open: press "Stop Reviewing" first, then "Discard Session 2".'
+    assert st == 409 and b['error'] == 'The review page is open: select "Stop Reviewing" first, then "Discard Session 2".'
     (R / 'reviews' / 'review.json').write_text('{}')                                                       # past Finish
     st, b = post(port, '/api/run/book/r1/discard')
     assert st == 409 and b['error'] == 'This review is past "Finish Review" and is being applied: it can\'t be discarded now.'
@@ -654,7 +654,7 @@ def test_fourth_pass_details():
     import report_html as H
     js, css = src('webapp/panel.js'), src('webapp/panel.css')
     assert 'Its choices are kept in "Session History" as abandoned; the current result (' in js and "esc(tc('Discard ' + s.open.label))" in js
-    assert "'The review page is closed. ' + open + ' stays open: press \"Continue Review\" to carry on.'" in js
+    assert "'The review page is closed. ' + open + ' stays open. Select \"Continue Review\" to pick up where you left off.'" in js
     assert "if (!miss.length) return '';" in js and 'previous result' in js and 'earlier result' not in js
     assert 'body:has(#pdfrem-version) .replaced { display: none; }' in css and '#pp-vreview { margin-left: 12px; }' in css
     rec = {'review': {'session': '001', 'sessions': [{'id': '001', 'from': 'ai', 'status': 'applied', 'reviewer': 'K', 'date': '2026-10-29',
@@ -844,7 +844,7 @@ def test_the_pages_name_no_files_or_commands():
     assert 'The text is shown as OCR read it and isn\\\'t edited on this page.' in page
     ss = [{'id': f'00{i}', 'from': 'ai' if i == 1 else f'00{i - 1}', 'status': 'applied', 'reviewer': 'K', 'date': '2026-10-31', 'counts': {}} for i in (1, 2, 3)]
     out = ''.join(H.review_card('.', {'review': {'session': '003', 'sessions': ss, 'pending': {'status': 'finished', 'session': '004', 'reviewer': 'K'}}}))
-    assert 'review_workorder.py' not in out and 'press <strong>Apply Session 4</strong>' in out
+    assert 'review_workorder.py' not in out and 'select "Apply Session 4"' in out
     assert out.index('<span class="nowrap">2</span>') < out.index('<span class="nowrap">1</span>')       # Previous Sessions: newest first
     assert '<td class="nowrap">Session 2</td>' in out
 
@@ -922,7 +922,7 @@ def test_handoff_13_small_changes():
     assert '<b>Approved</b> passes this part of <b>Ready to Ship?</b>' in page and 'needed for <b>Approved</b> and <b>Not Approved</b>' in page
     assert '<b>Approved</b> needs this box' in page and 'white-space: nowrap; font-weight: 600; }' not in page
     assert 'id="hdrOcrLink"' not in page and "if original: data['book'] = original" in src('review/server.py')
-    assert 'press "Stop Reviewing" first, then "' in rn and 'd.opener' not in rh and 'openers = new WeakMap()' in rh
+    assert 'select "Stop Reviewing" first, then "' in rn and 'd.opener' not in rh and 'openers = new WeakMap()' in rh
 
 def test_last_polish():
     """Patrick's last pass: the save status right of Finish Review in a fixed width; session names on one line up to 40
@@ -939,7 +939,7 @@ def test_last_polish():
                                                  'decisions': [{'id': 'x', 'kind': 'retype', 'label': 'A', 'page': 2, 'status': 'approved'}]}}))
     assert '<span class="sname">' + 'x' * 40 + '</span>' in out and '<span class="sname long">a name a name' in out
     assert '<th scope="col">Type</th>' in out and '<th scope="col">Kind</th>' not in out
-    assert '<li class="met"><span class="tick" aria-hidden="true">✓</span>' in src('report_html.py')
+    assert '<li class="met"><span class="mark" aria-hidden="true">✓</span>' in src('report_html.py')
 
 def test_review_14_and_the_last_pass():
     """Review 14: gaps in the Finish dialog with their Add links, and a count beside the save status (L1); no Save
@@ -953,5 +953,18 @@ def test_review_14_and_the_last_pass():
     assert "const unsaved = () => (dirty || saving) && !finished && DATA.mode !== 'ocr';" in page
     assert "addEventListener('beforeunload', e => { if (unsaved())" in page and 'if (body.length > 60000) return;' in page
     assert '64 KiB' in src('../docs/review-step.md')
-    assert 'color: var(--ink); }   /* a check mark' in H.CSS and 'padding: 9px 14px 11px' in H.CSS
+    assert '.ship li .mark { position: absolute; left: -20px; top: 0; width: 20px; height: 1.5em; display: flex; align-items: center; justify-content: center; color: var(--ink); }' in H.CSS
+    assert 'padding: 9px 14px 11px' in H.CSS
     assert 'OCR review page' not in js and 'Open the OCR Text Review Page' in js and 'OCR review page' not in page
+
+def test_the_ready_to_ship_card_and_select():
+    """The pre-PR pass: the card's marks in one centred column (a bullet, or a check when met), its four condition names
+    as written for review.html (review.md keeps glance's), and "Select", not "press", in the app's messages."""
+    import report_html as H
+    assert H.SHIP_NAMES == {'Work order approved on the review page': 'Work Order approved on the review page', 'OCR text approved': 'OCR Text approved',
+                            'Safety checks': 'Safety Checks', 'Manual check (PAC)': 'Manual Check (PAC)'}
+    rh = src('report_html.py')
+    assert '<ul role="list">' in rh and '<li><span class="mark" aria-hidden="true"><i class="bul"></i></span>' in rh
+    for f in ('webapp/panel.js', 'webapp/runs.py', 'report_html.py', 'review/page.html'):
+        assert 'press "' not in src(f) and 'and press ' not in src(f), f
+    assert 'stays open. Select "Continue Review" to pick up where you left off.' in src('webapp/panel.js')

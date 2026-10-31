@@ -33,7 +33,10 @@ h2 { font-size: 17px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1p
 .ship { background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--reject); border-radius: 8px; padding: 9px 14px 11px; }   /* the text 1 px up, the card the same height */
 .ship.yes { border-left-color: var(--ok); }
 .ship h2 { margin: 0 0 4px; font-size: 17px; border: 0; padding: 0; } .ship p { margin: 6px 0 0; } .ship ul { margin: -2px 0 0; padding-left: 20px; }
-.ship li.met { list-style: none; } .ship li.met .tick { display: inline-block; width: 20px; margin-left: -20px; color: var(--ink); }   /* a check mark in the bullet's place, in the text's colour */
+/* each condition's mark (a bullet, or a check mark when met) centred in one 20px column, in the text's colour */
+.ship li { list-style: none; position: relative; }
+.ship li .mark { position: absolute; left: -20px; top: 0; width: 20px; height: 1.5em; display: flex; align-items: center; justify-content: center; color: var(--ink); }
+.ship li .mark .bul { display: block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }   /* not .dot: the cards use that name */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }
 .card { background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--line); border-radius: 8px; padding: 10px 14px; }
 .card.good { border-top-color: var(--ok); } .card.bad { border-top-color: var(--reject); } .card.warn { border-top-color: var(--change); }
@@ -322,6 +325,11 @@ def session_name(x):
     """'Session 5: Chapters 1–4 pass', or 'Session 5' (records made before sessions had names have none). Escaped."""
     return f'Session {int(x["id"])}' + (f': {E(x["name"])}' if x.get('name') else '')
 
+# the "Ready to Ship?" card's condition names in review.html (review.md keeps glance's): an exception to the capitalization
+# rule, decided 2026-10-31 (CLAUDE.md)
+SHIP_NAMES = {'Work order approved on the review page': 'Work Order approved on the review page', 'OCR text approved': 'OCR Text approved',
+              'Safety checks': 'Safety Checks', 'Manual check (PAC)': 'Manual Check (PAC)'}
+
 REVIEWED_BY = re.compile(r'no \(reviewed by .*? on [^:]*: (.*)\)$')
 
 def ship_words(s):
@@ -349,8 +357,8 @@ def review_card(R, rec):
     pend = rv.get('pending') or {}
     if pend.get('status') == 'finished':
         B.append(f'<p><strong>Session {int(pend["session"])} ({E(pend.get("reviewer") or "")}) is finished but not applied</strong>: this result is older '
-                 f'than the latest sign-off. To apply it, open this book\'s run page in the app and press '
-                 f'<strong>Apply Session {int(pend["session"])}</strong>.</p>')
+                 f'than the latest sign-off. To apply it, open this book\'s run page in the app and select '
+                 f'"Apply Session {int(pend["session"])}".</p>')
     ss = rv.get('sessions') or []
     if ss:
         cur = rv.get('session')
@@ -453,10 +461,12 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
                                       f'run {(run.get("started") or "").replace("T", " ") or "start time not recorded"}'])
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus
     # ---- ready to ship
-    B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? {"Yes" if g["ready"] else "No"}</h2><ul>'
-             # a met condition (yes / OK) shows a check mark in its bullet's place, hidden from screen readers (the words say it)
-             + ''.join((f'<li class="met"><span class="tick" aria-hidden="true">✓</span>' if s.get('ok') is True else '<li>')
-                       + f'{E(s["what"])}: <strong>{E(ship_words(s))}</strong></li>' for s in g['ship']) + '</ul>')
+    B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? {"Yes" if g["ready"] else "No"}</h2><ul role="list">'
+             # each condition's mark in one centred column: a check mark when met (yes / OK), else a bullet; hidden from screen
+             # readers (the words say it). role="list": Safari drops a list's role when its bullets are styled away
+             + ''.join(('<li class="met"><span class="mark" aria-hidden="true">✓</span>' if s.get('ok') is True else
+                        '<li><span class="mark" aria-hidden="true"><i class="bul"></i></span>')
+                       + f'{E(SHIP_NAMES.get(s["what"], s["what"]))}: <strong>{E(ship_words(s))}</strong></li>' for s in g['ship']) + '</ul>')
     B.append('</section>')
     if banner: B.insert(1, f'<p class="replaced" role="note">{banner}</p>')
     else: B += review_card(R, rec)
