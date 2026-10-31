@@ -10,6 +10,6 @@ Why each regression baseline update was made (newest last). Written by `tools/re
 
 - 2026-10-25 · ilokano · Python 3.14 · workorder_v8.md: Add ilokano: an untagged book (frozen OpenDataLoader intake), one-item list rule, gap-only word breaks; reply from a paid v8 run ($0.09)
 
-- 2026-10-25 · godzone, clans, translation, cadaverous, sands, buddhist, ilokano · Python 3.14 · workorder_v8.md: book-wide reading-order check (1.3.2): one new row in the checks table (verify.py wcag.section_order, lib/readorder.py)
+- 2026-10-25 · godzone, clans, translation, cadaverous, sands, buddhist, ilokano · Python 3.14 · workorder_v8.md: book-wide reading-order check (1.3.2): one new row in the checks table (verify.py wcag.section_order, lib/readorder.py); sands also lists its cover, read last, as already in the original
 
-- 2026-10-25 · sands · Python 3.14 · workorder_v8.md: section-order note: singular wording
+- 2026-10-25 · sands, translation · Python 3.14 · workorder_v8.md: 1.3.2: small sections read more than 5 pages after their printed page are listed (not failed); sands 57, mostly figure sections read after their part

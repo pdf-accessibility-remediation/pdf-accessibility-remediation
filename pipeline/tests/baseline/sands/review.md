@@ -2,13 +2,13 @@
 
 Result: `sands_remediated.pdf`
 
-329 pages · run 2026-10-25T15:34:43 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+329 pages · run 2026-10-25T23:55:42 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.1s · audit 63.6s · reuse saved reply 3.2s · apply 108.9s · verify 66.9s · total 243.7s
+Time: intake 0.8s · audit 73.7s · reuse saved reply 2.8s · apply 103.2s · verify 64.8s · total 245.3s
 
 ## Overview
 
@@ -355,6 +355,7 @@ PDF/UA-only, not required for WCAG (not counted):
 Each item is something to look at, not a proven failure.
 
 - 1.3.2 the reading order jumps back up the same column on 1 page. Listen through them with a screen reader (or the PAC screen-reader preview): PDF 149 (printed 140) (6 jumps)
+- 1.3.2 57 small sections are read more than 5 pages after their printed page, after a longer section that covers them (56 holding figures). Not a failure (long stories overlap in InDesign books), but a screen reader hears them far from where they are printed: PDF 4 (printed iii) read after PDF 60 (printed 51); PDF 87 (printed 78) read after PDF 139 (printed 130); PDF 88 (printed 79) read after PDF 139 (printed 130); PDF 89 (printed 80) read after PDF 139 (printed 130); PDF 90 (printed 81) read after PDF 139 (printed 130); PDF 92 (printed 83) read after PDF 139 (printed 130); PDF 100 (printed 91) read after PDF 139 (printed 130); PDF 101 (printed 92) read after PDF 139 (printed 130); PDF 107 (printed 98) read after PDF 139 (printed 130); PDF 109 (printed 100) read after PDF 139 (printed 130); PDF 110 (printed 101) read after PDF 139 (printed 130); PDF 112 (printed 103) read after PDF 139 (printed 130) and 45 more
 - 1.3.2 1 section read away from its printed place, as in the original (this run did not move it). Listen through each where it is read, or move it with move_section:
   - PDF 1 (printed COVER): Article, read after PDF 329 (printed 320)
 

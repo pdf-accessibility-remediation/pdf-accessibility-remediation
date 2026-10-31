@@ -2,13 +2,13 @@
 
 Result: `translation_remediated.pdf`
 
-257 pages · run 2026-10-25T15:27:26 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+257 pages · run 2026-10-25T23:55:32 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.7s · audit 63.2s · reuse saved reply 0.9s · apply 105.6s · verify 72.0s · total 242.4s
+Time: intake 0.5s · audit 63.7s · reuse saved reply 1.4s · apply 124.8s · verify 80.0s · total 270.4s
 
 ## Overview
 
@@ -277,6 +277,7 @@ veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 Each item is something to look at, not a proven failure.
 
 - 1.3.2 the reading order jumps back up the same column on 1 page. Listen through them with a screen reader (or the PAC screen-reader preview): PDF 10 (printed x) (7 jumps)
+- 1.3.2 2 small sections are read more than 5 pages after their printed page, after a longer section that covers them. Not a failure (long stories overlap in InDesign books), but a screen reader hears them far from where they are printed: PDF 3 (printed iii) read after PDF 20 (printed xx); PDF 27 (printed 6) read after PDF 244 (printed 223)
 
 ### 13. Deferred by the AI
 
