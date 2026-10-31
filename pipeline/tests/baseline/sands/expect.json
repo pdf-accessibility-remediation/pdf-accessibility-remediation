@@ -1,9 +1,9 @@
 {
  "apply": {
   "applied": {
-   "artifact: \"decorative landscape engraving behind Part I opener\"": 1,
-   "artifact: \"decorative landscape engraving behind half-title text\"": 1,
-   "artifact: \"decorative landscape vignette on title page\"": 1,
+   "artifact: \"decorative Part I opener landscape; the title is tagged text\"": 1,
+   "artifact: \"decorative half-title landscape; the title is tagged text\"": 1,
+   "artifact: \"decorative title-page landscape\"": 1,
    "artifact: \"wave ornament\"": 7,
    "artifact: untagged path with no content (rule, border, line)": 53,
    "contents: TOC built": 2,
@@ -11,11 +11,13 @@
    "contents: entry wrapped in Reference": 34,
    "document: /Lang": 1,
    "document: DisplayDocTitle": 1,
+   "document: empty AcroForm removed": 1,
    "document: title": 1,
-   "figure: alt text": 15,
+   "figure: alt text": 26,
    "figure: caption paired by position (several figures on the page)": 8,
    "figure: caption retyped only": 13,
    "figure: caption tied (figure moved out of its paragraph)": 70,
+   "heading: ActualText": 17,
    "heading: RoleMap level": 9,
    "heading: merged into next": 17,
    "heading: merged into prev": 6,
@@ -27,9 +29,10 @@
    "links: wraps its text": 20,
    "notes: Note with /ID": 495,
    "order: figure moved to its page": 15,
+   "order: section moved": 1,
    "orphans: adopted as paragraphs (\"chapter 1 notes and works cited\")": 3,
    "orphans: adopted as paragraphs (\"chapter 10 works cited\")": 18,
-   "orphans: adopted as paragraphs (\"chapter 11 notes\")": 19,
+   "orphans: adopted as paragraphs (\"chapter 11 notes and works cited\")": 19,
    "orphans: adopted as paragraphs (\"chapter 12 notes\")": 22,
    "orphans: adopted as paragraphs (\"chapter 13 notes\")": 19,
    "orphans: adopted as paragraphs (\"chapter 2 notes\")": 21,
@@ -50,7 +53,7 @@
   "deferred": 14,
   "empty_notes_removed": 0,
   "failed": 0,
-  "rejected": 0
+  "rejected": 1
  },
  "validation_dropped": [
   "rolemap: unknown style"

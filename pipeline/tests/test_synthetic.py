@@ -183,11 +183,69 @@ def test_the_trial_run_reports_the_executors_figure_moves(tmp_path):
     res = core.dry_run(str(tmp_path), str(src))
     assert res['figure_moves'] == [] and res['seconds'] >= 0 and res['section_move'] is None   # no figures, no move asked
     (tmp_path / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.1', 'move_section': {'pages': [2, 2], 'before_page': 3}}))
-    assert core.dry_run(str(tmp_path), str(src))['section_move']['made']['before_page'] == 3       # what the move card shows
+    res = core.dry_run(str(tmp_path), str(src))
+    assert res['section_move']['made']['before_page'] == 3 and res['section_moves'] == [res['section_move']]   # what the move card shows
     (tmp_path / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.1', 'move_section': {'pages': [2, 2], 'before_page': 99}}))
     assert 'host found: False' in core.dry_run(str(tmp_path), str(src))['section_move']['refused']
     bad = core.dry_run(str(tmp_path), str(tmp_path / 'missing.pdf'))
     assert bad['figure_moves'] is None and 'stopped' in bad['why']             # the card then says they were not worked out
+
+def test_two_moves_are_made_in_turn_as_the_previews_chain_them(tmp_path):
+    """PDF 2 and PDF 5 both read out of place; two moves put them back, the second matched on the tree the first left."""
+    from review import core
+    src = sections_pdf(tmp_path / 'sections.pdf', order=(1, 3, 2, 4, 6, 5))
+    run('audit.py', src, tmp_path / 'audit')
+    digest = json.load(open(tmp_path / 'audit' / 'digest.json', encoding='utf-8'))
+    ro = core.reading_order(digest, json.load(open(tmp_path / 'audit' / 'fulltext.json', encoding='utf-8')))
+    assert sorted(ro['entries'][x['i']]['first'] for x in ro['flagged']) == [2, 5]
+    moves = [{'pages': [2, 2], 'before_page': 3}, {'pages': [5, 5], 'before_page': 6}]
+    pvs = core.chain_previews(ro['entries'], [(m['pages'], m['before_page']) for m in moves])
+    assert [p['candidates'] for p in pvs] == [1, 1] and all(p['host_found'] for p in pvs) and pvs[1]['flags_after'] == 0
+    out, so = apply_and_verify(tmp_path, src, {'move_section': moves}, 'two')
+    assert part_pages(out) == [e['first'] for e in pvs[1]['siblings_after']] == [1, 2, 3, 4, 5, 6]
+    assert so['flagged'] == [] and so['new_count'] == 0
+    log = json.load(open(str(out) + '.log.json', encoding='utf-8'))
+    assert [m['before_page'] for m in log['section_moves']] == [3, 6] and log['section_move'] == log['section_moves'][0]
+
+def figure_pdf(path):
+    """Three pages, one paragraph each; page 1 also holds a figure whose Div is read last, after page 3."""
+    pdf = pikepdf.new()
+    font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica,
+                              Encoding=pikepdf.Name.WinAnsiEncoding)
+    for n in range(1, 4):
+        content = f'/P <</MCID 0>> BDC BT /F1 11 Tf 72 500 Td (Text on page {n}.) Tj ET EMC\n'
+        if n == 1: content += '/Figure <</MCID 1>> BDC 0 0 1 rg 72 200 200 150 re f EMC\n'
+        pdf.pages.append(pikepdf.Page(pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 432, 576], StructParents=n - 1,
+                         Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font)), Contents=pikepdf.Stream(pdf, content.encode('latin-1')))))
+    root = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+    doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
+    nums, ks = pikepdf.Array(), []
+    for n in range(1, 4):
+        pg = pdf.pages[n - 1].obj
+        p = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=doc, Pg=pg, K=0)); ks.append(p)
+        row = [p]
+        if n == 1:
+            div = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Div, P=doc, Pg=pg))
+            fig = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Figure, P=div, Pg=pg, K=1, Alt=pikepdf.String('A blue box')))
+            div.K = pikepdf.Array([fig]); row.append(fig)
+        nums.append(n - 1); nums.append(pikepdf.Array(row))
+    doc.K = pikepdf.Array(ks + [div]); root.K = doc
+    root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=nums))
+    pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
+    pdf.save(path)
+    return path
+
+def test_the_figure_step_runs_unless_the_work_order_turns_it_off(tmp_path):
+    src = figure_pdf(tmp_path / 'figure.pdf')
+    for name, wo, moved in (('default', {}, True), ('on', {'fix_figure_order': True}, True), ('off', {'fix_figure_order': False}, False)):
+        w = tmp_path / f'{name}.json'; w.write_text(json.dumps({'schema': 'workorder/0.1', **wo}))
+        out = tmp_path / f'{name}.pdf'
+        run('apply.py', src, w, out)
+        log = json.load(open(str(out) + '.log.json', encoding='utf-8'))
+        assert bool(log.get('figure_moves')) == moved and bool(log.get('figure_order_off')) == (not moved), name
+    from review import core                                   # the review's trial run lists them even when the AI turned it off
+    (tmp_path / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.1', 'fix_figure_order': False}))
+    assert [m['page'] for m in core.dry_run(str(tmp_path), str(src))['figure_moves']] == [1]
 
 def test_section_out_of_order_in_the_original_is_not_new(tmp_path):
     src = sections_pdf(tmp_path / 'sections.pdf')

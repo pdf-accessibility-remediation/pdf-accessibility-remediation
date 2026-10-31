@@ -147,13 +147,17 @@ def build_items(wo, digest, order=None, ro=None):
         ps = [p for p in it.get('pages') or [] if isinstance(p, int)] if isinstance(it, dict) else []
         add(f'deferrals:{i}', 'deferrals', 'Deferred by the AI', ['deferrals', i], it, (it or {}).get('what') or 'Deferral',
             page=min(ps) if ps else None, pages=[min(ps), max(ps)] if ps else None, why=(it or {}).get('why'))
-    ms = wo.get('move_section')
-    if isinstance(ms, dict) and isinstance(ms.get('pages'), list) and len(ms['pages']) == 2:
+    mss = [(i, m) for i, m in enumerate(readorder.moves(wo)) if isinstance(m.get('pages'), list) and len(m['pages']) == 2]
+    pvs = chain_previews(order, [(m['pages'], m.get('before_page')) for _, m in mss], (ro or {}).get('removed_by'))
+    dr = (ro or {}).get('dryrun') or {}
+    trials = dr.get('section_moves') or ([dr['section_move']] if dr.get('section_move') else [])
+    for k, ((i, ms), pv) in enumerate(zip(mss, pvs)):            # card ids: move_section, then move_section:1, :2
         (a, b), c = ms['pages'], ms.get('before_page')
-        add('move_section', 'move_section', 'Reading order', ['move_section'], ms, f'Section on PDF {a}–{b} read before PDF {c}',
-            page=a if isinstance(a, int) else None, pages=[a, b] if all(isinstance(x, int) for x in (a, b)) else None, edit='move',
-            before_page=c, why=ms.get('why'), trial=((ro or {}).get('dryrun') or {}).get('section_move'),
-            **move_preview(order, a, b, c, (ro or {}).get('removed_by')))
+        add('move_section' if k == 0 else f'move_section:{k}', 'move_section', 'Reading order',
+            ['move_section'] if isinstance(wo.get('move_section'), dict) else ['move_section', i], ms,
+            f'Section on PDF {a}–{b} read before PDF {c}', page=a if isinstance(a, int) else None,
+            pages=[a, b] if all(isinstance(x, int) for x in (a, b)) else None, edit='move', before_page=c, why=ms.get('why'),
+            trial=trials[k] if k < len(trials) else None, move_number=k + 1 if len(mss) > 1 else None, **pv)
     for i, o in enumerate(wo.get('move_to_document_start') or []):
         f = figs.get(o) or {}
         add(f'move_to_document_start:{i}', 'move_to_document_start', 'Reading order', ['move_to_document_start', i], o,
@@ -171,10 +175,11 @@ def build_items(wo, digest, order=None, ro=None):
             'Note to the reviewer from the AI', page=refs[0] if refs else None, page_refs=refs)
     listed = {'retype', 'rolemap', 'actual_text', 'merges', 'document', 'alt', 'page_figures', 'tables', 'flatten', 'keep_lists',
               'artifacts', 'ocr_words', 'deferrals', 'notes_for_reviewer', 'schema', *READING} | workorder_check.META
+    if figures_card(ro): listed.add('fix_figure_order')            # the Figures Moved card is that decision
     for k, v in wo.items():
         if k not in listed:
             add(f'key:{k}', k, 'Reading order' if k in MOVES_CONTENT else 'Other decisions', [k], v, k)
-    if ro: _order_findings(ro, add, items)
+    if ro: _order_findings(ro, add, items, wo)
 
     # priority groups: fixed rules, no model
     for it in items:
@@ -260,24 +265,28 @@ def reading_order_for(audit_dir, digest, wo):
 
 def dry_run(R, pdf):
     """A trial run of apply.py with the AI's order (R/workorder.ai.json) on a temporary copy, for what the executor does on
-    its own whatever the decisions say: the figures fix_figure_order moves back to their page; and what became of the AI's
-    section move (section_move: {made: apply.py's section_move, or refused: why}; None when it made none). No model, nothing
-    kept but the result: {figure_moves: [{page, label, was_after_page, now_after_page}], section_move, seconds}, or
-    {figure_moves: None, why}.
+    its own: the figures fix_figure_order moves back to their page (worked out with it on, even when the AI turned it off,
+    so the card can show what turning it on or off changes); and what became of each of the AI's section moves
+    (section_moves: [{made: where apply.py put it} or {refused: why}], in order; section_move: the first, or None when
+    there is none). No model, nothing kept but the result: {figure_moves: [{page, label, was_after_page, now_after_page}],
+    section_moves, section_move, seconds}, or {figure_moves: None, why}.
     REVIEW_DRYRUN=off skips it."""
     if os.environ.get('REVIEW_DRYRUN') == 'off': return {'figure_moves': None, 'why': 'skipped: REVIEW_DRYRUN=off'}
     print('  working out the figure moves and the section move: a trial run of apply.py on a copy (no model)…', flush=True)
     t, tmp = time.time(), tempfile.mkdtemp(prefix='dryrun-')
     try:
-        out = os.path.join(tmp, 'out.pdf')
-        r = subprocess.run([sys.executable, os.path.join(HERE, 'apply.py'), pdf, os.path.join(R, 'workorder.ai.json'), out],
+        out, wo = os.path.join(tmp, 'out.pdf'), os.path.join(tmp, 'workorder.json')
+        ai = load(os.path.join(R, 'workorder.ai.json'))
+        save(wo, {k: v for k, v in (ai or {}).items() if not (k == 'fix_figure_order' and v is False)})
+        r = subprocess.run([sys.executable, os.path.join(HERE, 'apply.py'), pdf, wo, out],
                            capture_output=True, text=True, timeout=1800)
         log = load(out + '.log.json')
         if r.returncode != 0 or log is None:
             return {'figure_moves': None, 'why': f'the trial run of apply.py stopped (exit {r.returncode})'}
-        why = next((x.get('why') for x in log.get('rejected') or [] if isinstance(x, dict) and x.get('op') == 'move_section'), None)
+        whys = [x.get('why') for x in log.get('rejected') or [] if isinstance(x, dict) and x.get('op') == 'move_section']
+        sm = [{'made': m} if m else {'refused': whys.pop(0) if whys else 'refused'} for m in log.get('section_moves') or []]
         res = {'figure_moves': log.get('figure_moves') or [], 'seconds': round(time.time() - t, 1),
-               'section_move': {'made': log['section_move']} if log.get('section_move') else {'refused': why} if why else None}
+               'section_moves': sm, 'section_move': sm[0] if sm else None}
         print(f'  figure moves: {len(res["figure_moves"])} ({res["seconds"]}s)', flush=True)
         return res
     except (OSError, ValueError, subprocess.SubprocessError) as e:
@@ -330,7 +339,7 @@ def after_rules(order, removed):
         out.append(dict(e, firsts=fs) if e['id'] in gone else e)
     return out
 
-def _order_findings(ro, add, items):
+def _order_findings(ro, add, items, wo=None):
     """The reading order's findings as cards (seen only, with a note: nothing is applied), for what no decision answers: a
     section read away from its printed place that the work order does not take care of, each page whose text jumps back up
     a column, and one card for the small sections read late. Findings the work order takes care of are listed on the
@@ -359,15 +368,15 @@ def _order_findings(ro, add, items):
         add(f'reading_order:jump:{j["page"]}', 'reading_order', 'Reading order check', None,
             {'finding': 'jump', 'page': j['page'], 'jumps_up': j['jumps_up']}, f'Text on PDF {j["page"]} jumps back up the page',
             page=j['page'], jumps_up=j['jumps_up'], show_pages=[j['page']])
-    dr = ro.get('dryrun')
-    if dr is not None and dr.get('figure_moves') != []:            # no trial run (an older run): no card; no moves: none needed
-        fm = dr.get('figure_moves')
+    if figures_card(ro):                                            # the figures fix_figure_order moves: also its decision
+        dr = ro['dryrun']; fm = dr.get('figure_moves')
         ps = sorted({m['page'] for m in fm or [] if isinstance(m.get('page'), int)})
         add('reading_order:figures', 'reading_order', 'Reading order check', None,
             {'finding': 'figures', 'count': len(fm) if fm is not None else None, 'pages': ps},
             f'{len(fm)} figures moved to read on their page' if fm is not None else 'Figure moves not worked out',
             page=ps[0] if ps else None, pages=[ps[0], ps[-1]] if ps else None, count_moves=len(fm) if fm is not None else None,
-            moves=(fm or [])[:LATE_LISTED], not_worked_out=dr.get('why'), show_pages=ps[:3])
+            moves=(fm or [])[:LATE_LISTED], not_worked_out=dr.get('why'), show_pages=ps[:3],
+            ai_off=(wo or {}).get('fix_figure_order') is False)
     alls = ro.get('late') or []
     late = [x for x in alls if not settled(x)]
     if late:
@@ -377,6 +386,12 @@ def _order_findings(ro, add, items):
             removed=sum(1 for x in alls if x.get('hidden_by_rules')), tied=sum(1 for x in alls if x.get('tied_by')),
             late=[{'page': x['first'], 'after': x['after'], 'text': short(es[x['i']])} for x in late[:LATE_LISTED]])
 
+def figures_card(ro):
+    """True when the review has a Figures Moved card: a trial run that found figures to move, or could not run (an
+    older run has no trial run, and so no card)."""
+    dr = (ro or {}).get('dryrun')
+    return dr is not None and dr.get('figure_moves') != []
+
 def _under(order, by, e, host):
     """True when entry e lies inside the container host (following each entry's nearest container above it)."""
     p, seen = e.get('parent'), set()
@@ -385,14 +400,29 @@ def _under(order, by, e, host):
         seen.add(p); p = (by.get(p) or {}).get('parent')
     return False
 
-def changed_move(wo, data, decisions):
-    """The preview for the reviewed order's section move (for /save), worked out the same way as the AI's but with the
-    reviewed text rules: rejecting a rule brings back the blocks it removed. None when the order has no move."""
-    ms = wo.get('move_section')
-    if not isinstance(ms, dict) or len(ms.get('pages') or []) != 2: return None
+def move_specs(items, decisions, additions):
+    """The section moves as reviewed, in the order apply.py makes them: [(card id, pages, before_page)]. The AI's moves
+    (as changed, unless rejected), then the ones the reviewer added."""
+    out = []
+    for it in items or []:
+        if it.get('key') != 'move_section': continue
+        d = decisions.get(it['id']) or {}
+        if d.get('status') == 'rejected': continue
+        v = d.get('value') if d.get('status') == 'changed' and isinstance(d.get('value'), dict) else it.get('ai') or {}
+        out.append((it['id'], [_int(p) for p in v.get('pages') or []], _int(v.get('before_page'))))
+    for a in additions or []:
+        v = a.get('value') if isinstance(a, dict) and a.get('kind') == 'move_section' and isinstance(a.get('value'), dict) else None
+        if v: out.append((f'add:move_section:{a.get("target")}', [_int(p) for p in v.get('pages') or []], _int(v.get('before_page'))))
+    return out
+
+def move_previews(data, decisions, additions, wo):
+    """For /save: each reviewed section move's preview, worked out in the order apply.py makes them (each on the order
+    the earlier ones leave) and with the reviewed text rules (wo): rejecting a rule brings back the blocks it removed.
+    {card id: {pages, before_page, …move_preview}}."""
+    specs = move_specs(data.get('items'), decisions, additions)
     es = (data.get('reading_order') or {}).get('entries')
-    return {'pages': ms['pages'], 'before_page': ms.get('before_page'),
-            **move_preview(es, ms['pages'][0], ms['pages'][1], ms.get('before_page'), removed_ids(es, wo))}
+    pvs = chain_previews(es, [(ps, b) for _, ps, b in specs], removed_ids(es, wo))
+    return {i: {'pages': ps, 'before_page': b, **pv} for (i, ps, b), pv in zip(specs, pvs)}
 
 def move_preview(order, a, b, before, removed=None):
     """What move_section would do, worked out on the original's tags with the executor's own match (lib/readorder.py):
@@ -401,17 +431,34 @@ def move_preview(order, a, b, before, removed=None):
     does; when they alone make the executor refuse the move, refused_by_rules names those rules. apply.py
     matches again on the tree it edits, which earlier steps may have changed, so this is a preview. Empty when the order
     has no detail (an older run) or the pages are not numbers."""
-    if not order or not all(isinstance(x, int) for x in (a, b, before)) or not any('group' in e for e in order): return {}
-    if removed:
-        out = move_preview(after_rules(order, removed), a, b, before)
-        if out.get('candidates') != 1 or not out.get('host_found'):
-            raw = move_preview(order, a, b, before)
-            if raw.get('candidates') == 1 and raw.get('host_found'):
-                by = {e['id']: e for e in order}
-                at = (lambda p: a <= p <= b) if out.get('candidates') != 1 else (lambda p: p == before)   # the section, or where it lands
+    return chain_previews(order, [([a, b], before)], removed)[0]
+
+def chain_previews(order, specs, removed=None):
+    """move_preview for several moves [(pages, before_page)], in the order apply.py makes them: each is worked out on the
+    order the earlier ones leave (a refused move leaves it as it was); after_moves says how many came before it."""
+    if not order or not any('group' in e for e in order): return [{} for _ in specs]
+    cur = after_rules(order, removed) if removed else order       # the order apply.py finds: with the rules' blocks gone
+    raw, out = order, []                                          # and without, to tell when the rules alone refuse a move
+    for k, (ps, before) in enumerate(specs):
+        a, b = (list(ps) + [None, None])[:2] if isinstance(ps, list) else (None, None)
+        if not all(isinstance(x, int) for x in (a, b, before)): out.append({}); continue
+        pv, after = _preview(cur, a, b, before)
+        if removed and after is None:
+            rpv, _ = _preview(raw, a, b, before)
+            if rpv.get('candidates') == 1 and rpv.get('host_found'):
+                by = {e['id']: e for e in raw}
+                at = (lambda p: a <= p <= b) if pv.get('candidates') != 1 else (lambda p: p == before)   # the section, or where it lands
                 near = [i for i in removed if i in by and by[i].get('first') is not None and at(by[i]['first'])]
-                out['refused_by_rules'] = list(dict.fromkeys(l for i in (near or removed) for l in removed[i]))
-        return out
+                pv['refused_by_rules'] = list(dict.fromkeys(l for i in (near or removed) for l in removed[i]))
+        if k: pv['after_moves'] = k
+        if after is not None:
+            cur = after
+            if removed: raw = _preview(raw, a, b, before)[1] or raw
+        out.append(pv)
+    return out
+
+def _preview(order, a, b, before):
+    """One move on the order: (the preview, the order after it, or None when the executor would refuse it)."""
     by = {e['id']: e for e in order}
     groups = {}
     for e in order:
@@ -419,7 +466,7 @@ def move_preview(order, a, b, before, removed=None):
     cand, host = readorder.section_move(None, lambda n: groups.get(n, []), lambda n: by[n].get('firsts') or [],
                                         lambda n: (by[n]['first'], by[n]['last']) if by[n].get('first') is not None else None, a, b, before)
     out = {'candidates': len(cand), 'host_found': host is not None, 'flags_before': len(readorder.out_of_order(order))}
-    if len(cand) != 1 or host is None: return out
+    if len(cand) != 1 or host is None: return out, None
     s = cand[0][0]
     out.update(moved_pages=[by[s]['first'], by[s]['last']], host=by[host]['style'], host_pages=[by[host]['first'], by[host]['last']])
     block = [e for e in order if e['id'] == s or _under(order, by, e, s)]
@@ -429,11 +476,17 @@ def move_preview(order, a, b, before, removed=None):
     inside = [i for i in range(hi + 1, len(rest)) if _under(rest, by, rest[i], host)]
     j = next((i for i in inside if rest[i].get('parent') == host and (rest[i].get('first') or 0) >= before), (inside[-1] + 1) if inside else hi + 1)
     shift = by[host]['depth'] + 1 - by[s]['depth']
-    moved = [{**e, 'depth': e['depth'] + shift, **({'parent': host} if e['id'] == s else {})} for e in block]
-    after = rest[:j] + moved + rest[j:]
+    moved = [{**e, 'depth': e['depth'] + shift, **({'parent': host, 'under': host, 'top': False} if e['id'] == s else {})} for e in block]
+    old = None if by[s].get('top') else by[s].get('under')         # the section it leaves, and the one it joins: their first pages
+    def firsts(e):
+        fs = list(e.get('firsts') or [])
+        if e['id'] == old and by[s].get('first') in fs: fs.remove(by[s]['first'])
+        if e['id'] == host and by[s].get('first') is not None: fs.append(by[s]['first'])
+        return dict(e, firsts=fs) if e['id'] in (old, host) else e
+    after = [firsts(e) for e in rest[:j] + moved + rest[j:]]
     def kids_of(es): return [{k: e.get(k) for k in ('id', 'style', 'first', 'last', 'text')} for e in es if e.get('parent') == host and not e.get('removed')]
     return {**out, 'moved': s, 'lands_before': rest[j]['id'] if j < len(rest) else None,
-            'siblings_before': kids_of(order), 'siblings_after': kids_of(after), 'flags_after': len(readorder.out_of_order(after))}
+            'siblings_before': kids_of(order), 'siblings_after': kids_of(after), 'flags_after': len(readorder.out_of_order(after))}, after
 
 def pages_to_render(items, N):
     """Sets every item's page images; returns the priority items' pages, in review order.
@@ -449,7 +502,8 @@ def addable(wo, digest, ro=None):
     """What a person can add that the AI did not decide, by kind: targets from the digest lists only, so the checks
     apply to an addition as they do to the AI's decisions. A target the AI already decided is changed on its card instead.
     ro (the reading order): a section move for each section read out of place that the work order does not take care
-    of, when the AI made no move (a work order holds one)."""
+    of and no move of the AI's covers, while the work order holds fewer than readorder.MAX_MOVES; its preview comes
+    after the AI's moves, as apply.py makes them."""
     N = digest['source']['pages']
     labels, by_obj, styles, figs, pfigs, words, sheet_of = _index(digest)
     doc = digest.get('document') or {}
@@ -505,12 +559,14 @@ def addable(wo, digest, ro=None):
             default=w.get('text'), edit='text', count=w.get('count'),
             word=f'word/{i}.png' if cell else None, sheet=None if cell else sheet, word_id=i)
     es = (ro or {}).get('entries') or []
-    if es and not isinstance(wo.get('move_section'), dict):
+    have = [(m['pages'], m.get('before_page')) for m in readorder.moves(wo) if isinstance(m.get('pages'), list) and len(m['pages']) == 2]
+    if es and len(have) < readorder.MAX_MOVES:
         flagged = {x['i'] for x in ro.get('flagged') or []} | set(ro.get('removed') or [])   # never before a block the rules remove
         for x in ro.get('flagged') or []:
             if x.get('hidden_by_rules') or x.get('tied_by') or x.get('cleared_by'): continue
+            if any(isinstance(p[0], int) and isinstance(p[1], int) and p[0] <= x['first'] <= p[1] for p, _ in have): continue   # the AI moves it
             e, b = es[x['i']], suggest_before(es, x['i'], flagged)
-            pv = move_preview(es, x['first'], x['last'], b, ro.get('removed_by'))
+            pv = chain_previews(es, have + [([x['first'], x['last']], b)], ro.get('removed_by'))[-1]
             if pv.get('candidates') != 1 or not pv.get('host_found'): continue   # the executor would refuse it: not offered
             add('move_section', e['id'], f'{e.get("style") or "Section"} on PDF {x["first"]}' + (f': “{str(e.get("text")).strip()[:60]}”' if (e.get('text') or '').strip() else ''),
                 page=x['first'], before='read ' + ('between PDF {} and PDF {}'.format(x['prev'], x['next']) if x.get('prev') is not None and x.get('next') is not None
@@ -526,16 +582,6 @@ def suggest_before(es, i, flagged=()):
     later = [x['first'] for j, x in enumerate(es) if j != i and j not in flagged and x.get('parent') == e.get('parent')
              and not x.get('skip') and x.get('first') is not None and x['first'] > e['first']]
     return min(later) if later else None
-
-def added_move(data, additions, wo=None):
-    """The preview for a section move the reviewer added (for /save), worked out like the AI's with the reviewed order's
-    text rules (wo), or None."""
-    a = next((a for a in additions or [] if isinstance(a, dict) and a.get('kind') == 'move_section'), None)
-    v = (a or {}).get('value') if isinstance((a or {}).get('value'), dict) else None
-    if not v or len(v.get('pages') or []) != 2: return None
-    pages, before = [_int(p) for p in v['pages']], _int(v.get('before_page'))
-    es = (data.get('reading_order') or {}).get('entries')
-    return {'target': a.get('target'), 'pages': pages, 'before_page': before, **move_preview(es, pages[0], pages[1], before, removed_ids(es, wo))}
 
 def render_pages(pdf, pages, out_dir, scale=1.0):
     import pypdfium2 as pdfium
@@ -573,6 +619,12 @@ def apply_decisions(ai_wo, items, decisions):
     for it in items:
         d = decisions.get(it['id']) or {}
         st = d.get('status')
+        if it['id'] == 'reading_order:figures':          # the figures card decides fix_figure_order: reject flips the AI's choice
+            if st == 'rejected':
+                if it['context'].get('ai_off'): wo.pop('fix_figure_order', None)      # on again (the default)
+                else: wo['fix_figure_order'] = False
+            continue
+        if it['key'] == 'fix_figure_order' and st == 'rejected': wo['fix_figure_order'] = False; continue   # on unless false
         if it['loc'] is None: continue                   # a reading-order finding: not in the work order
         if st == 'rejected' and it['key'] not in SEEN_ONLY: drop.append(it['loc'])
         elif st == 'changed' and it['edit']:
@@ -599,7 +651,7 @@ def apply_decisions(ai_wo, items, decisions):
         if isinstance(parent, list): del parent[loc[-1]]
         else: parent.pop(loc[-1], None)
     for k in ('retype', 'alt', 'page_figures', 'tables', 'actual_text', 'merges', 'flatten', 'keep_lists', 'ocr_words', 'document', 'rolemap',
-              'adopt_orphans', 'move_to_document_start'):
+              'adopt_orphans', 'move_to_document_start', 'move_section'):
         if k in wo and wo[k] in ([], {}) and ai_wo.get(k): del wo[k]       # a key with every item rejected is left out, as the AI would
     return wo
 
@@ -639,10 +691,11 @@ def add_entries(wo, additions, adds, reviewer=''):
         elif k == 'rolemap': wo.setdefault('rolemap', {})[target] = v
         elif k == 'document': wo.setdefault('document', {})[target] = v
         elif k == 'ocr_words': wo.setdefault('ocr_words', []).append({'id': target, 'reads': v})
-        elif k == 'move_section':
-            if isinstance(wo.get('move_section'), dict): no('a work order holds one section move: change the AI\'s move on its card'); continue
+        elif k == 'move_section':                       # after the AI's moves; the check refuses overlaps with its reason
+            have = readorder.moves(wo)
+            if len(have) >= readorder.MAX_MOVES: no(f'a work order holds at most {readorder.MAX_MOVES} section moves: change or reject one on its card first'); continue
             v = v if isinstance(v, dict) else {}
-            wo['move_section'] = {'pages': [_int(p) for p in (v.get('pages') or [])], 'before_page': _int(v.get('before_page')), 'why': why}
+            wo['move_section'] = have + [{'pages': [_int(p) for p in (v.get('pages') or [])], 'before_page': _int(v.get('before_page')), 'why': why}]
     return refused
 
 def unreviewed(items, decisions):

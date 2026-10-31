@@ -82,13 +82,18 @@ def test_a_changed_section_move_keeps_its_reason_and_gets_whole_numbers():
     wo = core.apply_decisions(WO, its, {'move_section': {'status': 'changed', 'value': {'pages': ['11', 100], 'before_page': '231'}}})
     assert wo['move_section'] == {'pages': [11, 100], 'before_page': 231, 'why': 'test'}
 
+def save_data(wo=WO, o=None):
+    o = order() if o is None else o
+    return {'items': core.build_items(wo, digest(), o), 'reading_order': {'entries': o}}
+
 def test_save_previews_the_reviewers_pages_with_the_same_match():
-    wo = {'move_section': {'pages': [101, 200], 'before_page': 11}}                 # ch2 before ch1
-    pv = core.changed_move(wo, {'reading_order': {'entries': order()}}, {'move_section': {'status': 'changed'}})
+    data = save_data()
+    dec = {'move_section': {'status': 'changed', 'value': {'pages': [101, 200], 'before_page': 11}}}   # ch2 before ch1
+    pv = core.move_previews(data, dec, [], {})['move_section']
     assert pv['pages'] == [101, 200] and pv['candidates'] == 1 and pv['moved'] == 'ch2'
     assert [e['id'] for e in pv['siblings_after']] == ['ch2', 'ch1']
-    assert core.changed_move(wo, {'reading_order': {'entries': order()}}, {'move_section': {'status': 'approved'}})['moved'] == 'ch2'
-    assert core.changed_move({}, {'reading_order': {'entries': order()}}, {}) is None              # no move in the order
+    assert core.move_previews(data, {'move_section': {'status': 'approved'}}, [], {})['move_section']['moved'] == 'ch2'
+    assert core.move_previews(data, {'move_section': {'status': 'rejected'}}, [], {}) == {}           # no move left
 
 def test_flags_a_text_rule_will_hide_are_marked():
     es = [entry('body', 10, 60), dict(entry('folio', 6, 6), runs=['vi', ' Contents ']), dict(entry('real', 3, 3), runs=['A real paragraph'])]
@@ -190,7 +195,11 @@ def test_a_move_can_be_added_for_a_section_out_of_place_when_the_ai_made_none():
     t = core.addable({}, {'source': {'pages': 70}}, ro)['move_section'][0]
     assert t['id'] == 'add:move_section:about' and t['edit'] == 'move'
     assert t['default'] == {'pages': [3, 3], 'before_page': 10} and t['context']['candidates'] == 1 and t['context']['host_found']
-    assert 'move_section' not in core.addable({'move_section': {'pages': [1, 2], 'before_page': 5}}, {'source': {'pages': 70}}, ro)
+    assert 'move_section' not in core.addable({'move_section': {'pages': [3, 3], 'before_page': 10}}, {'source': {'pages': 70}}, ro)   # the AI moves it
+    t = core.addable({'move_section': {'pages': [70, 70], 'before_page': 1}}, {'source': {'pages': 70}}, ro)['move_section'][0]
+    assert t['context']['after_moves'] == 1                                # offered beside another AI move, previewed after it
+    three = [{'pages': [p, p], 'before_page': p + 1} for p in (20, 30, 40)]
+    assert 'move_section' not in core.addable({'move_section': three}, {'source': {'pages': 70}}, ro)   # already 3
     assert 'move_section' not in core.addable({}, {'source': {'pages': 70}})              # no reading order given
 
 def test_an_added_move_is_written_and_a_second_one_refused():
@@ -199,18 +208,22 @@ def test_an_added_move_is_written_and_a_second_one_refused():
     wo = {}
     add = [{'kind': 'move_section', 'target': 'about', 'value': {'pages': ['3', 3], 'before_page': '10'}}]
     assert core.add_entries(wo, add, adds, 'Kim') == []
-    assert wo['move_section'] == {'pages': [3, 3], 'before_page': 10, 'why': 'added by Kim in review'}
-    refused = core.add_entries({'move_section': {'pages': [1, 2], 'before_page': 5}}, add, adds)
-    assert refused and 'one section move' in refused[0]['why']
+    assert wo['move_section'] == [{'pages': [3, 3], 'before_page': 10, 'why': 'added by Kim in review'}]
+    wo = {'move_section': {'pages': [70, 70], 'before_page': 1}}                    # the AI's single move: a list of two after
+    assert core.add_entries(wo, add, adds) == [] and [m['pages'] for m in wo['move_section']] == [[70, 70], [3, 3]]
+    three = [{'pages': [p, p], 'before_page': p + 1} for p in (20, 30, 40)]
+    refused = core.add_entries({'move_section': three}, add, adds)
+    assert refused and 'at most 3 section moves' in refused[0]['why']
 
 def test_saved_added_move_gets_its_preview():
     es, _ = away_case()
-    data = {'reading_order': {'entries': es}}
-    pv = core.added_move(data, [{'kind': 'move_section', 'target': 'about', 'value': {'pages': ['3', 3], 'before_page': '10'}}])
-    assert pv['pages'] == [3, 3] and pv['before_page'] == 10 and pv['candidates'] == 1
-    pv = core.added_move(data, [{'kind': 'move_section', 'target': 'about', 'value': {'pages': [3, 3], 'before_page': 999}}])
-    assert pv['candidates'] == 1 and pv['host_found'] is False             # nothing holds pages from PDF 999 on: refused
-    assert core.added_move({'reading_order': {'entries': es}}, []) is None
+    data = {'items': [], 'reading_order': {'entries': es}}
+    def pv(v): return core.move_previews(data, {}, [{'kind': 'move_section', 'target': 'about', 'value': v}], {})['add:move_section:about']
+    p = pv({'pages': ['3', 3], 'before_page': '10'})
+    assert p['pages'] == [3, 3] and p['before_page'] == 10 and p['candidates'] == 1
+    p = pv({'pages': [3, 3], 'before_page': 999})
+    assert p['candidates'] == 1 and p['host_found'] is False                 # nothing holds pages from PDF 999 on: refused
+    assert core.move_previews(data, {}, [], {}) == {}
 
 def test_captions_are_in_the_reading_order_group():
     its = items({'captions': {'style': 'CAP'}})
@@ -282,13 +295,15 @@ def test_a_section_the_rules_remove_is_no_candidate():
 
 def test_rejecting_the_rule_brings_the_block_back_in_the_saved_preview():
     es, wo = stray_case()
-    data = {'reading_order': {'entries': es}}
-    assert core.changed_move(wo, data, {})['host_found'] is False
+    data = {'items': core.build_items(wo, {'source': {'pages': 257}}, es), 'reading_order': {'entries': es}}
+    assert core.move_previews(data, {}, [], wo)['move_section']['host_found'] is False
     reviewed = {'move_section': wo['move_section']}                               # the letters rule rejected
-    pv = core.changed_move(reviewed, data, {})
+    pv = core.move_previews(data, {}, [], reviewed)['move_section']
     assert pv['host_found'] and pv['lands_before'] == 'stray' and 'refused_by_rules' not in pv
     add = [{'kind': 'move_section', 'target': 'about', 'value': {'pages': [254, 254], 'before_page': 255}}]
-    assert core.added_move(data, add, wo)['host_found'] is False and core.added_move(data, add, {})['host_found']
+    data['items'] = []
+    assert core.move_previews(data, {}, add, wo)['add:move_section:about']['host_found'] is False
+    assert core.move_previews(data, {}, add, {})['add:move_section:about']['host_found']
 
 def test_removed_siblings_are_left_out_of_the_preview_lists():
     es, _ = stray_case()
@@ -300,3 +315,59 @@ def test_the_move_card_carries_the_trial_run():
     ro = dict(core.reading_order({}, {'reading_order': es}, wo), dryrun={'figure_moves': [], 'section_move': {'refused': '1 candidate sections, host found: False'}})
     c = {it['id']: it for it in core.build_items(wo, {'source': {'pages': 257}}, es, ro)}['move_section']['context']
     assert c['trial'] == {'refused': '1 candidate sections, host found: False'}
+
+# ------------------------------------------------------------------ several moves; the figures card decides fix_figure_order
+def two_away():
+    """Under one part: front 1, body 10-60, then 'about' (3) and 'end' (70) read after 'tail' (80): two sections to put back."""
+    es = [entry('part', 1, 80, firsts=[1, 10, 80, 3, 70]), entry('front', 1, 1, 'part', 2, False, 'part', [1]),
+          entry('body', 10, 60, 'part', 2, False, 'part', [10]), entry('tail', 80, 80, 'part', 2, False, 'part', [80]),
+          entry('about', 3, 3, 'part', 2, False, 'part', [3]), entry('end', 70, 70, 'part', 2, False, 'part', [70])]
+    wo = {'move_section': [{'pages': [3, 3], 'before_page': 10}, {'pages': [70, 70], 'before_page': 80}]}
+    return es, wo
+
+def test_two_moves_get_two_cards_each_previewed_after_the_earlier():
+    es, wo = two_away()
+    its = {it['id']: it for it in core.build_items(wo, {'source': {'pages': 80}}, es)}
+    a, b = its['move_section'], its['move_section:1']
+    assert a['loc'] == ['move_section', 0] and b['loc'] == ['move_section', 1] and b['context']['move_number'] == 2
+    assert [e['id'] for e in a['context']['siblings_after']] == ['front', 'about', 'body', 'tail', 'end']
+    assert [e['id'] for e in b['context']['siblings_before']] == ['front', 'about', 'body', 'tail', 'end']   # sees the first move
+    assert [e['id'] for e in b['context']['siblings_after']] == ['front', 'about', 'body', 'end', 'tail']
+    assert b['context']['flags_after'] == 0 and b['context']['after_moves'] == 1
+
+def test_changing_or_rejecting_the_second_move_touches_only_it():
+    es, wo = two_away()
+    its = core.build_items(wo, {'source': {'pages': 80}}, es)
+    out = core.apply_decisions(wo, its, {'move_section:1': {'status': 'changed', 'value': {'pages': ['70', 70], 'before_page': '79'}}})
+    assert out['move_section'] == [{'pages': [3, 3], 'before_page': 10}, {'pages': [70, 70], 'before_page': 79}]
+    out = core.apply_decisions(wo, its, {'move_section': {'status': 'rejected'}})
+    assert out['move_section'] == [{'pages': [70, 70], 'before_page': 80}]
+    out = core.apply_decisions(wo, its, {'move_section': {'status': 'rejected'}, 'move_section:1': {'status': 'rejected'}})
+    assert 'move_section' not in out
+    pvs = core.move_previews({'items': its, 'reading_order': {'entries': es}}, {'move_section': {'status': 'rejected'}}, [], wo)
+    assert list(pvs) == ['move_section:1'] and 'after_moves' not in pvs['move_section:1']       # now the first move made
+
+def figures(wo):
+    es, ro = away_case()
+    r = dict(ro, dryrun={'figure_moves': [{'page': 12, 'label': '3', 'was_after_page': 60, 'now_after_page': 12}]})
+    return {it['id']: it for it in core.build_items(wo, {'source': {'pages': 70}}, es, r)}
+
+def test_rejecting_the_figures_card_turns_the_figure_step_off():
+    its = figures({'fix_figure_order': True})
+    assert 'key:fix_figure_order' not in its                                 # the figures card is that decision
+    f = its['reading_order:figures']
+    assert not f['context'].get('ai_off')
+    assert core.apply_decisions({'fix_figure_order': True}, list(its.values()), {f['id']: {'status': 'rejected'}})['fix_figure_order'] is False
+    assert core.apply_decisions({}, list(its.values()), {f['id']: {'status': 'approved'}}) == {}
+
+def test_when_the_ai_turned_it_off_rejecting_turns_it_on():
+    its = figures({'fix_figure_order': False})
+    f = its['reading_order:figures']
+    assert f['context']['ai_off']
+    assert core.apply_decisions({'fix_figure_order': False}, list(its.values()), {f['id']: {'status': 'rejected'}}) == {}
+    assert core.apply_decisions({'fix_figure_order': False}, list(its.values()), {f['id']: {'status': 'approved'}}) == {'fix_figure_order': False}
+
+def test_without_a_figures_card_the_key_card_stays():
+    es, ro = away_case()
+    its = {it['id'] for it in core.build_items({'fix_figure_order': True}, {'source': {'pages': 70}}, es, ro)}
+    assert 'key:fix_figure_order' in its and 'reading_order:figures' not in its    # no trial run (an older run)

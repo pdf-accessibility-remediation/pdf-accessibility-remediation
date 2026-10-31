@@ -1,17 +1,18 @@
 {
  "apply": {
   "applied": {
-   "artifact: \"ornament\"": 16,
-   "artifact: \"running head (Notes to Pages)\"": 29,
+   "artifact: \"flourish ornament under heading\"": 16,
+   "artifact: \"notes running head\"": 29,
    "contents: TOC built": 1,
    "contents: TOC entries": 16,
    "contents: annotation-less Link → Span": 24,
    "contents: entry wrapped in Reference": 16,
    "document: /Lang": 1,
    "document: DisplayDocTitle": 1,
+   "document: empty AcroForm removed": 1,
    "document: title": 1,
    "figure: alt text": 2,
-   "figure: caption tied (figure holder just before it → Div)": 6,
+   "figure: caption tied (existing wrapper → Div)": 6,
    "figure: caption tied (figure moved out of its paragraph)": 3,
    "figure: moved into Document, first": 1,
    "heading: ActualText": 10,
@@ -30,6 +31,7 @@
    "notes: empty Note shell removed": 141,
    "order: empty container removed": 29,
    "order: figure moved to its page": 3,
+   "order: section moved": 1,
    "retype → H1": 1,
    "tag tree index: entries pointing outside the tree cleared (ParentTree)": 2
   },

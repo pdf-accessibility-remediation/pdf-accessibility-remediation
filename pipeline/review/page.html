@@ -250,7 +250,7 @@ const KEY_WORDS = {
   captions: 'Ties each caption to its figure, so a screen reader reads the caption with the figure, not where the caption\'s text frame sits. This changes the reading order: the sections it ties are listed below.',
   lists: 'Rebuilds lists the source tagged as separate paragraphs.',
   notes: 'Tags footnotes or endnotes as notes. A screen reader reaches a note where the text refers to it, not where it is printed, so the page check leaves notes out.',
-  fix_figure_order: 'Puts figures back on their own page in the reading order.',
+  fix_figure_order: 'Puts figures back on their own page in the reading order. It runs unless the work order turns it off for this book (false); rejecting this card turns it off.',
   remove_empty_containers: 'Removes empty structure tags. Only empty structure goes: nothing a screen reader reads moves.',
 };
 const h1Note = (a, b, it) => (a === 'H1' || b === 'H1') && !it.added ? ' To make a different element the H1 instead, use “Add a decision” at the top of the page.' : '';
@@ -390,8 +390,11 @@ function findingRows(it, row) {                        // a reading-order findin
   if (a.finding === 'away') {
     row('What was found', 'This section is printed on PDF ' + esc(a.pages[0]) + ', but ' + esc(roWhere(a)) + '. None of the AI\'s decisions takes care of it: no decoration rule removes it, and it is not a caption the AI ties to its figure.');
     const tid = 'add:move_section:' + a.entry, added = state.additions.some(x => aid(x) === tid);
-    row('What you can do', (moveItem ? 'The AI already moves a section, and a work order holds one move: change the AI\'s move to these pages on its card (' + cardLink(moveItem.id, 'Go to the AI\'s section move') + '), or say in a note what should happen.'
+    const by = moveItems.find(m => (state.decisions[m.id] || {}).status !== 'rejected' && m.ai && m.ai.pages && m.ai.pages[0] <= a.pages[0] && a.pages[0] <= m.ai.pages[1]);
+    const n = moveItems.filter(m => (state.decisions[m.id] || {}).status !== 'rejected').length + state.additions.filter(x => x.kind === 'move_section').length;
+    row('What you can do', (by ? 'The AI moves this section: check where it lands on ' + cardLink(by.id, 'the AI\'s section move') + ', and change it there if needed, or say in a note what should happen.'
       : added ? 'You added a section move for it: see its card under Added by You, and press Save to see where it lands.'
+      : n >= MAX_MOVES && addById[tid] ? 'A work order holds at most ' + MAX_MOVES + ' section moves, and this one has ' + n + ': reject or change one of them to move this section instead, or say in a note what should happen.'
       : addById[tid] ? '<button type="button" data-addmove="' + esc(a.entry) + '">Add a Section Move</button> puts it back in its printed place, with a preview of where it lands; or say in a note what should happen.'
       : 'A section move cannot put this one back: the executor moves a section only within the section around it, at a page another section starts on, and the preview finds no such place. Say in a note what should happen, for example “move it by hand in Acrobat” or “fine as it is”.') +
       ' Mark this seen; your note is recorded in review.md. ' + HANDFIX);
@@ -403,12 +406,14 @@ function findingRows(it, row) {                        // a reading-order findin
       row('What was found', 'The figure moves were not worked out for this run (' + esc(c.not_worked_out || 'no trial run') + '). review.md lists the figures the executor moves.');
     } else {
       row('What was found', esc(plural(c.count_moves, 'figure is', 'figures are')) + ' read pages away from ' + (c.count_moves === 1 ? 'its' : 'their') + ' own page in the original. ' +
-        'The executor always moves such a figure back, to be read just after the text on its page, whatever the decisions say.');
+        'Unless this step is turned off for the book, the executor moves such a figure back, to be read just after the text on its page.');
       row('Figures', (c.moves || []).map(m => 'Figure on ' + esc(pg(m.page, m.label)) + ': read after PDF ' + esc(m.was_after_page) + ' now; after PDF ' + esc(m.now_after_page) + ' after the changes').join('<br>') +
         (c.count_moves > (c.moves || []).length ? '<br>and ' + (c.count_moves - c.moves.length) + ' more.' : ''));
       row('Worked out', 'With the AI\'s decisions as written, in a trial run of the executor on a copy (no model). A change you make here, for example rejecting the captions decision, can change them; review.md lists the moves the executor actually makes.');
     }
-    row('What you can do', 'Nothing is required: this step always runs. Look at a few of the pages, mark this seen, and say in a note if a figure should stay where it is (that would need a fix by hand).');
+    row('What you can do', c.ai_off
+      ? 'The AI turned this step off for this book, so these figures stay where they are read now (its reason is in its note to the reviewer, if it gave one). Approve to keep it off; Reject to have the executor move them back after all.'
+      : 'The executor does this unless it is turned off for the book. Look at a few of the pages: Approve to have them moved back; Reject to leave every figure where it is read now, for example in a plates section the text refers to by number.');
   } else if (a.finding === 'late') {
     row('What was found', esc(plural(c.count_late, 'small section is', 'small sections are')) + ' read more than 5 pages after their printed page, because a longer section before them already reads past it. ' +
       'This is common in InDesign books and is not a failure.');
@@ -435,29 +440,32 @@ function settlesWords(hs, tie) {                       // a text rule's card, or
       'If you reject it, the ones no other rule covers stay out of place.';
 }
 const roName = e => esc(e.style || 'line') + ' · ' + esc(roPages(e)) + (e.text ? ' · “' + esc(String(e.text).slice(0, 60)) + '”' : '');
-const moveItem = items.find(it => it.key === 'move_section');
-let movePv = null;                                   // the preview /save worked out for the reviewer's changed pages
+const moveItems = items.filter(it => it.key === 'move_section');   // the AI's section moves, in the order they are made
+const MAX_MOVES = 3;                                 // a work order holds at most this many (lib/readorder.py)
+let movePvs = {};                                    // card id → the preview /save worked out (reviewed rules, earlier moves made)
 const samePv = (pv, v) => pv && String(pv.before_page) === String(v.before_page) && String(pv.pages) === String(v.pages);
 // a text rule the reviewer rejected: its blocks stay, so the trial run (made with the AI's order) no longer applies
 const rulesRejected = () => Object.entries(state.decisions).some(([k, d]) => k.startsWith('artifacts.text_rules:') && d && d.status === 'rejected');
 function moveRows(it, row) {
   const d = state.decisions[it.id] || {}, mine = d.status === 'changed' && d.value, v = mine ? d.value : it.ai;
   // the preview /save worked out with the reviewed rules, once there is one for these pages; before that, the AI's
-  moveRowsFor(v, samePv(movePv, v) ? movePv : mine ? {} : it.context, mine ? ' <b>(your change)</b>' : '', row);
+  const sp = movePvs[it.id], pv = samePv(sp, v) ? sp : mine ? {} : it.context;
+  if (it.context.move_number) row('Order', 'Move ' + esc(it.context.move_number) + ' of the AI\'s ' + moveItems.length + ': the executor makes them in turn, each on the order the earlier ones leave.');
+  moveRowsFor(v, pv, mine ? ' <b>(your change)</b>' : '', row);
   const t = it.context.trial;
-  if (!t || mine || rulesRejected()) return;
-  const m = t.made, pv = samePv(movePv, v) ? movePv : it.context, ok = pv.candidates === 1 && pv.host_found;
+  if (!t || mine || rulesRejected() || moveItems.some(m => m !== it && (state.decisions[m.id] || {}).status === 'changed' || (state.decisions[m.id] || {}).status === 'rejected')) return;
+  const m = t.made, ok = pv.candidates === 1 && pv.host_found;
   row('Trial run', m ? 'the executor moved PDF ' + esc(m.pages[0]) + '–' + esc(m.pages[1]) + ' to read before PDF ' + esc(m.before_page) +
       ', inside the ' + esc(m.host) + ' on PDF ' + esc(m.host_pages[0]) + '–' + esc(m.host_pages[1]) + (ok ? '' : ' <span class="flag">(the preview expected a refusal: the trial run is what will happen)</span>')
     : '<span class="flag">the executor refused this move: ' + esc(t.refused) + '</span>' + (ok ? ' <span class="flag">(the preview expected it to work: the trial run is what will happen)</span>' : ''));
 }
-let addMovePv = null;                                // the preview /save worked out for a move the reviewer added
 // an added move's preview: the one /save worked out, or the target's own (the suggested pages) while those are unchanged
-const addedPv = (a, t) => samePv(addMovePv, a.value) ? addMovePv : samePv(t.default, a.value) ? t.context : {};
+const addedPv = (a, t) => samePv(movePvs[aid(a)], a.value) ? movePvs[aid(a)] : samePv(t.default, a.value) ? t.context : {};
 function moveRowsFor(v, c, mine, row) {
   v = v || {}; const ps = v.pages || [];
   row('Moves', 'PDF ' + esc(ps[0]) + '–' + esc(ps[1]) + ' to read before PDF ' + esc(v.before_page) + mine);
   if (mine && c.candidates == null) { row('Preview', 'press Save to see the preview for your pages'); return; }
+  if (c.after_moves) row('Worked out', 'after the ' + (c.after_moves === 1 ? 'move' : c.after_moves + ' moves') + ' made before this one: “Now” is the order ' + (c.after_moves === 1 ? 'it leaves' : 'they leave') + '.');
   if (c.candidates == null) { row('Preview', 'not available for this run (audited before the reading order was recorded in full)'); return; }
   if (c.candidates !== 1 || !c.host_found) {
     row('Preview', '<span class="flag">The executor will refuse this move: ' + (c.candidates !== 1 ? c.candidates + ' sections hold pages inside this range (exactly one is needed)' : '') +
@@ -509,7 +517,8 @@ function renderOrder() {
   const FIG = byId['reading_order:figures'];
   if (FIG) li.push(FIG.context.count_moves == null ? 'The figures the executor moves back to their page were not worked out for this run. ' + cardLink(FIG.id, 'Go to the Figures Moved card') + '.'
     : plural(FIG.context.count_moves, 'figure is', 'figures are') + ' read pages away from ' + (FIG.context.count_moves === 1 ? 'its' : 'their') +
-      ' own page; the executor moves ' + (FIG.context.count_moves === 1 ? 'it' : 'them') + ' back to be read on ' + (FIG.context.count_moves === 1 ? 'its page' : 'their pages') + '. ' + cardLink(FIG.id, 'Go to the Figures Moved card') + '.');
+      ' own page; ' + (FIG.context.ai_off ? 'the AI turned off moving ' + (FIG.context.count_moves === 1 ? 'it' : 'them') + ' back for this book' : 'the executor moves ' + (FIG.context.count_moves === 1 ? 'it' : 'them') + ' back to be read on ' + (FIG.context.count_moves === 1 ? 'its page' : 'their pages')) +
+      ' (Approve or Reject on its card). ' + cardLink(FIG.id, 'Go to the Figures Moved card') + '.');
   if (F.late.length) li.push(plural(F.late.length, 'small section is', 'small sections are') +
     ' read more than 5 pages after ' + (F.late.length === 1 ? 'its' : 'their') + ' printed page, because a longer section before ' + (F.late.length === 1 ? 'it' : 'them') +
     ' already reads past it. This is common in InDesign books and is not a failure. ' + cardLink('reading_order:late', 'Go to the Small Sections Read Late card') + '.' +
@@ -519,15 +528,19 @@ function renderOrder() {
   if (RO.flat) h += '<p>This book\'s tags have no sections, so there is no section order to show. review.md still checks every page for text that jumps back up a column (1.3.2).</p>' +
     (li.length ? '<ul class="ro-find">' + li.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '');
   else {
-    const d = moveItem ? (state.decisions[moveItem.id] || {}).status : null;
-    const am = !moveItem && state.additions.find(x => x.kind === 'move_section'), at = am && addById[aid(am)];
-    const mc = am && at ? addedPv(am, at) : !moveItem ? {} : d === 'changed' ? (movePv || {}) : moveItem.context;
-    const moveNote = (d === 'rejected' ? 'rejected' : d === 'approved' ? 'approved' : d === 'changed' ? 'your changed pages' : 'not reviewed yet');
+    const marks = moveItems.map((m, k) => {            // each move: the section it moves and where it lands, with who decided it
+      const d = (state.decisions[m.id] || {}).status, sp = movePvs[m.id];
+      const pv = d === 'changed' ? (samePv(sp, (state.decisions[m.id] || {}).value) ? sp : {}) : samePv(sp, m.ai) ? sp : m.context;
+      return { pv, rejected: d === 'rejected', who: 'The AI' + (moveItems.length > 1 ? '\'s move ' + (k + 1) : '') + ' moves this section (' +
+        (d === 'rejected' ? 'rejected' : d === 'approved' ? 'approved' : d === 'changed' ? 'your changed pages' : 'not reviewed yet') + ').' };
+    }).concat(state.additions.filter(x => x.kind === 'move_section' && addById[aid(x)]).map(x => ({ pv: addedPv(x, addById[aid(x)]), who: 'Your added move puts this section back.' })));
+    const movedBy = id => marks.find(k => k.pv.moved === id), landsBy = id => marks.find(k => !k.rejected && k.pv.lands_before === id);
     h += '<label><input type="checkbox" id="roAll"' + (roAll ? ' checked' : '') + '> ' + tc('Show every section in the book') + '</label>' +
       '<p class="ctx">When this is off, only the sections named in the findings above are listed. Select a row to show its first page.</p><ol>';
     es.forEach((e, i) => {
       const f = roFlag[i], lt = roLate[i], fr = f && settledBy(f), lr = lt && settledBy(lt);
-      if (!roAll && !(f && !fr) && e.id !== mc.moved && e.id !== mc.lands_before) return;
+      const mv = movedBy(e.id), ld = landsBy(e.id);
+      if (!roAll && !(f && !fr) && !mv && !ld) return;
       h += '<li' + (e.skip ? ' class="ro-skip"' : '') + ' style="padding-left:' + Math.min(e.depth || 0, 12) * 12 + 'px">' +
         '<button type="button" class="ro-row" data-ro="' + i + '"' + (e.first == null ? ' disabled' : '') + '>' + roName(e) +
         (f ? (fr ? ' <span class="ctx">Read out of place, but ' + settleWords(fr) + '.</span>'
@@ -535,8 +548,8 @@ function renderOrder() {
         (lt ? ' <span class="ctx">Read ' + plural(lt.after - lt.first, 'page', 'pages') + ' after its printed page (after PDF ' + lt.after + ').' +
                (lr ? ' But ' + settleWords(lr) + '.' : unsettled(lt)) + '</span>' : '') +
         (e.skip ? ' <span class="ctx">Not compared: a figure or note that is placed where the text refers to it.</span>' : '') +
-        (e.id === mc.moved ? ' <span class="flag">' + (am ? 'Your added move puts this section back.' : 'The AI moves this section (' + moveNote + ').') + '</span>' : '') +
-        (e.id === mc.lands_before && d !== 'rejected' ? ' <span class="flag">The moved section is placed just before this one.</span>' : '') + '</button>' +
+        (mv ? ' <span class="flag">' + mv.who + '</span>' : '') +
+        (ld ? ' <span class="flag">A moved section is placed just before this one.</span>' : '') + '</button>' +
         ((fr || lr) ? ' ' + cardLink((fr || lr).id, (fr || lr).tie ? 'Go to the captions decision' : 'Go to the rule') : '') + '</li>';
     });
     h += '</ol>';
@@ -611,7 +624,7 @@ function card(it) {
   if (exact) h += '<details class="exact"><summary>The AI\'s Exact Entry</summary><pre>' + esc(JSON.stringify(it.ai, null, 1)) + '</pre></details>';
   h += imagesHtml(it);
   if (it.key === 'retype' || it.key === 'rolemap') h += '<div class="h1flag" hidden></div>';
-  const opts = SEEN_ONLY.has(it.key) ? [['seen', 'Seen']] : [['approved', 'Approve'], ...(it.edit ? [['changed', 'Change']] : []), ['rejected', 'Reject']];
+  const opts = SEEN_ONLY.has(it.key) && it.id !== 'reading_order:figures' ? [['seen', 'Seen']] : [['approved', 'Approve'], ...(it.edit ? [['changed', 'Change']] : []), ['rejected', 'Reject']];
   h += '<div class="controls" role="radiogroup" aria-label="Decision">' + opts.map(([v, l]) =>
     '<label><input type="radio" name="st-' + esc(it.id) + '" data-act="status" value="' + v + '"' + (st === v ? ' checked' : '') + '> ' + l + '</label>').join('') +
     '<button type="button" class="clear" data-act="clear"' + (st ? '' : ' hidden') + ' title="Clear this choice: back to not reviewed">Clear</button></div>';
@@ -872,19 +885,16 @@ document.getElementById('save').addEventListener('click', async () => {
   try {
     const [s, b] = await post('/save');
     if (s !== 200) return msg(esc(b.error || 'Save failed'), true);
-    const am = state.additions.find(x => x.kind === 'move_section');
-    addMovePv = b.add_move_preview || null;
-    if (am) {
+    movePvs = b.move_previews || {};
+    for (const am of state.additions.filter(x => x.kind === 'move_section')) {
       const old = document.getElementById('card-' + aid(am));
       if (old) old.outerHTML = addCard(am);
-      renderOrder();
     }
-    if (moveItem) {
-      movePv = b.move_preview || null;
-      const old = document.getElementById('card-move_section'), open = old && !old.querySelector('.edit').hidden;
-      if (old) { old.outerHTML = card(moveItem); if (open) document.querySelector('#card-move_section .edit').hidden = false; }
-      renderOrder();
+    for (const mi of moveItems) {
+      const old = document.getElementById('card-' + mi.id), open = old && !old.querySelector('.edit').hidden;
+      if (old) { old.outerHTML = card(mi); if (open) document.getElementById('card-' + mi.id).querySelector('.edit').hidden = false; }
     }
+    renderOrder();
     msg('Saved · ' + b.changes + ' changes from the AI · ' + b.unreviewed + ' not reviewed yet' + refusedText(b.refused) + dropText(b.dropped) + gapText(b.gaps),
         b.dropped.length > 0 || (b.refused || []).length > 0);
   } catch (e) { msg('Could not reach the review server: is it still running in the terminal? Your choices are kept in this browser.', true); }

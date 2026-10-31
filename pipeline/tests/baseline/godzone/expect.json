@@ -1,7 +1,8 @@
 {
  "apply": {
   "applied": {
-   "artifact: \"decorative wave ornament on title page\"": 1,
+   "artifact: \"decorative wave ornament on the title page\"": 1,
+   "artifact: \"page foot Index 197\"": 1,
    "artifact: \"running head Fishing with Maui\"": 4,
    "artifact: \"running head Preface\"": 1,
    "bookmarks: built from heading tags": 39,
@@ -20,9 +21,9 @@
    "links: placed after shared text": 279,
    "retype → H1": 1,
    "retype → H2": 5,
-   "retype → P": 4,
+   "retype → P": 5,
    "structure: empty tag removed (proven empty)": 2,
-   "tag tree index: entries pointing outside the tree removed (IDTree)": 6
+   "tag tree index: entries pointing outside the tree removed (IDTree)": 7
   },
   "deferred": 0,
   "empty_notes_removed": 0,
@@ -60,7 +61,7 @@
   }
  },
  "verify": {
-  "artifact_chars": 6836,
+  "artifact_chars": 6846,
   "figures": {
    "count": 3,
    "generic_or_empty": 0,
@@ -93,7 +94,7 @@
    "LI": 4,
    "Lbl": 3,
    "Link": 303,
-   "P": 1382,
+   "P": 1381,
    "Part": 1,
    "Sect": 40,
    "Span": 1150,

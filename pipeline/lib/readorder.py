@@ -7,6 +7,7 @@ it works on plain entries and on callables the caller passes, so each script kee
     readorder.out_of_order(entries)                # the entries read away from their printed place
     readorder.read_late(entries)                   # small entries read well after their page, inside a longer one's span
     readorder.section_move(root, groups, firsts, span, a, b, before)   # the move_section match (apply.py, review page)
+    readorder.moves(wo)                            # a work order's section moves as a list (one object, or a list of them)
     readorder.page_jumps(seq)                      # pages whose text, in tag order, jumps back up a column (audit, verify)
 
 An entry is {id, parent, style, first, last, depth, text, skip}: one container, in tree order (a parent before its
@@ -17,6 +18,7 @@ import re
 
 GROUPING = {'Sect', 'Art', 'Part', 'Story', 'Article'}      # what apply.py treats as a section (and moves)
 PLACED_ELSEWHERE = ('Note', 'Figure', 'Caption')             # placed where they are referred to: never out of order
+MAX_MOVES = 3                                                # section moves one work order may hold
 LINE = re.compile(r'^(\S+) pp(\d+)-(\d+) depth(\d+): (.*)$', re.S)
 
 def is_container(style, mapped):
@@ -115,6 +117,13 @@ def read_late(entries, flagged=None, small=2, n=LATE_PAGES):
                 out.append({'i': i, 'first': e['first'], 'last': e['last'], 'after': reach})
             reach = e['last'] if reach is None else max(reach, e['last'])
     return sorted(out, key=lambda x: x['i'])
+
+def moves(wo):
+    """The work order's section moves, in the order they are made: move_section is one move (prompt v8) or a list of
+    them (v9). Anything else is no move."""
+    ms = (wo or {}).get('move_section')
+    if isinstance(ms, dict): return [ms]
+    return [m for m in ms if isinstance(m, dict)] if isinstance(ms, list) else []
 
 def section_move(root, groups, firsts, span, a, b, before):
     """The one match for move_section, used by apply.py on the tree it edits and by the review page on the original.

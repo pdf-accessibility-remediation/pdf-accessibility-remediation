@@ -2,13 +2,13 @@
 
 Result: `clans_remediated.pdf`
 
-194 pages · run 2026-10-25T15:30:28 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+194 pages · run 2026-10-31T13:22:49 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.2s · audit 18.4s · reuse saved reply 0.8s · apply 16.6s · verify 25.7s · total 61.7s
+Time: intake 0.2s · audit 21.9s · reuse saved reply 0.6s · apply 13.4s · verify 21.5s · total 57.6s
 
 ## Overview
 
@@ -21,8 +21,8 @@ Time: intake 0.2s · audit 18.4s · reuse saved reply 0.8s · apply 16.6s · ver
 - Manual check (PAC): not run
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 5 (4 deferred by the AI · 0 deferred by the executor · 1 CHECK row)  
-**AI decisions:** 77 in the work order, applied without review by a person  
+**Needs a person:** 6 (5 deferred by the AI · 0 deferred by the executor · 1 CHECK row)  
+**AI decisions:** 76 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** tag-tree index entries 195 · standard tags un-remapped (7.1-7) 45 · title shown in the window 1  
 **veraPDF (WCAG 2.2 machine checks):** 3 WCAG rules failing before (760 checks) → 0 after (0 checks) · 0 newly failing
 
@@ -31,10 +31,11 @@ Automated checks are evidence, not sign-off.
 | Top issues | Pages | Where |
 |---|---|---|
 | Fonts: embedded and mapped to Unicode: 1 not embedded · 0 without ToUnicode | see §7 | [§7](#7-fonts) |
-| Section headings "I" and "II" of "The Remembered Shadow of the Yi Dynasty" are not marked as headings or hea… | PDF 118 (printed 111), PDF 134 (printed 127) | [§10](#10-deferred-by-the-ai) |
-| The contents entry "Seeking Life amidst Death … 47 When the Hibiscus Blooms 73" is a single TOCI holding two… | PDF 6 (printed v) | [§10](#10-deferred-by-the-ai) |
-| Extracted text has stray characters in place of macron and diacritic letters (e.g. "ò", "ôô", "∆", missing l… | PDF 4 (printed iii), PDF 5 (printed iv), PDF 9 (printed 2), PDF 48 (printed 41) | [§10](#10-deferred-by-the-ai) |
-| The "Footnote" style is mapped to P, not Note. | PDF 15 (printed 8), PDF 190 (printed 183) | [§10](#10-deferred-by-the-ai) |
+| Style 'Footnote' (22 elements, veraPDF 7.1-5) mapped to P | PDF 15 (printed 8), PDF 190 (printed 183) | [§10](#10-deferred-by-the-ai) |
+| Contents entry 'Seeking Life amidst Death: The Last Day of the War 47 When the Hibiscus Blooms 73' sits in o… | PDF 6 (printed v) | [§10](#10-deferred-by-the-ai) |
+| Section headings of 'The Remembered Shadow of the Yi Dynasty' (I and II) and any section numerals not tagged… | PDF 118 (printed 111), PDF 134 (printed 127) | [§10](#10-deferred-by-the-ai) |
+| Text-layer glyph problems | 6 pages, PDF 4 (printed iii) to PDF 144 (printed 137) | [§10](#10-deferred-by-the-ai) |
+| … and 1 more | | §10 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -91,10 +92,10 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 (printed cover) | — | Book cover: title "The Clan Records", subtitle "Five Stories of Korea", author Kajiyama Toshiyuki. A brush-and-ink drawing shows a fountain pen lying diagonally across a sheet of manuscript grid paper. |
-| PDF 4 (printed iii) | — | University of Hawai‘i Press logo |
-| PDF 11 (printed 4) | — | Black-and-white studio portrait of the Kajiyama family, Seoul, 1937: a woman in a kimono, a man in a suit holding a baby, a woman in Korean traditional dress, and three young boys seated in front. |
-| PDF 12 (printed 5) | — | Kajiyama Toshiyuki, in a dark kimono and glasses, standing among crowded bookshelves in his personal library in Tokyo, 1971, holding an open book. |
+| PDF 1 (printed cover) | — | Cover of The Clan Records: Five Stories of Korea by Kajiyama Toshiyuki. A brush-and-ink drawing of a fountain pen lying diagonally across a sheet of grid-ruled manuscript paper, on a pale tan ground, below the title and author name. |
+| PDF 4 (printed iii) | — | University of Hawaiʻi Press logo |
+| PDF 11 (printed 4) | — | Black-and-white studio portrait of the Kajiyama family in Seoul, 1937: a woman in a kimono, a man in a suit holding a baby, a woman in a Korean hanbok, and three young boys seated in front. |
+| PDF 12 (printed 5) | — | Black-and-white photograph of Kajiyama Toshiyuki in a kimono and dark-rimmed glasses, holding an open book between tall shelves and stacks of documents in his personal library, Tokyo, 1971. |
 
 ### 2. Headings
 
@@ -104,20 +105,19 @@ Heading levels by style (as applied):
 |---|---|---|---:|
 | Footnote | P | RoleMap | 22 |
 
-### 3. Elements retyped by the AI (34)
+### 3. Elements retyped by the AI (33)
 
 Check each one is (or is not) a heading as decided.
 
 | Page | Text | Before | After |
 |---|---|---|---|
 | PDF 2 (printed i) | The Clan Records | H1 | P |
-| PDF 4 (printed iii) | The Clan Records | H1 | H1 |
 | PDF 4 (printed iii) | FIVE STORIE S OF KORE A | H1 | P |
 | PDF 4 (printed iii) | Translated by Yoshiko Dykstra | H1 | P |
 | PDF 5 (printed iv) | In memory of Ryz and Mitsue Ariyoshi òò | H1 | P |
 | PDF 6 (printed v) | Contents | H1 | H2 |
-| PDF 8 (printed 1) | Introduction | H1 | H2 |
 | PDF 8 (printed 1) | George Akita and Yong-ho Choe | H2 | P |
+| PDF 8 (printed 1) | Introduction | H1 | H2 |
 | PDF 14 (printed 7) | The Clan Records | H1 | H2 |
 | PDF 54 (printed 47) | Seeking Life amidst Death: The Last Day of the War | H1 | H2 |
 | PDF 80 (printed 73) | When the Hibiscus Blooms | H1 | H2 |
@@ -150,35 +150,35 @@ Check each one is (or is not) a heading as decided.
 - Flattened list on PDF 31 (printed 24): "“Yes, I do. He is very pro-Japanese. Is something wrong?” / “Yes, something is wrong. He has not…" (dialogue lines, not a list)
 - Flattened list on PDF 32 (printed 25): "“No, chief. Sl Chin-yng is not that kind of man.” ôô / “You really stick up for him, don’t you? At a…" (dialogue lines, not a list)
 - Flattened list on PDF 32 (printed 25): "“I will do my best.” I bowed angrily. / “Wait. Look at this.” His voice was harsh. He pushed a paper…" (dialogue lines, not a list)
-- Flattened list on PDF 34 (printed 27): "“How are you now?” I asked." (dialogue lines, not a list)
-- Flattened list on PDF 48 (printed 41): "“You mean Mr. Sl Chin-yng?” ôô" (dialogue lines, not a list)
-- Flattened list on PDF 48 (printed 41): "“Don’t criticize the dead! He was not a traitor.”" (dialogue lines, not a list)
-- Flattened list on PDF 88 (printed 81): "“To tell me?”" (dialogue lines, not a list)
-- Flattened list on PDF 88 (printed 81): "“Yes. In America. I don’t think I would benefit much from study in Japan,” said Ch’r-in, looking…" (dialogue lines, not a list)
+- Flattened list on PDF 34 (printed 27): "“How are you now?” I asked." (dialogue line, not a list)
+- Flattened list on PDF 48 (printed 41): "“You mean Mr. Sl Chin-yng?” ôô" (dialogue line, not a list)
+- Flattened list on PDF 48 (printed 41): "“Don’t criticize the dead! He was not a traitor.”" (dialogue line, not a list)
+- Flattened list on PDF 88 (printed 81): "“To tell me?”" (dialogue line, not a list)
+- Flattened list on PDF 88 (printed 81): "“Yes. In America. I don’t think I would benefit much from study in Japan,” said Ch’r-in, looking…" (dialogue line, not a list)
 - Flattened list on PDF 97 (printed 90): "“What are you doing?” Km-ju appeared in the kitchen. ∆ / “Look! This bowl! It’s so beautiful . . .”" (dialogue lines, not a list)
-- Flattened list on PDF 99 (printed 92): "“But I just want to look at it.”" (dialogue lines, not a list)
+- Flattened list on PDF 99 (printed 92): "“But I just want to look at it.”" (dialogue line, not a list)
 - Flattened list on PDF 102 (printed 95): "“Well, what do you think?” / “Well, as you’ve guessed, these probably came from the Yi dynasty…" (dialogue lines, not a list)
 - Flattened list on PDF 102 (printed 95): "Yamanoi all but caressed the incense burner. / “Do you think they’re only cheap trifles?”" (dialogue lines, not a list)
-- Flattened list on PDF 102 (printed 95): "“Indeed. That’s why they’re beautiful.”" (dialogue lines, not a list)
-- Flattened list on PDF 106 (printed 99): "“Yes. You were more pure in those days.”" (dialogue lines, not a list)
+- Flattened list on PDF 102 (printed 95): "“Indeed. That’s why they’re beautiful.”" (dialogue line, not a list)
+- Flattened list on PDF 106 (printed 99): "“Yes. You were more pure in those days.”" (dialogue line, not a list)
 - Flattened list on PDF 128 (printed 121): "“Then you are an artist?” / “Yes. I like this section of Chongno. But I am sad because everything’s…" (dialogue lines, not a list)
 - Flattened list on PDF 128 (printed 121): "“A dance? What kind of dance?” asked Noguchi. / “A court dance from olden times.”" (dialogue lines, not a list)
 - Flattened list on PDF 144 (printed 137): "“Then where can I see it?” / “The best place is the Kynghoeru Hall in the Kyngbok Palace.” ôô" (dialogue lines, not a list)
-- Flattened list on PDF 148 (printed 141): "“Hi! Professor Pak has come already,” Noguchi told her, almost dancing for joy." (dialogue lines, not a list)
-- Flattened list on PDF 153 (printed 146): "“Why did you go to a place like this?”" (dialogue lines, not a list)
-- Flattened list on PDF 154 (printed 147): "“Didn’t you gather peaches and grapes perhaps?”" (dialogue lines, not a list)
-- Flattened list on PDF 154 (printed 147): "“Maybe you were not born yet . . . or was that the year when you were born?”" (dialogue lines, not a list)
+- Flattened list on PDF 148 (printed 141): "“Hi! Professor Pak has come already,” Noguchi told her, almost dancing for joy." (dialogue line, not a list)
+- Flattened list on PDF 153 (printed 146): "“Why did you go to a place like this?”" (dialogue line, not a list)
+- Flattened list on PDF 154 (printed 147): "“Didn’t you gather peaches and grapes perhaps?”" (dialogue line, not a list)
+- Flattened list on PDF 154 (printed 147): "“Maybe you were not born yet . . . or was that the year when you were born?”" (dialogue line, not a list)
 - Flattened list on PDF 154 (printed 147): "“That was the time when some young and foolish Koreans caused a great deal of unrest by shouting out…" (dialogue lines, not a list)
-- Flattened list on PDF 154 (printed 147): "“Yes, the garrison subdued the rioters. . . . Isn’t this enough, now? I’m busy.”" (dialogue lines, not a list)
+- Flattened list on PDF 154 (printed 147): "“Yes, the garrison subdued the rioters. . . . Isn’t this enough, now? I’m busy.”" (dialogue line, not a list)
 - Flattened list on PDF 164 (printed 157): "“No particular reason?” / “That’s right. Its theme is an ancient court dance of the Yi dynasty.”" (dialogue lines, not a list)
-- Flattened list on PDF 164 (printed 157): "“What do you mean?”" (dialogue lines, not a list)
+- Flattened list on PDF 164 (printed 157): "“What do you mean?”" (dialogue line, not a list)
 - Flattened list on PDF 164 (printed 157): "“I’m not.” / “Don’t lie to me! What’s this?”" (dialogue lines, not a list)
-- Flattened list on PDF 164 (printed 157): "“We searched your atelier and found this! Do you still keep saying that you had no deliberate…" (dialogue lines, not a list)
+- Flattened list on PDF 164 (printed 157): "“We searched your atelier and found this! Do you still keep saying that you had no deliberate…" (dialogue line, not a list)
 - Flattened list on PDF 164 (printed 157): "“Yes! That pamphlet had nothing to do with the painting.” / “Then why was it in your atelier?”" (dialogue lines, not a list)
-- Flattened list on PDF 172 (printed 165): "“What’s the trouble?”" (dialogue lines, not a list)
+- Flattened list on PDF 172 (printed 165): "“What’s the trouble?”" (dialogue line, not a list)
 - Flattened list on PDF 184 (printed 177): "“Why do you want to know?” Km-ju asked, in fluent Japanese. ∆ / “Why? Because I know you are using…" (dialogue lines, not a list)
-- Flattened list on PDF 184 (printed 177): "“But we are just friends.”" (dialogue lines, not a list)
-- Flattened list on PDF 184 (printed 177): "“I am sorry. I won’t do it again.”" (dialogue lines, not a list)
+- Flattened list on PDF 184 (printed 177): "“But we are just friends.”" (dialogue line, not a list)
+- Flattened list on PDF 184 (printed 177): "“I am sorry. I won’t do it again.”" (dialogue line, not a list)
 
 ### 5. Text a screen reader could not reach (before this run)
 
@@ -188,8 +188,8 @@ Pages: PDF 6 (printed v), PDF 8–193 (printed 1–186)
 
 ### 6. Hidden from screen readers (artifacts)
 
-- "running heads and folios (top)": every orphan run in the top band on PDF 9–193 (printed 2–186)
-- "folios on chapter-opening pages (bottom)": every orphan run in the bottom band on PDF 6–193 (printed v–186)
+- "running heads and page numbers (top)": every orphan run in the top band on PDF 9–193 (printed 2–186)
+- "page numbers (bottom, chapter openers and contents page)": every orphan run in the bottom band on PDF 6–193 (printed v–186)
 
 ### 7. Fonts
 
@@ -219,25 +219,25 @@ PDF/UA-only, not required for WCAG (not counted):
 
 ### 10. Deferred by the AI
 
-- **Section headings "I" and "II" of "The Remembered Shadow of the Yi Dynasty" are not marked as headings or heading candidates; a person should check them and make them H3.**: The digest shows no separate element for them (the chapter title is followed by a P starting with "I"). [PDF 118 (printed 111), PDF 134 (printed 127)]
-- **The contents entry "Seeking Life amidst Death … 47 When the Hibiscus Blooms 73" is a single TOCI holding two entries.**: Splitting a TOC item is not possible in this work order. [PDF 6 (printed v)]
-- **Extracted text has stray characters in place of macron and diacritic letters (e.g. "ò", "ôô", "∆", missing letters in Korean names).**: The text layer is damaged and the published text must not be changed; a person should check it. [PDF 4 (printed iii), PDF 5 (printed iv), PDF 9 (printed 2), PDF 48 (printed 41)]
-- **The "Footnote" style is mapped to P, not Note.**: Its samples are fragments of ordinary narrative, not real footnotes. A person should check the reading order of these fragments. [PDF 15 (printed 8), PDF 190 (printed 183)]
+- **Style 'Footnote' (22 elements, veraPDF 7.1-5) mapped to P**: Samples are fragments of story dialogue, not real footnotes or notes, so Note would be wrong. A person should check whether any of them is a genuine note. [PDF 15 (printed 8), PDF 190 (printed 183)]
+- **Contents entry 'Seeking Life amidst Death: The Last Day of the War 47 When the Hibiscus Blooms 73' sits in one TOCI**: Two entries share a single TOCI. Splitting it changes the tag tree structure and needs a person. [PDF 6 (printed v)]
+- **Section headings of 'The Remembered Shadow of the Yi Dynasty' (I and II) and any section numerals not tagged as headings**: The digest lists no heading for them (page 118 shows 'P: I'), so I could not target them reliably. [PDF 118 (printed 111), PDF 134 (printed 127)]
+- **Text-layer glyph problems**: Diacritics are lost or garbled in names and words, such as 'Ryòzò', 'Sl Chin-yng', 'Ch’r-in', 'Km-ju' and 'Kyngbok'. Stray marks such as 'ôô' and '∆' appear after some lines. Text is never changed here, so a person should check the text layer. [PDF 4 (printed iii), PDF 5 (printed iv), PDF 31 (printed 24), PDF 48 (printed 41), PDF 97 (printed 90), PDF 144 (printed 137)]
+- **Reading order and caption tying for the two introduction photographs**: The captions are plain P elements with no caption style, so they cannot be tied to their figures in this work order. [PDF 11 (printed 4), PDF 12 (printed 5)]
 
-Reviewer note from the AI: One H1 (book title, PDF 4, printed iii). Contents, Introduction and the five story titles are H2; section numerals are H3. The half-title and title-page lines, the dedication and the byline are demoted to P. Running heads and folios are artifacted by band rules on orphan runs, covering veraPDF 7.1-3. All 32 lists are dialogue lines and are flattened. The "Footnote" role is mapped to P to fix veraPDF 7.1-5. Alt text is written for all four figures (veraPDF 7.3-1). The cover is tagged as a Figure plus separate text P elements.
+Reviewer note from the AI: Heading outline: one H1 (the title-page 'The Clan Records'), H2 for Contents, Introduction and the five story titles, H3 for the Roman-numeral sections. Half-title, series line, translator credit, dedication and the introduction byline are demoted to P. All 32 'lists' are dialogue lines and are flattened. All orphan runs are running heads or folios and are artifacted by band, covering page 6 and pages 9–193 (the digest lists no orphans on page 8's top). The 4 figures get alt text. The veraPDF 7.1-3 failures come from those orphan runs.
 
 ## What was changed
 
 | Change | Count |
 |---|---:|
-| artifact: "folios on chapter-opening pages (bottom)" | 7 |
-| artifact: "running heads and folios (top)" | 360 |
+| artifact: "page numbers (bottom, chapter openers and contents page)" | 7 |
+| artifact: "running heads and page numbers (top)" | 360 |
 | document: title | 1 |
 | document: DisplayDocTitle | 1 |
 | document: /Lang | 1 |
 | heading: RoleMap level | 1 |
 | retype → P | 5 |
-| retype → H1 | 1 |
 | retype → H2 | 7 |
 | retype → H3 | 21 |
 | flatten: false list → paragraphs | 26 |

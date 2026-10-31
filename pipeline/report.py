@@ -97,6 +97,8 @@ record = {
               **({'list_rule': log['list_rule']} if any((log.get('list_rule') or {}).get(k) for k in ('flattened', 'kept', 'skipped')) else {}),
               **({'actual_text_checked': log['actual_text_checked']} if log.get('actual_text_checked') else {}),
               **({'section_move': log['section_move']} if log.get('section_move') else {}),   # where move_section put the section
+              **({'section_moves': log['section_moves']} if len(log.get('section_moves') or []) > 1 else {}),   # each, when there are several
+              **({'figure_order_off': True} if log.get('figure_order_off') else {}),   # fix_figure_order: false for this book
               **({'font_maps': log['font_maps']} if (log.get('font_maps') or {}).get('fonts') or (log.get('font_maps') or {}).get('skipped') else {}),
               'tabs_set': log.get('tabs_set'), **({'text_rule_guard': log['text_rule_guard']} if log.get('text_rule_guard') else {})},
     'verify': {k: v for k, v in ver.items() if k != 'verapdf'},
@@ -591,22 +593,30 @@ if art.get('elements') or art.get('text_rules') or art.get('untagged'):
         L.append(f'- "{r.get("label") or "(no label given)"}": untagged text ' + (f'matching `{r["regex"]}`' if r.get('regex') else 'inside Figures') + f' on {pgr(r["pages"][0], r["pages"][1])}')
     L.append('')
 moves = []
-sm = log.get('section_move')                          # where apply.py put the section (None: not moved)
-pv = next((it.get('context') or {} for it in (ri or {}).get('items') or [] if it.get('id') == 'move_section'), {})
-ms = wo.get('move_section') if isinstance(wo.get('move_section'), dict) else {}
-if ri and len(ms.get('pages') or []) == 2:   # the move as reviewed (changed, or added): the same preview, with the reviewed text rules
+from lib import readorder as RO_
+mlist = RO_.moves(wo)                                 # the moves as applied, in order; where apply.py put each (None: refused)
+sms = log.get('section_moves') or ([log['section_move']] if log.get('section_move') else [])
+pvs = [next((it.get('context') or {} for it in (ri or {}).get('items') or [] if it.get('id') == 'move_section'), {})]
+if ri and mlist:   # the moves as reviewed (changed, or added): the same previews, in order, with the reviewed text rules
     from review import core as RC
     es_ = (ri.get('reading_order') or {}).get('entries')
-    pv = RC.move_preview(es_, ms['pages'][0], ms['pages'][1], ms.get('before_page'), RC.removed_ids(es_, wo)) or pv
-if sm:
-    moves.append(f'Section on {pgr(*sm["pages"])} moved to read before {pg(sm["before_page"])}' + (f', after {pg(sm["after_page"])}' if sm.get('after_page') else '')
-                 + f', inside the {sm["host"]} on {pgr(*sm["host_pages"])}')
-    if pv.get('moved_pages') and (pv['moved_pages'] != sm['pages'] or pv.get('host_pages') != sm['host_pages']):
-        moves.append(f'The executor matched differently from the review page\'s preview, which moved {pgr(*pv["moved_pages"])} into the '
-                     f'{pv.get("host")} on {pgr(*pv["host_pages"])}: earlier steps changed the tag tree. Listen through both places')
-elif wo.get('move_section') and pv.get('candidates') == 1 and pv.get('host_found'):
-    moves.append('The section move was not made, though the review page\'s preview expected it to work: earlier steps changed the tag tree '
-                 '(the reason is under "Decisions not applied")')
+    pvs = [p or q for p, q in zip(RC.chain_previews(es_, [(m.get('pages'), m.get('before_page')) for m in mlist], RC.removed_ids(es_, wo)),
+                                  pvs + [{}] * len(mlist))]
+for k, m in enumerate(mlist):
+    sm, pv = sms[k] if k < len(sms) else None, pvs[k] if k < len(pvs) else {}
+    tag = f'Move {k + 1}: ' if len(mlist) > 1 else ''
+    if sm:
+        moves.append(f'{tag}Section on {pgr(*sm["pages"])} moved to read before {pg(sm["before_page"])}' + (f', after {pg(sm["after_page"])}' if sm.get('after_page') else '')
+                     + f', inside the {sm["host"]} on {pgr(*sm["host_pages"])}')
+        if pv.get('moved_pages') and (pv['moved_pages'] != sm['pages'] or pv.get('host_pages') != sm['host_pages']):
+            moves.append(f'{tag}The executor matched differently from the review page\'s preview, which moved {pgr(*pv["moved_pages"])} into the '
+                         f'{pv.get("host")} on {pgr(*pv["host_pages"])}: earlier steps changed the tag tree. Listen through both places')
+    elif pv.get('candidates') == 1 and pv.get('host_found'):
+        moves.append(f'{tag}The section move was not made, though the review page\'s preview expected it to work: earlier steps changed the tag tree '
+                     '(the reason is under "Decisions not applied")')
+if log.get('figure_order_off'):
+    by_ = 'in review' if rv and (wo_ai or {}).get('fix_figure_order') is not False else 'by the AI'
+    moves.append(f'Figures were not moved back to their page: the figure-order step was turned off for this book ({by_}). Figures read pages away from their page stay there')
 if (log.get('applied') or {}).get('order: figure moved to its page') and not log.get('figure_moves'): moves.append(f'{log["applied"]["order: figure moved to its page"]} figure(s) moved to read on their printed page')
 if wo.get('move_to_document_start'): moves.append('Cover figure moved to the start of the document')
 for fm in by_page(log.get('figure_moves') or []):
