@@ -78,3 +78,150 @@ def test_a_previous_results_page_reads_earlier_version_never_newer(tmp_path):
     assert H.glance_of(V, vrec)['ready'] is False and 'Newer version' not in json.dumps(st)
     core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry('4' * 64)])            # this earlier version was itself shipped
     assert H.glance_of(V, vrec)['status']['text'] == 'Earlier version (shipped as shipment 1 on November 2, 2026; the current version is Session 6)'
+
+# ------------------------------------------------------------------ Mark as Shipped (21 §A, M2), withdrawal (N4)
+PAC_REC = {'by': 'Kim', 'fields': {}, 'items': dict(PAC_OK, contrast={'result': 'fail', 'note': 'grey <b>caption</b> ## on p. 12'})}
+SR_REC = {'by': 'Lee', 'fields': {'screen_reader': 'NVDA 2026.1'}, 'items': SR_OK}
+
+def real_ready(tmp_path, name='run'):
+    """A run that stays Ready when its glance is recomputed: sections with the five safety rows, a review on the review page,
+    and both parts recorded through the writer."""
+    from test_evaluation import make_run as eval_run
+    sub = tmp_path / name; sub.mkdir()
+    R = eval_run(sub, True)
+    rec = core.load(os.path.join(R, 'record.json'))
+    rec['review'] = {'workorder': {'reviewer': 'Pat <i>', 'date': '2026-10-31', 'method': 'page', 'counts': {'approved': 3}},
+                     'decisions': [{'id': 'a', 'kind': 'Alt text', 'label': 'Figure 1', 'page': 1, 'status': 'approved'},
+                                   {'id': 'b', 'kind': 'Alt text', 'label': 'Figure 2', 'page': 1, 'status': 'changed'},
+                                   {'id': 'c', 'kind': 'Heading or tag change', 'label': 'Chapter 1', 'page': 1, 'status': 'rejected'}]}
+    rec['verify'] = {'doc': {'title': 'The Book'}}
+    core.save(os.path.join(R, 'record.json'), rec)
+    M.record(R, 'pac', PAC_REC, say=lambda *a: None, batch=False)
+    M.record(R, 'screen_reader', SR_REC, say=lambda *a: None, batch=False)
+    rec = core.load(os.path.join(R, 'record.json'))
+    assert MP.ship_gate(R, rec)['ok'], MP.ship_gate(R, rec)
+    return R
+
+def test_ship_copies_the_version_and_the_status_reads_shipped(tmp_path):
+    R = real_ready(tmp_path)
+    s = M.ship(R, 'Kim', 'ScholarSpace', 'first release', say=lambda *a: None, batch=False)
+    F = os.path.join(R, 'release', 'shipped', '001')
+    assert s['n'] == 1 and len(s['shipped']) == 19 and s['shipped'][10] == 'T' and s['issues'] == 1 and s['checks'] == {'pac': 1, 'screen_reader': 1}
+    assert sorted(os.listdir(F)) == sorted(['b_remediated.pdf', 'review.md', 'review.html', 'record.json', 'evaluation-results.json',
+                                            'disclosure.md', 'disclosure.html', 'READ-ME.txt'])
+    assert REL.sha_file(os.path.join(F, 'b_remediated.pdf')) == s['pdf']['sha256']
+    assert '**Status:** Shipped · 1 issue noted' in open(os.path.join(F, 'review.md'), encoding='utf-8').read()
+    assert 'Shipped copy (shipment 1, ' in open(os.path.join(F, 'review.html'), encoding='utf-8').read()     # N9
+    assert '**Status:** Shipped · 1 issue noted' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
+    rec = core.load(os.path.join(R, 'record.json'))
+    assert MP.ship_gate(R, rec)['why'].startswith('This version was shipped on ')                       # M1
+    with pytest.raises(S.Refused, match='was shipped on'): M.ship(R, 'Kim', say=lambda *a: None, batch=False)
+    assert not [x for x in os.listdir(os.path.join(R, 'release', 'shipped')) if x.endswith('.tmp')]
+
+def test_ship_refuses_without_a_name_and_when_not_ready(tmp_path):
+    R = real_ready(tmp_path)
+    with pytest.raises(S.Refused, match='Shipped By'): M.ship(R, ' ', say=lambda *a: None, batch=False)
+    with pytest.raises(S.Refused, match="PDF changed since this page was opened"): M.ship(R, 'Kim', shown_sha='0' * 64, say=lambda *a: None, batch=False)
+    os.makedirs(os.path.join(R, 'reviews', 'work'))
+    with pytest.raises(S.Refused, match="can't be marked as shipped now"): M.ship(R, 'Kim', say=lambda *a: None, batch=False)
+
+def test_numbering_never_reuses_a_number_and_a_leftover_tmp_goes(tmp_path):
+    R = real_ready(tmp_path); sd = os.path.join(R, 'release', 'shipped')
+    os.makedirs(os.path.join(sd, '004')); os.makedirs(os.path.join(sd, '007.tmp'))                     # a folder with no entry; a leftover
+    core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry('9' * 64, n=5, withdrawn={'by': 'x', 'date': 'x', 'reason': 'r'})])   # an entry with no folder
+    s = M.ship(R, 'Kim', say=lambda *a: None, batch=False)
+    assert s['n'] == 6 and os.path.isdir(os.path.join(sd, '006')) and not os.path.exists(os.path.join(sd, '007.tmp'))
+
+def test_a_failure_after_write_run_leaves_nothing_saying_shipped(tmp_path, monkeypatch):
+    R = real_ready(tmp_path)
+    before = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
+    def boom(*a, **k): raise RuntimeError('disk full while writing the statement')
+    monkeypatch.setattr(M, '_fill_shipped', boom)
+    with pytest.raises(RuntimeError): M.ship(R, 'Kim', say=lambda *a: None, batch=False)
+    assert os.listdir(os.path.join(R, 'release', 'shipped')) == [] and not os.path.exists(os.path.join(R, 'release', 'shipped.json'))
+    md = open(os.path.join(R, 'review.md'), encoding='utf-8').read(); h = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
+    assert 'Shipped' not in md.split('## Automated')[0] and md == before and 'Status: <strong>Shipped' not in h
+    assert (core.load(os.path.join(R, 'record.json')).get('release') or {}).get('shipped') == []                # the mirror too
+
+def test_withdrawal_and_a_newer_version_shipping(tmp_path):
+    R = real_ready(tmp_path)
+    M.ship(R, 'Kim', say=lambda *a: None, batch=False)
+    with pytest.raises(S.Refused, match='name'): M.withdraw(R, 1, 'Kim', ' ')
+    with pytest.raises(S.Refused, match='no shipment 9'): M.withdraw(R, 9, 'Kim', 'wrong file')
+    w = M.withdraw(R, 1, 'Kim', 'wrong file')
+    assert len(w['withdrawn']['date']) == 19 and w['withdrawn']['date'][10] == 'T'                         # N4: local isoformat, seconds
+    with pytest.raises(S.Refused, match='already withdrawn'): M.withdraw(R, 1, 'Kim', 'again')
+    rec = core.load(os.path.join(R, 'record.json'))
+    assert MP.app_glance(R, rec, rec['glance'])['status']['name'] == 'Ready' and MP.ship_gate(R, rec)['ok']   # falls back; offered again
+    assert M.ship(R, 'Kim', say=lambda *a: None, batch=False)['n'] == 2                                 # the same file, after a withdrawal
+
+# ------------------------------------------------------------------ the accessibility statement (M3–M5, N6, N7)
+from lib import disclosure as DS
+
+def statement(rec, rel=None, ship=None, glance=None):
+    ship = ship or {'n': 1, 'shipped': '2026-11-02T09:00:00', 'by': 'Kim', 'pdf': {'sha256': 'a' * 64, 'session': '006'}}
+    blocks = DS.facts(rec, rel or REL.empty(), ship, glance or {'safety_ok': True, 'verapdf': {}})
+    return blocks, DS.to_md(blocks, 'The Book'), DS.to_html(blocks, 'The Book')
+
+def test_the_split_between_the_ai_and_people(tmp_path):
+    rec = {'review': {'workorder': {'reviewer': 'Pat', 'date': '2026-10-31', 'counts': {'approved': 2, 'changed': 1, 'rejected': 1, 'added': 1}},
+                      'decisions': [{'kind': 'Alt text', 'status': 'approved'}, {'kind': 'Alt text', 'status': 'changed'},
+                                    {'kind': 'Heading or tag change', 'status': 'approved'}, {'kind': 'Heading or tag change', 'status': 'rejected'},
+                                    {'kind': 'Deferred by the AI', 'status': 'approved'}]},
+           'workorder': {'alt': {'f1': 'x', 'f2': 'y'}}, 'apply': {'rejected': [1], 'failed': 0, 'deferred': []}}
+    _, md, _ = statement(rec)
+    assert 'Alt text: 1 approved as proposed, 1 changed by a person' in md and 'Heading or tag change: 1 approved as proposed, 1 rejected by a person' in md
+    assert 'Added by a person: 1' in md and 'Deferred by the AI' not in md and '(1 the software could not apply)' in md
+    rv1 = {'review': {'workorder': {'reviewer': 'Patrick', 'date': '2026-10-26', 'counts': {'approved': 159, 'changed': 0, 'rejected': 0, 'seen': 8, 'accepted_unreviewed': 0}}}}
+    _, md, _ = statement(rv1)                                                               # an older reviewed run: totals only (M3)
+    assert 'In all: 167 approved as proposed' in md and "this run did not record each decision" in md
+    _, md, _ = statement({})
+    assert 'the split between the AI and a person was not recorded for this run' in md
+
+def test_the_text_sentences_follow_the_record():
+    _, md, _ = statement({})
+    assert "No AI wrote or changed the book's printed text." in md and 'OCR' not in md.split('## What the AI')[0]
+    rec = {'apply': {'ocr_words': {'forms': 12}}, 'intake': {'ocr': {'pages_with_ocr_text': [3, 4, 5]},
+                                                               'review': {'ocr_text_approved': {'verdict': 'approved', 'reviewer': 'Kim', 'date': '2026-10-30'}}}}
+    _, md, _ = statement(rec)
+    assert "For 12 words the OCR misread, an AI's reading is given as spoken text only" in md
+    assert 'On 3 scanned pages the text is local OCR (not corrected), approved by Kim on October 30, 2026.' in md
+    _, md, _ = statement({'intake': {'ocr_layer_test': {'verdict': 'usable'}}})
+    assert "The publisher's text layer on scanned pages is OCR; it was checked and kept as published." in md
+
+def test_the_model_only_for_a_real_call_and_verapdf_not_checked():
+    real = {'run': {'model': 'anthropic/claude-sonnet-5.5', 'prompt_file': 'workorder_v8.md', 'prompt_sha256': '4555d20a2fa08a40aa', 'started': '2026-10-20T10:00:00'}}
+    _, md, _ = statement(real)
+    assert 'Model: anthropic/claude-sonnet-5.5. Instructions: workorder\\_v8.md (4555d20a2fa08a40). Decided on October 20, 2026.' in md
+    replay = {'run': dict(real['run'], prompt_file='workorder_v9.md', response_from='v8-g1')}
+    _, md, _ = statement(replay)                                                          # M5: a v8 reply replayed on v9 code
+    assert 'workorder\\_v9' not in md and 'those of an earlier call, not recorded for this run' in md
+    assert 'veraPDF (WCAG 2.2 machine checks): not checked (it did not run on both files).' in md   # N6
+    _, md, _ = statement({}, glance={'safety_ok': True, 'verapdf': {'ran_before': True, 'ran_after': True, 'before_rules': 7, 'after_rules': 0, 'newly_failing': []}})
+    assert '7 rules failing before → 0 after; 0 newly failing.' in md
+
+def test_names_and_notes_are_escaped_in_both_files(tmp_path):
+    evil = '<script>x</script> **bold** ](javascript:)'
+    rel = {'checks': {'schema': REL.SCHEMA, 'screen_reader': [],
+                      'pac': [chk('a' * 64, dict(PAC_OK, contrast={'result': 'fail', 'note': '# heading ' + evil}))]}, 'shipped': []}
+    rel['checks']['pac'][0]['by'] = evil
+    _, md, h = statement({'review': {'workorder': {'reviewer': evil, 'date': '2026-10-31'}}}, rel,
+                         {'n': 1, 'shipped': '2026-11-02T09:00:00', 'by': evil, 'where': evil, 'pdf': {'sha256': 'a' * 64}})
+    assert '<script>' not in h and '&lt;script&gt;' in h and '<script>' not in md and '\\<script\\>' in md and '\\*\\*bold\\*\\*' in md
+    assert 'Draft wording: to be agreed with the sponsors.' in md and 'not a legal certification' in md and 'not legal sign-off' in md
+    assert 'PAC 2026, Contrast: # heading' in md and '\n# heading' not in md and ' we ' not in md.lower() and 'Issues Noted' in md
+
+@pytest.mark.skipif(not os.path.isdir(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'runs', 'review-disclosure', 'regr8')),
+                    reason='the regression run regr8 is local only')
+def test_the_statement_builds_on_the_seven_baseline_records():
+    import report_html as H
+    base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'runs', 'review-disclosure', 'regr8')
+    from lib.glance import n_decisions
+    for b in sorted(os.listdir(base)):
+        p = os.path.join(base, b, 'record.json')
+        if not os.path.isfile(p): continue
+        rec = json.load(open(p, encoding='utf-8'))
+        blocks, md, h = statement(rec, glance=H.glance_of(os.path.join(base, b), rec))
+        n, nn = DS.applied(rec)
+        assert n == n_decisions(rec.get('workorder') or {}) and f'Entries applied: {n - nn}' in md, b
+        assert 'the split between the AI and a person was not recorded' in md, b              # the baselines are unreviewed

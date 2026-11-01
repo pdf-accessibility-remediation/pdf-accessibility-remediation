@@ -200,3 +200,140 @@ def refresh(R, wait=runlock.COMMAND_WAIT, say=print):
     except runlock.Busy as e: raise S.Refused(str(e))
     S.rebuild_batch(R, say)
     return rec
+
+# ------------------------------------------------------------------ Mark as Shipped and withdrawal (stage 4)
+SHIPPED_BANNER = '<p class="replaced" role="note">Shipped copy (shipment {n}, {day}). It is kept as it was shipped; the live dashboard is the run\'s own page.</p>'
+
+def _next_number(sd, entries):
+    """The next shipment number: one past the highest in shipped.json and among the numbered folders. Never reused (M2)."""
+    folders = [int(e.name) for e in os.scandir(sd) if e.is_dir() and e.name.isdigit()] if os.path.isdir(sd) else []
+    return max([int(x.get('n') or 0) for x in entries] + folders + [0]) + 1
+
+def _copy_hashing(src, dst):
+    import hashlib
+    h = hashlib.sha256()
+    with open(src, 'rb') as f, open(dst, 'wb') as g:
+        for b in iter(lambda: f.read(1 << 20), b''): h.update(b); g.write(b)
+    return h.hexdigest()
+
+def _fill_shipped(T, R, entry, say=print):
+    """The shipped folder's files written after write_run(), so they say Shipped: review.md, review.html (with its "Shipped
+    copy" banner, N9), record.json (the local archive only: never served, never zipped; S6, N2), evaluation-results.json,
+    the accessibility statement (disclosure.html, disclosure.md) and READ-ME.txt."""
+    import shutil
+    import report_html as H
+    from lib import disclosure as DS, dates as D
+    rec = S.load(os.path.join(R, 'record.json'))
+    sha = entry['pdf']['sha256']
+    if os.path.isfile(os.path.join(R, 'review.md')): shutil.copy2(os.path.join(R, 'review.md'), os.path.join(T, 'review.md'))
+    if os.path.isfile(os.path.join(R, 'review.html')):
+        page = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
+        mark = '<main id="main" tabindex="-1">'
+        page = page.replace(mark, mark + SHIPPED_BANNER.format(n=entry['n'], day=D.day(entry['shipped'])), 1)
+        put_text(os.path.join(T, 'review.html'), page)
+    shutil.copy2(os.path.join(R, 'record.json'), os.path.join(T, 'record.json'))
+    rel = REL.load(R, rec)
+    put_json(os.path.join(T, 'evaluation-results.json'),
+             {'schema': REL.SCHEMA, 'pdf_sha256': sha, **{s: [c for c in rel['checks'].get(s) or [] if REL.sha_of(c) == sha] for s in REL.SECTIONS}})
+    g = H.glance_of(R, rec)
+    doc = (rec.get('verify') or {}).get('doc') or {}
+    title = (doc.get('title') or doc.get('xmp_title') or '').strip() or ((rec.get('document') or {}).get('file') or 'this book').removesuffix('.pdf')
+    blocks = DS.facts(rec, rel, entry, g)
+    put_text(os.path.join(T, 'disclosure.md'), DS.to_md(blocks, title))
+    put_text(os.path.join(T, 'disclosure.html'), DS.to_html(blocks, title))
+    put_text(os.path.join(T, 'READ-ME.txt'), '\n'.join([
+        title, '', f'Shipment {entry["n"]}: shipped on {D.when(entry["shipped"])} by {entry["by"]}' + (f', published at {entry["where"]}' if entry.get('where') else '') + '.',
+        f'Status: {(g.get("status") or {}).get("text") or REL.SHIPPED}', f'sha256 of {entry["pdf"]["file"]}: {sha}', '',
+        'The accessibility statement is disclosure.html (and disclosure.md). evaluation-results.json holds the evaluation recorded on this file.',
+        'record.json is the run\'s full record, kept here for the archive.', '',
+        'Automated checks are evidence, not legal sign-off.', 'The evaluation is a record of what a person found, not a legal certification.', '']))
+
+def ship(R, by, where=None, note=None, shown_sha=None, via='manual_checks.py', wait=runlock.COMMAND_WAIT, say=print, batch=True):
+    """Mark the current version as shipped (21 §A, review 22 M1, M2). Everything under the record lock:
+    being_made() (in Ship's words); the PDF hashed fresh, equal to what the page showed and to the record (F1's adopt rule
+    when the record has none); then the gate, worked out here from the full glance (report_html.glance_of, then
+    webapp.manualpage.app_glance and ship_gate: current Ready, the file unchanged, no live shipment of this hash). It never
+    reads runs.ready(), which is for display (its review.md path carries no current status).
+    The copy: the PDF (hashed while copied) and han_review.csv into release/shipped/NNN.tmp; shipped.json appended
+    (`shipped` as local isoformat with seconds, note (a)); write_run(); the Shipped review.md, review.html, record.json,
+    evaluation results and the statement written into NNN.tmp; then the rename to NNN, the last step. Any failure before
+    or at the rename: NNN.tmp removed, shipped.json restored, and write_run() run again so no page says Shipped.
+    Returns the shipment."""
+    import shutil
+    from review.core import clean_text
+    import report_html as H
+    from webapp import manualpage as MP
+    R = os.path.abspath(R); rj = os.path.join(R, 'record.json')
+    by = clean_text(by or '', one_line=True)[:REL.NAME_MAX]
+    where = clean_text(where or '', one_line=True)[:REL.FIELD_MAX] or None
+    note = clean_text(note or '', one_line=True)[:REL.NOTE_MAX] or None
+    if not by: raise S.Refused('Enter your name in "Shipped By".')
+    if not os.path.exists(rj): raise S.Refused('This book has no finished result yet, so there is nothing to ship.')
+    try:
+        with runlock.record_lock(R, wait):
+            why = being_made(R)
+            if why: raise S.Refused(ship_words(why))
+            rec = S.load(rj); doc = rec.setdefault('document', {})
+            out = doc.get('output')
+            if not out or not os.path.isfile(os.path.join(R, out)): raise S.Refused('This book\'s remediated PDF is missing, so it can\'t be marked as shipped.')
+            disk = REL.sha_file(os.path.join(R, out))
+            if shown_sha and shown_sha != disk: raise S.Refused(ship_words(CHANGED))
+            if not doc.get('output_sha256'): adopt_hash(R, rec, disk)
+            elif doc['output_sha256'] != disk: raise S.Refused(ship_words(NOT_DESCRIBED))
+            rel = REL.load(R, rec)
+            g = MP.app_glance(R, rec, H.glance_of(R, rec), rel)
+            gate = MP.ship_gate(R, rec, g, rel)
+            if not gate['ok']: raise S.Refused(gate['why'])
+            sd = os.path.join(R, 'release', 'shipped'); os.makedirs(sd, exist_ok=True)
+            for e in os.scandir(sd):                                  # a leftover from a stop in the middle
+                if e.name.endswith('.tmp'): shutil.rmtree(e.path, ignore_errors=True)
+            n = _next_number(sd, rel['shipped'])
+            final, T = os.path.join(sd, f'{n:03d}'), os.path.join(sd, f'{n:03d}.tmp')
+            if os.path.exists(final): raise S.Refused(f'Shipment {n} already has a folder. Whoever looks after the app can check it.')
+            os.makedirs(T)
+            sp = REL.paths(R)['shipped']; was = open(sp, encoding='utf-8').read() if os.path.exists(sp) else None
+            try:
+                got = _copy_hashing(os.path.join(R, out), os.path.join(T, out))
+                if got != disk: raise S.Refused(ship_words(CHANGED))
+                if os.path.isfile(os.path.join(R, 'han_review.csv')): shutil.copy2(os.path.join(R, 'han_review.csv'), os.path.join(T, 'han_review.csv'))
+                sid = (rec.get('review') or {}).get('session')
+                pac, sr = (REL.latest(rel, s, disk) for s in ('pac', 'screen_reader'))
+                entry = {'n': n, 'shipped': now(), 'by': by, **({'where': where} if where else {}), **({'note': note} if note else {}),
+                         'pdf': {'sha256': disk, 'file': out, 'session': sid if sid else None}, 'folder': f'shipped/{n:03d}', 'via': via, 'code': code(),
+                         'issues': REL.evaluation(rel, disk)['issues'], 'checks': {'pac': (pac or {}).get('id'), 'screen_reader': (sr or {}).get('id')}}
+                put_json(sp, (rel['shipped'] or []) + [entry])
+                write_run(R, rec, say)
+                _fill_shipped(T, R, entry, say)
+                os.rename(T, final)                                   # whole or not at all: the last step under the lock
+            except BaseException:
+                shutil.rmtree(T, ignore_errors=True)
+                if was is None:
+                    try: os.remove(sp)
+                    except FileNotFoundError: pass
+                else: put_text(sp, was)
+                try: write_run(R, S.load(rj), say)                    # so no page says Shipped (M2)
+                except Exception as e: say(f'note: after a failed shipment the pages were not redrawn ({type(e).__name__}: {e}); the next refresh redraws them')
+                raise
+    except runlock.Busy as e: raise S.Refused(str(e))
+    if batch: S.rebuild_batch(R, say)
+    return entry
+
+def withdraw(R, n, by, reason, wait=runlock.COMMAND_WAIT, say=print):
+    """Mark shipment n withdrawn (command line only; 01 rec 11, review 22 N4): `withdrawn: {by, date (local isoformat with
+    seconds), reason}`; nothing is deleted. Refused for an unknown or already withdrawn n, or without a name and a reason."""
+    from review.core import clean_text
+    R = os.path.abspath(R)
+    by = clean_text(by or '', one_line=True)[:REL.NAME_MAX]; reason = clean_text(reason or '', one_line=True)[:REL.NOTE_MAX]
+    if not by or not reason: raise S.Refused('A withdrawal needs a name (--by) and a reason (--reason).')
+    try:
+        with runlock.record_lock(R, wait):
+            rel = REL.load(R); xs = rel['shipped'] or []
+            s = next((x for x in xs if str(x.get('n')) == str(n)), None)
+            if s is None: raise S.Refused(f'There is no shipment {n}.')
+            if s.get('withdrawn'): raise S.Refused(f'Shipment {n} is already withdrawn.')
+            s['withdrawn'] = {'by': by, 'date': now(), 'reason': reason}
+            put_json(REL.paths(R)['shipped'], xs)
+            write_run(R, S.load(os.path.join(R, 'record.json')), say)
+    except runlock.Busy as e: raise S.Refused(str(e))
+    S.rebuild_batch(R, say)
+    return s
