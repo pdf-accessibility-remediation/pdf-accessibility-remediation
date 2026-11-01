@@ -166,6 +166,49 @@ def test_finish_session_records_who_set_each_choice(tmp_path):
     row = S.summary_row(s)
     assert row['carried'] == 4 and row['since_start'] == 1
 
+def test_reading_order_cards_carry_and_reach_the_record(tmp_path):
+    """A reading-order finding is a card like any other: its choice (seen, with a note) carries to the next session, is
+    listed in record.json review.decisions, and its note goes to review.json's notes, as review/core.py finish writes them."""
+    dg = digest(); ai = ai_order(); A = str(tmp_path)
+    es = [{'id': 'body', 'parent': None, 'style': 'Sect', 'first': 1, 'last': 5, 'depth': 1, 'text': 'Body', 'skip': False},
+          {'id': 'ab', 'parent': None, 'style': 'Sect', 'first': 2, 'last': 2, 'depth': 1, 'text': 'About', 'skip': False},
+          {'id': 'end', 'parent': None, 'style': 'Sect', 'first': 4, 'last': 4, 'depth': 1, 'text': 'End', 'skip': False}]
+    S.save(os.path.join(A, 'fulltext.json'), {'reading_order': es, 'page_jumps': [{'page': 3, 'jumps_up': 2, 'runs': 9}]})
+    ro = core.reading_order_for(A, dg, ai)
+    items = core.build_items(ai, dg, ro['entries'], ro)
+    ids = {it['id'] for it in items if it['key'] == 'reading_order'}
+    assert ids == {'reading_order:jump:3'}                     # the sections read in page order: only the page jump is a finding
+    dec = dict(ALL, **{'reading_order:jump:3': {'status': 'seen', 'note': 'fix the column order in Acrobat'}})
+    src = {k: dict(v, ai=next(it['ai'] for it in items if it['id'] == k), set_in='001') for k, v in dec.items()}
+    carried, missed = S.carry(items, src)
+    assert carried['reading_order:jump:3']['status'] == 'seen' and not missed
+    row = next(r for r in S.decision_list(items, dec) if r['id'] == 'reading_order:jump:3')
+    assert row['status'] == 'seen' and row['note'] == 'fix the column order in Acrobat' and row['kind'] == 'Reading order check'
+    wo = core.apply_decisions(ai, items, dec)
+    assert wo == ai                                            # nothing applied: a finding is not in the work order
+
+def test_reviewer_notes_are_named_by_their_card():
+    rv = {'notes': {'reading_order:jump:10': 'fix the column order in Acrobat', 'add:alt:21 0 R': 'map', 'gone:1': 'old card'}}
+    decisions = [{'id': 'reading_order:jump:10', 'label': 'Text on PDF 10 jumps back up the page', 'status': 'seen'}]
+    rows = S.note_rows(rv, decisions, [{'id': 'gone:2', 'label': 'from the page'}])
+    assert rows == [('Text on PDF 10 jumps back up the page', 'reading_order:jump:10', 'fix the column order in Acrobat'),
+                    ('Your addition: alt text, 21 0 R', 'add:alt:21 0 R', 'map'),
+                    (None, 'gone:1', 'old card')]                         # no label known: review.md prints the id alone
+    assert S.note_rows(rv, None, [{'id': 'reading_order:jump:10', 'label': 'from review_items.json'}])[0][0] == 'from review_items.json'
+
+def test_an_added_move_carries_to_a_reopened_session(tmp_path):
+    """A reopen copies the session's additions; the page keeps one only while today's addable lists its target, which
+    for a section move is the flagged section's id: stable while the kept digest and fulltext are the same."""
+    dg = digest(); ai = ai_order(); A = str(tmp_path)
+    es = [{'id': 'part', 'parent': None, 'style': 'Part', 'first': 1, 'last': 5, 'depth': 1, 'text': 'Front', 'skip': False, 'group': True, 'firsts': [1, 3, 2, 5]},
+          {'id': 'front', 'parent': 'part', 'style': 'Sect', 'first': 1, 'last': 1, 'depth': 2, 'text': 'Front', 'skip': False, 'group': True, 'firsts': [1]},
+          {'id': 'body', 'parent': 'part', 'style': 'Sect', 'first': 3, 'last': 4, 'depth': 2, 'text': 'Body', 'skip': False, 'group': True, 'firsts': [3]},
+          {'id': 'about', 'parent': 'part', 'style': 'Sect', 'first': 2, 'last': 2, 'depth': 2, 'text': 'About', 'skip': False, 'group': True, 'firsts': [2]},
+          {'id': 'end', 'parent': 'part', 'style': 'Sect', 'first': 5, 'last': 5, 'depth': 2, 'text': 'End', 'skip': False, 'group': True, 'firsts': [5]}]
+    S.save(os.path.join(A, 'fulltext.json'), {'reading_order': es})
+    ids = lambda: [t['id'] for t in core.addable(ai, dg, core.reading_order_for(A, dg, ai)).get('move_section', [])]
+    assert ids() == ['add:move_section:about'] == ids()
+
 # ------------------------------------------------------------------ promotion
 def test_promote_moves_the_old_result_and_keeps_a_record_at_the_top(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)

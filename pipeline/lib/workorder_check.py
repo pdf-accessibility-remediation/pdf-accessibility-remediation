@@ -3,13 +3,18 @@
 decide.py runs them on the model's reply; review_workorder.py runs the same checks on a work order a person has
 reviewed, so an edit is held to the same rules as the AI's decision.
 
-    dropped = check(wo, digest, not_sent, words_sent)
+    dropped = check(wo, digest, not_sent, words_sent, order=None)
 
 wo is changed in place: items that fail are removed and listed in `dropped` as {where, item, why}.
 not_sent: figure objs (and "page N" for page figures) whose image was not sent to the model.
 words_sent: ids of the OCR word forms whose word sheet was sent.
+order: the audit's full reading order (fulltext.json's reading_order), for the section-move rule; without it the
+digest's reading_order lines are used. A move is kept only when the audit finds a section read out of place
+(lib/readorder.py) inside its pages, or at the page it lands before (of two swapped sections, either may be the one
+flagged): a move the audit gives no reason for only re-nests a section or leaves it where it is.
 """
 import re, unicodedata
+from lib import readorder
 
 ALLOWED = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'Span', 'Caption', 'Note', 'Div', 'Figure'}
 KNOWN = {'schema', 'sections', 'artifacts', 'document', 'rolemap', 'merges', 'actual_text', 'retype', 'flatten', 'alt',
@@ -30,7 +35,7 @@ def distance(ocr, reading):
         row = new
     return row[-1]
 
-def check(wo, digest, not_sent, words_sent):
+def check(wo, digest, not_sent, words_sent, order=None):
     N = digest['source']['pages']
     objs = ({e['obj'] for e in digest['elements']} | {f['obj'] for f in digest['figures']} | {h['obj'] for h in digest.get('headings', [])}
             | {c['obj'] for c in digest.get('heading_candidates', [])})
@@ -154,10 +159,23 @@ def check(wo, digest, not_sent, words_sent):
             if k in sec and not (len(sec[k]) == 2 and all(page_ok(p) for p in sec[k])): drop('sections', {k: sec.pop(k)}, 'bad page range')
         if 'toc_pages' in sec: sec['toc_pages'] = [p for p in sec['toc_pages'] if page_ok(p)]
         if 'index_from' in sec and not page_ok(sec['index_from']): drop('sections', {'index_from': sec.pop('index_from')}, 'bad page')
-    if 'move_section' in wo:
-        ms = wo['move_section']
-        if not (len(ms.get('pages', [])) == 2 and all(page_ok(p) for p in ms['pages']) and page_ok(ms.get('before_page'))):
-            drop('move_section', wo.pop('move_section'), 'bad pages')
+    if 'move_section' in wo:                         # one move (v8) or a list (v9): each checked, the shape kept
+        ms, kept = wo['move_section'], []
+        es = order if order else readorder.parse_lines(digest.get('reading_order'))
+        away = [(es[x['i']]['first'], es[x['i']]['last']) for x in readorder.out_of_order(es)] if es else None   # None: no order to judge by
+        for m in [ms] if isinstance(ms, dict) else ms if isinstance(ms, list) else [ms]:
+            if not (isinstance(m, dict) and len(m.get('pages') or []) == 2 and all(page_ok(p) for p in m['pages']) and page_ok(m.get('before_page'))):
+                drop('move_section', m, 'bad pages')
+            elif away is not None and not any(m['pages'][0] <= f <= m['pages'][1] or f == m['before_page'] for f, _ in away):
+                drop('move_section', m, 'the audit finds no section read out of place in these pages or where it lands')
+            elif len(kept) == readorder.MAX_MOVES: drop('move_section', m, f'more than {readorder.MAX_MOVES} section moves')
+            elif any(m['pages'][0] <= k['pages'][1] and k['pages'][0] <= m['pages'][1] for k in kept):
+                drop('move_section', m, 'its pages overlap another section move')
+            elif any(k['pages'][0] <= m['before_page'] <= k['pages'][1] or m['pages'][0] <= k['before_page'] <= m['pages'][1] for k in kept):
+                drop('move_section', m, 'it lands inside the pages of another section move')
+            else: kept.append(m)
+        if not kept: wo.pop('move_section')
+        else: wo['move_section'] = kept[0] if isinstance(ms, dict) else kept
     if 'links' in wo:
         for f_, r_ in wo['links'].get('toc_text_fixes', []):
             try: re.compile(f_)

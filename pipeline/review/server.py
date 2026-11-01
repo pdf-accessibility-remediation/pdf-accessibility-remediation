@@ -13,7 +13,9 @@ Routes (all call review/core.py; a later front end can replace this file and pag
                                  gaps (no H1, figures without alt): the Finish dialog's check. Refused once Finish has started
     POST /keep    the same body → saved to review_decisions.json only: the page's auto-save, about a second after each
                                  change (the browser's copy stays as a backup); refused once Finish has started; a draft
-                                 older than the one on disk (saved_at) is not written. Returns the gaps still open
+                                 older than the one on disk (saved_at) is not written. Returns the gaps still open.
+                                 /save and /keep also return each section move as reviewed (the AI's, changed or not, and added ones): its preview, in the
+                                 order the executor makes them and with the reviewed text rules (move_previews: {card id: preview})
     POST /finish  {…, accept_unreviewed, gaps_ack}            → review.json and the reviewed workorder.json; the server stops.
                                  Not finished yet, but nothing wrong: 200 with needs: "unreviewed" (and the list) while
                                  items are unreviewed, or needs: "gaps" while a gap has no reason, unless the body accepts
@@ -240,8 +242,10 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: nothing more is kept.'})
                     wrote = keep()
-                gaps = core.preview(R, build()[0])[1]          # the gaps still open, for the count beside the save status
-                return self.send(200, {'kept': wrote, **({} if wrote else {'older': True}), 'gaps': gaps})   # older: a newer draft is on disk
+                wo = build()[0]
+                gaps = core.preview(R, wo)[1]                  # the gaps still open, for the count beside the save status
+                return self.send(200, {'kept': wrote, **({} if wrote else {'older': True}), 'gaps': gaps,    # older: a newer draft is on disk
+                                       'move_previews': core.move_previews(data, decisions, additions, wo)})   # each move card's preview
             if self.path == '/save':                        # the Finish dialog's check (it saves the draft too; auto-save uses /keep)
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: nothing more is saved.'})
@@ -250,7 +254,8 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 dropped, gaps = core.preview(R, wo)
                 for d in dropped: d['card'] = core.card_of(items, d)   # the card a dropped choice belongs to, for a link
                 return self.send(200, {'saved': True, 'changes': len(core.diff(ai, wo)), 'dropped': dropped, 'refused': refused,
-                                       'gaps': gaps, 'unreviewed': len(core.unreviewed(items, decisions))})
+                                       'gaps': gaps, 'unreviewed': len(core.unreviewed(items, decisions)),
+                                       'move_previews': core.move_previews(data, decisions, additions, wo)})
             if self.path == '/finish':
                 if not reviewer: return self.send(400, {'error': 'Enter your name as the reviewer first.'})
                 with write_lock:
