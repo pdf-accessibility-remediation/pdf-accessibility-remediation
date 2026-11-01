@@ -164,7 +164,7 @@ def earlier_status(rel, sha, current_label):
     """The status on a previous result's own page (reviews/versions/<id>/): never the run's status worked out against this
     older file, which would name itself as "Newer version (Session 4)" on Session 4's page (CLAUDE.md note (c))."""
     s = next((x for x in reversed(rel.get('shipped') or []) if sha and sha_of(x) == sha), None)
-    shipped = (f'shipped as shipment {s.get("n")} on {day(s.get("shipped"))}' + (', since withdrawn' if s.get('withdrawn') else '') + '; ') if s else ''
+    shipped = (f'shipped as Shipment {s.get("n")} on {day(s.get("shipped"))}' + (', since withdrawn' if s.get('withdrawn') else '') + '; ') if s else ''
     return {'name': EARLIER, 'text': f'{EARLIER} ({shipped}the current version is {current_label})', 'newer': None, 'shipment': None,
             'issues': 0, 'current': {'name': NOT_READY, 'issues': 0}}
 
@@ -363,7 +363,7 @@ def section_md(rel, cur, pdf):
     sr = _part_md(rel, 'screen_reader', cur)
     L += sr if sr else ['**Screen-reader test.** Listen with a screen reader and record which one and its version:', ''] + items('screen_reader')
     for s in rel.get('shipped') or []:                       # one line per shipment (stage 4); none on a run never shipped
-        L += ['', f'Shipped on {day(s.get("shipped"))} by {md_text(s.get("by"))} (shipment {s.get("n")}' + (f', {md_text(s["where"])}' if s.get('where') else '') + ')'
+        L += ['', f'Shipped on {day(s.get("shipped"))} by {md_text(s.get("by"))} (Shipment {s.get("n")}' + (f', {md_text(s["where"])}' if s.get('where') else '') + ')'
                   + (f'; withdrawn on {day(s["withdrawn"].get("date"))} by {md_text(s["withdrawn"].get("by"))}: {md_text(s["withdrawn"].get("reason"))}' if s.get('withdrawn') else '') + '.']
     return L
 

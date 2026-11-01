@@ -102,7 +102,7 @@ def facts(rec, rel, ship, glance):
     rvw = (rec.get('review') or {}).get('workorder') or {}
     ver = f'the version reviewed on {D.day(rvw.get("date"))}' if rvw.get('date') else 'the version applied without a review by a person'   # P2: no session numbers
     B = [(None, [DRAFT]),
-         ('This File', [f'{doc.get("output") or "the remediated PDF"}, {ver}, shipped on {D.day(ship.get("shipped"))} by {ship.get("by")} (shipment {ship.get("n")}).']
+         ('This File', [f'{doc.get("output") or "the remediated PDF"}, {ver}, shipped on {D.day(ship.get("shipped"))} by {ship.get("by")} (Shipment {ship.get("n")}).']
           + ([f'Published at: {ship["where"]}.'] if ship.get('where') else []) + ([f'Note: {ship["note"]}'] if ship.get('note') else [])
           + [f'sha256: {sha}, which identifies this exact file.']),
          ('How It Was Made Accessible', ['The PDF was remediated by a semi-automated process toward WCAG 2.1 AA. Local software measured the document '

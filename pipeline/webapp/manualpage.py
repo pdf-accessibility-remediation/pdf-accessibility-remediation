@@ -77,7 +77,7 @@ def ship_gate(R, rec, g=None, rel=None):
     rel = rel if rel is not None else REL.load(R, rec)
     g = g if g is not None else app_glance(R, rec, rec.get('glance') or {'ship': []}, rel)
     live = REL.live_shipment(rel, app_sha(R, rec))
-    if live: return {'ok': False, 'shipped': live, 'why': f'This version was shipped on {D.day(live.get("shipped"))} (shipment {live.get("n")}).'}
+    if live: return {'ok': False, 'shipped': live, 'why': f'This version was shipped on {D.day(live.get("shipped"))} (Shipment {live.get("n")}).'}
     why = refusal(R, rec, disk_state(R, rec))
     if why: return {'ok': False, 'shipped': None, 'refused': True, 'why': M.ship_words(why)}
     cur = ((g.get('status') or {}).get('current') or {}).get('name')

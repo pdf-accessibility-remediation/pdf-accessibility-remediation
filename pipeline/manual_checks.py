@@ -41,7 +41,7 @@ def show(R):
         for c in rel['checks'].get(sec) or []:
             print(f'  {sec} #{c["id"]}: {c.get("by")} {c.get("recorded")} · {REL.state(rel, sec, c, disk)} · '
                   f'{len(REL.issues(c, sec))} issue(s) · sha256 {REL.sha_of(c)[:12]}')
-    for s_ in rel['shipped']: print(f'  shipment {s_.get("n")}: {s_.get("by")} {s_.get("shipped")}' + (' (withdrawn)' if s_.get('withdrawn') else ''))
+    for s_ in rel['shipped']: print(f'  Shipment {s_.get("n")}: {s_.get("by")} {s_.get("shipped")}' + (' (withdrawn)' if s_.get('withdrawn') else ''))
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
@@ -67,9 +67,9 @@ def main():
         elif a.refresh: M.refresh(R); print(f'refreshed: {R}')
         elif a.ship:
             s = M.ship(R, a.by, a.where, a.note, shown_sha=a.for_sha, via='manual_checks.py')
-            print(f'shipped: shipment {s["n"]} by {s["by"]} on {s["shipped"]} (release/{s["folder"]}/)')
+            print(f'shipped: Shipment {s["n"]} by {s["by"]} on {s["shipped"]} (release/{s["folder"]}/)')
         elif a.withdraw_shipment is not None:
-            s = M.withdraw(R, a.withdraw_shipment, a.by, a.reason); print(f'withdrawn: shipment {s["n"]} by {s["withdrawn"]["by"]}')
+            s = M.withdraw(R, a.withdraw_shipment, a.by, a.reason); print(f'withdrawn: Shipment {s["n"]} by {s["withdrawn"]["by"]}')
         if a.show or not (a.record or a.refresh or a.ship or a.withdraw_shipment is not None): show(R)
     except REL.Invalid as e:
         sys.exit('refused:\n' + '\n'.join(f'  {f}: {m}' for f, m in e.errors))
