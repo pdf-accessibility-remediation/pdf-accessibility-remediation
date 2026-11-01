@@ -399,3 +399,24 @@ def test_the_app_reads_the_status_against_the_file_on_disk(tmp_path):
     assert MP.app_sha(R, rec) == disk and not rec['document'].get('output_sha256')
     assert G.with_release(rec['glance'], rec, REL.load(R))['status']['name'] == 'Pending Evaluation'   # the record's hash alone: none
     assert runs.ready(R, rec)['status'] == 'Ready' and MP.strip(R, rec)['status'] == 'Ready'
+
+def test_a_pdf_copied_back_by_hand_is_a_changed_file_never_ready(tmp_path):
+    """Review 18 K1: results were recorded on 001's PDF; a later apply made 002 (the record's hash); then 001's PDF is
+    copied back over 002 by hand. The record's hash comes first, so the status is about 002, and the file on disk reads
+    as changed: never Ready in runs.ready(), the strip or status['current'] (stage 4's gate)."""
+    from webapp import manualpage as MP, runs
+    R = finished_run(tmp_path); disk = REL.sha_file(os.path.join(R, 'b_remediated.pdf'))   # the file on disk is 001's
+    os.makedirs(os.path.join(R, 'release'))
+    core.save(os.path.join(R, 'release', 'checks.json'), rel(pac=[chk(disk, PAC_OK)], sr=[chk(disk, SR_OK)])['checks'])
+    rec = core.load(os.path.join(R, 'record.json')); rec.pop('review'); rec['document']['output_sha256'] = C   # 002's
+    rec['glance'] = {'schema': G.SCHEMA, 'ship': [{'what': w, 'ok': True, 'text': 'x'} for w in G.SHIP_BASE], 'safety': FIVE, 'needs_person': {'total': 0}}
+    assert MP.app_sha(R, rec) == C and MP.disk_state(R, rec)['same'] is False
+    r = runs.ready(R, rec)
+    assert r['answer'] == 'No' and r['status'] == MP.CHANGED_STATUS
+    s = MP.strip(R, rec)
+    assert s['status'] == MP.CHANGED_STATUS and s['refusal'] == MP.CHANGED_BY_HAND
+    g = MP.app_glance(R, rec, rec['glance'])
+    assert g['ready'] is False and g['status']['current']['name'] == 'Not Ready'
+    core.save(os.path.join(R, 'record.json'), rec)                                # the evaluation page reads the record from disk
+    st = MP.state(R, 'r')
+    assert st['status'] == MP.CHANGED_STATUS and st['refusal'] == MP.CHANGED_BY_HAND
