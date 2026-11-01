@@ -299,8 +299,9 @@ def test_a_finished_session_older_than_the_current_result_never_blocks(tmp_path)
     sessions_at(R, '005', [('004', 'finished'), ('005', 'applied'), ('006', 'finished')])   # 6: newer, finished (applying, or failed)
     assert S.newer(R)['finished']['id'] == '006' and runs.unapplied(R)['id'] == '006'
     with pytest.raises(S.Refused, match='Session 6 is finished'): M.record(R, 'pac', pac_data(), say=lambda *a: None)
-    sessions_at(R, 'ai', [('001', 'finished'), ('002', 'applied')])          # a record that lags: the newest done session decides
-    assert S.newer(R)['finished'] is None
+    sessions_at(R, 'ai', [('001', 'finished'), ('002', 'applied')])          # a record that lags: Apply hides 1 (the newest done
+    assert S.newer(R)['finished'] is None                                    # session decides), and Record is refused
+    with pytest.raises(S.Refused, match='out of step'): M.record(R, 'pac', pac_data(), say=lambda *a: None)
 
 def test_the_newer_version_line_comes_from_the_session_files(tmp_path):
     R = finished_run(tmp_path); disk = REL.sha_file(os.path.join(R, 'b_remediated.pdf'))

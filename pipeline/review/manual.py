@@ -25,6 +25,7 @@ PROMOTING = 'A new version was being put in place and did not finish. Whoever lo
 MAKING = 'A new version of this book is being made. Check it once it is done.'
 CHANGED = 'The PDF changed since this page was opened. Check the new version, then record again.'
 NOT_DESCRIBED = 'The remediated PDF on disk is not the one this book\'s report describes, so nothing can be recorded for it.'
+OUT_OF_STEP = 'This book\'s record is out of step with its review sessions, so nothing can be recorded for it. Whoever looks after the app can check it.'
 NOT_LAST_REVIEW = 'The PDF on disk is not the one this book\'s last review produced, so nothing can be recorded for it.'
 
 def now(): return datetime.datetime.now().isoformat(timespec='seconds')
@@ -37,10 +38,14 @@ def code():
     except (OSError, subprocess.SubprocessError): return None
 
 def being_made(R):
-    """Why nothing can be recorded now (a new version is being made), or None."""
+    """Why nothing can be recorded now (a new version is being made, or the record is out of step with the sessions:
+    an applied session newer than the record's own, which no apply leaves behind), or None."""
     p = S.P(R)
     if os.path.exists(p['promoting']): return PROMOTING
-    fin = S.newer(R)['finished']                         # newer than the current result: a replaced one never blocks
+    rec = S.load(os.path.join(R, 'record.json')) or {}
+    cur = S.sid_n(S.current_id(rec))                     # an applied session newer than the record's own: the record lags
+    if any(x and x.get('status') == 'applied' and S.sid_n(x.get('id')) > cur for x in S.sessions(R)): return OUT_OF_STEP
+    fin = S.newer(R, rec)['finished']                         # newer than the current result: a replaced one never blocks
     if fin: return (f'Session {int(fin["id"])} is finished and not yet applied: its result will replace this version. '
                     'Check the new version once it is applied.')
     if os.path.isdir(p['work']): return MAKING

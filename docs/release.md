@@ -79,6 +79,8 @@ be the same. Nothing relies on an apply making new bytes.
     `reviews/promoting.json` exists (a promotion that did not finish). A finished session that a later one replaced (its
     apply failed, then a new review was applied) never blocks: one rule, `review/sessions.py` `newer()`, decides this,
     the app's Apply offer and the "Newer version" line.
+  - the record is out of step with the review sessions: an applied session is newer than the session record.json names
+    (no apply leaves this behind; refused rather than filing a check under the wrong version).
 - **A check whose refresh fails is taken back.** If rewriting the record after a check fails (for example an import
   error), `release/checks.json` is put back as it was and the error is raised, so a check never stands beside a record
   that lacks its hash.
