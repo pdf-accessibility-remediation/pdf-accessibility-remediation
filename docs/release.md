@@ -40,7 +40,7 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
   a result, and a "Fail" needs a note. A "Fail" does not hold the book back; it is kept in the report with its note for
   future reference and further review.'
 - **Each part** is a section headed "PAC 2026" or "Screen-Reader Test". It holds a form: **Checked By** (empty at first:
-  no name is ever filled in for you, here or in the run page's dialogs; only your own unfinished answers come back), its fields, and
+  no name is ever filled in for you, here or in the run page's dialogs, not even from an unfinished draft), its fields, and
   one group per item with **Pass** / **Fail** / **Not Applicable** (PAC's WCAG check: Pass or Fail) and **Notes**. A note
   becomes required when the choice asks for one (a Fail; Not Applicable on something the pipeline found, with a hint such
   as "This book has 12 tables"; a Pass where the last results recorded for this version failed the item). **Pages Checked**
@@ -48,7 +48,8 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
 - **Saving is automatic,** as on the review page: about a second after each change (`release/drafts.json`), one save at a
   time, the browser keeping a copy; "All changes saved" / "Saving…" beside the Record button, not announced; a failed
   save is announced (not when the page is leaving after a Record). A draft older than the one saved is never written over
-  it (two tabs). A draft started on an earlier version is not used as answers: **Start from These Notes** copies its
+  it (two tabs). A draft never keeps "Checked By" (on the server or in the browser): it carries no name to the next
+  person, and a draft saved before 2026-11-01 has its name dropped when it loads. A draft started on an earlier version is not used as answers: **Start from These Notes** copies its
   versions, pages and notes, never its results or "Checked By", as it does for earlier results.
 - **Record the PAC 2026 Results / Record the Screen-Reader Test Results** sends the answers to the same code
   `manual_checks.py` uses. Problems come back from that code, each shown under its field and in a summary that takes
@@ -292,6 +293,8 @@ then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
 - **The record ZIP** is for library staff (Patrick, 2026-11-01). It holds one folder named as the ZIP, with only:
   - the PDF (stored, not compressed again, under its own name);
   - review.html: the report, with the evaluation's results in it;
+  - han_review.csv, when the book has one (review.html sends staff to it): the read-me calls it "passages in Chinese
+    or Japanese a person needs to check, as a spreadsheet";
   - `accessibility-statement.html`, once that file has shipped;
   - `READ-ME.txt`, in plain words: the version, its status (for an earlier version: "earlier version", naming the
     current one), each shipment of that file ("Shipment 1, shipped on November 1, 2026 by Patrick", "Published at: …"
@@ -300,7 +303,7 @@ then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
     (sha256): …"), "automated checks are evidence, not legal sign-off" and "the evaluation is a record of what a person
     found, not a legal certification".
 
-  Never review.md, han_review.csv, `evaluation-results.json` or the statement's `.md`: they stay in the run folder and
+  Never review.md, `evaluation-results.json` or the statement's `.md`: they stay in the run folder and
   in `release/shipped/NNN/`, which keep their full set. Never record.json (it holds the AI's raw reply), digests, crops,
   `reviews/`, `_intake/`, `release/drafts.json` or dot-files. The ZIP's review.html keeps only the links that work inside
   the ZIP: its header's link to review.md is dropped, its link to this file's own statement points at the ZIP's copy,
@@ -321,7 +324,7 @@ then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
 Every version is kept as a real PDF; there is no rebuilding from work orders. Repeated reviews keep one full PDF per
 version (13 MB for expedition, 96 MB for dwellings), so the run page offers a **Clean Up Space** button under Session
 History when there is something to remove, with no line under it. Its dialog explains: "Deletes the PDF files of the
-previous versions you select to free up space. Their records and decisions stay in "Session History". The original
+previous versions you select to free up space. Their records and decisions stay in "Session History." The original
 AI-generated version is always kept."
 
 - **Never removed:**

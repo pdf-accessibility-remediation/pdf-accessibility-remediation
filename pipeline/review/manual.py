@@ -155,10 +155,17 @@ STALE = 'This check was changed in another tab or window since. Reload the page 
 def drafts_path(R): return os.path.join(REL.paths(R)['dir'], 'drafts.json')
 
 def load_drafts(R):
+    """release/drafts.json, with no name in it: a draft never carries "Checked By" to the next person (Patrick, 2026-11-01);
+    a draft saved before that has its name dropped here, as it loads."""
     try:
         with open(drafts_path(R), encoding="utf-8") as f: d = json.load(f)
-        return d if isinstance(d, dict) else {}
     except (FileNotFoundError, ValueError): return {}
+    if not isinstance(d, dict): return {}
+    for v in d.values():
+        if isinstance(v, dict):
+            v.pop('by', None)
+            if isinstance(v.get('data'), dict): v['data'].pop('by', None)
+    return d
 
 def _clear_draft(R, section, saved_at):
     """Under the record lock: the section's draft replaced by a tombstone; a later auto-save must be newer than it."""
@@ -169,7 +176,7 @@ def _clear_draft(R, section, saved_at):
     put_json(drafts_path(R), d)
 
 def save_draft(R, section, data, saved_at, for_sha, wait=runlock.REQUEST_WAIT):
-    """The page's auto-save: release/drafts.json {section: {data, saved_at, for_sha256, by}} written whole under the record
+    """The page's auto-save: release/drafts.json {section: {data, saved_at, for_sha256}} (never a name) written whole under the record
     lock. A saved_at not newer than the stored draft's (or than a recorded check's tombstone) is refused (S.Refused(STALE))
     and nothing is written. The data is cleaned and limited as a check is (REL.Invalid over the limits); nothing is required."""
     R = os.path.abspath(R)
@@ -181,7 +188,7 @@ def save_draft(R, section, data, saved_at, for_sha, wait=runlock.REQUEST_WAIT):
         with runlock.record_lock(R, wait):
             d = load_drafts(R); cur = d.get(section) or {}
             if saved_at <= max(str(cur.get('saved_at') or ''), str(cur.get('cleared') or '')): raise S.Refused(STALE)
-            d[section] = {'data': clean, 'saved_at': saved_at, 'for_sha256': for_sha, 'by': clean.get('by') or None}
+            d[section] = {'data': clean, 'saved_at': saved_at, 'for_sha256': for_sha}
             os.makedirs(REL.paths(R)['dir'], exist_ok=True)
             put_json(drafts_path(R), d)
     except runlock.Busy as e: raise S.Refused(str(e))
@@ -246,7 +253,7 @@ def _fill_shipped(T, R, entry, say=print):
     files = [f'{pdf}: the remediated PDF as shipped.',
              'review.html: the report on this version as shipped (what was changed, what was checked, and the accessibility '
              'evaluation\'s results). Open it in a web browser. review.md is the same report as text.']
-    if os.path.isfile(os.path.join(T, 'han_review.csv')): files.append('han_review.csv: the Han-only text runs listed for a person who reads the language.')
+    if os.path.isfile(os.path.join(T, 'han_review.csv')): files.append('han_review.csv: passages in Chinese or Japanese a person needs to check, as a spreadsheet.')
     files += [f'{REL.STATEMENT_HTML}: the accessibility statement. Open it in a web browser. {REL.STATEMENT_MD} is the same statement as text.',
               'evaluation-results.json: the accessibility evaluation\'s results recorded on this file, for the archive.',
               'record.json: the run\'s full record, kept here for the archive.', 'READ-ME.txt: this file.']
@@ -275,7 +282,7 @@ def ship(R, by, where=None, note=None, shown_sha=None, via='manual_checks.py', w
     by = clean_text(by or '', one_line=True)[:REL.NAME_MAX]
     where = clean_text(where or '', one_line=True)[:REL.FIELD_MAX] or None
     note = clean_text(note or '', one_line=True)[:REL.NOTE_MAX] or None
-    if not by: raise S.Refused('Enter your name in "Shipped By".')
+    if not by: raise S.Refused('Enter your name in "Shipped By."')
     if not os.path.exists(rj): raise S.Refused('This book has no finished result yet, so there is nothing to ship.')
     try:
         with runlock.record_lock(R, wait):

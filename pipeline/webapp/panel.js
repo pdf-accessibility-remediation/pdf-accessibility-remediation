@@ -124,7 +124,7 @@ function showMsg(m, text, ok, focus) {
 }
 function abandonText(open, from) {
   return cap(sn(open.id)) + ' is open (started ' + fmtWhen(open.started) + '). Starting from ' +
-         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; its choices stay in "Session History".';
+         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; its choices stay in "Session History."';
 }
 
 // ================================================================ in-page links
@@ -293,7 +293,7 @@ function actions(s) {
 
 // "Clean Up Space" (stage 3, review/prune.py): the button alone, shown only when a previous version's PDF can be removed;
 // the explanation is in its dialog (Patrick, 2026-11-01)
-const PRUNE_LINE = 'Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in "Session History". The original AI-generated version is always kept.';
+const PRUNE_LINE = 'Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in "Session History." The original AI-generated version is always kept.';
 function pruneBlock(s) {
   if (!s.prune) return '';
   return '<div class="pp-row"><button type="button" id="pp-prune" data-act="prune">Clean Up Space</button></div>';
@@ -321,7 +321,7 @@ function pruneDlg(p, opener) {                                    // a checkbox 
     yes.addEventListener('click', () => {
       const vs = picked(); if (!vs.length) return;
       const name = $('pp-prune-by').value.trim();
-      if (!name) { $('pp-prune-err').textContent = 'Enter your name in "Removed By".'; $('pp-prune-by').focus(); return; }
+      if (!name) { $('pp-prune-err').textContent = 'Enter your name in "Removed By."'; $('pp-prune-by').focus(); return; }
       done({ by: name, chosen: vs.map(v => ({ id: v.id, sha256: v.sha256 })) });
     });
     d.oncancel = ev => { ev.preventDefault(); done(null); };
@@ -383,7 +383,7 @@ function shipDlg(sp, opener) {                                    // a name (nev
     d.querySelector('button[value=no]').addEventListener('click', () => done(null));
     d.querySelector('button[value=yes]').addEventListener('click', () => {
       const name = $('pp-ship-by').value.trim();
-      if (!name) { $('pp-ship-err').textContent = 'Enter your name in "Shipped By".'; $('pp-ship-by').focus(); return; }
+      if (!name) { $('pp-ship-err').textContent = 'Enter your name in "Shipped By."'; $('pp-ship-by').focus(); return; }
       done({ by: name, where: $('pp-ship-where').value.trim(), note: $('pp-ship-note').value.trim() });
     });
     d.oncancel = ev => { ev.preventDefault(); done(null); };
@@ -461,7 +461,7 @@ box.addEventListener('click', async e => {
     try {
       const [c, r] = await api(API + '/remove-older-pdfs', { by: v.by, chosen: v.chosen });
       if (c !== 200) return msg(r.error || 'The PDFs were not removed.', false, true);
-      msg('Removed ' + r.removed + ' PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept in "Session History".', true, true);
+      msg('Removed ' + r.removed + ' PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept in "Session History."', true, true);
       return poll(true);
     } catch (e) { return msg('The app is not running. ' + START, false, true); }
   }
@@ -570,7 +570,7 @@ function followUp(s) {
   if (want === 'review' && lr && lr.url && !lr.past_finish) {
     want = null;
     if (quiet && Date.now() - wantAt < 30000) { location.assign(lr.url); return; }   // right after the person's Review again
-    live('The review page is ready: "Open the Review Page".');
+    live('The review page is ready: "Open the Review Page."');
   }
   if (want === 'result') {                                     // the page the person's Finish opened: focus its job's heading
     const j = (s.jobs || []).slice().reverse().find(x => x.kind === 'review' || x.kind === 'apply');

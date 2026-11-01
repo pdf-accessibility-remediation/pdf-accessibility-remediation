@@ -74,7 +74,7 @@ def remove(R, chosen, by, wait=runlock.COMMAND_WAIT, say=print):
     want = chosen_of(chosen)
     if not want: raise S.Refused(NONE_CHOSEN)
     by = clean_text(by or '', one_line=True)[:80]
-    if not by: raise S.Refused('Enter your name in "Removed By".')
+    if not by: raise S.Refused('Enter your name in "Removed By."')
     try: lk = S.Lock(R, 'clean up space')                     # reviews/.lock first: it refuses, never waits
     except S.Refused: raise S.Refused(REVIEW_OPEN)
     try:

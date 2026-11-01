@@ -774,7 +774,7 @@ if et.get('removed') or et.get('kept'):
         for parts, c in sorted(nopg.items()):         # e.g. a junk grid drawn by one shared form on many pages: no single page
             L.append(f'- {"a whole empty table" if c == 1 else f"{c} whole empty tables"} ({parts} parts{" each" if c > 1 else ""}), {NO_PAGE}')
     for h in by_page(et.get('headings') or []):
-        L.append(f'- {pg(h["page"])}: an empty {h["tag"]} heading tag was removed. ' + (f'Title tagged elsewhere on the page: "{h["found"]}".' if h.get('found')
+        L.append(f'- {pg(h["page"])}: an empty {h["tag"]} heading tag was removed. ' + (f'Title tagged elsewhere on the page: "{h["found"]}."' if h.get('found')
                  else '**No heading text on this page: the title may be lost. Check the page.**'))
     nt_ = by_page(et.get('notable') or [])
     if nt_: L.append('- Empty ' + ', '.join(f'{x["tag"]} {on_pg(x["page"])}' for x in nt_) + ' removed (no content under them)')

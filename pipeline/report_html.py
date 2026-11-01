@@ -418,7 +418,7 @@ def review_card(R, rec):
     if pend.get('status') == 'finished':
         B.append(f'<p><strong>Session {int(pend["session"])} ({E(pend.get("reviewer") or "")}) is finished but not applied</strong>: this result is older '
                  f'than the latest sign-off. To apply it, open this book\'s run page in the app and select '
-                 f'"Apply Session {int(pend["session"])}".</p>')
+                 f'"Apply Session {int(pend["session"])}."</p>')
     ss = rv.get('sessions') or []
     if ss:
         cur = rv.get('session')

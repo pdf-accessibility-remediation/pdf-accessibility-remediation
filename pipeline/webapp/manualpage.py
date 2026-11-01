@@ -281,7 +281,7 @@ def _form(st, s, p):
                 f'<input type="text" id="{fid}" data-field="{E(key)}" value="{E(value or "")}" autocomplete="{"name" if key == "by" else "off"}"'
                 + (' aria-required="true"' if required else '') + f' aria-describedby="{fid}-err' + (f' {fid}-help' if hint else '') + '">'
                 f'<p class="mc-err" id="{fid}-err" hidden></p></div>')
-    out.append(field('by', 'Checked By', True, d.get('by')))
+    out.append(field('by', 'Checked By', True, None))      # never from a draft: it carries no name (Patrick, 2026-11-01)
     for f in s['fields']:
         out.append(field(f'fields.{f["key"]}', f['label'], f['required'], fv.get(f['key'])))
     failed_last = set(s.get('failed_last') or [])

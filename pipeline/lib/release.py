@@ -372,7 +372,7 @@ def section_md(rel, cur, pdf):
     def items(section): return [f'- {x["label"]}: {x["help"]}' for x in CHECKLIST[section]]
     L = ['## Accessibility Evaluation', '',
          f'A person evaluates this version of `{pdf}` with PAC 2026 and a screen reader, on the app\'s "Accessibility Evaluation" page '
-         '(or with manual_checks.py; docs/release.md). Both parts are needed for "Ready to ship?". A Fail is recorded with its note and '
+         '(or with manual_checks.py; docs/release.md). The "Ready to ship?" answer needs both parts. A Fail is recorded with its note and '
          'does not hold the book back. Each result is recorded against this version of the PDF (its sha256): after a new apply it no '
          'longer counts. The evaluation is a record of what a person found, not a legal certification.', '']
     pac = _part_md(rel, 'pac', cur)
@@ -430,7 +430,7 @@ def _clean(s, one_line):
 
 def _text(errors, field, name, s, limit, required=False, one_line=True, msg=None):
     s = _clean(s, one_line)
-    if required and not s: errors.append((field, msg or f'Enter "{name}".')); return None
+    if required and not s: errors.append((field, msg or f'Enter "{name}."')); return None
     if len(s) > limit: errors.append((field, f'"{name}" is too long: {len(s):,} characters, at most {limit:,}.'))
     elif '|' in s: errors.append((field, f'"{name}" can\'t contain the character "|". Use another one, such as a comma or a slash.'))
     elif '](' in s: errors.append((field, f'"{name}" can\'t contain "](" (a closing square bracket right before an opening parenthesis). Put a space between them.'))
@@ -442,7 +442,7 @@ def validate(section, data, ctx=None):
     if section not in SECTIONS: raise Invalid([('section', f'unknown section {section!r}')])
     ctx = ctx or {}; data = data if isinstance(data, dict) else {}
     errors = []; spec = SPEC[section]; fnd = ctx.get('found') or {}; prev = ctx.get('previous')
-    by = _text(errors, 'by', 'Checked By', data.get('by'), NAME_MAX, True, msg='Enter your name in "Checked By".')
+    by = _text(errors, 'by', 'Checked By', data.get('by'), NAME_MAX, True, msg='Enter your name in "Checked By."')
     fields_in = data.get('fields') if isinstance(data.get('fields'), dict) else {}
     fields = {}
     for k, (name, req) in FIELDS[section].items():
@@ -462,9 +462,9 @@ def validate(section, data, ctx=None):
         note = _text(errors, f'items.{k}.note', f'{name}: Notes', it.get('note'), NOTE_MAX, one_line=True)
         if res in (None, ''):
             choices = ' or '.join(f'"{RESULT_NAMES[r]}"' for r in x['results'])
-            errors.append((f'items.{k}.result', f'Choose {choices.replace(" or ", ", ", len(x["results"]) - 2)} for "{name}".')); continue
+            errors.append((f'items.{k}.result', f'Choose {choices.replace(" or ", ", ", len(x["results"]) - 2)} for "{name}."')); continue
         if res not in x['results']:
-            errors.append((f'items.{k}.result', f'"{name}" can\'t be "{RESULT_NAMES.get(res, res)}".')); continue
+            errors.append((f'items.{k}.result', f'"{name}" can\'t be "{RESULT_NAMES.get(res, res)}."')); continue
         if res == 'fail' and not note:
             errors.append((f'items.{k}.note', f'Add a note to "{name}": a failed item needs one.'))
         elif res == 'na' and x.get('found') in fnd and not note:
@@ -489,11 +489,12 @@ def validate(section, data, ctx=None):
 
 def clean_draft(section, data):
     """A half-filled check as a draft keeps it: cleaned and limited as validate() limits a check, no field required, a
-    result kept only when it is one the item offers. Raises Invalid with the fields over the limits."""
+    result kept only when it is one the item offers, and never "Checked By": a draft carries no name to the next person
+    (Patrick, 2026-11-01). Raises Invalid with the fields over the limits."""
     if section not in SECTIONS: raise Invalid([('section', f'unknown section {section!r}')])
     data = data if isinstance(data, dict) else {}
     errors = []; spec = SPEC[section]
-    out = {'by': _text(errors, 'by', 'Checked By', data.get('by'), NAME_MAX) or ''}
+    out = {}
     fin = data.get('fields') if isinstance(data.get('fields'), dict) else {}
     out['fields'] = {k: _text(errors, f'fields.{k}', name, fin.get(k), FIELD_MAX) or '' for k, (name, _) in FIELDS[section].items()}
     if any(x.get('pages') for x in CHECKLIST[section]): out['fields']['pages_checked'] = _text(errors, 'fields.pages_checked', 'Pages Checked', fin.get('pages_checked'), FIELD_MAX) or ''

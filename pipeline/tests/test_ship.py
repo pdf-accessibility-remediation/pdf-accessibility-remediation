@@ -403,13 +403,19 @@ def _links_stay_in_the_zip(files):
     assert 'review.md' not in page.split('</header>')[0]                                  # the header's review.md link dropped
     return page
 
-def test_the_record_zip_holds_only_four_files_in_every_state(tmp_path):
+def test_the_record_zip_holds_only_its_files_in_every_state(tmp_path):
     from lib import dates as D
-    READY = ['b_remediated.pdf', 'review.html', 'READ-ME.txt']
-    # not ready: a run with han_review.csv, never Ready
-    R0 = make_run(str(tmp_path / 'nr'), record_sha=True); open(os.path.join(R0, 'han_review.csv'), 'w').write('pdf_page,text\n1,漢\n')
+    READY = ['b_remediated.pdf', 'review.html', 'han_review.csv', 'READ-ME.txt']          # this book has Han-only runs
+    # not ready: without han_review.csv, then with it (review 30 S1: back in the ZIP when the book has one)
+    R0 = make_run(str(tmp_path / 'nr'), record_sha=True)
     name, files = _zip(R0, 'current')
     assert name.endswith('_not-ready.zip') and sorted(files) == sorted(['clans_remediated.pdf', 'review.html', 'READ-ME.txt'])
+    assert 'han_review.csv' not in files['READ-ME.txt'].decode()
+    open(os.path.join(R0, 'han_review.csv'), 'w').write('pdf_page,text\n1,漢\n')
+    name, files = _zip(R0, 'current')
+    assert sorted(files) == sorted(['clans_remediated.pdf', 'review.html', 'han_review.csv', 'READ-ME.txt'])
+    assert files['han_review.csv'] == 'pdf_page,text\n1,漢\n'.encode('utf-8')
+    assert '- han_review.csv: passages in Chinese or Japanese a person needs to check, as a spreadsheet.\n' in files['READ-ME.txt'].decode()
     _links_stay_in_the_zip(files)
     # Ready, not shipped
     R = real_ready(tmp_path)
@@ -431,15 +437,15 @@ def test_the_record_zip_holds_only_four_files_in_every_state(tmp_path):
     assert {'review.md', 'han_review.csv', 'evaluation-results.json', 'accessibility-statement.md', 'record.json'} <= set(os.listdir(F))
     fr = open(os.path.join(F, 'READ-ME.txt'), encoding='utf-8').read()
     assert f'\nShipment 1, shipped on {D.day(s["shipped"])} by Kim\nPublished at: ScholarSpace\nStatus: Shipped' in fr
-    assert 'han_review.csv: ' in fr and 'record.json: ' in fr and 'which identifies this exact file (sha256): ' + s['pdf']['sha256'] in fr
+    assert 'han_review.csv: passages in Chinese or Japanese a person needs to check, as a spreadsheet.' in fr and 'record.json: ' in fr and 'which identifies this exact file (sha256): ' + s['pdf']['sha256'] in fr
     # an earlier version: its own page, links leading out of the ZIP unwrapped
     V = os.path.join(R, 'reviews', 'versions', '001'); os.makedirs(V)
     doc = pikepdf.new(); doc.add_blank_page(page_size=(200, 200)); doc.save(os.path.join(V, 'b_remediated.pdf'))
     core.save(os.path.join(V, 'record.json'), {'document': {'file': 'b.pdf', 'output': 'b_remediated.pdf'}})
     shutil.copy2(os.path.join(R, 'review.html'), os.path.join(V, 'review.html'))
     with open(os.path.join(V, 'review.html'), 'a', encoding='utf-8') as f: f.write('<a href="../002/review.html">previous result</a><a href="https://example.org/">web</a>')
-    name, files = _zip(R, '001')
-    assert name.endswith('_session-1_earlier-version.zip') and sorted(files) == sorted(READY)
+    name, files = _zip(R, '001')                                                            # its folder has no han_review.csv
+    assert name.endswith('_session-1_earlier-version.zip') and sorted(files) == sorted(['b_remediated.pdf', 'review.html', 'READ-ME.txt'])
     page = _links_stay_in_the_zip(files)
     assert 'previous result' in page and '<a href="https://example.org/">web</a>' in page and 'View the Accessibility Statement' in page
     assert 'Status: earlier version' in files['READ-ME.txt'].decode()
@@ -452,5 +458,22 @@ def test_the_record_zip_holds_only_four_files_in_every_state(tmp_path):
     w = REL.load(R)['shipped'][0]['withdrawn']
     assert (f'Status: Withdrawn\nShipment 1, shipped on {D.day(s["shipped"])} by Kim\nPublished at: ScholarSpace\n'
             f'Withdrawn on {D.day(w["date"])} by Lee: wrong file\n') in rd
-    for files_ in (files,):
-        assert not any(n.endswith(('.md', '.json', '.csv')) for n in files_)
+    assert not any(n.endswith(('.md', '.json')) for n in files)
+
+def test_a_draft_never_keeps_checked_by(tmp_path):
+    """Patrick, 2026-11-01 (after review 30): a draft carries no name to the next person: none saved, and an old draft's
+    name dropped as it loads (the server's drafts.json and the browser's copy)."""
+    import re
+    R, rec, sha = ready_run(tmp_path)
+    M.save_draft(R, 'screen_reader', {'by': 'Kim', 'notes': 'half done'}, '2026-11-01T10:00:00Z', sha, wait=1)
+    raw = json.load(open(M.drafts_path(R), encoding='utf-8'))
+    assert 'by' not in raw['screen_reader'] and 'by' not in raw['screen_reader']['data'] and raw['screen_reader']['data']['notes'] == 'half done'
+    raw['pac'] = {'data': {'by': 'Lee', 'items': {}}, 'saved_at': '2026-10-31T09:00:00Z', 'for_sha256': sha, 'by': 'Lee'}   # saved before
+    core.save(M.drafts_path(R), raw)
+    assert all('by' not in v and 'by' not in v['data'] for v in M.load_drafts(R).values())
+    page = MP.page(R, 'r')
+    for p in ('pac', 'sr'):
+        assert re.search(rf'<input type="text" id="{p}-by" data-field="by" value="" autocomplete="name"', page), p
+    assert 'Lee' not in page and 'Kim' not in page.split('id="mc-data"')[0].split('Current Results')[0]
+    mj = open(os.path.join(os.path.dirname(MP.__file__), 'manual.js'), encoding='utf-8').read()
+    assert 'const kept = sec.collect(); delete kept.by;' in mj and 'delete mine.data.by;' in mj   # the browser's copy: none kept, an old one dropped

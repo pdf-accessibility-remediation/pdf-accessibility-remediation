@@ -131,8 +131,9 @@ def test_drafts_newer_wins_and_a_late_one_after_record_is_refused(mapp):
     assert st == 409 and r['error'] == M.STALE                                          # two tabs: the newer one stays
     st, s = js(port, 'GET', f'/api/run/{RUN}/checks')
     assert s['sections']['pac']['draft']['data']['items']['contrast'] == {'result': 'fail', 'note': 'p. 3'}
-    st, r = js(port, 'POST', path, {'section': 'pac', 'data': {'by': 'K' * 81}, 'saved_at': '2026-11-01T10:00:03.000Z', 'for_sha256': sha})
-    assert st == 400 and r['errors'][0]['field'] == 'by'
+    st, r = js(port, 'POST', path, {'section': 'pac', 'data': {'fields': {'pages_checked': 'K' * 1000}}, 'saved_at': '2026-11-01T10:00:03.000Z', 'for_sha256': sha})
+    assert st == 400 and r['errors'][0]['field'] == 'fields.pages_checked'                  # a draft is limited as a check is
+    assert 'Kim' not in open(M.drafts_path(mapp['R']), encoding='utf-8').read()              # and never keeps a name
     st, r = js(port, 'POST', f'/api/run/{RUN}/checks/record', {'section': 'pac', 'data': PAC, 'shown_sha256': sha,
                                                                'draft_saved_at': '2026-11-01T10:00:04.000Z'})
     assert st == 200
@@ -145,7 +146,8 @@ def test_a_draft_from_an_earlier_version_is_offered_as_notes_only(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
     M.save_draft(R, 'pac', {'by': 'Kim', 'items': {'contrast': {'result': 'fail', 'note': 'p. 3'}}}, '2026-11-01T10:00:00Z', 'f' * 64, wait=1)
     st = MP.state(R, 'r')
-    assert st['sections']['pac']['draft'] is None and st['sections']['pac']['draft_earlier']['data']['by'] == 'Kim'
+    assert st['sections']['pac']['draft'] is None and st['sections']['pac']['draft_earlier']['data']['items']['contrast']['note'] == 'p. 3'
+    assert 'by' not in st['sections']['pac']['draft_earlier']['data']                        # no name carried to the next person
 
 def test_a_failed_draft_clear_keeps_the_check(tmp_path, monkeypatch):
     R = make_run(str(tmp_path / 'r'))
