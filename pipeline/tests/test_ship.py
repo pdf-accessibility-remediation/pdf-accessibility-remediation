@@ -109,12 +109,12 @@ def test_ship_copies_the_version_and_the_status_reads_shipped(tmp_path):
     F = os.path.join(R, 'release', 'shipped', '001')
     assert s['n'] == 1 and len(s['shipped']) == 19 and s['shipped'][10] == 'T' and s['issues'] == 1 and s['checks'] == {'pac': 1, 'screen_reader': 1}
     assert sorted(os.listdir(F)) == sorted(['b_remediated.pdf', 'review.md', 'review.html', 'record.json', 'evaluation-results.json',
-                                            'disclosure.md', 'disclosure.html', 'READ-ME.txt'])
+                                            'accessibility-statement.md', 'accessibility-statement.html', 'READ-ME.txt'])   # the full set
     assert REL.sha_file(os.path.join(F, 'b_remediated.pdf')) == s['pdf']['sha256']
     assert '**Status:** Shipped · 1 issue noted' in open(os.path.join(F, 'review.md'), encoding='utf-8').read()
     assert 'Shipped copy (Shipment 1, ' in open(os.path.join(F, 'review.html'), encoding='utf-8').read()     # N9
     assert '**Status:** Shipped · 1 issue noted' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
-    st = open(os.path.join(F, 'disclosure.md'), encoding='utf-8').read()                   # reviewed before sessions were kept: Session 1
+    st = open(os.path.join(F, 'accessibility-statement.md'), encoding='utf-8').read()                   # reviewed before sessions were kept: Session 1
     assert s['pdf']['session'] == '001' and 'the version reviewed on October 31, 2026, shipped on ' in st and 'applied without a review' not in st
     rec = core.load(os.path.join(R, 'record.json'))
     assert MP.ship_gate(R, rec)['why'].startswith('This version was shipped on ')                       # M1
@@ -244,9 +244,9 @@ def test_shipped_copies_in_the_downloads_and_the_file_check(tmp_path):
     vs = DL.versions(R, rec)
     assert [x['id'] for x in vs] == ['current'] and vs[0]['state'] == 'Shipped'                 # the current file is the shipped one
     d = DL.prepare(R, 'r', 'current', 'record')
-    assert d['name'] == 'b_remediated_record_shipment-1.zip' and 'disclosure.html' in [m[0] for m in d['members']]
+    assert d['name'] == 'b_remediated_record_shipment-1.zip' and 'accessibility-statement.html' in [m[0] for m in d['members']]
     buf = io.BytesIO(); DL.stream_zip(buf, d); names = zipfile.ZipFile(buf).namelist()
-    assert not any(n.endswith('record.json') for n in names) and any(n.endswith('disclosure.md') for n in names)   # N2: never the folder's record.json
+    assert not any(n.endswith('record.json') for n in names) and not any(n.endswith('.md') for n in names)   # N2: never the folder's record.json
     doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'b_remediated.pdf'))   # changed by hand (M7)
     vs = DL.versions(R, rec)
     assert [x['id'] for x in vs] == ['current', 'shipment-1'] and vs[1]['label'].startswith('Shipment 1, shipped on ')
@@ -262,7 +262,7 @@ def test_the_statement_is_linked_and_review_md_names_the_shipment(tmp_path):
     R = real_ready(tmp_path)
     M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
     h = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
-    assert '<a href="release/shipped/001/disclosure.html">View the Accessibility Statement</a>' in h and 'Disclosure' not in h   # N5
+    assert '<a href="release/shipped/001/accessibility-statement.html">View the Accessibility Statement</a>' in h and 'Disclosure' not in h   # N5
     assert 'Shipped on ' in open(os.path.join(R, 'review.md'), encoding='utf-8').read() and '(Shipment 1, ScholarSpace).' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
 
 def test_the_strip_offers_ship_and_the_post_ships(mapp, monkeypatch):
@@ -278,11 +278,19 @@ def test_the_strip_offers_ship_and_the_post_ships(mapp, monkeypatch):
 def test_only_the_statement_is_served_from_a_shipped_folder(mapp):
     port, R = mapp['port'], mapp['R']
     F = os.path.join(R, 'release', 'shipped', '001'); os.makedirs(F)
-    open(os.path.join(F, 'disclosure.html'), 'w').write('<p>statement</p>'); core.save(os.path.join(F, 'record.json'), {'raw_reply': 'secret'})
-    core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry('a' * 64, folder='shipped/001')])
-    assert req(port, 'GET', f'/run/{RUN}/release/shipped/001/disclosure.html')[0] == 200
-    for p in ('release/shipped/001/record.json', 'release/shipped/002/disclosure.html', 'release/shipped.json', 'release/shipped/001/../001/disclosure.html'):
+    open(os.path.join(F, 'accessibility-statement.html'), 'w').write('<p>statement</p>'); core.save(os.path.join(F, 'record.json'), {'raw_reply': 'secret'})
+    core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry('a' * 64, folder='shipped/001'), ship_entry('b' * 64, n=2, folder='shipped/002')])
+    st, body, _ = req(port, 'GET', f'/run/{RUN}/release/shipped/001/accessibility-statement.html')
+    assert st == 200 and body == b'<p>statement</p>'
+    for p in ('release/shipped/001/record.json', 'release/shipped/002/accessibility-statement.html', 'release/shipped.json',
+              'release/shipped/001/../001/accessibility-statement.html', 'release/shipped/001/accessibility-statement.md'):
         assert req(port, 'GET', f'/run/{RUN}/{p}')[0] == 404, p
+    F2 = os.path.join(R, 'release', 'shipped', '002'); os.makedirs(F2)                 # a folder shipped before 2026-11-01: the old name,
+    open(os.path.join(F2, 'disclosure.html'), 'w').write('<p>old statement</p>')       # served under either name, never renamed
+    for n in ('accessibility-statement.html', 'disclosure.html'):
+        st, body, _ = req(port, 'GET', f'/run/{RUN}/release/shipped/002/{n}')
+        assert st == 200 and body == b'<p>old statement</p>', n
+    assert REL.statement_name(F2) == 'disclosure.html' and REL.statement_name(F) == 'accessibility-statement.html' and os.listdir(F2) == ['disclosure.html']
 
 
 OCR_BOOK = {'intake': {'ocr': {'pages_with_ocr_text': [1]},
@@ -300,13 +308,13 @@ def test_the_statement_uses_no_internal_terms(tmp_path, book):
     M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
     F = os.path.join(R, 'release', 'shipped', '001')
     import re
-    for f in ('disclosure.md', 'disclosure.html'):
+    for f in ('accessibility-statement.md', 'accessibility-statement.html'):
         text = open(os.path.join(F, f), encoding='utf-8').read().replace('\\', '')
         for bad in ('work order', 'work-order', 'Session', 'review page', 'intake', 'pipeline', 'executor', 'tag tree',
                     'listed for a person in the report', 'What Needs a Person', 'For a Person to Check'):
             assert bad not in text, (f, bad)
         assert not re.search(r'\b(run|report)\b', text), f
-    md = open(os.path.join(F, 'disclosure.md'), encoding='utf-8').read()
+    md = open(os.path.join(F, 'accessibility-statement.md'), encoding='utf-8').read()
     assert "the document's structure" in md and 'a semi-automated process' in md
     if not ocr:
         assert 'OCR text: none was added.' in md
@@ -378,3 +386,71 @@ def test_no_name_field_is_prefilled(tmp_path):
     assert '<div class="mc-lines"><p>These results are recorded for' in page                # the lines under the status: one block, no gap
     assert ('Every item needs a result, and a "Fail" needs a note. A "Fail" does not hold the book back; it is kept in the report '
             'with its note for future reference and further review.</p></div>') in page
+
+
+# ------------------------------------------------------------------ the record ZIP for staff (Patrick, 2026-11-01): four files, working links
+def _zip(R, v):
+    import io, zipfile
+    d = DL.prepare(R, 'r', v, 'record'); buf = io.BytesIO(); DL.stream_zip(buf, d)
+    z = zipfile.ZipFile(buf); f = d['folder']
+    return d['name'], {n[len(f) + 1:]: z.read(n) for n in z.namelist() if n.startswith(f + '/')}
+
+def _links_stay_in_the_zip(files):
+    import re
+    page = files['review.html'].decode()
+    for h in re.findall(r'<a\b[^>]*?\bhref="([^"]*)"', page):
+        assert h.startswith('#') or h.startswith('https://') or h.startswith('http://') or h in files, h
+    assert 'review.md' not in page.split('</header>')[0]                                  # the header's review.md link dropped
+    return page
+
+def test_the_record_zip_holds_only_four_files_in_every_state(tmp_path):
+    from lib import dates as D
+    READY = ['b_remediated.pdf', 'review.html', 'READ-ME.txt']
+    # not ready: a run with han_review.csv, never Ready
+    R0 = make_run(str(tmp_path / 'nr'), record_sha=True); open(os.path.join(R0, 'han_review.csv'), 'w').write('pdf_page,text\n1,漢\n')
+    name, files = _zip(R0, 'current')
+    assert name.endswith('_not-ready.zip') and sorted(files) == sorted(['clans_remediated.pdf', 'review.html', 'READ-ME.txt'])
+    _links_stay_in_the_zip(files)
+    # Ready, not shipped
+    R = real_ready(tmp_path)
+    open(os.path.join(R, 'han_review.csv'), 'w').write('pdf_page,text\n1,漢\n')
+    name, files = _zip(R, 'current')
+    assert name.endswith('_not-shipped.zip') and sorted(files) == sorted(READY)
+    rd = files['READ-ME.txt'].decode()
+    assert 'Status: Ready' in rd and 'Shipment' not in rd and 'accessibility-statement' not in rd
+    # shipped: the statement joins, linked from review.html; the shipment's lines in the read-me
+    s = M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
+    name, files = _zip(R, 'current')
+    assert name == 'b_remediated_record_shipment-1.zip' and sorted(files) == sorted(READY + ['accessibility-statement.html'])
+    page = _links_stay_in_the_zip(files)
+    assert '<a href="accessibility-statement.html">View the Accessibility Statement</a>' in page
+    rd = files['READ-ME.txt'].decode()
+    assert f'Status: Shipped\nShipment 1, shipped on {D.day(s["shipped"])} by Kim\nPublished at: ScholarSpace\n' in rd
+    assert '- accessibility-statement.html: the accessibility statement written when this version was shipped. Open it in a web browser.' in rd
+    F = os.path.join(R, 'release', 'shipped', '001')                                       # the shipped folder keeps the full set
+    assert {'review.md', 'han_review.csv', 'evaluation-results.json', 'accessibility-statement.md', 'record.json'} <= set(os.listdir(F))
+    fr = open(os.path.join(F, 'READ-ME.txt'), encoding='utf-8').read()
+    assert f'\nShipment 1, shipped on {D.day(s["shipped"])} by Kim\nPublished at: ScholarSpace\nStatus: Shipped' in fr
+    assert 'han_review.csv: ' in fr and 'record.json: ' in fr and 'which identifies this exact file (sha256): ' + s['pdf']['sha256'] in fr
+    # an earlier version: its own page, links leading out of the ZIP unwrapped
+    V = os.path.join(R, 'reviews', 'versions', '001'); os.makedirs(V)
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(200, 200)); doc.save(os.path.join(V, 'b_remediated.pdf'))
+    core.save(os.path.join(V, 'record.json'), {'document': {'file': 'b.pdf', 'output': 'b_remediated.pdf'}})
+    shutil.copy2(os.path.join(R, 'review.html'), os.path.join(V, 'review.html'))
+    with open(os.path.join(V, 'review.html'), 'a', encoding='utf-8') as f: f.write('<a href="../002/review.html">previous result</a><a href="https://example.org/">web</a>')
+    name, files = _zip(R, '001')
+    assert name.endswith('_session-1_earlier-version.zip') and sorted(files) == sorted(READY)
+    page = _links_stay_in_the_zip(files)
+    assert 'previous result' in page and '<a href="https://example.org/">web</a>' in page and 'View the Accessibility Statement' in page
+    assert 'Status: earlier version' in files['READ-ME.txt'].decode()
+    # withdrawn: the shipped copy, with its withdrawal
+    M.withdraw(R, 1, 'Lee', 'wrong file')
+    name, files = _zip(R, 'shipment-1')
+    assert name == 'b_remediated_record_shipment-1_withdrawn.zip' and sorted(files) == sorted(READY + ['accessibility-statement.html'])
+    _links_stay_in_the_zip(files)
+    rd = files['READ-ME.txt'].decode()
+    w = REL.load(R)['shipped'][0]['withdrawn']
+    assert (f'Status: Withdrawn\nShipment 1, shipped on {D.day(s["shipped"])} by Kim\nPublished at: ScholarSpace\n'
+            f'Withdrawn on {D.day(w["date"])} by Lee: wrong file\n') in rd
+    for files_ in (files,):
+        assert not any(n.endswith(('.md', '.json', '.csv')) for n in files_)

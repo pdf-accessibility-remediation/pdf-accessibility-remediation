@@ -282,6 +282,26 @@ def clean_base(output):
     s = b.decode('utf-8', 'ignore').strip(' .')
     return s or 'book'
 
+# the accessibility statement in a shipped folder: written under these names from 2026-11-01 (Patrick); a folder shipped
+# before keeps its disclosure.* files as shipped, and every reader takes either
+STATEMENT_HTML, STATEMENT_MD = 'accessibility-statement.html', 'accessibility-statement.md'
+_OLD_STATEMENT = {STATEMENT_HTML: 'disclosure.html', STATEMENT_MD: 'disclosure.md'}
+
+def statement_name(folder, name=STATEMENT_HTML):
+    """The statement's file name in a shipped folder: its own name, else (a folder shipped before 2026-11-01) the old one
+    when only that exists. A folder being written gets the new name."""
+    old = _OLD_STATEMENT[name]
+    return old if not os.path.isfile(os.path.join(folder, name)) and os.path.isfile(os.path.join(folder, old)) else name
+
+def shipment_lines(s):
+    """A shipment in a read-me's words: "Shipment 1, shipped on November 1, 2026 by Patrick", then "Published at: …" when
+    given and "Withdrawn on … by …: <reason>" for a withdrawn one (21 §B)."""
+    L = [f'Shipment {s.get("n")}, shipped on {day(s.get("shipped"))} by {s.get("by")}']
+    if s.get('where'): L.append(f'Published at: {s["where"]}')
+    w = s.get('withdrawn')
+    if w: L.append(f'Withdrawn on {day(w.get("date"))} by {w.get("by")}: {w.get("reason")}')
+    return L
+
 def download_names(output, session, state, shipment=None):
     """(pdf name, zip name) for one version. session: its number (never a session's name), None for a result applied
     without review; state: Not Ready, Pending Evaluation, Ready, Shipped (the shipped copy: the plain name) or

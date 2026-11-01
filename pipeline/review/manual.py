@@ -219,7 +219,8 @@ def _copy_hashing(src, dst):
 def _fill_shipped(T, R, entry, say=print):
     """The shipped folder's files written after write_run(), so they say Shipped: review.md, review.html (with its "Shipped
     copy" banner, N9), record.json (the local archive only: never served, never zipped; S6, N2), evaluation-results.json,
-    the accessibility statement (disclosure.html, disclosure.md) and READ-ME.txt."""
+    the accessibility statement (accessibility-statement.html and .md) and READ-ME.txt, in plain words, with the shipment's
+    lines (lib/release.py shipment_lines)."""
     import shutil
     import report_html as H
     from lib import disclosure as DS, dates as D
@@ -239,14 +240,21 @@ def _fill_shipped(T, R, entry, say=print):
     doc = (rec.get('verify') or {}).get('doc') or {}
     title = (doc.get('title') or doc.get('xmp_title') or '').strip() or ((rec.get('document') or {}).get('file') or 'this book').removesuffix('.pdf')
     blocks = DS.facts(rec, rel, entry, g)
-    put_text(os.path.join(T, 'disclosure.md'), DS.to_md(blocks, title))
-    put_text(os.path.join(T, 'disclosure.html'), DS.to_html(blocks, title))
-    put_text(os.path.join(T, 'READ-ME.txt'), '\n'.join([
-        title, '', f'Shipment {entry["n"]}: shipped on {D.when(entry["shipped"])} by {entry["by"]}' + (f', published at {entry["where"]}' if entry.get('where') else '') + '.',
-        f'Status: {(g.get("status") or {}).get("text") or REL.SHIPPED}', f'sha256 of {entry["pdf"]["file"]}: {sha}', '',
-        'The accessibility statement is disclosure.html (and disclosure.md). evaluation-results.json holds the evaluation recorded on this file.',
-        'record.json is the run\'s full record, kept here for the archive.', '',
-        'Automated checks are evidence, not legal sign-off.', 'The evaluation is a record of what a person found, not a legal certification.', '']))
+    put_text(os.path.join(T, REL.STATEMENT_MD), DS.to_md(blocks, title))
+    put_text(os.path.join(T, REL.STATEMENT_HTML), DS.to_html(blocks, title))
+    pdf = entry['pdf']['file']
+    files = [f'{pdf}: the remediated PDF as shipped.',
+             'review.html: the report on this version as shipped (what was changed, what was checked, and the accessibility '
+             'evaluation\'s results). Open it in a web browser. review.md is the same report as text.']
+    if os.path.isfile(os.path.join(T, 'han_review.csv')): files.append('han_review.csv: the Han-only text runs listed for a person who reads the language.')
+    files += [f'{REL.STATEMENT_HTML}: the accessibility statement. Open it in a web browser. {REL.STATEMENT_MD} is the same statement as text.',
+              'evaluation-results.json: the accessibility evaluation\'s results recorded on this file, for the archive.',
+              'record.json: the run\'s full record, kept here for the archive.', 'READ-ME.txt: this file.']
+    put_text(os.path.join(T, 'READ-ME.txt'), '\n'.join(
+        [title, ''] + REL.shipment_lines(entry) + [f'Status: {(g.get("status") or {}).get("text") or REL.SHIPPED}', '', 'This folder holds:']
+        + ['- ' + x for x in files]
+        + ['', f'The fingerprint of {pdf}, which identifies this exact file (sha256): {sha}', '',
+           'Automated checks are evidence, not legal sign-off.', 'The evaluation is a record of what a person found, not a legal certification.', '']))
 
 def ship(R, by, where=None, note=None, shown_sha=None, via='manual_checks.py', wait=runlock.COMMAND_WAIT, say=print, batch=True):
     """Mark the current version as shipped (21 §A, review 22 M1, M2). Everything under the record lock:

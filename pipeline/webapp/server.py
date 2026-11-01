@@ -351,10 +351,10 @@ def make(s, setup, code=None):
                     if not p.endswith('/'): return self.redirect(p + '/')
                     return self.run_page(run, R)
                 if len(rest) == 1 and rest[0] in RESERVED: return self.send(404, {'error': 'this page is not built yet'})
-                if len(rest) == 4 and rest[:2] == ['release', 'shipped'] and rest[3] == 'disclosure.html':   # a shipment's statement only (N2)
+                if len(rest) == 4 and rest[:2] == ['release', 'shipped'] and rest[3] in (REL.STATEMENT_HTML, 'disclosure.html'):   # a shipment's statement only (N2)
                     known = {(x.get('folder') or '').split('/')[-1] for x in REL.load(R).get('shipped') or []}
                     d = config.entry(os.path.join(R, 'release', 'shipped'), rest[2]) if rest[2] in known else None
-                    f = os.path.join(d, 'disclosure.html') if d else None
+                    f = os.path.join(d, REL.statement_name(d)) if d else None   # either name: a folder shipped before 2026-11-01 keeps disclosure.html
                     if not f or not inside(R, f) or not os.path.isfile(f): return self.send(404, {'error': 'not found'})
                     return self.file(f)                          # never the folder's record.json, PDF or anything else
                 if rest == ['download']:                                                   # a version's PDF or record ZIP (stage 3)

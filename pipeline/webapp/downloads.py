@@ -12,12 +12,14 @@ version list are read, the names worked out and every member file opened; the lo
 stream from the open handles. A promotion moves files by rename, which never touches an open handle, so a ZIP never mixes
 two versions. A version id comes only from the run's own list: no path is ever built from the request.
 
-The ZIP holds one folder named as the ZIP; every file keeps its own name (01 rec 3): the PDF (stored, never compressed
-again), review.html, review.md, han_review.csv when present, evaluation-results.json (the results recorded on this
-file's hash) and READ-ME.txt. Never record.json (it holds the AI's raw reply), digests, crops, reviews/, _intake/,
-release/drafts.json, dot-files or working files: the list is an allow-list.
+The ZIP is opened by library staff (Patrick, 2026-11-01): one folder named as the ZIP, holding only the PDF (stored, never
+compressed again, under its own name), review.html (the evaluation's results are in it), accessibility-statement.html once
+this file has shipped, and READ-ME.txt in plain words. Never review.md, han_review.csv, evaluation-results.json or the
+statement's .md (they stay in the run folder and in release/shipped/NNN/), record.json (it holds the AI's raw reply),
+digests, crops, reviews/, _intake/, release/drafts.json, dot-files or working files: the list is an allow-list. The ZIP's
+review.html keeps only the links that work inside the ZIP (zip_page()).
 """
-import os, json, hashlib, zipfile, datetime
+import os, re, io, html, hashlib, zipfile, datetime
 from lib import release as REL, dates as D, runlock
 from review import sessions as S, manual as M
 from . import config, manualpage as MP
@@ -125,18 +127,21 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
             pdf_name, zip_name = REL.download_names(out, ver['session'], ver['state'], ver.get('shipment') or next((s.get('n') for s in REL.live_shipments(REL.load(R)) if REL.sha_of(s) == ver['sha']), None))
             if what == 'pdf':
                 return {'name': pdf_name, 'ctype': 'application/pdf', 'fh': open(ver['pdf'], 'rb')}
-            members = [(out, open(ver['pdf'], 'rb'), zipfile.ZIP_STORED)]
-            for n in ('review.html', 'review.md', 'han_review.csv'):
-                p = os.path.join(ver['dir'], n)
-                if os.path.isfile(p): members.append((n, open(p, 'rb'), zipfile.ZIP_DEFLATED))
-            sd = ver['dir'] if ver.get('shipment') else next((_shipped_dir(R, s) for s in reversed(REL.live_shipments(REL.load(R))) if REL.sha_of(s) == ver['sha']), None)
-            for n in ('disclosure.html', 'disclosure.md'):            # the accessibility statement, once this file has shipped
-                p = os.path.join(sd, n) if sd else None
-                if p and os.path.isfile(p): members.append((n, open(p, 'rb'), zipfile.ZIP_DEFLATED))
             rel = REL.load(R)
+            ship = ver['entry'] if ver.get('shipment') else next((s for s in reversed(REL.live_shipments(rel)) if REL.sha_of(s) == ver['sha']), None)
+            sd = ver['dir'] if ver.get('shipment') else (_shipped_dir(R, ship) if ship else None)
+            members = [(out, open(ver['pdf'], 'rb'), zipfile.ZIP_STORED)]
+            st = os.path.join(sd, REL.statement_name(sd)) if sd else None   # the accessibility statement, once this file has shipped
+            names = [out, 'review.html'] + ([REL.STATEMENT_HTML] if st and os.path.isfile(st) else []) + ['READ-ME.txt']
+            p = os.path.join(ver['dir'], 'review.html')
+            if os.path.isfile(p):                                         # read now (small): its links are made to fit the ZIP
+                with open(p, encoding='utf-8') as f: page = zip_page(f.read(), names, ship)
+                members.append(('review.html', io.BytesIO(page.encode('utf-8')), zipfile.ZIP_DEFLATED))
+            if st and os.path.isfile(st): members.append((REL.STATEMENT_HTML, open(st, 'rb'), zipfile.ZIP_DEFLATED))
             cur_label = _version_label(S.current_id(rec))
             book = MP.book(rec)['title']
             return {'name': zip_name, 'ctype': 'application/zip', 'members': members, 'folder': zip_name[:-4], 'rel': rel, 'version': ver,
+                    'shipments': [s for s in rel.get('shipped') or [] if REL.sha_of(s) == ver['sha']],
                     'pdf_name': out, 'book': book, 'cur_label': cur_label,
                     'applied': MP.version(R, rec)['when'] if ver['id'] == 'current' else _applied(R, ver['id'], vrec)}
     except runlock.Busy as e: raise Refused(str(e))
@@ -146,37 +151,62 @@ def _applied(R, vid, vrec):
     when = (S.session(R, vid) or {}).get('applied') or vrec.get('written')
     return f'applied on {D.when(when)}' if when else None
 
+_HEAD_LINK = ' · <a href="review.md">review.md</a> (the record, as text)'      # report_html's header: review.md is not in the ZIP
+_A = re.compile(r'<a\b[^>]*?\bhref="([^"]*)"[^>]*>(.*?)</a>', re.S)
+
+def zip_page(page, names, ship=None):
+    """review.html as the ZIP holds it: the header's review.md link dropped; the link to this file's own accessibility
+    statement pointed at the ZIP's copy; every other link that would lead outside the ZIP (a previous result, another
+    shipment's statement, a file of the run folder) unwrapped to its text. Links within the page (#…) and to the web stay."""
+    page = page.replace(_HEAD_LINK, '', 1)
+    own = {f'release/{ship["folder"]}/{n}' for n in (REL.STATEMENT_HTML, 'disclosure.html')} if ship and ship.get('folder') else set()
+    def fix(m):
+        href = html.unescape(m.group(1))
+        if href.startswith('#') or re.match(r'https?://', href) or href in names: return m.group(0)
+        if href in own and REL.STATEMENT_HTML in names: return m.group(0).replace(f'href="{m.group(1)}"', f'href="{REL.STATEMENT_HTML}"', 1)
+        return m.group(2)
+    return _A.sub(fix, page)
+
 class _Out:
     """The response stream for zipfile: write only, no seek or tell (zipfile then writes data descriptors)."""
     def __init__(self, w): self.w = w
     def write(self, b): self.w.write(b); return len(b)
     def flush(self): self.w.flush()
 
+FILE_WORDS = {'review.html': 'review.html: the report on this version (what was changed, what was checked, and the accessibility '
+                              'evaluation\'s results). Open it in a web browser.',
+              REL.STATEMENT_HTML: f'{REL.STATEMENT_HTML}: the accessibility statement written when this version was shipped. '
+                                  'Open it in a web browser.',
+              'READ-ME.txt': 'READ-ME.txt: this file.'}
+
 def _readme(d, sha):
+    """READ-ME.txt in plain words for library staff (Patrick, 2026-11-01): the version, its status, its shipments (21 §B:
+    "Shipment 1, shipped on … by …", "Published at: …", "Withdrawn on … by …: …"), what each file is, and the PDF's
+    fingerprint in one plain sentence."""
     ver = d['version']
     if ver['id'] == 'current':
         vline = f'Version: the current version ({_version_label(ver["session"]) if ver["session"] else "applied without a review"})' + (f', {d["applied"]}' if d.get('applied') else '')
         status = f'Status: {ver["status_text"] or ver["state"]}'
     elif ver.get('shipment'):
-        e = ver['entry']; w = e.get('withdrawn')
-        vline = f'Version: Shipment {e.get("n")}, shipped on {D.when(e.get("shipped"))} by {e.get("by")}' + (f' ({_version_label(ver["session"])})' if ver.get('session') else '')
-        status = f'Status: withdrawn on {D.day(w.get("date"))} by {w.get("by")}: {w.get("reason")}' if w else 'Status: Shipped'
+        vline = f'Version: a shipped copy' + (f' ({_version_label(ver["session"])})' if ver.get('session') else '')
+        status = 'Status: Withdrawn' if ver['entry'].get('withdrawn') else 'Status: Shipped'
     else:                                                        # K3: never a computed Ready on a superseded file
         vline = f'Version: {_version_label(ver["id"])}, an earlier version' + (f', {d["applied"]}' if d.get('applied') else '')
         status = f'Status: earlier version (not the current one; the current version is {d["cur_label"]})'
+    ships = [ver['entry']] if ver.get('shipment') else d.get('shipments') or []
     n = sum(1 for s in REL.SECTIONS for c in d['rel']['checks'].get(s) or [] if REL.sha_of(c) == sha)
-    return '\n'.join([d['book'], '', vline, status,
-                      f'Evaluation results recorded on this file: {n} (evaluation-results.json)', '',
-                      'Files: ' + ', '.join(m[0] for m in d['members']) + ', evaluation-results.json, READ-ME.txt',
-                      f'sha256 of {d["pdf_name"]}: {sha}',
-                      'The sha256 identifies this exact file; the evaluation results in evaluation-results.json are tied to it.', '',
-                      'Automated checks are evidence, not legal sign-off.',
-                      'The evaluation is a record of what a person found, not a legal certification.', '',
-                      f'Downloaded on {D.when(datetime.datetime.now().isoformat(timespec="seconds"))}.', ''])
+    files = [f'{d["pdf_name"]}: the remediated PDF of this version.'] + [FILE_WORDS[m[0]] for m in d['members'][1:]] + [FILE_WORDS['READ-ME.txt']]
+    return '\n'.join([d['book'], '', vline, status] + [x for s in ships for x in REL.shipment_lines(s)]
+                      + [f'Accessibility evaluation results recorded on this file: {n}' + (' (in review.html)' if n else ''), '',
+                         'This folder holds:'] + ['- ' + x for x in files]
+                      + ['', f'The fingerprint of {d["pdf_name"]}, which identifies this exact file (sha256): {sha}', '',
+                         'Automated checks are evidence, not legal sign-off.',
+                         'The evaluation is a record of what a person found, not a legal certification.', '',
+                         f'Downloaded on {D.when(datetime.datetime.now().isoformat(timespec="seconds"))}.', ''])
 
 def stream_zip(w, d):
     """Write the record ZIP to the stream `w` from the open handles in d (prepare()); the PDF is hashed as it streams, and
-    evaluation-results.json and READ-ME.txt (which name that hash) come last. Closes every handle."""
+    READ-ME.txt (which names that hash) comes last. Closes every handle."""
     now = datetime.datetime.now().timetuple()[:6]
     h = hashlib.sha256()
     try:
@@ -188,10 +218,7 @@ def stream_zip(w, d):
                         if i == 0: h.update(b)
                         dst.write(b)
             sha = h.hexdigest()
-            ev = {'schema': REL.SCHEMA, 'pdf_sha256': sha,
-                  **{s: [c for c in d['rel']['checks'].get(s) or [] if REL.sha_of(c) == sha] for s in REL.SECTIONS}}
-            for name, text in (('evaluation-results.json', json.dumps(ev, ensure_ascii=False, indent=1)), ('READ-ME.txt', _readme(d, sha))):
-                zi = zipfile.ZipInfo(f'{d["folder"]}/{name}', date_time=now); zi.compress_type = zipfile.ZIP_DEFLATED
-                zf.writestr(zi, text.encode('utf-8'))
+            zi = zipfile.ZipInfo(f'{d["folder"]}/READ-ME.txt', date_time=now); zi.compress_type = zipfile.ZIP_DEFLATED
+            zf.writestr(zi, _readme(d, sha).encode('utf-8'))
     finally:
         for _, fh, _ in d['members']: fh.close()
