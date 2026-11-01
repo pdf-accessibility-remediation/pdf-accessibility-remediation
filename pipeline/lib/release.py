@@ -246,6 +246,42 @@ def mirror(rel, cur):
         out[s + '_count'] = len(xs)
     return out, {'shipped': rel.get('shipped') or []}
 
+# ------------------------------------------------------------------ download names (stage 3)
+BASE_BYTES = 150                                            # a file name is at most 255 bytes on macOS and Linux (K2)
+_RESERVED = re.compile(r'[<>:"/\\|?*;]')
+STATE_WORDS = {NOT_READY: 'not-ready', PENDING: 'not-ready', READY: 'not-shipped'}
+
+def clean_base(output):
+    r"""The remediated PDF's name without ".pdf", safe for any computer the file goes to (03 §3.6, review 18 K2): NFC; control
+    characters dropped; < > : " / \ | ? * ; replaced by _; no leading or trailing dot or space (a leading dot hides the
+    file); at most 150 UTF-8 bytes, cut on a character boundary."""
+    import unicodedata
+    s = unicodedata.normalize('NFC', str(output or '')).strip(' .')
+    if s.lower().endswith('.pdf'): s = s[:-4]
+    s = ''.join(c for c in s if unicodedata.category(c)[0] != 'C')
+    s = _RESERVED.sub('_', s).strip(' .')
+    b = s.encode('utf-8')[:BASE_BYTES]
+    s = b.decode('utf-8', 'ignore').strip(' .')
+    return s or 'book'
+
+def download_names(output, session, state, shipment=None):
+    """(pdf name, zip name) for one version. session: its number (never a session's name), None for a result applied
+    without review; state: Not Ready, Pending Evaluation, Ready, Shipped (the shipped copy: the plain name) or
+    'earlier version'. A version with no session is never Ready (its work order was not approved), so there is no
+    "_no-review_not-shipped" (K4)."""
+    base = clean_base(output)
+    if state == SHIPPED:
+        return f'{base}.pdf', f'{base}_record_shipment-{int(shipment)}.zip' if str(shipment or '').isdigit() else f'{base}_record.zip'
+    sess = f'session-{int(session)}' if str(session or '').isdigit() else 'no-review'
+    word = 'earlier-version' if state == 'earlier version' else STATE_WORDS.get(state, 'not-ready')
+    return f'{base}_{sess}_{word}.pdf', f'{base}_record_{sess}_{word}.zip'
+
+def disposition(name):
+    """Content-Disposition for a saved name (RFC 6266 / 5987): an ASCII fallback and the UTF-8 name."""
+    import urllib.parse
+    ascii_ = ''.join(c if 32 <= ord(c) < 127 and c not in '"\\' else '_' for c in name)
+    return f'attachment; filename="{ascii_}"; filename*=UTF-8\'\'{urllib.parse.quote(name, safe="")}'
+
 # ------------------------------------------------------------------ review.md's "Accessibility Evaluation" section
 EVAL_HEADINGS = ('accessibility evaluation', 'final check with pac 2026')   # this section's headings, new and older (any case)
 EVAL_ANCHORS = ('accessibility-evaluation', 'final-check-with-pac-2026')
