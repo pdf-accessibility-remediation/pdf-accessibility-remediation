@@ -19,7 +19,8 @@ def load(p):
     except (OSError, ValueError): return None
 
 # ------------------------------------------------------------------ ready to ship, never None or "unknown"
-READY_MD = re.compile(r'^\*\*Ready to ship\?\*\* (Yes|No)\s*$')
+READY_MD = re.compile(r'^\*\*Ready to ship\?\*\*(?: (Yes|No))?\s*$', re.I)   # older runs: "… Yes|No"; from 2026-11 the label alone
+STATUS_MD = re.compile(r'^\*\*Status:\*\* (.*?)\s*$')
 
 def ready(R, rec):
     """{'answer': 'Yes' | 'No' | None, 'lines': [...], 'source': ...}: the record's glance, else review.md's Overview, else
@@ -40,8 +41,11 @@ def ready(R, rec):
             lines = []
             for x in md[i + 1:]:
                 if not x.startswith('- '): break
-                lines.append(x[2:])
-            return {'answer': m.group(1), 'lines': lines, 'source': 'review.md'}
+                lines.append(x[2:].removeprefix('✓ '))
+            st = next((s.group(1) for x in reversed(md[:i]) if (s := STATUS_MD.match(x))), None)
+            # no Yes/No after the label: the status line above it says (Yes only when the status is Ready, as glance's `ready`)
+            ans = m.group(1) or ('Yes' if st and st.split(' · ')[0] == 'Ready' else 'No' if st else None)
+            return {'answer': ans, 'lines': lines, 'status': st, 'source': 'review.md'}
     return {'answer': None, 'lines': [], 'source': None, 'text': 'not recorded for this run'}
 
 # ------------------------------------------------------------------ the original, by sha256

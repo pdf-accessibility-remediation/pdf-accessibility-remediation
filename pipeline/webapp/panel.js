@@ -17,6 +17,24 @@ const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
 // lib/titles.py: a, an, the, and, or, of, to, in, on, for, by, from, with stay lowercase unless first, last, or first after a
 // colon or question mark; a word with a capital inside, a dot, slash, underscore or digit is left as written, and so is
 // everything in parentheses (a qualifier stays lowercase: "Sent to (optional)").
+// ---- dates (lib/dates.py): "October 31, 2026" and "4:32 PM", parsed by hand, never with Date ('2026-10-31' is UTC midnight)
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
+function fmtParse(v) {
+  const m = DATE_RE.exec(String(v == null ? '' : v).trim()); if (!m) return null;
+  const mo = +m[2], d = +m[3], h = m[4] === undefined ? null : +m[4], mi = m[4] === undefined ? null : +m[5];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || (h !== null && (h > 23 || mi > 59))) return null;
+  return [+m[1], mo, d, h, mi];
+}
+function fmtBlank(v) { return v == null || !String(v).trim(); }
+function fmtDay(v) { if (fmtBlank(v)) return 'date not recorded'; const p = fmtParse(v); return p ? MONTHS[p[1] - 1] + ' ' + p[2] + ', ' + p[0] : String(v).trim(); }
+function fmtClock(v) {
+  const p = fmtParse(v);
+  if (!p || p[3] === null) return fmtBlank(v) || p ? 'time not recorded' : String(v).trim();
+  return ((p[3] % 12) || 12) + ':' + String(p[4]).padStart(2, '0') + ' ' + (p[3] < 12 ? 'AM' : 'PM');
+}
+function fmtWhen(v) { const p = fmtParse(v); return p && p[3] !== null ? fmtDay(v) + ' at ' + fmtClock(v) : fmtDay(v); }
+// ---- end of dates
 const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with', 'as']);
 function tc(s) {
   const w = String(s).split(' '); let edge = true, depth = 0;

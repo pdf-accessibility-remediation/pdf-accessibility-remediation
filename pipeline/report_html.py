@@ -332,22 +332,6 @@ def session_name(x):
     """'Session 5: Chapters 1–4 pass', or 'Session 5' (records made before sessions had names have none). Escaped."""
     return f'Session {int(x["id"])}' + (f': {E(x["name"])}' if x.get('name') else '')
 
-# the "Ready to Ship?" card's condition names in review.html (review.md keeps glance's): an exception to the capitalization
-# rule, decided 2026-10-31 (CLAUDE.md)
-SHIP_NAMES = {'Work order approved on the review page': 'Work Order approved on the review page', 'OCR text approved': 'OCR Text approved',
-              'Safety checks': 'Safety Checks', 'Manual check (PAC)': 'Manual Check (PAC)', 'Screen-reader check': 'Screen-Reader Check'}
-
-REVIEWED_BY = re.compile(r'no \(reviewed by .*? on [^:]*: (.*)\)$')
-
-def ship_words(s):
-    """A "Ready to Ship?" line as review.html says it (review.md keeps glance's text): the work order's "no (reviewed by Kim
-    on 2026-10-30: 205 decisions accepted without review)" reads "no (205 decisions not reviewed)", and "no (run without
-    REVIEW=1)" reads "no (applied without a review)" (no setting names on the page)."""
-    if not s['what'].startswith('Work order'): return s['text']
-    if s['text'] == 'no (run without REVIEW=1)': return 'no (applied without a review)'
-    m = REVIEWED_BY.match(s['text'])
-    return 'no (' + m.group(1).replace('decisions accepted without review', 'decisions not reviewed') + ')' if m else s['text']
-
 def notes_open(x, label='Notes'):
     """A session's notes: a button that opens them, read-only, in the page's pop-up box (the script's notes box), with the
     text beside it, hidden (plain text, never through inline(): a person's text is not markdown); 'none' without."""
@@ -367,9 +351,10 @@ def manual_card(R, rec):
         c = REL.latest(rel, sec, cur) or (xs[-1] if xs else None)
         B.append(f'<h3>{E(TC(REL.SECTION_NAMES[sec]))}</h3>')
         if c is None: B.append('<p>Not done.</p>'); continue
-        state = REL.state(rel, sec, c, cur); bad = REL.failed(c, sec)
+        state = REL.state(rel, sec, c, cur); bad = REL.issues(c, sec)
         ver = f'Session {int(c["pdf"]["session"])}' if str((c.get('pdf') or {}).get('session') or '').isdigit() else 'the result applied without review'
-        words = {'counts': 'counts for this version', 'failed': f'{len(bad)} item{"" if len(bad) == 1 else "s"} failed on this version',
+        words = {'completed': 'completed for this version' + (f', with {REL.noted(len(bad))}' if bad else ''),
+                 'could not be read': 'could not be read in full: record it again',
                  'earlier version': 'made on an earlier version: it does not count for this one'}[state]
         fields = [f'{E(name)}: {E(c["fields"][k])}' for k, (name, _) in REL.FIELDS[sec].items() if (c.get('fields') or {}).get(k)]
         if (c.get('fields') or {}).get('pages_checked'): fields.append(f'Pages Checked: {E(c["fields"]["pages_checked"])}')
@@ -511,7 +496,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
              # readers (the words say it). role="list": Safari drops a list's role when its bullets are styled away
              + ''.join(('<li class="met"><span class="mark" aria-hidden="true">✓</span>' if s.get('ok') is True else
                         '<li><span class="mark" aria-hidden="true"><i class="bul"></i></span>')
-                       + f'{E(SHIP_NAMES.get(s["what"], s["what"]))}: <strong>{E(ship_words(s))}</strong></li>' for s in g['ship']) + '</ul>')
+                       + f'{E(G.ship_name(s))}: <strong>{E(s["text"])}</strong></li>' for s in g['ship']) + '</ul>')
     B.append('</section>')
     if banner: B.insert(1, f'<p class="replaced" role="note">{banner}</p>')
     else: B += review_card(R, rec)
