@@ -30,7 +30,9 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
   earlier version: evaluate this version", or "could not be read in full: record it again". Each part's name links
   straight to its section. The strip also says the status as it is now when the report's card was written before a change
   (a session opened after shipping, for example), and says in plain words when the book's PDF has changed since its report
-  was made. When the run has no "Ready to Ship?" card, the strip goes at the end of the panel, as an h3.
+  was made. While the PDF on disk is not the one the report describes (a Ready book's or a shipped one's), the app drops
+  the card's green border on the run page; review.html opened as a file keeps it until it is next rebuilt. When the run
+  has no "Ready to Ship?" card, the strip goes at the end of the panel, as an h3.
 - **The page** (`/run/<run>/checks`) names the book as "PDF Title" (the remediated PDF's own title, else the original's
   name without ".pdf"), the version the results are for ("the version from Session 6, applied on October 30, 2026 at
   2:02 PM"), and the **Overall Status**, with the unsatisfied requirements when it is Not Ready ("Overall Status: Not
@@ -368,9 +370,7 @@ nothing.
   - the shipped file downloads under its plain names, and its record ZIP holds the statement;
   - a shipped copy that a newer version replaced is listed in "Version to Download" as "Shipment 1, shipped on …".
 - **A shipped book whose PDF later changes on disk** keeps "Shipped", with "The current PDF has changed since this report
-  was made." beside it, and never Ready's green. On the run page the app drops the card's green border while the warning
-  stands; review.html opened as a file keeps its green border until it is next rebuilt (the strip and the evaluation page
-  say the PDF changed). Mark as Shipped stays refused until it is resolved. The shipped copy in
+  was made." beside it, and never Ready's green. Mark as Shipped stays refused until it is resolved. The shipped copy in
   `release/shipped/` is untouched and still downloads.
 - **A previous result's own page** reads "Earlier version (the current version is Session N)", naming its shipment when
   it was itself shipped.
