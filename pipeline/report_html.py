@@ -525,6 +525,11 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
                        + f'{E(G.ship_name(s))}: <strong>{E(s["text"])}</strong></li>' for s in g['ship']) + '</ul>')
     B.append('</section>')
     if banner: B.insert(1, f'<p class="replaced" role="note">{banner}</p>')
+    from lib import release as REL                     # an earlier version whose PDF "Remove Older PDFs" took: drawn from the
+    if REL.run_dir_of(R) != os.path.abspath(R):        # record each time the page is built, so a rebuild keeps it (review 18 K8)
+        gone = next((x for x in REL.removed(R) if x.get('version') == os.path.basename(os.path.abspath(R))), None)
+        if gone: B.insert(2 if banner else 1, f'<p class="replaced" role="note">Its PDF was removed on {E(D.day(gone.get("removed")))} '
+                                                '("Remove Older PDFs"), to free space. Its records and decisions are kept.</p>')
     else: B += review_card(R, rec)
     B += manual_card(R, rec)
     # ---- four cards; the safety card holds its checks in a fold (open, failed first, when one fails)

@@ -120,6 +120,10 @@ def main():
     ap.add_argument('--pin', action='store_true', help='keep a finished run\'s digest after checking its fingerprint (free re-audit)')
     ap.add_argument('--replay-to', metavar='DIR', help='a run that can no longer be reviewed: prepare a new run of the book in DIR '
                     'from its intake and saved reply (no API call), and print the command')
+    ap.add_argument('--remove-older-pdfs', action='store_true', help='a finished run: list the PDFs of earlier versions never evaluated '
+                    'or shipped (the AI\'s own version is always kept); with --yes --by NAME, delete them (review/prune.py)')
+    ap.add_argument('--yes', action='store_true', help='with --remove-older-pdfs: delete, not only list')
+    ap.add_argument('--by', help='with --remove-older-pdfs --yes: your name, recorded in release/removed.json')
     ap.add_argument('--return-to', metavar='URL', help='with --serve or --reopen: the page the review page goes to after Finish, and '
                     'links back to (the app\'s run page; http://127.0.0.1:<port>/… or http://localhost:<port>/… only)')
     a = ap.parse_args()
@@ -131,6 +135,17 @@ def main():
         except ValueError as e: sys.exit(f'--return-to: {e}')
     R = os.path.abspath(a.run_dir)
     ai_path = os.path.join(R, 'workorder.ai.json')
+    if a.remove_older_pdfs:                              # "Remove Older PDFs": a dry run unless --yes
+        if not os.path.exists(os.path.join(R, 'record.json')): sys.exit(f'{R} is not a finished run (no record.json)')
+        from review import prune
+        items = prune.plan(R)
+        for x in items: print(f'  {x["label"]}: {x["bytes"] / 1e6:.1f} MB')
+        print(f'{len(items)} older PDF(s), {sum(x["bytes"] for x in items) / 1e6:.1f} MB' + ('' if a.yes else ' (a dry run: add --yes --by NAME to delete them)'))
+        if a.yes and items:
+            try: done = prune.remove(R, [x['sha256'] for x in items], a.by or '')
+            except sessions.Refused as e: sys.exit(f'refused: {e}')
+            print(f'removed {len(done)} older PDF(s); their records and decisions are kept')
+        return
     if os.path.exists(os.path.join(R, 'record.json')):
         return finished(R, a)
     if a.reopen or a.apply or a.sessions or a.pin or a.replay_to: sys.exit(f'{R} is not a finished run (no record.json)')

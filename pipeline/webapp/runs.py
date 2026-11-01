@@ -204,6 +204,19 @@ def after_interrupt(R, j):
 
 def run_path(run): return os.path.join(*run.split('/'))
 
+def prune_plan(R):
+    """"Remove Older PDFs": what it would remove now (review/prune.py plan, hashed through the app's display cache), or
+    None when nothing can be removed. Sizes in words; the hashes go back with the POST, so a changed list is refused."""
+    from review import prune
+    from . import manualpage
+    try: items = prune.plan(R, sha=manualpage.disk_sha)
+    except (OSError, ValueError): return None
+    if not items: return None
+    from lib import dates as D
+    mb = lambda n: f'{n / 1e6:.1f} MB'
+    return {'versions': [{'label': x['label'] + (f', applied on {D.day(x["applied"])}' if x.get('applied') else ''), 'size': mb(x['bytes'])} for x in items],
+            'total': mb(sum(x['bytes'] for x in items)), 'shas': [x['sha256'] for x in items]}
+
 def manual_strip(R, rec):
     """The Manual Checks strip after "Ready to Ship?" (webapp/manualpage.py strip()); None for a run it cannot read."""
     from . import manualpage
@@ -248,6 +261,7 @@ def state(s, run, R):
         'unapplied': unapplied(R, rec),
         'ocr': ocr_state(R),
         'manual': manual_strip(R, rec),
+        'prune': prune_plan(R),
         'lock': {'pid': h[0], 'what': h[1], 'since': h[2], 'words': jobs.lock_words(h[1], h[2])} if h else None,
         'live_review': job_view(s, live) if live else None,
         'jobs': [job_view(s, j) for j in rj],               # every job of the run: the page folds the earlier ones, none drop off

@@ -270,10 +270,17 @@ def make(s, setup, code=None):
             segs = segments(p[len('/api/run/'):]) if p.startswith('/api/run/') else None
             if segs and len(segs) >= 3 and segs[-2] == 'checks' and segs[-1] in ('draft', 'record'):   # two-segment actions: the run is segs[:-2]
                 return self.checks_post(segs[:-2], segs[-1], body)
-            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr'): return self.send(404, {'error': 'not found'})
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs'): return self.send(404, {'error': 'not found'})
             hit = find_run(s['runs'], segs[:-1])
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
             run, R, _ = hit
+            if segs[-1] == 'remove-older-pdfs':                 # in this process, through review/prune.py (its locks, its refusals)
+                from review import prune
+                shown = body.get('shas') if isinstance(body.get('shas'), list) else []
+                try: done = prune.remove(R, [str(x) for x in shown], str(body.get('by') or ''), wait=runlock.REQUEST_WAIT,
+                                         say=lambda *a: applog(f'{run}: ' + ' '.join(str(x) for x in a)))
+                except S.Refused as e: return self.send(409, {'error': str(e)})
+                return self.send(200, {'removed': len(done), 'bytes': sum(x['bytes'] for x in done)})
             try:
                 if segs[-1] == 'review':
                     src = body.get('from')

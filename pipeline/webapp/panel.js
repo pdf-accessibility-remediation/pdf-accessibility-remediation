@@ -289,6 +289,32 @@ function actions(s) {
   return h;
 }
 
+// "Remove Older PDFs" (stage 3, review/prune.py): shown only when an earlier version's PDF can be removed
+const PRUNE_LINE = 'Frees space by deleting the PDFs of earlier versions that were never evaluated or shipped. Their records and decisions are kept. The AI\'s own version is always kept.';
+function pruneBlock(s) {
+  if (!s.prune) return '';
+  return '<div class="pp-row"><button type="button" id="pp-prune" data-act="prune">Remove Older PDFs</button></div><p class="pp-note">' + esc(PRUNE_LINE) + '</p>';
+}
+function pruneDlg(p, opener) {                                    // the list, the total and a name; Escape or Cancel closes it
+  return new Promise(res => {
+    const d = $('pp-dlg'), n = p.versions.length, by = (localStorage.getItem('checks:by') || '');
+    d.innerHTML = '<h2 id="pp-dlg-h">Remove Older PDFs</h2><p>' + esc(PRUNE_LINE) + '</p><ul>' +
+      p.versions.map(v => '<li>' + esc(v.label) + ' · ' + esc(v.size) + '</li>').join('') + '</ul><p><b>Total:</b> ' + esc(p.total) + '</p>' +
+      '<p><label for="pp-prune-by">Removed By</label> <input type="text" id="pp-prune-by" autocomplete="name" value="' + esc(by) + '"></p>' +
+      '<p id="pp-prune-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Remove ' + n + ' Older PDF' + (n === 1 ? '' : 's') +
+      '</button><button type="button" value="no">Cancel</button></div>';
+    const id = opener.id, done = v => { d.close(); ($(id) || opener).focus(); res(v); };
+    d.querySelector('button[value=no]').addEventListener('click', () => done(null));
+    d.querySelector('button[value=yes]').addEventListener('click', () => {
+      const name = $('pp-prune-by').value.trim();
+      if (!name) { $('pp-prune-err').textContent = 'Enter your name in "Removed By".'; $('pp-prune-by').focus(); return; }
+      try { localStorage.setItem('checks:by', name); } catch (e) {}
+      done(name);
+    });
+    d.oncancel = ev => { ev.preventDefault(); done(null); };
+    d.showModal(); d.querySelector('button[value=no]').focus();
+  });
+}
 function historyBlock(s) {
   const rows = (s.sessions || []).slice().sort((a, b) => Number(b.id) - Number(a.id));   // newest first
   let h = '<details id="pp-hist"><summary>Session History (' + rows.length + ')</summary>';
@@ -362,7 +388,7 @@ function render() {
   else if (s.ocr && ocrSeen !== undefined && s.ocr.recorded !== ocrSeen)   // a verdict recorded since this page loaded: never reloads by itself
     h += '<p><b>OCR Verdict Recorded:</b> ' + esc(s.ocr.verdict || 'a new verdict') + '. The report below was made before it.</p>' +
       '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Updated Report</button></div>';
-  h += actions(s) + jobsBlock(s) + historyBlock(s);
+  h += actions(s) + jobsBlock(s) + historyBlock(s) + pruneBlock(s);
   $('pp-body').innerHTML = h;
   opened.forEach(id => { const d = $(id); if (d) d.open = true; });
   if (keepFocus && $(keepFocus) && box.contains($(keepFocus))) $(keepFocus).focus();
@@ -376,6 +402,16 @@ box.addEventListener('click', async e => {
   if (act === 'notes') {                                         // a session's notes, read-only, in the pop-up box
     const r = (st.sessions || []).find(x => String(x.id) === b.dataset.id); if (!r) return;
     return notesBox(tc('Notes: ' + r.label) + (r.name ? ' · ' + r.name : ''), r.notes || '', b, String(r.id));
+  }
+  if (act === 'prune') {                                         // "Remove Older PDFs": confirm with the list, then remove exactly it
+    const p = st.prune; if (!p) return;
+    const by = await pruneDlg(p, b); if (!by) return;
+    try {
+      const [c, r] = await api(API + '/remove-older-pdfs', { by: by, shas: p.shas });
+      if (c !== 200) return msg(r.error || 'The PDFs were not removed.', false, true);
+      msg('Removed ' + r.removed + ' older PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). Their records and decisions are kept.', true, true);
+      return poll(true);
+    } catch (e) { return msg('The app is not running. ' + START, false, true); }
   }
   msg('');                                                       // any other panel button clears the message too
   if (act === 'reload') { location.replace(location.pathname + '?landed=1'); return; }
