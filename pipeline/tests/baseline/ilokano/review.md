@@ -2,13 +2,13 @@
 
 Result: `ilokano_remediated.pdf`
 
-49 pages · run October 31, 2026 at 9:49 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+49 pages · run November 1, 2026 at 10:50 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: 1 picture page without OCR text · auto-tagged · tagged by OpenDataLoader 2.5.12 · the pipeline worked on `_intake/intake.pdf`; the original was not changed
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.1s · audit 3.0s · reuse saved reply 1.2s · apply 4.5s · verify 9.6s · total 18.4s
+Time: intake 0.1s · audit 3.5s · reuse saved reply 1.7s · apply 4.5s · verify 9.9s · total 19.7s
 
 ## Overview
 
@@ -18,9 +18,9 @@ Time: intake 0.1s · audit 3.0s · reuse saved reply 1.2s · apply 4.5s · verif
 
 **Ready to ship?**
 - Work Order Approval: Not Approved (applied without a review)
-- ✓ OCR Text Approval: Not Required (no OCR text was added during intake)
+- ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
-- Accessibility Evaluation: Not Completed (neither part recorded for this version)
+- Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 4 (4 deferred by the AI · 0 deferred by the executor · 0 CHECK rows)  
