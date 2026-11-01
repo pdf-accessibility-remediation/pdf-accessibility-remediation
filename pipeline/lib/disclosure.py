@@ -11,8 +11,9 @@ What it claims, and only when the record supports it:
     and a run with neither says the split was not recorded (M3);
   - the text: "No AI wrote or changed the book's printed text", then, only when they apply, the AI's readings of OCR
     words given as spoken text, the local OCR pages and who approved them, or the publisher's OCR layer (M4);
-  - the model, the instructions and the date of the call only for a real call; a replayed reply says "those of an
-    earlier call, not recorded for this run" (M5);
+  - the model, the instructions and the date of the call only for a real call; otherwise "not recorded for this book"
+    (M5; true for a replay and for a reply written by hand);
+  - in words for a public reader: no session numbers, report sections or internal names (review 24 P2);
   - veraPDF's before and after, or "not checked" (N6).
 Every name and note is the person's text as typed: escaped in the HTML (html.escape) and in the Markdown (release.md_text,
 md_quote) (N7). The wording is a draft, marked so on the page: to be agreed with the sponsors.
@@ -21,30 +22,32 @@ import html as _html
 from lib import release as REL, dates as D
 
 DRAFT = 'Draft wording: to be agreed with the sponsors.'
-STATUS_WORDS = {'approved': 'approved as proposed', 'seen': 'approved as proposed', 'changed': 'changed by a person', 'rejected': 'rejected by a person',
-                'accepted_unreviewed': 'not reviewed'}
+STATUS_WORDS = {'approved': 'approved as proposed', 'changed': 'changed', 'rejected': 'rejected', 'accepted_unreviewed': 'not reviewed'}
+SEEN_ONLY = ('deferrals', 'notes_for_reviewer', 'reading_order')   # review/core.py: nothing applied; a person marks them seen (P1)
 
 def _n(x): return int(x) if isinstance(x, int) else len(x or [])
 
 def decisions(rec):
-    """[(kind, {approved, changed, rejected, ...})], totals, added, note: the AI's decisions and what people did with them."""
+    """[(kind, {approved as proposed, changed, rejected})], totals, added, seen, note: the AI's decisions and what a person did
+    with them. Items a person only marks "seen" (the AI's deferrals, notes to the reviewer, reading-order findings: nothing is
+    applied) are never "approved as proposed": they are counted apart (review 24 P1)."""
     rv = rec.get('review') or {}; wo = rv.get('workorder') or {}
     ds = rv.get('decisions') or []
     added = (wo.get('counts') or {}).get('added') or sum(1 for c in wo.get('changes') or [] if isinstance(c, dict) and c.get('change') == 'added')
     if ds:
-        by = {}
+        by, seen = {}, 0
         for d in ds:
-            if d.get('kind') == 'Deferred by the AI': continue                        # a deferral is not a decision
+            if str(d.get('id') or '').split(':')[0] in SEEN_ONLY or d.get('kind') == 'Deferred by the AI' or d.get('status') == 'seen':
+                seen += d.get('status') == 'seen'; continue
             w = STATUS_WORDS.get(d.get('status'), d.get('status') or 'not recorded')
-            by.setdefault(d.get('kind') or 'Other decisions', {}).setdefault(w, 0); by[d.get('kind') or 'Other decisions'][w] += 1
-        return sorted(by.items()), None, added, None
+            k = d.get('kind') or 'Other decisions'
+            by.setdefault(k, {}).setdefault(w, 0); by[k][w] += 1
+        return sorted(by.items()), None, added, seen, None
     c = wo.get('counts')
-    if c:                                                                              # an older reviewed run: totals only
-        tot = {STATUS_WORDS.get(k, k): 0 for k in ('approved', 'changed', 'rejected')}
-        for k, v in c.items():
-            if k in STATUS_WORDS and v: tot[STATUS_WORDS[k]] = tot.get(STATUS_WORDS[k], 0) + v
-        return [], {k: v for k, v in tot.items() if v}, added, 'Counted from the review\'s totals; this run did not record each decision\'s kind.'
-    return [], None, added, 'Counted from the applied work order; the split between the AI and a person was not recorded for this run.'
+    if c:                                                                              # an older reviewed book: totals only
+        tot = {w: c.get(k) or 0 for k, w in STATUS_WORDS.items() if k != 'accepted_unreviewed' and c.get(k)}
+        return [], tot, added, c.get('seen') or 0, 'Totals only: the kind of each decision was not recorded for this book.'
+    return [], None, added, 0, 'The split between the AI\'s proposals and a person\'s changes was not recorded for this book.'
 
 def applied(rec):
     """(entries in the applied work order, entries the executor could not apply)."""
@@ -52,11 +55,20 @@ def applied(rec):
     ap = rec.get('apply') or {}
     return n_decisions(rec.get('workorder') or {}), sum(_n(ap.get(k)) for k in ('rejected', 'failed', 'deferred'))
 
+def ocr_words(rec):
+    """The OCR text line in the statement's own words (P2: never the report's "added during intake")."""
+    intake = rec.get('intake') or {}
+    from lib.glance import ocr_layer_flagged
+    v = (intake.get('review') or {}).get('ocr_text_approved')
+    if not ((intake.get('ocr') or {}).get('pages_with_ocr_text') or ocr_layer_flagged(intake)): return 'OCR text: none was added.'
+    if isinstance(v, dict) and v.get('verdict') == 'approved': return f'OCR text: approved by {v.get("reviewer")} on {D.day(v.get("date"))}.'
+    return 'OCR text: not approved.'
+
 def text_lines(rec):
     """M4: what is true of the book's text on this run."""
     out = ['No AI wrote or changed the book\'s printed text.']
     ow = ((rec.get('apply') or {}).get('ocr_words') or {}).get('forms') or 0
-    if ow: out.append(f'For {ow} word{"" if ow == 1 else "s"} the OCR misread, an AI\'s reading is given as spoken text only; each is listed for a person in the report.')
+    if ow: out.append(f'For {ow} word{"" if ow == 1 else "s"} the OCR misread, an AI\'s reading is given as spoken text only; each was listed for a person to check.')
     intake = rec.get('intake') or {}
     pages = (intake.get('ocr') or {}).get('pages_with_ocr_text') or []
     from lib.glance import ocr_layer_flagged
@@ -72,38 +84,40 @@ def text_lines(rec):
 def model_lines(rec):
     """M5: the model, the instructions and the call's date only for a real call."""
     run = rec.get('run') or {}
-    if run.get('response_from') or not run.get('model'):
-        return ['Model and instructions: those of an earlier call, not recorded for this run.']
+    if run.get('response_from') or not run.get('model'):           # a replay, or a reply written by hand: nothing known to name
+        return ['Model and instructions: not recorded for this book.']
     p = f'{run.get("prompt_file")}' + (f' ({str(run.get("prompt_sha256"))[:16]})' if run.get('prompt_sha256') else '') if run.get('prompt_file') else 'not recorded'
     return [f'Model: {run["model"]}. Instructions: {p}. Decided on {D.day(run.get("started"))}.']
 
 def facts(rec, rel, ship, glance):
     """The statement as data: [(heading or None, [lines])]. Every value from a person is kept as typed (escaped when drawn)."""
     doc = rec.get('document') or {}; sha = (ship.get('pdf') or {}).get('sha256')
-    ses = (ship.get('pdf') or {}).get('session')
-    ver = f'the version from Session {int(ses)}' if str(ses or '').isdigit() else 'the version applied without a review'
+    rvw = (rec.get('review') or {}).get('workorder') or {}
+    ver = f'the version reviewed on {D.day(rvw.get("date"))}' if rvw.get('date') else 'the version applied without a review by a person'   # P2: no session numbers
     B = [(None, [DRAFT]),
          ('This File', [f'{doc.get("output") or "the remediated PDF"}, {ver}, shipped on {D.day(ship.get("shipped"))} by {ship.get("by")} (shipment {ship.get("n")}).']
           + ([f'Published at: {ship["where"]}.'] if ship.get('where') else []) + ([f'Note: {ship["note"]}'] if ship.get('note') else [])
           + [f'sha256: {sha}, which identifies this exact file.']),
-         ('How It Was Made Accessible', ['The PDF was remediated by a semi-automated pipeline toward WCAG 2.1 AA. Local software measured the document '
+         ('How It Was Made Accessible', ['The PDF was remediated by a semi-automated process toward WCAG 2.1 AA. Local software measured the document '
                                          'and made the mechanical fixes. An AI model made a limited set of decisions, and a person reviewed them '
                                          'before they were applied.'] + text_lines(rec))]
-    kinds, totals, added, note = decisions(rec)
+    kinds, totals, added, seen, note = decisions(rec)
     lines = []
     for k, c in kinds: lines.append(f'{k}: ' + ', '.join(f'{v} {w}' for w, v in c.items()))
-    if totals: lines.append('In all: ' + ', '.join(f'{v} {w}' for w, v in totals.items()))
+    allc = totals or {}
+    if kinds:
+        for _, c in kinds:
+            for w, v in c.items(): allc[w] = allc.get(w, 0) + v
+    if allc: lines.insert(0, 'Decisions reviewed by a person: ' + ', '.join(f'{v} {w}' for w, v in allc.items()))
     if added: lines.append(f'Added by a person: {added}')
+    if seen: lines.append(f'Points the AI or the software left for a person: {seen}, each looked at')
     n_app, n_not = applied(rec)
-    lines.append(f'Entries applied: {n_app - n_not}' + (f' ({n_not} the software could not apply)' if n_not else ''))
+    lines.append(f'Changes made to the PDF from these decisions: {n_app - n_not}' + (f' ({n_not} could not be applied)' if n_not else ''))
     if note: lines.append(note)
     B.append(('What the AI Decided and What People Did', lines + model_lines(rec)))
     rv = (rec.get('review') or {}).get('workorder') or {}
-    sess = (rec.get('review') or {}).get('session')
-    people = [f'The AI\'s decisions: reviewed on the review page by {rv.get("reviewer")} on {D.day(rv.get("date"))}'
-              + (f' (Session {int(sess)})' if str(sess or '').isdigit() else '') + '.' if rv else 'The AI\'s decisions: not reviewed by a person.']
-    ocr_line = next((x['text'] for x in glance.get('ship') or [] if x.get('what') == 'OCR text approved'), None)
-    if ocr_line: people.append(f'OCR text: {ocr_line}')
+    people = [f'The AI\'s decisions: reviewed by {rv.get("reviewer")} on {D.day(rv.get("date"))}.' if rv else 'The AI\'s decisions: not reviewed by a person.']
+    people.append(ocr_words(rec))
     issues = []
     for s in REL.SECTIONS:
         p = REL.part(rel, s, sha); c = p['check']
@@ -118,9 +132,9 @@ def facts(rec, rel, ship, glance):
     vg = glance.get('verapdf') or {}
     vline = (f'veraPDF (WCAG 2.2 machine checks): {vg.get("before_rules")} rules failing before → {vg.get("after_rules")} after; '
              f'{len(vg.get("newly_failing") or [])} newly failing.' if vg.get('ran_before') and vg.get('ran_after')
-             else 'veraPDF (WCAG 2.2 machine checks): not checked (it did not run on both files).')
-    B.append(('Automated Checks', ['Five safety checks (pages unchanged, text unchanged, all content tagged or marked as decoration, the tag tree\'s '
-                                   'index, every font readable): ' + ('passed.' if glance.get('safety_ok') else 'not all passed.'),
+             else 'veraPDF (WCAG 2.2 machine checks): not checked (it checked only one of the two files, or neither).')
+    B.append(('Automated Checks', ['Five safety checks (pages unchanged, text unchanged, all content tagged or marked as decoration, the document\'s '
+                                   'structure, every font readable): ' + ('passed.' if glance.get('safety_ok') else 'not all passed.'),
                                    vline, 'Automated checks are evidence, not legal sign-off.']))
     B.append(('What This Statement Is Not', ['The accessibility evaluation is a record of what a person found, not a legal certification.']))
     B.append(('Contact', ['To be agreed with the sponsors.']))

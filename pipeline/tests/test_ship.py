@@ -114,7 +114,7 @@ def test_ship_copies_the_version_and_the_status_reads_shipped(tmp_path):
     assert 'Shipped copy (shipment 1, ' in open(os.path.join(F, 'review.html'), encoding='utf-8').read()     # N9
     assert '**Status:** Shipped · 1 issue noted' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
     st = open(os.path.join(F, 'disclosure.md'), encoding='utf-8').read()                   # reviewed before sessions were kept: Session 1
-    assert s['pdf']['session'] == '001' and 'the version from Session 1, shipped on ' in st and 'applied without a review' not in st
+    assert s['pdf']['session'] == '001' and 'the version reviewed on October 31, 2026, shipped on ' in st and 'applied without a review' not in st
     rec = core.load(os.path.join(R, 'record.json'))
     assert MP.ship_gate(R, rec)['why'].startswith('This version was shipped on ')                       # M1
     with pytest.raises(S.Refused, match='was shipped on'): M.ship(R, 'Kim', say=lambda *a: None, batch=False)
@@ -169,16 +169,19 @@ def test_the_split_between_the_ai_and_people(tmp_path):
     rec = {'review': {'workorder': {'reviewer': 'Pat', 'date': '2026-10-31', 'counts': {'approved': 2, 'changed': 1, 'rejected': 1, 'added': 1}},
                       'decisions': [{'kind': 'Alt text', 'status': 'approved'}, {'kind': 'Alt text', 'status': 'changed'},
                                     {'kind': 'Heading or tag change', 'status': 'approved'}, {'kind': 'Heading or tag change', 'status': 'rejected'},
-                                    {'kind': 'Deferred by the AI', 'status': 'approved'}]},
+                                    {'kind': 'Deferred by the AI', 'status': 'approved'}, {'id': 'reading_order:3', 'kind': 'Reading order', 'status': 'seen'},
+                                    {'id': 'notes_for_reviewer', 'kind': 'Deferred by the AI', 'status': 'seen'}]},
            'workorder': {'alt': {'f1': 'x', 'f2': 'y'}}, 'apply': {'rejected': [1], 'failed': 0, 'deferred': []}}
     _, md, _ = statement(rec)
-    assert 'Alt text: 1 approved as proposed, 1 changed by a person' in md and 'Heading or tag change: 1 approved as proposed, 1 rejected by a person' in md
-    assert 'Added by a person: 1' in md and 'Deferred by the AI' not in md and '(1 the software could not apply)' in md
+    assert 'Decisions reviewed by a person: 2 approved as proposed, 1 changed, 1 rejected' in md
+    assert 'Alt text: 1 approved as proposed, 1 changed' in md and 'Heading or tag change: 1 approved as proposed, 1 rejected' in md
+    assert 'Added by a person: 1' in md and 'Deferred by the AI' not in md and 'Changes made to the PDF from these decisions: 1 (1 could not be applied)' in md
     rv1 = {'review': {'workorder': {'reviewer': 'Patrick', 'date': '2026-10-26', 'counts': {'approved': 159, 'changed': 0, 'rejected': 0, 'seen': 8, 'accepted_unreviewed': 0}}}}
     _, md, _ = statement(rv1)                                                               # an older reviewed run: totals only (M3)
-    assert 'In all: 167 approved as proposed' in md and "this run did not record each decision" in md
+    assert 'Decisions reviewed by a person: 159 approved as proposed' in md and 'Points the AI or the software left for a person: 8, each looked at' in md   # P1
+    assert 'Totals only: the kind of each decision was not recorded for this book.' in md
     _, md, _ = statement({})
-    assert 'the split between the AI and a person was not recorded for this run' in md
+    assert "The split between the AI's proposals and a person's changes was not recorded for this book." in md
 
 def test_the_text_sentences_follow_the_record():
     _, md, _ = statement({})
@@ -197,8 +200,8 @@ def test_the_model_only_for_a_real_call_and_verapdf_not_checked():
     assert 'Model: anthropic/claude-sonnet-5.5. Instructions: workorder\\_v8.md (4555d20a2fa08a40). Decided on October 20, 2026.' in md
     replay = {'run': dict(real['run'], prompt_file='workorder_v9.md', response_from='v8-g1')}
     _, md, _ = statement(replay)                                                          # M5: a v8 reply replayed on v9 code
-    assert 'workorder\\_v9' not in md and 'those of an earlier call, not recorded for this run' in md
-    assert 'veraPDF (WCAG 2.2 machine checks): not checked (it did not run on both files).' in md   # N6
+    assert 'workorder\\_v9' not in md and 'Model and instructions: not recorded for this book.' in md
+    assert 'veraPDF (WCAG 2.2 machine checks): not checked (it checked only one of the two files, or neither).' in md   # N6
     _, md, _ = statement({}, glance={'safety_ok': True, 'verapdf': {'ran_before': True, 'ran_after': True, 'before_rules': 7, 'after_rules': 0, 'newly_failing': []}})
     assert '7 rules failing before → 0 after; 0 newly failing.' in md
 
@@ -225,8 +228,8 @@ def test_the_statement_builds_on_the_seven_baseline_records():
         rec = json.load(open(p, encoding='utf-8'))
         blocks, md, h = statement(rec, glance=H.glance_of(os.path.join(base, b), rec))
         n, nn = DS.applied(rec)
-        assert n == n_decisions(rec.get('workorder') or {}) and f'Entries applied: {n - nn}' in md, b
-        assert 'the split between the AI and a person was not recorded' in md, b              # the baselines are unreviewed
+        assert n == n_decisions(rec.get('workorder') or {}) and f'Changes made to the PDF from these decisions: {n - nn}' in md, b
+        assert 'was not recorded for this book' in md, b                                       # the baselines are unreviewed
 
 # ------------------------------------------------------------------ the app: the strip, the POST, the statement, the downloads (M7, N2, N3)
 from test_webapp import setup, wait, free_port  # noqa: F401,E402  (fixtures)
@@ -281,3 +284,18 @@ def test_only_the_statement_is_served_from_a_shipped_folder(mapp):
     assert req(port, 'GET', f'/run/{RUN}/release/shipped/001/disclosure.html')[0] == 200
     for p in ('release/shipped/001/record.json', 'release/shipped/002/disclosure.html', 'release/shipped.json', 'release/shipped/001/../001/disclosure.html'):
         assert req(port, 'GET', f'/run/{RUN}/{p}')[0] == 404, p
+
+
+def test_the_statement_uses_no_internal_terms(tmp_path):
+    """P2: a public reader's words; none of the app's or the report's internal terms in either file."""
+    R = real_ready(tmp_path)
+    M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
+    F = os.path.join(R, 'release', 'shipped', '001')
+    import re
+    for f in ('disclosure.md', 'disclosure.html'):
+        text = open(os.path.join(F, f), encoding='utf-8').read().replace('\\', '')
+        for bad in ('work order', 'work-order', 'Session', 'review page', 'intake', 'pipeline', 'executor', 'listed for a person in the report'):
+            assert bad not in text, (f, bad)
+        assert not re.search(r'\brun\b', text), f
+    md = open(os.path.join(F, 'disclosure.md'), encoding='utf-8').read()
+    assert 'OCR text: none was added.' in md and "the document's structure" in md and 'a semi-automated process' in md
