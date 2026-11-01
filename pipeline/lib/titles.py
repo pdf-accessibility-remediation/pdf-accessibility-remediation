@@ -14,7 +14,7 @@ A word already written with a capital inside it (veraPDF, WCAG, iOS), or holding
 """
 import re
 
-SMALL = {'a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with'}
+SMALL = {'a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with', 'as'}   # 'as' from 2026-11 (#38)
 LEAD = '("\'*[`'
 
 def _word(w, edge):

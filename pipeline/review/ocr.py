@@ -13,10 +13,11 @@ a person say "waiting for a language reader"; `to` names who). One verdict per r
 `history`.
 
 What record() writes, each file whole (a temp file and os.replace): _intake/intake.json, _intake/intake.md, and for a
-finished run record.json, review.md (the OCR row and the Overview) and review.html. Two locks: a flock on
-_intake/.verdict.lock in every mode (the page and a terminal never interleave), and for a finished run reviews/.lock,
-which the caller holds already (held=True: the review page's process) or record() takes (review_ocr.py from a terminal,
-refused while a review page is open or an apply runs).
+finished run record.json, review.md (the OCR row and the Overview) and review.html (through review/manual.py's
+write_run, which also mirrors release/). Locks, in this order: for a finished run reviews/.lock, which the caller holds
+already (held=True: the review page's process) or record() takes (review_ocr.py from a terminal, refused while a review
+page is open or an apply runs); a flock on _intake/.verdict.lock in every mode (the page and a terminal never
+interleave); and for a finished run the record lock (lib/runlock.py), from the read of record.json to the last write.
 """
 import os, re, sys, json, fcntl, datetime, contextlib, threading
 from . import core
@@ -170,11 +171,14 @@ def n_pages_of(R, intake, rec=None):
     return ((intake.get('original') or {}).get('pages') or ((rec or {}).get('document') or {}).get('pages')
             or ((intake.get('checks') or {}).get('original') or {}).get('pages') or 0)
 
-def record(R, fields, via, held=False, session=None, date=None, say=print):
+def record(R, fields, via, held=False, session=None, date=None, say=print, wait=None):
     """Check and record a verdict. held: the caller holds reviews/.lock (the review page's own process); otherwise a
-    finished run's lock is taken here, and refused while another process holds it. Returns (verdict, record.json or None).
-    Raises ValueError (the fields) or sessions.Refused (the lock)."""
+    finished run's lock is taken here, and refused while another process holds it. For a finished run the record lock
+    (lib/runlock.py) is taken inside the verdict lock, before record.json is read, and held until every file is written;
+    `wait`: how long to wait for it (a request thread passes runlock.REQUEST_WAIT). Returns (verdict, record.json or None).
+    Raises ValueError (the fields) or sessions.Refused (a lock)."""
     from . import sessions as S
+    from lib import runlock
     R = os.path.abspath(R); ij = os.path.join(R, '_intake', 'intake.json'); rj = os.path.join(R, 'record.json')
     if not os.path.exists(ij): raise ValueError(f'no _intake/intake.json in {R}: this book had no intake (already tagged?)')
     finished = os.path.exists(rj)
@@ -185,11 +189,13 @@ def record(R, fields, via, held=False, session=None, date=None, say=print):
             intake = json.load(open(ij, encoding='utf-8'))
             if not needed(intake):
                 raise ValueError('this book has no OCR text to review (intake added none, and its existing OCR layer was checked and not flagged)')
-            rec = json.load(open(rj, encoding='utf-8')) if finished else None
-            v = check(fields, intake, n_pages_of(R, intake, rec) or 10 ** 6, date)
-            v.update(via=via, **({'session': session} if session else {}), recorded=datetime.datetime.now().isoformat(timespec='seconds'))
-            write(R, intake, rec, v, say)
-            return v, rec
+            with (runlock.record_lock(R, runlock.COMMAND_WAIT if wait is None else wait) if finished else contextlib.nullcontext()):
+                rec = json.load(open(rj, encoding='utf-8')) if finished else None
+                v = check(fields, intake, n_pages_of(R, intake, rec) or 10 ** 6, date)
+                v.update(via=via, **({'session': session} if session else {}), recorded=datetime.datetime.now().isoformat(timespec='seconds'))
+                write(R, intake, rec, v, say)
+                return v, rec
+    except runlock.Busy as e: raise S.Refused(str(e))
     finally:
         if lock:
             lock.release()
@@ -215,35 +221,21 @@ def write(R, intake, rec, v, say=print):
     put_json(os.path.join(R, '_intake', 'intake.json'), intake)
     if md_intake: os.replace(md_intake, os.path.join(R, '_intake', 'intake.md'))
     if rec is not None and isinstance(rec.get('intake'), dict): put(rec['intake']); rec['intake']['glance'] = intake.get('glance')
-    md = os.path.join(R, 'review.md'); text = None; labels = None
-    from lib import glance as G
-    import report_html as H
-    if rec is not None and rec.get('sections_version') == 1:     # review.md is drawn from record.json `sections`: change the row there
-        good, words = ocr_verdict_row(v)
+    if rec is None: return
+    from .manual import write_run                  # the shared refresh: release/ mirrored, glance, review.md, review.html
+    md = os.path.join(R, 'review.md'); text = None
+    good, words = ocr_verdict_row(v)
+    if rec.get('sections_version') == 1:           # review.md is drawn from record.json `sections`: change the row there
         row = next((it for x in rec['sections'] for it in x['items'] if it.get('key') == f'check:{OCR_ROW}'), None)
         if row is not None: row['text'] = f'| {OCR_ROW} | {"OK" if good else "**CHECK**"} | {words} |'; row.pop('parts', None)
         else: say('note: review.md has no OCR review row; record.json and intake.json were updated')
-        try:
-            labels = H.labels_of(R, rec)
-            text = G.refresh(rec, labels, H.han_pages(R))
-        except Exception as e: say(f'note: "Overview" and review.html not refreshed ({type(e).__name__}: {e})'); text = None
-    elif rec is not None and os.path.exists(md):
-        good, words = ocr_verdict_row(v)
+    elif os.path.exists(md):
         lines = open(md, encoding='utf-8').read().split('\n'); hit = False
         for i, l in enumerate(lines):
             if l.startswith(f'| {OCR_ROW} |'): lines[i] = f'| {OCR_ROW} | {"OK" if good else "**CHECK**"} | {words} |'; hit = True
         if not hit: say('note: review.md has no OCR review row; record.json and intake.json were updated')
         text = '\n'.join(lines)
-        try:                                           # older runs: refresh the glance in review.md's text
-            labels = H.labels_of(R, rec)
-            rec['glance'] = G.glance(rec, text, labels, H.han_pages(R))
-            text = G.replace_block(text, G.glance_md(rec['glance']))
-        except Exception as e: say(f'note: "Overview" and review.html not refreshed ({type(e).__name__}: {e})'); labels = None
-    if rec is not None: put_json(os.path.join(R, 'record.json'), rec)
-    if text is not None: put_text(md, text)
-    if rec is not None and text is not None and labels is not None:
-        try: H.review_html(R, rec, text, labels)               # written whole by report_html
-        except Exception as e: say(f'note: review.html not refreshed ({type(e).__name__}: {e})')
+    write_run(R, rec, say, text=text)
 
 # ------------------------------------------------------------------ the page's OCR Text section
 def differ(cer, other=''):

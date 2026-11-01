@@ -695,25 +695,37 @@ def reapply(R, s, pdf=None, say=say_):
 
 def promote(R, sid, out, say=say_):
     """The new result (reviews/work/) becomes the top level; the old one goes to reviews/versions/<its id>/. A marker
-    (promoting.json) lets an interrupted promotion be completed: a record.json is at the top level at every moment."""
+    (promoting.json) lets an interrupted promotion be completed: a record.json is at the top level at every moment.
+    Stages: save old, move new, remirror (release/ read again and the glance, the Overview, review.html and record.json's
+    mirror rewritten: report.py read release/ minutes earlier), all under the record lock (lib/runlock.py); then banner
+    (the replaced version's own review.html, which no other writer touches), after the lock is released."""
+    from lib import runlock
     p = P(R)
-    m = load(p['promoting'])
-    if m is None:
-        old = load(os.path.join(R, 'record.json'))
-        m = {'to': sid, 'from': current_id(old), 'out': out, 'stage': 'save old'}; save(p['promoting'], m)
+    try:
+        with runlock.record_lock(R, runlock.COMMAND_WAIT):
+            m = load(p['promoting'])
+            if m is None:
+                old = load(os.path.join(R, 'record.json'))
+                m = {'to': sid, 'from': current_id(old), 'out': out, 'stage': 'save old'}; save(p['promoting'], m)
+            V = os.path.join(p['versions'], m['from'])
+            if m['stage'] == 'save old':
+                os.makedirs(V, exist_ok=True)
+                if not os.path.exists(os.path.join(V, 'record.json')): shutil.copy2(os.path.join(R, 'record.json'), os.path.join(V, 'record.json'))
+                for n in (m['out'],) + OUT_FILES[1:]:
+                    if os.path.exists(os.path.join(R, n)) and not os.path.exists(os.path.join(V, n)): shutil.move(os.path.join(R, n), os.path.join(V, n))
+                m['stage'] = 'move new'; save(p['promoting'], m)
+            if m['stage'] == 'move new':
+                W = p['work']
+                for n in (m['out'],) + OUT_FILES[1:]:
+                    if os.path.exists(os.path.join(W, n)): shutil.move(os.path.join(W, n), os.path.join(R, n))
+                if os.path.exists(os.path.join(W, 'record.json')): os.replace(os.path.join(W, 'record.json'), os.path.join(R, 'record.json'))
+                m['stage'] = 'remirror'; save(p['promoting'], m)
+            if m['stage'] == 'remirror':
+                from .manual import write_run
+                write_run(R, load(os.path.join(R, 'record.json')), say)
+                m['stage'] = 'banner'; save(p['promoting'], m)
+    except runlock.Busy as e: raise Refused(str(e))
     V = os.path.join(p['versions'], m['from'])
-    if m['stage'] == 'save old':
-        os.makedirs(V, exist_ok=True)
-        if not os.path.exists(os.path.join(V, 'record.json')): shutil.copy2(os.path.join(R, 'record.json'), os.path.join(V, 'record.json'))
-        for n in (m['out'],) + OUT_FILES[1:]:
-            if os.path.exists(os.path.join(R, n)) and not os.path.exists(os.path.join(V, n)): shutil.move(os.path.join(R, n), os.path.join(V, n))
-        m['stage'] = 'move new'; save(p['promoting'], m)
-    if m['stage'] == 'move new':
-        W = p['work']
-        for n in (m['out'],) + OUT_FILES[1:]:
-            if os.path.exists(os.path.join(W, n)): shutil.move(os.path.join(W, n), os.path.join(R, n))
-        if os.path.exists(os.path.join(W, 'record.json')): os.replace(os.path.join(W, 'record.json'), os.path.join(R, 'record.json'))
-        m['stage'] = 'banner'; save(p['promoting'], m)
     if m['stage'] == 'banner':
         try: replaced_banner(V, m['from'], m['to'], R)
         except Exception as e: say(f'  note: the replaced version\'s review.html was not rebuilt ({type(e).__name__}: {e})')
@@ -738,26 +750,17 @@ def rebuild_batch(R, say=say_):
 
 def mark_pending(R, s):
     """record.json review.pending: a session that is open, or finished and not applied (ready to ship then says No), and the
-    Overview and review.html refreshed. None clears it."""
-    rj = os.path.join(R, 'record.json'); rec = load(rj)
-    if rec is None: return
-    rv = rec.setdefault('review', {})
-    if s is None: rv.pop('pending', None)
-    else: rv['pending'] = {'session': s['id'], 'status': s['status'], 'since': s.get('finished') or s.get('started'), 'reviewer': s.get('reviewer')}
-    if not rv: rec.pop('review')
+    Overview and review.html refreshed, under the record lock, every file written whole. None clears it."""
+    from lib import runlock
+    from .manual import write_run
+    rj = os.path.join(R, 'record.json')
     try:
-        from lib import glance as G
-        import report_html as H
-        labels = H.labels_of(R, rec)
-        if rec.get('sections_version') == 1:
-            text = G.refresh(rec, labels, H.han_pages(R))
-            open(os.path.join(R, 'review.md'), 'w', encoding='utf-8').write(text)
-        else:
-            text = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
-            rec['glance'] = G.glance(rec, text, labels, H.han_pages(R))
-            text = G.replace_block(text, G.glance_md(rec['glance'])); open(os.path.join(R, 'review.md'), 'w', encoding='utf-8').write(text)
-        json.dump(rec, open(rj, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
-        H.review_html(R, rec, text, labels)
-    except Exception as e:
-        json.dump(rec, open(rj, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
-        print(f'note: "Overview" and review.html not refreshed ({type(e).__name__}: {e})')
+        with runlock.record_lock(R, runlock.COMMAND_WAIT):
+            rec = load(rj)
+            if rec is None: return
+            rv = rec.setdefault('review', {})
+            if s is None: rv.pop('pending', None)
+            else: rv['pending'] = {'session': s['id'], 'status': s['status'], 'since': s.get('finished') or s.get('started'), 'reviewer': s.get('reviewer')}
+            if not rv: rec.pop('review')
+            write_run(R, rec)
+    except runlock.Busy as e: raise Refused(str(e))

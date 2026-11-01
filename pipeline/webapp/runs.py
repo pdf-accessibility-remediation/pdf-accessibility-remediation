@@ -25,8 +25,13 @@ def ready(R, rec):
     """{'answer': 'Yes' | 'No' | None, 'lines': [...], 'source': ...}: the record's glance, else review.md's Overview, else
     'not recorded for this run'."""
     g = (rec or {}).get('glance')
-    if isinstance(g, dict) and isinstance(g.get('ready'), bool):
-        return {'answer': 'Yes' if g['ready'] else 'No', 'lines': [f'{x["what"]}: {x["text"]}' for x in g.get('ship') or []], 'source': 'record.json'}
+    if isinstance(g, dict) and isinstance(g.get('ship'), list):
+        try:                                   # never a stored `ready`: the PAC and screen-reader lines, ready and the status are
+            from lib import glance as G, release as REL       # worked out now from release/ (cheap: no PDF is opened)
+            g = G.with_release(g, rec, REL.load(R))
+        except (ValueError, KeyError, TypeError, OSError): g = dict(g, ready=False)   # release/ unreadable: never Ready
+        return {'answer': 'Yes' if g['ready'] else 'No', 'lines': [f'{x["what"]}: {x["text"]}' for x in g.get('ship') or []],
+                'status': (g.get('status') or {}).get('text'), 'source': 'record.json'}
     try: md = open(os.path.join(R, 'review.md'), encoding='utf-8').read().splitlines()
     except OSError: md = []
     for i, l in enumerate(md):
