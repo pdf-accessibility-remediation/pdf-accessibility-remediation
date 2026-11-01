@@ -267,6 +267,19 @@ def current_id(rec):
     if rv.get('session'): return rv['session']
     return '001' if rv.get('workorder') else 'ai'
 
+def newer(R, rec=None):
+    """The sessions newer than the current result (record.json's session, current_id(): a run reviewed before sessions
+    were kept is 001, an unreviewed one 'ai', 0): {'finished': the newest finished one, when no applied session is newer
+    (what Apply applies, also a failed apply), 'open': the newest open one}, each a session or None. A finished session
+    older than the current result, or replaced by a later applied one, is never in it. The one rule for the app's Apply
+    offer, the manual checks' refusal and the status's "Newer version" line."""
+    if rec is None: rec = load(os.path.join(R, 'record.json')) or {}
+    cur = sid_n(current_id(rec))
+    ss = [x for x in sessions(R) if x and sid_n(x.get('id')) > cur]
+    done = [x for x in ss if x.get('status') in ('finished', 'applied')]
+    op = [x for x in ss if x.get('status') == 'open']
+    return {'finished': done[-1] if done and done[-1].get('status') == 'finished' else None, 'open': op[-1] if op else None}
+
 def decision_list(items, decisions):
     """record.json review.decisions: one row per item, for review.html's per-decision status."""
     out = []

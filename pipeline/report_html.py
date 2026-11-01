@@ -222,7 +222,7 @@ def glance_of(R, rec=None, labels=None):
     document.output_sha256 only: an offline dashboard never hashes the PDF."""
     from lib import release as REL
     rec = rec or json.load(open(os.path.join(R, 'record.json'), encoding='utf-8'))
-    rel = REL.load(REL.run_dir_of(R))
+    rel = REL.load(REL.run_dir_of(R), rec)
     if rec.get('glance', {}).get('schema') == G.SCHEMA: return G.with_release(rec['glance'], rec, rel)
     if rec.get('sections_version') == S.VERSION:
         return G.glance(rec, None, labels if labels is not None else labels_of(R, rec), han_pages(R), sections=rec['sections'], release=rel)

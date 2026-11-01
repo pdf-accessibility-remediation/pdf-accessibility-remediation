@@ -74,9 +74,14 @@ be the same. Nothing relies on an apply making new bytes.
 - **A check is refused** (and nothing is written) when:
   - the PDF on disk is not the one `record.json` describes;
   - the PDF changed since the version was shown (`--for-sha`);
-  - a new version is being made: a session is finished and not yet applied (what `--apply` would apply; this covers the
-    whole re-apply), `reviews/work/` exists (a re-apply under way), or `reviews/promoting.json` exists (a promotion that
-    did not finish).
+  - a new version is being made: a session newer than the current result is finished and not yet applied (what Apply
+    applies; this covers the whole re-apply and a failed one), `reviews/work/` exists (a re-apply under way), or
+    `reviews/promoting.json` exists (a promotion that did not finish). A finished session that a later one replaced (its
+    apply failed, then a new review was applied) never blocks: one rule, `review/sessions.py` `newer()`, decides this,
+    the app's Apply offer and the "Newer version" line.
+- **A check whose refresh fails is taken back.** If rewriting the record after a check fails (for example an import
+  error), `release/checks.json` is put back as it was and the error is raised, so a check never stands beside a record
+  that lacks its hash.
 - **Offline dashboards** (`review.html` opened as a file, `summary.html`) compare the checks with `document.output_sha256`
   only. They never hash the PDF.
 
@@ -100,6 +105,10 @@ Yes only when all of these hold:
 5. **No screen-reader check of this version failed an item.** This line appears only then. A version nobody has listened to
    yet is not held back.
 
+**Fail closed:** "Ready to ship?" is Yes only on a glance of the current schema (`glance/0.4`) with the work-order, OCR
+and safety lines all present and met. A stored older glance (five safety checks) never reads Yes, even beside a
+counting PAC check.
+
 **Version 1 is strict:** any failed item keeps the line closed. A later "Fail, Accepted with a Note" (a person accepting a
 failed item with a written reason) has room in the records but is not built, and it waits for the sponsors.
 
@@ -112,9 +121,11 @@ failed item with a written reason) has room in the records but is not built, and
 | **Verified** | that file's latest screen-reader check has no Fail; **Verified (checked before shipping, DATE)** when the check is older than the shipment (worked out from the two dates each time, never stored, so the rule can change if the sponsors decide otherwise) |
 | **Needs Rework** | that file's latest screen-reader check has a Fail |
 
-- **After a shipment, the status is about the shipped copy,** because that is what readers have. When a newer version
-  exists, a second line describes it: "Newer version: Session 7 being reviewed", "… finished, not applied", or "Newer
-  version (Session 7): Ready to Ship? No". So Needs Rework stays until a fixed version ships.
+- **After a shipment, the status is about the shipped copy,** because that is what readers have. A second line says what
+  comes next, from the session files (`newer()`): "Newer version: Session 7 finished, not applied" (being applied, or
+  its apply failed), else "Newer version: Session 7 being reviewed" (an open session, also while the shipped file is
+  still the current one), else, when the current file is not the shipped one, "Newer version (Session 7): Ready to Ship?
+  No". So Needs Rework stays until a fixed version ships.
 - **Where the status is shown:**
   - review.md's Overview, as `**Status:** …` above "**Ready to ship?**";
   - review.html's "Ready to Ship?" card;

@@ -109,7 +109,7 @@ record = {
 from lib import release as REL
 record['document']['output_sha256'] = REL.sha_file(os.path.join(R, PDF)); record['document']['output_sha256_from'] = 'report'
 RUN_DIR = os.path.dirname(os.path.abspath(FROM_RECORD)) if FROM_RECORD else R
-REL_DATA = REL.load(RUN_DIR)
+REL_DATA = REL.load(RUN_DIR, record)
 record['manual_checks'], record['release'] = REL.mirror(REL_DATA, record['document']['output_sha256'])
 json.dump(record, open(os.path.join(R, 'record.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 if han:

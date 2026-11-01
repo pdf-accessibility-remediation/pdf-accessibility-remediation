@@ -4,7 +4,7 @@ status, with no web server and no writing (review/manual.py writes; issue #38).
     rel = load(R)                                  # release/checks.json and release/shipped.json, empty when absent
     pac = pac_line(rel, cur_sha)                   # (ok, text): "Ready to Ship?"'s "Manual check (PAC)" line
     sr  = sr_line(rel, cur_sha)                    # (False, text) when the current version's screen-reader check failed, else None
-    st  = status(rel, cur_sha, ready, pending, session)   # {name, text, newer}: Not Ready, Ready, Shipped, Verified, Needs Rework
+    st  = status(rel, cur_sha, ready, newer, session)     # {name, text, newer}: Not Ready, Ready, Shipped, Verified, Needs Rework
     rec = validate(section, data, ctx)             # a check as it will be recorded; raises Invalid with every problem
 
 Every check and shipment records the sha256 of the remediated PDF it was made on (`pdf.sha256`). A check counts only for
@@ -99,14 +99,20 @@ def run_dir_of(R):
 
 def empty(): return {'checks': {'schema': SCHEMA, 'pac': [], 'screen_reader': []}, 'shipped': []}
 
-def load(R):
-    """The run's release/ records; a run with none (every run made before 2026-11) has no checks and no shipments."""
+def load(R, rec=None):
+    """The run's release/ records; a run with none (every run made before 2026-11) has no checks and no shipments. With
+    the record (rec), also `newer`: the ids of the newest finished and open sessions newer than its result
+    (review/sessions.py newer(), the one rule), for the status's "Newer version" line."""
     if not R: return empty()
     p = paths(R)
     checks = _json(p['checks'], None) or empty()['checks']
     if checks.get('schema') not in READ_SCHEMAS: raise ValueError(f'{p["checks"]}: schema {checks.get("schema")!r} is not one this version reads')
     for s in SECTIONS: checks.setdefault(s, [])
-    return {'checks': checks, 'shipped': _json(p['shipped'], []) or []}
+    out = {'checks': checks, 'shipped': _json(p['shipped'], []) or []}
+    if rec is not None:
+        from review import sessions as S
+        out['newer'] = {k: (v or {}).get('id') for k, v in S.newer(R, rec).items()}
+    return out
 
 def sha_file(p):
     h = hashlib.sha256()
@@ -170,12 +176,14 @@ def sr_line(rel, cur):
 
 NOT_READY, READY, SHIPPED, VERIFIED, NEEDS_REWORK = 'Not Ready', 'Ready', 'Shipped', 'Verified', 'Needs Rework'
 
-def status(rel, cur, ready, pending=None, session=None):
+def status(rel, cur, ready, newer=None, session=None):
     """{name, text, newer, shipment}. Before any shipment: the current version's Not Ready or Ready. Once a version has
     shipped (and is not withdrawn), the status is about the shipped copy: Shipped, Verified (its latest completed
     screen-reader check has no Fail; "checked before shipping" when that check is older than the shipment, worked out
-    here, never stored) or Needs Rework (a Fail). `newer` describes a newer version when the current file is not the
-    shipped one; `pending` is record.json review.pending, `session` the current version's session."""
+    here, never stored) or Needs Rework (a Fail). After a shipment, the result's `newer` line names what comes next: a
+    session finished and not applied, else one being reviewed (`newer`: {'finished': id, 'open': id}, from
+    sessions.newer()), else, when the current file is not the shipped one, whether it is ready to ship (`session`: the
+    current version's session)."""
     ships = live_shipments(rel)
     if not ships:
         n = READY if ready else NOT_READY
@@ -187,13 +195,11 @@ def status(rel, cur, ready, pending=None, session=None):
     else:
         name = VERIFIED
         text = f'{VERIFIED} (checked before shipping, {day(c.get("recorded"))})' if str(c.get('recorded') or '') < str(s.get('shipped') or '') else VERIFIED
-    newer = None
-    if ssha != cur:
-        p = pending or {}
-        if p.get('status') == 'finished': newer = f'Newer version: Session {int(p["session"])} finished, not applied'
-        elif p.get('status') == 'open': newer = f'Newer version: Session {int(p["session"])} being reviewed'
-        else: newer = (f'Newer version (Session {int(session)})' if str(session or '').isdigit() else 'Newer version') + f': Ready to Ship? {"Yes" if ready else "No"}'
-    return {'name': name, 'text': text, 'newer': newer, 'shipment': s.get('n')}
+    n = newer or {}; line = None
+    if str(n.get('finished') or '').isdigit(): line = f'Newer version: Session {int(n["finished"])} finished, not applied'
+    elif str(n.get('open') or '').isdigit(): line = f'Newer version: Session {int(n["open"])} being reviewed'
+    elif ssha != cur: line = (f'Newer version (Session {int(session)})' if str(session or '').isdigit() else 'Newer version') + f': Ready to Ship? {"Yes" if ready else "No"}'
+    return {'name': name, 'text': text, 'newer': line, 'shipment': s.get('n')}
 
 def state(rel, section, c, cur):
     """A check's state, worked out now: counts / failed (on this version) or earlier version."""

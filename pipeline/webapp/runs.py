@@ -28,7 +28,7 @@ def ready(R, rec):
     if isinstance(g, dict) and isinstance(g.get('ship'), list):
         try:                                   # never a stored `ready`: the PAC and screen-reader lines, ready and the status are
             from lib import glance as G, release as REL       # worked out now from release/ (cheap: no PDF is opened)
-            g = G.with_release(g, rec, REL.load(R))
+            g = G.with_release(g, rec, REL.load(R, rec))
         except (ValueError, KeyError, TypeError, OSError): g = dict(g, ready=False)   # release/ unreadable: never Ready
         return {'answer': 'Yes' if g['ready'] else 'No', 'lines': [f'{x["what"]}: {x["text"]}' for x in g.get('ship') or []],
                 'status': (g.get('status') or {}).get('text'), 'source': 'record.json'}
@@ -189,7 +189,7 @@ def after_interrupt(R, j):
                                           'session again. Earlier results stay in reviews/versions/.'}
     if applied:
         return {'state': 'done', 'text': f'done (the app lost track of the job): {S.label(applied[-1]["id"])} is the current result'}
-    u = unapplied(ss)
+    u = unapplied(R)
     if u: return {'state': 'apply', 'text': f'{u["label"].capitalize()} is finished and not applied: Apply applies it.'}
     op = [x for x in ss if x.get('status') == 'open']
     if j['kind'] == 'review' and op: return {'state': 'continue', 'text': f'{S.label(op[-1]["id"]).capitalize()} stays open: Continue review carries on with it.'}
@@ -197,13 +197,12 @@ def after_interrupt(R, j):
 
 def run_path(run): return os.path.join(*run.split('/'))
 
-def unapplied(ss):
-    """The session Apply is offered for: the newest finished-or-applied one, when it is finished and not applied. A
-    finished session that a later one replaced (its apply failed, then the person reviewed again) is never offered."""
-    done = [x for x in ss if x.get('status') in ('finished', 'applied')]
-    if not done or done[-1].get('status') != 'finished': return None
-    x = done[-1]
-    return {'id': x['id'], 'label': S.label(x['id']), 'finished': x.get('finished')}
+def unapplied(R, rec=None):
+    """The session Apply is offered for (review/sessions.py newer(), the rule the manual checks' refusal shares): the
+    newest finished session newer than the current result, when no applied one is newer. A finished session that a later
+    one replaced (its apply failed, then the person reviewed again) is never offered."""
+    x = S.newer(R, rec)['finished']
+    return {'id': x['id'], 'label': S.label(x['id']), 'finished': x.get('finished')} if x else None
 
 def state(s, run, R):
     rec = load(os.path.join(R, 'record.json')) or {}
@@ -233,7 +232,7 @@ def state(s, run, R):
         'sessions': rows, 'ai_result': 'reviews/versions/ai/' + ('review.html' if os.path.isfile(os.path.join(ai_v, 'review.html')) else 'review.md') if os.path.isdir(ai_v) and cur != 'ai' else None,
         'open': {'id': op[-1]['id'], 'label': S.label(op[-1]['id']), 'started': op[-1].get('started')} if op else None,
         'latest': {'id': done[-1]['id'], 'label': S.label(done[-1]['id'])} if done else None,
-        'unapplied': unapplied(ss),
+        'unapplied': unapplied(R, rec),
         'ocr': ocr_state(R),
         'lock': {'pid': h[0], 'what': h[1], 'since': h[2], 'words': jobs.lock_words(h[1], h[2])} if h else None,
         'live_review': job_view(s, live) if live else None,
@@ -293,7 +292,7 @@ def start_ocr(s, run, R, port, app_pid=None):
 
 def start_apply(s, run, R):
     rec = load(os.path.join(R, 'record.json')) or {}
-    ss = S.sessions(R); u = unapplied(ss)
+    ss = S.sessions(R); u = unapplied(R, rec)
     if not u:
         fin = [x for x in ss if x.get('status') == 'finished']
         if not fin: raise ValueError('no finished session is waiting to be applied')
