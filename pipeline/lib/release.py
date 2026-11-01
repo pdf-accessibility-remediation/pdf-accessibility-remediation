@@ -212,20 +212,23 @@ def status(rel, cur, base_ok, newer=None, session=None):
     withdrawn), the status is about the shipped copy: Shipped, with the issues noted on that file. After a shipment, the
     `newer` line names what comes next: a session finished and not applied, else one being reviewed (`newer`:
     {'finished': id, 'open': id}, from sessions.newer()), else, when the current file is not the shipped one, the current
-    version's own status (`session`: its session). "· N issues noted" follows any status whose version has Fails."""
+    version's own status (`session`: its session). "· N issues noted" follows any status whose version has Fails.
+    `current` is always the current version's own status, {name, issues} (pre_status), before and after any shipment:
+    stage 4's Mark as Shipped is gated on current['name'] == 'Ready' (with the disk hash in the app), never on
+    glance.ready, which is False after any shipment (review 16 J1)."""
     ships = live_shipments(rel)
+    cname, cn = pre_status(rel, cur, base_ok)
+    current = {'name': cname, 'issues': cn}
     if not ships:
-        name, n = pre_status(rel, cur, base_ok)
-        return {'name': name, 'text': with_issues(name, n), 'newer': None, 'shipment': None, 'issues': n}
+        return {'name': cname, 'text': with_issues(cname, cn), 'newer': None, 'shipment': None, 'issues': cn, 'current': current}
     s = ships[-1]; ssha = sha_of(s)
     n = evaluation(rel, ssha)['issues']
     nw = newer or {}; line = None
     if str(nw.get('finished') or '').isdigit(): line = f'Newer version: Session {int(nw["finished"])} finished, not applied'
     elif str(nw.get('open') or '').isdigit(): line = f'Newer version: Session {int(nw["open"])} being reviewed'
     elif ssha != cur:
-        cname, cn = pre_status(rel, cur, base_ok)
         line = (f'Newer version (Session {int(session)})' if str(session or '').isdigit() else 'Newer version') + f': {with_issues(cname, cn)}'
-    return {'name': SHIPPED, 'text': with_issues(SHIPPED, n), 'newer': line, 'shipment': s.get('n'), 'issues': n}
+    return {'name': SHIPPED, 'text': with_issues(SHIPPED, n), 'newer': line, 'shipment': s.get('n'), 'issues': n, 'current': current}
 
 def state(rel, section, c, cur):
     """A result's state, worked out now: completed / could not be read (on this version) or earlier version."""

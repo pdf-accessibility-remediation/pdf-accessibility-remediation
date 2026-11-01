@@ -157,16 +157,18 @@ def from_sections(secs):
                 if len(cells) == 3: rows.append({'name': cells[0], 'ok': cells[1] == 'OK', 'detail': cells[2]})
     return rows, out
 
-def with_release(g, record, release=None):
+def with_release(g, record, release=None, cur=None):
     """The glance with its release/-derived parts worked out now: the "Accessibility evaluation" line, the status and
     `ready`, and the safety line from the five damage checks (a stored 0.4 glance's sixth check is dropped). The current
     version is the record's document.output_sha256 (the offline dashboards compare with it only; the app compares the file
     on disk too). Fail closed: the base requirements can be satisfied only on a glance of glance/0.4 or 0.5 that has all
     three base lines (a 0.3 glance predates the rules for a flagged OCR layer, a finished-not-applied session and the
-    sent-to-a-reader verdict) and the five damage checks, each OK."""
+    sent-to-a-reader verdict) and the five damage checks, each OK. cur: the current version's hash; the app passes the
+    file on disk's (webapp/manualpage.py app_sha), the offline dashboards leave it to the record's output_sha256. The
+    status carries `current`, the current version's own status (release.status(); review 16 J1)."""
     from lib import release as REL
     rel = release if release is not None else REL.empty()
-    cur = (record.get('document') or {}).get('output_sha256')
+    cur = cur or (record.get('document') or {}).get('output_sha256')
     five = [x for x in g.get('safety') or [] if x.get('what') != SAFETY_VERA]
     ship = []
     for s in g['ship']:
