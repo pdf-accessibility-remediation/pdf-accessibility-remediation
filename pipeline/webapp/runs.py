@@ -30,7 +30,8 @@ def ready(R, rec):
     if isinstance(g, dict) and isinstance(g.get('ship'), list):
         try:                                   # never a stored `ready`: the PAC and screen-reader lines, ready and the status are
             from lib import glance as G, release as REL       # worked out now from release/ (cheap: no PDF is opened)
-            g = G.with_release(g, rec, REL.load(R, rec))
+            from . import manualpage                               # the file on disk's hash, as the evaluation page (J1)
+            g = G.with_release(g, rec, REL.load(R, rec), cur=manualpage.app_sha(R, rec) if R and os.path.isdir(R) else None)
         except (ValueError, KeyError, TypeError, OSError): g = dict(g, ready=False)   # release/ unreadable: never Ready
         return {'answer': 'Yes' if g['ready'] else 'No', 'lines': [f'{x["what"]}: {x["text"]}' for x in g.get('ship') or []],
                 'status': (g.get('status') or {}).get('text'), 'source': 'record.json'}

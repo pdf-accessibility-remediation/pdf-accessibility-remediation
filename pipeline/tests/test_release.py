@@ -369,3 +369,33 @@ def test_a_check_is_rolled_back_when_the_refresh_fails(tmp_path, monkeypatch):
     assert open(os.path.join(R, 'release', 'checks.json')).read() == kept   # back to the one that worked
     rec = core.load(os.path.join(R, 'record.json'))
     assert REL.part(REL.load(R), 'pac', rec['document']['output_sha256'])['state'] == 'completed'   # it counts on the same file
+
+# ------------------------------------------------------------------ the current version's own status (review 16 J1)
+def test_status_current_is_the_current_versions_own_status_before_and_after_shipping():
+    """Mark as Shipped (stage 4) is gated on status['current']['name'] == 'Ready': after a shipment glance.ready is False
+    even when a newer version is Ready."""
+    g = {'schema': G.SCHEMA, 'ship': [{'what': w, 'ok': True, 'text': 'x'} for w in G.SHIP_BASE], 'safety': FIVE, 'needs_person': {'total': 0}}
+    rec = {'document': {'output_sha256': B}}
+    both_b = dict(pac=[chk(A, PAC_OK), chk(B, failing(PAC_OK, 'contrast'))], sr=[chk(A, SR_OK), chk(B, SR_OK)])
+    out = G.with_release(g, rec, rel(**both_b, shipped=[ship(A)]))                # shipped A, then a newer Ready version B
+    assert out['status']['name'] == 'Shipped' and out['ready'] is False and out['status']['current'] == {'name': 'Ready', 'issues': 1}
+    out = G.with_release(g, rec, rel(pac=[chk(A, PAC_OK), chk(B, PAC_OK)], sr=[chk(A, SR_OK)], shipped=[ship(A)]))   # B: Pending Evaluation
+    assert out['status']['current'] == {'name': 'Pending Evaluation', 'issues': 0}
+    bad = dict(g, ship=[dict(s, ok=False) if s['what'] == 'OCR text approved' else s for s in g['ship']])     # B: a base requirement unsatisfied
+    assert G.with_release(bad, rec, rel(**both_b, shipped=[ship(A)]))['status']['current']['name'] == 'Not Ready'
+    for r in (rel(), rel(pac=[chk(B, PAC_OK)]), rel(**both_b)):                     # no shipment: the status itself
+        st = G.with_release(g, rec, r)['status']
+        assert st['current'] == {'name': st['name'], 'issues': st['issues']}
+
+def test_the_app_reads_the_status_against_the_file_on_disk(tmp_path):
+    """In the app the current version is the file on disk (webapp/manualpage.py app_sha), not only the record's hash: a
+    run whose record has no output_sha256 yet, with both parts recorded on the disk file, reads Ready."""
+    from webapp import manualpage as MP, runs
+    R = finished_run(tmp_path); disk = REL.sha_file(os.path.join(R, 'b_remediated.pdf'))
+    os.makedirs(os.path.join(R, 'release'))
+    core.save(os.path.join(R, 'release', 'checks.json'), rel(pac=[chk(disk, PAC_OK)], sr=[chk(disk, SR_OK)])['checks'])
+    rec = core.load(os.path.join(R, 'record.json')); rec.pop('review')
+    rec['glance'] = {'schema': G.SCHEMA, 'ship': [{'what': w, 'ok': True, 'text': 'x'} for w in G.SHIP_BASE], 'safety': FIVE, 'needs_person': {'total': 0}}
+    assert MP.app_sha(R, rec) == disk and not rec['document'].get('output_sha256')
+    assert G.with_release(rec['glance'], rec, REL.load(R))['status']['name'] == 'Pending Evaluation'   # the record's hash alone: none
+    assert runs.ready(R, rec)['status'] == 'Ready' and MP.strip(R, rec)['status'] == 'Ready'

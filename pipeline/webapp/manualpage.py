@@ -44,6 +44,11 @@ def disk_state(R, rec):
     want = (rec.get('document') or {}).get('output_sha256')
     return {'same': None if not want or sha is None else sha == want, 'sha': sha, 'missing': sha is None}
 
+def app_sha(R, rec):
+    """The current version's hash as the app sees it: the file on disk's (cached), else the record's output_sha256. The
+    status, `ready` and status['current'] (Mark as Shipped's gate, stage 4) are worked out against it (review 16 J1)."""
+    return disk_state(R, rec)['sha'] or (rec.get('document') or {}).get('output_sha256')
+
 CHANGED_BY_HAND = ('The book\'s PDF has changed since this report was made, so no check can be recorded for it. '
                    'Whoever looks after the app can check it.')
 MISSING = 'The book\'s remediated PDF is missing, so no check can be recorded for it. Whoever looks after the app can check it.'
@@ -98,9 +103,9 @@ def state(R, run):
     R = os.path.abspath(R); rec = _rec(R)
     import report_html as H
     rel = REL.load(R, rec); disk = disk_state(R, rec)
-    cur = (rec.get('document') or {}).get('output_sha256') or disk['sha']   # no recorded hash yet: the disk's (F1)
-    try: g = H.glance_of(R, rec)
-    except Exception: g = G.with_release(rec.get('glance') or {'ship': []}, rec, rel)
+    cur = disk['sha'] or (rec.get('document') or {}).get('output_sha256')   # the file on disk (J1); none: the record's
+    try: g = G.with_release(H.glance_of(R, rec), rec, rel, cur=cur)
+    except Exception: g = G.with_release(rec.get('glance') or {'ship': []}, rec, rel, cur=cur)
     fnd = REL.found(rec); drafts = M.load_drafts(R)
     secs = {}
     for sec in REL.SECTIONS:
@@ -138,7 +143,7 @@ def strip(R, rec):
     """The strip's data: one line per section, the live status (with the card's, to say when they differ), the disk
     check and any refusal. Cheap: the cached disk hash and the stored glance with release/ worked out now."""
     R = os.path.abspath(R); rel = REL.load(R, rec); disk = disk_state(R, rec)
-    cur = (rec.get('document') or {}).get('output_sha256') or disk['sha']
+    cur = disk['sha'] or (rec.get('document') or {}).get('output_sha256')   # the file on disk (J1)
     out = {}
     for sec in REL.SECTIONS:
         p = REL.part(rel, sec, cur); c = p['check']
@@ -148,7 +153,7 @@ def strip(R, rec):
                  'not recorded': lambda: 'not completed'}[p['state']]()
         out[sec] = {'name': REL.SECTION_NAMES[sec], 'id': SECTION_ID[sec], 'words': words, 'ok': p['state'] == 'completed'}
     g0 = rec.get('glance') or {}
-    try: live = G.with_release(g0 if g0.get('ship') else {'ship': []}, rec, rel).get('status') or {}
+    try: live = G.with_release(g0 if g0.get('ship') else {'ship': []}, rec, rel, cur=cur).get('status') or {}
     except (KeyError, TypeError, ValueError): live = {}
     card = (g0.get('status') or {})
     return {'sections': out, 'status': live.get('text'), 'newer': live.get('newer'),
