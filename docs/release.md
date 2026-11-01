@@ -156,7 +156,9 @@ review.md's Overview writes the same lines, under `**Ready to ship?**` and the `
 2. **OCR Text Approval:** the OCR text was approved, when it needs approval (as before): "Approved", "Not Approved",
    "Waiting for a Language Reader", "Not Reviewed", or "Not Required".
 3. **Safety Checks:** the five damage checks are OK: pages look the same, text unchanged, all content tagged or
-   decoration, the tag-tree index points into the tree, every font readable. "Passed", or "Failed (…)" naming them.
+   decoration, the tag-tree index points into the tree, every font readable. "Passed", or "Failed (…)" naming them. A run
+   made before some of these checks existed records fewer: "Not Checked (only 3 of the 5 checks were recorded for this
+   run)", and the Safety card says "Not checked". Such a run is never Ready.
 4. **Accessibility Evaluation:** both parts are completed for this version of the PDF. A part is completed when its
    latest results on that file have, for every item the checklist asks, one of that item's own choices. "Completed",
    "Completed (2 issues noted)", or "Not Completed (…)" saying what is missing: a part not recorded, recorded on an
