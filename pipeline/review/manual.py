@@ -15,7 +15,7 @@ record.json describes; a run with no recorded hash (every run made before 2026-1
 check, after checking it against the current session's own record of its PDF where there is one. If the refresh after
 writing a check fails, the check is taken back (release/checks.json as it was) and the error raised.
 """
-import os, datetime, subprocess
+import os, json, datetime, subprocess
 from lib import release as REL, runlock
 from . import sessions as S
 from .ocr import put_json, put_text
@@ -30,12 +30,15 @@ NOT_LAST_REVIEW = 'The PDF on disk is not the one this book\'s last review produ
 
 def now(): return datetime.datetime.now().isoformat(timespec='seconds')
 
-def code():
-    """The git commit this writer runs on (records made by an app started before a `git pull` can be found)."""
+def _head():
     try:
         r = subprocess.run(['git', 'rev-parse', '--short=12', 'HEAD'], cwd=HERE, capture_output=True, text=True, timeout=10)
         return r.stdout.strip() or None
     except (OSError, subprocess.SubprocessError): return None
+CODE = _head()                                            # read once, when this process loads the code (the app imports this
+def code():                                               # module at start): after a `git pull` it still names the code running
+    """The git commit this process's code came from: records made by an app started before a `git pull` can be found."""
+    return CODE
 
 def being_made(R):
     """Why nothing can be recorded now (a new version is being made, or the record is out of step with the sessions:
@@ -87,9 +90,13 @@ def adopt_hash(R, rec, disk):
     rec['document']['output_sha256'] = disk
     rec['document']['output_sha256_from'] = f'first check, {now()[:10]}'
 
-def record(R, section, data, shown_sha=None, via='manual_checks.py', wait=runlock.COMMAND_WAIT, say=print):
+def record(R, section, data, shown_sha=None, via='manual_checks.py', wait=runlock.COMMAND_WAIT, say=print,
+           draft_saved_at=None, batch=True):
     """Check and record one check of the current version. Raises S.Refused (the run, the lock, the file) or
-    REL.Invalid (the fields, each tied to its field). Returns the check as recorded."""
+    REL.Invalid (the fields, each tied to its field). Returns the check as recorded. Once the refresh has succeeded the
+    check stands; the section's draft is then cleared, best effort, leaving a tombstone at `draft_saved_at` (the page's
+    last draft time) so an auto-save handled late never brings the recorded answers back. batch=False: the caller
+    rebuilds the batch page itself (the app does it after replying)."""
     R = os.path.abspath(R); rj = os.path.join(R, 'record.json')
     if section not in REL.SECTIONS: raise ValueError(f'unknown section {section!r}: pac or screen_reader')
     if not os.path.exists(rj): raise S.Refused('This book has no finished result yet, so there is nothing to check.')
@@ -121,9 +128,49 @@ def record(R, section, data, shown_sha=None, via='manual_checks.py', wait=runloc
                 if was is None: os.remove(cp)             # back, so a check never stands without the record's hash beside it
                 else: put_text(cp, was)
                 raise
+            try: _clear_draft(R, section, draft_saved_at)  # best effort: a stale draft is harmless, a rolled-back check is not
+            except Exception as e: say(f'note: the draft was not cleared ({type(e).__name__}: {e})')
     except runlock.Busy as e: raise S.Refused(str(e))
-    S.rebuild_batch(R, say)                               # after the lock: it reads every book of the batch
+    if batch: S.rebuild_batch(R, say)                     # after the lock: it reads every book of the batch
     return c
+
+# ------------------------------------------------------------------ drafts (the page's auto-save; they never count)
+STALE = 'This check was changed in another tab or window since. Reload the page to see the newest answers.'
+
+def drafts_path(R): return os.path.join(REL.paths(R)['dir'], 'drafts.json')
+
+def load_drafts(R):
+    try:
+        with open(drafts_path(R), encoding="utf-8") as f: d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (FileNotFoundError, ValueError): return {}
+
+def _clear_draft(R, section, saved_at):
+    """Under the record lock: the section's draft replaced by a tombstone; a later auto-save must be newer than it."""
+    d = load_drafts(R); cur = d.get(section) or {}
+    mark = max(str(saved_at or ''), str(cur.get('saved_at') or ''), str(cur.get('cleared') or ''))
+    if not mark and not cur: return
+    d[section] = {'cleared': mark}
+    put_json(drafts_path(R), d)
+
+def save_draft(R, section, data, saved_at, for_sha, wait=runlock.REQUEST_WAIT):
+    """The page's auto-save: release/drafts.json {section: {data, saved_at, for_sha256, by}} written whole under the record
+    lock. A saved_at not newer than the stored draft's (or than a recorded check's tombstone) is refused (S.Refused(STALE))
+    and nothing is written. The data is cleaned and limited as a check is (REL.Invalid over the limits); nothing is required."""
+    R = os.path.abspath(R)
+    if section not in REL.SECTIONS: raise ValueError(f'unknown section {section!r}')
+    saved_at = str(saved_at or '')
+    if not saved_at: raise ValueError('saved_at is missing')
+    clean = REL.clean_draft(section, data)
+    try:
+        with runlock.record_lock(R, wait):
+            d = load_drafts(R); cur = d.get(section) or {}
+            if saved_at <= max(str(cur.get('saved_at') or ''), str(cur.get('cleared') or '')): raise S.Refused(STALE)
+            d[section] = {'data': clean, 'saved_at': saved_at, 'for_sha256': for_sha, 'by': clean.get('by') or None}
+            os.makedirs(REL.paths(R)['dir'], exist_ok=True)
+            put_json(drafts_path(R), d)
+    except runlock.Busy as e: raise S.Refused(str(e))
+    return saved_at
 
 def refresh(R, wait=runlock.COMMAND_WAIT, say=print):
     """Recompute a finished run's glance (release/ read now) and rewrite its Overview, review.html and record.json; the

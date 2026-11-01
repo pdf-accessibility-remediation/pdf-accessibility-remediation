@@ -197,6 +197,12 @@ def after_interrupt(R, j):
 
 def run_path(run): return os.path.join(*run.split('/'))
 
+def manual_strip(R, rec):
+    """The Manual Checks strip after "Ready to Ship?" (webapp/manualpage.py strip()); None for a run it cannot read."""
+    from . import manualpage
+    try: return manualpage.strip(R, rec)
+    except (OSError, ValueError, KeyError, TypeError): return None
+
 def unapplied(R, rec=None):
     """The session Apply is offered for (review/sessions.py newer(), the rule the manual checks' refusal shares): the
     newest finished session newer than the current result, when no applied one is newer. A finished session that a later
@@ -234,6 +240,7 @@ def state(s, run, R):
         'latest': {'id': done[-1]['id'], 'label': S.label(done[-1]['id'])} if done else None,
         'unapplied': unapplied(R, rec),
         'ocr': ocr_state(R),
+        'manual': manual_strip(R, rec),
         'lock': {'pid': h[0], 'what': h[1], 'since': h[2], 'words': jobs.lock_words(h[1], h[2])} if h else None,
         'live_review': job_view(s, live) if live else None,
         'jobs': [job_view(s, j) for j in rj],               # every job of the run: the page folds the earlier ones, none drop off

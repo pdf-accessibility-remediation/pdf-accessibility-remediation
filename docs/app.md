@@ -5,7 +5,7 @@ nav_order: 3.6
 
 # The pipeline in the browser
 
-`app.py` is a small local web app. It shows a run's dashboard (`review.html`) with buttons that review it again, start over, go back to an earlier session's choices, and apply a finished session. Each button runs the same command a person would type (`review_workorder.py … --reopen`, `--apply`, `--pin`), so the command line keeps working exactly as before and both give the same result. The app adds no pipeline logic. A home page with books and new runs is planned (branch home-interface).
+`app.py` is a small local web app. It shows a run's dashboard (`review.html`) with buttons that review it again, start over, go back to an earlier session's choices, and apply a finished session. Each button runs the same command a person would type (`review_workorder.py … --reopen`, `--apply`, `--pin`), so the command line keeps working exactly as before and both give the same result. The app adds no pipeline logic: the one exception is the Manual Checks page ([Manual checks and release](release.md)), whose forms are recorded directly in the app's process through `review/manual.py`, the same code as `manual_checks.py` (only pipeline steps run as jobs). A home page with books and new runs is planned (branch home-interface).
 
 ```bash
 cd pipeline
@@ -173,4 +173,4 @@ The panel follows WCAG 2.1 AA, the project's standard:
 
 - **The review page is still review/server.py,** on its own port. The app starts it and sends the browser there.
 - **The lock does not cover `--pin` or `run_api.sh`.** The app checks its own jobs, but a pin or a run started in a terminal on the same run at the same time is not stopped.
-- **Planned pages** have reserved addresses but are not built: `/run/<run>/release` (the release sign-off) and `/run/<run>/screen-reader` (the after-ship check). `/run/<run>/ocr` stays reserved: OCR text is approved on the review page, or on the OCR-only page (**Review OCR Text**), both on the review server.
+- **`/run/<run>/checks`** is the Manual Checks page ([Manual checks and release](release.md)); `GET /api/run/<run>/checks` is its data, and `POST /api/run/<run>/checks/draft` and `/checks/record` its saves (JSON from the app's own pages only, as every POST). Every POST's `Content-Length` must be digits and at most 65,536 bytes, checked before reading (411 or 413 otherwise). `/run/<run>/ocr` stays reserved: OCR text is approved on the review page, or on the OCR-only page (**Review OCR Text**), both on the review server.

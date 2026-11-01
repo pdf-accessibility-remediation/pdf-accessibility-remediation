@@ -308,3 +308,23 @@ def validate(section, data, ctx=None):
     notes = _text(errors, 'notes', 'Other Notes', data.get('notes'), NOTES_MAX, one_line=False)
     if errors: raise Invalid(errors)
     return {'by': by, 'fields': fields, 'items': items, **({'notes': notes} if notes else {})}
+
+def clean_draft(section, data):
+    """A half-filled check as a draft keeps it: cleaned and limited as validate() limits a check, no field required, a
+    result kept only when it is one the item offers. Raises Invalid with the fields over the limits."""
+    if section not in SECTIONS: raise Invalid([('section', f'unknown section {section!r}')])
+    data = data if isinstance(data, dict) else {}
+    errors = []; spec = SPEC[section]
+    out = {'by': _text(errors, 'by', 'Checked By', data.get('by'), NAME_MAX) or ''}
+    fin = data.get('fields') if isinstance(data.get('fields'), dict) else {}
+    out['fields'] = {k: _text(errors, f'fields.{k}', name, fin.get(k), FIELD_MAX) or '' for k, (name, _) in FIELDS[section].items()}
+    if any(x.get('pages') for x in CHECKLIST[section]): out['fields']['pages_checked'] = _text(errors, 'fields.pages_checked', 'Pages Checked', fin.get('pages_checked'), FIELD_MAX) or ''
+    iin = data.get('items') if isinstance(data.get('items'), dict) else {}
+    out['items'] = {}
+    for k, x in spec.items():
+        it = iin.get(k) if isinstance(iin.get(k), dict) else {}
+        res = it.get('result') if it.get('result') in x['results'] else ''
+        out['items'][k] = {'result': res, 'note': _text(errors, f'items.{k}.note', f'{x["label"]}: Notes', it.get('note'), NOTE_MAX) or ''}
+    out['notes'] = _text(errors, 'notes', 'Other Notes', data.get('notes'), NOTES_MAX, one_line=False) or ''
+    if errors: raise Invalid(errors)
+    return out

@@ -12,9 +12,39 @@ sponsor checklist rule 2, 11.2 and 11.3):
 - **The screen-reader check:** a person listens to the book with a screen reader. It decides "Verified" or "Needs Rework"
   once the book has shipped (sponsor decision, 2026-10-26).
 
-Stage 1 (this version) records the checks from the terminal and works out the gate and the status. The app's Manual
-Checks page, the downloads and the release itself (Mark as Shipped, the disclosure) come in later stages (branch
-manual-checks).
+Both are recorded on the app's **Manual Checks** page (below), or from the terminal with `manual_checks.py`. The
+downloads and the release itself (Mark as Shipped, the disclosure) come in later stages of the same branch.
+
+## The Manual Checks page (in the app)
+
+- **Opening it:** the run page has a strip right after "Ready to Ship?" with a **Manual Checks** button, and one line per
+  section ("done on this version (Kim, 2026-11-01)" with a check mark when it counts, "not done", "done on an earlier
+  version: check this version", or how many items failed). Each line's name links straight to its section. The strip also
+  says the status as it is now when the report's card was written before a change (a session opened after shipping, for
+  example), and says in plain words when the book's PDF has changed since its report was made.
+- **The page** (`/run/<run>/checks`) names the book by the remediated PDF's own title (else the original's name without
+  ".pdf"), the version the checks are for ("the version from Session 6, applied on …"), the status and what "Ready to
+  Ship?" still needs. It has a link to each section.
+- **Each section** is a form: **Checked By**, its fields, and one group per item with **Pass** / **Fail** / **Not
+  Applicable** (PAC's WCAG check: Pass or Fail; PAC's PDF/UA check: Pass, Fail or Not Run, optional) and **Notes**. A
+  note becomes required when the choice asks for one (a Fail; Not Applicable on something the pipeline found, with a hint
+  such as "This book has 12 tables"; a Pass where the last check of this version failed the item). The help lines keep
+  the WCAG numbers, as PAC's report shows them.
+- **Saving is automatic,** as on the review page: about a second after each change (`release/drafts.json`), one save at a
+  time, the browser keeping a copy; "All changes saved" / "Saving…" beside the Record button, not announced; a failed
+  save is announced. A draft older than the one saved is never written over it (two tabs). A draft started on an earlier
+  version is not used as answers: **Start from These Notes** copies its names, versions, pages and notes, never its
+  results, as it does for an earlier check.
+- **Record the PAC Check / Record the Screen-Reader Check** sends the answers to the same code `manual_checks.py` uses.
+  Problems come back from that code, each shown under its field and in a summary that takes focus; nothing is recorded
+  while one remains. A recorded check clears the section's draft (an auto-save handled after it is refused, so the
+  answers never come back as a draft). The page stays, with a message saying what changed; a screen-reader check with a
+  Fail offers **Review Again**.
+- **Earlier checks** are folded under **Earlier Checks (N)**, read-only.
+- **Refused** while a new version is being made, the PDF has changed, or another change is being saved (a page waits at
+  most 5 s): the message says why, and drafts are still saved.
+- **The record lock** is taken in the app's own process for these writes (no job): an hour-long screen-reader check
+  never holds the run's job slot.
 
 ```bash
 cd pipeline
