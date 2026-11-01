@@ -48,7 +48,7 @@ h2 { font-size: 17px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1p
 table { border-collapse: collapse; width: 100%; background: var(--panel); font-size: 14px; }
 th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; overflow-wrap: normal; word-break: normal; }
 th { white-space: nowrap; }
-.tw { overflow-x: auto; max-width: 100%; margin: 0 0 8px; } .tw > table { margin: 0; } .tw:focus { outline: 3px solid var(--accent); outline-offset: 2px; }
+.tw { overflow-x: auto; max-width: 100%; margin: 0 0 8px; position: relative; } .tw > table { margin: 0; } .tw:focus { outline: 3px solid var(--accent); outline-offset: 2px; } /* relative: the .vh spans inside are clipped by it (no sideways page scroll at 320 px) */
 a.pg { white-space: nowrap; }
 th { background: var(--bg); } td.num, th.num { text-align: right; white-space: nowrap; }
 .chart { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 4px 10px; align-items: center; margin: 6px 0 8px; font-size: 13px; }
