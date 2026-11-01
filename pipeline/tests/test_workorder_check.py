@@ -146,3 +146,33 @@ def test_moves_that_overlap_or_land_inside_another_are_dropped():
 def test_a_bad_move_in_a_list_is_dropped_alone():
     wo = {'move_section': [{'pages': [2], 'before_page': 5}, {'pages': [6, 6], 'before_page': 8}]}
     assert whys(check(wo), 'move_section') == ['bad pages'] and wo['move_section'] == [{'pages': [6, 6], 'before_page': 8}]
+
+# a move is kept only where the audit finds a section read out of place (cadaverous and sands under v9: moves that fixed nothing)
+def order_digest(lines):
+    d = digest(); d['reading_order'] = lines; return d
+
+LINES = ['Part pp1-10 depth1: Book', 'Sect pp1-2 depth2: Front', 'Sect pp5-8 depth2: Body', 'Sect pp3-4 depth2: Preface']   # PDF 3-4 read after 5-8
+
+def test_a_move_over_a_section_read_out_of_place_is_kept():
+    wo = {'move_section': [{'pages': [3, 4], 'before_page': 5}]}
+    assert wc.check(wo, order_digest(LINES), set(), set()) == [] and len(wo['move_section']) == 1
+
+def test_a_move_the_audit_gives_no_reason_for_is_dropped():
+    wo = {'move_section': [{'pages': [3, 4], 'before_page': 5}, {'pages': [5, 8], 'before_page': 9}]}
+    assert whys(wc.check(wo, order_digest(LINES), set(), set()), 'move_section') == ['the audit finds no section read out of place in these pages or where it lands']
+    assert wo['move_section'] == [{'pages': [3, 4], 'before_page': 5}]
+    wo = {'move_section': {'pages': [3, 4], 'before_page': 5}}                  # nothing out of place at all: dropped
+    assert whys(wc.check(wo, order_digest(LINES[:3]), set(), set()), 'move_section') and 'move_section' not in wo
+
+def test_a_move_landing_before_the_flagged_one_of_a_swapped_pair_is_kept():
+    wo = {'move_section': [{'pages': [5, 8], 'before_page': 3}]}                 # moves Body before the flagged Preface
+    assert wc.check(wo, order_digest(LINES), set(), set()) == []
+
+def test_the_full_order_is_used_when_given_and_no_order_keeps_the_move():
+    full = [{'id': 'a', 'parent': None, 'style': 'Sect', 'first': 1, 'last': 2, 'depth': 1, 'text': '', 'skip': False},
+            {'id': 'b', 'parent': None, 'style': 'Sect', 'first': 5, 'last': 8, 'depth': 1, 'text': '', 'skip': False},
+            {'id': 'c', 'parent': None, 'style': 'Sect', 'first': 3, 'last': 4, 'depth': 1, 'text': '', 'skip': False}]
+    wo = {'move_section': {'pages': [3, 4], 'before_page': 5}}
+    assert wc.check(wo, order_digest(LINES[:3]), set(), set(), order=full) == []     # the full order flags PDF 3, the lines don't
+    wo = {'move_section': {'pages': [9, 9], 'before_page': 10}}
+    assert check(wo) == [] and wo['move_section']['pages'] == [9, 9]                  # an older digest with no order: not judged
