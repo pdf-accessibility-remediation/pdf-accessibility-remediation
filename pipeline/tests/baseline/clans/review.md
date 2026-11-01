@@ -1,26 +1,28 @@
-# Remediation review: clans.pdf
+# Remediation Review: clans.pdf
 
 Result: `clans_remediated.pdf`
 
-194 pages · run 2026-10-25T03:26:38 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+194 pages · run 2026-10-31T14:21:02 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.3s · audit 20.1s · reuse saved reply 1.0s · apply 18.9s · verify 22.8s · total 63.1s
+Time: intake 0.5s · audit 9.9s · reuse saved reply 1.2s · apply 17.1s · verify 17.7s · total 46.4s
 
 ## Overview
 
 [Open the dashboard](review.html)
 
+**Status:** Not Ready
+
 **Ready to ship?** No
 - Work order approved on the review page: no (run without REVIEW=1)
 - OCR text approved: not needed (intake added no OCR text)
 - Safety checks: OK
-- Manual check (PAC): not run
+- Manual check (PAC): no (not done for this version)
 
-**Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
+**Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable · OK ✔ no WCAG rule newly failing (veraPDF)  
 **Needs a person:** 5 (4 deferred by the AI · 0 deferred by the executor · 1 CHECK row)  
 **AI decisions:** 77 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** tag-tree index entries 195 · standard tags un-remapped (7.1-7) 45 · title shown in the window 1  
@@ -38,7 +40,7 @@ Automated checks are evidence, not sign-off.
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
-## Automated checks
+## Automated Checks
 
 | Check | Result | Detail |
 |---|---|---|
@@ -84,9 +86,9 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
 
-## For a person to check
+## For a Person to Check
 
-### 1. Alt text written or changed by the AI (4)
+### 1. Alt Text Written or Changed by the AI (4)
 
 | Page | Before | After |
 |---|---|---|
@@ -103,7 +105,7 @@ Heading levels by style (as applied):
 |---|---|---|---:|
 | Footnote | P | RoleMap | 22 |
 
-### 3. Elements retyped by the AI (34)
+### 3. Elements Retyped by the AI (34)
 
 Check each one is (or is not) a heading as decided.
 
@@ -144,7 +146,7 @@ Check each one is (or is not) a heading as decided.
 | PDF 185 (printed 178) | VI | H2 | H3 |
 | PDF 189 (printed 182) | VII | H2 | H3 |
 
-### 4. Lists and tables
+### 4. Lists and Tables
 
 - Flattened list on PDF 31 (printed 24): "“Yes, I do. He is very pro-Japanese. Is something wrong?” / “Yes, something is wrong. He has not…" (dialogue lines, not a list)
 - Flattened list on PDF 32 (printed 25): "“No, chief. Sl Chin-yng is not that kind of man.” ôô / “You really stick up for him, don’t you? At a…" (dialogue lines, not a list)
@@ -179,13 +181,13 @@ Check each one is (or is not) a heading as decided.
 - Flattened list on PDF 184 (printed 177): "“But we are just friends.”" (dialogue lines, not a list)
 - Flattened list on PDF 184 (printed 177): "“I am sorry. I won’t do it again.”" (dialogue lines, not a list)
 
-### 5. Text a screen reader could not reach (before this run)
+### 5. Text a Screen Reader Could Not Reach (before this run)
 
 187 pages had text outside the tag tree: 367 orphan runs (marked, but no tag owns them) and 0 untagged runs. Running heads and page numbers among them can be hidden as decoration; real content must be added to the tag tree by a person. After this run: 0 untagged characters, 0 orphan runs remain.
 
 Pages: PDF 6 (printed v), PDF 8–193 (printed 1–186)
 
-### 6. Hidden from screen readers (artifacts)
+### 6. Hidden from Screen Readers (artifacts)
 
 - "running heads and folios (top)": every orphan run in the top band on PDF 9–193 (printed 2–186)
 - "folios on chapter-opening pages (bottom)": every orphan run in the bottom band on PDF 6–193 (printed v–186)
@@ -196,13 +198,13 @@ The pipeline changes no other font: it never embeds one, replaces a visible one,
 
 - **Not embedded** (1): Times-Roman. PDF/UA requires embedded fonts (7.21.4.1); a person must embed them with a PDF tool (e.g. Acrobat Preflight) and check that no page changes.
 
-### 8. Tag-tree index entries cleared (195)
+### 8. Tag-tree Index Entries Cleared (195)
 
 Entries that pointed at a tag no longer in the tag tree (left by the source file, or by a tag the run removed). Nothing reads such a tag; no page, text or reachable tag changed.
 
 - IDTree: "Reference_AD260817-0629-1218-ADBE-000000000729" (0), "SLTP_rev7000_1" (null: points at nothing), "SLTP_rev7000_10" (null: points at nothing), "SLTP_rev7000_100" (null: points at nothing), "SLTP_rev7000_101" (null: points at nothing), "SLTP_rev7000_102" (null: points at nothing), "SLTP_rev7000_103" (null: points at nothing), "SLTP_rev7000_104" (null: points at nothing), "SLTP_rev7000_105" (null: points at nothing), "SLTP_rev7000_106" (null: points at nothing), "SLTP_rev7000_107" (null: points at nothing), "SLTP_rev7000_108" (null: points at nothing), "SLTP_rev7000_109" (null: points at nothing), "SLTP_rev7000_11" (null: points at nothing), "SLTP_rev7000_110" (null: points at nothing), "SLTP_rev7000_111" (null: points at nothing), "SLTP_rev7000_112" (null: points at nothing), "SLTP_rev7000_113" (null: points at nothing), "SLTP_rev7000_114" (null: points at nothing), "SLTP_rev7000_115" (null: points at nothing), "SLTP_rev7000_116" (null: points at nothing), "SLTP_rev7000_117" (null: points at nothing), "SLTP_rev7000_118" (null: points at nothing), "SLTP_rev7000_119" (null: points at nothing), "SLTP_rev7000_12" (null: points at nothing), "SLTP_rev7000_120" (null: points at nothing), "SLTP_rev7000_121" (null: points at nothing), "SLTP_rev7000_122" (null: points at nothing), "SLTP_rev7000_123" (null: points at nothing), "SLTP_rev7000_124" (null: points at nothing), "SLTP_rev7000_125" (null: points at nothing), "SLTP_rev7000_126" (null: points at nothing), "SLTP_rev7000_127" (null: points at nothing), "SLTP_rev7000_128" (null: points at nothing), "SLTP_rev7000_129" (null: points at nothing), "SLTP_rev7000_13" (null: points at nothing), "SLTP_rev7000_130" (null: points at nothing), "SLTP_rev7000_131" (null: points at nothing), "SLTP_rev7000_132" (null: points at nothing), "SLTP_rev7000_133" (null: points at nothing), "SLTP_rev7000_134" (null: points at nothing), "SLTP_rev7000_135" (null: points at nothing), "SLTP_rev7000_136" (null: points at nothing), "SLTP_rev7000_137" (null: points at nothing), "SLTP_rev7000_138" (null: points at nothing), "SLTP_rev7000_139" (null: points at nothing), "SLTP_rev7000_14" (null: points at nothing), "SLTP_rev7000_140" (null: points at nothing), "SLTP_rev7000_141" (null: points at nothing), "SLTP_rev7000_142" (null: points at nothing), "SLTP_rev7000_143" (null: points at nothing), "SLTP_rev7000_144" (null: points at nothing), "SLTP_rev7000_145" (null: points at nothing), "SLTP_rev7000_146" (null: points at nothing), "SLTP_rev7000_147" (null: points at nothing), "SLTP_rev7000_148" (null: points at nothing), "SLTP_rev7000_149" (null: points at nothing), "SLTP_rev7000_15" (null: points at nothing), "SLTP_rev7000_150" (null: points at nothing), "SLTP_rev7000_151" (null: points at nothing), "SLTP_rev7000_152" (null: points at nothing), "SLTP_rev7000_153" (null: points at nothing), "SLTP_rev7000_154" (null: points at nothing), "SLTP_rev7000_155" (null: points at nothing), "SLTP_rev7000_156" (null: points at nothing), "SLTP_rev7000_157" (null: points at nothing), "SLTP_rev7000_158" (null: points at nothing), "SLTP_rev7000_159" (null: points at nothing), "SLTP_rev7000_16" (null: points at nothing), "SLTP_rev7000_160" (null: points at nothing), "SLTP_rev7000_161" (null: points at nothing), "SLTP_rev7000_162" (null: points at nothing), "SLTP_rev7000_163" (null: points at nothing), "SLTP_rev7000_164" (null: points at nothing), "SLTP_rev7000_165" (null: points at nothing), "SLTP_rev7000_166" (null: points at nothing), "SLTP_rev7000_167" (null: points at nothing), "SLTP_rev7000_168" (null: points at nothing), "SLTP_rev7000_169" (null: points at nothing), "SLTP_rev7000_17" (null: points at nothing), "SLTP_rev7000_170" (null: points at nothing), "SLTP_rev7000_171" (null: points at nothing), "SLTP_rev7000_172" (null: points at nothing), "SLTP_rev7000_173" (null: points at nothing), "SLTP_rev7000_174" (null: points at nothing), "SLTP_rev7000_175" (null: points at nothing), "SLTP_rev7000_176" (null: points at nothing), "SLTP_rev7000_177" (null: points at nothing), "SLTP_rev7000_178" (null: points at nothing), "SLTP_rev7000_179" (null: points at nothing), "SLTP_rev7000_18" (null: points at nothing), "SLTP_rev7000_180" (null: points at nothing), "SLTP_rev7000_181" (null: points at nothing), "SLTP_rev7000_182" (null: points at nothing), "SLTP_rev7000_183" (null: points at nothing), "SLTP_rev7000_184" (null: points at nothing), "SLTP_rev7000_185" (null: points at nothing), "SLTP_rev7000_186" (null: points at nothing), "SLTP_rev7000_187" (null: points at nothing), "SLTP_rev7000_188" (null: points at nothing), "SLTP_rev7000_189" (null: points at nothing), "SLTP_rev7000_19" (null: points at nothing), "SLTP_rev7000_190" (null: points at nothing), "SLTP_rev7000_191" (null: points at nothing), "SLTP_rev7000_192" (null: points at nothing), "SLTP_rev7000_193" (null: points at nothing), "SLTP_rev7000_194" (null: points at nothing), "SLTP_rev7000_2" (null: points at nothing), "SLTP_rev7000_20" (null: points at nothing), "SLTP_rev7000_21" (null: points at nothing), "SLTP_rev7000_22" (null: points at nothing), "SLTP_rev7000_23" (null: points at nothing), "SLTP_rev7000_24" (null: points at nothing), "SLTP_rev7000_25" (null: points at nothing), "SLTP_rev7000_26" (null: points at nothing), "SLTP_rev7000_27" (null: points at nothing), "SLTP_rev7000_28" (null: points at nothing), "SLTP_rev7000_29" (null: points at nothing), "SLTP_rev7000_3" (null: points at nothing), "SLTP_rev7000_30" (null: points at nothing), "SLTP_rev7000_31" (null: points at nothing), "SLTP_rev7000_32" (null: points at nothing), "SLTP_rev7000_33" (null: points at nothing), "SLTP_rev7000_34" (null: points at nothing), "SLTP_rev7000_35" (null: points at nothing), "SLTP_rev7000_36" (null: points at nothing), "SLTP_rev7000_37" (null: points at nothing), "SLTP_rev7000_38" (null: points at nothing), "SLTP_rev7000_39" (null: points at nothing), "SLTP_rev7000_4" (null: points at nothing), "SLTP_rev7000_40" (null: points at nothing), "SLTP_rev7000_41" (null: points at nothing), "SLTP_rev7000_42" (null: points at nothing), "SLTP_rev7000_43" (null: points at nothing), "SLTP_rev7000_44" (null: points at nothing), "SLTP_rev7000_45" (null: points at nothing), "SLTP_rev7000_46" (null: points at nothing), "SLTP_rev7000_47" (null: points at nothing), "SLTP_rev7000_48" (null: points at nothing), "SLTP_rev7000_49" (null: points at nothing), "SLTP_rev7000_5" (null: points at nothing), "SLTP_rev7000_50" (null: points at nothing), "SLTP_rev7000_51" (null: points at nothing), "SLTP_rev7000_52" (null: points at nothing), "SLTP_rev7000_53" (null: points at nothing), "SLTP_rev7000_54" (null: points at nothing), "SLTP_rev7000_55" (null: points at nothing), "SLTP_rev7000_56" (null: points at nothing), "SLTP_rev7000_57" (null: points at nothing), "SLTP_rev7000_58" (null: points at nothing), "SLTP_rev7000_59" (null: points at nothing), "SLTP_rev7000_6" (null: points at nothing), "SLTP_rev7000_60" (null: points at nothing), "SLTP_rev7000_61" (null: points at nothing), "SLTP_rev7000_62" (null: points at nothing), "SLTP_rev7000_63" (null: points at nothing), "SLTP_rev7000_64" (null: points at nothing), "SLTP_rev7000_65" (null: points at nothing), "SLTP_rev7000_66" (null: points at nothing), "SLTP_rev7000_67" (null: points at nothing), "SLTP_rev7000_68" (null: points at nothing), "SLTP_rev7000_69" (null: points at nothing), "SLTP_rev7000_7" (null: points at nothing), "SLTP_rev7000_70" (null: points at nothing), "SLTP_rev7000_71" (null: points at nothing), "SLTP_rev7000_72" (null: points at nothing), "SLTP_rev7000_73" (null: points at nothing), "SLTP_rev7000_74" (null: points at nothing), "SLTP_rev7000_75" (null: points at nothing), "SLTP_rev7000_76" (null: points at nothing), "SLTP_rev7000_77" (null: points at nothing), "SLTP_rev7000_78" (null: points at nothing), "SLTP_rev7000_79" (null: points at nothing), "SLTP_rev7000_8" (null: points at nothing), "SLTP_rev7000_80" (null: points at nothing), "SLTP_rev7000_81" (null: points at nothing), "SLTP_rev7000_82" (null: points at nothing), "SLTP_rev7000_83" (null: points at nothing), "SLTP_rev7000_84" (null: points at nothing), "SLTP_rev7000_85" (null: points at nothing), "SLTP_rev7000_86" (null: points at nothing), "SLTP_rev7000_87" (null: points at nothing), "SLTP_rev7000_88" (null: points at nothing), "SLTP_rev7000_89" (null: points at nothing), "SLTP_rev7000_9" (null: points at nothing), "SLTP_rev7000_90" (null: points at nothing), "SLTP_rev7000_91" (null: points at nothing), "SLTP_rev7000_92" (null: points at nothing), "SLTP_rev7000_93" (null: points at nothing), "SLTP_rev7000_94" (null: points at nothing), "SLTP_rev7000_95" (null: points at nothing), "SLTP_rev7000_96" (null: points at nothing), "SLTP_rev7000_97" (null: points at nothing), "SLTP_rev7000_98" (null: points at nothing), "SLTP_rev7000_99" (null: points at nothing)
 
-### 9. veraPDF (WCAG 2.2 machine profile), before and after
+### 9. veraPDF (WCAG 2.2 machine profile), Before and After
 
 veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 3 rules failing (the AI can act on 3, the pipeline on 0, only a person on 0). After: 0.
 
@@ -225,7 +227,7 @@ PDF/UA-only, not required for WCAG (not counted):
 
 Reviewer note from the AI: One H1 (book title, PDF 4, printed iii). Contents, Introduction and the five story titles are H2; section numerals are H3. The half-title and title-page lines, the dedication and the byline are demoted to P. Running heads and folios are artifacted by band rules on orphan runs, covering veraPDF 7.1-3. All 32 lists are dialogue lines and are flattened. The "Footnote" role is mapped to P to fix veraPDF 7.1-5. Alt text is written for all four figures (veraPDF 7.3-1). The cover is tagged as a Figure plus separate text P elements.
 
-## What was changed
+## What Was Changed
 
 | Change | Count |
 |---|---:|
@@ -246,16 +248,30 @@ Reviewer note from the AI: One H1 (book title, PDF 4, printed iii). Contents, In
 | role map: standard tag Sub was remapped to Span; retyped | 45 |
 | tag tree index: entries pointing outside the tree removed (IDTree) | 195 |
 
-## Final check with PAC 2026
+## Final Check with PAC 2026
 
-Open `clans_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker.
+The manual checks are recorded in the run's `release/` folder (docs/release.md). Each is recorded against this version of `clans_remediated.pdf` (its sha256): after a new apply it no longer counts, and the new version is checked again.
 
-No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC's screen-reader and structure previews:
+**PAC 2026 and sanity checks** (part of "Ready to ship?": done on this version, no item failed). Open `clans_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:
 
-- 1.1.1: alt text is accurate and gives the figure's purpose; decorative images are artifacts
-- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense
-- 1.4.1: no information is given by colour alone
-- 1.4.3: contrast of text over images and coloured backgrounds (PAC's contrast checker)
-- 1.4.5: no images of text where real text could be used (scanned pages: the OCR layer stands in)
-- 2.4.6: headings describe their section
-- 3.1.2: passages in another language carry their language (see `han_review.csv` if present)
+- PAC 2026: WCAG Check: PAC 2026's WCAG check on this version of the PDF. Anything it fails that the report does not list is a gap in the automated checks.
+- PAC 2026: PDF/UA Check (optional; does not decide "Ready to ship?"): PAC 2026's PDF/UA check, recorded for the record. It does not decide "Ready to ship?".
+- Title and Language: The title shown in the window is the book's title, and the document language is the book's main language.
+- Spot-Check of Pages: A few pages compared with the original in PAC's structure preview: headings, lists, tables and figures as printed.
+- Colour Alone: No information is given by colour alone (WCAG 1.4.1).
+- Contrast: Text over images and coloured backgrounds has enough contrast (WCAG 1.4.3; PAC's contrast checker).
+- Images of Text: No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).
+- What Needs a Person: Every item the report lists under "What needs a person" was looked at.
+
+**Screen-reader check** (after the book ships: decides "Verified" or "Needs Rework"; a failed item on this version also keeps "Ready to ship?" at No). Listen with a screen reader and record which one and its version:
+
+- Title Announced: The screen reader announces the book's title when the PDF opens.
+- Document Language and Passages in Other Languages: The text is read in the book's language, and passages in another language are pronounced in theirs (WCAG 3.1.1, 3.1.2).
+- Heading Navigation: Moving by heading reaches each part and chapter, at the right level (WCAG 1.3.1, 2.4.6).
+- Reading Order on Sample Pages: On the pages listed, the text is read in the order it is meant to be read (WCAG 1.3.2).
+- Figure Alt Text: Each figure's alt text is read, is accurate and gives its purpose; decorative images are skipped (WCAG 1.1.1).
+- Tables Read with Their Headers: Moving through a table, each cell is read with its row or column header (WCAG 1.3.1).
+- Links Say Where They Go: Each link's text, or its description, says where it goes (WCAG 2.4.4).
+- Lists: Lists are announced as lists, with their number of items.
+- OCR Pages Read Sensibly: Pages whose text comes from OCR are read as words, not as junk characters.
+- Formulas: Each formula is read with the description a person wrote, or is marked for one (math goes to a person).

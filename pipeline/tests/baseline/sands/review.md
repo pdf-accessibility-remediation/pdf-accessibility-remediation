@@ -1,26 +1,28 @@
-# Remediation review: sands.pdf
+# Remediation Review: sands.pdf
 
 Result: `sands_remediated.pdf`
 
-329 pages · run 2026-10-27T13:32:39 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+329 pages · run 2026-10-31T14:17:11 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.9s · audit 40.2s · reuse saved reply 2.0s · apply 76.4s · verify 42.6s · total 163.1s
+Time: intake 3.6s · audit 32.5s · reuse saved reply 1.7s · apply 213.2s · verify 46.5s · total 297.5s
 
 ## Overview
 
 [Open the dashboard](review.html)
 
+**Status:** Not Ready
+
 **Ready to ship?** No
 - Work order approved on the review page: no (run without REVIEW=1)
 - OCR text approved: not needed (intake added no OCR text; the publisher's text layer is OCR, see §5)
 - Safety checks: OK
-- Manual check (PAC): not run
+- Manual check (PAC): no (not done for this version)
 
-**Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
+**Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable · OK ✔ no WCAG rule newly failing (veraPDF)  
 **Needs a person:** 14 (6 deferred by the AI · 5 deferred by the executor · 3 CHECK rows)  
 **AI decisions:** 71 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 2,309 · tag-tree index entries 1,182 · note IDs 495 · standard tags un-remapped (7.1-7) 83 · empty tags removed 69 · decorative lines marked 53 · figures moved to their page 15 · link descriptions that were only a URL 13 · title shown in the window 1  
@@ -39,7 +41,7 @@ Automated checks are evidence, not sign-off.
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
-## Automated checks
+## Automated Checks
 
 | Check | Result | Detail |
 |---|---|---|
@@ -86,9 +88,9 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
 
-## For a person to check
+## For a Person to Check
 
-### 1. Alt text written or changed by the AI (15)
+### 1. Alt Text Written or Changed by the AI (15)
 
 | Page | Before | After |
 |---|---|---|
@@ -108,7 +110,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Plan of Cave 29 (Dumar Lena) with a compass rose, rotated sideways. It marks the locations a–f of the sculpture panels around the central pillared hall. |
 | PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Photograph (b) of a rock-cut relief of a dancing Śiva with attendants in a panel inside Cave 29. The photo is rotated sideways on the page. |
 
-### 2. Figures that kept their existing alt text (71)
+### 2. Figures That Kept Their Existing Alt Text (71)
 
 Not changed by the AI. Check they are adequate.
 
@@ -214,7 +216,7 @@ Heading levels by style (as applied):
 
 Merged: `part_n` into the next `part_tit`; `chap_n` into the next `chap_tit`; `chap_stit` into the prev `chap_tit`
 
-### 4. Elements retyped by the AI (2)
+### 4. Elements Retyped by the AI (2)
 
 Check each one is (or is not) a heading as decided.
 
@@ -223,27 +225,27 @@ Check each one is (or is not) a heading as decided.
 | PDF 4 (printed iii) | Countless Sands | dev_p | H1 |
 | PDF 23 (printed 14) | (no text) | H1 | P |
 
-### 5. Scanned book: the text layer comes from OCR
+### 5. Scanned Book: The Text Layer Comes from OCR
 
 6 of 329 pages are full-page images. Screen readers read the OCR text, which may contain recognition errors (suspect-token rate 16.4 per 1,000). Spot-check these pages against the scan: PDF 4 (printed iii), PDF 84 (printed 75), PDF 123 (printed 114), PDF 136 (printed 127), PDF 152 (printed 143), PDF 266 (printed 257), PDF 290 (printed 281), PDF 315 (printed 306). Corrections to the text itself are an editorial decision.
 
-### 6. OCR words given their printed spelling (0 forms, 0 places)
+### 6. OCR Words Given Their Printed Spelling (0 forms, 0 places)
 
 The OCR misread these words, mostly letters with diacritics (ā or ū read as "ii"). The AI read each word from a crop of the scan. Screen readers now speak the printed spelling, and copying gives it (ActualText); the OCR text underneath is unchanged, so a text search still finds the OCR spelling. Apps that ignore ActualText (Preview and other PDFKit readers, some checkers) still show the OCR spelling. Check each reading against the scan on its first page.
 
 - The saved reply read 4 suspect forms (the word list when it was written) and gave no readings; 8 are listed now. The word list changed since (4 forms then, 8 now). None of today's 8 forms counts as read by the AI: a person checks them against the scan, or a new call reads them.
 
-### 7. Text a screen reader could not reach (before this run)
+### 7. Text a Screen Reader Could Not Reach (before this run)
 
 13 pages had text outside the tag tree: 1184 orphan runs (marked, but no tag owns them) and 0 untagged runs. Running heads and page numbers among them can be hidden as decoration; real content must be added to the tag tree by a person. After this run: 0 untagged characters, 0 orphan runs remain.
 
 Pages: PDF 20 (printed 11), PDF 54 (printed 45), PDF 78 (printed 69), PDF 95 (printed 86), PDF 120 (printed 111), PDF 138 (printed 129), PDF 169 (printed 160), PDF 200 (printed 191), PDF 225 (printed 216), PDF 248 (printed 239), PDF 267 (printed 258), PDF 288 (printed 279), PDF 314 (printed 305)
 
-### 8. Hidden from screen readers (artifacts)
+### 8. Hidden from Screen Readers (artifacts)
 
 - 10 decorative elements ("decorative landscape engraving behind Part I opener", "decorative landscape engraving behind half-title text", "decorative landscape vignette on title page", "wave ornament") on PDF 2 (printed i), PDF 4 (printed iii), PDF 10 (printed 1), PDF 68 (printed 59), PDF 93 (printed 84), PDF 165 (printed 156), PDF 195 (printed 186), PDF 244 (printed 235), PDF 264 (printed 255), PDF 309 (printed 300)
 
-### 9. Reading order changes
+### 9. Reading Order Changes
 
 Listen through these spots with a screen reader.
 
@@ -263,11 +265,11 @@ Listen through these spots with a screen reader.
 - Figure on PDF 278 (printed 269) moved to read with its page (it read after PDF 329 (printed 320); now after PDF 279 (printed 270))
 - Figure on PDF 282 (printed 273) moved to read with its page (it read after PDF 329 (printed 320); now after PDF 283 (printed 274))
 
-### 10. Untagged paths (rules, borders, lines)
+### 10. Untagged Paths (rules, borders, lines)
 
 53 paths drawn outside any tag were marked as decoration: none of them carries text, an image or a link, and none touches untagged text or images.
 
-### 11. Orphan content added to the tag tree (247 paragraphs)
+### 11. Orphan Content Added to the Tag Tree (247 paragraphs)
 
 Real content that was marked but in no tag, now read in page order after the last tagged block on its page. Listen through these pages:
 
@@ -285,7 +287,7 @@ Real content that was marked but in no tag, now read in page order after the las
 - PDF 288 (printed 279) ("chapter 12 notes"): 106 runs → 22 paragraphs, starting "5."
 - PDF 314 (printed 305) ("chapter 13 notes"): 90 runs → 19 paragraphs, starting "inscription refers to the monk as “En risshi,” the Vinaya Master En. However, Shūen was"
 
-### 12. Links whose description was only a URL (13, and 2 addresses that look broken)
+### 12. Links Whose Description Was Only a URL (13, and 2 addresses that look broken)
 
 The description (what a screen reader announces) was set to the book's own sentence around the link, with the URL removed. No words were added and the visible URL is unchanged. Replace any of these with a better description if needed.
 
@@ -310,19 +312,19 @@ Link addresses that look broken (listed, not changed):
 - PDF 49 (printed 40): `https://tomdispatch.com/post/174949,`: the address ends with punctuation or an unmatched closing bracket from the printed text; probably broken
 - PDF 49 (printed 40): `https://tomdispatch.com/post/174949,`: the address ends with punctuation or an unmatched closing bracket from the printed text; probably broken
 
-### 13. Empty tags (69 removed, 0 kept)
+### 13. Empty Tags (69 removed, 0 kept)
 
 A tag is removed only when proven empty: nothing under it holds content, it carries no Alt, ActualText, E or ID, and nothing in the file refers to it except its parent. Table cells are never removed one by one; a table goes only when every part is empty.
 
 - Removed: 22 index, 20 glossaire, 11 copy, 7 Ancre, 4 Unumbered_headnote, 3 dev_p, 1 P, 1 Story
 
-### 14. Tag-tree index entries cleared (1)
+### 14. Tag-tree Index Entries Cleared (1)
 
 Entries that pointed at a tag no longer in the tag tree (left by the source file, or by a tag the run removed). Nothing reads such a tag; no page, text or reachable tag changed.
 
 - ParentTree, PDF 152 (printed 143): MCID 8228 (Figure)
 
-### 15. Captions paired by position (8)
+### 15. Captions Paired by Position (8)
 
 Pages with several figures: each caption was tied to the figure right next to it. Check the pairs.
 
@@ -335,7 +337,7 @@ Pages with several figures: each caption was tied to the figure right next to it
 - PDF 276 (printed 267): "Figure 12.4 Liu Benzun’s sixth austerity, from the Ten Austerities of Liu Benzun, Large Buddha Bend…"
 - PDF 284 (printed 275): "Figure 12.8 Nine Protectors of the Law, Large Buddha Bend, Baodingshan, Dazu, Chongqing, 1177–1249…"
 
-### 16. veraPDF (WCAG 2.2 machine profile), before and after
+### 16. veraPDF (WCAG 2.2 machine profile), Before and After
 
 veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 3 rules failing (the AI can act on 1, the pipeline on 2, only a person on 0). After: 1.
 
@@ -349,7 +351,7 @@ PDF/UA-only, not required for WCAG (not counted):
 
 - 7.21.5-1: glyph width consistency (2 checks, PDF 5 (printed iv)), still failing
 
-### 17. WCAG checks veraPDF does not make
+### 17. WCAG Checks veraPDF Does Not Make
 
 Each item is something to look at, not a proven failure.
 
@@ -366,7 +368,7 @@ Each item is something to look at, not a proven failure.
 
 Reviewer note from the AI: Heading plan: the book title on the title page (PDF 4) is the only H1. Part titles, chapter titles and front/back-matter titles (Contents, Acknowledgments, Glossary, Contributors, Index) are H2. Section heads (style h1) and NOTES are H3. The bibliography subheads (Abbreviations, Secondary) are H4. Part and chapter labels, and chapter subtitles, are merged into their titles. I set no actual_text on the merged headings, since the printed text of each chapter title and subtitle could not be checked from the digest. The decorative landscape engravings on PDF 2, 4 and 10 and the seven small wave ornaments are artifacts. Their titles are separate tagged text. The cover alt text had NUL characters and was rewritten. The OCR word forms (Shiina, Kii, xiii–xxi, Chiiki) all match the scan, so no ocr_words were returned. No lists or tables were found.
 
-### 19. Deferred by the executor
+### 19. Deferred by the Executor
 
 - **230 Han-only CJK runs** need a Japanese / Chinese decision: fill in `han_review.csv`.
 - caption (PDF 149 (printed 140)): 4 figures on page
@@ -383,13 +385,13 @@ Reviewer note from the AI: Heading plan: the book title on the title page (PDF 4
 - caption (PDF 232 (printed 223)): 2 figures on page
 - caption (PDF 284 (printed 275)): 2 figures on page
 
-### 20. Decisions not applied (1)
+### 20. Decisions Not Applied (1)
 
 Rejected by validation or by the executor; nothing was half-applied.
 
 - {"where": "rolemap", "item": {"BMT_works_cited": "H3"}, "why": "unknown style"}
 
-## What was changed
+## What Was Changed
 
 | Change | Count |
 |---|---:|
@@ -439,16 +441,30 @@ Rejected by validation or by the executor; nothing was half-applied.
 | tag tree index: entries repaired | 1181 |
 | tag tree index: entries pointing outside the tree cleared (ParentTree) | 1 |
 
-## Final check with PAC 2026
+## Final Check with PAC 2026
 
-Open `sands_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker.
+The manual checks are recorded in the run's `release/` folder (docs/release.md). Each is recorded against this version of `sands_remediated.pdf` (its sha256): after a new apply it no longer counts, and the new version is checked again.
 
-No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC's screen-reader and structure previews:
+**PAC 2026 and sanity checks** (part of "Ready to ship?": done on this version, no item failed). Open `sands_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:
 
-- 1.1.1: alt text is accurate and gives the figure's purpose; decorative images are artifacts
-- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense
-- 1.4.1: no information is given by colour alone
-- 1.4.3: contrast of text over images and coloured backgrounds (PAC's contrast checker)
-- 1.4.5: no images of text where real text could be used (scanned pages: the OCR layer stands in)
-- 2.4.6: headings describe their section
-- 3.1.2: passages in another language carry their language (see `han_review.csv` if present)
+- PAC 2026: WCAG Check: PAC 2026's WCAG check on this version of the PDF. Anything it fails that the report does not list is a gap in the automated checks.
+- PAC 2026: PDF/UA Check (optional; does not decide "Ready to ship?"): PAC 2026's PDF/UA check, recorded for the record. It does not decide "Ready to ship?".
+- Title and Language: The title shown in the window is the book's title, and the document language is the book's main language.
+- Spot-Check of Pages: A few pages compared with the original in PAC's structure preview: headings, lists, tables and figures as printed.
+- Colour Alone: No information is given by colour alone (WCAG 1.4.1).
+- Contrast: Text over images and coloured backgrounds has enough contrast (WCAG 1.4.3; PAC's contrast checker).
+- Images of Text: No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).
+- What Needs a Person: Every item the report lists under "What needs a person" was looked at.
+
+**Screen-reader check** (after the book ships: decides "Verified" or "Needs Rework"; a failed item on this version also keeps "Ready to ship?" at No). Listen with a screen reader and record which one and its version:
+
+- Title Announced: The screen reader announces the book's title when the PDF opens.
+- Document Language and Passages in Other Languages: The text is read in the book's language, and passages in another language are pronounced in theirs (WCAG 3.1.1, 3.1.2).
+- Heading Navigation: Moving by heading reaches each part and chapter, at the right level (WCAG 1.3.1, 2.4.6).
+- Reading Order on Sample Pages: On the pages listed, the text is read in the order it is meant to be read (WCAG 1.3.2).
+- Figure Alt Text: Each figure's alt text is read, is accurate and gives its purpose; decorative images are skipped (WCAG 1.1.1).
+- Tables Read with Their Headers: Moving through a table, each cell is read with its row or column header (WCAG 1.3.1).
+- Links Say Where They Go: Each link's text, or its description, says where it goes (WCAG 2.4.4).
+- Lists: Lists are announced as lists, with their number of items.
+- OCR Pages Read Sensibly: Pages whose text comes from OCR are read as words, not as junk characters.
+- Formulas: Each formula is read with the description a person wrote, or is marked for one (math goes to a person).

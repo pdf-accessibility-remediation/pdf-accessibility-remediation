@@ -1,26 +1,28 @@
-# Remediation review: buddhist.pdf
+# Remediation Review: buddhist.pdf
 
 Result: `buddhist_remediated.pdf`
 
-213 pages · run 2026-10-25T19:12:30 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+213 pages · run 2026-10-31T14:17:11 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.13.5 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.2s · audit 45.8s · reuse saved reply 0.8s · apply 31.8s · verify 62.0s · total 140.6s
+Time: intake 0.3s · audit 36.0s · reuse saved reply 1.1s · apply 31.3s · verify 65.0s · total 133.7s
 
 ## Overview
 
 [Open the dashboard](review.html)
 
+**Status:** Not Ready
+
 **Ready to ship?** No
 - Work order approved on the review page: no (run without REVIEW=1)
 - OCR text approved: not needed (intake added no OCR text; the publisher's text layer is OCR, see §4)
 - Safety checks: OK
-- Manual check (PAC): not run
+- Manual check (PAC): no (not done for this version)
 
-**Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
+**Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable · OK ✔ no WCAG rule newly failing (veraPDF)  
 **Needs a person:** 10 (7 deferred by the AI · 1 deferred by the executor · 2 CHECK rows)  
 **AI decisions:** 694 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** tag-tree index entries 212 · OCR fonts given defined glyphs 61 · links tied and described 57 · table header directions 7 · title shown in the window 2 · Document root 1  
@@ -39,7 +41,7 @@ Automated checks are evidence, not sign-off.
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
-## Automated checks
+## Automated Checks
 
 | Check | Result | Detail |
 |---|---|---|
@@ -86,15 +88,15 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
 
-## For a person to check
+## For a Person to Check
 
-### 1. Alt text written or changed by the AI (1)
+### 1. Alt Text Written or Changed by the AI (1)
 
 | Page | Before | After |
 |---|---|---|
 | PDF 1 (printed cover) | — | Cover photograph of a red sandstone figure of the Bodhisattva, presumably Sakya Muni, the Buddha: seated cross-legged with the right hand raised, a topknot and a scalloped halo behind the head, set against a bright lime-green background. Mathura, first or second century A.D. |
 
-### 2. Elements retyped by the AI (51)
+### 2. Elements Retyped by the AI (51)
 
 Check each one is (or is not) a heading as decided.
 
@@ -152,7 +154,7 @@ Check each one is (or is not) a heading as decided.
 | PDF 202 (printed 179) | Index | P | H2 |
 | PDF 212 (printed 189) | About the Author | P | H2 |
 
-### 3. Lists and tables
+### 3. Lists and Tables
 
 - Header cells marked by the AI on PDF 20 (printed xix): 0 header row(s), 1 header column(s), 11 cells changed to header cells. Check they are the real headers.
 - Header cells marked by the AI on PDF 21 (printed xx): 0 header row(s), 1 header column(s), 14 cells changed to header cells. Check they are the real headers.
@@ -163,11 +165,11 @@ Tables kept as tables (3): check header cells and reading order.
 - PDF 21 (printed xx): 15 rows × 3 columns, 2 header cells. "MKV | Madhyamakavrtti (Madhyamakakiirikiis) , ed. L. de la Vallee Poussin, Bibliotheca Buddhica 4…"
 - PDF 46 (printed 23): 20 rows × 5 columns, 5 header cells. "EYE | human eye mat]1sacakkhu | I I | I form I rupa | I"
 
-### 4. Scanned book: the text layer comes from OCR
+### 4. Scanned Book: The Text Layer Comes from OCR
 
 212 of 213 pages are full-page images. Screen readers read the OCR text, which may contain recognition errors (suspect-token rate 14.3 per 1,000). Spot-check these pages against the scan: PDF 38 (printed 15), PDF 47 (printed 24), PDF 65 (printed 42), PDF 77 (printed 54), PDF 90 (printed 67), PDF 119 (printed 96), PDF 150 (printed 127), PDF 184 (printed 161). Misread words the AI could read from the scan are listed under "OCR words given their printed spelling"; other errors stay. Corrections to the text itself are an editorial decision.
 
-### 5. OCR words given their printed spelling (619 forms, 1020 places)
+### 5. OCR Words Given Their Printed Spelling (619 forms, 1020 places)
 
 The OCR misread these words, mostly letters with diacritics (ā or ū read as "ii"). The AI read each word from a crop of the scan. Screen readers now speak the printed spelling, and copying gives it (ActualText); the OCR text underneath is unchanged, so a text search still finds the OCR spelling. Apps that ignore ActualText (Preview and other PDFKit readers, some checkers) still show the OCR spelling. Check each reading against the scan on its first page.
 
@@ -795,14 +797,14 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 
 - 645 suspect forms were checked by the AI; 26 were judged correct as the OCR read them, or unreadable (e.g. "Hawaii"), and left alone.
 
-### 6. Hidden from screen readers (artifacts)
+### 6. Hidden from Screen Readers (artifacts)
 
 - 9 decorative elements ("blank page scan") on PDF 3 (printed ii), PDF 7 (printed vi), PDF 9 (printed viii), PDF 17 (printed xvi), PDF 19 (printed xviii), PDF 23 (printed xxii), PDF 25 (printed 2), PDF 115 (printed 92), PDF 213 (printed 190)
 - "running foot (chapter titles with page number)": text matching `(?i)\d* ?(earl ?y buddhism( and zen)?|later buddhism|appendix ?\w+|nirvana|karma and rebirth|morality and ethics|scholasticism|development of mahayana|madhyam.ka transcendentalism|causality|y ?ogacara idealism|metaphysics and the buddha|epistemology|characteristics of existence|index) ?\d*` on PDF 24–212 (printed 1–189)
 - "bare page number": text matching `\d+` on PDF 24–212 (printed 1–189)
 - "front matter running foot": text matching `(?i)\w* ?(foreword|preface|acknowledgments|abbreviations|contents) ?\w*` on PDF 8–23 (printed vii–xxii)
 
-### 7. Reading order changes
+### 7. Reading Order Changes
 
 Listen through these spots with a screen reader.
 
@@ -816,7 +818,7 @@ The pipeline changes no other font: it never embeds one, replaces a visible one,
 
 - **Not embedded** (8): Helvetica, Helvetica-Bold, Helvetica-BoldOblique, Helvetica-Oblique, Times-Bold, Times-BoldItalic, Times-Italic, Times-Roman. PDF/UA requires embedded fonts (7.21.4.1); a person must embed them with a PDF tool (e.g. Acrobat Preflight) and check that no page changes.
 
-### 9. Links whose description was only a URL (1, and 17 addresses that look broken)
+### 9. Links Whose Description Was Only a URL (1, and 17 addresses that look broken)
 
 The description (what a screen reader announces) was set to the book's own sentence around the link, with the URL removed. No words were added and the visible URL is unchanged. Replace any of these with a better description if needed.
 
@@ -844,20 +846,20 @@ Link addresses that look broken (listed, not changed):
 - PDF 194 (printed 171): `https://satipatthiina).13`: the address ends with punctuation or an unmatched closing bracket from the printed text; probably broken
 - PDF 209 (printed 186): `https://Brahmal).as`: the address ends with punctuation or an unmatched closing bracket from the printed text; probably broken
 
-### 10. Tag-tree index entries cleared (212)
+### 10. Tag-tree Index Entries Cleared (212)
 
 Entries that pointed at a tag no longer in the tag tree (left by the source file, or by a tag the run removed). Nothing reads such a tag; no page, text or reachable tag changed.
 
 - ParentTree, entries not tied to page content (annotations, forms, or keys nothing uses): key 5 (Link), key 39 (Link), key 40 (Link), key 41 (Link), key 96 (Link), key 97 (Link), key 107 (Link), key 122 (Link), key 133 (Link), key 135 (Link), key 137 (Link), key 149 (Link), key 152 (Link), key 155 (Link), key 157 (Link), key 159 (Link), key 160 (Link), key 162 (Link), key 163 (Link), key 165 (Link), key 168 (Link), key 169 (Link), key 170 (Link), key 184 (Link), key 186 (Link), key 187 (Link), key 189 (Link), key 190 (Link), key 192 (Link), key 194 (Link), key 195 (Link), key 196 (Link), key 198 (Link), key 199 (Link), key 201 (Link), key 214 (Link), key 216 (Link), key 219 (Link), key 221 (Link), key 223 (Link), key 224 (Link), key 227 (Link), key 229 (Link), key 230 (Link), key 241 (Link), key 242 (Link), key 243 (Link), key 246 (Link), key 268 (Link), key 269 (Link), key 271 (Link), key 273 (Link), key 274 (Link), key 286 (Link), key 292 (Link), key 293 (Link), key 304 (Link)
 - IDTree: "AD260915-1612-26.2.21931-ADBE-000000090769" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090823" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090857" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090880" (P), "AD260915-1612-26.2.21931-ADBE-000000090902" (P), "AD260915-1612-26.2.21931-ADBE-000000090915" (P), "AD260915-1612-26.2.21931-ADBE-000000090926" (P), "AD260915-1612-26.2.21931-ADBE-000000090941" (P), "AD260915-1612-26.2.21931-ADBE-000000090944" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090960" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091113" (P), "AD260915-1612-26.2.21931-ADBE-000000091125" (P), "AD260915-1612-26.2.21931-ADBE-000000091128" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091134" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091152" (P), "AD260915-1612-26.2.21931-ADBE-000000091219" (P), "AD260915-1612-26.2.21931-ADBE-000000091243" (P), "AD260915-1612-26.2.21931-ADBE-000000091267" (P), "AD260915-1612-26.2.21931-ADBE-000000091353" (P), "AD260915-1612-26.2.21931-ADBE-000000091402" (P), "AD260915-1612-26.2.21931-ADBE-000000091409" (P), "AD260915-1612-26.2.21931-ADBE-000000091424" (P), "AD260915-1612-26.2.21931-ADBE-000000091458" (P), "AD260915-1612-26.2.21931-ADBE-000000091508" (P), "AD260915-1612-26.2.21931-ADBE-000000091695" (P), "AD260915-1612-26.2.21931-ADBE-000000091763" (P), "AD260915-1612-26.2.21931-ADBE-000000091819" (P), "AD260915-1612-26.2.21931-ADBE-000000091832" (P), "AD260915-1612-26.2.21931-ADBE-000000091849" (P), "AD260915-1612-26.2.21931-ADBE-000000091872" (P), "AD260915-1612-26.2.21931-ADBE-000000091900" (P), "AD260915-1612-26.2.21931-ADBE-000000091934" (P), "AD260915-1612-26.2.21931-ADBE-000000091974" (P), "AD260915-1612-26.2.21931-ADBE-000000091983" (P), "AD260915-1612-26.2.21931-ADBE-000000092016" (P), "AD260915-1612-26.2.21931-ADBE-000000092044" (P), "AD260915-1612-26.2.21931-ADBE-000000092057" (P), "AD260915-1612-26.2.21931-ADBE-000000092066" (P), "AD260915-1612-26.2.21931-ADBE-000000092116" (P), "AD260915-1612-26.2.21931-ADBE-000000092125" (P), "AD260915-1612-26.2.21931-ADBE-000000092164" (P), "AD260915-1612-26.2.21931-ADBE-000000092207" (P), "AD260915-1612-26.2.21931-ADBE-000000092232" (P), "AD260915-1612-26.2.21931-ADBE-000000092241" (P), "AD260915-1612-26.2.21931-ADBE-000000092253" (P), "AD260915-1612-26.2.21931-ADBE-000000092298" (P), "AD260915-1612-26.2.21931-ADBE-000000092321" (P), "AD260915-1612-26.2.21931-ADBE-000000092360" (P), "AD260915-1612-26.2.21931-ADBE-000000092365" (P), "AD260915-1612-26.2.21931-ADBE-000000092394" (P), "AD260915-1612-26.2.21931-ADBE-000000092410" (P), "AD260915-1612-26.2.21931-ADBE-000000092459" (P), "AD260915-1612-26.2.21931-ADBE-000000092468" (P), "AD260915-1612-26.2.21931-ADBE-000000092479" (P), "AD260915-1612-26.2.21931-ADBE-000000092512" (P), "AD260915-1612-26.2.21931-ADBE-000000092532" (P), "AD260915-1612-26.2.21931-ADBE-000000092544" (P), "AD260915-1612-26.2.21931-ADBE-000000092559" (P), "AD260915-1612-26.2.21931-ADBE-000000092588" (P), "AD260915-1612-26.2.21931-ADBE-000000092621" (P), "AD260915-1612-26.2.21931-ADBE-000000092628" (P), "AD260915-1612-26.2.21931-ADBE-000000092673" (P), "AD260915-1612-26.2.21931-ADBE-000000092684" (P), "AD260915-1612-26.2.21931-ADBE-000000092704" (P), "AD260915-1612-26.2.21931-ADBE-000000092730" (P), "AD260915-1612-26.2.21931-ADBE-000000092741" (P), "AD260915-1612-26.2.21931-ADBE-000000092752" (P), "AD260915-1612-26.2.21931-ADBE-000000092767" (P), "AD260915-1612-26.2.21931-ADBE-000000092782" (P), "AD260915-1612-26.2.21931-ADBE-000000092807" (P), "AD260915-1612-26.2.21931-ADBE-000000092826" (P), "AD260915-1612-26.2.21931-ADBE-000000092861" (P), "AD260915-1612-26.2.21931-ADBE-000000092877" (P), "AD260915-1612-26.2.21931-ADBE-000000092937" (P), "AD260915-1612-26.2.21931-ADBE-000000092955" (P), "AD260915-1612-26.2.21931-ADBE-000000092975" (P), "AD260915-1612-26.2.21931-ADBE-000000092987" (P), "AD260915-1612-26.2.21931-ADBE-000000093035" (P), "AD260915-1612-26.2.21931-ADBE-000000093130" (P), "AD260915-1612-26.2.21931-ADBE-000000093147" (P), "AD260915-1612-26.2.21931-ADBE-000000093153" (Figure), "AD260915-1612-26.2.21931-ADBE-000000093185" (P), "AD260915-1612-26.2.21931-ADBE-000000093235" (P), "AD260915-1612-26.2.21931-ADBE-000000093263" (P), "AD260915-1612-26.2.21931-ADBE-000000093293" (P), "AD260915-1612-26.2.21931-ADBE-000000093318" (P), "AD260915-1612-26.2.21931-ADBE-000000093337" (P), "AD260915-1612-26.2.21931-ADBE-000000093371" (P), "AD260915-1612-26.2.21931-ADBE-000000093416" (P), "AD260915-1612-26.2.21931-ADBE-000000093438" (P), "AD260915-1612-26.2.21931-ADBE-000000093455" (P), "AD260915-1612-26.2.21931-ADBE-000000093468" (P), "AD260915-1612-26.2.21931-ADBE-000000093489" (P), "AD260915-1612-26.2.21931-ADBE-000000093550" (P), "AD260915-1612-26.2.21931-ADBE-000000093641" (P), "AD260915-1612-26.2.21931-ADBE-000000093673" (P), "AD260915-1612-26.2.21931-ADBE-000000093736" (P), "AD260915-1612-26.2.21931-ADBE-000000093761" (P), "AD260915-1612-26.2.21931-ADBE-000000093778" (P), "AD260915-1612-26.2.21931-ADBE-000000093814" (P), "AD260915-1612-26.2.21931-ADBE-000000093831" (P), "AD260915-1612-26.2.21931-ADBE-000000093852" (P), "AD260915-1612-26.2.21931-ADBE-000000093872" (P), "AD260915-1612-26.2.21931-ADBE-000000093885" (P), "AD260915-1612-26.2.21931-ADBE-000000093929" (P), "AD260915-1612-26.2.21931-ADBE-000000094031" (P), "AD260915-1612-26.2.21931-ADBE-000000094048" (P), "AD260915-1612-26.2.21931-ADBE-000000094069" (P), "AD260915-1612-26.2.21931-ADBE-000000094093" (P), "AD260915-1612-26.2.21931-ADBE-000000094107" (P), "AD260915-1612-26.2.21931-ADBE-000000094128" (P), "AD260915-1612-26.2.21931-ADBE-000000094162" (P), "AD260915-1612-26.2.21931-ADBE-000000094218" (P), "AD260915-1612-26.2.21931-ADBE-000000094277" (P), "AD260915-1612-26.2.21931-ADBE-000000094320" (P), "AD260915-1612-26.2.21931-ADBE-000000094333" (P), "AD260915-1612-26.2.21931-ADBE-000000094354" (P), "AD260915-1612-26.2.21931-ADBE-000000094381" (P), "AD260915-1612-26.2.21931-ADBE-000000094405" (P), "AD260915-1612-26.2.21931-ADBE-000000094414" (P), "AD260915-1612-26.2.21931-ADBE-000000094443" (P), "AD260915-1612-26.2.21931-ADBE-000000094472" (P), "AD260915-1612-26.2.21931-ADBE-000000094483" (P), "AD260915-1612-26.2.21931-ADBE-000000094509" (P), "AD260915-1612-26.2.21931-ADBE-000000094522" (P), "AD260915-1612-26.2.21931-ADBE-000000094566" (P), "AD260915-1612-26.2.21931-ADBE-000000094597" (P), "AD260915-1612-26.2.21931-ADBE-000000094638" (P), "AD260915-1612-26.2.21931-ADBE-000000094650" (P), "AD260915-1612-26.2.21931-ADBE-000000094688" (P), "AD260915-1612-26.2.21931-ADBE-000000094706" (P), "AD260915-1612-26.2.21931-ADBE-000000094725" (P), "AD260915-1612-26.2.21931-ADBE-000000094766" (P), "AD260915-1612-26.2.21931-ADBE-000000094812" (P), "AD260915-1612-26.2.21931-ADBE-000000094833" (P), "AD260915-1612-26.2.21931-ADBE-000000094844" (P), "AD260915-1612-26.2.21931-ADBE-000000094865" (P), "AD260915-1612-26.2.21931-ADBE-000000094882" (P), "AD260915-1612-26.2.21931-ADBE-000000094899" (P), "AD260915-1612-26.2.21931-ADBE-000000094911" (P), "AD260915-1612-26.2.21931-ADBE-000000094926" (P), "AD260915-1612-26.2.21931-ADBE-000000094945" (P), "AD260915-1612-26.2.21931-ADBE-000000094966" (P), "AD260915-1612-26.2.21931-ADBE-000000095008" (P), "AD260915-1612-26.2.21931-ADBE-000000095023" (P), "AD260915-1612-26.2.21931-ADBE-000000095046" (P), "AD260915-1612-26.2.21931-ADBE-000000095164" (P), "AD260915-1612-26.2.21931-ADBE-000000095183" (P), "AD260915-1612-26.2.21931-ADBE-000000095303" (P), "AD260915-1612-26.2.21931-ADBE-000000095382" (P), "AD260915-1612-26.2.21931-ADBE-000000095482" (P), "AD260915-1612-26.2.21931-ADBE-000000095547" (P), "AD260915-1612-26.2.21931-ADBE-000000095574" (P), "AD260915-1612-26.2.21931-ADBE-000000095610" (P), "AD260915-1612-26.2.21931-ADBE-000000095620" (Figure)
 
-### 11. Structure left for a person
+### 11. Structure Left for a Person
 
 - PDF 5 (printed iv): a link's description is only its URL (www.uhpress.hawaii.edu)
 
-### 12. veraPDF (WCAG 2.2 machine profile), before and after
+### 12. veraPDF (WCAG 2.2 machine profile), Before and After
 
-veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 6 rules failing (the AI can act on 4, the pipeline on 2, only a person on 0). After: 0.
+veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 6 rules failing (the AI can act on 4, the pipeline on 2, only a person on 0). After: 0.
 
 | Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |
 |---|---|---|---|---:|---:|---|---|
@@ -880,11 +882,11 @@ veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 
 Reviewer note from the AI: Scanned book (Paper Capture OCR), 213 pages. Full-page Figures on blank pages (PDF 3, 7, 9, 17, 19, 23, 25, 115, 213) are artifacted as page scans. The only real image is the cover photograph (PDF 1). Running heads and page numbers sit at the bottom of the page and are artifacted by text rules with patterns taken from repeated_lines. The executor reports any rule that matches nothing. Heading levels: H1 book title; H2 front-matter titles, parts, chapters, appendices, index and About the Author; H3 Notes and Selected Readings.
 
-### 14. Deferred by the executor
+### 14. Deferred by the Executor
 
 - text rule "bare page number" matched no text on PDF 24–212 (printed 1–189): nothing was hidden by this rule; check its pattern against the page (spacing, split runs)
 
-### 15. Decisions not applied (11)
+### 15. Decisions Not Applied (11)
 
 Rejected by validation or by the executor; nothing was half-applied.
 
@@ -906,7 +908,7 @@ Each one:
 - {"where": "ocr_words", "item": {"id": "469", "reads": "śūnyatā"}, "why": "too different from the OCR text to be a misreading of it"}
 - {"where": "ocr_words", "item": {"id": "587", "reads": "gahaṇa"}, "why": "too different from the OCR text to be a misreading of it"}
 
-## What was changed
+## What Was Changed
 
 | Change | Count |
 |---|---:|
@@ -934,16 +936,30 @@ Each one:
 | tag tree index: entries pointing outside the tree removed (IDTree) | 155 |
 | fonts: invisible OCR-layer font given defined blank glyphs | 61 |
 
-## Final check with PAC 2026
+## Final Check with PAC 2026
 
-Open `buddhist_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker.
+The manual checks are recorded in the run's `release/` folder (docs/release.md). Each is recorded against this version of `buddhist_remediated.pdf` (its sha256): after a new apply it no longer counts, and the new version is checked again.
 
-No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC's screen-reader and structure previews:
+**PAC 2026 and sanity checks** (part of "Ready to ship?": done on this version, no item failed). Open `buddhist_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:
 
-- 1.1.1: alt text is accurate and gives the figure's purpose; decorative images are artifacts
-- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense
-- 1.4.1: no information is given by colour alone
-- 1.4.3: contrast of text over images and coloured backgrounds (PAC's contrast checker)
-- 1.4.5: no images of text where real text could be used (scanned pages: the OCR layer stands in)
-- 2.4.6: headings describe their section
-- 3.1.2: passages in another language carry their language (see `han_review.csv` if present)
+- PAC 2026: WCAG Check: PAC 2026's WCAG check on this version of the PDF. Anything it fails that the report does not list is a gap in the automated checks.
+- PAC 2026: PDF/UA Check (optional; does not decide "Ready to ship?"): PAC 2026's PDF/UA check, recorded for the record. It does not decide "Ready to ship?".
+- Title and Language: The title shown in the window is the book's title, and the document language is the book's main language.
+- Spot-Check of Pages: A few pages compared with the original in PAC's structure preview: headings, lists, tables and figures as printed.
+- Colour Alone: No information is given by colour alone (WCAG 1.4.1).
+- Contrast: Text over images and coloured backgrounds has enough contrast (WCAG 1.4.3; PAC's contrast checker).
+- Images of Text: No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).
+- What Needs a Person: Every item the report lists under "What needs a person" was looked at.
+
+**Screen-reader check** (after the book ships: decides "Verified" or "Needs Rework"; a failed item on this version also keeps "Ready to ship?" at No). Listen with a screen reader and record which one and its version:
+
+- Title Announced: The screen reader announces the book's title when the PDF opens.
+- Document Language and Passages in Other Languages: The text is read in the book's language, and passages in another language are pronounced in theirs (WCAG 3.1.1, 3.1.2).
+- Heading Navigation: Moving by heading reaches each part and chapter, at the right level (WCAG 1.3.1, 2.4.6).
+- Reading Order on Sample Pages: On the pages listed, the text is read in the order it is meant to be read (WCAG 1.3.2).
+- Figure Alt Text: Each figure's alt text is read, is accurate and gives its purpose; decorative images are skipped (WCAG 1.1.1).
+- Tables Read with Their Headers: Moving through a table, each cell is read with its row or column header (WCAG 1.3.1).
+- Links Say Where They Go: Each link's text, or its description, says where it goes (WCAG 2.4.4).
+- Lists: Lists are announced as lists, with their number of items.
+- OCR Pages Read Sensibly: Pages whose text comes from OCR are read as words, not as junk characters.
+- Formulas: Each formula is read with the description a person wrote, or is marked for one (math goes to a person).
