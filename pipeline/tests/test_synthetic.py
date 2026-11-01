@@ -5,6 +5,8 @@
 - Word breaks drawn as gaps, with no space characters (TeX, Prince): every sample book has real spaces, so the regression
   test never reaches gaptext's gap rule through pdfplumber and plumb_fix.
 - The one-item list rule: OpenDataLoader makes such lists from a paragraph's first word; no tagged sample has one.
+- Reading order: a section read out of printed order, moved back with move_section (the review page's preview, apply.py's
+  move and verify.py's section-order check, new or already in the original); no baseline book uses move_section.
 No book content; nothing is sent anywhere; veraPDF is off.
 """
 import os, sys, json, subprocess
@@ -101,3 +103,164 @@ def test_one_item_list_kept_when_the_work_order_says_so(tmp_path):
     out = tmp_path / 'out.pdf'
     run('apply.py', src, wo, out)
     assert doc_kids(out) == ['P', 'L', 'L']
+
+# ---- reading order: a section read out of printed order, moved back with move_section (no sample book has one)
+def sections_pdf(path, order=(1, 3, 2, 4)):
+    """One page per entry of order, one paragraph each, each in its own Sect under one Part, read in the given page order."""
+    pdf = pikepdf.new()
+    font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica,
+                              Encoding=pikepdf.Name.WinAnsiEncoding)
+    for n in range(1, len(order) + 1):
+        content = f'/P <</MCID 0>> BDC BT /F1 11 Tf 72 500 Td (Section {n} opens on page {n}.) Tj ET EMC\n'
+        pdf.pages.append(pikepdf.Page(pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 432, 576], StructParents=n - 1,
+                         Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font)), Contents=pikepdf.Stream(pdf, content.encode('latin-1')))))
+    root = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+    doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
+    part = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Part, P=doc))
+    nums, sects = pikepdf.Array(), {}
+    for n in range(1, len(order) + 1):
+        pg = pdf.pages[n - 1].obj
+        sect = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Sect, P=part, Pg=pg))
+        p = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=sect, Pg=pg, K=0))
+        sect.K = pikepdf.Array([p]); sects[n] = sect; nums.append(n - 1); nums.append(pikepdf.Array([p]))
+    part.K = pikepdf.Array([sects[n] for n in order]); doc.K = pikepdf.Array([part]); root.K = doc
+    root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=nums))
+    pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
+    pdf.save(path)
+    return path
+
+def part_pages(path):
+    with pikepdf.open(path) as p:
+        px = {g.obj.objgen: i for i, g in enumerate(p.pages, 1)}
+        doc = p.Root.StructTreeRoot.K
+        doc = doc[0] if isinstance(doc, pikepdf.Array) else doc
+        part = doc.K[0] if isinstance(doc.K, pikepdf.Array) else doc.K
+        return [px[k.Pg.objgen] for k in part.K]
+
+def apply_and_verify(tmp_path, src, wo, name):
+    w = tmp_path / f'{name}.json'; w.write_text(json.dumps({'schema': 'workorder/0.1', **wo}))
+    out = tmp_path / f'{name}.pdf'
+    run('apply.py', src, w, out); run('verify.py', src, out)
+    return out, json.load(open(str(out) + '.verify.json', encoding='utf-8'))['wcag']['section_order']
+
+def test_section_read_out_of_order_is_flagged_and_moved_back(tmp_path):
+    from review import core
+    src = sections_pdf(tmp_path / 'sections.pdf')
+    run('audit.py', src, tmp_path / 'audit')
+    digest = json.load(open(tmp_path / 'audit' / 'digest.json', encoding='utf-8'))
+    ro = core.reading_order(digest, json.load(open(tmp_path / 'audit' / 'fulltext.json', encoding='utf-8')))
+    assert ro['detail'] and [ro['entries'][x['i']]['first'] for x in ro['flagged']] == [2]
+    # the review page's preview uses the executor's match: it must show the order apply.py then makes
+    move = {'pages': [2, 2], 'before_page': 3}
+    c = core.move_preview(ro['entries'], 2, 2, 3)
+    assert c['candidates'] == 1 and c['host_found'] and c['flags_before'] == 1 and c['flags_after'] == 0
+    out, so = apply_and_verify(tmp_path, src, {'move_section': move}, 'moved')
+    assert part_pages(out) == [e['first'] for e in c['siblings_after']] == [1, 2, 3, 4]
+    assert so['flagged'] == [] and so['new_count'] == 0 and so['original_flagged'] == 1
+    log = json.load(open(str(out) + '.log.json', encoding='utf-8'))['section_move']        # where it went, for report.py
+    assert log == {'pages': [2, 2], 'host': 'Part', 'host_pages': [1, 4], 'before_page': 3, 'after_page': 1}
+    assert (c['moved_pages'], c['host'], c['host_pages']) == ([2, 2], 'Part', [1, 4])     # the preview says the same
+
+def test_a_move_the_reviewer_adds_is_made_like_the_ais(tmp_path):
+    """No AI move: the review page offers one for the flagged section, with the suggested page; the reviewer's addition
+    goes into the work order and apply.py makes it, as the preview shows."""
+    from review import core
+    src = sections_pdf(tmp_path / 'sections.pdf')
+    run('audit.py', src, tmp_path / 'audit')
+    digest = json.load(open(tmp_path / 'audit' / 'digest.json', encoding='utf-8'))
+    ro = core.reading_order(digest, json.load(open(tmp_path / 'audit' / 'fulltext.json', encoding='utf-8')))
+    t = core.addable({}, digest, ro)['move_section'][0]
+    assert t['default'] == {'pages': [2, 2], 'before_page': 3} and t['context']['candidates'] == 1 and t['context']['host_found']
+    wo = {}
+    assert core.add_entries(wo, [{'kind': 'move_section', 'target': t['target'], 'value': t['default']}], {'move_section': [t]}, 'Kim') == []
+    out, so = apply_and_verify(tmp_path, src, wo, 'added')
+    assert part_pages(out) == [e['first'] for e in t['context']['siblings_after']] == [1, 2, 3, 4] and so['flagged'] == []
+
+def test_the_trial_run_reports_the_executors_figure_moves(tmp_path):
+    from review import core
+    src = sections_pdf(tmp_path / 'sections.pdf')
+    (tmp_path / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.1'}))
+    res = core.dry_run(str(tmp_path), str(src))
+    assert res['figure_moves'] == [] and res['seconds'] >= 0 and res['section_move'] is None   # no figures, no move asked
+    (tmp_path / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.1', 'move_section': {'pages': [2, 2], 'before_page': 3}}))
+    res = core.dry_run(str(tmp_path), str(src))
+    assert res['section_move']['made']['before_page'] == 3 and res['section_moves'] == [res['section_move']]   # what the move card shows
+    (tmp_path / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.1', 'move_section': {'pages': [2, 2], 'before_page': 99}}))
+    assert 'host found: False' in core.dry_run(str(tmp_path), str(src))['section_move']['refused']
+    bad = core.dry_run(str(tmp_path), str(tmp_path / 'missing.pdf'))
+    assert bad['figure_moves'] is None and 'stopped' in bad['why']             # the card then says they were not worked out
+
+def test_two_moves_are_made_in_turn_as_the_previews_chain_them(tmp_path):
+    """PDF 2 and PDF 5 both read out of place; two moves put them back, the second matched on the tree the first left."""
+    from review import core
+    src = sections_pdf(tmp_path / 'sections.pdf', order=(1, 3, 2, 4, 6, 5))
+    run('audit.py', src, tmp_path / 'audit')
+    digest = json.load(open(tmp_path / 'audit' / 'digest.json', encoding='utf-8'))
+    ro = core.reading_order(digest, json.load(open(tmp_path / 'audit' / 'fulltext.json', encoding='utf-8')))
+    assert sorted(ro['entries'][x['i']]['first'] for x in ro['flagged']) == [2, 5]
+    moves = [{'pages': [2, 2], 'before_page': 3}, {'pages': [5, 5], 'before_page': 6}]
+    pvs = core.chain_previews(ro['entries'], [(m['pages'], m['before_page']) for m in moves])
+    assert [p['candidates'] for p in pvs] == [1, 1] and all(p['host_found'] for p in pvs) and pvs[1]['flags_after'] == 0
+    out, so = apply_and_verify(tmp_path, src, {'move_section': moves}, 'two')
+    assert part_pages(out) == [e['first'] for e in pvs[1]['siblings_after']] == [1, 2, 3, 4, 5, 6]
+    assert so['flagged'] == [] and so['new_count'] == 0
+    log = json.load(open(str(out) + '.log.json', encoding='utf-8'))
+    assert [m['before_page'] for m in log['section_moves']] == [3, 6] and log['section_move'] == log['section_moves'][0]
+
+def figure_pdf(path):
+    """Three pages, one paragraph each; page 1 also holds a figure whose Div is read last, after page 3."""
+    pdf = pikepdf.new()
+    font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica,
+                              Encoding=pikepdf.Name.WinAnsiEncoding)
+    for n in range(1, 4):
+        content = f'/P <</MCID 0>> BDC BT /F1 11 Tf 72 500 Td (Text on page {n}.) Tj ET EMC\n'
+        if n == 1: content += '/Figure <</MCID 1>> BDC 0 0 1 rg 72 200 200 150 re f EMC\n'
+        pdf.pages.append(pikepdf.Page(pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 432, 576], StructParents=n - 1,
+                         Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font)), Contents=pikepdf.Stream(pdf, content.encode('latin-1')))))
+    root = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+    doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
+    nums, ks = pikepdf.Array(), []
+    for n in range(1, 4):
+        pg = pdf.pages[n - 1].obj
+        p = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=doc, Pg=pg, K=0)); ks.append(p)
+        row = [p]
+        if n == 1:
+            div = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Div, P=doc, Pg=pg))
+            fig = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Figure, P=div, Pg=pg, K=1, Alt=pikepdf.String('A blue box')))
+            div.K = pikepdf.Array([fig]); row.append(fig)
+        nums.append(n - 1); nums.append(pikepdf.Array(row))
+    doc.K = pikepdf.Array(ks + [div]); root.K = doc
+    root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=nums))
+    pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
+    pdf.save(path)
+    return path
+
+def test_the_figure_step_runs_unless_the_work_order_turns_it_off(tmp_path):
+    src = figure_pdf(tmp_path / 'figure.pdf')
+    for name, wo, moved in (('default', {}, True), ('on', {'fix_figure_order': True}, True), ('off', {'fix_figure_order': False}, False)):
+        w = tmp_path / f'{name}.json'; w.write_text(json.dumps({'schema': 'workorder/0.1', **wo}))
+        out = tmp_path / f'{name}.pdf'
+        run('apply.py', src, w, out)
+        log = json.load(open(str(out) + '.log.json', encoding='utf-8'))
+        assert bool(log.get('figure_moves')) == moved and bool(log.get('figure_order_off')) == (not moved), name
+    from review import core                                   # the review's trial run lists them even when the AI turned it off
+    (tmp_path / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.1', 'fix_figure_order': False}))
+    assert [m['page'] for m in core.dry_run(str(tmp_path), str(src))['figure_moves']] == [1]
+
+def test_section_out_of_order_in_the_original_is_not_new(tmp_path):
+    src = sections_pdf(tmp_path / 'sections.pdf')
+    out, so = apply_and_verify(tmp_path, src, {}, 'kept')
+    assert part_pages(out) == [1, 3, 2, 4]
+    assert [(x['page'], x['state']) for x in so['flagged']] == [(2, 'original')] and so['new_count'] == 0
+
+def test_a_move_that_puts_a_section_out_of_order_is_new(tmp_path):
+    src = sections_pdf(tmp_path / 'sections.pdf', order=(1, 2, 3, 4))
+    out, so = apply_and_verify(tmp_path, src, {'move_section': {'pages': [4, 4], 'before_page': 2}}, 'wrong')
+    assert part_pages(out) == [1, 4, 2, 3]
+    assert [(x['page'], x['state']) for x in so['flagged']] == [(4, 'new')] and so['new_count'] == 1
+
+def test_a_misplaced_section_moved_to_another_wrong_place_counts_as_new(tmp_path):
+    src = sections_pdf(tmp_path / 'sections.pdf', order=(1, 2, 3, 5, 6, 4))           # PDF 4 read last
+    out, so = apply_and_verify(tmp_path, src, {'move_section': {'pages': [4, 4], 'before_page': 2}}, 'again')
+    assert part_pages(out) == [1, 4, 2, 3, 5, 6]                                     # still out of place, somewhere else
+    assert [(x['page'], x['state'], x['new']) for x in so['flagged']] == [(4, 'moved', True)] and so['new_count'] == 1

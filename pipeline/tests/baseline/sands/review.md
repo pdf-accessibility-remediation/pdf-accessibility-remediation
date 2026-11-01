@@ -1,30 +1,28 @@
-# Remediation Review: sands.pdf
+# Remediation review: sands.pdf
 
 Result: `sands_remediated.pdf`
 
-329 pages · run October 31, 2026 at 8:40 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+329 pages · run 2026-10-31T14:49:14 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 4.8s · audit 39.4s · reuse saved reply 2.0s · apply 260.2s · verify 56.2s · total 362.6s
+Time: intake 1.1s · audit 80.1s · reuse saved reply 2.4s · apply 117.0s · verify 79.8s · total 280.4s
 
 ## Overview
 
 [Open the dashboard](review.html)
 
-**Status:** Not Ready
-
-**Ready to ship?**
-- Work Order Approval: Not Approved (applied without a review)
-- ✓ OCR Text Approval: Not Required (no OCR text was added during intake; the publisher's text layer is OCR, see §5)
-- ✓ Safety Checks: Passed
-- Accessibility Evaluation: Not Completed (neither part recorded for this version)
+**Ready to ship?** No
+- Work order approved on the review page: no (run without REVIEW=1)
+- OCR text approved: not needed (intake added no OCR text; the publisher's text layer is OCR, see §5)
+- Safety checks: OK
+- Manual check (PAC): not run
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 14 (6 deferred by the AI · 5 deferred by the executor · 3 CHECK rows)  
-**AI decisions:** 71 in the work order, applied without review by a person  
+**AI decisions:** 101 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 2,309 · tag-tree index entries 1,182 · note IDs 495 · standard tags un-remapped (7.1-7) 83 · empty tags removed 69 · decorative lines marked 53 · figures moved to their page 15 · link descriptions that were only a URL 13 · title shown in the window 1  
 **veraPDF (WCAG 2.2 machine checks):** 3 WCAG rules failing before (3,130 checks) → 1 after (1 check) · 0 newly failing
 
@@ -32,16 +30,16 @@ Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
-| OCR words: every printed spelling attached: the saved reply gave no readings: the word list changed since (4 forms then, 8 now); 8 suspect forms not read by the AI | see §6 | [§6](#6-ocr-words-given-their-printed-spelling-0-forms-0-places) |
-| Content neither tagged nor marked as decoration (veraPDF 7.1-3, 1 check) | PDF 152 (printed 143) | [§16](#16-verapdf-wcag-22-machine-profile-before-and-after) |
-| Reading order jumps back up a column (6 jumps) | PDF 149 (printed 140) | [§17](#17-wcag-checks-verapdf-does-not-make) |
-| 230 Han-only runs need Japanese or Chinese (han_review.csv) | 9 pages, PDF 59 (printed 50) to PDF 319 (printed 310) | [§19](#19-deferred-by-the-executor) |
-| 13 captions not grouped: several figures on the page | PDF 149 (printed 140), PDF 152 (printed 143), PDF 232 (printed 223), PDF 284 (printed 275) | [§19](#19-deferred-by-the-executor) |
-| … and 6 more | | §18 |
+| Executor applied every decision: 1 rejected · 0 failed (listed under "Decisions not applied") | see §21 | [§21](#21-decisions-not-applied-3) |
+| Content neither tagged nor marked as decoration (veraPDF 7.1-3, 1 check) | PDF 152 (printed 143) | [§17](#17-verapdf-wcag-22-machine-profile-before-and-after) |
+| Reading order jumps back up a column (6 jumps) | PDF 149 (printed 140) | [§18](#18-wcag-checks-verapdf-does-not-make) |
+| 230 Han-only runs need Japanese or Chinese (han_review.csv) | 9 pages, PDF 59 (printed 50) to PDF 319 (printed 310) | [§20](#20-deferred-by-the-executor) |
+| 13 captions not grouped: several figures on the page | PDF 149 (printed 140), PDF 152 (printed 143), PDF 232 (printed 223), PDF 284 (printed 275) | [§20](#20-deferred-by-the-executor) |
+| … and 6 more | | §19 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
-## Automated Checks
+## Automated checks
 
 | Check | Result | Detail |
 |---|---|---|
@@ -50,7 +48,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | All content tagged or marked as decoration | OK | 0 untagged characters · 0 untagged objects |
 | Untagged paths: none left | OK | 0 untagged paths · 53 rules, borders and lines marked as decoration by this run |
 | Invisible OCR text: every glyph defined | OK | no undefined glyphs in invisible text |
-| OCR words: every printed spelling attached | **CHECK** | the saved reply gave no readings: the word list changed since (4 forms then, 8 now); 8 suspect forms not read by the AI |
+| OCR words: every printed spelling attached | OK | 0 misread forms given their printed spelling in 0 places |
 | Page-level figure wrap | OK | no page with only an untagged drawing |
 | Empty tags removed when proven empty | OK | 69 removed |
 | Tag-tree index points only into the tree | OK | 0 dangling entries · 21 stale entries (marked content no longer drawn) |
@@ -70,7 +68,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Every Note has a unique ID | OK | 495 notes · 0 without ID · 0 duplicate · 0 not in the ID tree |
 | Bookmarks present (documents over 9 pages) | OK | 22 bookmarks |
 | Model reply held one work order | OK | one |
-| Executor applied every decision | OK | 0 rejected · 0 failed (listed under "Decisions not applied") |
+| Executor applied every decision | **CHECK** | 1 rejected · 0 failed (listed under "Decisions not applied") |
 | Nothing deferred by the executor | **CHECK** | 14 deferred (listed under "Deferred by the executor") |
 | Fonts: every glyph defined (no .notdef) | OK | none found |
 | Fonts: every embedded font program could be read | OK | all read |
@@ -84,33 +82,53 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 86 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
 | Reading order: no page jumps back up a column (1.3.2) | **CHECK** | 1 of 302 pages flagged |
+| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 1 already in the original, of 157 sections and blocks |
 | Title is not a file name or placeholder (2.4.2) | OK | "Countless Sands: Medieval Buddhists and Their Environments" |
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
 
-## For a Person to Check
+## For a person to check
 
-### 1. Alt Text Written or Changed by the AI (15)
+### 1. Alt text written or changed by the AI (26)
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 (printed COVER) | The cover of Countless Sands: Medieval Buddhists and Their Environments, edited by Jeffrey Moser and Jason Protass features a carbon print image of a pagoda on a small island surrounded by water. The pagoda's image is reflected in the water, creating a mirror effect. The top of the book cover is blue with an ombre-fade into an orange- yellow on the bottom of the cover.\x00 | Cover of Countless Sands: Medieval Buddhists and Their Environments, edited by Jeffrey Moser and Jason Protass. A tinted carbon-print photograph shows a pagoda-topped pavilion on a small island beside a large tree, reflected in still water. The sky fades from blue at the top to orange-yellow at the bottom. |
-| PDF 4 (printed iii) | Illustration. | University of Hawai‘i Press logo |
-| PDF 85 (printed 76) | Low-relief stone-carved image of a stupa with one section highlighted, showing a small scene of people venerating another stupa | Close-up of the boxed section of the Nāgārjunakoṇḍa slab: a small relief of a stupa on a base, flanked by two figures who venerate it |
-| PDF 85 (printed 76) | Low-relief stone-carved image of a stupa with one section showing a partial view of an image of another stupa in the circumambulatory path. | Low-relief Amarāvatī drum slab showing a domed stupa. A white box marks a section beside the circumambulatory path where a partial image of another stupa appears |
-| PDF 85 (printed 76) | Low-relief stone-carved image of a stupa with one section showing a partial view of an image of another stupa in the circumambulatory path. | Close-up of the boxed section of the Amarāvatī slab: a partial relief of another stupa image set into the circumambulatory path |
-| PDF 149 (printed 140) | Three photographs of cave entrances and plan of cave interior on lower right. | Photograph (a) of the exterior of Cave 29 (Dumar Lena): a pillared porch cut into a rock face. The photo is rotated sideways on the page. |
-| PDF 149 (printed 140) | Three photographs of cave entrances and plan of cave interior on lower right. | Photograph (c) of a steep rock face at Cave 29 with a cave opening and a stepped path running along it. The photo is rotated sideways on the page. |
-| PDF 149 (printed 140) | Three photographs of cave entrances and plan of cave interior on lower right. | Photograph (b) looking down a narrow rock-cut passage with stepped ledges at Cave 29 |
-| PDF 149 (printed 140) | Three photographs of cave entrances and plan of cave interior on lower right. | Plan of Cave 29 (Dumar Lena) with a compass rose. It shows a long pillared hall with a central shrine and the entrances marked a, b and c. |
-| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Photograph (d) of a rock-cut relief panel of deities between pillars inside Cave 29. The photo is rotated sideways on the page. |
-| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Photograph (f) of a rock-cut relief panel with seated figures between pillars inside Cave 29. The photo is rotated sideways on the page. |
-| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Photograph (a) of a rock-cut relief of Śiva and attendant figures in a panel inside Cave 29, with a visitor at lower right. The photo is rotated sideways on the page. |
-| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Photograph (c) of a weathered rock-cut relief with rows of small figures inside Cave 29 |
-| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Plan of Cave 29 (Dumar Lena) with a compass rose, rotated sideways. It marks the locations a–f of the sculpture panels around the central pillared hall. |
-| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Photograph (b) of a rock-cut relief of a dancing Śiva with attendants in a panel inside Cave 29. The photo is rotated sideways on the page. |
+| PDF 1 (printed COVER) | The cover of Countless Sands: Medieval Buddhists and Their Environments, edited by Jeffrey Moser and Jason Protass features a carbon print image of a pagoda on a small island surrounded by water. The pagoda's image is reflected in the water, creating a mirror effect. The top of the book cover is blue with an ombre-fade into an orange- yellow on the bottom of the cover.\x00 | Cover of Countless Sands: Medieval Buddhists and Their Environments, edited by Jeffrey Moser and Jason Protass. A colorized photograph of a pagoda-topped pavilion on a small rocky island, beside a large tree and reflected in still water. The sky fades from blue at the top to orange-yellow at the bottom. |
+| PDF 4 (printed iii) | Illustration. | University of Hawaiʻi Press logo |
+| PDF 85 (printed 76) | Low-relief stone-carved image of a stupa with one section highlighted, showing a small scene of people venerating another stupa | Stone drum slab from Nāgārjunakoṇḍa carved in low relief with a stupa, flanked by guardian figures. A white box highlights a small stupa image near the top, which is shown enlarged in the next figure. |
+| PDF 85 (printed 76) | Low-relief stone-carved image of a stupa with one section highlighted, showing a small scene of people venerating another stupa | Close-up of the highlighted detail on the slab: a small relief of a stupa on a base, flanked by two figures venerating it. |
+| PDF 85 (printed 76) | Low-relief stone-carved image of a stupa with one section showing a partial view of an image of another stupa in the circumambulatory path. | Amarāvatī drum slab carved in low relief with a large stupa. A white box at the left marks a section of the circumambulatory path that holds a partial image of another stupa. |
+| PDF 85 (printed 76) | Low-relief stone-carved image of a stupa with one section showing a partial view of an image of another stupa in the circumambulatory path. | Close-up of the highlighted section: a partly visible relief image of a stupa within the circumambulatory path of the slab. |
+| PDF 143 (printed 134) | Satellite image of Ellora and surrounding area. | Satellite image of the Ellora site with labels for the Buddhist Caves (1–12) at lower right, the Hindu Caves (13–29) running up the middle, the Jain Caves (30–34) at upper left, the Velganga River, and two waterfalls, one near Caves 27–28 and one near Caves 4–5. A scale bar shows 0–400 meters. |
+| PDF 149 (printed 140) | Three photographs of cave entrances and plan of cave interior on lower right. | Photograph (panel a) of the colonnaded front of the cave at Cave 29 (Dumar Lena), Ellora, printed rotated 90 degrees. |
+| PDF 149 (printed 140) | Three photographs of cave entrances and plan of cave interior on lower right. | Photograph (panel c) of the cliff face with a stepped path along the mountainside and a cave opening, printed rotated 90 degrees. |
+| PDF 149 (printed 140) | Three photographs of cave entrances and plan of cave interior on lower right. | Photograph (panel b) of a narrow stepped rock-cut passage with deep shadow, at Cave 29, Ellora. |
+| PDF 149 (printed 140) | Three photographs of cave entrances and plan of cave interior on lower right. | Plan of Cave 29 (Dumar Lena) at Ellora: a cross-shaped hall with a central shrine and a compass rose. Letters a, b and c mark the entrances shown in the neighboring photographs. |
+| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Plan of Cave 29 (Dumar Lena) at Ellora, a cross-shaped hall with a central shrine and a compass rose. Letters a–f mark the locations of the six surrounding photographs of rock-cut sculptures. |
+| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Panel a: carved wall relief of a multi-figure scene of deities in a recessed panel; a person in white walks past at lower right. |
+| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Panel b: carved wall relief of a dynamic deity figure with attendants in a recessed panel above a pillar capital. |
+| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Panel c: weathered relief carvings of small figures arranged in rows on a cave wall. |
+| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Panel d: view between carved pillars toward a relief of standing figures on the cave wall, printed rotated 90 degrees. |
+| PDF 152 (printed 143) | Six photographs of rock-cut sculptures of deities and plan of cave at center. | Panel f: relief sculpture of a deity on the wall between pillar capitals, with a short inscription at the right, printed rotated 90 degrees. |
+| PDF 176 (printed 167) | Ink Painting of Bodhidharma standing on a reed in the middle of the Yangzi River
+ | Ink painting of Bodhidharma standing on a reed in the middle of the Yangzi River, with a column of inscription and seals at the upper left. |
+| PDF 179 (printed 170) | Old photograph of Jinshan Monastery with boats moored by its entrance.
+ | Old photograph of Jinshan Monastery on its hill, with a pagoda above the buildings and boats moored by its entrance. |
+| PDF 180 (printed 171) | Woodcut image of Changlu Monastery near waterways.
+ | Woodcut double page showing Changlu Monastery amid woods, fields and waterways, with sails in the distance. |
+| PDF 183 (printed 174) | Woodcut image of Ganlu Monastery abutting the Yangzi River at Zhenjiang
+ | Woodcut double page showing Ganlu Monastery on a cliff abutting the Yangzi River at Zhenjiang, with boats on the water. |
+| PDF 184 (printed 175) | Photograph of remnants of Iron Pagoda at Ganlu Monastery taken in 2019
+ | Photograph, taken in 2019, of the remnants of the Iron Pagoda at Ganlu Monastery: a tapering, rust-brown multi-tiered octagonal tower. |
+| PDF 193 (printed 184) | Photograph of Nanjing Chemical Industrial Park take from gate of Old Changlu Monastery in 2018
+ | Photograph, taken in 2018 from the gate of Old Changlu Monastery, of the Nanjing Chemical Industrial Park: factory buildings, a striped smokestack and pipelines behind a metal gate. |
+| PDF 193 (printed 184) | Photograph of Old Changlu Monastery front gate taken in 2018
+ | Photograph, taken in 2018, of the front gate of Old Changlu Monastery, a red gateway with tiled roofs and banners in Chinese. |
+| PDF 194 (printed 185) | Photograph of new Changlu Monastery under construction taken in 2018
+ | Photograph, taken in 2018, of the main hall of the new Changlu Monastery under construction: a large double-roofed hall on a stone platform with flags in front. |
+| PDF 282 (printed 273) | Plan showing distribution of reliefs at the Large Buddha Bend. | Plan of the Large Buddha Bend, Baodingshan, a horseshoe-shaped cliff with its carvings numbered 1–31. A key below the plan lists each carving, for example 1 Prowling Tiger, 2 Nine Protectors of the Law, 3 Wheel of Reincarnation, 11 Buddha’s Nirvana, 22 Ten Austerities of Liu Benzun, 23 Ten Vidyarajas, and 29 Cave of Complete Enlightenment. A north arrow points up. |
 
-### 2. Figures That Kept Their Existing Alt Text (71)
+### 2. Figures that kept their existing alt text (60)
 
 Not changed by the AI. Check they are adequate.
 
@@ -119,7 +137,6 @@ Not changed by the AI. Check they are adequate.
 | PDF 81 (printed 72) | Low-relief stone-carved image of a large seated Buddha surrounded by figures, one of whom carries a small representation of the Buddha |
 | PDF 83 (printed 74) | Low-relief stone-carved image of a large, domed stupa covered by small relief sculptures and surrounded by worshipping figures |
 | PDF 84 (printed 75) | Diagram of a stupa showing locations where images of stupas appear on its surface, and where images of stupas appear within those images |
-| PDF 85 (printed 76) | Low-relief stone-carved image of a stupa with one section highlighted, showing a small scene of people venerating another stupa |
 | PDF 86 (printed 77) | Low-relief stone-carved image of a stupa with images on it depicted other sacred sites and/or objects |
 | PDF 87 (printed 78) | Monumental sculpture of a multi-armed bodhisattva wearing a painted lower garment |
 | PDF 88 (printed 79) | Detail of a painting on the lower garment of a monumental sculpture, showing scenes of devotees at temples in a landscape |
@@ -140,28 +157,11 @@ Not changed by the AI. Check they are adequate.
 | PDF 134 (printed 125) | Image of the world as a red and blue column set on a stepped pyramid. |
 | PDF 135 (printed 126) | Map showing Eurasia, Africa, and Australia with blue and green bands of sea and continents above. |
 | PDF 136 (printed 127) | Black and white images of the world as a v-shaped landmass with blocks of text between many rivers. |
-| PDF 143 (printed 134) | Satellite image of Ellora and surrounding area. |
 | PDF 147 (printed 138) | Photograph of steps leading to elevated path around small olive green pool. |
 | PDF 148 (printed 139) | Photograph of cave entrances at base of steep slope with scattered brush. |
 | PDF 157 (printed 148) | Photograph of narrow drainage channel passing through tall vertical cave entrance. |
 | PDF 159 (printed 150) | Photograph of beige rock-cut cave entrances in a grey stone slope. |
 | PDF 160 (printed 151) | Photograph of rock-cut sculpture of twelve cross-legged Buddhist deities on four tiers. |
-| PDF 176 (printed 167) | Ink Painting of Bodhidharma standing on a reed in the middle of the Yangzi River
- |
-| PDF 179 (printed 170) | Old photograph of Jinshan Monastery with boats moored by its entrance.
- |
-| PDF 180 (printed 171) | Woodcut image of Changlu Monastery near waterways.
- |
-| PDF 183 (printed 174) | Woodcut image of Ganlu Monastery abutting the Yangzi River at Zhenjiang
- |
-| PDF 184 (printed 175) | Photograph of remnants of Iron Pagoda at Ganlu Monastery taken in 2019
- |
-| PDF 193 (printed 184) | Photograph of Nanjing Chemical Industrial Park take from gate of Old Changlu Monastery in 2018
- |
-| PDF 193 (printed 184) | Photograph of Old Changlu Monastery front gate taken in 2018
- |
-| PDF 194 (printed 185) | Photograph of new Changlu Monastery under construction taken in 2018
- |
 | PDF 210 (printed 201) | Satellite image showing location of Stone Treasure Mountain and Dharma Treasury Temple in relation to Dali
  |
 | PDF 211 (printed 202) | Satellite image showing location of Stone Treasure Mountain adjacent to Mingjianshao
@@ -186,7 +186,6 @@ Not changed by the AI. Check they are adequate.
 | PDF 276 (printed 267) | Photograph of rock-cut sculptures overlaid with numerals 1 to 10 and white text “Liu’s Followers,” etc. |
 | PDF 276 (printed 267) | Photograph of rock-cut sculpture of Liu Benzun’s sixth austerity, with inscription. |
 | PDF 278 (printed 269) | Photograph of the rock-cut standing figure with demonic face holding the wheel of reincarnation. |
-| PDF 282 (printed 273) | Plan showing distribution of reliefs at the Large Buddha Bend. |
 | PDF 284 (printed 275) | Photograph of rock-cut reliefs of judges seated behind altars above and the punishment of the dead in hell below. |
 | PDF 284 (printed 275) | Photograph of rock-cut relief carving of nine armored standing figures. |
 | PDF 285 (printed 276) | Photograph of rock-cut niche containing large central image of the Buddha, flanked by the eight protectors. |
@@ -216,7 +215,29 @@ Heading levels by style (as applied):
 
 Merged: `part_n` into the next `part_tit`; `chap_n` into the next `chap_tit`; `chap_stit` into the prev `chap_tit`
 
-### 4. Elements Retyped by the AI (2)
+Spoken text set by the AI (should match what is printed):
+
+| Page | Text |
+|---|---|
+| PDF 10 (printed 1) | PART I Introductions |
+| PDF 12 (printed 3) | CHAPTER 1 Medieval Buddhists and Their Environments |
+| PDF 23 (printed 14) | CHAPTER 2 Contextualizing the Relationship between Nature and Culture in East Asian Buddhism |
+| PDF 62 (printed 53) | PART II Matters of Scale and the Environment |
+| PDF 64 (printed 55) | CHAPTER 3 Flesh Mountain Human Bodies on a Nonhuman Scale |
+| PDF 79 (printed 70) | CHAPTER 4 Movements and Patterns in Embodied Landscapes for Art |
+| PDF 99 (printed 90) | CHAPTER 5 Geomorphism at “The Peak That Flew in from Afar” |
+| PDF 122 (printed 113) | CHAPTER 6 The Japanese Image of the Buddhist Earth Geography, Cosmology, and the Culture of Vision |
+| PDF 140 (printed 131) | PART III Environments in the Shaping of Medieval Buddhism |
+| PDF 142 (printed 133) | CHAPTER 7 Human Places and Cosmic Spaces Ecological Engagements at Ellora |
+| PDF 172 (printed 163) | CHAPTER 8 Riverine Buddhism at Changlu Monastery |
+| PDF 204 (printed 195) | CHAPTER 9 Masculine Mountains Gendered Affordances at Dali’s Stone Treasure Grottoes |
+| PDF 228 (printed 219) | CHAPTER 10 The Geoaesthetics of Ritual in the Chinese Buddhist Sanctuary of Shizhuanshan (ca. 1082–1096) |
+| PDF 252 (printed 243) | PART IV Environments as Mediums of Practice |
+| PDF 254 (printed 245) | CHAPTER 11 “Occasions Both Worldly and Transcendent” Sacred Trees in Buddha’s India |
+| PDF 269 (printed 260) | CHAPTER 12 Vidyārājas and the Articulation of Ecological Interdependence at Cave Temples |
+| PDF 290 (printed 281) | CHAPTER 13 Mountains, Waters, and Dharmakāya Kūkai’s Irrigation Projects |
+
+### 4. Elements retyped by the AI (2)
 
 Check each one is (or is not) a heading as decided.
 
@@ -225,27 +246,27 @@ Check each one is (or is not) a heading as decided.
 | PDF 4 (printed iii) | Countless Sands | dev_p | H1 |
 | PDF 23 (printed 14) | (no text) | H1 | P |
 
-### 5. Scanned Book: The Text Layer Comes from OCR
+### 5. Scanned book: the text layer comes from OCR
 
 6 of 329 pages are full-page images. Screen readers read the OCR text, which may contain recognition errors (suspect-token rate 16.4 per 1,000). Spot-check these pages against the scan: PDF 4 (printed iii), PDF 84 (printed 75), PDF 123 (printed 114), PDF 136 (printed 127), PDF 152 (printed 143), PDF 266 (printed 257), PDF 290 (printed 281), PDF 315 (printed 306). Corrections to the text itself are an editorial decision.
 
-### 6. OCR Words Given Their Printed Spelling (0 forms, 0 places)
+### 6. OCR words given their printed spelling (0 forms, 0 places)
 
 The OCR misread these words, mostly letters with diacritics (ā or ū read as "ii"). The AI read each word from a crop of the scan. Screen readers now speak the printed spelling, and copying gives it (ActualText); the OCR text underneath is unchanged, so a text search still finds the OCR spelling. Apps that ignore ActualText (Preview and other PDFKit readers, some checkers) still show the OCR spelling. Check each reading against the scan on its first page.
 
-- The saved reply read 4 suspect forms (the word list when it was written) and gave no readings; 8 are listed now. The word list changed since (4 forms then, 8 now). None of today's 8 forms counts as read by the AI: a person checks them against the scan, or a new call reads them.
+- 8 suspect forms were checked by the AI; 8 were judged correct as the OCR read them, or unreadable (e.g. "Hawaii"), and left alone.
 
-### 7. Text a Screen Reader Could Not Reach (before this run)
+### 7. Text a screen reader could not reach (before this run)
 
 13 pages had text outside the tag tree: 1184 orphan runs (marked, but no tag owns them) and 0 untagged runs. Running heads and page numbers among them can be hidden as decoration; real content must be added to the tag tree by a person. After this run: 0 untagged characters, 0 orphan runs remain.
 
 Pages: PDF 20 (printed 11), PDF 54 (printed 45), PDF 78 (printed 69), PDF 95 (printed 86), PDF 120 (printed 111), PDF 138 (printed 129), PDF 169 (printed 160), PDF 200 (printed 191), PDF 225 (printed 216), PDF 248 (printed 239), PDF 267 (printed 258), PDF 288 (printed 279), PDF 314 (printed 305)
 
-### 8. Hidden from Screen Readers (artifacts)
+### 8. Hidden from screen readers (artifacts)
 
-- 10 decorative elements ("decorative landscape engraving behind Part I opener", "decorative landscape engraving behind half-title text", "decorative landscape vignette on title page", "wave ornament") on PDF 2 (printed i), PDF 4 (printed iii), PDF 10 (printed 1), PDF 68 (printed 59), PDF 93 (printed 84), PDF 165 (printed 156), PDF 195 (printed 186), PDF 244 (printed 235), PDF 264 (printed 255), PDF 309 (printed 300)
+- 10 decorative elements ("decorative Part I opener landscape; the title is tagged text", "decorative half-title landscape; the title is tagged text", "decorative title-page landscape", "wave ornament") on PDF 2 (printed i), PDF 4 (printed iii), PDF 10 (printed 1), PDF 68 (printed 59), PDF 93 (printed 84), PDF 165 (printed 156), PDF 195 (printed 186), PDF 244 (printed 235), PDF 264 (printed 255), PDF 309 (printed 300)
 
-### 9. Reading Order Changes
+### 9. Reading order changes
 
 Listen through these spots with a screen reader.
 
@@ -265,11 +286,11 @@ Listen through these spots with a screen reader.
 - Figure on PDF 278 (printed 269) moved to read with its page (it read after PDF 329 (printed 320); now after PDF 279 (printed 270))
 - Figure on PDF 282 (printed 273) moved to read with its page (it read after PDF 329 (printed 320); now after PDF 283 (printed 274))
 
-### 10. Untagged Paths (rules, borders, lines)
+### 10. Untagged paths (rules, borders, lines)
 
 53 paths drawn outside any tag were marked as decoration: none of them carries text, an image or a link, and none touches untagged text or images.
 
-### 11. Orphan Content Added to the Tag Tree (247 paragraphs)
+### 11. Orphan content added to the tag tree (247 paragraphs)
 
 Real content that was marked but in no tag, now read in page order after the last tagged block on its page. Listen through these pages:
 
@@ -283,11 +304,33 @@ Real content that was marked but in no tag, now read in page order after the las
 - PDF 200 (printed 191) ("chapter 8 notes"): 93 runs → 25 paragraphs, starting "71."
 - PDF 225 (printed 216) ("chapter 9 notes and works cited"): 87 runs → 14 paragraphs, starting "35."
 - PDF 248 (printed 239) ("chapter 10 works cited"): 81 runs → 18 paragraphs, starting "WORKS CITED"
-- PDF 267 (printed 258) ("chapter 11 notes"): 119 runs → 19 paragraphs, starting "Pali- English Dictionary,"
+- PDF 267 (printed 258) ("chapter 11 notes and works cited"): 119 runs → 19 paragraphs, starting "Pali- English Dictionary,"
 - PDF 288 (printed 279) ("chapter 12 notes"): 106 runs → 22 paragraphs, starting "5."
 - PDF 314 (printed 305) ("chapter 13 notes"): 90 runs → 19 paragraphs, starting "inscription refers to the monk as “En risshi,” the Vinaya Master En. However, Shūen was"
 
-### 12. Links Whose Description Was Only a URL (13, and 2 addresses that look broken)
+### 12. Spoken text (ActualText) checked against the print (17 accepted with differences, 0 rejected)
+
+A spoken text may differ from the printed characters only in spacing, letter case and line-end hyphens (sponsor rule 1). Accepted ones that differ are listed so a person can listen to them; rejected ones added or changed words or punctuation.
+
+- Accepted, PDF 10 (printed 1): printed "PART I Introductions" → spoken "PART I Introductions"
+- Accepted, PDF 12 (printed 3): printed "CHAPTER 1 Medieval Buddhists and Their Environments" → spoken "CHAPTER 1 Medieval Buddhists and Their Environments"
+- Accepted, PDF 23 (printed 14): printed "CHAPTER 2 Contextualizing the Relationship between Nature and Culture in East Asian Buddhism" → spoken "CHAPTER 2 Contextualizing the Relationship between Nature and Culture in East Asian Buddhism"
+- Accepted, PDF 62 (printed 53): printed "PART II Matters of Scale and the Environment" → spoken "PART II Matters of Scale and the Environment"
+- Accepted, PDF 64 (printed 55): printed "CHAPTER 3 Flesh Mountain Human Bodies on a Nonhuman Scale" → spoken "CHAPTER 3 Flesh Mountain Human Bodies on a Nonhuman Scale"
+- Accepted, PDF 79 (printed 70): printed "CHAPTER 4 Movements and Patterns in Embodied Landscapes for Art" → spoken "CHAPTER 4 Movements and Patterns in Embodied Landscapes for Art"
+- Accepted, PDF 99 (printed 90): printed "CHAPTER 5 Geomorphism at “The Peak That Flew in from Afar”" → spoken "CHAPTER 5 Geomorphism at “The Peak That Flew in from Afar”"
+- Accepted, PDF 122 (printed 113): printed "CHAPTER 6 The Japanese Image of the Buddhist Earth Geography, Cosmology, and the Culture of Vision" → spoken "CHAPTER 6 The Japanese Image of the Buddhist Earth Geography, Cosmology, and the Culture of Vision"
+- Accepted, PDF 140 (printed 131): printed "PART III Environments in the Shaping of Medieval Buddhism" → spoken "PART III Environments in the Shaping of Medieval Buddhism"
+- Accepted, PDF 142 (printed 133): printed "CHAPTER 7 Human Places and Cosmic Spaces Ecological Engagements at Ellora" → spoken "CHAPTER 7 Human Places and Cosmic Spaces Ecological Engagements at Ellora"
+- Accepted, PDF 172 (printed 163): printed "CHAPTER 8 Riverine Buddhism at Changlu Monastery" → spoken "CHAPTER 8 Riverine Buddhism at Changlu Monastery"
+- Accepted, PDF 204 (printed 195): printed "CHAPTER 9 Masculine Mountains Gendered Affordances at Dali’s Stone Treasure Grottoes" → spoken "CHAPTER 9 Masculine Mountains Gendered Affordances at Dali’s Stone Treasure Grottoes"
+- Accepted, PDF 228 (printed 219): printed "CHAPTER 10 The Geoaesthetics of Ritual in the Chinese Buddhist Sanctuary of Shizhuanshan (ca…" → spoken "CHAPTER 10 The Geoaesthetics of Ritual in the Chinese Buddhist Sanctuary of Shizhuanshan (ca. 1082–1096)"
+- Accepted, PDF 252 (printed 243): printed "PART IV Environments as Mediums of Practice" → spoken "PART IV Environments as Mediums of Practice"
+- Accepted, PDF 254 (printed 245): printed "CHAPTER 11 “Occasions Both Worldly and Transcendent” Sacred Trees in Buddha’s India" → spoken "CHAPTER 11 “Occasions Both Worldly and Transcendent” Sacred Trees in Buddha’s India"
+- Accepted, PDF 269 (printed 260): printed "CHAPTER 12 Vidyārājas and the Articulation of Ecological Interdependence at Cave Temples" → spoken "CHAPTER 12 Vidyārājas and the Articulation of Ecological Interdependence at Cave Temples"
+- Accepted, PDF 290 (printed 281): printed "CHAPTER 13 Mountains, Waters, and Dharmakāya Kūkai’s Irrigation Projects" → spoken "CHAPTER 13 Mountains, Waters, and Dharmakāya Kūkai’s Irrigation Projects"
+
+### 13. Links whose description was only a URL (13, and 2 addresses that look broken)
 
 The description (what a screen reader announces) was set to the book's own sentence around the link, with the URL removed. No words were added and the visible URL is unchanged. Replace any of these with a better description if needed.
 
@@ -312,19 +355,19 @@ Link addresses that look broken (listed, not changed):
 - PDF 49 (printed 40): `https://tomdispatch.com/post/174949,`: the address ends with punctuation or an unmatched closing bracket from the printed text; probably broken
 - PDF 49 (printed 40): `https://tomdispatch.com/post/174949,`: the address ends with punctuation or an unmatched closing bracket from the printed text; probably broken
 
-### 13. Empty Tags (69 removed, 0 kept)
+### 14. Empty tags (69 removed, 0 kept)
 
 A tag is removed only when proven empty: nothing under it holds content, it carries no Alt, ActualText, E or ID, and nothing in the file refers to it except its parent. Table cells are never removed one by one; a table goes only when every part is empty.
 
 - Removed: 22 index, 20 glossaire, 11 copy, 7 Ancre, 4 Unumbered_headnote, 3 dev_p, 1 P, 1 Story
 
-### 14. Tag-tree Index Entries Cleared (1)
+### 15. Tag-tree index entries cleared (1)
 
 Entries that pointed at a tag no longer in the tag tree (left by the source file, or by a tag the run removed). Nothing reads such a tag; no page, text or reachable tag changed.
 
 - ParentTree, PDF 152 (printed 143): MCID 8228 (Figure)
 
-### 15. Captions Paired by Position (8)
+### 16. Captions paired by position (8)
 
 Pages with several figures: each caption was tied to the figure right next to it. Check the pairs.
 
@@ -337,7 +380,7 @@ Pages with several figures: each caption was tied to the figure right next to it
 - PDF 276 (printed 267): "Figure 12.4 Liu Benzun’s sixth austerity, from the Ten Austerities of Liu Benzun, Large Buddha Bend…"
 - PDF 284 (printed 275): "Figure 12.8 Nine Protectors of the Law, Large Buddha Bend, Baodingshan, Dazu, Chongqing, 1177–1249…"
 
-### 16. veraPDF (WCAG 2.2 machine profile), Before and After
+### 17. veraPDF (WCAG 2.2 machine profile), before and after
 
 veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 3 rules failing (the AI can act on 1, the pipeline on 2, only a person on 0). After: 1.
 
@@ -351,24 +394,27 @@ PDF/UA-only, not required for WCAG (not counted):
 
 - 7.21.5-1: glyph width consistency (2 checks, PDF 5 (printed iv)), still failing
 
-### 17. WCAG Checks veraPDF Does Not Make
+### 18. WCAG checks veraPDF does not make
 
 Each item is something to look at, not a proven failure.
 
 - 1.3.2 the reading order jumps back up the same column on 1 page. Listen through them with a screen reader (or the PAC screen-reader preview): PDF 149 (printed 140) (6 jumps)
+- 1.3.2 57 small sections are read more than 5 pages after their printed page, after a longer section that covers them (56 holding figures). Not a failure (long stories overlap in InDesign books), but a screen reader hears them far from where they are printed: PDF 4 (printed iii) read after PDF 60 (printed 51); PDF 87 (printed 78) read after PDF 139 (printed 130); PDF 88 (printed 79) read after PDF 139 (printed 130); PDF 89 (printed 80) read after PDF 139 (printed 130); PDF 90 (printed 81) read after PDF 139 (printed 130); PDF 92 (printed 83) read after PDF 139 (printed 130); PDF 100 (printed 91) read after PDF 139 (printed 130); PDF 101 (printed 92) read after PDF 139 (printed 130); PDF 107 (printed 98) read after PDF 139 (printed 130); PDF 109 (printed 100) read after PDF 139 (printed 130); PDF 110 (printed 101) read after PDF 139 (printed 130); PDF 112 (printed 103) read after PDF 139 (printed 130) and 45 more
+- 1.3.2 1 section read away from its printed place, as in the original (this run did not move it). Listen through each where it is read, or move it with move_section:
+  - PDF 1 (printed COVER): Article, read after PDF 329 (printed 320)
 
-### 18. Deferred by the AI
+### 19. Deferred by the AI
 
-- **Remaining veraPDF 7.1-3 failures (content neither marked as artifact nor tagged)**: The failures are reported on content streams (examples on PDF 10, 12 and 20), not on specific tags, and the digest shows no untagged text runs there. The orphan runs on the notes pages are handled by adopt_orphans. What remains is probably vector decoration or page-level drawing, and a person should check it in Acrobat. [PDF 10 (printed 1), PDF 12 (printed 3), PDF 20 (printed 11)]
-- **Reading order of adopted orphan notes and bibliography text**: These runs were in no tag and are appended in drawing order after the last block on each page. Their order, and any note numbers that were split off, need a check. [PDF 20 (printed 11), PDF 54 (printed 45), PDF 78 (printed 69), PDF 95 (printed 86), PDF 120 (printed 111), PDF 138 (printed 129), PDF 169 (printed 160), PDF 200 (printed 191), PDF 225 (printed 216), PDF 248 (printed 239), PDF 267 (printed 258), PDF 288 (printed 279), PDF 314 (printed 305)]
-- **Cover figure is read last**: The cover Article (PDF 1) is the last child of the Document, so a screen reader meets it at the end. It is not at the tree root, so move_to_document_start cannot move it. A person should move it to the front. [PDF 1 (printed COVER)]
-- **Han-only CJK runs (about 230) in the Glossary and in the endnotes**: Japanese or Chinese cannot be told apart from Han characters alone, so these are left to a human or to the executor's automatic deferral. [PDF 59 (printed 50), PDF 138 (printed 129), PDF 197 (printed 188), PDF 198 (printed 189), PDF 316 (printed 307), PDF 317 (printed 308), PDF 318 (printed 309), PDF 319 (printed 310)]
-- **OCR text quality**: The file was run through Paper Capture and shows about 16 suspect tokens per 1000. The text layer looks worst on PDF 152, 266, 315, 84, 290, 123, 136 and 4, and there are stray punctuation fragments in the notes. The text was not changed. [PDF 4 (printed iii), PDF 84 (printed 75), PDF 123 (printed 114), PDF 136 (printed 127), PDF 152 (printed 143), PDF 266 (printed 257), PDF 290 (printed 281), PDF 315 (printed 306)]
-- **Glossary and index structure**: The glossary (224 paragraphs) and the index (1,543 Index elements at the tree root) were left as they are. They need a spot check after the executor moves them into the Document. [PDF 316 (printed 307), PDF 319 (printed 310), PDF 322 (printed 313), PDF 329 (printed 320)]
+- **veraPDF 7.1-3: content neither tagged nor marked as artifact**: No object is named. About 1,184 of the 1,504 failed checks are orphan note and bibliography runs, which adopt_orphans handles. The rest are likely unmarked rules or decorative page elements on part and chapter opener pages (e.g. PDF 10, 12). They cannot be targeted from the digest, so a person should check them in Acrobat. [PDF 10 (printed 1), PDF 12 (printed 3), PDF 20 (printed 11)]
+- **Reading order and structure of the adopted orphan runs on 13 notes and works-cited pages**: The orphan text is OCR-style content, apparently produced by Paper Capture on these pages. It is added as plain paragraphs in drawn order. Headings such as 'NOTES' and 'WORKS CITED' inside the orphans (PDF 20, 248) become paragraphs, not headings, and fragments such as italic titles or '-' may be split. The OCR text layer is also weak (worst pages 152, 266, 315, 84, 290, 123, 136, 4). A person should check order, heading levels and text. [PDF 20 (printed 11), PDF 54 (printed 45), PDF 78 (printed 69), PDF 95 (printed 86), PDF 120 (printed 111), PDF 138 (printed 129), PDF 169 (printed 160), PDF 200 (printed 191), PDF 225 (printed 216), PDF 248 (printed 239), PDF 267 (printed 258), PDF 288 (printed 279), PDF 314 (printed 305)]
+- **Empty element mapped as chap_tit on PDF 23 (printed 14), obj 14048 0**: It has no text, so it was retyped to P. A person should confirm it can be removed. [PDF 23 (printed 14)]
+- **Han-only CJK runs (about 230, glossary, notes, quoted inscriptions, e.g. PDF 59, 138, 197–198, 316–319)**: Chinese and Japanese cannot be told apart from Han characters alone. The executor defers them to a human for language tags. [PDF 59 (printed 50), PDF 138 (printed 129), PDF 197 (printed 188), PDF 198 (printed 189), PDF 316 (printed 307), PDF 317 (printed 308), PDF 318 (printed 309), PDF 319 (printed 310)]
+- **Index column reading order, PDF 323–329 (printed 314–320)**: The first tagged lines of the index pages look like interleaved two-column text. A person should check that entries read column by column. [PDF 323 (printed 314), PDF 324 (printed 315), PDF 325 (printed 316), PDF 326 (printed 317), PDF 327 (printed 318), PDF 328 (printed 319), PDF 329 (printed 320)]
+- **sections.notes_pages not set**: Endnotes are per chapter and interleaved with bibliographies from PDF 20 to 314, not one contiguous range. Setting one range would mislabel body links, so it was left out. [PDF 20 (printed 11), PDF 314 (printed 305)]
 
-Reviewer note from the AI: Heading plan: the book title on the title page (PDF 4) is the only H1. Part titles, chapter titles and front/back-matter titles (Contents, Acknowledgments, Glossary, Contributors, Index) are H2. Section heads (style h1) and NOTES are H3. The bibliography subheads (Abbreviations, Secondary) are H4. Part and chapter labels, and chapter subtitles, are merged into their titles. I set no actual_text on the merged headings, since the printed text of each chapter title and subtitle could not be checked from the digest. The decorative landscape engravings on PDF 2, 4 and 10 and the seven small wave ornaments are artifacts. Their titles are separate tagged text. The cover alt text had NUL characters and was rewritten. The OCR word forms (Shiina, Kii, xiii–xxi, Chiiki) all match the scan, so no ocr_words were returned. No lists or tables were found.
+Reviewer note from the AI: Heading outline: one H1 (the book title on PDF 4, printed iii). Parts, chapters and front/back-matter titles (Contents, Acknowledgments, Glossary, Contributors, Index) are H2. Chapter sections are H3, and each chapter's NOTES heading is H3. The bibliography sub-headings (Abbreviations, Secondary) are H4. Part and chapter number labels and subtitles are merged into their title headings, and ActualText supplies the spaces between them (no colons were added). The oversized decorative landscapes on the half-title, title page and Part I opener are artifacts, because the titles are tagged text. Repeated wave ornaments are also artifacts. Figure alt text was kept where it was already good. Placeholder 'Illustration' alts were replaced or the figures artifacted, and duplicate alts on multi-panel figures (PDF 85, 149, 152) were differentiated. No lists or tables exist in the digest. No OCR word forms needed correction: the eight listed forms read correctly in the crops (Hawai‘i, Shiina, Kaku’a, Kii, l’homme, xiii–xxi, Chiiki, L’Homme). The move_section entries (cover read last; imprint read after PDF 60) should be checked in the output.
 
-### 19. Deferred by the Executor
+### 20. Deferred by the executor
 
 - **230 Han-only CJK runs** need a Japanese / Chinese decision: fill in `han_review.csv`.
 - caption (PDF 149 (printed 140)): 4 figures on page
@@ -385,23 +431,26 @@ Reviewer note from the AI: Heading plan: the book title on the title page (PDF 4
 - caption (PDF 232 (printed 223)): 2 figures on page
 - caption (PDF 284 (printed 275)): 2 figures on page
 
-### 20. Decisions Not Applied (1)
+### 21. Decisions not applied (3)
 
 Rejected by validation or by the executor; nothing was half-applied.
 
+- {"op": "move_section", "why": "1 candidate sections, host found: False"}
 - {"where": "rolemap", "item": {"BMT_works_cited": "H3"}, "why": "unknown style"}
+- {"where": "move_section", "item": {"pages": [4, 4], "before_page": 5, "why": "The imprint line and press logo of the title page are read after PDF 60."}, "why": "the audit finds no section read out of place in these pages or where it lands"}
 
-## What Was Changed
+## What was changed
 
 | Change | Count |
 |---|---:|
-| artifact: "decorative landscape engraving behind half-title text" | 1 |
-| artifact: "decorative landscape vignette on title page" | 1 |
-| artifact: "decorative landscape engraving behind Part I opener" | 1 |
+| artifact: "decorative half-title landscape; the title is tagged text" | 1 |
+| artifact: "decorative title-page landscape" | 1 |
+| artifact: "decorative Part I opener landscape; the title is tagged text" | 1 |
 | artifact: "wave ornament" | 7 |
 | document: title | 1 |
 | document: DisplayDocTitle | 1 |
 | document: /Lang | 1 |
+| document: empty AcroForm removed | 1 |
 | orphans: adopted as paragraphs ("chapter 1 notes and works cited") | 3 |
 | orphans: adopted as paragraphs ("chapter 2 notes") | 21 |
 | orphans: adopted as paragraphs ("chapter 3 notes") | 16 |
@@ -412,15 +461,16 @@ Rejected by validation or by the executor; nothing was half-applied.
 | orphans: adopted as paragraphs ("chapter 8 notes") | 25 |
 | orphans: adopted as paragraphs ("chapter 9 notes and works cited") | 14 |
 | orphans: adopted as paragraphs ("chapter 10 works cited") | 18 |
-| orphans: adopted as paragraphs ("chapter 11 notes") | 19 |
+| orphans: adopted as paragraphs ("chapter 11 notes and works cited") | 19 |
 | orphans: adopted as paragraphs ("chapter 12 notes") | 22 |
 | orphans: adopted as paragraphs ("chapter 13 notes") | 19 |
 | heading: RoleMap level | 9 |
 | heading: merged into next | 17 |
 | heading: merged into prev | 6 |
+| heading: ActualText | 17 |
 | retype → H1 | 1 |
 | retype → P | 1 |
-| figure: alt text | 15 |
+| figure: alt text | 26 |
 | figure: caption tied (figure moved out of its paragraph) | 70 |
 | figure: caption paired by position (several figures on the page) | 8 |
 | figure: caption retyped only | 13 |
@@ -441,29 +491,16 @@ Rejected by validation or by the executor; nothing was half-applied.
 | tag tree index: entries repaired | 1181 |
 | tag tree index: entries pointing outside the tree cleared (ParentTree) | 1 |
 
-## Accessibility Evaluation
+## Final check with PAC 2026
 
-A person evaluates this version of `sands_remediated.pdf` with PAC 2026 and a screen reader, on the app's "Accessibility Evaluation" page (or with manual_checks.py; docs/release.md). Both parts are needed for "Ready to ship?". A Fail is recorded with its note and does not hold the book back. Each result is recorded against this version of the PDF (its sha256): after a new apply it no longer counts. The evaluation is a record of what a person found, not a legal certification.
+Open `sands_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker.
 
-**PAC 2026.** Open `sands_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:
+No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC's screen-reader and structure previews:
 
-- PAC 2026: WCAG Check: PAC 2026's WCAG check on this version of the PDF. Anything it fails that the report does not list is a gap in the automated checks.
-- Title and Language: The title shown in the window is the book's title, and the document language is the book's main language.
-- Spot-Check of Pages: A few pages compared with the original in PAC's structure preview: headings, lists, tables and figures as printed.
-- Colour Alone: No information is given by colour alone (WCAG 1.4.1).
-- Contrast: Text over images and coloured backgrounds has enough contrast (WCAG 1.4.3; PAC's contrast checker).
-- Images of Text: No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).
-- What Needs a Person: Every item the report lists under "For a Person to Check" was looked at.
-
-**Screen-reader test.** Listen with a screen reader and record which one and its version:
-
-- Title Announced: The screen reader announces the book's title when the PDF opens.
-- Document Language and Passages in Other Languages: The text is read in the book's language, and passages in another language are pronounced in theirs (WCAG 3.1.1, 3.1.2).
-- Heading Navigation: Moving by heading reaches each part and chapter, at the right level (WCAG 1.3.1, 2.4.6).
-- Reading Order on Sample Pages: On a few sample pages, the text is read in the order it is meant to be read (WCAG 1.3.2).
-- Figure Alt Text: Each figure's alt text is read, is accurate and gives its purpose; decorative images are skipped (WCAG 1.1.1).
-- Tables Read with Their Headers: Moving through a table, each cell is read with its row or column header (WCAG 1.3.1).
-- Links Say Where They Go: Each link's text, or its description, says where it goes (WCAG 2.4.4).
-- Lists: Lists are announced as lists, with their number of items.
-- OCR Pages Read Sensibly: Pages whose text comes from OCR are read as words, not as junk characters.
-- Formulas: Each formula is read with the description a person wrote, or is marked for one (math goes to a person).
+- 1.1.1: alt text is accurate and gives the figure's purpose; decorative images are artifacts
+- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense
+- 1.4.1: no information is given by colour alone
+- 1.4.3: contrast of text over images and coloured backgrounds (PAC's contrast checker)
+- 1.4.5: no images of text where real text could be used (scanned pages: the OCR layer stands in)
+- 2.4.6: headings describe their section
+- 3.1.2: passages in another language carry their language (see `han_review.csv` if present)

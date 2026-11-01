@@ -1,8 +1,8 @@
 {
  "apply": {
   "applied": {
-   "artifact: \"folios on chapter-opening pages (bottom)\"": 7,
-   "artifact: \"running heads and folios (top)\"": 360,
+   "artifact: \"page numbers (bottom, chapter openers and contents page)\"": 7,
+   "artifact: \"running heads and page numbers (top)\"": 360,
    "document: /Lang": 1,
    "document: DisplayDocTitle": 1,
    "document: title": 1,
@@ -11,7 +11,6 @@
    "flatten: nested list/table already flattened with its parent": 6,
    "heading: RoleMap level": 1,
    "links: references to off-page annotations removed": 5,
-   "retype → H1": 1,
    "retype → H2": 7,
    "retype → H3": 21,
    "retype → P": 5,

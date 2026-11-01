@@ -1,6 +1,6 @@
 ```json
 {
-  "schema": "workorder/0.1",
+  "schema": "workorder/0.2",
   "sections": {
     "toc_pages": [9],
     "notes_pages": [253, 282],
@@ -8,31 +8,32 @@
   },
   "artifacts": {
     "elements": [
-      {"obj": "18592 0", "type": "Layout", "label": "ornament"},
-      {"obj": "18501 0", "type": "Layout", "label": "ornament"},
-      {"obj": "18485 0", "type": "Layout", "label": "ornament"},
-      {"obj": "18480 0", "type": "Layout", "label": "ornament"},
-      {"obj": "19463 0", "type": "Layout", "label": "ornament"},
-      {"obj": "17890 0", "type": "Layout", "label": "ornament"},
-      {"obj": "17156 0", "type": "Layout", "label": "ornament"},
-      {"obj": "16571 0", "type": "Layout", "label": "ornament"},
-      {"obj": "16308 0", "type": "Layout", "label": "ornament"},
-      {"obj": "15580 0", "type": "Layout", "label": "ornament"},
-      {"obj": "14945 0", "type": "Layout", "label": "ornament"},
-      {"obj": "14213 0", "type": "Layout", "label": "ornament"},
-      {"obj": "14118 0", "type": "Layout", "label": "ornament"},
-      {"obj": "14023 0", "type": "Layout", "label": "ornament"},
-      {"obj": "14020 0", "type": "Layout", "label": "ornament"},
-      {"obj": "12773 0", "type": "Layout", "label": "ornament"}
+      {"obj": "18592 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "18501 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "18485 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "18480 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "19463 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "17890 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "17156 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "16571 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "16308 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "15580 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "14945 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "14213 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "14118 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "14023 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "14020 0", "type": "Layout", "label": "flourish ornament under heading"},
+      {"obj": "12773 0", "type": "Layout", "label": "flourish ornament under heading"}
     ],
     "text_rules": [
-      {"label": "running head (Notes to Pages)", "pages": [254, 282], "regex": "Notes to Pages? [\\d–]+", "band": "top", "type": "Pagination", "subtype": "Header"}
+      {"label": "notes running head", "pages": [254, 282], "regex": "Notes to Pages? [\\d–\\-]+", "band": "top", "type": "Pagination", "subtype": "Header"}
     ]
   },
   "document": {
     "title": "Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism",
     "lang": "en-US",
-    "display_doc_title": true
+    "display_doc_title": true,
+    "remove_empty_acroform": true
   },
   "rolemap": {
     "pre_tit": "H2",
@@ -74,26 +75,26 @@
   ],
   "alt": [
     {"obj": "18614 0", "alt": "University of Hawai‘i Press logo"},
-    {"obj": "6374 0", "alt": "Book cover of Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism by Andrew Macomber. A brown-toned sketch of a decomposing human corpse lying on its back with long hair and exposed ribs, on a mottled parchment-colored background. The title appears above the image and the author's name below it."}
+    {"obj": "6374 0", "alt": "Book cover of Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism by Andrew Macomber. A brown-toned sketch from a medieval Japanese scroll shows a decomposing human corpse lying diagonally across a mottled, parchment-like background, with exposed internal organs and bones. The title appears above the image and the author's name below it."}
   ],
   "move_to_document_start": ["6374 0"],
-  "captions": {"style": "dev_fig_leg"},
+  "captions": {"style": "dev_fig_leg", "wrapper_style": "dev_fig_img"},
   "lists": [
     {"first_style": "liste_p.premier", "item_prefix": "liste_p", "last_style": "liste_p.dernier", "numbering": "Decimal"}
   ],
   "toc": {"item_styles": ["tdm1_p", "tdm1_p.chap", "tdm1_p.part"], "pages": [9, 9]},
   "notes": {"styles": ["ntf_p", "ntf_p.1", "ntf_p.2"], "id_prefix": "note-"},
   "language": {"kana_runs": "ja", "runs": []},
-  "fix_figure_order": true,
+  "move_section": [
+    {"pages": [253, 282], "before_page": 283, "why": "The Epilogue container spans PDF 246–323, so the Bibliography, Index and About the Author appear to be read before the NOTES section, which is printed before them."}
+  ],
   "remove_empty_containers": true,
   "deferrals": [
-    {"what": "Drop caps at the start of chapter and section openings (dev_let paragraphs, e.g. \"his project began…\" for \"This project began…\") are extracted without their first letter or as a separate run. A person should check how the first word is read.", "why": "The digest does not show the drop-cap runs, so ActualText for these paragraphs cannot be written safely.", "pages": [11, 17, 49, 78, 112, 141, 154, 182, 211, 246]},
-    {"what": "The Index (1793 Index elements at the tree root) and the Link elements at the root are moved into the Document by the executor. Check that the index reads after the bibliography in the right order.", "why": "The digest does not show where in the Document they will land.", "pages": [307, 321]},
-    {"what": "Han-only Chinese-character runs, such as the mantra on the dedication page and many terms in the text, notes and bibliography, are ambiguous between Japanese and Chinese.", "why": "Left to the executor's automatic deferral; a human must set the language.", "pages": [7, 17, 284, 323]},
-    {"what": "The text layer has quirks that suggest hyphenation or italic extraction problems (suspect-token rate 23.8 per 1000), for example in notes and bibliography entries such as \"O“nmyōji\" and \"Mak-\".", "why": "The text must not be changed here; a person should spot-check these pages.", "pages": [152, 262, 267, 270, 275, 285, 294, 318]},
-    {"what": "veraPDF reports 2 failed rules that are not listed with any work-order key, so they were not addressed.", "why": "pdfua_check.rules is empty, so there is no key or target to act on.", "pages": [1, 323]},
-    {"what": "Figure 3, Figure 4 and Figure 5 style frames (dev_fig_img paragraphs) and their captions were tied together by the captions key; check that each caption sits with the correct figure.", "why": "Some captions sit in Story containers at different depths.", "pages": [62, 66, 124, 142, 144, 152, 160, 218, 239]}
+    {"what": "Drop-cap chapter openings (dev_let paragraphs, e.g. 'n 998, eminent courtier…', 'his project began…') extract without their first letter", "why": "The drop cap is a separate run and the paragraph text is too long for me to safely supply as ActualText. A person should check how screen readers speak these openings.", "pages": [11, 17, 49, 78, 112, 141, 154, 182, 211, 246]},
+    {"what": "Han-only CJK runs (dedication mantra, Japanese and Chinese terms in the text, notes and bibliography)", "why": "Japanese or Chinese cannot be told apart from the digest. The executor defers these to a human.", "pages": [7, 17, 283, 305]},
+    {"what": "Numbered list of moxibustion points converted to L/LI/LBody", "why": "The items were plain paragraphs with the numbers typed into the text. A person should confirm the list structure.", "pages": [219]},
+    {"what": "Endnote paragraph styles converted to Note and the NOTES section moved before the Bibliography", "why": "141 Note elements already exist, so the nesting and the reading order need a human check.", "pages": [253, 282]}
   ],
-  "notes_for_reviewer": "The publisher's rolemap mapped nearly every title style to H1. I made the half-title-page book title (ident_tit, PDF 5 (printed iii)) the only H1. Part, chapter, front-matter and back-matter titles are H2. Part and chapter number labels are merged into their titles, and the Chapter 7 subtitle is merged into its title. Section heads are H3 and subsections are H4. The notes chapter heads (nfniv1_int) and the bibliography heads are H3. Existing alt text on the content figures was kept. The 16 decorative flourishes near chapter titles are artifacted. The cover figure at the root had a NUL character in its alt text, which I replaced, and I moved the cover to the start of the Document. The Notes running heads are artifacted on PDF 254–282 (printed 238–266)."
+  "notes_for_reviewer": "Heading outline: the book title (ident_tit on PDF 5, printed iii) is the single H1. Front-matter titles, Introduction, Part and Chapter titles, Epilogue, Notes, Bibliography, Index and About the Author are H2. Part and chapter labels are merged into their titles, with ActualText because the small-cap label letters extract oddly. Chapter 7 also takes its subtitle. dev_int1 sections are H3, dev_int2 subsections are H4, and the notes' chapter headings are H3. The 16 flourish ornaments under headings are artifacts. Publisher alt text on the other figures is already good and kept. The cover alt text had a stray NUL character, which I replaced. The cover is moved to the start of the Document. The Notes running heads (PDF 254–282) are artifacts. The Epilogue container (PDF 246–323) swallows the back matter, so I moved the Notes section before the Bibliography. Please check that move."
 }
 ```

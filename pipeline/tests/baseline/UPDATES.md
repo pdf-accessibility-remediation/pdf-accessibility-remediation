@@ -10,6 +10,10 @@ Why each regression baseline update was made (newest last). Written by `tools/re
 
 - 2026-10-25 · ilokano · Python 3.14 · workorder_v8.md: Add ilokano: an untagged book (frozen OpenDataLoader intake), one-item list rule, gap-only word breaks; reply from a paid v8 run ($0.09)
 
+- 2026-10-25 · godzone, clans, translation, cadaverous, sands, buddhist, ilokano · Python 3.14 · workorder_v8.md: book-wide reading-order check (1.3.2): one new row in the checks table (verify.py wcag.section_order, lib/readorder.py); sands also lists its cover, read last, as already in the original
+
+- 2026-10-25 · sands, translation · Python 3.14 · workorder_v8.md: 1.3.2: small sections read more than 5 pages after their printed page are listed (not failed); sands 57, mostly figure sections read after their part
+
 - 2026-10-25 · buddhist · Python 3.13 · workorder_v8.md: Issue #12: OCR words now split at gaps, skip web addresses and catch an ʻokina read as a quote mark, so buddhist's word list changed (648 → 645 forms) and the old reply's ids no longer matched; re-seeded with a new reply (2026-10-25, prompt v8)
 
 - 2026-10-25 · sands · Python 3.13 · workorder_v8.md: Issue #12: OCR-word detection changes (gap splitting, ʻokina look-alikes, no web addresses) give sands 8 suspect forms instead of 4; the reply read all of them as correct, so nothing else changes
@@ -21,3 +25,9 @@ Why each regression baseline update was made (newest last). Written by `tools/re
 - 2026-10-31 · godzone, clans, translation, cadaverous, sands, buddhist, ilokano · Python 3.13 · workorder_v8.md: Branch review-disclosure (#38), review 06: the PAC section's What Needs a Person item names review.md's For a Person to Check section, and the screen-reader paragraph says a check made before shipping counts when the shipped file is the same file. Only those 2 lines changed in each book; no record field changed
 
 - 2026-10-31 · godzone, clans, translation, cadaverous, sands, buddhist, ilokano · Python 3.13 · workorder_v8.md: #38 stage-2 revisions (13, review 14): review.md's ready block (the label alone, the four requirements in one wording), five safety checks (veraPDF is a finding), the Accessibility Evaluation section; the run-start line's date format (left out by compare_runs). regr6: 0 record fields differ; compare_norm13 empty for all 7.
+
+- 2026-10-31 · godzone, clans, translation, cadaverous, sands, buddhist · Python 3.14 · workorder_v9.md: prompt v9 (workorder/0.2): move_section is a list of up to 3 moves, fix_figure_order can be turned off. Paid re-seed 2026-10-31 (batch v9-seed, $1.765). New: cadaverous gets one move (NOTES, PDF 253-282, before PDF 283; made, but the original had no section out of place: it re-nests NOTES and the order is unchanged); sands gets two (the cover: refused, no host; PDF 4 before PDF 5: made, lands where it already was). No book turns fix_figure_order off. Other decisions differ as after any re-seed.
+
+- 2026-10-31 · ilokano · Python 3.14 · workorder_v9.md: prompt v9 (workorder/0.2): paid single run 2026-10-31 ($0.10) on the frozen intake; no move, figure step on
+
+- 2026-10-31 · cadaverous, sands · Python 3.14 · workorder_v9.md: workorder_check drops a section move when the audit finds no section read out of place in its pages or where it lands: cadaverous's NOTES move (PDF 253-282, the original has none out of place; it only re-nested NOTES) and sands' PDF 4 move (landed where it was) are dropped and listed under Decisions not applied; sands' cover move stays (refused by the executor: no host). cadaverous' figure on PDF 152 now reads after PDF 282, as NOTES keeps its place

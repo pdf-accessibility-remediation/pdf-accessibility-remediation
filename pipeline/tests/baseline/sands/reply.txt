@@ -1,15 +1,15 @@
 ```json
 {
-  "schema": "workorder/0.1",
+  "schema": "workorder/0.2",
   "sections": {
     "toc_pages": [6, 7],
     "index_from": 322
   },
   "artifacts": {
     "elements": [
-      {"obj": "8704 0", "type": "Layout", "label": "decorative landscape engraving behind half-title text"},
-      {"obj": "8706 0", "type": "Layout", "label": "decorative landscape vignette on title page"},
-      {"obj": "8709 0", "type": "Layout", "label": "decorative landscape engraving behind Part I opener"},
+      {"obj": "8704 0", "type": "Layout", "label": "decorative half-title landscape; the title is tagged text"},
+      {"obj": "8706 0", "type": "Layout", "label": "decorative title-page landscape"},
+      {"obj": "8709 0", "type": "Layout", "label": "decorative Part I opener landscape; the title is tagged text"},
       {"obj": "12982 0", "type": "Layout", "label": "wave ornament"},
       {"obj": "12723 0", "type": "Layout", "label": "wave ornament"},
       {"obj": "11761 0", "type": "Layout", "label": "wave ornament"},
@@ -22,7 +22,8 @@
   "document": {
     "title": "Countless Sands: Medieval Buddhists and Their Environments",
     "lang": "en-US",
-    "display_doc_title": true
+    "display_doc_title": true,
+    "remove_empty_acroform": true
   },
   "rolemap": {
     "part_n": "H2",
@@ -41,29 +42,62 @@
     {"style": "chap_n", "direction": "next", "with": ["chap_tit"]},
     {"style": "chap_stit", "direction": "prev", "with": ["chap_tit"]}
   ],
+  "actual_text": [
+    {"obj": "13148 0", "text": "PART I Introductions"},
+    {"obj": "12060 0", "text": "PART II Matters of Scale and the Environment"},
+    {"obj": "10297 0", "text": "PART III Environments in the Shaping of Medieval Buddhism"},
+    {"obj": "8843 0", "text": "PART IV Environments as Mediums of Practice"},
+    {"obj": "13150 0", "text": "CHAPTER 1 Medieval Buddhists and Their Environments"},
+    {"obj": "13200 0", "text": "CHAPTER 2 Contextualizing the Relationship between Nature and Culture in East Asian Buddhism"},
+    {"obj": "12062 0", "text": "CHAPTER 3 Flesh Mountain Human Bodies on a Nonhuman Scale"},
+    {"obj": "12146 0", "text": "CHAPTER 4 Movements and Patterns in Embodied Landscapes for Art"},
+    {"obj": "12241 0", "text": "CHAPTER 5 Geomorphism at “The Peak That Flew in from Afar”"},
+    {"obj": "12314 0", "text": "CHAPTER 6 The Japanese Image of the Buddhist Earth Geography, Cosmology, and the Culture of Vision"},
+    {"obj": "10299 0", "text": "CHAPTER 7 Human Places and Cosmic Spaces Ecological Engagements at Ellora"},
+    {"obj": "10458 0", "text": "CHAPTER 8 Riverine Buddhism at Changlu Monastery"},
+    {"obj": "10655 0", "text": "CHAPTER 9 Masculine Mountains Gendered Affordances at Dali’s Stone Treasure Grottoes"},
+    {"obj": "10785 0", "text": "CHAPTER 10 The Geoaesthetics of Ritual in the Chinese Buddhist Sanctuary of Shizhuanshan (ca. 1082–1096)"},
+    {"obj": "8845 0", "text": "CHAPTER 11 “Occasions Both Worldly and Transcendent” Sacred Trees in Buddha’s India"},
+    {"obj": "8934 0", "text": "CHAPTER 12 Vidyārājas and the Articulation of Ecological Interdependence at Cave Temples"},
+    {"obj": "8982 0", "text": "CHAPTER 13 Mountains, Waters, and Dharmakāya Kūkai’s Irrigation Projects"}
+  ],
   "retype": [
-    {"obj": "13058 0", "type": "H1", "why": "book title on the title page; the only H1"},
-    {"obj": "14048 0", "type": "P", "why": "empty element styled as a chapter title"}
+    {"obj": "13058 0", "type": "H1", "why": "Book title on the title page (PDF 4, printed iii); the only H1."},
+    {"obj": "14048 0", "type": "P", "why": "Empty element mapped to a heading on PDF 23 (printed 14); an empty heading is not allowed."}
   ],
   "alt": [
-    {"obj": "8707 0", "alt": "University of Hawai‘i Press logo"},
-    {"obj": "8699 0", "alt": "Cover of Countless Sands: Medieval Buddhists and Their Environments, edited by Jeffrey Moser and Jason Protass. A tinted carbon-print photograph shows a pagoda-topped pavilion on a small island beside a large tree, reflected in still water. The sky fades from blue at the top to orange-yellow at the bottom."},
-    {"obj": "8716 0", "alt": "Close-up of the boxed section of the Nāgārjunakoṇḍa slab: a small relief of a stupa on a base, flanked by two figures who venerate it"},
-    {"obj": "8718 0", "alt": "Low-relief Amarāvatī drum slab showing a domed stupa. A white box marks a section beside the circumambulatory path where a partial image of another stupa appears"},
-    {"obj": "8719 0", "alt": "Close-up of the boxed section of the Amarāvatī slab: a partial relief of another stupa image set into the circumambulatory path"},
-    {"obj": "10276 0", "alt": "Photograph (a) of the exterior of Cave 29 (Dumar Lena): a pillared porch cut into a rock face. The photo is rotated sideways on the page."},
-    {"obj": "10275 0", "alt": "Photograph (c) of a steep rock face at Cave 29 with a cave opening and a stepped path running along it. The photo is rotated sideways on the page."},
-    {"obj": "10280 0", "alt": "Photograph (b) looking down a narrow rock-cut passage with stepped ledges at Cave 29"},
-    {"obj": "10281 0", "alt": "Plan of Cave 29 (Dumar Lena) with a compass rose. It shows a long pillared hall with a central shrine and the entrances marked a, b and c."},
-    {"obj": "10271 0", "alt": "Photograph (d) of a rock-cut relief panel of deities between pillars inside Cave 29. The photo is rotated sideways on the page."},
-    {"obj": "10268 0", "alt": "Photograph (f) of a rock-cut relief panel with seated figures between pillars inside Cave 29. The photo is rotated sideways on the page."},
-    {"obj": "10263 0", "alt": "Photograph (a) of a rock-cut relief of Śiva and attendant figures in a panel inside Cave 29, with a visitor at lower right. The photo is rotated sideways on the page."},
-    {"obj": "10260 0", "alt": "Photograph (c) of a weathered rock-cut relief with rows of small figures inside Cave 29"},
-    {"obj": "10252 0", "alt": "Plan of Cave 29 (Dumar Lena) with a compass rose, rotated sideways. It marks the locations a–f of the sculpture panels around the central pillared hall."},
-    {"obj": "10257 0", "alt": "Photograph (b) of a rock-cut relief of a dancing Śiva with attendants in a panel inside Cave 29. The photo is rotated sideways on the page."}
+    {"obj": "8699 0", "alt": "Cover of Countless Sands: Medieval Buddhists and Their Environments, edited by Jeffrey Moser and Jason Protass. A colorized photograph of a pagoda-topped pavilion on a small rocky island, beside a large tree and reflected in still water. The sky fades from blue at the top to orange-yellow at the bottom."},
+    {"obj": "8707 0", "alt": "University of Hawaiʻi Press logo"},
+    {"obj": "8714 0", "alt": "Stone drum slab from Nāgārjunakoṇḍa carved in low relief with a stupa, flanked by guardian figures. A white box highlights a small stupa image near the top, which is shown enlarged in the next figure."},
+    {"obj": "8716 0", "alt": "Close-up of the highlighted detail on the slab: a small relief of a stupa on a base, flanked by two figures venerating it."},
+    {"obj": "8718 0", "alt": "Amarāvatī drum slab carved in low relief with a large stupa. A white box at the left marks a section of the circumambulatory path that holds a partial image of another stupa."},
+    {"obj": "8719 0", "alt": "Close-up of the highlighted section: a partly visible relief image of a stupa within the circumambulatory path of the slab."},
+    {"obj": "10293 0", "alt": "Satellite image of the Ellora site with labels for the Buddhist Caves (1–12) at lower right, the Hindu Caves (13–29) running up the middle, the Jain Caves (30–34) at upper left, the Velganga River, and two waterfalls, one near Caves 27–28 and one near Caves 4–5. A scale bar shows 0–400 meters."},
+    {"obj": "10276 0", "alt": "Photograph (panel a) of the colonnaded front of the cave at Cave 29 (Dumar Lena), Ellora, printed rotated 90 degrees."},
+    {"obj": "10275 0", "alt": "Photograph (panel c) of the cliff face with a stepped path along the mountainside and a cave opening, printed rotated 90 degrees."},
+    {"obj": "10280 0", "alt": "Photograph (panel b) of a narrow stepped rock-cut passage with deep shadow, at Cave 29, Ellora."},
+    {"obj": "10281 0", "alt": "Plan of Cave 29 (Dumar Lena) at Ellora: a cross-shaped hall with a central shrine and a compass rose. Letters a, b and c mark the entrances shown in the neighboring photographs."},
+    {"obj": "10252 0", "alt": "Plan of Cave 29 (Dumar Lena) at Ellora, a cross-shaped hall with a central shrine and a compass rose. Letters a–f mark the locations of the six surrounding photographs of rock-cut sculptures."},
+    {"obj": "10263 0", "alt": "Panel a: carved wall relief of a multi-figure scene of deities in a recessed panel; a person in white walks past at lower right."},
+    {"obj": "10257 0", "alt": "Panel b: carved wall relief of a dynamic deity figure with attendants in a recessed panel above a pillar capital."},
+    {"obj": "10260 0", "alt": "Panel c: weathered relief carvings of small figures arranged in rows on a cave wall."},
+    {"obj": "10271 0", "alt": "Panel d: view between carved pillars toward a relief of standing figures on the cave wall, printed rotated 90 degrees."},
+    {"obj": "10268 0", "alt": "Panel f: relief sculpture of a deity on the wall between pillar capitals, with a short inscription at the right, printed rotated 90 degrees."},
+    {"obj": "10235 0", "alt": "Ink painting of Bodhidharma standing on a reed in the middle of the Yangzi River, with a column of inscription and seals at the upper left."},
+    {"obj": "10232 0", "alt": "Old photograph of Jinshan Monastery on its hill, with a pagoda above the buildings and boats moored by its entrance."},
+    {"obj": "10229 0", "alt": "Woodcut double page showing Changlu Monastery amid woods, fields and waterways, with sails in the distance."},
+    {"obj": "10226 0", "alt": "Woodcut double page showing Ganlu Monastery on a cliff abutting the Yangzi River at Zhenjiang, with boats on the water."},
+    {"obj": "10223 0", "alt": "Photograph, taken in 2019, of the remnants of the Iron Pagoda at Ganlu Monastery: a tapering, rust-brown multi-tiered octagonal tower."},
+    {"obj": "10220 0", "alt": "Photograph, taken in 2018 from the gate of Old Changlu Monastery, of the Nanjing Chemical Industrial Park: factory buildings, a striped smokestack and pipelines behind a metal gate."},
+    {"obj": "10217 0", "alt": "Photograph, taken in 2018, of the front gate of Old Changlu Monastery, a red gateway with tiled roofs and banners in Chinese."},
+    {"obj": "10214 0", "alt": "Photograph, taken in 2018, of the main hall of the new Changlu Monastery under construction: a large double-roofed hall on a stone platform with flags in front."},
+    {"obj": "8824 0", "alt": "Plan of the Large Buddha Bend, Baodingshan, a horseshoe-shaped cliff with its carvings numbered 1–31. A key below the plan lists each carving, for example 1 Prowling Tiger, 2 Nine Protectors of the Law, 3 Wheel of Reincarnation, 11 Buddha’s Nirvana, 22 Ten Austerities of Liu Benzun, 23 Ten Vidyarajas, and 29 Cave of Complete Enlightenment. A north arrow points up."}
   ],
   "captions": {"style": "Caption", "wrapper_style": "Sect"},
-  "toc": {"item_styles": ["Content_FMT", "Content_num_part", "Content_Chap", "Content_auteur"], "pages": [6, 7]},
+  "toc": {
+    "item_styles": ["Content_FMT", "Content_num_part", "Content_Chap", "Content_auteur"],
+    "pages": [6, 7]
+  },
   "adopt_orphans": [
     {"label": "chapter 1 notes and works cited", "pages": [20, 20]},
     {"label": "chapter 2 notes", "pages": [54, 54]},
@@ -75,21 +109,25 @@
     {"label": "chapter 8 notes", "pages": [200, 200]},
     {"label": "chapter 9 notes and works cited", "pages": [225, 225]},
     {"label": "chapter 10 works cited", "pages": [248, 248]},
-    {"label": "chapter 11 notes", "pages": [267, 267]},
+    {"label": "chapter 11 notes and works cited", "pages": [267, 267]},
     {"label": "chapter 12 notes", "pages": [288, 288]},
     {"label": "chapter 13 notes", "pages": [314, 314]}
   ],
-  "notes": {"styles": ["Endnote_text", "Endnote_text_first"], "id_prefix": "note-"},
-  "language": {"kana_runs": "ja"},
+  "notes": {"styles": ["Endnote_text_first", "Endnote_text"], "id_prefix": "note-"},
+  "language": {"kana_runs": "ja", "runs": []},
+  "move_section": [
+    {"pages": [1, 1], "before_page": 2, "why": "The cover Article is last in the reading order but is printed first."},
+    {"pages": [4, 4], "before_page": 5, "why": "The imprint line and press logo of the title page are read after PDF 60."}
+  ],
   "remove_empty_containers": true,
   "deferrals": [
-    {"what": "Remaining veraPDF 7.1-3 failures (content neither marked as artifact nor tagged)", "why": "The failures are reported on content streams (examples on PDF 10, 12 and 20), not on specific tags, and the digest shows no untagged text runs there. The orphan runs on the notes pages are handled by adopt_orphans. What remains is probably vector decoration or page-level drawing, and a person should check it in Acrobat.", "pages": [10, 12, 20]},
-    {"what": "Reading order of adopted orphan notes and bibliography text", "why": "These runs were in no tag and are appended in drawing order after the last block on each page. Their order, and any note numbers that were split off, need a check.", "pages": [20, 54, 78, 95, 120, 138, 169, 200, 225, 248, 267, 288, 314]},
-    {"what": "Cover figure is read last", "why": "The cover Article (PDF 1) is the last child of the Document, so a screen reader meets it at the end. It is not at the tree root, so move_to_document_start cannot move it. A person should move it to the front.", "pages": [1]},
-    {"what": "Han-only CJK runs (about 230) in the Glossary and in the endnotes", "why": "Japanese or Chinese cannot be told apart from Han characters alone, so these are left to a human or to the executor's automatic deferral.", "pages": [59, 138, 197, 198, 316, 317, 318, 319]},
-    {"what": "OCR text quality", "why": "The file was run through Paper Capture and shows about 16 suspect tokens per 1000. The text layer looks worst on PDF 152, 266, 315, 84, 290, 123, 136 and 4, and there are stray punctuation fragments in the notes. The text was not changed.", "pages": [4, 84, 123, 136, 152, 266, 290, 315]},
-    {"what": "Glossary and index structure", "why": "The glossary (224 paragraphs) and the index (1,543 Index elements at the tree root) were left as they are. They need a spot check after the executor moves them into the Document.", "pages": [316, 319, 322, 329]}
+    {"what": "veraPDF 7.1-3: content neither tagged nor marked as artifact", "why": "No object is named. About 1,184 of the 1,504 failed checks are orphan note and bibliography runs, which adopt_orphans handles. The rest are likely unmarked rules or decorative page elements on part and chapter opener pages (e.g. PDF 10, 12). They cannot be targeted from the digest, so a person should check them in Acrobat.", "pages": [10, 12, 20]},
+    {"what": "Reading order and structure of the adopted orphan runs on 13 notes and works-cited pages", "why": "The orphan text is OCR-style content, apparently produced by Paper Capture on these pages. It is added as plain paragraphs in drawn order. Headings such as 'NOTES' and 'WORKS CITED' inside the orphans (PDF 20, 248) become paragraphs, not headings, and fragments such as italic titles or '-' may be split. The OCR text layer is also weak (worst pages 152, 266, 315, 84, 290, 123, 136, 4). A person should check order, heading levels and text.", "pages": [20, 54, 78, 95, 120, 138, 169, 200, 225, 248, 267, 288, 314]},
+    {"what": "Empty element mapped as chap_tit on PDF 23 (printed 14), obj 14048 0", "why": "It has no text, so it was retyped to P. A person should confirm it can be removed.", "pages": [23]},
+    {"what": "Han-only CJK runs (about 230, glossary, notes, quoted inscriptions, e.g. PDF 59, 138, 197–198, 316–319)", "why": "Chinese and Japanese cannot be told apart from Han characters alone. The executor defers them to a human for language tags.", "pages": [59, 138, 197, 198, 316, 317, 318, 319]},
+    {"what": "Index column reading order, PDF 323–329 (printed 314–320)", "why": "The first tagged lines of the index pages look like interleaved two-column text. A person should check that entries read column by column.", "pages": [323, 324, 325, 326, 327, 328, 329]},
+    {"what": "sections.notes_pages not set", "why": "Endnotes are per chapter and interleaved with bibliographies from PDF 20 to 314, not one contiguous range. Setting one range would mislabel body links, so it was left out.", "pages": [20, 314]}
   ],
-  "notes_for_reviewer": "Heading plan: the book title on the title page (PDF 4) is the only H1. Part titles, chapter titles and front/back-matter titles (Contents, Acknowledgments, Glossary, Contributors, Index) are H2. Section heads (style h1) and NOTES are H3. The bibliography subheads (Abbreviations, Secondary) are H4. Part and chapter labels, and chapter subtitles, are merged into their titles. I set no actual_text on the merged headings, since the printed text of each chapter title and subtitle could not be checked from the digest. The decorative landscape engravings on PDF 2, 4 and 10 and the seven small wave ornaments are artifacts. Their titles are separate tagged text. The cover alt text had NUL characters and was rewritten. The OCR word forms (Shiina, Kii, xiii–xxi, Chiiki) all match the scan, so no ocr_words were returned. No lists or tables were found."
+  "notes_for_reviewer": "Heading outline: one H1 (the book title on PDF 4, printed iii). Parts, chapters and front/back-matter titles (Contents, Acknowledgments, Glossary, Contributors, Index) are H2. Chapter sections are H3, and each chapter's NOTES heading is H3. The bibliography sub-headings (Abbreviations, Secondary) are H4. Part and chapter number labels and subtitles are merged into their title headings, and ActualText supplies the spaces between them (no colons were added). The oversized decorative landscapes on the half-title, title page and Part I opener are artifacts, because the titles are tagged text. Repeated wave ornaments are also artifacts. Figure alt text was kept where it was already good. Placeholder 'Illustration' alts were replaced or the figures artifacted, and duplicate alts on multi-panel figures (PDF 85, 149, 152) were differentiated. No lists or tables exist in the digest. No OCR word forms needed correction: the eight listed forms read correctly in the crops (Hawai‘i, Shiina, Kaku’a, Kii, l’homme, xiii–xxi, Chiiki, L’Homme). The move_section entries (cover read last; imprint read after PDF 60) should be checked in the output."
 }
 ```
