@@ -538,7 +538,9 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
     vera_sub = ((f'{vg.get("before_checks", 0):,} → {vg["after_checks"]:,} failed checks · ' if vg.get('ran_after') else (E(vg.get('not_run') or '') + ' · '))
                 + (f'<span class="newly">{len(nf)} newly failing</span>' if nf else '0 newly failing' if nf is not None
                    else '<span class="newly">newly failing: not checked</span> (veraPDF did not run on both files)'))
-    cards = [('Safety', 'good' if sst == 'ok' else 'bad', {'ok': 'OK'}.get(sst, 'Failed'), E(f'{len(saf) - len(saf_bad)} of {len(saf)} checks OK'), safety_fold),
+    n_want = len(G.SAFETY)                                   # a run made before some checks existed: "Not checked", as its line says
+    cards = [('Safety', 'good' if sst == 'ok' else 'bad' if sst == 'failed' else 'warn', {'ok': 'OK', 'failed': 'Failed'}.get(sst, 'Not checked'),
+              E(f'{len(saf) - len(saf_bad)} of {len(saf)} checks OK' if len(saf) == n_want or saf_bad else f'{len(saf)} of the {n_want} checks recorded for this run, all OK'), safety_fold),
              ('Needs a person', np_cls, str(np_['total']),
               E(looked if looked else f'{np_["ai_deferrals"]} deferred by the AI · {np_["executor_deferrals"]} deferred by the executor · {np_["check_rows"]} automated check{"" if np_["check_rows"] == 1 else "s"}'), ''),
              ('AI decisions', 'good' if g['ship'][0]['ok'] else 'warn', f'{ad["count"]:,}',
@@ -827,7 +829,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
     return out
 
 def safety_state(g):
-    """'ok', 'failed' (a check failed) or 'not checked' (none failed, one not checked: veraPDF did not run on both files)."""
+    """'ok', 'failed' (a check failed) or 'not checked' (none failed, but the run recorded fewer than the five checks)."""
     if g.get('safety_ok'): return 'ok'
     return 'failed' if any(not x['ok'] and x.get('state') != 'not checked' for x in g.get('safety') or []) or not g.get('safety') else 'not checked'
 
@@ -870,7 +872,8 @@ def _summary_html(Bdir):
          f'<p><strong>Ready:</strong> {sum(1 for r in rows if r.get("st") == "Ready")} · <strong>Shipped:</strong> {sum(1 for r in rows if r.get("st") == "Shipped")} · '
          f'<strong>Pending Evaluation:</strong> {sum(1 for r in rows if r.get("st") == "Pending Evaluation")} · of {len(rows)} books · '
          f'<strong>Needs a person:</strong> {sum(r.get("needs") or 0 for r in rows):,} items · '
-         f'<strong>Safety checks failed:</strong> {sum(1 for r in rows if r["done"] and r["safety"] == "failed")} books</p>',
+         f'<strong>Safety checks failed:</strong> {sum(1 for r in rows if r["done"] and r["safety"] == "failed")} books'
+         + (f' · not checked: {nc_} books' if (nc_ := sum(1 for r in rows if r['done'] and r['safety'] == 'not checked')) else '') + '</p>',
          '<p class="note">Sorted by "Needs a person", most work first. Automated checks are evidence, not sign-off.</p>',
          '<div class="tw"><table id="books"><thead><tr>' + ''.join(f'<th scope="col"{" class=\"num\"" if n else ""} data-k="{k}"{" aria-sort=\"descending\"" if k == "needs" else ""}>{E(t)}</th>'
                                                   for t, k, n in (('Book', 'name', 0), ('Status', 'status', 0), ('Needs a Person', 'needs', 1), ('AI Decisions', 'ai', 1),
