@@ -1,7 +1,7 @@
 """Verify work/remediated.pdf against the original. Read-only."""
 import sys, json, re, collections
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, fontname  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
+from lib import plumb_fix, readorder, fontname  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 import fontTools.cffLib, fontTools.ttLib  # noqa: F401  required: a font that can't be read must not pass as OK
 from PIL import ImageChops
@@ -466,15 +466,71 @@ wc['tables_without_header'] = [{'page': _first_pg(n)} for n in W['Table'] if _ha
 # 1.3.2 reading order: on each page, follow the tagged text in tag-tree order and count jumps back UP the same column.
 #   Notes, figures and captions are skipped: they are placed where they are referred to, not where they are drawn.
 placed = set()
-for n in W['Note'] + W['Figure'] + W['Caption']: _mcids(n, acc=placed)
+for n in (x for t in readorder.PLACED_ELSEWHERE for x in W[t]): _mcids(n, acc=placed)
 seq = collections.defaultdict(list)
 for k in owner:                                # filled in tag-tree order in 3
     if k in _POS and k not in placed and _TXT[k] and ''.join(_TXT[k]).strip(): seq[k[0]].append(_POS[k])
-ro = []
-for p, s in sorted(seq.items()):
-    up = sum(1 for (t0, x0, z0), (t1, x1, z1) in zip(s, s[1:]) if t1 < t0 - 2 * max(z0, 6) and abs(x1 - x0) < 72)
-    if up >= 2: ro.append({'page': p, 'jumps_up': up, 'runs': len(s)})
-wc['reading_order'] = {'pages_checked': len(seq), 'flagged': sorted(ro, key=lambda x: -x['jumps_up']), 'flagged_count': len(ro)}
+ro = readorder.page_jumps(seq)
+wc['reading_order'] = {'pages_checked': len(seq), 'flagged': ro, 'flagged_count': len(ro)}
+# 1.3.2 across the book: a section (or Div) read away from its printed place among its siblings (lib/readorder.py),
+#   in the result and in the original, so a person can tell what this run caused from what the book already had:
+#   state new (not out of place in the original), moved (out of place there too, but now read somewhere else) or original
+def _order(p):
+    root = p.Root.get('/StructTreeRoot')
+    if root is None: return [], []
+    px = {g.obj.objgen: i for i, g in enumerate(p.pages, 1)}
+    rm = {str(k).lstrip('/'): str(v).lstrip('/') for k, v in (root.get('/RoleMap') or {}).items()}
+    def mp(s):
+        for _ in range(5):
+            if s in rm: s = rm[s]
+        return s
+    def pg(n):
+        try: return px.get(n.Pg.objgen) if '/Pg' in n else None
+        except Exception: return None
+    def span(n, g, acc, d=0):
+        g = pg(n) or g
+        for k in _kids(n):
+            if isinstance(k, int): acc.add(g)
+            elif isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR': acc.add(pg(k) or g)
+            elif _is_el(k) and d < 60: span(k, g, acc, d + 1)
+        return acc
+    es, nodes, stk = [], [], [(k, None, None, 0) for k in reversed(_kids(root))]
+    while stk:
+        n, above, g, d = stk.pop()
+        if not _is_el(n) or d > 60: continue
+        s_ = str(n.S).lstrip('/'); g = pg(n) or g
+        if readorder.is_container(s_, mp(s_)):
+            ps = span(n, g, set()) - {None}
+            es.append({'id': len(es), 'parent': above, 'style': s_, 'first': min(ps) if ps else None, 'last': max(ps) if ps else None,
+                       'depth': d, 'skip': readorder.skip(mp(s_), [mp(str(k.S).lstrip('/')) for k in _kids(n) if _is_el(k)])})
+            nodes.append(n); above = len(es) - 1
+        for k in reversed(_kids(n)): stk.append((k, above, g, d + 1))
+    return es, nodes
+_res, _res_nodes = _order(pdf)
+_src_es = _order(src)[0]
+_src = readorder.out_of_order(_src_es)
+def _key(x): return (x['style'], x['first'], x['last'])        # sections matched by tag and pages: object numbers change on save
+_alive = {_key(x) for x in _res if x['first'] is not None}
+def _place(es, i):
+    """Where entry i is read: its parent's tag and first page, and the nearest earlier sibling that still holds content in
+    the result (a neighbour this run emptied, such as a page-number story now marked as decoration, does not count)."""
+    e = es[i]; par = es[e['parent']] if e['parent'] is not None else None
+    sib = next((_key(x) for x in reversed(es[:i]) if x['parent'] == e['parent'] and x['first'] is not None and _key(x) in _alive), None)
+    return ((par['style'], par['first']) if par else None, sib)
+_was = {}
+for x in _src: _was.setdefault(_key(_src_es[x['i']]), set()).add(_place(_src_es, x['i']))
+def _first_text(n): return next((t for k in _kids(n) if _is_el(k) and (t := _text(k))), '')
+so = []
+for x in readorder.out_of_order(_res):
+    e = _res[x['i']]; k = _key(e)
+    state = 'new' if k not in _was else 'original' if _place(_res, x['i']) in _was[k] else 'moved'
+    so.append({'page': x['first'], 'last': x['last'], 'prev': x['prev'], 'next': x['next'], 'style': e['style'],
+               'text': _first_text(_res_nodes[x['i']])[:80], 'state': state, 'new': state != 'original'})
+_late = [{'page': x['first'], 'last': x['last'], 'after': x['after'], 'style': _res[x['i']]['style'],
+          'figure': _first_figure(_res_nodes[x['i']]) is not None, 'text': _first_text(_res_nodes[x['i']])[:80]}
+         for x in readorder.read_late(_res)]                 # listed, never failed: overlapping stories are normal in InDesign
+wc['section_order'] = {'containers': len(_res), 'flat': len(_res) < 2, 'flagged': so, 'new_count': sum(x['new'] for x in so),
+                       'original_flagged': len(_src), 'late': _late}
 # 2.4.2 a title that is a file name or a placeholder
 title = str(pdf.docinfo.get('/Title', '')).strip()
 wc['title_generic'] = bool(title) and bool(re.search(r'\.(pdf|docx?|indd|qxd|rtf|txt)$|^untitled\b|^microsoft (word|powerpoint)\s*-|^document\s*\d*$|^[\d\s_.-]+$', title, re.I))

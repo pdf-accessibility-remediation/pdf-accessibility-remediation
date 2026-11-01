@@ -975,3 +975,10 @@ def test_the_ready_to_ship_card_and_select():
     for f in ('webapp/panel.js', 'webapp/runs.py', 'report_html.py', 'review/page.html'):
         assert 'press "' not in src(f) and 'and press ' not in src(f), f
     assert 'stays open. Select "Continue Review" to pick up where you left off.' in src('webapp/panel.js')
+
+def test_the_review_page_names_no_report_file():
+    """For library staff the page says "the report", never the file name (review 10); the reading-order cards included."""
+    page = src('review/page.html')
+    assert 'review.md' not in page and 'the report lists the moves the executor actually makes' in page
+    assert 'press Save' not in page and 'and Save to' not in page                       # no Save button: previews follow the auto-save
+    assert "refreshMoves(b.move_previews)" in page

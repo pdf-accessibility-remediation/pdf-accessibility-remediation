@@ -201,7 +201,7 @@ def keep_audit(R, A, ai, inp=None, made_by='report'):
     """report.py's tidy: keep the digest, fulltext.json and the OCR word sheets in reviews/_audit (not the crops), and write
     the basis when there is none yet. inp: the pipeline input's path (run_api.sh passes it; else _intake/intake.pdf)."""
     p = P(R); os.makedirs(p['audit'], exist_ok=True)
-    for n in ('digest.json', 'fulltext.json'):
+    for n in ('digest.json', 'fulltext.json', 'dryrun.json'):
         if os.path.exists(os.path.join(A, n)): shutil.copy2(os.path.join(A, n), os.path.join(p['audit'], n))
     if os.path.isdir(os.path.join(A, 'ocr_words')):
         shutil.rmtree(os.path.join(p['audit'], 'ocr_words'), ignore_errors=True)
@@ -290,6 +290,20 @@ def decision_list(items, decisions):
         out.append({'id': it['id'], 'kind': it['kind'], 'label': lab[:90] + ('…' if len(lab) > 90 else ''), 'page': it['page'],
                     'page_label': it.get('page_label'), 'status': st, **({'set_in': d['set_in']} if d.get('set_in') else {}),
                     **({'inferred': True} if d.get('inferred') else {}), **({'note': d['note']} if d.get('note') else {})})
+    return out
+
+def note_rows(rv, decisions=None, items=None):
+    """review.md's "Reviewer notes": [(label, id, note)], each note named by its card's label (from the session's
+    decision list, else from review_items.json); an addition by its kind and target; else None (the id alone)."""
+    labels = {it['id']: it['label'] for it in items or [] if isinstance(it.get('label'), str)}
+    labels.update({d['id']: d['label'] for d in decisions or [] if d.get('label')})
+    out = []
+    for k, t in ((rv or {}).get('notes') or {}).items():
+        lab = labels.get(k)
+        if lab is None and k.startswith('add:'):
+            kind, _, target = k[4:].partition(':')
+            lab = f'Your addition: {core.ADD_KINDS.get(kind, kind).lower()}, {target}'
+        out.append((lab, k, t))
     return out
 
 def name_notes(draft, sid):
@@ -690,7 +704,9 @@ def reapply(R, s, pdf=None, say=say_):
     t = {'4/5 apply (no model)': _run(['apply.py', inp, os.path.join(W, 'workorder.json'), os.path.join(W, out)], say, 'apply (no model)')}
     t['4/5 verify (no model)'] = _run(['verify.py', inp, os.path.join(W, out)], say, 'verify (no model)', quiet=True)
     save(os.path.join(W, 'timing.json'), t)
-    items = readable(core.build_items, ai, load(os.path.join(p['audit'], 'digest.json')))
+    dg = load(os.path.join(p['audit'], 'digest.json'))
+    ro = readable(core.reading_order_for, p['audit'], dg, ai)
+    items = readable(core.build_items, ai, dg, ro['entries'], ro)     # the same cards the page showed, reading-order checks too
     s2 = dict(s, status='applied')
     info = {'session': s['id'], 'sessions': [summary_row(x if x['id'] != s['id'] else s2) for x in sessions(R)],
             'decisions': decision_list(items, s.get('decisions') or {}), 'run_id': b['run_id'], 'run': os.path.relpath(R, HERE)}

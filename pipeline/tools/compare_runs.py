@@ -7,7 +7,7 @@ a folder counts when its name is the prefix followed by "-"). Books are matched 
 line by line, byte for byte, leaving out the two lines that change on every run: "Time: …" and the run-start line
 ("329 pages · run 2026-10-20T… · model …"). Everything else, "At a glance" included, must be identical.
 
-Prints one line per book (identical / N lines differ, with the first difference / missing on one side) and a total.
+Prints one line per book (identical / N lines removed and M added, with the first difference / missing on one side) and a total.
 Exit code 0 when every book is identical, 1 otherwise. Used as the acceptance test when review.md's writing code changes:
 rerun the same books with FROM= on both versions of the code, then compare the two labels.
 """
@@ -50,7 +50,7 @@ def main():
         if x == y: same += 1; print(f'{b:16} identical ({len(x)} lines)'); continue
         diff = [l for l in difflib.unified_diff(x, y, lineterm='', n=0) if l[:1] in '+-' and not l.startswith(('+++', '---'))]
         first = next(i for i, (p, q) in enumerate(zip(x + [None], y + [None])) if p != q) + 1
-        print(f'{b:16} {sum(1 for l in diff if l.startswith("-"))} lines differ (- {a.a} / + {a.b}), first at line {first} of the compared text')
+        print(f'{b:16} {sum(1 for l in diff if l.startswith("-"))} lines removed, {sum(1 for l in diff if l.startswith("+"))} added (- {a.a} / + {a.b}), first at line {first} of the compared text')
         for l in diff[:2 * a.show]: print(f'    {l[:200]}')
     n = len(set(A) | set(B))
     print(f'{same} of {n} books identical')
