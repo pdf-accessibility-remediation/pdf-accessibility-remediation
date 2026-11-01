@@ -228,7 +228,7 @@ def found(record):
     def n(k, one, many):
         c = types.get(k) or 0
         if c: return f'{c:,} {one if c == 1 else many}'
-    for key, k, one, many in (('alt_text', 'Figure', 'figure', 'figures'), ('tables', 'Table', 'table', 'tables'),
+    for key, k, one, many in (('figures', 'Figure', 'figure', 'figures'), ('tables', 'Table', 'table', 'tables'),   # keyed as CHECKLIST's `found`
                               ('links', 'Link', 'link', 'links'), ('lists', 'L', 'list', 'lists'), ('formulas', 'Formula', 'formula', 'formulas')):
         t = n(k, one, many)
         if t: out[key] = t

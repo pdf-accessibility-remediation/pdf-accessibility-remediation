@@ -153,6 +153,12 @@ def test_validate_fields_and_notes():
 def test_found_reads_the_record():
     rec = {'verify': {'tree': {'types': {'Table': 2, 'Link': 1, 'Figure': 0}}}, 'intake': {'ocr': {'pages_with_ocr_text': [1, 2]}}}
     assert REL.found(rec) == {'tables': '2 tables', 'links': '1 link', 'ocr_pages': 'OCR text on 2 pages'}
+    rec['verify']['tree']['types']['Figure'] = 3                          # keyed as the checklist's `found` (a stage-2 find)
+    assert REL.found(rec)['figures'] == '3 figures' and {x['found'] for x in REL.CHECKLIST['screen_reader'] if x.get('found')} <= set(REL.found(
+        {'verify': {'tree': {'types': {'Figure': 1, 'Table': 1, 'Link': 1, 'L': 1, 'Formula': 1}}}, 'intake': {'ocr': {'pages_with_ocr_text': [1]}}}))
+    sr = {'by': 'K', 'fields': {'screen_reader': 'NVDA', 'pages_checked': '1'}, 'items': dict(SR_OK, alt_text={'result': 'na'})}
+    with pytest.raises(REL.Invalid) as e: REL.validate('screen_reader', sr, {'n_pages': 5, 'found': REL.found(rec)})
+    assert 'items.alt_text.note' in dict(e.value.errors)
 
 def test_title_case_keeps_as_lowercase():
     assert title_case('Untagged text marked as decoration') == 'Untagged Text Marked as Decoration'
