@@ -24,7 +24,10 @@ POST (JSON from the app's own pages only), each answered 202 {job} or 409 {error
     /api/run/<run>/discard     Discard the open session: review_workorder.py --discard-open (marked abandoned, kept);
                                refused while its review page is open or past Finish
     /api/run/<run>/ocr         Review OCR Text: the OCR-only review page (review_ocr.py --serve), a job that waits on a person
-Reserved for later pages (not built): /run/<run>/release, /run/<run>/screen-reader. /run/<run>/ocr stays reserved (404):
+    /run/<run>/checks          the Manual Checks page (webapp/manualpage.py); GET /api/run/<run>/checks its data;
+    POST /api/run/<run>/checks/draft and /checks/record: through review/manual.py in this process (no job), 200, 400 with
+                               each problem tied to its field, or 409 with the refusal in its own words
+Every POST's Content-Length must be digits and at most MAX_BODY (65,536), checked before reading. /run/<run>/ocr stays reserved (404):
 OCR text is approved on the review page, or on the OCR-only page, both on the review server.
 
 Every response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none'), so another site cannot show a run
@@ -38,18 +41,21 @@ id) only picks an entry from the real folder's listing (config.entry). The folde
 with realpath and must stay inside the runs folder, and a file is served only when its name is in the run's list.
 Nothing outside the runs folder is ever served (.env, samples/, pipeline/).
 """
-import os, re, json, html, base64, hashlib, traceback, urllib.parse, datetime
+import os, re, json, html, base64, hashlib, threading, traceback, urllib.parse, datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from html.parser import HTMLParser
 from review.server import local_request
 from review import sessions as S
 from lib.titles import title_case as TC
-from . import config, jobs, runs
+from . import config, jobs, runs, manualpage as MP
+from review import manual as M
+from lib import release as REL, runlock
 
 FILES = ('review.html', 'review.md', 'han_review.csv')
 TYPES = {'.html': 'text/html; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.pdf': 'application/pdf',
          '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8'}
-RESERVED = ('ocr', 'release', 'screen-reader')
+RESERVED = ('ocr',)                                          # /run/<run>/checks is the Manual Checks page (#38)
+MAX_BODY = 65536                                              # a POST body: digits only in Content-Length, at most this
 
 def segments(p):
     """The decoded path segments, or None when any is unsafe."""
@@ -110,6 +116,7 @@ def served(d, runs):
     return out
 
 STATIC = {'panel.js': os.path.join(config.HERE, 'panel.js'), 'panel.css': os.path.join(config.HERE, 'panel.css'),
+          'manual.js': os.path.join(config.HERE, 'manual.js'),
           'palette.css': os.path.join(config.PIPELINE, 'review', 'palette.css')}
 SKIP = '<a class="skip" href="#main">Skip to the content</a>'
 
@@ -156,8 +163,20 @@ def with_panel(page, run, current=None):
     if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
     elif SKIP in page: page = page.replace(SKIP, SKIP + box, 1)
     else: page = after_body(page, box)
+    page = with_strip(page, run)
     i = page.rfind('</body>'); js = '<script src="/app/panel.js" defer></script>\n'
     return page[:i] + js + page[i:] if i >= 0 else page + js
+
+SHIP_CARD = 'aria-labelledby="ship-h"'
+def with_strip(page, run):
+    """The Manual Checks strip's place, right after the "Ready to Ship?" card's own section (str.find: the card holds no
+    nested section, and book text in it is escaped); a page with no card gets none here, and panel.js puts the strip at
+    the end of the Run Actions panel instead."""
+    i = page.find(SHIP_CARD)
+    j = page.find('</section>', i) if i >= 0 else -1
+    if j < 0: return page
+    box = f'\n<div id="pdfrem-checks" data-run="{html.escape(run)}"></div>\n'
+    return page[:j + len('</section>')] + box + page[j + len('</section>'):]
 
 def with_version(page, run, sid):
     """A previous result's review.html (reviews/versions/<id>/) as served: a bar after its header saying it is a previous
@@ -239,11 +258,16 @@ def make(s, setup, code=None):
             if not self.ours(): return self.send(403, {'error': 'not from the app\'s own pages'})
             if (self.headers.get('Content-Type') or '').split(';')[0].strip().lower() != 'application/json':
                 return self.send(415, {'error': 'the app\'s pages send JSON'})
-            try: body = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)) or b'{}')
+            n = (self.headers.get('Content-Length') or '').strip()   # checked before reading: rfile.read(-1) would wait for the
+            if not n.isdecimal() or not n.isascii(): return self.send(411, {'error': 'the request has no valid length'})   # client
+            if int(n) > MAX_BODY: return self.send(413, {'error': 'The request is too large.'})
+            try: body = json.loads(self.rfile.read(int(n)) or b'{}')
             except ValueError: return self.send(400, {'error': 'not JSON'})
             if not isinstance(body, dict): return self.send(400, {'error': 'not a JSON object'})
             p = urllib.parse.urlsplit(self.path).path
             segs = segments(p[len('/api/run/'):]) if p.startswith('/api/run/') else None
+            if segs and len(segs) >= 3 and segs[-2] == 'checks' and segs[-1] in ('draft', 'record'):   # two-segment actions: the run is segs[:-2]
+                return self.checks_post(segs[:-2], segs[-1], body)
             if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr'): return self.send(404, {'error': 'not found'})
             hit = find_run(s['runs'], segs[:-1])
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
@@ -281,6 +305,7 @@ def make(s, setup, code=None):
             if p.startswith('/api/run/'):
                 segs = segments(p[len('/api/run/'):])
                 hit = find_run(s['runs'], segs) if segs else None
+                if hit and hit[2] == ['checks']: return self.send(200, MP.state(hit[1], hit[0]))   # the Manual Checks page's data
                 if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
                 return self.send(200, runs.state(s, hit[0], hit[1]))
             if p.startswith('/app/') and p[len('/app/'):] in assets: return self.send(200, *assets[p[len('/app/'):]])
@@ -310,6 +335,10 @@ def make(s, setup, code=None):
                     if not p.endswith('/'): return self.redirect(p + '/')
                     return self.run_page(run, R)
                 if len(rest) == 1 and rest[0] in RESERVED: return self.send(404, {'error': 'this page is not built yet'})
+                if rest == ['checks']:                                                     # the Manual Checks page
+                    if not os.path.isfile(os.path.join(R, 'record.json')): return self.send(404, {'error': 'no such run'})
+                    rc = (q.get('recorded') or [''])[0]
+                    return self.send(200, MP.page(R, run, rc if rc in REL.SECTIONS else None), 'text/html; charset=utf-8')
                 d, name, sid = R, rest[-1], None
                 if len(rest) == 4 and rest[:2] == ['reviews', 'versions']:
                     d, sid = version_dir(R, rest[2]), rest[2]
@@ -328,6 +357,25 @@ def make(s, setup, code=None):
                 return self.file(f)
             if p == '/': return self.send(200, home_stub(s), 'text/html; charset=utf-8')
             self.send(404, {'error': 'not found'})
+
+        def checks_post(self, rsegs, act, body):
+            """POST …/checks/draft and …/checks/record: through review/manual.py, the one writer (the record lock, 5 s at most)."""
+            hit = find_run(s['runs'], rsegs)
+            if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
+            run, R, _ = hit
+            sec = body.get('section')
+            if sec not in REL.SECTIONS: return self.send(400, {'error': 'unknown section'})
+            try:
+                if act == 'draft':
+                    at = M.save_draft(R, sec, body.get('data'), str(body.get('saved_at') or ''), body.get('for_sha256'), wait=runlock.REQUEST_WAIT)
+                    return self.send(200, {'saved_at': at})
+                c = M.record(R, sec, body.get('data'), shown_sha=body.get('shown_sha256') or None, via='page', wait=runlock.REQUEST_WAIT,
+                             say=lambda *a: None, draft_saved_at=body.get('draft_saved_at'), batch=False)
+            except REL.Invalid as e: return self.send(400, {'errors': [{'field': f, 'message': m} for f, m in e.errors]})
+            except S.Refused as e: return self.send(409, {'error': str(e)})
+            except ValueError as e: return self.send(400, {'error': str(e)})
+            self.send(200, {'recorded': {'id': c['id'], 'section': sec}})
+            threading.Thread(target=S.rebuild_batch, args=(R, lambda *a: None), daemon=True).start()   # after the reply (F7)
 
         def run_page(self, run, R):
             f = os.path.join(R, 'review.html')

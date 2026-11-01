@@ -73,3 +73,35 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .pp-dlg::backdrop { background: rgba(0, 0, 0, .45); }
 @media (max-width: 640px) { #pdfrem-panel, #pdfrem-version, .pp-wrap, .pp-page main, .pp-page header { padding-left: 10px; padding-right: 10px; } }
 @media (max-width: 600px) { .pp { margin: 8px 0; padding: 10px; } .pp button, .pp a.pp-btn { width: 100%; text-align: left; } }
+
+/* the Manual Checks strip, after "Ready to Ship?" (#38) */
+#pdfrem-checks { max-width: 1200px; margin: 0 auto; box-sizing: border-box; }
+.pp-checks h2 { font-size: 15px; margin: 0 0 6px; }
+.pp-checks .pp-mc { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; }
+.pp-checks ul { list-style: none; margin: 0; padding: 0; } .pp-checks li { position: relative; padding-left: 20px; }
+.pp-mc-mark { position: absolute; left: 0; width: 16px; text-align: center; }
+.pp-warn-t { border-left: 4px solid var(--reject); padding-left: 8px; }
+/* the Manual Checks page */
+.mc-page header .mc-book { margin: 0 0 4px; }
+.mc .mc-sec { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 4px; }
+.mc .mc-sec h2 { font-size: 17px; } .mc h3 { font-size: 15px; margin: 14px 0 4px; } .mc h4 { font-size: 14px; margin: 10px 0 4px; }
+.mc-field { margin: 8px 0; } .mc-field label { display: block; font-weight: 600; }
+.mc-field input[type=text], .mc-field textarea { font: inherit; width: 100%; max-width: 40em; box-sizing: border-box; padding: 4px 6px;
+  border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); }
+.mc-field textarea { resize: vertical; }
+.mc-item { border: 1px solid var(--line); border-radius: 6px; margin: 10px 0; padding: 6px 12px 8px; }
+.mc-item legend { font-weight: 600; padding: 0 4px; }
+.mc-radios { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 4px 0; } .mc-radios label { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+.mc-help, .mc-opt { color: var(--muted); } .mc-help { margin: 2px 0; font-size: 14px; } .mc-opt { font-weight: 400; }
+.mc-hint { margin: 2px 0; font-size: 14px; }
+.mc-err { color: var(--reject); font-weight: 600; margin: 2px 0; }
+.mc-errsum { border-left: 4px solid var(--reject); background: var(--flag); padding: 4px 12px; margin: 8px 0; } .mc-errsum h4 { margin: 4px 0; }
+.mc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 12px 0; }
+.mc-save { display: inline-block; min-width: 10em; color: var(--muted); font-size: 14px; }
+.mc-refusal { border-left: 4px solid var(--reject); padding: 4px 10px; background: var(--flag); }
+.mc .pp-msg { margin: 8px 0; } .mc .pp-msg button { margin-left: 8px; }
+.mc-tw { overflow-x: auto; } .mc table { border-collapse: collapse; font-size: 14px; } .mc th, .mc td { border-bottom: 1px solid var(--line); padding: 3px 8px; text-align: left; vertical-align: top; }
+.mc-pre { white-space: pre-wrap; }
+.mc :focus-visible, .pp-checks :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mc [tabindex="-1"]:not(.hit):focus, .mc-page main:focus { outline: none; }   /* focus the page moved: no outline (.hit keeps its own) */
+@media (max-width: 600px) { .mc-item { padding: 6px 8px; } .mc-radios { flex-direction: column; } }

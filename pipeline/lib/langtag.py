@@ -27,3 +27,21 @@ def norm(value):
         else: out.append(p.lower())
     tag = '-'.join(out)
     return tag if _TAG.fullmatch(tag) else None
+
+
+# Language names for people (the app's pages name a language, never its code): the tags the pipeline writes. The one
+# BCP 47 → name table (review/ocr.py's tables are keyed by Tesseract's codes).
+NAMES = {'en': 'English', 'fr': 'French', 'de': 'German', 'es': 'Spanish', 'pt': 'Portuguese', 'it': 'Italian', 'nl': 'Dutch',
+         'la': 'Latin', 'haw': 'Hawaiian', 'tl': 'Tagalog', 'fil': 'Filipino', 'ilo': 'Ilokano', 'bik': 'Bikol', 'vi': 'Vietnamese',
+         'id': 'Indonesian', 'ms': 'Malay', 'mi': 'Māori', 'sm': 'Samoan', 'to': 'Tongan', 'ja': 'Japanese', 'ko': 'Korean',
+         'zh': 'Chinese', 'zh-Hant': 'Chinese (Traditional)', 'zh-Hans': 'Chinese (Simplified)', 'ar': 'Arabic', 'he': 'Hebrew',
+         'ru': 'Russian', 'el': 'Greek', 'th': 'Thai'}
+
+def name(tag):
+    """A language tag's name ('en-US' → 'English', 'zh-Hant-TW' → 'Chinese (Traditional)'), or None when the table has no
+    name for it (the caller says so in words, never shows the code)."""
+    t = norm(tag) if tag else None
+    if not t: return None
+    parts = t.split('-')
+    if len(parts) > 1 and f'{parts[0]}-{parts[1]}' in NAMES: return NAMES[f'{parts[0]}-{parts[1]}']
+    return NAMES.get(parts[0])
