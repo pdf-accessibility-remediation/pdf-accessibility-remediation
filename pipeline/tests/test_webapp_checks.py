@@ -210,6 +210,8 @@ def test_the_page_in_the_words_decided_after_try_rv1(tmp_path):
     js_src = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert 'Accessibility Evaluation (PAC 2026 &amp; Screen-Reader Test)' in js_src and '>Complete Evaluation</a>' in js_src
     assert "const hx = inPanel ? 'h3' : 'h2';" in js_src                          # the panel fallback: an h3 (G2)
+    css = open(os.path.join(HERE, 'webapp', 'panel.css'), encoding='utf-8').read()   # G1: the panel's nowrap last column does not reach Notes
+    assert '.mc td.mc-note { max-width: 120ch; overflow-wrap: anywhere; white-space: normal; }' in css and '.mc-tw { overflow-x: auto; }' not in css
     s = MP.strip(R, S.load(os.path.join(R, 'record.json')))
     assert s['sections']['screen_reader']['words'].startswith('completed on this version (Lee, ') and s['sections']['screen_reader']['words'].endswith(' · 1 issue noted')
 

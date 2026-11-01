@@ -106,8 +106,10 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .mc .pp-msg { margin: 8px 0; } .mc .pp-msg button { margin-left: 8px; }
 .mc table { border-collapse: collapse; font-size: 14px; width: 100%; } .mc th, .mc td { border-bottom: 1px solid var(--line); padding: 3px 8px; text-align: left; vertical-align: top; }
 .mc th.mc-item-c { min-width: 14em; width: 30%; font-weight: 600; } .mc td.mc-res { white-space: nowrap; }
-.mc td.mc-note { max-width: 120ch; overflow-wrap: anywhere; }   /* never scrolls sideways (review 12 G1): Notes wrap, Item keeps its words */
+.mc td.mc-note { max-width: 120ch; overflow-wrap: anywhere; white-space: normal; }   /* never scrolls sideways (review 12 G1): Notes wrap (not the
+   panel's nowrap last column), Item keeps its words */
 .mc-pre { white-space: pre-wrap; }
 .mc :focus-visible, .pp-checks :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mc [tabindex="-1"]:not(.hit):focus, .mc-page main:focus { outline: none; }   /* focus the page moved: no outline (.hit keeps its own) */
-@media (max-width: 600px) { .mc-item { padding: 6px 8px; } .mc-radios { flex-direction: column; } .mc th.mc-item-c { min-width: 9em; } }
+@media (max-width: 600px) { .mc-item { padding: 6px 8px; } .mc-radios { flex-direction: column; }
+  .mc th, .mc td { padding: 3px 4px; } .mc th.mc-item-c { min-width: 6em; width: 34%; } .mc td.mc-res { white-space: normal; } }   /* 320 px: the table fits its card
