@@ -208,6 +208,8 @@ def make(s, setup, code=None):
     read once, here, so the pages always match the code this server runs, even if the files on disk change under it;
     `code` is the fingerprint of that code (config.code_fingerprint), which /api/ping reports."""
     J = s['jobs']
+    def applog(msg):                                   # a writer's note (a draft not cleared, G3): runs/.app/server.log
+        with open(os.path.join(J, 'server.log'), 'a', encoding='utf-8') as f: f.write(f'{datetime.datetime.now().isoformat(timespec="seconds")} {msg}\n')
     RUNS = os.path.realpath(s['runs'])                   # every file the server reads for a request is inside this folder
     assets ={n: (open(p, 'rb').read(), TYPES.get(os.path.splitext(p)[1].lower(), 'application/octet-stream')) for n, p in STATIC.items()}
     code = code or config.code_fingerprint()
@@ -370,7 +372,7 @@ def make(s, setup, code=None):
                     at = M.save_draft(R, sec, body.get('data'), str(body.get('saved_at') or ''), body.get('for_sha256'), wait=runlock.REQUEST_WAIT)
                     return self.send(200, {'saved_at': at})
                 c = M.record(R, sec, body.get('data'), shown_sha=body.get('shown_sha256') or None, via='page', wait=runlock.REQUEST_WAIT,
-                             say=lambda *a: None, draft_saved_at=body.get('draft_saved_at'), batch=False)
+                             say=lambda *a: applog(f'{run}: ' + ' '.join(str(x) for x in a)), draft_saved_at=body.get('draft_saved_at'), batch=False)
             except REL.Invalid as e: return self.send(400, {'errors': [{'field': f, 'message': m} for f, m in e.errors]})
             except S.Refused as e: return self.send(409, {'error': str(e)})
             except ValueError as e: return self.send(400, {'error': str(e)})
