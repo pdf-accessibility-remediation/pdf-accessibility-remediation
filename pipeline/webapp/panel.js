@@ -311,21 +311,22 @@ function historyBlock(s) {
 // (webapp/server.py with_strip() places its box; a page with no card gets it at the end of this panel). One line per
 // section, a check mark when it counts for this version (hidden from screen readers: the words say it); the live status
 // when it differs from the report's card on disk, so the page never shows two answers without saying which is current.
-function stripBlock(s) {
+function stripBlock(s, inPanel) {
   const m = s.manual; if (!m) return '';
-  let h = '<section class="pp pp-checks" aria-labelledby="pp-mc-h"><h2 id="pp-mc-h">Manual Checks for This Version</h2>';
+  const hx = inPanel ? 'h3' : 'h2';                  // inside the panel's own h2 section: one level down (review 12 G2)
+  let h = '<section class="pp pp-checks" aria-labelledby="pp-mc-h"><' + hx + ' id="pp-mc-h">Accessibility Evaluation (PAC 2026 &amp; Screen-Reader Test)</' + hx + '>';
   const now = (m.status || '') + (m.newer ? ' · ' + m.newer : ''), card = (m.card_status || '') + (m.card_newer ? ' · ' + m.card_newer : '');
   if (m.status && now !== card) h += '<p><b>Status now:</b> ' + esc(now) + ' <span class="pp-note">(the report on this page was written before this)</span></p>';
   if (m.refusal) h += '<p class="pp-warn-t">' + esc(m.refusal) + '</p>';
-  h += '<div class="pp-mc"><a class="pp-btn pp-primary" id="pp-mc-open" href="checks">Manual Checks</a><ul role="list">' +
-    ['pac', 'screen_reader'].map(k => m.sections[k]).filter(Boolean).map(x => '<li>' + (x.met ? '<span class="pp-mc-mark" aria-hidden="true">✓</span>' : '<span class="pp-mc-mark" aria-hidden="true"></span>') +
+  h += '<div class="pp-mc"><a class="pp-btn pp-primary" id="pp-mc-open" href="checks">Complete Evaluation</a><ul role="list">' +
+    ['pac', 'screen_reader'].map(k => m.sections[k]).filter(Boolean).map(x => '<li>' + (x.ok ? '<span class="pp-mc-mark" aria-hidden="true">✓</span>' : '<span class="pp-mc-mark" aria-hidden="true"></span>') +
       '<a href="checks#' + esc(x.id) + '">' + esc(tc(x.name)) + '</a>: ' + esc(x.words) + '</li>').join('') + '</ul></div></section>';
   return h;
 }
 function renderStrip(s) {
   let sb = $('pdfrem-checks');
-  if (!sb) { sb = document.createElement('div'); sb.id = 'pdfrem-checks'; box.querySelector('section.pp').appendChild(sb); }   // no card: in the panel
-  const h = stripBlock(s), keep = document.activeElement && sb.contains(document.activeElement) ? document.activeElement.id : null;
+  if (!sb) { sb = document.createElement('div'); sb.id = 'pdfrem-checks'; sb.dataset.inPanel = '1'; box.querySelector('section.pp').appendChild(sb); }   // no card: in the panel
+  const h = stripBlock(s, sb.dataset.inPanel === '1'), keep = document.activeElement && sb.contains(document.activeElement) ? document.activeElement.id : null;
   if (sb.dataset.h !== h) { sb.innerHTML = h; sb.dataset.h = h; if (keep && $(keep)) $(keep).focus(); }
 }
 
@@ -335,7 +336,7 @@ function render() {
   // "Ready to ship?" is not repeated here: the report's own card, right below, says it
   let h = setupBlock() + (s.batch ? '<p>Part of batch ' + esc(s.batch) + ': <a href="/batch/' + encodeURIComponent(s.batch) + '/">every book in the batch</a></p>' : '') +
     '<h3 id="pp-cur" tabindex="-1">' + esc(tc('Current result: ' + s.current.label)) + '</h3>';
-  if (s.pending) h += '<p>' + esc(sn(s.pending.session)) + ' is ' + esc(s.pending.status) + ' and not applied yet, so "Ready to ship?" says No until it is.</p>';
+  if (s.pending) h += '<p>' + esc(sn(s.pending.session)) + ' is ' + esc(s.pending.status) + ' and not applied yet, so the book stays "Not Ready" until it is.</p>';
   if (newResult) h += '<p><b>New Result Ready:</b> ' + esc(cap(s.current.label)) + ' is now the current result; the report below is the earlier one.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the New Result</button></div>';
   else if (s.ocr && ocrSeen !== undefined && s.ocr.recorded !== ocrSeen)   // a verdict recorded since this page loaded: never reloads by itself
