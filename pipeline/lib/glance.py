@@ -79,11 +79,15 @@ SHIP_NAMES = {'Work order approved on the review page': 'Work Order Approval', '
 def ship_name(s): return SHIP_NAMES.get(s['what'], s['what'])
 
 def safety_line(five):
-    """(ok, text) of the Safety Checks line from the five damage checks: ok only when all five are there and OK."""
+    """(ok, text) of the Safety Checks line from the five damage checks: ok only when all five are there and OK. A run made
+    before some of them existed has fewer: "Not Checked", never Failed (nothing failed) and never OK (fail closed). The
+    Safety card and summary.html follow the same rule (safety_ok)."""
     want = [label for _, label in SAFETY]
     bad = [x['what'] for x in five if not x['ok']]
-    ok = sorted(x['what'] for x in five) == sorted(want) and not bad
-    return ok, 'Passed' if ok else f'Failed ({", ".join(bad) or "not every check was recorded"})'
+    if bad: return False, f'Failed ({", ".join(bad)})'
+    if sorted(x['what'] for x in five) != sorted(want):
+        return False, f'Not Checked (only {len(five)} of the {len(want)} checks were recorded for this run)'
+    return True, 'Passed'
 GATE_ROWS = {'OCR text reviewed by a person', 'Work order reviewed by a person before it was applied'}
 META = {'schema', 'source', 'decided_by', 'notes_for_reviewer', 'deferrals', 'reviewed_by'}
 # the executor's own fixes (applied whatever the work order says): change-label prefix → what the dashboard calls it
@@ -176,7 +180,7 @@ def with_release(g, record, release=None):
     st = REL.status(rel, cur, base_ok, rel.get('newer'), (record.get('review') or {}).get('session'))
     p = REL.part(rel, 'pac', cur); it = ((p['check'] or {}).get('items') or {}).get('needs_person') or {} if p['state'] != 'earlier version' else {}
     looked = {'result': it.get('result'), 'by': p['check'].get('by'), 'recorded': p['check'].get('recorded')} if it.get('result') else None
-    return dict(g, ship=ship, safety=five, safety_ok=all(x['ok'] for x in five) and bool(five), ready=st['name'] == REL.READY, status=st,
+    return dict(g, ship=ship, safety=five, safety_ok=safety_line(five)[0], ready=st['name'] == REL.READY, status=st,
                 needs_looked=looked)
 
 def glance(record, md, labels=None, han_pages=None, sections=None, release=None):
@@ -236,7 +240,7 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
         vera_safe = {'what': SAFETY_VERA, 'ok': not newly}
     else: newly, vera_safe = None, {'what': SAFETY_VERA, 'ok': False, 'state': 'not checked', 'detail': 'veraPDF did not run on both files'}
     saf = [{'what': label, 'ok': byname[name]['ok']} for name, label in SAFETY if name in byname]   # the five damage checks only
-    saf_ok = all(x['ok'] for x in saf)
+    saf_ok = safety_line(saf)[0]                                   # the line, the Safety card and summary.html: one rule
     ship = [{'what': 'Work order approved on the review page', 'ok': wo_ok, 'text': wo_txt},
             {'what': 'OCR text approved', 'ok': ocr_ok, 'text': ocr_txt},
             {'what': 'Safety checks', 'ok': safety_line(saf)[0], 'text': safety_line(saf)[1]}]

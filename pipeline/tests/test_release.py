@@ -108,9 +108,11 @@ def test_ready_needs_glance_04_or_05_all_three_base_lines_and_the_five_checks():
     old = g('glance/0.4', [base[0], base[1], {'what': 'Safety checks', 'ok': False, 'text': f'failed: {G.SAFETY_VERA}'}], six)
     out = G.with_release(old, rec, r)
     assert out['ready'] is True and out['ship'][2] == {'what': 'Safety checks', 'ok': True, 'text': 'Passed'} and len(out['safety']) == 5
-    four = [dict(x) for x in FIVE[:4]]
+    four = [dict(x) for x in FIVE[:4]]                                            # a run made before a check existed
     out = G.with_release(g(safety=four), rec, r)
-    assert out['ready'] is False and out['ship'][2]['text'] == 'Failed (not every check was recorded)'
+    assert out['ready'] is False and out['ship'][2]['text'] == 'Not Checked (only 4 of the 5 checks were recorded for this run)'
+    import report_html as H
+    assert out['safety_ok'] is False and H.safety_state(out) == 'not checked'      # the line, the card and summary.html agree
     bad = [dict(x) for x in FIVE]; bad[1]['ok'] = False
     assert G.with_release(g(safety=bad), rec, r)['ship'][2]['text'] == 'Failed (text unchanged)'
     assert G.with_release(g(ship=base[:1] + base[2:]), rec, r)['ready'] is False
