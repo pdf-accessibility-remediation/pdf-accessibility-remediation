@@ -40,6 +40,19 @@ def code():                                               # module at start): af
     """The git commit this process's code came from: records made by an app started before a `git pull` can be found."""
     return CODE
 
+def ship_words(why):
+    """A refusal in Ship's own words (review 22 N1): being_made()'s and the disk checks' texts are written for Record."""
+    import re
+    m = re.match(r'Session (\d+) is finished and not yet applied', why or '')
+    if m: return f'Session {int(m.group(1))} is finished and not yet applied, so this version can\'t be marked as shipped now.'
+    return {PROMOTING: 'A new version was being put in place and did not finish, so this version can\'t be marked as shipped now. Whoever looks after the app can finish it.',
+            MAKING: 'A new version of this book is being made, so this version can\'t be marked as shipped now.',
+            OUT_OF_STEP: 'This book\'s record is out of step with its review sessions, so it can\'t be marked as shipped. Whoever looks after the app can check it.',
+            NOT_LAST_REVIEW: 'The PDF on disk is not the one this book\'s last review produced, so it can\'t be marked as shipped.',
+            NOT_DESCRIBED: 'The remediated PDF on disk is not the one this book\'s report describes, so it can\'t be marked as shipped.',
+            CHANGED: 'The PDF changed since this page was opened. Look at the new version, then mark it as shipped.'}.get(why) or (
+           why.replace('so no check can be recorded for it', 'so it can\'t be marked as shipped') if why else why)
+
 def being_made(R):
     """Why nothing can be recorded now (a new version is being made, or the record is out of step with the sessions:
     an applied session newer than the record's own, which no apply leaves behind), or None."""

@@ -59,10 +59,32 @@ def app_glance(R, rec, g, rel=None):
     rel = rel if rel is not None else REL.load(R, rec)
     out = G.with_release(g, rec, rel, cur=app_sha(R, rec))
     if disk_state(R, rec)['same'] is False:
-        st = dict(out.get('status') or {}, name=REL.NOT_READY, text=CHANGED_STATUS, newer=None)
-        st['current'] = {'name': REL.NOT_READY, 'issues': (st.get('current') or {}).get('issues', 0)}
+        st = dict(out.get('status') or {})
+        if st.get('name') == REL.SHIPPED:                # a shipped book keeps "Shipped", with the warning beside it (Patrick, 21 §D)
+            st.update(warning=SHIPPED_WARNING, text=REL.with_issues(REL.SHIPPED, st.get('issues') or 0) + ' · ' + SHIPPED_WARNING)
+        else: st.update(name=REL.NOT_READY, text=CHANGED_STATUS, newer=None)
+        st['current'] = {'name': REL.NOT_READY, 'issues': (st.get('current') or {}).get('issues', 0)}   # Ship stays refused
         out = dict(out, ready=False, status=st)
     return out
+
+SHIPPED_WARNING = 'The current PDF has changed since this report was made.'
+
+def ship_gate(R, rec, g=None, rel=None):
+    """Whether "Mark as Shipped" is offered (CLAUDE.md note (d)), worked out as the app reads the book: status['current']
+    is Ready (app_glance), the file on disk is unchanged (disk_state same is not False), no refusal stands (being_made and
+    the disk checks, in Ship's own words: N1), and no shipment that is not withdrawn has this file's hash (03 §3.3, M1).
+    {ok, why (plain words or None), shipped (that live shipment, or None)}. Never read from runs.ready()."""
+    rel = rel if rel is not None else REL.load(R, rec)
+    g = g if g is not None else app_glance(R, rec, rec.get('glance') or {'ship': []}, rel)
+    live = REL.live_shipment(rel, app_sha(R, rec))
+    if live: return {'ok': False, 'shipped': live, 'why': f'This version was shipped on {D.day(live.get("shipped"))} (shipment {live.get("n")}).'}
+    why = refusal(R, rec, disk_state(R, rec))
+    if why: return {'ok': False, 'shipped': None, 'why': M.ship_words(why)}
+    cur = ((g.get('status') or {}).get('current') or {}).get('name')
+    if cur != REL.READY:
+        need = [G.ship_name(x) for x in g.get('ship') or [] if not x.get('ok')]
+        return {'ok': False, 'shipped': None, 'why': 'This version is not ready to ship' + (f': {", ".join(need)} still unsatisfied.' if need else '.')}
+    return {'ok': True, 'shipped': None, 'why': None}
 
 CHANGED_BY_HAND = ('The book\'s PDF has changed since this report was made, so no check can be recorded for it. '
                    'Whoever looks after the app can check it.')

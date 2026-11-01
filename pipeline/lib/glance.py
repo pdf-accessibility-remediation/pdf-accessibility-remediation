@@ -185,6 +185,12 @@ def with_release(g, record, release=None, cur=None):
     return dict(g, ship=ship, safety=five, safety_ok=safety_line(five)[0], ready=st['name'] == REL.READY, status=st,
                 needs_looked=looked)
 
+def as_earlier(g, rel, sha, current_label):
+    """A previous result's glance (its own page): status "Earlier version (… the current version is Session N)", never
+    Ready, no newer line (note (c))."""
+    from lib import release as REL
+    return dict(g, ready=False, status=REL.earlier_status(rel, sha, current_label))
+
 def glance(record, md, labels=None, han_pages=None, sections=None, release=None):
     labels = {int(k): v for k, v in (labels or {}).items() if str(k).isdigit()}
     rows, secs = from_sections(sections) if sections is not None else parse_md(md)
