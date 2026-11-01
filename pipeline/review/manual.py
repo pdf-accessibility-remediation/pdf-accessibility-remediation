@@ -72,6 +72,8 @@ def write_run(R, rec, say=print, text=None):
             if text is not None:
                 rec['glance'] = G.glance(rec, text, labels, H.han_pages(R), release=rel)
                 text = G.replace_block(text, G.glance_md(rec['glance']))
+                if REL.any_recorded(rel):                    # the evaluation section, in full once a result is recorded (13 §7.2)
+                    text = REL.replace_section_md(text, REL.section_md(rel, cur, (rec.get('document') or {}).get('output') or 'the remediated PDF'))
     except Exception as e:
         say(f'note: "Overview" and review.html not refreshed ({type(e).__name__}: {e})'); labels = None
     put_json(os.path.join(R, 'record.json'), rec)
