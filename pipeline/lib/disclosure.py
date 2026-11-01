@@ -13,7 +13,8 @@ What it claims, and only when the record supports it:
     words given as spoken text, the local OCR pages and who approved them, or the publisher's OCR layer (M4);
   - the model, the instructions and the date of the call only for a real call; otherwise "not recorded for this book"
     (M5; true for a replay and for a reply written by hand);
-  - in words for a public reader: no session numbers, report sections or internal names (review 24 P2);
+  - in words for a public reader: no session numbers, report sections or internal names (review 24 P2; a PAC item named
+    after a report section is renamed in the statement only, 26 Q4);
   - veraPDF's before and after, or "not checked" (N6).
 Every name and note is the person's text as typed: escaped in the HTML (html.escape) and in the Markdown (release.md_text,
 md_quote) (N7). The wording is a draft, marked so on the page: to be agreed with the sponsors.
@@ -24,6 +25,12 @@ from lib import release as REL, dates as D
 DRAFT = 'Draft wording: to be agreed with the sponsors.'
 STATUS_WORDS = {'approved': 'approved as proposed', 'changed': 'changed', 'rejected': 'rejected', 'accepted_unreviewed': 'not reviewed'}
 SEEN_ONLY = ('deferrals', 'notes_for_reviewer', 'reading_order')   # review/core.py: nothing applied; a person marks them seen (P1)
+PUBLIC_LABELS = {('pac', 'needs_person'): 'Points the AI or the Software Left for a Person to Check'}   # the statement only (26 Q4)
+
+def item_label(section, key):
+    """A checklist item's name in the statement: in a public reader's words where the item's own name is the report's
+    (review 26 Q4); the evaluation page and review.md keep the item's name."""
+    return PUBLIC_LABELS.get((section, key)) or REL.label(section, key)
 
 def _n(x): return int(x) if isinstance(x, int) else len(x or [])
 
@@ -126,7 +133,7 @@ def facts(rec, rel, ship, glance):
         extra = f' ({f["screen_reader"]})' if f.get('screen_reader') else ''
         people.append(f'{REL.SECTION_NAMES[s]}: completed by {c.get("by")} on {D.day(c.get("recorded"))}{extra} · {p["n_items"]} items'
                       + (f' · {REL.noted(len(p["issues"]))}' if p['issues'] else ''))
-        issues += [f'{REL.SECTION_NAMES[s]}, {REL.label(s, k)}: {((c.get("items") or {}).get(k) or {}).get("note") or ""}' for k in p['issues']]
+        issues += [f'{REL.SECTION_NAMES[s]}, {item_label(s, k)}: {((c.get("items") or {}).get(k) or {}).get("note") or ""}' for k in p['issues']]
     B.append(('What People Reviewed and Approved', people))
     B.append(('Issues Noted (kept for a person to fix)', issues or ['No issues were noted in the evaluation.']))
     vg = glance.get('verapdf') or {}
