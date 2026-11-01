@@ -123,6 +123,7 @@ button.ftb[aria-expanded="true"] .tri::before { content: "▾"; }               
 .js .mcfull { display: none; } .nbody.html { white-space: normal; } .nbody .mcfull { display: block; }
 .newly { color: var(--change); font-weight: 600; }        /* "N newly failing" on the veraPDF card: the words say it, the colour adds */
 @media print { .js .mcfull { display: block; } button.nopen.mcopen { display: none; } }
+@media (max-width: 600px) { .mcfull td.item { min-width: 6em; width: auto; } }   /* the inline full results at 320 px, script off (J4) */
 """
 E = html.escape
 
@@ -385,8 +386,8 @@ def manual_card(R, rec):
             lab = x['label'] + (' (no longer asked)' if retired else '')
             rows.append(f'<tr><td class="item">{E(lab)}</td><td class="res">{"<strong>" + E(res) + "</strong>" if it.get("result") == "fail" else E(res)}</td>'
                         f'<td class="note">{E(it.get("note") or "")}</td></tr>')
-        full = (f'<p>{" · ".join(fields)}</p><table><thead><tr><th scope="col">Item</th><th scope="col">Result</th><th scope="col">Notes</th></tr></thead><tbody>'
-                + ''.join(rows) + '</tbody></table>' + (f'<p><strong>Other Notes:</strong></p><p class="pre">{E(c["notes"])}</p>' if c.get('notes') else ''))
+        full = (f'<p>{" · ".join(fields)}</p><div class="tw"><table><thead><tr><th scope="col">Item</th><th scope="col">Result</th><th scope="col">Notes</th></tr></thead><tbody>'
+                + ''.join(rows) + '</tbody></table></div>' + (f'<p><strong>Other Notes:</strong></p><p class="pre">{E(c["notes"])}</p>' if c.get('notes') else ''))
         B.append(f'<button type="button" class="nopen mcopen" data-session="mc-{sec}" data-html="1" data-title="{E(name)}: Full Results" hidden>View Full Results</button>'
                  f'<div class="mcfull">{full}</div></div>')
     ships = rel.get('shipped') or []
@@ -833,9 +834,10 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
     return out
 
 def safety_state(g):
-    """'ok', 'failed' (a check failed) or 'not checked' (none failed, but the run recorded fewer than the five checks)."""
+    """'ok', 'failed' (a check that is present failed) or 'not checked' (none failed, but the run recorded fewer than the
+    five checks, none at all included): the same rule as glance.safety_line() (review 16 J3)."""
     if g.get('safety_ok'): return 'ok'
-    return 'failed' if any(not x['ok'] and x.get('state') != 'not checked' for x in g.get('safety') or []) or not g.get('safety') else 'not checked'
+    return 'failed' if any(not x['ok'] for x in g.get('safety') or []) else 'not checked'
 
 _BATCH_LOCKS, _BATCH_LOCKS_LOCK = {}, threading.Lock()
 def summary_html(Bdir):

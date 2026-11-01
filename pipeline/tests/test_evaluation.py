@@ -95,7 +95,7 @@ def test_review_html_folds_review_md_section_only_while_nothing_is_recorded(tmp_
     assert 'class="nopen mcopen" data-session="mc-pac" data-html="1" data-title="PAC 2026: Full Results" hidden>View Full Results</button><div class="mcfull">' in h
     assert '@media print { .js .mcfull { display: block; }' in h and "if (b.hasAttribute('data-html')) { nb.innerHTML" in h
     assert "if (b.hasAttribute('data-html')) { var h = d.querySelector('h2'); h.tabIndex = -1; h.focus(); }" in h   # focus: the heading
-    assert '<textarea' not in h.split('id="mc-h"')[1].split('</section>')[0] and '<div class="mcfull"><p>Checked By: Kim</p><table>' in h   # a read-only table
+    assert '<textarea' not in h.split('id="mc-h"')[1].split('</section>')[0] and '<div class="mcfull"><p>Checked By: Kim</p><div class="tw"><table>' in h   # a read-only table
 
 def test_the_card_the_needs_box_and_the_vera_card(tmp_path):
     R = make_run(tmp_path, True)
@@ -131,3 +131,31 @@ def test_newly_failing_in_orange_and_a_shipped_book_has_readys_border(tmp_path):
     s = open(os.path.join(str(tmp_path), 'summary.html'), encoding='utf-8').read()
     assert '<strong>Ready:</strong> 0 · <strong>Shipped:</strong> 1 · <strong>Pending Evaluation:</strong> 0 · of 1 books' in s
     assert 'Ready to Ship?</th>' not in s and 'not checked:' not in s
+
+# ------------------------------------------------------------------ review 16's J2, J3, J4, J6
+def test_j2_unreadable_evaluation_records_never_read_as_ready(tmp_path):
+    from webapp import runs
+    R = make_run(tmp_path, True); os.makedirs(os.path.join(R, 'release'))
+    open(os.path.join(R, 'release', 'checks.json'), 'w').write('{"schema": "manual-checks/9"}')   # a schema this code does not read
+    rec = json.load(open(os.path.join(R, 'record.json'), encoding='utf-8'))
+    rec['glance'] = {'schema': G.SCHEMA, 'ship': [], 'status': {'name': 'Ready', 'text': 'Ready'}}
+    r = runs.ready(R, rec)
+    assert r['answer'] == 'No' and r['status'] == 'Not Ready (the evaluation records could not be read)'
+
+def test_j3_safety_state_follows_safety_line():
+    assert H.safety_state({'safety': [], 'safety_ok': False}) == 'not checked'               # none at all: not checked, never failed
+    assert H.safety_state({'safety': [{'what': 'x', 'ok': True}], 'safety_ok': False}) == 'not checked'
+    assert H.safety_state({'safety': [{'what': 'x', 'ok': False}], 'safety_ok': False}) == 'failed'
+    assert G.safety_line([])[1].startswith('Not Checked (only 0 of the 5')
+
+def test_j4_inline_full_results_wrap_in_a_scroll_box(tmp_path):
+    R = make_run(tmp_path, True)
+    M.record(R, 'pac', PAC, say=lambda *a: None, batch=False)
+    h = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
+    assert '<div class="mcfull"><p>Checked By: Kim</p><div class="tw"><table>' in h          # fitTables() covers it, script on or off
+    assert '@media (max-width: 600px) { .mcfull td.item { min-width: 6em; width: auto; } }' in h
+
+def test_j6_pages_checked_has_the_field_limit():
+    data = dict(PAC, fields={'pages_checked': '1, ' * 40 + '1'})
+    with pytest.raises(REL.Invalid) as e: REL.validate('pac', data, {'n_pages': 5})
+    assert dict(e.value.errors)['fields.pages_checked'].startswith('"Pages Checked" is too long:')

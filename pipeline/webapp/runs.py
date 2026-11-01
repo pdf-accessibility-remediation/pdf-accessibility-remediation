@@ -32,7 +32,8 @@ def ready(R, rec):
             from lib import glance as G, release as REL       # worked out now from release/ (cheap: no PDF is opened)
             from . import manualpage                               # as the evaluation page reads it: a changed file is never Ready (K1)
             g = manualpage.app_glance(R, rec, g) if R and os.path.isdir(R) else G.with_release(g, rec, REL.load(R, rec))
-        except (ValueError, KeyError, TypeError, OSError): g = dict(g, ready=False)   # release/ unreadable: never Ready
+        except (ValueError, KeyError, TypeError, OSError):      # release/ unreadable: never Ready, and never says so (J2)
+            g = dict(g, ready=False, status={'name': 'Not Ready', 'text': 'Not Ready (the evaluation records could not be read)'})
         return {'answer': 'Yes' if g['ready'] else 'No', 'lines': [f'{x["what"]}: {x["text"]}' for x in g.get('ship') or []],
                 'status': (g.get('status') or {}).get('text'), 'source': 'record.json'}
     try: md = open(os.path.join(R, 'review.md'), encoding='utf-8').read().splitlines()
