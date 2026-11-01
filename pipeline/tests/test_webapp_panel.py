@@ -645,7 +645,7 @@ def test_the_discard_route(app):
     j = fake(t, s, 'book/r1', 30); jobs.update(s['jobs'], j['id'], kind='review', counted=False)          # its review page is open
     assert wait(lambda: (jobs.load(s['jobs'], j['id']) or {}).get('child_pid'), 20)
     st, b = post(port, '/api/run/book/r1/discard')
-    assert st == 409 and b['error'] == 'The review page is open: select "Stop Reviewing" first, then "Discard Session 2".'
+    assert st == 409 and b['error'] == 'The review page is open: select "Stop Reviewing" first, then "Discard Session 2."'
     (R / 'reviews' / 'review.json').write_text('{}')                                                       # past Finish
     st, b = post(port, '/api/run/book/r1/discard')
     assert st == 409 and b['error'] == 'This review is past "Finish Review" and is being applied: it can\'t be discarded now.'
@@ -849,7 +849,7 @@ def test_the_pages_name_no_files_or_commands():
     assert 'The text is shown as OCR read it and isn\\\'t edited on this page.' in page
     ss = [{'id': f'00{i}', 'from': 'ai' if i == 1 else f'00{i - 1}', 'status': 'applied', 'reviewer': 'K', 'date': '2026-10-31', 'counts': {}} for i in (1, 2, 3)]
     out = ''.join(H.review_card('.', {'review': {'session': '003', 'sessions': ss, 'pending': {'status': 'finished', 'session': '004', 'reviewer': 'K'}}}))
-    assert 'review_workorder.py' not in out and 'select "Apply Session 4"' in out
+    assert 'review_workorder.py' not in out and 'select "Apply Session 4."' in out
     assert out.index('<span class="nowrap">2</span>') < out.index('<span class="nowrap">1</span>')       # Previous Sessions: newest first
     assert '<td class="nowrap">Session 2</td>' in out
 
@@ -858,7 +858,7 @@ def test_ocr_refusals_have_a_page_wording():
     from review import ocr as O
     import pytest as P
     it = {'original': {'pages': 3}, 'ocr': {'pages_with_ocr_text': [1]}, 'cjk_probe': {'cjk_pages': [1]}, 'settings': {'OCR_LANG': 'jpn'}}
-    cases = [({'verdict': 'approved', 'reviewer': 'K', 'reason': 'r'}, '--reads', 'to approve them, tick "I can read Japanese".'),
+    cases = [({'verdict': 'approved', 'reviewer': 'K', 'reason': 'r'}, '--reads', 'to approve them, tick "I can read Japanese."'),
              ({'verdict': 'approved', 'reviewer': 'K', 'reason': 'a | b', 'reads': ['Japanese']}, "review.md's table", 'The reason can\'t contain the character "|"'),
              ({'verdict': 'approved', 'reviewer': 'K', 'reason': '[x](y)', 'reads': ['Japanese']}, 'review.html', 'Put a space between them.'),
              ({'verdict': 'approved', 'reviewer': 'K', 'reason': 'r', 'reads': ['Japanese'], 'pages': 'p3'}, 'for example', 'ex. 381-386'),

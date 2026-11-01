@@ -54,8 +54,8 @@ def test_the_pdf_and_the_record_zip(mapp):
     assert st == 200 and h['Content-Type'] == 'application/zip' and 'Content-Length' not in h
     z = zipfile.ZipFile(io.BytesIO(body)); assert z.testzip() is None
     folder = 'clans_remediated_record_no-review_not-ready'
-    assert sorted(z.namelist()) == sorted(f'{folder}/{n}' for n in ('clans_remediated.pdf', 'review.html', 'READ-ME.txt'))   # no review.md,
-    # han_review.csv (present in this run), evaluation-results.json or statement .md: the ZIP is for staff (Patrick, 2026-11-01)
+    assert sorted(z.namelist()) == sorted(f'{folder}/{n}' for n in ('clans_remediated.pdf', 'review.html', 'han_review.csv', 'READ-ME.txt'))
+    # no review.md, evaluation-results.json or statement .md: the ZIP is for staff (Patrick, 2026-11-01; han_review.csv: review 30 S1)
     pdf = z.getinfo(f'{folder}/clans_remediated.pdf')
     assert pdf.compress_type == zipfile.ZIP_STORED and z.read(pdf) == open(os.path.join(R, 'clans_remediated.pdf'), 'rb').read()
     rd = z.read(f'{folder}/READ-ME.txt').decode()

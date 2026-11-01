@@ -13,9 +13,9 @@ stream from the open handles. A promotion moves files by rename, which never tou
 two versions. A version id comes only from the run's own list: no path is ever built from the request.
 
 The ZIP is opened by library staff (Patrick, 2026-11-01): one folder named as the ZIP, holding only the PDF (stored, never
-compressed again, under its own name), review.html (the evaluation's results are in it), accessibility-statement.html once
-this file has shipped, and READ-ME.txt in plain words. Never review.md, han_review.csv, evaluation-results.json or the
-statement's .md (they stay in the run folder and in release/shipped/NNN/), record.json (it holds the AI's raw reply),
+compressed again, under its own name), review.html (the evaluation's results are in it), han_review.csv when the book has
+one (review.html sends staff to it; review 30 S1), accessibility-statement.html once this file has shipped, and READ-ME.txt
+in plain words. Never review.md, evaluation-results.json or the statement's .md (they stay in the run folder and in release/shipped/NNN/), record.json (it holds the AI's raw reply),
 digests, crops, reviews/, _intake/, release/drafts.json, dot-files or working files: the list is an allow-list. The ZIP's
 review.html keeps only the links that work inside the ZIP (zip_page()).
 """
@@ -132,11 +132,14 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
             sd = ver['dir'] if ver.get('shipment') else (_shipped_dir(R, ship) if ship else None)
             members = [(out, open(ver['pdf'], 'rb'), zipfile.ZIP_STORED)]
             st = os.path.join(sd, REL.statement_name(sd)) if sd else None   # the accessibility statement, once this file has shipped
-            names = [out, 'review.html'] + ([REL.STATEMENT_HTML] if st and os.path.isfile(st) else []) + ['READ-ME.txt']
+            han = os.path.join(ver['dir'], 'han_review.csv')              # the Han-only runs a person checks, when the book has them
+            names = ([out, 'review.html'] + (['han_review.csv'] if os.path.isfile(han) else [])
+                     + ([REL.STATEMENT_HTML] if st and os.path.isfile(st) else []) + ['READ-ME.txt'])
             p = os.path.join(ver['dir'], 'review.html')
             if os.path.isfile(p):                                         # read now (small): its links are made to fit the ZIP
                 with open(p, encoding='utf-8') as f: page = zip_page(f.read(), names, ship)
                 members.append(('review.html', io.BytesIO(page.encode('utf-8')), zipfile.ZIP_DEFLATED))
+            if os.path.isfile(han): members.append(('han_review.csv', open(han, 'rb'), zipfile.ZIP_DEFLATED))
             if st and os.path.isfile(st): members.append((REL.STATEMENT_HTML, open(st, 'rb'), zipfile.ZIP_DEFLATED))
             cur_label = _version_label(S.current_id(rec))
             book = MP.book(rec)['title']
@@ -173,8 +176,10 @@ class _Out:
     def write(self, b): self.w.write(b); return len(b)
     def flush(self): self.w.flush()
 
+HAN_WORDS = 'han_review.csv: passages in Chinese or Japanese a person needs to check, as a spreadsheet.'   # Patrick, 2026-11-01
 FILE_WORDS = {'review.html': 'review.html: the report on this version (what was changed, what was checked, and the accessibility '
                               'evaluation\'s results). Open it in a web browser.',
+              'han_review.csv': HAN_WORDS,
               REL.STATEMENT_HTML: f'{REL.STATEMENT_HTML}: the accessibility statement written when this version was shipped. '
                                   'Open it in a web browser.',
               'READ-ME.txt': 'READ-ME.txt: this file.'}

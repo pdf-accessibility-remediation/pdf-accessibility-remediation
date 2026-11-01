@@ -86,7 +86,8 @@ for (const [key, cfg] of Object.entries(D.sections)) {
   };
   sec.changed = () => {
     sec.saved_at = new Date().toISOString(); sec.dirty = true;
-    store.set(sec.ls, { data: sec.collect(), saved_at: sec.saved_at, for: D.sha });
+    const kept = sec.collect(); delete kept.by;                  // the browser's copy carries no name either
+    store.set(sec.ls, { data: kept, saved_at: sec.saved_at, for: D.sha });
     status('Saving…'); clearTimeout(sec.timer); sec.timer = setTimeout(sec.save, 1000);
   };
   form.addEventListener('input', sec.changed);
@@ -95,7 +96,7 @@ for (const [key, cfg] of Object.entries(D.sections)) {
   // the browser's copy, when it is newer than the run's (same version, not older than a recorded check's tombstone)
   const mine = store.get(sec.ls);
   if (mine && mine.for === D.sha && (!sec.saved_at || mine.saved_at > sec.saved_at) && (!cfg.tombstone || mine.saved_at > cfg.tombstone)) {
-    sec.fill(mine.data, true); sec.saved_at = mine.saved_at; sec.save();
+    delete mine.data.by; sec.fill(mine.data, true); sec.saved_at = mine.saved_at; sec.save();   // an old copy's name is dropped
   } else status(cfg.has_draft ? 'All changes saved' : '');
 
   // ---------------------------------------------------------------- Record

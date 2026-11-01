@@ -747,11 +747,11 @@ function findingRows(it, row) {                        // a reading-order findin
       : added ? 'You added a section move for it: see its card under Added by You, which shows where it lands.'
       : n >= MAX_MOVES && addById[tid] ? 'A work order holds at most ' + MAX_MOVES + ' section moves, and this one has ' + n + ': reject or change one of them to move this section instead, or say in a note what should happen.'
       : addById[tid] ? '<button type="button" data-addmove="' + esc(a.entry) + '">Add a Section Move</button> puts it back in its printed place, with a preview of where it lands; or say in a note what should happen.'
-      : 'A section move cannot put this one back: the executor moves a section only within the section around it, at a page another section starts on, and the preview finds no such place. Say in a note what should happen, for example “move it by hand in Acrobat” or “fine as it is”.') +
+      : 'A section move cannot put this one back: the executor moves a section only within the section around it, at a page another section starts on, and the preview finds no such place. Say in a note what should happen, for example “move it by hand in Acrobat” or “fine as it is.”') +
       ' Mark this seen; your note is recorded in the report. ' + HANDFIX);
   } else if (a.finding === 'jump') {
     row('What was found', 'In reading order, the text on this page jumps back up the same column ' + plural(a.jumps_up, 'time', 'times') + '. A screen reader may read lines or entries on this page out of order.');
-    row('What you can do', 'The pipeline cannot change the order of text within a page. Look at the page, then mark this seen and say in a note what should happen, for example “fix the order of the contents entries in Acrobat”. the report checks this page again after the changes. ' + HANDFIX);
+    row('What you can do', 'The pipeline cannot change the order of text within a page. Look at the page, then mark this seen and say in a note what should happen, for example “fix the order of the contents entries in Acrobat.” the report checks this page again after the changes. ' + HANDFIX);
   } else if (a.finding === 'figures') {
     if (c.count_moves == null) {
       row('What was found', 'The figure moves were not worked out for this run (' + esc(c.not_worked_out || 'no trial run') + '). The report lists the figures the executor moves.');
@@ -1313,7 +1313,7 @@ function askGaps(gaps) {
 const finBtn = document.getElementById('finish');
 function showLeft(text) {
   view = 'left'; document.querySelector('input[name=view][value=left]').checked = true; render();
-  msg(text + ' They are listed under "Not Reviewed".', true, true);
+  msg(text + ' They are listed under "Not Reviewed."', true, true);
 }
 // names of buttons, views and sections in quotes, as they appear on screen (CLAUDE.md's interface rule)
 // The check Save used to run, now here, before anything is applied: choices the check would drop (each linked to its
@@ -1343,8 +1343,8 @@ async function askFinish() {
   dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2>' + checkHtml(chk) + '<div class="ctx" id="finCtx">' +
     (n ? n + (one ? ' decision is' : ' decisions are') + ' not reviewed: "Finish Review" records ' + (one ? 'it' : 'them') + ' as the AI wrote ' + (one ? 'it' : 'them') +
          ', marked "accepted without review", and "Ready to Ship?" stays No.' : 'Every decision has a choice.') +
-    (SESSION && SESSION.reopened ? ' "Finish Review" re-applies the reviewed order (no AI call).' : '') + ' The name and notes go to "Session History".' +
-    (OCR ? ' "OCR Text": ' + esc(ov) + '. An OCR verdict is recorded on its own under "OCR Text", not with "Finish Review".' : '') + '</div>' +
+    (SESSION && SESSION.reopened ? ' "Finish Review" re-applies the reviewed order (no AI call).' : '') + ' The name and notes go to "Session History."' +
+    (OCR ? ' "OCR Text": ' + esc(ov) + '. An OCR verdict is recorded on its own under "OCR Text", not with "Finish Review."' : '') + '</div>' +
     '<label for="finName">Session Name</label><input type="text" id="finName" maxlength="80">' +
     '<label for="finNotes">Session Notes (optional)</label><textarea id="finNotes" maxlength="4000"></textarea>' +
     '<div class="buttons"><button type="button" data-f="back">Back</button>' + (n ? '<button type="button" data-f="left">Show "Not Reviewed"</button>' : '') +
