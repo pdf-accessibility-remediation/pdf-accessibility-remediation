@@ -103,7 +103,7 @@ def test_a_run_with_no_recorded_hash_is_never_called_changed(mapp):
     st, r = js(mapp['port'], 'POST', f'/api/run/{RUN}/checks/record', {'section': 'pac', 'data': PAC, 'shown_sha256': s.get('sha')})
     assert st == 200                                                                    # F1: the first Record takes the disk hash
     rec = core.load(os.path.join(mapp['R'], 'record.json'))
-    assert rec['document']['output_sha256_from'].startswith('first check') and rec['manual_checks']['pac']['state'] == 'counts'
+    assert rec['document']['output_sha256_from'].startswith('first check') and rec['manual_checks']['pac']['state'] == 'completed'
     st, s = js(mapp['port'], 'GET', f'/api/run/{RUN}')
     assert s['manual']['disk_same'] is True and s['manual']['sections']['pac']['met'] is True
 

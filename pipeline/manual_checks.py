@@ -34,13 +34,13 @@ def show(R):
     if not doc.get('output_sha256'): print('  record.json has no output_sha256 yet: the first --record takes the disk hash')
     print(f'  status: {g["status"]["text"]}' + (f' · {g["status"]["newer"]}' if g['status'].get('newer') else ''))
     print(f'  ready to ship: {"Yes" if g["ready"] else "No"}' + (' (stored glance is older: run --refresh)' if (rec.get('glance') or {}).get('schema') != G.SCHEMA else ''))
-    for x in g['ship']: print(f'    - {x["what"]}: {x["text"]}')
+    for x in g["ship"]: print(f"    - {G.ship_name(x)}: {x['text']}")
     why = M.being_made(R)
     if why: print(f'  recording is refused now: {why}')
     for sec in REL.SECTIONS:
         for c in rel['checks'].get(sec) or []:
             print(f'  {sec} #{c["id"]}: {c.get("by")} {c.get("recorded")} · {REL.state(rel, sec, c, disk)} · '
-                  f'{len(REL.failed(c, sec))} failed · sha256 {REL.sha_of(c)[:12]}')
+                  f'{len(REL.issues(c, sec))} issue(s) · sha256 {REL.sha_of(c)[:12]}')
     for s_ in rel['shipped']: print(f'  shipment {s_.get("n")}: {s_.get("by")} {s_.get("shipped")}' + (' (withdrawn)' if s_.get('withdrawn') else ''))
 
 def main():
@@ -59,7 +59,7 @@ def main():
             data = json.load(open(a.record[1], encoding='utf-8'))
             c = M.record(R, sec, data, shown_sha=a.for_sha, via='manual_checks.py')
             print(f'recorded: {sec} #{c["id"]} by {c["by"]} on the PDF with sha256 {c["pdf"]["sha256"][:12]}…'
-                  + (f' · {len(REL.failed(c, sec))} item(s) failed' if REL.failed(c, sec) else ''))
+                  + (f' · {len(REL.issues(c, sec))} issue(s) noted' if REL.issues(c, sec) else ''))
         elif a.refresh: M.refresh(R); print(f'refreshed: {R}')
         if a.show or not (a.record or a.refresh): show(R)
     except REL.Invalid as e:

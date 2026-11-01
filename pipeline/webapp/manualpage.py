@@ -108,7 +108,7 @@ def state(R, run):
     for sec in REL.SECTIONS:
         xs = rel['checks'].get(sec) or []
         current = REL.latest(rel, sec, cur)
-        earlier = [dict(c, version=ver_label(c, cur), failed=REL.failed(c, sec)) for c in reversed(xs) if c is not current]
+        earlier = [dict(c, version=ver_label(c, cur), failed=REL.issues(c, sec)) for c in reversed(xs) if c is not current]
         items = []
         for x in REL.CHECKLIST[sec]:
             hint = None
@@ -122,12 +122,12 @@ def state(R, run):
         secs[sec] = {'key': sec, 'id': SECTION_ID[sec], 'name': REL.SECTION_NAMES[sec], 'record': RECORD_LABEL[sec],
                      'fields': [{'key': k, 'label': lab, 'required': req} for k, (lab, req) in REL.FIELDS[sec].items()],
                      'items': items,
-                     'current': dict(current, state=REL.state(rel, sec, current, cur), failed=REL.failed(current, sec)) if current else None,
+                     'current': dict(current, state=REL.state(rel, sec, current, cur), failed=REL.issues(current, sec)) if current else None,
                      'earlier': earlier,
                      'draft': {'data': draft['data'], 'saved_at': draft['saved_at']} if draft else None,
                      'draft_earlier': {'data': draft_earlier['data'], 'from': 'an earlier version'} if draft_earlier else None,
                      'tombstone': d.get('cleared'),
-                     'failed_last': REL.failed(current, sec) if current else []}
+                     'failed_last': REL.issues(current, sec) if current else []}
     st = g.get('status') or {}
     base = '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
     return {'run': run, 'base': base, 'book': book(rec), 'version': version(R, rec), 'sha': disk['sha'], 'disk': {'same': disk['same']},
@@ -146,7 +146,7 @@ def strip(R, rec):
         xs = rel['checks'].get(sec) or []
         c = REL.latest(rel, sec, cur)
         if c is not None:
-            bad = REL.failed(c, sec)
+            bad = REL.issues(c, sec)
             words = (f'{len(bad)} item{"" if len(bad) == 1 else "s"} failed on this version ({c.get("by")}, {REL.day(c.get("recorded"))})' if bad
                      else f'done on this version ({c.get("by")}, {REL.day(c.get("recorded"))})')
             out[sec] = {'name': REL.SECTION_NAMES[sec], 'id': SECTION_ID[sec], 'words': words, 'met': not bad}
@@ -263,14 +263,15 @@ def page(R, run, recorded=None):
     B.append(f'<p>These checks are recorded for {E(v["label"])}' + (f', {E(v["when"])}' if v['when'] else '') + '.</p>'
              '<p class="mc-help">Do these checks after the last review is applied: a new version needs its own checks.</p>'
              f'<p>Status: <strong>{E(st["status"])}</strong>' + (f' · {E(st["newer"])}' if st.get('newer') else '') +
-             f' · Ready to Ship? <strong>{E(ready["answer"])}</strong>' + (' (not met: ' + E(', '.join(H.SHIP_NAMES.get(x['what'], x['what']) for x in why)) + ')' if why else '') + '</p>')
+             f' · Ready to Ship? <strong>{E(ready["answer"])}</strong>' + (' (not met: ' + E(', '.join(G.SHIP_NAMES.get(x['what'], x['what']) for x in why)) + ')' if why else '') + '</p>')
     if st['refusal']: B.append(f'<p id="mc-refusal" class="mc-refusal">{E(st["refusal"])} Your answers are still saved as you type.</p>')
     for key in REL.SECTIONS:
         s = st['sections'][key]; p = p_of[key]
         B.append(f'<section id="{s["id"]}" class="mc-sec" aria-labelledby="{p}-h"><h2 id="{p}-h" tabindex="-1">{E(TC(s["name"]))}</h2>')
         c = s['current']
         if c:
-            words = {'counts': 'counts for this version', 'failed': f'{len(c["failed"])} item{"" if len(c["failed"]) == 1 else "s"} failed on this version'}.get(c['state'], c['state'])
+            words = {'completed': 'completed for this version' + (f', with {REL.noted(len(c["failed"]))}' if c['failed'] else ''),
+                     'could not be read': 'could not be read in full: record it again'}.get(c['state'], c['state'])
             B.append(f'<h3>Current Check: {E(c.get("by"))}, {E(REL.day(c.get("recorded")))}</h3><p>{E(words.capitalize())}.</p>' + _result_table(key, c))
         if s['earlier']:
             B.append(f'<details class="mc-earlier"><summary>Earlier Checks ({len(s["earlier"])})</summary>')

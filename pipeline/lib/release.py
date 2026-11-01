@@ -1,11 +1,16 @@
-"""lib/release.py: the manual checks (PAC 2026 and sanity checks, the screen-reader check), shipments and the book's
-status, with no web server and no writing (review/manual.py writes; issue #38).
+"""lib/release.py: the accessibility evaluation (PAC 2026 and the screen-reader test; "Manual Checks" in the records and
+the code), shipments and the book's status, with no web server and no writing (review/manual.py writes; issue #38).
 
     rel = load(R)                                  # release/checks.json and release/shipped.json, empty when absent
-    pac = pac_line(rel, cur_sha)                   # (ok, text): "Ready to Ship?"'s "Manual check (PAC)" line
-    sr  = sr_line(rel, cur_sha)                    # (False, text) when the current version's screen-reader check failed, else None
-    st  = status(rel, cur_sha, ready, newer, session)     # {name, text, newer}: Not Ready, Ready, Shipped, Verified, Needs Rework
-    rec = validate(section, data, ctx)             # a check as it will be recorded; raises Invalid with every problem
+    ev  = evaluation(rel, sha)                     # both parts on the file with this hash: completed?, issues noted
+    ok, text = evaluation_line(rel, cur_sha)       # "Ready to Ship?"'s "Accessibility Evaluation" line
+    st  = status(rel, cur_sha, base_ok, newer, session)   # {name, text, newer, issues}: Not Ready, Pending Evaluation, Ready, Shipped
+    rec = validate(section, data, ctx)             # a result as it will be recorded; raises Invalid with every problem
+
+The rule (decided 2026-10-31, after testing the page; 13-builder-stage2-revisions-proposal.md): the evaluation is a
+report, not a gate on its results. A part is completed for a file when its latest result on that file has, for every item
+the checklist asks, one of that item's own choices. A Fail never blocks: it needs a note, and it is counted as an issue
+noted in the status ("Ready · 2 issues noted").
 
 Every check and shipment records the sha256 of the remediated PDF it was made on (`pdf.sha256`). A check counts only for
 the file with that hash: `cur_sha` is the record's `document.output_sha256` (offline dashboards) or the hash the app read
@@ -14,31 +19,30 @@ from disk. Nothing here relies on an apply giving new bytes.
 The records (release/checks.json, schema manual-checks/1; /2 is reserved for "Fail, Accepted with a Note"):
     {schema, pac: [check …], screen_reader: [check …]}            newest last; nothing is deleted
     check: {id, recorded, by, via, code, pdf: {sha256, file, session, which, shipment}, fields, items: {key: {result, note}}, notes}
-`result` is only what the person saw: pass | fail | na (not_run for the PDF/UA item). A later `accepted: {by, date, note}`
-on a failed item is reserved. v1 reads fail closed: a blocking item is OK only when its result is pass or na and it has
-no `accepted`; any other value counts as Fail. `state`, `ok`, "counts for this version" and "checked before shipping"
-are worked out on every read, never trusted from storage.
+`result` is only what the person saw: pass | fail | na (not_run in an older record's PDF/UA row). Reads fail closed: a
+missing item, an unknown result or an unknown item makes that part "could not be read in full" (not completed), never
+completed. An `accepted` key (once reserved) is read by the result alone. `state`, "completed" and the issues are worked
+out on every read, never trusted from storage. RETIRED items and fields (PAC's PDF/UA check, PAC Version: retired
+2026-10-31) are known: never offered, never counted, shown only in an older record's full results.
 release/shipped.json: [{n, shipped, by, pdf: {sha256, file, session}, where, note, withdrawn?: {by, date, reason}}]
 """
 import os, re, json, hashlib
+from lib import dates as D
 
 SCHEMA = 'manual-checks/1'
 READ_SCHEMAS = ('manual-checks/1', 'manual-checks/2')
 SECTIONS = ('pac', 'screen_reader')
-OK_RESULTS = ('pass', 'na')
 NAME_MAX, FIELD_MAX, NOTE_MAX, NOTES_MAX = 80, 80, 1000, 4000
 PAGES = re.compile(r'\d+(-\d+)?(, ?\d+(-\d+)?)*')
 
 # The checklist, once: the Manual Checks page, manual_checks.py, review.md's PAC section and the disclosure read it.
-# results: the choices; blocking: a Fail keeps the line closed; pages: asks for the pages checked (fields.pages_checked);
+# results: the choices; pages: offers the pages checked (fields.pages_checked, optional);
 # found: the thing the pipeline counted (Not Applicable then needs a note).
 P3 = ('pass', 'fail', 'na')
 CHECKLIST = {
     'pac': [
         {'key': 'pac_wcag', 'label': 'PAC 2026: WCAG Check', 'results': ('pass', 'fail'),
          'help': 'PAC 2026\'s WCAG check on this version of the PDF. Anything it fails that the report does not list is a gap in the automated checks.'},
-        {'key': 'pac_pdfua', 'label': 'PAC 2026: PDF/UA Check', 'results': ('pass', 'fail', 'not_run'), 'blocking': False, 'optional': True,
-         'help': 'PAC 2026\'s PDF/UA check, recorded for the record. It does not decide "Ready to ship?".'},
         {'key': 'title_language', 'label': 'Title and Language', 'results': P3,
          'help': 'The title shown in the window is the book\'s title, and the document language is the book\'s main language.'},
         {'key': 'spot_check', 'label': 'Spot-Check of Pages', 'results': P3, 'pages': True,
@@ -60,7 +64,7 @@ CHECKLIST = {
         {'key': 'headings', 'label': 'Heading Navigation', 'results': P3,
          'help': 'Moving by heading reaches each part and chapter, at the right level (WCAG 1.3.1, 2.4.6).'},
         {'key': 'reading_order', 'label': 'Reading Order on Sample Pages', 'results': P3, 'pages': True,
-         'help': 'On the pages listed, the text is read in the order it is meant to be read (WCAG 1.3.2).'},
+         'help': 'On a few sample pages, the text is read in the order it is meant to be read (WCAG 1.3.2).'},
         {'key': 'alt_text', 'label': 'Figure Alt Text', 'results': P3, 'found': 'figures',
          'help': 'Each figure\'s alt text is read, is accurate and gives its purpose; decorative images are skipped (WCAG 1.1.1).'},
         {'key': 'tables', 'label': 'Tables Read with Their Headers', 'results': P3, 'found': 'tables',
@@ -75,9 +79,14 @@ CHECKLIST = {
          'help': 'Each formula is read with the description a person wrote, or is marked for one (math goes to a person).'},
     ],
 }
-FIELDS = {'pac': {'pac_version': ('PAC Version', False)},
+FIELDS = {'pac': {},
           'screen_reader': {'screen_reader': ('Screen Reader and Version', True), 'pdf_reader': ('PDF Reader and Version', False)}}
-SECTION_NAMES = {'pac': 'PAC 2026 and Sanity Checks', 'screen_reader': 'Screen-Reader Check'}
+# retired 2026-10-31 (decision 6): known to every reader, never offered, never counted; an older record shows them in its
+# full results, labelled "(no longer asked)"
+RETIRED = {'pac': {'items': {'pac_pdfua': {'key': 'pac_pdfua', 'label': 'PAC 2026: PDF/UA Check', 'results': ('pass', 'fail', 'not_run')}},
+                   'fields': {'pac_version': 'PAC Version'}},
+           'screen_reader': {'items': {}, 'fields': {}}}
+SECTION_NAMES = {'pac': 'PAC 2026', 'screen_reader': 'Screen-Reader Test'}
 RESULT_NAMES = {'pass': 'Pass', 'fail': 'Fail', 'na': 'Not Applicable', 'not_run': 'Not Run'}
 SPEC = {s: {x['key']: x for x in items} for s, items in CHECKLIST.items()}
 
@@ -121,24 +130,26 @@ def sha_file(p):
     return h.hexdigest()
 
 def sha_of(x): return ((x or {}).get('pdf') or {}).get('sha256')
-def day(iso): return str(iso or '')[:10] or 'date not recorded'
+def day(iso): return D.day(iso)
 
-def failed(check, section):
-    """The blocking items of a check that are not OK, read fail closed: a missing blocking item, a result other than pass
-    or na, an `accepted` (not built in v1), or an item this version does not know whose result is not pass or na."""
+def issues(check, section):
+    """The keys of the current checklist's items recorded as Fail (also for a result that cannot be read in full)."""
     items = (check or {}).get('items') or {}
-    bad = []
-    for spec in CHECKLIST[section]:
-        if spec.get('blocking', True) is False: continue
-        it = items.get(spec['key'])
-        if not (isinstance(it, dict) and it.get('result') in OK_RESULTS and 'accepted' not in it): bad.append(spec['key'])
-    bad += [k for k, it in items.items() if k not in SPEC[section] and not (isinstance(it, dict) and it.get('result') in OK_RESULTS and 'accepted' not in it)]
-    return bad
+    return [x['key'] for x in CHECKLIST[section] if isinstance(items.get(x['key']), dict) and items[x['key']].get('result') == 'fail']
 
-def label(section, key): return (SPEC[section].get(key) or {}).get('label') or key
+def complete(check, section):
+    """True when every item the checklist asks has one of that item's own choices, and no item is unknown (retired ones
+    are known): fail closed, so anything else is "could not be read in full", never completed."""
+    items = (check or {}).get('items') or {}
+    for x in CHECKLIST[section]:
+        it = items.get(x['key'])
+        if not (isinstance(it, dict) and it.get('result') in x['results']): return False
+    return all(k in SPEC[section] or k in RETIRED[section]['items'] for k in items)
+
+def label(section, key): return (SPEC[section].get(key) or RETIRED[section]['items'].get(key) or {}).get('label') or key
 
 def latest(rel, section, sha):
-    """The latest check of a section on the file with this hash (the one that counts for it), or None."""
+    """The latest result of a part on the file with this hash (the one that counts for it), or None."""
     if not sha: return None
     return next((c for c in reversed(rel['checks'].get(section) or []) if sha_of(c) == sha), None)
 
@@ -148,72 +159,87 @@ def _session(c):
     s = ((c or {}).get('pdf') or {}).get('session')
     return f'Session {int(s)}' if str(s).isdigit() else None
 
-def _failed_text(c, section):
-    bad = failed(c, section)
-    return len(bad), ', '.join(label(section, k) for k in bad)
-
-def pac_line(rel, cur):
-    """(ok, text) for "Manual check (PAC)": done on this version with no Fail."""
-    c = latest(rel, 'pac', cur)
+def part(rel, section, sha):
+    """One part on the file with this hash: {state: completed | could not be read | earlier version | not recorded,
+    check (the latest on this file, else the latest made on the current version of an earlier file), issues, n_items}."""
+    c = latest(rel, section, sha)
     if c is not None:
-        n, names = _failed_text(c, 'pac')
-        if n: return False, f'no ({n} item{"" if n == 1 else "s"} failed: {names}; {c.get("by")} on {day(c.get("recorded"))})'
-        return True, f'yes ({c.get("by")} on {day(c.get("recorded"))})'
-    older = [c for c in rel['checks'].get('pac') or [] if (c.get('pdf') or {}).get('which', 'current') == 'current']
-    if older:
-        c = older[-1]; s = _session(c)
-        return False, f'no (done on an earlier version{", " + s + "," if s else ""} by {c.get("by")} on {day(c.get("recorded"))}; check this version)'
-    return False, 'no (not done for this version)'
+        return {'state': 'completed' if complete(c, section) else 'could not be read', 'check': c, 'issues': issues(c, section),
+                'n_items': sum(1 for k, it in (c.get('items') or {}).items() if k in SPEC[section] and isinstance(it, dict) and it.get('result'))}
+    older = [x for x in rel['checks'].get(section) or [] if (x.get('pdf') or {}).get('which', 'current') == 'current']
+    if older: return {'state': 'earlier version', 'check': older[-1], 'issues': [], 'n_items': 0}
+    return {'state': 'not recorded', 'check': None, 'issues': [], 'n_items': 0}
 
-def sr_line(rel, cur):
-    """(False, text) when the latest screen-reader check of the current version failed an item; None otherwise (a
-    version never listened to is not held back)."""
-    c = latest(rel, 'screen_reader', cur)
-    if c is None: return None
-    n, names = _failed_text(c, 'screen_reader')
-    if not n: return None
-    return False, f'no ({n} item{"" if n == 1 else "s"} failed on this version: {names}; {c.get("by")} on {day(c.get("recorded"))})'
+def evaluation(rel, sha):
+    """Both parts on the file with this hash: {pac, screen_reader (each part()), complete, issues (the Fails counted)}."""
+    out = {s: part(rel, s, sha) for s in SECTIONS}
+    out['complete'] = all(out[s]['state'] == 'completed' for s in SECTIONS)
+    out['issues'] = sum(len(out[s]['issues']) for s in SECTIONS)
+    return out
 
-NOT_READY, READY, SHIPPED, VERIFIED, NEEDS_REWORK = 'Not Ready', 'Ready', 'Shipped', 'Verified', 'Needs Rework'
+def noted(n): return f'{n} issue{"" if n == 1 else "s"} noted'
 
-def status(rel, cur, ready, newer=None, session=None):
-    """{name, text, newer, shipment}. Before any shipment: the current version's Not Ready or Ready. Once a version has
-    shipped (and is not withdrawn), the status is about the shipped copy: Shipped, Verified (its latest completed
-    screen-reader check has no Fail; "checked before shipping" when that check is older than the shipment, worked out
-    here, never stored) or Needs Rework (a Fail). After a shipment, the result's `newer` line names what comes next: a
-    session finished and not applied, else one being reviewed (`newer`: {'finished': id, 'open': id}, from
-    sessions.newer()), else, when the current file is not the shipped one, whether it is ready to ship (`session`: the
-    current version's session)."""
+def evaluation_line(rel, cur):
+    """(ok, text) for "Ready to Ship?"'s "Accessibility Evaluation" line: Completed, with the issues noted, or Not Completed
+    with what is missing (13 §5.1)."""
+    ev = evaluation(rel, cur)
+    if ev['complete']: return True, 'Completed' + (f' ({noted(ev["issues"])})' if ev['issues'] else '')
+    missing = []
+    for s in SECTIONS:
+        p = ev[s]; name = SECTION_NAMES[s]
+        if p['state'] == 'not recorded': missing.append((s, 'not recorded'))
+        elif p['state'] == 'earlier version':
+            ses = _session(p['check'])
+            missing.append((s, 'recorded on an earlier version' + (f', {ses}' if ses else '')))
+        elif p['state'] == 'could not be read': missing.append((s, 'could not be read in full: record it again'))
+    if len(missing) == 2 and all(w == 'not recorded' for _, w in missing): why = 'neither part recorded for this version'
+    else: why = '; '.join(f'{SECTION_NAMES[s]}: {w}' for s, w in missing)
+    return False, f'Not Completed ({why}' + (f'; {noted(ev["issues"])}' if ev['issues'] else '') + ')'
+
+NOT_READY, PENDING, READY, SHIPPED = 'Not Ready', 'Pending Evaluation', 'Ready', 'Shipped'
+
+def pre_status(rel, sha, base_ok):
+    """(name, issues) for a version before shipping: Not Ready (a base requirement unsatisfied), Pending Evaluation (the
+    evaluation not completed) or Ready."""
+    ev = evaluation(rel, sha)
+    return (NOT_READY if not base_ok else READY if ev['complete'] else PENDING), ev['issues']
+
+def with_issues(name, n): return name + (f' · {noted(n)}' if n else '')
+
+def status(rel, cur, base_ok, newer=None, session=None):
+    """{name, text, newer, shipment, issues}. Before any shipment: the current version's Not Ready, Pending Evaluation or
+    Ready (base_ok: the work order, the OCR text and the safety checks satisfied). Once a version has shipped (and is not
+    withdrawn), the status is about the shipped copy: Shipped, with the issues noted on that file. After a shipment, the
+    `newer` line names what comes next: a session finished and not applied, else one being reviewed (`newer`:
+    {'finished': id, 'open': id}, from sessions.newer()), else, when the current file is not the shipped one, the current
+    version's own status (`session`: its session). "· N issues noted" follows any status whose version has Fails."""
     ships = live_shipments(rel)
     if not ships:
-        n = READY if ready else NOT_READY
-        return {'name': n, 'text': n, 'newer': None, 'shipment': None}
+        name, n = pre_status(rel, cur, base_ok)
+        return {'name': name, 'text': with_issues(name, n), 'newer': None, 'shipment': None, 'issues': n}
     s = ships[-1]; ssha = sha_of(s)
-    c = latest(rel, 'screen_reader', ssha)
-    if c is None: name = text = SHIPPED
-    elif failed(c, 'screen_reader'): name = text = NEEDS_REWORK
-    else:
-        name = VERIFIED
-        text = f'{VERIFIED} (checked before shipping, {day(c.get("recorded"))})' if str(c.get('recorded') or '') < str(s.get('shipped') or '') else VERIFIED
-    n = newer or {}; line = None
-    if str(n.get('finished') or '').isdigit(): line = f'Newer version: Session {int(n["finished"])} finished, not applied'
-    elif str(n.get('open') or '').isdigit(): line = f'Newer version: Session {int(n["open"])} being reviewed'
-    elif ssha != cur: line = (f'Newer version (Session {int(session)})' if str(session or '').isdigit() else 'Newer version') + f': Ready to Ship? {"Yes" if ready else "No"}'
-    return {'name': name, 'text': text, 'newer': line, 'shipment': s.get('n')}
+    n = evaluation(rel, ssha)['issues']
+    nw = newer or {}; line = None
+    if str(nw.get('finished') or '').isdigit(): line = f'Newer version: Session {int(nw["finished"])} finished, not applied'
+    elif str(nw.get('open') or '').isdigit(): line = f'Newer version: Session {int(nw["open"])} being reviewed'
+    elif ssha != cur:
+        cname, cn = pre_status(rel, cur, base_ok)
+        line = (f'Newer version (Session {int(session)})' if str(session or '').isdigit() else 'Newer version') + f': {with_issues(cname, cn)}'
+    return {'name': SHIPPED, 'text': with_issues(SHIPPED, n), 'newer': line, 'shipment': s.get('n'), 'issues': n}
 
 def state(rel, section, c, cur):
-    """A check's state, worked out now: counts / failed (on this version) or earlier version."""
+    """A result's state, worked out now: completed / could not be read (on this version) or earlier version."""
     if sha_of(c) != cur: return 'earlier version'
-    return 'failed' if failed(c, section) else 'counts'
+    return 'completed' if complete(c, section) else 'could not be read'
 
 def mirror(rel, cur):
-    """record.json's copy for the archive (never read back for a decision): the latest check of each section with its
-    state, and the shipments."""
+    """record.json's copy for the archive (never read back for a decision): the latest result of each part with its
+    state and issues, and the shipments."""
     out = {'schema': rel['checks'].get('schema', SCHEMA)}
     for s in SECTIONS:
         xs = rel['checks'].get(s) or []
         c = latest(rel, s, cur) or (xs[-1] if xs else None)
-        out[s] = dict(c, state=state(rel, s, c, cur)) if c else None
+        out[s] = dict(c, state=state(rel, s, c, cur), issues=len(issues(c, s))) if c else None
         out[s + '_count'] = len(xs)
     return out, {'shipped': rel.get('shipped') or []}
 
@@ -271,17 +297,14 @@ def validate(section, data, ctx=None):
     items_in = data.get('items') if isinstance(data.get('items'), dict) else {}
     for k in items_in:
         if k not in spec: errors.append((f'items.{k}', f'unknown item {k!r}'))
-    items = {}; need_pages = False
-    prev_bad = set(failed(prev, section)) if prev else set()
+    items = {}
+    prev_bad = set(issues(prev, section)) if prev else set()    # a Pass after a Fail on the same file still needs a note (S3)
     for x in CHECKLIST[section]:
         k, name = x['key'], x['label']
         it = items_in.get(k) if isinstance(items_in.get(k), dict) else {}
         res = it.get('result')
         note = _text(errors, f'items.{k}.note', f'{name}: Notes', it.get('note'), NOTE_MAX, one_line=True)
         if res in (None, ''):
-            if x.get('optional'):
-                if note: items[k] = {'note': note}
-                continue
             choices = ' or '.join(f'"{RESULT_NAMES[r]}"' for r in x['results'])
             errors.append((f'items.{k}.result', f'Choose {choices.replace(" or ", ", ", len(x["results"]) - 2)} for "{name}".')); continue
         if res not in x['results']:
@@ -292,18 +315,16 @@ def validate(section, data, ctx=None):
             errors.append((f'items.{k}.note', f'Add a note to "{name}": this book has {fnd[x["found"]]}, so say why it does not apply.'))
         elif res == 'pass' and k in prev_bad and not note:
             errors.append((f'items.{k}.note', f'Add a note to "{name}": it failed in the last check of this version, so say what changed.'))
-        if x.get('pages') and res in ('pass', 'fail'): need_pages = True
         items[k] = {'result': res, **({'note': note} if note else {})}
     pg = _clean(fields_in.get('pages_checked'), True)
-    if need_pages or pg:
+    if pg:                                                       # optional (2026-10-31); checked when given
         pname = 'Pages Checked'; n = ctx.get('n_pages') or 10 ** 6
-        if not pg: errors.append(('fields.pages_checked', f'Enter the pages you checked in "{pname}", for example 5, 9-12.'))
-        elif not PAGES.fullmatch(pg): errors.append(('fields.pages_checked', f'"{pname}": give PDF page numbers and ranges, for example 5, 9-12.'))
+        if not PAGES.fullmatch(pg): errors.append(('fields.pages_checked', f'"{pname}": give PDF page numbers and ranges, for example 5, 9-12.'))
         else:
-            for part in pg.split(','):
-                a, _, b = part.strip().partition('-'); a, b = int(a), int(b or a)
+            for piece in pg.split(','):
+                a, _, b = piece.strip().partition('-'); a, b = int(a), int(b or a)
                 if not 1 <= a <= b <= n:
-                    errors.append(('fields.pages_checked', f'"{pname}" {part.strip()}: ' + ('a range goes from the lower page to the higher one, for example 5-9.' if a > b else f'this book has PDF pages 1 to {n:,}.'))); break
+                    errors.append(('fields.pages_checked', f'"{pname}" {piece.strip()}: ' + ('a range goes from the lower page to the higher one, for example 5-9.' if a > b else f'this book has PDF pages 1 to {n:,}.'))); break
             else: fields['pages_checked'] = pg
     notes = _text(errors, 'notes', 'Other Notes', data.get('notes'), NOTES_MAX, one_line=False)
     if errors: raise Invalid(errors)

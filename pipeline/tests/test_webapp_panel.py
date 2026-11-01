@@ -83,10 +83,14 @@ def test_the_review_page_gets_return_to(tmp_path):
 def test_ready_comes_from_the_glance_then_review_md_then_says_not_recorded(tmp_path):
     R = str(tmp_path)
     g = {'glance': {'ready': True, 'ship': [{'what': 'Safety checks', 'ok': True, 'text': 'OK'}]}}   # a stored `ready` is never trusted
-    assert runs.ready(R, g) == {'answer': 'No', 'lines': ['Safety checks: OK', 'Manual check (PAC): no (not done for this version)'],
+    assert runs.ready(R, g) == {'answer': 'No', 'lines': ['Safety checks: Failed (not every check was recorded)',
+                                                          'Accessibility evaluation: Not Completed (neither part recorded for this version)'],
                                 'status': 'Not Ready', 'source': 'record.json'}
     (tmp_path / 'review.md').write_text('## Overview\n\n**Status:** Ready\n\n**Ready to ship?** Yes\n- Safety checks: OK\n- PAC: not run\n\nmore\n')
-    assert runs.ready(R, {}) == {'answer': 'Yes', 'lines': ['Safety checks: OK', 'PAC: not run'], 'source': 'review.md'}
+    assert runs.ready(R, {}) == {'answer': 'Yes', 'lines': ['Safety checks: OK', 'PAC: not run'], 'status': 'Ready', 'source': 'review.md'}   # an older run
+    for st, ans in (('Ready · 2 issues noted', 'Yes'), ('Pending Evaluation', 'No'), ('Shipped', 'No'), ('Shipped · Newer version (Session 7): Ready', 'No')):
+        (tmp_path / 'review.md').write_text(f'## Overview\n\n**Status:** {st}\n\n**Ready to ship?**\n- ✓ Safety Checks: Passed\n- Accessibility Evaluation: Completed\n\n')
+        assert runs.ready(R, {}) == {'answer': ans, 'lines': ['Safety Checks: Passed', 'Accessibility Evaluation: Completed'], 'status': st, 'source': 'review.md'}   # H9
     (tmp_path / 'review.md').write_text('# an old review.md\n')
     assert runs.ready(R, {})['text'] == 'not recorded for this run' and runs.ready(R, {})['answer'] is None
 
@@ -890,11 +894,12 @@ def test_review_10_boxes_and_report_wording():
     assert 'id="hideHdr"' in page and 'id="showHdr"' in page and "localStorage.setItem('review:header'" in page and "setAttribute('aria-expanded', String(shown))" in page
     assert 'overscroll-behavior: contain; font-size: 14px' in page and 'Current result (' not in page and 'Show "Not Reviewed"' in page
     assert 'OCR Text Approved:' not in page and 'Previous Verdicts (' in page and 'I can read ' in page and 'final sign-off' not in rh
-    s = {'what': 'Work order approved on the review page', 'text': 'no (reviewed by Kim on 2026-10-30: 205 decisions accepted without review)'}
-    assert H.ship_words(s) == 'no (205 decisions not reviewed)'
-    assert H.ship_words(dict(s, text='no (run without REVIEW=1)')) == 'no (applied without a review)'          # review 12 L2
-    assert H.ship_words(dict(s, text='no (reviewed by hand edit by K on D, not on the review page)')).startswith('no (reviewed by hand edit')
-    assert H.ship_words({'what': 'OCR text approved', 'text': 'yes (approved by K on D)'}) == 'yes (approved by K on D)'
+    from lib import glance as G                                                   # one wording from 2026-10-31: glance writes it
+    rv = {'reviewer': 'Kim', 'date': '2026-10-30', 'method': 'page', 'counts': {'accepted_unreviewed': 205}}
+    g = G.glance({'review': {'workorder': rv}}, None, {}, [], sections=[])
+    assert g['ship'][0]['text'] == 'Not Approved (205 decisions not reviewed; reviewed by Kim on October 30, 2026)'
+    assert G.glance({}, None, {}, [], sections=[])['ship'][0]['text'] == 'Not Approved (applied without a review)'   # review 12 L2
+    assert 'ship_words' not in rh
 
 def test_auto_save_and_the_finish_check():
     """Handoff 13 (#48, the smaller part): no Save button; every change is saved about a second after it is made (POST
@@ -959,11 +964,12 @@ def test_review_14_and_the_last_pass():
     assert 'OCR review page' not in js and 'Open the OCR Text Review Page' in js and 'OCR review page' not in page
 
 def test_the_ready_to_ship_card_and_select():
-    """The pre-PR pass: the card's marks in one centred column (a bullet, or a check when met), its four condition names
-    as written for review.html (review.md keeps glance's), and "Select", not "press", in the app's messages."""
+    """The pre-PR pass: the card's marks in one centred column (a bullet, or a check when satisfied), its four
+    requirements' names (one table, the card and review.md), and "Select", not "press", in the app's messages."""
     import report_html as H
-    assert H.SHIP_NAMES == {'Work order approved on the review page': 'Work Order approved on the review page', 'OCR text approved': 'OCR Text approved',
-                            'Safety checks': 'Safety Checks', 'Manual check (PAC)': 'Manual Check (PAC)', 'Screen-reader check': 'Screen-Reader Check'}   # the fifth: #38
+    from lib import glance as G                                                   # the four requirements' names (2026-10-31)
+    assert G.SHIP_NAMES == {'Work order approved on the review page': 'Work Order Approval', 'OCR text approved': 'OCR Text Approval',
+                            'Safety checks': 'Safety Checks', 'Accessibility evaluation': 'Accessibility Evaluation'}
     rh = src('report_html.py')
     assert '<ul role="list">' in rh and '<li><span class="mark" aria-hidden="true"><i class="bul"></i></span>' in rh
     for f in ('webapp/panel.js', 'webapp/runs.py', 'report_html.py', 'review/page.html'):

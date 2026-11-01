@@ -26,77 +26,105 @@ def ship(sha, n=1, shipped='2026-11-02T09:00:00', **kw): return {'n': n, 'shippe
 
 def failing(items, key): return dict(items, **{key: {'result': 'fail', 'note': 'heard it wrong'}})
 
-# ------------------------------------------------------------------ the PAC line: checks follow the hash, whatever it is
-def test_pac_line_counts_exactly_when_the_hash_is_the_same():
-    assert REL.pac_line(rel(), A) == (False, 'no (not done for this version)')
-    r = rel(pac=[chk(A, PAC_OK)])
-    assert REL.pac_line(r, A) == (True, 'yes (Kim on 2026-11-01)')               # the same hash (an apply that gave the same bytes): it counts
-    ok, txt = REL.pac_line(r, B)                                                 # another hash: an earlier version
-    assert not ok and txt == 'no (done on an earlier version, Session 2, by Kim on 2026-11-01; check this version)'
-    assert REL.pac_line(r, None)[0] is False                                     # no recorded hash: nothing counts
-    ok, txt = REL.pac_line(rel(pac=[chk(A, failing(PAC_OK, 'contrast'))]), A)
-    assert not ok and txt == 'no (1 item failed: Contrast; Kim on 2026-11-01)'
+# ------------------------------------------------------------------ the evaluation line: results follow the hash, whatever it is
+def test_evaluation_line_counts_exactly_when_the_hash_is_the_same():
+    assert REL.evaluation_line(rel(), A) == (False, 'Not Completed (neither part recorded for this version)')
+    r = rel(pac=[chk(A, PAC_OK)], sr=[chk(A, SR_OK)])
+    assert REL.evaluation_line(r, A) == (True, 'Completed')                      # the same hash (an apply that gave the same bytes): it counts
+    ok, txt = REL.evaluation_line(r, B)                                          # another hash: an earlier version
+    assert not ok and txt == ('Not Completed (PAC 2026: recorded on an earlier version, Session 2; '
+                              'Screen-Reader Test: recorded on an earlier version, Session 2)')
+    assert REL.evaluation_line(r, None)[0] is False                              # no recorded hash: nothing counts
+    ok, txt = REL.evaluation_line(rel(pac=[chk(A, failing(PAC_OK, 'contrast'))]), A)   # one part, with a Fail
+    assert not ok and txt == 'Not Completed (Screen-Reader Test: not recorded; 1 issue noted)'
+    r = rel(pac=[chk(A, failing(PAC_OK, 'contrast'))], sr=[chk(A, failing(failing(SR_OK, 'links'), 'tables'))])
+    assert REL.evaluation_line(r, A) == (True, 'Completed (3 issues noted)')     # a Fail never blocks (2026-10-31)
 
-def test_v1_reads_fail_closed_and_the_pdfua_item_never_blocks():
-    assert REL.failed(chk(A, dict(PAC_OK, pac_pdfua={'result': 'fail', 'note': 'x'})), 'pac') == []
-    assert REL.failed(chk(A, dict(PAC_OK, contrast={'result': 'maybe'})), 'pac') == ['contrast']           # an unknown result
-    assert REL.failed(chk(A, dict(PAC_OK, contrast={'result': 'fail', 'note': 'n', 'accepted': {'by': 'X'}})), 'pac') == ['contrast']
-    assert REL.failed(chk(A, dict(PAC_OK, contrast={'result': 'pass', 'accepted': {'by': 'X'}})), 'pac') == ['contrast']
-    assert REL.failed(chk(A, {k: v for k, v in PAC_OK.items() if k != 'colour'}), 'pac') == ['colour']   # missing
-    assert REL.failed(chk(A, dict(PAC_OK, later_item={'result': 'fail'})), 'pac') == ['later_item']    # a later version's item
+def test_reads_fail_closed_and_retired_items_never_count():
+    assert REL.complete(chk(A, PAC_OK), 'pac') and REL.issues(chk(A, PAC_OK), 'pac') == []
+    old = chk(A, dict(PAC_OK, pac_pdfua={'result': 'not_run'}), fields={'pac_version': '2026.1'})    # try-rv1's older shape
+    assert REL.complete(old, 'pac') and REL.issues(dict(old, items=dict(old['items'], pac_pdfua={'result': 'fail', 'note': 'x'})), 'pac') == []
+    assert not REL.complete(chk(A, dict(PAC_OK, contrast={'result': 'maybe'})), 'pac')                  # an unknown result
+    assert not REL.complete(chk(A, {k: v for k, v in PAC_OK.items() if k != 'colour'}), 'pac')          # missing
+    assert not REL.complete(chk(A, dict(PAC_OK, later_item={'result': 'pass'})), 'pac')                 # an item this code does not know
+    acc = chk(A, dict(PAC_OK, contrast={'result': 'fail', 'note': 'n', 'accepted': {'by': 'X'}}))       # once reserved: read by its result
+    assert REL.complete(acc, 'pac') and REL.issues(acc, 'pac') == ['contrast']
+    bad = chk(A, dict(failing(PAC_OK, 'contrast'), colour={'result': 'maybe'}))                         # unreadable: its Fails still count (H4)
+    r = rel(pac=[bad], sr=[chk(A, SR_OK)])
+    assert REL.evaluation_line(r, A) == (False, 'Not Completed (PAC 2026: could not be read in full: record it again; 1 issue noted)')
+    assert REL.part(r, 'pac', A)['state'] == 'could not be read'
 
 # ------------------------------------------------------------------ the status
 def test_status_before_and_after_shipping():
-    assert REL.status(rel(), A, False)['name'] == 'Not Ready'
-    assert REL.status(rel(), A, True)['name'] == 'Ready'
-    assert REL.status(rel(shipped=[ship(A)]), A, True)['text'] == 'Shipped'
-    after = chk(A, SR_OK, recorded='2026-11-03T10:00:00')
-    assert REL.status(rel(sr=[after], shipped=[ship(A)]), A, True)['text'] == 'Verified'
-    before = chk(A, SR_OK, recorded='2026-11-01T10:00:00')                     # before the shipment, on the same file: derived
-    st = REL.status(rel(sr=[before], shipped=[ship(A)]), A, True)
-    assert st['name'] == 'Verified' and st['text'] == 'Verified (checked before shipping, 2026-11-01)'
-    assert REL.status(rel(sr=[chk(A, failing(SR_OK, 'tables'))], shipped=[ship(A)]), A, True)['name'] == 'Needs Rework'
-    assert REL.status(rel(sr=[chk(B, SR_OK)], shipped=[ship(A)]), A, True)['name'] == 'Shipped'   # another file's check
+    both = dict(pac=[chk(A, PAC_OK)], sr=[chk(A, SR_OK)])
+    assert REL.status(rel(), A, False)['text'] == 'Not Ready'
+    assert REL.status(rel(), A, True)['text'] == 'Pending Evaluation'
+    assert REL.status(rel(pac=[chk(A, failing(PAC_OK, 'contrast'))]), A, True)['text'] == 'Pending Evaluation · 1 issue noted'
+    assert REL.status(rel(pac=[chk(A, failing(PAC_OK, 'contrast'))]), A, False)['text'] == 'Not Ready · 1 issue noted'   # Q1: on every status
+    assert REL.status(rel(**both), A, True)['text'] == 'Ready'
+    st = REL.status(rel(pac=[chk(A, failing(PAC_OK, 'contrast'))], sr=[chk(A, failing(SR_OK, 'links'))]), A, True)
+    assert st['name'] == 'Ready' and st['text'] == 'Ready · 2 issues noted' and st['issues'] == 2
+    assert REL.status(rel(**both, shipped=[ship(A)]), A, True)['text'] == 'Shipped'
+    r = rel(pac=[chk(A, PAC_OK)], sr=[chk(A, failing(SR_OK, 'tables'), recorded='2026-11-03T10:00:00')], shipped=[ship(A)])
+    assert REL.status(r, A, True)['text'] == 'Shipped · 1 issue noted'               # a test after shipping, on the shipped file
+    r = rel(pac=[chk(A, PAC_OK), chk(B, failing(PAC_OK, 'colour'))], sr=[chk(A, SR_OK)], shipped=[ship(A)])
+    assert REL.status(r, B, True)['text'] == 'Shipped'                                # Q5: the shipped file's issues, not the current one's
 
 def test_status_withdrawal_falls_back_and_the_newer_version_line():
     w = ship(B, 2, withdrawn={'by': 'Lee', 'date': '2026-11-04', 'reason': 'wrong file'})
     assert REL.status(rel(shipped=[ship(A), w]), A, False)['name'] == 'Shipped'          # the latest non-withdrawn: shipment 1
-    assert REL.status(rel(shipped=[dict(ship(A), withdrawn={'by': 'L'})]), A, True)['name'] == 'Ready'   # none left: pre-ship rules
-    r = rel(sr=[chk(A, failing(SR_OK, 'tables'))], shipped=[ship(A)])
-    st = REL.status(r, B, False, None, '003')                                     # a newer version, applied: Needs Rework stays
-    assert st['name'] == 'Needs Rework' and st['newer'] == 'Newer version (Session 3): Ready to Ship? No'
+    assert REL.status(rel(shipped=[dict(ship(A), withdrawn={'by': 'L'})]), A, True)['name'] == 'Pending Evaluation'   # none left
+    r = rel(pac=[chk(B, failing(PAC_OK, 'contrast'))], sr=[chk(B, SR_OK)], shipped=[ship(A)])
+    st = REL.status(r, B, True, None, '003')                                       # a newer version, applied: its own status
+    assert st['name'] == 'Shipped' and st['newer'] == 'Newer version (Session 3): Ready · 1 issue noted'
+    assert REL.status(rel(shipped=[ship(A)]), B, True, None, '003')['newer'] == 'Newer version (Session 3): Pending Evaluation'
     assert REL.status(r, B, False, {'finished': None, 'open': '004'})['newer'] == 'Newer version: Session 4 being reviewed'
     assert REL.status(r, A, False, {'finished': None, 'open': '004'})['newer'] == 'Newer version: Session 4 being reviewed'   # the shipped file is still current
     assert REL.status(r, A, False, {'finished': '004', 'open': '005'})['newer'] == 'Newer version: Session 4 finished, not applied'
     assert REL.status(r, A, False)['newer'] is None
     assert REL.status(rel(), A, False, {'finished': '004', 'open': None})['newer'] is None              # before any shipment: no line
 
-def test_a_failed_screen_reader_check_on_this_version_keeps_ready_at_no():
-    g = {'schema': G.SCHEMA, 'ship': [{'what': w, 'ok': True, 'text': 'yes'} for w in G.SHIP_BASE]}
+FIVE = [{'what': label, 'ok': True} for _, label in G.SAFETY]
+def test_a_failed_screen_reader_test_never_blocks_ready():
+    g = {'schema': G.SCHEMA, 'ship': [{'what': w, 'ok': True, 'text': 'x'} for w in G.SHIP_BASE], 'safety': FIVE, 'needs_person': {'total': 0}}
     rec = {'document': {'output_sha256': A}}
-    assert G.with_release(g, rec, rel(pac=[chk(A, PAC_OK)]))['ready'] is True
+    out = G.with_release(g, rec, rel(pac=[chk(A, PAC_OK)]))
+    assert out['ready'] is False and out['status']['text'] == 'Pending Evaluation' and out['ship'][-1]['what'] == G.SHIP_EVAL
     out = G.with_release(g, rec, rel(pac=[chk(A, PAC_OK)], sr=[chk(A, failing(SR_OK, 'links'))]))
-    assert out['ready'] is False and out['ship'][-1]['what'] == 'Screen-reader check'
-    assert out['ship'][-1]['text'] == 'no (1 item failed on this version: Links Say Where They Go; Kim on 2026-11-01)'
-    assert len(G.with_release(g, rec, rel(pac=[chk(A, PAC_OK)], sr=[chk(B, failing(SR_OK, 'links'))]))['ship']) == 4   # another file: no line
+    assert out['ready'] is True and out['status']['text'] == 'Ready · 1 issue noted'
+    assert out['ship'][-1] == {'what': G.SHIP_EVAL, 'ok': True, 'text': 'Completed (1 issue noted)'} and len(out['ship']) == 4
+    out = G.with_release(g, rec, rel(pac=[chk(A, PAC_OK)], sr=[chk(A, SR_OK)], shipped=[ship(A)]))
+    assert out['ready'] is False and out['status']['name'] == 'Shipped'               # H9: ready means the status is Ready
 
-def test_ready_needs_the_current_schema_and_all_three_base_lines():
-    """R2: a 0.3 glance (five safety checks) with a counting PAC check reads No; so does a 0.4 glance missing a base line."""
-    rec = {'document': {'output_sha256': A}}; r = rel(pac=[chk(A, PAC_OK)])
-    base = [{'what': w, 'ok': True, 'text': 'yes'} for w in G.SHIP_BASE]
-    assert G.with_release({'schema': G.SCHEMA, 'ship': base}, rec, r)['ready'] is True
-    assert G.with_release({'schema': 'glance/0.3', 'ship': base}, rec, r)['ready'] is False
-    assert G.with_release({'schema': G.SCHEMA, 'ship': base[:1] + base[2:]}, rec, r)['ready'] is False
-    assert G.with_release({'schema': G.SCHEMA, 'ship': []}, rec, r)['ready'] is False             # the PAC line alone
+def test_ready_needs_glance_04_or_05_all_three_base_lines_and_the_five_checks():
+    """H1: a 0.3 glance is never Ready (it predates three base rules); H2: a 0.4 glance's sixth check is dropped and its
+    Safety line rewritten from the five damage checks."""
+    rec = {'document': {'output_sha256': A}}; r = rel(pac=[chk(A, PAC_OK)], sr=[chk(A, SR_OK)])
+    base = [{'what': w, 'ok': True, 'text': 'x'} for w in G.SHIP_BASE]
+    def g(schema=G.SCHEMA, ship=base, safety=FIVE): return {'schema': schema, 'ship': ship, 'safety': safety, 'needs_person': {'total': 0}}
+    assert G.with_release(g(), rec, r)['ready'] is True
+    assert G.with_release(g('glance/0.3'), rec, r)['ready'] is False
+    six = FIVE + [{'what': G.SAFETY_VERA, 'ok': False}]
+    old = g('glance/0.4', [base[0], base[1], {'what': 'Safety checks', 'ok': False, 'text': f'failed: {G.SAFETY_VERA}'}], six)
+    out = G.with_release(old, rec, r)
+    assert out['ready'] is True and out['ship'][2] == {'what': 'Safety checks', 'ok': True, 'text': 'Passed'} and len(out['safety']) == 5
+    four = [dict(x) for x in FIVE[:4]]
+    out = G.with_release(g(safety=four), rec, r)
+    assert out['ready'] is False and out['ship'][2]['text'] == 'Failed (not every check was recorded)'
+    bad = [dict(x) for x in FIVE]; bad[1]['ok'] = False
+    assert G.with_release(g(safety=bad), rec, r)['ship'][2]['text'] == 'Failed (text unchanged)'
+    assert G.with_release(g(ship=base[:1] + base[2:]), rec, r)['ready'] is False
+    assert G.with_release(g(ship=[]), rec, r)['ready'] is False                     # the evaluation line alone
 
 def test_a_stored_old_glance_marked_ready_is_not_ready_now():
     from webapp import runs
     old = {'schema': 'glance/0.3', 'ready': True, 'ship': [{'what': w, 'ok': True, 'text': 'yes'} for w in G.SHIP_BASE]
-           + [{'what': 'Manual check (PAC)', 'ok': None, 'text': 'not run'}]}
+           + [{'what': 'Manual check (PAC)', 'ok': None, 'text': 'not run'}], 'safety': FIVE}
     r = runs.ready('/nonexistent', {'glance': old, 'document': {}})
-    assert r['answer'] == 'No' and r['status'] == 'Not Ready' and r['lines'][-1] == 'Manual check (PAC): no (not done for this version)'
+    assert r['answer'] == 'No' and r['status'] == 'Not Ready'
+    assert r['lines'][-1] == 'Accessibility evaluation: Not Completed (neither part recorded for this version)'
 
-# ------------------------------------------------------------------ the sixth safety check
+# ------------------------------------------------------------------ the veraPDF finding (was the sixth safety check)
 SAFE = ['Every page looks the same as the original', 'Published text unchanged', 'All content tagged or marked as decoration',
         'Tag-tree index points only into the tree', 'Fonts: every embedded font program could be read']
 def md_with(vera_ok):
@@ -104,27 +132,30 @@ def md_with(vera_ok):
     return '\n'.join(['# Remediation Review: b.pdf', '', '## Automated Checks', '', '| Check | Result | Detail |', '|---|---|---|'] + rows + [''])
 def vera(rules): return {'rules': rules, 'totals': {'wcag_failed_rules': 0, 'wcag_failed_checks': 0}}
 
-def test_sixth_safety_check_counts_wcag_rules_only_and_not_run_is_not_checked():
+def test_newly_failing_is_a_finding_not_a_safety_check():
     pdfua_only = {'verapdf': {'before': vera([]), 'after': vera([{'id': '7.9-1', 'scope': 'ua_only', 'failed': 3}])}}
     g = G.glance(pdfua_only, md_with(False))
-    assert g['safety_ok'] and len(g['safety']) == 6
+    assert g['safety_ok'] and len(g['safety']) == 5
     vi = [x for x in g['issues'] if x['text'].startswith('veraPDF:')]
-    assert vi and vi[0]['rank'] == 2 and vi[0]['kind'] == 'check'               # not a safety issue: the Safety card says OK
+    assert vi and vi[0]['rank'] == 2 and vi[0]['kind'] == 'check'               # PDF/UA only: an ordinary check
     wcag_new = {'verapdf': {'before': vera([]), 'after': vera([{'id': '7.18.1-1', 'scope': 'wcag', 'failed': 1}])}}
-    g = G.glance(wcag_new, md_with(False))
-    assert not g['safety_ok'] and g['ship'][2]['text'] == f'failed: {G.SAFETY_VERA}'
-    assert [x for x in g['issues'] if x['text'].startswith('veraPDF:')][0]['rank'] == 0
+    md = md_with(False).replace('| Fonts: every embedded font program could be read | OK |', '| Fonts: every embedded font program could be read | OK |') \
+        + '| Work order reviewed by a person before it was applied | **CHECK** | x |\n'
+    g = G.glance(wcag_new, md)
+    assert g['safety_ok'] and g['ship'][2]['text'] == 'Passed'
+    vi = [x for x in g['issues'] if x['rank'] == 1]
+    assert vi[0]['text'].startswith('veraPDF:') and vi[0]['kind'] == 'check' and 'lead' not in vi[0]   # first among rank 1 (H7)
+    assert g['needs_person']['check_rows'] == 2                                  # counted once, as its CHECK row
     g = G.glance({'verapdf': {'before': {'not_run': 'VERAPDF=off'}, 'after': {'not_run': 'VERAPDF=off'}}}, md_with(False))
-    assert not g['safety_ok'] and not g['ready'] and g['safety'][-1]['state'] == 'not checked'
-    assert g['ship'][2]['text'] == f'not checked: {G.SAFETY_VERA} (veraPDF did not run on both files)'
-    assert 'NOT CHECKED – no WCAG rule newly failing (veraPDF) (veraPDF did not run on both files)' in '\n'.join(G.glance_md(g))
-    import report_html as H
-    assert H.safety_state(g) == 'not checked'
+    assert g['safety_ok'] and [x for x in g['issues'] if x['text'].startswith('veraPDF:')][0]['rank'] == 1   # not compared: a finding (Q6)
+    assert 'NOT CHECKED' not in '\n'.join(G.glance_md(g)) and '**Safety checks:** ' + ' · '.join(f'OK ✔ {x}' for _, x in G.SAFETY) in '\n'.join(G.glance_md(g))
 
 def test_status_line_sits_above_ready_to_ship_and_the_old_heading_still_parses():
     L = G.glance_md(G.glance({}, md_with(True)))
     i = L.index('**Status:** Not Ready')
-    assert L[i + 2] == '**Ready to ship?** No' and L[i + 3].startswith('- ')
+    assert L[i + 2] == '**Ready to ship?**' and L[i + 3] == '- Work Order Approval: Not Approved (applied without a review)'
+    assert L[i + 4] == '- ✓ OCR Text Approval: Not Required (no OCR text was added during intake)' and L[i + 5] == '- ✓ Safety Checks: Passed'
+    assert L[i + 6] == '- Accessibility Evaluation: Not Completed (neither part recorded for this version)'
     rows, _ = G.parse_md(md_with(True).replace('## Automated Checks', '## Automated checks'))
     assert len(rows) == 6
 
@@ -137,7 +168,7 @@ def test_validate_fields_and_notes():
         return dict(e.value.errors)
     assert 'items.contrast.note' in errs(dict(good, items=dict(PAC_OK, contrast={'result': 'fail'})))     # a Fail needs a note
     assert 'items.pac_wcag.result' in errs(dict(good, items=dict(PAC_OK, pac_wcag={'result': 'na'})))     # PAC itself: no N/A
-    assert 'fields.pages_checked' in errs(dict(good, fields={}))                                          # the spot-check's pages
+    assert REL.validate('pac', dict(good, fields={}), {'n_pages': 20})['fields'] == {}                   # Pages Checked: optional (2026-10-31)
     assert 'fields.pages_checked' in errs(dict(good, fields={'pages_checked': '30'}))
     assert 'by' in errs(dict(good, by=' '))
     assert 'items.contrast.note' in errs(dict(good, items=dict(PAC_OK, contrast={'result': 'pass', 'note': 'a | b'})))
@@ -209,7 +240,7 @@ def test_first_check_takes_the_disk_hash_after_the_sessions_own(tmp_path):
     c = M.record(R, 'pac', pac_data(), say=lambda *a: None)
     rec = core.load(os.path.join(R, 'record.json'))
     assert c['pdf']['sha256'] == disk and rec['document']['output_sha256'] == disk
-    assert rec['document']['output_sha256_from'].startswith('first check, ') and rec['manual_checks']['pac']['state'] == 'counts'
+    assert rec['document']['output_sha256_from'].startswith('first check, ') and rec['manual_checks']['pac']['state'] == 'completed'
     R2 = finished_run(tmp_path / 'two', session_sha='0' * 64)                   # the session's own hash matches: accepted
     core.save(os.path.join(R2, 'reviews', 'sessions', '002.json'),               # (pikepdf's /ID follows the clock: hash this file)
               {'id': '002', 'status': 'applied', 'version': {'pdf_sha256': REL.sha_file(os.path.join(R2, 'b_remediated.pdf'))}})
@@ -275,7 +306,7 @@ def test_promote_remirrors_a_check_recorded_during_the_reapply(tmp_path):
     core.save(os.path.join(R, 'release', 'checks.json'), {'schema': REL.SCHEMA, 'pac': [chk(disk, PAC_OK)], 'screen_reader': []})
     S.promote(R, '003', 'b_remediated.pdf', say=lambda *a: None)
     rec = core.load(os.path.join(R, 'record.json'))
-    assert rec['manual_checks']['pac']['state'] == 'counts' and not os.path.exists(os.path.join(R, 'reviews', 'promoting.json'))
+    assert rec['manual_checks']['pac']['state'] == 'completed' and not os.path.exists(os.path.join(R, 'reviews', 'promoting.json'))
     assert os.path.exists(os.path.join(R, 'reviews', 'versions', '002', 'record.json'))
 
 def test_mark_pending_writes_whole_files_under_the_lock(tmp_path):
@@ -335,4 +366,4 @@ def test_a_check_is_rolled_back_when_the_refresh_fails(tmp_path, monkeypatch):
     with pytest.raises(ImportError): M.record(R, 'pac', pac_data(), say=lambda *a: None)
     assert open(os.path.join(R, 'release', 'checks.json')).read() == kept   # back to the one that worked
     rec = core.load(os.path.join(R, 'record.json'))
-    assert REL.pac_line(REL.load(R), rec['document']['output_sha256'])[0] is True   # it counts on the same file
+    assert REL.part(REL.load(R), 'pac', rec['document']['output_sha256'])['state'] == 'completed'   # it counts on the same file
