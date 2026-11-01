@@ -2,13 +2,13 @@
 
 Result: `cadaverous_remediated.pdf`
 
-323 pages · run October 31, 2026 at 9:46 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+323 pages · run November 1, 2026 at 10:47 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.8s · audit 31.4s · reuse saved reply 1.2s · apply 105.1s · verify 52.0s · total 191.5s
+Time: intake 1.9s · audit 34.1s · reuse saved reply 1.3s · apply 107.1s · verify 57.3s · total 201.7s
 
 ## Overview
 
@@ -18,9 +18,9 @@ Time: intake 1.8s · audit 31.4s · reuse saved reply 1.2s · apply 105.1s · ve
 
 **Ready to ship?**
 - Work Order Approval: Not Approved (applied without a review)
-- ✓ OCR Text Approval: Not Required (no OCR text was added during intake)
+- ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
-- Accessibility Evaluation: Not Completed (neither part recorded for this version)
+- Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 5 (4 deferred by the AI · 1 deferred by the executor · 0 CHECK rows)  

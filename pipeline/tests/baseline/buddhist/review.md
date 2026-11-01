@@ -2,13 +2,13 @@
 
 Result: `buddhist_remediated.pdf`
 
-213 pages · run October 31, 2026 at 9:43 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+213 pages · run November 1, 2026 at 10:44 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.5s · audit 47.6s · reuse saved reply 1.3s · apply 36.6s · verify 77.1s · total 163.1s
+Time: intake 0.3s · audit 57.4s · reuse saved reply 1.4s · apply 32.7s · verify 71.0s · total 162.8s
 
 ## Overview
 
@@ -18,9 +18,9 @@ Time: intake 0.5s · audit 47.6s · reuse saved reply 1.3s · apply 36.6s · ver
 
 **Ready to ship?**
 - Work Order Approval: Not Approved (applied without a review)
-- ✓ OCR Text Approval: Not Required (no OCR text was added during intake; the publisher's text layer is OCR, see §4)
+- ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
-- Accessibility Evaluation: Not Completed (neither part recorded for this version)
+- Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 12 (9 deferred by the AI · 1 deferred by the executor · 2 CHECK rows)  

@@ -2,13 +2,13 @@
 
 Result: `translation_remediated.pdf`
 
-257 pages · run October 31, 2026 at 9:43 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+257 pages · run November 1, 2026 at 10:44 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 2.2s · audit 41.6s · reuse saved reply 1.4s · apply 159.6s · verify 71.4s · total 276.2s
+Time: intake 1.8s · audit 51.4s · reuse saved reply 1.6s · apply 153.5s · verify 71.2s · total 279.5s
 
 ## Overview
 
@@ -18,9 +18,9 @@ Time: intake 2.2s · audit 41.6s · reuse saved reply 1.4s · apply 159.6s · ve
 
 **Ready to ship?**
 - Work Order Approval: Not Approved (applied without a review)
-- ✓ OCR Text Approval: Not Required (no OCR text was added during intake)
+- ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
-- Accessibility Evaluation: Not Completed (neither part recorded for this version)
+- Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 8 (5 deferred by the AI · 1 deferred by the executor · 2 CHECK rows)  
