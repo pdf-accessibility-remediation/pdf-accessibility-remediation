@@ -2,13 +2,13 @@
 
 Result: `buddhist_remediated.pdf`
 
-213 pages · run 2026-10-25T19:12:30 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+213 pages · run 2026-10-31T13:19:52 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.13.5 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.2s · audit 45.8s · reuse saved reply 0.8s · apply 31.8s · verify 62.0s · total 140.6s
+Time: intake 0.4s · audit 83.4s · reuse saved reply 0.6s · apply 66.0s · verify 91.1s · total 241.5s
 
 ## Overview
 
@@ -21,9 +21,9 @@ Time: intake 0.2s · audit 45.8s · reuse saved reply 0.8s · apply 31.8s · ver
 - Manual check (PAC): not run
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 10 (7 deferred by the AI · 1 deferred by the executor · 2 CHECK rows)  
-**AI decisions:** 694 in the work order, applied without review by a person  
-**Fixed automatically (no AI):** tag-tree index entries 212 · OCR fonts given defined glyphs 61 · links tied and described 57 · table header directions 7 · title shown in the window 2 · Document root 1  
+**Needs a person:** 12 (9 deferred by the AI · 1 deferred by the executor · 2 CHECK rows)  
+**AI decisions:** 675 in the work order, applied without review by a person  
+**Fixed automatically (no AI):** tag-tree index entries 214 · OCR fonts given defined glyphs 61 · links tied and described 57 · table header directions 7 · title shown in the window 2 · Document root 1  
 **veraPDF (WCAG 2.2 machine checks):** 6 WCAG rules failing before (69,350 checks) → 0 after (0 checks) · 0 newly failing
 
 Automated checks are evidence, not sign-off.
@@ -32,10 +32,10 @@ Automated checks are evidence, not sign-off.
 |---|---|---|
 | No link whose only text is a URL: 1: PDF 5 (printed iv) | PDF 5 (printed iv) | [§9](#9-links-whose-description-was-only-a-url-1-and-17-addresses-that-look-broken) |
 | Fonts: embedded and mapped to Unicode: 8 not embedded · 0 without ToUnicode | see §8 | [§8](#8-fonts) |
-| text rule "bare page number" matched no text on PDF 24–212 (printed 1–189) | see §14 | [§14](#14-deferred-by-the-executor) |
-| Table of Figure 1 (faculty / object diagram laid out as a table, 20 rows × 5 columns, existing header cells) | PDF 46 (printed 23) | [§13](#13-deferred-by-the-ai) |
-| Reading order and section nesting | PDF 24 (printed 1), PDF 213 (printed 190) | [§13](#13-deferred-by-the-ai) |
-| … and 5 more | | §13 |
+| text rule "page number (bottom)" matched no text on PDF 26–213 (printed 3–190) | see §14 | [§14](#14-deferred-by-the-executor) |
+| OCR text layer quality | 8 pages, PDF 38 (printed 15) to PDF 184 (printed 161) | [§13](#13-deferred-by-the-ai) |
+| OCR word forms with attached footnote numbers or punctuation (ids 173, 184, 191, 196, 216, 219, 230, 265, 27… | see §13 | [§13](#13-deferred-by-the-ai) |
+| … and 7 more | | §13 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -48,7 +48,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | All content tagged or marked as decoration | OK | 0 untagged characters · 0 untagged objects |
 | Untagged paths: none left | OK | 0 untagged paths |
 | Invisible OCR text: every glyph defined | OK | HiddenHorzOCR: blank glyphs added for 1651 glyph references on 61 pages (replay: no page changed) |
-| OCR words: every printed spelling attached | OK | 619 misread forms given their printed spelling in 1020 places |
+| OCR words: every printed spelling attached | OK | 602 misread forms given their printed spelling in 1009 places |
 | Page-level figure wrap | OK | no page with only an untagged drawing |
 | Empty tags removed when proven empty | OK | 0 removed |
 | Tag-tree index points only into the tree | OK | 0 dangling entries · 0 stale entries (marked content no longer drawn) |
@@ -82,6 +82,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 1 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
 | Reading order: no page jumps back up a column (1.3.2) | OK | 0 of 203 pages flagged |
+| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 0 already in the original, of 22 sections and blocks |
 | Title is not a file name or placeholder (2.4.2) | OK | "Buddhist Philosophy: A Historical Analysis" |
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
@@ -92,9 +93,9 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 (printed cover) | — | Cover photograph of a red sandstone figure of the Bodhisattva, presumably Sakya Muni, the Buddha: seated cross-legged with the right hand raised, a topknot and a scalloped halo behind the head, set against a bright lime-green background. Mathura, first or second century A.D. |
+| PDF 1 (printed cover) | — | Cover photograph: a red sandstone figure of a seated Bodhisattva, presumably Sakya Muni, the Buddha (first or second century A.D., from the Katra mound, Mathura). He sits cross-legged with the right hand raised, a topknot on his head and a scalloped halo behind it, against a lime-green background. |
 
-### 2. Elements retyped by the AI (51)
+### 2. Elements retyped by the AI (50)
 
 Check each one is (or is not) a heading as decided.
 
@@ -102,14 +103,13 @@ Check each one is (or is not) a heading as decided.
 |---|---|---|---|
 | PDF 2 (printed i) | Buddhist Philosophy | H3 | H1 |
 | PDF 5 (printed iv) | Library of Congress Cataloging-in-Publication Data | H6 | P |
+| PDF 8 (printed vii) | Contents | H4 | H2 |
 | PDF 8 (printed vii) | Early Buddhism | H5 | P |
 | PDF 8 (printed vii) | Later Buddhism | H5 | P |
-| PDF 8 (printed vii) | Contents | H4 | H2 |
 | PDF 10 (printed ix) | Foreword | H4 | H2 |
 | PDF 12 (printed xi) | Preface | H4 | H2 |
 | PDF 18 (printed xvii) | Acknowledgments | H3 | H2 |
 | PDF 20 (printed xix) | Abbreviations | H3 | H2 |
-| PDF 24 (printed 1) | Early Buddhism | H2 | H2 |
 | PDF 26 (printed 3) | Chapter One Historical Background | P | H2 |
 | PDF 37 (printed 14) | Notes | H5 | H3 |
 | PDF 38 (printed 15) | Selected Readings | H5 | H3 |
@@ -167,7 +167,7 @@ Tables kept as tables (3): check header cells and reading order.
 
 212 of 213 pages are full-page images. Screen readers read the OCR text, which may contain recognition errors (suspect-token rate 14.3 per 1,000). Spot-check these pages against the scan: PDF 38 (printed 15), PDF 47 (printed 24), PDF 65 (printed 42), PDF 77 (printed 54), PDF 90 (printed 67), PDF 119 (printed 96), PDF 150 (printed 127), PDF 184 (printed 161). Misread words the AI could read from the scan are listed under "OCR words given their printed spelling"; other errors stay. Corrections to the text itself are an editorial decision.
 
-### 5. OCR words given their printed spelling (619 forms, 1020 places)
+### 5. OCR words given their printed spelling (602 forms, 1009 places)
 
 The OCR misread these words, mostly letters with diacritics (ā or ū read as "ii"). The AI read each word from a crop of the scan. Screen readers now speak the printed spelling, and copying gives it (ActualText); the OCR text underneath is unchanged, so a text search still finds the OCR spelling. Apps that ignore ActualText (Preview and other PDFKit readers, some checkers) still show the OCR spelling. Check each reading against the scan on its first page.
 
@@ -185,18 +185,18 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | vedanii | vedanā | 7 | PDF 44 (printed 21), PDF 55 (printed 32), PDF 63 (printed 40) |
 | dhammatii | dhammatā | 7 | PDF 49 (printed 26), PDF 87 (printed 64), PDF 94 (printed 71) |
 | upiidiina | upādāna | 7 | PDF 83 (printed 60), PDF 101 (printed 78), PDF 108 (printed 85) |
-| Majjhima-nikiiya | Majjhima-nikāya | 6 | PDF 20 (printed xix), PDF 40 (printed 17), PDF 43 (printed 20) |
+| Majjhima-nikiiya | Majjhima-nikāya | 7 | PDF 20 (printed xix), PDF 40 (printed 17), PDF 43 (printed 20) |
 | avyiikata | avyākata | 6 | PDF 63 (printed 40), PDF 103 (printed 80), PDF 107 (printed 84) |
 | sanniivedayitanirodha | saññāvedayitanirodha | 6 | PDF 99 (printed 76), PDF 101 (printed 78) |
 | asatkiiryaviida | asatkāryavāda | 6 | PDF 129 (printed 106), PDF 130 (printed 107), PDF 153 (printed 130) |
 | Prajiiiipiiramitii | Prajñāpāramitā | 6 | PDF 141 (printed 118), PDF 147 (printed 124), PDF 155 (printed 132) |
 | Subhiiti | Subhūti | 6 | PDF 142 (printed 119), PDF 146 (printed 123), PDF 147 (printed 124) |
+| dhammii | dhammā | 6 | PDF 87 (printed 64), PDF 104 (printed 81), PDF 208 (printed 185) |
 | Anguttara-nikiiya | Aṅguttara-nikāya | 5 | PDF 20 (printed xix), PDF 71 (printed 48), PDF 135 (printed 112) |
 | Chiindogya | Chāndogya | 5 | PDF 31 (printed 8), PDF 34 (printed 11), PDF 37 (printed 14) |
 | samiidhi | samādhi | 5 | PDF 42 (printed 19), PDF 82 (printed 59), PDF 121 (printed 98) |
 | tathatii | tathatā | 5 | PDF 50 (printed 27), PDF 141 (printed 118), PDF 145 (printed 122) |
 | niimariipa | nāmarūpa | 5 | PDF 55 (printed 32), PDF 74 (printed 51), PDF 75 (printed 52) |
-| dhammii | dhammā | 5 | PDF 87 (printed 64), PDF 104 (printed 81), PDF 208 (printed 185) |
 | iiyatana | āyatana | 5 | PDF 118 (printed 95), PDF 143 (printed 120), PDF 182 (printed 159) |
 | riipa | rūpa | 5 | PDF 122 (printed 99), PDF 126 (printed 103), PDF 148 (printed 125) |
 | Vajracchedikii | Vajracchedikā | 5 | PDF 144 (printed 121), PDF 145 (printed 122), PDF 147 (printed 124) |
@@ -217,6 +217,7 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | kattii | kattā | 4 | PDF 191 (printed 168), PDF 192 (printed 169) |
 | gajjitii | gajjitā | 4 | PDF 191 (printed 168), PDF 192 (printed 169) |
 | vassitii | vassitā | 4 | PDF 191 (printed 168), PDF 192 (printed 169) |
+| Brahmajiila-suttanta | Brahmajāla-suttanta | 4 | PDF 178 (printed 155), PDF 185 (printed 162), PDF 203 (printed 180) |
 | dharmakiiya | dharmakāya | 3 | PDF 15 (printed xiv), PDF 141 (printed 118), PDF 161 (printed 138) |
 | Samyutta-nikiiya | Saṃyutta-nikāya | 3 | PDF 21 (printed xx), PDF 60 (printed 37), PDF 107 (printed 84) |
 | jhiina | jhāna | 3 | PDF 29 (printed 6), PDF 206 (printed 183) |
@@ -244,9 +245,10 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | TrifJ1sikii | Triṃśikā | 3 | PDF 170 (printed 147) |
 | iilaya | ālaya | 3 | PDF 170 (printed 147), PDF 174 (printed 151), PDF 178 (printed 155) |
 | vijiiaptimatra | vijñaptimātra | 3 | PDF 172 (printed 149) |
-| Brahmajiila-suttanta | Brahmajāla-suttanta | 3 | PDF 178 (printed 155), PDF 185 (printed 162), PDF 203 (printed 180) |
+| amaritukiima | amaritukāma | 3 | PDF 61 (printed 38), PDF 180 (printed 157) |
+| dhamma-niyiima | dhamma-niyāma | 3 | PDF 87 (printed 64), PDF 97 (printed 74) |
 | Siinyatii | śūnyatā | 3 | PDF 155 (printed 132), PDF 161 (printed 138) |
-| parinirviina | parinirvāṇa | 2 | PDF 10 (printed ix), PDF 130 (printed 107) |
+| parinirviina | parinirvāna | 2 | PDF 10 (printed ix), PDF 130 (printed 107) |
 | siitra | sūtra | 2 | PDF 13 (printed xii), PDF 129 (printed 106) |
 | Siitra | Sūtra | 2 | PDF 13 (printed xii) |
 | abhiiiiiii | abhiññā | 2 | PDF 16 (printed xv), PDF 206 (printed 183) |
@@ -267,7 +269,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | niitta | ñāṇa | 2 | PDF 53 (printed 30) |
 | kamma-niyiima | kamma-niyāma | 2 | PDF 53 (printed 30), PDF 69 (printed 46) |
 | aniitman | anātman | 2 | PDF 61 (printed 38), PDF 177 (printed 154) |
-| amaritukiima | amaritukāma | 2 | PDF 61 (printed 38), PDF 180 (printed 157) |
 | cetanii | cetanā | 2 | PDF 70 (printed 47), PDF 170 (printed 147) |
 | jfvitukiima | jīvitukāma | 2 | PDF 70 (printed 47), PDF 180 (printed 157) |
 | vinniilJa | viññāṇa | 2 | PDF 74 (printed 51), PDF 116 (printed 93) |
@@ -276,7 +277,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | Ambalatthikii | Ambalaṭṭhikā | 2 | PDF 85 (printed 62) |
 | Riihuloviida-sutta | Rāhulovāda-sutta | 2 | PDF 85 (printed 62) |
 | sabbasankhiirasamatha | sabbasaṅkhārasamatha | 2 | PDF 87 (printed 64), PDF 97 (printed 74) |
-| dhamma-niyiima | dhamma-niyāma | 2 | PDF 87 (printed 64), PDF 97 (printed 74) |
 | viriiga | virāga | 2 | PDF 87 (printed 64), PDF 104 (printed 81) |
 | nirodhasamiipatti | nirodhasamāpatti | 2 | PDF 94 (printed 71), PDF 203 (printed 180) |
 | jhiinas | jhānas | 2 | PDF 99 (printed 76), PDF 104 (printed 81) |
@@ -310,6 +310,7 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | Prajiiaparamitas | Prajñāpāramitās | 2 | PDF 188 (printed 165) |
 | Pataiijali | Patañjali | 2 | PDF 193 (printed 170) |
 | iilaya-vijiiiina | ālaya-vijñāna | 2 | PDF 198 (printed 175), PDF 202 (printed 179) |
+| Arya-siilistamba-siitra | Ārya-śālistamba-sūtra | 2 | PDF 202 (printed 179) |
 | viida | vāda | 2 | PDF 208 (printed 185) |
 | nibbiilla | nibbāna | 1 | PDF 10 (printed ix) |
 | jniipiiramitii | jñāpāramitā | 1 | PDF 11 (printed x) |
@@ -323,7 +324,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | Digha-nikiiya | Digha-nikāya | 1 | PDF 20 (printed xix) |
 | Sumangalaviliisinr | Sumaṅgalavilāsinī | 1 | PDF 20 (printed xix) |
 | Digha-nikiiya-atthakathii | Digha-nikāya-aṭṭhakathā | 1 | PDF 20 (printed xix) |
-| tthasiilin | Atthasālini | 1 | PDF 20 (printed xix) |
 | Dhammasanganl-atthakathii | Dhammasaṅganī-aṭṭhakathā | 1 | PDF 20 (printed xix) |
 | Madhyamakakiirikiis | Madhyamakakārikās | 1 | PDF 21 (printed xx) |
 | Sphutiirthabhidharmakosa-vyiikhyii | Sphuṭârthâbhidharmakośa-vyākhyā | 1 | PDF 21 (printed xx) |
@@ -343,7 +343,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | niyati-viida | niyati-vāda | 1 | PDF 35 (printed 12) |
 | briihma(la | brāhmaṇa | 1 | PDF 35 (printed 12) |
 | Siinti-parvan | Śānti-parvan | 1 | PDF 35 (printed 12) |
-| catuyiimasal11vara}.14 | catuyāmasaṃvara | 1 | PDF 36 (printed 13) |
 | viid"i | vādī | 1 | PDF 36 (printed 13) |
 | jniina | jñāna | 1 | PDF 36 (printed 13) |
 | Vriitya | Vrātya | 1 | PDF 37 (printed 14) |
@@ -353,14 +352,12 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | bhiitalfl | bhūtaṃ | 1 | PDF 40 (printed 17) |
 | anassiisika | anassāsika | 1 | PDF 40 (printed 17) |
 | vlmalflsii | vīmaṃsā | 1 | PDF 40 (printed 17) |
-| Brahmajiila-suttanta,8 | Brahmajāla-suttanta | 1 | PDF 41 (printed 18) |
 | iitappam | ātappam | 1 | PDF 41 (printed 18) |
 | padhiinam | padhānam | 1 | PDF 41 (printed 18) |
 | allviiya | anvāya | 1 | PDF 41 (printed 18) |
 | mallasikiiram | manasikāram | 1 | PDF 41 (printed 18) |
 | anupiidii | anupādā | 1 | PDF 41 (printed 18) |
 | abhinnii | abhiññā | 1 | PDF 42 (printed 19) |
-| matii).1 | matā | 1 | PDF 42 (printed 19) |
 | upanisii | upanisā | 1 | PDF 42 (printed 19) |
 | chaJabhinnii | chaḷabhiññā | 1 | PDF 42 (printed 19) |
 | ditthijiila | diṭṭhijāla | 1 | PDF 42 (printed 19) |
@@ -383,10 +380,8 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | dhammaniyiimatii | dhammaniyāmatā | 1 | PDF 49 (printed 26) |
 | paticcasamppiida | paṭiccasamppāda | 1 | PDF 49 (printed 26) |
 | viicarambhanaf11 | vācârambhanaṃ | 1 | PDF 51 (printed 28) |
-| niimadheyaf11);4 | nāmadheyaṃ | 1 | PDF 51 (printed 28) |
 | dhammadhiitu | dhammadhātu | 1 | PDF 51 (printed 28) |
 | puriit;laf11 | purāṇaṃ | 1 | PDF 51 (printed 28) |
-| riijadhiinif11).6 | rājadhāniṃ | 1 | PDF 51 (printed 28) |
 | cayatii | cayatā | 1 | PDF 51 (printed 28) |
 | niyativiida | niyativāda | 1 | PDF 51 (printed 28) |
 | adhiccasamuppanna-viida | adhiccasamuppanna-vāda | 1 | PDF 51 (printed 28) |
@@ -397,7 +392,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | utu-niyiima | utu-niyāma | 1 | PDF 53 (printed 30) |
 | bija-niyiima | bīja-niyāma | 1 | PDF 53 (printed 30) |
 | citta-niyiima | citta-niyāma | 1 | PDF 53 (printed 30) |
-| dhamma-niyiima).17 | dhamma-niyāma | 1 | PDF 53 (printed 30) |
 | viiiiiatla | viññāṇa | 1 | PDF 55 (printed 32) |
 | viiiiialJa | viññāṇa | 1 | PDF 55 (printed 32) |
 | namariipa | nāmarūpa | 1 | PDF 55 (printed 32) |
@@ -414,7 +408,7 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | iisviida | āsvāda | 1 | PDF 60 (printed 37) |
 | iidlnava | ādīnava | 1 | PDF 60 (printed 37) |
 | unsatiifactory | unsatisfactory | 1 | PDF 61 (printed 38) |
-| ahamkiira | ahamkāra | 1 | PDF 61 (printed 38) |
+| ahamkiira | ahaṃkāra | 1 | PDF 61 (printed 38) |
 | kiira | kāra | 1 | PDF 61 (printed 38) |
 | Fvitukiima | jīvitukāma | 1 | PDF 61 (printed 38) |
 | ditthinijjhiinakkhanti | diṭṭhinijjhānakkhanti | 1 | PDF 61 (printed 38) |
@@ -422,7 +416,7 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | vinniilJal'f1 | viññāṇaṃ | 1 | PDF 63 (printed 40) |
 | antaryiimin | antaryāmin | 1 | PDF 63 (printed 40) |
 | attii | attā | 1 | PDF 63 (printed 40) |
-| aviparilJiimadhammo | apariṇāmadhammo | 1 | PDF 63 (printed 40) |
+| aviparilJiimadhammo | aviparināmadhammo | 1 | PDF 63 (printed 40) |
 | sankhiirii | saṅkhārā | 1 | PDF 63 (printed 40) |
 | khat/dhii | khandhā | 1 | PDF 63 (printed 40) |
 | Brhadiiral;lyaka | Bṛhadāraṇyaka | 1 | PDF 65 (printed 42) |
@@ -430,13 +424,11 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | Anattii | Anattā | 1 | PDF 66 (printed 43) |
 | Nibbiina | Nibbāna | 1 | PDF 66 (printed 43) |
 | EARl:Y | EARLY | 1 | PDF 69 (printed 46) |
-| amaritukiima),8 | amaritukāma | 1 | PDF 70 (printed 47) |
 | dukkhapatikkiila | dukkhapaṭikkūla | 1 | PDF 70 (printed 47) |
 | Mahii-kammavibhm1ga-sutta | Mahā-kammavibhaṅga-sutta | 1 | PDF 73 (printed 50) |
 | Mahii-mmigala-sutta | Mahā-maṅgala-sutta | 1 | PDF 73 (printed 50) |
 | Mahii-kammavibhatiga-sutta | Mahā-kammavibhaṅga-sutta | 1 | PDF 73 (printed 50) |
 | beiief | belief | 1 | PDF 74 (printed 51) |
-| Mahii-nidiina-suttanta,16 | Mahā-nidāna-suttanta | 1 | PDF 74 (printed 51) |
 | vinniitta | viññāṇa | 1 | PDF 74 (printed 51) |
 | bhavatalJhii | bhavataṇhā | 1 | PDF 75 (printed 52) |
 | patiUhii | patiṭṭhā | 1 | PDF 75 (printed 52) |
@@ -454,7 +446,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | bhaggii | bhaggā | 1 | PDF 80 (printed 57) |
 | visatikhiiragatalJl | visaṅkhāragataṃ | 1 | PDF 80 (printed 57) |
 | tarhiinal]1 | taṇhānaṃ | 1 | PDF 80 (printed 57) |
-| ajjhagii.)3 | ajjhagā | 1 | PDF 80 (printed 57) |
 | rat;liyo | raṇīyo | 1 | PDF 81 (printed 58) |
 | pubbasikkhii | pubbasikkhā | 1 | PDF 81 (printed 58) |
 | anupubbakiriyii | anupubbakiriyā | 1 | PDF 81 (printed 58) |
@@ -468,13 +459,12 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | ciila | cūla | 1 | PDF 82 (printed 59) |
 | mahii | mahā | 1 | PDF 82 (printed 59) |
 | Mahii-mangala-sutta | Mahā-maṅgala-sutta | 1 | PDF 82 (printed 59) |
-| Singiiloviida-sutta | Singālovāda-sutta | 1 | PDF 82 (printed 59) |
+| Singiiloviida-sutta | Siṅgālovāda-sutta | 1 | PDF 82 (printed 59) |
 | Dfgha-nikiiya | Dīgha-nikāya | 1 | PDF 82 (printed 59) |
 | adhipannii | adhipaññā | 1 | PDF 82 (printed 59) |
 | iijlva | ājīva | 1 | PDF 82 (printed 59) |
 | viiyiima | vāyāma | 1 | PDF 82 (printed 59) |
 | sa'1'lsiira | saṃsāra | 1 | PDF 83 (printed 60) |
-| Majjhima-nikiiya,14 | Majjhima-nikāya | 1 | PDF 85 (printed 62) |
 | byiibiidha | byābādha | 1 | PDF 85 (printed 62) |
 | vodiina | vodāna | 1 | PDF 87 (printed 64) |
 | sariiga | sarāga | 1 | PDF 87 (printed 64) |
@@ -493,6 +483,7 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | saupii | saupā | 1 | PDF 94 (printed 71) |
 | viniiatla | viññāṇa | 1 | PDF 95 (printed 72) |
 | anusotagiimi | anusotagāmi | 1 | PDF 97 (printed 74) |
+| samsiir'ogha | saṃsār'ogha | 1 | PDF 97 (printed 74) |
 | putJ¢arlka | puṇḍarīka | 1 | PDF 97 (printed 74) |
 | samsiira | saṃsāra | 1 | PDF 97 (printed 74) |
 | nibbiina-pa{isannutta | nibbāna-paṭisaññutta | 1 | PDF 97 (printed 74) |
@@ -529,7 +520,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | Uivitukiima | jīvitukāma | 1 | PDF 111 (printed 88) |
 | Mahiiparinibbiina-suttanta | Mahāparinibbāna-suttanta | 1 | PDF 116 (printed 93) |
 | antariiyikii | antarāyikā | 1 | PDF 116 (printed 93) |
-| dhammii).3 | dhammā | 1 | PDF 116 (printed 93) |
 | nikiiya | nikāya | 1 | PDF 117 (printed 94) |
 | Piisiidika | Pāsādika | 1 | PDF 117 (printed 94) |
 | miitikii | mātikā | 1 | PDF 118 (printed 95) |
@@ -547,7 +537,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | cattiiro | cattāro | 1 | PDF 122 (printed 99) |
 | mahiibhiitii | mahābhūtā | 1 | PDF 122 (printed 99) |
 | lakkhar:za | lakkhaṇa | 1 | PDF 122 (printed 99) |
-| kappanii).11 | kappanā | 1 | PDF 122 (printed 99) |
 | sabhiiva | sabhāva | 1 | PDF 122 (printed 99) |
 | upiidii | upādā | 1 | PDF 123 (printed 100) |
 | citta-sampayuttii | citta-sampayuttā | 1 | PDF 123 (printed 100) |
@@ -581,6 +570,7 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | abhiitviibhiivautpiida | abhūtvābhāvautpāda | 1 | PDF 129 (printed 106) |
 | pannii | paññā | 1 | PDF 130 (printed 107) |
 | khal;lapaccuppanna | khaṇapaccuppanna | 1 | PDF 132 (printed 109) |
+| affiication | affliction | 1 | PDF 136 (printed 113) |
 | antariivosiinam | antarāvosānam | 1 | PDF 136 (printed 113) |
 | iipanna | āpanna | 1 | PDF 136 (printed 113) |
 | siimanna-phala | sāmañña-phala | 1 | PDF 138 (printed 115) |
@@ -591,7 +581,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | sattiina'11 | sattānaṃ | 1 | PDF 138 (printed 115) |
 | cutupapiitaniiIJa | cutûpapātañāṇa | 1 | PDF 138 (printed 115) |
 | pubbeniviisanussatiiiiiIJa | pubbenivāsânussatiñāṇa | 1 | PDF 138 (printed 115) |
-| iisavakkhayaiiiiIJa)-all | āsavakkhayañāṇa | 1 | PDF 138 (printed 115) |
 | Mahiipadiina-suttanta | Mahāpadāna-suttanta | 1 | PDF 139 (printed 116) |
 | puriittam | purāṇam | 1 | PDF 139 (printed 116) |
 | puriilJa1J1 | purāṇaṃ | 1 | PDF 139 (printed 116) |
@@ -599,7 +588,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | sammiisam | sammāsam | 1 | PDF 139 (printed 116) |
 | anuyiita1J1 | anuyātaṃ | 1 | PDF 139 (printed 116) |
 | Mahii-hatthipadopama-sutta | Mahā-hatthipadopama-sutta | 1 | PDF 139 (printed 116) |
-| Arya-siilistamba-siitra,13 | Ārya-śālistamba-sūtra | 1 | PDF 139 (printed 116) |
 | viitza | vāṇa | 1 | PDF 140 (printed 117) |
 | Sraddhii | śraddhā | 1 | PDF 140 (printed 117) |
 | sammiisambuddha | sammāsambuddha | 1 | PDF 141 (printed 118) |
@@ -607,8 +595,8 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | dharmaput;qarlka | dharmapuṇḍarīka | 1 | PDF 141 (printed 118) |
 | Saddharmaput;qarika | Saddharmapuṇḍarīka | 1 | PDF 141 (printed 118) |
 | Saddharmaput;l¢arlka | Saddharmapuṇḍarīka | 1 | PDF 142 (printed 119) |
-| Saddharmaput;l¢arika | Saddharmapuṇḍarīka | 1 | PDF 142 (printed 119) |
-| Saddharmaput;l¢aiika | Saddharmapuṇḍarīka | 1 | PDF 142 (printed 119) |
+| Saddharmaput;l¢arika | Saddharmapuṇḍarika | 1 | PDF 142 (printed 119) |
+| Saddharmaput;l¢aiika | Saddharmapuṇḍarika | 1 | PDF 142 (printed 119) |
 | tathiigatas | tathāgatas | 1 | PDF 143 (printed 120) |
 | udiira-sthiimatii | udāra-sthāmatā | 1 | PDF 144 (printed 121) |
 | siistr | śāstṛ | 1 | PDF 144 (printed 121) |
@@ -709,11 +697,8 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | anantavii | anantavā | 1 | PDF 179 (printed 156) |
 | parammararii | parammaraṇā | 1 | PDF 179 (printed 156) |
 | sassataviidl | sassatavādī | 1 | PDF 179 (printed 156) |
-| appiitihlrakatalJl,ll | appāṭihīrakataṃ | 1 | PDF 181 (printed 158) |
-| appiitih'rakatalJl.12 | appāṭihīrakataṃ | 1 | PDF 181 (printed 158) |
 | SalJlyutta-nikiiya | Saṃyutta-nikāya | 1 | PDF 181 (printed 158) |
 | viiiiiiittahiiralJ1 | viññāṇâhāraṃ | 1 | PDF 182 (printed 159) |
-| iihiiretiti).14 | āhāretîti | 1 | PDF 182 (printed 159) |
 | SalJ1yutta-nikiiya | Saṃyutta-nikāya | 1 | PDF 183 (printed 160) |
 | siimaiiiialJ1 | sāmaññaṃ | 1 | PDF 183 (printed 160) |
 | natidhii | nâtidhā | 1 | PDF 183 (printed 160) |
@@ -738,7 +723,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | nittharal;la | nittharaṇa | 1 | PDF 192 (printed 169) |
 | iisava | āsava | 1 | PDF 193 (printed 170) |
 | Lal1ktivatiira | Laṅkâvatāra | 1 | PDF 194 (printed 171) |
-| satipatthiina).13 | satipaṭṭhāna | 1 | PDF 194 (printed 171) |
 | Therl-giithiis | Therī-gāthās | 1 | PDF 198 (printed 175) |
 | Abhisamayalankiira-prajiiiipiiramitii-upadda-siistra | Abhisamayâlaṅkāra-prajñāpāramitā-upadeśa-śāstra | 1 | PDF 199 (printed 176) |
 | Prajiiii | Prajñā | 1 | PDF 199 (printed 176) |
@@ -752,11 +736,11 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | krtyakriyii | kṛtyakriyā | 1 | PDF 202 (printed 179) |
 | Ambala((hika-Riihuloviida-sutta | Ambalaṭṭhika-Rāhulovāda-sutta | 1 | PDF 202 (printed 179) |
 | Amitiiyurdhyiina-siitra | Amitāyurdhyāna-sūtra | 1 | PDF 202 (printed 179) |
-| Arya-siilistamba-siitra | Ārya-śālistamba-sūtra | 1 | PDF 202 (printed 179) |
 | paramavuviida | paramâṇuvāda | 1 | PDF 202 (printed 179) |
 | Avadiina | Avadāna | 1 | PDF 203 (printed 180) |
 | avatiir | avatār | 1 | PDF 203 (printed 180) |
 | arthakriyiikiiritva | arthakriyākāritva | 1 | PDF 203 (printed 180) |
+| kiirtra | kārtra | 1 | PDF 203 (printed 180) |
 | saiiiiiivedayitanirodha | saññāvedayitanirodha | 1 | PDF 203 (printed 180) |
 | adhiccasamuppannaviida | adhiccasamuppannavāda | 1 | PDF 206 (printed 183) |
 | anaiiiiathatii | anaññathatā | 1 | PDF 206 (printed 183) |
@@ -782,7 +766,6 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | iia | ñā | 1 | PDF 208 (printed 185) |
 | biihyarthtinumeya | bāhyârthânumeya | 1 | PDF 208 (printed 185) |
 | Prajniipiiramita-sutra | Prajñāpāramitā-sūtra | 1 | PDF 208 (printed 185) |
-| PramaJ;laSamUCcaxa | Pramāṇasamuccaya | 1 | PDF 209 (printed 186) |
 | siinya | śūnya | 1 | PDF 209 (printed 186) |
 | naJ;la | ñāṇa | 1 | PDF 209 (printed 186) |
 | SaddharmapulJ~arika-siitra | Saddharmapuṇḍarīka-sūtra | 1 | PDF 209 (printed 186) |
@@ -793,14 +776,15 @@ The OCR misread these words, mostly letters with diacritics (ā or ū read as "i
 | Vi'11satikii | Viṃśatikā | 1 | PDF 211 (printed 188) |
 | YogQcarabhumi-siistra | Yogâcārabhūmi-śāstra | 1 | PDF 211 (printed 188) |
 
-- 645 suspect forms were checked by the AI; 26 were judged correct as the OCR read them, or unreadable (e.g. "Hawaii"), and left alone.
+- 645 suspect forms were checked by the AI; 43 were judged correct as the OCR read them, or unreadable (e.g. "Hawaii"), and left alone.
 
 ### 6. Hidden from screen readers (artifacts)
 
 - 9 decorative elements ("blank page scan") on PDF 3 (printed ii), PDF 7 (printed vi), PDF 9 (printed viii), PDF 17 (printed xvi), PDF 19 (printed xviii), PDF 23 (printed xxii), PDF 25 (printed 2), PDF 115 (printed 92), PDF 213 (printed 190)
-- "running foot (chapter titles with page number)": text matching `(?i)\d* ?(earl ?y buddhism( and zen)?|later buddhism|appendix ?\w+|nirvana|karma and rebirth|morality and ethics|scholasticism|development of mahayana|madhyam.ka transcendentalism|causality|y ?ogacara idealism|metaphysics and the buddha|epistemology|characteristics of existence|index) ?\d*` on PDF 24–212 (printed 1–189)
-- "bare page number": text matching `\d+` on PDF 24–212 (printed 1–189)
-- "front matter running foot": text matching `(?i)\w* ?(foreword|preface|acknowledgments|abbreviations|contents) ?\w*` on PDF 8–23 (printed vii–xxii)
+- "running head (bottom)": text matching `(?i)\d{0,3} ?(?:LATER BUDDHISM|EARLY BUDDHISM|EARL ?Y BUDDHISM|EARLY BUDDHISM AND ZEN|APPENDIX (?:I|1|2|II)|NIRVANA|KARMA AND REBIRTH|MORALITY AND ETHICS|SCHOLASTICISM|DEVELOPMENT OF MAHAYANA|MADHYAMIKA TRANSCENDENTALISM|CAUSALITY|YOGACARA IDEALISM|METAPHYSICS AND THE BUDDHA|EPISTEMOLOGY|CHARACTERISTICS OF EXISTENCE|INDEX) ?\d{0,3}` on PDF 26–213 (printed 3–190)
+- "page number (bottom)": text matching `\d{1,3}` on PDF 26–213 (printed 3–190)
+- "front matter running foot": text matching `(?i)(?:[ivxl]{1,6} )?(?:foreword|preface|acknowledgments|abbreviations)(?: [ivxl]{1,6})?` on PDF 10–23 (printed ix–xxii)
+- "roman page number (bottom)": text matching `(?i)[ivxl]{1,6}` on PDF 4–23 (printed iii–xxii)
 
 ### 7. Reading order changes
 
@@ -844,12 +828,12 @@ Link addresses that look broken (listed, not changed):
 - PDF 194 (printed 171): `https://satipatthiina).13`: the address ends with punctuation or an unmatched closing bracket from the printed text; probably broken
 - PDF 209 (printed 186): `https://Brahmal).as`: the address ends with punctuation or an unmatched closing bracket from the printed text; probably broken
 
-### 10. Tag-tree index entries cleared (212)
+### 10. Tag-tree index entries cleared (214)
 
 Entries that pointed at a tag no longer in the tag tree (left by the source file, or by a tag the run removed). Nothing reads such a tag; no page, text or reachable tag changed.
 
 - ParentTree, entries not tied to page content (annotations, forms, or keys nothing uses): key 5 (Link), key 39 (Link), key 40 (Link), key 41 (Link), key 96 (Link), key 97 (Link), key 107 (Link), key 122 (Link), key 133 (Link), key 135 (Link), key 137 (Link), key 149 (Link), key 152 (Link), key 155 (Link), key 157 (Link), key 159 (Link), key 160 (Link), key 162 (Link), key 163 (Link), key 165 (Link), key 168 (Link), key 169 (Link), key 170 (Link), key 184 (Link), key 186 (Link), key 187 (Link), key 189 (Link), key 190 (Link), key 192 (Link), key 194 (Link), key 195 (Link), key 196 (Link), key 198 (Link), key 199 (Link), key 201 (Link), key 214 (Link), key 216 (Link), key 219 (Link), key 221 (Link), key 223 (Link), key 224 (Link), key 227 (Link), key 229 (Link), key 230 (Link), key 241 (Link), key 242 (Link), key 243 (Link), key 246 (Link), key 268 (Link), key 269 (Link), key 271 (Link), key 273 (Link), key 274 (Link), key 286 (Link), key 292 (Link), key 293 (Link), key 304 (Link)
-- IDTree: "AD260915-1612-26.2.21931-ADBE-000000090769" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090823" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090857" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090880" (P), "AD260915-1612-26.2.21931-ADBE-000000090902" (P), "AD260915-1612-26.2.21931-ADBE-000000090915" (P), "AD260915-1612-26.2.21931-ADBE-000000090926" (P), "AD260915-1612-26.2.21931-ADBE-000000090941" (P), "AD260915-1612-26.2.21931-ADBE-000000090944" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090960" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091113" (P), "AD260915-1612-26.2.21931-ADBE-000000091125" (P), "AD260915-1612-26.2.21931-ADBE-000000091128" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091134" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091152" (P), "AD260915-1612-26.2.21931-ADBE-000000091219" (P), "AD260915-1612-26.2.21931-ADBE-000000091243" (P), "AD260915-1612-26.2.21931-ADBE-000000091267" (P), "AD260915-1612-26.2.21931-ADBE-000000091353" (P), "AD260915-1612-26.2.21931-ADBE-000000091402" (P), "AD260915-1612-26.2.21931-ADBE-000000091409" (P), "AD260915-1612-26.2.21931-ADBE-000000091424" (P), "AD260915-1612-26.2.21931-ADBE-000000091458" (P), "AD260915-1612-26.2.21931-ADBE-000000091508" (P), "AD260915-1612-26.2.21931-ADBE-000000091695" (P), "AD260915-1612-26.2.21931-ADBE-000000091763" (P), "AD260915-1612-26.2.21931-ADBE-000000091819" (P), "AD260915-1612-26.2.21931-ADBE-000000091832" (P), "AD260915-1612-26.2.21931-ADBE-000000091849" (P), "AD260915-1612-26.2.21931-ADBE-000000091872" (P), "AD260915-1612-26.2.21931-ADBE-000000091900" (P), "AD260915-1612-26.2.21931-ADBE-000000091934" (P), "AD260915-1612-26.2.21931-ADBE-000000091974" (P), "AD260915-1612-26.2.21931-ADBE-000000091983" (P), "AD260915-1612-26.2.21931-ADBE-000000092016" (P), "AD260915-1612-26.2.21931-ADBE-000000092044" (P), "AD260915-1612-26.2.21931-ADBE-000000092057" (P), "AD260915-1612-26.2.21931-ADBE-000000092066" (P), "AD260915-1612-26.2.21931-ADBE-000000092116" (P), "AD260915-1612-26.2.21931-ADBE-000000092125" (P), "AD260915-1612-26.2.21931-ADBE-000000092164" (P), "AD260915-1612-26.2.21931-ADBE-000000092207" (P), "AD260915-1612-26.2.21931-ADBE-000000092232" (P), "AD260915-1612-26.2.21931-ADBE-000000092241" (P), "AD260915-1612-26.2.21931-ADBE-000000092253" (P), "AD260915-1612-26.2.21931-ADBE-000000092298" (P), "AD260915-1612-26.2.21931-ADBE-000000092321" (P), "AD260915-1612-26.2.21931-ADBE-000000092360" (P), "AD260915-1612-26.2.21931-ADBE-000000092365" (P), "AD260915-1612-26.2.21931-ADBE-000000092394" (P), "AD260915-1612-26.2.21931-ADBE-000000092410" (P), "AD260915-1612-26.2.21931-ADBE-000000092459" (P), "AD260915-1612-26.2.21931-ADBE-000000092468" (P), "AD260915-1612-26.2.21931-ADBE-000000092479" (P), "AD260915-1612-26.2.21931-ADBE-000000092512" (P), "AD260915-1612-26.2.21931-ADBE-000000092532" (P), "AD260915-1612-26.2.21931-ADBE-000000092544" (P), "AD260915-1612-26.2.21931-ADBE-000000092559" (P), "AD260915-1612-26.2.21931-ADBE-000000092588" (P), "AD260915-1612-26.2.21931-ADBE-000000092621" (P), "AD260915-1612-26.2.21931-ADBE-000000092628" (P), "AD260915-1612-26.2.21931-ADBE-000000092673" (P), "AD260915-1612-26.2.21931-ADBE-000000092684" (P), "AD260915-1612-26.2.21931-ADBE-000000092704" (P), "AD260915-1612-26.2.21931-ADBE-000000092730" (P), "AD260915-1612-26.2.21931-ADBE-000000092741" (P), "AD260915-1612-26.2.21931-ADBE-000000092752" (P), "AD260915-1612-26.2.21931-ADBE-000000092767" (P), "AD260915-1612-26.2.21931-ADBE-000000092782" (P), "AD260915-1612-26.2.21931-ADBE-000000092807" (P), "AD260915-1612-26.2.21931-ADBE-000000092826" (P), "AD260915-1612-26.2.21931-ADBE-000000092861" (P), "AD260915-1612-26.2.21931-ADBE-000000092877" (P), "AD260915-1612-26.2.21931-ADBE-000000092937" (P), "AD260915-1612-26.2.21931-ADBE-000000092955" (P), "AD260915-1612-26.2.21931-ADBE-000000092975" (P), "AD260915-1612-26.2.21931-ADBE-000000092987" (P), "AD260915-1612-26.2.21931-ADBE-000000093035" (P), "AD260915-1612-26.2.21931-ADBE-000000093130" (P), "AD260915-1612-26.2.21931-ADBE-000000093147" (P), "AD260915-1612-26.2.21931-ADBE-000000093153" (Figure), "AD260915-1612-26.2.21931-ADBE-000000093185" (P), "AD260915-1612-26.2.21931-ADBE-000000093235" (P), "AD260915-1612-26.2.21931-ADBE-000000093263" (P), "AD260915-1612-26.2.21931-ADBE-000000093293" (P), "AD260915-1612-26.2.21931-ADBE-000000093318" (P), "AD260915-1612-26.2.21931-ADBE-000000093337" (P), "AD260915-1612-26.2.21931-ADBE-000000093371" (P), "AD260915-1612-26.2.21931-ADBE-000000093416" (P), "AD260915-1612-26.2.21931-ADBE-000000093438" (P), "AD260915-1612-26.2.21931-ADBE-000000093455" (P), "AD260915-1612-26.2.21931-ADBE-000000093468" (P), "AD260915-1612-26.2.21931-ADBE-000000093489" (P), "AD260915-1612-26.2.21931-ADBE-000000093550" (P), "AD260915-1612-26.2.21931-ADBE-000000093641" (P), "AD260915-1612-26.2.21931-ADBE-000000093673" (P), "AD260915-1612-26.2.21931-ADBE-000000093736" (P), "AD260915-1612-26.2.21931-ADBE-000000093761" (P), "AD260915-1612-26.2.21931-ADBE-000000093778" (P), "AD260915-1612-26.2.21931-ADBE-000000093814" (P), "AD260915-1612-26.2.21931-ADBE-000000093831" (P), "AD260915-1612-26.2.21931-ADBE-000000093852" (P), "AD260915-1612-26.2.21931-ADBE-000000093872" (P), "AD260915-1612-26.2.21931-ADBE-000000093885" (P), "AD260915-1612-26.2.21931-ADBE-000000093929" (P), "AD260915-1612-26.2.21931-ADBE-000000094031" (P), "AD260915-1612-26.2.21931-ADBE-000000094048" (P), "AD260915-1612-26.2.21931-ADBE-000000094069" (P), "AD260915-1612-26.2.21931-ADBE-000000094093" (P), "AD260915-1612-26.2.21931-ADBE-000000094107" (P), "AD260915-1612-26.2.21931-ADBE-000000094128" (P), "AD260915-1612-26.2.21931-ADBE-000000094162" (P), "AD260915-1612-26.2.21931-ADBE-000000094218" (P), "AD260915-1612-26.2.21931-ADBE-000000094277" (P), "AD260915-1612-26.2.21931-ADBE-000000094320" (P), "AD260915-1612-26.2.21931-ADBE-000000094333" (P), "AD260915-1612-26.2.21931-ADBE-000000094354" (P), "AD260915-1612-26.2.21931-ADBE-000000094381" (P), "AD260915-1612-26.2.21931-ADBE-000000094405" (P), "AD260915-1612-26.2.21931-ADBE-000000094414" (P), "AD260915-1612-26.2.21931-ADBE-000000094443" (P), "AD260915-1612-26.2.21931-ADBE-000000094472" (P), "AD260915-1612-26.2.21931-ADBE-000000094483" (P), "AD260915-1612-26.2.21931-ADBE-000000094509" (P), "AD260915-1612-26.2.21931-ADBE-000000094522" (P), "AD260915-1612-26.2.21931-ADBE-000000094566" (P), "AD260915-1612-26.2.21931-ADBE-000000094597" (P), "AD260915-1612-26.2.21931-ADBE-000000094638" (P), "AD260915-1612-26.2.21931-ADBE-000000094650" (P), "AD260915-1612-26.2.21931-ADBE-000000094688" (P), "AD260915-1612-26.2.21931-ADBE-000000094706" (P), "AD260915-1612-26.2.21931-ADBE-000000094725" (P), "AD260915-1612-26.2.21931-ADBE-000000094766" (P), "AD260915-1612-26.2.21931-ADBE-000000094812" (P), "AD260915-1612-26.2.21931-ADBE-000000094833" (P), "AD260915-1612-26.2.21931-ADBE-000000094844" (P), "AD260915-1612-26.2.21931-ADBE-000000094865" (P), "AD260915-1612-26.2.21931-ADBE-000000094882" (P), "AD260915-1612-26.2.21931-ADBE-000000094899" (P), "AD260915-1612-26.2.21931-ADBE-000000094911" (P), "AD260915-1612-26.2.21931-ADBE-000000094926" (P), "AD260915-1612-26.2.21931-ADBE-000000094945" (P), "AD260915-1612-26.2.21931-ADBE-000000094966" (P), "AD260915-1612-26.2.21931-ADBE-000000095008" (P), "AD260915-1612-26.2.21931-ADBE-000000095023" (P), "AD260915-1612-26.2.21931-ADBE-000000095046" (P), "AD260915-1612-26.2.21931-ADBE-000000095164" (P), "AD260915-1612-26.2.21931-ADBE-000000095183" (P), "AD260915-1612-26.2.21931-ADBE-000000095303" (P), "AD260915-1612-26.2.21931-ADBE-000000095382" (P), "AD260915-1612-26.2.21931-ADBE-000000095482" (P), "AD260915-1612-26.2.21931-ADBE-000000095547" (P), "AD260915-1612-26.2.21931-ADBE-000000095574" (P), "AD260915-1612-26.2.21931-ADBE-000000095610" (P), "AD260915-1612-26.2.21931-ADBE-000000095620" (Figure)
+- IDTree: "AD260915-1612-26.2.21931-ADBE-000000090769" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090823" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090857" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090880" (P), "AD260915-1612-26.2.21931-ADBE-000000090891" (P), "AD260915-1612-26.2.21931-ADBE-000000090902" (P), "AD260915-1612-26.2.21931-ADBE-000000090915" (P), "AD260915-1612-26.2.21931-ADBE-000000090926" (P), "AD260915-1612-26.2.21931-ADBE-000000090941" (P), "AD260915-1612-26.2.21931-ADBE-000000090944" (Figure), "AD260915-1612-26.2.21931-ADBE-000000090957" (P), "AD260915-1612-26.2.21931-ADBE-000000090960" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091032" (P), "AD260915-1612-26.2.21931-ADBE-000000091113" (P), "AD260915-1612-26.2.21931-ADBE-000000091125" (P), "AD260915-1612-26.2.21931-ADBE-000000091128" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091134" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091152" (P), "AD260915-1612-26.2.21931-ADBE-000000091219" (P), "AD260915-1612-26.2.21931-ADBE-000000091243" (P), "AD260915-1612-26.2.21931-ADBE-000000091267" (P), "AD260915-1612-26.2.21931-ADBE-000000091353" (P), "AD260915-1612-26.2.21931-ADBE-000000091402" (P), "AD260915-1612-26.2.21931-ADBE-000000091409" (P), "AD260915-1612-26.2.21931-ADBE-000000091424" (P), "AD260915-1612-26.2.21931-ADBE-000000091458" (P), "AD260915-1612-26.2.21931-ADBE-000000091508" (P), "AD260915-1612-26.2.21931-ADBE-000000091695" (P), "AD260915-1612-26.2.21931-ADBE-000000091763" (P), "AD260915-1612-26.2.21931-ADBE-000000091819" (P), "AD260915-1612-26.2.21931-ADBE-000000091832" (P), "AD260915-1612-26.2.21931-ADBE-000000091849" (P), "AD260915-1612-26.2.21931-ADBE-000000091872" (P), "AD260915-1612-26.2.21931-ADBE-000000091900" (P), "AD260915-1612-26.2.21931-ADBE-000000091934" (P), "AD260915-1612-26.2.21931-ADBE-000000091974" (P), "AD260915-1612-26.2.21931-ADBE-000000091983" (P), "AD260915-1612-26.2.21931-ADBE-000000092016" (P), "AD260915-1612-26.2.21931-ADBE-000000092044" (P), "AD260915-1612-26.2.21931-ADBE-000000092057" (P), "AD260915-1612-26.2.21931-ADBE-000000092066" (P), "AD260915-1612-26.2.21931-ADBE-000000092116" (P), "AD260915-1612-26.2.21931-ADBE-000000092125" (P), "AD260915-1612-26.2.21931-ADBE-000000092164" (P), "AD260915-1612-26.2.21931-ADBE-000000092207" (P), "AD260915-1612-26.2.21931-ADBE-000000092232" (P), "AD260915-1612-26.2.21931-ADBE-000000092241" (P), "AD260915-1612-26.2.21931-ADBE-000000092253" (P), "AD260915-1612-26.2.21931-ADBE-000000092298" (P), "AD260915-1612-26.2.21931-ADBE-000000092321" (P), "AD260915-1612-26.2.21931-ADBE-000000092360" (P), "AD260915-1612-26.2.21931-ADBE-000000092365" (P), "AD260915-1612-26.2.21931-ADBE-000000092394" (P), "AD260915-1612-26.2.21931-ADBE-000000092410" (P), "AD260915-1612-26.2.21931-ADBE-000000092459" (P), "AD260915-1612-26.2.21931-ADBE-000000092468" (P), "AD260915-1612-26.2.21931-ADBE-000000092479" (P), "AD260915-1612-26.2.21931-ADBE-000000092512" (P), "AD260915-1612-26.2.21931-ADBE-000000092532" (P), "AD260915-1612-26.2.21931-ADBE-000000092544" (P), "AD260915-1612-26.2.21931-ADBE-000000092559" (P), "AD260915-1612-26.2.21931-ADBE-000000092588" (P), "AD260915-1612-26.2.21931-ADBE-000000092621" (P), "AD260915-1612-26.2.21931-ADBE-000000092628" (P), "AD260915-1612-26.2.21931-ADBE-000000092673" (P), "AD260915-1612-26.2.21931-ADBE-000000092684" (P), "AD260915-1612-26.2.21931-ADBE-000000092704" (P), "AD260915-1612-26.2.21931-ADBE-000000092730" (P), "AD260915-1612-26.2.21931-ADBE-000000092741" (P), "AD260915-1612-26.2.21931-ADBE-000000092752" (P), "AD260915-1612-26.2.21931-ADBE-000000092767" (P), "AD260915-1612-26.2.21931-ADBE-000000092782" (P), "AD260915-1612-26.2.21931-ADBE-000000092807" (P), "AD260915-1612-26.2.21931-ADBE-000000092826" (P), "AD260915-1612-26.2.21931-ADBE-000000092861" (P), "AD260915-1612-26.2.21931-ADBE-000000092877" (P), "AD260915-1612-26.2.21931-ADBE-000000092937" (P), "AD260915-1612-26.2.21931-ADBE-000000092955" (P), "AD260915-1612-26.2.21931-ADBE-000000092975" (P), "AD260915-1612-26.2.21931-ADBE-000000092987" (P), "AD260915-1612-26.2.21931-ADBE-000000093035" (P), "AD260915-1612-26.2.21931-ADBE-000000093130" (P), "AD260915-1612-26.2.21931-ADBE-000000093147" (P), "AD260915-1612-26.2.21931-ADBE-000000093153" (Figure), "AD260915-1612-26.2.21931-ADBE-000000093185" (P), "AD260915-1612-26.2.21931-ADBE-000000093235" (P), "AD260915-1612-26.2.21931-ADBE-000000093263" (P), "AD260915-1612-26.2.21931-ADBE-000000093293" (P), "AD260915-1612-26.2.21931-ADBE-000000093318" (P), "AD260915-1612-26.2.21931-ADBE-000000093337" (P), "AD260915-1612-26.2.21931-ADBE-000000093371" (P), "AD260915-1612-26.2.21931-ADBE-000000093416" (P), "AD260915-1612-26.2.21931-ADBE-000000093438" (P), "AD260915-1612-26.2.21931-ADBE-000000093455" (P), "AD260915-1612-26.2.21931-ADBE-000000093468" (P), "AD260915-1612-26.2.21931-ADBE-000000093489" (P), "AD260915-1612-26.2.21931-ADBE-000000093550" (P), "AD260915-1612-26.2.21931-ADBE-000000093641" (P), "AD260915-1612-26.2.21931-ADBE-000000093673" (P), "AD260915-1612-26.2.21931-ADBE-000000093736" (P), "AD260915-1612-26.2.21931-ADBE-000000093761" (P), "AD260915-1612-26.2.21931-ADBE-000000093778" (P), "AD260915-1612-26.2.21931-ADBE-000000093814" (P), "AD260915-1612-26.2.21931-ADBE-000000093831" (P), "AD260915-1612-26.2.21931-ADBE-000000093852" (P), "AD260915-1612-26.2.21931-ADBE-000000093872" (P), "AD260915-1612-26.2.21931-ADBE-000000093885" (P), "AD260915-1612-26.2.21931-ADBE-000000093929" (P), "AD260915-1612-26.2.21931-ADBE-000000094031" (P), "AD260915-1612-26.2.21931-ADBE-000000094048" (P), "AD260915-1612-26.2.21931-ADBE-000000094069" (P), "AD260915-1612-26.2.21931-ADBE-000000094093" (P), "AD260915-1612-26.2.21931-ADBE-000000094107" (P), "AD260915-1612-26.2.21931-ADBE-000000094128" (P), "AD260915-1612-26.2.21931-ADBE-000000094162" (P), "AD260915-1612-26.2.21931-ADBE-000000094218" (P), "AD260915-1612-26.2.21931-ADBE-000000094320" (P), "AD260915-1612-26.2.21931-ADBE-000000094333" (P), "AD260915-1612-26.2.21931-ADBE-000000094354" (P), "AD260915-1612-26.2.21931-ADBE-000000094381" (P), "AD260915-1612-26.2.21931-ADBE-000000094405" (P), "AD260915-1612-26.2.21931-ADBE-000000094414" (P), "AD260915-1612-26.2.21931-ADBE-000000094443" (P), "AD260915-1612-26.2.21931-ADBE-000000094472" (P), "AD260915-1612-26.2.21931-ADBE-000000094483" (P), "AD260915-1612-26.2.21931-ADBE-000000094509" (P), "AD260915-1612-26.2.21931-ADBE-000000094522" (P), "AD260915-1612-26.2.21931-ADBE-000000094566" (P), "AD260915-1612-26.2.21931-ADBE-000000094597" (P), "AD260915-1612-26.2.21931-ADBE-000000094638" (P), "AD260915-1612-26.2.21931-ADBE-000000094650" (P), "AD260915-1612-26.2.21931-ADBE-000000094688" (P), "AD260915-1612-26.2.21931-ADBE-000000094706" (P), "AD260915-1612-26.2.21931-ADBE-000000094725" (P), "AD260915-1612-26.2.21931-ADBE-000000094766" (P), "AD260915-1612-26.2.21931-ADBE-000000094812" (P), "AD260915-1612-26.2.21931-ADBE-000000094833" (P), "AD260915-1612-26.2.21931-ADBE-000000094844" (P), "AD260915-1612-26.2.21931-ADBE-000000094865" (P), "AD260915-1612-26.2.21931-ADBE-000000094882" (P), "AD260915-1612-26.2.21931-ADBE-000000094899" (P), "AD260915-1612-26.2.21931-ADBE-000000094911" (P), "AD260915-1612-26.2.21931-ADBE-000000094926" (P), "AD260915-1612-26.2.21931-ADBE-000000094945" (P), "AD260915-1612-26.2.21931-ADBE-000000094966" (P), "AD260915-1612-26.2.21931-ADBE-000000095008" (P), "AD260915-1612-26.2.21931-ADBE-000000095023" (P), "AD260915-1612-26.2.21931-ADBE-000000095046" (P), "AD260915-1612-26.2.21931-ADBE-000000095164" (P), "AD260915-1612-26.2.21931-ADBE-000000095183" (P), "AD260915-1612-26.2.21931-ADBE-000000095303" (P), "AD260915-1612-26.2.21931-ADBE-000000095382" (P), "AD260915-1612-26.2.21931-ADBE-000000095482" (P), "AD260915-1612-26.2.21931-ADBE-000000095547" (P), "AD260915-1612-26.2.21931-ADBE-000000095574" (P), "AD260915-1612-26.2.21931-ADBE-000000095610" (P), "AD260915-1612-26.2.21931-ADBE-000000095620" (Figure)
 
 ### 11. Structure left for a person
 
@@ -857,7 +841,7 @@ Entries that pointed at a tag no longer in the tag tree (left by the source file
 
 ### 12. veraPDF (WCAG 2.2 machine profile), before and after
 
-veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 6 rules failing (the AI can act on 4, the pipeline on 2, only a person on 0). After: 0.
+veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 6 rules failing (the AI can act on 4, the pipeline on 2, only a person on 0). After: 0.
 
 | Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |
 |---|---|---|---|---:|---:|---|---|
@@ -870,41 +854,30 @@ veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 
 ### 13. Deferred by the AI
 
-- **Table of Figure 1 (faculty / object diagram laid out as a table, 20 rows × 5 columns, existing header cells)**: Layout is a diagram of sense faculties and objects; header rows and columns cannot be told from the digest. A person should decide whether to keep it as a table (and set its headers) or tag it as a Figure with a long description. [PDF 46 (printed 23)]
-- **Reading order and section nesting**: The tree has two Part containers, and sections (chapters, Notes, Selected Readings) are nested inside one another (e.g. Chapter Two section spanning PDF 39–213). I can't tell from the digest whether the reading order is actually wrong, so I made no move_section. A person should check that chapters, notes and readings are read in printed order. [PDF 24 (printed 1), PDF 213 (printed 190)]
-- **Heading outline**: Chapters, parts and back matter are all H2 and Notes / Selected Readings are H3, set per element from the text and size. Headings on PDF 177 (printed 154) and 178 (printed 155, 'SECONDARY SOURCES') are not in the digest's heading candidates, so please check them. [PDF 177 (printed 154), PDF 178 (printed 155)]
-- **Poor OCR text layer**: Paper Capture OCR, about 14 suspect tokens per 1000. Worst pages are PDF 90, 184, 77, 65, 47, 150, 38 and 119. The text itself is not changed. Diacritics were corrected only through ocr_words, and only where the crop was legible. Forms I left out were uncertain (e.g. ids 330, 349, 428, 609) or contained spaces or punctuation (ids 74, 79, 176, 200, 239). [PDF 38 (printed 15), PDF 47 (printed 24), PDF 65 (printed 42), PDF 77 (printed 54), PDF 90 (printed 67), PDF 119 (printed 96), PDF 150 (printed 127), PDF 184 (printed 161)]
-- **Contents page**: Each contents paragraph holds several entries (title and page number run together), so TOC/TOCI wraps whole paragraphs rather than single entries. A person should check the contents page. The part labels 'Early Buddhism' and 'Later Buddhism' were demoted from H5 to P. [PDF 8 (printed vii)]
-- **Endnote lists**: Endnote paragraphs are tagged as L/LI lists with their numbers as labels, and some items are split or merged oddly (e.g. an item with notes 2 and 3 in one LI). I left them as tagged because they are real numbered notes. A person should spot-check them. [PDF 37 (printed 14), PDF 200 (printed 177)]
-- **veraPDF 7.2-2, 7.2-34, 7.2-21 and 7.1-9 (language, ActualText language, dc:title)**: Addressed by document.lang en-US and the title. Romanized Pali and Sanskrit words are not language-tagged. Please re-run veraPDF to confirm. [PDF 1 (printed cover), PDF 213 (printed 190)]
+- **OCR text layer quality**: Scanned book (Paper Capture OCR, about 14 suspect tokens per 1000). The text layer has many errors, especially in Pali and Sanskrit terms. I gave transcriptions for the listed word forms only. Worst pages: PDF 90, 184, 77, 65, 47, 150, 38 and 119 (printed 67, 161, 54, 42, 24, 127, 15 and 96). A person should proofread the text layer. [PDF 38 (printed 15), PDF 47 (printed 24), PDF 65 (printed 42), PDF 77 (printed 54), PDF 90 (printed 67), PDF 119 (printed 96), PDF 150 (printed 127), PDF 184 (printed 161)]
+- **OCR word forms with attached footnote numbers or punctuation (ids 173, 184, 191, 196, 216, 219, 230, 265, 271, 290, 310, 312, 368–370, 373, 389, 392, 394, 408, 419, 439, 447, 458, 467, 469, 560, 561, 564, 587, 590); also 153, 636 and the apostrophe/okina form 74**: The token includes superscript note numbers, dashes or punctuation, or the crop is cut off, so I could not give a reliable word-only reading.
+- **Contents page**: The entries sit in one or two long paragraphs ("IX Foreword XI Preface …"), so they cannot be turned into TOC/TOCI items safely. The part labels Early Buddhism and Later Buddhism were demoted to P. A person should rebuild the contents list. [PDF 8 (printed vii)]
+- **Table 2503 0 (the faculty/object diagram, tagged as a table of 20 rows and 5 columns)**: It looks like a diagram (Figure 1 in the text), not a data table. Its header row is not visible in the digest. A person should decide whether it is a figure or a table and give it alt text or headers. [PDF 46 (printed 23)]
+- **Subheadings with no obj in the digest: "Selected Readings" at PDF 185 (printed 162), and the PRIMARY SOURCES / SECONDARY SOURCES labels**: They are not in headings or heading_candidates, so I cannot target them. [PDF 185 (printed 162), PDF 201 (printed 178)]
+- **Notes lists**: Several LI items of the numbered notes hold two or more notes run together (for example "2. S 2.25 ff.; TD 2.85 b. 3. S2.I8 …"). I left the lists as they are. A person should check them. [PDF 56 (printed 33), PDF 57 (printed 34), PDF 112 (printed 89), PDF 132 (printed 109), PDF 150 (printed 127), PDF 200 (printed 177)]
+- **Structure nesting and reading order**: The tree nests Sect containers oddly (every chapter sits inside the one Early Buddhism Part). The reading order looked correct, so I did not move anything. The heading outline is flat: H1 title, then H2 for parts and chapters, then H3 for Notes and Selected Readings. A person may want chapters nested under parts. [PDF 24 (printed 1), PDF 213 (printed 190)]
+- **Blank pages with a whole-page Figure (PDF 3, 7, 9, 17, 19, 23, 25, 115, 213)**: I artifacted them as blank page scans. Please confirm that they really are blank. [PDF 3 (printed ii), PDF 7 (printed vi), PDF 9 (printed viii), PDF 17 (printed xvi), PDF 19 (printed xviii), PDF 23 (printed xxii), PDF 25 (printed 2), PDF 115 (printed 92), PDF 213 (printed 190)]
+- **veraPDF 7.2-2, 7.2-21, 7.2-34, 7.1-9 and 7.3-1**: Handled by the document language and title and by the alt text or artifacts above (key document and alt). Please re-run veraPDF to confirm.
 
-Reviewer note from the AI: Scanned book (Paper Capture OCR), 213 pages. Full-page Figures on blank pages (PDF 3, 7, 9, 17, 19, 23, 25, 115, 213) are artifacted as page scans. The only real image is the cover photograph (PDF 1). Running heads and page numbers sit at the bottom of the page and are artifacted by text rules with patterns taken from repeated_lines. The executor reports any rule that matches nothing. Heading levels: H1 book title; H2 front-matter titles, parts, chapters, appendices, index and About the Author; H3 Notes and Selected Readings.
+Reviewer note from the AI: Scanned 1976 book, Paper Capture OCR. Title and language come from the title page and CIP. Headings were fixed one by one with retype because the existing H3–H6 levels were arbitrary. Part and chapter titles are H2, and Notes and Selected Readings are H3. Running heads and page numbers at the page bottoms are artifacted by explicit patterns. If a pattern misses OCR-garbled variants, they will show up in the executor report. The ocr_words readings are transcribed from the word-sheet crops, including circumflexes where the book prints them (for example pubbenivāsânussati). Forms I could not read with certainty were left out.
 
 ### 14. Deferred by the executor
 
-- text rule "bare page number" matched no text on PDF 24–212 (printed 1–189): nothing was hidden by this rule; check its pattern against the page (spacing, split runs)
+- text rule "page number (bottom)" matched no text on PDF 26–213 (printed 3–190): nothing was hidden by this rule; check its pattern against the page (spacing, split runs)
 
-### 15. Decisions not applied (11)
+### 15. Decisions not applied (4)
 
 Rejected by validation or by the executor; nothing was half-applied.
 
-| What | Why | Count |
-|---|---|---:|
-| ocr_words | too different from the OCR text to be a misreading of it | 11 |
-
-Each one:
-
-- {"where": "ocr_words", "item": {"id": "196", "reads": "ñassati"}, "why": "too different from the OCR text to be a misreading of it"}
-- {"where": "ocr_words", "item": {"id": "258", "reads": "viññāṇa"}, "why": "too different from the OCR text to be a misreading of it"}
+- {"where": "ocr_words", "item": {"id": "200", "reads": "the jhānas"}, "why": "not one word"}
 - {"where": "ocr_words", "item": {"id": "275", "reads": "viññāṇ"}, "why": "too different from the OCR text to be a misreading of it"}
-- {"where": "ocr_words", "item": {"id": "312", "reads": "dhammâdāsa"}, "why": "too different from the OCR text to be a misreading of it"}
-- {"where": "ocr_words", "item": {"id": "392", "reads": "gāhaka"}, "why": "too different from the OCR text to be a misreading of it"}
-- {"where": "ocr_words", "item": {"id": "394", "reads": "bhavā"}, "why": "too different from the OCR text to be a misreading of it"}
-- {"where": "ocr_words", "item": {"id": "408", "reads": "vāda"}, "why": "too different from the OCR text to be a misreading of it"}
-- {"where": "ocr_words", "item": {"id": "419", "reads": "ātmataḥ"}, "why": "too different from the OCR text to be a misreading of it"}
+- {"where": "ocr_words", "item": {"id": "349", "reads": "of nibbāna"}, "why": "not one word"}
 - {"where": "ocr_words", "item": {"id": "421", "reads": "vyākhyā"}, "why": "too different from the OCR text to be a misreading of it"}
-- {"where": "ocr_words", "item": {"id": "469", "reads": "śūnyatā"}, "why": "too different from the OCR text to be a misreading of it"}
-- {"where": "ocr_words", "item": {"id": "587", "reads": "gahaṇa"}, "why": "too different from the OCR text to be a misreading of it"}
 
 ## What was changed
 
@@ -914,24 +887,22 @@ Each one:
 | document: DisplayDocTitle | 2 |
 | artifact: "blank page scan" | 9 |
 | artifact: "front matter running foot" | 7 |
-| artifact: "running foot (chapter titles with page number)" | 139 |
+| artifact: "roman page number (bottom)" | 3 |
+| artifact: "running head (bottom)" | 138 |
 | document: title | 1 |
 | document: /Lang | 1 |
-| OCR words: printed spelling given as ActualText | 1020 |
+| OCR words: printed spelling given as ActualText | 1009 |
 | retype → H1 | 1 |
 | retype → P | 3 |
-| retype → H2 | 23 |
+| retype → H2 | 22 |
 | retype → H3 | 24 |
 | table: header cells marked (work order) | 25 |
 | figure: alt text | 1 |
-| contents: TOC entries | 13 |
-| contents: TOC built | 3 |
 | links: /Contents set | 57 |
 | links: joined existing Link | 57 |
-| contents: entry wrapped in Reference | 13 |
 | table: header cells given a direction (Scope) | 7 |
 | tag tree index: entries pointing outside the tree cleared (ParentTree) | 57 |
-| tag tree index: entries pointing outside the tree removed (IDTree) | 155 |
+| tag tree index: entries pointing outside the tree removed (IDTree) | 157 |
 | fonts: invisible OCR-layer font given defined blank glyphs | 61 |
 
 ## Final check with PAC 2026

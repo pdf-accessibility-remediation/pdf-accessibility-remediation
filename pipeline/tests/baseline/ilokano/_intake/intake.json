@@ -772,6 +772,7 @@
   "picture_pages": [
    1
   ],
+  "ocr_layer_flagged": false,
   "placeholder_alt_removed": {
    "figures": 4,
    "links": 15

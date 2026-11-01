@@ -1,5 +1,5 @@
 {
- "prompt": "workorder_v8.md",
+ "prompt": "workorder_v9.md",
  "books": [
   "godzone",
   "clans",
@@ -9,5 +9,5 @@
   "buddhist",
   "ilokano"
  ],
- "python": "3.13"
+ "python": "3.14"
 }

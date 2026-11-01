@@ -1,36 +1,43 @@
 ```json
 {
-  "schema": "workorder/0.1",
-  "sections": {"toc_pages": [6]},
+  "schema": "workorder/0.2",
+  "sections": {
+    "toc_pages": [6]
+  },
+  "document": {
+    "title": "The Clan Records: Five Stories of Korea",
+    "lang": "en-US",
+    "display_doc_title": true
+  },
   "artifacts": {
     "text_rules": [
-      {"label": "running heads and folios (top)", "pages": [9, 193], "band": "top", "orphans": true, "type": "Pagination", "subtype": "Header"},
-      {"label": "folios on chapter-opening pages (bottom)", "pages": [6, 193], "band": "bottom", "orphans": true, "type": "Pagination", "subtype": "Footer"}
+      {"label": "running heads and page numbers (top)", "pages": [9, 193], "band": "top", "orphans": true, "type": "Pagination", "subtype": "Header", "why": "unowned_content shows every top-band orphan run on these pages is a running head (book, chapter or author name) or a page number"},
+      {"label": "page numbers (bottom, chapter openers and contents page)", "pages": [6, 193], "band": "bottom", "orphans": true, "type": "Pagination", "subtype": "Footer", "why": "bottom-band orphans are only folios on chapter-opening pages and the contents page"}
     ]
   },
-  "document": {"title": "The Clan Records: Five Stories of Korea", "lang": "en-US", "display_doc_title": true},
-  "rolemap": {"Footnote": "P"},
+  "rolemap": {
+    "Footnote": "P"
+  },
   "retype": [
-    {"obj": "6228 0", "type": "P", "why": "half-title page, repeats the title"},
-    {"obj": "6206 0", "type": "H1", "why": "title page: the book title"},
-    {"obj": "6207 0", "type": "P", "why": "subtitle line on the title page"},
-    {"obj": "6209 0", "type": "P", "why": "translator credit"},
+    {"obj": "6228 0", "type": "P", "why": "half-title line, not a heading"},
+    {"obj": "6207 0", "type": "P", "why": "series line on the title page"},
+    {"obj": "6209 0", "type": "P", "why": "translator credit on the title page"},
     {"obj": "6166 0", "type": "P", "why": "dedication"},
-    {"obj": "6164 0", "type": "H2"},
-    {"obj": "1884 0", "type": "H2"},
-    {"obj": "6154 0", "type": "P", "why": "authors' byline under the Introduction title"},
-    {"obj": "1879 0", "type": "H2"},
-    {"obj": "5034 0", "type": "H2"},
-    {"obj": "4652 0", "type": "H2"},
-    {"obj": "1870 0", "type": "H2"},
-    {"obj": "1864 0", "type": "H2"},
+    {"obj": "6154 0", "type": "P", "why": "author byline of the introduction"},
+    {"obj": "6164 0", "type": "H2", "why": "Contents title"},
+    {"obj": "1884 0", "type": "H2", "why": "Introduction title"},
+    {"obj": "1879 0", "type": "H2", "why": "story title"},
+    {"obj": "5034 0", "type": "H2", "why": "story title"},
+    {"obj": "4652 0", "type": "H2", "why": "story title"},
+    {"obj": "1870 0", "type": "H2", "why": "story title"},
+    {"obj": "1864 0", "type": "H2", "why": "story title"},
     {"obj": "4653 0", "type": "H3"},
     {"obj": "4615 0", "type": "H3"},
     {"obj": "4528 0", "type": "H3"},
     {"obj": "4450 0", "type": "H3"},
     {"obj": "4372 0", "type": "H3"},
     {"obj": "4205 0", "type": "H3"},
-    {"obj": "4063 0", "type": "H3", "why": "section VII, tagged as P"},
+    {"obj": "4063 0", "type": "H3", "why": "section VII, tagged as P; its neighbours are all headings"},
     {"obj": "4036 0", "type": "H3"},
     {"obj": "3921 0", "type": "H3"},
     {"obj": "3841 0", "type": "H3"},
@@ -50,48 +57,49 @@
     {"obj": "5709 0", "why": "dialogue lines, not a list"},
     {"obj": "5665 0", "why": "dialogue lines, not a list"},
     {"obj": "5640 0", "why": "dialogue lines, not a list"},
-    {"obj": "5576 0", "why": "dialogue lines, not a list"},
-    {"obj": "5198 0", "why": "dialogue lines, not a list"},
-    {"obj": "5184 0", "why": "dialogue lines, not a list"},
-    {"obj": "4494 0", "why": "dialogue lines, not a list"},
-    {"obj": "4486 0", "why": "dialogue lines, not a list"},
+    {"obj": "5576 0", "why": "dialogue line, not a list"},
+    {"obj": "5198 0", "why": "dialogue line, not a list"},
+    {"obj": "5184 0", "why": "dialogue line, not a list"},
+    {"obj": "4494 0", "why": "dialogue line, not a list"},
+    {"obj": "4486 0", "why": "dialogue line, not a list"},
     {"obj": "4220 0", "why": "dialogue lines, not a list"},
-    {"obj": "4168 0", "why": "dialogue lines, not a list"},
+    {"obj": "4168 0", "why": "dialogue line, not a list"},
     {"obj": "4098 0", "why": "dialogue lines, not a list"},
     {"obj": "4105 0", "why": "dialogue lines, not a list"},
-    {"obj": "4094 0", "why": "dialogue lines, not a list"},
-    {"obj": "4025 0", "why": "dialogue lines, not a list"},
+    {"obj": "4094 0", "why": "dialogue line, not a list"},
+    {"obj": "4025 0", "why": "dialogue line, not a list"},
     {"obj": "3538 0", "why": "dialogue lines, not a list"},
     {"obj": "3552 0", "why": "dialogue lines, not a list"},
     {"obj": "3200 0", "why": "dialogue lines, not a list"},
-    {"obj": "3112 0", "why": "dialogue lines, not a list"},
-    {"obj": "2988 0", "why": "dialogue lines, not a list"},
-    {"obj": "2962 0", "why": "dialogue lines, not a list"},
-    {"obj": "2957 0", "why": "dialogue lines, not a list"},
+    {"obj": "3112 0", "why": "dialogue line, not a list"},
+    {"obj": "2988 0", "why": "dialogue line, not a list"},
+    {"obj": "2962 0", "why": "dialogue line, not a list"},
+    {"obj": "2957 0", "why": "dialogue line, not a list"},
     {"obj": "2951 0", "why": "dialogue lines, not a list"},
-    {"obj": "2946 0", "why": "dialogue lines, not a list"},
+    {"obj": "2946 0", "why": "dialogue line, not a list"},
     {"obj": "2670 0", "why": "dialogue lines, not a list"},
-    {"obj": "2666 0", "why": "dialogue lines, not a list"},
+    {"obj": "2666 0", "why": "dialogue line, not a list"},
     {"obj": "2660 0", "why": "dialogue lines, not a list"},
-    {"obj": "2654 0", "why": "dialogue lines, not a list"},
+    {"obj": "2654 0", "why": "dialogue line, not a list"},
     {"obj": "2650 0", "why": "dialogue lines, not a list"},
-    {"obj": "2462 0", "why": "dialogue lines, not a list"},
+    {"obj": "2462 0", "why": "dialogue line, not a list"},
     {"obj": "2094 0", "why": "dialogue lines, not a list"},
-    {"obj": "2105 0", "why": "dialogue lines, not a list"},
-    {"obj": "2100 0", "why": "dialogue lines, not a list"}
+    {"obj": "2105 0", "why": "dialogue line, not a list"},
+    {"obj": "2100 0", "why": "dialogue line, not a list"}
   ],
   "alt": [
-    {"obj": "6233 0", "alt": "Book cover: title \"The Clan Records\", subtitle \"Five Stories of Korea\", author Kajiyama Toshiyuki. A brush-and-ink drawing shows a fountain pen lying diagonally across a sheet of manuscript grid paper."},
-    {"obj": "6212 0", "alt": "University of Hawai‘i Press logo"},
-    {"obj": "6095 0", "alt": "Black-and-white studio portrait of the Kajiyama family, Seoul, 1937: a woman in a kimono, a man in a suit holding a baby, a woman in Korean traditional dress, and three young boys seated in front."},
-    {"obj": "6080 0", "alt": "Kajiyama Toshiyuki, in a dark kimono and glasses, standing among crowded bookshelves in his personal library in Tokyo, 1971, holding an open book."}
+    {"obj": "6233 0", "alt": "Cover of The Clan Records: Five Stories of Korea by Kajiyama Toshiyuki. A brush-and-ink drawing of a fountain pen lying diagonally across a sheet of grid-ruled manuscript paper, on a pale tan ground, below the title and author name."},
+    {"obj": "6212 0", "alt": "University of Hawaiʻi Press logo"},
+    {"obj": "6095 0", "alt": "Black-and-white studio portrait of the Kajiyama family in Seoul, 1937: a woman in a kimono, a man in a suit holding a baby, a woman in a Korean hanbok, and three young boys seated in front."},
+    {"obj": "6080 0", "alt": "Black-and-white photograph of Kajiyama Toshiyuki in a kimono and dark-rimmed glasses, holding an open book between tall shelves and stacks of documents in his personal library, Tokyo, 1971."}
   ],
   "deferrals": [
-    {"what": "Section headings \"I\" and \"II\" of \"The Remembered Shadow of the Yi Dynasty\" are not marked as headings or heading candidates; a person should check them and make them H3.", "why": "The digest shows no separate element for them (the chapter title is followed by a P starting with \"I\").", "pages": [118, 134]},
-    {"what": "The contents entry \"Seeking Life amidst Death … 47 When the Hibiscus Blooms 73\" is a single TOCI holding two entries.", "why": "Splitting a TOC item is not possible in this work order.", "pages": [6]},
-    {"what": "Extracted text has stray characters in place of macron and diacritic letters (e.g. \"ò\", \"ôô\", \"∆\", missing letters in Korean names).", "why": "The text layer is damaged and the published text must not be changed; a person should check it.", "pages": [4, 5, 9, 48]},
-    {"what": "The \"Footnote\" style is mapped to P, not Note.", "why": "Its samples are fragments of ordinary narrative, not real footnotes. A person should check the reading order of these fragments.", "pages": [15, 190]}
+    {"what": "Style 'Footnote' (22 elements, veraPDF 7.1-5) mapped to P", "why": "Samples are fragments of story dialogue, not real footnotes or notes, so Note would be wrong. A person should check whether any of them is a genuine note.", "pages": [15, 190]},
+    {"what": "Contents entry 'Seeking Life amidst Death: The Last Day of the War 47 When the Hibiscus Blooms 73' sits in one TOCI", "why": "Two entries share a single TOCI. Splitting it changes the tag tree structure and needs a person.", "pages": [6]},
+    {"what": "Section headings of 'The Remembered Shadow of the Yi Dynasty' (I and II) and any section numerals not tagged as headings", "why": "The digest lists no heading for them (page 118 shows 'P: I'), so I could not target them reliably.", "pages": [118, 134]},
+    {"what": "Text-layer glyph problems", "why": "Diacritics are lost or garbled in names and words, such as 'Ryòzò', 'Sl Chin-yng', 'Ch’r-in', 'Km-ju' and 'Kyngbok'. Stray marks such as 'ôô' and '∆' appear after some lines. Text is never changed here, so a person should check the text layer.", "pages": [4, 5, 31, 48, 97, 144]},
+    {"what": "Reading order and caption tying for the two introduction photographs", "why": "The captions are plain P elements with no caption style, so they cannot be tied to their figures in this work order.", "pages": [11, 12]}
   ],
-  "notes_for_reviewer": "One H1 (book title, PDF 4, printed iii). Contents, Introduction and the five story titles are H2; section numerals are H3. The half-title and title-page lines, the dedication and the byline are demoted to P. Running heads and folios are artifacted by band rules on orphan runs, covering veraPDF 7.1-3. All 32 lists are dialogue lines and are flattened. The \"Footnote\" role is mapped to P to fix veraPDF 7.1-5. Alt text is written for all four figures (veraPDF 7.3-1). The cover is tagged as a Figure plus separate text P elements."
+  "notes_for_reviewer": "Heading outline: one H1 (the title-page 'The Clan Records'), H2 for Contents, Introduction and the five story titles, H3 for the Roman-numeral sections. Half-title, series line, translator credit, dedication and the introduction byline are demoted to P. All 32 'lists' are dialogue lines and are flattened. All orphan runs are running heads or folios and are artifacted by band, covering page 6 and pages 9–193 (the digest lists no orphans on page 8's top). The 4 figures get alt text. The veraPDF 7.1-3 failures come from those orphan runs."
 }
 ```
