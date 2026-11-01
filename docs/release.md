@@ -368,7 +368,9 @@ nothing.
   - the shipped file downloads under its plain names, and its record ZIP holds the statement;
   - a shipped copy that a newer version replaced is listed in "Version to Download" as "Shipment 1, shipped on …".
 - **A shipped book whose PDF later changes on disk** keeps "Shipped", with "The current PDF has changed since this report
-  was made." beside it, and never Ready's green. Mark as Shipped stays refused until it is resolved. The shipped copy in
+  was made." beside it, and never Ready's green. On the run page the app drops the card's green border while the warning
+  stands; review.html opened as a file keeps its green border until it is next rebuilt (the strip and the evaluation page
+  say the PDF changed). Mark as Shipped stays refused until it is resolved. The shipped copy in
   `release/shipped/` is untouched and still downloads.
 - **A previous result's own page** reads "Earlier version (the current version is Session N)", naming its shipment when
   it was itself shipped.

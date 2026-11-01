@@ -432,10 +432,21 @@ def make(s, setup, code=None):
             cur = S.current_id((runs.load(rec) if rec.startswith(RUNS + os.sep) else None) or {})
             f = os.path.realpath(f)                                                  # checked inside the runs folder first
             t = self.text(f) if f.startswith(RUNS + os.sep) and os.path.isfile(f) else None
-            if t is not None: return self.send(200, with_panel(t, run, cur), 'text/html; charset=utf-8')
+            if t is not None: return self.send(200, with_panel(card_border(t, R), run, cur), 'text/html; charset=utf-8')
             return self.send(200, no_dashboard(run, R, cur), 'text/html; charset=utf-8')
 
     return ThreadingHTTPServer(('127.0.0.1', s['port']), H)
+
+def card_border(page, R):
+    """review.html as the run page serves it: while the Shipped warning stands (the PDF on disk changed after shipping), the
+    "Ready to Ship?" card loses its green border, as the strip says (review 22 N8, 24). review.html on disk is not rebuilt for
+    it: opened as a file it keeps the border until it is next rebuilt."""
+    green = '<section class="ship yes" aria-labelledby="ship-h">'
+    if green not in page: return page
+    rec = runs.load(os.path.join(R, 'record.json')) or {}
+    try: st = MP.app_glance(R, rec, rec.get('glance') or {'ship': []}).get('status') or {}
+    except (OSError, ValueError, KeyError, TypeError): return page
+    return page.replace(green, '<section class="ship" aria-labelledby="ship-h">', 1) if st.get('warning') else page
 
 def no_dashboard(run, R, current=None):
     """A run with no review.html (older runs): the panel, the review.md link and a line saying there is no dashboard.
