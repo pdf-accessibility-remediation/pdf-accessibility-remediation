@@ -83,7 +83,8 @@ def ship_gate(R, rec, g=None, rel=None):
     cur = ((g.get('status') or {}).get('current') or {}).get('name')
     if cur != REL.READY:
         need = [G.ship_name(x) for x in g.get('ship') or [] if not x.get('ok')]
-        return {'ok': False, 'shipped': None, 'why': 'This version is not ready to ship' + (f': {", ".join(need)} still unsatisfied.' if need else '.')}
+        return {'ok': False, 'shipped': None, 'not_ready': True,
+                'why': 'This version is not ready to ship' + (f': {", ".join(need)} still unsatisfied.' if need else '.')}
     return {'ok': True, 'shipped': None, 'why': None}
 
 CHANGED_BY_HAND = ('The book\'s PDF has changed since this report was made, so no check can be recorded for it. '
@@ -174,60 +175,50 @@ def state(R, run):
             'status': st.get('text') or ('Ready' if g.get('ready') else 'Not Ready'), 'status_name': st.get('name'), 'newer': st.get('newer'),
             'ready': {'answer': 'Yes' if g.get('ready') else 'No', 'lines': [{'what': x['what'], 'name': G.ship_name(x), 'ok': x['ok'], 'text': x['text']} for x in g.get('ship') or []]},
             'needs': (g.get('needs_person') or {}).get('total'), 'refusal': refusal(R, rec, disk), 'sections': secs,
-            'downloads': downloads_data(R, rec, g), 'known': _known(R, rec, g)}
-
-def _known(R, rec, g):
-    from . import downloads as DL
-    try: return DL.known(R, rec, DL.versions(R, rec, g))
-    except (OSError, ValueError, KeyError, TypeError): return []
+            'downloads': downloads_data(R, rec, g)}
 
 # ------------------------------------------------------------------ the strip (run page), from /api/run/<run>
 def strip(R, rec):
-    """The strip's data: one line per section, the live status (with the card's, to say when they differ), the disk
-    check and any refusal. Cheap: the cached disk hash and the stored glance with release/ worked out now."""
+    """The strip's data: the live status (with the card's, to say when they differ), the disk check, any refusal, Mark as
+    Shipped and the downloads. The card right above it says each requirement, so the strip has no line per part (Patrick,
+    2026-11-01). Cheap: the cached disk hash and the stored glance with release/ worked out now."""
     R = os.path.abspath(R); rel = REL.load(R, rec); disk = disk_state(R, rec)
-    cur = app_sha(R, rec)                                    # the record's, else the disk's (F1; K1)
-    out = {}
-    for sec in REL.SECTIONS:
-        p = REL.part(rel, sec, cur); c = p['check']
-        words = {'completed': lambda: f'completed on this version ({c.get("by")}, {D.day(c.get("recorded"))})' + (f' · {REL.noted(len(p["issues"]))}' if p['issues'] else ''),
-                 'could not be read': lambda: 'could not be read in full: record it again',
-                 'earlier version': lambda: 'completed on an earlier version: evaluate this version',
-                 'not recorded': lambda: 'not completed'}[p['state']]()
-        out[sec] = {'name': REL.SECTION_NAMES[sec], 'id': SECTION_ID[sec], 'words': words, 'ok': p['state'] == 'completed'}
     g0 = rec.get('glance') or {}
     try: lg = app_glance(R, rec, g0 if g0.get('ship') else {'ship': []}, rel); live = lg.get('status') or {}
     except (KeyError, TypeError, ValueError): lg, live = {'status': {}}, {}
     card = (g0.get('status') or {})
-    return {'sections': out, 'status': live.get('text'), 'newer': live.get('newer'),
+    return {'status': live.get('text'), 'newer': live.get('newer'),
             'card_status': card.get('text'), 'card_newer': card.get('newer'),
             'disk_same': disk['same'], 'refusal': refusal(R, rec, disk), 'downloads': downloads_data(R, rec, lg), 'ship': ship_data(R, rec, lg, rel)}
 
 def ship_data(R, rec, g, rel):
     """The strip's "Mark as Shipped": the gate (ship_gate), the hash the page shows (sent back with the POST, never shown),
-    the version in words and the issues noted that ship with it."""
+    the version in words and the issues noted that ship with it. "This version is not ready to ship: …" is not repeated on
+    the strip: the card above it says what is unsatisfied (Patrick, 2026-11-01); a POST still gets it as its refusal."""
     try: gate = ship_gate(R, rec, g, rel)
     except (OSError, ValueError, KeyError, TypeError): return None
-    return {'ok': gate['ok'], 'why': gate['why'], 'sha': app_sha(R, rec), 'version': version(R, rec)['label'],
+    return {'ok': gate['ok'], 'why': None if gate.get('not_ready') else gate['why'], 'sha': app_sha(R, rec), 'version': version(R, rec)['label'],
             'issues': ((g.get('status') or {}).get('current') or {}).get('issues') or 0}
 
 def downloads_data(R, rec, g=None):
-    """The versions the "Version to Download" picker offers (webapp/downloads.py: only those whose PDF exists), each with
+    """The versions the "Available Downloads" picker offers (webapp/downloads.py: only those whose PDF exists), each with
     its label and the line saying how its files are marked. No file name, no hash."""
     from . import downloads as DL                            # imported here: downloads imports this module
     try: vs = DL.versions(R, rec, g)
     except (OSError, ValueError, KeyError, TypeError): return {'versions': []}
     return {'versions': [{'id': x['id'], 'label': x['label'], 'marked': DL.marked_line(x['state'])} for x in vs]}
 
-def downloads_form(base, dd, p='mc'):
-    """The picker and the two download buttons: a GET form, so it works by keyboard and without the script."""
+def downloads_form(base, dd, p='mc', hx='h2'):
+    """"Available Downloads": the heading (the select's label, inside it), the select under it, the line saying how the
+    chosen version's files are marked, then the two buttons in a row. A GET form, so it works by keyboard and without the
+    script. panel.js dlForm() draws the same on the run page's strip (Patrick, 2026-11-01)."""
     vs = dd.get('versions') or []
     if not vs: return ''
     opts = ''.join(f'<option value="{E(x["id"])}" data-marked="{E(x["marked"])}">{E(x["label"])}</option>' for x in vs)
-    return (f'<form class="{p}-dl" method="get" action="{E(base)}download">'
-            f'<div class="mc-field"><label for="{p}-dlv">Version to Download</label>'
-            f'<select id="{p}-dlv" name="v" aria-describedby="{p}-dl-marked">{opts}</select></div>'
-            f'<p id="{p}-dl-marked" class="mc-help">{E(vs[0]["marked"])}</p>'
+    return (f'<form class="pp-dl" method="get" action="{E(base)}download">'
+            f'<{hx} id="{p}-dl-h"><label for="{p}-dlv">Available Downloads</label></{hx}>'
+            f'<select id="{p}-dlv" name="v" aria-describedby="{p}-dl-marked">{opts}</select>'
+            f'<p id="{p}-dl-marked" class="pp-note">{E(vs[0]["marked"])}</p>'
             '<div class="pp-row"><button type="submit" name="what" value="pdf">Download the Remediated PDF</button>'
             '<button type="submit" name="what" value="record">Download the Record (ZIP)</button></div></form>')
 
@@ -330,27 +321,20 @@ def page(R, run, recorded=None):
     ready = st['ready']; why = [x for x in ready['lines'] if not x['ok']]
     B = [f'<header><h1>Accessibility Evaluation</h1><p class="mc-book">PDF Title: <span{lang}>{E(b["title"])}</span></p></header>',
          f'<nav class="pp-wrap" aria-label="This page"><p class="pp pp-bar mc-nav"><a class="pp-btn" href="{E(st["base"])}">Back to the Run Page</a></p></nav>',
-         '<main id="main" tabindex="-1"><div class="pp mc">']
+         '<main id="main" tabindex="-1"><div class="pp mc">',
+         f'<p class="mc-status">Overall Status: <strong>{E(st["status"])}</strong>' + (f' · {E(st["newer"])}' if st.get('newer') else '')   # right after "Back to the Run Page" (Patrick, 2026-11-01)
+         + (f' · Unsatisfied Requirements: {E(", ".join(x["name"] for x in why))}' if st.get('status_name') == REL.NOT_READY and why else '') + '</p>']
     if msg:
         B.append(f'<div id="mc-msg" class="pp-msg pp-okmsg" tabindex="-1"><span class="pp-msg-t">{E(msg[0])}</span>'
                  + ('<button type="button" id="mc-review" class="pp-primary">Review Again</button>' if msg[1] else '') + '</div>')
     v = st['version']
     B.append(f'<p>These results are recorded for {E(v["label"])}' + (f', {E(v["when"])}' if v['when'] else '') + '.</p>'
              '<p class="mc-help">Complete the evaluation after the last review is applied: a new version needs its own evaluation.</p>'
-             f'<p class="mc-status">Overall Status: <strong>{E(st["status"])}</strong>' + (f' · {E(st["newer"])}' if st.get('newer') else '')
-             + (f' · Unsatisfied Requirements: {E(", ".join(x["name"] for x in why))}' if st.get('status_name') == REL.NOT_READY and why else '') + '</p>'
              '<p class="mc-help">Every item needs a result, and a Fail needs a note. A Fail does not hold the book back: it is kept in the report, '
              'with its note, for a person to fix later.</p>')
     if st['refusal']: B.append(f'<p id="mc-refusal" class="mc-refusal">{E(st["refusal"])} Your answers are still saved as you type.</p>')
-    # the PDF to take to PAC 2026 and the screen reader, and a check of a file already downloaded (stage 3)
-    B.append('<section id="downloads" class="mc-sec" aria-labelledby="dl-h"><h2 id="dl-h">Download and Check the PDF</h2>'
-             '<p class="mc-help">The evaluation is always recorded for the current version; the downloads can be any version.</p>'
-             + downloads_form(st['base'], st['downloads']) +
-             '<h3>Which Version Is This File?</h3>'
-             '<div class="mc-field"><label for="fc-file">PDF to Check</label>'
-             '<p class="mc-help" id="fc-help">Choose a PDF you downloaded or checked. It is read in this browser and never uploaded.</p>'
-             '<input type="file" id="fc-file" accept=".pdf,application/pdf" aria-describedby="fc-help fc-out"></div>'
-             '<p id="fc-out" class="mc-fc-out" role="status" aria-live="polite"></p></section>')
+    dl = downloads_form(st['base'], st['downloads'], 'mc', 'h2')     # the PDF to take to PAC 2026 and the screen reader (stage 3)
+    if dl: B.append(f'<section id="downloads" class="mc-sec" aria-labelledby="mc-dl-h">{dl}</section>')
     for key in REL.SECTIONS:
         s = st['sections'][key]; p = p_of[key]
         B.append(f'<section id="{s["id"]}" class="mc-sec" aria-labelledby="{p}-h"><h2 id="{p}-h" tabindex="-1">{E(s["name"])}</h2>')
@@ -375,7 +359,7 @@ def page(R, run, recorded=None):
                  + _form(st, s, p) + '</section>')
     B.append('</div></main><div id="mc-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>'
              '<div id="mc-alert" class="pp-sr" role="alert"></div>')
-    data = {k: st[k] for k in ('run', 'base', 'sha', 'known')}
+    data = {k: st[k] for k in ('run', 'base', 'sha')}
     data['sections'] = {k: {'id': v['id'], 'p': p_of[k], 'draft_saved_at': (v['draft'] or {}).get('saved_at'), 'tombstone': v['tombstone'],
                             'items': [{'key': i['key'], 'found': i['found']} for i in v['items']], 'failed_last': v['failed_last'],
                             'starts': [{'by': e.get('by'), 'fields': e.get('fields') or {}, 'items': {ik: {'note': (iv or {}).get('note') or ''} for ik, iv in (e.get('items') or {}).items()},

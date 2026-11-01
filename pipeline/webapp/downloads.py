@@ -2,8 +2,8 @@
 any version, offered at any time, ready or not, each named by its state (lib/release.py download_names).
 
     versions(R, rec)          [{id, label, session, dir, pdf, sha, state, marked}] newest first: the current version, then
-                              each earlier result whose PDF still exists; `removed`: earlier PDFs taken by "Remove Older
-                              PDFs" (review/prune.py), kept for "Which Version Is This File?" only
+                              each earlier result whose PDF still exists (one whose PDF "Clean Up Space" removed,
+                              review/prune.py, is not listed)
     prepare(R, run, v, what)  the download, opened in one moment under the record lock: {name, ctype, members | fh}
     stream_zip(out, d)        the record ZIP, written to the response as it is built (never kept on disk)
 
@@ -39,7 +39,7 @@ def removed(R): return REL.removed(R)
 def versions(R, rec, glance=None):
     """The run's versions, newest first. The current version's state is its status (app_glance: the record's hash first,
     a changed file never Ready); an earlier version's is 'earlier version' (K3). An earlier version is listed only while
-    its PDF exists; one whose PDF was removed is in `removed` (for the file check)."""
+    its PDF exists; one whose PDF was removed (release/removed.json) is not listed."""
     R = os.path.abspath(R); doc = rec.get('document') or {}
     sid = S.current_id(rec)
     g = glance if glance is not None else MP.app_glance(R, rec, rec.get('glance') or {'ship': []})
@@ -192,21 +192,3 @@ def stream_zip(w, d):
                 zf.writestr(zi, text.encode('utf-8'))
     finally:
         for _, fh, _ in d['members']: fh.close()
-
-def known(R, rec, vs=None):
-    """For "Which Version Is This File?": [{sha, words}] of every version this run knows: the listed ones (their files on
-    disk) and earlier ones whose PDF was removed (their recorded hash). Data only, never shown."""
-    vs = vs if vs is not None else versions(R, rec)
-    out = []
-    for x in vs:
-        if not x['sha']: continue
-        if x['id'] == 'current':
-            out.append({'sha': x['sha'], 'words': f'This is the current version ({_version_label(x["session"]) if x["session"] else "applied without a review"}): {x["status_text"] or x["state"]}.'})
-        elif x.get('shipment'):
-            out.append({'sha': x['sha'], 'words': f'This is the shipped copy (shipment {x["shipment"]}, {D.day(x["entry"].get("shipped"))})'
-                                                  + (', since withdrawn.' if x['entry'].get('withdrawn') else '.')})
-        else: out.append({'sha': x['sha'], 'words': f'This is an earlier version ({_version_label(x["id"])}), not the current one.'})
-    for r in removed(R):
-        if r.get('sha256'):
-            out.append({'sha': r['sha256'], 'words': f'This is an earlier version ({_version_label(r.get("version"))}), not the current one. Its PDF was removed from this computer to free space.'})
-    return out

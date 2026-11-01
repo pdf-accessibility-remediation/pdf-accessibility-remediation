@@ -99,13 +99,15 @@ def test_a_run_with_no_recorded_hash_is_never_called_changed(mapp):
     st, s = js(mapp['port'], 'GET', f'/api/run/{RUN}/checks')
     assert st == 200 and s['disk']['same'] is None and s['refusal'] is None and s['sections']['pac']['current'] is None
     st, s = js(mapp['port'], 'GET', f'/api/run/{RUN}')
-    assert s['manual']['disk_same'] is None and s['manual']['refusal'] is None and s['manual']['sections']['pac']['words'] == 'not completed'
+    assert s['manual']['disk_same'] is None and s['manual']['refusal'] is None and 'sections' not in s['manual']
     st, r = js(mapp['port'], 'POST', f'/api/run/{RUN}/checks/record', {'section': 'pac', 'data': PAC, 'shown_sha256': s.get('sha')})
     assert st == 200                                                                    # F1: the first Record takes the disk hash
     rec = core.load(os.path.join(mapp['R'], 'record.json'))
     assert rec['document']['output_sha256_from'].startswith('first check') and rec['manual_checks']['pac']['state'] == 'completed'
     st, s = js(mapp['port'], 'GET', f'/api/run/{RUN}')
-    assert s['manual']['disk_same'] is True and s['manual']['sections']['pac']['ok'] is True
+    assert s['manual']['disk_same'] is True
+    st, s = js(mapp['port'], 'GET', f'/api/run/{RUN}/checks')
+    assert s['sections']['pac']['current']['state'] == 'completed'
 
 def test_a_changed_pdf_is_said_in_plain_words(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
@@ -213,7 +215,7 @@ def test_the_page_in_the_words_decided_after_try_rv1(tmp_path):
     css = open(os.path.join(HERE, 'webapp', 'panel.css'), encoding='utf-8').read()   # G1: the panel's nowrap last column does not reach Notes
     assert '.mc td.mc-note { max-width: 120ch; overflow-wrap: anywhere; white-space: normal; }' in css and '.mc-tw { overflow-x: auto; }' not in css
     s = MP.strip(R, S.load(os.path.join(R, 'record.json')))
-    assert s['sections']['screen_reader']['words'].startswith('completed on this version (Lee, ') and s['sections']['screen_reader']['words'].endswith(' · 1 issue noted')
+    assert 'sections' not in s                                                 # the strip has no line per part (Patrick, 2026-11-01)
 
 # ------------------------------------------------------------------ Record and its refusals
 def test_record_errors_come_back_per_field_and_nothing_is_written(mapp):

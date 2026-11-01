@@ -281,10 +281,10 @@ def make(s, setup, code=None):
                 self.send(200, {'shipped': {'n': e['n'], 'shipped': e['shipped']}})
                 threading.Thread(target=S.rebuild_batch, args=(R, lambda *a: None), daemon=True).start()
                 return
-            if segs[-1] == 'remove-older-pdfs':                 # in this process, through review/prune.py (its locks, its refusals)
+            if segs[-1] == 'remove-older-pdfs':                 # "Clean Up Space", in this process, through review/prune.py (its locks, its refusals)
                 from review import prune
-                shown = body.get('shas') if isinstance(body.get('shas'), list) else []
-                try: done = prune.remove(R, [str(x) for x in shown], str(body.get('by') or ''), wait=runlock.REQUEST_WAIT,
+                chosen = body.get('chosen') if isinstance(body.get('chosen'), list) else []
+                try: done = prune.remove(R, chosen, str(body.get('by') or ''), wait=runlock.REQUEST_WAIT,
                                          say=lambda *a: applog(f'{run}: ' + ' '.join(str(x) for x in a)))
                 except S.Refused as e: return self.send(409, {'error': str(e)})
                 return self.send(200, {'removed': len(done), 'bytes': sum(x['bytes'] for x in done)})
