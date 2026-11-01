@@ -154,6 +154,19 @@ def latest(rel, section, sha):
     return next((c for c in reversed(rel['checks'].get(section) or []) if sha_of(c) == sha), None)
 
 def live_shipments(rel): return [s for s in rel.get('shipped') or [] if not s.get('withdrawn')]
+def live_shipment(rel, sha):
+    """The latest shipment not withdrawn of the file with this hash, or None. Mark as Shipped is refused while one exists
+    (03 §3.3: the same file never ships twice; after a withdrawal it may ship again; review 22 M1)."""
+    return next((s for s in reversed(live_shipments(rel)) if sha and sha_of(s) == sha), None) if sha else None
+
+EARLIER = 'Earlier version'
+def earlier_status(rel, sha, current_label):
+    """The status on a previous result's own page (reviews/versions/<id>/): never the run's status worked out against this
+    older file, which would name itself as "Newer version (Session 4)" on Session 4's page (CLAUDE.md note (c))."""
+    s = next((x for x in reversed(rel.get('shipped') or []) if sha and sha_of(x) == sha), None)
+    shipped = (f'shipped as shipment {s.get("n")} on {day(s.get("shipped"))}' + (', since withdrawn' if s.get('withdrawn') else '') + '; ') if s else ''
+    return {'name': EARLIER, 'text': f'{EARLIER} ({shipped}the current version is {current_label})', 'newer': None, 'shipment': None,
+            'issues': 0, 'current': {'name': NOT_READY, 'issues': 0}}
 
 def _session(c):
     s = ((c or {}).get('pdf') or {}).get('session')

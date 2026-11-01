@@ -232,11 +232,19 @@ def glance_of(R, rec=None, labels=None):
     from lib import release as REL
     rec = rec or json.load(open(os.path.join(R, 'record.json'), encoding='utf-8'))
     rel = REL.load(REL.run_dir_of(R), rec)
-    if rec.get('glance', {}).get('schema') == G.SCHEMA: return G.with_release(rec['glance'], rec, rel)
-    if rec.get('sections_version') == S.VERSION:
-        return G.glance(rec, None, labels if labels is not None else labels_of(R, rec), han_pages(R), sections=rec['sections'], release=rel)
-    md = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
-    return G.glance(rec, md, labels if labels is not None else labels_of(R, rec), han_pages(R), release=rel)
+    if rec.get('glance', {}).get('schema') == G.SCHEMA: g = G.with_release(rec['glance'], rec, rel)
+    elif rec.get('sections_version') == S.VERSION:
+        g = G.glance(rec, None, labels if labels is not None else labels_of(R, rec), han_pages(R), sections=rec['sections'], release=rel)
+    else:
+        md = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
+        g = G.glance(rec, md, labels if labels is not None else labels_of(R, rec), han_pages(R), release=rel)
+    run = REL.run_dir_of(R)
+    if run != os.path.abspath(R):                       # a previous result's own page: "Earlier version (…)" (note (c))
+        from review import sessions as RS
+        cid = RS.current_id(json.load(open(os.path.join(run, 'record.json'), encoding='utf-8')) if os.path.exists(os.path.join(run, 'record.json')) else {})
+        label = f'Session {int(cid)}' if str(cid).isdigit() else 'the version applied without a review'
+        g = G.as_earlier(g, rel, (rec.get('document') or {}).get('output_sha256'), label)
+    return g
 
 def need_items(secs):
     """{section anchor: [item ids]} of what needs a person, counted exactly as the Overview counts it (lib/glance.py):
@@ -515,7 +523,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus
     # ---- ready to ship
     st = g.get('status') or {}
-    green = (st.get('name') or '') in ('Ready', 'Shipped')       # Shipped has Ready's border; the status line says which (2026-10-31)
+    green = (st.get('name') or '') in ('Ready', 'Shipped') and not st.get('warning')   # Shipped has Ready's border, never with a warning (N8)
     B.append(f'<section class="ship{" yes" if green else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship?</h2>'
              + (f'<p class="st">Status: <strong>{E(st["text"])}</strong>' + (f' · {E(st["newer"])}' if st.get('newer') else '') + '</p>' if st else '') + '<ul role="list">'
              # each requirement's mark in one centred column: a check mark when satisfied, else a bullet; hidden from screen
