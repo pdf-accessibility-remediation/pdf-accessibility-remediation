@@ -65,9 +65,27 @@ def versions(R, rec, glance=None):
         if not pdf or not os.path.isfile(pdf) or n in gone: continue
         out.append({'id': n, 'session': n if str(n).isdigit() else None, 'dir': d, 'pdf': pdf, 'sha': MP.disk_sha(pdf),
                     'state': 'earlier version', 'status_text': None, 'label': f'{_version_label(n)[0].upper() + _version_label(n)[1:]} (earlier version)'})
+    changed = MP.disk_state(R, rec)['same'] is False
+    for s in reversed(rel.get('shipped') or []):             # shipped copies: listed when the current entry is not them (M7)
+        d = _shipped_dir(R, s); f = (s.get('pdf') or {}).get('file')
+        if not d or not f or not os.path.isfile(os.path.join(d, f)): continue
+        ssha = REL.sha_of(s)
+        if ssha == out[0]['sha'] and not changed and not s.get('withdrawn'): continue
+        ses = (s.get('pdf') or {}).get('session')
+        out.append({'id': f'shipment-{s.get("n")}', 'session': ses, 'dir': d, 'pdf': os.path.join(d, f), 'sha': ssha, 'shipment': s.get('n'), 'entry': s,
+                    'state': 'withdrawn' if s.get('withdrawn') else REL.SHIPPED, 'status_text': None,
+                    'label': f'Shipment {s.get("n")}, shipped on {D.day(s.get("shipped"))}' + (f' ({_version_label(ses)})' if str(ses or '').isdigit() else '')
+                             + (' (withdrawn)' if s.get('withdrawn') else '')})
     return out
 
-MARKED = {REL.NOT_READY: 'not ready', REL.PENDING: 'not ready', REL.READY: 'not shipped', 'earlier version': 'earlier version'}
+MARKED = {REL.NOT_READY: 'not ready', REL.PENDING: 'not ready', REL.READY: 'not shipped', 'earlier version': 'earlier version', 'withdrawn': 'withdrawn'}
+SHIPPED_CHANGED = 'The shipped copy has changed since it was shipped, so it can\'t be downloaded. Whoever looks after the app can check it.'
+
+def _shipped_dir(R, s):
+    """A shipment's folder, release/shipped/NNN, from its shipped.json entry (never a path from the request), or None."""
+    base = os.path.realpath(os.path.join(R, 'release', 'shipped'))
+    d = os.path.realpath(os.path.join(R, 'release', s.get('folder') or f'shipped/{int(s.get("n") or 0):03d}'))
+    return d if d.startswith(base + os.sep) and os.path.isdir(d) else None
 def marked_line(state):
     """The line beside the picker: what the downloaded files' names say (no file name on the page)."""
     w = MARKED.get(state)
@@ -88,7 +106,10 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
             vs = versions(R, rec, g)
             ver = next((x for x in vs if x['id'] == v), None)
             if ver is None: raise Refused(None)                          # not one of the run's own versions
-            if ver['id'] == 'current':
+            if ver.get('shipment'):                                      # a shipped copy: its folder's own files (never its record.json)
+                if MP.disk_sha(ver['pdf']) != ver['sha']: raise Refused(SHIPPED_CHANGED)
+                vrec = {'document': {'output': (ver['entry'].get('pdf') or {}).get('file')}}
+            elif ver['id'] == 'current':
                 disk = MP.disk_state(R, rec)
                 if disk['missing']: raise Refused(MISSING)
                 if disk['same'] is False: raise Refused(CHANGED)
@@ -98,13 +119,17 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
                 want = (vrec.get('document') or {}).get('output_sha256')
                 if want and ver['sha'] != want: raise Refused(EARLIER_CHANGED)
             out = (vrec.get('document') or {}).get('output')
-            pdf_name, zip_name = REL.download_names(out, ver['session'], ver['state'], next((s.get('n') for s in REL.live_shipments(REL.load(R)) if REL.sha_of(s) == ver['sha']), None))
+            pdf_name, zip_name = REL.download_names(out, ver['session'], ver['state'], ver.get('shipment') or next((s.get('n') for s in REL.live_shipments(REL.load(R)) if REL.sha_of(s) == ver['sha']), None))
             if what == 'pdf':
                 return {'name': pdf_name, 'ctype': 'application/pdf', 'fh': open(ver['pdf'], 'rb')}
             members = [(out, open(ver['pdf'], 'rb'), zipfile.ZIP_STORED)]
             for n in ('review.html', 'review.md', 'han_review.csv'):
                 p = os.path.join(ver['dir'], n)
                 if os.path.isfile(p): members.append((n, open(p, 'rb'), zipfile.ZIP_DEFLATED))
+            sd = ver['dir'] if ver.get('shipment') else next((_shipped_dir(R, s) for s in reversed(REL.live_shipments(REL.load(R))) if REL.sha_of(s) == ver['sha']), None)
+            for n in ('disclosure.html', 'disclosure.md'):            # the accessibility statement, once this file has shipped
+                p = os.path.join(sd, n) if sd else None
+                if p and os.path.isfile(p): members.append((n, open(p, 'rb'), zipfile.ZIP_DEFLATED))
             rel = REL.load(R)
             cur_label = _version_label(S.current_id(rec))
             book = MP.book(rec)['title']
@@ -129,6 +154,10 @@ def _readme(d, sha):
     if ver['id'] == 'current':
         vline = f'Version: the current version ({_version_label(ver["session"]) if ver["session"] else "applied without a review"})' + (f', {d["applied"]}' if d.get('applied') else '')
         status = f'Status: {ver["status_text"] or ver["state"]}'
+    elif ver.get('shipment'):
+        e = ver['entry']; w = e.get('withdrawn')
+        vline = f'Version: shipment {e.get("n")}, shipped on {D.when(e.get("shipped"))} by {e.get("by")}' + (f' ({_version_label(ver["session"])})' if ver.get('session') else '')
+        status = f'Status: withdrawn on {D.day(w.get("date"))} by {w.get("by")}: {w.get("reason")}' if w else 'Status: Shipped'
     else:                                                        # K3: never a computed Ready on a superseded file
         vline = f'Version: {_version_label(ver["id"])}, an earlier version' + (f', {d["applied"]}' if d.get('applied') else '')
         status = f'Status: earlier version (not the current one; the current version is {d["cur_label"]})'
@@ -173,6 +202,9 @@ def known(R, rec, vs=None):
         if not x['sha']: continue
         if x['id'] == 'current':
             out.append({'sha': x['sha'], 'words': f'This is the current version ({_version_label(x["session"]) if x["session"] else "applied without a review"}): {x["status_text"] or x["state"]}.'})
+        elif x.get('shipment'):
+            out.append({'sha': x['sha'], 'words': f'This is the shipped copy (shipment {x["shipment"]}, {D.day(x["entry"].get("shipped"))})'
+                                                  + (', since withdrawn.' if x['entry'].get('withdrawn') else '.')})
         else: out.append({'sha': x['sha'], 'words': f'This is an earlier version ({_version_label(x["id"])}), not the current one.'})
     for r in removed(R):
         if r.get('sha256'):

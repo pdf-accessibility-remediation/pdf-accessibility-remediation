@@ -201,7 +201,15 @@ def strip(R, rec):
     card = (g0.get('status') or {})
     return {'sections': out, 'status': live.get('text'), 'newer': live.get('newer'),
             'card_status': card.get('text'), 'card_newer': card.get('newer'),
-            'disk_same': disk['same'], 'refusal': refusal(R, rec, disk), 'downloads': downloads_data(R, rec, lg)}
+            'disk_same': disk['same'], 'refusal': refusal(R, rec, disk), 'downloads': downloads_data(R, rec, lg), 'ship': ship_data(R, rec, lg, rel)}
+
+def ship_data(R, rec, g, rel):
+    """The strip's "Mark as Shipped": the gate (ship_gate), the hash the page shows (sent back with the POST, never shown),
+    the version in words and the issues noted that ship with it."""
+    try: gate = ship_gate(R, rec, g, rel)
+    except (OSError, ValueError, KeyError, TypeError): return None
+    return {'ok': gate['ok'], 'why': gate['why'], 'sha': app_sha(R, rec), 'version': version(R, rec)['label'],
+            'issues': ((g.get('status') or {}).get('current') or {}).get('issues') or 0}
 
 def downloads_data(R, rec, g=None):
     """The versions the "Version to Download" picker offers (webapp/downloads.py: only those whose PDF exists), each with

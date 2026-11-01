@@ -347,8 +347,48 @@ function stripBlock(s, inPanel) {
   h += '<div class="pp-mc"><a class="pp-btn pp-primary" id="pp-mc-open" href="checks">Complete Evaluation</a><ul role="list">' +
     ['pac', 'screen_reader'].map(k => m.sections[k]).filter(Boolean).map(x => '<li>' + (x.ok ? '<span class="pp-mc-mark" aria-hidden="true">✓</span>' : '<span class="pp-mc-mark" aria-hidden="true"></span>') +
       '<a href="checks#' + esc(x.id) + '">' + esc(tc(x.name)) + '</a>: ' + esc(x.words) + '</li>').join('') + '</ul></div>' +
-    dlForm(m.downloads) + '</section>';
+    shipBlock(m.ship) + dlForm(m.downloads) + '</section>';
   return h;
+}
+// "Mark as Shipped" (stage 4): offered only when the gate is open (webapp/manualpage.py ship_gate: current Ready, the file
+// unchanged, this file not already shipped); otherwise the one line that says why
+function shipBlock(sp) {
+  if (!sp) return '';
+  if (sp.ok) return '<div class="pp-row"><button type="button" id="pp-ship" data-ship="1">Mark as Shipped</button>' +
+    '<span class="pp-note">Records that this version was published. It does not publish anything.</span></div>';
+  return sp.why ? '<p class="pp-note">' + esc(sp.why) + '</p>' : '';
+}
+function shipDlg(sp, opener) {                                    // a name (remembered), where and a note; Escape or Cancel closes it
+  return new Promise(res => {
+    const d = $('pp-dlg'), by = (localStorage.getItem('checks:by') || ''), n = sp.issues || 0;
+    d.innerHTML = '<h2 id="pp-dlg-h">Mark as Shipped</h2><p>This records that ' + esc(sp.version) + ' was published. It does not publish anything.' +
+      (n ? ' ' + n + ' issue' + (n === 1 ? ' was' : 's were') + ' noted in the evaluation; ' + (n === 1 ? 'it is' : 'they are') + ' kept with the shipped copy.' : '') + '</p>' +
+      '<p><label for="pp-ship-by">Shipped By</label><br><input type="text" id="pp-ship-by" autocomplete="name" value="' + esc(by) + '"></p>' +
+      '<p><label for="pp-ship-where">Where It Was Published <span class="pp-note">(optional)</span></label><br><input type="text" id="pp-ship-where" autocomplete="off"></p>' +
+      '<p><label for="pp-ship-note">Note <span class="pp-note">(optional)</span></label><br><textarea id="pp-ship-note" rows="2"></textarea></p>' +
+      '<p id="pp-ship-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Mark as Shipped</button>' +
+      '<button type="button" value="no">Cancel</button></div>';
+    const id = opener.id, done = v => { d.close(); ($(id) || opener).focus(); res(v); };
+    d.querySelector('button[value=no]').addEventListener('click', () => done(null));
+    d.querySelector('button[value=yes]').addEventListener('click', () => {
+      const name = $('pp-ship-by').value.trim();
+      if (!name) { $('pp-ship-err').textContent = 'Enter your name in "Shipped By".'; $('pp-ship-by').focus(); return; }
+      try { localStorage.setItem('checks:by', name); } catch (e) {}
+      done({ by: name, where: $('pp-ship-where').value.trim(), note: $('pp-ship-note').value.trim() });
+    });
+    d.oncancel = ev => { ev.preventDefault(); done(null); };
+    d.showModal(); d.querySelector('button[value=no]').focus();
+  });
+}
+async function shipNow(b) {
+  const sp = st.manual && st.manual.ship; if (!sp || !sp.ok) return;
+  const v = await shipDlg(sp, b); if (!v) return;
+  try {
+    const [c, r] = await api(API + '/ship', { by: v.by, where: v.where, note: v.note, shown_sha256: sp.sha });
+    if (c !== 200) return msg(r.error || 'It was not marked as shipped.', false, true);
+    msg('Marked as shipped: shipment ' + r.shipped.n + '. The accessibility statement is kept with the shipped copy.', true, true);
+    return poll(true);
+  } catch (e) { return msg('The app is not running. ' + START, false, true); }
 }
 // the picker and the two downloads (stage 3): a GET form to download?v=…&what=pdf|record (any version, ready or not); the
 // line under it says how the chosen version's files are marked, never a file name
@@ -372,6 +412,7 @@ function renderStrip(s) {
     if (ns && chosen && [...ns.options].some(o => o.value === chosen)) { ns.value = chosen; $('pp-dl-marked').textContent = ns.selectedOptions[0].dataset.marked; }
     if (keep && $(keep)) $(keep).focus();
   }
+  if (!sb.dataset.shipWired) { sb.dataset.shipWired = '1'; sb.addEventListener('click', e => { const b = e.target.closest('button[data-ship]'); if (b) shipNow(b); }); }
   const dl = $('pp-dlv');
   if (dl && !dl.dataset.wired) { dl.dataset.wired = '1'; dl.addEventListener('change', () => { $('pp-dl-marked').textContent = dl.selectedOptions[0].dataset.marked; }); }
 }
