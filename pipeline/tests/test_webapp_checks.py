@@ -214,3 +214,19 @@ def test_language_names():
     assert langtag.name('xx') is None and langtag.name(None) is None and langtag.name('english') is None
     assert MP.lang_words({'lang': None, 'lang_name': None}) == 'not set'
     assert MP.lang_words({'lang': 'xx', 'lang_name': None}) == 'a language the app can\'t name; it is in the report'
+
+# ------------------------------------------------------------------ two batch-page rebuilds at once (the app's thread after each Record)
+def test_two_summary_rebuilds_at_once_leave_a_whole_page(tmp_path):
+    import report_html as H
+    B = tmp_path / 'b'
+    for n in ('one', 'two'): make_run(str(B / n))
+    errs = []
+    def run():
+        try: H.summary_html(str(B))
+        except Exception as e: errs.append(e)
+    ts = [threading.Thread(target=run) for _ in range(4)]
+    for t in ts: t.start()
+    for t in ts: t.join(60)
+    page = (B / 'summary.html').read_text()
+    assert not errs and page.rstrip().endswith('</html>') and page.count('<!doctype html>') == 1
+    assert not [n for n in os.listdir(B) if n.endswith('.tmp')]

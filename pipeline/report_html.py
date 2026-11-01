@@ -9,7 +9,7 @@ file: the CSS is inlined (colours from review/palette.css, copied from the revie
 and it reads in full without JavaScript. JavaScript only adds the issue filter, the keyboard page strip and sorting.
 The pages quote book text as review.md does, so they stay under runs/ and are never committed.
 """
-import sys, os, re, json, csv, html
+import sys, os, re, json, csv, html, tempfile, threading
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import glance as G  # noqa: E402
 from lib import sections as S  # noqa: E402
@@ -813,7 +813,15 @@ def safety_state(g):
     if g.get('safety_ok'): return 'ok'
     return 'failed' if any(not x['ok'] and x.get('state') != 'not checked' for x in g.get('safety') or []) or not g.get('safety') else 'not checked'
 
+_BATCH_LOCKS, _BATCH_LOCKS_LOCK = {}, threading.Lock()
 def summary_html(Bdir):
+    """summary.html for a batch folder (see _summary_html), one rebuild at a time per batch in this process: the app
+    rebuilds it in a thread after each Record, and two Records close together would otherwise write it at once."""
+    key = os.path.realpath(Bdir)
+    with _BATCH_LOCKS_LOCK: lk = _BATCH_LOCKS.setdefault(key, threading.Lock())
+    with lk: return _summary_html(Bdir)
+
+def _summary_html(Bdir):
     """summary.html for a batch folder: one row per book, most work first; each book's review.html is (re)built."""
     rows = []
     for name in sorted(os.listdir(Bdir)):
@@ -895,9 +903,13 @@ def summary_html(Bdir):
   });
 })();"""
     out = os.path.join(Bdir, 'summary.html')
-    tmp = f'{out}.{os.getpid()}.tmp'                 # whole or not at all: readers take no lock
-    with open(tmp, 'w', encoding='utf-8') as f: f.write(page(f'Batch {label}', '\n'.join(B), script))
-    os.replace(tmp, out)
+    fd, tmp = tempfile.mkstemp(dir=Bdir, prefix='.summary.', suffix='.tmp')   # whole or not at all, and its own temp file:
+    try:                                                                      # readers take no lock; two processes may write
+        with os.fdopen(fd, 'w', encoding='utf-8') as f: f.write(page(f'Batch {label}', '\n'.join(B), script))
+        os.chmod(tmp, 0o644)                                                  # as the file was before (mkstemp makes 0600)
+        os.replace(tmp, out)
+    finally:
+        if os.path.exists(tmp): os.remove(tmp)
     return out
 
 if __name__ == '__main__':

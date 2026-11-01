@@ -29,7 +29,7 @@ const secs = [];
 for (const [key, cfg] of Object.entries(D.sections)) {
   const form = document.querySelector('form[data-section="' + key + '"]'); if (!form) continue;
   const sec = { key, cfg, form, p: cfg.p, ls: 'checks:' + D.run + ':' + key, saved_at: cfg.draft_saved_at || null,
-                dirty: false, inflight: false, again: false, timer: null };
+                dirty: false, inflight: false, again: false, timer: null, unsaved: false };   // unsaved: the last save failed
   secs.push(sec);
   const found = new Set(cfg.items.filter(i => i.found).map(i => i.key)), failedLast = new Set(cfg.failed_last || []);
 
@@ -75,9 +75,9 @@ for (const [key, cfg] of Object.entries(D.sections)) {
     let ok = false;
     try {
       const [c, b] = await post(API + '/checks/draft', { section: key, data: sec.collect(), saved_at: sec.saved_at, for_sha256: D.sha });
-      ok = c === 200;
+      ok = c === 200; sec.unsaved = !ok;
       if (!ok) { status('Not saved'); alarm(b.error ? b.error : (b.errors || []).map(x => x.message).join(' ') || 'Your answers were not saved. Try again.'); }
-    } catch (e) { status('Not saved'); alarm('Your answers could not be saved: the app is not running. ' + START); }
+    } catch (e) { sec.unsaved = true; status('Not saved'); alarm('Your answers could not be saved: the app is not running. ' + START); }
     sec.inflight = false;
     if (sec.again || sec.dirty) { sec.again = false; return sec.save(); }
     if (ok) status('All changes saved');
@@ -136,7 +136,7 @@ for (const [key, cfg] of Object.entries(D.sections)) {
     try {
       const [c, r] = await post(API + '/checks/record', { section: key, data: sec.collect(), shown_sha256: D.sha, draft_saved_at: sec.saved_at });
       if (c === 200) {
-        store.del(sec.ls); sec.dirty = false; leaving = true;
+        store.del(sec.ls); sec.dirty = false; sec.unsaved = false; leaving = true;
         location.replace(D.base + 'checks?recorded=' + encodeURIComponent(key) + '#mc-msg'); return;
       }
       if (c === 400 && r.errors) showErrors(r.errors);
@@ -169,8 +169,8 @@ if (rv) rv.addEventListener('click', async () => {
   rv.disabled = false;
 });
 
-// a change not saved yet: the browser's leave-page prompt (the browser's copy keeps it anyway)
-addEventListener('beforeunload', e => { if (!leaving && secs.some(s => s.dirty || s.inflight)) { e.preventDefault(); e.returnValue = ''; } });
+// a change not saved yet, or whose save failed: the browser's leave-page prompt (the browser's copy keeps it anyway)
+addEventListener('beforeunload', e => { if (!leaving && secs.some(s => s.dirty || s.inflight || s.unsaved)) { e.preventDefault(); e.returnValue = ''; } });
 
 if (new URLSearchParams(location.search).get('recorded')) {      // after Record: the message, then the plain address
   history.replaceState(null, '', location.pathname);
