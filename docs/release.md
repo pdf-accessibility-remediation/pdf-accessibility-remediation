@@ -19,8 +19,8 @@ evaluation is a record of what a person found, not a legal certification.
 
 Both parts are recorded on the app's **Accessibility Evaluation** page (below), or from the terminal with
 `manual_checks.py`. In the records and the code they are still "manual checks" (`release/checks.json`, `pac`,
-`screen_reader`). Any version can be downloaded at any time, ready or not ("Downloads" below). The release itself (Mark
-as Shipped, the disclosure) comes in a later stage of the same branch.
+`screen_reader`). Any version can be downloaded at any time, ready or not ("Downloads" below). A Ready version is marked
+as shipped from the run page ("Mark as Shipped" below), which keeps a copy with its accessibility statement.
 
 ## The Accessibility Evaluation page (in the app)
 
@@ -186,7 +186,7 @@ but unapplied session and the sent-to-a-reader verdict) that has all three lines
 | **Not Ready** | a requirement among the first three is unsatisfied |
 | **Pending Evaluation** | those three are satisfied; the evaluation is not completed for this version |
 | **Ready** | all four are satisfied |
-| **Shipped** | a shipment exists that is not withdrawn (a later stage); the status is about the shipped copy |
+| **Shipped** | a shipment exists that is not withdrawn; the status is about the shipped copy |
 
 - **"· N issues noted"** follows any status whose version has Fails in its evaluation: "Pending Evaluation · 1 issue
   noted", "Ready · 2 issues noted", "Shipped · 2 issues noted". After a shipment they are the shipped file's.
@@ -270,7 +270,8 @@ Evaluation") and from the evaluation page's "Download and Check the PDF".
   |---|---|---|
   | Not Ready or Pending Evaluation | `<book>_session-6_not-ready.pdf` | `<book>_record_session-6_not-ready.zip` |
   | Ready | `<book>_session-6_not-shipped.pdf` | `<book>_record_session-6_not-shipped.zip` |
-  | Shipped (a later stage) | `<book>.pdf` | `<book>_record_shipment-2.zip` |
+  | Shipped (the shipped file) | `<book>.pdf` | `<book>_record_shipment-2.zip` |
+  | A withdrawn shipped copy | `<book>_shipment-1_withdrawn.pdf` | `<book>_record_shipment-1_withdrawn.zip` |
   | An earlier version | `<book>_session-5_earlier-version.pdf` | `<book>_record_session-5_earlier-version.zip` |
   | No review | `<book>_no-review_not-ready.pdf` | `<book>_record_no-review_not-ready.zip` |
 
@@ -327,6 +328,82 @@ shipped. Their records and decisions are kept. The AI's own version is always ke
   NAME` to remove them (`review/prune.py`).
 - **"Version to Download"** lists only versions whose PDF exists. "Which Version Is This File?" still recognises a
   removed one.
+
+## Mark as Shipped
+
+"Mark as Shipped" records that a person published this version elsewhere (for example in ScholarSpace). The app publishes
+nothing.
+
+- **Offered only when** (webapp/manualpage.py `ship_gate`, and again under the lock):
+  - the current version is Ready;
+  - the PDF on disk is the one the report describes;
+  - no refusal stands (a session finished and not applied, a new version being made, a record out of step);
+  - **this file has not already shipped**, in a shipment that is not withdrawn (03 §3.3): the same file never ships
+    twice, and after a withdrawal it may ship again.
+
+  Otherwise the strip says why, in one line: "This version was shipped on November 2, 2026 (shipment 1)", or "This
+  version is not ready to ship: … still unsatisfied". After a shipment, a newer version that becomes Ready is offered
+  again as the next shipment.
+- **The dialog:** **Shipped By** (required), **Where It Was Published (optional)**, **Note (optional)**, and the number of
+  issues noted that ship with the copy. Or from the terminal: `manual_checks.py <run> --ship --by NAME [--where …]
+  [--note …]`.
+- **What it writes,** under the record lock, whole or not at all: `release/shipped/NNN/`.
+  - The folder holds:
+    - the PDF (a copy, hashed while copied);
+    - review.md and review.html as they read once shipped (the copy's page says "Shipped copy (shipment 1, …)");
+    - han_review.csv;
+    - `evaluation-results.json`: the results on that file, with their issues;
+    - the accessibility statement (`disclosure.html`, `disclosure.md`);
+    - `READ-ME.txt`;
+    - record.json, for the local archive only, never served and never in a ZIP.
+  - `release/shipped.json` gains `{n, shipped (local time, to the second), by, where, note, pdf: {sha256, file, session},
+    folder, issues, checks}`.
+  - If anything fails before the folder is complete, the folder is removed, `shipped.json` restored, and the pages
+    redrawn, so nothing says Shipped.
+  - Shipment numbers are never reused.
+- **Afterwards:**
+  - the status reads "Shipped" (with "· N issues noted"), with Ready's green border;
+  - review.md's evaluation section names each shipment;
+  - review.html's Shipments list links "View the Accessibility Statement";
+  - the shipped file downloads under its plain names, and its record ZIP holds the statement;
+  - a shipped copy that a newer version replaced is listed in "Version to Download" as "Shipment 1, shipped on …".
+- **A shipped book whose PDF later changes on disk** keeps "Shipped", with "The current PDF has changed since this report
+  was made." beside it, and never Ready's green. Mark as Shipped stays refused until it is resolved. The shipped copy in
+  `release/shipped/` is untouched and still downloads.
+- **A previous result's own page** reads "Earlier version (the current version is Session N)", naming its shipment when
+  it was itself shipped.
+
+## Withdrawal
+
+From the terminal only: `manual_checks.py <run> --withdraw-shipment N --by NAME --reason "…"`.
+- It writes `withdrawn: {by, date, reason}` (local time, to the second) on that shipment; nothing is deleted.
+- It is refused for an unknown shipment, one already withdrawn, or without a name and a reason.
+- **The status** falls back to the latest shipment not withdrawn, and with none left to the statuses before shipping.
+- **"Version to Download"** still lists a withdrawn copy, marked "(withdrawn)", named `_shipment-N_withdrawn`.
+
+## The accessibility statement
+
+Written once when a version ships, into its folder, as `disclosure.html` and `disclosure.md`, by `lib/disclosure.py`;
+never rewritten afterwards. It is marked "Draft wording: to be agreed with the sponsors".
+
+- **This file:** the file, its version, who shipped it, when, where, and its sha256.
+- **The text:** "No AI wrote or changed the book's printed text", then, only when they apply:
+  - the AI's readings of misread OCR words, given as spoken text only;
+  - the local OCR pages and who approved them;
+  - the publisher's OCR layer, checked and kept.
+- **What the AI decided and what people did, per kind:** approved as proposed, changed by a person, rejected by a
+  person, added by a person. An older reviewed run gives the totals; a run with neither says the split was not recorded.
+  The model, the instructions and the date of the call are named only for a real call: a replayed reply says "those of
+  an earlier call, not recorded for this run".
+- **What people reviewed and approved:** the work order's reviewer (the applied session's), the OCR text, and each part
+  of the evaluation with its evaluator.
+- **Every issue noted,** with its note.
+- **The automated checks:** the five safety checks, and veraPDF before and after, or "not checked".
+- **The two sentences:** "Automated checks are evidence, not legal sign-off." and "The accessibility evaluation is a
+  record of what a person found, not a legal certification."
+- **Names and notes are shown as typed,** escaped in both files.
+- **Waiting on the sponsors:** the audience, placement (beside the PDF in ScholarSpace or on the item page; never inside
+  the PDF), whether names stay public, and a contact.
 
 ## Older runs
 
