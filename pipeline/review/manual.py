@@ -296,7 +296,8 @@ def ship(R, by, where=None, note=None, shown_sha=None, via='manual_checks.py', w
                 got = _copy_hashing(os.path.join(R, out), os.path.join(T, out))
                 if got != disk: raise S.Refused(ship_words(CHANGED))
                 if os.path.isfile(os.path.join(R, 'han_review.csv')): shutil.copy2(os.path.join(R, 'han_review.csv'), os.path.join(T, 'han_review.csv'))
-                sid = (rec.get('review') or {}).get('session')
+                sid = S.current_id(rec)                               # a run reviewed before sessions were kept is 001, as the dialog says
+                sid = sid if str(sid).isdigit() else None
                 pac, sr = (REL.latest(rel, s, disk) for s in ('pac', 'screen_reader'))
                 entry = {'n': n, 'shipped': now(), 'by': by, **({'where': where} if where else {}), **({'note': note} if note else {}),
                          'pdf': {'sha256': disk, 'file': out, 'session': sid if sid else None}, 'folder': f'shipped/{n:03d}', 'via': via, 'code': code(),

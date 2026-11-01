@@ -113,6 +113,8 @@ def test_ship_copies_the_version_and_the_status_reads_shipped(tmp_path):
     assert '**Status:** Shipped · 1 issue noted' in open(os.path.join(F, 'review.md'), encoding='utf-8').read()
     assert 'Shipped copy (shipment 1, ' in open(os.path.join(F, 'review.html'), encoding='utf-8').read()     # N9
     assert '**Status:** Shipped · 1 issue noted' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
+    st = open(os.path.join(F, 'disclosure.md'), encoding='utf-8').read()                   # reviewed before sessions were kept: Session 1
+    assert s['pdf']['session'] == '001' and 'the version from Session 1, shipped on ' in st and 'applied without a review' not in st
     rec = core.load(os.path.join(R, 'record.json'))
     assert MP.ship_gate(R, rec)['why'].startswith('This version was shipped on ')                       # M1
     with pytest.raises(S.Refused, match='was shipped on'): M.ship(R, 'Kim', say=lambda *a: None, batch=False)
