@@ -289,7 +289,7 @@ def test_apply_is_offered_only_for_the_newest_session(app):
     st, b = post(port, '/api/run/book/r1/apply')
     assert st == 409 and b['error'] == 'session 2 was replaced by session 3: Apply is offered only for the newest session'
     ses(R, '004', 'open')                                                                          # an open session changes nothing
-    assert runs.unapplied(S.sessions(R)) is None
+    assert runs.unapplied(R) is None
     assert runs.after_interrupt(R, {'kind': 'apply', 'started': '2026-10-29T12:00:00'})['state'] != 'apply'
 
 INLINE = 'document.title = "x";'

@@ -65,18 +65,29 @@ def test_status_withdrawal_falls_back_and_the_newer_version_line():
     r = rel(sr=[chk(A, failing(SR_OK, 'tables'))], shipped=[ship(A)])
     st = REL.status(r, B, False, None, '003')                                     # a newer version, applied: Needs Rework stays
     assert st['name'] == 'Needs Rework' and st['newer'] == 'Newer version (Session 3): Ready to Ship? No'
-    assert REL.status(r, B, False, {'session': '004', 'status': 'open'})['newer'] == 'Newer version: Session 4 being reviewed'
-    assert REL.status(r, B, False, {'session': '004', 'status': 'finished'})['newer'] == 'Newer version: Session 4 finished, not applied'
+    assert REL.status(r, B, False, {'finished': None, 'open': '004'})['newer'] == 'Newer version: Session 4 being reviewed'
+    assert REL.status(r, A, False, {'finished': None, 'open': '004'})['newer'] == 'Newer version: Session 4 being reviewed'   # the shipped file is still current
+    assert REL.status(r, A, False, {'finished': '004', 'open': '005'})['newer'] == 'Newer version: Session 4 finished, not applied'
     assert REL.status(r, A, False)['newer'] is None
+    assert REL.status(rel(), A, False, {'finished': '004', 'open': None})['newer'] is None              # before any shipment: no line
 
 def test_a_failed_screen_reader_check_on_this_version_keeps_ready_at_no():
-    g = {'ship': [{'what': w, 'ok': True, 'text': 'yes'} for w in G.SHIP_BASE]}
+    g = {'schema': G.SCHEMA, 'ship': [{'what': w, 'ok': True, 'text': 'yes'} for w in G.SHIP_BASE]}
     rec = {'document': {'output_sha256': A}}
     assert G.with_release(g, rec, rel(pac=[chk(A, PAC_OK)]))['ready'] is True
     out = G.with_release(g, rec, rel(pac=[chk(A, PAC_OK)], sr=[chk(A, failing(SR_OK, 'links'))]))
     assert out['ready'] is False and out['ship'][-1]['what'] == 'Screen-reader check'
     assert out['ship'][-1]['text'] == 'no (1 item failed on this version: Links Say Where They Go; Kim on 2026-11-01)'
     assert len(G.with_release(g, rec, rel(pac=[chk(A, PAC_OK)], sr=[chk(B, failing(SR_OK, 'links'))]))['ship']) == 4   # another file: no line
+
+def test_ready_needs_the_current_schema_and_all_three_base_lines():
+    """R2: a 0.3 glance (five safety checks) with a counting PAC check reads No; so does a 0.4 glance missing a base line."""
+    rec = {'document': {'output_sha256': A}}; r = rel(pac=[chk(A, PAC_OK)])
+    base = [{'what': w, 'ok': True, 'text': 'yes'} for w in G.SHIP_BASE]
+    assert G.with_release({'schema': G.SCHEMA, 'ship': base}, rec, r)['ready'] is True
+    assert G.with_release({'schema': 'glance/0.3', 'ship': base}, rec, r)['ready'] is False
+    assert G.with_release({'schema': G.SCHEMA, 'ship': base[:1] + base[2:]}, rec, r)['ready'] is False
+    assert G.with_release({'schema': G.SCHEMA, 'ship': []}, rec, r)['ready'] is False             # the PAC line alone
 
 def test_a_stored_old_glance_marked_ready_is_not_ready_now():
     from webapp import runs
@@ -272,3 +283,49 @@ def test_mark_pending_writes_whole_files_under_the_lock(tmp_path):
         assert th.is_alive()                                                   # waiting for the lock (a command waits up to 120 s)
     th.join(10)
     assert 'e' not in box and not [n for n in os.listdir(R) if n.endswith('.tmp')]
+
+# ------------------------------------------------------------------ R1: one rule for "a newer session"
+def sessions_at(R, current, rows):
+    rec = core.load(os.path.join(R, 'record.json')); rec['review'] = {'session': current}; core.save(os.path.join(R, 'record.json'), rec)
+    shutil.rmtree(os.path.join(R, 'reviews', 'sessions'), ignore_errors=True); os.makedirs(os.path.join(R, 'reviews', 'sessions'))
+    for sid, st in rows: core.save(os.path.join(R, 'reviews', 'sessions', f'{sid}.json'), {'id': sid, 'status': st})
+
+def test_a_finished_session_older_than_the_current_result_never_blocks(tmp_path):
+    from webapp import runs
+    R = finished_run(tmp_path)
+    sessions_at(R, '005', [('004', 'finished'), ('005', 'applied')])         # 4's apply failed, then 5 was reviewed and applied
+    assert S.newer(R)['finished'] is None and runs.unapplied(R) is None and M.being_made(R) is None
+    assert M.record(R, 'pac', pac_data(), say=lambda *a: None)['id'] == 1
+    sessions_at(R, '005', [('004', 'finished'), ('005', 'applied'), ('006', 'finished')])   # 6: newer, finished (applying, or failed)
+    assert S.newer(R)['finished']['id'] == '006' and runs.unapplied(R)['id'] == '006'
+    with pytest.raises(S.Refused, match='Session 6 is finished'): M.record(R, 'pac', pac_data(), say=lambda *a: None)
+    sessions_at(R, 'ai', [('001', 'finished'), ('002', 'applied')])          # a record that lags: the newest done session decides
+    assert S.newer(R)['finished'] is None
+
+def test_the_newer_version_line_comes_from_the_session_files(tmp_path):
+    R = finished_run(tmp_path); disk = REL.sha_file(os.path.join(R, 'b_remediated.pdf'))
+    os.makedirs(os.path.join(R, 'release'))
+    core.save(os.path.join(R, 'release', 'shipped.json'), [ship(disk)])
+    sessions_at(R, '005', [('005', 'applied'), ('006', 'open')])             # Review Again after shipping: 6 is open
+    rec = core.load(os.path.join(R, 'record.json')); rec['document']['output_sha256'] = disk
+    st = REL.status(REL.load(R, rec), disk, False, REL.load(R, rec).get('newer'), '005')
+    assert st['name'] == 'Shipped' and st['newer'] == 'Newer version: Session 6 being reviewed'
+    sessions_at(R, '005', [('005', 'applied'), ('006', 'finished')])         # a page Finish whose apply failed
+    assert REL.status(REL.load(R, rec), disk, False, REL.load(R, rec)['newer'], '005')['newer'] == 'Newer version: Session 6 finished, not applied'
+
+# ------------------------------------------------------------------ a failed refresh never leaves a check without its record
+def test_a_check_is_rolled_back_when_the_refresh_fails(tmp_path, monkeypatch):
+    R = finished_run(tmp_path); before = open(os.path.join(R, 'record.json')).read()
+    def boom(*a, **k): raise ImportError('as under an old Python')
+    monkeypatch.setattr(M, 'write_run', boom)
+    with pytest.raises(ImportError): M.record(R, 'pac', pac_data(), say=lambda *a: None)
+    assert not os.path.exists(os.path.join(R, 'release', 'checks.json'))   # the first check: no file left
+    assert open(os.path.join(R, 'record.json')).read() == before
+    monkeypatch.undo()
+    M.record(R, 'pac', pac_data(), say=lambda *a: None)                      # a check that worked, then one whose refresh fails
+    kept = open(os.path.join(R, 'release', 'checks.json')).read()
+    monkeypatch.setattr(M, 'write_run', boom)
+    with pytest.raises(ImportError): M.record(R, 'pac', pac_data(), say=lambda *a: None)
+    assert open(os.path.join(R, 'release', 'checks.json')).read() == kept   # back to the one that worked
+    rec = core.load(os.path.join(R, 'record.json'))
+    assert REL.pac_line(REL.load(R), rec['document']['output_sha256'])[0] is True   # it counts on the same file

@@ -9,10 +9,11 @@ Manual Checks page (planned) will call the same functions.
 
 Every write here runs under the record lock (lib/runlock.py), around the whole read-change-write, and every file is
 written whole (a temp file and os.replace). A check is refused while a new version is being made: a session finished
-and not yet applied (what --apply applies), reviews/work/ (a re-apply under way) or reviews/promoting.json (a promotion
-that did not finish). The PDF on disk is hashed fresh under the lock and must be the one the page showed and the one
+and not yet applied, newer than the current result (sessions.newer(): what Apply applies), reviews/work/ (a re-apply
+under way) or reviews/promoting.json (a promotion that did not finish). The PDF on disk is hashed fresh under the lock and must be the one the page showed and the one
 record.json describes; a run with no recorded hash (every run made before 2026-11) takes the disk hash at its first
-check, after checking it against the current session's own record of its PDF where there is one.
+check, after checking it against the current session's own record of its PDF where there is one. If the refresh after
+writing a check fails, the check is taken back (release/checks.json as it was) and the error raised.
 """
 import os, datetime, subprocess
 from lib import release as REL, runlock
@@ -39,8 +40,8 @@ def being_made(R):
     """Why nothing can be recorded now (a new version is being made), or None."""
     p = S.P(R)
     if os.path.exists(p['promoting']): return PROMOTING
-    fin = [s for s in S.sessions(R) if (s or {}).get('status') == 'finished']
-    if fin: return (f'Session {int(fin[-1]["id"])} is finished and not yet applied: its result will replace this version. '
+    fin = S.newer(R)['finished']                         # newer than the current result: a replaced one never blocks
+    if fin: return (f'Session {int(fin["id"])} is finished and not yet applied: its result will replace this version. '
                     'Check the new version once it is applied.')
     if os.path.isdir(p['work']): return MAKING
     return None
@@ -52,7 +53,7 @@ def write_run(R, rec, say=print, text=None):
     from lib import glance as G
     import report_html as H
     assert runlock.holding(R), 'write_run needs the record lock'
-    rel = REL.load(R); cur = (rec.get('document') or {}).get('output_sha256')
+    rel = REL.load(R, rec); cur = (rec.get('document') or {}).get('output_sha256')
     rec['manual_checks'], rec['release'] = REL.mirror(rel, cur)
     md = os.path.join(R, 'review.md'); labels = None
     try:
@@ -105,10 +106,16 @@ def record(R, section, data, shown_sha=None, via='manual_checks.py', wait=runloc
             sid = (rec.get('review') or {}).get('session')
             c = {'id': len(xs) + 1, 'recorded': now(), **clean, 'via': via, 'code': code(),
                  'pdf': {'sha256': disk, 'file': out, 'session': sid if sid else None, 'which': 'current'}}
+            cp = REL.paths(R)['checks']
+            was = open(cp, encoding='utf-8').read() if os.path.exists(cp) else None
             xs.append(c)
             os.makedirs(REL.paths(R)['dir'], exist_ok=True)
-            put_json(REL.paths(R)['checks'], rel['checks'])
-            write_run(R, rec, say)
+            put_json(cp, rel['checks'])
+            try: write_run(R, rec, say)
+            except BaseException:                         # the record not written (e.g. an import error): take the check
+                if was is None: os.remove(cp)             # back, so a check never stands without the record's hash beside it
+                else: put_text(cp, was)
+                raise
     except runlock.Busy as e: raise S.Refused(str(e))
     S.rebuild_batch(R, say)                               # after the lock: it reads every book of the batch
     return c

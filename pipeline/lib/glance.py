@@ -148,9 +148,10 @@ def with_release(g, record, release=None):
     ship.append({'what': 'Manual check (PAC)', 'ok': ok, 'text': txt})
     sr = REL.sr_line(rel, cur)
     if sr: ship.append({'what': 'Screen-reader check', 'ok': False, 'text': sr[1]})
-    ready = all(s['ok'] is True for s in ship)
-    rv = record.get('review') or {}
-    return dict(g, ship=ship, ready=ready, status=REL.status(rel, cur, ready, rv.get('pending'), rv.get('session')))
+    # fail closed: only a glance of the current schema with all three base lines, each met, can be ready (a stored 0.3
+    # glance has five safety checks, not six; write_run() may keep an old glance when computing a new one fails)
+    ready = g.get('schema') == SCHEMA and [s['what'] for s in ship[:3]] == list(SHIP_BASE) and all(s['ok'] is True for s in ship)
+    return dict(g, ship=ship, ready=ready, status=REL.status(rel, cur, ready, rel.get('newer'), (record.get('review') or {}).get('session')))
 
 def glance(record, md, labels=None, han_pages=None, sections=None, release=None):
     labels = {int(k): v for k, v in (labels or {}).items() if str(k).isdigit()}

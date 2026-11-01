@@ -27,7 +27,7 @@ def show(R):
     if rec is None: sys.exit(f'{R}: no record.json (not a finished run)')
     doc = rec.get('document') or {}; out = doc.get('output')
     disk = REL.sha_file(os.path.join(R, out)) if out and os.path.isfile(os.path.join(R, out)) else None
-    rel = REL.load(R); g = G.with_release(rec.get('glance') or {'ship': []}, rec, rel)
+    rel = REL.load(R, rec); g = G.with_release(rec.get('glance') or {'ship': []}, rec, rel)
     sid = (rec.get('review') or {}).get('session')
     print(f'{R}\n  PDF: {out} · sha256 {disk or "file missing"}' + (f' · {S.label(sid)}' if sid else ' · applied without review'))
     if doc.get('output_sha256') and disk and doc['output_sha256'] != disk: print('  WARNING: the PDF on disk is not the one record.json describes')
