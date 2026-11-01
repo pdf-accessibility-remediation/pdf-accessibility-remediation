@@ -436,4 +436,11 @@ def refresh(record, labels=None, han_pages=None, release=None):
             tail = next((j for j, it in enumerate(x['items']) if it['text'].startswith('Automated checks are evidence, not legal sign-off')), len(x['items']))
             new['items'] = new['items'] + x['items'][tail:]
             secs[k] = new; break
+    from lib import release as REL                               # the evaluation section, redrawn once a result is recorded (13 §7.2)
+    if release is not None and REL.any_recorded(release):
+        doc = record.get('document') or {}
+        ev = [x for x in S.to_sections(REL.section_md(release, doc.get('output_sha256'), doc.get('output') or 'the remediated PDF')) if x['level'] == 2]
+        k = next((k for k, x in enumerate(secs) if x.get('key') in REL.EVAL_ANCHORS), None)
+        if k is None: secs.extend(ev)
+        else: secs[k:k + 1] = ev
     return '\n'.join(S.render_md(secs)) + '\n'

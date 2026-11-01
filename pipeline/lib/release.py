@@ -243,6 +243,80 @@ def mirror(rel, cur):
         out[s + '_count'] = len(xs)
     return out, {'shipped': rel.get('shipped') or []}
 
+# ------------------------------------------------------------------ review.md's "Accessibility Evaluation" section
+EVAL_HEADINGS = ('accessibility evaluation', 'final check with pac 2026')   # this section's headings, new and older (any case)
+EVAL_ANCHORS = ('accessibility-evaluation', 'final-check-with-pac-2026')
+_MD_INLINE = re.compile(r'([\\`*_\[\]<>])')
+_MD_BLOCK = re.compile(r'^(\s*)(?:([#>+\-*=])|(\d+)([.)]))')
+
+def md_text(s):
+    """A person's one-line text in Markdown, read as typed (| and ]( are already refused when it is recorded)."""
+    return _MD_INLINE.sub(r'\\\1', str(s or ''))
+
+def md_quote(s):
+    """A person's multi-line text as a blockquote: every line escaped, its start too, so no line can begin a heading, list
+    or section (a line "## x" would otherwise end the section early or split it)."""
+    def esc(m): return m.group(1) + ('\\' + m.group(2) if m.group(2) else m.group(3) + '\\' + m.group(4))   # "1\." (a digit escapes nothing)
+    return ['> ' + _MD_BLOCK.sub(esc, md_text(l)) if l.strip() else '>' for l in str(s or '').split('\n')]
+
+def any_recorded(rel): return any(rel['checks'].get(s) for s in SECTIONS)
+
+def _part_md(rel, section, cur):
+    p = part(rel, section, cur); c = p['check']; name = SECTION_NAMES[section]
+    if p['state'] == 'not recorded': return None
+    ses = _session(c)
+    head = {'completed': f'Completed by {c.get("by")} on {day(c.get("recorded"))} · {p["n_items"]} items'
+                         + (f' · {noted(len(p["issues"]))}' if p['issues'] else ''),
+            'could not be read': f'Recorded by {c.get("by")} on {day(c.get("recorded"))}, but it could not be read in full: record it again',
+            'earlier version': f'Completed on an earlier version{" (" + ses + ")" if ses else ""} by {c.get("by")} on {day(c.get("recorded"))}: '
+                               'it does not count for this version'}[p['state']]
+    L = [f'**{name}: {md_text(head)}**' + (f' (the version from {ses})' if ses and p['state'] != 'earlier version' else ''), '']
+    f = c.get('fields') or {}
+    bits = [f'Checked by {md_text(c.get("by"))}'] + [f'{lab}: {md_text(f[k])}' for k, (lab, _) in FIELDS[section].items() if f.get(k)] \
+        + [f'{lab} (no longer asked): {md_text(f[k])}' for k, lab in RETIRED[section]['fields'].items() if f.get(k)] \
+        + ([f'Pages checked: {md_text(f["pages_checked"])}'] if f.get('pages_checked') else [])
+    L += [' · '.join(bits), '', '| Item | Result | Notes |', '|---|---|---|']
+    items = c.get('items') or {}
+    for x in CHECKLIST[section] + list(RETIRED[section]['items'].values()):
+        if x['key'] in RETIRED[section]['items'] and x['key'] not in items: continue
+        it = items.get(x['key']) or {}
+        lab = x['label'] + (' (no longer asked)' if x['key'] in RETIRED[section]['items'] else '')
+        L.append(f'| {lab} | {RESULT_NAMES.get(it.get("result"), "Not answered")} | {md_text(it.get("note"))} |')
+    if c.get('notes'): L += ['', 'Other notes:', ''] + md_quote(c['notes'])
+    n = len(rel['checks'].get(section) or []) - 1
+    if n > 0: L += ['', f'{n} earlier result{"" if n == 1 else "s"} kept in the record (`release/checks.json`).']
+    return L
+
+def section_md(rel, cur, pdf):
+    """review.md's "## Accessibility Evaluation" section: how to do it, and each part's latest result in full once one is
+    recorded (13 §7.2). pdf: the remediated PDF's file name."""
+    def items(section): return [f'- {x["label"]}: {x["help"]}' for x in CHECKLIST[section]]
+    L = ['## Accessibility Evaluation', '',
+         f'A person evaluates this version of `{pdf}` with PAC 2026 and a screen reader, on the app\'s "Accessibility Evaluation" page '
+         '(or with manual_checks.py; docs/release.md). Both parts are needed for "Ready to ship?". A Fail is recorded with its note and '
+         'does not hold the book back. Each result is recorded against this version of the PDF (its sha256): after a new apply it no '
+         'longer counts. The evaluation is a record of what a person found, not a legal certification.', '']
+    pac = _part_md(rel, 'pac', cur)
+    L += pac + [''] if pac else [
+        f'**PAC 2026.** Open `{pdf}` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it '
+        'fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or '
+        'Not Applicable, with notes:', ''] + items('pac') + ['']
+    sr = _part_md(rel, 'screen_reader', cur)
+    L += sr if sr else ['**Screen-reader test.** Listen with a screen reader and record which one and its version:', ''] + items('screen_reader')
+    return L
+
+def replace_section_md(md, lines):
+    """review.md's text (a run made before `sections`) with its evaluation section (either heading, any case) replaced by
+    `lines`, up to the next "## " heading or the end; appended at the end when it has none."""
+    L = md.split('\n')
+    i = next((k for k, l in enumerate(L) if l.startswith('## ') and l[3:].strip().lower() in EVAL_HEADINGS), None)
+    if i is None:
+        while L and L[-1] == '': L.pop()
+        return '\n'.join(L + [''] + lines + [''])
+    j = next((k for k in range(i + 1, len(L)) if L[k].startswith('## ')), len(L))
+    tail = L[j:] if j < len(L) else ['']
+    return '\n'.join(L[:i] + lines + ([''] if j < len(L) else []) + tail)
+
 # ------------------------------------------------------------------ what the pipeline found (Not Applicable needs a note)
 def found(record):
     """{item key: what was found, in words} from record.json: an item the pipeline found something for needs a note to be
