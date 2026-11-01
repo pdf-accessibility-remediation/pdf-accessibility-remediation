@@ -82,6 +82,8 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .pp-mc-mark { position: absolute; left: 0; width: 16px; text-align: center; }
 .pp-warn-t { border-left: 4px solid var(--reject); padding-left: 8px; }
 /* the Manual Checks page */
+.pp a.pp-btn { box-sizing: border-box; }   /* a full-width button on a narrow screen stays inside its box */
+.mc-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
 .mc-page header .mc-book { margin: 0 0 4px; }
 .mc .mc-sec { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 4px; }
 .mc .mc-sec h2 { font-size: 17px; } .mc h3 { font-size: 15px; margin: 14px 0 4px; } .mc h4 { font-size: 14px; margin: 10px 0 4px; }
