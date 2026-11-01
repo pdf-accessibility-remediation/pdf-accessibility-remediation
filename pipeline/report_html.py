@@ -36,6 +36,7 @@ h2 { font-size: 17px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1p
 /* each condition's mark (a bullet, or a check mark when met) centred in one 20px column, in the text's colour */
 .ship li { list-style: none; position: relative; }
 .ship p.st { margin: 0 0 6px; } .mc td.res { white-space: nowrap; } .mc .pre { white-space: pre-wrap; }
+.mc h3 { font-size: 15px; margin: 14px 0 4px; }   /* under the section's own 17 px heading, as the folded sections' h3 */
 .ship li .mark { position: absolute; left: -20px; top: 0; width: 20px; height: 1.5em; display: flex; align-items: center; justify-content: center; color: var(--ink); }
 .ship li .mark .bul { display: block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }   /* not .dot: the cards use that name */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }
