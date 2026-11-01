@@ -2,13 +2,13 @@
 
 Result: `cadaverous_remediated.pdf`
 
-323 pages · run 2026-10-31T13:23:18 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+323 pages · run 2026-10-31T14:48:59 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.8s · audit 51.2s · reuse saved reply 0.8s · apply 80.4s · verify 68.0s · total 201.2s
+Time: intake 1.1s · audit 65.3s · reuse saved reply 1.0s · apply 89.3s · verify 66.8s · total 223.5s
 
 ## Overview
 
@@ -22,7 +22,7 @@ Time: intake 0.8s · audit 51.2s · reuse saved reply 0.8s · apply 80.4s · ver
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 5 (4 deferred by the AI · 1 deferred by the executor · 0 CHECK rows)  
-**AI decisions:** 73 in the work order, applied without review by a person  
+**AI decisions:** 72 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 3,252 · note IDs 713 · link descriptions that were only a URL 6 · figures moved to their page 3 · tag-tree index entries 2 · title shown in the window 1 · Document root 1  
 **veraPDF (WCAG 2.2 machine checks):** 1 WCAG rule failing before (1,793 checks) → 0 after (0 checks) · 0 newly failing
 
@@ -168,10 +168,9 @@ Check each one is (or is not) a heading as decided.
 
 Listen through these spots with a screen reader.
 
-- Section on PDF 253–282 (printed 237–266) moved to read before PDF 283 (printed 267), after PDF 252 (printed 236), inside the Story on PDF 246–323 (printed 230–307)
 - Cover figure moved to the start of the document
 - Figure on PDF 144 (printed 128) moved to read with its page (it read after PDF 153 (printed 137); now after PDF 145 (printed 129))
-- Figure on PDF 152 (printed 136) moved to read with its page (it read after PDF 323 (printed 307); now after PDF 153 (printed 137))
+- Figure on PDF 152 (printed 136) moved to read with its page (it read after PDF 282 (printed 266); now after PDF 153 (printed 137))
 - Figure on PDF 160 (printed 144) moved to read with its page (it read after PDF 181 (printed 165); now after PDF 161 (printed 145))
 
 ### 7. Spoken text (ActualText) checked against the print (9 accepted with differences, 0 rejected)
@@ -233,6 +232,12 @@ Reviewer note from the AI: Heading outline: the book title (ident_tit on PDF 5, 
 
 - **1475 Han-only CJK runs** need a Japanese / Chinese decision: fill in `han_review.csv`.
 
+### 13. Decisions not applied (1)
+
+Rejected by validation or by the executor; nothing was half-applied.
+
+- {"where": "move_section", "item": {"pages": [253, 282], "before_page": 283, "why": "The Epilogue container spans PDF 246–323, so the Bibliography, Index and About the Author appear to be read before the NOTES section, which is printed before them."}, "why": "the audit finds no section read out of place in these pages or where it lands"}
+
 ## What was changed
 
 | Change | Count |
@@ -264,7 +269,6 @@ Reviewer note from the AI: Heading outline: the book title (ident_tit on PDF 5, 
 | links: wraps its text | 625 |
 | links: note reference wrapped | 4 |
 | links: URL-only description replaced by the sentence around it | 6 |
-| order: section moved | 1 |
 | order: figure moved to its page | 3 |
 | contents: annotation-less Link → Span | 24 |
 | contents: entry wrapped in Reference | 16 |

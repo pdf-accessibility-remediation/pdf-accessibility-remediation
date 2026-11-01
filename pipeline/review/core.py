@@ -808,7 +808,8 @@ def check(R, wo):
     over --max-images, a reading of an OCR word whose sheet was not sent) are for the model, not for a person, who
     sees the page: they are off here. The AI's own unseen decisions were already dropped by decide.py."""
     digest = load(os.path.join(R, '_audit', 'digest.json'))
-    return workorder_check.check(wo, digest, set(), {w['id'] for w in digest.get('ocr_words') or []})
+    order = (load(os.path.join(R, '_audit', 'fulltext.json')) or {}).get('reading_order')   # the order the page's findings use
+    return workorder_check.check(wo, digest, set(), {w['id'] for w in digest.get('ocr_words') or []}, order)
 
 def card_of(items, entry):
     """The id of the card a dropped entry ({where, item, why}) came from, or None: the items under the same key (and field),

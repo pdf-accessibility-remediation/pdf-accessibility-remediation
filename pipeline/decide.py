@@ -398,7 +398,9 @@ if args.response_file and words:                   # only a book whose audit lis
         stale.append({'where': 'ocr_words', 'item': f'{n_} readings', 'why': f'{why}; the reply\'s ids could name other words'})
         wo.pop('ocr_words')                        # no deferral: the AI did not defer this, and review.md's OCR-words sentence
                                                    # and CHECK row already say it (one cause, counted once under "Needs a person")
-dropped = stale + workorder_check.check(wo, digest, not_sent, words_sent)      # the same checks run on a work order a person reviewed
+full = os.path.join(args.audit_dir, 'fulltext.json')    # the full reading order, for the section-move rule (older audits: the digest's lines)
+order = json.load(open(full, encoding='utf-8')).get('reading_order') if os.path.exists(full) else None
+dropped = stale + workorder_check.check(wo, digest, not_sent, words_sent, order)      # the same checks run on a work order a person reviewed
 if words_unsent:
     wo.setdefault('deferrals', []).append({'what': f'{len(words_unsent)} suspect OCR word forms were not read by the AI (over the image limit or budget)',
                                            'why': 'their word sheets were not sent; a person checks them against the scan. First: '

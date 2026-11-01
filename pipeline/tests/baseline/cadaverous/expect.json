@@ -31,7 +31,6 @@
    "notes: empty Note shell removed": 141,
    "order: empty container removed": 29,
    "order: figure moved to its page": 3,
-   "order: section moved": 1,
    "retype → H1": 1,
    "tag tree index: entries pointing outside the tree cleared (ParentTree)": 2
   },
@@ -40,7 +39,9 @@
   "failed": 0,
   "rejected": 0
  },
- "validation_dropped": [],
+ "validation_dropped": [
+  "move_section: the audit finds no section read out of place in these pages or where it lands"
+ ],
  "verapdf": {
   "after": {
    "failed": {},

@@ -2,13 +2,13 @@
 
 Result: `sands_remediated.pdf`
 
-329 pages · run 2026-10-31T13:19:51 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+329 pages · run 2026-10-31T14:49:14 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.1s · audit 81.5s · reuse saved reply 1.8s · apply 94.2s · verify 57.1s · total 235.7s
+Time: intake 1.1s · audit 80.1s · reuse saved reply 2.4s · apply 117.0s · verify 79.8s · total 280.4s
 
 ## Overview
 
@@ -22,7 +22,7 @@ Time: intake 1.1s · audit 81.5s · reuse saved reply 1.8s · apply 94.2s · ver
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 14 (6 deferred by the AI · 5 deferred by the executor · 3 CHECK rows)  
-**AI decisions:** 102 in the work order, applied without review by a person  
+**AI decisions:** 101 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 2,309 · tag-tree index entries 1,182 · note IDs 495 · standard tags un-remapped (7.1-7) 83 · empty tags removed 69 · decorative lines marked 53 · figures moved to their page 15 · link descriptions that were only a URL 13 · title shown in the window 1  
 **veraPDF (WCAG 2.2 machine checks):** 3 WCAG rules failing before (3,130 checks) → 1 after (1 check) · 0 newly failing
 
@@ -30,7 +30,7 @@ Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
-| Executor applied every decision: 1 rejected · 0 failed (listed under "Decisions not applied") | see §21 | [§21](#21-decisions-not-applied-2) |
+| Executor applied every decision: 1 rejected · 0 failed (listed under "Decisions not applied") | see §21 | [§21](#21-decisions-not-applied-3) |
 | Content neither tagged nor marked as decoration (veraPDF 7.1-3, 1 check) | PDF 152 (printed 143) | [§17](#17-verapdf-wcag-22-machine-profile-before-and-after) |
 | Reading order jumps back up a column (6 jumps) | PDF 149 (printed 140) | [§18](#18-wcag-checks-verapdf-does-not-make) |
 | 230 Han-only runs need Japanese or Chinese (han_review.csv) | 9 pages, PDF 59 (printed 50) to PDF 319 (printed 310) | [§20](#20-deferred-by-the-executor) |
@@ -270,7 +270,6 @@ Pages: PDF 20 (printed 11), PDF 54 (printed 45), PDF 78 (printed 69), PDF 95 (pr
 
 Listen through these spots with a screen reader.
 
-- Move 2: Section on PDF 4 (printed iii) moved to read before PDF 62 (printed 53), after PDF 4 (printed iii), inside the Article on PDF 2–329 (printed i–320)
 - Figure on PDF 81 (printed 72) moved to read with its page (it read after PDF 139 (printed 130); now after PDF 82 (printed 73))
 - Figure on PDF 83 (printed 74) moved to read with its page (it read after PDF 139 (printed 130); now after PDF 84 (printed 75))
 - Figure on PDF 84 (printed 75) moved to read with its page (it read after PDF 139 (printed 130); now after PDF 86 (printed 77))
@@ -432,12 +431,13 @@ Reviewer note from the AI: Heading outline: one H1 (the book title on PDF 4, pri
 - caption (PDF 232 (printed 223)): 2 figures on page
 - caption (PDF 284 (printed 275)): 2 figures on page
 
-### 21. Decisions not applied (2)
+### 21. Decisions not applied (3)
 
 Rejected by validation or by the executor; nothing was half-applied.
 
-- {"op": "move_section", "why": "move 1 (PDF 1–1): 1 candidate sections, host found: False"}
+- {"op": "move_section", "why": "1 candidate sections, host found: False"}
 - {"where": "rolemap", "item": {"BMT_works_cited": "H3"}, "why": "unknown style"}
+- {"where": "move_section", "item": {"pages": [4, 4], "before_page": 5, "why": "The imprint line and press logo of the title page are read after PDF 60."}, "why": "the audit finds no section read out of place in these pages or where it lands"}
 
 ## What was changed
 
@@ -483,7 +483,6 @@ Rejected by validation or by the executor; nothing was half-applied.
 | links: wraps its text | 20 |
 | links: new Link element created | 1 |
 | links: URL-only description replaced by the sentence around it | 13 |
-| order: section moved | 1 |
 | order: figure moved to its page | 15 |
 | contents: entry wrapped in Reference | 34 |
 | structure: empty tag removed (proven empty) | 69 |

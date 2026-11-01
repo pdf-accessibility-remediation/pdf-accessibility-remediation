@@ -29,7 +29,6 @@
    "links: wraps its text": 20,
    "notes: Note with /ID": 495,
    "order: figure moved to its page": 15,
-   "order: section moved": 1,
    "orphans: adopted as paragraphs (\"chapter 1 notes and works cited\")": 3,
    "orphans: adopted as paragraphs (\"chapter 10 works cited\")": 18,
    "orphans: adopted as paragraphs (\"chapter 11 notes and works cited\")": 19,
@@ -56,6 +55,7 @@
   "rejected": 1
  },
  "validation_dropped": [
+  "move_section: the audit finds no section read out of place in these pages or where it lands",
   "rolemap: unknown style"
  ],
  "verapdf": {
