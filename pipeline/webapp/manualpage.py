@@ -151,7 +151,13 @@ def state(R, run):
     return {'run': run, 'base': base, 'book': book(rec), 'version': version(R, rec), 'sha': disk['sha'], 'disk': {'same': disk['same']},
             'status': st.get('text') or ('Ready' if g.get('ready') else 'Not Ready'), 'status_name': st.get('name'), 'newer': st.get('newer'),
             'ready': {'answer': 'Yes' if g.get('ready') else 'No', 'lines': [{'what': x['what'], 'name': G.ship_name(x), 'ok': x['ok'], 'text': x['text']} for x in g.get('ship') or []]},
-            'needs': (g.get('needs_person') or {}).get('total'), 'refusal': refusal(R, rec, disk), 'sections': secs}
+            'needs': (g.get('needs_person') or {}).get('total'), 'refusal': refusal(R, rec, disk), 'sections': secs,
+            'downloads': downloads_data(R, rec, g), 'known': _known(R, rec, g)}
+
+def _known(R, rec, g):
+    from . import downloads as DL
+    try: return DL.known(R, rec, DL.versions(R, rec, g))
+    except (OSError, ValueError, KeyError, TypeError): return []
 
 # ------------------------------------------------------------------ the strip (run page), from /api/run/<run>
 def strip(R, rec):
@@ -168,12 +174,32 @@ def strip(R, rec):
                  'not recorded': lambda: 'not completed'}[p['state']]()
         out[sec] = {'name': REL.SECTION_NAMES[sec], 'id': SECTION_ID[sec], 'words': words, 'ok': p['state'] == 'completed'}
     g0 = rec.get('glance') or {}
-    try: live = app_glance(R, rec, g0 if g0.get('ship') else {'ship': []}, rel).get('status') or {}
-    except (KeyError, TypeError, ValueError): live = {}
+    try: lg = app_glance(R, rec, g0 if g0.get('ship') else {'ship': []}, rel); live = lg.get('status') or {}
+    except (KeyError, TypeError, ValueError): lg, live = {'status': {}}, {}
     card = (g0.get('status') or {})
     return {'sections': out, 'status': live.get('text'), 'newer': live.get('newer'),
             'card_status': card.get('text'), 'card_newer': card.get('newer'),
-            'disk_same': disk['same'], 'refusal': refusal(R, rec, disk)}
+            'disk_same': disk['same'], 'refusal': refusal(R, rec, disk), 'downloads': downloads_data(R, rec, lg)}
+
+def downloads_data(R, rec, g=None):
+    """The versions the "Version to Download" picker offers (webapp/downloads.py: only those whose PDF exists), each with
+    its label and the line saying how its files are marked. No file name, no hash."""
+    from . import downloads as DL                            # imported here: downloads imports this module
+    try: vs = DL.versions(R, rec, g)
+    except (OSError, ValueError, KeyError, TypeError): return {'versions': []}
+    return {'versions': [{'id': x['id'], 'label': x['label'], 'marked': DL.marked_line(x['state'])} for x in vs]}
+
+def downloads_form(base, dd, p='mc'):
+    """The picker and the two download buttons: a GET form, so it works by keyboard and without the script."""
+    vs = dd.get('versions') or []
+    if not vs: return ''
+    opts = ''.join(f'<option value="{E(x["id"])}" data-marked="{E(x["marked"])}">{E(x["label"])}</option>' for x in vs)
+    return (f'<form class="{p}-dl" method="get" action="{E(base)}download">'
+            f'<div class="mc-field"><label for="{p}-dlv">Version to Download</label>'
+            f'<select id="{p}-dlv" name="v" aria-describedby="{p}-dl-marked">{opts}</select></div>'
+            f'<p id="{p}-dl-marked" class="mc-help">{E(vs[0]["marked"])}</p>'
+            '<div class="pp-row"><button type="submit" name="what" value="pdf">Download the Remediated PDF</button>'
+            '<button type="submit" name="what" value="record">Download the Record (ZIP)</button></div></form>')
 
 # ------------------------------------------------------------------ the page's HTML
 def _json_block(obj):
@@ -286,6 +312,15 @@ def page(R, run, recorded=None):
              '<p class="mc-help">Every item needs a result, and a Fail needs a note. A Fail does not hold the book back: it is kept in the report, '
              'with its note, for a person to fix later.</p>')
     if st['refusal']: B.append(f'<p id="mc-refusal" class="mc-refusal">{E(st["refusal"])} Your answers are still saved as you type.</p>')
+    # the PDF to take to PAC 2026 and the screen reader, and a check of a file already downloaded (stage 3)
+    B.append('<section id="downloads" class="mc-sec" aria-labelledby="dl-h"><h2 id="dl-h">Download and Check the PDF</h2>'
+             '<p class="mc-help">The evaluation is always recorded for the current version; the downloads can be any version.</p>'
+             + downloads_form(st['base'], st['downloads']) +
+             '<h3>Which Version Is This File?</h3>'
+             '<div class="mc-field"><label for="fc-file">PDF to Check</label>'
+             '<p class="mc-help" id="fc-help">Choose a PDF you downloaded or checked. It is read in this browser and never uploaded.</p>'
+             '<input type="file" id="fc-file" accept=".pdf,application/pdf" aria-describedby="fc-help fc-out"></div>'
+             '<p id="fc-out" class="mc-fc-out" role="status" aria-live="polite"></p></section>')
     for key in REL.SECTIONS:
         s = st['sections'][key]; p = p_of[key]
         B.append(f'<section id="{s["id"]}" class="mc-sec" aria-labelledby="{p}-h"><h2 id="{p}-h" tabindex="-1">{E(s["name"])}</h2>')
@@ -310,7 +345,7 @@ def page(R, run, recorded=None):
                  + _form(st, s, p) + '</section>')
     B.append('</div></main><div id="mc-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>'
              '<div id="mc-alert" class="pp-sr" role="alert"></div>')
-    data = {k: st[k] for k in ('run', 'base', 'sha')}
+    data = {k: st[k] for k in ('run', 'base', 'sha', 'known')}
     data['sections'] = {k: {'id': v['id'], 'p': p_of[k], 'draft_saved_at': (v['draft'] or {}).get('saved_at'), 'tombstone': v['tombstone'],
                             'items': [{'key': i['key'], 'found': i['found']} for i in v['items']], 'failed_last': v['failed_last'],
                             'starts': [{'by': e.get('by'), 'fields': e.get('fields') or {}, 'items': {ik: {'note': (iv or {}).get('note') or ''} for ik, iv in (e.get('items') or {}).items()},

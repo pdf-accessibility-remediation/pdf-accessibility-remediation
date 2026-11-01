@@ -113,3 +113,8 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .mc [tabindex="-1"]:not(.hit):focus, .mc-page main:focus { outline: none; }   /* focus the page moved: no outline (.hit keeps its own) */
 @media (max-width: 600px) { .mc-item { padding: 6px 8px; } .mc-radios { flex-direction: column; }
   .mc th, .mc td { padding: 3px 4px; } .mc th.mc-item-c { min-width: 6em; width: 34%; } .mc td.mc-res { white-space: normal; } }   /* 320 px: the table fits its card
+/* the downloads (stage 3): the picker under the strip's lines, full width on a narrow screen */
+.pp-dl { margin: 10px 0 0; } .pp-dl select, .mc-dl select { font: inherit; font-size: 14px; min-height: 32px; max-width: 100%; }
+.mc-fc-out:empty { display: none; } .mc-fc-out { font-weight: 600; }
+@media (max-width: 600px) { .pp-dl select, .mc-dl select { width: 100%; } }
+
