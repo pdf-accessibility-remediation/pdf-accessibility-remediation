@@ -910,7 +910,8 @@ def glance_lines(rec, labels):
     v = (rec.get('review') or {}).get('ocr_text_approved')
     if g['ocr_pages'] or g.get('ocr_layer_flagged'):
         L.append('**OCR text reviewed by a person:** ' + (
-            f'{v.get("verdict")} by {v.get("reviewer")} on {v.get("date")}' + (f' (PDF {v["pages"]})' if v.get('pages') else '') + f': {v.get("reason")}'
+            f'{v.get("verdict")}' + (f' ({v["to"]})' if v.get('to') else '') + f' by {v.get("reviewer")} on {v.get("date")}'
+            + (f' (PDF {v["pages"]})' if v.get('pages') else '') + (f': {v["reason"]}' if v.get('reason') else '')
             if isinstance(v, dict) else 'not yet reviewed (on the review page, or with review_ocr.py)'))
     L.append('')
     if t['sampled']:
@@ -997,8 +998,9 @@ def write_md(rec, path):
                      + '; bookmarks, links and page labels kept'))
     if o.get('pages_with_ocr_text'):
         v = (rec.get('review') or {}).get('ocr_text_approved')
-        rows.append(('OCR text reviewed by a person', f"{v.get('verdict')} by {v.get('reviewer')} on {v.get('date')}" + (f" (pages {v['pages']})" if v.get('pages') else '')
-                     + f": {v.get('reason')}" if isinstance(v, dict) else 'not yet reviewed (record a verdict with review_ocr.py)'))
+        rows.append(('OCR text reviewed by a person', f"{v.get('verdict')}" + (f" ({v['to']})" if v.get('to') else '') + f" by {v.get('reviewer')} on {v.get('date')}"
+                     + (f" (pages {v['pages']})" if v.get('pages') else '') + (f": {v['reason']}" if v.get('reason') else '')
+                     if isinstance(v, dict) else 'not yet reviewed (record a verdict with review_ocr.py)'))
     if rows: L += ['', '| | |', '|---|---|'] + [f'| {a} | {b} |' for a, b in rows]
     fl = rec.get('flags') or []
     def item(f): return f"- **{f['what']}**" + (f" ({_pages(f.get('pages'), labels)})" if f.get('pages') else '') + f": {f['why']}"

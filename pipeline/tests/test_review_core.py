@@ -371,3 +371,8 @@ def test_without_a_figures_card_the_key_card_stays():
     es, ro = away_case()
     its = {it['id'] for it in core.build_items({'fix_figure_order': True}, {'source': {'pages': 70}}, es, ro)}
     assert 'key:fix_figure_order' in its and 'reading_order:figures' not in its    # no trial run (an older run)
+
+def test_a_dropped_second_move_links_to_its_own_card():
+    es, wo = two_away()
+    its = core.build_items(wo, {'source': {'pages': 80}}, es)
+    assert core.card_of(its, {'where': 'move_section', 'item': wo['move_section'][1], 'why': 'bad pages'}) == 'move_section:1'

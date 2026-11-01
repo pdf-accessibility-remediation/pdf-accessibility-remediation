@@ -3,11 +3,14 @@ card titles, buttons). Explanatory text stays in sentence case and is never pass
 
     title_case("Review of the AI's decisions") == "Review of the AI's Decisions"
     title_case("Ready to ship? No")             == "Ready to Ship? No"
-    title_case("veraPDF (WCAG rules)")          == "veraPDF (WCAG Rules)"
+    title_case("veraPDF (WCAG Rules)")          == "veraPDF (WCAG Rules)"
+    title_case("Pages (optional)")              == "Pages (optional)"
 
 Articles, conjunctions and short prepositions stay lowercase unless first, last, or first after a colon or question mark.
 A word already written with a capital inside it (veraPDF, WCAG, iOS), or holding a dot, slash, underscore or digit
-(review.md, H1, 2026-10-29), is left as written. The same rule is in webapp/panel.js and review/page.html (tc()).
+(review.md, H1, 2026-10-29), is left as written, and so is everything in parentheses: a qualifier stays lowercase
+("Sent to (optional)", decided 2026-10-31), and a name there is written in Title Case in the source ("(WCAG Rules)",
+"(Session 2, open)"). The same rule is in webapp/panel.js and review/page.html (tc()).
 """
 import re
 
@@ -27,8 +30,11 @@ def _word(w, edge):
 def title_case(s):
     words = s.split(' ')
     out, edge = [], True
+    depth = 0                                           # inside parentheses: left as written
     for n, w in enumerate(words):
         if not w: out.append(w); continue
-        out.append(_word(w, edge or n == len(words) - 1))
+        inside = depth > 0 or w.lstrip(LEAD.replace('(', '')).startswith('(')
+        out.append(w if inside else _word(w, edge or n == len(words) - 1))
+        depth = max(0, depth + w.count('(') - w.count(')'))
         edge = w.endswith((':', '?', '—'))
     return ' '.join(out)
