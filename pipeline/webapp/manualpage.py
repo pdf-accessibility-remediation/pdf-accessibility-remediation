@@ -1,4 +1,5 @@
-"""webapp/manualpage.py: the Manual Checks page (issue #38, stage 2) and the run page's strip after "Ready to Ship?". The app
+"""webapp/manualpage.py: the Accessibility Evaluation page (issue #38, stage 2; "Manual Checks" in the records and the code) and
+the run page's strip after "Ready to Ship?". The app
 serves the page itself; recording and drafts go through review/manual.py (the one writer, also manual_checks.py's), so
 the app adds no rule of its own: lib/release.py's checklist and validate() are the one source.
 
@@ -12,7 +13,7 @@ Plain words for library staff: no file names, hashes, folder or option names on 
 Session 6"; a language is named, never shown as its code.
 """
 import os, json, html, threading, urllib.parse
-from lib import release as REL, glance as G, langtag
+from lib import release as REL, glance as G, langtag, dates as D
 from lib.titles import title_case as TC
 from review import sessions as S, manual as M            # imported at the app's start: manual.CODE is the running code's
 
@@ -59,7 +60,7 @@ def refusal(R, rec, disk):
     return None
 
 def version(R, rec):
-    """The current version in words: ("the version from Session 6", "applied on 2026-10-30 at 14:02")."""
+    """The current version in words: ("the version from Session 6", "applied on October 30, 2026 at 2:02 PM")."""
     sid = S.current_id(rec)
     if str(sid).isdigit():
         s = S.session(R, sid) or {}
@@ -67,10 +68,7 @@ def version(R, rec):
         return {'session': sid, 'label': f'the version from Session {int(sid)}', 'when': _when(when, 'applied')}
     return {'session': None, 'label': 'the version applied without a review', 'when': _when(rec.get('written') or '', 'made')}
 
-def _when(iso, verb):
-    iso = str(iso or '')
-    if len(iso) >= 16: return f'{verb} on {iso[:10]} at {iso[11:16]}'
-    return f'{verb} on {iso[:10]}' if iso else ''
+def _when(iso, verb): return f'{verb} on {D.when(iso)}' if str(iso or '').strip() else ''
 
 def ver_label(c, cur):
     if REL.sha_of(c) == cur: return 'this version'
@@ -94,7 +92,7 @@ def lang_words(b):
 
 NOUN = {'figures': 'figures', 'tables': 'tables', 'links': 'links', 'lists': 'lists', 'formulas': 'formulas', 'ocr_pages': 'OCR text'}
 SECTION_ID = {'pac': 'pac', 'screen_reader': 'screen-reader'}
-RECORD_LABEL = {'pac': 'Record the PAC Check', 'screen_reader': 'Record the Screen-Reader Check'}
+RECORD_LABEL = {'pac': 'Record the PAC 2026 Results', 'screen_reader': 'Record the Screen-Reader Test Results'}
 
 def state(R, run):
     R = os.path.abspath(R); rec = _rec(R)
@@ -131,8 +129,8 @@ def state(R, run):
     st = g.get('status') or {}
     base = '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
     return {'run': run, 'base': base, 'book': book(rec), 'version': version(R, rec), 'sha': disk['sha'], 'disk': {'same': disk['same']},
-            'status': st.get('text') or ('Ready' if g.get('ready') else 'Not Ready'), 'newer': st.get('newer'),
-            'ready': {'answer': 'Yes' if g.get('ready') else 'No', 'lines': [{'what': x['what'], 'ok': x['ok'], 'text': x['text']} for x in g.get('ship') or []]},
+            'status': st.get('text') or ('Ready' if g.get('ready') else 'Not Ready'), 'status_name': st.get('name'), 'newer': st.get('newer'),
+            'ready': {'answer': 'Yes' if g.get('ready') else 'No', 'lines': [{'what': x['what'], 'name': G.ship_name(x), 'ok': x['ok'], 'text': x['text']} for x in g.get('ship') or []]},
             'needs': (g.get('needs_person') or {}).get('total'), 'refusal': refusal(R, rec, disk), 'sections': secs}
 
 # ------------------------------------------------------------------ the strip (run page), from /api/run/<run>
@@ -143,16 +141,12 @@ def strip(R, rec):
     cur = (rec.get('document') or {}).get('output_sha256') or disk['sha']
     out = {}
     for sec in REL.SECTIONS:
-        xs = rel['checks'].get(sec) or []
-        c = REL.latest(rel, sec, cur)
-        if c is not None:
-            bad = REL.issues(c, sec)
-            words = (f'{len(bad)} item{"" if len(bad) == 1 else "s"} failed on this version ({c.get("by")}, {REL.day(c.get("recorded"))})' if bad
-                     else f'done on this version ({c.get("by")}, {REL.day(c.get("recorded"))})')
-            out[sec] = {'name': REL.SECTION_NAMES[sec], 'id': SECTION_ID[sec], 'words': words, 'met': not bad}
-        else:
-            out[sec] = {'name': REL.SECTION_NAMES[sec], 'id': SECTION_ID[sec], 'met': False,
-                        'words': 'done on an earlier version: check this version' if xs else 'not done'}
+        p = REL.part(rel, sec, cur); c = p['check']
+        words = {'completed': lambda: f'completed on this version ({c.get("by")}, {D.day(c.get("recorded"))})' + (f' · {REL.noted(len(p["issues"]))}' if p['issues'] else ''),
+                 'could not be read': lambda: 'could not be read in full: record it again',
+                 'earlier version': lambda: 'completed on an earlier version: evaluate this version',
+                 'not recorded': lambda: 'not completed'}[p['state']]()
+        out[sec] = {'name': REL.SECTION_NAMES[sec], 'id': SECTION_ID[sec], 'words': words, 'ok': p['state'] == 'completed'}
     g0 = rec.get('glance') or {}
     try: live = G.with_release(g0 if g0.get('ship') else {'ship': []}, rec, rel).get('status') or {}
     except (KeyError, TypeError, ValueError): live = {}
@@ -169,14 +163,19 @@ def _json_block(obj):
 def _fid(p, field): return f'{p}-{field.replace(".", "-")}'
 
 def _result_table(sec_key, c):
-    rows = []
-    for x in REL.CHECKLIST[sec_key]:
-        it = (c.get('items') or {}).get(x['key']) or {}
+    rows = []; items = c.get('items') or {}
+    for x in REL.CHECKLIST[sec_key] + list(REL.RETIRED[sec_key]['items'].values()):
+        retired = x['key'] in REL.RETIRED[sec_key]['items']
+        if retired and x['key'] not in items: continue                 # an older record's retired row: shown as recorded
+        it = items.get(x['key']) or {}
         res = REL.RESULT_NAMES.get(it.get('result'), 'Not answered')
-        bold = x['key'] in (c.get('failed') or [])
-        rows.append(f'<tr><th scope="row">{E(x["label"])}</th><td>{"<strong>" + E(res) + "</strong>" if bold else E(res)}</td><td>{E(it.get("note") or "")}</td></tr>')
-    fields = [f'{E(lab)}: {E(c["fields"][k])}' for k, (lab, _) in REL.FIELDS[sec_key].items() if (c.get('fields') or {}).get(k)]
-    if (c.get('fields') or {}).get('pages_checked'): fields.append(f'Pages Checked: {E(c["fields"]["pages_checked"])}')
+        bold = it.get('result') == 'fail'
+        rows.append(f'<tr><th scope="row" class="mc-item-c">{E(x["label"])}{" (no longer asked)" if retired else ""}</th>'
+                    f'<td class="mc-res">{"<strong>" + E(res) + "</strong>" if bold else E(res)}</td><td class="mc-note">{E(it.get("note") or "")}</td></tr>')
+    f = c.get('fields') or {}
+    fields = [f'{E(lab)}: {E(f[k])}' for k, (lab, _) in REL.FIELDS[sec_key].items() if f.get(k)] \
+        + [f'{E(lab)} (no longer asked): {E(f[k])}' for k, lab in REL.RETIRED[sec_key]['fields'].items() if f.get(k)]
+    if f.get('pages_checked'): fields.append(f'Pages Checked: {E(f["pages_checked"])}')
     return ((f'<p>{" · ".join(fields)}</p>' if fields else '') +
             '<div class="mc-tw"><table><thead><tr><th scope="col">Item</th><th scope="col">Result</th><th scope="col">Notes</th></tr></thead><tbody>'
             + ''.join(rows) + '</tbody></table></div>' + (f'<p><strong>Other Notes:</strong></p><p class="mc-pre">{E(c["notes"])}</p>' if c.get('notes') else ''))
@@ -195,8 +194,7 @@ def _form(st, s, p):
                 f'<p class="mc-err" id="{fid}-err" hidden></p></div>')
     out.append(field('by', 'Checked By', True, d.get('by')))
     for f in s['fields']:
-        hint = 'For example NVDA 2026.1.' if f['key'] == 'screen_reader' else None
-        out.append(field(f'fields.{f["key"]}', f['label'], f['required'], fv.get(f['key']), hint))
+        out.append(field(f'fields.{f["key"]}', f['label'], f['required'], fv.get(f['key'])))
     failed_last = set(s.get('failed_last') or [])
     for it in s['items']:
         k = it['key']; base = _fid(p, f'items.{k}'); v = iv.get(k) or {}
@@ -204,7 +202,7 @@ def _form(st, s, p):
         h = [f'<fieldset class="mc-item" id="{base}-result" data-item="{E(k)}" aria-describedby="{base}-help{" " + base + "-hint" if it["hint"] else ""}{" " + base + "-last" if k in failed_last else ""} {base}-result-err">',
              f'<legend>{legend}</legend><p class="mc-help" id="{base}-help">{E(it["help"])}</p>']
         if it['hint']: h.append(f'<p class="mc-hint" id="{base}-hint">{E(it["hint"])}</p>')
-        if k in failed_last: h.append(f'<p class="mc-hint" id="{base}-last">This item failed in the last check of this version: say in its notes what changed.</p>')
+        if k in failed_last: h.append(f'<p class="mc-hint" id="{base}-last">This item failed in the last results recorded for this version: say in its notes what changed.</p>')
         if k == 'title_language':
             b = st['book']
             h.append(f'<p class="mc-hint">Title: <span{(" lang=" + chr(34) + E(b["lang"]) + chr(34)) if b["lang"] else ""}>{E(b["title"])}</span> · Language: {E(lang_words(b))}</p>')
@@ -217,7 +215,7 @@ def _form(st, s, p):
         h.append(f'<p class="mc-err" id="{base}-result-err" hidden></p>')
         if it['pages']:
             pid = _fid(p, 'fields.pages_checked')
-            h.append(f'<div class="mc-field"><label for="{pid}">Pages Checked</label><p class="mc-help" id="{pid}-help">PDF page numbers and ranges, for example 5, 9-12.</p>'
+            h.append(f'<div class="mc-field"><label for="{pid}">Pages Checked <span class="mc-opt">(optional)</span></label><p class="mc-help" id="{pid}-help">PDF page numbers and ranges, for example 5, 9-12.</p>'
                      f'<input type="text" id="{pid}" data-field="fields.pages_checked" value="{E(fv.get("pages_checked") or "")}" autocomplete="off" aria-describedby="{pid}-err {pid}-help">'
                      f'<p class="mc-err" id="{pid}-err" hidden></p></div>')
         nid = f'{base}-note'
@@ -235,55 +233,60 @@ def _form(st, s, p):
     return ''.join(out)
 
 def message(st, recorded):
-    """After Record: what was recorded and what it changed (the page reloads with ?recorded=<section>)."""
+    """After Record: what was recorded and what it changed (the page reloads with ?recorded=<section>); "Review Again" after
+    any result with a Fail (2026-10-31: a Fail never blocks, it is kept for a person to fix)."""
     s = (st['sections'] or {}).get(recorded)
     if not s or not s.get('current'): return None
-    c = s['current']; n = len(c.get('failed') or [])
-    if recorded == 'pac':
-        return (f'PAC check recorded: {n} item{"" if n == 1 else "s"} failed. "Manual Check (PAC)" stays unmet until a check of this version passes.' if n
-                else 'PAC check recorded. "Manual Check (PAC)" is now met for this version.'), False
-    if n: return (f'Screen-reader check recorded: {n} item{"" if n == 1 else "s"} failed. "Ready to Ship?" is No while it stands, '
-                  'and once the book has shipped it shows "Needs Rework". Select "Review Again" to fix it.'), True
-    return 'Screen-reader check recorded, with no item failed. It counts toward "Verified" once the book ships with this same file.', False
+    other = 'screen_reader' if recorded == 'pac' else 'pac'
+    oc = (st['sections'].get(other) or {}).get('current')
+    done = bool(oc) and oc.get('state') == 'completed'
+    n = len(s['current'].get('failed') or [])
+    t = (f'{REL.SECTION_NAMES[recorded]} results recorded for this version. '
+         + ('"Accessibility Evaluation" is now satisfied.' if done and s['current'].get('state') == 'completed' else
+            f'"Accessibility Evaluation" is satisfied once {"PAC 2026" if other == "pac" else "the Screen-Reader Test"} is recorded for this version too.')
+         + (f' {REL.noted(n).capitalize()}: {"it is" if n == 1 else "they are"} kept in the report for a person to fix.' if n else ''))
+    return t, bool(n)
 
 def page(R, run, recorded=None):
-    import report_html as H                               # the card's condition names, as review.html writes them
     st = state(R, run); p_of = {'pac': 'pac', 'screen_reader': 'sr'}
     msg = message(st, recorded) if recorded in REL.SECTIONS else None
     b = st['book']; lang = f' lang="{E(b["lang"])}"' if b['lang'] else ''
     ready = st['ready']; why = [x for x in ready['lines'] if not x['ok']]
-    B = [f'<header><h1>Manual Checks</h1><p class="mc-book">Book: <span{lang}>{E(b["title"])}</span></p></header>',
-         f'<nav class="pp-wrap" aria-label="This page"><p class="pp pp-bar mc-nav"><a class="pp-btn" href="{E(st["base"])}">Back to the Run Page</a> '
-         f'<a href="#pac">{E(TC(REL.SECTION_NAMES["pac"]))}</a> <a href="#screen-reader">{E(TC(REL.SECTION_NAMES["screen_reader"]))}</a></p></nav>',
+    B = [f'<header><h1>Accessibility Evaluation</h1><p class="mc-book">PDF Title: <span{lang}>{E(b["title"])}</span></p></header>',
+         f'<nav class="pp-wrap" aria-label="This page"><p class="pp pp-bar mc-nav"><a class="pp-btn" href="{E(st["base"])}">Back to the Run Page</a></p></nav>',
          '<main id="main" tabindex="-1"><div class="pp mc">']
     if msg:
         B.append(f'<div id="mc-msg" class="pp-msg pp-okmsg" tabindex="-1"><span class="pp-msg-t">{E(msg[0])}</span>'
                  + ('<button type="button" id="mc-review" class="pp-primary">Review Again</button>' if msg[1] else '') + '</div>')
     v = st['version']
-    B.append(f'<p>These checks are recorded for {E(v["label"])}' + (f', {E(v["when"])}' if v['when'] else '') + '.</p>'
-             '<p class="mc-help">Do these checks after the last review is applied: a new version needs its own checks.</p>'
-             f'<p>Status: <strong>{E(st["status"])}</strong>' + (f' · {E(st["newer"])}' if st.get('newer') else '') +
-             f' · Ready to Ship? <strong>{E(ready["answer"])}</strong>' + (' (not met: ' + E(', '.join(G.SHIP_NAMES.get(x['what'], x['what']) for x in why)) + ')' if why else '') + '</p>')
+    B.append(f'<p>These results are recorded for {E(v["label"])}' + (f', {E(v["when"])}' if v['when'] else '') + '.</p>'
+             '<p class="mc-help">Complete the evaluation after the last review is applied: a new version needs its own evaluation.</p>'
+             f'<p class="mc-status">Overall Status: <strong>{E(st["status"])}</strong>' + (f' · {E(st["newer"])}' if st.get('newer') else '')
+             + (f' · Unsatisfied Requirements: {E(", ".join(x["name"] for x in why))}' if st.get('status_name') == REL.NOT_READY and why else '') + '</p>'
+             '<p class="mc-help">Every item needs a result, and a Fail needs a note. A Fail does not hold the book back: it is kept in the report, '
+             'with its note, for a person to fix later.</p>')
     if st['refusal']: B.append(f'<p id="mc-refusal" class="mc-refusal">{E(st["refusal"])} Your answers are still saved as you type.</p>')
     for key in REL.SECTIONS:
         s = st['sections'][key]; p = p_of[key]
-        B.append(f'<section id="{s["id"]}" class="mc-sec" aria-labelledby="{p}-h"><h2 id="{p}-h" tabindex="-1">{E(TC(s["name"]))}</h2>')
+        B.append(f'<section id="{s["id"]}" class="mc-sec" aria-labelledby="{p}-h"><h2 id="{p}-h" tabindex="-1">{E(s["name"])}</h2>')
         c = s['current']
         if c:
-            words = {'completed': 'completed for this version' + (f', with {REL.noted(len(c["failed"]))}' if c['failed'] else ''),
-                     'could not be read': 'could not be read in full: record it again'}.get(c['state'], c['state'])
-            B.append(f'<h3>Current Check: {E(c.get("by"))}, {E(REL.day(c.get("recorded")))}</h3><p>{E(words.capitalize())}.</p>' + _result_table(key, c))
-        if s['earlier']:
-            B.append(f'<details class="mc-earlier"><summary>Earlier Checks ({len(s["earlier"])})</summary>')
+            n = len(c['failed'] or [])
+            words = {'completed': 'Completed for this version' + (f', with {REL.noted(n)}' if n else ''),
+                     'could not be read': 'Could not be read in full: record it again'}.get(c['state'], c['state'])
+            B.append(f'<h3>Current Results: {E(c.get("by"))}, {E(D.day(c.get("recorded")))}</h3><p>{E(words)}.</p>' + _result_table(key, c))
+        if s['earlier']:                                 # its own h3, so the h4s below sit under it (review 12 G2)
+            ne = len(s['earlier'])
+            B.append(f'<h3>Earlier Results ({ne})</h3><details class="mc-earlier"><summary>Show the {ne} Earlier Result{"" if ne == 1 else "s"}</summary>')
             for i, e in enumerate(s['earlier']):
-                B.append(f'<h4>{E(e.get("by"))}, {E(REL.day(e.get("recorded")))}: on {E(e["version"])}</h4>' + _result_table(key, e)
+                B.append(f'<h4>{E(e.get("by"))}, {E(D.day(e.get("recorded")))}: on {E(e["version"])}</h4>' + _result_table(key, e)
                          + (f'<p><button type="button" data-start="{E(key)}:{i}">Start from These Notes</button></p>' if e['version'] != 'this version' else ''))
             B.append('</details>')
         if s['draft_earlier']:
-            B.append(f'<p class="mc-hint">Your unfinished check was started on {E(s["draft_earlier"]["from"])}. Its answers are not used for this version. '
+            B.append(f'<p class="mc-hint">Your unfinished results were started on {E(s["draft_earlier"]["from"])}. Their answers are not used for this version. '
                      f'<button type="button" data-start="{E(key)}:draft">Start from These Notes</button></p>')
-        B.append(f'<h3>{"Record a New Check" if c else "Record a Check"}</h3>'
-                 + ('<p class="mc-help">A new check of this version replaces the current one as the one that counts; the earlier one stays in the record.</p>' if c else '')
+        B.append(f'<h3>{"Record New Results" if c else "Record the Results"}</h3>'
+                 + ('<p class="mc-help">New results for this version replace the current ones as the ones that count; the earlier ones stay in the record.</p>' if c else '')
                  + _form(st, s, p) + '</section>')
     B.append('</div></main><div id="mc-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>'
              '<div id="mc-alert" class="pp-sr" role="alert"></div>')
@@ -294,6 +297,6 @@ def page(R, run, recorded=None):
                                         'notes': e.get('notes') or ''} for e in v['earlier']],
                             'start_draft': (v['draft_earlier'] or {}).get('data'), 'has_draft': bool(v['draft'])} for k, v in st['sections'].items()}
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<title>Manual Checks: {E(b["title"])}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
+            f'<title>Accessibility Evaluation: {E(b["title"])}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
             '<body class="pp-page mc-page"><a class="skip" href="#main">Skip to the content</a>' + ''.join(B) +
             f'<script type="application/json" id="mc-data">{_json_block(data)}</script><script src="/app/manual.js" defer></script></body></html>')

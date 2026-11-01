@@ -85,8 +85,10 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .pp a.pp-btn { box-sizing: border-box; }   /* a full-width button on a narrow screen stays inside its box */
 .mc-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
 .mc-page header .mc-book { margin: 0 0 4px; }
-.mc .mc-sec { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 4px; }
-.mc .mc-sec h2 { font-size: 17px; } .mc h3 { font-size: 15px; margin: 14px 0 4px; } .mc h4 { font-size: 14px; margin: 10px 0 4px; }
+.mc-page h1 { font-size: 22px; }
+.mc .mc-sec { margin-top: 26px; }
+.mc .mc-sec h2 { font-size: 20px; margin: 0 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }   /* a section heading: a thin rule across */
+.mc h3 { font-size: 15px; margin: 14px 0 4px; } .mc h4 { font-size: 14px; margin: 10px 0 4px; }
 .mc-field { margin: 8px 0; } .mc-field label { display: block; font-weight: 600; }
 .mc-field input[type=text], .mc-field textarea { font: inherit; width: 100%; max-width: 40em; box-sizing: border-box; padding: 4px 6px;
   border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); }
@@ -102,8 +104,10 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .mc-save { display: inline-block; min-width: 10em; color: var(--muted); font-size: 14px; }
 .mc-refusal { border-left: 4px solid var(--reject); padding: 4px 10px; background: var(--flag); }
 .mc .pp-msg { margin: 8px 0; } .mc .pp-msg button { margin-left: 8px; }
-.mc-tw { overflow-x: auto; } .mc table { border-collapse: collapse; font-size: 14px; } .mc th, .mc td { border-bottom: 1px solid var(--line); padding: 3px 8px; text-align: left; vertical-align: top; }
+.mc table { border-collapse: collapse; font-size: 14px; width: 100%; } .mc th, .mc td { border-bottom: 1px solid var(--line); padding: 3px 8px; text-align: left; vertical-align: top; }
+.mc th.mc-item-c { min-width: 14em; width: 30%; font-weight: 600; } .mc td.mc-res { white-space: nowrap; }
+.mc td.mc-note { max-width: 120ch; overflow-wrap: anywhere; }   /* never scrolls sideways (review 12 G1): Notes wrap, Item keeps its words */
 .mc-pre { white-space: pre-wrap; }
 .mc :focus-visible, .pp-checks :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mc [tabindex="-1"]:not(.hit):focus, .mc-page main:focus { outline: none; }   /* focus the page moved: no outline (.hit keeps its own) */
-@media (max-width: 600px) { .mc-item { padding: 6px 8px; } .mc-radios { flex-direction: column; } }
+@media (max-width: 600px) { .mc-item { padding: 6px 8px; } .mc-radios { flex-direction: column; } .mc th.mc-item-c { min-width: 9em; } }

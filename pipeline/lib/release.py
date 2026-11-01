@@ -388,7 +388,7 @@ def validate(section, data, ctx=None):
         elif res == 'na' and x.get('found') in fnd and not note:
             errors.append((f'items.{k}.note', f'Add a note to "{name}": this book has {fnd[x["found"]]}, so say why it does not apply.'))
         elif res == 'pass' and k in prev_bad and not note:
-            errors.append((f'items.{k}.note', f'Add a note to "{name}": it failed in the last check of this version, so say what changed.'))
+            errors.append((f'items.{k}.note', f'Add a note to "{name}": it failed in the last results recorded for this version, so say what changed.'))
         items[k] = {'result': res, **({'note': note} if note else {})}
     pg = _clean(fields_in.get('pages_checked'), True)
     if pg:                                                       # optional (2026-10-31); checked when given

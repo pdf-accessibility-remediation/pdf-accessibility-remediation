@@ -4,7 +4,7 @@ batches/d1/clans (a run path of several segments) and a one-page synthetic PDF. 
 
     python -m pytest tests/test_webapp_checks.py -q
 """
-import os, re, sys, json, time, signal, threading, subprocess, http.client
+import os, re, sys, json, html, time, signal, threading, subprocess, http.client
 import pytest
 import pikepdf
 
@@ -75,7 +75,7 @@ def test_the_page_is_served_with_the_csp_and_names_no_file(mapp):
     text = visible(page)
     assert 'The Clan Records' in text and 'Language: English' in text                 # the remediated PDF's title (Q2, F8)
     for bad in ('.pdf', 'review.md', 'release/', 'sha256', 'batches/d1', 'clans_remediated'): assert bad not in text, bad
-    assert 'href="#pac"' in page and 'href="#screen-reader"' in page                  # a link to each section (Q4)
+    assert 'href="#pac"' not in page and 'href="#screen-reader"' not in page          # the two section links went (2026-10-31)
     assert 'WCAG 1.4.3' in text                                                         # the WCAG numbers stay (Q1)
     assert req(mapp['port'], 'GET', '/app/manual.js')[0] == 200
 
@@ -99,13 +99,13 @@ def test_a_run_with_no_recorded_hash_is_never_called_changed(mapp):
     st, s = js(mapp['port'], 'GET', f'/api/run/{RUN}/checks')
     assert st == 200 and s['disk']['same'] is None and s['refusal'] is None and s['sections']['pac']['current'] is None
     st, s = js(mapp['port'], 'GET', f'/api/run/{RUN}')
-    assert s['manual']['disk_same'] is None and s['manual']['refusal'] is None and s['manual']['sections']['pac']['words'] == 'not done'
+    assert s['manual']['disk_same'] is None and s['manual']['refusal'] is None and s['manual']['sections']['pac']['words'] == 'not completed'
     st, r = js(mapp['port'], 'POST', f'/api/run/{RUN}/checks/record', {'section': 'pac', 'data': PAC, 'shown_sha256': s.get('sha')})
     assert st == 200                                                                    # F1: the first Record takes the disk hash
     rec = core.load(os.path.join(mapp['R'], 'record.json'))
     assert rec['document']['output_sha256_from'].startswith('first check') and rec['manual_checks']['pac']['state'] == 'completed'
     st, s = js(mapp['port'], 'GET', f'/api/run/{RUN}')
-    assert s['manual']['disk_same'] is True and s['manual']['sections']['pac']['met'] is True
+    assert s['manual']['disk_same'] is True and s['manual']['sections']['pac']['ok'] is True
 
 def test_a_changed_pdf_is_said_in_plain_words(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
@@ -183,6 +183,35 @@ def test_a_note_holding_a_script_end_tag_stays_text(tmp_path):
     assert page.count('</script>') == 2 and '\\u003c/script\\u003e' in block and '&' not in block   # F3: <, > and & escaped
     assert '<a href="https://example.com">' not in page                              # the earlier check's table escapes it too
     assert json.loads(block)['sections']['pac']['starts'][0]['items']['contrast']['note'] == evil   # and it round-trips as text
+
+def test_the_page_in_the_words_decided_after_try_rv1(tmp_path):
+    """13 §6: the names, the status line with what is unsatisfied, no PAC Version or PDF/UA item, no NVDA example, Pages
+    optional, an h3 over the earlier results (G2), and the message after a Record, with Review Again after any Fail."""
+    R = make_run(str(tmp_path / 'r'), record_sha=True)
+    page = MP.page(R, 'r'); text = re.sub(r'\s+', ' ', visible(page))
+    assert '<h1>Accessibility Evaluation</h1>' in page and 'PDF Title: ' in text and '<title>Accessibility Evaluation: The Clan Records</title>' in page
+    assert 'Overall Status: Not Ready · Unsatisfied Requirements: Work Order Approval, Safety Checks, Accessibility Evaluation' in text
+    assert '>PAC 2026</h2>' in page and '>Screen-Reader Test</h2>' in page and 'Manual Check' not in text and 'Sanity' not in text
+    assert 'PAC Version' not in text and 'PDF/UA' not in text and 'For example NVDA' not in text and 'Pages Checked (optional)' in text
+    assert 'Record the PAC 2026 Results' in text and 'Record the Screen-Reader Test Results' in text
+    M.record(R, 'pac', dict(PAC, items=dict(PAC['items'], contrast={'result': 'fail', 'note': 'grey on grey'})), say=lambda *a: None, batch=False)
+    M.record(R, 'pac', dict(PAC, items=dict(PAC['items'], contrast={'result': 'pass', 'note': 'darkened'})), say=lambda *a: None, batch=False)
+    page = html.unescape(MP.page(R, 'r', recorded='pac'))
+    assert ('PAC 2026 results recorded for this version. "Accessibility Evaluation" is satisfied once the Screen-Reader Test is recorded '
+            'for this version too.') in page and 'id="mc-review"' not in page
+    assert '<h3>Earlier Results (1)</h3><details class="mc-earlier"><summary>Show the 1 Earlier Result</summary><h4>' in page
+    assert 'Current Results: Kim, ' in page and '<h3>Record New Results</h3>' in page
+    sr = {'by': 'Lee', 'fields': {'screen_reader': 'NVDA'}, 'items': {x['key']: {'result': 'pass'} for x in REL.CHECKLIST['screen_reader']}}
+    sr['items']['tables'] = {'result': 'na', 'note': 'checked'}; sr['items']['links'] = {'result': 'fail', 'note': 'bare URL'}
+    M.record(R, 'screen_reader', sr, say=lambda *a: None, batch=False)
+    page = html.unescape(MP.page(R, 'r', recorded='screen_reader'))
+    assert ('Screen-Reader Test results recorded for this version. "Accessibility Evaluation" is now satisfied. 1 issue noted: it is kept '
+            'in the report for a person to fix.') in page and 'id="mc-review"' in page
+    js_src = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert 'Accessibility Evaluation (PAC 2026 &amp; Screen-Reader Test)' in js_src and '>Complete Evaluation</a>' in js_src
+    assert "const hx = inPanel ? 'h3' : 'h2';" in js_src                          # the panel fallback: an h3 (G2)
+    s = MP.strip(R, S.load(os.path.join(R, 'record.json')))
+    assert s['sections']['screen_reader']['words'].startswith('completed on this version (Lee, ') and s['sections']['screen_reader']['words'].endswith(' · 1 issue noted')
 
 # ------------------------------------------------------------------ Record and its refusals
 def test_record_errors_come_back_per_field_and_nothing_is_written(mapp):
