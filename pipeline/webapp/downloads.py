@@ -28,11 +28,7 @@ class Refused(Exception):
 def _version_label(sid):
     return f'Session {int(sid)}' if str(sid).isdigit() else 'the version applied without a review' if sid == 'ai' else f'version {sid}'
 
-def removed(R):
-    """release/removed.json: the earlier versions whose PDF "Remove Older PDFs" took ([{version, sha256, bytes, by, removed}])."""
-    try:
-        with open(os.path.join(R, 'release', 'removed.json'), encoding='utf-8') as f: return json.load(f) or []
-    except (OSError, ValueError): return []
+def removed(R): return REL.removed(R)
 
 def versions(R, rec, glance=None):
     """The run's versions, newest first. The current version's state is its status (app_glance: the record's hash first,
