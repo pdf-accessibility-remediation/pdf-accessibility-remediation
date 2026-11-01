@@ -45,9 +45,24 @@ def disk_state(R, rec):
     return {'same': None if not want or sha is None else sha == want, 'sha': sha, 'missing': sha is None}
 
 def app_sha(R, rec):
-    """The current version's hash as the app sees it: the file on disk's (cached), else the record's output_sha256. The
-    status, `ready` and status['current'] (Mark as Shipped's gate, stage 4) are worked out against it (review 16 J1)."""
-    return disk_state(R, rec)['sha'] or (rec.get('document') or {}).get('output_sha256')
+    """The current version's hash as the app sees it: the record's output_sha256, else (a run made before 2026-11, F1) the
+    file on disk's (cached). The record comes first because base_ok is that version's (its work order, OCR text and
+    safety checks): a file on disk that differs from it is a changed file, never the version the status is about (review
+    18 K1). Mark as Shipped (stage 4) is gated on status['current']['name'] == 'Ready' and disk_state()['same'] is not False."""
+    return (rec.get('document') or {}).get('output_sha256') or disk_state(R, rec)['sha']
+
+CHANGED_STATUS = 'Not Ready (the book\'s PDF has changed since this report was made)'
+
+def app_glance(R, rec, g, rel=None):
+    """with_release() as the app reads it: against app_sha(); and when the file on disk is not the one the record describes
+    (disk_state same is False), the status says so in CHANGED_BY_HAND's words and is never Ready (K1)."""
+    rel = rel if rel is not None else REL.load(R, rec)
+    out = G.with_release(g, rec, rel, cur=app_sha(R, rec))
+    if disk_state(R, rec)['same'] is False:
+        st = dict(out.get('status') or {}, name=REL.NOT_READY, text=CHANGED_STATUS, newer=None)
+        st['current'] = {'name': REL.NOT_READY, 'issues': (st.get('current') or {}).get('issues', 0)}
+        out = dict(out, ready=False, status=st)
+    return out
 
 CHANGED_BY_HAND = ('The book\'s PDF has changed since this report was made, so no check can be recorded for it. '
                    'Whoever looks after the app can check it.')
@@ -103,9 +118,9 @@ def state(R, run):
     R = os.path.abspath(R); rec = _rec(R)
     import report_html as H
     rel = REL.load(R, rec); disk = disk_state(R, rec)
-    cur = disk['sha'] or (rec.get('document') or {}).get('output_sha256')   # the file on disk (J1); none: the record's
-    try: g = G.with_release(H.glance_of(R, rec), rec, rel, cur=cur)
-    except Exception: g = G.with_release(rec.get('glance') or {'ship': []}, rec, rel, cur=cur)
+    cur = app_sha(R, rec)                                    # the record's, else the disk's (F1; K1)
+    try: g = app_glance(R, rec, H.glance_of(R, rec), rel)
+    except Exception: g = app_glance(R, rec, rec.get('glance') or {'ship': []}, rel)
     fnd = REL.found(rec); drafts = M.load_drafts(R)
     secs = {}
     for sec in REL.SECTIONS:
@@ -143,7 +158,7 @@ def strip(R, rec):
     """The strip's data: one line per section, the live status (with the card's, to say when they differ), the disk
     check and any refusal. Cheap: the cached disk hash and the stored glance with release/ worked out now."""
     R = os.path.abspath(R); rel = REL.load(R, rec); disk = disk_state(R, rec)
-    cur = disk['sha'] or (rec.get('document') or {}).get('output_sha256')   # the file on disk (J1)
+    cur = app_sha(R, rec)                                    # the record's, else the disk's (F1; K1)
     out = {}
     for sec in REL.SECTIONS:
         p = REL.part(rel, sec, cur); c = p['check']
@@ -153,7 +168,7 @@ def strip(R, rec):
                  'not recorded': lambda: 'not completed'}[p['state']]()
         out[sec] = {'name': REL.SECTION_NAMES[sec], 'id': SECTION_ID[sec], 'words': words, 'ok': p['state'] == 'completed'}
     g0 = rec.get('glance') or {}
-    try: live = G.with_release(g0 if g0.get('ship') else {'ship': []}, rec, rel, cur=cur).get('status') or {}
+    try: live = app_glance(R, rec, g0 if g0.get('ship') else {'ship': []}, rel).get('status') or {}
     except (KeyError, TypeError, ValueError): live = {}
     card = (g0.get('status') or {})
     return {'sections': out, 'status': live.get('text'), 'newer': live.get('newer'),
