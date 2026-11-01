@@ -28,7 +28,7 @@ def failing(items, key): return dict(items, **{key: {'result': 'fail', 'note': '
 
 # ------------------------------------------------------------------ the evaluation line: results follow the hash, whatever it is
 def test_evaluation_line_counts_exactly_when_the_hash_is_the_same():
-    assert REL.evaluation_line(rel(), A) == (False, 'Not Completed (neither part recorded for this version)')
+    assert REL.evaluation_line(rel(), A) == (False, 'Not Completed')
     r = rel(pac=[chk(A, PAC_OK)], sr=[chk(A, SR_OK)])
     assert REL.evaluation_line(r, A) == (True, 'Completed')                      # the same hash (an apply that gave the same bytes): it counts
     ok, txt = REL.evaluation_line(r, B)                                          # another hash: an earlier version
@@ -36,7 +36,7 @@ def test_evaluation_line_counts_exactly_when_the_hash_is_the_same():
                               'Screen-Reader Test: recorded on an earlier version, Session 2)')
     assert REL.evaluation_line(r, None)[0] is False                              # no recorded hash: nothing counts
     ok, txt = REL.evaluation_line(rel(pac=[chk(A, failing(PAC_OK, 'contrast'))]), A)   # one part, with a Fail
-    assert not ok and txt == 'Not Completed (Screen-Reader Test: not recorded; 1 issue noted)'
+    assert not ok and txt == 'Not Completed (Screen-Reader Test not recorded; 1 issue noted)'
     r = rel(pac=[chk(A, failing(PAC_OK, 'contrast'))], sr=[chk(A, failing(failing(SR_OK, 'links'), 'tables'))])
     assert REL.evaluation_line(r, A) == (True, 'Completed (3 issues noted)')     # a Fail never blocks (2026-10-31)
 
@@ -124,7 +124,7 @@ def test_a_stored_old_glance_marked_ready_is_not_ready_now():
            + [{'what': 'Manual check (PAC)', 'ok': None, 'text': 'not run'}], 'safety': FIVE}
     r = runs.ready('/nonexistent', {'glance': old, 'document': {}})
     assert r['answer'] == 'No' and r['status'] == 'Not Ready'
-    assert r['lines'][-1] == 'Accessibility evaluation: Not Completed (neither part recorded for this version)'
+    assert r['lines'][-1] == 'Accessibility evaluation: Not Completed'
 
 # ------------------------------------------------------------------ the veraPDF finding (was the sixth safety check)
 SAFE = ['Every page looks the same as the original', 'Published text unchanged', 'All content tagged or marked as decoration',
@@ -156,8 +156,8 @@ def test_status_line_sits_above_ready_to_ship_and_the_old_heading_still_parses()
     L = G.glance_md(G.glance({}, md_with(True)))
     i = L.index('**Status:** Not Ready')
     assert L[i + 2] == '**Ready to ship?**' and L[i + 3] == '- Work Order Approval: Not Approved (applied without a review)'
-    assert L[i + 4] == '- ✓ OCR Text Approval: Not Required (no OCR text was added during intake)' and L[i + 5] == '- ✓ Safety Checks: Passed'
-    assert L[i + 6] == '- Accessibility Evaluation: Not Completed (neither part recorded for this version)'
+    assert L[i + 4] == '- ✓ OCR Text Approval: Not Applicable' and L[i + 5] == '- ✓ Safety Checks: Passed'
+    assert L[i + 6] == '- Accessibility Evaluation: Not Completed'
     rows, _ = G.parse_md(md_with(True).replace('## Automated Checks', '## Automated checks'))
     assert len(rows) == 6
 

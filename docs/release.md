@@ -145,9 +145,9 @@ readers):
 Ready to Ship?
 Status: Pending Evaluation
   ✓ Work Order Approval: Approved (Patrick on October 31, 2026)
-  ✓ OCR Text Approval: Not Required (no OCR text was added during intake)
+  ✓ OCR Text Approval: Not Applicable
   ✓ Safety Checks: Passed
-  • Accessibility Evaluation: Not Completed (neither part recorded for this version)
+  • Accessibility Evaluation: Not Completed
 ```
 
 review.md's Overview writes the same lines, under `**Ready to ship?**` and the `**Status:**` line above it. A version is
@@ -156,15 +156,17 @@ review.md's Overview writes the same lines, under `**Ready to ship?**` and the `
 1. **Work Order Approval:** the work order was approved on the review page. Otherwise "Not Approved", with why: applied
    without a review, decisions not reviewed, reviewed by hand edit, or a later session finished but not applied.
 2. **OCR Text Approval:** the OCR text was approved, when it needs approval (as before): "Approved", "Not Approved",
-   "Waiting for a Language Reader", "Not Reviewed", or "Not Required".
+   "Waiting for a Language Reader", "Not Reviewed", or "Not Applicable" (no OCR text was added, and the book has no
+   flagged OCR layer: a publisher's OCR layer that the test checked and did not flag is "Not Applicable" too).
 3. **Safety Checks:** the five damage checks are OK: pages look the same, text unchanged, all content tagged or
    decoration, the tag-tree index points into the tree, every font readable. "Passed", or "Failed (…)" naming them. A run
    made before some of these checks existed records fewer: "Not Checked (only 3 of the 5 checks were recorded for this
    run)", and the Safety card says "Not checked". Such a run is never Ready.
 4. **Accessibility Evaluation:** both parts are completed for this version of the PDF. A part is completed when its
    latest results on that file have, for every item the checklist asks, one of that item's own choices. "Completed",
-   "Completed (2 issues noted)", or "Not Completed (…)" saying what is missing: a part not recorded, recorded on an
-   earlier version, or that could not be read in full.
+   "Completed (2 issues noted)", "Not Completed" when neither part is recorded, or "Not Completed (…)" saying what is
+   missing: "Not Completed (Screen-Reader Test not recorded)", a part recorded on an earlier version, or one that could
+   not be read in full.
 
 **veraPDF is a finding, not a safety check** (2026-10-31). A WCAG rule newly failing or failing more often after the run,
 or veraPDF not run on both files, is listed first among the requirement items in "What Needs a Person" (from review.md's
