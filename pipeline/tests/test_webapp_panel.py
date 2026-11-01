@@ -82,9 +82,10 @@ def test_the_review_page_gets_return_to(tmp_path):
 # ------------------------------------------------------------------ ready to ship, never None or "unknown"
 def test_ready_comes_from_the_glance_then_review_md_then_says_not_recorded(tmp_path):
     R = str(tmp_path)
-    g = {'glance': {'ready': False, 'ship': [{'what': 'Safety checks', 'text': 'OK'}]}}
-    assert runs.ready(R, g) == {'answer': 'No', 'lines': ['Safety checks: OK'], 'source': 'record.json'}
-    (tmp_path / 'review.md').write_text('## Overview\n\n**Ready to ship?** Yes\n- Safety checks: OK\n- PAC: not run\n\nmore\n')
+    g = {'glance': {'ready': True, 'ship': [{'what': 'Safety checks', 'ok': True, 'text': 'OK'}]}}   # a stored `ready` is never trusted
+    assert runs.ready(R, g) == {'answer': 'No', 'lines': ['Safety checks: OK', 'Manual check (PAC): no (not done for this version)'],
+                                'status': 'Not Ready', 'source': 'record.json'}
+    (tmp_path / 'review.md').write_text('## Overview\n\n**Status:** Ready\n\n**Ready to ship?** Yes\n- Safety checks: OK\n- PAC: not run\n\nmore\n')
     assert runs.ready(R, {}) == {'answer': 'Yes', 'lines': ['Safety checks: OK', 'PAC: not run'], 'source': 'review.md'}
     (tmp_path / 'review.md').write_text('# an old review.md\n')
     assert runs.ready(R, {})['text'] == 'not recorded for this run' and runs.ready(R, {})['answer'] is None
@@ -598,12 +599,12 @@ def test_the_same_title_case_rule_in_the_pages():
     from lib.titles import SMALL
     for f in ('webapp/panel.js', 'review/page.html'):
         t = src(f)
-        assert "const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with']);" in t
+        assert "const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with', 'as']);" in t   # 'as': #38
         assert "/[./_@\\d]/.test(core)" in t and 'edge = /[:?—]$/.test(x);' in t
         # words in parentheses are left as written (review 10 L2: pinned so the pages can't drift from lib/titles.py)
         assert "const inside = depth > 0 || /^[\"'*[`]*\\(/.test(x);" in t and 'if (inside) return x;' in t
         assert "depth = Math.max(0, depth + (x.match(/\\(/g) || []).length - (x.match(/\\)/g) || []).length);" in t
-    assert SMALL == {'a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with'}
+    assert SMALL == {'a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with', 'as'}
 
 def test_a_job_card_and_its_one_line_forms():
     js = src('webapp/panel.js')
@@ -962,7 +963,7 @@ def test_the_ready_to_ship_card_and_select():
     as written for review.html (review.md keeps glance's), and "Select", not "press", in the app's messages."""
     import report_html as H
     assert H.SHIP_NAMES == {'Work order approved on the review page': 'Work Order approved on the review page', 'OCR text approved': 'OCR Text approved',
-                            'Safety checks': 'Safety Checks', 'Manual check (PAC)': 'Manual Check (PAC)'}
+                            'Safety checks': 'Safety Checks', 'Manual check (PAC)': 'Manual Check (PAC)', 'Screen-reader check': 'Screen-Reader Check'}   # the fifth: #38
     rh = src('report_html.py')
     assert '<ul role="list">' in rh and '<li><span class="mark" aria-hidden="true"><i class="bul"></i></span>' in rh
     for f in ('webapp/panel.js', 'webapp/runs.py', 'report_html.py', 'review/page.html'):

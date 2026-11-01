@@ -35,6 +35,7 @@ h2 { font-size: 17px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1p
 .ship h2 { margin: 0 0 4px; font-size: 17px; border: 0; padding: 0; } .ship p { margin: 6px 0 0; } .ship ul { margin: -2px 0 0; padding-left: 20px; }
 /* each condition's mark (a bullet, or a check mark when met) centred in one 20px column, in the text's colour */
 .ship li { list-style: none; position: relative; }
+.ship p.st { margin: 0 0 6px; } .mc td.res { white-space: nowrap; } .mc .pre { white-space: pre-wrap; }
 .ship li .mark { position: absolute; left: -20px; top: 0; width: 20px; height: 1.5em; display: flex; align-items: center; justify-content: center; color: var(--ink); }
 .ship li .mark .bul { display: block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }   /* not .dot: the cards use that name */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }
@@ -214,13 +215,18 @@ def han_pages(R):
     with open(p, encoding='utf-8') as f: return [int(r['pdf_page']) for r in csv.DictReader(f) if str(r.get('pdf_page') or '').isdigit()]
 
 def glance_of(R, rec=None, labels=None):
-    """The run's glance: from record.json, or computed from record.json and review.md for a run made before it existed."""
+    """The run's glance: from record.json, or computed from record.json and review.md for a run made before it existed
+    (or before the current glance schema). Its release/-derived parts (the PAC and screen-reader lines, ready, status) are
+    worked out now from the run's release/ (a previous result's: its run's), compared with the record's
+    document.output_sha256 only: an offline dashboard never hashes the PDF."""
+    from lib import release as REL
     rec = rec or json.load(open(os.path.join(R, 'record.json'), encoding='utf-8'))
-    if rec.get('glance', {}).get('schema') == G.SCHEMA: return rec['glance']
+    rel = REL.load(REL.run_dir_of(R))
+    if rec.get('glance', {}).get('schema') == G.SCHEMA: return G.with_release(rec['glance'], rec, rel)
     if rec.get('sections_version') == S.VERSION:
-        return G.glance(rec, None, labels if labels is not None else labels_of(R, rec), han_pages(R), sections=rec['sections'])
+        return G.glance(rec, None, labels if labels is not None else labels_of(R, rec), han_pages(R), sections=rec['sections'], release=rel)
     md = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
-    return G.glance(rec, md, labels if labels is not None else labels_of(R, rec), han_pages(R))
+    return G.glance(rec, md, labels if labels is not None else labels_of(R, rec), han_pages(R), release=rel)
 
 def need_items(secs):
     """{section anchor: [item ids]} of what needs a person, counted exactly as the Overview counts it (lib/glance.py):
@@ -328,7 +334,7 @@ def session_name(x):
 # the "Ready to Ship?" card's condition names in review.html (review.md keeps glance's): an exception to the capitalization
 # rule, decided 2026-10-31 (CLAUDE.md)
 SHIP_NAMES = {'Work order approved on the review page': 'Work Order approved on the review page', 'OCR text approved': 'OCR Text approved',
-              'Safety checks': 'Safety Checks', 'Manual check (PAC)': 'Manual Check (PAC)'}
+              'Safety checks': 'Safety Checks', 'Manual check (PAC)': 'Manual Check (PAC)', 'Screen-reader check': 'Screen-Reader Check'}
 
 REVIEWED_BY = re.compile(r'no \(reviewed by .*? on [^:]*: (.*)\)$')
 
@@ -348,6 +354,42 @@ def notes_open(x, label='Notes'):
     title = f'Notes: Session {int(x["id"])}' + (f' · {x["name"]}' if x.get('name') else '')
     return (f'<button type="button" class="nopen" data-session="{int(x["id"])}" data-title="{E(title)}">{label}</button>'
             f'<span class="ntext" hidden>{E(x["notes"])}</span>')
+
+def manual_card(R, rec):
+    """The Manual Checks section: each section's check that counts for this version (else its latest, marked as made on an
+    earlier version), its items and notes, and the shipments (release/, lib/release.py). A person's text is shown as typed."""
+    from lib import release as REL
+    rel = REL.load(REL.run_dir_of(R)); cur = (rec.get('document') or {}).get('output_sha256')
+    B = ['<section class="mc" aria-labelledby="mc-h"><h2 id="mc-h">Manual Checks</h2>']
+    for sec in REL.SECTIONS:
+        xs = rel['checks'].get(sec) or []
+        c = REL.latest(rel, sec, cur) or (xs[-1] if xs else None)
+        B.append(f'<h3>{E(TC(REL.SECTION_NAMES[sec]))}</h3>')
+        if c is None: B.append('<p>Not done.</p>'); continue
+        state = REL.state(rel, sec, c, cur); bad = REL.failed(c, sec)
+        ver = f'Session {int(c["pdf"]["session"])}' if str((c.get('pdf') or {}).get('session') or '').isdigit() else 'the result applied without review'
+        words = {'counts': 'counts for this version', 'failed': f'{len(bad)} item{"" if len(bad) == 1 else "s"} failed on this version',
+                 'earlier version': 'made on an earlier version: it does not count for this one'}[state]
+        fields = [f'{E(name)}: {E(c["fields"][k])}' for k, (name, _) in REL.FIELDS[sec].items() if (c.get('fields') or {}).get(k)]
+        if (c.get('fields') or {}).get('pages_checked'): fields.append(f'Pages Checked: {E(c["fields"]["pages_checked"])}')
+        B.append(f'<p>By {E(c.get("by"))} on {E(REL.day(c.get("recorded")))}, on the version from {E(ver)}: <strong>{E(words)}</strong>.'
+                 + (' ' + ' · '.join(fields) if fields else '') + (f' {len(xs) - 1} earlier check{"" if len(xs) == 2 else "s"} kept in the record.' if len(xs) > 1 else '') + '</p>')
+        rows = []
+        for x in REL.CHECKLIST[sec]:
+            it = (c.get('items') or {}).get(x['key']) or {}
+            res = REL.RESULT_NAMES.get(it.get('result'), 'Not answered' if 'result' not in it else str(it.get('result')))
+            rows.append(f'<tr><td>{E(x["label"])}</td><td class="res">{"<strong>" + E(res) + "</strong>" if x["key"] in bad else E(res)}</td><td>{E(it.get("note") or "")}</td></tr>')
+        B.append('<div class="tw"><table><thead><tr><th scope="col">Item</th><th scope="col">Result</th><th scope="col">Notes</th></tr></thead><tbody>'
+                 + ''.join(rows) + '</tbody></table></div>')
+        if c.get('notes'): B.append(f'<p><strong>Other Notes:</strong></p><p class="pre">{E(c["notes"])}</p>')
+    ships = rel.get('shipped') or []
+    if ships:
+        B.append('<h3>Shipments</h3><ul>' + ''.join(
+            f'<li>Shipment {E(x.get("n"))}: by {E(x.get("by"))} on {E(REL.day(x.get("shipped")))}'
+            + (f', withdrawn by {E(x["withdrawn"].get("by"))} on {E(REL.day(x["withdrawn"].get("date")))}: {E(x["withdrawn"].get("reason"))}' if x.get('withdrawn') else '')
+            + '</li>' for x in ships) + '</ul>')
+    B.append('</section>')
+    return B
 
 def review_card(R, rec):
     """The "Review" section: one line for the current session, its row (earlier sessions folded), each decision's review
@@ -435,7 +477,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
         title = next((x for x in secs if x.get('key') == 'title'), {'items': []})
         run_details = [S.text_wcag(it) for it in title['items'] if it['kind'] != 'blank' and not it['text'].startswith('Automated checks are evidence')]
     else:                                                # a run made before `sections`: read review.md
-        start = next((k for k, l in enumerate(lines) if l == '## Automated checks'), len(lines))
+        start = next((k for k, l in enumerate(lines) if l.lower() == '## automated checks'), len(lines))   # Title Case from 2026-11
         blocks, cur = [], None
         for l in lines[start:]:
             m3 = re.match(r'^### (\d+)\. (.+?)\s*$', l)
@@ -444,7 +486,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
             elif cur is not None: cur['lines'].append(l)
         for b in blocks:
             b['anchor'] = G.slug(b['title']); b['html'], b['items'] = md_html(wcag_only(b['lines']), b['anchor'])
-        head = lines[1:next((k for k, l in enumerate(lines) if l in ('## Overview', '## At a glance', '## Automated checks')), len(lines))]
+        head = lines[1:next((k for k, l in enumerate(lines) if l.lower() in ('## overview', '## at a glance', '## automated checks')), len(lines))]
         run_details = [l for l in head if l.strip() and not l.startswith('Automated checks are evidence')]
     by_anchor = {b['anchor']: b for b in blocks}
     def item_for(x):
@@ -461,7 +503,9 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
                                       f'run {(run.get("started") or "").replace("T", " ") or "start time not recorded"}'])
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus
     # ---- ready to ship
-    B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? {"Yes" if g["ready"] else "No"}</h2><ul role="list">'
+    st = g.get('status') or {}
+    B.append(f'<section class="ship{" yes" if g["ready"] else ""}" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? {"Yes" if g["ready"] else "No"}</h2>'
+             + (f'<p class="st">Status: <strong>{E(st["text"])}</strong>' + (f' · {E(st["newer"])}' if st.get('newer') else '') + '</p>' if st else '') + '<ul role="list">'
              # each condition's mark in one centred column: a check mark when met (yes / OK), else a bullet; hidden from screen
              # readers (the words say it). role="list": Safari drops a list's role when its bullets are styled away
              + ''.join(('<li class="met"><span class="mark" aria-hidden="true">✓</span>' if s.get('ok') is True else
@@ -470,12 +514,15 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
     B.append('</section>')
     if banner: B.insert(1, f'<p class="replaced" role="note">{banner}</p>')
     else: B += review_card(R, rec)
+    B += manual_card(R, rec)
     # ---- four cards; the safety card holds its checks in a fold (open, failed first, when one fails)
     np_, ad, vg = g['needs_person'], g['ai_decisions'], g['verapdf']
     saf = sorted(g['safety'], key=lambda x: x['ok']); saf_bad = [x for x in saf if not x['ok']]
     safety_fold = (f'<details class="fold{"" if saf_bad else " plain"}"{" open" if saf_bad else ""}><summary>The {len(saf)} Safety Checks</summary><ul class="checks">'
-                   + ''.join(f'<li>{"<strong>FAILED ✘</strong>" if not x["ok"] else "OK ✔"} {E(x["what"])}</li>' for x in saf) + '</ul></details>') if saf else ''
-    cards = [('Safety', 'good' if g['safety_ok'] else 'bad', 'OK' if g['safety_ok'] else ('Failed' if saf else 'Not checked'),
+                   + ''.join(f'<li>{"OK ✔" if x["ok"] else "<strong>NOT CHECKED</strong>" if x.get("state") == "not checked" else "<strong>FAILED ✘</strong>"} {E(x["what"])}'
+                             + (f' ({E(x["detail"])})' if x.get('detail') else '') + '</li>' for x in saf) + '</ul></details>') if saf else ''
+    sst = safety_state(g)
+    cards = [('Safety', 'good' if sst == 'ok' else 'bad' if sst == 'failed' else 'warn', {'ok': 'OK', 'failed': 'Failed'}.get(sst, 'Not checked'),
               f'{len(saf) - len(saf_bad)} of {len(saf)} checks OK', safety_fold),
              ('Needs a person', 'warn' if np_['total'] else 'good', str(np_['total']),
               f'{np_["ai_deferrals"]} deferred by the AI · {np_["executor_deferrals"]} deferred by the executor · {np_["check_rows"]} automated check{"" if np_["check_rows"] == 1 else "s"}', ''),
@@ -542,7 +589,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
     B.append('<section aria-labelledby="secs-h"><h2 id="secs-h">Details</h2>'
              '<p class="key"><span class="dot" aria-hidden="true"></span>needs a person</p>')
     for b in blocks:
-        if b['h2'] and b['title'] == 'For a person to check':
+        if b['h2'] and b['title'].lower() == 'for a person to check':   # Title Case from 2026-11
             if any(x.strip() for x in b['lines']): B.append('<h2>For a Person to Check</h2>')
             continue
         n_items = b['entries'] if 'entries' in b else len(re.findall(r'<(?:li|tr) id=', b['html']))   # real entries: rows and list items, not notes
@@ -760,6 +807,11 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
     os.replace(tmp, out)
     return out
 
+def safety_state(g):
+    """'ok', 'failed' (a check failed) or 'not checked' (none failed, one not checked: veraPDF did not run on both files)."""
+    if g.get('safety_ok'): return 'ok'
+    return 'failed' if any(not x['ok'] and x.get('state') != 'not checked' for x in g.get('safety') or []) or not g.get('safety') else 'not checked'
+
 def summary_html(Bdir):
     """summary.html for a batch folder: one row per book, most work first; each book's review.html is (re)built."""
     rows = []
@@ -769,10 +821,15 @@ def summary_html(Bdir):
         rp = os.path.join(R, 'record.json')
         if os.path.exists(rp):
             rec = json.load(open(rp, encoding='utf-8')); labels = labels_of(R, rec); g = glance_of(R, rec, labels)
-            if not os.path.exists(os.path.join(R, 'review.html')): review_html(R, rec, None, labels)
+            if not os.path.exists(os.path.join(R, 'review.html')):
+                from lib import runlock                   # the book's own writers hold its record lock; a busy book keeps no page
+                try:
+                    with runlock.record_lock(R, runlock.REQUEST_WAIT): review_html(R, rec, None, labels)
+                except runlock.Busy: pass
             vg = g['verapdf']
             rows.append({'name': name, 'done': True, 'ready': g['ready'], 'needs': g['needs_person']['total'], 'np': g['needs_person'],
-                         'ai': g['ai_decisions']['count'], 'reviewed': g['ship'][0]['ok'], 'safety': g['safety_ok'],
+                         'ai': g['ai_decisions']['count'], 'reviewed': g['ship'][0]['ok'], 'safety': safety_state(g),
+                         'status': (g.get('status') or {}).get('text') or ('Ready' if g['ready'] else 'Not Ready'),
                          'vb': vg.get('before_rules'), 'va': vg.get('after_rules'), 'new': len(vg.get('newly_failing') or []),
                          'cost': rec.get('cost_total_usd'), 'pages': (rec.get('document') or {}).get('pages')})
         elif os.path.exists(os.path.join(R, '_intake', 'intake.json')):
@@ -785,21 +842,24 @@ def summary_html(Bdir):
          ' · each book name opens its dashboard</div></header><main id="main" tabindex="-1">',
          f'<p><strong>Ready to ship:</strong> {sum(1 for r in rows if r.get("ready"))} of {len(rows)} · '
          f'<strong>Needs a person:</strong> {sum(r.get("needs") or 0 for r in rows):,} items · '
-         f'<strong>Safety checks failed:</strong> {sum(1 for r in rows if r["done"] and not r["safety"])} books</p>',
+         f'<strong>Safety checks failed:</strong> {sum(1 for r in rows if r["done"] and r["safety"] == "failed")} books'
+         + (f' · not checked: {nc_} books' if (nc_ := sum(1 for r in rows if r['done'] and r['safety'] == 'not checked')) else '') + '</p>',
          '<p class="note">Sorted by "Needs a person", most work first. Automated checks are evidence, not sign-off.</p>',
          '<div class="tw"><table id="books"><thead><tr>' + ''.join(f'<th scope="col"{" class=\"num\"" if n else ""} data-k="{k}"{" aria-sort=\"descending\"" if k == "needs" else ""}>{E(t)}</th>'
-                                                  for t, k, n in (('Book', 'name', 0), ('Ready to Ship?', 'ready', 0), ('Needs a Person', 'needs', 1), ('AI Decisions', 'ai', 1),
+                                                  for t, k, n in (('Book', 'name', 0), ('Status', 'status', 0), ('Ready to Ship?', 'ready', 0), ('Needs a Person', 'needs', 1), ('AI Decisions', 'ai', 1),
                                                                   ('Safety', 'safety', 0), ('veraPDF WCAG Rules', 'va', 1), ('Cost', 'cost', 1), ('Pages', 'pages', 1))) + '</tr></thead><tbody>']
     for r in rows:
         if not r['done']:
-            B.append(f'<tr><td>{E(r["name"])}</td><td colspan="7">{E(r["status"])}</td></tr>'); continue
+            B.append(f'<tr><td>{E(r["name"])}</td><td colspan="8">{E(r["status"])}</td></tr>'); continue
         B.append(f'<tr><td data-v="{E(r["name"])}"><a href="{E(r["name"])}/review.html">{E(r["name"])}</a></td>'
+                 f'<td data-v="{E(r["status"])}">{E(r["status"])}</td>'
                  f'<td data-v="{int(r["ready"])}"><span class="tag{" ok" if r["ready"] else ""}">{"Yes" if r["ready"] else "No"}</span>'
                  f'{"" if r["reviewed"] else " <span class=note>(not reviewed)</span>"}</td>'
                  f'<td class="num" data-v="{r["needs"]}">{r["needs"]} <span class="bar" style="display:inline-block;width:80px;vertical-align:middle" aria-hidden="true"><i style="width:{100 * r["needs"] / mx:.0f}%"></i></span>'
                  f'<br><span class="note">{r["np"]["ai_deferrals"]} AI · {r["np"]["executor_deferrals"]} executor · {r["np"]["check_rows"]} automated check{"" if r["np"]["check_rows"] == 1 else "s"}</span></td>'
                  f'<td class="num" data-v="{r["ai"]}">{r["ai"]:,}</td>'
-                 f'<td data-v="{int(r["safety"])}"><span class="tag {"ok" if r["safety"] else "safety"}">{"OK" if r["safety"] else "Failed"}</span></td>'
+                 f'<td data-v="{ {"ok": 2, "not checked": 1}.get(r["safety"], 0)}"><span class="tag {"ok" if r["safety"] == "ok" else "safety" if r["safety"] == "failed" else ""}">'
+                 f'{ {"ok": "OK", "failed": "Failed"}.get(r["safety"], "Not checked")}</span></td>'
                  f'<td class="num" data-v="{r["va"] if r["va"] is not None else -1}">' + (f'{r["vb"] if r["vb"] is not None else "–"} → {r["va"]}' if r['va'] is not None else 'not run')
                  + (f' <strong>({r["new"]} new)</strong>' if r['new'] else '') + '</td>'
                  f'<td class="num" data-v="{r["cost"] or 0}">' + (f'${r["cost"]:.3f}' if r['cost'] is not None else 'call did not finish') + '</td>'
@@ -834,7 +894,9 @@ def summary_html(Bdir):
   });
 })();"""
     out = os.path.join(Bdir, 'summary.html')
-    open(out, 'w', encoding='utf-8').write(page(f'Batch {label}', '\n'.join(B), script))
+    tmp = f'{out}.{os.getpid()}.tmp'                 # whole or not at all: readers take no lock
+    with open(tmp, 'w', encoding='utf-8') as f: f.write(page(f'Batch {label}', '\n'.join(B), script))
+    os.replace(tmp, out)
     return out
 
 if __name__ == '__main__':

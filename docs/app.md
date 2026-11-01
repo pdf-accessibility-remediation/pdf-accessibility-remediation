@@ -146,7 +146,7 @@ A run made before the dashboards existed (no `review.html`) gets a page with the
 | A job killed or cut off by a restart | **Interrupted**, with what is left (above). |
 | Jobs waiting in line | They stay queued and start in order after the new start. |
 
-**Starting the app twice** opens the one already running when it has the same settings and the same code. With other settings it is refused. When the code on disk has changed since the running app started (after a `git pull`, or a branch switch), it is refused too: "the running app is older than the code on disk: stop it and start again". The running app keeps the panel's files it read at start, so its pages always match the code it runs. `--port N` starts a separate app on purpose; both share the jobs folder and its limit.
+**Starting the app twice** opens the one already running when it has the same settings and the same code. With other settings it is refused. When the code on disk has changed since the running app started (after a `git pull`, or a branch switch), it is refused too: "the running app is older than the code on disk: stop it and start again". The running app keeps the panel's files it read at start, so its pages always match the code it runs. **Restart the app after a `git pull`:** once its Manual Checks page is built (a later stage of #38), the app writes those records itself, with the code it started with. Each manual check records that code's git commit (`code`), so a record made by an older app can be found. `--port N` starts a separate app on purpose; both share the jobs folder and its limit.
 
 ## Accessibility of the panel
 

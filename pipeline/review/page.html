@@ -255,7 +255,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 // lib/titles.py: a, an, the, and, or, of, to, in, on, for, by, from, with stay lowercase unless first, last, or first after a
 // colon or question mark; a word with a capital inside, a dot, slash, underscore or digit is left as written, and so is
 // everything in parentheses (a qualifier stays lowercase: "Sent to (optional)").
-const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with']);
+const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with', 'as']);
 function tc(s) {
   const w = String(s).split(' '); let edge = true, depth = 0;
   return w.map((x, n) => {

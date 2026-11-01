@@ -31,6 +31,7 @@ from lib.sections import line, pdfua, nolink, excerpt, to_sections, render_md, V
 from lib.glance import WCAG_NAMES
 from lib import glance as G0
 
+COUNT_WORDS = {'accepted_unreviewed': 'accepted without review'}   # the stored key stays; these are review.html's and the review page's words
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 KEEP = '--keep' in sys.argv
 R, A = args[0], args[1]
@@ -102,6 +103,14 @@ record = {
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),
     **({'workorder_ai': wo_ai} if rv and wo_ai is not None else {}),
 }
+# the remediated PDF's own sha256 (a re-apply hashes its new file here, never copies the old record's): every manual
+# check and shipment (release/, lib/release.py) counts only for the file with that hash. release/ is the run folder's: the
+# re-apply's own (--from-record's folder), else this one.
+from lib import release as REL
+record['document']['output_sha256'] = REL.sha_file(os.path.join(R, PDF)); record['document']['output_sha256_from'] = 'report'
+RUN_DIR = os.path.dirname(os.path.abspath(FROM_RECORD)) if FROM_RECORD else R
+REL_DATA = REL.load(RUN_DIR)
+record['manual_checks'], record['release'] = REL.mirror(REL_DATA, record['document']['output_sha256'])
 json.dump(record, open(os.path.join(R, 'record.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 if han:
     with open(os.path.join(R, 'han_review.csv'), 'w', newline='', encoding='utf-8') as f:
@@ -230,14 +239,14 @@ def intake_rows():
                 good, text = G0.ocr_verdict_row(v)
                 rows.append((G0.OCR_ROW, ok(good), text))
             else: rows.append(('OCR text reviewed by a person', ok(False), f'machine OCR on {n} page{"s" if n != 1 else ""}: not yet reviewed '
-                               '(checklist rule 2; record a verdict with review_ocr.py)'))
+                               '(checklist rule 2; record a verdict on the review page\'s OCR Text section, or with review_ocr.py)'))
     if not (o and o.get('pages_with_ocr_text')) and G0.ocr_layer_flagged(intake):   # the existing OCR layer needs the approval
         v = (intake.get('review') or {}).get('ocr_text_approved')
         if isinstance(v, dict):
             good, text = G0.ocr_verdict_row(v)
             rows.append((G0.OCR_ROW, ok(good), text))
         else: rows.append(('OCR text reviewed by a person', ok(False), f'the existing OCR layer is {G0.ocr_layer_finding(intake)}: not yet '
-                           'reviewed (checklist rule 2; record a verdict with review_ocr.py)'))
+                           'reviewed (checklist rule 2; record a verdict on the review page\'s OCR Text section, or with review_ocr.py)'))
     cov = (intake.get('checks') or {}).get('coverage') or {}
     rows.append(('Auto-tagging kept every page as it was', 'OK', f'appearance and text unchanged on all {intake["original"].get("pages")} pages'
                  + (' (OCR\'d pages: text added)' if o else '')))
@@ -307,7 +316,7 @@ checks = [
     *([('Work order reviewed by a person before it was applied',
         ok(not rv.get('dropped_on_check') and not (rv.get('counts') or {}).get('accepted_unreviewed') and not rv_unexplained),
         f'{rv["reviewer"]} on {rv["date"]} · {len(rv.get("changes") or [])} changes'
-        + (' · ' + ' · '.join(f'{v} {k.replace("_", " ")}' for k, v in rv['counts'].items() if v) if rv.get('counts') else '')
+        + (' · ' + ' · '.join(f'{v} {COUNT_WORDS.get(k, k.replace("_", " "))}' for k, v in rv['counts'].items() if v) if rv.get('counts') else '')
         + (f' · {len(rv["dropped_on_check"])} edits not accepted by the check' if rv.get('dropped_on_check') else '')
         + (f' · {len(rv["gaps"])} gap{"s" if len(rv["gaps"]) != 1 else ""} left open'
            + (f', {len(rv_unexplained)} without a reason' if rv_unexplained else ', with a reason' if len(rv['gaps']) == 1 else ', with reasons') if rv.get('gaps') else '')
@@ -368,7 +377,7 @@ checks = [
      ' · '.join(f'{len(wc["headings"][k])} {k}' for k in ('empty', 'long', 'repeated')) if wc else 'not checked'),
 ]
 u = run.get('usage') or {}
-L = [f'# Remediation review: {src.get("file") or "file name not recorded"}', '', f'Result: `{PDF}`', '',
+L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '', f'Result: `{PDF}`', '',
      f'{nc(src.get("pages"))} pages · run {run.get("started") or "start time not recorded"} · '
      + (f'model `{run["model"]}`' if run.get('model') else 'model not recorded') + ' · '
      + (f'prompt `{run["prompt_file"]}` ({run.get("prompt_sha256") or "hash not recorded"})' if run.get('prompt_file') else 'prompt not recorded') + ' · '
@@ -860,17 +869,17 @@ if bad:
 if n == 0: L.append('Nothing flagged.')
 
 L += ['## What was changed', '', '| Change | Count |', '|---|---:|'] + [f'| {k} | {v} |' for k, v in (log.get('applied') or {}).items()]
+def _check_lines(section):
+    return [f'- {x["label"]}' + (' (optional; does not decide "Ready to ship?")' if x.get('blocking') is False else '') + f': {x["help"]}'
+            for x in REL.CHECKLIST[section]]
 L += ['', '## Final check with PAC 2026', '',
-      f'Open `{PDF}` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not '
-      'listed above is a gap in the automated checks: note it in the issue tracker.', '',
-      'No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC\'s screen-reader and structure previews:', '',
-      '- 1.1.1: alt text is accurate and gives the figure\'s purpose; decorative images are artifacts',
-      '- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense',
-      '- 1.4.1: no information is given by colour alone',
-      '- 1.4.3: contrast of text over images and coloured backgrounds (PAC\'s contrast checker)',
-      '- 1.4.5: no images of text where real text could be used (scanned pages: the OCR layer stands in)',
-      '- 2.4.6: headings describe their section',
-      '- 3.1.2: passages in another language carry their language (see `han_review.csv` if present)']
+      'The manual checks are recorded in the run\'s `release/` folder (docs/release.md). Each is '
+      f'recorded against this version of `{PDF}` (its sha256): after a new apply it no longer counts, and the new version is checked again.', '',
+      f'**PAC 2026 and sanity checks** (part of "Ready to ship?": done on this version, no item failed). Open `{PDF}` in PAC 2026 '
+      '(https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in '
+      'the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:', ''] + _check_lines('pac') + [
+      '', '**Screen-reader check** (after the book ships: decides "Verified" or "Needs Rework"; a failed item on this version also '
+      'keeps "Ready to ship?" at No). Listen with a screen reader and record which one and its version:', ''] + _check_lines('screen_reader')
 # A list line with no page puts the page wording at the end ("- what, page: not on this tag"), never first, and identical
 # lines of that kind are written once with a count. Lines that have a page are left exactly as they are.
 def _tidy_no_page(lines):
@@ -888,10 +897,24 @@ def _tidy_no_page(lines):
         out.append(l)
     return out
 L = _tidy_no_page(L)
+# Headings in Title Case (CLAUDE.md's capitalization rule, applied to review.md from 2026-11; the "# Remediation Review:"
+# line is written so above, since it holds the file name). Anchors and section keys are lower case, so they don't change.
+from lib.titles import title_case as _tc
+from lib.sections import Line as _Line
+def _title_heading(l):
+    m = re.match(r'^(##+ )(\d+\. )?(.+)$', l)
+    if not m: return l
+    t = m.group(1) + (m.group(2) or '') + _tc(m.group(3))
+    if type(l) is str or t == l: return t if type(l) is str else l
+    out = _Line(t)
+    for k in ('key', 'pages', 'scope', 'parts', 'full', 'entry', 'n_entries'):
+        if getattr(l, k, None) is not None: setattr(out, k, getattr(l, k))
+    return out
+L = [_title_heading(l) for l in L]
 # review.md as data: sections of items (record.json `sections`); review.md and review.html are both drawn from them.
 # "Overview" is computed once from them (lib/glance.py), kept in record.json, and placed before the evidence line.
 from lib import glance as G
-record['glance'] = G.glance(record, None, PLAB, [h['page'] for h in han], sections=to_sections(L))
+record['glance'] = G.glance(record, None, PLAB, [h['page'] for h in han], sections=to_sections(L), release=REL_DATA)
 at = next((k for k, l in enumerate(L) if l.startswith('Automated checks are evidence, not legal sign-off')), len(L))
 L[at:at] = G.glance_md(record['glance'])
 record['sections_version'] = SECTIONS_VERSION; record['sections'] = to_sections(L)
