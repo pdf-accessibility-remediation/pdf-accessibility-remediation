@@ -52,6 +52,10 @@ def refusal(R, rec, disk):
     why = M.being_made(R)
     if why: return why
     if disk['same'] is False: return CHANGED_BY_HAND
+    if disk['same'] is None and not why:                 # no recorded hash yet: the first Record's adopt_hash check, shown now (G6)
+        sid = (rec.get('review') or {}).get('session')
+        want = (((S.session(R, sid) if sid else None) or {}).get('version') or {}).get('pdf_sha256')
+        if want and disk['sha'] and want != disk['sha']: return M.NOT_LAST_REVIEW
     return None
 
 def version(R, rec):

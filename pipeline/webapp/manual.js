@@ -76,8 +76,9 @@ for (const [key, cfg] of Object.entries(D.sections)) {
     try {
       const [c, b] = await post(API + '/checks/draft', { section: key, data: sec.collect(), saved_at: sec.saved_at, for_sha256: D.sha });
       ok = c === 200; sec.unsaved = !ok;
-      if (!ok) { status('Not saved'); alarm(b.error ? b.error : (b.errors || []).map(x => x.message).join(' ') || 'Your answers were not saved. Try again.'); }
-    } catch (e) { sec.unsaved = true; status('Not saved'); alarm('Your answers could not be saved: the app is not running. ' + START); }
+      // a save refused because Record went through first (409) is no news: the page is about to reload (G5)
+      if (!ok) { status('Not saved'); if (!leaving && !sec.recording) alarm(b.error ? b.error : (b.errors || []).map(x => x.message).join(' ') || 'Your answers were not saved. Try again.'); }
+    } catch (e) { sec.unsaved = true; status('Not saved'); if (!leaving && !sec.recording) alarm('Your answers could not be saved: the app is not running. ' + START); }
     sec.inflight = false;
     if (sec.again || sec.dirty) { sec.again = false; return sec.save(); }
     if (ok) status('All changes saved');
@@ -132,7 +133,7 @@ for (const [key, cfg] of Object.entries(D.sections)) {
     e.preventDefault();
     clearTimeout(sec.timer);                                     // no auto-save after this: Record carries the last draft time
     const b = form.querySelector('button[type=submit]'); if (b.disabled) return;
-    b.disabled = true; clearErrors();
+    b.disabled = true; clearErrors(); sec.recording = true;
     try {
       const [c, r] = await post(API + '/checks/record', { section: key, data: sec.collect(), shown_sha256: D.sha, draft_saved_at: sec.saved_at });
       if (c === 200) {
@@ -142,7 +143,7 @@ for (const [key, cfg] of Object.entries(D.sections)) {
       if (c === 400 && r.errors) showErrors(r.errors);
       else { showErrors([], r.error || 'The app refused this.'); alarm(r.error || 'The app refused this.'); }
     } catch (err) { showErrors([], 'The app is not running. ' + START + ' Your answers are kept in this browser.'); }
-    b.disabled = false;
+    b.disabled = false; sec.recording = false;
     if (sec.dirty) sec.save();                                   // not recorded: the auto-save cancelled above carries on
   });
 }

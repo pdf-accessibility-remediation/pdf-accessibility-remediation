@@ -149,8 +149,29 @@ def test_a_failed_draft_clear_keeps_the_check(tmp_path, monkeypatch):
     R = make_run(str(tmp_path / 'r'))
     def boom(*a): raise OSError('disk full')
     monkeypatch.setattr(M, '_clear_draft', boom)
-    c = M.record(R, 'pac', PAC, say=lambda *a: None, batch=False)                     # F2: the check stands
+    said = []
+    c = M.record(R, 'pac', PAC, say=said.append, batch=False)                           # F2: the check stands
     assert REL.load(R)['checks']['pac'][0]['id'] == c['id']
+    assert any('draft was not cleared' in x for x in said)                             # and says so ...
+    src = open(os.path.join(HERE, 'webapp', 'server.py'), encoding='utf-8').read()     # ... which the app writes to server.log (G3)
+    assert "say=lambda *a: applog(" in src and "with open(os.path.join(J, 'server.log'), 'a'" in src
+
+def test_a_save_refused_after_record_raises_no_alert():
+    js_src = open(os.path.join(HERE, 'webapp', 'manual.js'), encoding='utf-8').read()   # G5: no alert while leaving or recording
+    assert js_src.count('if (!leaving && !sec.recording) alarm(') == 2
+    assert 'sec.recording = true;' in js_src and 'sec.recording = false;' in js_src
+
+def test_the_session_hash_refusal_shows_before_the_form_is_filled(tmp_path):
+    R = make_run(str(tmp_path / 'r'))                                                   # no recorded hash yet (F1)
+    rec = S.load(os.path.join(R, 'record.json')); rec['review'] = {'session': '001'}; core.save(os.path.join(R, 'record.json'), rec)
+    os.makedirs(os.path.join(R, 'reviews', 'sessions'))
+    core.save(os.path.join(R, 'reviews', 'sessions', '001.json'), {'id': '001', 'status': 'applied', 'version': {'id': '001', 'pdf_sha256': '0' * 64}})
+    st = MP.state(R, 'r')
+    assert st['refusal'] == M.NOT_LAST_REVIEW                                           # G6: shown at once, as Record would refuse
+    with pytest.raises(S.Refused, match='last review'): M.record(R, 'pac', PAC, say=lambda *a: None, batch=False)
+    core.save(os.path.join(R, 'reviews', 'sessions', '001.json'), {'id': '001', 'status': 'applied',
+              'version': {'id': '001', 'pdf_sha256': REL.sha_file(os.path.join(R, 'clans_remediated.pdf'))}})
+    assert MP.state(R, 'r')['refusal'] is None                                          # the same file: no refusal
 
 def test_a_note_holding_a_script_end_tag_stays_text(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
