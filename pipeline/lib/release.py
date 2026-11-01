@@ -396,7 +396,8 @@ def validate(section, data, ctx=None):
     pg = _clean(fields_in.get('pages_checked'), True)
     if pg:                                                       # optional (2026-10-31); checked when given
         pname = 'Pages Checked'; n = ctx.get('n_pages') or 10 ** 6
-        if not PAGES.fullmatch(pg): errors.append(('fields.pages_checked', f'"{pname}": give PDF page numbers and ranges, for example 5, 9-12.'))
+        if len(pg) > FIELD_MAX: errors.append(('fields.pages_checked', f'"{pname}" is too long: {len(pg):,} characters, at most {FIELD_MAX:,}.'))   # J6
+        elif not PAGES.fullmatch(pg): errors.append(('fields.pages_checked', f'"{pname}": give PDF page numbers and ranges, for example 5, 9-12.'))
         else:
             for piece in pg.split(','):
                 a, _, b = piece.strip().partition('-'); a, b = int(a), int(b or a)
