@@ -301,7 +301,7 @@ function pruneDlg(p, opener) {                                    // the list, t
     d.innerHTML = '<h2 id="pp-dlg-h">Remove Older PDFs</h2><p>' + esc(PRUNE_LINE) + '</p><ul>' +
       p.versions.map(v => '<li>' + esc(v.label) + ' · ' + esc(v.size) + '</li>').join('') + '</ul><p><b>Total:</b> ' + esc(p.total) + '</p>' +
       '<p><label for="pp-prune-by">Removed By</label> <input type="text" id="pp-prune-by" autocomplete="name" value="' + esc(by) + '"></p>' +
-      '<p id="pp-prune-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Remove ' + n + ' Older PDF' + (n === 1 ? '' : 's') +
+      '<p>This can\'t be undone.</p><p id="pp-prune-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Remove ' + n + ' Older PDF' + (n === 1 ? '' : 's') +
       '</button><button type="button" value="no">Cancel</button></div>';
     const id = opener.id, done = v => { d.close(); ($(id) || opener).focus(); res(v); };
     d.querySelector('button[value=no]').addEventListener('click', () => done(null));
@@ -409,7 +409,7 @@ box.addEventListener('click', async e => {
     try {
       const [c, r] = await api(API + '/remove-older-pdfs', { by: by, shas: p.shas });
       if (c !== 200) return msg(r.error || 'The PDFs were not removed.', false, true);
-      msg('Removed ' + r.removed + ' older PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). Their records and decisions are kept.', true, true);
+      msg('Removed ' + r.removed + ' older PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept.', true, true);
       return poll(true);
     } catch (e) { return msg('The app is not running. ' + START, false, true); }
   }

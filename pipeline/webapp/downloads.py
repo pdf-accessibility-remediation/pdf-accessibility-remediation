@@ -22,6 +22,12 @@ from lib import release as REL, dates as D, runlock
 from review import sessions as S, manual as M
 from . import config, manualpage as MP
 
+# a download's own words (review 20 L1): never the Record page's "…so no check can be recorded for it"
+CHANGED = 'The book\'s PDF has changed since this report was made, so it can\'t be downloaded as this version. Whoever looks after the app can check it.'
+MISSING = 'The book\'s remediated PDF is missing, so it can\'t be downloaded. Whoever looks after the app can check it.'
+EARLIER_CHANGED = ('The PDF of this earlier version has changed since it was made, so it can\'t be downloaded as that version. '
+                   'Whoever looks after the app can check it.')
+
 class Refused(Exception):
     """A download that cannot be given now, in plain words for the page (409), or None words for a plain 404."""
 
@@ -84,9 +90,14 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
             if ver is None: raise Refused(None)                          # not one of the run's own versions
             if ver['id'] == 'current':
                 disk = MP.disk_state(R, rec)
-                if disk['missing']: raise Refused(MP.MISSING)
-                if disk['same'] is False: raise Refused(MP.CHANGED_BY_HAND)
-            out = (S.load(os.path.join(ver['dir'], 'record.json')) or {}).get('document', {}).get('output') if ver['id'] != 'current' else (rec.get('document') or {}).get('output')
+                if disk['missing']: raise Refused(MISSING)
+                if disk['same'] is False: raise Refused(CHANGED)
+                vrec = rec
+            else:                                                        # an earlier version: its PDF against its own record (L4)
+                vrec = S.load(os.path.join(ver['dir'], 'record.json')) or {}
+                want = (vrec.get('document') or {}).get('output_sha256')
+                if want and ver['sha'] != want: raise Refused(EARLIER_CHANGED)
+            out = (vrec.get('document') or {}).get('output')
             pdf_name, zip_name = REL.download_names(out, ver['session'], ver['state'], next((s.get('n') for s in REL.live_shipments(REL.load(R)) if REL.sha_of(s) == ver['sha']), None))
             if what == 'pdf':
                 return {'name': pdf_name, 'ctype': 'application/pdf', 'fh': open(ver['pdf'], 'rb')}
@@ -98,8 +109,14 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
             cur_label = _version_label(S.current_id(rec))
             book = MP.book(rec)['title']
             return {'name': zip_name, 'ctype': 'application/zip', 'members': members, 'folder': zip_name[:-4], 'rel': rel, 'version': ver,
-                    'pdf_name': out, 'book': book, 'cur_label': cur_label, 'applied': MP.version(R, rec)['when'] if ver['id'] == 'current' else None}
+                    'pdf_name': out, 'book': book, 'cur_label': cur_label,
+                    'applied': MP.version(R, rec)['when'] if ver['id'] == 'current' else _applied(R, ver['id'], vrec)}
     except runlock.Busy as e: raise Refused(str(e))
+
+def _applied(R, vid, vrec):
+    """An earlier version's "applied on …" for its read-me: its session's applied time, else its record's."""
+    when = (S.session(R, vid) or {}).get('applied') or vrec.get('written')
+    return f'applied on {D.when(when)}' if when else None
 
 class _Out:
     """The response stream for zipfile: write only, no seek or tell (zipfile then writes data descriptors)."""
@@ -113,7 +130,7 @@ def _readme(d, sha):
         vline = f'Version: the current version ({_version_label(ver["session"]) if ver["session"] else "applied without a review"})' + (f', {d["applied"]}' if d.get('applied') else '')
         status = f'Status: {ver["status_text"] or ver["state"]}'
     else:                                                        # K3: never a computed Ready on a superseded file
-        vline = f'Version: {_version_label(ver["id"])}, an earlier version'
+        vline = f'Version: {_version_label(ver["id"])}, an earlier version' + (f', {d["applied"]}' if d.get('applied') else '')
         status = f'Status: earlier version (not the current one; the current version is {d["cur_label"]})'
     n = sum(1 for s in REL.SECTIONS for c in d['rel']['checks'].get(s) or [] if REL.sha_of(c) == sha)
     return '\n'.join([d['book'], '', vline, status,
