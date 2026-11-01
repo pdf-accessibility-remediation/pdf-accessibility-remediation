@@ -97,12 +97,12 @@ def test_the_section_speaks_plainly(tmp_path):
 
 def test_row_wording_for_each_verdict():
     base = {'reviewer': 'Kim', 'date': '2026-10-31', 'reason': 'checked', 'pages': '1-3'}
-    assert G.ocr_verdict_row(dict(base, verdict='approved')) == (True, 'approved by Kim on 2026-10-31 (pages 1-3): checked')
-    assert G.ocr_verdict_row(dict(base, verdict='not approved')) == (False, 'not approved by Kim on 2026-10-31 (pages 1-3): checked')
+    assert G.ocr_verdict_row(dict(base, verdict='approved')) == (True, 'approved by Kim on October 31, 2026 (pages 1-3): checked')
+    assert G.ocr_verdict_row(dict(base, verdict='not approved')) == (False, 'not approved by Kim on October 31, 2026 (pages 1-3): checked')
     sent = {'verdict': 'sent to a language reader', 'reviewer': 'Kim', 'date': '2026-10-31', 'to': 'East Asia Library'}
-    assert G.ocr_verdict_row(sent) == (False, 'sent to a language reader (East Asia Library) by Kim on 2026-10-31')
+    assert G.ocr_verdict_row(sent) == (False, 'sent to a language reader (East Asia Library) by Kim on October 31, 2026')
     import review_ocr
-    assert review_ocr.row_text(dict(base, verdict='approved')) == '| OCR text reviewed by a person | OK | approved by Kim on 2026-10-31 (pages 1-3): checked |'
+    assert review_ocr.row_text(dict(base, verdict='approved')) == '| OCR text reviewed by a person | OK | approved by Kim on October 31, 2026 (pages 1-3): checked |'
     assert review_ocr.row_text(None) is None
 
 # ------------------------------------------------------------------ the writer and its lock

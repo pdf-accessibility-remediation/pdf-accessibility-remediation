@@ -423,7 +423,7 @@ const png = n => '/review_pages/page_' + String(n).padStart(3, '0') + '.png';
 // "Approved by Kim on 2026-10-31 (pages 381-386): read against the scans"
 function verdictText(v) {
   if (!v) return 'not yet reviewed';
-  return (VERDICT_LABEL[v.verdict] || v.verdict) + (v.to ? ' (' + v.to + ')' : '') + ' by ' + v.reviewer + ' on ' + v.date + (v.pages ? ' (pages ' + v.pages + ')' : '') +
+  return (VERDICT_LABEL[v.verdict] || v.verdict) + (v.to ? ' (' + v.to + ')' : '') + ' by ' + v.reviewer + ' on ' + fmtDay(v.date) + (v.pages ? ' (pages ' + v.pages + ')' : '') +
     (v.reason ? ': ' + v.reason : '') + (v.reads && v.reads.length ? '; reads ' + v.reads.join(', ') : '') +
     (v.via === 'review_ocr.py' ? ' (recorded outside the review page)' : '');
 }

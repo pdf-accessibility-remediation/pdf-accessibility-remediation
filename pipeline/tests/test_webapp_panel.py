@@ -461,15 +461,15 @@ def test_job_titles_say_what_happened(tmp_path):
     v = {'outcome': 'done: session 3 is the current result'}
     j = {'kind': 'review', 'what': 'Review again from session 2', 'status': 'done', 'ended': '2026-10-29T18:19:44'}
     # a title stored before the rule ("session 2") is shown with "Session 2": formatted when shown (handoff 15)
-    assert runs.title(R, j, v) == 'Review again from Session 2 → Session 3 applied (sss, 18:19)'
+    assert runs.title(R, j, v) == 'Review again from Session 2 → Session 3 applied (sss, 6:19 PM)'
     assert runs.title(R, dict(j, status='running'), {}) == 'Review again from Session 2'
-    assert runs.title(R, dict(j, status='failed'), {}) == 'Review again from Session 2 → failed (18:19)'
-    assert runs.title(R, j, {'outcome': 'session 4 stays open'}) == 'Review again from Session 2 → Session 4 left open (18:19)'
+    assert runs.title(R, dict(j, status='failed'), {}) == 'Review again from Session 2 → failed (6:19 PM)'
+    assert runs.title(R, j, {'outcome': 'session 4 stays open'}) == 'Review again from Session 2 → Session 4 left open (6:19 PM)'
     assert runs.title(R, {'kind': 'ocr', 'what': 'Review OCR text', 'status': 'done', 'ended': '2026-10-29T10:24:00'}, {}) == \
-        'Review OCR Text → closed (10:24); no verdict recorded'
-    assert runs.title(R, dict(j, kind='pin', what='Pin the run'), {}) == 'Pin the run → pinned (18:19)'
+        'Review OCR Text → closed (10:24 AM); no verdict recorded'
+    assert runs.title(R, dict(j, kind='pin', what='Pin the run'), {}) == 'Pin the run → pinned (6:19 PM)'
     lost = {'interrupted': {'state': 'done', 'text': 'done (the app lost track of the job): session 3 is the current result'}}
-    assert runs.title(R, dict(j, kind='apply', what='Apply session 3', status='interrupted'), lost) == 'Apply Session 3 → Session 3 applied (sss, 18:19)'
+    assert runs.title(R, dict(j, kind='apply', what='Apply session 3', status='interrupted'), lost) == 'Apply Session 3 → Session 3 applied (sss, 6:19 PM)'
     assert runs.reason({'status': 'failed', 'outcome': 'refused: apply (no model) failed (exit 1): the current result is unchanged', 'exit': 1}) == \
         'Apply (no model) failed (exit 1): the current result is unchanged'
     assert runs.reason({'status': 'failed', 'outcome': None, 'exit': 2}) == 'The command ended with an error (exit 2).'
@@ -484,10 +484,10 @@ def test_the_page_shows_no_log_or_command_and_every_job(app):
     v = d['jobs'][-1]
     assert 'tail' not in v and 'command' not in v and v['log'] == os.path.join(s['jobs'], 'jobs', v['id'] + '.log')   # outside the repo: absolute
     assert runs.shown_path(os.path.join(config.ROOT, 'runs', '.app', 'jobs', 'x.log')) == os.path.join('runs', '.app', 'jobs', 'x.log')
-    assert v['reason'] == 'The command ended with an error (exit 1).' and v['title'] == 'Apply 11 → failed (10:00)'
+    assert v['reason'] == 'The command ended with an error (exit 1).' and v['title'] == 'Apply 11 → failed (10:00 AM)'
     js = src('webapp/panel.js')
     assert 'Log and command' not in js and 'The same from a terminal' not in js and 'Previous Jobs (' in js and "The job\\'s full output, for whoever looks after the app, is saved in" in js
-    assert 'Earlier jobs' not in js and v['action'] == 'Apply 11' and v['result'] == 'failed (10:00)'
+    assert 'Earlier jobs' not in js and v['action'] == 'Apply 11' and v['result'] == 'failed (10:00 AM)'
     assert 'aria-hidden="true"></span>' in js and 'pp-spin' in js
     assert 'prefers-reduced-motion: reduce) { .pp .pp-spin { animation: none; } }' in src('webapp/panel.css')
 
@@ -574,7 +574,7 @@ def test_the_report_review_section(tmp_path):
     assert '<p><strong>Session 2</strong> · sss · 2026-10-29 · 9 approved · 0 rejected · 2 accepted without review</p>' in out
     assert out.count('<td><span class="nowrap">2 <strong>(current)</strong></span></td>') == 1 and '<td class="nowrap">3 from Session 1</td>' in out
     assert '<td class="nowrap">none</td>' in out and '<td class="nowrap">Session 1</td>' in out                # From and Carried never wrap
-    assert '<details class="fold"><summary>Previous Sessions (1)</summary>' in out and '<td class="nowrap">2026-10-28</td>' in out
+    assert '<details class="fold"><summary>Previous Sessions (1)</summary>' in out and '<td class="nowrap">October 28, 2026</td>' in out
     assert out.index('Previous Sessions (1)') < out.index('<td><span class="nowrap">1</span></td>')         # session 1 only inside the fold
     assert '<th scope="col">Notes</th>' in out and out.count('<td class="notes">none</td>') == 2 and 'Session Notes' not in out   # no names, no notes
     assert 'From a terminal' not in out and 'review_workorder.py' not in out and 'Earlier sessions' not in out
@@ -873,8 +873,8 @@ def test_review_10_plain_messages_from_python():
     process id), a refused pin (no command: that is in the job's log), an error in the app (no log path), the 403."""
     from webapp import jobs as Jb, runs as Rn, server as W
     from review import sessions as S
-    assert Jb.lock_words('reopen', '2026-10-31T14:02:11') == 'Someone is already reviewing this run (since 14:02). Try again when they\'re done.'
-    assert Jb.lock_words('apply', '2026-10-31T14:02:11') == 'This run is being applied (since 14:02). Try again when it\'s done.'
+    assert Jb.lock_words('reopen', '2026-10-31T14:02:11') == 'Someone is already reviewing this run (since 2:02 PM). Try again when they\'re done.'
+    assert Jb.lock_words('apply', '2026-10-31T14:02:11') == 'This run is being applied (since 2:02 PM). Try again when it\'s done.'
     refused = {'status': 'failed', 'outcome': 'refused: the kept digest cannot be read …: ' + S.FALLBACK}
     assert Rn.reason(refused) == S.FALLBACK_PAGE and 'python3' not in S.FALLBACK_PAGE and '--replay-to' in S.FALLBACK
     assert 'server.log' not in W.ERROR_500 and 'runs/' not in W.ERROR_500
