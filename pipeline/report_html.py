@@ -100,6 +100,7 @@ dialog.ndlg { position: fixed; margin: 0; padding: 0; inset: auto; width: min(52
 dialog.ndlg[open] { display: flex; flex-direction: column; }
 .nbar { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; background: var(--bg); border-bottom: 1px solid var(--line); cursor: move; user-select: none; touch-action: none; }
 .nbar h2 { flex: 1; font-size: 15px; margin: 0; padding: 0; border: 0; overflow-wrap: anywhere; }
+.nbar h2:focus { outline: none; }                   /* the full results' heading, focused when the box opens */
 dialog.ndlg button { min-width: 28px; min-height: 28px; padding: 0 6px; border: 0; background: none; color: var(--ink); font-size: 18px; line-height: 1; cursor: pointer; }
 .nbody { flex: 1; overflow: auto; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 dialog.ndlg :focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
@@ -818,7 +819,10 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
         d.style.left = Math.max(0, (innerWidth - d.offsetWidth) / 2 + 24 * n) + 'px'; d.style.top = Math.max(0, (innerHeight - d.offsetHeight) / 3 + 24 * n) + 'px';
         d.querySelector('.nbody').scrollTop = 0;
       }
-      d.querySelector('.nbody').focus();
+      // full results are for reading: focus goes to the box's heading (a read-only table follows it); a session's notes:
+      // to their text, as before. Either way, closing returns focus to the button (openers)
+      if (b.hasAttribute('data-html')) { var h = d.querySelector('h2'); h.tabIndex = -1; h.focus(); }
+      else d.querySelector('.nbody').focus();
     });
   });
 })();"""

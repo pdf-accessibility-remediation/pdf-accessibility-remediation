@@ -113,7 +113,7 @@ def test_record_keeps_history_and_leaves_nothing_behind(tmp_path):
     v2, _ = O.record(R, {'verdict': 'approved', 'reviewer': 'Lee', 'reason': 'fixed upstream'}, via='review_ocr.py', date='2026-10-31')
     it = core.load(os.path.join(R, '_intake', 'intake.json'))
     assert it['review']['ocr_text_approved']['reviewer'] == 'Lee' and it['review']['history'][0]['reviewer'] == 'Kim'
-    assert 'approved by Lee on 2026-10-31' in open(os.path.join(R, '_intake', 'intake.md'), encoding='utf-8').read()
+    assert 'approved by Lee on October 31, 2026' in open(os.path.join(R, '_intake', 'intake.md'), encoding='utf-8').read()
     left = [n for d in (R, os.path.join(R, '_intake')) for n in os.listdir(d) if n.endswith('.tmp')]
     assert not left and not os.path.exists(os.path.join(R, 'reviews'))           # no temp files, no reviews/ made for nothing
 
