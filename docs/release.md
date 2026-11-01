@@ -395,11 +395,15 @@ never rewritten afterwards. It is marked "Draft wording: to be agreed with the s
   - the publisher's OCR layer, checked and kept.
 - **What the AI decided and what people did, per kind:** approved as proposed, changed by a person, rejected by a
   person, added by a person. An older reviewed run gives the totals; a run with neither says the split was not recorded.
-  The model, the instructions and the date of the call are named only for a real call: a replayed reply says "those of
-  an earlier call, not recorded for this run".
+  Items a person only marked "seen" (the AI's deferrals, notes to the reviewer, reading-order findings) are counted
+  apart, never as approved. The model, the instructions and the date of the call are named only for a real call: a
+  replayed reply, or one written by hand, says "Model and instructions: not recorded for this book".
 - **What people reviewed and approved:** the work order's reviewer (the applied session's), the OCR text, and each part
   of the evaluation with its evaluator.
-- **Every issue noted,** with its note.
+- **Every issue noted,** with its note. PAC 2026's "What Needs a Person" item is named "Points the AI or the Software
+  Left for a Person to Check" in the statement only (the item's own name is the report's section); the evaluation page
+  and review.md keep the item's name.
+- **Words for a public reader:** no session numbers, report sections or internal names; a test checks both files.
 - **The automated checks:** the five safety checks, and veraPDF before and after, or "not checked".
 - **The two sentences:** "Automated checks are evidence, not legal sign-off." and "The accessibility evaluation is a
   record of what a person found, not a legal certification."

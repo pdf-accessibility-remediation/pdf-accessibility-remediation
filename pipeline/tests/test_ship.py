@@ -83,20 +83,21 @@ def test_a_previous_results_page_reads_earlier_version_never_newer(tmp_path):
 PAC_REC = {'by': 'Kim', 'fields': {}, 'items': dict(PAC_OK, contrast={'result': 'fail', 'note': 'grey <b>caption</b> ## on p. 12'})}
 SR_REC = {'by': 'Lee', 'fields': {'screen_reader': 'NVDA 2026.1'}, 'items': SR_OK}
 
-def real_ready(tmp_path, name='run'):
+def real_ready(tmp_path, name='run', extra=None, pac=None):
     """A run that stays Ready when its glance is recomputed: sections with the five safety rows, a review on the review page,
-    and both parts recorded through the writer."""
+    and both parts recorded through the writer. extra: record keys set first (intake, apply); pac: the PAC result to record."""
     from test_evaluation import make_run as eval_run
     sub = tmp_path / name; sub.mkdir()
     R = eval_run(sub, True)
     rec = core.load(os.path.join(R, 'record.json'))
+    rec.update(extra or {})
     rec['review'] = {'workorder': {'reviewer': 'Pat <i>', 'date': '2026-10-31', 'method': 'page', 'counts': {'approved': 3}},
                      'decisions': [{'id': 'a', 'kind': 'Alt text', 'label': 'Figure 1', 'page': 1, 'status': 'approved'},
                                    {'id': 'b', 'kind': 'Alt text', 'label': 'Figure 2', 'page': 1, 'status': 'changed'},
                                    {'id': 'c', 'kind': 'Heading or tag change', 'label': 'Chapter 1', 'page': 1, 'status': 'rejected'}]}
     rec['verify'] = {'doc': {'title': 'The Book'}}
     core.save(os.path.join(R, 'record.json'), rec)
-    M.record(R, 'pac', PAC_REC, say=lambda *a: None, batch=False)
+    M.record(R, 'pac', pac or PAC_REC, say=lambda *a: None, batch=False)
     M.record(R, 'screen_reader', SR_REC, say=lambda *a: None, batch=False)
     rec = core.load(os.path.join(R, 'record.json'))
     assert MP.ship_gate(R, rec)['ok'], MP.ship_gate(R, rec)
@@ -286,19 +287,36 @@ def test_only_the_statement_is_served_from_a_shipped_folder(mapp):
         assert req(port, 'GET', f'/run/{RUN}/{p}')[0] == 404, p
 
 
-def test_the_statement_uses_no_internal_terms(tmp_path):
-    """P2: a public reader's words; none of the app's or the report's internal terms in either file."""
-    R = real_ready(tmp_path)
+OCR_BOOK = {'intake': {'ocr': {'pages_with_ocr_text': [1]},
+                       'review': {'ocr_text_approved': {'verdict': 'approved', 'reviewer': 'Ana', 'date': '2026-10-30'}}},
+            'apply': {'ocr_words': {'forms': 3}}}
+PAC_NEEDS = {'by': 'Kim', 'fields': {}, 'items': dict(PAC_OK, needs_person={'result': 'fail', 'note': 'two figures not looked at'})}
+
+@pytest.mark.parametrize('book', ['born-digital', 'ocr'])
+def test_the_statement_uses_no_internal_terms(tmp_path, book):
+    """P2 and 26 Q2: a public reader's words; none of the app's or the report's internal terms in either file, on a book
+    without OCR and on one with OCR pages, an approved verdict and OCR-word readings (the OCR sentences). Q4: the PAC item
+    named after the report's section is renamed in the statement."""
+    ocr = book == 'ocr'
+    R = real_ready(tmp_path, extra=OCR_BOOK if ocr else None, pac=PAC_NEEDS if ocr else None)
     M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
     F = os.path.join(R, 'release', 'shipped', '001')
     import re
     for f in ('disclosure.md', 'disclosure.html'):
         text = open(os.path.join(F, f), encoding='utf-8').read().replace('\\', '')
-        for bad in ('work order', 'work-order', 'Session', 'review page', 'intake', 'pipeline', 'executor', 'listed for a person in the report'):
+        for bad in ('work order', 'work-order', 'Session', 'review page', 'intake', 'pipeline', 'executor', 'tag tree',
+                    'listed for a person in the report', 'What Needs a Person', 'For a Person to Check'):
             assert bad not in text, (f, bad)
-        assert not re.search(r'\brun\b', text), f
+        assert not re.search(r'\b(run|report)\b', text), f
     md = open(os.path.join(F, 'disclosure.md'), encoding='utf-8').read()
-    assert 'OCR text: none was added.' in md and "the document's structure" in md and 'a semi-automated process' in md
+    assert "the document's structure" in md and 'a semi-automated process' in md
+    if not ocr:
+        assert 'OCR text: none was added.' in md
+    else:
+        assert 'OCR text: approved by Ana on October 30, 2026.' in md
+        assert 'On 1 scanned page the text is local OCR (not corrected), approved by Ana on October 30, 2026.' in md
+        assert "For 3 words the OCR misread, an AI's reading is given as spoken text only; each was listed for a person to check." in md
+        assert 'PAC 2026, Points the AI or the Software Left for a Person to Check: two figures not looked at' in md
 
 def test_the_run_page_drops_the_green_border_while_the_pdf_on_disk_differs(tmp_path):
     """N8 and Q1 on the run page: the card is review.html's (built against the record's hash); the app drops its green border
