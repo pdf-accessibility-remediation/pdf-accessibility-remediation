@@ -19,8 +19,8 @@ evaluation is a record of what a person found, not a legal certification.
 
 Both parts are recorded on the app's **Accessibility Evaluation** page (below), or from the terminal with
 `manual_checks.py`. In the records and the code they are still "manual checks" (`release/checks.json`, `pac`,
-`screen_reader`). The downloads and the release itself (Mark as Shipped, the disclosure) come in later stages of the
-same branch.
+`screen_reader`). Any version can be downloaded at any time, ready or not ("Downloads" below). The release itself (Mark
+as Shipped, the disclosure) comes in a later stage of the same branch.
 
 ## The Accessibility Evaluation page (in the app)
 
@@ -254,6 +254,79 @@ and including its re-mirror (`lib/runlock.py`).
 - **The "Needs a Person" card** turns neutral once this version's PAC 2026 results mark "What Needs a Person" as Pass:
   "looked at in the evaluation (Patrick, October 31, 2026)". A Fail keeps it orange ("marked Fail in the evaluation …").
   review.md's "Needs a person" line says the same.
+
+## Downloads
+
+Any version of the book can be downloaded at any time, ready or not: from the run page's strip (under "Complete
+Evaluation") and from the evaluation page's "Download and Check the PDF".
+
+- **"Version to Download"** is a list of the current version and each earlier result whose PDF still exists. It decides
+  which version the two buttons give: **Download the Remediated PDF** and **Download the Record (ZIP)**. It never
+  changes what the evaluation records: the evaluation is always for the current version. The line under it says how the
+  files are marked, never their names.
+- **Names:** the PDF's bytes are never changed, only the name it is saved under.
+
+  | That version | PDF | ZIP |
+  |---|---|---|
+  | Not Ready or Pending Evaluation | `<book>_session-6_not-ready.pdf` | `<book>_record_session-6_not-ready.zip` |
+  | Ready | `<book>_session-6_not-shipped.pdf` | `<book>_record_session-6_not-shipped.zip` |
+  | Shipped (a later stage) | `<book>.pdf` | `<book>_record_shipment-2.zip` |
+  | An earlier version | `<book>_session-5_earlier-version.pdf` | `<book>_record_session-5_earlier-version.zip` |
+  | No review | `<book>_no-review_not-ready.pdf` | `<book>_record_no-review_not-ready.zip` |
+
+  - `<book>` is the remediated PDF's name without ".pdf", made safe for any computer: NFC; control characters dropped;
+    `< > : " / \ | ? *` and `;` replaced by `_`; no leading or trailing dot or space; at most 150 UTF-8 bytes.
+  - The session's number is used, never its name.
+  - Sent with `Content-Disposition` (RFC 6266/5987: an ASCII fallback and the UTF-8 name).
+- **The record ZIP** holds one folder named as the ZIP. Every file keeps its own name:
+  - the PDF (stored, not compressed again);
+  - review.html, review.md, han_review.csv when there is one;
+  - `evaluation-results.json`: the results recorded on that file's hash;
+  - `READ-ME.txt`: the version, its status (for an earlier version: "earlier version", naming the current one), the
+    PDF's sha256, "automated checks are evidence, not legal sign-off" and "the evaluation is a record of what a person
+    found, not a legal certification".
+
+  Never record.json (it holds the AI's raw reply), digests, crops, `reviews/`, `_intake/`, `release/drafts.json` or
+  dot-files. The ZIP is built as it is sent and never kept on disk.
+- **One moment per download:** every file is opened under the record lock (a page waits at most 5 s), then the lock is
+  released and the bytes are sent. A new version put in place meanwhile never mixes into a download.
+- **Refused:** while a new version is being put in place and did not finish (`reviews/promoting.json`), or when the PDF
+  on disk is not the one the report describes. A re-apply under way, or a finished session not yet applied, does not
+  stop a download.
+
+## Which Version Is This File?
+
+On the evaluation page, a person can choose a PDF (one downloaded earlier, or the one checked in PAC). The page hashes it
+in the browser (`crypto.subtle`) and says which version it is:
+- the current one, with its status;
+- an earlier one;
+- an earlier one whose PDF was removed from this computer;
+- or that it matches no version of this book.
+
+Nothing is uploaded. Both `http://localhost` and `http://127.0.0.1` are secure contexts, which `crypto.subtle` needs.
+
+## Remove Older PDFs
+
+Every version is kept as a real PDF; there is no rebuilding from work orders. Repeated reviews keep one full PDF per
+version (13 MB for expedition, 96 MB for dwellings), so the run page offers **Remove Older PDFs** under Session History
+when there is something to remove: "Frees space by deleting the PDFs of earlier versions that were never evaluated or
+shipped. Their records and decisions are kept. The AI's own version is always kept."
+
+- **Never removed:**
+  - the current version;
+  - the AI's own version (`reviews/versions/ai`, the result before any review: the evidence of what the AI did);
+  - any version with an evaluation result on its PDF;
+  - any shipped version, withdrawn or not.
+- **What goes:** only the PDF. The version's record.json, review.md and review.html, and the session's work order, stay.
+  `release/removed.json` records each removal (version, sha256, size, who, when), and the version's page says so
+  whenever it is built.
+- **The dialog** lists each version with its size and the total, and asks for "Removed By". It removes exactly the list
+  it showed: if anything changed meanwhile, nothing is removed. It is refused while a review is open or a new version
+  is being made. The deletion is permanent.
+- **From the terminal:** `python3 review_workorder.py <run> --remove-older-pdfs` lists them (a dry run). Add `--yes --by
+  NAME` to remove them (`review/prune.py`).
+- **"Version to Download"** lists only versions whose PDF exists. "Which Version Is This File?" still recognises a
+  removed one.
 
 ## Older runs
 
