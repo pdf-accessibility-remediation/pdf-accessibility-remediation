@@ -194,20 +194,20 @@ def noted(n): return f'{n} issue{"" if n == 1 else "s"} noted'
 
 def evaluation_line(rel, cur):
     """(ok, text) for "Ready to Ship?"'s "Accessibility Evaluation" line: Completed, with the issues noted, or Not Completed
-    with what is missing (13 §5.1)."""
+    with what is missing (13 §5.1): "Not Completed" alone when neither part is recorded, "Not Completed (PAC 2026 not
+    recorded)" when one is (Patrick, 2026-11-01)."""
     ev = evaluation(rel, cur)
     if ev['complete']: return True, 'Completed' + (f' ({noted(ev["issues"])})' if ev['issues'] else '')
     missing = []
     for s in SECTIONS:
         p = ev[s]; name = SECTION_NAMES[s]
-        if p['state'] == 'not recorded': missing.append((s, 'not recorded'))
+        if p['state'] == 'not recorded': missing.append(f'{name} not recorded')
         elif p['state'] == 'earlier version':
             ses = _session(p['check'])
-            missing.append((s, 'recorded on an earlier version' + (f', {ses}' if ses else '')))
-        elif p['state'] == 'could not be read': missing.append((s, 'could not be read in full: record it again'))
-    if len(missing) == 2 and all(w == 'not recorded' for _, w in missing): why = 'neither part recorded for this version'
-    else: why = '; '.join(f'{SECTION_NAMES[s]}: {w}' for s, w in missing)
-    return False, f'Not Completed ({why}' + (f'; {noted(ev["issues"])}' if ev['issues'] else '') + ')'
+            missing.append(f'{name}: recorded on an earlier version' + (f', {ses}' if ses else ''))
+        elif p['state'] == 'could not be read': missing.append(f'{name}: could not be read in full: record it again')
+    if all(ev[s]['state'] == 'not recorded' for s in SECTIONS): return False, 'Not Completed'
+    return False, 'Not Completed (' + '; '.join(missing + ([noted(ev['issues'])] if ev['issues'] else [])) + ')'
 
 NOT_READY, PENDING, READY, SHIPPED = 'Not Ready', 'Pending Evaluation', 'Ready', 'Shipped'
 

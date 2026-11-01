@@ -237,8 +237,7 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
         else: ocr_ok, ocr_txt = False, ('Not Reviewed (' + '; '.join(x for x in [f'OCR text on {pages_text(ocr_pages, labels)}' if ocr_pages else None,
                                          f'the existing OCR layer is {ocr_layer_finding(intake)}' if flagged else None] if x) + ')')
     else:
-        ocr_ok, s = True, sec('the text layer comes from OCR')
-        ocr_txt = 'Not Required (no OCR text was added during intake' + (f'; the publisher\'s text layer is OCR, see §{s["n"]})' if s else ')')
+        ocr_ok, ocr_txt = True, 'Not Applicable'        # no OCR text added, and no flagged OCR layer (Patrick, 2026-11-01)
     def ran(x): return isinstance(x, dict) and 'not_run' not in x and x.get('rules') is not None
     vrules = {r['id']: r for r in (va or {}).get('rules') or []} if isinstance(va, dict) else {}
     brules = {r['id']: r for r in (vb or {}).get('rules') or []} if isinstance(vb, dict) else {}
