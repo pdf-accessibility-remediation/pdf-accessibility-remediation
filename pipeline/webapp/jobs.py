@@ -15,6 +15,7 @@ wrapper or the job's own script (a reused process-group id is not mistaken for t
 """
 import os, sys, json, time, fcntl, signal, datetime, subprocess, contextlib
 from . import logs, config
+from lib import dates as D
 
 ACTIVE = ('queued', 'running')
 WRAPPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'jobrun.py')
@@ -156,7 +157,7 @@ LOCK_WORDS = {'reopen': 'Someone is already reviewing this run', 'ocr review': '
 
 def lock_words(what, since):
     """The run's review lock in plain words for the pages: who or what holds it and since when, no process id."""
-    at = str(since or '')[11:16]
+    at = D.clock(since) if D.parse(since) else ''          # a time only when there is one to show
     return (LOCK_WORDS.get(what, 'Someone is already working on this run') + (f' (since {at})' if at else '') + '. Try again when '
             + ('they\'re' if what in ('reopen', 'ocr review') else 'it\'s') + ' done.')
 
@@ -166,7 +167,7 @@ def busy(J, run, R):
     if h: return lock_words(h[1], h[2])
     for j in all_jobs(J):
         if j['run'] == run and j['status'] in ACTIVE + ('needs-spend',):
-            at = str(j.get('started') or j['created'])[11:16]
+            at = D.clock(j.get('started') or j['created']) if D.parse(j.get('started') or j['created']) else ''
             return f'A job for this run is already {"waiting" if j["status"] != "running" else "running"}' + (f' (since {at})' if at else '') + '. One job at a time per run.'
     return None
 

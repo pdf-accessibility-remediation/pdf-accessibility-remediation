@@ -12,6 +12,7 @@ and uploads/ (read only; sha256s cached in <jobs>/sha256-cache.json by path, siz
 """
 import os, re, sys, json, signal, urllib.parse
 from review import sessions as S
+from lib import dates as D
 from . import config, jobs, logs
 
 def load(p):
@@ -141,12 +142,12 @@ def ocr_recorded(R, since=''):
     """The OCR verdict recorded since a time (a job's start), for its outcome line: "approved (Kim, 19:30)"; None."""
     v = (((load(os.path.join(R, '_intake', 'intake.json')) or {}).get('review') or {}).get('ocr_text_approved')) if R else None
     if not isinstance(v, dict) or (v.get('recorded') or '') < (since or ''): return None
-    return f'{v.get("verdict")} ({v.get("reviewer")}, {(v.get("recorded") or "")[11:16] or "time not recorded"})'
+    return f'{v.get("verdict")} ({v.get("reviewer")}, {D.clock(v.get("recorded"))})'
 
 def result(R, j, v):
     """What came of a job that has ended, in sentence case: "session 3 applied (Kim, 18:19)"; None while it is active."""
     st, out = j['status'], v.get('outcome') or ''
-    at = (j.get('ended') or '')[11:16]
+    at = D.clock(j.get('ended')) if D.parse(j.get('ended')) else ''
     when = f' ({at})' if at else ''
     lost = st == 'interrupted' and (v.get('interrupted') or {}).get('state') == 'done'
     if st in ('queued', 'running', 'needs-spend'): return None

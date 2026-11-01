@@ -420,7 +420,7 @@ def review_card(R, rec):
             carried = (f'{x["carried"]} from {frm(x)}' if x.get('carried') else 'none') + (f' · not carried: {x["not_carried"]}' if x.get('not_carried') else '')
             mark = ' <strong>(current)</strong>' if x['id'] == cur else ''
             name = f'<span class="sname{" long" if len(x["name"]) > NAME_LINE else ""}">{E(x["name"])}</span>' if x.get('name') else ''
-            return (f'<tr><td><span class="nowrap">{int(x["id"])}{mark}</span>{name}</td><td class="nowrap">{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(x.get("date") or "")}</td>'
+            return (f'<tr><td><span class="nowrap">{int(x["id"])}{mark}</span>{name}</td><td class="nowrap">{E(frm(x))}</td><td>{E(x.get("reviewer") or "")}</td><td class="nowrap">{E(D.day(x.get("date"), "") if x.get("date") else "")}</td>'
                     f'<td>{E(x.get("status") or "")}</td><td class="nowrap">{E(carried)}</td><td>{x.get("since_start") or 0}</td><td>{x.get("changes") or 0}</td><td>{E(what)}</td>'
                     f'<td class="notes">{notes_open(x)}</td></tr>')
         now = [x for x in ss if x['id'] == cur]; earlier = sorted((x for x in ss if x['id'] != cur), key=lambda x: int(x['id']), reverse=True)   # newest first
@@ -509,7 +509,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
          + ' · '.join(E(x) for x in [f'run {"/".join(os.path.normpath((rec.get("review") or {}).get("run") or R).split(os.sep)[-2:])}', f'{doc.get("pages") or "pages not counted"} pages',
                                       f'model {run.get("model") or "not recorded"}', f'prompt {run.get("prompt_file") or "not recorded"}',
                                       f'cost ${rec.get("cost_total_usd"):.3f}' if rec.get('cost_total_usd') is not None else 'cost: call did not finish',
-                                      f'run {(run.get("started") or "").replace("T", " ") or "start time not recorded"}'])
+                                      f'run {D.when(run.get("started"), "start time not recorded")}'])
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus
     # ---- ready to ship
     st = g.get('status') or {}

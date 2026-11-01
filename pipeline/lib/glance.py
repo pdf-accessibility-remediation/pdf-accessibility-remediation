@@ -52,7 +52,7 @@ SENT = 'sent to a language reader'                   # the third verdict (2026-1
 def ocr_verdict_row(v):
     """(ok, text) of review.md's "OCR text reviewed by a person" row for a recorded verdict. The wording of the first two
     is the one review_ocr.py and report.py have always written."""
-    who = f'{v.get("reviewer")} on {v.get("date")}' + (f' (pages {v["pages"]})' if v.get('pages') else '')
+    who = f'{v.get("reviewer")} on {D.day(v.get("date"))}' + (f' (pages {v["pages"]})' if v.get('pages') else '')
     if v.get('verdict') == SENT:
         return False, f'{SENT}{" (" + v["to"] + ")" if v.get("to") else ""} by {who}' + (f': {v["reason"]}' if v.get('reason') else '')
     return v.get('verdict') == 'approved', f'{"approved" if v.get("verdict") == "approved" else "not approved"} by {who}: {v.get("reason")}'

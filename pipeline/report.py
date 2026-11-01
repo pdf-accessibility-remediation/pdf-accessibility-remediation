@@ -30,6 +30,7 @@ import sys, os, re, csv, json, shutil, datetime, collections
 from lib.sections import line, pdfua, nolink, excerpt, to_sections, render_md, VERSION as SECTIONS_VERSION
 from lib.glance import WCAG_NAMES
 from lib import glance as G0
+from lib import dates as DT
 
 COUNT_WORDS = {'accepted_unreviewed': 'accepted without review'}   # the stored key stays; these are review.html's and the review page's words
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
@@ -315,7 +316,7 @@ checks = [
      (f'{bm["items"]} bookmarks' if bm.get('items') is not None else 'bookmarks: not counted') + (f' (built from {log["bookmarks"]["items"]} heading tags)' if (log.get('bookmarks') or {}).get('built') else '')),
     *([('Work order reviewed by a person before it was applied',
         ok(not rv.get('dropped_on_check') and not (rv.get('counts') or {}).get('accepted_unreviewed') and not rv_unexplained),
-        f'{rv["reviewer"]} on {rv["date"]} · {len(rv.get("changes") or [])} changes'
+        f'{rv["reviewer"]} on {DT.day(rv["date"])} · {len(rv.get("changes") or [])} changes'
         + (' · ' + ' · '.join(f'{v} {COUNT_WORDS.get(k, k.replace("_", " "))}' for k, v in rv['counts'].items() if v) if rv.get('counts') else '')
         + (f' · {len(rv["dropped_on_check"])} edits not accepted by the check' if rv.get('dropped_on_check') else '')
         + (f' · {len(rv["gaps"])} gap{"s" if len(rv["gaps"]) != 1 else ""} left open'
@@ -378,7 +379,7 @@ checks = [
 ]
 u = run.get('usage') or {}
 L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '', f'Result: `{PDF}`', '',
-     f'{nc(src.get("pages"))} pages · run {run.get("started") or "start time not recorded"} · '
+     f'{nc(src.get("pages"))} pages · run {DT.when(run.get("started"), "start time not recorded")} · '
      + (f'model `{run["model"]}`' if run.get('model') else 'model not recorded') + ' · '
      + (f'prompt `{run["prompt_file"]}` ({run.get("prompt_sha256") or "hash not recorded"})' if run.get('prompt_file') else 'prompt not recorded') + ' · '
      + (f'cost ${u["cost_usd"]}' if u.get('cost_usd') is not None else 'cost $0 (saved reply reused, no new call)' if run.get('response_from') else 'cost: call did not finish') + ' · '
@@ -421,7 +422,7 @@ if intake and intake.get('status') == 'done':
 if rv:
     def _v(x): return json.dumps(x, ensure_ascii=False) if isinstance(x, (dict, list)) else f'"{x}"' if isinstance(x, str) else str(x)
     n += 1; L += [f'### {n}. Work order reviewed by a person', '',
-                  f'{rv["reviewer"]} reviewed the AI\'s work order on {rv["date"]}, before it was applied ({rv.get("method")}). '
+                  f'{rv["reviewer"]} reviewed the AI\'s work order on {DT.day(rv["date"])}, before it was applied ({rv.get("method")}). '
                   'The result is what was applied; the AI\'s version is in `record.json` (`workorder_ai`).', '']
     if rv_session:
         sid, ss = rv_session['session'], {x['id']: x for x in rv_session.get('sessions') or []}
