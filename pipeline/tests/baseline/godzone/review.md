@@ -1,24 +1,26 @@
-# Remediation review: godzone.pdf
+# Remediation Review: godzone.pdf
 
 Result: `godzone_remediated.pdf`
 
-217 pages · run 2026-10-31T13:23:00 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+217 pages · run October 31, 2026 at 9:48 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.3s · audit 25.6s · reuse saved reply 0.5s · apply 10.5s · verify 24.0s · total 60.9s
+Time: intake 0.4s · audit 15.7s · reuse saved reply 1.2s · apply 16.1s · verify 19.0s · total 52.4s
 
 ## Overview
 
 [Open the dashboard](review.html)
 
-**Ready to ship?** No
-- Work order approved on the review page: no (run without REVIEW=1)
-- OCR text approved: not needed (intake added no OCR text)
-- Safety checks: OK
-- Manual check (PAC): not run
+**Status:** Not Ready
+
+**Ready to ship?**
+- Work Order Approval: Not Approved (applied without a review)
+- ✓ OCR Text Approval: Not Required (no OCR text was added during intake)
+- ✓ Safety Checks: Passed
+- Accessibility Evaluation: Not Completed (neither part recorded for this version)
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 6 (4 deferred by the AI · 0 deferred by the executor · 2 CHECK rows)  
@@ -39,7 +41,7 @@ Automated checks are evidence, not sign-off.
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
-## Automated checks
+## Automated Checks
 
 | Check | Result | Detail |
 |---|---|---|
@@ -86,9 +88,9 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
 
-## For a person to check
+## For a Person to Check
 
-### 1. Alt text written or changed by the AI (3)
+### 1. Alt Text Written or Changed by the AI (3)
 
 | Page | Before | After |
 |---|---|---|
@@ -104,7 +106,7 @@ Heading levels by style (as applied):
 |---|---|---|---:|
 | H4 | H3 | retype (standard tag) | 25 |
 
-### 3. Elements retyped by the AI (11)
+### 3. Elements Retyped by the AI (11)
 
 Check each one is (or is not) a heading as decided.
 
@@ -122,26 +124,26 @@ Check each one is (or is not) a heading as decided.
 | PDF 210 (printed 191) | Index | P | H2 |
 | PDF 217 (printed 198) | About the Author | H3 | H2 |
 
-### 4. Lists and tables
+### 4. Lists and Tables
 
 - Flattened table on PDF 5 (printed iv): "culture / William J. Schafer. / p. | cm." (CIP catalog data laid out as a table; not a data table)
 - Flattened list on PDF 167 (printed 148): "— It’s an interesting story, she said. I prefer Dostoevsky to Truth. (Frame 10)" (Dialogue lines opened with dashes, not a list)
 - Flattened list on PDF 167 (printed 148): "— The sort of story they put in Truth, she said. On the morning of the tragedy witness saw defendant…" (Dialogue lines opened with dashes, not a list)
 
-### 5. Hidden from screen readers (artifacts)
+### 5. Hidden from Screen Readers (artifacts)
 
 - 1 decorative elements ("decorative wave ornament on the title page") on PDF 4 (printed iii)
 - "running head Fishing with Maui": text matching `Fishing with Maui ?` on PDF 22–28 (printed 3–9)
 - "running head Preface": text matching `Preface ?` on PDF 11 (printed x)
 - "page foot Index 197": text matching `Index 197` on PDF 216 (printed 197)
 
-### 6. Reading order changes
+### 6. Reading Order Changes
 
 Listen through these spots with a screen reader.
 
 - Cover figure moved to the start of the document
 
-### 7. Empty tags (2 removed, 1 kept)
+### 7. Empty Tags (2 removed, 1 kept)
 
 A tag is removed only when proven empty: nothing under it holds content, it carries no Alt, ActualText, E or ID, and nothing in the file refers to it except its parent. Table cells are never removed one by one; a table goes only when every part is empty.
 
@@ -149,17 +151,17 @@ A tag is removed only when proven empty: nothing under it holds content, it carr
 - 2 of them were empty parts of tables or lists the work order flattened (e.g. cells whose content had been hidden as decoration)
 - **Kept, empty: P (page: not on this tag)**, because carries /ID "R9C1"; IDTree "R9C1".
 
-### 8. Tag-tree index entries cleared (7)
+### 8. Tag-tree Index Entries Cleared (7)
 
 Entries that pointed at a tag no longer in the tag tree (left by the source file, or by a tag the run removed). Nothing reads such a tag; no page, text or reachable tag changed.
 
 - IDTree: "AD260915-1612-26.2.21931-ADBE-000000091491" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091660" (P), "AD260915-1612-26.2.21931-ADBE-000000091936" (P), "AD260915-1612-26.2.21931-ADBE-000000091998" (P), "AD260915-1612-26.2.21931-ADBE-000000092055" (P), "AD260915-1612-26.2.21931-ADBE-000000092112" (P), "AD260915-1612-26.2.21931-ADBE-000000097916" (P)
 
-### 9. Structure left for a person
+### 9. Structure Left for a Person
 
 - 1 empty tag: P (page: not on this tag)
 
-### 10. veraPDF (WCAG 2.2 machine profile), before and after
+### 10. veraPDF (WCAG 2.2 machine profile), Before and After
 
 veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 5 rules failing (the AI can act on 3, the pipeline on 2, only a person on 0). After: 0.
 
@@ -180,7 +182,7 @@ veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 
 Reviewer note from the AI: The publisher tags use H2 for chapters, H3 for the title-page lines, Preface, Bibliography and About the Author, and H4 for sections. Fix: book title H1 (title page); chapters, Preface, Contents, Bibliography, Index and About the Author H2; sections H3 (rolemap H4→H3). Title-page lines, the dedication and the CIP label were demoted to P. The half-title on PDF 2 (printed i) was demoted to P so a single H1 remains. The contents already carry TOC/TOCI tags, so no toc key was needed. The page-5 table of CIP data was flattened. The map on PDF 9 (printed viii) has long-description alt text.
 
-## What was changed
+## What Was Changed
 
 | Change | Count |
 |---|---:|
@@ -208,16 +210,29 @@ Reviewer note from the AI: The publisher tags use H2 for chapters, H3 for the ti
 | bookmarks: built from heading tags | 39 |
 | tag tree index: entries pointing outside the tree removed (IDTree) | 7 |
 
-## Final check with PAC 2026
+## Accessibility Evaluation
 
-Open `godzone_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker.
+A person evaluates this version of `godzone_remediated.pdf` with PAC 2026 and a screen reader, on the app's "Accessibility Evaluation" page (or with manual_checks.py; docs/release.md). Both parts are needed for "Ready to ship?". A Fail is recorded with its note and does not hold the book back. Each result is recorded against this version of the PDF (its sha256): after a new apply it no longer counts. The evaluation is a record of what a person found, not a legal certification.
 
-No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC's screen-reader and structure previews:
+**PAC 2026.** Open `godzone_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:
 
-- 1.1.1: alt text is accurate and gives the figure's purpose; decorative images are artifacts
-- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense
-- 1.4.1: no information is given by colour alone
-- 1.4.3: contrast of text over images and coloured backgrounds (PAC's contrast checker)
-- 1.4.5: no images of text where real text could be used (scanned pages: the OCR layer stands in)
-- 2.4.6: headings describe their section
-- 3.1.2: passages in another language carry their language (see `han_review.csv` if present)
+- PAC 2026: WCAG Check: PAC 2026's WCAG check on this version of the PDF. Anything it fails that the report does not list is a gap in the automated checks.
+- Title and Language: The title shown in the window is the book's title, and the document language is the book's main language.
+- Spot-Check of Pages: A few pages compared with the original in PAC's structure preview: headings, lists, tables and figures as printed.
+- Colour Alone: No information is given by colour alone (WCAG 1.4.1).
+- Contrast: Text over images and coloured backgrounds has enough contrast (WCAG 1.4.3; PAC's contrast checker).
+- Images of Text: No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).
+- What Needs a Person: Every item the report lists under "For a Person to Check" was looked at.
+
+**Screen-reader test.** Listen with a screen reader and record which one and its version:
+
+- Title Announced: The screen reader announces the book's title when the PDF opens.
+- Document Language and Passages in Other Languages: The text is read in the book's language, and passages in another language are pronounced in theirs (WCAG 3.1.1, 3.1.2).
+- Heading Navigation: Moving by heading reaches each part and chapter, at the right level (WCAG 1.3.1, 2.4.6).
+- Reading Order on Sample Pages: On a few sample pages, the text is read in the order it is meant to be read (WCAG 1.3.2).
+- Figure Alt Text: Each figure's alt text is read, is accurate and gives its purpose; decorative images are skipped (WCAG 1.1.1).
+- Tables Read with Their Headers: Moving through a table, each cell is read with its row or column header (WCAG 1.3.1).
+- Links Say Where They Go: Each link's text, or its description, says where it goes (WCAG 2.4.4).
+- Lists: Lists are announced as lists, with their number of items.
+- OCR Pages Read Sensibly: Pages whose text comes from OCR are read as words, not as junk characters.
+- Formulas: Each formula is read with the description a person wrote, or is marked for one (math goes to a person).

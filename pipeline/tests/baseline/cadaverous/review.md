@@ -1,24 +1,26 @@
-# Remediation review: cadaverous.pdf
+# Remediation Review: cadaverous.pdf
 
 Result: `cadaverous_remediated.pdf`
 
-323 pages · run 2026-10-31T14:48:59 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+323 pages · run October 31, 2026 at 9:46 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.1s · audit 65.3s · reuse saved reply 1.0s · apply 89.3s · verify 66.8s · total 223.5s
+Time: intake 1.8s · audit 31.4s · reuse saved reply 1.2s · apply 105.1s · verify 52.0s · total 191.5s
 
 ## Overview
 
 [Open the dashboard](review.html)
 
-**Ready to ship?** No
-- Work order approved on the review page: no (run without REVIEW=1)
-- OCR text approved: not needed (intake added no OCR text)
-- Safety checks: OK
-- Manual check (PAC): not run
+**Status:** Not Ready
+
+**Ready to ship?**
+- Work Order Approval: Not Approved (applied without a review)
+- ✓ OCR Text Approval: Not Required (no OCR text was added during intake)
+- ✓ Safety Checks: Passed
+- Accessibility Evaluation: Not Completed (neither part recorded for this version)
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 5 (4 deferred by the AI · 1 deferred by the executor · 0 CHECK rows)  
@@ -38,7 +40,7 @@ Automated checks are evidence, not sign-off.
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
-## Automated checks
+## Automated Checks
 
 | Check | Result | Detail |
 |---|---|---|
@@ -85,16 +87,16 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
 
-## For a person to check
+## For a Person to Check
 
-### 1. Alt text written or changed by the AI (2)
+### 1. Alt Text Written or Changed by the AI (2)
 
 | Page | Before | After |
 |---|---|---|
 | PDF 1 (printed A) | Book cover for Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism by Andrew Macomber. The cover features a brown-toned sketch illustration of a human corpse from head to pelvis in an advanced state of decomposition, showing exposed internal organs and skeletal elements. The background has a mottled, parchment-like texture. The title and the author's name appear in dark colored text above and below the image.\x00 | Book cover of Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism by Andrew Macomber. A brown-toned sketch from a medieval Japanese scroll shows a decomposing human corpse lying diagonally across a mottled, parchment-like background, with exposed internal organs and bones. The title appears above the image and the author's name below it. |
 | PDF 5 (printed iii) | Illustration | University of Hawai‘i Press logo |
 
-### 2. Figures that kept their existing alt text (10)
+### 2. Figures That Kept Their Existing Alt Text (10)
 
 Not changed by the AI. Check they are adequate.
 
@@ -151,7 +153,7 @@ Spoken text set by the AI (should match what is printed):
 | PDF 182 (printed 166) | Chapter 6 Demons, Māras, and Corpse-Worms |
 | PDF 211 (printed 195) | Chapter 7 Playing with Fire Therapeutic Violence Through Ritual Pyrotechnics |
 
-### 4. Elements retyped by the AI (1)
+### 4. Elements Retyped by the AI (1)
 
 Check each one is (or is not) a heading as decided.
 
@@ -159,12 +161,12 @@ Check each one is (or is not) a heading as decided.
 |---|---|---|---|
 | PDF 5 (printed iii) | Cadaverous | ident_tit | H1 |
 
-### 5. Hidden from screen readers (artifacts)
+### 5. Hidden from Screen Readers (artifacts)
 
 - 16 decorative elements ("flourish ornament under heading") on PDF 9 (printed vii), PDF 11 (printed ix), PDF 15 (printed xiii), PDF 17 (printed 1), PDF 49 (printed 33), PDF 78 (printed 62), PDF 112 (printed 96), PDF 141 (printed 125), PDF 154 (printed 138), PDF 182 (printed 166), PDF 211 (printed 195), PDF 246 (printed 230), PDF 253 (printed 237), PDF 283 (printed 267), PDF 307 (printed 291), PDF 323 (printed 307)
 - "notes running head": text matching `Notes to Pages? [\d–\-]+` on PDF 254–282 (printed 238–266)
 
-### 6. Reading order changes
+### 6. Reading Order Changes
 
 Listen through these spots with a screen reader.
 
@@ -173,7 +175,7 @@ Listen through these spots with a screen reader.
 - Figure on PDF 152 (printed 136) moved to read with its page (it read after PDF 282 (printed 266); now after PDF 153 (printed 137))
 - Figure on PDF 160 (printed 144) moved to read with its page (it read after PDF 181 (printed 165); now after PDF 161 (printed 145))
 
-### 7. Spoken text (ActualText) checked against the print (9 accepted with differences, 0 rejected)
+### 7. Spoken Text (ActualText) Checked Against the Print (9 accepted with differences, 0 rejected)
 
 A spoken text may differ from the printed characters only in spacing, letter case and line-end hyphens (sponsor rule 1). Accepted ones that differ are listed so a person can listen to them; rejected ones added or changed words or punctuation.
 
@@ -187,7 +189,7 @@ A spoken text may differ from the printed characters only in spacing, letter cas
 - Accepted, PDF 182 (printed 166): printed "ChaPter 6 Demons, Māras, and Corpse-Worms" → spoken "Chapter 6 Demons, Māras, and Corpse-Worms"
 - Accepted, PDF 211 (printed 195): printed "ChaPter 7 Playing with Fire Therapeutic Violence Through Ritual Pyrotechnics" → spoken "Chapter 7 Playing with Fire Therapeutic Violence Through Ritual Pyrotechnics"
 
-### 8. Links whose description was only a URL (6, and 2 addresses that look broken)
+### 8. Links Whose Description Was Only a URL (6, and 2 addresses that look broken)
 
 The description (what a screen reader announces) was set to the book's own sentence around the link, with the URL removed. No words were added and the visible URL is unchanged. Replace any of these with a better description if needed.
 
@@ -205,13 +207,13 @@ Link addresses that look broken (listed, not changed):
 - PDF 6 (printed iv): `https://colbase.nich.go.jp/collection_items/kyuhaku/A70)`: the address ends with punctuation or an unmatched closing bracket from the printed text; probably broken
 - PDF 160 (printed 144): `https://colbase.nich.go.jp/collection_items/kyuhaku/A70)`: the address ends with punctuation or an unmatched closing bracket from the printed text; probably broken
 
-### 9. Tag-tree index entries cleared (2)
+### 9. Tag-tree Index Entries Cleared (2)
 
 Entries that pointed at a tag no longer in the tag tree (left by the source file, or by a tag the run removed). Nothing reads such a tag; no page, text or reachable tag changed.
 
 - ParentTree, entries not tied to page content (annotations, forms, or keys nothing uses): key 30 (Link), key 40 (Link)
 
-### 10. veraPDF (WCAG 2.2 machine profile), before and after
+### 10. veraPDF (WCAG 2.2 machine profile), Before and After
 
 veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 1 rule failing (the AI can act on 0, the pipeline on 1, only a person on 0). After: 0.
 
@@ -228,17 +230,17 @@ veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 
 Reviewer note from the AI: Heading outline: the book title (ident_tit on PDF 5, printed iii) is the single H1. Front-matter titles, Introduction, Part and Chapter titles, Epilogue, Notes, Bibliography, Index and About the Author are H2. Part and chapter labels are merged into their titles, with ActualText because the small-cap label letters extract oddly. Chapter 7 also takes its subtitle. dev_int1 sections are H3, dev_int2 subsections are H4, and the notes' chapter headings are H3. The 16 flourish ornaments under headings are artifacts. Publisher alt text on the other figures is already good and kept. The cover alt text had a stray NUL character, which I replaced. The cover is moved to the start of the Document. The Notes running heads (PDF 254–282) are artifacts. The Epilogue container (PDF 246–323) swallows the back matter, so I moved the Notes section before the Bibliography. Please check that move.
 
-### 12. Deferred by the executor
+### 12. Deferred by the Executor
 
 - **1475 Han-only CJK runs** need a Japanese / Chinese decision: fill in `han_review.csv`.
 
-### 13. Decisions not applied (1)
+### 13. Decisions Not Applied (1)
 
 Rejected by validation or by the executor; nothing was half-applied.
 
 - {"where": "move_section", "item": {"pages": [253, 282], "before_page": 283, "why": "The Epilogue container spans PDF 246–323, so the Bibliography, Index and About the Author appear to be read before the NOTES section, which is printed before them."}, "why": "the audit finds no section read out of place in these pages or where it lands"}
 
-## What was changed
+## What Was Changed
 
 | Change | Count |
 |---|---:|
@@ -275,16 +277,29 @@ Rejected by validation or by the executor; nothing was half-applied.
 | order: empty container removed | 29 |
 | tag tree index: entries pointing outside the tree cleared (ParentTree) | 2 |
 
-## Final check with PAC 2026
+## Accessibility Evaluation
 
-Open `cadaverous_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker.
+A person evaluates this version of `cadaverous_remediated.pdf` with PAC 2026 and a screen reader, on the app's "Accessibility Evaluation" page (or with manual_checks.py; docs/release.md). Both parts are needed for "Ready to ship?". A Fail is recorded with its note and does not hold the book back. Each result is recorded against this version of the PDF (its sha256): after a new apply it no longer counts. The evaluation is a record of what a person found, not a legal certification.
 
-No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC's screen-reader and structure previews:
+**PAC 2026.** Open `cadaverous_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:
 
-- 1.1.1: alt text is accurate and gives the figure's purpose; decorative images are artifacts
-- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense
-- 1.4.1: no information is given by colour alone
-- 1.4.3: contrast of text over images and coloured backgrounds (PAC's contrast checker)
-- 1.4.5: no images of text where real text could be used (scanned pages: the OCR layer stands in)
-- 2.4.6: headings describe their section
-- 3.1.2: passages in another language carry their language (see `han_review.csv` if present)
+- PAC 2026: WCAG Check: PAC 2026's WCAG check on this version of the PDF. Anything it fails that the report does not list is a gap in the automated checks.
+- Title and Language: The title shown in the window is the book's title, and the document language is the book's main language.
+- Spot-Check of Pages: A few pages compared with the original in PAC's structure preview: headings, lists, tables and figures as printed.
+- Colour Alone: No information is given by colour alone (WCAG 1.4.1).
+- Contrast: Text over images and coloured backgrounds has enough contrast (WCAG 1.4.3; PAC's contrast checker).
+- Images of Text: No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).
+- What Needs a Person: Every item the report lists under "For a Person to Check" was looked at.
+
+**Screen-reader test.** Listen with a screen reader and record which one and its version:
+
+- Title Announced: The screen reader announces the book's title when the PDF opens.
+- Document Language and Passages in Other Languages: The text is read in the book's language, and passages in another language are pronounced in theirs (WCAG 3.1.1, 3.1.2).
+- Heading Navigation: Moving by heading reaches each part and chapter, at the right level (WCAG 1.3.1, 2.4.6).
+- Reading Order on Sample Pages: On a few sample pages, the text is read in the order it is meant to be read (WCAG 1.3.2).
+- Figure Alt Text: Each figure's alt text is read, is accurate and gives its purpose; decorative images are skipped (WCAG 1.1.1).
+- Tables Read with Their Headers: Moving through a table, each cell is read with its row or column header (WCAG 1.3.1).
+- Links Say Where They Go: Each link's text, or its description, says where it goes (WCAG 2.4.4).
+- Lists: Lists are announced as lists, with their number of items.
+- OCR Pages Read Sensibly: Pages whose text comes from OCR are read as words, not as junk characters.
+- Formulas: Each formula is read with the description a person wrote, or is marked for one (math goes to a person).
