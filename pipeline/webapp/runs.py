@@ -12,7 +12,7 @@ and uploads/ (read only; sha256s cached in <jobs>/sha256-cache.json by path, siz
 """
 import os, re, sys, json, signal, urllib.parse
 from review import sessions as S
-from lib import dates as D
+from lib import dates as D, release as REL
 from . import config, jobs, logs
 
 def load(p):
@@ -29,7 +29,7 @@ def ready(R, rec):
     g = (rec or {}).get('glance')
     if isinstance(g, dict) and isinstance(g.get('ship'), list):
         try:                                   # never a stored `ready`: the PAC and screen-reader lines, ready and the status are
-            from lib import glance as G, release as REL       # worked out now from release/ (cheap: no PDF is opened)
+            from lib import glance as G                       # worked out now from release/ (cheap: no PDF is opened)
             from . import manualpage                               # as the evaluation page reads it: a changed file is never Ready (K1)
             g = manualpage.app_glance(R, rec, g) if R and os.path.isdir(R) else G.with_release(g, rec, REL.load(R, rec))
         except (ValueError, KeyError, TypeError, OSError):      # release/ unreadable: never Ready, and never says so (J2)
@@ -207,17 +207,18 @@ def after_interrupt(R, j):
 def run_path(run): return os.path.join(*run.split('/'))
 
 def prune_plan(R):
-    """"Remove Older PDFs": what it would remove now (review/prune.py plan, hashed through the app's display cache), or
-    None when nothing can be removed. Sizes in words; the hashes go back with the POST, so a changed list is refused."""
+    """"Clean Up Space": the previous versions whose PDF may be removed (review/prune.py plan, hashed through the app's
+    display cache), or None when there are none. Sizes in words; each chosen version's hash goes back with the POST, so a
+    changed one is refused."""
     from review import prune
     from . import manualpage
     try: items = prune.plan(R, sha=manualpage.disk_sha)
     except (OSError, ValueError): return None
     if not items: return None
-    from lib import dates as D
+    from lib import dates as D, release as REL
     mb = lambda n: f'{n / 1e6:.1f} MB'
-    return {'versions': [{'label': x['label'] + (f', applied on {D.day(x["applied"])}' if x.get('applied') else ''), 'size': mb(x['bytes'])} for x in items],
-            'total': mb(sum(x['bytes'] for x in items)), 'shas': [x['sha256'] for x in items]}
+    return {'versions': [{'id': x['id'], 'sha256': x['sha256'], 'label': x['label'] + (f', applied on {D.day(x["applied"])}' if x.get('applied') else ''),
+                          'size': mb(x['bytes']), 'bytes': x['bytes']} for x in items]}
 
 def manual_strip(R, rec):
     """The Manual Checks strip after "Ready to Ship?" (webapp/manualpage.py strip()); None for a run it cannot read."""
@@ -236,12 +237,13 @@ def state(s, run, R):
     rec = load(os.path.join(R, 'record.json')) or {}
     ss = S.sessions(R); cur = S.current_id(rec)
     vers = S.P(R)['versions']
+    gone = {str(x.get('version')) for x in REL.removed(R)}              # "Clean Up Space" took their PDF: the row stays, marked
     rows = []
     for x in ss:
         r = S.summary_row(x)
         if x.get('status') == 'open': r.update(S.name_notes(load(S.P(R)['draft']), x['id']))   # the open session: as last saved
         v = os.path.join(vers, x['id'])
-        rows.append({**r, 'current': x['id'] == cur, 'from_label': S.from_label(r['from']), 'label': S.label(x['id']),
+        rows.append({**r, 'current': x['id'] == cur, 'from_label': S.from_label(r['from']), 'label': S.label(x['id']), 'pdf_removed': x['id'] in gone,
                      'result': (f'reviews/versions/{x["id"]}/' + ('review.html' if os.path.isfile(os.path.join(v, 'review.html')) else 'review.md'))
                                if os.path.isdir(v) and x['id'] != cur else None})
     ai_v = os.path.join(vers, 'ai')

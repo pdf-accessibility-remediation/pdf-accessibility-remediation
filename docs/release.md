@@ -25,18 +25,18 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
 ## The Accessibility Evaluation page (in the app)
 
 - **Opening it:** the run page has a strip right after "Ready to Ship?", headed **Accessibility Evaluation (PAC 2026 &
-  Screen-Reader Test)**, with a **Complete Evaluation** button and one line per part: "completed on this version (Kim,
-  November 1, 2026)" with a check mark (and "· 1 issue noted" when it has Fails), "not completed", "completed on an
-  earlier version: evaluate this version", or "could not be read in full: record it again". Each part's name links
-  straight to its section. The strip also says the status as it is now when the report's card was written before a change
-  (a session opened after shipping, for example), and says in plain words when the book's PDF has changed since its report
-  was made. While the PDF on disk is not the one the report describes (a Ready book's or a shipped one's), the app drops
+  Screen-Reader Test)**, with a **Complete Evaluation** button, "Mark as Shipped" when it is offered, and "Available
+  Downloads" (below). The card above it says each requirement, so the strip has no line per part and does not repeat
+  "This version is not ready to ship" (Patrick, 2026-11-01). The strip says the status as it is now when the report's
+  card was written before a change (a session opened after shipping, or a session finished but not applied), that a
+  version was already shipped, and in plain words when the book's PDF has changed since its report was made. While the PDF on disk is not the one the report describes (a Ready book's or a shipped one's), the app drops
   the card's green border on the run page; review.html opened as a file keeps it until it is next rebuilt. When the run
   has no "Ready to Ship?" card, the strip goes at the end of the panel, as an h3.
 - **The page** (`/run/<run>/checks`) names the book as "PDF Title" (the remediated PDF's own title, else the original's
-  name without ".pdf"), the version the results are for ("the version from Session 6, applied on October 30, 2026 at
-  2:02 PM"), and the **Overall Status**, with the unsatisfied requirements when it is Not Ready ("Overall Status: Not
-  Ready · Unsatisfied Requirements: Work Order Approval, OCR Text Approval").
+  name without ".pdf"). Right after "Back to the Run Page" comes the **Overall Status**, with the unsatisfied
+  requirements when it is Not Ready ("Overall Status: Not Ready · Unsatisfied Requirements: Work Order Approval, OCR Text
+  Approval"), then the version the results are for ("the version from Session 6, applied on October 30, 2026 at
+  2:02 PM").
 - **Each part** is a section headed "PAC 2026" or "Screen-Reader Test". It holds a form: **Checked By**, its fields, and
   one group per item with **Pass** / **Fail** / **Not Applicable** (PAC's WCAG check: Pass or Fail) and **Notes**. A note
   becomes required when the choice asks for one (a Fail; Not Applicable on something the pipeline found, with a hint such
@@ -261,13 +261,14 @@ and including its re-mirror (`lib/runlock.py`).
 
 ## Downloads
 
-Any version of the book can be downloaded at any time, ready or not: from the run page's strip (under "Complete
-Evaluation") and from the evaluation page's "Download and Check the PDF".
+Any version of the book can be downloaded at any time, ready or not, from **Available Downloads**: on the run page's
+strip (under "Complete Evaluation") and on the evaluation page, laid out the same on both: the heading, the list under
+it (the heading is the list's label), the line saying how the chosen version's files are marked (the list's description),
+then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
 
-- **"Version to Download"** is a list of the current version and each earlier result whose PDF still exists. It decides
-  which version the two buttons give: **Download the Remediated PDF** and **Download the Record (ZIP)**. It never
-  changes what the evaluation records: the evaluation is always for the current version. The line under it says how the
-  files are marked, never their names.
+- **The list** holds the current version and each earlier result whose PDF still exists. It decides which version the
+  two buttons give. It never changes what the evaluation records: the evaluation is always for the current version. The
+  line under it says how the files are marked, never their names.
 - **Names:** the PDF's bytes are never changed, only the name it is saved under.
 
   | That version | PDF | ZIP |
@@ -299,23 +300,16 @@ Evaluation") and from the evaluation page's "Download and Check the PDF".
   on disk is not the one the report describes. A re-apply under way, or a finished session not yet applied, does not
   stop a download.
 
-## Which Version Is This File?
+"Which Version Is This File?" (a PDF hashed in the browser and named as a version) was removed from the evaluation page
+(Patrick, 2026-11-01). A file's sha256 can still be compared by hand with the one in its record ZIP's READ-ME.txt.
 
-On the evaluation page, a person can choose a PDF (one downloaded earlier, or the one checked in PAC). The page hashes it
-in the browser (`crypto.subtle`) and says which version it is:
-- the current one, with its status;
-- an earlier one;
-- an earlier one whose PDF was removed from this computer;
-- or that it matches no version of this book.
-
-Nothing is uploaded. Both `http://localhost` and `http://127.0.0.1` are secure contexts, which `crypto.subtle` needs.
-
-## Remove Older PDFs
+## Clean Up Space
 
 Every version is kept as a real PDF; there is no rebuilding from work orders. Repeated reviews keep one full PDF per
-version (13 MB for expedition, 96 MB for dwellings), so the run page offers **Remove Older PDFs** under Session History
-when there is something to remove: "Frees space by deleting the PDFs of earlier versions that were never evaluated or
-shipped. Their records and decisions are kept. The AI's own version is always kept."
+version (13 MB for expedition, 96 MB for dwellings), so the run page offers a **Clean Up Space** button under Session
+History when there is something to remove, with no line under it. Its dialog explains: "Deletes the PDF files of the
+previous versions you select to free up space. Their records and decisions stay in the table. The original AI-generated
+version is always kept."
 
 - **Never removed:**
   - the current version;
@@ -325,13 +319,17 @@ shipped. Their records and decisions are kept. The AI's own version is always ke
 - **What goes:** only the PDF. The version's record.json, review.md and review.html, and the session's work order, stay.
   `release/removed.json` records each removal (version, sha256, size, who, when), and the version's page says so
   whenever it is built.
-- **The dialog** lists each version with its size and the total, and asks for "Removed By". It removes exactly the list
-  it showed: if anything changed meanwhile, nothing is removed. It is refused while a review is open or a new version
-  is being made. The deletion is permanent.
-- **From the terminal:** `python3 review_workorder.py <run> --remove-older-pdfs` lists them (a dry run). Add `--yes --by
-  NAME` to remove them (`review/prune.py`).
-- **"Version to Download"** lists only versions whose PDF exists. "Which Version Is This File?" still recognises a
-  removed one.
+- **The dialog** has a checkbox per removable version, with its session, date and size (any number can be selected;
+  nothing is selected at first), the selection's count and size, "Removed By", and "This can't be undone." The remove
+  button names the count ("Remove 2 PDFs") and is disabled while none is selected. Only the selected versions go, and
+  only if each is still offered with the PDF it showed (hashed again under the locks): if one changed meanwhile, nothing
+  is removed. It is refused while a review is open or a new version is being made. The deletion is permanent. Escape
+  or Cancel closes it, and focus returns to the button.
+- **Session History** keeps every row; a version whose PDF was removed is marked "PDF removed".
+- **From the terminal:** `python3 review_workorder.py <run> --remove-older-pdfs` lists them, with their session numbers.
+  `--remove-older-pdfs 3 5` names the sessions to remove (a dry run); add `--yes --by NAME` to remove those PDFs only
+  (`review/prune.py`). `--yes` without sessions is refused: nothing is removed unless chosen.
+- **"Available Downloads"** lists only versions whose PDF exists.
 
 ## Mark as Shipped
 
@@ -370,7 +368,7 @@ nothing.
   - review.md's evaluation section names each shipment;
   - review.html's Shipments list links "View the Accessibility Statement";
   - the shipped file downloads under its plain names, and its record ZIP holds the statement;
-  - a shipped copy that a newer version replaced is listed in "Version to Download" as "Shipment 1, shipped on …".
+  - a shipped copy that a newer version replaced is listed in "Available Downloads" as "Shipment 1, shipped on …".
 - **A shipped book whose PDF later changes on disk** keeps "Shipped", with "The current PDF has changed since this report
   was made." beside it, and never Ready's green. Mark as Shipped stays refused until it is resolved. The shipped copy in
   `release/shipped/` is untouched and still downloads.
@@ -383,7 +381,7 @@ From the terminal only: `manual_checks.py <run> --withdraw-shipment N --by NAME 
 - It writes `withdrawn: {by, date, reason}` (local time, to the second) on that shipment; nothing is deleted.
 - It is refused for an unknown shipment, one already withdrawn, or without a name and a reason.
 - **The status** falls back to the latest shipment not withdrawn, and with none left to the statuses before shipping.
-- **"Version to Download"** still lists a withdrawn copy, marked "(withdrawn)", named `_shipment-N_withdrawn`.
+- **"Available Downloads"** still lists a withdrawn copy, marked "(withdrawn)", named `_shipment-N_withdrawn`.
 
 ## The accessibility statement
 

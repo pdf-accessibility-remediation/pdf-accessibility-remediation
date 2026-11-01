@@ -289,30 +289,42 @@ function actions(s) {
   return h;
 }
 
-// "Remove Older PDFs" (stage 3, review/prune.py): shown only when an earlier version's PDF can be removed
-const PRUNE_LINE = 'Frees space by deleting the PDFs of earlier versions that were never evaluated or shipped. Their records and decisions are kept. The AI\'s own version is always kept.';
+// "Clean Up Space" (stage 3, review/prune.py): the button alone, shown only when a previous version's PDF can be removed;
+// the explanation is in its dialog (Patrick, 2026-11-01)
+const PRUNE_LINE = 'Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in the table. The original AI-generated version is always kept.';
 function pruneBlock(s) {
   if (!s.prune) return '';
-  return '<div class="pp-row"><button type="button" id="pp-prune" data-act="prune">Remove Older PDFs</button></div><p class="pp-note">' + esc(PRUNE_LINE) + '</p>';
+  return '<div class="pp-row"><button type="button" id="pp-prune" data-act="prune">Clean Up Space</button></div>';
 }
-function pruneDlg(p, opener) {                                    // the list, the total and a name; Escape or Cancel closes it
+function removeLabel(n) { return n ? 'Remove ' + n + ' PDF' + (n === 1 ? '' : 's') : 'Remove PDFs'; }
+function pruneDlg(p, opener) {                                    // a checkbox per version and a name; Escape or Cancel closes it
   return new Promise(res => {
-    const d = $('pp-dlg'), n = p.versions.length, by = (localStorage.getItem('checks:by') || '');
-    d.innerHTML = '<h2 id="pp-dlg-h">Remove Older PDFs</h2><p>' + esc(PRUNE_LINE) + '</p><ul>' +
-      p.versions.map(v => '<li>' + esc(v.label) + ' · ' + esc(v.size) + '</li>').join('') + '</ul><p><b>Total:</b> ' + esc(p.total) + '</p>' +
+    const d = $('pp-dlg'), by = (localStorage.getItem('checks:by') || '');
+    d.innerHTML = '<h2 id="pp-dlg-h">Clean Up Space</h2><p>' + esc(PRUNE_LINE) + '</p>' +
+      '<fieldset class="pp-prune"><legend>Previous Versions</legend>' +
+      p.versions.map((v, i) => '<label><input type="checkbox" id="pp-prune-' + i + '" value="' + i + '"> ' + esc(v.label) + ' · ' + esc(v.size) + '</label>').join('') +
+      '</fieldset><p id="pp-prune-sel" class="pp-note" aria-live="polite">None selected.</p>' +
       '<p><label for="pp-prune-by">Removed By</label> <input type="text" id="pp-prune-by" autocomplete="name" value="' + esc(by) + '"></p>' +
-      '<p>This can\'t be undone.</p><p id="pp-prune-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Remove ' + n + ' Older PDF' + (n === 1 ? '' : 's') +
+      '<p>This can\'t be undone.</p><p id="pp-prune-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes" disabled>' + removeLabel(0) +
       '</button><button type="button" value="no">Cancel</button></div>';
     const id = opener.id, done = v => { d.close(); ($(id) || opener).focus(); res(v); };
+    const picked = () => [...d.querySelectorAll('.pp-prune input:checked')].map(x => p.versions[Number(x.value)]);
+    const yes = d.querySelector('button[value=yes]');
+    d.querySelector('.pp-prune').addEventListener('change', () => {   // the count on the button; nothing goes unless selected
+      const vs = picked(), mb = vs.reduce((a, v) => a + v.bytes, 0) / 1e6;
+      yes.textContent = removeLabel(vs.length); yes.disabled = !vs.length;
+      $('pp-prune-sel').textContent = vs.length ? vs.length + ' selected · ' + mb.toFixed(1) + ' MB' : 'None selected.';
+    });
     d.querySelector('button[value=no]').addEventListener('click', () => done(null));
-    d.querySelector('button[value=yes]').addEventListener('click', () => {
+    yes.addEventListener('click', () => {
+      const vs = picked(); if (!vs.length) return;
       const name = $('pp-prune-by').value.trim();
       if (!name) { $('pp-prune-err').textContent = 'Enter your name in "Removed By".'; $('pp-prune-by').focus(); return; }
       try { localStorage.setItem('checks:by', name); } catch (e) {}
-      done(name);
+      done({ by: name, chosen: vs.map(v => ({ id: v.id, sha256: v.sha256 })) });
     });
     d.oncancel = ev => { ev.preventDefault(); done(null); };
-    d.showModal(); d.querySelector('button[value=no]').focus();
+    d.showModal(); $('pp-prune-0').focus();
   });
 }
 function historyBlock(s) {
@@ -326,17 +338,17 @@ function historyBlock(s) {
     rows.map(r => '<tr><th scope="row"><span class="pp-nw">' + esc(cap(r.label)) + (r.current ? ' (current)' : '') + '</span>' + (r.name ? '<span class="pp-name' + ([...r.name].length > 40 ? ' pp-long' : '') + '">' + esc(r.name) + '</span>' : '') + '</th><td>' + esc(r.status) + (r.summary_only ? ' (summary only)' : r.inferred ? ' (inferred)' : '') +
       '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td class="pp-nw">' + esc(r.date || r.started ? fmtDay(r.date || r.started) : 'not recorded') + '</td><td class="pp-nw">' + esc(/^session \d/.test(r.from_label) ? cap(r.from_label) : r.from_label) +
       '</td><td>' + esc(r.changes) + '</td><td>' + esc(r.since_start) + '</td><td>' +
-      (r.notes ? '<button type="button" class="pp-link" id="pp-notes-' + esc(r.id) + '" data-act="notes" data-id="' + esc(r.id) + '">Notes</button>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') +
+      (r.notes ? '<button type="button" class="pp-link" id="pp-notes-' + esc(r.id) + '" data-act="notes" data-id="' + esc(r.id) + '">Notes</button>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') + (r.pdf_removed ? '<span class="pp-note"> · PDF removed</span>' : '') +
       '</td><td>' + ((r.status === 'finished' || r.status === 'applied') && !s.live_review && !s.lock ? '<button type="button" id="pp-from-' + esc(r.id) + '" data-act="review" data-from="' + esc(r.id) + '">' + esc(tc('Review again from ' + r.label)) + '</button>' : '') +
       '</td></tr>').join('') + '</tbody></table></div>';
   if (s.ai_result) h += '<p><a href="' + esc(s.ai_result) + '">The result applied without review</a> (kept with the run).</p>';
   return h + '</details>';
 }
 
-// ---------------------------------------------------------------- the Manual Checks strip, right after "Ready to Ship?"
-// (webapp/server.py with_strip() places its box; a page with no card gets it at the end of this panel). One line per
-// section, a check mark when it counts for this version (hidden from screen readers: the words say it); the live status
-// when it differs from the report's card on disk, so the page never shows two answers without saying which is current.
+// ---------------------------------------------------------------- the evaluation strip, right after "Ready to Ship?"
+// (webapp/server.py with_strip() places its box; a page with no card gets it at the end of this panel). The card above it
+// says each requirement, so the strip has no line per part (Patrick, 2026-11-01); it says the live status when it differs
+// from the report's card on disk, so the page never shows two answers without saying which is current.
 function stripBlock(s, inPanel) {
   const m = s.manual; if (!m) return '';
   const hx = inPanel ? 'h3' : 'h2';                  // inside the panel's own h2 section: one level down (review 12 G2)
@@ -344,10 +356,8 @@ function stripBlock(s, inPanel) {
   const now = (m.status || '') + (m.newer ? ' · ' + m.newer : ''), card = (m.card_status || '') + (m.card_newer ? ' · ' + m.card_newer : '');
   if (m.status && now !== card) h += '<p><b>Status now:</b> ' + esc(now) + ' <span class="pp-note">(the report on this page was written before this)</span></p>';
   if (m.refusal) h += '<p class="pp-warn-t">' + esc(m.refusal) + '</p>';
-  h += '<div class="pp-mc"><a class="pp-btn pp-primary" id="pp-mc-open" href="checks">Complete Evaluation</a><ul role="list">' +
-    ['pac', 'screen_reader'].map(k => m.sections[k]).filter(Boolean).map(x => '<li>' + (x.ok ? '<span class="pp-mc-mark" aria-hidden="true">✓</span>' : '<span class="pp-mc-mark" aria-hidden="true"></span>') +
-      '<a href="checks#' + esc(x.id) + '">' + esc(tc(x.name)) + '</a>: ' + esc(x.words) + '</li>').join('') + '</ul></div>' +
-    shipBlock(m.ship) + dlForm(m.downloads) + '</section>';
+  h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-mc-open" href="checks">Complete Evaluation</a></div>' +
+    shipBlock(m.ship) + dlForm(m.downloads, inPanel ? 'h4' : 'h3') + '</section>';
   return h;
 }
 // "Mark as Shipped" (stage 4): offered only when the gate is open (webapp/manualpage.py ship_gate: current Ready, the file
@@ -390,11 +400,12 @@ async function shipNow(b) {
     return poll(true);
   } catch (e) { return msg('The app is not running. ' + START, false, true); }
 }
-// the picker and the two downloads (stage 3): a GET form to download?v=…&what=pdf|record (any version, ready or not); the
-// line under it says how the chosen version's files are marked, never a file name
-function dlForm(dd) {
+// "Available Downloads" (stage 3), as on the evaluation page (webapp/manualpage.py downloads_form): the heading holding the
+// select's label, the select, the line saying how the chosen version's files are marked (never a file name), then the two
+// buttons in a row. A GET form to download?v=…&what=pdf|record: any version, ready or not
+function dlForm(dd, hx) {
   const vs = (dd && dd.versions) || []; if (!vs.length) return '';
-  return '<form class="pp-dl" method="get" action="download"><label for="pp-dlv">Version to Download</label> ' +
+  return '<form class="pp-dl" method="get" action="download"><' + hx + ' id="pp-dl-h">' + '<label for="pp-dlv">Available Downloads</label></' + hx + '>' +
     '<select id="pp-dlv" name="v" aria-describedby="pp-dl-marked">' +
     vs.map(x => '<option value="' + esc(x.id) + '" data-marked="' + esc(x.marked) + '">' + esc(x.label) + '</option>').join('') + '</select>' +
     '<p id="pp-dl-marked" class="pp-note">' + esc(vs[0].marked) + '</p>' +
@@ -444,13 +455,13 @@ box.addEventListener('click', async e => {
     const r = (st.sessions || []).find(x => String(x.id) === b.dataset.id); if (!r) return;
     return notesBox(tc('Notes: ' + r.label) + (r.name ? ' · ' + r.name : ''), r.notes || '', b, String(r.id));
   }
-  if (act === 'prune') {                                         // "Remove Older PDFs": confirm with the list, then remove exactly it
+  if (act === 'prune') {                                         // "Clean Up Space": select in the dialog, then remove exactly those
     const p = st.prune; if (!p) return;
-    const by = await pruneDlg(p, b); if (!by) return;
+    const v = await pruneDlg(p, b); if (!v) return;
     try {
-      const [c, r] = await api(API + '/remove-older-pdfs', { by: by, shas: p.shas });
+      const [c, r] = await api(API + '/remove-older-pdfs', { by: v.by, chosen: v.chosen });
       if (c !== 200) return msg(r.error || 'The PDFs were not removed.', false, true);
-      msg('Removed ' + r.removed + ' older PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept.', true, true);
+      msg('Removed ' + r.removed + ' PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept in "Session History".', true, true);
       return poll(true);
     } catch (e) { return msg('The app is not running. ' + START, false, true); }
   }

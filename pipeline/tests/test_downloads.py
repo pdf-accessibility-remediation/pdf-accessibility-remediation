@@ -121,47 +121,30 @@ def test_a_promotion_during_a_download_never_mixes_two_versions(tmp_path):
     import hashlib
     assert hashlib.sha256(old_pdf).hexdigest() in z.read(f'{f}/READ-ME.txt').decode()
 
-def test_the_file_check_knows_every_version_and_removed_ones(tmp_path):
-    R = make_run(str(tmp_path / 'r'), record_sha=True); add_version(R)
-    os.makedirs(os.path.join(R, 'release'), exist_ok=True)
-    core.save(os.path.join(R, 'release', 'removed.json'), [{'version': '002', 'sha256': 'd' * 64, 'bytes': 10, 'by': 'K', 'removed': '2026-11-01T10:00:00'}])
-    rec = core.load(os.path.join(R, 'record.json'))
-    k = {x['sha']: x['words'] for x in DL.known(R, rec)}
-    assert k[rec['document']['output_sha256']].startswith('This is the current version (applied without a review): Not Ready')
-    assert 'This is an earlier version (Session 1), not the current one.' in k.values()
-    assert k['d' * 64] == 'This is an earlier version (Session 2), not the current one. Its PDF was removed from this computer to free space.'
-
-# ------------------------------------------------------------------ the picker and the file check on the pages (K6, C)
-def test_the_evaluation_page_offers_the_downloads_and_the_file_check(tmp_path):
+# ------------------------------------------------------------------ "Available Downloads" on both pages (K6; Patrick, 2026-11-01)
+def test_the_evaluation_page_offers_the_downloads_and_no_file_check(tmp_path):
     import re
     from test_webapp_checks import visible
     R = make_run(str(tmp_path / 'r'), record_sha=True); add_version(R)
     page = MP.page(R, 'r')
-    assert '<label for="mc-dlv">Version to Download</label><select id="mc-dlv" name="v" aria-describedby="mc-dl-marked">' in page
+    assert ('<section id="downloads" class="mc-sec" aria-labelledby="mc-dl-h"><form class="pp-dl" method="get" action="/run/r/download">'
+            '<h2 id="mc-dl-h"><label for="mc-dlv">Available Downloads</label></h2>'
+            '<select id="mc-dlv" name="v" aria-describedby="mc-dl-marked">') in page
     assert '<option value="001" data-marked="The downloaded files are marked &quot;earlier version&quot;.">Session 1 (earlier version)</option>' in page
-    assert 'action="/run/r/download"' in page and 'name="what" value="pdf">Download the Remediated PDF' in page and 'value="record">Download the Record (ZIP)' in page
-    assert '<input type="file" id="fc-file" accept=".pdf,application/pdf"' in page and 'role="status" aria-live="polite"' in page
+    assert ('<p id="mc-dl-marked" class="pp-note">The downloaded files are marked &quot;not ready&quot;.</p><div class="pp-row">'
+            '<button type="submit" name="what" value="pdf">Download the Remediated PDF</button>'
+            '<button type="submit" name="what" value="record">Download the Record (ZIP)</button></div></form></section>') in page
     text = re.sub(r'\s+', ' ', visible(page))
-    assert 'Which Version Is This File?' in text and 'never uploaded' in text and 'sha256' not in text and '.pdf' not in text
+    assert 'Which Version Is This File?' not in text and 'Version to Download' not in text and 'fc-file' not in page
     data = json.loads(re.search(r'id="mc-data">(.*?)</script>', page, re.S).group(1))
-    assert len(data['known']) == 2 and all(len(k['sha']) == 64 for k in data['known'])
+    assert 'known' not in data
+    assert page.index('Back to the Run Page') < page.index('Overall Status:') < page.index('These results are recorded for')   # right after the button
     s = MP.strip(R, core.load(os.path.join(R, 'record.json')))
     assert [v['id'] for v in s['downloads']['versions']] == ['current', '001'] and s['downloads']['versions'][0]['marked'] == 'The downloaded files are marked "not ready".'
+    assert 'sections' not in s                                                                  # no line per part on the strip
     js = open(os.path.join(os.path.dirname(MP.__file__), 'panel.js'), encoding='utf-8').read()
-    assert '<label for="pp-dlv">Version to Download</label>' in js and 'aria-describedby="pp-dl-marked"' in js
-
-def test_the_file_checks_matching_in_javascript():
-    from test_dates import js_runner
-    import subprocess
-    run = js_runner()
-    if run is None: pytest.skip('no JavaScript engine runs here')
-    src = open(os.path.join(os.path.dirname(MP.__file__), 'manual.js'), encoding='utf-8').read()
-    fn = src[src.index('function matchVersion'):src.index('const fc = ')]
-    code = fn + ('\nconst K = [{sha: "aa", words: "This is the current version (Session 6): Ready."}];\n'
-                 '(typeof print === "function" ? print : console.log)(JSON.stringify([matchVersion("aa", K), matchVersion("bb", K), matchVersion("aa", null)]));')
-    out = subprocess.run(run + [code], capture_output=True, text=True, timeout=30)
-    assert json.loads(out.stdout) == ['This is the current version (Session 6): Ready.', 'This file matches no version of this book.',
-                                      'This file matches no version of this book.']
+    assert "'<label for=\"pp-dlv\">Available Downloads</label></' + hx + '>'" in js and 'aria-describedby="pp-dl-marked"' in js
+    assert 'Version to Download' not in js and 'matchVersion' not in open(os.path.join(os.path.dirname(MP.__file__), 'manual.js'), encoding='utf-8').read()
 
 
 # ------------------------------------------------------------------ review 20: L4, the read-me's date, the refusal page

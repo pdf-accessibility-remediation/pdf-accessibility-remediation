@@ -1,5 +1,6 @@
-"""test_prune.py: "Remove Older PDFs" (review/prune.py; 17 §F, review 18 K7–K9): what it removes and never removes, its
-refusals, its trail and the note on the version's page, the app's POST and the command line's dry run. Synthetic runs.
+"""test_prune.py: "Clean Up Space" (review/prune.py; 17 §F, review 18 K7–K9; by selection, Patrick 2026-11-01): what it
+offers and never offers, that only the chosen versions go, its refusals, its trail and the note on the version's page, the
+app's POST, the panel's dialog and the command line. Synthetic runs.
 
     python -m pytest tests/test_prune.py -q
 """
@@ -33,26 +34,36 @@ def test_the_plan_never_takes_the_ai_version_an_evaluated_or_a_shipped_one(tmp_p
     assert [x['id'] for x in plan] == ['001', '004']                                  # not ai (K9), not evaluated, not shipped (even withdrawn)
     assert all(x['bytes'] > 0 and len(x['sha256']) == 64 for x in plan)
 
-def test_remove_takes_only_what_was_shown_and_keeps_the_records(tmp_path, monkeypatch):
+def pick(plan, *ids): return [{'id': x['id'], 'sha256': x['sha256']} for x in plan if x['id'] in ids]
+
+def test_remove_takes_only_the_chosen_versions_and_keeps_the_records(tmp_path, monkeypatch):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
-    V1 = add_version(R, '001', 'one'); add_version(R, 'ai', 'the AI')
-    shown = [x['sha256'] for x in prune.plan(R)]
-    with pytest.raises(S.Refused, match='Removed By'): prune.remove(R, shown, ' ', say=lambda *a: None)
-    with pytest.raises(S.Refused, match='changed since it was shown'): prune.remove(R, ['0' * 64], 'Kim', say=lambda *a: None)
+    V1 = add_version(R, '001', 'one'); V2 = add_version(R, '002', 'two'); V3 = add_version(R, '003', 'three'); add_version(R, 'ai', 'the AI')
+    plan = prune.plan(R); chosen = pick(plan, '001', '003')
+    with pytest.raises(S.Refused, match='Select at least one PDF'): prune.remove(R, [], 'Kim', say=lambda *a: None)   # nothing unless chosen
+    with pytest.raises(S.Refused, match='Removed By'): prune.remove(R, chosen, ' ', say=lambda *a: None)
+    for bad in ([{'id': '001', 'sha256': '0' * 64}], [{'id': 'ai', 'sha256': plan[0]['sha256']}], [{'id': '009', 'sha256': plan[0]['sha256']}],
+                chosen + [{'id': '001', 'sha256': '0' * 64}]):                       # a hash not the one shown, the AI's, unknown, named twice
+        with pytest.raises(S.Refused, match='changed since they were shown'): prune.remove(R, bad, 'Kim', say=lambda *a: None)
     lk = S.Lock(R, 'reopen')                                                          # a review page open: refused, in plain words
     monkeypatch.setattr(S, 'review_process', lambda pid: True)                        # (its holder is a review process, as in the app)
-    with pytest.raises(S.Refused, match='review of this book is open'): prune.remove(R, shown, 'Kim', say=lambda *a: None)
+    with pytest.raises(S.Refused, match='review of this book is open'): prune.remove(R, chosen, 'Kim', say=lambda *a: None)
     lk.release(); monkeypatch.undo()
     os.makedirs(os.path.join(R, 'reviews', 'work'))
-    with pytest.raises(S.Refused, match='being made'): prune.remove(R, shown, 'Kim', say=lambda *a: None)
+    with pytest.raises(S.Refused, match='being made'): prune.remove(R, chosen, 'Kim', say=lambda *a: None)
     os.rmdir(os.path.join(R, 'reviews', 'work'))
-    done = prune.remove(R, shown, 'Kim', say=lambda *a: None)
-    assert [x['id'] for x in done] == ['001'] and not os.path.exists(os.path.join(V1, 'clans_remediated.pdf'))
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(300, 300)); doc.save(os.path.join(V3, 'clans_remediated.pdf'))   # changed after it was shown
+    with pytest.raises(S.Refused, match='changed since they were shown'): prune.remove(R, chosen, 'Kim', say=lambda *a: None)
+    assert all(os.path.exists(os.path.join(V, 'clans_remediated.pdf')) for V in (V1, V2, V3))   # refused: nothing removed
+    chosen = pick(prune.plan(R), '001', '003')
+    done = prune.remove(R, chosen, 'Kim', say=lambda *a: None)
+    assert [x['id'] for x in done] == ['001', '003'] and not os.path.exists(os.path.join(V1, 'clans_remediated.pdf'))
+    assert os.path.exists(os.path.join(V2, 'clans_remediated.pdf'))                  # not chosen: kept
     assert os.path.exists(os.path.join(V1, 'record.json')) and os.path.exists(os.path.join(V1, 'review.md'))
     assert os.path.exists(os.path.join(R, 'reviews', 'versions', 'ai', 'clans_remediated.pdf'))
     log = REL.removed(R)
-    assert log[0]['version'] == '001' and log[0]['sha256'] == shown[0] and log[0]['by'] == 'Kim'
-    assert prune.plan(R) == [] and not os.path.exists(S.P(R)['lock'])               # nothing left; the review lock released
+    assert [x['version'] for x in log] == ['001', '003'] and log[0]['sha256'] == chosen[0]['sha256'] and log[0]['by'] == 'Kim'
+    assert [x['id'] for x in prune.plan(R)] == ['002'] and not os.path.exists(S.P(R)['lock'])   # the review lock released
 
 def test_the_removal_note_is_drawn_from_the_record_on_every_build(tmp_path):
     """K8: the note comes from release/removed.json whenever the version's page is built, so a rebuild keeps it."""
@@ -66,26 +77,50 @@ def test_the_removal_note_is_drawn_from_the_record_on_every_build(tmp_path):
     for _ in range(2):
         H.review_html(V, None, None, None, banner='This result (session 1) was replaced by session 2.')
         h = open(os.path.join(V, 'review.html'), encoding='utf-8').read()
-        assert 'Its PDF was removed on November 1, 2026 ("Remove Older PDFs"), to free space.' in h.replace('&quot;', '"')
+        assert 'Its PDF was removed on November 1, 2026 ("Clean Up Space"), to free space.' in h.replace('&quot;', '"')
         assert 'was replaced by session 2' in h
 
-def test_the_apps_post_and_the_panel(mapp):
-    port, R = mapp['port'], mapp['R']; add_version(R, '001', 'one')
+def test_the_apps_post_the_panel_and_session_history(mapp):
+    port, R = mapp['port'], mapp['R']; add_version(R, '001', 'one'); add_version(R, '002', 'two')
     st, s = js(port, 'GET', f'/api/run/{RUN}')
-    assert s['prune']['versions'][0]['label'].startswith('Session 1') and s['prune']['total'].endswith('MB')
-    st, r = js(port, 'POST', f'/api/run/{RUN}/remove-older-pdfs', {'by': 'Kim', 'shas': ['0' * 64]})
-    assert st == 409 and 'changed since it was shown' in r['error']
-    st, r = js(port, 'POST', f'/api/run/{RUN}/remove-older-pdfs', {'by': 'Kim', 'shas': s['prune']['shas']})
+    v = s['prune']['versions']
+    assert [x['id'] for x in v] == ['001', '002'] and v[0]['label'].startswith('Session 1') and v[0]['size'].endswith('MB') and len(v[0]['sha256']) == 64
+    st, r = js(port, 'POST', f'/api/run/{RUN}/remove-older-pdfs', {'by': 'Kim', 'chosen': [{'id': '001', 'sha256': '0' * 64}]})
+    assert st == 409 and 'changed since they were shown' in r['error']
+    st, r = js(port, 'POST', f'/api/run/{RUN}/remove-older-pdfs', {'by': 'Kim', 'chosen': []})
+    assert st == 409 and 'Select at least one PDF' in r['error']
+    st, r = js(port, 'POST', f'/api/run/{RUN}/remove-older-pdfs', {'by': 'Kim', 'chosen': [{'id': '002', 'sha256': v[1]['sha256']}]})
     assert st == 200 and r['removed'] == 1 and r['bytes'] > 0
-    assert js(port, 'GET', f'/api/run/{RUN}')[1]['prune'] is None
+    assert [x['id'] for x in js(port, 'GET', f'/api/run/{RUN}')[1]['prune']['versions']] == ['001']
     pj = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
-    assert "This can\\'t be undone." in pj and "'Its record and decisions are'" in pj           # L2
-    assert '>Remove Older PDFs</button>' in pj and "Their records and decisions are kept. The AI\\'s own version is always kept." in pj
-    assert "'</button><button type=\"button\" value=\"no\">Cancel</button>" in pj and 'Removed By' in pj and 'drafts' not in pj.split('function pruneBlock')[1][:3000]
+    blk = pj.split('function pruneBlock')[1][:4000]
+    assert '>Clean Up Space</button></div>\';' in pj and 'Remove Older PDFs' not in pj and 'pp-note' not in blk.split('function removeLabel')[0]   # the button alone
+    assert ("Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in the table. "
+            "The original AI-generated version is always kept.") in pj
+    assert "This can\\'t be undone." in pj and 'type="checkbox"' in blk and 'value="yes" disabled>' in blk and 'yes.disabled = !vs.length' in blk
+    assert "'Remove ' + n + ' PDF' + (n === 1 ? '' : 's')" in pj and 'Removed By' in blk and 'drafts' not in blk
+    assert "(r.pdf_removed ? '<span class=\"pp-note\"> · PDF removed</span>' : '')" in pj
 
-def test_the_command_line_is_a_dry_run_unless_yes(tmp_path):
-    R = make_run(str(tmp_path / 'r'), record_sha=True); V = add_version(R, '001', 'one')
-    out = subprocess.run([sys.executable, 'review_workorder.py', R, '--remove-older-pdfs'], cwd=HERE, capture_output=True, text=True)
-    assert 'Session 1:' in out.stdout and 'a dry run' in out.stdout and os.path.exists(os.path.join(V, 'clans_remediated.pdf'))
-    out = subprocess.run([sys.executable, 'review_workorder.py', R, '--remove-older-pdfs', '--yes', '--by', 'Kim'], cwd=HERE, capture_output=True, text=True)
-    assert 'removed 1 older PDF(s)' in out.stdout and not os.path.exists(os.path.join(V, 'clans_remediated.pdf'))
+def test_session_history_marks_a_removed_pdf(tmp_path):
+    from webapp import runs
+    R = make_run(str(tmp_path / 'r'), record_sha=True); add_version(R, '001', 'one')
+    core.save(os.path.join(R, 'reviews', 'sessions', '001.json') if os.path.isdir(os.path.join(R, 'reviews', 'sessions')) else
+              (os.makedirs(os.path.join(R, 'reviews', 'sessions')) or os.path.join(R, 'reviews', 'sessions', '001.json')),
+              {'id': '001', 'status': 'applied', 'reviewer': 'Kim', 'started': '2026-10-30T10:00:00'})
+    prune.remove(R, pick(prune.plan(R), '001'), 'Kim', say=lambda *a: None)
+    row = next(x for x in runs.state({'jobs': str(tmp_path / 'jobs')}, 'r', R)['sessions'] if x['id'] == '001')
+    assert row['pdf_removed'] is True
+
+def test_the_command_line_lists_and_removes_only_the_named_sessions(tmp_path):
+    R = make_run(str(tmp_path / 'r'), record_sha=True); V1 = add_version(R, '001', 'one'); V2 = add_version(R, '002', 'two')
+    cmd = [sys.executable, 'review_workorder.py', R, '--remove-older-pdfs']
+    out = subprocess.run(cmd, cwd=HERE, capture_output=True, text=True)
+    assert 'Session 1:' in out.stdout and 'Session 2:' in out.stdout and '--remove-older-pdfs 1 --yes --by NAME' in out.stdout
+    out = subprocess.run(cmd + ['--yes', '--by', 'Kim'], cwd=HERE, capture_output=True, text=True)
+    assert out.returncode != 0 and 'nothing is removed unless chosen' in out.stderr and os.path.exists(os.path.join(V1, 'clans_remediated.pdf'))
+    out = subprocess.run(cmd + ['2'], cwd=HERE, capture_output=True, text=True)
+    assert 'a dry run' in out.stdout and os.path.exists(os.path.join(V2, 'clans_remediated.pdf'))
+    out = subprocess.run(cmd + ['7'], cwd=HERE, capture_output=True, text=True)
+    assert out.returncode != 0 and 'not offered' in out.stderr
+    out = subprocess.run(cmd + ['002', '--yes', '--by', 'Kim'], cwd=HERE, capture_output=True, text=True)
+    assert 'removed 1 PDF(s)' in out.stdout and not os.path.exists(os.path.join(V2, 'clans_remediated.pdf')) and os.path.exists(os.path.join(V1, 'clans_remediated.pdf'))

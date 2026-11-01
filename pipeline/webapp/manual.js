@@ -173,26 +173,9 @@ if (rv) rv.addEventListener('click', async () => {
 // a change not saved yet, or whose save failed: the browser's leave-page prompt (the browser's copy keeps it anyway)
 addEventListener('beforeunload', e => { if (!leaving && secs.some(s => s.dirty || s.inflight || s.unsaved)) { e.preventDefault(); e.returnValue = ''; } });
 
-// ---------------------------------------------------------------- the downloads and "Which Version Is This File?" (stage 3)
+// ---------------------------------------------------------------- "Available Downloads" (stage 3)
 const dlv = $('mc-dlv');                                          // the line under the picker says how the chosen version's files are marked
 if (dlv) dlv.addEventListener('change', () => { $('mc-dl-marked').textContent = dlv.selectedOptions[0].dataset.marked; });
-
-// a PDF the person picks is hashed here (crypto.subtle) and compared with this book's versions (D.known: data only, never
-// shown); nothing is uploaded
-function matchVersion(hex, known) {
-  const k = (known || []).find(x => x.sha === hex);
-  return k ? k.words : 'This file matches no version of this book.';
-}
-const fc = $('fc-file');
-if (fc) fc.addEventListener('change', async () => {
-  const out = $('fc-out'), f = fc.files && fc.files[0]; if (!f) { out.textContent = ''; return; }
-  if (!(window.crypto && crypto.subtle)) { out.textContent = 'This browser can\'t check files here.'; return; }
-  out.textContent = 'Checking the file…';
-  try {
-    const d = await crypto.subtle.digest('SHA-256', await f.arrayBuffer());
-    out.textContent = matchVersion([...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join(''), D.known);
-  } catch (e) { out.textContent = 'The file could not be read.'; }
-});
 
 if (new URLSearchParams(location.search).get('recorded')) {      // after Record: the message, then the plain address
   history.replaceState(null, '', location.pathname);

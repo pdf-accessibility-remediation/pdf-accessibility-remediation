@@ -257,8 +257,6 @@ def test_shipped_copies_in_the_downloads_and_the_file_check(tmp_path):
     sv = next(x for x in DL.versions(R, rec) if x['id'] == 'shipment-1')
     assert sv['label'].endswith('(withdrawn)') and DL.marked_line(sv['state']) == 'The downloaded files are marked "withdrawn".'
     assert DL.prepare(R, 'r', 'shipment-1', 'pdf')['name'] == 'b_remediated_shipment-1_withdrawn.pdf'   # N3
-    k = {x['sha']: x['words'] for x in DL.known(R, rec)}
-    assert k[s['pdf']['sha256']].startswith('This is the shipped copy (shipment 1, ') and k[s['pdf']['sha256']].endswith('since withdrawn.')
 
 def test_the_statement_is_linked_and_review_md_names_the_shipment(tmp_path):
     R = real_ready(tmp_path)
@@ -270,7 +268,7 @@ def test_the_statement_is_linked_and_review_md_names_the_shipment(tmp_path):
 def test_the_strip_offers_ship_and_the_post_ships(mapp, monkeypatch):
     port, R = mapp['port'], mapp['R']
     st, s = js(port, 'GET', f'/api/run/{RUN}')
-    assert s['manual']['ship']['ok'] is False and 'not ready to ship' in s['manual']['ship']['why']   # the fixture run is not Ready
+    assert s['manual']['ship']['ok'] is False and s['manual']['ship']['why'] is None   # not Ready: the card says why, the strip does not repeat it
     st, r = js(port, 'POST', f'/api/run/{RUN}/ship', {'by': 'Kim'})
     assert st == 409 and 'not ready to ship' in r['error']
     pj = open(os.path.join(os.path.dirname(MP.__file__), 'panel.js'), encoding='utf-8').read()

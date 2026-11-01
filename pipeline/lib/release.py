@@ -259,9 +259,9 @@ def mirror(rel, cur):
         out[s + '_count'] = len(xs)
     return out, {'shipped': rel.get('shipped') or []}
 
-# ------------------------------------------------------------------ removed PDFs ("Remove Older PDFs", review/prune.py)
+# ------------------------------------------------------------------ removed PDFs ("Clean Up Space", review/prune.py)
 def removed(R):
-    """release/removed.json: the earlier versions whose PDF "Remove Older PDFs" took, [{version, sha256, bytes, by, removed}]."""
+    """release/removed.json: the earlier versions whose PDF "Clean Up Space" took, [{version, sha256, bytes, by, removed}]."""
     return _json(os.path.join(run_dir_of(R), 'release', 'removed.json'), []) or []
 
 # ------------------------------------------------------------------ download names (stage 3)
