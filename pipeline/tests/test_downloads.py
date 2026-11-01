@@ -54,14 +54,15 @@ def test_the_pdf_and_the_record_zip(mapp):
     assert st == 200 and h['Content-Type'] == 'application/zip' and 'Content-Length' not in h
     z = zipfile.ZipFile(io.BytesIO(body)); assert z.testzip() is None
     folder = 'clans_remediated_record_no-review_not-ready'
-    assert sorted(z.namelist()) == sorted(f'{folder}/{n}' for n in ('clans_remediated.pdf', 'review.html', 'review.md', 'han_review.csv',
-                                                                       'evaluation-results.json', 'READ-ME.txt'))
+    assert sorted(z.namelist()) == sorted(f'{folder}/{n}' for n in ('clans_remediated.pdf', 'review.html', 'READ-ME.txt'))   # no review.md,
+    # han_review.csv (present in this run), evaluation-results.json or statement .md: the ZIP is for staff (Patrick, 2026-11-01)
     pdf = z.getinfo(f'{folder}/clans_remediated.pdf')
     assert pdf.compress_type == zipfile.ZIP_STORED and z.read(pdf) == open(os.path.join(R, 'clans_remediated.pdf'), 'rb').read()
-    ev = json.loads(z.read(f'{folder}/evaluation-results.json'))
-    assert ev['pdf_sha256'] == sha and len(ev['pac']) == 1 and ev['screen_reader'] == []
     rd = z.read(f'{folder}/READ-ME.txt').decode()
-    assert f'sha256 of clans_remediated.pdf: {sha}' in rd and 'Status: Not Ready · 1 issue noted' in rd
+    assert f'The fingerprint of clans_remediated.pdf, which identifies this exact file (sha256): {sha}' in rd and 'Status: Not Ready · 1 issue noted' in rd
+    assert 'Accessibility evaluation results recorded on this file: 1 (in review.html)' in rd and 'evaluation-results.json' not in rd
+    assert ('This folder holds:\n- clans_remediated.pdf: the remediated PDF of this version.\n- review.html: the report on this version' in rd
+            and '- READ-ME.txt: this file.' in rd and 'review.md' not in rd)
     assert 'not legal sign-off' in rd and 'not a legal certification' in rd and 'The Clan Records' in rd
     for n in z.namelist(): assert not any(x in n for x in ('record.json', '_intake', '.hidden', 'drafts', 'reviews/', 'release/'))
 
@@ -109,15 +110,17 @@ def test_an_earlier_version_is_listed_named_and_described_as_earlier(tmp_path):
 
 def test_a_promotion_during_a_download_never_mixes_two_versions(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
-    old_pdf = open(os.path.join(R, 'clans_remediated.pdf'), 'rb').read(); old_md = open(os.path.join(R, 'review.md'), 'rb').read()
+    old_pdf = open(os.path.join(R, 'clans_remediated.pdf'), 'rb').read()
+    with open(os.path.join(R, 'review.html'), 'a') as f: f.write('<p>the old page</p>')
     d = DL.prepare(R, 'r', 'current', 'record')                                       # every member opened under the lock
     V = os.path.join(R, 'reviews', 'versions', 'ai'); os.makedirs(V)                  # a promotion: the files moved by rename,
     for n in ('clans_remediated.pdf', 'review.md', 'review.html'): shutil.move(os.path.join(R, n), os.path.join(V, n))
     doc = pikepdf.new(); doc.add_blank_page(page_size=(400, 400)); doc.save(os.path.join(R, 'clans_remediated.pdf'))   # and new ones put in place
-    open(os.path.join(R, 'review.md'), 'w').write('# the new version\n')
+    open(os.path.join(R, 'review.html'), 'w').write('<p>the new page</p>')
     buf = io.BytesIO(); DL.stream_zip(buf, d)
     z = zipfile.ZipFile(buf); f = d['folder']
-    assert z.read(f'{f}/clans_remediated.pdf') == old_pdf and z.read(f'{f}/review.md') == old_md
+    page = z.read(f'{f}/review.html').decode()
+    assert z.read(f'{f}/clans_remediated.pdf') == old_pdf and 'the old page' in page and 'the new page' not in page
     import hashlib
     assert hashlib.sha256(old_pdf).hexdigest() in z.read(f'{f}/READ-ME.txt').decode()
 

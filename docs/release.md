@@ -289,16 +289,24 @@ then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
     `< > : " / \ | ? *` and `;` replaced by `_`; no leading or trailing dot or space; at most 150 UTF-8 bytes.
   - The session's number is used, never its name.
   - Sent with `Content-Disposition` (RFC 6266/5987: an ASCII fallback and the UTF-8 name).
-- **The record ZIP** holds one folder named as the ZIP. Every file keeps its own name:
-  - the PDF (stored, not compressed again);
-  - review.html, review.md, han_review.csv when there is one;
-  - `evaluation-results.json`: the results recorded on that file's hash;
-  - `READ-ME.txt`: the version, its status (for an earlier version: "earlier version", naming the current one), the
-    PDF's sha256, "automated checks are evidence, not legal sign-off" and "the evaluation is a record of what a person
+- **The record ZIP** is for library staff (Patrick, 2026-11-01). It holds one folder named as the ZIP, with only:
+  - the PDF (stored, not compressed again, under its own name);
+  - review.html: the report, with the evaluation's results in it;
+  - `accessibility-statement.html`, once that file has shipped;
+  - `READ-ME.txt`, in plain words: the version, its status (for an earlier version: "earlier version", naming the
+    current one), each shipment of that file ("Shipment 1, shipped on November 1, 2026 by Patrick", "Published at: …"
+    when given, "Withdrawn on … by …: …" for a withdrawn one), the number of evaluation results recorded on it, what
+    each file is, the PDF's fingerprint in one sentence ("The fingerprint of …, which identifies this exact file
+    (sha256): …"), "automated checks are evidence, not legal sign-off" and "the evaluation is a record of what a person
     found, not a legal certification".
 
-  Never record.json (it holds the AI's raw reply), digests, crops, `reviews/`, `_intake/`, `release/drafts.json` or
-  dot-files. The ZIP is built as it is sent and never kept on disk.
+  Never review.md, han_review.csv, `evaluation-results.json` or the statement's `.md`: they stay in the run folder and
+  in `release/shipped/NNN/`, which keep their full set. Never record.json (it holds the AI's raw reply), digests, crops,
+  `reviews/`, `_intake/`, `release/drafts.json` or dot-files. The ZIP's review.html keeps only the links that work inside
+  the ZIP: its header's link to review.md is dropped, its link to this file's own statement points at the ZIP's copy,
+  and any other link that would lead outside the ZIP (a previous result, another shipment's statement) is left as plain
+  text; links within the page and to the web stay. review.html on disk is unchanged. The ZIP is built as it is sent and
+  never kept on disk.
 - **One moment per download:** every file is opened under the record lock (a page waits at most 5 s), then the lock is
   released and the bytes are sent. A new version put in place meanwhile never mixes into a download.
 - **Refused:** while a new version is being put in place and did not finish (`reviews/promoting.json`), or when the PDF
@@ -306,7 +314,7 @@ then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
   stop a download.
 
 "Which Version Is This File?" (a PDF hashed in the browser and named as a version) was removed from the evaluation page
-(Patrick, 2026-11-01). A file's sha256 can still be compared by hand with the one in its record ZIP's READ-ME.txt.
+(Patrick, 2026-11-01). A file's sha256 can still be compared by hand with the fingerprint in its record ZIP's READ-ME.txt.
 
 ## Clean Up Space
 
@@ -364,8 +372,10 @@ nothing.
     - review.md and review.html as they read once shipped (the copy's page says "Shipped copy (Shipment 1, …)");
     - han_review.csv;
     - `evaluation-results.json`: the results on that file, with their issues;
-    - the accessibility statement (`disclosure.html`, `disclosure.md`);
-    - `READ-ME.txt`;
+    - the accessibility statement (`accessibility-statement.html`, `accessibility-statement.md`);
+    - `READ-ME.txt`, in plain words: the shipment's lines ("Shipment 1, shipped on November 1, 2026 by Patrick",
+      "Published at: …" when given), its status, what each file is and the PDF's fingerprint. It is written once: a
+      later withdrawal is said in a downloaded ZIP's read-me, not in this one;
     - record.json, for the local archive only, never served and never in a ZIP.
   - `release/shipped.json` gains `{n, shipped (local time, to the second), by, where, note, pdf: {sha256, file, session},
     folder, issues, checks}`.
@@ -396,8 +406,10 @@ From the terminal only: `manual_checks.py <run> --withdraw-shipment N --by NAME 
 
 ## The accessibility statement
 
-Written once when a version ships, into its folder, as `disclosure.html` and `disclosure.md`, by `lib/disclosure.py`;
-never rewritten afterwards. It is marked "Draft wording: to be agreed with the sponsors".
+Written once when a version ships, into its folder, as `accessibility-statement.html` and `accessibility-statement.md`,
+by `lib/disclosure.py`; never rewritten afterwards. A folder shipped before 2026-11-01 keeps its `disclosure.html` and
+`disclosure.md` as shipped (never renamed); the app serves, links and zips either name, the ZIP always as
+`accessibility-statement.html`. It is marked "Draft wording: to be agreed with the sponsors".
 
 - **This file:** the file, its version, who shipped it, when, where, and its sha256.
 - **The text:** "No AI wrote or changed the book's printed text", then, only when they apply:
