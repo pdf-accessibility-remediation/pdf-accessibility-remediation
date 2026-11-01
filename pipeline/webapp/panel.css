@@ -80,7 +80,7 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 
 /* the evaluation strip, after "Ready to Ship?" (#38) */
 #pdfrem-checks { max-width: 1200px; margin: 0 auto; box-sizing: border-box; }
-.pp-checks h2 { font-size: 15px; margin: 0 0 6px; }
+/* the strip's heading: the panel's own section-heading size (.pp h2, as "Run Actions"; .pp h3 when it falls back into the panel) */
 .pp-warn-t { border-left: 4px solid var(--reject); padding-left: 8px; }
 /* the Manual Checks page */
 .pp a.pp-btn { box-sizing: border-box; }   /* a full-width button on a narrow screen stays inside its box */
@@ -97,6 +97,7 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .mc-item { border: 1px solid var(--line); border-radius: 6px; margin: 10px 0; padding: 6px 12px 8px; }
 .mc-item legend { font-weight: 600; padding: 0 4px; }
 .mc-radios { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 4px 0; } .mc-radios label { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+.mc-lines { margin: 0 0 12px; } .mc-lines p { margin: 0; }   /* the lines under the status: consecutive, no gap between them */
 .mc-help, .mc-opt { color: var(--muted); } .mc-help { margin: 2px 0; font-size: 14px; } .mc-opt { font-weight: 400; }
 .mc-hint { margin: 2px 0; font-size: 14px; }
 .mc-err { color: var(--reject); font-weight: 600; margin: 2px 0; }

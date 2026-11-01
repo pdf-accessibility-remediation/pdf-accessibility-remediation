@@ -10,6 +10,8 @@
    background is announced, and focus stays where it is. */
 (() => {
 'use strict';
+// names are never prefilled (Patrick, 2026-11-01): a name remembered by an earlier version of the app is cleared once
+try { localStorage.removeItem('checks:by'); } catch (e) {}
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sn = id => /^\d+$/.test(String(id)) ? 'session ' + Number(id) : id === 'ai' ? 'the result applied without review' : String(id);
 const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
@@ -291,20 +293,20 @@ function actions(s) {
 
 // "Clean Up Space" (stage 3, review/prune.py): the button alone, shown only when a previous version's PDF can be removed;
 // the explanation is in its dialog (Patrick, 2026-11-01)
-const PRUNE_LINE = 'Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in the table. The original AI-generated version is always kept.';
+const PRUNE_LINE = 'Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in "Session History". The original AI-generated version is always kept.';
 function pruneBlock(s) {
   if (!s.prune) return '';
   return '<div class="pp-row"><button type="button" id="pp-prune" data-act="prune">Clean Up Space</button></div>';
 }
 function removeLabel(n) { return n ? 'Remove ' + n + ' PDF' + (n === 1 ? '' : 's') : 'Remove PDFs'; }
-function pruneDlg(p, opener) {                                    // a checkbox per version and a name; Escape or Cancel closes it
+function pruneDlg(p, opener) {                                    // a checkbox per version and a name (never prefilled); Escape or Cancel closes it
   return new Promise(res => {
-    const d = $('pp-dlg'), by = (localStorage.getItem('checks:by') || '');
+    const d = $('pp-dlg');
     d.innerHTML = '<h2 id="pp-dlg-h">Clean Up Space</h2><p>' + esc(PRUNE_LINE) + '</p>' +
       '<fieldset class="pp-prune"><legend>Previous Versions</legend>' +
       p.versions.map((v, i) => '<label><input type="checkbox" id="pp-prune-' + i + '" value="' + i + '"> ' + esc(v.label) + ' · ' + esc(v.size) + '</label>').join('') +
       '</fieldset><p id="pp-prune-sel" class="pp-note" aria-live="polite">None selected.</p>' +
-      '<p><label for="pp-prune-by">Removed By</label> <input type="text" id="pp-prune-by" autocomplete="name" value="' + esc(by) + '"></p>' +
+      '<p><label for="pp-prune-by">Removed By</label> <input type="text" id="pp-prune-by" autocomplete="name"></p>' +
       '<p>This can\'t be undone.</p><p id="pp-prune-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes" disabled>' + removeLabel(0) +
       '</button><button type="button" value="no">Cancel</button></div>';
     const id = opener.id, done = v => { d.close(); ($(id) || opener).focus(); res(v); };
@@ -320,7 +322,6 @@ function pruneDlg(p, opener) {                                    // a checkbox 
       const vs = picked(); if (!vs.length) return;
       const name = $('pp-prune-by').value.trim();
       if (!name) { $('pp-prune-err').textContent = 'Enter your name in "Removed By".'; $('pp-prune-by').focus(); return; }
-      try { localStorage.setItem('checks:by', name); } catch (e) {}
       done({ by: name, chosen: vs.map(v => ({ id: v.id, sha256: v.sha256 })) });
     });
     d.oncancel = ev => { ev.preventDefault(); done(null); };
@@ -365,15 +366,15 @@ function stripBlock(s, inPanel) {
 function shipBlock(sp) {
   if (!sp) return '';
   if (sp.ok) return '<div class="pp-row"><button type="button" id="pp-ship" data-ship="1">Mark as Shipped</button>' +
-    '<span class="pp-note">Records that this version was published. It does not publish anything.</span></div>';
+    '<span class="pp-note">Records that this version was reviewed and shipped. It does not publish anything.</span></div>';
   return sp.why ? '<p class="pp-note">' + esc(sp.why) + '</p>' : '';
 }
-function shipDlg(sp, opener) {                                    // a name (remembered), where and a note; Escape or Cancel closes it
+function shipDlg(sp, opener) {                                    // a name (never prefilled), where and a note; Escape or Cancel closes it
   return new Promise(res => {
-    const d = $('pp-dlg'), by = (localStorage.getItem('checks:by') || ''), n = sp.issues || 0;
-    d.innerHTML = '<h2 id="pp-dlg-h">Mark as Shipped</h2><p>This records that ' + esc(sp.version) + ' was published. It does not publish anything.' +
+    const d = $('pp-dlg'), n = sp.issues || 0;
+    d.innerHTML = '<h2 id="pp-dlg-h">Mark as Shipped</h2><p>This records that ' + esc(sp.version) + ' was reviewed and shipped. It does not publish anything.' +
       (n ? ' ' + n + ' issue' + (n === 1 ? ' was' : 's were') + ' noted in the evaluation; ' + (n === 1 ? 'it is' : 'they are') + ' kept with the shipped copy.' : '') + '</p>' +
-      '<p><label for="pp-ship-by">Shipped By</label><br><input type="text" id="pp-ship-by" autocomplete="name" value="' + esc(by) + '"></p>' +
+      '<p><label for="pp-ship-by">Shipped By</label><br><input type="text" id="pp-ship-by" autocomplete="name"></p>' +
       '<p><label for="pp-ship-where">Where It Was Published <span class="pp-note">(optional)</span></label><br><input type="text" id="pp-ship-where" autocomplete="off"></p>' +
       '<p><label for="pp-ship-note">Note <span class="pp-note">(optional)</span></label><br><textarea id="pp-ship-note" rows="2"></textarea></p>' +
       '<p id="pp-ship-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Mark as Shipped</button>' +
@@ -383,7 +384,6 @@ function shipDlg(sp, opener) {                                    // a name (rem
     d.querySelector('button[value=yes]').addEventListener('click', () => {
       const name = $('pp-ship-by').value.trim();
       if (!name) { $('pp-ship-err').textContent = 'Enter your name in "Shipped By".'; $('pp-ship-by').focus(); return; }
-      try { localStorage.setItem('checks:by', name); } catch (e) {}
       done({ by: name, where: $('pp-ship-where').value.trim(), note: $('pp-ship-note').value.trim() });
     });
     d.oncancel = ev => { ev.preventDefault(); done(null); };

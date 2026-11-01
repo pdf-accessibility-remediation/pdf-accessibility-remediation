@@ -36,6 +36,40 @@ def test_the_plan_never_takes_the_ai_version_an_evaluated_or_a_shipped_one(tmp_p
 
 def pick(plan, *ids): return [{'id': x['id'], 'sha256': x['sha256']} for x in plan if x['id'] in ids]
 
+def test_an_evaluated_or_a_shipped_version_posted_is_refused(mapp):
+    """Review 29 R5: a version never offered (an evaluation result on its PDF; shipped, even withdrawn), posted with its own
+    hash, is refused as a changed list, through prune.remove() and the app's POST, and nothing is removed."""
+    port, R = mapp['port'], mapp['R']
+    for vid in ('001', '002', '003'): add_version(R, vid, f'version {vid}')
+    sha = lambda v: REL.sha_file(os.path.join(R, 'reviews', 'versions', v, 'clans_remediated.pdf'))
+    os.makedirs(os.path.join(R, 'release'), exist_ok=True)
+    core.save(os.path.join(R, 'release', 'checks.json'), {'schema': REL.SCHEMA, 'pac': [chk(sha('001'))], 'screen_reader': []})
+    core.save(os.path.join(R, 'release', 'shipped.json'), [{'n': 1, 'shipped': 'x', 'pdf': {'sha256': sha('002')}},
+                                                         {'n': 2, 'shipped': 'x', 'pdf': {'sha256': sha('003')}, 'withdrawn': {'by': 'L'}}])
+    assert prune.plan(R) == []
+    for vid in ('001', '002', '003'):
+        bad = [{'id': vid, 'sha256': sha(vid)}]
+        with pytest.raises(S.Refused) as e: prune.remove(R, bad, 'Kim', say=lambda *a: None)
+        assert str(e.value) == prune.LIST_CHANGED, vid
+        st, r = js(port, 'POST', f'/api/run/{RUN}/remove-older-pdfs', {'by': 'Kim', 'chosen': bad})
+        assert st == 409 and r['error'] == prune.LIST_CHANGED, vid
+    assert all(os.path.exists(os.path.join(R, 'reviews', 'versions', v, 'clans_remediated.pdf')) for v in ('001', '002', '003'))
+    assert REL.removed(R) == []
+
+def test_the_lock_is_named_in_plain_words(tmp_path, monkeypatch):
+    """Review 29 R4: the review lock taken by Clean Up Space is named "clean up space", and the pages say it in plain words."""
+    from webapp import jobs as Jb
+    R = make_run(str(tmp_path / 'r'), record_sha=True); add_version(R, '001', 'one')
+    seen = {}
+    real = S.Lock
+    def spy(R_, what): seen['what'] = what; return real(R_, what)
+    monkeypatch.setattr(S, 'Lock', spy)
+    prune.remove(R, pick(prune.plan(R), '001'), 'Kim', say=lambda *a: None)
+    assert seen['what'] == 'clean up space'
+    assert Jb.lock_words('clean up space', '2026-11-01T14:02:11') == ("PDFs of this run's previous versions are being removed (since 2:02 PM). "
+                                                                      "Try again when it's done.")
+    assert 'older pdfs' not in open(os.path.join(HERE, 'review', 'prune.py'), encoding='utf-8').read().lower()
+
 def test_remove_takes_only_the_chosen_versions_and_keeps_the_records(tmp_path, monkeypatch):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
     V1 = add_version(R, '001', 'one'); V2 = add_version(R, '002', 'two'); V3 = add_version(R, '003', 'three'); add_version(R, 'ai', 'the AI')
@@ -95,7 +129,7 @@ def test_the_apps_post_the_panel_and_session_history(mapp):
     pj = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     blk = pj.split('function pruneBlock')[1][:4000]
     assert '>Clean Up Space</button></div>\';' in pj and 'Remove Older PDFs' not in pj and 'pp-note' not in blk.split('function removeLabel')[0]   # the button alone
-    assert ("Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in the table. "
+    assert ("Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in \"Session History\". "
             "The original AI-generated version is always kept.") in pj
     assert "This can\\'t be undone." in pj and 'type="checkbox"' in blk and 'value="yes" disabled>' in blk and 'yes.disabled = !vs.length' in blk
     assert "'Remove ' + n + ' PDF' + (n === 1 ? '' : 's')" in pj and 'Removed By' in blk and 'drafts' not in blk

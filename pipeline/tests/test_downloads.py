@@ -97,7 +97,7 @@ def test_an_earlier_version_is_listed_named_and_described_as_earlier(tmp_path):
     rec = core.load(os.path.join(R, 'record.json'))
     vs = DL.versions(R, rec)
     assert [x['id'] for x in vs] == ['current', '001'] and vs[1]['label'] == 'Session 1 (earlier version)'
-    assert DL.marked_line(vs[1]['state']) == 'The downloaded files are marked "earlier version".'
+    assert DL.marked_line(vs[1]['state']) == 'The downloaded files are marked "earlier version."'   # the period inside the quotes
     d = DL.prepare(R, 'r', '001', 'record')
     assert d['name'] == 'clans_remediated_record_session-1_earlier-version.zip'
     buf = io.BytesIO(); DL.stream_zip(buf, d)
@@ -130,8 +130,9 @@ def test_the_evaluation_page_offers_the_downloads_and_no_file_check(tmp_path):
     assert ('<section id="downloads" class="mc-sec" aria-labelledby="mc-dl-h"><form class="pp-dl" method="get" action="/run/r/download">'
             '<h2 id="mc-dl-h"><label for="mc-dlv">Available Downloads</label></h2>'
             '<select id="mc-dlv" name="v" aria-describedby="mc-dl-marked">') in page
-    assert '<option value="001" data-marked="The downloaded files are marked &quot;earlier version&quot;.">Session 1 (earlier version)</option>' in page
-    assert ('<p id="mc-dl-marked" class="pp-note">The downloaded files are marked &quot;not ready&quot;.</p><div class="pp-row">'
+    assert ('<option value="001" data-marked="The downloaded files are marked &quot;earlier version.&quot; Results on this page are recorded for '
+            'the current version only.">Session 1 (earlier version)</option>') in page   # R1: the evaluation page only, the line tied to the select
+    assert ('<p id="mc-dl-marked" class="pp-note">The downloaded files are marked &quot;not ready.&quot;</p><div class="pp-row">'
             '<button type="submit" name="what" value="pdf">Download the Remediated PDF</button>'
             '<button type="submit" name="what" value="record">Download the Record (ZIP)</button></div></form></section>') in page
     text = re.sub(r'\s+', ' ', visible(page))
@@ -140,7 +141,9 @@ def test_the_evaluation_page_offers_the_downloads_and_no_file_check(tmp_path):
     assert 'known' not in data
     assert page.index('Back to the Run Page') < page.index('Overall Status:') < page.index('These results are recorded for')   # right after the button
     s = MP.strip(R, core.load(os.path.join(R, 'record.json')))
-    assert [v['id'] for v in s['downloads']['versions']] == ['current', '001'] and s['downloads']['versions'][0]['marked'] == 'The downloaded files are marked "not ready".'
+    assert [v['id'] for v in s['downloads']['versions']] == ['current', '001'] and s['downloads']['versions'][0]['marked'] == 'The downloaded files are marked "not ready."'
+    assert s['downloads']['versions'][1]['marked'] == 'The downloaded files are marked "earlier version."'   # the strip records nothing: no R1 line
+    assert 'recorded for the current version only' not in s['downloads']['versions'][0]['marked']
     assert 'sections' not in s                                                                  # no line per part on the strip
     js = open(os.path.join(os.path.dirname(MP.__file__), 'panel.js'), encoding='utf-8').read()
     assert "'<label for=\"pp-dlv\">Available Downloads</label></' + hx + '>'" in js and 'aria-describedby="pp-dl-marked"' in js

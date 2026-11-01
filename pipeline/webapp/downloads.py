@@ -86,10 +86,13 @@ def _shipped_dir(R, s):
     base = os.path.realpath(os.path.join(R, 'release', 'shipped'))
     d = os.path.realpath(os.path.join(R, 'release', s.get('folder') or f'shipped/{int(s.get("n") or 0):03d}'))
     return d if d.startswith(base + os.sep) and os.path.isdir(d) else None
+# on the evaluation page, beside a version that is not the current one (review 29 R1): what is recorded there is the current one's
+EARLIER_HERE = 'Results on this page are recorded for the current version only.'
+
 def marked_line(state):
     """The line beside the picker: what the downloaded files' names say (no file name on the page)."""
     w = MARKED.get(state)
-    return f'The downloaded files are marked "{w}".' if w else 'The downloaded files have the published names.'
+    return f'The downloaded files are marked "{w}."' if w else 'The downloaded files have the published names.'
 
 def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
     """The download of version `v` ('current' or an id from versions()), `what` 'pdf' or 'record', opened in one moment

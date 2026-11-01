@@ -36,8 +36,11 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
   name without ".pdf"). Right after "Back to the Run Page" comes the **Overall Status**, with the unsatisfied
   requirements when it is Not Ready ("Overall Status: Not Ready · Unsatisfied Requirements: Work Order Approval, OCR Text
   Approval"), then the version the results are for ("the version from Session 6, applied on October 30, 2026 at
-  2:02 PM").
-- **Each part** is a section headed "PAC 2026" or "Screen-Reader Test". It holds a form: **Checked By**, its fields, and
+  2:02 PM") and two help lines, as consecutive lines with no gap: when to complete the evaluation, and 'Every item needs
+  a result, and a "Fail" needs a note. A "Fail" does not hold the book back; it is kept in the report with its note for
+  future reference and further review.'
+- **Each part** is a section headed "PAC 2026" or "Screen-Reader Test". It holds a form: **Checked By** (empty at first:
+  no name is ever filled in for you, here or in the run page's dialogs; only your own unfinished answers come back), its fields, and
   one group per item with **Pass** / **Fail** / **Not Applicable** (PAC's WCAG check: Pass or Fail) and **Notes**. A note
   becomes required when the choice asks for one (a Fail; Not Applicable on something the pipeline found, with a hint such
   as "This book has 12 tables"; a Pass where the last results recorded for this version failed the item). **Pages Checked**
@@ -46,7 +49,7 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
   time, the browser keeping a copy; "All changes saved" / "Saving…" beside the Record button, not announced; a failed
   save is announced (not when the page is leaving after a Record). A draft older than the one saved is never written over
   it (two tabs). A draft started on an earlier version is not used as answers: **Start from These Notes** copies its
-  names, versions, pages and notes, never its results, as it does for earlier results.
+  versions, pages and notes, never its results or "Checked By", as it does for earlier results.
 - **Record the PAC 2026 Results / Record the Screen-Reader Test Results** sends the answers to the same code
   `manual_checks.py` uses. Problems come back from that code, each shown under its field and in a summary that takes
   focus; nothing is recorded while one remains. Recording clears the section's draft (an auto-save handled after it is
@@ -268,7 +271,9 @@ then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
 
 - **The list** holds the current version and each earlier result whose PDF still exists. It decides which version the
   two buttons give. It never changes what the evaluation records: the evaluation is always for the current version. The
-  line under it says how the files are marked, never their names.
+  line under it says how the files are marked ('The downloaded files are marked "not ready."'), never their names. On
+  the evaluation page, a version that is not the current one adds "Results on this page are recorded for the current
+  version only." to that line.
 - **Names:** the PDF's bytes are never changed, only the name it is saved under.
 
   | That version | PDF | ZIP |
@@ -308,8 +313,8 @@ then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
 Every version is kept as a real PDF; there is no rebuilding from work orders. Repeated reviews keep one full PDF per
 version (13 MB for expedition, 96 MB for dwellings), so the run page offers a **Clean Up Space** button under Session
 History when there is something to remove, with no line under it. Its dialog explains: "Deletes the PDF files of the
-previous versions you select to free up space. Their records and decisions stay in the table. The original AI-generated
-version is always kept."
+previous versions you select to free up space. Their records and decisions stay in "Session History". The original
+AI-generated version is always kept."
 
 - **Never removed:**
   - the current version;
@@ -320,7 +325,7 @@ version is always kept."
   `release/removed.json` records each removal (version, sha256, size, who, when), and the version's page says so
   whenever it is built.
 - **The dialog** has a checkbox per removable version, with its session, date and size (any number can be selected;
-  nothing is selected at first), the selection's count and size, "Removed By", and "This can't be undone." The remove
+  nothing is selected at first), the selection's count and size, "Removed By" (empty at first), and "This can't be undone." The remove
   button names the count ("Remove 2 PDFs") and is disabled while none is selected. Only the selected versions go, and
   only if each is still offered with the PDF it showed (hashed again under the locks): if one changed meanwhile, nothing
   is removed. It is refused while a review is open or a new version is being made. The deletion is permanent. Escape
@@ -343,10 +348,14 @@ nothing.
   - **this file has not already shipped**, in a shipment that is not withdrawn (03 §3.3): the same file never ships
     twice, and after a withdrawal it may ship again.
 
-  Otherwise the strip says why, in one line: "This version was shipped on November 2, 2026 (shipment 1)", or "This
-  version is not ready to ship: … still unsatisfied". After a shipment, a newer version that becomes Ready is offered
-  again as the next shipment.
-- **The dialog:** **Shipped By** (required), **Where It Was Published (optional)**, **Note (optional)**, and the number of
+  Beside the button: "Records that this version was reviewed and shipped. It does not publish anything." Otherwise the
+  strip says why once: "This version was shipped on November 2, 2026 (shipment 1).", or, while a refusal stands, the
+  strip's one refusal line, worded for both recording and shipping ("…so no results can be recorded for it and it can't
+  be marked as shipped."). A version that is not Ready gets no line: the card above says what is unsatisfied. A POST to
+  Ship still gets its own refusal. After a shipment, a newer version that becomes Ready is offered again as the next
+  shipment.
+- **The dialog:** "This records that the version from Session 2 was reviewed and shipped. It does not publish
+  anything.", **Shipped By** (required, empty at first), **Where It Was Published (optional)**, **Note (optional)**, and the number of
   issues noted that ship with the copy. Or from the terminal: `manual_checks.py <run> --ship --by NAME [--where …]
   [--note …]`.
 - **What it writes,** under the record lock, whole or not at all: `release/shipped/NNN/`.
