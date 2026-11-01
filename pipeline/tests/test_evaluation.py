@@ -94,6 +94,8 @@ def test_review_html_folds_review_md_section_only_while_nothing_is_recorded(tmp_
     assert '<strong>PAC 2026:</strong> Completed by Kim on ' in h and '<strong>Screen-Reader Test:</strong> Not completed for this version' in h
     assert 'class="nopen mcopen" data-session="mc-pac" data-html="1" data-title="PAC 2026: Full Results" hidden>View Full Results</button><div class="mcfull">' in h
     assert '@media print { .js .mcfull { display: block; }' in h and "if (b.hasAttribute('data-html')) { nb.innerHTML" in h
+    assert "if (b.hasAttribute('data-html')) { var h = d.querySelector('h2'); h.tabIndex = -1; h.focus(); }" in h   # focus: the heading
+    assert '<textarea' not in h.split('id="mc-h"')[1].split('</section>')[0] and '<div class="mcfull"><p>Checked By: Kim</p><table>' in h   # a read-only table
 
 def test_the_card_the_needs_box_and_the_vera_card(tmp_path):
     R = make_run(tmp_path, True)
