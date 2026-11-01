@@ -50,7 +50,7 @@ CHECKLIST = {
         {'key': 'images_of_text', 'label': 'Images of Text', 'results': P3,
          'help': 'No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).'},
         {'key': 'needs_person', 'label': 'What Needs a Person', 'results': P3,
-         'help': 'Every item the report lists under "What needs a person" was looked at.'},
+         'help': 'Every item the report lists under "For a Person to Check" was looked at.'},
     ],
     'screen_reader': [
         {'key': 'title_announced', 'label': 'Title Announced', 'results': P3,

@@ -878,8 +878,9 @@ L += ['', '## Final check with PAC 2026', '',
       f'**PAC 2026 and sanity checks** (part of "Ready to ship?": done on this version, no item failed). Open `{PDF}` in PAC 2026 '
       '(https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in '
       'the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:', ''] + _check_lines('pac') + [
-      '', '**Screen-reader check** (after the book ships: decides "Verified" or "Needs Rework"; a failed item on this version also '
-      'keeps "Ready to ship?" at No). Listen with a screen reader and record which one and its version:', ''] + _check_lines('screen_reader')
+      '', '**Screen-reader check** (decides "Verified" or "Needs Rework" once the book has shipped; a check made before shipping '
+      'counts when the shipped file is this same file, and a failed item on this version keeps "Ready to ship?" at No). Listen '
+      'with a screen reader and record which one and its version:', ''] + _check_lines('screen_reader')
 # A list line with no page puts the page wording at the end ("- what, page: not on this tag"), never first, and identical
 # lines of that kind are written once with a count. Lines that have a page are left exactly as they are.
 def _tidy_no_page(lines):

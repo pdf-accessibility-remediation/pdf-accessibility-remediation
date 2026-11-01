@@ -2,13 +2,13 @@
 
 Result: `cadaverous_remediated.pdf`
 
-323 pages · run 2026-10-31T14:19:20 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+323 pages · run 2026-10-31T15:17:29 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.7s · audit 28.1s · reuse saved reply 1.2s · apply 105.9s · verify 44.8s · total 181.7s
+Time: intake 2.1s · audit 33.4s · reuse saved reply 1.3s · apply 108.1s · verify 50.2s · total 195.1s
 
 ## Overview
 
@@ -289,9 +289,9 @@ The manual checks are recorded in the run's `release/` folder (docs/release.md).
 - Colour Alone: No information is given by colour alone (WCAG 1.4.1).
 - Contrast: Text over images and coloured backgrounds has enough contrast (WCAG 1.4.3; PAC's contrast checker).
 - Images of Text: No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).
-- What Needs a Person: Every item the report lists under "What needs a person" was looked at.
+- What Needs a Person: Every item the report lists under "For a Person to Check" was looked at.
 
-**Screen-reader check** (after the book ships: decides "Verified" or "Needs Rework"; a failed item on this version also keeps "Ready to ship?" at No). Listen with a screen reader and record which one and its version:
+**Screen-reader check** (decides "Verified" or "Needs Rework" once the book has shipped; a check made before shipping counts when the shipped file is this same file, and a failed item on this version keeps "Ready to ship?" at No). Listen with a screen reader and record which one and its version:
 
 - Title Announced: The screen reader announces the book's title when the PDF opens.
 - Document Language and Passages in Other Languages: The text is read in the book's language, and passages in another language are pronounced in theirs (WCAG 3.1.1, 3.1.2).
