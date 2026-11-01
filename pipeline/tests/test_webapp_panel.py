@@ -85,7 +85,7 @@ def test_ready_comes_from_the_glance_then_review_md_then_says_not_recorded(tmp_p
     g = {'glance': {'ready': True, 'ship': [{'what': 'Safety checks', 'ok': True, 'text': 'OK'}]}}   # a stored `ready` is never trusted
     assert runs.ready(R, g) == {'answer': 'No', 'lines': ['Safety checks: Not Checked (only 0 of the 5 checks were recorded for this run)',
                                                           'Accessibility evaluation: Not Completed (neither part recorded for this version)'],
-                                'status': 'Not Ready', 'source': 'record.json'}
+                                'status': 'Not Ready', 'current': 'Not Ready', 'source': 'record.json'}
     (tmp_path / 'review.md').write_text('## Overview\n\n**Status:** Ready\n\n**Ready to ship?** Yes\n- Safety checks: OK\n- PAC: not run\n\nmore\n')
     assert runs.ready(R, {}) == {'answer': 'Yes', 'lines': ['Safety checks: OK', 'PAC: not run'], 'status': 'Ready', 'source': 'review.md'}   # an older run
     for st, ans in (('Ready · 2 issues noted', 'Yes'), ('Pending Evaluation', 'No'), ('Shipped', 'No'), ('Shipped · Newer version (Session 7): Ready', 'No')):

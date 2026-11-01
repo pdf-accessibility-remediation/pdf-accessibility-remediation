@@ -79,6 +79,7 @@ def test_the_apps_post_and_the_panel(mapp):
     assert st == 200 and r['removed'] == 1 and r['bytes'] > 0
     assert js(port, 'GET', f'/api/run/{RUN}')[1]['prune'] is None
     pj = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert "This can\\'t be undone." in pj and "'Its record and decisions are'" in pj           # L2
     assert '>Remove Older PDFs</button>' in pj and "Their records and decisions are kept. The AI\\'s own version is always kept." in pj
     assert "'</button><button type=\"button\" value=\"no\">Cancel</button>" in pj and 'Removed By' in pj and 'drafts' not in pj.split('function pruneBlock')[1][:3000]
 

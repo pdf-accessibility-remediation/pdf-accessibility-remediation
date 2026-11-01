@@ -82,7 +82,7 @@ def test_refusals_for_downloads(mapp):
     os.remove(os.path.join(R, 'reviews', 'promoting.json'))
     rec = core.load(os.path.join(R, 'record.json')); rec['document']['output_sha256'] = 'c' * 64; core.save(os.path.join(R, 'record.json'), rec)
     st, body, _ = get(port, f'/run/{RUN}/download?what=pdf')                          # the file on disk is not the one described
-    assert st == 409 and b'has changed since this report was made' in body
+    assert st == 409 and b"so it can&#x27;t be downloaded as this version" in body and b'recorded' not in body   # its own words (L1)
 
 # ------------------------------------------------------------------ an earlier version, and one moment per download
 def add_version(R, vid='001', text='an earlier PDF'):
@@ -162,3 +162,30 @@ def test_the_file_checks_matching_in_javascript():
     out = subprocess.run(run + [code], capture_output=True, text=True, timeout=30)
     assert json.loads(out.stdout) == ['This is the current version (Session 6): Ready.', 'This file matches no version of this book.',
                                       'This file matches no version of this book.']
+
+
+# ------------------------------------------------------------------ review 20: L4, the read-me's date, the refusal page
+def test_an_earlier_version_whose_pdf_changed_is_refused(tmp_path):
+    R = make_run(str(tmp_path / 'r'), record_sha=True); V = add_version(R)
+    vrec = core.load(os.path.join(V, 'record.json'))
+    vrec['document']['output_sha256'] = REL.sha_file(os.path.join(V, 'clans_remediated.pdf'))
+    core.save(os.path.join(V, 'record.json'), vrec)
+    assert DL.prepare(R, 'r', '001', 'pdf')['name'].endswith('_earlier-version.pdf')        # its own hash: given
+    vrec['document']['output_sha256'] = 'e' * 64; core.save(os.path.join(V, 'record.json'), vrec)
+    with pytest.raises(DL.Refused) as e: DL.prepare(R, 'r', '001', 'record')                # another hash: refused (L4)
+    assert e.value.args[0] == DL.EARLIER_CHANGED and 'recorded' not in DL.EARLIER_CHANGED
+
+def test_an_earlier_versions_readme_gives_its_applied_date(tmp_path):
+    R = make_run(str(tmp_path / 'r'), record_sha=True); add_version(R)
+    os.makedirs(os.path.join(R, 'reviews', 'sessions'))
+    core.save(os.path.join(R, 'reviews', 'sessions', '001.json'), {'id': '001', 'status': 'applied', 'applied': '2026-10-27T23:45:00'})
+    d = DL.prepare(R, 'r', '001', 'record'); buf = io.BytesIO(); DL.stream_zip(buf, d)
+    rd = zipfile.ZipFile(buf).read(f'{d["folder"]}/READ-ME.txt').decode()
+    assert 'Version: Session 1, an earlier version, applied on October 27, 2026 at 11:45 PM' in rd
+
+def test_the_download_not_available_page_has_a_working_skip_link():
+    from webapp import server as W
+    page = W.refused_page(DL.MISSING, '/run/r/')
+    i, j = page.index(W.SKIP), page.index('<main id="main" tabindex="-1">')
+    assert 'href="#main"' in W.SKIP and i < j and '<h1>Download Not Available</h1>' in page and 'Back to the Run Page' in page
+    assert "can&#x27;t be downloaded" in page and '.pdf' not in page.split('<main')[1]

@@ -141,6 +141,10 @@ def test_j2_unreadable_evaluation_records_never_read_as_ready(tmp_path):
     rec['glance'] = {'schema': G.SCHEMA, 'ship': [], 'status': {'name': 'Ready', 'text': 'Ready'}}
     r = runs.ready(R, rec)
     assert r['answer'] == 'No' and r['status'] == 'Not Ready (the evaluation records could not be read)'
+    assert r['current'] == 'Not Ready'                                              # L3: the current version's status too, never a KeyError
+    os.remove(os.path.join(R, 'release', 'checks.json'))
+    rec['glance'] = {'schema': G.SCHEMA, 'ship': [], 'safety': []}
+    assert runs.ready(R, rec)['current'] == 'Not Ready'                              # the normal path gives it as well
 
 def test_j3_safety_state_follows_safety_line():
     assert H.safety_state({'safety': [], 'safety_ok': False}) == 'not checked'               # none at all: not checked, never failed

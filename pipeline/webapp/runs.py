@@ -33,9 +33,11 @@ def ready(R, rec):
             from . import manualpage                               # as the evaluation page reads it: a changed file is never Ready (K1)
             g = manualpage.app_glance(R, rec, g) if R and os.path.isdir(R) else G.with_release(g, rec, REL.load(R, rec))
         except (ValueError, KeyError, TypeError, OSError):      # release/ unreadable: never Ready, and never says so (J2)
-            g = dict(g, ready=False, status={'name': 'Not Ready', 'text': 'Not Ready (the evaluation records could not be read)'})
+            g = dict(g, ready=False, status={'name': 'Not Ready', 'text': 'Not Ready (the evaluation records could not be read)',
+                                             'current': {'name': 'Not Ready', 'issues': 0}})   # the Ship gate reads it too (L3)
         return {'answer': 'Yes' if g['ready'] else 'No', 'lines': [f'{x["what"]}: {x["text"]}' for x in g.get('ship') or []],
-                'status': (g.get('status') or {}).get('text'), 'source': 'record.json'}
+                'status': (g.get('status') or {}).get('text'), 'current': ((g.get('status') or {}).get('current') or {}).get('name') or 'Not Ready',
+                'source': 'record.json'}                     # current: the current version's own status (the Ship gate, stage 4; L3)
     try: md = open(os.path.join(R, 'review.md'), encoding='utf-8').read().splitlines()
     except OSError: md = []
     for i, l in enumerate(md):
