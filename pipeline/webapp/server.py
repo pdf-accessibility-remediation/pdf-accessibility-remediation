@@ -47,7 +47,7 @@ from html.parser import HTMLParser
 from review.server import local_request
 from review import sessions as S
 from lib.titles import title_case as TC
-from . import config, jobs, runs, manualpage as MP
+from . import config, jobs, runs, manualpage as MP, downloads as DL
 from review import manual as M
 from lib import release as REL, runlock
 
@@ -337,6 +337,8 @@ def make(s, setup, code=None):
                     if not p.endswith('/'): return self.redirect(p + '/')
                     return self.run_page(run, R)
                 if len(rest) == 1 and rest[0] in RESERVED: return self.send(404, {'error': 'this page is not built yet'})
+                if rest == ['download']:                                                   # a version's PDF or record ZIP (stage 3)
+                    return self.download(run, R, q)
                 if rest == ['checks']:                                                     # the Manual Checks page
                     if not os.path.isfile(os.path.join(R, 'record.json')): return self.send(404, {'error': 'no such run'})
                     rc = (q.get('recorded') or [''])[0]
@@ -379,6 +381,31 @@ def make(s, setup, code=None):
             self.send(200, {'recorded': {'id': c['id'], 'section': sec}})
             threading.Thread(target=S.rebuild_batch, args=(R, lambda *a: None), daemon=True).start()   # after the reply (F7)
 
+        def download(self, run, R, q):
+            """GET /run/<run>/download?what=pdf|record&v=current|<version id>: the version is one of the run's own
+            (webapp/downloads.py versions()); everything is opened in one moment under the record lock, then streamed."""
+            if not os.path.isfile(os.path.join(R, 'record.json')): return self.send(404, {'error': 'no such run'})
+            what, v = (q.get('what') or [''])[0], (q.get('v') or ['current'])[0]
+            base = '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
+            if what not in ('pdf', 'record'): return self.send(404, refused_page('There is no such download.', base), 'text/html; charset=utf-8')
+            try: d = DL.prepare(R, run, v, what)
+            except DL.Refused as e:
+                why = e.args[0] if e.args else None
+                return self.send(409 if why else 404, refused_page(why or 'This version of the book is not available to download.', base), 'text/html; charset=utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', d['ctype']); self.send_header('Content-Disposition', REL.disposition(d['name']))
+            self.send_header('Cache-Control', 'no-store'); self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('X-Frame-Options', FRAME['X-Frame-Options']); self.send_header('Content-Security-Policy', FRAME['Content-Security-Policy'])
+            if what == 'pdf':
+                fh = d['fh']
+                try:
+                    self.send_header('Content-Length', str(os.fstat(fh.fileno()).st_size)); self.end_headers()
+                    for b in iter(lambda: fh.read(1 << 20), b''): self.wfile.write(b)
+                finally: fh.close()
+            else:
+                self.end_headers()                       # HTTP/1.0, no Content-Length: the end of the stream ends the body
+                DL.stream_zip(self.wfile, d)
+
         def run_page(self, run, R):
             f = os.path.join(R, 'review.html')
             rec = os.path.realpath(os.path.join(R, 'record.json'))
@@ -399,6 +426,13 @@ def no_dashboard(run, R, current=None):
                       f'<title>{html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
                       f'<header><h1>{html.escape(run)}</h1></header><main id="main" tabindex="-1">'
                       f'<p>This run has no dashboard (review.html): it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current)
+
+def refused_page(message, base):
+    """A download that cannot be given now: its reason in plain words, and a way back (the person followed a link)."""
+    return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<title>Download Not Available</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
+            f'</head><body class="pp-page">\n{SKIP}<header><h1>Download Not Available</h1></header><main id="main" tabindex="-1"><div class="pp">'
+            f'<p>{html.escape(message)}</p><p><a class="pp-btn" href="{html.escape(base)}">Back to the Run Page</a></p></div></main></body></html>')
 
 def home_stub(s):
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>PDF Remediation</title></head><body><main>'
