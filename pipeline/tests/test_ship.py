@@ -38,7 +38,7 @@ def test_the_gate_offers_ready_refuses_the_same_file_twice_and_reoffers_after_a_
     assert MP.ship_gate(R, rec) == {'ok': True, 'shipped': None, 'why': None}
     core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry(sha)])                 # shipped: the same file never again
     g = MP.ship_gate(R, rec)
-    assert g['ok'] is False and g['why'] == 'This version was shipped on November 2, 2026 (shipment 1).'
+    assert g['ok'] is False and g['why'] == 'This version was shipped on November 2, 2026 (Shipment 1).'
     assert MP.app_glance(R, rec, rec['glance'])['status']['current']['name'] == 'Ready'   # pre_status alone would offer it (M1)
     core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry(sha, withdrawn={'by': 'L', 'date': 'x', 'reason': 'r'})])
     assert MP.ship_gate(R, rec)['ok'] is True                                                # after a withdrawal: offered again
@@ -77,7 +77,7 @@ def test_a_previous_results_page_reads_earlier_version_never_newer(tmp_path):
     assert st['text'] == 'Earlier version (the current version is Session 6)' and st['newer'] is None
     assert H.glance_of(V, vrec)['ready'] is False and 'Newer version' not in json.dumps(st)
     core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry('4' * 64)])            # this earlier version was itself shipped
-    assert H.glance_of(V, vrec)['status']['text'] == 'Earlier version (shipped as shipment 1 on November 2, 2026; the current version is Session 6)'
+    assert H.glance_of(V, vrec)['status']['text'] == 'Earlier version (shipped as Shipment 1 on November 2, 2026; the current version is Session 6)'
 
 # ------------------------------------------------------------------ Mark as Shipped (21 §A, M2), withdrawal (N4)
 PAC_REC = {'by': 'Kim', 'fields': {}, 'items': dict(PAC_OK, contrast={'result': 'fail', 'note': 'grey <b>caption</b> ## on p. 12'})}
@@ -112,7 +112,7 @@ def test_ship_copies_the_version_and_the_status_reads_shipped(tmp_path):
                                             'disclosure.md', 'disclosure.html', 'READ-ME.txt'])
     assert REL.sha_file(os.path.join(F, 'b_remediated.pdf')) == s['pdf']['sha256']
     assert '**Status:** Shipped · 1 issue noted' in open(os.path.join(F, 'review.md'), encoding='utf-8').read()
-    assert 'Shipped copy (shipment 1, ' in open(os.path.join(F, 'review.html'), encoding='utf-8').read()     # N9
+    assert 'Shipped copy (Shipment 1, ' in open(os.path.join(F, 'review.html'), encoding='utf-8').read()     # N9
     assert '**Status:** Shipped · 1 issue noted' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
     st = open(os.path.join(F, 'disclosure.md'), encoding='utf-8').read()                   # reviewed before sessions were kept: Session 1
     assert s['pdf']['session'] == '001' and 'the version reviewed on October 31, 2026, shipped on ' in st and 'applied without a review' not in st
@@ -150,7 +150,7 @@ def test_withdrawal_and_a_newer_version_shipping(tmp_path):
     R = real_ready(tmp_path)
     M.ship(R, 'Kim', say=lambda *a: None, batch=False)
     with pytest.raises(S.Refused, match='name'): M.withdraw(R, 1, 'Kim', ' ')
-    with pytest.raises(S.Refused, match='no shipment 9'): M.withdraw(R, 9, 'Kim', 'wrong file')
+    with pytest.raises(S.Refused, match='no Shipment 9'): M.withdraw(R, 9, 'Kim', 'wrong file')
     w = M.withdraw(R, 1, 'Kim', 'wrong file')
     assert len(w['withdrawn']['date']) == 19 and w['withdrawn']['date'][10] == 'T'                         # N4: local isoformat, seconds
     with pytest.raises(S.Refused, match='already withdrawn'): M.withdraw(R, 1, 'Kim', 'again')
@@ -263,7 +263,7 @@ def test_the_statement_is_linked_and_review_md_names_the_shipment(tmp_path):
     M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
     h = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
     assert '<a href="release/shipped/001/disclosure.html">View the Accessibility Statement</a>' in h and 'Disclosure' not in h   # N5
-    assert 'Shipped on ' in open(os.path.join(R, 'review.md'), encoding='utf-8').read() and '(shipment 1, ScholarSpace).' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
+    assert 'Shipped on ' in open(os.path.join(R, 'review.md'), encoding='utf-8').read() and '(Shipment 1, ScholarSpace).' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
 
 def test_the_strip_offers_ship_and_the_post_ships(mapp, monkeypatch):
     port, R = mapp['port'], mapp['R']
@@ -349,7 +349,7 @@ def test_a_standing_refusal_is_said_once_on_the_strip(tmp_path):
     assert MP.state(R, 'r')['refusal'] == MP.CHANGED_BY_HAND                               # the evaluation page keeps Record's words
     core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry(sha)])               # shipped, then changed: two different lines
     s = MP.strip(R, rec)
-    assert s['ship']['why'] == 'This version was shipped on November 2, 2026 (shipment 1).' and 'marked as shipped' in s['refusal']
+    assert s['ship']['why'] == 'This version was shipped on November 2, 2026 (Shipment 1).' and 'marked as shipped' in s['refusal']
     fin = 'Session 3 is finished and not yet applied: its result will replace this version. Check the new version once it is applied.'
     for why in (MP.CHANGED_BY_HAND, MP.MISSING, M.PROMOTING, M.MAKING, M.OUT_OF_STEP, M.NOT_LAST_REVIEW, fin):
         t = MP.strip_words(why)

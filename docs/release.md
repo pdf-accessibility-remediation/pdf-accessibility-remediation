@@ -349,7 +349,7 @@ nothing.
     twice, and after a withdrawal it may ship again.
 
   Beside the button: "Records that this version was reviewed and shipped. It does not publish anything." Otherwise the
-  strip says why once: "This version was shipped on November 2, 2026 (shipment 1).", or, while a refusal stands, the
+  strip says why once: "This version was shipped on November 2, 2026 (Shipment 1).", or, while a refusal stands, the
   strip's one refusal line, worded for both recording and shipping ("…so no results can be recorded for it and it can't
   be marked as shipped."). A version that is not Ready gets no line: the card above says what is unsatisfied. A POST to
   Ship still gets its own refusal. After a shipment, a newer version that becomes Ready is offered again as the next
@@ -361,7 +361,7 @@ nothing.
 - **What it writes,** under the record lock, whole or not at all: `release/shipped/NNN/`.
   - The folder holds:
     - the PDF (a copy, hashed while copied);
-    - review.md and review.html as they read once shipped (the copy's page says "Shipped copy (shipment 1, …)");
+    - review.md and review.html as they read once shipped (the copy's page says "Shipped copy (Shipment 1, …)");
     - han_review.csv;
     - `evaluation-results.json`: the results on that file, with their issues;
     - the accessibility statement (`disclosure.html`, `disclosure.md`);
@@ -371,7 +371,9 @@ nothing.
     folder, issues, checks}`.
   - If anything fails before the folder is complete, the folder is removed, `shipped.json` restored, and the pages
     redrawn, so nothing says Shipped.
-  - Shipment numbers are never reused.
+  - Shipment numbers are never reused. A shipment is "Shipment N" in Title Case wherever a person reads it (the message,
+    the strip, review.html, review.md, the statement, the read-me, "Available Downloads"); file names keep
+    `_shipment-N`.
 - **Afterwards:**
   - the status reads "Shipped" (with "· N issues noted"), with Ready's green border;
   - review.md's evaluation section names each shipment;

@@ -202,7 +202,7 @@ def refresh(R, wait=runlock.COMMAND_WAIT, say=print):
     return rec
 
 # ------------------------------------------------------------------ Mark as Shipped and withdrawal (stage 4)
-SHIPPED_BANNER = '<p class="replaced" role="note">Shipped copy (shipment {n}, {day}). It is kept as it was shipped; the live dashboard is the run\'s own page.</p>'
+SHIPPED_BANNER = '<p class="replaced" role="note">Shipped copy (Shipment {n}, {day}). It is kept as it was shipped; the live dashboard is the run\'s own page.</p>'
 
 def _next_number(sd, entries):
     """The next shipment number: one past the highest in shipped.json and among the numbered folders. Never reused (M2)."""
@@ -330,7 +330,7 @@ def withdraw(R, n, by, reason, wait=runlock.COMMAND_WAIT, say=print):
         with runlock.record_lock(R, wait):
             rel = REL.load(R); xs = rel['shipped'] or []
             s = next((x for x in xs if str(x.get('n')) == str(n)), None)
-            if s is None: raise S.Refused(f'There is no shipment {n}.')
+            if s is None: raise S.Refused(f'There is no Shipment {n}.')
             if s.get('withdrawn'): raise S.Refused(f'Shipment {n} is already withdrawn.')
             s['withdrawn'] = {'by': by, 'date': now(), 'reason': reason}
             put_json(REL.paths(R)['shipped'], xs)

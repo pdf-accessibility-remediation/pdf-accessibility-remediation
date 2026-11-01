@@ -396,7 +396,7 @@ async function shipNow(b) {
   try {
     const [c, r] = await api(API + '/ship', { by: v.by, where: v.where, note: v.note, shown_sha256: sp.sha });
     if (c !== 200) return msg(r.error || 'It was not marked as shipped.', false, true);
-    msg('Marked as shipped: shipment ' + r.shipped.n + '. The accessibility statement is kept with the shipped copy.', true, true);
+    msg('Marked as shipped: Shipment ' + r.shipped.n + '. The accessibility statement is kept with the shipped copy.', true, true);
     return poll(true);
   } catch (e) { return msg('The app is not running. ' + START, false, true); }
 }

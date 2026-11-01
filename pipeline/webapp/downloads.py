@@ -159,7 +159,7 @@ def _readme(d, sha):
         status = f'Status: {ver["status_text"] or ver["state"]}'
     elif ver.get('shipment'):
         e = ver['entry']; w = e.get('withdrawn')
-        vline = f'Version: shipment {e.get("n")}, shipped on {D.when(e.get("shipped"))} by {e.get("by")}' + (f' ({_version_label(ver["session"])})' if ver.get('session') else '')
+        vline = f'Version: Shipment {e.get("n")}, shipped on {D.when(e.get("shipped"))} by {e.get("by")}' + (f' ({_version_label(ver["session"])})' if ver.get('session') else '')
         status = f'Status: withdrawn on {D.day(w.get("date"))} by {w.get("by")}: {w.get("reason")}' if w else 'Status: Shipped'
     else:                                                        # K3: never a computed Ready on a superseded file
         vline = f'Version: {_version_label(ver["id"])}, an earlier version' + (f', {d["applied"]}' if d.get('applied') else '')
