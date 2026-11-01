@@ -270,10 +270,17 @@ def make(s, setup, code=None):
             segs = segments(p[len('/api/run/'):]) if p.startswith('/api/run/') else None
             if segs and len(segs) >= 3 and segs[-2] == 'checks' and segs[-1] in ('draft', 'record'):   # two-segment actions: the run is segs[:-2]
                 return self.checks_post(segs[:-2], segs[-1], body)
-            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs'): return self.send(404, {'error': 'not found'})
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship'): return self.send(404, {'error': 'not found'})
             hit = find_run(s['runs'], segs[:-1])
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
             run, R, _ = hit
+            if segs[-1] == 'ship':                              # Mark as Shipped, in this process, through review/manual.py ship()
+                try: e = M.ship(R, str(body.get('by') or ''), str(body.get('where') or ''), str(body.get('note') or ''), shown_sha=body.get('shown_sha256') or None,
+                                via='page', wait=runlock.REQUEST_WAIT, say=lambda *a: applog(f'{run}: ' + ' '.join(str(x) for x in a)), batch=False)
+                except S.Refused as x: return self.send(409, {'error': str(x)})
+                self.send(200, {'shipped': {'n': e['n'], 'shipped': e['shipped']}})
+                threading.Thread(target=S.rebuild_batch, args=(R, lambda *a: None), daemon=True).start()
+                return
             if segs[-1] == 'remove-older-pdfs':                 # in this process, through review/prune.py (its locks, its refusals)
                 from review import prune
                 shown = body.get('shas') if isinstance(body.get('shas'), list) else []
@@ -344,6 +351,12 @@ def make(s, setup, code=None):
                     if not p.endswith('/'): return self.redirect(p + '/')
                     return self.run_page(run, R)
                 if len(rest) == 1 and rest[0] in RESERVED: return self.send(404, {'error': 'this page is not built yet'})
+                if len(rest) == 4 and rest[:2] == ['release', 'shipped'] and rest[3] == 'disclosure.html':   # a shipment's statement only (N2)
+                    known = {(x.get('folder') or '').split('/')[-1] for x in REL.load(R).get('shipped') or []}
+                    d = config.entry(os.path.join(R, 'release', 'shipped'), rest[2]) if rest[2] in known else None
+                    f = os.path.join(d, 'disclosure.html') if d else None
+                    if not f or not inside(R, f) or not os.path.isfile(f): return self.send(404, {'error': 'not found'})
+                    return self.file(f)                          # never the folder's record.json, PDF or anything else
                 if rest == ['download']:                                                   # a version's PDF or record ZIP (stage 3)
                     return self.download(run, R, q)
                 if rest == ['checks']:                                                     # the Manual Checks page

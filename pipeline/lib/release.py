@@ -288,6 +288,8 @@ def download_names(output, session, state, shipment=None):
     'earlier version'. A version with no session is never Ready (its work order was not approved), so there is no
     "_no-review_not-shipped" (K4)."""
     base = clean_base(output)
+    if state == 'withdrawn':                                 # a withdrawn shipped copy never under the published name (N3)
+        return f'{base}_shipment-{int(shipment)}_withdrawn.pdf', f'{base}_record_shipment-{int(shipment)}_withdrawn.zip'
     if state == SHIPPED:
         return f'{base}.pdf', f'{base}_record_shipment-{int(shipment)}.zip' if str(shipment or '').isdigit() else f'{base}_record.zip'
     sess = f'session-{int(session)}' if str(session or '').isdigit() else 'no-review'
@@ -360,6 +362,9 @@ def section_md(rel, cur, pdf):
         'Not Applicable, with notes:', ''] + items('pac') + ['']
     sr = _part_md(rel, 'screen_reader', cur)
     L += sr if sr else ['**Screen-reader test.** Listen with a screen reader and record which one and its version:', ''] + items('screen_reader')
+    for s in rel.get('shipped') or []:                       # one line per shipment (stage 4); none on a run never shipped
+        L += ['', f'Shipped on {day(s.get("shipped"))} by {md_text(s.get("by"))} (shipment {s.get("n")}' + (f', {md_text(s["where"])}' if s.get('where') else '') + ')'
+                  + (f'; withdrawn on {day(s["withdrawn"].get("date"))} by {md_text(s["withdrawn"].get("by"))}: {md_text(s["withdrawn"].get("reason"))}' if s.get('withdrawn') else '') + '.']
     return L
 
 def replace_section_md(md, lines):

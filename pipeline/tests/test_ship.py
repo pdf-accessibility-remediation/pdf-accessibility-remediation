@@ -225,3 +225,57 @@ def test_the_statement_builds_on_the_seven_baseline_records():
         n, nn = DS.applied(rec)
         assert n == n_decisions(rec.get('workorder') or {}) and f'Entries applied: {n - nn}' in md, b
         assert 'the split between the AI and a person was not recorded' in md, b              # the baselines are unreviewed
+
+# ------------------------------------------------------------------ the app: the strip, the POST, the statement, the downloads (M7, N2, N3)
+from test_webapp import setup, wait, free_port  # noqa: F401,E402  (fixtures)
+from test_webapp_checks import mapp, req, js, RUN  # noqa: F401,E402
+
+def test_shipped_copies_in_the_downloads_and_the_file_check(tmp_path):
+    import io, zipfile
+    R = real_ready(tmp_path)
+    s = M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
+    rec = core.load(os.path.join(R, 'record.json'))
+    vs = DL.versions(R, rec)
+    assert [x['id'] for x in vs] == ['current'] and vs[0]['state'] == 'Shipped'                 # the current file is the shipped one
+    d = DL.prepare(R, 'r', 'current', 'record')
+    assert d['name'] == 'b_remediated_record_shipment-1.zip' and 'disclosure.html' in [m[0] for m in d['members']]
+    buf = io.BytesIO(); DL.stream_zip(buf, d); names = zipfile.ZipFile(buf).namelist()
+    assert not any(n.endswith('record.json') for n in names) and any(n.endswith('disclosure.md') for n in names)   # N2: never the folder's record.json
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'b_remediated.pdf'))   # changed by hand (M7)
+    vs = DL.versions(R, rec)
+    assert [x['id'] for x in vs] == ['current', 'shipment-1'] and vs[1]['label'].startswith('Shipment 1, shipped on ')
+    with pytest.raises(DL.Refused): DL.prepare(R, 'r', 'current', 'pdf')                        # the current download refused (L1)
+    assert DL.prepare(R, 'r', 'shipment-1', 'pdf')['name'] == 'b_remediated.pdf'               # the shipped copy still downloads
+    M.withdraw(R, 1, 'Kim', 'wrong file')
+    rec = core.load(os.path.join(R, 'record.json'))
+    sv = next(x for x in DL.versions(R, rec) if x['id'] == 'shipment-1')
+    assert sv['label'].endswith('(withdrawn)') and DL.marked_line(sv['state']) == 'The downloaded files are marked "withdrawn".'
+    assert DL.prepare(R, 'r', 'shipment-1', 'pdf')['name'] == 'b_remediated_shipment-1_withdrawn.pdf'   # N3
+    k = {x['sha']: x['words'] for x in DL.known(R, rec)}
+    assert k[s['pdf']['sha256']].startswith('This is the shipped copy (shipment 1, ') and k[s['pdf']['sha256']].endswith('since withdrawn.')
+
+def test_the_statement_is_linked_and_review_md_names_the_shipment(tmp_path):
+    R = real_ready(tmp_path)
+    M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
+    h = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
+    assert '<a href="release/shipped/001/disclosure.html">View the Accessibility Statement</a>' in h and 'Disclosure' not in h   # N5
+    assert 'Shipped on ' in open(os.path.join(R, 'review.md'), encoding='utf-8').read() and '(shipment 1, ScholarSpace).' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
+
+def test_the_strip_offers_ship_and_the_post_ships(mapp, monkeypatch):
+    port, R = mapp['port'], mapp['R']
+    st, s = js(port, 'GET', f'/api/run/{RUN}')
+    assert s['manual']['ship']['ok'] is False and 'not ready to ship' in s['manual']['ship']['why']   # the fixture run is not Ready
+    st, r = js(port, 'POST', f'/api/run/{RUN}/ship', {'by': 'Kim'})
+    assert st == 409 and 'not ready to ship' in r['error']
+    pj = open(os.path.join(os.path.dirname(MP.__file__), 'panel.js'), encoding='utf-8').read()
+    assert '>Mark as Shipped</button>' in pj and 'Shipped By' in pj and 'Where It Was Published <span class="pp-note">(optional)</span>' in pj
+    assert 'Records that this version was published. It does not publish anything.' in pj
+
+def test_only_the_statement_is_served_from_a_shipped_folder(mapp):
+    port, R = mapp['port'], mapp['R']
+    F = os.path.join(R, 'release', 'shipped', '001'); os.makedirs(F)
+    open(os.path.join(F, 'disclosure.html'), 'w').write('<p>statement</p>'); core.save(os.path.join(F, 'record.json'), {'raw_reply': 'secret'})
+    core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry('a' * 64, folder='shipped/001')])
+    assert req(port, 'GET', f'/run/{RUN}/release/shipped/001/disclosure.html')[0] == 200
+    for p in ('release/shipped/001/record.json', 'release/shipped/002/disclosure.html', 'release/shipped.json', 'release/shipped/001/../001/disclosure.html'):
+        assert req(port, 'GET', f'/run/{RUN}/{p}')[0] == 404, p

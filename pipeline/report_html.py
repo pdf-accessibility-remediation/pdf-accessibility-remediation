@@ -401,7 +401,9 @@ def manual_card(R, rec):
     ships = rel.get('shipped') or []
     if ships:
         B.append('<h3>Shipments</h3><ul>' + ''.join(
-            f'<li>Shipment {E(str(x.get("n")))}: by {E(x.get("by"))} on {E(D.day(x.get("shipped")))}'
+            f'<li>Shipment {E(str(x.get("n")))}: by {E(x.get("by"))} on {E(D.day(x.get("shipped")))}' + (f' · where: {E(x["where"])}' if x.get('where') else '')
+            + (f' · <a href="{E(os.path.relpath(os.path.join(REL.run_dir_of(R), "release", x["folder"], "disclosure.html"), os.path.abspath(R)))}">View the Accessibility Statement</a>'
+               if x.get('folder') and any(os.path.isdir(os.path.join(REL.run_dir_of(R), 'release', x['folder'] + t_)) for t_ in ('', '.tmp')) else '')   # .tmp: being shipped now
             + (f', withdrawn by {E(x["withdrawn"].get("by"))} on {E(D.day(x["withdrawn"].get("date")))}: {E(x["withdrawn"].get("reason"))}' if x.get('withdrawn') else '')
             + '</li>' for x in ships) + '</ul>')
     B.append('</section>')
