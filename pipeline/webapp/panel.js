@@ -320,14 +320,34 @@ function stripBlock(s, inPanel) {
   if (m.refusal) h += '<p class="pp-warn-t">' + esc(m.refusal) + '</p>';
   h += '<div class="pp-mc"><a class="pp-btn pp-primary" id="pp-mc-open" href="checks">Complete Evaluation</a><ul role="list">' +
     ['pac', 'screen_reader'].map(k => m.sections[k]).filter(Boolean).map(x => '<li>' + (x.ok ? '<span class="pp-mc-mark" aria-hidden="true">✓</span>' : '<span class="pp-mc-mark" aria-hidden="true"></span>') +
-      '<a href="checks#' + esc(x.id) + '">' + esc(tc(x.name)) + '</a>: ' + esc(x.words) + '</li>').join('') + '</ul></div></section>';
+      '<a href="checks#' + esc(x.id) + '">' + esc(tc(x.name)) + '</a>: ' + esc(x.words) + '</li>').join('') + '</ul></div>' +
+    dlForm(m.downloads) + '</section>';
   return h;
+}
+// the picker and the two downloads (stage 3): a GET form to download?v=…&what=pdf|record (any version, ready or not); the
+// line under it says how the chosen version's files are marked, never a file name
+function dlForm(dd) {
+  const vs = (dd && dd.versions) || []; if (!vs.length) return '';
+  return '<form class="pp-dl" method="get" action="download"><label for="pp-dlv">Version to Download</label> ' +
+    '<select id="pp-dlv" name="v" aria-describedby="pp-dl-marked">' +
+    vs.map(x => '<option value="' + esc(x.id) + '" data-marked="' + esc(x.marked) + '">' + esc(x.label) + '</option>').join('') + '</select>' +
+    '<p id="pp-dl-marked" class="pp-note">' + esc(vs[0].marked) + '</p>' +
+    '<div class="pp-row"><button type="submit" name="what" value="pdf">Download the Remediated PDF</button>' +
+    '<button type="submit" name="what" value="record">Download the Record (ZIP)</button></div></form>';
 }
 function renderStrip(s) {
   let sb = $('pdfrem-checks');
   if (!sb) { sb = document.createElement('div'); sb.id = 'pdfrem-checks'; sb.dataset.inPanel = '1'; box.querySelector('section.pp').appendChild(sb); }   // no card: in the panel
+  const sel = $('pp-dlv'), chosen = sel ? sel.value : null;      // the picker keeps its choice when the strip is redrawn
   const h = stripBlock(s, sb.dataset.inPanel === '1'), keep = document.activeElement && sb.contains(document.activeElement) ? document.activeElement.id : null;
-  if (sb.dataset.h !== h) { sb.innerHTML = h; sb.dataset.h = h; if (keep && $(keep)) $(keep).focus(); }
+  if (sb.dataset.h !== h) {
+    sb.innerHTML = h; sb.dataset.h = h;
+    const ns = $('pp-dlv');
+    if (ns && chosen && [...ns.options].some(o => o.value === chosen)) { ns.value = chosen; $('pp-dl-marked').textContent = ns.selectedOptions[0].dataset.marked; }
+    if (keep && $(keep)) $(keep).focus();
+  }
+  const dl = $('pp-dlv');
+  if (dl && !dl.dataset.wired) { dl.dataset.wired = '1'; dl.addEventListener('change', () => { $('pp-dl-marked').textContent = dl.selectedOptions[0].dataset.marked; }); }
 }
 
 function render() {

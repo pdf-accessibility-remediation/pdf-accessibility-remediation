@@ -702,7 +702,7 @@ def test_in_page_link_targets_take_focus():
     assert "const t = document.getElementById(a.getAttribute('href').slice(1));" in page and 'goTo(t);' in page
     assert "goTo(document.getElementById('card-' + t.id));" in page
     assert '[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }' in page
-    assert srv.count('<main id="main" tabindex="-1">') == 2 and '<script src="/app/panel.js" defer></script></body></html>' in srv
+    assert srv.count('<main id="main" tabindex="-1">') == 3 and '<script src="/app/panel.js" defer></script></body></html>' in srv
 
 def test_finish_not_yet_is_200_with_needs(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)
