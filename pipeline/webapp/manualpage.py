@@ -79,7 +79,7 @@ def ship_gate(R, rec, g=None, rel=None):
     live = REL.live_shipment(rel, app_sha(R, rec))
     if live: return {'ok': False, 'shipped': live, 'why': f'This version was shipped on {D.day(live.get("shipped"))} (shipment {live.get("n")}).'}
     why = refusal(R, rec, disk_state(R, rec))
-    if why: return {'ok': False, 'shipped': None, 'why': M.ship_words(why)}
+    if why: return {'ok': False, 'shipped': None, 'refused': True, 'why': M.ship_words(why)}
     cur = ((g.get('status') or {}).get('current') or {}).get('name')
     if cur != REL.READY:
         need = [G.ship_name(x) for x in g.get('ship') or [] if not x.get('ok')]
@@ -101,6 +101,25 @@ def refusal(R, rec, disk):
         want = (((S.session(R, sid) if sid else None) or {}).get('version') or {}).get('pdf_sha256')
         if want and disk['sha'] and want != disk['sha']: return M.NOT_LAST_REVIEW
     return None
+
+def strip_words(why):
+    """A standing refusal in the strip's words: one line for recording results and for "Mark as Shipped" (review 29 R2;
+    the evaluation page keeps Record's words, a POST to Ship gets ship_words())."""
+    import re
+    if not why: return why
+    m = re.match(r'Session (\d+) is finished and not yet applied', why)
+    if m: return (f'Session {int(m.group(1))} is finished and not yet applied: its result will replace this version, so nothing can be '
+                  'recorded or marked as shipped now. Check the new version once it is applied.')
+    return {CHANGED_BY_HAND: 'The book\'s PDF has changed since this report was made, so no results can be recorded for it and it can\'t be '
+                             'marked as shipped. Whoever looks after the app can check it.',
+            MISSING: 'The book\'s remediated PDF is missing, so no results can be recorded for it and it can\'t be marked as shipped. '
+                     'Whoever looks after the app can check it.',
+            M.PROMOTING: 'A new version was being put in place and did not finish, so nothing can be recorded or marked as shipped now. '
+                         'Whoever looks after the app can finish it.',
+            M.MAKING: 'A new version of this book is being made, so nothing can be recorded or marked as shipped now. Check it once it is done.',
+            M.OUT_OF_STEP: 'This book\'s record is out of step with its review sessions, so nothing can be recorded or marked as shipped. '
+                           'Whoever looks after the app can check it.',
+            M.NOT_LAST_REVIEW: 'The PDF on disk is not the one this book\'s last review produced, so nothing can be recorded or marked as shipped.'}.get(why, why)
 
 def version(R, rec):
     """The current version in words: ("the version from Session 6", "applied on October 30, 2026 at 2:02 PM")."""
@@ -175,7 +194,7 @@ def state(R, run):
             'status': st.get('text') or ('Ready' if g.get('ready') else 'Not Ready'), 'status_name': st.get('name'), 'newer': st.get('newer'),
             'ready': {'answer': 'Yes' if g.get('ready') else 'No', 'lines': [{'what': x['what'], 'name': G.ship_name(x), 'ok': x['ok'], 'text': x['text']} for x in g.get('ship') or []]},
             'needs': (g.get('needs_person') or {}).get('total'), 'refusal': refusal(R, rec, disk), 'sections': secs,
-            'downloads': downloads_data(R, rec, g)}
+            'downloads': downloads_data(R, rec, g, page=True)}
 
 # ------------------------------------------------------------------ the strip (run page), from /api/run/<run>
 def strip(R, rec):
@@ -189,24 +208,27 @@ def strip(R, rec):
     card = (g0.get('status') or {})
     return {'status': live.get('text'), 'newer': live.get('newer'),
             'card_status': card.get('text'), 'card_newer': card.get('newer'),
-            'disk_same': disk['same'], 'refusal': refusal(R, rec, disk), 'downloads': downloads_data(R, rec, lg), 'ship': ship_data(R, rec, lg, rel)}
+            'disk_same': disk['same'], 'refusal': strip_words(refusal(R, rec, disk)), 'downloads': downloads_data(R, rec, lg), 'ship': ship_data(R, rec, lg, rel)}
 
 def ship_data(R, rec, g, rel):
     """The strip's "Mark as Shipped": the gate (ship_gate), the hash the page shows (sent back with the POST, never shown),
     the version in words and the issues noted that ship with it. "This version is not ready to ship: …" is not repeated on
-    the strip: the card above it says what is unsatisfied (Patrick, 2026-11-01); a POST still gets it as its refusal."""
+    the strip: the card above it says what is unsatisfied (Patrick, 2026-11-01); nor is a refusal that stands: the strip's
+    own refusal line covers both actions (strip_words, review 29 R2). A POST still gets either as its refusal."""
     try: gate = ship_gate(R, rec, g, rel)
     except (OSError, ValueError, KeyError, TypeError): return None
-    return {'ok': gate['ok'], 'why': None if gate.get('not_ready') else gate['why'], 'sha': app_sha(R, rec), 'version': version(R, rec)['label'],
+    return {'ok': gate['ok'], 'why': None if gate.get('not_ready') or gate.get('refused') else gate['why'], 'sha': app_sha(R, rec), 'version': version(R, rec)['label'],
             'issues': ((g.get('status') or {}).get('current') or {}).get('issues') or 0}
 
-def downloads_data(R, rec, g=None):
+def downloads_data(R, rec, g=None, page=False):
     """The versions the "Available Downloads" picker offers (webapp/downloads.py: only those whose PDF exists), each with
-    its label and the line saying how its files are marked. No file name, no hash."""
+    its label and the line saying how its files are marked. No file name, no hash. page: the evaluation page's, where a
+    version that is not the current one also says that results there are the current version's (review 29 R1)."""
     from . import downloads as DL                            # imported here: downloads imports this module
     try: vs = DL.versions(R, rec, g)
     except (OSError, ValueError, KeyError, TypeError): return {'versions': []}
-    return {'versions': [{'id': x['id'], 'label': x['label'], 'marked': DL.marked_line(x['state'])} for x in vs]}
+    return {'versions': [{'id': x['id'], 'label': x['label'],
+                          'marked': DL.marked_line(x['state']) + (' ' + DL.EARLIER_HERE if page and x['id'] != 'current' else '')} for x in vs]}
 
 def downloads_form(base, dd, p='mc', hx='h2'):
     """"Available Downloads": the heading (the select's label, inside it), the select under it, the line saying how the
@@ -328,10 +350,10 @@ def page(R, run, recorded=None):
         B.append(f'<div id="mc-msg" class="pp-msg pp-okmsg" tabindex="-1"><span class="pp-msg-t">{E(msg[0])}</span>'
                  + ('<button type="button" id="mc-review" class="pp-primary">Review Again</button>' if msg[1] else '') + '</div>')
     v = st['version']
-    B.append(f'<p>These results are recorded for {E(v["label"])}' + (f', {E(v["when"])}' if v['when'] else '') + '.</p>'
+    B.append(f'<div class="mc-lines"><p>These results are recorded for {E(v["label"])}' + (f', {E(v["when"])}' if v['when'] else '') + '.</p>'   # consecutive lines, no gap (Patrick, 2026-11-01)
              '<p class="mc-help">Complete the evaluation after the last review is applied: a new version needs its own evaluation.</p>'
-             '<p class="mc-help">Every item needs a result, and a Fail needs a note. A Fail does not hold the book back: it is kept in the report, '
-             'with its note, for a person to fix later.</p>')
+             '<p class="mc-help">Every item needs a result, and a "Fail" needs a note. A "Fail" does not hold the book back; it is kept in the report '
+             'with its note for future reference and further review.</p></div>')
     if st['refusal']: B.append(f'<p id="mc-refusal" class="mc-refusal">{E(st["refusal"])} Your answers are still saved as you type.</p>')
     dl = downloads_form(st['base'], st['downloads'], 'mc', 'h2')     # the PDF to take to PAC 2026 and the screen reader (stage 3)
     if dl: B.append(f'<section id="downloads" class="mc-sec" aria-labelledby="mc-dl-h">{dl}</section>')
@@ -362,7 +384,7 @@ def page(R, run, recorded=None):
     data = {k: st[k] for k in ('run', 'base', 'sha')}
     data['sections'] = {k: {'id': v['id'], 'p': p_of[k], 'draft_saved_at': (v['draft'] or {}).get('saved_at'), 'tombstone': v['tombstone'],
                             'items': [{'key': i['key'], 'found': i['found']} for i in v['items']], 'failed_last': v['failed_last'],
-                            'starts': [{'by': e.get('by'), 'fields': e.get('fields') or {}, 'items': {ik: {'note': (iv or {}).get('note') or ''} for ik, iv in (e.get('items') or {}).items()},
+                            'starts': [{'fields': e.get('fields') or {}, 'items': {ik: {'note': (iv or {}).get('note') or ''} for ik, iv in (e.get('items') or {}).items()},
                                         'notes': e.get('notes') or ''} for e in v['earlier']],
                             'start_draft': (v['draft_earlier'] or {}).get('data'), 'has_draft': bool(v['draft'])} for k, v in st['sections'].items()}
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'

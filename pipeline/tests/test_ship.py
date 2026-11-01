@@ -255,7 +255,7 @@ def test_shipped_copies_in_the_downloads_and_the_file_check(tmp_path):
     M.withdraw(R, 1, 'Kim', 'wrong file')
     rec = core.load(os.path.join(R, 'record.json'))
     sv = next(x for x in DL.versions(R, rec) if x['id'] == 'shipment-1')
-    assert sv['label'].endswith('(withdrawn)') and DL.marked_line(sv['state']) == 'The downloaded files are marked "withdrawn".'
+    assert sv['label'].endswith('(withdrawn)') and DL.marked_line(sv['state']) == 'The downloaded files are marked "withdrawn."'
     assert DL.prepare(R, 'r', 'shipment-1', 'pdf')['name'] == 'b_remediated_shipment-1_withdrawn.pdf'   # N3
 
 def test_the_statement_is_linked_and_review_md_names_the_shipment(tmp_path):
@@ -273,7 +273,7 @@ def test_the_strip_offers_ship_and_the_post_ships(mapp, monkeypatch):
     assert st == 409 and 'not ready to ship' in r['error']
     pj = open(os.path.join(os.path.dirname(MP.__file__), 'panel.js'), encoding='utf-8').read()
     assert '>Mark as Shipped</button>' in pj and 'Shipped By' in pj and 'Where It Was Published <span class="pp-note">(optional)</span>' in pj
-    assert 'Records that this version was published. It does not publish anything.' in pj
+    assert 'Records that this version was reviewed and shipped. It does not publish anything.' in pj and "' was reviewed and shipped. It does not publish anything.'" in pj
 
 def test_only_the_statement_is_served_from_a_shipped_folder(mapp):
     port, R = mapp['port'], mapp['R']
@@ -332,3 +332,49 @@ def test_the_run_page_drops_the_green_border_while_the_pdf_on_disk_differs(tmp_p
         served = W.card_border(page, R)
         assert '<section class="ship" aria-labelledby="ship-h">' in served and 'class="ship yes"' not in served, name
         assert '<section class="ship yes"' in open(os.path.join(R, 'review.html'), encoding='utf-8').read(), name   # the file itself unchanged
+
+# ------------------------------------------------------------------ a refusal said once (review 29 R2); no name prefilled (Patrick, 2026-11-01)
+def test_a_standing_refusal_is_said_once_on_the_strip(tmp_path):
+    R, rec, sha = ready_run(tmp_path)
+    os.makedirs(os.path.join(R, 'reviews', 'work'))                                        # a new version being made
+    s = MP.strip(R, rec)
+    assert s['ship']['ok'] is False and s['ship']['why'] is None                           # no second line from Ship
+    assert s['refusal'] == 'A new version of this book is being made, so nothing can be recorded or marked as shipped now. Check it once it is done.'
+    assert MP.ship_gate(R, rec)['why'] == "A new version of this book is being made, so this version can't be marked as shipped now."   # a POST: Ship's words
+    os.rmdir(os.path.join(R, 'reviews', 'work'))
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'clans_remediated.pdf'))   # changed by hand
+    s = MP.strip(R, rec)
+    assert s['ship']['why'] is None and s['refusal'] == ("The book's PDF has changed since this report was made, so no results can be recorded for it "
+                                                         "and it can't be marked as shipped. Whoever looks after the app can check it.")
+    assert MP.state(R, 'r')['refusal'] == MP.CHANGED_BY_HAND                               # the evaluation page keeps Record's words
+    core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry(sha)])               # shipped, then changed: two different lines
+    s = MP.strip(R, rec)
+    assert s['ship']['why'] == 'This version was shipped on November 2, 2026 (shipment 1).' and 'marked as shipped' in s['refusal']
+    fin = 'Session 3 is finished and not yet applied: its result will replace this version. Check the new version once it is applied.'
+    for why in (MP.CHANGED_BY_HAND, MP.MISSING, M.PROMOTING, M.MAKING, M.OUT_OF_STEP, M.NOT_LAST_REVIEW, fin):
+        t = MP.strip_words(why)
+        assert t != why and 'recorded' in t and 'marked as shipped' in t, why
+    assert MP.strip_words(fin).startswith('Session 3 is finished and not yet applied: its result will replace this version, so nothing')
+
+def test_no_name_field_is_prefilled(tmp_path):
+    import re
+    R, rec, sha = ready_run(tmp_path)                                                      # results by Kim on this file
+    rel = core.load(os.path.join(R, 'release', 'checks.json'))
+    rel['pac'].append(dict(chk('b' * 64, PAC_OK, n=2), by='Lee'))                          # and by Lee on another file
+    core.save(os.path.join(R, 'release', 'checks.json'), rel)
+    page = MP.page(R, 'r')
+    for p in ('pac', 'sr'):                                                                # "Checked By" starts empty
+        assert re.search(rf'<input type="text" id="{p}-by" data-field="by" value="" autocomplete="name"', page), p
+    data = json.loads(re.search(r'id="mc-data">(.*?)</script>', page, re.S).group(1))
+    starts = data['sections']['pac']['starts']
+    assert starts and all('by' not in x for x in starts)                                   # "Start from These Notes" copies no name
+    here = os.path.dirname(MP.__file__)
+    pj = open(os.path.join(here, 'panel.js'), encoding='utf-8').read(); mj = open(os.path.join(here, 'manual.js'), encoding='utf-8').read()
+    assert pj.count('checks:by') == 1 and "localStorage.removeItem('checks:by')" in pj      # the old memory is only cleared
+    assert mj.count('checks:by') == 1 and "store.del('checks:by')" in mj
+    for f in ('pp-ship-by', 'pp-prune-by'):                                                # the two dialogs: no value
+        assert f'<input type="text" id="{f}" autocomplete="name"></p>' in pj, f
+    assert "if (results || f !== 'by') el.value = v || '';" in mj
+    assert '<div class="mc-lines"><p>These results are recorded for' in page                # the lines under the status: one block, no gap
+    assert ('Every item needs a result, and a "Fail" needs a note. A "Fail" does not hold the book back; it is kept in the report '
+            'with its note for future reference and further review.</p></div>') in page

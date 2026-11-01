@@ -23,6 +23,7 @@ async function post(path, body) {
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } },
                 set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
                 del(k) { try { localStorage.removeItem(k); } catch (e) {} } };
+store.del('checks:by');                                         // names are never prefilled (Patrick, 2026-11-01): an old remembered one goes
 let leaving = false;
 
 const secs = [];
@@ -45,10 +46,10 @@ for (const [key, cfg] of Object.entries(D.sections)) {
     });
     return d;
   };
-  sec.fill = (d, results) => {                                  // results false: names, versions, pages and notes only
+  sec.fill = (d, results) => {                                  // results false: versions, pages and notes only, never "Checked By"
     form.querySelectorAll('[data-field]').forEach(el => {
       const f = el.dataset.field, v = f.startsWith('fields.') ? (d.fields || {})[f.slice(7)] : d[f];
-      el.value = v || '';
+      if (results || f !== 'by') el.value = v || '';
     });
     form.querySelectorAll('fieldset[data-item]').forEach(fs => {
       const it = (d.items || {})[fs.dataset.item] || {};
@@ -86,7 +87,6 @@ for (const [key, cfg] of Object.entries(D.sections)) {
   sec.changed = () => {
     sec.saved_at = new Date().toISOString(); sec.dirty = true;
     store.set(sec.ls, { data: sec.collect(), saved_at: sec.saved_at, for: D.sha });
-    const by = form.querySelector('[data-field="by"]'); if (by && by.value.trim()) store.set('checks:by', by.value.trim());
     status('Saving…'); clearTimeout(sec.timer); sec.timer = setTimeout(sec.save, 1000);
   };
   form.addEventListener('input', sec.changed);
@@ -97,8 +97,6 @@ for (const [key, cfg] of Object.entries(D.sections)) {
   if (mine && mine.for === D.sha && (!sec.saved_at || mine.saved_at > sec.saved_at) && (!cfg.tombstone || mine.saved_at > cfg.tombstone)) {
     sec.fill(mine.data, true); sec.saved_at = mine.saved_at; sec.save();
   } else status(cfg.has_draft ? 'All changes saved' : '');
-  const by = form.querySelector('[data-field="by"]');
-  if (by && !by.value) { const n = store.get('checks:by'); if (n) by.value = n; }
 
   // ---------------------------------------------------------------- Record
   const errs = $(sec.p + '-errs');
@@ -154,7 +152,7 @@ document.addEventListener('click', e => {
   const [key, which] = b.dataset.start.split(':'), sec = secs.find(x => x.key === key); if (!sec) return;
   const d = which === 'draft' ? sec.cfg.start_draft : sec.cfg.starts[Number(which)]; if (!d) return;
   sec.fill(d, false); sec.changed();
-  live('Names, versions, pages and notes copied. Choose each result again for this version.');
+  live('Versions, pages and notes copied. Enter your name in "Checked By" and choose each result again for this version.');
   const f = sec.form.querySelector('[data-field="by"]'); if (f) f.focus();
 });
 

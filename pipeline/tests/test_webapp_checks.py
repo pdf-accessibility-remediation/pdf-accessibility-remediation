@@ -113,7 +113,7 @@ def test_a_changed_pdf_is_said_in_plain_words(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
     with open(os.path.join(R, 'clans_remediated.pdf'), 'ab') as f: f.write(b'\n% edited by hand\n')
     s = MP.strip(R, core.load(os.path.join(R, 'record.json')))
-    assert s['disk_same'] is False and s['refusal'] == MP.CHANGED_BY_HAND
+    assert s['disk_same'] is False and s['refusal'] == MP.strip_words(MP.CHANGED_BY_HAND)
 
 def test_the_strip_says_the_live_status_when_the_card_is_older(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True); rec = core.load(os.path.join(R, 'record.json'))

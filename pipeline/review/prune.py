@@ -75,7 +75,7 @@ def remove(R, chosen, by, wait=runlock.COMMAND_WAIT, say=print):
     if not want: raise S.Refused(NONE_CHOSEN)
     by = clean_text(by or '', one_line=True)[:80]
     if not by: raise S.Refused('Enter your name in "Removed By".')
-    try: lk = S.Lock(R, 'remove older pdfs')                     # reviews/.lock first: it refuses, never waits
+    try: lk = S.Lock(R, 'clean up space')                     # reviews/.lock first: it refuses, never waits
     except S.Refused: raise S.Refused(REVIEW_OPEN)
     try:
         with runlock.record_lock(R, wait):

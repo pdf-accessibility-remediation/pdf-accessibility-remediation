@@ -414,7 +414,7 @@ def test_a_pdf_copied_back_by_hand_is_a_changed_file_never_ready(tmp_path):
     r = runs.ready(R, rec)
     assert r['answer'] == 'No' and r['status'] == MP.CHANGED_STATUS
     s = MP.strip(R, rec)
-    assert s['status'] == MP.CHANGED_STATUS and s['refusal'] == MP.CHANGED_BY_HAND
+    assert s['status'] == MP.CHANGED_STATUS and s['refusal'] == MP.strip_words(MP.CHANGED_BY_HAND)   # the strip: one line for both actions (R2)
     g = MP.app_glance(R, rec, rec['glance'])
     assert g['ready'] is False and g['status']['current']['name'] == 'Not Ready'
     core.save(os.path.join(R, 'record.json'), rec)                                # the evaluation page reads the record from disk

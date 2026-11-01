@@ -559,7 +559,7 @@ def test_panel_and_review_page_details():
     assert "'Waiting for you: the review page is open'" in js and 'Ready to ship?</b>' not in js            # the report's card says it
     assert '[tabindex="-1"]:not(.hit):focus, [tabindex="-1"]:not(.hit):focus-visible { outline: none; }' in css   # any app page, not .hit
     assert '.pp summary { cursor: pointer; font-size: 15px; color: var(--ink); }' in css
-    assert 'placeholder="Your name"' in page and '<h1 id="title" tabindex="-1">Work Order Review</h1>' in page and 'Back to the Run Page' in page
+    assert 'placeholder="Your Name"' in page and '<h1 id="title" tabindex="-1">Work Order Review</h1>' in page and 'Back to the Run Page' in page
     assert ": done' + (s.time ? ', ' + esc(s.time) : '') : j.status === 'running' ? '' : ': did not finish'" in js   # no ": running"
     assert 'html { scroll-padding-top' not in page and 'main [id] { scroll-margin-top: calc(var(--top, 0px) + 8px); }' in page
 
