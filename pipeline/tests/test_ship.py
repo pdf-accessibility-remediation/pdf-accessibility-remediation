@@ -300,15 +300,19 @@ def test_the_statement_uses_no_internal_terms(tmp_path):
     md = open(os.path.join(F, 'disclosure.md'), encoding='utf-8').read()
     assert 'OCR text: none was added.' in md and "the document's structure" in md and 'a semi-automated process' in md
 
-def test_the_run_page_drops_the_green_border_while_the_shipped_warning_stands(tmp_path):
-    """N8 on the run page: the card is review.html's (built against the record's hash); the app drops its green border when
-    the file on disk changed after shipping. review.html on disk is not rebuilt."""
+def test_the_run_page_drops_the_green_border_while_the_pdf_on_disk_differs(tmp_path):
+    """N8 and Q1 on the run page: the card is review.html's (built against the record's hash); the app drops its green border
+    whenever the file on disk is not the record's, a Ready book's or a shipped one's. review.html on disk is not rebuilt."""
     from webapp import server as W
-    R = real_ready(tmp_path)
-    M.ship(R, 'Kim', say=lambda *a: None, batch=False)
-    page = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
-    assert '<section class="ship yes" aria-labelledby="ship-h">' in page and W.card_border(page, R) == page   # shipped, unchanged: green
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'b_remediated.pdf'))
-    served = W.card_border(page, R)
-    assert '<section class="ship" aria-labelledby="ship-h">' in served and 'class="ship yes"' not in served
-    assert '<section class="ship yes"' in open(os.path.join(R, 'review.html'), encoding='utf-8').read()          # the file itself unchanged
+    for name, ship in (('ready', False), ('shipped', True)):
+        R = real_ready(tmp_path, name)
+        if ship: M.ship(R, 'Kim', say=lambda *a: None, batch=False)
+        page = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
+        assert '<section class="ship yes" aria-labelledby="ship-h">' in page and W.card_border(page, R) == page, name   # unchanged: green
+        doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'b_remediated.pdf'))
+        rec = core.load(os.path.join(R, 'record.json'))
+        st = MP.app_glance(R, rec, rec['glance'])['status']
+        assert (st['name'], st.get('warning')) == (REL.SHIPPED, MP.SHIPPED_WARNING) if ship else st['text'] == MP.CHANGED_STATUS, name
+        served = W.card_border(page, R)
+        assert '<section class="ship" aria-labelledby="ship-h">' in served and 'class="ship yes"' not in served, name
+        assert '<section class="ship yes"' in open(os.path.join(R, 'review.html'), encoding='utf-8').read(), name   # the file itself unchanged

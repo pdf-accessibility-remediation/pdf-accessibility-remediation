@@ -438,15 +438,15 @@ def make(s, setup, code=None):
     return ThreadingHTTPServer(('127.0.0.1', s['port']), H)
 
 def card_border(page, R):
-    """review.html as the run page serves it: while the Shipped warning stands (the PDF on disk changed after shipping), the
-    "Ready to Ship?" card loses its green border, as the strip says (review 22 N8, 24). review.html on disk is not rebuilt for
-    it: opened as a file it keeps the border until it is next rebuilt."""
+    """review.html as the run page serves it: while the PDF on disk is not the one the record describes (changed by hand, a
+    Ready book's or a shipped one's), the "Ready to Ship?" card loses its green border, as the strip says (review 22 N8, 24,
+    26 Q1). review.html on disk is not rebuilt for it: opened as a file it keeps the border until it is next rebuilt."""
     green = '<section class="ship yes" aria-labelledby="ship-h">'
     if green not in page: return page
     rec = runs.load(os.path.join(R, 'record.json')) or {}
-    try: st = MP.app_glance(R, rec, rec.get('glance') or {'ship': []}).get('status') or {}
+    try: changed = MP.disk_state(R, rec)['same'] is False
     except (OSError, ValueError, KeyError, TypeError): return page
-    return page.replace(green, '<section class="ship" aria-labelledby="ship-h">', 1) if st.get('warning') else page
+    return page.replace(green, '<section class="ship" aria-labelledby="ship-h">', 1) if changed else page
 
 def no_dashboard(run, R, current=None):
     """A run with no review.html (older runs): the panel, the review.md link and a line saying there is no dashboard.
