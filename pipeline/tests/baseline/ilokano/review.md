@@ -2,13 +2,13 @@
 
 Result: `ilokano_remediated.pdf`
 
-49 pages · run 2026-10-31T15:19:57 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+49 pages · run October 31, 2026 at 8:46 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v8.md` (4555d20a2fa08a40) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: 1 picture page without OCR text · auto-tagged · tagged by OpenDataLoader 2.5.12 · the pipeline worked on `_intake/intake.pdf`; the original was not changed
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.1s · audit 3.3s · reuse saved reply 1.2s · apply 4.7s · verify 10.1s · total 19.4s
+Time: intake 0.1s · audit 3.6s · reuse saved reply 1.2s · apply 5.0s · verify 11.3s · total 21.2s
 
 ## Overview
 
@@ -16,13 +16,13 @@ Time: intake 0.1s · audit 3.3s · reuse saved reply 1.2s · apply 4.7s · verif
 
 **Status:** Not Ready
 
-**Ready to ship?** No
-- Work order approved on the review page: no (run without REVIEW=1)
-- OCR text approved: not needed (intake added no OCR text)
-- Safety checks: OK
-- Manual check (PAC): no (not done for this version)
+**Ready to ship?**
+- Work Order Approval: Not Approved (applied without a review)
+- ✓ OCR Text Approval: Not Required (no OCR text was added during intake)
+- ✓ Safety Checks: Passed
+- Accessibility Evaluation: Not Completed (neither part recorded for this version)
 
-**Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable · OK ✔ no WCAG rule newly failing (veraPDF)  
+**Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 5 (5 deferred by the AI · 0 deferred by the executor · 0 CHECK rows)  
 **AI decisions:** 33 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 17 · one-item lists turned into paragraphs 15 · pages given tab order 3 · title shown in the window 2 · link descriptions that were only a URL 2 · marked as tagged 1  
@@ -240,14 +240,13 @@ Reviewer note from the AI: Only the book title (137 0) stays H1. The front-matte
 | links: URL-only description replaced by the sentence around it | 2 |
 | tab order: /Tabs /S set on pages with annotations | 3 |
 
-## Final Check with PAC 2026
+## Accessibility Evaluation
 
-The manual checks are recorded in the run's `release/` folder (docs/release.md). Each is recorded against this version of `ilokano_remediated.pdf` (its sha256): after a new apply it no longer counts, and the new version is checked again.
+A person evaluates this version of `ilokano_remediated.pdf` with PAC 2026 and a screen reader, on the app's "Accessibility Evaluation" page (or with manual_checks.py; docs/release.md). Both parts are needed for "Ready to ship?". A Fail is recorded with its note and does not hold the book back. Each result is recorded against this version of the PDF (its sha256): after a new apply it no longer counts. The evaluation is a record of what a person found, not a legal certification.
 
-**PAC 2026 and sanity checks** (part of "Ready to ship?": done on this version, no item failed). Open `ilokano_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:
+**PAC 2026.** Open `ilokano_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:
 
 - PAC 2026: WCAG Check: PAC 2026's WCAG check on this version of the PDF. Anything it fails that the report does not list is a gap in the automated checks.
-- PAC 2026: PDF/UA Check (optional; does not decide "Ready to ship?"): PAC 2026's PDF/UA check, recorded for the record. It does not decide "Ready to ship?".
 - Title and Language: The title shown in the window is the book's title, and the document language is the book's main language.
 - Spot-Check of Pages: A few pages compared with the original in PAC's structure preview: headings, lists, tables and figures as printed.
 - Colour Alone: No information is given by colour alone (WCAG 1.4.1).
@@ -255,12 +254,12 @@ The manual checks are recorded in the run's `release/` folder (docs/release.md).
 - Images of Text: No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).
 - What Needs a Person: Every item the report lists under "For a Person to Check" was looked at.
 
-**Screen-reader check** (decides "Verified" or "Needs Rework" once the book has shipped; a check made before shipping counts when the shipped file is this same file, and a failed item on this version keeps "Ready to ship?" at No). Listen with a screen reader and record which one and its version:
+**Screen-reader test.** Listen with a screen reader and record which one and its version:
 
 - Title Announced: The screen reader announces the book's title when the PDF opens.
 - Document Language and Passages in Other Languages: The text is read in the book's language, and passages in another language are pronounced in theirs (WCAG 3.1.1, 3.1.2).
 - Heading Navigation: Moving by heading reaches each part and chapter, at the right level (WCAG 1.3.1, 2.4.6).
-- Reading Order on Sample Pages: On the pages listed, the text is read in the order it is meant to be read (WCAG 1.3.2).
+- Reading Order on Sample Pages: On a few sample pages, the text is read in the order it is meant to be read (WCAG 1.3.2).
 - Figure Alt Text: Each figure's alt text is read, is accurate and gives its purpose; decorative images are skipped (WCAG 1.1.1).
 - Tables Read with Their Headers: Moving through a table, each cell is read with its row or column header (WCAG 1.3.1).
 - Links Say Where They Go: Each link's text, or its description, says where it goes (WCAG 2.4.4).
