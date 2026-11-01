@@ -143,6 +143,7 @@ for (const [key, cfg] of Object.entries(D.sections)) {
       else { showErrors([], r.error || 'The app refused this.'); alarm(r.error || 'The app refused this.'); }
     } catch (err) { showErrors([], 'The app is not running. ' + START + ' Your answers are kept in this browser.'); }
     b.disabled = false;
+    if (sec.dirty) sec.save();                                   // not recorded: the auto-save cancelled above carries on
   });
 }
 

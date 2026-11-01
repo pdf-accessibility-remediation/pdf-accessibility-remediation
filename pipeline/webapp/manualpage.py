@@ -249,8 +249,8 @@ def page(R, run, recorded=None):
     b = st['book']; lang = f' lang="{E(b["lang"])}"' if b['lang'] else ''
     ready = st['ready']; why = [x for x in ready['lines'] if not x['ok']]
     B = [f'<header><h1>Manual Checks</h1><p class="mc-book">Book: <span{lang}>{E(b["title"])}</span></p></header>',
-         f'<nav class="pp-wrap" aria-label="This page"><p class="pp pp-bar"><a class="pp-btn" href="{E(st["base"])}">Back to the Run Page</a> · '
-         f'<a href="#pac">{E(TC(REL.SECTION_NAMES["pac"]))}</a> · <a href="#screen-reader">{E(TC(REL.SECTION_NAMES["screen_reader"]))}</a></p></nav>',
+         f'<nav class="pp-wrap" aria-label="This page"><p class="pp pp-bar mc-nav"><a class="pp-btn" href="{E(st["base"])}">Back to the Run Page</a> '
+         f'<a href="#pac">{E(TC(REL.SECTION_NAMES["pac"]))}</a> <a href="#screen-reader">{E(TC(REL.SECTION_NAMES["screen_reader"]))}</a></p></nav>',
          '<main id="main" tabindex="-1"><div class="pp mc">']
     if msg:
         B.append(f'<div id="mc-msg" class="pp-msg pp-okmsg" tabindex="-1"><span class="pp-msg-t">{E(msg[0])}</span>'
