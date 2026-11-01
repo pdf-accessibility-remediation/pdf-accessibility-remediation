@@ -20,9 +20,12 @@ POST (JSON from the app's own pages only), each answered 202 {job} or 409 {error
     /api/run/<run>/review      {from: null | "ai" | "003", discard_open}: Review again (a pin job first on an unpinned run)
     /api/run/<run>/apply       Apply the finished session that was not applied
     /api/run/<run>/stop        Stop reviewing: Ctrl+C to the open review page, only before Finish
+    /api/run/<run>/stop-other  Stop the Other Review: Ctrl+C to a review page the app did not start (the lock's holder)
     /api/run/<run>/discard     Discard the open session: review_workorder.py --discard-open (marked abandoned, kept);
                                refused while its review page is open or past Finish
-Reserved for later pages (not built): /run/<run>/ocr, /run/<run>/release, /run/<run>/screen-reader.
+    /api/run/<run>/ocr         Review OCR Text: the OCR-only review page (review_ocr.py --serve), a job that waits on a person
+Reserved for later pages (not built): /run/<run>/release, /run/<run>/screen-reader. /run/<run>/ocr stays reserved (404):
+OCR text is approved on the review page, or on the OCR-only page, both on the review server.
 
 Every response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none'), so another site cannot show a run
 page in a frame and trick a click. HTML pages also get script-src 'self' plus the sha256 of the page's one inline script,
@@ -111,6 +114,8 @@ STATIC = {'panel.js': os.path.join(config.HERE, 'panel.js'), 'panel.css': os.pat
 SKIP = '<a class="skip" href="#main">Skip to the content</a>'
 
 FRAME = {'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'"}   # every response: never in a frame
+# an error in the app itself, as the page says it; the details (and where they are) are in runs/.app/server.log only
+ERROR_500 = 'The app hit an error and couldn\'t do this. Try again; if it happens again, tell whoever looks after the app.'
 class Scripts(HTMLParser):
     """The page's inline scripts as the browser sees them (html.parser, not a regex: it handles "</script >" and runs in
     linear time): the exact text of each <script> with no src and no JSON type."""
@@ -169,7 +174,7 @@ def with_version(page, run, sid):
 def md_page(text, run, sid, base):
     """review.md inside a page with a way back (the run page; for a previous result, that result's dashboard too) and a
     link to the plain file. The text is shown as written, escaped."""
-    which = TC(f'a previous result ({S.label(sid)})' if sid else 'the current result')
+    which = TC(f'a previous result ({S.label(sid).capitalize()})' if sid else 'the current result')   # TC leaves parentheses as written
     links = [f'<a href="{base}">Back to the Run Page</a>'] + ([f'<a href="review.html">This Previous Result\'s Dashboard</a>'] if sid else []) + \
             ['<a href="review.md?raw=1">The Plain File</a>']
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -221,14 +226,14 @@ def make(s, setup, code=None):
             except BrokenPipeError: pass
             except Exception:
                 with open(os.path.join(J, 'server.log'), 'a', encoding='utf-8') as f: f.write(f'{datetime.datetime.now().isoformat(timespec="seconds")} GET {self.path}\n{traceback.format_exc()}\n')
-                self.send(500, {'error': 'the app hit an error: see runs/.app/server.log'})
+                self.send(500, {'error': ERROR_500})
 
         def do_POST(self):
             try: self.post()
             except BrokenPipeError: pass
             except Exception:
                 with open(os.path.join(J, 'server.log'), 'a', encoding='utf-8') as f: f.write(f'{datetime.datetime.now().isoformat(timespec="seconds")} POST {self.path}\n{traceback.format_exc()}\n')
-                self.send(500, {'error': 'the app hit an error: see runs/.app/server.log'})
+                self.send(500, {'error': ERROR_500})
 
         def post(self):
             if not self.ours(): return self.send(403, {'error': 'not from the app\'s own pages'})
@@ -239,7 +244,7 @@ def make(s, setup, code=None):
             if not isinstance(body, dict): return self.send(400, {'error': 'not a JSON object'})
             p = urllib.parse.urlsplit(self.path).path
             segs = segments(p[len('/api/run/'):]) if p.startswith('/api/run/') else None
-            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'discard'): return self.send(404, {'error': 'not found'})
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr'): return self.send(404, {'error': 'not found'})
             hit = find_run(s['runs'], segs[:-1])
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
             run, R, _ = hit
@@ -249,7 +254,9 @@ def make(s, setup, code=None):
                     j = runs.start_review(s, run, R, self.server.server_address[1], None if src in (None, '', 'latest') else str(src),
                                           bool(body.get('discard_open')), app_pid=os.getpid())
                 elif segs[-1] == 'apply': j = runs.start_apply(s, run, R)
+                elif segs[-1] == 'ocr': j = runs.start_ocr(s, run, R, self.server.server_address[1], app_pid=os.getpid())
                 elif segs[-1] == 'discard': j = runs.start_discard(s, run, R)
+                elif segs[-1] == 'stop-other': return self.send(200, {'stopped': runs.stop_other(s, run, R)})
                 else: j = runs.stop_review(s, run, R); return self.send(200, {'stopped': j['id']})
             except ValueError as e: return self.send(409, {'error': str(e)})
             jobs.tick(J, s)                                   # start it now if a place is free, rather than within the second

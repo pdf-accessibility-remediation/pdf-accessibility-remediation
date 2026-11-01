@@ -52,7 +52,9 @@ def finished(R, a):
             if not ss: print('no review sessions' + (f' kept (reviewed before sessions were kept: --reopen records it as session 1)' if (rec.get('review') or {}).get('workorder') else ' (never reviewed)'))
             for x in ss:
                 r = S.summary_row(x)
-                print(f'{x["id"]}{" (current)" if x["id"] == cur else ""}  {r["status"]:<9} {r["reviewer"] or "-":<12} {r["date"] or "-":<10} '
+                if x.get('status') == 'open': r.update(S.name_notes(core.load(S.P(R)['draft']), x['id']))   # as last saved
+                print(f'{x["id"]}{" (current)" if x["id"] == cur else ""}{" " + json.dumps(r["name"], ensure_ascii=False) if r.get("name") else ""}'
+                      f'{" (notes)" if r.get("notes") else ""}  {r["status"]:<9} {r["reviewer"] or "-":<12} {r["date"] or "-":<10} '
                       f'from {S.from_label(r["from"])}'
                       + (f' · carried: {r["carried"]} from {S.from_label(r["from"])}' if r.get('carried') else '')
                       + f' · {r["changes"]} change{"s" if r["changes"] != 1 else ""} from the AI' + (f' · {r["since_start"]} set or changed in this session' if r['since_start'] else '')
@@ -80,7 +82,7 @@ def finished(R, a):
                   + (f': {s.get("carried", 0)} choices preloaded' if s['from'] != 'ai' else ''))
             v = server.serve(S.P(R)['dir'], a.date, a.port, open_browser=not a.no_browser,
                              files={'/result/review.html': os.path.join(R, 'review.html'), '/result/review.md': os.path.join(R, 'review.md')},
-                             return_to=a.return_to)
+                             return_to=a.return_to, run_dir=R, lock_held=True)    # this process holds reviews/.lock
             if not v:
                 print(f'{S.label(s["id"])} stays open: run the same command again to carry on'); return
             s = S.finish_session(R, s, rec)
@@ -140,7 +142,8 @@ def main():
         if not a.pdf or not os.path.isfile(a.pdf): sys.exit('--prepare needs --pdf <the PDF the pipeline works on>')
         d = core.prepare(R, a.pdf)
         b = sessions.first_basis(R, a.pdf)                 # the run id: the page's browser draft is this run's alone
-        d['session'] = {'key': f'{b["run_id"]}:001', 'id': '001', 'first': True}; core.save(os.path.join(R, 'review_items.json'), d)
+        d['session'] = {'key': f'{b["run_id"]}:001', 'id': '001', 'first': True, 'name_default': 'Session 1'}
+        core.save(os.path.join(R, 'review_items.json'), d)
         n = sum(1 for it in d['items'] if it['priority'])
         print(f'review ready: {len(d["items"])} decisions, {n} to check first · page images are made as the reviewer scrolls to them')
         return
@@ -149,7 +152,8 @@ def main():
         d = core.load(os.path.join(R, 'review_items.json'))
         if not (d.get('session') or {}).get('key') and os.path.isfile(d.get('pdf') or ''):   # prepared before runs had an id
             b = sessions.first_basis(R, d['pdf'])
-            d['session'] = {'key': f'{b["run_id"]}:001', 'id': '001', 'first': True}; core.save(os.path.join(R, 'review_items.json'), d)
+            d['session'] = {'key': f'{b["run_id"]}:001', 'id': '001', 'first': True, 'name_default': 'Session 1'}
+            core.save(os.path.join(R, 'review_items.json'), d)
         v = server.serve(R, a.date, a.port, open_browser=not a.no_browser, return_to=a.return_to)
         if v: print(f'review recorded: {v["reviewer"]} on {v["date"]} · {len(v["changes"])} changes · '
                     f'{len(v["dropped_on_check"])} dropped by the check · {len(v.get("gaps") or [])} gaps left open\nnext: {rerun}')

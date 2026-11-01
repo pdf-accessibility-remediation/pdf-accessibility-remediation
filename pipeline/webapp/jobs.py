@@ -59,27 +59,59 @@ def update(J, jid, **kw):
         job.update(kw); save(J, job); return job
 
 # ------------------------------------------------------------------ liveness
-def _marks(J, job):
+def _case_blind(p):
+    """Does the volume holding p ignore letter case (macOS by default)? Then ~/downloads and ~/Downloads are one folder."""
+    head = p
+    while head and not os.path.exists(head): head = os.path.dirname(head)
+    if not head or head == os.path.dirname(head): return sys.platform == 'darwin'
+    other = head.swapcase()
+    try: return other != head and os.path.exists(other) and os.path.samefile(head, other)
+    except OSError: return False
+
+def path_in(cmd, p):
+    """Is the folder p named in the command line cmd, compared the way the filesystem compares paths: as given, resolved
+    (symlinks), and without regard to case on a case-blind volume (the app may have been started from ~/downloads while
+    the job's command line says ~/Downloads)."""
+    ps = {p, os.path.realpath(p)}
+    if any(x in cmd for x in ps): return True
+    return _case_blind(p) and any(x.casefold() in cmd.casefold() for x in ps)
+
+def _marks(job):
     """What a process of this job has in its command line, each a tuple of parts that must all be there: the wrapper
-    with its jobs folder and job id; the command's script with the run folder (when the command names it)."""
-    m = [(f'webapp/jobrun.py {J} {job["id"]}',)]
+    with this job's id (unique; no folder to spell); the command's script with the run folder (when the command names
+    it). A ('path', folder) part is matched by path_in()."""
+    m = [('webapp/jobrun.py', f' {job["id"]}')]
     for a in job['argv'][:3]:
-        if a.endswith(('.py', '.sh')): m.append((os.path.basename(a), job['dir']) if job.get('dir') and job['dir'] in job['argv'] else (os.path.basename(a),))
+        if a.endswith(('.py', '.sh')): m.append((os.path.basename(a), ('path', job['dir'])) if job.get('dir') and job['dir'] in job['argv'] else (os.path.basename(a),))
     return m
 
+def _matches(cmd, mark):
+    return all(path_in(cmd, p[1]) if isinstance(p, tuple) else p in cmd for p in mark)
+
 def group_alive(J, job):
+    """Is any process of this job still running? Never calls a live job ended: the job's own command (its child pid,
+    recorded by the wrapper) or any process of its group whose command line is this job's; and when ps shows no process
+    of a group the system says exists, it cannot tell, so alive. A group whose processes are all something else (a
+    reused process-group id) is not this job."""
+    from review import sessions as S
     pg = job.get('pgid')
     if not pg: return False
+    cp = job.get('child_pid')
+    if cp:                                              # the command itself, by its own pid
+        cmd = S.command_of(cp)
+        if cmd is None or (cmd and any(_matches(cmd, m) for m in _marks(job)[1:])): return True
     try: os.killpg(pg, 0)
     except ProcessLookupError: return False
     except PermissionError: pass
     try: out = subprocess.run(['ps', '-A', '-ww', '-o', 'pgid=,command='], capture_output=True, text=True, timeout=10).stdout
     except (OSError, subprocess.TimeoutExpired): return True                # cannot tell: never call a live job interrupted
-    marks = _marks(J, job)
+    marks, seen = _marks(job), False
     for line in out.splitlines():
         g, _, cmd = line.strip().partition(' ')
-        if g == str(pg) and any(all(p in cmd for p in m) for m in marks): return True
-    return False
+        if g != str(pg): continue
+        seen = True
+        if any(_matches(cmd, m) for m in marks): return True
+    return not seen                                     # the group exists but ps shows none of it: cannot tell, so alive
 
 # ------------------------------------------------------------------ the run's own state
 def _at(since):
@@ -109,23 +141,33 @@ def review_past_finish(R, since=None):
     return False
 
 def lock_holder(R):
-    """reviews/.lock held by a live process: (pid, what, since); else None (a lock left by an ended process is not held)."""
+    """reviews/.lock held by a live review process: (pid, what, since); else None (a lock left by an ended process, or
+    whose pid now belongs to another program, is not held: review/sessions.py review_process)."""
+    from review import sessions as S
     p = os.path.join(R, 'reviews', '.lock')
     try: d = json.load(open(p, encoding='utf-8'))
     except (OSError, ValueError): return None
-    try: os.kill(int(d.get('pid')), 0)
-    except ProcessLookupError: return None
-    except PermissionError: pass
-    except (TypeError, ValueError): return None
+    if d.get('pid') is None or not S.review_process(d.get('pid')): return None
     return d.get('pid'), d.get('what'), d.get('since')
 
+LOCK_WORDS = {'reopen': 'Someone is already reviewing this run', 'ocr review': 'Someone is already reviewing this run\'s OCR text',
+              'ocr verdict': 'An OCR verdict is being recorded for this run', 'apply': 'This run is being applied',
+              'discard': 'A session of this run is being discarded'}
+
+def lock_words(what, since):
+    """The run's review lock in plain words for the pages: who or what holds it and since when, no process id."""
+    at = str(since or '')[11:16]
+    return (LOCK_WORDS.get(what, 'Someone is already working on this run') + (f' (since {at})' if at else '') + '. Try again when '
+            + ('they\'re' if what in ('reopen', 'ocr review') else 'it\'s') + ' done.')
+
 def busy(J, run, R):
-    """Why nothing new may start for this run now, or None."""
+    """Why nothing new may start for this run now, or None (in plain words: the pages show it)."""
     h = lock_holder(R)
-    if h: return f'another review of this run is running (process {h[0]}, {h[1]}, since {h[2]})'
+    if h: return lock_words(h[1], h[2])
     for j in all_jobs(J):
         if j['run'] == run and j['status'] in ACTIVE + ('needs-spend',):
-            return f'a job for this run is already {"waiting" if j["status"] != "running" else "running"}: {j["kind"]}, since {j.get("started") or j["created"]}'
+            at = str(j.get('started') or j['created'])[11:16]
+            return f'A job for this run is already {"waiting" if j["status"] != "running" else "running"}' + (f' (since {at})' if at else '') + '. One job at a time per run.'
     return None
 
 # ------------------------------------------------------------------ queue
@@ -142,6 +184,8 @@ def create(J, kind, run, argv, env, env_set=None, counted=True, then=None, paid=
                'ended': None, 'exit': None, 'pid': None, 'pgid': None, 'log': os.path.basename(log_path(J, jid)), **extra}
         save(J, job)
         return job
+
+PERSON = ('review', 'ocr')          # jobs that open a page and wait on a person (the work-order review, the OCR-only page)
 
 def run_dir(job, runs=None):
     return job.get('dir') or (os.path.join(runs, *job['run'].split('/')) if runs else None)
@@ -166,7 +210,9 @@ def tick(J, s):
         for j in jobs:
             if j['status'] == 'running' and not j.get('ended') and not group_alive(J, j):
                 j.update(status='interrupted', ended=now()); save(J, j)
-            if j['kind'] == 'review' and j['status'] == 'running' and not j.get('url'):       # the review page is up: keep its URL
+            elif j['status'] == 'interrupted' and j.get('exit') is None and j.get('pgid') and group_alive(J, j):
+                j.update(status='running', ended=None); save(J, j)   # marked by mistake (its wrapper never wrote an exit): alive after all
+            if j['kind'] in PERSON and j['status'] == 'running' and not j.get('url'):        # the review page is up: keep its URL
                 u = logs.review_url(read_log(J, j['id'])[0])
                 if u: j['url'] = u; save(J, j)
             if j['status'] == 'done' and j.get('then') and not j.get('then_job'):

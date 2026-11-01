@@ -48,6 +48,21 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .pp table { border-collapse: collapse; font-size: 14px; margin: 4px 0; } .pp caption { text-align: left; font-weight: 600; padding: 4px 0; }
 .pp th, .pp td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; } .pp th { background: var(--bg); }
 .pp td button { white-space: nowrap; width: auto; } .pp td:last-child { white-space: nowrap; }
+/* a session's own name, under its number: one line up to about 40 characters; a longer one wraps at spaces in a 26em
+   column, and only a single word too long for it breaks (never cut short with "…"); the same rule as review.html's */
+.pp .pp-name { display: block; font-weight: 400; white-space: nowrap; }
+.pp .pp-name.pp-long { white-space: normal; width: 26em; max-width: 26em; overflow-wrap: break-word; }
+.pp button.pp-link { border: 0; background: none; padding: 0 2px; min-height: 24px; color: var(--accent); text-decoration: underline; font-weight: 400; }
+/* a session's notes: a pop-up box (panel.js notesBox), not modal, moved by its title bar, resized from its corner */
+.pp-ndlg { position: fixed; margin: 0; padding: 0; inset: auto; width: min(520px, 92vw); height: 300px; min-width: 220px; min-height: 120px;
+           max-width: 100vw; max-height: 100vh; resize: both; overflow: hidden; z-index: 50; border: 1px solid var(--muted); border-radius: 6px;
+           background: var(--panel); color: var(--ink); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.pp-ndlg[open] { display: flex; flex-direction: column; }
+.pp-nbar { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; background: var(--bg); border-bottom: 1px solid var(--line); cursor: move; user-select: none; touch-action: none; }
+.pp-nbar h2 { flex: 1; font-size: 15px; margin: 0; overflow-wrap: anywhere; }
+.pp-ndlg button { font: inherit; min-width: 28px; min-height: 28px; padding: 0 6px; border: 0; background: none; color: var(--ink); font-size: 18px; line-height: 1; cursor: pointer; }
+.pp-nbody { flex: 1; overflow: auto; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pp-ndlg :focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 .pp-offline { margin: 12px 16px; padding: 8px 12px; border: 2px solid var(--reject); border-radius: 4px; background: var(--flag); color: var(--ink); }
 .pp-sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .pp-dlg { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); max-width: 560px; padding: 16px;
