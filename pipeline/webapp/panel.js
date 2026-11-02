@@ -441,7 +441,11 @@ function render() {
     h += '<p><b>OCR Verdict Recorded:</b> ' + esc(s.ocr.verdict || 'a new verdict') + '. The report below was made before it.</p>' +
       '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Updated Report</button></div>';
   h += actions(s) + jobsBlock(s) + historyBlock(s) + pruneBlock(s);
-  $('pp-body').innerHTML = h;
+  // replaced only when it changed, as the strip is: a poll whose data changed but not what the panel shows (the review
+  // page saving a session's draft while a review is open) never swaps the buttons under the mouse or a selection
+  const body = $('pp-body');
+  if (body.dataset.h === h) return;
+  body.innerHTML = h; body.dataset.h = h;
   opened.forEach(id => { const d = $(id); if (d) d.open = true; });
   if (keepFocus && $(keepFocus) && box.contains($(keepFocus))) $(keepFocus).focus();
 }

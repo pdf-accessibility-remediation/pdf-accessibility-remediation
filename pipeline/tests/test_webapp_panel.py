@@ -982,3 +982,17 @@ def test_the_review_page_names_no_report_file():
     assert 'review.md' not in page and 'the report lists the moves the executor actually makes' in page
     assert 'press Save' not in page and 'and Save to' not in page                       # no Save button: previews follow the auto-save
     assert "refreshMoves(b.move_previews)" in page
+
+
+def test_the_panel_is_replaced_only_when_its_html_changed():
+    """Patrick, 2026-11-01: while a review is open, the run page polled every second and rebuilt the whole panel whenever the
+    API's data differed (the review page saving a session's notes changes it), swapping the buttons under the mouse and
+    losing any selection. render() now replaces #pp-body only when the HTML it builds differs, as renderStrip() does, so a
+    second render with identical HTML leaves the same elements (open <details> and focus kept as before)."""
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    body = js.split('function render() {')[1].split('\n}\n')[0]
+    assert "if (body.dataset.h === h) return;\n  body.innerHTML = h; body.dataset.h = h;" in body
+    assert body.index('if (body.dataset.h === h) return;') < body.index('opened.forEach') < body.index('.focus()')
+    assert body.count('innerHTML') == 1                                     # the one write, after the check
+    strip = js.split('function renderStrip(s) {')[1].split('\n}\n')[0]
+    assert 'if (sb.dataset.h !== h) {' in strip                            # the strip's own check, unchanged
