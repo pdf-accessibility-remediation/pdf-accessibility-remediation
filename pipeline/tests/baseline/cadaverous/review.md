@@ -2,13 +2,13 @@
 
 Result: `cadaverous_remediated.pdf`
 
-323 pages · run November 1, 2026 at 10:47 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+323 pages · run November 1, 2026 at 1:59 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.9s · audit 34.1s · reuse saved reply 1.3s · apply 107.1s · verify 57.3s · total 201.7s
+Time: intake 1.8s · audit 32.0s · reuse saved reply 1.3s · apply 111.7s · verify 55.7s · total 202.5s
 
 ## Overview
 
@@ -279,7 +279,7 @@ Rejected by validation or by the executor; nothing was half-applied.
 
 ## Accessibility Evaluation
 
-A person evaluates this version of `cadaverous_remediated.pdf` with PAC 2026 and a screen reader, on the app's "Accessibility Evaluation" page (or with manual_checks.py; docs/release.md). Both parts are needed for "Ready to ship?". A Fail is recorded with its note and does not hold the book back. Each result is recorded against this version of the PDF (its sha256): after a new apply it no longer counts. The evaluation is a record of what a person found, not a legal certification.
+A person evaluates this version of `cadaverous_remediated.pdf` with PAC 2026 and a screen reader, on the app's "Accessibility Evaluation" page (or with manual_checks.py; docs/release.md). The "Ready to ship?" answer needs both parts. A Fail is recorded with its note and does not hold the book back. Each result is recorded against this version of the PDF (its sha256): after a new apply it no longer counts. The evaluation is a record of what a person found, not a legal certification.
 
 **PAC 2026.** Open `cadaverous_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:
 
