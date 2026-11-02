@@ -193,7 +193,7 @@ def test_the_page_in_the_words_decided_after_try_rv1(tmp_path):
     optional, an h3 over the previous results (G2), and the message after a Record (green, no Review Again: Patrick, 2026-11-01)."""
     R = make_run(str(tmp_path / 'r'), record_sha=True)
     page = MP.page(R, 'r'); text = re.sub(r'\s+', ' ', visible(page))
-    assert '<h1>Accessibility Evaluation</h1>' in page and 'PDF Title: ' in text and '<title>Accessibility Evaluation: The Clan Records</title>' in page
+    assert '<h1>Accessibility Evaluation (PAC 2026 &amp; Screen-Reader Test)</h1>' in page and 'PDF Title: ' in text and '<title>Accessibility Evaluation: The Clan Records</title>' in page
     assert 'Overall Status: Not Ready · Unsatisfied Requirements: Work Order Approval, Safety Checks, Accessibility Evaluation' in text
     assert '>PAC 2026</h2>' in page and '>Screen-Reader Test</h2>' in page and 'Manual Check' not in text and 'Sanity' not in text
     assert 'PAC Version' not in text and 'PDF/UA' not in text and 'For example NVDA' not in text and 'Pages Checked (optional)' in text
