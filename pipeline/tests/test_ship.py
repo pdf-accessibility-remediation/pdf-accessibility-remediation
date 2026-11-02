@@ -105,17 +105,16 @@ def real_ready(tmp_path, name='run', extra=None, pac=None):
 
 def test_ship_copies_the_version_and_the_status_reads_shipped(tmp_path):
     R = real_ready(tmp_path)
-    s = M.ship(R, 'Kim', 'ScholarSpace', 'first release', say=lambda *a: None, batch=False)
+    s = M.ship(R, 'Kim', 'first release', say=lambda *a: None, batch=False)
     F = os.path.join(R, 'release', 'shipped', '001')
     assert s['n'] == 1 and len(s['shipped']) == 19 and s['shipped'][10] == 'T' and s['issues'] == 1 and s['checks'] == {'pac': 1, 'screen_reader': 1}
     assert sorted(os.listdir(F)) == sorted(['b_remediated.pdf', 'review.md', 'review.html', 'record.json', 'evaluation-results.json',
-                                            'accessibility-statement.md', 'accessibility-statement.html', 'READ-ME.txt'])   # the full set
+                                            'READ-ME.txt'])   # the full set: no accessibility statement (Patrick, 2026-11-01)
     assert REL.sha_file(os.path.join(F, 'b_remediated.pdf')) == s['pdf']['sha256']
     assert '**Status:** Shipped · 1 issue noted' in open(os.path.join(F, 'review.md'), encoding='utf-8').read()
     assert 'Shipped copy (Shipment 1, ' in open(os.path.join(F, 'review.html'), encoding='utf-8').read()     # N9
     assert '**Status:** Shipped · 1 issue noted' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
-    st = open(os.path.join(F, 'accessibility-statement.md'), encoding='utf-8').read()                   # reviewed before sessions were kept: Session 1
-    assert s['pdf']['session'] == '001' and 'the version reviewed on October 31, 2026, shipped on ' in st and 'applied without a review' not in st
+    assert s['pdf']['session'] == '001' and s['note'] == 'first release' and 'where' not in s           # reviewed before sessions were kept: Session 1
     rec = core.load(os.path.join(R, 'record.json'))
     assert MP.ship_gate(R, rec)['why'].startswith('This version was shipped on ')                       # M1
     with pytest.raises(S.Refused, match='was shipped on'): M.ship(R, 'Kim', say=lambda *a: None, batch=False)
@@ -138,7 +137,7 @@ def test_numbering_never_reuses_a_number_and_a_leftover_tmp_goes(tmp_path):
 def test_a_failure_after_write_run_leaves_nothing_saying_shipped(tmp_path, monkeypatch):
     R = real_ready(tmp_path)
     before = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
-    def boom(*a, **k): raise RuntimeError('disk full while writing the statement')
+    def boom(*a, **k): raise RuntimeError('disk full while writing the shipped folder')
     monkeypatch.setattr(M, '_fill_shipped', boom)
     with pytest.raises(RuntimeError): M.ship(R, 'Kim', say=lambda *a: None, batch=False)
     assert os.listdir(os.path.join(R, 'release', 'shipped')) == [] and not os.path.exists(os.path.join(R, 'release', 'shipped.json'))
@@ -158,98 +157,19 @@ def test_withdrawal_and_a_newer_version_shipping(tmp_path):
     assert MP.app_glance(R, rec, rec['glance'])['status']['name'] == 'Ready' and MP.ship_gate(R, rec)['ok']   # falls back; offered again
     assert M.ship(R, 'Kim', say=lambda *a: None, batch=False)['n'] == 2                                 # the same file, after a withdrawal
 
-# ------------------------------------------------------------------ the accessibility statement (M3–M5, N6, N7)
-from lib import disclosure as DS
-
-def statement(rec, rel=None, ship=None, glance=None):
-    ship = ship or {'n': 1, 'shipped': '2026-11-02T09:00:00', 'by': 'Kim', 'pdf': {'sha256': 'a' * 64, 'session': '006'}}
-    blocks = DS.facts(rec, rel or REL.empty(), ship, glance or {'safety_ok': True, 'verapdf': {}})
-    return blocks, DS.to_md(blocks, 'The Book'), DS.to_html(blocks, 'The Book')
-
-def test_the_split_between_the_ai_and_people(tmp_path):
-    rec = {'review': {'workorder': {'reviewer': 'Pat', 'date': '2026-10-31', 'counts': {'approved': 2, 'changed': 1, 'rejected': 1, 'added': 1}},
-                      'decisions': [{'kind': 'Alt text', 'status': 'approved'}, {'kind': 'Alt text', 'status': 'changed'},
-                                    {'kind': 'Heading or tag change', 'status': 'approved'}, {'kind': 'Heading or tag change', 'status': 'rejected'},
-                                    {'kind': 'Deferred by the AI', 'status': 'approved'}, {'id': 'reading_order:3', 'kind': 'Reading order', 'status': 'seen'},
-                                    {'id': 'notes_for_reviewer', 'kind': 'Deferred by the AI', 'status': 'seen'}]},
-           'workorder': {'alt': {'f1': 'x', 'f2': 'y'}}, 'apply': {'rejected': [1], 'failed': 0, 'deferred': []}}
-    _, md, _ = statement(rec)
-    assert 'Decisions reviewed by a person: 2 approved as proposed, 1 changed, 1 rejected' in md
-    assert 'Alt text: 1 approved as proposed, 1 changed' in md and 'Heading or tag change: 1 approved as proposed, 1 rejected' in md
-    assert 'Added by a person: 1' in md and 'Deferred by the AI' not in md and 'Changes made to the PDF from these decisions: 1 (1 could not be applied)' in md
-    rv1 = {'review': {'workorder': {'reviewer': 'Patrick', 'date': '2026-10-26', 'counts': {'approved': 159, 'changed': 0, 'rejected': 0, 'seen': 8, 'accepted_unreviewed': 0}}}}
-    _, md, _ = statement(rv1)                                                               # an older reviewed run: totals only (M3)
-    assert 'Decisions reviewed by a person: 159 approved as proposed' in md and 'Points the AI or the software left for a person: 8, each looked at' in md   # P1
-    assert 'Totals only: the kind of each decision was not recorded for this book.' in md
-    _, md, _ = statement({})
-    assert "The split between the AI's proposals and a person's changes was not recorded for this book." in md
-
-def test_the_text_sentences_follow_the_record():
-    _, md, _ = statement({})
-    assert "No AI wrote or changed the book's printed text." in md and 'OCR' not in md.split('## What the AI')[0]
-    rec = {'apply': {'ocr_words': {'forms': 12}}, 'intake': {'ocr': {'pages_with_ocr_text': [3, 4, 5]},
-                                                               'review': {'ocr_text_approved': {'verdict': 'approved', 'reviewer': 'Kim', 'date': '2026-10-30'}}}}
-    _, md, _ = statement(rec)
-    assert "For 12 words the OCR misread, an AI's reading is given as spoken text only" in md
-    assert 'On 3 scanned pages the text is local OCR (not corrected), approved by Kim on October 30, 2026.' in md
-    _, md, _ = statement({'intake': {'ocr_layer_test': {'verdict': 'usable'}}})
-    assert "The publisher's text layer on scanned pages is OCR; it was checked and kept as published." in md
-
-def test_the_model_only_for_a_real_call_and_verapdf_not_checked():
-    real = {'run': {'model': 'anthropic/claude-sonnet-5.5', 'prompt_file': 'workorder_v8.md', 'prompt_sha256': '4555d20a2fa08a40aa', 'started': '2026-10-20T10:00:00'}}
-    _, md, _ = statement(real)
-    assert 'Model: anthropic/claude-sonnet-5.5. Instructions: workorder\\_v8.md (4555d20a2fa08a40). Decided on October 20, 2026.' in md
-    replay = {'run': dict(real['run'], prompt_file='workorder_v9.md', response_from='/nonexistent/v8-g1.reply.txt')}
-    _, md, _ = statement(replay)                                                          # M5: a v8 reply replayed on v9 code, its call not kept
-    assert 'workorder\\_v9' not in md and 'Model and instructions: not recorded for this book.' in md
-    oc = {'cost_usd': 0.255874, 'model': 'anthropic/claude-sonnet-5.5', 'prompt_file': 'workorder_v8.md', 'prompt_sha256': '4555d20a2fa08a40', 'date': '2026-10-26T00:30:47'}
-    _, md, _ = statement({'run': dict(replay['run'], original_call=oc)})                 # the original call kept: named, no cost (Patrick, 2026-11-01)
-    assert ('Model: anthropic/claude-sonnet-5.5. Instructions: workorder\\_v8.md (4555d20a2fa08a40). Decided on October 26, 2026, in the original '
-            'call, whose answer this version reuses.') in md
-    assert 'workorder\\_v9' not in md and '$' not in md and '0.25' not in md
-    assert 'veraPDF (WCAG 2.2 machine checks): not checked (it checked only one of the two files, or neither).' in md   # N6
-    _, md, _ = statement({}, glance={'safety_ok': True, 'verapdf': {'ran_before': True, 'ran_after': True, 'before_rules': 7, 'after_rules': 0, 'newly_failing': []}})
-    assert '7 rules failing before → 0 after; 0 newly failing.' in md
-
-def test_names_and_notes_are_escaped_in_both_files(tmp_path):
-    evil = '<script>x</script> **bold** ](javascript:)'
-    rel = {'checks': {'schema': REL.SCHEMA, 'screen_reader': [],
-                      'pac': [chk('a' * 64, dict(PAC_OK, contrast={'result': 'fail', 'note': '# heading ' + evil}))]}, 'shipped': []}
-    rel['checks']['pac'][0]['by'] = evil
-    _, md, h = statement({'review': {'workorder': {'reviewer': evil, 'date': '2026-10-31'}}}, rel,
-                         {'n': 1, 'shipped': '2026-11-02T09:00:00', 'by': evil, 'where': evil, 'pdf': {'sha256': 'a' * 64}})
-    assert '<script>' not in h and '&lt;script&gt;' in h and '<script>' not in md and '\\<script\\>' in md and '\\*\\*bold\\*\\*' in md
-    assert 'Draft wording: to be agreed with the sponsors.' in md and 'not a legal certification' in md and 'not legal sign-off' in md
-    assert 'PAC 2026, Contrast: # heading' in md and '\n# heading' not in md and ' we ' not in md.lower() and 'Issues Noted' in md
-
-@pytest.mark.skipif(not os.path.isdir(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'runs', 'review-disclosure', 'regr8')),
-                    reason='the regression run regr8 is local only')
-def test_the_statement_builds_on_the_seven_baseline_records():
-    import report_html as H
-    base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'runs', 'review-disclosure', 'regr8')
-    from lib.glance import n_decisions
-    for b in sorted(os.listdir(base)):
-        p = os.path.join(base, b, 'record.json')
-        if not os.path.isfile(p): continue
-        rec = json.load(open(p, encoding='utf-8'))
-        blocks, md, h = statement(rec, glance=H.glance_of(os.path.join(base, b), rec))
-        n, nn = DS.applied(rec)
-        assert n == n_decisions(rec.get('workorder') or {}) and f'Changes made to the PDF from these decisions: {n - nn}' in md, b
-        assert 'was not recorded for this book' in md, b                                       # the baselines are unreviewed
-
-# ------------------------------------------------------------------ the app: the strip, the POST, the statement, the downloads (M7, N2, N3)
+# ------------------------------------------------------------------ the app: the strip, the POST, the downloads (M7, N2, N3)
 from test_webapp import setup, wait, free_port  # noqa: F401,E402  (fixtures)
 from test_webapp_checks import mapp, req, js, RUN  # noqa: F401,E402
 
 def test_shipped_copies_in_the_downloads_and_the_file_check(tmp_path):
     import io, zipfile
     R = real_ready(tmp_path)
-    s = M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
+    s = M.ship(R, 'Kim', say=lambda *a: None, batch=False)
     rec = core.load(os.path.join(R, 'record.json'))
     vs = DL.versions(R, rec)
     assert [x['id'] for x in vs] == ['current'] and vs[0]['state'] == 'Shipped'                 # the current file is the shipped one
     d = DL.prepare(R, 'r', 'current', 'record')
-    assert d['name'] == 'b_remediated_record_shipment-1.zip' and 'accessibility-statement.html' in [m[0] for m in d['members']]
+    assert d['name'] == 'b_remediated_record_shipment-1.zip' and [m[0] for m in d['members']] == ['b_remediated.pdf', 'review.html']
     buf = io.BytesIO(); DL.stream_zip(buf, d); names = zipfile.ZipFile(buf).namelist()
     assert not any(n.endswith('record.json') for n in names) and not any(n.endswith('.md') for n in names)   # N2: never the folder's record.json
     doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'b_remediated.pdf'))   # changed by hand (M7)
@@ -263,12 +183,17 @@ def test_shipped_copies_in_the_downloads_and_the_file_check(tmp_path):
     assert sv['label'].endswith('(withdrawn)') and DL.marked_line(sv['state']) == 'The downloaded files are marked "withdrawn."'
     assert DL.prepare(R, 'r', 'shipment-1', 'pdf')['name'] == 'b_remediated_shipment-1_withdrawn.pdf'   # N3
 
-def test_the_statement_is_linked_and_review_md_names_the_shipment(tmp_path):
+def test_the_reports_name_the_shipment_and_never_where(tmp_path):
+    """No statement is linked, and an older shipment's stored `where` is kept in its record, never shown (Patrick, 2026-11-01)."""
     R = real_ready(tmp_path)
-    M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
+    M.ship(R, 'Kim', say=lambda *a: None, batch=False)
     h = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
-    assert '<a href="release/shipped/001/accessibility-statement.html">View the Accessibility Statement</a>' in h and 'Disclosure' not in h   # N5
-    assert 'Shipped on ' in open(os.path.join(R, 'review.md'), encoding='utf-8').read() and '(Shipment 1, ScholarSpace).' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
+    assert '<li>Shipment 1: by Kim on ' in h and 'Accessibility Statement' not in h and 'shipped/001/' not in h
+    assert 'Shipped on ' in open(os.path.join(R, 'review.md'), encoding='utf-8').read() and ' by Kim (Shipment 1).' in open(os.path.join(R, 'review.md'), encoding='utf-8').read()
+    sp = REL.paths(R)['shipped']; e = core.load(sp); e[0]['where'] = 'ScholarSpace'; core.save(sp, e)   # a shipment recorded before
+    M.refresh(R)
+    for f in ('review.md', 'review.html'): assert 'ScholarSpace' not in open(os.path.join(R, f), encoding='utf-8').read(), f
+    assert core.load(sp)[0]['where'] == 'ScholarSpace'
 
 def test_the_strip_offers_ship_and_the_post_ships(mapp, monkeypatch):
     port, R = mapp['port'], mapp['R']
@@ -277,57 +202,28 @@ def test_the_strip_offers_ship_and_the_post_ships(mapp, monkeypatch):
     st, r = js(port, 'POST', f'/api/run/{RUN}/ship', {'by': 'Kim'})
     assert st == 409 and 'not ready to ship' in r['error']
     pj = open(os.path.join(os.path.dirname(MP.__file__), 'panel.js'), encoding='utf-8').read()
-    assert '>Mark as Shipped</button>' in pj and 'Shipped By' in pj and 'Where It Was Published <span class="pp-note">(optional)</span>' in pj
-    assert 'Records that this version was reviewed and shipped. It does not publish anything.' in pj and "' was reviewed and shipped. It does not publish anything.'" in pj
+    assert '>Mark as Shipped</button>' in pj and 'Shipped By' in pj and 'Where It Was Published' not in pj and 'where' not in pj.split('function shipDlg')[1].split('// "Available Downloads"')[0]
+    assert '<span class="pp-note">Records that this version was reviewed and shipped.</span>' in pj and "<p>Records that this version was reviewed and shipped.' +" in pj
+    assert 'does not publish' not in pj and 'accessibility statement' not in pj.lower()
 
-def test_only_the_statement_is_served_from_a_shipped_folder(mapp):
+def test_nothing_is_served_from_a_shipped_folder(mapp):
+    """The accessibility statement was dropped (Patrick, 2026-11-01: writing it is for the institution that adopts the
+    pipeline): a folder shipped before keeps its files on disk, untouched, and none of them is served."""
     port, R = mapp['port'], mapp['R']
     F = os.path.join(R, 'release', 'shipped', '001'); os.makedirs(F)
-    open(os.path.join(F, 'accessibility-statement.html'), 'w').write('<p>statement</p>'); core.save(os.path.join(F, 'record.json'), {'raw_reply': 'secret'})
-    core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry('a' * 64, folder='shipped/001'), ship_entry('b' * 64, n=2, folder='shipped/002')])
-    st, body, _ = req(port, 'GET', f'/run/{RUN}/release/shipped/001/accessibility-statement.html')
-    assert st == 200 and body == b'<p>statement</p>'
-    for p in ('release/shipped/001/record.json', 'release/shipped/002/accessibility-statement.html', 'release/shipped.json',
-              'release/shipped/001/../001/accessibility-statement.html', 'release/shipped/001/accessibility-statement.md'):
+    for n in ('accessibility-statement.html', 'disclosure.html'): open(os.path.join(F, n), 'w').write('<p>statement</p>')
+    core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry('a' * 64, folder='shipped/001', where='ScholarSpace')])
+    for p in ('release/shipped/001/accessibility-statement.html', 'release/shipped/001/disclosure.html', 'release/shipped/001/record.json',
+              'release/shipped.json', 'release/shipped/001/accessibility-statement.md'):
         assert req(port, 'GET', f'/run/{RUN}/{p}')[0] == 404, p
-    F2 = os.path.join(R, 'release', 'shipped', '002'); os.makedirs(F2)                 # a folder shipped before 2026-11-01: the old name,
-    open(os.path.join(F2, 'disclosure.html'), 'w').write('<p>old statement</p>')       # served under either name, never renamed
-    for n in ('accessibility-statement.html', 'disclosure.html'):
-        st, body, _ = req(port, 'GET', f'/run/{RUN}/release/shipped/002/{n}')
-        assert st == 200 and body == b'<p>old statement</p>', n
-    assert REL.statement_name(F2) == 'disclosure.html' and REL.statement_name(F) == 'accessibility-statement.html' and os.listdir(F2) == ['disclosure.html']
+    assert sorted(os.listdir(F)) == ['accessibility-statement.html', 'disclosure.html']        # left as they were
 
-
-OCR_BOOK = {'intake': {'ocr': {'pages_with_ocr_text': [1]},
-                       'review': {'ocr_text_approved': {'verdict': 'approved', 'reviewer': 'Ana', 'date': '2026-10-30'}}},
-            'apply': {'ocr_words': {'forms': 3}}}
-PAC_NEEDS = {'by': 'Kim', 'fields': {}, 'items': dict(PAC_OK, needs_person={'result': 'fail', 'note': 'two figures not looked at'})}
-
-@pytest.mark.parametrize('book', ['born-digital', 'ocr'])
-def test_the_statement_uses_no_internal_terms(tmp_path, book):
-    """P2 and 26 Q2: a public reader's words; none of the app's or the report's internal terms in either file, on a book
-    without OCR and on one with OCR pages, an approved verdict and OCR-word readings (the OCR sentences). Q4: the PAC item
-    named after the report's section is renamed in the statement."""
-    ocr = book == 'ocr'
-    R = real_ready(tmp_path, extra=OCR_BOOK if ocr else None, pac=PAC_NEEDS if ocr else None)
-    M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
-    F = os.path.join(R, 'release', 'shipped', '001')
-    import re
-    for f in ('accessibility-statement.md', 'accessibility-statement.html'):
-        text = open(os.path.join(F, f), encoding='utf-8').read().replace('\\', '')
-        for bad in ('work order', 'work-order', 'Session', 'review page', 'intake', 'pipeline', 'executor', 'tag tree',
-                    'listed for a person in the report', 'What Needs a Person', 'For a Person to Check'):
-            assert bad not in text, (f, bad)
-        assert not re.search(r'\b(run|report)\b', text), f
-    md = open(os.path.join(F, 'accessibility-statement.md'), encoding='utf-8').read()
-    assert "the document's structure" in md and 'a semi-automated process' in md
-    if not ocr:
-        assert 'OCR text: none was added.' in md
-    else:
-        assert 'OCR text: approved by Ana on October 30, 2026.' in md
-        assert 'On 1 scanned page the text is local OCR (not corrected), approved by Ana on October 30, 2026.' in md
-        assert "For 3 words the OCR misread, an AI's reading is given as spoken text only; each was listed for a person to check." in md
-        assert 'PAC 2026, Points the AI or the Software Left for a Person to Check: two figures not looked at' in md
+def test_an_older_page_is_shown_without_the_statement_link_or_where():
+    old = ('<li>Shipment 1: by Kim on November 2, 2026 · where: ScholarSpace · <a href="release/shipped/001/disclosure.html">View the '
+           'Accessibility Statement</a></li><li>Shipment 2: by Lee on November 3, 2026 · <a href="../../../release/shipped/002/accessibility-statement.html">'
+           'View the Accessibility Statement</a>, withdrawn by Lee on November 4, 2026: wrong file</li><p>· where: book text stays</p>')
+    assert REL.no_statement(old) == ('<li>Shipment 1: by Kim on November 2, 2026</li><li>Shipment 2: by Lee on November 3, 2026, withdrawn by Lee '
+                                     'on November 4, 2026: wrong file</li><p>· where: book text stays</p>')
 
 def test_the_run_page_drops_the_green_border_while_the_pdf_on_disk_differs(tmp_path):
     """N8 and Q1 on the run page: the card is review.html's (built against the record's hash); the app drops its green border
@@ -429,39 +325,42 @@ def test_the_record_zip_holds_only_its_files_in_every_state(tmp_path):
     assert name.endswith('_not-shipped.zip') and sorted(files) == sorted(READY)
     rd = files['READ-ME.txt'].decode()
     assert 'Status: Ready' in rd and 'Shipment' not in rd and 'accessibility-statement' not in rd
-    # shipped: the statement joins, linked from review.html; the shipment's lines in the read-me
-    s = M.ship(R, 'Kim', 'ScholarSpace', say=lambda *a: None, batch=False)
+    # shipped: the same files (no accessibility statement: Patrick, 2026-11-01); the shipment's lines in the read-me
+    s = M.ship(R, 'Kim', say=lambda *a: None, batch=False)
     name, files = _zip(R, 'current')
-    assert name == 'b_remediated_record_shipment-1.zip' and sorted(files) == sorted(READY + ['accessibility-statement.html'])
+    assert name == 'b_remediated_record_shipment-1.zip' and sorted(files) == sorted(READY)
     page = _links_stay_in_the_zip(files)
-    assert '<a href="accessibility-statement.html">View the Accessibility Statement</a>' in page
+    assert 'Accessibility Statement' not in page
     rd = files['READ-ME.txt'].decode()
-    assert f'Status: Shipped\nShipment 1, shipped on {D.day(s["shipped"])} by Kim\nPublished at: ScholarSpace\n' in rd
-    assert '- accessibility-statement.html: the accessibility statement written when this version was shipped. Open it in a web browser.' in rd
+    assert f'Status: Shipped\nShipment 1, shipped on {D.day(s["shipped"])} by Kim\nAccessibility evaluation results recorded on this file: ' in rd
+    assert 'Published at' not in rd and 'accessibility statement' not in rd.lower() and 'not a legal certification.' in rd
     F = os.path.join(R, 'release', 'shipped', '001')                                       # the shipped folder keeps the full set
-    assert {'review.md', 'han_review.csv', 'evaluation-results.json', 'accessibility-statement.md', 'record.json'} <= set(os.listdir(F))
+    assert {'review.md', 'han_review.csv', 'evaluation-results.json', 'record.json'} <= set(os.listdir(F)) and not [n for n in os.listdir(F) if 'statement' in n]
     fr = open(os.path.join(F, 'READ-ME.txt'), encoding='utf-8').read()
-    assert f'\nShipment 1, shipped on {D.day(s["shipped"])} by Kim\nPublished at: ScholarSpace\nStatus: Shipped' in fr
+    assert f'\nShipment 1, shipped on {D.day(s["shipped"])} by Kim\nStatus: Shipped' in fr and 'statement' not in fr
     assert 'han_review.csv: passages in Chinese or Japanese a person needs to check, as a spreadsheet.' in fr and 'record.json: ' in fr and 'which identifies this exact file (sha256): ' + s['pdf']['sha256'] in fr
     # an earlier version: its own page, links leading out of the ZIP unwrapped
     V = os.path.join(R, 'reviews', 'versions', '001'); os.makedirs(V)
     doc = pikepdf.new(); doc.add_blank_page(page_size=(200, 200)); doc.save(os.path.join(V, 'b_remediated.pdf'))
     core.save(os.path.join(V, 'record.json'), {'document': {'file': 'b.pdf', 'output': 'b_remediated.pdf'}})
     shutil.copy2(os.path.join(R, 'review.html'), os.path.join(V, 'review.html'))
-    with open(os.path.join(V, 'review.html'), 'a', encoding='utf-8') as f: f.write('<a href="../002/review.html">previous result</a><a href="https://example.org/">web</a>')
+    with open(os.path.join(V, 'review.html'), 'a', encoding='utf-8') as f:            # and, written before 2026-11-01, a statement link and `where`
+        f.write('<a href="../002/review.html">previous result</a><a href="https://example.org/">web</a>'
+                '<ul><li>Shipment 1: by Kim on November 2, 2026 · where: ScholarSpace · <a href="../../../release/shipped/001/disclosure.html">View the Accessibility Statement</a></li></ul>')
     name, files = _zip(R, '001')                                                            # its folder has no han_review.csv
     assert name.endswith('_session-1_previous-version.zip') and sorted(files) == sorted(['b_remediated.pdf', 'review.html', 'READ-ME.txt'])
     page = _links_stay_in_the_zip(files)
-    assert 'previous result' in page and '<a href="https://example.org/">web</a>' in page and 'View the Accessibility Statement' in page
+    assert 'previous result' in page and '<a href="https://example.org/">web</a>' in page and 'Accessibility Statement' not in page
+    assert '<li>Shipment 1: by Kim on November 2, 2026</li>' in page and 'ScholarSpace' not in page
     assert 'Status: previous version' in files['READ-ME.txt'].decode()
     # withdrawn: the shipped copy, with its withdrawal
     M.withdraw(R, 1, 'Lee', 'wrong file')
     name, files = _zip(R, 'shipment-1')
-    assert name == 'b_remediated_record_shipment-1_withdrawn.zip' and sorted(files) == sorted(READY + ['accessibility-statement.html'])
+    assert name == 'b_remediated_record_shipment-1_withdrawn.zip' and sorted(files) == sorted(READY)
     _links_stay_in_the_zip(files)
     rd = files['READ-ME.txt'].decode()
     w = REL.load(R)['shipped'][0]['withdrawn']
-    assert (f'Status: Withdrawn\nShipment 1, shipped on {D.day(s["shipped"])} by Kim\nPublished at: ScholarSpace\n'
+    assert (f'Status: Withdrawn\nShipment 1, shipped on {D.day(s["shipped"])} by Kim\n'
             f'Withdrawn on {D.day(w["date"])} by Lee: wrong file\n') in rd
     assert not any(n.endswith(('.md', '.json')) for n in files)
 

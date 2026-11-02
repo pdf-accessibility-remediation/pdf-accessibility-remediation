@@ -20,7 +20,7 @@ evaluation is a record of what a person found, not a legal certification.
 Both parts are recorded on the app's **Accessibility Evaluation** page (below), or from the terminal with
 `manual_checks.py`. In the records and the code they are still "manual checks" (`release/checks.json`, `pac`,
 `screen_reader`). Any version can be downloaded at any time, ready or not ("Downloads" below). A Ready version is marked
-as shipped from the run page ("Mark as Shipped" below), which keeps a copy with its accessibility statement.
+as shipped from the run page ("Mark as Shipped" below), which keeps a copy of it with its report.
 
 ## The Accessibility Evaluation page (in the app)
 
@@ -305,10 +305,9 @@ stylesheet, centered on the list's height in the page's text color (the browser'
   - review.html: the report, with the evaluation's results in it;
   - han_review.csv, when the book has one (review.html sends staff to it): the read-me calls it "passages in Chinese
     or Japanese a person needs to check, as a spreadsheet";
-  - `accessibility-statement.html`, once that file has shipped;
   - `READ-ME.txt`, in plain words: the title and "Source PDF Filename: …" (the original PDF's name), the version, its
     status (for a previous version: "previous version", naming the current one), each shipment of that file ("Shipment
-    1, shipped on November 1, 2026 by Patrick", "Published at: …" when given, "Withdrawn on … by …: …" for a withdrawn
+    1, shipped on November 1, 2026 by Patrick", "Withdrawn on … by …: …" for a withdrawn
     one), the number of evaluation results recorded on it, the run details of that version's own record (a shipped
     copy's from its folder's record.json, never zipped), what each file is, "automated checks are evidence, not legal
     sign-off" and "the evaluation is a record of what a person found, not a legal certification". No hash. The run
@@ -341,11 +340,11 @@ stylesheet, centered on the list's height in the page's text color (the browser'
       applied from a later review carries the run's steps before the review from the record it replaces, and adds its
       own applying and checks.
 
-  Never review.md, `evaluation-results.json` or the statement's `.md`: they stay in the run folder and
+  Never review.md or `evaluation-results.json`: they stay in the run folder and
   in `release/shipped/NNN/`, which keep their full set. Never record.json (it holds the AI's raw reply), digests, crops,
   `reviews/`, `_intake/`, `release/drafts.json` or dot-files. The ZIP's review.html keeps only the links that work inside
-  the ZIP: its header's link to review.md is dropped, its link to this file's own statement points at the ZIP's copy,
-  and any other link that would lead outside the ZIP (a previous result, another shipment's statement) is left as plain
+  the ZIP: its header's link to review.md is dropped (with an older page's statement links and "where:", as the app
+  draws it), and any other link that would lead outside the ZIP (a previous result, a file of the run folder) is left as plain
   text; links within the page and to the web stay. review.html on disk is unchanged. The ZIP is built as it is sent and
   never kept on disk.
 - **One moment per download:** every file is opened under the record lock (a page waits at most 5 s), then the lock is
@@ -398,39 +397,37 @@ nothing.
   - **this file has not already shipped**, in a shipment that is not withdrawn (03 §3.3): the same file never ships
     twice, and after a withdrawal it may ship again.
 
-  Beside the button: "Records that this version was reviewed and shipped. It does not publish anything." Otherwise the
+  Beside the button: "Records that this version was reviewed and shipped." (Patrick, 2026-11-01). Otherwise the
   strip says why once: "This version was shipped on November 2, 2026 (Shipment 1).", or, while a refusal stands, the
   strip's one refusal line, worded for both recording and shipping ("…so no results can be recorded for it and it can't
   be marked as shipped."). A version that is not Ready gets no line: the card above says what is unsatisfied. A POST to
   Ship still gets its own refusal. After a shipment, a newer version that becomes Ready is offered again as the next
   shipment.
-- **The dialog:** "This records that the version from Session 2 was reviewed and shipped. It does not publish
-  anything.", **Shipped By** (required, empty at first), **Where It Was Published (optional)**, **Note (optional)**, and the number of
-  issues noted that ship with the copy. Or from the terminal: `manual_checks.py <run> --ship --by NAME [--where …]
-  [--note …]`.
+- **The dialog:** "Records that this version was reviewed and shipped.", with the number of issues noted that ship
+  with the copy, **Shipped By** (required, empty at first) and **Note (optional)**; it no longer asks where the book was
+  published (Patrick, 2026-11-01). After it: "Marked as shipped: Shipment 1." Or from the terminal: `manual_checks.py
+  <run> --ship --by NAME [--note …]`.
 - **What it writes,** under the record lock, whole or not at all: `release/shipped/NNN/`.
   - The folder holds:
     - the PDF (a copy, hashed while copied);
     - review.md and review.html as they read once shipped (the copy's page says "Shipped copy (Shipment 1, …)");
     - han_review.csv;
     - `evaluation-results.json`: the results on that file, with their issues;
-    - the accessibility statement (`accessibility-statement.html`, `accessibility-statement.md`);
-    - `READ-ME.txt`, in plain words: the shipment's lines ("Shipment 1, shipped on November 1, 2026 by Patrick",
-      "Published at: …" when given), its status, what each file is and the PDF's fingerprint. It is written once: a
+    - `READ-ME.txt`, in plain words: the shipment's line ("Shipment 1, shipped on November 1, 2026 by Patrick"), its status, what each file is and the PDF's fingerprint. It is written once: a
       later withdrawal is said in a downloaded ZIP's read-me, not in this one;
     - record.json, for the local archive only, never served and never in a ZIP.
-  - `release/shipped.json` gains `{n, shipped (local time, to the second), by, where, note, pdf: {sha256, file, session},
+  - `release/shipped.json` gains `{n, shipped (local time, to the second), by, note, pdf: {sha256, file, session},
     folder, issues, checks}`.
   - If anything fails before the folder is complete, the folder is removed, `shipped.json` restored, and the pages
     redrawn, so nothing says Shipped.
   - Shipment numbers are never reused. A shipment is "Shipment N" in Title Case wherever a person reads it (the message,
-    the strip, review.html, review.md, the statement, the read-me, "Available Downloads"); file names keep
+    the strip, review.html, review.md, the read-me, "Available Downloads"); file names keep
     `_shipment-N`.
 - **Afterwards:**
   - the status reads "Shipped" (with "· N issues noted"), with Ready's green border;
   - review.md's evaluation section names each shipment;
-  - review.html's Shipments list links "View the Accessibility Statement";
-  - the shipped file downloads under its plain names, and its record ZIP holds the statement;
+  - review.html's Shipments list names each shipment, by whom and when;
+  - the shipped file downloads under its plain names;
   - a shipped copy that a newer version replaced is listed in "Available Downloads" as "Shipment 1, shipped on …".
 - **A shipped book whose PDF later changes on disk** keeps "Shipped", with "The current PDF has changed since this report
   was made." beside it, and never Ready's green. Mark as Shipped stays refused until it is resolved. The shipped copy in
@@ -446,37 +443,19 @@ From the terminal only: `manual_checks.py <run> --withdraw-shipment N --by NAME 
 - **The status** falls back to the latest shipment not withdrawn, and with none left to the statuses before shipping.
 - **"Available Downloads"** still lists a withdrawn copy, marked "(withdrawn)", named `_shipment-N_withdrawn`.
 
-## The accessibility statement
+## The accessibility statement (dropped)
 
-Written once when a version ships, into its folder, as `accessibility-statement.html` and `accessibility-statement.md`,
-by `lib/disclosure.py`; never rewritten afterwards. A folder shipped before 2026-11-01 keeps its `disclosure.html` and
-`disclosure.md` as shipped (never renamed); the app serves, links and zips either name, the ZIP always as
-`accessibility-statement.html`. It is marked "Draft wording: to be agreed with the sponsors".
-
-- **This file:** the file, its version, who shipped it, when, where, and its sha256.
-- **The text:** "No AI wrote or changed the book's printed text", then, only when they apply:
-  - the AI's readings of misread OCR words, given as spoken text only;
-  - the local OCR pages and who approved them;
-  - the publisher's OCR layer, checked and kept.
-- **What the AI decided and what people did, per kind:** approved as proposed, changed by a person, rejected by a
-  person, added by a person. An older reviewed run gives the totals; a run with neither says the split was not recorded.
-  Items a person only marked "seen" (the AI's deferrals, notes to the reviewer, reading-order findings) are counted
-  apart, never as approved. The model, the instructions and the date of the call that wrote the answer are named: the run's own for a real call;
-  for a reused answer the original call's, when they are known ("Decided on October 26, 2026, in the original call,
-  whose answer this version reuses."), never a cost. A reply written by hand, or one whose call is not kept, says "Model
-  and instructions: not recorded for this book" (Patrick, 2026-11-01).
-- **What people reviewed and approved:** the work order's reviewer (the applied session's), the OCR text, and each part
-  of the evaluation with its evaluator.
-- **Every issue noted,** with its note. PAC 2026's "What Needs a Person" item is named "Points the AI or the Software
-  Left for a Person to Check" in the statement only (the item's own name is the report's section); the evaluation page
-  and review.md keep the item's name.
-- **Words for a public reader:** no session numbers, report sections or internal names; a test checks both files.
-- **The automated checks:** the five safety checks, and veraPDF before and after, or "not checked".
-- **The two sentences:** "Automated checks are evidence, not legal sign-off." and "The accessibility evaluation is a
-  record of what a person found, not a legal certification."
-- **Names and notes are shown as typed,** escaped in both files.
-- **Waiting on the sponsors:** the audience, placement (beside the PDF in ScholarSpace or on the item page; never inside
-  the PDF), whether names stay public, and a contact.
+The pipeline writes no accessibility statement (Patrick, 2026-11-01): writing one is for the institution that adopts the
+pipeline, which knows its audience, where the statement goes and who answers for it. Until then a shipment's copy has
+the report (review.html, review.md), the evaluation's results and a read-me, which keeps "Automated checks are evidence,
+not legal sign-off." and "The evaluation is a record of what a person found, not a legal certification." (review.md
+keeps the second too). Dropped with it: `lib/disclosure.py`, the statement files written at shipping, the ZIP's copy,
+review.html's "View the Accessibility Statement" link, the app's route that served it, and the dialog's "Where It Was
+Published (optional)". A folder shipped before keeps its `accessibility-statement.*` or `disclosure.*` files on disk,
+untouched: they are no longer linked, served or zipped. An older review.html that still links one, or shows a
+shipment's "where:", is drawn without them by the app and in the ZIP (`lib/release.py` `no_statement`; the file on disk
+is unchanged). A shipment recorded with `where` keeps it in `shipped.json`, never shown. Sponsor question: who writes the
+accessibility statement, and where it goes.
 
 ## Older runs
 

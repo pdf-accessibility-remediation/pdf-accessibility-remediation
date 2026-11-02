@@ -14,8 +14,9 @@ two versions. A version id comes only from the run's own list: no path is ever b
 
 The ZIP is opened by library staff (Patrick, 2026-11-01): one folder named as the ZIP, holding only the PDF (stored, never
 compressed again, under its own name), review.html (the evaluation's results are in it), han_review.csv when the book has
-one (review.html sends staff to it; review 30 S1), accessibility-statement.html once this file has shipped, and READ-ME.txt
-in plain words. Never review.md, evaluation-results.json or the statement's .md (they stay in the run folder and in release/shipped/NNN/), record.json (it holds the AI's raw reply),
+one (review.html sends staff to it; review 30 S1), and READ-ME.txt in plain words. No accessibility statement (Patrick,
+2026-11-01: writing one is for the institution that adopts the pipeline; a folder shipped before keeps its files, never
+zipped). Never review.md or evaluation-results.json (they stay in the run folder and in release/shipped/NNN/), record.json (it holds the AI's raw reply),
 digests, crops, reviews/, _intake/, release/drafts.json, dot-files or working files: the list is an allow-list. The ZIP's
 review.html keeps only the links that work inside the ZIP (zip_page()).
 """
@@ -130,19 +131,14 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
             if what == 'pdf':
                 return {'name': pdf_name, 'ctype': 'application/pdf', 'fh': open(ver['pdf'], 'rb')}
             rel = REL.load(R)
-            ship = ver['entry'] if ver.get('shipment') else next((s for s in reversed(REL.live_shipments(rel)) if REL.sha_of(s) == ver['sha']), None)
-            sd = ver['dir'] if ver.get('shipment') else (_shipped_dir(R, ship) if ship else None)
             members = [(out, open(ver['pdf'], 'rb'), zipfile.ZIP_STORED)]
-            st = os.path.join(sd, REL.statement_name(sd)) if sd else None   # the accessibility statement, once this file has shipped
             han = os.path.join(ver['dir'], 'han_review.csv')              # the Han-only runs a person checks, when the book has them
-            names = ([out, 'review.html'] + (['han_review.csv'] if os.path.isfile(han) else [])
-                     + ([REL.STATEMENT_HTML] if st and os.path.isfile(st) else []) + ['READ-ME.txt'])
+            names = [out, 'review.html'] + (['han_review.csv'] if os.path.isfile(han) else []) + ['READ-ME.txt']
             p = os.path.join(ver['dir'], 'review.html')
             if os.path.isfile(p):                                         # read now (small): its links are made to fit the ZIP
-                with open(p, encoding='utf-8') as f: page = zip_page(f.read(), names, ship)
+                with open(p, encoding='utf-8') as f: page = zip_page(f.read(), names)
                 members.append(('review.html', io.BytesIO(page.encode('utf-8')), zipfile.ZIP_DEFLATED))
             if os.path.isfile(han): members.append(('han_review.csv', open(han, 'rb'), zipfile.ZIP_DEFLATED))
-            if st and os.path.isfile(st): members.append((REL.STATEMENT_HTML, open(st, 'rb'), zipfile.ZIP_DEFLATED))
             cur_label = _version_label(S.current_id(rec))
             book = MP.book(rec)['title']
             return {'name': zip_name, 'ctype': 'application/zip', 'members': members, 'folder': zip_name[:-4], 'rel': rel, 'version': ver,
@@ -160,16 +156,14 @@ def _applied(R, vid, vrec):
 _HEAD_LINK = ' · <a href="review.md">review.md</a> (the record, as text)'      # report_html's header: review.md is not in the ZIP
 _A = re.compile(r'<a\b[^>]*?\bhref="([^"]*)"[^>]*>(.*?)</a>', re.S)
 
-def zip_page(page, names, ship=None):
-    """review.html as the ZIP holds it: the header's review.md link dropped; the link to this file's own accessibility
-    statement pointed at the ZIP's copy; every other link that would lead outside the ZIP (a previous result, another
-    shipment's statement, a file of the run folder) unwrapped to its text. Links within the page (#…) and to the web stay."""
-    page = page.replace(_HEAD_LINK, '', 1)
-    own = {f'release/{ship["folder"]}/{n}' for n in (REL.STATEMENT_HTML, 'disclosure.html')} if ship and ship.get('folder') else set()
+def zip_page(page, names):
+    """review.html as the ZIP holds it: the header's review.md link dropped, and the accessibility statement's link a page
+    written before 2026-11-01 may hold removed with it (no_statement); every other link that would lead outside the ZIP (a
+    previous result, a file of the run folder) unwrapped to its text. Links within the page (#…) and to the web stay."""
+    page = REL.no_statement(page.replace(_HEAD_LINK, '', 1))
     def fix(m):
         href = html.unescape(m.group(1))
         if href.startswith('#') or re.match(r'https?://', href) or href in names: return m.group(0)
-        if href in own and REL.STATEMENT_HTML in names: return m.group(0).replace(f'href="{m.group(1)}"', f'href="{REL.STATEMENT_HTML}"', 1)
         return m.group(2)
     return _A.sub(fix, page)
 
@@ -183,8 +177,6 @@ HAN_WORDS = 'han_review.csv: passages in Chinese or Japanese a person needs to c
 FILE_WORDS = {'review.html': 'review.html: the report on this version (what was changed, what was checked, and the results of the '
                               'accessibility evaluation). Open it in a web browser.',
               'han_review.csv': HAN_WORDS,
-              REL.STATEMENT_HTML: f'{REL.STATEMENT_HTML}: the accessibility statement written when this version was shipped. '
-                                  'Open it in a web browser.',
               'READ-ME.txt': 'READ-ME.txt: this file.'}
 
 SOFTWARE = (('python', 'Python'), ('pikepdf', 'pikepdf'), ('pdfplumber', 'pdfplumber'), ('pypdfium2', 'pypdfium2'), ('pillow', 'Pillow'),
@@ -266,7 +258,7 @@ def about_lines(rec):
 
 def _readme(d, sha):
     """READ-ME.txt in plain words for library staff (Patrick, 2026-11-01): the source PDF's name, the version, its status,
-    its shipments (21 §B: "Shipment 1, shipped on … by …", "Published at: …", "Withdrawn on … by …: …"), the run details
+    its shipments (21 §B: "Shipment 1, shipped on … by …", "Withdrawn on … by …: …"), the run details
     (about_lines) and what each file is. No hash: staff never compare one by hand (Patrick, 2026-11-01)."""
     ver = d['version']
     if ver['id'] == 'current':

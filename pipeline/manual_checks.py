@@ -49,7 +49,7 @@ def main():
     ap.add_argument('--record', nargs=2, metavar=('SECTION', 'FILE')); ap.add_argument('--for-sha')
     ap.add_argument('--template', choices=sorted(SECTION))
     ap.add_argument('--ship', action='store_true', help='mark the current version as shipped (needs --by; it must be Ready)')
-    ap.add_argument('--by'); ap.add_argument('--where'); ap.add_argument('--note')
+    ap.add_argument('--by'); ap.add_argument('--note')
     ap.add_argument('--withdraw-shipment', type=int, metavar='N', help='mark shipment N withdrawn (needs --by and --reason)')
     ap.add_argument('--reason')
     a = ap.parse_args()
@@ -66,7 +66,7 @@ def main():
                   + (f' · {len(REL.issues(c, sec))} issue(s) noted' if REL.issues(c, sec) else ''))
         elif a.refresh: M.refresh(R); print(f'refreshed: {R}')
         elif a.ship:
-            s = M.ship(R, a.by, a.where, a.note, shown_sha=a.for_sha, via='manual_checks.py')
+            s = M.ship(R, a.by, a.note, shown_sha=a.for_sha, via='manual_checks.py')
             print(f'shipped: Shipment {s["n"]} by {s["by"]} on {s["shipped"]} (release/{s["folder"]}/)')
         elif a.withdraw_shipment is not None:
             s = M.withdraw(R, a.withdraw_shipment, a.by, a.reason); print(f'withdrawn: Shipment {s["n"]} by {s["withdrawn"]["by"]}')
