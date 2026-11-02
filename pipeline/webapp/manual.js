@@ -157,18 +157,6 @@ document.addEventListener('click', e => {
   const f = sec.form.querySelector('[data-field="by"]'); if (f) f.focus();
 });
 
-// ---------------------------------------------------------------- Review Again (a screen-reader check with a Fail)
-const rv = $('mc-review');
-if (rv) rv.addEventListener('click', async () => {
-  rv.disabled = true;
-  try {
-    const [c, r] = await post(API + '/review', { from: null });
-    if (c === 202) { leaving = true; location.assign(D.base + '?opening=' + encodeURIComponent(r.job.id)); return; }
-    alarm(r.error || 'The app refused this.'); $('mc-msg').querySelector('.pp-msg-t').textContent += ' ' + (r.error || 'The app refused this.');
-  } catch (e) { alarm('The app is not running. ' + START); }
-  rv.disabled = false;
-});
-
 // a change not saved yet, or whose save failed: the browser's leave-page prompt (the browser's copy keeps it anyway)
 addEventListener('beforeunload', e => { if (!leaving && secs.some(s => s.dirty || s.inflight || s.unsaved)) { e.preventDefault(); e.returnValue = ''; } });
 

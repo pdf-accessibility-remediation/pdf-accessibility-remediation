@@ -43,8 +43,10 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
   no name is ever filled in for you, here or in the run page's dialogs, not even from an unfinished draft), its fields, and
   one group per item with **Pass** / **Fail** / **Not Applicable** (PAC's WCAG check: Pass or Fail) and **Notes**. A note
   becomes required when the choice asks for one (a Fail; Not Applicable on something the pipeline found, with a hint such
-  as "This book has 12 tables"; a Pass where the last results recorded for this version failed the item). **Pages Checked**
-  is optional. The help lines keep the WCAG numbers, as PAC's report shows them.
+  as "This book has 12 tables"; a Pass where the last results recorded for this version failed the item). When the
+  pipeline found none, the hint says so: 'No formulas were found in this book, so this check may be marked "Not
+  Applicable."' (likewise for figures, tables, links and lists, and 'No pages in this book have text from character
+  recognition (OCR), …'). **Pages Checked** is optional. The help lines keep the WCAG numbers, as PAC's report shows them.
 - **Saving is automatic,** as on the review page: about a second after each change (`release/drafts.json`), one save at a
   time, the browser keeping a copy; "All changes saved" / "Saving…" beside the Record button, not announced; a failed
   save is announced (not when the page is leaving after a Record). A draft older than the one saved is never written over
@@ -54,8 +56,9 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
 - **Record the PAC 2026 Results / Record the Screen-Reader Test Results** sends the answers to the same code
   `manual_checks.py` uses. Problems come back from that code, each shown under its field and in a summary that takes
   focus; nothing is recorded while one remains. Recording clears the section's draft (an auto-save handled after it is
-  refused, so the answers never come back as a draft). The page stays, with a message saying what changed and what is
-  still needed; results with a Fail offer **Review Again**. A draft that could not be cleared is logged in
+  refused, so the answers never come back as a draft). The page stays, with a message (a green left border) saying what
+  changed and what is still needed; with a Fail it adds "1 issue noted: it is kept in the report for future reference and
+  further review." There is no **Review Again** here: it stays on the run page (Patrick, 2026-11-01). A draft that could not be cleared is logged in
   `runs/.app/server.log`.
 - **The results tables** never scroll sideways: Notes wrap, and the Item column keeps its words together.
 - **Previous results** are under **Previous Results (N)**, folded and read-only.
