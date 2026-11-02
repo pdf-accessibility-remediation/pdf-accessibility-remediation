@@ -109,6 +109,23 @@ def test_a_run_with_no_recorded_hash_is_never_called_changed(mapp):
     st, s = js(mapp['port'], 'GET', f'/api/run/{RUN}/checks')
     assert s['sections']['pac']['current']['state'] == 'completed'
 
+def test_the_evaluation_page_with_a_trailing_slash_redirects_and_record_lands_on_the_page(mapp):
+    """…/checks/ is sent to …/checks (34 F1), so manual.js's relative "checks?recorded=…" after Record stays on the page."""
+    import urllib.parse
+    port = mapp['port']
+    st, _, h = req(port, 'GET', f'/run/{RUN}/checks/')
+    assert st == 302 and h['Location'] == f'/run/{RUN}/checks'
+    st, _, h = req(port, 'GET', f'/run/{RUN}/checks/?recorded=pac')
+    assert st == 302 and h['Location'] == f'/run/{RUN}/checks?recorded=pac'                 # the query kept
+    st, s = js(port, 'GET', f'/api/run/{RUN}/checks')
+    st, r = js(port, 'POST', f'/api/run/{RUN}/checks/record', {'section': 'pac', 'data': PAC, 'shown_sha256': s.get('sha')})
+    assert st == 200
+    src = open(os.path.join(os.path.dirname(MP.__file__), 'manual.js'), encoding='utf-8').read()
+    assert "location.replace('checks?recorded=' + encodeURIComponent(key) + '#mc-msg')" in src
+    to = urllib.parse.urljoin(f'/run/{RUN}/checks', 'checks?recorded=pac')                  # where the browser lands after the redirect
+    st, b, _ = req(port, 'GET', to)
+    assert to == f'/run/{RUN}/checks?recorded=pac' and st == 200 and 'id="mc-msg"' in b.decode()
+
 def test_a_changed_pdf_is_said_in_plain_words(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
     with open(os.path.join(R, 'clans_remediated.pdf'), 'ab') as f: f.write(b'\n% edited by hand\n')
