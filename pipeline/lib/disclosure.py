@@ -11,7 +11,8 @@ What it claims, and only when the record supports it:
     and a run with neither says the split was not recorded (M3);
   - the text: "No AI wrote or changed the book's printed text", then, only when they apply, the AI's readings of OCR
     words given as spoken text, the local OCR pages and who approved them, or the publisher's OCR layer (M4);
-  - the model, the instructions and the date of the call only for a real call; otherwise "not recorded for this book"
+  - the model, the instructions and the date of the call: the run's own for a real call, the original call's for a reused
+    answer when they are known (lib/origin.py; Patrick, 2026-11-01), never a cost; otherwise "not recorded for this book"
     (M5; true for a replay and for a reply written by hand);
   - in words for a public reader: no session numbers, report sections or internal names (review 24 P2; a PAC item named
     after a report section is renamed in the statement only, 26 Q4);
@@ -89,10 +90,19 @@ def text_lines(rec):
     return out
 
 def model_lines(rec):
-    """M5: the model, the instructions and the call's date only for a real call."""
+    """M5: the model, the instructions and the date of the call that wrote the answer: the run's own for a real call; for a
+    reused answer the original call's when they are known (lib/origin.py: run.original_call, the reply's meta, a record
+    beside it), never today's prompt; "not recorded" when they are not. No cost (Patrick, 2026-11-01)."""
+    from lib import origin
     run = rec.get('run') or {}
-    if run.get('response_from') or not run.get('model'):           # a replay, or a reply written by hand: nothing known to name
-        return ['Model and instructions: not recorded for this book.']
+    if run.get('response_from'):
+        oc = origin.of_record(rec) or {}
+        if not oc.get('model') or not oc.get('prompt_file'):          # a reply written by hand, or one whose call is not kept
+            return ['Model and instructions: not recorded for this book.']
+        p = oc['prompt_file'] + (f' ({str(oc["prompt_sha256"])[:16]})' if oc.get('prompt_sha256') else '')
+        return [f'Model: {oc["model"]}. Instructions: {p}. Decided on {D.day(oc.get("date"))}, in the original call, whose answer this '
+                'version reuses.']
+    if not run.get('model'): return ['Model and instructions: not recorded for this book.']
     p = f'{run.get("prompt_file")}' + (f' ({str(run.get("prompt_sha256"))[:16]})' if run.get('prompt_sha256') else '') if run.get('prompt_file') else 'not recorded'
     return [f'Model: {run["model"]}. Instructions: {p}. Decided on {D.day(run.get("started"))}.']
 
