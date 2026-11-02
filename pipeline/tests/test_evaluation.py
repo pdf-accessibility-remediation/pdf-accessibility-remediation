@@ -105,7 +105,7 @@ def test_the_card_the_needs_box_and_the_vera_card(tmp_path):
     assert '<div class="card good"><h3>Needs a Person</h3><div class="big">1</div><p class="lab">OK</p><p>Considered during the evaluation (Kim, ' in h   # Patrick, 2026-11-01
     assert '<span class="newly">newly failing: not checked</span> (veraPDF did not run on both files)' in h                     # Q6: said, visibly
     assert '5 of 5 checks OK' in h and 'Not checked' not in h.split('id="st-h"')[1].split('</section>')[0]
-    assert '· looked at in the evaluation (Kim, ' in md(R)
+    assert '· considered during the evaluation (Kim, ' in md(R) and 'looked at' not in md(R)   # the card's words (Patrick, 2026-11-01)
     M.record(R, 'pac', dict(PAC, items=dict(PAC['items'], needs_person={'result': 'fail', 'note': 'two left'})), say=lambda *a: None, batch=False)
     h = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
     assert '<div class="card warn"><h3>Needs a Person</h3><div class="big">1</div><p class="lab">Needs attention</p><p>marked Fail in the evaluation (Kim, ' in h

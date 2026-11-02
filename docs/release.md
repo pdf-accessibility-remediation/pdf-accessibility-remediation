@@ -268,8 +268,8 @@ and including its re-mirror (`lib/runlock.py`).
 - **The "Needs a Person" card** turns green once this version's PAC 2026 results mark "What Needs a Person" as Pass:
   "Considered during the evaluation (Patrick, November 1, 2026)", the name and date from that result (Patrick,
   2026-11-01; it was neutral, "looked at in the evaluation"). A Pass recorded on a previous version does not count. A
-  Fail keeps it orange ("marked Fail in the evaluation …"). review.md's "Needs a person" line keeps its words ("looked
-  at in the evaluation (…)" or "marked Fail in the evaluation (…)").
+  Fail keeps it orange ("marked Fail in the evaluation …"). review.md's "Needs a person" line uses the same words in
+  sentence case ("considered during the evaluation (…)" or "marked Fail in the evaluation (…)").
 
 ## Downloads
 

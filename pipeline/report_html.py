@@ -553,7 +553,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
     looked = G.needs_looked_text(g)                         # "What Needs a Person" in this version's evaluation (2026-10-31)
     lk = g.get('needs_looked') or {}
     if looked and lk.get('result') == 'pass':               # a Pass: green, "Considered during the evaluation" (Patrick, 2026-11-01)
-        looked = f'Considered during the evaluation ({lk.get("by") or "name not recorded"}, {D.day(lk.get("recorded"))})'
+        looked = looked[0].upper() + looked[1:]
     np_cls = 'good' if not np_['total'] or (looked and lk.get('result') == 'pass') else 'warn'
     nf = vg.get('newly_failing')
     vera_sub = ((f'{vg.get("before_checks", 0):,} → {vg["after_checks"]:,} failed checks · ' if vg.get('ran_after') else (E(vg.get('not_run') or '') + ' · '))
