@@ -235,7 +235,7 @@ function jobCard(j) {                                           // heading: the 
     esc(cap(s.words)) + (s.state === 'done' ? ': done' + (s.time ? ', ' + esc(s.time) : '') : j.status === 'running' ? '' : ': did not finish') + '</li>').join('') + '</ol>';
   if (j.kind === 'review' && j.status === 'running' && !j.past_finish && j.url)
     h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the Review Page</a>' +
-         '<button type="button" id="pp-stop" data-act="stop">Stop Reviewing (the Session Stays Open)</button></div>';
+         '<button type="button" id="pp-stop" data-act="stop">' + (j.first ? 'Stop Reviewing (Your Choices Are Saved)' : 'Stop Reviewing (the Session Stays Open)') + '</button></div>';
   if (j.kind === 'ocr' && j.status === 'running' && j.url)
     h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the OCR Text Review Page</a>' +
          '<button type="button" id="pp-stop" data-act="stop">Close Without a Verdict</button></div>';
@@ -445,7 +445,7 @@ function waitingBlock(s) {
 
 function render() {
   if (WAITING) {                                                 // no result, no strip: the review, then the first apply
-    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(tc(st.waiting ? 'Waiting for review' : 'First result')) + '</h3>' +
+    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(tc(!st.waiting ? 'First result' : st.waiting.reviewed ? 'Waiting to be applied' : 'Waiting for review')) + '</h3>' +
       waitingBlock(st) + jobsBlock(st), body = $('pp-body'), keepFocus = document.activeElement && document.activeElement.id;
     if (body.dataset.h === h) return;
     body.innerHTML = h; body.dataset.h = h;
