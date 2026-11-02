@@ -9,15 +9,18 @@ Routes (all call review/core.py; a later front end can replace this file and pag
     GET  /word/<id>.png          one OCR word cut from its word sheet (the image the AI read)
     GET  /result/review.html …   files the caller lists (files=): a reopened review links the run's current result
     POST /save    {reviewer, decisions, additions, session_name, session_notes, saved_at}  → saved to review_decisions.json;
-                                 returns what the check would drop (each with the card it came from), additions refused, and
-                                 gaps (no H1, figures without alt): the Finish dialog's check. Refused once Finish has started
+                                 returns problems (core.problems: what the check would drop and additions refused, each with
+                                 the card it belongs to) and gaps (no H1, figures without alt): the Finish dialog's check.
+                                 Refused once Finish has started
     POST /keep    the same body → saved to review_decisions.json only: the page's auto-save, about a second after each
                                  change (the browser's copy stays as a backup); refused once Finish has started; a draft
-                                 older than the one on disk (saved_at) is not written. Returns the gaps still open.
+                                 older than the one on disk (saved_at) is not written. Returns problems and the gaps still open,
+                                 so each field is marked as it is saved.
                                  /save and /keep also return each section move as reviewed (the AI's, changed or not, and added ones): its preview, in the
                                  order the executor makes them and with the reviewed text rules (move_previews: {card id: preview})
     POST /finish  {…, accept_unreviewed, gaps_ack}            → review.json and the reviewed workorder.json; the server stops.
-                                 Not finished yet, but nothing wrong: 200 with needs: "unreviewed" (and the list) while
+                                 Not finished yet: 200 with needs: "invalid" (and problems) while a card's choice would be
+                                 dropped (problems' unplaced never blocks), needs: "unreviewed" (and the list) while
                                  items are unreviewed, or needs: "gaps" while a gap has no reason, unless the body accepts
                                  them (a normal step of the flow, so not an HTTP error the browser logs)
     GET  /ocr/text/<n>.json      the text of PDF page n, for the OCR Text section: only pages the section can show
@@ -107,6 +110,8 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             inside['closed'] = True
             while inside['n']: gate.wait(0.2)
     sid = (data.get('session') or {}).get('id') or '001'
+    set_in = (data.get('session') or {}).get('set_in') or {}   # choices carried from an earlier session (a reopen)
+    if not ocr_only: data['languages'] = core.languages()     # the language list (for runs prepared before it too)
     ocr_wo = wo if ocr_only else ai
     def ocr_section(): return O.section(run_dir, digest, ocr_wo)
     intake = core.load(os.path.join(run_dir, '_intake', 'intake.json')) or {}
@@ -241,22 +246,23 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             def build():
                 wo = core.apply_decisions(ai, items, decisions)
                 return wo, core.add_entries(wo, additions, adds, reviewer)
+            def checked():                              # the check's verdict card by card, and the gaps left after it
+                return core.problems(R, ai, items, decisions, additions, adds, reviewer, set_in)
             if self.path == '/keep':
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: nothing more is kept.'})
                     wrote = keep()
                 wo = build()[0]
-                gaps = core.preview(R, wo)[1]                  # the gaps still open, for the count beside the save status
-                return self.send(200, {'kept': wrote, **({} if wrote else {'older': True}), 'gaps': gaps,    # older: a newer draft is on disk
+                probs, gaps = checked()                          # each card's problems and the gaps still open, for the line beside Finish
+                return self.send(200, {'kept': wrote, **({} if wrote else {'older': True}), 'problems': probs, 'gaps': gaps,   # older: a newer draft is on disk
                                        'move_previews': core.move_previews(data, decisions, additions, wo)})   # each move card's preview
             if self.path == '/save':                        # the Finish dialog's check (it saves the draft too; auto-save uses /keep)
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: nothing more is saved.'})
                     keep()
-                wo, refused = build()
-                dropped, gaps = core.preview(R, wo)
-                for d in dropped: d['card'] = core.card_of(items, d)   # the card a dropped choice belongs to, for a link
-                return self.send(200, {'saved': True, 'changes': len(core.diff(ai, wo)), 'dropped': dropped, 'refused': refused,
+                wo = build()[0]
+                probs, gaps = checked()
+                return self.send(200, {'saved': True, 'changes': len(core.diff(ai, wo)), 'problems': probs,
                                        'gaps': gaps, 'unreviewed': len(core.unreviewed(items, decisions)),
                                        'move_previews': core.move_previews(data, decisions, additions, wo)})
             if self.path == '/finish':
@@ -264,6 +270,9 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started already.'})
                     keep()
+                probs, open_gaps = checked()
+                if probs['fields'] or probs['conflicts']:      # anything that would be dropped and that a card can fix: not yet
+                    return self.send(200, {'finished': False, 'needs': 'invalid', 'error': 'Some choices cannot be applied yet.', 'problems': probs})
                 left = core.unreviewed(items, decisions)
                 if left and not body.get('accept_unreviewed'):
                     return self.send(200, {'finished': False, 'needs': 'unreviewed', 'error': f'{len(left)} items are not reviewed yet.', 'unreviewed': left})
@@ -271,7 +280,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 if refused: return self.send(400, {'error': 'Some of your additions cannot be applied: '
                                                    + '; '.join(f'{r["id"]}: {r["why"]}' for r in refused), 'refused': refused})
                 ack = body.get('gaps_ack') if isinstance(body.get('gaps_ack'), dict) else {}
-                gaps = [g for g in core.preview(R, wo)[1] if not str(ack.get(g['id']) or '').strip()]
+                gaps = [g for g in open_gaps if not str(ack.get(g['id']) or '').strip()]
                 if gaps: return self.send(200, {'finished': False, 'needs': 'gaps', 'error': f'{len(gaps)} gaps are open.', 'gaps': gaps})
                 with write_lock:                             # an auto-save or a check after this point is refused
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started already.'})
