@@ -59,7 +59,12 @@ dialog.npad textarea { flex: 1; resize: none; border: 0; border-radius: 0 0 8px 
 /* "All changes saved" / "Saving…" / "Not saved": right of Finish Review, in a fixed width, so nothing moves when it changes */
 .save-state { align-self: center; font-size: 13px; color: var(--muted); white-space: nowrap; display: inline-block; width: 9.5em; }
 .save-state[hidden] { display: none; }
-.gap-state { align-self: center; font-size: 13px; color: var(--muted); white-space: nowrap; } .gap-state:empty, .gap-state[hidden] { display: none; }
+/* the check's verdict beside it (announced, only when its words change), and a problem under the field it is about */
+.check-line { align-self: center; font-size: 13px; color: var(--muted); white-space: nowrap; } .check-line.bad { color: var(--reject); font-weight: 600; }
+.check-line[hidden], #checkBtn[hidden] { display: none; }
+.field-err { margin: 6px 0; padding: 4px 10px; border-left: 4px solid var(--reject); color: var(--reject); font-size: 14px; }
+.field-err[hidden] { display: none; } .field-err a { color: inherit; }
+[aria-invalid="true"] { border-color: var(--reject); box-shadow: 0 0 0 1px var(--reject); }
 .save-alert:empty { display: none; } .save-alert { margin-top: 6px; font-size: 14px; color: var(--reject); font-weight: 600; }
 .fin-check { border-left: 4px solid var(--change); background: var(--bg); padding: 6px 10px; margin: 8px 0; font-size: 14px; }
 .fin-check ul { margin: 4px 0 0; padding-left: 20px; } .fin-check.err { border-left-color: var(--reject); }
@@ -207,7 +212,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
     </span>
     <span class="actions"><button id="addBtn" type="button">Add a Decision</button>
     <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close Without a Verdict</button>
-    <span id="saveState" class="save-state">All changes saved</span><span id="gapState" class="gap-state"></span></span>
+    <span id="saveState" class="save-state">All changes saved</span><span id="checkLine" class="check-line" role="status"></span><button type="button" id="checkBtn" hidden>Show Details</button></span>
   </div>
   <div id="saveAlert" role="alert" class="save-alert"></div>
   <div id="msg" role="status"></div>
@@ -239,6 +244,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 <div id="zoom"><img alt=""></div>
 <dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>
 <dialog id="finishDialog" aria-labelledby="finTitle" aria-describedby="finCtx"></dialog>
+<dialog id="checkDialog" aria-labelledby="chkTitle"></dialog>
 <script>
 const DATA = /*REVIEW_DATA*/null;
 // the browser draft belongs to one run and one session (the run id is written once, in reviews/basis.json)
@@ -323,8 +329,8 @@ async function saveNow() {
   if (saving || finished) return;                      // the save in flight looks at `dirty` when it ends
   saving = true; dirty = false; let ok = false;
   try {
-    const [s, b] = await post('/keep');
-    if (s === 200) { ok = true; saveAlert(''); showGaps(b.gaps); refreshMoves(b.move_previews); }   // kept, or skipped as older than the draft on disk
+    const at = state.saved_at, [s, b] = await post('/keep');
+    if (s === 200) { ok = true; saveAlert(''); gotCheck(b, at); refreshMoves(b.move_previews); }   // kept, or skipped as older than the draft on disk
     else if (s === 409) ok = true;                     // Finish has started: it records the draft itself
     else saveAlert('Your last changes could not be saved to the run: ' + (b.error || 'the server refused them') + ' Change it and they are saved again.');
   } catch (e) {
@@ -354,11 +360,103 @@ function tableReading(r) {             // shown, not edited here: reject the car
                 r.group_rows && 'group rows ' + r.group_rows.join(', '), r.repeat_rows && 'repeated header rows ' + r.repeat_rows.join(', ')].filter(Boolean);
   return part.length ? '; ' + esc(part.join('; ')) : '';
 }
-function showGaps(g) {
-  const el = document.getElementById('gapState'); if (!el || !Array.isArray(g)) return;
-  el.textContent = g.length ? g.length + (g.length === 1 ? ' gap open' : ' gaps open') : '';
-  el.title = g.map(x => x.what).join(' · ');
+// ---------------------------------------------------------------- field checks: the check's verdict on each card, from each save
+// Every save (/keep, and the Finish dialog's /save) returns problems: what the check (the rules the AI's decisions go
+// through) would drop, each on the card it belongs to (review/core.py problems). A card's message sits under its value,
+// tied to the field (aria-invalid, aria-describedby) and not announced itself. It changes only when the card is not being
+// typed in (the focus is elsewhere, or no typing for 2 seconds); a problem that is fixed clears at once. The line beside
+// "Finish Review" (announced, only when its words change) counts what the cards show, with the gaps. A response to a
+// save older than the draft (an edit made while it was on its way) is not used: the save after it brings the verdict.
+let PROBS = null, GAPS = [], marks = {}, lastInput = 0, settleTimer = null, lineText = '';
+const ERR_IDS = {}; let errN = 0;
+const errId = id => ERR_IDS[id] || (ERR_IDS[id] = 'err-' + (++errN));   // card ids hold spaces: never in an id list
+const cardName = id => { const t = byId[id] || addById[id]; return t ? (t.kind || '') + ': ' + String(t.label).slice(0, 80) : id; };
+const probLink = id => byId[id] || addById[id] ? '<a href="#card-' + esc(id) + '" data-card="card-' + esc(id) + '">' + esc(cardName(id)) + '</a>' : esc(cardName(id));   // in a card: goCard
+const NOT_YOURS = { ai: ' This is the AI\'s choice: reject it to continue, or change it.',
+                    earlier: ' This choice was carried over from an earlier session: reject it to continue, or change it.' };
+function gotCheck(b, at) {
+  if (!b || at !== state.saved_at) return;
+  if (Array.isArray(b.gaps)) GAPS = b.gaps;
+  if (b.problems) PROBS = b.problems;
+  settle();
 }
+function wanted() {                                    // card id → {html, parts, whole} the latest problems ask for
+  const w = {}, P = PROBS || {};
+  const put = (id, html, parts) => { const m = w[id] || (w[id] = { html: [], parts: [], whole: false }); m.html.push(html); if (parts) m.parts.push(...parts); else m.whole = true; };
+  for (const p of P.fields || []) put(p.card, esc(p.fix) + (NOT_YOURS[p.origin] || ''), p.parts);
+  for (const c of P.conflicts || []) for (const id of c.cards)
+    put(id, esc(c.fix) + (c.cards.length > 1 ? ' It conflicts with ' + c.cards.filter(x => x !== id).map(probLink).join(' and ') + '.' : '') + (NOT_YOURS[c.origin] || ''));
+  return w;
+}
+const typing = el => el && el.contains(document.activeElement) && Date.now() - lastInput < 2000;
+function settle() {
+  const w = wanted();
+  for (const id of new Set([...Object.keys(marks), ...Object.keys(w)])) {
+    const el = document.getElementById('card-' + id);
+    if (JSON.stringify(w[id] || null) === JSON.stringify(marks[id] || null)) continue;
+    if (w[id] && typing(el)) continue;                 // being typed in: the new message waits (a fixed problem clears at once)
+    if (w[id]) marks[id] = w[id]; else delete marks[id];
+    if (el) markCard(el);
+  }
+  checkLine();
+}
+function undescribe(f, eid) {
+  const v = (f.getAttribute('aria-describedby') || '').split(/\s+/).filter(x => x && x !== eid).join(' ');
+  if (v) f.setAttribute('aria-describedby', v); else f.removeAttribute('aria-describedby');
+}
+// a card's message and its fields' marks, from marks: on each change, after render(), and after a move card is redrawn
+function markCard(el) {
+  const id = el.dataset.id || el.dataset.aid, m = marks[id], eid = errId(id);
+  let box = el.querySelector(':scope > .field-err');
+  if (!box && m) { box = document.createElement('div'); box.className = 'field-err'; box.id = eid; el.insertBefore(box, el.querySelector(':scope > .note')); }
+  if (box) { box.hidden = !m; box.innerHTML = m ? m.html.join('<br>') : ''; }
+  el.querySelectorAll('[aria-invalid]').forEach(f => f.removeAttribute('aria-invalid'));
+  el.querySelectorAll('[aria-describedby]').forEach(f => undescribe(f, eid));
+  if (!m) return;
+  const ed = el.querySelector(':scope > .edit');
+  const fields = ed && !ed.hidden ? [...ed.querySelectorAll('[data-act=value], [data-act=langpick]')].filter(f => !f.hidden) : [];
+  if (!fields.length) { const c = el.querySelector(':scope > .controls'); if (c) c.setAttribute('aria-describedby', eid); return; }   // no value shown: the choice itself
+  for (const f of fields) {
+    if (!m.whole && f.dataset.f && !m.parts.includes(f.dataset.f)) continue;   // a move's page box that is fine
+    f.setAttribute('aria-invalid', 'true');
+    f.setAttribute('aria-describedby', ((f.getAttribute('aria-describedby') || '') + ' ' + eid).trim());
+  }
+}
+const markAll = () => { for (const id of Object.keys(marks)) { const el = document.getElementById('card-' + id); if (el) markCard(el); } };
+function checkLine() {
+  const el = document.getElementById('checkLine'); if (!el || !PROBS) return;
+  const on = id => !!marks[id], P = PROBS;
+  const f = (P.fields || []).filter(p => on(p.card)).length, c = (P.conflicts || []).filter(x => x.cards.some(on)).length;
+  const u = (P.unplaced || []).length, g = GAPS.length;
+  const n = (k, one, many) => k + ' ' + (k === 1 ? one : many);
+  const parts = [f && n(f, 'choice needs fixing', 'choices need fixing'), c && n(c, 'conflict', 'conflicts'),
+                 g && n(g, 'gap open', 'gaps open'), u && n(u, 'choice left out', 'choices left out')].filter(Boolean);
+  const t = parts.length ? parts.join(' · ') : 'All choices can be applied';
+  if (t !== lineText) { lineText = t; el.textContent = t; }   // the same words again: not announced again
+  el.classList.toggle('bad', f + c > 0);
+  document.getElementById('checkBtn').hidden = !parts.length;
+}
+document.getElementById('cards').addEventListener('input', () => { lastInput = Date.now(); clearTimeout(settleTimer); settleTimer = setTimeout(settle, 2100); });
+document.getElementById('cards').addEventListener('focusout', e => { const c = e.target.closest('.card'); if (c && !c.contains(e.relatedTarget)) setTimeout(settle, 0); });
+// the page boxes take digits only, as they are typed
+document.addEventListener('input', e => {
+  const f = e.target; if (f.inputMode !== 'numeric') return;
+  const v = f.value.replace(/\D+/g, ''); if (v !== f.value) f.value = v;
+}, true);
+// "Show Details": everything the line counts, each with a link to its card (or the Add form, for a gap)
+document.getElementById('checkBtn').addEventListener('click', () => {
+  const dlg = document.getElementById('checkDialog'), btn = document.getElementById('checkBtn');
+  dlg.innerHTML = '<h2 id="chkTitle" tabindex="-1">What the Check Finds</h2>' + checkHtml({ problems: PROBS, gaps: GAPS }) +
+    '<div class="buttons"><button type="button" data-c="close">Close</button></div>';
+  let go = null;
+  dlg.onclick = e => {
+    const a = e.target.closest('a[data-card], a[data-add-kind]');
+    if (a) { e.preventDefault(); go = a.dataset.card ? () => goCard('card-' + a.dataset.card) : () => openAdd(a.dataset.addKind, a.dataset.addTarget); dlg.close(); }
+    else if (e.target.dataset.c === 'close') dlg.close();
+  };
+  dlg.onclose = () => { dlg.onclick = dlg.onclose = null; if (go) go(); else btn.focus(); };
+  dlg.showModal(); document.getElementById('chkTitle').focus();
+});
 function dec(id) { return state.decisions[id] || (state.decisions[id] = {}); }
 
 document.getElementById('title').textContent = 'Work Order Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
@@ -556,7 +654,7 @@ if (OCR_ONLY) {                                        // the OCR section alone:
   const back = document.getElementById('back');
   if (!back.hidden) back.innerHTML = '<a href="' + esc(RETURN_TO.split('?')[0]) + '" class="btnlink">Back to the Run Page</a> (this page stays open until you close it here or there)';
   [document.getElementById('sessionName').closest('span'), document.getElementById('progress').parentNode, document.querySelector('.show'),
-   document.getElementById('addBtn'), document.getElementById('saveState'), document.getElementById('gapState'), document.getElementById('finish'),
+   document.getElementById('addBtn'), document.getElementById('saveState'), document.getElementById('checkLine'), document.getElementById('finish'),
    document.getElementById('this-session'), document.getElementById('cards')].forEach(x => { x.hidden = true; });
   const c = document.getElementById('closeOcr'); c.hidden = false;
   c.addEventListener('click', async () => {
@@ -662,12 +760,19 @@ function editor(it, d) {
   if (it.edit === 'level') return '<select data-act="value">' + it.options.map(o => '<option' + (o === v ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select>' +
     (it.key === 'rolemap' && it.context.count ? ' <span class="flag">changes all ' + it.context.count + ' elements of this style</span>' : '');
   if (it.edit === 'text') return '<textarea data-act="value" aria-label="New value">' + esc(v) + '</textarea>';
-  if (it.edit === 'lang') return '<input type="text" data-act="value" value="' + esc(v) + '" size="12"> <span class="ctx">a language tag such as en-US, ja, haw</span>';
-  if (it.edit === 'move') return 'Pages <input type="text" data-act="value" data-f="a" size="4" value="' + esc(((v || {}).pages || [])[0]) + '"> to ' +
-    '<input type="text" data-act="value" data-f="b" size="4" value="' + esc(((v || {}).pages || [])[1]) + '"> read before page ' +
-    '<input type="text" data-act="value" data-f="before_page" size="4" value="' + esc((v || {}).before_page) + '"> <span class="ctx">PDF page numbers. The preview updates a moment after you change them.</span>';
-  if (it.edit === 'table') return 'Header rows <input type="text" data-act="value" data-f="header_rows" size="2" value="' + esc((v || {}).header_rows) + '"> ' +
-    'Header columns <input type="text" data-act="value" data-f="header_cols" size="2" value="' + esc((v || {}).header_cols) + '"> <span class="ctx">0–3 each. Header columns are refused by the executor when any row has that many cells or fewer, such as a one-cell title row across the table.</span>';
+  if (it.edit === 'lang') {                            // a language from the list, or Other: the tag typed (kept as it is, never swapped for a near one)
+    const L = DATA.languages || [], known = L.some(([t]) => t === v);
+    return '<select data-act="langpick" aria-label="Language">' + L.map(([t, n]) => '<option value="' + esc(t) + '"' + (t === v ? ' selected' : '') + '>' + esc(n) + '</option>').join('') +
+      '<option value=""' + (known ? '' : ' selected') + '>Other</option></select> <input type="text" data-act="value" aria-label="Language tag" value="' + esc(v) + '" size="12"' + (known ? ' hidden' : '') + '>' +
+      ' <span class="ctx">Under Other, type a language tag such as en-AU, ja, haw.</span>';
+  }
+  if (it.edit === 'move') return 'Pages <input type="text" inputmode="numeric" data-act="value" data-f="a" size="4" aria-label="First page" value="' + esc(((v || {}).pages || [])[0]) + '"> to ' +
+    '<input type="text" inputmode="numeric" data-act="value" data-f="b" size="4" aria-label="Last page" value="' + esc(((v || {}).pages || [])[1]) + '"> read before page ' +
+    '<input type="text" inputmode="numeric" data-act="value" data-f="before_page" size="4" aria-label="Read before page" value="' + esc((v || {}).before_page) + '"> <span class="ctx">PDF page numbers. The preview updates a moment after you change them.</span>';
+  if (it.edit === 'table') {                           // 0–3 each: a choice, so it can't be mistyped
+    const sel = f => '<select data-act="value" data-f="' + f + '">' + [0, 1, 2, 3].map(n => '<option' + (String((v || {})[f]) === String(n) ? ' selected' : '') + '>' + n + '</option>').join('') + '</select>';
+    return '<label>Header Rows ' + sel('header_rows') + '</label> <label>Header Columns ' + sel('header_cols') + '</label> <span class="ctx">Header columns are refused by the executor when any row has that many cells or fewer, such as a one-cell title row across the table.</span>';
+  }
   return '';
 }
 
@@ -817,6 +922,7 @@ function refreshMoves(pvs) {
       cur.outerHTML = draw();
       const nu = document.getElementById('card-' + id), ed = nu && nu.querySelector('.edit');
       if (open && ed) ed.hidden = false;
+      if (nu) markCard(nu);
     };
     if (old.contains(document.activeElement)) old.addEventListener('focusout', function f(e) {
       if (old.contains(e.relatedTarget)) return;        // focus moved inside the card: still typing
@@ -1023,7 +1129,7 @@ function render() {
   document.getElementById('cards').innerHTML = (finished ? '<div class="done">Review finished. Go back to ' + NEXT + ' to continue the run.</div>' : '') +
     (secs.length ? secs.map(s => '<section id="' + s.id + '"><h2>' + esc(tc(s.title)) + ' (' + s.items.length + ')</h2>' + s.items.map(s.adds ? addCard : card).join('') + '</section>').join('')
                  : '<p>Nothing to show here.</p>');
-  placeOrder(); nav(); progress(); refreshH1(); renderOrder();
+  placeOrder(); nav(); progress(); refreshH1(); renderOrder(); markAll();
 }
 // the reading-order panel opens its group (Check First) or the reading-order decisions (All); Not reviewed lists cards only.
 // It is one element, parked while render replaces #cards and moved here after, so it keeps its listeners and its fold.
@@ -1100,8 +1206,15 @@ function onAddEdit(el, art) {
   else if (el.dataset.act === 'value') a.value = readValue(art.querySelector('.edit'), addById[aid(a)].default);
   persist(); refreshH1();
 }
+// the language list: a language sets the tag box (hidden); Other shows the box, keeping what it holds. Returns the box
+function langPick(sel) {
+  const box = sel.parentElement.querySelector('input[data-act=value]');
+  box.hidden = sel.value !== ''; if (sel.value) box.value = sel.value;
+  return box;
+}
 function onEdit(e) {
   const el = e.target, act = el.dataset.act; if (!act || finished) return;
+  if (act === 'langpick') return onEdit({ target: langPick(el) });
   const art = el.closest('.card');
   if (art.dataset.aid) return onAddEdit(el, art);
   const it = byId[art.dataset.id], d = dec(it.id);
@@ -1109,6 +1222,7 @@ function onEdit(e) {
     d.status = el.value;
     if (el.value === 'changed' && !('value' in d)) d.value = it.ai;
     const ed = art.querySelector('.edit'); if (ed) ed.hidden = el.value !== 'changed';
+    markCard(art);                                     // its message now ties to the value shown, or to the choice
   } else if (act === 'note') d.note = el.value;
   else if (act === 'value') {
     if (it.edit === 'table') {
@@ -1249,6 +1363,7 @@ function fillDetail() {
   box.innerHTML = h;
 }
 panel.addEventListener('change', e => {
+  if (e.target.dataset.act === 'langpick') langPick(e.target);
   const k = e.target.dataset.add;
   if (k === 'kind') { addKind = e.target.value; addSel = null; fillTargets(); fillDetail(); }
   if (k === 'target') { addSel = e.target.value; fillDetail(); }
@@ -1265,7 +1380,7 @@ panel.addEventListener('click', e => {
     state.additions.push(Object.assign({ kind: t.kind, target: t.target, value }, note ? { note } : {}));
     persist(); panel.hidden = true;
     if (view === 'left') { view = 'priority'; document.querySelector('input[name=view][value=priority]').checked = true; }
-    render(); msg('Added. "Finish Review" checks it with the same rules as the AI\'s decisions.');
+    render(); msg('Added. It is checked as soon as it is saved, with the same rules as the AI\'s decisions.');
     goTo(document.getElementById('card-' + t.id));                // the new card, with focus
   }
 });
@@ -1283,7 +1398,6 @@ document.getElementById('msg').addEventListener('click', e => {
   e.preventDefault(); openAdd(a.dataset.addKind, a.dataset.addTarget);
 });
 const dropText = d => d.length ? ' · <b>' + d.length + ' not accepted by the check, so not applied at all</b> (the AI\'s value is not used either; change or approve it to keep a value): ' + d.map(x => esc(x.where) + ' (' + esc(x.why) + ')').join('; ') : ' · nothing dropped by the check';
-const refusedText = r => (r || []).length ? ' · <b>' + r.length + ' additions refused</b>: ' + r.map(x => esc(x.id) + ' (' + esc(x.why) + ')').join('; ') : '';
 const addLink = g => g.add ? ' <a href="#" data-add-kind="' + esc(g.add.kind) + '"' + (g.add.target != null ? ' data-add-target="' + esc(g.add.target) + '"' : '') + '>Add</a>' : '';
 const gapText = g => (g || []).length ? ' · <b>' + g.length + ' gap' + (g.length === 1 ? '' : 's') + '</b>: ' + g.map(x => esc(x.what) + addLink(x)).join(' · ') : ' · no gaps';
 async function post(path, extra) {
@@ -1322,28 +1436,30 @@ function showLeft(text) {
   msg(text + ' They are listed under "Not Reviewed."', true, true);
 }
 // names of buttons, views and sections in quotes, as they appear on screen (CLAUDE.md's interface rule)
-// The check Save used to run, now here, before anything is applied: choices the check would drop (each linked to its
-// card: the link closes the dialog and goes there), additions refused, and gaps still open (asked about after Finish).
+// The check, before anything is applied: choices that need fixing first (each linked to its card: the link closes the
+// dialog and goes there), choices no card holds (left out), and gaps still open (asked about after Finish).
 function checkHtml(c) {
-  if (!c) return '<div class="fin-check err">The check could not run (the page can\'t reach its server). "Finish Review" runs it again and says what it drops.</div>';
+  if (!c || !c.problems) return '<div class="fin-check err">The check could not run (the page can\'t reach its server). "Finish Review" runs it again.</div>';
   const link = (id, words) => id && (byId[id] || addById[id]) ? '<a href="#card-' + esc(id) + '" data-card="' + esc(id) + '">' + esc(words) + '</a>' : esc(words);
-  const name = d => d.card && byId[d.card] ? byId[d.card].kind + ': ' + String(byId[d.card].label).slice(0, 80) : d.where;
-  const dr = c.dropped || [], rf = c.refused || [], gp = c.gaps || [];
+  const P = c.problems, fl = P.fields || [], cf = P.conflicts || [], up = P.unplaced || [], gp = c.gaps || [], bad = fl.length + cf.length;
   let h = '';
-  if (dr.length) h += '<div class="fin-check"><b>' + dr.length + (dr.length === 1 ? ' choice would be dropped' : ' choices would be dropped') + '</b>: the check doesn\'t accept ' +
-    (dr.length === 1 ? 'it, so it is' : 'them, so they are') + ' not applied at all, and the AI\'s value isn\'t used either. Change or approve ' + (dr.length === 1 ? 'it' : 'them') + ' to keep a value.<ul>' +
-    dr.map(d => '<li>' + link(d.card, name(d)) + ': ' + esc(d.why) + '</li>').join('') + '</ul></div>';
-  if (rf.length) h += '<div class="fin-check"><b>' + rf.length + (rf.length === 1 ? ' addition can\'t be applied' : ' additions can\'t be applied') + '</b>:<ul>' +
-    rf.map(r => '<li>' + link(r.id, (addById[r.id] || {}).label || r.id) + ': ' + esc(r.why) + '</li>').join('') + '</ul></div>';
+  if (bad) h += '<div class="fin-check err" id="finBad"><b>' + bad + (bad === 1 ? ' choice needs' : ' choices need') + ' fixing before the review can finish</b>: the check doesn\'t accept ' +
+    (bad === 1 ? 'it' : 'them') + ', so ' + (bad === 1 ? 'it' : 'they') + ' would not be applied at all. Each is marked on its card.<ul>' +
+    fl.map(p => '<li>' + link(p.card, cardName(p.card)) + ': ' + esc(p.fix) + (NOT_YOURS[p.origin] || '') + '</li>').join('') +
+    cf.map(x => '<li>' + x.cards.map(id => link(id, cardName(id))).join(' and ') + ': ' + esc(x.fix) + '</li>').join('') + '</ul></div>';
+  if (up.length) h += '<div class="fin-check"><b>' + up.length + (up.length === 1 ? ' choice is' : ' choices are') + ' left out</b>: the check doesn\'t accept ' +
+    (up.length === 1 ? 'it, and it has' : 'them, and they have') + ' no card to change here, so ' + (up.length === 1 ? 'it is' : 'they are') + ' not applied.<ul>' +
+    up.map(u => '<li>' + esc(u.fix) + '</li>').join('') + '</ul></div>';
   if (gp.length) h += '<div class="fin-check"><b>' + gp.length + (gp.length === 1 ? ' gap is' : ' gaps are') + ' still open</b>: ' + gp.map(g => esc(g.what) + addLink(g)).join(' · ') +
     '. "Finish Review" asks for a reason for each.</div>';
-  return h;
+  return h || '<div class="fin-check">The check accepts every choice.</div>';
 }
 async function askFinish() {
   const dlg = document.getElementById('finishDialog');
   clearTimeout(saveTimer);                             // the check saves the draft too (/save keeps it, under the write lock)
   let chk = null;
-  try { const [s, b] = await post('/save'); if (s === 200) { chk = b; showGaps(b.gaps); refreshMoves(b.move_previews); if (!saving) { dirty = false; saveAlert(''); saveState('All changes saved'); } } } catch (e) {}
+  try { const at = state.saved_at, [s, b] = await post('/save'); if (s === 200) { chk = b; gotCheck(b, at); refreshMoves(b.move_previews); if (!saving) { dirty = false; saveAlert(''); saveState('All changes saved'); } } } catch (e) {}
+  const bad = chk && chk.problems ? (chk.problems.fields || []).length + (chk.problems.conflicts || []).length : 0;
   const n = items.filter(it => !(state.decisions[it.id] || {}).status).length, one = n === 1;
   const ov = OCR && OCR.current ? verdictText(OCR.current) : 'Not yet reviewed';
   dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2>' + checkHtml(chk) + '<div class="ctx" id="finCtx">' +
@@ -1354,7 +1470,7 @@ async function askFinish() {
     '<label for="finName">Session Name</label><input type="text" id="finName" maxlength="80">' +
     '<label for="finNotes">Session Notes (optional)</label><textarea id="finNotes" maxlength="4000"></textarea>' +
     '<div class="buttons"><button type="button" data-f="back">Back</button>' + (n ? '<button type="button" data-f="left">Show "Not Reviewed"</button>' : '') +
-    '<button type="button" class="primary" data-f="finish">Finish Review</button></div>';
+    '<button type="button" class="primary" data-f="finish"' + (bad ? ' disabled aria-describedby="finBad"' : '') + '>Finish Review</button></div>';
   document.getElementById('finName').value = sName.value; document.getElementById('finNotes').value = sNotes.value;
   return new Promise(done => {
     let answer = null, toCard = null, toAdd = null;
@@ -1375,10 +1491,7 @@ async function askFinish() {
     dlg.onclose = () => {
       dlg.onclick = dlg.onclose = null;
       if (answer === 'left') showLeft(n + ' decisions are not reviewed.');
-      else if (toCard) {                               // the card of a choice the check would drop, in the All view
-        if (view !== 'all') { view = 'all'; document.querySelector('input[name=view][value=all]').checked = true; render(); }
-        goTo(document.getElementById('card-' + toCard));
-      }
+      else if (toCard) goCard('card-' + toCard);       // the card of a choice the check doesn't accept, in a view that shows it
       else if (toAdd) openAdd(toAdd[0], toAdd[1]);      // the Add a Decision form, at the right kind
       else if (!answer) finBtn.focus();                // Back or Escape: where the person was
       done(answer && answer !== 'left' ? answer : null);
@@ -1394,6 +1507,10 @@ finBtn.addEventListener('click', async () => {
     const extra = go.unreviewed ? { accept_unreviewed: true } : {};
     let [s, b] = await post('/finish', extra);
     // not finished yet, a normal step (200, needs): decisions not reviewed that the dialog did not count, then the open gaps
+    if (s === 200 && b.needs === 'invalid') {          // a choice changed since the dialog's check: marked on its card
+      gotCheck({ problems: b.problems }, state.saved_at);
+      return msg('Not finished: ' + esc(lineText) + '. Each is marked on its card; "Show Details" lists them.', true, true);
+    }
     if (s === 200 && b.needs === 'unreviewed') return showLeft(esc(b.error));
     if (s === 200 && b.needs === 'gaps') {
       const ack = await askGaps(b.gaps);
