@@ -10,6 +10,8 @@
    background is announced, and focus stays where it is. */
 (() => {
 'use strict';
+// names are never prefilled (Patrick, 2026-11-01): a name remembered by an earlier version of the app is cleared once
+try { localStorage.removeItem('checks:by'); } catch (e) {}
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sn = id => /^\d+$/.test(String(id)) ? 'session ' + Number(id) : id === 'ai' ? 'the result applied without review' : String(id);
 const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
@@ -17,7 +19,25 @@ const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
 // lib/titles.py: a, an, the, and, or, of, to, in, on, for, by, from, with stay lowercase unless first, last, or first after a
 // colon or question mark; a word with a capital inside, a dot, slash, underscore or digit is left as written, and so is
 // everything in parentheses (a qualifier stays lowercase: "Sent to (optional)").
-const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with']);
+// ---- dates (lib/dates.py): "October 31, 2026" and "4:32 PM", parsed by hand, never with Date ('2026-10-31' is UTC midnight)
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
+function fmtParse(v) {
+  const m = DATE_RE.exec(String(v == null ? '' : v).trim()); if (!m) return null;
+  const mo = +m[2], d = +m[3], h = m[4] === undefined ? null : +m[4], mi = m[4] === undefined ? null : +m[5];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || (h !== null && (h > 23 || mi > 59))) return null;
+  return [+m[1], mo, d, h, mi];
+}
+function fmtBlank(v) { return v == null || !String(v).trim(); }
+function fmtDay(v) { if (fmtBlank(v)) return 'date not recorded'; const p = fmtParse(v); return p ? MONTHS[p[1] - 1] + ' ' + p[2] + ', ' + p[0] : String(v).trim(); }
+function fmtClock(v) {
+  const p = fmtParse(v);
+  if (!p || p[3] === null) return fmtBlank(v) || p ? 'time not recorded' : String(v).trim();
+  return ((p[3] % 12) || 12) + ':' + String(p[4]).padStart(2, '0') + ' ' + (p[3] < 12 ? 'AM' : 'PM');
+}
+function fmtWhen(v) { const p = fmtParse(v); return p && p[3] !== null ? fmtDay(v) + ', at ' + fmtClock(v) : fmtDay(v); }
+// ---- end of dates
+const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with', 'as']);
 function tc(s) {
   const w = String(s).split(' '); let edge = true, depth = 0;
   return w.map((x, n) => {
@@ -103,8 +123,8 @@ function showMsg(m, text, ok, focus) {
   if (text && focus) m.focus();
 }
 function abandonText(open, from) {
-  return cap(sn(open.id)) + ' is open (started ' + (open.started || '').replace('T', ' ') + '). Starting from ' +
-         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; its choices stay in "Session History".';
+  return cap(sn(open.id)) + ' is open (started ' + fmtWhen(open.started) + '). Starting from ' +
+         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; its choices stay in "Session History."';
 }
 
 // ================================================================ in-page links
@@ -171,6 +191,7 @@ let want = q.get('after') === 'finish' ? 'result' : q.get('after') === 'ocr' ? '
 if (want === 'review') wantAt = Date.now();                    // Review again from a previous result's bar
 let st = null, setup = null, primed = false, offline = false, failing = false, timer = null, newResult = false;
 const SHOWN = box.dataset.current || null;                     // the session whose result this page shows (set when served)
+const WAITING = box.dataset.waiting === '1';                   // served before the first review (REVIEW=1): no result yet
 let ocrSeen;                                                    // the OCR verdict's `recorded` when this page's report was read
 const seen = {};                                                // per job: the last step and status announced
 
@@ -208,13 +229,13 @@ function jobCard(j) {                                           // heading: the 
   let h = '<article class="pp-job" id="job-' + esc(j.id) + '" aria-labelledby="jh-' + esc(j.id) + '">' +
     '<h4 id="jh-' + esc(j.id) + '" tabindex="-1">' + esc(tc(j.action || j.title)) + '</h4>' +
     '<p>' + (spins(j) ? '<span class="pp-spin" aria-hidden="true"></span>' : '') + '<span class="pp-state' + cls + '">' + esc(jobWords(j)) + '</span>' +
-    (j.started ? ' <span class="pp-note">· started ' + esc(j.started.slice(11, 16)) + '</span>' : '') + '</p>';
+    (j.started ? ' <span class="pp-note">· started ' + esc(fmtClock(j.started)) + '</span>' : '') + '</p>';
   const steps = j.steps || [];                                  // the step running now is in the status line: no ": running" here
   if (steps.length) h += '<ol class="pp-steps">' + steps.map(s => '<li' + (s.state === 'running' && j.status === 'running' ? ' aria-current="step"' : '') + '>' +
     esc(cap(s.words)) + (s.state === 'done' ? ': done' + (s.time ? ', ' + esc(s.time) : '') : j.status === 'running' ? '' : ': did not finish') + '</li>').join('') + '</ol>';
   if (j.kind === 'review' && j.status === 'running' && !j.past_finish && j.url)
     h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the Review Page</a>' +
-         '<button type="button" id="pp-stop" data-act="stop">Stop Reviewing (the Session Stays Open)</button></div>';
+         '<button type="button" id="pp-stop" data-act="stop">' + (j.first ? 'Stop Reviewing (Your Choices Are Saved)' : 'Stop Reviewing (the Session Stays Open)') + '</button></div>';
   if (j.kind === 'ocr' && j.status === 'running' && j.url)
     h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the OCR Text Review Page</a>' +
          '<button type="button" id="pp-stop" data-act="stop">Close Without a Verdict</button></div>';
@@ -271,6 +292,43 @@ function actions(s) {
   return h;
 }
 
+// "Clean Up Space" (stage 3, review/prune.py): the button alone, shown only when a previous version's PDF can be removed;
+// the explanation is in its dialog (Patrick, 2026-11-01)
+const PRUNE_LINE = 'Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in "Session History." The original AI-generated version is always kept.';
+function pruneBlock(s) {
+  if (!s.prune) return '';
+  return '<div class="pp-row"><button type="button" id="pp-prune" data-act="prune">Clean Up Space</button></div>';
+}
+function removeLabel(n) { return n ? 'Remove ' + n + ' PDF' + (n === 1 ? '' : 's') : 'Remove PDFs'; }
+function pruneDlg(p, opener) {                                    // a checkbox per version and a name (never prefilled); Escape or Cancel closes it
+  return new Promise(res => {
+    const d = $('pp-dlg');
+    d.innerHTML = '<h2 id="pp-dlg-h">Clean Up Space</h2><p>' + esc(PRUNE_LINE) + '</p>' +
+      '<fieldset class="pp-prune"><legend>Previous Versions</legend>' +
+      p.versions.map((v, i) => '<label><input type="checkbox" id="pp-prune-' + i + '" value="' + i + '"> ' + esc(v.label) + ' · ' + esc(v.size) + '</label>').join('') +
+      '</fieldset><p id="pp-prune-sel" class="pp-note" aria-live="polite">None selected.</p>' +
+      '<p><label for="pp-prune-by">Removed By</label> <input type="text" id="pp-prune-by" autocomplete="name"></p>' +
+      '<p>This can\'t be undone.</p><p id="pp-prune-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes" disabled>' + removeLabel(0) +
+      '</button><button type="button" value="no">Cancel</button></div>';
+    const id = opener.id, done = v => { d.close(); ($(id) || opener).focus(); res(v); };
+    const picked = () => [...d.querySelectorAll('.pp-prune input:checked')].map(x => p.versions[Number(x.value)]);
+    const yes = d.querySelector('button[value=yes]');
+    d.querySelector('.pp-prune').addEventListener('change', () => {   // the count on the button; nothing goes unless selected
+      const vs = picked(), mb = vs.reduce((a, v) => a + v.bytes, 0) / 1e6;
+      yes.textContent = removeLabel(vs.length); yes.disabled = !vs.length;
+      $('pp-prune-sel').textContent = vs.length ? vs.length + ' selected · ' + mb.toFixed(1) + ' MB' : 'None selected.';
+    });
+    d.querySelector('button[value=no]').addEventListener('click', () => done(null));
+    yes.addEventListener('click', () => {
+      const vs = picked(); if (!vs.length) return;
+      const name = $('pp-prune-by').value.trim();
+      if (!name) { $('pp-prune-err').textContent = 'Enter your name in "Removed By."'; $('pp-prune-by').focus(); return; }
+      done({ by: name, chosen: vs.map(v => ({ id: v.id, sha256: v.sha256 })) });
+    });
+    d.oncancel = ev => { ev.preventDefault(); done(null); };
+    d.showModal(); $('pp-prune-0').focus();
+  });
+}
 function historyBlock(s) {
   const rows = (s.sessions || []).slice().sort((a, b) => Number(b.id) - Number(a.id));   // newest first
   let h = '<details id="pp-hist"><summary>Session History (' + rows.length + ')</summary>';
@@ -280,28 +338,144 @@ function historyBlock(s) {
     '<th scope="col">Changes from the AI</th><th scope="col">Set in This Session</th><th scope="col">Notes</th><th scope="col">Result</th><th scope="col">Action</th></tr></thead><tbody>' +
     // a session's name and notes are a person's own text: escaped, never Title Cased
     rows.map(r => '<tr><th scope="row"><span class="pp-nw">' + esc(cap(r.label)) + (r.current ? ' (current)' : '') + '</span>' + (r.name ? '<span class="pp-name' + ([...r.name].length > 40 ? ' pp-long' : '') + '">' + esc(r.name) + '</span>' : '') + '</th><td>' + esc(r.status) + (r.summary_only ? ' (summary only)' : r.inferred ? ' (inferred)' : '') +
-      '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td class="pp-nw">' + esc(r.date || (r.started || '').slice(0, 10) || 'not recorded') + '</td><td class="pp-nw">' + esc(/^session \d/.test(r.from_label) ? cap(r.from_label) : r.from_label) +
+      '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td class="pp-nw">' + esc(r.date || r.started ? fmtDay(r.date || r.started) : 'not recorded') + '</td><td class="pp-nw">' + esc(/^session \d/.test(r.from_label) ? cap(r.from_label) : r.from_label) +
       '</td><td>' + esc(r.changes) + '</td><td>' + esc(r.since_start) + '</td><td>' +
-      (r.notes ? '<button type="button" class="pp-link" id="pp-notes-' + esc(r.id) + '" data-act="notes" data-id="' + esc(r.id) + '">Notes</button>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') +
+      (r.notes ? '<button type="button" class="pp-link" id="pp-notes-' + esc(r.id) + '" data-act="notes" data-id="' + esc(r.id) + '">Notes</button>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') + (r.pdf_removed ? '<span class="pp-note"> · PDF removed</span>' : '') +
       '</td><td>' + ((r.status === 'finished' || r.status === 'applied') && !s.live_review && !s.lock ? '<button type="button" id="pp-from-' + esc(r.id) + '" data-act="review" data-from="' + esc(r.id) + '">' + esc(tc('Review again from ' + r.label)) + '</button>' : '') +
       '</td></tr>').join('') + '</tbody></table></div>';
   if (s.ai_result) h += '<p><a href="' + esc(s.ai_result) + '">The result applied without review</a> (kept with the run).</p>';
   return h + '</details>';
 }
 
+// ---------------------------------------------------------------- the evaluation strip, right after "Ready to Ship?"
+// (webapp/server.py with_strip() places its box; a page with no card gets it at the end of this panel). The card above it
+// says each requirement, so the strip has no line per part (Patrick, 2026-11-01); it says the live status when it differs
+// from the report's card on disk, so the page never shows two answers without saying which is current.
+function stripBlock(s, inPanel) {
+  const m = s.manual; if (!m) return '';
+  const hx = inPanel ? 'h3' : 'h2';                  // inside the panel's own h2 section: one level down (review 12 G2)
+  let h = '<section class="pp pp-checks" aria-labelledby="pp-mc-h"><' + hx + ' id="pp-mc-h">Accessibility Evaluation (PAC 2026 &amp; Screen-Reader Test)</' + hx + '>';
+  const now = (m.status || '') + (m.newer ? ' · ' + m.newer : ''), card = (m.card_status || '') + (m.card_newer ? ' · ' + m.card_newer : '');
+  if (m.status && now !== card) h += '<p><b>Status now:</b> ' + esc(now) + ' <span class="pp-note">(the report on this page was written before this)</span></p>';
+  if (m.refusal) h += '<p class="pp-warn-t">' + esc(m.refusal) + '</p>';
+  h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-mc-open" href="checks">Complete Evaluation</a></div>' +
+    shipBlock(m.ship) + dlForm(m.downloads, inPanel ? 'h4' : 'h3') + '</section>';
+  return h;
+}
+// "Mark as Shipped" (stage 4): offered only when the gate is open (webapp/manualpage.py ship_gate: current Ready, the file
+// unchanged, this file not already shipped); otherwise the one line that says why
+function shipBlock(sp) {
+  if (!sp) return '';
+  if (sp.ok) return '<div class="pp-row"><button type="button" id="pp-ship" data-ship="1">Mark as Shipped</button>' +
+    '<span class="pp-note">Records that this version was reviewed and shipped.</span></div>';
+  return sp.why ? '<p class="pp-note">' + esc(sp.why) + '</p>' : '';
+}
+function shipDlg(sp, opener) {                                    // a name (never prefilled) and a note; Escape or Cancel closes it
+  return new Promise(res => {
+    const d = $('pp-dlg'), n = sp.issues || 0;
+    d.innerHTML = '<h2 id="pp-dlg-h">Mark as Shipped</h2><p>Records that this version was reviewed and shipped.' +
+      (n ? ' ' + n + ' issue' + (n === 1 ? ' was' : 's were') + ' noted in the evaluation; ' + (n === 1 ? 'it is' : 'they are') + ' kept with the shipped copy.' : '') + '</p>' +
+      '<p><label for="pp-ship-by">Shipped By</label><br><input type="text" id="pp-ship-by" autocomplete="name"></p>' +
+      '<p><label for="pp-ship-note">Note <span class="pp-note">(optional)</span></label><br><textarea id="pp-ship-note" rows="2"></textarea></p>' +
+      '<p id="pp-ship-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Mark as Shipped</button>' +
+      '<button type="button" value="no">Cancel</button></div>';
+    const id = opener.id, done = v => { d.close(); ($(id) || opener).focus(); res(v); };
+    d.querySelector('button[value=no]').addEventListener('click', () => done(null));
+    d.querySelector('button[value=yes]').addEventListener('click', () => {
+      const name = $('pp-ship-by').value.trim();
+      if (!name) { $('pp-ship-err').textContent = 'Enter your name in "Shipped By."'; $('pp-ship-by').focus(); return; }
+      done({ by: name, note: $('pp-ship-note').value.trim() });
+    });
+    d.oncancel = ev => { ev.preventDefault(); done(null); };
+    d.showModal(); d.querySelector('button[value=no]').focus();
+  });
+}
+async function shipNow(b) {
+  const sp = st.manual && st.manual.ship; if (!sp || !sp.ok) return;
+  const v = await shipDlg(sp, b); if (!v) return;
+  try {
+    const [c, r] = await api(API + '/ship', { by: v.by, note: v.note, shown_sha256: sp.sha });
+    if (c !== 200) return msg(r.error || 'It was not marked as shipped.', false, true);
+    msg('Marked as shipped: Shipment ' + r.shipped.n + '.', true, true);
+    return poll(true);
+  } catch (e) { return msg('The app is not running. ' + START, false, true); }
+}
+// "Available Downloads" (stage 3), as on the evaluation page (webapp/manualpage.py downloads_form): the heading holding the
+// select's label, the select, the line saying how the chosen version's files are marked (never a file name), then the two
+// buttons in a row. A GET form to download?v=…&what=pdf|record: any version, ready or not. A shipped version has no line:
+// it is hidden and the select is not described by it (the line above the downloads and the label already say it was shipped)
+function dlForm(dd, hx) {
+  const vs = (dd && dd.versions) || []; if (!vs.length) return '';
+  const m = vs[0].marked;
+  return '<form class="pp-dl" method="get" action="download"><' + hx + ' id="pp-dl-h">' + '<label for="pp-dlv">Available Downloads</label></' + hx + '>' +
+    '<select id="pp-dlv" name="v"' + (m ? ' aria-describedby="pp-dl-marked"' : '') + '>' +
+    vs.map(x => '<option value="' + esc(x.id) + '" data-marked="' + esc(x.marked) + '">' + esc(x.label) + '</option>').join('') + '</select>' +
+    '<p id="pp-dl-marked" class="pp-note"' + (m ? '' : ' hidden') + '>' + esc(m) + '</p>' +
+    '<div class="pp-row"><button type="submit" name="what" value="pdf">Download the Remediated PDF</button>' +
+    '<button type="submit" name="what" value="record">Download the Record (ZIP)</button></div></form>';
+}
+function renderStrip(s) {
+  let sb = $('pdfrem-checks');
+  if (!sb) { sb = document.createElement('div'); sb.id = 'pdfrem-checks'; sb.dataset.inPanel = '1'; box.querySelector('section.pp').appendChild(sb); }   // no card: in the panel
+  const sel = $('pp-dlv'), chosen = sel ? sel.value : null;      // the picker keeps its choice when the strip is redrawn
+  const h = stripBlock(s, sb.dataset.inPanel === '1'), keep = document.activeElement && sb.contains(document.activeElement) ? document.activeElement.id : null;
+  if (sb.dataset.h !== h) {
+    sb.innerHTML = h; sb.dataset.h = h;
+    const ns = $('pp-dlv');
+    if (ns && chosen && [...ns.options].some(o => o.value === chosen)) { ns.value = chosen; dlMarked(ns); }
+    if (keep && $(keep)) $(keep).focus();
+  }
+  if (!sb.dataset.shipWired) { sb.dataset.shipWired = '1'; sb.addEventListener('click', e => { const b = e.target.closest('button[data-ship]'); if (b) shipNow(b); }); }
+  const dl = $('pp-dlv');
+  if (dl && !dl.dataset.wired) { dl.dataset.wired = '1'; dl.addEventListener('change', () => dlMarked(dl)); }
+}
+function dlMarked(sel) {                                          // the line under the picker for the chosen version, or none
+  const p = $('pp-dl-marked'), m = sel.selectedOptions[0].dataset.marked;
+  p.textContent = m; p.hidden = !m;
+  if (m) sel.setAttribute('aria-describedby', p.id); else sel.removeAttribute('aria-describedby');
+}
+
+// A run stopped for its first review (REVIEW=1): "Open the Review Page," then, after "Finish Review," "Apply" (run_api.sh's
+// second call); once applied, the page offers its first result (it never reloads by itself)
+function waitingBlock(s) {
+  const w = s.waiting, active = (s.jobs || []).filter(j => j.status === 'queued' || j.status === 'running');
+  if (!w) return '<p><b>Result Ready:</b> Session 1 is applied. The report and the remediated PDF are ready.</p>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Result</button></div>';
+  if (s.live_review) return '';                                  // its own card has Open / Stop
+  if (active.length) return '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '.</p>';
+  if (!w.reviewed) return '<p>The AI\'s decisions are waiting for your review. Nothing has been applied yet.</p>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-review" data-act="review">Open the Review Page</button></div>';
+  return '<p>Review finished (' + esc(w.reviewer || 'reviewer not recorded') + ', ' + esc(fmtDay(w.date)) + '). Nothing has been applied yet: ' +
+    '"Apply" makes the remediated PDF and its report.</p>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-apply" data-act="apply">Apply</button></div>';
+}
+
 function render() {
+  if (WAITING) {                                                 // no result, no strip: the review, then the first apply
+    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(tc(!st.waiting ? 'First result' : st.waiting.reviewed ? 'Waiting to be applied' : 'Waiting for review')) + '</h3>' +
+      waitingBlock(st) + jobsBlock(st), body = $('pp-body'), keepFocus = document.activeElement && document.activeElement.id;
+    if (body.dataset.h === h) return;
+    body.innerHTML = h; body.dataset.h = h;
+    if (keepFocus && $(keepFocus) && box.contains($(keepFocus))) $(keepFocus).focus();
+    return;
+  }
+  renderStrip(st);
   const s = st, keepFocus = document.activeElement && document.activeElement.id, opened = [...box.querySelectorAll('details[open]')].map(d => d.id);
   // "Ready to ship?" is not repeated here: the report's own card, right below, says it
   let h = setupBlock() + (s.batch ? '<p>Part of batch ' + esc(s.batch) + ': <a href="/batch/' + encodeURIComponent(s.batch) + '/">every book in the batch</a></p>' : '') +
     '<h3 id="pp-cur" tabindex="-1">' + esc(tc('Current result: ' + s.current.label)) + '</h3>';
-  if (s.pending) h += '<p>' + esc(sn(s.pending.session)) + ' is ' + esc(s.pending.status) + ' and not applied yet, so "Ready to ship?" says No until it is.</p>';
-  if (newResult) h += '<p><b>New Result Ready:</b> ' + esc(cap(s.current.label)) + ' is now the current result; the report below is the earlier one.</p>' +
+  if (s.pending) h += '<p>' + esc(sn(s.pending.session)) + ' is ' + esc(s.pending.status) + ' and not applied yet, so the book stays "Not Ready" until it is.</p>';
+  if (newResult) h += '<p><b>New Result Ready:</b> ' + esc(cap(s.current.label)) + ' is now the current result; the report below is the previous one.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the New Result</button></div>';
   else if (s.ocr && ocrSeen !== undefined && s.ocr.recorded !== ocrSeen)   // a verdict recorded since this page loaded: never reloads by itself
     h += '<p><b>OCR Verdict Recorded:</b> ' + esc(s.ocr.verdict || 'a new verdict') + '. The report below was made before it.</p>' +
       '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Updated Report</button></div>';
-  h += actions(s) + jobsBlock(s) + historyBlock(s);
-  $('pp-body').innerHTML = h;
+  h += actions(s) + jobsBlock(s) + historyBlock(s) + pruneBlock(s);
+  // replaced only when it changed, as the strip is: a poll whose data changed but not what the panel shows (the review
+  // page saving a session's draft while a review is open) never swaps the buttons under the mouse or a selection
+  const body = $('pp-body');
+  if (body.dataset.h === h) return;
+  body.innerHTML = h; body.dataset.h = h;
   opened.forEach(id => { const d = $(id); if (d) d.open = true; });
   if (keepFocus && $(keepFocus) && box.contains($(keepFocus))) $(keepFocus).focus();
 }
@@ -315,6 +489,16 @@ box.addEventListener('click', async e => {
     const r = (st.sessions || []).find(x => String(x.id) === b.dataset.id); if (!r) return;
     return notesBox(tc('Notes: ' + r.label) + (r.name ? ' · ' + r.name : ''), r.notes || '', b, String(r.id));
   }
+  if (act === 'prune') {                                         // "Clean Up Space": select in the dialog, then remove exactly those
+    const p = st.prune; if (!p) return;
+    const v = await pruneDlg(p, b); if (!v) return;
+    try {
+      const [c, r] = await api(API + '/remove-older-pdfs', { by: v.by, chosen: v.chosen });
+      if (c !== 200) return msg(r.error || 'The PDFs were not removed.', false, true);
+      msg('Removed ' + r.removed + ' PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept in "Session History."', true, true);
+      return poll(true);
+    } catch (e) { return msg('The app is not running. ' + START, false, true); }
+  }
   msg('');                                                       // any other panel button clears the message too
   if (act === 'reload') { location.replace(location.pathname + '?landed=1'); return; }
   try {
@@ -323,6 +507,7 @@ box.addEventListener('click', async e => {
       const open = st.open ? cap(sn(st.open.id)) : 'The session', ocr = st.live_review && st.live_review.kind === 'ocr';
       [s, r] = await api(API + '/stop', {}); if (s !== 200) return msg(r.error || 'Stop failed', false, true);
       msg(ocr ? 'The OCR Text Review page is closed without a verdict.'
+              : st.waiting ? 'The review page is closed. Your choices so far are saved: select "Open the Review Page" to pick up where you left off.'
               : 'The review page is closed. ' + open + ' stays open. Select "Continue Review" to pick up where you left off.', true, true); return poll();
     }
     if (act === 'stop-other') {                                  // a review page the app did not start (a terminal's): asks first
@@ -420,7 +605,7 @@ function followUp(s) {
   if (want === 'review' && lr && lr.url && !lr.past_finish) {
     want = null;
     if (quiet && Date.now() - wantAt < 30000) { location.assign(lr.url); return; }   // right after the person's Review again
-    live('The review page is ready: "Open the Review Page".');
+    live('The review page is ready: "Open the Review Page."');
   }
   if (want === 'result') {                                     // the page the person's Finish opened: focus its job's heading
     const j = (s.jobs || []).slice().reverse().find(x => x.kind === 'review' || x.kind === 'apply');

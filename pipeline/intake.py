@@ -50,6 +50,7 @@ import sys, os, re, json, time, shutil, hashlib, subprocess, tempfile, unicodeda
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import support
 from lib.glance import ocr_layer_flagged
+from lib import dates as D
 import pikepdf, pypdfium2 as pdfium, pypdfium2.raw as pdfium_raw
 
 SCHEMA = 'intake/0.2'
@@ -910,7 +911,7 @@ def glance_lines(rec, labels):
     v = (rec.get('review') or {}).get('ocr_text_approved')
     if g['ocr_pages'] or g.get('ocr_layer_flagged'):
         L.append('**OCR text reviewed by a person:** ' + (
-            f'{v.get("verdict")}' + (f' ({v["to"]})' if v.get('to') else '') + f' by {v.get("reviewer")} on {v.get("date")}'
+            f'{v.get("verdict")}' + (f' ({v["to"]})' if v.get('to') else '') + f' by {v.get("reviewer")} on {D.day(v.get("date"))}'
             + (f' (PDF {v["pages"]})' if v.get('pages') else '') + (f': {v["reason"]}' if v.get('reason') else '')
             if isinstance(v, dict) else 'not yet reviewed (on the review page, or with review_ocr.py)'))
     L.append('')
@@ -998,7 +999,7 @@ def write_md(rec, path):
                      + '; bookmarks, links and page labels kept'))
     if o.get('pages_with_ocr_text'):
         v = (rec.get('review') or {}).get('ocr_text_approved')
-        rows.append(('OCR text reviewed by a person', f"{v.get('verdict')}" + (f" ({v['to']})" if v.get('to') else '') + f" by {v.get('reviewer')} on {v.get('date')}"
+        rows.append(('OCR text reviewed by a person', f"{v.get('verdict')}" + (f" ({v['to']})" if v.get('to') else '') + f" by {v.get('reviewer')} on {D.day(v.get('date'))}"
                      + (f" (pages {v['pages']})" if v.get('pages') else '') + (f": {v['reason']}" if v.get('reason') else '')
                      if isinstance(v, dict) else 'not yet reviewed (record a verdict with review_ocr.py)'))
     if rows: L += ['', '| | |', '|---|---|'] + [f'| {a} | {b} |' for a, b in rows]

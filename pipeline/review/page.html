@@ -197,7 +197,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 <header class="top" id="top">
   <h1 id="title" tabindex="-1">Work Order Review</h1>
   <div class="row">
-    <span class="who"><label>Reviewer <input type="text" id="reviewer" placeholder="Your name" size="18"></label>
+    <span class="who"><label>Reviewer <input type="text" id="reviewer" placeholder="Your Name" size="18"></label>
     <span class="sname"><label for="sessionName">Session Name</label><input type="text" id="sessionName" maxlength="80" size="18"><button type="button" id="notesBtn" aria-expanded="false" aria-controls="notepad">Session Notes</button></span></span>
     <span><span class="bar"><i id="bar"></i></span> <span id="progress"></span></span>
     <span class="show" role="radiogroup" aria-label="Show">Show:
@@ -269,7 +269,25 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 // lib/titles.py: a, an, the, and, or, of, to, in, on, for, by, from, with stay lowercase unless first, last, or first after a
 // colon or question mark; a word with a capital inside, a dot, slash, underscore or digit is left as written, and so is
 // everything in parentheses (a qualifier stays lowercase: "Sent to (optional)").
-const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with']);
+// ---- dates (lib/dates.py): "October 31, 2026" and "4:32 PM", parsed by hand, never with Date ('2026-10-31' is UTC midnight)
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
+function fmtParse(v) {
+  const m = DATE_RE.exec(String(v == null ? '' : v).trim()); if (!m) return null;
+  const mo = +m[2], d = +m[3], h = m[4] === undefined ? null : +m[4], mi = m[4] === undefined ? null : +m[5];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || (h !== null && (h > 23 || mi > 59))) return null;
+  return [+m[1], mo, d, h, mi];
+}
+function fmtBlank(v) { return v == null || !String(v).trim(); }
+function fmtDay(v) { if (fmtBlank(v)) return 'date not recorded'; const p = fmtParse(v); return p ? MONTHS[p[1] - 1] + ' ' + p[2] + ', ' + p[0] : String(v).trim(); }
+function fmtClock(v) {
+  const p = fmtParse(v);
+  if (!p || p[3] === null) return fmtBlank(v) || p ? 'time not recorded' : String(v).trim();
+  return ((p[3] % 12) || 12) + ':' + String(p[4]).padStart(2, '0') + ' ' + (p[3] < 12 ? 'AM' : 'PM');
+}
+function fmtWhen(v) { const p = fmtParse(v); return p && p[3] !== null ? fmtDay(v) + ', at ' + fmtClock(v) : fmtDay(v); }
+// ---- end of dates
+const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with', 'as']);
 function tc(s) {
   const w = String(s).split(' '); let edge = true, depth = 0;
   return w.map((x, n) => {
@@ -425,7 +443,7 @@ const png = n => '/review_pages/page_' + String(n).padStart(3, '0') + '.png';
 // "Approved by Kim on 2026-10-31 (pages 381-386): read against the scans"
 function verdictText(v) {
   if (!v) return 'not yet reviewed';
-  return (VERDICT_LABEL[v.verdict] || v.verdict) + (v.to ? ' (' + v.to + ')' : '') + ' by ' + v.reviewer + ' on ' + v.date + (v.pages ? ' (pages ' + v.pages + ')' : '') +
+  return (VERDICT_LABEL[v.verdict] || v.verdict) + (v.to ? ' (' + v.to + ')' : '') + ' by ' + v.reviewer + ' on ' + fmtDay(v.date) + (v.pages ? ' (pages ' + v.pages + ')' : '') +
     (v.reason ? ': ' + v.reason : '') + (v.reads && v.reads.length ? '; reads ' + v.reads.join(', ') : '') +
     (v.via === 'review_ocr.py' ? ' (recorded outside the review page)' : '');
 }
@@ -735,11 +753,11 @@ function findingRows(it, row) {                        // a reading-order findin
       : added ? 'You added a section move for it: see its card under Added by You, which shows where it lands.'
       : n >= MAX_MOVES && addById[tid] ? 'A work order holds at most ' + MAX_MOVES + ' section moves, and this one has ' + n + ': reject or change one of them to move this section instead, or say in a note what should happen.'
       : addById[tid] ? '<button type="button" data-addmove="' + esc(a.entry) + '">Add a Section Move</button> puts it back in its printed place, with a preview of where it lands; or say in a note what should happen.'
-      : 'A section move cannot put this one back: the executor moves a section only within the section around it, at a page another section starts on, and the preview finds no such place. Say in a note what should happen, for example “move it by hand in Acrobat” or “fine as it is”.') +
+      : 'A section move cannot put this one back: the executor moves a section only within the section around it, at a page another section starts on, and the preview finds no such place. Say in a note what should happen, for example “move it by hand in Acrobat” or “fine as it is.”') +
       ' Mark this seen; your note is recorded in the report. ' + HANDFIX);
   } else if (a.finding === 'jump') {
     row('What was found', 'In reading order, the text on this page jumps back up the same column ' + plural(a.jumps_up, 'time', 'times') + '. A screen reader may read lines or entries on this page out of order.');
-    row('What you can do', 'The pipeline cannot change the order of text within a page. Look at the page, then mark this seen and say in a note what should happen, for example “fix the order of the contents entries in Acrobat”. the report checks this page again after the changes. ' + HANDFIX);
+    row('What you can do', 'The pipeline cannot change the order of text within a page. Look at the page, then mark this seen and say in a note what should happen, for example “fix the order of the contents entries in Acrobat.” the report checks this page again after the changes. ' + HANDFIX);
   } else if (a.finding === 'figures') {
     if (c.count_moves == null) {
       row('What was found', 'The figure moves were not worked out for this run (' + esc(c.not_worked_out || 'no trial run') + '). The report lists the figures the executor moves.');
@@ -984,7 +1002,7 @@ function card(it) {
   if (c.first || c.first_rows) row('First rows', (c.first || c.first_rows).map(x => '“' + esc(String(x).slice(0, 100)) + '”').join(' · '));
   if (c.page_refs) row('Pages named', esc(c.page_refs.join(', ')));
   const was = SESSION && SESSION.set_in && SESSION.set_in[it.id];
-  if (was) row('Earlier review', 'preloaded from session ' + Number(was) + (SESSION.inferred && SESSION.inferred[it.id] ? ': ' + esc(SESSION.inferred[it.id]) + ' (inferred from that session\'s recorded changes and counts)' : ''));
+  if (was) row('Previous review', 'preloaded from session ' + Number(was) + (SESSION.inferred && SESSION.inferred[it.id] ? ': ' + esc(SESSION.inferred[it.id]) + ' (inferred from that session\'s recorded changes and counts)' : ''));
   h += '<dl class="fields">' + rows.join('') + '</dl>';
   if (exact) h += '<details class="exact"><summary>The AI\'s Exact Entry</summary><pre>' + esc(JSON.stringify(it.ai, null, 1)) + '</pre></details>';
   h += imagesHtml(it);
@@ -1301,7 +1319,7 @@ function askGaps(gaps) {
 const finBtn = document.getElementById('finish');
 function showLeft(text) {
   view = 'left'; document.querySelector('input[name=view][value=left]').checked = true; render();
-  msg(text + ' They are listed under "Not Reviewed".', true, true);
+  msg(text + ' They are listed under "Not Reviewed."', true, true);
 }
 // names of buttons, views and sections in quotes, as they appear on screen (CLAUDE.md's interface rule)
 // The check Save used to run, now here, before anything is applied: choices the check would drop (each linked to its
@@ -1331,8 +1349,8 @@ async function askFinish() {
   dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2>' + checkHtml(chk) + '<div class="ctx" id="finCtx">' +
     (n ? n + (one ? ' decision is' : ' decisions are') + ' not reviewed: "Finish Review" records ' + (one ? 'it' : 'them') + ' as the AI wrote ' + (one ? 'it' : 'them') +
          ', marked "accepted without review", and "Ready to Ship?" stays No.' : 'Every decision has a choice.') +
-    (SESSION && SESSION.reopened ? ' "Finish Review" re-applies the reviewed order (no AI call).' : '') + ' The name and notes go to "Session History".' +
-    (OCR ? ' "OCR Text": ' + esc(ov) + '. An OCR verdict is recorded on its own under "OCR Text", not with "Finish Review".' : '') + '</div>' +
+    (SESSION && SESSION.reopened ? ' "Finish Review" re-applies the reviewed order (no AI call).' : '') + ' The name and notes go to "Session History."' +
+    (OCR ? ' "OCR Text": ' + esc(ov) + '. An OCR verdict is recorded on its own under "OCR Text", not with "Finish Review."' : '') + '</div>' +
     '<label for="finName">Session Name</label><input type="text" id="finName" maxlength="80">' +
     '<label for="finNotes">Session Notes (optional)</label><textarea id="finNotes" maxlength="4000"></textarea>' +
     '<div class="buttons"><button type="button" data-f="back">Back</button>' + (n ? '<button type="button" data-f="left">Show "Not Reviewed"</button>' : '') +

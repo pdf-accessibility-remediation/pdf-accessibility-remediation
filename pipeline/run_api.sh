@@ -27,7 +27,7 @@ set -euo pipefail
 SRC=${1:?path to the original PDF}; NAME=${2:?short name, e.g. cadaverous}; RUN=${3:-api-$(date +%Y%m%d-%H%M)}
 [[ -f $SRC ]] || { echo "no such PDF: $SRC"; exit 1; }
 SRC=$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")      # absolute, so it works from any folder
-BASE=$(basename "$SRC"); OUT=${OUT:-${BASE%.*}_remediated.pdf}; [[ $OUT == *.[pP][dD][fF] ]] || OUT=$OUT.pdf
+BASE=$(basename "$SRC"); USER_OUT=${OUT:-}; OUT=${OUT:-${BASE%.*}_remediated.pdf}; [[ $OUT == *.[pP][dD][fF] ]] || OUT=$OUT.pdf
 [[ $OUT != */* ]] || { echo "OUT is a file name, not a path: $OUT"; exit 1; }
 cd "$(dirname "$0")"
 python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
@@ -86,6 +86,10 @@ stage() {                      # stage "label" command…  → runs it and print
   local label=$1; shift; local s e d
   echo "▶ $label"; s=$(now); "$@"; e=$(now)
   d=$(python3 -c "print(f'{$e-$s:.2f}')"); TIMES+=("$label|$d"); echo "  ✓ $label: $(fmt "$d")"
+}
+write_timing() {               # timing.json: this call's steps; applying a reviewed order adds them to the first call's,
+  python3 -c "import json,os,sys; p=sys.argv[1]; t=json.load(open(p)) if sys.argv[2] and os.path.exists(p) else {}; t.update({l.split('|')[0]: round(float(l.split('|')[1]), 1) for l in sys.argv[3:]}); json.dump(t, open(p, 'w'), indent=1)" \
+    "$R/timing.json" "${REVIEWED:-}" "${TIMES[@]}"   # kept at the review stop, so the record has the whole run (report.py removes it)
 }
 summary() {
   local total=0 line label d
@@ -156,16 +160,22 @@ fi
 if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews the AI's decisions before anything is applied
   cp "$R/workorder.json" "$R/workorder.ai.json"
   stage "review: page images (no model)" python3 review_workorder.py "$R" --prepare --pdf "$PSRC"
+  write_timing                                   # intake, audit, the AI call and the page images: the apply adds its own
+  # what the app's "Apply" needs to run this same script's second call (webapp/runs.py start_first_apply); report.py removes it
+  python3 -c "import json,sys; json.dump({'src': sys.argv[1], 'name': sys.argv[2], 'env': {k: v for k, v in zip(('OCR_LANG', 'INTAKE_REUSE', 'INTAKE', 'OUT'), sys.argv[3:]) if v}}, open(sys.argv[7], 'w'), indent=1)" \
+    "$SRC" "$NAME" "${OCR_LANG:-}" "${INTAKE_REUSE:-}" "${INTAKE:-}" "$USER_OUT" "$R/review_stop.json"
   summary
   echo
   echo "stopped for review: nothing has been applied yet"
+  echo "Open the run page to review and apply: python3 $(pwd)/app.py \"$R\""
+  echo "Or in the terminal:"
   echo "  1. python3 $(pwd)/review_workorder.py \"$R\" --serve     opens the review page"
-  echo "  2. ${INTAKE_REUSE:+INTAKE_REUSE=$INTAKE_REUSE }${OCR_LANG:+OCR_LANG=$OCR_LANG }${RUN_DIR:+RUN_DIR=$R }bash $(pwd)/run_api.sh \"$SRC\" $NAME $(basename "$R")     afterwards (without REVIEW=1): applies the reviewed work order"
+  echo "  2. ${INTAKE_REUSE:+INTAKE_REUSE=$INTAKE_REUSE }${OCR_LANG:+OCR_LANG=$OCR_LANG }${INTAKE:+INTAKE=$INTAKE }${USER_OUT:+OUT=$USER_OUT }${RUN_DIR:+RUN_DIR=$R }bash $(pwd)/run_api.sh \"$SRC\" $NAME $(basename "$R")     afterwards (without REVIEW=1): applies the reviewed work order"
   exit 0
 fi
 stage "4/5 apply (no model)"            python3 apply.py "$PSRC" "$R/workorder.json" "$R/$OUT"
 stage "4/5 verify (no model)"           bash -c 'python3 verify.py "$1" "$2" > /dev/null' _ "$PSRC" "$R/$OUT"
-python3 -c "import json,sys; json.dump({l.split('|')[0]: round(float(l.split('|')[1]), 1) for l in sys.argv[1:]}, open('$R/timing.json', 'w'), indent=1)" "${TIMES[@]}"
+write_timing
 stage "5/5 report"                      python3 report.py "$R" "$A" "--pdf=$OUT" "--input=$PSRC" ${KEEP:+--keep}
 summary
 echo

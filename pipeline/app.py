@@ -2,7 +2,8 @@
 
     python3 app.py [<run folder>] [--port N] [--config FILE] [--no-browser]
 
-Opens the run's page (its review.html, with buttons that run the same commands as review_workorder.py). Settings:
+Opens the run's page (its review.html, with buttons that run the same commands as review_workorder.py; for a run that
+REVIEW=1 stopped before its first review, "Open the Review Page" and then "Apply", run_api.sh's second call). Settings:
 webapp/settings.json < webapp/settings.local.json (this machine; git-ignored) < --config FILE < an exported VERAPDF
 (docs/app.md). The app checks its setup first and does not start without the Python libraries, veraPDF or Java.
 
@@ -13,7 +14,7 @@ it is past Finish (then it is applying, and is left to finish).
 """
 import os, sys, json, signal, argparse, threading, webbrowser, urllib.request, urllib.parse, datetime, traceback
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from webapp import config, checks, jobs, server  # noqa: E402
+from webapp import config, checks, jobs, runs, server  # noqa: E402
 
 def ping(port):
     """The app answering on port: its ping, or None when nothing answers; 'other' when something else does."""
@@ -42,8 +43,8 @@ def main():
     target = '/'
     if a.run_dir:
         R = os.path.realpath(a.run_dir)
-        if not server.inside(s['runs'], R) or not os.path.isfile(os.path.join(R, 'record.json')):
-            sys.exit(f'{a.run_dir} is not a finished run under {s["runs"]} (no record.json there)')
+        if not server.inside(s['runs'], R) or not (os.path.isfile(os.path.join(R, 'record.json')) or runs.waiting(R)):
+            sys.exit(f'{a.run_dir} is not a run under {s["runs"]} (no record.json there, and not stopped for a review)')
         target = '/run/' + '/'.join(urllib.parse.quote(x) for x in os.path.relpath(R, os.path.realpath(s['runs'])).split(os.sep)) + '/'
     url = f'http://127.0.0.1:{s["port"]}'
     code = config.code_fingerprint()                             # the code on disk now: the server keeps this one

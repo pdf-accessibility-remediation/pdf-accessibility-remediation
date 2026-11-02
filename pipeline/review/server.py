@@ -43,6 +43,7 @@ frame and trick a click on Finish.
 import os, json, datetime, threading, webbrowser, mimetypes, urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from . import core
+from lib import runlock
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'page.html')
 SERVED = ('figures', 'ocr_words')                     # folders under _audit/ whose files the page shows
@@ -206,9 +207,11 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 fields['reads'] = [str(x) for x in body.get('reads') or []] if isinstance(body.get('reads'), list) else []
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'The page is finishing: record the verdict from the run page.'})
-                    try: v, _ = O.record(run_dir, fields, via='page', held=lock_held, session=None if ocr_only else sid)   # today's date
-                    except S.Refused:                      # the run's review lock, held by another process
-                        return self.send(400, {'error': 'Another review of this book is open, so the verdict was not recorded. Close it, then try again.'})
+                    try: v, _ = O.record(run_dir, fields, via='page', held=lock_held, session=None if ocr_only else sid,   # today's date
+                                         wait=runlock.REQUEST_WAIT)
+                    except S.Refused as e:                 # the record lock stayed busy, or the run's review lock is another process's
+                        return self.send(400, {'error': runlock.BUSY if str(e) == runlock.BUSY else
+                                               'Another review of this book is open, so the verdict was not recorded. Close it, then try again.'})
                     except ValueError as e:                # the page's own wording (review_ocr.py keeps the terminal's)
                         return self.send(400, {'error': getattr(e, 'page', None) or str(e)[:1].upper() + str(e)[1:]})
                     closing = ocr_only and body.get('close') is True   # Finish OCR Review: recorded, then the page closes
