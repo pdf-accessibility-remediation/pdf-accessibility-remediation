@@ -441,8 +441,10 @@ by `lib/disclosure.py`; never rewritten afterwards. A folder shipped before 2026
 - **What the AI decided and what people did, per kind:** approved as proposed, changed by a person, rejected by a
   person, added by a person. An older reviewed run gives the totals; a run with neither says the split was not recorded.
   Items a person only marked "seen" (the AI's deferrals, notes to the reviewer, reading-order findings) are counted
-  apart, never as approved. The model, the instructions and the date of the call are named only for a real call: a
-  replayed reply, or one written by hand, says "Model and instructions: not recorded for this book".
+  apart, never as approved. The model, the instructions and the date of the call that wrote the answer are named: the run's own for a real call;
+  for a reused answer the original call's, when they are known ("Decided on October 26, 2026, in the original call,
+  whose answer this version reuses."), never a cost. A reply written by hand, or one whose call is not kept, says "Model
+  and instructions: not recorded for this book" (Patrick, 2026-11-01).
 - **What people reviewed and approved:** the work order's reviewer (the applied session's), the OCR text, and each part
   of the evaluation with its evaluator.
 - **Every issue noted,** with its note. PAC 2026's "What Needs a Person" item is named "Points the AI or the Software

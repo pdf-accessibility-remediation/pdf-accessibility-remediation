@@ -199,9 +199,14 @@ def test_the_model_only_for_a_real_call_and_verapdf_not_checked():
     real = {'run': {'model': 'anthropic/claude-sonnet-5.5', 'prompt_file': 'workorder_v8.md', 'prompt_sha256': '4555d20a2fa08a40aa', 'started': '2026-10-20T10:00:00'}}
     _, md, _ = statement(real)
     assert 'Model: anthropic/claude-sonnet-5.5. Instructions: workorder\\_v8.md (4555d20a2fa08a40). Decided on October 20, 2026.' in md
-    replay = {'run': dict(real['run'], prompt_file='workorder_v9.md', response_from='v8-g1')}
-    _, md, _ = statement(replay)                                                          # M5: a v8 reply replayed on v9 code
+    replay = {'run': dict(real['run'], prompt_file='workorder_v9.md', response_from='/nonexistent/v8-g1.reply.txt')}
+    _, md, _ = statement(replay)                                                          # M5: a v8 reply replayed on v9 code, its call not kept
     assert 'workorder\\_v9' not in md and 'Model and instructions: not recorded for this book.' in md
+    oc = {'cost_usd': 0.255874, 'model': 'anthropic/claude-sonnet-5.5', 'prompt_file': 'workorder_v8.md', 'prompt_sha256': '4555d20a2fa08a40', 'date': '2026-10-26T00:30:47'}
+    _, md, _ = statement({'run': dict(replay['run'], original_call=oc)})                 # the original call kept: named, no cost (Patrick, 2026-11-01)
+    assert ('Model: anthropic/claude-sonnet-5.5. Instructions: workorder\\_v8.md (4555d20a2fa08a40). Decided on October 26, 2026, in the original '
+            'call, whose answer this version reuses.') in md
+    assert 'workorder\\_v9' not in md and '$' not in md and '0.25' not in md
     assert 'veraPDF (WCAG 2.2 machine checks): not checked (it checked only one of the two files, or neither).' in md   # N6
     _, md, _ = statement({}, glance={'safety_ok': True, 'verapdf': {'ran_before': True, 'ran_after': True, 'before_rules': 7, 'after_rules': 0, 'newly_failing': []}})
     assert '7 rules failing before → 0 after; 0 newly failing.' in md
