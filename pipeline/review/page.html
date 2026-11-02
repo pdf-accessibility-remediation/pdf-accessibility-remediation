@@ -996,7 +996,7 @@ function card(it) {
   if (c.first || c.first_rows) row('First rows', (c.first || c.first_rows).map(x => '“' + esc(String(x).slice(0, 100)) + '”').join(' · '));
   if (c.page_refs) row('Pages named', esc(c.page_refs.join(', ')));
   const was = SESSION && SESSION.set_in && SESSION.set_in[it.id];
-  if (was) row('Earlier review', 'preloaded from session ' + Number(was) + (SESSION.inferred && SESSION.inferred[it.id] ? ': ' + esc(SESSION.inferred[it.id]) + ' (inferred from that session\'s recorded changes and counts)' : ''));
+  if (was) row('Previous review', 'preloaded from session ' + Number(was) + (SESSION.inferred && SESSION.inferred[it.id] ? ': ' + esc(SESSION.inferred[it.id]) + ' (inferred from that session\'s recorded changes and counts)' : ''));
   h += '<dl class="fields">' + rows.join('') + '</dl>';
   if (exact) h += '<details class="exact"><summary>The AI\'s Exact Entry</summary><pre>' + esc(JSON.stringify(it.ai, null, 1)) + '</pre></details>';
   h += imagesHtml(it);

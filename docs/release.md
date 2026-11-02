@@ -49,8 +49,8 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
   time, the browser keeping a copy; "All changes saved" / "Saving…" beside the Record button, not announced; a failed
   save is announced (not when the page is leaving after a Record). A draft older than the one saved is never written over
   it (two tabs). A draft never keeps "Checked By" (on the server or in the browser): it carries no name to the next
-  person, and a draft saved before 2026-11-01 has its name dropped when it loads. A draft started on an earlier version is not used as answers: **Start from These Notes** copies its
-  versions, pages and notes, never its results or "Checked By", as it does for earlier results.
+  person, and a draft saved before 2026-11-01 has its name dropped when it loads. A draft started on a previous version is not used as answers: **Start from These Notes** copies its
+  versions, pages and notes, never its results or "Checked By", as it does for previous results.
 - **Record the PAC 2026 Results / Record the Screen-Reader Test Results** sends the answers to the same code
   `manual_checks.py` uses. Problems come back from that code, each shown under its field and in a summary that takes
   focus; nothing is recorded while one remains. Recording clears the section's draft (an auto-save handled after it is
@@ -58,7 +58,7 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
   still needed; results with a Fail offer **Review Again**. A draft that could not be cleared is logged in
   `runs/.app/server.log`.
 - **The results tables** never scroll sideways: Notes wrap, and the Item column keeps its words together.
-- **Earlier results** are under **Earlier Results (N)**, folded and read-only.
+- **Previous results** are under **Previous Results (N)**, folded and read-only.
 - **Refused** while a new version is being made, the PDF has changed, the PDF on disk is not the one the book's last
   review produced, or another change is being saved (a page waits at most 5 s): the message says why, before anything is
   filled in, and drafts are still saved.
@@ -85,7 +85,7 @@ Each item is **Pass**, **Fail** or **Not Applicable**, with notes. The list is d
 | PAC 2026: WCAG Check | Pass or Fail only |
 | Title and Language | |
 | Spot-Check of Pages | **Pages Checked** (optional: `5, 9-12`) |
-| Colour Alone (1.4.1), Contrast (1.4.3), Images of Text (1.4.5) | |
+| Color Alone (1.4.1), Contrast (1.4.3), Images of Text (1.4.5) | |
 | What Needs a Person | every item the report lists was looked at; a Pass turns the dashboard's "Needs a Person" card neutral ("looked at in the evaluation") |
 
 | Screen-Reader Test | |
@@ -169,7 +169,7 @@ review.md's Overview writes the same lines, under `**Ready to ship?**` and the `
 4. **Accessibility Evaluation:** both parts are completed for this version of the PDF. A part is completed when its
    latest results on that file have, for every item the checklist asks, one of that item's own choices. "Completed",
    "Completed (2 issues noted)", "Not Completed" when neither part is recorded, or "Not Completed (…)" saying what is
-   missing: "Not Completed (Screen-Reader Test not recorded)", a part recorded on an earlier version, or one that could
+   missing: "Not Completed (Screen-Reader Test not recorded)", a part recorded on a previous version, or one that could
    not be read in full.
 
 **veraPDF is a finding, not a safety check** (2026-10-31). A WCAG rule newly failing or failing more often after the run,
@@ -226,7 +226,7 @@ release/shipped.json    [{n, shipped, by, pdf: {sha256, …}, where, note, withd
   "could not be read in full: record it again", never completed. Its Fails still count as issues noted. An `accepted`
   key (reserved earlier for a "Fail, Accepted with a Note") is no longer needed and is read by the result alone.
 - **`record.json` keeps copies for the archive,** never read back for a decision: `manual_checks` (each part's latest
-  results with their `state`: completed, could not be read, earlier version; and `issues`) and `release`.
+  results with their `state`: completed, could not be read, earlier version (the stored state; shown as "previous version"); and `issues`) and `release`.
 - **The `release/` folder stays through every re-apply:** a promotion moves only the result files. A copied run folder
   carries it too, so a test copy of a checked (or, later, shipped) book says so, and holds what the original holds.
 
@@ -252,7 +252,7 @@ and including its re-mirror (`lib/runlock.py`).
   part's latest results are written in full (a summary line, who and the fields, the Item / Result / Notes table, Other
   Notes as a quote). A person's text is escaped, so it reads as typed and no line of it can start a heading or a list. The
   section is redrawn on every refresh once anything is recorded, and nothing else in review.md changes. A re-apply's
-  review.md shows the run's earlier results ("Completed on an earlier version (Session 5) …"), since `release/` is the run's.
+  review.md shows the run's previous results ("Completed on a previous version (Session 5) …"), since `release/` is the run's.
 - **review.html** shows an "Accessibility Evaluation" section once anything is recorded (nothing before): one summary line
   per part ("PAC 2026: Completed by Patrick on October 31, 2026 · 7 items · 1 issue noted"), the failed items with their
   notes, and **View Full Results**, which opens the full results in the page's notes box (an accessible pop-up: Escape and
@@ -270,7 +270,7 @@ strip (under "Complete Evaluation") and on the evaluation page, laid out the sam
 it (the heading is the list's label), the line saying how the chosen version's files are marked (the list's description),
 then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
 
-- **The list** holds the current version and each earlier result whose PDF still exists. It decides which version the
+- **The list** holds the current version and each previous result whose PDF still exists. It decides which version the
   two buttons give. It never changes what the evaluation records: the evaluation is always for the current version. The
   line under it says how the files are marked ('The downloaded files are marked "not ready."'), never their names. On
   the evaluation page, a version that is not the current one adds "Results on this page are recorded for the current
@@ -283,7 +283,7 @@ then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
   | Ready | `<book>_session-6_not-shipped.pdf` | `<book>_record_session-6_not-shipped.zip` |
   | Shipped (the shipped file) | `<book>.pdf` | `<book>_record_shipment-2.zip` |
   | A withdrawn shipped copy | `<book>_shipment-1_withdrawn.pdf` | `<book>_record_shipment-1_withdrawn.zip` |
-  | An earlier version | `<book>_session-5_earlier-version.pdf` | `<book>_record_session-5_earlier-version.zip` |
+  | A previous version | `<book>_session-5_previous-version.pdf` | `<book>_record_session-5_previous-version.zip` |
   | No review | `<book>_no-review_not-ready.pdf` | `<book>_record_no-review_not-ready.zip` |
 
   - `<book>` is the remediated PDF's name without ".pdf", made safe for any computer: NFC; control characters dropped;
@@ -297,7 +297,7 @@ then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
     or Japanese a person needs to check, as a spreadsheet";
   - `accessibility-statement.html`, once that file has shipped;
   - `READ-ME.txt`, in plain words: the title and "Source PDF Filename: …" (the original PDF's name), the version, its
-    status (for an earlier version: "earlier version", naming the current one), each shipment of that file ("Shipment
+    status (for a previous version: "previous version", naming the current one), each shipment of that file ("Shipment
     1, shipped on November 1, 2026 by Patrick", "Published at: …" when given, "Withdrawn on … by …: …" for a withdrawn
     one), the number of evaluation results recorded on it, the run details of that version's own record (a shipped
     copy's from its folder's record.json, never zipped), what each file is, "automated checks are evidence, not legal
@@ -412,7 +412,7 @@ nothing.
 - **A shipped book whose PDF later changes on disk** keeps "Shipped", with "The current PDF has changed since this report
   was made." beside it, and never Ready's green. Mark as Shipped stays refused until it is resolved. The shipped copy in
   `release/shipped/` is untouched and still downloads.
-- **A previous result's own page** reads "Earlier version (the current version is Session N)", naming its shipment when
+- **A previous result's own page** reads "Previous version (the current version is Session N)", naming its shipment when
   it was itself shipped.
 
 ## Withdrawal

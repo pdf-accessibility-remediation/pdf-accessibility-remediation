@@ -195,7 +195,7 @@ def after_interrupt(R, j):
     applied = [x for x in ss if x.get('status') == 'applied' and (x.get('applied') or '') >= since]
     if os.path.exists(os.path.join(R, 'reviews', 'promoting.json')):
         return {'state': 'apply', 'text': 'The apply stopped partway (reviews/promoting.json is there). Apply finishes it; it may apply the '
-                                          'session again. Earlier results stay in reviews/versions/.'}
+                                          'session again. Previous results stay in reviews/versions/.'}
     if applied:
         return {'state': 'done', 'text': f'done (the app lost track of the job): {S.label(applied[-1]["id"])} is the current result'}
     u = unapplied(R)

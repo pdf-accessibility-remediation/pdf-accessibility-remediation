@@ -59,7 +59,7 @@ How it carries out the model's decisions, mechanically:
 
 **Structure checks** in `verify.py` and `review.md`: empty tags (an empty table cell is not counted), a paragraph holding nothing but figures, a caption not grouped with a figure, a link whose description is only a URL, a table whose every cell is empty, and a tag-tree index entry (ParentTree or IDTree) that points at a tag no longer in the tree (dangling); stale entries (marked content no longer drawn) are counted beside it.
 
-The executor never recolours text, rewrites words (including OCR text), invents MathML, creates form fields, replaces figures, or rewrites the alt text the work order supplies. Contrast, OCR quality, forms, math, reflow and colour-only meaning stay with a person.
+The executor never recolors text, rewrites words (including OCR text), invents MathML, creates form fields, replaces figures, or rewrites the alt text the work order supplies. Contrast, OCR quality, forms, math, reflow and color-only meaning stay with a person.
 
 ## Work order rules
 

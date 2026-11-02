@@ -47,10 +47,10 @@ CHECKLIST = {
          'help': 'The title shown in the window is the book\'s title, and the document language is the book\'s main language.'},
         {'key': 'spot_check', 'label': 'Spot-Check of Pages', 'results': P3, 'pages': True,
          'help': 'A few pages compared with the original in PAC\'s structure preview: headings, lists, tables and figures as printed.'},
-        {'key': 'colour', 'label': 'Colour Alone', 'results': P3,
-         'help': 'No information is given by colour alone (WCAG 1.4.1).'},
+        {'key': 'colour', 'label': 'Color Alone', 'results': P3,          # the stored key stays 'colour', so older records load
+         'help': 'No information is given by color alone (WCAG 1.4.1).'},
         {'key': 'contrast', 'label': 'Contrast', 'results': P3,
-         'help': 'Text over images and coloured backgrounds has enough contrast (WCAG 1.4.3; PAC\'s contrast checker).'},
+         'help': 'Text over images and colored backgrounds has enough contrast (WCAG 1.4.3; PAC\'s contrast checker).'},
         {'key': 'images_of_text', 'label': 'Images of Text', 'results': P3,
          'help': 'No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).'},
         {'key': 'needs_person', 'label': 'What Needs a Person', 'results': P3,
@@ -159,7 +159,7 @@ def live_shipment(rel, sha):
     (03 §3.3: the same file never ships twice; after a withdrawal it may ship again; review 22 M1)."""
     return next((s for s in reversed(live_shipments(rel)) if sha and sha_of(s) == sha), None) if sha else None
 
-EARLIER = 'Earlier version'
+EARLIER = 'Previous version'                    # "earlier" became "previous" wherever a person reads it (Patrick, 2026-11-01)
 def earlier_status(rel, sha, current_label):
     """The status on a previous result's own page (reviews/versions/<id>/): never the run's status worked out against this
     older file, which would name itself as "Newer version (Session 4)" on Session 4's page (CLAUDE.md note (c))."""
@@ -204,7 +204,7 @@ def evaluation_line(rel, cur):
         if p['state'] == 'not recorded': missing.append(f'{name} not recorded')
         elif p['state'] == 'earlier version':
             ses = _session(p['check'])
-            missing.append(f'{name}: recorded on an earlier version' + (f', {ses}' if ses else ''))
+            missing.append(f'{name}: recorded on a previous version' + (f', {ses}' if ses else ''))
         elif p['state'] == 'could not be read': missing.append(f'{name}: could not be read in full: record it again')
     if all(ev[s]['state'] == 'not recorded' for s in SECTIONS): return False, 'Not Completed'
     return False, 'Not Completed (' + '; '.join(missing + ([noted(ev['issues'])] if ev['issues'] else [])) + ')'
@@ -313,7 +313,7 @@ def download_names(output, session, state, shipment=None):
     if state == SHIPPED:
         return f'{base}.pdf', f'{base}_record_shipment-{int(shipment)}.zip' if str(shipment or '').isdigit() else f'{base}_record.zip'
     sess = f'session-{int(session)}' if str(session or '').isdigit() else 'no-review'
-    word = 'earlier-version' if state == 'earlier version' else STATE_WORDS.get(state, 'not-ready')
+    word = 'previous-version' if state == 'earlier version' else STATE_WORDS.get(state, 'not-ready')
     return f'{base}_{sess}_{word}.pdf', f'{base}_record_{sess}_{word}.zip'
 
 def disposition(name):
@@ -347,7 +347,7 @@ def _part_md(rel, section, cur):
     head = {'completed': f'Completed by {c.get("by")} on {day(c.get("recorded"))} · {p["n_items"]} items'
                          + (f' · {noted(len(p["issues"]))}' if p['issues'] else ''),
             'could not be read': f'Recorded by {c.get("by")} on {day(c.get("recorded"))}, but it could not be read in full: record it again',
-            'earlier version': f'Completed on an earlier version{" (" + ses + ")" if ses else ""} by {c.get("by")} on {day(c.get("recorded"))}: '
+            'earlier version': f'Completed on a previous version{" (" + ses + ")" if ses else ""} by {c.get("by")} on {day(c.get("recorded"))}: '
                                'it does not count for this version'}[p['state']]
     L = [f'**{name}: {md_text(head)}**' + (f' (the version from {ses})' if ses and p['state'] != 'earlier version' else ''), '']
     f = c.get('fields') or {}
@@ -363,7 +363,7 @@ def _part_md(rel, section, cur):
         L.append(f'| {lab} | {RESULT_NAMES.get(it.get("result"), "Not answered")} | {md_text(it.get("note"))} |')
     if c.get('notes'): L += ['', 'Other notes:', ''] + md_quote(c['notes'])
     n = len(rel['checks'].get(section) or []) - 1
-    if n > 0: L += ['', f'{n} earlier result{"" if n == 1 else "s"} kept in the record (`release/checks.json`).']
+    if n > 0: L += ['', f'{n} previous result{"" if n == 1 else "s"} kept in the record (`release/checks.json`).']
     return L
 
 def section_md(rel, cur, pdf):

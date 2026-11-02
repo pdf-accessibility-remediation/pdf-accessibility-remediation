@@ -27,7 +27,7 @@ from . import config, manualpage as MP
 # a download's own words (review 20 L1): never the Record page's "…so no check can be recorded for it"
 CHANGED = 'The book\'s PDF has changed since this report was made, so it can\'t be downloaded as this version. Whoever looks after the app can check it.'
 MISSING = 'The book\'s remediated PDF is missing, so it can\'t be downloaded. Whoever looks after the app can check it.'
-EARLIER_CHANGED = ('The PDF of this earlier version has changed since it was made, so it can\'t be downloaded as that version. '
+EARLIER_CHANGED = ('The PDF of this previous version has changed since it was made, so it can\'t be downloaded as that version. '
                    'Whoever looks after the app can check it.')
 
 class Refused(Exception):
@@ -66,7 +66,7 @@ def versions(R, rec, glance=None):
         pdf = os.path.join(d, out_name) if out_name else None
         if not pdf or not os.path.isfile(pdf) or n in gone: continue
         out.append({'id': n, 'session': n if str(n).isdigit() else None, 'dir': d, 'pdf': pdf, 'sha': MP.disk_sha(pdf),
-                    'state': 'earlier version', 'status_text': None, 'label': f'{_version_label(n)[0].upper() + _version_label(n)[1:]} (earlier version)'})
+                    'state': 'earlier version', 'status_text': None, 'label': f'{_version_label(n)[0].upper() + _version_label(n)[1:]} (previous version)'})
     changed = MP.disk_state(R, rec)['same'] is False
     for s in reversed(rel.get('shipped') or []):             # shipped copies: listed when the current entry is not them (M7)
         d = _shipped_dir(R, s); f = (s.get('pdf') or {}).get('file')
@@ -80,7 +80,7 @@ def versions(R, rec, glance=None):
                              + (' (withdrawn)' if s.get('withdrawn') else '')})
     return out
 
-MARKED = {REL.NOT_READY: 'not ready', REL.PENDING: 'not ready', REL.READY: 'not shipped', 'earlier version': 'earlier version', 'withdrawn': 'withdrawn'}
+MARKED = {REL.NOT_READY: 'not ready', REL.PENDING: 'not ready', REL.READY: 'not shipped', 'earlier version': 'previous version', 'withdrawn': 'withdrawn'}   # the state key stays
 SHIPPED_CHANGED = 'The shipped copy has changed since it was shipped, so it can\'t be downloaded. Whoever looks after the app can check it.'
 
 def _shipped_dir(R, s):
@@ -245,8 +245,8 @@ def _readme(d, sha):
         vline = f'Version: a shipped copy' + (f' ({_version_label(ver["session"])})' if ver.get('session') else '')
         status = 'Status: Withdrawn' if ver['entry'].get('withdrawn') else 'Status: Shipped'
     else:                                                        # K3: never a computed Ready on a superseded file
-        vline = f'Version: {_version_label(ver["id"])}, an earlier version' + (f', {d["applied"]}' if d.get('applied') else '')
-        status = f'Status: earlier version (not the current one; the current version is {d["cur_label"]})'
+        vline = f'Version: {_version_label(ver["id"])}, a previous version' + (f', {d["applied"]}' if d.get('applied') else '')
+        status = f'Status: previous version (not the current one; the current version is {d["cur_label"]})'
     ships = [ver['entry']] if ver.get('shipment') else d.get('shipments') or []
     n = sum(1 for s in REL.SECTIONS for c in d['rel']['checks'].get(s) or [] if REL.sha_of(c) == sha)
     files = [f'{d["pdf_name"]}: the remediated PDF of this version.'] + [FILE_WORDS[m[0]] for m in d['members'][1:]] + [FILE_WORDS['READ-ME.txt']]

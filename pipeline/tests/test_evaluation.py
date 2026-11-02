@@ -77,7 +77,7 @@ def test_an_earlier_version_and_a_retired_row_in_review_md():
            'fields': {'pac_version': '2026.1'}, 'items': dict(PAC['items'], pac_pdfua={'result': 'not_run'})}
     rel = {'checks': {'schema': REL.SCHEMA, 'pac': [old], 'screen_reader': []}, 'shipped': []}
     t = '\n'.join(REL.section_md(rel, 'a' * 64, 'b.pdf'))
-    assert '**PAC 2026: Completed on an earlier version (Session 5) by Patrick on October 31, 2026: it does not count for this version**' in t
+    assert '**PAC 2026: Completed on a previous version (Session 5) by Patrick on October 31, 2026: it does not count for this version**' in t
     assert '| PAC 2026: PDF/UA Check (no longer asked) | Not Run |' in t and 'PAC Version (no longer asked): 2026.1' in t
     assert '**Screen-reader test.** Listen' in t
 

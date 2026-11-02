@@ -135,7 +135,7 @@ def _when(iso, verb): return f'{verb} on {D.when(iso)}' if str(iso or '').strip(
 def ver_label(c, cur):
     if REL.sha_of(c) == cur: return 'this version'
     s = (c.get('pdf') or {}).get('session')
-    return f'an earlier version (Session {int(s)})' if str(s or '').isdigit() else 'an earlier version'
+    return f'a previous version (Session {int(s)})' if str(s or '').isdigit() else 'a previous version'
 
 def book(rec):
     """The remediated PDF's own title (verify read it from that file), else the original's name without ".pdf"; and its
@@ -185,7 +185,7 @@ def state(R, run):
                      'current': dict(current, state=REL.state(rel, sec, current, cur), failed=REL.issues(current, sec)) if current else None,
                      'earlier': earlier,
                      'draft': {'data': draft['data'], 'saved_at': draft['saved_at']} if draft else None,
-                     'draft_earlier': {'data': draft_earlier['data'], 'from': 'an earlier version'} if draft_earlier else None,
+                     'draft_earlier': {'data': draft_earlier['data'], 'from': 'a previous version'} if draft_earlier else None,
                      'tombstone': d.get('cleared'),
                      'failed_last': REL.issues(current, sec) if current else []}
     st = g.get('status') or {}
@@ -368,7 +368,7 @@ def page(R, run, recorded=None):
             B.append(f'<h3>Current Results: {E(c.get("by"))}, {E(D.day(c.get("recorded")))}</h3><p>{E(words)}.</p>' + _result_table(key, c))
         if s['earlier']:                                 # its own h3, so the h4s below sit under it (review 12 G2)
             ne = len(s['earlier'])
-            B.append(f'<h3>Earlier Results ({ne})</h3><details class="mc-earlier"><summary>Show the {ne} Earlier Result{"" if ne == 1 else "s"}</summary>')
+            B.append(f'<h3>Previous Results ({ne})</h3><details class="mc-earlier"><summary>Show the {ne} Previous Result{"" if ne == 1 else "s"}</summary>')
             for i, e in enumerate(s['earlier']):
                 B.append(f'<h4>{E(e.get("by"))}, {E(D.day(e.get("recorded")))}: on {E(e["version"])}</h4>' + _result_table(key, e)
                          + (f'<p><button type="button" data-start="{E(key)}:{i}">Start from These Notes</button></p>' if e['version'] != 'this version' else ''))
@@ -377,7 +377,7 @@ def page(R, run, recorded=None):
             B.append(f'<p class="mc-hint">Your unfinished results were started on {E(s["draft_earlier"]["from"])}. Their answers are not used for this version. '
                      f'<button type="button" data-start="{E(key)}:draft">Start from These Notes</button></p>')
         B.append(f'<h3>{"Record New Results" if c else "Record the Results"}</h3>'
-                 + ('<p class="mc-help">New results for this version replace the current ones as the ones that count; the earlier ones stay in the record.</p>' if c else '')
+                 + ('<p class="mc-help">New results for this version replace the current ones as the ones that count; the previous ones stay in the record.</p>' if c else '')
                  + _form(st, s, p) + '</section>')
     B.append('</div></main><div id="mc-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>'
              '<div id="mc-alert" class="pp-sr" role="alert"></div>')
