@@ -402,13 +402,15 @@ async function shipNow(b) {
 }
 // "Available Downloads" (stage 3), as on the evaluation page (webapp/manualpage.py downloads_form): the heading holding the
 // select's label, the select, the line saying how the chosen version's files are marked (never a file name), then the two
-// buttons in a row. A GET form to download?v=…&what=pdf|record: any version, ready or not
+// buttons in a row. A GET form to download?v=…&what=pdf|record: any version, ready or not. A shipped version has no line:
+// it is hidden and the select is not described by it (the line above the downloads and the label already say it was shipped)
 function dlForm(dd, hx) {
   const vs = (dd && dd.versions) || []; if (!vs.length) return '';
+  const m = vs[0].marked;
   return '<form class="pp-dl" method="get" action="download"><' + hx + ' id="pp-dl-h">' + '<label for="pp-dlv">Available Downloads</label></' + hx + '>' +
-    '<select id="pp-dlv" name="v" aria-describedby="pp-dl-marked">' +
+    '<select id="pp-dlv" name="v"' + (m ? ' aria-describedby="pp-dl-marked"' : '') + '>' +
     vs.map(x => '<option value="' + esc(x.id) + '" data-marked="' + esc(x.marked) + '">' + esc(x.label) + '</option>').join('') + '</select>' +
-    '<p id="pp-dl-marked" class="pp-note">' + esc(vs[0].marked) + '</p>' +
+    '<p id="pp-dl-marked" class="pp-note"' + (m ? '' : ' hidden') + '>' + esc(m) + '</p>' +
     '<div class="pp-row"><button type="submit" name="what" value="pdf">Download the Remediated PDF</button>' +
     '<button type="submit" name="what" value="record">Download the Record (ZIP)</button></div></form>';
 }
@@ -420,12 +422,17 @@ function renderStrip(s) {
   if (sb.dataset.h !== h) {
     sb.innerHTML = h; sb.dataset.h = h;
     const ns = $('pp-dlv');
-    if (ns && chosen && [...ns.options].some(o => o.value === chosen)) { ns.value = chosen; $('pp-dl-marked').textContent = ns.selectedOptions[0].dataset.marked; }
+    if (ns && chosen && [...ns.options].some(o => o.value === chosen)) { ns.value = chosen; dlMarked(ns); }
     if (keep && $(keep)) $(keep).focus();
   }
   if (!sb.dataset.shipWired) { sb.dataset.shipWired = '1'; sb.addEventListener('click', e => { const b = e.target.closest('button[data-ship]'); if (b) shipNow(b); }); }
   const dl = $('pp-dlv');
-  if (dl && !dl.dataset.wired) { dl.dataset.wired = '1'; dl.addEventListener('change', () => { $('pp-dl-marked').textContent = dl.selectedOptions[0].dataset.marked; }); }
+  if (dl && !dl.dataset.wired) { dl.dataset.wired = '1'; dl.addEventListener('change', () => dlMarked(dl)); }
+}
+function dlMarked(sel) {                                          // the line under the picker for the chosen version, or none
+  const p = $('pp-dl-marked'), m = sel.selectedOptions[0].dataset.marked;
+  p.textContent = m; p.hidden = !m;
+  if (m) sel.setAttribute('aria-describedby', p.id); else sel.removeAttribute('aria-describedby');
 }
 
 // A run stopped for its first review (REVIEW=1): "Open the Review Page," then, after "Finish Review," "Apply" (run_api.sh's

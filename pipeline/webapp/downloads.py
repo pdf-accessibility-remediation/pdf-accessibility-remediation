@@ -93,9 +93,10 @@ def _shipped_dir(R, s):
 EARLIER_HERE = 'Results on this page are recorded for the current version only.'
 
 def marked_line(state):
-    """The line beside the picker: what the downloaded files' names say (no file name on the page)."""
+    """The line beside the picker: what the downloaded files' names say (no file name on the page). Empty for a shipped
+    version: the line above the downloads and the version's own label already say it was shipped (Patrick, 2026-11-01)."""
     w = MARKED.get(state)
-    return f'The downloaded files are marked "{w}."' if w else 'The downloaded files have the published names.'
+    return f'The downloaded files are marked "{w}."' if w else ''
 
 def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
     """The download of version `v` ('current' or an id from versions()), `what` 'pdf' or 'record', opened in one moment

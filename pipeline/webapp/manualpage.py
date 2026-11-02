@@ -233,7 +233,7 @@ def downloads_data(R, rec, g=None, page=False):
     try: vs = DL.versions(R, rec, g)
     except (OSError, ValueError, KeyError, TypeError): return {'versions': []}
     return {'versions': [{'id': x['id'], 'label': x['label'],
-                          'marked': DL.marked_line(x['state']) + (' ' + DL.EARLIER_HERE if page and x['id'] != 'current' else '')} for x in vs]}
+                          'marked': ' '.join(w for w in (DL.marked_line(x['state']), DL.EARLIER_HERE if page and x['id'] != 'current' else '') if w)} for x in vs]}
 
 def downloads_form(base, dd, p='mc', hx='h2'):
     """"Available Downloads": the heading (the select's label, inside it), the select under it, the line saying how the
@@ -242,10 +242,11 @@ def downloads_form(base, dd, p='mc', hx='h2'):
     vs = dd.get('versions') or []
     if not vs: return ''
     opts = ''.join(f'<option value="{E(x["id"])}" data-marked="{E(x["marked"])}">{E(x["label"])}</option>' for x in vs)
+    m = vs[0]['marked']                                      # empty for a shipped version: the line is hidden, the select not tied to it
     return (f'<form class="pp-dl" method="get" action="{E(base)}download">'
             f'<{hx} id="{p}-dl-h"><label for="{p}-dlv">Available Downloads</label></{hx}>'
-            f'<select id="{p}-dlv" name="v" aria-describedby="{p}-dl-marked">{opts}</select>'
-            f'<p id="{p}-dl-marked" class="pp-note">{E(vs[0]["marked"])}</p>'
+            f'<select id="{p}-dlv" name="v"' + (f' aria-describedby="{p}-dl-marked"' if m else '') + f'>{opts}</select>'
+            f'<p id="{p}-dl-marked" class="pp-note"' + ('' if m else ' hidden') + f'>{E(m)}</p>'
             '<div class="pp-row"><button type="submit" name="what" value="pdf">Download the Remediated PDF</button>'
             '<button type="submit" name="what" value="record">Download the Record (ZIP)</button></div></form>')
 
