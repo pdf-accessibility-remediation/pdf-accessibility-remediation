@@ -35,7 +35,7 @@ SECTIONS = ('pac', 'screen_reader')
 NAME_MAX, FIELD_MAX, NOTE_MAX, NOTES_MAX = 80, 80, 1000, 4000
 PAGES = re.compile(r'\d+(-\d+)?(, ?\d+(-\d+)?)*')
 
-# The checklist, once: the Manual Checks page, manual_checks.py, review.md's PAC section and the disclosure read it.
+# The checklist, once: the Manual Checks page, manual_checks.py and review.md's PAC section read it.
 # results: the choices; pages: offers the pages checked (fields.pages_checked, optional);
 # found: the thing the pipeline counted (Not Applicable then needs a note).
 P3 = ('pass', 'fail', 'na')
@@ -282,22 +282,21 @@ def clean_base(output):
     s = b.decode('utf-8', 'ignore').strip(' .')
     return s or 'book'
 
-# the accessibility statement in a shipped folder: written under these names from 2026-11-01 (Patrick); a folder shipped
-# before keeps its disclosure.* files as shipped, and every reader takes either
-STATEMENT_HTML, STATEMENT_MD = 'accessibility-statement.html', 'accessibility-statement.md'
-_OLD_STATEMENT = {STATEMENT_HTML: 'disclosure.html', STATEMENT_MD: 'disclosure.md'}
+# review.html written before 2026-11-01 linked each shipment's accessibility statement and showed where it was published;
+# the statement was dropped then (Patrick: writing it is for the institution that adopts the pipeline) and `where` is no
+# longer shown. The app's pages and the record ZIP draw such a page without them; the file on disk is left as it is.
+_OLD_STATEMENT_LINK = re.compile(r' · <a href="[^"<>]*release/shipped/\d{3}/(?:accessibility-statement|disclosure)\.html">View the Accessibility Statement</a>')
+_OLD_WHERE = re.compile(r'(<li>Shipment \d+: by [^<]*? on [A-Z][a-z]+ \d{1,2}, \d{4}) · where: [^<]*?(?= · <a |, withdrawn by |</li>)')
 
-def statement_name(folder, name=STATEMENT_HTML):
-    """The statement's file name in a shipped folder: its own name, else (a folder shipped before 2026-11-01) the old one
-    when only that exists. A folder being written gets the new name."""
-    old = _OLD_STATEMENT[name]
-    return old if not os.path.isfile(os.path.join(folder, name)) and os.path.isfile(os.path.join(folder, old)) else name
+def no_statement(page):
+    """An older review.html as shown now: its shipments' "View the Accessibility Statement" links and "where:" dropped."""
+    return _OLD_WHERE.sub(r'\1', _OLD_STATEMENT_LINK.sub('', page))
 
 def shipment_lines(s):
-    """A shipment in a read-me's words: "Shipment 1, shipped on November 1, 2026 by Patrick", then "Published at: …" when
-    given and "Withdrawn on … by …: <reason>" for a withdrawn one (21 §B)."""
+    """A shipment in a read-me's words: "Shipment 1, shipped on November 1, 2026 by Patrick", then "Withdrawn on … by …:
+    <reason>" for a withdrawn one (21 §B). A `where` an older shipment stored is kept in its record, never shown (Patrick,
+    2026-11-01: the dialog no longer asks it)."""
     L = [f'Shipment {s.get("n")}, shipped on {day(s.get("shipped"))} by {s.get("by")}']
-    if s.get('where'): L.append(f'Published at: {s["where"]}')
     w = s.get('withdrawn')
     if w: L.append(f'Withdrawn on {day(w.get("date"))} by {w.get("by")}: {w.get("reason")}')
     return L
@@ -383,7 +382,7 @@ def section_md(rel, cur, pdf):
     sr = _part_md(rel, 'screen_reader', cur)
     L += sr if sr else ['**Screen-reader test.** Listen with a screen reader and record which one and its version:', ''] + items('screen_reader')
     for s in rel.get('shipped') or []:                       # one line per shipment (stage 4); none on a run never shipped
-        L += ['', f'Shipped on {day(s.get("shipped"))} by {md_text(s.get("by"))} (Shipment {s.get("n")}' + (f', {md_text(s["where"])}' if s.get('where') else '') + ')'
+        L += ['', f'Shipped on {day(s.get("shipped"))} by {md_text(s.get("by"))} (Shipment {s.get("n")})'
                   + (f'; withdrawn on {day(s["withdrawn"].get("date"))} by {md_text(s["withdrawn"].get("by"))}: {md_text(s["withdrawn"].get("reason"))}' if s.get('withdrawn') else '') + '.']
     return L
 

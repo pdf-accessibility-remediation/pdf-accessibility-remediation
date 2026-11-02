@@ -225,12 +225,12 @@ def _copy_hashing(src, dst):
 
 def _fill_shipped(T, R, entry, say=print):
     """The shipped folder's files written after write_run(), so they say Shipped: review.md, review.html (with its "Shipped
-    copy" banner, N9), record.json (the local archive only: never served, never zipped; S6, N2), evaluation-results.json,
-    the accessibility statement (accessibility-statement.html and .md) and READ-ME.txt, in plain words, with the shipment's
-    lines (lib/release.py shipment_lines)."""
+    copy" banner, N9), record.json (the local archive only: never served, never zipped; S6, N2), evaluation-results.json
+    and READ-ME.txt, in plain words, with the shipment's lines (lib/release.py shipment_lines). No accessibility statement:
+    writing one is for the institution that adopts the pipeline (Patrick, 2026-11-01)."""
     import shutil
     import report_html as H
-    from lib import disclosure as DS, dates as D
+    from lib import dates as D
     rec = S.load(os.path.join(R, 'record.json'))
     sha = entry['pdf']['sha256']
     if os.path.isfile(os.path.join(R, 'review.md')): shutil.copy2(os.path.join(R, 'review.md'), os.path.join(T, 'review.md'))
@@ -246,16 +246,12 @@ def _fill_shipped(T, R, entry, say=print):
     g = H.glance_of(R, rec)
     doc = (rec.get('verify') or {}).get('doc') or {}
     title = (doc.get('title') or doc.get('xmp_title') or '').strip() or ((rec.get('document') or {}).get('file') or 'this book').removesuffix('.pdf')
-    blocks = DS.facts(rec, rel, entry, g)
-    put_text(os.path.join(T, REL.STATEMENT_MD), DS.to_md(blocks, title))
-    put_text(os.path.join(T, REL.STATEMENT_HTML), DS.to_html(blocks, title))
     pdf = entry['pdf']['file']
     files = [f'{pdf}: the remediated PDF as shipped.',
              'review.html: the report on this version as shipped (what was changed, what was checked, and the accessibility '
              'evaluation\'s results). Open it in a web browser. review.md is the same report as text.']
     if os.path.isfile(os.path.join(T, 'han_review.csv')): files.append('han_review.csv: passages in Chinese or Japanese a person needs to check, as a spreadsheet.')
-    files += [f'{REL.STATEMENT_HTML}: the accessibility statement. Open it in a web browser. {REL.STATEMENT_MD} is the same statement as text.',
-              'evaluation-results.json: the accessibility evaluation\'s results recorded on this file, for the archive.',
+    files += ['evaluation-results.json: the accessibility evaluation\'s results recorded on this file, for the archive.',
               'record.json: the run\'s full record, kept here for the archive.', 'READ-ME.txt: this file.']
     put_text(os.path.join(T, 'READ-ME.txt'), '\n'.join(
         [title, ''] + REL.shipment_lines(entry) + [f'Status: {(g.get("status") or {}).get("text") or REL.SHIPPED}', '', 'This folder holds:']
@@ -263,7 +259,7 @@ def _fill_shipped(T, R, entry, say=print):
         + ['', f'The fingerprint of {pdf}, which identifies this exact file (sha256): {sha}', '',
            'Automated checks are evidence, not legal sign-off.', 'The evaluation is a record of what a person found, not a legal certification.', '']))
 
-def ship(R, by, where=None, note=None, shown_sha=None, via='manual_checks.py', wait=runlock.COMMAND_WAIT, say=print, batch=True):
+def ship(R, by, note=None, shown_sha=None, via='manual_checks.py', wait=runlock.COMMAND_WAIT, say=print, batch=True):
     """Mark the current version as shipped (21 §A, review 22 M1, M2). Everything under the record lock:
     being_made() (in Ship's words); the PDF hashed fresh, equal to what the page showed and to the record (F1's adopt rule
     when the record has none); then the gate, worked out here from the full glance (report_html.glance_of, then
@@ -271,7 +267,7 @@ def ship(R, by, where=None, note=None, shown_sha=None, via='manual_checks.py', w
     reads runs.ready(), which is for display (its review.md path carries no current status).
     The copy: the PDF (hashed while copied) and han_review.csv into release/shipped/NNN.tmp; shipped.json appended
     (`shipped` as local isoformat with seconds, note (a)); write_run(); the Shipped review.md, review.html, record.json,
-    evaluation results and the statement written into NNN.tmp; then the rename to NNN, the last step. Any failure before
+    and evaluation results written into NNN.tmp; then the rename to NNN, the last step. Any failure before
     or at the rename: NNN.tmp removed, shipped.json restored, and write_run() run again so no page says Shipped.
     Returns the shipment."""
     import shutil
@@ -280,7 +276,6 @@ def ship(R, by, where=None, note=None, shown_sha=None, via='manual_checks.py', w
     from webapp import manualpage as MP
     R = os.path.abspath(R); rj = os.path.join(R, 'record.json')
     by = clean_text(by or '', one_line=True)[:REL.NAME_MAX]
-    where = clean_text(where or '', one_line=True)[:REL.FIELD_MAX] or None
     note = clean_text(note or '', one_line=True)[:REL.NOTE_MAX] or None
     if not by: raise S.Refused('Enter your name in "Shipped By."')
     if not os.path.exists(rj): raise S.Refused('This book has no finished result yet, so there is nothing to ship.')
@@ -314,7 +309,7 @@ def ship(R, by, where=None, note=None, shown_sha=None, via='manual_checks.py', w
                 sid = S.current_id(rec)                               # a run reviewed before sessions were kept is 001, as the dialog says
                 sid = sid if str(sid).isdigit() else None
                 pac, sr = (REL.latest(rel, s, disk) for s in ('pac', 'screen_reader'))
-                entry = {'n': n, 'shipped': now(), 'by': by, **({'where': where} if where else {}), **({'note': note} if note else {}),
+                entry = {'n': n, 'shipped': now(), 'by': by, **({'note': note} if note else {}),
                          'pdf': {'sha256': disk, 'file': out, 'session': sid if sid else None}, 'folder': f'shipped/{n:03d}', 'via': via, 'code': code(),
                          'issues': REL.evaluation(rel, disk)['issues'], 'checks': {'pac': (pac or {}).get('id'), 'screen_reader': (sr or {}).get('id')}}
                 put_json(sp, (rel['shipped'] or []) + [entry])

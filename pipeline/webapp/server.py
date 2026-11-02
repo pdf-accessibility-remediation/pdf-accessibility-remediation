@@ -286,7 +286,7 @@ def make(s, setup, code=None):
                 jobs.tick(J, s)
                 return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
             if segs[-1] == 'ship':                              # Mark as Shipped, in this process, through review/manual.py ship()
-                try: e = M.ship(R, str(body.get('by') or ''), str(body.get('where') or ''), str(body.get('note') or ''), shown_sha=body.get('shown_sha256') or None,
+                try: e = M.ship(R, str(body.get('by') or ''), str(body.get('note') or ''), shown_sha=body.get('shown_sha256') or None,
                                 via='page', wait=runlock.REQUEST_WAIT, say=lambda *a: applog(f'{run}: ' + ' '.join(str(x) for x in a)), batch=False)
                 except S.Refused as x: return self.send(409, {'error': str(x)})
                 self.send(200, {'shipped': {'n': e['n'], 'shipped': e['shipped']}})
@@ -368,12 +368,6 @@ def make(s, setup, code=None):
                     if not p.endswith('/'): return self.redirect(p + '/')
                     return self.run_page(run, R)
                 if len(rest) == 1 and rest[0] in RESERVED: return self.send(404, {'error': 'this page is not built yet'})
-                if len(rest) == 4 and rest[:2] == ['release', 'shipped'] and rest[3] in (REL.STATEMENT_HTML, 'disclosure.html'):   # a shipment's statement only (N2)
-                    known = {(x.get('folder') or '').split('/')[-1] for x in REL.load(R).get('shipped') or []}
-                    d = config.entry(os.path.join(R, 'release', 'shipped'), rest[2]) if rest[2] in known else None
-                    f = os.path.join(d, REL.statement_name(d)) if d else None   # either name: a folder shipped before 2026-11-01 keeps disclosure.html
-                    if not f or not inside(R, f) or not os.path.isfile(f): return self.send(404, {'error': 'not found'})
-                    return self.file(f)                          # never the folder's record.json, PDF or anything else
                 if rest == ['download']:                                                   # a version's PDF or record ZIP (stage 3)
                     return self.download(run, R, q)
                 if rest == ['checks']:                                                     # the Manual Checks page
@@ -393,7 +387,7 @@ def make(s, setup, code=None):
                     t = self.text(f)
                     if t is None: return self.send(404, {'error': 'not found'})
                     if name == 'review.html':                                              # a previous result: its bar
-                        return self.send(200, with_version(t, run, sid), 'text/html; charset=utf-8')
+                        return self.send(200, with_version(REL.no_statement(t), run, sid), 'text/html; charset=utf-8')
                     return self.send(200, md_page(t, run, sid, base), 'text/html; charset=utf-8')   # review.md with a way back
                 return self.file(f)
             if p == '/': return self.send(200, home_stub(s), 'text/html; charset=utf-8')
@@ -449,7 +443,7 @@ def make(s, setup, code=None):
             cur = S.current_id((runs.load(rec) if rec.startswith(RUNS + os.sep) else None) or {})
             f = os.path.realpath(f)                                                  # checked inside the runs folder first
             t = self.text(f) if f.startswith(RUNS + os.sep) and os.path.isfile(f) else None
-            if t is not None: return self.send(200, with_panel(card_border(t, R), run, cur), 'text/html; charset=utf-8')
+            if t is not None: return self.send(200, with_panel(card_border(REL.no_statement(t), R), run, cur), 'text/html; charset=utf-8')
             return self.send(200, no_dashboard(run, R, cur), 'text/html; charset=utf-8')
 
     return ThreadingHTTPServer(('127.0.0.1', s['port']), H)

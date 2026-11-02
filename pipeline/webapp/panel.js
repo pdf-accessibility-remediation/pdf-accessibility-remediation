@@ -367,16 +367,15 @@ function stripBlock(s, inPanel) {
 function shipBlock(sp) {
   if (!sp) return '';
   if (sp.ok) return '<div class="pp-row"><button type="button" id="pp-ship" data-ship="1">Mark as Shipped</button>' +
-    '<span class="pp-note">Records that this version was reviewed and shipped. It does not publish anything.</span></div>';
+    '<span class="pp-note">Records that this version was reviewed and shipped.</span></div>';
   return sp.why ? '<p class="pp-note">' + esc(sp.why) + '</p>' : '';
 }
-function shipDlg(sp, opener) {                                    // a name (never prefilled), where and a note; Escape or Cancel closes it
+function shipDlg(sp, opener) {                                    // a name (never prefilled) and a note; Escape or Cancel closes it
   return new Promise(res => {
     const d = $('pp-dlg'), n = sp.issues || 0;
-    d.innerHTML = '<h2 id="pp-dlg-h">Mark as Shipped</h2><p>This records that ' + esc(sp.version) + ' was reviewed and shipped. It does not publish anything.' +
+    d.innerHTML = '<h2 id="pp-dlg-h">Mark as Shipped</h2><p>Records that this version was reviewed and shipped.' +
       (n ? ' ' + n + ' issue' + (n === 1 ? ' was' : 's were') + ' noted in the evaluation; ' + (n === 1 ? 'it is' : 'they are') + ' kept with the shipped copy.' : '') + '</p>' +
       '<p><label for="pp-ship-by">Shipped By</label><br><input type="text" id="pp-ship-by" autocomplete="name"></p>' +
-      '<p><label for="pp-ship-where">Where It Was Published <span class="pp-note">(optional)</span></label><br><input type="text" id="pp-ship-where" autocomplete="off"></p>' +
       '<p><label for="pp-ship-note">Note <span class="pp-note">(optional)</span></label><br><textarea id="pp-ship-note" rows="2"></textarea></p>' +
       '<p id="pp-ship-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Mark as Shipped</button>' +
       '<button type="button" value="no">Cancel</button></div>';
@@ -385,7 +384,7 @@ function shipDlg(sp, opener) {                                    // a name (nev
     d.querySelector('button[value=yes]').addEventListener('click', () => {
       const name = $('pp-ship-by').value.trim();
       if (!name) { $('pp-ship-err').textContent = 'Enter your name in "Shipped By."'; $('pp-ship-by').focus(); return; }
-      done({ by: name, where: $('pp-ship-where').value.trim(), note: $('pp-ship-note').value.trim() });
+      done({ by: name, note: $('pp-ship-note').value.trim() });
     });
     d.oncancel = ev => { ev.preventDefault(); done(null); };
     d.showModal(); d.querySelector('button[value=no]').focus();
@@ -395,9 +394,9 @@ async function shipNow(b) {
   const sp = st.manual && st.manual.ship; if (!sp || !sp.ok) return;
   const v = await shipDlg(sp, b); if (!v) return;
   try {
-    const [c, r] = await api(API + '/ship', { by: v.by, where: v.where, note: v.note, shown_sha256: sp.sha });
+    const [c, r] = await api(API + '/ship', { by: v.by, note: v.note, shown_sha256: sp.sha });
     if (c !== 200) return msg(r.error || 'It was not marked as shipped.', false, true);
-    msg('Marked as shipped: Shipment ' + r.shipped.n + '. The accessibility statement is kept with the shipped copy.', true, true);
+    msg('Marked as shipped: Shipment ' + r.shipped.n + '.', true, true);
     return poll(true);
   } catch (e) { return msg('The app is not running. ' + START, false, true); }
 }
