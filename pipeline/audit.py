@@ -347,7 +347,7 @@ for e in elems:
     lists.append({'obj': ref(e['el']), 'style': e['style'], 'page': first_page(e), 'label': labels.get(first_page(e)), 'items': len(items),
                   'has_labels': any(kids_mapped(i, 'Lbl') for i in items),
                   'first_items': [clip(text_of(i), 70) for i in items[:2]], **({'flattened_by_rule': True} if rule else {})})
-tables = []
+tables = []; SHAPE_ROWS = 14
 def rows_of(e):
     out = []
     for k in e['kids']:
@@ -359,9 +359,14 @@ for e in elems:
     rows = rows_of(e); cols = max((len([c for c in r['kids'] if mapped(c['style']) in ('TD', 'TH')]) for r in rows), default=0)
     ps = sorted({first_page(r) for r in rows if first_page(r)})
     FULL['tables'][ref(e['el'])] = [full(' | '.join(text_of(c) for c in r['kids'])) for r in rows[:2]]
+    # the rows that tell a table's shape: top, bottom, and any holding one thing (a title, a group label, a source note)
+    def lone(r): return sum(1 for c in r['kids'] if text_of(c).strip()) <= 1
+    shape = sorted({i for i in range(len(rows)) if i < 4 or i >= len(rows) - 2} | {i for i, r in enumerate(rows) if lone(r)})[:SHAPE_ROWS]
     tables.append({'obj': ref(e['el']), 'page': first_page(e), 'label': labels.get(first_page(e)), 'pages': [ps[0], ps[-1]] if ps else None,
                    'rows': len(rows), 'cols': cols, 'header_cells': sum(1 for r in rows for c in r['kids'] if mapped(c['style']) == 'TH'),
-                   'first_rows': [clip(' | '.join(text_of(c) for c in r['kids']), 100) for r in rows[:2]]})
+                   'first_rows': [clip(' | '.join(text_of(c) for c in r['kids']), 100) for r in rows[:2]],
+                   'row_shapes': [{'row': i, 'th': sum(1 for c in rows[i]['kids'] if mapped(c['style']) == 'TH'),
+                                   'text': clip(' | '.join(text_of(c) for c in rows[i]['kids']), 70)} for i in shape]})
 
 # ---- content a screen reader never reaches: marked but not in the tree, or not marked at all
 owned = {pm for e in elems for pm in e['mcids']}

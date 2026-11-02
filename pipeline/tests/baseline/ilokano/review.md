@@ -1,29 +1,27 @@
-# Remediation Review: ilokano.pdf
+# Remediation review: ilokano.pdf
 
 Result: `ilokano_remediated.pdf`
 
-49 pages · run November 1, 2026, at 7:08 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · AI cost not recorded · this run: no new call · tokens: saved reply reused, not counted
+49 pages · run 2026-11-01T18:37:17 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: 1 picture page without OCR text · auto-tagged · tagged by OpenDataLoader 2.5.12 · the pipeline worked on `_intake/intake.pdf`; the original was not changed
 
-Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.14.8 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.1s · audit 3.2s · reuse saved reply 1.2s · apply 4.4s · verify 10.7s · total 19.6s
+Time: intake 0.1s · audit 3.5s · reuse saved reply 0.3s · apply 3.5s · verify 6.3s · total 13.7s
 
 ## Overview
 
 [Open the dashboard](review.html)
 
-**Status:** Not Ready
-
-**Ready to ship?**
-- Work Order Approval: Not Approved (applied without a review)
-- ✓ OCR Text Approval: Not Applicable
-- ✓ Safety Checks: Passed
-- Accessibility Evaluation: Not Completed
+**Ready to ship?** No
+- Work order approved on the review page: no (run without REVIEW=1)
+- OCR text approved: not needed (intake added no OCR text)
+- Safety checks: OK
+- Manual check (PAC): not run
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 4 (4 deferred by the AI · 0 deferred by the executor · 0 CHECK rows)  
+**Needs a person:** 5 (5 deferred by the AI · 0 deferred by the executor · 0 CHECK rows)  
 **AI decisions:** 33 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 17 · one-item lists turned into paragraphs 15 · pages given tab order 3 · title shown in the window 2 · link descriptions that were only a URL 2 · marked as tagged 1  
 **veraPDF (WCAG 2.2 machine checks):** 4 WCAG rules failing before (9 checks) → 0 after (0 checks) · 0 newly failing
@@ -32,14 +30,15 @@ Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
-| OCR text layer quality and page assignment of text | 10 pages, PDF 15 to PDF 47 | [§8](#8-deferred-by-the-ai) |
-| Contents page (list tagged L/LI with links) | PDF 6 | [§8](#8-deferred-by-the-ai) |
-| Language tagging of Ilokano example phrases | PDF 9, PDF 49 | [§8](#8-deferred-by-the-ai) |
-| Numbered example lists and (a)-(d) definition lists | PDF 14, PDF 49 | [§8](#8-deferred-by-the-ai) |
+| Poor OCR text layer | 8 pages, PDF 18 to PDF 47 | [§8](#8-deferred-by-the-ai) |
+| Reading order and heading placement on chapter opener pages | 14 pages, PDF 15 to PDF 49 | [§8](#8-deferred-by-the-ai) |
+| Contents list structure and page numbers | PDF 6 | [§8](#8-deferred-by-the-ai) |
+| Language tagging of Ilokano example words | PDF 10, PDF 49 | [§8](#8-deferred-by-the-ai) |
+| Example sentence lists and (a)/(b) definition lists | PDF 14, PDF 49 | [§8](#8-deferred-by-the-ai) |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
-## Automated Checks
+## Automated checks
 
 | Check | Result | Detail |
 |---|---|---|
@@ -90,9 +89,9 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
 
-## For a Person to Check
+## For a person to check
 
-### 1. Intake: OCR and Auto-tagging
+### 1. Intake: OCR and auto-tagging
 
 The original had no tags. Local tools prepared it before the model saw it; no model wrote or changed any text. Pages: 1 image-only, 48 text.
 
@@ -128,16 +127,16 @@ Text-layer test (checklist 1.2): each sample page was OCR'd at 300 dpi and compa
 - **Image pages with no text**: image-only pages where OCR found no readable text: left as pictures for the figure step (alt text). Check none is a page of text (PDF 1)
 - **Placeholder alt text removed**: the auto-tagger wrote alt text that says nothing (4 figures "image N", 15 links "Annotation"); it was removed, so those figures count as having no alt text (the AI or a person writes it) and each link is read by its own text
 
-### 2. Alt Text Written or Changed by the AI (4)
+### 2. Alt text written or changed by the AI (4)
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 | — | Book cover: a tan upper panel with the green University of Hawaiʻi Press logo, then the author's name, Ernesto Constantino, and the title, Ilokano Reference Grammar, in white capitals on a black panel. |
+| PDF 1 | — | Front cover of Ilokano Reference Grammar by Ernesto Constantino. A tan upper panel holds the University of Hawaiʻi Press logo, with a green HAWAI stylized mark. The author's name sits on the dividing line, and the title ILOKANO REFERENCE GRAMMAR is in white capitals on a black lower panel. |
 | PDF 4 | — | University of Hawaiʻi Press Open Access logo |
-| PDF 4 | — | Humanities Open Book Program logo, with the National Endowment for the Humanities and Andrew W. Mellon Foundation marks |
-| PDF 4 | — | Creative Commons Attribution-NonCommercial-ShareAlike (CC BY-NC-SA 4.0) license logo |
+| PDF 4 | — | Humanities Open Book logo, with the National Endowment for the Humanities and Andrew W. Mellon Foundation marks |
+| PDF 4 | — | Creative Commons Attribution-NonCommercial-ShareAlike (CC BY-NC-SA) license logo |
 
-### 3. Elements Retyped by the AI (14)
+### 3. Elements retyped by the AI (14)
 
 Check each one is (or is not) a heading as decided.
 
@@ -158,21 +157,21 @@ Check each one is (or is not) a heading as decided.
 | PDF 44 | CHAPTER 10 NEGATIVE, INTERROGATIVE AND OTHER MODAL SENTENCES | H1 | H2 |
 | PDF 47 | CHAPTER 11 OTHER SYNTACTIC CONSTRUCTIONS | H1 | H2 |
 
-### 4. Lists and Tables
+### 4. Lists and tables
 
 - Flattened list on PDF 9: "2.0. Introduction. The minimal phonological units of Ilokano described in this chapter consist of…" (numbered section paragraphs (2.0, 2.1), not a list)
-- Flattened list on PDF 14: "2.7. Pitch and intonation. The pitch of a normal Ilokano sen-tence or utterance generally stays on…" (section paragraphs 2.7 and 2.8, not a list)
-- Flattened list on PDF 15: "3.0. Introduction. Our principal aim in this grammar of Ilokano is to present a simple and…" (section paragraphs 3.0 and 3.1, not a list)
-- Flattened list on PDF 18: "4.0. Introduction. The sentence is the largest grammatical unit treated in this grammar. We may…" (section paragraphs 4.0 to 4.1, not a list)
-- Flattened list on PDF 23: "5.1.5. Direction complement. The direction complement refers to the person or thing toward which the…" (section paragraphs 5.1.5 and 5.1.6, not a list)
-- Flattened list on PDF 29: "5.8.2. Temporal sentences. A temporal sentence is an imper-sonal sentence with a temporal verb as…" (section paragraphs 5.8.2 and 5.8.3, not a list)
-- Flattened list on PDF 32: "6.4. Topicless adjectival sentences. Some adjectival sen-tences consist of an adjective without a…" (section paragraphs 6.4 and 6.5, not a list)
-- Flattened list on PDF 34: "7.0. Introduction. The sentences described in this chapter are the existential, the exclamatory, the…" (section paragraphs 7.0 and 7.1, not a list)
-- Flattened list on PDF 35: "7.2. Exclamatory sentences. Exclamatory sentences consist of interjections. Some of them express…" (section paragraphs 7.2 and 7.3, not a list)
-- Flattened list on PDF 43: "9.1.3. Adjectival complex sentences. An adjectival complex sentence is one whose predicate is an…" (section paragraphs 9.1.3 and 9.1.4, not a list)
-- Flattened list on PDF 45: "10.2.2. Suppletive questions. A suppletive question is a sen-tence whose subject is an interrogative…" (section paragraphs 10.2.2 and 10.3, not a list)
+- Flattened list on PDF 14: "2.7. Pitch and intonation. The pitch of a normal Ilokano sen-tence or utterance generally stays on…" (numbered section paragraphs (2.7, 2.8))
+- Flattened list on PDF 15: "3.0. Introduction. Our principal aim in this grammar of Ilokano is to present a simple and…" (numbered section paragraphs (3.0, 3.1))
+- Flattened list on PDF 18: "4.0. Introduction. The sentence is the largest grammatical unit treated in this grammar. We may…" (numbered section paragraphs (4.0, 4.1))
+- Flattened list on PDF 23: "5.1.5. Direction complement. The direction complement refers to the person or thing toward which the…" (numbered section paragraphs (5.1.5, 5.1.6))
+- Flattened list on PDF 29: "5.8.2. Temporal sentences. A temporal sentence is an imper-sonal sentence with a temporal verb as…" (numbered section paragraphs (5.8.2, 5.8.3))
+- Flattened list on PDF 32: "6.4. Topicless adjectival sentences. Some adjectival sen-tences consist of an adjective without a…" (numbered section paragraphs (6.4, 6.5))
+- Flattened list on PDF 34: "7.0. Introduction. The sentences described in this chapter are the existential, the exclamatory, the…" (numbered section paragraphs (7.0, 7.1))
+- Flattened list on PDF 35: "7.2. Exclamatory sentences. Exclamatory sentences consist of interjections. Some of them express…" (numbered section paragraphs (7.2, 7.3))
+- Flattened list on PDF 43: "9.1.3. Adjectival complex sentences. An adjectival complex sentence is one whose predicate is an…" (numbered section paragraphs (9.1.3, 9.1.4))
+- Flattened list on PDF 45: "10.2.2. Suppletive questions. A suppletive question is a sen-tence whose subject is an interrogative…" (numbered section paragraphs (10.2.2, 10.3))
 
-### 5. One-item Lists Turned Into Paragraphs by Rule (15)
+### 5. One-item lists turned into paragraphs by rule (15)
 
 A list with one item whose label is not a list marker (the auto-tagger took a paragraph's first word or a year for a label) was made one paragraph, label and text together. Listen to a few; a real one-item list can be kept with `keep_lists`.
 
@@ -192,7 +191,7 @@ A list with one item whose label is not a list marker (the auto-tagger took a pa
 - PDF 48: label "11.2.": "11.2. Coordination. A coordination construction consists of"
 - PDF 49: label "11.3.": "11.3. Comparison. A structure of comparison consists of an"
 
-### 6. Links Whose Description Was Only a URL (2)
+### 6. Links whose description was only a URL (2)
 
 The description (what a screen reader announces) was set to the book's own sentence around the link, with the URL removed. No words were added and the visible URL is unchanged. Replace any of these with a better description if needed.
 
@@ -201,9 +200,9 @@ The description (what a screen reader announces) was set to the book's own sente
 | PDF 4 | https://creativecommons.org/licenses/by-nc-sa/4.0/ | national(CCBY-NC-SA4.0),whichpermitsreaderstofreelydownloadandsharetheworkinprintorelectronicformatfornon-commercialpurposes,solongascreditisgiventotheauthor.Thelicensealsopermitsreaderstocreateandsharede-rivativesofthework,solongassuchderivativesaresharedunderthesametermsofthislicense.Commercialusesrequirepermissionfromthepublisher.Fordetails,see.TheCre-ativeCommonslicensedescribedabovedoesnotapplytoanymaterialthatisseparatelycopyrighted. |
 | PDF 4 | http://www.hawaiiopen.org | PleasevisitformoreOpenAccessworksfromUniversityofHawai‘iPress. |
 
-### 7. veraPDF (WCAG 2.2 machine profile), Before and After
+### 7. veraPDF (WCAG 2.2 machine profile), before and after
 
-veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 4 rules failing (the AI can act on 1, the pipeline on 3, only a person on 0). After: 0.
+veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 4 rules failing (the AI can act on 1, the pipeline on 3, only a person on 0). After: 0.
 
 | Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |
 |---|---|---|---|---:|---:|---|---|
@@ -214,14 +213,15 @@ veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 
 ### 8. Deferred by the AI
 
-- **OCR text layer quality and page assignment of text**: The digest reports a very high suspect-token rate (worst pages PDF 47, 44, 42, 37, 34, 31, 21, 18). Chapter titles appear split across pages (e.g. PDF 15 'CHAPTER 3' and PDF 17 'PARTS OF SPEECH'). Repeated top-of-page lines look like garbled OCR fragments, not true running heads, so no running-head artifacts were requested. A person should check the text layer and reading order against the page images. [PDF 15, PDF 17, PDF 18, PDF 21, PDF 31, PDF 34, PDF 37, PDF 42, PDF 44, PDF 47]
-- **Contents page (list tagged L/LI with links)**: The contents entries are already tagged as a list with labels, not as paragraphs the toc key can convert. They were left as a list. A person may convert them to TOC/TOCI. Printed page numbers in the entries (vi, 1 to 40) do not match the PDF page numbers. [PDF 6]
-- **Language tagging of Ilokano example phrases**: Romanized Ilokano examples appear throughout the grammar. The work order has no way to tag them with a language (ilo), so a person should decide whether to tag them. [PDF 9, PDF 49]
-- **Numbered example lists and (a)-(d) definition lists**: These were kept as real lists. Some lists split across pages or contain stray items because of the OCR layer; a person should confirm the list structure. [PDF 14, PDF 49]
+- **Poor OCR text layer**: The file is an OCR'd scan (OCRmyPDF/Tesseract) with a high suspect-token rate (about 393 per 1000). The worst pages are PDF 47, 44, 42, 37, 34, 31, 21 and 18. Running heads appear as garbled fragments such as '#hapter'. repeated_lines shows only first words of body lines, not real running heads, so no artifact rules were written. A person should check the text layer and decide whether to re-OCR. [PDF 18, PDF 21, PDF 31, PDF 34, PDF 37, PDF 42, PDF 44, PDF 47]
+- **Reading order and heading placement on chapter opener pages**: page_map shows chapter labels and titles split across pages (for example CHAPTER 3 on PDF 15 and PARTS OF SPEECH on PDF 17; CHAPTER 4 on PDF 18 and SENTENCE CLASSIFICATION on PDF 19; similar for chapters 6 to 11). The digest has no reading_order data, so I could not confirm the order or decide a move_section. A person should check that each chapter label and title reads in sequence. Some chapter headings (PDF 8, 9) carry no chapter number. [PDF 15, PDF 17, PDF 18, PDF 19, PDF 31, PDF 33, PDF 34, PDF 35, PDF 42, PDF 43, PDF 44, PDF 45, PDF 47, PDF 49]
+- **Contents list structure and page numbers**: The contents on PDF 6 is a list with links, kept as is. Its printed page numbers (Preface vi, Introduction 1 and so on) do not match the PDF page numbers. A person should check that the link targets are right. [PDF 6]
+- **Language tagging of Ilokano example words**: The book prints Ilokano examples in Latin script mixed with English. Tagging them (lang 'ilo') is beyond what this work order can do reliably. A reviewer should decide whether to tag them. [PDF 10, PDF 49]
+- **Example sentence lists and (a)/(b) definition lists**: Lists of numbered examples such as '(4) ...' and lettered definitions were kept as real lists. Some items wrap across pages and some lists are split in two, so a person should check the grouping. [PDF 14, PDF 49]
 
-Reviewer note from the AI: The tree is already tagged (apparently OCR-derived). Only one H1 remains, the title on PDF 3. Contents, Preface and all chapter titles became H2 through per-element retype, because the style 'H1' covers both the title and the chapters. The copyright line (obj 150 0, PDF 5) was a false H2 and is now a paragraph. Section-numbered paragraphs wrongly tagged as lists were flattened. The cover figure and the three logos on PDF 4 got alt text.
+Reviewer note from the AI: PDF 3 holds the single H1 (the book title). All other former H1 elements (contents, preface, chapters) became H2, and the copyright line on PDF 5 became P. The book has no section-level headings in the tags, so there is no H3 or below. The cover on PDF 1 is a real figure and was kept with alt text, not artifacted. The three logos on PDF 4 got alt text. Section paragraphs numbered like 2.0 or 3.1 that had been tagged as lists were flattened to paragraphs.
 
-## What Was Changed
+## What was changed
 
 | Change | Count |
 |---|---:|
@@ -239,29 +239,16 @@ Reviewer note from the AI: The tree is already tagged (apparently OCR-derived). 
 | links: URL-only description replaced by the sentence around it | 2 |
 | tab order: /Tabs /S set on pages with annotations | 3 |
 
-## Accessibility Evaluation
+## Final check with PAC 2026
 
-A person evaluates this version of `ilokano_remediated.pdf` with PAC 2026 and a screen reader, on the app's "Accessibility Evaluation" page (or with manual_checks.py; docs/release.md). The "Ready to ship?" answer needs both parts. A Fail is recorded with its note and does not hold the book back. Each result is recorded against this version of the PDF (its sha256): after a new apply it no longer counts. The evaluation is a record of what a person found, not a legal certification.
+Open `ilokano_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker.
 
-**PAC 2026.** Open `ilokano_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:
+No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC's screen-reader and structure previews:
 
-- PAC 2026: WCAG Check: PAC 2026's WCAG check on this version of the PDF. Anything it fails that the report does not list is a gap in the automated checks.
-- Title and Language: The title shown in the window is the book's title, and the document language is the book's main language.
-- Spot-Check of Pages: A few pages compared with the original in PAC's structure preview: headings, lists, tables and figures as printed.
-- Color Alone: No information is given by color alone (WCAG 1.4.1).
-- Contrast: Text over images and colored backgrounds has enough contrast (WCAG 1.4.3; PAC's contrast checker).
-- Images of Text: No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).
-- What Needs a Person: Every item the report lists under "For a Person to Check" was looked at.
-
-**Screen-reader test.** Listen with a screen reader and record which one and its version:
-
-- Title Announced: The screen reader announces the book's title when the PDF opens.
-- Document Language and Passages in Other Languages: The text is read in the book's language, and passages in another language are pronounced in theirs (WCAG 3.1.1, 3.1.2).
-- Heading Navigation: Moving by heading reaches each part and chapter, at the right level (WCAG 1.3.1, 2.4.6).
-- Reading Order on Sample Pages: On a few sample pages, the text is read in the order it is meant to be read (WCAG 1.3.2).
-- Figure Alt Text: Each figure's alt text is read, is accurate and gives its purpose; decorative images are skipped (WCAG 1.1.1).
-- Tables Read with Their Headers: Moving through a table, each cell is read with its row or column header (WCAG 1.3.1).
-- Links Say Where They Go: Each link's text, or its description, says where it goes (WCAG 2.4.4).
-- Lists: Lists are announced as lists, with their number of items.
-- OCR Pages Read Sensibly: Pages whose text comes from OCR are read as words, not as junk characters.
-- Formulas: Each formula is read with the description a person wrote, or is marked for one (math goes to a person).
+- 1.1.1: alt text is accurate and gives the figure's purpose; decorative images are artifacts
+- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense
+- 1.4.1: no information is given by colour alone
+- 1.4.3: contrast of text over images and coloured backgrounds (PAC's contrast checker)
+- 1.4.5: no images of text where real text could be used (scanned pages: the OCR layer stands in)
+- 2.4.6: headings describe their section
+- 3.1.2: passages in another language carry their language (see `han_review.csv` if present)
