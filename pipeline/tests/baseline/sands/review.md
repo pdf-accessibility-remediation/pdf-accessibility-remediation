@@ -2,13 +2,13 @@
 
 Result: `sands_remediated.pdf`
 
-329 pages · run November 1, 2026 at 1:56 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+329 pages · run November 1, 2026, at 7:03 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · AI cost not recorded · this run: no new call · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 4.2s · audit 36.7s · reuse saved reply 1.9s · apply 239.9s · verify 56.9s · total 339.6s
+Time: intake 3.6s · audit 36.0s · reuse saved reply 2.0s · apply 232.8s · verify 55.0s · total 329.4s
 
 ## Overview
 
@@ -502,8 +502,8 @@ A person evaluates this version of `sands_remediated.pdf` with PAC 2026 and a sc
 - PAC 2026: WCAG Check: PAC 2026's WCAG check on this version of the PDF. Anything it fails that the report does not list is a gap in the automated checks.
 - Title and Language: The title shown in the window is the book's title, and the document language is the book's main language.
 - Spot-Check of Pages: A few pages compared with the original in PAC's structure preview: headings, lists, tables and figures as printed.
-- Colour Alone: No information is given by colour alone (WCAG 1.4.1).
-- Contrast: Text over images and coloured backgrounds has enough contrast (WCAG 1.4.3; PAC's contrast checker).
+- Color Alone: No information is given by color alone (WCAG 1.4.1).
+- Contrast: Text over images and colored backgrounds has enough contrast (WCAG 1.4.3; PAC's contrast checker).
 - Images of Text: No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).
 - What Needs a Person: Every item the report lists under "For a Person to Check" was looked at.
 
