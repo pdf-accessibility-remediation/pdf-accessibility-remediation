@@ -111,6 +111,40 @@ def test_an_earlier_version_is_listed_named_and_described_as_earlier(tmp_path):
     assert [x['id'] for x in DL.versions(R, rec)] == ['current']
     with pytest.raises(DL.Refused): DL.prepare(R, 'r', '001', 'pdf')
 
+def test_a_failure_after_opening_closes_every_handle(tmp_path, monkeypatch):
+    """prepare() opened the PDF and han_review.csv, then a later step failed: both are closed before the error goes on (35)."""
+    import builtins
+    R = make_run(str(tmp_path / 'r'), record_sha=True)
+    open(os.path.join(R, 'han_review.csv'), 'w').write('pdf_page,text\n1,漢\n')
+    opened = []
+    def tracking(*a, **k):
+        f = builtins.open(*a, **k)
+        if 'b' in (a[1] if len(a) > 1 else k.get('mode', 'r')): opened.append(f)
+        return f
+    monkeypatch.setattr(DL, 'open', tracking, raising=False)                     # the module's open(): its own lookups only
+    def boom(rec): raise RuntimeError('a later step failed')
+    monkeypatch.setattr(MP, 'book', boom)                                         # after both files are open
+    with pytest.raises(RuntimeError, match='a later step failed'): DL.prepare(R, 'r', 'current', 'record')
+    assert {os.path.basename(f.name) for f in opened} == {'clans_remediated.pdf', 'han_review.csv'}
+    assert all(f.closed for f in opened)
+
+@pytest.mark.parametrize('name', ['../outside.pdf', 'a/b.pdf', 'a\\b.pdf', '..pdf', '.hidden.pdf', 'bad\nname.pdf', ''])
+def test_a_pdf_name_that_is_not_a_plain_file_name_is_refused(tmp_path, name):
+    """A hand-edited record.json never makes a ZIP entry or a path outside its folder (35): the current version is refused
+    in plain words, before its file is looked at; a previous version or a shipped copy with such a name is not offered."""
+    R = make_run(str(tmp_path / 'r'), record_sha=True)
+    open(os.path.join(str(tmp_path), 'outside.pdf'), 'wb').write(open(os.path.join(R, 'clans_remediated.pdf'), 'rb').read())
+    assert not DL.plain_name(name) and DL.plain_name('clans_remediated.pdf') and DL.plain_name('Kū ʻĀina_remediated.pdf')
+    rec = core.load(os.path.join(R, 'record.json')); rec['document']['output'] = name; core.save(os.path.join(R, 'record.json'), rec)
+    for what in ('pdf', 'record'):
+        with pytest.raises(DL.Refused) as e: DL.prepare(R, 'r', 'current', what)
+        assert e.value.args[0] == DL.BAD_NAME and 'record.json' not in DL.BAD_NAME
+    rec['document']['output'] = 'clans_remediated.pdf'; core.save(os.path.join(R, 'record.json'), rec)
+    V = add_version(R)
+    vrec = core.load(os.path.join(V, 'record.json')); vrec['document']['output'] = name; core.save(os.path.join(V, 'record.json'), vrec)
+    assert [x['id'] for x in DL.versions(R, rec)] == ['current']                 # not offered
+    with pytest.raises(DL.Refused): DL.prepare(R, 'r', '001', 'record')
+
 def test_a_promotion_during_a_download_never_mixes_two_versions(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
     old_pdf = open(os.path.join(R, 'clans_remediated.pdf'), 'rb').read()

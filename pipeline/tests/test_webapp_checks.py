@@ -64,7 +64,7 @@ def js(port, method, path, body=None):
 
 def visible(page):
     """The page's text as a person sees it: no tags, no JSON data block."""
-    page = re.sub(r'<script[^>]*>.*?</script>', '', page, flags=re.S)
+    page = re.sub(r'<script[^>]*>.*?</script>', '', page, flags=re.S | re.I)
     return re.sub(r'<[^>]+>', ' ', page)
 
 # ------------------------------------------------------------------ serving

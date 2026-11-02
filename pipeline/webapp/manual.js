@@ -137,7 +137,7 @@ for (const [key, cfg] of Object.entries(D.sections)) {
       const [c, r] = await post(API + '/checks/record', { section: key, data: sec.collect(), shown_sha256: D.sha, draft_saved_at: sec.saved_at });
       if (c === 200) {
         store.del(sec.ls); sec.dirty = false; sec.unsaved = false; leaving = true;
-        location.replace(D.base + 'checks?recorded=' + encodeURIComponent(key) + '#mc-msg'); return;
+        location.replace('checks?recorded=' + encodeURIComponent(key) + '#mc-msg'); return;   // this page's own address (35)
       }
       if (c === 400 && r.errors) showErrors(r.errors);
       else { showErrors([], r.error || 'The app refused this.'); alarm(r.error || 'The app refused this.'); }
