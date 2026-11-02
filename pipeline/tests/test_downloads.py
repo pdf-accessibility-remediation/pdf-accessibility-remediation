@@ -59,7 +59,10 @@ def test_the_pdf_and_the_record_zip(mapp):
     pdf = z.getinfo(f'{folder}/clans_remediated.pdf')
     assert pdf.compress_type == zipfile.ZIP_STORED and z.read(pdf) == open(os.path.join(R, 'clans_remediated.pdf'), 'rb').read()
     rd = z.read(f'{folder}/READ-ME.txt').decode()
-    assert f'The fingerprint of clans_remediated.pdf, which identifies this exact file (sha256): {sha}' in rd and 'Status: Not Ready · 1 issue noted' in rd
+    assert sha not in rd and 'sha256' not in rd and 'Status: Not Ready · 1 issue noted' in rd             # no hash line (Patrick, 2026-11-01)
+    assert rd.split('\n')[1] == 'Source PDF Filename: clans.pdf'
+    assert ('- review.html: the report on this version (what was changed, what was checked, and the results of the accessibility '
+            'evaluation). Open it in a web browser.') in rd
     assert 'Accessibility evaluation results recorded on this file: 1 (in review.html)' in rd and 'evaluation-results.json' not in rd
     assert ('This folder holds:\n- clans_remediated.pdf: the remediated PDF of this version.\n- review.html: the report on this version' in rd
             and '- READ-ME.txt: this file.' in rd and 'review.md' not in rd)
@@ -121,8 +124,7 @@ def test_a_promotion_during_a_download_never_mixes_two_versions(tmp_path):
     z = zipfile.ZipFile(buf); f = d['folder']
     page = z.read(f'{f}/review.html').decode()
     assert z.read(f'{f}/clans_remediated.pdf') == old_pdf and 'the old page' in page and 'the new page' not in page
-    import hashlib
-    assert hashlib.sha256(old_pdf).hexdigest() in z.read(f'{f}/READ-ME.txt').decode()
+    assert 'Version: the current version' in z.read(f'{f}/READ-ME.txt').decode()        # the read-me of the version opened
 
 # ------------------------------------------------------------------ "Available Downloads" on both pages (K6; Patrick, 2026-11-01)
 def test_the_evaluation_page_offers_the_downloads_and_no_file_check(tmp_path):
@@ -178,3 +180,30 @@ def test_the_download_not_available_page_has_a_working_skip_link():
     i, j = page.index(W.SKIP), page.index('<main id="main" tabindex="-1">')
     assert 'href="#main"' in W.SKIP and i < j and '<h1>Download Not Available</h1>' in page and 'Back to the Run Page' in page
     assert "can&#x27;t be downloaded" in page and '.pdf' not in page.split('<main')[1]
+
+
+def test_the_readme_gives_the_run_details_in_plain_words():
+    """Patrick, 2026-11-01: the read-me's run details for staff, from the version's own record; a reused reply gives the
+    original call's cost (lib/origin.py); nothing missing prints as None."""
+    rec = {'document': {'file': 'expedition.pdf', 'pages': 437},
+           'run': {'started': '2026-10-26T06:48:36', 'model': 'anthropic/claude-sonnet-5.5', 'prompt_file': 'workorder_v9.md', 'response_from': 'x',
+                   'original_call': {'cost_usd': 0.255874, 'model': 'anthropic/claude-sonnet-5.5', 'prompt_file': 'workorder_v8.md', 'date': '2026-10-26T00:30:47'}},
+           'cost_total_usd': 0,
+           'intake': {'status': 'done', 'triage': {'counts': {'image-only': 6, 'text': 430}}, 'tag_tree': {'status': 'untagged'}, 'result': {'pdf': '_intake/intake.pdf'}},
+           'timing_seconds': {'apply': 57.3, 'verify': 124.6},
+           'environment': {'python': '3.13.9', 'executable': '/x/python3', 'pikepdf': '10.5.1', 'pdfplumber': '0.11.9', 'pypdfium2': '5.7.1', 'pillow': '13.0.0', 'fonttools': '4.62.1'}}
+    L = DL.about_lines(rec)
+    assert L[0] == 'Pages: 437' and L[1].startswith('Remediated: October 26, 2026')
+    assert L[2] == 'AI model: anthropic/claude-sonnet-5.5 · Instructions: workorder_v8'      # the original call's, not today's prompt
+    assert L[3] == 'AI cost: $0.256, from the original call on October 26, 2026 · Cost per page: $0.0006'
+    assert L[4] == 'Before remediation: 6 pages are pictures with no text layer; the PDF had no tags and was tagged automatically.'
+    assert L[5] == 'Processing time: 3 min 2 s'
+    assert L[6] == 'Software: Python 3.13.9, pikepdf 10.5.1, pdfplumber 0.11.9, pypdfium2 5.7.1, Pillow 13.0.0, fontTools 4.62.1'
+    bare = DL.about_lines({'run': {'response_from': 'hand-written.txt'}, 'raw_reply': '{}'})   # nothing recorded
+    assert bare == ['Pages: not counted', 'Remediated: not recorded', 'AI model: not recorded · Instructions: not recorded',
+                    'AI cost: not recorded · Cost per page: not recorded', 'Before remediation: the PDF was already tagged.',   # no intake: a tagged book
+                    'Processing time: not recorded', 'Software: not recorded']
+    assert DL._before({'intake': {'triage': {'counts': {'image-only': 1}}, 'ocr': {'pages_with_ocr_text': [1]}, 'tag_tree': {'status': 'placeholder'},
+                                  'result': {'pdf': 'x'}}}) == ("1 page is a picture with no text layer (character recognition added text to 1); "
+                                                                "the PDF's tags held no text structure, so it was tagged again automatically.")
+    assert DL._before({}) == 'the PDF was already tagged.'

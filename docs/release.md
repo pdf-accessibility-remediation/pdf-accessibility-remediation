@@ -296,12 +296,27 @@ then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
   - han_review.csv, when the book has one (review.html sends staff to it): the read-me calls it "passages in Chinese
     or Japanese a person needs to check, as a spreadsheet";
   - `accessibility-statement.html`, once that file has shipped;
-  - `READ-ME.txt`, in plain words: the version, its status (for an earlier version: "earlier version", naming the
-    current one), each shipment of that file ("Shipment 1, shipped on November 1, 2026 by Patrick", "Published at: …"
-    when given, "Withdrawn on … by …: …" for a withdrawn one), the number of evaluation results recorded on it, what
-    each file is, the PDF's fingerprint in one sentence ("The fingerprint of …, which identifies this exact file
-    (sha256): …"), "automated checks are evidence, not legal sign-off" and "the evaluation is a record of what a person
-    found, not a legal certification".
+  - `READ-ME.txt`, in plain words: the title and "Source PDF Filename: …" (the original PDF's name), the version, its
+    status (for an earlier version: "earlier version", naming the current one), each shipment of that file ("Shipment
+    1, shipped on November 1, 2026 by Patrick", "Published at: …" when given, "Withdrawn on … by …: …" for a withdrawn
+    one), the number of evaluation results recorded on it, the run details of that version's own record (a shipped
+    copy's from its folder's record.json, never zipped), what each file is, "automated checks are evidence, not legal
+    sign-off" and "the evaluation is a record of what a person found, not a legal certification". No hash. The run
+    details read, for example:
+
+    ```
+    Pages: 437
+    Remediated: October 26, 2026, at 6:48 AM
+    AI model: anthropic/claude-sonnet-5.5 · Instructions: workorder_v8
+    AI cost: $0.256, from the original call on October 26, 2026 · Cost per page: $0.0006
+    Before remediation: 6 pages are pictures with no text layer; the PDF had no tags and was tagged automatically.
+    Processing time: 3 min 2 s
+    Software: Python 3.13.9, pikepdf 10.5.1, pdfplumber 0.11.9, pypdfium2 5.7.1, Pillow 13.0.0, fontTools 4.62.1
+    ```
+
+    The AI cost is always the call's real cost: for a reused reply, the original call's (`lib/origin.py`); "not
+    recorded" only when none is kept anywhere. A tagged book, which skips intake, reads "Before remediation: the PDF was
+    already tagged."; a missing value reads "not recorded".
 
   Never review.md, `evaluation-results.json` or the statement's `.md`: they stay in the run folder and
   in `release/shipped/NNN/`, which keep their full set. Never record.json (it holds the AI's raw reply), digests, crops,
@@ -317,7 +332,8 @@ then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
   stop a download.
 
 "Which Version Is This File?" (a PDF hashed in the browser and named as a version) was removed from the evaluation page
-(Patrick, 2026-11-01). A file's sha256 can still be compared by hand with the fingerprint in its record ZIP's READ-ME.txt.
+(Patrick, 2026-11-01). A file's sha256 is in its record (`document.output_sha256`) and its shipped folder's READ-ME.txt; the
+ZIP's read-me no longer gives it (Patrick, 2026-11-01).
 
 ## Clean Up Space
 

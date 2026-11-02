@@ -32,6 +32,7 @@ from lib.glance import WCAG_NAMES
 from lib import glance as G0
 from lib import dates as DT
 from lib import readorder
+from lib import origin
 
 COUNT_WORDS = {'accepted_unreviewed': 'accepted without review'}   # the stored key stays; these are review.html's and the review page's words
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
@@ -109,6 +110,11 @@ record = {
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),
     **({'workorder_ai': wo_ai} if rv and wo_ai is not None else {}),
 }
+# the AI call behind the work order (sponsor checklist 11.5): a reused reply carries the original call's cost, model, prompt
+# and date, kept in run.original_call so a later re-apply still has it; this run's own spending stays cost_total_usd
+_oc = origin.of_record(record)
+if _oc and run.get('response_from') and not run.get('original_call'): run['original_call'] = _oc
+record['ai_call'] = origin.summary(record)
 # the remediated PDF's own sha256 (a re-apply hashes its new file here, never copies the old record's): every manual
 # check and shipment (release/, lib/release.py) counts only for the file with that hash. release/ is the run folder's: the
 # re-apply's own (--from-record's folder), else this one.
@@ -388,11 +394,13 @@ checks = [
      ' · '.join(f'{len(wc["headings"][k])} {k}' for k in ('empty', 'long', 'repeated')) if wc else 'not checked'),
 ]
 u = run.get('usage') or {}
+ai = record['ai_call']; mp = run.get('original_call') or run           # a reused reply: the model and prompt of the call that wrote it
 L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '', f'Result: `{PDF}`', '',
      f'{nc(src.get("pages"))} pages · run {DT.when(run.get("started"), "start time not recorded")} · '
-     + (f'model `{run["model"]}`' if run.get('model') else 'model not recorded') + ' · '
-     + (f'prompt `{run["prompt_file"]}` ({run.get("prompt_sha256") or "hash not recorded"})' if run.get('prompt_file') else 'prompt not recorded') + ' · '
-     + (f'cost ${u["cost_usd"]}' if u.get('cost_usd') is not None else 'cost $0 (saved reply reused, no new call)' if run.get('response_from') else 'cost: call did not finish') + ' · '
+     + (f'model `{mp["model"]}`' if mp.get('model') else 'model not recorded') + ' · '
+     + (f'prompt `{mp["prompt_file"]}` ({mp.get("prompt_sha256") or "hash not recorded"})' if mp.get('prompt_file') else 'prompt not recorded') + ' · '
+     + (f'AI cost {origin.words(ai)[0]} · this run: no new call' if run.get('response_from')
+        else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: call did not finish') + ' · '
      + (f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None
         else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: call did not finish')
      + (f' · plus ${cost_earlier:.3f} for {len(attempts)} earlier call(s) whose reply was cut off or unusable (total ${cost_this + cost_earlier:.3f})' if attempts else ''), '',

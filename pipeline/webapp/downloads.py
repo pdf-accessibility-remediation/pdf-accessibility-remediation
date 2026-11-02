@@ -111,9 +111,11 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
             vs = versions(R, rec, g)
             ver = next((x for x in vs if x['id'] == v), None)
             if ver is None: raise Refused(None)                          # not one of the run's own versions
+            about = None
             if ver.get('shipment'):                                      # a shipped copy: its folder's own files (never its record.json)
                 if MP.disk_sha(ver['pdf']) != ver['sha']: raise Refused(SHIPPED_CHANGED)
                 vrec = {'document': {'output': (ver['entry'].get('pdf') or {}).get('file')}}
+                about = S.load(os.path.join(ver['dir'], 'record.json')) or {}   # its run details for the read-me (never zipped)
             elif ver['id'] == 'current':
                 disk = MP.disk_state(R, rec)
                 if disk['missing']: raise Refused(MISSING)
@@ -146,7 +148,8 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
             return {'name': zip_name, 'ctype': 'application/zip', 'members': members, 'folder': zip_name[:-4], 'rel': rel, 'version': ver,
                     'shipments': [s for s in rel.get('shipped') or [] if REL.sha_of(s) == ver['sha']],
                     'pdf_name': out, 'book': book, 'cur_label': cur_label,
-                    'applied': MP.version(R, rec)['when'] if ver['id'] == 'current' else _applied(R, ver['id'], vrec)}
+                    'applied': MP.version(R, rec)['when'] if ver['id'] == 'current' else _applied(R, ver['id'], vrec),
+                    'about': about if ver.get('shipment') else vrec}
     except runlock.Busy as e: raise Refused(str(e))
 
 def _applied(R, vid, vrec):
@@ -177,17 +180,63 @@ class _Out:
     def flush(self): self.w.flush()
 
 HAN_WORDS = 'han_review.csv: passages in Chinese or Japanese a person needs to check, as a spreadsheet.'   # Patrick, 2026-11-01
-FILE_WORDS = {'review.html': 'review.html: the report on this version (what was changed, what was checked, and the accessibility '
-                              'evaluation\'s results). Open it in a web browser.',
+FILE_WORDS = {'review.html': 'review.html: the report on this version (what was changed, what was checked, and the results of the '
+                              'accessibility evaluation). Open it in a web browser.',
               'han_review.csv': HAN_WORDS,
               REL.STATEMENT_HTML: f'{REL.STATEMENT_HTML}: the accessibility statement written when this version was shipped. '
                                   'Open it in a web browser.',
               'READ-ME.txt': 'READ-ME.txt: this file.'}
 
+SOFTWARE = (('python', 'Python'), ('pikepdf', 'pikepdf'), ('pdfplumber', 'pdfplumber'), ('pypdfium2', 'pypdfium2'), ('pillow', 'Pillow'),
+            ('fonttools', 'fontTools'))
+
+def _duration(s):
+    """3 min 15 s, 45 s, 1 h 2 min."""
+    s = int(round(s))
+    if s < 60: return f'{s} s'
+    if s < 3600: return f'{s // 60} min {s % 60} s'
+    return f'{s // 3600} h {s % 3600 // 60} min'
+
+def _before(rec):
+    """The original PDF before remediation, in plain words (intake's page test and tag check), or None when not recorded."""
+    i = rec.get('intake') or {}
+    parts = []
+    n = ((i.get('triage') or {}).get('counts') or {}).get('image-only') or 0
+    ocr = len((i.get('ocr') or {}).get('pages_with_ocr_text') or [])
+    if n: parts.append((f'{n} pages are pictures' if n != 1 else '1 page is a picture') + ' with no text layer'
+                       + (f' (character recognition added text to {ocr})' if ocr else ''))
+    ts = (i.get('tag_tree') or {}).get('status') or i.get('tag_tree_status')
+    tagged_now = bool((i.get('result') or {}).get('pdf'))
+    if ts == 'untagged': parts.append('the PDF had no tags' + (' and was tagged automatically' if tagged_now else ''))
+    elif ts == 'placeholder': parts.append('the PDF\'s tags held no text structure' + (', so it was tagged again automatically' if tagged_now else ''))
+    elif not i: parts.append('the PDF was already tagged')
+    return '; '.join(parts) + '.' if parts else None
+
+def about_lines(rec):
+    """The run details of a version's own record, for staff: pages, when it was remediated, the AI call (the original one for a
+    reused reply: lib/origin.py), the PDF before remediation, the processing time and the software. No hashes or file names."""
+    from lib import origin
+    run = rec.get('run') or {}; doc = rec.get('document') or {}
+    ai = origin.summary(rec); cost, model = origin.words(ai)
+    if ai.get('cost_usd') is not None:
+        cost = origin.money(ai['cost_usd']) + (f', from the original call on {D.day(ai["date"])}' if ai.get('reused') and ai.get('date') else '')
+    per = origin.money(ai['cost_per_page_usd']) if ai.get('cost_per_page_usd') is not None else 'not recorded'
+    t = sum(v for v in (rec.get('timing_seconds') or {}).values() if isinstance(v, (int, float)))
+    env = rec.get('environment') or {}
+    soft = ', '.join(f'{name} {env[k]}' for k, name in SOFTWARE if env.get(k))
+    before = _before(rec)
+    return ([f'Pages: {doc["pages"]}' if doc.get('pages') else 'Pages: not counted',
+             f'Remediated: {D.when(run.get("started"), "not recorded")}',
+             f'AI model: {model}',
+             f'AI cost: {cost} · Cost per page: {per}']
+            + ([f'Before remediation: {before}'] if before else [])
+            + [f'Processing time: {_duration(t)}' if t else 'Processing time: not recorded',
+               f'Software: {soft}' if soft else 'Software: not recorded'])
+
 def _readme(d, sha):
-    """READ-ME.txt in plain words for library staff (Patrick, 2026-11-01): the version, its status, its shipments (21 §B:
-    "Shipment 1, shipped on … by …", "Published at: …", "Withdrawn on … by …: …"), what each file is, and the PDF's
-    fingerprint in one plain sentence."""
+    """READ-ME.txt in plain words for library staff (Patrick, 2026-11-01): the source PDF's name, the version, its status,
+    its shipments (21 §B: "Shipment 1, shipped on … by …", "Published at: …", "Withdrawn on … by …: …"), the run details
+    (about_lines) and what each file is. No hash: staff never compare one by hand (Patrick, 2026-11-01)."""
     ver = d['version']
     if ver['id'] == 'current':
         vline = f'Version: the current version ({_version_label(ver["session"]) if ver["session"] else "applied without a review"})' + (f', {d["applied"]}' if d.get('applied') else '')
@@ -201,11 +250,12 @@ def _readme(d, sha):
     ships = [ver['entry']] if ver.get('shipment') else d.get('shipments') or []
     n = sum(1 for s in REL.SECTIONS for c in d['rel']['checks'].get(s) or [] if REL.sha_of(c) == sha)
     files = [f'{d["pdf_name"]}: the remediated PDF of this version.'] + [FILE_WORDS[m[0]] for m in d['members'][1:]] + [FILE_WORDS['READ-ME.txt']]
-    return '\n'.join([d['book'], '', vline, status] + [x for s in ships for x in REL.shipment_lines(s)]
-                      + [f'Accessibility evaluation results recorded on this file: {n}' + (' (in review.html)' if n else ''), '',
-                         'This folder holds:'] + ['- ' + x for x in files]
-                      + ['', f'The fingerprint of {d["pdf_name"]}, which identifies this exact file (sha256): {sha}', '',
-                         'Automated checks are evidence, not legal sign-off.',
+    about = d.get('about') or {}
+    src = (about.get('document') or {}).get('file')
+    return '\n'.join([d['book'], f'Source PDF Filename: {src or "not recorded"}', '', vline, status] + [x for s in ships for x in REL.shipment_lines(s)]
+                      + [f'Accessibility evaluation results recorded on this file: {n}' + (' (in review.html)' if n else ''), '']
+                      + about_lines(about) + ['', 'This folder holds:'] + ['- ' + x for x in files]
+                      + ['', 'Automated checks are evidence, not legal sign-off.',
                          'The evaluation is a record of what a person found, not a legal certification.', '',
                          f'Downloaded on {D.when(datetime.datetime.now().isoformat(timespec="seconds"))}.', ''])
 
