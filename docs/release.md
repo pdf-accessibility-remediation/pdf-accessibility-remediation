@@ -24,6 +24,9 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
 
 ## The Accessibility Evaluation page (in the app)
 
+The page's heading is **Accessibility Evaluation (PAC 2026 & Screen-Reader Test)**, as on the run page's strip (Patrick,
+2026-11-01).
+
 - **Opening it:** the run page has a strip right after "Ready to Ship?", headed **Accessibility Evaluation (PAC 2026 &
   Screen-Reader Test)**, with a **Complete Evaluation** button, "Mark as Shipped" when it is offered, and "Available
   Downloads" (below). The card above it says each requirement, so the strip has no line per part and does not repeat
@@ -271,7 +274,9 @@ and including its re-mirror (`lib/runlock.py`).
 Any version of the book can be downloaded at any time, ready or not, from **Available Downloads**: on the run page's
 strip (under "Complete Evaluation") and on the evaluation page, laid out the same on both: the heading, the list under
 it (the heading is the list's label), the line saying how the chosen version's files are marked (the list's description),
-then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row.
+then **Download the Remediated PDF** and **Download the Record (ZIP)** in a row. The list's arrow is drawn by the app's
+stylesheet, centered on the list's height in the page's text color (the browser's own sat high); with forced colors
+(Windows High Contrast) the browser's own list comes back.
 
 - **The list** holds the current version and each previous result whose PDF still exists. It decides which version the
   two buttons give. It never changes what the evaluation records: the evaluation is always for the current version. The

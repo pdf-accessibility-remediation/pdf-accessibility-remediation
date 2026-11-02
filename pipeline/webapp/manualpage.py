@@ -346,7 +346,7 @@ def page(R, run, recorded=None):
     msg = message(st, recorded) if recorded in REL.SECTIONS else None
     b = st['book']; lang = f' lang="{E(b["lang"])}"' if b['lang'] else ''
     ready = st['ready']; why = [x for x in ready['lines'] if not x['ok']]
-    B = [f'<header><h1>Accessibility Evaluation</h1><p class="mc-book">PDF Title: <span{lang}>{E(b["title"])}</span></p></header>',
+    B = [f'<header><h1>Accessibility Evaluation (PAC 2026 &amp; Screen-Reader Test)</h1><p class="mc-book">PDF Title: <span{lang}>{E(b["title"])}</span></p></header>',
          f'<nav class="pp-wrap" aria-label="This page"><p class="pp pp-bar mc-nav"><a class="pp-btn" href="{E(st["base"])}">Back to the Run Page</a></p></nav>',
          '<main id="main" tabindex="-1"><div class="pp mc">',
          f'<p class="mc-status">Overall Status: <strong>{E(st["status"])}</strong>' + (f' · {E(st["newer"])}' if st.get('newer') else '')   # right after "Back to the Run Page" (Patrick, 2026-11-01)

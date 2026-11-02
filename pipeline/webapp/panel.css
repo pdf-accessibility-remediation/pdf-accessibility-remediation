@@ -119,7 +119,13 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 /* "Available Downloads" (stage 3), the same on the strip and the evaluation page: the heading (the select's label), the
    select, the "marked" line, the buttons; the select full width on a narrow screen */
 .pp-dl { margin: 10px 0 0; } .pp-dl select { display: block; font: inherit; font-size: 14px; min-height: 32px; max-width: 100%; margin: 2px 0;
-  padding: 3px 8px; color: var(--ink); background: var(--panel); border: 1px solid var(--muted); border-radius: 4px; }   /* the panel's own look on both pages */
+  padding: 3px 30px 3px 8px; color: var(--ink); background-color: var(--panel); border: 1px solid var(--muted); border-radius: 4px; }   /* the panel's own look on both pages */
+/* its arrow drawn here, centered on the select's height (the browser's own sat high in a 32px select; Patrick, 2026-11-01):
+   two triangles in the text colour, so it follows the light and dark themes; forced colors get the browser's own back */
+.pp-dl select { -webkit-appearance: none; appearance: none; background-repeat: no-repeat; background-size: 5px 5px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%), linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; }
+@media (forced-colors: active) { .pp-dl select { -webkit-appearance: auto; appearance: auto; background-image: none; padding-right: 8px; } }
 .pp-checks .pp-dl h3, .pp-checks .pp-dl h4 { font-size: 15px; margin: 12px 0 4px; }   /* under the strip's own 15px heading */
 @media (max-width: 600px) { .pp-dl select { width: 100%; } }
 
