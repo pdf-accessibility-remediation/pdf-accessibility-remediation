@@ -66,17 +66,19 @@ write_summary() {
   WALL=$(python3 -c "print($(now)-$T0)"); CREDIT=$(python3 decide.py --credit 2>/dev/null || true)
 python3 - "$B/books.tsv" "$B/todo.tsv" "$B" "$LABEL" "$WALL" "$CREDIT" "$AGAIN" "$STARTED" "${MAX_TOKENS:-}" <<'PY'
 import sys, json, os, collections
+from lib import origin                                   # the AI call's real cost per page, also for a reused reply (11.5)
 books, todo, B, label, wall, credit, again, started, cur_mt = sys.argv[1:10]; wall = float(wall)
 rate_limited = False
 def fmt(s): return f'{s:.0f}s' if s < 60 else f'{int(s // 60)}m {s % 60:02.0f}s'
 def load(p): return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else None
 ran = {l.split('\t')[0] for l in open(todo)}             # books run by this command (the others finished earlier)
-L = [f'# Batch {label}', '', '| Book | Status | Intake | Pages | API cost | $/page | Time | Checks flagged | WCAG rules (veraPDF) | Result |', '|---|---|---|---:|---:|---:|---:|---:|---|---|']
+L = [f'# Batch {label}', '', '| Book | Status | Intake | Pages | API cost | AI call $/page | Time | Checks flagged | WCAG rules (veraPDF) | Result |', '|---|---|---|---:|---:|---:|---:|---:|---|---|']
 done_pages = 0
 def intake_of(R):
     j = load(os.path.join(R, '_intake', 'intake.json')) or {}
     return j, (j.get('summary') or ('not run' if not j else j.get('status') or 'not recorded')).replace('|', '/')
 total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; flagged = []; cut_at = []
+call_cost = 0.0; call_pages = 0                       # the AI calls' own cost (the original call's for a reused reply)
 models, prompts, runs_at = collections.Counter(), collections.Counter(), []
 for line in open(books):
     name = line.split('\t')[0]; R = os.path.join(B, name); n += 1
@@ -119,6 +121,9 @@ for line in open(books):
     rv = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
     checks = sum(1 for l in rv.splitlines() if l.startswith('|') and '**CHECK**' in l)
     pages = rec['document']['pages'] or 0; done_pages += pages
+    ai = origin.summary(rec)
+    if ai['cost_usd'] is not None and pages: call_cost += ai['cost_usd']; call_pages += pages
+    per_page = origin.money(ai['cost_per_page_usd']) if ai['cost_per_page_usd'] is not None else 'not recorded'
     vb, va = ((rec.get('verapdf') or {}).get(k) or {} for k in ('before', 'after'))
     if vb.get('rules') is not None and va.get('rules') is not None:          # WCAG rules only
         wb, wa = ([r for r in v['rules'] if r.get('scope') == 'wcag'] for v in (vb, va))
@@ -126,7 +131,7 @@ for line in open(books):
         ua = f'{len(wb)} → {len(wa)}' + (f' (**{new_} new**)' if new_ else '')
     else: ua = 'not run'
     dash = f' · [dashboard]({name}/review.html)' if os.path.exists(os.path.join(R, 'review.html')) else ''
-    L.append(f'| {name} | done | {intake} | {pages} | {cost} | ${(this + earlier) / max(pages, 1):.4f} | {fmt(t)} | {checks} | {ua} | `{name}/{rec["document"].get("output") or ""}`{dash} |')
+    L.append(f'| {name} | done | {intake} | {pages} | {cost} | {per_page} | {fmt(t)} | {checks} | {ua} | `{name}/{rec["document"].get("output") or ""}`{dash} |')
 def each_(c): return ', '.join(f'{k}' + (f' ×{v}' if len(c) > 1 else '') for k, v in c.items()) or 'not recorded'
 span = sorted({r[:16].replace('T', ' ') for r in runs_at})
 L[1:1] = ['', f'Batch started {started}' + (f' (books run from {span[0]} to {span[-1]})' if len(span) > 1 else '')
@@ -134,7 +139,8 @@ L[1:1] = ['', f'Batch started {started}' + (f' (books run from {span[0]} to {spa
           + f' · prompt {each_(prompts)}', '', '[Open the batch dashboard](summary.html): ready to ship, needs a person and veraPDF per book, sortable']
 L += ['', f'{done} of {n} books done' + (f' · {len(flagged)} flagged at intake (not sent)' if flagged else '')
       + f' · API cost ${total:.3f}' + (f' (includes ${wasted:.3f} for replies that were cut off)' if wasted else '')
-      + (f' · ${total / done_pages:.4f} per page over {done_pages:,} pages' if done_pages else '') + f' · wall time {fmt(wall)}', '']
+      + (f' · AI calls {origin.money(call_cost / call_pages)} per page over {call_pages:,} pages (the original call\'s cost for a reused reply)' if call_pages else '')
+      + f' · wall time {fmt(wall)}', '']
 # OpenRouter's balance can lag behind new calls, so also work it out: credit seen before the calls minus what they cost
 live = float(credit.split()[0]) if credit.strip() else None
 worked = max(starts) - new_spend if starts else None
@@ -253,7 +259,7 @@ if [[ -n ${FROM:-} ]]; then
   python3 - "$B/todo.tsv" "$RUNS_DIR" "$FROM" "$B" <<'PY' || exit 1
 import sys, json, os, math
 import shutil
-from lib import ocrwords
+from lib import ocrwords, origin
 books, runs, src, B = sys.argv[1:5]; bad = []
 for line in open(books):
     name = line.split('\t')[0]
@@ -268,7 +274,8 @@ for line in open(books):
             if os.path.exists(os.path.join(old_in, f)): shutil.copyfile(os.path.join(old_in, f), os.path.join(new_in, f))
     open(os.path.join(B, f'{name}.reply.txt'), 'w', encoding='utf-8').write(r['raw_reply'])
     json.dump({**{k: r['run'][k] for k in ('model', 'temperature') if k in r['run']},      # the new record keeps the original's
-               **ocrwords.carried(r['run'])},      # the OCR-word list the reply was written for (never the one it was replayed against)
+               **ocrwords.carried(r['run']),       # the OCR-word list the reply was written for (never the one it was replayed against)
+               **origin.carried(r)},               # the original call's cost, model, prompt and date (sponsor checklist 11.5)
               open(os.path.join(B, f'{name}.reply.txt.meta.json'), 'w'))
 if bad: sys.exit(f'stopped: no saved reply under {src} for {", ".join(bad)}')
 print('  saved replies found for every book')

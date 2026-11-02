@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import glance as G  # noqa: E402
 from lib import dates as D  # noqa: E402
 from lib import sections as S  # noqa: E402
+from lib import origin  # noqa: E402
 from lib.titles import title_case as TC  # noqa: E402   (headings, toggles, column headers, card titles: Title Case)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -517,10 +518,12 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
         f = _plain(f)
         return next((iid for iid, raw in b['items'] if f in _plain(raw)), None)
 
+    ai = origin.summary(rec, None); mp = run.get('original_call') or (ai if run.get('response_from') else run)   # 11.5: the call that wrote the reply
     B = [f'<header class="top"><h1>Review: {E(book)}</h1><div class="meta">'
          + ' · '.join(E(x) for x in [f'run {"/".join(os.path.normpath((rec.get("review") or {}).get("run") or R).split(os.sep)[-2:])}', f'{doc.get("pages") or "pages not counted"} pages',
-                                      f'model {run.get("model") or "not recorded"}', f'prompt {run.get("prompt_file") or "not recorded"}',
-                                      f'cost ${rec.get("cost_total_usd"):.3f}' if rec.get('cost_total_usd') is not None else 'cost: call did not finish',
+                                      f'model {mp.get("model") or run.get("model") or "not recorded"}', f'prompt {mp.get("prompt_file") or "not recorded"}',
+                                      (f'AI cost {origin.words(ai)[0]} · this run: no new call' if run.get('response_from')
+                                       else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: call did not finish'),
                                       f'run {D.when(run.get("started"), "start time not recorded")}'])
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus
     # ---- ready to ship
@@ -881,7 +884,7 @@ def _summary_html(Bdir):
                          'ai': g['ai_decisions']['count'], 'reviewed': g['ship'][0]['ok'], 'safety': safety_state(g),
                          'status': (g.get('status') or {}).get('text') or ('Ready' if g['ready'] else 'Not Ready'), 'st': (g.get('status') or {}).get('name'),
                          'vb': vg.get('before_rules'), 'va': vg.get('after_rules'), 'new': len(vg.get('newly_failing') or []),
-                         'cost': rec.get('cost_total_usd'), 'pages': (rec.get('document') or {}).get('pages')})
+                         'cost': origin.summary(rec)['cost_usd'], 'pages': (rec.get('document') or {}).get('pages')})   # the AI call's cost (11.5)
         elif os.path.exists(os.path.join(R, '_intake', 'intake.json')):
             ij = json.load(open(os.path.join(R, '_intake', 'intake.json'), encoding='utf-8'))
             rows.append({'name': name, 'done': False, 'status': f'{ij.get("status") or "not finished"}: {ij.get("summary") or ""}'})
@@ -898,7 +901,7 @@ def _summary_html(Bdir):
          '<p class="note">Sorted by "Needs a person", most work first. Automated checks are evidence, not sign-off.</p>',
          '<div class="tw"><table id="books"><thead><tr>' + ''.join(f'<th scope="col"{" class=\"num\"" if n else ""} data-k="{k}"{" aria-sort=\"descending\"" if k == "needs" else ""}>{E(t)}</th>'
                                                   for t, k, n in (('Book', 'name', 0), ('Status', 'status', 0), ('Needs a Person', 'needs', 1), ('AI Decisions', 'ai', 1),
-                                                                  ('Safety', 'safety', 0), ('veraPDF WCAG Rules', 'va', 1), ('Cost', 'cost', 1), ('Pages', 'pages', 1))) + '</tr></thead><tbody>']
+                                                                  ('Safety', 'safety', 0), ('veraPDF WCAG Rules', 'va', 1), ('AI Cost', 'cost', 1), ('Pages', 'pages', 1))) + '</tr></thead><tbody>']
     for r in rows:
         if not r['done']:
             B.append(f'<tr><td>{E(r["name"])}</td><td colspan="7">{E(r["status"])}</td></tr>'); continue
@@ -911,7 +914,8 @@ def _summary_html(Bdir):
                  f'{ {"ok": "OK", "failed": "Failed"}.get(r["safety"], "Not checked")}</span></td>'
                  f'<td class="num" data-v="{r["va"] if r["va"] is not None else -1}">' + (f'{r["vb"] if r["vb"] is not None else "–"} → {r["va"]}' if r['va'] is not None else 'not run')
                  + (f' <strong>({r["new"]} new)</strong>' if r['new'] else '') + '</td>'
-                 f'<td class="num" data-v="{r["cost"] or 0}">' + (f'${r["cost"]:.3f}' if r['cost'] is not None else 'call did not finish') + '</td>'
+                 f'<td class="num" data-v="{r["cost"] or 0}">' + (f'{origin.money(r["cost"])}<br><span class="note">{origin.money(r["cost"] / r["pages"])} per page</span>'
+                                                                   if r['cost'] is not None and r['pages'] else f'{origin.money(r["cost"])}' if r['cost'] is not None else 'not recorded') + '</td>'
                  f'<td class="num" data-v="{r["pages"] or 0}">{r["pages"] or "not counted"}</td></tr>')
     B.append('</tbody></table></div></main>')
     script = r"""

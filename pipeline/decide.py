@@ -224,8 +224,16 @@ if args.response_file:                             # a saved reply: no call, so 
             pr = json.load(open(prev, encoding='utf-8'))          # only a run.json from a call that was really sent
             kept = {k: v for k, v in pr.items() if k in ('model', 'temperature')} if pr.get('usage') and not pr.get('response_from') else {}
             if kept: sys.path.insert(0, HERE); from lib import ocrwords; kept.update(ocrwords.carried(pr))   # the OCR-word list it was written for
+            if kept and (pr.get('usage') or {}).get('cost_usd') is not None:   # that call's own cost, model, prompt and date
+                kept['original_call'] = {'cost_usd': pr['usage']['cost_usd'], 'model': pr.get('model'), 'prompt_file': pr.get('prompt_file'),
+                                         'prompt_sha256': pr.get('prompt_sha256'), 'date': pr.get('started')}
         except Exception: kept = {}
     reused = kept.get('model') or reused
+    # the original call behind the reply (sponsor checklist 11.5): from its meta, else a record beside the reply that made it
+    sys.path.insert(0, HERE); from lib import origin
+    try: oc = kept.get('original_call') or origin.find(args.response_file, open(args.response_file, encoding='utf-8').read(), os.getcwd())
+    except OSError: oc = None
+    if oc: run['original_call'] = oc
 try:
     models = get('https://openrouter.ai/api/v1/models')['data']
     if model.startswith('auto:'):
@@ -409,7 +417,9 @@ if not_sent:
     wo.setdefault('deferrals', []).append({'what': f'Alt text for {len(not_sent)} figures whose images were not sent (over the {args.max_images}-image limit)',
                                            'why': 'Claude could not see them; a person writes these alts. Objects: ' + ', '.join(sorted(not_sent))})
 wo['source'] = {'file': digest['source']['file'], 'sha256': digest['source']['sha256']}
-wo['decided_by'] = f'{model} via OpenRouter · prompt {run["prompt_file"]} ({run["prompt_sha256"]})'
+oc_ = run.get('original_call') or {}              # a reused reply names the call that wrote it, not today's prompt
+wo['decided_by'] = (f'{oc_.get("model") or model} via OpenRouter · prompt {oc_["prompt_file"]} ({oc_.get("prompt_sha256") or "hash not recorded"})'
+                    if oc_.get('prompt_file') else f'{model} via OpenRouter · prompt {run["prompt_file"]} ({run["prompt_sha256"]})')
 save('workorder.json', wo)
 save('validation.json', {'dropped': dropped,        # context: what review_workorder.py needs to check a reviewed work order the same way
                          'context': {'not_sent': sorted(not_sent), 'words_sent': sorted(words_sent)}})
