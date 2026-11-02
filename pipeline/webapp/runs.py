@@ -162,7 +162,12 @@ def result(R, j, v):
     if j['kind'] == 'ocr':
         got = ocr_recorded(R, j.get('started'))
         return 'closed' + when + (f'; OCR verdict recorded: {got}' if got else '; no verdict recorded')
+    if j.get('first') and j['kind'] == 'review':          # a waiting run's first review: Finish writes review.json
+        rv = load(os.path.join(R, 'review.json')) if R else None
+        return f'review finished ({(rv or {}).get("reviewer") or "reviewer not recorded"}{", " + at if at else ""}), not applied yet' \
+            if rv else 'closed without "Finish Review"' + when
     m = SESSION_IN.search(out if out else (v.get('interrupted') or {}).get('text', ''))
+    if not m and j.get('first') and j['kind'] == 'apply' and R and os.path.isfile(os.path.join(R, 'record.json')): m = SESSION_IN.search('session 1')
     if not m: return 'done' + when
     sid = f'{int(m.group(1)):03d}'
     who = ((S.session(R, sid) or {}).get('reviewer') if R else None) or 'reviewer not recorded'
@@ -273,6 +278,65 @@ def state(s, run, R):
         'batch': run.split('/')[1] if run.startswith('batches/') and len(run.split('/')) == 3 and
                  os.path.isfile(os.path.join(os.path.dirname(R), 'summary.html')) else None,
     }
+
+# ------------------------------------------------------------------ a run stopped for its first review (REVIEW=1)
+def waiting(R):
+    """A run run_api.sh stopped for its first review (REVIEW=1): the AI's decisions kept, nothing applied, no record yet."""
+    return not os.path.isfile(os.path.join(R, 'record.json')) and os.path.isfile(os.path.join(R, 'workorder.ai.json'))
+
+def first_original(s, R):
+    """(the original PDF, None) for a waiting run's first apply, or (None, refusal). The path run_api.sh kept at the stop
+    (review_stop.json) when it still holds the same file; else the file with the same sha256 in samples/ or uploads/."""
+    intake = load(os.path.join(R, '_intake', 'intake.json')) or {}
+    o = intake.get('original') or {}
+    sha, name = o.get('sha256'), o.get('file')
+    if not sha:                                          # intake off: the audit was made from the original itself
+        src = ((load(os.path.join(R, '_audit', 'digest.json')) or {}).get('source') or {})
+        sha, name = src.get('sha256'), src.get('file')
+    if not sha: return None, 'This run doesn\'t say which PDF it was made from, so its original PDF can\'t be found.'
+    p = (load(os.path.join(R, 'review_stop.json')) or {}).get('src')
+    if p and os.path.isfile(p) and S.sha_file(p) == sha: return p, None
+    p = find_original(s, sha, name)
+    if p: return p, None
+    return None, (f'The book\'s original PDF ({name or "its file"}) wasn\'t found in the folder of original PDFs or of uploads. '
+                  'Put a copy of it in one of them, then try again.')
+
+def waiting_title(run, R):
+    """A waiting run's heading: the original's file name (intake's record, else the path kept at the stop), else the run."""
+    o = (load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or {}
+    return o.get('file') or os.path.basename((load(os.path.join(R, 'review_stop.json')) or {}).get('src') or '') or run
+
+def waiting_state(s, run, R):
+    """The panel's view of a waiting run: whether its review is finished (review.json), and its jobs. No result, no
+    sessions and no evaluation yet: those come with the first apply."""
+    rv = load(os.path.join(R, 'review.json')) or {}
+    live = live_review(s, run)
+    return {'run': run, 'title': waiting_title(run, R),
+            'waiting': {'reviewed': bool(rv), 'reviewer': rv.get('reviewer'), 'date': rv.get('date'),
+                        'prepared': os.path.isfile(os.path.join(R, 'review_items.json'))},
+            'live_review': job_view(s, live) if live else None,
+            'jobs': [job_view(s, j) for j in jobs.all_jobs(s['jobs']) if j['run'] == run]}
+
+def start_first_review(s, run, R, port, app_pid=None):
+    """Open the Review Page for a waiting run: review_workorder.py <run> --serve, as the terminal's step 1."""
+    if os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('The review is finished: "Apply" applies it.')
+    if not os.path.isfile(os.path.join(R, 'review_items.json')):
+        raise ValueError('The review page was not prepared when this run stopped, so it can\'t be opened. Run the book again.')
+    back = f'http://127.0.0.1:{port}/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/?after=finish'
+    argv = [sys.executable, 'review_workorder.py', R, '--serve', '--no-browser', '--return-to', back]
+    return jobs.create(s['jobs'], 'review', run, argv, config.child_env(s), counted=False, R=R, what='Review the AI\'s decisions',
+                       app_pid=app_pid, first=True)
+
+def start_first_apply(s, run, R):
+    """Apply for a waiting run, after Finish Review: run_api.sh's second call (the same command the terminal is told to
+    run), in this run's folder (RUN_DIR) with the settings it stopped with (review_stop.json)."""
+    if not os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('Finish the review first: "Open the Review Page," then "Finish Review."')
+    src, why = first_original(s, R)
+    if why: raise ValueError(why)
+    stop = load(os.path.join(R, 'review_stop.json')) or {}
+    env = {'RUN_DIR': R, **{k: v for k, v in (stop.get('env') or {}).items() if k in ('OCR_LANG', 'INTAKE_REUSE', 'INTAKE', 'OUT') and v}}
+    argv = ['bash', 'run_api.sh', src, stop.get('name') or os.path.basename(os.path.dirname(R)), os.path.basename(R)]
+    return jobs.create(s['jobs'], 'apply', run, argv, config.child_env(s, env), env_set=env, R=R, what='Apply session 1', first=True)
 
 # ------------------------------------------------------------------ starting jobs
 def start_review(s, run, R, port, src=None, discard_open=False, app_pid=None):

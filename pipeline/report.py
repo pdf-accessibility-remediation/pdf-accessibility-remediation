@@ -989,7 +989,7 @@ if not KEEP:
     if os.path.exists(os.path.join(A, 'digest.json')): RS.keep_audit(R, A, wo_ai if rv and wo_ai is not None else wo, INPUT)
     for name in ('request.json', 'response.json', 'reply.txt', 'run.json', 'validation.json', 'workorder.json',
                  PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'attempts.json',
-                 'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json'):
+                 'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json', 'review_stop.json'):
         p = os.path.join(R, name)
         if os.path.exists(p): os.remove(p)
     if os.path.isdir(A) and os.path.exists(os.path.join(A, 'digest.json')): shutil.rmtree(A)

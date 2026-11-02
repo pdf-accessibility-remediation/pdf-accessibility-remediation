@@ -191,6 +191,7 @@ let want = q.get('after') === 'finish' ? 'result' : q.get('after') === 'ocr' ? '
 if (want === 'review') wantAt = Date.now();                    // Review again from a previous result's bar
 let st = null, setup = null, primed = false, offline = false, failing = false, timer = null, newResult = false;
 const SHOWN = box.dataset.current || null;                     // the session whose result this page shows (set when served)
+const WAITING = box.dataset.waiting === '1';                   // served before the first review (REVIEW=1): no result yet
 let ocrSeen;                                                    // the OCR verdict's `recorded` when this page's report was read
 const seen = {};                                                // per job: the last step and status announced
 
@@ -428,7 +429,30 @@ function renderStrip(s) {
   if (dl && !dl.dataset.wired) { dl.dataset.wired = '1'; dl.addEventListener('change', () => { $('pp-dl-marked').textContent = dl.selectedOptions[0].dataset.marked; }); }
 }
 
+// A run stopped for its first review (REVIEW=1): "Open the Review Page," then, after "Finish Review," "Apply" (run_api.sh's
+// second call); once applied, the page offers its first result (it never reloads by itself)
+function waitingBlock(s) {
+  const w = s.waiting, active = (s.jobs || []).filter(j => j.status === 'queued' || j.status === 'running');
+  if (!w) return '<p><b>Result Ready:</b> Session 1 is applied. The report and the remediated PDF are ready.</p>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Result</button></div>';
+  if (s.live_review) return '';                                  // its own card has Open / Stop
+  if (active.length) return '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '.</p>';
+  if (!w.reviewed) return '<p>The AI\'s decisions are waiting for your review. Nothing has been applied yet.</p>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-review" data-act="review">Open the Review Page</button></div>';
+  return '<p>Review finished (' + esc(w.reviewer || 'reviewer not recorded') + ', ' + esc(fmtDay(w.date)) + '). Nothing has been applied yet: ' +
+    '"Apply" makes the remediated PDF and its report.</p>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-apply" data-act="apply">Apply</button></div>';
+}
+
 function render() {
+  if (WAITING) {                                                 // no result, no strip: the review, then the first apply
+    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(tc(st.waiting ? 'Waiting for review' : 'First result')) + '</h3>' +
+      waitingBlock(st) + jobsBlock(st), body = $('pp-body'), keepFocus = document.activeElement && document.activeElement.id;
+    if (body.dataset.h === h) return;
+    body.innerHTML = h; body.dataset.h = h;
+    if (keepFocus && $(keepFocus) && box.contains($(keepFocus))) $(keepFocus).focus();
+    return;
+  }
   renderStrip(st);
   const s = st, keepFocus = document.activeElement && document.activeElement.id, opened = [...box.querySelectorAll('details[open]')].map(d => d.id);
   // "Ready to ship?" is not repeated here: the report's own card, right below, says it
@@ -477,6 +501,7 @@ box.addEventListener('click', async e => {
       const open = st.open ? cap(sn(st.open.id)) : 'The session', ocr = st.live_review && st.live_review.kind === 'ocr';
       [s, r] = await api(API + '/stop', {}); if (s !== 200) return msg(r.error || 'Stop failed', false, true);
       msg(ocr ? 'The OCR Text Review page is closed without a verdict.'
+              : st.waiting ? 'The review page is closed. Your choices so far are saved: select "Open the Review Page" to pick up where you left off.'
               : 'The review page is closed. ' + open + ' stays open. Select "Continue Review" to pick up where you left off.', true, true); return poll();
     }
     if (act === 'stop-other') {                                  // a review page the app did not start (a terminal's): asks first

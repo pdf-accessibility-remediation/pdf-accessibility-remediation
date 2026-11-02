@@ -161,7 +161,8 @@ def main():
     if a.reopen or a.apply or a.sessions or a.pin or a.replay_to: sys.exit(f'{R} is not a finished run (no record.json)')
     if not os.path.exists(ai_path): sys.exit(f'{R} is not waiting for a review: run run_api.sh with REVIEW=1 first (no workorder.ai.json)')
     ai = core.load(ai_path)
-    rerun = f'bash run_api.sh <original.pdf> <name> {os.path.basename(R)}   (the same command as before, without REVIEW=1)'
+    rerun = (f'open the run page and select "Apply": python3 {os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.py")} "{R}"\n'
+             f'  or in the terminal: bash run_api.sh <original.pdf> <name> {os.path.basename(R)}   (the same command as before, without REVIEW=1)')
 
     if a.prepare:
         if not a.pdf or not os.path.isfile(a.pdf): sys.exit('--prepare needs --pdf <the PDF the pipeline works on>')
