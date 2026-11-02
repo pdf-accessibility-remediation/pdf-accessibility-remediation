@@ -45,6 +45,7 @@ The pipeline lives in `pipeline/`; paths below are relative to it, apart from `p
 
 | File | Role |
 |---|---|
+| `lib/tablegrid.py` | Who heads what in a table, from its cells' spans and the work order's reading of its rows; refuses a reading that doesn't fit. Used by `apply.py`. No PDF here. |
 | `lib/workorder_check.py` | The checks every work order goes through before `apply.py`: used by `decide.py` on the model's reply and by `review_workorder.py` on a reviewed order |
 | `lib/support.py` | Says whether the pipeline supports a PDF: PDF 2.0 and namespaced tags are not supported yet. `intake.py` stops such a book for a person; `audit.py` and `apply.py` check again; `scan.py` reports it |
 | `lib/gaptext.py` | Text as a reader hears it: a space where the PDF has a gap but no space character (over 0.10 em and 2.5 × the line's typical gap; not where another tag's glyph fills the gap). Used for the digest and review.md, and for matching text rules; never changes the PDF |
@@ -62,6 +63,7 @@ The pipeline lives in `pipeline/`; paths below are relative to it, apart from `p
 
 | File | Role |
 |---|---|
+| `prompts/workorder_v10.md` | Ready, not in use yet: `PROMPT_NAME` in `decide.py` moves to it when the baseline is re-seeded. It reads a table's rows from the digest's `row_shapes` (`title_rows`, `note_rows`, `group_rows`, `repeat_rows`) and stops counting a title row as a header. Work orders from v9 are still read. |
 | `prompts/workorder_v9.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run. v9 (schema `workorder/0.2`) makes `move_section` a list of up to 3 moves, made in order, and lets the model turn the figure-order step off for a book (`fix_figure_order: false`, for figures meant to be read apart from their page); work orders from v8 (one move) are still read. v8 adds `tables` (header rows and columns of a real table), lets `rolemap` map a style the source never mapped, tells the model the work-order key and tags for each `pdfua_check` rule, and requires every such rule to be fixed or deferred by name (step 9). v7 changes the ActualText wording (spoken text only where printed glyphs read wrongly; equal to the print apart from spacing, case and line-end hyphens; merges join a label and its title) and adds `ocr_words` (the printed spelling of misread OCR words in scanned books, read from word sheets) and `pdfua_check` (the veraPDF failures the model can act on). v8 and older are kept as a record |
 | `verapdf/` | `WCAG-2-2-Machine.xml` (the pinned profile), `rules.json` (each rule's WCAG success criteria, or why it is PDF/UA-only), `install.sh` |
 

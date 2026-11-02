@@ -525,8 +525,11 @@ if fl or kept_tables:
         t_ = " / ".join((fulltext.get('lists' if kind == 'list' else 'tables') or {}).get(f['obj']) or x.get("first_items") or x.get("first_rows") or [])
         L.append(xl(lambda X: f'- Flattened {kind} {on_pg(x.get("page"))}: "{X(t_)}" ({f.get("why", "")})'))
     for x in log.get('tables') or []:
+        more = [f'{x[k]} {name}' for k, name in (('title_rows', 'title row(s) made the caption'), ('note_rows', 'note row(s) moved after the table'),
+                                                 ('cells_to_TD', 'false header cell(s) set back to data'), ('cells_with_headers', 'data cell(s) tied to their headers by ID')) if x.get(k)]
+        more += [f'{len(x[k])} {name}' for k, name in (('group_rows', 'group row(s)'), ('repeat_rows', 'repeated header row(s)')) if x.get(k)]
         L.append(f'- Header cells marked by the AI {on_pg(x.get("page"))}: {x["header_rows"]} header row(s), {x["header_cols"]} header column(s), '
-                 f'{x["cells_to_TH"]} cells changed to header cells. Check they are the real headers.')
+                 f'{x["cells_to_TH"]} cells changed to header cells' + (f'; {", ".join(more)}' if more else '') + '. Check they are the real headers.')
     if kept_tables:
         L += ['', f'Tables kept as tables ({len(kept_tables)}): check header cells and reading order.', '']
         L += [xl(lambda X: f'- {pg(t.get("page"))}: {t["rows"]} rows × {t["cols"]} columns, {t["header_cells"]} header cells. '
