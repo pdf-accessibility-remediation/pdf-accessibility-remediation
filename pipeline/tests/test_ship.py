@@ -183,6 +183,21 @@ def test_shipped_copies_in_the_downloads_and_the_file_check(tmp_path):
     assert sv['label'].endswith('(withdrawn)') and DL.marked_line(sv['state']) == 'The downloaded files are marked "withdrawn."'
     assert DL.prepare(R, 'r', 'shipment-1', 'pdf')['name'] == 'b_remediated_shipment-1_withdrawn.pdf'   # N3
 
+def test_a_shipped_version_has_no_line_under_the_downloads(tmp_path):
+    """The line above the downloads and the version's label already say it was shipped: the line is hidden and the select is
+    not described by it; every other state keeps its line (Patrick, 2026-11-01)."""
+    R = real_ready(tmp_path)
+    assert MP.downloads_form('/run/r/', MP.downloads_data(R, core.load(os.path.join(R, 'record.json')), page=True)).count('aria-describedby="mc-dl-marked"') == 1
+    M.ship(R, 'Kim', say=lambda *a: None, batch=False)
+    rec = core.load(os.path.join(R, 'record.json'))
+    assert DL.marked_line(REL.SHIPPED) == '' and MP.downloads_data(R, rec)['versions'][0]['marked'] == ''
+    f = MP.downloads_form('/run/r/', MP.downloads_data(R, rec, page=True))
+    assert '<select id="mc-dlv" name="v">' in f and 'aria-describedby' not in f and '<p id="mc-dl-marked" class="pp-note" hidden></p>' in f
+    assert 'publish' not in MP.page(R, 'r').lower().replace('published text', '')
+    for name in ('panel.js', 'manual.js'):                                                       # the scripts hide it the same way
+        src = open(os.path.join(os.path.dirname(MP.__file__), name), encoding='utf-8').read()
+        assert "p.hidden = !m;" in src and "removeAttribute('aria-describedby')" in src, name
+
 def test_the_reports_name_the_shipment_and_never_where(tmp_path):
     """No statement is linked, and an older shipment's stored `where` is kept in its record, never shown (Patrick, 2026-11-01)."""
     R = real_ready(tmp_path)

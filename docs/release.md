@@ -282,7 +282,9 @@ stylesheet, centered on the list's height in the page's text color (the browser'
 
 - **The list** holds the current version and each previous result whose PDF still exists. It decides which version the
   two buttons give. It never changes what the evaluation records: the evaluation is always for the current version. The
-  line under it says how the files are marked ('The downloaded files are marked "not ready."'), never their names. On
+  line under it says how the files are marked ('The downloaded files are marked "not ready."'), never their names. A
+  shipped version has no line (the line above the downloads and its own label already say it was shipped), and the list
+  is then not described by it. On
   the evaluation page, a version that is not the current one adds "Results on this page are recorded for the current
   version only." to that line.
 - **Names:** the PDF's bytes are never changed, only the name it is saved under.

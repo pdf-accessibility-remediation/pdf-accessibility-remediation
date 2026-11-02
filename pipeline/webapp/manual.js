@@ -161,8 +161,15 @@ document.addEventListener('click', e => {
 addEventListener('beforeunload', e => { if (!leaving && secs.some(s => s.dirty || s.inflight || s.unsaved)) { e.preventDefault(); e.returnValue = ''; } });
 
 // ---------------------------------------------------------------- "Available Downloads" (stage 3)
-const dlv = $('mc-dlv');                                          // the line under the picker says how the chosen version's files are marked
-if (dlv) dlv.addEventListener('change', () => { $('mc-dl-marked').textContent = dlv.selectedOptions[0].dataset.marked; });
+// the line under the picker says how the chosen version's files are marked; a shipped version has none: the line is hidden
+// and the select no longer described by it (as panel.js dlMarked())
+const dlv = $('mc-dlv');
+function dlMarked() {
+  const p = $('mc-dl-marked'), m = dlv.selectedOptions[0].dataset.marked;
+  p.textContent = m; p.hidden = !m;
+  if (m) dlv.setAttribute('aria-describedby', p.id); else dlv.removeAttribute('aria-describedby');
+}
+if (dlv) dlv.addEventListener('change', dlMarked);
 
 if (new URLSearchParams(location.search).get('recorded')) {      // after Record: the message, then the plain address
   history.replaceState(null, '', location.pathname);
