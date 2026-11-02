@@ -55,6 +55,7 @@ def load_env():
         parent = os.path.dirname(d)
         if parent == d: return None
         d = parent
+KEY_IN_ENV = bool(os.environ.get('OPENROUTER_API_KEY'))   # for --check-key: set before .env, so .env did not supply it
 ENV_FILE = load_env()
 
 def available_credit():
@@ -86,12 +87,12 @@ if sys.argv[1:2] == ['--credit']:                # credit left, for the end of a
 if sys.argv[1:] == ['--check-key']:
     key = os.environ.get('OPENROUTER_API_KEY', '')
     if not key: sys.exit('no OPENROUTER_API_KEY found (environment or .env)')
-    print('key found:', key[:8] + '…' + key[-4:], '| from', ENV_FILE or 'environment')
+    print('key found:', len(key), 'characters | from', 'environment' if KEY_IN_ENV else ENV_FILE)   # no part of the key
     for url in ('https://openrouter.ai/api/v1/key', 'https://openrouter.ai/api/v1/auth/key'):
         try:
             req = urllib.request.Request(url, headers={'Authorization': f'Bearer {key}', 'User-Agent': 'pdfremproto1'})
             with urllib.request.urlopen(req, timeout=30) as r: d = json.load(r).get('data', {})
-            print('key works ·', {k: d.get(k) for k in ('label', 'usage', 'limit', 'limit_remaining', 'is_free_tier')}); sys.exit(0)
+            print('key works ·', {k: d.get(k) for k in ('usage', 'limit', 'limit_remaining', 'is_free_tier')}); sys.exit(0)
         except urllib.error.HTTPError as e:
             if e.code in (401, 403): sys.exit(f'OpenRouter rejected the key (HTTP {e.code})')
         except urllib.error.URLError as e: sys.exit(f'could not reach OpenRouter: {e}')

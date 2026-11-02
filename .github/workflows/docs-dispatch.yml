@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send repository_dispatch to the site repo
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           # Fine-grained token limited to the .github.io repo, Contents: read and write.
           # Who owns it and how to replace it: "Dispatch token" in the .github.io repo's README.
