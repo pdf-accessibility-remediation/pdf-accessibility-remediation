@@ -532,7 +532,7 @@ def word_breaks(tp):
         if sz <= 0 or abs(a.bottom - b.bottom) > 0.3 * sz: continue              # not on one horizontal line
         if (b.left - a.right) / sz < NARROW_GAP: narrow += 1
     return real, gen, narrow
-INVISIBLE = re.compile('[\\s\x00-\x1f\x7f-\x9f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff\ufffe\uffff]')
+INVISIBLE = re.compile('\\s|[\x00-\x1f\x7f-\x9f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff\ufffe\uffff]')
                                            # white space and the invisible marks PDFium adds to page text (U+FFFE at a line-end
                                            #   hyphen, U+200B): only these are left out when text outside the page is counted
 def layer_scan(doc, text_pages):
