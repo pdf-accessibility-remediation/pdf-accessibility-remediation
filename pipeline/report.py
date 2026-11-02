@@ -30,8 +30,11 @@ import sys, os, re, csv, json, shutil, datetime, collections
 from lib.sections import line, pdfua, nolink, excerpt, to_sections, render_md, VERSION as SECTIONS_VERSION
 from lib.glance import WCAG_NAMES
 from lib import glance as G0
+from lib import dates as DT
 from lib import readorder
+from lib import origin
 
+COUNT_WORDS = {'accepted_unreviewed': 'accepted without review'}   # the stored key stays; these are review.html's and the review page's words
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 KEEP = '--keep' in sys.argv
 R, A = args[0], args[1]
@@ -107,6 +110,19 @@ record = {
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),
     **({'workorder_ai': wo_ai} if rv and wo_ai is not None else {}),
 }
+# the AI call behind the work order (sponsor checklist 11.5): a reused reply carries the original call's cost, model, prompt
+# and date, kept in run.original_call so a later re-apply still has it; this run's own spending stays cost_total_usd
+_oc = origin.of_record(record)
+if _oc and run.get('response_from') and not run.get('original_call'): run['original_call'] = _oc
+record['ai_call'] = origin.summary(record)
+# the remediated PDF's own sha256 (a re-apply hashes its new file here, never copies the old record's): every manual
+# check and shipment (release/, lib/release.py) counts only for the file with that hash. release/ is the run folder's: the
+# re-apply's own (--from-record's folder), else this one.
+from lib import release as REL
+record['document']['output_sha256'] = REL.sha_file(os.path.join(R, PDF)); record['document']['output_sha256_from'] = 'report'
+RUN_DIR = os.path.dirname(os.path.abspath(FROM_RECORD)) if FROM_RECORD else R
+REL_DATA = REL.load(RUN_DIR, record)
+record['manual_checks'], record['release'] = REL.mirror(REL_DATA, record['document']['output_sha256'])
 json.dump(record, open(os.path.join(R, 'record.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 if han:
     with open(os.path.join(R, 'han_review.csv'), 'w', newline='', encoding='utf-8') as f:
@@ -236,14 +252,14 @@ def intake_rows():
                 good, text = G0.ocr_verdict_row(v)
                 rows.append((G0.OCR_ROW, ok(good), text))
             else: rows.append(('OCR text reviewed by a person', ok(False), f'machine OCR on {n} page{"s" if n != 1 else ""}: not yet reviewed '
-                               '(checklist rule 2; record a verdict with review_ocr.py)'))
+                               '(checklist rule 2; record a verdict on the review page\'s OCR Text section, or with review_ocr.py)'))
     if not (o and o.get('pages_with_ocr_text')) and G0.ocr_layer_flagged(intake):   # the existing OCR layer needs the approval
         v = (intake.get('review') or {}).get('ocr_text_approved')
         if isinstance(v, dict):
             good, text = G0.ocr_verdict_row(v)
             rows.append((G0.OCR_ROW, ok(good), text))
         else: rows.append(('OCR text reviewed by a person', ok(False), f'the existing OCR layer is {G0.ocr_layer_finding(intake)}: not yet '
-                           'reviewed (checklist rule 2; record a verdict with review_ocr.py)'))
+                           'reviewed (checklist rule 2; record a verdict on the review page\'s OCR Text section, or with review_ocr.py)'))
     cov = (intake.get('checks') or {}).get('coverage') or {}
     rows.append(('Auto-tagging kept every page as it was', 'OK', f'appearance and text unchanged on all {intake["original"].get("pages")} pages'
                  + (' (OCR\'d pages: text added)' if o else '')))
@@ -312,8 +328,8 @@ checks = [
      (f'{bm["items"]} bookmarks' if bm.get('items') is not None else 'bookmarks: not counted') + (f' (built from {log["bookmarks"]["items"]} heading tags)' if (log.get('bookmarks') or {}).get('built') else '')),
     *([('Work order reviewed by a person before it was applied',
         ok(not rv.get('dropped_on_check') and not (rv.get('counts') or {}).get('accepted_unreviewed') and not rv_unexplained),
-        f'{rv["reviewer"]} on {rv["date"]} · {len(rv.get("changes") or [])} changes'
-        + (' · ' + ' · '.join(f'{v} {k.replace("_", " ")}' for k, v in rv['counts'].items() if v) if rv.get('counts') else '')
+        f'{rv["reviewer"]} on {DT.day(rv["date"])} · {len(rv.get("changes") or [])} changes'
+        + (' · ' + ' · '.join(f'{v} {COUNT_WORDS.get(k, k.replace("_", " "))}' for k, v in rv['counts'].items() if v) if rv.get('counts') else '')
         + (f' · {len(rv["dropped_on_check"])} edits not accepted by the check' if rv.get('dropped_on_check') else '')
         + (f' · {len(rv["gaps"])} gap{"s" if len(rv["gaps"]) != 1 else ""} left open'
            + (f', {len(rv_unexplained)} without a reason' if rv_unexplained else ', with a reason' if len(rv['gaps']) == 1 else ', with reasons') if rv.get('gaps') else '')
@@ -378,11 +394,13 @@ checks = [
      ' · '.join(f'{len(wc["headings"][k])} {k}' for k in ('empty', 'long', 'repeated')) if wc else 'not checked'),
 ]
 u = run.get('usage') or {}
-L = [f'# Remediation review: {src.get("file") or "file name not recorded"}', '', f'Result: `{PDF}`', '',
-     f'{nc(src.get("pages"))} pages · run {run.get("started") or "start time not recorded"} · '
-     + (f'model `{run["model"]}`' if run.get('model') else 'model not recorded') + ' · '
-     + (f'prompt `{run["prompt_file"]}` ({run.get("prompt_sha256") or "hash not recorded"})' if run.get('prompt_file') else 'prompt not recorded') + ' · '
-     + (f'cost ${u["cost_usd"]}' if u.get('cost_usd') is not None else 'cost $0 (saved reply reused, no new call)' if run.get('response_from') else 'cost: call did not finish') + ' · '
+ai = record['ai_call']; mp = run.get('original_call') or run           # a reused reply: the model and prompt of the call that wrote it
+L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '', f'Result: `{PDF}`', '',
+     f'{nc(src.get("pages"))} pages · run {DT.when(run.get("started"), "start time not recorded")} · '
+     + (f'model `{mp["model"]}`' if mp.get('model') else 'model not recorded') + ' · '
+     + (f'prompt `{mp["prompt_file"]}` ({mp.get("prompt_sha256") or "hash not recorded"})' if mp.get('prompt_file') else 'prompt not recorded') + ' · '
+     + (f'AI cost {origin.words(ai)[0]} · this run: no new call' if run.get('response_from')
+        else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: call did not finish') + ' · '
      + (f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None
         else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: call did not finish')
      + (f' · plus ${cost_earlier:.3f} for {len(attempts)} earlier call(s) whose reply was cut off or unusable (total ${cost_this + cost_earlier:.3f})' if attempts else ''), '',
@@ -422,17 +440,17 @@ if intake and intake.get('status') == 'done':
 if rv:
     def _v(x): return json.dumps(x, ensure_ascii=False) if isinstance(x, (dict, list)) else f'"{x}"' if isinstance(x, str) else str(x)
     n += 1; L += [f'### {n}. Work order reviewed by a person', '',
-                  f'{rv["reviewer"]} reviewed the AI\'s work order on {rv["date"]}, before it was applied ({rv.get("method")}). '
+                  f'{rv["reviewer"]} reviewed the AI\'s work order on {DT.day(rv["date"])}, before it was applied ({rv.get("method")}). '
                   'The result is what was applied; the AI\'s version is in `record.json` (`workorder_ai`).', '']
     if rv_session:
         sid, ss = rv_session['session'], {x['id']: x for x in rv_session.get('sessions') or []}
         me = ss.get(sid) or {}; frm = me.get('from')
-        start = ('the AI\'s decisions' if frm in ('ai', None) else 'the recorded summary of an earlier review' if frm == 'summary'
+        start = ('the AI\'s decisions' if frm in ('ai', None) else 'the recorded summary of a previous review' if frm == 'summary'
                  else f'session {int(frm)}' + (' (summary only)' if (ss.get(frm) or {}).get('summary_only') else ''))
         L += [f'This result comes from review session {int(sid)}, started from {start}'
               + (f': {me["carried"]} choices carried from it, {me.get("since_start", 0)} changed in this session' if me.get('carried') else '')
-              + (f'; {me["not_carried"]} earlier choices did not carry (their decision is not the same)' if me.get('not_carried') else '')
-              + f'. Every session is kept in `reviews/sessions/` and every earlier result in `reviews/versions/`: '
+              + (f'; {me["not_carried"]} previous choices did not carry (their decision is not the same)' if me.get('not_carried') else '')
+              + f'. Every session is kept in `reviews/sessions/` and every previous result in `reviews/versions/`: '
               f'`python3 review_workorder.py {rv_session.get("run") or "<run>"} --sessions` (from `pipeline/`) lists them, '
               '`--reopen` reviews again.', '']
     if rv.get('changes'):
@@ -767,7 +785,7 @@ if et.get('removed') or et.get('kept'):
         for parts, c in sorted(nopg.items()):         # e.g. a junk grid drawn by one shared form on many pages: no single page
             L.append(f'- {"a whole empty table" if c == 1 else f"{c} whole empty tables"} ({parts} parts{" each" if c > 1 else ""}), {NO_PAGE}')
     for h in by_page(et.get('headings') or []):
-        L.append(f'- {pg(h["page"])}: an empty {h["tag"]} heading tag was removed. ' + (f'Title tagged elsewhere on the page: "{h["found"]}".' if h.get('found')
+        L.append(f'- {pg(h["page"])}: an empty {h["tag"]} heading tag was removed. ' + (f'Title tagged elsewhere on the page: "{h["found"]}."' if h.get('found')
                  else '**No heading text on this page: the title may be lost. Check the page.**'))
     nt_ = by_page(et.get('notable') or [])
     if nt_: L.append('- Empty ' + ', '.join(f'{x["tag"]} {on_pg(x["page"])}' for x in nt_) + ' removed (no content under them)')
@@ -920,17 +938,7 @@ if bad:
 if n == 0: L.append('Nothing flagged.')
 
 L += ['## What was changed', '', '| Change | Count |', '|---|---:|'] + [f'| {k} | {v} |' for k, v in (log.get('applied') or {}).items()]
-L += ['', '## Final check with PAC 2026', '',
-      f'Open `{PDF}` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not '
-      'listed above is a gap in the automated checks: note it in the issue tracker.', '',
-      'No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC\'s screen-reader and structure previews:', '',
-      '- 1.1.1: alt text is accurate and gives the figure\'s purpose; decorative images are artifacts',
-      '- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense',
-      '- 1.4.1: no information is given by colour alone',
-      '- 1.4.3: contrast of text over images and coloured backgrounds (PAC\'s contrast checker)',
-      '- 1.4.5: no images of text where real text could be used (scanned pages: the OCR layer stands in)',
-      '- 2.4.6: headings describe their section',
-      '- 3.1.2: passages in another language carry their language (see `han_review.csv` if present)']
+L += [''] + REL.section_md(REL_DATA, record['document']['output_sha256'], PDF)   # results in full once any is recorded (a reapply: this run's own)
 # A list line with no page puts the page wording at the end ("- what, page: not on this tag"), never first, and identical
 # lines of that kind are written once with a count. Lines that have a page are left exactly as they are.
 def _tidy_no_page(lines):
@@ -948,10 +956,24 @@ def _tidy_no_page(lines):
         out.append(l)
     return out
 L = _tidy_no_page(L)
+# Headings in Title Case (CLAUDE.md's capitalization rule, applied to review.md from 2026-11; the "# Remediation Review:"
+# line is written so above, since it holds the file name). Anchors and section keys are lower case, so they don't change.
+from lib.titles import title_case as _tc
+from lib.sections import Line as _Line
+def _title_heading(l):
+    m = re.match(r'^(##+ )(\d+\. )?(.+)$', l)
+    if not m: return l
+    t = m.group(1) + (m.group(2) or '') + _tc(m.group(3))
+    if type(l) is str or t == l: return t if type(l) is str else l
+    out = _Line(t)
+    for k in ('key', 'pages', 'scope', 'parts', 'full', 'entry', 'n_entries'):
+        if getattr(l, k, None) is not None: setattr(out, k, getattr(l, k))
+    return out
+L = [_title_heading(l) for l in L]
 # review.md as data: sections of items (record.json `sections`); review.md and review.html are both drawn from them.
 # "Overview" is computed once from them (lib/glance.py), kept in record.json, and placed before the evidence line.
 from lib import glance as G
-record['glance'] = G.glance(record, None, PLAB, [h['page'] for h in han], sections=to_sections(L))
+record['glance'] = G.glance(record, None, PLAB, [h['page'] for h in han], sections=to_sections(L), release=REL_DATA)
 at = next((k for k, l in enumerate(L) if l.startswith('Automated checks are evidence, not legal sign-off')), len(L))
 L[at:at] = G.glance_md(record['glance'])
 record['sections_version'] = SECTIONS_VERSION; record['sections'] = to_sections(L)
@@ -970,7 +992,7 @@ if not KEEP:
     if os.path.exists(os.path.join(A, 'digest.json')): RS.keep_audit(R, A, wo_ai if rv and wo_ai is not None else wo, INPUT)
     for name in ('request.json', 'response.json', 'reply.txt', 'run.json', 'validation.json', 'workorder.json',
                  PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'attempts.json',
-                 'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json'):
+                 'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json', 'review_stop.json'):
         p = os.path.join(R, name)
         if os.path.exists(p): os.remove(p)
     if os.path.isdir(A) and os.path.exists(os.path.join(A, 'digest.json')): shutil.rmtree(A)

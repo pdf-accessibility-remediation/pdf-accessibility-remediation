@@ -8,18 +8,26 @@ It reads only what a finished run keeps: record.json and review.md (its "Automat
 "For a person to check" sections), so a dashboard can be rebuilt for any finished run. `labels` is the remediated
 PDF's page-label table ({page: label}); `han_pages` the PDF pages of the Han-only runs (from han_review.csv).
 
-Definitions (docs/output-files.md):
+Definitions (docs/output-files.md, docs/release.md):
   ready to ship      the work order approved on the review page, the OCR text approved (when intake added OCR text, or
                      found an existing OCR layer doubtful, unusable or missing diacritics, or could not check it),
-                     and the safety checks OK. PAC is the manual check after it; its line is information only.
+                     the five safety checks OK, and the accessibility evaluation completed on this version of the PDF
+                     (PAC 2026 and the screen-reader test both recorded; a Fail never blocks, it is an issue noted).
+                     The evaluation line and the status come from release/ (lib/release.py), worked out on every read:
+                     with_release() recomputes them on a stored glance; they are never in `issues` or `needs_person`.
+                     `ready` is true exactly when the status is Ready (a shipped book is Shipped, counted apart).
+  veraPDF            a WCAG rule newly failing (or failing more often), or veraPDF not run on both files, is a finding
+                     near the top of `issues` (rank 1), not a safety check (2026-10-31).
   needs a person     the AI's deferrals + the executor's deferrals (counted by kind and page) + CHECK rows, leaving out
                      the "Nothing deferred by the executor" row, which only points at that list.
   AI decisions       every entry in the work order (deferrals and notes are not decisions).
   fixed automatically  the executor's own fixes, by kind, with no total (several touch the same links).
 """
 import re
+from lib import dates as D
 
-SCHEMA = 'glance/0.3'
+SCHEMA = 'glance/0.5'                 # 0.5 (2026-11): five safety checks, the accessibility evaluation, four statuses
+READY_SCHEMAS = ('glance/0.4', 'glance/0.5')   # written under every current base rule; 0.3 predates three of them (review 14 H1)
 def with_spread_labels(labels, intake):
     """The page-label table with intake's spread labels ("210–211": two printed pages on one PDF page) on the pages that have no
     label of their own. The one place report.py and report_html.py (a rebuilt dashboard, summary.html) take them from."""
@@ -44,7 +52,7 @@ SENT = 'sent to a language reader'                   # the third verdict (2026-1
 def ocr_verdict_row(v):
     """(ok, text) of review.md's "OCR text reviewed by a person" row for a recorded verdict. The wording of the first two
     is the one review_ocr.py and report.py have always written."""
-    who = f'{v.get("reviewer")} on {v.get("date")}' + (f' (pages {v["pages"]})' if v.get('pages') else '')
+    who = f'{v.get("reviewer")} on {D.day(v.get("date"))}' + (f' (pages {v["pages"]})' if v.get('pages') else '')
     if v.get('verdict') == SENT:
         return False, f'{SENT}{" (" + v["to"] + ")" if v.get("to") else ""} by {who}' + (f': {v["reason"]}' if v.get('reason') else '')
     return v.get('verdict') == 'approved', f'{"approved" if v.get("verdict") == "approved" else "not approved"} by {who}: {v.get("reason")}'
@@ -62,6 +70,24 @@ SAFETY = [('Every page looks the same as the original', 'pages look the same'),
           ('Tag-tree index points only into the tree', 'tag-tree index points into the tree'),
           ('Fonts: every embedded font program could be read', 'every font readable')]
 POINTER_ROWS = {'Nothing deferred by the executor'}        # a CHECK row that only points at a list counted separately
+SAFETY_VERA = 'no WCAG rule newly failing (veraPDF)'   # the sixth safety check of glance/0.4 (a finding from 0.5): dropped on read
+SHIP_BASE = ('Work order approved on the review page', 'OCR text approved', 'Safety checks')   # from the run; the rest from release/
+SHIP_EVAL = 'Accessibility evaluation'
+# the names a person reads (the card, review.md, the page, the strip); the keys above stay as stored (decided 2026-10-31)
+SHIP_NAMES = {'Work order approved on the review page': 'Work Order Approval', 'OCR text approved': 'OCR Text Approval',
+              'Safety checks': 'Safety Checks', SHIP_EVAL: 'Accessibility Evaluation'}
+def ship_name(s): return SHIP_NAMES.get(s['what'], s['what'])
+
+def safety_line(five):
+    """(ok, text) of the Safety Checks line from the five damage checks: ok only when all five are there and OK. A run made
+    before some of them existed has fewer: "Not Checked", never Failed (nothing failed) and never OK (fail closed). The
+    Safety card and summary.html follow the same rule (safety_ok)."""
+    want = [label for _, label in SAFETY]
+    bad = [x['what'] for x in five if not x['ok']]
+    if bad: return False, f'Failed ({", ".join(bad)})'
+    if sorted(x['what'] for x in five) != sorted(want):
+        return False, f'Not Checked (only {len(five)} of the {len(want)} checks were recorded for this run)'
+    return True, 'Passed'
 GATE_ROWS = {'OCR text reviewed by a person', 'Work order reviewed by a person before it was applied'}
 META = {'schema', 'source', 'decided_by', 'notes_for_reviewer', 'deferrals', 'reviewed_by'}
 # the executor's own fixes (applied whatever the work order says): change-label prefix → what the dashboard calls it
@@ -91,7 +117,7 @@ def parse_md(md):
     """The "Automated checks" rows and the numbered "### N. Title" sections of a review.md."""
     rows, secs, in_checks = [], [], False
     for l in md.split('\n'):
-        if l.startswith('## '): in_checks = l.strip() == '## Automated checks'
+        if l.startswith('## '): in_checks = l.strip().lower() == '## automated checks'   # Title Case from 2026-11, lower case before
         m = re.match(r'^### (\d+)\. (.+?)\s*$', l)
         if m: secs.append({'n': int(m.group(1)), 'title': m.group(2), 'anchor': slug(f'{m.group(1)}. {m.group(2)}')})
         if in_checks and l.startswith('| ') and not l.startswith('| Check |') and not l.startswith('|---'):
@@ -131,7 +157,41 @@ def from_sections(secs):
                 if len(cells) == 3: rows.append({'name': cells[0], 'ok': cells[1] == 'OK', 'detail': cells[2]})
     return rows, out
 
-def glance(record, md, labels=None, han_pages=None, sections=None):
+def with_release(g, record, release=None, cur=None):
+    """The glance with its release/-derived parts worked out now: the "Accessibility evaluation" line, the status and
+    `ready`, and the safety line from the five damage checks (a stored 0.4 glance's sixth check is dropped). The current
+    version is the record's document.output_sha256 (the offline dashboards compare with it only; the app compares the file
+    on disk too). Fail closed: the base requirements can be satisfied only on a glance of glance/0.4 or 0.5 that has all
+    three base lines (a 0.3 glance predates the rules for a flagged OCR layer, a finished-not-applied session and the
+    sent-to-a-reader verdict) and the five damage checks, each OK. cur: the current version's hash; the app passes the
+    file on disk's (webapp/manualpage.py app_sha), the offline dashboards leave it to the record's output_sha256. The
+    status carries `current`, the current version's own status (release.status(); review 16 J1)."""
+    from lib import release as REL
+    rel = release if release is not None else REL.empty()
+    cur = cur or (record.get('document') or {}).get('output_sha256')
+    five = [x for x in g.get('safety') or [] if x.get('what') != SAFETY_VERA]
+    ship = []
+    for s in g['ship']:
+        if s['what'] not in SHIP_BASE: continue
+        s = dict(s)
+        if s['what'] == 'Safety checks': s['ok'], s['text'] = safety_line(five)
+        ship.append(s)
+    ok, txt = REL.evaluation_line(rel, cur)
+    ship.append({'what': SHIP_EVAL, 'ok': ok, 'text': txt})
+    base_ok = g.get('schema') in READY_SCHEMAS and [s['what'] for s in ship[:3]] == list(SHIP_BASE) and all(s['ok'] is True for s in ship[:3])
+    st = REL.status(rel, cur, base_ok, rel.get('newer'), (record.get('review') or {}).get('session'))
+    p = REL.part(rel, 'pac', cur); it = ((p['check'] or {}).get('items') or {}).get('needs_person') or {} if p['state'] != 'earlier version' else {}
+    looked = {'result': it.get('result'), 'by': p['check'].get('by'), 'recorded': p['check'].get('recorded')} if it.get('result') else None
+    return dict(g, ship=ship, safety=five, safety_ok=safety_line(five)[0], ready=st['name'] == REL.READY, status=st,
+                needs_looked=looked)
+
+def as_earlier(g, rel, sha, current_label):
+    """A previous result's glance (its own page): status "Earlier version (… the current version is Session N)", never
+    Ready, no newer line (note (c))."""
+    from lib import release as REL
+    return dict(g, ready=False, status=REL.earlier_status(rel, sha, current_label))
+
+def glance(record, md, labels=None, han_pages=None, sections=None, release=None):
     labels = {int(k): v for k, v in (labels or {}).items() if str(k).isdigit()}
     rows, secs = from_sections(sections) if sections is not None else parse_md(md)
     keymap = {}
@@ -143,7 +203,7 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
         for s in secs:
             if any(w.lower() in s['title'].lower() for w in words): return s
         return None
-    def where(s): return {'n': s['n'], 'title': s['title'], 'anchor': s['anchor']} if s else {'n': None, 'title': 'Automated checks', 'anchor': 'automated-checks'}
+    def where(s): return {'n': s['n'], 'title': s['title'], 'anchor': s['anchor']} if s else {'n': None, 'title': 'Automated Checks', 'anchor': 'automated-checks'}
     wo, ap, ve = record.get('workorder') or {}, record.get('apply') or {}, record.get('verify') or {}
     intake = record.get('intake') or {}; rv = (record.get('review') or {}).get('workorder')
     vb, va = ((record.get('verapdf') or {}).get(k) for k in ('before', 'after'))
@@ -151,41 +211,46 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
     # ---- ready to ship
     if rv and rv.get('method') == 'page':
         unexpl = [x for x in rv.get('gaps') or [] if str(x.get('reason') or '').startswith('hand edit: no reason asked for')]
-        why = ([f'{(rv.get("counts") or {}).get("accepted_unreviewed")} decisions accepted without review'] if (rv.get('counts') or {}).get('accepted_unreviewed') else []) \
+        why = ([f'{(rv.get("counts") or {}).get("accepted_unreviewed")} decisions not reviewed'] if (rv.get('counts') or {}).get('accepted_unreviewed') else []) \
             + ([f'{len(rv["dropped_on_check"])} edits dropped by the check'] if rv.get('dropped_on_check') else []) \
             + ([f'{len(unexpl)} gaps left without a reason'] if unexpl else [])
         wo_ok = not why
-        wo_txt = f'yes ({rv.get("reviewer")} on {rv.get("date")})' if wo_ok else f'no (reviewed by {rv.get("reviewer")} on {rv.get("date")}: {", ".join(why)})'
+        wo_txt = (f'Approved ({rv.get("reviewer")} on {D.day(rv.get("date"))})' if wo_ok
+                  else f'Not Approved ({", ".join(why)}; reviewed by {rv.get("reviewer")} on {D.day(rv.get("date"))})')
     elif rv:
-        wo_ok, wo_txt = False, f'no (reviewed by hand edit by {rv.get("reviewer")} on {rv.get("date")}, not on the review page)'
+        wo_ok, wo_txt = False, f'Not Approved (reviewed by hand edit by {rv.get("reviewer")} on {D.day(rv.get("date"))}, not on the review page)'
     else:
-        wo_ok, wo_txt = False, 'no (run without REVIEW=1)'
+        wo_ok, wo_txt = False, 'Not Approved (applied without a review)'
     pend = (record.get('review') or {}).get('pending') or {}
     if pend.get('status') == 'finished':                # a later review is signed off but not applied: the PDF on disk is older
-        wo_ok, wo_txt = False, (f'no (the latest review, session {int(pend["session"])} by {pend.get("reviewer")}, is finished but not applied: '
-                                'run review_workorder.py <run> --apply)')
+        wo_ok, wo_txt = False, f'Not Approved (Session {int(pend["session"])} is finished but not applied)'
     ocr_pages = (intake.get('ocr') or {}).get('pages_with_ocr_text') or []
     v = (intake.get('review') or {}).get('ocr_text_approved')
     flagged = ocr_layer_flagged(intake)                 # an existing OCR layer that step A flagged needs the approval too
     if ocr_pages or flagged:
         if isinstance(v, dict) and v.get('verdict') == SENT:
-            ocr_ok, ocr_txt = False, (f'no (waiting for a language reader{": " + v["to"] if v.get("to") else ""}; '
-                                      f'sent by {v.get("reviewer")} on {v.get("date")})')
+            ocr_ok, ocr_txt = False, (f'Waiting for a Language Reader ({v["to"] + "; " if v.get("to") else ""}'
+                                      f'sent by {v.get("reviewer")} on {D.day(v.get("date"))})')
         elif isinstance(v, dict):
             ocr_ok = v.get('verdict') == 'approved'
-            ocr_txt = f'{"yes" if ocr_ok else "no"} ({v.get("verdict")} by {v.get("reviewer")} on {v.get("date")})'
-        else: ocr_ok, ocr_txt = False, ('no (not yet reviewed: ' + '; '.join(x for x in [f'OCR text on {pages_text(ocr_pages, labels)}' if ocr_pages else None,
+            ocr_txt = f'{"Approved" if ocr_ok else "Not Approved"} ({v.get("reviewer")} on {D.day(v.get("date"))})'
+        else: ocr_ok, ocr_txt = False, ('Not Reviewed (' + '; '.join(x for x in [f'OCR text on {pages_text(ocr_pages, labels)}' if ocr_pages else None,
                                          f'the existing OCR layer is {ocr_layer_finding(intake)}' if flagged else None] if x) + ')')
     else:
-        ocr_ok, s = True, sec('the text layer comes from OCR')
-        ocr_txt = 'not needed (intake added no OCR text' + (f'; the publisher\'s text layer is OCR, see §{s["n"]})' if s else ')')
-    saf = [{'what': label, 'ok': byname[name]['ok']} for name, label in SAFETY if name in byname]
-    saf_ok = bool(saf) and all(x['ok'] for x in saf)
+        ocr_ok, ocr_txt = True, 'Not Applicable'        # no OCR text added, and no flagged OCR layer (Patrick, 2026-11-01)
+    def ran(x): return isinstance(x, dict) and 'not_run' not in x and x.get('rules') is not None
+    vrules = {r['id']: r for r in (va or {}).get('rules') or []} if isinstance(va, dict) else {}
+    brules = {r['id']: r for r in (vb or {}).get('rules') or []} if isinstance(vb, dict) else {}
+    if ran(vb) and ran(va):                                       # WCAG rules newly failing or failing more often
+        wv = {k: x for k, x in vrules.items() if x.get('scope') == 'wcag'}
+        newly = sorted([k for k in wv if k not in brules] + [k for k in wv if k in brules and wv[k]['failed'] > brules[k]['failed']])
+        vera_safe = {'what': SAFETY_VERA, 'ok': not newly}
+    else: newly, vera_safe = None, {'what': SAFETY_VERA, 'ok': False, 'state': 'not checked', 'detail': 'veraPDF did not run on both files'}
+    saf = [{'what': label, 'ok': byname[name]['ok']} for name, label in SAFETY if name in byname]   # the five damage checks only
+    saf_ok = safety_line(saf)[0]                                   # the line, the Safety card and summary.html: one rule
     ship = [{'what': 'Work order approved on the review page', 'ok': wo_ok, 'text': wo_txt},
             {'what': 'OCR text approved', 'ok': ocr_ok, 'text': ocr_txt},
-            {'what': 'Safety checks', 'ok': saf_ok, 'text': 'OK' if saf_ok else ('failed: ' + ', '.join(x['what'] for x in saf if not x['ok']) if saf else 'not checked')},
-            {'what': 'Manual check (PAC)', 'ok': None, 'text': 'not run'}]
-    ready = wo_ok and ocr_ok and saf_ok
+            {'what': 'Safety checks', 'ok': safety_line(saf)[0], 'text': safety_line(saf)[1]}]
 
     # ---- issues: everything that needs a person, ranked (0 safety, 1 ship conditions, 2 CHECK rows, 3 executor, 4 AI)
     issues = []
@@ -196,8 +261,6 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
         elif kind in ('check', 'safety', 'ship') and keymap.get(f'check:{rowname}'): x['item'] = keymap[f'check:{rowname}']   # else: its checks row
         issues.append(x)
     wc = ve.get('wcag') or {}
-    vrules = {r['id']: r for r in (va or {}).get('rules') or []} if isinstance(va, dict) else {}
-    brules = {r['id']: r for r in (vb or {}).get('rules') or []} if isinstance(vb, dict) else {}
     n_check = 0
     rowname = None
     for r in rows:
@@ -205,7 +268,11 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
         n_check += 1; name, det = r['name'], r['detail']; rowname = name
         found = [int(x) for x in re.findall(r'PDF (\d+)', det)]
         if name in dict(SAFETY): add(0, 'safety', f'{name}: {det}', found, None, find=f'| {name} |', key=f'check:{name}')
-        elif name == 'veraPDF: no rule newly failing or failing more often': add(0, 'safety', f'veraPDF: {det}', [], sec('veraPDF'))
+        elif name == 'veraPDF: no rule newly failing or failing more often':   # a safety issue only when the WCAG-only check fails
+            # a finding, not a safety check (2026-10-31): first among rank 1 when a WCAG rule regressed or veraPDF did not run
+            # on both files; an ordinary check when only PDF/UA-only rules regressed. A CHECK row: counted once, in check_rows
+            if not vera_safe['ok']: add(1, 'check', f'veraPDF: {det}', [], sec('veraPDF')); issues[-1]['lead'] = True
+            else: add(2, 'check', f'veraPDF: {det}', [], sec('veraPDF'))
         elif name == 'OCR text reviewed by a person':
             add(1, 'ship', 'OCR text ' + (('waiting for a language reader' if v.get('verdict') == SENT else 'not approved') if isinstance(v, dict) else 'not yet reviewed'),
                 ocr_pages, sec('Intake'), find='- OCR text added', key='intake:ocr')
@@ -266,7 +333,7 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
     for i_, d in enumerate(d_ai):
         t = re.sub(r'\*\*', '', str(d.get('what') or 'not described')).strip()           # in full: the AI's sentence as written
         add(4, 'ai', t, [p for p in d.get('pages') or [] if isinstance(p, int)], s_ai, find='- ' + t[:60], key=f'ai:{i_}')
-    issues.sort(key=lambda x: x['rank'])
+    issues.sort(key=lambda x: (x['rank'], not x.pop('lead', False)))   # stable: the veraPDF finding first among rank 1 (H7)
     for x in issues: x['pages_text'] = pages_text(x['pages'], labels) if x['pages'] else ''
 
     # ---- the other headline numbers
@@ -279,13 +346,11 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
                 fixed[label] = fixed.get(label, 0) + (c if isinstance(c, int) else 1); break
     if (ap.get('offpage') or {}).get('artifacted'):
         fixed['characters outside the page marked as decoration'] = sum(a.get('chars') or 0 for a in ap['offpage']['artifacted'])
-    def ran(x): return isinstance(x, dict) and 'not_run' not in x and x.get('rules') is not None
     vg = {'ran_before': ran(vb), 'ran_after': ran(va)}
     if ran(vb): vg.update(before_rules=vb['totals']['wcag_failed_rules'], before_checks=vb['totals']['wcag_failed_checks'])
     if ran(va): vg.update(after_rules=va['totals']['wcag_failed_rules'], after_checks=va['totals']['wcag_failed_checks'])
     if ran(vb) and ran(va):
-        wv = {k: x for k, x in vrules.items() if x.get('scope') == 'wcag'}                         # WCAG only
-        vg['newly_failing'] = sorted([k for k in wv if k not in brules] + [k for k in wv if k in brules and wv[k]['failed'] > brules[k]['failed']])
+        vg['newly_failing'] = newly                                                                 # WCAG only
         who = {}
         for when, rs in (('before', brules), ('after', vrules)):
             for x in rs.values():
@@ -303,28 +368,40 @@ def glance(record, md, labels=None, han_pages=None, sections=None):
     reviewed = None
     if rv: reviewed = {'reviewer': rv.get('reviewer'), 'date': rv.get('date'), 'method': rv.get('method'), 'changed': len(rv.get('changes') or []),
                        **({'session': record['review']['session']} if (record.get('review') or {}).get('session') else {})}
-    return {'schema': SCHEMA, 'ready': ready, 'ship': ship, 'safety': saf, 'safety_ok': saf_ok,
+    return with_release({'schema': SCHEMA, 'ready': None, 'ship': ship, 'safety': saf, 'safety_ok': saf_ok,
             'needs_person': {'total': len(d_ai) + n_exec + n_check, 'ai_deferrals': len(d_ai), 'executor_deferrals': n_exec, 'check_rows': n_check},
             'ai_decisions': {'count': n_decisions(wo), 'reviewed': reviewed},
             'fixed_automatically': [{'what': k, 'count': c} for k, c in fixed.items()],
             'verapdf': vg, 'issues': issues, 'sections': secs, 'checks': rows,
             'pages': (record.get('document') or {}).get('pages'),
-            'page_level': {str(k): v for k, v in sorted(page_level.items())}, 'page_notes': {str(k): v for k, v in sorted(page_notes.items())}}
+            'page_level': {str(k): v for k, v in sorted(page_level.items())}, 'page_notes': {str(k): v for k, v in sorted(page_notes.items())}},
+                        record, release)
 
 def _n(x): return f'{x:,}'
+def needs_looked_text(g):
+    """What the evaluation said about "What Needs a Person", for the Overview and the card, or None: considered during the
+    evaluation (a Pass on this version's PAC 2026 result; the card's words, Patrick, 2026-11-01; was "looked at") or marked
+    Fail; nothing for Not Applicable or no result (decided 2026-10-31)."""
+    lk = g.get('needs_looked') or {}
+    if not g['needs_person']['total'] or lk.get('result') not in ('pass', 'fail'): return None
+    return (f'{"considered during" if lk["result"] == "pass" else "marked Fail in"} the evaluation '
+            f'({lk.get("by") or "name not recorded"}, {D.day(lk.get("recorded"))})')
 def glance_md(g, html_name='review.html', top=5):
     """The "## Overview" block (a list of lines) for review.md (called "At a glance" before 2026-10-21)."""
-    L = ['## Overview', '', f'[Open the dashboard]({html_name})', '', f'**Ready to ship?** {"Yes" if g["ready"] else "No"}']
-    L += [f'- {s["what"]}: {s["text"]}' for s in g['ship']] + ['']
+    st = g.get('status') or {}                          # above "**Ready to ship?**", never between it and its "- " lines (webapp/runs.py)
+    L = ['## Overview', '', f'[Open the dashboard]({html_name})', '']
+    if st: L += [f'**Status:** {st["text"]}' + (f' · {st["newer"]}' if st.get('newer') else ''), '']
+    L.append('**Ready to ship?**')                        # the status line above carries the answer (2026-10-31)
+    L += [f'- {"✓ " if s["ok"] is True else ""}{ship_name(s)}: {s["text"]}' for s in g['ship']] + ['']
     if g['safety']:
-        L.append('**Safety checks:** ' + ' · '.join(f'{"OK ✔" if x["ok"] else "FAILED ✘"} {x["what"]}' for x in g['safety']) + '  ')
+        L.append('**Safety checks:** ' + ' · '.join(f'OK ✔ {x["what"]}' if x['ok'] else f'FAILED ✘ {x["what"]}' for x in g['safety']) + '  ')
     np_ = g['needs_person']
     L.append(f'**Needs a person:** {np_["total"]} ({np_["ai_deferrals"]} deferred by the AI · {np_["executor_deferrals"]} deferred by the executor · '
-             f'{np_["check_rows"]} CHECK row{"" if np_["check_rows"] == 1 else "s"})  ')
+             f'{np_["check_rows"]} CHECK row{"" if np_["check_rows"] == 1 else "s"})' + (f' · {needs_looked_text(g)}' if needs_looked_text(g) else '') + '  ')
     ad = g['ai_decisions']; r = ad.get('reviewed')
     L.append(f'**AI decisions:** {_n(ad["count"])} in the work order, ' + (
-        f'approved by {r["reviewer"]} on {r["date"]} ({r["changed"]} changed)' if r and g['ship'][0]['ok'] else
-        f'reviewed by {r["reviewer"]} on {r["date"]} ({r["changed"]} changed), not signed off (see "Ready to ship?")' if r else
+        f'approved by {r["reviewer"]} on {D.day(r["date"])} ({r["changed"]} changed)' if r and g['ship'][0]['ok'] else
+        f'reviewed by {r["reviewer"]} on {D.day(r["date"])} ({r["changed"]} changed), not signed off (see "Ready to ship?")' if r else
         'applied without review by a person') + '  ')
     if g['fixed_automatically']:
         L.append('**Fixed automatically (no AI):** ' + ' · '.join(f'{x["what"]} {_n(x["count"])}' for x in sorted(g['fixed_automatically'], key=lambda x: -x['count'])) + '  ')
@@ -346,7 +423,7 @@ def glance_md(g, html_name='review.html', top=5):
             L.append(f'| {t.replace("|", "/")} | {x["pages_text"] or "see " + ("§" + str(w["n"]) if w["n"] else w["title"])} | {ref} |')
         if len(iss) > top:
             rest = iss[top:]; ns = sorted({x['where']['n'] for x in rest if x['where']['n']})
-            L.append(f'| … and {len(rest)} more | | ' + (', '.join(f'§{n}' for n in ns) or 'Automated checks') + ' |')
+            L.append(f'| … and {len(rest)} more | | ' + (', '.join(f'§{n}' for n in ns) or 'Automated Checks') + ' |')
     else: L.append('Nothing needs a person.')
     return L + ['']
 
@@ -361,19 +438,26 @@ def replace_block(md, block_lines):
                   or lines[k].startswith('Automated checks are evidence, not legal sign-off')), len(lines))
         lines = lines[:i] + lines[j:]
     anchor = next((k for k, l in enumerate(lines) if l.startswith('Automated checks are evidence, not legal sign-off')), None)
-    if anchor is None: anchor = next((k for k, l in enumerate(lines) if l == '## Automated checks'), len(lines))
+    if anchor is None: anchor = next((k for k, l in enumerate(lines) if l.lower() == '## automated checks'), len(lines))
     return '\n'.join(lines[:anchor] + block_lines + lines[anchor:])
 
-def refresh(record, labels=None, han_pages=None):
+def refresh(record, labels=None, han_pages=None, release=None):
     """For a run with record.json `sections`: recompute the glance from them and put the new "Overview" block in place
     (the lines after it, the evidence line and the blank, are kept). Returns review.md's text, drawn from the sections."""
     from lib import sections as S
     secs = record['sections']
-    record['glance'] = glance(record, None, labels, han_pages, sections=secs)
+    record['glance'] = glance(record, None, labels, han_pages, sections=secs, release=release)
     new = next(x for x in S.to_sections(glance_md(record['glance'])) if x['key'] == 'overview')
     for k, x in enumerate(secs):
         if x.get('key') in ('overview', 'at-a-glance'):          # 'at-a-glance': runs made before the rename
             tail = next((j for j, it in enumerate(x['items']) if it['text'].startswith('Automated checks are evidence, not legal sign-off')), len(x['items']))
             new['items'] = new['items'] + x['items'][tail:]
             secs[k] = new; break
+    from lib import release as REL                               # the evaluation section, redrawn once a result is recorded (13 §7.2)
+    if release is not None and REL.any_recorded(release):
+        doc = record.get('document') or {}
+        ev = [x for x in S.to_sections(REL.section_md(release, doc.get('output_sha256'), doc.get('output') or 'the remediated PDF')) if x['level'] == 2]
+        k = next((k for k, x in enumerate(secs) if x.get('key') in REL.EVAL_ANCHORS), None)
+        if k is None: secs.extend(ev)
+        else: secs[k:k + 1] = ev
     return '\n'.join(S.render_md(secs)) + '\n'

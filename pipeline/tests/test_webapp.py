@@ -198,7 +198,7 @@ def test_one_job_per_run_and_a_held_lock_refuse(setup):
     s = settings(setup)
     R = setup / 'runs' / 'a' / 'r'; (R / 'reviews').mkdir(parents=True)
     fake(setup, s, 'a/r', R=str(R))
-    with pytest.raises(ValueError, match=r'A job for this run is already waiting \(since \d\d:\d\d\)\. One job at a time per run\.'): fake(setup, s, 'a/r', R=str(R))
+    with pytest.raises(ValueError, match=r'A job for this run is already waiting \(since \d\d?:\d\d [AP]M\)\. One job at a time per run\.'): fake(setup, s, 'a/r', R=str(R))
     R2 = setup / 'runs' / 'b' / 'r'; (R2 / 'reviews').mkdir(parents=True)
     other = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'review_workorder.py'])   # a live review process
     try:

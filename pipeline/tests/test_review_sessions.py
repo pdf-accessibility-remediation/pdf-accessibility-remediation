@@ -261,7 +261,7 @@ def test_finished_but_not_applied_is_not_ready():
                                                'pending': {'session': '003', 'status': 'finished', 'reviewer': 'Kim'}},
            'sections': [], 'apply': {}, 'verify': {}}
     g = G.glance(rec, None, {}, [], sections=[])
-    assert g['ship'][0]['ok'] is False and 'session 3' in g['ship'][0]['text'] and 'not applied' in g['ship'][0]['text']
+    assert g['ship'][0]['ok'] is False and 'Session 3' in g['ship'][0]['text'] and 'not applied' in g['ship'][0]['text']
     rec['review']['pending']['status'] = 'open'                              # an open draft changes nothing
     assert G.glance(rec, None, {}, [], sections=[])['ship'][0]['ok'] is True
 

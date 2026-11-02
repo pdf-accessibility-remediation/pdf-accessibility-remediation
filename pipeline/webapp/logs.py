@@ -40,11 +40,13 @@ PLAIN = {'apply': 'applying the reviewed decisions', 'verify': 'checking the res
          'intake': 'reading and tagging the PDF', 'audit': 'auditing the PDF', 'cost estimate': 'estimating the cost',
          'reuse saved reply': 'reading the saved reply'}
 NUMBERED = re.compile(r'^(\d+)/(\d+) ')
+REUSED = re.compile(r'^[^:]+: (?:not re-run|reusing)\b')     # run_api.sh's notes: a step it skipped, its saved result used
 
 def plain(label):
-    """A step's label in plain words: "apply (no model)" → "applying the reviewed decisions"; others without their notes."""
+    """A step's label in plain words: "apply (no model)" → "applying the reviewed decisions"; others without their notes;
+    a step run_api.sh did not run again ("0/5 intake: not re-run; …") says so."""
     core = re.sub(r'\s*\((?:no model|local, no model|no cost)\)', '', NUMBERED.sub('', label)).split(':')[0].strip()
-    return PLAIN.get(core, core)
+    return PLAIN.get(core, core) + (' (not run again)' if REUSED.match(label) else '')
 
 STEPS_OF = {'apply': 3, 'review': 3}                    # a re-apply's steps: apply, verify, report (review/sessions.py reapply)
 

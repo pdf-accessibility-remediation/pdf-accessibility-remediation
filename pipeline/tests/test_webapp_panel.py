@@ -82,10 +82,15 @@ def test_the_review_page_gets_return_to(tmp_path):
 # ------------------------------------------------------------------ ready to ship, never None or "unknown"
 def test_ready_comes_from_the_glance_then_review_md_then_says_not_recorded(tmp_path):
     R = str(tmp_path)
-    g = {'glance': {'ready': False, 'ship': [{'what': 'Safety checks', 'text': 'OK'}]}}
-    assert runs.ready(R, g) == {'answer': 'No', 'lines': ['Safety checks: OK'], 'source': 'record.json'}
-    (tmp_path / 'review.md').write_text('## Overview\n\n**Ready to ship?** Yes\n- Safety checks: OK\n- PAC: not run\n\nmore\n')
-    assert runs.ready(R, {}) == {'answer': 'Yes', 'lines': ['Safety checks: OK', 'PAC: not run'], 'source': 'review.md'}
+    g = {'glance': {'ready': True, 'ship': [{'what': 'Safety checks', 'ok': True, 'text': 'OK'}]}}   # a stored `ready` is never trusted
+    assert runs.ready(R, g) == {'answer': 'No', 'lines': ['Safety checks: Not Checked (only 0 of the 5 checks were recorded for this run)',
+                                                          'Accessibility evaluation: Not Completed'],
+                                'status': 'Not Ready', 'current': 'Not Ready', 'source': 'record.json'}
+    (tmp_path / 'review.md').write_text('## Overview\n\n**Status:** Ready\n\n**Ready to ship?** Yes\n- Safety checks: OK\n- PAC: not run\n\nmore\n')
+    assert runs.ready(R, {}) == {'answer': 'Yes', 'lines': ['Safety checks: OK', 'PAC: not run'], 'status': 'Ready', 'source': 'review.md'}   # an older run
+    for st, ans in (('Ready · 2 issues noted', 'Yes'), ('Pending Evaluation', 'No'), ('Shipped', 'No'), ('Shipped · Newer version (Session 7): Ready', 'No')):
+        (tmp_path / 'review.md').write_text(f'## Overview\n\n**Status:** {st}\n\n**Ready to ship?**\n- ✓ Safety Checks: Passed\n- Accessibility Evaluation: Completed\n\n')
+        assert runs.ready(R, {}) == {'answer': ans, 'lines': ['Safety Checks: Passed', 'Accessibility Evaluation: Completed'], 'status': st, 'source': 'review.md'}   # H9
     (tmp_path / 'review.md').write_text('# an old review.md\n')
     assert runs.ready(R, {})['text'] == 'not recorded for this run' and runs.ready(R, {})['answer'] is None
 
@@ -261,6 +266,58 @@ def test_apply_and_stop_refuse_with_a_reason(app):
     assert post(port, '/api/run/book/r1/review', origin='http://evil.example')[0] == 403
     assert post(port, '/api/run/book/r1/nope')[0] == 404 and post(port, '/api/run/book/%2e%2e/review')[0] == 404
 
+def waiting_run(t, name='rv'):
+    """A run folder as a REVIEW=1 stop leaves it: the AI's order, the review's items, intake's record, review_stop.json."""
+    W = t / 'runs' / 'book' / name; (W / '_intake').mkdir(parents=True)
+    src = t / 'samples' / 'book.pdf'; src.write_bytes(b'%PDF-1.4 the original')
+    (W / '_intake' / 'intake.json').write_text(json.dumps({'original': {'file': 'book.pdf', 'sha256': sha(src)}}))
+    (W / 'workorder.ai.json').write_text('{}'); (W / 'review_items.json').write_text('{}')
+    (W / 'review_stop.json').write_text(json.dumps({'src': str(src), 'name': 'book', 'env': {'OCR_LANG': 'eng', 'MODEL': 'x'}}))
+    return W, src
+
+def test_a_run_stopped_for_its_first_review_has_its_page(app):
+    """Patrick, 2026-11-01: run_api.sh's REVIEW=1 stop leads with the app. The run page of a run with no record yet offers
+    "Open the Review Page," then "Apply"; nothing else of a finished run is served for it."""
+    port, t = app['port'], app['t']
+    W, src = waiting_run(t)
+    st, b, _ = get(port, '/run/book/rv/'); page = b.decode()
+    assert st == 200 and '<div id="pdfrem-panel" data-run="book/rv" data-waiting="1">' in page and '<h1>book.pdf</h1>' in page
+    assert 'Nothing has been applied to this book yet. The report and the remediated PDF come with the first apply.' in page
+    st, b, _ = get(port, '/api/run/book/rv'); d = json.loads(b)
+    assert st == 200 and d['waiting'] == {'reviewed': False, 'reviewer': None, 'date': None, 'prepared': True} and d['title'] == 'book.pdf'
+    for path in ('/run/book/rv/checks', '/run/book/rv/download?what=pdf', '/api/run/book/rv/checks', '/run/book/rv/review.md'):
+        assert get(port, path)[0] == 404
+    st, b = post(port, '/api/run/book/rv/apply')
+    assert st == 409 and b['error'] == 'Finish the review first: "Open the Review Page," then "Finish Review."'
+    for act in ('ship', 'discard', 'ocr', 'remove-older-pdfs'): assert post(port, f'/api/run/book/rv/{act}')[0] == 404
+    assert post(port, '/api/run/book/rv/stop') == (409, {'error': 'no review page is open for this run'})
+
+def test_the_first_review_and_the_first_apply_are_the_terminal_commands(setup):
+    s = settings(setup); W, src = waiting_run(setup)
+    j = runs.start_first_review(s, 'book/rv', str(W), 8123)
+    assert j['kind'] == 'review' and j['first'] and j['counted'] is False and j['argv'][1:] == [
+        'review_workorder.py', str(W), '--serve', '--no-browser', '--return-to', 'http://127.0.0.1:8123/run/book/rv/?after=finish']
+    v = runs.job_view(s, jobs.update(s['jobs'], j['id'], status='done', ended='2026-11-01T16:20:00'))
+    assert v['title'] == 'Review the AI\'s decisions → closed without "Finish Review" (4:20 PM)'
+    (W / 'review.json').write_text(json.dumps({'reviewer': 'Kim', 'date': '2026-11-01'}))
+    assert runs.job_view(s, jobs.load(s['jobs'], j['id']))['result'] == 'review finished (Kim, 4:20 PM), not applied yet'
+    with pytest.raises(ValueError, match='The review is finished'): runs.start_first_review(s, 'book/rv', str(W), 8123)
+    a = runs.start_first_apply(s, 'book/rv', str(W))
+    assert a['kind'] == 'apply' and a['argv'] == ['bash', 'run_api.sh', str(src), 'book', 'rv']
+    assert a['env']['RUN_DIR'] == str(W) and a['env']['OCR_LANG'] == 'eng' and 'MODEL' not in a['env'] and 'REVIEW' not in a['env']
+    jobs.update(s['jobs'], a['id'], status='done', ended='2026-11-01T16:25:00')
+    (W / 'review_stop.json').write_text(json.dumps({'src': str(setup / 'gone.pdf'), 'name': 'book'}))   # moved since: found by sha256
+    assert runs.start_first_apply(s, 'book/rv', str(W))['argv'][2] == str(src)
+    assert runs.waiting(str(W)) and runs.waiting_state(s, 'book/rv', str(W))['waiting']['reviewed'] is True
+    (W / 'record.json').write_text('{}')
+    assert not runs.waiting(str(W))                                               # applied: a finished run from now on
+
+def test_the_review_stop_leads_with_the_app():
+    sh = src('run_api.sh')
+    assert 'echo "Open the run page to review and apply: python3 $(pwd)/app.py \\"$R\\""' in sh and 'echo "Or in the terminal:"' in sh
+    assert "'review_stop.json'" in src('report.py')                             # removed with the other working files
+    assert 'open the run page and select "Apply": python3 ' in src('review_workorder.py')
+
 def test_stop_only_before_finish(app):
     port, t, R = app['port'], app['t'], app['R']
     s = config.load(str(t / 'app.json'), environ={})
@@ -288,7 +345,7 @@ def test_apply_is_offered_only_for_the_newest_session(app):
     st, b = post(port, '/api/run/book/r1/apply')
     assert st == 409 and b['error'] == 'session 2 was replaced by session 3: Apply is offered only for the newest session'
     ses(R, '004', 'open')                                                                          # an open session changes nothing
-    assert runs.unapplied(S.sessions(R)) is None
+    assert runs.unapplied(R) is None
     assert runs.after_interrupt(R, {'kind': 'apply', 'started': '2026-10-29T12:00:00'})['state'] != 'apply'
 
 INLINE = 'document.title = "x";'
@@ -450,21 +507,25 @@ def test_steps_in_plain_words():
     assert logs.now_step('review', steps) == {'words': 'checking the result', 'n': 2, 'total': 3}
     assert logs.now_step('pin', []) == {'words': 're-auditing the run to pin it (free)', 'n': 1, 'total': 1}
     assert logs.now_step('apply', logs.steps('▶ apply (no model)\n  ✓ apply (no model): 1.0s\n')) is None
+    assert logs.plain('0/5 intake: not re-run; applying to the intake result saved before the review stop') == 'reading and tagging the PDF (not run again)'
+    assert logs.plain('1/5 audit: reusing the audit already in /x/_audit') == 'auditing the PDF (not run again)'   # a waiting run's first apply
+    assert "esc(tc(!st.waiting ? 'First result' : st.waiting.reviewed ? 'Waiting to be applied' : 'Waiting for review'))" in src('webapp/panel.js')
+    assert "(j.first ? 'Stop Reviewing (Your Choices Are Saved)' : 'Stop Reviewing (the Session Stays Open)')" in src('webapp/panel.js')   # no session before Finish
 
 def test_job_titles_say_what_happened(tmp_path):
     R = str(tmp_path); ses(R, '003', 'applied', reviewer='sss')
     v = {'outcome': 'done: session 3 is the current result'}
     j = {'kind': 'review', 'what': 'Review again from session 2', 'status': 'done', 'ended': '2026-10-29T18:19:44'}
     # a title stored before the rule ("session 2") is shown with "Session 2": formatted when shown (handoff 15)
-    assert runs.title(R, j, v) == 'Review again from Session 2 → Session 3 applied (sss, 18:19)'
+    assert runs.title(R, j, v) == 'Review again from Session 2 → Session 3 applied (sss, 6:19 PM)'
     assert runs.title(R, dict(j, status='running'), {}) == 'Review again from Session 2'
-    assert runs.title(R, dict(j, status='failed'), {}) == 'Review again from Session 2 → failed (18:19)'
-    assert runs.title(R, j, {'outcome': 'session 4 stays open'}) == 'Review again from Session 2 → Session 4 left open (18:19)'
+    assert runs.title(R, dict(j, status='failed'), {}) == 'Review again from Session 2 → failed (6:19 PM)'
+    assert runs.title(R, j, {'outcome': 'session 4 stays open'}) == 'Review again from Session 2 → Session 4 left open (6:19 PM)'
     assert runs.title(R, {'kind': 'ocr', 'what': 'Review OCR text', 'status': 'done', 'ended': '2026-10-29T10:24:00'}, {}) == \
-        'Review OCR Text → closed (10:24); no verdict recorded'
-    assert runs.title(R, dict(j, kind='pin', what='Pin the run'), {}) == 'Pin the run → pinned (18:19)'
+        'Review OCR Text → closed (10:24 AM); no verdict recorded'
+    assert runs.title(R, dict(j, kind='pin', what='Pin the run'), {}) == 'Pin the run → pinned (6:19 PM)'
     lost = {'interrupted': {'state': 'done', 'text': 'done (the app lost track of the job): session 3 is the current result'}}
-    assert runs.title(R, dict(j, kind='apply', what='Apply session 3', status='interrupted'), lost) == 'Apply Session 3 → Session 3 applied (sss, 18:19)'
+    assert runs.title(R, dict(j, kind='apply', what='Apply session 3', status='interrupted'), lost) == 'Apply Session 3 → Session 3 applied (sss, 6:19 PM)'
     assert runs.reason({'status': 'failed', 'outcome': 'refused: apply (no model) failed (exit 1): the current result is unchanged', 'exit': 1}) == \
         'Apply (no model) failed (exit 1): the current result is unchanged'
     assert runs.reason({'status': 'failed', 'outcome': None, 'exit': 2}) == 'The command ended with an error (exit 2).'
@@ -479,10 +540,10 @@ def test_the_page_shows_no_log_or_command_and_every_job(app):
     v = d['jobs'][-1]
     assert 'tail' not in v and 'command' not in v and v['log'] == os.path.join(s['jobs'], 'jobs', v['id'] + '.log')   # outside the repo: absolute
     assert runs.shown_path(os.path.join(config.ROOT, 'runs', '.app', 'jobs', 'x.log')) == os.path.join('runs', '.app', 'jobs', 'x.log')
-    assert v['reason'] == 'The command ended with an error (exit 1).' and v['title'] == 'Apply 11 → failed (10:00)'
+    assert v['reason'] == 'The command ended with an error (exit 1).' and v['title'] == 'Apply 11 → failed (10:00 AM)'
     js = src('webapp/panel.js')
     assert 'Log and command' not in js and 'The same from a terminal' not in js and 'Previous Jobs (' in js and "The job\\'s full output, for whoever looks after the app, is saved in" in js
-    assert 'Earlier jobs' not in js and v['action'] == 'Apply 11' and v['result'] == 'failed (10:00)'
+    assert 'Earlier jobs' not in js and v['action'] == 'Apply 11' and v['result'] == 'failed (10:00 AM)'
     assert 'aria-hidden="true"></span>' in js and 'pp-spin' in js
     assert 'prefers-reduced-motion: reduce) { .pp .pp-spin { animation: none; } }' in src('webapp/panel.css')
 
@@ -554,7 +615,7 @@ def test_panel_and_review_page_details():
     assert "'Waiting for you: the review page is open'" in js and 'Ready to ship?</b>' not in js            # the report's card says it
     assert '[tabindex="-1"]:not(.hit):focus, [tabindex="-1"]:not(.hit):focus-visible { outline: none; }' in css   # any app page, not .hit
     assert '.pp summary { cursor: pointer; font-size: 15px; color: var(--ink); }' in css
-    assert 'placeholder="Your name"' in page and '<h1 id="title" tabindex="-1">Work Order Review</h1>' in page and 'Back to the Run Page' in page
+    assert 'placeholder="Your Name"' in page and '<h1 id="title" tabindex="-1">Work Order Review</h1>' in page and 'Back to the Run Page' in page
     assert ": done' + (s.time ? ', ' + esc(s.time) : '') : j.status === 'running' ? '' : ': did not finish'" in js   # no ": running"
     assert 'html { scroll-padding-top' not in page and 'main [id] { scroll-margin-top: calc(var(--top, 0px) + 8px); }' in page
 
@@ -569,7 +630,7 @@ def test_the_report_review_section(tmp_path):
     assert '<p><strong>Session 2</strong> · sss · 2026-10-29 · 9 approved · 0 rejected · 2 accepted without review</p>' in out
     assert out.count('<td><span class="nowrap">2 <strong>(current)</strong></span></td>') == 1 and '<td class="nowrap">3 from Session 1</td>' in out
     assert '<td class="nowrap">none</td>' in out and '<td class="nowrap">Session 1</td>' in out                # From and Carried never wrap
-    assert '<details class="fold"><summary>Previous Sessions (1)</summary>' in out and '<td class="nowrap">2026-10-28</td>' in out
+    assert '<details class="fold"><summary>Previous Sessions (1)</summary>' in out and '<td class="nowrap">October 28, 2026</td>' in out
     assert out.index('Previous Sessions (1)') < out.index('<td><span class="nowrap">1</span></td>')         # session 1 only inside the fold
     assert '<th scope="col">Notes</th>' in out and out.count('<td class="notes">none</td>') == 2 and 'Session Notes' not in out   # no names, no notes
     assert 'From a terminal' not in out and 'review_workorder.py' not in out and 'Earlier sessions' not in out
@@ -598,12 +659,12 @@ def test_the_same_title_case_rule_in_the_pages():
     from lib.titles import SMALL
     for f in ('webapp/panel.js', 'review/page.html'):
         t = src(f)
-        assert "const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with']);" in t
+        assert "const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with', 'as']);" in t   # 'as': #38
         assert "/[./_@\\d]/.test(core)" in t and 'edge = /[:?—]$/.test(x);' in t
         # words in parentheses are left as written (review 10 L2: pinned so the pages can't drift from lib/titles.py)
         assert "const inside = depth > 0 || /^[\"'*[`]*\\(/.test(x);" in t and 'if (inside) return x;' in t
         assert "depth = Math.max(0, depth + (x.match(/\\(/g) || []).length - (x.match(/\\)/g) || []).length);" in t
-    assert SMALL == {'a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with'}
+    assert SMALL == {'a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with', 'as'}
 
 def test_a_job_card_and_its_one_line_forms():
     js = src('webapp/panel.js')
@@ -640,7 +701,7 @@ def test_the_discard_route(app):
     j = fake(t, s, 'book/r1', 30); jobs.update(s['jobs'], j['id'], kind='review', counted=False)          # its review page is open
     assert wait(lambda: (jobs.load(s['jobs'], j['id']) or {}).get('child_pid'), 20)
     st, b = post(port, '/api/run/book/r1/discard')
-    assert st == 409 and b['error'] == 'The review page is open: select "Stop Reviewing" first, then "Discard Session 2".'
+    assert st == 409 and b['error'] == 'The review page is open: select "Stop Reviewing" first, then "Discard Session 2."'
     (R / 'reviews' / 'review.json').write_text('{}')                                                       # past Finish
     st, b = post(port, '/api/run/book/r1/discard')
     assert st == 409 and b['error'] == 'This review is past "Finish Review" and is being applied: it can\'t be discarded now.'
@@ -697,7 +758,7 @@ def test_in_page_link_targets_take_focus():
     assert "const t = document.getElementById(a.getAttribute('href').slice(1));" in page and 'goTo(t);' in page
     assert "goTo(document.getElementById('card-' + t.id));" in page
     assert '[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }' in page
-    assert srv.count('<main id="main" tabindex="-1">') == 2 and '<script src="/app/panel.js" defer></script></body></html>' in srv
+    assert srv.count('<main id="main" tabindex="-1">') == 4 and '<script src="/app/panel.js" defer></script></body></html>' in srv
 
 def test_finish_not_yet_is_200_with_needs(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)
@@ -844,7 +905,7 @@ def test_the_pages_name_no_files_or_commands():
     assert 'The text is shown as OCR read it and isn\\\'t edited on this page.' in page
     ss = [{'id': f'00{i}', 'from': 'ai' if i == 1 else f'00{i - 1}', 'status': 'applied', 'reviewer': 'K', 'date': '2026-10-31', 'counts': {}} for i in (1, 2, 3)]
     out = ''.join(H.review_card('.', {'review': {'session': '003', 'sessions': ss, 'pending': {'status': 'finished', 'session': '004', 'reviewer': 'K'}}}))
-    assert 'review_workorder.py' not in out and 'select "Apply Session 4"' in out
+    assert 'review_workorder.py' not in out and 'select "Apply Session 4."' in out
     assert out.index('<span class="nowrap">2</span>') < out.index('<span class="nowrap">1</span>')       # Previous Sessions: newest first
     assert '<td class="nowrap">Session 2</td>' in out
 
@@ -853,7 +914,7 @@ def test_ocr_refusals_have_a_page_wording():
     from review import ocr as O
     import pytest as P
     it = {'original': {'pages': 3}, 'ocr': {'pages_with_ocr_text': [1]}, 'cjk_probe': {'cjk_pages': [1]}, 'settings': {'OCR_LANG': 'jpn'}}
-    cases = [({'verdict': 'approved', 'reviewer': 'K', 'reason': 'r'}, '--reads', 'to approve them, tick "I can read Japanese".'),
+    cases = [({'verdict': 'approved', 'reviewer': 'K', 'reason': 'r'}, '--reads', 'to approve them, tick "I can read Japanese."'),
              ({'verdict': 'approved', 'reviewer': 'K', 'reason': 'a | b', 'reads': ['Japanese']}, "review.md's table", 'The reason can\'t contain the character "|"'),
              ({'verdict': 'approved', 'reviewer': 'K', 'reason': '[x](y)', 'reads': ['Japanese']}, 'review.html', 'Put a space between them.'),
              ({'verdict': 'approved', 'reviewer': 'K', 'reason': 'r', 'reads': ['Japanese'], 'pages': 'p3'}, 'for example', 'ex. 381-386'),
@@ -868,8 +929,8 @@ def test_review_10_plain_messages_from_python():
     process id), a refused pin (no command: that is in the job's log), an error in the app (no log path), the 403."""
     from webapp import jobs as Jb, runs as Rn, server as W
     from review import sessions as S
-    assert Jb.lock_words('reopen', '2026-10-31T14:02:11') == 'Someone is already reviewing this run (since 14:02). Try again when they\'re done.'
-    assert Jb.lock_words('apply', '2026-10-31T14:02:11') == 'This run is being applied (since 14:02). Try again when it\'s done.'
+    assert Jb.lock_words('reopen', '2026-10-31T14:02:11') == 'Someone is already reviewing this run (since 2:02 PM). Try again when they\'re done.'
+    assert Jb.lock_words('apply', '2026-10-31T14:02:11') == 'This run is being applied (since 2:02 PM). Try again when it\'s done.'
     refused = {'status': 'failed', 'outcome': 'refused: the kept digest cannot be read …: ' + S.FALLBACK}
     assert Rn.reason(refused) == S.FALLBACK_PAGE and 'python3' not in S.FALLBACK_PAGE and '--replay-to' in S.FALLBACK
     assert 'server.log' not in W.ERROR_500 and 'runs/' not in W.ERROR_500
@@ -889,11 +950,12 @@ def test_review_10_boxes_and_report_wording():
     assert 'id="hideHdr"' in page and 'id="showHdr"' in page and "localStorage.setItem('review:header'" in page and "setAttribute('aria-expanded', String(shown))" in page
     assert 'overscroll-behavior: contain; font-size: 14px' in page and 'Current result (' not in page and 'Show "Not Reviewed"' in page
     assert 'OCR Text Approved:' not in page and 'Previous Verdicts (' in page and 'I can read ' in page and 'final sign-off' not in rh
-    s = {'what': 'Work order approved on the review page', 'text': 'no (reviewed by Kim on 2026-10-30: 205 decisions accepted without review)'}
-    assert H.ship_words(s) == 'no (205 decisions not reviewed)'
-    assert H.ship_words(dict(s, text='no (run without REVIEW=1)')) == 'no (applied without a review)'          # review 12 L2
-    assert H.ship_words(dict(s, text='no (reviewed by hand edit by K on D, not on the review page)')).startswith('no (reviewed by hand edit')
-    assert H.ship_words({'what': 'OCR text approved', 'text': 'yes (approved by K on D)'}) == 'yes (approved by K on D)'
+    from lib import glance as G                                                   # one wording from 2026-10-31: glance writes it
+    rv = {'reviewer': 'Kim', 'date': '2026-10-30', 'method': 'page', 'counts': {'accepted_unreviewed': 205}}
+    g = G.glance({'review': {'workorder': rv}}, None, {}, [], sections=[])
+    assert g['ship'][0]['text'] == 'Not Approved (205 decisions not reviewed; reviewed by Kim on October 30, 2026)'
+    assert G.glance({}, None, {}, [], sections=[])['ship'][0]['text'] == 'Not Approved (applied without a review)'   # review 12 L2
+    assert 'ship_words' not in rh
 
 def test_auto_save_and_the_finish_check():
     """Handoff 13 (#48, the smaller part): no Save button; every change is saved about a second after it is made (POST
@@ -958,11 +1020,12 @@ def test_review_14_and_the_last_pass():
     assert 'OCR review page' not in js and 'Open the OCR Text Review Page' in js and 'OCR review page' not in page
 
 def test_the_ready_to_ship_card_and_select():
-    """The pre-PR pass: the card's marks in one centred column (a bullet, or a check when met), its four condition names
-    as written for review.html (review.md keeps glance's), and "Select", not "press", in the app's messages."""
+    """The pre-PR pass: the card's marks in one centred column (a bullet, or a check when satisfied), its four
+    requirements' names (one table, the card and review.md), and "Select", not "press", in the app's messages."""
     import report_html as H
-    assert H.SHIP_NAMES == {'Work order approved on the review page': 'Work Order approved on the review page', 'OCR text approved': 'OCR Text approved',
-                            'Safety checks': 'Safety Checks', 'Manual check (PAC)': 'Manual Check (PAC)'}
+    from lib import glance as G                                                   # the four requirements' names (2026-10-31)
+    assert G.SHIP_NAMES == {'Work order approved on the review page': 'Work Order Approval', 'OCR text approved': 'OCR Text Approval',
+                            'Safety checks': 'Safety Checks', 'Accessibility evaluation': 'Accessibility Evaluation'}
     rh = src('report_html.py')
     assert '<ul role="list">' in rh and '<li><span class="mark" aria-hidden="true"><i class="bul"></i></span>' in rh
     for f in ('webapp/panel.js', 'webapp/runs.py', 'report_html.py', 'review/page.html'):
@@ -975,3 +1038,17 @@ def test_the_review_page_names_no_report_file():
     assert 'review.md' not in page and 'the report lists the moves the executor actually makes' in page
     assert 'press Save' not in page and 'and Save to' not in page                       # no Save button: previews follow the auto-save
     assert "refreshMoves(b.move_previews)" in page
+
+
+def test_the_panel_is_replaced_only_when_its_html_changed():
+    """Patrick, 2026-11-01: while a review is open, the run page polled every second and rebuilt the whole panel whenever the
+    API's data differed (the review page saving a session's notes changes it), swapping the buttons under the mouse and
+    losing any selection. render() now replaces #pp-body only when the HTML it builds differs, as renderStrip() does, so a
+    second render with identical HTML leaves the same elements (open <details> and focus kept as before)."""
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    body = js.split('function render() {')[1].split('\n}\n')[0]
+    assert "if (body.dataset.h === h) return;\n  body.innerHTML = h; body.dataset.h = h;" in body
+    assert body.rindex('if (body.dataset.h === h) return;') < body.index('opened.forEach') < body.rindex('.focus()')
+    assert body.count('innerHTML') == 2                                     # one write each (a waiting run's, the result's), after its check
+    strip = js.split('function renderStrip(s) {')[1].split('\n}\n')[0]
+    assert 'if (sb.dataset.h !== h) {' in strip                            # the strip's own check, unchanged

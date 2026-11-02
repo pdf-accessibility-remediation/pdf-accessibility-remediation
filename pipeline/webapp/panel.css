@@ -8,6 +8,7 @@
 /* the panel, the earlier-result bar and the review.md page's links line up with the report's main column: 1200 px at most,
    centred, with the report's own 16 px (10 px on a narrow screen) side padding */
 #pdfrem-panel, #pdfrem-version, .pp-wrap { max-width: 1200px; margin: 0 auto; padding: 0 16px; box-sizing: border-box; }
+#pdfrem-panel + main { padding-top: 0; }   /* the panel's own 12px margin is the gap to "Ready to Ship?", as from the card to the strip */
 .pp { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink);
       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; box-sizing: border-box; }
 .pp h2 { font-size: 18px; margin: 0 0 6px; } .pp h3 { font-size: 16px; margin: 10px 0 4px; } .pp h4 { font-size: 15px; margin: 0 0 4px; }
@@ -71,5 +72,60 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .pp-dlg button { font: inherit; padding: 6px 12px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); cursor: pointer; margin-right: 8px; }
 .pp-dlg button.pp-primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
 .pp-dlg::backdrop { background: rgba(0, 0, 0, .45); }
+.pp-dlg button:disabled { opacity: .55; cursor: not-allowed; }
+.pp-prune { border: 1px solid var(--line); border-radius: 4px; margin: 8px 0; padding: 4px 10px 6px; }   /* "Clean Up Space": one checkbox per version */
+.pp-prune legend { font-weight: 600; padding: 0 4px; } .pp-prune label { display: flex; align-items: center; gap: 8px; min-height: 32px; }
 @media (max-width: 640px) { #pdfrem-panel, #pdfrem-version, .pp-wrap, .pp-page main, .pp-page header { padding-left: 10px; padding-right: 10px; } }
 @media (max-width: 600px) { .pp { margin: 8px 0; padding: 10px; } .pp button, .pp a.pp-btn { width: 100%; text-align: left; } }
+
+/* the evaluation strip, after "Ready to Ship?" (#38) */
+#pdfrem-checks { max-width: 1200px; margin: 0 auto; box-sizing: border-box; }
+/* the strip's heading: the panel's own section-heading size (.pp h2, as "Run Actions"; .pp h3 when it falls back into the panel) */
+.pp-warn-t { border-left: 4px solid var(--reject); padding-left: 8px; }
+/* the Manual Checks page */
+.pp a.pp-btn { box-sizing: border-box; }   /* a full-width button on a narrow screen stays inside its box */
+.mc-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
+.mc-page header .mc-book { margin: 0 0 4px; }
+.mc-page h1 { font-size: 22px; }
+.mc .mc-sec { margin-top: 26px; }
+.mc .mc-sec h2 { font-size: 20px; margin: 0 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }   /* a section heading: a thin rule across */
+.mc h3 { font-size: 15px; margin: 14px 0 4px; } .mc h4 { font-size: 14px; margin: 10px 0 4px; }
+.mc-field { margin: 8px 0; } .mc-field label { display: block; font-weight: 600; }
+.mc-field input[type=text], .mc-field textarea { font: inherit; width: 100%; max-width: 40em; box-sizing: border-box; padding: 4px 6px;
+  border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); }
+.mc-field textarea { resize: vertical; }
+.mc-item { border: 1px solid var(--line); border-radius: 6px; margin: 10px 0; padding: 6px 12px 8px; }
+.mc-item legend { font-weight: 600; padding: 0 4px; }
+.mc-radios { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 4px 0; } .mc-radios label { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+.mc-lines { margin: 0 0 12px; } .mc-lines p { margin: 0; }   /* the lines under the status: consecutive, no gap between them */
+.mc-help, .mc-opt { color: var(--muted); } .mc-help { margin: 2px 0; font-size: 14px; } .mc-opt { font-weight: 400; }
+.mc-hint { margin: 2px 0; font-size: 14px; }
+.mc-err { color: var(--reject); font-weight: 600; margin: 2px 0; }
+.mc-errsum { border-left: 4px solid var(--reject); background: var(--flag); padding: 4px 12px; margin: 8px 0; } .mc-errsum h4 { margin: 4px 0; }
+.mc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 12px 0; }
+.mc-save { display: inline-block; min-width: 10em; color: var(--muted); font-size: 14px; }
+.mc-refusal { border-left: 4px solid var(--reject); padding: 4px 10px; background: var(--flag); }
+.mc .pp-msg { margin: 8px 0; } .mc .pp-msg button { margin-left: 8px; }
+.mc .pp-msg.mc-recorded { border: 0; border-left: 4px solid var(--ok); }   /* results recorded: a success, its green left border */
+.mc table { border-collapse: collapse; font-size: 14px; width: 100%; } .mc th, .mc td { border-bottom: 1px solid var(--line); padding: 3px 8px; text-align: left; vertical-align: top; }
+.mc th.mc-item-c { min-width: 14em; width: 30%; font-weight: 600; } .mc td.mc-res { white-space: nowrap; }
+.mc td.mc-note { max-width: 120ch; overflow-wrap: anywhere; white-space: normal; }   /* never scrolls sideways (review 12 G1): Notes wrap (not the
+   panel's nowrap last column), Item keeps its words */
+.mc-pre { white-space: pre-wrap; }
+.mc :focus-visible, .pp-checks :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mc [tabindex="-1"]:not(.hit):focus, .mc-page main:focus { outline: none; }   /* focus the page moved: no outline (.hit keeps its own) */
+@media (max-width: 600px) { .mc-item { padding: 6px 8px; } .mc-radios { flex-direction: column; }
+  .mc th, .mc td { padding: 3px 4px; } .mc th.mc-item-c { min-width: 6em; width: 34%; } .mc td.mc-res { white-space: normal; } }   /* 320 px: the table fits its card
+/* "Available Downloads" (stage 3), the same on the strip and the evaluation page: the heading (the select's label), the
+   select, the "marked" line, the buttons; the select full width on a narrow screen */
+.pp-dl { margin: 10px 0 0; } .pp-dl select { display: block; font: inherit; font-size: 14px; min-height: 32px; max-width: 100%; margin: 2px 0;
+  padding: 3px 30px 3px 8px; color: var(--ink); background-color: var(--panel); border: 1px solid var(--muted); border-radius: 4px; }   /* the panel's own look on both pages */
+/* its arrow drawn here, centered on the select's height (the browser's own sat high in a 32px select; Patrick, 2026-11-01):
+   two triangles in the text colour, so it follows the light and dark themes; forced colors get the browser's own back */
+.pp-dl select { -webkit-appearance: none; appearance: none; background-repeat: no-repeat; background-size: 5px 5px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%), linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; }
+@media (forced-colors: active) { .pp-dl select { -webkit-appearance: auto; appearance: auto; background-image: none; padding-right: 8px; } }
+.pp-checks .pp-dl h3, .pp-checks .pp-dl h4 { font-size: 15px; margin: 12px 0 4px; }   /* under the strip's own 15px heading */
+@media (max-width: 600px) { .pp-dl select { width: 100%; } }
+

@@ -43,7 +43,7 @@ def sha_obj(o):
 def norm(x): return json.loads(json.dumps(x, ensure_ascii=False))
 def sid_n(sid): return int(sid) if str(sid).isdigit() else 0
 def label(sid): return f'session {int(sid)}' if str(sid).isdigit() else 'the result applied without review' if sid == 'ai' else str(sid)
-def from_label(src): return 'the AI\'s decisions' if src in ('ai', None) else 'the recorded summary of an earlier review' if src == 'summary' else label(src)
+def from_label(src): return 'the AI\'s decisions' if src in ('ai', None) else 'the recorded summary of a previous review' if src == 'summary' else label(src)
 
 def P(R):
     """The paths in a run folder's reviews/."""
@@ -181,7 +181,7 @@ def replay_to(R, D):
     if os.path.exists(D) and os.listdir(D): raise Refused(f'{D} is not empty: give a new run folder')
     reply = D.rstrip(os.sep) + '.reply.txt'
     if os.path.exists(reply): raise Refused(f'{reply} exists already')
-    from lib import ocrwords
+    from lib import ocrwords, origin
     os.makedirs(D, exist_ok=True)
     old_in = os.path.join(R, '_intake')
     if os.path.exists(os.path.join(old_in, 'intake.json')):
@@ -190,7 +190,7 @@ def replay_to(R, D):
             if os.path.exists(os.path.join(old_in, f)): shutil.copyfile(os.path.join(old_in, f), os.path.join(D, '_intake', f))
     open(reply, 'w', encoding='utf-8').write(rec['raw_reply'])
     run = rec.get('run') or {}
-    json.dump({**{k: run[k] for k in ('model', 'temperature') if k in run}, **ocrwords.carried(run)},
+    json.dump({**{k: run[k] for k in ('model', 'temperature') if k in run}, **ocrwords.carried(run), **origin.carried(rec)},
               open(reply + '.meta.json', 'w'))
     doc = rec.get('document') or {}
     cmd = (f'INTAKE_REUSE=1 REPLY={reply} REVIEW=1 RUN_DIR={D} bash run_api.sh <the original PDF: {doc.get("file")}, '
@@ -266,6 +266,19 @@ def current_id(rec):
     rv = rec.get('review') or {}
     if rv.get('session'): return rv['session']
     return '001' if rv.get('workorder') else 'ai'
+
+def newer(R, rec=None):
+    """The sessions newer than the current result (record.json's session, current_id(): a run reviewed before sessions
+    were kept is 001, an unreviewed one 'ai', 0): {'finished': the newest finished one, when no applied session is newer
+    (what Apply applies, also a failed apply), 'open': the newest open one}, each a session or None. A finished session
+    older than the current result, or replaced by a later applied one, is never in it. The one rule for the app's Apply
+    offer, the manual checks' refusal and the status's "Newer version" line."""
+    if rec is None: rec = load(os.path.join(R, 'record.json')) or {}
+    cur = sid_n(current_id(rec))
+    ss = [x for x in sessions(R) if x and sid_n(x.get('id')) > cur]
+    done = [x for x in ss if x.get('status') in ('finished', 'applied')]
+    op = [x for x in ss if x.get('status') == 'open']
+    return {'finished': done[-1] if done and done[-1].get('status') == 'finished' else None, 'open': op[-1] if op else None}
 
 def decision_list(items, decisions):
     """record.json review.decisions: one row per item, for review.html's per-decision status."""
@@ -688,7 +701,10 @@ def reapply(R, s, pdf=None, say=say_):
     save(os.path.join(W, 'review.json'), s['review'])
     shutil.copy2(p['ai'], os.path.join(W, 'workorder.ai.json'))
     fulltext_for(R, inp, say)
-    t = {'4/5 apply (no model)': _run(['apply.py', inp, os.path.join(W, 'workorder.json'), os.path.join(W, out)], say, 'apply (no model)')}
+    # the run's own steps before any review (intake, audit, the AI call, the page images) are carried from the current record,
+    # so a version's "Total runtime" is the whole run's (webapp/downloads.py _runtime); applying and checks are this version's
+    t = {k: v for k, v in ((rec or {}).get('timing_seconds') or {}).items() if not k.startswith('4/5')}
+    t['4/5 apply (no model)'] = _run(['apply.py', inp, os.path.join(W, 'workorder.json'), os.path.join(W, out)], say, 'apply (no model)')
     t['4/5 verify (no model)'] = _run(['verify.py', inp, os.path.join(W, out)], say, 'verify (no model)', quiet=True)
     save(os.path.join(W, 'timing.json'), t)
     dg = load(os.path.join(p['audit'], 'digest.json'))
@@ -711,25 +727,37 @@ def reapply(R, s, pdf=None, say=say_):
 
 def promote(R, sid, out, say=say_):
     """The new result (reviews/work/) becomes the top level; the old one goes to reviews/versions/<its id>/. A marker
-    (promoting.json) lets an interrupted promotion be completed: a record.json is at the top level at every moment."""
+    (promoting.json) lets an interrupted promotion be completed: a record.json is at the top level at every moment.
+    Stages: save old, move new, remirror (release/ read again and the glance, the Overview, review.html and record.json's
+    mirror rewritten: report.py read release/ minutes earlier), all under the record lock (lib/runlock.py); then banner
+    (the replaced version's own review.html, which no other writer touches), after the lock is released."""
+    from lib import runlock
     p = P(R)
-    m = load(p['promoting'])
-    if m is None:
-        old = load(os.path.join(R, 'record.json'))
-        m = {'to': sid, 'from': current_id(old), 'out': out, 'stage': 'save old'}; save(p['promoting'], m)
+    try:
+        with runlock.record_lock(R, runlock.COMMAND_WAIT):
+            m = load(p['promoting'])
+            if m is None:
+                old = load(os.path.join(R, 'record.json'))
+                m = {'to': sid, 'from': current_id(old), 'out': out, 'stage': 'save old'}; save(p['promoting'], m)
+            V = os.path.join(p['versions'], m['from'])
+            if m['stage'] == 'save old':
+                os.makedirs(V, exist_ok=True)
+                if not os.path.exists(os.path.join(V, 'record.json')): shutil.copy2(os.path.join(R, 'record.json'), os.path.join(V, 'record.json'))
+                for n in (m['out'],) + OUT_FILES[1:]:
+                    if os.path.exists(os.path.join(R, n)) and not os.path.exists(os.path.join(V, n)): shutil.move(os.path.join(R, n), os.path.join(V, n))
+                m['stage'] = 'move new'; save(p['promoting'], m)
+            if m['stage'] == 'move new':
+                W = p['work']
+                for n in (m['out'],) + OUT_FILES[1:]:
+                    if os.path.exists(os.path.join(W, n)): shutil.move(os.path.join(W, n), os.path.join(R, n))
+                if os.path.exists(os.path.join(W, 'record.json')): os.replace(os.path.join(W, 'record.json'), os.path.join(R, 'record.json'))
+                m['stage'] = 'remirror'; save(p['promoting'], m)
+            if m['stage'] == 'remirror':
+                from .manual import write_run
+                write_run(R, load(os.path.join(R, 'record.json')), say)
+                m['stage'] = 'banner'; save(p['promoting'], m)
+    except runlock.Busy as e: raise Refused(str(e))
     V = os.path.join(p['versions'], m['from'])
-    if m['stage'] == 'save old':
-        os.makedirs(V, exist_ok=True)
-        if not os.path.exists(os.path.join(V, 'record.json')): shutil.copy2(os.path.join(R, 'record.json'), os.path.join(V, 'record.json'))
-        for n in (m['out'],) + OUT_FILES[1:]:
-            if os.path.exists(os.path.join(R, n)) and not os.path.exists(os.path.join(V, n)): shutil.move(os.path.join(R, n), os.path.join(V, n))
-        m['stage'] = 'move new'; save(p['promoting'], m)
-    if m['stage'] == 'move new':
-        W = p['work']
-        for n in (m['out'],) + OUT_FILES[1:]:
-            if os.path.exists(os.path.join(W, n)): shutil.move(os.path.join(W, n), os.path.join(R, n))
-        if os.path.exists(os.path.join(W, 'record.json')): os.replace(os.path.join(W, 'record.json'), os.path.join(R, 'record.json'))
-        m['stage'] = 'banner'; save(p['promoting'], m)
     if m['stage'] == 'banner':
         try: replaced_banner(V, m['from'], m['to'], R)
         except Exception as e: say(f'  note: the replaced version\'s review.html was not rebuilt ({type(e).__name__}: {e})')
@@ -754,26 +782,17 @@ def rebuild_batch(R, say=say_):
 
 def mark_pending(R, s):
     """record.json review.pending: a session that is open, or finished and not applied (ready to ship then says No), and the
-    Overview and review.html refreshed. None clears it."""
-    rj = os.path.join(R, 'record.json'); rec = load(rj)
-    if rec is None: return
-    rv = rec.setdefault('review', {})
-    if s is None: rv.pop('pending', None)
-    else: rv['pending'] = {'session': s['id'], 'status': s['status'], 'since': s.get('finished') or s.get('started'), 'reviewer': s.get('reviewer')}
-    if not rv: rec.pop('review')
+    Overview and review.html refreshed, under the record lock, every file written whole. None clears it."""
+    from lib import runlock
+    from .manual import write_run
+    rj = os.path.join(R, 'record.json')
     try:
-        from lib import glance as G
-        import report_html as H
-        labels = H.labels_of(R, rec)
-        if rec.get('sections_version') == 1:
-            text = G.refresh(rec, labels, H.han_pages(R))
-            open(os.path.join(R, 'review.md'), 'w', encoding='utf-8').write(text)
-        else:
-            text = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
-            rec['glance'] = G.glance(rec, text, labels, H.han_pages(R))
-            text = G.replace_block(text, G.glance_md(rec['glance'])); open(os.path.join(R, 'review.md'), 'w', encoding='utf-8').write(text)
-        json.dump(rec, open(rj, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
-        H.review_html(R, rec, text, labels)
-    except Exception as e:
-        json.dump(rec, open(rj, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
-        print(f'note: "Overview" and review.html not refreshed ({type(e).__name__}: {e})')
+        with runlock.record_lock(R, runlock.COMMAND_WAIT):
+            rec = load(rj)
+            if rec is None: return
+            rv = rec.setdefault('review', {})
+            if s is None: rv.pop('pending', None)
+            else: rv['pending'] = {'session': s['id'], 'status': s['status'], 'since': s.get('finished') or s.get('started'), 'reviewer': s.get('reviewer')}
+            if not rv: rec.pop('review')
+            write_run(R, rec)
+    except runlock.Busy as e: raise Refused(str(e))
