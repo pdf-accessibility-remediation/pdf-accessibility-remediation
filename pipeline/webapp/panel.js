@@ -35,7 +35,7 @@ function fmtClock(v) {
   if (!p || p[3] === null) return fmtBlank(v) || p ? 'time not recorded' : String(v).trim();
   return ((p[3] % 12) || 12) + ':' + String(p[4]).padStart(2, '0') + ' ' + (p[3] < 12 ? 'AM' : 'PM');
 }
-function fmtWhen(v) { const p = fmtParse(v); return p && p[3] !== null ? fmtDay(v) + ' at ' + fmtClock(v) : fmtDay(v); }
+function fmtWhen(v) { const p = fmtParse(v); return p && p[3] !== null ? fmtDay(v) + ', at ' + fmtClock(v) : fmtDay(v); }
 // ---- end of dates
 const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'by', 'from', 'with', 'as']);
 function tc(s) {

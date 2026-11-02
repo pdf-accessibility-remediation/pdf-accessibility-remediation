@@ -35,7 +35,7 @@ as shipped from the run page ("Mark as Shipped" below), which keeps a copy with 
 - **The page** (`/run/<run>/checks`) names the book as "PDF Title" (the remediated PDF's own title, else the original's
   name without ".pdf"). Right after "Back to the Run Page" comes the **Overall Status**, with the unsatisfied
   requirements when it is Not Ready ("Overall Status: Not Ready · Unsatisfied Requirements: Work Order Approval, OCR Text
-  Approval"), then the version the results are for ("the version from Session 6, applied on October 30, 2026 at
+  Approval"), then the version the results are for ("the version from Session 6, applied on October 30, 2026, at
   2:02 PM") and two help lines, as consecutive lines with no gap: when to complete the evaluation, and 'Every item needs
   a result, and a "Fail" needs a note. A "Fail" does not hold the book back; it is kept in the report with its note for
   future reference and further review.'

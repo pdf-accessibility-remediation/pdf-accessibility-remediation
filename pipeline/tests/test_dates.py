@@ -9,11 +9,11 @@ from lib import dates as D
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES = [('2026-10-31', 'October 31, 2026', 'time not recorded', 'October 31, 2026'),
-         ('2026-10-31T16:32:05', 'October 31, 2026', '4:32 PM', 'October 31, 2026 at 4:32 PM'),
-         ('2026-10-31 09:05', 'October 31, 2026', '9:05 AM', 'October 31, 2026 at 9:05 AM'),
-         ('2026-01-02T00:05:00.123456', 'January 2, 2026', '12:05 AM', 'January 2, 2026 at 12:05 AM'),   # midnight, fractional seconds
-         ('2026-06-30T12:00:00', 'June 30, 2026', '12:00 PM', 'June 30, 2026 at 12:00 PM'),               # noon
-         ('2026-10-31T23:59:59Z', 'October 31, 2026', '11:59 PM', 'October 31, 2026 at 11:59 PM'),       # an offset: its own time
+         ('2026-10-31T16:32:05', 'October 31, 2026', '4:32 PM', 'October 31, 2026, at 4:32 PM'),
+         ('2026-10-31 09:05', 'October 31, 2026', '9:05 AM', 'October 31, 2026, at 9:05 AM'),
+         ('2026-01-02T00:05:00.123456', 'January 2, 2026', '12:05 AM', 'January 2, 2026, at 12:05 AM'),   # midnight, fractional seconds
+         ('2026-06-30T12:00:00', 'June 30, 2026', '12:00 PM', 'June 30, 2026, at 12:00 PM'),               # noon
+         ('2026-10-31T23:59:59Z', 'October 31, 2026', '11:59 PM', 'October 31, 2026, at 11:59 PM'),       # an offset: its own time
          ('the 30th', 'the 30th', 'the 30th', 'the 30th'),                                               # free text: as written
          ('2026-13-01', '2026-13-01', '2026-13-01', '2026-13-01'),
          ('', 'date not recorded', 'time not recorded', 'date not recorded'),
