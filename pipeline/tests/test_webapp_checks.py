@@ -190,7 +190,7 @@ def test_a_note_holding_a_script_end_tag_stays_text(tmp_path):
 
 def test_the_page_in_the_words_decided_after_try_rv1(tmp_path):
     """13 §6: the names, the status line with what is unsatisfied, no PAC Version or PDF/UA item, no NVDA example, Pages
-    optional, an h3 over the earlier results (G2), and the message after a Record, with Review Again after any Fail."""
+    optional, an h3 over the previous results (G2), and the message after a Record (green, no Review Again: Patrick, 2026-11-01)."""
     R = make_run(str(tmp_path / 'r'), record_sha=True)
     page = MP.page(R, 'r'); text = re.sub(r'\s+', ' ', visible(page))
     assert '<h1>Accessibility Evaluation</h1>' in page and 'PDF Title: ' in text and '<title>Accessibility Evaluation: The Clan Records</title>' in page
@@ -210,7 +210,13 @@ def test_the_page_in_the_words_decided_after_try_rv1(tmp_path):
     M.record(R, 'screen_reader', sr, say=lambda *a: None, batch=False)
     page = html.unescape(MP.page(R, 'r', recorded='screen_reader'))
     assert ('Screen-Reader Test results recorded for this version. "Accessibility Evaluation" is now satisfied. 1 issue noted: it is kept '
-            'in the report for a person to fix.') in page and 'id="mc-review"' in page
+            'in the report for future reference and further review.') in page
+    assert 'id="mc-review"' not in page and 'Review Again' not in page                  # it stays on the run page
+    assert '<div id="mc-msg" class="pp-msg pp-okmsg mc-recorded" tabindex="-1">' in page
+    css = open(os.path.join(HERE, 'webapp', 'panel.css'), encoding='utf-8').read()
+    assert '.mc .pp-msg.mc-recorded { border: 0; border-left: 4px solid var(--ok); }' in css
+    mj = open(os.path.join(HERE, 'webapp', 'manual.js'), encoding='utf-8').read()
+    assert 'mc-review' not in mj and 'Review Again' not in mj
     js_src = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert 'Accessibility Evaluation (PAC 2026 &amp; Screen-Reader Test)' in js_src and '>Complete Evaluation</a>' in js_src
     assert "const hx = inPanel ? 'h3' : 'h2';" in js_src                          # the panel fallback: an h3 (G2)
@@ -286,3 +292,17 @@ def test_two_summary_rebuilds_at_once_leave_a_whole_page(tmp_path):
     page = (B / 'summary.html').read_text()
     assert not errs and page.rstrip().endswith('</html>') and page.count('<!doctype html>') == 1
     assert not [n for n in os.listdir(B) if n.endswith('.tmp')]
+
+
+def test_the_hints_when_the_pipeline_found_nothing(tmp_path):
+    """Patrick, 2026-11-01: an item with nothing found says what was not found and that it may be marked Not Applicable."""
+    R = make_run(str(tmp_path / 'r'), record_sha=True)                               # a synthetic book: no figures, tables, OCR, formulas
+    page = html.unescape(MP.page(R, 'r'))
+    for kind, words in (('ocr_pages', 'No pages in this book have text from character recognition (OCR)'),
+                        ('formulas', 'No formulas were found in this book'), ('tables', 'No tables were found in this book'),
+                        ('links', 'No links were found in this book'), ('figures', 'No figures were found in this book'),
+                        ('lists', 'No lists were found in this book')):
+        assert MP.none_found(kind) == f'{words}, so this check may be marked "Not Applicable."', kind
+    assert 'so this check may be marked "Not Applicable."' in page and 'usually Not Applicable' not in page
+    used = {x['found'] for s in REL.CHECKLIST.values() for x in s if x.get('found')}
+    assert used <= set(MP.NONE_FOUND), used - set(MP.NONE_FOUND)                     # every item with such a hint has its words

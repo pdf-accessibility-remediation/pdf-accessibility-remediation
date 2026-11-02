@@ -153,6 +153,11 @@ def lang_words(b):
     return b['lang_name'] or 'a language the app can\'t name; it is in the report'
 
 NOUN = {'figures': 'figures', 'tables': 'tables', 'links': 'links', 'lists': 'lists', 'formulas': 'formulas', 'ocr_pages': 'OCR text'}
+# the hint when the pipeline found none (Patrick, 2026-11-01): what was not found, then that the check may be Not Applicable
+NONE_FOUND = {'ocr_pages': 'No pages in this book have text from character recognition (OCR)', 'formulas': 'No formulas were found in this book',
+              'figures': 'No figures were found in this book', 'tables': 'No tables were found in this book',
+              'links': 'No links were found in this book', 'lists': 'No lists were found in this book'}
+def none_found(kind): return f'{NONE_FOUND[kind]}, so this check may be marked "Not Applicable."'
 SECTION_ID = {'pac': 'pac', 'screen_reader': 'screen-reader'}
 RECORD_LABEL = {'pac': 'Record the PAC 2026 Results', 'screen_reader': 'Record the Screen-Reader Test Results'}
 
@@ -173,7 +178,7 @@ def state(R, run):
         for x in REL.CHECKLIST[sec]:
             hint = None
             if x.get('found'):
-                hint = f'This book has {fnd[x["found"]]}.' if x['found'] in fnd else f'This book has no {NOUN[x["found"]]}: usually Not Applicable.'
+                hint = f'This book has {fnd[x["found"]]}.' if x['found'] in fnd else none_found(x['found'])
             items.append({'key': x['key'], 'label': x['label'], 'help': x['help'], 'pages': bool(x.get('pages')), 'optional': bool(x.get('optional')),
                           'results': [{'value': r, 'label': REL.RESULT_NAMES[r]} for r in x['results']], 'found': x.get('found') in fnd, 'hint': hint})
         d = drafts.get(sec) or {}
@@ -322,8 +327,8 @@ def _form(st, s, p):
     return ''.join(out)
 
 def message(st, recorded):
-    """After Record: what was recorded and what it changed (the page reloads with ?recorded=<section>); "Review Again" after
-    any result with a Fail (2026-10-31: a Fail never blocks, it is kept for a person to fix)."""
+    """After Record: what was recorded and what it changed (the page reloads with ?recorded=<section>), with the issues noted
+    in the page's own words. No "Review Again" here: it stays on the run page (Patrick, 2026-11-01)."""
     s = (st['sections'] or {}).get(recorded)
     if not s or not s.get('current'): return None
     other = 'screen_reader' if recorded == 'pac' else 'pac'
@@ -333,7 +338,7 @@ def message(st, recorded):
     t = (f'{REL.SECTION_NAMES[recorded]} results recorded for this version. '
          + ('"Accessibility Evaluation" is now satisfied.' if done and s['current'].get('state') == 'completed' else
             f'"Accessibility Evaluation" is satisfied once {"PAC 2026" if other == "pac" else "the Screen-Reader Test"} is recorded for this version too.')
-         + (f' {REL.noted(n).capitalize()}: {"it is" if n == 1 else "they are"} kept in the report for a person to fix.' if n else ''))
+         + (f' {REL.noted(n).capitalize()}: {"it is" if n == 1 else "they are"} kept in the report for future reference and further review.' if n else ''))
     return t, bool(n)
 
 def page(R, run, recorded=None):
@@ -347,8 +352,7 @@ def page(R, run, recorded=None):
          f'<p class="mc-status">Overall Status: <strong>{E(st["status"])}</strong>' + (f' · {E(st["newer"])}' if st.get('newer') else '')   # right after "Back to the Run Page" (Patrick, 2026-11-01)
          + (f' · Unsatisfied Requirements: {E(", ".join(x["name"] for x in why))}' if st.get('status_name') == REL.NOT_READY and why else '') + '</p>']
     if msg:
-        B.append(f'<div id="mc-msg" class="pp-msg pp-okmsg" tabindex="-1"><span class="pp-msg-t">{E(msg[0])}</span>'
-                 + ('<button type="button" id="mc-review" class="pp-primary">Review Again</button>' if msg[1] else '') + '</div>')
+        B.append(f'<div id="mc-msg" class="pp-msg pp-okmsg mc-recorded" tabindex="-1"><span class="pp-msg-t">{E(msg[0])}</span></div>')   # green: recorded
     v = st['version']
     B.append(f'<div class="mc-lines"><p>These results are recorded for {E(v["label"])}' + (f', {E(v["when"])}' if v['when'] else '') + '.</p>'   # consecutive lines, no gap (Patrick, 2026-11-01)
              '<p class="mc-help">Complete the evaluation after the last review is applied: a new version needs its own evaluation.</p>'

@@ -106,6 +106,7 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .mc-save { display: inline-block; min-width: 10em; color: var(--muted); font-size: 14px; }
 .mc-refusal { border-left: 4px solid var(--reject); padding: 4px 10px; background: var(--flag); }
 .mc .pp-msg { margin: 8px 0; } .mc .pp-msg button { margin-left: 8px; }
+.mc .pp-msg.mc-recorded { border: 0; border-left: 4px solid var(--ok); }   /* results recorded: a success, its green left border */
 .mc table { border-collapse: collapse; font-size: 14px; width: 100%; } .mc th, .mc td { border-bottom: 1px solid var(--line); padding: 3px 8px; text-align: left; vertical-align: top; }
 .mc th.mc-item-c { min-width: 14em; width: 30%; font-weight: 600; } .mc td.mc-res { white-space: nowrap; }
 .mc td.mc-note { max-width: 120ch; overflow-wrap: anywhere; white-space: normal; }   /* never scrolls sideways (review 12 G1): Notes wrap (not the
