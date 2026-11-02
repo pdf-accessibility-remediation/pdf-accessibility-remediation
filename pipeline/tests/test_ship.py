@@ -74,10 +74,10 @@ def test_a_previous_results_page_reads_earlier_version_never_newer(tmp_path):
     core.save(os.path.join(V, 'record.json'), vrec)
     core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry(sha)])
     st = H.glance_of(V, vrec)['status']
-    assert st['text'] == 'Earlier version (the current version is Session 6)' and st['newer'] is None
+    assert st['text'] == 'Previous version (the current version is Session 6)' and st['newer'] is None
     assert H.glance_of(V, vrec)['ready'] is False and 'Newer version' not in json.dumps(st)
     core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry('4' * 64)])            # this earlier version was itself shipped
-    assert H.glance_of(V, vrec)['status']['text'] == 'Earlier version (shipped as Shipment 1 on November 2, 2026; the current version is Session 6)'
+    assert H.glance_of(V, vrec)['status']['text'] == 'Previous version (shipped as Shipment 1 on November 2, 2026; the current version is Session 6)'
 
 # ------------------------------------------------------------------ Mark as Shipped (21 §A, M2), withdrawal (N4)
 PAC_REC = {'by': 'Kim', 'fields': {}, 'items': dict(PAC_OK, contrast={'result': 'fail', 'note': 'grey <b>caption</b> ## on p. 12'})}
@@ -445,10 +445,10 @@ def test_the_record_zip_holds_only_its_files_in_every_state(tmp_path):
     shutil.copy2(os.path.join(R, 'review.html'), os.path.join(V, 'review.html'))
     with open(os.path.join(V, 'review.html'), 'a', encoding='utf-8') as f: f.write('<a href="../002/review.html">previous result</a><a href="https://example.org/">web</a>')
     name, files = _zip(R, '001')                                                            # its folder has no han_review.csv
-    assert name.endswith('_session-1_earlier-version.zip') and sorted(files) == sorted(['b_remediated.pdf', 'review.html', 'READ-ME.txt'])
+    assert name.endswith('_session-1_previous-version.zip') and sorted(files) == sorted(['b_remediated.pdf', 'review.html', 'READ-ME.txt'])
     page = _links_stay_in_the_zip(files)
     assert 'previous result' in page and '<a href="https://example.org/">web</a>' in page and 'View the Accessibility Statement' in page
-    assert 'Status: earlier version' in files['READ-ME.txt'].decode()
+    assert 'Status: previous version' in files['READ-ME.txt'].decode()
     # withdrawn: the shipped copy, with its withdrawal
     M.withdraw(R, 1, 'Lee', 'wrong file')
     name, files = _zip(R, 'shipment-1')

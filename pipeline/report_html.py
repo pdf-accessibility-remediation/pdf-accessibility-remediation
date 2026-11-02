@@ -240,7 +240,7 @@ def glance_of(R, rec=None, labels=None):
         md = open(os.path.join(R, 'review.md'), encoding='utf-8').read()
         g = G.glance(rec, md, labels if labels is not None else labels_of(R, rec), han_pages(R), release=rel)
     run = REL.run_dir_of(R)
-    if run != os.path.abspath(R):                       # a previous result's own page: "Earlier version (…)" (note (c))
+    if run != os.path.abspath(R):                       # a previous result's own page: "Previous version (…)" (note (c))
         from review import sessions as RS
         cid = RS.current_id(json.load(open(os.path.join(run, 'record.json'), encoding='utf-8')) if os.path.exists(os.path.join(run, 'record.json')) else {})
         label = f'Session {int(cid)}' if str(cid).isdigit() else 'the version applied without a review'
@@ -375,7 +375,7 @@ def manual_card(R, rec):
         words = {'completed': f'Completed by {c.get("by")} on {D.day(c.get("recorded"))} · {p["n_items"]} items'
                               + (f' · {REL.noted(len(p["issues"]))}' if p['issues'] else ''),
                  'could not be read': f'Recorded by {c.get("by")} on {D.day(c.get("recorded"))}, but it could not be read in full: record it again',
-                 'earlier version': f'Completed on an earlier version{" (" + ses + ")" if ses else ""} by {c.get("by")} on {D.day(c.get("recorded"))} · '
+                 'earlier version': f'Completed on a previous version{" (" + ses + ")" if ses else ""} by {c.get("by")} on {D.day(c.get("recorded"))} · '
                                     'it does not count for this version'}[p['state']]
         B.append(f'<div class="mcpart"><p><strong>{E(name)}:</strong> {E(words)}</p>')
         if p['issues'] and p['state'] != 'earlier version':

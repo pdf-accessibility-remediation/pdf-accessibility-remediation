@@ -22,7 +22,7 @@ def test_names_for_each_state():
     assert REL.download_names(out, '006', REL.PENDING)[0] == 'expedition_remediated_session-6_not-ready.pdf'
     assert REL.download_names(out, '006', REL.READY) == ('expedition_remediated_session-6_not-shipped.pdf', 'expedition_remediated_record_session-6_not-shipped.zip')
     assert REL.download_names(out, '006', REL.SHIPPED, 2) == ('expedition_remediated.pdf', 'expedition_remediated_record_shipment-2.zip')
-    assert REL.download_names(out, '005', 'earlier version')[0] == 'expedition_remediated_session-5_earlier-version.pdf'
+    assert REL.download_names(out, '005', 'earlier version')[0] == 'expedition_remediated_session-5_previous-version.pdf'
     assert REL.download_names(out, None, REL.NOT_READY)[0] == 'expedition_remediated_no-review_not-ready.pdf'
 
 def test_a_hostile_output_name_is_made_safe():
@@ -33,7 +33,7 @@ def test_a_hostile_output_name_is_made_safe():
     assert "filename*=UTF-8''K%C5%AB%20%CA%BB%C4%80ina_session-3_not-ready.pdf" in d and '"' not in d.split('filename="')[1].split('";')[0]
     title = 'ʻ' * 300                                                                  # a 300-character non-ASCII title (K2)
     pdf, _ = REL.download_names(title + '.pdf', '5', 'earlier version')
-    base = pdf[:-len('_session-5_earlier-version.pdf')]
+    base = pdf[:-len('_session-5_previous-version.pdf')]
     assert len(base.encode('utf-8')) <= REL.BASE_BYTES and base == 'ʻ' * 75 and len(pdf.encode('utf-8')) < 255
 
 # ------------------------------------------------------------------ the routes
@@ -100,13 +100,13 @@ def test_an_earlier_version_is_listed_named_and_described_as_earlier(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True); V = add_version(R)
     rec = core.load(os.path.join(R, 'record.json'))
     vs = DL.versions(R, rec)
-    assert [x['id'] for x in vs] == ['current', '001'] and vs[1]['label'] == 'Session 1 (earlier version)'
-    assert DL.marked_line(vs[1]['state']) == 'The downloaded files are marked "earlier version."'   # the period inside the quotes
+    assert [x['id'] for x in vs] == ['current', '001'] and vs[1]['label'] == 'Session 1 (previous version)'
+    assert DL.marked_line(vs[1]['state']) == 'The downloaded files are marked "previous version."'   # the period inside the quotes
     d = DL.prepare(R, 'r', '001', 'record')
-    assert d['name'] == 'clans_remediated_record_session-1_earlier-version.zip'
+    assert d['name'] == 'clans_remediated_record_session-1_previous-version.zip'
     buf = io.BytesIO(); DL.stream_zip(buf, d)
-    rd = zipfile.ZipFile(buf).read('clans_remediated_record_session-1_earlier-version/READ-ME.txt').decode()
-    assert 'Status: earlier version (not the current one; the current version is the version applied without a review)' in rd   # K3
+    rd = zipfile.ZipFile(buf).read('clans_remediated_record_session-1_previous-version/READ-ME.txt').decode()
+    assert 'Status: previous version (not the current one; the current version is the version applied without a review)' in rd   # K3
     os.remove(os.path.join(V, 'clans_remediated.pdf'))                                # its PDF gone: not offered
     assert [x['id'] for x in DL.versions(R, rec)] == ['current']
     with pytest.raises(DL.Refused): DL.prepare(R, 'r', '001', 'pdf')
@@ -135,8 +135,8 @@ def test_the_evaluation_page_offers_the_downloads_and_no_file_check(tmp_path):
     assert ('<section id="downloads" class="mc-sec" aria-labelledby="mc-dl-h"><form class="pp-dl" method="get" action="/run/r/download">'
             '<h2 id="mc-dl-h"><label for="mc-dlv">Available Downloads</label></h2>'
             '<select id="mc-dlv" name="v" aria-describedby="mc-dl-marked">') in page
-    assert ('<option value="001" data-marked="The downloaded files are marked &quot;earlier version.&quot; Results on this page are recorded for '
-            'the current version only.">Session 1 (earlier version)</option>') in page   # R1: the evaluation page only, the line tied to the select
+    assert ('<option value="001" data-marked="The downloaded files are marked &quot;previous version.&quot; Results on this page are recorded for '
+            'the current version only.">Session 1 (previous version)</option>') in page   # R1: the evaluation page only, the line tied to the select
     assert ('<p id="mc-dl-marked" class="pp-note">The downloaded files are marked &quot;not ready.&quot;</p><div class="pp-row">'
             '<button type="submit" name="what" value="pdf">Download the Remediated PDF</button>'
             '<button type="submit" name="what" value="record">Download the Record (ZIP)</button></div></form></section>') in page
@@ -147,7 +147,7 @@ def test_the_evaluation_page_offers_the_downloads_and_no_file_check(tmp_path):
     assert page.index('Back to the Run Page') < page.index('Overall Status:') < page.index('These results are recorded for')   # right after the button
     s = MP.strip(R, core.load(os.path.join(R, 'record.json')))
     assert [v['id'] for v in s['downloads']['versions']] == ['current', '001'] and s['downloads']['versions'][0]['marked'] == 'The downloaded files are marked "not ready."'
-    assert s['downloads']['versions'][1]['marked'] == 'The downloaded files are marked "earlier version."'   # the strip records nothing: no R1 line
+    assert s['downloads']['versions'][1]['marked'] == 'The downloaded files are marked "previous version."'   # the strip records nothing: no R1 line
     assert 'recorded for the current version only' not in s['downloads']['versions'][0]['marked']
     assert 'sections' not in s                                                                  # no line per part on the strip
     js = open(os.path.join(os.path.dirname(MP.__file__), 'panel.js'), encoding='utf-8').read()
@@ -161,7 +161,7 @@ def test_an_earlier_version_whose_pdf_changed_is_refused(tmp_path):
     vrec = core.load(os.path.join(V, 'record.json'))
     vrec['document']['output_sha256'] = REL.sha_file(os.path.join(V, 'clans_remediated.pdf'))
     core.save(os.path.join(V, 'record.json'), vrec)
-    assert DL.prepare(R, 'r', '001', 'pdf')['name'].endswith('_earlier-version.pdf')        # its own hash: given
+    assert DL.prepare(R, 'r', '001', 'pdf')['name'].endswith('_previous-version.pdf')        # its own hash: given
     vrec['document']['output_sha256'] = 'e' * 64; core.save(os.path.join(V, 'record.json'), vrec)
     with pytest.raises(DL.Refused) as e: DL.prepare(R, 'r', '001', 'record')                # another hash: refused (L4)
     assert e.value.args[0] == DL.EARLIER_CHANGED and 'recorded' not in DL.EARLIER_CHANGED
@@ -172,7 +172,7 @@ def test_an_earlier_versions_readme_gives_its_applied_date(tmp_path):
     core.save(os.path.join(R, 'reviews', 'sessions', '001.json'), {'id': '001', 'status': 'applied', 'applied': '2026-10-27T23:45:00'})
     d = DL.prepare(R, 'r', '001', 'record'); buf = io.BytesIO(); DL.stream_zip(buf, d)
     rd = zipfile.ZipFile(buf).read(f'{d["folder"]}/READ-ME.txt').decode()
-    assert 'Version: Session 1, an earlier version, applied on October 27, 2026, at 11:45 PM' in rd
+    assert 'Version: Session 1, a previous version, applied on October 27, 2026, at 11:45 PM' in rd
 
 def test_the_download_not_available_page_has_a_working_skip_link():
     from webapp import server as W

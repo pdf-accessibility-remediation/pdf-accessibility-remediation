@@ -32,8 +32,8 @@ def test_evaluation_line_counts_exactly_when_the_hash_is_the_same():
     r = rel(pac=[chk(A, PAC_OK)], sr=[chk(A, SR_OK)])
     assert REL.evaluation_line(r, A) == (True, 'Completed')                      # the same hash (an apply that gave the same bytes): it counts
     ok, txt = REL.evaluation_line(r, B)                                          # another hash: an earlier version
-    assert not ok and txt == ('Not Completed (PAC 2026: recorded on an earlier version, Session 2; '
-                              'Screen-Reader Test: recorded on an earlier version, Session 2)')
+    assert not ok and txt == ('Not Completed (PAC 2026: recorded on a previous version, Session 2; '
+                              'Screen-Reader Test: recorded on a previous version, Session 2)')
     assert REL.evaluation_line(r, None)[0] is False                              # no recorded hash: nothing counts
     ok, txt = REL.evaluation_line(rel(pac=[chk(A, failing(PAC_OK, 'contrast'))]), A)   # one part, with a Fail
     assert not ok and txt == 'Not Completed (Screen-Reader Test not recorded; 1 issue noted)'

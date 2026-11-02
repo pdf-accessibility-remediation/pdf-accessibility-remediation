@@ -203,7 +203,7 @@ def test_the_page_in_the_words_decided_after_try_rv1(tmp_path):
     page = html.unescape(MP.page(R, 'r', recorded='pac'))
     assert ('PAC 2026 results recorded for this version. "Accessibility Evaluation" is satisfied once the Screen-Reader Test is recorded '
             'for this version too.') in page and 'id="mc-review"' not in page
-    assert '<h3>Earlier Results (1)</h3><details class="mc-earlier"><summary>Show the 1 Earlier Result</summary><h4>' in page
+    assert '<h3>Previous Results (1)</h3><details class="mc-earlier"><summary>Show the 1 Previous Result</summary><h4>' in page
     assert 'Current Results: Kim, ' in page and '<h3>Record New Results</h3>' in page
     sr = {'by': 'Lee', 'fields': {'screen_reader': 'NVDA'}, 'items': {x['key']: {'result': 'pass'} for x in REL.CHECKLIST['screen_reader']}}
     sr['items']['tables'] = {'result': 'na', 'note': 'checked'}; sr['items']['links'] = {'result': 'fail', 'note': 'bare URL'}

@@ -43,7 +43,7 @@ def sha_obj(o):
 def norm(x): return json.loads(json.dumps(x, ensure_ascii=False))
 def sid_n(sid): return int(sid) if str(sid).isdigit() else 0
 def label(sid): return f'session {int(sid)}' if str(sid).isdigit() else 'the result applied without review' if sid == 'ai' else str(sid)
-def from_label(src): return 'the AI\'s decisions' if src in ('ai', None) else 'the recorded summary of an earlier review' if src == 'summary' else label(src)
+def from_label(src): return 'the AI\'s decisions' if src in ('ai', None) else 'the recorded summary of a previous review' if src == 'summary' else label(src)
 
 def P(R):
     """The paths in a run folder's reviews/."""
