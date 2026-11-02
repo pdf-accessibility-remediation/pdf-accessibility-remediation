@@ -25,3 +25,7 @@ Why each regression baseline update was made (newest last). Written by `tools/re
 - 2026-10-31 · ilokano · Python 3.14 · workorder_v9.md: prompt v9 (workorder/0.2): paid single run 2026-10-31 ($0.10) on the frozen intake; no move, figure step on
 
 - 2026-10-31 · cadaverous, sands · Python 3.14 · workorder_v9.md: workorder_check drops a section move when the audit finds no section read out of place in its pages or where it lands: cadaverous's NOTES move (PDF 253-282, the original has none out of place; it only re-nested NOTES) and sands' PDF 4 move (landed where it was) are dropped and listed under Decisions not applied; sands' cover move stays (refused by the executor: no host). cadaverous' figure on PDF 152 now reads after PDF 282, as NOTES keeps its place
+
+- 2026-11-01 · godzone, clans, translation, cadaverous, sands, buddhist · Python 3.14 · workorder_v10.md: prompt v10: tables read by row (title, note, group and repeated rows); digest gains row_shapes. Paid re-seed 2026-11-01, $1.69 for the six
+
+- 2026-11-01 · ilokano · Python 3.14 · workorder_v10.md: prompt v10: paid single run 2026-11-01 ($0.10) on the frozen intake

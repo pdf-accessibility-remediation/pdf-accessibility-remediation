@@ -72,7 +72,7 @@ The test prints one line per book (identical, or the fields and lines that diffe
 | buddhist | `ocr_words` (its OCR text layer) |
 | ilokano | an untagged book: an OpenDataLoader tag tree, so the one-item list rule (15 lists) and word breaks that rely on gaps |
 
-Covered only in part: `move_section` (the v9 replies for cadaverous and sands hold moves; the work-order check drops the ones the audit gives no reason for, and the executor refuses sands' cover move, so none is made; the synthetic test above and `tools/reorder_case.py` cover moves that are made). Not covered by the regression test: intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), OCR on a real book, and CJK text. To check all nine tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
+Covered only in part: `move_section` (sands' saved reply holds a move; the work-order check drops one the audit gives no reason for, and the executor refuses its cover move, so none is made; the synthetic test above and `tools/reorder_case.py` cover moves that are made). Not covered by the regression test: intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), OCR on a real book, and CJK text. To check all nine tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
 
 ```bash
 FROM=all9-v8 AUTO=1 bash batch_api.sh before ../samples/group1 ../samples/group2 ../samples/group3most   # on main
@@ -105,7 +105,7 @@ Make one update per PR, with its own reason. Don't fold several unrelated change
 
 **After a prompt change:** the saved replies were written for one prompt version (`meta.json` → `prompt`). When `decide.py` uses a new prompt, the test stops and asks for a re-seed instead of showing a diff. To re-seed:
 
-1. Run the baseline books with the new prompt. This is a paid call, about $1.70–1.90 for the seven (v9, 2026-10-31: $1.87); ask first. ilokano is a single run (`bash run_api.sh ../samples/untagged/ilokano.pdf ilokano <label>`), the others a batch.
+1. Run the baseline books with the new prompt. This is a paid call, about $1.70–1.90 for the seven (v10, 2026-11-01: $1.79); ask first. ilokano is a single run (`bash run_api.sh ../samples/untagged/ilokano.pdf ilokano <label>`), the others a batch.
 2. Run `python3 tools/regression.py --update --seed ../runs/batches/<label> --reason "prompt vN"` for the tagged books, and `--update --books ilokano --seed ../runs/ilokano/<label>` for ilokano (a single run folder; its `_intake/` is copied too).
 
 `--seed` copies each book's `raw_reply` from its `record.json`.

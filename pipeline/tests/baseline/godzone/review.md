@@ -2,13 +2,13 @@
 
 Result: `godzone_remediated.pdf`
 
-217 pages · run 2026-10-31T13:23:00 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+217 pages · run 2026-11-01T18:35:56 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.14.8 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.3s · audit 25.6s · reuse saved reply 0.5s · apply 10.5s · verify 24.0s · total 60.9s
+Time: intake 0.2s · audit 18.3s · reuse saved reply 0.5s · apply 11.6s · verify 17.4s · total 48.0s
 
 ## Overview
 
@@ -21,21 +21,20 @@ Time: intake 0.3s · audit 25.6s · reuse saved reply 0.5s · apply 10.5s · ver
 - Manual check (PAC): not run
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 6 (4 deferred by the AI · 0 deferred by the executor · 2 CHECK rows)  
-**AI decisions:** 28 in the work order, applied without review by a person  
-**Fixed automatically (no AI):** links tied and described 281 · bookmarks built 39 · tag-tree index entries 7 · title shown in the window 2 · empty tags removed 2 · Document root 1  
+**Needs a person:** 5 (3 deferred by the AI · 0 deferred by the executor · 2 CHECK rows)  
+**AI decisions:** 50 in the work order, applied without review by a person  
+**Fixed automatically (no AI):** links tied and described 281 · bookmarks built 39 · tag-tree index entries 5 · title shown in the window 2 · empty tags removed 2 · Document root 1  
 **veraPDF (WCAG 2.2 machine checks):** 5 WCAG rules failing before (14,150 checks) → 0 after (0 checks) · 0 newly failing
 
 Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
-| Empty tags removed when proven empty: 2 removed · 1 kept: something refers to them or they carry an attribute (listed) | see §7 | [§7](#7-empty-tags-2-removed-1-kept) |
-| No empty tags: 1 empty tag (page: not on this tag) | see §7 | [§7](#7-empty-tags-2-removed-1-kept) |
-| Numbered list (1)–(3) in a block quotation, split across two L elements, with one item that has no label | PDF 59 (printed 40) | [§11](#11-deferred-by-the-ai) |
-| Running heads and page numbers in the rest of the body | PDF 20 (printed 1), PDF 216 (printed 197) | [§11](#11-deferred-by-the-ai) |
-| Text layer quality (suspect tokens on a few pages) | 8 pages, PDF 4 (printed iii) to PDF 214 (printed 195) | [§11](#11-deferred-by-the-ai) |
-| … and 1 more | | §11 |
+| Empty tags removed when proven empty: 2 removed · 1 kept: something refers to them or they carry an attribute (listed) | see §6 | [§6](#6-empty-tags-2-removed-1-kept) |
+| No empty tags: 1 empty tag (page: not on this tag) | see §6 | [§6](#6-empty-tags-2-removed-1-kept) |
+| Possible running heads tagged as text on PDF 11 (printed x) ('Preface') and PDF 97 (printed 78) ('Pouliuli:… | PDF 11 (printed x), PDF 97 (printed 78) | [§10](#10-deferred-by-the-ai) |
+| Lists flattened on PDF 59 (printed 40) and PDF 167 (printed 148) | PDF 59 (printed 40), PDF 167 (printed 148) | [§10](#10-deferred-by-the-ai) |
+| Cataloging-in-Publication data table on PDF 5 (printed iv) | PDF 5 (printed iv) | [§10](#10-deferred-by-the-ai) |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -81,7 +80,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 3 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
 | Reading order: no page jumps back up a column (1.3.2) | OK | 0 of 211 pages flagged |
-| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 0 already in the original, of 56 sections and blocks |
+| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 0 already in the original, of 62 sections and blocks |
 | Title is not a file name or placeholder (2.4.2) | OK | "Mapping the Godzone: A Primer on New Zealand Literature and Culture" |
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
@@ -92,56 +91,71 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 (printed cover) | — | Cover of Mapping the Godzone: A Primer on New Zealand Literature and Culture by William J. Schafer. A painting of a street in a small New Zealand town under a cloudy blue sky, with wooden houses, a red picket fence, a power pole and a tower on the right. A turquoise Maori-style spiral (koru) border runs down the left edge. |
-| PDF 4 (printed iii) | — | University of Hawai‘i Press logo |
-| PDF 9 (printed viii) | — | Map of Aotearoa New Zealand showing the North Island and South Island, with arrows linking places to the authors and novels set there. Long description: On the North Island, Bay of Islands (Maurice Shadbolt, The House of Strife); Waipu (Fiona Kidman, The Book of Secrets); Taranaki (Shadbolt, Monday's Warriors); Hawera (Ronald Hugh Morrieson, The Scarecrow, Came a Hot Friday, Predicament); Urewera (Barry Crump, Wild Pork and Watercress); Kaimanawa (John Mulgan, Man Alone); Waituhi (Witi Ihimaera, The Matriarch; Shadbolt, Season of the Jew); Hamilton and Rotorua are marked without a work. At the south of the North Island, Wellington and Marlborough Sound (Ian Wedde, Symmes Hole). On the South Island, Oamaru and Dunedin (Janet Frame, To the Is-Land, An Angel at My Table); Christchurch and Invercargill are marked without a work. |
+| PDF 1 (printed cover) | — | Book cover: a painted view down a street of small, colorful wooden houses in a New Zealand town under a blue sky with white clouds, with a water tower at right. The title Mapping the Godzone, the subtitle A Primer on New Zealand Literature and Culture and the author's name, William J. Schafer, are printed on it, beside a turquoise Maori-style spiral border down the left edge. |
+| PDF 4 (printed iii) | — | University of Hawaiʻi Press logo |
+| PDF 9 (printed viii) | — | Outline map of Aotearoa New Zealand showing the North Island and South Island, with arrows linking places to the authors and novels set there. Long description: North Island: Bay of Islands (Maurice Shadbolt, The House of Strife); Waipu (Fiona Kidman, The Book of Secrets); Taranaki (Maurice Shadbolt, Monday's Warriors); Hamilton; Rotorua; Hawera (Ronald Hugh Morrieson, The Scarecrow, Came a Hot Friday, Predicament); Urewera (Barry Crump, Wild Pork and Watercress); Kaimanawa (John Mulgan, Man Alone); Waituhi (Witi Ihimaera, The Matriarch; Maurice Shadbolt, Season of the Jew). Wellington and Marlborough Sound, at the strait between the islands (Ian Wedde, Symmes Hole). South Island: Christchurch; Oamaru and Dunedin (Janet Frame, To the Is-Land, An Angel at My Table); Invercargill at the southern tip. |
 
-### 2. Headings
-
-Heading levels by style (as applied):
-
-| Style | Level | How | Elements |
-|---|---|---|---:|
-| H4 | H3 | retype (standard tag) | 25 |
-
-### 3. Elements retyped by the AI (11)
+### 2. Elements retyped by the AI (34)
 
 Check each one is (or is not) a heading as decided.
 
 | Page | Text | Before | After |
 |---|---|---|---|
-| PDF 2 (printed i) | Mapping the Godzone | H2 | P |
-| PDF 4 (printed iii) | Mapping the Godzone | P | H1 |
+| PDF 2 (printed i) | Mapping the Godzone | H2 | H1 |
 | PDF 4 (printed iii) | A Primer on New Zealand Literature and Culture | H3 | P |
 | PDF 4 (printed iii) | William J. Schafer | H3 | P |
 | PDF 5 (printed iv) | For Martha—little blue penguins, pukeko, tuatara & all | H4 | P |
 | PDF 5 (printed iv) | Library of Congress Cataloging-in-Publication Data | H5 | P |
 | PDF 8 (printed vii) | Contents | P | H2 |
 | PDF 10 (printed ix) | Preface: Sailing to Aotearoa | H3 | H2 |
+| PDF 20 (printed 1) | On the Road Again | H4 | H3 |
+| PDF 25 (printed 6) | Other Roadside Attractions | H4 | H3 |
+| PDF 29 (printed 10) | A View from Maui’s Canoe | H4 | H3 |
+| PDF 33 (printed 14) | One Way of Looking at It | H4 | H3 |
+| PDF 35 (printed 16) | Another Way of Looking at It | H4 | H3 |
+| PDF 37 (printed 18) | A Binocular Vision | H4 | H3 |
+| PDF 40 (printed 21) | Witi Ihimaera’s Epic Voyage | H4 | H3 |
+| PDF 50 (printed 31) | Fiona Kidman and the Wages of Sin in Aotearoa | H4 | H3 |
+| PDF 56 (printed 37) | Outposts and Frontiers: On the Beach and After | H4 | H3 |
+| PDF 62 (printed 43) | Ian Wedde: Tunnels through Time and Space | H4 | H3 |
+| PDF 75 (printed 56) | Navigators and Canoes: Paradise Lost | H4 | H3 |
+| PDF 80 (printed 61) | The Man Alone Myth: Paradise Regained | H4 | H3 |
+| PDF 89 (printed 70) | The Man Alone Myth: Redemption through Skill | H4 | H3 |
+| PDF 96 (printed 77) | Pacific Visions: Four Exemplary Novels | H4 | H3 |
+| PDF 112 (printed 93) | The Nature of Crusading | H4 | H3 |
+| PDF 114 (printed 95) | Technology and Crusader Warfare | H4 | H3 |
+| PDF 118 (printed 99) | Concepts of Holy War | H4 | H3 |
+| PDF 120 (printed 101) | Maurice Shadbolt’s Versions of War | H4 | H3 |
+| PDF 167 (printed 148) | Ronald Hugh Morrieson’s Haunted Worlds | H4 | H3 |
+| PDF 195 (printed 176) | Films on Legend and History | H4 | H3 |
+| PDF 197 (printed 178) | Films on the “New” New Zealand | H4 | H3 |
+| PDF 198 (printed 179) | Ronald Hugh Morrieson on Film | H4 | H3 |
+| PDF 199 (printed 180) | Aotearoa New Zealand and the Postmodern Sublime | H4 | H3 |
+| PDF 203 (printed 184) | Haka—Noble and Sentimental | H4 | H3 |
 | PDF 206 (printed 187) | Bibliography | H3 | H2 |
 | PDF 210 (printed 191) | Index | P | H2 |
 | PDF 217 (printed 198) | About the Author | H3 | H2 |
 
-### 4. Lists and tables
+### 3. Lists and tables
 
-- Flattened table on PDF 5 (printed iv): "culture / William J. Schafer. / p. | cm." (CIP catalog data laid out as a table; not a data table)
-- Flattened list on PDF 167 (printed 148): "— It’s an interesting story, she said. I prefer Dostoevsky to Truth. (Frame 10)" (Dialogue lines opened with dashes, not a list)
-- Flattened list on PDF 167 (printed 148): "— The sort of story they put in Truth, she said. On the morning of the tragedy witness saw defendant…" (Dialogue lines opened with dashes, not a list)
+- Flattened table on PDF 5 (printed iv): "culture / William J. Schafer. / p. | cm." (Library of Congress CIP data tagged as a table; it is a catalog record, not a data table)
+- Flattened list on PDF 167 (printed 148): "— It’s an interesting story, she said. I prefer Dostoevsky to Truth. (Frame 10)" (dialogue lines introduced by dashes, not a list)
+- Flattened list on PDF 167 (printed 148): "— The sort of story they put in Truth, she said. On the morning of the tragedy witness saw defendant…" (dialogue lines introduced by dashes, not a list)
+- Flattened list on PDF 59 (printed 40): "(2) a comprehension of past, his marriage of spirit to source. The Pacific turned out to be his…" (fragment of a (1)-(3) enumeration split across two L elements; flattened to paragraphs)
+- Flattened list on PDF 59 (printed 40): "(1) an experience of space most Americans are only now entering on, a hundred years after Melville…" (fragment of a (1)-(3) enumeration split across two L elements, with a non-item paragraph inside; flattened to paragraphs)
 
-### 5. Hidden from screen readers (artifacts)
+### 4. Hidden from screen readers (artifacts)
 
-- 1 decorative elements ("decorative wave ornament on the title page") on PDF 4 (printed iii)
-- "running head Fishing with Maui": text matching `Fishing with Maui ?` on PDF 22–28 (printed 3–9)
-- "running head Preface": text matching `Preface ?` on PDF 11 (printed x)
-- "page foot Index 197": text matching `Index 197` on PDF 216 (printed 197)
+- 1 decorative elements ("decorative wave ornament band on title page") on PDF 4 (printed iii)
+- "running head 'Fishing with Maui'": text matching `Fishing with Maui` on PDF 22–28 (printed 3–9)
 
-### 6. Reading order changes
+### 5. Reading order changes
 
 Listen through these spots with a screen reader.
 
 - Cover figure moved to the start of the document
 
-### 7. Empty tags (2 removed, 1 kept)
+### 6. Empty tags (2 removed, 1 kept)
 
 A tag is removed only when proven empty: nothing under it holds content, it carries no Alt, ActualText, E or ID, and nothing in the file refers to it except its parent. Table cells are never removed one by one; a table goes only when every part is empty.
 
@@ -149,19 +163,19 @@ A tag is removed only when proven empty: nothing under it holds content, it carr
 - 2 of them were empty parts of tables or lists the work order flattened (e.g. cells whose content had been hidden as decoration)
 - **Kept, empty: P (page: not on this tag)**, because carries /ID "R9C1"; IDTree "R9C1".
 
-### 8. Tag-tree index entries cleared (7)
+### 7. Tag-tree index entries cleared (5)
 
 Entries that pointed at a tag no longer in the tag tree (left by the source file, or by a tag the run removed). Nothing reads such a tag; no page, text or reachable tag changed.
 
-- IDTree: "AD260915-1612-26.2.21931-ADBE-000000091491" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091660" (P), "AD260915-1612-26.2.21931-ADBE-000000091936" (P), "AD260915-1612-26.2.21931-ADBE-000000091998" (P), "AD260915-1612-26.2.21931-ADBE-000000092055" (P), "AD260915-1612-26.2.21931-ADBE-000000092112" (P), "AD260915-1612-26.2.21931-ADBE-000000097916" (P)
+- IDTree: "AD260915-1612-26.2.21931-ADBE-000000091491" (Figure), "AD260915-1612-26.2.21931-ADBE-000000091936" (P), "AD260915-1612-26.2.21931-ADBE-000000091998" (P), "AD260915-1612-26.2.21931-ADBE-000000092055" (P), "AD260915-1612-26.2.21931-ADBE-000000092112" (P)
 
-### 9. Structure left for a person
+### 8. Structure left for a person
 
 - 1 empty tag: P (page: not on this tag)
 
-### 10. veraPDF (WCAG 2.2 machine profile), before and after
+### 9. veraPDF (WCAG 2.2 machine profile), before and after
 
-veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 5 rules failing (the AI can act on 3, the pipeline on 2, only a person on 0). After: 0.
+veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 5 rules failing (the AI can act on 3, the pipeline on 2, only a person on 0). After: 0.
 
 | Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |
 |---|---|---|---|---:|---:|---|---|
@@ -171,14 +185,13 @@ veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 | ISO 14289-1 7.3-1 | 1.1.1 | Figure tags shall include an alternative representation or replacement text that represents the contents marked with the Figure tag as noted in ISO 32000-1:2008, 14.7.2, Table 323 | the AI (`alt`) | 4 | 0 | fixed | PDF 1 (printed cover), PDF 4 (printed iii), PDF 9 (printed viii) |
 | ISO 14289-1 7.1-10 | 2.4.2 | The document catalog dictionary shall include a ViewerPreferences dictionary containing a DisplayDocTitle key, whose value shall be true | the pipeline (1 changed) | 1 | 0 | fixed | page: not on this tag |
 
-### 11. Deferred by the AI
+### 10. Deferred by the AI
 
-- **Numbered list (1)–(3) in a block quotation, split across two L elements, with one item that has no label**: The items may read out of order, and the structure is unclear from the digest. A person should merge it into one list or flatten it. [PDF 59 (printed 40)]
-- **Running heads and page numbers in the rest of the body**: Only the runs on PDF 22–28 (printed 3–9), PDF 11 and PDF 216 were recognisable in the digest. Check the remaining pages for tagged running heads or page numbers. [PDF 20 (printed 1), PDF 216 (printed 197)]
-- **Text layer quality (suspect tokens on a few pages)**: The OCR-like signal is highest on PDF 4, 5, 162, 214, 100, 32, 159 and 205. Text was not changed. [PDF 4 (printed iii), PDF 5 (printed iv), PDF 32 (printed 13), PDF 100 (printed 81), PDF 159 (printed 140), PDF 162 (printed 143), PDF 205 (printed 186), PDF 214 (printed 195)]
-- **Nesting of front matter in the tag tree (the title page, copyright page and contents sit inside one Sect)**: The reading order looks plausible, so I did not move anything. A person should confirm it. [PDF 4 (printed iii), PDF 9 (printed viii)]
+- **Possible running heads tagged as text on PDF 11 (printed x) ('Preface') and PDF 97 (printed 78) ('Pouliuli: The Tragedy of Decline')**: They appear as the first tagged line of those pages, but the digest does not show whether they are running heads or real headings or captions, so none was artifacted. A person should check these two pages and any other running heads or page numbers in the chapters. [PDF 11 (printed x), PDF 97 (printed 78)]
+- **Lists flattened on PDF 59 (printed 40) and PDF 167 (printed 148)**: The (1)-(3) enumeration on PDF 59 was split across two L elements and the dialogue on PDF 167 is not a list, so all were flattened to paragraphs. A person may want to rebuild the enumeration on PDF 59 as one list. [PDF 59 (printed 40), PDF 167 (printed 148)]
+- **Cataloging-in-Publication data table on PDF 5 (printed iv)**: Flattened to paragraphs because it is a catalog record, not a data table. A person should check that its reading order is sensible. [PDF 5 (printed iv)]
 
-Reviewer note from the AI: The publisher tags use H2 for chapters, H3 for the title-page lines, Preface, Bibliography and About the Author, and H4 for sections. Fix: book title H1 (title page); chapters, Preface, Contents, Bibliography, Index and About the Author H2; sections H3 (rolemap H4→H3). Title-page lines, the dedication and the CIP label were demoted to P. The half-title on PDF 2 (printed i) was demoted to P so a single H1 remains. The contents already carry TOC/TOCI tags, so no toc key was needed. The page-5 table of CIP data was flattened. The map on PDF 9 (printed viii) has long-description alt text.
+Reviewer note from the AI: Heading outline: the half-title (PDF 2) is the single H1. Preface, chapters, Contents, Index, Bibliography and About the Author are H2. Chapter sections (published as H4) are H3, so no level is skipped. Title-page lines, the dedication and the CIP label were demoted to P. I used per-element retypes instead of style-level rolemap changes because the same style names serve different levels. The table of contents is already tagged as TOC/TOCI, so I left it alone. The cover image is the first figure and is moved to the start of the Document. The map on PDF 9 (printed viii) has alt text with a long description. The running head 'Fishing with Maui' was artifacted only on PDF 22–28, where it was found.
 
 ## What was changed
 
@@ -186,19 +199,17 @@ Reviewer note from the AI: The publisher tags use H2 for chapters, H3 for the ti
 |---|---:|
 | document: Document root created | 1 |
 | document: DisplayDocTitle | 2 |
-| artifact: "decorative wave ornament on the title page" | 1 |
-| artifact: "running head Preface" | 1 |
-| artifact: "running head Fishing with Maui" | 4 |
-| artifact: "page foot Index 197" | 1 |
+| artifact: "decorative wave ornament band on title page" | 1 |
+| artifact: "running head 'Fishing with Maui'" | 4 |
 | document: title | 1 |
 | document: /Lang | 1 |
-| heading: standard tag H4 → H3 (retyped) | 25 |
 | retype → H1 | 1 |
-| retype → P | 5 |
+| retype → P | 4 |
 | retype → H2 | 5 |
+| retype → H3 | 24 |
 | flatten: false table → paragraphs | 1 |
-| flatten: false list → paragraphs | 1 |
-| flatten: nested list/table already flattened with its parent | 1 |
+| flatten: false list → paragraphs | 2 |
+| flatten: nested list/table already flattened with its parent | 2 |
 | figure: alt text | 3 |
 | links: /Contents set | 281 |
 | links: joined existing Link | 2 |
@@ -206,7 +217,7 @@ Reviewer note from the AI: The publisher tags use H2 for chapters, H3 for the ti
 | links: placed after shared text | 279 |
 | structure: empty tag removed (proven empty) | 2 |
 | bookmarks: built from heading tags | 39 |
-| tag tree index: entries pointing outside the tree removed (IDTree) | 7 |
+| tag tree index: entries pointing outside the tree removed (IDTree) | 5 |
 
 ## Final check with PAC 2026
 

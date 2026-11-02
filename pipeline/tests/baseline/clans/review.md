@@ -2,13 +2,13 @@
 
 Result: `clans_remediated.pdf`
 
-194 pages · run 2026-10-31T13:22:49 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+194 pages · run 2026-11-01T18:35:35 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.14.8 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.2s · audit 21.9s · reuse saved reply 0.6s · apply 13.4s · verify 21.5s · total 57.6s
+Time: intake 0.3s · audit 11.8s · reuse saved reply 0.3s · apply 13.1s · verify 16.7s · total 42.2s
 
 ## Overview
 
@@ -21,8 +21,8 @@ Time: intake 0.2s · audit 21.9s · reuse saved reply 0.6s · apply 13.4s · ver
 - Manual check (PAC): not run
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 6 (5 deferred by the AI · 0 deferred by the executor · 1 CHECK row)  
-**AI decisions:** 76 in the work order, applied without review by a person  
+**Needs a person:** 7 (6 deferred by the AI · 0 deferred by the executor · 1 CHECK row)  
+**AI decisions:** 77 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** tag-tree index entries 195 · standard tags un-remapped (7.1-7) 45 · title shown in the window 1  
 **veraPDF (WCAG 2.2 machine checks):** 3 WCAG rules failing before (760 checks) → 0 after (0 checks) · 0 newly failing
 
@@ -31,11 +31,11 @@ Automated checks are evidence, not sign-off.
 | Top issues | Pages | Where |
 |---|---|---|
 | Fonts: embedded and mapped to Unicode: 1 not embedded · 0 without ToUnicode | see §7 | [§7](#7-fonts) |
-| Style 'Footnote' (22 elements, veraPDF 7.1-5) mapped to P | PDF 15 (printed 8), PDF 190 (printed 183) | [§10](#10-deferred-by-the-ai) |
-| Contents entry 'Seeking Life amidst Death: The Last Day of the War 47 When the Hibiscus Blooms 73' sits in o… | PDF 6 (printed v) | [§10](#10-deferred-by-the-ai) |
-| Section headings of 'The Remembered Shadow of the Yi Dynasty' (I and II) and any section numerals not tagged… | PDF 118 (printed 111), PDF 134 (printed 127) | [§10](#10-deferred-by-the-ai) |
-| Text-layer glyph problems | 6 pages, PDF 4 (printed iii) to PDF 144 (printed 137) | [§10](#10-deferred-by-the-ai) |
-| … and 1 more | | §10 |
+| Contents entry tagged as one TOCI holds two entries: 'Seeking Life amidst Death … 47' and 'When the Hibiscus… | PDF 6 (printed v) | [§10](#10-deferred-by-the-ai) |
+| Section numerals in 'The Remembered Shadow of the Yi Dynasty' (I and II) are not tagged as headings, and the… | PDF 118 (printed 111), PDF 134 (printed 127) | [§10](#10-deferred-by-the-ai) |
+| Text layer: characters are dropped or garbled, e.g. 'Sl Chin-yng', 'Km-ju', 'Ch’anggyngwn' (missing ŏ/ŭ), pl… | 6 pages, PDF 31 (printed 24) to PDF 184 (printed 177) | [§10](#10-deferred-by-the-ai) |
+| Style 'Footnote' (22 elements) holds dialogue paragraphs, not notes; mapped to P for veraPDF 7.1-5 | PDF 15 (printed 8), PDF 190 (printed 183) | [§10](#10-deferred-by-the-ai) |
+| … and 2 more | | §10 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -92,10 +92,10 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 (printed cover) | — | Cover of The Clan Records: Five Stories of Korea by Kajiyama Toshiyuki. A brush-and-ink drawing of a fountain pen lying diagonally across a sheet of grid-ruled manuscript paper, on a pale tan ground, below the title and author name. |
-| PDF 4 (printed iii) | — | University of Hawaiʻi Press logo |
-| PDF 11 (printed 4) | — | Black-and-white studio portrait of the Kajiyama family in Seoul, 1937: a woman in a kimono, a man in a suit holding a baby, a woman in a Korean hanbok, and three young boys seated in front. |
-| PDF 12 (printed 5) | — | Black-and-white photograph of Kajiyama Toshiyuki in a kimono and dark-rimmed glasses, holding an open book between tall shelves and stacks of documents in his personal library, Tokyo, 1971. |
+| PDF 1 (printed cover) | — | Front cover of The Clan Records: Five Stories of Korea by Kajiyama Toshiyuki. Below the title and author is an ink drawing of a fountain pen lying diagonally across a sheet of grid-ruled manuscript paper. |
+| PDF 4 (printed iii) | — | University of Hawai‘i Press logo (the word HAWAI‘I in tall block letters) |
+| PDF 11 (printed 4) | — | Black-and-white studio photograph of the Kajiyama family, Seoul, 1937: a mother in a kimono, a father in a suit holding a baby, a woman in Korean dress standing at the right, and three young boys seated in front. |
+| PDF 12 (printed 5) | — | Black-and-white photograph of Kajiyama Toshiyuki, in glasses and a kimono, holding an open book and standing between shelves and stacks of books in his personal library, Tokyo, 1971. |
 
 ### 2. Headings
 
@@ -111,7 +111,7 @@ Check each one is (or is not) a heading as decided.
 
 | Page | Text | Before | After |
 |---|---|---|---|
-| PDF 2 (printed i) | The Clan Records | H1 | P |
+| PDF 4 (printed iii) | The Clan Records | H1 | P |
 | PDF 4 (printed iii) | FIVE STORIE S OF KORE A | H1 | P |
 | PDF 4 (printed iii) | Translated by Yoshiko Dykstra | H1 | P |
 | PDF 5 (printed iv) | In memory of Ryz and Mitsue Ariyoshi òò | H1 | P |
@@ -150,35 +150,35 @@ Check each one is (or is not) a heading as decided.
 - Flattened list on PDF 31 (printed 24): "“Yes, I do. He is very pro-Japanese. Is something wrong?” / “Yes, something is wrong. He has not…" (dialogue lines, not a list)
 - Flattened list on PDF 32 (printed 25): "“No, chief. Sl Chin-yng is not that kind of man.” ôô / “You really stick up for him, don’t you? At a…" (dialogue lines, not a list)
 - Flattened list on PDF 32 (printed 25): "“I will do my best.” I bowed angrily. / “Wait. Look at this.” His voice was harsh. He pushed a paper…" (dialogue lines, not a list)
-- Flattened list on PDF 34 (printed 27): "“How are you now?” I asked." (dialogue line, not a list)
-- Flattened list on PDF 48 (printed 41): "“You mean Mr. Sl Chin-yng?” ôô" (dialogue line, not a list)
-- Flattened list on PDF 48 (printed 41): "“Don’t criticize the dead! He was not a traitor.”" (dialogue line, not a list)
-- Flattened list on PDF 88 (printed 81): "“To tell me?”" (dialogue line, not a list)
-- Flattened list on PDF 88 (printed 81): "“Yes. In America. I don’t think I would benefit much from study in Japan,” said Ch’r-in, looking…" (dialogue line, not a list)
+- Flattened list on PDF 34 (printed 27): "“How are you now?” I asked." (dialogue lines, not a list)
+- Flattened list on PDF 48 (printed 41): "“You mean Mr. Sl Chin-yng?” ôô" (dialogue lines, not a list)
+- Flattened list on PDF 48 (printed 41): "“Don’t criticize the dead! He was not a traitor.”" (dialogue lines, not a list)
+- Flattened list on PDF 88 (printed 81): "“To tell me?”" (dialogue lines, not a list)
+- Flattened list on PDF 88 (printed 81): "“Yes. In America. I don’t think I would benefit much from study in Japan,” said Ch’r-in, looking…" (dialogue lines, not a list)
 - Flattened list on PDF 97 (printed 90): "“What are you doing?” Km-ju appeared in the kitchen. ∆ / “Look! This bowl! It’s so beautiful . . .”" (dialogue lines, not a list)
-- Flattened list on PDF 99 (printed 92): "“But I just want to look at it.”" (dialogue line, not a list)
+- Flattened list on PDF 99 (printed 92): "“But I just want to look at it.”" (dialogue lines, not a list)
 - Flattened list on PDF 102 (printed 95): "“Well, what do you think?” / “Well, as you’ve guessed, these probably came from the Yi dynasty…" (dialogue lines, not a list)
 - Flattened list on PDF 102 (printed 95): "Yamanoi all but caressed the incense burner. / “Do you think they’re only cheap trifles?”" (dialogue lines, not a list)
-- Flattened list on PDF 102 (printed 95): "“Indeed. That’s why they’re beautiful.”" (dialogue line, not a list)
-- Flattened list on PDF 106 (printed 99): "“Yes. You were more pure in those days.”" (dialogue line, not a list)
+- Flattened list on PDF 102 (printed 95): "“Indeed. That’s why they’re beautiful.”" (dialogue lines, not a list)
+- Flattened list on PDF 106 (printed 99): "“Yes. You were more pure in those days.”" (dialogue lines, not a list)
 - Flattened list on PDF 128 (printed 121): "“Then you are an artist?” / “Yes. I like this section of Chongno. But I am sad because everything’s…" (dialogue lines, not a list)
 - Flattened list on PDF 128 (printed 121): "“A dance? What kind of dance?” asked Noguchi. / “A court dance from olden times.”" (dialogue lines, not a list)
 - Flattened list on PDF 144 (printed 137): "“Then where can I see it?” / “The best place is the Kynghoeru Hall in the Kyngbok Palace.” ôô" (dialogue lines, not a list)
-- Flattened list on PDF 148 (printed 141): "“Hi! Professor Pak has come already,” Noguchi told her, almost dancing for joy." (dialogue line, not a list)
-- Flattened list on PDF 153 (printed 146): "“Why did you go to a place like this?”" (dialogue line, not a list)
-- Flattened list on PDF 154 (printed 147): "“Didn’t you gather peaches and grapes perhaps?”" (dialogue line, not a list)
-- Flattened list on PDF 154 (printed 147): "“Maybe you were not born yet . . . or was that the year when you were born?”" (dialogue line, not a list)
+- Flattened list on PDF 148 (printed 141): "“Hi! Professor Pak has come already,” Noguchi told her, almost dancing for joy." (dialogue lines, not a list)
+- Flattened list on PDF 153 (printed 146): "“Why did you go to a place like this?”" (dialogue lines, not a list)
+- Flattened list on PDF 154 (printed 147): "“Didn’t you gather peaches and grapes perhaps?”" (dialogue lines, not a list)
+- Flattened list on PDF 154 (printed 147): "“Maybe you were not born yet . . . or was that the year when you were born?”" (dialogue lines, not a list)
 - Flattened list on PDF 154 (printed 147): "“That was the time when some young and foolish Koreans caused a great deal of unrest by shouting out…" (dialogue lines, not a list)
-- Flattened list on PDF 154 (printed 147): "“Yes, the garrison subdued the rioters. . . . Isn’t this enough, now? I’m busy.”" (dialogue line, not a list)
+- Flattened list on PDF 154 (printed 147): "“Yes, the garrison subdued the rioters. . . . Isn’t this enough, now? I’m busy.”" (dialogue lines, not a list)
 - Flattened list on PDF 164 (printed 157): "“No particular reason?” / “That’s right. Its theme is an ancient court dance of the Yi dynasty.”" (dialogue lines, not a list)
-- Flattened list on PDF 164 (printed 157): "“What do you mean?”" (dialogue line, not a list)
+- Flattened list on PDF 164 (printed 157): "“What do you mean?”" (dialogue lines, not a list)
 - Flattened list on PDF 164 (printed 157): "“I’m not.” / “Don’t lie to me! What’s this?”" (dialogue lines, not a list)
-- Flattened list on PDF 164 (printed 157): "“We searched your atelier and found this! Do you still keep saying that you had no deliberate…" (dialogue line, not a list)
+- Flattened list on PDF 164 (printed 157): "“We searched your atelier and found this! Do you still keep saying that you had no deliberate…" (dialogue lines, not a list)
 - Flattened list on PDF 164 (printed 157): "“Yes! That pamphlet had nothing to do with the painting.” / “Then why was it in your atelier?”" (dialogue lines, not a list)
-- Flattened list on PDF 172 (printed 165): "“What’s the trouble?”" (dialogue line, not a list)
+- Flattened list on PDF 172 (printed 165): "“What’s the trouble?”" (dialogue lines, not a list)
 - Flattened list on PDF 184 (printed 177): "“Why do you want to know?” Km-ju asked, in fluent Japanese. ∆ / “Why? Because I know you are using…" (dialogue lines, not a list)
-- Flattened list on PDF 184 (printed 177): "“But we are just friends.”" (dialogue line, not a list)
-- Flattened list on PDF 184 (printed 177): "“I am sorry. I won’t do it again.”" (dialogue line, not a list)
+- Flattened list on PDF 184 (printed 177): "“But we are just friends.”" (dialogue lines, not a list)
+- Flattened list on PDF 184 (printed 177): "“I am sorry. I won’t do it again.”" (dialogue lines, not a list)
 
 ### 5. Text a screen reader could not reach (before this run)
 
@@ -189,7 +189,7 @@ Pages: PDF 6 (printed v), PDF 8–193 (printed 1–186)
 ### 6. Hidden from screen readers (artifacts)
 
 - "running heads and page numbers (top)": every orphan run in the top band on PDF 9–193 (printed 2–186)
-- "page numbers (bottom, chapter openers and contents page)": every orphan run in the bottom band on PDF 6–193 (printed v–186)
+- "page numbers on chapter-opening pages (bottom)": every orphan run in the bottom band on PDF 6–168 (printed v–161)
 
 ### 7. Fonts
 
@@ -205,7 +205,7 @@ Entries that pointed at a tag no longer in the tag tree (left by the source file
 
 ### 9. veraPDF (WCAG 2.2 machine profile), before and after
 
-veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 3 rules failing (the AI can act on 3, the pipeline on 0, only a person on 0). After: 0.
+veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 3 rules failing (the AI can act on 3, the pipeline on 0, only a person on 0). After: 0.
 
 | Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |
 |---|---|---|---|---:|---:|---|---|
@@ -219,19 +219,20 @@ PDF/UA-only, not required for WCAG (not counted):
 
 ### 10. Deferred by the AI
 
-- **Style 'Footnote' (22 elements, veraPDF 7.1-5) mapped to P**: Samples are fragments of story dialogue, not real footnotes or notes, so Note would be wrong. A person should check whether any of them is a genuine note. [PDF 15 (printed 8), PDF 190 (printed 183)]
-- **Contents entry 'Seeking Life amidst Death: The Last Day of the War 47 When the Hibiscus Blooms 73' sits in one TOCI**: Two entries share a single TOCI. Splitting it changes the tag tree structure and needs a person. [PDF 6 (printed v)]
-- **Section headings of 'The Remembered Shadow of the Yi Dynasty' (I and II) and any section numerals not tagged as headings**: The digest lists no heading for them (page 118 shows 'P: I'), so I could not target them reliably. [PDF 118 (printed 111), PDF 134 (printed 127)]
-- **Text-layer glyph problems**: Diacritics are lost or garbled in names and words, such as 'Ryòzò', 'Sl Chin-yng', 'Ch’r-in', 'Km-ju' and 'Kyngbok'. Stray marks such as 'ôô' and '∆' appear after some lines. Text is never changed here, so a person should check the text layer. [PDF 4 (printed iii), PDF 5 (printed iv), PDF 31 (printed 24), PDF 48 (printed 41), PDF 97 (printed 90), PDF 144 (printed 137)]
-- **Reading order and caption tying for the two introduction photographs**: The captions are plain P elements with no caption style, so they cannot be tied to their figures in this work order. [PDF 11 (printed 4), PDF 12 (printed 5)]
+- **Contents entry tagged as one TOCI holds two entries: 'Seeking Life amidst Death … 47' and 'When the Hibiscus Blooms 73'**: The executor cannot split an element; a person should split it [PDF 6 (printed v)]
+- **Section numerals in 'The Remembered Shadow of the Yi Dynasty' (I and II) are not tagged as headings, and the digest does not show them**: On PDF 118 (printed 111) the 'I' is a plain P; section II was not found in the digest. A person should locate both and promote them to H3. [PDF 118 (printed 111), PDF 134 (printed 127)]
+- **Text layer: characters are dropped or garbled, e.g. 'Sl Chin-yng', 'Km-ju', 'Ch’anggyngwn' (missing ŏ/ŭ), plus stray 'ôô' and '∆' marks at paragraph ends**: The text must not be changed here; the layer needs checking against the print [PDF 31 (printed 24), PDF 32 (printed 25), PDF 48 (printed 41), PDF 97 (printed 90), PDF 137 (printed 130), PDF 184 (printed 177)]
+- **Style 'Footnote' (22 elements) holds dialogue paragraphs, not notes; mapped to P for veraPDF 7.1-5**: A person should confirm they are body text [PDF 15 (printed 8), PDF 190 (printed 183)]
+- **veraPDF 7.1-3: the remaining unmarked content**: The orphan page numbers and running heads are artifacted by text_rules; any other unmarked content (such as pages 3, 7 and 194, which have no tagged text) needs a person to check
+- **The cover figure on PDF 1 (printed cover) covers the whole page and the cover text is also tagged as P**: The reviewer should check that the cover is not read twice [PDF 1 (printed cover)]
 
-Reviewer note from the AI: Heading outline: one H1 (the title-page 'The Clan Records'), H2 for Contents, Introduction and the five story titles, H3 for the Roman-numeral sections. Half-title, series line, translator credit, dedication and the introduction byline are demoted to P. All 32 'lists' are dialogue lines and are flattened. All orphan runs are running heads or folios and are artifacted by band, covering page 6 and pages 9–193 (the digest lists no orphans on page 8's top). The 4 figures get alt text. The veraPDF 7.1-3 failures come from those orphan runs.
+Reviewer note from the AI: Headings: the half-title 'The Clan Records' on PDF 2 (printed i) is the single H1. The Contents title, Introduction and the five stories are H2, and the roman-numeral sections inside the stories are H3. Title-page lines, the dedication and the introduction byline are demoted to P. The 32 'lists' are runs of quoted dialogue and are flattened. Running heads and page numbers are all orphan runs, so they are artifacted by band and page range without a regex.
 
 ## What was changed
 
 | Change | Count |
 |---|---:|
-| artifact: "page numbers (bottom, chapter openers and contents page)" | 7 |
+| artifact: "page numbers on chapter-opening pages (bottom)" | 7 |
 | artifact: "running heads and page numbers (top)" | 360 |
 | document: title | 1 |
 | document: DisplayDocTitle | 1 |
