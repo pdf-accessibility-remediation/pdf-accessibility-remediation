@@ -172,7 +172,7 @@ def test_an_earlier_versions_readme_gives_its_applied_date(tmp_path):
     core.save(os.path.join(R, 'reviews', 'sessions', '001.json'), {'id': '001', 'status': 'applied', 'applied': '2026-10-27T23:45:00'})
     d = DL.prepare(R, 'r', '001', 'record'); buf = io.BytesIO(); DL.stream_zip(buf, d)
     rd = zipfile.ZipFile(buf).read(f'{d["folder"]}/READ-ME.txt').decode()
-    assert 'Version: Session 1, an earlier version, applied on October 27, 2026 at 11:45 PM' in rd
+    assert 'Version: Session 1, an earlier version, applied on October 27, 2026, at 11:45 PM' in rd
 
 def test_the_download_not_available_page_has_a_working_skip_link():
     from webapp import server as W

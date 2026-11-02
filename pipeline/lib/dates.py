@@ -3,7 +3,7 @@
 
     day('2026-10-31T16:32:05')    == 'October 31, 2026'
     clock('2026-10-31T16:32:05')  == '4:32 PM'
-    when('2026-10-31T16:32:05')   == 'October 31, 2026 at 4:32 PM'
+    when('2026-10-31T16:32:05')   == 'October 31, 2026, at 4:32 PM'
     when('2026-10-31')            == 'October 31, 2026'
 
 Takes YYYY-MM-DD and ISO date-times (T or a space, with or without seconds and fractional seconds). The month names come
@@ -42,4 +42,4 @@ def clock(v, missing='time not recorded'):
 def when(v, missing=MISSING):
     p = parse(v)
     if not p or p[3] is None: return day(v, missing)
-    return f'{day(v)} at {clock(v)}'
+    return f'{day(v)}, at {clock(v)}'                  # a comma after the year (Patrick, 2026-11-01)
