@@ -330,6 +330,12 @@ addEventListener('pagehide', () => {
   try { fetch('/keep', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body }); } catch (e) {}
 });
 // the gaps still open (from each auto-save), beside the save status: not announced; the Finish dialog lists them with Add links
+function tableReading(r) {             // shown, not edited here: reject the card if the row reading is wrong
+  if (!r) return '';
+  const part = [r.title_rows && r.title_rows + ' title row(s) become the caption', r.note_rows && r.note_rows + ' note row(s) move after the table',
+                r.group_rows && 'group rows ' + r.group_rows.join(', '), r.repeat_rows && 'repeated header rows ' + r.repeat_rows.join(', ')].filter(Boolean);
+  return part.length ? '; ' + esc(part.join('; ')) : '';
+}
 function showGaps(g) {
   const el = document.getElementById('gapState'); if (!el || !Array.isArray(g)) return;
   el.textContent = g.length ? g.length + (g.length === 1 ? ' gap open' : ' gaps open') : '';
@@ -607,7 +613,7 @@ function explain(it) {
                lang: 'Sets the document\'s main language, which picks the screen reader\'s voice and pronunciation.',
                display_doc_title: 'Shows the title (not the file name) in the window\'s title bar.',
                remove_empty_acroform: 'Removes an empty form definition that has no fields.' }[it.loc[1]] || 'Sets a document setting.';
-    case 'tables': return 'Marks the first ' + a.header_rows + ' row(s) and first ' + a.header_cols + ' column(s) as headers, so screen readers announce them with each cell.';
+    case 'tables': return 'Marks ' + a.header_rows + ' row(s) and the first ' + a.header_cols + ' column(s) as headers, so screen readers announce them with each cell. Other cells tagged as headers become data cells.';
     case 'flatten': return 'Removes the list or table structure; its contents are read as plain paragraphs, in the same order.';
     case 'keep_lists': return 'Keeps this one-item list as a list (an automatic rule would otherwise turn it into a paragraph).';
     case 'merges': return 'Joins two pieces into one heading, for example a chapter number and its title, so they are read together. Nothing moves in the reading order. If you reject it, spoken text the AI wrote for those headings (for example “Chapter Two …”) no longer matches the print, and the executor will refuse it too.';
@@ -952,7 +958,7 @@ function card(it) {
     row('Original', it.before == null || it.before === '' ? 'none' : esc(show(it.before)));
     row('AI\'s choice', '<b>' + esc(show(it.ai)) + '</b>');
   } else if (it.key === 'tables')
-    row('Change', 'Original: <b>' + esc(show(it.before.header_cells)) + '</b> header cells → AI: <b>' + esc(it.ai.header_rows) + '</b> header rows, <b>' + esc(it.ai.header_cols) + '</b> header columns');
+    row('Change', 'Original: <b>' + esc(show(it.before.header_cells)) + '</b> header cells → AI: <b>' + esc(it.ai.header_rows) + '</b> header rows, <b>' + esc(it.ai.header_cols) + '</b> header columns' + tableReading(c.row_reading));
   else if (it.key === 'deferrals') row('Why', esc(c.why || '—'));
   else if (it.key === 'notes_for_reviewer') row('Note', esc(it.ai));
   else if (it.key === 'move_section') { exact = true; moveRows(it, row); }
