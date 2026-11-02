@@ -109,7 +109,7 @@ A run that `REVIEW=1` stopped before its first review (`workorder.ai.json`, no `
 
 **The same from a terminal** (not shown on the page), from `pipeline/`: `python3 review_workorder.py <run folder> --reopen [--from N|ai]`, `--sessions`, `--apply` (see [Reviewing the work order](review-step.md)).
 
-**The flow:** **Review Again** → the review page opens by itself → **Finish Review** → the run page, showing apply, verify and report with their times → when they end, "New result ready" and a **Show the New Result** button, which loads it. The page never reloads by itself. The review page also has **Back to the Run Page**, which leaves the review open.
+**The flow:** **Review Again** → the review page opens by itself → **Finish Review** → the run page, showing apply, verify and report with their times → when they end, "New result ready" and a **Show the New Result** button, which loads it. The page never reloads by itself. The review page also has **Back to the Run Page**, which leaves the review open. It checks each choice as it is saved and refuses **Finish Review** while one needs fixing (see [Checks as you go](review-step.md#checks-as-you-go)), so a choice the check doesn't accept is fixed on the review page, not dropped at apply.
 
 **Focus outlines:** a heading or message the page moves focus to (after a click, or when a page it opened loads) never shows an outline. Tab focus on buttons, links and fields always shows one.
 

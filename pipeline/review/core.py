@@ -7,6 +7,7 @@
     wo2   = apply_decisions(ai_wo, items, decisions)  # a person's approve / change / reject applied to a copy of the AI's order
     refused = add_entries(wo2, additions, adds, reviewer)   # the person's own decisions added to it
     dropped, gaps = preview(R, wo2)                   # what the check would drop, and what is still missing (no H1, figures without alt)
+    probs, gaps = problems(R, ai_wo, items, decisions, additions, adds)   # the same check, each problem on the card it belongs to
     changes = diff(ai_wo, wo2)                        # what the person changed, item by item
     finish(R, ai_wo, wo2, reviewer, date, method, …)  # checks the order again, writes review.json and the reviewed workorder.json
 
@@ -686,9 +687,10 @@ def _int(v):
     try: return int(v)
     except (TypeError, ValueError): return v                # left as it is: the check refuses it with its reason
 
-def add_entries(wo, additions, adds, reviewer=''):
+def add_entries(wo, additions, adds, reviewer='', mark=False):
     """The person's own decisions added to wo (in place), each in the shape the AI writes. Returns what was refused:
-    [{id, why}]. Only targets listed by addable() are taken, and never one that wo already decides."""
+    [{id, why}]. Only targets listed by addable() are taken, and never one that wo already decides. mark: each added
+    entry carries _card (its add: id), for problems() to name the card a dropped entry came from."""
     by_id = {it['id']: it for v in (adds or {}).values() for it in v}
     why = f'added by {reviewer.strip()} in review' if (reviewer or '').strip() else 'added in review'
     refused, seen = [], set()
@@ -701,28 +703,29 @@ def add_entries(wo, additions, adds, reviewer=''):
         if aid in seen: no('added twice'); continue
         seen.add(aid)
         k, target = t['kind'], t['target']
+        tag = {'_card': aid} if mark else {}
         if k == 'retype':
             if any(it.get('obj') == target for it in wo.get('retype') or []): no('already decided: change it on its card'); continue
-            wo.setdefault('retype', []).append({'obj': target, 'type': v, 'why': why})
+            wo.setdefault('retype', []).append({'obj': target, 'type': v, 'why': why, **tag})
         elif k == 'alt':
             if any(it.get('obj') == target for it in (wo.get('artifacts') or {}).get('elements') or []):
                 no('the AI marked this figure as decoration: reject that decision first'); continue
             if any(it.get('obj') == target for it in wo.get('alt') or []): no('already decided: change it on its card'); continue
-            wo.setdefault('alt', []).append({'obj': target, 'alt': v, 'why': why})
+            wo.setdefault('alt', []).append({'obj': target, 'alt': v, 'why': why, **tag})
         elif k == 'page_figures':
-            wo.setdefault('page_figures', []).append({'page': target, 'alt': v, 'why': why})
+            wo.setdefault('page_figures', []).append({'page': target, 'alt': v, 'why': why, **tag})
         elif k == 'tables':
             v = v if isinstance(v, dict) else {}
             wo.setdefault('tables', []).append({'obj': target, 'header_rows': _int(v.get('header_rows', 0)),
-                                                'header_cols': _int(v.get('header_cols', 0)), 'why': why})
+                                                'header_cols': _int(v.get('header_cols', 0)), 'why': why, **tag})
         elif k == 'rolemap': wo.setdefault('rolemap', {})[target] = v
         elif k == 'document': wo.setdefault('document', {})[target] = v
-        elif k == 'ocr_words': wo.setdefault('ocr_words', []).append({'id': target, 'reads': v})
+        elif k == 'ocr_words': wo.setdefault('ocr_words', []).append({'id': target, 'reads': v, **tag})
         elif k == 'move_section':                       # after the AI's moves; the check refuses overlaps with its reason
             have = readorder.moves(wo)
             if len(have) >= readorder.MAX_MOVES: no(f'a work order holds at most {readorder.MAX_MOVES} section moves: change or reject one on its card first'); continue
             v = v if isinstance(v, dict) else {}
-            wo['move_section'] = have + [{'pages': [_int(p) for p in (v.get('pages') or [])], 'before_page': _int(v.get('before_page')), 'why': why}]
+            wo['move_section'] = have + [{'pages': [_int(p) for p in (v.get('pages') or [])], 'before_page': _int(v.get('before_page')), 'why': why, **tag}]
     return refused
 
 def unreviewed(items, decisions):
@@ -828,6 +831,154 @@ def preview(R, wo):
     wo = copy.deepcopy(wo)
     dropped = check(R, wo)
     return dropped, gaps(wo, load(os.path.join(R, '_audit', 'digest.json')))
+
+# ------------------------------------------------------------------ problems: the check's verdict, card by card
+# What to do about each reason the check (lib/workorder_check.py) or add_entries gives, for the page: sentence case, no
+# file names. Keyed by the reason with its numbers as N (_key); {pages} is the book's page count, {moves} the most
+# section moves a work order may hold. A reason with no entry is shown as it is (test_review_core pins that none is missing).
+FIX = {
+    'unknown key': 'The pipeline does not know this decision, so it cannot be applied. Reject it.',
+    'unknown obj': 'This points at something the audit did not find in the book. Reject it.',
+    'not a single-run figure listed in the digest': 'Only a figure drawn as one image can be hidden as decoration. Reject this choice.',
+    'bad regex': 'The text pattern is not valid, so the rule cannot be applied. Reject it.',
+    'band must be top, bottom or any': 'The rule must say top, bottom or anywhere on the page. Reject it.',
+    'bad page range': 'The pages must be two page numbers from 1 to {pages}. Reject this choice.',
+    'needs regex or where: in_figure': 'The rule says neither what text it hides nor that the text is inside a figure. Reject it.',
+    'unknown style': 'The book has no such style. Reject this choice.',
+    'target not allowed': 'Choose one of the tags in the list.',
+    'type not allowed': 'Choose one of the tags in the list.',
+    'not a figure or empty alt': 'Write alt text that says what the figure shows. If it needs none, reject this choice instead.',
+    'its image was not sent (over --max-images), so the alt was written unseen': 'The AI wrote this without seeing the figure. Look at it and write the alt text.',
+    'not PDF page numbers in range': 'Use page numbers from 1 to {pages}.',
+    'not a page listed in page_figures': 'The audit did not find this page as a whole-page figure. Reject this choice.',
+    'empty alt': 'Write alt text that says what the page shows. If it needs none, reject this choice instead.',
+    'its page image was not sent (over --max-images), so the alt was written unseen': 'The AI wrote this without seeing the page. Look at it and write the alt text.',
+    'unknown id': 'The audit found no such word. Reject this choice.',
+    'its word sheet was not sent': 'The AI did not see this word. Look at the image and type what it says.',
+    'empty': 'Type the word as it is printed, or reject this choice to keep the OCR text.',
+    'not one word': 'Type one word, with no spaces, of at most 80 characters.',
+    'same as the OCR text': 'This is what the OCR already reads. Type the corrected word, or reject this choice.',
+    'too different from the OCR text to be a misreading of it': 'This is too different from what the OCR read to be a misreading of it. Check the word in the image.',
+    'not a list or table listed in the digest': 'The audit found no such list or table. Reject this choice.',
+    'not a table listed in the digest': 'The audit found no such table. Reject this choice.',
+    'also flattened': 'This table is also set to be flattened. Keep one of the two choices and reject the other.',
+    'header_rows and header_cols must be whole numbers 0-3': 'Choose 0 to 3 header rows and 0 to 3 header columns.',
+    'title_rows and note_rows must be whole numbers 0-3': 'The table\'s title and note rows must be 0 to 3. Reject this choice.',
+    'group_rows and repeat_rows must list row numbers in the table': 'Some rows named here are not in the table. Reject this choice.',
+    'no header rows or columns': 'Choose at least one header row or column. If the table has no headers, reject this choice.',
+    'the same table twice': 'This table is decided twice. Keep one choice and reject or remove the other.',
+    'not a BCP 47 language tag': 'Choose a language from the list, or choose Other and type a language tag such as en-US or haw.',
+    'not a list the one-item rule would flatten': 'Nothing would flatten this list, so there is nothing to keep. Reject this choice.',
+    'unknown style or direction': 'The book has no such style. Reject this choice.',
+    'no such style': 'The book has no such style. Reject this choice.',
+    'unknown styles': 'Some styles named here are not in the book. Reject this choice.',
+    'bad page': 'Use a page number from 1 to {pages}.',
+    'bad pages': 'Use page numbers from 1 to {pages}: the first and last pages of the section, and the page it is read before.',
+    'the audit finds no section read out of place in these pages or where it lands':
+        'Nothing is read out of place in these pages, or where the section would land. Check the page numbers.',
+    'more than N section moves': 'At most {moves} sections can be moved. Reject one of the moves.',
+    'its pages overlap another section move': 'These pages overlap another section move. Change the pages of one, or reject one.',
+    'it lands inside the pages of another section move': 'This would be read in the middle of another moved section. Change where one of them is read, or reject one.',
+    'not something the review can add (a decision the AI made is changed on its card)': 'This can no longer be added. Remove it, and change the choice on its card instead.',
+    'added twice': 'This is added twice. Remove one.',
+    'already decided: change it on its card': 'The AI already decided this. Remove this addition and change the AI\'s choice on its card.',
+    'the AI marked this figure as decoration: reject that decision first': 'The AI marked this figure as decoration. Reject that choice first, or remove this alt text.',
+    'a work order holds at most N section moves: change or reject one on its card first': 'At most {moves} sections can be moved. Change or reject one of the other moves first.',
+}
+CONFLICT = {'also flattened', 'the same table twice', 'more than N section moves', 'its pages overlap another section move',
+            'it lands inside the pages of another section move', 'added twice', 'already decided: change it on its card',
+            'the AI marked this figure as decoration: reject that decision first',
+            'a work order holds at most N section moves: change or reject one on its card first'}   # choices that clash, not one bad value
+
+def _key(why): return re.sub(r'(more than|at most) \d+', r'\1 N', str(why))
+
+def fix(why, pages):
+    """What to do about a reason, for the page."""
+    t = FIX.get(_key(why))
+    return t.format(pages=pages, moves=readorder.MAX_MOVES) if t else str(why)[:1].upper() + str(why)[1:] + '.'
+
+def languages():
+    """The language list for the page's Language field: [[tag, name], …] by name, from lib/langtag.py's names, with
+    English (US) and (UK) beside English. A tag not in it is typed under Other."""
+    from lib import langtag
+    named = {**langtag.NAMES, 'en-US': 'English (US)', 'en-GB': 'English (UK)'}
+    return sorted(([t, n] for t, n in named.items()), key=lambda x: x[1])
+
+def problems(R, ai_wo, items, decisions, additions, adds, reviewer='', set_in=None):
+    """The check's verdict on the reviewed order, card by card, and the gaps left after it: ({fields, conflicts, unplaced}, gaps).
+    The order is built as for Finish (apply_decisions, add_entries), each entry marked with its card first, then checked.
+      fields:    [{card, why, fix, origin, parts?}]  a card whose own value fails a rule (parts: which of a move's page boxes)
+      conflicts: [{cards, why, fix, origin}]         choices that clash (two moves overlap, an addition the AI already decided)
+      unplaced:  [{where, why, fix}]                 what the check drops that no card holds: left out, as before; never blocks Finish
+    origin: review (changed or added in this review), earlier (set in an earlier session: set_in), ai (the AI's choice, untouched)."""
+    digest = load(os.path.join(R, '_audit', 'digest.json'))
+    N = digest['source']['pages']
+    marked = copy.deepcopy(ai_wo)
+    for it in items:
+        x = marked
+        try:
+            for k in it['loc'] or [None]: x = x[k]
+        except (KeyError, IndexError, TypeError): x = None
+        if isinstance(x, dict): x['_card'] = it['id']
+    wo = apply_decisions(marked, items, decisions)
+    refused = add_entries(wo, additions, adds, reviewer, mark=True)
+    ids = {it['id'] for it in items} | {f'add:{a.get("kind")}:{a.get("target")}' for a in additions or [] if isinstance(a, dict)}
+    moves, tables = list(readorder.moves(wo)), list(wo.get('tables') or [])
+    dropped = check(R, wo)
+
+    def card(d):
+        it, w = d.get('item'), str(d.get('where') or '')
+        if isinstance(it, dict) and it.get('_card'): return it['_card']
+        if w.startswith('document.'): return next((c for c in (w, f'add:document:{w[9:]}') if c in ids), None)
+        if w == 'rolemap' and isinstance(it, dict) and len(it) == 1:
+            s = next(iter(it)); return next((c for c in (f'rolemap:{s}', f'add:rolemap:{s}') if c in ids), None)
+        return card_of(items, d)
+
+    def origin(c):
+        if c.startswith('add:'): return 'review'
+        if (decisions.get(c) or {}).get('status') == 'changed': return 'earlier' if c in (set_in or {}) else 'review'
+        return 'ai'
+
+    def page_ok(p): return isinstance(p, int) and not isinstance(p, bool) and 1 <= p <= N
+
+    def pages(m):
+        ps = m.get('pages') if isinstance(m, dict) else None
+        return ps if isinstance(ps, list) and len(ps) == 2 and all(page_ok(p) for p in ps) and page_ok(m.get('before_page')) else None
+
+    def others(why, it):
+        """The other cards a clash names."""
+        if why in ('its pages overlap another section move', 'it lands inside the pages of another section move'):
+            (a, b), c = it['pages'], it['before_page']
+            return [m.get('_card') for m in moves if m is not it and pages(m) and (
+                (a <= m['pages'][1] and m['pages'][0] <= b) if why.startswith('its') else
+                (m['pages'][0] <= c <= m['pages'][1] or a <= m['before_page'] <= b))]
+        if why.startswith('more than'): return [m.get('_card') for m in moves if m is not it]
+        if why == 'the same table twice': return [t.get('_card') for t in tables if t is not it and t.get('obj') == it.get('obj')]
+        if why == 'also flattened': return [f'flatten:{it.get("obj")}']
+        return []
+
+    out = {'fields': [], 'conflicts': [], 'unplaced': []}
+    for d in dropped:
+        why, c = d['why'], card(d)
+        if c is None or c not in ids:
+            out['unplaced'].append({'where': d.get('where'), 'why': why, 'fix': fix(why, N)}); continue
+        if _key(why) in CONFLICT:
+            cs = list(dict.fromkeys([x for x in others(why, d['item']) if x in ids] + [c]))
+            out['conflicts'].append({'cards': cs, 'why': why, 'fix': fix(why, N), 'origin': origin(c)}); continue
+        p = {'card': c, 'why': why, 'fix': fix(why, N), 'origin': origin(c)}
+        if why == 'bad pages' and isinstance(d['item'], dict):        # which of the move's boxes is wrong
+            ps = d['item'].get('pages') if isinstance(d['item'].get('pages'), list) and len(d['item']['pages']) == 2 else None
+            p['parts'] = ([f for f, v in zip(('a', 'b'), ps) if not page_ok(v)] if ps else ['a', 'b']) + ([] if page_ok(d['item'].get('before_page')) else ['before_page'])
+        out['fields'].append(p)
+    for r in refused:
+        aid, why = r['id'], r['why']
+        kind, _, target = aid[4:].partition(':')
+        if _key(why) in CONFLICT:
+            other = ([f'{kind}:{target}'] if why.startswith('already decided') else [f'artifacts.elements:{target}'] if 'decoration' in why
+                     else [m.get('_card') for m in moves] if why.startswith('a work order') else [])
+            out['conflicts'].append({'cards': list(dict.fromkeys([x for x in other if x in ids] + [aid])), 'why': why, 'fix': fix(why, N), 'origin': 'review'})
+        else: out['fields'].append({'card': aid, 'why': why, 'fix': fix(why, N), 'origin': 'review'})
+    return out, gaps(wo, digest)
 
 def _status(it, d):
     st = (d or {}).get('status') or 'accepted_unreviewed'

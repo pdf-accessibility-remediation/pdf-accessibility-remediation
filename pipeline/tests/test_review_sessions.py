@@ -525,7 +525,8 @@ def test_keep_and_save_together_never_cut_the_draft(tmp_path):
         for x in th: x.join()
     assert not errs and S.load(p['draft'])['session_notes'] == 'x' * 3000
     assert not [n for n in os.listdir(p['dir']) if n.endswith('.tmp')]
-    # Finish with Keeps racing it: every Keep is kept before Finish or refused after, so the draft is Finish's
+    # Finish with Keeps racing it: every Keep is kept before Finish or refused after (409 while Finish runs, 503 while the
+    # server closes) or finds the server stopped, so the draft is Finish's
     fin = dict(base, session_name='final', session_notes='done', gaps_ack={'figures_without_alt': 'drawn later'})
     th = [threading.Thread(target=hammer, args=('/keep', i)) for i in range(6)]
     for x in th[:3]: x.start()
@@ -533,5 +534,5 @@ def test_keep_and_save_together_never_cut_the_draft(tmp_path):
     for x in th[3:]: x.start()                                             # after Finish: refused, or the server has stopped
     for x in th: x.join()
     t.join(5)
-    assert st == 200 and b['finished'] and not [e for e in errs if e[1] is not None]
+    assert st == 200 and b['finished'] and not [e for e in errs if e[1] not in (None, 503)]
     assert S.load(p['draft'])['session_name'] == 'final' and S.load(p['draft'])['session_notes'] == 'done'
