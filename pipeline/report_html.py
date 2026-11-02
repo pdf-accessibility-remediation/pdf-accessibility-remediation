@@ -552,8 +552,11 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
                    + ''.join(f'<li>{"OK ✔" if x["ok"] else "<strong>NOT CHECKED</strong>" if x.get("state") == "not checked" else "<strong>FAILED ✘</strong>"} {E(x["what"])}'
                              + (f' ({E(x["detail"])})' if x.get('detail') else '') + '</li>' for x in saf) + '</ul></details>') if saf else ''
     sst = safety_state(g)
-    looked = G.needs_looked_text(g)                         # "What Needs a Person" looked at in the evaluation: neutral (2026-10-31)
-    np_cls = 'good' if not np_['total'] else 'muted' if looked and looked.startswith('looked at') else 'warn'
+    looked = G.needs_looked_text(g)                         # "What Needs a Person" in this version's evaluation (2026-10-31)
+    lk = g.get('needs_looked') or {}
+    if looked and lk.get('result') == 'pass':               # a Pass: green, "Considered during the evaluation" (Patrick, 2026-11-01)
+        looked = f'Considered during the evaluation ({lk.get("by") or "name not recorded"}, {D.day(lk.get("recorded"))})'
+    np_cls = 'good' if not np_['total'] or (looked and lk.get('result') == 'pass') else 'warn'
     nf = vg.get('newly_failing')
     vera_sub = ((f'{vg.get("before_checks", 0):,} → {vg["after_checks"]:,} failed checks · ' if vg.get('ran_after') else (E(vg.get('not_run') or '') + ' · '))
                 + (f'<span class="newly">{len(nf)} newly failing</span>' if nf else '0 newly failing' if nf is not None

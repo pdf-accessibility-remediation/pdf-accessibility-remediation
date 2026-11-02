@@ -92,7 +92,7 @@ Each item is **Pass**, **Fail** or **Not Applicable**, with notes. The list is d
 | Title and Language | |
 | Spot-Check of Pages | **Pages Checked** (optional: `5, 9-12`) |
 | Color Alone (1.4.1), Contrast (1.4.3), Images of Text (1.4.5) | |
-| What Needs a Person | every item the report lists was looked at; a Pass turns the dashboard's "Needs a Person" card neutral ("looked at in the evaluation") |
+| What Needs a Person | every item the report lists was looked at; a Pass turns the dashboard's "Needs a Person" card green ("Considered during the evaluation") |
 
 | Screen-Reader Test | |
 |---|---|
@@ -265,9 +265,11 @@ and including its re-mirror (`lib/runlock.py`).
   × close it, focus returns to the button). Without the script, and in print, the full results are shown in place. While
   nothing is recorded, review.md's own section is drawn as a fold at the end (the instructions); once something is, it is
   not, so nothing appears twice.
-- **The "Needs a Person" card** turns neutral once this version's PAC 2026 results mark "What Needs a Person" as Pass:
-  "looked at in the evaluation (Patrick, October 31, 2026)". A Fail keeps it orange ("marked Fail in the evaluation …").
-  review.md's "Needs a person" line says the same.
+- **The "Needs a Person" card** turns green once this version's PAC 2026 results mark "What Needs a Person" as Pass:
+  "Considered during the evaluation (Patrick, November 1, 2026)", the name and date from that result (Patrick,
+  2026-11-01; it was neutral, "looked at in the evaluation"). A Pass recorded on a previous version does not count. A
+  Fail keeps it orange ("marked Fail in the evaluation …"). review.md's "Needs a person" line keeps its words ("looked
+  at in the evaluation (…)" or "marked Fail in the evaluation (…)").
 
 ## Downloads
 
