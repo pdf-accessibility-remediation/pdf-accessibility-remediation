@@ -287,7 +287,11 @@ stylesheet, centered on the list's height in the page's text color (the browser'
   is then not described by it. On
   the evaluation page, a version that is not the current one adds "Results on this page are recorded for the current
   version only." to that line.
-- **Names:** the PDF's bytes are never changed, only the name it is saved under.
+- **Names:** the PDF's bytes are never changed, only the name it is saved under. The PDF's own name, as its record
+  gives it, must be a plain file name (no "/", "\", "..", leading dot or control character): otherwise the current
+  version is refused ("This version's file name in its record is not a plain file name …") and a previous version or a
+  shipped copy is not listed, so a hand-edited record.json never makes a ZIP entry or a path outside its folder. A
+  download that fails after opening its files closes them before the error goes on.
 
   | That version | PDF | ZIP |
   |---|---|---|

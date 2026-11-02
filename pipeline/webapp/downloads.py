@@ -20,7 +20,7 @@ zipped). Never review.md or evaluation-results.json (they stay in the run folder
 digests, crops, reviews/, _intake/, release/drafts.json, dot-files or working files: the list is an allow-list. The ZIP's
 review.html keeps only the links that work inside the ZIP (zip_page()).
 """
-import os, re, io, html, hashlib, zipfile, datetime
+import os, re, io, html, hashlib, zipfile, datetime, unicodedata
 from lib import release as REL, dates as D, runlock
 from review import sessions as S, manual as M
 from . import config, manualpage as MP
@@ -30,6 +30,15 @@ CHANGED = 'The book\'s PDF has changed since this report was made, so it can\'t 
 MISSING = 'The book\'s remediated PDF is missing, so it can\'t be downloaded. Whoever looks after the app can check it.'
 EARLIER_CHANGED = ('The PDF of this previous version has changed since it was made, so it can\'t be downloaded as that version. '
                    'Whoever looks after the app can check it.')
+
+BAD_NAME = ('This version\'s file name in its record is not a plain file name, so it can\'t be downloaded. '
+            'Whoever looks after the app can check it.')
+
+def plain_name(name):
+    """A PDF name from a record that is a plain file name in its own folder: no "/" or "\\", no "..", no leading dot, no
+    control character. A hand-edited record.json then never makes a ZIP entry or a path outside its folder (35)."""
+    return (isinstance(name, str) and bool(name) and '/' not in name and '\\' not in name and '..' not in name
+            and not name.startswith('.') and not any(unicodedata.category(c) == 'Cc' for c in name))
 
 class Refused(Exception):
     """A download that cannot be given now, in plain words for the page (409), or None words for a plain 404."""
@@ -65,13 +74,13 @@ def versions(R, rec, glance=None):
         vrec = S.load(os.path.join(d, 'record.json')) or {}
         out_name = (vrec.get('document') or {}).get('output')
         pdf = os.path.join(d, out_name) if out_name else None
-        if not pdf or not os.path.isfile(pdf) or n in gone: continue
+        if not plain_name(out_name) or not os.path.isfile(pdf) or n in gone: continue   # never a path outside its folder
         out.append({'id': n, 'session': n if str(n).isdigit() else None, 'dir': d, 'pdf': pdf, 'sha': MP.disk_sha(pdf),
                     'state': 'earlier version', 'status_text': None, 'label': f'{_version_label(n)[0].upper() + _version_label(n)[1:]} (previous version)'})
     changed = MP.disk_state(R, rec)['same'] is False
     for s in reversed(rel.get('shipped') or []):             # shipped copies: listed when the current entry is not them (M7)
         d = _shipped_dir(R, s); f = (s.get('pdf') or {}).get('file')
-        if not d or not f or not os.path.isfile(os.path.join(d, f)): continue
+        if not d or not plain_name(f) or not os.path.isfile(os.path.join(d, f)): continue
         ssha = REL.sha_of(s)
         if ssha == out[0]['sha'] and not changed and not s.get('withdrawn'): continue
         ses = (s.get('pdf') or {}).get('session')
@@ -113,6 +122,8 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
             vs = versions(R, rec, g)
             ver = next((x for x in vs if x['id'] == v), None)
             if ver is None: raise Refused(None)                          # not one of the run's own versions
+            if ver['id'] == 'current' and not plain_name((rec.get('document') or {}).get('output')):
+                raise Refused(BAD_NAME)                                  # before its file is looked at
             about = None
             if ver.get('shipment'):                                      # a shipped copy: its folder's own files (never its record.json)
                 if MP.disk_sha(ver['pdf']) != ver['sha']: raise Refused(SHIPPED_CHANGED)
@@ -128,25 +139,31 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
                 want = (vrec.get('document') or {}).get('output_sha256')
                 if want and ver['sha'] != want: raise Refused(EARLIER_CHANGED)
             out = (vrec.get('document') or {}).get('output')
+            if not plain_name(out): raise Refused(BAD_NAME)               # every version's name, as its record gives it
             pdf_name, zip_name = REL.download_names(out, ver['session'], ver['state'], ver.get('shipment') or next((s.get('n') for s in REL.live_shipments(REL.load(R)) if REL.sha_of(s) == ver['sha']), None))
             if what == 'pdf':
                 return {'name': pdf_name, 'ctype': 'application/pdf', 'fh': open(ver['pdf'], 'rb')}
-            rel = REL.load(R)
-            members = [(out, open(ver['pdf'], 'rb'), zipfile.ZIP_STORED)]
-            han = os.path.join(ver['dir'], 'han_review.csv')              # the Han-only runs a person checks, when the book has them
-            names = [out, 'review.html'] + (['han_review.csv'] if os.path.isfile(han) else []) + ['READ-ME.txt']
-            p = os.path.join(ver['dir'], 'review.html')
-            if os.path.isfile(p):                                         # read now (small): its links are made to fit the ZIP
-                with open(p, encoding='utf-8') as f: page = zip_page(f.read(), names)
-                members.append(('review.html', io.BytesIO(page.encode('utf-8')), zipfile.ZIP_DEFLATED))
-            if os.path.isfile(han): members.append(('han_review.csv', open(han, 'rb'), zipfile.ZIP_DEFLATED))
-            cur_label = _version_label(S.current_id(rec))
-            book = MP.book(rec)['title']
-            return {'name': zip_name, 'ctype': 'application/zip', 'members': members, 'folder': zip_name[:-4], 'rel': rel, 'version': ver,
-                    'shipments': [s for s in rel.get('shipped') or [] if REL.sha_of(s) == ver['sha']],
-                    'pdf_name': out, 'book': book, 'cur_label': cur_label,
-                    'applied': MP.version(R, rec)['when'] if ver['id'] == 'current' else _applied(R, ver['id'], vrec),
-                    'about': about if ver.get('shipment') else vrec}
+            members = []                                                  # every handle opened here is closed if a later step fails (35)
+            try:
+                rel = REL.load(R)
+                members.append((out, open(ver['pdf'], 'rb'), zipfile.ZIP_STORED))
+                han = os.path.join(ver['dir'], 'han_review.csv')              # the Han-only runs a person checks, when the book has them
+                names = [out, 'review.html'] + (['han_review.csv'] if os.path.isfile(han) else []) + ['READ-ME.txt']
+                p = os.path.join(ver['dir'], 'review.html')
+                if os.path.isfile(p):                                         # read now (small): its links are made to fit the ZIP
+                    with open(p, encoding='utf-8') as f: page = zip_page(f.read(), names)
+                    members.append(('review.html', io.BytesIO(page.encode('utf-8')), zipfile.ZIP_DEFLATED))
+                if os.path.isfile(han): members.append(('han_review.csv', open(han, 'rb'), zipfile.ZIP_DEFLATED))
+                cur_label = _version_label(S.current_id(rec))
+                book = MP.book(rec)['title']
+                return {'name': zip_name, 'ctype': 'application/zip', 'members': members, 'folder': zip_name[:-4], 'rel': rel, 'version': ver,
+                        'shipments': [s for s in rel.get('shipped') or [] if REL.sha_of(s) == ver['sha']],
+                        'pdf_name': out, 'book': book, 'cur_label': cur_label,
+                        'applied': MP.version(R, rec)['when'] if ver['id'] == 'current' else _applied(R, ver['id'], vrec),
+                        'about': about if ver.get('shipment') else vrec}
+            except BaseException:
+                for _, fh, _ in members: fh.close()
+                raise
     except runlock.Busy as e: raise Refused(str(e))
 
 def _applied(R, vid, vrec):
