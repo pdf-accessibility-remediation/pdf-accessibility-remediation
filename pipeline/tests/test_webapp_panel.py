@@ -266,6 +266,58 @@ def test_apply_and_stop_refuse_with_a_reason(app):
     assert post(port, '/api/run/book/r1/review', origin='http://evil.example')[0] == 403
     assert post(port, '/api/run/book/r1/nope')[0] == 404 and post(port, '/api/run/book/%2e%2e/review')[0] == 404
 
+def waiting_run(t, name='rv'):
+    """A run folder as a REVIEW=1 stop leaves it: the AI's order, the review's items, intake's record, review_stop.json."""
+    W = t / 'runs' / 'book' / name; (W / '_intake').mkdir(parents=True)
+    src = t / 'samples' / 'book.pdf'; src.write_bytes(b'%PDF-1.4 the original')
+    (W / '_intake' / 'intake.json').write_text(json.dumps({'original': {'file': 'book.pdf', 'sha256': sha(src)}}))
+    (W / 'workorder.ai.json').write_text('{}'); (W / 'review_items.json').write_text('{}')
+    (W / 'review_stop.json').write_text(json.dumps({'src': str(src), 'name': 'book', 'env': {'OCR_LANG': 'eng', 'MODEL': 'x'}}))
+    return W, src
+
+def test_a_run_stopped_for_its_first_review_has_its_page(app):
+    """Patrick, 2026-11-01: run_api.sh's REVIEW=1 stop leads with the app. The run page of a run with no record yet offers
+    "Open the Review Page," then "Apply"; nothing else of a finished run is served for it."""
+    port, t = app['port'], app['t']
+    W, src = waiting_run(t)
+    st, b, _ = get(port, '/run/book/rv/'); page = b.decode()
+    assert st == 200 and '<div id="pdfrem-panel" data-run="book/rv" data-waiting="1">' in page and '<h1>book.pdf</h1>' in page
+    assert 'Nothing has been applied to the book yet' in page
+    st, b, _ = get(port, '/api/run/book/rv'); d = json.loads(b)
+    assert st == 200 and d['waiting'] == {'reviewed': False, 'reviewer': None, 'date': None, 'prepared': True} and d['title'] == 'book.pdf'
+    for path in ('/run/book/rv/checks', '/run/book/rv/download?what=pdf', '/api/run/book/rv/checks', '/run/book/rv/review.md'):
+        assert get(port, path)[0] == 404
+    st, b = post(port, '/api/run/book/rv/apply')
+    assert st == 409 and b['error'] == 'Finish the review first: "Open the Review Page," then "Finish Review."'
+    for act in ('ship', 'discard', 'ocr', 'remove-older-pdfs'): assert post(port, f'/api/run/book/rv/{act}')[0] == 404
+    assert post(port, '/api/run/book/rv/stop') == (409, {'error': 'no review page is open for this run'})
+
+def test_the_first_review_and_the_first_apply_are_the_terminal_commands(setup):
+    s = settings(setup); W, src = waiting_run(setup)
+    j = runs.start_first_review(s, 'book/rv', str(W), 8123)
+    assert j['kind'] == 'review' and j['first'] and j['counted'] is False and j['argv'][1:] == [
+        'review_workorder.py', str(W), '--serve', '--no-browser', '--return-to', 'http://127.0.0.1:8123/run/book/rv/?after=finish']
+    v = runs.job_view(s, jobs.update(s['jobs'], j['id'], status='done', ended='2026-11-01T16:20:00'))
+    assert v['title'] == 'Review the AI\'s decisions → closed without "Finish Review" (4:20 PM)'
+    (W / 'review.json').write_text(json.dumps({'reviewer': 'Kim', 'date': '2026-11-01'}))
+    assert runs.job_view(s, jobs.load(s['jobs'], j['id']))['result'] == 'review finished (Kim, 4:20 PM), not applied yet'
+    with pytest.raises(ValueError, match='The review is finished'): runs.start_first_review(s, 'book/rv', str(W), 8123)
+    a = runs.start_first_apply(s, 'book/rv', str(W))
+    assert a['kind'] == 'apply' and a['argv'] == ['bash', 'run_api.sh', str(src), 'book', 'rv']
+    assert a['env']['RUN_DIR'] == str(W) and a['env']['OCR_LANG'] == 'eng' and 'MODEL' not in a['env'] and 'REVIEW' not in a['env']
+    jobs.update(s['jobs'], a['id'], status='done', ended='2026-11-01T16:25:00')
+    (W / 'review_stop.json').write_text(json.dumps({'src': str(setup / 'gone.pdf'), 'name': 'book'}))   # moved since: found by sha256
+    assert runs.start_first_apply(s, 'book/rv', str(W))['argv'][2] == str(src)
+    assert runs.waiting(str(W)) and runs.waiting_state(s, 'book/rv', str(W))['waiting']['reviewed'] is True
+    (W / 'record.json').write_text('{}')
+    assert not runs.waiting(str(W))                                               # applied: a finished run from now on
+
+def test_the_review_stop_leads_with_the_app():
+    sh = src('run_api.sh')
+    assert 'echo "Open the run page to review and apply: python3 $(pwd)/app.py \\"$R\\""' in sh and 'echo "Or in the terminal:"' in sh
+    assert "'review_stop.json'" in src('report.py')                             # removed with the other working files
+    assert 'open the run page and select "Apply": python3 ' in src('review_workorder.py')
+
 def test_stop_only_before_finish(app):
     port, t, R = app['port'], app['t'], app['R']
     s = config.load(str(t / 'app.json'), environ={})
@@ -702,7 +754,7 @@ def test_in_page_link_targets_take_focus():
     assert "const t = document.getElementById(a.getAttribute('href').slice(1));" in page and 'goTo(t);' in page
     assert "goTo(document.getElementById('card-' + t.id));" in page
     assert '[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }' in page
-    assert srv.count('<main id="main" tabindex="-1">') == 3 and '<script src="/app/panel.js" defer></script></body></html>' in srv
+    assert srv.count('<main id="main" tabindex="-1">') == 4 and '<script src="/app/panel.js" defer></script></body></html>' in srv
 
 def test_finish_not_yet_is_200_with_needs(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)
@@ -992,7 +1044,7 @@ def test_the_panel_is_replaced_only_when_its_html_changed():
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     body = js.split('function render() {')[1].split('\n}\n')[0]
     assert "if (body.dataset.h === h) return;\n  body.innerHTML = h; body.dataset.h = h;" in body
-    assert body.index('if (body.dataset.h === h) return;') < body.index('opened.forEach') < body.index('.focus()')
-    assert body.count('innerHTML') == 1                                     # the one write, after the check
+    assert body.rindex('if (body.dataset.h === h) return;') < body.index('opened.forEach') < body.rindex('.focus()')
+    assert body.count('innerHTML') == 2                                     # one write each (a waiting run's, the result's), after its check
     strip = js.split('function renderStrip(s) {')[1].split('\n}\n')[0]
     assert 'if (sb.dataset.h !== h) {' in strip                            # the strip's own check, unchanged

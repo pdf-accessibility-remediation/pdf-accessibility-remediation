@@ -20,7 +20,7 @@ FOLDERS = ('runs', 'samples', 'uploads', 'jobs')
 # what a child inherits from the app's own environment; everything else (MODEL, REPLY, FROM, KEEP, RUNS_DIR, RUN_DIR,
 # INTAKE, OCR, FORCE_OCR, MAX_TOKENS, VERAPDF=off, …) is dropped, and a job adds only its own whitelisted variables
 BASE_ENV = ('PATH', 'HOME', 'LANG', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL')
-JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD')
+JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD', 'INTAKE', 'OUT')
 
 def entry(folder, name):
     """The path of folder's entry called `name`, taken from the folder's own listing, or None. A name from a request is

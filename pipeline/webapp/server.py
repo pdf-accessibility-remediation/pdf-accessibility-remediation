@@ -48,6 +48,7 @@ from review.server import local_request
 from review import sessions as S
 from lib.titles import title_case as TC
 from . import config, jobs, runs, manualpage as MP, downloads as DL
+RUNS_MOD = runs                                       # find_run's own `runs` is the runs folder
 from review import manual as M
 from lib import release as REL, runlock
 
@@ -68,17 +69,18 @@ def inside(root, p):
     root = os.path.realpath(root); p = os.path.realpath(p)
     return p == root or p.startswith(root + os.sep)
 
-def find_run(runs, segs):
+def find_run(runs, segs, waiting=False):
     """(run name, its folder, the remaining segments) for the shortest prefix holding record.json, or None. Each segment
     picks an entry from the folder's own listing (config.entry): the folder is built from names on disk only, then
-    resolved and kept inside the runs folder (a symlink out of it is refused)."""
+    resolved and kept inside the runs folder (a symlink out of it is refused). waiting: a run stopped for its first
+    review (runs.waiting()) counts too; only the run page, its state and its review, apply and stop actions ask for it."""
     base = os.path.realpath(runs); d = base
     for i, x in enumerate(segs, 1):
         d = config.entry(d, x)
         if d is None: return None
         d = os.path.realpath(d)
         if not d.startswith(base + os.sep) or not os.path.isdir(d): return None
-        if os.path.isfile(os.path.join(d, 'record.json')): return '/'.join(segs[:i]), d, segs[i:]
+        if os.path.isfile(os.path.join(d, 'record.json')) or (waiting and RUNS_MOD.waiting(d)): return '/'.join(segs[:i]), d, segs[i:]
     return None
 
 def version_dir(R, sid):
@@ -153,11 +155,12 @@ def after_body(page, box):
     j = page.find('>', i) if i >= 0 else -1
     return page[:j + 1] + box + page[j + 1:] if j >= 0 else box + page
 
-def with_panel(page, run, current=None):
+def with_panel(page, run, current=None, waiting=False):
     """review.html as served: the panel's stylesheet, its place (after the page's header, so its h2 follows the page's h1;
     else after the skip link) and its script added. `current`: the session whose result the page shows, so the panel can
     tell when an apply has made a newer one. The file on disk is never changed; opened as a file it is the plain report."""
-    box = f'\n<div id="pdfrem-panel" data-run="{html.escape(run)}"' + (f' data-current="{html.escape(str(current))}"' if current else '') + '></div>\n'
+    box = f'\n<div id="pdfrem-panel" data-run="{html.escape(run)}"' + (f' data-current="{html.escape(str(current))}"' if current else '') + \
+          (' data-waiting="1"' if waiting else '') + '></div>\n'
     head = '<link rel="stylesheet" href="/app/panel.css">\n'
     i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
     if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
@@ -271,9 +274,17 @@ def make(s, setup, code=None):
             if segs and len(segs) >= 3 and segs[-2] == 'checks' and segs[-1] in ('draft', 'record'):   # two-segment actions: the run is segs[:-2]
                 return self.checks_post(segs[:-2], segs[-1], body)
             if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship'): return self.send(404, {'error': 'not found'})
-            hit = find_run(s['runs'], segs[:-1])
+            hit = find_run(s['runs'], segs[:-1], waiting=segs[-1] in ('review', 'apply', 'stop'))
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
             run, R, _ = hit
+            if runs.waiting(R):                                 # stopped for its first review: open the review page, apply, stop
+                try:
+                    if segs[-1] == 'review': j = runs.start_first_review(s, run, R, self.server.server_address[1], app_pid=os.getpid())
+                    elif segs[-1] == 'apply': j = runs.start_first_apply(s, run, R)
+                    else: j = runs.stop_review(s, run, R); return self.send(200, {'stopped': j['id']})
+                except ValueError as e: return self.send(409, {'error': str(e)})
+                jobs.tick(J, s)
+                return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
             if segs[-1] == 'ship':                              # Mark as Shipped, in this process, through review/manual.py ship()
                 try: e = M.ship(R, str(body.get('by') or ''), str(body.get('where') or ''), str(body.get('note') or ''), shown_sha=body.get('shown_sha256') or None,
                                 via='page', wait=runlock.REQUEST_WAIT, say=lambda *a: applog(f'{run}: ' + ' '.join(str(x) for x in a)), batch=False)
@@ -320,7 +331,9 @@ def make(s, setup, code=None):
                 return self.send(200, runs.job_view(s, job, with_text=True, offset=int(off) if off.isdecimal() and len(off) <= 12 else 0))
             if p.startswith('/api/run/'):
                 segs = segments(p[len('/api/run/'):])
-                hit = find_run(s['runs'], segs) if segs else None
+                hit = find_run(s['runs'], segs, waiting=True) if segs else None
+                if hit and runs.waiting(hit[1]):
+                    return self.send(200, runs.waiting_state(s, hit[0], hit[1])) if not hit[2] else self.send(404, {'error': 'no such run'})
                 if hit and hit[2] == ['checks']: return self.send(200, MP.state(hit[1], hit[0]))   # the Manual Checks page's data
                 if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
                 return self.send(200, runs.state(s, hit[0], hit[1]))
@@ -344,9 +357,13 @@ def make(s, setup, code=None):
                 if segs is None: return self.send(404, {'error': 'not found'})
                 if len(segs) == 3 and segs[0] == 'batches' and segs[2] in ('summary.html', 'summary.md'):    # a review.html's ../summary.html
                     return self.redirect(f'/batch/{urllib.parse.quote(segs[1])}/' + ('' if segs[2] == 'summary.html' else 'summary.md'))
-                hit = find_run(s['runs'], segs)
+                hit = find_run(s['runs'], segs, waiting=True)
                 if not hit: return self.send(404, {'error': 'no such run'})
                 run, R, rest = hit
+                if runs.waiting(R):                                                        # stopped for its first review: its page only
+                    if rest: return self.send(404, {'error': 'not found'})
+                    if not p.endswith('/'): return self.redirect(p + '/')
+                    return self.send(200, waiting_page(run, R), 'text/html; charset=utf-8')
                 if not rest:
                     if not p.endswith('/'): return self.redirect(p + '/')
                     return self.run_page(run, R)
@@ -457,6 +474,17 @@ def no_dashboard(run, R, current=None):
                       f'<title>{html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
                       f'<header><h1>{html.escape(run)}</h1></header><main id="main" tabindex="-1">'
                       f'<p>This run has no dashboard (review.html): it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current)
+
+def waiting_page(run, R):
+    """A run stopped for its first review (REVIEW=1): the panel (its "Open the Review Page," then "Apply") and a line
+    saying nothing has been applied yet. Its report comes with the first apply."""
+    title = runs.waiting_title(run, R)
+    return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+                      f'<title>{html.escape(title)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
+                      f'<header><h1>{html.escape(title)}</h1></header><main id="main" tabindex="-1">'
+                      '<p>The AI\'s decisions for this book are waiting for a person\'s review. Nothing has been applied to the book yet: '
+                      'review the decisions, then apply them. The report and the remediated PDF come with the first apply.</p></main></body></html>',
+                      run, waiting=True)
 
 def refused_page(message, base):
     """A download that cannot be given now: its reason in plain words, and a way back (the person followed a link)."""

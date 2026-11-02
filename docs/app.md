@@ -99,6 +99,8 @@ The panel shows:
 
 A run made before the dashboards existed (no `review.html`) gets a page with the panel, the `review.md` link and a line saying it has no dashboard. There is no rebuild button: rebuilding would write into the run.
 
+A run that `REVIEW=1` stopped before its first review (`workorder.ai.json`, no `record.json` yet; `python3 app.py <run>` opens it too) gets a page saying nothing has been applied yet, with **Open the Review Page** and, after **Finish Review**, **Apply** (`run_api.sh`'s second call, in the run's own folder): see [Review step](review-step.md#steps). Until then only that page, its state and those buttons answer for the run: no evaluation, downloads or files.
+
 **Every page has a way back,** so the browser's Back button is never the only one:
 - `/run/<run>/review.html` (which the "replaced by" note in a previous result's file links to) goes to the run page.
 - **A previous result** (`reviews/versions/<id>/review.html`) shows a bar: "You're viewing a previous result (session N)", with **Back to the Current Result** and **Review Again from This Session** (for the result applied without review, **Start Over from the AI's Decisions**). The button starts the review and goes to the run page, which follows it. The file's own "replaced by" note is hidden in the app (the bar says it); it stays in the file.
