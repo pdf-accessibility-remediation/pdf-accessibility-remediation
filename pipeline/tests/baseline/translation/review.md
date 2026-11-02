@@ -2,13 +2,13 @@
 
 Result: `translation_remediated.pdf`
 
-257 pages · run 2026-10-31T13:19:38 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+257 pages · run 2026-11-01T18:33:09 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.14.8 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.8s · audit 68.7s · reuse saved reply 1.2s · apply 99.0s · verify 65.3s · total 235.0s
+Time: intake 0.8s · audit 37.8s · reuse saved reply 0.4s · apply 81.7s · verify 49.5s · total 170.2s
 
 ## Overview
 
@@ -21,9 +21,9 @@ Time: intake 0.8s · audit 68.7s · reuse saved reply 1.2s · apply 99.0s · ver
 - Manual check (PAC): not run
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 8 (5 deferred by the AI · 1 deferred by the executor · 2 CHECK rows)  
-**AI decisions:** 66 in the work order, applied without review by a person  
-**Fixed automatically (no AI):** links tied and described 2,822 · decorative lines marked 1,652 · note IDs 823 · pages given tab order 192 · empty tags removed 34 · figures moved to their page 15 · title shown in the window 2 · marked as tagged 1 · whole-page figures wrapped 1 · tag-tree index entries 1  
+**Needs a person:** 9 (6 deferred by the AI · 1 deferred by the executor · 2 CHECK rows)  
+**AI decisions:** 68 in the work order, applied without review by a person  
+**Fixed automatically (no AI):** links tied and described 2,822 · decorative lines marked 1,652 · note IDs 824 · pages given tab order 192 · empty tags removed 34 · figures moved to their page 15 · title shown in the window 2 · marked as tagged 1 · whole-page figures wrapped 1 · tag-tree index entries 1  
 **veraPDF (WCAG 2.2 machine checks):** 7 WCAG rules failing before (3,953 checks) → 0 after (0 checks) · 0 newly failing
 
 Automated checks are evidence, not sign-off.
@@ -32,10 +32,10 @@ Automated checks are evidence, not sign-off.
 |---|---|---|
 | Private-use characters (checklist 3.6): 5 read-aloud characters with private-use codes (U+F036: 5) on 1 page | see Automated checks | [Automated checks](#automated-checks) |
 | Reading order jumps back up a column (7 jumps) | PDF 10 (printed x) | [§13](#13-wcag-checks-verapdf-does-not-make) |
-| text rule "hidden junk text grid (orphan)" matched no text on PDF 1–257 (printed i–236) | see §15 | [§15](#15-deferred-by-the-executor) |
-| veraPDF 7.1-3 (content neither marked as artifact nor tagged): 1653 failures with no target object | PDF 1 (printed i), PDF 3 (printed iii), PDF 257 (printed 236) | [§14](#14-deferred-by-the-ai) |
-| Reading order of the Story containers | PDF 2 (printed ii), PDF 255 (printed 234) | [§14](#14-deferred-by-the-ai) |
-| … and 3 more | | §14 |
+| text rule "invisible filler text (orphan)" matched no text on PDF 1–257 (printed i–236) | see §15 | [§15](#15-deferred-by-the-executor) |
+| Invisible filler text 'hn hk io il sy SY ek eh' | 11 pages, PDF 3 (printed iii) to PDF 255 (printed 234) | [§14](#14-deferred-by-the-ai) |
+| Reading order of the tag tree | 8 pages, PDF 2 (printed ii) to PDF 244 (printed 223) | [§14](#14-deferred-by-the-ai) |
+| … and 4 more | | §14 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -63,8 +63,8 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | No link nested inside another | OK | 0 |
 | Headings: no skipped levels | OK | H1 1 · H2 19 · H3 50 |
 | Headings: exactly one H1 (the title) | OK | 1 H1 (several H1s usually mean parts or chapters were not demoted) |
-| Figures: none with empty or placeholder alt | OK | 18 figures, 0 placeholder |
-| Every Note has a unique ID | OK | 823 notes · 0 without ID · 0 duplicate · 0 not in the ID tree |
+| Figures: none with empty or placeholder alt | OK | 19 figures, 0 placeholder |
+| Every Note has a unique ID | OK | 824 notes · 0 without ID · 0 duplicate · 0 not in the ID tree |
 | Bookmarks present (documents over 9 pages) | OK | 45 bookmarks |
 | Model reply held one work order | OK | one |
 | Executor applied every decision | OK | 0 rejected · 0 failed (listed under "Decisions not applied") |
@@ -78,7 +78,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Title and language set | OK | "Found in Translation: Many Meanings on a North Australian Mission" · en-US |
 | veraPDF WCAG 2.2 (machine): no WCAG failures | OK | before: 7 WCAG rules failed (3953 checks) → after: 0 WCAG rules failed (0 checks) (listed under "veraPDF") |
 | veraPDF: no rule newly failing or failing more often | OK | 7 fixed · 0 still failing · 0 newly failing |
-| Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 18 figures flagged |
+| Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 19 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
 | Reading order: no page jumps back up a column (1.3.2) | **CHECK** | 1 of 228 pages flagged |
 | Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 0 already in the original, of 22 sections and blocks |
@@ -92,29 +92,30 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 Pages with nothing tagged and nothing marked as decoration that hold a drawing (a full-page map, plate or cover). Each page was wrapped whole in one Figure; nothing on it was changed or removed.
 
-- PDF 1 (printed i): read first in the document. Alt text from the AI: "Book cover: sepia photograph of a group of Anindilyakwa men and two white missionaries posing outdoors, with a coloured archival map of Groote Eylandt in the upper left. Title in large letters: Found in Translation. Subtitle: Many Meanings on a North Australian Mission. Author: Laura Rademaker."
+- PDF 1 (printed i): read first in the document. Alt text from the AI: "Book cover of Found in Translation: Many Meanings on a North Australian Mission by Laura Rademaker. A sepia photograph shows a group of young Anindilyakwa men with two white missionaries, and an old map of Groote Eylandt is at upper left. The title and author's name are printed over the image."
 
-### 2. Alt text written or changed by the AI (17)
+### 2. Alt text written or changed by the AI (18)
 
 | Page | Before | After |
 |---|---|---|
 | PDF 3 (printed iii) | — | Indigenous Pacifics series logo |
 | PDF 4 (printed iv) | — | University of Hawai‘i Press logo |
-| PDF 23 (printed 2) | — | Black-and-white photograph: missionary Alfred Dyer, in a hat and shorts, stands with hands on hips in open woodland behind three Anindilyakwa men sitting on the ground. |
-| PDF 26 (printed 5) | — | Map of northern Australia locating Groote Eylandt in the Gulf of Carpentaria, east of Arnhem Land. Darwin, Pine Creek and Katherine are marked, and an inset shows where the area lies within Australia. |
-| PDF 59 (printed 38) | — | Black-and-white photograph from 1928 of a large group of Aboriginal children outdoors in front of palms and huts. Girls in light dresses sit and stand at left, boys stand at right, and a white man stands in the centre. |
-| PDF 61 (printed 40) | — | Hand-drawn survey map of Groote Eylandt and nearby islands showing the Aboriginal reserve, the mission lease and the area excluded for the Flying Boat Base, with Central Hill, Port Langdon and Bluff Hill marked. The handwritten legend reads: Abo. Res. edged blue, Mission Lease tinted pink, Area tinted green excluded for Flying Boat Base 7000 acs., scale about 10 miles to an inch. |
-| PDF 71 (printed 50) | — | Black-and-white photograph of Anindilyakwa men pushing a heavy log frame during construction at Angurugu while a man in a hat looks through a surveying instrument on a tripod. |
-| PDF 84 (printed 63) | — | Plan of the layout of the Groote Eylandt Mission Station at Angurugu. Roads radiate from a circle around the church at the centre. Around it sit the mission houses, school, store, boys' and girls' dormitories, hospital and maternity block, people's houses and the native camp, with a playing field, gardens, a sawmill and a river along the top. |
-| PDF 86 (printed 65) | — | Black-and-white photograph from 1951 of a crowd of Anindilyakwa people and missionaries standing in front of the Angurugu church, a long building with a pale roof, among trees. |
-| PDF 87 (printed 66) | — | Black-and-white photograph of a missionary sitting on the ground holding up a picture board to a circle of Aboriginal boys at Sunday school. |
-| PDF 88 (printed 67) | — | Black-and-white photograph from 1951 of Anindilyakwa adults and children standing and sitting in front of huts of bark and corrugated iron in the village. |
-| PDF 90 (printed 69) | — | Judith Stokes, smiling and wearing glasses and a sleeveless checked dress, leaning on a verandah rail with trees behind her. |
-| PDF 117 (printed 96) | — | Two Angurugu schoolchildren sitting at wooden desks in a classroom, one looking down at an open book. |
-| PDF 137 (printed 116) | — | Judith Stokes seated on a chair beside Lawrence Jaragba and Gula Lalara in a room with floral curtains and a radio behind them. |
-| PDF 170 (printed 149) | — | Johnny holding a concertina on a boat, with a sail, mast and the sea behind him. |
-| PDF 171 (printed 150) | — | Two men with painted bodies dance in a funeral ceremony for Quartpot in 1968, one wearing a feathered headdress, in a clearing in front of a tin-roofed shed with onlookers seated behind. |
-| PDF 189 (printed 168) | — | Evangelical poster titled 'The 2 Ways'. A broad road at left leads past scenes of fighting and wrongdoing towards flames. A narrow road at right leads up to a large cross and a heavenly landscape. People walk along both paths, and a sign near the bottom reads 'Enter ye in at the strait gate.' |
+| PDF 4 (printed iv) | — | University of Hawai‘i Press logo |
+| PDF 23 (printed 2) | — | Black-and-white photograph of missionary Alfred Dyer, in a wide-brimmed hat and shorts with hands on hips, standing in open bush beside three Anindilyakwa men seated on the ground. |
+| PDF 26 (printed 5) | — | Map of northern Australia showing Groote Eylandt in the Gulf of Carpentaria, east of Arnhem Land, with Darwin, Pine Creek and Katherine marked. An inset shows the location of the region within Australia. |
+| PDF 59 (printed 38) | — | Black-and-white photograph, 1928, of a group of Aboriginal girls in light dresses and boys in loincloths, with a few adults, posed outdoors in front of palm trees and a building. |
+| PDF 61 (printed 40) | — | Hand-drawn survey map of Groote Eylandt and nearby islands. It shows the Aboriginal Reserve, the Church Missionary Society lease tinted pink, and the area excluded for the Flying Boat Base. A handwritten legend gives the scale as 10 miles to an inch. |
+| PDF 71 (printed 50) | — | Black-and-white photograph of Anindilyakwa men pushing a heavy timber frame during construction at Angurugu, while a man in a hat looks through a surveying instrument on a tripod. |
+| PDF 84 (printed 63) | — | Plan of the Groote Eylandt Mission Station. A circular road around the church is at the center. Around it are the mission houses, store, boys' and girls' dormitories, school, hospital, maternity block, pump house, saw mill, gardens, playing field and the Native Camp. Rivers run along the top, and a track leads to the air strip. |
+| PDF 86 (printed 65) | — | Black-and-white photograph of the Angurugu church in 1951, a large building with a pale roof. Missionaries and Anindilyakwa congregation members stand in a line in front of it. |
+| PDF 87 (printed 66) | — | Photograph of a missionary teacher sitting on the ground outdoors and showing a picture board to a circle of Anindilyakwa boys at Sunday school. |
+| PDF 88 (printed 67) | — | Black-and-white photograph, 1951, of Anindilyakwa adults and children standing and sitting in front of bush huts in the village. |
+| PDF 90 (printed 69) | — | Photograph of Judith Stokes, a smiling woman with short curly hair and glasses, in a sleeveless checked dress, leaning on a veranda rail with trees behind her. |
+| PDF 117 (printed 96) | — | Photograph of two Angurugu schoolchildren sitting at wooden desks in a classroom, one looking down at an open book. |
+| PDF 137 (printed 116) | — | Photograph of Judith Stokes, Lawrence Jaragba and Gula Lalara seated side by side on chairs against a curtained wall, with a radio behind them. |
+| PDF 170 (printed 149) | — | Black-and-white photograph of Johnny, a man in a singlet, sitting on a boat holding a concertina, with a sail, mast and the sea behind him. |
+| PDF 171 (printed 150) | — | Black-and-white photograph of two men in a funeral dance for Quartpot in 1968. One wears a feathered headdress and the other has painted decoration. They dance in a clearing with huts and watching people behind them. |
+| PDF 189 (printed 168) | — | Detail of the cloth poster 'The 2 Ways'. A broad road leads down to flames on the left, with scenes of drinking, fighting and wrongdoing along the way. A narrow path leads up toward a cross on the right, with a gate marked 'Enter ye in at the strait gate'. Long description: it contrasts the way to destruction with the way to life. |
 
 ### 3. Headings
 
@@ -130,6 +131,7 @@ Heading levels by style (as applied):
 | ATAH | H2 | RoleMap | 1 |
 | ENH | H3 | RoleMap | 10 |
 | BMSH | H3 | RoleMap | 2 |
+| CST | P | RoleMap | 7 |
 | H1 | H3 | retype (standard tag) | 38 |
 
 Merged: `CN` into the next `CT`; `CST` into the prev `CT`
@@ -138,13 +140,13 @@ Spoken text set by the AI (should match what is printed):
 
 | Page | Text |
 |---|---|
-| PDF 34 (printed 13) | 1 Meetings New Meanings on Southern Shores |
-| PDF 52 (printed 31) | 2 Translating the Landscape Negotiating the Mission |
-| PDF 82 (printed 61) | 3 Ears to Hear The Sounds of Speech |
-| PDF 106 (printed 85) | 4 The Letter Kills Writing in English |
-| PDF 129 (printed 108) | 5 The Mamarika Winds Turning to Anindilyakwa |
-| PDF 148 (printed 127) | 6 Speaking to the Heart The Language of Faith |
-| PDF 167 (printed 146) | 7 Singing in Tongues Translation through Song |
+| PDF 34 (printed 13) | 1 MEETINGS New Meanings on Southern Shores |
+| PDF 52 (printed 31) | 2 TRANSLATING THE LANDSCAPE Negotiating the Mission |
+| PDF 82 (printed 61) | 3 EARS TO HEAR The Sounds of Speech |
+| PDF 106 (printed 85) | 4 THE LETTER KILLS Writing in English |
+| PDF 129 (printed 108) | 5 THE MAMARIKA WINDS Turning to Anindilyakwa |
+| PDF 148 (printed 127) | 6 SPEAKING TO THE HEART The Language of Faith |
+| PDF 167 (printed 146) | 7 SINGING IN TONGUES Translation through Song |
 
 ### 4. Elements retyped by the AI (1)
 
@@ -156,7 +158,7 @@ Check each one is (or is not) a heading as decided.
 
 ### 5. Lists and tables
 
-- Header cells marked by the AI on PDF 27 (printed 6): 2 header row(s), 0 header column(s), 3 cells changed to header cells. Check they are the real headers.
+- Header cells marked by the AI on PDF 27 (printed 6): 1 header row(s), 0 header column(s), 4 cells changed to header cells; 1 title row(s) made the caption, 28 data cell(s) tied to their headers by ID, 2 group row(s). Check they are the real headers.
 
 Tables kept as tables (12): check header cells and reading order.
 
@@ -181,16 +183,15 @@ Pages: PDF 15 (printed xv), PDF 19 (printed xix), PDF 25 (printed 4), PDF 27 (pr
 
 ### 7. Hidden from screen readers (artifacts)
 
-- 1 decorative elements ("second whole-page figure on the title page (PDF 4, printed iv); the title page is already carried by tagged text and the press logo in 7003 0") on PDF 4 (printed iv)
-- "hidden junk text grid (tagged)": text matching `hn|hk|io|il|sy|SY|ek|eh` on PDF 2–257 (printed ii–236)
-- "hidden junk text grid (orphan)": text matching `hn|hk|io|il|sy|SY|ek|eh` on PDF 1–257 (printed i–236)
+- "invisible filler text (tagged)": text matching `(?:(?:hn|hk|io|il|sy|SY|ek|eh) ?)+` on PDF 1–257 (printed i–236)
+- "invisible filler text (orphan)": text matching `(?:(?:hn|hk|io|il|sy|SY|ek|eh) ?)+` on PDF 1–257 (printed i–236)
 - "running head Preface": text matching `xii Preface|xii|Preface` on PDF 13 (printed xiii)
-- "running head Acknowledgments": text matching `Acknowl edgments xv|Acknowl edgments|xv` on PDF 16 (printed xvi)
-- "running head Introduction": text matching `(2 )?Introduction( 3)?|2|3` on PDF 23–24 (printed 2–3)
-- "running head Chapter 1": text matching `14 Chapter 1|Chapter 1|Meetings 15|Meetings|14|15` on PDF 35–36 (printed 14–15)
-- "running head Notes to Pages": text matching `(\d+ )?Notes to Pages \d+–\d+( \d+)?|\d+` on PDF 207–231 (printed 186–210)
-- "running head Index": text matching `(226 )?Index( 227)?|226|227` on PDF 247–248 (printed 226–227)
-- "folios on chapter-opening pages": text matching `ix|\d+` on PDF 10–246 (printed x–225)
+- "running head Acknowledgments": text matching `Acknowl ?edgments xv|Acknowl ?edgments|xv` on PDF 16 (printed xvi)
+- "running head Introduction": text matching `2 Introduction|Introduction 3|Introduction|2|3` on PDF 23–24 (printed 2–3)
+- "running head Chapter 1": text matching `14 Chapter 1|Meetings 15|Chapter 1|Meetings|14|15` on PDF 35–36 (printed 14–15)
+- "running head Notes": text matching `(?:\d+ )?Notes to Pages \d+–\d+(?: \d+)?|\d+` on PDF 207–231 (printed 186–210)
+- "running head Index": text matching `226 Index|Index 227|Index|226|227` on PDF 247–248 (printed 226–227)
+- "page numbers at foot": text matching `\d+|[ivxlc]+` on PDF 1–257 (printed i–236)
 
 ### 8. Reading order changes
 
@@ -235,13 +236,13 @@ Strokes directly under text, marked as decoration. An underline can carry meanin
 
 A spoken text may differ from the printed characters only in spacing, letter case and line-end hyphens (sponsor rule 1). Accepted ones that differ are listed so a person can listen to them; rejected ones added or changed words or punctuation.
 
-- Accepted, PDF 34 (printed 13): printed "1 MEETINGS New Meanings on Southern Shores" → spoken "1 Meetings New Meanings on Southern Shores"
-- Accepted, PDF 52 (printed 31): printed "2 TRANSLATING THE LANDSCAPE Negotiating the Mission" → spoken "2 Translating the Landscape Negotiating the Mission"
-- Accepted, PDF 82 (printed 61): printed "3 EARS TO HEAR The Sounds of Speech" → spoken "3 Ears to Hear The Sounds of Speech"
-- Accepted, PDF 106 (printed 85): printed "4 THE LETTER KILLS Writing in En glish" → spoken "4 The Letter Kills Writing in English"
-- Accepted, PDF 129 (printed 108): printed "5 THE MAMARIKA WINDS Turning to Anindilyakwa" → spoken "5 The Mamarika Winds Turning to Anindilyakwa"
-- Accepted, PDF 148 (printed 127): printed "6 SPEAKING TO THE HEART The Language of Faith" → spoken "6 Speaking to the Heart The Language of Faith"
-- Accepted, PDF 167 (printed 146): printed "7 SINGING IN TONGUES Translation through Song" → spoken "7 Singing in Tongues Translation through Song"
+- Accepted, PDF 34 (printed 13): printed "1 MEETINGS New Meanings on Southern Shores" → spoken "1 MEETINGS New Meanings on Southern Shores"
+- Accepted, PDF 52 (printed 31): printed "2 TRANSLATING THE LANDSCAPE Negotiating the Mission" → spoken "2 TRANSLATING THE LANDSCAPE Negotiating the Mission"
+- Accepted, PDF 82 (printed 61): printed "3 EARS TO HEAR The Sounds of Speech" → spoken "3 EARS TO HEAR The Sounds of Speech"
+- Accepted, PDF 106 (printed 85): printed "4 THE LETTER KILLS Writing in En glish" → spoken "4 THE LETTER KILLS Writing in English"
+- Accepted, PDF 129 (printed 108): printed "5 THE MAMARIKA WINDS Turning to Anindilyakwa" → spoken "5 THE MAMARIKA WINDS Turning to Anindilyakwa"
+- Accepted, PDF 148 (printed 127): printed "6 SPEAKING TO THE HEART The Language of Faith" → spoken "6 SPEAKING TO THE HEART The Language of Faith"
+- Accepted, PDF 167 (printed 146): printed "7 SINGING IN TONGUES Translation through Song" → spoken "7 SINGING IN TONGUES Translation through Song"
 
 ### 11. Empty tags (34 removed, 0 kept)
 
@@ -252,7 +253,7 @@ A tag is removed only when proven empty: nothing under it holds content, it carr
 
 ### 12. veraPDF (WCAG 2.2 machine profile), before and after
 
-veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 7 rules failing (the AI can act on 2, the pipeline on 4, only a person on 1). After: 0.
+veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 7 rules failing (the AI can act on 2, the pipeline on 4, only a person on 1). After: 0.
 
 | Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |
 |---|---|---|---|---:|---:|---|---|
@@ -273,17 +274,18 @@ Each item is something to look at, not a proven failure.
 
 ### 14. Deferred by the AI
 
-- **veraPDF 7.1-3 (content neither marked as artifact nor tagged): 1653 failures with no target object**: The artifact rules above remove the hidden 'hn hk io il sy SY ek eh' text. The remaining failures have no obj to target, so a person should re-run veraPDF and check what is left, including the cover page. [PDF 1 (printed i), PDF 3 (printed iii), PDF 257 (printed 236)]
-- **Reading order of the Story containers**: The digest's reading order has Story containers well out of printed order: front matter, the junk grids, the Introduction and chapters. I cannot tell with certainty how to fix it with at most 3 moves, so a person should check it in Acrobat. [PDF 2 (printed ii), PDF 255 (printed 234)]
-- **Index entries (styles IX/IXA)**: The text layer has dropped the commas and spaced page numbers, for example 'Aboriginal art, – 8687'. Page-number links and text need a person to check them. [PDF 246 (printed 225), PDF 252 (printed 231)]
-- **Anindilyakwa-language passages (epigraphs, EXF/EXO block quotes, hymns)**: These are not language-tagged. Anindilyakwa (ISO 639-3 aoi) needs a person to decide on a language tag, and the OCR-like spacing in some lines also needs review. [PDF 12 (printed xii), PDF 193 (printed 172)]
-- **Title-page figures: second whole-page figure 7004 0, which I artifacted as a duplicate**: I could not tell which of the two vector figures on PDF 4 (printed iv) is the press logo. 7003 0 got the logo alt text. A person should confirm which is correct. [PDF 4 (printed iv)]
+- **Invisible filler text 'hn hk io il sy SY ek eh'**: These tokens occur on about 110 pages as tagged 7×8 tables, as tagged paragraphs and as orphan runs. They are not visible on the page images I saw, so I artifacted them with text rules and expect the emptied tables to be removed. A person should check a few pages to confirm nothing real was hidden and no empty Table tags remain. [PDF 3 (printed iii), PDF 13 (printed xiii), PDF 23 (printed 2), PDF 35 (printed 14), PDF 61 (printed 40), PDF 129 (printed 108), PDF 193 (printed 172), PDF 207 (printed 186), PDF 247 (printed 226), PDF 253 (printed 232), PDF 255 (printed 234)]
+- **Reading order of the tag tree**: Top-level Story containers are out of printed order. The preface, series page and title page stories appear in odd positions. The endnotes (PDF 206–231) are read after the bibliography (PDF 232–244) because the bibliography sits inside the large 'Story pp22-244' container. No single container holds exactly the notes pages, so move_section could not be used safely. [PDF 2 (printed ii), PDF 3 (printed iii), PDF 13 (printed xiii), PDF 22 (printed 1), PDF 206 (printed 185), PDF 231 (printed 210), PDF 232 (printed 211), PDF 244 (printed 223)]
+- **Second Figure on the title page (obj 7004 0)**: Two Figure tags exist on the title page and both crops are the whole page. I gave both the press logo alt text, but one of them may be a duplicate that should be artifacted. [PDF 4 (printed iv)]
+- **Language tags for Anindilyakwa passages**: Epigraphs, hymns and quotations in Anindilyakwa (a language with no CJK or kana content) are not tagged with a language. The right tag (ISO 639-3 'aoi') should be chosen by a person. [PDF 12 (printed xii), PDF 82 (printed 61), PDF 159 (printed 138), PDF 178 (printed 157), PDF 187 (printed 166)]
+- **Text layer spacing artifacts**: Many paragraphs have odd extracted spacing, such as 'Acknowl edgments', 'En glish' and letter-spaced runs on the Contents and index pages. Index entries have page numbers separated from their text. I did not change any text. [PDF 10 (printed x), PDF 246 (printed 225), PDF 252 (printed 231)]
+- **veraPDF 7.1-3 (content neither artifact nor tagged)**: Addressed with artifact text rules for the filler text, running heads and page numbers. A person should re-run the checker to confirm none remain. [PDF 1 (printed i), PDF 3 (printed iii)]
 
-Reviewer note from the AI: The file has a hidden grid of text ('hn hk io il sy SY ek eh') on about 110 pages. It is tagged as 7x8 tables on some pages and as orphan runs on others, and it does not show on the page images. I treated it as junk and artifacted it. The emptied tables should be removed by remove_empty_containers, so check that none remain. Heading plan: H1 is the book title on the title page (PDF 4, printed iv). H2 covers front/back-matter titles, the Introduction, chapter titles (chapter number and subtitle merged into the CT element) and the Notes, Bibliography, Index and About the Author headings. H3 covers the in-chapter section heads (style H1 remapped to H3), the Notes chapter heads and the Bibliography subheads. Chapter-number/title/subtitle merges rely on CN→next CT and CST→prev CT, and ActualText was written for the 7 merged chapter headings. Conclusion and Epilogue are single CT elements. The real clan table (PDF 27, printed 6) got 2 header rows.
+Reviewer note from the AI: Headings: the book title (PDF 4, printed iv) is the single H1. Chapter titles, Introduction, the front-matter and back-matter titles (Preface, Acknowledgments, Note on Terminology and Language, Abbreviations, Notes, Bibliography, Index, About the Author) and Contents are H2. The in-chapter section heads, which were styled 'H1', are now H3, as are the endnote chapter heads (ENH) and the bibliography subheads (BMSH). Chapter number, title and subtitle are merged into one H2, with ActualText so a screen reader speaks them together. The words 'New Meanings on Southern Shores' and the like are the printed subtitles. The cover on PDF 1 (printed i) is handled through page_figures. I left fix_figure_order at its default.
 
 ### 15. Deferred by the executor
 
-- text rule "hidden junk text grid (orphan)" matched no text on PDF 1–257 (printed i–236): nothing was hidden by this rule; check its pattern against the page (spacing, split runs)
+- text rule "invisible filler text (orphan)" matched no text on PDF 1–257 (printed i–236): nothing was hidden by this rule; check its pattern against the page (spacing, split runs)
 
 ## What was changed
 
@@ -291,14 +293,13 @@ Reviewer note from the AI: The file has a hidden grid of text ('hn hk io il sy S
 |---|---:|
 | document: marked as tagged | 1 |
 | document: DisplayDocTitle | 2 |
-| artifact: "hidden junk text grid (tagged)" (inside a shared form XObject) | 616 |
-| artifact: "second whole-page figure on the title page (PDF 4, printed iv); the title page is already carried by tagged text and the press logo in 7003 0" | 1 |
-| artifact: "folios on chapter-opening pages" | 7 |
+| artifact: "invisible filler text (tagged)" (inside a shared form XObject) | 616 |
+| artifact: "page numbers at foot" | 7 |
 | artifact: "running head Preface" | 2 |
 | artifact: "running head Acknowledgments" | 3 |
 | artifact: "running head Introduction" | 5 |
 | artifact: "running head Chapter 1" | 5 |
-| artifact: "running head Notes to Pages" | 50 |
+| artifact: "running head Notes" | 50 |
 | artifact: "running head Index" | 5 |
 | document: title | 1 |
 | document: /Lang | 1 |
@@ -308,12 +309,14 @@ Reviewer note from the AI: The file has a hidden grid of text ('hn hk io il sy S
 | heading: ActualText | 7 |
 | heading: standard tag H1 → H3 (retyped) | 38 |
 | retype → H1 | 1 |
-| table: header cells marked (work order) | 3 |
-| figure: alt text | 17 |
+| table: header cells marked (work order) | 4 |
+| table: data cells tied to their headers by ID | 28 |
+| table: title row → Caption | 1 |
+| figure: alt text | 18 |
 | figure: caption tied (figure moved out of its paragraph) | 15 |
 | contents: TOC entries | 17 |
 | contents: TOC built | 1 |
-| notes: Note with /ID | 823 |
+| notes: Note with /ID | 824 |
 | links: /Contents set | 2822 |
 | links: joined existing Link | 2792 |
 | links: new Link element created | 30 |

@@ -145,6 +145,7 @@ def build_items(wo, digest, order=None, ro=None):
         add(f'tables:{it.get("obj")}', 'tables', 'Table headers', ['tables', i],
             {'header_rows': it.get('header_rows', 0), 'header_cols': it.get('header_cols', 0)}, f'Table {it.get("obj")}', page=x.get('page'),
             before={'header_cells': x.get('header_cells')}, edit='table', first_rows=x.get('first_rows'), rows=x.get('rows'), cols=x.get('cols'),
+            row_reading={k: it[k] for k in ('title_rows', 'note_rows', 'group_rows', 'repeat_rows') if it.get(k)},
             why=it.get('why'), obj=it.get('obj'))
     for key in ('flatten', 'keep_lists'):
         for i, it in enumerate(wo.get(key) or []):

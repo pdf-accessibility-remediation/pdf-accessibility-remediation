@@ -2,13 +2,13 @@
 
 Result: `cadaverous_remediated.pdf`
 
-323 pages · run 2026-10-31T14:48:59 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v9.md` (465d4b1e1cd2299b) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+323 pages · run 2026-11-01T18:35:31 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.14.8 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.1s · audit 65.3s · reuse saved reply 1.0s · apply 89.3s · verify 66.8s · total 223.5s
+Time: intake 0.9s · audit 37.4s · reuse saved reply 0.3s · apply 57.9s · verify 40.6s · total 137.1s
 
 ## Overview
 
@@ -21,20 +21,19 @@ Time: intake 1.1s · audit 65.3s · reuse saved reply 1.0s · apply 89.3s · ver
 - Manual check (PAC): not run
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 5 (4 deferred by the AI · 1 deferred by the executor · 0 CHECK rows)  
-**AI decisions:** 72 in the work order, applied without review by a person  
-**Fixed automatically (no AI):** links tied and described 3,252 · note IDs 713 · link descriptions that were only a URL 6 · figures moved to their page 3 · tag-tree index entries 2 · title shown in the window 1 · Document root 1  
+**Needs a person:** 4 (3 deferred by the AI · 1 deferred by the executor · 0 CHECK rows)  
+**AI decisions:** 66 in the work order, applied without review by a person  
+**Fixed automatically (no AI):** links tied and described 3,252 · empty notes removed 141 · link descriptions that were only a URL 6 · figures moved to their page 3 · tag-tree index entries 2 · title shown in the window 1 · Document root 1  
 **veraPDF (WCAG 2.2 machine checks):** 1 WCAG rule failing before (1,793 checks) → 0 after (0 checks) · 0 newly failing
 
 Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
-| 1475 Han-only runs need Japanese or Chinese (han_review.csv) | 227 pages, PDF 7 (printed v) to PDF 305 (printed 289) | [§12](#12-deferred-by-the-executor) |
-| Drop-cap chapter openings (dev_let paragraphs, e.g. 'n 998, eminent courtier…', 'his project began…') extrac… | 10 pages, PDF 11 (printed ix) to PDF 246 (printed 230) | [§11](#11-deferred-by-the-ai) |
-| Han-only CJK runs (dedication mantra, Japanese and Chinese terms in the text, notes and bibliography) | PDF 7 (printed v), PDF 17 (printed 1), PDF 283 (printed 267), PDF 305 (printed 289) | [§11](#11-deferred-by-the-ai) |
-| Numbered list of moxibustion points converted to L/LI/LBody | PDF 219 (printed 203) | [§11](#11-deferred-by-the-ai) |
-| Endnote paragraph styles converted to Note and the NOTES section moved before the Bibliography | PDF 253 (printed 237), PDF 282 (printed 266) | [§11](#11-deferred-by-the-ai) |
+| 1475 Han-only runs need Japanese or Chinese (han_review.csv) | 227 pages, PDF 7 (printed v) to PDF 305 (printed 289) | [§13](#13-deferred-by-the-executor) |
+| Endnote paragraphs (styles ntf_p, ntf_p.1, ntf_p.2) are plain P, while a separate Note style exists with 141… | PDF 253 (printed 237), PDF 282 (printed 266) | [§12](#12-deferred-by-the-ai) |
+| Index reading order | PDF 307 (printed 291), PDF 321 (printed 305) | [§12](#12-deferred-by-the-ai) |
+| Page numbers or running heads on other pages | PDF 17 (printed 1), PDF 252 (printed 236) | [§12](#12-deferred-by-the-ai) |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -63,7 +62,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Headings: no skipped levels | OK | H1 1 · H2 18 · H3 50 · H4 17 |
 | Headings: exactly one H1 (the title) | OK | 1 H1 (several H1s usually mean parts or chapters were not demoted) |
 | Figures: none with empty or placeholder alt | OK | 12 figures, 0 placeholder |
-| Every Note has a unique ID | OK | 713 notes · 0 without ID · 0 duplicate · 0 not in the ID tree · 141 empty Note tags removed |
+| Every Note has a unique ID | OK | 0 notes · 0 without ID · 0 duplicate · 0 not in the ID tree · 141 empty Note tags removed |
 | Bookmarks present (documents over 9 pages) | OK | 17 bookmarks |
 | Model reply held one work order | OK | one |
 | Executor applied every decision | OK | 0 rejected · 0 failed (listed under "Decisions not applied") |
@@ -79,7 +78,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | veraPDF: no rule newly failing or failing more often | OK | 2 fixed · 0 still failing · 0 newly failing |
 | Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 12 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
-| Reading order: no page jumps back up a column (1.3.2) | OK | 0 of 288 pages flagged |
+| Reading order: no page jumps back up a column (1.3.2) | OK | 0 of 309 pages flagged |
 | Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 0 already in the original, of 22 sections and blocks |
 | Title is not a file name or placeholder (2.4.2) | OK | "Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism" |
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
@@ -91,7 +90,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 (printed A) | Book cover for Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism by Andrew Macomber. The cover features a brown-toned sketch illustration of a human corpse from head to pelvis in an advanced state of decomposition, showing exposed internal organs and skeletal elements. The background has a mottled, parchment-like texture. The title and the author's name appear in dark colored text above and below the image.\x00 | Book cover of Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism by Andrew Macomber. A brown-toned sketch from a medieval Japanese scroll shows a decomposing human corpse lying diagonally across a mottled, parchment-like background, with exposed internal organs and bones. The title appears above the image and the author's name below it. |
+| PDF 1 (printed A) | Book cover for Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism by Andrew Macomber. The cover features a brown-toned sketch illustration of a human corpse from head to pelvis in an advanced state of decomposition, showing exposed internal organs and skeletal elements. The background has a mottled, parchment-like texture. The title and the author's name appear in dark colored text above and below the image.\x00 | Book cover for Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism by Andrew Macomber. A brown-toned sketch of a human corpse from head to pelvis in an advanced state of decomposition, with exposed internal organs and skeletal elements, lies across a mottled, parchment-like background. The title appears in dark text above the image and the author's name below it. |
 | PDF 5 (printed iii) | Illustration | University of Hawai‘i Press logo |
 
 ### 2. Figures that kept their existing alt text (10)
@@ -131,8 +130,9 @@ Heading levels by style (as applied):
 | dev_int1 | H3 | RoleMap | 37 |
 | dev_int1.autre | H3 | RoleMap | 2 |
 | dev_int1.biblio | H3 | RoleMap | 2 |
-| nfniv1_int | H3 | RoleMap | 9 |
 | dev_int2 | H4 | RoleMap | 17 |
+| nfniv1_int | H3 | RoleMap | 9 |
+| dev_fig_img | Div | RoleMap | 6 |
 
 Merged: `part_n` into the next `part_tit`; `chap_n` into the next `chap_tit.seul/chap_tit/chap_tit.autre`; `chap_stit` into the prev `chap_tit.autre`
 
@@ -140,7 +140,6 @@ Spoken text set by the AI (should match what is printed):
 
 | Page | Text |
 |---|---|
-| PDF 5 (printed iii) | Cadaverous |
 | PDF 47 (printed 31) | Part I Spirit Disease |
 | PDF 49 (printed 33) | Chapter 1 Ritual Healing in the Jimon Lineage |
 | PDF 78 (printed 62) | Chapter 2 Evil Dead in the Aristocratic Mansion |
@@ -161,8 +160,8 @@ Check each one is (or is not) a heading as decided.
 
 ### 5. Hidden from screen readers (artifacts)
 
-- 16 decorative elements ("flourish ornament under heading") on PDF 9 (printed vii), PDF 11 (printed ix), PDF 15 (printed xiii), PDF 17 (printed 1), PDF 49 (printed 33), PDF 78 (printed 62), PDF 112 (printed 96), PDF 141 (printed 125), PDF 154 (printed 138), PDF 182 (printed 166), PDF 211 (printed 195), PDF 246 (printed 230), PDF 253 (printed 237), PDF 283 (printed 267), PDF 307 (printed 291), PDF 323 (printed 307)
-- "notes running head": text matching `Notes to Pages? [\d–\-]+` on PDF 254–282 (printed 238–266)
+- 16 decorative elements ("ornament") on PDF 9 (printed vii), PDF 11 (printed ix), PDF 15 (printed xiii), PDF 17 (printed 1), PDF 49 (printed 33), PDF 78 (printed 62), PDF 112 (printed 96), PDF 141 (printed 125), PDF 154 (printed 138), PDF 182 (printed 166), PDF 211 (printed 195), PDF 246 (printed 230), PDF 253 (printed 237), PDF 283 (printed 267), PDF 307 (printed 291), PDF 323 (printed 307)
+- "running head (Notes to Pages)": text matching `Notes to Pages? \d+(?:–\d+)?` on PDF 254–282 (printed 238–266)
 
 ### 6. Reading order changes
 
@@ -211,57 +210,51 @@ Entries that pointed at a tag no longer in the tag tree (left by the source file
 
 - ParentTree, entries not tied to page content (annotations, forms, or keys nothing uses): key 30 (Link), key 40 (Link)
 
-### 10. veraPDF (WCAG 2.2 machine profile), before and after
+### 10. Figure holders
 
-veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 1 rule failing (the AI can act on 0, the pipeline on 1, only a person on 0). After: 0.
+- PDF 218 (printed 202): caption grouped with the 2 figures in the holder just above it: "Figure 8. Denshibyō kanjin shō narabini sōbyō chihō. Manuscript. Detail of body chart (front and…"
+
+### 11. veraPDF (WCAG 2.2 machine profile), before and after
+
+veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 1 rule failing (the AI can act on 0, the pipeline on 1, only a person on 0). After: 0.
 
 | Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |
 |---|---|---|---|---:|---:|---|---|
 | ISO 14289-1 7.18.5-1 | 2.4.4, 4.1.2 | Links shall be tagged according to ISO 32000-1:2008, 14.8.4.4.2, Link Element | the pipeline | 1793 | 0 | fixed | PDF 307 (printed 291) |
 
-### 11. Deferred by the AI
+### 12. Deferred by the AI
 
-- **Drop-cap chapter openings (dev_let paragraphs, e.g. 'n 998, eminent courtier…', 'his project began…') extract without their first letter**: The drop cap is a separate run and the paragraph text is too long for me to safely supply as ActualText. A person should check how screen readers speak these openings. [PDF 11 (printed ix), PDF 17 (printed 1), PDF 49 (printed 33), PDF 78 (printed 62), PDF 112 (printed 96), PDF 141 (printed 125), PDF 154 (printed 138), PDF 182 (printed 166), PDF 211 (printed 195), PDF 246 (printed 230)]
-- **Han-only CJK runs (dedication mantra, Japanese and Chinese terms in the text, notes and bibliography)**: Japanese or Chinese cannot be told apart from the digest. The executor defers these to a human. [PDF 7 (printed v), PDF 17 (printed 1), PDF 283 (printed 267), PDF 305 (printed 289)]
-- **Numbered list of moxibustion points converted to L/LI/LBody**: The items were plain paragraphs with the numbers typed into the text. A person should confirm the list structure. [PDF 219 (printed 203)]
-- **Endnote paragraph styles converted to Note and the NOTES section moved before the Bibliography**: 141 Note elements already exist, so the nesting and the reading order need a human check. [PDF 253 (printed 237), PDF 282 (printed 266)]
+- **Endnote paragraphs (styles ntf_p, ntf_p.1, ntf_p.2) are plain P, while a separate Note style exists with 141 elements**: I can't tell from the digest whether the Note elements already wrap these paragraphs, so retagging could nest Notes. A person should check the notes structure. [PDF 253 (printed 237), PDF 282 (printed 266)]
+- **Index reading order**: The first lines in page_map show two index columns read across the page (e.g. 'burial practices, 141, 145, 172. corpse-worms, 150, 182–192,'). A person should check the column order. [PDF 307 (printed 291), PDF 321 (printed 305)]
+- **Page numbers or running heads on other pages**: The digest shows no repeated lines for them, and unowned_content is empty, so I can't target any. A person should check that running heads and folios are hidden. [PDF 17 (printed 1), PDF 252 (printed 236)]
 
-Reviewer note from the AI: Heading outline: the book title (ident_tit on PDF 5, printed iii) is the single H1. Front-matter titles, Introduction, Part and Chapter titles, Epilogue, Notes, Bibliography, Index and About the Author are H2. Part and chapter labels are merged into their titles, with ActualText because the small-cap label letters extract oddly. Chapter 7 also takes its subtitle. dev_int1 sections are H3, dev_int2 subsections are H4, and the notes' chapter headings are H3. The 16 flourish ornaments under headings are artifacts. Publisher alt text on the other figures is already good and kept. The cover alt text had a stray NUL character, which I replaced. The cover is moved to the start of the Document. The Notes running heads (PDF 254–282) are artifacts. The Epilogue container (PDF 246–323) swallows the back matter, so I moved the Notes section before the Bibliography. Please check that move.
+Reviewer note from the AI: Headings: the book title (printed on PDF 5, printed iii) is the only H1. Parts, chapters and front/back-matter titles are H2. Sections are H3 and subsections H4. Part and chapter labels are merged into their titles, and the chapter 7 subtitle is merged into its chapter title. The tree reading order (Story containers on PDF 246–323) looks nested oddly around Epilogue, Notes and Bibliography, but the printed order seems correct, so I made no move_section. Text of the Notes section contains words such as 'peri ods' and hyphenated breaks; the text itself was not changed. The 16 flourish ornaments are artifacted. The cover figure on PDF 1 had a NUL character in its alt text, so I rewrote the alt text. Han-only runs are deferred by the executor.
 
-### 12. Deferred by the executor
+### 13. Deferred by the executor
 
 - **1475 Han-only CJK runs** need a Japanese / Chinese decision: fill in `han_review.csv`.
-
-### 13. Decisions not applied (1)
-
-Rejected by validation or by the executor; nothing was half-applied.
-
-- {"where": "move_section", "item": {"pages": [253, 282], "before_page": 283, "why": "The Epilogue container spans PDF 246–323, so the Bibliography, Index and About the Author appear to be read before the NOTES section, which is printed before them."}, "why": "the audit finds no section read out of place in these pages or where it lands"}
 
 ## What was changed
 
 | Change | Count |
 |---|---:|
-| artifact: "flourish ornament under heading" | 16 |
-| artifact: "notes running head" | 29 |
+| artifact: "ornament" | 16 |
+| artifact: "running head (Notes to Pages)" | 29 |
 | document: title | 1 |
 | document: DisplayDocTitle | 1 |
 | document: /Lang | 1 |
-| document: empty AcroForm removed | 1 |
-| heading: RoleMap level | 16 |
+| heading: RoleMap level | 17 |
 | heading: merged into next | 9 |
 | heading: merged into prev | 1 |
-| heading: ActualText | 10 |
+| heading: ActualText | 9 |
 | retype → H1 | 1 |
 | figure: alt text | 2 |
 | figure: moved into Document, first | 1 |
 | figure: caption tied (figure moved out of its paragraph) | 3 |
-| figure: caption tied (existing wrapper → Div) | 6 |
+| figure: caption tied (figure holder just before it → Div) | 6 |
 | list: built | 1 |
 | contents: TOC entries | 16 |
 | contents: TOC built | 1 |
-| notes: empty Note shell removed | 141 |
-| notes: Note with /ID | 713 |
 | language: ja Span | 177 |
 | links: /Contents set | 3252 |
 | links: joined existing Link | 735 |
@@ -273,6 +266,7 @@ Rejected by validation or by the executor; nothing was half-applied.
 | contents: annotation-less Link → Span | 24 |
 | contents: entry wrapped in Reference | 16 |
 | order: empty container removed | 29 |
+| notes: empty Note tag removed (no content; nothing refers to it) | 141 |
 | tag tree index: entries pointing outside the tree cleared (ParentTree) | 2 |
 
 ## Final check with PAC 2026

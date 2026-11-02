@@ -1,22 +1,21 @@
 {
  "apply": {
   "applied": {
-   "artifact: \"flourish ornament under heading\"": 16,
-   "artifact: \"notes running head\"": 29,
+   "artifact: \"ornament\"": 16,
+   "artifact: \"running head (Notes to Pages)\"": 29,
    "contents: TOC built": 1,
    "contents: TOC entries": 16,
    "contents: annotation-less Link → Span": 24,
    "contents: entry wrapped in Reference": 16,
    "document: /Lang": 1,
    "document: DisplayDocTitle": 1,
-   "document: empty AcroForm removed": 1,
    "document: title": 1,
    "figure: alt text": 2,
-   "figure: caption tied (existing wrapper → Div)": 6,
+   "figure: caption tied (figure holder just before it → Div)": 6,
    "figure: caption tied (figure moved out of its paragraph)": 3,
    "figure: moved into Document, first": 1,
-   "heading: ActualText": 10,
-   "heading: RoleMap level": 16,
+   "heading: ActualText": 9,
+   "heading: RoleMap level": 17,
    "heading: merged into next": 9,
    "heading: merged into prev": 1,
    "language: ja Span": 177,
@@ -27,8 +26,7 @@
    "links: placed after shared text": 1888,
    "links: wraps its text": 625,
    "list: built": 1,
-   "notes: Note with /ID": 713,
-   "notes: empty Note shell removed": 141,
+   "notes: empty Note tag removed (no content; nothing refers to it)": 141,
    "order: empty container removed": 29,
    "order: figure moved to its page": 3,
    "retype → H1": 1,
@@ -39,9 +37,7 @@
   "failed": 0,
   "rejected": 0
  },
- "validation_dropped": [
-  "move_section: the audit finds no section read out of place in these pages or where it lands"
- ],
+ "validation_dropped": [],
  "verapdf": {
   "after": {
    "failed": {},
@@ -104,8 +100,7 @@
    "LBody": 11,
    "LI": 11,
    "Link": 3252,
-   "Note": 713,
-   "P": 1927,
+   "P": 2640,
    "Reference": 733,
    "Sect": 12,
    "Span": 1921,

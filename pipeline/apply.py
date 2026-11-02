@@ -14,7 +14,7 @@ stops the run and never half-applies.
 """
 import sys, os, json, re, collections, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid  # plumb_fix first: it patches pdfplumber
 from lib.sections import excerpt
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
@@ -1520,33 +1520,93 @@ def span(cell, key):
     v = table_attr(cell, key)
     try: return max(1, int(v)) if v is not None else 1
     except (TypeError, ValueError): return 1
+def del_table_attr(cell, key):
+    if table_attr(cell, key) is None: return
+    set_table_attr(cell, key, pikepdf.Name('/None'))    # gives the cell its own dict first, so no other cell changes
+    for d in _table_dicts(cell):
+        if str(d.get('/O')) == '/Table' and key in d: del d[key]
+def cell_empty(c):
+    """Nothing to read in it: a gap between columns, say. Such a cell never heads anything."""
+    if elem_gaptext(c).strip(): return False
+    stack = kids(c)
+    while stack:
+        k = stack.pop()
+        if is_objr(k) or (is_elem(k) and ('/ActualText' in k or '/Alt' in k or mapped(S(k)) in ('Figure', 'Formula'))): return False
+        if is_elem(k): stack += kids(k)
+    return '/ActualText' not in c and '/Alt' not in c
+def rebuild_idtree():
+    first = {}
+    for el, _ in all_elems():
+        if '/ID' in el: first.setdefault(bytes(el.ID), el)
+    flat = []
+    for k in sorted(first): flat += [pikepdf.String(k), first[k]]
+    st.IDTree = pikepdf.Dictionary(Names=pikepdf.Array(flat))
+def table_row_out(t, row):
+    """Take a row out of its table; a THead, TBody or TFoot it leaves empty goes too."""
+    host = parent_of[row.objgen]
+    set_kids(host, [k for k in kids(host) if not same(k, row)])
+    if not same(host, t) and not kids(host): set_kids(t, [k for k in kids(t) if not same(k, host)])
 def op_tables(spec):
-    """Real tables: the work order names their header rows and columns ({obj, header_rows, header_cols}). Those cells
-    become TH with a Scope (Column, Row, or Both where they meet). Only the tags change, never the content; a table
-    whose spans cross the header edge is rejected for a person (WCAG 1.3.1)."""
+    """Real tables: the work order reads their rows ({obj, title_rows, note_rows, header_rows, header_cols, group_rows,
+    repeat_rows}; lib/tablegrid.py works out who heads what). Header cells become TH with a Scope, and data cells list
+    their headers by ID where a Scope can't say it. A TH the reading doesn't name goes back to TD, and an empty cell never
+    heads anything. A title row becomes the table's Caption and a note row a paragraph after it. Only the tags change,
+    never the content; a reading that doesn't fit the table is rejected for a person (WCAG 1.3.1)."""
     reindex()
     for it in spec or []:
         what = f'tables {it.get("obj")}'
         try: t = obj(it['obj'])
         except Exception: reject(what, 'no such object'); continue
         if not is_elem(t) or mapped(S(t)) != 'Table': reject(what, 'not a table (or it was flattened)'); continue
-        hr, hc = int(it.get('header_rows', 0)), int(it.get('header_cols', 0))
-        grid = [row_cells(r) for r in table_rows(t)]
-        if hr >= len(grid) or (hc and min((len(c) for c in grid), default=0) <= hc): reject(what, 'the table has too few rows or columns'); continue
-        if any(i + span(c, '/RowSpan') > hr for i in range(hr) for c in grid[i]): reject(what, 'a header cell spans into the body rows'); continue
-        if hc and any(span(c, '/RowSpan') > 1 for cells in grid for c in cells):
-            reject(what, 'a cell spans rows, so which cells start each row is unclear'); continue
-        if hc and any(sum(span(c, '/ColSpan') for c in cells[:hc]) != hc for cells in grid):
-            reject(what, 'a cell spans across the header column edge'); continue
-        n = 0
-        for i, cells in enumerate(grid):
-            for j, c in enumerate(cells):
-                if not (i < hr or j < hc): continue
+        rows = table_rows(t); grid = [row_cells(r) for r in rows]
+        reading = {k: int(it.get(k, 0)) for k in ('title_rows', 'note_rows', 'header_rows', 'header_cols')}
+        try: plan = tablegrid.plan([[tablegrid.Cell(span(c, '/ColSpan'), span(c, '/RowSpan'), cell_empty(c)) for c in cells] for cells in grid],
+                                   group_rows=it.get('group_rows') or (), repeat_rows=it.get('repeat_rows') or (), **reading)
+        except tablegrid.Refused as e: reject(what, str(e)); continue
+        leaving = plan['title'] + plan['note']
+        if any(len(row_cells(rows[r])) != len(kids(rows[r])) for r in leaving):
+            reject(what, 'a title or note row holds something other than cells'); continue
+        if any(is_objr(k) for r in leaving for c in grid[r] for k in kids(c)):
+            reject(what, 'a title or note row holds a link, so it stays in the table'); continue
+        page0 = cell_page(t); n = demoted = linked = 0
+        for (r, j), info in plan['cells'].items():
+            c = grid[r][j]
+            if info['th']:
                 if mapped(S(c)) != 'TH': c.S = pikepdf.Name('/TH'); n += 1
-                if table_attr(c, '/Scope') is None and table_attr(c, '/Headers') is None:
-                    set_table_attr(c, '/Scope', pikepdf.Name('/Both' if i < hr and j < hc else '/Column' if i < hr else '/Row'))
+                want = pikepdf.Name('/' + info['scope'])
+                if table_attr(c, '/Headers') is None and table_attr(c, '/Scope') != want: set_table_attr(c, '/Scope', want)
+            elif mapped(S(c)) == 'TH':
+                c.S = pikepdf.Name('/TD'); del_table_attr(c, '/Scope'); demoted += 1
+        for (r, j), info in plan['cells'].items():
+            if not info['headers']: continue
+            names = []
+            for hr_, hj in info['headers']:
+                h = grid[hr_][hj]
+                if '/ID' not in h: h.ID = pikepdf.String(f't{t.objgen[0]}-r{hr_}c{hj}')
+                names.append(pikepdf.String(bytes(h.ID)))
+            set_table_attr(grid[r][j], '/Headers', pikepdf.Array(names)); linked += 1
+        def rehome(cells, stype):
+            pg = eff_pg.get(cells[0].objgen); got = [k for c in cells for k in kids(c)]
+            el = new_elem(stype, t if stype == 'Caption' else parent_of[t.objgen], got, pg=pg)
+            for k in got:
+                if is_elem(k): k.P = el
+            return el
+        titles = [rehome(grid[r], 'Caption') for r in plan['title']]
+        notes = [rehome(grid[r], 'P') for r in plan['note']]
+        for r in leaving: table_row_out(t, rows[r])
+        if titles: set_kids(t, titles + kids(t))
+        if notes:
+            host = parent_of[t.objgen]; ks = kids(host); at = next(i for i, k in enumerate(ks) if same(k, t))
+            set_kids(host, ks[:at + 1] + notes + ks[at + 1:])
+        if linked: rebuild_idtree()
+        reindex()
         ok('table: header cells marked (work order)', n)
-        log.setdefault('tables', []).append({'obj': it['obj'], 'page': cell_page(t), 'header_rows': hr, 'header_cols': hc, 'cells_to_TH': n})
+        if demoted: ok('table: cells wrongly tagged as headers set back to data cells', demoted)
+        if linked: ok('table: data cells tied to their headers by ID', linked)
+        if titles: ok('table: title row → Caption', len(titles))
+        if notes: ok('table: note row → paragraph after the table', len(notes))
+        log.setdefault('tables', []).append({'obj': it['obj'], 'page': page0, **reading, 'group_rows': sorted(set(it.get('group_rows') or [])),
+                                             'repeat_rows': sorted(set(it.get('repeat_rows') or [])), 'cells_to_TH': n, 'cells_to_TD': demoted, 'cells_with_headers': linked})
 def cell_page(c): return min(pages_of(c, eff_pg.get(c.objgen)) - {None}, default=None)
 def fix_th_scope():
     """veraPDF 7.5-1/2 (WCAG 1.3.1): a header cell needs a direction (Scope) unless Headers/IDs give it. Set only where
@@ -1653,13 +1713,7 @@ def fix_notes():
                 if nid not in seen: break
             el.ID = pikepdf.String(nid); cur = nid; added += 1; ok('notes: unique /ID added')
         if cur is not None: seen.add(cur)
-    if added or removed:
-        first = {}
-        for el, _ in all_elems():
-            if '/ID' in el: first.setdefault(bytes(el.ID), el)
-        flat = []
-        for k in sorted(first): flat += [pikepdf.String(k), first[k]]
-        st.IDTree = pikepdf.Dictionary(Names=pikepdf.Array(flat))
+    if added or removed: rebuild_idtree()
 
 # ================================================================== always: tags proven empty are removed (source's or the run's)
 TABLE_PARTS = {'TR', 'TH', 'TD', 'THead', 'TBody', 'TFoot'}
