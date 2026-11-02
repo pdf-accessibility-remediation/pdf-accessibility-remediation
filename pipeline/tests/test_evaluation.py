@@ -102,14 +102,17 @@ def test_the_card_the_needs_box_and_the_vera_card(tmp_path):
     M.record(R, 'pac', PAC, say=lambda *a: None, batch=False)
     h = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
     assert '<h2 id="ship-h">Ready to Ship?</h2>' in h and 'Ready to Ship? No' not in h and 'Status: <strong>Not Ready</strong>' in h
-    assert '<div class="card muted"><h3>Needs a Person</h3><div class="big">1</div><p>looked at in the evaluation (Kim, ' in h   # decision 9
+    assert '<div class="card good"><h3>Needs a Person</h3><div class="big">1</div><p class="lab">OK</p><p>Considered during the evaluation (Kim, ' in h   # Patrick, 2026-11-01
     assert '<span class="newly">newly failing: not checked</span> (veraPDF did not run on both files)' in h                     # Q6: said, visibly
     assert '5 of 5 checks OK' in h and 'Not checked' not in h.split('id="st-h"')[1].split('</section>')[0]
     assert '· looked at in the evaluation (Kim, ' in md(R)
     M.record(R, 'pac', dict(PAC, items=dict(PAC['items'], needs_person={'result': 'fail', 'note': 'two left'})), say=lambda *a: None, batch=False)
     h = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
     assert '<div class="card warn"><h3>Needs a Person</h3><div class="big">1</div><p class="lab">Needs attention</p><p>marked Fail in the evaluation (Kim, ' in h
+    from lib import glance as G
     g = H.glance_of(R)
+    rel = REL.load(R); assert G.with_release(g, json.load(open(os.path.join(R, 'record.json'), encoding='utf-8')), rel)['needs_looked']['result'] == 'fail'
+    assert G.with_release(g, json.load(open(os.path.join(R, 'record.json'), encoding='utf-8')), rel, cur='f' * 64)['needs_looked'] is None   # recorded on a previous version: not this one's
     vf = [x for x in g['issues'] if x['text'].startswith('veraPDF:')][0]
     assert vf['rank'] == 1 and g['issues'][0] is vf                                # the finding first (H7)
 
