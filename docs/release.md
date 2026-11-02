@@ -317,14 +317,27 @@ stylesheet, centered on the list's height in the page's text color (the browser'
     Remediated: October 26, 2026, at 6:48 AM
     AI model: anthropic/claude-sonnet-5.5 · Instructions: workorder_v8
     AI cost: $0.256, from the original call on October 26, 2026 · Cost per page: $0.0006
-    Before remediation: 6 pages are pictures with no text layer; the PDF had no tags and was tagged automatically.
-    Processing time: 3 min 2 s
+    OCR and Auto-Tagging: 6 pages are pictures with no text, so no text was added for them; the PDF had no tags and was tagged automatically.
+    Total runtime: 3 min 52 s (intake 4 s, audit 37 s, AI call (a previous answer reused) 2 s, preparing the review 8 s, applying and checks 3 min 2 s); the review time is not counted.
     Software: Python 3.13.9, pikepdf 10.5.1, pdfplumber 0.11.9, pypdfium2 5.7.1, Pillow 13.0.0, fontTools 4.62.1
     ```
 
     The AI cost is always the call's real cost: for a reused reply, the original call's (`lib/origin.py`); "not
-    recorded" only when none is kept anywhere. A tagged book, which skips intake, reads "Before remediation: the PDF was
-    already tagged."; a missing value reads "not recorded".
+    recorded" only when none is kept anywhere. A missing value reads "not recorded".
+    - **OCR and Auto-Tagging** (Patrick, 2026-11-01; was "Before remediation") says plainly what intake did, from OCR's
+      own lists of pages: "1 page is a picture with no text, so no text was added for it", "…, so OCR added its text",
+      "7 pages are pictures with no text: OCR added text to 6 of them, and no text was added for the other one", or
+      "every page has text, so no OCR was needed"; then the tags: "the PDF had no tags and was tagged automatically",
+      or "the PDF's tags held no text structure, so it was tagged again automatically". A tagged book, which intake
+      skips, reads "not needed: the PDF was already tagged."; a record with no intake, "not recorded".
+    - **Total runtime** is the computer's time across the whole run, its parts in parentheses: intake, audit, the AI
+      call (named "a previous answer reused" for a reused reply: the time of reading it, not the original call's),
+      preparing the review (a run stopped with `REVIEW=1`), and applying and checks; it ends "the review time is not
+      counted". A part with no time kept reads "not recorded" and the total then says "at least": a `REVIEW=1` run
+      applied before 2026-11-01 kept only the apply's steps (the stop now keeps its own in `timing.json` for the
+      second call to add to, and an AI call made by the run counts with the seconds `decide.py` kept). A version
+      applied from a later review carries the run's steps before the review from the record it replaces, and adds its
+      own applying and checks.
 
   Never review.md, `evaluation-results.json` or the statement's `.md`: they stay in the run folder and
   in `release/shipped/NNN/`, which keep their full set. Never record.json (it holds the AI's raw reply), digests, crops,

@@ -701,7 +701,10 @@ def reapply(R, s, pdf=None, say=say_):
     save(os.path.join(W, 'review.json'), s['review'])
     shutil.copy2(p['ai'], os.path.join(W, 'workorder.ai.json'))
     fulltext_for(R, inp, say)
-    t = {'4/5 apply (no model)': _run(['apply.py', inp, os.path.join(W, 'workorder.json'), os.path.join(W, out)], say, 'apply (no model)')}
+    # the run's own steps before any review (intake, audit, the AI call, the page images) are carried from the current record,
+    # so a version's "Total runtime" is the whole run's (webapp/downloads.py _runtime); applying and checks are this version's
+    t = {k: v for k, v in ((rec or {}).get('timing_seconds') or {}).items() if not k.startswith('4/5')}
+    t['4/5 apply (no model)'] = _run(['apply.py', inp, os.path.join(W, 'workorder.json'), os.path.join(W, out)], say, 'apply (no model)')
     t['4/5 verify (no model)'] = _run(['verify.py', inp, os.path.join(W, out)], say, 'verify (no model)', quiet=True)
     save(os.path.join(W, 'timing.json'), t)
     dg = load(os.path.join(p['audit'], 'digest.json'))

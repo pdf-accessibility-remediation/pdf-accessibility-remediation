@@ -87,6 +87,10 @@ stage() {                      # stage "label" command…  → runs it and print
   echo "▶ $label"; s=$(now); "$@"; e=$(now)
   d=$(python3 -c "print(f'{$e-$s:.2f}')"); TIMES+=("$label|$d"); echo "  ✓ $label: $(fmt "$d")"
 }
+write_timing() {               # timing.json: this call's steps; applying a reviewed order adds them to the first call's,
+  python3 -c "import json,os,sys; p=sys.argv[1]; t=json.load(open(p)) if sys.argv[2] and os.path.exists(p) else {}; t.update({l.split('|')[0]: round(float(l.split('|')[1]), 1) for l in sys.argv[3:]}); json.dump(t, open(p, 'w'), indent=1)" \
+    "$R/timing.json" "${REVIEWED:-}" "${TIMES[@]}"   # kept at the review stop, so the record has the whole run (report.py removes it)
+}
 summary() {
   local total=0 line label d
   echo; echo "Timing"
@@ -156,6 +160,7 @@ fi
 if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews the AI's decisions before anything is applied
   cp "$R/workorder.json" "$R/workorder.ai.json"
   stage "review: page images (no model)" python3 review_workorder.py "$R" --prepare --pdf "$PSRC"
+  write_timing                                   # intake, audit, the AI call and the page images: the apply adds its own
   # what the app's "Apply" needs to run this same script's second call (webapp/runs.py start_first_apply); report.py removes it
   python3 -c "import json,sys; json.dump({'src': sys.argv[1], 'name': sys.argv[2], 'env': {k: v for k, v in zip(('OCR_LANG', 'INTAKE_REUSE', 'INTAKE', 'OUT'), sys.argv[3:]) if v}}, open(sys.argv[7], 'w'), indent=1)" \
     "$SRC" "$NAME" "${OCR_LANG:-}" "${INTAKE_REUSE:-}" "${INTAKE:-}" "$USER_OUT" "$R/review_stop.json"
@@ -170,7 +175,7 @@ if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews 
 fi
 stage "4/5 apply (no model)"            python3 apply.py "$PSRC" "$R/workorder.json" "$R/$OUT"
 stage "4/5 verify (no model)"           bash -c 'python3 verify.py "$1" "$2" > /dev/null' _ "$PSRC" "$R/$OUT"
-python3 -c "import json,sys; json.dump({l.split('|')[0]: round(float(l.split('|')[1]), 1) for l in sys.argv[1:]}, open('$R/timing.json', 'w'), indent=1)" "${TIMES[@]}"
+write_timing
 stage "5/5 report"                      python3 report.py "$R" "$A" "--pdf=$OUT" "--input=$PSRC" ${KEEP:+--keep}
 summary
 echo

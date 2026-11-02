@@ -191,47 +191,78 @@ SOFTWARE = (('python', 'Python'), ('pikepdf', 'pikepdf'), ('pdfplumber', 'pdfplu
             ('fonttools', 'fontTools'))
 
 def _duration(s):
-    """3 min 15 s, 45 s, 1 h 2 min."""
+    """3 min 15 s, 45 s, 1 h 2 min; under half a second, "less than 1 s"."""
+    if s < 0.5: return 'less than 1 s'
     s = int(round(s))
     if s < 60: return f'{s} s'
     if s < 3600: return f'{s // 60} min {s % 60} s'
     return f'{s // 3600} h {s % 3600 // 60} min'
 
-def _before(rec):
-    """The original PDF before remediation, in plain words (intake's page test and tag check), or None when not recorded."""
+def _ocr_tagging(rec):
+    """"OCR and Auto-Tagging": what intake did to the original, in plain words (Patrick, 2026-11-01): the pages that are
+    pictures with no text (from OCR's own lists: text added, or none added) and the tags (none and tagged automatically,
+    a placeholder tagged again, or already tagged). "not recorded" when the record has no intake."""
     i = rec.get('intake') or {}
-    parts = []
-    n = ((i.get('triage') or {}).get('counts') or {}).get('image-only') or 0
-    ocr = len((i.get('ocr') or {}).get('pages_with_ocr_text') or [])
-    if n: parts.append((f'{n} pages are pictures' if n != 1 else '1 page is a picture') + ' with no text layer'
-                       + (f' (character recognition added text to {ocr})' if ocr else ''))
+    if not i: return 'not recorded'
     ts = (i.get('tag_tree') or {}).get('status') or i.get('tag_tree_status')
-    tagged_now = bool((i.get('result') or {}).get('pdf'))
-    if ts == 'untagged': parts.append('the PDF had no tags' + (' and was tagged automatically' if tagged_now else ''))
-    elif ts == 'placeholder': parts.append('the PDF\'s tags held no text structure' + (', so it was tagged again automatically' if tagged_now else ''))
-    elif not i: parts.append('the PDF was already tagged')
-    return '; '.join(parts) + '.' if parts else None
+    if i.get('status') == 'skipped' or ts == 'tagged': return 'not needed: the PDF was already tagged.'
+    o = i.get('ocr') or {}
+    added, none = len(o.get('pages_with_ocr_text') or []), len(o.get('image_pages_without_text') or [])
+    pics = ((i.get('triage') or {}).get('counts') or {}).get('image-only') or (added + none)
+    lead = '1 page is a picture with no text' if pics == 1 else f'{pics} pages are pictures with no text'
+    if not pics and not added: pages = 'every page has text, so no OCR was needed'
+    elif added > pics: pages = f'OCR added text to {added} pages' + (f'; no text was added for {none} that are pictures' if none else '')
+    elif not added: pages = lead + (', so no text was added for it' if pics == 1 else ', so no text was added for them')
+    elif not none: pages = lead + (', so OCR added its text' if pics == 1 else ', so OCR added their text')
+    else: pages = lead + f': OCR added text to {added} of them, and no text was added for the other {none if none > 1 else "one"}'
+    auto = any(s.get('step') == 'autotag' and not s.get('error') for s in i.get('steps') or []) or \
+        bool((i.get('plan') or {}).get('autotag') and (i.get('result') or {}).get('pdf'))
+    if ts == 'placeholder': tags = 'the PDF\'s tags held no text structure, so it was tagged again automatically' if auto else \
+                                   'the PDF\'s tags held no text structure, and it was not tagged again'
+    else: tags = 'the PDF had no tags and was tagged automatically' if auto else 'the PDF had no tags and was not tagged automatically'
+    return f'{pages}; {tags}.'
+
+# the parts of a run's computer time (record.json timing_seconds, by run_api.sh's step labels; review/sessions.py reapply)
+PARTS = (('intake', ('0/5',)), ('audit', ('1/5',)), ('AI call', ('2/5', '3/5')), ('preparing the review', ('review:',)),
+         ('applying and checks', ('4/5',)))
+
+def _runtime(rec):
+    """"Total runtime": the computer's time across the whole run, its parts in parentheses, never the time a person spent
+    reviewing (Patrick, 2026-11-01). A part with no time kept says "not recorded", and the total then says "at least". An
+    AI call made by this run that kept only its own seconds (run.seconds) counts with those; a reused answer is named."""
+    t = {k: v for k, v in (rec.get('timing_seconds') or {}).items() if isinstance(v, (int, float))}
+    run = rec.get('run') or {}
+    parts, missing, total = [], False, 0.0
+    for name, pre in PARTS:
+        got = [v for k, v in t.items() if k.startswith(pre)]
+        if not got and (name == 'preparing the review' or (name == 'intake' and not rec.get('intake'))): continue   # not part of this run
+        if not got and name == 'AI call' and isinstance(run.get('seconds'), (int, float)) and not run.get('response_from'): got = [run['seconds']]
+        label = 'AI call (a previous answer reused)' if name == 'AI call' and run.get('response_from') else name
+        if not got: parts.append(f'{label} not recorded'); missing = True; continue
+        total += sum(got); parts.append(f'{label} {_duration(sum(got))}')
+    total += sum(v for k, v in t.items() if not any(k.startswith(x) for _, pre in PARTS for x in pre))
+    if not total: return 'Total runtime: not recorded'
+    return f'Total runtime: {"at least " if missing else ""}{_duration(total)} ({", ".join(parts)}); the review time is not counted.'
 
 def about_lines(rec):
     """The run details of a version's own record, for staff: pages, when it was remediated, the AI call (the original one for a
-    reused reply: lib/origin.py), the PDF before remediation, the processing time and the software. No hashes or file names."""
+    reused reply: lib/origin.py), what OCR and auto-tagging did, the computer's total time and the software. No hashes or
+    file names."""
     from lib import origin
     run = rec.get('run') or {}; doc = rec.get('document') or {}
     ai = origin.summary(rec); cost, model = origin.words(ai)
     if ai.get('cost_usd') is not None:
         cost = origin.money(ai['cost_usd']) + (f', from the original call on {D.day(ai["date"])}' if ai.get('reused') and ai.get('date') else '')
     per = origin.money(ai['cost_per_page_usd']) if ai.get('cost_per_page_usd') is not None else 'not recorded'
-    t = sum(v for v in (rec.get('timing_seconds') or {}).values() if isinstance(v, (int, float)))
     env = rec.get('environment') or {}
     soft = ', '.join(f'{name} {env[k]}' for k, name in SOFTWARE if env.get(k))
-    before = _before(rec)
-    return ([f'Pages: {doc["pages"]}' if doc.get('pages') else 'Pages: not counted',
-             f'Remediated: {D.when(run.get("started"), "not recorded")}',
-             f'AI model: {model}',
-             f'AI cost: {cost} · Cost per page: {per}']
-            + ([f'Before remediation: {before}'] if before else [])
-            + [f'Processing time: {_duration(t)}' if t else 'Processing time: not recorded',
-               f'Software: {soft}' if soft else 'Software: not recorded'])
+    return [f'Pages: {doc["pages"]}' if doc.get('pages') else 'Pages: not counted',
+            f'Remediated: {D.when(run.get("started"), "not recorded")}',
+            f'AI model: {model}',
+            f'AI cost: {cost} · Cost per page: {per}',
+            f'OCR and Auto-Tagging: {_ocr_tagging(rec)}',
+            _runtime(rec),
+            f'Software: {soft}' if soft else 'Software: not recorded']
 
 def _readme(d, sha):
     """READ-ME.txt in plain words for library staff (Patrick, 2026-11-01): the source PDF's name, the version, its status,
