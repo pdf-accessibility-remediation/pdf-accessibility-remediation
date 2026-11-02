@@ -301,8 +301,9 @@ def _readme(d, sha):
                          f'Downloaded on {D.when(datetime.datetime.now().isoformat(timespec="seconds"))}.', ''])
 
 def stream_zip(w, d):
-    """Write the record ZIP to the stream `w` from the open handles in d (prepare()); the PDF is hashed as it streams, and
-    READ-ME.txt (which names that hash) comes last. Closes every handle."""
+    """Write the record ZIP to the stream `w` from the open handles in d (prepare()); the PDF is hashed as it streams (the
+    read-me counts the evaluation results recorded for that file; it no longer names the hash), and READ-ME.txt comes
+    last. Closes every handle."""
     now = datetime.datetime.now().timetuple()[:6]
     h = hashlib.sha256()
     try:

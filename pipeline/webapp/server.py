@@ -372,6 +372,8 @@ def make(s, setup, code=None):
                     return self.download(run, R, q)
                 if rest == ['checks']:                                                     # the Manual Checks page
                     if not os.path.isfile(os.path.join(R, 'record.json')): return self.send(404, {'error': 'no such run'})
+                    if p.endswith('/'):                                    # …/checks/ → …/checks: its relative "checks?recorded=" (34 F1)
+                        return self.redirect(p.rstrip('/') + ('?' + url.query if url.query else ''))
                     rc = (q.get('recorded') or [''])[0]
                     return self.send(200, MP.page(R, run, rc if rc in REL.SECTIONS else None), 'text/html; charset=utf-8')
                 d, name, sid = R, rest[-1], None
