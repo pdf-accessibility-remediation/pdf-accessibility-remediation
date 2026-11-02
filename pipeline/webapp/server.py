@@ -476,8 +476,7 @@ def waiting_page(run, R):
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
                       f'<title>{html.escape(title)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
                       f'<header><h1>{html.escape(title)}</h1></header><main id="main" tabindex="-1">'
-                      '<p>The AI\'s decisions for this book are waiting for a person\'s review. Nothing has been applied to the book yet: '
-                      'review the decisions, then apply them. The report and the remediated PDF come with the first apply.</p></main></body></html>',
+                      '<p>Nothing has been applied to this book yet. The report and the remediated PDF come with the first apply.</p></main></body></html>',
                       run, waiting=True)
 
 def refused_page(message, base):

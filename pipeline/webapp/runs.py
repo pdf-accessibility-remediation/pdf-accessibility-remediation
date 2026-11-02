@@ -110,7 +110,7 @@ def job_view(s, j, with_text=False, offset=0):
     `log`); its steps in plain words, the step running now, its title (what happened), and for a failure the reason."""
     text = jobs.read_log(s['jobs'], j['id'])[0]
     R = jobs.run_dir(j, s['runs'])
-    v = {k: j.get(k) for k in ('id', 'kind', 'run', 'status', 'created', 'started', 'ended', 'exit', 'url', 'paid', 'after', 'then_job', 'note', 'what')}
+    v = {k: j.get(k) for k in ('id', 'kind', 'run', 'status', 'created', 'started', 'ended', 'exit', 'url', 'paid', 'after', 'then_job', 'note', 'what', 'first')}
     steps = logs.steps(text)
     v.update(position=jobs.position(s['jobs'], j['id']), steps=[dict(x, words=logs.plain(x['label'])) for x in steps], outcome=logs.outcome(text),
              log=shown_path(jobs.log_path(s['jobs'], j['id'])))
