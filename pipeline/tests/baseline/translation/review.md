@@ -1,24 +1,26 @@
-# Remediation review: translation.pdf
+# Remediation Review: translation.pdf
 
 Result: `translation_remediated.pdf`
 
-257 pages · run 2026-11-01T18:33:09 · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · cost $0 (saved reply reused, no new call) · tokens: saved reply reused, not counted
+257 pages · run November 1, 2026, at 7:36 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost not recorded · this run: no new call · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.8 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.8s · audit 37.8s · reuse saved reply 0.4s · apply 81.7s · verify 49.5s · total 170.2s
+Time: intake 1.6s · audit 33.1s · reuse saved reply 1.4s · apply 143.4s · verify 71.1s · total 250.6s
 
 ## Overview
 
 [Open the dashboard](review.html)
 
-**Ready to ship?** No
-- Work order approved on the review page: no (run without REVIEW=1)
-- OCR text approved: not needed (intake added no OCR text)
-- Safety checks: OK
-- Manual check (PAC): not run
+**Status:** Not Ready
+
+**Ready to ship?**
+- Work Order Approval: Not Approved (applied without a review)
+- ✓ OCR Text Approval: Not Applicable
+- ✓ Safety Checks: Passed
+- Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 9 (6 deferred by the AI · 1 deferred by the executor · 2 CHECK rows)  
@@ -30,7 +32,7 @@ Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
-| Private-use characters (checklist 3.6): 5 read-aloud characters with private-use codes (U+F036: 5) on 1 page | see Automated checks | [Automated checks](#automated-checks) |
+| Private-use characters (checklist 3.6): 5 read-aloud characters with private-use codes (U+F036: 5) on 1 page | see Automated Checks | [Automated Checks](#automated-checks) |
 | Reading order jumps back up a column (7 jumps) | PDF 10 (printed x) | [§13](#13-wcag-checks-verapdf-does-not-make) |
 | text rule "invisible filler text (orphan)" matched no text on PDF 1–257 (printed i–236) | see §15 | [§15](#15-deferred-by-the-executor) |
 | Invisible filler text 'hn hk io il sy SY ek eh' | 11 pages, PDF 3 (printed iii) to PDF 255 (printed 234) | [§14](#14-deferred-by-the-ai) |
@@ -39,7 +41,7 @@ Automated checks are evidence, not sign-off.
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
-## Automated checks
+## Automated Checks
 
 | Check | Result | Detail |
 |---|---|---|
@@ -86,15 +88,15 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
 
-## For a person to check
+## For a Person to Check
 
-### 1. Pages wrapped as one Figure (1)
+### 1. Pages Wrapped as One Figure (1)
 
 Pages with nothing tagged and nothing marked as decoration that hold a drawing (a full-page map, plate or cover). Each page was wrapped whole in one Figure; nothing on it was changed or removed.
 
 - PDF 1 (printed i): read first in the document. Alt text from the AI: "Book cover of Found in Translation: Many Meanings on a North Australian Mission by Laura Rademaker. A sepia photograph shows a group of young Anindilyakwa men with two white missionaries, and an old map of Groote Eylandt is at upper left. The title and author's name are printed over the image."
 
-### 2. Alt text written or changed by the AI (18)
+### 2. Alt Text Written or Changed by the AI (18)
 
 | Page | Before | After |
 |---|---|---|
@@ -148,7 +150,7 @@ Spoken text set by the AI (should match what is printed):
 | PDF 148 (printed 127) | 6 SPEAKING TO THE HEART The Language of Faith |
 | PDF 167 (printed 146) | 7 SINGING IN TONGUES Translation through Song |
 
-### 4. Elements retyped by the AI (1)
+### 4. Elements Retyped by the AI (1)
 
 Check each one is (or is not) a heading as decided.
 
@@ -156,7 +158,7 @@ Check each one is (or is not) a heading as decided.
 |---|---|---|---|
 | PDF 4 (printed iv) | FOUND IN TRANSLATION | TPT | H1 |
 
-### 5. Lists and tables
+### 5. Lists and Tables
 
 - Header cells marked by the AI on PDF 27 (printed 6): 1 header row(s), 0 header column(s), 4 cells changed to header cells; 1 title row(s) made the caption, 28 data cell(s) tied to their headers by ID, 2 group row(s). Check they are the real headers.
 
@@ -175,13 +177,13 @@ Tables kept as tables (12): check header cells and reading order.
 - PDF 253 (printed 232): 7 rows × 8 columns, 0 header cells. "hn | hk | io | il | sy | SY | ek | eh"
 - PDF 255 (printed 234): 7 rows × 8 columns, 0 header cells. "hn | hk | io | il | sy | SY | ek | eh"
 
-### 6. Text a screen reader could not reach (before this run)
+### 6. Text a Screen Reader Could Not Reach (before this run)
 
 111 pages had text outside the tag tree: 6216 orphan runs (marked, but no tag owns them) and 0 untagged runs. Running heads and page numbers among them can be hidden as decoration; real content must be added to the tag tree by a person. After this run: 0 untagged characters, 0 orphan runs remain.
 
 Pages: PDF 15 (printed xv), PDF 19 (printed xix), PDF 25 (printed 4), PDF 27 (printed 6), PDF 29 (printed 8), PDF 31 (printed 10), PDF 33 (printed 12), PDF 37 (printed 16), PDF 39 (printed 18), PDF 41 (printed 20), PDF 43 (printed 22), PDF 45 (printed 24), PDF 47 (printed 26), PDF 49 (printed 28), PDF 51 (printed 30), PDF 53 (printed 32), PDF 55 (printed 34), PDF 57 (printed 36), PDF 59 (printed 38), PDF 63 (printed 42), PDF 65 (printed 44), PDF 67 (printed 46), PDF 69 (printed 48), PDF 71 (printed 50), PDF 73 (printed 52), PDF 75 (printed 54), PDF 77 (printed 56), PDF 79 (printed 58), PDF 81 (printed 60), PDF 83 (printed 62), PDF 85 (printed 64), PDF 87 (printed 66), PDF 89 (printed 68), PDF 91 (printed 70), PDF 93 (printed 72), PDF 95 (printed 74), PDF 97 (printed 76), PDF 99 (printed 78), PDF 101 (printed 80), PDF 103 (printed 82), PDF 105 (printed 84), PDF 107 (printed 86), PDF 109 (printed 88), PDF 111 (printed 90), PDF 113 (printed 92), PDF 115 (printed 94), PDF 117 (printed 96), PDF 119 (printed 98), PDF 121 (printed 100), PDF 123 (printed 102), PDF 125 (printed 104), PDF 127 (printed 106), PDF 131 (printed 110), PDF 133 (printed 112), PDF 135 (printed 114), PDF 137 (printed 116), PDF 139 (printed 118), PDF 141 (printed 120), PDF 143 (printed 122), PDF 145 (printed 124), PDF 147 (printed 126), PDF 149 (printed 128), PDF 151 (printed 130), PDF 153 (printed 132), PDF 155 (printed 134), PDF 157 (printed 136), PDF 159 (printed 138), PDF 161 (printed 140), PDF 163 (printed 142), PDF 165 (printed 144), PDF 167 (printed 146), PDF 169 (printed 148), PDF 171 (printed 150), PDF 173 (printed 152), PDF 175 (printed 154), PDF 177 (printed 156), PDF 179 (printed 158), PDF 181 (printed 160), PDF 183 (printed 162), PDF 185 (printed 164), PDF 187 (printed 166), PDF 189 (printed 168), PDF 191 (printed 170), PDF 195 (printed 174), PDF 197 (printed 176), PDF 199 (printed 178), PDF 201 (printed 180), PDF 203 (printed 182), PDF 205 (printed 184), PDF 209 (printed 188), PDF 211 (printed 190), PDF 213 (printed 192), PDF 215 (printed 194), PDF 217 (printed 196), PDF 219 (printed 198), PDF 221 (printed 200), PDF 223 (printed 202), PDF 225 (printed 204), PDF 227 (printed 206), PDF 229 (printed 208), PDF 231 (printed 210), PDF 233 (printed 212), PDF 235 (printed 214), PDF 237 (printed 216), PDF 239 (printed 218), PDF 241 (printed 220), PDF 243 (printed 222), PDF 245 (printed 224), PDF 249 (printed 228), PDF 251 (printed 230), PDF 257 (printed 236)
 
-### 7. Hidden from screen readers (artifacts)
+### 7. Hidden from Screen Readers (artifacts)
 
 - "invisible filler text (tagged)": text matching `(?:(?:hn|hk|io|il|sy|SY|ek|eh) ?)+` on PDF 1–257 (printed i–236)
 - "invisible filler text (orphan)": text matching `(?:(?:hn|hk|io|il|sy|SY|ek|eh) ?)+` on PDF 1–257 (printed i–236)
@@ -193,7 +195,7 @@ Pages: PDF 15 (printed xv), PDF 19 (printed xix), PDF 25 (printed 4), PDF 27 (pr
 - "running head Index": text matching `226 Index|Index 227|Index|226|227` on PDF 247–248 (printed 226–227)
 - "page numbers at foot": text matching `\d+|[ivxlc]+` on PDF 1–257 (printed i–236)
 
-### 8. Reading order changes
+### 8. Reading Order Changes
 
 Listen through these spots with a screen reader.
 
@@ -213,7 +215,7 @@ Listen through these spots with a screen reader.
 - Figure on PDF 171 (printed 150) moved to read with its page (it read after PDF 254 (printed 233); now after PDF 172 (printed 151))
 - Figure on PDF 189 (printed 168) moved to read with its page (it read after PDF 254 (printed 233); now after PDF 190 (printed 169))
 
-### 9. Untagged paths (rules, borders, lines)
+### 9. Untagged Paths (rules, borders, lines)
 
 1652 paths drawn outside any tag were marked as decoration (1524 of them inside shared form XObjects, each edited once): none of them carries text, an image or a link, and none touches untagged text or images.
 
@@ -232,7 +234,7 @@ Strokes directly under text, marked as decoration. An underline can carry meanin
 - PDF 195 (printed 174): 1
 - PDF 197 (printed 176): 1
 
-### 10. Spoken text (ActualText) checked against the print (7 accepted with differences, 0 rejected)
+### 10. Spoken Text (ActualText) Checked Against the Print (7 accepted with differences, 0 rejected)
 
 A spoken text may differ from the printed characters only in spacing, letter case and line-end hyphens (sponsor rule 1). Accepted ones that differ are listed so a person can listen to them; rejected ones added or changed words or punctuation.
 
@@ -244,16 +246,16 @@ A spoken text may differ from the printed characters only in spacing, letter cas
 - Accepted, PDF 148 (printed 127): printed "6 SPEAKING TO THE HEART The Language of Faith" → spoken "6 SPEAKING TO THE HEART The Language of Faith"
 - Accepted, PDF 167 (printed 146): printed "7 SINGING IN TONGUES Translation through Song" → spoken "7 SINGING IN TONGUES Translation through Song"
 
-### 11. Empty tags (34 removed, 0 kept)
+### 11. Empty Tags (34 removed, 0 kept)
 
 A tag is removed only when proven empty: nothing under it holds content, it carries no Alt, ActualText, E or ID, and nothing in the file refers to it except its parent. Table cells are never removed one by one; a table goes only when every part is empty.
 
 - Removed: 11 Table, 11 NormalParagraphStyle, 11 Story, 1 SERED
 - 11 whole empty tables (64 parts each), page: not on this tag
 
-### 12. veraPDF (WCAG 2.2 machine profile), before and after
+### 12. veraPDF (WCAG 2.2 machine profile), Before and After
 
-veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 7 rules failing (the AI can act on 2, the pipeline on 4, only a person on 1). After: 0.
+veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 7 rules failing (the AI can act on 2, the pipeline on 4, only a person on 1). After: 0.
 
 | Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |
 |---|---|---|---|---:|---:|---|---|
@@ -265,7 +267,7 @@ veraPDF 1.30.0, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 | ISO 14289-1 6.2-1 | 1.3.1 | The document catalog dictionary shall include a MarkInfo dictionary containing an entry, Marked, whose value shall be true | the pipeline (1 changed) | 1 | 0 | fixed | page: not on this tag |
 | ISO 14289-1 7.1-10 | 2.4.2 | The document catalog dictionary shall include a ViewerPreferences dictionary containing a DisplayDocTitle key, whose value shall be true | the pipeline (1 changed) | 1 | 0 | fixed | page: not on this tag |
 
-### 13. WCAG checks veraPDF does not make
+### 13. WCAG Checks veraPDF Does Not Make
 
 Each item is something to look at, not a proven failure.
 
@@ -283,11 +285,11 @@ Each item is something to look at, not a proven failure.
 
 Reviewer note from the AI: Headings: the book title (PDF 4, printed iv) is the single H1. Chapter titles, Introduction, the front-matter and back-matter titles (Preface, Acknowledgments, Note on Terminology and Language, Abbreviations, Notes, Bibliography, Index, About the Author) and Contents are H2. The in-chapter section heads, which were styled 'H1', are now H3, as are the endnote chapter heads (ENH) and the bibliography subheads (BMSH). Chapter number, title and subtitle are merged into one H2, with ActualText so a screen reader speaks them together. The words 'New Meanings on Southern Shores' and the like are the printed subtitles. The cover on PDF 1 (printed i) is handled through page_figures. I left fix_figure_order at its default.
 
-### 15. Deferred by the executor
+### 15. Deferred by the Executor
 
 - text rule "invisible filler text (orphan)" matched no text on PDF 1–257 (printed i–236): nothing was hidden by this rule; check its pattern against the page (spacing, split runs)
 
-## What was changed
+## What Was Changed
 
 | Change | Count |
 |---|---:|
@@ -334,16 +336,29 @@ Reviewer note from the AI: Headings: the book title (PDF 4, printed iv) is the s
 | tag tree index: entries repaired | 1 |
 | tab order: /Tabs /S set on pages with annotations | 192 |
 
-## Final check with PAC 2026
+## Accessibility Evaluation
 
-Open `translation_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker.
+A person evaluates this version of `translation_remediated.pdf` with PAC 2026 and a screen reader, on the app's "Accessibility Evaluation" page (or with manual_checks.py; docs/release.md). The "Ready to ship?" answer needs both parts. A Fail is recorded with its note and does not hold the book back. Each result is recorded against this version of the PDF (its sha256): after a new apply it no longer counts. The evaluation is a record of what a person found, not a legal certification.
 
-No automated check here covers these WCAG 2.2 AA criteria; check them by hand, with PAC's screen-reader and structure previews:
+**PAC 2026.** Open `translation_remediated.pdf` in PAC 2026 (https://pac.pdf-accessibility.org/en, Windows) and run its WCAG check. Anything it fails that is not listed above is a gap in the automated checks: note it in the issue tracker. Each item is Pass, Fail or Not Applicable, with notes:
 
-- 1.1.1: alt text is accurate and gives the figure's purpose; decorative images are artifacts
-- 1.3.1 / 1.3.2: headings, lists and tables match what is printed, and the reading order makes sense
-- 1.4.1: no information is given by colour alone
-- 1.4.3: contrast of text over images and coloured backgrounds (PAC's contrast checker)
-- 1.4.5: no images of text where real text could be used (scanned pages: the OCR layer stands in)
-- 2.4.6: headings describe their section
-- 3.1.2: passages in another language carry their language (see `han_review.csv` if present)
+- PAC 2026: WCAG Check: PAC 2026's WCAG check on this version of the PDF. Anything it fails that the report does not list is a gap in the automated checks.
+- Title and Language: The title shown in the window is the book's title, and the document language is the book's main language.
+- Spot-Check of Pages: A few pages compared with the original in PAC's structure preview: headings, lists, tables and figures as printed.
+- Color Alone: No information is given by color alone (WCAG 1.4.1).
+- Contrast: Text over images and colored backgrounds has enough contrast (WCAG 1.4.3; PAC's contrast checker).
+- Images of Text: No images of text where real text could be used; on scanned pages the OCR text stands in (WCAG 1.4.5).
+- What Needs a Person: Every item the report lists under "For a Person to Check" was looked at.
+
+**Screen-reader test.** Listen with a screen reader and record which one and its version:
+
+- Title Announced: The screen reader announces the book's title when the PDF opens.
+- Document Language and Passages in Other Languages: The text is read in the book's language, and passages in another language are pronounced in theirs (WCAG 3.1.1, 3.1.2).
+- Heading Navigation: Moving by heading reaches each part and chapter, at the right level (WCAG 1.3.1, 2.4.6).
+- Reading Order on Sample Pages: On a few sample pages, the text is read in the order it is meant to be read (WCAG 1.3.2).
+- Figure Alt Text: Each figure's alt text is read, is accurate and gives its purpose; decorative images are skipped (WCAG 1.1.1).
+- Tables Read with Their Headers: Moving through a table, each cell is read with its row or column header (WCAG 1.3.1).
+- Links Say Where They Go: Each link's text, or its description, says where it goes (WCAG 2.4.4).
+- Lists: Lists are announced as lists, with their number of items.
+- OCR Pages Read Sensibly: Pages whose text comes from OCR are read as words, not as junk characters.
+- Formulas: Each formula is read with the description a person wrote, or is marked for one (math goes to a person).
