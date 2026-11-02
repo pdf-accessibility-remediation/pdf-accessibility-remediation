@@ -1,11 +1,12 @@
 {
  "apply": {
   "applied": {
-   "OCR words: printed spelling given as ActualText": 1009,
+   "OCR words: printed spelling given as ActualText": 1024,
    "artifact: \"blank page scan\"": 9,
-   "artifact: \"front matter running foot\"": 7,
-   "artifact: \"roman page number (bottom)\"": 3,
-   "artifact: \"running head (bottom)\"": 138,
+   "artifact: \"running foot (title with page number)\"": 154,
+   "contents: TOC built": 3,
+   "contents: TOC entries": 13,
+   "contents: entry wrapped in Reference": 13,
    "document: /Lang": 1,
    "document: DisplayDocTitle": 2,
    "document: Document root created": 1,
@@ -15,13 +16,15 @@
    "links: /Contents set": 57,
    "links: joined existing Link": 57,
    "retype → H1": 1,
-   "retype → H2": 22,
-   "retype → H3": 24,
+   "retype → H2": 8,
+   "retype → H3": 13,
+   "retype → H4": 24,
    "retype → P": 3,
-   "table: header cells given a direction (Scope)": 7,
+   "table: cells wrongly tagged as headers set back to data cells": 2,
+   "table: header cells given a direction (Scope)": 5,
    "table: header cells marked (work order)": 25,
    "tag tree index: entries pointing outside the tree cleared (ParentTree)": 57,
-   "tag tree index: entries pointing outside the tree removed (IDTree)": 157
+   "tag tree index: entries pointing outside the tree removed (IDTree)": 163
   },
   "deferred": 1,
   "empty_notes_removed": 0,
@@ -29,8 +32,13 @@
   "rejected": 0
  },
  "validation_dropped": [
-  "ocr_words: not one word",
-  "ocr_words: not one word",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
+  "ocr_words: too different from the OCR text to be a misreading of it",
   "ocr_words: too different from the OCR text to be a misreading of it",
   "ocr_words: too different from the OCR text to be a misreading of it"
  ],
@@ -65,7 +73,7 @@
   }
  },
  "verify": {
-  "artifact_chars": 2812,
+  "artifact_chars": 3076,
   "figures": {
    "count": 1,
    "generic_or_empty": 0,
@@ -73,8 +81,9 @@
   },
   "headings": {
    "H1": 1,
-   "H2": 23,
-   "H3": 24
+   "H2": 9,
+   "H3": 14,
+   "H4": 24
   },
   "pixel_pages_differing": [],
   "skipped_levels": [],
@@ -90,19 +99,23 @@
    "Document": 1,
    "Figure": 1,
    "H1": 1,
-   "H2": 23,
-   "H3": 24,
+   "H2": 9,
+   "H3": 14,
+   "H4": 24,
    "L": 36,
    "LBody": 109,
    "LI": 109,
    "Lbl": 109,
    "Link": 57,
-   "P": 1266,
+   "P": 1247,
    "Part": 2,
+   "Reference": 13,
    "Sect": 20,
    "Span": 116,
-   "TD": 122,
-   "TH": 34,
+   "TD": 124,
+   "TH": 32,
+   "TOC": 3,
+   "TOCI": 13,
    "TR": 47,
    "Table": 3
   },

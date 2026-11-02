@@ -5,6 +5,7 @@
 - Word breaks drawn as gaps, with no space characters (TeX, Prince): every sample book has real spaces, so the regression
   test never reaches gaptext's gap rule through pdfplumber and plumb_fix.
 - The one-item list rule: OpenDataLoader makes such lists from a paragraph's first word; no tagged sample has one.
+- A harder table: title, group and note rows, and a false header cell, through the work order's `tables`.
 - Reading order: a section read out of printed order, moved back with move_section (the review page's preview, apply.py's
   move and verify.py's section-order check, new or already in the original); no baseline book uses move_section.
 No book content; nothing is sent anywhere; veraPDF is off.
@@ -264,3 +265,91 @@ def test_a_misplaced_section_moved_to_another_wrong_place_counts_as_new(tmp_path
     out, so = apply_and_verify(tmp_path, src, {'move_section': {'pages': [4, 4], 'before_page': 2}}, 'again')
     assert part_pages(out) == [1, 4, 2, 3, 5, 6]                                     # still out of place, somewhere else
     assert [(x['page'], x['state'], x['new']) for x in so['flagged']] == [(4, 'moved', True)] and so['new_count'] == 1
+
+# ---- a table with a title row, column names, a group row and a source note, read through the work order (WCAG 1.3.1)
+TABLE = [['Table 1 Clans'], ['Clan', 'Surname'], ['Moiety 1'], ['Wurra', 'Lalara'], ['Source: fieldwork']]
+
+def table_pdf(path):
+    flat = [t for row in TABLE for t in row]
+    content = ''.join(f'/TD <</MCID {i}>> BDC BT /F1 11 Tf 72 {500 - 20 * i} Td ({t}) Tj ET EMC\n' for i, t in enumerate(flat))
+    def tagged(pdf, page):
+        root = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+        doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
+        def el(s, parent, k, **extra):
+            return pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name('/' + s), P=parent, Pg=page.obj, K=k, **extra))
+        table = el('Table', doc, pikepdf.Array()); leaves, rows, i = [], [], 0
+        for row in TABLE:
+            tr = el('TR', table, pikepdf.Array()); cells = []
+            for _ in row:
+                a = pikepdf.Dictionary(O=pikepdf.Name('/Table'), ColSpan=2) if len(row) == 1 else None
+                c = el('TH' if i == 2 else 'TD', tr, i, **({'A': a} if a is not None else {})); cells.append(c); leaves.append(c); i += 1
+            tr.K = pikepdf.Array(cells); rows.append(tr)
+        table.K = pikepdf.Array(rows); doc.K = pikepdf.Array([table])
+        root.K = doc; root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=pikepdf.Array([0, pikepdf.Array(leaves)])))
+        page.obj.StructParents = 0
+        pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
+        return table
+    return one_page(content, path, tagged)
+
+def read_table(path):
+    """-> first part of the table, rows as [[(tag, scope, headers)]], the document's top tags, and the IDTree."""
+    pdf = pikepdf.open(path); root = pdf.Root.StructTreeRoot
+    doc = root.K[0] if isinstance(root.K, pikepdf.Array) else root.K
+    ks = list(doc.K) if isinstance(doc.K, pikepdf.Array) else [doc.K]
+    t = next(k for k in ks if str(k.S) == '/Table'); parts = list(t.K)
+    def attrs(c):
+        a = c.get('/A')
+        return next((d for d in (a if isinstance(a, pikepdf.Array) else [a] if a is not None else []) if str(d.get('/O')) == '/Table'), {})
+    rows = [[(str(c.S)[1:], str(attrs(c).get('/Scope', ''))[1:], [bytes(h).decode() for h in attrs(c).get('/Headers', [])]) for c in r.K]
+            for r in parts if str(r.S) == '/TR']
+    ids = {}
+    if '/IDTree' in root:
+        names = root.IDTree.Names
+        ids = {bytes(names[i]).decode(): names[i + 1] for i in range(0, len(names), 2)}
+    return {'first': str(parts[0].S)[1:], 'rows': rows, 'after': [str(k.S)[1:] for k in ks], 'ids': ids, 'pdf': pdf}
+
+def apply_table(tmp_path, reading, name):
+    src = tmp_path / 'table.pdf'; table_pdf(src)
+    w = tmp_path / f'{name}.json'; w.write_text(json.dumps({'schema': 'workorder/0.2', 'tables': [{'obj': table_obj(src), **reading}]}))
+    out = tmp_path / f'{name}.pdf'; run('apply.py', src, w, out)
+    return src, out
+
+def table_obj(path):
+    pdf = pikepdf.open(path); doc = pdf.Root.StructTreeRoot.K
+    doc = doc[0] if isinstance(doc, pikepdf.Array) else doc
+    t = doc.K[0] if isinstance(doc.K, pikepdf.Array) else doc.K
+    return f'{t.objgen[0]} {t.objgen[1]}'
+
+def run_ok_tags(pdf):
+    """Every tag on the one page says so, and each piece of marked content is owned by exactly the tag the ParentTree names."""
+    root = pdf.Root.StructTreeRoot; arr = root.ParentTree.Nums[1]; page = pdf.pages[0].obj.objgen
+    def walk(n):
+        for k in (list(n.K) if isinstance(n.get('/K'), pikepdf.Array) else [n.K] if '/K' in n else []):
+            if isinstance(k, pikepdf.Dictionary): yield from walk(k)
+            else:
+                assert n.Pg.objgen == page and arr[int(k)].objgen == n.objgen
+                yield int(k)
+    return sorted(walk(root.K[0] if isinstance(root.K, pikepdf.Array) else root.K)) == list(range(sum(len(r) for r in TABLE)))
+
+def test_a_harder_table_reads_as_caption_headers_groups_and_note(tmp_path):
+    src, out = apply_table(tmp_path, {'title_rows': 1, 'header_rows': 1, 'group_rows': [2], 'note_rows': 1}, 'read')
+    t = read_table(out)
+    assert t['first'] == 'Caption' and t['after'] == ['Table', 'P'] and len(t['rows']) == 3
+    assert [c[:2] for c in t['rows'][0]] == [('TH', 'Column'), ('TH', 'Column')] and t['rows'][1][0][:2] == ('TH', 'Column')
+    data = t['rows'][2]
+    assert all(tag == 'TD' and scope == '' and len(hs) == 2 for tag, scope, hs in data)
+    for _, _, hs in data:
+        for h in hs: assert h in t['ids'] and str(t['ids'][h].S) == '/TH'
+    assert gap_text_of(out) == gap_text_of(src)         # the page's text is untouched
+    assert run_ok_tags(t['pdf'])
+
+def test_a_header_the_reading_does_not_name_goes_back_to_a_data_cell(tmp_path):
+    """"Surname" is tagged TH in the source; here only the first column heads anything."""
+    _, out = apply_table(tmp_path, {'title_rows': 1, 'header_cols': 1, 'note_rows': 1, 'group_rows': [2]}, 'demote')
+    t = read_table(out)
+    assert t['rows'][0][0][0] == 'TH' and t['rows'][0][1][0] == 'TD' and t['rows'][0][1][1] == ''
+
+def test_a_reading_that_does_not_fit_leaves_the_table_alone(tmp_path):
+    _, out = apply_table(tmp_path, {'title_rows': 2, 'header_rows': 1}, 'refuse')       # row 1 holds two things
+    t = read_table(out)
+    assert t['first'] == 'TR' and len(t['rows']) == 5

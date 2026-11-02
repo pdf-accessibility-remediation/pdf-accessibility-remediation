@@ -5,54 +5,73 @@
     "toc_pages": [8],
     "index_from": 210
   },
+  "artifacts": {
+    "elements": [
+      {"obj": "3921 0", "type": "Layout", "label": "decorative wave ornament band on title page"}
+    ],
+    "text_rules": [
+      {"label": "running head 'Fishing with Maui'", "pages": [22, 28], "regex": "Fishing with Maui", "band": "top", "type": "Pagination", "subtype": "Header"}
+    ]
+  },
   "document": {
     "title": "Mapping the Godzone: A Primer on New Zealand Literature and Culture",
     "lang": "en-US",
     "display_doc_title": true
   },
-  "rolemap": {
-    "H4": "H3"
-  },
   "retype": [
-    {"obj": "1155 0", "type": "H1", "why": "Book title at 30 pt on the title page, PDF 4 (printed iii)", "confidence": 0.9},
-    {"obj": "1154 0", "type": "P", "why": "Half-title repeating the book title on PDF 2 (printed i). Only one H1 should remain.", "confidence": 0.8},
-    {"obj": "3920 0", "type": "P", "why": "Subtitle on the title page, not a section heading", "confidence": 0.9},
-    {"obj": "3806 0", "type": "P", "why": "Author name on the title page", "confidence": 0.9},
-    {"obj": "3810 0", "type": "P", "why": "Dedication on the copyright page", "confidence": 0.9},
-    {"obj": "3813 0", "type": "P", "why": "CIP data label, not a heading", "confidence": 0.9},
-    {"obj": "3718 0", "type": "H2", "why": "Front-matter title (Preface)", "confidence": 0.95},
-    {"obj": "1169 0", "type": "H2", "why": "Back-matter title (Bibliography)", "confidence": 0.95},
-    {"obj": "1150 0", "type": "H2", "why": "Back-matter title (About the Author)", "confidence": 0.9},
-    {"obj": "3823 0", "type": "H2", "why": "Contents heading, tagged as a plain paragraph", "confidence": 0.9},
-    {"obj": "1206 0", "type": "H2", "why": "Index heading, tagged as a plain paragraph", "confidence": 0.9}
+    {"obj": "1154 0", "type": "H1", "why": "book title on half-title page"},
+    {"obj": "3920 0", "type": "P", "why": "subtitle on title page, not a section heading"},
+    {"obj": "3806 0", "type": "P", "why": "author name on title page"},
+    {"obj": "3810 0", "type": "P", "why": "dedication"},
+    {"obj": "3813 0", "type": "P", "why": "CIP data label, not a heading"},
+    {"obj": "3718 0", "type": "H2", "why": "Preface is a front-matter title"},
+    {"obj": "1169 0", "type": "H2", "why": "Bibliography is a back-matter title"},
+    {"obj": "1150 0", "type": "H2", "why": "About the Author is a back-matter title"},
+    {"obj": "3823 0", "type": "H2", "why": "Contents heading (heading candidate, 16 pt)"},
+    {"obj": "1206 0", "type": "H2", "why": "Index heading (heading candidate, 16 pt)"},
+    {"obj": "3665 0", "type": "H3"},
+    {"obj": "3617 0", "type": "H3"},
+    {"obj": "3581 0", "type": "H3"},
+    {"obj": "3536 0", "type": "H3"},
+    {"obj": "3514 0", "type": "H3"},
+    {"obj": "3466 0", "type": "H3"},
+    {"obj": "3360 0", "type": "H3"},
+    {"obj": "3304 0", "type": "H3"},
+    {"obj": "3205 0", "type": "H3"},
+    {"obj": "3084 0", "type": "H3"},
+    {"obj": "3016 0", "type": "H3"},
+    {"obj": "2900 0", "type": "H3"},
+    {"obj": "2820 0", "type": "H3"},
+    {"obj": "2653 0", "type": "H3"},
+    {"obj": "2619 0", "type": "H3"},
+    {"obj": "2584 0", "type": "H3"},
+    {"obj": "2554 0", "type": "H3"},
+    {"obj": "2354 0", "type": "H3"},
+    {"obj": "1887 0", "type": "H3"},
+    {"obj": "1619 0", "type": "H3"},
+    {"obj": "1606 0", "type": "H3"},
+    {"obj": "1592 0", "type": "H3"},
+    {"obj": "1532 0", "type": "H3"},
+    {"obj": "1505 0", "type": "H3"}
   ],
   "flatten": [
-    {"obj": "3815 0", "why": "CIP catalog data laid out as a table; not a data table"},
-    {"obj": "1891 0", "why": "Dialogue lines opened with dashes, not a list"},
-    {"obj": "2021 0", "why": "Dialogue lines opened with dashes, not a list"}
+    {"obj": "3815 0", "why": "Library of Congress CIP data tagged as a table; it is a catalog record, not a data table"},
+    {"obj": "1891 0", "why": "dialogue lines introduced by dashes, not a list"},
+    {"obj": "2021 0", "why": "dialogue lines introduced by dashes, not a list"},
+    {"obj": "3224 0", "why": "fragment of a (1)-(3) enumeration split across two L elements; flattened to paragraphs"},
+    {"obj": "3260 0", "why": "fragment of a (1)-(3) enumeration split across two L elements, with a non-item paragraph inside; flattened to paragraphs"}
   ],
   "alt": [
-    {"obj": "4081 0", "alt": "Cover of Mapping the Godzone: A Primer on New Zealand Literature and Culture by William J. Schafer. A painting of a street in a small New Zealand town under a cloudy blue sky, with wooden houses, a red picket fence, a power pole and a tower on the right. A turquoise Maori-style spiral (koru) border runs down the left edge.", "confidence": 0.9},
-    {"obj": "3807 0", "alt": "University of Hawai‘i Press logo", "confidence": 0.85},
-    {"obj": "3825 0", "alt": "Map of Aotearoa New Zealand showing the North Island and South Island, with arrows linking places to the authors and novels set there. Long description: On the North Island, Bay of Islands (Maurice Shadbolt, The House of Strife); Waipu (Fiona Kidman, The Book of Secrets); Taranaki (Shadbolt, Monday's Warriors); Hawera (Ronald Hugh Morrieson, The Scarecrow, Came a Hot Friday, Predicament); Urewera (Barry Crump, Wild Pork and Watercress); Kaimanawa (John Mulgan, Man Alone); Waituhi (Witi Ihimaera, The Matriarch; Shadbolt, Season of the Jew); Hamilton and Rotorua are marked without a work. At the south of the North Island, Wellington and Marlborough Sound (Ian Wedde, Symmes Hole). On the South Island, Oamaru and Dunedin (Janet Frame, To the Is-Land, An Angel at My Table); Christchurch and Invercargill are marked without a work.", "confidence": 0.9}
+    {"obj": "4081 0", "alt": "Book cover: a painted view down a street of small, colorful wooden houses in a New Zealand town under a blue sky with white clouds, with a water tower at right. The title Mapping the Godzone, the subtitle A Primer on New Zealand Literature and Culture and the author's name, William J. Schafer, are printed on it, beside a turquoise Maori-style spiral border down the left edge."},
+    {"obj": "3807 0", "alt": "University of Hawaiʻi Press logo"},
+    {"obj": "3825 0", "alt": "Outline map of Aotearoa New Zealand showing the North Island and South Island, with arrows linking places to the authors and novels set there. Long description: North Island: Bay of Islands (Maurice Shadbolt, The House of Strife); Waipu (Fiona Kidman, The Book of Secrets); Taranaki (Maurice Shadbolt, Monday's Warriors); Hamilton; Rotorua; Hawera (Ronald Hugh Morrieson, The Scarecrow, Came a Hot Friday, Predicament); Urewera (Barry Crump, Wild Pork and Watercress); Kaimanawa (John Mulgan, Man Alone); Waituhi (Witi Ihimaera, The Matriarch; Maurice Shadbolt, Season of the Jew). Wellington and Marlborough Sound, at the strait between the islands (Ian Wedde, Symmes Hole). South Island: Christchurch; Oamaru and Dunedin (Janet Frame, To the Is-Land, An Angel at My Table); Invercargill at the southern tip."}
   ],
   "move_to_document_start": ["4081 0"],
-  "artifacts": {
-    "elements": [
-      {"obj": "3921 0", "type": "Layout", "label": "decorative wave ornament on the title page"}
-    ],
-    "text_rules": [
-      {"label": "running head Fishing with Maui", "pages": [22, 28], "regex": "Fishing with Maui ?", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "running head Preface", "pages": [11, 11], "regex": "Preface ?", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "page foot Index 197", "pages": [216, 216], "regex": "Index 197", "band": "any", "type": "Pagination", "subtype": "Footer"}
-    ]
-  },
   "deferrals": [
-    {"what": "Numbered list (1)–(3) in a block quotation, split across two L elements, with one item that has no label", "why": "The items may read out of order, and the structure is unclear from the digest. A person should merge it into one list or flatten it.", "pages": [59]},
-    {"what": "Running heads and page numbers in the rest of the body", "why": "Only the runs on PDF 22–28 (printed 3–9), PDF 11 and PDF 216 were recognisable in the digest. Check the remaining pages for tagged running heads or page numbers.", "pages": [20, 216]},
-    {"what": "Text layer quality (suspect tokens on a few pages)", "why": "The OCR-like signal is highest on PDF 4, 5, 162, 214, 100, 32, 159 and 205. Text was not changed.", "pages": [4, 5, 32, 100, 159, 162, 205, 214]},
-    {"what": "Nesting of front matter in the tag tree (the title page, copyright page and contents sit inside one Sect)", "why": "The reading order looks plausible, so I did not move anything. A person should confirm it.", "pages": [4, 9]}
+    {"what": "Possible running heads tagged as text on PDF 11 (printed x) ('Preface') and PDF 97 (printed 78) ('Pouliuli: The Tragedy of Decline')", "why": "They appear as the first tagged line of those pages, but the digest does not show whether they are running heads or real headings or captions, so none was artifacted. A person should check these two pages and any other running heads or page numbers in the chapters.", "pages": [11, 97]},
+    {"what": "Lists flattened on PDF 59 (printed 40) and PDF 167 (printed 148)", "why": "The (1)-(3) enumeration on PDF 59 was split across two L elements and the dialogue on PDF 167 is not a list, so all were flattened to paragraphs. A person may want to rebuild the enumeration on PDF 59 as one list.", "pages": [59, 167]},
+    {"what": "Cataloging-in-Publication data table on PDF 5 (printed iv)", "why": "Flattened to paragraphs because it is a catalog record, not a data table. A person should check that its reading order is sensible.", "pages": [5]}
   ],
-  "notes_for_reviewer": "The publisher tags use H2 for chapters, H3 for the title-page lines, Preface, Bibliography and About the Author, and H4 for sections. Fix: book title H1 (title page); chapters, Preface, Contents, Bibliography, Index and About the Author H2; sections H3 (rolemap H4→H3). Title-page lines, the dedication and the CIP label were demoted to P. The half-title on PDF 2 (printed i) was demoted to P so a single H1 remains. The contents already carry TOC/TOCI tags, so no toc key was needed. The page-5 table of CIP data was flattened. The map on PDF 9 (printed viii) has long-description alt text."
+  "notes_for_reviewer": "Heading outline: the half-title (PDF 2) is the single H1. Preface, chapters, Contents, Index, Bibliography and About the Author are H2. Chapter sections (published as H4) are H3, so no level is skipped. Title-page lines, the dedication and the CIP label were demoted to P. I used per-element retypes instead of style-level rolemap changes because the same style names serve different levels. The table of contents is already tagged as TOC/TOCI, so I left it alone. The cover image is the first figure and is moved to the start of the Document. The map on PDF 9 (printed viii) has alt text with a long description. The running head 'Fishing with Maui' was artifacted only on PDF 22–28, where it was found."
 }
 ```

@@ -8,32 +8,31 @@
   },
   "artifacts": {
     "elements": [
-      {"obj": "18592 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "18501 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "18485 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "18480 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "19463 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "17890 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "17156 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "16571 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "16308 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "15580 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "14945 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "14213 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "14118 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "14023 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "14020 0", "type": "Layout", "label": "flourish ornament under heading"},
-      {"obj": "12773 0", "type": "Layout", "label": "flourish ornament under heading"}
+      {"obj": "18592 0", "type": "Layout", "label": "ornament"},
+      {"obj": "18501 0", "type": "Layout", "label": "ornament"},
+      {"obj": "18485 0", "type": "Layout", "label": "ornament"},
+      {"obj": "18480 0", "type": "Layout", "label": "ornament"},
+      {"obj": "19463 0", "type": "Layout", "label": "ornament"},
+      {"obj": "17890 0", "type": "Layout", "label": "ornament"},
+      {"obj": "17156 0", "type": "Layout", "label": "ornament"},
+      {"obj": "16571 0", "type": "Layout", "label": "ornament"},
+      {"obj": "16308 0", "type": "Layout", "label": "ornament"},
+      {"obj": "15580 0", "type": "Layout", "label": "ornament"},
+      {"obj": "14945 0", "type": "Layout", "label": "ornament"},
+      {"obj": "14213 0", "type": "Layout", "label": "ornament"},
+      {"obj": "14118 0", "type": "Layout", "label": "ornament"},
+      {"obj": "14023 0", "type": "Layout", "label": "ornament"},
+      {"obj": "14020 0", "type": "Layout", "label": "ornament"},
+      {"obj": "12773 0", "type": "Layout", "label": "ornament"}
     ],
     "text_rules": [
-      {"label": "notes running head", "pages": [254, 282], "regex": "Notes to Pages? [\\d–\\-]+", "band": "top", "type": "Pagination", "subtype": "Header"}
+      {"label": "running head (Notes to Pages)", "pages": [254, 282], "regex": "Notes to Pages? \\d+(?:–\\d+)?", "band": "top", "type": "Pagination", "subtype": "Header"}
     ]
   },
   "document": {
     "title": "Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism",
     "lang": "en-US",
-    "display_doc_title": true,
-    "remove_empty_acroform": true
+    "display_doc_title": true
   },
   "rolemap": {
     "pre_tit": "H2",
@@ -50,16 +49,19 @@
     "dev_int1": "H3",
     "dev_int1.autre": "H3",
     "dev_int1.biblio": "H3",
+    "dev_int2": "H4",
     "nfniv1_int": "H3",
-    "dev_int2": "H4"
+    "dev_fig_img": "Div"
   },
+  "retype": [
+    {"obj": "17893 0", "type": "H1", "why": "book title on the title page becomes the single H1"}
+  ],
   "merges": [
     {"style": "part_n", "direction": "next", "with": ["part_tit"]},
     {"style": "chap_n", "direction": "next", "with": ["chap_tit.seul", "chap_tit", "chap_tit.autre"]},
     {"style": "chap_stit", "direction": "prev", "with": ["chap_tit.autre"]}
   ],
   "actual_text": [
-    {"obj": "17893 0", "text": "Cadaverous"},
     {"obj": "18621 0", "text": "Part I Spirit Disease"},
     {"obj": "16318 0", "text": "Part II Corpse Disease"},
     {"obj": "18623 0", "text": "Chapter 1 Ritual Healing in the Jimon Lineage"},
@@ -70,31 +72,23 @@
     {"obj": "14949 0", "text": "Chapter 6 Demons, Māras, and Corpse-Worms"},
     {"obj": "14216 0", "text": "Chapter 7 Playing with Fire Therapeutic Violence Through Ritual Pyrotechnics"}
   ],
-  "retype": [
-    {"obj": "17893 0", "type": "H1", "why": "book title on the title page; the only H1"}
-  ],
   "alt": [
     {"obj": "18614 0", "alt": "University of Hawai‘i Press logo"},
-    {"obj": "6374 0", "alt": "Book cover of Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism by Andrew Macomber. A brown-toned sketch from a medieval Japanese scroll shows a decomposing human corpse lying diagonally across a mottled, parchment-like background, with exposed internal organs and bones. The title appears above the image and the author's name below it."}
+    {"obj": "6374 0", "alt": "Book cover for Cadaverous: Postmortem Contagion and Ritual Immunity in Medieval Japanese Buddhism by Andrew Macomber. A brown-toned sketch of a human corpse from head to pelvis in an advanced state of decomposition, with exposed internal organs and skeletal elements, lies across a mottled, parchment-like background. The title appears in dark text above the image and the author's name below it."}
   ],
   "move_to_document_start": ["6374 0"],
-  "captions": {"style": "dev_fig_leg", "wrapper_style": "dev_fig_img"},
+  "captions": {"style": "dev_fig_leg"},
   "lists": [
     {"first_style": "liste_p.premier", "item_prefix": "liste_p", "last_style": "liste_p.dernier", "numbering": "Decimal"}
   ],
   "toc": {"item_styles": ["tdm1_p", "tdm1_p.chap", "tdm1_p.part"], "pages": [9, 9]},
-  "notes": {"styles": ["ntf_p", "ntf_p.1", "ntf_p.2"], "id_prefix": "note-"},
   "language": {"kana_runs": "ja", "runs": []},
-  "move_section": [
-    {"pages": [253, 282], "before_page": 283, "why": "The Epilogue container spans PDF 246–323, so the Bibliography, Index and About the Author appear to be read before the NOTES section, which is printed before them."}
-  ],
   "remove_empty_containers": true,
   "deferrals": [
-    {"what": "Drop-cap chapter openings (dev_let paragraphs, e.g. 'n 998, eminent courtier…', 'his project began…') extract without their first letter", "why": "The drop cap is a separate run and the paragraph text is too long for me to safely supply as ActualText. A person should check how screen readers speak these openings.", "pages": [11, 17, 49, 78, 112, 141, 154, 182, 211, 246]},
-    {"what": "Han-only CJK runs (dedication mantra, Japanese and Chinese terms in the text, notes and bibliography)", "why": "Japanese or Chinese cannot be told apart from the digest. The executor defers these to a human.", "pages": [7, 17, 283, 305]},
-    {"what": "Numbered list of moxibustion points converted to L/LI/LBody", "why": "The items were plain paragraphs with the numbers typed into the text. A person should confirm the list structure.", "pages": [219]},
-    {"what": "Endnote paragraph styles converted to Note and the NOTES section moved before the Bibliography", "why": "141 Note elements already exist, so the nesting and the reading order need a human check.", "pages": [253, 282]}
+    {"what": "Endnote paragraphs (styles ntf_p, ntf_p.1, ntf_p.2) are plain P, while a separate Note style exists with 141 elements", "why": "I can't tell from the digest whether the Note elements already wrap these paragraphs, so retagging could nest Notes. A person should check the notes structure.", "pages": [253, 282]},
+    {"what": "Index reading order", "why": "The first lines in page_map show two index columns read across the page (e.g. 'burial practices, 141, 145, 172. corpse-worms, 150, 182–192,'). A person should check the column order.", "pages": [307, 321]},
+    {"what": "Page numbers or running heads on other pages", "why": "The digest shows no repeated lines for them, and unowned_content is empty, so I can't target any. A person should check that running heads and folios are hidden.", "pages": [17, 252]}
   ],
-  "notes_for_reviewer": "Heading outline: the book title (ident_tit on PDF 5, printed iii) is the single H1. Front-matter titles, Introduction, Part and Chapter titles, Epilogue, Notes, Bibliography, Index and About the Author are H2. Part and chapter labels are merged into their titles, with ActualText because the small-cap label letters extract oddly. Chapter 7 also takes its subtitle. dev_int1 sections are H3, dev_int2 subsections are H4, and the notes' chapter headings are H3. The 16 flourish ornaments under headings are artifacts. Publisher alt text on the other figures is already good and kept. The cover alt text had a stray NUL character, which I replaced. The cover is moved to the start of the Document. The Notes running heads (PDF 254–282) are artifacts. The Epilogue container (PDF 246–323) swallows the back matter, so I moved the Notes section before the Bibliography. Please check that move."
+  "notes_for_reviewer": "Headings: the book title (printed on PDF 5, printed iii) is the only H1. Parts, chapters and front/back-matter titles are H2. Sections are H3 and subsections H4. Part and chapter labels are merged into their titles, and the chapter 7 subtitle is merged into its chapter title. The tree reading order (Story containers on PDF 246–323) looks nested oddly around Epilogue, Notes and Bibliography, but the printed order seems correct, so I made no move_section. Text of the Notes section contains words such as 'peri ods' and hyphenated breaks; the text itself was not changed. The 16 flourish ornaments are artifacted. The cover figure on PDF 1 had a NUL character in its alt text, so I rewrote the alt text. Han-only runs are deferred by the executor."
 }
 ```

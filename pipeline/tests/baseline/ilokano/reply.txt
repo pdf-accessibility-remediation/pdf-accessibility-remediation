@@ -10,62 +10,47 @@
     "display_doc_title": true
   },
   "retype": [
-    {"obj": "150 0", "type": "P", "why": "Copyright notice tagged as a heading; not a heading", "confidence": 0.95},
-    {"obj": "151 0", "type": "H2", "why": "Contents title; only the book title stays H1", "confidence": 0.9},
-    {"obj": "155 0", "type": "H2", "why": "Front-matter title (Preface)", "confidence": 0.9},
-    {"obj": "162 0", "type": "H2", "why": "Chapter 1 title", "confidence": 0.9},
-    {"obj": "165 0", "type": "H2", "why": "Chapter 2 title", "confidence": 0.9},
-    {"obj": "230 0", "type": "H2", "why": "Chapter 3 title", "confidence": 0.9},
-    {"obj": "247 0", "type": "H2", "why": "Chapter 4 title", "confidence": 0.9},
-    {"obj": "268 0", "type": "H2", "why": "Chapter 5 title", "confidence": 0.9},
-    {"obj": "369 0", "type": "H2", "why": "Chapter 6 title", "confidence": 0.9},
-    {"obj": "392 0", "type": "H2", "why": "Chapter 7 title", "confidence": 0.9},
-    {"obj": "421 0", "type": "H2", "why": "Chapter 8 title", "confidence": 0.9},
-    {"obj": "463 0", "type": "H2", "why": "Chapter 9 title", "confidence": 0.9},
-    {"obj": "480 0", "type": "H2", "why": "Chapter 10 title", "confidence": 0.9},
-    {"obj": "504 0", "type": "H2", "why": "Chapter 11 title", "confidence": 0.9}
+    {"obj": "150 0", "type": "P", "why": "Copyright notice on PDF 5, not a heading", "confidence": 0.95},
+    {"obj": "151 0", "type": "H2", "why": "Contents title (PDF 6)"},
+    {"obj": "155 0", "type": "H2", "why": "Preface title (PDF 7)"},
+    {"obj": "162 0", "type": "H2", "why": "Introduction chapter title (PDF 8)"},
+    {"obj": "165 0", "type": "H2", "why": "Phonology chapter title (PDF 9)"},
+    {"obj": "230 0", "type": "H2", "why": "Chapter 3 (PDF 15)"},
+    {"obj": "247 0", "type": "H2", "why": "Chapter 4 (PDF 18)"},
+    {"obj": "268 0", "type": "H2", "why": "Chapter 5 (PDF 21)"},
+    {"obj": "369 0", "type": "H2", "why": "Chapter 6 (PDF 31)"},
+    {"obj": "392 0", "type": "H2", "why": "Chapter 7 (PDF 34)"},
+    {"obj": "421 0", "type": "H2", "why": "Chapter 8 (PDF 37)"},
+    {"obj": "463 0", "type": "H2", "why": "Chapter 9 (PDF 42)"},
+    {"obj": "480 0", "type": "H2", "why": "Chapter 10 (PDF 44)"},
+    {"obj": "504 0", "type": "H2", "why": "Chapter 11 (PDF 47)"}
   ],
   "flatten": [
     {"obj": "166 0", "why": "numbered section paragraphs (2.0, 2.1), not a list"},
-    {"obj": "224 0", "why": "section paragraphs 2.7 and 2.8, not a list"},
-    {"obj": "231 0", "why": "section paragraphs 3.0 and 3.1, not a list"},
-    {"obj": "248 0", "why": "section paragraphs 4.0 to 4.1, not a list"},
-    {"obj": "290 0", "why": "section paragraphs 5.1.5 and 5.1.6, not a list"},
-    {"obj": "357 0", "why": "section paragraphs 5.8.2 and 5.8.3, not a list"},
-    {"obj": "388 0", "why": "section paragraphs 6.4 and 6.5, not a list"},
-    {"obj": "393 0", "why": "section paragraphs 7.0 and 7.1, not a list"},
-    {"obj": "404 0", "why": "section paragraphs 7.2 and 7.3, not a list"},
-    {"obj": "475 0", "why": "section paragraphs 9.1.3 and 9.1.4, not a list"},
-    {"obj": "493 0", "why": "section paragraphs 10.2.2 and 10.3, not a list"}
+    {"obj": "224 0", "why": "numbered section paragraphs (2.7, 2.8)"},
+    {"obj": "231 0", "why": "numbered section paragraphs (3.0, 3.1)"},
+    {"obj": "248 0", "why": "numbered section paragraphs (4.0, 4.1)"},
+    {"obj": "290 0", "why": "numbered section paragraphs (5.1.5, 5.1.6)"},
+    {"obj": "357 0", "why": "numbered section paragraphs (5.8.2, 5.8.3)"},
+    {"obj": "388 0", "why": "numbered section paragraphs (6.4, 6.5)"},
+    {"obj": "393 0", "why": "numbered section paragraphs (7.0, 7.1)"},
+    {"obj": "404 0", "why": "numbered section paragraphs (7.2, 7.3)"},
+    {"obj": "475 0", "why": "numbered section paragraphs (9.1.3, 9.1.4)"},
+    {"obj": "493 0", "why": "numbered section paragraphs (10.2.2, 10.3)"}
   ],
   "alt": [
-    {"obj": "135 0", "alt": "Book cover: a tan upper panel with the green University of Hawaiʻi Press logo, then the author's name, Ernesto Constantino, and the title, Ilokano Reference Grammar, in white capitals on a black panel."},
-    {"obj": "141 0", "alt": "University of Hawaiʻi Press Open Access logo"},
-    {"obj": "142 0", "alt": "Humanities Open Book Program logo, with the National Endowment for the Humanities and Andrew W. Mellon Foundation marks"},
-    {"obj": "145 0", "alt": "Creative Commons Attribution-NonCommercial-ShareAlike (CC BY-NC-SA 4.0) license logo"}
+    {"obj": "135 0", "alt": "Front cover of Ilokano Reference Grammar by Ernesto Constantino. A tan upper panel holds the University of Hawaiʻi Press logo, with a green HAWAI stylized mark. The author's name sits on the dividing line, and the title ILOKANO REFERENCE GRAMMAR is in white capitals on a black lower panel.", "confidence": 0.9},
+    {"obj": "141 0", "alt": "University of Hawaiʻi Press Open Access logo", "confidence": 0.95},
+    {"obj": "142 0", "alt": "Humanities Open Book logo, with the National Endowment for the Humanities and Andrew W. Mellon Foundation marks", "confidence": 0.9},
+    {"obj": "145 0", "alt": "Creative Commons Attribution-NonCommercial-ShareAlike (CC BY-NC-SA) license logo", "confidence": 0.95}
   ],
   "deferrals": [
-    {
-      "what": "OCR text layer quality and page assignment of text",
-      "why": "The digest reports a very high suspect-token rate (worst pages PDF 47, 44, 42, 37, 34, 31, 21, 18). Chapter titles appear split across pages (e.g. PDF 15 'CHAPTER 3' and PDF 17 'PARTS OF SPEECH'). Repeated top-of-page lines look like garbled OCR fragments, not true running heads, so no running-head artifacts were requested. A person should check the text layer and reading order against the page images.",
-      "pages": [15, 17, 18, 21, 31, 34, 37, 42, 44, 47]
-    },
-    {
-      "what": "Contents page (list tagged L/LI with links)",
-      "why": "The contents entries are already tagged as a list with labels, not as paragraphs the toc key can convert. They were left as a list. A person may convert them to TOC/TOCI. Printed page numbers in the entries (vi, 1 to 40) do not match the PDF page numbers.",
-      "pages": [6]
-    },
-    {
-      "what": "Language tagging of Ilokano example phrases",
-      "why": "Romanized Ilokano examples appear throughout the grammar. The work order has no way to tag them with a language (ilo), so a person should decide whether to tag them.",
-      "pages": [9, 49]
-    },
-    {
-      "what": "Numbered example lists and (a)-(d) definition lists",
-      "why": "These were kept as real lists. Some lists split across pages or contain stray items because of the OCR layer; a person should confirm the list structure.",
-      "pages": [14, 49]
-    }
+    {"what": "Poor OCR text layer", "why": "The file is an OCR'd scan (OCRmyPDF/Tesseract) with a high suspect-token rate (about 393 per 1000). The worst pages are PDF 47, 44, 42, 37, 34, 31, 21 and 18. Running heads appear as garbled fragments such as '#hapter'. repeated_lines shows only first words of body lines, not real running heads, so no artifact rules were written. A person should check the text layer and decide whether to re-OCR.", "pages": [18, 21, 31, 34, 37, 42, 44, 47]},
+    {"what": "Reading order and heading placement on chapter opener pages", "why": "page_map shows chapter labels and titles split across pages (for example CHAPTER 3 on PDF 15 and PARTS OF SPEECH on PDF 17; CHAPTER 4 on PDF 18 and SENTENCE CLASSIFICATION on PDF 19; similar for chapters 6 to 11). The digest has no reading_order data, so I could not confirm the order or decide a move_section. A person should check that each chapter label and title reads in sequence. Some chapter headings (PDF 8, 9) carry no chapter number.", "pages": [15, 17, 18, 19, 31, 33, 34, 35, 42, 43, 44, 45, 47, 49]},
+    {"what": "Contents list structure and page numbers", "why": "The contents on PDF 6 is a list with links, kept as is. Its printed page numbers (Preface vi, Introduction 1 and so on) do not match the PDF page numbers. A person should check that the link targets are right.", "pages": [6]},
+    {"what": "Language tagging of Ilokano example words", "why": "The book prints Ilokano examples in Latin script mixed with English. Tagging them (lang 'ilo') is beyond what this work order can do reliably. A reviewer should decide whether to tag them.", "pages": [10, 49]},
+    {"what": "Example sentence lists and (a)/(b) definition lists", "why": "Lists of numbered examples such as '(4) ...' and lettered definitions were kept as real lists. Some items wrap across pages and some lists are split in two, so a person should check the grouping.", "pages": [14, 49]}
   ],
-  "notes_for_reviewer": "The tree is already tagged (apparently OCR-derived). Only one H1 remains, the title on PDF 3. Contents, Preface and all chapter titles became H2 through per-element retype, because the style 'H1' covers both the title and the chapters. The copyright line (obj 150 0, PDF 5) was a false H2 and is now a paragraph. Section-numbered paragraphs wrongly tagged as lists were flattened. The cover figure and the three logos on PDF 4 got alt text."
+  "notes_for_reviewer": "PDF 3 holds the single H1 (the book title). All other former H1 elements (contents, preface, chapters) became H2, and the copyright line on PDF 5 became P. The book has no section-level headings in the tags, so there is no H3 or below. The cover on PDF 1 is a real figure and was kept with alt text, not artifacted. The three logos on PDF 4 got alt text. Section paragraphs numbered like 2.0 or 3.1 that had been tagged as lists were flattened to paragraphs."
 }
 ```

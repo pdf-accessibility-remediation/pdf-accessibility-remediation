@@ -119,10 +119,17 @@ def check(wo, digest, not_sent, words_sent, order=None):
     if 'tables' in wo:                          # header rows / columns of a real table: [{obj, header_rows, header_cols}]
         flattened = {it.get('obj') for it in wo.get('flatten') or [] if isinstance(it, dict)}
         table_objs = {x['obj'] for x in digest.get('tables', [])}
+        table_rows = {x['obj']: x.get('rows') for x in digest.get('tables', [])}
         def count_ok(v): return isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 3
+        def rows_ok(it, key):
+            v = it.get(key, [])
+            n = table_rows.get(it['obj'])
+            return isinstance(v, list) and all(isinstance(r, int) and not isinstance(r, bool) and r >= 0 and (n is None or r < n) for r in v)
         wo['tables'] = keep('tables', wo['tables'], lambda it: 'not a table listed in the digest' if not isinstance(it, dict) or it.get('obj') not in table_objs
                             else 'also flattened' if it['obj'] in flattened
                             else 'header_rows and header_cols must be whole numbers 0-3' if not (count_ok(it.get('header_rows', 0)) and count_ok(it.get('header_cols', 0)))
+                            else 'title_rows and note_rows must be whole numbers 0-3' if not (count_ok(it.get('title_rows', 0)) and count_ok(it.get('note_rows', 0)))
+                            else 'group_rows and repeat_rows must list row numbers in the table' if not (rows_ok(it, 'group_rows') and rows_ok(it, 'repeat_rows'))
                             else 'no header rows or columns' if not (it.get('header_rows', 0) or it.get('header_cols', 0)) else None)
         seen_t = set()
         wo['tables'] = keep('tables', wo['tables'], lambda it: 'the same table twice' if it['obj'] in seen_t else seen_t.add(it['obj']))

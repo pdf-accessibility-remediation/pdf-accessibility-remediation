@@ -176,3 +176,13 @@ def test_the_full_order_is_used_when_given_and_no_order_keeps_the_move():
     assert wc.check(wo, order_digest(LINES[:3]), set(), set(), order=full) == []     # the full order flags PDF 3, the lines don't
     wo = {'move_section': {'pages': [9, 9], 'before_page': 10}}
     assert check(wo) == [] and wo['move_section']['pages'] == [9, 9]                  # an older digest with no order: not judged
+
+def test_table_row_readings_are_checked():
+    digest_ = dict(digest(), tables=[{'obj': 20, 'rows': 6}, {'obj': 21}])
+    wo = {'tables': [{'obj': 20, 'title_rows': 1, 'header_rows': 1, 'group_rows': [2, 4], 'repeat_rows': [5], 'note_rows': 1},
+                     {'obj': 21, 'title_rows': 4, 'header_rows': 1}, {'obj': 21, 'note_rows': -1, 'header_rows': 1},
+                     {'obj': 21, 'group_rows': 'all', 'header_rows': 1}, {'obj': 20, 'group_rows': [6], 'header_rows': 1},
+                     {'obj': 21, 'repeat_rows': [True], 'header_rows': 1}, {'obj': 21, 'title_rows': 1}]}
+    dropped = wc.check(wo, digest_, set(), set())
+    assert [it['obj'] for it in wo['tables']] == [20]
+    assert whys(dropped, 'tables') == ['title_rows and note_rows must be whole numbers 0-3'] * 2 + ['group_rows and repeat_rows must list row numbers in the table'] * 3 + ['no header rows or columns']

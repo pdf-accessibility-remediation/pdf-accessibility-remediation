@@ -1,7 +1,7 @@
 {
  "apply": {
   "applied": {
-   "artifact: \"page numbers (bottom, chapter openers and contents page)\"": 7,
+   "artifact: \"page numbers on chapter-opening pages (bottom)\"": 7,
    "artifact: \"running heads and page numbers (top)\"": 360,
    "document: /Lang": 1,
    "document: DisplayDocTitle": 1,
