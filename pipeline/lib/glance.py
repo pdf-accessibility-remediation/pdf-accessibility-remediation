@@ -379,11 +379,13 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
 
 def _n(x): return f'{x:,}'
 def needs_looked_text(g):
-    """What the evaluation said about "What Needs a Person", for the Overview and the card, or None: looked at (a Pass on
-    this version's PAC 2026 result) or marked Fail; nothing for Not Applicable or no result (decided 2026-10-31)."""
+    """What the evaluation said about "What Needs a Person", for the Overview and the card, or None: considered during the
+    evaluation (a Pass on this version's PAC 2026 result; the card's words, Patrick, 2026-11-01; was "looked at") or marked
+    Fail; nothing for Not Applicable or no result (decided 2026-10-31)."""
     lk = g.get('needs_looked') or {}
     if not g['needs_person']['total'] or lk.get('result') not in ('pass', 'fail'): return None
-    return f'{"looked at" if lk["result"] == "pass" else "marked Fail"} in the evaluation ({lk.get("by")}, {D.day(lk.get("recorded"))})'
+    return (f'{"considered during" if lk["result"] == "pass" else "marked Fail in"} the evaluation '
+            f'({lk.get("by") or "name not recorded"}, {D.day(lk.get("recorded"))})')
 def glance_md(g, html_name='review.html', top=5):
     """The "## Overview" block (a list of lines) for review.md (called "At a glance" before 2026-10-21)."""
     st = g.get('status') or {}                          # above "**Ready to ship?**", never between it and its "- " lines (webapp/runs.py)
