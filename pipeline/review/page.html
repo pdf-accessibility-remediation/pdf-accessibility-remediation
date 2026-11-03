@@ -64,6 +64,9 @@ dialog.npad textarea { flex: 1; resize: none; border: 0; border-radius: 0 0 8px 
 .fin-check { border-left: 4px solid var(--change); background: var(--bg); padding: 6px 10px; margin: 8px 0; font-size: 14px; }
 .fin-check ul { margin: 4px 0 0; padding-left: 20px; } .fin-check.err { border-left-color: var(--reject); }
 #msg { margin-top: 6px; font-size: 14px; }
+.draft-line { margin-top: 6px; font-size: 14px; } .draft-line[hidden] { display: none; }
+.draft-line .note { color: var(--muted); } .draft-line ul { margin: 4px 0 0 1.2em; padding: 0; } .draft-line a { color: var(--accent); }
+.draft-line .stale { color: var(--reject); font-weight: 600; }
 #msg:has(.msg-x) { display: flex; align-items: flex-start; gap: 8px; } #msg .msg-t { flex: 1; padding-top: 4px; }
 #msg.err { color: var(--reject); }
 #session { margin-top: 6px; font-size: 14px; color: var(--muted); }
@@ -206,10 +209,12 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
       <label><input type="radio" name="view" value="left"> Not Reviewed</label>
     </span>
     <span class="actions"><button id="addBtn" type="button">Add a Decision</button>
+    <button id="draftBtn" type="button">Build a Draft PDF</button>
     <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close Without a Verdict</button>
     <span id="saveState" class="save-state">All changes saved</span><span id="gapState" class="gap-state"></span></span>
   </div>
   <div id="saveAlert" role="alert" class="save-alert"></div>
+  <div id="draftLine" class="draft-line" aria-live="polite" hidden></div>
   <div id="msg" role="status"></div>
   <div id="session" hidden></div>
   <div class="hdr-foot"><p id="back" hidden><a href="" class="btnlink">Back to the Run Page</a> (this review stays open; continue it from there)</p>
@@ -260,6 +265,7 @@ try {
 } catch (e) {}
 state.additions = (state.additions || []).filter(a => addById[aid(a)]);
 let view = 'priority', finished = false;
+let draftPoll = null, draftBasis = null, draftStale = false, draftLast = null;   // Build a Draft PDF (below)
 const RETURN_TO = DATA.return_to || null;             // the app's run page (review_workorder.py --return-to), else the terminal
 if (RETURN_TO) { const b = document.getElementById('back'); b.hidden = false; b.querySelector('a').href = RETURN_TO.split('?')[0]; }
 const NEXT = RETURN_TO ? 'the run page' : 'the terminal';
@@ -303,7 +309,7 @@ function tc(s) {
 }
 const pg = (p, lab) => p == null ? '' : 'PDF p. ' + p + (lab && String(lab) !== String(p) ? ' (printed ' + lab + ')' : '');
 const show = v => v == null || v === '' ? '—' : (typeof v === 'object' ? JSON.stringify(v) : String(v));
-function persist() { state.saved_at = new Date().toISOString(); try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} saveSoon(); }
+function persist() { state.saved_at = new Date().toISOString(); try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} saveSoon(); draftCheckStale(); }
 
 // ---------------------------------------------------------------- saving: automatic (there is no Save button)
 // Every change goes to the run about a second after it is made (POST /keep: review_decisions.json, under the server's
@@ -550,13 +556,70 @@ ocrBox.addEventListener('click', e => {
   }
   goTo(card);
 });
+// ---------------------------------------------------------------- Build a Draft PDF: the choices so far in a real PDF
+// POST /draft keeps the draft as auto-save does, then the server builds the PDF in the background (the same check as
+// Finish, then the executor); the page asks GET /draft every 2 s until it is ready. The PDF is for checking only and is
+// not kept: the server removes it when it stops. A change to a decision or an addition after the build marks it out of date.
+const draftBtn = document.getElementById('draftBtn'), draftLine = document.getElementById('draftLine');
+const choicesNow = () => JSON.stringify([state.decisions, state.additions]);
+const mmss = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+const DRAFT_NOTE = 'For checking only: the accessibility checks a finished result gets are not run on it, and it has no review record. Changes made to it in Acrobat are not kept: "Finish Review" builds the real result from your choices.';
+function draftLink(id, words) {                        // a card of this page (a decision, or an addition), else the words alone
+  return id && (byId[id] || document.getElementById('card-' + id)) ? '<a href="#card-' + esc(id) + '" data-card="card-' + esc(id) + '">' + esc(words) + '</a>' : esc(words);
+}
+function draftShow(d) {
+  draftLast = d; draftLine.hidden = !d || d.state === 'idle';
+  draftBtn.disabled = finished || (d && d.state === 'building');
+  if (!d || d.state === 'idle') return;
+  if (d.state === 'building') { draftLine.innerHTML = 'Building the draft PDF… ' + mmss(d.elapsed || 0) + ' <span class="note">(a long book takes a few minutes; your changes are still saved as you make them)</span>'; return; }
+  if (d.state === 'failed') { draftLine.innerHTML = '<span class="stale">' + esc(d.error || 'The draft could not be built.') + '</span>'; return; }
+  const r = d.result || {}, dr = r.dropped || [], rf = r.refused || [], mv = (r.moves || []).filter(m => m.refused), rj = r.rejected || [];
+  let h = (draftStale ? '<span class="stale">Out of date: you changed something after this draft was built.</span> ' : '') +
+    '<a href="draft.pdf?t=' + encodeURIComponent(d.basis || '') + '" download>Download the Draft PDF</a> (built in ' + mmss(d.seconds || 0) + '). <span class="note">' + DRAFT_NOTE + '</span>';
+  const list = (n, one, many, rows) => n ? '<div><b>' + n + ' ' + (n === 1 ? one : many) + '</b>:<ul>' + rows.join('') + '</ul></div>' : '';
+  const name = x => x.card && byId[x.card] ? byId[x.card].kind + ': ' + String(byId[x.card].label).slice(0, 80) : x.where;
+  h += list(dr.length, 'choice left out by the check', 'choices left out by the check', dr.map(x => '<li>' + draftLink(x.card, name(x)) + ': ' + esc(x.why) + '</li>'));
+  h += list(rf.length, 'addition can\'t be applied', 'additions can\'t be applied', rf.map(x => '<li>' + draftLink(x.id, (addById[x.id] || {}).label || x.id) + ': ' + esc(x.why) + '</li>'));
+  h += list(mv.length, 'section move refused by the executor', 'section moves refused by the executor', mv.map(m => '<li>' + draftLink(m.card, m.card && byId[m.card] ? name(m) : 'Section move') + ': ' + esc(m.refused) + '</li>'));
+  h += list(rj.length, 'other step refused by the executor', 'other steps refused by the executor', rj.map(x => '<li>' + esc(x.op) + ': ' + esc(x.why) + '</li>'));
+  draftLine.innerHTML = h;
+}
+function draftCheckStale() {
+  if (!draftLast || draftStale || !draftBasis || (draftLast.state !== 'ready' && draftLast.state !== 'building')) return;
+  if (choicesNow() !== draftBasis) { draftStale = true; draftShow(draftLast); }
+}
+async function draftWatch() {
+  clearTimeout(draftPoll);
+  try {
+    const r = await fetch('/draft'), d = await r.json();
+    if (r.status !== 200) return;
+    draftShow(d);
+    if (d.state === 'building' && !finished) draftPoll = setTimeout(draftWatch, 2000);
+    else if (d.state === 'ready' && draftStale) draftShow(d);
+  } catch (e) { if (!finished) draftShow({ state: 'failed', error: 'This page can\'t reach its server: the review was closed, or the app stopped.' }); }
+}
+draftBtn.addEventListener('click', async () => {
+  if (finished) return;
+  draftBtn.disabled = true;
+  try {
+    const [s, b] = await post('/draft');
+    if (s !== 202) { draftBtn.disabled = false; return draftShow({ state: 'failed', error: b.error || 'The draft could not be started.' }); }
+    draftBasis = choicesNow(); draftStale = false; draftShow(b); draftPoll = setTimeout(draftWatch, 2000);
+  } catch (e) { draftBtn.disabled = false; draftShow({ state: 'failed', error: 'This page can\'t reach its server: the review was closed, or the app stopped.' }); }
+});
+draftLine.addEventListener('click', e => { const a = e.target.closest('a[data-card]'); if (a) { e.preventDefault(); goCard(a.dataset.card); } });
+if (!OCR_ONLY) fetch('/draft').then(r => r.json()).then(d => {   // a reload while a draft is being built, or after: show it
+  if (!d || d.state === 'idle') return;
+  draftBasis = choicesNow(); draftStale = !!(state.saved_at && d.basis && state.saved_at > d.basis);
+  draftShow(d); if (d.state === 'building') draftPoll = setTimeout(draftWatch, 2000);
+}).catch(() => {});
 if (OCR_ONLY) {                                        // the OCR section alone: no session, no decisions
   document.getElementById('title').textContent = 'OCR Text Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
   document.title = 'OCR Text Review';
   const back = document.getElementById('back');
   if (!back.hidden) back.innerHTML = '<a href="' + esc(RETURN_TO.split('?')[0]) + '" class="btnlink">Back to the Run Page</a> (this page stays open until you close it here or there)';
   [document.getElementById('sessionName').closest('span'), document.getElementById('progress').parentNode, document.querySelector('.show'),
-   document.getElementById('addBtn'), document.getElementById('saveState'), document.getElementById('gapState'), document.getElementById('finish'),
+   document.getElementById('addBtn'), document.getElementById('draftBtn'), document.getElementById('draftLine'), document.getElementById('saveState'), document.getElementById('gapState'), document.getElementById('finish'),
    document.getElementById('this-session'), document.getElementById('cards')].forEach(x => { x.hidden = true; });
   const c = document.getElementById('closeOcr'); c.hidden = false;
   c.addEventListener('click', async () => {
@@ -1403,7 +1466,8 @@ finBtn.addEventListener('click', async () => {
     }
     if (s !== 200 || !b.finished) return msg(esc(b.error || 'Finish failed'), true);
     finished = true; panel.hidden = true; dirty = false; saveAlert(''); saveState('All changes saved');
-    document.querySelectorAll('#finish, #addBtn, #sessionName, #sessionNotes, #padNotes').forEach(x => x.disabled = true);
+    document.querySelectorAll('#finish, #addBtn, #draftBtn, #sessionName, #sessionNotes, #padNotes').forEach(x => x.disabled = true);
+    clearTimeout(draftPoll); draftLine.hidden = true;  // the server stops now, and the draft with it
     msg('Review finished · ' + b.changes + ' changes recorded' + dropText(b.dropped) + (b.gaps.length ? ' · ' + b.gaps.length + ' gaps left open, with your reasons' : '') +
         (RETURN_TO ? '. Going to the run page, which shows what happens next.' :
          SESSION && SESSION.reopened ? '. The terminal is re-applying it now (no AI call); the current result is replaced when that finishes.' : '. Go back to the terminal to continue the run.'), b.dropped.length > 0);
