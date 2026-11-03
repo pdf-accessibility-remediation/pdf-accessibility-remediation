@@ -68,30 +68,60 @@ log_attempt() {                # a paid call whose reply could not be used: keep
   python3 - "$R" <<'PY2'
 import sys, os, json, datetime
 R = sys.argv[1]; run = json.load(open(os.path.join(R, 'run.json'), encoding='utf-8'))
+now = datetime.datetime.now().isoformat(timespec='seconds')
+fp = run.get('figure_passes') or {}
+if fp.get('state') == 'calling' and not run.get('response_from'):   # stopped while its figure requests were being sent:
+    p = os.path.join(R, 'attempts.json'); att = json.load(open(p)) if os.path.exists(p) else []   # every request it paid for,
+    for c in run.get('passes') or []:                                # and the one in flight, whose charge is not known
+        att.append({'started': run.get('started'), 'pass': c['pass'], 'cost_usd': (c.get('usage') or {}).get('cost_usd') or 0,
+                    'finish_reason': c.get('finish_reason') or (c.get('calls') or [{}])[-1].get('finish_reason'), 'usage': c.get('usage'),
+                    'stopped': True, 'logged': now})
+    if fp.get('in_flight'):
+        att.append({'started': run.get('started'), 'pass': fp['in_flight'], 'cost_usd': None, 'stopped': True,
+                    'note': 'in flight when the run stopped; any charge is not known', 'logged': now})
+    json.dump(att, open(p, 'w'), indent=1)
+    for f in ('run.json', 'passes.json'):
+        if os.path.exists(os.path.join(R, f)): os.remove(os.path.join(R, f))
+    spent = sum((c.get('usage') or {}).get('cost_usd') or 0 for c in run.get('passes') or [])
+    print(f'▶ the earlier attempt was stopped while its figure requests were being sent: ${spent:.3f} it spent on '
+          f'{len(run.get("passes") or [])} request(s) is logged' + (' (and one request was in flight; its charge is not known)' if fp.get('in_flight') else '')
+          + '; the run starts over')
+    sys.exit(0)
 cost = (run.get('usage') or {}).get('cost_usd')
 if cost and not run.get('response_from'):                       # a paid call whose reply could not be used
     p = os.path.join(R, 'attempts.json'); att = json.load(open(p)) if os.path.exists(p) else []
     att.append({'started': run.get('started'), 'cost_usd': cost, 'finish_reason': run.get('finish_reason'),
                 'max_tokens': (run.get('estimate') or {}).get('max_tokens'), 'usage': run.get('usage'),
-                'logged': datetime.datetime.now().isoformat(timespec='seconds')})
+                'logged': now})
     json.dump(att, open(p, 'w'), indent=1)
     os.remove(os.path.join(R, 'run.json'))
     print(f'▶ earlier attempt logged: ${cost:.3f} spent, reply {"cut off" if run.get("finish_reason") == "length" else "unusable"}; making a new call')
 PY2
 }
-SAVED=; REVIEWED=
+fig_state() {                  # the state of an earlier attempt's figure requests (decide.py's run.json), or nothing
+  [[ -f $R/run.json ]] && python3 -c "import json,sys; print((json.load(open(sys.argv[1])).get('figure_passes') or {}).get('state') or '')" "$R/run.json" || true
+}
+SAVED=; REVIEWED=; MERGED=
+FIG=$(fig_state)
 if [[ -f $R/workorder.ai.json ]]; then         # stopped for a person's review (REVIEW=1): never decide again over it
   if [[ ! -f $R/review.json ]]; then
     echo "the AI's work order in $R is waiting for a review. Finish it first:"
     echo "  python3 $(pwd)/review_workorder.py \"$R\" --serve"; exit 1
   fi
   REVIEWED=1; echo "▶ the work order was reviewed by a person: applying the reviewed version (no API call)"
+elif [[ -z ${REPLY:-} && -f $R/workorder.json && $FIG == merged ]]; then
+  # every request of the earlier attempt finished, figure requests included, and a later step failed: its work order and
+  # run.json are this run's own (its calls stay counted as this run's spending; not a replay)
+  MERGED=1; echo "▶ every AI request of the earlier attempt finished (a later step failed): applying its work order, no new API call"
 elif [[ -z ${REPLY:-} && -f $R/workorder.json && -f $R/response.json ]]; then
   REPLY=$R/response.json
   echo "▶ the earlier attempt's reply was complete (a later step failed): reusing it, no new API call"
+elif [[ $FIG == calling ]]; then
+  log_attempt                                  # stopped while its figure requests were being sent: logged, then started over
 elif [[ -f $R/run.json ]]; then
   # a complete paid reply that could not be read: try it again with the current reader before paying for a new call
-  if [[ -z ${REPLY:-} && -f $R/response.json ]] && python3 -c "import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if (r.get('usage') or {}).get('cost_usd') and r.get('finish_reason') not in (None, 'length') and not r.get('error') and not r.get('response_from') else 1)" "$R/run.json"; then
+  # (not for a book planned with figure requests: they would need new calls, so its cost is logged and the run starts over)
+  if [[ -z ${REPLY:-} && -f $R/response.json ]] && python3 -c "import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if (r.get('usage') or {}).get('cost_usd') and r.get('finish_reason') not in (None, 'length') and not r.get('error') and not r.get('response_from') and not (r.get('estimate') or {}).get('passes') else 1)" "$R/run.json"; then
     SAVED=1
   else
     log_attempt
@@ -153,8 +183,8 @@ if [[ -n $SAVED ]]; then
     echo "▶ the saved reply still cannot be read: its cost is logged and a new call is made"; log_attempt
   fi
 fi
-if [[ -n ${ESTIMATE:-} && ( -n ${REPLY:-} || -n $REVIEWED ) ]]; then echo "estimate only: no cost, a saved reply will be reused"; summary; exit 0; fi
-if [[ -n ${REUSED:-} || -n $REVIEWED ]]; then
+if [[ -n ${ESTIMATE:-} && ( -n ${REPLY:-} || -n $REVIEWED || -n $MERGED ) ]]; then echo "estimate only: no cost, a saved reply will be reused"; summary; exit 0; fi
+if [[ -n ${REUSED:-} || -n $REVIEWED || -n $MERGED ]]; then
   :
 elif [[ -n ${REPLY:-} ]]; then
   stage "2/5 reuse saved reply (no cost)" python3 decide.py "$A" "$R" --response-file "$REPLY" ${MT[@]+"${MT[@]}"}
