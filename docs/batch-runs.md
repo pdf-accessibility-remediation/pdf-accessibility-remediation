@@ -39,7 +39,7 @@ cadaverous  samples/cadaverous/Cadaverous.pdf
 
 `batch_api.sh` refuses to start without `AUTO=1`, because it calls the API without asking. It works in three steps:
 
-1. **Estimate (no model).** It runs the intake step for untagged books (OCR and auto-tagging; free) and audits every book and adds up the worst-case cost. It stops before any API call if the Claude total is over `BATCH_MAX_USD` (default $5) or over your credit. The audits are kept, so a rerun with a higher cap reuses them. Only Claude models count against the cap and the credit check (see [Choosing the model](models.md#choosing-the-model)), so the total line depends on the model:
+1. **Estimate (no model).** It runs the intake step for untagged books (OCR and auto-tagging; free) and audits every book and adds up the worst-case cost. A book with more than 100 images counts every one of its requests (its row says "in N requests"; see [Files](files.md)), and each book is also held to its own book cap (`BOOK_MAX_USD`, $5) when it runs. It stops before any API call if the Claude total is over `BATCH_MAX_USD` (default $5) or over your credit. The audits are kept, so a rerun with a higher cap reuses them. Only Claude models count against the cap and the credit check (see [Choosing the model](models.md#choosing-the-model)), so the total line depends on the model:
 
    ```
    # Claude batch

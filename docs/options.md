@@ -7,7 +7,7 @@ nav_order: 4
 
 | Before the command | Effect |
 |---|---|
-| `AUTO=1` | No y/N question: sends straight away. For a Claude model only if the estimate is within the $2 cap and your credit; for any other model the estimate is approximate and not capped (the line printed before sending says which) |
+| `AUTO=1` | No y/N question: sends straight away. For a Claude model only if each request's estimate is within the $2 cap, the book's within the $5 book cap, and both within your credit; for any other model the estimate is approximate and not capped (the line printed before sending says which) |
 | `ESTIMATE=1` | Audit and cost estimate only; a later run with the same label reuses the audit |
 | `REPLY=path/to/reply.txt` | Reuses a saved Claude reply instead of calling the API (no cost) |
 | `REVIEW=1` | Stops after the AI's decisions so a person can approve, change or reject each one before anything is applied; rerunning the same label (without it) applies the reviewed work order. One book at a time, not in batches (see [Reviewing the work order](review-step.md)) |
@@ -16,6 +16,11 @@ nav_order: 4
 | `OUT=name.pdf` | Names the result (default: `<original name>_remediated.pdf`) |
 | `MODEL=openai/gpt-5` | Any OpenRouter model id for this run or batch (default: `DEFAULT_MODEL` in `decide.py`, `anthropic/claude-sonnet-5.5`) |
 | `MAX_TOKENS=64000` | Output limit for the model's reply, reasoning included (default 48,000; Sonnet 5.5 allows up to 128,000 on OpenRouter). Raise it when a reply is cut off |
+| `MAX_USD=3` | The cap on one request's worst case, in dollars (default 2). Claude models only |
+| `BOOK_MAX_USD=6` | The cap on the worst case of all of a book's requests together, figure requests included (default 5). The run stops before any call when the estimate is over it, and says the value to set. Claude models only |
+| `FIGURE_PASSES=off` | No figure requests: figures past the first request's 100 images go to a person, as before (see [Files](files.md)) |
+| `FIGURE_MAX_TOKENS=48000` | Output limit for each figure request (default 32,000) |
+| `FIGURE_PROBE=20` | Test only, terminal only: also re-sends 20 figures the first request answered, to compare the two answers; recorded in `record.json` (`run.passes`, `overlap`), never used, counted in the cost |
 | `RUNS_DIR=/path` | Writes runs somewhere other than `PDFREM/runs/` |
 | `ALLOW_PDF20=1` | Lets a PDF 2.0 book (or one with namespaced tags) through instead of stopping it. Only for building PDF 2.0 support; never on real work (see [Not supported yet: PDF 2.0](troubleshooting.md#not-supported-yet-pdf-20)) |
 | `VERAPDF=off` | Runs without veraPDF; review.md says its rows were not run. `VERAPDF=/path/to/verapdf` uses a launcher not on `PATH`; `VERAPDF_TIMEOUT` (seconds, default 900) limits each veraPDF run |

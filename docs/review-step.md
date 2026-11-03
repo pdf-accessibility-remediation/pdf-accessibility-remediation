@@ -199,7 +199,7 @@ Some reading-order problems are left to a person: a page whose text jumps back u
 In the Finish dialog and at **Finish**, the work order as it would be applied is checked for things that are still missing. Gaps don't block the review: you can add what is missing, or finish and give a reason.
 
 - **H1:** no element would be an H1, or more than one would. The count combines style mappings and single-element retypes. It is approximate, because the audit lists element counts per style; `review.md` has the exact count after the run.
-- **Figures without alt text** that are not marked as decoration. This covers figures whose images were not sent to the model (more than `--max-images`, 100 by default): in *dwellings* that was 443 of 543 figures, all left for a person.
+- **Figures without alt text** that are not marked as decoration. Since figure requests (see [Files](files.md)), a figure past the first request's 100 images gets its alt text from a figure request; what is left are figures whose figure request did not finish, or every figure past 100 with `FIGURE_PASSES=off` (in *dwellings* that was 443 of 543 figures). The alt texts the figure requests wrote are decisions on the page like any other.
 - **Whole-page figures without alt text.**
 
 The line beside **Finish Review** counts the open gaps ("1 gap open"), and the Finish dialog lists each gap with an **Add** link that closes the dialog and opens the form at the right kind. At **Finish**, each open gap needs a reason. The reasons are recorded and listed in `review.md`. An explained gap counts as handled, so the review's row stays OK. A hand edit recorded without `--note` gives no reason, so its gaps make the row a CHECK.
