@@ -1,0 +1,60 @@
+```json
+{
+  "schema": "workorder/0.2",
+  "sections": {
+    "toc_pages": [6, 7, 8, 9, 10, 11]
+  },
+  "document": {
+    "title": "The Value of Hawaiʻi 3: Hulihia, the Turning",
+    "lang": "en-US",
+    "display_doc_title": true
+  },
+  "rolemap": {
+    "H1": "H3",
+    "H2": "H4"
+  },
+  "retype": [
+    {"obj": "6411 0", "type": "H1", "why": "Half-title page carries the book title; the single H1"},
+    {"obj": "6375 0", "type": "P", "why": "Title-page line repeats the book title; not a separate heading"},
+    {"obj": "6385 0", "type": "H2", "why": "Front-matter title (series page)"},
+    {"obj": "6121 0", "type": "H2", "why": "Front-matter title (Contents)"},
+    {"obj": "6123 0", "type": "H2", "why": "Front-matter title (Acknowledgments)"},
+    {"obj": "6002 0", "type": "H2", "why": "Opening piece outside the four parts"},
+    {"obj": "5900 0", "type": "H2", "why": "Opening piece outside the four parts"},
+    {"obj": "2947 0", "type": "H2", "why": "Introduction, outside the four parts"},
+    {"obj": "5166 0", "type": "H2", "why": "Part I title"},
+    {"obj": "4440 0", "type": "H2", "why": "Part II title"},
+    {"obj": "3580 0", "type": "H2", "why": "Part III title"},
+    {"obj": "2962 0", "type": "H2", "why": "Part IV title"},
+    {"obj": "5942 0", "type": "H3", "why": "Works Cited under an H2 chapter; avoids skipping a level"},
+    {"obj": "4249 0", "type": "H5", "why": "Sub-subheading under an H4 subhead"},
+    {"obj": "4252 0", "type": "H5"},
+    {"obj": "4254 0", "type": "H5"},
+    {"obj": "4257 0", "type": "H5"},
+    {"obj": "4259 0", "type": "H5"},
+    {"obj": "3607 0", "type": "H5", "why": "Contributor name under an H4 subhead"},
+    {"obj": "3611 0", "type": "H5"},
+    {"obj": "3618 0", "type": "H5"}
+  ],
+  "alt": [
+    {"obj": "2950 0", "alt": "Book cover: a large black teardrop shape filled with cracked lava, its fissures glowing red and orange, set against a green background with white swirling edges. Title: The Value of Hawaiʻi 3: Hulihia, the Turning. Edited by Noelani Goodyear-Kaʻōpua, Craig Howes, Jonathan Kay Kamakawiwoʻole Osorio, and Aiko Yamashiro.", "confidence": 0.9},
+    {"obj": "6358 0", "alt": "CC BY-NC-ND 4.0 logo (Creative Commons Attribution-NonCommercial-NoDerivatives)", "confidence": 0.9},
+    {"obj": "5031 0", "alt": "Painting “Makamalunohonaokalani” by Marilyn Kahalewai: an ahupuaʻa seen from the mountains to the sea. A stream runs down through forest and loʻi kalo (taro pond fields) to a shore with thatched houses, a canoe hale and canoes on the blue water.", "confidence": 0.85},
+    {"obj": "4755 0", "alt": "Word cloud made from the speakers’ transcripts. The most prominent words are “Indigenous”, “people”, “system”, “agriculture”, “food”, “land”, “practices”, “family”, “Hawaiian”, “knowledge” and “values”.", "confidence": 0.9},
+    {"obj": "3468 0", "alt": "Dot map of the world in which each dot is a climate sensor. Dots are densest over North America, Europe, South and East Asia, and coastal Africa and South America, showing the extent of urbanism and higher temperatures in urban areas.", "confidence": 0.85},
+    {"obj": "3475 0", "alt": "Relief map of Oʻahu showing the original land defense of the island. Red areas mark Schofield Barracks, Pearl Harbor, Ft. Kamehameha, Ft. Armstrong, Ft. DeRussy and Diamond Head. Dotted lines show the railway gun route, the Diamond Head fire range and direct visibility.", "confidence": 0.85},
+    {"obj": "3479 0", "alt": "Computer rendering of a row of huge red underground fuel tanks (Red Hill) receding into the distance, each with a model of the Aloha Tower in front of it. Each tank is two to three times as large as the tower.", "confidence": 0.9},
+    {"obj": "3481 0", "alt": "Two maps of Oʻahu side by side. Left, “Military Land Use (Territory)”, shows training areas in gray and bases in black. Right, “State Land Use (2020)”, shows agriculture in gray and urban areas in black. Military bases and training areas correspond closely to urbanized land.", "confidence": 0.85},
+    {"obj": "3490 0", "alt": "Aerial map of Waikīkī proposing recovery of its hydrology. Labeled features include Mānoa-Pālolo marsh, Waikīkī kalo fields, Kapahulu linear wetland, Ala Wai wetland park, Makiki stream park, Kālia dam, Kālia fens and the oyster reef. Red arrows show stormwater inputs and blue arrows show clean water outputs.", "confidence": 0.85},
+    {"obj": "3279 0", "alt": "Chart: “Ulu Kukui o Kaulike: Advancing Justice for Kānaka Maoli in One Generation Through Health Policy”, a vision to advance health equity for Native Hawaiians and eliminate health disparities within one generation. Seven steps run from “Millennia ago” to 2030, each with a plant illustration: cultural foundation, community cohesion, equity research and policy analyses, systems advocacy, legislative compliance and enforcement, investment for SDOH and disparate populations, and population strengthening. Long description: the steps are explained in the surrounding chapter text.", "confidence": 0.85},
+    {"obj": "3022 0", "alt": "Illustration, a vision map for a future Hāmākua by Haley Kailiehu (2020): an ahupuaʻa from mountain ridge to sea. A river and waterfall run past a flowering ʻōhiʻa tree, gardens, terraces and a gathering house to the ocean, with seabirds, fish and whales.", "confidence": 0.85}
+  ],
+  "deferrals": [
+    {"what": "Untagged page numbers on the contents pages (“198” and “253”) are in no tag and not marked as artifacts", "why": "They are real contents entries (page numbers), not decoration, so they cannot be artifacted. A person must tag them in their contents entries.", "pages": [9, 10]},
+    {"what": "Five untagged runs of body text on this page, the continuation of the chapter text before the Notes and Works Cited", "why": "Real content that is not tagged. A person must tag it and check the reading order.", "pages": [35]},
+    {"what": "Several headings read in a different word order from the printed one: the title page, “as Home and a Place of Learning Waikīkī”, the chapter title on PDF 144 (printed 131) and “of Abundance from a Future Hāmākua 2120 A Moʻolelo” (the printed order is probably “Hāmākua 2120: A Moʻolelo of Abundance from a Future”)", "why": "I cannot confirm the printed order and punctuation from the digest, so ActualText was not attempted. A person should check them against the page.", "pages": [4, 100, 144, 295]},
+    {"what": "Hawaiian-language passages and poems (for example PDF 14–16 and PDF 30) are not language-tagged", "why": "Hawaiian words are in Latin script, there is no Hawaiian run tool in the work order, and runs mix English and Hawaiian. A person may add haw tags.", "pages": [14, 16, 30]}
+  ],
+  "notes_for_reviewer": "Heading outline: H1 is the book title (half-title page). H2 covers front-matter titles, the opening pieces and the four part titles. H3 covers chapters inside the parts, and the two chapters outside them were set to H2. H4 covers section heads and the Works Cited/Notes heads. H5 covers the contributor names and value statements that sat at H3 under those sections. The style-level rolemap moves the existing H1 and H2 styles down one or two levels, and per-element retypes fix the exceptions. The title-page line (6375 0) was demoted to P because it repeats the title. Existing alt text on every figure ended in a NUL character (\\x00); all figures have been rewritten without it. The contents pages already carry TOC/TOCI tags, so no toc key was given. The six bulleted lists are real lists and were kept. The book has no tables. veraPDF listed no fixable rules."
+}
+```

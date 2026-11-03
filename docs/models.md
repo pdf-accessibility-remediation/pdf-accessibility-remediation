@@ -11,22 +11,22 @@ The default is one line near the top of `decide.py`: `DEFAULT_MODEL = 'anthropic
 
 ```bash
 # default model (DEFAULT_MODEL in decide.py), with the y/N question
-bash run_api.sh ../samples/group1/clans.pdf clans api-run3
+bash run_api.sh ../samples/tagged/northkorea.pdf northkorea api-run3
 # another model for one book, no question
-MODEL=openai/gpt-5 AUTO=1 bash run_api.sh ../samples/group1/clans.pdf clans gpt-run1
+MODEL=openai/gpt-5 AUTO=1 bash run_api.sh ../samples/tagged/northkorea.pdf northkorea gpt-run1
 # the cost estimate only, to see what a model would cost (free)
-MODEL=google/gemini-3.8-flash ESTIMATE=1 bash run_api.sh ../samples/group1/clans.pdf clans gem-run1
+MODEL=google/gemini-3.8-flash ESTIMATE=1 bash run_api.sh ../samples/tagged/northkorea.pdf northkorea gem-run1
 # the same group with two models, to compare
-AUTO=1 bash batch_api.sh g1-sonnet ../samples/group1
-MODEL=anthropic/claude-opus-5.5 AUTO=1 bash batch_api.sh g1-opus ../samples/group1
+AUTO=1 bash batch_api.sh t-sonnet ../samples/tagged
+MODEL=anthropic/claude-opus-5.5 AUTO=1 bash batch_api.sh t-opus ../samples/tagged
 # a bigger output limit as well
-MODEL=openai/gpt-5 MAX_TOKENS=32000 AUTO=1 bash batch_api.sh g3-gpt ../samples/group3
+MODEL=openai/gpt-5 MAX_TOKENS=32000 AUTO=1 bash batch_api.sh t-gpt ../samples/tagged
 # finish the books a batch couldn't (keep the same MODEL as the first try; the summary prints this command)
-RETRY=1 MODEL=openai/gpt-5 AUTO=1 bash batch_api.sh g3-gpt ../samples/group3
+RETRY=1 MODEL=openai/gpt-5 AUTO=1 bash batch_api.sh t-gpt ../samples/tagged
 # the model was rate-limited (429): wait a few minutes, then one book at a time
-RETRY=1 JOBS=1 MODEL=openai/gpt-6.1-sol AUTO=1 bash batch_api.sh group1SOL ../samples/group1
+RETRY=1 JOBS=1 MODEL=openai/gpt-6.1-sol AUTO=1 bash batch_api.sh t-sol ../samples/tagged
 # re-apply saved replies for free; each keeps the model that wrote it, so no MODEL= needed
-FROM=g1-opus AUTO=1 bash batch_api.sh g1-opus-rerun ../samples/group1
+FROM=t-opus AUTO=1 bash batch_api.sh t-opus-rerun ../samples/tagged
 ```
 
 Ids that exist on OpenRouter and take images: `anthropic/claude-sonnet-5.5`, `anthropic/claude-opus-5.5`, `google/gemini-3.8-flash`, `openai/gpt-5`.

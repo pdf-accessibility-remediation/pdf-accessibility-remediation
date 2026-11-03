@@ -73,10 +73,10 @@ The page's heading is **Accessibility Evaluation (PAC 2026 & Screen-Reader Test)
 
 ```bash
 cd pipeline
-python3 manual_checks.py ../runs/godzone/rv1 --show                      # status, "Ready to ship?", the version, every result
+python3 manual_checks.py ../runs/teika/rv1 --show                        # status, "Ready to ship?", the version, every result
 python3 manual_checks.py --template pac > pac.json                       # empty results to fill in
-python3 manual_checks.py ../runs/godzone/rv1 --record pac pac.json       # record it (screen-reader: --record screen-reader FILE)
-python3 manual_checks.py ../runs/godzone/rv1 --refresh                   # recompute the Overview and review.html (no PDF touched)
+python3 manual_checks.py ../runs/teika/rv1 --record pac pac.json         # record it (screen-reader: --record screen-reader FILE)
+python3 manual_checks.py ../runs/teika/rv1 --refresh                     # recompute the Overview and review.html (no PDF touched)
 ```
 
 `--for-sha SHA` records only when the PDF on disk still has that sha256 (the version you checked; `--show` prints it).

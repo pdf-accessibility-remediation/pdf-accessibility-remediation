@@ -31,7 +31,7 @@ Which rules belong to whom, and which work-order key fixes each AI rule, is set 
 | Rule | Fix |
 |---|---|
 | 7.1-6 | A RoleMap chain that loops is cut where it closes (that style → P) and listed for a person |
-| 7.1-7 | A standard tag remapped in the RoleMap (sands: `Caption → P`): its elements are retyped to what the RoleMap made them, and the entry removed |
+| 7.1-7 | A standard tag remapped in the RoleMap (for example `Caption → P`): its elements are retyped to what the RoleMap made them, and the entry removed |
 | 7.2-29 | `/Lang` spelling tidied (`en_US` → `en-US`, case, spaces; `lib/langtag.py`); an empty `/Lang` on a tag removed; anything else listed, never guessed |
 | 7.5-1/2 | A header cell (TH) with no direction gets one where the table makes it plain: a row of only TH → Column, a row whose only TH is its first cell → Row; others are listed |
 
@@ -46,7 +46,7 @@ veraPDF runs once per step, in the background while the step's own checks run. T
 | 1.1.1 | Alt text that looks like a file name, has no letters or digits, or is the same on 3+ figures |
 | 1.3.1 | A table with content and no header cell (TH) |
 | 1.3.2 | Pages where the tagged text, in tag-tree order, jumps back up the same column 2+ times (notes, figures and captions skipped) |
-| 1.3.2 | Sections (and Divs) read away from their printed place among their sibling sections: those outside the longest run that reads in page order, by pages covered. A Div around a figure or note is skipped. The same check runs on the original, and each flag is marked **new** (this run caused it), **moved again** (out of place in the original too, but now read somewhere else: its section or its nearest earlier sibling that still holds content changed) or **already in the original**; the row is CHECK for new and moved-again ones. Small sections (one or two pages) read more than 5 pages after their page, after a longer sibling that covers them, are listed below it without failing it (in sands: 57 figure sections read after their part). A tag tree with no sections has nothing to compare. The rule is in `lib/readorder.py`, shared with the review page |
+| 1.3.2 | Sections (and Divs) read away from their printed place among their sibling sections: those outside the longest run that reads in page order, by pages covered. A Div around a figure or note is skipped. The same check runs on the original, and each flag is marked **new** (this run caused it), **moved again** (out of place in the original too, but now read somewhere else: its section or its nearest earlier sibling that still holds content changed) or **already in the original**; the row is CHECK for new and moved-again ones. Small sections (one or two pages) read more than 5 pages after their page, after a longer sibling that covers them, are listed below it without failing it (in one earlier sample: 57 figure sections read after their part). A tag tree with no sections has nothing to compare. The rule is in `lib/readorder.py`, shared with the review page |
 | 2.4.2 | A title that looks like a file name or placeholder |
 | 2.4.4 | Link text like "click here" or "more" |
 | 2.4.6 | Headings with no text, over 200 characters, or the same twice in a row |

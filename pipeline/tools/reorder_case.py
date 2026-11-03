@@ -1,6 +1,6 @@
 """reorder_case.py: move_section on a real book's tag tree, from a hand-written reply. No model, no cost.
 
-    python3 tools/reorder_case.py [--book godzone] [--moves 1|2] [--out DIR]
+    python3 tools/reorder_case.py [--book hawaii3] [--moves 1|2] [--out DIR]
 
 No saved reply uses move_section, so the regression test never reaches it on a real tree. This takes a tagged sample,
 moves one section one place later among its sibling sections in the tag tree (the pages do not change), and runs
@@ -98,7 +98,7 @@ def shuffle(src, dst, n=1):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('--book', default='godzone'); ap.add_argument('--out')
+    ap.add_argument('--book', default='hawaii3'); ap.add_argument('--out')
     ap.add_argument('--moves', type=int, choices=(1, 2), default=1, help='sections to swap and move back (2: a list of two moves)')
     a = ap.parse_args()
     out = a.out or tempfile.mkdtemp(prefix='reorder-case-'); os.makedirs(out, exist_ok=True)

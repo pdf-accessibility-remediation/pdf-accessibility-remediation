@@ -58,7 +58,7 @@ def test_words_split_at_line_and_untagged_text():
     ('abc', 'abc', None, 4, 'same list', None),
     ('abc', 'xyz', 4, 4, 'list changed', 'the word list changed since'),
     ('abc', 'xyz', 4, 8, 'list changed', 'the word list changed since (4 forms then, 8 now)'),
-    (None, 'xyz', 4, 8, 'list changed', 'the word list changed since (4 forms then, 8 now)'),     # sands: counts known, no fingerprint
+    (None, 'xyz', 4, 8, 'list changed', 'the word list changed since (4 forms then, 8 now)'),     # counts known, no fingerprint
     (None, 'xyz', 645, 645, 'no fingerprint', 'predates'),                                        # same size proves nothing
     (None, 'xyz', None, 645, 'no fingerprint', 'predates'),
     (None, None, None, 0, 'no fingerprint', 'predates'),

@@ -1,12 +1,13 @@
 {
  "prompt": "workorder_v10.md",
  "books": [
-  "godzone",
-  "clans",
-  "translation",
-  "cadaverous",
-  "sands",
-  "buddhist",
+  "hawaii3",
+  "globalasias",
+  "northkorea",
+  "fishers",
+  "moralfoods",
+  "teika",
+  "migrant",
   "ilokano"
  ],
  "python": "3.14"

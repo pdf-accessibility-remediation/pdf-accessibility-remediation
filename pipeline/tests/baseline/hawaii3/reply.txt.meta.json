@@ -1,0 +1,11 @@
+{
+ "model": "anthropic/claude-sonnet-5.5",
+ "temperature": "omitted: OpenRouter lists this model as not accepting a temperature setting",
+ "original_call": {
+  "cost_usd": 0.208024,
+  "model": "anthropic/claude-sonnet-5.5",
+  "prompt_file": "workorder_v10.md",
+  "prompt_sha256": "15b5aa0ade9c6549",
+  "date": "2026-11-03T00:22:05"
+ }
+}
