@@ -10,7 +10,7 @@ There are three kinds of tests. None of them calls the model, and none costs any
 | Test | What it checks | Run it (from `pipeline/`) | Time |
 |---|---|---|---|
 | **Unit tests** | That each small rule in `lib/` does its job, using made-up inputs; plus a few small synthetic PDFs through the real pdfplumber, `audit.py`, `apply.py` and `verify.py` | `python -m pytest tests -q` | a few seconds |
-| **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py --jobs 3` | about 9 minutes for all eight books (20 one at a time; `--books northkorea` about 2) |
+| **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py --jobs 3` | about 10 minutes for all nine books (21 one at a time; `--books northkorea` about 2) |
 | **Reorder case** | That `move_section` works on a real book's tag tree, from a hand-written reply (one move, or `--moves 2`: two, made in turn) | `python3 tools/reorder_case.py [--moves 2]` | about 3 minutes each |
 | **Intake cases** | That intake sorts pages and tag trees correctly, using small synthetic PDFs | `python3 tools/intake_cases.py <out_dir>` | under a minute |
 
@@ -34,7 +34,7 @@ The expected values come from the module docstrings and from [Work order](work-o
 
 ## Regression test
 
-`tools/regression.py` runs the books in `pipeline/tests/baseline/` (hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant and ilokano; sources and licenses in `samples/README.md` in the repository) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved model reply is used instead of an API call. Each book's folder holds:
+`tools/regression.py` runs the books in `pipeline/tests/baseline/` (hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant, ilokano and romanization-ocr; sources and licenses in `samples/README.md` in the repository) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved model reply is used instead of an API call. Each book's folder holds:
 
 | File | What it is |
 |---|---|
@@ -57,9 +57,9 @@ Each run is compared with the baseline in three ways:
 
 The test prints one line per book (identical, or the fields and lines that differ) and exits with 1 when any book differs. It needs veraPDF (see [Verification with veraPDF](verapdf.md)). Run folders go to a temporary folder, which is kept when something differs; `--out DIR` puts them in `DIR` instead.
 
-**Running books in parallel.** `--jobs N` runs N books at once (default: the `JOBS` environment variable, as for `batch_api.sh`, else 1). The biggest books start first, and the report still lists the books in their usual order. A book whose run fails is reported with the end of its log while the others carry on. Each book needs about 0.5–1.5 GB of memory: with 8 GB, `--jobs 3` peaked at about 5 GB used and took about 9 minutes for all eight books, against 20 one at a time. No run can be shorter than the slowest book (migrant, about 4 minutes). On WSL, check `free -h`; if memory is short, raise `memory=` in `C:\Users\<you>\.wslconfig` and run `wsl --shutdown`. CI does not use `--jobs`: each book is its own job there.
+**Running books in parallel.** `--jobs N` runs N books at once (default: the `JOBS` environment variable, as for `batch_api.sh`, else 1). The biggest books start first, and the report still lists the books in their usual order. A book whose run fails is reported with the end of its log while the others carry on. Each book needs about 0.5–1.5 GB of memory: with 8 GB, `--jobs 3` peaked at about 5 GB used and took about 10 minutes for all nine books, against 21 one at a time. No run can be shorter than the slowest book (migrant, about 4 minutes). On WSL, check `free -h`; if memory is short, raise `memory=` in `C:\Users\<you>\.wslconfig` and run `wsl --shutdown`. CI does not use `--jobs`: each book is its own job there.
 
-`meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code. CI runs hawaii3, northkorea, fishers and moralfoods on both Python 3.13 and 3.14, the two versions [Setup](setup.md) allows. These have the most text outside ASCII (ʻokina and kahakō, Vietnamese, CJK), where the version could matter: text goes through Python's Unicode tables (Unicode 15.1 in 3.13, 16.0 in 3.14). The other books run on 3.14 only. Run one book with `--books teika`; `--update --books X` adds X to the baseline and keeps the others.
+`meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code. CI runs hawaii3, northkorea, fishers, moralfoods and romanization-ocr on both Python 3.13 and 3.14, the two versions [Setup](setup.md) allows. These have the most text outside ASCII (ʻokina and kahakō, Vietnamese, CJK), where the version could matter: text goes through Python's Unicode tables (Unicode 15.1 in 3.13, 16.0 in 3.14). The other books run on 3.14 only. Run one book with `--books teika`; `--update --books X` adds X to the baseline and keeps the others.
 
 **What it covers, and what it does not.**
 
@@ -72,9 +72,10 @@ The test prints one line per book (identical, or the fields and lines that diffe
 | moralfoods | `language` (CJK runs), `artifacts`, `toc`, `captions`, `links`, `notes`, `fix_figure_order`, page figures, tab order; MarkInfo false |
 | teika | `tables` with no header cells, artifacts the executor refuses, `toc`, notes, three section moves the check drops (the audit flags nothing there); no document language |
 | migrant | `lists`, a table split across two pages, notes, a cover move refused (no host) |
+| romanization-ocr | a scanned book whose OCR layer drops every tone mark (made from an open-access book for this test): the OCR-layer check (doubtful, diacritics missing), `ocr_words` (10 misread forms in 15 places), OCR fonts, OCR text approval |
 | ilokano | an untagged book: an OpenDataLoader tag tree, so the one-item list rule (15 lists) and word breaks that rely on gaps |
 
-Covered only in part: `move_section` (teika's moves are dropped by the work-order check, and the cover moves of globalasias and migrant are refused by the executor, so none is made; the synthetic test above and `tools/reorder_case.py` cover moves that are made). Not covered by the regression test: intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), `ocr_words` and OCR on a real book (no sample has a publisher's OCR layer; `test_ocrwords.py` covers the rules), a book written mainly in Chinese, Japanese or Korean, vertical text, math, forms and PDF 2.0. To check all the tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
+Covered only in part: `move_section` (teika's moves are dropped by the work-order check, and the cover moves of globalasias and migrant are refused by the executor, so none is made; the synthetic test above and `tools/reorder_case.py` cover moves that are made). Not covered by the regression test: intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), OCR made by intake on a real book (romanization-ocr's layer comes with the file), a book written mainly in Chinese, Japanese or Korean, vertical text, math, forms and PDF 2.0. To check all the tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
 
 ```bash
 FROM=v10-open AUTO=1 bash batch_api.sh before ../samples/tagged   # on main
@@ -107,8 +108,8 @@ Make one update per PR, with its own reason. Don't fold several unrelated change
 
 **After a prompt change:** the saved replies were written for one prompt version (`meta.json` → `prompt`). When `decide.py` uses a new prompt, the test stops and asks for a re-seed instead of showing a diff. To re-seed:
 
-1. Run the baseline books with the new prompt. This is a paid call, about $1.50–1.60 for the eight (v10, 2026-11-03: $1.49 for the seven tagged books; ilokano about $0.10); ask first. ilokano is a single run (`bash run_api.sh ../samples/untagged/ilokano.pdf ilokano <label>`), the others a batch.
-2. Run `python3 tools/regression.py --update --seed ../runs/batches/<label> --reason "prompt vN"` for the tagged books, and `--update --books ilokano --seed ../runs/ilokano/<label>` for ilokano (a single run folder; its `_intake/` is copied too).
+1. Run the baseline books with the new prompt. This is a paid call, about $1.90 for the nine (v10, 2026-11-03: $1.49 for the seven tagged books, $0.30 for romanization-ocr; ilokano about $0.10); ask first. ilokano and romanization-ocr are single runs (`bash run_api.sh ../samples/untagged/ilokano.pdf ilokano <label>`), the others a batch.
+2. Run `python3 tools/regression.py --update --seed ../runs/batches/<label> --reason "prompt vN"` for the tagged books, and `--update --books ilokano --seed ../runs/ilokano/<label>` for ilokano (a single run folder; its `_intake/` is copied too), and the same for romanization-ocr.
 
 `--seed` copies each book's `raw_reply` from its `record.json`.
 
@@ -148,4 +149,4 @@ Several scans are drawn with a font: the Japanese and Korean text, the breves, a
   - a second job that installs Tesseract with its CJK packs, the `script/Latin` model and `fonts-noto-cjk`, then runs the intake cases, then `--full` with Java 17 and OCRmyPDF 17 (installed with pipx; not yet blocking: `continue-on-error` until it has passed a few times on Linux CI)
 - **`pdf-validation.yml`, when `pipeline/`, `prompts/` or `samples/` change:**
   - the existing veraPDF audit of one sample
-  - a `regression` job per book and Python version (all eight books on 3.14; hawaii3, northkorea, fishers and moralfoods also on 3.13: 12 jobs in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)
+  - a `regression` job per book and Python version (all nine books on 3.14; hawaii3, northkorea, fishers, moralfoods and romanization-ocr also on 3.13: 14 jobs in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)
