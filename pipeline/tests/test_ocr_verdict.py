@@ -15,6 +15,7 @@ import pytest
 import pikepdf
 from review import core, ocr as O, sessions as S
 from lib import glance as G
+from test_review_sessions import up  # noqa: E402  (waits for the server to answer)
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -161,7 +162,7 @@ def test_ocr_only_page_serves_listed_pages_and_records(tmp_path):
     tmp = tmp_path / 'img'; tmp.mkdir()
     t = threading.Thread(target=lambda: out.update(v=server.serve(str(tmp), '2026-10-31', port, open_browser=False, run_dir=R,
                                                                    lock_held=True, data=ocr_data(R))), daemon=True)
-    t.start(); time.sleep(0.8)
+    t.start(); up(port)
     st, b = call(port, '/')
     assert st == 200 and b'"mode": "ocr"' in b and b'"pages": [{"page": 1' in b
     st, b = call(port, '/ocr/text/1.json')
@@ -169,6 +170,8 @@ def test_ocr_only_page_serves_listed_pages_and_records(tmp_path):
     for p in ('/ocr/text/2.json', '/ocr/text/-1.json', '/ocr/text/..%2f1.json', '/ocr/text/%2e%2e/1.json', '/ocr/text/1'):
         assert call(port, p)[0] == 404, p                                       # only the section's own pages
     assert call(port, '/save', {})[0] == 404                                     # no decisions in OCR-only mode
+    for p in ('/draft', '/draft.pdf'): assert call(port, p)[0] == 404, p        # and no draft PDF
+    assert call(port, '/draft', {})[0] == 404
     st, b = call(port, '/ocr-verdict', {'verdict': 'approved', 'reviewer': 'Kim', 'reason': 'a | b'})
     assert st == 400 and '"|"' in json.loads(b)['error']
     st, b = call(port, '/ocr-verdict', {'verdict': 'approved', 'reviewer': 'Kim', 'reason': 'checked against the scan', 'pages': '1'})
