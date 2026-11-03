@@ -348,16 +348,15 @@ def sha256_file(path):
 
 def draft_pdf(R, pdf, ai_wo, wo, out, items=None, decisions=None, additions=None, on_start=None):
     """The review page's Build a Draft PDF: wo (the draft's order, as /save builds it) through the same check Finish uses,
-    then apply.py into out, marked as a draft (APPLY_DRAFT=1). Nothing in R is written. Returns {dropped (each with its
-    card), moves ([{card, made | refused}], in the executor's order), rejected (apply.py's other refusals), failed,
-    seconds, bytes}. Raises ValueError, in the page's words, when it cannot be built; out is then removed."""
+    then apply.py into out, marked as a draft (APPLY_DRAFT=1). Nothing in R is written. Returns {dropped (how many entries
+    the check left out: the page lists them from problems(), worded as on the cards), moves ([{card, made | refused}], in
+    the executor's order), rejected (apply.py's other refusals), failed, seconds, bytes}. Raises ValueError, in the page's words, when it cannot be built; out is then removed."""
     t = time.time()
     want = (ai_wo.get('source') or {}).get('sha256')
     if not os.path.isfile(pdf or ''): raise ValueError('The book\'s PDF is no longer where the review started, so a draft cannot be built.')
     if want and sha256_file(pdf) != want: raise ValueError('The book\'s PDF has changed since the review started, so a draft cannot be built.')
     wo = copy.deepcopy(wo)
     dropped = check(R, wo)
-    for d in dropped: d['card'] = card_of(items or [], d)
     for f in (out, out + '.log.json'):
         if os.path.exists(f): os.remove(f)
     try:
@@ -379,7 +378,7 @@ def draft_pdf(R, pdf, ai_wo, wo, out, items=None, decisions=None, additions=None
         if hit: specs.remove(hit)
         moves.append({'card': hit[0] if hit else None, **r})
     rejected = [x for x in log.get('rejected') or [] if isinstance(x, dict) and x.get('op') != 'move_section']
-    return {'dropped': dropped, 'moves': moves, 'rejected': rejected, 'failed': log.get('failed') or [],
+    return {'dropped': len(dropped), 'moves': moves, 'rejected': rejected, 'failed': log.get('failed') or [],
             'seconds': round(time.time() - t, 1), 'bytes': os.path.getsize(out)}
 
 def run_rules(e, wo):

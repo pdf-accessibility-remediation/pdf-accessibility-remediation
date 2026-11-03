@@ -12,6 +12,7 @@ returns the problems and /finish refuses with needs "invalid" until they are fix
 import os, re, json, inspect, threading, time, socket, urllib.request
 from review import core
 from lib import workorder_check
+from test_review_sessions import up  # noqa: E402  (waits for the server to answer)
 
 def entry(id_, first, last, parent=None, depth=1, top=True, under=None, firsts=()):
     return {'id': id_, 'parent': parent, 'style': 'Sect', 'first': first, 'last': last, 'depth': depth, 'text': id_, 'skip': False,
@@ -130,7 +131,7 @@ def test_keep_marks_and_finish_refuses_until_fixed(tmp_path):
                                                    'levels': core.LEVELS, 'add_kinds': core.ADD_KINDS, 'items': items, 'addable': adds})
     port = free_port(); out = {}
     t = threading.Thread(target=lambda: out.update(v=__import__('review.server', fromlist=['serve']).serve(R, '2026-11-02', port, open_browser=False)), daemon=True)
-    t.start(); time.sleep(0.8)
+    t.start(); up(port)
     def call(path, body=None):
         req = urllib.request.Request(f'http://127.0.0.1:{port}{path}', data=None if body is None else json.dumps(body).encode(),
                                      headers={'Content-Type': 'application/json', 'Host': f'127.0.0.1:{port}'})

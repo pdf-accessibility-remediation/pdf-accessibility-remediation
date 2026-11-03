@@ -47,16 +47,16 @@ def test_a_changed_alt_is_in_the_draft_and_the_draft_is_marked(R, tmp_path):
     before = listing(R)
     out = tmp_path / 'd' / 'draft.pdf'; out.parent.mkdir()
     res = draft_of(R, {ALT: {'status': 'changed', 'value': 'A red square'}}, out)
-    assert figure_alt(out) == ['A red square'] and res['dropped'] == [] and res['bytes'] == os.path.getsize(out)
+    assert figure_alt(out) == ['A red square'] and res['dropped'] == 0 and res['bytes'] == os.path.getsize(out)
     with pikepdf.open(out) as p: assert 'Not final' in str(p.docinfo['/RemediationDraft'])
     assert listing(R) == before                                                  # nothing in the run folder is written
     plain = tmp_path / 'plain.pdf'                                               # the mark is the draft's alone
     run('apply.py', core.load(str(R / 'review_items.json'))['pdf'], R / 'workorder.ai.json', plain)
     with pikepdf.open(plain) as p: assert '/RemediationDraft' not in p.docinfo
 
-def test_a_choice_the_check_drops_is_listed_with_its_card(R, tmp_path):
+def test_a_choice_the_check_drops_is_left_out_of_the_draft(R, tmp_path):
     res = draft_of(R, {ALT: {'status': 'changed', 'value': '   '}}, tmp_path / 'draft.pdf')
-    assert [(d['card'], d['why']) for d in res['dropped']] == [(ALT, 'not a figure or empty alt')]
+    assert res['dropped'] == 1
     assert figure_alt(tmp_path / 'draft.pdf') == ['A blue box']                 # dropped: the original's alt stays, as at Finish
 
 def test_a_draft_that_cannot_be_built_leaves_no_file(R, tmp_path):
@@ -88,6 +88,14 @@ def start(R):
         except OSError: time.sleep(0.1)
     return port, t
 
+def built(port, body):
+    """POST /draft, then GET /draft until it is no longer building."""
+    assert call(port, '/draft', body)[0] == 202
+    for _ in range(600):
+        d = json.loads(call(port, '/draft')[1])
+        if d['state'] != 'building': return d
+        time.sleep(0.1)
+
 def drafts(): return set(glob.glob(os.path.join(tempfile.gettempdir(), server.DRAFT_PREFIX + '*')))
 
 BODY = {'reviewer': 'Kim', 'decisions': {ALT: {'status': 'changed', 'value': 'A red square'}}, 'additions': []}
@@ -104,7 +112,8 @@ def test_the_server_builds_serves_and_removes_the_draft(R):
         d = json.loads(call(port, '/draft')[1])
         if d['state'] != 'building': break
         time.sleep(0.1)
-    assert d['state'] == 'ready' and d['result']['dropped'] == [] and d['seconds'] >= 0, d
+    assert d['state'] == 'ready' and d['result']['dropped'] == 0 and d['seconds'] >= 0, d
+    assert d['result']['problems'] == {'fields': [], 'conflicts': [], 'unplaced': []}
     st, pdf, hd = call(port, '/draft.pdf?x=../../review_items.json')             # the query never picks the file
     assert st == 200 and pdf.startswith(b'%PDF') and hd['Content-Disposition'] == 'attachment; filename="book_draft.pdf"'
     assert core.load(str(R / 'review_decisions.json'))['decisions'] == BODY['decisions']   # kept, as auto-save does
@@ -138,3 +147,13 @@ def test_a_dead_servers_draft_folder_is_swept(tmp_path):
 def test_the_draft_name():
     assert server.draft_name('Clans of Hawaii.pdf') == 'Clans of Hawaii_draft.pdf'
     assert server.draft_name('a"b\r\n.pdf') == 'a_b_draft.pdf' and server.draft_name('') == 'book_draft.pdf'
+
+def test_a_choice_left_out_is_worded_as_on_its_card(R):
+    """The draft's list is the check's verdict on the cards (core.problems): the same fix, the same card, the same origin."""
+    port, t = start(R)
+    d = built(port, dict(BODY, decisions={ALT: {'status': 'changed', 'value': '   '}}))
+    assert d['state'] == 'ready' and d['result']['dropped'] == 1, d
+    assert d['result']['problems']['fields'] == [{'card': ALT, 'why': 'not a figure or empty alt',
+                                                  'fix': core.fix('not a figure or empty alt', 3), 'origin': 'review'}]
+    assert call(port, '/finish', FINISH)[0] == 200                                # a valid choice again: Finish closes it
+    t.join(10); assert not t.is_alive()

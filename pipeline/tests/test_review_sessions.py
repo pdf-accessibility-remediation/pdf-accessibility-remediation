@@ -9,7 +9,7 @@ when the rebuilt order gives exactly the recorded changes and counts; the basis 
 finished session waits to be applied; the server's /save and /finish in a reviews/ folder; and that two runs of the
 same input get different browser-draft keys.
 """
-import os, sys, json, copy, threading, time, urllib.request, socket, subprocess
+import os, sys, json, copy, threading, time, urllib.request, urllib.error, socket, subprocess
 import pytest
 from review import core, sessions as S
 
@@ -269,6 +269,15 @@ def test_finished_but_not_applied_is_not_ready():
 def free_port():
     with socket.socket() as s: s.bind(('127.0.0.1', 0)); return s.getsockname()[1]
 
+def up(port, timeout=15):
+    """Wait until the server on port answers (any HTTP status): a cold start (code just edited) can take a second or more."""
+    end = time.time() + timeout
+    while time.time() < end:
+        try: urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=2).close(); return
+        except urllib.error.HTTPError: return
+        except OSError: time.sleep(0.05)
+    raise AssertionError(f'the server on port {port} did not answer within {timeout} s')
+
 def test_server_save_and_finish_in_a_reviews_folder(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)
     S.check_basis(R, rec)
@@ -280,7 +289,7 @@ def test_server_save_and_finish_in_a_reviews_folder(tmp_path):
     port = free_port(); out = {}
     t = threading.Thread(target=lambda: out.update(v=__import__('review.server', fromlist=['serve']).serve(
         p['dir'], '2026-10-27', port, open_browser=False, files={'/result/review.html': os.path.join(R, 'review.html')})), daemon=True)
-    t.start(); time.sleep(0.8)
+    t.start(); up(port)
     def call(path, body=None):
         req = urllib.request.Request(f'http://127.0.0.1:{port}{path}', data=None if body is None else json.dumps(body).encode(),
                                      headers={'Content-Type': 'application/json', 'Host': f'127.0.0.1:{port}'})
@@ -478,7 +487,7 @@ def test_an_older_draft_never_overwrites_a_newer_one(tmp_path):
                         'session': {'key': 'abc:002', 'id': '002', 'reopened': True, 'name_default': 'Session 2'}})
     port = free_port()
     t = threading.Thread(target=lambda: __import__('review.server', fromlist=['serve']).serve(p['dir'], '2026-10-31', port, open_browser=False), daemon=True)
-    t.start(); time.sleep(0.8)
+    t.start(); up(port)
     def call(path, body):
         req = urllib.request.Request(f'http://127.0.0.1:{port}{path}', data=json.dumps(body).encode(),
                                      headers={'Content-Type': 'application/json', 'Host': f'127.0.0.1:{port}'})
@@ -504,7 +513,7 @@ def test_keep_and_save_together_never_cut_the_draft(tmp_path):
     port = free_port(); out = {}
     t = threading.Thread(target=lambda: out.update(v=__import__('review.server', fromlist=['serve']).serve(
         p['dir'], '2026-10-31', port, open_browser=False)), daemon=True)
-    t.start(); time.sleep(0.8)
+    t.start(); up(port)
     def call(path, body):
         req = urllib.request.Request(f'http://127.0.0.1:{port}{path}', data=json.dumps(body).encode(),
                                      headers={'Content-Type': 'application/json', 'Host': f'127.0.0.1:{port}'})
