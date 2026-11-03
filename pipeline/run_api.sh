@@ -11,6 +11,7 @@
 # ESTIMATE=1 bash run_api.sh …   audit + cost estimate only; a later run with the same label reuses the audit
 # OUT=clan.pdf bash run_api.sh …   names the result; by default it is <original file name>_remediated.pdf
 # MAX_TOKENS=64000 bash run_api.sh …   output limit for Claude's reply, reasoning included (default 48000, set in decide.py)
+# MAX_USD=3 bash run_api.sh …   the cap on one call's worst case, in dollars (default 2, set in decide.py; Claude models only)
 # MODEL=openai/gpt-5 bash run_api.sh …   any OpenRouter model id for this run (default: DEFAULT_MODEL in decide.py)
 # Untagged PDFs first go through intake.py (local, no cost): OCR where pages have no text, then auto-tagging. Its
 # result (_intake/intake.pdf) is what the rest of the run works on; the original is never written to.
@@ -38,7 +39,9 @@ RUNS=${RUNS_DIR:-$(cd .. && pwd)/runs}
 R=${RUN_DIR:-$RUNS/$NAME/$RUN}; A=$R/_audit
 if [[ -f $R/record.json ]]; then echo "$R already holds a finished run: choose another run label"; exit 1; fi
 if [[ -n ${MAX_TOKENS:-} && ! $MAX_TOKENS =~ ^[0-9]+$ ]]; then echo "MAX_TOKENS must be a whole number: $MAX_TOKENS"; exit 1; fi
+if [[ -n ${MAX_USD:-} && ! $MAX_USD =~ ^[0-9]+([.][0-9]+)?$ ]]; then echo "MAX_USD must be a number of dollars: $MAX_USD"; exit 1; fi
 MT=(); [[ -z ${MAX_TOKENS:-} ]] || MT=(--max-tokens "$MAX_TOKENS")
+[[ -z ${MAX_USD:-} ]] || MT+=(--max-usd "$MAX_USD")
 [[ -z ${MODEL:-} ]] || MT+=(--model "$MODEL")
 USE_MODEL=${MODEL:-$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")}
 NEW=; [[ -d $R ]] || NEW=1
@@ -145,7 +148,7 @@ else
   if [[ -n ${AUTO:-} ]]; then
     ok=y
     if [[ $USE_MODEL == anthropic/* ]]; then
-      echo "AUTO=1: sending without asking (decide.py still refuses a Claude estimate over the \$2 cap or your credit)"
+      echo "AUTO=1: sending without asking (decide.py still refuses a Claude estimate over the \$${MAX_USD:-2} cap or your credit)"
     else
       echo "AUTO=1: sending without asking. The \$2 cap applies to Claude models only: the $USE_MODEL estimate is approximate and not capped; the OpenRouter bill is the real cost"
     fi

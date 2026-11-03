@@ -210,6 +210,11 @@ def get(url):
 # Token math below is Claude's (calibrated on Sonnet bills), so for other models the estimate is approximate and
 # the caps don't apply: the estimate is printed and the request is sent. The OpenRouter bill is the real cost.
 CHARS_PER_TOKEN = 2.2   # calibrated: Cadaverous run 1 billed 44,227 input tokens where chars/3.5 predicted 29,165
+# The worst case allows the input 25% over this estimate. Over 232 Sonnet calls (to 2026-11-02) the billed input ran from
+# 14% under to 14.4% over it (SCANSmohr), and every call was billed exactly at the listed prices (no cache or other items).
+# The output can't pass max_tokens (reasoning included), so a call costs more than its worst case only if its input runs
+# more than 25% over the estimate.
+INPUT_MARGIN = 1.25
 text_tokens = (len(prompt) + sum(len(c.get('text', '')) for c in content)) / CHARS_PER_TOKEN
 image_tokens = sum(w * h / 750 for w, h in images)
 model, price, m = args.model, None, None
@@ -273,16 +278,16 @@ else:
         run['temperature'] = 'omitted: OpenRouter lists this model as not accepting a temperature setting'
     else: run['temperature'] = TEMPERATURE
 est_in = (text_tokens + image_tokens) * price['prompt']; worst_out = args.max_tokens * price['completion']
+worst = est_in * INPUT_MARGIN + worst_out
 run['estimate'] = {'input_tokens': round(text_tokens + image_tokens), 'images': len(images), 'image_tokens': round(image_tokens),
-                   'input_usd': round(est_in, 4), 'worst_case_output_usd': round(worst_out, 4), 'worst_case_total_usd': round(est_in + worst_out, 4),
-                   'cap_usd': args.max_usd if IS_CLAUDE else None, 'max_tokens': args.max_tokens, 'approximate': not IS_CLAUDE}
+                   'input_usd': round(est_in, 4), 'worst_case_output_usd': round(worst_out, 4), 'worst_case_total_usd': round(worst, 4),
+                   'input_margin': INPUT_MARGIN, 'cap_usd': args.max_usd if IS_CLAUDE else None, 'max_tokens': args.max_tokens, 'approximate': not IS_CLAUDE}
 print(json.dumps(run['estimate']), '| model', model, '|', run['price_source'])
 if not IS_CLAUDE:
     print(f'note: {model} is not a Claude model. The estimate uses Claude token math, so it is approximate and the '
           f'${args.max_usd:.2f} cap is not applied. The OpenRouter bill is the real cost.')
 
 credit = available_credit()
-worst = est_in + worst_out
 if credit is None: print('credit: could not check (no key, or OpenRouter unreachable)')
 else:
     run['estimate']['credit_available_usd'] = round(credit, 4)
@@ -302,7 +307,7 @@ if args.response_file:
     except json.JSONDecodeError: resp = {'choices': [{'message': {'content': raw}}]}
     run['response_from'] = args.response_file
 else:
-    if IS_CLAUDE and est_in + worst_out > args.max_usd: sys.exit(f'refusing: worst-case ${est_in + worst_out:.2f} is over the ${args.max_usd:.2f} cap')
+    if IS_CLAUDE and worst > args.max_usd: sys.exit(f'refusing: worst-case ${worst:.2f} is over the ${args.max_usd:.2f} cap')
     if IS_CLAUDE and credit is not None and credit < worst: sys.exit(f'refusing: ${credit:.2f} credit available, worst case is ${worst:.2f} (OpenRouter would answer 402). Add credit or lower --max-tokens')
     key = os.environ.get('OPENROUTER_API_KEY')
     if not key: sys.exit('no OPENROUTER_API_KEY: put it in PDFREMPROTO1/.env (see .env.example) or export it')
