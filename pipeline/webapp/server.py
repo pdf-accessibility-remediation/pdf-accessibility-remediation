@@ -34,7 +34,7 @@ Every response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none
 page in a frame and trick a click. HTML pages also get script-src 'self' plus the sha256 of the page's one inline script,
 computed when it is served, so a javascript: link or any other script in a report's text never runs.
 
-A run is named by its path under the runs folder (godzone/rv1, batches/d1/clans): the shortest prefix of the request
+A run is named by its path under the runs folder (teika/rv1, batches/d1/fishers): the shortest prefix of the request
 path that is a folder holding record.json. Every segment is checked (no empty, ".", "..", dot-names or backslashes),
 and no request string is ever joined onto a path: each segment (a run's folders, a batch, a previous result's id, a job
 id) only picks an entry from the real folder's listing (config.entry). The folder and every file are then resolved

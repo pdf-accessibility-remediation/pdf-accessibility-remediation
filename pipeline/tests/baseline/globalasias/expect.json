@@ -1,0 +1,101 @@
+{
+ "apply": {
+  "applied": {
+   "document: /Lang": 1,
+   "document: DisplayDocTitle": 1,
+   "document: empty AcroForm removed": 1,
+   "document: second Document root merged": 1,
+   "document: title": 1,
+   "figure: alt text": 22,
+   "heading: ActualText": 1,
+   "heading: merged into prev": 1,
+   "language: /Lang spelling tidied": 32,
+   "language: ja on existing Span": 10,
+   "language: ko on existing Span": 2,
+   "links: /Contents set": 4247,
+   "links: URL-only description replaced by the sentence around it": 19,
+   "links: already tied to a Link inside the document": 218,
+   "links: joined existing Link": 4029,
+   "structure: empty tag removed (proven empty)": 1,
+   "tag tree index: entries pointing outside the tree cleared (ParentTree)": 242
+  },
+  "deferred": 2,
+  "empty_notes_removed": 0,
+  "failed": 0,
+  "rejected": 6
+ },
+ "validation_dropped": [],
+ "verapdf": {
+  "after": {
+   "failed": {
+    "7.21.5-1": 2
+   },
+   "totals": {
+    "ua_only_failed_checks": 2,
+    "ua_only_failed_rules": 1,
+    "unclassified": [],
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
+   }
+  },
+  "before": {
+   "failed": {
+    "7.21.5-1": 2
+   },
+   "totals": {
+    "ua_only_failed_checks": 2,
+    "ua_only_failed_rules": 1,
+    "unclassified": [],
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
+   }
+  }
+ },
+ "verify": {
+  "artifact_chars": 8249,
+  "figures": {
+   "count": 22,
+   "generic_or_empty": 0,
+   "with_nul": 0
+  },
+  "headings": {
+   "H1": 1,
+   "H2": 17,
+   "H3": 26,
+   "H4": 53,
+   "H5": 51
+  },
+  "pixel_pages_differing": [],
+  "skipped_levels": [],
+  "structure": {
+   "captions_not_grouped": 0,
+   "empty_tables": 0,
+   "empty_tags": 0,
+   "links_url_only": 0,
+   "paragraphs_holding_only_figures": 0
+  },
+  "text_pages_changed": [],
+  "tree_types": {
+   "Art": 22,
+   "BlockQuote": 10,
+   "Caption": 17,
+   "Document": 1,
+   "Figure": 22,
+   "H1": 1,
+   "H2": 17,
+   "H3": 26,
+   "H4": 53,
+   "H5": 51,
+   "L": 40,
+   "LBody": 161,
+   "LI": 160,
+   "Lbl": 160,
+   "Link": 4019,
+   "P": 2345,
+   "Span": 1965,
+   "TOC": 10,
+   "TOCI": 78
+  },
+  "untagged_chars": 0
+ }
+}

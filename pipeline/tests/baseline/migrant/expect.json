@@ -1,0 +1,95 @@
+{
+ "apply": {
+  "applied": {
+   "document: /Lang": 1,
+   "document: DisplayDocTitle": 1,
+   "document: second Document root merged": 1,
+   "document: title": 1,
+   "figure: alt text": 35,
+   "heading: ActualText": 2,
+   "heading: RoleMap level": 2,
+   "heading: standard tag H1 → H2 (retyped)": 48,
+   "links: /Contents set": 6486,
+   "links: URL-only description replaced by the sentence around it": 5,
+   "links: joined existing Link": 6486,
+   "list: built": 1,
+   "notes: Note with /ID": 1013,
+   "retype → H1": 1,
+   "table: cells wrongly tagged as headers set back to data cells": 5,
+   "table: header cells marked (work order)": 0,
+   "tag tree index: entries pointing outside the tree cleared (ParentTree)": 42,
+   "tag tree index: entries pointing outside the tree removed (IDTree)": 1
+  },
+  "deferred": 1,
+  "empty_notes_removed": 0,
+  "failed": 0,
+  "rejected": 1
+ },
+ "validation_dropped": [],
+ "verapdf": {
+  "after": {
+   "failed": {},
+   "totals": {
+    "ua_only_failed_checks": 0,
+    "ua_only_failed_rules": 0,
+    "unclassified": [],
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
+   }
+  },
+  "before": {
+   "failed": {},
+   "totals": {
+    "ua_only_failed_checks": 0,
+    "ua_only_failed_rules": 0,
+    "unclassified": [],
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
+   }
+  }
+ },
+ "verify": {
+  "artifact_chars": 3490,
+  "figures": {
+   "count": 35,
+   "generic_or_empty": 0,
+   "with_nul": 0
+  },
+  "headings": {
+   "H1": 1,
+   "H2": 66
+  },
+  "pixel_pages_differing": [],
+  "skipped_levels": [],
+  "structure": {
+   "captions_not_grouped": 0,
+   "empty_tables": 0,
+   "empty_tags": 0,
+   "links_url_only": 0,
+   "paragraphs_holding_only_figures": 0
+  },
+  "text_pages_changed": [],
+  "tree_types": {
+   "Art": 12,
+   "Caption": 35,
+   "Document": 1,
+   "Figure": 35,
+   "H1": 1,
+   "H2": 66,
+   "L": 1,
+   "LBody": 4,
+   "LI": 4,
+   "Link": 6245,
+   "Note": 1013,
+   "P": 1455,
+   "Part": 1,
+   "Sect": 14,
+   "Span": 2022,
+   "TD": 159,
+   "TH": 6,
+   "TR": 15,
+   "Table": 1
+  },
+  "untagged_chars": 0
+ }
+}

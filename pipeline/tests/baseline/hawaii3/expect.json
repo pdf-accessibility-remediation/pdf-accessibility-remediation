@@ -1,0 +1,103 @@
+{
+ "apply": {
+  "applied": {
+   "document: /Lang": 1,
+   "document: DisplayDocTitle": 1,
+   "document: title": 1,
+   "figure: alt text": 11,
+   "heading: standard tag H1 → H3 (retyped)": 76,
+   "heading: standard tag H2 → H4 (retyped)": 113,
+   "links: /Contents set": 186,
+   "links: URL-only description replaced by the sentence around it": 62,
+   "links: joined existing Link": 186,
+   "retype → H1": 1,
+   "retype → H2": 10,
+   "retype → H3": 1,
+   "retype → H5": 8,
+   "retype → P": 1,
+   "tag tree index: entries pointing outside the tree cleared (ParentTree)": 6
+  },
+  "deferred": 22,
+  "empty_notes_removed": 0,
+  "failed": 0,
+  "rejected": 0
+ },
+ "validation_dropped": [],
+ "verapdf": {
+  "after": {
+   "failed": {
+    "7.2-29": 7,
+    "7.21.5-1": 48
+   },
+   "totals": {
+    "ua_only_failed_checks": 48,
+    "ua_only_failed_rules": 1,
+    "unclassified": [],
+    "wcag_failed_checks": 7,
+    "wcag_failed_rules": 1
+   }
+  },
+  "before": {
+   "failed": {
+    "7.2-29": 7,
+    "7.21.5-1": 48
+   },
+   "totals": {
+    "ua_only_failed_checks": 48,
+    "ua_only_failed_rules": 1,
+    "unclassified": [],
+    "wcag_failed_checks": 7,
+    "wcag_failed_rules": 1
+   }
+  }
+ },
+ "verify": {
+  "artifact_chars": 7360,
+  "figures": {
+   "count": 11,
+   "generic_or_empty": 0,
+   "with_nul": 0
+  },
+  "headings": {
+   "H1": 1,
+   "H2": 10,
+   "H3": 65,
+   "H4": 112,
+   "H5": 8
+  },
+  "pixel_pages_differing": [],
+  "skipped_levels": [],
+  "structure": {
+   "captions_not_grouped": 0,
+   "empty_tables": 0,
+   "empty_tags": 0,
+   "links_url_only": 0,
+   "paragraphs_holding_only_figures": 0
+  },
+  "text_pages_changed": [],
+  "tree_types": {
+   "BlockQuote": 23,
+   "Div": 103,
+   "Document": 1,
+   "Figure": 11,
+   "H1": 1,
+   "H2": 10,
+   "H3": 65,
+   "H4": 112,
+   "H5": 8,
+   "L": 6,
+   "LBody": 26,
+   "LI": 26,
+   "Lbl": 26,
+   "Link": 136,
+   "Note": 11,
+   "P": 2017,
+   "Reference": 83,
+   "Sect": 76,
+   "Span": 448,
+   "TOC": 5,
+   "TOCI": 72
+  },
+  "untagged_chars": 399
+ }
+}

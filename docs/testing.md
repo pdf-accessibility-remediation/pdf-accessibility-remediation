@@ -10,7 +10,7 @@ There are three kinds of tests. None of them calls the model, and none costs any
 | Test | What it checks | Run it (from `pipeline/`) | Time |
 |---|---|---|---|
 | **Unit tests** | That each small rule in `lib/` does its job, using made-up inputs; plus a few small synthetic PDFs through the real pdfplumber, `audit.py`, `apply.py` and `verify.py` | `python -m pytest tests -q` | a few seconds |
-| **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py --jobs 3` | about 7 minutes for all seven books (18 one at a time; `--books godzone` about 1) |
+| **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py --jobs 3` | about 9 minutes for all eight books (20 one at a time; `--books northkorea` about 2) |
 | **Reorder case** | That `move_section` works on a real book's tag tree, from a hand-written reply (one move, or `--moves 2`: two, made in turn) | `python3 tools/reorder_case.py [--moves 2]` | about 3 minutes each |
 | **Intake cases** | That intake sorts pages and tag trees correctly, using small synthetic PDFs | `python3 tools/intake_cases.py <out_dir>` | under a minute |
 
@@ -34,11 +34,11 @@ The expected values come from the module docstrings and from [Work order](work-o
 
 ## Regression test
 
-`tools/regression.py` runs the books in `pipeline/tests/baseline/` (godzone, clans, translation, cadaverous, sands, buddhist and ilokano) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved model reply is used instead of an API call. Each book's folder holds:
+`tools/regression.py` runs the books in `pipeline/tests/baseline/` (hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant and ilokano; sources and licenses in `samples/README.md` in the repository) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved model reply is used instead of an API call. Each book's folder holds:
 
 | File | What it is |
 |---|---|
-| `reply.txt`, `reply.txt.meta.json` | The saved model reply, with the model and temperature that produced it, and for a scanned book the OCR-word list the reply was written for (`ocr_words_fingerprint`, `ocr_words_sent`, `ocr_words_list`). This is the run's fixed input. A reply whose list does not match today's audit, or has no fingerprint, has its OCR-word readings dropped on replay ([OCR words](ocr-words.md)): re-seed such a book with a new reply. sands' `ocr_words_sent: 4` was added by hand (UPDATES.md, 2026-10-27) |
+| `reply.txt`, `reply.txt.meta.json` | The saved model reply, with the model and temperature that produced it, and for a scanned book the OCR-word list the reply was written for (`ocr_words_fingerprint`, `ocr_words_sent`, `ocr_words_list`). This is the run's fixed input. A reply whose list does not match today's audit, or has no fingerprint, has its OCR-word readings dropped on replay ([OCR words](ocr-words.md)): re-seed such a book with a new reply. |
 | `review.md` | The report the last accepted run wrote |
 | `_intake/` | Untagged books only (ilokano): `intake.json` and `intake.pdf`, the intake result the reply was written for. It is reused (`INTAKE_REUSE=1`, as `FROM=` batches do) instead of rerunning OCR and auto-tagging, whose output varies with the Tesseract and OpenDataLoader versions. A note is printed when `requirements.txt` pins another OpenDataLoader than the one that made it; re-seed then |
 | `expect.json` | A fingerprint of that run's `record.json`: veraPDF rules before and after, what `apply.py` did, what the work-order checks dropped, the tag counts, headings and figures `verify.py` found |
@@ -57,26 +57,28 @@ Each run is compared with the baseline in three ways:
 
 The test prints one line per book (identical, or the fields and lines that differ) and exits with 1 when any book differs. It needs veraPDF (see [Verification with veraPDF](verapdf.md)). Run folders go to a temporary folder, which is kept when something differs; `--out DIR` puts them in `DIR` instead.
 
-**Running books in parallel.** `--jobs N` runs N books at once (default: the `JOBS` environment variable, as for `batch_api.sh`, else 1). The biggest books start first, and the report still lists the books in their usual order. A book whose run fails is reported with the end of its log while the others carry on. Each book needs about 0.5–1.5 GB of memory: with 8 GB, `--jobs 3` peaked at about 5 GB used and took 7 minutes for all seven books, against 18 one at a time. No run can be shorter than the slowest book (buddhist, about 4 minutes). On WSL, check `free -h`; if memory is short, raise `memory=` in `C:\Users\<you>\.wslconfig` and run `wsl --shutdown`. CI does not use `--jobs`: each book is its own job there.
+**Running books in parallel.** `--jobs N` runs N books at once (default: the `JOBS` environment variable, as for `batch_api.sh`, else 1). The biggest books start first, and the report still lists the books in their usual order. A book whose run fails is reported with the end of its log while the others carry on. Each book needs about 0.5–1.5 GB of memory: with 8 GB, `--jobs 3` peaked at about 5 GB used and took about 9 minutes for all eight books, against 20 one at a time. No run can be shorter than the slowest book (migrant, about 4 minutes). On WSL, check `free -h`; if memory is short, raise `memory=` in `C:\Users\<you>\.wslconfig` and run `wsl --shutdown`. CI does not use `--jobs`: each book is its own job there.
 
-`meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code. CI runs godzone, clans, translation and buddhist on both Python 3.13 and 3.14, the two versions [Setup](setup.md) allows. buddhist is the one where the version could matter: its OCR word readings are checked with Python's Unicode tables (Unicode 15.1 in 3.13, 16.0 in 3.14). The other books run on 3.14 only. Run one book with `--books translation`; `--update --books X` adds X to the baseline and keeps the others.
+`meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code. CI runs hawaii3, northkorea, fishers and moralfoods on both Python 3.13 and 3.14, the two versions [Setup](setup.md) allows. These have the most text outside ASCII (ʻokina and kahakō, Vietnamese, CJK), where the version could matter: text goes through Python's Unicode tables (Unicode 15.1 in 3.13, 16.0 in 3.14). The other books run on 3.14 only. Run one book with `--books teika`; `--update --books X` adds X to the baseline and keeps the others.
 
 **What it covers, and what it does not.**
 
 | Book | Adds |
 |---|---|
-| godzone, clans | alt text, artifacts, document settings, flattened lists and tables, retyped headings, the role map, sections |
-| translation | tables, notes, captions, the table of contents, whole-page figures, merged headings, ActualText, empty containers, untagged lines and borders |
-| cadaverous | `language`, `lists`, `fix_figure_order`, a section move the check drops (the audit flags nothing) |
-| sands | `adopt_orphans`, a list of two section moves (one dropped by the check, the cover refused: it has no host) |
-| buddhist | `ocr_words` (its OCR text layer) |
+| hawaii3 | alt text, retyped headings (H1–H5), the role map, sections; ʻokina and kahakō; language tags that are not BCP 47 ("Hawaii"), deferred to a person, so veraPDF 7.2-29 still fails |
+| globalasias | `language` (Chinese, Japanese and Korean words in an English book), merged headings, ActualText the executor refuses, a cover move refused (no host) |
+| northkorea | `tables`, flattened tables, `move_to_document_start`, captions retyped; a file not made by Adobe (Aspose) |
+| fishers | `adopt_orphans`, notes, the role map, a wrong document language (fr-FR on an English book), Vietnamese diacritics |
+| moralfoods | `language` (CJK runs), `artifacts`, `toc`, `captions`, `links`, `notes`, `fix_figure_order`, page figures, tab order; MarkInfo false |
+| teika | `tables` with no header cells, artifacts the executor refuses, `toc`, notes, three section moves the check drops (the audit flags nothing there); no document language |
+| migrant | `lists`, a table split across two pages, notes, a cover move refused (no host) |
 | ilokano | an untagged book: an OpenDataLoader tag tree, so the one-item list rule (15 lists) and word breaks that rely on gaps |
 
-Covered only in part: `move_section` (sands' saved reply holds a move; the work-order check drops one the audit gives no reason for, and the executor refuses its cover move, so none is made; the synthetic test above and `tools/reorder_case.py` cover moves that are made). Not covered by the regression test: intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), OCR on a real book, and CJK text. To check all nine tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
+Covered only in part: `move_section` (teika's moves are dropped by the work-order check, and the cover moves of globalasias and migrant are refused by the executor, so none is made; the synthetic test above and `tools/reorder_case.py` cover moves that are made). Not covered by the regression test: intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), `ocr_words` and OCR on a real book (no sample has a publisher's OCR layer; `test_ocrwords.py` covers the rules), a book written mainly in Chinese, Japanese or Korean, vertical text, math, forms and PDF 2.0. To check all the tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
 
 ```bash
-FROM=all9-v8 AUTO=1 bash batch_api.sh before ../samples/group1 ../samples/group2 ../samples/group3most   # on main
-FROM=all9-v8 AUTO=1 bash batch_api.sh after ../samples/group1 ../samples/group2 ../samples/group3most    # on your branch
+FROM=v10-open AUTO=1 bash batch_api.sh before ../samples/tagged   # on main
+FROM=v10-open AUTO=1 bash batch_api.sh after ../samples/tagged    # on your branch
 python3 tools/compare_runs.py before after
 ```
 
@@ -90,7 +92,7 @@ python3 tools/regression.py --update --reason "why the output changed"
 
 This reruns the books, writes their `review.md` and `expect.json` as the new baseline, and adds the reason to `tests/baseline/UPDATES.md`. Commit the baseline changes together with the code change, so the reviewer sees both diffs side by side.
 
-**Update** when the regression test fails, every difference is one the PR meant to make, and the always-true checks still pass. For example, a fix in `apply.py` removes clans' last PDF/UA failure. The diff then shows that veraPDF rule gone, one new entry in `apply.applied`, and the matching `review.md` lines, and nothing else.
+**Update** when the regression test fails, every difference is one the PR meant to make, and the always-true checks still pass. For example, a fix in `apply.py` removes a book's last PDF/UA failure. The diff then shows that veraPDF rule gone, one new entry in `apply.applied`, and the matching `review.md` lines, and nothing else.
 
 **Do not update:**
 - to make CI pass when you don't understand a difference
@@ -105,14 +107,14 @@ Make one update per PR, with its own reason. Don't fold several unrelated change
 
 **After a prompt change:** the saved replies were written for one prompt version (`meta.json` → `prompt`). When `decide.py` uses a new prompt, the test stops and asks for a re-seed instead of showing a diff. To re-seed:
 
-1. Run the baseline books with the new prompt. This is a paid call, about $1.70–1.90 for the seven (v10, 2026-11-01: $1.79); ask first. ilokano is a single run (`bash run_api.sh ../samples/untagged/ilokano.pdf ilokano <label>`), the others a batch.
+1. Run the baseline books with the new prompt. This is a paid call, about $1.50–1.60 for the eight (v10, 2026-11-03: $1.49 for the seven tagged books; ilokano about $0.10); ask first. ilokano is a single run (`bash run_api.sh ../samples/untagged/ilokano.pdf ilokano <label>`), the others a batch.
 2. Run `python3 tools/regression.py --update --seed ../runs/batches/<label> --reason "prompt vN"` for the tagged books, and `--update --books ilokano --seed ../runs/ilokano/<label>` for ilokano (a single run folder; its `_intake/` is copied too).
 
 `--seed` copies each book's `raw_reply` from its `record.json`.
 
 ## Reorder case
 
-`tools/reorder_case.py` covers `move_section` on a real tag tree without a model reply. It swaps one section with the next under a section host in a copy of a tagged sample (godzone by default: a chapter on PDF 10–18 under the Part), then runs the pipeline with a reply that holds only the `move_section` putting it back. It checks that the audit flags the pair, that the review page's preview finds one section and its host, that `apply.py` makes the move and logs the same section and host, that the host's sections read in the book's order again, that the preview's order is the one `apply.py` made, and that verify's section check finds nothing new. Run it after a change to `lib/readorder.py`, `op_move_section` or the review page's preview. `--moves 2` swaps two separate pairs (on godzone, PDF 10–18 and PDF 206–216, both under the Part) and puts both back with a reply holding a list of two moves: `apply.py` makes them in turn, and each is checked the same way against the review page's preview, chained as the page works it out.
+`tools/reorder_case.py` covers `move_section` on a real tag tree without a model reply. It swaps one section with the next under a section host in a copy of a tagged sample (hawaii3 by default: a chapter on PDF 236–239 among its sibling sections), then runs the pipeline with a reply that holds only the `move_section` putting it back. It checks that the audit flags the pair, that the review page's preview finds one section and its host, that `apply.py` makes the move and logs the same section and host, that the host's sections read in the book's order again, that the preview's order is the one `apply.py` made, and that verify's section check finds nothing new. Run it after a change to `lib/readorder.py`, `op_move_section` or the review page's preview. `--moves 2` swaps two separate pairs (on hawaii3, PDF 236–239 and PDF 250–253) and puts both back with a reply holding a list of two moves: `apply.py` makes them in turn, and each is checked the same way against the review page's preview, chained as the page works it out.
 
 ## Intake cases
 
@@ -146,4 +148,4 @@ Several scans are drawn with a font: the Japanese and Korean text, the breves, a
   - a second job that installs Tesseract with its CJK packs, the `script/Latin` model and `fonts-noto-cjk`, then runs the intake cases, then `--full` with Java 17 and OCRmyPDF 17 (installed with pipx; not yet blocking: `continue-on-error` until it has passed a few times on Linux CI)
 - **`pdf-validation.yml`, when `pipeline/`, `prompts/` or `samples/` change:**
   - the existing veraPDF audit of one sample
-  - a `regression` job per book and Python version (all seven books on 3.14; godzone, clans, translation and buddhist also on 3.13: 11 jobs in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)
+  - a `regression` job per book and Python version (all eight books on 3.14; hawaii3, northkorea, fishers and moralfoods also on 3.13: 12 jobs in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)

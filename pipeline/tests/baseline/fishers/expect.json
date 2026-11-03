@@ -1,0 +1,116 @@
+{
+ "apply": {
+  "applied": {
+   "document: /Lang": 1,
+   "document: DisplayDocTitle": 1,
+   "document: Document root created": 1,
+   "document: title": 1,
+   "figure: alt text": 15,
+   "links: /Contents set": 4277,
+   "links: URL-only description replaced by the sentence around it": 12,
+   "links: already tied to a Link inside the document": 1,
+   "links: joined existing Link": 4273,
+   "links: new Link element created": 3,
+   "links: placed after shared text": 1,
+   "links: placed beside nearest text": 1,
+   "links: references to off-page annotations removed": 3,
+   "links: wraps its text": 1,
+   "notes: unique /ID added": 60,
+   "orphans: adopted as paragraphs (\"contents numeral\")": 1,
+   "orphans: adopted as paragraphs (\"footnotes\")": 8,
+   "orphans: adopted as paragraphs (\"glossary terms and definitions\")": 19,
+   "retype → H2": 15,
+   "retype → H3": 40,
+   "retype → H4": 5,
+   "retype → P": 1,
+   "retype → Span": 23,
+   "role map: style with no mapping mapped": 1,
+   "structure: empty tag removed (proven empty)": 163,
+   "tag tree index: entries pointing outside the tree cleared (ParentTree)": 7,
+   "tag tree index: entries repaired": 54
+  },
+  "deferred": 1,
+  "empty_notes_removed": 0,
+  "failed": 0,
+  "rejected": 0
+ },
+ "validation_dropped": [],
+ "verapdf": {
+  "after": {
+   "failed": {
+    "7.21.4.1-1": 1
+   },
+   "totals": {
+    "ua_only_failed_checks": 1,
+    "ua_only_failed_rules": 1,
+    "unclassified": [],
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
+   }
+  },
+  "before": {
+   "failed": {
+    "7.1-3": 100,
+    "7.1-5": 1,
+    "7.18.5-1": 3,
+    "7.21.4.1-1": 1,
+    "7.9-1": 60
+   },
+   "totals": {
+    "ua_only_failed_checks": 61,
+    "ua_only_failed_rules": 2,
+    "unclassified": [],
+    "wcag_failed_checks": 104,
+    "wcag_failed_rules": 3
+   }
+  }
+ },
+ "verify": {
+  "artifact_chars": 11462,
+  "figures": {
+   "count": 15,
+   "generic_or_empty": 0,
+   "with_nul": 0
+  },
+  "headings": {
+   "H1": 1,
+   "H2": 15,
+   "H3": 40,
+   "H4": 5
+  },
+  "pixel_pages_differing": [],
+  "skipped_levels": [],
+  "structure": {
+   "captions_not_grouped": 0,
+   "empty_tables": 0,
+   "empty_tags": 3,
+   "links_url_only": 0,
+   "paragraphs_holding_only_figures": 0
+  },
+  "text_pages_changed": [],
+  "tree_types": {
+   "Div": 3,
+   "Document": 1,
+   "Figure": 15,
+   "H1": 1,
+   "H2": 15,
+   "H3": 40,
+   "H4": 5,
+   "Index": 22,
+   "L": 9,
+   "LBody": 4,
+   "LI": 4,
+   "Lbl": 25,
+   "Link": 2693,
+   "Note": 60,
+   "P": 1914,
+   "Part": 1,
+   "Reference": 40,
+   "Sect": 2,
+   "Span": 969,
+   "TOC": 1,
+   "TOCI": 26
+  },
+  "untagged_chars": 0
+ }
+}
