@@ -169,6 +169,8 @@ def test_ocr_only_page_serves_listed_pages_and_records(tmp_path):
     for p in ('/ocr/text/2.json', '/ocr/text/-1.json', '/ocr/text/..%2f1.json', '/ocr/text/%2e%2e/1.json', '/ocr/text/1'):
         assert call(port, p)[0] == 404, p                                       # only the section's own pages
     assert call(port, '/save', {})[0] == 404                                     # no decisions in OCR-only mode
+    for p in ('/draft', '/draft.pdf'): assert call(port, p)[0] == 404, p        # and no draft PDF
+    assert call(port, '/draft', {})[0] == 404
     st, b = call(port, '/ocr-verdict', {'verdict': 'approved', 'reviewer': 'Kim', 'reason': 'a | b'})
     assert st == 400 and '"|"' in json.loads(b)['error']
     st, b = call(port, '/ocr-verdict', {'verdict': 'approved', 'reviewer': 'Kim', 'reason': 'checked against the scan', 'pages': '1'})
