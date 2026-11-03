@@ -231,3 +231,25 @@ def test_record_and_matches():
     today['1004 0'] = dict(today['1004 0'], image_px=[401, 300])                       # one crop changed size
     assert not F.matches(side['passes'][0]['objs'], today)
     assert F.side_fingerprint(side) == F.side_fingerprint(json.loads(json.dumps(side)))
+
+# ------------------------------------------------------------------ the answers file beside a saved reply
+from lib import replies
+
+def multi_record():
+    side = F.record(digest(3)['figures'][:2], [], {'version': F.NOTE_VERSION}, [{'pass': '2', 'items': digest(3)['figures'][2:], 'outcome': 'done', 'reply_text': '{}'}],
+                    lambda r: {'model': 'm'})
+    return {'raw_reply': '{"alt": []}', 'raw_reply_passes': side, 'document': {'file': 'x.pdf', 'sha256': 'ab'},
+            'run': {'model': 'm', 'figure_passes': {'requests': 1, 'fingerprint': F.side_fingerprint(side)}}}
+
+def test_replies_write_the_answers_file_only_for_a_run_with_figure_requests(tmp_path):
+    rec = multi_record(); rp = tmp_path / 'reply.txt'
+    assert replies.write(rec, str(rp)) == {'figure_passes': {'requests': 1, 'fingerprint': rec['run']['figure_passes']['fingerprint']}}
+    assert json.load(open(str(rp) + '.passes.json')) == rec['raw_reply_passes']
+    one = tmp_path / 'one.txt'
+    assert replies.write({'raw_reply': '{}', 'run': {'model': 'm'}}, str(one)) == {} and not os.path.exists(str(one) + '.passes.json')
+
+def test_replay_to_carries_the_answers_file(tmp_path):
+    from review import sessions as S
+    R = tmp_path / 'run'; R.mkdir(); (R / 'record.json').write_text(json.dumps(multi_record()))
+    reply, _ = S.replay_to(str(R), str(tmp_path / 'new'))
+    assert os.path.exists(reply + '.passes.json') and json.load(open(reply + '.meta.json'))['figure_passes']['requests'] == 1

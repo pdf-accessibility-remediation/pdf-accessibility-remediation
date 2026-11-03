@@ -54,10 +54,12 @@ digest = load('digest.json', base=A, default={})
 fulltext = load('fulltext.json', base=A, default={}) or {}   # the whole texts the digest shortens (local only, never sent)
 vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the original, from the audit
 reply = open(os.path.join(R, 'reply.txt'), encoding='utf-8').read() if os.path.exists(os.path.join(R, 'reply.txt')) else None
+passes = load('passes.json')                          # the figure requests' answers and split (issue #63), when there were any
 timing = load('timing.json', default=None)
 attempts = load('attempts.json', default=[])
 if prev is not None:
     run, val, reply, attempts = prev.get('run') or {}, {'dropped': prev.get('validation_dropped') or []}, prev.get('raw_reply'), prev.get('earlier_attempts') or []
+    passes = prev.get('raw_reply_passes')
     vera_before = (prev.get('verapdf') or {}).get('before')
 rv = load('review.json')                              # a person's review of the work order before it was applied (REVIEW=1)
 ri = load('review_items.json') if rv else None        # what the review page showed, e.g. its move_section preview
@@ -105,7 +107,8 @@ record = {
               **({'font_maps': log['font_maps']} if (log.get('font_maps') or {}).get('fonts') or (log.get('font_maps') or {}).get('skipped') else {}),
               'tabs_set': log.get('tabs_set'), **({'text_rule_guard': log['text_rule_guard']} if log.get('text_rule_guard') else {})},
     'verify': {k: v for k, v in ver.items() if k != 'verapdf'},
-    'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, 'raw_reply': reply, 'environment': log.get('environment'),
+    'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, 'raw_reply': reply,
+    **({'raw_reply_passes': passes} if passes else {}), 'environment': log.get('environment'),
     'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier, 6),
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),
     **({'workorder_ai': wo_ai} if rv and wo_ai is not None else {}),
@@ -990,7 +993,7 @@ if not KEEP:
     from review import sessions as RS                 # the digest, fulltext and OCR word sheets stay, for a later review
     if rv: RS.keep_first(R, A)
     if os.path.exists(os.path.join(A, 'digest.json')): RS.keep_audit(R, A, wo_ai if rv and wo_ai is not None else wo, INPUT)
-    for name in ('request.json', 'response.json', 'reply.txt', 'run.json', 'validation.json', 'workorder.json',
+    for name in ('request.json', 'response.json', 'reply.txt', 'run.json', 'validation.json', 'workorder.json', 'passes.json',
                  PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'attempts.json',
                  'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json', 'review_stop.json'):
         p = os.path.join(R, name)
