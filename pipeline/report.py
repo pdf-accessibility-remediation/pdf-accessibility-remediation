@@ -268,6 +268,7 @@ def intake_rows():
                  + (' (OCR\'d pages: text added)' if o else '')))
     return rows
 ofp = log.get('offpage') or {}
+fpr = run.get('figure_passes') or {}                  # figure requests past the first (issue #63): absent on single-request runs
 checks = [
     ('Every page looks the same as the original', ok(ver.get('pixel_pages_differing') == []), f'{len(ver.get("pixel_pages_differing") or [])} pages differ'),
     ('Published text unchanged', ok(ver.get('text_pages_changed') == []), f'{len(ver.get("text_pages_changed") or [])} pages changed'),
@@ -290,6 +291,11 @@ checks = [
         + (f' · {len(ow_missing)} not found in the page text' if ow_missing else '')
         + (f' · {ow_run["not_sent"] + digest.get("ocr_words_not_sent", 0)} suspect forms not read by the AI' if ow_run.get('not_sent') or digest.get('ocr_words_not_sent') else ''))]
       if ow_forms or digest.get('ocr_words') else []),
+    *([('Figure requests: every figure seen by the AI', ok(not fpr.get('failed') and not fpr.get('stale')),
+        f'{nc(fpr.get("figures"))} figures past the first request, in {nc(fpr.get("requests"))} figure requests'
+        + (' · did not finish: ' + '; '.join(f'request {k} ({v})' for k, v in fpr['failed'].items()) if fpr.get('failed') else '')
+        + (' · saved answers written for a different figure list: request ' + ', '.join(fpr['stale']) if fpr.get('stale') else '')
+        + (' · a person writes the alt text of those figures' if fpr.get('failed') or fpr.get('stale') else ''))] if fpr else []),
     ('Page-level figure wrap', ok(not pfw_noalt and not pfw_left and not pfw_bad),
      (pgs([w['page'] for w in pfw_wrapped]) + ' wrapped as one Figure' if pfw_wrapped else 'no page with only an untagged drawing')
      + (' · no alt text yet: ' + '; '.join(f'{pg(w["page"])} is a figure wrap. Write the alt text.' for w in pfw_noalt) if pfw_noalt else '')
@@ -398,6 +404,31 @@ checks = [
 ]
 u = run.get('usage') or {}
 ai = record['ai_call']; mp = run.get('original_call') or run           # a reused reply: the model and prompt of the call that wrote it
+a_stop = [a for a in attempts if a.get('stopped')]; a_bad = [a for a in attempts if not a.get('stopped')]
+def fig_block():
+    """The figure requests (issue #63): how the figures were split, what each later request saw, and how each went."""
+    sp = passes or {}; ps = sp.get('passes') or []
+    n1 = len((sp.get('first') or {}).get('objs') or [])
+    out = [line(f'Figure requests: {n1 + sum(len(p["objs"]) for p in ps)} images in {1 + len(ps)} requests '
+                f'({n1} with the work order, then {", ".join(str(len(p["objs"])) for p in ps)}). Each figure request saw its figures with '
+                'their captions, the lines of their pages, the book\'s title, language, scan quality and section headings, and '
+                'alt texts from the first request as style examples, not the rest of the book'
+                + (f' (prompt `{fpr["prompt_file"]}` ({fpr.get("prompt_sha256") or "hash not recorded"}); the first request was told in a note, '
+                   f'{(fpr.get("note") or {}).get("version") or "version not recorded"})' if fpr.get('prompt_file') else '') + '.', entry=False), '']
+    for p in ps:
+        c = p.get('call') or {}; cu = c.get('usage') or {}
+        out.append(line(f'- Request {p["pass"]}: {len(p["objs"])} figures · '
+                        + ('answered' if p.get('outcome') == 'done' and p['pass'] not in (fpr.get('stale') or [])
+                           else 'saved answers written for a different figure list, not used' if p['pass'] in (fpr.get('stale') or [])
+                           else f'did not finish ({p.get("reason") or "no reason recorded"}): a person writes their alt text')
+                        + (f' · ${cu["cost_usd"]:.3f}' if cu.get('cost_usd') is not None else '')
+                        + (f' · {c["seconds"]}s' if c.get('seconds') else '') + (' · after one retry' if c.get('retry') else ''), entry=False))
+    for p in run.get('passes') or []:
+        if p.get('pass') == 'probe':
+            out.append(line(f'- Overlap probe (test only): {p.get("images")} figures the first request answered were sent again; '
+                            'the answers are kept in `record.json` (`run.passes`, `overlap`) and not used'
+                            + (f' · ${(p.get("usage") or {})["cost_usd"]:.3f}' if (p.get('usage') or {}).get('cost_usd') is not None else ''), entry=False))
+    return out + ['']
 L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '', f'Result: `{PDF}`', '',
      f'{nc(src.get("pages"))} pages · run {DT.when(run.get("started"), "start time not recorded")} · '
      + (f'model `{mp["model"]}`' if mp.get('model') else 'model not recorded') + ' · '
@@ -406,7 +437,11 @@ L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '',
         else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: call did not finish') + ' · '
      + (f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None
         else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: call did not finish')
-     + (f' · plus ${cost_earlier:.3f} for {len(attempts)} earlier call(s) whose reply was cut off or unusable (total ${cost_this + cost_earlier:.3f})' if attempts else ''), '',
+     + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_bad):.3f} for {len(a_bad)} earlier call(s) whose reply was cut off or unusable' if a_bad else '')
+     + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_stop):.3f} for {len([a for a in a_stop if a.get("cost_usd") is not None])} call(s) from a run '
+        'that was stopped before it finished' + (' (one more was in flight: any charge is not known)' if any(a.get('cost_usd') is None for a in a_stop) else '') if a_stop else '')
+     + (f' (total ${cost_this + cost_earlier:.3f})' if attempts else ''), '',
+     *(fig_block() if fpr else []),
      *([f'Intake: {intake.get("summary")}' + (f' · tagged by OpenDataLoader {intake["tools"].get("opendataloader_pdf")}' if intake.get('status') == 'done' else '')
         + (' · the pipeline worked on `_intake/intake.pdf`; the original was not changed' if (intake.get('result') or {}).get('pdf') else ''), ''] if intake else []),
      *([('Libraries: ' + ' · '.join(f'{k} {v}' for k, v in log['environment'].items() if k != 'executable')), ''] if log.get('environment') else []),
