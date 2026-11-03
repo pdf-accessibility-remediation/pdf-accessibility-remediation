@@ -1,6 +1,6 @@
 """test_webapp_checks.py: the Manual Checks page and its routes (issue #38, stage 2): webapp/manualpage.py, the routes in
 webapp/server.py, the strip, review/manual.py's drafts. An app on a temporary runs folder with a synthetic finished run at
-batches/d1/clans (a run path of several segments) and a one-page synthetic PDF. No book, no model.
+batches/d1/sample (a run path of several segments) and a one-page synthetic PDF. No book, no model.
 
     python -m pytest tests/test_webapp_checks.py -q
 """
@@ -15,25 +15,25 @@ from review import core, manual as M, sessions as S  # noqa: E402
 from lib import release as REL, runlock, langtag  # noqa: E402
 from test_webapp import setup, wait, free_port  # noqa: E402,F401  (fixtures)
 
-RUN = 'batches/d1/clans'
+RUN = 'batches/d1/sample'
 CARD = '<section class="ship" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? No</h2><ul role="list"><li>x</li></ul></section>'
 PAC = {'by': 'Kim', 'fields': {'pages_checked': '1'}, 'items': {k: {'result': 'pass'} for k in
        ('pac_wcag', 'title_language', 'spot_check', 'colour', 'contrast', 'images_of_text', 'needs_person')}}
 
 def make_run(R, title='The Clan Records', record_sha=False):
     os.makedirs(R, exist_ok=True)
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(300, 300)); doc.save(os.path.join(R, 'clans_remediated.pdf'))
-    rec = {'document': {'file': 'clans.pdf', 'output': 'clans_remediated.pdf', 'pages': 1},
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(300, 300)); doc.save(os.path.join(R, 'sample_remediated.pdf'))
+    rec = {'document': {'file': 'sample.pdf', 'output': 'sample_remediated.pdf', 'pages': 1},
            'verify': {'doc': {'title': title, 'lang': 'en-US'}, 'tree': {'types': {'Table': 2}}}}
-    if record_sha: rec['document']['output_sha256'] = REL.sha_file(os.path.join(R, 'clans_remediated.pdf'))
+    if record_sha: rec['document']['output_sha256'] = REL.sha_file(os.path.join(R, 'sample_remediated.pdf'))
     core.save(os.path.join(R, 'record.json'), rec)
-    open(os.path.join(R, 'review.md'), 'w').write('# Remediation Review: clans.pdf\n')
+    open(os.path.join(R, 'review.md'), 'w').write('# Remediation Review: sample.pdf\n')
     open(os.path.join(R, 'review.html'), 'w').write(f'<!doctype html><html><head><title>r</title></head><body><header><h1>Review</h1></header>{CARD}<p>rest</p></body></html>')
     return R
 
 @pytest.fixture
 def mapp(setup):
-    t = setup; R = make_run(str(t / 'runs' / 'batches' / 'd1' / 'clans'))
+    t = setup; R = make_run(str(t / 'runs' / 'batches' / 'd1' / 'sample'))
     open(t / 'runs' / 'batches' / 'd1' / 'summary.html', 'w').write('<p>batch</p>')
     port = json.loads((t / 'app.json').read_text())['port']
     env = {k: v for k, v in os.environ.items() if k != 'VERAPDF'}
@@ -74,14 +74,14 @@ def test_the_page_is_served_with_the_csp_and_names_no_file(mapp):
     assert '<script type="application/json" id="mc-data">' in page and '<script src="/app/manual.js" defer></script>' in page
     text = visible(page)
     assert 'The Clan Records' in text and 'Language: English' in text                 # the remediated PDF's title (Q2, F8)
-    for bad in ('.pdf', 'review.md', 'release/', 'sha256', 'batches/d1', 'clans_remediated'): assert bad not in text, bad
+    for bad in ('.pdf', 'review.md', 'release/', 'sha256', 'batches/d1', 'sample_remediated'): assert bad not in text, bad
     assert 'href="#pac"' not in page and 'href="#screen-reader"' not in page          # the two section links went (2026-10-31)
     assert 'WCAG 1.4.3' in text                                                         # the WCAG numbers stay (Q1)
     assert req(mapp['port'], 'GET', '/app/manual.js')[0] == 200
 
 def test_the_name_falls_back_to_the_original_without_pdf(tmp_path):
     R = make_run(str(tmp_path / 'r'), title='')
-    assert MP.book(core.load(os.path.join(R, 'record.json')))['title'] == 'clans'
+    assert MP.book(core.load(os.path.join(R, 'record.json')))['title'] == 'sample'
 
 @pytest.mark.parametrize('path,code', [(f'/run/{RUN}/release', 404), (f'/run/{RUN}/screen-reader', 404), (f'/run/{RUN}/ocr', 404),
                                        ('/run/batches/d1/nope/checks', 404)])
@@ -128,7 +128,7 @@ def test_the_evaluation_page_with_a_trailing_slash_redirects_and_record_lands_on
 
 def test_a_changed_pdf_is_said_in_plain_words(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
-    with open(os.path.join(R, 'clans_remediated.pdf'), 'ab') as f: f.write(b'\n% edited by hand\n')
+    with open(os.path.join(R, 'sample_remediated.pdf'), 'ab') as f: f.write(b'\n% edited by hand\n')
     s = MP.strip(R, core.load(os.path.join(R, 'record.json')))
     assert s['disk_same'] is False and s['refusal'] == MP.strip_words(MP.CHANGED_BY_HAND)
 
@@ -191,7 +191,7 @@ def test_the_session_hash_refusal_shows_before_the_form_is_filled(tmp_path):
     assert st['refusal'] == M.NOT_LAST_REVIEW                                           # G6: shown at once, as Record would refuse
     with pytest.raises(S.Refused, match='last review'): M.record(R, 'pac', PAC, say=lambda *a: None, batch=False)
     core.save(os.path.join(R, 'reviews', 'sessions', '001.json'), {'id': '001', 'status': 'applied',
-              'version': {'id': '001', 'pdf_sha256': REL.sha_file(os.path.join(R, 'clans_remediated.pdf'))}})
+              'version': {'id': '001', 'pdf_sha256': REL.sha_file(os.path.join(R, 'sample_remediated.pdf'))}})
     assert MP.state(R, 'r')['refusal'] is None                                          # the same file: no refusal
 
 def test_a_note_holding_a_script_end_tag_stays_text(tmp_path):

@@ -9,7 +9,7 @@ the PDF.
 import re
 
 GAP_EM = 0.10           # a gap narrower than 0.10 of the type size is never a word break
-GAP_TYPICAL = 2.5       # ... nor one under 2.5 times the line's typical gap (letter-spaced type: performing's running heads)
+GAP_TYPICAL = 2.5       # ... nor one under 2.5 times the line's typical gap (letter-spaced type, as in some running heads)
 HYPHENS = '-‐‑­'
 
 def _upright(c): return c.get('upright', True) is not False

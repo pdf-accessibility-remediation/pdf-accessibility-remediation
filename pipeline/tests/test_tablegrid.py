@@ -28,12 +28,12 @@ def test_header_column_and_corner():
     assert not p['cells'][(1, 1)]['th']
 
 def test_cells_not_named_are_not_headers():
-    """buddhist's abbreviation list: the first entry was tagged TH, but the headers are the first column."""
+    """An abbreviation list: the first entry was tagged TH, but the headers are the first column."""
     p = plan([[C, wide(3)], [C, wide(3)]], header_cols=1)
     assert ths(p) == {(0, 0), (1, 0)}
 
 def test_empty_cells_are_never_headers():
-    """pearl: Name | (gap) | Occupation | (gap) | Location."""
+    """Name | (gap) | Occupation | (gap) | Location: empty spacer columns."""
     p = plan([[C, E, C], [C, E, C]], header_rows=1)
     assert ths(p) == {(0, 0), (0, 2)}
 
@@ -43,7 +43,7 @@ def test_title_and_note_rows_leave_the_table():
     assert p['title'] == [0] and p['note'] == [3] and set(p['cells']) == {(1, 0), (1, 1), (2, 0), (2, 1)} and ths(p) == {(1, 0), (1, 1)}
 
 def test_group_rows_head_the_rows_below_by_id():
-    """translation: title, column names, then 'Moiety 1' over its clans and 'Moiety 2' over its."""
+    """A title, column names, then a group row over its rows and a second group row over its."""
     rows = [[wide(2)], [C, C], [wide(2)], [C, C], [wide(2)], [C, C]]
     p = plan(rows, title_rows=1, header_rows=1, group_rows=[2, 4])
     assert p['complex'] and ths(p) == {(1, 0), (1, 1), (2, 0), (4, 0)}
@@ -60,7 +60,7 @@ def test_row_header_spanning_rows_heads_each_row():
     assert p['complex'] and p['cells'][(1, 0)]['th'] and p['cells'][(2, 0)]['headers'] == [(0, 1), (1, 0)]
 
 def test_repeated_header_row_stays_a_header_and_heads_nothing_new():
-    """pearl: rows 31-32 repeat the title and names at the page break."""
+    """A table that repeats its column names after a page break."""
     rows = [[C, C], [C, C], [C, C], [C, C]]
     p = plan(rows, header_rows=1, repeat_rows=[2])
     assert ths(p) == {(0, 0), (0, 1), (2, 0), (2, 1)} and not p['complex']

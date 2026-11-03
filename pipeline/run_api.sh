@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One OpenRouter run, start to finish: Claude decides, the code applies, checks and reports.
 #   bash run_api.sh <original.pdf> <short-name> [run-label]
-#   bash run_api.sh ../samples/cadaverous/<file>.pdf cadaverous api-run1   →  PDFREM/runs/cadaverous/api-run1/
+#   bash run_api.sh ../samples/tagged/teika.pdf teika api-run1   →  PDFREM/runs/teika/api-run1/
 # Needs OPENROUTER_API_KEY in a .env file in or above this folder. Asks before spending anything.
 # KEEP=1  bash run_api.sh …   keeps the working files (digest, figure crops, raw reply, logs) for debugging
 # REPLY=path/to/reply.txt bash run_api.sh …   reuses a saved Claude reply instead of calling the API (no cost)
@@ -24,7 +24,7 @@
 # Outputs go to PDFREM/runs/<short-name>/<run-label>/ (beside pipeline). RUNS_DIR=/some/path overrides it.
 # RUN_DIR=/exact/folder sets the run folder itself (batch_api.sh uses it: runs/batches/<label>/<name>/).
 set -euo pipefail
-SRC=${1:?path to the original PDF}; NAME=${2:?short name, e.g. cadaverous}; RUN=${3:-api-$(date +%Y%m%d-%H%M)}
+SRC=${1:?path to the original PDF}; NAME=${2:?short name, e.g. teika}; RUN=${3:-api-$(date +%Y%m%d-%H%M)}
 [[ -f $SRC ]] || { echo "no such PDF: $SRC"; exit 1; }
 SRC=$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")      # absolute, so it works from any folder
 BASE=$(basename "$SRC"); USER_OUT=${OUT:-}; OUT=${OUT:-${BASE%.*}_remediated.pdf}; [[ $OUT == *.[pP][dD][fF] ]] || OUT=$OUT.pdf

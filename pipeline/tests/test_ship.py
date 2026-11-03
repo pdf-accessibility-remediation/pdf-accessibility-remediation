@@ -57,7 +57,7 @@ def test_the_gate_refuses_what_is_not_ready_in_ships_words(tmp_path):
 def test_a_shipped_book_whose_file_changed_keeps_shipped_with_a_warning(tmp_path):
     R, rec, sha = ready_run(tmp_path)
     core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry(sha)])
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'clans_remediated.pdf'))   # changed by hand
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'sample_remediated.pdf'))   # changed by hand
     st = MP.app_glance(R, rec, rec['glance'])['status']
     assert st['name'] == 'Shipped' and st['text'] == 'Shipped · The current PDF has changed since this report was made.'
     assert st['warning'] == MP.SHIPPED_WARNING and st['current']['name'] == 'Not Ready'
@@ -69,7 +69,7 @@ def test_a_previous_results_page_reads_earlier_version_never_newer(tmp_path):
     R, rec, sha = ready_run(tmp_path)
     rec['review'] = {'session': '006'}; core.save(os.path.join(R, 'record.json'), rec)
     V = os.path.join(R, 'reviews', 'versions', '004'); os.makedirs(V)
-    shutil.copy(os.path.join(R, 'clans_remediated.pdf'), os.path.join(V, 'clans_remediated.pdf'))
+    shutil.copy(os.path.join(R, 'sample_remediated.pdf'), os.path.join(V, 'sample_remediated.pdf'))
     vrec = dict(rec, review={'session': '004'}, document=dict(rec['document'], output_sha256='4' * 64))
     core.save(os.path.join(V, 'record.json'), vrec)
     core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry(sha)])
@@ -266,7 +266,7 @@ def test_a_standing_refusal_is_said_once_on_the_strip(tmp_path):
     assert s['refusal'] == 'A new version of this book is being made, so nothing can be recorded or marked as shipped now. Check it once it is done.'
     assert MP.ship_gate(R, rec)['why'] == "A new version of this book is being made, so this version can't be marked as shipped now."   # a POST: Ship's words
     os.rmdir(os.path.join(R, 'reviews', 'work'))
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'clans_remediated.pdf'))   # changed by hand
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'sample_remediated.pdf'))   # changed by hand
     s = MP.strip(R, rec)
     assert s['ship']['why'] is None and s['refusal'] == ("The book's PDF has changed since this report was made, so no results can be recorded for it "
                                                          "and it can't be marked as shipped. Whoever looks after the app can check it.")
@@ -325,11 +325,11 @@ def test_the_record_zip_holds_only_its_files_in_every_state(tmp_path):
     # not ready: without han_review.csv, then with it (review 30 S1: back in the ZIP when the book has one)
     R0 = make_run(str(tmp_path / 'nr'), record_sha=True)
     name, files = _zip(R0, 'current')
-    assert name.endswith('_not-ready.zip') and sorted(files) == sorted(['clans_remediated.pdf', 'review.html', 'READ-ME.txt'])
+    assert name.endswith('_not-ready.zip') and sorted(files) == sorted(['sample_remediated.pdf', 'review.html', 'READ-ME.txt'])
     assert 'han_review.csv' not in files['READ-ME.txt'].decode()
     open(os.path.join(R0, 'han_review.csv'), 'w').write('pdf_page,text\n1,漢\n')
     name, files = _zip(R0, 'current')
-    assert sorted(files) == sorted(['clans_remediated.pdf', 'review.html', 'han_review.csv', 'READ-ME.txt'])
+    assert sorted(files) == sorted(['sample_remediated.pdf', 'review.html', 'han_review.csv', 'READ-ME.txt'])
     assert files['han_review.csv'] == 'pdf_page,text\n1,漢\n'.encode('utf-8')
     assert '- han_review.csv: passages in Chinese or Japanese a person needs to check, as a spreadsheet.\n' in files['READ-ME.txt'].decode()
     _links_stay_in_the_zip(files)

@@ -1,0 +1,151 @@
+{
+ "apply": {
+  "applied": {
+   "OCR words: printed spelling given as ActualText": 15,
+   "artifact: \"page scan PDF 1\"": 1,
+   "artifact: \"page scan PDF 10\"": 1,
+   "artifact: \"page scan PDF 11\"": 1,
+   "artifact: \"page scan PDF 12\"": 1,
+   "artifact: \"page scan PDF 13\"": 1,
+   "artifact: \"page scan PDF 14\"": 1,
+   "artifact: \"page scan PDF 15\"": 1,
+   "artifact: \"page scan PDF 16\"": 1,
+   "artifact: \"page scan PDF 17\"": 1,
+   "artifact: \"page scan PDF 18\"": 1,
+   "artifact: \"page scan PDF 19\"": 1,
+   "artifact: \"page scan PDF 2\"": 1,
+   "artifact: \"page scan PDF 20\"": 1,
+   "artifact: \"page scan PDF 21\"": 1,
+   "artifact: \"page scan PDF 22\"": 1,
+   "artifact: \"page scan PDF 23\"": 1,
+   "artifact: \"page scan PDF 24\"": 1,
+   "artifact: \"page scan PDF 25\"": 1,
+   "artifact: \"page scan PDF 26\"": 1,
+   "artifact: \"page scan PDF 27\"": 1,
+   "artifact: \"page scan PDF 28\"": 1,
+   "artifact: \"page scan PDF 29\"": 1,
+   "artifact: \"page scan PDF 3\"": 1,
+   "artifact: \"page scan PDF 30\"": 1,
+   "artifact: \"page scan PDF 31\"": 1,
+   "artifact: \"page scan PDF 32\"": 1,
+   "artifact: \"page scan PDF 33\"": 1,
+   "artifact: \"page scan PDF 34\"": 1,
+   "artifact: \"page scan PDF 35\"": 1,
+   "artifact: \"page scan PDF 36\"": 1,
+   "artifact: \"page scan PDF 37\"": 1,
+   "artifact: \"page scan PDF 38\"": 1,
+   "artifact: \"page scan PDF 39\"": 1,
+   "artifact: \"page scan PDF 4 (blank)\"": 1,
+   "artifact: \"page scan PDF 40\"": 1,
+   "artifact: \"page scan PDF 41\"": 1,
+   "artifact: \"page scan PDF 42\"": 1,
+   "artifact: \"page scan PDF 43\"": 1,
+   "artifact: \"page scan PDF 44\"": 1,
+   "artifact: \"page scan PDF 45\"": 1,
+   "artifact: \"page scan PDF 46\"": 1,
+   "artifact: \"page scan PDF 47\"": 1,
+   "artifact: \"page scan PDF 48\"": 1,
+   "artifact: \"page scan PDF 49\"": 1,
+   "artifact: \"page scan PDF 5\"": 1,
+   "artifact: \"page scan PDF 6\"": 1,
+   "artifact: \"page scan PDF 7\"": 1,
+   "artifact: \"page scan PDF 8\"": 1,
+   "artifact: \"page scan PDF 9\"": 1,
+   "bookmarks: built from heading tags": 22,
+   "document: /Lang": 1,
+   "document: DisplayDocTitle": 2,
+   "document: marked as tagged": 1,
+   "document: title": 1,
+   "figure: alt text": 4,
+   "flatten: false list → paragraphs": 47,
+   "flatten: nested list/table already flattened with its parent": 7,
+   "fonts: invisible OCR-layer font given defined blank glyphs": 2,
+   "one-item list → paragraph (rule)": 38,
+   "retype → H2": 3,
+   "retype → H3": 9,
+   "retype → H4": 4,
+   "retype → P": 14,
+   "structure: empty tag removed (proven empty)": 9,
+   "table: cells wrongly tagged as headers set back to data cells": 4,
+   "table: header cells marked (work order)": 4
+  },
+  "deferred": 2,
+  "empty_notes_removed": 0,
+  "failed": 0,
+  "rejected": 0
+ },
+ "validation_dropped": [],
+ "verapdf": {
+  "after": {
+   "failed": {},
+   "totals": {
+    "ua_only_failed_checks": 0,
+    "ua_only_failed_rules": 0,
+    "unclassified": [],
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
+   }
+  },
+  "before": {
+   "failed": {
+    "6.2-1": 1,
+    "7.1-10": 1,
+    "7.21.8-1": 12,
+    "7.3-1": 53
+   },
+   "totals": {
+    "ua_only_failed_checks": 0,
+    "ua_only_failed_rules": 0,
+    "unclassified": [],
+    "wcag_failed_checks": 67,
+    "wcag_failed_rules": 4
+   }
+  }
+ },
+ "verify": {
+  "artifact_chars": 1017,
+  "figures": {
+   "count": 4,
+   "generic_or_empty": 0,
+   "with_nul": 0
+  },
+  "headings": {
+   "H1": 1,
+   "H2": 4,
+   "H3": 10,
+   "H4": 7
+  },
+  "pixel_pages_differing": [],
+  "skipped_levels": [],
+  "structure": {
+   "captions_not_grouped": 0,
+   "empty_tables": 0,
+   "empty_tags": 0,
+   "links_url_only": 0,
+   "paragraphs_holding_only_figures": 0
+  },
+  "text_pages_changed": [],
+  "tree_types": {
+   "Caption": 1,
+   "Div": 287,
+   "Document": 1,
+   "Figure": 4,
+   "H1": 1,
+   "H2": 4,
+   "H3": 10,
+   "H4": 7,
+   "L": 50,
+   "LBody": 253,
+   "LI": 253,
+   "Lbl": 253,
+   "P": 598,
+   "Sect": 1,
+   "Span": 181,
+   "TD": 8,
+   "TH": 8,
+   "TR": 8,
+   "Table": 4
+  },
+  "untagged_chars": 0
+ }
+}

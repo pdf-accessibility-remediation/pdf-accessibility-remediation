@@ -1652,7 +1652,7 @@ def fix_rolemap_cycles():
     if n: RMAP.clear(); RMAP.update(_rm()); ok('role map: loop cut', n)
     rule_fix('7.1-6', n)
 def fix_standard_remaps():
-    """veraPDF 7.1-7: a standard tag may not be remapped (sands: Caption → P). Each element with that tag is retyped to
+    """veraPDF 7.1-7: a standard tag may not be remapped (a Caption mapped to P). Each element with that tag is retyped to
     what the RoleMap already made it, and the entry is removed: a screen reader hears the same thing as before."""
     if '/RoleMap' not in st: return
     RMAP.clear(); RMAP.update(_rm())
