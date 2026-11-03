@@ -23,7 +23,8 @@ Routes (all call review/core.py; a later front end can replace this file and pag
                                  when the server stops; nothing in the run folder or reviews/ is written). One at a time;
                                  refused once Finish has started
     GET  /draft                  the draft's state: {state: idle | building | ready | failed, elapsed | seconds, basis (the
-                                 saved_at it was built from), result: {dropped, moves, rejected, failed, refused}, error}
+                                 saved_at it was built from), result: {problems (as /keep's, for this draft), moves, rejected,
+                                 failed, dropped}, error}
     GET  /draft.pdf              the draft, once ready, as <book>_draft.pdf (a download). Always the one fixed file
     POST /finish  {…, accept_unreviewed, gaps_ack}            → review.json and the reviewed workorder.json; the server stops.
                                  Not finished yet: 200 with needs: "invalid" (and problems) while a card's choice would be
@@ -326,7 +327,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                         if draft['state'] == 'building': return self.send(409, {'error': 'A draft is being built already.'})
                     keep()                                   # before the state changes: a keep that fails leaves no build "under way"
                     with draft_lock: draft.clear(); draft.update(state='building', started=time.time(), basis=saved_at)
-                try: wo, refused = build()
+                try: wo = build()[0]; probs = checked()[0]   # what is left out, worded as on the cards (core.problems)
                 except Exception as e:
                     with draft_lock: draft.update(state='failed', error=f'The draft could not be started ({type(e).__name__}).')
                     return self.send(500, draft_state())
@@ -338,7 +339,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                     try:
                         res = core.draft_pdf(R, data.get('pdf'), ai, wo, draft_pdf, items=items, decisions=decisions,
                                              additions=additions, on_start=started)
-                        with draft_lock: draft.update(state='ready', seconds=res.pop('seconds'), result={**res, 'refused': refused})
+                        with draft_lock: draft.update(state='ready', seconds=res.pop('seconds'), result={**res, 'problems': probs})
                     except Exception as e:                   # ValueError: the page's own words
                         with draft_lock: draft.update(state='failed', error=str(e) if isinstance(e, ValueError) else f'The draft could not be built ({type(e).__name__}).')
                     finally:

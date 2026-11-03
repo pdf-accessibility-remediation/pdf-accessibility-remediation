@@ -72,6 +72,7 @@ dialog.npad textarea { flex: 1; resize: none; border: 0; border-radius: 0 0 8px 
 .draft-line { margin-top: 6px; font-size: 14px; } .draft-line[hidden] { display: none; }
 .draft-line .note { color: var(--muted); } .draft-line ul { margin: 4px 0 0 1.2em; padding: 0; } .draft-line a { color: var(--accent); }
 .draft-line .stale { color: var(--reject); font-weight: 600; }
+.draft-line details { display: inline-block; margin-left: 4px; } .draft-line summary { cursor: pointer; color: var(--accent); }
 #msg:has(.msg-x) { display: flex; align-items: flex-start; gap: 8px; } #msg .msg-t { flex: 1; padding-top: 4px; }
 #msg.err { color: var(--reject); }
 #session { margin-top: 6px; font-size: 14px; color: var(--muted); }
@@ -662,24 +663,26 @@ const draftBtn = document.getElementById('draftBtn'), draftLine = document.getEl
 const choicesNow = () => JSON.stringify([state.decisions, state.additions]);
 const mmss = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 const DRAFT_NOTE = 'For checking only: the accessibility checks a finished result gets are not run on it, and it has no review record. Changes made to it in Acrobat are not kept: "Finish Review" builds the real result from your choices.';
-function draftLink(id, words) {                        // a card of this page (a decision, or an addition), else the words alone
-  return id && (byId[id] || document.getElementById('card-' + id)) ? '<a href="#card-' + esc(id) + '" data-card="card-' + esc(id) + '">' + esc(words) + '</a>' : esc(words);
-}
 function draftShow(d) {
   draftLast = d; draftLine.hidden = !d || d.state === 'idle';
   draftBtn.disabled = finished || (d && d.state === 'building');
   if (!d || d.state === 'idle') return;
   if (d.state === 'building') { draftLine.innerHTML = 'Building the draft PDF… ' + mmss(d.elapsed || 0) + ' <span class="note">(a long book takes a few minutes; your changes are still saved as you make them)</span>'; return; }
   if (d.state === 'failed') { draftLine.innerHTML = '<span class="stale">' + esc(d.error || 'The draft could not be built.') + '</span>'; return; }
-  const r = d.result || {}, dr = r.dropped || [], rf = r.refused || [], mv = (r.moves || []).filter(m => m.refused), rj = r.rejected || [];
+  const r = d.result || {}, P = r.problems || {}, mv = (r.moves || []).filter(m => m.refused), rj = r.rejected || [];
   let h = (draftStale ? '<span class="stale">Out of date: you changed something after this draft was built.</span> ' : '') +
     '<a href="draft.pdf?t=' + encodeURIComponent(d.basis || '') + '" download>Download the Draft PDF</a> (built in ' + mmss(d.seconds || 0) + '). <span class="note">' + DRAFT_NOTE + '</span>';
   const list = (n, one, many, rows) => n ? '<div><b>' + n + ' ' + (n === 1 ? one : many) + '</b>:<ul>' + rows.join('') + '</ul></div>' : '';
-  const name = x => x.card && byId[x.card] ? byId[x.card].kind + ': ' + String(byId[x.card].label).slice(0, 80) : x.where;
-  h += list(dr.length, 'choice left out by the check', 'choices left out by the check', dr.map(x => '<li>' + draftLink(x.card, name(x)) + ': ' + esc(x.why) + '</li>'));
-  h += list(rf.length, 'addition can\'t be applied', 'additions can\'t be applied', rf.map(x => '<li>' + draftLink(x.id, (addById[x.id] || {}).label || x.id) + ': ' + esc(x.why) + '</li>'));
-  h += list(mv.length, 'section move refused by the executor', 'section moves refused by the executor', mv.map(m => '<li>' + draftLink(m.card, m.card && byId[m.card] ? name(m) : 'Section move') + ': ' + esc(m.refused) + '</li>'));
-  h += list(rj.length, 'other step refused by the executor', 'other steps refused by the executor', rj.map(x => '<li>' + esc(x.op) + ': ' + esc(x.why) + '</li>'));
+  const why = t => ' <details><summary>' + tc('details') + '</summary>' + esc(t) + '</details>';   // the executor's own words, folded away
+  // the check's verdict on this draft, worded as on the cards (core.problems: the same fix, the same links)
+  const left = (P.fields || []).map(p => '<li>' + probLink(p.card) + ': ' + esc(p.fix) + (NOT_YOURS[p.origin] || '') + '</li>')
+    .concat((P.conflicts || []).map(c => '<li>' + c.cards.map(probLink).join(' and ') + ': ' + esc(c.fix) + (NOT_YOURS[c.origin] || '') + '</li>'))
+    .concat((P.unplaced || []).map(u => '<li>' + esc(u.fix) + '</li>'));
+  h += list(left.length, 'choice left out of this draft', 'choices left out of this draft', left);
+  h += list(mv.length, 'section move the executor could not make', 'section moves the executor could not make', mv.map(m =>
+    '<li>' + (m.card ? probLink(m.card) : 'A section move') + ': not made as given; the report after Finish says why.' + why(m.refused) + '</li>'));
+  h += list(rj.length, 'other step the executor could not make', 'other steps the executor could not make', rj.map(x =>
+    '<li>' + esc(x.op) + ': not made; the report after Finish lists it.' + why(x.why) + '</li>'));
   draftLine.innerHTML = h;
 }
 function draftCheckStale() {

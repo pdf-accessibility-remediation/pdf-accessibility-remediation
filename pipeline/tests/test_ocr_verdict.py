@@ -15,6 +15,7 @@ import pytest
 import pikepdf
 from review import core, ocr as O, sessions as S
 from lib import glance as G
+from test_review_sessions import up  # noqa: E402  (waits for the server to answer)
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -161,7 +162,7 @@ def test_ocr_only_page_serves_listed_pages_and_records(tmp_path):
     tmp = tmp_path / 'img'; tmp.mkdir()
     t = threading.Thread(target=lambda: out.update(v=server.serve(str(tmp), '2026-10-31', port, open_browser=False, run_dir=R,
                                                                    lock_held=True, data=ocr_data(R))), daemon=True)
-    t.start(); time.sleep(0.8)
+    t.start(); up(port)
     st, b = call(port, '/')
     assert st == 200 and b'"mode": "ocr"' in b and b'"pages": [{"page": 1' in b
     st, b = call(port, '/ocr/text/1.json')
