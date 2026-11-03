@@ -1,0 +1,856 @@
+{
+ "schema": "intake/0.2",
+ "written": "2026-11-03T01:18:08",
+ "original": {
+  "file": "romanization-ocr.pdf",
+  "sha256": "8f278e3c414d4233006bc44529a1b2eb7164fe985b5cc7c0b68dd5272a6fda64",
+  "pages": 49,
+  "encrypted": false,
+  "pdf_version": "1.6",
+  "producer": "Adobe Acrobat (64-bit) 26 Paper Capture Plug-in"
+ },
+ "settings": {
+  "FORCE_OCR": false,
+  "OCR": "auto",
+  "OCR_LANG": null,
+  "plan_only": false,
+  "thresholds": {
+   "cer_ok": 0.05,
+   "cer_bad": 0.15,
+   "ocr_dpi": 300,
+   "sample": 20,
+   "extra": 4,
+   "min_scored": 5,
+   "score_min_chars": 300,
+   "score_image_cover": 0.25,
+   "cjk_chars": 20,
+   "cjk_share": 0.1,
+   "image_only_cover": 0.25,
+   "ocr_layer_cover": 0.5,
+   "pua_check": 100,
+   "front_skip_from": 40,
+   "front_skip_share": 0.05,
+   "front_skip_min": 6,
+   "outside_min_chars": 3,
+   "gap_share": 0.5,
+   "gap_min_breaks": 20,
+   "narrow_gap": 0.19,
+   "narrow_book_rate": 10,
+   "scan_min_cover": 0.05,
+   "tile_dpi": 300,
+   "tile_px": 75,
+   "tile_max": 50
+  }
+ },
+ "tools": {
+  "tesseract": "5.5.3",
+  "tesseract_langs": [
+   "afr",
+   "amh",
+   "ara",
+   "asm",
+   "aze",
+   "aze_cyrl",
+   "bel",
+   "ben",
+   "bod",
+   "bos",
+   "bre",
+   "bul",
+   "cat",
+   "ceb",
+   "ces",
+   "chi_sim",
+   "chi_sim_vert",
+   "chi_tra",
+   "chi_tra_vert",
+   "chr",
+   "cos",
+   "cym",
+   "dan",
+   "deu",
+   "div",
+   "dzo",
+   "ell",
+   "eng",
+   "enm",
+   "epo",
+   "equ",
+   "est",
+   "eus",
+   "fao",
+   "fas",
+   "fil",
+   "fin",
+   "fra",
+   "frk",
+   "frm",
+   "fry",
+   "gla",
+   "gle",
+   "glg",
+   "grc",
+   "guj",
+   "hat",
+   "heb",
+   "hin",
+   "hrv",
+   "hun",
+   "hye",
+   "iku",
+   "ind",
+   "isl",
+   "ita",
+   "ita_old",
+   "jav",
+   "jpn",
+   "jpn_vert",
+   "kan",
+   "kat",
+   "kat_old",
+   "kaz",
+   "khm",
+   "kir",
+   "kmr",
+   "kor",
+   "kor_vert",
+   "lao",
+   "lat",
+   "lav",
+   "lit",
+   "ltz",
+   "mal",
+   "mar",
+   "mkd",
+   "mlt",
+   "mon",
+   "mri",
+   "msa",
+   "mya",
+   "nep",
+   "nld",
+   "nor",
+   "oci",
+   "ori",
+   "osd",
+   "pan",
+   "pol",
+   "por",
+   "pus",
+   "que",
+   "ron",
+   "rus",
+   "san",
+   "script/Arabic",
+   "script/Armenian",
+   "script/Bengali",
+   "script/Canadian_Aboriginal",
+   "script/Cherokee",
+   "script/Cyrillic",
+   "script/Devanagari",
+   "script/Ethiopic",
+   "script/Fraktur",
+   "script/Georgian",
+   "script/Greek",
+   "script/Gujarati",
+   "script/Gurmukhi",
+   "script/HanS",
+   "script/HanS_vert",
+   "script/HanT",
+   "script/HanT_vert",
+   "script/Hangul",
+   "script/Hangul_vert",
+   "script/Hebrew",
+   "script/Japanese",
+   "script/Japanese_vert",
+   "script/Kannada",
+   "script/Khmer",
+   "script/Lao",
+   "script/Latin",
+   "script/Malayalam",
+   "script/Myanmar",
+   "script/Oriya",
+   "script/Sinhala",
+   "script/Syriac",
+   "script/Tamil",
+   "script/Telugu",
+   "script/Thaana",
+   "script/Thai",
+   "script/Tibetan",
+   "script/Vietnamese",
+   "sin",
+   "slk",
+   "slv",
+   "snd",
+   "spa",
+   "spa_old",
+   "sqi",
+   "srp",
+   "srp_latn",
+   "sun",
+   "swa",
+   "swe",
+   "syr",
+   "tam",
+   "tat",
+   "tel",
+   "tgk",
+   "tha",
+   "tir",
+   "ton",
+   "tur",
+   "uig",
+   "ukr",
+   "urd",
+   "uzb",
+   "uzb_cyrl",
+   "vie",
+   "yid",
+   "yor"
+  ],
+  "ocrmypdf": "17.13.0",
+  "java": 17,
+  "opendataloader_pdf": "2.5.12"
+ },
+ "status": "done",
+ "summary": "1 picture page without OCR text · auto-tagged · text layer: not enough pages scored · OCR layer doubtful · OCR layer lacks diacritics",
+ "flags": [
+  {
+   "what": "Narrow word gaps",
+   "why": "0.2 narrow word breaks per text page on average (11 in all): gaps narrower than 19% of the type size with no space character (checklist 3.4), where readers such as Acrobat may run words together (e.g. \"concernedwithChinese\" on bringing PDF 86). Below 10 per page: a note",
+   "check": false
+  },
+  {
+   "what": "Text layer",
+   "why": "only 0 sample pages could be scored (fewer than 5): the text layer was not tested enough; a person should compare a few pages by eye",
+   "check": true
+  },
+  {
+   "what": "OCR layer",
+   "why": "the existing OCR layer on the scanned pages and a fresh reading by a different OCR model disagree (median character error 12% on 9 sample pages; worst first): a person compares these pages with the page image. The layer is kept as it is (it may be the library's record)",
+   "pages": [
+    26,
+    44,
+    49,
+    35,
+    39
+   ],
+   "check": true
+  },
+  {
+   "what": "OCR layer: diacritics",
+   "why": "the page images show diacritics the existing OCR layer lacks (222 marked vowels read on 6 sample pages, 0 in the layer: e.g. ŏ/ŭ lost as o/u). The OCR model reads the marks only roughly, so a person compares the pages; the layer is not changed",
+   "pages": [
+    12,
+    17,
+    21,
+    30,
+    35,
+    39
+   ],
+   "check": true
+  },
+  {
+   "what": "Image pages with no text",
+   "why": "image-only pages where OCR found no readable text: left as pictures for the figure step (alt text). Check none is a page of text",
+   "pages": [
+    4
+   ],
+   "check": false
+  },
+  {
+   "what": "Placeholder alt text removed",
+   "why": "the auto-tagger wrote alt text that says nothing (53 figures \"image N\", 0 links \"Annotation\"); it was removed, so those figures count as having no alt text (the AI or a person writes it) and each link is read by its own text",
+   "check": false
+  }
+ ],
+ "steps": [
+  {
+   "step": "ocr",
+   "tool": "OCRmyPDF 17.13.0 / Tesseract 5.5.3",
+   "command": "ocrmypdf --mode skip --output-type pdf --optimize 0 --oversample 300 -l eng --pages 4 <in> <out>",
+   "seconds": 3.2,
+   "exit": 0,
+   "log_tail": "Starting processing with 16 workers concurrently\nParsing 1 pages with HocrParser\nPostprocessing...\nImage optimization ratio: 1.00 savings: 0.0%\nTotal file size ratio: 1.00 savings: -0.1%\n"
+  },
+  {
+   "step": "autotag",
+   "tool": "OpenDataLoader 2.5.12 (Java 17)",
+   "options": {
+    "format": "tagged-pdf",
+    "quiet": true,
+    "content_safety_off": "hidden-text"
+   },
+   "seconds": 1.6,
+   "error": null
+  }
+ ],
+ "checks": {
+  "original": {
+   "pages": 49,
+   "bookmarks": 0,
+   "links": 0
+  },
+  "after_ocr": {
+   "pixels_differ": [],
+   "text_differs_outside_ocr_pages": [],
+   "pages_that_gained_text": [],
+   "page_count": null,
+   "keepers": {
+    "pages": 49,
+    "bookmarks": 0,
+    "links": 0,
+    "page_labels": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "21",
+     "22",
+     "23",
+     "24",
+     "25",
+     "26",
+     "27",
+     "28",
+     "29",
+     "30",
+     "31",
+     "32",
+     "33",
+     "34",
+     "35",
+     "36",
+     "37",
+     "38",
+     "39",
+     "40",
+     "41",
+     "42",
+     "43",
+     "44",
+     "45",
+     "46",
+     "47",
+     "48",
+     "49"
+    ]
+   }
+  },
+  "after_autotag": {
+   "pixels_differ": [],
+   "text_differs": [],
+   "page_count": null,
+   "tile_passed": [],
+   "reordered": []
+  },
+  "placeholder_alt_removed": {
+   "figures": 53,
+   "links": 0
+  },
+  "coverage": {
+   "tagged": 8567,
+   "artifact": 269,
+   "untagged": 0,
+   "untagged_pages": []
+  },
+  "keepers_after": {
+   "pages": 49,
+   "bookmarks": 0,
+   "links": 0
+  }
+ },
+ "result": {
+  "pdf": "intake.pdf",
+  "sha256": "e6c5213673b7c6514bfa696dc14b1f8b493fa5af94ce89b789ff906ac3037896"
+ },
+ "review": {
+  "ocr_text_approved": null
+ },
+ "tag_tree": {
+  "status": "untagged",
+  "markinfo": null
+ },
+ "triage": {
+  "pages": {
+   "ocr-layer": [
+    1,
+    2,
+    3,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49
+   ],
+   "image-only": [
+    4
+   ]
+  },
+  "counts": {
+   "ocr-layer": 48,
+   "image-only": 1
+  },
+  "seconds": 0.4
+ },
+ "language": {
+  "text_layer_scripts": {
+   "latin": 27893
+  },
+  "scan_scripts": {},
+  "ocr_lang": "eng",
+  "score_lang": "eng",
+  "why": []
+ },
+ "outside_page_area": {
+  "chars": 0,
+  "pages": [],
+  "per_page": {}
+ },
+ "word_breaks": {
+  "space_characters": 7495,
+  "gaps_only": 47,
+  "pages_relying_on_gaps": [],
+  "share_of_text_pages": 0.0,
+  "narrow_gaps": 11,
+  "narrow_per_text_page": 0.23,
+  "pages_with_narrow_gaps": {
+   "1": 1,
+   "6": 1,
+   "12": 1,
+   "20": 1,
+   "21": 1,
+   "23": 1,
+   "25": 2,
+   "33": 1,
+   "37": 1,
+   "40": 1
+  }
+ },
+ "private_use": {
+  "count": 0,
+  "pages": [],
+  "ranges": []
+ },
+ "text_test": {
+  "pages": [
+   {
+    "page": 8,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 10,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 12,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 14,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 16,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 18,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 20,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 23,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 25,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 27,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 29,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 31,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 33,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 36,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 38,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 40,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 42,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 44,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 46,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   },
+   {
+    "page": 49,
+    "verdict": "not scored",
+    "reason": "images cover 100% of the page",
+    "replaced_by": null
+   }
+  ],
+  "verdict": "not enough pages scored",
+  "median_cer": null,
+  "unscorable_in_book": {
+   "image": 48
+  },
+  "front_matter_skipped": [
+   1,
+   2,
+   3,
+   5,
+   6,
+   7
+  ],
+  "scored": 0,
+  "not_scored": 20,
+  "seconds": 0.0
+ },
+ "ocr_layer_test": {
+  "pages": [
+   {
+    "page": 8,
+    "verdict": "not scored",
+    "reason": "only 159 characters in the OCR layer"
+   },
+   {
+    "page": 12,
+    "script": "latin",
+    "model": "script/Latin",
+    "layer_read_with": "pdfium",
+    "chars": 762,
+    "cer": 0.013,
+    "verdict": "usable",
+    "confident_words_missing": 0.045,
+    "marked_vowels_ocr": 5,
+    "marked_vowels_layer": 0,
+    "cer_with_marks": 0.026
+   },
+   {
+    "page": 17,
+    "script": "latin",
+    "model": "script/Latin",
+    "layer_read_with": "pdfium",
+    "chars": 744,
+    "cer": 0.036,
+    "verdict": "usable",
+    "confident_words_missing": 0.389,
+    "marked_vowels_ocr": 63,
+    "marked_vowels_layer": 0,
+    "cer_with_marks": 0.101
+   },
+   {
+    "page": 21,
+    "script": "latin",
+    "model": "script/Latin",
+    "layer_read_with": "pdfium",
+    "chars": 702,
+    "cer": 0.039,
+    "verdict": "usable",
+    "confident_words_missing": 0.254,
+    "marked_vowels_ocr": 61,
+    "marked_vowels_layer": 0,
+    "cer_with_marks": 0.121
+   },
+   {
+    "page": 26,
+    "script": "latin",
+    "model": "script/Latin",
+    "layer_read_with": "pdfium",
+    "chars": 695,
+    "cer": 0.626,
+    "verdict": "unusable",
+    "confident_words_missing": 0.896
+   },
+   {
+    "page": 30,
+    "script": "latin",
+    "model": "script/Latin",
+    "layer_read_with": "pdfium",
+    "chars": 1148,
+    "cer": 0.048,
+    "verdict": "usable",
+    "confident_words_missing": 0.094,
+    "marked_vowels_ocr": 18,
+    "marked_vowels_layer": 0,
+    "cer_with_marks": 0.062
+   },
+   {
+    "page": 35,
+    "script": "latin",
+    "model": "script/Latin",
+    "layer_read_with": "pdfium",
+    "chars": 773,
+    "cer": 0.126,
+    "verdict": "doubtful",
+    "confident_words_missing": 0.123,
+    "marked_vowels_ocr": 27,
+    "marked_vowels_layer": 0,
+    "cer_with_marks": 0.184
+   },
+   {
+    "page": 39,
+    "script": "latin",
+    "model": "script/Latin",
+    "layer_read_with": "pdfium",
+    "chars": 590,
+    "cer": 0.117,
+    "verdict": "doubtful",
+    "confident_words_missing": 0.379,
+    "marked_vowels_ocr": 48,
+    "marked_vowels_layer": 0,
+    "cer_with_marks": 0.207
+   },
+   {
+    "page": 44,
+    "script": "latin",
+    "model": "script/Latin",
+    "layer_read_with": "pdfium",
+    "chars": 785,
+    "cer": 0.237,
+    "verdict": "unusable",
+    "confident_words_missing": 0.333
+   },
+   {
+    "page": 49,
+    "script": "latin",
+    "model": "script/Latin",
+    "layer_read_with": "pdfium",
+    "chars": 675,
+    "cer": 0.195,
+    "verdict": "unusable",
+    "confident_words_missing": 0.167
+   }
+  ],
+  "verdict": "doubtful",
+  "median_cer": 0.117,
+  "sample": 10,
+  "scored": 9,
+  "seconds": 24.2,
+  "diacritics": {
+   "marked_vowels_ocr": 222,
+   "marked_vowels_layer": 0,
+   "pages": [
+    12,
+    17,
+    21,
+    30,
+    35,
+    39
+   ]
+  }
+ },
+ "plan": {
+  "ocr_mode": "skip",
+  "ocr_pages": [
+   4
+  ],
+  "autotag": true
+ },
+ "cjk_probe": {
+  "langs": "chi_tra+chi_sim+jpn+kor",
+  "min_chars": 10,
+  "min_conf": 60,
+  "mode": "all",
+  "pages_checked": 1,
+  "pages_to_ocr": 1,
+  "cjk_characters": {},
+  "cjk_pages": []
+ },
+ "ocr": {
+  "mode": "skip",
+  "pages_with_ocr_text": [],
+  "image_pages_without_text": [
+   4
+  ],
+  "per_page": [
+   {
+    "page": 4,
+    "words": 0,
+    "tokens": 0
+   }
+  ],
+  "unmapped_characters": {},
+  "junk": {},
+  "scan_images_marked_decoration": []
+ },
+ "cited_labels": {
+  "4": "4",
+  "8": "8",
+  "10": "10",
+  "12": "12",
+  "14": "14",
+  "16": "16",
+  "17": "17",
+  "18": "18",
+  "20": "20",
+  "21": "21",
+  "23": "23",
+  "25": "25",
+  "26": "26",
+  "27": "27",
+  "29": "29",
+  "30": "30",
+  "31": "31",
+  "33": "33",
+  "35": "35",
+  "36": "36",
+  "38": "38",
+  "39": "39",
+  "40": "40",
+  "42": "42",
+  "44": "44",
+  "46": "46",
+  "49": "49"
+ },
+ "glance": {
+  "schema": "intake-glance/0.1",
+  "status": "done",
+  "needs_person": 4,
+  "notes": 3,
+  "ocr_pages": [],
+  "picture_pages": [
+   4
+  ],
+  "ocr_layer_flagged": true,
+  "placeholder_alt_removed": {
+   "figures": 53,
+   "links": 0
+  },
+  "text_test": {
+   "verdict": "not enough pages scored",
+   "median_cer": null,
+   "sampled": 0,
+   "suspicious_added": 0,
+   "front_matter_skipped": true,
+   "best": null,
+   "best_cer": null,
+   "worst": null,
+   "worst_cer": null,
+   "over_ok": [],
+   "over_bad": []
+  }
+ }
+}

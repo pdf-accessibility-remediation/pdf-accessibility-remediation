@@ -71,7 +71,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        book: [hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant, ilokano]   # pipeline/tests/baseline/meta.json, one job each
+        book: [hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant, ilokano, romanization-ocr]   # pipeline/tests/baseline/meta.json, one job each
         python: ["3.13", "3.14"]                # the replies were made with 3.14; 3.13 checks the version docs/setup.md also allows
         exclude:                                # 3.13 only where the version could matter: the books with the most text
           - {book: globalasias, python: "3.13"} #   outside ASCII (ʻokina and kahakō, Vietnamese, CJK) keep it, as text goes
