@@ -9,7 +9,7 @@ nav_order: 3.6
 
 ```bash
 cd pipeline
-python3 app.py ../runs/godzone/rv1          # opens that run's page at http://127.0.0.1:8760/run/godzone/rv1/
+python3 app.py ../runs/teika/rv1            # opens that run's page at http://127.0.0.1:8760/run/teika/rv1/
 ```
 
 After this one start command the terminal can be left alone. Everything the pages show is read from disk (the run folders, their `reviews/`, and `runs/.app/`), so stopping and restarting the app loses nothing.

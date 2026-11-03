@@ -4,12 +4,12 @@
 #   AUTO=1 bash batch_api.sh <run-label> [folder | books.txt | file.pdf] …
 #
 #   nothing        every PDF under ../samples (all subfolders)
-#   a folder       every PDF in that folder and its subfolders, e.g. ../samples/group1
+#   a folder       every PDF in that folder and its subfolders, e.g. ../samples/tagged
 #                  (several folders, lists and PDFs can be given together)
 #   books.txt      one book per line: <short-name> <path/to/file.pdf> [| <result name>.pdf]
 #                  (paths may contain spaces; # starts a comment; relative paths count from the folder books.txt is in)
-#   short names    the run folder: a folder holding a single PDF gives its folder name (samples/cadaverous/x.pdf →
-#                  cadaverous); a folder holding several gives each file's name without .pdf
+#   short names    the run folder: a folder holding a single PDF gives its folder name (samples/teika/x.pdf →
+#                  teika); a folder holding several gives each file's name without .pdf
 #   result name    <original file name>_remediated.pdf, unless a book list line names it after a |
 #
 #   JOBS=3           books processed at the same time (each needs about 0.5–1.5 GB of memory)

@@ -243,13 +243,13 @@ def test_figure_moves_from_the_trial_run_get_one_card():
     assert c['label'] == 'Figure moves not worked out' and c['context']['not_worked_out'].startswith('skipped')
 
 def test_no_move_is_offered_where_the_executor_would_refuse_it():
-    """A top-level section (sands' cover): no section around it to move it within."""
+    """A top-level section (a cover): no section around it to move it within."""
     es = [entry('body', 10, 60, firsts=[10]), entry('about', 3, 3, firsts=[3]), entry('end', 70, 70, firsts=[70])]
     ro = core.reading_order({}, {'reading_order': es}, {})
     assert ro['flagged'] and 'move_section' not in core.addable({}, {'source': {'pages': 70}}, ro)
 
 def test_a_flag_that_only_a_removed_block_causes_is_cleared():
-    """translation's About the Author (PDF 254) read after a stray block on PDF 255 that a rule removes: in place after."""
+    """An About the Author section (PDF 254) read after a stray block on PDF 255 that a rule removes: in place after."""
     es = [entry('part', 1, 255, firsts=[1, 255, 254]), entry('book', 1, 250, 'part', 2, False, 'part', [1]),
           dict(entry('stray', 255, 255, 'part', 2, False, 'part', [255]), runs=['hn hk io']),
           dict(entry('about', 254, 254, 'part', 2, False, 'part', [254]), runs=['About the Author'])]
@@ -264,7 +264,7 @@ def test_a_flag_that_only_a_removed_block_causes_is_cleared():
 
 # ------------------------------------------------------------------ the preview leaves out what the text rules remove first
 def stray_case():
-    """translation: About the Author (PDF 254) read after a block on PDF 255 that the letters rule removes. apply.py removes
+    """An About the Author section (PDF 254) read after a block on PDF 255 that the letters rule removes. apply.py removes
     the block before it moves sections, so a move of 254 before 255 finds nothing on 255 and is refused."""
     es = [entry('part', 1, 255, firsts=[1, 255, 254]), entry('book', 1, 250, 'part', 2, False, 'part', [1]),
           dict(entry('stray', 255, 255, 'part', 2, False, 'part', [255]), runs=['hn hk io']),

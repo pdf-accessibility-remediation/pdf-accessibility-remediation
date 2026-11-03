@@ -1,0 +1,86 @@
+```json
+{
+  "schema": "workorder/0.2",
+  "sections": {
+    "toc_pages": [8, 9],
+    "index_from": 302
+  },
+  "document": {
+    "title": "Migrant Ecologies: Environmental Histories of the Pacific World",
+    "lang": "en-US",
+    "display_doc_title": true
+  },
+  "rolemap": {
+    "H1": "H2",
+    "ENH": "H2",
+    "FMH": "H2"
+  },
+  "retype": [
+    {"obj": "25654 0", "type": "H1", "why": "book title on the title page, PDF 4 (printed iii), 24 pt"}
+  ],
+  "actual_text": [
+    {"obj": "25654 0", "text": "Migrant Ecologies", "why": "extraction reads 'Mi grant'"},
+    {"obj": "25649 0", "text": "MIGRANT ECOLOGIES", "why": "half-title small caps extract as 'MI GRANT'"}
+  ],
+  "notes": {
+    "styles": ["NTX", "NUL"],
+    "id_prefix": "note-"
+  },
+  "lists": [
+    {"first_style": "NLF", "item_prefix": "NL", "last_style": "NLL", "numbering": "Decimal", "why": "four numbered recommendations on PDF 158 (printed 141)", "confidence": 0.5}
+  ],
+  "tables": [
+    {"obj": "20909 0", "title_rows": 0, "header_rows": 1, "header_cols": 0, "note_rows": 0, "why": "Table 11.1 on PDF 210–211 (printed 193–194): row 0 holds the column names; the title and the source notes are separate paragraphs outside the table"}
+  ],
+  "alt": [
+    {"obj": "1692 0", "alt": "Knowledge Unlatched logo, marking the open access edition."},
+    {"obj": "1696 0", "alt": "Creative Commons license logo: Attribution, NonCommercial, NoDerivatives (CC BY-NC-ND)."},
+    {"obj": "25650 0", "alt": "Perspectives on the Global Past series logo: two arrows forming a circle."},
+    {"obj": "1706 0", "alt": "Perspectives on the Global Past series logo: two arrows forming a circle."},
+    {"obj": "26594 0", "alt": "Book cover: Migrant Ecologies: Environmental Histories of the Pacific World, edited by James Beattie, Ryan Tucker Jones, and Edward Dallam Melillo. Title and editors appear on a teal band across a pale abstract artwork of sea and horizon, with small dark curved boat-like shapes."},
+    {"obj": "25206 0", "alt": "Left half of a two-page map of the Pacific World. It shows East and Southeast Asia, Russia, Japan, Australia, New Zealand and the island groups of Micronesia, Melanesia and Polynesia, with latitude and longitude lines and a key of country abbreviations."},
+    {"obj": "25207 0", "alt": "Right half of the two-page map of the Pacific World. It shows Alaska, Canada, the United States, Mexico, Central and South America, Hawai‘i, French Polynesia, the Galápagos and Easter Island, with an inset showing the map projection. Credit: G. Wallace Cartography & GIS."},
+    {"obj": "24612 0", "alt": "Infographic map of the North Pacific, rotated sideways, titled 'Fukushima radioisotopes can track the routes and rates of migratory species.' Arrows show bluefin tuna born in 2011 in Japanese waters contaminated with cesium-134 from the Dai-ichi nuclear plant migrating across the Pacific to the California coast. Bluefin caught before the disaster had no elevated cesium-134. Yellowfin tuna, which stay near Japan, did not contain it."},
+    {"obj": "24616 0", "alt": "Rotated map of the Pacific Ocean showing maximum wave amplitudes, in centimeters, of the Tohoku tsunami of March 11, 2011. The energy radiates from Japan, strongest in beams across the central and eastern Pacific, with monitoring stations marked along the Americas and islands. NOAA Center for Tsunami Research."},
+    {"obj": "24623 0", "alt": "Map of the Pacific with white tracks of three sooty shearwaters. The birds loop from their New Zealand breeding grounds to feeding areas off Japan and Alaska and the North American coast, and return along the South American side, in a figure-eight pattern."},
+    {"obj": "1771 0", "alt": "Map of the Pacific Ocean showing diasporas. Lines mark Polynesian triangles and outposts (c. 1000–1500 C.E.), sweet potato dispersals, breadfruit encounters (1789–1889) and the spread of salmon, furs, sugar and labor around the Northwest Coast, Hawai‘i and Guangzhou (1786–1893). Symbols mark tuna fisheries, canneries and consumers, 1954–2015."},
+    {"obj": "24100 0", "alt": "Photograph of stacked shipping containers, some marked Maersk, on a paved container yard at Pago Pago Harbor, American Samoa, with a green hillside behind."},
+    {"obj": "1774 0", "alt": "Nineteenth-century engraving 'Across the Continent: The Snow Sheds on the Central Pacific Railroad, in the Sierra Nevada Mountains.' A steam train emerges from a snow shed and tunnel in a mountain landscape while workers wave hats."},
+    {"obj": "23694 0", "alt": "Historic photograph of a wooden dairy factory on Aurora Road in Taranaki, with horse-drawn wagons loaded with milk cans in front and tree stumps and cleared ground around it."},
+    {"obj": "23705 0", "alt": "Studio portrait, c. 1903, of Chew Chong and his family. The elderly Chew Chong sits at the center, surrounded by seated and standing adult children and a young boy in Western dress."},
+    {"obj": "1777 0", "alt": "Drawing by José Cardero (1791–1792) of the Presidio of Monterey, a walled adobe fort on open ground by the sea, with small figures at work and ships on the horizon."},
+    {"obj": "23051 0", "alt": "Map of California and neighboring states showing Spanish missions, forts (presidios) and towns (pueblos) from 1769 to 1844, with the names of Native tribes such as Pomo, Miwok, Chumash and Yokuts across their territories. A scale bar is included."},
+    {"obj": "23062 0", "alt": "Pen-and-ink drawing by Emanuel Wyttenbach of a rodeo. Mounted vaqueros drive cattle and sheep past the long arcaded facade of a California mission."},
+    {"obj": "1780 0", "alt": "Painting by Charles Sidney Raleigh (1877) of a whale's tail smashing a whaleboat. Oars, a barrel and whalemen are flung into the air above rough seas, with a ship in the distance."},
+    {"obj": "22980 0", "alt": "Daguerreotype portrait of Captain Amos Haskins, a Wampanoag man in a dark coat and white waistcoat, shown half-length in an ornate frame."},
+    {"obj": "1783 0", "alt": "Japanese scroll painting by Usui Shozo of three American whalemen in Japan, standing in a row in hats and vests, with a ship at left and columns of Japanese text."},
+    {"obj": "25491 0", "alt": "Photograph from 1900 of a coconut palm laden with nuts, seen from below, with fronds spreading against the sky."},
+    {"obj": "25324 0", "alt": "Photograph c. 1900 of a fruit-bearing coconut palm in Samoa. A man climbs the trunk, with other palms and a clearing behind and cut fronds on the ground."},
+    {"obj": "1785 0", "alt": "Historical map of the DHPG plantation at Mulifanua, Samoa, 1900. It shows two plantation areas, Le Utu Sao Vaa and Fagalepolu & Fatuosofia, divided into long numbered parcels of cultivated and uncultivated land, with a legend."},
+    {"obj": "21451 0", "alt": "Black-and-white photograph of a carved stone head representing Rongo, the Māori god of kumara and cultivated plants, with spiral-carved eyes and a mouth."},
+    {"obj": "21464 0", "alt": "Engraving of the confiscation and destruction of idol gods on Rarotonga. A crowd gathers before missionaries seated in front of a house, with carved idols laid on the ground, palms and mountains behind. Caption in the image: 'And the idols he shall utterly abolish.' Isaiah ii. 18."},
+    {"obj": "21609 0", "alt": "Photograph from 1878 of Edwin Dun in riding clothes standing beside a saddled horse imported from the United States, on a farm in Hokkaido."},
+    {"obj": "21617 0", "alt": "Photograph from the 1900s of the Ōji paper manufacturing company plant in Tomakomai, with tall smoking chimneys and stacks of cut logs in the foreground."},
+    {"obj": "21621 0", "alt": "Early modern ink painting of three Ainu men paddling a wooden canoe across water, with vertical Japanese text at right."},
+    {"obj": "1788 0", "alt": "Masthead of the Hawaiian-language newspaper Ka Nupepa Kuokoa, Honolulu, January 7, 1871 (Buke X, Helu 1), with ornate lettering inside a decorative frame."},
+    {"obj": "18294 0", "alt": "Photograph of a coffee harvester's hands holding ripe red Kona coffee cherries above a bucket full of cherries."},
+    {"obj": "18356 0", "alt": "Photograph from 1915 looking down from Kohelepelepe over Maunalua, Hawai‘i: dry scrubby land with tall poles in the foreground, a wide bay and hills beyond."},
+    {"obj": "18389 0", "alt": "Rotated map of Maunalua on O‘ahu showing its Hawaiian place names (endonyms) along the coast, including Makapu‘u, Hālona, Kahauloa and Kuapā, with valleys, springs, fishing ponds, fishing shrines, heiau and other features marked. An inset of O‘ahu marks the mapped area."},
+    {"obj": "18425 0", "alt": "Rotated map of Hawai‘i Kai, the same area as Maunalua, showing the current landscape and English-language names (exonyms) such as Koko Head, Koko Marina, Sandy Beach, Toilet Bowl, Pele's Chair and Spitting Caves. An inset of O‘ahu marks the mapped area."},
+    {"obj": "18633 0", "alt": "Nineteenth-century illustration of two shorebirds standing by water and reeds: a Latham's snipe at left with a long bill and streaked brown plumage, and an Australian painted snipe at right with a black breast and white eye ring."}
+  ],
+  "move_section": [
+    {"pages": [1, 1], "before_page": 2, "why": "the cover figure sits last in the tree, so a screen reader meets it after the series list", "confidence": 0.6}
+  ],
+  "remove_empty_containers": true,
+  "deferrals": [
+    {"what": "Chapter and front/back-matter titles have no heading tag of their own. The Introduction (PDF 18), the 14 chapter openers, the Preface, About the Contributors and Index are not listed as elements, so I cannot target them. A person should tag them as H2.", "why": "Chapter openers are on PDF 28, 47, 64, 85, 103, 117, 134, 152, 171, 185, 202, 226, 246, 258 and 274. I mapped the in-chapter section headings (style H1) and 'NOTES' to H2 to avoid skipping from H1 to H3. If chapter titles become H2, these section headings should drop to H3.", "pages": [14, 18, 28, 47, 64, 85, 103, 117, 134, 152, 171, 185, 202, 226, 246, 258, 274, 297, 302]},
+    {"what": "The continuation of Table 11.1 on PDF 211 (printed 194) sits outside the table, in Art containers and a Story container read after the Index, with empty Art elements and the title and source notes.", "why": "I cannot tell from the digest which pieces belong to the table, and merging them is outside this work order's vocabulary.", "pages": [210, 211]},
+    {"what": "The Index text layer separates entries from their page numbers (e.g. 'activism, anti-war, , – 245249252'), so the index reads wrongly.", "why": "ActualText per entry is not feasible here; a person should check or retag it.", "pages": [302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315]},
+    {"what": "The contents entries on PDF 8–9 (printed vii–viii) are Link elements inside body paragraphs, with no entry style, so I could not request TOC/TOCI.", "why": "The `toc` key needs an entry style or P with exact pages, and the digest does not show how the entries are tagged.", "pages": [8, 9]},
+    {"what": "Several pages have no tagged text: 7, 13, 17, 301 and 318–321, and perhaps 11–12 apart from the map figures.", "why": "They are probably blank or ad pages, but the digest does not confirm it. A person should check for lost content.", "pages": [7, 13, 17, 301, 318, 319, 320, 321]},
+    {"what": "The extracted text has stray word breaks ('Rus sian', 'Pa cific', 'Mi grant') and drop-cap chapter openers whose first letter is split off ('O', 'T', 'F').", "why": "I can only choose ActualText for headings, so I fixed the title only. A person should check the chapter openers.", "pages": [28, 47, 64, 85, 103, 117, 134, 152, 171, 185, 202, 226, 246, 258, 274]}
+  ],
+  "notes_for_reviewer": "Language changed from en-GB to en-US because the text uses American spelling and the publisher is a US press. The two Figure alts with NUL characters (1692 0, 1696 0) and the cover alt (26594 0) are replaced. The logo on PDF 5 (obj 1692 0) has no image in the digest; I inferred 'Knowledge Unlatched' from the neighboring text, so please verify. The numbered list on PDF 158 is a low-confidence request. The cover move is a reading-order fix, and the executor will reject it if the container does not match. The repeated_lines entries (THE, AND, ariki) are ordinary words, not running heads, so I made no artifact rules. No pdfua_check failures were reported."
+}
+```
