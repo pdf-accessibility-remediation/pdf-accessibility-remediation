@@ -385,7 +385,9 @@ if later:
     if spent_before: e_['spent_before_usd'] = spent_before
 print(json.dumps(run['estimate']), '| model', model, '|', run['price_source'])
 if reqs:
-    print(f'{1 + len(reqs)} requests: the work order and {len(reqs)} figure request{"s" if len(reqs) > 1 else ""}; worst case together ${total:.2f}'
+    n_fig = len([r for r in reqs if r['pass'] != 'probe'])
+    print(f'{1 + len(reqs)} requests: the work order and {n_fig} figure request{"s" if n_fig > 1 else ""}'
+          + (' and the overlap probe (test only)' if n_fig < len(reqs) else '') + f'; worst case together ${total:.2f}'
           + (f', plus ${spent_before:.2f} spent by earlier attempts in this folder' if spent_before else '')
           + (f' (book cap ${args.book_max_usd:.2f})' if IS_CLAUDE else ' (approximate: the book cap applies to Claude models only)'))
     if IS_CLAUDE and spent_before + total > args.book_max_usd:
