@@ -10,6 +10,7 @@
     probs, gaps = problems(R, ai_wo, items, decisions, additions, adds)   # the same check, each problem on the card it belongs to
     changes = diff(ai_wo, wo2)                        # what the person changed, item by item
     finish(R, ai_wo, wo2, reviewer, date, method, …)  # checks the order again, writes review.json and the reviewed workorder.json
+    draft_pdf(R, pdf, ai_wo, wo2, out, …)            # the same check, then apply.py into out (a draft: nothing in R is written)
 
 The formats a front end needs (also in docs/review-step.md):
   item:      {id, key, kind, label, page, page_label, pages, before, ai, edit, options, context, priority, images}
@@ -291,6 +292,22 @@ def reading_order_for(audit_dir, digest, wo):
     ro['dryrun'] = load(os.path.join(audit_dir, 'dryrun.json'))
     return ro
 
+def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
+    """apply.py on pdf with the work order wo (a dict, written beside out), into out. Returns (exit code, out's log, or
+    None when it wrote none). low: at a lower priority (nice 10, where there is nice), so the review page stays quick
+    while it runs. on_start(process): the caller keeps the process, to stop it. A run past timeout is killed, and
+    subprocess.TimeoutExpired raised."""
+    path = os.path.join(os.path.dirname(out), 'workorder.json')
+    save(path, wo)
+    cmd = [sys.executable, os.path.join(HERE, 'apply.py'), pdf, path, out]
+    if low and shutil.which('nice'): cmd = ['nice', '-n', '10'] + cmd
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+    if on_start: on_start(p)
+    try: p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        p.kill(); p.communicate(); raise
+    return p.returncode, load(out + '.log.json')
+
 def dry_run(R, pdf):
     """A trial run of apply.py with the AI's order (R/workorder.ai.json) on a temporary copy, for what the executor does on
     its own: the figures fix_figure_order moves back to their page (worked out with it on, even when the AI turned it off,
@@ -303,16 +320,12 @@ def dry_run(R, pdf):
     print('  working out the figure moves and the section move: a trial run of apply.py on a copy (no model)…', flush=True)
     t, tmp = time.time(), tempfile.mkdtemp(prefix='dryrun-')
     try:
-        out, wo = os.path.join(tmp, 'out.pdf'), os.path.join(tmp, 'workorder.json')
         ai = load(os.path.join(R, 'workorder.ai.json'))
-        save(wo, {k: v for k, v in (ai or {}).items() if not (k == 'fix_figure_order' and v is False)})
-        r = subprocess.run([sys.executable, os.path.join(HERE, 'apply.py'), pdf, wo, out],
-                           capture_output=True, text=True, timeout=1800)
-        log = load(out + '.log.json')
-        if r.returncode != 0 or log is None:
-            return {'figure_moves': None, 'why': f'the trial run of apply.py stopped (exit {r.returncode})'}
-        whys = [x.get('why') for x in log.get('rejected') or [] if isinstance(x, dict) and x.get('op') == 'move_section']
-        sm = [{'made': m} if m else {'refused': whys.pop(0) if whys else 'refused'} for m in log.get('section_moves') or []]
+        code, log = run_apply(pdf, {k: v for k, v in (ai or {}).items() if not (k == 'fix_figure_order' and v is False)},
+                              os.path.join(tmp, 'out.pdf'))
+        if code != 0 or log is None:
+            return {'figure_moves': None, 'why': f'the trial run of apply.py stopped (exit {code})'}
+        sm = section_moves(log)
         res = {'figure_moves': log.get('figure_moves') or [], 'seconds': round(time.time() - t, 1),
                'section_moves': sm, 'section_move': sm[0] if sm else None}
         print(f'  figure moves: {len(res["figure_moves"])} ({res["seconds"]}s)', flush=True)
@@ -320,6 +333,53 @@ def dry_run(R, pdf):
     except (OSError, ValueError, subprocess.SubprocessError) as e:
         return {'figure_moves': None, 'why': f'the trial run of apply.py could not run ({type(e).__name__})'}
     finally: shutil.rmtree(tmp, ignore_errors=True)
+
+def section_moves(log):
+    """What became of each section move in an apply.py log, in order: [{made: where it went} or {refused: why}]."""
+    whys = [x.get('why') for x in log.get('rejected') or [] if isinstance(x, dict) and x.get('op') == 'move_section']
+    return [{'made': m} if m else {'refused': whys.pop(0) if whys else 'refused'} for m in log.get('section_moves') or []]
+
+def sha256_file(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for b in iter(lambda: f.read(1 << 20), b''): h.update(b)
+    return h.hexdigest()
+
+def draft_pdf(R, pdf, ai_wo, wo, out, items=None, decisions=None, additions=None, on_start=None):
+    """The review page's Build a Draft PDF: wo (the draft's order, as /save builds it) through the same check Finish uses,
+    then apply.py into out, marked as a draft (APPLY_DRAFT=1). Nothing in R is written. Returns {dropped (how many entries
+    the check left out: the page lists them from problems(), worded as on the cards), moves ([{card, made | refused}], in
+    the executor's order), rejected (apply.py's other refusals), failed, seconds, bytes}. Raises ValueError, in the page's words, when it cannot be built; out is then removed."""
+    t = time.time()
+    want = (ai_wo.get('source') or {}).get('sha256')
+    if not os.path.isfile(pdf or ''): raise ValueError('The book\'s PDF is no longer where the review started, so a draft cannot be built.')
+    if want and sha256_file(pdf) != want: raise ValueError('The book\'s PDF has changed since the review started, so a draft cannot be built.')
+    wo = copy.deepcopy(wo)
+    dropped = check(R, wo)
+    for f in (out, out + '.log.json'):
+        if os.path.exists(f): os.remove(f)
+    try:
+        code, log = run_apply(pdf, wo, out, env={**os.environ, 'APPLY_DRAFT': '1'}, low=True, on_start=on_start)
+    except (OSError, subprocess.SubprocessError) as e:
+        code, log = None, None; err = type(e).__name__
+    else: err = None
+    if code != 0 or log is None or not os.path.isfile(out):
+        for f in (out, out + '.log.json'):
+            if os.path.exists(f): os.remove(f)
+        if code is not None and code < 0: raise ValueError('The draft was stopped before it was built.')
+        raise ValueError('The draft could not be built' + (f' ({err}).' if err else f' (the executor stopped, exit {code}).'))
+    # each move apply.py was given, back to its card: the reviewed moves in the executor's order, as the check left them
+    specs = move_specs(items, decisions or {}, additions)
+    moves = []
+    for m, r in zip(readorder.moves(wo), section_moves(log)):
+        key = ([_int(p) for p in m.get('pages') or []], _int(m.get('before_page')))
+        hit = next((x for x in specs if (x[1], x[2]) == key), None)
+        if hit: specs.remove(hit)
+        moves.append({'card': hit[0] if hit else None, **r})
+    rejected = [x for x in log.get('rejected') or [] if isinstance(x, dict) and x.get('op') != 'move_section']
+    return {'dropped': len(dropped), 'moves': moves, 'rejected': rejected, 'failed': log.get('failed') or [],
+            'seconds': round(time.time() - t, 1), 'bytes': os.path.getsize(out)}
 
 def run_rules(e, wo):
     """For each run of this one-page entry, the text rules that would mark it as decoration, as apply.py matches it (the

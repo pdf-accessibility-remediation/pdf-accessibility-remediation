@@ -11,6 +11,10 @@ before a single save.
 Safety: every operation is guarded. An operation that fails, or whose target does not
 look the way the work order assumes, is skipped and logged under "rejected" — it never
 stops the run and never half-applies.
+
+APPLY_DRAFT=1 (set by the review page's Build a Draft PDF, review/core.py draft_pdf): the output also gets a
+/RemediationDraft entry in its document information, which says it is not final. Screen readers never read it (the
+title, the XMP and the tags are the same as without it); Acrobat shows it under Properties > Custom.
 """
 import sys, os, json, re, collections, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -2685,6 +2689,8 @@ try: fix_font_maps()
 except Exception as e: log['failed'].append({'op': 'fix_font_maps', 'error': f'{type(e).__name__}: {e}'[:300]})
 left = [S(k) for k in kids(st) if is_elem(k) and not same(k, DOC)]
 if left: log['deferred'].append({'what': 'elements still outside the Document', 'count': len(left)})
+if os.environ.get('APPLY_DRAFT') == '1':
+    pdf.docinfo['/RemediationDraft'] = 'Not final: built during review, not verified, no review record. Finish makes the real result.'
 pdf.save(OUT)
 log['applied'] = dict(log['applied'])
 json.dump(log, open(OUT + '.log.json', 'w'), ensure_ascii=False, indent=1)
