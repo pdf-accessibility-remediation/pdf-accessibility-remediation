@@ -163,6 +163,19 @@ Every save also runs the check: the same rules `decide.py` uses on the AI's repl
 - **The line beside Finish Review** counts what the cards show and the gaps, for example "2 choices need fixing · 1 conflict · 1 gap open", or "All choices can be applied". Screen readers announce it only when its words change. **Show Details** beside it lists everything, each with a link to its card (or the **Add** form, for a gap).
 - **Finish Review refuses** while any choice needs fixing or conflicts: the dialog's button is off, and if a choice changed after the dialog opened, Finish says so and leaves the page as it was. Fix the value, or reject the choice.
 
+## Checking a draft PDF while you review
+
+**Build a Draft PDF**, in the page's header next to **Finish Review**, makes a PDF from the choices you have made so far, so you can check them in Adobe Acrobat or with a screen reader (NVDA, VoiceOver, PAC's screen reader preview) and then carry on with the same review. The session stays open; nothing is recorded.
+
+- **What it builds:** the choices so far, through the same check as Finish, then the same executor. A choice the check doesn't accept is left out of the draft, so you can check everything else while a card still needs fixing; **Finish Review** waits until it is fixed or rejected (see "Checks as you go"). Decisions not reviewed yet are built as the AI wrote them. It takes about as long as the apply step: seconds for a short book, up to about 2 minutes for a long one. The page shows the time while it builds, and your changes are still saved as you make them. One draft is built at a time.
+- **After it is built:** a **Download the Draft PDF** link (the file is named after the book, with `_draft.pdf`), and a list of anything left out. Choices the check left out (additions too) have the same message as under their cards, with a link to each. Section moves or other steps the executor could not make say so in plain words; **Details** shows the executor's own reason, and the report after Finish explains it.
+- **Out of date:** a change to a decision or an addition after the build marks the draft "out of date". Build it again to check the change.
+- **It is for checking only.** It is not checked by veraPDF or the pixel and text checks, and it has no review record. It must not be shipped or handed out. Inside, it looks like a finished result to a screen reader (its title and tags are the ones Finish would make); a document property, **RemediationDraft** (Acrobat: File > Properties > Custom), says it is a draft.
+- **Changes made to the draft in Acrobat are lost.** Finish builds the real result again from your choices. Fix the reading order by hand only on the remediated result (see "Fixing the reading order by hand").
+- **The final result can still differ** from a draft you checked: a change made after the build, or a section move the executor refuses at Finish. Section moves are made in turn, each on the order the earlier ones leave, so changing one move can change what the next one finds.
+- **Nothing is kept.** The draft is held in a temporary folder that is removed when the review page closes (Finish, Ctrl+C or **Stop Reviewing**); a folder left by a review page that was killed is removed the next time a review page starts. The run's report, its record and its earlier results are not touched. The copies you download stay in your Downloads folder: delete them when you are done, especially for books that are not open source.
+- **Where:** a first review (`REVIEW=1`), a review opened again (`--reopen`, or **Review Again** in the app). Not on the OCR text review page.
+
 ## Adding a decision
 
 The cards cover only what the AI decided. **Add a decision** (at the top) is for what it left out. Pick a kind, find the target by text, page or object number, and give a value and an optional note. The addition appears as a card under **Added by you**, where you can change its value or **Remove** it.
@@ -187,7 +200,7 @@ For example, after changing godzone's half-title (PDF 2, `1154 0`) from H1 to P 
 
 ## Fixing the reading order by hand
 
-Some reading-order problems are left to a person: a page whose text jumps back up a column, a second section out of place, or a move the executor refuses. Fix them in Adobe Acrobat Pro, on the **remediated** PDF (never the original), and say what you did in the card's note.
+Some reading-order problems are left to a person: a page whose text jumps back up a column, a second section out of place, or a move the executor refuses. Fix them in Adobe Acrobat Pro, on the **remediated** PDF (never the original, and never a draft PDF from the review page: Finish builds a new file and those fixes would be lost), and say what you did in the card's note.
 
 - **A screen reader follows the tag order.** Change the order in the **Tags** panel: drag a section's tag to where it belongs. The **Order** panel (and Acrobat's "reflow" order) does not change what a screen reader reads; changing it alone is a common mistake.
 - **A section read out of place:** in the Tags panel, find the section's tag (its first words are on the card) and drag it to just before the section it should be read before (the card's "read before PDF …").

@@ -18,6 +18,14 @@ Routes (all call review/core.py; a later front end can replace this file and pag
                                  so each field is marked as it is saved.
                                  /save and /keep also return each section move as reviewed (the AI's, changed or not, and added ones): its preview, in the
                                  order the executor makes them and with the reviewed text rules (move_previews: {card id: preview})
+    POST /draft   the same body as /keep → kept as /keep does, then a draft PDF built from it in the background (202):
+                                 the same check as Finish, then apply.py, into this server's own temporary folder (removed
+                                 when the server stops; nothing in the run folder or reviews/ is written). One at a time;
+                                 refused once Finish has started
+    GET  /draft                  the draft's state: {state: idle | building | ready | failed, elapsed | seconds, basis (the
+                                 saved_at it was built from), result: {problems (as /keep's, for this draft), moves, rejected,
+                                 failed, dropped}, error}
+    GET  /draft.pdf              the draft, once ready, as <book>_draft.pdf (a download). Always the one fixed file
     POST /finish  {…, accept_unreviewed, gaps_ack}            → review.json and the reviewed workorder.json; the server stops.
                                  Not finished yet: 200 with needs: "invalid" (and problems) while a card's choice would be
                                  dropped (problems' unplaced never blocks), needs: "unreviewed" (and the list) while
@@ -43,7 +51,7 @@ so another web page open in the browser cannot submit a review (a plain form or 
 response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none'), so another page cannot show this one in a
 frame and trick a click on Finish.
 """
-import os, json, datetime, threading, webbrowser, mimetypes, urllib.parse
+import os, re, json, time, shutil, datetime, tempfile, threading, webbrowser, mimetypes, urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from . import core
 from lib import runlock
@@ -70,6 +78,28 @@ def check_return_to(url):
         raise ValueError(f'only http://127.0.0.1:<port>/… or http://localhost:<port>/… is accepted, not {url!r}')
     return url
 
+DRAFT_PREFIX = 'review-draft-'
+
+def sweep_drafts():
+    """Remove the draft folders of review servers that ended without removing their own (killed): each holds the pid
+    of the server that made it. A folder whose pid file can't be read is left alone."""
+    top = tempfile.gettempdir()
+    for n in os.listdir(top):
+        d = os.path.join(top, n)
+        if not n.startswith(DRAFT_PREFIX) or not os.path.isdir(d) or os.path.islink(d): continue
+        try: pid = int(open(os.path.join(d, 'pid'), encoding='utf-8').read().strip())
+        except (OSError, ValueError): continue
+        try: os.kill(pid, 0); continue                 # still running
+        except ProcessLookupError: pass
+        except (PermissionError, OverflowError): continue
+        shutil.rmtree(d, ignore_errors=True)
+
+def draft_name(book):
+    """The draft's download name: the book's file name with _draft.pdf, and nothing a header could misread."""
+    stem = os.path.splitext(os.path.basename(str(book or '')))[0]
+    stem = re.sub(r'[^\w.\- ]+', '_', stem).strip(' ._') or 'book'
+    return f'{stem}_draft.pdf'
+
 def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run_dir=None, lock_held=False, data=None, wo=None):
     """files: {url: path} served as they are, beside the review's own (review_workorder.py --reopen: the current result).
     return_to: the app's run page, which the page goes to after Finish and links back to. run_dir: the run folder (default
@@ -95,6 +125,28 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     render_lock = threading.Lock()                    # pdfium is not thread-safe: one page image at a time
     write_lock = threading.Lock()                     # every write of this server, one at a time (auto-save, the Finish check and Finish can race)
     gate = threading.Condition(); inside = {'n': 0, 'closed': False}   # POSTs under way; closed: the server is stopping
+    draft = {'state': 'idle'}; draft_lock = threading.Lock(); draft_proc = {}   # Build a Draft PDF: its state, and apply.py while it runs
+    draft_dir = None
+    if not ocr_only:
+        sweep_drafts()
+        draft_dir = tempfile.mkdtemp(prefix=DRAFT_PREFIX)
+        with open(os.path.join(draft_dir, 'pid'), 'w', encoding='utf-8') as f: f.write(str(os.getpid()))
+    draft_pdf = os.path.join(draft_dir, 'draft.pdf') if draft_dir else None
+
+    def stop_draft():
+        """Stop a draft being built and remove the draft folder: the server is stopping."""
+        with draft_lock: draft['stopping'] = True; p = draft_proc.get('p')
+        if p and p.poll() is None:
+            p.terminate()
+            try: p.wait(5)
+            except Exception: p.kill()
+        if draft_dir: shutil.rmtree(draft_dir, ignore_errors=True)
+
+    def draft_state():
+        with draft_lock:
+            d = {k: v for k, v in draft.items() if k not in ('started', 'stopping')}
+            if draft['state'] == 'building': d['elapsed'] = round(time.time() - draft['started'], 1)
+            return d
 
     def enter():
         with gate:
@@ -184,6 +236,18 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             if path in page_urls or path in word_urls:
                 f = page_image(page_urls[path]) if path in page_urls else word_image(word_urls[path])
                 return self.send(200, open(f, 'rb').read(), 'image/png') if f else self.send(404, {'error': 'no such image'})
+            if path == '/draft' and draft_dir: return self.send(200, draft_state())
+            if path == '/draft.pdf' and draft_dir:
+                with draft_lock: ready = draft['state'] == 'ready'
+                if not ready or not os.path.isfile(draft_pdf): return self.send(404, {'error': 'There is no draft PDF yet: select Build a Draft PDF.'})
+                with open(draft_pdf, 'rb') as f:              # streamed: a long book's draft can be hundreds of MB
+                    self.send_response(200); self.send_header('Content-Type', 'application/pdf')
+                    self.send_header('Content-Length', str(os.fstat(f.fileno()).st_size))
+                    self.send_header('Content-Disposition', f'attachment; filename="{draft_name(data.get("book") or data.get("pdf"))}"')
+                    self.send_header('Cache-Control', 'no-store')
+                    self.send_header('X-Frame-Options', 'DENY'); self.send_header('Content-Security-Policy', "frame-ancestors 'none'")
+                    self.end_headers(); shutil.copyfileobj(f, self.wfile, 1 << 20)
+                return
             if path in static:
                 f, ctype = static[path]
                 return self.send(200, open(f, 'rb').read(), ctype)
@@ -227,7 +291,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 if not ocr_only: return self.send(404, {'error': 'not found'})
                 with write_lock: done.set()
                 return self.send(200, {'closed': True})
-            if ocr_only or self.path not in ('/save', '/keep', '/finish'): return self.send(404, {'error': 'not found'})
+            if ocr_only or self.path not in ('/save', '/keep', '/finish', '/draft'): return self.send(404, {'error': 'not found'})
             try: name, notes = core.session_fields(body, sid)
             except ValueError as e: return self.send(400, {'error': str(e)})
             def keep(last_word=False):                   # the caller holds write_lock
@@ -256,6 +320,34 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 probs, gaps = checked()                          # each card's problems and the gaps still open, for the line beside Finish
                 return self.send(200, {'kept': wrote, **({} if wrote else {'older': True}), 'problems': probs, 'gaps': gaps,   # older: a newer draft is on disk
                                        'move_previews': core.move_previews(data, decisions, additions, wo)})   # each move card's preview
+            if self.path == '/draft':                       # Build a Draft PDF: kept as /keep does, then built in the background
+                with write_lock:
+                    if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: no draft can be built now.'})
+                    with draft_lock:
+                        if draft['state'] == 'building': return self.send(409, {'error': 'A draft is being built already.'})
+                    keep()                                   # before the state changes: a keep that fails leaves no build "under way"
+                    with draft_lock: draft.clear(); draft.update(state='building', started=time.time(), basis=saved_at)
+                try: wo = build()[0]; probs = checked()[0]   # what is left out, worded as on the cards (core.problems)
+                except Exception as e:
+                    with draft_lock: draft.update(state='failed', error=f'The draft could not be started ({type(e).__name__}).')
+                    return self.send(500, draft_state())
+                def started(p):                              # a stop that came before apply.py started stops it too
+                    with draft_lock:
+                        if draft.get('stopping'): p.terminate()
+                        else: draft_proc['p'] = p
+                def run():
+                    try:
+                        res = core.draft_pdf(R, data.get('pdf'), ai, wo, draft_pdf, items=items, decisions=decisions,
+                                             additions=additions, on_start=started)
+                        with draft_lock: draft.update(state='ready', seconds=res.pop('seconds'), result={**res, 'problems': probs})
+                    except Exception as e:                   # ValueError: the page's own words
+                        with draft_lock: draft.update(state='failed', error=str(e) if isinstance(e, ValueError) else f'The draft could not be built ({type(e).__name__}).')
+                    finally:
+                        with draft_lock:
+                            draft_proc.pop('p', None)
+                            if draft.get('stopping'): draft.update(state='failed', error='The review page closed.')
+                threading.Thread(target=run, daemon=True).start()
+                return self.send(202, draft_state())
             if self.path == '/save':                        # the Finish dialog's check (it saves the draft too; auto-save uses /keep)
                 with write_lock:
                     if finishing.is_set() or done.is_set(): return self.send(409, {'error': 'Finish has started: nothing more is saved.'})
@@ -314,7 +406,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
         while not done.wait(0.5): pass                 # a short wait, so Ctrl+C is seen
     except KeyboardInterrupt:
         close_gate()                                   # a Finish or a verdict under way is written whole first
-        srv.shutdown()
+        srv.shutdown(); stop_draft()                   # a draft being built is stopped, never waited for
         if page_text: page_text.close()
         if not done.is_set() or ocr_only:
             print('\nstopped: ' + ('the OCR review page is closed.' if ocr_only else 'the review is not finished. Run the same command again to carry on.'))
@@ -322,6 +414,6 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
         print('\nCtrl+C came while Finish was being recorded: the review is recorded')
         return result
     close_gate()                                       # a request that came in as the page closed: let it end
-    srv.shutdown()
+    srv.shutdown(); stop_draft()
     if page_text: page_text.close()
     return result
