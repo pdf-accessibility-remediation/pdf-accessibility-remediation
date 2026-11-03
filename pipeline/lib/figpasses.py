@@ -236,11 +236,12 @@ def one(send, req, budget, sleep, say):
     budget.planned.remove(req['worst'])
     return res
 
-def run(requests, send, budget, sleep=time.sleep, say=print, done=None):
-    """Each request in turn; done(result) after each, so the caller can save its state."""
-    out = []
+def run(requests, send, budget, sleep=None, say=print, before=None, done=None):
+    """Each request in turn; before(request) and done(result) around each, so the caller can save its state."""
+    out = []; sleep = sleep or time.sleep
     for req in requests:
         say(f'▶ figure request {req["pass"]}: {len(req["items"])} figures')
+        if before: before(req)
         r = one(send, req, budget, sleep, say); out.append(r)
         if done: done(r)
     return out
@@ -279,6 +280,7 @@ def merge(wo, results, where):
     def why(o):
         k = where[o]
         return (f'decided in figure request {k}, which saw the image' if status.get(k) == 'done'
+                else f'the saved answers of figure request {k} were written for a different figure list' if status.get(k) == 'stale'
                 else f'its image was in figure request {k}, which did not finish')
     def keep(key, items, target):
         out = []

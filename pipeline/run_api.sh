@@ -12,6 +12,12 @@
 # OUT=clan.pdf bash run_api.sh …   names the result; by default it is <original file name>_remediated.pdf
 # MAX_TOKENS=64000 bash run_api.sh …   output limit for Claude's reply, reasoning included (default 48000, set in decide.py)
 # MAX_USD=3 bash run_api.sh …   the cap on one call's worst case, in dollars (default 2, set in decide.py; Claude models only)
+# A book with more images than one request takes (100) gets figure requests after the first one, each sending up to 100
+# of the figures the first could not take (issue #63; docs/files.md):
+# BOOK_MAX_USD=6 bash run_api.sh …   the cap on the worst case of all of a book's requests together (default 5; Claude only)
+# FIGURE_PASSES=off bash run_api.sh …   no figure requests: figures past 100 go to a person, as before
+# FIGURE_MAX_TOKENS=48000 bash run_api.sh …   output limit for each figure request (default 32000)
+# FIGURE_PROBE=20 bash run_api.sh …   test only: also re-send 20 figures the first request answered (recorded, never used)
 # MODEL=openai/gpt-5 bash run_api.sh …   any OpenRouter model id for this run (default: DEFAULT_MODEL in decide.py)
 # Untagged PDFs first go through intake.py (local, no cost): OCR where pages have no text, then auto-tagging. Its
 # result (_intake/intake.pdf) is what the rest of the run works on; the original is never written to.
@@ -39,9 +45,19 @@ RUNS=${RUNS_DIR:-$(cd .. && pwd)/runs}
 R=${RUN_DIR:-$RUNS/$NAME/$RUN}; A=$R/_audit
 if [[ -f $R/record.json ]]; then echo "$R already holds a finished run: choose another run label"; exit 1; fi
 if [[ -n ${MAX_TOKENS:-} && ! $MAX_TOKENS =~ ^[0-9]+$ ]]; then echo "MAX_TOKENS must be a whole number: $MAX_TOKENS"; exit 1; fi
-if [[ -n ${MAX_USD:-} && ! $MAX_USD =~ ^[0-9]+([.][0-9]+)?$ ]]; then echo "MAX_USD must be a number of dollars: $MAX_USD"; exit 1; fi
+for v in MAX_USD BOOK_MAX_USD; do
+  if [[ -n ${!v:-} && ! ${!v} =~ ^[0-9]+([.][0-9]+)?$ ]]; then echo "$v must be a number of dollars: ${!v}"; exit 1; fi
+done
+for v in FIGURE_MAX_TOKENS FIGURE_PROBE; do
+  if [[ -n ${!v:-} && ! ${!v} =~ ^[0-9]+$ ]]; then echo "$v must be a whole number: ${!v}"; exit 1; fi
+done
+if [[ -n ${FIGURE_PASSES:-} && $FIGURE_PASSES != on && $FIGURE_PASSES != off ]]; then echo "FIGURE_PASSES must be on or off: $FIGURE_PASSES"; exit 1; fi
 MT=(); [[ -z ${MAX_TOKENS:-} ]] || MT=(--max-tokens "$MAX_TOKENS")
 [[ -z ${MAX_USD:-} ]] || MT+=(--max-usd "$MAX_USD")
+[[ -z ${BOOK_MAX_USD:-} ]] || MT+=(--book-max-usd "$BOOK_MAX_USD")
+[[ ${FIGURE_PASSES:-on} == on ]] || MT+=(--figure-requests off)
+[[ -z ${FIGURE_MAX_TOKENS:-} ]] || MT+=(--figure-max-tokens "$FIGURE_MAX_TOKENS")
+[[ -z ${FIGURE_PROBE:-} ]] || MT+=(--figure-probe "$FIGURE_PROBE")
 [[ -z ${MODEL:-} ]] || MT+=(--model "$MODEL")
 USE_MODEL=${MODEL:-$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")}
 NEW=; [[ -d $R ]] || NEW=1
@@ -148,7 +164,7 @@ else
   if [[ -n ${AUTO:-} ]]; then
     ok=y
     if [[ $USE_MODEL == anthropic/* ]]; then
-      echo "AUTO=1: sending without asking (decide.py still refuses a Claude estimate over the \$${MAX_USD:-2} cap or your credit)"
+      echo "AUTO=1: sending without asking (decide.py still refuses a Claude call over the \$${MAX_USD:-2} cap, a book over the \$${BOOK_MAX_USD:-5} book cap, or more than your credit)"
     else
       echo "AUTO=1: sending without asking. The \$2 cap applies to Claude models only: the $USE_MODEL estimate is approximate and not capped; the OpenRouter bill is the real cost"
     fi
