@@ -292,6 +292,9 @@ else:
 
 # ------------------------------------------------------------------ call, or reuse a saved reply
 if args.dry_run:
+    if os.environ.get('DECIDE_SWEEP'):             # test only (tools/request_sweep.py): a hash of each whole request, images included
+        with open(os.environ['DECIDE_SWEEP'], 'w', encoding='utf-8') as f:
+            json.dump({'requests': [{'pass': 1, 'sha256': hashlib.sha256(json.dumps(messages, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()}]}, f, indent=1)
     save('run.json', run); print('dry run: request.json written, nothing sent'); sys.exit(0)
 if args.response_file:
     raw = open(args.response_file, encoding='utf-8').read()
