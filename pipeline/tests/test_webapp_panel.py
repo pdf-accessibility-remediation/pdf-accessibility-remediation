@@ -969,7 +969,7 @@ def test_auto_save_and_the_finish_check():
     assert "if (dirty && !finished) { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }" in page   # an edit made while saving: next, one timer
     assert "else if (s === 409) ok = true;" in page and "keepalive: true" in page
     assert "await post('/save')" in page.split('async function askFinish')[1][:600] and 'data-card=' in page
-    assert "d['card'] = core.card_of(items, d)" in srv
+    assert "probs, gaps = checked()" in srv and "'needs': 'invalid'" in srv      # #48: each card's problems (test_review_problems.py)
     items = [{'id': 'document:lang', 'loc': ['document', 'lang'], 'ai': 'en'}, {'id': 'document:title', 'loc': ['document', 'title'], 'ai': 'T'},
              {'id': 'rolemap:Heading 1', 'loc': ['rolemap', 'Heading 1'], 'ai': 'H1'}, {'id': 'rolemap:Body', 'loc': ['rolemap', 'Body'], 'ai': 'P'}]
     assert core.card_of(items, {'where': 'document.lang', 'item': 'english', 'why': 'not a BCP 47 language tag'}) == 'document:lang'
@@ -1009,7 +1009,7 @@ def test_review_14_and_the_last_pass():
     save is waiting or in flight (L3). Patrick's pass: the check mark in the text's colour; "OCR Text" naming the page."""
     import report_html as H
     page, js, srv = src('review/page.html'), src('webapp/panel.js'), src('review/server.py')
-    assert "gp.map(g => esc(g.what) + addLink(g))" in page and 'id="gapState"' in page and 'showGaps(b.gaps)' in page
+    assert "gp.map(g => esc(g.what) + addLink(g))" in page and 'id="checkLine" class="check-line" role="status"' in page and 'gotCheck(b, at)' in page
     assert "if (ad) { e.preventDefault(); toAdd = [ad.dataset.addKind, ad.dataset.addTarget]; dlg.close(); return; }" in page
     assert 'after each Save' not in srv and '(Save, Keep' not in srv and 'Save message' not in src('../docs/review-step.md') and 'Save does not know' not in src('../docs/review-step.md')
     assert "const unsaved = () => (dirty || saving) && !finished && DATA.mode !== 'ocr';" in page
@@ -1052,3 +1052,18 @@ def test_the_panel_is_replaced_only_when_its_html_changed():
     assert body.count('innerHTML') == 2                                     # one write each (a waiting run's, the result's), after its check
     strip = js.split('function renderStrip(s) {')[1].split('\n}\n')[0]
     assert 'if (sb.dataset.h !== h) {' in strip                            # the strip's own check, unchanged
+
+def test_fields_are_checked_as_they_are_saved():
+    """#48: a card's problem sits under its value, tied to the field (aria-invalid, aria-describedby, never in a space-
+    holding card id) and not announced itself; it waits while the card is typed in; the line beside Finish Review is the
+    one announced (only when its words change); Finish Review is disabled while a choice needs fixing; table headers and
+    the language are choices; the page boxes take digits only."""
+    page = src('review/page.html')
+    assert "f.setAttribute('aria-invalid', 'true');" in page and "const errId = id => ERR_IDS[id] || (ERR_IDS[id] = 'err-' + (++errN));" in page
+    assert "box.className = 'field-err'" in page and 'role="alert"' not in page.split('function markCard')[1][:1500]
+    assert "if (w[id] && typing(el)) continue;" in page and "if (t !== lineText) { lineText = t; el.textContent = t; }" in page
+    assert "if (!b || at !== state.saved_at) return;" in page                     # a response to an older draft is not used
+    assert "(bad ? ' disabled aria-describedby=\"finBad\"' : '')" in page and "b.needs === 'invalid'" in page
+    assert '<select data-act="langpick" aria-label="Language">' in page and "[0, 1, 2, 3].map(n =>" in page
+    assert page.split('function editor(')[1].split('\n}\n')[0].count('inputmode="numeric"') == 3 and "f.value.replace(/\\D+/g, '')" in page
+    assert page.index('id="finish"') < page.index('id="saveState"') < page.index('id="checkLine"')
