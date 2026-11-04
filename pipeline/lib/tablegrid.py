@@ -2,6 +2,7 @@
 
     tablegrid.place(rows)           -> where each cell really sits, spans counted
     tablegrid.plan(rows, **reading) -> what apply.py's op_tables does to each row and cell, or raises Refused(why)
+    tablegrid.shape_rows(n, lone, cap) -> the rows audit.py shows the model (row_shapes)
 
 rows: one list per table row, one Cell(colspan, rowspan, empty) per cell, in tag order.
 reading: title_rows, note_rows (counts at the top and bottom), header_rows, header_cols (counts, after the title rows),
@@ -47,6 +48,8 @@ def plan(rows, title_rows=0, note_rows=0, header_rows=0, header_cols=0, group_ro
     group, repeat = sorted(set(group_rows)), sorted(set(repeat_rows))
     head = list(range(title_rows, title_rows + header_rows))
     body_first, body_end = title_rows + header_rows, n - note_rows
+    for r in group + repeat:
+        if not 0 <= r < n: raise Refused(f'row {r} is not in the table')
     if body_first >= body_end: raise Refused('the table has too few rows for this: no data rows would be left')
     for name, rs in (('title', title), ('note', note), ('group', group)):
         for r in rs:
@@ -69,6 +72,11 @@ def plan(rows, title_rows=0, note_rows=0, header_rows=0, header_cols=0, group_ro
             for p in placed[r]:
                 if p.col0 < header_cols < p.col1: raise Refused('a cell spans across the header column edge')
     gone = set(title + note)
+    for r in range(n):                          # a cell that stays must not reach into a row that leaves
+        if r in gone: continue
+        for p in placed[r]:
+            into = [x for x in range(p.row, p.row1) if x in gone]
+            if into: raise Refused(f'a cell in row {r} spans into the {"title" if into[0] in title else "note"} row, so that row can\'t be taken out of the table')
     # complex: a two-level column header, a row header spanning rows, or section rows
     colhead_spans = any(p.col1 - p.col0 > 1 for r in head for p in placed[r])
     rowhead_spans = header_cols and any(p.col0 < header_cols and p.row1 - p.row > 1 for r in range(body_first, body_end) for p in placed[r])
@@ -97,3 +105,10 @@ def plan(rows, title_rows=0, note_rows=0, header_rows=0, header_cols=0, group_ro
                 info['headers'] = hs
             cells[key] = info
     return {'title': title, 'note': note, 'cells': cells, 'complex': is_complex}
+
+def shape_rows(n, lone, cap):
+    """The rows that tell a table's shape, at most cap: always the top 4 and the bottom 2 (where a source note sits), then
+    the rows holding one thing (lone: a title, a group label) in order. Below the cap it is every such row."""
+    edge = {i for i in range(n) if i < 4 or i >= n - 2}
+    middle = sorted(i for i in set(lone) if i not in edge and 0 <= i < n)
+    return sorted(edge | set(middle[:max(0, cap - len(edge))]))

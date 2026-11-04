@@ -71,7 +71,7 @@ The test prints one line per book (identical, or the fields and lines that diffe
 | fishers | `adopt_orphans`, notes, the role map, a wrong document language (fr-FR on an English book), Vietnamese diacritics |
 | moralfoods | `language` (CJK runs), `artifacts`, `toc`, `captions`, `links`, `notes`, `fix_figure_order`, page figures, tab order; MarkInfo false |
 | teika | `tables` with no header cells, artifacts the executor refuses, `toc`, notes, three section moves the check drops (the audit flags nothing there); no document language |
-| migrant | `lists`, a table split across two pages, notes, a cover move refused (no host) |
+| migrant | `lists`, a table running over two pages (one Table tag), notes, a cover move refused (no host) |
 | romanization-ocr | a scanned book whose OCR layer drops every tone mark (made from an open-access book for this test): the OCR-layer check (doubtful, diacritics missing), `ocr_words` (10 misread forms in 15 places), OCR fonts, OCR text approval |
 | ilokano | an untagged book: an OpenDataLoader tag tree, so the one-item list rule (15 lists) and word breaks that rely on gaps |
 
