@@ -319,17 +319,17 @@ const show = v => v == null || v === '' ? '—' : (typeof v === 'object' ? JSON.
 function persist() { state.saved_at = new Date().toISOString(); try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} saveSoon(); draftCheckStale(); }
 
 // ---------------------------------------------------------------- saving: automatic (there is no Save button)
-// Every change goes to the run about a second after it is made (POST /keep: review_decisions.json, under the server's
-// write lock, refused once Finish has started); the browser's copy above stays as a backup. One save at a time: an edit
-// made while a save is in flight marks the draft dirty, and the save after it (which sends the whole draft) carries it,
-// so no edit is lost. The header says "All changes saved" or "Saving…" (not announced); only a failed save is
-// announced, as an alert saying what to do.
+// Every change goes to the run about half a second after it is made, and at once when the focus leaves its card (POST
+// /keep: review_decisions.json, under the server's write lock, refused once Finish has started); the browser's copy above
+// stays as a backup. One save at a time: an edit made while a save is in flight marks the draft dirty, and the save after
+// it (which sends the whole draft) carries it, so no edit is lost. The header says "All changes saved" or "Saving…" (not
+// announced); only a failed save is announced, as an alert saying what to do.
 let saveTimer = null, saving = false, dirty = false;
 const saveState = t => { const el = document.getElementById('saveState'); if (el) el.textContent = t; };
 function saveAlert(t) { document.getElementById('saveAlert').textContent = t || ''; if (t) saveState('Not saved'); }
 function saveSoon() {
   if (finished || DATA.mode === 'ocr') return;         // the OCR-only page has no draft to save
-  dirty = true; saveState('Saving…'); clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 1000);
+  dirty = true; saveState('Saving…'); clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 500);
 }
 async function saveNow() {
   clearTimeout(saveTimer); saveTimer = null;
@@ -371,7 +371,7 @@ function tableReading(r) {             // shown, not edited here: reject the car
 // Every save (/keep, and the Finish dialog's /save) returns problems: what the check (the rules the AI's decisions go
 // through) would drop, each on the card it belongs to (review/core.py problems). A card's message sits under its value,
 // tied to the field (aria-invalid, aria-describedby) and not announced itself. It changes only when the card is not being
-// typed in (the focus is elsewhere, or no typing for 2 seconds); a problem that is fixed clears at once. The line beside
+// typed in (the focus is elsewhere, or no typing for 1 second); a problem that is fixed clears at once. The line beside
 // "Finish Review" (announced, only when its words change) counts what the cards show, with the gaps. A response to a
 // save older than the draft (an edit made while it was on its way) is not used: the save after it brings the verdict.
 let PROBS = null, GAPS = [], marks = {}, lastInput = 0, settleTimer = null, lineText = '';
@@ -395,7 +395,7 @@ function wanted() {                                    // card id → {html, par
     put(id, esc(c.fix) + (c.cards.length > 1 ? ' It conflicts with ' + c.cards.filter(x => x !== id).map(probLink).join(' and ') + '.' : '') + (NOT_YOURS[c.origin] || ''));
   return w;
 }
-const typing = el => el && el.contains(document.activeElement) && Date.now() - lastInput < 2000;
+const typing = el => el && el.contains(document.activeElement) && Date.now() - lastInput < 1000;
 function settle() {
   const w = wanted();
   for (const id of new Set([...Object.keys(marks), ...Object.keys(w)])) {
@@ -443,8 +443,8 @@ function checkLine() {
   el.classList.toggle('bad', f + c > 0);
   document.getElementById('checkBtn').hidden = !parts.length;
 }
-document.getElementById('cards').addEventListener('input', () => { lastInput = Date.now(); clearTimeout(settleTimer); settleTimer = setTimeout(settle, 2100); });
-document.getElementById('cards').addEventListener('focusout', e => { const c = e.target.closest('.card'); if (c && !c.contains(e.relatedTarget)) setTimeout(settle, 0); });
+document.getElementById('cards').addEventListener('input', () => { lastInput = Date.now(); clearTimeout(settleTimer); settleTimer = setTimeout(settle, 1100); });   // just past typing()'s second
+document.getElementById('cards').addEventListener('focusout', e => { const c = e.target.closest('.card'); if (c && !c.contains(e.relatedTarget)) { if (dirty && saveTimer) saveNow(); setTimeout(settle, 0); } });   // a change still waiting: saved now
 // the page boxes take digits only, as they are typed
 document.addEventListener('input', e => {
   const f = e.target; if (f.inputMode !== 'numeric') return;
