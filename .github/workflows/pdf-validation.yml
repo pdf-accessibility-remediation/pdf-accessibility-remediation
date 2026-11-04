@@ -32,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
           cache-dependency-path: pipeline/requirements.txt
 
@@ -72,12 +72,7 @@ jobs:
       fail-fast: false
       matrix:
         book: [hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant, ilokano, romanization-ocr]   # pipeline/tests/baseline/meta.json, one job each
-        python: ["3.13", "3.14"]                # the replies were made with 3.14; 3.13 checks the version docs/setup.md also allows
-        exclude:                                # 3.13 only where the version could matter: the books with the most text
-          - {book: globalasias, python: "3.13"} #   outside ASCII (ʻokina and kahakō, Vietnamese, CJK) keep it, as text goes
-          - {book: teika, python: "3.13"}       #   through unicodedata (Unicode 15.1 in 3.13, 16.0 in 3.14)
-          - {book: migrant, python: "3.13"}
-          - {book: ilokano, python: "3.13"}
+        python: ["3.14"]                        # the version the baseline was made with (meta.json)
     name: regression (${{ matrix.book }}, Python ${{ matrix.python }})
     steps:
       - name: Check out repository

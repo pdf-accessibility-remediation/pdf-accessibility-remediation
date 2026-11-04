@@ -59,7 +59,7 @@ The test prints one line per book (identical, or the fields and lines that diffe
 
 **Running books in parallel.** `--jobs N` runs N books at once (default: the `JOBS` environment variable, as for `batch_api.sh`, else 1). The biggest books start first, and the report still lists the books in their usual order. A book whose run fails is reported with the end of its log while the others carry on. Each book needs about 0.5–1.5 GB of memory: with 8 GB, `--jobs 3` peaked at about 5 GB used and took about 10 minutes for all nine books, against 21 one at a time. No run can be shorter than the slowest book (migrant, about 4 minutes). On WSL, check `free -h`; if memory is short, raise `memory=` in `C:\Users\<you>\.wslconfig` and run `wsl --shutdown`. CI does not use `--jobs`: each book is its own job there.
 
-`meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code. CI runs hawaii3, northkorea, fishers, moralfoods and romanization-ocr on both Python 3.13 and 3.14, the two versions [Setup](setup.md) allows. These have the most text outside ASCII (ʻokina and kahakō, Vietnamese, CJK), where the version could matter: text goes through Python's Unicode tables (Unicode 15.1 in 3.13, 16.0 in 3.14). The other books run on 3.14 only. Run one book with `--books teika`; `--update --books X` adds X to the baseline and keeps the others.
+`meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code. CI runs the regression test on 3.14 only, and the unit tests on both versions [Setup](setup.md) allows (3.13 and 3.14). If a local run on 3.13 shows a difference, run it again on 3.14 before updating the baseline. Run one book with `--books teika`; `--update --books X` adds X to the baseline and keeps the others.
 
 **What it covers, and what it does not.**
 
@@ -104,7 +104,7 @@ In the example above, if the diff also showed two headings gone (`verify.tree_ty
 
 Make one update per PR, with its own reason. Don't fold several unrelated changes into one update.
 
-**After a failed CI run:** each failed regression job uploads its run folder as the `regression-runs-<book>-py<version>` artifact. To adopt it without rerunning, download the artifact and run `python3 tools/regression.py --update --books <book> --from-dir <downloaded folder> --reason "…"` (take the Python 3.14 artifact: the baseline's version).
+**After a failed CI run:** each failed regression job uploads its run folder as the `regression-runs-<book>-py<version>` artifact. To adopt it without rerunning, download the artifact and run `python3 tools/regression.py --update --books <book> --from-dir <downloaded folder> --reason "…"` (CI runs it on Python 3.14, the baseline's version).
 
 **After a prompt change:** the saved replies were written for one prompt version (`meta.json` → `prompt`). When `decide.py` uses a new prompt, the test stops and asks for a re-seed instead of showing a diff. To re-seed:
 
@@ -144,9 +144,9 @@ Several scans are drawn with a font: the Japanese and Korean text, the breves, a
 ## In CI
 
 - **`ci.yml`, on every push and PR:**
-  - compile check, shell syntax and `pip-audit`, as before
-  - the unit tests
+  - compile check, shell syntax and `pip-audit` (`pip-audit` on Python 3.14 only), as before
+  - the unit tests, on Python 3.13 and 3.14 (one job each)
   - a second job that installs Tesseract with its CJK packs, the `script/Latin` model and `fonts-noto-cjk`, then runs the intake cases, then `--full` with Java 17 and OCRmyPDF 17 (installed with pipx; not yet blocking: `continue-on-error` until it has passed a few times on Linux CI)
 - **`pdf-validation.yml`, when `pipeline/`, `prompts/` or `samples/` change:**
   - the existing veraPDF audit of one sample
-  - a `regression` job per book and Python version (all nine books on 3.14; hawaii3, northkorea, fishers, moralfoods and romanization-ocr also on 3.13: 14 jobs in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)
+  - a `regression` job per book on Python 3.14 (9 jobs in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)
