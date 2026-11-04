@@ -49,3 +49,7 @@ Why each regression baseline update was made (newest last). Written by `tools/re
 - 2026-11-03 · hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant · Python 3.14 · workorder_v10.md: #61: the old tagged samples were not open source; replaced by seven CC BY-NC-ND 4.0 University of Hawaiʻi Press open-access books (samples/README.md). Paid re-seed 2026-11-03 (batch v10-open), $1.49 for the seven
 
 - 2026-11-03 · romanization-ocr · Python 3.14 · workorder_v10.md: #61 follow-up: ocr_words on a real OCR layer again (lost with buddhist and sands). romanization-ocr: Chinese Romanization Self-Study Guide (CC BY-NC-SA 4.0), pages rasterized and OCR'd in Acrobat 2026.002.22031 at 300 dpi, which drops every tone mark. Paid single run 2026-11-03 (runs/romanization-ocr/seed1)
+
+- 2026-11-03 · teika · Python 3.14 · workorder_v10.md: #67: teika Table 3's note cell held a paragraph (TSN, mapped to P); it now moves out after the table as it is instead of being wrapped in a new P (P inside P), so one P fewer
+
+- 2026-11-04 · teika · Python 3.14 · workorder_v10.md: #67: the applied label counts Captions, not title rows (table: title row → Caption → table: caption made from the title rows; teika's 3 tables each have one title row, so still 3)

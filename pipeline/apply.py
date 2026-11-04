@@ -732,9 +732,11 @@ def elem_chars(el, depth=0):
     if depth > 30: return []
     pg = eff_pg.get(el.objgen); out = []
     for k in kids(el):
-        if isinstance(k, int): out += [c for c in PL.pages[pg - 1].chars if c.get('mcid') == k]
+        if isinstance(k, int):                     # marked content with no page in the tag tree can't be found: no characters
+            if pg: out += [c for c in PL.pages[pg - 1].chars if c.get('mcid') == k]
         elif is_pmcr(k):
-            p = pidx[k.Pg.objgen] if '/Pg' in k else pg; out += [c for c in PL.pages[p - 1].chars if c.get('mcid') == int(k.MCID)]
+            p = pidx[k.Pg.objgen] if '/Pg' in k else pg
+            if p: out += [c for c in PL.pages[p - 1].chars if c.get('mcid') == int(k.MCID)]
         elif is_elem(k): out += elem_chars(k, depth + 1)
     return out
 def elem_gaptext(el): return GT(elem_chars(el))
@@ -1442,6 +1444,28 @@ def op_flatten(spec):
         kind = mapped(S(o)); convert(o); ok(f'flatten: false {"list" if kind == "L" else "table"} → paragraphs')
     FLATTENED.update(done)
     reindex()
+def moved_kids(part, epg):
+    """part's kids, ready to sit under a tag whose page is epg: a bare MCID from another page becomes an MCR naming its
+    page, and an MCR or tag without /Pg gets its page (it would otherwise take epg from its new parent)."""
+    ppg = eff_pg.get(part.objgen); out = []
+    for k in kids(part):
+        if isinstance(k, int): out.append(k if ppg == epg or ppg is None else mcr(ppg, k))   # no page known: left as it is
+        else:
+            if (is_mcr(k) or is_elem(k)) and '/Pg' not in k and ppg != epg and ppg: k.Pg = pages[ppg - 1].obj
+            out.append(k)
+    return out
+def point_at(el, ks, epg):
+    """The ParentTree names el for its content kids ks (epg: el's page): page MCIDs, annotations (OBJR), and content
+    drawn inside a form XObject (an MCR with /Stm), which has its own ParentTree array."""
+    for k in ks:
+        if isinstance(k, int): pt_set_mcid(epg, k, el)
+        elif is_pmcr(k): pt_set_mcid(pidx[k.Pg.objgen] if '/Pg' in k else epg, int(k.MCID), el)
+        elif is_objr(k) and '/StructParent' in k.Obj: pt_set_key(int(k.Obj.StructParent), el)
+        elif is_mcr(k) and '/Stm' in k:
+            fx = k.Stm
+            if '/StructParents' in fx:
+                r = nt_find(st.ParentTree, int(fx.StructParents))
+                if r and isinstance(r[0].Nums[r[1]], pikepdf.Array) and int(k.MCID) < len(r[0].Nums[r[1]]): r[0].Nums[r[1]][int(k.MCID)] = el
 FLATTENED = set()                             # everything inside a list or table the work order flattened
 LIST_RULE = set()                             # lists the one-item list rule turned into paragraphs
 def op_list_rule(_spec=None):
@@ -1468,25 +1492,10 @@ def op_list_rule(_spec=None):
         if el.objgen in keep: res['kept'].append(entry); ok('one-item list kept as a list (work order)'); continue
         if any(is_elem(k) for k in kids(lbl) + kids(body)):
             res['skipped'].append({**entry, 'why': 'label or body holds tags of its own'}); continue
-        new = []
-        for part in (lbl, body):
-            ppg = eff_pg.get(part.objgen)
-            for k in kids(part):
-                if isinstance(k, int): new.append(k if ppg == epg else mcr(ppg, k))
-                else:
-                    if is_mcr(k) and '/Pg' not in k and ppg != epg: k.Pg = pages[ppg - 1].obj
-                    new.append(k)
+        new = moved_kids(lbl, epg) + moved_kids(body, epg)
         set_kids(el, new); el.S = pikepdf.Name('/P')
         if '/A' in el: del el['/A']
-        for k in new:
-            if isinstance(k, int): pt_set_mcid(epg, k, el)
-            elif is_pmcr(k): pt_set_mcid(pidx[k.Pg.objgen] if '/Pg' in k else epg, int(k.MCID), el)
-            elif is_objr(k) and '/StructParent' in k.Obj: pt_set_key(int(k.Obj.StructParent), el)
-            elif is_mcr(k) and '/Stm' in k:                      # content inside a form XObject: its own ParentTree array
-                fx = k.Stm
-                if '/StructParents' in fx:
-                    r = nt_find(st.ParentTree, int(fx.StructParents))
-                    if r and isinstance(r[0].Nums[r[1]], pikepdf.Array) and int(k.MCID) < len(r[0].Nums[r[1]]): r[0].Nums[r[1]][int(k.MCID)] = el
+        point_at(el, new, epg)
         LIST_RULE.add(el.objgen)
         res['flattened'].append({**entry, 'text': elem_gaptext(el)}); ok('one-item list → paragraph (rule)')
     reindex()
@@ -1550,13 +1559,15 @@ def table_row_out(t, row):
     host = parent_of[row.objgen]
     set_kids(host, [k for k in kids(host) if not same(k, row)])
     if not same(host, t) and not kids(host): set_kids(t, [k for k in kids(t) if not same(k, host)])
+BLOCKS = {'P', 'H', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'Div', 'L', 'BlockQuote', 'Note', 'Code', 'Figure', 'Formula'}
 def op_tables(spec):
     """Real tables: the work order reads their rows ({obj, title_rows, note_rows, header_rows, header_cols, group_rows,
     repeat_rows}; lib/tablegrid.py works out who heads what). Header cells become TH with a Scope, and data cells list
     their headers by ID where a Scope can't say it. A TH the reading doesn't name goes back to TD, and an empty cell never
-    heads anything. A title row becomes the table's Caption and a note row a paragraph after it. Only the tags change,
-    never the content; a reading that doesn't fit the table is rejected for a person (WCAG 1.3.1)."""
-    reindex()
+    heads anything. The title rows become the table's one Caption (a table that already has one is rejected) and each
+    note row a paragraph after it; a cell that names a header which left the table or became a data cell stops naming
+    it. Only the tags change, never the content; a reading that doesn't fit the table is rejected for a person (WCAG 1.3.1)."""
+    reindex(); relinked = ids_gone = False
     for it in spec or []:
         what = f'tables {it.get("obj")}'
         try: t = obj(it['obj'])
@@ -1572,7 +1583,12 @@ def op_tables(spec):
             reject(what, 'a title or note row holds something other than cells'); continue
         if any(is_objr(k) for r in leaving for c in grid[r] for k in kids(c)):
             reject(what, 'a title or note row holds a link, so it stays in the table'); continue
-        page0 = cell_page(t); n = demoted = linked = 0
+        if plan['title'] and any(is_elem(k) and mapped(S(k)) == 'Caption' for k in kids(t)):
+            reject(what, 'the table already has a caption, so its title rows stay in the table'); continue
+        if any(eff_pg.get(c.objgen) is None and any(isinstance(k, int) or (is_mcr(k) and '/Pg' not in k and '/Stm' not in k) for k in kids(c))
+               for r in leaving for c in grid[r]):
+            reject(what, 'a title or note row\'s text has no page in the tag tree, so it stays in the table'); continue
+        page0 = cell_page(t); n = demoted = linked = unlinked = 0
         for (r, j), info in plan['cells'].items():
             c = grid[r][j]
             if info['th']:
@@ -1589,28 +1605,68 @@ def op_tables(spec):
                 if '/ID' not in h: h.ID = pikepdf.String(f't{t.objgen[0]}-r{hr_}c{hj}')
                 names.append(pikepdf.String(bytes(h.ID)))
             set_table_attr(grid[r][j], '/Headers', pikepdf.Array(names)); linked += 1
-        def rehome(cells, stype):
-            pg = eff_pg.get(cells[0].objgen); got = [k for c in cells for k in kids(c)]
-            el = new_elem(stype, t if stype == 'Caption' else parent_of[t.objgen], got, pg=pg)
-            for k in got:
+        # no cell may name a header that leaves the table or is now a data cell (Headers set by the tagger, say)
+        not_heads = {bytes(c.ID) for r in leaving for c in grid[r] if '/ID' in c}
+        not_heads |= {bytes(grid[r][j].ID) for (r, j), info in plan['cells'].items() if not info['th'] and '/ID' in grid[r][j]}
+        for (r, j) in plan['cells']:
+            hs = table_attr(grid[r][j], '/Headers')
+            if not_heads and isinstance(hs, pikepdf.Array) and any(bytes(h) in not_heads for h in hs):
+                keep = [h for h in hs if bytes(h) not in not_heads]; unlinked += 1
+                if keep: set_table_attr(grid[r][j], '/Headers', pikepdf.Array(keep))
+                else: del_table_attr(grid[r][j], '/Headers')
+        ids_gone = ids_gone or any('/ID' in c for r in leaving for c in grid[r])
+        relinked = relinked or bool(linked or unlinked)
+        host = parent_of[t.objgen]
+        def is_block(k): return is_elem(k) and mapped(S(k)) in BLOCKS
+        def adopt(el, items, pg):
+            set_kids(el, items)
+            for k in items:
                 if is_elem(k): k.P = el
+            point_at(el, items, pg)
             return el
-        titles = [rehome(grid[r], 'Caption') for r in plan['title']]
-        notes = [rehome(grid[r], 'P') for r in plan['note']]
+        def cell_items(cells, pg):
+            """The cells' content, ready to move, each piece on its own page. A cell's ActualText, Alt or Lang stays with
+            its own content, on a tag around it: a Div when it holds paragraphs (a Span can't), else a Span."""
+            out = []
+            for c in cells:
+                ks = moved_kids(c, pg); keep = {k[1:]: c[k] for k in ('/ActualText', '/Alt', '/Lang') if k in c}
+                if keep and ks: out.append(adopt(new_elem('Div' if any(is_block(k) for k in ks) else 'Span', t, [], pg=pg, **keep), ks, pg))
+                else: out += ks
+            return out
+        def first_page(cells): return next((eff_pg[c.objgen] for c in cells if eff_pg.get(c.objgen)), None)
+        caption = None
+        if plan['title']:
+            cells = [c for r in plan['title'] for c in grid[r]]; pg = first_page(cells)
+            caption = adopt(new_elem('Caption', t, [], pg=pg), cell_items(cells, pg), pg)
+        notes = []
+        for r in plan['note']:
+            # a paragraph (or other block) in a note row moves out as it is; loose text around it becomes a paragraph of
+            # its own, so no P ever holds a P
+            pg = first_page(grid[r]); run = []
+            def flush():
+                if run: notes.append(adopt(new_elem('P', host, [], pg=pg), list(run), pg)); run.clear()
+            for k in cell_items(grid[r], pg):
+                if not is_block(k): run.append(k); continue
+                flush()
+                kpg = eff_pg.get(k.objgen) or pg
+                if '/Pg' not in k and kpg: k.Pg = pages[kpg - 1].obj      # it would take the page of its new parent
+                k.P = host; notes.append(k)
+            flush()
         for r in leaving: table_row_out(t, rows[r])
-        if titles: set_kids(t, titles + kids(t))
+        if caption is not None: set_kids(t, [caption] + kids(t))
         if notes:
-            host = parent_of[t.objgen]; ks = kids(host); at = next(i for i, k in enumerate(ks) if same(k, t))
+            ks = kids(host); at = next(i for i, k in enumerate(ks) if same(k, t))
             set_kids(host, ks[:at + 1] + notes + ks[at + 1:])
-        if linked: rebuild_idtree()
-        reindex()
+        if leaving: reindex()                   # the next table's parent and page lookups
         ok('table: header cells marked (work order)', n)
         if demoted: ok('table: cells wrongly tagged as headers set back to data cells', demoted)
         if linked: ok('table: data cells tied to their headers by ID', linked)
-        if titles: ok('table: title row → Caption', len(titles))
-        if notes: ok('table: note row → paragraph after the table', len(notes))
+        if unlinked: ok('table: cells no longer naming a header that left the table or became a data cell', unlinked)
+        if plan['title']: ok('table: caption made from the title rows')     # one per table: several title rows make one Caption
+        if plan['note']: ok('table: note row → paragraph after the table', len(plan['note']))
         log.setdefault('tables', []).append({'obj': it['obj'], 'page': page0, **reading, 'group_rows': sorted(set(it.get('group_rows') or [])),
                                              'repeat_rows': sorted(set(it.get('repeat_rows') or [])), 'cells_to_TH': n, 'cells_to_TD': demoted, 'cells_with_headers': linked})
+    if relinked or ids_gone: rebuild_idtree(); reindex()
 def cell_page(c): return min(pages_of(c, eff_pg.get(c.objgen)) - {None}, default=None)
 def fix_th_scope():
     """veraPDF 7.5-1/2 (WCAG 1.3.1): a header cell needs a direction (Scope) unless Headers/IDs give it. Set only where
