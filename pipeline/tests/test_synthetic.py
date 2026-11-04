@@ -7,7 +7,8 @@
 - The one-item list rule: OpenDataLoader makes such lists from a paragraph's first word; no tagged sample has one.
 - A harder table: title, group and note rows, and a false header cell, through the work order's `tables`.
 - Harder title and note rows (#67): two title lines make one Caption, a note cell holding a P, a title cell's ActualText and
-  Lang, Headers naming a removed or demoted cell, rows on two pages, text drawn in a form, a bad row number in one table.
+  Lang, Headers naming a removed or demoted cell, rows on two pages, text drawn in a form, a bad row number in one table;
+  a cell holding a paragraph and a language (Div, not Span), a note row of a paragraph and loose text, text with no page.
 - Reading order: a section read out of printed order, moved back with move_section (the review page's preview, apply.py's
   move and verify.py's section-order check, new or already in the original); no baseline book uses move_section.
 No book content; nothing is sent anywhere; veraPDF is off.
@@ -357,11 +358,12 @@ def test_a_reading_that_does_not_fit_leaves_the_table_alone(tmp_path):
     assert t['first'] == 'TR' and len(t['rows']) == 5
 
 # ---- harder cases for the title and note rows (#67): built with tables_pdf, one case per way they could go wrong
-def tables_pdf(path, tables, npages=1, caption=False):
+def tables_pdf(path, tables, npages=1, caption=False, pageless=()):
     """Tables on npages pages. A table is a list of rows; a cell is its text, or a dict: text, page (1, 2, …), tag (TD or
-    TH), inner (a tag between the cell and its text, e.g. 'P'), attrs ({key: value} on the cell), id, headers (IDs),
-    rowspan, form (the text is drawn in a form XObject, reached by an MCR with /Stm). caption: the first table already
-    has a Caption. -> the tables' object refs."""
+    TH), inner (a tag between the cell and its text, e.g. 'P'), after (more text straight in the cell, after inner),
+    attrs ({key: value} on the cell), id, headers (IDs), rowspan, form (the text is drawn in a form XObject, reached by
+    an MCR with /Stm). caption: the first table already has a Caption. pageless: the numbers of the tables whose Table,
+    TR and cells have no /Pg (a cell that sets page keeps it). -> the tables' object refs."""
     pdf = pikepdf.new()
     font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica,
                               Encoding=pikepdf.Name.WinAnsiEncoding)
@@ -374,7 +376,9 @@ def tables_pdf(path, tables, npages=1, caption=False):
     root = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
     doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
     def el(s, parent, k, p, **extra):
-        return pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name('/' + s), P=parent, Pg=pages[p], K=k, **extra))
+        d = pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name('/' + s), P=parent, K=k, **extra)
+        if p is not None: d.Pg = pages[p]
+        return pdf.make_indirect(d)
     def mark(owner, text, p, form):
         y = 540 - 16 * (len(draw[p]) + len(forms))
         if not form:
@@ -387,24 +391,26 @@ def tables_pdf(path, tables, npages=1, caption=False):
         return pikepdf.Dictionary(Type=pikepdf.Name.MCR, Pg=pages[p], Stm=fx, MCID=0)
     top = []
     for n, rows in enumerate(tables):
-        table = el('Table', doc, pikepdf.Array(), 0); trs = []
+        bare = n in pageless
+        table = el('Table', doc, pikepdf.Array(), None if bare else 0); trs = []
         if caption and n == 0:
             cap = el('Caption', table, pikepdf.Array(), 0); cap.K = pikepdf.Array([mark(cap, 'Old caption', 0, False)]); trs.append(cap)
         for row in rows:
             cells = [c if isinstance(c, dict) else {'text': c} for c in row]
-            tr = el('TR', table, pikepdf.Array(), cells[0].get('page', 1) - 1); tcs = []
+            tr = el('TR', table, pikepdf.Array(), None if bare else cells[0].get('page', 1) - 1); tcs = []
             for c in cells:
                 p = c.get('page', 1) - 1
                 a = pikepdf.Dictionary(O=pikepdf.Name('/Table'))
                 if len(row) == 1: a.ColSpan = 2
                 if c.get('rowspan'): a.RowSpan = c['rowspan']
                 if c.get('headers'): a.Headers = pikepdf.Array([pikepdf.String(h) for h in c['headers']])
-                cell = el(c.get('tag', 'TD'), tr, pikepdf.Array(), p, A=a)
+                cell = el(c.get('tag', 'TD'), tr, pikepdf.Array(), None if bare and 'page' not in c else p, A=a)
                 for k, v in (c.get('attrs') or {}).items(): cell[k] = v
                 if c.get('id'): cell.ID = pikepdf.String(c['id']); ids.append((c['id'], cell))
                 if c.get('inner'):
-                    inner = el(c['inner'], cell, pikepdf.Array(), p); inner.K = pikepdf.Array([mark(inner, c['text'], p, c.get('form'))])
-                    cell.K = pikepdf.Array([inner])
+                    inner = el(c['inner'], cell, pikepdf.Array(), None if bare and 'page' not in c else p)
+                    inner.K = pikepdf.Array([mark(inner, c['text'], p, c.get('form'))])
+                    cell.K = pikepdf.Array([inner] + ([mark(cell, c['after'], p, False)] if c.get('after') else []))
                 else: cell.K = pikepdf.Array([mark(cell, c['text'], p, c.get('form'))])
                 tcs.append(cell)
             tr.K = pikepdf.Array(tcs); trs.append(tr)
@@ -421,9 +427,9 @@ def tables_pdf(path, tables, npages=1, caption=False):
     with pikepdf.open(path) as p:                       # saving renumbers the objects
         return [f'{t.objgen[0]} {t.objgen[1]}' for t in elems(elems(p.Root.StructTreeRoot)[0])]
 
-def apply_tables(tmp_path, tables, readings, npages=1, caption=False):
+def apply_tables(tmp_path, tables, readings, npages=1, caption=False, pageless=()):
     """-> the remediated PDF (open) and the executor's log."""
-    src = tmp_path / 'tables.pdf'; refs = tables_pdf(src, tables, npages, caption)
+    src = tmp_path / 'tables.pdf'; refs = tables_pdf(src, tables, npages, caption, pageless)
     w = tmp_path / 'wo.json'
     w.write_text(json.dumps({'schema': 'workorder/0.2', 'tables': [{'obj': r, **x} for r, x in zip(refs, readings) if x is not None]}))
     out = tmp_path / 'out.pdf'; run('apply.py', src, w, out)
@@ -523,4 +529,36 @@ def test_a_bad_row_number_rejects_only_that_table(tmp_path):
     pdf, log = apply_tables(tmp_path, [T2, T2], [{'header_rows': 1, 'title_rows': 2, 'group_rows': [40]}, {'title_rows': 2, 'header_rows': 1, 'note_rows': 1}])
     _, top = top_tags(pdf)
     assert not log['failed'] and any('not in the table' in r['why'] for r in log['rejected'])
+    assert tag(elems(top[0])[0]) == 'TR' and tag(elems(top[1])[0]) == 'Caption'
+
+# ---- what a cell holds decides the tag around it: no paragraph inside a Span or a P
+def p_in_inline(pdf):
+    """Tags that may not hold a paragraph (P, Span) holding one."""
+    return [(tag(n), tag(k)) for n in every_elem(pdf) if tag(n) in ('P', 'Span') for k in elems(n) if tag(k) in ('P', 'Div')]
+
+def test_a_title_cell_with_a_language_and_a_paragraph_gets_a_div(tmp_path):
+    rows = [[{'text': 'Taula 3', 'inner': 'P', 'attrs': {'/Lang': pikepdf.String('ca')}}]] + T2[2:]
+    pdf, _ = apply_tables(tmp_path, [rows], [{'title_rows': 1, 'header_rows': 1, 'note_rows': 1}])
+    _, top = top_tags(pdf); cap = elems(top[0])[0]
+    assert tag(cap) == 'Caption' and [tag(k) for k in elems(cap)] == ['Div'] and str(elems(cap)[0].Lang) == 'ca'
+    assert [tag(k) for k in elems(elems(cap)[0])] == ['P'] and not p_in_inline(pdf) and owners_ok(pdf) == 6
+
+def test_a_note_row_with_a_paragraph_and_loose_text_makes_two_paragraphs(tmp_path):
+    rows = T2[1:-1] + [[{'text': 'Source: fieldwork', 'inner': 'P', 'after': 'Note: 2019'}]]
+    pdf, _ = apply_tables(tmp_path, [rows], [{'title_rows': 1, 'header_rows': 1, 'note_rows': 1}])
+    _, top = top_tags(pdf)
+    assert [tag(k) for k in top] == ['Table', 'P', 'P'] and not p_in_inline(pdf) and owners_ok(pdf) == 7
+
+def test_a_note_cell_with_a_language_and_a_paragraph_moves_out_as_a_div(tmp_path):
+    rows = T2[1:-1] + [[{'text': 'Font: treball de camp', 'inner': 'P', 'attrs': {'/Lang': pikepdf.String('ca')}}]]
+    pdf, _ = apply_tables(tmp_path, [rows], [{'title_rows': 1, 'header_rows': 1, 'note_rows': 1}])
+    _, top = top_tags(pdf)
+    assert [tag(k) for k in top] == ['Table', 'Div'] and str(top[1].Lang) == 'ca' and not p_in_inline(pdf) and owners_ok(pdf) == 6
+
+def test_title_text_with_no_page_rejects_only_that_table(tmp_path):
+    first = [[{'text': 'Table 3', 'page': 1}], ['Clan names by moiety'], ['Clan', 'Surname'], ['Wurra', 'Lalara']]
+    pdf, log = apply_tables(tmp_path, [first, T2], [{'title_rows': 2, 'header_rows': 1}, {'title_rows': 2, 'header_rows': 1, 'note_rows': 1}],
+                            pageless=(0,))
+    _, top = top_tags(pdf)
+    assert not log['failed'] and any('no page' in r['why'] for r in log['rejected'])
     assert tag(elems(top[0])[0]) == 'TR' and tag(elems(top[1])[0]) == 'Caption'

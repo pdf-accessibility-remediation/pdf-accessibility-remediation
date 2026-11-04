@@ -732,9 +732,11 @@ def elem_chars(el, depth=0):
     if depth > 30: return []
     pg = eff_pg.get(el.objgen); out = []
     for k in kids(el):
-        if isinstance(k, int): out += [c for c in PL.pages[pg - 1].chars if c.get('mcid') == k]
+        if isinstance(k, int):                     # marked content with no page in the tag tree can't be found: no characters
+            if pg: out += [c for c in PL.pages[pg - 1].chars if c.get('mcid') == k]
         elif is_pmcr(k):
-            p = pidx[k.Pg.objgen] if '/Pg' in k else pg; out += [c for c in PL.pages[p - 1].chars if c.get('mcid') == int(k.MCID)]
+            p = pidx[k.Pg.objgen] if '/Pg' in k else pg
+            if p: out += [c for c in PL.pages[p - 1].chars if c.get('mcid') == int(k.MCID)]
         elif is_elem(k): out += elem_chars(k, depth + 1)
     return out
 def elem_gaptext(el): return GT(elem_chars(el))
@@ -1447,7 +1449,7 @@ def moved_kids(part, epg):
     page, and an MCR or tag without /Pg gets its page (it would otherwise take epg from its new parent)."""
     ppg = eff_pg.get(part.objgen); out = []
     for k in kids(part):
-        if isinstance(k, int): out.append(k if ppg == epg else mcr(ppg, k))
+        if isinstance(k, int): out.append(k if ppg == epg or ppg is None else mcr(ppg, k))   # no page known: left as it is
         else:
             if (is_mcr(k) or is_elem(k)) and '/Pg' not in k and ppg != epg and ppg: k.Pg = pages[ppg - 1].obj
             out.append(k)
@@ -1583,6 +1585,9 @@ def op_tables(spec):
             reject(what, 'a title or note row holds a link, so it stays in the table'); continue
         if plan['title'] and any(is_elem(k) and mapped(S(k)) == 'Caption' for k in kids(t)):
             reject(what, 'the table already has a caption, so its title rows stay in the table'); continue
+        if any(eff_pg.get(c.objgen) is None and any(isinstance(k, int) or (is_mcr(k) and '/Pg' not in k and '/Stm' not in k) for k in kids(c))
+               for r in leaving for c in grid[r]):
+            reject(what, 'a title or note row\'s text has no page in the tag tree, so it stays in the table'); continue
         page0 = cell_page(t); n = demoted = linked = unlinked = 0
         for (r, j), info in plan['cells'].items():
             c = grid[r][j]
@@ -1612,36 +1617,41 @@ def op_tables(spec):
         ids_gone = ids_gone or any('/ID' in c for r in leaving for c in grid[r])
         relinked = relinked or bool(linked or unlinked)
         host = parent_of[t.objgen]
-        def rehome(cells, stype, parent):
-            """One new tag holding the cells' content, each piece on its own page and indexed under its new tag. A cell's
-            ActualText, Alt or Lang stays with its own content, on a Span around it."""
-            pg = eff_pg.get(cells[0].objgen); el = new_elem(stype, parent, [], pg=pg); got = []
-            for c in cells:
-                ks = moved_kids(c, pg); keep = {k: c[k] for k in ('/ActualText', '/Alt', '/Lang') if k in c}
-                owner = new_elem('Span', el, ks, pg=pg, **{k[1:]: v for k, v in keep.items()}) if keep and ks else el
-                for k in ks:
-                    if is_elem(k): k.P = owner
-                point_at(owner, ks, pg)
-                got += [owner] if owner is not el else ks
-            set_kids(el, got)
+        def is_block(k): return is_elem(k) and mapped(S(k)) in BLOCKS
+        def adopt(el, items, pg):
+            set_kids(el, items)
+            for k in items:
+                if is_elem(k): k.P = el
+            point_at(el, items, pg)
             return el
-        def blocks(cells):
-            """A note row whose cells hold only paragraphs (or other blocks) and no attributes of their own: those blocks
-            themselves, to go after the table. Wrapping them in a new P would put a P inside a P."""
-            ks = [k for c in cells for k in kids(c)]
-            if not ks or any(k in c for c in cells for k in ('/ActualText', '/Alt', '/Lang')): return None
-            return ks if all(is_elem(k) and mapped(S(k)) in BLOCKS for k in ks) else None
-        caption = rehome([c for r in plan['title'] for c in grid[r]], 'Caption', t) if plan['title'] else None
+        def cell_items(cells, pg):
+            """The cells' content, ready to move, each piece on its own page. A cell's ActualText, Alt or Lang stays with
+            its own content, on a tag around it: a Div when it holds paragraphs (a Span can't), else a Span."""
+            out = []
+            for c in cells:
+                ks = moved_kids(c, pg); keep = {k[1:]: c[k] for k in ('/ActualText', '/Alt', '/Lang') if k in c}
+                if keep and ks: out.append(adopt(new_elem('Div' if any(is_block(k) for k in ks) else 'Span', t, [], pg=pg, **keep), ks, pg))
+                else: out += ks
+            return out
+        def first_page(cells): return next((eff_pg[c.objgen] for c in cells if eff_pg.get(c.objgen)), None)
+        caption = None
+        if plan['title']:
+            cells = [c for r in plan['title'] for c in grid[r]]; pg = first_page(cells)
+            caption = adopt(new_elem('Caption', t, [], pg=pg), cell_items(cells, pg), pg)
         notes = []
         for r in plan['note']:
-            bs = blocks(grid[r])
-            if bs:
-                for k in bs:
-                    kpg = eff_pg.get(k.objgen)
-                    if '/Pg' not in k and kpg: k.Pg = pages[kpg - 1].obj      # it would take the page of its new parent
-                    k.P = host
-                notes += bs
-            else: notes.append(rehome(grid[r], 'P', host))
+            # a paragraph (or other block) in a note row moves out as it is; loose text around it becomes a paragraph of
+            # its own, so no P ever holds a P
+            pg = first_page(grid[r]); run = []
+            def flush():
+                if run: notes.append(adopt(new_elem('P', host, [], pg=pg), list(run), pg)); run.clear()
+            for k in cell_items(grid[r], pg):
+                if not is_block(k): run.append(k); continue
+                flush()
+                kpg = eff_pg.get(k.objgen) or pg
+                if '/Pg' not in k and kpg: k.Pg = pages[kpg - 1].obj      # it would take the page of its new parent
+                k.P = host; notes.append(k)
+            flush()
         for r in leaving: table_row_out(t, rows[r])
         if caption is not None: set_kids(t, [caption] + kids(t))
         if notes:
