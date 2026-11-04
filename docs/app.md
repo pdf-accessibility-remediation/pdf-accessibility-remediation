@@ -142,7 +142,7 @@ A run that `REVIEW=1` stopped before its first review (`workorder.ai.json`, no `
 
 | What was happening | After Ctrl+C on the app (or a crash) and a new start |
 |---|---|
-| A review page that this app opened, before Finish | It gets Ctrl+C, as in a terminal. The session stays open, and **Continue review** carries on with it. The page's choices are saved to `review_decisions.json` about a second after each change (a save under way is written whole first), and kept in the browser. The browser's copy is per page address, and the review page's port can differ next time, so count on what was saved. |
+| A review page that this app opened, before Finish | It gets Ctrl+C, as in a terminal. The session stays open, and **Continue review** carries on with it. The page's choices are saved to `review_decisions.json` about half a second after each change, or at once when the focus leaves its card (a save under way is written whole first), and kept in the browser. The browser's copy is per page address, and the review page's port can differ next time, so count on what was saved. |
 | A review page, after an app crash | It may still be running. The panel shows **Open the review page** and **Stop reviewing** for it. |
 | A review past Finish, or any other running job | It carries on and finishes; its end is written to its job file. After the new start, the page shows it. |
 | A job killed or cut off by a restart | **Interrupted**, with what is left (above). |
