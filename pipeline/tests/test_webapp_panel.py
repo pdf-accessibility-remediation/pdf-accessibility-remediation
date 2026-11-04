@@ -958,14 +958,17 @@ def test_review_10_boxes_and_report_wording():
     assert 'ship_words' not in rh
 
 def test_auto_save_and_the_finish_check():
-    """Handoff 13 (#48, the smaller part): no Save button; every change is saved about a second after it is made (POST
-    /keep), one save at a time, an edit made meanwhile carried by the next save; the status line is not announced, a
-    failed save is (role="alert"); the Finish dialog runs the check first and links each choice it would drop to its card."""
+    """Handoff 13 (#48, the smaller part): no Save button; every change is saved about half a second after it is made
+    (POST /keep), and at once when the focus leaves its card (#79), one save at a time, an edit made meanwhile carried by
+    the next save; the status line is not announced, a failed save is (role="alert"); the Finish dialog runs the check
+    first and links each choice it would drop to its card."""
     from review import core
     page, srv = src('review/page.html'), src('review/server.py')
     assert 'id="save"' not in page and 'id="saveState"' in page and 'All changes saved' in page and 'Saving…' in page
     assert 'id="saveAlert" role="alert"' in page and 'id="saveState" class="save-state"' in page          # the state itself: no live region
-    assert 'saveTimer = setTimeout(saveNow, 1000)' in page and 'if (saving || finished) return;' in page
+    assert 'saveTimer = setTimeout(saveNow, 500)' in page and 'if (saving || finished) return;' in page
+    assert 'if (dirty && saveTimer) saveNow();' in page.split("addEventListener('focusout'")[1][:200]   # #79: leaving a card saves now
+    assert 'Date.now() - lastInput < 1000' in page and 'setTimeout(settle, 1100)' in page   # #79: the typing wait, the two in step
     assert "if (dirty && !finished) { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }" in page   # an edit made while saving: next, one timer
     assert "else if (s === 409) ok = true;" in page and "keepalive: true" in page
     assert "await post('/save')" in page.split('async function askFinish')[1][:600] and 'data-card=' in page
