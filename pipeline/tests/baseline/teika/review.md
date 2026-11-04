@@ -2,13 +2,13 @@
 
 Result: `teika_remediated.pdf`
 
-281 pages · run November 3, 2026, at 12:36 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.226 ($0.0008 per page), from the original call on November 3, 2026 · this run: no new call · tokens: saved reply reused, not counted
+281 pages · run November 3, 2026, at 5:44 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.226 ($0.0008 per page), from the original call on November 3, 2026 · this run: no new call · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.4s · audit 44.2s · reuse saved reply 0.6s · apply 62.9s · verify 54.9s · total 163.0s
+Time: intake 0.3s · audit 44.0s · reuse saved reply 0.7s · apply 57.9s · verify 51.5s · total 154.4s
 
 ## Overview
 
