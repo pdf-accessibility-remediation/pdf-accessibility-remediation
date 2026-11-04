@@ -2,13 +2,13 @@
 
 Result: `teika_remediated.pdf`
 
-281 pages · run November 3, 2026, at 5:44 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.226 ($0.0008 per page), from the original call on November 3, 2026 · this run: no new call · tokens: saved reply reused, not counted
+281 pages · run November 4, 2026, at 2:26 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.226 ($0.0008 per page), from the original call on November 3, 2026 · this run: no new call · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.3s · audit 44.0s · reuse saved reply 0.7s · apply 57.9s · verify 51.5s · total 154.4s
+Time: intake 0.5s · audit 42.2s · reuse saved reply 0.7s · apply 59.4s · verify 52.6s · total 155.4s
 
 ## Overview
 
@@ -351,7 +351,7 @@ Each one:
 | retype → H1 | 1 |
 | retype → H4 | 3 |
 | table: header cells marked (work order) | 8 |
-| table: title row → Caption | 3 |
+| table: caption made from the title rows | 3 |
 | table: note row → paragraph after the table | 1 |
 | figure: alt text | 1 |
 | contents: TOC entries | 11 |

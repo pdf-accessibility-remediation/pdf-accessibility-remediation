@@ -475,6 +475,7 @@ def test_two_title_rows_make_one_caption(tmp_path):
     _, top = top_tags(pdf); t = top[0]
     assert [tag(k) for k in elems(t)].count('Caption') == 1 and tag(elems(t)[0]) == 'Caption'
     assert len(kids_of(elems(t)[0])) == 2 and owners_ok(pdf) == 7
+    assert log['applied']['table: caption made from the title rows'] == 1          # counts Captions, not title rows
 
 def test_a_table_that_has_a_caption_gets_no_second_one(tmp_path):
     pdf, log = apply_tables(tmp_path, [T2], [{'title_rows': 2, 'header_rows': 1}], caption=True)
