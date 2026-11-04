@@ -1662,7 +1662,7 @@ def op_tables(spec):
         if demoted: ok('table: cells wrongly tagged as headers set back to data cells', demoted)
         if linked: ok('table: data cells tied to their headers by ID', linked)
         if unlinked: ok('table: cells no longer naming a header that left the table or became a data cell', unlinked)
-        if plan['title']: ok('table: title row → Caption', len(plan['title']))
+        if plan['title']: ok('table: caption made from the title rows')     # one per table: several title rows make one Caption
         if plan['note']: ok('table: note row → paragraph after the table', len(plan['note']))
         log.setdefault('tables', []).append({'obj': it['obj'], 'page': page0, **reading, 'group_rows': sorted(set(it.get('group_rows') or [])),
                                              'repeat_rows': sorted(set(it.get('repeat_rows') or [])), 'cells_to_TH': n, 'cells_to_TD': demoted, 'cells_with_headers': linked})
