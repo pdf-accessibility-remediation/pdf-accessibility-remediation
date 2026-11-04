@@ -71,7 +71,10 @@ def test_repeated_header_row_stays_a_header_and_heads_nothing_new():
     ([[C, C], [C, C], [C, C]], {'title_rows': 1}, 'holds more than one thing'),
     ([[C, C], [C, C], [C, C]], {'header_rows': 1, 'group_rows': [1]}, 'holds more than one thing'),
     ([[C], [C], [C]], {'header_rows': 1, 'group_rows': [0]}, 'outside the data rows'),
-    ([[C, C], [C, C], [C, C]], {'header_rows': 1, 'repeat_rows': [7]}, 'outside the data rows'),
+    ([[C, C], [C, C], [C, C]], {'header_rows': 1, 'repeat_rows': [7]}, 'not in the table'),
+    ([[C, C], [C, C], [C, C]], {'header_rows': 1, 'group_rows': [7]}, 'not in the table'),     # not an IndexError (#67)
+    ([[C, C], [C, tall(2)], [C]], {'header_rows': 1, 'note_rows': 1}, 'row 1 spans into the note row'),
+    ([[C], [C, C], [tall(3), C], [C], [C]], {'header_rows': 1, 'note_rows': 2}, 'row 2 spans into the note row'),
     ([[tall(2), C], [C], [C, C]], {'header_rows': 1}, 'spans into the data rows'),
     ([[wide(2), C], [wide(2), C]], {'header_cols': 1}, 'across the header column edge'),
     ([[tall(2)], [C], [C]], {'title_rows': 1}, 'spans into the next row'),
@@ -83,3 +86,26 @@ def test_a_reading_that_does_not_fit_is_refused(rows, reading, why):
 def test_one_label_row_with_empty_cells_counts():
     p = plan([[C, E], [C, C], [C, C]], title_rows=1, header_rows=1)
     assert p['title'] == [0]
+
+def test_several_title_rows_all_leave_the_table():
+    p = plan([[C], [C], [C, C], [C, C]], title_rows=2, header_rows=1)
+    assert p['title'] == [0, 1] and set(p['cells']) == {(2, 0), (2, 1), (3, 0), (3, 1)}
+
+def test_a_data_cell_spanning_data_rows_only_is_fine():
+    p = plan([[C, C], [tall(2), C], [C], [C]], header_rows=1, note_rows=1)
+    assert p['note'] == [3]
+
+# ---- the rows the digest shows the model (audit.py row_shapes)
+def old_shape(n, lone, cap):
+    return sorted({i for i in range(n) if i < 4 or i >= n - 2} | set(lone))[:cap]
+
+def test_shape_rows_keep_the_last_rows_when_many_rows_hold_one_thing():
+    from lib.tablegrid import shape_rows
+    got = shape_rows(30, set(range(5, 17)), 14)                      # 12 one-cell group rows in the middle
+    assert len(got) == 14 and got[:4] == [0, 1, 2, 3] and got[-2:] == [28, 29] and got[4:12] == list(range(5, 13))
+
+@pytest.mark.parametrize('n, lone', [(0, set()), (1, {0}), (3, {1}), (10, {5, 6}), (30, set(range(5, 13))), (20, {0, 19, 7})])
+def test_shape_rows_unchanged_below_the_cap(n, lone):
+    """The digest is model input: tables that don't reach the cap must give the same rows as before."""
+    from lib.tablegrid import shape_rows
+    assert shape_rows(n, lone, 14) == old_shape(n, lone, 14)
