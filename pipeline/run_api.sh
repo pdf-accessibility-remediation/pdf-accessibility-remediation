@@ -17,6 +17,8 @@
 # FORCE_OCR=1 bash run_api.sh …   if the text layer fails the OCR comparison, OCR every page anyway (else the book stops)
 # OCR_LANG=jpn+eng bash run_api.sh …   Tesseract languages for OCR (default eng; a scan with CJK text stops until this names a CJK pack; vertical Japanese: jpn_vert+jpn+eng)
 # OCR=off / INTAKE=off bash run_api.sh …   no OCR (image-only pages are only listed) / no intake step at all
+# DECIDE=none bash run_api.sh …   no AI call: an empty work order for a person to fill (with REVIEW=1). handedit.py import
+#   uses it for a PDF edited by hand and brought back for review; such a run works on _handedit/input.pdf when there is one
 #
 # Rerunning a label that did not finish picks up where it stopped: the audit is reused; a reply that was cut off
 # is logged with its cost (attempts.json, folded into record.json) and a new call is made; a reply that was fine
@@ -38,6 +40,7 @@ RUNS=${RUNS_DIR:-$(cd .. && pwd)/runs}
 R=${RUN_DIR:-$RUNS/$NAME/$RUN}; A=$R/_audit
 if [[ -f $R/record.json ]]; then echo "$R already holds a finished run: choose another run label"; exit 1; fi
 if [[ -n ${MAX_TOKENS:-} && ! $MAX_TOKENS =~ ^[0-9]+$ ]]; then echo "MAX_TOKENS must be a whole number: $MAX_TOKENS"; exit 1; fi
+if [[ -n ${DECIDE:-} && $DECIDE != none ]]; then echo "DECIDE is none (no AI call) or unset: $DECIDE"; exit 1; fi
 MT=(); [[ -z ${MAX_TOKENS:-} ]] || MT=(--max-tokens "$MAX_TOKENS")
 [[ -z ${MODEL:-} ]] || MT+=(--model "$MODEL")
 USE_MODEL=${MODEL:-$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")}
@@ -115,6 +118,8 @@ if [[ ${INTAKE:-auto} != off ]]; then
   fi
   [[ -f $R/_intake/intake.pdf ]] && PSRC=$R/_intake/intake.pdf
 fi
+# a PDF edited by hand (handedit.py import): the copy with stale alt text removed, unless intake had to tag it
+if [[ $PSRC == "$SRC" && $(dirname "$SRC") == "$R/_handedit" && -f $R/_handedit/input.pdf ]]; then PSRC=$R/_handedit/input.pdf; fi
 same_source() { [[ -f $A/digest.json ]] && python3 -c "import json,hashlib,sys; d=json.load(open('$A/digest.json')); sys.exit(0 if d['source']['sha256'] == hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest() else 1)" "$PSRC"; }
 if same_source; then
   echo "▶ 1/5 audit: reusing the audit already in $A"
@@ -134,9 +139,11 @@ if [[ -n $SAVED ]]; then
     echo "▶ the saved reply still cannot be read: its cost is logged and a new call is made"; log_attempt
   fi
 fi
-if [[ -n ${ESTIMATE:-} && ( -n ${REPLY:-} || -n $REVIEWED ) ]]; then echo "estimate only: no cost, a saved reply will be reused"; summary; exit 0; fi
+if [[ -n ${ESTIMATE:-} && ( -n ${REPLY:-} || -n $REVIEWED || ${DECIDE:-} == none ) ]]; then echo "estimate only: no cost, no AI call will be made"; summary; exit 0; fi
 if [[ -n ${REUSED:-} || -n $REVIEWED ]]; then
   :
+elif [[ ${DECIDE:-} == none ]]; then
+  stage "2/5 no AI call (a person decides)" python3 decide.py "$A" "$R" --no-model
 elif [[ -n ${REPLY:-} ]]; then
   stage "2/5 reuse saved reply (no cost)" python3 decide.py "$A" "$R" --response-file "$REPLY" ${MT[@]+"${MT[@]}"}
 else
@@ -183,5 +190,8 @@ echo "done: $R"
 echo "  $OUT   the result: run PAC on this"
 echo "  review.md     what a person should check"
 echo "  record.json   the full record: decisions, cost, timing, checks"
+if python3 -c "import json,sys; sys.exit(0 if (json.load(open(sys.argv[1])).get('run') or {}).get('no_model') else 1)" "$R/record.json" 2>/dev/null; then
+  echo; echo "no AI call in this run: no credit used"; exit 0           # DECIDE=none: nothing to look up at OpenRouter
+fi
 CREDIT=$(python3 decide.py --credit "$R/record.json" 2>/dev/null || true)
 if [[ -n $CREDIT ]]; then echo; echo "credit left: \$$CREDIT"; else echo; echo "credit left: could not check (no key, or OpenRouter unreachable)"; fi

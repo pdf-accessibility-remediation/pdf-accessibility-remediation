@@ -728,6 +728,18 @@ def render_pages(pdf, pages, out_dir, scale=1.0):
             if not os.path.exists(path): doc[p - 1].render(scale=scale).to_pil().save(path)
     finally: doc.close()
 
+def hand_edit(R):
+    """For the page's banner: a PDF edited by hand and brought back (handedit.py import), from the run's _handedit/ at the
+    review stop, else from record.json when reviewing again (R is then the run's reviews/). None for every other run."""
+    he = load(os.path.join(R, '_handedit', 'hand_edit.json'))
+    if he is None and os.path.basename(os.path.normpath(R)) == 'reviews':
+        he = (load(os.path.join(os.path.dirname(os.path.normpath(R)), 'record.json')) or {}).get('hand_edit')
+    if not isinstance(he, dict): return None
+    fc = he.get('figures_changed') or []
+    return {'by': he.get('by'), 'when': he.get('when'), 'note': he.get('note'), 'base': he.get('base'),
+            'figure_pages': sorted({f['page'] for f in fc if f.get('page')}), 'alt_removed': sum(1 for f in fc if f.get('alt')),
+            'outside_pages': sorted({x['page'] for x in he.get('outside_figures') or [] if x.get('page')})}
+
 def prepare(R, pdf):
     """Write review_items.json, and render the pages of the first group so the page opens with them. Runs when run_api.sh
     stops for review. Every other page image is rendered by the server as the reviewer scrolls to it."""
@@ -743,6 +755,8 @@ def prepare(R, pdf):
     data = {'book': digest['source'].get('file'), 'run': os.path.basename(os.path.normpath(R)), 'pages': digest['source']['pages'],
             'pdf': os.path.abspath(pdf), 'groups': GROUPS, 'levels': LEVELS, 'add_kinds': ADD_KINDS, 'items': items,
             'addable': addable(ai, digest, ro), 'reading_order': ro}
+    he = hand_edit(R)
+    if he: data['hand_edit'] = he
     save(os.path.join(R, 'review_items.json'), data)
     return data
 

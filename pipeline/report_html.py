@@ -519,8 +519,9 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
     ai = origin.summary(rec, None); mp = run.get('original_call') or (ai if run.get('response_from') else run)   # 11.5: the call that wrote the reply
     B = [f'<header class="top"><h1>Review: {E(book)}</h1><div class="meta">'
          + ' · '.join(E(x) for x in [f'run {"/".join(os.path.normpath((rec.get("review") or {}).get("run") or R).split(os.sep)[-2:])}', f'{doc.get("pages") or "pages not counted"} pages',
-                                      f'model {mp.get("model") or run.get("model") or "not recorded"}', f'prompt {mp.get("prompt_file") or "not recorded"}',
-                                      (f'AI cost {origin.words(ai)[0]} · this run: no new call' if run.get('response_from')
+                                      *([run['no_model']] if run.get('no_model') else    # a PDF edited by hand, brought back for review
+                                        [f'model {mp.get("model") or run.get("model") or "not recorded"}', f'prompt {mp.get("prompt_file") or "not recorded"}']),
+                                      ('AI cost $0' if run.get('no_model') else f'AI cost {origin.words(ai)[0]} · this run: no new call' if run.get('response_from')
                                        else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: call did not finish'),
                                       f'run {D.when(run.get("started"), "start time not recorded")}'])
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus

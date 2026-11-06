@@ -70,6 +70,7 @@ dialog.npad textarea { flex: 1; resize: none; border: 0; border-radius: 0 0 8px 
 .fin-check ul { margin: 4px 0 0; padding-left: 20px; } .fin-check.err { border-left-color: var(--reject); }
 #msg { margin-top: 6px; font-size: 14px; }
 .draft-line { margin-top: 6px; font-size: 14px; } .draft-line[hidden] { display: none; }
+.hand-edit { margin-top: 4px; }
 .draft-line .note { color: var(--muted); } .draft-line ul { margin: 4px 0 0 1.2em; padding: 0; } .draft-line a { color: var(--accent); }
 .draft-line .stale { color: var(--reject); font-weight: 600; }
 .draft-line details { display: inline-block; margin-left: 4px; } .draft-line summary { cursor: pointer; color: var(--accent); }
@@ -223,6 +224,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
   <div id="draftLine" class="draft-line" aria-live="polite" hidden></div>
   <div id="msg" role="status"></div>
   <div id="session" hidden></div>
+  <div id="handEdit" class="hand-edit" hidden></div>
   <div class="hdr-foot"><p id="back" hidden><a href="" class="btnlink">Back to the Run Page</a> (this review stays open; continue it from there)</p>
   <button type="button" id="hideHdr" class="hdr-toggle" aria-expanded="true" aria-controls="top">Hide Header</button></div>
 </header>
@@ -467,6 +469,15 @@ document.getElementById('checkBtn').addEventListener('click', () => {
 function dec(id) { return state.decisions[id] || (state.decisions[id] = {}); }
 
 document.getElementById('title').textContent = 'Work Order Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
+if (DATA.hand_edit) {                                 // a PDF edited by hand and brought back: what changed, and what it needs
+  const he = DATA.hand_edit, el = document.getElementById('handEdit'), pp = a => a.map(p => 'PDF ' + p).join(', ');
+  el.hidden = false;
+  el.innerHTML = '<b>' + esc(tc('Edited by hand')) + ':</b> ' + esc(he.by || 'someone') + ' changed the ' +
+    (he.base === 'original' ? 'original' : 'remediated') + ' PDF by hand' + (he.note ? ' (“' + esc(he.note) + '”)' : '') + '. ' +
+    (he.alt_removed ? he.alt_removed + (he.alt_removed === 1 ? ' figure holds' : ' figures hold') + ' a new image (' + esc(pp(he.figure_pages)) +
+      '): its old alt text was removed, so each needs new alt text. ' : 'No figure lost its alt text. ') +
+    (he.outside_pages && he.outside_pages.length ? 'New images that no figure holds: ' + esc(pp(he.outside_pages)) + '.' : '');
+}
 if (SESSION && SESSION.reopened) {                    // a finished run reviewed again: where this session started, OCR
   const sn = id => 'Session ' + Number(id), nc = SESSION.not_carried || [];
   const ocr = DATA.ocr ? ' · OCR Text: <span id="hdrOcr"></span>' : '';   // filled by renderOcr()
