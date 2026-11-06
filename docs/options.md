@@ -11,7 +11,7 @@ nav_order: 4
 | `ESTIMATE=1` | Audit and cost estimate only; a later run with the same label reuses the audit |
 | `REPLY=path/to/reply.txt` | Reuses a saved Claude reply instead of calling the API (no cost) |
 | `REVIEW=1` | Stops after the AI's decisions so a person can approve, change or reject each one before anything is applied; rerunning the same label (without it) applies the reviewed work order. One book at a time, not in batches (see [Reviewing the work order](review-step.md)) |
-| `REVIEW_DRYRUN=off` | With `REVIEW=1`: skips the trial run of `apply.py` at the review stop that works out which figures the executor moves and whether it makes the AI's section move (as long as the apply step: about 2 minutes for a 250-page book); the review page then says the figure moves were not worked out |
+| `REVIEW_DRYRUN=off` | With `REVIEW=1`: skips the trial run of `apply.py` at the review stop that works out which figures the executor moves and whether it makes the AI's section move (as long as the apply step: about 2 minutes for a 250-page book); the review page then says the figure moves were not worked out. A later review reuses the saved trial run while nothing it depends on has changed; `REVIEW_DRYRUN=fresh` makes it again regardless |
 | `APPLY_DRAFT=1` | Set by the review page's **Build a Draft PDF** for its own run of `apply.py`, not by hand: marks the output as a draft (a RemediationDraft document property). See [Checking a draft PDF while you review](review-step.md#checking-a-draft-pdf-while-you-review) |
 | `KEEP=1` | Keeps the working files (digest, figure crops, raw reply, logs) |
 | `OUT=name.pdf` | Names the result (default: `<original name>_remediated.pdf`) |
