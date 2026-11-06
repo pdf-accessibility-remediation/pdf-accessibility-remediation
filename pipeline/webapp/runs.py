@@ -55,27 +55,14 @@ def ready(R, rec):
 
 # ------------------------------------------------------------------ the original, by sha256
 def find_original(s, sha, name=None):
-    """A PDF in samples/ or uploads/ whose sha256 is sha (files named `name` are tried first), or None."""
-    cache_p = os.path.join(s['jobs'], 'sha256-cache.json'); cache = load(cache_p) or {}
-    cands = []
-    for root in (s['samples'], s['uploads']):
-        if not os.path.isdir(root): continue
-        for d, _, fs in os.walk(root):
-            cands += [os.path.join(d, f) for f in fs if f.lower().endswith('.pdf')]
+    """A PDF in samples/ or uploads/ whose sha256 is sha (files named `name` are tried first), or None. Dot-folders are
+    left out (uploads/.incoming holds unfinished uploads); hashes come from the shared cache (webapp/books.py hashes)."""
+    from . import books
+    cands = books.pdfs_in(s['samples']) + books.pdfs_in(s['uploads'])
     cands.sort(key=lambda p: (os.path.basename(p) != name, p))
-    found, dirty = None, False
-    for p in cands:
-        try: st = os.stat(p)
-        except OSError: continue
-        key = [st.st_size, st.st_mtime_ns]
-        c = cache.get(p)
-        if not c or c[:2] != key:
-            c = key + [S.sha_file(p)]; cache[p] = c; dirty = True
-        if c[2] == sha: found = p; break
-    if dirty:
-        os.makedirs(s['jobs'], exist_ok=True); tmp = cache_p + '.tmp'
-        json.dump(cache, open(tmp, 'w'), indent=0); os.replace(tmp, cache_p)
-    return found
+    found = []
+    books.hashes(s, cands, stop=lambda p, h: h == sha and not found.append(p))
+    return found[0] if found else None
 
 def pdf_needed(s, R, rec):
     """(--pdf path or None, refusal or None) for this run's next review command."""
@@ -110,7 +97,8 @@ def job_view(s, j, with_text=False, offset=0):
     `log`); its steps in plain words, the step running now, its title (what happened), and for a failure the reason."""
     text = jobs.read_log(s['jobs'], j['id'])[0]
     R = jobs.run_dir(j, s['runs'])
-    v = {k: j.get(k) for k in ('id', 'kind', 'run', 'status', 'created', 'started', 'ended', 'exit', 'url', 'paid', 'after', 'then_job', 'note', 'what', 'first')}
+    v = {k: j.get(k) for k in ('id', 'kind', 'run', 'status', 'created', 'started', 'ended', 'exit', 'url', 'paid', 'after', 'then_job', 'note', 'what', 'first',
+                               'book_name', 'run_name')}
     steps = logs.steps(text)
     v.update(position=jobs.position(s['jobs'], j['id']), steps=[dict(x, words=logs.plain(x['label'])) for x in steps], outcome=logs.outcome(text),
              log=shown_path(jobs.log_path(s['jobs'], j['id'])))

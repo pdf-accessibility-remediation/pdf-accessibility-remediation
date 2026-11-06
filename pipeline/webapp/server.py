@@ -47,7 +47,7 @@ from html.parser import HTMLParser
 from review.server import local_request
 from review import sessions as S
 from lib.titles import title_case as TC
-from . import config, jobs, runs, manualpage as MP, downloads as DL
+from . import config, jobs, runs, manualpage as MP, downloads as DL, home as HM, books as BK
 RUNS_MOD = runs                                       # find_run's own `runs` is the runs folder
 from review import manual as M
 from lib import release as REL, runlock
@@ -118,7 +118,7 @@ def served(d, runs):
     return out
 
 STATIC = {'panel.js': os.path.join(config.HERE, 'panel.js'), 'panel.css': os.path.join(config.HERE, 'panel.css'),
-          'manual.js': os.path.join(config.HERE, 'manual.js'),
+          'manual.js': os.path.join(config.HERE, 'manual.js'), 'home.js': os.path.join(config.HERE, 'home.js'),
           'palette.css': os.path.join(config.PIPELINE, 'review', 'palette.css')}
 SKIP = '<a class="skip" href="#main">Skip to the content</a>'
 
@@ -206,6 +206,15 @@ def md_page(text, run, sid, base):
             f'<main id="main" tabindex="-1"><pre class="pp-md">{html.escape(text)}</pre></main>'
             f'<script src="/app/panel.js" defer></script></body></html>')                 # panel.js: in-page links move focus
 
+APPBAR_MARK = 'aria-label="App"'
+def with_appbar(page):
+    """Every HTML page the app serves carries the app bar (the way home), right after its skip link, else right after
+    <body>; a page that has one already is left as it is."""
+    if APPBAR_MARK in page: return page
+    bar = HM.appbar()
+    if SKIP in page: return page.replace(SKIP, SKIP + bar, 1)
+    return after_body(page, bar)
+
 def make(s, setup, code=None):
     """The server, bound to 127.0.0.1:port (no fallback: a busy port is an error the caller reports). The panel's files are
     read once, here, so the pages always match the code this server runs, even if the files on disk change under it;
@@ -225,6 +234,7 @@ def make(s, setup, code=None):
             self.send_header('X-Frame-Options', FRAME['X-Frame-Options'])
             self.send_header('Content-Security-Policy', policy or FRAME['Content-Security-Policy'])
         def send(self, code, body, ctype='application/json; charset=utf-8', extra=None):
+            if ctype.startswith('text/html') and isinstance(body, str): body = with_appbar(body)
             b = body if isinstance(body, bytes) else (body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)).encode('utf-8')
             self.send_response(code); self.headers_(ctype, len(b), csp(b.decode('utf-8', 'replace')) if ctype.startswith('text/html') else None)
             for k, v in (extra or {}).items(): self.send_header(k, v)
@@ -261,6 +271,7 @@ def make(s, setup, code=None):
 
         def post(self):
             if not self.ours(): return self.send(403, {'error': 'not from the app\'s own pages'})
+            if urllib.parse.urlsplit(self.path).path == '/api/upload': return self.upload()
             if (self.headers.get('Content-Type') or '').split(';')[0].strip().lower() != 'application/json':
                 return self.send(415, {'error': 'the app\'s pages send JSON'})
             n = (self.headers.get('Content-Length') or '').strip()   # checked before reading: rfile.read(-1) would wait for the
@@ -392,8 +403,37 @@ def make(s, setup, code=None):
                         return self.send(200, with_version(REL.no_statement(t), run, sid), 'text/html; charset=utf-8')
                     return self.send(200, md_page(t, run, sid, base), 'text/html; charset=utf-8')   # review.md with a way back
                 return self.file(f)
-            if p == '/': return self.send(200, home_stub(s), 'text/html; charset=utf-8')
+            if p == '/':
+                return self.send(200, HM.page(s, (q.get('q') or [''])[0], (q.get('n') or ['25'])[0], test=bool(s.get('test_reply_dir')),
+                                              added=(q.get('added') or [None])[0], bn=(q.get('bn') or ['25'])[0]), 'text/html; charset=utf-8')
             self.send(404, {'error': 'not found'})
+
+        def upload(self):
+            """POST /api/upload: "Add a Book". The PDF itself is the body (Python 3.13 has no form parser), so four checks
+            come first, each required: Content-Type application/pdf, the app's own X-Pdfrem-Upload header (a browser must ask
+            first, and the app answers no such question), local_request (in post()), and a digits-only Content-Length at
+            most upload_max_mb (no chunked bodies). A stalled sender ends the request after 60 s."""
+            if (self.headers.get('Content-Type') or '').split(';')[0].strip().lower() != 'application/pdf':
+                return self.send(415, {'error': 'This file isn\'t a PDF.'})
+            if self.headers.get('X-Pdfrem-Upload') != '1': return self.send(403, {'error': 'not from the app\'s own pages'})
+            if self.headers.get('Transfer-Encoding'): return self.send(411, {'error': 'the request has no valid length'})
+            n = (self.headers.get('Content-Length') or '').strip()
+            if not n.isdecimal() or not n.isascii(): return self.send(411, {'error': 'the request has no valid length'})
+            if int(n) > BK.limit_bytes(s):
+                self.close_connection = True
+                return self.send(413, {'error': f'This file is larger than the limit of {BK.limit_bytes(s) // (1 << 30) or 1} GB.'})
+            try: name = urllib.parse.unquote(self.headers.get('X-Pdfrem-Filename') or '', errors='strict')
+            except UnicodeDecodeError: name = ''
+            self.connection.settimeout(60)
+            try: b = BK.receive(s, self.rfile, int(n), name)
+            except BK.Refused as e:
+                self.close_connection = True
+                return self.send(e.status, {'error': e.words})
+            except (TimeoutError, OSError):
+                self.close_connection = True
+                return self.send(400, {'error': 'The upload stopped before the whole file arrived. Try again.'})
+            applog(f'book added: {b["file"]} ({b["key"][:16]})')
+            self.send(201, {'book': {k: b[k] for k in ('key', 'name', 'file', 'pages', 'size', 'group')}})
 
         def checks_post(self, rsegs, act, body):
             """POST …/checks/draft and …/checks/record: through review/manual.py, the one writer (the record lock, 5 s at most)."""
@@ -487,8 +527,3 @@ def refused_page(message, base):
             '<title>Download Not Available</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
             f'</head><body class="pp-page">\n{SKIP}<header><h1>Download Not Available</h1></header><main id="main" tabindex="-1"><div class="pp">'
             f'<p>{html.escape(message)}</p><p><a class="pp-btn" href="{html.escape(base)}">Back to the Run Page</a></p></div></main></body></html>')
-
-def home_stub(s):
-    return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>PDF Remediation</title></head><body><main>'
-            '<h1>PDF Remediation</h1><p>Open a run: <code>python3 app.py ../runs/&lt;name&gt;/&lt;label&gt;</code>. '
-            'The home page with books and runs comes in a later version.</p></main></body></html>')

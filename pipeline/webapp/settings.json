@@ -6,5 +6,15 @@
  "uploads": "../uploads",
  "jobs": "../runs/.app",
  "max_jobs": 2,
- "tools": {"VERAPDF": "", "path_prepend": []}
+ "batch_jobs": 2,
+ "upload_max_mb": 1024,
+ "limits": {
+  "per_call_usd": 2,
+  "per_book_usd": 5,
+  "per_batch_usd": 5
+ },
+ "tools": {
+  "VERAPDF": "",
+  "path_prepend": []
+ }
 }
