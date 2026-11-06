@@ -183,8 +183,8 @@ const q = new URLSearchParams(location.search);
 // The page opens the review page by itself only right after the person's own Review again: within 30 s of the click and
 // while they have not pressed a key or a pointer since. Otherwise it says the page is ready and shows the link. A new
 // result never reloads the page by itself: "New result ready" is announced and a button loads it.
-let quiet = true, wantAt = 0;
-['keydown', 'pointerdown'].forEach(e => addEventListener(e, () => { quiet = false; }, true));
+let quiet = true, wantAt = 0, land = null;
+['keydown', 'pointerdown'].forEach(e => addEventListener(e, () => { quiet = false; if (land) land.moved = true; }, true));
 // what the person's last action is waiting for: after=finish (the review page's Finish), after=ocr (Finish OCR Review: this
 // page was loaded after the verdict was written, so its report already has it)
 let want = q.get('after') === 'finish' ? 'result' : q.get('after') === 'ocr' ? 'ocr' : q.get('opening') ? 'review' : null;
@@ -439,7 +439,8 @@ function dlMarked(sel) {                                          // the line un
 // second call); once applied, the page offers its first result (it never reloads by itself)
 function waitingBlock(s) {
   const w = s.waiting, active = (s.jobs || []).filter(j => j.status === 'queued' || j.status === 'running');
-  if (!w) return '<p><b>Result Ready:</b> Session 1 is applied. The report and the remediated PDF are ready.</p>' +
+  if (!w) return '<p><b>Result Ready:</b> ' + (s.current && s.current.id === 'ai' ? 'The AI\'s decisions are applied (without a review).' : 'Session 1 is applied.') +
+    ' The report and the remediated PDF are ready.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Result</button></div>';
   if (s.live_review) return '';                                  // its own card has Open / Stop
   if (active.length) return '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '.</p>';
@@ -450,19 +451,92 @@ function waitingBlock(s) {
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-apply" data-act="apply">Apply</button></div>';
 }
 
+// ---------------------------------------------------------------- a run started from the home page, before its result (#45)
+// The estimate (lib/costs.py, one renderer for every page), "Spend" with the personal-information tick, the progress of the
+// jobs, and why it stopped with what the person can do (webapp/failures.py: plain words; the tool's own words only under
+// "Details"). A Spend is bound to the worst case shown (MAX_USD); the button stays plain "Spend" (Patrick, 2026-11-05).
+const usd = x => '$' + Number(x || 0).toFixed(2);
+function costLine(e) {
+  const x = e.expected;                                          // #65 (dollar-only cost limits) fills it; shown only when present
+  return (x ? 'About ' + usd(x.usd) + (x.low != null && x.high != null ? ' (usually ' + usd(x.low) + '–' + usd(x.high) + ')' : '') + ' · ' : '') +
+    'Worst-case estimate ' + usd(e.ceiling_usd) + ' · Limit ' + usd(e.limits.per_call_usd) + ' per AI call' +
+    (e.limits.per_book_usd ? ' · Limit ' + usd(e.limits.per_book_usd) + ' per book' : '') +
+    (e.spent_before_usd ? ' · Already spent on this book ' + usd(e.spent_before_usd) : '') +
+    (e.credit_usd != null ? ' · Credit ' + usd(e.credit_usd) : ' · Credit not checked');
+}
+const PII = 'This book has no personal information (such as student records, health information or identification numbers)';
+const NEXT = { estimate: ['estimate', 'Get a New Estimate'], retry: ['retry', 'Try Again'], dismiss: ['dismiss', 'Dismiss'], home: null };
+function failureCard(f) {
+  if (!f) return '';
+  const d = f.details || {};
+  const btns = (f.next || []).map(n => NEXT[n] ? '<button type="button" id="pp-next-' + n + '" data-act="' + NEXT[n][0] + '">' + esc(NEXT[n][1]) + '</button>' : '').join('');
+  return '<div class="pp-fail" role="group" aria-labelledby="pp-fail-h"><h4 id="pp-fail-h">' + esc('Stopped: ' + f.headline) + '</h4>' +
+    (f.meaning ? '<p>' + esc(f.meaning) + '</p>' : '') +
+    '<h4>What You Can Do</h4>' + (f.todo ? '<p>' + esc(f.todo) + '</p>' : '') + (btns ? '<div class="pp-row">' + btns + '</div>' : '') +
+    '<details id="pp-fail-d"><summary>Details</summary><ul class="pp-note">' +
+    (d.step ? '<li>Step: ' + esc(d.step) + '</li>' : '') + (d.exit != null ? '<li>Exit code: ' + esc(d.exit) + '</li>' : '') +
+    (d.line ? '<li>Message: <code>' + esc(d.line) + '</code></li>' : '') + (d.record ? '<li>Recorded in: ' + esc(d.record) + '</li>' : '') +
+    (d.command ? '<li>From the terminal: <code>' + esc(d.command) + '</code></li>' : '') +
+    (d.log ? '<li>Full log: ' + esc(d.log) + '</li>' : '') + '</ul></details></div>';
+}
+function pendingBlock(s) {
+  const e = s.estimate;
+  let h = s.test ? '<p class="pp-bar pp">Test: saved replies, no AI call.</p>' : '';
+  if (s.phase === 'active') return h + '<p>Working on this book. This page follows each step; you can leave it and come back from the home page.</p>';
+  if (s.phase === 'needs-spend') return h + '<p>The app restarted before the AI call started, so nothing was sent. Get a new estimate, then select "Spend" again.</p>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button>' +
+    '<button type="button" id="pp-dismiss" data-act="dismiss">Dismiss</button></div>';
+  if (s.phase === 'stopped') return h + failureCard(s.failure);
+  if (s.phase === 'saved-reply') return h + '<p>No AI call is needed: the AI\'s reply from an earlier attempt is saved and will be used again, at no cost.</p>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-retry" data-act="retry">Continue</button></div>';
+  if (!e) return h + '<p>This run has no estimate yet.</p><div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
+  h += '<p><b>' + esc(costLine(e)) + '</b></p><p>' + esc(s.sent) + '</p>' +
+    '<p>Review First: ' + (s.review_first ? 'On. The run stops after the AI\'s decisions, so a person can review them before anything is applied.' : 'Off. The AI\'s decisions are applied straight away; you can review them afterwards.') + '</p>';
+  if (!s.spend || !s.spend.ok) return h + '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This run can\'t be sent yet.') + '</p>' +
+    '<p>' + esc(s.spend && ['per_call', 'per_book', 'credit', 'no_credit', 'model'].includes(s.spend.code) ? 'Whoever looks after the app can raise the limit or add credit; then select "Get a New Estimate".' : 'Select "Get a New Estimate" to try again.') + '</p>' +
+    '<div class="pp-row"><button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
+  return h + '<p class="pp-check"><label><input type="checkbox" id="pp-pii"> ' + esc(PII) + '</label></p>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-spend" data-act="spend">Spend</button>' +
+    '<button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>' +
+    (s.test ? '<p class="pp-note">Test: "Spend" uses the saved reply; nothing is sent to the AI service.</p>' :
+    '<p class="pp-note">"Spend" sends the book to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.</p>');
+}
+const PHASE = { active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Spend Again', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
+
+// After a redraw: focus back on the element that had it (by id). When that element is gone (a finished job's card becomes
+// one line), focus goes to the panel's heading rather than being lost; for the Spend's landing (03 §14) that is still
+// where the panel put it, not a move by the person.
+function refocus(keepFocus) {
+  if (!keepFocus) return;
+  if ($(keepFocus) && box.contains($(keepFocus))) { $(keepFocus).focus(); return; }
+  if (/^jh-/.test(keepFocus) && $('pp-cur')) { $('pp-cur').focus(); if (land && land.id === keepFocus) land.id = 'pp-cur'; }
+}
+
 function render() {
+  if (WAITING && st.mode === 'pending') {                        // before the result: the estimate, Spend, the progress
+    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(PHASE[st.phase] || 'This Run') + '</h3>' + pendingBlock(st) + jobsBlock(st),
+          body = $('pp-body'), keepFocus = document.activeElement && document.activeElement.id, pii = $('pp-pii') && $('pp-pii').checked;
+    if (body.dataset.h === h) return;
+    body.innerHTML = h; body.dataset.h = h;
+    if (pii && $('pp-pii')) $('pp-pii').checked = true;          // the tick survives a redraw, never prefilled otherwise
+    refocus(keepFocus);
+    return;
+  }
   if (WAITING) {                                                 // no result, no strip: the review, then the first apply
     const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(tc(!st.waiting ? 'First result' : st.waiting.reviewed ? 'Waiting to be applied' : 'Waiting for review')) + '</h3>' +
       waitingBlock(st) + jobsBlock(st), body = $('pp-body'), keepFocus = document.activeElement && document.activeElement.id;
     if (body.dataset.h === h) return;
     body.innerHTML = h; body.dataset.h = h;
-    if (keepFocus && $(keepFocus) && box.contains($(keepFocus))) $(keepFocus).focus();
+    refocus(keepFocus);
     return;
   }
   renderStrip(st);
   const s = st, keepFocus = document.activeElement && document.activeElement.id, opened = [...box.querySelectorAll('details[open]')].map(d => d.id);
   // "Ready to ship?" is not repeated here: the report's own card, right below, says it
+  const c = s.cost;
   let h = setupBlock() + (s.batch ? '<p>Part of batch ' + esc(s.batch) + ': <a href="/batch/' + encodeURIComponent(s.batch) + '/">every book in the batch</a></p>' : '') +
+    (s.file ? '<p class="pp-note">Source PDF Filename: ' + esc(s.file) + (c ? ' · AI Cost: ' + (c.reused ? 'none (a saved reply was used)' : usd(c.usd) +
+      (c.estimate_usd ? ' (worst-case estimate ' + usd(c.estimate_usd) + ')' : '')) : '') + '</p>' : '') +
     '<h3 id="pp-cur" tabindex="-1">' + esc(tc('Current result: ' + s.current.label)) + '</h3>';
   if (s.pending) h += '<p>' + esc(sn(s.pending.session)) + ' is ' + esc(s.pending.status) + ' and not applied yet, so the book stays "Not Ready" until it is.</p>';
   if (newResult) h += '<p><b>New Result Ready:</b> ' + esc(cap(s.current.label)) + ' is now the current result; the report below is the previous one.</p>' +
@@ -470,6 +544,8 @@ function render() {
   else if (s.ocr && ocrSeen !== undefined && s.ocr.recorded !== ocrSeen)   // a verdict recorded since this page loaded: never reloads by itself
     h += '<p><b>OCR Verdict Recorded:</b> ' + esc(s.ocr.verdict || 'a new verdict') + '. The report below was made before it.</p>' +
       '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Updated Report</button></div>';
+  if (s.replay) h += '<p>A new run of this book from its saved AI reply can be made instead (free, no AI call; it runs on today\'s pipeline, so it is not a review of this result).</p>' +
+    '<div class="pp-row"><button type="button" id="pp-replay" data-act="replay">New Run from the Saved Reply</button></div>';
   h += actions(s) + jobsBlock(s) + historyBlock(s) + pruneBlock(s);
   // replaced only when it changed, as the strip is: a poll whose data changed but not what the panel shows (the review
   // page saving a session's draft while a review is open) never swaps the buttons under the mouse or a selection
@@ -501,6 +577,27 @@ box.addEventListener('click', async e => {
   }
   msg('');                                                       // any other panel button clears the message too
   if (act === 'reload') { location.replace(location.pathname + '?landed=1'); return; }
+  if (['spend', 'estimate', 'dismiss', 'retry', 'replay'].includes(act)) {
+    try {
+      let s, r;
+      if (act === 'spend') {
+        const t = $('pp-pii');
+        if (!t || !t.checked) { msg('Tick "This book has no personal information" first: books with personal information are never sent to the AI service.', false, true); if (t) t.focus(); return; }
+        [s, r] = await api(API + '/spend', { kind: 'workorder', fingerprint: st.estimate.fingerprint, no_personal_information: true });
+      } else if (act === 'replay') {
+        if (!await confirmDlg('New run from the saved reply?', 'A new run of this book is made from its saved AI reply, free, and stops for your review. This run stays as it is.', 'Make the new run', b)) return;
+        [s, r] = await api(API + '/replay', { label: st.replay.label });
+        if (s === 202 && r.location) { location.assign(r.location); return; }
+      } else [s, r] = await api(API + '/' + act, {});
+      if (act === 'dismiss') { if (s !== 200) return msg(r.error || 'The app refused this', false, true); msg('Dismissed: nothing was sent.', true, true); return poll(true); }
+      if (s !== 202) return msg(r.error || 'The app refused this', false, true);
+      quiet = true;
+      await poll(true);
+      const hd = $('jh-' + r.job.id); if (hd) hd.focus();
+      if (act === 'spend') land = { id: 'jh-' + r.job.id, moved: false, done: false };   // where the Spend left focus (03 §14)
+    } catch (err) { msg('The app is not running. ' + START + ' Then try again.', false, true); }
+    return;
+  }
   try {
     let s, r;
     if (act === 'stop') {
@@ -584,10 +681,12 @@ async function poll(force) {
     else {
       if (failing) { failing = false; banner('pp-error', null); }
       const before = st; st = b;
+      const focusWas = document.activeElement && document.activeElement.id;   // before a redraw replaces the job card
       if (ocrSeen === undefined) ocrSeen = b.ocr ? b.ocr.recorded : null;
       announce(b);
       followUp(b);
       if (force || JSON.stringify(before) !== JSON.stringify(b)) render();
+      landed(b, land && focusWas && !$(focusWas) && land.id === 'pp-cur' ? 'pp-cur' : focusWas);
     }
   }
   const busy = st && ((st.jobs || []).some(j => j.status === 'queued' || j.status === 'running') || st.live_review);
@@ -598,6 +697,19 @@ function banner(id, text) {                                     // one banner pe
   if (!text) { if (o) o.remove(); return; }
   if (o) return;
   const p = document.createElement('p'); p.id = id; p.className = 'pp-offline'; p.textContent = text; box.prepend(p); live(text);
+}
+
+// When a Spend's run stops for review (03 §14, Patrick 2026-11-05): focus moves to "Open the Review Page" only when focus is
+// still where the panel put it after the Spend click (by its id: the card is redrawn while polling) and no key or pointer
+// has been pressed since; otherwise the page announces it and shows the button (docs/app.md: focus stays where it is).
+function landed(s, focusWas) {
+  if (!land || land.done) return;
+  if (s.mode === 'waiting' && s.waiting && !s.waiting.reviewed) {
+    if (!$('pp-review')) return;                                  // its job is still finishing: the button comes with the next poll
+    land.done = true;
+    if (!land.moved && focusWas === land.id && $('pp-review')) { $('pp-review').focus(); live('The AI\'s decisions are ready for your review: "Open the Review Page."'); }
+    else live('The AI\'s decisions are ready for your review: "Open the Review Page."');
+  } else if (s.mode === 'finished') { land.done = true; live('The run has finished: "Show the Result" loads it.'); }
 }
 
 function followUp(s) {

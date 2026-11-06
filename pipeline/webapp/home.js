@@ -15,10 +15,30 @@ function msg(text, ok) {
   m.innerHTML = text ? '<span class="pp-msg-t">' + esc(text) + '</span><button type="button" class="pp-x" aria-label="Dismiss message"><span aria-hidden="true">×</span></button>' : '';
   if (text) m.focus();
 }
-$('hm-msg').addEventListener('click', e => { if (e.target.closest('button')) { msg(''); $('hm-file').focus(); } });
+$('hm-msg').addEventListener('click', e => { if (e.target.closest('button')) { msg(''); ($('hm-file') || document.querySelector('form [name]')).focus(); } });
+
+// ---------------------------------------------------------------- the New Run and New Batch forms: JSON to the app, then its page
+document.querySelectorAll('form[data-api]').forEach(f => f.addEventListener('submit', async e => {
+  e.preventDefault();
+  const body = {};
+  f.querySelectorAll('[name]').forEach(x => {
+    if (x.name === 'book') { if (x.type !== 'checkbox' || x.checked) (body.books = body.books || []).push(x.value); }
+    else if (x.type === 'checkbox') body[x.name] = x.checked;
+    else body[x.name] = x.value;
+  });
+  const b = f.querySelector('button[type=submit]'); b.disabled = true;
+  try {
+    const r = await fetch(f.dataset.api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    let d = {}; try { d = await r.json(); } catch (err) {}
+    if (r.status === 202 && d.location) { location.assign(d.location); return; }
+    msg(d.error || 'The app refused this.');
+  } catch (err) { msg('The app is not running. ' + START); }
+  finally { b.disabled = false; }
+}));
+if (!$('hm-active')) return;                                      // the New Run and New Batch pages stop here
 
 // ---------------------------------------------------------------- Add a Book
-$('hm-add').addEventListener('submit', async e => {
+if ($('hm-add')) $('hm-add').addEventListener('submit', async e => {
   e.preventDefault();
   const f = $('hm-file').files[0];
   if (!f) { msg('Choose a PDF first: "Add a Book" opens your files.'); return; }

@@ -122,7 +122,8 @@ SESSION_IN = re.compile(r'session (\d+)')
 
 def action(j):
     """The job's action, as it was asked for: "Review again from session 2"."""
-    return shown(j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin', 'ocr': 'Review OCR Text'}.get(j['kind'], j['kind']))
+    return shown(j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin', 'ocr': 'Review OCR Text', 'estimate': 'Get the estimate',
+                                    'spend': 'Spend: the AI call', 'rerun': 'Try again', 'batch': 'Run the batch'}.get(j['kind'], j['kind']))
 
 def shown(t):
     """A job line as the panel shows it, formatted when shown (so jobs recorded before the rule read the same): a session
@@ -143,7 +144,12 @@ def result(R, j, v):
     when = f' ({at})' if at else ''
     lost = st == 'interrupted' and (v.get('interrupted') or {}).get('state') == 'done'
     if st in ('queued', 'running', 'needs-spend'): return None
+    if st == 'superseded': return ('dismissed' if j.get('note') == 'dismissed' else 'replaced by a new estimate') + when
     if st == 'failed': return 'failed' + when
+    if j['kind'] in ('estimate', 'batch-estimate') and st == 'done': return 'estimate ready' + when
+    if j['kind'] in ('spend', 'rerun', 'replay') and st == 'done':
+        return ('stopped for review' if R and os.path.isfile(os.path.join(R, 'workorder.ai.json')) and not os.path.isfile(os.path.join(R, 'record.json'))
+                else 'finished') + when
     if st == 'interrupted' and not lost: return 'stopped without finishing' + when
     if j['kind'] == 'pin': return 'pinned' + when
     if j['kind'] == 'discard': return 'discarded' + when
@@ -199,6 +205,16 @@ def after_interrupt(R, j):
 
 def run_path(run): return os.path.join(*run.split('/'))
 
+def replay_offer(s, run, R):
+    """"New Run from the Saved Reply" (decided 2026-10-28) is offered once a review of this run was refused because the
+    run can no longer be reviewed (review/sessions.py FALLBACK), and the run has a saved reply and is not cleared."""
+    rj = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] in ('pin', 'review')]
+    if not rj or rj[-1]['status'] != 'failed': return None
+    if S.FALLBACK.split('.')[0] not in (logs.outcome(jobs.read_log(s['jobs'], rj[-1]['id'])[0]) or ''): return None
+    if REL.cleared(R) or not (load(os.path.join(R, 'record.json')) or {}).get('raw_reply'): return None
+    import datetime
+    return {'label': f'replay-{datetime.datetime.now():%Y-%m-%d-%H%M}'}
+
 def prune_plan(R):
     """"Clean Up Space": the previous versions whose PDF may be removed (review/prune.py plan, hashed through the app's
     display cache), or None when there are none. Sizes in words; each chosen version's hash goes back with the POST, so a
@@ -246,8 +262,11 @@ def state(s, run, R):
     live = live_review(s, run)
     h = jobs.lock_holder(R)
     rel = os.path.relpath(R, config.PIPELINE)
+    from lib import costs
     return {
-        'run': run, 'title': (rec.get('document') or {}).get('file') or run, 'review_html': os.path.isfile(os.path.join(R, 'review.html')),
+        'run': run, 'mode': 'finished', 'file': (rec.get('document') or {}).get('file') or '', 'cost': costs.actual(R),
+        'cleared': REL.cleared(R), 'replay': replay_offer(s, run, R),
+        'title': (rec.get('document') or {}).get('file') or run, 'review_html': os.path.isfile(os.path.join(R, 'review.html')),
         'review_md': os.path.isfile(os.path.join(R, 'review.md')), 'ready': ready(R, rec),
         'current': {'id': cur, 'label': S.label(cur)}, 'pending': (rec.get('review') or {}).get('pending'),
         'pinned': bool(S.basis(R)) and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json')),
@@ -266,6 +285,60 @@ def state(s, run, R):
         'batch': run.split('/')[1] if run.startswith('batches/') and len(run.split('/')) == 3 and
                  os.path.isfile(os.path.join(os.path.dirname(R), 'summary.html')) else None,
     }
+
+# ------------------------------------------------------------------ a run started from the home page, before any result (#45)
+PENDING_MARKS = ('run.json', os.path.join('_intake', 'intake.json'), os.path.join('_audit', 'digest.json'))
+
+def pending(s, R):
+    """A run folder with no result yet and not stopped for its review: estimating, estimate ready, running, stopped or
+    failed. It holds one of run_api.sh's own files, or an app job names it (a run queued a moment ago is an empty folder)."""
+    if os.path.isfile(os.path.join(R, 'record.json')) or waiting(R): return False
+    if any(os.path.exists(os.path.join(R, m)) for m in PENDING_MARKS): return True
+    R = os.path.abspath(R)
+    return any(j.get('dir') == R and j['kind'] != 'batch' for j in jobs.all_jobs(s['jobs']))
+
+def book_of(s, run, R, js=None):
+    """(display name, file name) of a run's book: from the app's job, else intake's record or the estimate's source."""
+    from . import books as BK
+    for j in reversed(js if js is not None else [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]):
+        if j.get('book_name'): return j['book_name'], j.get('book_file') or ''
+    o = (load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or (load(os.path.join(R, 'run.json')) or {}).get('source') or {}
+    f = o.get('file') or ''
+    return (BK.name_of_sha(s, o.get('sha256'), f) if o.get('sha256') else None) or BK.stem_name(f or run.split('/')[-1]), f
+
+def sent_words(est):
+    """What leaves the computer with the AI call, in words (02 M9): the parts counted from the estimate, a zero part left out."""
+    figs = max(0, (est.get('images') or 0) - (est.get('sheets') or 0)); sh = est.get('sheets') or 0
+    parts = ['the book\'s structure and much of its text']
+    if figs: parts.append(f'{figs} figure image{"" if figs == 1 else "s"}')
+    if sh: parts.append(f'{sh} image{"" if sh == 1 else "s"} of hard-to-read scanned words')
+    return 'Sent to the AI (Claude, through OpenRouter): ' + (', '.join(parts[:-1]) + (',' if len(parts) > 2 else '') + ' and ' + parts[-1] if len(parts) > 1 else parts[0]) + '.'
+
+def pending_state(s, run, R):
+    """The run page's view of a run started from the home page before its result: the estimate, Spend, the jobs, and what
+    "Try Again" does (decided from disk)."""
+    from lib import costs
+    from . import newrun, failures
+    js = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]
+    name, file = book_of(s, run, R, js)
+    try: est = costs.estimate(R, 'workorder', costs.limits_of(s))
+    except Exception: est = None
+    test = bool(s.get('test_reply_dir'))
+    active = [j for j in js if j['status'] in jobs.ACTIVE]
+    needs = [j for j in js if j['status'] == 'needs-spend']
+    retry = newrun.retry_kind(R)
+    fail = None if active else failures.explain(s, R, js[-1] if js else None)
+    rf = next((j.get('review_first') for j in reversed(js) if j.get('review_first') is not None), None)
+    phase = 'active' if active else 'needs-spend' if needs else 'stopped' if fail else 'saved-reply' if retry == 'rerun' else 'estimate' if est else 'new'
+    spend = None
+    if phase == 'estimate' and est:
+        b = est['blocked']
+        ok = not b or (test and b['code'] in ('offline', 'no_credit'))
+        spend = {'ok': ok, 'why': None if ok else b['words'], 'code': None if ok else b['code']}
+    return {'run': run, 'mode': 'pending', 'title': name, 'file': file, 'run_name': run.split('/')[-1], 'phase': phase,
+            'estimate': est, 'sent': sent_words(est) if est else None, 'spend': spend, 'retry': retry, 'failure': fail, 'test': test,
+            'review_first': rf, 'from_app': any(j['kind'] == 'estimate' for j in js),
+            'jobs': [job_view(s, j) for j in js]}
 
 # ------------------------------------------------------------------ a run stopped for its first review (REVIEW=1)
 def waiting(R):
@@ -299,7 +372,8 @@ def waiting_state(s, run, R):
     sessions and no evaluation yet: those come with the first apply."""
     rv = load(os.path.join(R, 'review.json')) or {}
     live = live_review(s, run)
-    return {'run': run, 'title': waiting_title(run, R),
+    name, file = book_of(s, run, R)
+    return {'run': run, 'mode': 'waiting', 'title': waiting_title(run, R), 'book': name, 'file': file,
             'waiting': {'reviewed': bool(rv), 'reviewer': rv.get('reviewer'), 'date': rv.get('date'),
                         'prepared': os.path.isfile(os.path.join(R, 'review_items.json'))},
             'live_review': job_view(s, live) if live else None,

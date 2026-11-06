@@ -26,7 +26,10 @@ FOLDERS = ('runs', 'samples', 'uploads', 'jobs')
 # what a child inherits from the app's own environment; everything else (MODEL, REPLY, FROM, KEEP, RUNS_DIR, RUN_DIR,
 # INTAKE, OCR, FORCE_OCR, MAX_TOKENS, VERAPDF=off, …) is dropped, and a job adds only its own whitelisted variables
 BASE_ENV = ('PATH', 'HOME', 'LANG', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL')
-JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD', 'INTAKE', 'OUT')
+JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD', 'INTAKE', 'OUT',
+           'JOBS', 'BATCH_MAX_USD', 'BOOK_MAX_USD', 'RETRY', 'MODEL', 'FROM')    # #45: batches, the caps, the estimate's model
+# MODEL only as an anthropic/ id (the one the estimate used: 03 §5); FROM only in test mode (test_batch_from, --config);
+# never FORCE_OCR (Q7: no "OCR Every Page Instead" in the app)
 
 def entry(folder, name):
     """The path of folder's entry called `name`, taken from the folder's own listing, or None. A name from a request is
@@ -92,7 +95,7 @@ def load(config=None, base=HERE, environ=None):
     t = s.setdefault('tools', {})
     t['VERAPDF'] = os.path.expanduser(str(t.get('VERAPDF') or ''))
     t['path_prepend'] = [os.path.expanduser(p) for p in t.get('path_prepend') or []]
-    if s.get('test_reply_dir'): s['test_reply_dir'] = os.path.abspath(os.path.expanduser(s['test_reply_dir']))
+    if s.get('test_reply_dir'): s['test_reply_dir'] = os.path.normpath(os.path.join(PIPELINE, os.path.expanduser(s['test_reply_dir'])))   # as the folders
     s['sha'] = fingerprint(s)
     return s
 
@@ -126,5 +129,7 @@ def child_env(s, job_env=None, environ=None):
     env['PYTHONUNBUFFERED'] = '1'                            # the log fills as the tools print
     for k, v in (job_env or {}).items():
         if k not in JOB_ENV: raise ValueError(f'{k} is not a variable a job may set')
+        if k == 'MODEL' and not str(v).startswith('anthropic/'): raise ValueError(f'MODEL {v!r}: the app sends only to a Claude model whose cost it can check')
+        if k == 'FROM' and not s.get('test_batch_from'): raise ValueError('FROM is for test mode only (test_batch_from, from --config)')
         env[k] = str(v)
     return env

@@ -116,6 +116,10 @@ def read_meta(p):
         try:
             with pikepdf.open(p) as pdf:
                 out = {'pages': len(pdf.pages), 'title': None, 'locked': False, 'unreadable': False}
+                try:
+                    st = pdf.Root.get('/StructTreeRoot')
+                    out['tagged'] = bool(st is not None and st.get('/K') is not None)
+                except Exception: out['tagged'] = None
                 try: out['title'] = str(pdf.docinfo.get('/Title') or '') or None
                 except Exception: pass
                 if not title_ok(out['title']):

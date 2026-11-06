@@ -6,8 +6,17 @@
                             folder count and claim under one lock (max_jobs holds across both)
 
 Status: queued → running → done | failed (exit ≠ 0) | interrupted (the whole process group is gone without an exit
-recorded: a reboot, or a kill). A paid job (B) still queued when the app starts goes to needs-spend: a paid call never
-starts from a click made before a restart.
+recorded: a reboot, or a kill). A paid job still queued when the app starts goes to needs-spend: a paid call never
+starts from a click made before a restart. A needs-spend job ends as superseded when a new estimate (or "Dismiss") is
+made for its run (03 §1), so a restart never leaves a run blocked.
+
+The paid path (#45, 03 §2), enforced in create(), the one place jobs are made: AUTO (send without asking) only in a
+spend or batch job that is paid, carries the estimate's fingerprint and the personal-information tick; paid only for
+those kinds; and never as a `then` (a paid job always comes from its own Spend click; tick() refuses an older file's).
+
+Runs are related (one blocks the other) when they are the same run or one is inside the other: a batch
+(batches/<label>) and its books (batches/<label>/<name>), in busy() and in tick(). A batch job takes `slots` (its JOBS)
+places of max_jobs; once it waits for places, newer counted jobs wait behind it, so it is never passed over forever.
 
 Each job runs under webapp/jobrun.py, started in a new session (its own process group), so Ctrl+C on the app does not
 reach it. Liveness is the process group: os.killpg(pgid, 0), and a process in that group whose command line is the
@@ -18,6 +27,25 @@ from . import logs, config
 from lib import dates as D
 
 ACTIVE = ('queued', 'running')
+PAID_KINDS = ('spend', 'batch')                     # the only jobs that may send to the AI service (03 §2)
+
+def related(a, b):
+    """The same run, or one inside the other (a batch and its books): never two jobs of them at once."""
+    return a == b or a.startswith(b + '/') or b.startswith(a + '/')
+
+def _sends(x):
+    return 'AUTO' in (x.get('env_set') or {}) or 'AUTO' in (x.get('env') or {})
+
+def paid_rule(kind, paid, env, env_set, then, extra):
+    """Refuses (ValueError) a job that could reach a paid call without its own Spend."""
+    x = {'env': env, 'env_set': env_set}
+    if paid and kind not in PAID_KINDS: raise ValueError(f'a {kind} job cannot be paid: only a Spend makes a paid job')
+    if _sends(x) and not (kind in PAID_KINDS and paid and extra.get('fingerprint') and extra.get('no_personal_information') is True):
+        raise ValueError('a job that sends to the AI service needs its own Spend, with the estimate it was shown and the personal-information tick')
+    t = then
+    while t:
+        if t.get('paid') or _sends(t): raise ValueError('a paid job never follows another job: it needs its own Spend')
+        t = t.get('then')
 WRAPPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'jobrun.py')
 PIPELINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -166,23 +194,40 @@ def busy(J, run, R):
     h = lock_holder(R)
     if h: return lock_words(h[1], h[2])
     for j in all_jobs(J):
-        if j['run'] == run and j['status'] in ACTIVE + ('needs-spend',):
+        if related(j['run'], run) and j['status'] in ACTIVE + ('needs-spend',):
             at = D.clock(j.get('started') or j['created']) if D.parse(j.get('started') or j['created']) else ''
             return f'A job for this run is already {"waiting" if j["status"] != "running" else "running"}' + (f' (since {at})' if at else '') + '. One job at a time per run.'
     return None
 
 # ------------------------------------------------------------------ queue
-def create(J, kind, run, argv, env, env_set=None, counted=True, then=None, paid=False, R=None, **extra):
-    """A queued job, refused (ValueError with the reason) when the run is busy. env is the child's whole environment
-    (config.child_env); env_set the variables the job itself set."""
+def supersede(J, run, by):
+    """Inside locked(J): every needs-spend job of this run (or a related one) ends as superseded."""
+    n = 0
+    for j in all_jobs(J):
+        if related(j['run'], run) and j['status'] == 'needs-spend':
+            j.update(status='superseded', ended=now(), superseded_by=by,
+                     note='dismissed' if by == 'dismissed' else f'replaced by a new estimate ({by})'); save(J, j); n += 1
+    return n
+
+def dismiss(J, run):
+    """"Dismiss" on a needs-spend card: the waiting paid job ends; nothing is sent."""
+    with locked(J): return supersede(J, run, 'dismissed')
+
+def create(J, kind, run, argv, env, env_set=None, counted=True, then=None, paid=False, R=None, supersede_waiting=False, slots=1, **extra):
+    """A queued job, refused (ValueError with the reason) when the run is busy or the job breaks the paid-path rule. env
+    is the child's whole environment (config.child_env); env_set the variables the job itself set. supersede_waiting: a new
+    estimate (or Dismiss) ends the run's needs-spend jobs first, under the same lock (03 §1)."""
+    paid_rule(kind, paid, env, env_set, then, extra)
     with locked(J):
+        jid = f'{datetime.datetime.now():%Y%m%d-%H%M%S-%f}-{kind}'
+        if supersede_waiting: supersede(J, run, jid)
         if R is not None:
             why = busy(J, run, R)
             if why: raise ValueError(why)
-        jid = f'{datetime.datetime.now():%Y%m%d-%H%M%S-%f}-{kind}'
         job = {'id': jid, 'kind': kind, 'run': run, 'dir': os.path.abspath(R) if R is not None else None, 'argv': list(argv), 'env': env,
                'env_set': env_set or {}, 'counted': counted, 'then': then, 'paid': paid, 'status': 'queued', 'created': now(), 'started': None,
                'ended': None, 'exit': None, 'pid': None, 'pgid': None, 'log': os.path.basename(log_path(J, jid)), **extra}
+        if slots != 1: job['slots'] = int(slots)
         save(J, job)
         return job
 
@@ -192,9 +237,10 @@ def run_dir(job, runs=None):
     return job.get('dir') or (os.path.join(runs, *job['run'].split('/')) if runs else None)
 
 def counts(job, runs):
-    """A running job takes one of max_jobs: work jobs always, a review job once it is past Finish (it is applying)."""
-    if job.get('counted'): return True
-    return job['kind'] == 'review' and review_past_finish(run_dir(job, runs), job.get('started'))
+    """The places of max_jobs a running job takes: a work job its slots (1; a batch its JOBS), a review job one once it is
+    past Finish (it is applying), else none."""
+    if job.get('counted'): return int(job.get('slots') or 1)
+    return 1 if job['kind'] == 'review' and review_past_finish(run_dir(job, runs), job.get('started')) else 0
 
 def _start(J, job):
     lp = log_path(J, job['id'])
@@ -218,6 +264,10 @@ def tick(J, s):
                 if u: j['url'] = u; save(J, j)
             if j['status'] == 'done' and j.get('then') and not j.get('then_job'):
                 t = j['then']
+                try: paid_rule(t['kind'], t.get('paid', False), t.get('env'), t.get('env_set'), t.get('then'), t.get('extra') or {})
+                except ValueError:                           # an older job file asking for a paid job: never queued
+                    j['then_job'] = 'refused'; save(J, j); continue
+                if t.get('paid') or _sends(t): j['then_job'] = 'refused'; save(J, j); continue
                 nxt = {'id': f'{datetime.datetime.now():%Y%m%d-%H%M%S-%f}-{t["kind"]}', 'kind': t['kind'], 'run': j['run'], 'dir': j.get('dir'), 'argv': t['argv'],
                        'env': t['env'], 'env_set': t.get('env_set') or {}, 'counted': t.get('counted', True), 'then': t.get('then'),
                        'paid': t.get('paid', False), 'status': 'queued', 'created': now(), 'started': None, 'ended': None, 'exit': None,
@@ -225,14 +275,18 @@ def tick(J, s):
                 nxt['log'] = os.path.basename(log_path(J, nxt['id']))
                 save(J, nxt); j['then_job'] = nxt['id']; save(J, j); jobs.append(nxt)
         running = [j for j in jobs if j['status'] == 'running']
-        n = sum(1 for j in running if counts(j, s['runs']))
-        busy_runs = {j['run'] for j in running}
+        n = sum(counts(j, s['runs']) for j in running)
+        busy_runs = [j['run'] for j in running]
+        held = False                                    # a job needing several places waits: newer counted jobs wait behind it
         for j in sorted((j for j in jobs if j['status'] == 'queued'), key=lambda j: j['id']):
-            if j['run'] in busy_runs: continue
+            if any(related(j['run'], r) for r in busy_runs): continue
             if j.get('counted', True):
-                if n >= s['max_jobs']: continue
-                n += 1
-            _start(J, j); busy_runs.add(j['run'])
+                need = int(j.get('slots') or 1)
+                if held or n + need > s['max_jobs']:
+                    if need > 1: held = True
+                    continue
+                n += need
+            _start(J, j); busy_runs.append(j['run'])
 
 def recover(J):
     """At app start: a paid job still queued needs its Spend click again."""

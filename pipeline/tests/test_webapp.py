@@ -104,9 +104,9 @@ def test_setup_check_needs_a_verapdf_version_line(setup):
     assert not v['ok'] and 'install.sh' in v['fix']
 
 # ------------------------------------------------------------------ jobs
-def fake(t, s, run, secs=0.5, tag='', **kw):
+def fake(t, s, run, secs=0.5, tag='', kind='apply', **kw):
     out = str(t / 'times.txt')
-    return jobs.create(s['jobs'], 'apply', run, [sys.executable, str(t / 'bin' / 'fakejob.py'), out, str(secs), tag], config.child_env(s, kw.pop('env_set', None)), **kw)
+    return jobs.create(s['jobs'], kind, run, [sys.executable, str(t / 'bin' / 'fakejob.py'), out, str(secs), tag], config.child_env(s, kw.pop('env_set', None)), **kw)
 
 def wait(pred, timeout=20):
     end = time.time() + timeout
@@ -263,7 +263,7 @@ def test_then_and_restart(setup):
     s = settings(setup)
     nxt = {'kind': 'review', 'argv': [sys.executable, str(setup / 'bin' / 'fakejob.py'), str(setup / 'times.txt'), '0', 'then'], 'env': config.child_env(s), 'counted': False}
     j = fake(setup, s, 'a/r', 0.1, then=nxt)
-    paid = fake(setup, s, 'b/r', paid=True); free = fake(setup, s, 'c/r')
+    paid = fake(setup, s, 'b/r', kind='spend', paid=True); free = fake(setup, s, 'c/r')
     jobs.recover(s['jobs'])                                                              # what the app does at start
     assert jobs.load(s['jobs'], paid['id'])['status'] == 'needs-spend' and jobs.load(s['jobs'], free['id'])['status'] == 'queued'
     assert wait(lambda: (jobs.tick(s['jobs'], s), jobs.load(s['jobs'], j['id']).get('then_job'))[1])
@@ -335,10 +335,14 @@ def test_requests_must_come_from_the_app(app):
     assert get(app['port'], '/api/x', method='POST', headers={'Content-Type': 'text/plain'}, body='{}')[0] == 415
 
 def test_batch_route_and_a_run_with_no_dashboard(app):
-    st, b, _ = get(app['port'], '/batch/b1/')
-    assert st == 200 and b'x/review.html' in b
+    st, b, _ = get(app['port'], '/batch/b1/')                          # the batch page (#45, L4): its books, each linked
+    assert st == 200 and b'aria-label="Books in This Batch"' in b and b'href="/run/batches/b1/x/"' in b and b'/app/batch.js' in b
+    st, b, _ = get(app['port'], '/batch/b1/summary.html')                # the dashboard stays reachable, with the way home
+    assert st == 200 and b'x/review.html' in b and b'aria-label="App"' in b
     assert get(app['port'], '/batch/b1/x/review.html')[2].get('Location') == '/run/batches/b1/x/'
-    assert get(app['port'], '/run/batches/b1/summary.html')[2].get('Location') == '/batch/b1/'
+    assert get(app['port'], '/run/batches/b1/summary.html')[2].get('Location') == '/batch/b1/summary.html'   # a review.html's ../summary.html
+    st, b, _ = get(app['port'], '/run/batches/b1/x/')                    # a book's page in a batch: the side column, this book current
+    assert st == 200 and b.count(b'aria-label="Books in This Batch"') == 1 and b'aria-current="page" data-book="x"' in b
     st, b, _ = get(app['port'], '/run/old/r0/')
     assert st == 200 and b'has no dashboard' in b and b'href="review.md"' in b and b'None' not in b and b'unknown' not in b
 

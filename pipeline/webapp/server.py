@@ -47,7 +47,7 @@ from html.parser import HTMLParser
 from review.server import local_request
 from review import sessions as S
 from lib.titles import title_case as TC
-from . import config, jobs, runs, manualpage as MP, downloads as DL, home as HM, books as BK
+from . import config, jobs, runs, manualpage as MP, downloads as DL, home as HM, books as BK, newrun as NR, batches as BT
 RUNS_MOD = runs                                       # find_run's own `runs` is the runs folder
 from review import manual as M
 from lib import release as REL, runlock
@@ -69,18 +69,20 @@ def inside(root, p):
     root = os.path.realpath(root); p = os.path.realpath(p)
     return p == root or p.startswith(root + os.sep)
 
-def find_run(runs, segs, waiting=False):
+def find_run(runs, segs, waiting=False, pending=None):
     """(run name, its folder, the remaining segments) for the shortest prefix holding record.json, or None. Each segment
     picks an entry from the folder's own listing (config.entry): the folder is built from names on disk only, then
     resolved and kept inside the runs folder (a symlink out of it is refused). waiting: a run stopped for its first
-    review (runs.waiting()) counts too; only the run page, its state and its review, apply and stop actions ask for it."""
+    review (runs.waiting()) counts too; only the run page, its state and its review, apply and stop actions ask for it.
+    pending: a callable(folder) → True for a run started from the home page that has no result yet (runs.pending): only
+    the run page, its state and its estimate, spend, dismiss and retry actions ask for it."""
     base = os.path.realpath(runs); d = base
     for i, x in enumerate(segs, 1):
         d = config.entry(d, x)
         if d is None: return None
         d = os.path.realpath(d)
         if not d.startswith(base + os.sep) or not os.path.isdir(d): return None
-        if os.path.isfile(os.path.join(d, 'record.json')) or (waiting and RUNS_MOD.waiting(d)): return '/'.join(segs[:i]), d, segs[i:]
+        if os.path.isfile(os.path.join(d, 'record.json')) or (waiting and RUNS_MOD.waiting(d)) or (pending and pending(d)): return '/'.join(segs[:i]), d, segs[i:]
     return None
 
 def version_dir(R, sid):
@@ -93,12 +95,13 @@ def version_dir(R, sid):
     return d if d.startswith(V + os.sep) and os.path.isdir(d) else None
 
 def batch_dir(runs, label):
-    """A batch's folder, runs/batches/<label>, picked from the batches folder's listing, holding summary.html; or None."""
+    """A batch's folder, runs/batches/<label>, picked from the batches folder's listing; or None. (From #45 the batch page
+    works before summary.html exists.)"""
     BB = os.path.realpath(os.path.join(runs, 'batches'))
     B = config.entry(BB, label)
     if B is None: return None
     B = os.path.realpath(B)
-    return B if B.startswith(BB + os.sep) and os.path.isfile(os.path.join(B, 'summary.html')) else None
+    return B if B.startswith(BB + os.sep) and os.path.isdir(B) else None
 
 def served(d, runs):
     """{name: path} of the files a run (or a version under reviews/versions/) serves. Every path is resolved and checked
@@ -118,7 +121,7 @@ def served(d, runs):
     return out
 
 STATIC = {'panel.js': os.path.join(config.HERE, 'panel.js'), 'panel.css': os.path.join(config.HERE, 'panel.css'),
-          'manual.js': os.path.join(config.HERE, 'manual.js'), 'home.js': os.path.join(config.HERE, 'home.js'),
+          'manual.js': os.path.join(config.HERE, 'manual.js'), 'home.js': os.path.join(config.HERE, 'home.js'), 'batch.js': os.path.join(config.HERE, 'batch.js'),
           'palette.css': os.path.join(config.PIPELINE, 'review', 'palette.css')}
 SKIP = '<a class="skip" href="#main">Skip to the content</a>'
 
@@ -272,22 +275,55 @@ def make(s, setup, code=None):
         def post(self):
             if not self.ours(): return self.send(403, {'error': 'not from the app\'s own pages'})
             if urllib.parse.urlsplit(self.path).path == '/api/upload': return self.upload()
-            if (self.headers.get('Content-Type') or '').split(';')[0].strip().lower() != 'application/json':
-                return self.send(415, {'error': 'the app\'s pages send JSON'})
-            n = (self.headers.get('Content-Length') or '').strip()   # checked before reading: rfile.read(-1) would wait for the
-            if not n.isdecimal() or not n.isascii(): return self.send(411, {'error': 'the request has no valid length'})   # client
-            if int(n) > MAX_BODY: return self.send(413, {'error': 'The request is too large.'})
-            try: body = json.loads(self.rfile.read(int(n)) or b'{}')
-            except ValueError: return self.send(400, {'error': 'not JSON'})
-            if not isinstance(body, dict): return self.send(400, {'error': 'not a JSON object'})
+            if not self.json_ok(): return
+            body = self.body
             p = urllib.parse.urlsplit(self.path).path
+            if p == '/api/batch/new':                             # New Batch: one free estimate job per book, then the batch page
+                try: js = BT.start(s, setup, body.get('books') if isinstance(body.get('books'), list) else [], body.get('label'), str(body.get('ocr_lang') or ''))
+                except (ValueError, FileExistsError) as e: return self.send(409, {'error': str(e) if isinstance(e, ValueError) else 'A batch with this name already exists.'})
+                jobs.tick(J, s)
+                return self.send(202, {'jobs': len(js), 'location': f'/batch/{urllib.parse.quote(js[0]["run"].split("/")[1], safe="")}/'})
+            if p.startswith('/api/batch/'):
+                bs = segments(p[len('/api/batch/'):])
+                if not bs or len(bs) != 2 or bs[1] not in ('spend', 'again', 'dismiss') or not batch_dir(s['runs'], bs[0]): return self.send(404, {'error': 'no such batch'})
+                label = os.path.basename(batch_dir(s['runs'], bs[0]))
+                try:
+                    if bs[1] == 'dismiss': return self.send(200, {'dismissed': jobs.dismiss(J, f'batches/{label}')})
+                    if bs[1] == 'spend': j = BT.spend(s, label, body)
+                    else: j = BT.again(s, label)[0]
+                except ValueError as e: return self.send(409, {'error': str(e)})
+                jobs.tick(J, s)
+                return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
+            if p == '/api/new/estimate':                          # New Run: the free estimate job, then its run page
+                try: j = NR.start_estimate(s, setup, str(body.get('book') or ''), body.get('run_name'), str(body.get('ocr_lang') or ''), bool(body.get('review_first')))
+                except ValueError as e: return self.send(409, {'error': str(e)})
+                jobs.tick(J, s)
+                return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id'])), 'location': HM.run_href(j['run'])})
             segs = segments(p[len('/api/run/'):]) if p.startswith('/api/run/') else None
             if segs and len(segs) >= 3 and segs[-2] == 'checks' and segs[-1] in ('draft', 'record'):   # two-segment actions: the run is segs[:-2]
                 return self.checks_post(segs[:-2], segs[-1], body)
-            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship'): return self.send(404, {'error': 'not found'})
-            hit = find_run(s['runs'], segs[:-1], waiting=segs[-1] in ('review', 'apply', 'stop'))
+            PEND = ('spend', 'estimate', 'dismiss', 'retry')
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship', 'replay') + PEND:
+                return self.send(404, {'error': 'not found'})
+            hit = find_run(s['runs'], segs[:-1], waiting=segs[-1] in ('review', 'apply', 'stop'), pending=(lambda d: runs.pending(s, d)) if segs[-1] in PEND else None)
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
             run, R, _ = hit
+            if segs[-1] in PEND:                                # a run started from the home page, before its result
+                if not runs.pending(s, R): return self.send(409, {'error': 'This run has moved on: reload the page.'})
+                try:
+                    if segs[-1] == 'dismiss':
+                        n = jobs.dismiss(J, run); return self.send(200, {'dismissed': n})
+                    if segs[-1] == 'spend': j = NR.start_spend(s, run, R, body)
+                    elif segs[-1] == 'estimate': j = NR.again_estimate(s, run, R)
+                    else: j = NR.start_rerun(s, run, R) if NR.retry_kind(R) == 'rerun' else NR.again_estimate(s, run, R)
+                except ValueError as e: return self.send(409, {'error': str(e)})
+                jobs.tick(J, s)
+                return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
+            if segs[-1] == 'replay':                            # New Run from the Saved Reply (free)
+                try: j = NR.start_replay(s, run, R, body.get('label'))
+                except (ValueError, S.Refused) as e: return self.send(409, {'error': str(e)})
+                jobs.tick(J, s)
+                return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id'])), 'location': HM.run_href(j['run'])})
             if runs.waiting(R):                                 # stopped for its first review: open the review page, apply, stop
                 try:
                     if segs[-1] == 'review': j = runs.start_first_review(s, run, R, self.server.server_address[1], app_pid=os.getpid())
@@ -342,9 +378,11 @@ def make(s, setup, code=None):
                 return self.send(200, runs.job_view(s, job, with_text=True, offset=int(off) if off.isdecimal() and len(off) <= 12 else 0))
             if p.startswith('/api/run/'):
                 segs = segments(p[len('/api/run/'):])
-                hit = find_run(s['runs'], segs, waiting=True) if segs else None
+                hit = find_run(s['runs'], segs, waiting=True, pending=lambda d: runs.pending(s, d)) if segs else None
                 if hit and runs.waiting(hit[1]):
                     return self.send(200, runs.waiting_state(s, hit[0], hit[1])) if not hit[2] else self.send(404, {'error': 'no such run'})
+                if hit and runs.pending(s, hit[1]):
+                    return self.send(200, runs.pending_state(s, hit[0], hit[1])) if not hit[2] else self.send(404, {'error': 'no such run'})
                 if hit and hit[2] == ['checks']: return self.send(200, MP.state(hit[1], hit[0]))   # the Manual Checks page's data
                 if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
                 return self.send(200, runs.state(s, hit[0], hit[1]))
@@ -357,24 +395,27 @@ def make(s, setup, code=None):
                 rest = segs[1:]
                 if not rest:
                     if not p.endswith('/'): return self.redirect(p + '/')
-                    return self.file(os.path.join(B, 'summary.html'))
-                if rest in (['summary.html'], ['summary.md']):
-                    return self.file(os.path.join(B, 'summary.html' if rest[0] == 'summary.html' else 'summary.md'))
-                if len(rest) >= 1 and find_run(s['runs'], ['batches', segs[0], rest[0]]):
+                    return self.send(200, BT.page(s, os.path.basename(B)), 'text/html; charset=utf-8')   # the batch page (#45)
+                if rest == ['summary.html']:                     # the batch dashboard, with the app bar (#45: every page links home)
+                    f = os.path.realpath(os.path.join(B, 'summary.html'))
+                    if not f.startswith(RUNS + os.sep) or not os.path.isfile(f): return self.send(404, {'error': 'not found'})
+                    return self.send(200, self.text(f), 'text/html; charset=utf-8')
+                if rest == ['summary.md']: return self.file(os.path.join(B, 'summary.md'))
+                if len(rest) >= 1 and find_run(s['runs'], ['batches', segs[0], rest[0]], waiting=True, pending=lambda d: runs.pending(s, d)):
                     return self.redirect('/run/' + '/'.join(urllib.parse.quote(x) for x in ['batches', segs[0], rest[0]]) + '/')
                 return self.send(404, {'error': 'not found'})
             if p.startswith('/run/'):
                 segs = segments(p[len('/run/'):])
                 if segs is None: return self.send(404, {'error': 'not found'})
-                if len(segs) == 3 and segs[0] == 'batches' and segs[2] in ('summary.html', 'summary.md'):    # a review.html's ../summary.html
-                    return self.redirect(f'/batch/{urllib.parse.quote(segs[1])}/' + ('' if segs[2] == 'summary.html' else 'summary.md'))
-                hit = find_run(s['runs'], segs, waiting=True)
+                if len(segs) == 3 and segs[0] == 'batches' and segs[2] in ('summary.html', 'summary.md'):    # a review.html's ../summary.html: the dashboard
+                    return self.redirect(f'/batch/{urllib.parse.quote(segs[1])}/' + segs[2])
+                hit = find_run(s['runs'], segs, waiting=True, pending=lambda d: runs.pending(s, d))
                 if not hit: return self.send(404, {'error': 'no such run'})
                 run, R, rest = hit
-                if runs.waiting(R):                                                        # stopped for its first review: its page only
+                if runs.waiting(R) or runs.pending(s, R):                                  # before its first result: its page only
                     if rest: return self.send(404, {'error': 'not found'})
                     if not p.endswith('/'): return self.redirect(p + '/')
-                    return self.send(200, waiting_page(run, R), 'text/html; charset=utf-8')
+                    return self.send(200, self.in_batch(run, waiting_page(run, R, s)), 'text/html; charset=utf-8')
                 if not rest:
                     if not p.endswith('/'): return self.redirect(p + '/')
                     return self.run_page(run, R)
@@ -403,10 +444,30 @@ def make(s, setup, code=None):
                         return self.send(200, with_version(REL.no_statement(t), run, sid), 'text/html; charset=utf-8')
                     return self.send(200, md_page(t, run, sid, base), 'text/html; charset=utf-8')   # review.md with a way back
                 return self.file(f)
+            if p == '/new': return self.send(200, NR.form_page(s, (q.get('book') or [''])[0]), 'text/html; charset=utf-8')
+            if p == '/new-batch': return self.send(200, BT.form_page(s, q.get('book') or []), 'text/html; charset=utf-8')
+            if p.startswith('/api/batch/'):
+                bs = segments(p[len('/api/batch/'):])
+                B = batch_dir(s['runs'], bs[0]) if bs and len(bs) == 1 else None
+                if not B: return self.send(404, {'error': 'no such batch'})
+                return self.send(200, BT.state(s, os.path.basename(B)))
             if p == '/':
                 return self.send(200, HM.page(s, (q.get('q') or [''])[0], (q.get('n') or ['25'])[0], test=bool(s.get('test_reply_dir')),
                                               added=(q.get('added') or [None])[0], bn=(q.get('bn') or ['25'])[0]), 'text/html; charset=utf-8')
             self.send(404, {'error': 'not found'})
+
+        def json_ok(self):
+            """A JSON POST's own checks (type, a digits-only length within MAX_BODY, a JSON object): self.body, or the
+            refusal sent and False."""
+            if (self.headers.get('Content-Type') or '').split(';')[0].strip().lower() != 'application/json':
+                self.send(415, {'error': 'the app\'s pages send JSON'}); return False
+            n = (self.headers.get('Content-Length') or '').strip()   # checked before reading: rfile.read(-1) would wait for the
+            if not n.isdecimal() or not n.isascii(): self.send(411, {'error': 'the request has no valid length'}); return False   # client
+            if int(n) > MAX_BODY: self.send(413, {'error': 'The request is too large.'}); return False
+            try: body = json.loads(self.rfile.read(int(n)) or b'{}')
+            except ValueError: self.send(400, {'error': 'not JSON'}); return False
+            if not isinstance(body, dict): self.send(400, {'error': 'not a JSON object'}); return False
+            self.body = body; return True
 
         def upload(self):
             """POST /api/upload: "Add a Book". The PDF itself is the body (Python 3.13 has no form parser), so four checks
@@ -485,8 +546,15 @@ def make(s, setup, code=None):
             cur = S.current_id((runs.load(rec) if rec.startswith(RUNS + os.sep) else None) or {})
             f = os.path.realpath(f)                                                  # checked inside the runs folder first
             t = self.text(f) if f.startswith(RUNS + os.sep) and os.path.isfile(f) else None
-            if t is not None: return self.send(200, with_panel(card_border(REL.no_statement(t), R), run, cur), 'text/html; charset=utf-8')
-            return self.send(200, no_dashboard(run, R, cur), 'text/html; charset=utf-8')
+            if t is not None: return self.send(200, self.in_batch(run, with_panel(card_border(REL.no_statement(t), R), run, cur)), 'text/html; charset=utf-8')
+            return self.send(200, self.in_batch(run, no_dashboard(run, R, cur)), 'text/html; charset=utf-8')
+
+        def in_batch(self, run, page):
+            """A book's page inside a batch (runs/batches/<label>/<name>) gets the batch's side column."""
+            sg = run.split('/')
+            if len(sg) != 3 or sg[0] != 'batches': return page
+            try: return BT.with_nav(with_appbar(page), s, sg[1], sg[2])
+            except Exception: return page
 
     return ThreadingHTTPServer(('127.0.0.1', s['port']), H)
 
@@ -511,13 +579,15 @@ def no_dashboard(run, R, current=None):
                       f'<header><h1>{html.escape(run)}</h1></header><main id="main" tabindex="-1">'
                       f'<p>This run has no dashboard (review.html): it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current)
 
-def waiting_page(run, R):
-    """A run stopped for its first review (REVIEW=1): the panel (its "Open the Review Page," then "Apply") and a line
-    saying nothing has been applied yet. Its report comes with the first apply."""
-    title = runs.waiting_title(run, R)
+def waiting_page(run, R, s=None):
+    """A run before its first result: stopped for its first review (REVIEW=1: the panel's "Open the Review Page," then
+    "Apply"), or started from the home page and estimating, ready to Spend, running, stopped or failed (the panel follows
+    it). The book is named by its display name with "Source PDF Filename:" under it, and the Run Name."""
+    name, file = runs.book_of(s, run, R) if s else (runs.waiting_title(run, R), '')
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-                      f'<title>{html.escape(title)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
-                      f'<header><h1>{html.escape(title)}</h1></header><main id="main" tabindex="-1">'
+                      f'<title>{html.escape(name)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
+                      f'<header><h1>{html.escape(name)}</h1><p class="mc-book">' + (f'<span class="hm-file">Source PDF Filename: {html.escape(file)}</span>' if file else '') +
+                      f'<span class="hm-file">Run Name: {html.escape(run.split("/")[-1])}</span></p></header><main id="main" tabindex="-1">'
                       '<p>Nothing has been applied to this book yet. The report and the remediated PDF come with the first apply.</p></main></body></html>',
                       run, waiting=True)
 

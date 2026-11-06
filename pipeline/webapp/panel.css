@@ -145,3 +145,31 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .hm-page input[type=checkbox] { width: 20px; height: 20px; }
 .hm-page :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 640px) { .pp-appbar { padding-left: 10px; padding-right: 10px; } .hm-t th[scope="row"] { min-width: 9em; } }
+/* a run before its result (#45): the estimate's tick, a failure card with its folded "Details" */
+.pp .pp-check label { display: flex; align-items: flex-start; gap: 8px; min-height: 32px; font-weight: 600; }
+.pp .pp-check input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
+.pp .pp-fail { border-left: 4px solid var(--reject); padding: 2px 0 2px 12px; margin: 8px 0; }
+.pp .pp-fail h4 { margin: 8px 0 4px; }
+.hm-form { max-width: 48em; } .hm-form select { font: inherit; min-height: 32px; padding: 2px 6px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); }
+.hm-check { display: flex !important; align-items: center; gap: 8px; }
+.mc-book .hm-file { display: block; }
+/* the side column of a batch (#45): "Books in This Batch"; fixed at the left on a wide screen (batch.js adds bn-on), in
+   the page's flow under its button below 48em; statuses in words, the current book marked with a border and bold */
+.bn { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--panel); box-sizing: border-box;
+      border: 1px solid var(--line); border-radius: 6px; margin: 8px 16px; padding: 6px 10px; }
+.bn ul { list-style: none; padding: 0; margin: 4px 0; }
+.bn li a { display: block; padding: 6px 8px; margin: 2px 0; border-radius: 4px; text-decoration: none; color: var(--ink); border-left: 4px solid transparent; }
+.bn li a:hover { text-decoration: underline; }
+.bn li a[aria-current="page"] { background: var(--bg); border-left-color: var(--accent); }
+.bn li a[aria-current="page"] .bn-name { text-decoration: underline; }
+.bn-name { display: block; font-weight: 600; overflow-wrap: anywhere; } .bn-st { display: block; font-size: 13px; }
+.bn .hm-file { font-size: 12px; }
+.bn-h { margin: 6px 0 2px; } .bn-h a { color: var(--accent); font-weight: 600; }
+.bn-toggle { font: inherit; font-size: 14px; min-height: 32px; padding: 4px 10px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.bn :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.bn.closed #bn-list { display: none; }
+@media (min-width: 48em) {
+  body.bn-on:not(.bn-closed) { padding-left: 17rem; }
+  body.bn-on .bn:not(.closed) { position: fixed; top: 0; left: 0; bottom: 0; width: 16rem; margin: 0; border-radius: 0; border-width: 0 1px 0 0; overflow-y: auto; z-index: 5; }
+}
+@media (max-width: 640px) { .bn { margin: 8px 10px; } }

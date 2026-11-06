@@ -274,7 +274,14 @@ state.additions = (state.additions || []).filter(a => addById[aid(a)]);
 let view = 'priority', finished = false;
 let draftPoll = null, draftBasis = null, draftStale = false, draftLast = null;   // Build a Draft PDF (below)
 const RETURN_TO = DATA.return_to || null;             // the app's run page (review_workorder.py --return-to), else the terminal
-if (RETURN_TO) { const b = document.getElementById('back'); b.hidden = false; b.querySelector('a').href = RETURN_TO.split('?')[0]; }
+if (RETURN_TO) { const b = document.getElementById('back'); b.hidden = false; b.querySelector('a').href = RETURN_TO.split('?')[0]; homeLink(b); }
+// "Home" beside "Back to the Run Page" (#45): the app's home page, on the run page's own origin (--return-to is checked to be
+// http://127.0.0.1:<port>/… or http://localhost:<port>/…)
+function homeLink(b) {
+  let o; try { o = new URL(RETURN_TO).origin; } catch (e) { return; }
+  const a = document.createElement('a'); a.href = o + '/'; a.className = 'btnlink'; a.id = 'home'; a.textContent = 'Home';
+  b.appendChild(document.createTextNode(' ')); b.appendChild(a);
+}
 const NEXT = RETURN_TO ? 'the run page' : 'the terminal';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -718,7 +725,7 @@ if (OCR_ONLY) {                                        // the OCR section alone:
   document.getElementById('title').textContent = 'OCR Text Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
   document.title = 'OCR Text Review';
   const back = document.getElementById('back');
-  if (!back.hidden) back.innerHTML = '<a href="' + esc(RETURN_TO.split('?')[0]) + '" class="btnlink">Back to the Run Page</a> (this page stays open until you close it here or there)';
+  if (!back.hidden) { back.innerHTML = '<a href="' + esc(RETURN_TO.split('?')[0]) + '" class="btnlink">Back to the Run Page</a> (this page stays open until you close it here or there)'; homeLink(back); }
   [document.getElementById('sessionName').closest('span'), document.getElementById('progress').parentNode, document.querySelector('.show'),
    document.getElementById('addBtn'), document.getElementById('draftBtn'), document.getElementById('draftLine'), document.getElementById('saveState'), document.getElementById('checkLine'), document.getElementById('finish'),
    document.getElementById('this-session'), document.getElementById('cards')].forEach(x => { x.hidden = true; });

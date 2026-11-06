@@ -48,7 +48,7 @@ def test_reading_an_untrusted_pdf_never_raises(tmp_path):
     m = BK.read_meta(str(tmp_path / 'locked.pdf'))
     assert m['locked'] is True and m['pages'] is None
     (tmp_path / 'ok.pdf').write_bytes(pdf_bytes(3, 'A Title Here'))
-    assert BK.read_meta(str(tmp_path / 'ok.pdf')) == {'pages': 3, 'title': 'A Title Here', 'locked': False, 'unreadable': False}
+    assert BK.read_meta(str(tmp_path / 'ok.pdf')) == {'pages': 3, 'title': 'A Title Here', 'locked': False, 'unreadable': False, 'tagged': False}
 
 # ------------------------------------------------------------------ the list
 def test_listing_skips_dot_folders_and_lists_a_content_once(setup):

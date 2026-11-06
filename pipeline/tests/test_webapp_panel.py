@@ -281,7 +281,8 @@ def test_a_run_stopped_for_its_first_review_has_its_page(app):
     port, t = app['port'], app['t']
     W, src = waiting_run(t)
     st, b, _ = get(port, '/run/book/rv/'); page = b.decode()
-    assert st == 200 and '<div id="pdfrem-panel" data-run="book/rv" data-waiting="1">' in page and '<h1>book.pdf</h1>' in page
+    assert st == 200 and '<div id="pdfrem-panel" data-run="book/rv" data-waiting="1">' in page and '<h1>book</h1>' in page
+    assert 'Source PDF Filename: book.pdf' in page                      # the display name, then the file (#45, Q6)
     assert 'Nothing has been applied to this book yet. The report and the remediated PDF come with the first apply.' in page
     st, b, _ = get(port, '/api/run/book/rv'); d = json.loads(b)
     assert st == 200 and d['waiting'] == {'reviewed': False, 'reviewer': None, 'date': None, 'prepared': True} and d['title'] == 'book.pdf'
@@ -1052,7 +1053,8 @@ def test_the_panel_is_replaced_only_when_its_html_changed():
     body = js.split('function render() {')[1].split('\n}\n')[0]
     assert "if (body.dataset.h === h) return;\n  body.innerHTML = h; body.dataset.h = h;" in body
     assert body.rindex('if (body.dataset.h === h) return;') < body.index('opened.forEach') < body.rindex('.focus()')
-    assert body.count('innerHTML') == 2                                     # one write each (a waiting run's, the result's), after its check
+    assert body.count('innerHTML') == 3                                     # one write each (a pending run's, a waiting run's, the result's),
+    assert body.count('if (body.dataset.h === h) return;') == 3             # each after its check
     strip = js.split('function renderStrip(s) {')[1].split('\n}\n')[0]
     assert 'if (sb.dataset.h !== h) {' in strip                            # the strip's own check, unchanged
 
