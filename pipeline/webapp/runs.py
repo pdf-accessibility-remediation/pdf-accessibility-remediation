@@ -351,6 +351,10 @@ def pending_state(s, run, R):
     fail = None if active else failures.explain(s, R, js[-1] if js else None)
     rf = next((j.get('review_first') for j in reversed(js) if j.get('review_first') is not None), None)
     phase = 'active' if active else 'needs-spend' if needs else 'stopped' if fail else 'saved-reply' if retry == 'rerun' else 'estimate' if est else 'new'
+    from_app = any(j['kind'] == 'estimate' for j in js)
+    batch = run.split('/')[1] if run.startswith('batches/') and len(run.split('/')) == 3 else None
+    if phase != 'active' and batch: phase = 'batch'            # a batch's book: its Spend is the batch's, on the batch page
+    elif phase != 'active' and not from_app: phase = 'outside'  # made from the terminal: its settings aren't known here
     spend = None
     if phase == 'estimate' and est:
         b = est['blocked']
@@ -358,7 +362,7 @@ def pending_state(s, run, R):
         spend = {'ok': ok, 'why': None if ok else b['words'], 'code': None if ok else b['code']}
     return {'run': run, 'mode': 'pending', 'title': name, 'file': file, 'run_name': run.split('/')[-1], 'phase': phase,
             'estimate': est, 'sent': sent_words(est) if est else None, 'spend': spend, 'retry': retry, 'failure': fail, 'test': test,
-            'review_first': rf, 'from_app': any(j['kind'] == 'estimate' for j in js),
+            'review_first': rf, 'from_app': from_app, 'batch': batch,
             'jobs': [job_view(s, j) for j in js]}
 
 # ------------------------------------------------------------------ a run stopped for its first review (REVIEW=1)

@@ -107,7 +107,7 @@ if (panel) panel.addEventListener('click', async e => {
   try {
     let c, r;
     if (act === 'spend') {
-      if (!$('bt-pii').checked) { msg('Tick "No book in this batch has personal information" first: books with personal information are never sent to the AI service.', false, true); $('bt-pii').focus(); return; }
+      if (!$('bt-pii').checked) { msg('Select the box "No book in this batch has personal information" first: books with personal information are never sent to the AI service.', false, true); $('bt-pii').focus(); return; }
       [c, r] = await api(API + '/spend', { fingerprint: st.fingerprint, no_personal_information: true });
     } else [c, r] = await api(API + '/' + act, {});
     if (c !== 202 && c !== 200) return msg(r.error || 'The app refused this.', false, true);

@@ -511,6 +511,11 @@ function failureCard(f) {
 function pendingBlock(s) {
   const e = s.estimate;
   let h = s.test ? '<p class="pp-bar pp">Test: saved replies, no AI call.</p>' : '';
+  if (s.phase === 'outside') return h + (s.failure ? failureCard(Object.assign({}, s.failure, { next: [] })) : '') +
+    '<p>This run was started outside the app, so it can\'t be sent or started again from here. To send this book, start a new run of it from the home page.</p>';
+  if (s.phase === 'batch') return h + (s.failure ? failureCard(Object.assign({}, s.failure, { next: [] })) : '') +
+    '<p>This book is part of batch ' + esc(s.batch) + '. Its estimate, "Spend" and what to do next are on the batch page.</p>' +
+    '<div class="pp-row"><a class="pp-btn pp-primary" href="/batch/' + encodeURIComponent(s.batch) + '/">Open the Batch Page</a></div>';
   if (s.phase === 'active') return h + '<p>Working on this book. This page follows each step; you can leave it and come back from the home page.</p>';
   if (s.phase === 'needs-spend') return h + '<p>The app restarted before the AI call started, so nothing was sent. Get a new estimate, then select "Spend" again.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button>' +
@@ -530,7 +535,7 @@ function pendingBlock(s) {
     (s.test ? '<p class="pp-note">Test: "Spend" uses the saved reply; nothing is sent to the AI service.</p>' :
     '<p class="pp-note">"Spend" sends the book to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.</p>');
 }
-const PHASE = { active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Spend Again', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
+const PHASE = { outside: 'Started Outside the App', batch: 'Part of a Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Spend Again', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
 
 // After a redraw: focus back on the element that had it (by id). When that element is gone (a finished job's card becomes
 // one line), focus goes to the panel's heading rather than being lost; for the Spend's landing (03 §14) that is still
@@ -624,7 +629,7 @@ box.addEventListener('click', async e => {
       let s, r;
       if (act === 'spend') {
         const t = $('pp-pii');
-        if (!t || !t.checked) { msg('Tick "This book has no personal information" first: books with personal information are never sent to the AI service.', false, true); if (t) t.focus(); return; }
+        if (!t || !t.checked) { msg('Select the box "This book has no personal information" first: books with personal information are never sent to the AI service.', false, true); if (t) t.focus(); return; }
         [s, r] = await api(API + '/spend', { kind: 'workorder', fingerprint: st.estimate.fingerprint, no_personal_information: true });
       } else if (act === 'replay') {
         if (!await confirmDlg('New run from the saved reply?', 'A new run of this book is made from its saved AI reply, free, and stops for your review. This run stays as it is.', 'Make the new run', b)) return;

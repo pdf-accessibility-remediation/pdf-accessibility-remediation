@@ -26,7 +26,7 @@ from . import config, jobs, books as BK
 class Refused(Exception):
     """A Spend that is refused, in plain words for the page."""
 
-PII_WORDS = 'Tick "This book has no personal information" first: books with personal information are never sent to the AI service.'
+PII_WORDS = 'Select the box "This book has no personal information" first: books with personal information are never sent to the AI service.'
 CHANGED = 'The estimate changed since it was shown. Look at the new estimate.'
 OUT_OF_DATE = 'The estimate is out of date. Get a new estimate.'
 
@@ -50,7 +50,7 @@ def current_model_and_prompt():
 
 def last_estimate_job(s, run):
     """The run's newest estimate job that finished: its settings are the ones Spend uses."""
-    ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] in ('estimate', 'batch-estimate') and j['status'] == 'done']
+    ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] == 'estimate' and j['status'] == 'done']   # a single run's (a batch's book: the batch's Spend)
     return ej[-1] if ej else None
 
 def check_estimate(s, R, fingerprint, test, limits):

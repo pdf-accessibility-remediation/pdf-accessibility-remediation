@@ -277,3 +277,19 @@ def test_replay_is_a_free_two_step_job(setup):
     with pytest.raises(ValueError): NR.start_replay(s, 'bk/old', str(R), 'again1')        # the name is taken now
     (R / 'release').mkdir(); (R / 'release' / 'cleared.json').write_text(json.dumps({'state': 'done'}))
     with pytest.raises(ValueError, match='cleared'): NR.start_replay(s, 'bk/old', str(R), 'again2')
+
+def test_a_run_made_outside_the_app_offers_no_buttons(setup):
+    """A terminal's estimate-only folder (a run.json, no job of the app): no Spend, Get a New Estimate, Try Again or Dismiss,
+    which could only refuse; a batch's book points to its batch page, and a single-run Spend of it is refused."""
+    s = settings(setup)
+    R = run_folder(setup, name='bk', label='term')
+    st = RN.pending_state(s, 'bk/term', str(R))
+    assert st['phase'] == 'outside' and st['spend'] is None and not st['from_app']
+    B = run_folder(setup, name='batches', label='b1/bk')
+    j = jobs.create(s['jobs'], 'batch-estimate', 'batches/b1/bk', ['bash', 'run_api.sh', '/x.pdf', 'bk', 'b1'], config.child_env(s), R=str(B))
+    jobs.update(s['jobs'], j['id'], status='done')
+    st = RN.pending_state(s, 'batches/b1/bk', str(B))
+    assert st['phase'] == 'batch' and st['batch'] == 'b1' and st['spend'] is None
+    with pytest.raises(SP.Refused, match='no estimate'): SP.authorize(s, 'workorder', 'batches/b1/bk', str(B), st['estimate']['fingerprint'], True)
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert "s.phase === 'outside'" in js and 'Open the Batch Page' in js

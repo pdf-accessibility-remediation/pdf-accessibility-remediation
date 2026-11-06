@@ -100,7 +100,7 @@ the settings copied from the estimate's own job (so intake and the audit are reu
 and the tick in its job file. `MAX_USD` is the largest request's worst case shown, rounded up to the cent from the stored
 value plus 0.0001, never above the limit (`run_api.sh` passes it to `decide.py --max-usd`). It binds decide.py's
 estimate, not the bill: billed input has run up to 14% over the estimate until #63 (alt text past 100 images) adds its
-margin. For a run.json of #63's shape, `BOOK_MAX_USD` is bound the same way.
+margin. For a run.json in the shape #63 (alt text past 100 images) writes, `BOOK_MAX_USD` is bound the same way.
 
 **The paid-path rule** (webapp/jobs.py, where every job is made): `AUTO` appears only in a spend or batch job that is
 paid, carries the fingerprint and the tick. A paid job is never a follow-on (`then`) of another job. A paid job still
@@ -113,6 +113,10 @@ a run blocked.
   `AUTO`); otherwise the app gets a new estimate first, and a new call needs **Spend** again. A free rerun that would
   reach a new call stops before it (the page then says to get a new estimate).
 - **Continue** appears when the estimate found a saved reply: "No AI call is needed".
+- **A run made from the terminal** (an estimate-only folder, for example) is listed and opens, but its page offers no
+  Spend, Get a New Estimate or Try Again: its settings are not known to the app. It says to start a new run of the book
+  from the home page.
+- **A book in a batch** has no Spend of its own: its page points to the batch page, where the batch is sent.
 - **New Run from the Saved Reply** appears on a finished run that can no longer be reviewed (the pipeline changed since):
   a new run of the book from its saved reply, free, on today's code, stopping for review. It is refused for a cleared
   book.
