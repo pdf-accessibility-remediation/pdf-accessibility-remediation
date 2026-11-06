@@ -202,7 +202,7 @@ def form_page(s, keys):
             '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a><header><h1>New Batch</h1></header><main id="main" tabindex="-1">')
     if len(bs) < 2:
         return head + '<div class="pp"><p>Select two or more books on the home page first.</p><p><a class="pp-btn" href="/">Back to the Home Page</a></p></div></main></body></html>'
-    items = ''.join(f'<li>{HM.book_cell(b["name"], b["file"])}<input type="hidden" name="book" value="{E(b["key"])}"></li>' for b in bs)
+    items = ''.join(f'<li>{HM.book_cell(b["name"], b["file"])}<input type="hidden" name="books" value="{E(b["key"])}"></li>' for b in bs)
     return head + (f'<form class="pp hm-form" id="hm-newbatch" data-api="/api/batch/new"><h2>Books ({len(bs)})</h2><ul class="hm-active">{items}</ul>'
         '<div class="mc-field"><label for="nb-name">Batch Name</label>'
         f'<input type="text" id="nb-name" name="label" value="batch-{datetime.datetime.now():%Y-%m-%d-%H%M}" required maxlength="64" aria-describedby="nb-name-h">'

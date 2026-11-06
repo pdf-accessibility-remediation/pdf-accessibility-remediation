@@ -102,3 +102,15 @@ def test_again_estimates_only_the_unfinished(two):
 def test_the_review_page_links_home():
     p = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
     assert "a.textContent = 'Home'" in p and "new URL(RETURN_TO).origin" in p and p.count('homeLink(') == 3     # the review page and the OCR-only page
+
+def test_the_forms_send_what_the_routes_read(two):
+    """New Run's form sends `book` (one key), New Batch's `books` (a list): home.js turns only a field named "books" into a
+    list (a batch-only rule once broke New Run, caught in the paid test P1)."""
+    from webapp import newrun as NR
+    s = settings(two)
+    key = BK.listing(s)[0]['key']
+    assert f'name="book" value="{key}"' in NR.form_page(s, key)
+    keys = [b['key'] for b in BK.listing(s)]
+    assert all(f'name="books" value="{k}"' in BT.form_page(s, keys) for k in keys)
+    js = open(os.path.join(HERE, 'webapp', 'home.js'), encoding='utf-8').read()
+    assert "if (x.name === 'books')" in js and "x.name === 'book')" not in js

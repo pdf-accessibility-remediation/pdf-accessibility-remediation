@@ -22,7 +22,7 @@ document.querySelectorAll('form[data-api]').forEach(f => f.addEventListener('sub
   e.preventDefault();
   const body = {};
   f.querySelectorAll('[name]').forEach(x => {
-    if (x.name === 'book') { if (x.type !== 'checkbox' || x.checked) (body.books = body.books || []).push(x.value); }
+    if (x.name === 'books') { if (x.type !== 'checkbox' || x.checked) (body.books = body.books || []).push(x.value); }   // a list
     else if (x.type === 'checkbox') body[x.name] = x.checked;
     else body[x.name] = x.value;
   });
