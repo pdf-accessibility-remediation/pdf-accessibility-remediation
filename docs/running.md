@@ -18,6 +18,8 @@ To have a person check the AI's decisions before they are applied, start with `R
 
 To review a finished run again from the browser, with no further commands, start the app: `python3 app.py ../runs/<name>/<label>` (see [The app](app.md)).
 
+To change the PDF itself (a better scan of an image, a fix only Acrobat can make), edit an exported copy and bring it back as a new run with `handedit.py` (see [Editing the PDF by hand](hand-edits.md)).
+
 The short name (`nktest`) names the run folder. The result is named after the original with `_remediated` added (`<file>_remediated.pdf`); `OUT=north-korea.pdf bash run_api.sh …` names it yourself.
 
 ## Step by step (what `run_api.sh` does)

@@ -2,6 +2,7 @@
 
     python decide.py AUDIT_DIR RUN_DIR [--model <openrouter id>] [--max-usd 2] [--dry-run]
     python decide.py AUDIT_DIR RUN_DIR --response-file saved_response.json     # re-parse, no call
+    python decide.py AUDIT_DIR RUN_DIR --no-model     # no call: an empty work order for a person (a PDF edited by hand)
 
 Sends digest.json plus the figure crops to Claude through OpenRouter with the system prompt
 in prompts/, and writes to RUN_DIR:
@@ -111,6 +112,10 @@ ap.add_argument('--no-images', action='store_true')
 ap.add_argument('--max-images', type=int, default=100, help="figure images sent per request (Anthropic's limit is 100); the rest go to a person")
 ap.add_argument('--dry-run', action='store_true', help='write the request and the cost estimate; do not call the API')
 ap.add_argument('--response-file', help='parse a saved OpenRouter response (or raw reply text) instead of calling the API')
+ap.add_argument('--no-model', action='store_true', help='no call at all: an empty work order for a person to fill on the review page '
+                '(a PDF edited by hand, brought back for review: run_api.sh DECIDE=none)')
+NO_MODEL = 'no AI call: a PDF edited by hand, brought back for review'
+CARRY = ('sections', 'links')                     # --no-model: the parent run's page-based decisions, when the pages are the same
 args = ap.parse_args()
 os.makedirs(args.run_dir, exist_ok=True)
 digest = json.load(open(os.path.join(args.audit_dir, 'digest.json'), encoding='utf-8'))
@@ -122,6 +127,34 @@ run = {'started': datetime.datetime.now().isoformat(timespec='seconds'), 'source
 def save(name, obj):
     with open(os.path.join(args.run_dir, name), 'w', encoding='utf-8') as f:
         f.write(obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False, indent=1))
+
+# ------------------------------------------------------------------ no model (run_api.sh DECIDE=none)
+# A PDF edited by hand and brought back for review (handedit.py import --to review): it already holds the earlier run's
+# fixes, so the work order starts empty and a person decides what the edit needs on the review page. Nothing is sent.
+if args.no_model:
+    sys.path.insert(0, HERE); from lib import workorder_check
+    wo = {'schema': 'workorder/0.2'}
+    # The parent run's page-based decisions still describe the same pages when the edit kept the page count: the contents,
+    # notes and index pages (`sections`) and the contents-text fixes (`links`). apply.py always redoes the links from them,
+    # so without them an edited result would lose its "Chapter, page 12" link descriptions. Object-based decisions are
+    # never carried: an edited file's object numbers differ.
+    he = os.path.join(args.run_dir, '_handedit', 'hand_edit.json')
+    he = json.load(open(he, encoding='utf-8')) if os.path.exists(he) else {}
+    pr = os.path.join((he.get('parent') or {}).get('run') or '', 'record.json')
+    if he and len(set(he.get('pages') or [0, 1])) == 1 and os.path.exists(pr):
+        pwo = json.load(open(pr, encoding='utf-8')).get('workorder') or {}
+        carried = [k for k in CARRY if pwo.get(k)]
+        for k in carried: wo[k] = pwo[k]
+        if carried: run['carried_from_parent'] = carried
+    dropped = workorder_check.check(wo, digest, set(), set())
+    wo['source'] = {'file': digest['source']['file'], 'sha256': digest['source']['sha256']}
+    wo['decided_by'] = NO_MODEL
+    for k in ('prompt_file', 'prompt_sha256'): run.pop(k)
+    run.update({'no_model': NO_MODEL, 'model': None, 'usage': {'cost_usd': 0}, 'dropped_items': len(dropped),
+                'finished': datetime.datetime.now().isoformat(timespec='seconds')})
+    save('workorder.json', wo); save('validation.json', {'dropped': dropped, 'context': {'not_sent': [], 'words_sent': []}})
+    save('run.json', run)
+    print('work order written: empty, no AI call (a person decides on the review page)'); sys.exit(0)
 
 # ------------------------------------------------------------------ build the request
 # Figure crops go as JPEG: PNG crops of a scanned or photo-heavy book can pass OpenRouter's 30 MB image limit

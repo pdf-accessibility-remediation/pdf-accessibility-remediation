@@ -144,6 +144,9 @@ be the same. Nothing relies on an apply making new bytes.
   that lacks its hash.
 - **Offline dashboards** (`review.html` opened as a file, `summary.html`) compare the checks with `document.output_sha256`
   only. They never hash the PDF.
+- **A PDF edited by hand is evaluated in its own run.** Edit an exported copy and bring it back with `handedit.py import`:
+  it becomes a new run with its own `output_sha256` (see [Editing the PDF by hand](hand-edits.md)). The run it came
+  from keeps its checks, which still count for its own file.
 
 ## "Ready to ship?"
 

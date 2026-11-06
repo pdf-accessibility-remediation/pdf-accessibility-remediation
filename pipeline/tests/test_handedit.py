@@ -1,0 +1,170 @@
+"""test_handedit.py: a PDF edited by hand and brought back (#62): lib/handedit.py, handedit.py and decide.py --no-model.
+
+    python -m pytest tests/test_handedit.py -q
+
+Tiny hand-made PDFs with two figures, each one image; the "edited" file swaps one image for another and is saved with its
+objects in a different order, as an Acrobat save would. No book content; nothing is sent anywhere; veraPDF is off.
+"""
+import os, sys, json, hashlib, subprocess
+import pikepdf
+from lib import handedit, workorder_check
+
+PIPE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+def sha(p): return hashlib.sha256(open(p, 'rb').read()).hexdigest()
+
+def figures_pdf(path, colors=(b'\x00\x00\xff', b'\xff\x00\x00'), alts=('A blue square', 'A red square'), shuffle=False):
+    """One page, a paragraph and two figures; figure i draws a 2x2 image of colors[i]. shuffle: the objects are made in
+    another order, so their numbers differ from the first file's."""
+    pdf = pikepdf.new()
+    font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica,
+                              Encoding=pikepdf.Name.WinAnsiEncoding)
+    if shuffle:
+        for _ in range(5): pdf.make_indirect(pikepdf.Dictionary(Filler=True))
+    ims = {f'/Im{i + 1}': pikepdf.Stream(pdf, c * 4, Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Image, Width=2, Height=2,
+                                        ColorSpace=pikepdf.Name.DeviceRGB, BitsPerComponent=8) for i, c in enumerate(colors)}
+    content = ('/P <</MCID 0>> BDC BT /F1 11 Tf 72 520 Td (Two figures.) Tj ET EMC\n'
+               '/Figure <</MCID 1>> BDC q 100 0 0 100 72 300 cm /Im1 Do Q EMC\n'
+               '/Figure <</MCID 2>> BDC q 100 0 0 100 72 100 cm /Im2 Do Q EMC\n')
+    page = pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 432, 576], StructParents=0,
+                              Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font), XObject=pikepdf.Dictionary(ims)),
+                              Contents=pikepdf.Stream(pdf, content.encode('latin-1')))
+    pdf.pages.append(pikepdf.Page(page)); pg = pdf.pages[0].obj
+    root = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+    doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
+    p = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=doc, Pg=pg, K=0))
+    figs = [pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Figure, P=doc, Pg=pg, K=i + 1,
+                                                 Alt=pikepdf.String(a))) for i, a in enumerate(alts)]
+    doc.K = pikepdf.Array([p] + figs); root.K = doc
+    root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=[0, pikepdf.Array([p] + figs)]))
+    pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
+    pdf.save(path)
+    return str(path)
+
+def edited_pair(tmp_path):
+    base = figures_pdf(tmp_path / 'base.pdf')
+    edited = figures_pdf(tmp_path / 'edited.pdf', colors=(b'\x00\x00\xff', b'\x00\xff\x00'), shuffle=True)   # the red one replaced
+    return base, edited
+
+# ---- lib/handedit.py
+def test_a_replaced_image_marks_its_figure_and_only_that_one(tmp_path):
+    base, edited = edited_pair(tmp_path)
+    ch = handedit.changed(base, edited)
+    assert ch['pages'] == [1, 1]
+    assert [(f['page'], f['alt']) for f in ch['figures']] == [(1, 'A red square')]
+    assert len(ch['new_images']) == 1 and len(ch['removed_images']) == 1 and ch['outside_figures'] == []
+
+def test_the_same_file_saved_again_has_no_changes(tmp_path):
+    base = figures_pdf(tmp_path / 'base.pdf')
+    again = figures_pdf(tmp_path / 'again.pdf', shuffle=True)      # renumbered objects, same images
+    ch = handedit.changed(base, again)
+    assert ch['figures'] == [] and ch['new_images'] == [] and ch['removed_images'] == []
+
+def test_stale_alt_is_removed_in_a_copy_and_the_edited_file_is_untouched(tmp_path):
+    base, edited = edited_pair(tmp_path)
+    before = sha(edited); ch = handedit.changed(base, edited)
+    out = str(tmp_path / 'input.pdf')
+    assert handedit.strip_stale_alt(edited, out, [f['obj'] for f in ch['figures']]) == []
+    assert sha(edited) == before
+    alts = sorted((f['alt'] or '') for f in handedit.figures(out))
+    assert alts == ['', 'A blue square']                           # the unchanged figure keeps its alt
+
+def test_a_figure_that_cannot_be_found_is_listed_not_guessed(tmp_path):
+    base, edited = edited_pair(tmp_path)
+    assert handedit.strip_stale_alt(edited, str(tmp_path / 'input.pdf'), ['9999 0']) == ['9999 0']
+
+# ---- handedit.py, run_api.sh DECIDE=none, report.py: the whole loop at no cost (veraPDF off, no AI call)
+def env(**kw):
+    e = dict(os.environ, VERAPDF='off', PATH=os.path.dirname(sys.executable) + os.pathsep + os.environ.get('PATH', ''), **kw)
+    for k in ('INTAKE_REUSE', 'INTAKE', 'REVIEW', 'DECIDE', 'REPLY', 'ESTIMATE', 'RUN_DIR', 'OUT'): e.pop(k, None) if k not in kw else None
+    return e
+
+def sh(args, **kw):
+    return subprocess.run(args, cwd=PIPE, env=env(**kw), capture_output=True, text=True, timeout=300)
+
+def parent_run(tmp_path):
+    """A finished run of the two-figure book (no AI call: an empty work order applied), as the run a person edits."""
+    src = figures_pdf(tmp_path / 'book.pdf')
+    r = sh(['bash', 'run_api.sh', src, 'book', 'parent'], RUNS_DIR=str(tmp_path / 'runs'), DECIDE='none')
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert 'no credit used' in r.stdout                                  # nothing looked up at OpenRouter either
+    return src, str(tmp_path / 'runs' / 'book' / 'parent')
+
+def swap_image(src, out):
+    pdf = pikepdf.open(src); pdf.pages[0].Resources.XObject['/Im2'].write(b'\x00\xff\x00' * 4); pdf.save(out); return str(out)
+
+def test_no_model_writes_an_empty_order_the_check_accepts(tmp_path):
+    src, P = parent_run(tmp_path)
+    rec = json.load(open(os.path.join(P, 'record.json'), encoding='utf-8'))
+    assert rec['run']['no_model'] and rec['cost_total_usd'] == 0 and rec['validation_dropped'] == []
+    assert rec['ai_call']['no_model'] and rec['ai_call']['cost_usd'] == 0
+    wo = {k: v for k, v in rec['workorder'].items() if k not in ('source', 'decided_by')}
+    assert workorder_check.check(dict(wo), {'source': {'pages': 1}, 'elements': [], 'figures': [], 'styles': []}, set(), set()) == []
+    md = open(os.path.join(P, 'review.md'), encoding='utf-8').read()
+    assert 'no AI call' in md and 'model not recorded' not in md and 'None' not in md
+
+def test_a_hand_edited_pdf_comes_back_for_review_and_is_recorded(tmp_path):
+    src, P = parent_run(tmp_path)
+    out = os.path.join(P, json.load(open(os.path.join(P, 'record.json')))['document']['output'])
+    keep = {p: sha(p) for p in (src, out)}
+    r = sh([sys.executable, 'handedit.py', 'export', P, '--to', str(tmp_path / 'copy.pdf'), '--by', 'Pat'])
+    assert r.returncode == 0, r.stderr
+    edited = swap_image(tmp_path / 'copy.pdf', tmp_path / 'edited.pdf'); ed_sha = sha(edited)
+    r = sh([sys.executable, 'handedit.py', 'import', P, edited, '--by', 'Pat', '--note', 'a better scan of the red square', '--label', 'he1'])
+    assert r.returncode == 0, r.stdout + r.stderr
+    C = os.path.join(os.path.dirname(P), 'he1')
+    assert 'stopped for review' in r.stdout and not os.path.exists(os.path.join(C, 'record.json'))
+    items = json.load(open(os.path.join(C, 'review_items.json'), encoding='utf-8'))
+    assert items['hand_edit']['alt_removed'] == 1 and items['hand_edit']['figure_pages'] == [1]
+    from review import core
+    digest = json.load(open(os.path.join(C, '_audit', 'digest.json'), encoding='utf-8'))
+    gap = next(g for g in core.gaps(json.load(open(os.path.join(C, 'workorder.json'))), digest) if g['id'] == 'figures_without_alt')
+    assert len(gap['objs']) == 1                                          # the new image needs alt; the old alt is not reused
+    # the person writes the new alt (the hand-edit path of review_workorder.py), then the same command applies it
+    p = os.path.join(C, 'workorder.json'); wo = json.load(open(p)); wo['alt'] = [{'obj': gap['objs'][0], 'alt': 'A green square'}]
+    json.dump(wo, open(p, 'w'))
+    assert sh([sys.executable, 'review_workorder.py', C, '--reviewer', 'Pat', '--note', 'test file']).returncode == 0
+    he = json.load(open(os.path.join(C, '_handedit', 'hand_edit.json')))
+    r = sh(['bash', 'run_api.sh', os.path.join(C, '_handedit', he['edited']['file']), 'book', 'he1'], RUN_DIR=C, OUT=os.path.basename(out))
+    assert r.returncode == 0, r.stdout + r.stderr
+    rec = json.load(open(os.path.join(C, 'record.json'), encoding='utf-8'))
+    h = rec['hand_edit']
+    assert h['by'] == 'Pat' and h['base_sha256'] == keep[out] and h['edited']['sha256'] == ed_sha and h['parent']['run'] == P
+    assert rec['document']['sha256'] == ed_sha and rec['document']['pipeline_input']['file'] == '_handedit/input.pdf'
+    assert {p: sha(p) for p in keep} == keep and sha(edited) == ed_sha                    # nothing it came from was written to
+    assert json.load(open(os.path.join(P, 'hand_edits.json')))['children'][0]['run'] == C
+    md = open(os.path.join(C, 'review.md'), encoding='utf-8').read()
+    assert 'Edited by Hand' in md and '"A red square" | "A green square"' in md and 'None' not in md
+
+def test_import_refuses_an_unchanged_file_a_missing_note_and_an_in_place_edit(tmp_path):
+    src, P = parent_run(tmp_path)
+    out = os.path.join(P, json.load(open(os.path.join(P, 'record.json')))['document']['output'])
+    same = str(tmp_path / 'same.pdf'); open(same, 'wb').write(open(out, 'rb').read())
+    r = sh([sys.executable, 'handedit.py', 'import', P, same, '--by', 'Pat', '--note', 'n', '--no-run'])
+    assert r.returncode == 1 and 'nothing was edited' in r.stderr
+    r = sh([sys.executable, 'handedit.py', 'import', P, same, '--by', 'Pat', '--no-run'])
+    assert r.returncode == 1 and '--note' in r.stderr
+    os.replace(swap_image(out, tmp_path / 'inplace.pdf'), out)           # the run's own PDF edited in place
+    r = sh([sys.executable, 'handedit.py', 'export', P, '--to', str(tmp_path / 'x.pdf')])
+    assert r.returncode == 1 and 'changed in place' in r.stderr and not os.path.exists(tmp_path / 'x.pdf')
+    assert not os.path.exists(os.path.join(os.path.dirname(P), 'he1'))
+
+def no_model_order(tmp_path, pages):
+    """decide.py --no-model in a hand-edit run whose parent's order names contents pages; pages: (before, after)."""
+    P = tmp_path / 'parent'; P.mkdir()
+    (P / 'record.json').write_text(json.dumps({'workorder': {'sections': {'toc_pages': [2, 3]}, 'links': {'toc_text_fixes': [['\\.{3,}', ' ']]},
+                                                             'alt': [{'obj': '9 0', 'alt': 'old'}]}}))
+    A, R = tmp_path / 'audit', tmp_path / 'run'; A.mkdir(); (R / '_handedit').mkdir(parents=True)
+    (A / 'digest.json').write_text(json.dumps({'source': {'file': 'e.pdf', 'sha256': 'x', 'pages': pages[1]},
+                                               'elements': [], 'figures': [], 'styles': []}))
+    (R / '_handedit' / 'hand_edit.json').write_text(json.dumps({'parent': {'run': str(P)}, 'pages': list(pages)}))
+    r = subprocess.run([sys.executable, 'decide.py', str(A), str(R), '--no-model'], cwd=PIPE, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return json.load(open(R / 'workorder.json')), json.load(open(R / 'run.json'))
+
+def test_no_model_carries_the_parents_page_decisions_only_when_the_pages_are_the_same(tmp_path):
+    wo, run = no_model_order(tmp_path, (5, 5))
+    assert wo['sections'] == {'toc_pages': [2, 3]} and wo['links']['toc_text_fixes'] and 'alt' not in wo   # never object-based ones
+    assert run['carried_from_parent'] == ['sections', 'links'] and run['usage']['cost_usd'] == 0
+    (tmp_path / 'b').mkdir(); wo, run = no_model_order(tmp_path / 'b', (5, 6))
+    assert 'sections' not in wo and 'carried_from_parent' not in run

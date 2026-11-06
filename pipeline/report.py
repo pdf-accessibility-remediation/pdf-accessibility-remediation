@@ -63,6 +63,8 @@ rv = load('review.json')                              # a person's review of the
 ri = load('review_items.json') if rv else None        # what the review page showed, e.g. its move_section preview
 # gaps the reviewer left open with no reason given (a hand edit without --note); an explained gap counts as handled
 rv_unexplained = [g for g in (rv or {}).get('gaps') or [] if str(g.get('reason') or '').startswith('hand edit: no reason asked for')]
+# a PDF edited by hand and brought back (handedit.py import): its link to the run it came from; a re-apply keeps the record's
+he = (prev.get('hand_edit') if prev is not None else None) or load('hand_edit.json', base=os.path.join(os.path.dirname(INTAKE_DIR) if INTAKE_DIR else R, '_handedit'))
 wo_ai = load('workorder.ai.json') if rv else None     # the AI's version: kept in record.json for every reviewed run          # earlier paid calls in this folder whose reply couldn't be used
 cost_this = (run.get('usage') or {}).get('cost_usd') or 0
 cost_earlier = round(sum(a.get('cost_usd') or 0 for a in attempts), 6)
@@ -77,6 +79,8 @@ intake = load('intake.json', base=INTAKE_DIR or os.path.join(R, '_intake'))   # 
 in_src = dict(src)                                     # the file the pipeline worked on (the intake result, when there is one)
 if intake and (intake.get('result') or {}).get('pdf'):
     src = {**src, 'file': intake['original']['file'], 'sha256': intake['original']['sha256']}
+elif he and he.get('input'):                          # the edited file with its stale alt text removed (_handedit/input.pdf)
+    src = {**src, 'file': he['edited']['file'], 'sha256': he['edited']['sha256']}
 han = log.get('han_only', [])
 # the review's sessions (reviews/sessions/): a re-apply brings them in review_session.json; after a first review
 # (REVIEW=1) session 001 is recorded here, before the working files are tidied
@@ -90,8 +94,9 @@ record = {
     'schema': 'record/0.1', 'written': datetime.datetime.now().isoformat(timespec='seconds'),
     'document': {'file': src.get('file'), 'output': PDF, 'sha256': src.get('sha256'), 'pages': src.get('pages'),
                  'before': digest.get('document'),
-                 **({'pipeline_input': {'file': '_intake/intake.pdf', 'sha256': in_src.get('sha256')}} if src != in_src else {})},
-    'intake': intake,
+                 **({'pipeline_input': {'file': '_intake/intake.pdf' if intake and (intake.get('result') or {}).get('pdf') else '_handedit/input.pdf',
+                                        'sha256': in_src.get('sha256')}} if src != in_src else {})},
+    'intake': intake, **({'hand_edit': he} if he else {}),
     'run': run, 'workorder': wo, 'validation_dropped': val.get('dropped', []),
     'apply': {'applied': log.get('applied'), 'rejected': log.get('rejected'), 'failed': log.get('failed'),
               'deferred': log.get('deferred'), 'han_only_runs': len(han), 'empty_notes_removed': log.get('empty_notes_removed', []),
@@ -393,15 +398,17 @@ checks = [
     ('Headings: none empty, very long or repeated in a row (2.4.6)', ok(wc is not None and not any(wc['headings'][k] for k in ('empty', 'long', 'repeated'))),
      ' · '.join(f'{len(wc["headings"][k])} {k}' for k in ('empty', 'long', 'repeated')) if wc else 'not checked'),
 ]
+BY_AI = 'in this run' if run.get('no_model') else 'by the AI'   # decide.py --no-model: every decision is a person's
 u = run.get('usage') or {}
 ai = record['ai_call']; mp = run.get('original_call') or run           # a reused reply: the model and prompt of the call that wrote it
 L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '', f'Result: `{PDF}`', '',
      f'{nc(src.get("pages"))} pages · run {DT.when(run.get("started"), "start time not recorded")} · '
-     + (f'model `{mp["model"]}`' if mp.get('model') else 'model not recorded') + ' · '
-     + (f'prompt `{mp["prompt_file"]}` ({mp.get("prompt_sha256") or "hash not recorded"})' if mp.get('prompt_file') else 'prompt not recorded') + ' · '
-     + (f'AI cost {origin.words(ai)[0]} · this run: no new call' if run.get('response_from')
+     + (f'{run["no_model"]} · ' if run.get('no_model') else         # decide.py --no-model: a PDF edited by hand
+        (f'model `{mp["model"]}`' if mp.get('model') else 'model not recorded') + ' · '
+        + (f'prompt `{mp["prompt_file"]}` ({mp.get("prompt_sha256") or "hash not recorded"})' if mp.get('prompt_file') else 'prompt not recorded') + ' · ')
+     + ('AI cost $0' if run.get('no_model') else f'AI cost {origin.words(ai)[0]} · this run: no new call' if run.get('response_from')
         else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: call did not finish') + ' · '
-     + (f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None
+     + ('no tokens' if run.get('no_model') else f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None
         else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: call did not finish')
      + (f' · plus ${cost_earlier:.3f} for {len(attempts)} earlier call(s) whose reply was cut off or unusable (total ${cost_this + cost_earlier:.3f})' if attempts else ''), '',
      *([f'Intake: {intake.get("summary")}' + (f' · tagged by OpenDataLoader {intake["tools"].get("opendataloader_pdf")}' if intake.get('status') == 'done' else '')
@@ -437,11 +444,39 @@ if intake and intake.get('status') == 'done':
     for f in intake.get('flags') or []:
         L.append(line(f'- **{f["what"]}**: ', nolink(f['why']), f' ({pgs(f["pages"])})' if f.get('pages') else '', pages=f.get('pages')))   # why: general text
     L.append('')
+if he:                                                # handedit.py import: what the person changed, and what it needs now
+    n += 1; par = he.get('parent') or {}; fc = he.get('figures_changed') or []
+    L += [f'### {n}. Edited by hand', '',
+          line(f'{he.get("by") or "The person (name not given)"} edited the ' + ('remediated result' if he.get('base') == 'output' else 'original')
+               + f' of run `{"/".join(os.path.normpath(par["run"]).split(os.sep)[-2:]) if par.get("run") else "run not recorded"}` by hand on {DT.day(he.get("when"))} and brought it back'
+               + (' for review, with no AI call' if he.get('to') == 'review' else ' through the whole pipeline') + '. ',
+               'Note: ', nolink(he.get('note') or 'no note given'), key='hand_edit'), '',
+          f'- File before the edit: sha256 `{he.get("base_sha256") or "not recorded"}`; after: `{(he.get("edited") or {}).get("sha256") or "not recorded"}`. '
+          'Neither file was changed by this run.']
+    if run.get('carried_from_parent'):
+        L += ['- Carried from that run\'s work order, since the pages are the same: '
+              + ' and '.join({'sections': 'which pages are contents, notes and index', 'links': 'its fixes to contents link text'}.get(k, f'`{k}`')
+                             for k in run['carried_from_parent']) + '. Its other decisions are already in the file.']
+    if fc:
+        new_alt = collections.defaultdict(list)
+        for it in wo.get('alt') or []:
+            if (figs.get(it.get('obj')) or {}).get('page'): new_alt[figs[it['obj']]['page']].append(it.get('alt'))
+        L += [f'- {len(fc)} figure{"s hold" if len(fc) != 1 else " holds"} a new image, so the alt text written for the old one was removed before this run:', '',
+              '| Page | Alt text removed | Alt text on that page in this run |', '|---|---|---|']
+        L += [f'| {pg(f.get("page"))} | ' + (f'"{excerpt(f["alt"], n=120)}"' if f.get('alt') else 'none') + ' | '
+              + ('; '.join(f'"{excerpt(a, n=120)}"' for a in new_alt.get(f.get('page'), [])) or '**none written: write it**') + ' |' for f in fc]
+    if he.get('outside_figures'):
+        L += ['', f'- New images that no figure holds, on {pgs([x["page"] for x in he["outside_figures"]])}: check whether each needs to be a figure or decoration.']
+    if (he.get('pages') or [None, None])[0] != (he.get('pages') or [None, None])[1]:
+        L += ['', f'- Pages: {he["pages"][0]} before the edit, {he["pages"][1]} after.']
+    L.append('')
 if rv:
     def _v(x): return json.dumps(x, ensure_ascii=False) if isinstance(x, (dict, list)) else f'"{x}"' if isinstance(x, str) else str(x)
     n += 1; L += [f'### {n}. Work order reviewed by a person', '',
-                  f'{rv["reviewer"]} reviewed the AI\'s work order on {DT.day(rv["date"])}, before it was applied ({rv.get("method")}). '
-                  'The result is what was applied; the AI\'s version is in `record.json` (`workorder_ai`).', '']
+                  (f'{rv["reviewer"]} made the work order on {DT.day(rv["date"])} ({rv.get("method")}); there was no AI call, so every decision is theirs.'
+                   if run.get('no_model') else
+                   f'{rv["reviewer"]} reviewed the AI\'s work order on {DT.day(rv["date"])}, before it was applied ({rv.get("method")}). '
+                   'The result is what was applied; the AI\'s version is in `record.json` (`workorder_ai`).'), '']
     if rv_session:
         sid, ss = rv_session['session'], {x['id']: x for x in rv_session.get('sessions') or []}
         me = ss.get(sid) or {}; frm = me.get('from')
@@ -492,7 +527,7 @@ if pfw_wrapped or pfw_left:
     L.append('')
 alts = wo.get('alt', [])
 if alts:
-    n += 1; L += [f'### {n}. Alt text written or changed by the AI ({len(alts)})', '', '| Page | Before | After |', '|---|---|---|']
+    n += 1; L += [f'### {n}. Alt text written or changed {BY_AI} ({len(alts)})', '', '| Page | Before | After |', '|---|---|---|']
     for a in by_page(alts, key=lambda a: figs.get(a['obj'], {}).get('page')):
         f = figs.get(a['obj'], {})
         L.append(f'| {pg(f.get("page"))} | {f.get("alt") or "—"} | {a["alt"]} |')
@@ -500,7 +535,7 @@ if alts:
 kept = [f for o, f in figs.items() if o not in {a['obj'] for a in alts}
         and o not in {e['obj'] for e in wo.get('artifacts', {}).get('elements', [])}]
 if kept:
-    n += 1; L += [f'### {n}. Figures that kept their existing alt text ({len(kept)})', '', 'Not changed by the AI. Check they are adequate.', '',
+    n += 1; L += [f'### {n}. Figures that kept their existing alt text ({len(kept)})', '', f'Not changed {BY_AI}. Check they are adequate.', '',
                   '| Page | Alt text |', '|---|---|']
     L += [f'| {pg(f.get("page"))} | {f.get("alt") or "—"} |' for f in by_page(kept)]
     L.append('')
@@ -526,7 +561,7 @@ if ats or wo.get('rolemap'):
         L.append('')
 rt = wo.get('retype', [])
 if rt:
-    n += 1; L += [f'### {n}. Elements retyped by the AI ({len(rt)})', '', 'Check each one is (or is not) a heading as decided.', '',
+    n += 1; L += [f'### {n}. Elements retyped {BY_AI} ({len(rt)})', '', 'Check each one is (or is not) a heading as decided.', '',
                   '| Page | Text | Before | After |', '|---|---|---|---|']
     for r in by_page(rt, key=lambda r: elems.get(r['obj'], {}).get('page')):
         e = elems.get(r['obj'], {})
