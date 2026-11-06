@@ -5,7 +5,7 @@ nav_order: 3.6
 
 # The pipeline in the browser
 
-`app.py` is a small local web app. It shows a run's dashboard (`review.html`) with buttons that review it again, start over, go back to an earlier session's choices, and apply a finished session. Each button runs the same command a person would type (`review_workorder.py … --reopen`, `--apply`, `--pin`), so the command line keeps working exactly as before and both give the same result. The app adds no pipeline logic: the one exception is the Accessibility Evaluation page ([Accessibility evaluation and release](release.md)), whose forms are recorded directly in the app's process through `review/manual.py`, the same code as `manual_checks.py` (only pipeline steps run as jobs). A home page with books and new runs is planned (branch home-interface).
+`app.py` is a small local web app. It shows a run's dashboard (`review.html`) with buttons that review it again, start over, go back to an earlier session's choices, and apply a finished session. Each button runs the same command a person would type (`review_workorder.py … --reopen`, `--apply`, `--pin`), so the command line keeps working exactly as before and both give the same result. The app adds no pipeline logic: the one exception is the Accessibility Evaluation page ([Accessibility evaluation and release](release.md)), whose forms are recorded directly in the app's process through `review/manual.py`, the same code as `manual_checks.py` (only pipeline steps run as jobs). The home page (`/`), where runs and batches are started, is described in [The home page](home.md).
 
 ```bash
 cd pipeline
@@ -35,9 +35,12 @@ One place, read in this order (later wins):
 |---|---|---|
 | `host` | `127.0.0.1` | Where the app listens. Only `127.0.0.1` is accepted: the app has no logins, so it is not reachable from other computers. |
 | `port` | `8760` | The app's port. The review pages use 8765–8784, as from the terminal. |
-| `runs`, `samples`, `uploads` | `../runs`, `../samples`, `../uploads` | The folders, relative to `pipeline/` (or absolute). `uploads` is for the planned home page. |
+| `runs`, `samples`, `uploads` | `../runs`, `../samples`, `../uploads` | The folders, relative to `pipeline/` (or absolute). `uploads` holds the books added with "Add a Book" ([The home page](home.md)). |
 | `jobs` | `../runs/.app` | The job files, their logs, and the app's own small files (below). |
 | `max_jobs` | `2` | How many jobs run at once, across every run (open review pages do not count until they apply). |
+| `batch_jobs` | `2` | Books a batch runs at once (`JOBS`; at most `max_jobs`). A batch job takes that many places. |
+| `upload_max_mb` | `1024` | The largest PDF "Add a Book" accepts, in MB. |
+| `limits` | `{"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 5}` | Dollars: what the estimates are compared with, and the most a Spend may bind (`MAX_USD`, `BOOK_MAX_USD`, `BATCH_MAX_USD`). The pipeline's own caps stay as they are. |
 | `tools.VERAPDF` | empty | The veraPDF launcher. Empty: `verapdf` on the PATH. |
 | `tools.path_prepend` | `[]` | Folders put first on the PATH the app's commands get, for example Java's. |
 
@@ -53,12 +56,12 @@ On Linux or WSL, Java is usually on PATH already. If it is not, use the folder `
 
 **veraPDF is never off in the app.** `VERAPDF=off` is refused from any source: a settings file, `--config`, or the shell. The start check passes only with a veraPDF version line; the command line's `VERAPDF=off` (which `vera.py --check` accepts) does not count. The app's own tests do not weaken this: they unset `VERAPDF` and give, through `--config`, a small script that answers `--version` as veraPDF does. No setting skips the check.
 
-`test_reply_dir` is for the tests of the planned home page. It is accepted only from `--config`, never from a settings file.
+`test_reply_dir` and `test_batch_from` are for the app's tests ([The home page](home.md#test-mode)). They are accepted only from `--config`, never from a settings file; `test_reply_dir` is relative to `pipeline/`, as the folders are.
 
 **What the app's commands get.** Each command starts from a clean environment:
 - **Kept from the shell that started the app:** `PATH`, `HOME`, `LANG`, `LC_*`, `TMPDIR`, `USER`, `LOGNAME`, `SHELL`.
 - **Put first on PATH:** the venv's `bin/` and `path_prepend`.
-- **Added:** `VERAPDF` from the settings, and the variables the job itself sets.
+- **Added:** `VERAPDF` from the settings, and the variables the job itself sets, from a fixed list: `REVIEW`, `AUTO`, `ESTIMATE`, `OCR_LANG`, `RUN_DIR`, `INTAKE_REUSE`, `REPLY`, `MAX_USD`, `INTAKE`, `OUT`, `JOBS`, `BATCH_MAX_USD`, `BOOK_MAX_USD`, `RETRY`, `MODEL` (only a Claude model, the one the estimate used) and `FROM` (test mode only). Never `FORCE_OCR`.
 - **Dropped:** everything else, for example `MODEL`, `REPLY`, `FROM`, `KEEP`, `RUNS_DIR`, `OCR_LANG`, `MAX_TOKENS` or an API key exported in the shell. So no setting meant for one terminal run changes an app job.
 - The job file records the whole environment each command was given.
 
@@ -121,7 +124,8 @@ A run that `REVIEW=1` stopped before its first review (`workorder.ai.json`, no `
 - **The limit:** up to `max_jobs` jobs run at once, oldest first. Others wait in line, and each card says where.
 - **An open review page waits on a person,** so it does not count until it is past Finish (applying).
 - **One job at a time per run.** A second click is refused with the reason: another job for this run is waiting or running, or `reviews/.lock` is held by a review started from a terminal.
-- **Two app servers on one jobs folder** (see `--port` below) share the queue and the limit.
+- **Two app servers on one jobs folder** (see `--port` below) share the queue and the limit. A second app started with `--port` runs the start-up step that turns queued paid jobs into "needs Spend again", including the first app's: that fails safe (nothing is sent; a new estimate goes on).
+- **Related runs** (a batch and its books) never run jobs at the same time, and a batch job takes `batch_jobs` places ([The home page](home.md#batches)).
 
 ## When something goes wrong
 
@@ -136,6 +140,8 @@ A run that `REVIEW=1` stopped before its first review (`workorder.ai.json`, no `
 - **A run someone else is working on:** the page says who or what and since when, never a process id: "Someone is already reviewing this run (since 14:02). Try again when they're done." (for an apply: "This run is being applied …"). When that other review is a review page the app didn't start (a terminal's `--reopen` or `review_ocr.py --serve`), **Stop the Other Review** asks first ("The other review's session stays open; nothing is lost.") and sends it Ctrl+C, as Stop does; it is refused once that review is past Finish. The lock counts only while its process is alive and is a review process (its command line names `review_workorder.py` or `review_ocr.py`), so a process id the system has reused for something else never blocks a run.
 - **Is a job still running?** The app looks for the job's own command (its process id, recorded by the job's wrapper) and for any process of the job's group whose command line is this job's: the wrapper with the job's id, or the command's script with the run folder, compared as the filesystem compares paths (`~/downloads` and `~/Downloads` are one folder on a Mac). When it cannot tell, it counts the job as running. A job marked interrupted whose process turns out to be alive is shown as running again, with **Open the Review Page** and **Stop Reviewing**.
 - **Messages that name a button, view or section** put the name in quotes, as it appears on screen: 'press "Continue Review" to carry on'.
+- **A run started from the home page** that stops shows its reason in plain words, what the person can do, and a folded **Details** with the step, the exit code, the tool's own line, the record and the log ([The home page](home.md#when-a-run-stops)). This widens "no log lines" to that one folded line.
+- **File names on the page:** one exception to "no file names": wherever a book is named, "Source PDF Filename: <file name>" follows its display name ([The home page](home.md#the-home-page)).
 - **The app not running:** a banner says so, with the start command. Jobs already running carry on.
 
 ## Stopping and starting again
@@ -158,7 +164,7 @@ The panel follows WCAG 2.1 AA, the project's standard:
 - **In-page links move focus**, so a screen reader's cursor follows: the skip link ("Skip to the content") focuses the page's `<main>`; the report's § and Details links, its page map, and the review page's side list focus their target. Headings, sections and messages focused this way show no outline; the row a Details or § link lands on in the report keeps a thin blue outline (2 px), so a sighted reader sees where it landed. The page map is unchanged.
 - **Messages** (for example "Session 9 is discarded: …" or "The review page is closed. …") have a **×** button named "Dismiss message" (the × itself is hidden from screen readers). Dismissing moves focus to the **Run Actions** heading; any other panel button clears the message too. A message has a neutral box; an error keeps its red border and has the same button.
 - **Announcements:** one polite live region, and only for a step change, a job's start, "the review page is ready", and a job's end. It never reads out log lines.
-- **Focus:** it moves only after your own action. After a click it goes to the new job's heading, or to the refusal message. After Finish it goes to the apply's heading on the run page; after **Show the New Result**, to "Current Result". When a job ends in the background it is announced ("New result ready" when an apply has made one), and focus stays where it is. The panel checks the run every second while a job runs or a review is open (every 5 s otherwise) and is redrawn only when what it shows changed, so a review page saving its draft never replaces the buttons under the mouse or a text selection.
+- **Focus:** it moves only after your own action. After a click it goes to the new job's heading, or to the refusal message. After Finish it goes to the apply's heading on the run page; after **Show the New Result**, to "Current Result". When a job ends in the background it is announced ("New result ready" when an apply has made one), and focus stays where it is. One exception (Patrick, 2026-11-05): when a run started with **Spend** stops for review, focus moves to **Open the Review Page** only when it is still where the page put it after the click and no key or click has happened since ([The home page](home.md#a-single-run)). The panel checks the run every second while a job runs or a review is open (every 5 s otherwise) and is redrawn only when what it shows changed, so a review page saving its draft never replaces the buttons under the mouse or a text selection.
 - **Going on by itself:** only one thing does, the review page after your own **Review Again**, and only within 30 seconds of the click while you have not pressed a key or clicked since. Otherwise it says the page is ready and shows **Open the Review Page**. A new result never replaces the page you are reading.
 - **Status words:** a review closed with **Stop reviewing** says "Stopped (the session stays open)".
 - **The panel's place:** it comes after the report's own heading and before its content, so the page's h1 comes first.

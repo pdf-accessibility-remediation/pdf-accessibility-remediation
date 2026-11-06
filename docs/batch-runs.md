@@ -5,6 +5,9 @@ nav_order: 5
 
 # Batch runs
 
+Batches can also be started from the app's home page, with a cost estimate before any paid call and a page that follows
+every book: see [The home page](home.md#batches). The commands below are what the app runs.
+
 ```bash
 AUTO=1 bash batch_api.sh batch1                                         # every PDF under samples (all subfolders)
 AUTO=1 bash batch_api.sh batch1 ../samples/tagged                    # one folder

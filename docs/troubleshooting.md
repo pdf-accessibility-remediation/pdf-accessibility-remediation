@@ -23,6 +23,25 @@ nav_order: 12
 
 A failed call that OpenRouter did charge for is logged with its cost and counted in the record and the summary; a rerun with the same label makes a new call.
 
+## Runs started from the app
+
+A run started from the home page that stops shows a card with the reason in plain words and a folded **Details** (the
+step, the exit code, the tool's own line, the record and the log). Every case is a row of `webapp/failures.py`, keyed by
+step; each matched string is checked against the tool that prints it (`tests/test_failures.py`). In short:
+
+| Step | Cases (the card's headline) | The tool's own words (in Details) |
+|---|---|---|
+| Starting | the book's file can't be found; the app's tools are not set up; the run has already finished; it is waiting for a review; not the same file; a cost limit the run couldn't read | run_api.sh's first lines |
+| Intake | locked with a password; a newer format (PDF 2.0, namespaced tags); nothing to tag; the text doesn't match the pages; Chinese, Japanese or Korean text needs its OCR language; can't be opened; a tool is missing; a safety check (a step changed pages); recognition or tagging failed; an error | `_intake/intake.json` `summary` |
+| Estimate | the request couldn't be built; the model can't take this book; an error | decide.py's line |
+| AI call | the connection failed before anything was sent; the cost went over the limit after the estimate (nothing sent); not enough credit; no key; the service refused; busy (429); the connection was lost during the call (charge unknown); the answer was cut off (its cost kept); the answer couldn't be read; a new AI call is needed (a free rerun that would have called) | decide.py's line, `run.json` `error` |
+| Review, apply | the review page couldn't be prepared; decisions made for another file; an error while applying, checking or writing the report | the step's log line |
+| Interrupted | stopped before it finished (nothing sent); stopped during the AI call (charge unknown); stopped after the reply (going on is free) | the job file |
+
+"The text doesn't match the pages" offers no button: a person compares pages, or whoever looks after the app runs the book
+with every page recognized again from the terminal (`FORCE_OCR=1 OCR_LANG=… bash run_api.sh …`, in Details). An encrypted
+PDF with only an owner password is not caught yet (branch reject-encrypted).
+
 ## Not supported yet: PDF 2.0
 
 The pipeline is built for PDF 1.x tagging (PDF/UA-1): veraPDF runs the PDF 1.x WCAG profile, and the audit, executor and checks read only the plain `/RoleMap`. Every sample book is PDF 1.3–1.7, and the auto-tagger writes PDF 1.x. A PDF 2.0 book is therefore **stopped before any paid call and before any change**, and goes to a person.
