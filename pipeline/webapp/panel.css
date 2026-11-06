@@ -173,3 +173,4 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
   body.bn-on .bn:not(.closed) { position: fixed; top: 0; left: 0; bottom: 0; width: 16rem; margin: 0; border-radius: 0; border-width: 0 1px 0 0; overflow-y: auto; z-index: 5; }
 }
 @media (max-width: 640px) { .bn { margin: 8px 10px; } }
+.pp .pp-cleared { margin: 8px 0; }

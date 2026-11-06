@@ -329,6 +329,35 @@ function pruneDlg(p, opener) {                                    // a checkbox 
     d.showModal(); $('pp-prune-0').focus();
   });
 }
+// "Clear This Book's Files" (#45): only here, only once its gate is open (a shipped book whose record ZIP was downloaded);
+// never prompted or suggested anywhere else. The dialog says what goes and what stays, and asks for a name and CLEAR.
+function clearBlock(s) {
+  if (!s.clear) return '';
+  return '<div class="pp-row"><button type="button" id="pp-clear" data-act="clear">Clear This Book\'s Files</button></div>';
+}
+function clearDlg(c, opener) {
+  return new Promise(res => {
+    const d = $('pp-dlg');
+    d.innerHTML = '<h2 id="pp-dlg-h">Clear This Book\'s Files</h2>' + (c.resume ? '<p>Clearing stopped partway; this finishes it.</p>' : '') +
+      '<p>Deletes the working files this book no longer needs now that it has shipped' + (c.shipment ? ' (Shipment ' + esc(c.shipment) + ')' : '') + ', to free up space:</p><ul>' +
+      c.goes.map(g => '<li>' + esc(g.what) + ' · ' + esc(g.size) + '</li>').join('') + '</ul><p>Kept: every record (the decisions, the reviews, the evaluation, ' +
+      'the reports), the shipped copy with its report, and the original PDF. Afterwards this book can\'t be reviewed or changed here; a new run of it can.</p>' +
+      '<p><label for="pp-clear-by">Your Name</label><br><input type="text" id="pp-clear-by" autocomplete="name"></p>' +
+      '<p><label for="pp-clear-ok">Type ' + esc(c.confirm) + ' to Confirm</label><br><input type="text" id="pp-clear-ok" autocomplete="off" spellcheck="false"></p>' +
+      '<p>This can\'t be undone.</p><p id="pp-clear-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Clear This Book\'s Files</button>' +
+      '<button type="button" value="no">Cancel</button></div>';
+    const id = opener.id, done = v => { d.close(); ($(id) || opener).focus(); res(v); };
+    d.querySelector('button[value=no]').addEventListener('click', () => done(null));
+    d.querySelector('button[value=yes]').addEventListener('click', () => {
+      const by = $('pp-clear-by').value.trim(), ok = $('pp-clear-ok').value.trim();
+      if (!by) { $('pp-clear-err').textContent = 'Enter your name in "Your Name."'; $('pp-clear-by').focus(); return; }
+      if (ok !== c.confirm) { $('pp-clear-err').textContent = 'Type ' + c.confirm + ' to confirm.'; $('pp-clear-ok').focus(); return; }
+      done({ by, confirm: ok });
+    });
+    d.oncancel = ev => { ev.preventDefault(); done(null); };
+    d.showModal(); d.querySelector('button[value=no]').focus();
+  });
+}
 function historyBlock(s) {
   const rows = (s.sessions || []).slice().sort((a, b) => Number(b.id) - Number(a.id));   // newest first
   let h = '<details id="pp-hist"><summary>Session History (' + rows.length + ')</summary>';
@@ -341,7 +370,7 @@ function historyBlock(s) {
       '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td class="pp-nw">' + esc(r.date || r.started ? fmtDay(r.date || r.started) : 'not recorded') + '</td><td class="pp-nw">' + esc(/^session \d/.test(r.from_label) ? cap(r.from_label) : r.from_label) +
       '</td><td>' + esc(r.changes) + '</td><td>' + esc(r.since_start) + '</td><td>' +
       (r.notes ? '<button type="button" class="pp-link" id="pp-notes-' + esc(r.id) + '" data-act="notes" data-id="' + esc(r.id) + '">Notes</button>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') + (r.pdf_removed ? '<span class="pp-note"> · PDF removed</span>' : '') +
-      '</td><td>' + ((r.status === 'finished' || r.status === 'applied') && !s.live_review && !s.lock ? '<button type="button" id="pp-from-' + esc(r.id) + '" data-act="review" data-from="' + esc(r.id) + '">' + esc(tc('Review again from ' + r.label)) + '</button>' : '') +
+      '</td><td>' + ((r.status === 'finished' || r.status === 'applied') && !s.live_review && !s.lock && !s.cleared ? '<button type="button" id="pp-from-' + esc(r.id) + '" data-act="review" data-from="' + esc(r.id) + '">' + esc(tc('Review again from ' + r.label)) + '</button>' : '') +
       '</td></tr>').join('') + '</tbody></table></div>';
   if (s.ai_result) h += '<p><a href="' + esc(s.ai_result) + '">The result applied without review</a> (kept with the run).</p>';
   return h + '</details>';
@@ -358,8 +387,8 @@ function stripBlock(s, inPanel) {
   const now = (m.status || '') + (m.newer ? ' · ' + m.newer : ''), card = (m.card_status || '') + (m.card_newer ? ' · ' + m.card_newer : '');
   if (m.status && now !== card) h += '<p><b>Status now:</b> ' + esc(now) + ' <span class="pp-note">(the report on this page was written before this)</span></p>';
   if (m.refusal) h += '<p class="pp-warn-t">' + esc(m.refusal) + '</p>';
-  h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-mc-open" href="checks">Complete Evaluation</a></div>' +
-    shipBlock(m.ship) + dlForm(m.downloads, inPanel ? 'h4' : 'h3') + '</section>';
+  if (!(st && st.cleared)) h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-mc-open" href="checks">Complete Evaluation</a></div>';
+  h += shipBlock(m.ship) + dlForm(m.downloads, inPanel ? 'h4' : 'h3') + '</section>';
   return h;
 }
 // "Mark as Shipped" (stage 4): offered only when the gate is open (webapp/manualpage.py ship_gate: current Ready, the file
@@ -544,9 +573,13 @@ function render() {
   else if (s.ocr && ocrSeen !== undefined && s.ocr.recorded !== ocrSeen)   // a verdict recorded since this page loaded: never reloads by itself
     h += '<p><b>OCR Verdict Recorded:</b> ' + esc(s.ocr.verdict || 'a new verdict') + '. The report below was made before it.</p>' +
       '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Updated Report</button></div>';
+  if (s.cleared) h += '<div class="pp-msg pp-okmsg pp-cleared"><span class="pp-msg-t">' + (s.cleared.state === 'done' ?
+      'This book\'s working files were cleared on ' + esc(s.cleared.day) + (s.cleared.shipment ? ' after it shipped as Shipment ' + esc(s.cleared.shipment) : '') +
+      ' (' + esc(s.cleared.mb) + ' MB freed). Its records and the shipped copy are kept; to work on it again, start a new run of the book from the home page.'
+      : 'Clearing this book\'s files stopped partway. "Clear This Book\'s Files" finishes it.') + '</span></div>';
   if (s.replay) h += '<p>A new run of this book from its saved AI reply can be made instead (free, no AI call; it runs on today\'s pipeline, so it is not a review of this result).</p>' +
     '<div class="pp-row"><button type="button" id="pp-replay" data-act="replay">New Run from the Saved Reply</button></div>';
-  h += actions(s) + jobsBlock(s) + historyBlock(s) + pruneBlock(s);
+  h += (s.cleared && s.cleared.state === 'done' ? '' : actions(s)) + jobsBlock(s) + historyBlock(s) + (s.cleared ? '' : pruneBlock(s)) + clearBlock(s);
   // replaced only when it changed, as the strip is: a poll whose data changed but not what the panel shows (the review
   // page saving a session's draft while a review is open) never swaps the buttons under the mouse or a selection
   const body = $('pp-body');
@@ -564,6 +597,15 @@ box.addEventListener('click', async e => {
   if (act === 'notes') {                                         // a session's notes, read-only, in the pop-up box
     const r = (st.sessions || []).find(x => String(x.id) === b.dataset.id); if (!r) return;
     return notesBox(tc('Notes: ' + r.label) + (r.name ? ' · ' + r.name : ''), r.notes || '', b, String(r.id));
+  }
+  if (act === 'clear') {                                         // "Clear This Book's Files": then the home page
+    const c = st.clear; if (!c) return;
+    const v = await clearDlg(c, b); if (!v) return;
+    try {
+      const [code, r] = await api(API + '/clear', v);
+      if (code !== 200) return msg(r.error || 'The files were not cleared.', false, true);
+      location.assign(r.location || '/'); return;
+    } catch (e) { return msg('The app is not running. ' + START, false, true); }
   }
   if (act === 'prune') {                                         // "Clean Up Space": select in the dialog, then remove exactly those
     const p = st.prune; if (!p) return;

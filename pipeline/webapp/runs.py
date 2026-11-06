@@ -205,6 +205,27 @@ def after_interrupt(R, j):
 
 def run_path(run): return os.path.join(*run.split('/'))
 
+def cleared_view(R):
+    """A cleared book's note for the panel: when, by whom, the shipment, the space freed; or None."""
+    c = REL.cleared(R)
+    if not c: return None
+    return {'state': c.get('state'), 'day': D.day(c.get('cleared') or c.get('planned')), 'by': c.get('by'), 'shipment': c.get('shipment'),
+            'mb': round((c.get('freed_bytes') or 0) / 1e6, 1)}
+
+def clear_offer(s, run, R, rec):
+    """"Clear This Book's Files" (#45, review/clear.py): offered only when its gate is open (never prompted elsewhere), with
+    what goes and what stays in words and sizes. Hashes come from the app's display cache; the clear itself hashes afresh."""
+    from review import clear as CL
+    from . import manualpage
+    try:
+        g = CL.gate(R, rec, sha=manualpage.disk_sha, busy=lambda: jobs.busy(s['jobs'], run, R))
+        if not g['ok']: return None
+        items = CL.plan(R, g['sha'], sha=manualpage.disk_sha, rec=rec) if not g.get('resume') else (REL.cleared(R) or {}).get('files') or []
+    except (OSError, ValueError, KeyError, TypeError): return None
+    return {'shipment': g['shipment'], 'resume': bool(g.get('resume')), 'confirm': CL.CONFIRM,
+            'goes': [{'what': x['what'], 'files': x['files'], 'size': f'{x["bytes"] / 1e6:.1f} MB'} for x in CL.summary(items)],
+            'size': f'{sum(x["bytes"] for x in items) / 1e6:.1f} MB'}
+
 def replay_offer(s, run, R):
     """"New Run from the Saved Reply" (decided 2026-10-28) is offered once a review of this run was refused because the
     run can no longer be reviewed (review/sessions.py FALLBACK), and the run has a saved reply and is not cleared."""
@@ -265,7 +286,7 @@ def state(s, run, R):
     from lib import costs
     return {
         'run': run, 'mode': 'finished', 'file': (rec.get('document') or {}).get('file') or '', 'cost': costs.actual(R),
-        'cleared': REL.cleared(R), 'replay': replay_offer(s, run, R),
+        'cleared': cleared_view(R), 'clear': clear_offer(s, run, R, rec), 'replay': replay_offer(s, run, R),
         'title': (rec.get('document') or {}).get('file') or run, 'review_html': os.path.isfile(os.path.join(R, 'review.html')),
         'review_md': os.path.isfile(os.path.join(R, 'review.md')), 'ready': ready(R, rec),
         'current': {'id': cur, 'label': S.label(cur)}, 'pending': (rec.get('review') or {}).get('pending'),

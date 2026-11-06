@@ -181,7 +181,8 @@ def lock_holder(R):
 
 LOCK_WORDS = {'reopen': 'Someone is already reviewing this run', 'ocr review': 'Someone is already reviewing this run\'s OCR text',
               'ocr verdict': 'An OCR verdict is being recorded for this run', 'apply': 'This run is being applied',
-              'discard': 'A session of this run is being discarded', 'clean up space': 'PDFs of this run\'s previous versions are being removed'}
+              'discard': 'A session of this run is being discarded', 'clean up space': 'PDFs of this run\'s previous versions are being removed',
+              'clear': 'This book\'s files are being cleared'}
 
 def lock_words(what, since):
     """The run's review lock in plain words for the pages: who or what holds it and since when, no process id."""

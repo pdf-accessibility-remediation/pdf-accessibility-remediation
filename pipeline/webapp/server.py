@@ -303,7 +303,7 @@ def make(s, setup, code=None):
             if segs and len(segs) >= 3 and segs[-2] == 'checks' and segs[-1] in ('draft', 'record'):   # two-segment actions: the run is segs[:-2]
                 return self.checks_post(segs[:-2], segs[-1], body)
             PEND = ('spend', 'estimate', 'dismiss', 'retry')
-            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship', 'replay') + PEND:
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship', 'replay', 'clear') + PEND:
                 return self.send(404, {'error': 'not found'})
             hit = find_run(s['runs'], segs[:-1], waiting=segs[-1] in ('review', 'apply', 'stop'), pending=(lambda d: runs.pending(s, d)) if segs[-1] in PEND else None)
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
@@ -339,6 +339,16 @@ def make(s, setup, code=None):
                 self.send(200, {'shipped': {'n': e['n'], 'shipped': e['shipped']}})
                 threading.Thread(target=S.rebuild_batch, args=(R, lambda *a: None), daemon=True).start()
                 return
+            if segs[-1] not in ('clear', 'stop', 'stop-other') and REL.cleared(R):   # a cleared book is read only (#45): its own words first
+                return self.send(409, {'error': S.CLEARED})
+            if segs[-1] == 'clear':                             # "Clear This Book's Files" (#45): review/clear.py, its locks and its gate
+                from review import clear as CL
+                def busy():                                     # read under the dispatch lock while reviews/.lock is held (03 §10)
+                    with jobs.locked(J): return jobs.busy(J, run, R)
+                try: c = CL.clear(R, str(body.get('by') or ''), str(body.get('confirm') or ''), busy=busy, wait=runlock.REQUEST_WAIT)
+                except S.Refused as e: return self.send(409, {'error': str(e)})
+                applog(f'{run}: cleared by {c.get("by")}: {len(c.get("files") or [])} files, {c.get("freed_bytes")} bytes')
+                return self.send(200, {'cleared': {'files': len(c.get('files') or []), 'bytes': c.get('freed_bytes'), 'shipment': c.get('shipment')}, 'location': '/'})
             if segs[-1] == 'remove-older-pdfs':                 # "Clean Up Space", in this process, through review/prune.py (its locks, its refusals)
                 from review import prune
                 chosen = body.get('chosen') if isinstance(body.get('chosen'), list) else []
@@ -539,6 +549,9 @@ def make(s, setup, code=None):
             else:
                 self.end_headers()                       # HTTP/1.0, no Content-Length: the end of the stream ends the body
                 DL.stream_zip(self.wfile, d)
+                self.wfile.flush()
+                try: DL.note_download(d)                 # every byte written: the download is recorded (#45, clearing's gate)
+                except Exception as e: applog(f'{run}: download not recorded ({type(e).__name__}: {e})')
 
         def run_page(self, run, R):
             f = os.path.join(R, 'review.html')

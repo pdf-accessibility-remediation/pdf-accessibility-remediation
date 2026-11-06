@@ -53,6 +53,15 @@ def P(R):
             'work': os.path.join(b, 'work'), 'promoting': os.path.join(b, 'promoting.json'),
             'items': os.path.join(b, 'review_items.json'), 'draft': os.path.join(b, 'review_decisions.json')}
 
+CLEARED = ('This book\'s working files were cleared after it shipped, so it can\'t be changed here. To work on it again, start a new '
+           'run of the book from the home page.')
+
+def not_cleared(R):
+    """Refused when the run's working files were cleared (or a clear is under way: release/cleared.json in either state;
+    review/clear.py, #45). Every command that writes a new version or result checks it, from the app or the terminal."""
+    from lib import release as REL
+    if REL.cleared(R): raise Refused(CLEARED)
+
 class Refused(Exception):
     """A check failed: nothing was written."""
 
@@ -141,6 +150,7 @@ def pin(R, pdf=None, say=say_):
     (the whole texts review.md quotes) and the OCR word sheets with a basis record. Writes only reviews/basis.json and
     reviews/_audit/{digest.json, fulltext.json, ocr_words/}; never touches record.json, review.md, review.html or the PDF.
     A run already pinned without fulltext.json gets it added (top_up). Returns what happened; raises Refused."""
+    not_cleared(R)
     R = os.path.abspath(R); p = P(R)
     if os.path.exists(p['basis']) and os.path.exists(os.path.join(p['audit'], 'digest.json')): return top_up(R, pdf, say)
     old = basis(R)                                         # a basis with no digest (a KEEP=1 review run): keep its run id
@@ -175,6 +185,7 @@ def replay_to(R, D):
     and beside D the reply (<D>.reply.txt) and its meta (model, temperature, the OCR-word list it was written for).
     Without the intake copy, run_api.sh would redo OCR and auto-tagging and the reply's ids could name other elements.
     The new run is on today's code: it is not a review of R's result. Returns (reply path, the command to run)."""
+    not_cleared(R)
     R, D = os.path.abspath(R), os.path.abspath(D)
     rec = load(os.path.join(R, 'record.json'))
     if not rec or not rec.get('raw_reply'): raise Refused(f'{R} has no record.json with a saved reply (raw_reply)')
@@ -500,6 +511,7 @@ def open_session(R, rec, src=None, pdf=None, discard_open=False, say=say_):
     """Open a review of a finished run: a new session preloaded from src ('ai', an earlier session id, or None: the latest
     finished or applied one), or the open one carried on. Writes reviews/review_items.json (with the page's session
     block) and reviews/review_decisions.json for review/server.py. Returns the session record."""
+    not_cleared(R)
     p = P(R)
     b, inp, ai = check_basis(R, rec, pdf)
     digest = load(os.path.join(p['audit'], 'digest.json'))
@@ -687,6 +699,7 @@ def _run(args, say, what, quiet=False):
 def reapply(R, s, pdf=None, say=say_):
     """Apply session s's reviewed order to the run's input (no AI call), verify, report, and make it the current version.
     The current version is moved to reviews/versions/<its id>/ only after all three succeed."""
+    not_cleared(R)
     R = os.path.abspath(R); p = P(R)
     rec = load(os.path.join(R, 'record.json'))
     b, inp, ai = check_basis(R, rec, pdf)

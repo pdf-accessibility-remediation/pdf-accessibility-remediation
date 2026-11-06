@@ -78,11 +78,13 @@ def versions(R, rec, glance=None):
         out.append({'id': n, 'session': n if str(n).isdigit() else None, 'dir': d, 'pdf': pdf, 'sha': MP.disk_sha(pdf),
                     'state': 'earlier version', 'status_text': None, 'label': f'{_version_label(n)[0].upper() + _version_label(n)[1:]} (previous version)'})
     changed = MP.disk_state(R, rec)['same'] is False
+    cleared = bool(REL.cleared(R))
+    if cleared: out = [x for x in out if x['id'] != 'current']   # #45: the working PDF was cleared; the shipped copies stay (02 B2)
     for s in reversed(rel.get('shipped') or []):             # shipped copies: listed when the current entry is not them (M7)
         d = _shipped_dir(R, s); f = (s.get('pdf') or {}).get('file')
         if not d or not plain_name(f) or not os.path.isfile(os.path.join(d, f)): continue
         ssha = REL.sha_of(s)
-        if ssha == out[0]['sha'] and not changed and not s.get('withdrawn'): continue
+        if not cleared and ssha == cur_sha and not changed and not s.get('withdrawn'): continue
         ses = (s.get('pdf') or {}).get('session')
         out.append({'id': f'shipment-{s.get("n")}', 'session': ses, 'dir': d, 'pdf': os.path.join(d, f), 'sha': ssha, 'shipment': s.get('n'), 'entry': s,
                     'state': 'withdrawn' if s.get('withdrawn') else REL.SHIPPED, 'status_text': None,
@@ -156,7 +158,7 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
                 if os.path.isfile(han): members.append(('han_review.csv', open(han, 'rb'), zipfile.ZIP_DEFLATED))
                 cur_label = _version_label(S.current_id(rec))
                 book = MP.book(rec)['title']
-                return {'name': zip_name, 'ctype': 'application/zip', 'members': members, 'folder': zip_name[:-4], 'rel': rel, 'version': ver,
+                return {'name': zip_name, 'ctype': 'application/zip', 'members': members, 'folder': zip_name[:-4], 'rel': rel, 'version': ver, 'R': R,
                         'shipments': [s for s in rel.get('shipped') or [] if REL.sha_of(s) == ver['sha']],
                         'pdf_name': out, 'book': book, 'cur_label': cur_label,
                         'applied': MP.version(R, rec)['when'] if ver['id'] == 'current' else _applied(R, ver['id'], vrec),
@@ -319,3 +321,22 @@ def stream_zip(w, d):
             zf.writestr(zi, _readme(d, sha).encode('utf-8'))
     finally:
         for _, fh, _ in d['members']: fh.close()
+
+def note_download(d):
+    """#45: after the record ZIP's last byte was written to the response, release/downloads.json gets one line when the ZIP
+    is of a live shipment's file (clearing's gate reads it). Appended under the record lock, taken for the write only, so
+    two downloads can finish together. "Downloaded" means the app sent every byte; whether the person kept it is not known."""
+    from review.ocr import put_json
+    R, ver = d.get('R'), d.get('version') or {}
+    if not R: return None
+    with runlock.record_lock(R, runlock.REQUEST_WAIT):
+        rel = REL.load(R)
+        live = next((s for s in REL.live_shipments(rel) if REL.sha_of(s) == ver.get('sha')), None)
+        if not live: return None
+        p = os.path.join(R, 'release', 'downloads.json')
+        try: log = REL._json(p, [])
+        except (OSError, ValueError): log = []
+        e = {'what': 'record', 'version': ver.get('id'), 'sha256': ver.get('sha'), 'shipment': live.get('n'), 'complete': True,
+             'at': datetime.datetime.now().isoformat(timespec='seconds')}
+        put_json(p, (log if isinstance(log, list) else []) + [e])
+        return e
