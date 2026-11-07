@@ -16,8 +16,10 @@ those kinds; and never as a `then` (a paid job always comes from its own Spend c
 
 Runs are related (one blocks the other) when they are the same run or one is inside the other: a batch
 (batches/<label>) and its books (batches/<label>/<name>), in busy() and in tick(). Every counted job takes one place of
-max_jobs, a whole batch included, whatever its JOBS (Patrick, 2026-11-06: the app does one run at a time, single or
-batch); jobs start oldest first, so nothing is passed over.
+max_jobs (3: up to three single runs at once); a batch runs alone, with its own batch_jobs books at a time: it starts
+only when no counted job runs, and nothing counted starts while it runs (D1, Patrick 2026-11-06). Jobs start oldest
+first, so nothing is passed over: a queued batch holds every newer job behind it until the runs before it end. Not
+queued: "Review Again"'s apply, which runs inside its own review process after "Finish Review" (accepted, 08 D1).
 
 Each job runs under webapp/jobrun.py, started in a new session (its own process group), so Ctrl+C on the app does not
 reach it. Liveness is the process group: os.killpg(pgid, 0), and a process in that group whose command line is the
@@ -278,15 +280,17 @@ def tick(J, s):
                 save(J, nxt); j['then_job'] = nxt['id']; save(J, j); jobs.append(nxt)
         running = [j for j in jobs if j['status'] == 'running']
         n = sum(counts(j, s['runs']) for j in running)
+        batch_on = any(j['kind'] == 'batch' for j in running)   # a batch runs alone (D1, Patrick 2026-11-06)
         busy_runs = [j['run'] for j in running]
         held = False                                    # once a counted job waits for a place, newer counted jobs wait behind it
         for j in sorted((j for j in jobs if j['status'] == 'queued'), key=lambda j: j['id']):
             if any(related(j['run'], r) for r in busy_runs): continue
             if j.get('counted', True):
-                if held or n + 1 > s['max_jobs']:
+                alone = j['kind'] == 'batch'
+                if held or batch_on or n + 1 > s['max_jobs'] or (alone and n > 0):
                     held = True                         # oldest first: a newer counted job never passes an older one
                     continue
-                n += 1
+                n += 1; batch_on = batch_on or alone
             _start(J, j); busy_runs.append(j['run'])
 
 def recover(J):

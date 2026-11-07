@@ -139,27 +139,36 @@ def test_busy_by_prefix_both_ways(setup):
     assert jobs.busy(J, 'batches/x', str(setup)) and not jobs.busy(J, 'batches/x2', str(setup))
     with pytest.raises(ValueError): jobs.create(J, 'batch', 'batches/x', ['true'], config.child_env(s), R=str(setup), paid=True, fingerprint='f')
 
-def test_one_run_at_a_time_a_batch_is_one_place_and_a_new_run_waits(setup):
-    """Patrick, 2026-11-06: max_jobs 1; a batch takes one place whatever its JOBS (batch_jobs 10); a New Run's estimate
-    queued behind it says what it waits for, by its plain name, and starts when the batch ends; nothing starves."""
+def test_three_runs_at_once_and_a_batch_runs_alone(setup):
+    """D1 (Patrick, 2026-11-06): up to max_jobs (3) single runs at once; a batch runs alone (batch_jobs 10 books): a New
+    Run's estimate queued behind a running batch says what it waits for, by its plain name, and starts when the batch
+    ends; a queued batch waits for the single runs before it and holds every newer one; nothing starves."""
     from webapp import names as NM
-    s = settings(setup, max_jobs=1, batch_jobs=10, test_batch_from='v8-p7a'); J = s['jobs']
-    b = jobs.create(J, 'batch', 'batches/x', [sys.executable, '-c', 'import time; time.sleep(1.5)'], config.child_env(s, {'JOBS': '10'}),
-                    env_set={'JOBS': '10'}, paid=True, fingerprint='f')
+    s = settings(setup, max_jobs=3, batch_jobs=10, test_batch_from='v8-p7a'); J = s['jobs']
+    sleep = lambda x: [sys.executable, '-c', f'import time; time.sleep({x})']
+    b = jobs.create(J, 'batch', 'batches/x', sleep(1.5), config.child_env(s, {'JOBS': '10'}), env_set={'JOBS': '10'}, paid=True, fingerprint='f')
     NM.set_run_name(s, 'x', 'Spring backlist', kind='batches')
     jobs.tick(J, s)
-    assert jobs.load(J, b['id'])['status'] == 'running' and jobs.counts(jobs.load(J, b['id']), s['runs']) == 1
-    e = fake(setup, s, 'bk/r1', 0.1, 'estimate', kind='estimate')
-    late = fake(setup, s, 'bk/r2', 0.1, 'late', kind='estimate')
+    assert jobs.load(J, b['id'])['status'] == 'running'
+    e = [fake(setup, s, f'bk/r{i}', 1.0, f'e{i}', kind='estimate') for i in range(4)]
     jobs.tick(J, s)
-    v = RN.job_view(s, jobs.load(J, e['id']))
+    v = RN.job_view(s, jobs.load(J, e[0]['id']))
     assert v['status'] == 'queued' and v['waiting_for'] == 'the batch "Spring backlist"'
-    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, e['id'])['status'] in ('running', 'done'))[1], 30)
-    assert jobs.load(J, b['id'])['status'] == 'done'                       # it started only once the batch had ended
-    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, late['id'])['status'] == 'done')[1], 30)   # and the next after it
+    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, e[2]['id'])['status'] == 'running')[1], 30)
+    assert jobs.load(J, b['id'])['status'] == 'done'                       # they started only once the batch had ended
+    assert [jobs.load(J, x['id'])['status'] for x in e[:3]] == ['running'] * 3 and jobs.load(J, e[3]['id'])['status'] == 'queued'
+    b2 = jobs.create(J, 'batch', 'batches/y', sleep(0.5), config.child_env(s, {'JOBS': '10'}), env_set={'JOBS': '10'}, paid=True, fingerprint='f')
+    late = fake(setup, s, 'bk/late', 0.1, 'late', kind='estimate')
+    jobs.tick(J, s)
+    assert jobs.load(J, b2['id'])['status'] == 'queued' and jobs.load(J, late['id'])['status'] == 'queued'
+    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, b2['id'])['status'] in ('running', 'done'))[1], 30)
+    assert all(jobs.load(J, x['id'])['status'] == 'done' for x in e)     # the batch began only when every run before it ended
+    assert jobs.load(J, late['id'])['status'] in ('queued', 'done')
+    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, late['id'])['status'] == 'done')[1], 30)
+    assert jobs.load(J, late['id'])['started'] >= jobs.load(J, b2['id'])['ended']   # and the newer run after it
 
-def test_a_batch_runs_ten_books_at_once_with_one_place(setup):
-    s = settings(setup, max_jobs=1, batch_jobs=10)
+def test_a_batch_runs_ten_books_at_once(setup):
+    s = settings(setup, max_jobs=3, batch_jobs=10)
     total = costs.batch([str(run_folder(setup, name='batches', label='b/a', worst=0.5))])
     a = SP.authorize_batch(s, 'b', '/x/books.txt', total, 'f')
     assert a['env_set']['JOBS'] == '10' and 'slots' not in a['extra']

@@ -113,9 +113,11 @@ def job_view(s, j, with_text=False, offset=0):
     elif j['kind'] == 'batch': v['book_name'] = 'Batch ' + NM.shown_run(s, j['run'])
     v['run_name'] = NM.shown_run(s, j['run'])
     if j['status'] == 'queued':                                    # what it waits for, by its plain name (Patrick, 2026-11-06)
-        cur = next((x for x in jobs.all_jobs(s['jobs']) if x['status'] == 'running' and x.get('counted', True) and x['id'] != j['id']), None)
+        al = jobs.all_jobs(s['jobs'])                              # a batch runs alone (D1): a run waits for it by name;
+        cur = next((x for x in al if x['status'] == 'running' and x['kind'] == 'batch'), None) or \
+              next((x for x in al if x['status'] == 'running' and x.get('counted', True) and jobs.related(x['run'], j['run'])), None)
         if cur: v['waiting_for'] = ('the batch ' if cur['kind'] == 'batch' or cur['run'].startswith('batches/') else 'the run ') + \
-                                   f'"{NM.shown_run(s, cur["run"])}"'
+                                   f'"{NM.shown_run(s, cur["run"])}"'      #   else its place in line (3 runs at once)
     v['reason'] = reason(v) if j['status'] in ('failed', 'interrupted') else None
     if with_text:
         t, nxt = jobs.read_log(s['jobs'], j['id'], offset); v.update(text=t, next=nxt)

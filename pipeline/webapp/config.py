@@ -5,8 +5,8 @@ VERAPDF, the Java path) < --config FILE < an exported VERAPDF. Relative paths ar
 
     host, port         where the app listens. Only a loopback address is accepted until the app has logins.
     runs, samples, uploads, jobs   the folders (jobs: the queue, logs and the dispatch lock)
-    max_jobs           (1) runs at once: a single run or a whole batch is one place
-    batch_jobs         books of a batch in progress at once (batch_api.sh's JOBS); the batch still takes one place
+    max_jobs           (3) single runs at once; a batch runs alone (nothing else counted starts while it runs: D1)
+    batch_jobs         books of a batch in progress at once (batch_api.sh's JOBS, 10)
     max_books_per_batch   the most books New Batch accepts (the app only: batch_api.sh in a terminal has no cap)
     upload_max_mb      "Add a Book": the largest PDF accepted, in MB (default 1024)
     limits             dollars: per_call_usd (one AI call), per_book_usd (a book, #63), per_batch_usd (a batch); what the
