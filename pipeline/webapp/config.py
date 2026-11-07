@@ -24,7 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))           # pipeline/webapp/
 PIPELINE = os.path.dirname(HERE)                             # pipeline/
 ROOT = os.path.dirname(PIPELINE)                             # the repo
 FOLDERS = ('runs', 'samples', 'uploads', 'jobs')
-# what a child inherits from the app's own environment; everything else (MODEL, REPLY, FROM, KEEP, RUNS_DIR, RUN_DIR,
+# what a child inherits from the app's own environment (RUNS_DIR is always the app's runs folder); everything else (MODEL, REPLY, FROM, KEEP, RUN_DIR,
 # INTAKE, OCR, FORCE_OCR, MAX_TOKENS, VERAPDF=off, …) is dropped, and a job adds only its own whitelisted variables
 BASE_ENV = ('PATH', 'HOME', 'LANG', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL')
 JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD', 'INTAKE', 'OUT',
@@ -129,6 +129,7 @@ def child_env(s, job_env=None, environ=None):
     env['PATH'] = os.pathsep.join([os.path.dirname(sys.executable)] + s['tools']['path_prepend'] + [environ.get('PATH', '/usr/bin:/bin')])
     if s['tools']['VERAPDF']: env['VERAPDF'] = s['tools']['VERAPDF']
     env['PYTHONUNBUFFERED'] = '1'                            # the log fills as the tools print
+    env['RUNS_DIR'] = os.path.abspath(s['runs'])             # run_api.sh and batch_api.sh write where the app reads (a --config's own runs folder too)
     for k, v in (job_env or {}).items():
         if k not in JOB_ENV: raise ValueError(f'{k} is not a variable a job may set')
         if k == 'MODEL' and not str(v).startswith('anthropic/'): raise ValueError(f'MODEL {v!r}: the app sends only to a Claude model whose cost it can check')

@@ -249,7 +249,7 @@ def test_review_needs_the_original_and_then_queues_a_pin_and_the_review(app):
     nxt = j['then']['argv']
     assert nxt[1:] == ['review_workorder.py', str(R), '--reopen', '--from', 'ai', '--pdf', str(orig), '--no-browser', '--return-to',
                        f'http://127.0.0.1:{port}/run/book/r1/?after=finish'] and j['then']['counted'] is False
-    assert set(j['env']) <= set(config.BASE_ENV) | {'VERAPDF', 'PYTHONUNBUFFERED', 'LC_ALL', 'LC_CTYPE'}
+    assert set(j['env']) <= set(config.BASE_ENV) | {'VERAPDF', 'PYTHONUNBUFFERED', 'RUNS_DIR', 'LC_ALL', 'LC_CTYPE'}
     st, b = post(port, '/api/run/book/r1/review')
     assert st == 409 and 'already' in b['error']
     assert wait(lambda: jobs.load(str(t / 'runs' / '.app'), j['id'])['status'] in ('failed', 'done'), 60)

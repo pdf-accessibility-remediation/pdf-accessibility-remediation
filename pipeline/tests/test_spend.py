@@ -372,3 +372,10 @@ def test_start_remediation_is_described_by_its_worst_case_line():
         code = '\n'.join(l.split('//')[0] if f.endswith('.js') else l.split('#')[0] for l in src.splitlines())
         strings = re.findall(r"'([^'\n]*)'", re.sub(r'"""[\s\S]*?"""', '', code))
         assert not [s for s in strings if re.search(r'\bSpend\b', s)], f
+
+def test_a_job_writes_into_the_apps_runs_folder(setup):
+    """Round 4: a single run's run_api.sh used its default ../runs even when the settings named another runs folder; every
+    child now gets RUNS_DIR, the app's own runs folder."""
+    s = settings(setup)
+    assert config.child_env(s)['RUNS_DIR'] == os.path.abspath(s['runs'])
+    assert config.child_env(s, {'OCR_LANG': 'eng'}, environ={'RUNS_DIR': '/elsewhere'})['RUNS_DIR'] == os.path.abspath(s['runs'])

@@ -90,7 +90,7 @@ def test_child_env_is_clean(setup):
              'REPLY': 'r.txt', 'FROM': 'v8-g1', 'KEEP': '1', 'RUNS_DIR': '/x', 'RUN_DIR': '/y', 'INTAKE': 'off', 'OCR': 'off', 'FORCE_OCR': '1',
              'MAX_TOKENS': '9', 'VERAPDF': 'off', 'OPENROUTER_API_KEY': 'sk-secret', 'AUTO': '1', 'PYTHONPATH': '/p'}
     env = config.child_env(s, {'REVIEW': '1'}, environ=dirty)
-    assert set(env) == {'PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'VERAPDF', 'PYTHONUNBUFFERED', 'REVIEW'}
+    assert set(env) == {'PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'VERAPDF', 'PYTHONUNBUFFERED', 'RUNS_DIR', 'REVIEW'}
     assert env['VERAPDF'] == s['tools']['VERAPDF'] and env['PATH'].split(os.pathsep)[0] == os.path.dirname(sys.executable)
     with pytest.raises(ValueError): config.child_env(s, {'MODEL': 'x'}, environ=dirty)
 
