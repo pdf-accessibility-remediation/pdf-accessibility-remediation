@@ -154,7 +154,7 @@ def batches(s, rows):
         done = sum(1 for r in bs if r['finished'])
         state = 'Finished' if os.path.isfile(os.path.join(B, 'summary.md')) and done else \
                 'Running' if any(r.get('active') for r in bs) or meta.get('running') else \
-                'Estimate Ready' if bs and all(r['status'] in ('Estimate Ready', 'Stopped') for r in bs) else 'Stopped'
+                'Estimate Ready' if bs and any(r['status'] == 'Estimate Ready' for r in bs) and all(r['status'] in ('Estimate Ready', 'Stopped') for r in bs) else 'Stopped'
         when = max((r['when'] for r in bs), default='') or meta.get('created') or ''
         from . import names as NM
         out.append({'label': lb, 'name': NM.batch_name(s, lb) or lb, 'books': len(bs) or len(meta.get('books') or []), 'done': done, 'state': state, 'when': when,

@@ -167,3 +167,11 @@ def test_index_rows_and_cache(setup):
     assert os.path.isfile(os.path.join(s['jobs'], 'home-index.json'))
     (W2 / 'review.json').write_text('{}'); (W2 / 'record.json').write_text(json.dumps({'document': {'file': 'bk.pdf'}}))
     assert {r['run']: r for r in HM.index(s)['runs']}['bk/l2']['words'] == 'Not Ready'      # the cache follows the records
+
+def test_a_batch_whose_books_all_stopped_is_stopped(setup):
+    """A batch is "Estimate Ready" only when a book has an estimate; every book stopped at intake: "Stopped"."""
+    s = S(setup)
+    for n in ('a', 'b'):
+        I = setup / 'runs' / 'batches' / 'bx' / n / '_intake'; I.mkdir(parents=True)
+        (I / 'intake.json').write_text(json.dumps({'status': 'stopped', 'original': {'file': f'{n}.pdf'}}))
+    assert {b['label']: b for b in HM.index(s)['batches']}['bx']['state'] == 'Stopped'
