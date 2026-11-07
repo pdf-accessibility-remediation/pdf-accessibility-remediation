@@ -72,9 +72,10 @@ def start_estimate(s, setup, key, plain, ocr_lang, review_first):
     ValueError with the reason (plain words)."""
     from . import names as NM
     book = BK.by_key(s, key)
-    if not book: raise ValueError('This book\'s file has changed or is gone. Go back to the home page to see the list again.')
+    if not book: raise ValueError('This PDF\'s file has changed or is gone. Go back to the home page to see the list again.')
     if book['locked']: raise ValueError('This PDF is locked with a password. Add an unlocked copy and start a new run.')
     plain = NM.clean_name(plain)
+    if not plain: raise ValueError('Enter a name for the run.')                      # P10: required, no date fallback
     langs = dict(BK.ocr_choices(BK.installed_langs(s)))
     if ocr_lang not in langs: raise ValueError('Choose an OCR language from the list.')
     m = BK.read_meta(book['path']); book['tagged'] = m.get('tagged')
@@ -174,24 +175,23 @@ def form_page(s, key):
             '<title>New Run</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
             '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>')
     if not book:
-        return head + ('<header><h1>New Run</h1></header><main id="main" tabindex="-1"><div class="pp"><p>This book\'s file has changed or is gone.</p>'
-                       '<p><a class="pp-btn" href="/">Back to the Home Page</a></p></div></main></body></html>')
+        return head + ('<header><h1>New Run</h1></header><main id="main" tabindex="-1"><div class="pp"><p>This PDF\'s file has changed or is gone.</p>'
+                       '</div></main></body></html>')
     langs = BK.ocr_choices(BK.installed_langs(s))
     opts = ''.join(f'<option value="{E(v)}"' + (' selected' if v == 'eng' else '') + f'>{E(n)}</option>' for v, n in langs)
     return head + (f'<header><h1>New Run</h1><p class="mc-book">{HM.book_cell(book["name"], book["file"])}</p></header>'
         '<main id="main" tabindex="-1"><form class="pp hm-form" id="hm-newrun" data-api="/api/new/estimate">'
         f'<input type="hidden" name="book" value="{E(book["key"])}">'
-        '<div class="mc-field"><label for="nr-name">Run Name <span class="mc-opt">(optional)</span></label>'
-        '<input type="text" id="nr-name" name="run_name" maxlength="120" aria-describedby="nr-name-h">'
-        '<p class="mc-help" id="nr-name-h">In your own words, for example "First pass, March". It names this run in the list of earlier runs; '
-        'without one, the run is named by its date.</p></div>'
+        '<div class="mc-field"><label for="nr-name">Run Name</label>'
+        '<input type="text" id="nr-name" name="run_name" maxlength="120" required aria-describedby="nr-name-h">'
+        '<p class="mc-help" id="nr-name-h">In your own words, for example "First pass, March". It names this run in My Workspace.</p></div>'
         '<div class="mc-field"><label for="nr-lang">OCR Language</label>'
         f'<select id="nr-lang" name="ocr_lang" aria-describedby="nr-lang-h">{opts}</select>'
-        '<p class="mc-help" id="nr-lang-h">Used only for pages that need OCR (scanned pages). Choose the book\'s language; it is never guessed.</p></div>'
+        '<p class="mc-help" id="nr-lang-h">Used only for pages that need OCR (scanned pages). Choose the PDF\'s language; it is never guessed.</p></div>'
         '<div class="mc-field"><label class="hm-check"><input type="checkbox" id="nr-review" name="review_first" checked> Review First</label>'
         '<p class="mc-help">The run stops after the AI\'s decisions, so a person can review them before anything is applied.</p></div>'
-        '<p class="mc-help">"Get the Estimate" prepares the book and works out what the AI call could cost. It is free: nothing is sent to the AI '
+        '<p class="mc-help">"Get the Estimate" prepares the PDF and works out what the AI call could cost. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the next page.</p>'
         '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
-        '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimate</button><a class="pp-btn" href="/">Cancel</a></div>'
+        '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimate</button></div>'
         '</form></main><script src="/app/home.js" defer></script></body></html>')

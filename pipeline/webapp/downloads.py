@@ -299,7 +299,7 @@ def _readme(d, sha):
     files = [f'{d["pdf_name"]}: the remediated PDF of this version.'] + [FILE_WORDS[m[0]] for m in d['members'][1:]] + [FILE_WORDS['READ-ME.txt']]
     about = d.get('about') or {}
     src = (about.get('document') or {}).get('file')
-    return '\n'.join([d['book'], f'Source PDF Filename: {shown(src) if src else "not recorded"}', '', vline, status] + [x for s in ships for x in REL.shipment_lines(s)]
+    return '\n'.join([d['book'], f'Source PDF: {shown(src) if src else "not recorded"}', '', vline, status] + [x for s in ships for x in REL.shipment_lines(s)]
                       + [f'Accessibility evaluation results recorded on this file: {n}' + (' (in review.html)' if n else ''), '']
                       + about_lines(about) + ['', 'This folder holds:'] + ['- ' + x for x in files]
                       + ['', 'Automated checks are evidence, not legal sign-off.',

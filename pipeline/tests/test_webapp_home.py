@@ -52,16 +52,18 @@ def test_reading_an_untrusted_pdf_never_raises(tmp_path):
 
 # ------------------------------------------------------------------ the list
 def test_listing_skips_dot_folders_and_lists_a_content_once(setup):
+    """Only "Add a PDF"'s folder is listed (P3, Patrick 2026-11-06); samples/ is still searched for originals by sha256."""
     s = S(setup); sm = setup / 'samples'
-    (sm / 'g').mkdir(); (sm / 'g' / 'a.pdf').write_bytes(pdf_bytes(2, 'Book A'))
-    (sm / '.hidden').mkdir(); (sm / '.hidden' / 'h.pdf').write_bytes(pdf_bytes(1, 'Hidden'))
+    (sm / 'g').mkdir(); (sm / 'g' / 'a.pdf').write_bytes(pdf_bytes(2, 'Book A')); (sm / 'only.pdf').write_bytes(pdf_bytes(1, 'Sample Only'))
     U = setup / 'uploads'; (U / '.incoming').mkdir(parents=True); (U / '.incoming' / 'x.part').write_bytes(pdf_bytes())
-    (U / 'copy.pdf').write_bytes((sm / 'g' / 'a.pdf').read_bytes())
+    (U / '.hidden').mkdir(); (U / '.hidden' / 'h.pdf').write_bytes(pdf_bytes(1, 'Hidden'))
+    (U / 'g').mkdir(); (U / 'g' / 'a.pdf').write_bytes((sm / 'g' / 'a.pdf').read_bytes()); (U / 'copy.pdf').write_bytes((sm / 'g' / 'a.pdf').read_bytes())
     L = BK.listing(s)
-    assert [(b['name'], b['group'], b['pages']) for b in L] == [('Book A', 'sample', 2)]
-    assert json.load(open(os.path.join(s['jobs'], 'sha256-cache.json')))[str(sm / 'g' / 'a.pdf')][2] == L[0]['key']
-    assert BK.by_key(s, L[0]['key'])['path'] == str(sm / 'g' / 'a.pdf') and BK.by_key(s, '../x') is None
-    assert RN.find_original(s, L[0]['key']) == str(sm / 'g' / 'a.pdf')          # find_original shares the cache
+    assert [(b['name'], b['group'], b['pages'], b['file']) for b in L] == [('Book A', 'added', 2, 'copy.pdf')]
+    assert json.load(open(os.path.join(s['jobs'], 'sha256-cache.json')))[str(U / 'copy.pdf')][2] == L[0]['key']
+    assert BK.by_key(s, L[0]['key'])['path'] == str(U / 'copy.pdf') and BK.by_key(s, '../x') is None
+    only = BK.hashes(s, [str(sm / 'only.pdf')])[str(sm / 'only.pdf')]
+    assert BK.by_key(s, only) is None and RN.find_original(s, only) == str(sm / 'only.pdf')   # never listed, still found
 
 # ------------------------------------------------------------------ Add a Book (receive)
 def test_receive_names_never_overwrite_and_same_content_is_refused(setup):
@@ -130,13 +132,13 @@ def test_upload_route_checks(app):
 
 # ------------------------------------------------------------------ the home page and the app bar
 def test_home_page_lists_books_and_runs(app):
-    t = app['t']; (t / 'samples' / 's.pdf').write_bytes(pdf_bytes(4, 'Sample Title'))
+    t = app['t']; (t / 'uploads').mkdir(exist_ok=True); (t / 'uploads' / 's.pdf').write_bytes(pdf_bytes(4, 'Sample Title'))
     st, b, h = get(app['port'], '/')
     page = b.decode()
-    assert st == 200 and 'Sample Title' in page and 'Source PDF Filename: s.pdf' in page and 'href="/new?book=' in page
-    assert page.count('aria-label="App"') == 1 and 'aria-current="page"' in page
+    assert st == 200 and 'Sample Title' in page and 'Source PDF: s.pdf' in page and 'href="/new?book=' in page
+    assert 'aria-label="App"' not in page and '>Home Page<' not in page                # P1: no way home on the home page itself
     assert '<script src="/app/home.js" defer></script>' in page and "script-src 'self'" in h['Content-Security-Policy']
-    assert 'Earlier Runs' in page and '/run/book/r1/' in page and 'None' not in page.replace('None yet', '')
+    assert 'My Workspace' in page and '/run/book/r1/' in page and 'None' not in page.replace('None yet', '')
     assert get(app['port'], '/app/home.js')[0] == 200
     st, b, _ = get(app['port'], '/?q=nothing-matches-this')
     assert st == 200 and '0 runs matching' in b.decode()
@@ -145,7 +147,7 @@ def test_home_page_lists_books_and_runs(app):
 def test_every_app_page_has_the_way_home(app, path):
     st, b, _ = get(app['port'], path)
     page = b.decode()
-    assert page.count('<nav class="pp-appbar" aria-label="App"><a href="/">Home</a></nav>') == 1, path
+    assert page.count('<nav class="pp-appbar" aria-label="App"><a class="pp-btn" href="/">Home Page</a>') == 1, path
 
 def test_appbar_follows_the_skip_link():
     p = W.with_appbar('<body>' + W.SKIP + '<main>x</main></body>')
@@ -185,3 +187,35 @@ def test_a_run_waiting_for_a_new_estimate_says_so_on_home(setup):
     rows = [{'run': 'bk/r1', 'finished': False, 'status': 'Estimate Ready', 'words': 'Estimate Ready'}]
     HM.over(s, rows)
     assert rows[0]['words'] == 'Waiting: open it and select "Get a New Estimate"'
+
+@pytest.mark.parametrize('row,g', [({'status': 'Estimate Ready'}, 'not-started'), ({'status': 'Running', 'active': True}, 'processing'),
+                                   ({'status': 'Waiting to Start', 'active': True}, 'processing'), ({'status': 'Waiting for Review'}, 'in-progress'),
+                                   ({'status': 'Stopped'}, 'in-progress'), ({'status': 'Stopped before it finished'}, 'in-progress'),
+                                   ({'status': 'Not Ready'}, 'in-progress'), ({'status': 'Pending Evaluation'}, 'in-progress'),
+                                   ({'status': 'Ready'}, 'done'), ({'status': 'Shipped'}, 'done'), ({'status': 'Failed'}, 'failed')])
+def test_status_groups(row, g):
+    """D6 (Patrick, 2026-11-06): Done is Ready or Shipped only; an interrupted run is In Progress, not Failed."""
+    assert HM.group_of(row) == g
+
+def test_workspace_switch_filter_and_pills(app):
+    t = app['t']; s = S(t)
+    page = get(app['port'], '/')[1].decode()
+    assert 'My Workspace' in page and 'aria-pressed="true">Single Runs' in page and 'Date Created' in page
+    assert 'class="hm-pill hm-g-' in page and 'Source PDF Filename' not in page
+    assert 'Sample Books' not in page and 'Earlier Runs' not in page
+    page = get(app['port'], '/?view=batches')[1].decode()
+    assert 'aria-pressed="true">Batches' in page and 'Batch Name' in page
+    page = get(app['port'], '/?group=done')[1].decode()
+    assert '0 runs, Done.' in page
+
+def test_run_page_header_is_the_apps(app):
+    """P7: review.html's own header (a file name, the prompt, the model, the run label) is replaced as served; the file
+    on disk is unchanged."""
+    t = app['t']; R = t / 'runs' / 'book' / 'r1'
+    (R / 'review.html').write_text('<!doctype html><title>Review: book.pdf</title><body><header class="top"><h1>Review: book.pdf</h1>'
+                                   '<div class="meta">run book/r1 · 12 pages · model anthropic/x · prompt workorder_v10.md</div></header><main>m</main></body>')
+    before = (R / 'review.html').read_bytes()
+    page = get(app['port'], '/run/book/r1/')[1].decode()
+    assert 'Review: book.pdf' not in page and 'workorder_v10' not in page and 'anthropic/x' not in page
+    assert 'class="top pp-head"' in page and '12 pages' in page and 'Run Name: r1' in page
+    assert (R / 'review.html').read_bytes() == before

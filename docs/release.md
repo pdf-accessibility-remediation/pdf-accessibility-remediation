@@ -311,7 +311,7 @@ stylesheet, centered on the list's height in the page's text color (the browser'
   - review.html: the report, with the evaluation's results in it;
   - han_review.csv, when the book has one (review.html sends staff to it): the read-me calls it "passages in Chinese
     or Japanese a person needs to check, as a spreadsheet";
-  - `READ-ME.txt`, in plain words: the title and "Source PDF Filename: …" (the original PDF's name), the version, its
+  - `READ-ME.txt`, in plain words: the title and "Source PDF: …" (the original PDF's name), the version, its
     status (for a previous version: "previous version", naming the current one), each shipment of that file ("Shipment
     1, shipped on November 1, 2026 by Patrick", "Withdrawn on … by …: …" for a withdrawn
     one), the number of evaluation results recorded on it, the run details of that version's own record (a shipped

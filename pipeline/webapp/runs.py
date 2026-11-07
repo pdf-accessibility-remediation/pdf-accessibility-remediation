@@ -334,7 +334,8 @@ def book_of(s, run, R, js=None):
     for j in reversed(js if js is not None else [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]):
         if j.get('book_sha') or j.get('book_name'):                 # resolved now: a rename shows at once (not the job's snapshot)
             return (BK.name_of_sha(s, j.get('book_sha'), j.get('book_file')) if j.get('book_sha') else j['book_name']), BK.shown_file(j.get('book_file') or '')
-    o = (load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or (load(os.path.join(R, 'run.json')) or {}).get('source') or {}
+    o = (load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or (load(os.path.join(R, 'record.json')) or {}).get('document') \
+        or (load(os.path.join(R, 'run.json')) or {}).get('source') or {}
     f = BK.shown_file(o.get('file') or '')
     return (BK.name_of_sha(s, o.get('sha256'), f) if o.get('sha256') else None) or BK.stem_name(f or run.split('/')[-1]), f
 

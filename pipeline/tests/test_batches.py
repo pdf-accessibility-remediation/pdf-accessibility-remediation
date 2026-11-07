@@ -15,14 +15,14 @@ from test_webapp_home import pdf_bytes  # noqa: E402
 from test_spend import run_folder  # noqa: E402
 
 def books(t, names):
-    for n in names: (t / 'samples' / n).write_bytes(pdf_bytes(1, None) + n.encode())
+    for n in names: (t / 'uploads' / n).write_bytes(pdf_bytes(1, None) + n.encode())
 
 @pytest.fixture
 def two(setup, monkeypatch):
     monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng'])
-    (setup / 'samples' / 'a').mkdir(); (setup / 'samples' / 'b').mkdir()
-    (setup / 'samples' / 'a' / 'Book One.pdf').write_bytes(pdf_bytes(1) + b'a'); (setup / 'samples' / 'b' / 'Book One.pdf').write_bytes(pdf_bytes(2) + b'b')
-    (setup / 'samples' / 'two.pdf').write_bytes(pdf_bytes(3) + b'c')
+    (setup / 'uploads' / 'a').mkdir(); (setup / 'uploads' / 'b').mkdir()
+    (setup / 'uploads' / 'a' / 'Book One.pdf').write_bytes(pdf_bytes(1) + b'a'); (setup / 'uploads' / 'b' / 'Book One.pdf').write_bytes(pdf_bytes(2) + b'b')
+    (setup / 'uploads' / 'two.pdf').write_bytes(pdf_bytes(3) + b'c')
     return setup
 
 def test_start_writes_the_book_list_and_one_estimate_per_book(two):
@@ -38,6 +38,7 @@ def test_start_writes_the_book_list_and_one_estimate_per_book(two):
     j2 = BT.start(s, [], keys, 'b1', 'eng')                                 # a name that is taken: "_2" (never "-2")
     assert j2[0]['run'].startswith('batches/b1_2/') and j2[0]['argv'][4] == 'b1_2'
     with pytest.raises(ValueError, match='two or more'): BT.start(s, [], keys[:1], 'b2', 'eng')
+    with pytest.raises(ValueError, match='Enter a name'): BT.start(s, [], keys, '   ', 'eng')         # P10: required
 
 def test_plain_batch_names_and_the_cap(two):
     """Patrick, 2026-11-06: staff type a plain name; the label is derived and the plain name is the app's only. Two names
@@ -53,11 +54,11 @@ def test_plain_batch_names_and_the_cap(two):
     c = BT.start(s, [], keys, '日本語', 'eng')[0]['run'].split('/')[1]
     assert c.startswith('batch-20') and NM.batch_name(s, c) == '日本語'                     # nothing left: the date
     s2 = settings(two, max_books_per_batch=2)
-    with pytest.raises(ValueError, match='A batch can hold up to 2 books. Split them into two batches.'): BT.start(s2, [], keys, 'x', 'eng')
+    with pytest.raises(ValueError, match='A batch can hold up to 2 PDFs. Split them into two batches.'): BT.start(s2, [], keys, 'x', 'eng')
 
 def test_a_path_with_list_marks_is_refused(setup, monkeypatch):
     monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng'])
-    (setup / 'samples' / 'x#1.pdf').write_bytes(pdf_bytes(1) + b'1'); (setup / 'samples' / 'y.pdf').write_bytes(pdf_bytes(1) + b'2')
+    (setup / 'uploads' / 'x#1.pdf').write_bytes(pdf_bytes(1) + b'1'); (setup / 'uploads' / 'y.pdf').write_bytes(pdf_bytes(1) + b'2')
     s = settings(setup)
     with pytest.raises(ValueError, match='file name a batch'): BT.start(s, [], [b['key'] for b in BK.listing(s)], 'b1', 'eng')
 
@@ -101,8 +102,8 @@ def test_side_column_markup(two):
     s = settings(two, test_batch_from='v8-p7a')
     ready_batch(two, s)
     n = BT.nav(s, 'bb', current='Book_One')
-    assert n.startswith('<nav class="bn" id="pp-bnav" aria-label="Books in This Batch"') and 'aria-expanded="true"' in n and 'aria-controls="bn-list"' in n
-    assert n.count('aria-current="page"') == 1 and 'href="/run/batches/bb/Book_One/" aria-current="page"' in n and 'Source PDF Filename: Book One.pdf' in n
+    assert n.startswith('<nav class="bn" id="pp-bnav" aria-label="PDFs in This Batch"') and 'aria-expanded="true"' in BT.toggle(2) and 'aria-controls="bn-list"' in BT.toggle(2)
+    assert n.count('aria-current="page"') == 1 and 'href="/run/batches/bb/Book_One/" aria-current="page"' in n and 'Source PDF: Book One.pdf' in n
     assert 'Estimate Ready' in n
     js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
     assert "matchMedia('(max-width: 48em)')" in js and "setAttribute('aria-expanded'" in js and 'Show the Book List (' in js
@@ -116,7 +117,7 @@ def test_again_estimates_only_the_unfinished(two):
 
 def test_the_review_page_links_home():
     p = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
-    assert "a.textContent = 'Home'" in p and "new URL(RETURN_TO).origin" in p and p.count('homeLink(') == 3     # the review page and the OCR-only page
+    assert "a.textContent = 'Home Page'" in p and "new URL(RETURN_TO).origin" in p and p.count('homeLink(') == 3     # the review page and the OCR-only page
 
 def test_the_forms_send_what_the_routes_read(two):
     """New Run's form sends `book` (one key), New Batch's `books` (a list): home.js turns only a field named "books" into a
@@ -133,6 +134,6 @@ def test_the_forms_send_what_the_routes_read(two):
 def test_a_tab_or_return_in_a_path_is_refused(setup, monkeypatch):
     """05 L1: batch_api.sh's books.tsv is tab-separated."""
     monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng'])
-    (setup / 'samples' / 'x\ty.pdf').write_bytes(pdf_bytes(1) + b'1'); (setup / 'samples' / 'z.pdf').write_bytes(pdf_bytes(1) + b'2')
+    (setup / 'uploads' / 'x\ty.pdf').write_bytes(pdf_bytes(1) + b'1'); (setup / 'uploads' / 'z.pdf').write_bytes(pdf_bytes(1) + b'2')
     s = settings(setup)
     with pytest.raises(ValueError, match='file name a batch'): BT.start(s, [], [b['key'] for b in BK.listing(s)], 'b1', 'eng')

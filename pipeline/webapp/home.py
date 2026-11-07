@@ -137,28 +137,57 @@ def over(s, rows):
         elif j['status'] in ('failed', 'interrupted') and not r['finished'] and r['status'] not in ('Stopped', 'Waiting for Review'):
             r['status'] = r['words'] = 'Failed' if j['status'] == 'failed' else 'Stopped before it finished'
 
+GROUPS = (('not-started', 'Not Started'), ('processing', 'Processing'), ('in-progress', 'In Progress'), ('done', 'Done'), ('failed', 'Failed'))
+GROUP_NAMES = dict(GROUPS)
+
+def group_of(r):
+    """A run's status group on the home page (D6, Patrick 2026-11-06): Not Started (an estimate, nothing paid), Processing
+    (a job running or waiting to start), In Progress (waiting for a person, stopped, interrupted, Not Ready, Pending
+    Evaluation), Done (Ready or Shipped only), Failed (the last job ended with an error). The exact status is shown beside it."""
+    st = r.get('status') or ''
+    if r.get('active'): return 'processing'
+    if st == 'Failed': return 'failed'
+    if st in ('Ready', 'Shipped', 'Cleared'): return 'done'
+    if st == 'Estimate Ready': return 'not-started'
+    return 'in-progress'
+
+def pill(g, words=None):
+    """The group's pill (its name in words: color is never the only signal), and the exact status beside it."""
+    name = GROUP_NAMES[g]
+    return f'<span class="hm-pill hm-g-{g}">{E(name)}</span>' + (f' <span class="hm-st">{E(words)}</span>' if words and words != name else '')
+
 def batches(s, rows):
-    """Every batch folder: its books, state, date and cost."""
+    """Every batch folder: its books, state, group, date and cost."""
     BB = os.path.join(s['runs'], 'batches')
     try: labels = sorted(e.name for e in os.scandir(BB) if e.is_dir() and not e.name.startswith('.'))
     except OSError: labels = []
     by = {}
     for r in rows:
         if r['batch']: by.setdefault(r['batch'], []).append(r)
+    last = {}
+    for j in jobs.all_jobs(s['jobs']):
+        if j['kind'] == 'batch': last[j['run']] = j
     out = []
+    from . import names as NM
     for lb in labels:
         bs = by.get(lb, [])
         B = os.path.join(BB, lb)
         meta = _load(os.path.join(s['jobs'], 'batches', f'{lb}.json')) or {}
         if not bs and not meta: continue
         done = sum(1 for r in bs if r['finished'])
-        state = 'Finished' if os.path.isfile(os.path.join(B, 'summary.md')) and done else \
-                'Running' if any(r.get('active') for r in bs) or meta.get('running') else \
-                'Estimate Ready' if bs and any(r['status'] == 'Estimate Ready' for r in bs) and all(r['status'] in ('Estimate Ready', 'Stopped') for r in bs) else 'Stopped'
-        when = max((r['when'] for r in bs), default='') or meta.get('created') or ''
-        from . import names as NM
-        out.append({'label': lb, 'name': NM.batch_name(s, lb) or lb, 'books': len(bs) or len(meta.get('books') or []), 'done': done, 'state': state, 'when': when,
-                    'cost': round(sum(r['cost'] or 0 for r in bs), 6)})
+        lj = last.get(f'batches/{lb}')
+        gs = [group_of(r) for r in bs]
+        g = 'processing' if (lj and lj['status'] in jobs.ACTIVE) or 'processing' in gs else \
+            'failed' if lj and lj['status'] == 'failed' else \
+            'done' if gs and all(x == 'done' for x in gs) else \
+            'not-started' if not lj and all(x == 'not-started' for x in gs) else 'in-progress'
+        n_done = sum(1 for x in gs if x == 'done')
+        state = {'processing': 'Running', 'failed': 'The batch stopped with a problem', 'done': f'All {len(bs)} Ready or Shipped',
+                 'not-started': 'Estimate Ready' if bs and all(r['status'] == 'Estimate Ready' for r in bs) else 'Not Started',
+                 'in-progress': 'Stopped' if bs and all(r['status'] == 'Stopped' for r in bs) else f'{n_done} of {len(bs)} Ready or Shipped'}[g]
+        when = meta.get('created') or min((r['when'] for r in bs if r['when']), default='') or ''
+        out.append({'label': lb, 'name': NM.batch_name(s, lb) or lb, 'books': len(bs) or len(meta.get('books') or []), 'done': done, 'state': state,
+                    'group': g, 'when': when, 'cost': round(sum(r['cost'] or 0 for r in bs), 6)})
     out.sort(key=lambda b: b['when'] or '', reverse=True)
     return out
 
@@ -168,41 +197,44 @@ def money(x): return '$0.00' if not x else f'${x:.2f}' if x >= 0.01 else '< $0.0
 def run_href(run): return '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
 
 def book_cell(name, file):
-    """A book as every page names it: its display name, and under it the one file name the pages show (Q6)."""
-    return f'<span class="hm-book">{E(name)}</span>' + (f'<span class="hm-file">Source PDF Filename: {E(file)}</span>' if file else '')
+    """A PDF as every page names it: its display name, and under it the one file name the pages show (Q6)."""
+    return f'<span class="hm-book">{E(name)}</span>' + (f'<span class="hm-file">Source PDF: {E(file)}</span>' if file else '')
 
-def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None):
+def qs(**kw): return '/?' + urllib.parse.urlencode({k: v for k, v in kw.items() if v not in (None, '', 25)})
+
+def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs', group=''):
     try: n = max(25, min(int(n), 100000))
     except (TypeError, ValueError): n = 25
     try: bn = max(25, min(int(bn), 100000))
     except (TypeError, ValueError): bn = 25
     q = (q or '').strip()[:200]
+    view = 'batches' if view == 'batches' else 'runs'
+    group = group if group in GROUP_NAMES else ''
+    bk = BK.listing(s)                                      # first: it reads each PDF's Title, which the rows' names use
     idx = index(s)
-    bk = BK.listing(s)
+    active = any(j['status'] in jobs.ACTIVE for j in jobs.all_jobs(s['jobs']))
     B = ['<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">',
-         '<title>PDF Remediation</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>',
-         '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>', appbar(current=True),
-         '<header><h1>PDF Remediation</h1></header><main id="main" tabindex="-1">']
+         '<title>PDF Accessibility Remediation</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>',
+         '<body class="pp-page hm-page" data-home="1"><a class="skip" href="#main">Skip to the content</a>',
+         '<header><h1>PDF Accessibility Remediation</h1></header><main id="main" tabindex="-1">']
     if test: B.append('<p class="pp pp-bar">Test: saved replies, no AI call.</p>')
-    B.append('<section class="pp" aria-labelledby="hm-act-h"><h2 id="hm-act-h">Runs in Progress</h2><div id="hm-active"><p>Loading…</p></div>'
-             '<div id="hm-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section>')
-    # the books
-    B.append('<section class="pp" aria-labelledby="hm-books-h"><h2 id="hm-books-h">Books</h2>'
-             '<form id="hm-add" class="hm-add"><label for="hm-file">Add a Book</label> <input type="file" id="hm-file" accept="application/pdf,.pdf"> '
-             '<button type="submit" id="hm-add-b">Add the Book</button><span class="pp-note"> The PDF is copied into the app\'s folder of added books; '
+    B.append('<section class="pp hm-card hm-c-act" id="hm-act-sec" aria-labelledby="hm-act-h"' + ('' if active else ' hidden') +
+             '><h2 id="hm-act-h">Runs in Progress</h2><div id="hm-active"><p>Loading…</p></div></section>'
+             '<div id="hm-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>')
+    # the PDFs added through "Add a PDF" (samples/ is never listed: P3)
+    B.append('<section class="pp hm-card hm-c-pdfs" aria-labelledby="hm-books-h"><h2 id="hm-books-h">PDFs</h2>'
+             '<form id="hm-add" class="hm-add"><label for="hm-file">Add a PDF</label> <input type="file" id="hm-file" accept="application/pdf,.pdf"> '
+             '<button type="submit" id="hm-add-b">Add the PDF</button><span class="pp-note">The PDF is copied into the app\'s folder of added PDFs; '
              'the file you choose is not changed.</span></form><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>')
     ab = next((b for b in bk if b['key'] == (added or renamed)), None) if (added or renamed) else None
-    if ab: B.append(f'<p id="hm-added" hidden>' + (f'Added "{E(ab["name"])}" to "Added Books".' if added else f'The book is now named "{E(ab["name"])}".') + '</p>')
+    if ab: B.append(f'<p id="hm-added" hidden>' + (f'Added "{E(ab["name"])}".' if added else f'The PDF is now named "{E(ab["name"])}".') + '</p>')
     B.append('<form id="hm-batch" method="get" action="/new-batch">')
-    for group, title in (('sample', 'Sample Books'), ('added', 'Added Books')):
-        rows = [b for b in bk if b['group'] == group]
-        B.append(f'<h3 id="hm-{group}-h">{title} ({len(rows)})</h3>')
-        if not rows:
-            B.append('<p>None yet. "Add a Book" adds one.</p>' if group == 'added' else '<p>None.</p>'); continue
-        B.append(f'<div class="pp-tw" tabindex="0" role="region" aria-labelledby="hm-{group}-h"><table class="hm-t"><thead><tr>'
-                 '<th scope="col">Select</th><th scope="col">Book</th><th scope="col">Pages</th><th scope="col">Size</th><th scope="col">Action</th></tr></thead><tbody>')
-        for i, b in enumerate(rows):
-            cid = f'hm-sel-{group}-{i}'
+    if not bk: B.append('<p>None yet. "Add a PDF" adds one.</p>')
+    else:
+        B.append(f'<div class="pp-tw" tabindex="0" role="region" aria-labelledby="hm-books-h"><table class="hm-t"><thead><tr>'
+                 '<th scope="col">Select</th><th scope="col">PDF</th><th scope="col">Pages</th><th scope="col">Size</th><th scope="col">Action</th></tr></thead><tbody>')
+        for i, b in enumerate(bk):
+            cid = f'hm-sel-{i}'
             note = ' <span class="pp-note">Locked with a password: add an unlocked copy.</span>' if b['locked'] else \
                    ' <span class="pp-note">This PDF couldn\'t be read.</span>' if b['unreadable'] else ''
             act = ('' if b['locked'] else f'<a class="pp-btn" href="/new?book={E(b["key"])}" aria-describedby="{cid}-n">New Run</a> ') + \
@@ -211,73 +243,83 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None):
             B.append(f'<tr><td>{sel}</td><th scope="row" id="{cid}-n">{book_cell(b["name"], b["file"])}{note}</th>'
                      f'<td>{b["pages"] if b["pages"] is not None else "not counted"}</td><td class="pp-nw">{E(BK.size_words(b["size"]))}</td><td>{act}</td></tr>')
         B.append('</tbody></table></div>')
-    B.append('<div class="pp-row"><button type="submit" id="hm-batch-b">New Batch with the Selected Books</button>'
-             '<span class="pp-note" id="hm-batch-n">Select two or more books first.</span></div></form></section>')
-    # earlier runs
-    rows = idx['runs']
-    if q:
-        ql = q.casefold()
-        rows = [r for r in rows if ql in (r['book'] or '').casefold() or ql in (r['file'] or '').casefold() or ql in r['run'].casefold()
-                or ql in (r.get('name') or '').casefold()]                     # the plain name and the label both match
-    B.append(f'<section class="pp" aria-labelledby="hm-runs-h"><h2 id="hm-runs-h">Earlier Runs</h2>'
-             f'<form method="get" action="/" class="hm-search" role="search"><label for="hm-q">Search by Book or Run Name</label> '
-             f'<input type="search" id="hm-q" name="q" value="{E(q)}"> <button type="submit">Search</button>'
-             + (' <a href="/">Show All</a>' if q else '') + '</form>')
-    shown = rows[:n]
-    B.append(f'<p class="pp-note">{len(rows)} run{"" if len(rows) == 1 else "s"}' + (f' matching "{E(q)}"' if q else '') +
-             (f'; the newest {len(shown)} are shown.' if len(shown) < len(rows) else '.') + '</p>')
-    if shown:
-        B.append('<div class="pp-tw" tabindex="0" role="region" aria-label="Earlier Runs Table"><table class="hm-t"><thead><tr><th scope="col">Book</th>'
-                 '<th scope="col">Run Name</th><th scope="col">Status</th><th scope="col">Date</th><th scope="col">AI Cost</th><th scope="col">Action</th></tr></thead><tbody>')
+        B.append('<div class="pp-row"><button type="submit" id="hm-batch-b">New Batch with the Selected PDFs</button>'
+                 '<span class="pp-note" id="hm-batch-n">Select two or more PDFs first.</span></div>')
+    B.append('</form></section>')
+    # My Workspace: single runs or batches, searched and filtered by status group
+    ql = q.casefold()
+    runs_ = [r for r in idx['runs'] if not r['batch']]
+    if q: runs_ = [r for r in runs_ if ql in (r['book'] or '').casefold() or ql in (r['file'] or '').casefold() or ql in r['run'].casefold()
+                   or ql in (r.get('name') or '').casefold()]                     # the plain name and the label both match
+    bs = idx['batches']
+    if q: bs = [b for b in bs if ql in b['label'].casefold() or ql in b['name'].casefold()]   # both names match
+    for r in runs_: r['group'] = group_of(r)
+    items = runs_ if view == 'runs' else bs
+    counts = {g: sum(1 for x in items if x['group'] == g) for g in GROUP_NAMES}
+    if group: items = [x for x in items if x['group'] == group]
+    B.append('<section class="pp hm-card hm-c-ws" aria-labelledby="hm-runs-h"><h2 id="hm-runs-h">My Workspace</h2>'
+             '<form method="get" action="/" class="hm-ws" role="search" aria-label="My Workspace">'
+             f'<input type="hidden" name="group" value="{E(group)}">'
+             '<div class="hm-switch" role="group" aria-label="Show">' +
+             ''.join(f'<button type="submit" name="view" value="{v}" aria-pressed="{"true" if view == v else "false"}">{w}</button>'
+                     for v, w in (('runs', 'Single Runs'), ('batches', 'Batches'))) + '</div>'
+             f'<div class="hm-search"><label for="hm-q">Search by {"PDF or Run Name" if view == "runs" else "Batch Name"}</label> '
+             f'<input type="search" id="hm-q" name="q" value="{E(q)}"> <button type="submit" name="view" value="{view}">Search</button></div></form>'
+             '<div class="hm-filter" role="group" aria-label="Filter by Status">' +
+             f'<a class="pp-btn" href="{E(qs(view=view if view != "runs" else None, q=q))}" aria-current="{"true" if not group else "false"}">All ({sum(counts.values())})</a>' +
+             ''.join(f'<a class="pp-btn hm-f hm-f-{g}" href="{E(qs(view=view if view != "runs" else None, q=q, group=g))}" aria-current="{"true" if group == g else "false"}">'
+                     f'{E(w)} ({counts[g]})</a>' for g, w in GROUPS) + '</div>')
+    what = 'run' if view == 'runs' else 'batch'
+    plural = lambda k: f'{k} {what}' + ('' if k == 1 else 'es' if what == 'batch' else 's')
+    lim = n if view == 'runs' else bn
+    shown = items[:lim]
+    B.append(f'<p class="pp-note">{plural(len(items))}' + (f' matching "{E(q)}"' if q else '') + (f', {GROUP_NAMES[group]}' if group else '') +
+             (f'; the newest {len(shown)} are shown.' if len(shown) < len(items) else '.') + '</p>')
+    if shown and view == 'runs':
+        B.append('<div class="pp-tw" tabindex="0" role="region" aria-label="Single Runs Table"><table class="hm-t"><thead><tr><th scope="col">Run</th>'
+                 '<th scope="col">Status</th><th scope="col">Date Created</th><th scope="col">AI Cost</th><th scope="col">Action</th></tr></thead><tbody>')
         for r in shown:
-            label = r.get('name') or (r['run'].split('/')[-1] if not r['batch'] else r['run'].split('/')[1])
-            B.append(f'<tr><th scope="row">{book_cell(r["book"], r["file"])}</th><td>{E(label)}' + (' <span class="pp-note">(batch)</span>' if r['batch'] else '') +
-                     f'</td><td>{E(r["words"])}</td><td class="pp-nw">{E(D.day(r["when"]) if r["when"] else "date not recorded")}</td>'
+            label = r.get('name') or r['run'].split('/')[-1]
+            B.append(f'<tr><th scope="row"><span class="hm-run">{E(label)}</span>{book_cell(r["book"], r["file"])}</th><td>{pill(r["group"], r["words"])}</td>'
+                     f'<td class="pp-nw">{E(D.day(r["when"]) if r["when"] else "date not recorded")}</td>'
                      f'<td>{E(money(r["cost"]))}' + (' <span class="pp-note">(saved reply)</span>' if r['reused'] else '') +
                      f'</td><td><a class="pp-btn" href="{E(run_href(r["run"]))}">Open</a></td></tr>')
         B.append('</tbody></table></div>')
-    if len(rows) > n:
-        B.append(f'<p><a class="pp-btn" href="/?{E(urllib.parse.urlencode({**({"q": q} if q else {}), "n": n + 25, "bn": bn}))}#hm-more" id="hm-more">Show More Runs</a></p>')
-    B.append('</section>')
-    # batches
-    bs = idx['batches']
-    if q: bs = [b for b in bs if ql in b['label'].casefold() or ql in b['name'].casefold()]   # both names match
-    B.append(f'<section class="pp" aria-labelledby="hm-b-h"><h2 id="hm-b-h">Batches ({len(bs)})</h2>')
-    if bs:
+    elif shown:
         B.append('<div class="pp-tw" tabindex="0" role="region" aria-label="Batches Table"><table class="hm-t"><thead><tr><th scope="col">Batch Name</th>'
-                 '<th scope="col">Books</th><th scope="col">State</th><th scope="col">Date</th><th scope="col">AI Cost</th><th scope="col">Action</th></tr></thead><tbody>')
-        for b in bs[:bn]:
-            B.append(f'<tr><th scope="row">{E(b["name"])}</th><td>{b["done"]} of {b["books"]} finished</td><td>{E(b["state"])}</td>'
+                 '<th scope="col">PDFs</th><th scope="col">Status</th><th scope="col">Date Created</th><th scope="col">AI Cost</th><th scope="col">Action</th></tr></thead><tbody>')
+        for b in shown:
+            B.append(f'<tr><th scope="row"><span class="hm-run">{E(b["name"])}</span></th><td>{b["done"]} of {b["books"]} PDFs finished</td><td>{pill(b["group"], b["state"])}</td>'
                      f'<td class="pp-nw">{E(D.day(b["when"]) if b["when"] else "date not recorded")}</td><td>{E(money(b["cost"]))}</td>'
                      f'<td><a class="pp-btn" href="/batch/{E(urllib.parse.quote(b["label"], safe=""))}/">Open</a></td></tr>')
         B.append('</tbody></table></div>')
-        if len(bs) > bn: B.append(f'<p class="pp-note">The newest {bn} of {len(bs)} batches are shown.</p><p><a class="pp-btn" id="hm-bmore" '
-                                  f'href="/?{E(urllib.parse.urlencode({**({"q": q} if q else {}), "n": n, "bn": bn + 25}))}#hm-bmore">Show More Batches</a></p>')
-    else: B.append('<p>None yet.</p>')
+    if len(items) > lim:
+        more = qs(view=view if view != 'runs' else None, q=q, group=group, n=n + 25 if view == 'runs' else n, bn=bn + 25 if view == 'batches' else bn)
+        B.append(f'<p><a class="pp-btn" href="{E(more)}#hm-more" id="hm-more">Show More {"Runs" if view == "runs" else "Batches"}</a></p>')
     B.append('</section></main><script src="/app/home.js" defer></script></body></html>')
     return '\n'.join(B)
 
 def name_page(s, key, added=False):
-    """A book's name (Patrick, 2026-11-06): shown after "Add a Book" with the automatic name prefilled, and from the home
-    page's "Edit the Name". The name is the app's only (webapp/names.py); "Source PDF Filename:" stays under it."""
+    """A PDF's name (Patrick, 2026-11-06): shown after "Add a PDF" with the automatic name prefilled, and from the home
+    page's "Edit the Name". The name is the app's only (webapp/names.py); "Source PDF:" stays under it. P9: no
+    explanatory sentences, one button."""
     b = BK.by_key(s, key)
     head = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            '<title>Book Name</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>')
+            '<title>PDF Name</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
+            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + appbar())
     if not b:
-        return head + ('<header><h1>Book Name</h1></header><main id="main" tabindex="-1"><div class="pp"><p>This book\'s file has changed or is gone.</p>'
-                       '<p><a class="pp-btn" href="/">Back to the Home Page</a></p></div></main></body></html>')
-    return head + (f'<header><h1>Book Name</h1><p class="mc-book">{book_cell(b["name"], b["file"])}</p></header><main id="main" tabindex="-1">'
-        '<form class="pp hm-form" id="hm-bookname" data-api="/api/book/name">' +
-        ('<p>The book is added. Check its name: it is how the book is listed everywhere in the app.</p>' if added else '') +
+        return head + ('<header><h1>PDF Name</h1></header><main id="main" tabindex="-1"><div class="pp"><p>This PDF\'s file has changed or is gone.</p>'
+                       '</div></main></body></html>')
+    return head + (f'<header><h1>PDF Name</h1><p class="mc-book">{book_cell(b["name"], b["file"])}</p></header><main id="main" tabindex="-1">'
+        '<form class="pp hm-form" id="hm-bookname" data-api="/api/book/name">'
         f'<input type="hidden" name="key" value="{E(b["key"])}">'
-        '<div class="mc-field"><label for="bk-name">Book Name</label>'
-        f'<input type="text" id="bk-name" name="name" value="{E(b["name"])}" required maxlength="120" aria-describedby="bk-name-h">'
-        '<p class="mc-help" id="bk-name-h">How the book is named on every page of the app. The PDF and its file name are not changed.</p></div>'
+        '<div class="mc-field"><label for="bk-name">PDF Name</label>'
+        f'<input type="text" id="bk-name" name="name" value="{E(b["name"])}" required maxlength="120"></div>'
         '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
-        '<div class="pp-row"><button type="submit" class="pp-primary">Save the Name</button><a class="pp-btn" href="/">' +
-        ('Keep This Name' if added else 'Cancel') + '</a></div></form></main><script src="/app/home.js" defer></script></body></html>')
+        '<div class="pp-row"><button type="submit" class="pp-primary">Save Name</button></div></form></main>'
+        '<script src="/app/home.js" defer></script></body></html>')
 
-def appbar(current=False):
-    """The app bar every page the app serves carries, right after the skip link: the way home."""
-    return ('<nav class="pp-appbar" aria-label="App"><a href="/"' + (' aria-current="page"' if current else '') + '>Home</a></nav>')
+def appbar(current=False, extra=''):
+    """The app bar on every page the app serves except the home page itself (P1), right after the skip link: "Home Page"
+    as a button (P5), and on run and batch pages the book list's own button beside it (`extra`)."""
+    return ('<nav class="pp-appbar" aria-label="App"><a class="pp-btn" href="/">Home Page</a>' + extra + '</nav>')

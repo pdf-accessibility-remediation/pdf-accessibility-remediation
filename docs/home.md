@@ -37,7 +37,7 @@ when it still looks like a title (not empty, not "untitled", not a file or progr
 sha256, with each earlier name kept): never written into a run's record.json or review.html, and read each time a page is
 drawn, so a new name shows everywhere at once. Under it,
 everywhere a book is named (the home page, a run page's header, the batch page and its side column), a line reads
-"Source PDF Filename: <file name>". This is the one file name the pages show (Patrick, 2026-11-05): it tells two copies of
+"Source PDF: <file name>". This is the one file name the pages show (Patrick, 2026-11-05): it tells two copies of
 a book apart. Names are cleaned (no control or direction characters) and escaped.
 
 **Statuses** use one set of words everywhere: Not Ready, Pending Evaluation, Ready, Shipped (each followed by "· N

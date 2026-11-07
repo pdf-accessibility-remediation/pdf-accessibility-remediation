@@ -24,7 +24,7 @@ def test_auto_name_is_conservative(title, file, want):
 
 def test_a_person_names_a_book_and_every_page_follows(setup):
     s = settings(setup)
-    (setup / 'samples' / 'bk.pdf').write_bytes(pdf_bytes(2, '_draft_A Good Book copy'))
+    (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(2, '_draft_A Good Book copy'))
     b = BK.listing(s)[0]
     assert b['name'] == 'A Good Book' and b['file'] == 'bk.pdf'
     R = setup / 'runs' / 'bk' / 'r1'; R.mkdir(parents=True)
@@ -63,11 +63,12 @@ def test_a_taken_label_gets_underscore_2(setup):
 def test_new_run_takes_a_plain_name(setup, monkeypatch):
     monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng'])
     s = settings(setup)
-    (setup / 'samples' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book'))
+    (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book'))
     key = BK.listing(s)[0]['key']
     j = NR.start_estimate(s, [], key, 'First pass, March', 'eng', True)
     k = NR.start_estimate(s, [], key, 'First pass March', 'eng', True)        # folds to the same label
     assert j['run'] == 'bk/First-pass-March' and k['run'] == 'bk/First-pass-March_2'
+    with pytest.raises(ValueError, match='Enter a name'): NR.start_estimate(s, [], key, ' ', 'eng', True)   # P10: required
     assert 'First pass, March' not in json.dumps({x: j[x] for x in ('run', 'argv', 'dir', 'env_set')})
     assert NM.shown_run(s, j['run']) == 'First pass, March' and NM.shown_run(s, k['run']) == 'First pass March'
     v = RN.job_view(s, jobs.load(s['jobs'], j['id']))
@@ -87,7 +88,7 @@ def test_a_label_taken_between_check_and_create_is_derived_again(setup, monkeypa
     """07 L1: a folder made by another request after label_for found the label free: "_2", not a server error."""
     monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng'])
     s = settings(setup)
-    (setup / 'samples' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book'))
+    (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book'))
     key = BK.listing(s)[0]['key']
     (setup / 'runs' / 'bk' / 'Spring').mkdir(parents=True)
     real, calls = NR.run_taken, []
@@ -102,7 +103,7 @@ def test_a_batch_label_taken_between_check_and_create_is_derived_again(setup, mo
     from webapp import batches as BT
     monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng'])
     s = settings(setup)
-    for n in ('a', 'b'): (setup / 'samples' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n}'))
+    for n in ('a', 'b'): (setup / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n}'))
     keys = [b['key'] for b in BK.listing(s)]
     os.makedirs(os.path.join(s['jobs'], 'batches'), exist_ok=True)
     open(BT.list_path(s, 'Spring'), 'w').close()                # the other request's book list, not yet its folder

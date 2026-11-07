@@ -147,7 +147,7 @@ if (vbox) {
   const RUN = vbox.dataset.run, SID = vbox.dataset.session, API = '/api/run/' + encRun(RUN), BASE = '/run/' + encRun(RUN) + '/';
   const what = SID === 'ai' ? 'the result applied without review' : 'a previous result (' + sn(SID) + ')';
   vbox.innerHTML = '<nav class="pp pp-bar" aria-label="Previous result"><p><b>You\'re viewing ' + esc(what) + '.</b> ' +
-    '<a href="' + BASE + '">Back to the Current Result</a> <span id="pp-vact"></span></p>' +
+    '<a class="pp-btn" href="' + BASE + '">Back to the Current Result</a> <span id="pp-vact"></span></p>' +
     '<div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div></nav><dialog class="pp-dlg" id="pp-dlg" aria-labelledby="pp-dlg-h"></dialog>';
   vbox.addEventListener('click', e => {                          // dismiss: the message goes, focus to the bar's first link
     if (!e.target.closest('button[data-act="dismiss"]')) return;
@@ -244,7 +244,7 @@ function jobCard(j) {                                           // heading: the 
   return h + '</article>';
 }
 
-function jobsBlock(s) {
+function jobsBlock(s, noLast) {
   // running, waiting, and failed or interrupted ones not followed by a success: cards; the last finished one: one line;
   // every other finished one: folded under "Previous Jobs". Nothing drops off. One-line places are sentence case.
   const all = (s.jobs || []).slice().reverse();                 // newest first
@@ -252,10 +252,10 @@ function jobsBlock(s) {
   const card = all.filter((j, i) => j.status === 'queued' || j.status === 'running' || j.status === 'needs-spend' ||
                                     ((j.status === 'failed' || (j.status === 'interrupted' && !lost(j))) && (lastOk < 0 || i < lastOk)));
   const last = lastOk >= 0 ? all[lastOk] : null;
-  const previous = all.filter(j => !card.includes(j) && j !== last);
+  const previous = all.filter(j => !card.includes(j) && j !== last);   // noLast (the estimate card, P12): the last job is not shown at all
   if (!card.length && !last && !previous.length) return '';
   let h = card.map(jobCard).join('');
-  if (last) h += '<p class="pp-last"><b>Last Job:</b> ' + esc(cap(last.title)) + '</p>';
+  if (last && !noLast) h += '<p class="pp-last"><b>Last Job:</b> ' + esc(cap(last.title)) + '</p>';
   if (previous.length) h += '<details id="pp-previous"><summary>Previous Jobs (' + previous.length + ')</summary><ul>' +
     previous.map(j => '<li>' + esc(cap(j.title)) + (j.reason ? ' <span class="pp-note">' + esc(j.reason) + ' Log: ' + esc(j.log) + '</span>' : '') + '</li>').join('') + '</ul></details>';
   return h;
@@ -370,10 +370,10 @@ function historyBlock(s) {
     rows.map(r => '<tr><th scope="row"><span class="pp-nw">' + esc(cap(r.label)) + (r.current ? ' (current)' : '') + '</span>' + (r.name ? '<span class="pp-name' + ([...r.name].length > 40 ? ' pp-long' : '') + '">' + esc(r.name) + '</span>' : '') + '</th><td>' + esc(r.status) + (r.summary_only ? ' (summary only)' : r.inferred ? ' (inferred)' : '') +
       '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td class="pp-nw">' + esc(r.date || r.started ? fmtDay(r.date || r.started) : 'not recorded') + '</td><td class="pp-nw">' + esc(/^session \d/.test(r.from_label) ? cap(r.from_label) : r.from_label) +
       '</td><td>' + esc(r.changes) + '</td><td>' + esc(r.since_start) + '</td><td>' +
-      (r.notes ? '<button type="button" class="pp-link" id="pp-notes-' + esc(r.id) + '" data-act="notes" data-id="' + esc(r.id) + '">Notes</button>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a href="' + esc(r.result) + '">previous result</a>' : 'none') + (r.pdf_removed ? '<span class="pp-note"> · PDF removed</span>' : '') +
+      (r.notes ? '<button type="button" class="pp-link" id="pp-notes-' + esc(r.id) + '" data-act="notes" data-id="' + esc(r.id) + '">Notes</button>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a class="pp-btn" href="' + esc(r.result) + '">Open the Previous Result</a>' : 'none') + (r.pdf_removed ? '<span class="pp-note"> · PDF removed</span>' : '') +
       '</td><td>' + ((r.status === 'finished' || r.status === 'applied') && !s.live_review && !s.lock && !s.cleared ? '<button type="button" id="pp-from-' + esc(r.id) + '" data-act="review" data-from="' + esc(r.id) + '">' + esc(tc('Review again from ' + r.label)) + '</button>' : '') +
       '</td></tr>').join('') + '</tbody></table></div>';
-  if (s.ai_result) h += '<p><a href="' + esc(s.ai_result) + '">The result applied without review</a> (kept with the run).</p>';
+  if (s.ai_result) h += '<p class="pp-row"><a class="pp-btn" href="' + esc(s.ai_result) + '">Open the Result Applied Without Review</a> <span class="pp-note">(kept with the run)</span></p>';
   return h + '</details>';
 }
 
@@ -525,18 +525,16 @@ function pendingBlock(s) {
   if (s.phase === 'saved-reply') return h + '<p>No AI call is needed: the AI\'s reply from an earlier attempt is saved and will be used again, at no cost.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-retry" data-act="retry">Continue</button></div>';
   if (!e) return h + '<p>This run has no estimate yet.</p><div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
-  h += '<p id="pp-cost"><b>' + esc(costLine(e)) + '</b></p><p>' + esc(s.sent) + '</p>' +
-    '<p>Review First: ' + (s.review_first ? 'On. The run stops after the AI\'s decisions, so a person can review them before anything is applied.' : 'Off. The AI\'s decisions are applied straight away; you can review them afterwards.') + '</p>';
+  h += '<p id="pp-cost"><b>' + esc(costLine(e)) + '</b></p>';                // P12: no "Review First" or "Sent to the AI" lines
   if (!s.spend || !s.spend.ok) return h + '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This run can\'t be sent yet.') + '</p>' +
     '<p>' + esc(s.spend && ['per_call', 'per_book', 'credit', 'no_credit', 'model'].includes(s.spend.code) ? 'Whoever looks after the app can raise the limit or add credit; then select "Get a New Estimate".' : 'Select "Get a New Estimate" to try again.') + '</p>' +
     '<div class="pp-row"><button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
   return h +
-    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-spend" data-act="spend" aria-describedby="pp-cost">Start Remediation</button>' +
-    '<button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-spend" data-act="spend" aria-describedby="pp-cost">Start Remediation</button></div>' +
     (s.test ? '<p class="pp-note">Test: "Start Remediation" uses the saved reply; nothing is sent to the AI service.</p>' :
     '<p class="pp-note">"Start Remediation" sends the book to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.</p>');
 }
-const PHASE = { outside: 'Started Outside the App', batch: 'Part of a Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Start Again', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
+const PHASE = { outside: 'Started Outside the App', batch: 'Part of a Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Waiting for a New Estimate', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
 
 // After a redraw: focus back on the element that had it (by id). When that element is gone (a finished job's card becomes
 // one line), focus goes to the panel's heading rather than being lost; for the Spend's landing (03 §14) that is still
@@ -549,7 +547,7 @@ function refocus(keepFocus) {
 
 function render() {
   if (WAITING && st.mode === 'pending') {                        // before the result: the estimate, Spend, the progress
-    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(PHASE[st.phase] || 'This Run') + '</h3>' + pendingBlock(st) + jobsBlock(st),
+    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(PHASE[st.phase] || 'This Run') + '</h3>' + pendingBlock(st) + jobsBlock(st, true),
           body = $('pp-body'), keepFocus = document.activeElement && document.activeElement.id;
     if (body.dataset.h === h) return;
     body.innerHTML = h; body.dataset.h = h;
@@ -568,9 +566,9 @@ function render() {
   const s = st, keepFocus = document.activeElement && document.activeElement.id, opened = [...box.querySelectorAll('details[open]')].map(d => d.id);
   // "Ready to ship?" is not repeated here: the report's own card, right below, says it
   const c = s.cost;
-  let h = setupBlock() + (s.batch ? '<p>Part of the batch "' + esc(s.batch_name || s.batch) + '": <a href="/batch/' + encodeURIComponent(s.batch) + '/">every book in the batch</a></p>' : '') +
-    (s.file ? '<p class="pp-note">' + (s.run_name ? 'Run Name: ' + esc(s.run_name) + ' · ' : '') + 'Source PDF Filename: ' + esc(s.file) + (c ? ' · AI Cost: ' + (c.reused ? 'none (a saved reply was used)' : usd(c.usd) +
-      (c.estimate_usd ? ' (worst-case estimate ' + usd(c.estimate_usd) + ')' : '')) : '') + '</p>' : '') +
+  let h = setupBlock() + (s.batch ? '<p class="pp-row">Part of the batch "' + esc(s.batch_name || s.batch) + '". <a class="pp-btn" href="/batch/' + encodeURIComponent(s.batch) + '/">Open the Batch Page</a></p>' : '') +
+    (c ? '<p class="pp-note">AI Cost: ' + (c.reused ? 'none (a saved reply was used)' : usd(c.usd) +
+      (c.estimate_usd ? ' (worst-case estimate ' + usd(c.estimate_usd) + ')' : '')) + '</p>' : '') +
     '<h3 id="pp-cur" tabindex="-1">' + esc(tc('Current result: ' + s.current.label)) + '</h3>';
   if (s.pending) h += '<p>' + esc(sn(s.pending.session)) + ' is ' + esc(s.pending.status) + ' and not applied yet, so the book stays "Not Ready" until it is.</p>';
   if (newResult) h += '<p><b>New Result Ready:</b> ' + esc(cap(s.current.label)) + ' is now the current result; the report below is the previous one.</p>' +

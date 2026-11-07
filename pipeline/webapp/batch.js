@@ -1,13 +1,14 @@
 /* webapp/batch.js: the batch page and the side column of every book page in a batch (#45, home interface).
 
-   The side column ("Books in This Batch"): each book with its status in words (never by colour alone), the current book
-   marked aria-current="page"; a real button hides and shows the list (aria-expanded), remembered in this browser only (a
-   convenience); on a narrow screen (below 48em, 320 px included) the list starts closed under its button, in the page's
-   flow, so nothing scrolls sideways. "Skip to the content" skips it. The statuses are kept current from /api/batch/<label>.
+   The side column ("PDFs in This Batch"): each PDF with its status in words and its state in its left border (P15: never by
+   colour alone), the current one marked aria-current="page" (darker background, bold); a real button beside "Home Page"
+   hides and shows the list (aria-expanded), remembered in this browser only (a convenience); on a narrow screen (below
+   48em, 320 px included) the list starts closed, in the page's flow, so nothing scrolls sideways. "Skip to the content"
+   skips it. The statuses are kept current from /api/batch/<label>.
 
    The batch page: the estimate of every book added up, the batch limit and the credit, "Start Remediation" (with the
-   worst-case estimate beside it), the running total while it runs, "Open the Batch Dashboard"
-   when the batch has one, and "Run the Unfinished Books Again". Focus moves only after the person's own action. */
+   worst-case estimate beside it), the total cost, the batch dashboard drawn in the page (P8: report_html's own rows), and
+   "Run the Unfinished PDFs Again". Focus moves only after the person's own action. */
 (() => {
 'use strict';
 const $ = id => document.getElementById(id);
@@ -20,14 +21,14 @@ const narrow = matchMedia('(max-width: 48em)');
 const KEY = 'batchnav:closed';
 function closed() { try { const v = localStorage.getItem(KEY); return v === null ? narrow.matches : v === '1'; } catch (e) { return narrow.matches; } }
 function setOpen(open, remember) {
-  const t = $('bn-toggle'), n = nav.querySelectorAll('#bn-list li').length;
+  const t = $('bn-toggle'), n = nav.querySelectorAll('#bn-list li').length; if (!t) return;
   nav.classList.toggle('closed', !open); document.body.classList.toggle('bn-closed', !open);
   t.setAttribute('aria-expanded', String(open)); t.textContent = open ? 'Hide the Book List' : 'Show the Book List (' + n + ')';
   if (remember) { try { localStorage.setItem(KEY, open ? '0' : '1'); } catch (e) {} }
 }
 document.body.classList.add('bn-on');
 setOpen(!closed(), false);
-$('bn-toggle').addEventListener('click', () => setOpen(nav.classList.contains('closed'), true));
+if ($('bn-toggle')) $('bn-toggle').addEventListener('click', () => setOpen(nav.classList.contains('closed'), true));
 
 let st = null, primed = false; const seen = {};
 const live = t => { const l = $('pp-live'); if (!l) return; l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
@@ -40,41 +41,63 @@ function column(s) {                                             // the statuses
   s.books.forEach(b => {
     const a = nav.querySelector('a[data-book="' + CSS.escape(b.name) + '"]'); if (!a) return;
     const x = a.querySelector('.bn-st'); if (x.textContent !== b.status) x.textContent = b.status;
+    const c = 'bn-t-' + (b.tone || 'new');
+    if (!a.classList.contains(c)) { a.className = c; }
+    const sp = a.querySelector('.bn-spin');
+    if (b.tone === 'processing' && !sp) a.insertAdjacentHTML('beforeend', '<span class="bn-spin" role="img" aria-label="Processing"></span>');
+    else if (b.tone !== 'processing' && sp) sp.remove();
   });
 }
-const PHASE = { estimating: 'Estimating', ready: 'Ready to Start', running: 'Running', finished: 'Finished', stopped: 'Stopped', missing: 'Stopped: an Estimate Is Missing', 'needs-spend': 'Start Again' };
+const PHASE = { estimating: 'Estimating', ready: 'Ready to Start', running: 'Running', finished: 'Finished', stopped: 'Stopped', missing: 'Stopped: an Estimate Is Missing', 'needs-spend': 'Waiting for a New Estimate' };
 function body(s) {
   const T = s.totals, n = s.books.length;
   let h = '<h3 id="bt-phase" tabindex="-1">' + esc(PHASE[s.phase] || s.phase) + '</h3>';
   if (s.test) h += '<p class="pp pp-bar">Test: saved replies, no AI call.</p>';
-  h += '<p>' + T.finished + ' of ' + n + ' books finished' + (s.ocr_name ? ' · OCR Language: ' + esc(s.ocr_name) : '') + '</p>';
+  h += '<p>' + T.finished + ' of ' + n + ' PDFs finished' + (s.ocr_name ? ' · OCR Language: ' + esc(s.ocr_name) : '') + '</p>';
   const x = T.expected;
   if (s.phase === 'ready' || s.phase === 'estimating' || s.phase === 'missing')
-    h += '<p id="bt-cost"><b>' + (x ? 'About ' + usd(x.usd) + ' · ' : '') + 'Worst-case estimate ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' book' + (T.books_to_send === 1 ? '' : 's') +
+    h += '<p id="bt-cost"><b>' + (x ? 'About ' + usd(x.usd) + ' · ' : '') + 'Worst-case estimate ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' PDF' + (T.books_to_send === 1 ? '' : 's') +
          ' · Batch limit ' + usd(T.limit_usd) + (T.credit_usd != null ? ' · Credit ' + usd(T.credit_usd) : ' · Credit not checked') + '</b></p>';
   if (T.spent_usd || s.phase === 'running' || s.phase === 'finished')
-    h += '<p>Spent so far: ' + usd(T.spent_usd) + (T.shown_ceiling_usd != null ? ' (worst-case estimate ' + usd(T.shown_ceiling_usd) + ')' : '') + '</p>';
-  if (s.flagged.length) h += '<p>' + s.flagged.length + ' book' + (s.flagged.length === 1 ? '' : 's') + ' stopped and need' + (s.flagged.length === 1 ? 's' : '') +
-    ' a person: ' + (s.flagged.length === 1 ? 'it is' : 'they are') + ' not sent. Each book\'s page says why.</p>';
-  if (s.phase === 'estimating') h += '<p>Each book is being prepared and estimated (free). This page follows them; you can leave it and come back from the home page.</p>';
-  if (s.phase === 'missing') h += '<p class="pp-warn-t">A book\'s estimate is missing, so the batch can\'t be sent.</p><p>Each book\'s page says what happened. ' +
-    '"Get New Estimates" tries again for the books without a result.</p><div class="pp-row"><button type="button" id="bt-again" data-act="again">Get New Estimates</button></div>';
+    h += '<p><b>Total Cost:</b> ' + usd(T.spent_usd) + (T.shown_ceiling_usd != null ? ' (worst-case estimate ' + usd(T.shown_ceiling_usd) + ')' : '') + '</p>';
+  if (s.flagged.length) h += '<p>' + s.flagged.length + ' PDF' + (s.flagged.length === 1 ? '' : 's') + ' stopped and need' + (s.flagged.length === 1 ? 's' : '') +
+    ' a person: ' + (s.flagged.length === 1 ? 'it is' : 'they are') + ' not sent. Each PDF\'s page says why.</p>';
+  if (s.phase === 'estimating') h += '<p>Each PDF is being prepared and estimated (free). This page follows them; you can leave it and come back from the home page.</p>';
+  if (s.phase === 'missing') h += '<p class="pp-warn-t">A PDF\'s estimate is missing, so the batch can\'t be sent.</p><p>Each PDF\'s page says what happened. ' +
+    '"Get New Estimates" tries again for the PDFs without a result.</p><div class="pp-row"><button type="button" id="bt-again" data-act="again">Get New Estimates</button></div>';
   if (s.phase === 'needs-spend') h += '<p>The app restarted before the batch started, so nothing was sent.</p><div class="pp-row"><button type="button" id="bt-again" data-act="again">Get New Estimates</button>' +
     '<button type="button" id="bt-dismiss" data-act="dismiss">Dismiss</button></div>';
   if (s.phase === 'ready') {
     h += '<p>Books in a batch are applied without a review first. Review each one afterwards from its page.</p>';
     if (s.spend && s.spend.ok) h +=
       '<div class="pp-row"><button type="button" class="pp-primary" id="bt-spend" data-act="spend" aria-describedby="bt-cost">Start Remediation</button></div>' +
-      '<p class="pp-note">' + (s.test ? 'Test: "Start Remediation" uses saved replies; nothing is sent to the AI service.' : '"Start Remediation" sends every book to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.') + '</p>';
-    else h += '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This batch can\'t be sent yet.') + '</p><p>Whoever looks after the app can raise the limit or add credit; or start a batch with fewer books.</p>';
+      '<p class="pp-note">' + (s.test ? 'Test: "Start Remediation" uses saved replies; nothing is sent to the AI service.' : '"Start Remediation" sends every PDF to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.') + '</p>';
+    else h += '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This batch can\'t be sent yet.') + '</p><p>Whoever looks after the app can raise the limit or add credit; or start a batch with fewer PDFs.</p>';
   }
-  if (s.phase === 'running') h += '<p>The books are being sent and applied, ' + 'a few at a time. Each book\'s status is in the list of books.</p>';
-  if (s.phase === 'stopped' && s.job && s.job.status !== 'done') h += '<div class="pp-fail"><h4>Stopped: The batch stopped before every book finished</h4><p>The books that finished keep their results.</p>' +
+  if (s.phase === 'running') h += '<p>The PDFs are being sent to the AI, a few at a time. Each PDF\'s status is in the list of PDFs.</p>';
+  if (s.phase === 'stopped' && s.job && s.job.status !== 'done') h += '<div class="pp-fail"><h4>Stopped: The batch stopped before every PDF finished</h4><p>The PDFs that finished keep their results.</p>' +
     '<details><summary>Details</summary><ul class="pp-note"><li>Exit code: ' + esc(s.job.exit) + '</li><li>Full log: runs/.app/jobs/' + esc(s.job.id) + '.log</li></ul></details></div>';
-  if (s.summary) h += '<p><a class="pp-btn" href="summary.html">Open the Batch Dashboard</a></p>';
-  if (s.again) h += '<div class="pp-row"><button type="button" id="bt-again" data-act="again">Run the Unfinished Books Again</button>' +
-    '<span class="pp-note">New estimates first (free), then "Start Remediation" for those books.</span></div>';
+  if (s.again) h += '<div class="pp-row"><button type="button" id="bt-again" data-act="again">Run the Unfinished PDFs Again</button>' +
+    '<span class="pp-note">New estimates first (free), then "Start Remediation" for those PDFs.</span></div>';
+  h += dash(s);
   return h;
+}
+const money = x => x == null ? 'not recorded' : x < 0.01 && x > 0 ? '< $0.01' : usd(x);
+function dash(s) {                                               // the batch dashboard (P8): blank result columns until a PDF is applied
+  const rs = s.dashboard || []; if (!rs.length) return '';
+  const SAFE = { ok: 'OK', failed: 'Failed', 'not checked': 'Not Checked' };
+  let h = '<h3 id="bt-dash-h">Batch Dashboard</h3><div class="pp-tw" tabindex="0" role="region" aria-labelledby="bt-dash-h"><table class="hm-t bt-dash"><thead><tr>' +
+    ['PDF', 'Status', 'Needs a Person', 'AI Decisions', 'Safety', 'veraPDF (WCAG Rules)', 'AI Cost', 'Pages'].map(x => '<th scope="col">' + x + '</th>').join('') + '</tr></thead><tbody>';
+  rs.forEach((r, i) => {
+    const x = r.result;
+    h += '<tr><th scope="row"><span class="hm-book">' + esc(r.book) + '</span><span class="hm-file">Source PDF: ' + esc(r.file) + '</span>' +
+      '<a class="pp-btn bt-open" href="' + esc(r.href) + '" id="bt-o' + i + '">Open</a></th><td>' + esc(r.status) + (x && !x.reviewed ? ' <span class="pp-note">(not reviewed)</span>' : '') + '</td>';
+    if (!x) { h += '<td></td><td></td><td></td><td></td><td></td><td></td></tr>'; return; }
+    h += '<td>' + x.needs + '</td><td>' + x.ai + '</td><td>' + esc(SAFE[x.safety] || x.safety) + '</td>' +
+      '<td>' + (x.va == null ? 'not run' : (x.vb == null ? '–' : x.vb) + ' → ' + x.va + (x.new ? ' <b>(' + x.new + ' new)</b>' : '')) + '</td>' +
+      '<td>' + money(x.cost) + '</td><td>' + (x.pages || 'not counted') + '</td></tr>';
+  });
+  return h + '</tbody></table></div><p class="pp-note">Sorted by "Needs a Person", most work first. Automated checks are evidence, not sign-off.</p>';
 }
 async function api(path, b) {
   const r = await fetch(path, b === undefined ? { cache: 'no-store' } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });

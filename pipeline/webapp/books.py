@@ -1,7 +1,8 @@
-"""webapp/books.py: the books the app offers (the samples folder and the uploads folder), their display names, and
-"Add a Book" (an upload into the uploads folder). Read only for samples; uploads are only ever added, never replaced.
+"""webapp/books.py: the PDFs the app offers (the uploads folder only; samples/ is searched by sha256 for originals, never
+listed), their display names, and "Add a PDF" (an upload into the uploads folder). Uploads are only ever added, never
+replaced (a PDF moved to the Trash is moved, never deleted).
 
-    listing(s)              [{key (sha256), name, file, group: sample | added, pages, size, locked, unreadable, path}]
+    listing(s)              [{key (sha256), name, file, group: added, pages, size, locked, unreadable, path}]
     by_key(s, key)          one book by its sha256, or None (a request names a book by its key, never by a path)
     receive(s, rfile, n, name)   an upload: streamed to uploads/.incoming/<random>.part, hashed while written, then given its
                             final name with os.link (never replaces a file), under uploads/.lock; raises Refused
@@ -10,7 +11,7 @@
 
 The display name (#45, Q6): the PDF's own Title when it looks like a title (not empty, not "untitled", not a file or
 program name), else the file name without ".pdf", with "_" and "-" read as spaces. Wherever a book is named, the page also
-shows "Source PDF Filename: <file name>" under it (the one file name the pages show; docs/app.md). Titles and page counts
+shows "Source PDF: <file name>" under it (the one file name the pages show; docs/app.md). Titles and page counts
 are read once per sha256 into runs/.app/books-cache.json. Reading an untrusted PDF never fails the page: any error falls
 back to the file name, and a password-locked PDF is listed as locked.
 """
@@ -91,7 +92,7 @@ def display_name(title, file):
     return t if title_ok(t) else stem_name(file)
 
 def shown_file(name):
-    """A file name as a page shows it ("Source PDF Filename:"): control and bidirectional characters removed. The pages
+    """A file name as a page shows it ("Source PDF:"): control and bidirectional characters removed. The pages
     escape it too."""
     return ''.join(c for c in unicodedata.normalize('NFC', str(name)) if unicodedata.category(c) not in ('Cc', 'Cf'))
 
@@ -143,10 +144,11 @@ def meta(s, sha, path):
 
 # ------------------------------------------------------------------ the list
 def listing(s):
-    """Every book: the samples first, then the uploads, each in folder order. A book whose content is listed twice (the
-    same sha256 in both folders) is shown once, from where it is first found."""
+    """Every PDF added through "Add a PDF" (the uploads folder), in folder order; a content listed twice is shown once.
+    samples/ is never listed (Patrick, 2026-11-06, P3): runs.find_original still looks there by sha256, read only, so
+    "Review Again" and the first apply of a run made from samples/ keep working."""
     out, seen = [], set()
-    for group, root in (('sample', s['samples']), ('added', s['uploads'])):
+    for group, root in (('added', s['uploads']),):
         ps = pdfs_in(root)
         hs = hashes(s, ps)
         for p in ps:

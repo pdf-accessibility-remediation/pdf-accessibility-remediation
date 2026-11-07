@@ -213,7 +213,7 @@ APPBAR_MARK = 'aria-label="App"'
 def with_appbar(page):
     """Every HTML page the app serves carries the app bar (the way home), right after its skip link, else right after
     <body>; a page that has one already is left as it is."""
-    if APPBAR_MARK in page: return page
+    if APPBAR_MARK in page or 'data-home="1"' in page[:2000]: return page          # the home page has none (P1)
     bar = HM.appbar()
     if SKIP in page: return page.replace(SKIP, SKIP + bar, 1)
     return after_body(page, bar)
@@ -471,7 +471,8 @@ def make(s, setup, code=None):
             if p == '/':
                 return self.send(200, HM.page(s, (q.get('q') or [''])[0], (q.get('n') or ['25'])[0], test=bool(s.get('test_reply_dir')),
                                               added=(q.get('added') or [None])[0], bn=(q.get('bn') or ['25'])[0],
-                                              renamed=(q.get('renamed') or [None])[0]), 'text/html; charset=utf-8')
+                                              renamed=(q.get('renamed') or [None])[0], view=(q.get('view') or ['runs'])[0],
+                                              group=(q.get('group') or [''])[0]), 'text/html; charset=utf-8')
             self.send(404, {'error': 'not found'})
 
         def json_ok(self):
@@ -567,8 +568,8 @@ def make(s, setup, code=None):
             cur = S.current_id((runs.load(rec) if rec.startswith(RUNS + os.sep) else None) or {})
             f = os.path.realpath(f)                                                  # checked inside the runs folder first
             t = self.text(f) if f.startswith(RUNS + os.sep) and os.path.isfile(f) else None
-            if t is not None: return self.send(200, self.in_batch(run, with_panel(card_border(REL.no_statement(t), R), run, cur)), 'text/html; charset=utf-8')
-            return self.send(200, self.in_batch(run, no_dashboard(run, R, cur)), 'text/html; charset=utf-8')
+            if t is not None: return self.send(200, self.in_batch(run, with_panel(with_app_header(card_border(REL.no_statement(t), R), s, run, R), run, cur)), 'text/html; charset=utf-8')
+            return self.send(200, self.in_batch(run, no_dashboard(run, R, cur, s)), 'text/html; charset=utf-8')
 
         def in_batch(self, run, page):
             """A book's page inside a batch (runs/batches/<label>/<name>) gets the batch's side column."""
@@ -590,26 +591,42 @@ def card_border(page, R):
     except (OSError, ValueError, KeyError, TypeError): return page
     return page.replace(green, '<section class="ship" aria-labelledby="ship-h">', 1) if changed else page
 
-def no_dashboard(run, R, current=None):
+def app_header(s, run, R, pages=None):
+    """The run page's header as the app shows it (P7, Patrick 2026-11-06): the PDF's display name, "Source PDF:", the Run
+    Name and the page count, in plain words; no file names or codes beyond "Source PDF:". review.html on disk keeps its own."""
+    name, file = runs.book_of(s, run, R)
+    bits = ([f'Source PDF: {html.escape(file)}'] if file else []) + [f'Run Name: {html.escape(NMS.shown_run(s, run))}'] + \
+           ([f'{pages} pages'] if pages else [])
+    return f'<header class="top pp-head"><h1>{html.escape(name)}</h1><p class="mc-book">' + ''.join(f'<span class="hm-file">{b}</span>' for b in bits) + '</p></header>'
+
+def with_app_header(page, s, run, R):
+    """review.html as served, with its own header (a file name, the prompt, the model, the run label) replaced by app_header()."""
+    a = page.find('<header class="top">'); b = page.find('</header>', a)
+    if a < 0 or b < 0: return page
+    m = re.search(r'· (\d[\d,]*) pages ·', page[a:b])
+    page = page[:a] + app_header(s, run, R, m.group(1) if m else None) + page[b + len('</header>'):]
+    return re.sub(r'<title>[^<]*</title>', lambda _: f'<title>{html.escape(runs.book_of(s, run, R)[0])}</title>', page, count=1)
+
+def no_dashboard(run, R, current=None, s=None):
     """A run with no review.html (older runs): the panel, the review.md link and a line saying there is no dashboard.
     No rebuild: report_html.py would write into the run."""
     rm = os.path.realpath(os.path.join(R, 'review.md'))           # checked inside the run folder before isfile
-    md = '<p><a href="review.md">review.md</a>: what a person should check.</p>' if rm.startswith(os.path.realpath(R) + os.sep) and os.path.isfile(rm) else ''
+    md = '<p><a class="pp-btn" href="review.md">Open the Report</a> <span class="pp-note">what a person should check</span></p>' if rm.startswith(os.path.realpath(R) + os.sep) and os.path.isfile(rm) else ''
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-                      f'<title>{html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
-                      f'<header><h1>{html.escape(run)}</h1></header><main id="main" tabindex="-1">'
-                      f'<p>This run has no dashboard (review.html): it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current)
+                      f'<title>{html.escape(runs.book_of(s, run, R)[0] if s else run)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
+                      + (app_header(s, run, R) if s else f'<header><h1>{html.escape(run)}</h1></header>') + '<main id="main" tabindex="-1">'
+                      f'<p>This run has no dashboard: it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current)
 
 def waiting_page(run, R, s=None):
     """A run before its first result: stopped for its first review (REVIEW=1: the panel's "Open the Review Page," then
     "Apply"), or started from the home page and estimating, ready to Spend, running, stopped or failed (the panel follows
-    it). The book is named by its display name with "Source PDF Filename:" under it, and the Run Name."""
+    it). The book is named by its display name with "Source PDF:" under it, and the Run Name."""
     name, file = runs.book_of(s, run, R) if s else (runs.waiting_title(run, R), '')
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
                       f'<title>{html.escape(name)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
-                      f'<header><h1>{html.escape(name)}</h1><p class="mc-book">' + (f'<span class="hm-file">Source PDF Filename: {html.escape(file)}</span>' if file else '') +
+                      f'<header><h1>{html.escape(name)}</h1><p class="mc-book">' + (f'<span class="hm-file">Source PDF: {html.escape(file)}</span>' if file else '') +
                       f'<span class="hm-file">Run Name: {html.escape(NMS.shown_run(s, run) if s else run.split("/")[-1])}</span></p></header><main id="main" tabindex="-1">'
-                      '<p>Nothing has been applied to this book yet. The report and the remediated PDF come with the first apply.</p></main></body></html>',
+                      '</main></body></html>',
                       run, waiting=True)
 
 def refused_page(message, base):

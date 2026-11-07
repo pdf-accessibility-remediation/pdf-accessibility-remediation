@@ -142,7 +142,7 @@ A run that `REVIEW=1` stopped before its first review (`workorder.ai.json`, no `
 - **Is a job still running?** The app looks for the job's own command (its process id, recorded by the job's wrapper) and for any process of the job's group whose command line is this job's: the wrapper with the job's id, or the command's script with the run folder, compared as the filesystem compares paths (`~/downloads` and `~/Downloads` are one folder on a Mac). When it cannot tell, it counts the job as running. A job marked interrupted whose process turns out to be alive is shown as running again, with **Open the Review Page** and **Stop Reviewing**.
 - **Messages that name a button, view or section** put the name in quotes, as it appears on screen: 'press "Continue Review" to carry on'.
 - **A run started from the home page** that stops shows its reason in plain words, what the person can do, and a folded **Details** with the step, the exit code, the tool's own line, the record and the log ([The home page](home.md#when-a-run-stops)). This widens "no log lines" to that one folded line.
-- **File names on the page:** one exception to "no file names": wherever a book is named, "Source PDF Filename: <file name>" follows its display name ([The home page](home.md#the-home-page)).
+- **File names on the page:** one exception to "no file names": wherever a book is named, "Source PDF: <file name>" follows its display name ([The home page](home.md#the-home-page)).
 - **The app not running:** a banner says so, with the start command. Jobs already running carry on.
 
 ## Stopping and starting again

@@ -132,16 +132,38 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 
 /* the app bar on every page the app serves (#45): the way home, right after the skip link */
 .pp-appbar { max-width: 1200px; margin: 0 auto; padding: 6px 16px 0; box-sizing: border-box; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-.pp-appbar a { color: var(--accent); font-weight: 600; } .pp-appbar a[aria-current="page"] { color: var(--ink); text-decoration: none; }
-.pp-appbar a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-/* the home page */
+.pp-appbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pp-appbar .pp-btn { font: inherit; font-size: 14px; padding: 6px 12px; min-height: 32px; border: 1px solid var(--muted); border-radius: 4px; box-sizing: border-box;
+      background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-block; font-weight: 600; }
+.pp-appbar .pp-btn:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); }
+.pp-appbar :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* the home page (P14: the run page's cards, review/palette.css colors; D6: one pill per status group, its name in words) */
+.hm-card { border-top: 5px solid var(--line); border-radius: 8px; }
+.hm-c-act { border-top-color: var(--accent); } .hm-c-pdfs { border-top-color: var(--seen); } .hm-c-ws { border-top-color: var(--ok); }
+.hm-pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap;
+           color: var(--panel); background: var(--muted); border: 1px solid transparent; }
+.hm-g-processing { background: var(--accent); } .hm-g-in-progress { background: var(--change); }
+.hm-g-done { background: var(--ok); } .hm-g-failed { background: var(--reject); }
+.hm-st { font-size: 13px; color: var(--muted); }
+.hm-run { display: block; font-weight: 600; }
+.hm-ws { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 6px 0; }
+.hm-switch { display: inline-flex; } .pp .hm-switch button { border-radius: 0; margin: 0; }
+.pp .hm-switch button:first-child { border-radius: 4px 0 0 4px; } .pp .hm-switch button:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
+.pp .hm-switch button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+.hm-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.pp .hm-filter a.pp-btn { border-top: 4px solid var(--muted); }
+.pp .hm-filter a.hm-f-processing { border-top-color: var(--accent); } .pp .hm-filter a.hm-f-in-progress { border-top-color: var(--change); }
+.pp .hm-filter a.hm-f-done { border-top-color: var(--ok); } .pp .hm-filter a.hm-f-failed { border-top-color: var(--reject); }
+.pp .hm-filter a[aria-current="true"] { background: var(--bg); font-weight: 700; box-shadow: inset 0 -2px 0 var(--ink); }
+.hm-add { justify-content: flex-start; }
+@media (forced-colors: active) { .hm-pill { border-color: CanvasText; } }
 .hm-page .pp-tw { margin: 4px 0; }
 .hm-t { width: 100%; } .hm-t th[scope="row"] { font-weight: 400; background: none; min-width: 12em; }
 .hm-book { display: block; font-weight: 600; } .hm-file { display: block; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .hm-add, .hm-search { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0; }
 .hm-add label, .hm-search label { font-weight: 600; }
 .hm-search input[type=search] { font: inherit; padding: 4px 6px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); min-width: 14em; }
-.hm-active { padding-left: 20px; } .hm-active li { margin: 2px 0; }
+.hm-active { list-style: none; padding-left: 0; } .hm-active li { margin: 6px 0; padding: 6px 0; border-bottom: 1px solid var(--line); } .hm-active li .pp-btn { margin-left: 8px; }
 .hm-page input[type=checkbox] { width: 20px; height: 20px; }
 .hm-page :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 640px) { .pp-appbar { padding-left: 10px; padding-right: 10px; } .hm-t th[scope="row"] { min-width: 9em; } }
@@ -153,24 +175,44 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .hm-form { max-width: 48em; } .hm-form select { font: inherit; min-height: 32px; padding: 2px 6px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); }
 .hm-check { display: flex !important; align-items: center; gap: 8px; }
 .mc-book .hm-file { display: block; }
-/* the side column of a batch (#45): "Books in This Batch"; fixed at the left on a wide screen (batch.js adds bn-on), in
-   the page's flow under its button below 48em; statuses in words, the current book marked with a border and bold */
+/* the side column of a batch (#45): "PDFs in This Batch"; fixed at the left on a wide screen (bn-on), in the page's flow
+   below 48em; statuses in words, each PDF's state in its left border (P15), the current one by its background and bold */
 .bn { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--panel); box-sizing: border-box;
       border: 1px solid var(--line); border-radius: 6px; margin: 8px 16px; padding: 6px 10px; }
 .bn ul { list-style: none; padding: 0; margin: 4px 0; }
-.bn li a { display: block; padding: 6px 8px; margin: 2px 0; border-radius: 4px; text-decoration: none; color: var(--ink); border-left: 4px solid transparent; }
-.bn li a:hover { text-decoration: underline; }
-.bn li a[aria-current="page"] { background: var(--bg); border-left-color: var(--accent); }
-.bn li a[aria-current="page"] .bn-name { text-decoration: underline; }
+/* P15: the left border is the PDF's state (its status in words stays under its name), the selected PDF is the darker
+   background and bold text; hover is a lighter shade than the selection (P6) */
+.bn li a { position: relative; display: block; padding: 6px 28px 6px 8px; margin: 2px 0; border-radius: 4px; text-decoration: none; color: var(--ink);
+           border-left: 5px solid var(--muted); }
+.bn li a:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); }
+.bn li a[aria-current="page"] { background: color-mix(in srgb, var(--ink) 13%, var(--panel)); font-weight: 700; }
+.bn li a[aria-current="page"] .bn-name { font-weight: 800; }
+.bn li a.bn-t-review { border-left-color: var(--accent); } .bn li a.bn-t-person { border-left-color: var(--change); }
+.bn li a.bn-t-done { border-left-color: var(--ok); } .bn li a.bn-t-failed { border-left-color: var(--reject); }
+.bn-spin { position: absolute; right: 8px; top: 50%; width: 12px; height: 12px; margin-top: -8px; border: 2px solid var(--line);
+           border-top-color: var(--accent); border-radius: 50%; animation: pp-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .bn-spin { animation: none; border-color: var(--accent); background: var(--accent); width: 8px; height: 8px; margin-top: -6px; } }
 .bn-name { display: block; font-weight: 600; overflow-wrap: anywhere; } .bn-st { display: block; font-size: 13px; }
 .bn .hm-file { font-size: 12px; }
-.bn-h { margin: 6px 0 2px; } .bn-h a { color: var(--accent); font-weight: 600; }
-.bn-toggle { font: inherit; font-size: 14px; min-height: 32px; padding: 4px 10px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.bn-h { margin: 6px 0 2px; } .bn-h a { color: var(--ink); font-weight: 700; text-decoration: none; display: block; padding: 4px 8px; border-radius: 4px; }
+.bn-h a:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); } .bn-h a[aria-current="page"] { background: color-mix(in srgb, var(--ink) 13%, var(--panel)); }
 .bn :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.bn.closed #bn-list { display: none; }
+.bn.closed { display: none; }
+.bt-dash th[scope="row"] { min-width: 14em; } .bt-dash .bt-open { margin-top: 4px; }
 @media (min-width: 48em) {
   body.bn-on:not(.bn-closed) { padding-left: 17rem; }
   body.bn-on .bn:not(.closed) { position: fixed; top: 0; left: 0; bottom: 0; width: 16rem; margin: 0; border-radius: 0; border-width: 0 1px 0 0; overflow-y: auto; z-index: 5; }
 }
 @media (max-width: 640px) { .bn { margin: 8px 10px; } }
 .pp .pp-cleared { margin: 8px 0; }
+/* P6/P7: the run page's header (the app's own, review.html's replaced as served) lines up with the app bar, the panel and
+   the report's 1200 px column, with the side list open or closed; P12: the name and "Source PDF:" close together */
+header.top.pp-head { max-width: none; margin: 0; box-sizing: border-box; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px max(16px, calc((100% - 1200px) / 2 + 16px)); }
+header.top.pp-head h1 { font-size: 19px; margin: 0; overflow-wrap: anywhere; }
+.pp-page header h1 { margin: 10px 0 0; } .pp-page header h1 + .mc-book, header.pp-head .mc-book { margin: 0 0 6px; }
+.mc-book .hm-file { line-height: 1.4; }
+/* P5: a link the app's pages show is a button, inside or outside a card */
+.pp-page a.pp-btn { font: inherit; font-size: 14px; padding: 6px 12px; min-height: 32px; border: 1px solid var(--muted); border-radius: 4px; box-sizing: border-box;
+      background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-block; }
+.pp-page a.pp-btn:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); }
+.pp-page a.pp-btn.pp-primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }

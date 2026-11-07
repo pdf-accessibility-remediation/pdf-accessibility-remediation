@@ -282,8 +282,8 @@ def test_a_run_stopped_for_its_first_review_has_its_page(app):
     W, src = waiting_run(t)
     st, b, _ = get(port, '/run/book/rv/'); page = b.decode()
     assert st == 200 and '<div id="pdfrem-panel" data-run="book/rv" data-waiting="1">' in page and '<h1>book</h1>' in page
-    assert 'Source PDF Filename: book.pdf' in page                      # the display name, then the file (#45, Q6)
-    assert 'Nothing has been applied to this book yet. The report and the remediated PDF come with the first apply.' in page
+    assert 'Source PDF: book.pdf' in page                      # the display name, then the file (#45, Q6)
+    assert 'Nothing has been applied to this book yet' not in page                   # P11
     st, b, _ = get(port, '/api/run/book/rv'); d = json.loads(b)
     assert st == 200 and d['waiting'] == {'reviewed': False, 'reviewer': None, 'date': None, 'prepared': True} and d['title'] == 'book.pdf'
     for path in ('/run/book/rv/checks', '/run/book/rv/download?what=pdf', '/api/run/book/rv/checks', '/run/book/rv/review.md'):
@@ -508,8 +508,8 @@ def test_steps_in_plain_words():
     assert logs.now_step('review', steps) == {'words': 'checking the result', 'n': 2, 'total': 3}
     assert logs.now_step('pin', []) == {'words': 're-auditing the run to pin it (free)', 'n': 1, 'total': 1}
     assert logs.now_step('apply', logs.steps('▶ apply (no model)\n  ✓ apply (no model): 1.0s\n')) is None
-    assert logs.plain('0/5 intake: not re-run; applying to the intake result saved before the review stop') == 'reading and tagging the PDF (not run again)'
-    assert logs.plain('1/5 audit: reusing the audit already in /x/_audit') == 'auditing the PDF (not run again)'   # a waiting run's first apply
+    assert logs.plain('0/5 intake: not re-run; applying to the intake result saved before the review stop') == 'reading and tagging the PDF'
+    assert logs.plain('1/5 audit: reusing the audit already in /x/_audit') == 'auditing the PDF'   # a waiting run's first apply
     assert "esc(tc(!st.waiting ? 'First result' : st.waiting.reviewed ? 'Waiting to be applied' : 'Waiting for review'))" in src('webapp/panel.js')
     assert "(j.first ? 'Stop Reviewing (Your Choices Are Saved)' : 'Stop Reviewing (the Session Stays Open)')" in src('webapp/panel.js')   # no session before Finish
 

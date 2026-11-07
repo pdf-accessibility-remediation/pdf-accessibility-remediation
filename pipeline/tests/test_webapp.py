@@ -33,7 +33,7 @@ def stub_vera(d, answer='veraPDF 1.30.3'):
 @pytest.fixture
 def setup(tmp_path):
     """Folders, a stub veraPDF, the fake job script and a --config file."""
-    for d in ('runs', 'samples', 'bin'): (tmp_path / d).mkdir()
+    for d in ('runs', 'samples', 'uploads', 'bin'): (tmp_path / d).mkdir()
     (tmp_path / 'bin' / 'fakejob.py').write_text(FAKEJOB); (tmp_path / 'bin' / 'envdump.py').write_text(ENVDUMP)
     cfg = {'runs': str(tmp_path / 'runs'), 'samples': str(tmp_path / 'samples'), 'uploads': str(tmp_path / 'uploads'),
            'jobs': str(tmp_path / 'runs' / '.app'), 'port': free_port(), 'max_jobs': 2, 'tools': {'VERAPDF': stub_vera(str(tmp_path / 'bin'))}}
@@ -336,13 +336,13 @@ def test_requests_must_come_from_the_app(app):
 
 def test_batch_route_and_a_run_with_no_dashboard(app):
     st, b, _ = get(app['port'], '/batch/b1/')                          # the batch page (#45, L4): its books, each linked
-    assert st == 200 and b'aria-label="Books in This Batch"' in b and b'href="/run/batches/b1/x/"' in b and b'/app/batch.js' in b
+    assert st == 200 and b'aria-label="PDFs in This Batch"' in b and b'href="/run/batches/b1/x/"' in b and b'/app/batch.js' in b
     st, b, _ = get(app['port'], '/batch/b1/summary.html')                # the dashboard stays reachable, with the way home
     assert st == 200 and b'x/review.html' in b and b'aria-label="App"' in b
     assert get(app['port'], '/batch/b1/x/review.html')[2].get('Location') == '/run/batches/b1/x/'
     assert get(app['port'], '/run/batches/b1/summary.html')[2].get('Location') == '/batch/b1/summary.html'   # a review.html's ../summary.html
     st, b, _ = get(app['port'], '/run/batches/b1/x/')                    # a book's page in a batch: the side column, this book current
-    assert st == 200 and b.count(b'aria-label="Books in This Batch"') == 1 and b'aria-current="page" data-book="x"' in b
+    assert st == 200 and b.count(b'aria-label="PDFs in This Batch"') == 1 and b'aria-current="page" data-book="x"' in b
     st, b, _ = get(app['port'], '/run/old/r0/')
     assert st == 200 and b'has no dashboard' in b and b'href="review.md"' in b and b'None' not in b and b'unknown' not in b
 

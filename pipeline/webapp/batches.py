@@ -55,12 +55,13 @@ def start(s, setup, keys, plain, ocr_lang):
     (webapp/names.py label_for), and the plain name is kept by the app only."""
     from . import names as NM
     plain = NM.clean_name(plain)
+    if not plain: raise ValueError('Enter a name for the batch.')                    # P10: required
     langs = dict(BK.ocr_choices(BK.installed_langs(s)))
     if ocr_lang not in langs: raise ValueError('Choose an OCR language from the list.')
     keys = [k for k in dict.fromkeys(keys or []) if isinstance(k, str)]
-    if len(keys) < 2: raise ValueError('Select two or more books for a batch.')
+    if len(keys) < 2: raise ValueError('Select two or more PDFs for a batch.')
     cap = int(s.get('max_books_per_batch') or 50)
-    if len(keys) > cap: raise ValueError(f'A batch can hold up to {cap} books. Split them into two batches.')
+    if len(keys) > cap: raise ValueError(f'A batch can hold up to {cap} PDFs. Split them into two batches.')
     bs, taken = [], set()
     for k in keys:
         b = BK.by_key(s, k)
@@ -119,6 +120,33 @@ def _book_status(s, label, b, R, jl, batch_job):
         row['words'] = 'Stopped: Needs a Person' if it == 'stopped' else 'Failed'
     return row
 
+_DASH = {}
+def dashboard(s, label, out):
+    """The batch dashboard drawn in the batch page (P8): report_html's own rows (summary_rows, one source with summary.html),
+    cached per book by its records' mtimes. A book not applied yet (waiting for review or a language, running, stopped)
+    has no result columns: blank, never 0 or OK (Patrick, 2026-11-06)."""
+    import report_html
+    B = folder(s, label)
+    rows = []
+    for b in out:
+        R = os.path.join(B, b['name'])
+        r = None
+        if b['finished']:
+            k = (R, tuple(HM.key_of(R)))
+            r = _DASH.get(k)
+            if r is None:
+                try:
+                    rec = json.load(open(os.path.join(R, 'record.json'), encoding='utf-8'))
+                    g = report_html.glance_of(R, rec, report_html.labels_of(R, rec)); vg = g['verapdf']
+                    r = {'needs': g['needs_person']['total'], 'ai': g['ai_decisions']['count'], 'safety': report_html.safety_state(g),
+                         'vb': vg.get('before_rules'), 'va': vg.get('after_rules'), 'new': len(vg.get('newly_failing') or []),
+                         'cost': b.get('cost') or 0, 'pages': (rec.get('document') or {}).get('pages'), 'reviewed': bool(g['ship'][0]['ok'])}
+                except (OSError, ValueError, KeyError, TypeError, IndexError): r = None
+                _DASH[k] = r
+        rows.append({'name': b['name'], 'book': b['book'], 'file': b['file'], 'status': b['status'], 'tone': b.get('tone'), 'href': b['href'], 'result': r})
+    rows.sort(key=lambda x: (x['result'] is None, -((x['result'] or {}).get('needs') or 0)))
+    return rows
+
 def fingerprint(total):
     return hashlib.sha256(json.dumps([[b['R'], (b['estimate'] or {}).get('fingerprint'), b['adds_usd']] for b in total['books']],
                                      sort_keys=True).encode()).hexdigest()
@@ -143,6 +171,7 @@ def state(s, label):
                 missing.append(b['name'])
         from . import names as NM
         out.append({'name': b['name'], 'book': NM.book_name(s, b.get('key'), b.get('file') or '') if b.get('key') else b.get('book'), 'file': BK.shown_file(b.get('file') or ''), 'status': row['words'], 'finished': row['finished'],
+                    'tone': tone(row, R),
                     'href': HM.run_href(f'batches/{label}/{b["name"]}'), 'cost': row.get('cost') or 0})
     total = costs.batch(Rs, limits=costs.limits_of(s))
     spent = round(sum(x['cost'] or 0 for x in out if x['finished']) + total['spent_usd'], 6)
@@ -170,7 +199,7 @@ def state(s, label):
             'totals': {'ceiling_usd': total['ceiling_usd'], 'limit_usd': total['limit_usd'], 'credit_usd': total['credit_usd'],
                        'spent_usd': spent, 'books_to_send': len(Rs), 'finished': finished, 'expected': total['expected'],
                        'shown_ceiling_usd': ((batch_job or {}).get('shown') or {}).get('ceiling_usd')},
-            'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary,
+            'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary, 'dashboard': dashboard(s, label, out),
             'again': bool(meta) and phase in ('stopped', 'finished') and finished < len(out) - 0,
             'job': ({k: batch_job.get(k) for k in ('id', 'status', 'exit', 'started', 'ended')} if batch_job else None)}
 
@@ -212,57 +241,87 @@ def form_page(s, keys):
             '<title>New Batch</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
             '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a><header><h1>New Batch</h1></header><main id="main" tabindex="-1">')
     if len(bs) < 2:
-        return head + '<div class="pp"><p>Select two or more books on the home page first.</p><p><a class="pp-btn" href="/">Back to the Home Page</a></p></div></main></body></html>'
+        return head + '<div class="pp"><p>Select two or more PDFs on the home page first.</p></div></main></body></html>'
     items = ''.join(f'<li>{HM.book_cell(b["name"], b["file"])}<input type="hidden" name="books" value="{E(b["key"])}"></li>' for b in bs)
-    return head + (f'<form class="pp hm-form" id="hm-newbatch" data-api="/api/batch/new"><h2>Books ({len(bs)})</h2><ul class="hm-active">{items}</ul>'
-        '<div class="mc-field"><label for="nb-name">Batch Name <span class="mc-opt">(optional)</span></label>'
-        '<input type="text" id="nb-name" name="label" maxlength="120" aria-describedby="nb-name-h">'
-        '<p class="mc-help" id="nb-name-h">In your own words, for example "Press backlist, spring". It names this batch in the list of batches; '
-        'without one, the batch is named by its date.</p></div>'
+    return head + (f'<form class="pp hm-form" id="hm-newbatch" data-api="/api/batch/new"><h2>PDFs ({len(bs)})</h2><ul class="hm-active">{items}</ul>'
+        '<div class="mc-field"><label for="nb-name">Batch Name</label>'
+        '<input type="text" id="nb-name" name="label" maxlength="120" required aria-describedby="nb-name-h">'
+        '<p class="mc-help" id="nb-name-h">In your own words, for example "Press backlist, spring". It names this batch in My Workspace.</p></div>'
         f'<div class="mc-field"><label for="nb-lang">OCR Language</label><select id="nb-lang" name="ocr_lang" aria-describedby="nb-lang-h">{opts}</select>'
-        '<p class="mc-help" id="nb-lang-h">Used for every book\'s pages that need OCR (scanned pages). It is never guessed.</p></div>'
+        '<p class="mc-help" id="nb-lang-h">Used for every PDF\'s pages that need OCR (scanned pages). It is never guessed.</p></div>'
         '<p class="mc-help">Books in a batch are applied without a review first. Review each one afterwards from its page.</p>'
-        '<p class="mc-help">"Get the Estimates" prepares every book and works out what the batch could cost. It is free: nothing is sent to the AI '
+        '<p class="mc-help">"Get the Estimates" prepares every PDF and works out what the batch could cost. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the batch page.</p><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
-        '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button><a class="pp-btn" href="/">Cancel</a></div>'
+        '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button></div>'
         '</form></main><script src="/app/home.js" defer></script></body></html>')
 
-def nav(s, label, current=None):
-    """The side column (03 §7, 01 §3.2): the batch's books, each with its status in words; the current book marked. It is
-    added at serve time; batch.js keeps the statuses current, collapses the column and opens it as a list on a narrow screen."""
+def tone(row, R):
+    """A book's state in the side list's left border (P15, Patrick 2026-11-06), always with its status in words beside it:
+    processing (grey, with a spinner), new (grey: its review not opened yet), review (blue: the review opened, choices
+    saved or finished, up to Pending Evaluation), person (yellow: stopped for a person), done (green: Ready or Shipped),
+    failed (red: the last job failed)."""
+    st, w = row.get('status') or '', row.get('words') or ''
+    if row.get('active') or w in ('Estimating', 'Waiting to Start') or w.startswith('Running') or w.startswith('Applying'): return 'processing'
+    if st == 'Failed' or w == 'Failed': return 'failed'
+    if st in ('Ready', 'Shipped', 'Cleared'): return 'done'
+    if w.startswith('Stopped') or w.startswith('Waiting for a Language'): return 'person'
+    opened = any(os.path.exists(os.path.join(R, *x)) for x in (('review.json',), ('review_decisions.json',), ('record.json',),
+                                                                 ('reviews', 'review_decisions.json'), ('reviews', 'sessions')))
+    if os.path.exists(os.path.join(R, 'record.json')):
+        rec = _load(os.path.join(R, 'record.json')) or {}
+        ship = (rec.get('glance') or {}).get('ship') or []
+        opened = bool(ship and ship[0].get('ok')) or os.path.isdir(os.path.join(R, 'reviews', 'sessions'))
+    return 'review' if opened else 'new'
+
+def toggle(n, open_=True):
+    """The side list's button, beside "Home Page" in the app bar (P5)."""
+    return (f'<button type="button" class="pp-btn bn-toggle" id="bn-toggle" aria-expanded="{"true" if open_ else "false"}" aria-controls="bn-list">'
+            + ('Hide the Book List' if open_ else f'Show the Book List ({n})') + '</button>')
+
+def item(b, current):
+    import html
+    E = html.escape
+    spin = '<span class="bn-spin" role="img" aria-label="Processing"></span>' if b.get('tone') == 'processing' else ''
+    return (f'<li><a class="bn-t-{E(b.get("tone") or "new")}" href="{E(b["href"])}"' + (' aria-current="page"' if b['name'] == current else '') +
+            f' data-book="{E(b["name"])}"><span class="bn-name">{E(b["book"])}</span><span class="hm-file">Source PDF: {E(b["file"])}</span>'
+            f'<span class="bn-st">{E(b["status"])}</span>{spin}</a></li>')
+
+def nav(s, label, current=None, st=None):
+    """The side column (03 §7, 01 §3.2): the batch's PDFs, each with its status in words and its state in its left border
+    (P15); the current one marked by its background and bold name. It is added at serve time; batch.js keeps the statuses
+    current, and the button that hides it sits in the app bar (toggle())."""
     import html
     E = html.escape
     from . import names as NM
-    st = state(s, label)
-    items = ''.join(f'<li><a href="{E(b["href"])}"' + (' aria-current="page"' if b['name'] == current else '') +
-                    f' data-book="{E(b["name"])}"><span class="bn-name">{E(b["book"])}</span><span class="hm-file">Source PDF Filename: {E(b["file"])}</span>'
-                    f'<span class="bn-st">{E(b["status"])}</span></a></li>' for b in st['books'])
+    st = st or state(s, label)
+    items = ''.join(item(b, current) for b in st['books'])
     n = len(st['books'])
-    return (f'<nav class="bn" id="pp-bnav" aria-label="Books in This Batch" data-label="{E(label)}">'
-            f'<button type="button" class="bn-toggle" id="bn-toggle" aria-expanded="true" aria-controls="bn-list">Hide the Book List</button>'
+    return (f'<nav class="bn" id="pp-bnav" aria-label="PDFs in This Batch" data-label="{E(label)}">'
             f'<div id="bn-list"><p class="bn-h"><a href="/batch/{E(urllib.parse.quote(label, safe=""))}/"' + (' aria-current="page"' if current is None else '') +
-            f'>Batch: {E(NM.shown_run(s, "batches/" + label))}</a> <span class="pp-note">({n} book{"" if n == 1 else "s"})</span></p><ul>{items}</ul></div></nav>')
+            f'>Batch: {E(NM.shown_run(s, "batches/" + label))}</a> <span class="pp-note">({n} PDF{"" if n == 1 else "s"})</span></p><ul>{items}</ul></div></nav>')
 
 def page(s, label):
     import html
     from . import names as NM
     E = html.escape
+    st = state(s, label)
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             f'<title>Batch: {E(NM.shown_run(s, "batches/" + label))}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + HM.appbar() + nav(s, label) +
+            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + HM.appbar(extra=toggle(len(st['books']))) + nav(s, label, st=st) +
             f'<header><h1>Batch: {E(NM.shown_run(s, "batches/" + label))}</h1></header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
             '<h2 id="bt-h" tabindex="-1">This Batch</h2><div id="bt-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
             '<script src="/app/batch.js" defer></script></body></html>')
 
 def with_nav(page, s, label, current):
-    """A book's run page inside a batch: the side column after the app bar (after the skip link when there is none)."""
+    """A book's run page inside a batch: the app bar with the side list's button (P5), then the side column."""
     from . import server as W
-    n = nav(s, label, current)
+    st = state(s, label)
+    bar = HM.appbar(extra=toggle(len(st['books']))) + nav(s, label, current, st=st)
     if W.APPBAR_MARK in page:
-        i = page.find('</nav>', page.find(W.APPBAR_MARK))
-        page = page[:i + 6] + n + page[i + 6:]
-    elif W.SKIP in page: page = page.replace(W.SKIP, W.SKIP + W.HM.appbar() + n, 1)
-    else: page = W.after_body(page, W.HM.appbar() + n)
+        a = page.rfind('<nav', 0, page.find(W.APPBAR_MARK)); i = page.find('</nav>', a)
+        page = page[:a] + bar + page[i + 6:]
+    elif W.SKIP in page: page = page.replace(W.SKIP, W.SKIP + bar, 1)
+    else: page = W.after_body(page, bar)
     i = page.rfind('</body>'); js = '<script src="/app/batch.js" defer></script>\n'
     return page[:i] + js + page[i:] if i >= 0 else page + js

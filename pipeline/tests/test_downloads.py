@@ -60,7 +60,7 @@ def test_the_pdf_and_the_record_zip(mapp):
     assert pdf.compress_type == zipfile.ZIP_STORED and z.read(pdf) == open(os.path.join(R, 'sample_remediated.pdf'), 'rb').read()
     rd = z.read(f'{folder}/READ-ME.txt').decode()
     assert sha not in rd and 'sha256' not in rd and 'Status: Not Ready · 1 issue noted' in rd             # no hash line (Patrick, 2026-11-01)
-    assert rd.split('\n')[1] == 'Source PDF Filename: sample.pdf'
+    assert rd.split('\n')[1] == 'Source PDF: sample.pdf'
     assert ('- review.html: the report on this version (what was changed, what was checked, and the results of the accessibility '
             'evaluation). Open it in a web browser.') in rd
     assert 'Accessibility evaluation results recorded on this file: 1 (in review.html)' in rd and 'evaluation-results.json' not in rd
