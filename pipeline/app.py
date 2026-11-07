@@ -28,7 +28,7 @@ def interrupted(*a): raise KeyboardInterrupt
 
 def dispatcher(s, stop):
     while not stop.wait(1.0):
-        try: jobs.tick(s['jobs'], s)
+        try: jobs.tick(s['jobs'], s); runs.auto_apply(s)          # "Finish Review" applies at once (D3)
         except Exception:
             with open(os.path.join(s['jobs'], 'server.log'), 'a', encoding='utf-8') as f: f.write(f'{datetime.datetime.now().isoformat(timespec="seconds")} dispatcher\n{traceback.format_exc()}\n')
 

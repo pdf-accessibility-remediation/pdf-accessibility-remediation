@@ -80,7 +80,8 @@ def row_of(s, run, R):
         stop = _load(os.path.join(R, 'review_stop.json')) or {}
         file, sha = o.get('file') or os.path.basename(stop.get('src') or '') or (runj.get('source') or {}).get('file') or '', o.get('sha256') or (runj.get('source') or {}).get('sha256')
         when = runj.get('started') or intake.get('written') or ''
-        if os.path.isfile(os.path.join(R, 'workorder.ai.json')): name = words = 'Waiting for Review'
+        if os.path.isfile(os.path.join(R, 'workorder.ai.json')):
+            name = words = 'Waiting to Start' if os.path.isfile(os.path.join(R, 'review.json')) else 'Waiting for Review'   # reviewed: its apply comes next (D3)
         elif intake.get('status') == 'stopped': name, words = 'Stopped', 'Stopped: Needs a Person'
         elif intake.get('status') == 'failed' or runj.get('error') or runj.get('parse_error'): name = words = 'Failed'
         elif isinstance(runj.get('estimate'), dict) and not runj.get('usage'): name = words = 'Estimate Ready'
@@ -129,6 +130,9 @@ def over(s, rows):
     for j in jobs.all_jobs(s['jobs']): last[j['run']] = j
     for r in rows:
         j = last.get(r['run'])
+        if r['status'] == 'Waiting to Start' and not r['finished'] and not (j and j['status'] in jobs.ACTIVE):   # reviewed, not applied
+            if not (j and j['kind'] == 'review' and j.get('auto_apply') and j.get('then_job') in (None, 'starting')):
+                r['status'], r['words'] = 'Reviewed', ('Reviewed: The Apply Couldn\'t Start' if j and j.get('then_job') == 'refused' else 'Reviewed, Not Applied')
         if not j: continue
         if j['status'] in jobs.ACTIVE:
             r['status'] = r['words'] = ACTIVE_WORDS.get(j['kind'], 'Running') if j['status'] == 'running' else 'Waiting to Start'
@@ -145,7 +149,7 @@ def group_of(r):
     (a job running or waiting to start), In Progress (waiting for a person, stopped, interrupted, Not Ready, Pending
     Evaluation), Done (Ready or Shipped only), Failed (the last job ended with an error). The exact status is shown beside it."""
     st = r.get('status') or ''
-    if r.get('active'): return 'processing'
+    if r.get('active') or st == 'Waiting to Start': return 'processing'
     if st == 'Failed': return 'failed'
     if st in ('Ready', 'Shipped', 'Cleared'): return 'done'
     if st == 'Estimate Ready': return 'not-started'

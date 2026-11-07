@@ -294,7 +294,8 @@ function actions(s) {
               : '<button type="button" class="pp-primary" id="pp-review" data-act="review">' + esc(tc('Review again (from ' + from + ')')) + '</button>';
   if (s.open) h += '<button type="button" id="pp-discard" data-act="discard">' + esc(tc('Discard ' + s.open.label)) + '</button>';
   if (s.latest || s.open) h +='<button type="button" id="pp-ai" data-act="review" data-from="ai">Start Over from the AI\'s Decisions</button>';
-  if (s.unapplied && !s.open) h += '<button type="button" id="pp-apply" data-act="apply">' + esc(tc('Apply ' + s.unapplied.label)) + '</button>';
+  if (s.unapplied && !s.open) h += '<button type="button" id="pp-apply" data-act="apply" aria-describedby="pp-unapplied">Try Again</button>' +
+    '<span class="pp-note" id="pp-unapplied">' + esc(cap(s.unapplied.label)) + ' was finished and not applied.</span>';
   h += '</div>';
   if (s.ocr && s.ocr.needed)                                     // the OCR text verdict, on its own (no work-order session)
     h += '<div class="pp-row"><button type="button" id="pp-ocr" data-act="ocr">Review OCR Text</button>' +
@@ -475,7 +476,7 @@ function dlMarked(sel) {                                          // the line un
   if (m) sel.setAttribute('aria-describedby', p.id); else sel.removeAttribute('aria-describedby');
 }
 
-// A run stopped for its first review (REVIEW=1): "Open the Review Page", then, after "Finish Review", "Apply" (run_api.sh's
+// A run stopped for its first review (REVIEW=1): "Open the Review Page"; "Finish Review" then applies at once (D3: run_api.sh's
 // second call); once applied, the page offers its first result (it never reloads by itself)
 function waitingBlock(s) {
   const w = s.waiting, active = (s.jobs || []).filter(j => j.status === 'queued' || j.status === 'running');
@@ -483,12 +484,20 @@ function waitingBlock(s) {
     ' The report and the remediated PDF are ready.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Result</button></div>';
   if (s.live_review) return '';                                  // its own card has Open / Stop
-  if (active.length) return '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '.</p>';
+  if (active.length) return active[0].kind === 'apply' ?
+    '<p>' + (active[0].status === 'running' ? '<span class="pp-spin" aria-hidden="true"></span>Applying the reviewed decisions. This page follows each step.' :
+             'Waiting to Start: the reviewed decisions are applied when ' + esc(active[0].waiting_for || 'the runs before it') + ' end' + (active[0].waiting_for ? 's' : '') + '.') + '</p>' :
+    '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '.</p>';
   if (!w.reviewed) return '<p>The AI\'s decisions are waiting for your review. Nothing has been applied yet.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-review" data-act="review">Open the Review Page</button></div>';
-  return '<p>Review finished (' + esc(w.reviewer || 'reviewer not recorded') + ', ' + esc(fmtDay(w.date)) + '). Nothing has been applied yet: ' +
-    '"Apply" makes the remediated PDF and its report.</p>' +
-    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-apply" data-act="apply">Apply</button></div>';
+  const who = 'Review finished (' + esc(w.reviewer || 'reviewer not recorded') + ', ' + esc(fmtDay(w.date)) + '). ';
+  if (w.auto && w.auto.state === 'starting')                     // D3: "Finish Review" starts the apply; the dispatcher makes it within a second
+    return '<p><span class="pp-spin" aria-hidden="true"></span>' + who + 'Applying the reviewed decisions.</p>';
+  if (w.auto && w.auto.state === 'refused')
+    return '<div class="pp-fail"><h4>Stopped: The Apply Couldn\'t Start</h4><p>' + who + esc(w.auto.why || '') + '</p>' +
+      '<div class="pp-row"><button type="button" class="pp-primary" id="pp-apply" data-act="apply">Try Again</button></div></div>';
+  return '<p>' + who + 'Nothing has been applied yet: this review was finished before "Finish Review" applied it by itself.</p>' +   // an older review
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-apply" data-act="apply">Apply the Reviewed Decisions</button></div>';
 }
 
 // ---------------------------------------------------------------- a run started from the home page, before its result (#45)
@@ -565,7 +574,7 @@ function render() {
     return;
   }
   if (WAITING) {                                                 // no result, no strip: the review, then the first apply
-    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(tc(!st.waiting ? 'First result' : st.waiting.reviewed ? 'Waiting to be applied' : 'Waiting for review')) + '</h3>' +
+    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(tc(!st.waiting ? 'First result' : st.waiting.reviewed ? 'Applying the reviewed decisions' : 'Waiting for review')) + '</h3>' +
       waitingBlock(st) + jobsBlock(st), body = $('pp-body'), keepFocus = document.activeElement && document.activeElement.id;
     if (body.dataset.h === h) return;
     body.innerHTML = h; body.dataset.h = h;

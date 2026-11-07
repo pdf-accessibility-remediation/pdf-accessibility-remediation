@@ -74,7 +74,7 @@ def authorize(s, kind, run, R, fingerprint):
     if not src or not os.path.isfile(src) or BK.hashes(s, [src]).get(src) != ej.get('book_sha'):
         raise Refused('This book\'s file has changed or is gone since the estimate. Go back to the home page and start a new run.')
     keep = {k: v for k, v in (ej.get('env_set') or {}).items() if k in ('OCR_LANG',)}
-    if ej.get('review_first'): keep['REVIEW'] = '1'
+    keep['REVIEW'] = '1'                                     # every app run stops for review (D2, Patrick 2026-11-06), whatever an older job file says
     if test:
         reply = os.path.join(s['test_reply_dir'], f'{ej["argv"][3]}.txt')
         if not os.path.isfile(reply): raise Refused('There is no saved test reply for this book.')
@@ -84,7 +84,7 @@ def authorize(s, kind, run, R, fingerprint):
         if est['bounds'].get('BOOK_MAX_USD') is not None: env['BOOK_MAX_USD'] = f'{est["bounds"]["BOOK_MAX_USD"]:.2f}'
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
              'shown': {'ceiling_usd': est['ceiling_usd'], 'per_call_ceiling_usd': est['per_call_ceiling_usd'], 'bounds': est['bounds'], 'model': est['model']},
-             'test': test, 'review_first': bool(ej.get('review_first')),
+             'test': test,
              **{k: ej.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name')}}
     return {'argv': list(ej['argv']), 'env_set': env, 'extra': extra}
 
@@ -106,6 +106,7 @@ def authorize_batch(s, label, books_list, total, fingerprint):
         if total['credit_usd'] is None: raise Refused('The credit couldn\'t be checked, so the cost can\'t be compared with it.')
         env = {'AUTO': '1', 'JOBS': jobs_n, 'BATCH_MAX_USD': f'{total["bounds"]["BATCH_MAX_USD"]:.2f}', 'MODEL': model}
         if total['bounds'].get('MAX_USD'): env['MAX_USD'] = f'{total["bounds"]["MAX_USD"]:.2f}'
+    env['REVIEW'] = '1'                                     # every book stops for review (D2a, Patrick 2026-11-06)
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
              'shown': {'ceiling_usd': total['ceiling_usd'], 'bounds': total['bounds']}, 'test': bool(test_from)}
     return {'argv': ['bash', 'batch_api.sh', label, books_list], 'env_set': env, 'extra': extra}

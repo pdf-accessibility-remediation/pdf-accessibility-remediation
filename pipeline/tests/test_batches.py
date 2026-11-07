@@ -81,7 +81,7 @@ def test_state_and_test_mode_spend(two):
     with pytest.raises(ValueError, match='changed since'): BT.spend(s, 'bb', {'fingerprint': 'x'})
     j = BT.spend(s, 'bb', {'fingerprint': st['fingerprint']})
     assert j['kind'] == 'batch' and j['paid'] and j['run'] == 'batches/bb' and 'slots' not in j
-    assert j['env_set'] == {'AUTO': '1', 'FROM': 'v8-p7a', 'JOBS': '10', 'OCR_LANG': 'eng'} and j['argv'] == ['bash', 'batch_api.sh', 'bb', BT.list_path(s, 'bb')]
+    assert j['env_set'] == {'AUTO': '1', 'FROM': 'v8-p7a', 'JOBS': '10', 'OCR_LANG': 'eng', 'REVIEW': '1'} and j['argv'] == ['bash', 'batch_api.sh', 'bb', BT.list_path(s, 'bb')]
 
 def test_real_spend_binds_the_total_and_each_call(two):
     s = settings(two)
@@ -137,3 +137,31 @@ def test_a_tab_or_return_in_a_path_is_refused(setup, monkeypatch):
     (setup / 'uploads' / 'x\ty.pdf').write_bytes(pdf_bytes(1) + b'1'); (setup / 'uploads' / 'z.pdf').write_bytes(pdf_bytes(1) + b'2')
     s = settings(setup)
     with pytest.raises(ValueError, match='file name a batch'): BT.start(s, [], [b['key'] for b in BK.listing(s)], 'b1', 'eng')
+
+def test_batch_api_review_stops_summary_only_and_retry(tmp_path):
+    """#45 round 4: batch_api.sh lists a book stopped for review as waiting (never failed), one stopped for its language
+    as needing it, and the PDFs moved to the Trash with their cost; SUMMARY_ONLY=1 writes summary.md again from the
+    folders with no run; RETRY=1 never runs a book waiting for review again."""
+    import subprocess
+    from test_webapp import stub_vera
+    runs = tmp_path / 'runs'; B = runs / 'batches' / 'bx'
+    (B / 'wait').mkdir(parents=True); (B / 'wait' / 'workorder.ai.json').write_text('{}')
+    (B / 'wait' / 'run.json').write_text(json.dumps({'usage': {'cost_usd': 0.12}, 'model': 'anthropic/x'}))
+    (B / 'lang' / '_intake').mkdir(parents=True); (B / 'lang' / '_intake' / 'languages.json').write_text(json.dumps({'needs_ocr': True}))
+    (B / 'trashed.json').write_text(json.dumps([{'name': 'gone', 'cost_usd': 0.25}]))
+    (tmp_path / 'bin').mkdir()
+    env = dict(os.environ, RUNS_DIR=str(runs), VERAPDF=stub_vera(str(tmp_path / 'bin')),
+               PATH=os.path.dirname(sys.executable) + os.pathsep + os.environ.get('PATH', ''))
+    for k in ('AUTO', 'FROM', 'RETRY', 'REVIEW', 'ASK_LANG', 'OCR_LANG'): env.pop(k, None)
+    r = subprocess.run(['bash', 'batch_api.sh', 'bx'], cwd=HERE, env={**env, 'SUMMARY_ONLY': '1'}, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr
+    md = (B / 'summary.md').read_text()
+    assert '| wait | **waiting for review**: nothing applied yet |' in md and '| lang | **needs a language**' in md
+    assert '1 waiting for review' in md and '1 needing a language' in md and '1 PDF moved to the Trash (AI cost $0.250), not counted above' in md
+    assert 'Credit left: not checked' in md and not (B / 'books.tsv').exists() and not (B / 'todo.tsv').exists()
+    pdf = tmp_path / 'wait.pdf'; pdf.write_bytes(b'%PDF-1.4 x'); lst = tmp_path / 'books.txt'; lst.write_text(f'wait {pdf}\n')
+    r = subprocess.run(['bash', 'batch_api.sh', 'bx', str(lst)], cwd=HERE, env={**env, 'AUTO': '1', 'RETRY': '1', 'FROM': 'none'},
+                       capture_output=True, text=True, timeout=120)
+    assert 'wait: waiting for review, skipped' in r.stdout and 'nothing to run' in r.stdout, r.stdout + r.stderr
+    r = subprocess.run(['bash', 'batch_api.sh', 'bx'], cwd=HERE, env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 1 and 'AUTO=1' in r.stdout                           # with none of the new settings: as before

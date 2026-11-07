@@ -109,7 +109,9 @@ def _book_status(s, label, b, R, jl, batch_job):
     else: row = {'status': 'Waiting', 'words': 'Waiting', 'finished': False}
     mine = [j for j in jl if j['run'] == f'batches/{label}/{b["name"]}']
     if mine and mine[-1]['status'] in jobs.ACTIVE:
-        row['words'] = 'Estimating' if mine[-1]['status'] == 'running' else 'Waiting to Start'
+        k = mine[-1]['kind']
+        row['words'] = 'Waiting to Start' if mine[-1]['status'] == 'queued' else 'Applying the Reviewed Decisions' if k == 'apply' else \
+                       'Waiting for Review' if k == 'review' else 'Writing the Batch Summary' if k == 'summary' else 'Estimating'
     elif batch_job and batch_job['status'] == 'running' and not row['finished']:
         lp = os.path.join(folder(s, label), f'{b["name"]}.log')
         try: st = logs.now_step('apply', logs.steps(open(lp, encoding='utf-8', errors='replace').read()))
@@ -157,14 +159,15 @@ def state(s, label):
     bj = [j for j in jl if j['run'] == f'batches/{label}' and j['kind'] == 'batch']
     batch_job = bj[-1] if bj else None
     B = folder(s, label)
-    out, Rs, flagged, missing, est_active = [], [], [], [], False
+    out, Rs, flagged, missing, est_active, reviewing = [], [], [], [], False, []
     for b in bs:
         R = os.path.join(B, b['name'])
         row = _book_status(s, label, b, R, jl, batch_job)
         stopped = (_load(os.path.join(R, '_intake', 'intake.json')) or {}).get('status') == 'stopped'
         mine = [j for j in jl if j['run'] == f'batches/{label}/{b["name"]}']
-        if mine and mine[-1]['status'] in jobs.ACTIVE: est_active = True
-        if stopped and not row['finished']: flagged.append(b['name'])
+        if mine and mine[-1]['status'] in jobs.ACTIVE and mine[-1]['kind'] == 'batch-estimate': est_active = True
+        if os.path.isfile(os.path.join(R, 'workorder.ai.json')) and not row['finished']: reviewing.append(b['name'])   # D2a: never sent again
+        elif stopped and not row['finished']: flagged.append(b['name'])
         elif not row['finished']:
             Rs.append(R)
             if not costs.estimate(R) and not (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
@@ -181,6 +184,7 @@ def state(s, label):
     summary = os.path.isfile(os.path.join(B, 'summary.html'))
     phase = ('estimating' if est_active else 'running' if active else 'needs-spend' if needs else
              'finished' if finished == len(out) and out else
+             'review' if reviewing and finished + len(reviewing) + len(flagged) == len(out) else
              'stopped' if batch_job and batch_job['status'] in ('failed', 'interrupted', 'done') else
              'missing' if missing else 'ready' if Rs else 'stopped')
     test = bool(s.get('test_batch_from'))
@@ -194,13 +198,13 @@ def state(s, label):
             elif total['credit_usd'] is None: why = 'The credit couldn\'t be checked, so the cost can\'t be compared with it.'
         spend = {'ok': not why, 'why': why}
     meta = _load(meta_path(s, label)) or {}
-    return {'label': label, 'phase': phase, 'books': out, 'flagged': flagged, 'missing': missing, 'test': test,
+    return {'label': label, 'phase': phase, 'books': out, 'flagged': flagged, 'missing': missing, 'test': test, 'reviewing': reviewing,
             'from_app': bool(meta), 'ocr_name': meta.get('ocr_name'),
             'totals': {'ceiling_usd': total['ceiling_usd'], 'limit_usd': total['limit_usd'], 'credit_usd': total['credit_usd'],
                        'spent_usd': spent, 'books_to_send': len(Rs), 'finished': finished, 'expected': total['expected'],
                        'shown_ceiling_usd': ((batch_job or {}).get('shown') or {}).get('ceiling_usd')},
             'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary, 'dashboard': dashboard(s, label, out),
-            'again': bool(meta) and phase in ('stopped', 'finished') and finished < len(out) - 0,
+            'again': bool(meta) and phase in ('stopped', 'finished') and finished + len(reviewing) < len(out),
             'job': ({k: batch_job.get(k) for k in ('id', 'status', 'exit', 'started', 'ended')} if batch_job else None)}
 
 # ------------------------------------------------------------------ Spend, and again
@@ -249,7 +253,6 @@ def form_page(s, keys):
         '<p class="mc-help" id="nb-name-h">In your own words, for example "Press backlist, spring". It names this batch in My Workspace.</p></div>'
         f'<div class="mc-field"><label for="nb-lang">OCR Language</label><select id="nb-lang" name="ocr_lang" aria-describedby="nb-lang-h">{opts}</select>'
         '<p class="mc-help" id="nb-lang-h">Used for every PDF\'s pages that need OCR (scanned pages). It is never guessed.</p></div>'
-        '<p class="mc-help">Books in a batch are applied without a review first. Review each one afterwards from its page.</p>'
         '<p class="mc-help">"Get the Estimates" prepares every PDF and works out what the batch could cost. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the batch page.</p><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
         '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button></div>'

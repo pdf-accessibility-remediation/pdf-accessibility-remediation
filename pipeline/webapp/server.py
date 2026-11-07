@@ -301,7 +301,7 @@ def make(s, setup, code=None):
                 jobs.tick(J, s)
                 return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
             if p == '/api/new/estimate':                          # New Run: the free estimate job, then its run page
-                try: j = NR.start_estimate(s, setup, str(body.get('book') or ''), body.get('run_name'), str(body.get('ocr_lang') or ''), bool(body.get('review_first')))
+                try: j = NR.start_estimate(s, setup, str(body.get('book') or ''), body.get('run_name'), str(body.get('ocr_lang') or ''))
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 jobs.tick(J, s)
                 return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id'])), 'location': HM.run_href(j['run'])})

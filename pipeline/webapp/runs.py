@@ -203,12 +203,12 @@ def after_interrupt(R, j):
     since = j.get('started') or ''
     applied = [x for x in ss if x.get('status') == 'applied' and (x.get('applied') or '') >= since]
     if os.path.exists(os.path.join(R, 'reviews', 'promoting.json')):
-        return {'state': 'apply', 'text': 'The apply stopped partway (reviews/promoting.json is there). Apply finishes it; it may apply the '
+        return {'state': 'apply', 'text': 'The apply stopped partway. "Try Again" finishes it; it may apply the '
                                           'session again. Previous results stay in reviews/versions/.'}
     if applied:
         return {'state': 'done', 'text': f'done (the app lost track of the job): {S.label(applied[-1]["id"])} is the current result'}
     u = unapplied(R)
-    if u: return {'state': 'apply', 'text': f'{u["label"].capitalize()} is finished and not applied: Apply applies it.'}
+    if u: return {'state': 'apply', 'text': f'{u["label"].capitalize()} is finished and not applied: "Try Again" applies it.'}
     op = [x for x in ss if x.get('status') == 'open']
     if j['kind'] == 'review' and op: return {'state': 'continue', 'text': f'{S.label(op[-1]["id"]).capitalize()} stays open: Continue review carries on with it.'}
     return {'state': 'none', 'text': 'The run shows no change from this job: start it again.'}
@@ -363,7 +363,6 @@ def pending_state(s, run, R):
     needs = [j for j in js if j['status'] == 'needs-spend']
     retry = newrun.retry_kind(R)
     fail = None if active else failures.explain(s, R, js[-1] if js else None)
-    rf = next((j.get('review_first') for j in reversed(js) if j.get('review_first') is not None), None)
     phase = 'active' if active else 'needs-spend' if needs else 'stopped' if fail else 'saved-reply' if retry == 'rerun' else 'estimate' if est else 'new'
     from_app = any(j['kind'] == 'estimate' for j in js)
     batch = run.split('/')[1] if run.startswith('batches/') and len(run.split('/')) == 3 else None
@@ -376,7 +375,7 @@ def pending_state(s, run, R):
         spend = {'ok': ok, 'why': None if ok else b['words'], 'code': None if ok else b['code']}
     return {'run': run, 'mode': 'pending', 'title': name, 'file': file, 'run_name': NM.shown_run(s, run), 'phase': phase,
             'estimate': est, 'sent': sent_words(est) if est else None, 'spend': spend, 'retry': retry, 'failure': fail, 'test': test,
-            'review_first': rf, 'from_app': from_app, 'batch': batch, 'batch_name': NM.shown_run(s, f'batches/{batch}') if batch else None,
+            'from_app': from_app, 'batch': batch, 'batch_name': NM.shown_run(s, f'batches/{batch}') if batch else None,
             'jobs': [job_view(s, j) for j in js]}
 
 # ------------------------------------------------------------------ a run stopped for its first review (REVIEW=1)
@@ -413,21 +412,49 @@ def waiting_state(s, run, R):
     rv = load(os.path.join(R, 'review.json')) or {}
     live = live_review(s, run)
     name, file = book_of(s, run, R)
+    rj = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] == 'review' and j.get('first')]
+    last = rj[-1] if rj else {}
+    auto = None                                          # D3: what became of the apply "Finish Review" starts
+    if rv and last.get('auto_apply'):
+        auto = {'state': 'refused', 'why': last.get('then_why')} if last.get('then_job') == 'refused' else {'state': 'starting'}
     return {'run': run, 'mode': 'waiting', 'title': waiting_title(run, R), 'book': name, 'file': file,
-            'waiting': {'reviewed': bool(rv), 'reviewer': rv.get('reviewer'), 'date': rv.get('date'),
+            'waiting': {'reviewed': bool(rv), 'reviewer': rv.get('reviewer'), 'date': rv.get('date'), 'auto': auto,
                         'prepared': os.path.isfile(os.path.join(R, 'review_items.json'))},
             'live_review': job_view(s, live) if live else None,
             'jobs': [job_view(s, j) for j in jobs.all_jobs(s['jobs']) if j['run'] == run]}
 
 def start_first_review(s, run, R, port, app_pid=None):
     """Open the Review Page for a waiting run: review_workorder.py <run> --serve, as the terminal's step 1."""
-    if os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('The review is finished: "Apply" applies it.')
+    if os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('The review is finished: its decisions are being applied.')
     if not os.path.isfile(os.path.join(R, 'review_items.json')):
         raise ValueError('The review page was not prepared when this run stopped, so it can\'t be opened. Run the book again.')
     back = f'http://127.0.0.1:{port}/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/?after=finish'
     argv = [sys.executable, 'review_workorder.py', R, '--serve', '--no-browser', '--return-to', back]
     return jobs.create(s['jobs'], 'review', run, argv, config.child_env(s), counted=False, R=R, what='Review the AI\'s decisions',
-                       app_pid=app_pid, first=True)
+                       app_pid=app_pid, first=True, auto_apply=True)
+
+def auto_apply(s):
+    """"Finish Review" applies at once (D3, Patrick 2026-11-06): after each dispatcher pass, a first review that has ended
+    with a review.json written since it started gets its apply (start_first_apply: the original is looked up now, never a
+    path kept from when the review opened). Only review jobs made with auto_apply (from this change on): an older review
+    finished before it is never applied by itself. The claim is made under the jobs lock, so two app servers never
+    both apply; the job records the apply's id, or why it could not start (then_why, shown with "Try Again")."""
+    J = s['jobs']
+    for j in jobs.all_jobs(J):
+        if j['kind'] != 'review' or not j.get('auto_apply') or j['status'] in jobs.ACTIVE or j.get('then_job'): continue
+        R = j.get('dir') or os.path.join(s['runs'], *j['run'].split('/'))
+        rv = os.path.join(R, 'review.json')
+        with jobs.locked(J):
+            cur = jobs.load(J, j['id']) or {}
+            if cur.get('then_job'): continue
+            if os.path.isfile(os.path.join(R, 'record.json')): cur['then_job'] = 'applied'
+            elif not (os.path.isfile(rv) and os.path.getmtime(rv) >= (jobs._at(j.get('started')) or 0) - 1): cur['then_job'] = 'not-finished'
+            else: cur['then_job'] = 'starting'
+            jobs.save(J, cur)
+        if cur['then_job'] != 'starting': continue
+        try: a = start_first_apply(s, j['run'], R)
+        except ValueError as e: jobs.update(J, j['id'], then_job='refused', then_why=str(e)); continue
+        jobs.update(J, j['id'], then_job=a['id'])
 
 def start_first_apply(s, run, R):
     """Apply for a waiting run, after Finish Review: run_api.sh's second call (the same command the terminal is told to
@@ -437,8 +464,15 @@ def start_first_apply(s, run, R):
     if why: raise ValueError(why)
     stop = load(os.path.join(R, 'review_stop.json')) or {}
     env = {'RUN_DIR': R, **{k: v for k, v in (stop.get('env') or {}).items() if k in ('OCR_LANG', 'INTAKE_REUSE', 'INTAKE', 'OUT') and v}}
-    argv = ['bash', 'run_api.sh', src, stop.get('name') or os.path.basename(os.path.dirname(R)), os.path.basename(R)]
-    return jobs.create(s['jobs'], 'apply', run, argv, config.child_env(s, env), env_set=env, R=R, what='Apply session 1', first=True)
+    name_, label_ = stop.get('name') or os.path.basename(os.path.dirname(R)), os.path.basename(R)
+    p_ = run.split('/')
+    if p_[0] == 'batches' and len(p_) == 3: name_, label_ = p_[2], p_[1]          # a batch's book: runs/batches/<label>/<name>
+    argv = ['bash', 'run_api.sh', src, name_, label_]
+    then = None
+    if p_[0] == 'batches' and len(p_) == 3:                  # a batch's book (D2a): its batch's summary is written again after
+        then = {'kind': 'summary', 'argv': ['bash', 'batch_api.sh', p_[1]], 'env': config.child_env(s, {'SUMMARY_ONLY': '1'}),
+                'env_set': {'SUMMARY_ONLY': '1'}, 'counted': False, 'extra': {'what': 'Write the batch summary again'}}
+    return jobs.create(s['jobs'], 'apply', run, argv, config.child_env(s, env), env_set=env, R=R, what='Apply session 1', first=True, then=then)
 
 # ------------------------------------------------------------------ starting jobs
 def start_review(s, run, R, port, src=None, discard_open=False, app_pid=None):

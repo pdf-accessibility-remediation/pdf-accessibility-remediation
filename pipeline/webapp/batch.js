@@ -59,7 +59,7 @@ function column(s) {                                             // the statuses
     else if (b.tone !== 'processing' && sp) sp.remove();
   });
 }
-const PHASE = { estimating: 'Estimating', ready: 'Ready to Start', running: 'Running', finished: 'Finished', stopped: 'Stopped', missing: 'Stopped: an Estimate Is Missing', 'needs-spend': 'Waiting for a New Estimate' };
+const PHASE = { estimating: 'Estimating', ready: 'Ready to Start', running: 'Running', finished: 'Finished', stopped: 'Stopped', review: 'Waiting for Review', missing: 'Stopped: an Estimate Is Missing', 'needs-spend': 'Waiting for a New Estimate' };
 function body(s) {
   const T = s.totals, n = s.books.length;
   let h = '<h3 id="bt-phase" tabindex="-1">' + esc(PHASE[s.phase] || s.phase) + '</h3>';
@@ -79,12 +79,13 @@ function body(s) {
   if (s.phase === 'needs-spend') h += '<p>The app restarted before the batch started, so nothing was sent.</p><div class="pp-row"><button type="button" id="bt-again" data-act="again">Get New Estimates</button>' +
     '<button type="button" id="bt-dismiss" data-act="dismiss">Dismiss</button></div>';
   if (s.phase === 'ready') {
-    h += '<p>Books in a batch are applied without a review first. Review each one afterwards from its page.</p>';
     if (s.spend && s.spend.ok) h +=
       '<div class="pp-row"><button type="button" class="pp-primary" id="bt-spend" data-act="spend" aria-describedby="bt-cost">Start Remediation</button></div>' +
       '<p class="pp-note">' + (s.test ? 'Test: "Start Remediation" uses saved replies; nothing is sent to the AI service.' : '"Start Remediation" sends every PDF to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.') + '</p>';
     else h += '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This batch can\'t be sent yet.') + '</p><p>Whoever looks after the app can raise the limit or add credit; or start a batch with fewer PDFs.</p>';
   }
+  if (s.phase === 'review' || (s.reviewing && s.reviewing.length && s.phase !== 'running')) h += '<p>' + s.reviewing.length + ' PDF' + (s.reviewing.length === 1 ? ' is' : 's are') +
+    ' waiting for review. Open each one from the list; its "Finish Review" applies it, and this page and the dashboard follow.</p>';
   if (s.phase === 'running') h += '<p>The PDFs are being sent to the AI, a few at a time. Each PDF\'s status is in the list of PDFs.</p>';
   if (s.phase === 'stopped' && s.job && s.job.status !== 'done') h += '<div class="pp-fail"><h4>Stopped: The batch stopped before every PDF finished</h4><p>The PDFs that finished keep their results.</p>' +
     '<details><summary>Details</summary><ul class="pp-note"><li>Exit code: ' + esc(s.job.exit) + '</li><li>Full log: runs/.app/jobs/' + esc(s.job.id) + '.log</li></ul></details></div>';
@@ -130,7 +131,7 @@ async function poll() {
       }
     }
   } catch (e) { if ($('bt-body')) msg('The app is not running, so this page can\'t follow the batch. ' + START); }
-  const busy = st && ['estimating', 'running'].includes(st.phase);
+  const busy = st && (['estimating', 'running'].includes(st.phase) || st.books.some(b => b.tone === 'processing'));
   timer = setTimeout(poll, busy ? 2000 : 6000);
 }
 const panel = $('bt-panel');

@@ -3,8 +3,8 @@ job, "Get a New Estimate", "Try Again" (decided from disk), "Spend" (through web
 Saved Reply". Every command is run_api.sh's own; nothing here sends to the AI service except the spend job spend.py made.
 
     estimate     ESTIMATE=1 [OCR_LANG=…] bash run_api.sh <book> <short name> <run name>     intake, audit, decide.py --dry-run
-    spend        AUTO=1 MAX_USD=… MODEL=… [REVIEW=1] [OCR_LANG] bash run_api.sh …           paid (spend.authorize)
-    rerun        [REVIEW=1] [OCR_LANG] bash run_api.sh …   free: only when a complete reply is saved (03 §2); a rerun that would
+    spend        AUTO=1 MAX_USD=… MODEL=… REVIEW=1 [OCR_LANG] bash run_api.sh …           paid (spend.authorize)
+    rerun        REVIEW=1 [OCR_LANG] bash run_api.sh …   free: only when a complete reply is saved (03 §2); a rerun that would
                  reach a new call stops at run_api.sh's y/N question (stdin is empty) and the page says to get a new estimate
     replay       python3 review_workorder.py <run> --replay-to <new folder>, then INTAKE_REUSE=1 REPLY=… REVIEW=1 RUN_DIR=…
                  bash run_api.sh … (free; for a run that can no longer be reviewed)
@@ -66,7 +66,7 @@ def check_untagged(s, setup, book):
         raise ValueError('Text recognition (OCR) isn\'t set up on this computer, and this book needs it. Whoever looks after the app can install it.')
 
 # ------------------------------------------------------------------ the estimate (free)
-def start_estimate(s, setup, key, plain, ocr_lang, review_first):
+def start_estimate(s, setup, key, plain, ocr_lang, review_first=True):
     """New Run: the free estimate job. `plain`: the Run Name in the person's own words (optional); the folder label is
     derived from it (webapp/names.py label_for) and the plain name is kept by the app only. Returns the job; raises
     ValueError with the reason (plain words)."""
@@ -92,7 +92,7 @@ def start_estimate(s, setup, key, plain, ocr_lang, review_first):
     argv = ['bash', 'run_api.sh', book['path'], name, run_name]
     return jobs.create(s['jobs'], 'estimate', f'{name}/{run_name}', argv, config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
                        what='Get the estimate', book_sha=book['key'], book_file=book['file'],
-                       review_first=bool(review_first), ocr_name=langs[ocr_lang])
+                       ocr_name=langs[ocr_lang])
 
 def again_estimate(s, run, R):
     """"Get a New Estimate": the same settings as the run's last estimate job (never a form again)."""
@@ -102,7 +102,7 @@ def again_estimate(s, run, R):
     if os.path.isfile(os.path.join(R, 'workorder.ai.json')): raise ValueError('The AI\'s decisions are waiting for a review: "Open the Review Page".')
     e = ej[-1]
     env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('ESTIMATE', 'OCR_LANG')}
-    keep = {k: e.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name', 'review_first', 'ocr_name')}
+    keep = {k: e.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name', 'ocr_name')}
     return jobs.create(s['jobs'], 'estimate', run, e['argv'], config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
                        what='Get a new estimate', **keep)
 
@@ -124,9 +124,9 @@ def start_rerun(s, run, R):
     ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] in ('estimate', 'spend', 'rerun')]
     if not ej: raise ValueError('This run wasn\'t started from the home page, so its settings aren\'t known here.')
     e = ej[-1]
-    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('OCR_LANG', 'REVIEW')}
-    if e['kind'] == 'estimate' and e.get('review_first'): env['REVIEW'] = '1'
-    keep = {k: e.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name', 'review_first', 'ocr_name')}
+    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('OCR_LANG',)}
+    env['REVIEW'] = '1'                                  # every app run stops for review (D2), whatever an older job file says
+    keep = {k: e.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name', 'ocr_name')}
     return jobs.create(s['jobs'], 'rerun', run, e['argv'], config.child_env(s, env), env_set=env, R=R, what='Try again (the saved reply is reused)', **keep)
 
 # ------------------------------------------------------------------ Spend
@@ -160,7 +160,7 @@ def start_replay(s, run, R, label):
     env = {'INTAKE_REUSE': '1', 'REPLY': reply, 'REVIEW': '1', 'RUN_DIR': D_}
     nxt = {'kind': 'replay', 'argv': ['bash', 'run_api.sh', src, name, label], 'env': config.child_env(s, env), 'env_set': env,
            'extra': {'what': 'Run the book from the saved reply', 'run_name': label, 'book_sha': doc.get('sha256'), 'book_file': doc.get('file'),
-                     'book_name': BK.name_of_sha(s, doc.get('sha256'), doc.get('file')), 'review_first': True}}
+                     'book_name': BK.name_of_sha(s, doc.get('sha256'), doc.get('file'))}}
     return jobs.create(s['jobs'], 'replay-copy', f'{name}/{label}', [sys.executable, 'review_workorder.py', R, '--replay-to', D_],
                        config.child_env(s), R=D_, then=nxt, what='Copy the saved reply and the intake result', run_name=label,
                        book_sha=doc.get('sha256'), book_file=doc.get('file'), book_name=BK.name_of_sha(s, doc.get('sha256'), doc.get('file')))
@@ -188,8 +188,6 @@ def form_page(s, key):
         '<div class="mc-field"><label for="nr-lang">OCR Language</label>'
         f'<select id="nr-lang" name="ocr_lang" aria-describedby="nr-lang-h">{opts}</select>'
         '<p class="mc-help" id="nr-lang-h">Used only for pages that need OCR (scanned pages). Choose the PDF\'s language; it is never guessed.</p></div>'
-        '<div class="mc-field"><label class="hm-check"><input type="checkbox" id="nr-review" name="review_first" checked> Review First</label>'
-        '<p class="mc-help">The run stops after the AI\'s decisions, so a person can review them before anything is applied.</p></div>'
         '<p class="mc-help">"Get the Estimate" prepares the PDF and works out what the AI call could cost. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the next page.</p>'
         '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'

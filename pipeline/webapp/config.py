@@ -28,7 +28,8 @@ FOLDERS = ('runs', 'samples', 'uploads', 'jobs')
 # INTAKE, OCR, FORCE_OCR, MAX_TOKENS, VERAPDF=off, …) is dropped, and a job adds only its own whitelisted variables
 BASE_ENV = ('PATH', 'HOME', 'LANG', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL')
 JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD', 'INTAKE', 'OUT',
-           'JOBS', 'BATCH_MAX_USD', 'BOOK_MAX_USD', 'RETRY', 'MODEL', 'FROM')    # #45: batches, the caps, the estimate's model
+           'JOBS', 'BATCH_MAX_USD', 'BOOK_MAX_USD', 'RETRY', 'MODEL', 'FROM',    # #45: batches, the caps, the estimate's model
+           'SUMMARY_ONLY', 'ASK_LANG')                                         # round 4: the batch summary rebuild (D3, D8), the language question (D4)
 # MODEL only as an anthropic/ id (the one the estimate used: 03 §5); FROM only in test mode (test_batch_from, --config);
 # never FORCE_OCR (Q7: no "OCR Every Page Instead" in the app)
 
