@@ -114,3 +114,10 @@ def test_the_forms_send_what_the_routes_read(two):
     assert all(f'name="books" value="{k}"' in BT.form_page(s, keys) for k in keys)
     js = open(os.path.join(HERE, 'webapp', 'home.js'), encoding='utf-8').read()
     assert "if (x.name === 'books')" in js and "x.name === 'book')" not in js
+
+def test_a_tab_or_return_in_a_path_is_refused(setup, monkeypatch):
+    """05 L1: batch_api.sh's books.tsv is tab-separated."""
+    monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng'])
+    (setup / 'samples' / 'x\ty.pdf').write_bytes(pdf_bytes(1) + b'1'); (setup / 'samples' / 'z.pdf').write_bytes(pdf_bytes(1) + b'2')
+    s = settings(setup)
+    with pytest.raises(ValueError, match='file name a batch'): BT.start(s, [], [b['key'] for b in BK.listing(s)], 'b1', 'eng')

@@ -75,7 +75,8 @@ CASES = [
     ('H2', dict(kind='rerun', log=CALL + '▶ 4/5 apply (no model)\n  ✓ 4/5 apply (no model): 1s\n▶ 5/5 report\nexpected one remediated PDF\n', env={'REVIEW': '1'})),
     ('I1', dict(status='interrupted', exit=None, log=AUDIT)),
     ('I2', dict(kind='spend', status='interrupted', exit=None, log=CALL)),
-    ('I3', dict(kind='spend', status='interrupted', exit=None, log=CALL, files=('response.json',))),
+    ('I3', dict(kind='spend', status='interrupted', exit=None, log=CALL, files=('response.json', 'workorder.json'))),
+    ('I2', dict(kind='spend', status='interrupted', exit=None, log=CALL, files=('response.json',))),   # a reply half written: not "costs nothing" (05 M3)
     ('J1', dict(exit=127, log='could not start: no such file\n')),
 ]
 

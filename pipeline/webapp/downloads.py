@@ -276,6 +276,10 @@ def about_lines(rec):
             _runtime(rec),
             f'Software: {soft}' if soft else 'Software: not recorded']
 
+def shown(name):
+    from . import books as BK
+    return BK.shown_file(name)
+
 def _readme(d, sha):
     """READ-ME.txt in plain words for library staff (Patrick, 2026-11-01): the source PDF's name, the version, its status,
     its shipments (21 §B: "Shipment 1, shipped on … by …", "Withdrawn on … by …: …"), the run details
@@ -295,7 +299,7 @@ def _readme(d, sha):
     files = [f'{d["pdf_name"]}: the remediated PDF of this version.'] + [FILE_WORDS[m[0]] for m in d['members'][1:]] + [FILE_WORDS['READ-ME.txt']]
     about = d.get('about') or {}
     src = (about.get('document') or {}).get('file')
-    return '\n'.join([d['book'], f'Source PDF Filename: {src or "not recorded"}', '', vline, status] + [x for s in ships for x in REL.shipment_lines(s)]
+    return '\n'.join([d['book'], f'Source PDF Filename: {shown(src) if src else "not recorded"}', '', vline, status] + [x for s in ships for x in REL.shipment_lines(s)]
                       + [f'Accessibility evaluation results recorded on this file: {n}' + (' (in review.html)' if n else ''), '']
                       + about_lines(about) + ['', 'This folder holds:'] + ['- ' + x for x in files]
                       + ['', 'Automated checks are evidence, not legal sign-off.',

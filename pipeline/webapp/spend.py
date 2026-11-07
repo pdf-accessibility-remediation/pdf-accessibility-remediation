@@ -59,7 +59,7 @@ def check_estimate(s, R, fingerprint, test, limits):
     if est is None: raise Refused('There is no estimate for this run yet: select "Get a New Estimate".')
     if fingerprint != est['fingerprint']: raise Refused(CHANGED)
     model, prompt = current_model_and_prompt()
-    if not est['claude'] or model != est['model'] or (prompt and prompt != est['prompt_sha256']): raise Refused(OUT_OF_DATE)
+    if not est['claude'] or model != est['model'] or not prompt or prompt != est['prompt_sha256']: raise Refused(OUT_OF_DATE)   # fails closed (05 M5)
     b = est['blocked']
     if b and not (test and b['code'] in ('offline', 'no_credit')): raise Refused(b['words'])
     return est
@@ -103,7 +103,7 @@ def authorize_batch(s, label, books_list, total, fingerprint, no_personal_inform
         model, prompt = current_model_and_prompt()
         models = {b['estimate']['model'] for b in total['books'] if b.get('estimate')}
         prompts = {b['estimate']['prompt_sha256'] for b in total['books'] if b.get('estimate')}
-        if not model or models - {model} or not model.startswith('anthropic/') or (prompt and prompts - {prompt}): raise Refused(OUT_OF_DATE)
+        if not model or models - {model} or not model.startswith('anthropic/') or not prompt or prompts - {prompt}: raise Refused(OUT_OF_DATE)
         if total['blocked']: raise Refused(total['blocked'][0][1]['words'])
         if not total['fits']['batch']: raise Refused(f'This batch could cost more than the limit of ${total["limit_usd"]:.2f} per batch.')
         if total['fits']['credit'] is False: raise Refused('There isn\'t enough credit for this batch.')

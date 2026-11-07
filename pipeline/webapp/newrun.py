@@ -144,7 +144,7 @@ def start_replay(s, run, R, label):
     doc = rec.get('document') or {}
     src = RN.find_original(s, doc.get('sha256'), doc.get('file'))
     if not src: raise ValueError('The book\'s original PDF wasn\'t found in the folder of original PDFs or of added books.')
-    parent = os.path.dirname(R) if not run.startswith('batches/') else os.path.join(s['runs'], clean_stem(src))
+    parent = os.path.dirname(R) if not run.startswith('batches/') else os.path.join(s['runs'], short_name(s, {'path': src, 'key': doc.get('sha256')}))   # 05 L2
     name = os.path.basename(parent)
     D_ = os.path.join(parent, label)
     if run_taken(s, D_) or os.path.exists(D_.rstrip(os.sep) + '.reply.txt'): raise ValueError(f'A run named "{label}" already exists for this book. Choose another Run Name.')

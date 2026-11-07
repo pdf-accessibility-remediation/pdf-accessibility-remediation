@@ -129,7 +129,7 @@ def over(s, rows):
         if j['status'] in jobs.ACTIVE:
             r['status'] = r['words'] = ACTIVE_WORDS.get(j['kind'], 'Running') if j['status'] == 'running' else 'Waiting to Start'
             r['active'] = True
-        elif j['status'] == 'needs-spend': r['status'], r['words'] = 'Estimate Ready', 'Estimate Ready (select "Spend" again)'
+        elif j['status'] == 'needs-spend': r['status'], r['words'] = 'Estimate Ready', 'Waiting: open it and select "Get a New Estimate"'   # 05 M2
         elif j['status'] in ('failed', 'interrupted') and not r['finished'] and r['status'] not in ('Stopped', 'Waiting for Review'):
             r['status'] = r['words'] = 'Failed' if j['status'] == 'failed' else 'Stopped before it finished'
 

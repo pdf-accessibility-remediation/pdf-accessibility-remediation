@@ -13,7 +13,7 @@ and uploads/ (read only; sha256s cached in <jobs>/sha256-cache.json by path, siz
 import os, re, sys, json, signal, urllib.parse
 from review import sessions as S
 from lib import dates as D, release as REL
-from . import config, jobs, logs
+from . import config, jobs, logs, books as BK
 
 def load(p):
     try: return json.load(open(p, encoding='utf-8'))
@@ -285,7 +285,7 @@ def state(s, run, R):
     rel = os.path.relpath(R, config.PIPELINE)
     from lib import costs
     return {
-        'run': run, 'mode': 'finished', 'file': (rec.get('document') or {}).get('file') or '', 'cost': costs.actual(R),
+        'run': run, 'mode': 'finished', 'file': BK.shown_file((rec.get('document') or {}).get('file') or ''), 'cost': costs.actual(R),
         'cleared': cleared_view(R), 'clear': clear_offer(s, run, R, rec), 'replay': replay_offer(s, run, R),
         'title': (rec.get('document') or {}).get('file') or run, 'review_html': os.path.isfile(os.path.join(R, 'review.html')),
         'review_md': os.path.isfile(os.path.join(R, 'review.md')), 'ready': ready(R, rec),
@@ -322,9 +322,9 @@ def book_of(s, run, R, js=None):
     """(display name, file name) of a run's book: from the app's job, else intake's record or the estimate's source."""
     from . import books as BK
     for j in reversed(js if js is not None else [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]):
-        if j.get('book_name'): return j['book_name'], j.get('book_file') or ''
+        if j.get('book_name'): return j['book_name'], BK.shown_file(j.get('book_file') or '')
     o = (load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or (load(os.path.join(R, 'run.json')) or {}).get('source') or {}
-    f = o.get('file') or ''
+    f = BK.shown_file(o.get('file') or '')
     return (BK.name_of_sha(s, o.get('sha256'), f) if o.get('sha256') else None) or BK.stem_name(f or run.split('/')[-1]), f
 
 def sent_words(est):
@@ -390,7 +390,8 @@ def first_original(s, R):
 def waiting_title(run, R):
     """A waiting run's heading: the original's file name (intake's record, else the path kept at the stop), else the run."""
     o = (load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or {}
-    return o.get('file') or os.path.basename((load(os.path.join(R, 'review_stop.json')) or {}).get('src') or '') or run
+    from . import books as BK
+    return BK.shown_file(o.get('file') or os.path.basename((load(os.path.join(R, 'review_stop.json')) or {}).get('src') or '') or run)
 
 def waiting_state(s, run, R):
     """The panel's view of a waiting run: whether its review is finished (review.json), and its jobs. No result, no

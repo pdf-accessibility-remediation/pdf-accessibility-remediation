@@ -50,6 +50,10 @@ def _tb(c):
     where = next((f'{os.path.basename(f)}:{n}' for f, n in reversed(files) if '/pipeline/' in f or not f.startswith('/')), None)
     return (tail[-1].strip()[:300] if tail else 'an error') + (f' ({where})' if where else '')
 
+def _rerun(R):
+    from . import newrun
+    return newrun.retry_kind(R) == 'rerun'
+
 def has(pat): return lambda c: pat in c['text']
 def summ(*pats): return lambda c: c['intake'].get('status') in ('stopped', 'failed') and any(str(c['intake'].get('summary') or '').startswith(p) or p in str(c['intake'].get('summary') or '') for p in pats)
 def flagged(name): return lambda c: c['intake'].get('status') == 'stopped' and any(name in str(f.get('what') if isinstance(f, dict) else f) for f in c['intake'].get('flags') or [])
@@ -61,12 +65,12 @@ WHOEVER = 'Whoever looks after the app can check it: "Details" says what happene
 # (code, step, matcher, (source file, pinned text) or None, headline, meaning, todo, next buttons, details' command or None)
 ROWS = [
     # --- the run was interrupted (job status): what is left is read from disk
-    ('I2', 'interrupted', lambda c: c['status'] == 'interrupted' and c['step'] == 'call' and not os.path.exists(os.path.join(c['R'], 'response.json')), None,
-     'The run stopped during the AI call.', 'The computer restarted or the run was stopped while the AI call was being made. It isn\'t known whether the call was charged.',
-     'Whoever looks after the app can check the AI service\'s activity page. To go on, get a new estimate, then select "Spend" again.', ['estimate'], None),
-    ('I3', 'interrupted', lambda c: c['status'] == 'interrupted' and os.path.exists(os.path.join(c['R'], 'response.json')), None,
+    ('I3', 'interrupted', lambda c: c['status'] == 'interrupted' and _rerun(c['R']), None,      # one source for "costs nothing" (05 M3)
      'The run stopped before it finished.', 'The computer restarted or the run was stopped. The AI\'s reply is saved, so going on costs nothing.',
      'Select "Try Again": the saved reply is used again.', ['retry'], None),
+    ('I2', 'interrupted', lambda c: c['status'] == 'interrupted' and c['step'] == 'call', None,
+     'The run stopped during the AI call.', 'The computer restarted or the run was stopped while the AI call was being made. It isn\'t known whether the call was charged.',
+     'Whoever looks after the app can check the AI service\'s activity page. To go on, get a new estimate, then select "Spend" again.', ['estimate'], None),
     ('I1', 'interrupted', lambda c: c['status'] == 'interrupted', None,
      'The run stopped before it finished.', 'The computer restarted or the run was stopped before the AI call. Nothing was sent.',
      'Select "Try Again": the steps already done are reused.', ['retry'], None),

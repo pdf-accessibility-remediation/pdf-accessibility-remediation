@@ -293,3 +293,36 @@ def test_a_run_made_outside_the_app_offers_no_buttons(setup):
     with pytest.raises(SP.Refused, match='no estimate'): SP.authorize(s, 'workorder', 'batches/b1/bk', str(B), st['estimate']['fingerprint'], True)
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert "s.phase === 'outside'" in js and 'Open the Batch Page' in js
+
+def test_the_prompt_check_fails_closed(setup):
+    """05 M5: when decide.py's prompt can't be read, Spend is refused (it was skipped)."""
+    s, R, est = spend_setup(setup)
+    orig = SP.current_model_and_prompt
+    SP.current_model_and_prompt = lambda: (MODEL, None)
+    try:
+        with pytest.raises(SP.Refused, match='out of date'): SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'], True)
+    finally: SP.current_model_and_prompt = orig
+    src = open(os.path.join(HERE, 'webapp', 'spend.py'), encoding='utf-8').read()
+    assert 'prompt and prompt' not in src and 'not prompt or prompts - {prompt}' in src
+
+def test_file_names_are_cleaned_on_every_page(setup):
+    """05 M4: a record's file name with a control or direction character is cleaned before any page shows it."""
+    s = settings(setup)
+    R = setup / 'runs' / 'bk' / 'fin'; R.mkdir(parents=True)
+    (R / 'record.json').write_text(json.dumps({'document': {'file': 'a‮b\u0007.pdf', 'output': 'x.pdf'}}))
+    assert RN.state(s, 'bk/fin', str(R))['file'] == 'ab.pdf'
+    W = setup / 'runs' / 'bk' / 'w'; (W / '_intake').mkdir(parents=True)
+    (W / '_intake' / 'intake.json').write_text(json.dumps({'original': {'file': 'c‏d.pdf'}}))
+    assert RN.waiting_title('bk/w', str(W)) == 'cd.pdf' and RN.book_of(s, 'bk/w', str(W))[1] == 'cd.pdf'
+
+def test_replay_of_a_batch_book_never_lands_in_another_books_folder(setup):
+    """05 L2: the new folder for a batch book's replay is short_name(), so runs/<stem>/ of another book is not used."""
+    s = settings(setup)
+    src = setup / 'samples' / 'bk.pdf'; src.write_bytes(b'%PDF-1.4 book')
+    sha = hashlib.sha256(src.read_bytes()).hexdigest()
+    other = setup / 'runs' / 'bk' / 'x' / '_intake'; other.mkdir(parents=True)
+    (other / 'intake.json').write_text(json.dumps({'original': {'sha256': 'f' * 64}}))
+    R = setup / 'runs' / 'batches' / 'b1' / 'bk'; R.mkdir(parents=True)
+    (R / 'record.json').write_text(json.dumps({'raw_reply': '{}', 'document': {'file': 'bk.pdf', 'sha256': sha}}))
+    j = NR.start_replay(s, 'batches/b1/bk', str(R), 'again1')
+    assert j['run'] == 'bk-2/again1'

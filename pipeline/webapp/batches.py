@@ -63,7 +63,7 @@ def start(s, setup, keys, label, ocr_lang):
         b = BK.by_key(s, k)
         if not b: raise ValueError('A selected book\'s file has changed or is gone. Go back to the home page to see the list again.')
         if b['locked']: raise ValueError(f'"{b["name"]}" is locked with a password: add an unlocked copy, or leave it out.')
-        if re.search(r'[#|\n]', b['path']) or b['path'] != b['path'].strip(): raise ValueError(f'"{b["name"]}" has a file name a batch can\'t use: add it again from the home page.')
+        if re.search(r'[#|\t\r\n]', b['path']) or b['path'] != b['path'].strip(): raise ValueError(f'"{b["name"]}" has a file name a batch can\'t use: add it again from the home page.')
         b['tagged'] = BK.read_meta(b['path']).get('tagged')
         NR.check_untagged(s, setup, b)
         base, n = NR.clean_stem(b['path']), 1
