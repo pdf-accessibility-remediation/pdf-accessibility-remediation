@@ -25,7 +25,8 @@
 # Outputs go to PDFREM/runs/<short-name>/<run-label>/ (beside pipeline). RUNS_DIR=/some/path overrides it.
 # RUN_DIR=/exact/folder sets the run folder itself (batch_api.sh uses it: runs/batches/<label>/<name>/).
 # ASK_LANG=1 (the app, #45 D4): with no OCR_LANG and no intake yet, intake.py --languages runs first; when pages need OCR
-# the run stops with exit 4 before any OCR (_intake/languages.json has the suggestion), so a person gives the language.
+# and their language matters (not Latin script only, not "no text found") the run stops with exit 4 before any OCR
+# (_intake/languages.json has the suggestion), so a person gives the language. Otherwise it goes on as before.
 set -euo pipefail
 SRC=${1:?path to the original PDF}; NAME=${2:?short name, e.g. teika}; RUN=${3:-api-$(date +%Y%m%d-%H%M)}
 [[ -f $SRC ]] || { echo "no such PDF: $SRC"; exit 1; }
@@ -118,8 +119,8 @@ if [[ ${INTAKE:-auto} != off ]]; then
   else
     if [[ -n ${ASK_LANG:-} && -z ${OCR_LANG:-} && ! -f $R/_intake/intake.json ]]; then   # the app (#45 D4): ask before any OCR
       stage "0/5 OCR language check (local, no model)" python3 intake.py "$SRC" "$R/_intake" --languages
-      if python3 -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get('needs_ocr') else 1)" "$R/_intake/languages.json"; then
-        echo "stopped: pages need OCR and no OCR language was given (see $R/_intake/languages.json)"; summary; exit 4
+      if python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get('needs_ocr') and d.get('ask', True) else 1)" "$R/_intake/languages.json"; then
+        echo "stopped: pages need OCR, their language matters and no OCR language was given (see $R/_intake/languages.json)"; summary; exit 4
       fi
     fi
     stage "0/5 intake (local, no model)" python3 intake.py "$SRC" "$R/_intake"

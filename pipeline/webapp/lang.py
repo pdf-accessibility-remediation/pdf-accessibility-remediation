@@ -18,7 +18,7 @@ import os, json
 from . import books as BK
 
 CJK = ('chi_tra', 'chi_sim', 'jpn', 'kor')
-SCRIPT_WORDS = {'Latin': 'Latin script', 'Japanese': 'Japanese', 'Hiragana': 'Japanese', 'Katakana': 'Japanese', 'Korean': 'Korean',
+SCRIPT_WORDS = {'kana': 'Japanese', 'hangul': 'Korean', 'han': 'Chinese characters', 'Latin': 'Latin script', 'Japanese': 'Japanese', 'Hiragana': 'Japanese', 'Katakana': 'Japanese', 'Korean': 'Korean',
                 'Hangul': 'Korean', 'Han': 'Chinese characters', 'HanS': 'Chinese characters', 'HanT': 'Chinese characters',
                 'Cyrillic': 'Cyrillic script', 'Greek': 'Greek script', 'Arabic': 'Arabic script', 'Hebrew': 'Hebrew script',
                 'Devanagari': 'Devanagari script', 'Thai': 'Thai script'}
@@ -38,14 +38,20 @@ def evidence(lj):
     if tl.get('hangul'): out.append(f'The PDF\'s text holds {_n(tl["hangul"], "Korean (Hangul) letter")}.')
     if tl.get('han'): out.append(f'The PDF\'s text holds {_n(tl["han"], "Chinese character")}.')
     if (e.get('vietnamese_letters') or 0) >= 50: out.append(f'The PDF\'s text holds {_n(e["vietnamese_letters"], "Vietnamese letter")}.')
-    if tl.get('latin') and not any(tl.get(k) for k in ('kana', 'hangul', 'han')): out.append('The PDF\'s text is in Latin letters only.')
+    if tl.get('latin') and not any(tl.get(k) for k in ('kana', 'hangul', 'han')) and lj.get('found') != 'other': out.append('The PDF\'s text is in Latin letters.')
     ss, n = e.get('scan_scripts') or {}, e.get('sampled_scans') or 0
     if n:
         seen = {}
         for k, v in ss.items(): seen[SCRIPT_WORDS.get(k, k)] = seen.get(SCRIPT_WORDS.get(k, k), 0) + v
-        if seen: out.append(f'Of the {_n(n, "scanned page")} checked, ' + '; '.join(f'{v} look{"s" if v == 1 else ""} like {k}' for k, v in
-                                                                           sorted(seen.items(), key=lambda x: -x[1])) + '.')
-        else: out.append(f'The script of the {_n(n, "scanned page")} checked couldn\'t be told.')
+        none = e.get('scans_with_no_text') or 0
+        told = sum(seen.values())
+        parts = [f'{v} look{"s" if v == 1 else ""} like {k}' for k, v in sorted(seen.items(), key=lambda x: -x[1])]
+        if n - none - told > 0: parts.append(f'{n - none - told} {"has" if n - none - told == 1 else "have"} text whose script couldn\'t be told')
+        if none: parts.append(f'{none} {"has" if none == 1 else "have"} no text to read (a picture or a cover)')
+        out.append(f'Of the {_n(n, "scanned page")} checked, ' + '; '.join(parts) + '.')
+    to = e.get('text_other_scripts') or {}
+    if sum(to.values()) >= 50: out.append('The PDF\'s text holds ' + ', '.join(f'{_n(v, k.title() + " letter")}' for k, v in sorted(to.items(), key=lambda x: -x[1])[:3]) + '.')
+    if lj.get('found') == 'other': out.append('A script other than Latin was found, so the language is asked rather than taken as English.')
     if lj.get('han_only'): out.append('Chinese characters with no Japanese kana can be Chinese or Japanese, so the language isn\'t chosen for you.')
     return out
 
@@ -60,7 +66,8 @@ def asks(R):
     ij = _load(os.path.join(R, '_intake', 'intake.json'))
     if ij: return 'cjk' if ij.get('status') == 'stopped' and any(f.get('what') == 'OCR language needed' for f in ij.get('flags') or []) else None
     if os.path.isfile(os.path.join(R, 'record.json')): return None
-    return 'first' if (_load(os.path.join(R, '_intake', 'languages.json')) or {}).get('needs_ocr') else None
+    lj = _load(os.path.join(R, '_intake', 'languages.json')) or {}
+    return 'first' if lj.get('needs_ocr') and lj.get('ask', True) else None       # ask: the language matters (intake.py)
 
 def question(s, R, js=None):
     """The question for a run folder, or None: {kind: first | cjk, pages, choices: [[value, name]], suggested, evidence}.
@@ -81,7 +88,7 @@ def question(s, R, js=None):
                              + (' and others' if len(pages) > 12 else '') + ' of the pages to be read by OCR, so a language with those characters is needed.',
                              'Chinese and Japanese are never guessed: choose the one the PDF is in.']}
     lj = _load(os.path.join(R, '_intake', 'languages.json'))
-    if not lj or not lj.get('needs_ocr'): return None
+    if not lj or not lj.get('needs_ocr') or not lj.get('ask', True): return None
     est = [j for j in js if j.get('kind') in ('estimate', 'batch-estimate')]
     if not est or not stopped_to_ask(est[-1]): return None            # answered since, and that estimate failed otherwise
     sug = lj.get('suggestion')

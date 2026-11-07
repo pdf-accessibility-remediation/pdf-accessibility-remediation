@@ -113,12 +113,18 @@ The file you choose is only read by your browser; the app never sees its path.
 ### Language of the Scanned Pages
 
 `intake.py --languages` (page triage and intake's own script detection: the text layer's scripts and Tesseract's on up
-to 5 scanned pages; no text-layer test, no OCR, seconds) writes `_intake/languages.json`. The question shows its
-suggestion preselected and the evidence in plain words ("Of the 3 scanned pages checked, 2 look like Japanese"):
+to 5 scanned pages; no text-layer test, no OCR, seconds) writes `_intake/languages.json`. The question is asked only when
+the language matters (Patrick, 2026-11-07; the rules are in [Intake](intake.md)), with its suggestion preselected and the
+evidence in plain words ("Of the 3 scanned pages checked, 2 look like Japanese; 1 has no text to read (a picture or a
+cover)"):
 
-- Japanese kana → Japanese; Korean (Hangul) → Korean; Vietnamese letters → Vietnamese; Latin letters only → English.
+- Japanese kana → Japanese; Korean (Hangul) → Korean; Vietnamese letters → Vietnamese.
 - Chinese characters with no kana, or more than one CJK script: nothing is preselected. Japanese and Chinese are never
   guessed: a person picks Chinese (Traditional), Chinese (Simplified) or Japanese.
+- Another script, or text whose script couldn't be told: asked, with English preselected when the text layer is Latin.
+- **Not asked:** the Latin script only, or no text to read on the scanned pages (a cover, a picture). The run goes on as
+  before, OCR'd as English. A Hawaiian, Ilokano or Bikol scan is Latin script, so it is read as English too; lost ʻokina
+  or kahakō are caught at "OCR Text Approval", and the catalogue language (part 2 of #37) is the later fix.
 
 **Continue** starts the estimate again with that language. English leaves `OCR_LANG` unset (English is intake's own
 default), so the run is exactly what it was before the question existed. The full intake still checks every page to be

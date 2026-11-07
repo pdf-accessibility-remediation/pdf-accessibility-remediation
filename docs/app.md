@@ -103,6 +103,10 @@ The panel shows:
 
 A run made before the dashboards existed (no `review.html`) gets a page with the panel, the `review.md` link and a line saying it has no dashboard. There is no rebuild button: rebuilding would write into the run.
 
+**The OCR language** is asked only when it matters ([The home page](home.md#language-of-the-scanned-pages)): scans in
+the Latin script, or with no text to read, are OCR'd as English, as before (a Hawaiian, Ilokano or Bikol scan included;
+lost ʻokina or kahakō are caught at "OCR Text Approval"; the catalogue language, part 2 of #37, is the later fix).
+
 **Review is always on in the app** (D2, Patrick 2026-11-06): every run the app starts, single or in a batch, stops after the AI's decisions for a person's review (`REVIEW=1` on "Start Remediation", "Try Again", "New Run from the Saved Reply" and batches, whatever an older job file says). From a terminal `REVIEW=1` stays optional.
 
 A run stopped before its first review (`workorder.ai.json`, no `record.json` yet; `python3 app.py <run>` opens it too) gets a page with **Open the Review Page** ("Waiting for Review"). **"Finish Review" applies at once** (D3): when the review page closes with its `review.json` written, the app's dispatcher starts `run_api.sh`'s second call in the run's own folder (the original PDF looked up at that moment), once, and the run page shows "Applying the reviewed decisions", or "Waiting to Start" while other runs hold the places. There is no **Apply** button: when the apply can't start (the original PDF is gone, for example) or fails, the page says why with **Try Again**. A review finished before this change, never applied, still offers **Apply the Reviewed Decisions**. For a PDF in a batch, the apply writes the batch's summary again after it. Until the first apply only that page, its state and those buttons answer for the run: no evaluation, downloads or files. See [Review step](review-step.md#steps).

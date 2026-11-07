@@ -116,7 +116,7 @@ for line in open(books):
         if os.path.exists(os.path.join(R, 'workorder.ai.json')):   # REVIEW=1: stopped for a person's review, never a failure
             waiting.append(name)
             L.append(f'| {name} | **waiting for review**: nothing applied yet | {intake if ij else ""} | | {cost if this + earlier else ""} | | | | | |'); continue
-        if (load(os.path.join(R, '_intake', 'languages.json')) or {}).get('needs_ocr') and not ij:   # ASK_LANG=1: stopped before intake
+        if (lambda d: d.get('needs_ocr') and d.get('ask', True))(load(os.path.join(R, '_intake', 'languages.json')) or {}) and not ij:   # ASK_LANG=1: stopped before intake
             needs_lang.append(name); L.append(f'| {name} | **needs a language**: pages to OCR, no OCR language given | | | | | | | | |'); continue
         failed.append(name)
         if ij.get('status') == 'failed': why = f'**failed at intake**: {(ij.get("summary") or "")[:90].replace("|", "/")}'
@@ -334,7 +334,7 @@ for line in open(books):
     if os.path.exists(ij) and json.load(open(ij)).get('status') == 'stopped':
         rows.append(f'  {name:28} flagged at intake, not sent: {json.load(open(ij)).get("summary")}'); flagged.append(name); continue
     lj = os.path.join(R, '_intake', 'languages.json')     # ASK_LANG=1: stopped before intake, its OCR language not given
-    if not os.path.exists(ij) and os.path.exists(lj) and json.load(open(lj)).get('needs_ocr'):
+    if not os.path.exists(ij) and os.path.exists(lj) and (lambda d: d.get('needs_ocr') and d.get('ask', True))(json.load(open(lj))):
         rows.append(f'  {name:28} needs a language (pages to OCR), not sent'); flagged.append(name); continue
     p = os.path.join(R, 'run.json')
     if not os.path.exists(p): bad.append(name); continue
