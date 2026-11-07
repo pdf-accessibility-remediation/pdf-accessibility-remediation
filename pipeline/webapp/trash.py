@@ -26,7 +26,7 @@ from . import jobs, books as BK, names as NM, home as HM
 
 CONFIRM_RUN = 'The remediated PDF, its report and its review go with it.'
 CONFIRM_SHIPPED = 'This run was shipped. Its record of what was shipped and who approved it goes with it.'
-CONFIRM_USED = 'These runs keep their remediated PDF, report and downloads. What moving the PDF changes for each is beside it.'
+CONFIRM_USED = 'These runs keep their remediated PDF, report and downloads. What moving the PDF changes for each one is under its name.'
 STILL_WORKS = '"Review Again" still works: the run kept its own copy.'
 NEEDS_BACK = '"Review Again" will need it back.'
 APPLY_NEEDS = 'Applying its reviewed decisions will need it back.'
