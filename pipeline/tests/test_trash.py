@@ -209,3 +209,10 @@ def test_a_picked_pdf_with_no_folder_is_only_forgotten(setup):
 def test_nothing_selected_is_never_the_whole_batch(setup):
     s = S(setup); batch(setup, s)
     with pytest.raises(TR.Refused, match='Select one or more'): TR.plan_batch(s, 'Spring', [])
+
+def test_a_second_pdf_of_the_same_name_keeps_its_extension(setup):
+    """Review 10 L2: "ilokano 2.pdf" and "ilokano 2.json", never "ilokano.pdf 2"."""
+    s = S(setup); (setup / 'Trash').mkdir(); (setup / 'Trash' / 'bk.pdf').write_bytes(b'x'); (setup / 'Trash' / 'bk.json').write_text('{}')
+    (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book')); (setup / 'uploads' / 'bk.json').write_text('{}')
+    TR.move_pdf(s, BK.listing(s)[0]['key'])
+    assert (setup / 'Trash' / 'bk 2.pdf').exists() and (setup / 'Trash' / 'bk 2.json').exists()

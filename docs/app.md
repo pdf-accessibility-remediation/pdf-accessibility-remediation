@@ -193,7 +193,7 @@ The panel follows WCAG 2.1 AA, the project's standard:
 confirmation says) never deletes anything:
 
 - **Where things go:** the macOS Trash (`~/.Trash`), moved there whole by renaming, never copied then deleted. A name
-  already in the Trash gets " 2", " 3"…: a single run arrives as `<short name> - <run label>` (for example `ilokano -
+  already in the Trash gets " 2", " 3"… (before a PDF's ".pdf": "ilokano 2.pdf", with its note "ilokano 2.json"): a single run arrives as `<short name> - <run label>` (for example `ilokano -
   First-pass-March`), a whole batch as `batch - <label>`, one PDF of a batch as `batch - <label> - <short name>` (with its
   files from the batch folder in `_batch-files/` inside it), and an added PDF under its own file name, with its note
   from "Add a PDF" (`<name>.json`) beside it. When the Trash is

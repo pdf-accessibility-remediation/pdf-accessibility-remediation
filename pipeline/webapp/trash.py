@@ -59,11 +59,13 @@ def moved_pdf(s, sha):
     return next((e for e in reversed(_load(_log_path(s)) or []) if e.get('what') == 'pdf' and e.get('sha256') == sha), None)
 
 def _rename(s, src, base):
-    """src → the Trash, under base (then "base 2", "base 3"…); returns the name it got there."""
+    """src → the Trash, under base (then "base 2", "base 3"…, before a .pdf or .json extension); returns its name there."""
     T = trash_dir(s); os.makedirs(T, exist_ok=True)
     base = re.sub(r'[/\x00]', '-', base).strip() or 'moved'
+    stem, ext = os.path.splitext(base)
+    if ext.lower() not in ('.pdf', '.json'): stem, ext = base, ''    # a file keeps its extension: "ilokano 2.pdf" (review 10 L2)
     for n in range(1, 1000):
-        name = base if n == 1 else f'{base} {n}'
+        name = base if n == 1 else f'{stem} {n}{ext}'
         dst = os.path.join(T, name)
         if os.path.lexists(dst): continue
         try: os.rename(src, dst)
