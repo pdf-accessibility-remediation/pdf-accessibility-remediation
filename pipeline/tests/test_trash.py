@@ -160,3 +160,52 @@ def test_a_pdfs_note_goes_with_it(setup):
     key = BK.listing(s)[0]['key']
     TR.move_pdf(s, key)
     assert (setup / 'Trash' / 'bk.json').exists() and not (setup / 'uploads' / 'bk.json').exists()
+
+def _listed(s):
+    return [l.split(' ', 1)[0] for l in open(BT.list_path(s, 'Spring')) if not l.startswith('#')]
+
+def test_a_partial_move_refused_under_the_locks_moves_nothing(setup, monkeypatch):
+    """Review 10 H1: c is free when the plan is shown, then a job is queued for it; the check under the locks refuses
+    before anything moves, so the book list, the record and the Trash all still agree."""
+    s = S(setup); B = batch(setup, s)
+    real = TR._locks
+    def racing(Rs):
+        j = jobs.create(s['jobs'], 'batch-estimate', 'batches/Spring/c', ['true'], {}, R=str(B / 'c'))
+        return real(Rs)
+    monkeypatch.setattr(TR, '_locks', racing)
+    with pytest.raises(TR.Refused, match='waiting to start'): TR.move_batch(s, 'Spring', ['a', 'c'])
+    assert (B / 'a').is_dir() and not (setup / 'Trash').exists() and _listed(s) == ['a', 'b', 'c'] and not (B / 'trashed.json').exists()
+    assert [b['name'] for b in json.load(open(BT.meta_path(s, 'Spring')))['books']] == ['a', 'b', 'c']
+
+def test_a_partial_move_that_errors_halfway_forgets_what_it_moved(setup, monkeypatch):
+    """Review 10 H1: an error after the first PDF moved: that PDF is out of the batch (book list, record,
+    trashed.json, the log), so "Run the Unfinished PDFs Again" never queues it."""
+    s = S(setup); B = batch(setup, s)
+    real, n = TR._rename, []
+    def failing(s_, src, base):
+        n.append(base)
+        if len(n) == 2: raise OSError('disk trouble')
+        return real(s_, src, base)
+    monkeypatch.setattr(TR, '_rename', failing)
+    with pytest.raises(OSError): TR.move_batch(s, 'Spring', ['a', 'c'])
+    assert (setup / 'Trash' / 'batch - Spring - a').is_dir() and (B / 'c').is_dir()
+    assert _listed(s) == ['b', 'c'] and [b['name'] for b in json.load(open(BT.meta_path(s, 'Spring')))['books']] == ['b', 'c']
+    assert [x['name'] for x in json.load(open(B / 'trashed.json'))] == ['a']
+    assert json.load(open(os.path.join(s['jobs'], 'trash-log.json')))[-1]['pdf'] == 'a'
+    for j in jobs.all_jobs(s['jobs']):
+        if j['kind'] == 'summary': jobs.update(s['jobs'], j['id'], status='done')   # as the dispatcher would run it
+    assert all(j['run'] != 'batches/Spring/a' for j in BT.again(s, 'Spring'))
+
+def test_a_picked_pdf_with_no_folder_is_only_forgotten(setup):
+    import shutil
+    s = S(setup); B = batch(setup, s)
+    shutil.rmtree(B / 'c')                                                      # its estimate failed before a folder was made
+    r = TR.move_batch(s, 'Spring', ['a', 'c'])
+    assert r['moved'] == ['a'] and r['forgotten'] == ['c']
+    assert _listed(s) == ['b'] and [b['name'] for b in json.load(open(BT.meta_path(s, 'Spring')))['books']] == ['b']
+    assert [x['name'] for x in json.load(open(B / 'trashed.json'))] == ['a']                 # only what is in the Trash
+    assert sorted(os.listdir(setup / 'Trash')) == ['batch - Spring - a']
+
+def test_nothing_selected_is_never_the_whole_batch(setup):
+    s = S(setup); batch(setup, s)
+    with pytest.raises(TR.Refused, match='Select one or more'): TR.plan_batch(s, 'Spring', [])

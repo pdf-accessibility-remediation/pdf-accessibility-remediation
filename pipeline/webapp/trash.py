@@ -157,7 +157,7 @@ def plan_batch(s, label, names=None):
     B = _batch(s, label)
     st = BT.state(s, label)
     books = {b['name']: b for b in st['books']}
-    pick = list(dict.fromkeys(names)) if names else list(books)
+    pick = list(dict.fromkeys(names)) if names is not None else list(books)   # [] is nothing selected, never the whole batch
     if not pick: raise Refused('Select one or more PDFs first.')
     bad = [n for n in pick if n not in books]
     if bad: raise Refused('A selected PDF is no longer in this batch. Reload the page.')
@@ -188,24 +188,36 @@ def move_batch(s, label, names=None):
         log(s, {'what': 'batch', 'label': label, 'from': B, 'to': os.path.join(trash_dir(s), name), 'name': plain, 'pdfs': picked, 'cost_usd': round(cost, 6)})
         _drop_home_cache(s)
         return {'moved': name, 'whole': True}
-    moved = []
-    for n in sorted(picked):                                   # one PDF at a time, each under its own record lock
-        R = os.path.join(B, n)
-        with _locks([R]):
-            why = why_busy(s, f'batches/{label}/{n}', R) or why_busy(s, f'batches/{label}', None)
-            if why: raise Refused(why if not moved else why + f' ({len(moved)} PDF{"" if len(moved) == 1 else "s"} already moved.)')
-            cost = costs.actual(R)['usd'] or 0
-            name = _rename(s, R, f'batch - {label} - {n}')
-        dst = os.path.join(trash_dir(s), name)
-        side = os.path.join(dst, '_batch-files'); os.makedirs(side, exist_ok=True)
-        for f in sorted(os.listdir(B)):                         # its files in the batch folder go with it
-            if f in (f'{n}.reply.txt', f'{n}.reply.txt.meta.json', f'{n}.log', f'{n}.estimate.log'):
-                os.rename(os.path.join(B, f), os.path.join(side, f))
-        moved.append({'name': n, 'to': dst, 'cost_usd': round(cost, 6)})
-    BT.forget_books(s, label, [m['name'] for m in moved], moved)
-    for m in moved: log(s, {'what': 'batch-pdf', 'label': label, 'pdf': m['name'], 'from': os.path.join(B, m['name']), 'to': m['to'], 'cost_usd': m['cost_usd']})
-    _drop_home_cache(s)
-    return {'moved': [m['name'] for m in moved], 'whole': False}
+    # All or nothing (review 10 H1): every picked PDF's record lock up front (sorted, folders that exist), every check
+    # again under them, then the moves. A picked PDF with no folder (its estimate failed before run_api.sh made one) has
+    # nothing to move: it is only taken out of the batch. Whatever stops the moves, the PDFs already moved are always
+    # taken out of the batch and logged (finally), so nothing in the Trash stays on its to-do list.
+    have = [n for n in sorted(picked) if os.path.isdir(os.path.join(B, n))]
+    absent = [n for n in sorted(picked) if n not in have]
+    moved, done = [], False
+    try:
+        with _locks([os.path.join(B, n) for n in have]):
+            why = why_busy(s, f'batches/{label}', None) or next((w for n in picked for w in [why_busy(s, f'batches/{label}/{n}', os.path.join(B, n))] if w), None)
+            if why: raise Refused(why)
+            for n in have:
+                R = os.path.join(B, n)
+                cost = costs.actual(R)['usd'] or 0
+                name = _rename(s, R, f'batch - {label} - {n}')
+                dst = os.path.join(trash_dir(s), name)
+                moved.append({'name': n, 'to': dst, 'cost_usd': round(cost, 6)})
+                side = os.path.join(dst, '_batch-files'); os.makedirs(side, exist_ok=True)
+                for f in sorted(os.listdir(B)):                     # its files in the batch folder go with it
+                    if f in (f'{n}.reply.txt', f'{n}.reply.txt.meta.json', f'{n}.log', f'{n}.estimate.log'):
+                        os.rename(os.path.join(B, f), os.path.join(side, f))
+            done = True
+    finally:
+        gone = [m['name'] for m in moved] + (absent if done else [])
+        if gone:
+            BT.forget_books(s, label, gone, moved)
+            for m in moved: log(s, {'what': 'batch-pdf', 'label': label, 'pdf': m['name'], 'from': os.path.join(B, m['name']), 'to': m['to'], 'cost_usd': m['cost_usd']})
+            for n in (absent if done else []): log(s, {'what': 'batch-pdf', 'label': label, 'pdf': n, 'from': None, 'to': None, 'note': 'no folder: taken out of the batch only'})
+            _drop_home_cache(s)
+    return {'moved': [m['name'] for m in moved], 'forgotten': absent, 'whole': False}
 
 # ------------------------------------------------------------------ a PDF added through "Add a PDF"
 def runs_using(s, sha):

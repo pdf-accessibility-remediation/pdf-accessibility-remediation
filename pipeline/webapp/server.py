@@ -314,7 +314,7 @@ def make(s, setup, code=None):
                         names = body.get('names') if isinstance(body.get('names'), list) else None
                         bd = batch_dir(s['runs'], str(body.get('label') or ''))
                         if not bd: return self.send(409, {'error': 'There is no such batch.'})
-                        f = TR.plan_batch if p.endswith('plan') else TR.move_batch; r = f(s, os.path.basename(bd), [str(x) for x in names] if names else None)
+                        f = TR.plan_batch if p.endswith('plan') else TR.move_batch; r = f(s, os.path.basename(bd), [str(x) for x in names] if names is not None else None)
                     elif what == 'pdf': f = TR.plan_pdf if p.endswith('plan') else TR.move_pdf; r = f(s, str(body.get('key') or ''))
                     else: return self.send(409, {'error': 'Nothing to move.'})
                 except TR.Refused as e: return self.send(409, {'error': str(e)})
