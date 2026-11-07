@@ -64,22 +64,32 @@ def find_original(s, sha, name=None):
     books.hashes(s, cands, stop=lambda p, h: h == sha and not found.append(p))
     return found[0] if found else None
 
-def pdf_needed(s, R, rec):
-    """(--pdf path or None, refusal or None) for this run's next review command."""
+def input_of(R, rec):
+    """Where this run's next review reads its PDF from, before any search (shared by pdf_needed and the Trash's per-run
+    warning, webapp/trash.py effect): {'kind': 'copy'} its own intake copy; {'kind': 'path', 'path'} the existing file its
+    review basis names (for a tagged PDF, the original itself); {'kind': 'lost', 'why'} its own intake result is missing;
+    {'kind': 'unknown', 'why'} its record names no sha256; {'kind': 'find', 'sha', 'name'} the original, found by sha256."""
     b = S.basis(R)
     if b and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json')):
-        if os.path.isfile(os.path.join(R, '_intake', 'intake.pdf')): return None, None
+        if os.path.isfile(os.path.join(R, '_intake', 'intake.pdf')): return {'kind': 'copy'}
         inp = b.get('input') or {}
-        if inp.get('path') and os.path.isfile(inp['path']): return None, None
+        if inp.get('path') and os.path.isfile(inp['path']): return {'kind': 'path', 'path': inp['path']}
         sha = inp.get('sha256')
         if inp.get('path') and os.path.basename(os.path.dirname(inp['path'])) == '_intake':     # the run's own intake result
-            return None, (f'this run\'s input, {inp["path"]} (its intake result, sha256 {(sha or "")[:16]}), is missing: it was made by '
-                          'intake and is not in samples/; the run cannot be reviewed again without it')
+            return {'kind': 'lost', 'why': (f'this run\'s input, {inp["path"]} (its intake result, sha256 {(sha or "")[:16]}), is missing: it was made by '
+                                            'intake and is not in samples/; the run cannot be reviewed again without it')}
     else:
-        if ((rec.get('intake') or {}).get('result') or {}).get('pdf'): return None, None
+        if ((rec.get('intake') or {}).get('result') or {}).get('pdf'): return {'kind': 'copy'}
         sha = ((rec.get('workorder') or {}).get('source') or {}).get('sha256') or (rec.get('document') or {}).get('sha256')
-    name = (rec.get('document') or {}).get('file')
-    if not sha: return None, 'This run\'s record doesn\'t say which PDF it was made from, so its original PDF can\'t be found.'
+    if not sha: return {'kind': 'unknown', 'why': 'This run\'s record doesn\'t say which PDF it was made from, so its original PDF can\'t be found.'}
+    return {'kind': 'find', 'sha': sha, 'name': (rec.get('document') or {}).get('file')}
+
+def pdf_needed(s, R, rec):
+    """(--pdf path or None, refusal or None) for this run's next review command."""
+    i = input_of(R, rec)
+    if i['kind'] in ('copy', 'path'): return None, None
+    if i['kind'] in ('lost', 'unknown'): return None, i['why']
+    sha, name = i['sha'], i['name']
     p = find_original(s, sha, name)
     if p: return p, None
     if moved_words(s, sha): return None, moved_words(s, sha)

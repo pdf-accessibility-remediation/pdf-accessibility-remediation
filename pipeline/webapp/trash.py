@@ -28,6 +28,7 @@ CONFIRM_RUN = 'The remediated PDF, its report and its review go with it.'
 CONFIRM_SHIPPED = 'This run was shipped. Its record of what was shipped and who approved it goes with it.'
 CONFIRM_USED = 'These runs keep their remediated PDF, report and downloads. What moving the PDF changes for each one is under its name.'
 STILL_WORKS = '"Review Again" still works: the run kept its own copy.'
+STILL_ELSEWHERE = '"Review Again" still works: the run uses another copy of the PDF.'
 NEEDS_BACK = '"Review Again" will need it back.'
 APPLY_NEEDS = 'Applying its reviewed decisions will need it back.'
 GO_ON_NEEDS = 'Going on with this run will need it back.'
@@ -247,14 +248,18 @@ def _other_copy(s, sha, path):
 
 def effect(s, u, sha, path):
     """What moving this PDF changes for one run, in a sentence (Patrick, 2026-11-07: never claim "Review Again" fails for
-    a run that kept its own copy): a finished run needs the original only when it has no intake copy (runs.pdf_needed);
+    a run that kept its own copy): a finished run needs the original only when it has no intake copy and its review
+    doesn't read another file (runs.input_of: a tagged PDF's review reads the original itself, review 12 M2);
     a run waiting for its first apply always needs one; a run before its result needs the very file it was started from."""
     from . import runs as RN
     R = u['R']
     rec = RN.load(os.path.join(R, 'record.json'))
     if rec:
-        p, why = RN.pdf_needed(s, R, rec)
-        if not p and not why: return STILL_WORKS
+        i = RN.input_of(R, rec)
+        if i['kind'] == 'copy': return STILL_WORKS
+        if i['kind'] == 'path' and os.path.realpath(i['path']) != os.path.realpath(path): return STILL_ELSEWHERE
+        # Its review reads this very file (review 12 M2: a tagged PDF's basis names the original itself), or finds the
+        # original by sha256: it needs this PDF unless another file with the same content is in the app's folders.
         return STILL_WORKS.replace('the run kept its own copy', 'another copy of the PDF is in the app\'s folders') if _other_copy(s, sha, path) else NEEDS_BACK
     if RN.waiting(R): return APPLY_NEEDS if not _other_copy(s, sha, path) else STILL_WORKS.replace('"Review Again" still works: the run kept its own copy',
                                                                                                    'Applying its reviewed decisions still works: another copy of the PDF is in the app\'s folders')

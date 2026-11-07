@@ -254,8 +254,10 @@ first, naming what goes in plain words:
   batch.
 - **An added PDF:** when runs were made from it (by sha256), each is listed with its date and status, "These runs keep
   their remediated PDF, report and downloads", and, per run, what the move changes (Patrick, 2026-11-07): ""Review
-  Again" still works: the run kept its own copy" (its intake made one) or "…another copy of the PDF is in the app's
-  folders"; ""Review Again" will need it back" (a tagged PDF, reviewed from the original); "Applying its reviewed
+  Again" still works: the run kept its own copy" (its intake made one), "…the run uses another copy of the PDF" (its
+  review reads a different file with the same content, e.g. in samples/) or "…another copy of the PDF is in the app's
+  folders" (found by sha256); ""Review Again" will need it back" (a tagged PDF whose review reads this very file: its
+  review record names the original itself, review 12 M2); "Applying its reviewed
   decisions will need it back" (waiting for its first apply); "Going on with this run will need it back" (before its
   result). Those runs stay; a run that needs it says on its page that the original PDF was moved to the Trash and how to
   put it back. The samples folder is never offered.

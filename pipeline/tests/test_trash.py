@@ -219,6 +219,39 @@ def test_a_second_pdf_of_the_same_name_keeps_its_extension(setup):
     assert (setup / 'Trash' / 'bk 2.pdf').exists() and (setup / 'Trash' / 'bk 2.json').exists()
 
 
+def pinned(R, inp, sha):
+    """A run made since review-loop: reviews/basis.json names its input, with the kept digest beside it."""
+    (R / 'reviews' / '_audit').mkdir(parents=True); (R / 'reviews' / '_audit' / 'digest.json').write_text('{}')
+    (R / 'reviews' / 'basis.json').write_text(json.dumps({'schema': 'reviews/1', 'input': {'path': str(inp), 'sha256': sha}}))
+
+def test_a_tagged_run_reviewed_from_the_moved_pdf_is_warned(setup):
+    """Review 12 M2: a tagged PDF's review basis names the original itself (run_api.sh PSRC=$SRC), so a run made from a PDF
+    added through "Add a PDF" has no copy of its own: "will need it back", unless another copy is in the app's folders.
+    A basis naming another file with the same content still works; so does a run with its own intake copy."""
+    s = S(setup)
+    up = setup / 'uploads' / 'bk.pdf'; up.write_bytes(pdf_bytes(1, 'A Book')); key = BK.listing(s)[0]['key']
+    pinned(finished_run(setup, label='tagged', sha=key), up, key)
+    other = setup / 'elsewhere.pdf'; other.write_bytes(up.read_bytes())
+    pinned(finished_run(setup, label='elsewhere', sha=key), other, key)
+    own = finished_run(setup, label='untagged', sha=key); pinned(own, own / '_intake' / 'intake.pdf', key)
+    (own / '_intake').mkdir(); (own / '_intake' / 'intake.pdf').write_bytes(b'%PDF-1.7 intake copy')
+    eff = {r['name']: r['effect'] for r in TR.plan_pdf(s, key)['runs']}
+    assert eff == {'tagged': TR.NEEDS_BACK, 'elsewhere': TR.STILL_ELSEWHERE, 'untagged': TR.STILL_WORKS}
+    TR.move_pdf(s, key)                                                          # and what each sentence promised holds
+    R = lambda l: str(setup / 'runs' / 'bk' / l)
+    assert RN.pdf_needed(s, R('tagged'), RN.load(R('tagged') + '/record.json'))[1] == RN.MOVED
+    assert RN.pdf_needed(s, R('elsewhere'), {}) == (None, None) and RN.pdf_needed(s, R('untagged'), {}) == (None, None)
+
+def test_a_tagged_run_with_another_copy_still_works(setup):
+    s = S(setup)
+    up = setup / 'uploads' / 'bk.pdf'; up.write_bytes(pdf_bytes(1, 'A Book')); key = BK.listing(s)[0]['key']
+    pinned(finished_run(setup, label='tagged', sha=key), up, key)
+    (setup / 'samples' / 'copy.pdf').write_bytes(up.read_bytes())
+    assert 'another copy of the PDF is in the app' in TR.plan_pdf(s, key)['runs'][0]['effect']
+    TR.move_pdf(s, key)
+    p, why = RN.pdf_needed(s, str(setup / 'runs' / 'bk' / 'tagged'), {'document': {'file': 'bk.pdf'}})
+    assert not why and p.endswith('copy.pdf')
+
 def test_the_warning_says_per_run_whether_review_again_still_works(setup):
     """Patrick, 2026-11-07: a run whose intake kept its own copy still reviews again; never claim it doesn't."""
     s = S(setup)
