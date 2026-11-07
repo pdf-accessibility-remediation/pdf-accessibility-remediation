@@ -139,3 +139,4 @@ def test_run_api_goes_on_when_the_scans_hold_no_text(tmp_path):
     r, R = run_api(tmp_path, scan_pdf(tmp_path))
     d = json.load(open(R / '_intake' / 'languages.json'))
     assert d['needs_ocr'] and not d['ask'] and d['found'] == 'none' and r.returncode != 4
+    assert 'Tesseract gave no orientation reading on any of the 1 sampled scans' in r.stdout   # review 12 N1: said in the log

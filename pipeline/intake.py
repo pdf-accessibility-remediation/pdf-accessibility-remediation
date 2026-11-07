@@ -1115,6 +1115,9 @@ def languages_only(SRC, OUTD):
     pages, others = [], collections.Counter()
     try: sc, viet, osd, found_ = scripts_seen(doc, text_pages, to_ocr, tmp, pages, others)
     finally: doc.close(); shutil.rmtree(tmp, ignore_errors=True)
+    if pages and all(p.get('orient_conf') is None for p in pages):   # review 12 N1: "no text" may mean OSD didn't run
+        print(f'intake --languages: note: Tesseract gave no orientation reading on any of the {len(pages)} sampled scans '
+              '(blank pages, or its osd.traineddata missing): counted as no text to read')
     out.update(suggest_language(sc, viet, pages, others))
     return done()
 

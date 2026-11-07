@@ -46,7 +46,9 @@ layer's letters by script, and each sampled scanned page's reading). No text-lay
   no text to read on the sampled scanned pages, such as a cover or a picture (`found: none`, kept apart from "Latin").
   A scanned page has text when Tesseract's orientation confidence is 4.0 or more (`OSD_TEXT_CONF`, calibrated on 14
   sampled pages of 7 books: text pages 4.7–20; covers, pictures and Part openers 0.08–3.4, some of them read as
-  "Cyrillic" or "Devanagari"). Its script confidence is not used: it doesn't tell text from pictures.
+  "Cyrillic" or "Devanagari"). Its script confidence is not used: it doesn't tell text from pictures. When no sampled
+  scan gives any orientation reading (blank pages, or Tesseract's `osd.traineddata` missing), the log says so in one
+  line ("Tesseract gave no orientation reading on any of the N sampled scans"), since every page then counts as "no text".
 - **Latin-script scans are OCR'd as English** (Patrick, 2026-11-07). On a scan the app sees only the script, not the
   language, so a Hawaiian, Ilokano or Bikol scan is read with `eng`, as before this question existed. Lost ʻokina or
   kahakō are then caught at "OCR Text Approval" (a person reads the OCR text). The catalogue language (part 2 of #37,
