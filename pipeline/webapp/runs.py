@@ -108,6 +108,14 @@ def job_view(s, j, with_text=False, offset=0):
         v['interrupted'] = after_interrupt(R, j)
     v['step'] = logs.now_step(j['kind'], steps) if j['status'] == 'running' else None
     v['title'] = title(R, j, v); v['action'] = action(j); v['result'] = result(R, j, v)
+    from . import names as NM
+    if j.get('book_sha'): v['book_name'] = NM.book_name(s, j['book_sha'], j.get('book_file'))
+    elif j['kind'] == 'batch': v['book_name'] = 'Batch ' + NM.shown_run(s, j['run'])
+    v['run_name'] = NM.shown_run(s, j['run'])
+    if j['status'] == 'queued':                                    # what it waits for, by its plain name (Patrick, 2026-11-06)
+        cur = next((x for x in jobs.all_jobs(s['jobs']) if x['status'] == 'running' and x.get('counted', True) and x['id'] != j['id']), None)
+        if cur: v['waiting_for'] = ('the batch ' if cur['kind'] == 'batch' or cur['run'].startswith('batches/') else 'the run ') + \
+                                   f'"{NM.shown_run(s, cur["run"])}"'
     v['reason'] = reason(v) if j['status'] in ('failed', 'interrupted') else None
     if with_text:
         t, nxt = jobs.read_log(s['jobs'], j['id'], offset); v.update(text=t, next=nxt)
@@ -285,7 +293,7 @@ def state(s, run, R):
     rel = os.path.relpath(R, config.PIPELINE)
     from lib import costs
     return {
-        'run': run, 'mode': 'finished', 'file': BK.shown_file((rec.get('document') or {}).get('file') or ''), 'cost': costs.actual(R),
+        'run': run, 'mode': 'finished', 'run_name': __import__('webapp.names', fromlist=['x']).shown_run(s, run), 'file': BK.shown_file((rec.get('document') or {}).get('file') or ''), 'cost': costs.actual(R),
         'cleared': cleared_view(R), 'clear': clear_offer(s, run, R, rec), 'replay': replay_offer(s, run, R),
         'title': (rec.get('document') or {}).get('file') or run, 'review_html': os.path.isfile(os.path.join(R, 'review.html')),
         'review_md': os.path.isfile(os.path.join(R, 'review.md')), 'ready': ready(R, rec),
@@ -322,7 +330,8 @@ def book_of(s, run, R, js=None):
     """(display name, file name) of a run's book: from the app's job, else intake's record or the estimate's source."""
     from . import books as BK
     for j in reversed(js if js is not None else [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]):
-        if j.get('book_name'): return j['book_name'], BK.shown_file(j.get('book_file') or '')
+        if j.get('book_sha') or j.get('book_name'):                 # resolved now: a rename shows at once (not the job's snapshot)
+            return (BK.name_of_sha(s, j.get('book_sha'), j.get('book_file')) if j.get('book_sha') else j['book_name']), BK.shown_file(j.get('book_file') or '')
     o = (load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or (load(os.path.join(R, 'run.json')) or {}).get('source') or {}
     f = BK.shown_file(o.get('file') or '')
     return (BK.name_of_sha(s, o.get('sha256'), f) if o.get('sha256') else None) or BK.stem_name(f or run.split('/')[-1]), f
@@ -339,7 +348,7 @@ def pending_state(s, run, R):
     """The run page's view of a run started from the home page before its result: the estimate, Spend, the jobs, and what
     "Try Again" does (decided from disk)."""
     from lib import costs
-    from . import newrun, failures
+    from . import newrun, failures, names as NM
     js = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]
     name, file = book_of(s, run, R, js)
     try: est = costs.estimate(R, 'workorder', costs.limits_of(s))
@@ -360,7 +369,7 @@ def pending_state(s, run, R):
         b = est['blocked']
         ok = not b or (test and b['code'] in ('offline', 'no_credit'))
         spend = {'ok': ok, 'why': None if ok else b['words'], 'code': None if ok else b['code']}
-    return {'run': run, 'mode': 'pending', 'title': name, 'file': file, 'run_name': run.split('/')[-1], 'phase': phase,
+    return {'run': run, 'mode': 'pending', 'title': name, 'file': file, 'run_name': NM.shown_run(s, run), 'phase': phase,
             'estimate': est, 'sent': sent_words(est) if est else None, 'spend': spend, 'retry': retry, 'failure': fail, 'test': test,
             'review_first': rf, 'from_app': from_app, 'batch': batch,
             'jobs': [job_view(s, j) for j in js]}

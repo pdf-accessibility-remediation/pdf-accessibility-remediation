@@ -37,10 +37,11 @@ One place, read in this order (later wins):
 | `port` | `8760` | The app's port. The review pages use 8765–8784, as from the terminal. |
 | `runs`, `samples`, `uploads` | `../runs`, `../samples`, `../uploads` | The folders, relative to `pipeline/` (or absolute). `uploads` holds the books added with "Add a Book" ([The home page](home.md)). |
 | `jobs` | `../runs/.app` | The job files, their logs, and the app's own small files (below). |
-| `max_jobs` | `2` | How many jobs run at once, across every run (open review pages do not count until they apply). |
-| `batch_jobs` | `2` | Books a batch runs at once (`JOBS`; at most `max_jobs`). A batch job takes that many places. |
+| `max_jobs` | `1` | How many runs go at once: a single run or a whole batch counts as one (open review pages do not count until they apply). The app does one run at a time. |
+| `batch_jobs` | `10` | How many books of a batch are in progress at once, the next starting as each finishes (batch_api.sh's `JOBS`). Subject to change once the hardware limits are measured. |
+| `max_books_per_batch` | `50` | The most books "New Batch" accepts. A setting whoever looks after the app can change; batch_api.sh in a terminal has no cap. |
 | `upload_max_mb` | `1024` | The largest PDF "Add a Book" accepts, in MB. |
-| `limits` | `{"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 5}` | Dollars: what the estimates are compared with, and the most a "Start Remediation" may bind (`MAX_USD`, `BOOK_MAX_USD`, `BATCH_MAX_USD`). The pipeline's own caps stay as they are. |
+| `limits` | `{"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 40}` | Dollars: what the estimates are compared with, and the most a "Start Remediation" may bind (`MAX_USD`, `BOOK_MAX_USD`, `BATCH_MAX_USD`). The pipeline's own caps stay as they are. |
 | `tools.VERAPDF` | empty | The veraPDF launcher. Empty: `verapdf` on the PATH. |
 | `tools.path_prepend` | `[]` | Folders put first on the PATH the app's commands get, for example Java's. |
 
@@ -121,11 +122,11 @@ A run that `REVIEW=1` stopped before its first review (`workorder.ai.json`, no `
 ## Jobs and the queue
 
 - **Every button queues a job:** a file in `runs/.app/jobs/` (`<id>.json`) and its log (`<id>.log`). The command writes straight into the log.
-- **The limit:** up to `max_jobs` jobs run at once, oldest first. Others wait in line, and each card says where.
+- **One run at a time:** up to `max_jobs` (1) runs go at once, oldest first, a whole batch counting as one. Others wait in line, and each card says what it waits for ("Waiting: it starts when the run "First pass" ends").
 - **An open review page waits on a person,** so it does not count until it is past Finish (applying).
 - **One job at a time per run.** A second click is refused with the reason: another job for this run is waiting or running, or `reviews/.lock` is held by a review started from a terminal.
 - **Two app servers on one jobs folder** (see `--port` below) share the queue and the limit. A second app started with `--port` runs the start-up step that turns queued paid jobs into "Waiting for a new estimate", including the first app's: that fails safe (nothing is sent; a new estimate goes on).
-- **Related runs** (a batch and its books) never run jobs at the same time, and a batch job takes `batch_jobs` places ([The home page](home.md#batches)).
+- **Related runs** (a batch and its books) never run jobs at the same time, and a batch takes one place, with `batch_jobs` of its books in progress at once ([The home page](home.md#batches)).
 
 ## When something goes wrong
 

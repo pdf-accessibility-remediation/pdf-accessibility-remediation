@@ -66,25 +66,28 @@ def check_untagged(s, setup, book):
         raise ValueError('Text recognition (OCR) isn\'t set up on this computer, and this book needs it. Whoever looks after the app can install it.')
 
 # ------------------------------------------------------------------ the estimate (free)
-def start_estimate(s, setup, key, run_name, ocr_lang, review_first):
-    """New Run: the free estimate job. Returns the job; raises ValueError with the reason (plain words)."""
+def start_estimate(s, setup, key, plain, ocr_lang, review_first):
+    """New Run: the free estimate job. `plain`: the Run Name in the person's own words (optional); the folder label is
+    derived from it (webapp/names.py label_for) and the plain name is kept by the app only. Returns the job; raises
+    ValueError with the reason (plain words)."""
+    from . import names as NM
     book = BK.by_key(s, key)
     if not book: raise ValueError('This book\'s file has changed or is gone. Go back to the home page to see the list again.')
     if book['locked']: raise ValueError('This PDF is locked with a password. Add an unlocked copy and start a new run.')
-    run_name = str(run_name or '').strip()
-    if not RUN_NAME.fullmatch(run_name): raise ValueError('A Run Name starts with a letter or digit and uses only letters, digits, "-" and "_" (at most 64).')
+    plain = NM.clean_name(plain)
     langs = dict(BK.ocr_choices(BK.installed_langs(s)))
     if ocr_lang not in langs: raise ValueError('Choose an OCR language from the list.')
     m = BK.read_meta(book['path']); book['tagged'] = m.get('tagged')
     check_untagged(s, setup, book)
     name = short_name(s, book)
+    run_name = NM.label_for(plain, 'run', lambda lab: run_taken(s, os.path.join(s['runs'], name, lab)))
     R = os.path.join(s['runs'], name, run_name)
-    if run_taken(s, R): raise ValueError(f'A run named "{run_name}" already exists for this book. Choose another Run Name.')
     os.makedirs(R)
+    if plain: NM.set_run_name(s, f'{name}/{run_name}', plain)
     env = {'ESTIMATE': '1', 'OCR_LANG': ocr_lang}
     argv = ['bash', 'run_api.sh', book['path'], name, run_name]
     return jobs.create(s['jobs'], 'estimate', f'{name}/{run_name}', argv, config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
-                       what='Get the estimate', book_sha=book['key'], book_name=book['name'], book_file=book['file'], run_name=run_name,
+                       what='Get the estimate', book_sha=book['key'], book_file=book['file'],
                        review_first=bool(review_first), ocr_name=langs[ocr_lang])
 
 def again_estimate(s, run, R):
@@ -175,9 +178,10 @@ def form_page(s, key):
     return head + (f'<header><h1>New Run</h1><p class="mc-book">{HM.book_cell(book["name"], book["file"])}</p></header>'
         '<main id="main" tabindex="-1"><form class="pp hm-form" id="hm-newrun" data-api="/api/new/estimate">'
         f'<input type="hidden" name="book" value="{E(book["key"])}">'
-        '<div class="mc-field"><label for="nr-name">Run Name</label>'
-        f'<input type="text" id="nr-name" name="run_name" value="{E(default_run_name())}" required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9_\\-]{{0,63}}" aria-describedby="nr-name-h">'
-        '<p class="mc-help" id="nr-name-h">Letters, digits, "-" and "_". It names this run in the list of earlier runs.</p></div>'
+        '<div class="mc-field"><label for="nr-name">Run Name <span class="mc-opt">(optional)</span></label>'
+        '<input type="text" id="nr-name" name="run_name" maxlength="120" aria-describedby="nr-name-h">'
+        '<p class="mc-help" id="nr-name-h">In your own words, for example "First pass, March". It names this run in the list of earlier runs; '
+        'without one, the run is named by its date.</p></div>'
         '<div class="mc-field"><label for="nr-lang">OCR Language</label>'
         f'<select id="nr-lang" name="ocr_lang" aria-describedby="nr-lang-h">{opts}</select>'
         '<p class="mc-help" id="nr-lang-h">Used only for pages that need OCR (scanned pages). Choose the book\'s language; it is never guessed.</p></div>'

@@ -4,7 +4,8 @@ batch's Spend runs batch_api.sh, which estimates again (intake and audits reused
 
     start(s, setup, keys, label, ocr_lang)   the book list, the batch's record, one free estimate job per book
     state(s, label)                          {label, phase, books: [{name, book, file, status, href}], totals, spend, …}
-    spend(s, label, body)                    the batch job (webapp/spend.py authorize_batch): paid, slots = JOBS
+    spend(s, label, body)                    the batch job (webapp/spend.py authorize_batch): paid; one place of max_jobs,
+                                             JOBS (batch_jobs) of its books in progress at once
     again(s, label)                          "Run the Unfinished Books Again": new estimates for the books without a result;
                                              the next Spend adds RETRY=1
 
@@ -49,15 +50,19 @@ def exists(s, label):
     return os.path.isdir(folder(s, label)) or os.path.isfile(meta_path(s, label))
 
 # ------------------------------------------------------------------ New Batch
-def start(s, setup, keys, label, ocr_lang):
-    label = str(label or '').strip()
-    if not NR.RUN_NAME.fullmatch(label): raise ValueError('A Batch Name starts with a letter or digit and uses only letters, digits, "-" and "_" (at most 64).')
-    if exists(s, label) or any(jobs.related(j['run'], f'batches/{label}') for j in jobs.all_jobs(s['jobs'])):
-        raise ValueError(f'A batch named "{label}" already exists. Choose another Batch Name.')
+def start(s, setup, keys, plain, ocr_lang):
+    """New Batch. `plain`: the Batch Name in the person's own words (optional); the folder label is derived from it
+    (webapp/names.py label_for), and the plain name is kept by the app only."""
+    from . import names as NM
+    plain = NM.clean_name(plain)
+    js_ = jobs.all_jobs(s['jobs'])
+    label = NM.label_for(plain, 'batch', lambda lab: exists(s, lab) or any(jobs.related(j['run'], f'batches/{lab}') for j in js_))
     langs = dict(BK.ocr_choices(BK.installed_langs(s)))
     if ocr_lang not in langs: raise ValueError('Choose an OCR language from the list.')
     keys = [k for k in dict.fromkeys(keys or []) if isinstance(k, str)]
     if len(keys) < 2: raise ValueError('Select two or more books for a batch.')
+    cap = int(s.get('max_books_per_batch') or 50)
+    if len(keys) > cap: raise ValueError(f'A batch can hold up to {cap} books. Split them into two batches.')
     bs, taken = [], set()
     for k in keys:
         b = BK.by_key(s, k)
@@ -78,6 +83,7 @@ def start(s, setup, keys, label, ocr_lang):
                'books': [{k: b[k] for k in ('name', 'key', 'file', 'book')} for b in bs]},
               open(meta_path(s, label), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
     for b in bs: os.makedirs(os.path.join(folder(s, label), b['name']))
+    if plain: NM.set_run_name(s, label, plain, kind='batches')
     return [estimate_job(s, label, b, ocr_lang) for b in bs]
 
 def estimate_job(s, label, b, ocr_lang):
@@ -87,7 +93,7 @@ def estimate_job(s, label, b, ocr_lang):
                                   if not x.startswith('#') and x.split(' ', 1)[0] == b['name']), None)
     return jobs.create(s['jobs'], 'batch-estimate', f'batches/{label}/{b["name"]}', ['bash', 'run_api.sh', path, b['name'], label],
                        config.child_env(s, env), env_set=env, R=R, supersede_waiting=True, what='Get the estimate',
-                       book_sha=b['key'], book_name=b['book'], book_file=b['file'], run_name=label)
+                       book_sha=b['key'], book_file=b['file'])
 
 # ------------------------------------------------------------------ the batch's state
 def _book_status(s, label, b, R, jl, batch_job):
@@ -131,7 +137,8 @@ def state(s, label):
             Rs.append(R)
             if not costs.estimate(R) and not (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
                 missing.append(b['name'])
-        out.append({'name': b['name'], 'book': b['book'], 'file': BK.shown_file(b.get('file') or ''), 'status': row['words'], 'finished': row['finished'],
+        from . import names as NM
+        out.append({'name': b['name'], 'book': NM.book_name(s, b.get('key'), b.get('file') or '') if b.get('key') else b.get('book'), 'file': BK.shown_file(b.get('file') or ''), 'status': row['words'], 'finished': row['finished'],
                     'href': HM.run_href(f'batches/{label}/{b["name"]}'), 'cost': row.get('cost') or 0})
     total = costs.batch(Rs, limits=costs.limits_of(s))
     spent = round(sum(x['cost'] or 0 for x in out if x['finished']) + total['spent_usd'], 6)
@@ -177,9 +184,9 @@ def spend(s, label, body):
     meta = _load(meta_path(s, label)) or {}
     if meta.get('ocr_lang'): env['OCR_LANG'] = meta['ocr_lang']
     if any(b['finished'] for b in st['books']) or os.path.isfile(os.path.join(folder(s, label), 'summary.md')): env['RETRY'] = '1'
-    extra = dict(a['extra']); slots = extra.pop('slots')
-    return jobs.create(s['jobs'], 'batch', f'batches/{label}', a['argv'], config.child_env(s, env), env_set=env, R=folder(s, label), paid=True, slots=slots,
-                       what='Run the batch' + (' (test: saved replies)' if extra['test'] else ''), run_name=label, book_name=f'Batch {label}', **extra)
+    extra = dict(a['extra'])
+    return jobs.create(s['jobs'], 'batch', f'batches/{label}', a['argv'], config.child_env(s, env), env_set=env, R=folder(s, label), paid=True,
+                       what='Run the batch' + (' (test: saved replies)' if extra['test'] else ''), **extra)
 
 def again(s, label):
     """"Run the Unfinished Books Again": a new free estimate for every book without a result."""
@@ -204,9 +211,10 @@ def form_page(s, keys):
         return head + '<div class="pp"><p>Select two or more books on the home page first.</p><p><a class="pp-btn" href="/">Back to the Home Page</a></p></div></main></body></html>'
     items = ''.join(f'<li>{HM.book_cell(b["name"], b["file"])}<input type="hidden" name="books" value="{E(b["key"])}"></li>' for b in bs)
     return head + (f'<form class="pp hm-form" id="hm-newbatch" data-api="/api/batch/new"><h2>Books ({len(bs)})</h2><ul class="hm-active">{items}</ul>'
-        '<div class="mc-field"><label for="nb-name">Batch Name</label>'
-        f'<input type="text" id="nb-name" name="label" value="batch-{datetime.datetime.now():%Y-%m-%d-%H%M}" required maxlength="64" aria-describedby="nb-name-h">'
-        '<p class="mc-help" id="nb-name-h">Letters, digits, "-" and "_". It names this batch in the list of batches.</p></div>'
+        '<div class="mc-field"><label for="nb-name">Batch Name <span class="mc-opt">(optional)</span></label>'
+        '<input type="text" id="nb-name" name="label" maxlength="120" aria-describedby="nb-name-h">'
+        '<p class="mc-help" id="nb-name-h">In your own words, for example "Press backlist, spring". It names this batch in the list of batches; '
+        'without one, the batch is named by its date.</p></div>'
         f'<div class="mc-field"><label for="nb-lang">OCR Language</label><select id="nb-lang" name="ocr_lang" aria-describedby="nb-lang-h">{opts}</select>'
         '<p class="mc-help" id="nb-lang-h">Used for every book\'s pages that need OCR (scanned pages). It is never guessed.</p></div>'
         '<p class="mc-help">Books in a batch are applied without a review first. Review each one afterwards from its page.</p>'
@@ -220,6 +228,7 @@ def nav(s, label, current=None):
     added at serve time; batch.js keeps the statuses current, collapses the column and opens it as a list on a narrow screen."""
     import html
     E = html.escape
+    from . import names as NM
     st = state(s, label)
     items = ''.join(f'<li><a href="{E(b["href"])}"' + (' aria-current="page"' if b['name'] == current else '') +
                     f' data-book="{E(b["name"])}"><span class="bn-name">{E(b["book"])}</span><span class="hm-file">Source PDF Filename: {E(b["file"])}</span>'
@@ -228,15 +237,16 @@ def nav(s, label, current=None):
     return (f'<nav class="bn" id="pp-bnav" aria-label="Books in This Batch" data-label="{E(label)}">'
             f'<button type="button" class="bn-toggle" id="bn-toggle" aria-expanded="true" aria-controls="bn-list">Hide the Book List</button>'
             f'<div id="bn-list"><p class="bn-h"><a href="/batch/{E(urllib.parse.quote(label, safe=""))}/"' + (' aria-current="page"' if current is None else '') +
-            f'>Batch {E(label)}</a> <span class="pp-note">({n} book{"" if n == 1 else "s"})</span></p><ul>{items}</ul></div></nav>')
+            f'>Batch: {E(NM.shown_run(s, "batches/" + label))}</a> <span class="pp-note">({n} book{"" if n == 1 else "s"})</span></p><ul>{items}</ul></div></nav>')
 
 def page(s, label):
     import html
+    from . import names as NM
     E = html.escape
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<title>Batch {E(label)}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
+            f'<title>Batch: {E(NM.shown_run(s, "batches/" + label))}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
             '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + HM.appbar() + nav(s, label) +
-            f'<header><h1>Batch {E(label)}</h1></header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
+            f'<header><h1>Batch: {E(NM.shown_run(s, "batches/" + label))}</h1></header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
             '<h2 id="bt-h" tabindex="-1">This Batch</h2><div id="bt-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
             '<script src="/app/batch.js" defer></script></body></html>')

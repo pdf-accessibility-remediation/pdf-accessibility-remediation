@@ -6,7 +6,9 @@ VERAPDF, the Java path) < --config FILE < an exported VERAPDF. Relative paths ar
     host, port         where the app listens. Only a loopback address is accepted until the app has logins.
     runs, samples, uploads, jobs   the folders (jobs: the queue, logs and the dispatch lock)
     max_jobs           how many work jobs run at once, across every run (open review pages wait on a person: not counted)
-    batch_jobs         books a batch runs at the same time (JOBS; at most max_jobs: a batch takes that many places)
+    max_jobs           (1) runs at once: a single run or a whole batch is one place
+    batch_jobs         books of a batch in progress at once (batch_api.sh's JOBS); the batch still takes one place
+    max_books_per_batch   the most books New Batch accepts (the app only: batch_api.sh in a terminal has no cap)
     upload_max_mb      "Add a Book": the largest PDF accepted, in MB (default 1024)
     limits             dollars: per_call_usd (one AI call), per_book_usd (a book, #63), per_batch_usd (a batch); what the
                        pages compare estimates with, and the most a Spend may bind (lib/costs.py)
@@ -79,7 +81,7 @@ def load(config=None, base=HERE, environ=None):
         raise Bad(f'host {s.get("host")!r}: the app has no logins yet, so it listens on 127.0.0.1 only')
     for k in ('port', 'max_jobs'):
         if not isinstance(s.get(k), int) or isinstance(s.get(k), bool) or s[k] < 1: raise Bad(f'{k} must be a whole number above 0: {s.get(k)!r}')
-    for k, dflt in (('batch_jobs', 2), ('upload_max_mb', 1024)):
+    for k, dflt in (('batch_jobs', 10), ('upload_max_mb', 1024), ('max_books_per_batch', 50)):
         s.setdefault(k, dflt)
         if not isinstance(s[k], int) or isinstance(s[k], bool) or s[k] < 1: raise Bad(f'{k} must be a whole number above 0: {s[k]!r}')
     lim = s.setdefault('limits', {})

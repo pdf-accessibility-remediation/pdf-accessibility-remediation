@@ -15,8 +15,9 @@ spend or batch job that is paid and carries the estimate's fingerprint; paid onl
 those kinds; and never as a `then` (a paid job always comes from its own Spend click; tick() refuses an older file's).
 
 Runs are related (one blocks the other) when they are the same run or one is inside the other: a batch
-(batches/<label>) and its books (batches/<label>/<name>), in busy() and in tick(). A batch job takes `slots` (its JOBS)
-places of max_jobs; once it waits for places, newer counted jobs wait behind it, so it is never passed over forever.
+(batches/<label>) and its books (batches/<label>/<name>), in busy() and in tick(). Every counted job takes one place of
+max_jobs, a whole batch included, whatever its JOBS (Patrick, 2026-11-06: the app does one run at a time, single or
+batch); jobs start oldest first, so nothing is passed over.
 
 Each job runs under webapp/jobrun.py, started in a new session (its own process group), so Ctrl+C on the app does not
 reach it. Liveness is the process group: os.killpg(pgid, 0), and a process in that group whose command line is the
@@ -240,7 +241,7 @@ def run_dir(job, runs=None):
 def counts(job, runs):
     """The places of max_jobs a running job takes: a work job its slots (1; a batch its JOBS), a review job one once it is
     past Finish (it is applying), else none."""
-    if job.get('counted'): return int(job.get('slots') or 1)
+    if job.get('counted'): return 1                     # a batch too: one place, whatever its JOBS (Patrick, 2026-11-06)
     return 1 if job['kind'] == 'review' and review_past_finish(run_dir(job, runs), job.get('started')) else 0
 
 def _start(J, job):
@@ -278,15 +279,14 @@ def tick(J, s):
         running = [j for j in jobs if j['status'] == 'running']
         n = sum(counts(j, s['runs']) for j in running)
         busy_runs = [j['run'] for j in running]
-        held = False                                    # a job needing several places waits: newer counted jobs wait behind it
+        held = False                                    # once a counted job waits for a place, newer counted jobs wait behind it
         for j in sorted((j for j in jobs if j['status'] == 'queued'), key=lambda j: j['id']):
             if any(related(j['run'], r) for r in busy_runs): continue
             if j.get('counted', True):
-                need = int(j.get('slots') or 1)
-                if held or n + need > s['max_jobs']:
-                    if need > 1: held = True
+                if held or n + 1 > s['max_jobs']:
+                    held = True                         # oldest first: a newer counted job never passes an older one
                     continue
-                n += need
+                n += 1
             _start(J, j); busy_runs.append(j['run'])
 
 def recover(J):

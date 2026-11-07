@@ -90,7 +90,7 @@ def row_of(s, run, R):
         except OSError: when = ''
     a = costs.actual(R)
     parts = run.split('/')
-    return {'run': run, 'book': (BK.name_of_sha(s, sha, file) if sha else None) or BK.stem_name(file or parts[-2 if parts[0] != 'batches' else -1]),
+    return {'run': run, 'sha': sha, 'book': (BK.name_of_sha(s, sha, file) if sha else None) or BK.stem_name(file or parts[-2 if parts[0] != 'batches' else -1]),
             'file': BK.shown_file(file) if file else '', 'status': name, 'words': words, 'when': when,
             'cost': a['usd'], 'reused': a['reused'], 'batch': parts[1] if parts[0] == 'batches' else None, 'finished': bool(rec)}
 
@@ -101,7 +101,7 @@ def index(s):
     rows, fresh, dirty = [], {}, False
     for run, R in run_folders(s['runs']):
         k = key_of(R); c = cache.get(run)
-        if c and c.get('key') == k: row = c['row']
+        if c and c.get('key') == k and 'sha' in c['row']: row = c['row']
         else:
             try: row = row_of(s, run, R)
             except Exception: continue                      # an unreadable folder is left out, never fails the page
@@ -112,6 +112,10 @@ def index(s):
             tmp = cp + f'.{os.getpid()}.tmp'
             os.makedirs(os.path.dirname(cp), exist_ok=True); json.dump(fresh, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False); os.replace(tmp, cp)
     over(s, rows)
+    from . import names as NM
+    for r in rows:                                          # names resolved now: a rename shows at once (Patrick, 2026-11-06)
+        if r.get('sha'): r['book'] = NM.book_name(s, r['sha'], r.get('file'))
+        r['name'] = NM.shown_run(s, r['run'])
     rows.sort(key=lambda r: r['when'] or '', reverse=True)
     return {'runs': rows, 'batches': batches(s, rows)}
 
@@ -152,7 +156,8 @@ def batches(s, rows):
                 'Running' if any(r.get('active') for r in bs) or meta.get('running') else \
                 'Estimate Ready' if bs and all(r['status'] in ('Estimate Ready', 'Stopped') for r in bs) else 'Stopped'
         when = max((r['when'] for r in bs), default='') or meta.get('created') or ''
-        out.append({'label': lb, 'books': len(bs) or len(meta.get('books') or []), 'done': done, 'state': state, 'when': when,
+        from . import names as NM
+        out.append({'label': lb, 'name': NM.batch_name(s, lb) or lb, 'books': len(bs) or len(meta.get('books') or []), 'done': done, 'state': state, 'when': when,
                     'cost': round(sum(r['cost'] or 0 for r in bs), 6)})
     out.sort(key=lambda b: b['when'] or '', reverse=True)
     return out
@@ -166,7 +171,7 @@ def book_cell(name, file):
     """A book as every page names it: its display name, and under it the one file name the pages show (Q6)."""
     return f'<span class="hm-book">{E(name)}</span>' + (f'<span class="hm-file">Source PDF Filename: {E(file)}</span>' if file else '')
 
-def page(s, q='', n=25, test=False, added=None, bn=25):
+def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None):
     try: n = max(25, min(int(n), 100000))
     except (TypeError, ValueError): n = 25
     try: bn = max(25, min(int(bn), 100000))
@@ -186,8 +191,8 @@ def page(s, q='', n=25, test=False, added=None, bn=25):
              '<form id="hm-add" class="hm-add"><label for="hm-file">Add a Book</label> <input type="file" id="hm-file" accept="application/pdf,.pdf"> '
              '<button type="submit" id="hm-add-b">Add the Book</button><span class="pp-note"> The PDF is copied into the app\'s folder of added books; '
              'the file you choose is not changed.</span></form><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>')
-    ab = next((b for b in bk if b['key'] == added), None) if added else None
-    if ab: B.append(f'<p id="hm-added" hidden>Added "{E(ab["name"])}" to "Added Books".</p>')
+    ab = next((b for b in bk if b['key'] == (added or renamed)), None) if (added or renamed) else None
+    if ab: B.append(f'<p id="hm-added" hidden>' + (f'Added "{E(ab["name"])}" to "Added Books".' if added else f'The book is now named "{E(ab["name"])}".') + '</p>')
     B.append('<form id="hm-batch" method="get" action="/new-batch">')
     for group, title in (('sample', 'Sample Books'), ('added', 'Added Books')):
         rows = [b for b in bk if b['group'] == group]
@@ -200,7 +205,8 @@ def page(s, q='', n=25, test=False, added=None, bn=25):
             cid = f'hm-sel-{group}-{i}'
             note = ' <span class="pp-note">Locked with a password: add an unlocked copy.</span>' if b['locked'] else \
                    ' <span class="pp-note">This PDF couldn\'t be read.</span>' if b['unreadable'] else ''
-            act = '' if b['locked'] else f'<a class="pp-btn" href="/new?book={E(b["key"])}" aria-describedby="{cid}-n">New Run</a>'
+            act = ('' if b['locked'] else f'<a class="pp-btn" href="/new?book={E(b["key"])}" aria-describedby="{cid}-n">New Run</a> ') + \
+                  f'<a class="pp-btn" href="/book?key={E(b["key"])}" aria-describedby="{cid}-n">Edit the Name</a>'
             sel = '' if b['locked'] else f'<input type="checkbox" name="book" value="{E(b["key"])}" id="{cid}" aria-labelledby="{cid}-n">'
             B.append(f'<tr><td>{sel}</td><th scope="row" id="{cid}-n">{book_cell(b["name"], b["file"])}{note}</th>'
                      f'<td>{b["pages"] if b["pages"] is not None else "not counted"}</td><td class="pp-nw">{E(BK.size_words(b["size"]))}</td><td>{act}</td></tr>')
@@ -211,7 +217,8 @@ def page(s, q='', n=25, test=False, added=None, bn=25):
     rows = idx['runs']
     if q:
         ql = q.casefold()
-        rows = [r for r in rows if ql in (r['book'] or '').casefold() or ql in (r['file'] or '').casefold() or ql in r['run'].casefold()]
+        rows = [r for r in rows if ql in (r['book'] or '').casefold() or ql in (r['file'] or '').casefold() or ql in r['run'].casefold()
+                or ql in (r.get('name') or '').casefold()]                     # the plain name and the label both match
     B.append(f'<section class="pp" aria-labelledby="hm-runs-h"><h2 id="hm-runs-h">Earlier Runs</h2>'
              f'<form method="get" action="/" class="hm-search" role="search"><label for="hm-q">Search by Book or Run Name</label> '
              f'<input type="search" id="hm-q" name="q" value="{E(q)}"> <button type="submit">Search</button>'
@@ -223,7 +230,7 @@ def page(s, q='', n=25, test=False, added=None, bn=25):
         B.append('<div class="pp-tw" tabindex="0" role="region" aria-label="Earlier Runs Table"><table class="hm-t"><thead><tr><th scope="col">Book</th>'
                  '<th scope="col">Run Name</th><th scope="col">Status</th><th scope="col">Date</th><th scope="col">AI Cost</th><th scope="col">Action</th></tr></thead><tbody>')
         for r in shown:
-            label = r['run'].split('/')[-1] if not r['batch'] else r['run'].split('/')[1]
+            label = r.get('name') or (r['run'].split('/')[-1] if not r['batch'] else r['run'].split('/')[1])
             B.append(f'<tr><th scope="row">{book_cell(r["book"], r["file"])}</th><td>{E(label)}' + (' <span class="pp-note">(batch)</span>' if r['batch'] else '') +
                      f'</td><td>{E(r["words"])}</td><td class="pp-nw">{E(D.day(r["when"]) if r["when"] else "date not recorded")}</td>'
                      f'<td>{E(money(r["cost"]))}' + (' <span class="pp-note">(saved reply)</span>' if r['reused'] else '') +
@@ -234,12 +241,13 @@ def page(s, q='', n=25, test=False, added=None, bn=25):
     B.append('</section>')
     # batches
     bs = idx['batches']
+    if q: bs = [b for b in bs if ql in b['label'].casefold() or ql in b['name'].casefold()]   # both names match
     B.append(f'<section class="pp" aria-labelledby="hm-b-h"><h2 id="hm-b-h">Batches ({len(bs)})</h2>')
     if bs:
         B.append('<div class="pp-tw" tabindex="0" role="region" aria-label="Batches Table"><table class="hm-t"><thead><tr><th scope="col">Batch Name</th>'
                  '<th scope="col">Books</th><th scope="col">State</th><th scope="col">Date</th><th scope="col">AI Cost</th><th scope="col">Action</th></tr></thead><tbody>')
         for b in bs[:bn]:
-            B.append(f'<tr><th scope="row">{E(b["label"])}</th><td>{b["done"]} of {b["books"]} finished</td><td>{E(b["state"])}</td>'
+            B.append(f'<tr><th scope="row">{E(b["name"])}</th><td>{b["done"]} of {b["books"]} finished</td><td>{E(b["state"])}</td>'
                      f'<td class="pp-nw">{E(D.day(b["when"]) if b["when"] else "date not recorded")}</td><td>{E(money(b["cost"]))}</td>'
                      f'<td><a class="pp-btn" href="/batch/{E(urllib.parse.quote(b["label"], safe=""))}/">Open</a></td></tr>')
         B.append('</tbody></table></div>')
@@ -248,6 +256,27 @@ def page(s, q='', n=25, test=False, added=None, bn=25):
     else: B.append('<p>None yet.</p>')
     B.append('</section></main><script src="/app/home.js" defer></script></body></html>')
     return '\n'.join(B)
+
+def name_page(s, key, added=False):
+    """A book's name (Patrick, 2026-11-06): shown after "Add a Book" with the automatic name prefilled, and from the home
+    page's "Edit the Name". The name is the app's only (webapp/names.py); "Source PDF Filename:" stays under it."""
+    b = BK.by_key(s, key)
+    head = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<title>Book Name</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
+            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>')
+    if not b:
+        return head + ('<header><h1>Book Name</h1></header><main id="main" tabindex="-1"><div class="pp"><p>This book\'s file has changed or is gone.</p>'
+                       '<p><a class="pp-btn" href="/">Back to the Home Page</a></p></div></main></body></html>')
+    return head + (f'<header><h1>Book Name</h1><p class="mc-book">{book_cell(b["name"], b["file"])}</p></header><main id="main" tabindex="-1">'
+        '<form class="pp hm-form" id="hm-bookname" data-api="/api/book/name">' +
+        ('<p>The book is added. Check its name: it is how the book is listed everywhere in the app.</p>' if added else '') +
+        f'<input type="hidden" name="key" value="{E(b["key"])}">'
+        '<div class="mc-field"><label for="bk-name">Book Name</label>'
+        f'<input type="text" id="bk-name" name="name" value="{E(b["name"])}" required maxlength="120" aria-describedby="bk-name-h">'
+        '<p class="mc-help" id="bk-name-h">How the book is named on every page of the app. The PDF and its file name are not changed.</p></div>'
+        '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
+        '<div class="pp-row"><button type="submit" class="pp-primary">Save the Name</button><a class="pp-btn" href="/">' +
+        ('Keep This Name' if added else 'Cancel') + '</a></div></form></main><script src="/app/home.js" defer></script></body></html>')
 
 def appbar(current=False):
     """The app bar every page the app serves carries, right after the skip link: the way home."""

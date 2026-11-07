@@ -92,7 +92,7 @@ def authorize_batch(s, label, books_list, total, fingerprint):
     """A batch's Spend: books_list is the app's book list file, total the costs.batch() shown (its fingerprint checked by
     the caller against the one shown). Returns {argv, env_set, extra}."""
     test_from = s.get('test_batch_from')
-    jobs_n = str(min(int(s.get('batch_jobs') or 2), int(s['max_jobs'])))
+    jobs_n = str(int(s.get('batch_jobs') or 10))            # books in progress at once inside the batch (one place of max_jobs)
     if test_from:
         env = {'AUTO': '1', 'FROM': test_from, 'JOBS': jobs_n}           # FROM: every book runs from a saved reply (REPLY=)
     else:
@@ -107,5 +107,5 @@ def authorize_batch(s, label, books_list, total, fingerprint):
         env = {'AUTO': '1', 'JOBS': jobs_n, 'BATCH_MAX_USD': f'{total["bounds"]["BATCH_MAX_USD"]:.2f}', 'MODEL': model}
         if total['bounds'].get('MAX_USD'): env['MAX_USD'] = f'{total["bounds"]["MAX_USD"]:.2f}'
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
-             'shown': {'ceiling_usd': total['ceiling_usd'], 'bounds': total['bounds']}, 'test': bool(test_from), 'slots': int(jobs_n)}
+             'shown': {'ceiling_usd': total['ceiling_usd'], 'bounds': total['bounds']}, 'test': bool(test_from)}
     return {'argv': ['bash', 'batch_api.sh', label, books_list], 'env_set': env, 'extra': extra}

@@ -47,12 +47,12 @@ if ($('hm-add')) $('hm-add').addEventListener('submit', async e => {
     const r = await fetch('/api/upload', { method: 'POST', body: f,
       headers: { 'Content-Type': 'application/pdf', 'X-Pdfrem-Upload': '1', 'X-Pdfrem-Filename': encodeURIComponent(f.name) } });
     let d = {}; try { d = await r.json(); } catch (err) {}
-    if (r.status === 201) { location.assign('/?added=' + encodeURIComponent(d.book.key) + '#hm-msg'); return; }
+    if (r.status === 201) { location.assign('/book?added=1&key=' + encodeURIComponent(d.book.key)); return; }   // check its name
     msg(d.error || 'The book was not added.');
   } catch (err) { msg('The app is not running. ' + START); }
   finally { b.disabled = false; }
 });
-const added = new URLSearchParams(location.search).get('added');
+const added = new URLSearchParams(location.search).get('added') || new URLSearchParams(location.search).get('renamed');
 if (added && $('hm-added')) { history.replaceState(null, '', '/'); msg($('hm-added').textContent, true); }
 
 // ---------------------------------------------------------------- New Batch: two or more books
@@ -70,7 +70,7 @@ form.addEventListener('submit', e => {
 const seen = {}; let primed = false;
 const live = t => { const l = $('hm-live'); l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
 function words(j) {
-  if (j.status === 'queued') return 'Waiting to start' + (j.position ? ' (' + j.position + ' in line)' : '');
+  if (j.status === 'queued') return j.waiting_for ? 'Waiting: it starts when ' + j.waiting_for + ' ends' : 'Waiting to start' + (j.position ? ' (' + j.position + ' in line)' : '');
   if (j.status === 'needs-spend') return 'The app restarted before the AI call started: open it to get a new estimate';
   if (j.kind === 'review' && !j.past_finish) return j.url ? 'Waiting for you: the review page is open' : 'Opening the review page';
   return 'Running' + (j.step ? ': ' + j.step.words + ' (' + j.step.n + ' of ' + j.step.total + ')' : '');
@@ -87,7 +87,7 @@ async function poll() {
     });
     primed = true;
     const h = act.length ? '<ul class="hm-active">' + act.map(j => '<li><a href="' + esc(href(j)) + '">' + esc(j.book_name || j.run) + '</a>' +
-      (j.run_name ? ' <span class="pp-note">(' + esc(j.run_name) + ')</span>' : '') + ' · ' + esc(j.action || j.kind) + ': ' + esc(words(j)) + '</li>').join('') + '</ul>'
+      (j.run_name && j.kind !== 'batch' ? ' <span class="pp-note">(' + esc(j.run_name) + ')</span>' : '') + ' · ' + esc(j.action || j.kind) + ': ' + esc(words(j)) + '</li>').join('') + '</ul>'
       : '<p>Nothing is running.</p>';
     const box = $('hm-active'); if (box.dataset.h !== h) { box.innerHTML = h; box.dataset.h = h; }
     setTimeout(poll, act.length ? 2000 : 5000);

@@ -29,8 +29,13 @@ page have **Home** beside **Back to the Run Page**.
   cost and **Open**. Listing a run never changes it.
 - **Batches:** every batch, newest first, with its books, state, date and cost, and **Open**.
 
-**Book names.** A book is named by its display name: the PDF's own Title when it looks like one (not empty, not
-"untitled", not a file or program name), else the file name without ".pdf", with "_" and "-" read as spaces. Under it,
+**Book names** (Patrick, 2026-11-06). A book is named by its Book Name: the name a person gave it, else the PDF's own
+Title with a conservative cleanup (a leading "_tag_" such as "_no template_", and a trailing " copy" or " copy 2", removed)
+when it still looks like a title (not empty, not "untitled", not a file or program name), else the file name without
+".pdf", with "_" and "-" read as spaces. After **Add a Book** the app shows the Book Name prefilled, to check or change;
+**Edit the Name** on the home page changes it at any time. The names are the app's own (`runs/.app/book-names.json`, by
+sha256, with each earlier name kept): never written into a run's record.json or review.html, and read each time a page is
+drawn, so a new name shows everywhere at once. Under it,
 everywhere a book is named (the home page, a run page's header, the batch page and its side column), a line reads
 "Source PDF Filename: <file name>". This is the one file name the pages show (Patrick, 2026-11-05): it tells two copies of
 a book apart. Names are cleaned (no control or direction characters) and escaped.
@@ -59,8 +64,8 @@ The file you choose is only read by your browser; the app never sees its path.
 
 ## A single run
 
-1. **New Run** opens a short form: **Run Name** (letters, digits, "-" and "_"; it must start with a letter or digit, and
-   any existing folder or job of that name is refused), **OCR Language** (English by default, chosen by name; used only
+1. **New Run** opens a short form: **Run Name** (optional, in your own words; without one the run is named by its date),
+   **OCR Language** (English by default, chosen by name; used only
    for pages that need OCR; never guessed) and **Review First** (on by default).
 2. **Get the Estimate** queues a free job, `ESTIMATE=1 OCR_LANG=… bash run_api.sh <book> <name> <run name>`: intake, the
    audit and `decide.py --dry-run`. It asks OpenRouter for prices and the credit (free calls; no book content is sent).
@@ -135,7 +140,8 @@ error line, the record that holds it and where the full log is. Tool text and co
 ## Batches
 
 1. Select two or more books on the home page and **New Batch with the Selected Books**.
-2. The form: **Batch Name** (refused when a batch or job of that name exists) and **OCR Language** for every book. Books
+2. The form: **Batch Name** (optional, in your own words) and **OCR Language** for every book. A batch holds up to 50
+   books (`max_books_per_batch`): more is refused, "A batch can hold up to 50 books. Split them into two batches". Books
    in a batch are applied without a review first; each book's page offers **Review Again** afterwards.
 3. **Get the Estimates** writes the book list `runs/.app/batches/<label>.books.txt` (one `<short name> <absolute path>`
    per line; names unique in the batch; a path with "#" or "|" is refused) and the batch's record
@@ -149,8 +155,16 @@ error line, the record that holds it and where the full log is. Tool text and co
    it runs, the page shows the money spent so far; when it ends, **Open the Batch Dashboard** (summary.html).
 6. **Run the Unfinished Books Again** gets new estimates for the books without a result; the next "Start Remediation" adds `RETRY=1`.
 
-A batch job takes `JOBS` places of `max_jobs` (`batch_jobs`, at most `max_jobs`), and once it waits for places newer jobs
-wait behind it. A batch and its books never run jobs at the same time.
+**One run at a time** (Patrick, 2026-11-06). The app runs one thing at a time: a single run or a whole batch (`max_jobs`
+1). Inside a batch, up to `batch_jobs` books (10) are in progress at once, the next starting as each finishes. "New Run"
+and "New Batch" still accept a request while something runs: the new job waits, and its card says "Waiting: it starts when
+the batch "Spring backlist" ends" (or the run's name). A batch and its books never run jobs at the same time.
+
+**Run and batch names.** Staff type a plain name. The folder label (used in paths, commands and the address bar) is
+derived from it: letters and digits folded to plain ASCII, other characters as "-", at most 64, the date when nothing is
+left, and "_2", "_3"… when a folder or job already has it. The plain name is kept only by the app
+(`runs/.app/run-names.json`) and shown on every page; a run made from the terminal shows its label. The home page's search
+matches both.
 
 **The side column** ("Books in This Batch") is on the batch page and on every book's page in the batch: each book with
 its display name, its file name and its status in words, the current one marked. **Hide the Book List** / **Show the Book

@@ -47,7 +47,7 @@ from html.parser import HTMLParser
 from review.server import local_request
 from review import sessions as S
 from lib.titles import title_case as TC
-from . import config, jobs, runs, manualpage as MP, downloads as DL, home as HM, books as BK, newrun as NR, batches as BT
+from . import config, jobs, runs, manualpage as MP, downloads as DL, home as HM, books as BK, newrun as NR, batches as BT, names as NMS
 RUNS_MOD = runs                                       # find_run's own `runs` is the runs folder
 from review import manual as M
 from lib import release as REL, runlock
@@ -278,6 +278,12 @@ def make(s, setup, code=None):
             if not self.json_ok(): return
             body = self.body
             p = urllib.parse.urlsplit(self.path).path
+            if p == '/api/book/name':                             # a book's name, as a person sets it (webapp/names.py)
+                b = BK.by_key(s, str(body.get('key') or ''))
+                if not b: return self.send(409, {'error': 'This book\'s file has changed or is gone. Go back to the home page to see the list again.'})
+                try: n = NMS.set_book_name(s, b['key'], body.get('name'))
+                except ValueError as e: return self.send(409, {'error': str(e)})
+                return self.send(202, {'name': n, 'location': '/?renamed=' + b['key']})
             if p == '/api/batch/new':                             # New Batch: one free estimate job per book, then the batch page
                 try: js = BT.start(s, setup, body.get('books') if isinstance(body.get('books'), list) else [], body.get('label'), str(body.get('ocr_lang') or ''))
                 except (ValueError, FileExistsError) as e: return self.send(409, {'error': str(e) if isinstance(e, ValueError) else 'A batch with this name already exists.'})
@@ -455,6 +461,7 @@ def make(s, setup, code=None):
                     return self.send(200, md_page(t, run, sid, base), 'text/html; charset=utf-8')   # review.md with a way back
                 return self.file(f)
             if p == '/new': return self.send(200, NR.form_page(s, (q.get('book') or [''])[0]), 'text/html; charset=utf-8')
+            if p == '/book': return self.send(200, HM.name_page(s, (q.get('key') or [''])[0], (q.get('added') or [''])[0] == '1'), 'text/html; charset=utf-8')
             if p == '/new-batch': return self.send(200, BT.form_page(s, q.get('book') or []), 'text/html; charset=utf-8')
             if p.startswith('/api/batch/'):
                 bs = segments(p[len('/api/batch/'):])
@@ -463,7 +470,8 @@ def make(s, setup, code=None):
                 return self.send(200, BT.state(s, os.path.basename(B)))
             if p == '/':
                 return self.send(200, HM.page(s, (q.get('q') or [''])[0], (q.get('n') or ['25'])[0], test=bool(s.get('test_reply_dir')),
-                                              added=(q.get('added') or [None])[0], bn=(q.get('bn') or ['25'])[0]), 'text/html; charset=utf-8')
+                                              added=(q.get('added') or [None])[0], bn=(q.get('bn') or ['25'])[0],
+                                              renamed=(q.get('renamed') or [None])[0]), 'text/html; charset=utf-8')
             self.send(404, {'error': 'not found'})
 
         def json_ok(self):
@@ -600,7 +608,7 @@ def waiting_page(run, R, s=None):
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
                       f'<title>{html.escape(name)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
                       f'<header><h1>{html.escape(name)}</h1><p class="mc-book">' + (f'<span class="hm-file">Source PDF Filename: {html.escape(file)}</span>' if file else '') +
-                      f'<span class="hm-file">Run Name: {html.escape(run.split("/")[-1])}</span></p></header><main id="main" tabindex="-1">'
+                      f'<span class="hm-file">Run Name: {html.escape(NMS.shown_run(s, run) if s else run.split("/")[-1])}</span></p></header><main id="main" tabindex="-1">'
                       '<p>Nothing has been applied to this book yet. The report and the remediated PDF come with the first apply.</p></main></body></html>',
                       run, waiting=True)
 

@@ -36,6 +36,7 @@ The pipeline lives in `pipeline/`; paths below are relative to it, apart from `p
 | `webapp/manualpage.py`, `webapp/manual.js` | The app's Accessibility Evaluation page ([Accessibility evaluation and release](release.md)): its data and HTML (escaped; its data in a JSON block with `<`, `>` and `&` escaped), the display-only hash of the remediated PDF, the run page's strip after "Ready to Ship?"; the script saves drafts and records through `review/manual.py` |
 | `webapp/downloads.py` | A run's versions and their downloads: the version list (only versions whose PDF exists; after clearing, the shipped copies), the names, the files opened in one moment under the record lock, the streamed record ZIP and its read-me, and `release/downloads.json` (a complete record ZIP of a live shipment) |
 | `webapp/home.py`, `webapp/home.js` | The home page ([The home page](home.md)): books, runs in progress, every earlier run and batch (cached in `runs/.app/home-index.json`), Add a Book, the app bar on every page |
+| `webapp/names.py` | The names people see, the app's only: book names (`runs/.app/book-names.json`), plain run and batch names (`runs/.app/run-names.json`), the automatic cleanup of a PDF's Title, and the folder label a plain name becomes |
 | `webapp/books.py` | The book list (samples and uploads, by sha256), display names (`runs/.app/books-cache.json`), Add a Book (into `uploads/`, never replacing a file), the OCR language choices |
 | `webapp/newrun.py`, `webapp/spend.py` | A single run from the home page: New Run's form, the free estimate job, Try Again decided from disk, New Run from the Saved Reply; `spend.py` is the one gate every "Start Remediation" goes through (the tick, the fingerprint, the model and prompt, the limits, MAX_USD) |
 | `webapp/batches.py`, `webapp/batch.js` | Batches from the home page: the book list (`runs/.app/batches/<label>.books.txt`) and record, per-book estimates, totals, the batch's "Start Remediation" (batch_api.sh), the batch page and the side column |
@@ -97,6 +98,6 @@ release](release.md#clearing-a-shipped-book)). A new record goes beside record.j
 
 **The app's own files** are in `runs/.app/` (the `jobs` setting): `jobs/<id>.json` and `.log` (each job, its environment,
 its log), `dispatch.lock`, `server.log`, `sha256-cache.json` (books' hashes), `books-cache.json` (titles and page counts),
-`home-index.json` (the earlier-runs list), `batches/<label>.books.txt` and `.json` (a batch made in the app).
+`home-index.json` (the earlier-runs list), `book-names.json` and `run-names.json` (names, `names.lock`), `batches/<label>.books.txt` and `.json` (a batch made in the app).
 **`uploads/`** (repository root, git-ignored) holds the books added with **Add a Book**, each with a `<name>.json` note.
 

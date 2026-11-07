@@ -157,7 +157,8 @@ def listing(s):
             f = os.path.basename(p)
             try: size = os.path.getsize(p)
             except OSError: continue
-            out.append({'key': sha, 'name': display_name(m.get('title'), f), 'file': shown_file(f), 'group': group, 'pages': m.get('pages'),
+            from . import names as NM
+            out.append({'key': sha, 'name': NM.book_name(s, sha, f, m.get('title')), 'auto': NM.auto_name(m.get('title'), f), 'file': shown_file(f), 'group': group, 'pages': m.get('pages'),
                         'size': size, 'locked': bool(m.get('locked')), 'unreadable': bool(m.get('unreadable')), 'path': p,
                         'folder': os.path.relpath(os.path.dirname(p), root)})
     return out
@@ -167,10 +168,10 @@ def by_key(s, key):
     return next((b for b in listing(s) if b['key'] == key), None)
 
 def name_of_sha(s, sha, file=None):
-    """A book's display name from its sha256 (the books cache), else from its file name."""
-    with _lock: c = _load(os.path.join(s['jobs'], 'books-cache.json')) or {}
-    m = c.get(sha) or {}
-    return display_name(m.get('title'), file or '') if (m or file) else None
+    """A book's name (webapp/names.py book_name: a person's name, else the cleaned Title, else the stem), or None."""
+    if not sha and not file: return None
+    from . import names as NM
+    return NM.book_name(s, sha, file or '')
 
 def size_words(n):
     return f'{n / 1e6:.1f} MB' if n >= 1e5 else f'{max(1, round(n / 1e3))} KB'

@@ -18,7 +18,7 @@ only when present ("About $0.25 (usually $0.18–$0.36) · Worst-case estimate $
 import os, json, math, hashlib
 
 SCHEMA = 'cost-estimate/1'
-DEFAULT_LIMITS = {'per_call_usd': 2.0, 'per_book_usd': 5.0, 'per_batch_usd': 5.0}   # the pipeline's own defaults (decide.py, #63, batch_api.sh)
+DEFAULT_LIMITS = {'per_call_usd': 2.0, 'per_book_usd': 5.0, 'per_batch_usd': 40.0}  # decide.py's, #63's; a 50-book batch (Patrick, 2026-11-06)
 OFFLINE = 'ASSUMED'                                      # decide.py's price_source when OpenRouter could not be reached
 
 def _load(p):

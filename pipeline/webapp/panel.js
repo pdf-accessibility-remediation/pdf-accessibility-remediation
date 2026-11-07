@@ -209,7 +209,8 @@ const ended = j => j.status === 'done' || lost(j);
 const stepWords = j => j.step ? j.step.words + ' (' + j.step.n + ' of ' + j.step.total + ')' : '';
 // a job's status line, in sentence case: what it is doing, or what came of it ("Done: session 5 applied (Kim, 21:04)")
 function jobWords(j) {
-  if (j.status === 'queued') return 'Waiting' + (j.position ? ': ' + ordinal(j.position) + ' in line' : '');
+  if (j.status === 'queued') return j.waiting_for ? 'Waiting: it starts when ' + j.waiting_for + ' ends' + (j.position > 1 ? ' (' + ordinal(j.position) + ' in line)' : '')
+                                                    : 'Waiting' + (j.position ? ': ' + ordinal(j.position) + ' in line' : '');
   if (j.status === 'running') {
     if (j.kind === 'ocr') return j.url ? 'Waiting for you: the OCR Text Review page is open' : 'Opening the OCR Text Review page';
     if (j.kind === 'review' && !j.past_finish) return j.url ? 'Waiting for you: the review page is open' : 'Opening the review page';
@@ -568,7 +569,7 @@ function render() {
   // "Ready to ship?" is not repeated here: the report's own card, right below, says it
   const c = s.cost;
   let h = setupBlock() + (s.batch ? '<p>Part of batch ' + esc(s.batch) + ': <a href="/batch/' + encodeURIComponent(s.batch) + '/">every book in the batch</a></p>' : '') +
-    (s.file ? '<p class="pp-note">Source PDF Filename: ' + esc(s.file) + (c ? ' · AI Cost: ' + (c.reused ? 'none (a saved reply was used)' : usd(c.usd) +
+    (s.file ? '<p class="pp-note">' + (s.run_name ? 'Run Name: ' + esc(s.run_name) + ' · ' : '') + 'Source PDF Filename: ' + esc(s.file) + (c ? ' · AI Cost: ' + (c.reused ? 'none (a saved reply was used)' : usd(c.usd) +
       (c.estimate_usd ? ' (worst-case estimate ' + usd(c.estimate_usd) + ')' : '')) : '') + '</p>' : '') +
     '<h3 id="pp-cur" tabindex="-1">' + esc(tc('Current result: ' + s.current.label)) + '</h3>';
   if (s.pending) h += '<p>' + esc(sn(s.pending.session)) + ' is ' + esc(s.pending.status) + ' and not applied yet, so the book stays "Not Ready" until it is.</p>';

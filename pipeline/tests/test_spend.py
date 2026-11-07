@@ -139,17 +139,30 @@ def test_busy_by_prefix_both_ways(setup):
     assert jobs.busy(J, 'batches/x', str(setup)) and not jobs.busy(J, 'batches/x2', str(setup))
     with pytest.raises(ValueError): jobs.create(J, 'batch', 'batches/x', ['true'], config.child_env(s), R=str(setup), paid=True, fingerprint='f')
 
-def test_a_batch_takes_its_slots_and_is_not_passed_over(setup):
-    s = settings(setup, max_jobs=2); J = s['jobs']
-    first = fake(setup, s, 'a/r', 3, 'first')
-    jobs.tick(J, s)                                                      # one place taken
-    b = jobs.create(J, 'batch', 'batches/x', [sys.executable, '-c', 'import time; time.sleep(0.2)'], config.child_env(s), slots=2, paid=True,
-                    fingerprint='f')
-    late = fake(setup, s, 'c/r', 0.1, 'late')
+def test_one_run_at_a_time_a_batch_is_one_place_and_a_new_run_waits(setup):
+    """Patrick, 2026-11-06: max_jobs 1; a batch takes one place whatever its JOBS (batch_jobs 10); a New Run's estimate
+    queued behind it says what it waits for, by its plain name, and starts when the batch ends; nothing starves."""
+    from webapp import names as NM
+    s = settings(setup, max_jobs=1, batch_jobs=10, test_batch_from='v8-p7a'); J = s['jobs']
+    b = jobs.create(J, 'batch', 'batches/x', [sys.executable, '-c', 'import time; time.sleep(1.5)'], config.child_env(s, {'JOBS': '10'}),
+                    env_set={'JOBS': '10'}, paid=True, fingerprint='f')
+    NM.set_run_name(s, 'x', 'Spring backlist', kind='batches')
     jobs.tick(J, s)
-    assert jobs.load(J, b['id'])['status'] == 'queued' and jobs.load(J, late['id'])['status'] == 'queued'   # held behind the batch
-    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, b['id'])['status'] != 'queued')[1], 30)
-    assert jobs.load(J, b['id'])['slots'] == 2
+    assert jobs.load(J, b['id'])['status'] == 'running' and jobs.counts(jobs.load(J, b['id']), s['runs']) == 1
+    e = fake(setup, s, 'bk/r1', 0.1, 'estimate', kind='estimate')
+    late = fake(setup, s, 'bk/r2', 0.1, 'late', kind='estimate')
+    jobs.tick(J, s)
+    v = RN.job_view(s, jobs.load(J, e['id']))
+    assert v['status'] == 'queued' and v['waiting_for'] == 'the batch "Spring backlist"'
+    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, e['id'])['status'] in ('running', 'done'))[1], 30)
+    assert jobs.load(J, b['id'])['status'] == 'done'                       # it started only once the batch had ended
+    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, late['id'])['status'] == 'done')[1], 30)   # and the next after it
+
+def test_a_batch_runs_ten_books_at_once_with_one_place(setup):
+    s = settings(setup, max_jobs=1, batch_jobs=10)
+    total = costs.batch([str(run_folder(setup, name='batches', label='b/a', worst=0.5))])
+    a = SP.authorize_batch(s, 'b', '/x/books.txt', total, 'f')
+    assert a['env_set']['JOBS'] == '10' and 'slots' not in a['extra']
 
 # ------------------------------------------------------------------ child_env: MODEL and FROM (03 §5, L2)
 def test_child_env_model_and_from(setup):
