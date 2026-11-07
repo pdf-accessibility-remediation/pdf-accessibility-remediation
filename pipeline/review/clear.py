@@ -120,7 +120,7 @@ def clear(R, by, confirm, busy=None, wait=runlock.COMMAND_WAIT, now=None):
     from review.core import clean_text
     R = os.path.abspath(R)
     by = clean_text(by or '', one_line=True)[:80]
-    if not by: raise S.Refused('Enter your name in "Your Name."')
+    if not by: raise S.Refused('Enter your name in "Your Name".')
     if str(confirm or '').strip() != CONFIRM: raise S.Refused(f'Type {CONFIRM} to confirm.')
     try: lk = S.Lock(R, 'clear')                             # reviews/.lock first: it refuses, never waits
     except S.Refused: raise S.Refused('A review of this book is open or being applied. Try again once it is closed.')

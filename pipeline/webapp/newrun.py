@@ -92,7 +92,7 @@ def again_estimate(s, run, R):
     ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] == 'estimate']
     if not ej: raise ValueError('This run wasn\'t started from the home page, so its settings aren\'t known here. Start a new run from the home page.')
     if os.path.isfile(os.path.join(R, 'record.json')): raise ValueError('This run has finished.')
-    if os.path.isfile(os.path.join(R, 'workorder.ai.json')): raise ValueError('The AI\'s decisions are waiting for a review: "Open the Review Page."')
+    if os.path.isfile(os.path.join(R, 'workorder.ai.json')): raise ValueError('The AI\'s decisions are waiting for a review: "Open the Review Page".')
     e = ej[-1]
     env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('ESTIMATE', 'OCR_LANG')}
     keep = {k: e.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name', 'review_first', 'ocr_name')}
@@ -127,7 +127,7 @@ def start_spend(s, run, R, body):
     try: a = SP.authorize(s, str(body.get('kind') or 'workorder'), run, R, str(body.get('fingerprint') or ''))
     except SP.Refused as e: raise ValueError(str(e))
     return jobs.create(s['jobs'], 'spend', run, a['argv'], config.child_env(s, a['env_set']), env_set=a['env_set'], R=R, paid=True,
-                       what='Spend: the AI call' + (' (test: a saved reply)' if a['extra']['test'] else ''), **a['extra'])
+                       what='Start remediation: the AI call' + (' (test: a saved reply)' if a['extra']['test'] else ''), **a['extra'])
 
 # ------------------------------------------------------------------ New Run from the Saved Reply (decided 2026-10-28)
 def start_replay(s, run, R, label):
@@ -184,7 +184,7 @@ def form_page(s, key):
         '<div class="mc-field"><label class="hm-check"><input type="checkbox" id="nr-review" name="review_first" checked> Review First</label>'
         '<p class="mc-help">The run stops after the AI\'s decisions, so a person can review them before anything is applied.</p></div>'
         '<p class="mc-help">"Get the Estimate" prepares the book and works out what the AI call could cost. It is free: nothing is sent to the AI '
-        'until you select "Spend" on the next page.</p>'
+        'until you select "Start Remediation" on the next page.</p>'
         '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
         '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimate</button><a class="pp-btn" href="/">Cancel</a></div>'
         '</form></main><script src="/app/home.js" defer></script></body></html>')

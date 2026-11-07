@@ -123,7 +123,7 @@ SESSION_IN = re.compile(r'session (\d+)')
 def action(j):
     """The job's action, as it was asked for: "Review again from session 2"."""
     return shown(j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin', 'ocr': 'Review OCR Text', 'estimate': 'Get the estimate',
-                                    'spend': 'Spend: the AI call', 'rerun': 'Try again', 'batch': 'Run the batch'}.get(j['kind'], j['kind']))
+                                    'spend': 'Start remediation: the AI call', 'rerun': 'Try again', 'batch': 'Run the batch'}.get(j['kind'], j['kind']))
 
 def shown(t):
     """A job line as the panel shows it, formatted when shown (so jobs recorded before the rule read the same): a session
@@ -418,7 +418,7 @@ def start_first_review(s, run, R, port, app_pid=None):
 def start_first_apply(s, run, R):
     """Apply for a waiting run, after Finish Review: run_api.sh's second call (the same command the terminal is told to
     run), in this run's folder (RUN_DIR) with the settings it stopped with (review_stop.json)."""
-    if not os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('Finish the review first: "Open the Review Page," then "Finish Review."')
+    if not os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('Finish the review first: "Open the Review Page", then "Finish Review".')
     src, why = first_original(s, R)
     if why: raise ValueError(why)
     stop = load(os.path.join(R, 'review_stop.json')) or {}

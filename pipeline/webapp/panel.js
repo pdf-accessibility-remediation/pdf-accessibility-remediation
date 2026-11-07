@@ -124,7 +124,7 @@ function showMsg(m, text, ok, focus) {
 }
 function abandonText(open, from) {
   return cap(sn(open.id)) + ' is open (started ' + fmtWhen(open.started) + '). Starting from ' +
-         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; its choices stay in "Session History."';
+         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; its choices stay in "Session History".';
 }
 
 // ================================================================ in-page links
@@ -215,7 +215,7 @@ function jobWords(j) {
     if (j.kind === 'review' && !j.past_finish) return j.url ? 'Waiting for you: the review page is open' : 'Opening the review page';
     return 'Running' + (j.step ? ': ' + stepWords(j) : '');
   }
-  if (j.status === 'needs-spend') return 'Needs Spend again';
+  if (j.status === 'needs-spend') return 'Waiting for a new estimate (the app restarted before the AI call)';
   const r = j.result || '';
   if (j.status === 'done' && j.kind === 'review' && / left open /.test(r)) return 'Stopped: ' + r;
   if (j.status === 'failed' || (j.status === 'interrupted' && !lost(j))) return cap(r || j.status);
@@ -294,7 +294,7 @@ function actions(s) {
 
 // "Clean Up Space" (stage 3, review/prune.py): the button alone, shown only when a previous version's PDF can be removed;
 // the explanation is in its dialog (Patrick, 2026-11-01)
-const PRUNE_LINE = 'Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in "Session History." The original AI-generated version is always kept.';
+const PRUNE_LINE = 'Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in "Session History". The original AI-generated version is always kept.';
 function pruneBlock(s) {
   if (!s.prune) return '';
   return '<div class="pp-row"><button type="button" id="pp-prune" data-act="prune">Clean Up Space</button></div>';
@@ -322,7 +322,7 @@ function pruneDlg(p, opener) {                                    // a checkbox 
     yes.addEventListener('click', () => {
       const vs = picked(); if (!vs.length) return;
       const name = $('pp-prune-by').value.trim();
-      if (!name) { $('pp-prune-err').textContent = 'Enter your name in "Removed By."'; $('pp-prune-by').focus(); return; }
+      if (!name) { $('pp-prune-err').textContent = 'Enter your name in "Removed By".'; $('pp-prune-by').focus(); return; }
       done({ by: name, chosen: vs.map(v => ({ id: v.id, sha256: v.sha256 })) });
     });
     d.oncancel = ev => { ev.preventDefault(); done(null); };
@@ -350,7 +350,7 @@ function clearDlg(c, opener) {
     d.querySelector('button[value=no]').addEventListener('click', () => done(null));
     d.querySelector('button[value=yes]').addEventListener('click', () => {
       const by = $('pp-clear-by').value.trim(), ok = $('pp-clear-ok').value.trim();
-      if (!by) { $('pp-clear-err').textContent = 'Enter your name in "Your Name."'; $('pp-clear-by').focus(); return; }
+      if (!by) { $('pp-clear-err').textContent = 'Enter your name in "Your Name".'; $('pp-clear-by').focus(); return; }
       if (ok !== c.confirm) { $('pp-clear-err').textContent = 'Type ' + c.confirm + ' to confirm.'; $('pp-clear-ok').focus(); return; }
       done({ by, confirm: ok });
     });
@@ -412,7 +412,7 @@ function shipDlg(sp, opener) {                                    // a name (nev
     d.querySelector('button[value=no]').addEventListener('click', () => done(null));
     d.querySelector('button[value=yes]').addEventListener('click', () => {
       const name = $('pp-ship-by').value.trim();
-      if (!name) { $('pp-ship-err').textContent = 'Enter your name in "Shipped By."'; $('pp-ship-by').focus(); return; }
+      if (!name) { $('pp-ship-err').textContent = 'Enter your name in "Shipped By".'; $('pp-ship-by').focus(); return; }
       done({ by: name, note: $('pp-ship-note').value.trim() });
     });
     d.oncancel = ev => { ev.preventDefault(); done(null); };
@@ -464,7 +464,7 @@ function dlMarked(sel) {                                          // the line un
   if (m) sel.setAttribute('aria-describedby', p.id); else sel.removeAttribute('aria-describedby');
 }
 
-// A run stopped for its first review (REVIEW=1): "Open the Review Page," then, after "Finish Review," "Apply" (run_api.sh's
+// A run stopped for its first review (REVIEW=1): "Open the Review Page", then, after "Finish Review", "Apply" (run_api.sh's
 // second call); once applied, the page offers its first result (it never reloads by itself)
 function waitingBlock(s) {
   const w = s.waiting, active = (s.jobs || []).filter(j => j.status === 'queued' || j.status === 'running');
@@ -483,7 +483,8 @@ function waitingBlock(s) {
 // ---------------------------------------------------------------- a run started from the home page, before its result (#45)
 // The estimate (lib/costs.py, one renderer for every page), the button that starts the paid call, the progress of the
 // jobs, and why it stopped with what the person can do (webapp/failures.py: plain words; the tool's own words only under
-// "Details"). A Spend is bound to the worst case shown (MAX_USD); the button stays plain "Spend" (Patrick, 2026-11-05).
+// "Details"). The paid call is bound to the worst case shown (MAX_USD); the button is "Start Remediation" (Patrick, 2026-11-06),
+// described by the worst-case line (aria-describedby).
 const usd = x => '$' + Number(x || 0).toFixed(2);
 function costLine(e) {
   const x = e.expected;                                          // #65 (dollar-only cost limits) fills it; shown only when present
@@ -513,28 +514,28 @@ function pendingBlock(s) {
   if (s.phase === 'outside') return h + (s.failure ? failureCard(Object.assign({}, s.failure, { next: [] })) : '') +
     '<p>This run was started outside the app, so it can\'t be sent or started again from here. To send this book, start a new run of it from the home page.</p>';
   if (s.phase === 'batch') return h + (s.failure ? failureCard(Object.assign({}, s.failure, { next: [] })) : '') +
-    '<p>This book is part of batch ' + esc(s.batch) + '. Its estimate, "Spend" and what to do next are on the batch page.</p>' +
+    '<p>This book is part of batch ' + esc(s.batch) + '. Its estimate, "Start Remediation" and what to do next are on the batch page.</p>' +
     '<div class="pp-row"><a class="pp-btn pp-primary" href="/batch/' + encodeURIComponent(s.batch) + '/">Open the Batch Page</a></div>';
   if (s.phase === 'active') return h + '<p>Working on this book. This page follows each step; you can leave it and come back from the home page.</p>';
-  if (s.phase === 'needs-spend') return h + '<p>The app restarted before the AI call started, so nothing was sent. Get a new estimate, then select "Spend" again.</p>' +
+  if (s.phase === 'needs-spend') return h + '<p>The app restarted before the AI call started, so nothing was sent. Get a new estimate, then select "Start Remediation" again.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button>' +
     '<button type="button" id="pp-dismiss" data-act="dismiss">Dismiss</button></div>';
   if (s.phase === 'stopped') return h + failureCard(s.failure);
   if (s.phase === 'saved-reply') return h + '<p>No AI call is needed: the AI\'s reply from an earlier attempt is saved and will be used again, at no cost.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-retry" data-act="retry">Continue</button></div>';
   if (!e) return h + '<p>This run has no estimate yet.</p><div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
-  h += '<p><b>' + esc(costLine(e)) + '</b></p><p>' + esc(s.sent) + '</p>' +
+  h += '<p id="pp-cost"><b>' + esc(costLine(e)) + '</b></p><p>' + esc(s.sent) + '</p>' +
     '<p>Review First: ' + (s.review_first ? 'On. The run stops after the AI\'s decisions, so a person can review them before anything is applied.' : 'Off. The AI\'s decisions are applied straight away; you can review them afterwards.') + '</p>';
   if (!s.spend || !s.spend.ok) return h + '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This run can\'t be sent yet.') + '</p>' +
     '<p>' + esc(s.spend && ['per_call', 'per_book', 'credit', 'no_credit', 'model'].includes(s.spend.code) ? 'Whoever looks after the app can raise the limit or add credit; then select "Get a New Estimate".' : 'Select "Get a New Estimate" to try again.') + '</p>' +
     '<div class="pp-row"><button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
   return h +
-    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-spend" data-act="spend">Spend</button>' +
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-spend" data-act="spend" aria-describedby="pp-cost">Start Remediation</button>' +
     '<button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>' +
-    (s.test ? '<p class="pp-note">Test: "Spend" uses the saved reply; nothing is sent to the AI service.</p>' :
-    '<p class="pp-note">"Spend" sends the book to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.</p>');
+    (s.test ? '<p class="pp-note">Test: "Start Remediation" uses the saved reply; nothing is sent to the AI service.</p>' :
+    '<p class="pp-note">"Start Remediation" sends the book to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.</p>');
 }
-const PHASE = { outside: 'Started Outside the App', batch: 'Part of a Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Spend Again', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
+const PHASE = { outside: 'Started Outside the App', batch: 'Part of a Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Start Again', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
 
 // After a redraw: focus back on the element that had it (by id). When that element is gone (a finished job's card becomes
 // one line), focus goes to the panel's heading rather than being lost; for the Spend's landing (03 §14) that is still
@@ -616,7 +617,7 @@ box.addEventListener('click', async e => {
     try {
       const [c, r] = await api(API + '/remove-older-pdfs', { by: v.by, chosen: v.chosen });
       if (c !== 200) return msg(r.error || 'The PDFs were not removed.', false, true);
-      msg('Removed ' + r.removed + ' PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept in "Session History."', true, true);
+      msg('Removed ' + r.removed + ' PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept in "Session History".', true, true);
       return poll(true);
     } catch (e) { return msg('The app is not running. ' + START, false, true); }
   }
@@ -750,8 +751,8 @@ function landed(s, focusWas) {
   if (s.mode === 'waiting' && s.waiting && !s.waiting.reviewed) {
     if (!$('pp-review')) return;                                  // its job is still finishing: the button comes with the next poll
     land.done = true;
-    if (!land.moved && focusWas === land.id && $('pp-review')) { $('pp-review').focus(); live('The AI\'s decisions are ready for your review: "Open the Review Page."'); }
-    else live('The AI\'s decisions are ready for your review: "Open the Review Page."');
+    if (!land.moved && focusWas === land.id && $('pp-review')) { $('pp-review').focus(); live('The AI\'s decisions are ready for your review: "Open the Review Page".'); }
+    else live('The AI\'s decisions are ready for your review: "Open the Review Page".');
   } else if (s.mode === 'finished') { land.done = true; live('The run has finished: "Show the Result" loads it.'); }
 }
 
@@ -760,7 +761,7 @@ function followUp(s) {
   if (want === 'review' && lr && lr.url && !lr.past_finish) {
     want = null;
     if (quiet && Date.now() - wantAt < 30000) { location.assign(lr.url); return; }   // right after the person's Review again
-    live('The review page is ready: "Open the Review Page."');
+    live('The review page is ready: "Open the Review Page".');
   }
   if (want === 'result') {                                     // the page the person's Finish opened: focus its job's heading
     const j = (s.jobs || []).slice().reverse().find(x => x.kind === 'review' || x.kind === 'apply');

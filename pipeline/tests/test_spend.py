@@ -333,3 +333,17 @@ def test_auto_without_a_fingerprint_is_still_refused(setup):
     with pytest.raises(ValueError): jobs.create(J, 'spend', 'a/r', ['true'], env, env_set={'AUTO': '1'}, paid=True, fingerprint='')
     with pytest.raises(ValueError): jobs.create(J, 'batch', 'b/r', ['true'], env, env_set={'AUTO': '1'}, paid=True)
     assert jobs.create(J, 'spend', 'a/r', ['true'], env, env_set={'AUTO': '1'}, paid=True, fingerprint='f')['paid']
+
+def test_start_remediation_is_described_by_its_worst_case_line():
+    """Patrick, 2026-11-06: "Spend" became "Start Remediation" (visible words only: the kind, routes and ids stay 'spend'),
+    and the button is described by the worst-case line. No visible "Spend" is left in the pages' strings."""
+    import re
+    pj = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    bj = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert 'aria-describedby="pp-cost">Start Remediation</button>' in pj and '<p id="pp-cost">' in pj
+    assert 'aria-describedby="bt-cost">Start Remediation</button>' in bj and '<p id="bt-cost">' in bj
+    for f in ('panel.js', 'batch.js', 'home.js', 'failures.py', 'newrun.py', 'batches.py', 'runs.py', 'home.py', 'jobs.py', 'spend.py'):
+        src = open(os.path.join(HERE, 'webapp', f), encoding='utf-8').read()
+        code = '\n'.join(l.split('//')[0] if f.endswith('.js') else l.split('#')[0] for l in src.splitlines())
+        strings = re.findall(r"'([^'\n]*)'", re.sub(r'"""[\s\S]*?"""', '', code))
+        assert not [s for s in strings if re.search(r'\bSpend\b', s)], f

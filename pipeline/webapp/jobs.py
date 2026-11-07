@@ -39,12 +39,12 @@ def _sends(x):
 def paid_rule(kind, paid, env, env_set, then, extra):
     """Refuses (ValueError) a job that could reach a paid call without its own Spend."""
     x = {'env': env, 'env_set': env_set}
-    if paid and kind not in PAID_KINDS: raise ValueError(f'a {kind} job cannot be paid: only a Spend makes a paid job')
+    if paid and kind not in PAID_KINDS: raise ValueError(f'a {kind} job cannot be paid: only "Start Remediation" makes a paid job')
     if _sends(x) and not (kind in PAID_KINDS and paid and extra.get('fingerprint')):
         raise ValueError('a job that sends to the AI service needs its own start, with the estimate it was shown')
     t = then
     while t:
-        if t.get('paid') or _sends(t): raise ValueError('a paid job never follows another job: it needs its own Spend')
+        if t.get('paid') or _sends(t): raise ValueError('a paid job never follows another job: it needs its own "Start Remediation"')
         t = t.get('then')
 WRAPPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'jobrun.py')
 PIPELINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -294,7 +294,7 @@ def recover(J):
     with locked(J):
         for j in all_jobs(J):
             if j['status'] == 'queued' and j.get('paid'):
-                j.update(status='needs-spend', note='the app was restarted before this paid job started: Spend again on a fresh estimate'); save(J, j)
+                j.update(status='needs-spend', note='the app was restarted before this paid job started: get a new estimate, then "Start Remediation" again'); save(J, j)
 
 def position(J, jid):
     """1-based place in line among queued jobs, or None."""

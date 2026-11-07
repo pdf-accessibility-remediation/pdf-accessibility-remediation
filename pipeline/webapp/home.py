@@ -187,7 +187,7 @@ def page(s, q='', n=25, test=False, added=None, bn=25):
              '<button type="submit" id="hm-add-b">Add the Book</button><span class="pp-note"> The PDF is copied into the app\'s folder of added books; '
              'the file you choose is not changed.</span></form><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>')
     ab = next((b for b in bk if b['key'] == added), None) if added else None
-    if ab: B.append(f'<p id="hm-added" hidden>Added "{E(ab["name"])}" to "Added Books."</p>')
+    if ab: B.append(f'<p id="hm-added" hidden>Added "{E(ab["name"])}" to "Added Books".</p>')
     B.append('<form id="hm-batch" method="get" action="/new-batch">')
     for group, title in (('sample', 'Sample Books'), ('added', 'Added Books')):
         rows = [b for b in bk if b['group'] == group]

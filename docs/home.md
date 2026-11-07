@@ -6,7 +6,7 @@ nav_order: 3.55
 # The home page: new runs and batches from the browser
 
 The app's home page (`http://127.0.0.1:8760/`) is where library staff start work without a terminal (#45, home
-interface): pick a book, see what the AI call could cost, "Spend", follow the run, and land on the review page. It runs
+interface): pick a book, see what the AI call could cost, "Start Remediation", follow the run, and land on the review page. It runs
 the pipeline's own commands (`run_api.sh`, `batch_api.sh`) as jobs, exactly as a person would type them, so the command
 line keeps working as before. See [The app](app.md) for its settings, jobs and security.
 
@@ -69,11 +69,12 @@ The file you choose is only read by your browser; the app never sees its path.
    sent: "Sent to the AI (Claude, through OpenRouter): the book's structure and much of its text, 37 figure images, and 4
    images of hard-to-read scanned words." When #65 (dollar-only cost limits) adds an expected cost, the line starts
    "About $0.25 (usually $0.18–$0.36) ·".
-4. **Spend** is the only button that leads to a paid call, shown only when the estimate fits the limits and the credit.
-   See "What Spend checks" below.
+4. **Start Remediation** is the only button that leads to a paid call, shown only when the estimate fits the limits and the credit.
+   The worst-case line is read with the button by a screen reader (`aria-describedby`). The next section says what it
+   checks.
 5. **Progress:** the run page shows each step and the step running now. With **Review First**, the run stops after the AI
    call; the page announces "The AI's decisions are ready for your review" and shows **Open the Review Page**. Focus
-   moves to that button only when it is still where the page put it after **Spend** and no key or click has happened
+   moves to that button only when it is still where the page put it after **Start Remediation** and no key or click has happened
    since; otherwise the page only announces it (the one exception to "focus stays where it is", [The app](app.md)).
    Without **Review First** the run goes on to its result and the page offers **Show the Result**.
 
@@ -84,9 +85,9 @@ of another file (another sha256) gets "-2", "-3"…
 Until it does, a person decides before starting: a book with personal information is never sent to the AI service. That
 check is its own issue and branch.
 
-### What Spend checks
+### What "Start Remediation" checks
 
-`webapp/spend.py` is the one gate every Spend goes through, at the click:
+`webapp/spend.py` is the one gate every "Start Remediation" goes through, at the click:
 
 - that the estimate shown is the estimate on disk: a fingerprint over the estimate (without the credit), the request, the
   digest, the model and the prompt. A change is refused: "The estimate changed since it was shown. Look at the new
@@ -106,19 +107,19 @@ margin. For a run.json in the shape #63 (alt text past 100 images) writes, `BOOK
 
 **The paid-path rule** (webapp/jobs.py, where every job is made): `AUTO` appears only in a spend or batch job that is
 paid and carries the fingerprint. A paid job is never a follow-on (`then`) of another job. A paid job still
-queued when the app starts becomes "needs Spend again"; a new estimate or **Dismiss** ends it, so a restart never leaves
+queued when the app starts becomes "Waiting for a new estimate"; a new estimate or **Dismiss** ends it, so a restart never leaves
 a run blocked.
 
 ### Try Again, Get a New Estimate, Continue
 
 - **Try Again** is decided from the run folder: when a complete AI reply is saved, the run goes on with it, free (no
-  `AUTO`); otherwise the app gets a new estimate first, and a new call needs **Spend** again. A free rerun that would
+  `AUTO`); otherwise the app gets a new estimate first, and a new call needs **Start Remediation** again. A free rerun that would
   reach a new call stops before it (the page then says to get a new estimate).
 - **Continue** appears when the estimate found a saved reply: "No AI call is needed".
 - **A run made from the terminal** (an estimate-only folder, for example) is listed and opens, but its page offers no
-  Spend, Get a New Estimate or Try Again: its settings are not known to the app. It says to start a new run of the book
+  "Start Remediation", Get a New Estimate or Try Again: its settings are not known to the app. It says to start a new run of the book
   from the home page.
-- **A book in a batch** has no Spend of its own: its page points to the batch page, where the batch is sent.
+- **A book in a batch** has no "Start Remediation" of its own: its page points to the batch page, where the batch is sent.
 - **New Run from the Saved Reply** appears on a finished run that can no longer be reviewed (the pipeline changed since):
   a new run of the book from its saved reply, free, on today's code, stopping for review. It is refused for a cleared
   book.
@@ -140,13 +141,13 @@ error line, the record that holds it and where the full log is. Tool text and co
    per line; names unique in the batch; a path with "#" or "|" is refused) and the batch's record
    `runs/.app/batches/<label>.json`, then queues one free estimate per book: `ESTIMATE=1 RUN_DIR=runs/batches/<label>/<name>
    bash run_api.sh …`, exactly batch_api.sh's own estimate step.
-4. **The batch page** (`/batch/<label>/`): the state (Estimating, Ready to Spend, Running, Finished, Stopped), the worst
+4. **The batch page** (`/batch/<label>/`): the state (Estimating, Ready to Start, Running, Finished, Stopped), the worst
    case for the books to send, the batch limit and the credit, the books that stopped and need a person (not sent), and
-   **Spend**.
-5. **Spend** runs `AUTO=1 JOBS=… BATCH_MAX_USD=<total, rounded up> MAX_USD=<largest book's call> MODEL=… bash batch_api.sh
+   **Start Remediation**.
+5. **Start Remediation** runs `AUTO=1 JOBS=… BATCH_MAX_USD=<total, rounded up> MAX_USD=<largest book's call> MODEL=… bash batch_api.sh
    <label> <book list>`. batch_api.sh estimates again (intake and audits reused) and refuses on its own when over. While
    it runs, the page shows the money spent so far; when it ends, **Open the Batch Dashboard** (summary.html).
-6. **Run the Unfinished Books Again** gets new estimates for the books without a result; the next Spend adds `RETRY=1`.
+6. **Run the Unfinished Books Again** gets new estimates for the books without a result; the next "Start Remediation" adds `RETRY=1`.
 
 A batch job takes `JOBS` places of `max_jobs` (`batch_jobs`, at most `max_jobs`), and once it waits for places newer jobs
 wait behind it. A batch and its books never run jobs at the same time.
@@ -158,9 +159,9 @@ button, in the page's flow, so nothing scrolls sideways. "Skip to the content" s
 
 ## Test mode
 
-For the app's tests only, two keys accepted only from `--config` (never from a settings file): `test_reply_dir` (Spend
+For the app's tests only, two keys accepted only from `--config` (never from a settings file): `test_reply_dir` ("Start Remediation"
 runs `REPLY=<dir>/<short name>.txt INTAKE_REUSE=1` instead of a paid call; a missing reply is refused, never sent instead)
-and `test_batch_from` (a batch's Spend runs `FROM=<label>`). Every page then says "Test: saved replies, no AI call".
+and `test_batch_from` (a batch's "Start Remediation" runs `FROM=<label>`). Every page then says "Test: saved replies, no AI call".
 Estimates still ask OpenRouter for prices and credit (free). A batch in test mode skips batch_api.sh's own estimate step
 and its cap (FROM= does), so only a real batch shows the cap working.
 

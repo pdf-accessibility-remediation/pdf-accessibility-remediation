@@ -5,7 +5,7 @@
    convenience); on a narrow screen (below 48em, 320 px included) the list starts closed under its button, in the page's
    flow, so nothing scrolls sideways. "Skip to the content" skips it. The statuses are kept current from /api/batch/<label>.
 
-   The batch page: the estimate of every book added up, the batch limit and the credit, "Spend" (with the
+   The batch page: the estimate of every book added up, the batch limit and the credit, "Start Remediation" (with the
    worst-case estimate beside it), the running total while it runs, "Open the Batch Dashboard"
    when the batch has one, and "Run the Unfinished Books Again". Focus moves only after the person's own action. */
 (() => {
@@ -42,7 +42,7 @@ function column(s) {                                             // the statuses
     const x = a.querySelector('.bn-st'); if (x.textContent !== b.status) x.textContent = b.status;
   });
 }
-const PHASE = { estimating: 'Estimating', ready: 'Ready to Spend', running: 'Running', finished: 'Finished', stopped: 'Stopped', missing: 'Stopped: an Estimate Is Missing', 'needs-spend': 'Spend Again' };
+const PHASE = { estimating: 'Estimating', ready: 'Ready to Start', running: 'Running', finished: 'Finished', stopped: 'Stopped', missing: 'Stopped: an Estimate Is Missing', 'needs-spend': 'Start Again' };
 function body(s) {
   const T = s.totals, n = s.books.length;
   let h = '<h3 id="bt-phase" tabindex="-1">' + esc(PHASE[s.phase] || s.phase) + '</h3>';
@@ -50,7 +50,7 @@ function body(s) {
   h += '<p>' + T.finished + ' of ' + n + ' books finished' + (s.ocr_name ? ' · OCR Language: ' + esc(s.ocr_name) : '') + '</p>';
   const x = T.expected;
   if (s.phase === 'ready' || s.phase === 'estimating' || s.phase === 'missing')
-    h += '<p><b>' + (x ? 'About ' + usd(x.usd) + ' · ' : '') + 'Worst-case estimate ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' book' + (T.books_to_send === 1 ? '' : 's') +
+    h += '<p id="bt-cost"><b>' + (x ? 'About ' + usd(x.usd) + ' · ' : '') + 'Worst-case estimate ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' book' + (T.books_to_send === 1 ? '' : 's') +
          ' · Batch limit ' + usd(T.limit_usd) + (T.credit_usd != null ? ' · Credit ' + usd(T.credit_usd) : ' · Credit not checked') + '</b></p>';
   if (T.spent_usd || s.phase === 'running' || s.phase === 'finished')
     h += '<p>Spent so far: ' + usd(T.spent_usd) + (T.shown_ceiling_usd != null ? ' (worst-case estimate ' + usd(T.shown_ceiling_usd) + ')' : '') + '</p>';
@@ -64,8 +64,8 @@ function body(s) {
   if (s.phase === 'ready') {
     h += '<p>Books in a batch are applied without a review first. Review each one afterwards from its page.</p>';
     if (s.spend && s.spend.ok) h +=
-      '<div class="pp-row"><button type="button" class="pp-primary" id="bt-spend" data-act="spend">Spend</button></div>' +
-      '<p class="pp-note">' + (s.test ? 'Test: "Spend" uses saved replies; nothing is sent to the AI service.' : '"Spend" sends every book to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.') + '</p>';
+      '<div class="pp-row"><button type="button" class="pp-primary" id="bt-spend" data-act="spend" aria-describedby="bt-cost">Start Remediation</button></div>' +
+      '<p class="pp-note">' + (s.test ? 'Test: "Start Remediation" uses saved replies; nothing is sent to the AI service.' : '"Start Remediation" sends every book to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.') + '</p>';
     else h += '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This batch can\'t be sent yet.') + '</p><p>Whoever looks after the app can raise the limit or add credit; or start a batch with fewer books.</p>';
   }
   if (s.phase === 'running') h += '<p>The books are being sent and applied, ' + 'a few at a time. Each book\'s status is in the list of books.</p>';
@@ -73,7 +73,7 @@ function body(s) {
     '<details><summary>Details</summary><ul class="pp-note"><li>Exit code: ' + esc(s.job.exit) + '</li><li>Full log: runs/.app/jobs/' + esc(s.job.id) + '.log</li></ul></details></div>';
   if (s.summary) h += '<p><a class="pp-btn" href="summary.html">Open the Batch Dashboard</a></p>';
   if (s.again) h += '<div class="pp-row"><button type="button" id="bt-again" data-act="again">Run the Unfinished Books Again</button>' +
-    '<span class="pp-note">New estimates first (free), then "Spend" for those books.</span></div>';
+    '<span class="pp-note">New estimates first (free), then "Start Remediation" for those books.</span></div>';
   return h;
 }
 async function api(path, b) {

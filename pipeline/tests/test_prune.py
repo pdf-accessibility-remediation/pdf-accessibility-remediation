@@ -129,7 +129,7 @@ def test_the_apps_post_the_panel_and_session_history(mapp):
     pj = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     blk = pj.split('function pruneBlock')[1][:4000]
     assert '>Clean Up Space</button></div>\';' in pj and 'Remove Older PDFs' not in pj and 'pp-note' not in blk.split('function removeLabel')[0]   # the button alone
-    assert ("Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in \"Session History.\" "
+    assert ("Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in \"Session History\". "
             "The original AI-generated version is always kept.") in pj
     assert "This can\\'t be undone." in pj and 'type="checkbox"' in blk and 'value="yes" disabled>' in blk and 'yes.disabled = !vs.length' in blk
     assert "'Remove ' + n + ' PDF' + (n === 1 ? '' : 's')" in pj and 'Removed By' in blk and 'drafts' not in blk

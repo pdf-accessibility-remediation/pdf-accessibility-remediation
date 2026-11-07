@@ -289,7 +289,7 @@ def test_a_run_stopped_for_its_first_review_has_its_page(app):
     for path in ('/run/book/rv/checks', '/run/book/rv/download?what=pdf', '/api/run/book/rv/checks', '/run/book/rv/review.md'):
         assert get(port, path)[0] == 404
     st, b = post(port, '/api/run/book/rv/apply')
-    assert st == 409 and b['error'] == 'Finish the review first: "Open the Review Page," then "Finish Review."'
+    assert st == 409 and b['error'] == 'Finish the review first: "Open the Review Page", then "Finish Review".'
     for act in ('ship', 'discard', 'ocr', 'remove-older-pdfs'): assert post(port, f'/api/run/book/rv/{act}')[0] == 404
     assert post(port, '/api/run/book/rv/stop') == (409, {'error': 'no review page is open for this run'})
 

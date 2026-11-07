@@ -211,7 +211,7 @@ def form_page(s, keys):
         '<p class="mc-help" id="nb-lang-h">Used for every book\'s pages that need OCR (scanned pages). It is never guessed.</p></div>'
         '<p class="mc-help">Books in a batch are applied without a review first. Review each one afterwards from its page.</p>'
         '<p class="mc-help">"Get the Estimates" prepares every book and works out what the batch could cost. It is free: nothing is sent to the AI '
-        'until you select "Spend" on the batch page.</p><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
+        'until you select "Start Remediation" on the batch page.</p><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
         '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button><a class="pp-btn" href="/">Cancel</a></div>'
         '</form></main><script src="/app/home.js" defer></script></body></html>')
 
