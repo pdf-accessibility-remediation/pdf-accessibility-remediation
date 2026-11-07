@@ -203,7 +203,7 @@ error line, the record that holds it and where the full log is. Tool text and co
    MODEL=… bash batch_api.sh <label> <book list>`. batch_api.sh estimates again (intake and audits reused) and refuses on
    its own when over.
 7. **Every PDF stops for review** (D2): the batch page then says how many wait, and each PDF's page offers **Open the
-   Review Page**. Its "Finish Review" applies that PDF (D3) and writes the batch's summary again after
+   Review Page**, even while the batch still runs. Its "Finish Review" applies that PDF (D3) and writes the batch's summary again after
    (`SUMMARY_ONLY=1 bash batch_api.sh <label>`). A review finished while the batch still runs shows "Waiting to Start"
    until the batch's job ends. Until a PDF is applied, its dashboard row shows its status with the result columns
    (Needs a Person, AI Decisions, Safety, veraPDF) blank, never 0 or OK. A PDF waiting for review is never sent again.

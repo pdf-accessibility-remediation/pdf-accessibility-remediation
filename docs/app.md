@@ -128,7 +128,7 @@ A run stopped before its first review (`workorder.ai.json`, no `record.json` yet
 - **An open review page waits on a person,** so it does not count until it is past Finish (applying).
 - **One job at a time per run.** A second click is refused with the reason: another job for this run is waiting or running, or `reviews/.lock` is held by a review started from a terminal.
 - **Two app servers on one jobs folder** (see `--port` below) share the queue and the limit. A second app started with `--port` runs the start-up step that turns queued paid jobs into "Waiting for a new estimate", including the first app's: that fails safe (nothing is sent; a new estimate goes on).
-- **Related runs** (a batch and its PDFs) never run jobs at the same time; a batch has `batch_jobs` of its PDFs in progress at once ([The home page](home.md#batches)).
+- **Related runs** (a batch and its PDFs) never run jobs at the same time; a batch has `batch_jobs` of its PDFs in progress at once ([The home page](home.md#batches)). One exception: a PDF that stopped for review (the batch never touches it again) may open its review page while the batch still runs; its apply waits ("Waiting to Start") until the batch's job ends.
 
 ## When something goes wrong
 
@@ -195,7 +195,8 @@ confirmation says) never deletes anything:
 - **Where things go:** the macOS Trash (`~/.Trash`), moved there whole by renaming, never copied then deleted. A name
   already in the Trash gets " 2", " 3"…: a single run arrives as `<short name> - <run label>` (for example `ilokano -
   First-pass-March`), a whole batch as `batch - <label>`, one PDF of a batch as `batch - <label> - <short name>` (with its
-  files from the batch folder in `_batch-files/` inside it), and an added PDF under its own file name. When the Trash is
+  files from the batch folder in `_batch-files/` inside it), and an added PDF under its own file name, with its note
+  from "Add a PDF" (`<name>.json`) beside it. When the Trash is
   on another disk than the app's folders the move is refused.
 - **The record of every move:** `runs/.app/trash-log.json` (what, from which folder, to which name in the Trash, when;
   for a PDF its sha256 and the runs made from it). A run's or batch's plain name moves from `run-names.json` into it. The
@@ -205,6 +206,8 @@ confirmation says) never deletes anything:
   `runs/<short name>/` under its label, a batch into `runs/batches/` under its label, an added PDF into the uploads folder
   (`uploads/` at the repository root) under its file name. The app finds it again at once: a run is listed again, and a
   PDF's runs can "Review Again" again. A run's plain name doesn't come back by itself (the log keeps it).
+- **Only what the home page lists can be moved:** a run folder (never `runs/.app` or another folder whose name starts
+  with "."), a batch folder, a PDF in the uploads folder.
 - **When a move is refused:** while anything affected is processing, waiting to start or waiting for a new estimate, has a
   review page open, or sits between "Finish Review" and its apply; a PDF also while any job's command names it. The
   confirmation then says why, and nothing moves.
