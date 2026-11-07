@@ -82,8 +82,16 @@ def pdf_needed(s, R, rec):
     if not sha: return None, 'This run\'s record doesn\'t say which PDF it was made from, so its original PDF can\'t be found.'
     p = find_original(s, sha, name)
     if p: return p, None
+    if moved_words(s, sha): return None, moved_words(s, sha)
     return None, (f'The book\'s original PDF ({name or "its file"}) wasn\'t found in the folder of original PDFs or of uploads. '
                   'Put a copy of it in one of them, then try again.')
+
+MOVED = ('The original PDF was moved to the Trash. "Review Again" needs it back: drag it from the Trash into the app\'s folder '
+         'of added PDFs (where it was), then try again.')
+def moved_words(s, sha):
+    """The plain sentence for an original PDF a person moved to the Trash (#45 D8), when the app's move log says so."""
+    from . import trash as TR
+    return MOVED if sha and TR.moved_pdf(s, sha) else None
 
 # ------------------------------------------------------------------ the panel's view of a run
 def live_review(s, run):
@@ -323,6 +331,11 @@ def state(s, run, R):
         'batch': run.split('/')[1] if run.startswith('batches/') and len(run.split('/')) == 3 and
                  os.path.isfile(os.path.join(os.path.dirname(R), 'summary.html')) else None,
     }
+    sha = (rec.get('document') or {}).get('sha256')                  # D8: its original PDF moved to the Trash
+    if sha and moved_words(s, sha) and not find_original(s, sha, (rec.get('document') or {}).get('file')):
+        need = pdf_needed(s, R, rec)[1]
+        out['pdf_moved'] = {'text': 'The original PDF was moved to the Trash.' + (' "Review Again" needs it back: drag it from the Trash into the app\'s folder of added PDFs (where it was).'
+                                     if need else ' "Review Again" still works: it uses the copy the app made when it prepared the PDF.')}
     if out['batch']: out['batch_name'] = __import__('webapp.names', fromlist=['x']).shown_run(s, f'batches/{out["batch"]}')   # 07 L4
     return out
 
@@ -335,7 +348,7 @@ def pending(s, R):
     if os.path.isfile(os.path.join(R, 'record.json')) or waiting(R): return False
     if any(os.path.exists(os.path.join(R, m)) for m in PENDING_MARKS): return True
     R = os.path.abspath(R)
-    return any(j.get('dir') == R and j['kind'] != 'batch' for j in jobs.all_jobs(s['jobs']))
+    return any(j.get('dir') == R and j['kind'] not in ('batch', 'summary') for j in jobs.all_jobs(s['jobs']))   # a batch's own jobs name its folder
 
 def book_of(s, run, R, js=None):
     """(display name, file name) of a run's book: from the app's job, else intake's record or the estimate's source."""
@@ -407,6 +420,7 @@ def first_original(s, R):
     if p and os.path.isfile(p) and S.sha_file(p) == sha: return p, None
     p = find_original(s, sha, name)
     if p: return p, None
+    if moved_words(s, sha): return None, moved_words(s, sha).replace('"Review Again" needs', 'Applying the reviewed decisions needs')
     return None, (f'The book\'s original PDF ({name or "its file"}) wasn\'t found in the folder of original PDFs or of uploads. '
                   'Put a copy of it in one of them, then try again.')
 

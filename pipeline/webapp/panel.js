@@ -600,7 +600,7 @@ function render() {
   const s = st, keepFocus = document.activeElement && document.activeElement.id, opened = [...box.querySelectorAll('details[open]')].map(d => d.id);
   // "Ready to ship?" is not repeated here: the report's own card, right below, says it
   const c = s.cost;
-  let h = setupBlock() + (s.batch ? '<p class="pp-row">Part of the batch "' + esc(s.batch_name || s.batch) + '". <a class="pp-btn" href="/batch/' + encodeURIComponent(s.batch) + '/">Open the Batch Page</a></p>' : '') +
+  let h = setupBlock() + (s.pdf_moved ? '<p class="pp-warn">' + esc(s.pdf_moved.text) + '</p>' : '') + (s.batch ? '<p class="pp-row">Part of the batch "' + esc(s.batch_name || s.batch) + '". <a class="pp-btn" href="/batch/' + encodeURIComponent(s.batch) + '/">Open the Batch Page</a></p>' : '') +
     (c ? '<p class="pp-note">AI Cost: ' + (c.reused ? 'none (a saved reply was used)' : usd(c.usd) +
       (c.estimate_usd ? ' (worst-case estimate ' + usd(c.estimate_usd) + ')' : '')) + '</p>' : '') +
     '<h3 id="pp-cur" tabindex="-1">' + esc(tc('Current result: ' + s.current.label)) + '</h3>';

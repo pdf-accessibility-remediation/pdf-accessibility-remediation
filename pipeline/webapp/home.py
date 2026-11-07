@@ -12,7 +12,7 @@ Pending Evaluation, Ready, Shipped (each with "· N issues noted"), Waiting for 
 Running, Stopped: Needs a Person, Failed, Cleared. A finished run's status is worked out from its glance and release/
 (lib/glance.py with_release), without hashing any PDF: the run page does the full check.
 """
-import os, json, html, threading, datetime, urllib.parse
+import os, json, html, hashlib, threading, datetime, urllib.parse
 from lib import dates as D, costs, release as REL
 from . import books as BK, jobs, config, lang as LG
 
@@ -207,7 +207,7 @@ def book_cell(name, file):
 
 def qs(**kw): return '/?' + urllib.parse.urlencode({k: v for k, v in kw.items() if v not in (None, '', 25)})
 
-def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs', group=''):
+def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs', group='', trashed=False):
     try: n = max(25, min(int(n), 100000))
     except (TypeError, ValueError): n = 25
     try: bn = max(25, min(int(bn), 100000))
@@ -233,6 +233,7 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
              'the file you choose is not changed.</span></form><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>')
     ab = next((b for b in bk if b['key'] == (added or renamed)), None) if (added or renamed) else None
     if ab: B.append(f'<p id="hm-added" hidden>' + (f'Added "{E(ab["name"])}".' if added else f'The PDF is now named "{E(ab["name"])}".') + '</p>')
+    elif trashed: B.append('<p id="hm-added" hidden>Moved to the Trash. Nothing was deleted: to put it back, drag it from the Trash to where it was.</p>')
     B.append('<form id="hm-batch" method="get" action="/new-batch">')
     if not bk: B.append('<p>None yet. "Add a PDF" adds one.</p>')
     else:
@@ -243,7 +244,8 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
             note = ' <span class="pp-note">Locked with a password: add an unlocked copy.</span>' if b['locked'] else \
                    ' <span class="pp-note">This PDF couldn\'t be read.</span>' if b['unreadable'] else ''
             act = ('' if b['locked'] else f'<a class="pp-btn" href="/new?book={E(b["key"])}" aria-describedby="{cid}-n">New Run</a> ') + \
-                  f'<a class="pp-btn" href="/book?key={E(b["key"])}" aria-describedby="{cid}-n">Edit the Name</a>'
+                  f'<a class="pp-btn" href="/book?key={E(b["key"])}" aria-describedby="{cid}-n">Edit the Name</a> ' + \
+                  f'<button type="button" data-trash="pdf" data-key="{E(b["key"])}" aria-describedby="{cid}-n">Move to Trash</button>'
             sel = '' if b['locked'] else f'<input type="checkbox" name="book" value="{E(b["key"])}" id="{cid}" aria-labelledby="{cid}-n">'
             B.append(f'<tr><td>{sel}</td><th scope="row" id="{cid}-n">{book_cell(b["name"], b["file"])}{note}</th>'
                      f'<td>{b["pages"] if b["pages"] is not None else "not counted"}</td><td class="pp-nw">{E(BK.size_words(b["size"]))}</td><td>{act}</td></tr>')
@@ -285,23 +287,27 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
                  '<th scope="col">Status</th><th scope="col">Date Created</th><th scope="col">AI Cost</th><th scope="col">Action</th></tr></thead><tbody>')
         for r in shown:
             label = r.get('name') or r['run'].split('/')[-1]
-            B.append(f'<tr><th scope="row"><span class="hm-run">{E(label)}</span>{book_cell(r["book"], r["file"])}</th><td>{pill(r["group"], r["words"])}</td>'
+            rid = 'hm-r-' + hashlib.sha1(r['run'].encode()).hexdigest()[:10]
+            B.append(f'<tr><th scope="row" id="{rid}"><span class="hm-run">{E(label)}</span>{book_cell(r["book"], r["file"])}</th><td>{pill(r["group"], r["words"])}</td>'
                      f'<td class="pp-nw">{E(D.day(r["when"]) if r["when"] else "date not recorded")}</td>'
                      f'<td>{E(money(r["cost"]))}' + (' <span class="pp-note">(saved reply)</span>' if r['reused'] else '') +
-                     f'</td><td><a class="pp-btn" href="{E(run_href(r["run"]))}">Open</a></td></tr>')
+                     f'</td><td><a class="pp-btn" href="{E(run_href(r["run"]))}" aria-describedby="{rid}">Open</a> '
+                     f'<button type="button" data-trash="run" data-run="{E(r["run"])}" aria-describedby="{rid}">Move to Trash</button></td></tr>')
         B.append('</tbody></table></div>')
     elif shown:
         B.append('<div class="pp-tw" tabindex="0" role="region" aria-label="Batches Table"><table class="hm-t"><thead><tr><th scope="col">Batch Name</th>'
                  '<th scope="col">PDFs</th><th scope="col">Status</th><th scope="col">Date Created</th><th scope="col">AI Cost</th><th scope="col">Action</th></tr></thead><tbody>')
         for b in shown:
-            B.append(f'<tr><th scope="row"><span class="hm-run">{E(b["name"])}</span></th><td>{b["done"]} of {b["books"]} PDFs finished</td><td>{pill(b["group"], b["state"])}</td>'
+            bid = 'hm-b-' + hashlib.sha1(b['label'].encode()).hexdigest()[:10]
+            B.append(f'<tr><th scope="row" id="{bid}"><span class="hm-run">{E(b["name"])}</span></th><td>{b["done"]} of {b["books"]} PDFs finished</td><td>{pill(b["group"], b["state"])}</td>'
                      f'<td class="pp-nw">{E(D.day(b["when"]) if b["when"] else "date not recorded")}</td><td>{E(money(b["cost"]))}</td>'
-                     f'<td><a class="pp-btn" href="/batch/{E(urllib.parse.quote(b["label"], safe=""))}/">Open</a></td></tr>')
+                     f'<td><a class="pp-btn" href="/batch/{E(urllib.parse.quote(b["label"], safe=""))}/" aria-describedby="{bid}">Open</a> '
+                     f'<button type="button" data-trash="batch" data-label="{E(b["label"])}" aria-describedby="{bid}">Move to Trash</button></td></tr>')
         B.append('</tbody></table></div>')
     if len(items) > lim:
         more = qs(view=view if view != 'runs' else None, q=q, group=group, n=n + 25 if view == 'runs' else n, bn=bn + 25 if view == 'batches' else bn)
         B.append(f'<p><a class="pp-btn" href="{E(more)}#hm-more" id="hm-more">Show More {"Runs" if view == "runs" else "Batches"}</a></p>')
-    B.append('</section></main><script src="/app/home.js" defer></script></body></html>')
+    B.append('</section></main><script src="/app/home.js" defer></script><script src="/app/trash.js" defer></script></body></html>')
     return '\n'.join(B)
 
 def name_page(s, key, added=False):

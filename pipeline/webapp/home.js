@@ -53,8 +53,9 @@ if ($('hm-add')) $('hm-add').addEventListener('submit', async e => {
   } catch (err) { msg('The app is not running. ' + START); }
   finally { b.disabled = false; }
 });
-const added = new URLSearchParams(location.search).get('added') || new URLSearchParams(location.search).get('renamed');
-if (added && $('hm-added')) { history.replaceState(null, '', '/'); msg($('hm-added').textContent, true); }
+const qp = new URLSearchParams(location.search);
+const added = qp.get('added') || qp.get('renamed') || qp.get('trashed');
+if (added && $('hm-added')) { ['added', 'renamed', 'trashed'].forEach(k => qp.delete(k)); history.replaceState(null, '', '/' + (qp.toString() ? '?' + qp : '')); msg($('hm-added').textContent, true); }
 
 // ---------------------------------------------------------------- New Batch: two or more PDFs
 const form = $('hm-batch');

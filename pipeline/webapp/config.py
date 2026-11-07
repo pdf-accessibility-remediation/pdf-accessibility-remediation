@@ -15,6 +15,7 @@ VERAPDF, the Java path) < --config FILE < an exported VERAPDF. Relative paths ar
     test_reply_dir     tests only, and only from --config: never from a committed or local settings file. Spend then runs
                        REPLY=<test_reply_dir>/<name>.txt instead of a paid call, and every page says "Test"
     test_batch_from    tests only, from --config only: a batch's Spend runs FROM=<label> (saved replies) instead of paid calls
+    trash_dir          tests only, from --config only: where "Move to Trash" moves things instead of ~/.Trash (webapp/trash.py)
 
 The app never runs with veraPDF off: VERAPDF=off is refused from any source.
 """
@@ -70,7 +71,7 @@ def load(config=None, base=HERE, environ=None):
     if config: layers.append((config, _read(os.path.abspath(config), required=True), True))
     s = {}
     for name, d, given in layers:
-        for k in ('test_reply_dir', 'test_batch_from'):
+        for k in ('test_reply_dir', 'test_batch_from', 'trash_dir'):
             if k in d and not given: raise Bad(f'{k} is set in {name}: it may only come from --config')
         if str((d.get('tools') or {}).get('VERAPDF', '')).strip().lower() == 'off': raise Bad(f'{name} sets VERAPDF=off: the app always runs veraPDF')
         s = _merge(s, d)
@@ -97,6 +98,7 @@ def load(config=None, base=HERE, environ=None):
     t = s.setdefault('tools', {})
     t['VERAPDF'] = os.path.expanduser(str(t.get('VERAPDF') or ''))
     t['path_prepend'] = [os.path.expanduser(p) for p in t.get('path_prepend') or []]
+    if s.get('trash_dir'): s['trash_dir'] = os.path.normpath(os.path.join(PIPELINE, os.path.expanduser(s['trash_dir'])))
     if s.get('test_reply_dir'): s['test_reply_dir'] = os.path.normpath(os.path.join(PIPELINE, os.path.expanduser(s['test_reply_dir'])))   # as the folders
     s['sha'] = fingerprint(s)
     return s

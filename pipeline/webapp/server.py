@@ -122,7 +122,7 @@ def served(d, runs):
 
 STATIC = {'panel.js': os.path.join(config.HERE, 'panel.js'), 'panel.css': os.path.join(config.HERE, 'panel.css'),
           'manual.js': os.path.join(config.HERE, 'manual.js'), 'home.js': os.path.join(config.HERE, 'home.js'), 'batch.js': os.path.join(config.HERE, 'batch.js'),
-          'palette.css': os.path.join(config.PIPELINE, 'review', 'palette.css')}
+          'trash.js': os.path.join(config.HERE, 'trash.js'), 'palette.css': os.path.join(config.PIPELINE, 'review', 'palette.css')}
 SKIP = '<a class="skip" href="#main">Skip to the content</a>'
 
 FRAME = {'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'"}   # every response: never in a frame
@@ -305,6 +305,21 @@ def make(s, setup, code=None):
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 jobs.tick(J, s)
                 return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
+            if p in ('/api/trash/plan', '/api/trash/move'):       # Move to Trash (#45 D8): what goes, then the move
+                from . import trash as TR
+                what = body.get('what')
+                try:
+                    if what == 'run': f = TR.plan_run if p.endswith('plan') else TR.move_run; r = f(s, str(body.get('run') or ''))
+                    elif what == 'batch':
+                        names = body.get('names') if isinstance(body.get('names'), list) else None
+                        bd = batch_dir(s['runs'], str(body.get('label') or ''))
+                        if not bd: return self.send(409, {'error': 'There is no such batch.'})
+                        f = TR.plan_batch if p.endswith('plan') else TR.move_batch; r = f(s, os.path.basename(bd), [str(x) for x in names] if names else None)
+                    elif what == 'pdf': f = TR.plan_pdf if p.endswith('plan') else TR.move_pdf; r = f(s, str(body.get('key') or ''))
+                    else: return self.send(409, {'error': 'Nothing to move.'})
+                except TR.Refused as e: return self.send(409, {'error': str(e)})
+                if p.endswith('move'): applog(f'moved to the Trash: {what} {body.get("run") or body.get("label") or body.get("key")} → {r.get("moved")}')
+                return self.send(200, r)
             if p == '/api/new/estimate':                          # New Run: the free estimate job, then its run page
                 try: j = NR.start_estimate(s, setup, str(body.get('book') or ''), body.get('run_name'))
                 except ValueError as e: return self.send(409, {'error': str(e)})
@@ -478,7 +493,7 @@ def make(s, setup, code=None):
                 return self.send(200, HM.page(s, (q.get('q') or [''])[0], (q.get('n') or ['25'])[0], test=bool(s.get('test_reply_dir')),
                                               added=(q.get('added') or [None])[0], bn=(q.get('bn') or ['25'])[0],
                                               renamed=(q.get('renamed') or [None])[0], view=(q.get('view') or ['runs'])[0],
-                                              group=(q.get('group') or [''])[0]), 'text/html; charset=utf-8')
+                                              group=(q.get('group') or [''])[0], trashed=bool(q.get('trashed'))), 'text/html; charset=utf-8')
             self.send(404, {'error': 'not found'})
 
         def json_ok(self):

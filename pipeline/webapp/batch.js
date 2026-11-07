@@ -71,6 +71,8 @@ function body(s) {
          ' · Batch limit ' + usd(T.limit_usd) + (T.credit_usd != null ? ' · Credit ' + usd(T.credit_usd) : ' · Credit not checked') + '</b></p>';
   if (T.spent_usd || s.phase === 'running' || s.phase === 'finished')
     h += '<p><b>Total Cost:</b> ' + usd(T.spent_usd) + (T.shown_ceiling_usd != null ? ' (worst-case estimate ' + usd(T.shown_ceiling_usd) + ')' : '') + '</p>';
+  if (s.trashed && s.trashed.n) h += (T.spent_usd || s.phase === 'running' || s.phase === 'finished' ? '' : '<p><b>Total Cost:</b> ' + usd(T.spent_usd) + '</p>') +
+    '<p>' + s.trashed.n + ' PDF' + (s.trashed.n === 1 ? '' : 's') + ' moved to the Trash (AI cost ' + usd(s.trashed.cost_usd) + ')</p>';   // D8: the spend stays shown
   if (s.flagged.length) h += '<p>' + s.flagged.length + ' PDF' + (s.flagged.length === 1 ? '' : 's') + ' stopped and need' + (s.flagged.length === 1 ? 's' : '') +
     ' a person: ' + (s.flagged.length === 1 ? 'it is' : 'they are') + ' not sent. Each PDF\'s page says why.</p>';
   if (s.phase === 'estimating') h += '<p>Each PDF is being prepared and estimated (free). This page follows them; you can leave it and come back from the home page.</p>';
@@ -112,18 +114,22 @@ const money = x => x == null ? 'not recorded' : x < 0.01 && x > 0 ? '< $0.01' : 
 function dash(s) {                                               // the batch dashboard (P8): blank result columns until a PDF is applied
   const rs = s.dashboard || []; if (!rs.length) return '';
   const SAFE = { ok: 'OK', failed: 'Failed', 'not checked': 'Not Checked' };
+  const keep = new Set([...document.querySelectorAll('input[name=trash-pdf]:checked')].map(x => x.value));   // a redraw keeps the ticks
   let h = '<h3 id="bt-dash-h">Batch Dashboard</h3><div class="pp-tw" tabindex="0" role="region" aria-labelledby="bt-dash-h"><table class="hm-t bt-dash"><thead><tr>' +
-    ['PDF', 'Status', 'Needs a Person', 'AI Decisions', 'Safety', 'veraPDF (WCAG Rules)', 'AI Cost', 'Pages'].map(x => '<th scope="col">' + x + '</th>').join('') + '</tr></thead><tbody>';
+    ['Select', 'PDF', 'Status', 'Needs a Person', 'AI Decisions', 'Safety', 'veraPDF (WCAG Rules)', 'AI Cost', 'Pages'].map(x => '<th scope="col">' + x + '</th>').join('') + '</tr></thead><tbody>';
   rs.forEach((r, i) => {
     const x = r.result;
-    h += '<tr><th scope="row"><span class="hm-book">' + esc(r.book) + '</span><span class="hm-file">Source PDF: ' + esc(r.file) + '</span>' +
+    h += '<tr><td><input type="checkbox" name="trash-pdf" value="' + esc(r.name) + '" id="bt-sel-' + i + '" aria-labelledby="bt-n' + i + '"' + (keep.has(r.name) ? ' checked' : '') + '></td>' +
+      '<th scope="row" id="bt-n' + i + '"><span class="hm-book">' + esc(r.book) + '</span><span class="hm-file">Source PDF: ' + esc(r.file) + '</span>' +
       '<a class="pp-btn bt-open" href="' + esc(r.href) + '" id="bt-o' + i + '">Open</a></th><td>' + esc(r.status) + (x && !x.reviewed ? ' <span class="pp-note">(not reviewed)</span>' : '') + '</td>';
     if (!x) { h += '<td></td><td></td><td></td><td></td><td></td><td></td></tr>'; return; }
     h += '<td>' + x.needs + '</td><td>' + x.ai + '</td><td>' + esc(SAFE[x.safety] || x.safety) + '</td>' +
       '<td>' + (x.va == null ? 'not run' : (x.vb == null ? '–' : x.vb) + ' → ' + x.va + (x.new ? ' <b>(' + x.new + ' new)</b>' : '')) + '</td>' +
       '<td>' + money(x.cost) + '</td><td>' + (x.pages || 'not counted') + '</td></tr>';
   });
-  return h + '</tbody></table></div><p class="pp-note">Sorted by "Needs a Person", most work first. Automated checks are evidence, not sign-off.</p>';
+  return h + '</tbody></table></div><p class="pp-note">Sorted by "Needs a Person", most work first. Automated checks are evidence, not sign-off.</p>' +
+    '<div class="pp-row"><button type="button" id="bt-trash-sel" data-trash="selected" data-label="' + esc(LABEL) + '">Move Selected to Trash</button>' +
+    '<button type="button" id="bt-trash-all" data-trash="batch" data-label="' + esc(LABEL) + '">Move This Batch to Trash</button></div>';
 }
 async function api(path, b) {
   const r = await fetch(path, b === undefined ? { cache: 'no-store' } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });

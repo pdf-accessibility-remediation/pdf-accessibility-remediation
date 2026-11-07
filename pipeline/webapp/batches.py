@@ -210,6 +210,7 @@ def state(s, label):
     meta = _load(meta_path(s, label)) or {}
     return {'label': label, 'phase': phase, 'books': out, 'flagged': flagged, 'missing': missing, 'test': test, 'reviewing': reviewing, 'asking': asking,
             'from_app': bool(meta), 'ocr_name': meta.get('ocr_name'),   # a batch made before D4: its one OCR language
+            'trashed': {'n': len(trashed(s, label)), 'cost_usd': round(sum(x.get('cost_usd') or 0 for x in trashed(s, label)), 6)},
             'totals': {'ceiling_usd': total['ceiling_usd'], 'limit_usd': total['limit_usd'], 'credit_usd': total['credit_usd'],
                        'spent_usd': spent, 'books_to_send': len(Rs), 'finished': finished, 'expected': total['expected'],
                        'shown_ceiling_usd': ((batch_job or {}).get('shown') or {}).get('ceiling_usd')},
@@ -242,6 +243,42 @@ def again(s, label):
     todo = [b for b in meta['books'] if not os.path.isfile(os.path.join(folder(s, label), b['name'], 'record.json'))]
     if not todo: raise ValueError('Every book in this batch has finished.')
     return [estimate_job(s, label, b) for b in todo]
+
+def forget_books(s, label, names, moved):
+    """PDFs moved to the Trash from a batch (#45 D8, webapp/trash.py): out of the app's book list (so a later "Run the
+    Unfinished PDFs Again" or RETRY never sends them: a paid call for a PDF in the Trash), the batch's record, its
+    ocr_langs.tsv; into the batch folder's trashed.json with their AI cost (summary.md's line and "Total Cost:"); then
+    summary.md and summary.html written again from the PDFs left (batch_api.sh SUMMARY_ONLY=1, a job of its own). Any
+    estimate of the batch is stale from now on: its fingerprint covers the PDFs it was made for."""
+    import fcntl
+    gone = set(names)
+    lp = list_path(s, label)
+    if os.path.isfile(lp):
+        keep = [l for l in open(lp, encoding='utf-8') if l.startswith('#') or l.split(' ', 1)[0] not in gone]
+        tmp = lp + '.tmp'; open(tmp, 'w', encoding='utf-8').writelines(keep); os.replace(tmp, lp)
+    mp = meta_path(s, label)
+    if os.path.isfile(mp):
+        with open(mp + '.lock', 'a') as lk:
+            fcntl.flock(lk, fcntl.LOCK_EX)
+            meta = _load(mp) or {}
+            meta['books'] = [b for b in meta.get('books') or [] if b.get('name') not in gone]
+            meta['langs'] = {k: v for k, v in (meta.get('langs') or {}).items() if k not in gone}
+            tmp = mp + '.tmp'; json.dump(meta, open(tmp, 'w', encoding='utf-8'), indent=1, ensure_ascii=False); os.replace(tmp, mp)
+    B = folder(s, label)
+    ol = os.path.join(B, 'ocr_langs.tsv')
+    if os.path.isfile(ol):
+        keep = [l for l in open(ol, encoding='utf-8') if l.startswith('#') or l.split('\t', 1)[0] not in gone]
+        tmp = ol + '.tmp'; open(tmp, 'w', encoding='utf-8').writelines(keep); os.replace(tmp, ol)
+    tp = os.path.join(B, 'trashed.json')
+    d = (_load(tp) or []) + [{'name': m['name'], 'cost_usd': m['cost_usd'], 'moved': datetime.datetime.now().isoformat(timespec='seconds')} for m in moved]
+    tmp = tp + '.tmp'; json.dump(d, open(tmp, 'w', encoding='utf-8'), indent=1); os.replace(tmp, tp)
+    if os.path.isfile(os.path.join(B, 'summary.md')) or os.path.isfile(os.path.join(B, 'summary.html')):
+        jobs.create(s['jobs'], 'summary', f'batches/{label}', ['bash', 'batch_api.sh', label], config.child_env(s, {'SUMMARY_ONLY': '1'}),
+                    env_set={'SUMMARY_ONLY': '1'}, counted=False, R=B, what='Write the batch summary again')
+
+def trashed(s, label):
+    """[{name, cost_usd, moved}]: PDFs of this batch moved to the Trash (the batch folder's trashed.json)."""
+    return _load(os.path.join(folder(s, label), 'trashed.json')) or []
 
 def answer_language(s, label, name, lang):
     """A PDF's "Language of the Scanned Pages" answered on the batch page (D4): kept in the batch's record and, when it is
@@ -350,7 +387,7 @@ def page(s, label, closed=None):
             f'<header><h1>Batch: {E(NM.shown_run(s, "batches/" + label))}</h1></header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
             '<h2 id="bt-h" tabindex="-1">This Batch</h2><div id="bt-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
-            '<script src="/app/batch.js" defer></script></body></html>', closed)
+            '<script src="/app/batch.js" defer></script><script src="/app/trash.js" defer></script></body></html>', closed)
 
 def with_nav(page, s, label, current, closed=None):
     """A book's run page inside a batch: the app bar with the side list's button (P5), then the side column, laid out
