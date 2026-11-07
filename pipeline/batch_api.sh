@@ -22,6 +22,14 @@
 #                    same folders/lists as the first time), then summary.md is rewritten for the whole batch. A reply
 #                    that was cut off stays on record with its cost; a complete reply whose later step failed is reused free
 #   FORCE_OCR=1, OCR_LANG=…, OCR=off, INTAKE=off   passed to every book's intake step (see run_api.sh)
+#   REVIEW=1         every book stops after the AI's decisions for a person's review (the app's batches, #45 D2): summary.md
+#                    lists it as waiting for review, and RETRY=1 never runs it again ("Finish Review" in the app applies it)
+#   SUMMARY_ONLY=1   no run, no cost: summary.md and summary.html written again from the batch's book folders (the app,
+#                    after a book is applied or moved to the Trash); <run-label> only
+#   ocr_langs.tsv    in the batch folder, <short name> <TAB> <OCR_LANG> per line: that book's own OCR language (the app's
+#                    answers to "Language of the Scanned Pages", #45 D4); a book not listed uses OCR_LANG
+#   ASK_LANG=1       passed to run_api.sh: a book with pages to OCR and no OCR language stops before intake, and is
+#                    listed as needing a language (run_api.sh exit 4)
 #   FROM=<label>     no API calls: reuse each book's Claude reply saved in an earlier record.json, from the batch
 #                    runs/batches/<label>/<name>/ or the single run runs/<name>/<label>/ (free re-run after
 #                    pipeline changes); skips the cost step
@@ -35,20 +43,20 @@
 # summary.md is also written when the batch stops early or is interrupted, and RETRY=1 on a batch whose books have
 # all finished just rewrites it (no cost). A missing library stops the batch before any paid call.
 set -euo pipefail
-[[ -z ${REVIEW:-} ]] || { echo "REVIEW=1 is for one book at a time (bash run_api.sh): a batch runs unattended and cannot stop for a review"; exit 1; }
-[[ -n ${AUTO:-} ]] || { echo "batch runs call the API without asking: start with  AUTO=1 bash batch_api.sh <run-label> [folder | books.txt] …"; exit 1; }
+[[ -n ${AUTO:-} || -n ${SUMMARY_ONLY:-} ]] || { echo "batch runs call the API without asking: start with  AUTO=1 bash batch_api.sh <run-label> [folder | books.txt] …"; exit 1; }
 LABEL=${1:?run label used for every book, e.g. batch1}; shift
 SOURCES=("$@")
 START_DIR=$(pwd)
 cd "$(dirname "$0")"; HERE=$(pwd)
 python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
   echo "missing Python libraries in $(command -v python3): from pipeline/, run  python3 -m pip install -r requirements.txt"; exit 1; }
-VERA=$(python3 vera.py --check) || {
-  echo "$VERA"; echo "veraPDF is needed for the WCAG checks: bash verapdf/install.sh (see README), or run with VERAPDF=off to skip them"; exit 1; }
+if [[ -z ${SUMMARY_ONLY:-} ]]; then VERA=$(python3 vera.py --check) || {
+  echo "$VERA"; echo "veraPDF is needed for the WCAG checks: bash verapdf/install.sh (see README), or run with VERAPDF=off to skip them"; exit 1; }; fi
 export RUNS_DIR=${RUNS_DIR:-$(cd .. && pwd)/runs}
 JOBS=${JOBS:-3}; MAX=${BATCH_MAX_USD:-5}
 B=$RUNS_DIR/batches/$LABEL
-if [[ -z ${RETRY:-} ]] && { [[ -f $B/summary.md ]] || compgen -G "$B/*/record.json" > /dev/null; }; then
+if [[ -n ${SUMMARY_ONLY:-} ]]; then [[ -d $B ]] || { echo "no batch $LABEL in $RUNS_DIR/batches"; exit 1; }
+elif [[ -z ${RETRY:-} ]] && { [[ -f $B/summary.md ]] || compgen -G "$B/*/record.json" > /dev/null; }; then
   echo "$B already holds a batch: choose another run label, or add RETRY=1 to rerun only the books that did not finish"; exit 1
 fi
 mkdir -p "$B"
@@ -63,11 +71,12 @@ AGAIN="${FROM:+FROM=$FROM }${MODEL:+MODEL=$MODEL }AUTO=1 bash batch_api.sh $LABE
 if [[ ${#SOURCES[@]} -gt 0 ]]; then AGAIN="$AGAIN$(printf ' %q' "${SOURCES[@]}")"; fi
 write_summary() {
   local WALL CREDIT
-  WALL=$(python3 -c "print($(now)-$T0)"); CREDIT=$(python3 decide.py --credit 2>/dev/null || true)
-python3 - "$B/books.tsv" "$B/todo.tsv" "$B" "$LABEL" "$WALL" "$CREDIT" "$AGAIN" "$STARTED" "${MAX_TOKENS:-}" <<'PY'
+  WALL=$(python3 -c "print($(now)-$T0)"); CREDIT=
+  [[ -n ${SUMMARY_ONLY:-} ]] || CREDIT=$(python3 decide.py --credit 2>/dev/null || true)
+python3 - "$B/books.tsv" "$B/todo.tsv" "$B" "$LABEL" "$WALL" "$CREDIT" "$AGAIN" "$STARTED" "${MAX_TOKENS:-}" "${SUMMARY_ONLY:-}" <<'PY'
 import sys, json, os, collections
 from lib import origin                                   # the AI call's real cost per page, also for a reused reply (11.5)
-books, todo, B, label, wall, credit, again, started, cur_mt = sys.argv[1:10]; wall = float(wall)
+books, todo, B, label, wall, credit, again, started, cur_mt, only = sys.argv[1:11]; wall = float(wall)
 rate_limited = False
 def fmt(s): return f'{s:.0f}s' if s < 60 else f'{int(s // 60)}m {s % 60:02.0f}s'
 def load(p): return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else None
@@ -77,7 +86,7 @@ done_pages = 0
 def intake_of(R):
     j = load(os.path.join(R, '_intake', 'intake.json')) or {}
     return j, (j.get('summary') or ('not run' if not j else j.get('status') or 'not recorded')).replace('|', '/')
-total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; flagged = []; cut_at = []
+total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; flagged = []; cut_at = []; waiting = []; needs_lang = []
 call_cost = 0.0; call_pages = 0                       # the AI calls' own cost (the original call's for a reused reply)
 models, prompts, runs_at = collections.Counter(), collections.Counter(), []
 for line in open(books):
@@ -104,6 +113,11 @@ for line in open(books):
     if not rec:
         if ij.get('status') == 'stopped':                 # flagged at intake: not sent to the model, nothing spent
             flagged.append(name); L.append(f'| {name} | **flagged at intake**: {ij.get("summary", "").replace("|", "/")} | stopped | | | | | | |'); continue
+        if os.path.exists(os.path.join(R, 'workorder.ai.json')):   # REVIEW=1: stopped for a person's review, never a failure
+            waiting.append(name)
+            L.append(f'| {name} | **waiting for review**: nothing applied yet | {intake if ij else ""} | | {cost if this + earlier else ""} | | | | | |'); continue
+        if (load(os.path.join(R, '_intake', 'languages.json')) or {}).get('needs_ocr') and not ij:   # ASK_LANG=1: stopped before intake
+            needs_lang.append(name); L.append(f'| {name} | **needs a language**: pages to OCR, no OCR language given | | | | | | | | |'); continue
         failed.append(name)
         if ij.get('status') == 'failed': why = f'**failed at intake**: {(ij.get("summary") or "")[:90].replace("|", "/")}'
         elif run.get('finish_reason') == 'length':
@@ -138,6 +152,7 @@ L[1:1] = ['', f'Batch started {started}' + (f' (books run from {span[0]} to {spa
           + f' · model {", ".join(f"`{k}`" + (f" ×{v}" if len(models) > 1 else "") for k, v in models.items()) or "not recorded"}'
           + f' · prompt {each_(prompts)}', '', '[Open the batch dashboard](summary.html): ready to ship, needs a person and veraPDF per book, sortable']
 L += ['', f'{done} of {n} books done' + (f' · {len(flagged)} flagged at intake (not sent)' if flagged else '')
+      + (f' · {len(waiting)} waiting for review' if waiting else '') + (f' · {len(needs_lang)} needing a language' if needs_lang else '')
       + f' · API cost ${total:.3f}' + (f' (includes ${wasted:.3f} for replies that were cut off)' if wasted else '')
       + (f' · AI calls {origin.money(call_cost / call_pages)} per page over {call_pages:,} pages (the original call\'s cost for a reused reply)' if call_pages else '')
       + f' · wall time {fmt(wall)}', '']
@@ -147,7 +162,10 @@ worked = max(starts) - new_spend if starts else None
 if worked is not None and (live is None or worked < live - 0.005):
     L.append(f'Credit left: ${worked:.2f}' + ('' if live is None else f' (OpenRouter still shows ${live:.2f}; it catches up within a minute or so)'))
 elif live is not None: L.append(f'Credit left: ${live:.2f}')
+elif only: L.append('Credit left: not checked (the summary was written again without a run)')
 else: L.append('Credit left: could not check (no key, or OpenRouter unreachable)')
+tr = load(os.path.join(B, 'trashed.json')) or []          # PDFs a person moved to the Trash from the app (#45 D8): their spend stays shown
+if tr: L.append(f'{len(tr)} PDF{"" if len(tr) == 1 else "s"} moved to the Trash (AI cost ${sum(x.get("cost_usd") or 0 for x in tr):.3f}), not counted above')
 L.append('')
 if failed:
     mt = f'MAX_TOKENS={max(cut_at) * 2} ' if cut_at else (f'MAX_TOKENS={cur_mt} ' if cur_mt else '')
@@ -180,6 +198,21 @@ finish() {
 trap finish EXIT
 trap 'FAILED_AT="line $LINENO: $BASH_COMMAND"' ERR
 trap 'exit 130' INT TERM
+
+if [[ -n ${SUMMARY_ONLY:-} ]]; then             # no run, no cost: summary.md and summary.html from the book folders (#45)
+  KEEP=1; MADE=
+  if [[ ! -f $B/books.tsv ]]; then
+    MADE=1
+    for d in "$B"/*/; do
+      d=${d%/}; n=$(basename "$d")
+      if [[ -f $d/record.json || -f $d/run.json || -f $d/workorder.ai.json || -f $d/_intake/intake.json || -f $d/_intake/languages.json ]]; then printf '%s\t-\t-\n' "$n"; fi
+    done > "$B/books.tsv"
+  fi
+  : > "$B/todo.tsv"
+  RUNNING=1; write_summary > /dev/null
+  rm -f "$B/todo.tsv"; [[ -z $MADE ]] || rm -f "$B/books.tsv"
+  echo "summary written again: $B/summary.md"; exit 0
+fi
 
 # ---- the book list → books.tsv (name <TAB> absolute path <TAB> result name, or - for the default)
 python3 - "$START_DIR" "$HERE/../samples" ${SOURCES[@]+"${SOURCES[@]}"} > "$B/books.tsv" <<'PY'
@@ -220,7 +253,9 @@ PY
 N=$(wc -l < "$B/books.tsv" | tr -d ' ')
 : > "$B/todo.tsv"                               # the books still to run (all of them, unless RETRY=1 finds finished ones)
 while IFS=$'\t' read -r name rest; do
-  if [[ -f $B/$name/record.json ]]; then echo "  · $name: already finished, skipped"; else printf '%s\t%s\n' "$name" "$rest" >> "$B/todo.tsv"; fi
+  if [[ -f $B/$name/record.json ]]; then echo "  · $name: already finished, skipped"
+  elif [[ -f $B/$name/workorder.ai.json ]]; then echo "  · $name: waiting for review, skipped (\"Finish Review\" applies it)"   # REVIEW=1: never run again
+  else printf '%s\t%s\n' "$name" "$rest" >> "$B/todo.tsv"; fi
 done < "$B/books.tsv"
 TODO=$(wc -l < "$B/todo.tsv" | tr -d ' ')
 if [[ $TODO == 0 ]]; then
@@ -235,6 +270,7 @@ each() {   # each <step: estimate|run>
   tr '\t' '\0' < "$B/todo.tsv" | tr '\n' '\0' | xargs -0 -n 3 -P "$JOBS" bash -c '
     name=$1; pdf=$2; s=$(date +%s)
     if [[ $3 == - ]]; then unset OUT; else export OUT=$3; fi
+    if [[ -f $B/ocr_langs.tsv ]]; then while read -r n l; do [[ $n == "$name" && -n $l ]] && export OCR_LANG=$l; done < "$B/ocr_langs.tsv"; fi   # its own OCR language
     if [[ $STEP == estimate ]]; then
       log=$B/$name.estimate.log
       RUN_DIR=$B/$name ESTIMATE=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
@@ -247,10 +283,11 @@ each() {   # each <step: estimate|run>
     fi
     if [[ $rc == 0 ]]; then st=ok
     elif [[ $rc == 3 ]]; then st="flagged at intake (see $name/_intake/intake.json)"
+    elif [[ $rc == 4 ]]; then st="needs a language: pages to OCR and no OCR language (see $name/_intake/languages.json)"
     elif (( rc > 128 )); then echo "  ✗ $name: interrupted"; exit 255     # Ctrl-C: stop the whole batch, not only this book
     fi
-    [[ ( $st == ok || $rc == 3 ) && -z ${KEEP:-} ]] && rm -f "$log"
-    echo "  $( [[ $st == ok ]] && echo ✓ || { [[ $rc == 3 ]] && echo ⚑ || echo ✗; } ) $name: $st, $(( $(date +%s) - s ))s"' _
+    [[ ( $st == ok || $rc == 3 || $rc == 4 ) && -z ${KEEP:-} ]] && rm -f "$log"
+    echo "  $( [[ $st == ok ]] && echo ✓ || { [[ $rc == 3 || $rc == 4 ]] && echo ⚑ || echo ✗; } ) $name: $st, $(( $(date +%s) - s ))s"' _
 }
 FROM=${FROM:-}; KEEP=${KEEP:-}; export B LABEL STEP FROM KEEP
 
@@ -296,6 +333,9 @@ for line in open(books):
     ij = os.path.join(R, '_intake', 'intake.json')
     if os.path.exists(ij) and json.load(open(ij)).get('status') == 'stopped':
         rows.append(f'  {name:28} flagged at intake, not sent: {json.load(open(ij)).get("summary")}'); flagged.append(name); continue
+    lj = os.path.join(R, '_intake', 'languages.json')     # ASK_LANG=1: stopped before intake, its OCR language not given
+    if not os.path.exists(ij) and os.path.exists(lj) and json.load(open(lj)).get('needs_ocr'):
+        rows.append(f'  {name:28} needs a language (pages to OCR), not sent'); flagged.append(name); continue
     p = os.path.join(R, 'run.json')
     if not os.path.exists(p): bad.append(name); continue
     e = json.load(open(p))['estimate']
@@ -315,7 +355,7 @@ if bad: sys.exit(f'stopped: no estimate for {", ".join(bad)} (see their .estimat
 if flagged:                                      # not run: drop them from the to-do list (summary.md lists them)
     keep = [l for l in open(books) if l.split('\t')[0] not in flagged]
     open(books, 'w').writelines(keep)
-    if not keep: sys.exit(f'stopped: every book was flagged at intake ({", ".join(flagged)}); see summary.md')
+    if not keep: sys.exit(f'stopped: every book was flagged at intake or needs a language ({", ".join(flagged)}); see summary.md')
 if total > cap: sys.exit(f'stopped: worst case ${total:.2f} is over BATCH_MAX_USD ${cap:.2f}. Raise it (BATCH_MAX_USD={math.ceil(total)}) or run fewer books; the audits are kept and will be reused')
 if credit is not None and total > credit: sys.exit(f'stopped: worst case ${total:.2f} is more than your ${credit:.2f} credit. Add credit or run fewer books')
 PY
