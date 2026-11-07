@@ -119,16 +119,16 @@ def test_a_pdf_whose_run_is_busy_is_refused(setup):
     assert (setup / 'uploads' / 'bk.pdf').exists()
 
 def test_the_routes(app):
-    from webapp import config
+    from test_webapp_panel import post
     t = app['t']; c = json.loads((t / 'app.json').read_text()); c['trash_dir'] = str(t / 'Trash'); (t / 'app.json').write_text(json.dumps(c))
-    import http.client
-    def post(path, body):
-        h = http.client.HTTPConnection('127.0.0.1', app['port'], timeout=10)
-        h.request('POST', path, body=json.dumps(body), headers={'Content-Type': 'application/json', 'Host': f'127.0.0.1:{app["port"]}', 'Origin': f'http://127.0.0.1:{app["port"]}'})
-        r = h.getresponse(); return r.status, json.loads(r.read() or b'{}')
-    st, b = post('/api/trash/plan', {'what': 'run', 'run': 'old/r0'})
+    st, b = post(app['port'], '/api/trash/plan', {'what': 'run', 'run': 'old/r0'})
     assert st == 200 and b['what'] == 'run' and b['words'] == [TR.CONFIRM_RUN]
-    assert post('/api/trash/plan', {'what': 'run', 'run': '../x'})[0] == 409
+    for bad in ('../x', '.app/jobs', 'old/../.app', 'old'):                       # never the app's own folders, never outside
+        assert post(app['port'], '/api/trash/plan', {'what': 'run', 'run': bad})[0] == 409, bad
+        assert post(app['port'], '/api/trash/move', {'what': 'run', 'run': bad})[0] == 409, bad
+    assert (t / 'runs' / '.app').is_dir() and not (t / 'Trash').exists()
+    st, _ = post(app['port'], '/api/trash/move', {'what': 'run', 'run': 'old/r0'}, origin='http://evil.example')
+    assert st == 403 and (t / 'runs' / 'old' / 'r0').is_dir()                    # another site's page: refused, nothing moved
     page = get(app['port'], '/')[1].decode()
     assert 'data-trash="run"' in page and '/app/trash.js' in page
 
@@ -153,3 +153,10 @@ def test_a_batch_summary_job_never_makes_the_batch_folder_a_run(setup):
     s = S(setup); B = batch(setup, s)
     TR.move_batch(s, 'Spring', ['b'])
     assert not RN.pending(s, str(B))
+
+def test_a_pdfs_note_goes_with_it(setup):
+    s = S(setup)
+    (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book')); (setup / 'uploads' / 'bk.json').write_text('{"name": "bk.pdf"}')
+    key = BK.listing(s)[0]['key']
+    TR.move_pdf(s, key)
+    assert (setup / 'Trash' / 'bk.json').exists() and not (setup / 'uploads' / 'bk.json').exists()

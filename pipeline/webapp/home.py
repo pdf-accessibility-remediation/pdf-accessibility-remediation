@@ -6,8 +6,8 @@ with its status, date and AI cost, and a button that opens it. Listing a run nev
                         _intake/intake.json, release/*.json), and the app's jobs are laid over them when read (03 §12 L3)
     page(s, q, n)       the home page's HTML (home.js adds Add a Book, New Batch's selection and the live "Runs in Progress")
 
-What is listed: runs/<name>/<label>/ and runs/batches/<label>/<name>/ holding record.json, workorder.ai.json, run.json or
-_intake/intake.json; runs/.app and dot-folders are skipped. A row's status uses one vocabulary (03 §12 L5): Not Ready,
+What is listed: runs/<name>/<label>/ and runs/batches/<label>/<name>/ holding record.json, workorder.ai.json, run.json,
+_intake/intake.json or _intake/languages.json; runs/.app and dot-folders are skipped. A row's status uses one vocabulary (03 §12 L5): Not Ready,
 Pending Evaluation, Ready, Shipped (each with "· N issues noted"), Waiting for Review, Estimating, Estimate Ready,
 Running, Stopped: Needs a Person, Failed, Cleared. A finished run's status is worked out from its glance and release/
 (lib/glance.py with_release), without hashing any PDF: the run page does the full check.
@@ -17,7 +17,7 @@ from lib import dates as D, costs, release as REL
 from . import books as BK, jobs, config, lang as LG
 
 E = html.escape
-MARKS = ('record.json', 'run.json', 'workorder.ai.json', 'review.json', os.path.join('_intake', 'intake.json'))
+MARKS = ('record.json', 'run.json', 'workorder.ai.json', 'review.json', os.path.join('_intake', 'intake.json'), os.path.join('_intake', 'languages.json'))
 RELEASE = ('checks.json', 'shipped.json', 'cleared.json')
 _lock = threading.Lock()
 
@@ -30,7 +30,8 @@ def _mt(p):
     except OSError: return None
 
 def is_run(R):
-    return any(os.path.isfile(os.path.join(R, m)) for m in ('record.json', 'run.json', 'workorder.ai.json', os.path.join('_intake', 'intake.json')))
+    return any(os.path.isfile(os.path.join(R, m)) for m in ('record.json', 'run.json', 'workorder.ai.json', os.path.join('_intake', 'intake.json'),
+                                                          os.path.join('_intake', 'languages.json')))   # D4: stopped to ask its language
 
 def run_folders(runs):
     """[(run name, folder)] of every run folder: runs/<name>/<label>/ and runs/batches/<label>/<name>/."""
@@ -82,7 +83,7 @@ def row_of(s, run, R):
         when = runj.get('started') or intake.get('written') or ''
         if os.path.isfile(os.path.join(R, 'workorder.ai.json')):
             name = words = 'Waiting to Start' if os.path.isfile(os.path.join(R, 'review.json')) else 'Waiting for Review'   # reviewed: its apply comes next (D3)
-        elif LG.asks(R): name = words = 'Waiting for a Language'                 # D4: "Language of the Scanned Pages"
+        elif LG.asks(R): name = words = 'Waiting for a Language'                 # D4 (a 'first' one is checked against the jobs in over())
         elif intake.get('status') == 'stopped': name, words = 'Stopped', 'Stopped: Needs a Person'
         elif intake.get('status') == 'failed' or runj.get('error') or runj.get('parse_error'): name = words = 'Failed'
         elif isinstance(runj.get('estimate'), dict) and not runj.get('usage'): name = words = 'Estimate Ready'
@@ -92,7 +93,7 @@ def row_of(s, run, R):
         except OSError: when = ''
     a = costs.actual(R)
     parts = run.split('/')
-    return {'run': run, 'sha': sha, 'book': (BK.name_of_sha(s, sha, file) if sha else None) or BK.stem_name(file or parts[-2 if parts[0] != 'batches' else -1]),
+    return {'run': run, 'lang_kind': None if rec else LG.asks(R), 'sha': sha, 'book': (BK.name_of_sha(s, sha, file) if sha else None) or BK.stem_name(file or parts[-2 if parts[0] != 'batches' else -1]),
             'file': BK.shown_file(file) if file else '', 'status': name, 'words': words, 'when': when,
             'cost': a['usd'], 'reused': a['reused'], 'batch': parts[1] if parts[0] == 'batches' else None, 'finished': bool(rec)}
 
@@ -103,7 +104,7 @@ def index(s):
     rows, fresh, dirty = [], {}, False
     for run, R in run_folders(s['runs']):
         k = key_of(R); c = cache.get(run)
-        if c and c.get('key') == k and 'sha' in c['row']: row = c['row']
+        if c and c.get('key') == k and 'lang_kind' in c['row']: row = c['row']
         else:
             try: row = row_of(s, run, R)
             except Exception: continue                      # an unreadable folder is left out, never fails the page
@@ -139,7 +140,8 @@ def over(s, rows):
             r['status'] = r['words'] = ACTIVE_WORDS.get(j['kind'], 'Running') if j['status'] == 'running' else 'Waiting to Start'
             r['active'] = True
         elif j['status'] == 'needs-spend': r['status'], r['words'] = 'Estimate Ready', 'Waiting: open it and select "Get a New Estimate"'   # 05 M2
-        elif j['status'] in ('failed', 'interrupted') and not r['finished'] and r['status'] not in ('Stopped', 'Waiting for Review', 'Waiting for a Language'):
+        elif j['status'] in ('failed', 'interrupted') and not r['finished'] and r['status'] not in ('Stopped', 'Waiting for Review') \
+                and not (r['status'] == 'Waiting for a Language' and (r.get('lang_kind') == 'cjk' or LG.stopped_to_ask(j))):   # a later failure shows
             r['status'] = r['words'] = 'Failed' if j['status'] == 'failed' else 'Stopped before it finished'
 
 GROUPS = (('not-started', 'Not Started'), ('processing', 'Processing'), ('in-progress', 'In Progress'), ('done', 'Done'), ('failed', 'Failed'))

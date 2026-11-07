@@ -340,7 +340,7 @@ def state(s, run, R):
     return out
 
 # ------------------------------------------------------------------ a run started from the home page, before any result (#45)
-PENDING_MARKS = ('run.json', os.path.join('_intake', 'intake.json'), os.path.join('_audit', 'digest.json'))
+PENDING_MARKS = ('run.json', os.path.join('_intake', 'intake.json'), os.path.join('_intake', 'languages.json'), os.path.join('_audit', 'digest.json'))
 
 def pending(s, R):
     """A run folder with no result yet and not stopped for its review: estimating, estimate ready, running, stopped or
@@ -384,7 +384,7 @@ def pending_state(s, run, R):
     retry = newrun.retry_kind(R)
     fail = None if active else failures.explain(s, R, js[-1] if js else None)
     from . import lang as LG
-    lq = None if active else LG.question(s, R)                     # D4: "Language of the Scanned Pages"
+    lq = None if active else LG.question(s, R, js)                 # D4: "Language of the Scanned Pages"
     phase = 'active' if active else 'needs-spend' if needs else 'language' if lq else 'stopped' if fail else 'saved-reply' if retry == 'rerun' else 'estimate' if est else 'new'
     from_app = any(j['kind'] == 'estimate' for j in js)
     batch = run.split('/')[1] if run.startswith('batches/') and len(run.split('/')) == 3 else None

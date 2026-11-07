@@ -89,12 +89,13 @@ def _drop_name(s, kind, key):
 # ------------------------------------------------------------------ what blocks a move
 def why_busy(s, run, R):
     """The plain reason this run can't be moved now, or None."""
+    if R and jobs.lock_holder(R): return 'A review page is open for it. Close the review first.'
     for j in jobs.all_jobs(s['jobs']):
         if not jobs.related(j['run'], run): continue
+        if j['status'] == 'running' and j['kind'] in jobs.PERSON: return 'A review page is open for it. Close the review first.'
         if j['status'] == 'running': return 'It is being processed right now. Try again when it stops.'
         if j['status'] == 'queued': return 'It is waiting to start. Try again when it has run, or once it is stopped.'
         if j['status'] == 'needs-spend': return 'It is waiting for a new estimate. Select "Dismiss" on its page first.'
-    if R and jobs.lock_holder(R): return 'A review page is open for it. Close the review first.'
     if R and os.path.isfile(os.path.join(R, 'review.json')) and not os.path.isfile(os.path.join(R, 'record.json')):
         return 'Its review was just finished and its decisions are about to be applied. Try again when the apply is done.'
     return None
@@ -112,8 +113,12 @@ def _locks(Rs):
         yield
 
 def _run_dir(s, run):
-    R = os.path.realpath(os.path.join(s['runs'], *run.split('/')))
-    if not R.startswith(os.path.realpath(s['runs']) + os.sep) or not os.path.isdir(R): raise Refused('There is no such run.')
+    """A run folder the home page lists: under the runs folder, no part starting with "." (runs/.app is the app's own),
+    holding a run's own files (HM.is_run); else Refused."""
+    parts = run.split('/')
+    if any(not x or x.startswith('.') for x in parts): raise Refused('There is no such run.')
+    R = os.path.realpath(os.path.join(s['runs'], *parts))
+    if not R.startswith(os.path.realpath(s['runs']) + os.sep) or not os.path.isdir(R) or not HM.is_run(R): raise Refused('There is no such run.')
     return R
 
 # ------------------------------------------------------------------ a single run
@@ -142,6 +147,7 @@ def move_run(s, run):
 # ------------------------------------------------------------------ a batch, whole or in part
 def _batch(s, label):
     from . import batches as BT
+    if not label or label.startswith('.') or '/' in label: raise Refused('There is no such batch.')
     B = os.path.realpath(BT.folder(s, label))
     if not B.startswith(os.path.realpath(os.path.join(s['runs'], 'batches')) + os.sep) or not os.path.isdir(B): raise Refused('There is no such batch.')
     return B
@@ -241,7 +247,10 @@ def move_pdf(s, key):
         why = plan_pdf(s, key)['refused']
         if why: raise Refused(why)
         name = _rename(s, b['path'], os.path.basename(b['path']))
+        note = b['path'][:-4] + '.json'                     # its note from "Add a PDF" goes with it
+        noted = _rename(s, note, name[:-4] + '.json' if name.lower().endswith('.pdf') else name + '.json') if os.path.isfile(note) else None
     log(s, {'what': 'pdf', 'sha256': key, 'file': os.path.basename(b['path']), 'from': b['path'], 'to': os.path.join(trash_dir(s), name),
+            'note_to': os.path.join(trash_dir(s), noted) if noted else None,
             'runs': [r['name'] for r in pl['runs']]})
     _drop_home_cache(s)
     return {'moved': name}

@@ -193,11 +193,21 @@ def lock_words(what, since):
     return (LOCK_WORDS.get(what, 'Someone is already working on this run') + (f' (since {at})' if at else '') + '. Try again when '
             + ('they\'re' if what in ('reopen', 'ocr review') else 'it\'s') + ' done.')
 
-def busy(J, run, R):
+AFTER_STOP = ('review', 'ocr', 'apply')
+
+def stopped_in_batch(run, R, other, kind):
+    """A PDF of a batch that stopped for its review (workorder.ai.json): the batch never touches it again, so its review
+    may open, and its apply be queued, while the batch's own job (`other`) still runs (Patrick, 2026-11-06: a review
+    finished while the batch runs shows "Waiting to Start" until the batch ends; tick() keeps the apply waiting)."""
+    return (kind in AFTER_STOP and other.startswith('batches/') and other.count('/') == 1 and run.startswith(other + '/')
+            and bool(R) and os.path.isfile(os.path.join(R, 'workorder.ai.json')))
+
+def busy(J, run, R, kind=None):
     """Why nothing new may start for this run now, or None (in plain words: the pages show it)."""
     h = lock_holder(R)
     if h: return lock_words(h[1], h[2])
     for j in all_jobs(J):
+        if j['kind'] == 'batch' and stopped_in_batch(run, R, j['run'], kind): continue
         if related(j['run'], run) and j['status'] in ACTIVE + ('needs-spend',):
             at = D.clock(j.get('started') or j['created']) if D.parse(j.get('started') or j['created']) else ''
             return f'A job for this run is already {"waiting" if j["status"] != "running" else "running"}' + (f' (since {at})' if at else '') + '. One job at a time per run.'
@@ -226,7 +236,7 @@ def create(J, kind, run, argv, env, env_set=None, counted=True, then=None, paid=
         jid = f'{datetime.datetime.now():%Y%m%d-%H%M%S-%f}-{kind}'
         if supersede_waiting: supersede(J, run, jid)
         if R is not None:
-            why = busy(J, run, R)
+            why = busy(J, run, R, kind)
             if why: raise ValueError(why)
         job = {'id': jid, 'kind': kind, 'run': run, 'dir': os.path.abspath(R) if R is not None else None, 'argv': list(argv), 'env': env,
                'env_set': env_set or {}, 'counted': counted, 'then': then, 'paid': paid, 'status': 'queued', 'created': now(), 'started': None,
@@ -284,7 +294,8 @@ def tick(J, s):
         busy_runs = [j['run'] for j in running]
         held = False                                    # once a counted job waits for a place, newer counted jobs wait behind it
         for j in sorted((j for j in jobs if j['status'] == 'queued'), key=lambda j: j['id']):
-            if any(related(j['run'], r) for r in busy_runs): continue
+            if any(related(j['run'], r) and not (j['kind'] in PERSON and stopped_in_batch(j['run'], run_dir(j, s['runs']), r, j['kind']))
+                   for r in busy_runs): continue                # a stopped PDF's review page opens while its batch runs; its apply waits
             if j.get('counted', True):
                 alone = j['kind'] == 'batch'
                 if held or batch_on or n + 1 > s['max_jobs'] or (alone and n > 0):

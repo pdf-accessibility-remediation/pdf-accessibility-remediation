@@ -49,14 +49,26 @@ def evidence(lj):
     if lj.get('han_only'): out.append('Chinese characters with no Japanese kana can be Chinese or Japanese, so the language isn\'t chosen for you.')
     return out
 
-def asks(R):
-    """Whether a run folder waits for its OCR language (no settings needed: the home page's rows)."""
-    ij = _load(os.path.join(R, '_intake', 'intake.json'))
-    if ij: return ij.get('status') == 'stopped' and any(f.get('what') == 'OCR language needed' for f in ij.get('flags') or [])
-    return bool((_load(os.path.join(R, '_intake', 'languages.json')) or {}).get('needs_ocr')) and not os.path.isfile(os.path.join(R, 'record.json'))
+def stopped_to_ask(j):
+    """An estimate job that stopped to ask the language (run_api.sh ASK_LANG=1, exit 4)."""
+    return bool(j) and j.get('kind') in ('estimate', 'batch-estimate') and j.get('status') == 'failed' and j.get('exit') == 4
 
-def question(s, R):
-    """The question for a run folder, or None: {kind: first | cjk, pages, choices: [[value, name]], suggested, evidence}."""
+def asks(R):
+    """'cjk' (intake's CJK stop), 'first' (languages.json: pages need OCR, before intake), or None, from the folder alone
+    (the home page's cached rows). A 'first' is a question only while the run's latest estimate stopped to ask
+    (stopped_to_ask): the home page checks that against the jobs, question() too, so a later failure is never hidden."""
+    ij = _load(os.path.join(R, '_intake', 'intake.json'))
+    if ij: return 'cjk' if ij.get('status') == 'stopped' and any(f.get('what') == 'OCR language needed' for f in ij.get('flags') or []) else None
+    if os.path.isfile(os.path.join(R, 'record.json')): return None
+    return 'first' if (_load(os.path.join(R, '_intake', 'languages.json')) or {}).get('needs_ocr') else None
+
+def question(s, R, js=None):
+    """The question for a run folder, or None: {kind: first | cjk, pages, choices: [[value, name]], suggested, evidence}.
+    js: the run's jobs (oldest first); a 'first' question needs its latest estimate to have stopped to ask (exit 4)."""
+    if js is None:
+        from . import jobs
+        Ra = os.path.abspath(R)
+        js = [j for j in jobs.all_jobs(s['jobs']) if j.get('dir') == Ra]
     ij = _load(os.path.join(R, '_intake', 'intake.json'))
     choices = [list(c) for c in BK.ocr_choices(BK.installed_langs(s))]
     if ij:
@@ -70,6 +82,8 @@ def question(s, R):
                              'Chinese and Japanese are never guessed: choose the one the PDF is in.']}
     lj = _load(os.path.join(R, '_intake', 'languages.json'))
     if not lj or not lj.get('needs_ocr'): return None
+    est = [j for j in js if j.get('kind') in ('estimate', 'batch-estimate')]
+    if not est or not stopped_to_ask(est[-1]): return None            # answered since, and that estimate failed otherwise
     sug = lj.get('suggestion')
     return {'kind': 'first', 'pages': lj.get('pages_to_ocr'), 'choices': choices,
             'suggested': sug if sug in [c[0] for c in choices] else None, 'evidence': evidence(lj)}

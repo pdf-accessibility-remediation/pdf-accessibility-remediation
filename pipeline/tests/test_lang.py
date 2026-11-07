@@ -35,6 +35,7 @@ def test_the_question_and_its_words(setup, monkeypatch):
     s = settings(setup); R = setup / 'runs' / 'bk' / 'r1'
     R.mkdir(parents=True)
     assert LG.question(s, str(R)) is None and not LG.asks(str(R))
+    j = jobs.create(s['jobs'], 'estimate', 'bk/r1', ['true'], {}, R=str(R)); jobs.update(s['jobs'], j['id'], status='failed', exit=4)   # stopped to ask
     lj(R, suggestion='jpn+eng', evidence={'text_layer': {'kana': 1234, 'han': 20}, 'sampled_scans': 3, 'scan_scripts': {'Japanese': 2, 'Latin': 1}})
     q = LG.question(s, str(R))
     assert LG.asks(str(R)) and q['kind'] == 'first' and q['suggested'] == 'jpn+eng' and q['pages'] == 3
@@ -65,6 +66,8 @@ def test_an_answer_starts_the_estimate_again(setup, monkeypatch):
     a = NR.answer_language(s, 'bk/First', str(R), 'eng')
     assert a['env_set'] == {'ESTIMATE': '1'} and a['ocr_name'] == 'English'                # English: as before this question
     jobs.update(s['jobs'], a['id'], status='done')
+    assert LG.question(s, str(R)) is None                                       # answered: not asked again
+    jobs.update(s['jobs'], a['id'], status='failed', exit=4)                    # (as if it had stopped to ask once more)
     b = NR.answer_language(s, 'bk/First', str(R), 'jpn+eng')
     assert b['env_set'] == {'ESTIMATE': '1', 'OCR_LANG': 'jpn+eng'}
     jobs.update(s['jobs'], b['id'], status='done')
@@ -103,3 +106,17 @@ def test_run_api_stops_for_the_language_before_any_ocr(tmp_path):
     assert r.returncode == 4, r.stdout + r.stderr
     d = json.load(open(R / '_intake' / 'languages.json'))
     assert d['needs_ocr'] and d['pages_to_ocr'] == 1 and not (R / '_intake' / 'intake.json').exists()
+
+def test_a_later_failure_is_never_hidden_by_the_question(setup, monkeypatch):
+    """After an answer, an estimate that fails before intake (exit 1) shows its failure, not the question again."""
+    from webapp import runs as RN, home as HM
+    monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng'])
+    s = settings(setup)
+    (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book')); key = BK.listing(s)[0]['key']
+    j = NR.start_estimate(s, [], key, 'First'); R = setup / 'runs' / 'bk' / 'First'
+    jobs.update(s['jobs'], j['id'], status='failed', exit=4); lj(R, suggestion='eng')
+    assert RN.pending_state(s, 'bk/First', str(R))['phase'] == 'language'
+    assert {r['run']: r for r in HM.index(s)['runs']}['bk/First']['words'] == 'Waiting for a Language'
+    a = NR.answer_language(s, 'bk/First', str(R), 'eng'); jobs.update(s['jobs'], a['id'], status='failed', exit=1)
+    assert LG.question(s, str(R)) is None and RN.pending_state(s, 'bk/First', str(R))['phase'] == 'stopped'
+    assert {r['run']: r for r in HM.index(s)['runs']}['bk/First']['words'] == 'Failed'

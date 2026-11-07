@@ -379,3 +379,24 @@ def test_a_job_writes_into_the_apps_runs_folder(setup):
     s = settings(setup)
     assert config.child_env(s)['RUNS_DIR'] == os.path.abspath(s['runs'])
     assert config.child_env(s, {'OCR_LANG': 'eng'}, environ={'RUNS_DIR': '/elsewhere'})['RUNS_DIR'] == os.path.abspath(s['runs'])
+
+
+def test_a_stopped_pdfs_review_opens_while_its_batch_runs_and_its_apply_waits(setup):
+    """Patrick, 2026-11-06 (D2a): a PDF stopped for review may be reviewed while its batch still runs; its apply shows
+    "Waiting to Start" until the batch's job ends."""
+    s = settings(setup, max_jobs=3); J = s['jobs']
+    B = setup / 'runs' / 'batches' / 'b1'; R = B / 'bk'; R.mkdir(parents=True); (R / 'workorder.ai.json').write_text('{}')
+    b = jobs.create(J, 'batch', 'batches/b1', [sys.executable, '-c', 'import time; time.sleep(2)'], config.child_env(s), R=str(B), paid=True, fingerprint='f')
+    jobs.tick(J, s); assert jobs.load(J, b['id'])['status'] == 'running'
+    other = setup / 'runs' / 'batches' / 'b1' / 'other'; other.mkdir()
+    with pytest.raises(ValueError, match='already'): jobs.create(J, 'estimate', 'batches/b1/other', ['true'], config.child_env(s), R=str(other))
+    rv = fake(setup, s, 'batches/b1/bk', 0.2, 'rv', kind='review', counted=False, R=str(R))
+    jobs.tick(J, s)
+    assert jobs.load(J, rv['id'])['status'] in ('running', 'done') and jobs.load(J, b['id'])['status'] == 'running'   # opened beside the batch
+    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, rv['id'])['status'] == 'done')[1], 30)
+    ap = fake(setup, s, 'batches/b1/bk', 0.1, 'ap', kind='apply', R=str(R))                    # what "Finish Review" starts
+    jobs.tick(J, s)
+    assert jobs.load(J, b['id'])['status'] == 'running' and jobs.load(J, ap['id'])['status'] == 'queued'
+    assert RN.job_view(s, jobs.load(J, ap['id']))['waiting_for'] == 'the batch "b1"'
+    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, ap['id'])['status'] == 'done')[1], 30)
+    assert jobs.load(J, ap['id'])['started'] >= jobs.load(J, b['id'])['ended']
