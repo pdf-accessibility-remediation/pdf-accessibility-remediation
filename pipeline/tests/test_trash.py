@@ -271,6 +271,17 @@ def test_a_tagged_run_with_another_copy_still_works(setup):
     p, why = RN.pdf_needed(s, str(setup / 'runs' / 'bk' / 'tagged'), {'document': {'file': 'bk.pdf'}})
     assert not why and p.endswith('copy.pdf')
 
+def test_a_run_that_cannot_be_reviewed_again_anyway_says_so(setup):
+    """Review 12 N2: a run whose own intake result is missing, or whose record names no PDF, is not told that putting the
+    PDF back helps: plain words for what is actually wrong, shown as a note, not a warning."""
+    s = S(setup)
+    up = setup / 'uploads' / 'bk.pdf'; up.write_bytes(pdf_bytes(1, 'A Book')); key = BK.listing(s)[0]['key']
+    lost = finished_run(setup, label='lost', sha=key); pinned(lost, lost / '_intake' / 'intake.pdf', key)
+    eff = {r['name']: r['effect'] for r in TR.plan_pdf(s, key)['runs']}
+    assert eff == {'lost': TR.ALREADY_LOST}
+    assert TR.effect(s, {'R': str(finished_run(setup, label='nosha', sha=''))}, key, str(up)) == TR.ALREADY_UNKNOWN
+    assert "/still works|doesn't change that/.test(r.effect)" in open(os.path.join(HERE, 'webapp', 'trash.js')).read()
+
 def test_the_warning_says_per_run_whether_review_again_still_works(setup):
     """Patrick, 2026-11-07: a run whose intake kept its own copy still reviews again; never claim it doesn't."""
     s = S(setup)

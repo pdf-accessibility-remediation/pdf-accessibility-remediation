@@ -259,7 +259,9 @@ first, naming what goes in plain words:
   Again" still works: the run kept its own copy" (its intake made one), "…the run uses another copy of the PDF" (its
   review reads a different file with the same content, e.g. in samples/) or "…another copy of the PDF is in the app's
   folders" (found by sha256); ""Review Again" will need it back" (a tagged PDF whose review reads this very file: its
-  review record names the original itself, review 12 M2); "Applying its reviewed
+  review record names the original itself, review 12 M2); ""Review Again" already doesn't work for this run: …
+  Moving this PDF doesn't change that" (its own intake copy is missing, or its record doesn't say which PDF it was made
+  from: putting the PDF back wouldn't help, review 12 N2); "Applying its reviewed
   decisions will need it back" (waiting for its first apply); "Going on with this run will need it back" (before its
   result). Those runs stay; a run that needs it says on its page that the original PDF was moved to the Trash and how to
   put it back. The samples folder is never offered.

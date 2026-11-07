@@ -29,6 +29,9 @@ CONFIRM_SHIPPED = 'This run was shipped. Its record of what was shipped and who 
 CONFIRM_USED = 'These runs keep their remediated PDF, report and downloads. What moving the PDF changes for each one is under its name.'
 STILL_WORKS = '"Review Again" still works: the run kept its own copy.'
 STILL_ELSEWHERE = '"Review Again" still works: the run uses another copy of the PDF.'
+ALREADY_LOST = '"Review Again" already doesn\'t work for this run: its own copy of the PDF is missing. Moving this PDF doesn\'t change that.'
+ALREADY_UNKNOWN = ('"Review Again" already doesn\'t work for this run: its record doesn\'t say which PDF it was made from. '
+                   'Moving this PDF doesn\'t change that.')
 NEEDS_BACK = '"Review Again" will need it back.'
 APPLY_NEEDS = 'Applying its reviewed decisions will need it back.'
 GO_ON_NEEDS = 'Going on with this run will need it back.'
@@ -258,6 +261,8 @@ def effect(s, u, sha, path):
         i = RN.input_of(R, rec)
         if i['kind'] == 'copy': return STILL_WORKS
         if i['kind'] == 'path' and os.path.realpath(i['path']) != os.path.realpath(path): return STILL_ELSEWHERE
+        if i['kind'] == 'lost': return ALREADY_LOST           # review 12 N2: putting the PDF back wouldn't help these two
+        if i['kind'] == 'unknown': return ALREADY_UNKNOWN
         # Its review reads this very file (review 12 M2: a tagged PDF's basis names the original itself), or finds the
         # original by sha256: it needs this PDF unless another file with the same content is in the app's folders.
         return STILL_WORKS.replace('the run kept its own copy', 'another copy of the PDF is in the app\'s folders') if _other_copy(s, sha, path) else NEEDS_BACK
