@@ -540,6 +540,7 @@ function pendingBlock(s) {
   if (s.phase === 'needs-spend') return h + '<p>The app restarted before the AI call started, so nothing was sent. Get a new estimate, then select "Start Remediation" again.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button>' +
     '<button type="button" id="pp-dismiss" data-act="dismiss">Dismiss</button></div>';
+  if (s.phase === 'language') return h + langCard(s.language, 'pp-lang');
   if (s.phase === 'stopped') return h + failureCard(s.failure);
   if (s.phase === 'saved-reply') return h + '<p>No AI call is needed: the AI\'s reply from an earlier attempt is saved and will be used again, at no cost.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-retry" data-act="retry">Continue</button></div>';
@@ -553,7 +554,21 @@ function pendingBlock(s) {
     (s.test ? '<p class="pp-note">Test: "Start Remediation" uses the saved reply; nothing is sent to the AI service.</p>' :
     '<p class="pp-note">"Start Remediation" sends the book to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.</p>');
 }
-const PHASE = { outside: 'Started Outside the App', batch: 'Part of a Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Waiting for a New Estimate', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
+// "Language of the Scanned Pages" (D4): intake's suggestion preselected, its evidence in plain words; nothing preselected
+// when the characters can't tell (Chinese or Japanese is never guessed), and then "Continue" needs a choice
+function langCard(q, id) {
+  if (!q) return '';
+  const opts = (q.suggested ? '' : '<option value="" selected disabled>Choose a language</option>') +
+    q.choices.map(c => '<option value="' + esc(c[0]) + '"' + (c[0] === q.suggested ? ' selected' : '') + '>' + esc(c[1]) + '</option>').join('');
+  return '<p>' + (q.kind === 'cjk' ? 'The scanned pages need a language with Chinese, Japanese or Korean characters before they can be read (OCR).' :
+      (q.pages === 1 ? '1 page of this PDF is a scan with no text, so it is read by OCR. Choose the language it is in.' :
+       (q.pages ? q.pages + ' pages of this PDF are scans' : 'Some pages are scans') + ' with no text, so they are read by OCR. Choose the language they are in.')) + '</p>' +
+    (q.evidence && q.evidence.length ? '<ul class="pp-note">' + q.evidence.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
+    (q.suggested ? '<p class="pp-note">The suggestion below comes from these findings; check it before you continue.</p>' : '') +
+    '<div class="pp-row pp-lang"><label for="' + id + '">Language of the Scanned Pages</label><select id="' + id + '">' + opts + '</select>' +
+    '<button type="button" class="pp-primary" data-act="language" data-sel="' + id + '">Continue</button></div>';
+}
+const PHASE = { language: 'Language of the Scanned Pages', outside: 'Started Outside the App', batch: 'Part of a Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Waiting for a New Estimate', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
 
 // After a redraw: focus back on the element that had it (by id). When that element is gone (a finished job's card becomes
 // one line), focus goes to the panel's heading rather than being lost; for the Spend's landing (03 §14) that is still
@@ -641,10 +656,14 @@ box.addEventListener('click', async e => {
   }
   msg('');                                                       // any other panel button clears the message too
   if (act === 'reload') { location.replace(location.pathname + '?landed=1'); return; }
-  if (['spend', 'estimate', 'dismiss', 'retry', 'replay'].includes(act)) {
+  if (['spend', 'estimate', 'dismiss', 'retry', 'replay', 'language'].includes(act)) {
     try {
       let s, r;
-      if (act === 'spend') {
+      if (act === 'language') {                                 // D4: the answer, then the estimate again
+        const v = $(b.dataset.sel).value;
+        if (!v) { msg('Choose a language first.', false, true); $(b.dataset.sel).focus(); return; }
+        [s, r] = await api(API + '/language', { lang: v });
+      } else if (act === 'spend') {
         [s, r] = await api(API + '/spend', { kind: 'workorder', fingerprint: st.estimate.fingerprint });
       } else if (act === 'replay') {
         if (!await confirmDlg('New run from the saved reply?', 'A new run of this book is made from its saved AI reply, free, and stops for your review. This run stays as it is.', 'Make the new run', b)) return;

@@ -99,6 +99,8 @@ def job_view(s, j, with_text=False, offset=0):
     R = jobs.run_dir(j, s['runs'])
     v = {k: j.get(k) for k in ('id', 'kind', 'run', 'status', 'created', 'started', 'ended', 'exit', 'url', 'paid', 'after', 'then_job', 'note', 'what', 'first',
                                'book_name', 'run_name')}
+    if j['kind'] in ('estimate', 'batch-estimate') and j['status'] == 'failed' and j.get('exit') == 4:
+        v['status'] = 'done'                                       # D4: stopped to ask the language (run_api.sh exit 4), not a failure
     steps = logs.steps(text)
     v.update(position=jobs.position(s['jobs'], j['id']), steps=[dict(x, words=logs.plain(x['label'])) for x in steps], outcome=logs.outcome(text),
              log=shown_path(jobs.log_path(s['jobs'], j['id'])))
@@ -155,6 +157,8 @@ def result(R, j, v):
     lost = st == 'interrupted' and (v.get('interrupted') or {}).get('state') == 'done'
     if st in ('queued', 'running', 'needs-spend'): return None
     if st == 'superseded': return ('dismissed' if j.get('note') == 'dismissed' else 'replaced by a new estimate') + when
+    if j['kind'] in ('estimate', 'batch-estimate') and j['status'] == 'failed' and j.get('exit') == 4:
+        return 'stopped to ask the language of the scanned pages' + when
     if st == 'failed': return 'failed' + when
     if j['kind'] in ('estimate', 'batch-estimate') and st == 'done': return 'estimate ready' + when
     if j['kind'] in ('spend', 'rerun', 'replay') and st == 'done':
@@ -366,7 +370,9 @@ def pending_state(s, run, R):
     needs = [j for j in js if j['status'] == 'needs-spend']
     retry = newrun.retry_kind(R)
     fail = None if active else failures.explain(s, R, js[-1] if js else None)
-    phase = 'active' if active else 'needs-spend' if needs else 'stopped' if fail else 'saved-reply' if retry == 'rerun' else 'estimate' if est else 'new'
+    from . import lang as LG
+    lq = None if active else LG.question(s, R)                     # D4: "Language of the Scanned Pages"
+    phase = 'active' if active else 'needs-spend' if needs else 'language' if lq else 'stopped' if fail else 'saved-reply' if retry == 'rerun' else 'estimate' if est else 'new'
     from_app = any(j['kind'] == 'estimate' for j in js)
     batch = run.split('/')[1] if run.startswith('batches/') and len(run.split('/')) == 3 else None
     if phase != 'active' and batch: phase = 'batch'            # a batch's book: its Spend is the batch's, on the batch page
@@ -376,7 +382,8 @@ def pending_state(s, run, R):
         b = est['blocked']
         ok = not b or (test and b['code'] in ('offline', 'no_credit'))
         spend = {'ok': ok, 'why': None if ok else b['words'], 'code': None if ok else b['code']}
-    return {'run': run, 'mode': 'pending', 'title': name, 'file': file, 'run_name': NM.shown_run(s, run), 'phase': phase,
+    if lq: fail = None
+    return {'run': run, 'mode': 'pending', 'title': name, 'file': file, 'run_name': NM.shown_run(s, run), 'phase': phase, 'language': lq,
             'estimate': est, 'sent': sent_words(est) if est else None, 'spend': spend, 'retry': retry, 'failure': fail, 'test': test,
             'from_app': from_app, 'batch': batch, 'batch_name': NM.shown_run(s, f'batches/{batch}') if batch else None,
             'jobs': [job_view(s, j) for j in js]}

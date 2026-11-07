@@ -2,7 +2,7 @@
 changed: the app runs each book's estimate itself (exactly batch_api.sh's own estimate command), adds them up, and the
 batch's Spend runs batch_api.sh, which estimates again (intake and audits reused) and refuses on its own when over.
 
-    start(s, setup, keys, label, ocr_lang)   the book list, the batch's record, one free estimate job per book
+    start(s, setup, keys, label)   the book list, the batch's record, one free estimate job per book (ASK_LANG=1: D4)
     state(s, label)                          {label, phase, books: [{name, book, file, status, href}], totals, spend, …}
     spend(s, label, body)                    the batch job (webapp/spend.py authorize_batch): paid; one place of max_jobs,
                                              JOBS (batch_jobs) of its books in progress at once
@@ -10,7 +10,8 @@ batch's Spend runs batch_api.sh, which estimates again (intake and audits reused
                                              the next Spend adds RETRY=1
 
     runs/.app/batches/<label>.books.txt      one book per line: <short name> <absolute path> (batch_api.sh's book list)
-    runs/.app/batches/<label>.json           {label, created, ocr_lang, books: [{name, key, file, book}]}
+    runs/.app/batches/<label>.json           {label, created, langs: {name: OCR language answered}, books: [{name, key, file, book}]}
+                                             (a batch made before D4 has one ocr_lang for every book instead)
     estimate job   ESTIMATE=1 RUN_DIR=runs/batches/<label>/<name> [OCR_LANG] bash run_api.sh <book> <name> <label>
     batch job      AUTO=1 JOBS=… BATCH_MAX_USD=… MAX_USD=… MODEL=… [OCR_LANG] [RETRY=1] bash batch_api.sh <label> <books.txt>
 
@@ -19,7 +20,7 @@ path holding "#" or "|" (the book list's comment and result marks) is refused. B
 """
 import os, re, json, hashlib, datetime, urllib.parse
 from lib import costs
-from . import config, jobs, books as BK, newrun as NR, home as HM, logs
+from . import config, jobs, books as BK, newrun as NR, home as HM, logs, lang as LG
 
 def _load(p):
     try: return json.load(open(p, encoding='utf-8'))
@@ -50,14 +51,12 @@ def exists(s, label):
     return os.path.isdir(folder(s, label)) or os.path.isfile(meta_path(s, label)) or os.path.isfile(list_path(s, label))
 
 # ------------------------------------------------------------------ New Batch
-def start(s, setup, keys, plain, ocr_lang):
+def start(s, setup, keys, plain):
     """New Batch. `plain`: the Batch Name in the person's own words (optional); the folder label is derived from it
     (webapp/names.py label_for), and the plain name is kept by the app only."""
     from . import names as NM
     plain = NM.clean_name(plain)
     if not plain: raise ValueError('Enter a name for the batch.')                    # P10: required
-    langs = dict(BK.ocr_choices(BK.installed_langs(s)))
-    if ocr_lang not in langs: raise ValueError('Choose an OCR language from the list.')
     keys = [k for k in dict.fromkeys(keys or []) if isinstance(k, str)]
     if len(keys) < 2: raise ValueError('Select two or more PDFs for a batch.')
     cap = int(s.get('max_books_per_batch') or 50)
@@ -84,16 +83,22 @@ def start(s, setup, keys, plain, ocr_lang):
     with f:
         f.write(f'# batch {label}, made by the app {datetime.datetime.now().isoformat(timespec="seconds")}: <short name> <absolute path>\n')
         for b in bs: f.write(f'{b["name"]} {b["path"]}\n')
-    json.dump({'label': label, 'created': datetime.datetime.now().isoformat(timespec='seconds'), 'ocr_lang': ocr_lang, 'ocr_name': langs[ocr_lang],
+    json.dump({'label': label, 'created': datetime.datetime.now().isoformat(timespec='seconds'), 'langs': {},
                'books': [{k: b[k] for k in ('name', 'key', 'file', 'book')} for b in bs]},
               open(meta_path(s, label), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
     for b in bs: os.makedirs(os.path.join(folder(s, label), b['name']))
     if plain: NM.set_run_name(s, label, plain, kind='batches')
-    return [estimate_job(s, label, b, ocr_lang) for b in bs]
+    return [estimate_job(s, label, b) for b in bs]
 
-def estimate_job(s, label, b, ocr_lang):
+def estimate_job(s, label, b):
+    """A PDF's free estimate in a batch: ASK_LANG=1 until a person gave its OCR language on its row (D4), then that language
+    (English: unset, intake's default), kept in the batch's record (langs) and, for batch_api.sh, in ocr_langs.tsv."""
+    from . import lang as LG
     R = os.path.join(folder(s, label), b['name'])
-    env = {'ESTIMATE': '1', 'RUN_DIR': R, 'OCR_LANG': ocr_lang}
+    meta = _load(meta_path(s, label)) or {}
+    lang = (meta.get('langs') or {}).get(b['name'])
+    env = {**(LG.env_for(lang) if lang else {'ESTIMATE': '1', 'OCR_LANG': meta['ocr_lang']} if meta.get('ocr_lang')   # a batch made before D4
+              else {'ESTIMATE': '1', 'ASK_LANG': '1'}), 'RUN_DIR': R}
     path = b.get('path') or next((x.split(' ', 1)[1].rstrip('\n') for x in open(list_path(s, label), encoding='utf-8')
                                   if not x.startswith('#') and x.split(' ', 1)[0] == b['name']), None)
     return jobs.create(s['jobs'], 'batch-estimate', f'batches/{label}/{b["name"]}', ['bash', 'run_api.sh', path, b['name'], label],
@@ -117,6 +122,8 @@ def _book_status(s, label, b, R, jl, batch_job):
         try: st = logs.now_step('apply', logs.steps(open(lp, encoding='utf-8', errors='replace').read()))
         except OSError: st = None
         row['words'] = 'Running' + (f': {st["words"]}' if st else '') if os.path.exists(lp) or st else row['words']
+    elif not row['finished'] and LG.question(s, R):          # D4: its language is asked on its row
+        row['status'] = row['words'] = 'Waiting for a Language'
     elif mine and mine[-1]['status'] in ('failed', 'interrupted') and not row['finished']:
         it = (_load(os.path.join(R, '_intake', 'intake.json')) or {}).get('status')
         row['words'] = 'Stopped: Needs a Person' if it == 'stopped' else 'Failed'
@@ -159,14 +166,16 @@ def state(s, label):
     bj = [j for j in jl if j['run'] == f'batches/{label}' and j['kind'] == 'batch']
     batch_job = bj[-1] if bj else None
     B = folder(s, label)
-    out, Rs, flagged, missing, est_active, reviewing = [], [], [], [], False, []
+    out, Rs, flagged, missing, est_active, reviewing, asking = [], [], [], [], False, [], []
     for b in bs:
         R = os.path.join(B, b['name'])
         row = _book_status(s, label, b, R, jl, batch_job)
         stopped = (_load(os.path.join(R, '_intake', 'intake.json')) or {}).get('status') == 'stopped'
         mine = [j for j in jl if j['run'] == f'batches/{label}/{b["name"]}']
         if mine and mine[-1]['status'] in jobs.ACTIVE and mine[-1]['kind'] == 'batch-estimate': est_active = True
+        q = None if row['finished'] or (mine and mine[-1]['status'] in jobs.ACTIVE) else LG.question(s, R)
         if os.path.isfile(os.path.join(R, 'workorder.ai.json')) and not row['finished']: reviewing.append(b['name'])   # D2a: never sent again
+        elif q: asking.append(b['name'])                                         # D4: waits for its language
         elif stopped and not row['finished']: flagged.append(b['name'])
         elif not row['finished']:
             Rs.append(R)
@@ -174,7 +183,7 @@ def state(s, label):
                 missing.append(b['name'])
         from . import names as NM
         out.append({'name': b['name'], 'book': NM.book_name(s, b.get('key'), b.get('file') or '') if b.get('key') else b.get('book'), 'file': BK.shown_file(b.get('file') or ''), 'status': row['words'], 'finished': row['finished'],
-                    'tone': tone(row, R),
+                    'tone': tone(row, R), 'language': q,
                     'href': HM.run_href(f'batches/{label}/{b["name"]}'), 'cost': row.get('cost') or 0})
     total = costs.batch(Rs, limits=costs.limits_of(s))
     spent = round(sum(x['cost'] or 0 for x in out if x['finished']) + total['spent_usd'], 6)
@@ -183,6 +192,7 @@ def state(s, label):
     finished = sum(1 for x in out if x['finished'])
     summary = os.path.isfile(os.path.join(B, 'summary.html'))
     phase = ('estimating' if est_active else 'running' if active else 'needs-spend' if needs else
+             'language' if asking else
              'finished' if finished == len(out) and out else
              'review' if reviewing and finished + len(reviewing) + len(flagged) == len(out) else
              'stopped' if batch_job and batch_job['status'] in ('failed', 'interrupted', 'done') else
@@ -198,8 +208,8 @@ def state(s, label):
             elif total['credit_usd'] is None: why = 'The credit couldn\'t be checked, so the cost can\'t be compared with it.'
         spend = {'ok': not why, 'why': why}
     meta = _load(meta_path(s, label)) or {}
-    return {'label': label, 'phase': phase, 'books': out, 'flagged': flagged, 'missing': missing, 'test': test, 'reviewing': reviewing,
-            'from_app': bool(meta), 'ocr_name': meta.get('ocr_name'),
+    return {'label': label, 'phase': phase, 'books': out, 'flagged': flagged, 'missing': missing, 'test': test, 'reviewing': reviewing, 'asking': asking,
+            'from_app': bool(meta), 'ocr_name': meta.get('ocr_name'),   # a batch made before D4: its one OCR language
             'totals': {'ceiling_usd': total['ceiling_usd'], 'limit_usd': total['limit_usd'], 'credit_usd': total['credit_usd'],
                        'spent_usd': spent, 'books_to_send': len(Rs), 'finished': finished, 'expected': total['expected'],
                        'shown_ceiling_usd': ((batch_job or {}).get('shown') or {}).get('ceiling_usd')},
@@ -219,7 +229,7 @@ def spend(s, label, body):
     except SP.Refused as e: raise ValueError(str(e))
     env = dict(a['env_set'])
     meta = _load(meta_path(s, label)) or {}
-    if meta.get('ocr_lang'): env['OCR_LANG'] = meta['ocr_lang']
+    if meta.get('ocr_lang'): env['OCR_LANG'] = meta['ocr_lang']              # a batch made before D4: one language for every PDF
     if any(b['finished'] for b in st['books']) or os.path.isfile(os.path.join(folder(s, label), 'summary.md')): env['RETRY'] = '1'
     extra = dict(a['extra'])
     return jobs.create(s['jobs'], 'batch', f'batches/{label}', a['argv'], config.child_env(s, env), env_set=env, R=folder(s, label), paid=True,
@@ -231,7 +241,27 @@ def again(s, label):
     if not meta: raise ValueError('This batch wasn\'t made from the home page, so its settings aren\'t known here.')
     todo = [b for b in meta['books'] if not os.path.isfile(os.path.join(folder(s, label), b['name'], 'record.json'))]
     if not todo: raise ValueError('Every book in this batch has finished.')
-    return [estimate_job(s, label, b, meta.get('ocr_lang') or 'eng') for b in todo]
+    return [estimate_job(s, label, b) for b in todo]
+
+def answer_language(s, label, name, lang):
+    """A PDF's "Language of the Scanned Pages" answered on the batch page (D4): kept in the batch's record and, when it is
+    not English, in the batch folder's ocr_langs.tsv (batch_api.sh gives that PDF its own OCR_LANG); then its estimate again."""
+    from . import lang as LG
+    import fcntl
+    meta = _load(meta_path(s, label))
+    if not meta: raise ValueError('This batch wasn\'t made from the home page, so its settings aren\'t known here.')
+    b = next((x for x in meta.get('books') or [] if x['name'] == name), None)
+    if not b: raise ValueError('There is no such PDF in this batch.')
+    LG.check(s, os.path.join(folder(s, label), name), lang)
+    with open(meta_path(s, label) + '.lock', 'a') as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        meta = _load(meta_path(s, label)) or meta
+        meta.setdefault('langs', {})[name] = lang
+        tmp = meta_path(s, label) + '.tmp'; json.dump(meta, open(tmp, 'w', encoding='utf-8'), indent=1, ensure_ascii=False); os.replace(tmp, meta_path(s, label))
+        rows = ''.join(f'{n}\t{l}\n' for n, l in sorted(meta['langs'].items()) if l != 'eng')
+        p = os.path.join(folder(s, label), 'ocr_langs.tsv'); tmp = p + '.tmp'
+        open(tmp, 'w', encoding='utf-8').write('# <short name> <TAB> <OCR_LANG>: written by the app (Language of the Scanned Pages)\n' + rows); os.replace(tmp, p)
+    return estimate_job(s, label, b)
 
 # ------------------------------------------------------------------ pages
 def form_page(s, keys):
@@ -239,8 +269,6 @@ def form_page(s, keys):
     E = html.escape
     keys = [k for k in dict.fromkeys(keys) if isinstance(k, str)]
     bs = [b for b in (BK.by_key(s, k) for k in keys) if b]
-    langs = BK.ocr_choices(BK.installed_langs(s))
-    opts = ''.join(f'<option value="{E(v)}"' + (' selected' if v == 'eng' else '') + f'>{E(n)}</option>' for v, n in langs)
     head = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             '<title>New Batch</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
             '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a><header><h1>New Batch</h1></header><main id="main" tabindex="-1">')
@@ -251,8 +279,6 @@ def form_page(s, keys):
         '<div class="mc-field"><label for="nb-name">Batch Name</label>'
         '<input type="text" id="nb-name" name="label" maxlength="120" required aria-describedby="nb-name-h">'
         '<p class="mc-help" id="nb-name-h">In your own words, for example "Press backlist, spring". It names this batch in My Workspace.</p></div>'
-        f'<div class="mc-field"><label for="nb-lang">OCR Language</label><select id="nb-lang" name="ocr_lang" aria-describedby="nb-lang-h">{opts}</select>'
-        '<p class="mc-help" id="nb-lang-h">Used for every PDF\'s pages that need OCR (scanned pages). It is never guessed.</p></div>'
         '<p class="mc-help">"Get the Estimates" prepares every PDF and works out what the batch could cost. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the batch page.</p><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
         '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button></div>'

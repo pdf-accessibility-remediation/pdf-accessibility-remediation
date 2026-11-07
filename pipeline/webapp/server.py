@@ -285,30 +285,35 @@ def make(s, setup, code=None):
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 return self.send(202, {'name': n, 'location': '/?renamed=' + b['key']})
             if p == '/api/batch/new':                             # New Batch: one free estimate job per book, then the batch page
-                try: js = BT.start(s, setup, body.get('books') if isinstance(body.get('books'), list) else [], body.get('label'), str(body.get('ocr_lang') or ''))
+                try: js = BT.start(s, setup, body.get('books') if isinstance(body.get('books'), list) else [], body.get('label'))
                 except (ValueError, FileExistsError) as e: return self.send(409, {'error': str(e) if isinstance(e, ValueError) else 'A batch with this name already exists.'})
                 jobs.tick(J, s)
                 return self.send(202, {'jobs': len(js), 'location': f'/batch/{urllib.parse.quote(js[0]["run"].split("/")[1], safe="")}/'})
             if p.startswith('/api/batch/'):
                 bs = segments(p[len('/api/batch/'):])
-                if not bs or len(bs) != 2 or bs[1] not in ('spend', 'again', 'dismiss') or not batch_dir(s['runs'], bs[0]): return self.send(404, {'error': 'no such batch'})
+                if not bs or len(bs) != 2 or bs[1] not in ('spend', 'again', 'dismiss', 'language') or not batch_dir(s['runs'], bs[0]): return self.send(404, {'error': 'no such batch'})
                 label = os.path.basename(batch_dir(s['runs'], bs[0]))
                 try:
                     if bs[1] == 'dismiss': return self.send(200, {'dismissed': jobs.dismiss(J, f'batches/{label}')})
-                    if bs[1] == 'spend': j = BT.spend(s, label, body)
+                    if bs[1] == 'language':                       # D4: a PDF's "Language of the Scanned Pages", on its row
+                        book = str(body.get('book') or '')
+                        if any(jobs.related(x['run'], f'batches/{label}/{book}') and x['status'] in jobs.ACTIVE for x in jobs.all_jobs(J)):
+                            return self.send(409, {'error': 'This PDF is being worked on: try again when it stops.'})
+                        j = BT.answer_language(s, label, book, str(body.get('lang') or ''))
+                    elif bs[1] == 'spend': j = BT.spend(s, label, body)
                     else: j = BT.again(s, label)[0]
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 jobs.tick(J, s)
                 return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
             if p == '/api/new/estimate':                          # New Run: the free estimate job, then its run page
-                try: j = NR.start_estimate(s, setup, str(body.get('book') or ''), body.get('run_name'), str(body.get('ocr_lang') or ''))
+                try: j = NR.start_estimate(s, setup, str(body.get('book') or ''), body.get('run_name'))
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 jobs.tick(J, s)
                 return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id'])), 'location': HM.run_href(j['run'])})
             segs = segments(p[len('/api/run/'):]) if p.startswith('/api/run/') else None
             if segs and len(segs) >= 3 and segs[-2] == 'checks' and segs[-1] in ('draft', 'record'):   # two-segment actions: the run is segs[:-2]
                 return self.checks_post(segs[:-2], segs[-1], body)
-            PEND = ('spend', 'estimate', 'dismiss', 'retry')
+            PEND = ('spend', 'estimate', 'dismiss', 'retry', 'language')
             if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship', 'replay', 'clear') + PEND:
                 return self.send(404, {'error': 'not found'})
             hit = find_run(s['runs'], segs[:-1], waiting=segs[-1] in ('review', 'apply', 'stop'), pending=(lambda d: runs.pending(s, d)) if segs[-1] in PEND else None)
@@ -321,6 +326,7 @@ def make(s, setup, code=None):
                         n = jobs.dismiss(J, run); return self.send(200, {'dismissed': n})
                     if segs[-1] == 'spend': j = NR.start_spend(s, run, R, body)
                     elif segs[-1] == 'estimate': j = NR.again_estimate(s, run, R)
+                    elif segs[-1] == 'language': j = NR.answer_language(s, run, R, str(body.get('lang') or ''))   # D4
                     else: j = NR.start_rerun(s, run, R) if NR.retry_kind(R) == 'rerun' else NR.again_estimate(s, run, R)
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 jobs.tick(J, s)

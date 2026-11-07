@@ -14,7 +14,7 @@ Running, Stopped: Needs a Person, Failed, Cleared. A finished run's status is wo
 """
 import os, json, html, threading, datetime, urllib.parse
 from lib import dates as D, costs, release as REL
-from . import books as BK, jobs, config
+from . import books as BK, jobs, config, lang as LG
 
 E = html.escape
 MARKS = ('record.json', 'run.json', 'workorder.ai.json', 'review.json', os.path.join('_intake', 'intake.json'))
@@ -82,6 +82,7 @@ def row_of(s, run, R):
         when = runj.get('started') or intake.get('written') or ''
         if os.path.isfile(os.path.join(R, 'workorder.ai.json')):
             name = words = 'Waiting to Start' if os.path.isfile(os.path.join(R, 'review.json')) else 'Waiting for Review'   # reviewed: its apply comes next (D3)
+        elif LG.asks(R): name = words = 'Waiting for a Language'                 # D4: "Language of the Scanned Pages"
         elif intake.get('status') == 'stopped': name, words = 'Stopped', 'Stopped: Needs a Person'
         elif intake.get('status') == 'failed' or runj.get('error') or runj.get('parse_error'): name = words = 'Failed'
         elif isinstance(runj.get('estimate'), dict) and not runj.get('usage'): name = words = 'Estimate Ready'
@@ -138,7 +139,7 @@ def over(s, rows):
             r['status'] = r['words'] = ACTIVE_WORDS.get(j['kind'], 'Running') if j['status'] == 'running' else 'Waiting to Start'
             r['active'] = True
         elif j['status'] == 'needs-spend': r['status'], r['words'] = 'Estimate Ready', 'Waiting: open it and select "Get a New Estimate"'   # 05 M2
-        elif j['status'] in ('failed', 'interrupted') and not r['finished'] and r['status'] not in ('Stopped', 'Waiting for Review'):
+        elif j['status'] in ('failed', 'interrupted') and not r['finished'] and r['status'] not in ('Stopped', 'Waiting for Review', 'Waiting for a Language'):
             r['status'] = r['words'] = 'Failed' if j['status'] == 'failed' else 'Stopped before it finished'
 
 GROUPS = (('not-started', 'Not Started'), ('processing', 'Processing'), ('in-progress', 'In Progress'), ('done', 'Done'), ('failed', 'Failed'))

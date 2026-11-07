@@ -2,7 +2,8 @@
 job, "Get a New Estimate", "Try Again" (decided from disk), "Spend" (through webapp/spend.py), and "New Run from the
 Saved Reply". Every command is run_api.sh's own; nothing here sends to the AI service except the spend job spend.py made.
 
-    estimate     ESTIMATE=1 [OCR_LANG=…] bash run_api.sh <book> <short name> <run name>     intake, audit, decide.py --dry-run
+    estimate     ESTIMATE=1 ASK_LANG=1 bash run_api.sh <book> <short name> <run name>   intake, audit, decide.py --dry-run; when pages
+                 need OCR it stops first for "Language of the Scanned Pages" (D4), then ESTIMATE=1 [OCR_LANG=…] again
     spend        AUTO=1 MAX_USD=… MODEL=… REVIEW=1 [OCR_LANG] bash run_api.sh …           paid (spend.authorize)
     rerun        REVIEW=1 [OCR_LANG] bash run_api.sh …   free: only when a complete reply is saved (03 §2); a rerun that would
                  reach a new call stops at run_api.sh's y/N question (stdin is empty) and the page says to get a new estimate
@@ -66,7 +67,7 @@ def check_untagged(s, setup, book):
         raise ValueError('Text recognition (OCR) isn\'t set up on this computer, and this book needs it. Whoever looks after the app can install it.')
 
 # ------------------------------------------------------------------ the estimate (free)
-def start_estimate(s, setup, key, plain, ocr_lang, review_first=True):
+def start_estimate(s, setup, key, plain):
     """New Run: the free estimate job. `plain`: the Run Name in the person's own words (optional); the folder label is
     derived from it (webapp/names.py label_for) and the plain name is kept by the app only. Returns the job; raises
     ValueError with the reason (plain words)."""
@@ -76,8 +77,6 @@ def start_estimate(s, setup, key, plain, ocr_lang, review_first=True):
     if book['locked']: raise ValueError('This PDF is locked with a password. Add an unlocked copy and start a new run.')
     plain = NM.clean_name(plain)
     if not plain: raise ValueError('Enter a name for the run.')                      # P10: required, no date fallback
-    langs = dict(BK.ocr_choices(BK.installed_langs(s)))
-    if ocr_lang not in langs: raise ValueError('Choose an OCR language from the list.')
     m = BK.read_meta(book['path']); book['tagged'] = m.get('tagged')
     check_untagged(s, setup, book)
     name = short_name(s, book)
@@ -88,11 +87,22 @@ def start_estimate(s, setup, key, plain, ocr_lang, review_first=True):
         except FileExistsError: continue
     else: raise ValueError('A run with this name is being started right now. Try again in a moment.')
     if plain: NM.set_run_name(s, f'{name}/{run_name}', plain)
-    env = {'ESTIMATE': '1', 'OCR_LANG': ocr_lang}
+    env = {'ESTIMATE': '1', 'ASK_LANG': '1'}             # D4: the OCR language is asked only when pages need OCR (webapp/lang.py)
     argv = ['bash', 'run_api.sh', book['path'], name, run_name]
     return jobs.create(s['jobs'], 'estimate', f'{name}/{run_name}', argv, config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
-                       what='Get the estimate', book_sha=book['key'], book_file=book['file'],
-                       ocr_name=langs[ocr_lang])
+                       what='Get the estimate', book_sha=book['key'], book_file=book['file'])
+
+def answer_language(s, run, R, lang):
+    """"Language of the Scanned Pages" answered (D4): the estimate again, with that OCR language (English: unset)."""
+    from . import lang as LG
+    name = LG.check(s, R, lang)
+    ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] == 'estimate']
+    if not ej: raise ValueError('This run wasn\'t started from the home page, so its settings aren\'t known here. Start a new run from the home page.')
+    e = ej[-1]
+    env = LG.env_for(lang)
+    keep = {k: e.get(k) for k in ('book_sha', 'book_file')}
+    return jobs.create(s['jobs'], 'estimate', run, e['argv'], config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
+                       what=f'Get the estimate ({name})', ocr_name=name, **keep)
 
 def again_estimate(s, run, R):
     """"Get a New Estimate": the same settings as the run's last estimate job (never a form again)."""
@@ -101,7 +111,7 @@ def again_estimate(s, run, R):
     if os.path.isfile(os.path.join(R, 'record.json')): raise ValueError('This run has finished.')
     if os.path.isfile(os.path.join(R, 'workorder.ai.json')): raise ValueError('The AI\'s decisions are waiting for a review: "Open the Review Page".')
     e = ej[-1]
-    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('ESTIMATE', 'OCR_LANG')}
+    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('ESTIMATE', 'OCR_LANG', 'ASK_LANG')}
     keep = {k: e.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name', 'ocr_name')}
     return jobs.create(s['jobs'], 'estimate', run, e['argv'], config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
                        what='Get a new estimate', **keep)
@@ -177,17 +187,12 @@ def form_page(s, key):
     if not book:
         return head + ('<header><h1>New Run</h1></header><main id="main" tabindex="-1"><div class="pp"><p>This PDF\'s file has changed or is gone.</p>'
                        '</div></main></body></html>')
-    langs = BK.ocr_choices(BK.installed_langs(s))
-    opts = ''.join(f'<option value="{E(v)}"' + (' selected' if v == 'eng' else '') + f'>{E(n)}</option>' for v, n in langs)
     return head + (f'<header><h1>New Run</h1><p class="mc-book">{HM.book_cell(book["name"], book["file"])}</p></header>'
         '<main id="main" tabindex="-1"><form class="pp hm-form" id="hm-newrun" data-api="/api/new/estimate">'
         f'<input type="hidden" name="book" value="{E(book["key"])}">'
         '<div class="mc-field"><label for="nr-name">Run Name</label>'
         '<input type="text" id="nr-name" name="run_name" maxlength="120" required aria-describedby="nr-name-h">'
         '<p class="mc-help" id="nr-name-h">In your own words, for example "First pass, March". It names this run in My Workspace.</p></div>'
-        '<div class="mc-field"><label for="nr-lang">OCR Language</label>'
-        f'<select id="nr-lang" name="ocr_lang" aria-describedby="nr-lang-h">{opts}</select>'
-        '<p class="mc-help" id="nr-lang-h">Used only for pages that need OCR (scanned pages). Choose the PDF\'s language; it is never guessed.</p></div>'
         '<p class="mc-help">"Get the Estimate" prepares the PDF and works out what the AI call could cost. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the next page.</p>'
         '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
