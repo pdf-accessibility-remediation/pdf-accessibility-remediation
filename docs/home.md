@@ -70,8 +70,7 @@ The file you choose is only read by your browser; the app never sees its path.
    images of hard-to-read scanned words." When #65 (dollar-only cost limits) adds an expected cost, the line starts
    "About $0.25 (usually $0.18–$0.36) ·".
 4. **Spend** is the only button that leads to a paid call, shown only when the estimate fits the limits and the credit.
-   It needs the tick "This book has no personal information" (checklist 1.1; required, never prefilled). See "What Spend
-   checks" below.
+   See "What Spend checks" below.
 5. **Progress:** the run page shows each step and the step running now. With **Review First**, the run stops after the AI
    call; the page announces "The AI's decisions are ready for your review" and shows **Open the Review Page**. Focus
    moves to that button only when it is still where the page put it after **Spend** and no key or click has happened
@@ -81,11 +80,14 @@ The file you choose is only read by your browser; the app never sees its path.
 The short name (`runs/<name>/`) comes from the book's file name and is unique per book: a folder that already holds runs
 of another file (another sha256) gets "-2", "-3"…
 
+**Personal information.** The app doesn't yet ask whether a book holds personal information (sponsor checklist 1.1).
+Until it does, a person decides before starting: a book with personal information is never sent to the AI service. That
+check is its own issue and branch.
+
 ### What Spend checks
 
 `webapp/spend.py` is the one gate every Spend goes through, at the click:
 
-- the personal-information tick;
 - that the estimate shown is the estimate on disk: a fingerprint over the estimate (without the credit), the request, the
   digest, the model and the prompt. A change is refused: "The estimate changed since it was shown. Look at the new
   estimate.";
@@ -97,13 +99,13 @@ of another file (another sha256) gets "-2", "-3"…
 
 The spend job is then `AUTO=1 MAX_USD=<bound> MODEL=<the estimate's model> [REVIEW=1] [OCR_LANG] bash run_api.sh …`, with
 the settings copied from the estimate's own job (so intake and the audit are reused), marked paid, with the fingerprint
-and the tick in its job file. `MAX_USD` is the largest request's worst case shown, rounded up to the cent from the stored
+in its job file. `MAX_USD` is the largest request's worst case shown, rounded up to the cent from the stored
 value plus 0.0001, never above the limit (`run_api.sh` passes it to `decide.py --max-usd`). It binds decide.py's
 estimate, not the bill: billed input has run up to 14% over the estimate until #63 (alt text past 100 images) adds its
 margin. For a run.json in the shape #63 (alt text past 100 images) writes, `BOOK_MAX_USD` is bound the same way.
 
 **The paid-path rule** (webapp/jobs.py, where every job is made): `AUTO` appears only in a spend or batch job that is
-paid, carries the fingerprint and the tick. A paid job is never a follow-on (`then`) of another job. A paid job still
+paid and carries the fingerprint. A paid job is never a follow-on (`then`) of another job. A paid job still
 queued when the app starts becomes "needs Spend again"; a new estimate or **Dismiss** ends it, so a restart never leaves
 a run blocked.
 
@@ -140,7 +142,7 @@ error line, the record that holds it and where the full log is. Tool text and co
    bash run_api.sh …`, exactly batch_api.sh's own estimate step.
 4. **The batch page** (`/batch/<label>/`): the state (Estimating, Ready to Spend, Running, Finished, Stopped), the worst
    case for the books to send, the batch limit and the credit, the books that stopped and need a person (not sent), and
-   **Spend** with the tick "No book in this batch has personal information".
+   **Spend**.
 5. **Spend** runs `AUTO=1 JOBS=… BATCH_MAX_USD=<total, rounded up> MAX_USD=<largest book's call> MODEL=… bash batch_api.sh
    <label> <book list>`. batch_api.sh estimates again (intake and audits reused) and refuses on its own when over. While
    it runs, the page shows the money spent so far; when it ends, **Open the Batch Dashboard** (summary.html).

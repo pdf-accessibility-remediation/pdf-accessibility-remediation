@@ -124,7 +124,7 @@ def start_rerun(s, run, R):
 
 # ------------------------------------------------------------------ Spend
 def start_spend(s, run, R, body):
-    try: a = SP.authorize(s, str(body.get('kind') or 'workorder'), run, R, str(body.get('fingerprint') or ''), body.get('no_personal_information'))
+    try: a = SP.authorize(s, str(body.get('kind') or 'workorder'), run, R, str(body.get('fingerprint') or ''))
     except SP.Refused as e: raise ValueError(str(e))
     return jobs.create(s['jobs'], 'spend', run, a['argv'], config.child_env(s, a['env_set']), env_set=a['env_set'], R=R, paid=True,
                        what='Spend: the AI call' + (' (test: a saved reply)' if a['extra']['test'] else ''), **a['extra'])

@@ -82,10 +82,9 @@ def test_auto_only_in_a_paid_spend_or_batch(setup):
     for kind in ('estimate', 'rerun', 'apply', 'replay', 'review'):
         with pytest.raises(ValueError): jobs.create(J, kind, 'a/r', ['true'], env, env_set={'AUTO': '1'})
     with pytest.raises(ValueError): jobs.create(J, 'spend', 'a/r', ['true'], env, env_set={'AUTO': '1'}, paid=True)                  # no fingerprint
-    with pytest.raises(ValueError): jobs.create(J, 'spend', 'a/r', ['true'], env, env_set={'AUTO': '1'}, paid=True, fingerprint='f') # no tick
-    with pytest.raises(ValueError): jobs.create(J, 'spend', 'a/r', ['true'], env, env_set={'AUTO': '1'}, fingerprint='f', no_personal_information=True)
+    with pytest.raises(ValueError): jobs.create(J, 'spend', 'a/r', ['true'], env, env_set={'AUTO': '1'}, fingerprint='f')
     with pytest.raises(ValueError): jobs.create(J, 'apply', 'a/r', ['true'], config.child_env(s), paid=True)
-    j = jobs.create(J, 'spend', 'a/r', ['true'], env, env_set={'AUTO': '1'}, paid=True, fingerprint='f', no_personal_information=True)
+    j = jobs.create(J, 'spend', 'a/r', ['true'], env, env_set={'AUTO': '1'}, paid=True, fingerprint='f')
     assert j['paid'] and j['env_set'] == {'AUTO': '1'}
 
 def test_a_paid_job_is_never_a_then(setup):
@@ -107,7 +106,7 @@ def test_every_route_job_keeps_the_rule():
         p = os.path.join(HERE, 'webapp', f)
         if os.path.exists(p): assert "'AUTO'" not in open(p, encoding='utf-8').read(), f
     sp = open(os.path.join(HERE, 'webapp', 'spend.py'), encoding='utf-8').read()
-    assert sp.count("'AUTO': '1'") == 3 and "'no_personal_information': True" in sp
+    assert sp.count("'AUTO': '1'") == 3 and 'personal' not in sp           # the tick was removed (Patrick, 2026-11-06)
 
 # ------------------------------------------------------------------ needs-spend has a way out (03 §1)
 def test_restart_needs_spend_then_a_new_estimate_then_spend(setup):
@@ -120,7 +119,7 @@ def test_restart_needs_spend_then_a_new_estimate_then_spend(setup):
     old = jobs.load(J, paid['id'])
     assert old['status'] == 'superseded' and est['id'] in old['note'] and jobs.busy(J, 'a/r', str(R))   # the estimate itself is active
     jobs.update(J, est['id'], status='done')
-    j = jobs.create(J, 'spend', 'a/r', ['true'], config.child_env(s), R=str(R), paid=True, fingerprint='f', no_personal_information=True)
+    j = jobs.create(J, 'spend', 'a/r', ['true'], config.child_env(s), R=str(R), paid=True, fingerprint='f')
     assert j['status'] == 'queued'
 
 def test_dismiss(setup):
@@ -138,14 +137,14 @@ def test_busy_by_prefix_both_ways(setup):
     s = settings(setup); J = s['jobs']
     fake(setup, s, 'batches/x/bikol', 5)
     assert jobs.busy(J, 'batches/x', str(setup)) and not jobs.busy(J, 'batches/x2', str(setup))
-    with pytest.raises(ValueError): jobs.create(J, 'batch', 'batches/x', ['true'], config.child_env(s), R=str(setup), paid=True, fingerprint='f', no_personal_information=True)
+    with pytest.raises(ValueError): jobs.create(J, 'batch', 'batches/x', ['true'], config.child_env(s), R=str(setup), paid=True, fingerprint='f')
 
 def test_a_batch_takes_its_slots_and_is_not_passed_over(setup):
     s = settings(setup, max_jobs=2); J = s['jobs']
     first = fake(setup, s, 'a/r', 3, 'first')
     jobs.tick(J, s)                                                      # one place taken
     b = jobs.create(J, 'batch', 'batches/x', [sys.executable, '-c', 'import time; time.sleep(0.2)'], config.child_env(s), slots=2, paid=True,
-                    fingerprint='f', no_personal_information=True)
+                    fingerprint='f')
     late = fake(setup, s, 'c/r', 0.1, 'late')
     jobs.tick(J, s)
     assert jobs.load(J, b['id'])['status'] == 'queued' and jobs.load(J, late['id'])['status'] == 'queued'   # held behind the batch
@@ -181,25 +180,24 @@ def spend_setup(setup, **kw):
 
 def test_spend_binds_the_estimate_shown(setup):
     s, R, est = spend_setup(setup)
-    a = SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'], True)
+    a = SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
     assert a['env_set'] == {'OCR_LANG': 'eng', 'REVIEW': '1', 'AUTO': '1', 'MAX_USD': '0.63', 'MODEL': MODEL}
-    assert a['argv'][1:] == ['run_api.sh', str(setup / 'samples' / 'bk.pdf'), 'bk', 'l1'] and a['extra']['no_personal_information'] is True
-    j = NR.start_spend(s, 'bk/l1', str(R), {'kind': 'workorder', 'fingerprint': est['fingerprint'], 'no_personal_information': True})
+    assert a['argv'][1:] == ['run_api.sh', str(setup / 'samples' / 'bk.pdf'), 'bk', 'l1'] and a['extra']['fingerprint'] == est['fingerprint']
+    j = NR.start_spend(s, 'bk/l1', str(R), {'kind': 'workorder', 'fingerprint': est['fingerprint']})
     assert j['paid'] and j['kind'] == 'spend' and j['env']['MAX_USD'] == '0.63'
 
-@pytest.mark.parametrize('change,words', [('pii', 'personal information'), ('fingerprint', 'changed since it was shown'), ('model', 'out of date'),
+@pytest.mark.parametrize('change,words', [('fingerprint', 'changed since it was shown'), ('model', 'out of date'),
                                           ('prompt', 'out of date'), ('limit', 'limit of $0.50'), ('file', 'changed or is gone')])
 def test_spend_refusals(setup, change, words):
     s, R, est = spend_setup(setup, **({'limits': {'per_call_usd': 0.5}} if change == 'limit' else {}))
-    fp, pii = est['fingerprint'], True
-    if change == 'pii': pii = None
+    fp = est['fingerprint']
     if change == 'fingerprint': fp = 'x' * 64
     if change in ('model', 'prompt'):
         orig = SP.current_model_and_prompt
         SP.current_model_and_prompt = (lambda: ('anthropic/other', PROMPT)) if change == 'model' else (lambda: (MODEL, '0' * 16))
     if change == 'file': (setup / 'samples' / 'bk.pdf').write_bytes(b'%PDF-1.4 changed')
     try:
-        with pytest.raises(SP.Refused) as e: SP.authorize(s, 'workorder', 'bk/l1', str(R), fp, pii)
+        with pytest.raises(SP.Refused) as e: SP.authorize(s, 'workorder', 'bk/l1', str(R), fp)
         assert words in str(e.value)
         assert not [j for j in jobs.all_jobs(s['jobs']) if j['kind'] == 'spend']         # nothing queued
     finally:
@@ -214,10 +212,10 @@ def test_model_and_prompt_come_from_decides_source():
 def test_test_mode_spend_is_a_saved_reply(setup):
     rd = setup / 'replies'; rd.mkdir()
     s, R, est = spend_setup(setup, test_reply_dir=str(rd))
-    with pytest.raises(SP.Refused) as e: SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'], True)
+    with pytest.raises(SP.Refused) as e: SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
     assert 'no saved test reply' in str(e.value)
     (rd / 'bk.txt').write_text('{}')
-    a = SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'], True)
+    a = SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
     assert 'AUTO' not in a['env_set'] and a['env_set']['REPLY'] == str(rd / 'bk.txt') and a['env_set']['INTAKE_REUSE'] == '1'
     R2 = run_folder(setup, label='l2', price='ASSUMED $3 / $15 per million tokens (offline)')       # offline prices: allowed in test mode only
     assert costs.estimate(str(R2))['blocked']['code'] == 'offline'
@@ -290,7 +288,7 @@ def test_a_run_made_outside_the_app_offers_no_buttons(setup):
     jobs.update(s['jobs'], j['id'], status='done')
     st = RN.pending_state(s, 'batches/b1/bk', str(B))
     assert st['phase'] == 'batch' and st['batch'] == 'b1' and st['spend'] is None
-    with pytest.raises(SP.Refused, match='no estimate'): SP.authorize(s, 'workorder', 'batches/b1/bk', str(B), st['estimate']['fingerprint'], True)
+    with pytest.raises(SP.Refused, match='no estimate'): SP.authorize(s, 'workorder', 'batches/b1/bk', str(B), st['estimate']['fingerprint'])
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert "s.phase === 'outside'" in js and 'Open the Batch Page' in js
 
@@ -300,7 +298,7 @@ def test_the_prompt_check_fails_closed(setup):
     orig = SP.current_model_and_prompt
     SP.current_model_and_prompt = lambda: (MODEL, None)
     try:
-        with pytest.raises(SP.Refused, match='out of date'): SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'], True)
+        with pytest.raises(SP.Refused, match='out of date'): SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
     finally: SP.current_model_and_prompt = orig
     src = open(os.path.join(HERE, 'webapp', 'spend.py'), encoding='utf-8').read()
     assert 'prompt and prompt' not in src and 'not prompt or prompts - {prompt}' in src
@@ -326,3 +324,12 @@ def test_replay_of_a_batch_book_never_lands_in_another_books_folder(setup):
     (R / 'record.json').write_text(json.dumps({'raw_reply': '{}', 'document': {'file': 'bk.pdf', 'sha256': sha}}))
     j = NR.start_replay(s, 'batches/b1/bk', str(R), 'again1')
     assert j['run'] == 'bk-2/again1'
+
+def test_auto_without_a_fingerprint_is_still_refused(setup):
+    """With the personal-information tick removed (Patrick, 2026-11-06), the kind, paid and the fingerprint still hold."""
+    s = settings(setup); J = s['jobs']
+    env = config.child_env(s, {'AUTO': '1'})
+    with pytest.raises(ValueError, match='its own start'): jobs.create(J, 'spend', 'a/r', ['true'], env, env_set={'AUTO': '1'}, paid=True)
+    with pytest.raises(ValueError): jobs.create(J, 'spend', 'a/r', ['true'], env, env_set={'AUTO': '1'}, paid=True, fingerprint='')
+    with pytest.raises(ValueError): jobs.create(J, 'batch', 'b/r', ['true'], env, env_set={'AUTO': '1'}, paid=True)
+    assert jobs.create(J, 'spend', 'a/r', ['true'], env, env_set={'AUTO': '1'}, paid=True, fingerprint='f')['paid']

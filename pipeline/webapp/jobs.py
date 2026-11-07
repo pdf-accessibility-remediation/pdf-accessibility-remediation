@@ -11,7 +11,7 @@ starts from a click made before a restart. A needs-spend job ends as superseded 
 made for its run (03 §1), so a restart never leaves a run blocked.
 
 The paid path (#45, 03 §2), enforced in create(), the one place jobs are made: AUTO (send without asking) only in a
-spend or batch job that is paid, carries the estimate's fingerprint and the personal-information tick; paid only for
+spend or batch job that is paid and carries the estimate's fingerprint; paid only for
 those kinds; and never as a `then` (a paid job always comes from its own Spend click; tick() refuses an older file's).
 
 Runs are related (one blocks the other) when they are the same run or one is inside the other: a batch
@@ -40,8 +40,8 @@ def paid_rule(kind, paid, env, env_set, then, extra):
     """Refuses (ValueError) a job that could reach a paid call without its own Spend."""
     x = {'env': env, 'env_set': env_set}
     if paid and kind not in PAID_KINDS: raise ValueError(f'a {kind} job cannot be paid: only a Spend makes a paid job')
-    if _sends(x) and not (kind in PAID_KINDS and paid and extra.get('fingerprint') and extra.get('no_personal_information') is True):
-        raise ValueError('a job that sends to the AI service needs its own Spend, with the estimate it was shown and the personal-information tick')
+    if _sends(x) and not (kind in PAID_KINDS and paid and extra.get('fingerprint')):
+        raise ValueError('a job that sends to the AI service needs its own start, with the estimate it was shown')
     t = then
     while t:
         if t.get('paid') or _sends(t): raise ValueError('a paid job never follows another job: it needs its own Spend')

@@ -1,19 +1,18 @@
 """webapp/spend.py: the one gate every "Spend" goes through (#45, 03 §11). Nothing else in the app makes a job that may
 send to the AI service, and jobs.create() refuses one that did not come from here (03 §2).
 
-    authorize(s, kind, run, R, fingerprint, no_personal_information) → {argv, env_set, extra}, or raises Refused(words)
+    authorize(s, kind, run, R, fingerprint) → {argv, env_set, extra}, or raises Refused(words)
     current_model_and_prompt()     decide.py's DEFAULT_MODEL and its prompt's sha256[:16], read from its source (never
                                    imported: importing it would read .env and parse arguments)
 
 What a Spend checks, in this order, at the click:
-  1. the personal-information tick (checklist 1.1, AI rule 3): required, never prefilled;
-  2. the estimate shown is the estimate on disk now: the fingerprint lib/costs.py made (the estimate without the credit,
+  1. the estimate shown is the estimate on disk now: the fingerprint lib/costs.py made (the estimate without the credit,
      request.json, the digest, the model, the prompt);
-  3. decide.py's DEFAULT_MODEL and prompt are still the ones the estimate used, and the model is a Claude model (decide.py
+  2. decide.py's DEFAULT_MODEL and prompt are still the ones the estimate used, and the model is a Claude model (decide.py
      checks its caps for Claude models only: 02 B6). The job then also gets MODEL=<that model>, so a change while it waits
      in the queue cannot lift the cap;
-  4. the estimate fits the limits and the credit (lib/costs.py `blocked`);
-  5. the book's file is still the one the estimate was made from (its sha256).
+  3. the estimate fits the limits and the credit (lib/costs.py `blocked`);
+  4. the book's file is still the one the estimate was made from (its sha256).
 Then the job: AUTO=1, MAX_USD (and BOOK_MAX_USD for #63's shape, BATCH_MAX_USD for a batch) bound to the estimate shown,
 the settings copied from the estimate's own job (never from a form again), paid, with the fingerprint and the tick.
 Test mode (test_reply_dir / test_batch_from from --config): REPLY= (or FROM=) instead of the call; prices offline are
@@ -26,7 +25,6 @@ from . import config, jobs, books as BK
 class Refused(Exception):
     """A Spend that is refused, in plain words for the page."""
 
-PII_WORDS = 'Select the box "This book has no personal information" first: books with personal information are never sent to the AI service.'
 CHANGED = 'The estimate changed since it was shown. Look at the new estimate.'
 OUT_OF_DATE = 'The estimate is out of date. Get a new estimate.'
 
@@ -64,10 +62,9 @@ def check_estimate(s, R, fingerprint, test, limits):
     if b and not (test and b['code'] in ('offline', 'no_credit')): raise Refused(b['words'])
     return est
 
-def authorize(s, kind, run, R, fingerprint, no_personal_information):
+def authorize(s, kind, run, R, fingerprint):
     """A single run's Spend (kind 'workorder'). Returns {argv, env_set, extra} for jobs.create(kind='spend', paid=True)."""
     if kind != 'workorder': raise Refused('This kind of AI step can\'t be sent from here yet.')
-    if no_personal_information is not True: raise Refused(PII_WORDS)
     test = bool(s.get('test_reply_dir'))
     L = costs.limits_of(s)
     est = check_estimate(s, R, fingerprint, test, L)
@@ -85,16 +82,15 @@ def authorize(s, kind, run, R, fingerprint, no_personal_information):
     else:
         env = {**keep, 'AUTO': '1', 'MAX_USD': f'{est["bounds"]["MAX_USD"]:.2f}', 'MODEL': est['model']}
         if est['bounds'].get('BOOK_MAX_USD') is not None: env['BOOK_MAX_USD'] = f'{est["bounds"]["BOOK_MAX_USD"]:.2f}'
-    extra = {'fingerprint': fingerprint, 'no_personal_information': True, 'pii_ticked': datetime.datetime.now().isoformat(timespec='seconds'),
+    extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
              'shown': {'ceiling_usd': est['ceiling_usd'], 'per_call_ceiling_usd': est['per_call_ceiling_usd'], 'bounds': est['bounds'], 'model': est['model']},
              'test': test, 'review_first': bool(ej.get('review_first')),
              **{k: ej.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name')}}
     return {'argv': list(ej['argv']), 'env_set': env, 'extra': extra}
 
-def authorize_batch(s, label, books_list, total, fingerprint, no_personal_information):
+def authorize_batch(s, label, books_list, total, fingerprint):
     """A batch's Spend: books_list is the app's book list file, total the costs.batch() shown (its fingerprint checked by
     the caller against the one shown). Returns {argv, env_set, extra}."""
-    if no_personal_information is not True: raise Refused(PII_WORDS)
     test_from = s.get('test_batch_from')
     jobs_n = str(min(int(s.get('batch_jobs') or 2), int(s['max_jobs'])))
     if test_from:
@@ -110,6 +106,6 @@ def authorize_batch(s, label, books_list, total, fingerprint, no_personal_inform
         if total['credit_usd'] is None: raise Refused('The credit couldn\'t be checked, so the cost can\'t be compared with it.')
         env = {'AUTO': '1', 'JOBS': jobs_n, 'BATCH_MAX_USD': f'{total["bounds"]["BATCH_MAX_USD"]:.2f}', 'MODEL': model}
         if total['bounds'].get('MAX_USD'): env['MAX_USD'] = f'{total["bounds"]["MAX_USD"]:.2f}'
-    extra = {'fingerprint': fingerprint, 'no_personal_information': True, 'pii_ticked': datetime.datetime.now().isoformat(timespec='seconds'),
+    extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
              'shown': {'ceiling_usd': total['ceiling_usd'], 'bounds': total['bounds']}, 'test': bool(test_from), 'slots': int(jobs_n)}
     return {'argv': ['bash', 'batch_api.sh', label, books_list], 'env_set': env, 'extra': extra}

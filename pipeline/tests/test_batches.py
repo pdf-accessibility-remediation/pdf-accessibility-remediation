@@ -61,9 +61,8 @@ def test_state_and_test_mode_spend(two):
     st = BT.state(s, 'bb')
     assert st['phase'] == 'ready' and st['spend'] == {'ok': True, 'why': None} and st['totals']['ceiling_usd'] == 1.2 and st['test']
     assert [b['status'] for b in st['books']] == ['Estimate Ready'] * 2 and sorted(b['file'] for b in st['books']) == ['Book One.pdf', 'two.pdf']
-    with pytest.raises(ValueError, match='personal information'): BT.spend(s, 'bb', {'fingerprint': st['fingerprint']})
-    with pytest.raises(ValueError, match='changed since'): BT.spend(s, 'bb', {'fingerprint': 'x', 'no_personal_information': True})
-    j = BT.spend(s, 'bb', {'fingerprint': st['fingerprint'], 'no_personal_information': True})
+    with pytest.raises(ValueError, match='changed since'): BT.spend(s, 'bb', {'fingerprint': 'x'})
+    j = BT.spend(s, 'bb', {'fingerprint': st['fingerprint']})
     assert j['kind'] == 'batch' and j['paid'] and j['run'] == 'batches/bb' and j['slots'] == 2
     assert j['env_set'] == {'AUTO': '1', 'FROM': 'v8-p7a', 'JOBS': '2', 'OCR_LANG': 'eng'} and j['argv'] == ['bash', 'batch_api.sh', 'bb', BT.list_path(s, 'bb')]
 
@@ -71,7 +70,7 @@ def test_real_spend_binds_the_total_and_each_call(two):
     s = settings(two)
     ready_batch(two, s)
     st = BT.state(s, 'bb')
-    j = BT.spend(s, 'bb', {'fingerprint': st['fingerprint'], 'no_personal_information': True})
+    j = BT.spend(s, 'bb', {'fingerprint': st['fingerprint']})
     e = j['env_set']
     assert e['BATCH_MAX_USD'] == '1.21' and e['MAX_USD'] == '0.61' and e['MODEL'].startswith('anthropic/') and 'FROM' not in e
 
@@ -80,7 +79,7 @@ def test_over_the_batch_limit_shows_no_spend(two):
     ready_batch(two, s)
     st = BT.state(s, 'bb')
     assert st['spend']['ok'] is False and 'limit of $1.00 per batch' in st['spend']['why']
-    with pytest.raises(ValueError): BT.spend(s, 'bb', {'fingerprint': st['fingerprint'], 'no_personal_information': True})
+    with pytest.raises(ValueError): BT.spend(s, 'bb', {'fingerprint': st['fingerprint']})
 
 def test_side_column_markup(two):
     s = settings(two, test_batch_from='v8-p7a')

@@ -6,7 +6,7 @@
    flow, so nothing scrolls sideways. "Skip to the content" skips it. The statuses are kept current from /api/batch/<label>.
 
    The batch page: the estimate of every book added up, the batch limit and the credit, "Spend" (with the
-   personal-information tick, required and never prefilled), the running total while it runs, "Open the Batch Dashboard"
+   worst-case estimate beside it), the running total while it runs, "Open the Batch Dashboard"
    when the batch has one, and "Run the Unfinished Books Again". Focus moves only after the person's own action. */
 (() => {
 'use strict';
@@ -63,7 +63,7 @@ function body(s) {
     '<button type="button" id="bt-dismiss" data-act="dismiss">Dismiss</button></div>';
   if (s.phase === 'ready') {
     h += '<p>Books in a batch are applied without a review first. Review each one afterwards from its page.</p>';
-    if (s.spend && s.spend.ok) h += '<p class="pp-check"><label><input type="checkbox" id="bt-pii"> No book in this batch has personal information (such as student records, health information or identification numbers)</label></p>' +
+    if (s.spend && s.spend.ok) h +=
       '<div class="pp-row"><button type="button" class="pp-primary" id="bt-spend" data-act="spend">Spend</button></div>' +
       '<p class="pp-note">' + (s.test ? 'Test: "Spend" uses saved replies; nothing is sent to the AI service.' : '"Spend" sends every book to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.') + '</p>';
     else h += '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This batch can\'t be sent yet.') + '</p><p>Whoever looks after the app can raise the limit or add credit; or start a batch with fewer books.</p>';
@@ -91,8 +91,8 @@ async function poll() {
       primed = true; st = s; column(s);
       const bb = $('bt-body');
       if (bb) {
-        const h = body(s), keep = document.activeElement && document.activeElement.id, pii = $('bt-pii') && $('bt-pii').checked;
-        if (bb.dataset.h !== h) { bb.innerHTML = h; bb.dataset.h = h; if (pii && $('bt-pii')) $('bt-pii').checked = true; if (keep && $(keep)) $(keep).focus(); }
+        const h = body(s), keep = document.activeElement && document.activeElement.id;
+        if (bb.dataset.h !== h) { bb.innerHTML = h; bb.dataset.h = h; if (keep && $(keep)) $(keep).focus(); }
       }
     }
   } catch (e) { if ($('bt-body')) msg('The app is not running, so this page can\'t follow the batch. ' + START); }
@@ -107,8 +107,7 @@ if (panel) panel.addEventListener('click', async e => {
   try {
     let c, r;
     if (act === 'spend') {
-      if (!$('bt-pii').checked) { msg('Select the box "No book in this batch has personal information" first: books with personal information are never sent to the AI service.', false, true); $('bt-pii').focus(); return; }
-      [c, r] = await api(API + '/spend', { fingerprint: st.fingerprint, no_personal_information: true });
+      [c, r] = await api(API + '/spend', { fingerprint: st.fingerprint });
     } else [c, r] = await api(API + '/' + act, {});
     if (c !== 202 && c !== 200) return msg(r.error || 'The app refused this.', false, true);
     msg(act === 'spend' ? 'The batch has started.' : act === 'dismiss' ? 'Dismissed: nothing was sent.' : 'New estimates have started (free).', true, false);

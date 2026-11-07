@@ -481,7 +481,7 @@ function waitingBlock(s) {
 }
 
 // ---------------------------------------------------------------- a run started from the home page, before its result (#45)
-// The estimate (lib/costs.py, one renderer for every page), "Spend" with the personal-information tick, the progress of the
+// The estimate (lib/costs.py, one renderer for every page), the button that starts the paid call, the progress of the
 // jobs, and why it stopped with what the person can do (webapp/failures.py: plain words; the tool's own words only under
 // "Details"). A Spend is bound to the worst case shown (MAX_USD); the button stays plain "Spend" (Patrick, 2026-11-05).
 const usd = x => '$' + Number(x || 0).toFixed(2);
@@ -493,7 +493,6 @@ function costLine(e) {
     (e.spent_before_usd ? ' · Already spent on this book ' + usd(e.spent_before_usd) : '') +
     (e.credit_usd != null ? ' · Credit ' + usd(e.credit_usd) : ' · Credit not checked');
 }
-const PII = 'This book has no personal information (such as student records, health information or identification numbers)';
 const NEXT = { estimate: ['estimate', 'Get a New Estimate'], retry: ['retry', 'Try Again'], dismiss: ['dismiss', 'Dismiss'], home: null };
 function failureCard(f) {
   if (!f) return '';
@@ -529,7 +528,7 @@ function pendingBlock(s) {
   if (!s.spend || !s.spend.ok) return h + '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This run can\'t be sent yet.') + '</p>' +
     '<p>' + esc(s.spend && ['per_call', 'per_book', 'credit', 'no_credit', 'model'].includes(s.spend.code) ? 'Whoever looks after the app can raise the limit or add credit; then select "Get a New Estimate".' : 'Select "Get a New Estimate" to try again.') + '</p>' +
     '<div class="pp-row"><button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
-  return h + '<p class="pp-check"><label><input type="checkbox" id="pp-pii"> ' + esc(PII) + '</label></p>' +
+  return h +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-spend" data-act="spend">Spend</button>' +
     '<button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>' +
     (s.test ? '<p class="pp-note">Test: "Spend" uses the saved reply; nothing is sent to the AI service.</p>' :
@@ -549,10 +548,9 @@ function refocus(keepFocus) {
 function render() {
   if (WAITING && st.mode === 'pending') {                        // before the result: the estimate, Spend, the progress
     const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(PHASE[st.phase] || 'This Run') + '</h3>' + pendingBlock(st) + jobsBlock(st),
-          body = $('pp-body'), keepFocus = document.activeElement && document.activeElement.id, pii = $('pp-pii') && $('pp-pii').checked;
+          body = $('pp-body'), keepFocus = document.activeElement && document.activeElement.id;
     if (body.dataset.h === h) return;
     body.innerHTML = h; body.dataset.h = h;
-    if (pii && $('pp-pii')) $('pp-pii').checked = true;          // the tick survives a redraw, never prefilled otherwise
     refocus(keepFocus);
     return;
   }
@@ -628,9 +626,7 @@ box.addEventListener('click', async e => {
     try {
       let s, r;
       if (act === 'spend') {
-        const t = $('pp-pii');
-        if (!t || !t.checked) { msg('Select the box "This book has no personal information" first: books with personal information are never sent to the AI service.', false, true); if (t) t.focus(); return; }
-        [s, r] = await api(API + '/spend', { kind: 'workorder', fingerprint: st.estimate.fingerprint, no_personal_information: true });
+        [s, r] = await api(API + '/spend', { kind: 'workorder', fingerprint: st.estimate.fingerprint });
       } else if (act === 'replay') {
         if (!await confirmDlg('New run from the saved reply?', 'A new run of this book is made from its saved AI reply, free, and stops for your review. This run stays as it is.', 'Make the new run', b)) return;
         [s, r] = await api(API + '/replay', { label: st.replay.label });

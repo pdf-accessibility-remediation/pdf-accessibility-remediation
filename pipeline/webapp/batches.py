@@ -171,7 +171,7 @@ def spend(s, label, body):
     if str(body.get('fingerprint') or '') != st['fingerprint']: raise ValueError(SP.CHANGED)
     Rs = [os.path.join(folder(s, label), b['name']) for b in st['books'] if not b['finished'] and b['name'] not in st['flagged']]
     total = costs.batch(Rs, limits=costs.limits_of(s))
-    try: a = SP.authorize_batch(s, label, list_path(s, label), total, st['fingerprint'], body.get('no_personal_information'))
+    try: a = SP.authorize_batch(s, label, list_path(s, label), total, st['fingerprint'])
     except SP.Refused as e: raise ValueError(str(e))
     env = dict(a['env_set'])
     meta = _load(meta_path(s, label)) or {}
