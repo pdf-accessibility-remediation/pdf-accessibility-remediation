@@ -305,11 +305,17 @@ def tick(J, s):
             _start(J, j); busy_runs.append(j['run'])
 
 def recover(J):
-    """At app start: a paid job still queued needs its Spend click again."""
+    """At app start: a paid job still queued needs its Spend click again; a "Finish Review" claim left at 'starting'
+    is given its apply if one was made, else unclaimed (runs.auto_apply starts it on its next pass)."""
     with locked(J):
-        for j in all_jobs(J):
+        js = all_jobs(J)
+        for j in js:
             if j['status'] == 'queued' and j.get('paid'):
                 j.update(status='needs-spend', note='the app was restarted before this paid job started: get a new estimate, then "Start Remediation" again'); save(J, j)
+            if j['kind'] == 'review' and j.get('then_job') == 'starting':   # review 10 L1: the app stopped between the claim and the apply
+                ap = next((x for x in js if x['kind'] == 'apply' and x['run'] == j['run'] and x['created'] >= (j.get('ended') or j['created'])), None)
+                j['then_job'] = ap['id'] if ap else None                    # its apply, or unclaimed: the next pass starts it
+                save(J, j)
 
 def position(J, jid):
     """1-based place in line among queued jobs, or None."""

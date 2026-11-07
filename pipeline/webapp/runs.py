@@ -440,7 +440,13 @@ def waiting_state(s, run, R):
     last = rj[-1] if rj else {}
     auto = None                                          # D3: what became of the apply "Finish Review" starts
     if rv and last.get('auto_apply'):
-        auto = {'state': 'refused', 'why': last.get('then_why')} if last.get('then_job') == 'refused' else {'state': 'starting'}
+        tj = last.get('then_job')
+        aj = jobs.load(s['jobs'], tj) if tj and tj not in ('starting', 'refused', 'applied', 'not-finished') else None
+        if tj == 'refused': auto = {'state': 'refused', 'why': last.get('then_why')}
+        elif aj and aj['status'] in ('failed', 'interrupted'):           # review 10 M1: the apply ended without a result
+            v = job_view(s, aj)
+            auto = {'state': 'failed', 'why': v.get('reason') or 'The apply stopped before it finished.'}
+        else: auto = {'state': 'starting'}
     return {'run': run, 'mode': 'waiting', 'title': waiting_title(run, R), 'book': name, 'file': file,
             'waiting': {'reviewed': bool(rv), 'reviewer': rv.get('reviewer'), 'date': rv.get('date'), 'auto': auto,
                         'prepared': os.path.isfile(os.path.join(R, 'review_items.json'))},
@@ -478,6 +484,8 @@ def auto_apply(s):
         if cur['then_job'] != 'starting': continue
         try: a = start_first_apply(s, j['run'], R)
         except ValueError as e: jobs.update(J, j['id'], then_job='refused', then_why=str(e)); continue
+        except Exception as e:                                   # review 10 L1: never left at 'starting'
+            jobs.update(J, j['id'], then_job='refused', then_why=f'The apply couldn\'t start because of a problem in the app ({type(e).__name__}). Try again.'); continue
         jobs.update(J, j['id'], then_job=a['id'])
 
 def start_first_apply(s, run, R):

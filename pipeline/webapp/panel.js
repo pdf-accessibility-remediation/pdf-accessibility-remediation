@@ -493,8 +493,9 @@ function waitingBlock(s) {
   const who = 'Review finished (' + esc(w.reviewer || 'reviewer not recorded') + ', ' + esc(fmtDay(w.date)) + '). ';
   if (w.auto && w.auto.state === 'starting')                     // D3: "Finish Review" starts the apply; the dispatcher makes it within a second
     return '<p><span class="pp-spin" aria-hidden="true"></span>' + who + 'Applying the reviewed decisions.</p>';
-  if (w.auto && w.auto.state === 'refused')
-    return '<div class="pp-fail"><h4>Stopped: The Apply Couldn\'t Start</h4><p>' + who + esc(w.auto.why || '') + '</p>' +
+  if (w.auto && (w.auto.state === 'refused' || w.auto.state === 'failed'))   // never the spinner after a failed apply (review 10 M1)
+    return '<div class="pp-fail"><h4>' + (w.auto.state === 'failed' ? 'Stopped: The Apply Didn\'t Finish' : 'Stopped: The Apply Couldn\'t Start') + '</h4><p>' +
+      who + esc(w.auto.why || '') + '</p>' +
       '<div class="pp-row"><button type="button" class="pp-primary" id="pp-apply" data-act="apply">Try Again</button></div></div>';
   return '<p>' + who + 'Nothing has been applied yet: this review was finished before "Finish Review" applied it by itself.</p>' +   // an older review
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-apply" data-act="apply">Apply the Reviewed Decisions</button></div>';
@@ -589,7 +590,8 @@ function render() {
     return;
   }
   if (WAITING) {                                                 // no result, no strip: the review, then the first apply
-    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(tc(!st.waiting ? 'First result' : st.waiting.reviewed ? 'Applying the reviewed decisions' : 'Waiting for review')) + '</h3>' +
+    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? 'Waiting for review' :
+      st.waiting.auto && st.waiting.auto.state !== 'starting' ? 'Stopped' : 'Applying the reviewed decisions')) + '</h3>' +
       waitingBlock(st) + jobsBlock(st), body = $('pp-body'), keepFocus = document.activeElement && document.activeElement.id;
     if (body.dataset.h === h) return;
     body.innerHTML = h; body.dataset.h = h;

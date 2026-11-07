@@ -510,7 +510,7 @@ def test_steps_in_plain_words():
     assert logs.now_step('apply', logs.steps('▶ apply (no model)\n  ✓ apply (no model): 1.0s\n')) is None
     assert logs.plain('0/5 intake: not re-run; applying to the intake result saved before the review stop') == 'reading and tagging the PDF'
     assert logs.plain('1/5 audit: reusing the audit already in /x/_audit') == 'auditing the PDF'   # a waiting run's first apply
-    assert "esc(tc(!st.waiting ? 'First result' : st.waiting.reviewed ? 'Applying the reviewed decisions' : 'Waiting for review'))" in src('webapp/panel.js')
+    assert "esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? 'Waiting for review' :" in src('webapp/panel.js')
     assert "(j.first ? 'Stop Reviewing (Your Choices Are Saved)' : 'Stop Reviewing (the Session Stays Open)')" in src('webapp/panel.js')   # no session before Finish
 
 def test_job_titles_say_what_happened(tmp_path):
@@ -1093,7 +1093,11 @@ def test_finish_review_applies_at_once(setup, monkeypatch):
     old = jobs.create(s['jobs'], 'review', 'book/old', ['true'], {}, counted=False, R=str(W), first=True)   # before this change
     jobs.update(s['jobs'], old['id'], status='done'); runs.auto_apply(s)
     assert not jobs.load(s['jobs'], old['id']).get('then_job')
-    jobs.update(s['jobs'], ap[0]['id'], status='failed')
+    jobs.update(s['jobs'], ap[0]['id'], status='failed', exit=1)
+    w = runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto']                # review 10 M1: never "applying" after it failed
+    assert w['state'] == 'failed' and w['why']
+    js = src('webapp/panel.js')
+    assert "w.auto.state === 'refused' || w.auto.state === 'failed'" in js and "Stopped: The Apply Didn\\'t Finish" in js
     os.remove(src_); (W / 'review_stop.json').write_text(json.dumps({'src': str(setup / 'gone.pdf'), 'name': 'book'}))
     j2 = jobs.create(s['jobs'], 'review', 'book/rv', ['true'], {}, counted=False, R=str(W), first=True, auto_apply=True)   # a second review's Finish
     jobs.update(s['jobs'], j2['id'], status='done', started='2026-01-01T00:00:00')
@@ -1110,3 +1114,22 @@ def test_a_batch_books_first_apply_names_its_batch(setup):
     a = runs.start_first_apply(s, 'batches/b1/bk', str(B))
     assert a['argv'][3:] == ['bk', 'b1'] and a['env']['RUN_DIR'] == str(B)
     assert a['then']['argv'] == ['bash', 'batch_api.sh', 'b1'] and a['then']['env_set'] == {'SUMMARY_ONLY': '1'} and not a['then'].get('paid')
+
+
+def test_a_claim_left_starting_is_recovered_and_any_error_is_refused(setup, monkeypatch):
+    """Review 10 L1: an exception other than ValueError from the apply's start is "refused" with plain words; a claim
+    left at 'starting' (the app stopped in between) is unclaimed at the next start, so the next pass applies it."""
+    s = settings(setup); W, src_ = waiting_run(setup)
+    j = runs.start_first_review(s, 'book/rv', str(W), 8123)
+    jobs.update(s['jobs'], j['id'], status='done', started='2026-01-01T00:00:00')
+    (W / 'review.json').write_text('{}')
+    def boom(*a): raise OSError('disk')
+    monkeypatch.setattr(runs, 'start_first_apply', boom)
+    runs.auto_apply(s)
+    x = jobs.load(s['jobs'], j['id']); assert x['then_job'] == 'refused' and 'problem in the app' in x['then_why']
+    jobs.update(s['jobs'], j['id'], then_job='starting', then_why=None)
+    jobs.recover(s['jobs'])
+    assert jobs.load(s['jobs'], j['id'])['then_job'] is None
+    monkeypatch.undo()
+    runs.auto_apply(s)
+    assert [a for a in jobs.all_jobs(s['jobs']) if a['kind'] == 'apply']
