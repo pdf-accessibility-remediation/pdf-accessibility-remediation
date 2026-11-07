@@ -266,6 +266,8 @@ for line in open(books):
     p = next((q for q in (os.path.join(runs, 'batches', src, name, 'record.json'), os.path.join(runs, name, src, 'record.json'))
               if os.path.exists(q) and json.load(open(q)).get('raw_reply')), None)
     if not p: bad.append(name); continue
+    if os.path.exists(os.path.join(os.path.dirname(p), 'release', 'cleared.json')):   # #45: its working files were cleared
+        bad.append(f'{name} (cleared after shipping: its saved reply can\'t be reused)'); continue
     r = json.load(open(p))
     old_in = os.path.join(os.path.dirname(p), '_intake')     # the reply was written for the intake result: reuse it
     if os.path.exists(os.path.join(old_in, 'intake.json')):

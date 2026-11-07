@@ -437,7 +437,8 @@ still there is hashed and deleted only when it matches the plan; one that change
 either state of cleared.json): Review Again, Apply, an OCR verdict, the evaluation's Record, Mark as Shipped, Clean Up
 Space and New Run from the Saved Reply are refused ("This book's working files were cleared after it shipped …").
 Withdrawing a shipment still works. **Available Downloads** lists the shipped copies (built from `release/shipped/NNN/`)
-and no current version. A rebuild from `workorder.ai.json` after clearing would run on today's code and would not be the
+and no current version. `batch_api.sh` with `FROM=` refuses a cleared run as its source too ("cleared after shipping: its
+saved reply can't be reused"), since its intake result is gone. A rebuild from `workorder.ai.json` after clearing would run on today's code and would not be the
 original file; to work on the book again, start a new run from the home page.
 
 ## Mark as Shipped

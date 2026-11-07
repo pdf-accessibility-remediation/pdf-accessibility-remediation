@@ -146,3 +146,19 @@ def test_while_a_clear_is_under_way_only_shipped_copies_are_listed(tmp_path):
     (R / 'release' / 'cleared.json').write_text(json.dumps({'state': 'planned', 'files': []}))
     vs = DL.versions(str(R), json.load(open(R / 'record.json')))
     assert [v['id'] for v in vs] == ['shipment-1']
+
+def test_from_refuses_a_cleared_source(tmp_path):
+    """05 M1: batch_api.sh FROM= never reuses a cleared run's reply (its intake.pdf is gone): the book goes to `bad`."""
+    import subprocess
+    from test_webapp import stub_vera
+    runs = tmp_path / 'runs'; src = runs / 'batches' / 'old' / 'bk'; (src / 'release').mkdir(parents=True)
+    (src / 'record.json').write_text(json.dumps({'raw_reply': '{}', 'run': {}}))
+    (src / 'release' / 'cleared.json').write_text(json.dumps({'state': 'done'}))
+    pdf = tmp_path / 'bk.pdf'; pdf.write_bytes(b'%PDF-1.4 x')
+    lst = tmp_path / 'books.txt'; lst.write_text(f'bk {pdf}\n')
+    (tmp_path / 'bin').mkdir()
+    env = dict(os.environ, AUTO='1', FROM='old', RUNS_DIR=str(runs), VERAPDF=stub_vera(str(tmp_path / 'bin')),
+               PATH=os.path.dirname(sys.executable) + os.pathsep + os.environ.get('PATH', ''))
+    r = subprocess.run(['bash', 'batch_api.sh', 'new', str(lst)], cwd=HERE, env=env, capture_output=True, text=True, timeout=120)
+    assert r.returncode != 0 and "cleared after shipping: its saved reply can't be reused" in r.stdout + r.stderr
+    assert not (runs / 'batches' / 'new' / 'bk.reply.txt').exists()
