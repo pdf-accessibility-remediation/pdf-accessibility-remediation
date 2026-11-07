@@ -716,7 +716,7 @@ function announce(s) {
     const key = j.status + '|' + (j.step ? j.step.words : '') + '|' + (j.url || '') + '|' + !!j.past_finish;
     const was = seen[j.id]; seen[j.id] = key;
     if (!primed || was === key) continue;
-    const t = cap(j.action || j.title) + ' (' + RUN + ')';      // the action; the outcome follows from jobWords
+    const t = cap(j.action || j.title) + (j.run_name ? ' (' + j.run_name + ')' : '');   // the action and the run's plain name (never its folder label)
     const low = x => x.charAt(0).toLowerCase() + x.slice(1);
     if (ended(j) && !newResult && SHOWN && s.current && s.current.id !== SHOWN) {    // one message, not two in a row
       newResult = true; live(t + ': ' + low(jobWords(j)) + '. New result ready: ' + s.current.label + '. "Show the New Result" loads it.'); continue;

@@ -168,7 +168,10 @@ def result(R, j, v):
         return 'closed' + when + (f'; OCR verdict recorded: {got}' if got else '; no verdict recorded')
     if j.get('first') and j['kind'] == 'review':          # a waiting run's first review: Finish writes review.json
         rv = load(os.path.join(R, 'review.json')) if R else None
-        return f'review finished ({(rv or {}).get("reviewer") or "reviewer not recorded"}{", " + at if at else ""}), not applied yet' \
+        tj = j.get('then_job') or ''
+        after = '; its apply started' if re.fullmatch(r'\d{8}-\d{6}-\d+-apply', tj) else '; its apply couldn\'t start' if tj == 'refused' else \
+                ', applied next' if j.get('auto_apply') and tj in ('', 'starting') else ', not applied yet'          # D3
+        return f'review finished ({(rv or {}).get("reviewer") or "reviewer not recorded"}{", " + at if at else ""}){after}' \
             if rv else 'closed without "Finish Review"' + when
     m = SESSION_IN.search(out if out else (v.get('interrupted') or {}).get('text', ''))
     if not m and j.get('first') and j['kind'] == 'apply' and R and os.path.isfile(os.path.join(R, 'record.json')): m = SESSION_IN.search('session 1')

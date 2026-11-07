@@ -301,7 +301,7 @@ def test_the_first_review_and_the_first_apply_are_the_terminal_commands(setup):
     v = runs.job_view(s, jobs.update(s['jobs'], j['id'], status='done', ended='2026-11-01T16:20:00'))
     assert v['title'] == 'Review the AI\'s decisions → closed without "Finish Review" (4:20 PM)'
     (W / 'review.json').write_text(json.dumps({'reviewer': 'Kim', 'date': '2026-11-01'}))
-    assert runs.job_view(s, jobs.load(s['jobs'], j['id']))['result'] == 'review finished (Kim, 4:20 PM), not applied yet'
+    assert runs.job_view(s, jobs.load(s['jobs'], j['id']))['result'] == 'review finished (Kim, 4:20 PM), applied next'
     with pytest.raises(ValueError, match='The review is finished'): runs.start_first_review(s, 'book/rv', str(W), 8123)
     a = runs.start_first_apply(s, 'book/rv', str(W))
     assert a['kind'] == 'apply' and a['argv'] == ['bash', 'run_api.sh', str(src), 'book', 'rv']
