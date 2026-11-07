@@ -30,6 +30,16 @@ The result, `_intake/intake.pdf`, is what audit, decide, apply and verify then w
 
 **Not done (yet):** OpenDataLoader's hybrid mode (a second, Docling-based server, which may handle complex tables better: 5.6–5.8), deskew/despeckle of degraded scans (2.2), re-reading low-confidence OCR lines (3.2), personal-information flagging (1.1), and PDF 2.0 books (stopped for a person: see [Not supported yet: PDF 2.0](troubleshooting.md#not-supported-yet-pdf-20)); veraPDF (11.2) is done (see [Verification with veraPDF](verapdf.md)). Accuracy of the OCR itself (CER/WER) needs a hand-corrected reference (11.1); the first candidate is `9780824882402.pdf`, PDF 381–386. Thresholds (5% / 15%, 15 words / 60%, the 25% image and 300-character rules, 5 pages, 100 private-use characters) are named constants at the top of `intake.py` and recorded in every `intake.json` (`settings.thresholds`); they are starting points to tune on real scores.
 
+**`--languages`** (#45 D4, part 1 of #37): `python3 intake.py <pdf> <out_dir> --languages` runs only the page triage and the
+script detection of step 3 (the text layer's scripts and Tesseract's on up to 5 image-only pages; one function,
+`scripts_seen()`, used by the full intake too) and writes `<out_dir>/languages.json`: whether pages need OCR, how many, a
+suggested OCR language and the counts behind it. Kana suggests `jpn+eng`, Hangul `kor+eng`, Vietnamese letters `vie+eng`,
+Latin only `eng`; Chinese characters with no kana, or more than one CJK script, suggest nothing (never guessed). No
+text-layer test, no CJK check, no OCR, and `intake.json` is not touched (its reuse check is unchanged): seconds.
+`run_api.sh` runs it when `ASK_LANG=1` and no `OCR_LANG` is set, and stops with exit 4 when pages need OCR, so the app
+can ask the language ([The home page](home.md#language-of-the-scanned-pages)). The full intake's CJK check still runs
+afterwards, as above.
+
 To see what intake would do to a folder of books without changing anything:
 
 ```bash

@@ -14,7 +14,7 @@ This is for decisions where a wrong answer still passes every automated check. F
 ```bash
 cd pipeline
 REVIEW=1 bash run_api.sh ../samples/tagged/teika.pdf teika rv1       # intake, audit, the AI's decisions; then it stops
-python3 app.py ../runs/teika/rv1                                      # the run page: "Open the Review Page", then "Apply"
+python3 app.py ../runs/teika/rv1                                      # the run page: "Open the Review Page"; "Finish Review" applies
 ```
 
 Or, all in the terminal:
@@ -34,9 +34,9 @@ bash run_api.sh ../samples/tagged/teika.pdf teika rv1                # same labe
    - **Session Name** (in the header, prefilled "Session N") and **Session Notes (optional)** (the first section of the column) are for a review that takes several sittings or passes to another person: where you stopped, what to check next. See [Session names and notes](#session-names-and-notes).
    - **Finish Review** opens a dialog first: the session's name and notes for a last edit, and how many decisions are not reviewed (finishing records those as *accepted without review*; **Show "Not Reviewed"** lists them instead, with a message that stays until its × dismisses it). The dialog's text puts the names of buttons, views and sections in quotes, as they appear on screen. **Finish Review** in the dialog records the review and stops the server.
    - **The header:** **Back to the Run Page** (from the app) looks like a button and is a link. **Hide Header** (bottom right) folds the header away for more room; **Show Header** (top right) brings it back. Each says to screen readers whether the header is shown, and this browser remembers the choice. The status line of a review again says where the session started and "OCR Text: Approved" (the verdict by its choice's name). If gaps are open, it then asks for a reason for each, or you can go back and add what is missing.
-4. **Rerun the same command** (same label, no `REVIEW=1`), or select **Apply** on the run page. After the review page's Finish from the terminal, its `next:` line names both: the app's run page and this command. `decide.py` is skipped (no API call) and the reviewed `workorder.json` is applied. Intake is not run again: the reviewed order is applied to the intake result saved before the stop (`_intake/intake.pdf`, or the original for a tagged book), the one the decisions were made on. The original given must be the same file (its sha256 is checked against `_intake/intake.json`), and `apply.py` checks the input against the work order's `source.sha256`.
+4. **Rerun the same command** (same label, no `REVIEW=1`). From the app, "Finish Review" applies at once: the app starts this same command by itself (#45 D3), and the run page follows it. After the review page's Finish from the terminal, its `next:` line names both: the app's run page and this command. `decide.py` is skipped (no API call) and the reviewed `workorder.json` is applied. Intake is not run again: the reviewed order is applied to the intake result saved before the stop (`_intake/intake.pdf`, or the original for a tagged book), the one the decisions were made on. The original given must be the same file (its sha256 is checked against `_intake/intake.json`), and `apply.py` checks the input against the work order's `source.sha256`.
 
-Until the review is finished, rerunning the label is refused, so a half-reviewed work order never reaches `apply.py`. Batches (`batch_api.sh`) refuse `REVIEW=1`, because they run unattended.
+Until the review is finished, rerunning the label is refused, so a half-reviewed work order never reaches `apply.py`. Batches (`batch_api.sh`) pass `REVIEW=1` to every book (from #45 round 4): each stops for review, summary.md lists it as waiting for review, and `RETRY=1` never runs it again. Every run the app starts sets `REVIEW=1` ([The app](app.md)); from a terminal it stays optional.
 
 The first review is kept as **session 1** in the run's `reviews/` folder (see [Reviewing again](#reviewing-again)).
 

@@ -35,12 +35,12 @@ One place, read in this order (later wins):
 |---|---|---|
 | `host` | `127.0.0.1` | Where the app listens. Only `127.0.0.1` is accepted: the app has no logins, so it is not reachable from other computers. |
 | `port` | `8760` | The app's port. The review pages use 8765–8784, as from the terminal. |
-| `runs`, `samples`, `uploads` | `../runs`, `../samples`, `../uploads` | The folders, relative to `pipeline/` (or absolute). `uploads` holds the books added with "Add a Book" ([The home page](home.md)). |
+| `runs`, `samples`, `uploads` | `../runs`, `../samples`, `../uploads` | The folders, relative to `pipeline/` (or absolute). `uploads` holds the PDFs added with "Add a PDF" ([The home page](home.md)); `samples` is never listed, only searched by sha256 for the original of a run made from it. Every job writes into `runs` (the app passes it as `RUNS_DIR`). |
 | `jobs` | `../runs/.app` | The job files, their logs, and the app's own small files (below). |
-| `max_jobs` | `1` | How many runs go at once: a single run or a whole batch counts as one (open review pages do not count until they apply). The app does one run at a time. |
-| `batch_jobs` | `10` | How many books of a batch are in progress at once, the next starting as each finishes (batch_api.sh's `JOBS`). Subject to change once the hardware limits are measured. |
+| `max_jobs` | `3` | How many single runs go at once (open review pages do not count until they apply). A batch runs alone: it starts when no run is going, and nothing else starts while it runs. |
+| `batch_jobs` | `10` | How many PDFs of a batch are in progress at once, the next starting as each finishes (batch_api.sh's `JOBS`). Subject to change once the hardware limits are measured. |
 | `max_books_per_batch` | `50` | The most books "New Batch" accepts. A setting whoever looks after the app can change; batch_api.sh in a terminal has no cap. |
-| `upload_max_mb` | `1024` | The largest PDF "Add a Book" accepts, in MB. |
+| `upload_max_mb` | `1024` | The largest PDF "Add a PDF" accepts, in MB. |
 | `limits` | `{"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 40}` | Dollars: what the estimates are compared with, and the most a "Start Remediation" may bind (`MAX_USD`, `BOOK_MAX_USD`, `BATCH_MAX_USD`). The pipeline's own caps stay as they are. |
 | `tools.VERAPDF` | empty | The veraPDF launcher. Empty: `verapdf` on the PATH. |
 | `tools.path_prepend` | `[]` | Folders put first on the PATH the app's commands get, for example Java's. |
@@ -103,7 +103,9 @@ The panel shows:
 
 A run made before the dashboards existed (no `review.html`) gets a page with the panel, the `review.md` link and a line saying it has no dashboard. There is no rebuild button: rebuilding would write into the run.
 
-A run that `REVIEW=1` stopped before its first review (`workorder.ai.json`, no `record.json` yet; `python3 app.py <run>` opens it too) gets a page saying nothing has been applied yet, with **Open the Review Page** ("Waiting for Review") and, after **Finish Review**, **Apply** ("Waiting to Be Applied"; `run_api.sh`'s second call, in the run's own folder, whose steps it did not run again read "(not run again)"): see [Review step](review-step.md#steps). Until then only that page, its state and those buttons answer for the run: no evaluation, downloads or files.
+**Review is always on in the app** (D2, Patrick 2026-11-06): every run the app starts, single or in a batch, stops after the AI's decisions for a person's review (`REVIEW=1` on "Start Remediation", "Try Again", "New Run from the Saved Reply" and batches, whatever an older job file says). From a terminal `REVIEW=1` stays optional.
+
+A run stopped before its first review (`workorder.ai.json`, no `record.json` yet; `python3 app.py <run>` opens it too) gets a page with **Open the Review Page** ("Waiting for Review"). **"Finish Review" applies at once** (D3): when the review page closes with its `review.json` written, the app's dispatcher starts `run_api.sh`'s second call in the run's own folder (the original PDF looked up at that moment), once, and the run page shows "Applying the reviewed decisions", or "Waiting to Start" while other runs hold the places. There is no **Apply** button: when the apply can't start (the original PDF is gone, for example) or fails, the page says why with **Try Again**. A review finished before this change, never applied, still offers **Apply the Reviewed Decisions**. For a PDF in a batch, the apply writes the batch's summary again after it. Until the first apply only that page, its state and those buttons answer for the run: no evaluation, downloads or files. See [Review step](review-step.md#steps).
 
 **Every page has a way back,** so the browser's Back button is never the only one:
 - `/run/<run>/review.html` (which the "replaced by" note in a previous result's file links to) goes to the run page.
@@ -117,16 +119,16 @@ A run that `REVIEW=1` stopped before its first review (`workorder.ai.json`, no `
 
 **Focus outlines:** a heading or message the page moves focus to (after a click, or when a page it opened loads) never shows an outline. Tab focus on buttons, links and fields always shows one.
 
-**Apply is offered only for the newest session.** A session whose apply failed stays finished. If a later session is then reviewed and applied, the earlier one is never offered again: applying it would replace the newer result with older decisions.
+**"Try Again" after a failed apply is offered only for the newest session.** A session whose apply failed stays finished, and the panel offers **Try Again** for it. If a later session is then reviewed and applied, the earlier one is never offered again: applying it would replace the newer result with older decisions.
 
 ## Jobs and the queue
 
 - **Every button queues a job:** a file in `runs/.app/jobs/` (`<id>.json`) and its log (`<id>.log`). The command writes straight into the log.
-- **One run at a time:** up to `max_jobs` (1) runs go at once, oldest first, a whole batch counting as one. Others wait in line, and each card says what it waits for ("Waiting: it starts when the run "First pass" ends").
+- **Runs at once** (D1): up to `max_jobs` (3) single runs go at once, oldest first. A batch runs alone: a queued batch starts only when no counted job runs, and holds every job queued after it until then, so nothing is passed over and nothing waits forever. Others wait in line, under "Runs in Progress" as "Waiting to Start", and each card says what it waits for ("it starts when the batch "Spring backlist" ends", or its place in line). Accepted exception: "Review Again"'s apply runs inside its own review process after "Finish Review", so it is never queued and can run beside a batch.
 - **An open review page waits on a person,** so it does not count until it is past Finish (applying).
 - **One job at a time per run.** A second click is refused with the reason: another job for this run is waiting or running, or `reviews/.lock` is held by a review started from a terminal.
 - **Two app servers on one jobs folder** (see `--port` below) share the queue and the limit. A second app started with `--port` runs the start-up step that turns queued paid jobs into "Waiting for a new estimate", including the first app's: that fails safe (nothing is sent; a new estimate goes on).
-- **Related runs** (a batch and its books) never run jobs at the same time, and a batch takes one place, with `batch_jobs` of its books in progress at once ([The home page](home.md#batches)).
+- **Related runs** (a batch and its PDFs) never run jobs at the same time; a batch has `batch_jobs` of its PDFs in progress at once ([The home page](home.md#batches)).
 
 ## When something goes wrong
 
@@ -184,3 +186,29 @@ The panel follows WCAG 2.1 AA, the project's standard:
 - **The lock does not cover `--pin` or `run_api.sh`.** The app checks its own jobs, but a pin or a run started in a terminal on the same run at the same time is not stopped.
 - **`/run/<run>/download?what=pdf|record&v=current|<version>`** gives a version's remediated PDF or record ZIP, named by its state; the version must be one of the run's own ([Accessibility evaluation and release](release.md#downloads)). **`POST /api/run/<run>/ship`** is "Mark as Shipped" (`{by, note, shown_sha256}`; refused unless the gate is open), through `review/manual.py` `ship()`. Nothing in `release/shipped/` is served (the accessibility statement was dropped, Patrick, 2026-11-01; see [Accessibility evaluation and release](release.md#the-accessibility-statement-dropped)). **`POST /api/run/<run>/remove-older-pdfs`** is "Clean Up Space" (`{by, chosen: [{id, sha256}]}`: the versions selected, each with the hash shown; refused when none is selected or one changed), through `review/prune.py` in the app's process.
 - **`/run/<run>/checks`** is the Accessibility Evaluation page ([Accessibility evaluation and release](release.md)); `/run/<run>/checks/` (with a slash) redirects to it, so the page's return after "Record" (relative to its own address) never lands elsewhere; `GET /api/run/<run>/checks` is its data, and `POST /api/run/<run>/checks/draft` and `/checks/record` its saves (JSON from the app's own pages only, as every POST). Every POST's `Content-Length` must be digits and at most 65,536 bytes, checked before reading (411 or 413 otherwise). `/run/<run>/ocr` stays reserved: OCR text is approved on the review page, or on the OCR-only page (**Review OCR Text**), both on the review server.
+
+## Move to Trash
+
+**Move to Trash** (D8, Patrick 2026-11-06; [The home page](home.md#move-to-trash) says where the buttons are and what each
+confirmation says) never deletes anything:
+
+- **Where things go:** the macOS Trash (`~/.Trash`), moved there whole by renaming, never copied then deleted. A name
+  already in the Trash gets " 2", " 3"…: a single run arrives as `<short name> - <run label>` (for example `ilokano -
+  First-pass-March`), a whole batch as `batch - <label>`, one PDF of a batch as `batch - <label> - <short name>` (with its
+  files from the batch folder in `_batch-files/` inside it), and an added PDF under its own file name. When the Trash is
+  on another disk than the app's folders the move is refused.
+- **The record of every move:** `runs/.app/trash-log.json` (what, from which folder, to which name in the Trash, when;
+  for a PDF its sha256 and the runs made from it). A run's or batch's plain name moves from `run-names.json` into it. The
+  run's job files stay in `runs/.app/jobs/` (the home page lists folders, so nothing shows for a moved run).
+- **Putting one back:** Finder's **Put Back** doesn't know items the app moved (Finder only remembers its own moves).
+  Open the Trash in Finder and drag the item back to the folder the log names under `from`: a run back into
+  `runs/<short name>/` under its label, a batch into `runs/batches/` under its label, an added PDF into the uploads folder
+  (`uploads/` at the repository root) under its file name. The app finds it again at once: a run is listed again, and a
+  PDF's runs can "Review Again" again. A run's plain name doesn't come back by itself (the log keeps it).
+- **When a move is refused:** while anything affected is processing, waiting to start or waiting for a new estimate, has a
+  review page open, or sits between "Finish Review" and its apply; a PDF also while any job's command names it. The
+  confirmation then says why, and nothing moves.
+- **Locks:** each run's record lock is taken once, in path order, around its move; the move log has its own lock. A
+  partial batch move rewrites the app's book list (`runs/.app/batches/<label>.books.txt`) and record, so "Run the
+  Unfinished PDFs Again" or a `RETRY=1` never sends a PDF that is in the Trash; any estimate of the batch is stale from
+  then on (its fingerprint covers the PDFs it was made for).
