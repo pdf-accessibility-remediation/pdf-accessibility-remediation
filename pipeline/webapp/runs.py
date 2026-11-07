@@ -446,22 +446,25 @@ def waiting_state(s, run, R):
     rv = load(os.path.join(R, 'review.json')) or {}
     live = live_review(s, run)
     name, file = book_of(s, run, R)
-    rj = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] == 'review' and j.get('first')]
+    al = jobs.all_jobs(s['jobs'])                        # in the order they were made (job ids are timestamps)
+    rj = [j for j in al if j['run'] == run and j['kind'] == 'review' and j.get('first')]
     last = rj[-1] if rj else {}
     auto = None                                          # D3: what became of the apply "Finish Review" starts
     if rv and last.get('auto_apply'):
         tj = last.get('then_job')
-        aj = jobs.load(s['jobs'], tj) if tj and tj not in ('starting', 'refused', 'applied', 'not-finished') else None
-        if tj == 'refused': auto = {'state': 'refused', 'why': last.get('then_why')}
-        elif aj and aj['status'] in ('failed', 'interrupted'):           # review 10 M1: the apply ended without a result
+        # The newest first apply made after this review (review 12 L3): "Try Again" makes a new one, and the page follows
+        # it (the spinner while it is queued or running, the card with its own reason if it fails), never the first one's.
+        aj = next((j for j in reversed(al) if j['run'] == run and j['kind'] == 'apply' and j.get('first') and j['id'] > last['id']), None)
+        if aj and aj['status'] in ('failed', 'interrupted'):           # review 10 M1: the apply ended without a result
             v = job_view(s, aj)
             auto = {'state': 'failed', 'why': v.get('reason') or 'The apply stopped before it finished.'}
+        elif not aj and tj == 'refused': auto = {'state': 'refused', 'why': last.get('then_why')}
         else: auto = {'state': 'starting'}
     return {'run': run, 'mode': 'waiting', 'title': waiting_title(run, R), 'book': name, 'file': file,
             'waiting': {'reviewed': bool(rv), 'reviewer': rv.get('reviewer'), 'date': rv.get('date'), 'auto': auto,
                         'prepared': os.path.isfile(os.path.join(R, 'review_items.json'))},
             'live_review': job_view(s, live) if live else None,
-            'jobs': [job_view(s, j) for j in jobs.all_jobs(s['jobs']) if j['run'] == run]}
+            'jobs': [job_view(s, j) for j in al if j['run'] == run]}
 
 def start_first_review(s, run, R, port, app_pid=None):
     """Open the Review Page for a waiting run: review_workorder.py <run> --serve, as the terminal's step 1."""

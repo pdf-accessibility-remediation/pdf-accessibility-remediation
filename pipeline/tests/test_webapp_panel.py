@@ -1096,6 +1096,13 @@ def test_finish_review_applies_at_once(setup, monkeypatch):
     jobs.update(s['jobs'], ap[0]['id'], status='failed', exit=1)
     w = runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto']                # review 10 M1: never "applying" after it failed
     assert w['state'] == 'failed' and w['why']
+    tr = runs.start_first_apply(s, 'book/rv', str(W))                            # review 12 L3: "Try Again" is followed
+    assert runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto'] == {'state': 'starting'}
+    jobs.update(s['jobs'], tr['id'], status='running')
+    assert runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto'] == {'state': 'starting'}
+    jobs.update(s['jobs'], tr['id'], status='failed', exit=2)
+    w2 = runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto']             # its own reason, not the first one's
+    assert w2['state'] == 'failed' and w2['why'] != w['why'] and '2' in w2['why']
     js = src('webapp/panel.js')
     assert "w.auto.state === 'refused' || w.auto.state === 'failed'" in js and "Stopped: The Apply Didn\\'t Finish" in js
     os.remove(src_); (W / 'review_stop.json').write_text(json.dumps({'src': str(setup / 'gone.pdf'), 'name': 'book'}))
