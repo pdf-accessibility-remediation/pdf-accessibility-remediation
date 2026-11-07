@@ -216,3 +216,9 @@ header.top.pp-head h1 { font-size: 19px; margin: 0; overflow-wrap: anywhere; }
       background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-block; }
 .pp-page a.pp-btn:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); }
 .pp-page a.pp-btn.pp-primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+/* D7: switching pages within the app fades instead of flashing (same-origin view transitions; no script, no CSP change),
+   the page background is set before anything draws, and a narrow screen with no choice made starts with the list closed */
+@view-transition { navigation: auto; }
+html { background: var(--bg); }
+@media (max-width: 48em) { body.bn-auto .bn { display: none; } }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }

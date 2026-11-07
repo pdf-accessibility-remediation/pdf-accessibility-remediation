@@ -19,13 +19,24 @@ const nav = $('pp-bnav'); if (!nav) return;
 const LABEL = nav.dataset.label, API = '/api/batch/' + encodeURIComponent(LABEL);
 const narrow = matchMedia('(max-width: 48em)');
 const KEY = 'batchnav:closed';
-function closed() { try { const v = localStorage.getItem(KEY); return v === null ? narrow.matches : v === '1'; } catch (e) { return narrow.matches; } }
+function closed() {                                             // the server laid it out from the cookie (D7); else the narrow default
+  if (document.body.classList.contains('bn-closed')) return true;
+  if (document.body.classList.contains('bn-open')) return false;
+  try { const v = localStorage.getItem(KEY); return v === null ? narrow.matches : v === '1'; } catch (e) { return narrow.matches; }
+}
 function setOpen(open, remember) {
   const t = $('bn-toggle'), n = nav.querySelectorAll('#bn-list li').length; if (!t) return;
   nav.classList.toggle('closed', !open); document.body.classList.toggle('bn-closed', !open);
   t.setAttribute('aria-expanded', String(open)); t.textContent = open ? 'Hide the Book List' : 'Show the Book List (' + n + ')';
-  if (remember) { try { localStorage.setItem(KEY, open ? '0' : '1'); } catch (e) {} }
+  if (remember) {
+    try { localStorage.setItem(KEY, open ? '0' : '1'); } catch (e) {}
+    document.cookie = 'pdfrem_bn=' + (open ? 'open' : 'closed') + '; path=/; max-age=31536000; SameSite=Strict';   // the server lays out the next page (D7)
+  }
+  document.body.classList.remove('bn-auto'); document.body.classList.toggle('bn-open', open);
 }
+const SCROLL = 'batchnav:scroll';                                // the side list keeps its place from page to page (D7)
+try { const y = sessionStorage.getItem(SCROLL); if (y !== null) nav.scrollTop = +y; } catch (e) {}
+addEventListener('pagehide', () => { try { sessionStorage.setItem(SCROLL, String(nav.scrollTop)); } catch (e) {} });
 document.body.classList.add('bn-on');
 setOpen(!closed(), false);
 if ($('bn-toggle')) $('bn-toggle').addEventListener('click', () => setOpen(nav.classList.contains('closed'), true));

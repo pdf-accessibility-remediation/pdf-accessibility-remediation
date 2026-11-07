@@ -273,6 +273,16 @@ def tone(row, R):
         opened = bool(ship and ship[0].get('ok')) or os.path.isdir(os.path.join(R, 'reviews', 'sessions'))
     return 'review' if opened else 'new'
 
+def body_class(page, closed):
+    """The side list's layout written into the page's <body> (D7): bn-on, and bn-closed or bn-auto (no choice made yet)."""
+    add = 'bn-on ' + ('bn-auto' if closed is None else 'bn-closed' if closed else 'bn-open')
+    i = page.lower().find('<body'); j = page.find('>', i) if i >= 0 else -1
+    if j < 0: return page
+    tag = page[i:j]
+    m = re.search(r'class="([^"]*)"', tag)
+    new = tag[:m.start(1)] + m.group(1) + ' ' + add + tag[m.end(1):] if m else tag + f' class="{add}"'
+    return page[:i] + new + page[j:]
+
 def toggle(n, open_=True):
     """The side list's button, beside "Home Page" in the app bar (P5)."""
     return (f'<button type="button" class="pp-btn bn-toggle" id="bn-toggle" aria-expanded="{"true" if open_ else "false"}" aria-controls="bn-list">'
@@ -286,7 +296,7 @@ def item(b, current):
             f' data-book="{E(b["name"])}"><span class="bn-name">{E(b["book"])}</span><span class="hm-file">Source PDF: {E(b["file"])}</span>'
             f'<span class="bn-st">{E(b["status"])}</span>{spin}</a></li>')
 
-def nav(s, label, current=None, st=None):
+def nav(s, label, current=None, st=None, closed=None):
     """The side column (03 §7, 01 §3.2): the batch's PDFs, each with its status in words and its state in its left border
     (P15); the current one marked by its background and bold name. It is added at serve time; batch.js keeps the statuses
     current, and the button that hides it sits in the app bar (toggle())."""
@@ -296,28 +306,30 @@ def nav(s, label, current=None, st=None):
     st = st or state(s, label)
     items = ''.join(item(b, current) for b in st['books'])
     n = len(st['books'])
-    return (f'<nav class="bn" id="pp-bnav" aria-label="PDFs in This Batch" data-label="{E(label)}">'
+    return (f'<nav class="bn{" closed" if closed else ""}" id="pp-bnav" aria-label="PDFs in This Batch" data-label="{E(label)}">'
             f'<div id="bn-list"><p class="bn-h"><a href="/batch/{E(urllib.parse.quote(label, safe=""))}/"' + (' aria-current="page"' if current is None else '') +
             f'>Batch: {E(NM.shown_run(s, "batches/" + label))}</a> <span class="pp-note">({n} PDF{"" if n == 1 else "s"})</span></p><ul>{items}</ul></div></nav>')
 
-def page(s, label):
+def page(s, label, closed=None):
     import html
     from . import names as NM
     E = html.escape
     st = state(s, label)
-    return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+    return body_class('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             f'<title>Batch: {E(NM.shown_run(s, "batches/" + label))}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + HM.appbar(extra=toggle(len(st['books']))) + nav(s, label, st=st) +
+            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + HM.appbar(extra=toggle(len(st['books']), not closed)) + nav(s, label, st=st, closed=closed) +
             f'<header><h1>Batch: {E(NM.shown_run(s, "batches/" + label))}</h1></header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
             '<h2 id="bt-h" tabindex="-1">This Batch</h2><div id="bt-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
-            '<script src="/app/batch.js" defer></script></body></html>')
+            '<script src="/app/batch.js" defer></script></body></html>', closed)
 
-def with_nav(page, s, label, current):
-    """A book's run page inside a batch: the app bar with the side list's button (P5), then the side column."""
+def with_nav(page, s, label, current, closed=None):
+    """A book's run page inside a batch: the app bar with the side list's button (P5), then the side column, laid out
+    by the server (D7)."""
     from . import server as W
     st = state(s, label)
-    bar = HM.appbar(extra=toggle(len(st['books']))) + nav(s, label, current, st=st)
+    bar = HM.appbar(extra=toggle(len(st['books']), not closed)) + nav(s, label, current, st=st, closed=closed)
+    page = body_class(page, closed)
     if W.APPBAR_MARK in page:
         a = page.rfind('<nav', 0, page.find(W.APPBAR_MARK)); i = page.find('</nav>', a)
         page = page[:a] + bar + page[i + 6:]

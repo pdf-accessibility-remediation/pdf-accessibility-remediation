@@ -195,6 +195,16 @@ const WAITING = box.dataset.waiting === '1';                   // served before 
 let ocrSeen;                                                    // the OCR verdict's `recorded` when this page's report was read
 const seen = {};                                                // per job: the last step and status announced
 
+// D7: the panel keeps the height it had on the last page until its first draw, so the report below does not jump when
+// the person moves from PDF to PDF (sessionStorage: this tab only)
+const HKEY = 'pp-h:' + (WAITING ? 'w' : 'r');
+try { const h = +sessionStorage.getItem(HKEY); if (h > 0) box.style.minHeight = h + 'px'; } catch (e) {}
+let sized = false;
+function keepHeight() {
+  if (!sized) { sized = true; box.style.minHeight = ''; }
+  try { sessionStorage.setItem(HKEY, String(box.offsetHeight)); } catch (e) {}
+}
+addEventListener('pagehide', keepHeight);
 box.innerHTML = '<section class="pp" aria-labelledby="pp-h"><h2 id="pp-h" tabindex="-1">Run Actions</h2>' +
   '<div id="pp-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>' +
   '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section>' +
@@ -729,6 +739,7 @@ async function poll(force) {
       announce(b);
       followUp(b);
       if (force || JSON.stringify(before) !== JSON.stringify(b)) render();
+      if (!sized) keepHeight();
       landed(b, land && focusWas && !$(focusWas) && land.id === 'pp-cur' ? 'pp-cur' : focusWas);
     }
   }

@@ -411,7 +411,7 @@ def make(s, setup, code=None):
                 rest = segs[1:]
                 if not rest:
                     if not p.endswith('/'): return self.redirect(p + '/')
-                    return self.send(200, BT.page(s, os.path.basename(B)), 'text/html; charset=utf-8')   # the batch page (#45)
+                    return self.send(200, BT.page(s, os.path.basename(B), closed=self.nav_closed()), 'text/html; charset=utf-8')   # the batch page (#45)
                 if rest == ['summary.html']:                     # the batch dashboard, with the app bar (#45: every page links home)
                     f = os.path.realpath(os.path.join(B, 'summary.html'))
                     if not f.startswith(RUNS + os.sep) or not os.path.isfile(f): return self.send(404, {'error': 'not found'})
@@ -575,8 +575,14 @@ def make(s, setup, code=None):
             """A book's page inside a batch (runs/batches/<label>/<name>) gets the batch's side column."""
             sg = run.split('/')
             if len(sg) != 3 or sg[0] != 'batches': return page
-            try: return BT.with_nav(with_appbar(page), s, sg[1], sg[2])
+            try: return BT.with_nav(with_appbar(page), s, sg[1], sg[2], closed=self.nav_closed())
             except Exception: return page
+
+        def nav_closed(self):
+            """The side list's open or closed choice, from the cookie batch.js sets (D7: the page is served already laid out,
+            so switching PDFs does not shift it); None when no choice was made (a narrow screen then starts closed)."""
+            m = re.search(r'(?:^|;\s*)pdfrem_bn=(open|closed)\b', self.headers.get('Cookie') or '')
+            return None if not m else m.group(1) == 'closed'
 
     return ThreadingHTTPServer(('127.0.0.1', s['port']), H)
 
