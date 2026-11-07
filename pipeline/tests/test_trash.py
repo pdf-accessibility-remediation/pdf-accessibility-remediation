@@ -197,6 +197,25 @@ def test_a_partial_move_that_errors_halfway_forgets_what_it_moved(setup, monkeyp
         if j['kind'] == 'summary': jobs.update(s['jobs'], j['id'], status='done')   # as the dispatcher would run it
     assert all(j['run'] != 'batches/Spring/a' for j in BT.again(s, 'Spring'))
 
+def test_a_job_queued_during_the_moves_skips_only_the_summary(setup, monkeypatch):
+    """Review 12 N3: a job queued for the batch between the check under the locks and the end of the moves makes the
+    summary job refuse; the move still completes, is logged, and the batch's lists are right."""
+    s = S(setup); B = batch(setup, s)
+    for j in jobs.all_jobs(s['jobs']):
+        if j['kind'] == 'summary': jobs.update(s['jobs'], j['id'], status='done')
+    real = TR._rename
+    def queue_then_rename(s_, src, base):
+        r = real(s_, src, base)
+        if not jobs.busy(s['jobs'], 'batches/Spring', str(B)):
+            jobs.create(s['jobs'], 'review', 'batches/Spring/b', ['true'], {}, counted=False, R=str(B / 'b'))
+        return r
+    monkeypatch.setattr(TR, '_rename', queue_then_rename)
+    r = TR.move_batch(s, 'Spring', ['a', 'c'])
+    assert r['moved'] == ['a', 'c'] and _listed(s) == ['b']
+    assert [x['pdf'] for x in json.load(open(os.path.join(s['jobs'], 'trash-log.json')))[-2:]] == ['a', 'c']
+    assert [x['name'] for x in json.load(open(B / 'trashed.json'))] == ['a', 'c']
+    assert not [j for j in jobs.all_jobs(s['jobs']) if j['kind'] == 'summary' and j['status'] == 'queued']
+
 def test_a_picked_pdf_with_no_folder_is_only_forgotten(setup):
     import shutil
     s = S(setup); B = batch(setup, s)

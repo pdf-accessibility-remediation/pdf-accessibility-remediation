@@ -250,8 +250,10 @@ first, naming what goes in plain words:
 - **A batch, or PDFs in it:** each PDF named. After a partial move the PDFs are out of the batch's book list, its record
   and `ocr_langs.tsv` (so nothing sends them again), and summary.md, summary.html and the page's dashboard are drawn from
   the PDFs left. **Total Cost:** counts those, and a line follows: "1 PDF moved to the Trash (AI cost $0.45)", so the
-  spend is never hidden (summary.md has the same line, from the batch folder's `trashed.json`). Moving every PDF moves the
-  batch.
+  spend is never hidden (summary.md has the same line, from the batch folder's `trashed.json`). summary.md and
+  summary.html are written again by a job of their own; when a job of the batch was queued during the move, that job is
+  skipped and the files wait for the batch's next run, apply or move (the batch page is drawn live either way). Moving
+  every PDF moves the batch.
 - **An added PDF:** when runs were made from it (by sha256), each is listed with its date and status, "These runs keep
   their remediated PDF, report and downloads", and, per run, what the move changes (Patrick, 2026-11-07): ""Review
   Again" still works: the run kept its own copy" (its intake made one), "…the run uses another copy of the PDF" (its

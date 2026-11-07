@@ -273,8 +273,12 @@ def forget_books(s, label, names, moved):
     d = (_load(tp) or []) + [{'name': m['name'], 'cost_usd': m['cost_usd'], 'moved': datetime.datetime.now().isoformat(timespec='seconds')} for m in moved]
     tmp = tp + '.tmp'; json.dump(d, open(tmp, 'w', encoding='utf-8'), indent=1); os.replace(tmp, tp)
     if os.path.isfile(os.path.join(B, 'summary.md')) or os.path.isfile(os.path.join(B, 'summary.html')):
-        jobs.create(s['jobs'], 'summary', f'batches/{label}', ['bash', 'batch_api.sh', label], config.child_env(s, {'SUMMARY_ONLY': '1'}),
-                    env_set={'SUMMARY_ONLY': '1'}, counted=False, R=B, what='Write the batch summary again')
+        try:
+            jobs.create(s['jobs'], 'summary', f'batches/{label}', ['bash', 'batch_api.sh', label], config.child_env(s, {'SUMMARY_ONLY': '1'}),
+                        env_set={'SUMMARY_ONLY': '1'}, counted=False, R=B, what='Write the batch summary again')
+        except ValueError:                                  # a job of the batch was queued meanwhile (review 12 N3): the files
+            pass                                            # wait for the next batch run, book apply or move (the batch page
+                                                            # reads the folders live); everything above is already right
 
 def trashed(s, label):
     """[{name, cost_usd, moved}]: PDFs of this batch moved to the Trash (the batch folder's trashed.json)."""

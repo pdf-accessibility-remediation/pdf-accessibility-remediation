@@ -219,10 +219,10 @@ def move_batch(s, label, names=None):
             done = True
     finally:
         gone = [m['name'] for m in moved] + (absent if done else [])
-        if gone:
-            BT.forget_books(s, label, gone, moved)
+        if gone:                                            # the move log first (review 12 N3): it says where each PDF went
             for m in moved: log(s, {'what': 'batch-pdf', 'label': label, 'pdf': m['name'], 'from': os.path.join(B, m['name']), 'to': m['to'], 'cost_usd': m['cost_usd']})
             for n in (absent if done else []): log(s, {'what': 'batch-pdf', 'label': label, 'pdf': n, 'from': None, 'to': None, 'note': 'no folder: taken out of the batch only'})
+            BT.forget_books(s, label, gone, moved)
             _drop_home_cache(s)
     return {'moved': [m['name'] for m in moved], 'forgotten': absent, 'whole': False}
 
