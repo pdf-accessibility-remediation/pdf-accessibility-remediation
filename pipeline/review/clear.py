@@ -13,8 +13,7 @@ What is deleted, by an allow-list of file types at named paths (never a whole fo
     the AI's decisions (workorder.ai.json) and the records are the evidence; the PDF is a by-product (Patrick, 2026-11-05;
     "Clean Up Space" before shipping still keeps versions/ai: review/prune.py, K9);
   - figure crops and page images (.png, .jpg, .jpeg) under _audit/ and reviews/_audit/.
-What is kept: every .json, .md, .html and .csv file (records are never written under _audit/ or reviews/_audit/, and
-never as images: docs/files.md); all of release/shipped/NNN/; the original in samples/ or uploads/ (never touched).
+What is kept: every .json, .md, .html and .csv file (records there are never images or PDFs: docs/files.md); all of release/shipped/NNN/; the original in samples/ or uploads/ (never touched).
 
 The gate: the book is Shipped (its current PDF, hashed now, is a live shipment's); that version's record ZIP was downloaded
 in full (release/downloads.json, written by the app after the ZIP's last byte); the shipped copy in release/shipped/NNN/
@@ -34,6 +33,7 @@ from . import sessions as S
 from .ocr import put_json
 
 SCHEMA = 'cleared/1'
+UNREADABLE = 'This book\'s clearing record can\'t be read. Whoever looks after the app can check it.'
 CONFIRM = 'CLEAR'
 IMAGES = ('.png', '.jpg', '.jpeg')
 WHAT = {'output': 'The working copy of the finished PDF (the same file as the shipped copy)', 'intake': 'The prepared PDF the run worked on',
@@ -81,6 +81,7 @@ def gate(R, rec=None, sha=REL.sha_file, busy=None):
     """{ok, why, shipment, sha}: every condition but the locks. busy: the app's own check (a job of this run), or None."""
     R = os.path.abspath(R)
     c = REL.cleared(R)
+    if c and c.get('unreadable'): return {'ok': False, 'why': UNREADABLE}   # read only, never resumed over an empty plan (05 H1)
     if c and c.get('state') == 'done': return {'ok': False, 'why': 'This book\'s files were cleared already.', 'shipment': c.get('shipment')}
     if busy:
         why = busy()

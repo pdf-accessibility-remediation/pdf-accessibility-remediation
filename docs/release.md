@@ -424,8 +424,9 @@ browser goes to the home page, where the row reads "Cleared on November 5, 2026 
 sessions, the digest, intake's record and the OCR verdict, `release/*.json`); all of `release/shipped/NNN/`; and the
 original in `samples/` or `uploads/`, which is never touched.
 
-**Records are never written under `_audit/` or `reviews/_audit/`, and never as images. Clearing removes PDFs and images
-there** ([Files](files.md)): a later feature cannot lose a record by its choice of folder.
+**A record is never an image or a PDF.** Under `_audit/` and `reviews/_audit/` the records (the digest, the full text,
+dryrun.json, the OCR-word list) are `.json` or `.csv`; clearing removes only the PDFs and images there ([Files](files.md)),
+so a later feature cannot lose a record by its choice of folder or file type, as long as it keeps that rule.
 
 **The record:** `release/cleared.json` lists every deleted file with its path, size and sha256 (`versions/ai`'s included).
 It is written as `planned` before anything is deleted and marked `done` after, with the space freed and the code's

@@ -79,7 +79,7 @@ def versions(R, rec, glance=None):
                     'state': 'earlier version', 'status_text': None, 'label': f'{_version_label(n)[0].upper() + _version_label(n)[1:]} (previous version)'})
     changed = MP.disk_state(R, rec)['same'] is False
     cleared = bool(REL.cleared(R))
-    if cleared: out = [x for x in out if x['id'] != 'current']   # #45: the working PDF was cleared; the shipped copies stay (02 B2)
+    if cleared: out = []                                      # #45: cleared (or being cleared): only the shipped copies (02 B2, 05 L3)
     for s in reversed(rel.get('shipped') or []):             # shipped copies: listed when the current entry is not them (M7)
         d = _shipped_dir(R, s); f = (s.get('pdf') or {}).get('file')
         if not d or not plain_name(f) or not os.path.isfile(os.path.join(d, f)): continue

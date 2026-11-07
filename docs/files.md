@@ -90,9 +90,9 @@ The pipeline lives in `pipeline/`; paths below are relative to it, apart from `p
 
 ## Where records live
 
-**Records are never written under `_audit/` or `reviews/_audit/`, and never as images.** Those folders hold what the
-pipeline extracts from the book (the digest, its full text, figure crops, page images); clearing a shipped book removes the
-PDFs and images there and keeps every `.json`, `.md`, `.html` and `.csv` file ([Accessibility evaluation and
+**A record is never an image or a PDF.** `_audit/` and `reviews/_audit/` hold what the pipeline extracts from the book:
+records (the digest, its full text, dryrun.json, the OCR-word list, all `.json` or `.csv`) and figure crops and page
+images. Clearing a shipped book removes the PDFs and images there and keeps every `.json`, `.md`, `.html` and `.csv` file ([Accessibility evaluation and
 release](release.md#clearing-a-shipped-book)). A new record goes beside record.json, in `reviews/` or in `release/`.
 
 **The app's own files** are in `runs/.app/` (the `jobs` setting): `jobs/<id>.json` and `.log` (each job, its environment,

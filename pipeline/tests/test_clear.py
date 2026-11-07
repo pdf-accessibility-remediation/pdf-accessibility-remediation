@@ -129,3 +129,20 @@ def test_clean_up_space_before_shipping_still_keeps_the_ai_version(tmp_path):
 def test_records_are_never_images_and_only_pdfs_and_images_go():
     src = open(os.path.join(HERE, 'review', 'clear.py'), encoding='utf-8').read()
     assert "IMAGES = ('.png', '.jpg', '.jpeg')" in src and "if f.lower().endswith('.pdf'): add(" in src and 'rmtree' not in src
+
+def test_an_unreadable_clearing_record_is_never_overwritten(tmp_path):
+    """05 H1: garbage in cleared.json: no offer, no clear, the file unchanged, the run still read only."""
+    R = shipped_run(tmp_path)
+    (R / 'release' / 'cleared.json').write_text('garbage{')
+    g = CL.gate(str(R))
+    assert not g['ok'] and g['why'] == CL.UNREADABLE
+    with pytest.raises(S.Refused, match='clearing record can.t be read'): CL.clear(str(R), 'Kim', 'CLEAR')
+    assert (R / 'release' / 'cleared.json').read_text() == 'garbage{' and (R / 'bk_remediated.pdf').exists()
+    with pytest.raises(S.Refused, match='cleared'): S.not_cleared(str(R))
+
+def test_while_a_clear_is_under_way_only_shipped_copies_are_listed(tmp_path):
+    """05 L3: a planned clear lists the shipped copies only, not the versions whose PDFs are about to go."""
+    R = shipped_run(tmp_path)
+    (R / 'release' / 'cleared.json').write_text(json.dumps({'state': 'planned', 'files': []}))
+    vs = DL.versions(str(R), json.load(open(R / 'record.json')))
+    assert [v['id'] for v in vs] == ['shipment-1']
