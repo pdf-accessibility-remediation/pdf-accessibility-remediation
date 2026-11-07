@@ -301,6 +301,9 @@ def test_a_run_made_outside_the_app_offers_no_buttons(setup):
     jobs.update(s['jobs'], j['id'], status='done')
     st = RN.pending_state(s, 'batches/b1/bk', str(B))
     assert st['phase'] == 'batch' and st['batch'] == 'b1' and st['spend'] is None
+    from webapp import names as NM
+    NM.set_run_name(s, 'b1', 'Spring backlist', kind='batches')                   # 07 L4: named by its plain name
+    assert RN.pending_state(s, 'batches/b1/bk', str(B))['batch_name'] == 'Spring backlist'
     with pytest.raises(SP.Refused, match='no estimate'): SP.authorize(s, 'workorder', 'batches/b1/bk', str(B), st['estimate']['fingerprint'])
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert "s.phase === 'outside'" in js and 'Open the Batch Page' in js

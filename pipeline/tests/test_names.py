@@ -82,3 +82,34 @@ def test_home_search_matches_both_names(app):
     for q in ('Spring', 'lbl-x'):
         page = get(app['port'], f'/?q={q}')[1].decode()
         assert '1 run matching' in page and 'Spring pass' in page, q
+
+def test_a_label_taken_between_check_and_create_is_derived_again(setup, monkeypatch):
+    """07 L1: a folder made by another request after label_for found the label free: "_2", not a server error."""
+    monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng'])
+    s = settings(setup)
+    (setup / 'samples' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book'))
+    key = BK.listing(s)[0]['key']
+    (setup / 'runs' / 'bk' / 'Spring').mkdir(parents=True)
+    real, calls = NR.run_taken, []
+    def racing(s_, R):
+        calls.append(R)
+        return False if len(calls) == 1 else real(s_, R)       # the first look misses the folder the other request made
+    monkeypatch.setattr(NR, 'run_taken', racing)
+    j = NR.start_estimate(s, [], key, 'Spring', 'eng', True)
+    assert j['run'] == 'bk/Spring_2'
+
+def test_a_batch_label_taken_between_check_and_create_is_derived_again(setup, monkeypatch):
+    from webapp import batches as BT
+    monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng'])
+    s = settings(setup)
+    for n in ('a', 'b'): (setup / 'samples' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n}'))
+    keys = [b['key'] for b in BK.listing(s)]
+    os.makedirs(os.path.join(s['jobs'], 'batches'), exist_ok=True)
+    open(BT.list_path(s, 'Spring'), 'w').close()                # the other request's book list, not yet its folder
+    real, calls = BT.exists, []
+    def racing(s_, lab):
+        calls.append(lab)
+        return False if len(calls) == 1 else real(s_, lab)
+    monkeypatch.setattr(BT, 'exists', racing)
+    js = BT.start(s, [], keys, 'Spring', 'eng')
+    assert js[0]['run'].split('/')[1] == 'Spring_2'

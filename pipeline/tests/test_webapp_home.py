@@ -175,3 +175,13 @@ def test_a_batch_whose_books_all_stopped_is_stopped(setup):
         I = setup / 'runs' / 'batches' / 'bx' / n / '_intake'; I.mkdir(parents=True)
         (I / 'intake.json').write_text(json.dumps({'status': 'stopped', 'original': {'file': f'{n}.pdf'}}))
     assert {b['label']: b for b in HM.index(s)['batches']}['bx']['state'] == 'Stopped'
+
+def test_a_run_waiting_for_a_new_estimate_says_so_on_home(setup):
+    """07 L3 (05 M2): a needs-spend run's home row tells the person what to do."""
+    from webapp import jobs
+    s = settings(setup)
+    j = jobs.create(s['jobs'], 'estimate', 'bk/r1', ['true'], {}, R=str(setup / 'runs' / 'bk' / 'r1'))
+    jobs.update(s['jobs'], j['id'], status='needs-spend')
+    rows = [{'run': 'bk/r1', 'finished': False, 'status': 'Estimate Ready', 'words': 'Estimate Ready'}]
+    HM.over(s, rows)
+    assert rows[0]['words'] == 'Waiting: open it and select "Get a New Estimate"'

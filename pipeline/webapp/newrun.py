@@ -80,9 +80,12 @@ def start_estimate(s, setup, key, plain, ocr_lang, review_first):
     m = BK.read_meta(book['path']); book['tagged'] = m.get('tagged')
     check_untagged(s, setup, book)
     name = short_name(s, book)
-    run_name = NM.label_for(plain, 'run', lambda lab: run_taken(s, os.path.join(s['runs'], name, lab)))
-    R = os.path.join(s['runs'], name, run_name)
-    os.makedirs(R)
+    for _ in range(20):                                  # two requests can fold to the same free label at once (07 L1):
+        run_name = NM.label_for(plain, 'run', lambda lab: run_taken(s, os.path.join(s['runs'], name, lab)))
+        R = os.path.join(s['runs'], name, run_name)
+        try: os.makedirs(R); break                       #   the second derives it again ("_2")
+        except FileExistsError: continue
+    else: raise ValueError('A run with this name is being started right now. Try again in a moment.')
     if plain: NM.set_run_name(s, f'{name}/{run_name}', plain)
     env = {'ESTIMATE': '1', 'OCR_LANG': ocr_lang}
     argv = ['bash', 'run_api.sh', book['path'], name, run_name]

@@ -292,7 +292,7 @@ def state(s, run, R):
     h = jobs.lock_holder(R)
     rel = os.path.relpath(R, config.PIPELINE)
     from lib import costs
-    return {
+    out = {
         'run': run, 'mode': 'finished', 'run_name': __import__('webapp.names', fromlist=['x']).shown_run(s, run), 'file': BK.shown_file((rec.get('document') or {}).get('file') or ''), 'cost': costs.actual(R),
         'cleared': cleared_view(R), 'clear': clear_offer(s, run, R, rec), 'replay': replay_offer(s, run, R),
         'title': (rec.get('document') or {}).get('file') or run, 'review_html': os.path.isfile(os.path.join(R, 'review.html')),
@@ -314,6 +314,8 @@ def state(s, run, R):
         'batch': run.split('/')[1] if run.startswith('batches/') and len(run.split('/')) == 3 and
                  os.path.isfile(os.path.join(os.path.dirname(R), 'summary.html')) else None,
     }
+    if out['batch']: out['batch_name'] = __import__('webapp.names', fromlist=['x']).shown_run(s, f'batches/{out["batch"]}')   # 07 L4
+    return out
 
 # ------------------------------------------------------------------ a run started from the home page, before any result (#45)
 PENDING_MARKS = ('run.json', os.path.join('_intake', 'intake.json'), os.path.join('_audit', 'digest.json'))
@@ -371,7 +373,7 @@ def pending_state(s, run, R):
         spend = {'ok': ok, 'why': None if ok else b['words'], 'code': None if ok else b['code']}
     return {'run': run, 'mode': 'pending', 'title': name, 'file': file, 'run_name': NM.shown_run(s, run), 'phase': phase,
             'estimate': est, 'sent': sent_words(est) if est else None, 'spend': spend, 'retry': retry, 'failure': fail, 'test': test,
-            'review_first': rf, 'from_app': from_app, 'batch': batch,
+            'review_first': rf, 'from_app': from_app, 'batch': batch, 'batch_name': NM.shown_run(s, f'batches/{batch}') if batch else None,
             'jobs': [job_view(s, j) for j in js]}
 
 # ------------------------------------------------------------------ a run stopped for its first review (REVIEW=1)

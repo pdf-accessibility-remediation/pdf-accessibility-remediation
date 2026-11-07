@@ -14,7 +14,7 @@ What a Spend checks, in this order, at the click:
   3. the estimate fits the limits and the credit (lib/costs.py `blocked`);
   4. the book's file is still the one the estimate was made from (its sha256).
 Then the job: AUTO=1, MAX_USD (and BOOK_MAX_USD for #63's shape, BATCH_MAX_USD for a batch) bound to the estimate shown,
-the settings copied from the estimate's own job (never from a form again), paid, with the fingerprint and the tick.
+the settings copied from the estimate's own job (never from a form again), paid, with the estimate's fingerprint.
 Test mode (test_reply_dir / test_batch_from from --config): REPLY= (or FROM=) instead of the call; prices offline are
 allowed, a missing saved reply is refused, never sent instead.
 """

@@ -47,7 +47,7 @@ def books_of(s, label):
     return out
 
 def exists(s, label):
-    return os.path.isdir(folder(s, label)) or os.path.isfile(meta_path(s, label))
+    return os.path.isdir(folder(s, label)) or os.path.isfile(meta_path(s, label)) or os.path.isfile(list_path(s, label))
 
 # ------------------------------------------------------------------ New Batch
 def start(s, setup, keys, plain, ocr_lang):
@@ -55,8 +55,6 @@ def start(s, setup, keys, plain, ocr_lang):
     (webapp/names.py label_for), and the plain name is kept by the app only."""
     from . import names as NM
     plain = NM.clean_name(plain)
-    js_ = jobs.all_jobs(s['jobs'])
-    label = NM.label_for(plain, 'batch', lambda lab: exists(s, lab) or any(jobs.related(j['run'], f'batches/{lab}') for j in js_))
     langs = dict(BK.ocr_choices(BK.installed_langs(s)))
     if ocr_lang not in langs: raise ValueError('Choose an OCR language from the list.')
     keys = [k for k in dict.fromkeys(keys or []) if isinstance(k, str)]
@@ -76,7 +74,13 @@ def start(s, setup, keys, plain, ocr_lang):
         name = base if n == 1 else f'{base}-{n}'; taken.add(name)
         bs.append({'name': name, 'key': b['key'], 'file': b['file'], 'book': b['name'], 'path': b['path']})
     os.makedirs(os.path.join(s['jobs'], 'batches'), exist_ok=True)
-    with open(list_path(s, label), 'x', encoding='utf-8') as f:
+    for _ in range(20):                                  # two requests can fold to the same free label at once (07 L1):
+        js_ = jobs.all_jobs(s['jobs'])                   #   the second derives it again ("_2")
+        label = NM.label_for(plain, 'batch', lambda lab: exists(s, lab) or any(jobs.related(j['run'], f'batches/{lab}') for j in js_))
+        try: f = open(list_path(s, label), 'x', encoding='utf-8'); break
+        except FileExistsError: continue
+    else: raise ValueError('A batch with this name is being started right now. Try again in a moment.')
+    with f:
         f.write(f'# batch {label}, made by the app {datetime.datetime.now().isoformat(timespec="seconds")}: <short name> <absolute path>\n')
         for b in bs: f.write(f'{b["name"]} {b["path"]}\n')
     json.dump({'label': label, 'created': datetime.datetime.now().isoformat(timespec='seconds'), 'ocr_lang': ocr_lang, 'ocr_name': langs[ocr_lang],
