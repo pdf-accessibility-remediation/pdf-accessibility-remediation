@@ -101,6 +101,7 @@ def test_a_pdf_used_by_runs_goes_and_the_run_says_so(setup):
     R = finished_run(setup, sha=key)                                            # a tagged run: no intake copy, so it needs the original
     p = TR.plan_pdf(s, key)
     assert [r['name'] for r in p['runs']] == ['r1'] and p['words'] == [TR.CONFIRM_USED] and not p['refused']
+    assert p['runs'][0]['effect'] == TR.NEEDS_BACK                              # no copy of its own: it needs the original
     TR.move_pdf(s, key)
     assert not (setup / 'uploads' / 'bk.pdf').exists() and (setup / 'Trash' / 'bk.pdf').exists() and BK.by_key(s, key) is None
     assert TR.moved_pdf(s, key)['runs'] == ['r1']
@@ -216,3 +217,16 @@ def test_a_second_pdf_of_the_same_name_keeps_its_extension(setup):
     (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book')); (setup / 'uploads' / 'bk.json').write_text('{}')
     TR.move_pdf(s, BK.listing(s)[0]['key'])
     assert (setup / 'Trash' / 'bk 2.pdf').exists() and (setup / 'Trash' / 'bk 2.json').exists()
+
+
+def test_the_warning_says_per_run_whether_review_again_still_works(setup):
+    """Patrick, 2026-11-07: a run whose intake kept its own copy still reviews again; never claim it doesn't."""
+    s = S(setup)
+    (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book')); key = BK.listing(s)[0]['key']
+    finished_run(setup, label='tagged', sha=key)
+    own = finished_run(setup, label='untagged', sha=key)
+    rec = json.loads((own / 'record.json').read_text()); rec['intake'] = {'result': {'pdf': 'intake.pdf'}}; (own / 'record.json').write_text(json.dumps(rec))
+    eff = {r['name']: r['effect'] for r in TR.plan_pdf(s, key)['runs']}
+    assert eff == {'tagged': TR.NEEDS_BACK, 'untagged': TR.STILL_WORKS}
+    (setup / 'samples' / 'copy.pdf').write_bytes((setup / 'uploads' / 'bk.pdf').read_bytes())   # another copy: found by sha256
+    assert 'still works' in {r['name']: r['effect'] for r in TR.plan_pdf(s, key)['runs']}['tagged']

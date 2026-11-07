@@ -246,10 +246,13 @@ first, naming what goes in plain words:
   the PDFs left. **Total Cost:** counts those, and a line follows: "1 PDF moved to the Trash (AI cost $0.45)", so the
   spend is never hidden (summary.md has the same line, from the batch folder's `trashed.json`). Moving every PDF moves the
   batch.
-- **An added PDF:** when runs were made from it (by sha256), each is listed with its date and status, and "These runs
-  keep their remediated PDF, report and downloads, but "Review Again" will no longer work for them." Those runs stay;
-  their run page says the original PDF was moved to the Trash, and "Review Again" says how to put it back (a run whose
-  intake made its own copy still reviews again, and its page says so). The samples folder is never offered.
+- **An added PDF:** when runs were made from it (by sha256), each is listed with its date and status, "These runs keep
+  their remediated PDF, report and downloads", and, per run, what the move changes (Patrick, 2026-11-07): ""Review
+  Again" still works: the run kept its own copy" (its intake made one) or "…another copy of the PDF is in the app's
+  folders"; ""Review Again" will need it back" (a tagged PDF, reviewed from the original); "Applying its reviewed
+  decisions will need it back" (waiting for its first apply); "Going on with this run will need it back" (before its
+  result). Those runs stay; a run that needs it says on its page that the original PDF was moved to the Trash and how to
+  put it back. The samples folder is never offered.
 
 A move is refused, and nothing moves, while anything affected is processing, waiting to start or for a new estimate, has
 a review page open, or sits between "Finish Review" and its apply; a PDF also while any job's command names it. Where the

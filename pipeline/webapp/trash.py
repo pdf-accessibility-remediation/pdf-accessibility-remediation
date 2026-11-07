@@ -26,7 +26,11 @@ from . import jobs, books as BK, names as NM, home as HM
 
 CONFIRM_RUN = 'The remediated PDF, its report and its review go with it.'
 CONFIRM_SHIPPED = 'This run was shipped. Its record of what was shipped and who approved it goes with it.'
-CONFIRM_USED = ('These runs keep their remediated PDF, report and downloads, but "Review Again" will no longer work for them.')
+CONFIRM_USED = 'These runs keep their remediated PDF, report and downloads. What moving the PDF changes for each is beside it.'
+STILL_WORKS = '"Review Again" still works: the run kept its own copy.'
+NEEDS_BACK = '"Review Again" will need it back.'
+APPLY_NEEDS = 'Applying its reviewed decisions will need it back.'
+GO_ON_NEEDS = 'Going on with this run will need it back.'
 OTHER_DISK = 'The Trash is on another disk than the app\'s folders, so this can\'t be moved there. Whoever looks after the app can move it by hand.'
 
 class Refused(Exception):
@@ -236,6 +240,26 @@ def runs_using(s, sha):
                     'date': r.get('when'), 'status': r.get('words'), 'R': os.path.join(s['runs'], *run.split('/'))})
     return out
 
+def _other_copy(s, sha, path):
+    """Another file with the same content in samples/ or uploads/ (the app finds an original by sha256)."""
+    others = [p for p in BK.pdfs_in(s['samples']) + BK.pdfs_in(s['uploads']) if os.path.realpath(p) != os.path.realpath(path)]
+    return any(h == sha for h in BK.hashes(s, others).values())
+
+def effect(s, u, sha, path):
+    """What moving this PDF changes for one run, in a sentence (Patrick, 2026-11-07: never claim "Review Again" fails for
+    a run that kept its own copy): a finished run needs the original only when it has no intake copy (runs.pdf_needed);
+    a run waiting for its first apply always needs one; a run before its result needs the very file it was started from."""
+    from . import runs as RN
+    R = u['R']
+    rec = RN.load(os.path.join(R, 'record.json'))
+    if rec:
+        p, why = RN.pdf_needed(s, R, rec)
+        if not p and not why: return STILL_WORKS
+        return STILL_WORKS.replace('the run kept its own copy', 'another copy of the PDF is in the app\'s folders') if _other_copy(s, sha, path) else NEEDS_BACK
+    if RN.waiting(R): return APPLY_NEEDS if not _other_copy(s, sha, path) else STILL_WORKS.replace('"Review Again" still works: the run kept its own copy',
+                                                                                                   'Applying its reviewed decisions still works: another copy of the PDF is in the app\'s folders')
+    return GO_ON_NEEDS
+
 def jobs_reading(s, path):
     """A running or queued job whose command names this file (an estimate, a run or a batch reading it), or None."""
     return next((j for j in jobs.all_jobs(s['jobs']) if j['status'] in jobs.ACTIVE and any(jobs.path_in(a, path) for a in j.get('argv') or [])), None)
@@ -250,7 +274,8 @@ def plan_pdf(s, key):
           ('It is being read by a job right now. Try again when the job has stopped.' if jobs_reading(s, b['path']) else None)
     from lib import dates as D
     return {'what': 'pdf', 'key': key, 'pdf': b['name'], 'file': b['file'],
-            'runs': [{'name': u['name'], 'date': D.day(u['date']) if u['date'] else 'date not recorded', 'status': u['status']} for u in used],
+            'runs': [{'name': u['name'], 'date': D.day(u['date']) if u['date'] else 'date not recorded', 'status': u['status'],
+                      'effect': effect(s, u, key, b['path'])} for u in used],
             'words': [CONFIRM_USED] if used else [], 'refused': why}
 
 def move_pdf(s, key):
