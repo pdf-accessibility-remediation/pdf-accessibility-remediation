@@ -66,7 +66,10 @@ function body(s) {
   if (s.test) h += '<p class="pp pp-bar">Test: saved replies, no AI call.</p>';
   h += '<p>' + T.finished + ' of ' + n + ' PDFs finished' + (s.ocr_name ? ' · OCR Language: ' + esc(s.ocr_name) : '') + '</p>';
   const x = T.expected;
-  if (s.phase === 'ready' || s.phase === 'estimating' || s.phase === 'missing')
+  if (s.phase === 'estimating' || s.phase === 'language') {      // R14: never "$0.00" while the estimates come in
+    if (T.estimated) h += '<p id="bt-cost"><b>Worst-case estimate so far ' + usd(T.ceiling_usd) + ' for ' + T.estimated + ' of ' + T.to_estimate +
+      ' PDF' + (T.to_estimate === 1 ? '' : 's') + ' (estimating) · Batch limit ' + usd(T.limit_usd) + '</b></p>';
+  } else if (s.phase === 'ready' || s.phase === 'missing')
     h += '<p id="bt-cost"><b>' + (x ? 'About ' + usd(x.usd) + ' · ' : '') + 'Worst-case estimate ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' PDF' + (T.books_to_send === 1 ? '' : 's') +
          ' · Batch limit ' + usd(T.limit_usd) + (T.credit_usd != null ? ' · Credit ' + usd(T.credit_usd) : ' · Credit not checked') + '</b></p>';
   if (T.spent_usd || s.phase === 'running' || s.phase === 'finished')

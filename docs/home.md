@@ -237,7 +237,9 @@ error line, the record that holds it and where the full log is. Tool text and co
    batch folder's `ocr_langs.tsv`, which batch_api.sh reads to give that PDF its own `OCR_LANG`. The batch can start once
    every one is answered.
 5. **The batch page** (`/batch/<label>/`): the state (Waiting for a Language, Estimating, Ready to Start, Running,
-   Waiting for Review, Finished, Stopped), the worst case for the PDFs to send, the batch limit and the credit, the PDFs
+   Waiting for Review, Finished, Stopped), the worst case for the PDFs to send, the batch limit ($10, R13) and the credit
+   (while the estimates come in: "Worst-case estimate so far $0.42 for 1 of 4 PDFs (estimating)", and nothing before the
+   first one: never "$0.00", R14), the PDFs
    that stopped and need a person (not sent), **Start Remediation**, **Total Cost:**, and the batch dashboard drawn in
    the page (report_html's own rows: no separate page to open).
 6. **Start Remediation** runs `AUTO=1 REVIEW=1 JOBS=… BATCH_MAX_USD=<total, rounded up> MAX_USD=<largest book's call>

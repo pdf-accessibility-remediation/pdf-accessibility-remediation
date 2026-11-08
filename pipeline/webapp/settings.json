@@ -12,7 +12,7 @@
  "limits": {
   "per_call_usd": 2,
   "per_book_usd": 5,
-  "per_batch_usd": 40
+  "per_batch_usd": 10
  },
  "tools": {
   "VERAPDF": "",

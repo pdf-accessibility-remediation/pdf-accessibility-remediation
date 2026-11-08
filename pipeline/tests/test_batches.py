@@ -165,3 +165,22 @@ def test_batch_api_review_stops_summary_only_and_retry(tmp_path):
     assert 'wait: waiting for review, skipped' in r.stdout and 'nothing to run' in r.stdout, r.stdout + r.stderr
     r = subprocess.run(['bash', 'batch_api.sh', 'bx'], cwd=HERE, env=env, capture_output=True, text=True, timeout=60)
     assert r.returncode == 1 and 'AUTO=1' in r.stdout                           # with none of the new settings: as before
+
+def test_the_cost_line_while_estimating_never_says_zero():
+    """R14 (Patrick's test, 2026-11-07): while a batch is estimating, the line says how far the estimates are, or nothing
+    before the first one; never "Worst-case estimate $0.00"."""
+    js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "if (T.estimated) h += '<p id=\"bt-cost\"><b>Worst-case estimate so far '" in js and "' (estimating) · Batch limit '" in js
+    assert "} else if (s.phase === 'ready' || s.phase === 'missing')" in js
+
+def test_the_state_counts_the_estimates_in(two):
+    """R14: totals.estimated (PDFs with an estimate) and totals.to_estimate (PDFs it is waiting on, a language too)."""
+    from test_spend import run_folder
+    from webapp import jobs
+    s = settings(two)
+    js = BT.start(s, [], [b['key'] for b in BK.listing(s)], 'b1')
+    names = [j['run'].split('/')[-1] for j in js]
+    run_folder(two, name='batches', label=f'b1/{names[0]}', worst=0.5)
+    st = BT.state(s, 'b1')
+    assert st['phase'] == 'estimating' and (st['totals']['estimated'], st['totals']['to_estimate']) == (1, 3) and st['totals']['ceiling_usd'] == 0.5
+    for j in js: jobs.update(s['jobs'], j['id'], status='done')
