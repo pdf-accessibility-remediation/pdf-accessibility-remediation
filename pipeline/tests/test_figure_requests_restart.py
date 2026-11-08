@@ -48,3 +48,23 @@ def test_an_unreadable_first_reply_of_a_planned_book_is_not_replayed(book, tmp_p
     r = run_api(book[0], R, ESTIMATE=1)
     assert 'earlier attempt logged: $0.500' in r.stdout, r.stdout + r.stderr
     assert 'reading it again' not in r.stdout
+
+def test_a_charge_not_known_counts_its_worst_case_toward_the_book_cap(book, tmp_path):
+    """06 M1: the request in flight and a timed-out call are logged with their worst case, and the next estimate counts it."""
+    R = stopped_folder(book, tmp_path, 'calling'); run = json.load(open(R / 'run.json'))
+    run['figure_passes']['in_flight_worst_usd'] = 0.47
+    run['passes'][1]['calls'] = [{'error': {'code': 'timeout'}, 'worst_usd': 0.45}, {'finish_reason': 'stop'}]
+    (R / 'run.json').write_text(json.dumps(run))
+    r = run_api(book[0], R, ESTIMATE=1)
+    assert r.returncode == 0, r.stdout + r.stderr
+    att = {a['pass']: a for a in json.load(open(R / 'attempts.json'))}
+    assert att['2']['worst_usd'] == 0.45 and att['3']['worst_usd'] == 0.47 and att['3']['cost_usd'] is None and 'worst_usd' not in att['1']
+    assert json.load(open(R / 'run.json'))['estimate']['spent_before_usd'] == 1.82   # 0.5 + 0.4 known, 0.45 + 0.47 not known
+
+def test_a_stop_between_workorder_and_run_json_is_not_replayed_as_one_reply(book, tmp_path):
+    """06 L1: workorder.json written, run.json still "calling": every cost is logged and the run starts over."""
+    R = stopped_folder(book, tmp_path, 'calling'); (R / 'workorder.json').write_text('{}')
+    r = run_api(book[0], R, ESTIMATE=1)
+    assert 'was stopped while its figure requests were being sent' in r.stdout, r.stdout + r.stderr
+    assert 'reply was complete' not in r.stdout and not (R / 'workorder.json').exists()   # nor found by a later rerun
+    assert json.load(open(R / 'run.json')).get('response_from') is None

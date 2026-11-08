@@ -171,10 +171,12 @@ def fake_openrouter(calls):
         if url.endswith('/credits'): return Resp({'data': {'total_credits': 100, 'total_usage': 0}})
         body = json.loads(req.data); first = body['messages'][0]['content'].startswith('You are the decision-maker')
         objs = [m.group(1) for c in body['messages'][1]['content'] if c.get('type') == 'text' for m in [re_.match(r'Figure obj "([^"]+)"', c['text'])] if m]
-        calls.append({'first': first, 'n': len(objs), 'auth': req.headers.get('Authorization'), 'max_tokens': body['max_tokens']})
+        calls.append({'first': first, 'n': len(objs), 'auth': req.headers.get('Authorization'), 'max_tokens': body['max_tokens'],
+                      'data': body['messages'][1]['content'][0].get('text', '')})
         if not first and sum(1 for c in calls if not c['first']) == 1:
             raise urllib.error.HTTPError(url, 429, 'rate limited', {}, io.BytesIO(b'{"error": {"message": "rate limited"}}'))
         wo = {'alt': [{'obj': o, 'alt': ('First: ' if first else 'Figure: ') + o} for o in objs]}
+        if first: wo['captions'] = {'style': 'NoSuchStyle'}          # the checks drop it: a figure request must not be told about it (06 L2)
         return Resp({'choices': [{'message': {'content': '```json\n' + json.dumps(wo) + '\n```'}, 'finish_reason': 'stop'}],
                      'usage': {'prompt_tokens': 1000, 'completion_tokens': 100, 'cost': 0.01}})
     return urlopen
@@ -192,6 +194,7 @@ def test_a_live_run_sends_the_figure_requests_and_merges_them(book, tmp_path, mo
     runpy.run_path(os.path.join(HERE, 'decide.py'), run_name='__main__')
     assert [(c['first'], c['n']) for c in calls] == [(True, 100), (False, 30), (False, 30), (False, 5)]
     assert all(c['auth'] == 'Bearer test-not-a-key' for c in calls) and [c['max_tokens'] for c in calls[1:]] == [32000] * 3
+    assert all('NoSuchStyle' not in c['data'] for c in calls[1:])                # the context comes from the validated first reply
     run = json.load(open(R / 'run.json')); wo = json.load(open(R / 'workorder.json')); val = json.load(open(R / 'validation.json'))
     fp = run['figure_passes']
     assert fp['state'] == 'merged' and fp['requests'] == 1 and 'in_flight' not in fp and 'failed' not in fp

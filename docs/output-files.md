@@ -35,7 +35,7 @@ Only when the run made figure requests ("Figure requests" in [Files](files.md));
 | `run.estimate.passes` | each request's images, input tokens and worst case; `worst_case_total_usd` is their sum, and `book_cap_usd` the book cap |
 | `raw_reply_passes` | the saved form (format `figure-passes/1`): the first request's figures and sheets, the note, and each figure request's figures, fingerprint, answer and call. A replay uses it as recorded; `FROM=`, `regression.py --seed` and `--replay-to` write it beside the reply as `reply.txt.passes.json`, with `figure_passes` in the reply's meta |
 | `ai_call.calls`, `ai_call.figure_prompt_file` | how many requests the cost covers, and the figure requests' prompt (`lib/origin.py`) |
-| `earlier_attempts` entries with `pass` and `stopped` | the requests of a run that was stopped while its figure requests were being sent: each one's cost, and the one in flight with `cost_usd: null` (its charge is not known) |
+| `earlier_attempts` entries with `pass` and `stopped` | the requests of a run that was stopped while its figure requests were being sent: each one's cost, and the one in flight with `cost_usd: null` (its charge is not known). `worst_usd`, on that entry and on a request with a timed-out call, is the worst case of the charge not known: it counts toward the book cap on the next attempt, never in the cost shown |
 
 ## `record.json` `run.ocr_words` (scanned books with OCR words)
 

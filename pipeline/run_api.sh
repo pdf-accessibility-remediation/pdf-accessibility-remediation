@@ -78,12 +78,13 @@ if fp.get('state') == 'calling' and not run.get('response_from'):   # stopped wh
     for c in run.get('passes') or []:                                # and the one in flight, whose charge is not known
         att.append({'started': run.get('started'), 'pass': c['pass'], 'cost_usd': (c.get('usage') or {}).get('cost_usd') or 0,
                     'finish_reason': c.get('finish_reason') or (c.get('calls') or [{}])[-1].get('finish_reason'), 'usage': c.get('usage'),
+                    **({'worst_usd': round(sum(x.get('worst_usd') or 0 for x in c['calls']), 4)} if any(x.get('worst_usd') for x in c.get('calls') or []) else {}),   # timed out: charge not known
                     'stopped': True, 'logged': now})
     if fp.get('in_flight'):
-        att.append({'started': run.get('started'), 'pass': fp['in_flight'], 'cost_usd': None, 'stopped': True,
+        att.append({'started': run.get('started'), 'pass': fp['in_flight'], 'cost_usd': None, 'worst_usd': fp.get('in_flight_worst_usd'), 'stopped': True,
                     'note': 'in flight when the run stopped; any charge is not known', 'logged': now})
     json.dump(att, open(p, 'w'), indent=1)
-    for f in ('run.json', 'passes.json'):
+    for f in ('run.json', 'passes.json', 'workorder.json'):
         if os.path.exists(os.path.join(R, f)): os.remove(os.path.join(R, f))
     spent = sum((c.get('usage') or {}).get('cost_usd') or 0 for c in run.get('passes') or [])
     print(f'▶ the earlier attempt was stopped while its figure requests were being sent: ${spent:.3f} it spent on '
@@ -116,11 +117,11 @@ elif [[ -z ${REPLY:-} && -f $R/workorder.json && $FIG == merged ]]; then
   # every request of the earlier attempt finished, figure requests included, and a later step failed: its work order and
   # run.json are this run's own (its calls stay counted as this run's spending; not a replay)
   MERGED=1; echo "▶ every AI request of the earlier attempt finished (a later step failed): applying its work order, no new API call"
+elif [[ $FIG == calling ]]; then               # before the next branch: a stop just after workorder.json is written must not replay the first reply alone
+  log_attempt                                  # stopped while its figure requests were being sent: logged, then started over
 elif [[ -z ${REPLY:-} && -f $R/workorder.json && -f $R/response.json ]]; then
   REPLY=$R/response.json
   echo "▶ the earlier attempt's reply was complete (a later step failed): reusing it, no new API call"
-elif [[ $FIG == calling ]]; then
-  log_attempt                                  # stopped while its figure requests were being sent: logged, then started over
 elif [[ -f $R/run.json ]]; then
   # a complete paid reply that could not be read: try it again with the current reader before paying for a new call
   # (not for a book planned with figure requests: they would need new calls, so its cost is logged and the run starts over)

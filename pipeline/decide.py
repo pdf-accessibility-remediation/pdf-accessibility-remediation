@@ -373,9 +373,10 @@ if later:
                      'input_tokens': round(t_ + per * args.figure_probe), 'image_tokens': round(per * args.figure_probe),
                      'worst': (t_ + per * args.figure_probe) * price['prompt'] * INPUT_MARGIN + worst_fig_out})
     total = worst + sum(r['worst'] for r in reqs)
-    # the book cap is per book: what earlier attempts in this folder spent (attempts.json: a cut-off reply, a stopped run) counts too
+    # the book cap is per book: what earlier attempts in this folder spent (attempts.json: a cut-off reply, a stopped run) counts
+    # too, and a request whose charge is not known (in flight when the run stopped, or timed out) counts at its worst case
     _att = os.path.join(args.run_dir, 'attempts.json')
-    spent_before = round(sum(a.get('cost_usd') or 0 for a in json.load(open(_att, encoding='utf-8'))), 6) if os.path.exists(_att) else 0
+    spent_before = round(sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in json.load(open(_att, encoding='utf-8'))), 6) if os.path.exists(_att) else 0
     e_ = run['estimate']
     e_['passes'] = [{'pass': '1', 'images': len(images), 'input_tokens': e_['input_tokens'], 'worst_case_usd': round(worst, 4)}] + [
         {'pass': r['pass'], 'images': len(r['items']) or r.get('probe'), 'input_tokens': r['input_tokens'], 'worst_case_usd': round(r['worst'], 4)} for r in reqs]
@@ -565,7 +566,7 @@ if reqs and not args.response_file:
             got = shrink(r['items'], IMAGE_BUDGET)
             if got is None: r['items'] = []; continue
             r['enc'] = got[0]; r['first_alts'] = {o: alts1[o] for o in objs}
-        r['body'] = dict(body0, messages=figpasses.messages(fig_prompt, figpasses.context(digest, to_send.get('pdfua_check'), r['items'], wo, ex), r['items'], r['enc']))
+        r['body'] = dict(body0, messages=figpasses.messages(fig_prompt, figpasses.context(digest, to_send.get('pdfua_check'), r['items'], valid, ex), r['items'], r['enc']))
     def send_fn(body):
         rq = urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', data=json.dumps(body).encode(),
                                     headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json', 'X-Title': 'UH PDF remediation prototype'})
@@ -586,9 +587,12 @@ if reqs and not args.response_file:
              'seconds': round(sum(c.get('seconds') or 0 for c in r['calls']), 1), 'calls': r['calls'], 'outcome': r['outcome']}
         if r.get('reason'): e['reason'] = r['reason']
         return e
-    def before(req): run['figure_passes']['in_flight'] = req['pass']; save('run.json', run)
+    def before(req): run['figure_passes'].update(in_flight=req['pass'], in_flight_worst_usd=round(req['worst'], 4)); save('run.json', run)
+    def timed_out(req):                               # its retry is in flight now, and the timed-out call's charge is not known either
+        run['figure_passes']['in_flight_worst_usd'] = round(run['figure_passes']['in_flight_worst_usd'] + req['worst'], 4); save('run.json', run)
+    for r in reqs: r['on_timeout'] = timed_out
     def done(res):
-        run['figure_passes'].pop('in_flight', None); run['passes'].append(entry(res))
+        run['figure_passes'].pop('in_flight', None); run['figure_passes'].pop('in_flight_worst_usd', None); run['passes'].append(entry(res))
         run['usage'] = figpasses.add_usage(run['usage'], res['usage']); save('run.json', run)
     budget = figpasses.Budget(args.book_max_usd if IS_CLAUDE else None, spent_before + (run['usage'].get('cost_usd') or 0), [r['worst'] for r in reqs if r.get('body')])
     fig_results = figpasses.run([r for r in reqs if r.get('body')], send_fn, budget, before=before, done=done)

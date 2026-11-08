@@ -207,6 +207,8 @@ def one(send, req, budget, sleep, say):
         retry, why = False, None
         if out.get('timeout'):
             call['error'] = {'code': 'timeout', 'message': 'no reply in time; any charge is not known'}
+            call['worst_usd'] = round(req['worst'], 4)    # what a restart counts toward the book cap for it
+            if req.get('on_timeout'): req['on_timeout'](req)
             budget.spent += req['worst']; why = 'no reply in time'; retry = True
         elif resp is None or 'choices' not in resp:
             er = (resp or {}).get('error') or {}
