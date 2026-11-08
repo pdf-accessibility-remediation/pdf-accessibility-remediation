@@ -180,10 +180,11 @@ def retry_kind(R):
     'estimate' (everything else: a new estimate, then Spend), or None (finished)."""
     if os.path.isfile(os.path.join(R, 'record.json')): return None
     if os.path.isfile(os.path.join(R, 'workorder.ai.json')): return 'apply'
-    if os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json')): return 'rerun'
     run = _load(os.path.join(R, 'run.json')) or {}
+    if (run.get('figure_passes') or {}).get('state') == 'calling': return 'estimate'   # stopped during its figure requests (#63): run_api.sh logs them and starts over
+    if os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json')): return 'rerun'
     if (os.path.isfile(os.path.join(R, 'response.json')) and (run.get('usage') or {}).get('cost_usd') and run.get('finish_reason') not in (None, 'length')
-            and not run.get('error') and not run.get('response_from')): return 'rerun'
+            and not run.get('error') and not run.get('response_from') and not (run.get('estimate') or {}).get('passes')): return 'rerun'   # a planned book's figure requests would need new calls
     return 'estimate'
 
 def start_rerun(s, run, R):
