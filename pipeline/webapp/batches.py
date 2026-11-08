@@ -69,7 +69,7 @@ def start(s, setup, keys, plain, estimate=True):
         if b['locked']: raise ValueError(f'"{b["name"]}" is locked with a password: add an unlocked copy, or leave it out.')
         if re.search(r'[#|\t\r\n]', b['path']) or b['path'] != b['path'].strip(): raise ValueError(f'"{b["name"]}" has a file name a batch can\'t use: add it again from the home page.')
         b['tagged'] = BK.read_meta(b['path']).get('tagged')
-        NR.check_untagged(s, setup, b)
+        if estimate: NR.check_untagged(s, setup, b)       # "Save Batch for Later" runs nothing: "Get the Estimates" checks (start_saved)
         base, n = NR.clean_stem(b['path']), 1
         while (base if n == 1 else f'{base}-{n}') in taken: n += 1
         name = base if n == 1 else f'{base}-{n}'; taken.add(name)

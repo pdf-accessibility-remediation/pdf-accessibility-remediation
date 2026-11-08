@@ -187,6 +187,29 @@ def test_the_saved_batch_routes(app):
     assert st == 409 and 'two or more' in d['error']
     assert sorted(b['file'] for b in BK.listing(settings(t))) == ['b.pdf', 'c.pdf']
 
+NO_OCR = [{'id': 'ocrmypdf', 'ok': False}, {'id': 'tesseract', 'ok': False}, {'id': 'tesseract_langs', 'ok': False}]
+OCR_OK = [{'id': 'ocrmypdf', 'ok': True}, {'id': 'tesseract', 'ok': True}, {'id': 'tesseract_langs', 'ok': True}]
+
+@pytest.mark.parametrize('tools', [NO_OCR, OCR_OK], ids=['ocr-missing', 'ocr-installed'])
+def test_saving_a_batch_never_needs_ocr_and_get_the_estimates_checks_it(setup, tools):
+    """PR #88's CI (Patrick, 2026-11-08): "Save Batch for Later" runs nothing, so it saves untagged PDFs whatever is
+    installed; "Get the Estimates" (start_saved) is where a missing OCR refuses them, and the batch stays saved. The
+    machine's own tools never decide: both cases are given here."""
+    s = S(setup); keys = three(setup, s)                                    # synthetic PDFs with no tag tree: untagged
+    assert all(BK.read_meta(b['path']).get('tagged') is False for b in BK.listing(s))
+    BT.start(s, tools, keys, 'Later', estimate=False)
+    assert BT.saved(s, 'Later') and BK.listing(s) == []
+    if tools is NO_OCR:
+        with pytest.raises(ValueError, match=r"Text recognition \(OCR\) isn't set up on this computer"): BT.start_saved(s, tools, 'Later', 'Later')
+        assert BT.saved(s, 'Later') and not jobs.all_jobs(s['jobs'])           # nothing started, still "Save Batch for Later"
+    else:
+        assert len(BT.start_saved(s, tools, 'Later', 'Later')) == 3 and not BT.saved(s, 'Later')
+
+def test_new_batch_still_checks_ocr_when_it_estimates_at_once(setup):
+    s = S(setup); keys = three(setup, s)
+    with pytest.raises(ValueError, match=r"Text recognition \(OCR\) isn't set up"): BT.start(s, NO_OCR, keys, 'Now')
+    assert sorted(b['file'] for b in BK.listing(s)) == ['a.pdf', 'b.pdf', 'c.pdf']   # nothing moved
+
 def test_a_trashed_older_run_or_batch_no_longer_keeps_the_upload(setup):
     """A run made before R17 that was moved to the Trash (its job files stay, its folder is gone), or a batch moved to the
     Trash (its book list stays), needs nothing: the new run moves the upload."""
