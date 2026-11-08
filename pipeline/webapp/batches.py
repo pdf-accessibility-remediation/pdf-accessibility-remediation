@@ -354,7 +354,7 @@ def body_class(page, closed):
     return page[:i] + new + page[j:]
 
 def toggle(n, open_=True):
-    """The side list's button, beside "Home Page" in the app bar (P5)."""
+    """The side list's button, beside "Home Page" in the app bar (P5; in the header from Patrick's test, 2026-11-07)."""
     return (f'<button type="button" class="pp-btn bn-toggle" id="bn-toggle" aria-expanded="{"true" if open_ else "false"}" aria-controls="bn-list">'
             + ('Hide the PDF List' if open_ else f'Show the PDF List ({n})') + '</button>')
 
@@ -387,23 +387,25 @@ def page(s, label, closed=None):
     st = state(s, label)
     return body_class('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             f'<title>Batch: {E(NM.shown_run(s, "batches/" + label))}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + HM.appbar(extra=toggle(len(st['books']), not closed)) + nav(s, label, st=st, closed=closed) +
-            f'<header><h1>Batch: {E(NM.shown_run(s, "batches/" + label))}</h1></header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
+            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + nav(s, label, st=st, closed=closed) +
+            f'<header class="top pp-head pp-hd"><div class="pp-hd-main"><h1>Batch: {E(NM.shown_run(s, "batches/" + label))}</h1></div>'
+            + HM.appbar(extra=toggle(len(st['books']), not closed)) + '</header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
             '<h2 id="bt-h" tabindex="-1">This Batch</h2><div id="bt-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
             '<script src="/app/batch.js" defer></script><script src="/app/trash.js" defer></script></body></html>', closed)
 
 def with_nav(page, s, label, current, closed=None):
-    """A book's run page inside a batch: the app bar with the side list's button (P5), then the side column, laid out
-    by the server (D7)."""
+    """A book's run page inside a batch: the side list's button beside "Home Page" in the app bar (inside the run page's
+    header: Patrick's test 2026-11-07, Q6), and the side column right after the skip link, laid out by the server (D7)."""
     from . import server as W
     st = state(s, label)
-    bar = HM.appbar(extra=toggle(len(st['books']), not closed)) + nav(s, label, current, st=st, closed=closed)
+    bar = HM.appbar(extra=toggle(len(st['books']), not closed)); side = nav(s, label, current, st=st, closed=closed)
     page = body_class(page, closed)
     if W.APPBAR_MARK in page:
         a = page.rfind('<nav', 0, page.find(W.APPBAR_MARK)); i = page.find('</nav>', a)
         page = page[:a] + bar + page[i + 6:]
-    elif W.SKIP in page: page = page.replace(W.SKIP, W.SKIP + bar, 1)
-    else: page = W.after_body(page, bar)
+    else: side = bar + side                                 # a page with no app bar of its own: the bar comes first
+    if W.SKIP in page: page = page.replace(W.SKIP, W.SKIP + side, 1)
+    else: page = W.after_body(page, side)
     i = page.rfind('</body>'); js = '<script src="/app/batch.js" defer></script>\n'
     return page[:i] + js + page[i:] if i >= 0 else page + js

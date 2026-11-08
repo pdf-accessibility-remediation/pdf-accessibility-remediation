@@ -535,7 +535,7 @@ function pendingBlock(s) {
   if (s.phase === 'outside') return h + (s.failure ? failureCard(Object.assign({}, s.failure, { next: [] })) : '') +
     '<p>This run was started outside the app, so it can\'t be sent or started again from here. To send this book, start a new run of it from the home page.</p>';
   if (s.phase === 'batch') return h + (s.failure ? failureCard(Object.assign({}, s.failure, { next: [] })) : '') +
-    '<p>This book is part of the batch "' + esc(s.batch_name || s.batch) + '". Its estimate, "Start Remediation" and what to do next are on the batch page.</p>' +
+    '<p>This PDF is assigned to the batch "' + esc(s.batch_name || s.batch) + '". Its estimate, "Start Remediation" and what to do next are on the batch page.</p>' +
     '<div class="pp-row"><a class="pp-btn pp-primary" href="/batch/' + encodeURIComponent(s.batch) + '/">Open the Batch Page</a></div>';
   if (s.phase === 'active') return h + '<p>Working on this book. This page follows each step; you can leave it and come back from the home page.</p>';
   if (s.phase === 'needs-spend') return h + '<p>The app restarted before the AI call started, so nothing was sent. Get a new estimate, then select "Start Remediation" again.</p>' +
@@ -601,10 +601,8 @@ function render() {
   renderStrip(st);
   const s = st, keepFocus = document.activeElement && document.activeElement.id, opened = [...box.querySelectorAll('details[open]')].map(d => d.id);
   // "Ready to ship?" is not repeated here: the report's own card, right below, says it
-  const c = s.cost;
-  let h = setupBlock() + (s.pdf_moved ? '<p class="pp-warn">' + esc(s.pdf_moved.text) + '</p>' : '') + (s.batch ? '<p class="pp-row">Part of the batch "' + esc(s.batch_name || s.batch) + '". <a class="pp-btn" href="/batch/' + encodeURIComponent(s.batch) + '/">Open the Batch Page</a></p>' : '') +
-    (c ? '<p class="pp-note">AI Cost: ' + (c.reused ? 'none (a saved reply was used)' : usd(c.usd) +
-      (c.estimate_usd ? ' (worst-case estimate ' + usd(c.estimate_usd) + ')' : '')) + '</p>' : '') +
+  // the batch line and the AI cost are in the page's header (Patrick's test, 2026-11-07, Q6-Q8)
+  let h = setupBlock() + (s.pdf_moved ? '<p class="pp-warn">' + esc(s.pdf_moved.text) + '</p>' : '') +
     '<h3 id="pp-cur" tabindex="-1">' + esc(tc('Current result: ' + s.current.label)) + '</h3>';
   if (s.pending) h += '<p>' + esc(sn(s.pending.session)) + ' is ' + esc(s.pending.status) + ' and not applied yet, so the book stays "Not Ready" until it is.</p>';
   if (newResult) h += '<p><b>New Result Ready:</b> ' + esc(cap(s.current.label)) + ' is now the current result; the report below is the previous one.</p>' +

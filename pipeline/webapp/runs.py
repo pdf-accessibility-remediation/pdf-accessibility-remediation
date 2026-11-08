@@ -371,6 +371,40 @@ def book_of(s, run, R, js=None):
     f = BK.shown_file(o.get('file') or '')
     return (BK.name_of_sha(s, o.get('sha256'), f) if o.get('sha256') else None) or BK.stem_name(f or run.split('/')[-1]), f
 
+def model_words(m):
+    """A model's plain name from its id: "anthropic/claude-sonnet-5.5" → "Claude Sonnet 5.5" (no provider, no id)."""
+    if not m: return None
+    w = str(m).split('/')[-1].split(':')[0].replace('_', '-').split('-')
+    up = {'gpt': 'GPT', 'ai': 'AI', 'xl': 'XL'}
+    return ' '.join(up.get(x.lower(), x if x[:1].isdigit() else x[:1].upper() + x[1:]) for x in w if x)
+
+def details(s, run, R, pages=None):
+    """The run page header's line (Patrick's test, 2026-11-07, Q6): "Run Name: mm · 321 pages · Run on November 6, 2026,
+    at 9:29 PM · AI: Claude Sonnet 5.5 · AI cost: $0.27 (worst-case estimate $0.61)", in plain words; a part with nothing
+    recorded is left out, and "AI" and "AI cost" only once an AI reply exists (a saved one: "AI cost: none (a saved reply
+    was used)"). The model is the original call's (lib/origin.py), never an id or a file name."""
+    from lib import dates as D, costs, origin
+    from . import names as NM
+    rec = load(os.path.join(R, 'record.json')); runj = load(os.path.join(R, 'run.json')) or {}
+    if not pages:
+        pages = ((rec or {}).get('document') or {}).get('pages') or ((load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or {}).get('pages')
+    try: pages = int(str(pages).replace(',', '')) if pages else None
+    except ValueError: pages = None
+    when = ((rec or {}).get('run') or {}).get('started') or runj.get('started')
+    out = [f'Run Name: {NM.shown_run(s, run)}'] + ([f'{pages:,} page{"" if pages == 1 else "s"}'] if pages else []) + \
+          ([f'Run on {D.when(when)}'] if when and D.parse(when) else [])
+    called = bool(rec) or os.path.isfile(os.path.join(R, 'workorder.ai.json')) or bool(runj.get('usage') or runj.get('response_from'))
+    if called:
+        model = (origin.summary(rec).get('model') if rec else None) or ((rec or {}).get('run') or {}).get('model') or runj.get('model')
+        if model_words(model): out.append(f'AI: {model_words(model)}')
+        c = costs.actual(R)
+        r_ = (rec or {}).get('run') or runj
+        if c['reused']: out.append('AI cost: none (a saved reply was used)')
+        elif (rec or {}).get('cost_total_usd') is None and (r_.get('usage') or {}).get('cost_usd') is None and not c['earlier_usd']:
+            out.append('AI cost: not recorded')                # never a "$0.00" that was not measured
+        else: out.append(f'AI cost: ${c["usd"]:.2f}' + (f' (worst-case estimate ${c["estimate_usd"]:.2f})' if c.get('estimate_usd') else ''))
+    return out
+
 def sent_words(est):
     """What leaves the computer with the AI call, in words (02 M9): the parts counted from the estimate, a zero part left out."""
     figs = max(0, (est.get('images') or 0) - (est.get('sheets') or 0)); sh = est.get('sheets') or 0

@@ -217,8 +217,41 @@ def test_run_page_header_is_the_apps(app):
     before = (R / 'review.html').read_bytes()
     page = get(app['port'], '/run/book/r1/')[1].decode()
     assert 'Review: book.pdf' not in page and 'workorder_v10' not in page and 'anthropic/x' not in page
-    assert 'class="top pp-head"' in page and '12 pages' in page and 'Run Name: r1' in page
+    assert 'class="top pp-head pp-hd"' in page and '12 pages' in page and 'Run Name: r1' in page
     assert (R / 'review.html').read_bytes() == before
+    # Q6 (Patrick's test, 2026-11-07): "Home Page" inside the header, on its right; the details on one line; one app bar
+    hd = page[page.index('<header class="top pp-head pp-hd">'):page.index('</header>')]
+    assert '<nav class="pp-appbar" aria-label="App"><a class="pp-btn" href="/">Home Page</a></nav>' in hd and page.count('aria-label="App"') == 1
+    assert '<p class="pp-hd-det">Run Name: r1 · 12 pages · AI cost: not recorded</p>' in hd
+
+def test_run_details_in_plain_words(setup):
+    """Q6: Run Name, pages, when it ran, the AI by its plain name and the AI cost with its worst-case estimate; a saved
+    reply says so; nothing recorded is left out, never "None"."""
+    s = S(setup); R = setup / 'runs' / 'mm' / 'r1'; R.mkdir(parents=True)
+    (R / 'record.json').write_text(json.dumps({'document': {'file': 'mm.pdf', 'pages': 321},
+        'run': {'started': '2026-11-06T21:29:05', 'model': 'anthropic/claude-sonnet-5.5', 'usage': {'cost_usd': 0.27},
+                'estimate': {'worst_case_total_usd': 0.61}}, 'cost_total_usd': 0.27}))
+    assert RN.details(s, 'mm/r1', str(R)) == ['Run Name: r1', '321 pages', 'Run on November 6, 2026, at 9:29 PM', 'AI: Claude Sonnet 5.5',
+                                              'AI cost: $0.27 (worst-case estimate $0.61)']
+    rec = json.loads((R / 'record.json').read_text()); rec['run']['response_from'] = '../x/reply.txt'; (R / 'record.json').write_text(json.dumps(rec))
+    assert RN.details(s, 'mm/r1', str(R))[-1] == 'AI cost: none (a saved reply was used)'
+    E = setup / 'runs' / 'mm' / 'e1'; E.mkdir(); (E / 'run.json').write_text(json.dumps({'started': '2026-11-07T09:00:00', 'estimate': {}}))
+    assert RN.details(s, 'mm/e1', str(E)) == ['Run Name: e1', 'Run on November 7, 2026, at 9:00 AM']      # an estimate only: no AI yet
+    assert RN.model_words('google/gemini-3.1-pro-preview') == 'Gemini 3.1 Pro Preview' and RN.model_words(None) is None
+
+def test_a_batch_pdfs_header_and_the_batch_page_header(app):
+    """Q8, Q9: a batch PDF's run page says "Assigned to the batch" with "Open the Batch Page" in its header, and the side
+    list's button sits beside "Home Page" there; the batch page's header holds both on the right of "Batch: <name>"."""
+    page = get(app['port'], '/run/batches/b1/x/')[1].decode()
+    hd = page[page.index('<header class="top pp-head pp-hd">'):page.index('</header>')]
+    assert 'Assigned to the batch "b1" <a class="pp-btn" href="/batch/b1/">Open the Batch Page</a>' in hd and 'Part of the batch' not in page
+    assert 'id="bn-toggle"' in hd and 'Hide the PDF List' in hd and page.count('aria-label="App"') == 1
+    assert page.index('Skip to the content') < page.index('id="pp-bnav"') < page.index('<header')     # the side list: never in the header
+    bp = get(app['port'], '/batch/b1/')[1].decode()
+    hd = bp[bp.index('<header'):bp.index('</header>')]
+    assert '<h1>Batch: b1</h1>' in hd and hd.index('<h1>') < hd.index('>Home Page<') < hd.index('id="bn-toggle"') and bp.count('aria-label="App"') == 1
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert 'AI Cost: ' not in js and 'Part of the batch' not in js                  # Q7: the cost is in the header now
 
 # ------------------------------------------------------------------ Patrick's test, 2026-11-07: Q1, Q3, Q4
 def jpost(port, path, body):

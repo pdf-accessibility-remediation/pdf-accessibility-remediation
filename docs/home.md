@@ -16,9 +16,17 @@ python3 app.py              # opens the home page
 ```
 
 Every page the app serves except the home page itself has a **Home Page** button at the top (after "Skip to the
-content"); on the run and batch pages it sits beside **Hide the PDF List** / **Show the PDF List (N)**, and on the
-review page and the OCR-only page it follows the page count in the header line. Every link on the app's pages is drawn as
-a button (round 4, P5).
+content"). On the run and batch pages it is inside the page's header, on its right, beside **Hide the PDF List** /
+**Show the PDF List (N)** for a batch (Patrick's test, 2026-11-07, Q6, Q9); on the review page and the OCR-only page it
+follows the page count in the header line. Every link on the app's pages is drawn as a button (round 4, P5).
+
+**The run page's header** (Q6–Q8) starts at the top of the screen: the PDF's name, "Source PDF: <file name>", then the
+run's details in plain words on one line, for example "Run Name: mm · 321 pages · Run on November 6, 2026, at 9:29 PM ·
+AI: Claude Sonnet 5.5 · AI cost: $0.27 (worst-case estimate $0.61)". The model is named in plain words (the original
+call's model for a run made from a saved reply), never by its id; "AI cost: none (a saved reply was used)" when no new
+call was made, "AI cost: not recorded" when the record has no cost, and no AI part before the AI has answered. A PDF in a
+batch adds "Assigned to the batch "<name>"" with **Open the Batch Page**. The cost is no longer repeated in Run Actions
+(Q7). The batch page's header is "Batch: <name>" with **Home Page** and the list's button on its right (Q9).
 
 ## The home page
 

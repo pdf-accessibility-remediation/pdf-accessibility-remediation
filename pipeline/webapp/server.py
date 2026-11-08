@@ -631,12 +631,18 @@ def card_border(page, R):
     return page.replace(green, '<section class="ship" aria-labelledby="ship-h">', 1) if changed else page
 
 def app_header(s, run, R, pages=None):
-    """The run page's header as the app shows it (P7, Patrick 2026-11-06): the PDF's display name, "Source PDF:", the Run
-    Name and the page count, in plain words; no file names or codes beyond "Source PDF:". review.html on disk keeps its own."""
+    """The run page's header as the app shows it (P7, Patrick 2026-11-06; Patrick's test 2026-11-07, Q6, Q8): at the top of
+    the screen, the PDF's display name and "Source PDF:", then the run's details on one line (runs.details: Run Name, pages,
+    when it ran, the AI and its cost); for a PDF in a batch, "Assigned to the batch "<name>"" with "Open the Batch Page";
+    "Home Page" on the right, inside the header (the app bar's own nav, so with_appbar adds none). No codes or file names
+    beyond "Source PDF:". review.html on disk keeps its own header."""
     name, file = runs.book_of(s, run, R)
-    bits = ([f'Source PDF: {html.escape(file)}'] if file else []) + [f'Run Name: {html.escape(NMS.shown_run(s, run))}'] + \
-           ([f'{pages} pages'] if pages else [])
-    return f'<header class="top pp-head"><h1>{html.escape(name)}</h1><p class="mc-book">' + ''.join(f'<span class="hm-file">{b}</span>' for b in bits) + '</p></header>'
+    sg = run.split('/')
+    batch = (f'<p class="pp-hd-batch">Assigned to the batch "{html.escape(NMS.shown_run(s, run))}" '
+             f'<a class="pp-btn" href="/batch/{urllib.parse.quote(sg[1], safe="")}/">Open the Batch Page</a></p>') if len(sg) == 3 and sg[0] == 'batches' else ''
+    return (f'<header class="top pp-head pp-hd"><div class="pp-hd-main"><h1>{html.escape(name)}</h1>'
+            + (f'<p class="mc-book"><span class="hm-file">Source PDF: {html.escape(file)}</span></p>' if file else '')
+            + '<p class="pp-hd-det">' + ' · '.join(html.escape(x) for x in runs.details(s, run, R, pages)) + f'</p>{batch}</div>{HM.appbar()}</header>')
 
 def with_app_header(page, s, run, R):
     """review.html as served, with its own header (a file name, the prompt, the model, the run label) replaced by app_header()."""
@@ -661,11 +667,10 @@ def waiting_page(run, R, s=None):
     "Apply"), or started from the home page and estimating, ready to Spend, running, stopped or failed (the panel follows
     it). The book is named by its display name with "Source PDF:" under it, and the Run Name."""
     name, file = runs.book_of(s, run, R) if s else (runs.waiting_title(run, R), '')
+    head = app_header(s, run, R) if s else f'<header><h1>{html.escape(name)}</h1></header>'
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
                       f'<title>{html.escape(name)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
-                      f'<header><h1>{html.escape(name)}</h1><p class="mc-book">' + (f'<span class="hm-file">Source PDF: {html.escape(file)}</span>' if file else '') +
-                      f'<span class="hm-file">Run Name: {html.escape(NMS.shown_run(s, run) if s else run.split("/")[-1])}</span></p></header><main id="main" tabindex="-1">'
-                      '</main></body></html>',
+                      f'{head}<main id="main" tabindex="-1"></main></body></html>',
                       run, waiting=True)
 
 def refused_page(message, base):

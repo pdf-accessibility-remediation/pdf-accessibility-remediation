@@ -133,10 +133,10 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 /* the app bar on every page the app serves (#45): the way home, right after the skip link */
 .pp-appbar { max-width: 1200px; margin: 0 auto; padding: 6px 16px 0; box-sizing: border-box; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 .pp-appbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.pp-appbar .pp-btn { font: inherit; font-size: 14px; padding: 6px 12px; min-height: 32px; border: 1px solid var(--muted); border-radius: 4px; box-sizing: border-box;
+.pp-appbar .pp-btn, .pp-hd-batch .pp-btn { font: inherit; font-size: 14px; padding: 6px 12px; min-height: 32px; border: 1px solid var(--muted); border-radius: 4px; box-sizing: border-box;
       background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-block; font-weight: 600; }
-.pp-appbar .pp-btn:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); }
-.pp-appbar :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.pp-appbar .pp-btn:hover, .pp-hd-batch .pp-btn:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); }
+.pp-appbar :focus-visible, .pp-hd-batch :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 /* the home page (P14: the run page's cards, review/palette.css colors; D6: one pill per status group, its name in words) */
 .hm-card { border-top: 5px solid var(--line); border-radius: 8px; }
 .hm-c-act, .hm-c-pdfs, .hm-c-ws { border-top-color: var(--accent); }   /* Patrick, 2026-11-07: blue, never purple or pink */
@@ -250,3 +250,12 @@ html { background: var(--bg); }
 .hm-rename .pp-warn-t { flex-basis: 100%; }
 @media (max-width: 600px) { .pp .hm-mlist button, .pp .hm-more, .pp .hm-rename button { width: auto; } .hm-acts { white-space: normal; } }
 .hm-t .hm-book[hidden], .hm-t .hm-run[hidden] { display: none; }
+/* Patrick's test, 2026-11-07 (Q6, Q8, Q9): the run and batch pages' header at the top of the screen, "Home Page" (and the
+   side list's button) on its right; under the name, the run's details on one line and a batch PDF's batch */
+header.top.pp-hd { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; }
+header.pp-hd .pp-hd-main { flex: 1 1 24em; min-width: 0; }
+header.pp-hd h1 { margin: 0; }
+header.pp-hd .pp-appbar { margin: 0; padding: 0; max-width: none; flex: none; justify-content: flex-end; }
+.pp-hd-det { margin: 2px 0 6px; font-size: 14px; overflow-wrap: anywhere; }
+.pp-hd-batch { margin: 0 0 6px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 14px; }
+@media (max-width: 640px) { header.pp-hd .pp-appbar { padding: 0; } }
