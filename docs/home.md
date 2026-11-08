@@ -20,8 +20,8 @@ content"). On a single run's page and the New Batch page it sits right beside th
 on the batch page **Hide the PDF List** / **Show the PDF List (N)** comes first, then **Home Page** (S4); on a batch
 PDF's page both are on its "Assigned to the batch" line, in that order (S3); on New Run, at the end of the "Source PDF:"
 line (S6). On the review page and the OCR-only page it follows the page count in the header line, spaced so it touches
-nothing else. Every link on the app's pages is drawn as a button (round 4, P5), with one exception: "Batch: <name>" at
-the top of the side list is drawn as a link (S2), since it is the way to the batch page. A button's only hover feedback is a highlight, never an
+nothing else. Every link on the app's pages is drawn as a button (round 4, P5); the side list's entries, "Batch: <name>"
+at its top included, are drawn as list rows. A button's only hover feedback is a highlight, never an
 underline; the keyboard's focus ring stays (`:focus-visible`, R1).
 
 **The run page's header** (Q6–Q8) starts at the top of the screen: the PDF's name, "Source PDF: <file name>", then the
@@ -306,8 +306,9 @@ display name, "Source PDF:" and its status in words. Its left border shows its s
 opened yet, or while it is processing or waiting to start (then also a small spinning circle at its right edge, a still dot
 with reduced motion, named "Processing" for a screen reader); blue once its review is opened, up to Pending Evaluation;
 yellow when it stopped for a person (its language, for example); green when Ready or Shipped; red when its last job
-failed. The current PDF has the darker background and bold text; hovering gives a lighter shade. "Batch: <name>" is
-larger and drawn as a link (the way to the batch page), with "(N PDFs)" smaller under it; both start where the PDFs'
+failed. The current PDF has the darker background and bold text; hovering gives a lighter shade. "Batch: <name>" (the
+way to the batch page) is styled like the PDFs (no underline, the same hover shade and focus ring), only larger, with
+"(N PDFs)" smaller under it (S2, 18-L2); both start where the PDFs'
 names do, the list starts near the top, and on a wide screen the page's header and panels sit right against the list
 (R6, S2). **Hide the PDF List** /
 **Show the PDF List (N)**, beside **Home Page**, closes and opens it; the choice is remembered in this browser (a cookie

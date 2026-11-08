@@ -281,8 +281,9 @@ header.top.pp-hd { padding-top: 8px; padding-bottom: 6px; }
   body.bn-on:not(.bn-closed) main, body.bn-on:not(.bn-closed) #pdfrem-panel, body.bn-on:not(.bn-closed) .pp-wrap { margin-left: 0; padding-left: 0; }
   body.bn-on:not(.bn-closed) main > .pp:first-child, body.bn-on:not(.bn-closed) #pdfrem-panel > .pp:first-child { margin-left: 0; }
 }
-/* S2: "Batch: <name>" is the way to the batch page: bigger, and drawn as a link; its count smaller under it */
-.bn-h a { font-size: 17px; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+/* S2, 18-L2 (Patrick, 2026-11-07): "Batch: <name>" is the way to the batch page: styled like the list's items (the text's
+   colour, no underline, their hover highlight and focus ring), only bigger; its count smaller under it */
+.bn-h a { font-size: 17px; }
 .bn-h > .pp-note { font-size: 12px; }
 /* S3: a batch PDF's batch line holds the list's button and "Home Page" */
 .pp-hd-batch .pp-appbar { margin: 0; padding: 0; max-width: none; flex: none; }

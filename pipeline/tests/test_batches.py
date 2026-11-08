@@ -189,3 +189,11 @@ def test_the_state_counts_the_estimates_in(two):
     st = BT.state(s, 'b1')
     assert st['phase'] == 'estimating' and (st['totals']['estimated'], st['totals']['to_estimate']) == (1, 3) and st['totals']['ceiling_usd'] == 0.5
     for j in js: jobs.update(s['jobs'], j['id'], status='done')
+
+def test_the_side_lists_batch_title_looks_like_its_items():
+    """18-L2 (Patrick, 2026-11-07): "Batch: <name>" in the text's colour, no underline, the items' hover and focus ring;
+    bigger than the items, its count smaller."""
+    css = open(os.path.join(HERE, 'webapp', 'panel.css'), encoding='utf-8').read()
+    assert '.bn-h a { font-size: 17px; }' in css and '.bn-h > .pp-note { font-size: 12px; }' in css
+    assert '.bn-h a { color: var(--ink); font-weight: 700; text-decoration: none;' in css and '.bn-h a:hover {' in css and '.bn :focus-visible {' in css
+    assert 'color: var(--accent); text-decoration: underline; text-underline-offset' not in css
