@@ -1,6 +1,6 @@
 """intake.py: get an untagged PDF ready for the pipeline (local tools only: no model, no cost).
 
-    python3 intake.py <original.pdf> <out_dir> [--plan-only]
+    python3 intake.py <original.pdf> <out_dir> [--plan-only | --languages]
 
 Sponsor checklist steps: 1.2 (is the text layer usable?), 2.1 and 3.1 (OCR at 300 dpi or more), 3.6 (characters the
 OCR font lacks), 3.7 (language), 10.3/10.4 (page image + invisible Unicode text), 10.5 (structure tree and tags).
@@ -562,10 +562,15 @@ def tesseract_text(img, lang):
     r = run(['tesseract', img, 'stdout', '-l', lang, '--psm', '3'])
     if r.returncode: raise RuntimeError(f'tesseract failed: {r.stderr.strip()[:200]}')
     return r.stdout
-def osd_script(img):
+def osd_detail(img):
+    """Tesseract's script detection on a page image: {script, orient_conf, script_conf} (None where it printed none)."""
     r = run(['tesseract', img, 'stdout', '--psm', '0'])
+    num = lambda k: (lambda m: float(m.group(1)) if m else None)(re.search(k + r':\s*([-\d.]+)', r.stdout))
     m = re.search(r'Script:\s*(\S+)', r.stdout)
-    return m.group(1) if m else None
+    return {'script': m.group(1) if m else None, 'orient_conf': num('Orientation confidence'), 'script_conf': num('Script confidence')}
+
+def osd_script(img):
+    return osd_detail(img)['script']
 
 QUOTES = str.maketrans({'‘': "'", '’': "'", '‚': "'", '‛': "'", '“': '"', '”': '"',
                         '„': '"', '–': '-', '—': '-', '−': '-', '‐': '-', '‑': '-',
@@ -1011,11 +1016,126 @@ def write_md(rec, path):
     open(path, 'w', encoding='utf-8').write('\n'.join(L) + '\n')
 
 # ------------------------------------------------------------------ main
+def other_letters(text):
+    """Letters of a script other than Latin, Chinese, Japanese or Korean, by the first word of their Unicode name
+    (GREEK, CYRILLIC, ARABIC…). IPA and other Latin extensions are LATIN, so a book with phonetic spellings counts as
+    Latin script (--languages only: scripts() is unchanged for intake's own choices)."""
+    c = collections.Counter()
+    for ch in text:
+        if not ch.isalpha(): continue
+        w = unicodedata.name(ch, 'UNKNOWN').split(' ', 1)[0]
+        if w not in ('LATIN', 'CJK', 'HIRAGANA', 'KATAKANA', 'HANGUL', 'MODIFIER', 'HALFWIDTH', 'FULLWIDTH'): c[w] += 1
+    return c
+
+def scripts_seen(doc, text_pages, scan_pages, tmp, detail=None, others=None):
+    """3.7: the scripts in the text layer (every 40th text page or so) and Tesseract's script detection on up to 5
+    image-only pages: (text-layer script counts, Vietnamese letters, OSD's script names, OSD's scripts as kana / hangul /
+    han). The one reader of a book's scripts: intake's own OCR language choice and the --languages pass use it."""
+    sc = collections.Counter(); viet = 0
+    step = max(1, len(text_pages) // 40)
+    for i in text_pages[::step]:
+        t_ = doc[i - 1].get_textpage().get_text_range(); sc += scripts(t_); viet += sum(1 for ch in t_ if ch in VIET_LETTERS)
+        if others is not None: others += other_letters(t_)
+    osd = collections.Counter()
+    for i in scan_pages[:: max(1, len(scan_pages) // 5)][:5]:
+        img = os.path.join(tmp, f'osd{i}.png'); render(doc, i - 1, OCR_DPI, img)
+        d = osd_detail(img); s = d['script']
+        if detail is not None: detail.append({'page': i, **d})          # --languages: each sampled page's reading
+        if s: osd[s] += 1
+    found_ = collections.Counter({OSD_SCRIPTS.get(s, s): n for s, n in osd.items()})   # "Korean" and "Hangul" alike
+    return sc, viet, osd, found_
+
+OSD_TEXT_CONF = 4.0     # --languages: Tesseract's orientation confidence at or above this = the scanned page has text to read.
+                        #   Calibrated 2026-11-07 on 14 sampled pages of 7 books: text pages 4.7–20 (sojourners' and
+                        #   expedition's Latin pages, a Korean scan 12.8); covers, pictures and Part openers with a few
+                        #   words beside a graphic 0.08–3.4 (ilokano's cover read "Cyrillic", expedition's Part openers
+                        #   "Cyrillic", a dwellings page "Devanagari"); several gave no reading at all. Its script
+                        #   confidence doesn't tell them apart (the Korean scan's is 0.15), so it isn't used. A page under
+                        #   it is "no text to read": OCR'd as English, as before (intake's CJK check still reads every page).
+OSD_CJK_CONF = 1.5      # a reading of a CJK script (Korean, Japanese, Han) counts from this lower confidence (R9, Patrick's
+                        #   test 2026-11-07: a low-resolution Korean newspaper scan, KTimes 1985 8 2, read "Korean" at 1.9,
+                        #   was not asked, and its estimate ran 3.5 minutes to intake's CJK stop before the question came).
+                        #   None of the 14 calibration pages under 4.0 was read as a CJK script; a wrong one costs only a
+                        #   question, with Korean or Japanese suggested and Han never guessed.
+TEXT_CJK_MIN, TEXT_OTHER_MIN, TEXT_OTHER_SHARE = 5, 50, 0.05   # text-layer letters before a script counts: a stray CJK
+                                       #   character, or the Greek letters of a math book (under 5% of its letters), don't
+                                       #   make the language matter
+
+def suggest_language(sc, viet, pages, others=None):
+    """Whether the OCR language matters for the pages to be OCR'd, and the suggestion (#45 D4, part 1 of #37; Patrick,
+    2026-11-07): ask when kana, Hangul, Vietnamese letters, Chinese characters, another script, more than one script, or
+    text whose script couldn't be told is seen; don't ask for the Latin script only, or when no text was found on the
+    sampled scanned pages (a cover, a picture): those are OCR'd as English, as before. Japanese and Chinese are never
+    guessed. pages: osd_detail() per sampled scanned page. "Latin only" and "no text found" are kept apart in `found`."""
+    seen = [d for d in pages if (d.get('orient_conf') or 0) >= OSD_TEXT_CONF
+            or (OSD_SCRIPTS.get(d.get('script')) and (d.get('orient_conf') or 0) >= OSD_CJK_CONF)]
+    def kind(d):                                        # 18-N2 (Patrick, 2026-11-07): a "Japanese" reading under OSD_TEXT_CONF
+        k = OSD_SCRIPTS.get(d['script'], d['script'])   #   counts as Chinese characters: asked, nothing preselected (never
+        return 'han' if k == 'kana' and (d.get('orient_conf') or 0) < OSD_TEXT_CONF else k   #   guess Japanese vs Chinese)
+    scan = collections.Counter(kind(d) for d in seen if d.get('script'))
+    unknown = [d['page'] for d in seen if not d.get('script')]
+    kana = sc['kana'] >= TEXT_CJK_MIN or scan['kana'] > 0
+    hangul = sc['hangul'] >= TEXT_CJK_MIN or scan['hangul'] > 0
+    han = sc['han'] >= TEXT_CJK_MIN or scan['han'] > 0
+    others = others or collections.Counter()
+    n_other, letters = sum(others.values()), sum(sc[k] for k in ('latin', 'kana', 'hangul', 'han')) + sum(others.values())
+    other = (n_other >= TEXT_OTHER_MIN and n_other >= TEXT_OTHER_SHARE * max(letters, 1)) or any(k not in ('Latin', 'kana', 'hangul', 'han') for k in scan)
+    latin = sc['latin'] > 0 or scan['Latin'] > 0
+    ev = {'sampled_scans': len(pages), 'scan_pages': pages, 'scan_scripts': dict(scan), 'scans_with_no_text': len(pages) - len(seen),
+          'text_layer': {k: sc[k] for k in ('kana', 'hangul', 'han', 'latin') if sc.get(k)}, 'text_other_scripts': dict(others), 'vietnamese_letters': viet}
+    if kana and hangul: s, found = None, 'mixed'
+    elif kana: s, found = 'jpn+eng', 'cjk'
+    elif hangul: s, found = 'kor+eng', 'cjk'
+    elif han: s, found = None, 'cjk'
+    elif viet >= VIET_MIN: s, found = 'vie+eng', 'vietnamese'
+    elif other: s, found = 'eng' if latin and sc['latin'] >= TEXT_OTHER_MIN else None, 'other'     # asked; English preselected
+    elif unknown: s, found = 'eng' if latin and sc['latin'] >= TEXT_OTHER_MIN else None, 'unknown' #   when the text layer is Latin
+    elif latin: s, found = 'eng', 'latin'
+    else: s, found = 'eng', 'none'
+    return {'suggestion': s, 'ask': found not in ('latin', 'none'), 'found': found, 'han_only': han and not kana and not hangul, 'evidence': ev}
+
+def languages_only(SRC, OUTD):
+    """--languages (#45 D4): page triage and scripts_seen() only, no text-layer test, no CJK check, no OCR, no change to
+    intake.json (its reuse check is untouched): <out_dir>/languages.json = {needs_ocr, pages_to_ocr, ask (the language
+    matters: suggest_language), found, suggestion, han_only, evidence}. needs_ocr is false for a tagged PDF, with OCR=off, or with no image-only page (FORCE_OCR=1: every page)."""
+    out = {'schema': 'intake-languages/2', 'written': now(), 'file': os.path.basename(SRC), 'sha256': sha256(SRC), 'needs_ocr': False,
+           'pages_to_ocr': 0, 'ask': False, 'found': None, 'suggestion': None, 'han_only': False, 'evidence': {}}
+    def done(why=None):
+        if why: out['why'] = why
+        json.dump(out, open(os.path.join(OUTD, 'languages.json'), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
+        print(f'intake --languages: {"pages to OCR: " + str(out["pages_to_ocr"]) if out["needs_ocr"] else "no page needs OCR"}'
+              + (f', found: {out["found"]}' if out['found'] else '') + (', the language is asked' if out['ask'] else '')
+              + (f', suggested {out["suggestion"]}' if out['suggestion'] else ''))
+        return 0
+    try: pdf = pikepdf.open(SRC)
+    except Exception: return done('the PDF could not be opened here: the full intake says why')
+    if support.unsupported(pdf) or tag_status(pdf)[0] == 'tagged' or os.environ.get('OCR') == 'off':
+        pdf.close(); return done('no OCR: tagged, not supported, or OCR=off')
+    inv = [page_inventory(pg) for pg in pdf.pages]
+    for i in empty_text_pages(SRC, inv): inv[i - 1] = page_inventory(pdf.pages[i - 1], text_drawn=False)
+    pdf.close()
+    kinds = collections.defaultdict(list)
+    for i, x in enumerate(inv, 1): kinds[x['kind']].append(i)
+    scan_pages = kinds['image-only']; text_pages = kinds['text'] + kinds['ocr-layer']
+    to_ocr = list(range(1, len(inv) + 1)) if os.environ.get('FORCE_OCR') == '1' else scan_pages
+    out['pages_to_ocr'] = len(to_ocr); out['needs_ocr'] = bool(to_ocr)
+    if not to_ocr: return done()
+    doc = pdfium.PdfDocument(SRC); tmp = tempfile.mkdtemp(prefix='intake_', dir=OUTD)
+    pages, others = [], collections.Counter()
+    try: sc, viet, osd, found_ = scripts_seen(doc, text_pages, to_ocr, tmp, pages, others)
+    finally: doc.close(); shutil.rmtree(tmp, ignore_errors=True)
+    if pages and all(p.get('orient_conf') is None for p in pages):   # review 12 N1: "no text" may mean OSD didn't run
+        print(f'intake --languages: note: Tesseract gave no orientation reading on any of the {len(pages)} sampled scans '
+              '(blank pages, or its osd.traineddata missing): counted as no text to read')
+    out.update(suggest_language(sc, viet, pages, others))
+    return done()
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     if len(args) != 2: sys.exit(__doc__.split('\n\n')[0])
     SRC, OUTD = os.path.abspath(args[0]), os.path.abspath(args[1]); PLAN_ONLY = '--plan-only' in sys.argv
     os.makedirs(OUTD, exist_ok=True)
+    if '--languages' in sys.argv: return languages_only(SRC, OUTD)
     settings = {'FORCE_OCR': os.environ.get('FORCE_OCR') == '1', 'OCR': os.environ.get('OCR', 'auto'),
                 'OCR_LANG': os.environ.get('OCR_LANG') or None, 'plan_only': PLAN_ONLY,
                 'thresholds': {'cer_ok': CER_OK, 'cer_bad': CER_BAD, 'ocr_dpi': OCR_DPI, 'sample': SAMPLE, 'extra': EXTRA,
@@ -1121,16 +1241,7 @@ def main():
     # ---- language (3.7): scripts in the text layer, and Tesseract's script detection on image-only pages
     doc = pdfium.PdfDocument(SRC); tmp = tempfile.mkdtemp(prefix='intake_', dir=OUTD)
     try:
-        sc = collections.Counter(); viet = 0
-        step = max(1, len(text_pages) // 40)
-        for i in text_pages[::step]:
-            t_ = doc[i - 1].get_textpage().get_text_range(); sc += scripts(t_); viet += sum(1 for ch in t_ if ch in VIET_LETTERS)
-        osd = collections.Counter()
-        for i in scan_pages[:: max(1, len(scan_pages) // 5)][:5]:
-            img = os.path.join(tmp, f'osd{i}.png'); render(doc, i - 1, OCR_DPI, img)
-            s = osd_script(img)
-            if s: osd[s] += 1
-        found_ = collections.Counter({OSD_SCRIPTS.get(s, s): n for s, n in osd.items()})   # "Korean" and "Hangul" alike
+        sc, viet, osd, found_ = scripts_seen(doc, text_pages, scan_pages, tmp)
         lang_why = []; han_no_kana = False
         if settings['OCR_LANG']:
             ocr_lang = score_lang = settings['OCR_LANG']; lang_why.append('set by OCR_LANG')

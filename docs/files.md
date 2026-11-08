@@ -34,7 +34,18 @@ The pipeline lives in `pipeline/`; paths below are relative to it, apart from `p
 | `review/` | The review step's code: `core.py` (items, priority groups, decisions, diff, record; no web code), `server.py` (standard-library web server on 127.0.0.1), `page.html` (the page; no external libraries), `palette.css` (the dashboards' colors, light and dark, copied from `page.html`; `report_html.py` inlines it; keep the two in step) |
 | `review/manual.py` | The one writer of the accessibility evaluation's results ([Accessibility evaluation and release](release.md)): records PAC 2026 or screen-reader test results under the record lock (refused while a new version is being made, or when the PDF on disk is not the one shown and described), takes a first hash for older runs, and `write_run`, the refresh every writer of a finished run's record shares (release/ mirrored, glance, review.md's Overview and its Accessibility Evaluation section, review.html, each file written whole) |
 | `webapp/manualpage.py`, `webapp/manual.js` | The app's Accessibility Evaluation page ([Accessibility evaluation and release](release.md)): its data and HTML (escaped; its data in a JSON block with `<`, `>` and `&` escaped), the display-only hash of the remediated PDF, the run page's strip after "Ready to Ship?"; the script saves drafts and records through `review/manual.py` |
-| `webapp/downloads.py` | A run's versions and their downloads: the version list (only versions whose PDF exists), the names, the files opened in one moment under the record lock, and the streamed record ZIP and its read-me |
+| `webapp/downloads.py` | A run's versions and their downloads: the version list (only versions whose PDF exists; after clearing, the shipped copies), the names, the files opened in one moment under the record lock, the streamed record ZIP and its read-me, and `release/downloads.json` (a complete record ZIP of a live shipment) |
+| `webapp/shared.js` | What the home and batch pages share: the "⋯" menus, Edit Name in place, and the New Run and New Batch pop-ups (contents from `GET /api/form`) |
+| `webapp/home.py`, `webapp/home.js` | The home page ([The home page](home.md)): the PDFs, runs in progress, My Workspace (single runs and batches, cached in `runs/.app/home-index.json`, with status groups and pages), the "Upload a PDF" drop zone (several PDFs at once), the "⋯" menus and Edit Name in place, the app bar on every page but the home page |
+| `webapp/lang.py` | "Language of the Scanned Pages" (#45 D4): the question from `_intake/languages.json` (or intake's CJK stop), its evidence in plain words, and the answer's environment |
+| `webapp/trash.py`, `webapp/trash.js` | "Move to Trash" (#45 D8): a run, a batch whole or in part, an added PDF; the plans the confirmations show, the refusals, the moves, `runs/.app/trash-log.json` ([The app](app.md#move-to-trash)) |
+| `webapp/names.py` | The names people see, the app's only: book names (`runs/.app/book-names.json`), plain run and batch names (`runs/.app/run-names.json`), the automatic cleanup of a PDF's Title, and the folder label a plain name becomes |
+| `webapp/books.py` | The PDF list (the uploads only; samples/ is searched by sha256 for originals, never listed), display names (`runs/.app/books-cache.json`), Upload a PDF (into `uploads/`, never replacing a file), the OCR language choices |
+| `webapp/newrun.py`, `webapp/spend.py` | A single run from the home page: New Run's form, the free estimate job, Try Again decided from disk, New Run from the Saved Reply; `spend.py` is the one gate every "Start Remediation" goes through (the fingerprint, the model and prompt, the limits, MAX_USD), and every app run sets REVIEW=1; the "Language of the Scanned Pages" answer |
+| `webapp/batches.py`, `webapp/batch.js` | Batches from the home page: the book list (`runs/.app/batches/<label>.books.txt`) and record, per-book estimates, totals, the batch's "Start Remediation" (batch_api.sh), the batch page and the side column |
+| `webapp/failures.py` | Why a run stopped, in plain words, as a table by step, with the tool's own words only under "Details" |
+| `lib/costs.py` | The cost estimate interface: a step's worst case, limits and credit, the fingerprint, the bounds a "Start Remediation" passes on (MAX_USD, BOOK_MAX_USD, BATCH_MAX_USD), the actual cost after, a batch's totals; `expected` is #65's (dollar-only cost limits) hook |
+| `review/clear.py` | "Clear This Book's Files" for a shipped book: the gate, the PDFs and images it deletes, `release/cleared.json` ([Accessibility evaluation and release](release.md#clearing-a-shipped-book)) |
 | `review/prune.py` | "Clean Up Space": the previous versions whose PDF can go (never the current version, the AI's own, an evaluated or a shipped one), and the removal of the ones a person selects under `reviews/.lock` and the record lock, recorded in `release/removed.json`; `review_workorder.py --remove-older-pdfs` is its command line |
 | `manual_checks.py` | The accessibility evaluation from the terminal: `--show`, `--record pac\|screen-reader FILE.json [--for-sha SHA]`, `--refresh`, `--template pac\|screen-reader`; through `review/manual.py` |
 | `review_ocr.py` | Records a person's verdict on a book's OCR text (checklist rule 2): `python3 review_ocr.py <run>/<book> --verdict approved\|"not approved"\|"sent to a language reader" --reviewer NAME [--reason TEXT] [--pages 381-386] [--reads LANGUAGE] [--to WHO] [--date YYYY-MM-DD]`, through `review/ocr.py`, the same code as the review page's OCR Text section. Writes `_intake/intake.json`, `record.json` and the review.md row, and refreshes "Overview" and `review.html`; the row is OK only on "approved"; FROM= reruns carry the verdict. For a finished run, refused while a review page of the run is open or an apply runs. `--serve` opens the OCR-only review page |
@@ -80,3 +91,20 @@ The pipeline lives in `pipeline/`; paths below are relative to it, apart from `p
 - **The model still sees a figure that was cut, but only as text**: its page, size and the text near it. Any alt text it writes for one is dropped as written unseen. It can still mark one as decoration, which hides the figure from screen readers on the strength of that text alone, so check those decisions in the review.
 - **OCR word sheets share the 100 slots,** after the figures (see [OCR words](ocr-words.md)).
 - **With `REVIEW=1`,** every figure left without alt text is listed as a gap at Finish, and the reviewer can write the alt text on the review page (see [Reviewing the work order](review-step.md)).
+
+## Where records live
+
+**A record is never an image or a PDF.** `_audit/` and `reviews/_audit/` hold what the pipeline extracts from the book:
+records (the digest, its full text, dryrun.json, the OCR-word list, all `.json` or `.csv`) and figure crops and page
+images. Clearing a shipped book removes the PDFs and images there and keeps every `.json`, `.md`, `.html` and `.csv` file ([Accessibility evaluation and
+release](release.md#clearing-a-shipped-book)). A new record goes beside record.json, in `reviews/` or in `release/`.
+
+**The app's own files** are in `runs/.app/` (the `jobs` setting): `jobs/<id>.json` and `.log` (each job, its environment,
+its log), `dispatch.lock`, `server.log`, `sha256-cache.json` (books' hashes), `books-cache.json` (titles and page counts),
+`home-index.json` (the earlier-runs list), `book-names.json` and `run-names.json` (names, `names.lock`), `batches/<label>.books.txt` and `.json` (a batch made in the app).
+**`uploads/`** (repository root, git-ignored) holds the PDFs added with **Upload a PDF** and not used yet, each with a
+`<name>.json` note. A run started from the app keeps its own original in `source/` (`<file name>.pdf` and its note; R17), never
+written to, kept by report.py's clean-up and by "Clear This Book's Files". A run's
+`_intake/languages.json` is intake's `--languages` result; a batch folder may hold `ocr_langs.tsv` (each book's OCR language)
+and `trashed.json` (its PDFs moved to the Trash, with their cost).
+

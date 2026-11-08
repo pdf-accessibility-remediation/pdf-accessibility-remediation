@@ -866,8 +866,9 @@ def summary_html(Bdir):
     with _BATCH_LOCKS_LOCK: lk = _BATCH_LOCKS.setdefault(key, threading.Lock())
     with lk: return _summary_html(Bdir)
 
-def _summary_html(Bdir):
-    """summary.html for a batch folder: one row per book, most work first; each book's review.html is (re)built."""
+def summary_rows(Bdir, build=False):
+    """The batch dashboard's rows, one per book folder, most work first (summary.html, and the app's batch page draws the
+    same rows: #45 P8). build: a missing review.html is built (summary.html's own rebuild only)."""
     rows = []
     for name in sorted(os.listdir(Bdir)):
         R = os.path.join(Bdir, name)
@@ -875,7 +876,7 @@ def _summary_html(Bdir):
         rp = os.path.join(R, 'record.json')
         if os.path.exists(rp):
             rec = json.load(open(rp, encoding='utf-8')); labels = labels_of(R, rec); g = glance_of(R, rec, labels)
-            if not os.path.exists(os.path.join(R, 'review.html')):
+            if build and not os.path.exists(os.path.join(R, 'review.html')):
                 from lib import runlock                   # the book's own writers hold its record lock; a busy book keeps no page
                 try:
                     with runlock.record_lock(R, runlock.REQUEST_WAIT): review_html(R, rec, None, labels)
@@ -890,6 +891,11 @@ def _summary_html(Bdir):
             ij = json.load(open(os.path.join(R, '_intake', 'intake.json'), encoding='utf-8'))
             rows.append({'name': name, 'done': False, 'status': f'{ij.get("status") or "not finished"}: {ij.get("summary") or ""}'})
     rows.sort(key=lambda r: (not r['done'], -(r.get('needs') or 0)))
+    return rows
+
+def _summary_html(Bdir):
+    """summary.html for a batch folder: one row per book, most work first; each book's review.html is (re)built."""
+    rows = summary_rows(Bdir, build=True)
     mx = max([1] + [r['needs'] for r in rows if r['done']])
     label = os.path.basename(os.path.normpath(Bdir))
     B = [f'<header class="top"><h1>Batch {E(label)}</h1><div class="meta">{len(rows)} books · <a href="summary.md">summary.md</a> (cost, time and model per book)'

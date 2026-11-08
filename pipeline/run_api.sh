@@ -11,6 +11,7 @@
 # ESTIMATE=1 bash run_api.sh …   audit + cost estimate only; a later run with the same label reuses the audit
 # OUT=clan.pdf bash run_api.sh …   names the result; by default it is <original file name>_remediated.pdf
 # MAX_TOKENS=64000 bash run_api.sh …   output limit for Claude's reply, reasoning included (default 48000, set in decide.py)
+# MAX_USD=3 bash run_api.sh …   the cap on one call's worst case, in dollars (default 2, set in decide.py; Claude models only)
 # MODEL=openai/gpt-5 bash run_api.sh …   any OpenRouter model id for this run (default: DEFAULT_MODEL in decide.py)
 # Untagged PDFs first go through intake.py (local, no cost): OCR where pages have no text, then auto-tagging. Its
 # result (_intake/intake.pdf) is what the rest of the run works on; the original is never written to.
@@ -23,6 +24,9 @@
 # but a later step failed is reused at no cost.
 # Outputs go to PDFREM/runs/<short-name>/<run-label>/ (beside pipeline). RUNS_DIR=/some/path overrides it.
 # RUN_DIR=/exact/folder sets the run folder itself (batch_api.sh uses it: runs/batches/<label>/<name>/).
+# ASK_LANG=1 (the app, #45 D4): with no OCR_LANG and no intake yet, intake.py --languages runs first; when pages need OCR
+# and their language matters (not Latin script only, not "no text found") the run stops with exit 4 before any OCR
+# (_intake/languages.json has the suggestion), so a person gives the language. Otherwise it goes on as before.
 set -euo pipefail
 SRC=${1:?path to the original PDF}; NAME=${2:?short name, e.g. teika}; RUN=${3:-api-$(date +%Y%m%d-%H%M)}
 [[ -f $SRC ]] || { echo "no such PDF: $SRC"; exit 1; }
@@ -38,7 +42,9 @@ RUNS=${RUNS_DIR:-$(cd .. && pwd)/runs}
 R=${RUN_DIR:-$RUNS/$NAME/$RUN}; A=$R/_audit
 if [[ -f $R/record.json ]]; then echo "$R already holds a finished run: choose another run label"; exit 1; fi
 if [[ -n ${MAX_TOKENS:-} && ! $MAX_TOKENS =~ ^[0-9]+$ ]]; then echo "MAX_TOKENS must be a whole number: $MAX_TOKENS"; exit 1; fi
+if [[ -n ${MAX_USD:-} && ! $MAX_USD =~ ^[0-9]+([.][0-9]+)?$ ]]; then echo "MAX_USD must be a number of dollars: $MAX_USD"; exit 1; fi
 MT=(); [[ -z ${MAX_TOKENS:-} ]] || MT=(--max-tokens "$MAX_TOKENS")
+[[ -z ${MAX_USD:-} ]] || MT+=(--max-usd "$MAX_USD")
 [[ -z ${MODEL:-} ]] || MT+=(--model "$MODEL")
 USE_MODEL=${MODEL:-$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")}
 NEW=; [[ -d $R ]] || NEW=1
@@ -111,6 +117,12 @@ if [[ ${INTAKE:-auto} != off ]]; then
       || { echo "$SRC is not the original this run's intake was made from (sha256 differs): give the same original PDF"; exit 1; }
     echo "▶ 0/5 intake: not re-run; applying to the intake result saved before the review stop"
   else
+    if [[ -n ${ASK_LANG:-} && -z ${OCR_LANG:-} && ! -f $R/_intake/intake.json ]]; then   # the app (#45 D4): ask before any OCR
+      stage "0/5 OCR language check (local, no model)" python3 intake.py "$SRC" "$R/_intake" --languages
+      if python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get('needs_ocr') and d.get('ask', True) else 1)" "$R/_intake/languages.json"; then
+        echo "stopped: pages need OCR, their language matters and no OCR language was given (see $R/_intake/languages.json)"; summary; exit 4
+      fi
+    fi
     stage "0/5 intake (local, no model)" python3 intake.py "$SRC" "$R/_intake"
   fi
   [[ -f $R/_intake/intake.pdf ]] && PSRC=$R/_intake/intake.pdf
@@ -145,7 +157,7 @@ else
   if [[ -n ${AUTO:-} ]]; then
     ok=y
     if [[ $USE_MODEL == anthropic/* ]]; then
-      echo "AUTO=1: sending without asking (decide.py still refuses a Claude estimate over the \$2 cap or your credit)"
+      echo "AUTO=1: sending without asking (decide.py still refuses a Claude estimate over the \$${MAX_USD:-2} cap or your credit)"
     else
       echo "AUTO=1: sending without asking. The \$2 cap applies to Claude models only: the $USE_MODEL estimate is approximate and not capped; the OpenRouter bill is the real cost"
     fi

@@ -226,7 +226,7 @@ def test_the_lock_keeps_threads_and_processes_apart(tmp_path):
 # ------------------------------------------------------------------ the writer, on a synthetic finished run
 def finished_run(tmp_path, session_sha=None, record_sha=None):
     R = tmp_path / 'run'; R.mkdir(parents=True)
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(300, 300)); doc.save(str(R / 'b_remediated.pdf'))
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(300, 300)); doc.save(str(R / 'b_remediated.pdf'), deterministic_id=True)
     rec = {'document': {'file': 'b.pdf', 'output': 'b_remediated.pdf', 'pages': 1, **({'output_sha256': record_sha} if record_sha else {})},
            'review': {'session': '002'}}
     core.save(str(R / 'record.json'), rec)
