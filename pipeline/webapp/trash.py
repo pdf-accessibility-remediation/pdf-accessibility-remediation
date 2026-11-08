@@ -26,7 +26,7 @@ from . import jobs, books as BK, names as NM, home as HM
 
 CONFIRM_RUN = 'The remediated PDF, its report and its review go with it.'
 CONFIRM_SHIPPED = 'This run was shipped. Its record of what was shipped and who approved it goes with it.'
-CONFIRM_USED = 'These runs keep their remediated PDF, report and downloads. What moving the PDF changes for each one is under its name.'
+CONFIRM_USED = 'These runs keep their remediated PDF, report and downloads.'   # R7 (Patrick's test, 2026-11-07)
 STILL_WORKS = '"Review Again" still works: the run kept its own copy.'
 STILL_ELSEWHERE = '"Review Again" still works: the run uses another copy of the PDF.'
 ALREADY_LOST = '"Review Again" already doesn\'t work for this run: its own copy of the PDF is missing. Moving this PDF doesn\'t change that.'
@@ -34,7 +34,7 @@ ALREADY_UNKNOWN = ('"Review Again" already doesn\'t work for this run: its recor
                    'Moving this PDF doesn\'t change that.')
 NEEDS_BACK = '"Review Again" will need it back.'
 APPLY_NEEDS = 'Applying its reviewed decisions will need it back.'
-GO_ON_NEEDS = 'Going on with this run will need it back.'
+GO_ON_NEEDS = None   # R7: a run before its result gets no line (removed by Patrick, 2026-11-07)
 OTHER_DISK = 'The Trash is on another disk than the app\'s folders, so this can\'t be moved there. Whoever looks after the app can move it by hand.'
 
 class Refused(Exception):

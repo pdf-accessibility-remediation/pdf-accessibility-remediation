@@ -217,12 +217,12 @@ def test_run_page_header_is_the_apps(app):
     before = (R / 'review.html').read_bytes()
     page = get(app['port'], '/run/book/r1/')[1].decode()
     assert 'Review: book.pdf' not in page and 'workorder_v10' not in page and 'anthropic/x' not in page
-    assert 'class="top pp-head pp-hd"' in page and '12 pages' in page and 'Run Name: r1' in page
+    assert 'class="top pp-head pp-hd"' in page and '12 pages' in page and '<p class="pp-hd-det">r1 · ' in page
     assert (R / 'review.html').read_bytes() == before
     # Q6 (Patrick's test, 2026-11-07): "Home Page" inside the header, on its right; the details on one line; one app bar
     hd = page[page.index('<header class="top pp-head pp-hd">'):page.index('</header>')]
     assert '<nav class="pp-appbar" aria-label="App"><a class="pp-btn" href="/">Home Page</a></nav>' in hd and page.count('aria-label="App"') == 1
-    assert '<p class="pp-hd-det">Run Name: r1 · 12 pages · AI cost: not recorded</p>' in hd
+    assert '<p class="pp-hd-det">r1 · 12 pages · AI Cost: not recorded</p>' in hd
 
 def test_run_details_in_plain_words(setup):
     """Q6: Run Name, pages, when it ran, the AI by its plain name and the AI cost with its worst-case estimate; a saved
@@ -231,12 +231,12 @@ def test_run_details_in_plain_words(setup):
     (R / 'record.json').write_text(json.dumps({'document': {'file': 'mm.pdf', 'pages': 321},
         'run': {'started': '2026-11-06T21:29:05', 'model': 'anthropic/claude-sonnet-5.5', 'usage': {'cost_usd': 0.27},
                 'estimate': {'worst_case_total_usd': 0.61}}, 'cost_total_usd': 0.27}))
-    assert RN.details(s, 'mm/r1', str(R)) == ['Run Name: r1', '321 pages', 'Run on November 6, 2026, at 9:29 PM', 'AI: Claude Sonnet 5.5',
-                                              'AI cost: $0.27 (worst-case estimate $0.61)']
+    assert RN.details(s, 'mm/r1', str(R)) == ['r1', '321 pages', 'Run on November 6, 2026, at 9:29 PM', 'AI: Claude Sonnet 5.5',
+                                              'AI Cost: $0.27 (worst-case estimate $0.61)']
     rec = json.loads((R / 'record.json').read_text()); rec['run']['response_from'] = '../x/reply.txt'; (R / 'record.json').write_text(json.dumps(rec))
-    assert RN.details(s, 'mm/r1', str(R))[-1] == 'AI cost: none (a saved reply was used)'
+    assert RN.details(s, 'mm/r1', str(R))[-1] == 'AI Cost: none (a saved reply was used)'
     E = setup / 'runs' / 'mm' / 'e1'; E.mkdir(); (E / 'run.json').write_text(json.dumps({'started': '2026-11-07T09:00:00', 'estimate': {}}))
-    assert RN.details(s, 'mm/e1', str(E)) == ['Run Name: e1', 'Run on November 7, 2026, at 9:00 AM']      # an estimate only: no AI yet
+    assert RN.details(s, 'mm/e1', str(E)) == ['e1', 'Run on November 7, 2026, at 9:00 AM']      # an estimate only: no AI yet
     assert RN.model_words('google/gemini-3.1-pro-preview') == 'Gemini 3.1 Pro Preview' and RN.model_words(None) is None
 
 def test_a_batch_pdfs_header_and_the_batch_page_header(app):
@@ -264,7 +264,7 @@ def test_the_pdf_section_and_its_menus(app):
     t = app['t']; (t / 'uploads').mkdir(exist_ok=True)
     for n in ('a', 'b'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n.upper()}'))
     page = get(app['port'], '/')[1].decode()
-    assert '<h2 id="hm-books-h">Upload a PDF</h2>' in page and 'id="hm-drop"' in page and '>Choose PDFs</button> <span>or drop PDFs here</span>' in page
+    assert '<h2 id="hm-books-h">Upload a PDF</h2>' in page and 'id="hm-drop"' in page and '>Choose PDFs</button> <span>or Drop PDFs here</span>' in page
     assert 'A copy goes into the app\'s folder; the file you choose is not changed.' in page and 'accept="application/pdf,.pdf" multiple hidden' in page
     assert 'Create a New Batch</button>' in page and 'Select two or more PDFs first.' in page and '<th scope="col" class="hm-sel">Select</th>' in page
     assert 'Edit the Name' not in page and 'New Batch with' not in page and '>Move to Trash</button></td>' not in page
@@ -275,7 +275,7 @@ def test_the_pdf_section_and_its_menus(app):
     assert 'data-edit="batch" data-label="b1"' in bp and 'class="hm-danger" data-trash="batch" data-label="b1"' in bp
     keys = {b['name']: b['key'] for b in BK.listing(S(t))}
     page = get(app['port'], '/?added=' + keys['Book B'])[1].decode()                 # just added: first, highlighted, its name box opens
-    assert page.index('Book B') < page.index('Book A') and page.count('data-new="1"') == 1 and 'Added "Book B".' in page
+    assert page.index('Book B') < page.index('Book A') and page.count('data-new="1"') == 1 and 'Added "Book B"</p>' in page
     assert get(app['port'], '/book?key=' + keys['Book A'])[2].get('Location') == '/'   # the name page went away
 
 def test_edit_name_for_runs_and_batches_changes_only_the_shown_name(app):
@@ -334,3 +334,31 @@ def test_a_batch_totals_its_pages(setup):
         (R / 'record.json').write_text(json.dumps({'document': {'file': f'{n}.pdf', **({'pages': p} if p else {})}}))
     b = {x['label']: x for x in HM.index(s)['batches']}['bp']
     assert (b['pages'], b['pages_missing']) == (123, 1)
+
+# ------------------------------------------------------------------ Patrick's test, 2026-11-07 (second): R1-R8
+def test_home_page_sits_beside_each_pages_name(app):
+    """R4: "Home Page" (and the PDF list's button) on the same line as the page's name: the run page, a batch PDF's run
+    page, the batch page, New Batch and New Run; one app bar each."""
+    t = app['t']; (t / 'uploads').mkdir(exist_ok=True)
+    for n in ('a', 'b'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n.upper()}'))
+    keys = [b['key'] for b in BK.listing(S(t))]
+    pages = {'run': '/run/old/r0/', 'batch pdf': '/run/batches/b1/x/', 'batch': '/batch/b1/',
+             'new batch': '/new-batch?book=' + keys[0] + '&book=' + keys[1], 'new run': '/new?book=' + keys[0]}
+    for what, path in pages.items():
+        page = get(app['port'], path)[1].decode()
+        assert "<div class=\"pp-hd-top\">" in page, what
+        row = page[page.index("<div class=\"pp-hd-top\">"):]; row = row[:row.index("</nav></div>") + 12]
+        assert row.index('<h1>') < row.index('>Home Page</a>') and page.count('aria-label="App"') == 1, what
+        if what in ('batch pdf', 'batch'): assert 'id="bn-toggle"' in row, what
+    nb = get(app['port'], pages['new batch'])[1].decode()
+    assert 'Press backlist' not in nb and 'aria-describedby="nb-name-h"' not in nb       # R8
+
+def test_r1_r3_r7_wording_and_styles():
+    css = open(os.path.join(HERE, 'webapp', 'panel.css'), encoding='utf-8').read()
+    assert 'text-decoration: underline; }' not in css.replace('.pp button.pp-link { border: 0; background: none; padding: 0 2px; min-height: 24px; color: var(--accent); text-decoration: underline; font-weight: 400; }', '')
+    assert '.pp .hm-mlist button:hover, .pp .hm-mlist button:focus-visible {' in css and '.pp .hm-mlist button:focus {' not in css   # R3
+    rp = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    assert 'a.btnlink:hover { text-decoration: underline; }' not in rp                 # R1 on the review page too
+    tj = open(os.path.join(HERE, 'webapp', 'trash.js'), encoding='utf-8').read()
+    from webapp import trash as TR
+    assert '<p>These runs were made from:</p>' in tj and TR.CONFIRM_USED == 'These runs keep their remediated PDF, report and downloads.' and TR.GO_ON_NEEDS is None

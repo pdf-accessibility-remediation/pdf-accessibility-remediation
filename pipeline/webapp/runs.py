@@ -379,9 +379,9 @@ def model_words(m):
     return ' '.join(up.get(x.lower(), x if x[:1].isdigit() else x[:1].upper() + x[1:]) for x in w if x)
 
 def details(s, run, R, pages=None):
-    """The run page header's line (Patrick's test, 2026-11-07, Q6): "Run Name: mm · 321 pages · Run on November 6, 2026,
-    at 9:29 PM · AI: Claude Sonnet 5.5 · AI cost: $0.27 (worst-case estimate $0.61)", in plain words; a part with nothing
-    recorded is left out, and "AI" and "AI cost" only once an AI reply exists (a saved one: "AI cost: none (a saved reply
+    """The run page header's line (Patrick's test, 2026-11-07, Q6, R5): "mm · 321 pages · Run on November 6, 2026,
+    at 9:29 PM · AI: Claude Sonnet 5.5 · AI Cost: $0.27 (worst-case estimate $0.61)", in plain words; a part with nothing
+    recorded is left out, and "AI" and "AI Cost" only once an AI reply exists (a saved one: "AI Cost: none (a saved reply
     was used)"). The model is the original call's (lib/origin.py), never an id or a file name."""
     from lib import dates as D, costs, origin
     from . import names as NM
@@ -391,7 +391,7 @@ def details(s, run, R, pages=None):
     try: pages = int(str(pages).replace(',', '')) if pages else None
     except ValueError: pages = None
     when = ((rec or {}).get('run') or {}).get('started') or runj.get('started')
-    out = [f'Run Name: {NM.shown_run(s, run)}'] + ([f'{pages:,} page{"" if pages == 1 else "s"}'] if pages else []) + \
+    out = [NM.shown_run(s, run)] + ([f'{pages:,} page{"" if pages == 1 else "s"}'] if pages else []) + \
           ([f'Run on {D.when(when)}'] if when and D.parse(when) else [])
     called = bool(rec) or os.path.isfile(os.path.join(R, 'workorder.ai.json')) or bool(runj.get('usage') or runj.get('response_from'))
     if called:
@@ -399,10 +399,10 @@ def details(s, run, R, pages=None):
         if model_words(model): out.append(f'AI: {model_words(model)}')
         c = costs.actual(R)
         r_ = (rec or {}).get('run') or runj
-        if c['reused']: out.append('AI cost: none (a saved reply was used)')
+        if c['reused']: out.append('AI Cost: none (a saved reply was used)')   # L1 (review 15): labels in Title Case
         elif (rec or {}).get('cost_total_usd') is None and (r_.get('usage') or {}).get('cost_usd') is None and not c['earlier_usd']:
-            out.append('AI cost: not recorded')                # never a "$0.00" that was not measured
-        else: out.append(f'AI cost: ${c["usd"]:.2f}' + (f' (worst-case estimate ${c["estimate_usd"]:.2f})' if c.get('estimate_usd') else ''))
+            out.append('AI Cost: not recorded')                # never a "$0.00" that was not measured
+        else: out.append(f'AI Cost: ${c["usd"]:.2f}' + (f' (worst-case estimate ${c["estimate_usd"]:.2f})' if c.get('estimate_usd') else ''))
     return out
 
 def sent_words(est):

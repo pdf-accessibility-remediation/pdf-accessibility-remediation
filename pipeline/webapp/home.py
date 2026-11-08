@@ -256,13 +256,12 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
              '<div class="hm-drop" id="hm-drop"><svg class="hm-drop-i" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="28" height="28">'
              '<path d="M12 16V4m0 0-5 5m5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="2" '
              'stroke-linecap="round" stroke-linejoin="round"/></svg><div class="hm-drop-t"><div class="hm-drop-r">'
-             '<button type="button" id="hm-choose" class="pp-primary">Choose PDFs</button> <span>or drop PDFs here</span></div>'
+             '<button type="button" id="hm-choose" class="pp-primary">Choose PDFs</button> <span>or Drop PDFs here</span></div>'
              '<p class="pp-note" id="hm-drop-n">A copy goes into the app\'s folder; the file you choose is not changed.</p></div>'
              '<input type="file" id="hm-file" accept="application/pdf,.pdf" multiple hidden tabindex="-1" aria-hidden="true"></div>'
              '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>')
     ab = [b for b in bk if b['key'] in new]
-    if ab: B.append('<p id="hm-added" hidden>' + (f'Added "{E(ab[0]["name"])}".' if len(ab) == 1 else f'Added {len(ab)} PDFs.') +
-                    ' Check the name in its box: change it and select "Save Name", or press Esc to keep it.</p>')
+    if ab: B.append('<p id="hm-added" hidden>' + (f'Added "{E(ab[0]["name"])}"' if len(ab) == 1 else f'Added {len(ab)} PDFs') + '</p>')   # R7
     elif renamed and next((b for b in bk if b['key'] == renamed), None):
         B.append(f'<p id="hm-added" hidden>The PDF is now named "{E(next(b for b in bk if b["key"] == renamed)["name"])}".</p>')
     elif trashed: B.append('<p id="hm-added" hidden>Moved to the Trash. Nothing was deleted: to put it back, drag it from the Trash to where it was.</p>')
@@ -343,6 +342,11 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
         B.append(f'<p><a class="pp-btn" href="{E(more)}#hm-more" id="hm-more">Show More {"Runs" if view == "runs" else "Batches"}</a></p>')
     B.append('</section></main><script src="/app/home.js" defer></script><script src="/app/trash.js" defer></script></body></html>')
     return '\n'.join(B)
+
+def title_row(h1, extra=''):
+    """A page's name with "Home Page" (and `extra`: the PDF list's button) right beside it, on the same line (R4, Patrick's
+    test 2026-11-07); the bar is the app bar's own nav, so with_appbar adds none. h1: the heading's escaped text."""
+    return f'<div class="pp-hd-top"><h1>{h1}</h1>{appbar(extra=extra)}</div>'
 
 def appbar(current=False, extra=''):
     """The app bar on every page the app serves except the home page itself (P1), right after the skip link: "Home Page"

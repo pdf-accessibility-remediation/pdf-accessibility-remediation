@@ -185,9 +185,9 @@ def form_page(s, key):
             '<title>New Run</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
             '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>')
     if not book:
-        return head + ('<header><h1>New Run</h1></header><main id="main" tabindex="-1"><div class="pp"><p>This PDF\'s file has changed or is gone.</p>'
+        return head + ('<header>' + HM.title_row('New Run') + '</header><main id="main" tabindex="-1"><div class="pp"><p>This PDF\'s file has changed or is gone.</p>'
                        '</div></main></body></html>')
-    return head + (f'<header><h1>New Run</h1><p class="mc-book">{HM.book_cell(book["name"], book["file"])}</p></header>'
+    return head + (f'<header>{HM.title_row("New Run")}<p class="mc-book">{HM.book_cell(book["name"], book["file"])}</p></header>'
         '<main id="main" tabindex="-1"><form class="pp hm-form" id="hm-newrun" data-api="/api/new/estimate">'
         f'<input type="hidden" name="book" value="{E(book["key"])}">'
         '<div class="mc-field"><label for="nr-name">Run Name</label>'

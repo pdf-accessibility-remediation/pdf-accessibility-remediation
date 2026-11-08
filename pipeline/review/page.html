@@ -38,8 +38,9 @@ textarea { width: 100%; max-width: 100%; min-height: 3.2em; resize: vertical; } 
 .sname label { margin-right: 4px; } .sname #notesBtn { margin-left: 18px; }   /* the name close to its box; the notes button apart */
 /* "Back to the Run Page": a link (it goes to another page) that looks like the header's buttons */
 a.btnlink { display: inline-block; font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); text-decoration: none; }
-a.btnlink:hover { text-decoration: underline; }
-#title { display: inline-block; vertical-align: middle; margin-right: 12px; } #home { vertical-align: middle; }
+a.btnlink:hover, button:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, var(--panel)); }   /* R1: no underline on hover */
+button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 82%, var(--ink)); }
+#title { display: inline-block; vertical-align: middle; margin-right: 12px; } #home { vertical-align: middle; margin: 0 0 8px; }   /* R4: spaced, touching nothing */
 #back { margin: 0; }
 /* Hide Header at the header's bottom right; while hidden, Show Header at the window's top right */
 .hdr-foot { display: flex; align-items: flex-end; gap: 12px; margin-top: 6px; }

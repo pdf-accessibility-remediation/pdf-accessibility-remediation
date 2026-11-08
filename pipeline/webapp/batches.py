@@ -331,14 +331,13 @@ def form_page(s, keys):
     bs = [b for b in (BK.by_key(s, k) for k in keys) if b]
     head = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             '<title>New Batch</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a><header><h1>New Batch</h1></header><main id="main" tabindex="-1">')
+            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a><header>' + HM.title_row('New Batch') + '</header><main id="main" tabindex="-1">')
     if len(bs) < 2:
         return head + '<div class="pp"><p>Select two or more PDFs on the home page first.</p></div></main></body></html>'
     items = ''.join(f'<li>{HM.book_cell(b["name"], b["file"])}<input type="hidden" name="books" value="{E(b["key"])}"></li>' for b in bs)
     return head + (f'<form class="pp hm-form" id="hm-newbatch" data-api="/api/batch/new"><h2>PDFs ({len(bs)})</h2><ul class="hm-active">{items}</ul>'
         '<div class="mc-field"><label for="nb-name">Batch Name</label>'
-        '<input type="text" id="nb-name" name="label" maxlength="120" required aria-describedby="nb-name-h">'
-        '<p class="mc-help" id="nb-name-h">In your own words, for example "Press backlist, spring". It names this batch in My Workspace.</p></div>'
+        '<input type="text" id="nb-name" name="label" maxlength="120" required></div>'
         '<p class="mc-help">"Get the Estimates" prepares every PDF and works out what the batch could cost. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the batch page.</p><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
         '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button></div>'
@@ -407,8 +406,8 @@ def page(s, label, closed=None):
     return body_class('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             f'<title>Batch: {E(NM.shown_run(s, "batches/" + label))}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
             '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + nav(s, label, st=st, closed=closed) +
-            f'<header class="top pp-head pp-hd"><div class="pp-hd-main"><h1>Batch: {E(NM.shown_run(s, "batches/" + label))}</h1></div>'
-            + HM.appbar(extra=toggle(len(st['books']), not closed)) + '</header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
+            f'<header class="top pp-head pp-hd">' + HM.title_row(f'Batch: {E(NM.shown_run(s, "batches/" + label))}', toggle(len(st['books']), not closed)) +
+            '</header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
             '<h2 id="bt-h" tabindex="-1">This Batch</h2><div id="bt-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
             '<script src="/app/batch.js" defer></script><script src="/app/trash.js" defer></script></body></html>', closed)

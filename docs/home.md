@@ -16,16 +16,19 @@ python3 app.py              # opens the home page
 ```
 
 Every page the app serves except the home page itself has a **Home Page** button at the top (after "Skip to the
-content"). On the run and batch pages it is inside the page's header, on its right, beside **Hide the PDF List** /
-**Show the PDF List (N)** for a batch (Patrick's test, 2026-11-07, Q6, Q9); on the review page and the OCR-only page it
-follows the page count in the header line. Every link on the app's pages is drawn as a button (round 4, P5).
+content"). On the run, batch, New Run and New Batch pages it sits right beside the page's name, on the same line, with
+**Hide the PDF List** / **Show the PDF List (N)** after it for a batch (Patrick's test, 2026-11-07, Q6, Q9, R4); on the
+review page and the OCR-only page it follows the page count in the header line, spaced so it touches nothing else. Every
+link on the app's pages is drawn as a button (round 4, P5). A button's only hover feedback is a highlight, never an
+underline; the keyboard's focus ring stays (`:focus-visible`, R1).
 
 **The run page's header** (Q6–Q8) starts at the top of the screen: the PDF's name, "Source PDF: <file name>", then the
-run's details in plain words on one line, for example "Run Name: mm · 321 pages · Run on November 6, 2026, at 9:29 PM ·
-AI: Claude Sonnet 5.5 · AI cost: $0.27 (worst-case estimate $0.61)". The model is named in plain words (the original
-call's model for a run made from a saved reply), never by its id; "AI cost: none (a saved reply was used)" when no new
-call was made, "AI cost: not recorded" when the record has no cost, and no AI part before the AI has answered. A PDF in a
-batch adds "Assigned to the batch "<name>"" with **Open the Batch Page**. The cost is no longer repeated in Run Actions
+run's details in plain words on one line where the width allows, starting with the run's name, for example "mm · 321
+pages · Run on November 6, 2026, at 9:29 PM · AI: Claude Sonnet 5.5 · AI Cost: $0.27 (worst-case estimate $0.61)" (R5;
+labels in Title Case, review 15 L1). The model is named in plain words (the original call's model for a run made from a
+saved reply), never by its id; "AI Cost: none (a saved reply was used)" when no new call was made, "AI Cost: not
+recorded" when the record has no cost, and no AI part before the AI has answered. A PDF in a batch adds "Assigned to the
+batch "<name>"" with **Open the Batch Page**, close under the details. The cost is no longer repeated in Run Actions
 (Q7). The batch page's header is "Batch: <name>" with **Home Page** and the list's button on its right (Q9).
 
 ## The home page
@@ -37,7 +40,7 @@ the review page's "seen" cards use the same blue). The status pills keep their c
 - **Runs in Progress:** shown only while a job runs or waits to start: each with its PDF, its run name, its step or
   "Waiting to Start", and **Open**, kept current while the page is open. A job that ends is announced; focus never moves
   by itself.
-- **Upload a PDF:** a drop zone (dashed border, an upload icon): **Choose PDFs**, "or drop PDFs here", and "A copy goes
+- **Upload a PDF:** a drop zone (dashed border, an upload icon): **Choose PDFs**, "or Drop PDFs here", and "A copy goes
   into the app's folder; the file you choose is not changed." Several PDFs at once, chosen or dropped; **Choose PDFs** is
   the keyboard path. Under it, the PDFs added this way, each with its pages and size, **New Run**, a "⋯" menu (**Edit
   Name**, **Move to Trash**) and a narrow **Select** column to pick PDFs for **Create a New Batch** ("Select two or more
@@ -54,7 +57,8 @@ the review page's "seen" cards use the same blue). The status pills keep their c
 **The "⋯" menus** (Patrick's test, 2026-11-07). Beside **Open** (on a PDF, beside **New Run**), a "⋯" button named "More
 Actions for <name>" opens a menu: **Edit Name** and **Move to Trash** (in red). It is a menu button
 (`aria-haspopup="menu"`, `aria-expanded`): Enter, Space or the arrow keys open it, the arrow keys, Home and End move in
-it, Esc closes it and puts focus back on "⋯", Tab or a click outside closes it. **Edit Name** turns the row's name into a
+it, Esc closes it and puts focus back on "⋯", Tab or a click outside closes it. Opened with the mouse, no item is highlighted; opened with the keyboard,
+the first item is (R3). **Edit Name** turns the row's name into a
 text box in place (**Save Name** or Enter; **Cancel** or Esc); on a run or a batch it changes the plain name the pages
 show (`runs/.app/run-names.json`), never its folder; a batch's PDFs are named by their batch. After a Trash dialog or a
 name box closes, focus is back on the row's "⋯".
@@ -78,7 +82,8 @@ before "Start Remediation", else In Progress.
 Title with a conservative cleanup (a leading "_tag_" such as "_no template_", and a trailing " copy" or " copy 2", removed)
 when it still looks like a title (not empty, not "untitled", not a file or program name), else the file name without
 ".pdf", with "_" and "-" read as spaces. After an upload, each new PDF comes first in the list, highlighted, with its
-name in a text box to check or change (**Save Name** or Enter; **Cancel** or Esc keeps it); the first box takes focus
+name in a text box to check or change (**Save Name** or Enter; **Cancel** or Esc keeps it), and the message reads
+"Added "<name>"" or "Added 3 PDFs" (R7); the first box takes focus
 (Patrick's test, 2026-11-07: the separate name page went away). **Edit Name** in a row's "⋯" menu opens the same box in
 place at any time. The names are the app's own (`runs/.app/book-names.json`, by
 sha256, with each earlier name kept): never written into a run's record.json or review.html, and read each time a page is
@@ -226,7 +231,7 @@ error line, the record that holds it and where the full log is. Tool text and co
 ## Batches
 
 1. Select two or more PDFs on the home page and **Create a New Batch**.
-2. The form: **Batch Name** (required, in your own words). A batch holds up to 50 PDFs (`max_books_per_batch`): more is
+2. The form: **Batch Name** (required; no example line under it, R8). A batch holds up to 50 PDFs (`max_books_per_batch`): more is
    refused, "A batch can hold up to 50 PDFs. Split them into two batches".
 3. **Get the Estimates** writes the book list `runs/.app/batches/<label>.books.txt` (one `<short name> <absolute path>`
    per line; names unique in the batch; a path with "#" or "|" is refused) and the batch's record
@@ -271,7 +276,9 @@ display name, "Source PDF:" and its status in words. Its left border shows its s
 opened yet, or while it is processing or waiting to start (then also a small spinning circle at its right edge, a still dot
 with reduced motion, named "Processing" for a screen reader); blue once its review is opened, up to Pending Evaluation;
 yellow when it stopped for a person (its language, for example); green when Ready or Shipped; red when its last job
-failed. The current PDF has the darker background and bold text; hovering gives a lighter shade. **Hide the PDF List** /
+failed. The current PDF has the darker background and bold text; hovering gives a lighter shade. "Batch: <name>" and the
+count under it start where the PDFs' names do, the list starts near the top, and on a wide screen the page's header meets
+the list with no gap (R6). **Hide the PDF List** /
 **Show the PDF List (N)**, beside **Home Page**, closes and opens it; the choice is remembered in this browser (a cookie
 and local storage), and the server lays the page out with it, so moving from PDF to PDF doesn't shift the page (D7: the
 panel also keeps its height until it is drawn, the list keeps its scroll place, and pages cross-fade). Below 48em (a
@@ -292,16 +299,15 @@ first, naming what goes in plain words:
   summary.html are written again by a job of their own; when a job of the batch was queued during the move, that job is
   skipped and the files wait for the batch's next run, apply or move (the batch page is drawn live either way). Moving
   every PDF moves the batch.
-- **An added PDF:** when runs were made from it (by sha256), each is listed with its date and status, "These runs keep
-  their remediated PDF, report and downloads", and, per run, what the move changes (Patrick, 2026-11-07): ""Review
+- **An added PDF:** when runs were made from it (by sha256), each is listed under "These runs were made from:" with its
+  date and status, then "These runs keep their remediated PDF, report and downloads." (R7), and, per run, what the move changes (Patrick, 2026-11-07): ""Review
   Again" still works: the run kept its own copy" (its intake made one), "…the run uses another copy of the PDF" (its
   review reads a different file with the same content, e.g. in samples/) or "…another copy of the PDF is in the app's
   folders" (found by sha256); ""Review Again" will need it back" (a tagged PDF whose review reads this very file: its
   review record names the original itself, review 12 M2); ""Review Again" already doesn't work for this run: …
   Moving this PDF doesn't change that" (its own intake copy is missing, or its record doesn't say which PDF it was made
   from: putting the PDF back wouldn't help, review 12 N2); "Applying its reviewed
-  decisions will need it back" (waiting for its first apply); "Going on with this run will need it back" (before its
-  result). Those runs stay; a run that needs it says on its page that the original PDF was moved to the Trash and how to
+  decisions will need it back" (waiting for its first apply); a run before its result gets no line (R7). Those runs stay; a run that needs it says on its page that the original PDF was moved to the Trash and how to
   put it back. The samples folder is never offered.
 
 A move is refused, and nothing moves, while anything affected is processing, waiting to start or for a new estimate, has

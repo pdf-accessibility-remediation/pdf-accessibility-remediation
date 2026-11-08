@@ -644,9 +644,9 @@ def app_header(s, run, R, pages=None):
     sg = run.split('/')
     batch = (f'<p class="pp-hd-batch">Assigned to the batch "{html.escape(NMS.shown_run(s, run))}" '
              f'<a class="pp-btn" href="/batch/{urllib.parse.quote(sg[1], safe="")}/">Open the Batch Page</a></p>') if len(sg) == 3 and sg[0] == 'batches' else ''
-    return (f'<header class="top pp-head pp-hd"><div class="pp-hd-main"><h1>{html.escape(name)}</h1>'
+    return (f'<header class="top pp-head pp-hd">{HM.title_row(html.escape(name))}'
             + (f'<p class="mc-book"><span class="hm-file">Source PDF: {html.escape(file)}</span></p>' if file else '')
-            + '<p class="pp-hd-det">' + ' · '.join(html.escape(x) for x in runs.details(s, run, R, pages)) + f'</p>{batch}</div>{HM.appbar()}</header>')
+            + '<p class="pp-hd-det">' + ' · '.join(html.escape(x) for x in runs.details(s, run, R, pages)) + f'</p>{batch}</header>')
 
 def with_app_header(page, s, run, R):
     """review.html as served, with its own header (a file name, the prompt, the model, the run label) replaced by app_header()."""

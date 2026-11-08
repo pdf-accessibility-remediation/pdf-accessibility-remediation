@@ -32,7 +32,7 @@ function body(p) {
     p.pdfs.map(x => '<li>' + esc(x.pdf) + ' <span class="hm-file">Source PDF: ' + esc(x.file) + '</span></li>').join('') + '</ul>';
   if (p.what === 'pdf') {
     h += '<p><b>' + esc(p.pdf) + '</b><br><span class="hm-file">Source PDF: ' + esc(p.file) + '</span></p>';
-    if (p.runs.length) h += '<p>These runs were made from it:</p><ul>' + p.runs.map(r => '<li>' + esc(r.name) + ' · ' + esc(r.date) + ' · ' + esc(r.status) +
+    if (p.runs.length) h += '<p>These runs were made from:</p><ul>' + p.runs.map(r => '<li>' + esc(r.name) + ' · ' + esc(r.date) + ' · ' + esc(r.status) +
       (r.effect ? '<br><span' + (/still works|doesn't change that/.test(r.effect) ? ' class="pp-note"' : ' class="pp-warn-t"') + '>' + esc(r.effect) + '</span>' : '') + '</li>').join('') + '</ul>';
   }
   (p.words || []).forEach(w => { h += '<p' + (/shipped/.test(w) ? ' class="pp-warn-t"' : '') + '>' + esc(w) + '</p>'; });   // the warnings stand out
