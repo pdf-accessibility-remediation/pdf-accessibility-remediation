@@ -55,14 +55,15 @@ async function ask(req, opener, after) {
   });
 }
 document.addEventListener('click', e => {
-  const b = e.target.closest('button[data-trash]'); if (!b) return;
-  const what = b.dataset.trash;
+  let b = e.target.closest('button[data-trash]'); if (!b) return;
+  const m = b.closest('.hm-menu'), item = b; if (m) b = m.querySelector('.hm-more');   // from a "⋯" menu: focus returns to "⋯" (Q4)
+  const what = item.dataset.trash, d = item.dataset;
   if (what === 'selected') {                                       // the batch page: the PDFs ticked in its dashboard
     const names = [...document.querySelectorAll('input[name=trash-pdf]:checked')].map(x => x.value);
     if (!names.length) { show('<h2 id="tr-dlg-h">Move the Selected PDFs to the Trash?</h2><p>Select one or more PDFs in the dashboard first.</p><div><button type="button" value="no">Close</button></div>', b); return; }
-    return ask({ what: 'batch', label: b.dataset.label, names }, b, (p, r) => { if (r.whole) location.assign('/?view=batches&trashed=1'); else location.reload(); });
+    return ask({ what: 'batch', label: d.label, names }, b, (p, r) => { if (r.whole) location.assign('/?view=batches&trashed=1'); else location.reload(); });
   }
-  const req = what === 'run' ? { what, run: b.dataset.run } : what === 'batch' ? { what, label: b.dataset.label } : { what, key: b.dataset.key };
+  const req = what === 'run' ? { what, run: d.run } : what === 'batch' ? { what, label: d.label } : { what, key: d.key };
   ask(req, b, () => {
     if (what === 'batch' && !document.body.dataset.home) location.assign('/?view=batches&trashed=1');
     else location.assign(location.pathname + location.search.replace(/([?&])trashed=1&?/, '$1') + (location.search ? '&' : '?') + 'trashed=1');

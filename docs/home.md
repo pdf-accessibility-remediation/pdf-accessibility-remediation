@@ -29,15 +29,25 @@ the review page's "seen" cards use the same blue). The status pills keep their c
 - **Runs in Progress:** shown only while a job runs or waits to start: each with its PDF, its run name, its step or
   "Waiting to Start", and **Open**, kept current while the page is open. A job that ends is announced; focus never moves
   by itself.
-- **PDFs:** the PDFs added through **Add a PDF**, each with its pages and size, **New Run**, **Edit the Name**, **Move to
-  Trash** and a box to select it for a batch. The samples folder is never listed (P3): the app only looks there, by
-  sha256 and read only, for the original of a run made from it, so "Review Again" and the first apply of such runs keep
-  working.
+- **Upload a PDF:** a drop zone (dashed border, an upload icon): **Choose PDFs**, "or drop PDFs here", and "A copy goes
+  into the app's folder; the file you choose is not changed." Several PDFs at once, chosen or dropped; **Choose PDFs** is
+  the keyboard path. Under it, the PDFs added this way, each with its pages and size, **New Run**, a "⋯" menu (**Edit
+  Name**, **Move to Trash**) and a narrow **Select** column to pick PDFs for **Create a New Batch** ("Select two or more
+  PDFs first."). The samples folder is never listed (P3): the app only looks there, by sha256 and read only, for the
+  original of a run made from it, so "Review Again" and the first apply of such runs keep working.
 - **My Workspace:** a switch between **Single Runs** and **Batches**, a search (by PDF or run name; by batch name), and a
   filter by status group with each group's count. A single run's row: its run name, the PDF's name, "Source PDF: <file
-  name>", its status, **Date Created**, its AI cost, **Open** and **Move to Trash**. A batch's row: its name, "N of M PDFs
-  finished", its status, Date Created, cost, **Open** and **Move to Trash**. 25 rows at a time (**Show More Runs** /
+  name>", its status, **Date Created**, its AI cost, **Open** and a "⋯" menu. A batch's row: its name, "N of M PDFs
+  finished", its status, Date Created, cost, **Open** and a "⋯" menu. 25 rows at a time (**Show More Runs** /
   **Show More Batches**). Listing a run never changes it.
+
+**The "⋯" menus** (Patrick's test, 2026-11-07). Beside **Open** (on a PDF, beside **New Run**), a "⋯" button named "More
+Actions for <name>" opens a menu: **Edit Name** and **Move to Trash** (in red). It is a menu button
+(`aria-haspopup="menu"`, `aria-expanded`): Enter, Space or the arrow keys open it, the arrow keys, Home and End move in
+it, Esc closes it and puts focus back on "⋯", Tab or a click outside closes it. **Edit Name** turns the row's name into a
+text box in place (**Save Name** or Enter; **Cancel** or Esc); on a run or a batch it changes the plain name the pages
+show (`runs/.app/run-names.json`), never its folder; a batch's PDFs are named by their batch. After a Trash dialog or a
+name box closes, focus is back on the row's "⋯".
 
 **Status groups** (D6, Patrick 2026-11-06). Each row has a pill naming its group in words (color is never the only
 signal), with the exact status in small text beside it, so a Not Ready run never reads as done:
@@ -56,9 +66,10 @@ before "Start Remediation", else In Progress.
 **Book names** (Patrick, 2026-11-06). A book is named by its Book Name: the name a person gave it, else the PDF's own
 Title with a conservative cleanup (a leading "_tag_" such as "_no template_", and a trailing " copy" or " copy 2", removed)
 when it still looks like a title (not empty, not "untitled", not a file or program name), else the file name without
-".pdf", with "_" and "-" read as spaces. After **Add a PDF** the app shows the PDF Name prefilled, to check or change
-(**Save Name**);
-**Edit the Name** on the home page changes it at any time. The names are the app's own (`runs/.app/book-names.json`, by
+".pdf", with "_" and "-" read as spaces. After an upload, each new PDF comes first in the list, highlighted, with its
+name in a text box to check or change (**Save Name** or Enter; **Cancel** or Esc keeps it); the first box takes focus
+(Patrick's test, 2026-11-07: the separate name page went away). **Edit Name** in a row's "⋯" menu opens the same box in
+place at any time. The names are the app's own (`runs/.app/book-names.json`, by
 sha256, with each earlier name kept): never written into a run's record.json or review.html, and read each time a page is
 drawn, so a new name shows everywhere at once. Under it,
 everywhere a book is named (the home page, a run page's header, the batch page and its side column), a line reads
@@ -71,10 +82,13 @@ to Start, Stopped: Needs a Person, Failed, Cleared. A finished run's status is w
 hashing any PDF (the run page does the full check). The list is cached in `runs/.app/home-index.json`, by each run's path
 and the times its records changed.
 
-## Add a PDF
+## Upload a PDF
 
-**Add a PDF** copies a PDF from your computer into the uploads folder (`uploads/` at the repository root, git-ignored).
-The file you choose is only read by your browser; the app never sees its path.
+**Choose PDFs**, or PDFs dropped on the drop zone, copies each PDF from your computer into the uploads folder (`uploads/`
+at the repository root, git-ignored), one after the other. The files you choose are only read by your browser; the app
+never sees their paths. A PDF dropped elsewhere on the page is ignored (it never opens in the tab). Each file that fails
+gets its own sentence ("notes.txt": this file isn't a PDF; "x.pdf": This PDF is already in the list as "…"), and a PDF
+added but locked with a password or unreadable says so; the PDFs that were added are still shown first.
 
 - The PDF itself is sent, and four checks come first, each required: it is sent as a PDF, by the app's own page (a
   header only the app's page sets), to the app's own address, with a stated length within the limit
@@ -191,7 +205,7 @@ error line, the record that holds it and where the full log is. Tool text and co
 
 ## Batches
 
-1. Select two or more PDFs on the home page and **New Batch with the Selected PDFs**.
+1. Select two or more PDFs on the home page and **Create a New Batch**.
 2. The form: **Batch Name** (required, in your own words). A batch holds up to 50 PDFs (`max_books_per_batch`): more is
    refused, "A batch can hold up to 50 PDFs. Split them into two batches".
 3. **Get the Estimates** writes the book list `runs/.app/batches/<label>.books.txt` (one `<short name> <absolute path>`
@@ -242,8 +256,8 @@ phone, 320 px included) it starts closed, in the page's flow, so nothing scrolls
 
 ## Move to Trash
 
-**Move to Trash** (D8, Patrick 2026-11-06) is on each single run and batch in My Workspace, on each PDF in the PDF list,
-and on the batch page (the whole batch, or the PDFs ticked in its dashboard: **Move Selected to Trash**). Every move asks
+**Move to Trash** (D8, Patrick 2026-11-06) is in the "⋯" menu of each single run and batch in My Workspace and of each
+PDF in the PDF list, and on the batch page (the whole batch, or the PDFs ticked in its dashboard: **Move Selected to Trash**). Every move asks
 first, naming what goes in plain words:
 
 - **A run:** its run name and PDF, and "The remediated PDF, its report and its review go with it." A shipped run adds
@@ -282,7 +296,7 @@ OpenRouter for prices and credit (free). A batch in test mode skips batch_api.sh
 does), so only a real batch shows the cap working.
 
 **Saved replies are found by the PDF's file name, not its content.** The short name comes from the file name's stem
-(`ilokano.pdf` → `ilokano`), so a test PDF must be added through **Add a PDF** under its original file name (an upload
+(`ilokano.pdf` → `ilokano`), so a test PDF must be added through **Upload a PDF** under its original file name (an upload
 renamed to `ilokano-2.pdf` would look for `ilokano-2.txt`). A `--config` may also name its own `runs`, `uploads` and
 `jobs` folders: every job then writes into that runs folder (the app passes `RUNS_DIR`).
 

@@ -1,5 +1,5 @@
 """webapp/books.py: the PDFs the app offers (the uploads folder only; samples/ is searched by sha256 for originals, never
-listed), their display names, and "Add a PDF" (an upload into the uploads folder). Uploads are only ever added, never
+listed), their display names, and "Upload a PDF" (an upload into the uploads folder). Uploads are only ever added, never
 replaced (a PDF moved to the Trash is moved, never deleted).
 
     listing(s)              [{key (sha256), name, file, group: added, pages, size, locked, unreadable, path}]
@@ -144,7 +144,7 @@ def meta(s, sha, path):
 
 # ------------------------------------------------------------------ the list
 def listing(s):
-    """Every PDF added through "Add a PDF" (the uploads folder), in folder order; a content listed twice is shown once.
+    """Every PDF added through "Upload a PDF" (the uploads folder), in folder order; a content listed twice is shown once.
     samples/ is never listed (Patrick, 2026-11-06, P3): runs.find_original still looks there by sha256, read only, so
     "Review Again" and the first apply of a run made from samples/ keep working."""
     out, seen = [], set()
@@ -197,7 +197,7 @@ def receive(s, rfile, length, raw_name):
     if not name: raise Refused(400, 'This file has no usable name. Rename it, then add it again.')
     if length > limit_bytes(s): raise Refused(413, f'This file is larger than the limit of {limit_bytes(s) // (1024 * 1024 * 1024) or 1} GB.')
     os.makedirs(os.path.join(U, '.incoming'), exist_ok=True)
-    if shutil.disk_usage(U).free < length + SPARE_BYTES: raise Refused(507, 'There isn\'t enough space on this computer to add this book.')
+    if shutil.disk_usage(U).free < length + SPARE_BYTES: raise Refused(507, 'There isn\'t enough space on this computer to add this PDF.')
     tmp = os.path.join(U, '.incoming', secrets.token_hex(8) + '.part')
     h = hashlib.sha256(); got = 0; head = b''
     try:
@@ -213,7 +213,7 @@ def receive(s, rfile, length, raw_name):
         with _uploads_lock(U):
             for b in listing(s):                                   # the same content already there: say where
                 if b['key'] == sha:
-                    raise Refused(409, f'This book is already in the list as "{b["name"]}" ({"a sample book" if b["group"] == "sample" else "an added book"}).')
+                    raise Refused(409, f'This PDF is already in the list as "{b["name"]}".')
             stem, n = name[:-4], 1
             while True:
                 final = os.path.join(U, name if n == 1 else f'{stem}-{n}.pdf')

@@ -1,5 +1,5 @@
 """webapp/trash.py: "Move to Trash" (#45 D8, Patrick 2026-11-06): a single run, a whole batch or chosen PDFs in it (from
-My Workspace and the batch page), and a PDF added through "Add a PDF" (the PDF list). Nothing is ever deleted outright.
+My Workspace and the batch page), and a PDF added through "Upload a PDF" (the PDF list). Nothing is ever deleted outright.
 
 How a move works:
     Every item goes to the macOS Trash (~/.Trash; `trash_dir` from a --config only, for tests) with os.rename, under a
@@ -229,7 +229,7 @@ def move_batch(s, label, names=None):
             _drop_home_cache(s)
     return {'moved': [m['name'] for m in moved], 'forgotten': absent, 'whole': False}
 
-# ------------------------------------------------------------------ a PDF added through "Add a PDF"
+# ------------------------------------------------------------------ a PDF added through "Upload a PDF"
 def runs_using(s, sha):
     """Every run (single or in a batch) made from this content: [{run, name, date, status, R}]: a run whose records name
     it, and a run the app started from it that has no record yet (its jobs name it: an estimate in progress)."""
@@ -278,7 +278,7 @@ def plan_pdf(s, key):
     b = BK.by_key(s, key)
     if not b: raise Refused('This PDF\'s file has changed or is gone. Reload the page.')
     U = os.path.realpath(s['uploads'])
-    if not os.path.realpath(b['path']).startswith(U + os.sep): raise Refused('Only a PDF added through "Add a PDF" can be moved from here.')
+    if not os.path.realpath(b['path']).startswith(U + os.sep): raise Refused('Only a PDF added through "Upload a PDF" can be moved from here.')
     used = runs_using(s, key)
     why = next((f'The run "{u["name"]}": ' + w[0].lower() + w[1:] for u in used for w in [why_busy(s, u['run'], u['R'])] if w), None) or \
           ('It is being read by a job right now. Try again when the job has stopped.' if jobs_reading(s, b['path']) else None)
@@ -296,7 +296,7 @@ def move_pdf(s, key):
         why = plan_pdf(s, key)['refused']
         if why: raise Refused(why)
         name = _rename(s, b['path'], os.path.basename(b['path']))
-        note = b['path'][:-4] + '.json'                     # its note from "Add a PDF" goes with it
+        note = b['path'][:-4] + '.json'                     # its note from "Upload a PDF" goes with it
         noted = _rename(s, note, name[:-4] + '.json' if name.lower().endswith('.pdf') else name + '.json') if os.path.isfile(note) else None
     log(s, {'what': 'pdf', 'sha256': key, 'file': os.path.basename(b['path']), 'from': b['path'], 'to': os.path.join(trash_dir(s), name),
             'note_to': os.path.join(trash_dir(s), noted) if noted else None,

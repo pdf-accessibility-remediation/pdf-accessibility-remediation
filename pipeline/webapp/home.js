@@ -1,22 +1,24 @@
-/* webapp/home.js: the home page's own script (#45, home interface): "Add a PDF" (the chosen PDF is sent to the app as it is;
-   the file on the person's computer is only read), New Batch's selection, and the live "Runs in Progress" list (shown only
-   while something runs or waits to start).
+/* webapp/home.js: the home page's own script (#45, home interface): "Upload a PDF" (the drop zone: each chosen or dropped PDF
+   is sent to the app as it is; the files on the person's computer are only read), the "⋯" menus and Edit Name in place,
+   Create a New Batch's selection, and the live "Runs in Progress" list (shown only while something runs or waits to start).
 
-   Accessibility: every action is a real button or link; messages go to a message box that takes focus after the person's
-   own action; the list of runs in progress is redrawn quietly and only a job that ends is announced (one polite live
-   region). Focus never moves by itself. */
+   Accessibility: every action is a real button or link ("Choose PDFs" is the keyboard path to the drop zone); a "⋯" is a
+   menu button (arrow keys, Home, End, Esc returns focus to it, Tab closes it); messages go to a message box that takes
+   focus after the person's own action, except after an upload where the first new name box takes it; the list of runs in
+   progress is redrawn quietly and only a job that ends is announced (one polite live region). */
 (() => {
 'use strict';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const enc = run => run.split('/').map(encodeURIComponent).join('/');
 const START = 'To start the app again, open a terminal in the project\'s pipeline folder and type python3 app.py.';
-function msg(text, ok) {
+function msg(text, ok, focus = true) {
   const m = $('hm-msg'); m.hidden = !text; m.classList.toggle('pp-okmsg', !!ok);
   m.innerHTML = text ? '<span class="pp-msg-t">' + esc(text) + '</span><button type="button" class="pp-x" aria-label="Dismiss message"><span aria-hidden="true">×</span></button>' : '';
-  if (text) m.focus();
+  if (text && focus) m.focus();
 }
-$('hm-msg').addEventListener('click', e => { if (e.target.closest('button')) { msg(''); ($('hm-file') || document.querySelector('form [name]')).focus(); } });
+const live = t => { const l = $('hm-live'); if (!l) return; l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
+$('hm-msg').addEventListener('click', e => { if (e.target.closest('button.pp-x')) { msg(''); ($('hm-choose') || document.querySelector('form [name]')).focus(); } });
 
 // ---------------------------------------------------------------- the New Run and New Batch forms: JSON to the app, then its page
 document.querySelectorAll('form[data-api]').forEach(f => f.addEventListener('submit', async e => {
@@ -38,24 +40,157 @@ document.querySelectorAll('form[data-api]').forEach(f => f.addEventListener('sub
 }));
 if (!$('hm-active')) return;                                      // the New Run and New Batch pages stop here
 
-// ---------------------------------------------------------------- Add a PDF
-if ($('hm-add')) $('hm-add').addEventListener('submit', async e => {
-  e.preventDefault();
-  const f = $('hm-file').files[0];
-  if (!f) { msg('Choose a PDF first: "Add a PDF" opens your files.'); return; }
-  const b = $('hm-add-b'); b.disabled = true; msg('Adding "' + f.name + '"…', true);
-  try {
-    const r = await fetch('/api/upload', { method: 'POST', body: f,
-      headers: { 'Content-Type': 'application/pdf', 'X-Pdfrem-Upload': '1', 'X-Pdfrem-Filename': encodeURIComponent(f.name) } });
-    let d = {}; try { d = await r.json(); } catch (err) {}
-    if (r.status === 201) { location.assign('/book?added=1&key=' + encodeURIComponent(d.book.key)); return; }   // check its name
-    msg(d.error || 'The PDF was not added.');
-  } catch (err) { msg('The app is not running. ' + START); }
-  finally { b.disabled = false; }
+// ---------------------------------------------------------------- Upload a PDF: the drop zone (Q1, Patrick's test 2026-11-07)
+// Several PDFs at once, chosen ("Choose PDFs", the keyboard path) or dropped. Each is sent on its own, one after the other,
+// with the server's checks (a PDF, the size limit, the same content already listed, the space left); a file that fails gets
+// its own plain sentence. Then the page is drawn again with the new PDFs first, highlighted, their name boxes open.
+const drop = $('hm-drop'), pick = $('hm-file');
+function isPdf(f) { return /\.pdf$/i.test(f.name) || f.type === 'application/pdf'; }
+async function upload(files) {
+  files = [...files]; if (!files.length) return;
+  const ok = [], bad = [], notes = [];
+  $('hm-choose').disabled = true;
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    if (!isPdf(f)) { bad.push('"' + f.name + '": this file isn\'t a PDF.'); continue; }
+    msg('Adding ' + (files.length > 1 ? (i + 1) + ' of ' + files.length + ': ' : '') + '"' + f.name + '"…', true, false);
+    try {
+      const r = await fetch('/api/upload', { method: 'POST', body: f,
+        headers: { 'Content-Type': 'application/pdf', 'X-Pdfrem-Upload': '1', 'X-Pdfrem-Filename': encodeURIComponent(f.name) } });
+      let d = {}; try { d = await r.json(); } catch (err) {}
+      if (r.status === 201) {
+        ok.push(d.book.key);
+        if (d.book.locked) notes.push('"' + f.name + '" was added, but it is locked with a password: add an unlocked copy.');
+        else if (d.book.unreadable) notes.push('"' + f.name + '" was added, but it couldn\'t be read.');
+      } else bad.push('"' + f.name + '": ' + (d.error || 'it was not added.'));
+    } catch (err) { bad.push('"' + f.name + '": the app is not running. ' + START); break; }
+  }
+  $('hm-choose').disabled = false; pick.value = '';
+  const lines = bad.concat(notes);
+  if (!ok.length) { msg(lines.join(' ') || 'Nothing was added.', false, true); return; }
+  const to = '/?added=' + ok.join(',');
+  if (lines.length) {
+    try { sessionStorage.setItem('hm-upload-notes', JSON.stringify(lines)); }
+    catch (err) {                                                  // no storage here: say it now, and offer the list
+      msg((ok.length === 1 ? '1 PDF was added. ' : ok.length + ' PDFs were added. ') + lines.join(' '), false, true);
+      $('hm-msg').insertAdjacentHTML('beforeend', ' <a class="pp-btn" href="' + esc(to) + '">Show the Added PDFs</a>'); return;
+    }
+  }
+  location.assign(to);
+}
+if (drop) {
+  $('hm-choose').addEventListener('click', () => pick.click());
+  pick.addEventListener('change', () => upload(pick.files));
+  // a PDF dropped anywhere on the page never opens in this tab (the page would be lost); only the zone takes it
+  ['dragover', 'drop'].forEach(k => addEventListener(k, e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); }));
+  drop.addEventListener('dragenter', e => { e.preventDefault(); drop.classList.add('hm-over'); });
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('hm-over'); });
+  drop.addEventListener('dragleave', e => { if (!drop.contains(e.relatedTarget)) drop.classList.remove('hm-over'); });
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('hm-over'); upload(e.dataTransfer.files); });
+}
+// ---------------------------------------------------------------- the "⋯" menus (Q4): a real menu button
+let openMenu = null;
+function closeMenu(focusBack) {
+  if (!openMenu) return;
+  const b = openMenu.previousElementSibling, m = openMenu; openMenu = null;
+  m.hidden = true; b.setAttribute('aria-expanded', 'false');
+  if (focusBack) b.focus();
+}
+function showMenu(b, first) {
+  closeMenu(false);
+  const m = b.nextElementSibling; m.hidden = false; b.setAttribute('aria-expanded', 'true'); openMenu = m;
+  place(b, m);
+  const items = [...m.querySelectorAll('[role=menuitem]')];
+  (first ? items[0] : items[items.length - 1]).focus();
+}
+function place(b, m) {                                              // against the window: the table's scroll box never clips it
+  const r = b.getBoundingClientRect(), h = m.offsetHeight;
+  m.style.right = Math.max(4, innerWidth - r.right) + 'px';
+  m.style.top = (r.bottom + 4 + h > innerHeight && r.top - 4 - h > 0 ? r.top - 4 - h : r.bottom + 4) + 'px';
+}
+addEventListener('resize', () => closeMenu(false));
+addEventListener('scroll', () => { if (openMenu) place(openMenu.previousElementSibling, openMenu); }, true);
+document.addEventListener('click', e => {
+  const b = e.target.closest('.hm-more');
+  if (b) { if (b.getAttribute('aria-expanded') === 'true') closeMenu(true); else showMenu(b, true); return; }
+  const it = e.target.closest('[role=menuitem]');
+  if (it && openMenu && openMenu.contains(it)) {                    // the menu closes first: the dialog or the name box returns focus to "⋯"
+    const more = openMenu.previousElementSibling; closeMenu(false);
+    if (it.dataset.edit) edit(it, true, more);
+    return;                                                         // Move to Trash: trash.js, with "⋯" as the opener
+  }
+  if (openMenu && !openMenu.contains(e.target)) closeMenu(false);
+}, true);
+document.addEventListener('keydown', e => {
+  const b = e.target.closest && e.target.closest('.hm-more');
+  if (b && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); showMenu(b, e.key === 'ArrowDown'); return; }
+  if (!openMenu || !openMenu.contains(e.target)) return;
+  const items = [...openMenu.querySelectorAll('[role=menuitem]')], i = items.indexOf(e.target);
+  if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+  else if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
+  else if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
+  else if (e.key === 'Escape') { e.preventDefault(); closeMenu(true); }
+  else if (e.key === 'Tab') closeMenu(false);
 });
+
+// ---------------------------------------------------------------- Edit Name, in place (Q3, Q4)
+// The row's name becomes a text box: Enter or "Save Name" saves it, Esc or "Cancel" puts the name back. Only the name the
+// pages show changes: never a file or a folder. Focus goes back to the row's "⋯" button.
+const SAY = { pdf: ['PDF Name', '/api/book/name', d => ({ key: d.key })], run: ['Run Name', '/api/rename/run', d => ({ run: d.run })],
+              batch: ['Batch Name', '/api/rename/batch', d => ({ label: d.label })] };
+let nEdit = 0;
+function edit(item, focus, more) {
+  if (!item) return;
+  const tr = item.closest('tr'), kind = item.dataset.edit, el = tr.querySelector(kind === 'pdf' ? '.hm-book' : '.hm-run');
+  more = more || tr.querySelector('.hm-more');
+  if (!el || tr.querySelector('.hm-rename')) { const x = tr.querySelector('.hm-rename input'); if (x && focus) x.focus(); return; }
+  const id = 'hm-ed' + (++nEdit), old = el.textContent;
+  const box = document.createElement('div'); box.className = 'hm-rename';
+  box.innerHTML = '<label class="pp-sr" for="' + id + '">' + SAY[kind][0] + '</label><input type="text" id="' + id + '" maxlength="120" required value="' + esc(old) +
+    '" aria-describedby="' + id + '-e"> <button type="button" class="pp-primary" data-save>Save Name</button> <button type="button" data-cancel>Cancel</button>' +
+    '<span class="pp-warn-t" id="' + id + '-e" hidden></span>';
+  el.hidden = true; el.after(box);
+  const input = box.querySelector('input'), err = box.querySelector('.pp-warn-t');
+  const done = (name) => {
+    if (name) el.textContent = name;
+    box.remove(); el.hidden = false; tr.classList.remove('hm-new'); delete tr.dataset.new;
+    if (more) { more.setAttribute('aria-label', 'More Actions for ' + el.textContent); more.nextElementSibling.setAttribute('aria-label', 'More Actions for ' + el.textContent); more.focus(); }
+    if (name) live('Saved: the name is now ' + name + '.');
+  };
+  async function save() {
+    const v = input.value.trim();
+    if (!v) { err.hidden = false; err.textContent = 'Type a name first.'; input.setAttribute('aria-invalid', 'true'); input.focus(); return; }
+    if (v === old) return done(null);
+    box.querySelector('[data-save]').disabled = true;
+    try {
+      const r = await fetch(SAY[kind][1], { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ name: v }, SAY[kind][2](item.dataset))) });
+      let d = {}; try { d = await r.json(); } catch (x) {}
+      if (r.ok) return done(d.name || v);
+      err.hidden = false; err.textContent = d.error || 'The name was not saved.';
+    } catch (x) { err.hidden = false; err.textContent = 'The app is not running. ' + START; }
+    box.querySelector('[data-save]').disabled = false; input.setAttribute('aria-invalid', 'true'); input.focus();
+  }
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target === input) { e.preventDefault(); save(); }     // never the batch form around the list
+    else if (e.key === 'Escape') { e.preventDefault(); done(null); }
+  });
+  box.querySelector('[data-save]').addEventListener('click', save);
+  box.querySelector('[data-cancel]').addEventListener('click', () => done(null));
+  if (focus) { input.focus(); input.select(); }
+}
+
 const qp = new URLSearchParams(location.search);
 const added = qp.get('added') || qp.get('renamed') || qp.get('trashed');
-if (added && $('hm-added')) { ['added', 'renamed', 'trashed'].forEach(k => qp.delete(k)); history.replaceState(null, '', '/' + (qp.toString() ? '?' + qp : '')); msg($('hm-added').textContent, true); }
+if (added && $('hm-added')) {
+  ['added', 'renamed', 'trashed'].forEach(k => qp.delete(k)); history.replaceState(null, '', '/' + (qp.toString() ? '?' + qp : ''));
+  let notes = []; try { notes = JSON.parse(sessionStorage.getItem('hm-upload-notes') || '[]'); sessionStorage.removeItem('hm-upload-notes'); } catch (err) {}
+  const fresh = [...document.querySelectorAll('tr[data-new]')];
+  msg($('hm-added').textContent + (notes.length ? ' ' + notes.join(' ') : ''), !notes.length, !fresh.length || !!notes.length);
+  fresh.forEach((tr, i) => edit(tr.querySelector('[data-edit]'), !notes.length && i === 0));   // the name boxes open; the first takes focus
+}
+
 
 // ---------------------------------------------------------------- New Batch: two or more PDFs
 const form = $('hm-batch');
@@ -72,7 +207,6 @@ form.addEventListener('submit', e => {
 
 // ---------------------------------------------------------------- Runs in Progress
 const seen = {}; let primed = false;
-const live = t => { const l = $('hm-live'); l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
 function words(j) {
   if (j.status === 'queued') return 'Waiting to Start' + (j.waiting_for ? ': it starts when ' + j.waiting_for + ' ends' : j.position ? ' (' + j.position + ' in line)' : '');
   if (j.status === 'needs-spend') return 'The app restarted before the AI call started: open it to get a new estimate';

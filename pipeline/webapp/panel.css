@@ -225,3 +225,28 @@ html { background: var(--bg); }
 /* D4: "Language of the Scanned Pages": the label, its select and "Continue" on one row */
 .pp .pp-row label { font-weight: 600; }
 .pp .pp-row select { font: inherit; font-size: 14px; min-height: 32px; padding: 2px 6px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); max-width: 100%; }
+/* Patrick's test, 2026-11-07: the drop zone (Q1), the narrow Select column (Q3), the "⋯" menus (Q4), Edit Name in place */
+.hm-drop { display: flex; gap: 12px; align-items: center; border: 2px dashed var(--muted); border-radius: 8px; padding: 14px 16px; margin: 8px 0; }
+.hm-drop.hm-over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.hm-drop-i { flex: none; color: var(--accent); }
+.hm-drop-r { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.hm-drop .pp-note { margin: 4px 0 0; }
+.pp .hm-drop button { width: auto; }
+.hm-t .hm-sel { width: 1%; text-align: center; white-space: nowrap; padding-left: 8px; padding-right: 8px; }
+.hm-t .hm-sel input { margin: 0; }
+.hm-acts { white-space: nowrap; }
+.hm-menu { position: relative; display: inline-block; }
+.pp .hm-more { min-width: 36px; font-weight: 700; letter-spacing: 1px; }
+.hm-mlist { position: fixed; z-index: 20; display: flex; flex-direction: column; min-width: 11em;
+            background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
+.hm-mlist[hidden] { display: none; }
+.pp .hm-mlist button { border: 0; background: none; text-align: left; width: 100%; border-radius: 4px; }
+.pp .hm-mlist button:hover, .pp .hm-mlist button:focus { background: color-mix(in srgb, var(--ink) 8%, var(--panel)); text-decoration: none; }
+.pp .hm-mlist button:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.pp .hm-mlist .hm-danger { color: var(--reject); font-weight: 600; }
+.hm-t tr.hm-new > * { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.hm-rename { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 2px 0; }
+.hm-rename input { font: inherit; padding: 4px 6px; min-width: 14em; flex: 1 1 14em; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); }
+.hm-rename .pp-warn-t { flex-basis: 100%; }
+@media (max-width: 600px) { .pp .hm-mlist button, .pp .hm-more, .pp .hm-rename button { width: auto; } .hm-acts { white-space: normal; } }
+.hm-t .hm-book[hidden], .hm-t .hm-run[hidden] { display: none; }

@@ -35,12 +35,12 @@ One place, read in this order (later wins):
 |---|---|---|
 | `host` | `127.0.0.1` | Where the app listens. Only `127.0.0.1` is accepted: the app has no logins, so it is not reachable from other computers. |
 | `port` | `8760` | The app's port. The review pages use 8765–8784, as from the terminal. |
-| `runs`, `samples`, `uploads` | `../runs`, `../samples`, `../uploads` | The folders, relative to `pipeline/` (or absolute). `uploads` holds the PDFs added with "Add a PDF" ([The home page](home.md)); `samples` is never listed, only searched by sha256 for the original of a run made from it. Every job writes into `runs` (the app passes it as `RUNS_DIR`). |
+| `runs`, `samples`, `uploads` | `../runs`, `../samples`, `../uploads` | The folders, relative to `pipeline/` (or absolute). `uploads` holds the PDFs added with "Upload a PDF" ([The home page](home.md)); `samples` is never listed, only searched by sha256 for the original of a run made from it. Every job writes into `runs` (the app passes it as `RUNS_DIR`). |
 | `jobs` | `../runs/.app` | The job files, their logs, and the app's own small files (below). |
 | `max_jobs` | `3` | How many single runs go at once (open review pages do not count until they apply). A batch runs alone: it starts when no run is going, and nothing else starts while it runs. |
 | `batch_jobs` | `10` | How many PDFs of a batch are in progress at once, the next starting as each finishes (batch_api.sh's `JOBS`). Subject to change once the hardware limits are measured. |
 | `max_books_per_batch` | `50` | The most books "New Batch" accepts. A setting whoever looks after the app can change; batch_api.sh in a terminal has no cap. |
-| `upload_max_mb` | `1024` | The largest PDF "Add a PDF" accepts, in MB. |
+| `upload_max_mb` | `1024` | The largest PDF "Upload a PDF" accepts, in MB. |
 | `limits` | `{"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 40}` | Dollars: what the estimates are compared with, and the most a "Start Remediation" may bind (`MAX_USD`, `BOOK_MAX_USD`, `BATCH_MAX_USD`). The pipeline's own caps stay as they are. |
 | `tools.VERAPDF` | empty | The veraPDF launcher. Empty: `verapdf` on the PATH. |
 | `tools.path_prepend` | `[]` | Folders put first on the PATH the app's commands get, for example Java's. |
@@ -200,7 +200,7 @@ confirmation says) never deletes anything:
   already in the Trash gets " 2", " 3"… (before a PDF's ".pdf": "ilokano 2.pdf", with its note "ilokano 2.json"): a single run arrives as `<short name> - <run label>` (for example `ilokano -
   First-pass-March`), a whole batch as `batch - <label>`, one PDF of a batch as `batch - <label> - <short name>` (with its
   files from the batch folder in `_batch-files/` inside it), and an added PDF under its own file name, with its note
-  from "Add a PDF" (`<name>.json`) beside it. When the Trash is
+  from "Upload a PDF" (`<name>.json`) beside it. When the Trash is
   on another disk than the app's folders the move is refused.
 - **The record of every move:** `runs/.app/trash-log.json` (what, from which folder, to which name in the Trash, when;
   for a PDF its sha256 and the runs made from it). A run's or batch's plain name moves from `run-names.json` into it. The

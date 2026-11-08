@@ -219,3 +219,56 @@ def test_run_page_header_is_the_apps(app):
     assert 'Review: book.pdf' not in page and 'workorder_v10' not in page and 'anthropic/x' not in page
     assert 'class="top pp-head"' in page and '12 pages' in page and 'Run Name: r1' in page
     assert (R / 'review.html').read_bytes() == before
+
+# ------------------------------------------------------------------ Patrick's test, 2026-11-07: Q1, Q3, Q4
+def jpost(port, path, body):
+    st, b, _ = get(port, path, method='POST', headers={'Content-Type': 'application/json'}, body=json.dumps(body))
+    return st, json.loads(b or b'{}')
+
+def test_the_pdf_section_and_its_menus(app):
+    """Q1, Q3, Q4: the drop zone (several PDFs, "Choose PDFs" the keyboard path), "Upload a PDF", the narrow Select column,
+    "Create a New Batch", and a "⋯" menu button per row (Edit Name, Move to Trash) in place of the row's own buttons."""
+    t = app['t']; (t / 'uploads').mkdir(exist_ok=True)
+    for n in ('a', 'b'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n.upper()}'))
+    page = get(app['port'], '/')[1].decode()
+    assert '<h2 id="hm-books-h">Upload a PDF</h2>' in page and 'id="hm-drop"' in page and '>Choose PDFs</button> <span>or drop PDFs here</span>' in page
+    assert 'A copy goes into the app\'s folder; the file you choose is not changed.' in page and 'accept="application/pdf,.pdf" multiple hidden' in page
+    assert 'Create a New Batch</button>' in page and 'Select two or more PDFs first.' in page and '<th scope="col" class="hm-sel">Select</th>' in page
+    assert 'Edit the Name' not in page and 'New Batch with' not in page and '>Move to Trash</button></td>' not in page
+    assert page.count('aria-haspopup="menu" aria-expanded="false"') >= 3 and 'aria-label="More Actions for Book A"' in page
+    assert 'role="menuitem" tabindex="-1" data-edit="pdf"' in page and 'class="hm-danger" data-trash="pdf"' in page
+    assert 'data-edit="run" data-run="book/r1"' in page and 'class="hm-danger" data-trash="run" data-run="book/r1"' in page
+    bp = get(app['port'], '/?view=batches')[1].decode()
+    assert 'data-edit="batch" data-label="b1"' in bp and 'class="hm-danger" data-trash="batch" data-label="b1"' in bp
+    keys = {b['name']: b['key'] for b in BK.listing(S(t))}
+    page = get(app['port'], '/?added=' + keys['Book B'])[1].decode()                 # just added: first, highlighted, its name box opens
+    assert page.index('Book B') < page.index('Book A') and page.count('data-new="1"') == 1 and 'Added "Book B".' in page
+    assert get(app['port'], '/book?key=' + keys['Book A'])[2].get('Location') == '/'   # the name page went away
+
+def test_edit_name_for_runs_and_batches_changes_only_the_shown_name(app):
+    """Q4: My Workspace's Edit Name sets the plain name, never the folder; a batch's PDF is named by its batch."""
+    from webapp import names as NM
+    t = app['t']; s = S(t)
+    assert jpost(app['port'], '/api/rename/run', {'run': 'book/r1', 'name': '  Spring  check '}) == (200, {'name': 'Spring check'})
+    assert NM.run_name(s, 'book/r1') == 'Spring check' and (t / 'runs' / 'book' / 'r1').is_dir()
+    assert 'Spring check' in get(app['port'], '/')[1].decode()
+    assert jpost(app['port'], '/api/rename/batch', {'label': 'b1', 'name': 'First batch'}) == (200, {'name': 'First batch'})
+    assert NM.batch_name(s, 'b1') == 'First batch' and (t / 'runs' / 'batches' / 'b1').is_dir()
+    assert jpost(app['port'], '/api/rename/run', {'run': 'batches/b1/x', 'name': 'x'})[0] == 409    # named by its batch
+    assert jpost(app['port'], '/api/rename/run', {'run': '../etc', 'name': 'x'})[0] == 409
+    assert jpost(app['port'], '/api/rename/batch', {'label': 'nope', 'name': 'x'})[0] == 409
+    assert jpost(app['port'], '/api/rename/run', {'run': 'book/r1', 'name': '   '}) == (409, {'error': 'Type a name first.'})
+
+def test_an_upload_says_when_the_pdf_is_locked(app):
+    good = {'Content-Type': 'application/pdf', 'X-Pdfrem-Upload': '1', 'X-Pdfrem-Filename': 'locked.pdf'}
+    st, d = raw(app['port'], good, pdf_bytes(1, 'Locked', password='pw'))
+    assert st == 201 and d['book']['locked'] is True and d['book']['unreadable'] is False
+
+def test_home_js_menu_and_drop_zone():
+    js = open(os.path.join(HERE, 'webapp', 'home.js'), encoding='utf-8').read()
+    for x in ("e.key === 'Escape') { e.preventDefault(); closeMenu(true); }", "else if (e.key === 'Tab') closeMenu(false);",
+              "['dragover', 'drop'].forEach(k => addEventListener(k,", "if (e.key === 'Enter' && e.target === input) { e.preventDefault(); save(); }",
+              "fresh.forEach((tr, i) => edit(tr.querySelector('[data-edit]'), !notes.length && i === 0));"):
+        assert x in js, x
+    tj = open(os.path.join(HERE, 'webapp', 'trash.js'), encoding='utf-8').read()
+    assert "if (m) b = m.querySelector('.hm-more');" in tj                          # the dialog gives focus back to "⋯"

@@ -7,7 +7,7 @@ into a run's record.json or review.html (the run's archive), never in a path, a 
 
     book_name(s, sha, file, title)   the name every page shows: the person's, else the PDF's Title cleaned (a leading
                                      "_tag_" and a trailing " copy" / " copy N" removed), else the file name's stem
-    set_book_name(s, sha, name)      a person's name for the book (the home page's "Edit the Name")
+    set_book_name(s, sha, name)      a person's name for the book (the home page's "Edit Name")
     label_for(s, name, kind, taken)  the folder label a plain run or batch name becomes: ASCII letters, digits, "-" and "_",
                                      starting with a letter or digit, at most 64; "<kind>-<date>" when nothing is left;
                                      "_2", "_3"… when taken (never "-2": compare_runs.py reads "x" as a prefix of "x-2")
@@ -76,8 +76,8 @@ def book_name(s, sha, file, title=None):
 
 def set_book_name(s, sha, raw):
     name = clean_name(raw)
-    if not name: raise ValueError('Enter a name for the book.')
-    if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{64}', sha): raise ValueError('There is no such book.')
+    if not name: raise ValueError('Type a name first.')
+    if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{64}', sha): raise ValueError('There is no such PDF.')
     with locked(s):
         d = _load(_p(s, 'book-names.json'))
         e = d.get(sha) if isinstance(d.get(sha), dict) else {}

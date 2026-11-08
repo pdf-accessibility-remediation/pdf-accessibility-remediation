@@ -4,7 +4,7 @@ with its status, date and AI cost, and a button that opens it. Listing a run nev
     index(s)            {'runs': [row …], 'batches': [row …]}, newest first; rows are cached in runs/.app/home-index.json by
                         the run's path and the mtimes of its records (record.json, run.json, workorder.ai.json, review.json,
                         _intake/intake.json, release/*.json), and the app's jobs are laid over them when read (03 §12 L3)
-    page(s, q, n)       the home page's HTML (home.js adds Add a Book, New Batch's selection and the live "Runs in Progress")
+    page(s, q, n)       the home page's HTML (home.js adds the drop zone, the "⋯" menus, Edit Name, Create a New Batch's selection and the live "Runs in Progress")
 
 What is listed: runs/<name>/<label>/ and runs/batches/<label>/<name>/ holding record.json, workorder.ai.json, run.json,
 _intake/intake.json or _intake/languages.json; runs/.app and dot-folders are skipped. A row's status uses one vocabulary (03 §12 L5): Not Ready,
@@ -203,6 +203,17 @@ def money(x): return '$0.00' if not x else f'${x:.2f}' if x >= 0.01 else '< $0.0
 
 def run_href(run): return '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
 
+def menu(mid, name, items):
+    """A row's "⋯" menu (Patrick's test, 2026-11-07, Q4): a real menu button (aria-haspopup, aria-expanded, named "More
+    Actions for <name>"); home.js gives it arrow keys, Esc (focus back on the button), Tab and a click outside to close.
+    Each item is a button with its data- attributes (trash.js and home.js act on them); "Move to Trash" is drawn red."""
+    def attrs(d): return ''.join(f' {k}="{E(str(v))}"' for k, v in d.items())
+    return (f'<span class="hm-menu"><button type="button" class="hm-more" aria-haspopup="menu" aria-expanded="false" aria-controls="{mid}" '
+            f'aria-label="More Actions for {E(name)}"><span aria-hidden="true">⋯</span></button>'
+            f'<span class="hm-mlist" role="menu" id="{mid}" aria-label="More Actions for {E(name)}" hidden>' +
+            ''.join(f'<button type="button" role="menuitem" tabindex="-1"' + (' class="hm-danger"' if 'data-trash' in d else '') + f'{attrs(d)}>{E(w)}</button>'
+                    for w, d in items) + '</span></span>')
+
 def book_cell(name, file):
     """A PDF as every page names it: its display name, and under it the one file name the pages show (Q6)."""
     return f'<span class="hm-book">{E(name)}</span>' + (f'<span class="hm-file">Source PDF: {E(file)}</span>' if file else '')
@@ -228,31 +239,42 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
     B.append('<section class="pp hm-card hm-c-act" id="hm-act-sec" aria-labelledby="hm-act-h"' + ('' if active else ' hidden') +
              '><h2 id="hm-act-h">Runs in Progress</h2><div id="hm-active"><p>Loading…</p></div></section>'
              '<div id="hm-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>')
-    # the PDFs added through "Add a PDF" (samples/ is never listed: P3)
-    B.append('<section class="pp hm-card hm-c-pdfs" aria-labelledby="hm-books-h"><h2 id="hm-books-h">PDFs</h2>'
-             '<form id="hm-add" class="hm-add"><label for="hm-file">Add a PDF</label> <input type="file" id="hm-file" accept="application/pdf,.pdf"> '
-             '<button type="submit" id="hm-add-b">Add the PDF</button><span class="pp-note">The PDF is copied into the app\'s folder of added PDFs; '
-             'the file you choose is not changed.</span></form><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>')
-    ab = next((b for b in bk if b['key'] == (added or renamed)), None) if (added or renamed) else None
-    if ab: B.append(f'<p id="hm-added" hidden>' + (f'Added "{E(ab["name"])}".' if added else f'The PDF is now named "{E(ab["name"])}".') + '</p>')
+    # the PDFs added through the drop zone (samples/ is never listed: P3). Patrick's test, 2026-11-07 (Q1, Q3, Q4): one
+    # drop zone for several PDFs; a new PDF comes first, highlighted, with its name box open (home.js); Edit Name in place.
+    new = [k for k in (added or '').split(',') if k] if added else []
+    bk = sorted(bk, key=lambda b: b['key'] not in new)      # the PDFs just added first, in the list's own order otherwise
+    B.append('<section class="pp hm-card hm-c-pdfs" aria-labelledby="hm-books-h"><h2 id="hm-books-h">Upload a PDF</h2>'
+             '<div class="hm-drop" id="hm-drop"><svg class="hm-drop-i" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="28" height="28">'
+             '<path d="M12 16V4m0 0-5 5m5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="2" '
+             'stroke-linecap="round" stroke-linejoin="round"/></svg><div class="hm-drop-t"><div class="hm-drop-r">'
+             '<button type="button" id="hm-choose" class="pp-primary">Choose PDFs</button> <span>or drop PDFs here</span></div>'
+             '<p class="pp-note" id="hm-drop-n">A copy goes into the app\'s folder; the file you choose is not changed.</p></div>'
+             '<input type="file" id="hm-file" accept="application/pdf,.pdf" multiple hidden tabindex="-1" aria-hidden="true"></div>'
+             '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>')
+    ab = [b for b in bk if b['key'] in new]
+    if ab: B.append('<p id="hm-added" hidden>' + (f'Added "{E(ab[0]["name"])}".' if len(ab) == 1 else f'Added {len(ab)} PDFs.') +
+                    ' Check the name in its box: change it and select "Save Name", or press Esc to keep it.</p>')
+    elif renamed and next((b for b in bk if b['key'] == renamed), None):
+        B.append(f'<p id="hm-added" hidden>The PDF is now named "{E(next(b for b in bk if b["key"] == renamed)["name"])}".</p>')
     elif trashed: B.append('<p id="hm-added" hidden>Moved to the Trash. Nothing was deleted: to put it back, drag it from the Trash to where it was.</p>')
     B.append('<form id="hm-batch" method="get" action="/new-batch">')
-    if not bk: B.append('<p>None yet. "Add a PDF" adds one.</p>')
+    if not bk: B.append('<p>None yet. "Choose PDFs" adds one.</p>')
     else:
-        B.append(f'<div class="pp-tw" tabindex="0" role="region" aria-labelledby="hm-books-h"><table class="hm-t"><thead><tr>'
-                 '<th scope="col">Select</th><th scope="col">PDF</th><th scope="col">Pages</th><th scope="col">Size</th><th scope="col">Action</th></tr></thead><tbody>')
+        B.append(f'<div class="pp-tw" tabindex="0" role="region" aria-labelledby="hm-books-h"><table class="hm-t hm-pdfs"><thead><tr>'
+                 '<th scope="col" class="hm-sel">Select</th><th scope="col">PDF</th><th scope="col">Pages</th><th scope="col">Size</th><th scope="col">Action</th></tr></thead><tbody>')
         for i, b in enumerate(bk):
             cid = f'hm-sel-{i}'
             note = ' <span class="pp-note">Locked with a password: add an unlocked copy.</span>' if b['locked'] else \
                    ' <span class="pp-note">This PDF couldn\'t be read.</span>' if b['unreadable'] else ''
             act = ('' if b['locked'] else f'<a class="pp-btn" href="/new?book={E(b["key"])}" aria-describedby="{cid}-n">New Run</a> ') + \
-                  f'<a class="pp-btn" href="/book?key={E(b["key"])}" aria-describedby="{cid}-n">Edit the Name</a> ' + \
-                  f'<button type="button" data-trash="pdf" data-key="{E(b["key"])}" aria-describedby="{cid}-n">Move to Trash</button>'
+                  menu(f'{cid}-m', b['name'], [('Edit Name', {'data-edit': 'pdf', 'data-key': b['key']}),
+                                               ('Move to Trash', {'data-trash': 'pdf', 'data-key': b['key']})])
             sel = '' if b['locked'] else f'<input type="checkbox" name="book" value="{E(b["key"])}" id="{cid}" aria-labelledby="{cid}-n">'
-            B.append(f'<tr><td>{sel}</td><th scope="row" id="{cid}-n">{book_cell(b["name"], b["file"])}{note}</th>'
-                     f'<td>{b["pages"] if b["pages"] is not None else "not counted"}</td><td class="pp-nw">{E(BK.size_words(b["size"]))}</td><td>{act}</td></tr>')
+            B.append(f'<tr' + (' class="hm-new" data-new="1"' if b['key'] in new else '') + f'><td class="hm-sel">{sel}</td><th scope="row" id="{cid}-n">'
+                     f'{book_cell(b["name"], b["file"])}{note}</th>'
+                     f'<td>{b["pages"] if b["pages"] is not None else "not counted"}</td><td class="pp-nw">{E(BK.size_words(b["size"]))}</td><td class="hm-acts">{act}</td></tr>')
         B.append('</tbody></table></div>')
-        B.append('<div class="pp-row"><button type="submit" id="hm-batch-b">New Batch with the Selected PDFs</button>'
+        B.append('<div class="pp-row"><button type="submit" id="hm-batch-b">Create a New Batch</button>'
                  '<span class="pp-note" id="hm-batch-n">Select two or more PDFs first.</span></div>')
     B.append('</form></section>')
     # My Workspace: single runs or batches, searched and filtered by status group
@@ -293,8 +315,9 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
             B.append(f'<tr><th scope="row" id="{rid}"><span class="hm-run">{E(label)}</span>{book_cell(r["book"], r["file"])}</th><td>{pill(r["group"], r["words"])}</td>'
                      f'<td class="pp-nw">{E(D.day(r["when"]) if r["when"] else "date not recorded")}</td>'
                      f'<td>{E(money(r["cost"]))}' + (' <span class="pp-note">(saved reply)</span>' if r['reused'] else '') +
-                     f'</td><td><a class="pp-btn" href="{E(run_href(r["run"]))}" aria-describedby="{rid}">Open</a> '
-                     f'<button type="button" data-trash="run" data-run="{E(r["run"])}" aria-describedby="{rid}">Move to Trash</button></td></tr>')
+                     f'</td><td class="hm-acts"><a class="pp-btn" href="{E(run_href(r["run"]))}" aria-describedby="{rid}">Open</a> ' +
+                     menu(f'{rid}-m', label, [('Edit Name', {'data-edit': 'run', 'data-run': r['run']}), ('Move to Trash', {'data-trash': 'run', 'data-run': r['run']})]) +
+                     '</td></tr>')
         B.append('</tbody></table></div>')
     elif shown:
         B.append('<div class="pp-tw" tabindex="0" role="region" aria-label="Batches Table"><table class="hm-t"><thead><tr><th scope="col">Batch Name</th>'
@@ -303,34 +326,15 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
             bid = 'hm-b-' + hashlib.sha1(b['label'].encode()).hexdigest()[:10]
             B.append(f'<tr><th scope="row" id="{bid}"><span class="hm-run">{E(b["name"])}</span></th><td>{b["done"]} of {b["books"]} PDFs finished</td><td>{pill(b["group"], b["state"])}</td>'
                      f'<td class="pp-nw">{E(D.day(b["when"]) if b["when"] else "date not recorded")}</td><td>{E(money(b["cost"]))}</td>'
-                     f'<td><a class="pp-btn" href="/batch/{E(urllib.parse.quote(b["label"], safe=""))}/" aria-describedby="{bid}">Open</a> '
-                     f'<button type="button" data-trash="batch" data-label="{E(b["label"])}" aria-describedby="{bid}">Move to Trash</button></td></tr>')
+                     f'<td class="hm-acts"><a class="pp-btn" href="/batch/{E(urllib.parse.quote(b["label"], safe=""))}/" aria-describedby="{bid}">Open</a> ' +
+                     menu(f'{bid}-m', b['name'], [('Edit Name', {'data-edit': 'batch', 'data-label': b['label']}), ('Move to Trash', {'data-trash': 'batch', 'data-label': b['label']})]) +
+                     '</td></tr>')
         B.append('</tbody></table></div>')
     if len(items) > lim:
         more = qs(view=view if view != 'runs' else None, q=q, group=group, n=n + 25 if view == 'runs' else n, bn=bn + 25 if view == 'batches' else bn)
         B.append(f'<p><a class="pp-btn" href="{E(more)}#hm-more" id="hm-more">Show More {"Runs" if view == "runs" else "Batches"}</a></p>')
     B.append('</section></main><script src="/app/home.js" defer></script><script src="/app/trash.js" defer></script></body></html>')
     return '\n'.join(B)
-
-def name_page(s, key, added=False):
-    """A PDF's name (Patrick, 2026-11-06): shown after "Add a PDF" with the automatic name prefilled, and from the home
-    page's "Edit the Name". The name is the app's only (webapp/names.py); "Source PDF:" stays under it. P9: no
-    explanatory sentences, one button."""
-    b = BK.by_key(s, key)
-    head = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            '<title>PDF Name</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + appbar())
-    if not b:
-        return head + ('<header><h1>PDF Name</h1></header><main id="main" tabindex="-1"><div class="pp"><p>This PDF\'s file has changed or is gone.</p>'
-                       '</div></main></body></html>')
-    return head + (f'<header><h1>PDF Name</h1><p class="mc-book">{book_cell(b["name"], b["file"])}</p></header><main id="main" tabindex="-1">'
-        '<form class="pp hm-form" id="hm-bookname" data-api="/api/book/name">'
-        f'<input type="hidden" name="key" value="{E(b["key"])}">'
-        '<div class="mc-field"><label for="bk-name">PDF Name</label>'
-        f'<input type="text" id="bk-name" name="name" value="{E(b["name"])}" required maxlength="120"></div>'
-        '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
-        '<div class="pp-row"><button type="submit" class="pp-primary">Save Name</button></div></form></main>'
-        '<script src="/app/home.js" defer></script></body></html>')
 
 def appbar(current=False, extra=''):
     """The app bar on every page the app serves except the home page itself (P1), right after the skip link: "Home Page"

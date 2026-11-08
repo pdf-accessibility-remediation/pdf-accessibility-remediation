@@ -280,10 +280,22 @@ def make(s, setup, code=None):
             p = urllib.parse.urlsplit(self.path).path
             if p == '/api/book/name':                             # a book's name, as a person sets it (webapp/names.py)
                 b = BK.by_key(s, str(body.get('key') or ''))
-                if not b: return self.send(409, {'error': 'This book\'s file has changed or is gone. Go back to the home page to see the list again.'})
+                if not b: return self.send(409, {'error': 'This PDF\'s file has changed or is gone. Reload the page.'})
                 try: n = NMS.set_book_name(s, b['key'], body.get('name'))
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 return self.send(202, {'name': n, 'location': '/?renamed=' + b['key']})
+            if p in ('/api/rename/run', '/api/rename/batch'):    # My Workspace's "Edit Name" (Q4): the plain name only, never the folder
+                if p == '/api/rename/run':
+                    run = str(body.get('run') or '')
+                    if run.startswith('batches/') or run not in dict(HM.run_folders(s['runs'])):
+                        return self.send(409, {'error': 'This run is no longer in the list. Reload the page.'})
+                    n = NMS.set_run_name(s, run, body.get('name'))
+                else:
+                    B = batch_dir(s['runs'], str(body.get('label') or ''))
+                    if not B: return self.send(409, {'error': 'This batch is no longer in the list. Reload the page.'})
+                    n = NMS.set_run_name(s, os.path.basename(B), body.get('name'), kind='batches')
+                if not n: return self.send(409, {'error': 'Type a name first.'})
+                return self.send(200, {'name': n})
             if p == '/api/batch/new':                             # New Batch: one free estimate job per book, then the batch page
                 try: js = BT.start(s, setup, body.get('books') if isinstance(body.get('books'), list) else [], body.get('label'))
                 except (ValueError, FileExistsError) as e: return self.send(409, {'error': str(e) if isinstance(e, ValueError) else 'A batch with this name already exists.'})
@@ -482,7 +494,7 @@ def make(s, setup, code=None):
                     return self.send(200, md_page(t, run, sid, base), 'text/html; charset=utf-8')   # review.md with a way back
                 return self.file(f)
             if p == '/new': return self.send(200, NR.form_page(s, (q.get('book') or [''])[0]), 'text/html; charset=utf-8')
-            if p == '/book': return self.send(200, HM.name_page(s, (q.get('key') or [''])[0], (q.get('added') or [''])[0] == '1'), 'text/html; charset=utf-8')
+            if p == '/book': return self.redirect('/')            # the name page went away (Q1, Q3): Edit Name is on the home page
             if p == '/new-batch': return self.send(200, BT.form_page(s, q.get('book') or []), 'text/html; charset=utf-8')
             if p.startswith('/api/batch/'):
                 bs = segments(p[len('/api/batch/'):])
@@ -534,7 +546,7 @@ def make(s, setup, code=None):
                 self.close_connection = True
                 return self.send(400, {'error': 'The upload stopped before the whole file arrived. Try again.'})
             applog(f'book added: {b["file"]} ({b["key"][:16]})')
-            self.send(201, {'book': {k: b[k] for k in ('key', 'name', 'file', 'pages', 'size', 'group')}})
+            self.send(201, {'book': {k: b[k] for k in ('key', 'name', 'file', 'pages', 'size', 'group', 'locked', 'unreadable')}})
 
         def checks_post(self, rsegs, act, body):
             """POST …/checks/draft and …/checks/record: through review/manual.py, the one writer (the record lock, 5 s at most)."""
