@@ -400,3 +400,21 @@ def test_a_stopped_pdfs_review_opens_while_its_batch_runs_and_its_apply_waits(se
     assert RN.job_view(s, jobs.load(J, ap['id']))['waiting_for'] == 'the batch "b1"'
     assert wait(lambda: (jobs.tick(J, s), jobs.load(J, ap['id'])['status'] == 'done')[1], 30)
     assert jobs.load(J, ap['id'])['started'] >= jobs.load(J, b['id'])['ended']
+
+def test_a_batchs_estimates_run_ten_at_once(setup):
+    """R12 (Patrick's test, 2026-11-07): a batch's estimates take up to batch_jobs places (here 4) of their own, while
+    single runs keep max_jobs (2); a paid batch still runs alone and waits for both pools."""
+    s = settings(setup, max_jobs=2, batch_jobs=4); J = s['jobs']
+    be = [fake(setup, s, f'batches/x/b{i}', 1.0, f'b{i}', kind='batch-estimate') for i in range(6)]
+    se = [fake(setup, s, f'bk/r{i}', 1.0, f'r{i}', kind='estimate') for i in range(3)]
+    jobs.tick(J, s)
+    st = lambda xs: [jobs.load(J, x['id'])['status'] for x in xs]
+    assert st(be) == ['running'] * 4 + ['queued'] * 2 and st(se) == ['running'] * 2 + ['queued']
+    sleep = lambda x: [sys.executable, '-c', f'import time; time.sleep({x})']
+    b = jobs.create(J, 'batch', 'batches/y', sleep(0.2), config.child_env(s, {'JOBS': '4'}), env_set={'JOBS': '4'}, paid=True, fingerprint='f')
+    late = fake(setup, s, 'batches/z/c', 0.1, 'late', kind='batch-estimate')
+    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, b['id'])['status'] in ('running', 'done'))[1], 30)
+    assert all(x == 'done' for x in st(be + se))                                   # the batch began after both pools emptied
+    assert jobs.load(J, late['id'])['status'] in ('queued', 'done')                # and held the newer estimate behind it
+    assert wait(lambda: (jobs.tick(J, s), jobs.load(J, late['id'])['status'] == 'done')[1], 30)
+    assert jobs.load(J, late['id'])['started'] >= jobs.load(J, b['id'])['ended']

@@ -16,7 +16,8 @@ those kinds; and never as a `then` (a paid job always comes from its own Spend c
 
 Runs are related (one blocks the other) when they are the same run or one is inside the other: a batch
 (batches/<label>) and its books (batches/<label>/<name>), in busy() and in tick(). Every counted job takes one place of
-max_jobs (3: up to three single runs at once); a batch runs alone, with its own batch_jobs books at a time: it starts
+max_jobs (3: up to three single runs at once), except a batch's estimates, which take up to batch_jobs places of their
+own (10, R12 of Patrick's test 2026-11-07); a batch runs alone, with its own batch_jobs books at a time: it starts
 only when no counted job runs, and nothing counted starts while it runs (D1, Patrick 2026-11-06). Jobs start oldest
 first, so nothing is passed over: a queued batch holds every newer job behind it until the runs before it end. Not
 queued: "Review Again"'s apply, which runs inside its own review process after "Finish Review" (accepted, 08 D1).
@@ -289,19 +290,29 @@ def tick(J, s):
                 nxt['log'] = os.path.basename(log_path(J, nxt['id']))
                 save(J, nxt); j['then_job'] = nxt['id']; save(J, j); jobs.append(nxt)
         running = [j for j in jobs if j['status'] == 'running']
-        n = sum(counts(j, s['runs']) for j in running)
+        # Two pools (R12, Patrick's test 2026-11-07): a batch's estimates take up to batch_jobs places (10, like its paid
+        # step); everything else counted takes up to max_jobs (3). A batch still runs alone (D1): nothing counted starts
+        # while it runs, and it starts only when nothing counted runs.
+        est = lambda j: j['kind'] == 'batch-estimate'
+        n = sum(counts(j, s['runs']) for j in running if not est(j)); n_est = sum(counts(j, s['runs']) for j in running if est(j))
         batch_on = any(j['kind'] == 'batch' for j in running)   # a batch runs alone (D1, Patrick 2026-11-06)
         busy_runs = [j['run'] for j in running]
-        held = False                                    # once a counted job waits for a place, newer counted jobs wait behind it
+        held = held_est = False                         # once a counted job waits for a place, newer ones of its pool wait behind it
         for j in sorted((j for j in jobs if j['status'] == 'queued'), key=lambda j: j['id']):
             if any(related(j['run'], r) and not (j['kind'] in PERSON and stopped_in_batch(j['run'], run_dir(j, s['runs']), r, j['kind']))
                    for r in busy_runs): continue                # a stopped PDF's review page opens while its batch runs; its apply waits
             if j.get('counted', True):
-                alone = j['kind'] == 'batch'
-                if held or batch_on or n + 1 > s['max_jobs'] or (alone and n > 0):
-                    held = True                         # oldest first: a newer counted job never passes an older one
-                    continue
-                n += 1; batch_on = batch_on or alone
+                if est(j):
+                    if held_est or batch_on or n_est + 1 > s.get('batch_jobs', 10):
+                        held_est = True; continue
+                    n_est += 1
+                else:
+                    alone = j['kind'] == 'batch'
+                    if held or batch_on or n + 1 > s['max_jobs'] or (alone and n + n_est > 0):
+                        held = True                     # oldest first: a newer counted job never passes an older one
+                        if alone: held_est = True       # a waiting batch holds every newer job, estimates too
+                        continue
+                    n += 1; batch_on = batch_on or alone
             _start(J, j); busy_runs.append(j['run'])
 
 def recover(J):

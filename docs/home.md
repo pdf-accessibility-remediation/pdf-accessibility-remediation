@@ -251,7 +251,8 @@ error line, the record that holds it and where the full log is. Tool text and co
 8. **Run the Unfinished PDFs Again** gets new estimates for the PDFs without a result (not those waiting for review);
    the next "Start Remediation" adds `RETRY=1`.
 
-**Runs at once** (D1, Patrick 2026-11-06). Up to `max_jobs` (3) single runs go at once; a batch runs alone, with up to
+**Runs at once** (D1, Patrick 2026-11-06). Up to `max_jobs` (3) single runs go at once; a batch's estimates go up to
+`batch_jobs` (10) at once, in their own places (R12, Patrick's test 2026-11-07); a batch runs alone, with up to
 `batch_jobs` PDFs (10) in progress inside it. A queued batch starts only when no run is going, and the runs queued after it
 wait behind it, so jobs still start oldest first and none waits forever. A waiting job's card says "Waiting to Start: it
 starts when the batch "Spring backlist" ends", or its place in line. One accepted exception: the apply that "Review
