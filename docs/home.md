@@ -258,7 +258,8 @@ error line, the record that holds it and where the full log is. Tool text and co
 1. Select two or more PDFs on the home page and **Create a New Batch**. **Save Batch for Later** (S7, Patrick 2026-11-07)
    saves the batch with its name and PDFs and no estimates: the PDFs move into the batch (and leave the upload list), and
    it is a Not Started batch in My Workspace. Opening it shows the same form, the name editable, each PDF with **Remove
-   from Batch** (back to the upload list); **Get the Estimates** starts it. Until then **Move to Trash** sends the batch
+   from Batch** (back to the upload list; a PDF the batch took as a copy, because an older run still reads the upload,
+   is removed instead, so the list never shows it twice); **Get the Estimates** starts it. Until then **Move to Trash** sends the batch
    to the Trash and its PDFs back to the upload list (nothing was run), as the confirmation says.
 2. The form: **Batch Name** (required; no example line under it, R8). A batch holds up to 50 PDFs (`max_books_per_batch`): more is
    refused, "A batch can hold up to 50 PDFs. Split them into two batches".
