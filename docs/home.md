@@ -52,7 +52,10 @@ the review page's "seen" cards use the same blue). The status pills keep their c
   with its state in words beside it ("0 of 2 Ready or Shipped"), Pages (the total of its PDFs; "(1 PDF not counted)"
   when one has no count), Date Created, **Open** and a "⋯" menu. There is no AI Cost column (Patrick's test, 2026-11-07,
   Q5): a run's cost is in its run page's header, a batch's on the batch page. 25 rows at a time (**Show More Runs** /
-  **Show More Batches**). Listing a run never changes it.
+  **Show More Batches**). Listing a run never changes it. The switch, a filter, a search
+  and **Show More** swap the table in place, with no reload and no jump to the top (R15, Patrick's test 2026-11-07): the
+  address keeps the choice (`history.replaceState`), so refreshing keeps it; focus stays on the control used, and the new
+  count ("3 batches, In Progress.") is announced. Enter in the search box keeps the view shown.
 
 **The "⋯" menus** (Patrick's test, 2026-11-07). Beside **Open** (on a PDF, beside **New Run**), a "⋯" button named "More
 Actions for <name>" opens a menu: **Edit Name** and **Move to Trash** (in red). It is a menu button

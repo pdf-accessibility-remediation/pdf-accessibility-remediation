@@ -205,6 +205,45 @@ form.addEventListener('submit', e => {
 });
 }
 
+// ---------------------------------------------------------------- My Workspace in place (R15, Patrick's test 2026-11-07)
+// The switch, the filter, the search and "Show More" fetch the same page from the app and swap only My Workspace's
+// contents: no reload, no jump to the top. The address keeps them (history.replaceState), so refreshing keeps them too.
+// Focus stays on the control the person used (found again in the new contents); the new count is announced.
+const ws = document.querySelector('.hm-c-ws');
+async function swap(url, focusSel) {
+  try {
+    const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error(String(r.status));
+    const doc = new DOMParser().parseFromString(await r.text(), 'text/html'), nw = doc.querySelector('.hm-c-ws');
+    if (!nw) throw new Error('no workspace');
+    closeMenu(false);
+    ws.innerHTML = nw.innerHTML; history.replaceState(null, '', url);
+    const f = focusSel && ws.querySelector(focusSel); if (f) f.focus();
+    const note = ws.querySelector(':scope > p.pp-note'); live(note ? note.textContent : '');
+  } catch (err) { location.assign(url); }                      // the app answers otherwise: the plain page
+}
+if (ws) {
+  ws.addEventListener('submit', e => {
+    const f = e.target; if (!f.matches('form.hm-ws')) return;
+    e.preventDefault();
+    // Enter in the search box submits with the form's first button ("Single Runs"): only a switch button the person
+    // pressed changes the view; the search keeps the one shown
+    const sw = e.submitter && e.submitter.closest('.hm-switch') && document.activeElement !== $('hm-q');
+    const cur = (f.querySelector('.hm-switch button[aria-pressed="true"]') || {}).value || 'runs';
+    const fd = new FormData(f), p = new URLSearchParams();
+    const view = sw ? e.submitter.value : cur, q = (fd.get('q') || '').trim(), group = fd.get('group') || '';
+    if (view !== 'runs') p.set('view', view);
+    if (q) p.set('q', q);
+    if (group) p.set('group', group);
+    swap('/' + (p.toString() ? '?' + p : ''), sw ? '.hm-switch button[value="' + view + '"]' : '#hm-q');
+  });
+  ws.addEventListener('click', e => {
+    const a = e.target.closest('.hm-filter a, a#hm-more'); if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+    e.preventDefault();
+    const href = a.getAttribute('href');
+    swap(href, a.id === 'hm-more' ? '#hm-more, .hm-c-ws .pp-tw' : '.hm-filter a[href="' + CSS.escape(href) + '"]');
+  });
+}
+
 // ---------------------------------------------------------------- Runs in Progress
 const seen = {}; let primed = false;
 function words(j) {

@@ -362,3 +362,12 @@ def test_r1_r3_r7_wording_and_styles():
     tj = open(os.path.join(HERE, 'webapp', 'trash.js'), encoding='utf-8').read()
     from webapp import trash as TR
     assert '<p>These runs were made from:</p>' in tj and TR.CONFIRM_USED == 'These runs keep their remediated PDF, report and downloads.' and TR.GO_ON_NEEDS is None
+
+def test_workspace_swaps_in_place():
+    """R15: the switch, the filter, the search and "Show More" swap My Workspace's contents (no reload), keep the address
+    (history.replaceState), keep focus on the control used and announce the new count; a failed fetch loads the page."""
+    js = open(os.path.join(HERE, 'webapp', 'home.js'), encoding='utf-8').read()
+    for x in ("ws.innerHTML = nw.innerHTML; history.replaceState(null, '', url);", "live(note ? note.textContent : '');",
+              "catch (err) { location.assign(url); }", "const view = sw ? e.submitter.value : cur", "'.hm-filter a, a#hm-more'",
+              "e.ctrlKey || e.metaKey || e.shiftKey || e.button"):
+        assert x in js, x
