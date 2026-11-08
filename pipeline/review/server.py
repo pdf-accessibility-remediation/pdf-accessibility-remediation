@@ -59,6 +59,11 @@ from lib import runlock
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'page.html')
 SERVED = ('figures', 'ocr_words')                     # folders under _audit/ whose files the page shows
 
+class Server(ThreadingHTTPServer):
+    """The default listen queue is 5. While PDFium renders the first page images the accept loop stalls, a page full of
+    cards overflows the queue, and the browser gets a reset connection: a broken thumbnail until something asks again."""
+    request_queue_size = 128
+
 def local_request(handler, port):
     """The request names this server as its host (no DNS rebinding) and, if it says where it comes from, the page.
     Shared with the app (webapp/server.py)."""
@@ -391,7 +396,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
 
     srv = None
     for p in range(port, port + 20):
-        try: srv = ThreadingHTTPServer(('127.0.0.1', p), H); break
+        try: srv = Server(('127.0.0.1', p), H); break
         except OSError: continue
     if srv is None: raise SystemExit(f'no free port between {port} and {port + 19}: pass --port')
     url = f'http://localhost:{srv.server_address[1]}/'

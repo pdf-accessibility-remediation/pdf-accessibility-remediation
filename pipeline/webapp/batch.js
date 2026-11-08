@@ -72,7 +72,7 @@ function body(s) {
       ' PDF' + (T.to_estimate === 1 ? '' : 's') + ' (estimating) · Batch limit ' + usd(T.limit_usd) + '</b></p>';
   } else if (s.phase === 'ready' || s.phase === 'missing')
     h += '<p id="bt-cost"><b>' + (x ? 'About ' + usd(x.usd) + ' · ' : '') + 'Worst-case estimate ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' PDF' + (T.books_to_send === 1 ? '' : 's') +
-         ' · Batch limit ' + usd(T.limit_usd) + (T.credit_usd != null ? ' · Credit ' + usd(T.credit_usd) : ' · Credit not checked') + '</b></p>';
+         (T.requests > T.books_to_send ? ' (' + T.requests + ' AI requests)' : '') + ' · Batch limit ' + usd(T.limit_usd) + (T.credit_usd != null ? ' · Credit ' + usd(T.credit_usd) : ' · Credit not checked') + '</b></p>';
   if (T.spent_usd || s.phase === 'running' || s.phase === 'finished')
     h += '<p><b>Total Cost:</b> ' + usd(T.spent_usd) + (T.shown_ceiling_usd != null ? ' (worst-case estimate ' + usd(T.shown_ceiling_usd) + ')' : '') + '</p>';
   if (s.trashed && s.trashed.n) h += (T.spent_usd || s.phase === 'running' || s.phase === 'finished' ? '' : '<p><b>Total Cost:</b> ' + usd(T.spent_usd) + '</p>') +

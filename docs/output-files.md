@@ -23,6 +23,20 @@ The app ([The app](app.md)) keeps its own files in `runs/.app/`, never in a run 
 
 A batch folder also holds `summary.md` and `summary.html`: one row per book (ready to ship, needs a person, AI decisions, safety, veraPDF WCAG rules before → after, cost, pages), sorted with the most work first and sortable by any column; each book's name opens its `review.html`. To rebuild the dashboards of a finished run or batch: `python3 report_html.py <run>` or `python3 report_html.py --summary <batch>`.
 
+## `record.json` figure requests (books with more than 100 images)
+
+Only when the run made figure requests ("Figure requests" in [Files](files.md)); a single-request run has none of these keys, and its records are as before.
+
+| Field | What it is |
+|---|---|
+| `run.usage`, `cost_total_usd` | the sum of every request (the first, the figure requests and their retries) |
+| `run.passes` | one entry per request: `pass` (`"1"`, `"2"`, …, `"probe"`), its images, `usage`, `seconds`, and for a figure request its figures (`objs`: `[obj, page, width, height]`), each call (`calls`: retries included, with the error when there was one) and `outcome` (`done` or `failed`, with `reason`). The first request's entry carries the note it was given (`note`: version and hash); the probe's carries `overlap` (each figure's alt text from the first request and from the probe) |
+| `run.figure_passes` | `requests`, `figures` (how many went to figure requests), `prompt_file` and `prompt_sha256` (`figures_v1.md`), `note`, `state` (`calling` while they are sent, `merged` when done), `fingerprint` (of the saved split), and `failed` (`{request: reason}`) or, on a replay, `stale` (requests whose saved answers were written for a different figure list) |
+| `run.estimate.passes` | each request's images, input tokens and worst case; `worst_case_total_usd` is their sum, and `book_cap_usd` the book cap |
+| `raw_reply_passes` | the saved form (format `figure-passes/1`): the first request's figures and sheets, the note, and each figure request's figures, fingerprint, answer and call. A replay uses it as recorded; `FROM=`, `regression.py --seed` and `--replay-to` write it beside the reply as `reply.txt.passes.json`, with `figure_passes` in the reply's meta |
+| `ai_call.calls`, `ai_call.figure_prompt_file` | how many requests the cost covers, and the figure requests' prompt (`lib/origin.py`) |
+| `earlier_attempts` entries with `pass` and `stopped` | the requests of a run that was stopped while its figure requests were being sent: each one's cost, and the one in flight with `cost_usd: null` (its charge is not known). `worst_usd`, on that entry and on a request with a timed-out call, is the worst case of the charge not known: it counts toward the book cap on the next attempt, never in the cost shown |
+
 ## `record.json` `run.ocr_words` (scanned books with OCR words)
 
 Only when the audit lists OCR-word forms ([OCR words](ocr-words.md)); other books have just the counts.

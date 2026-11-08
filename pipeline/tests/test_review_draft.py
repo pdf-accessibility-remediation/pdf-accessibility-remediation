@@ -157,3 +157,19 @@ def test_a_choice_left_out_is_worded_as_on_its_card(R):
                                                   'fix': core.fix('not a figure or empty alt', 3), 'origin': 'review'}]
     assert call(port, '/finish', FINISH)[0] == 200                                # a valid choice again: Finish closes it
     t.join(10); assert not t.is_alive()
+
+# ------------------------------------------------------------------ the server's listen queue (a bug found on dwellings' review page)
+def test_a_burst_of_connections_is_never_refused():
+    """A page full of cards asks for many images at once while PDFium holds the accept loop up; the default queue of 5
+    overflowed and the browser got reset connections: broken thumbnails until something asked again."""
+    import http.server, concurrent.futures as C
+    assert server.Server.request_queue_size >= 128
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self): self.send_response(200); self.send_header('Content-Length', '2'); self.end_headers(); self.wfile.write(b'ok')
+    srv = server.Server(('127.0.0.1', 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    def get(_):
+        with urllib.request.urlopen(f'http://127.0.0.1:{srv.server_address[1]}/', timeout=30) as r: return r.status
+    try:
+        with C.ThreadPoolExecutor(40) as ex: assert set(ex.map(get, range(400))) == {200}
+    finally: srv.shutdown(); srv.server_close()

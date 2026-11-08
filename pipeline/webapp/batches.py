@@ -318,7 +318,7 @@ def state(s, label):
             'from_app': bool(meta), 'ocr_name': meta.get('ocr_name'),   # a batch made before D4: its one OCR language
             'trashed': {'n': len(trashed(s, label)), 'cost_usd': round(sum(x.get('cost_usd') or 0 for x in trashed(s, label)), 6)},
             'totals': {'ceiling_usd': total['ceiling_usd'], 'limit_usd': total['limit_usd'], 'credit_usd': total['credit_usd'],
-                       'spent_usd': spent, 'books_to_send': len(Rs), 'finished': finished, 'expected': total['expected'],
+                       'spent_usd': spent, 'books_to_send': len(Rs), 'finished': finished, 'expected': total['expected'], 'requests': total['requests'],
                        'estimated': sum(1 for x in total['books'] if x['adds_usd'] is not None), 'to_estimate': len(Rs) + len(asking),   # R14
                        'shown_ceiling_usd': ((batch_job or {}).get('shown') or {}).get('ceiling_usd')},
             'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary, 'dashboard': dashboard(s, label, out),

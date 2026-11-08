@@ -31,7 +31,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 HERE = os.path.dirname(os.path.abspath(__file__)); PIPE = os.path.dirname(HERE); ROOT = os.path.dirname(PIPE)
 sys.path.insert(0, HERE); sys.path.insert(1, PIPE)
 import compare_runs
-from lib import ocrwords, origin
+from lib import ocrwords, origin, replies
 
 BASE = os.path.join(PIPE, 'tests', 'baseline')
 BOOKS = ['hawaii3', 'northkorea']
@@ -104,7 +104,8 @@ def seed(src_dir, books):
         open(os.path.join(BASE, b, 'reply.txt'), 'w', encoding='utf-8').write(r['raw_reply'])
         json.dump({**{k: r['run'][k] for k in ('model', 'temperature') if k in r['run']},
                    **ocrwords.carried(r['run']),        # the OCR-word list the reply was written for
-                   **origin.carried(r)},                # the original call's cost, model, prompt and date
+                   **origin.carried(r),                 # the original call's cost, model, prompt and date
+                   **replies.write(r, os.path.join(BASE, b, 'reply.txt'))},   # its figure requests' answers, beside it (issue #63)
                   open(os.path.join(BASE, b, 'reply.txt.meta.json'), 'w'), indent=1)
         prompt = os.path.basename(r['run'].get('prompt_file') or '')
         if prompt and prompt != prompt_name(): sys.exit(f'--seed: {b}\'s reply was made with {prompt}, but decide.py uses {prompt_name()}')

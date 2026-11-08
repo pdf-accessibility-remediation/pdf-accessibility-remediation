@@ -149,7 +149,8 @@ def authorize_batch(s, label, books_list, total, fingerprint):
         if total['credit_usd'] is None: raise Refused('The credit couldn\'t be checked, so the cost can\'t be compared with it.')
         env = {'AUTO': '1', 'JOBS': jobs_n, 'BATCH_MAX_USD': f'{total["bounds"]["BATCH_MAX_USD"]:.2f}', 'MODEL': model}
         if total['bounds'].get('MAX_USD'): env['MAX_USD'] = f'{total["bounds"]["MAX_USD"]:.2f}'
-    env['REVIEW'] = '1'                                     # every book stops for review (D2a, Patrick 2026-11-06)
+        if total['bounds'].get('BOOK_MAX_USD'): env['BOOK_MAX_USD'] = f'{total["bounds"]["BOOK_MAX_USD"]:.2f}'   # the largest book's total (#63): decide.py holds each book to it
+    env['REVIEW'] = '1'                                    # every book stops for review (D2a, Patrick 2026-11-06)
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
              'shown': {'ceiling_usd': total['ceiling_usd'], 'bounds': total['bounds']}, 'test': bool(test_from)}
     return {'argv': ['bash', 'batch_api.sh', label, books_list], 'env_set': env, 'extra': extra}

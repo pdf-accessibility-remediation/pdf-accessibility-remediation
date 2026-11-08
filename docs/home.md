@@ -171,7 +171,9 @@ added but locked with a password or unreadable says so; the PDFs that were added
    estimate stops before any OCR and the run page asks their language (see below). Otherwise this step doesn't appear.
 4. **The estimate card** says "Worst-case estimate $0.54 · Limit $2.00 per AI call · Credit $22.68" and **Start
    Remediation**, nothing else (no "Get a New Estimate", no job lines). When #65 (dollar-only cost limits) adds an
-   expected cost, the line starts "About $0.25 (usually $0.18–$0.36) ·".
+   expected cost, the line starts "About $0.25 (usually $0.18–$0.36) ·". A book with more than 100 images needs several AI
+   requests (see [Files](files.md)): the line then says "Worst-case estimate $3.13 for 6 AI requests · Limit $2.00 per AI call ·
+   Limit $5.00 per book · …". The worst case is the whole book's, every request together; the $2.00 limit applies to each one.
 5. **Start Remediation** is the only button that leads to a paid call, shown only when the estimate fits the limits and the credit.
    The worst-case line is read with the button by a screen reader (`aria-describedby`). The next section says what it
    checks.
@@ -255,8 +257,11 @@ The spend job is then `AUTO=1 MAX_USD=<bound> MODEL=<the estimate's model> REVIE
 the settings copied from the estimate's own job (so intake and the audit are reused), marked paid, with the fingerprint
 in its job file. `MAX_USD` is the largest request's worst case shown, rounded up to the cent from the stored
 value plus 0.0001, never above the limit (`run_api.sh` passes it to `decide.py --max-usd`). It binds decide.py's
-estimate, not the bill: billed input has run up to 14% over the estimate until #63 (alt text past 100 images) adds its
-margin. For a run.json in the shape #63 (alt text past 100 images) writes, `BOOK_MAX_USD` is bound the same way.
+estimate, not the bill; the worst case allows the input 25% over its estimate (billed input has run up to 14.4% over it).
+A book with several AI requests also gets `BOOK_MAX_USD`, its whole worst case plus what earlier attempts in the same
+folder spent, bound the same way and never above the `limits.per_book_usd` setting ($5). A batch binds `BATCH_MAX_USD` to
+the sum of its books, `MAX_USD` to its largest request and `BOOK_MAX_USD` to its largest book. When a run stopped during
+its figure requests, "Try Again" asks for a new estimate first: what it spent is logged and counted toward the book's limit.
 
 **The paid-path rule** (webapp/jobs.py, where every job is made): `AUTO` appears only in a spend or batch job that is
 paid and carries the fingerprint. A paid job is never a follow-on (`then`) of another job. A paid job still
@@ -311,7 +316,8 @@ error line, the record that holds it and where the full log is. Tool text and co
 5. **The batch page** (`/batch/<label>/`): the state (Waiting for a Language, Estimating, Ready to Start, Running,
    Waiting for Review, Finished, Stopped), the worst case for the PDFs to send, the batch limit ($10, R13) and the credit
    (while the estimates come in: "Worst-case estimate so far $0.42 for 1 of 4 PDFs (estimating)", and nothing before the
-   first one: never "$0.00", R14), the PDFs
+   first one: never "$0.00", R14; when a book needs several AI requests the line adds how many in all, "for 4 PDFs (9 AI
+   requests)"), the PDFs
    that stopped and need a person (not sent), **Start Remediation**, **Total Cost:**, and the batch dashboard drawn in
    the page (report_html's own rows: no separate page to open).
 6. **Start Remediation** runs `AUTO=1 REVIEW=1 JOBS=… BATCH_MAX_USD=<total, rounded up> MAX_USD=<largest book's call>

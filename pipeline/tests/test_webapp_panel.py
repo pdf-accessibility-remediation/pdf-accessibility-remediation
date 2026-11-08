@@ -1140,3 +1140,9 @@ def test_a_claim_left_starting_is_recovered_and_any_error_is_refused(setup, monk
     monkeypatch.undo()
     runs.auto_apply(s)
     assert [a for a in jobs.all_jobs(s['jobs']) if a['kind'] == 'apply']
+
+def test_the_app_is_built_on_the_review_servers_longer_queue(setup):
+    from review.server import Server
+    srv = W.make(dict(settings(setup), port=free_port()), [], code='c0ffee')
+    try: assert isinstance(srv, Server) and srv.request_queue_size == 128
+    finally: srv.server_close()
