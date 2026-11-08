@@ -51,9 +51,10 @@ def exists(s, label):
     return os.path.isdir(folder(s, label)) or os.path.isfile(meta_path(s, label)) or os.path.isfile(list_path(s, label))
 
 # ------------------------------------------------------------------ New Batch
-def start(s, setup, keys, plain):
+def start(s, setup, keys, plain, estimate=True):
     """New Batch. `plain`: the Batch Name in the person's own words (optional); the folder label is derived from it
-    (webapp/names.py label_for), and the plain name is kept by the app only."""
+    (webapp/names.py label_for), and the plain name is kept by the app only. Each PDF moves into its own book folder
+    (<label>/<name>/source/, R17), all or none. estimate=False: "Save Batch for Later" (S7): no estimates yet."""
     from . import names as NM
     plain = NM.clean_name(plain)
     if not plain: raise ValueError('Enter a name for the batch.')                    # P10: required
@@ -80,15 +81,93 @@ def start(s, setup, keys, plain):
         try: f = open(list_path(s, label), 'x', encoding='utf-8'); break
         except FileExistsError: continue
     else: raise ValueError('A batch with this name is being started right now. Try again in a moment.')
+    taken_ = []                                          # R17: every PDF into its own book folder, or none
+    try:
+        for b in bs:
+            R = os.path.join(folder(s, label), b['name']); os.makedirs(R)
+            orig = b['path']; b['path'], mode = NR.take_pdf(s, b, R); taken_.append((b['path'], mode, orig, R))
+    except Exception:
+        for p, mode, orig, R in reversed(taken_): NR.give_back(s, p, mode, orig)
+        for b in bs:
+            for d in (os.path.join(folder(s, label), b['name'], 'source'), os.path.join(folder(s, label), b['name'])):
+                try: os.rmdir(d)
+                except OSError: pass
+        for p in (folder(s, label), list_path(s, label)):
+            try: os.rmdir(p) if os.path.isdir(p) else os.remove(p)
+            except OSError: pass
+        f.close(); raise
     with f:
         f.write(f'# batch {label}, made by the app {datetime.datetime.now().isoformat(timespec="seconds")}: <short name> <absolute path>\n')
         for b in bs: f.write(f'{b["name"]} {b["path"]}\n')
-    json.dump({'label': label, 'created': datetime.datetime.now().isoformat(timespec='seconds'), 'langs': {},
+    json.dump({'label': label, 'created': datetime.datetime.now().isoformat(timespec='seconds'), 'langs': {}, 'saved': not estimate,
                'books': [{k: b[k] for k in ('name', 'key', 'file', 'book')} for b in bs]},
               open(meta_path(s, label), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
-    for b in bs: os.makedirs(os.path.join(folder(s, label), b['name']))
     if plain: NM.set_run_name(s, label, plain, kind='batches')
+    if not estimate: return []
     return [estimate_job(s, label, b) for b in bs]
+
+# ------------------------------------------------------------------ a batch saved for later (S7, Patrick 2026-11-07)
+def saved(s, label):
+    """A batch saved with "Save Batch for Later" whose estimates haven't started: its page is the New Batch form again."""
+    m = _load(meta_path(s, label)) or {}
+    return bool(m.get('saved')) and not any(j['run'].startswith(f'batches/{label}/') and j['kind'] == 'batch-estimate' for j in jobs.all_jobs(s['jobs']))
+
+def _write_meta(s, label, meta):
+    tmp = meta_path(s, label) + '.tmp'; json.dump(meta, open(tmp, 'w', encoding='utf-8'), indent=1, ensure_ascii=False); os.replace(tmp, meta_path(s, label))
+
+def start_saved(s, setup, label, plain):
+    """"Get the Estimates" on a saved batch: its name (as the form has it now), then one estimate per PDF."""
+    from . import names as NM
+    if not saved(s, label): raise ValueError('This batch has started already: its page shows where it is.')
+    plain = NM.clean_name(plain)
+    if not plain: raise ValueError('Enter a name for the batch.')
+    meta = _load(meta_path(s, label)) or {}
+    bs = meta.get('books') or []
+    if len(bs) < 2: raise ValueError('A batch needs two or more PDFs. Add PDFs with a new batch, or start a New Run for this one.')
+    for b in bs:
+        p = __import__('webapp.runs', fromlist=['x']).own_pdf(os.path.join(folder(s, label), b['name']))
+        b2 = dict(b, path=p, tagged=BK.read_meta(p).get('tagged') if p else None)
+        NR.check_untagged(s, setup, b2)
+    NM.set_run_name(s, label, plain, kind='batches')
+    meta['saved'] = False; _write_meta(s, label, meta)
+    return [estimate_job(s, label, b) for b in bs]
+
+def save_name(s, label, plain):
+    """"Save Batch for Later" on a saved batch: its name only."""
+    from . import names as NM
+    if not saved(s, label): raise ValueError('This batch has started already: its page shows where it is.')
+    if not NM.set_run_name(s, label, plain, kind='batches'): raise ValueError('Enter a name for the batch.')
+
+def remove_saved(s, label, name):
+    """"Remove from Batch" while a saved batch hasn't started: the PDF goes back to the upload list (never run: nothing to
+    keep), out of the batch's record and book list, and its empty folder goes."""
+    from . import runs as RN
+    if not saved(s, label): raise ValueError('This batch has started: a PDF can\'t be taken out of it now.')
+    meta = _load(meta_path(s, label)) or {}
+    if not any(b['name'] == name for b in meta.get('books') or []): raise ValueError('There is no such PDF in this batch.')
+    R = os.path.join(folder(s, label), name)
+    p = RN.own_pdf(R)
+    back = BK.take_back(s, p) if p else None
+    for d in (os.path.join(R, 'source'), R):
+        try: os.rmdir(d)
+        except OSError: pass
+    meta['books'] = [b for b in meta['books'] if b['name'] != name]; _write_meta(s, label, meta)
+    lp = list_path(s, label)
+    if os.path.isfile(lp):
+        keep = [l for l in open(lp, encoding='utf-8') if l.startswith('#') or l.split(' ', 1)[0] != name]
+        tmp = lp + '.tmp'; open(tmp, 'w', encoding='utf-8').writelines(keep); os.replace(tmp, lp)
+    return back
+
+def give_back_all(s, label):
+    """A saved batch moved to the Trash (S7): its PDFs were never run, so they go back to the upload list, not the Trash."""
+    from . import runs as RN
+    out = []
+    for b in (_load(meta_path(s, label)) or {}).get('books') or []:
+        R = os.path.join(folder(s, label), b['name']); p = RN.own_pdf(R)
+        if p: out.append(BK.take_back(s, p))
+        try: os.rmdir(os.path.join(R, 'source'))
+        except OSError: pass
+    return out
 
 def estimate_job(s, label, b):
     """A PDF's free estimate in a batch: ASK_LANG=1 until a person gave its OCR language on its row (D4), then that language
@@ -324,23 +403,38 @@ def answer_all(s, label, lang):
     return {'jobs': out, 'left': left}
 
 # ------------------------------------------------------------------ pages
-def form_page(s, keys):
+def form_page(s, keys, saved=None):
+    """New Batch's form; saved: a batch saved for later (S7), its page until its estimates start: the name editable, each
+    PDF with "Remove from Batch", "Get the Estimates" and "Save Batch for Later"."""
     import html
+    from . import names as NM
     E = html.escape
-    keys = [k for k in dict.fromkeys(keys) if isinstance(k, str)]
-    bs = [b for b in (BK.by_key(s, k) for k in keys) if b]
     head = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             '<title>New Batch</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a><header>' + HM.title_row('New Batch') + '</header><main id="main" tabindex="-1">')
-    if len(bs) < 2:
-        return head + '<div class="pp"><p>Select two or more PDFs on the home page first.</p></div></main></body></html>'
-    items = ''.join(f'<li>{HM.book_cell(b["name"], b["file"])}<input type="hidden" name="books" value="{E(b["key"])}"></li>' for b in bs)
-    return head + (f'<form class="pp hm-form" id="hm-newbatch" data-api="/api/batch/new"><h2>PDFs ({len(bs)})</h2><ul class="hm-active">{items}</ul>'
+            '<body class="pp-page hm-page nb-page"><a class="skip" href="#main">Skip to the content</a><header>' + HM.title_row('New Batch') + '</header><main id="main" tabindex="-1">')
+    if saved:
+        bs = (_load(meta_path(s, saved)) or {}).get('books') or []
+        name = NM.batch_name(s, saved) or saved
+        items = ''.join(f'<li class="nb-item">{HM.book_cell(NM.book_name(s, b.get("key"), b.get("file") or "") if b.get("key") else b.get("book"), BK.shown_file(b.get("file") or ""))}'
+                        f'<button type="button" data-remove="{E(b["name"])}" data-label="{E(saved)}" aria-label="Remove from Batch: {E(b.get("book") or b["name"])}">Remove from Batch</button></li>'
+                        for b in bs)
+        api, later, first = f'/api/batch/{urllib.parse.quote(saved, safe="")}/start', f'/api/batch/{urllib.parse.quote(saved, safe="")}/save', \
+            '<p class="mc-help">This batch is saved: nothing has started. "Remove from Batch" puts a PDF back in the upload list.</p>'
+    else:
+        keys = [k for k in dict.fromkeys(keys) if isinstance(k, str)]
+        bs = [b for b in (BK.by_key(s, k) for k in keys) if b]
+        if len(bs) < 2:
+            return head + '<div class="pp"><p>Select two or more PDFs on the home page first.</p></div></main></body></html>'
+        name = ''
+        items = ''.join(f'<li>{HM.book_cell(b["name"], b["file"])}<input type="hidden" name="books" value="{E(b["key"])}"></li>' for b in bs)
+        api, later, first = '/api/batch/new', '/api/batch/new-later', ''
+    return head + (f'<form class="pp hm-form" id="hm-newbatch" data-api="{E(api)}">{first}<h2>PDFs ({len(bs)})</h2><ul class="hm-active">{items}</ul>'
         '<div class="mc-field"><label for="nb-name">Batch Name</label>'
-        '<input type="text" id="nb-name" name="label" maxlength="120" required></div>'
+        f'<input type="text" id="nb-name" name="label" maxlength="120" required value="{E(name)}"></div>'
         '<p class="mc-help">"Get the Estimates" prepares every PDF and works out what the batch could cost. It is free: nothing is sent to the AI '
-        'until you select "Start Remediation" on the batch page.</p><div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
-        '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button></div>'
+        'until you select "Start Remediation" on the batch page. "Save Batch for Later" keeps the batch and its PDFs, with nothing started.</p>'
+        '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
+        f'<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button><button type="submit" data-api="{E(later)}">Save Batch for Later</button></div>'
         '</form></main><script src="/app/home.js" defer></script></body></html>')
 
 def tone(row, R):

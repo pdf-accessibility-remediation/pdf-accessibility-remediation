@@ -25,6 +25,8 @@ from lib import runlock, costs, release as REL
 from . import jobs, books as BK, names as NM, home as HM
 
 CONFIRM_RUN = 'The remediated PDF, its report and its review go with it.'
+SAVED_BACK = ('Nothing was run in this batch, so its PDFs go back to the upload list, not to the Trash. '
+              'Only the batch itself goes to the Trash.')   # S7
 CONFIRM_OWN = 'Its original PDF goes with it too (it was kept in the run\'s folder).'   # R17
 CONFIRM_SHIPPED = 'This run was shipped. Its record of what was shipped and who approved it goes with it.'
 CONFIRM_USED = 'These runs keep their remediated PDF, report and downloads.'   # R7 (Patrick's test, 2026-11-07)
@@ -175,6 +177,11 @@ def plan_batch(s, label, names=None):
     if bad: raise Refused('A selected PDF is no longer in this batch. Reload the page.')
     shipped = [books[n]['book'] for n in pick if _shipped(os.path.join(B, n))]
     whole = set(pick) == set(books)
+    if BT.saved(s, label):                                  # S7: never run, so its PDFs go back to the upload list
+        if not whole: raise Refused('This batch hasn\'t started: take a PDF out with "Remove from Batch" on its page.')
+        return {'what': 'batch', 'label': label, 'name': NM.shown_run(s, f'batches/{label}'), 'whole': True, 'saved': True,
+                'pdfs': [{'name': n, 'pdf': books[n]['book'], 'file': books[n]['file']} for n in pick],
+                'words': [SAVED_BACK], 'shipped': [], 'refused': why_busy(s, f'batches/{label}', None)}
     why = next((w for w in (why_busy(s, f'batches/{label}', None),) if w), None) or \
           next((f'"{books[n]["book"]}": ' + w[0].lower() + w[1:] for n in pick for w in [why_busy(s, f'batches/{label}/{n}', os.path.join(B, n))] if w), None)
     return {'what': 'batch', 'label': label, 'name': NM.shown_run(s, f'batches/{label}'), 'whole': whole,
@@ -196,6 +203,7 @@ def move_batch(s, label, names=None):
             why = plan_batch(s, label, names)['refused']
             if why: raise Refused(why)
             cost = sum(costs.actual(os.path.join(B, n))['usd'] or 0 for n in picked)
+            back = BT.give_back_all(s, label) if pl.get('saved') else []   # S7: never run, back to the upload list first
             name = _rename(s, B, f'batch - {label}')
         plain = _drop_name(s, 'batches', label)
         log(s, {'what': 'batch', 'label': label, 'from': B, 'to': os.path.join(trash_dir(s), name), 'name': plain, 'pdfs': picked, 'cost_usd': round(cost, 6)})

@@ -28,7 +28,8 @@ function show(html, opener, onYes) {
 function body(p) {
   let h = '';
   if (p.what === 'run') h += '<p><b>' + esc(p.name) + '</b><br>' + esc(p.pdf) + (p.file ? '<br><span class="hm-file">Source PDF: ' + esc(p.file) + '</span>' : '') + '</p>';
-  if (p.what === 'batch') h += '<p>' + (p.whole ? 'The whole batch <b>' + esc(p.name) + '</b> and every PDF in it:' : 'From the batch <b>' + esc(p.name) + '</b>:') + '</p><ul>' +
+  if (p.what === 'batch') h += '<p>' + (p.saved ? 'The batch <b>' + esc(p.name) + '</b>, saved with nothing started. Its PDFs:' :   // S7
+    p.whole ? 'The whole batch <b>' + esc(p.name) + '</b> and every PDF in it:' : 'From the batch <b>' + esc(p.name) + '</b>:') + '</p><ul>' +
     p.pdfs.map(x => '<li>' + esc(x.pdf) + ' <span class="hm-file">Source PDF: ' + esc(x.file) + '</span></li>').join('') + '</ul>';
   if (p.what === 'pdf') {
     h += '<p><b>' + esc(p.pdf) + '</b><br><span class="hm-file">Source PDF: ' + esc(p.file) + '</span></p>';

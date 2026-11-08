@@ -120,6 +120,26 @@ added but locked with a password or unreadable says so; the PDFs that were added
 - A note beside it, `uploads/<name>.json`, keeps the original name, size, sha256, pages and when it was added.
 - A PDF locked with a password is listed as locked, with no **New Run**.
 
+**Each run carries its own PDF** (R17, Patrick 2026-11-07). The upload list holds only PDFs not used yet:
+- **Starting a run** ("Get the Estimate") moves the PDF, with its note, into the run's own folder,
+  `runs/<name>/<label>/source/<file name>.pdf`, by rename on the same disk. It leaves the upload list, and every step of
+  that run uses that copy: the estimate's command, "Start Remediation", the first apply, the review record and
+  **Review Again**. Nothing writes to it, and report.py's clean-up leaves it. When the move can't be made, the run isn't
+  started and nothing is moved ("The PDF couldn't be moved into the run's folder …"). A batch does the same for each of
+  its PDFs, all or none (`runs/batches/<label>/<name>/source/`).
+- **When a run made before this change still reads that very upload** (its estimate or "Start Remediation" waiting, its
+  first apply, an older batch's book list, or a finished run with no other copy), the new run gets a copy instead and
+  the upload stays listed.
+- **"New Run of This PDF"** (a single run's "⋯" menu, and a batch PDF's row on the batch page) copies that run's PDF into
+  the new run: the one time a second copy is made. It is written under a temporary name, checked by sha256, then renamed.
+  "New Run from the Saved Reply" gives its new run a copy the same way.
+- **A run whose estimate fails** keeps its PDF and its page, with **Try Again**: a folder holding only its PDF is a run
+  ("Not Started").
+- **Moving a run, a batch or a batch's PDFs to the Trash** takes their PDFs with them, and the confirmation says so.
+  Moving a PDF in the upload list to the Trash lists only runs made before this change.
+- **The PDF's name** travels with it (names and Titles are kept by sha256).
+- **Runs made before this change** find their original as before, by sha256 in uploads/ and samples/.
+
 ## A single run
 
 1. **New Run** opens a short form with one field: **Run Name** (required, in your own words). There is no OCR language
@@ -233,11 +253,15 @@ error line, the record that holds it and where the full log is. Tool text and co
 
 ## Batches
 
-1. Select two or more PDFs on the home page and **Create a New Batch**.
+1. Select two or more PDFs on the home page and **Create a New Batch**. **Save Batch for Later** (S7, Patrick 2026-11-07)
+   saves the batch with its name and PDFs and no estimates: the PDFs move into the batch (and leave the upload list), and
+   it is a Not Started batch in My Workspace. Opening it shows the same form, the name editable, each PDF with **Remove
+   from Batch** (back to the upload list); **Get the Estimates** starts it. Until then **Move to Trash** sends the batch
+   to the Trash and its PDFs back to the upload list (nothing was run), as the confirmation says.
 2. The form: **Batch Name** (required; no example line under it, R8). A batch holds up to 50 PDFs (`max_books_per_batch`): more is
    refused, "A batch can hold up to 50 PDFs. Split them into two batches".
-3. **Get the Estimates** writes the book list `runs/.app/batches/<label>.books.txt` (one `<short name> <absolute path>`
-   per line; names unique in the batch; a path with "#" or "|" is refused) and the batch's record
+3. **Get the Estimates** moves each PDF into its book folder (R17), writes the book list
+   `runs/.app/batches/<label>.books.txt` (one `<short name> <absolute path>` per line, the path its own copy; names unique in the batch; a path with "#" or "|" is refused) and the batch's record
    `runs/.app/batches/<label>.json`, then queues one free estimate per PDF: `ESTIMATE=1 ASK_LANG=1
    RUN_DIR=runs/batches/<label>/<name> bash run_api.sh …`, exactly batch_api.sh's own estimate step.
 4. **Language of the Scanned Pages:** a PDF whose pages need OCR stops with the same question on its own row of the batch

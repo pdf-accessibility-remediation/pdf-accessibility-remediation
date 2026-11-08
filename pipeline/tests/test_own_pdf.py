@@ -111,3 +111,61 @@ def test_replay_allows_the_new_runs_own_pdf():
     from review import sessions as SS
     import inspect
     assert "[f for f in os.listdir(D) if f != 'source']" in inspect.getsource(SS.replay_to)
+
+# ------------------------------------------------------------------ batches (R17) and "Save Batch for Later" (S7)
+from webapp import batches as BT  # noqa: E402
+
+def three(t, s):
+    for n in ('a', 'b', 'c'): upload(t, s, f'{n}.pdf', f'Book {n}')
+    return [b['key'] for b in BK.listing(s)]
+
+def test_a_batch_moves_each_pdf_into_its_book_folder(setup):
+    s = S(setup); keys = three(setup, s)
+    js = BT.start(s, [], keys, 'Spring')
+    B = setup / 'runs' / 'batches' / 'Spring'
+    assert BK.listing(s) == [] and all((B / n / 'source' / f'{n}.pdf').is_file() for n in 'abc')
+    lines = [l for l in open(BT.list_path(s, 'Spring'), encoding='utf-8') if not l.startswith('#')]
+    assert sorted(l.split(' ', 1)[1].strip() for l in lines) == sorted(str(B / n / 'source' / f'{n}.pdf') for n in 'abc')
+    assert sorted(j['argv'][2] for j in js) == sorted(str(B / n / 'source' / f'{n}.pdf') for n in 'abc')
+    page = NR.form_page(s, '', run='batches/Spring/a')                                                              # New Run of This PDF
+    assert 'Source PDF: a.pdf' in page
+
+def test_a_batch_that_cannot_move_one_pdf_moves_none(setup, monkeypatch):
+    s = S(setup); keys = three(setup, s)
+    real = os.rename
+    def refuse(a, c):
+        if str(a).endswith('c.pdf'): raise OSError(18, 'Invalid cross-device link')
+        return real(a, c)
+    monkeypatch.setattr(os, 'rename', refuse)
+    with pytest.raises(ValueError, match='nothing was moved'): BT.start(s, [], keys, 'Spring')
+    monkeypatch.undo()
+    assert sorted(b['file'] for b in BK.listing(s)) == ['a.pdf', 'b.pdf', 'c.pdf'] and (setup / 'uploads' / 'a.json').is_file()
+    assert not (setup / 'runs' / 'batches' / 'Spring').exists() and not os.path.exists(BT.list_path(s, 'Spring')) and not jobs.all_jobs(s['jobs'])
+
+def test_save_reopen_remove_then_estimate(setup):
+    """S7: "Save Batch for Later" keeps the batch with its PDFs (moved in, out of the upload list) and no estimate; it is a
+    Not Started batch in My Workspace; its page is the form again; "Remove from Batch" puts a PDF back; "Get the Estimates"
+    starts it, with the name as the form has it then."""
+    s = S(setup); keys = three(setup, s)
+    assert BT.start(s, [], keys, 'Later', estimate=False) == []
+    assert BK.listing(s) == [] and BT.saved(s, 'Later') and not jobs.all_jobs(s['jobs'])
+    b = {x['label']: x for x in HM.index(s)['batches']}['Later']
+    assert b['group'] == 'not-started' and b['state'] == 'Not Started'
+    page = BT.form_page(s, [], saved='Later')
+    assert 'value="Later"' in page and page.count('Remove from Batch</button>') == 3 and 'data-api="/api/batch/Later/start"' in page
+    back = BT.remove_saved(s, 'Later', 'c')
+    assert back == str(setup / 'uploads' / 'c.pdf') and [x['file'] for x in BK.listing(s)] == ['c.pdf'] and (setup / 'uploads' / 'c.json').is_file()
+    assert not (setup / 'runs' / 'batches' / 'Later' / 'c').exists() and [x['name'] for x in BT.books_of(s, 'Later')] == ['a', 'b']
+    BT.save_name(s, 'Later', 'Spring backlist')
+    js = BT.start_saved(s, [], 'Later', 'Spring backlist, part 1')
+    assert len(js) == 2 and not BT.saved(s, 'Later') and NM.batch_name(s, 'Later') == 'Spring backlist, part 1'
+    with pytest.raises(ValueError, match='has started'): BT.remove_saved(s, 'Later', 'a')
+
+def test_a_saved_batch_moved_to_the_trash_gives_its_pdfs_back(setup):
+    s = S(setup); keys = three(setup, s)
+    BT.start(s, [], keys, 'Later', estimate=False)
+    p = TR.plan_batch(s, 'Later')
+    assert p['saved'] and p['words'] == [TR.SAVED_BACK] and not p['refused']
+    TR.move_batch(s, 'Later')
+    assert sorted(b['file'] for b in BK.listing(s)) == ['a.pdf', 'b.pdf', 'c.pdf'] and (setup / 'Trash' / 'batch - Later').is_dir()
+    assert not [f for d, _, fs in os.walk(setup / 'Trash') for f in fs if f.endswith('.pdf')]                       # no PDF in the Trash

@@ -17,12 +17,16 @@ from test_spend import run_folder  # noqa: E402
 def books(t, names):
     for n in names: (t / 'uploads' / n).write_bytes(pdf_bytes(1, None) + n.encode())
 
+def refill(setup):
+    """The three PDFs in the upload list (again: a batch moves its PDFs into its own folders, R17)."""
+    for d in ('a', 'b'): (setup / 'uploads' / d).mkdir(exist_ok=True)
+    (setup / 'uploads' / 'a' / 'Book One.pdf').write_bytes(pdf_bytes(1) + b'a'); (setup / 'uploads' / 'b' / 'Book One.pdf').write_bytes(pdf_bytes(2) + b'b')
+    (setup / 'uploads' / 'two.pdf').write_bytes(pdf_bytes(3) + b'c')
+
 @pytest.fixture
 def two(setup, monkeypatch):
     monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng'])
-    (setup / 'uploads' / 'a').mkdir(); (setup / 'uploads' / 'b').mkdir()
-    (setup / 'uploads' / 'a' / 'Book One.pdf').write_bytes(pdf_bytes(1) + b'a'); (setup / 'uploads' / 'b' / 'Book One.pdf').write_bytes(pdf_bytes(2) + b'b')
-    (setup / 'uploads' / 'two.pdf').write_bytes(pdf_bytes(3) + b'c')
+    refill(setup)
     return setup
 
 def test_start_writes_the_book_list_and_one_estimate_per_book(two):
@@ -35,8 +39,9 @@ def test_start_writes_the_book_list_and_one_estimate_per_book(two):
     assert [j['kind'] for j in js] == ['batch-estimate'] * 3 and all(j['env_set']['ESTIMATE'] == '1' and j['env_set']['RUN_DIR'].endswith(j['run'].split('/')[-1]) for j in js)
     assert all(j['argv'][1:2] == ['run_api.sh'] and j['argv'][4] == 'b1' and 'AUTO' not in j['env'] for j in js)    # batch_api.sh's own estimate command
     assert json.load(open(BT.meta_path(s, 'b1')))['langs'] == {} and all(j['env_set'] == {'ESTIMATE': '1', 'ASK_LANG': '1', 'RUN_DIR': j['dir']} for j in js)
-    j2 = BT.start(s, [], keys, 'b1')                                 # a name that is taken: "_2" (never "-2")
+    refill(two); j2 = BT.start(s, [], keys, 'b1')                    # a name that is taken: "_2" (never "-2")
     assert j2[0]['run'].startswith('batches/b1_2/') and j2[0]['argv'][4] == 'b1_2'
+    refill(two)
     with pytest.raises(ValueError, match='two or more'): BT.start(s, [], keys[:1], 'b2')
     with pytest.raises(ValueError, match='Enter a name'): BT.start(s, [], keys, '   ')         # P10: required
 
@@ -47,13 +52,13 @@ def test_plain_batch_names_and_the_cap(two):
     s = settings(two, test_batch_from='v8-p7a')
     keys = [b['key'] for b in BK.listing(s)]
     a = BT.start(s, [], keys, 'Café books, spring!')[0]['run'].split('/')[1]
-    b = BT.start(s, [], keys, 'Cafe books spring')[0]['run'].split('/')[1]
+    refill(two); b = BT.start(s, [], keys, 'Cafe books spring')[0]['run'].split('/')[1]
     assert a == 'Cafe-books-spring' and b == 'Cafe-books-spring_2'
     assert NM.batch_name(s, a) == 'Café books, spring!' and NM.batch_name(s, b) == 'Cafe books spring'
     assert 'Café' not in open(BT.list_path(s, a), encoding='utf-8').read()                  # never in a path or a command
-    c = BT.start(s, [], keys, '日本語')[0]['run'].split('/')[1]
+    refill(two); c = BT.start(s, [], keys, '日本語')[0]['run'].split('/')[1]
     assert c.startswith('batch-20') and NM.batch_name(s, c) == '日本語'                     # nothing left: the date
-    s2 = settings(two, max_books_per_batch=2)
+    refill(two); s2 = settings(two, max_books_per_batch=2)
     with pytest.raises(ValueError, match='A batch can hold up to 2 PDFs. Split them into two batches.'): BT.start(s2, [], keys, 'x')
 
 def test_a_path_with_list_marks_is_refused(setup, monkeypatch):

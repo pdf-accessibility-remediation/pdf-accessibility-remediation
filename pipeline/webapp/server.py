@@ -301,12 +301,23 @@ def make(s, setup, code=None):
                 except (ValueError, FileExistsError) as e: return self.send(409, {'error': str(e) if isinstance(e, ValueError) else 'A batch with this name already exists.'})
                 jobs.tick(J, s)
                 return self.send(202, {'jobs': len(js), 'location': f'/batch/{urllib.parse.quote(js[0]["run"].split("/")[1], safe="")}/'})
+            if p == '/api/batch/new-later':                       # S7: "Save Batch for Later": the PDFs move in, no estimates
+                try: BT.start(s, setup, body.get('books') if isinstance(body.get('books'), list) else [], body.get('label'), estimate=False)
+                except (ValueError, FileExistsError) as e: return self.send(409, {'error': str(e) if isinstance(e, ValueError) else 'A batch with this name already exists.'})
+                return self.send(202, {'location': '/?view=batches'})
             if p.startswith('/api/batch/'):
                 bs = segments(p[len('/api/batch/'):])
-                if not bs or len(bs) != 2 or bs[1] not in ('spend', 'again', 'dismiss', 'language') or not batch_dir(s['runs'], bs[0]): return self.send(404, {'error': 'no such batch'})
+                if not bs or len(bs) != 2 or bs[1] not in ('spend', 'again', 'dismiss', 'language', 'start', 'save', 'remove') or not batch_dir(s['runs'], bs[0]):
+                    return self.send(404, {'error': 'no such batch'})
                 label = os.path.basename(batch_dir(s['runs'], bs[0]))
                 try:
                     if bs[1] == 'dismiss': return self.send(200, {'dismissed': jobs.dismiss(J, f'batches/{label}')})
+                    if bs[1] == 'save': BT.save_name(s, label, body.get('label')); return self.send(202, {'location': '/?view=batches'})   # S7
+                    if bs[1] == 'remove':                         # S7: back to the upload list while the batch hasn't started
+                        BT.remove_saved(s, label, str(body.get('book') or '')); return self.send(200, {'removed': True})
+                    if bs[1] == 'start':                          # S7: "Get the Estimates" on a saved batch
+                        js = BT.start_saved(s, setup, label, body.get('label')); jobs.tick(J, s)
+                        return self.send(202, {'jobs': len(js), 'location': f'/batch/{urllib.parse.quote(label, safe="")}/'})
                     if bs[1] == 'language' and body.get('all') is True:   # R10: "Use for All Waiting PDFs"
                         r = BT.answer_all(s, label, str(body.get('lang') or ''))
                         jobs.tick(J, s)
@@ -448,6 +459,7 @@ def make(s, setup, code=None):
                 rest = segs[1:]
                 if not rest:
                     if not p.endswith('/'): return self.redirect(p + '/')
+                    if BT.saved(s, os.path.basename(B)): return self.send(200, BT.form_page(s, [], saved=os.path.basename(B)), 'text/html; charset=utf-8')   # S7
                     return self.send(200, BT.page(s, os.path.basename(B), closed=self.nav_closed()), 'text/html; charset=utf-8')   # the batch page (#45)
                 if rest == ['summary.html']:                     # the batch dashboard, with the app bar (#45: every page links home)
                     f = os.path.realpath(os.path.join(B, 'summary.html'))

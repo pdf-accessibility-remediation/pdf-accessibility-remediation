@@ -101,7 +101,9 @@ release](release.md#clearing-a-shipped-book)). A new record goes beside record.j
 **The app's own files** are in `runs/.app/` (the `jobs` setting): `jobs/<id>.json` and `.log` (each job, its environment,
 its log), `dispatch.lock`, `server.log`, `sha256-cache.json` (books' hashes), `books-cache.json` (titles and page counts),
 `home-index.json` (the earlier-runs list), `book-names.json` and `run-names.json` (names, `names.lock`), `batches/<label>.books.txt` and `.json` (a batch made in the app).
-**`uploads/`** (repository root, git-ignored) holds the PDFs added with **Upload a PDF**, each with a `<name>.json` note. A run's
+**`uploads/`** (repository root, git-ignored) holds the PDFs added with **Upload a PDF** and not used yet, each with a
+`<name>.json` note. A run started from the app keeps its own original in `source/` (`<file name>.pdf` and its note; R17), never
+written to, kept by report.py's clean-up and by "Clear This Book's Files". A run's
 `_intake/languages.json` is intake's `--languages` result; a batch folder may hold `ocr_langs.tsv` (each book's OCR language)
 and `trashed.json` (its PDFs moved to the Trash, with their cost).
 

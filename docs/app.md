@@ -35,7 +35,7 @@ One place, read in this order (later wins):
 |---|---|---|
 | `host` | `127.0.0.1` | Where the app listens. Only `127.0.0.1` is accepted: the app has no logins, so it is not reachable from other computers. |
 | `port` | `8760` | The app's port. The review pages use 8765–8784, as from the terminal. |
-| `runs`, `samples`, `uploads` | `../runs`, `../samples`, `../uploads` | The folders, relative to `pipeline/` (or absolute). `uploads` holds the PDFs added with "Upload a PDF" ([The home page](home.md)); `samples` is never listed, only searched by sha256 for the original of a run made from it. Every job writes into `runs` (the app passes it as `RUNS_DIR`). |
+| `runs`, `samples`, `uploads` | `../runs`, `../samples`, `../uploads` | The folders, relative to `pipeline/` (or absolute). `uploads` holds the PDFs added with "Upload a PDF" and not used yet ([The home page](home.md#upload-a-pdf)): a run started from the app moves its PDF into its own `source/` folder (R17); `samples` is never listed, only searched by sha256 for the original of a run made before that. Every job writes into `runs` (the app passes it as `RUNS_DIR`). |
 | `jobs` | `../runs/.app` | The job files, their logs, and the app's own small files (below). |
 | `max_jobs` | `3` | How many single runs go at once (open review pages do not count until they apply). A batch runs alone: it starts when no run is going, and nothing else starts while it runs. |
 | `batch_jobs` | `10` | How many PDFs of a batch are in progress at once, the next starting as each finishes (batch_api.sh's `JOBS`); also how many batch estimates go at once (R12). Subject to change once the hardware limits are measured. |

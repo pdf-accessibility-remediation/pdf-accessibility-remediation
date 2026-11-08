@@ -29,15 +29,29 @@ document.querySelectorAll('form[data-api]').forEach(f => f.addEventListener('sub
     else if (x.type === 'checkbox') body[x.name] = x.checked;
     else body[x.name] = x.value;
   });
-  const b = f.querySelector('button[type=submit]'); b.disabled = true;
+  const b = e.submitter || f.querySelector('button[type=submit]'); b.disabled = true;
   try {
-    const r = await fetch(f.dataset.api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const api = (e.submitter && e.submitter.dataset.api) || f.dataset.api;   // "Save Batch for Later" posts elsewhere (S7)
+    const r = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     let d = {}; try { d = await r.json(); } catch (err) {}
     if (r.status === 202 && d.location) { location.assign(d.location); return; }
     msg(d.error || 'The app refused this.');
   } catch (err) { msg('The app is not running. ' + START); }
   finally { b.disabled = false; }
 }));
+// S7: "Remove from Batch" on a saved batch's page: the PDF goes back to the upload list, and the page is drawn again
+document.addEventListener('click', async e => {
+  const b = e.target.closest('button[data-remove]'); if (!b) return;
+  b.disabled = true;
+  try {
+    const r = await fetch('/api/batch/' + encodeURIComponent(b.dataset.label) + '/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ book: b.dataset.remove }) });
+    let d = {}; try { d = await r.json(); } catch (err) {}
+    if (r.ok) { location.reload(); return; }
+    msg(d.error || 'The app refused this.');
+  } catch (err) { msg('The app is not running. ' + START); }
+  b.disabled = false;
+});
 if (!$('hm-active')) return;                                      // the New Run and New Batch pages stop here
 
 // ---------------------------------------------------------------- Upload a PDF: the drop zone (Q1, Patrick's test 2026-11-07)
