@@ -1069,7 +1069,10 @@ def suggest_language(sc, viet, pages, others=None):
     guessed. pages: osd_detail() per sampled scanned page. "Latin only" and "no text found" are kept apart in `found`."""
     seen = [d for d in pages if (d.get('orient_conf') or 0) >= OSD_TEXT_CONF
             or (OSD_SCRIPTS.get(d.get('script')) and (d.get('orient_conf') or 0) >= OSD_CJK_CONF)]
-    scan = collections.Counter(OSD_SCRIPTS.get(d['script'], d['script']) for d in seen if d.get('script'))
+    def kind(d):                                        # 18-N2 (Patrick, 2026-11-07): a "Japanese" reading under OSD_TEXT_CONF
+        k = OSD_SCRIPTS.get(d['script'], d['script'])   #   counts as Chinese characters: asked, nothing preselected (never
+        return 'han' if k == 'kana' and (d.get('orient_conf') or 0) < OSD_TEXT_CONF else k   #   guess Japanese vs Chinese)
+    scan = collections.Counter(kind(d) for d in seen if d.get('script'))
     unknown = [d['page'] for d in seen if not d.get('script')]
     kana = sc['kana'] >= TEXT_CJK_MIN or scan['kana'] > 0
     hangul = sc['hangul'] >= TEXT_CJK_MIN or scan['hangul'] > 0

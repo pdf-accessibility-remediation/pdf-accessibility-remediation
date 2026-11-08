@@ -49,7 +49,9 @@ layer's letters by script, and each sampled scanned page's reading). No text-lay
   "Cyrillic" or "Devanagari"). A reading of a CJK script (Korean, Japanese, Han) counts from 1.5 (`OSD_CJK_CONF`, R9 of
   Patrick's test 2026-11-07: a low-resolution Korean newspaper scan read "Korean" at 1.9, wasn't asked, and its estimate
   ran 3.5 minutes to intake's CJK stop before the question came; none of the calibration pages under 4.0 read as a CJK
-  script). Its script confidence is not used: it doesn't tell text from pictures. When no sampled
+  script). A "Japanese" reading under 4.0 counts as Chinese characters: asked, with nothing preselected (18-N2, Patrick
+  2026-11-07: Japanese and Chinese are never guessed from a weak reading); kana in the text layer still suggests Japanese.
+  Its script confidence is not used: it doesn't tell text from pictures. When no sampled
   scan gives any orientation reading (blank pages, or Tesseract's `osd.traineddata` missing), the log says so in one
   line ("Tesseract gave no orientation reading on any of the N sampled scans"), since every page then counts as "no text".
 - **Latin-script scans are OCR'd as English** (Patrick, 2026-11-07). On a scan the app sees only the script, not the

@@ -32,7 +32,10 @@ def pg(script, conf=10.0): return {'page': 1, 'script': script, 'orient_conf': c
     (C(han=2, latin=500), [], 0, None, 'eng', False, 'latin'),                   # a stray Chinese character
     (C(), [pg('Korean', 1.9), pg('Latin', 2.23)], 0, None, 'kor+eng', True, 'cjk'),   # R9: KTimes 1985 8 2, a low-resolution Korean scan
     (C(), [pg('Korean', 0.16), pg('Cyrillic', 3.4)], 0, None, 'eng', False, 'none'),  #   under 1.5 a CJK reading still counts as no text
-    (C(), [pg('HanT', 2.0)], 0, None, None, True, 'cjk')])                           #   and Han is never guessed
+    (C(), [pg('HanT', 2.0)], 0, None, None, True, 'cjk'),                            #   and Han is never guessed
+    (C(), [pg('Japanese', 2.0)], 0, None, None, True, 'cjk'),                        # 18-N2: a weak "Japanese" reading: Han, nothing preselected
+    (C(), [pg('Japanese', 6.0)], 0, None, 'jpn+eng', True, 'cjk'),                   #   a strong one still suggests Japanese
+    (C(kana=40), [pg('Japanese', 2.0)], 0, None, 'jpn+eng', True, 'cjk')])           #   and kana in the text layer still does
 def test_the_suggestion(sc, pages, viet, others, want, ask, found):
     r = intake.suggest_language(sc, viet, pages, others)
     assert (r['suggestion'], r['ask'], r['found']) == (want, ask, found)
