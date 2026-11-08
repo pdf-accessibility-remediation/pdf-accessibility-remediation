@@ -116,7 +116,7 @@ function closeDialog() {
   dlg.close();
   let o = opener; opener = null;
   if (o && !document.body.contains(o) && o.id) o = $(o.id);       // the page drew that button again meanwhile: the new one
-  if (o && document.body.contains(o) && !o.closest('[hidden]')) o.focus();
+  if (o && document.body.contains(o) && !o.closest('[hidden]')) o.focus({ preventScroll: true });   // U6: the page stays where it was
 }
 function fieldError(f, text) {                                   // a refusal under its field, else in the pop-up's message box
   const nameIn = f.querySelector('[data-field=name]'), ne = nameIn && $(nameIn.getAttribute('aria-describedby'));

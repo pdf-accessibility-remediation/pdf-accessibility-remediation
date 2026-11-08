@@ -248,7 +248,10 @@ def form_part(s, key, run=None):
     if not book:
         return head + ('<p>This PDF\'s file has changed or is gone. Reload the page.</p>'
                        '<div class="pp-row"><button type="button" data-cancel>Close</button></div>')
-    return head + (f'<p class="mc-book"><span class="hm-book">{E(book["name"])}</span><span class="hm-file">Source PDF: {E(book["file"])}</span></p>'
+    what = ''                                            # U1 (Patrick, 2026-11-07): "New Run of This PDF" says what it does
+    if run and run.startswith('batches/'): what = '<p class="mc-help nr-what">This makes a separate single run with its own copy of this PDF. The batch and its run are not changed.</p>'
+    elif run: what = '<p class="mc-help nr-what">This makes a separate run with its own copy of this PDF. The run it comes from is not changed.</p>'
+    return head + (f'<p class="mc-book"><span class="hm-book">{E(book["name"])}</span><span class="hm-file">Source PDF: {E(book["file"])}</span></p>{what}'
         '<form class="hm-form" data-api="/api/new/estimate" novalidate>'
         + (f'<input type="hidden" name="run" value="{E(run)}">' if run else f'<input type="hidden" name="book" value="{E(book["key"])}">') +
         '<div class="mc-field"><label for="nr-name">Run Name</label>'

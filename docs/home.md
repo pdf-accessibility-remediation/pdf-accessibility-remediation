@@ -31,9 +31,11 @@ labels in Title Case, review 15 L1). The model is named in plain words (the orig
 saved reply), never by its id; "AI Cost: none (a saved reply was used)" when no new call was made, "AI Cost: not
 recorded" when the record has no cost, and no AI part before the AI has answered. A PDF in a batch adds "Assigned to the
 batch "<name>"" with the list's button and **Home Page** after it (S3: "Batch: <name>" in the side list leads to the batch
-page). The cost is no longer repeated in Run Actions (Q7). Run Actions, "Ready to Ship?" and the Accessibility Evaluation
-join the header and each other with no gaps, and the side list when it is shown; the review's own sections below them
-keep their gap from the list (T3, Patrick 2026-11-07: one CSS block in panel.css, easy to undo).
+page). The cost is no longer repeated in Run Actions (Q7). Run Actions meets the header with no gap; Run Actions, "Ready
+to Ship?" and the Accessibility Evaluation keep their gaps between each other and start at the side list's edge when it is
+shown; the review's own sections below them keep their gap from the list (T3 as revised by U2, Patrick 2026-11-07: one
+CSS block in panel.css). "Home Page" and "Show/Hide the PDF List" are the same size wherever they sit together (U7).
+While a job runs, its card has the one spinner, on its status line (U5).
 
 ## The home page
 
@@ -157,7 +159,11 @@ added but locked with a password or unreadable says so; the PDFs that were added
    run stops for review, and the language is asked only when needed). The pop-up is a native dialog: focus moves into
    it, Tab stays inside, a heading names it ("New Run"), and **Cancel** or Esc closes it, changes nothing and gives focus
    back to the button that opened it. A refusal is shown inside it, under the name field when it is about the name.
-   "New Run of This PDF" opens the same pop-up. The old `/new` and `/new-batch` addresses go to the home page.
+   "New Run of This PDF" opens the same pop-up, which says what it does: "This makes a separate single run with its own
+   copy of this PDF. The batch and its run are not changed." (from a batch's PDF), or "This makes a separate run with its
+   own copy of this PDF. The run it comes from is not changed." (U1). While a pop-up is open (New Run, New Batch, a Trash
+   confirmation) the page behind doesn't scroll, and it is where it was when the pop-up closes (U6). The old `/new` and
+   `/new-batch` addresses go to the home page.
 2. **Get the Estimate** queues a free job, `ESTIMATE=1 ASK_LANG=1 bash run_api.sh <book> <name> <run name>`: intake, the
    audit and `decide.py --dry-run`. It asks OpenRouter for prices and the credit (free calls; no book content is sent).
    The browser goes to the run's own page at once, which follows each step.

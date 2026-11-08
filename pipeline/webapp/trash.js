@@ -15,7 +15,7 @@ async function post(path, body) {
 }
 function show(html, opener, onYes) {
   dlg.innerHTML = html;
-  const close = () => { dlg.close(); if (opener && document.body.contains(opener)) opener.focus(); };
+  const close = () => { dlg.close(); if (opener && document.body.contains(opener)) opener.focus({ preventScroll: true }); };   // U6
   dlg.querySelectorAll('button').forEach(b => b.addEventListener('click', async () => {
     if (b.value !== 'yes') return close();
     b.disabled = true;

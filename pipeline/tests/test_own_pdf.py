@@ -277,7 +277,26 @@ def test_the_pop_ups(app):
     assert get(app['port'], '/api/form?what=nope')[0] == 404
     js = open(os.path.join(HERE, 'webapp', 'shared.js'), encoding='utf-8').read()
     for x in ("dlg.showModal()", "dlg.setAttribute('aria-labelledby', 'dlg-h')", "dlg.addEventListener('cancel', e => { e.preventDefault(); closeDialog(); });",
-              "if (o && document.body.contains(o) && !o.closest('[hidden]')) o.focus();", "if (o && !document.body.contains(o) && o.id) o = $(o.id);", "nameIn.setAttribute('aria-invalid', 'true')"):
+              "if (o && document.body.contains(o) && !o.closest('[hidden]')) o.focus({ preventScroll: true });", "if (o && !document.body.contains(o) && o.id) o = $(o.id);", "nameIn.setAttribute('aria-invalid', 'true')"):
         assert x in js, x
     home = get(app['port'], '/')[1].decode()
     assert '<script src="/app/shared.js" defer></script><script src="/app/home.js" defer></script>' in home and get(app['port'], '/app/shared.js')[0] == 200
+
+# ------------------------------------------------------------------ U1, U2, U5, U6, U7
+def test_new_run_of_this_pdf_says_what_it_does(setup):
+    s = S(setup); keys = three(setup, s)
+    BT.start(s, [], keys, 'Spring', estimate=False)
+    f = NR.form_part(s, '', run='batches/Spring/a')
+    assert 'This makes a separate single run with its own copy of this PDF. The batch and its run are not changed.' in f
+    b = upload(setup, s, 'solo.pdf', 'Solo'); NR.start_estimate(s, [], b['key'], 'First')
+    assert 'The run it comes from is not changed.' in NR.form_part(s, '', run='solo/First')
+    assert 'separate' not in NR.form_part(s, upload(setup, s, 'new.pdf', 'New')['key'])      # a plain New Run says nothing more
+
+def test_one_spinner_no_scroll_behind_pop_ups_and_equal_buttons():
+    css = open(os.path.join(HERE, 'webapp', 'panel.css'), encoding='utf-8').read()
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert "'<span class=\"pp-spin\" aria-hidden=\"true\"></span>Applying the reviewed decisions. This page follows each step.'" not in js   # U5
+    assert 'html:has(dialog[open]) { overflow: hidden; }' in css                                                  # U6
+    assert '.pp-appbar .pp-btn { display: inline-flex;' in css and 'height: 34px;' in css                          # U7
+    t3 = css[css.index('/* ---- T3 as revised by U2'):css.index('/* ---- end of T3 */')]                         # U2: gaps back between the three
+    assert '#main > section.ship, #main > #pdfrem-checks > .pp-checks {\n  margin-top: 0' not in t3 and 'border-top-width: 0' in t3

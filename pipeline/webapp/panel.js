@@ -490,7 +490,7 @@ function waitingBlock(s) {
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Result</button></div>';
   if (s.live_review) return '';                                  // its own card has Open / Stop
   if (active.length) return active[0].kind === 'apply' ?
-    '<p>' + (active[0].status === 'running' ? '<span class="pp-spin" aria-hidden="true"></span>Applying the reviewed decisions. This page follows each step.' :
+    '<p>' + (active[0].status === 'running' ? 'Applying the reviewed decisions. This page follows each step.' :   // U5: the job's card has the one spinner
              'Waiting to Start: the reviewed decisions are applied when ' + esc(active[0].waiting_for || 'the runs before it') + ' end' + (active[0].waiting_for ? 's' : '') + '.') + '</p>' :
     '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '.</p>';
   if (!w.reviewed) return '<p>The AI\'s decisions are waiting for your review. Nothing has been applied yet.</p>' +

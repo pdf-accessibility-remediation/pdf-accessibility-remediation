@@ -277,16 +277,16 @@ header.top.pp-hd { padding-top: 8px; padding-bottom: 6px; }
 /* Patrick, 2026-11-07 (S2-S7) */
 /* S2: with the side list shown, the page's header sits right against it */
 @media (min-width: 48em) { body.bn-on:not(.bn-closed) header.top.pp-head { padding-left: 16px; } }
-/* ---- T3 (Patrick, 2026-11-07), one block: delete it to undo. Run Actions, Ready to Ship? and the Accessibility
-   Evaluation join the header and each other (no gaps), and the side list when it is shown; the review's own sections
-   below them keep their gap from the side list, as before. "Ready to Ship?" keeps its coloured left border (its status). */
-#pdfrem-panel > section.pp:first-of-type, #main > section.ship, #main > #pdfrem-checks > .pp-checks {
-  margin-top: 0; margin-bottom: 0; border-radius: 0; border-top-width: 0; }
+/* ---- T3 as revised by U2 (Patrick, 2026-11-07), one block: delete it to undo. Run Actions meets the header with no
+   gap; Run Actions, "Ready to Ship?" and the Accessibility Evaluation keep their gaps between each other, and start at the
+   side list's edge when it is shown; the review's own sections below keep their gap from the list. */
+#pdfrem-panel > section.pp:first-of-type { margin-top: 0; border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 @media (min-width: 48em) {
   body.bn-on:not(.bn-closed) #pdfrem-panel, body.bn-on:not(.bn-closed) #main { max-width: none; margin-left: 0; margin-right: 0; padding-left: 0; }
   body.bn-on:not(.bn-closed) #pdfrem-panel > section.pp:first-of-type, body.bn-on:not(.bn-closed) #main > #pdfrem-checks { margin-left: 0; max-width: none; }
-  body.bn-on:not(.bn-closed) #main > section.ship { margin-left: 0; }
-  body.bn-on:not(.bn-closed) #pdfrem-panel > section.pp:first-of-type, body.bn-on:not(.bn-closed) #main > #pdfrem-checks > .pp-checks { border-left-width: 0; }
+  body.bn-on:not(.bn-closed) #main > section.ship { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+  body.bn-on:not(.bn-closed) #pdfrem-panel > section.pp:first-of-type, body.bn-on:not(.bn-closed) #main > #pdfrem-checks > .pp-checks {
+    border-left-width: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
   body.bn-on:not(.bn-closed) #pdfrem-panel ~ #main > :not(.ship):not(#pdfrem-checks) { margin-left: 16px; }   /* run pages only */
 }
 /* ---- end of T3 */
@@ -323,3 +323,7 @@ header.nr-head { padding-top: 18px; } header.nr-head h1 { margin: 0 0 10px; }
 /* U3: "Home Page" at the end of the "Source PDF:" line where there is no PDF list button */
 .pp-hd-src { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 2px 0 4px; }
 .pp-hd-src .pp-appbar { margin: 0; padding: 0; max-width: none; }
+/* U6: while a pop-up is open the page behind doesn't scroll (and stays where it was) */
+html:has(dialog[open]) { overflow: hidden; }
+/* U7: "Home Page" (a link) and "Show/Hide the PDF List" (a button) the same size wherever they sit together */
+.pp-appbar .pp-btn { display: inline-flex; align-items: center; justify-content: center; line-height: 20px; height: 34px; min-height: 0; padding: 0 12px; vertical-align: middle; }
