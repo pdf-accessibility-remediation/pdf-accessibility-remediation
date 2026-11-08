@@ -260,6 +260,15 @@ def mirror(rel, cur):
     return out, {'shipped': rel.get('shipped') or []}
 
 # ------------------------------------------------------------------ removed PDFs ("Clean Up Space", review/prune.py)
+def cleared(R):
+    """release/cleared.json when this book's working files were cleared or are being cleared (#45, review/clear.py), else
+    None. Read in either state: `planned` already means read only (03 §10)."""
+    p = os.path.join(R, 'release', 'cleared.json')
+    try: d = _json(p, None)
+    except (OSError, ValueError): return {'state': 'planned', 'unreadable': True}     # there but unreadable: read only (fail closed)
+    if d is None: return None
+    return d if isinstance(d, dict) and d.get('state') in ('planned', 'done') else {'state': 'planned', 'unreadable': True}
+
 def removed(R):
     """release/removed.json: the earlier versions whose PDF "Clean Up Space" took, [{version, sha256, bytes, by, removed}]."""
     return _json(os.path.join(run_dir_of(R), 'release', 'removed.json'), []) or []

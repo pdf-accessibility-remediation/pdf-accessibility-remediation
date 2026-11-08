@@ -5,9 +5,17 @@ VERAPDF, the Java path) < --config FILE < an exported VERAPDF. Relative paths ar
 
     host, port         where the app listens. Only a loopback address is accepted until the app has logins.
     runs, samples, uploads, jobs   the folders (jobs: the queue, logs and the dispatch lock)
-    max_jobs           how many work jobs run at once, across every run (open review pages wait on a person: not counted)
+    max_jobs           (3) single runs at once; a batch runs alone (nothing else counted starts while it runs: D1)
+    batch_jobs         books of a batch in progress at once (batch_api.sh's JOBS, 10)
+    max_books_per_batch   the most books New Batch accepts (the app only: batch_api.sh in a terminal has no cap)
+    upload_max_mb      "Add a Book": the largest PDF accepted, in MB (default 1024)
+    limits             dollars: per_call_usd (one AI call), per_book_usd (a book, #63), per_batch_usd (a batch); what the
+                       pages compare estimates with, and the most a Spend may bind (lib/costs.py)
     tools              VERAPDF (path to the launcher) and path_prepend (folders put first on the children's PATH: Java)
-    test_reply_dir     tests only, and only from --config: never from a committed or local settings file
+    test_reply_dir     tests only, and only from --config: never from a committed or local settings file. Spend then runs
+                       REPLY=<test_reply_dir>/<name>.txt instead of a paid call, and every page says "Test"
+    test_batch_from    tests only, from --config only: a batch's Spend runs FROM=<label> (saved replies) instead of paid calls
+    trash_dir          tests only, from --config only: where "Move to Trash" moves things instead of ~/.Trash (webapp/trash.py)
 
 The app never runs with veraPDF off: VERAPDF=off is refused from any source.
 """
@@ -17,10 +25,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))           # pipeline/webapp/
 PIPELINE = os.path.dirname(HERE)                             # pipeline/
 ROOT = os.path.dirname(PIPELINE)                             # the repo
 FOLDERS = ('runs', 'samples', 'uploads', 'jobs')
-# what a child inherits from the app's own environment; everything else (MODEL, REPLY, FROM, KEEP, RUNS_DIR, RUN_DIR,
+# what a child inherits from the app's own environment (RUNS_DIR is always the app's runs folder); everything else (MODEL, REPLY, FROM, KEEP, RUN_DIR,
 # INTAKE, OCR, FORCE_OCR, MAX_TOKENS, VERAPDF=off, …) is dropped, and a job adds only its own whitelisted variables
 BASE_ENV = ('PATH', 'HOME', 'LANG', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL')
-JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD', 'INTAKE', 'OUT')
+JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD', 'INTAKE', 'OUT',
+           'JOBS', 'BATCH_MAX_USD', 'BOOK_MAX_USD', 'RETRY', 'MODEL', 'FROM',    # #45: batches, the caps, the estimate's model
+           'SUMMARY_ONLY', 'ASK_LANG')                                         # round 4: the batch summary rebuild (D3, D8), the language question (D4)
+# MODEL only as an anthropic/ id (the one the estimate used: 03 §5); FROM only in test mode (test_batch_from, --config);
+# never FORCE_OCR (Q7: no "OCR Every Page Instead" in the app)
 
 def entry(folder, name):
     """The path of folder's entry called `name`, taken from the folder's own listing, or None. A name from a request is
@@ -59,7 +71,8 @@ def load(config=None, base=HERE, environ=None):
     if config: layers.append((config, _read(os.path.abspath(config), required=True), True))
     s = {}
     for name, d, given in layers:
-        if 'test_reply_dir' in d and not given: raise Bad(f'test_reply_dir is set in {name}: it may only come from --config')
+        for k in ('test_reply_dir', 'test_batch_from', 'trash_dir'):
+            if k in d and not given: raise Bad(f'{k} is set in {name}: it may only come from --config')
         if str((d.get('tools') or {}).get('VERAPDF', '')).strip().lower() == 'off': raise Bad(f'{name} sets VERAPDF=off: the app always runs veraPDF')
         s = _merge(s, d)
     if 'VERAPDF' in environ:
@@ -69,6 +82,14 @@ def load(config=None, base=HERE, environ=None):
         raise Bad(f'host {s.get("host")!r}: the app has no logins yet, so it listens on 127.0.0.1 only')
     for k in ('port', 'max_jobs'):
         if not isinstance(s.get(k), int) or isinstance(s.get(k), bool) or s[k] < 1: raise Bad(f'{k} must be a whole number above 0: {s.get(k)!r}')
+    for k, dflt in (('batch_jobs', 10), ('upload_max_mb', 1024), ('max_books_per_batch', 50)):
+        s.setdefault(k, dflt)
+        if not isinstance(s[k], int) or isinstance(s[k], bool) or s[k] < 1: raise Bad(f'{k} must be a whole number above 0: {s[k]!r}')
+    lim = s.setdefault('limits', {})
+    if not isinstance(lim, dict): raise Bad('limits must be an object: {"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 5}')
+    for k, v in lim.items():
+        if k not in ('per_call_usd', 'per_book_usd', 'per_batch_usd'): raise Bad(f'limits: unknown key {k!r}')
+        if not isinstance(v, (int, float)) or isinstance(v, bool) or not 0 < v <= 100: raise Bad(f'limits.{k} must be a number of dollars above 0 and at most 100: {v!r}')
     for k in FOLDERS:
         if not isinstance(s.get(k), str) or not s[k]: raise Bad(f'{k} must name a folder')
         s[k] = os.path.normpath(os.path.join(PIPELINE, os.path.expanduser(s[k])))
@@ -77,7 +98,8 @@ def load(config=None, base=HERE, environ=None):
     t = s.setdefault('tools', {})
     t['VERAPDF'] = os.path.expanduser(str(t.get('VERAPDF') or ''))
     t['path_prepend'] = [os.path.expanduser(p) for p in t.get('path_prepend') or []]
-    if s.get('test_reply_dir'): s['test_reply_dir'] = os.path.abspath(os.path.expanduser(s['test_reply_dir']))
+    if s.get('trash_dir'): s['trash_dir'] = os.path.normpath(os.path.join(PIPELINE, os.path.expanduser(s['trash_dir'])))
+    if s.get('test_reply_dir'): s['test_reply_dir'] = os.path.normpath(os.path.join(PIPELINE, os.path.expanduser(s['test_reply_dir'])))   # as the folders
     s['sha'] = fingerprint(s)
     return s
 
@@ -109,7 +131,10 @@ def child_env(s, job_env=None, environ=None):
     env['PATH'] = os.pathsep.join([os.path.dirname(sys.executable)] + s['tools']['path_prepend'] + [environ.get('PATH', '/usr/bin:/bin')])
     if s['tools']['VERAPDF']: env['VERAPDF'] = s['tools']['VERAPDF']
     env['PYTHONUNBUFFERED'] = '1'                            # the log fills as the tools print
+    env['RUNS_DIR'] = os.path.abspath(s['runs'])             # run_api.sh and batch_api.sh write where the app reads (a --config's own runs folder too)
     for k, v in (job_env or {}).items():
         if k not in JOB_ENV: raise ValueError(f'{k} is not a variable a job may set')
+        if k == 'MODEL' and not str(v).startswith('anthropic/'): raise ValueError(f'MODEL {v!r}: the app sends only to a Claude model whose cost it can check')
+        if k == 'FROM' and not s.get('test_batch_from'): raise ValueError('FROM is for test mode only (test_batch_from, from --config)')
         env[k] = str(v)
     return env

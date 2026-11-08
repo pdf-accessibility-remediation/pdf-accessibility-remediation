@@ -27,7 +27,7 @@ def one_page(content, path, tagged=None):
                               Contents=pikepdf.Stream(pdf, content.encode('latin-1')))
     pdf.pages.append(pikepdf.Page(page))
     if tagged: tagged(pdf, pdf.pages[0])
-    pdf.save(path)
+    pdf.save(path, deterministic_id=True)
     return path
 
 # ---- word breaks drawn as gaps
@@ -130,7 +130,7 @@ def sections_pdf(path, order=(1, 3, 2, 4)):
     part.K = pikepdf.Array([sects[n] for n in order]); doc.K = pikepdf.Array([part]); root.K = doc
     root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=nums))
     pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
-    pdf.save(path)
+    pdf.save(path, deterministic_id=True)
     return path
 
 def part_pages(path):
@@ -236,7 +236,7 @@ def figure_pdf(path):
     doc.K = pikepdf.Array(ks + [div]); root.K = doc
     root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=nums))
     pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
-    pdf.save(path)
+    pdf.save(path, deterministic_id=True)
     return path
 
 def test_the_figure_step_runs_unless_the_work_order_turns_it_off(tmp_path):
@@ -423,7 +423,7 @@ def tables_pdf(path, tables, npages=1, caption=False, pageless=()):
     if ids: root.IDTree = pikepdf.Dictionary(Names=pikepdf.Array([x for i, c in sorted(ids, key=lambda t: t[0]) for x in (pikepdf.String(i), c)]))
     for p in range(npages): pages[p].Contents = pikepdf.Stream(pdf, ''.join(draw[p]).encode('latin-1'))
     pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
-    pdf.save(path)
+    pdf.save(path, deterministic_id=True)
     with pikepdf.open(path) as p:                       # saving renumbers the objects
         return [f'{t.objgen[0]} {t.objgen[1]}' for t in elems(elems(p.Root.StructTreeRoot)[0])]
 

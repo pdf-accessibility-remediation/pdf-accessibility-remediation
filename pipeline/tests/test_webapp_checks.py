@@ -22,7 +22,7 @@ PAC = {'by': 'Kim', 'fields': {'pages_checked': '1'}, 'items': {k: {'result': 'p
 
 def make_run(R, title='The Clan Records', record_sha=False):
     os.makedirs(R, exist_ok=True)
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(300, 300)); doc.save(os.path.join(R, 'sample_remediated.pdf'))
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(300, 300)); doc.save(os.path.join(R, 'sample_remediated.pdf'), deterministic_id=True)
     rec = {'document': {'file': 'sample.pdf', 'output': 'sample_remediated.pdf', 'pages': 1},
            'verify': {'doc': {'title': title, 'lang': 'en-US'}, 'tree': {'types': {'Table': 2}}}}
     if record_sha: rec['document']['output_sha256'] = REL.sha_file(os.path.join(R, 'sample_remediated.pdf'))

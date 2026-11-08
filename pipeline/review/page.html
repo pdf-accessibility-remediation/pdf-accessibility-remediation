@@ -38,7 +38,9 @@ textarea { width: 100%; max-width: 100%; min-height: 3.2em; resize: vertical; } 
 .sname label { margin-right: 4px; } .sname #notesBtn { margin-left: 18px; }   /* the name close to its box; the notes button apart */
 /* "Back to the Run Page": a link (it goes to another page) that looks like the header's buttons */
 a.btnlink { display: inline-block; font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); text-decoration: none; }
-a.btnlink:hover { text-decoration: underline; }
+a.btnlink:hover, button:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, var(--panel)); }   /* R1: no underline on hover */
+button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 82%, var(--ink)); }
+#title { display: inline-block; vertical-align: middle; margin-right: 12px; } #home { vertical-align: middle; margin: 0 0 8px; }   /* R4: spaced, touching nothing */
 #back { margin: 0; }
 /* Hide Header at the header's bottom right; while hidden, Show Header at the window's top right */
 .hdr-foot { display: flex; align-items: flex-end; gap: 12px; margin-top: 6px; }
@@ -101,7 +103,7 @@ section > h2 { font-size: 16px; margin: 18px 0 8px; padding-bottom: 4px; border-
 .card[data-status=approved] { border-left-color: var(--ok); }
 .card[data-status=changed] { border-left-color: var(--change); }
 .card[data-status=rejected] { border-left-color: var(--reject); }
-.card[data-status=seen] { border-left-color: var(--seen); }
+.card[data-status=seen] { border-left-color: var(--accent); }   /* no purple (Patrick, 2026-11-07) */
 .card:not([data-status]) { opacity: .92; }
 .flag { background: var(--flag); padding: 0 6px; border-radius: 4px; color: var(--ink); }
 .fields { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 0 0 4px; }
@@ -274,7 +276,15 @@ state.additions = (state.additions || []).filter(a => addById[aid(a)]);
 let view = 'priority', finished = false;
 let draftPoll = null, draftBasis = null, draftStale = false, draftLast = null;   // Build a Draft PDF (below)
 const RETURN_TO = DATA.return_to || null;             // the app's run page (review_workorder.py --return-to), else the terminal
-if (RETURN_TO) { const b = document.getElementById('back'); b.hidden = false; b.querySelector('a').href = RETURN_TO.split('?')[0]; }
+if (RETURN_TO) { const b = document.getElementById('back'); b.hidden = false; b.querySelector('a').href = RETURN_TO.split('?')[0]; homeLink(); }
+// "Home Page" in the header line, after the title's page count (#45 P5): the app's home page, on the run page's own origin
+// (--return-to is checked to be http://127.0.0.1:<port>/… or http://localhost:<port>/…)
+function homeLink() {
+  let o; try { o = new URL(RETURN_TO).origin; } catch (e) { return; }
+  if (document.getElementById('home')) return;
+  const a = document.createElement('a'); a.href = o + '/'; a.className = 'btnlink'; a.id = 'home'; a.textContent = 'Home Page';
+  document.getElementById('title').insertAdjacentElement('afterend', a);
+}
 const NEXT = RETURN_TO ? 'the run page' : 'the terminal';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -718,7 +728,7 @@ if (OCR_ONLY) {                                        // the OCR section alone:
   document.getElementById('title').textContent = 'OCR Text Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
   document.title = 'OCR Text Review';
   const back = document.getElementById('back');
-  if (!back.hidden) back.innerHTML = '<a href="' + esc(RETURN_TO.split('?')[0]) + '" class="btnlink">Back to the Run Page</a> (this page stays open until you close it here or there)';
+  if (!back.hidden) { back.innerHTML = '<a href="' + esc(RETURN_TO.split('?')[0]) + '" class="btnlink">Back to the Run Page</a> (this page stays open until you close it here or there)'; homeLink(); }
   [document.getElementById('sessionName').closest('span'), document.getElementById('progress').parentNode, document.querySelector('.show'),
    document.getElementById('addBtn'), document.getElementById('draftBtn'), document.getElementById('draftLine'), document.getElementById('saveState'), document.getElementById('checkLine'), document.getElementById('finish'),
    document.getElementById('this-session'), document.getElementById('cards')].forEach(x => { x.hidden = true; });
