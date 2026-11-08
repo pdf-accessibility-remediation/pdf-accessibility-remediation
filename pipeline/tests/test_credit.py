@@ -86,3 +86,18 @@ def test_designed_stops_are_never_failed(setup):
     assert d['status'] == 'failed'
     pj = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert "' Log: ' + esc(j.log)" not in pj and "is saved in ' + esc(j.log)" not in pj and '<details class="pp-details"><summary>Details</summary>' in pj
+
+def test_test_mode_keeps_a_failed_read_as_no_credit(setup, monkeypatch):
+    """21-L1: in test mode a refused read is stored as it is (no credit, with its reason), never $0.00, so a run whose
+    estimate has no credit stays no_credit and "Start Remediation" is allowed (test mode lets no_credit through)."""
+    from webapp import runs as RN
+    s = settings(setup, test_reply_dir=str(setup / 'replies'))
+    R = run_folder(setup, name='bk', label='l1', credit=None)
+    monkeypatch.setattr(CR, 'check', lambda timeout=30: (None, 'refused'))
+    d = SP.check_credit(s)
+    assert d['usd'] is None and d['why'] == 'refused' and SP.credit_read(s) is None
+    est = costs.estimate(str(R), 'workorder', costs.limits_of(s), credit_read=SP.credit_read(s))
+    assert est['blocked']['code'] == 'no_credit'
+    j = jobs.create(s['jobs'], 'estimate', 'bk/l1', ['bash', 'run_api.sh', 'x.pdf', 'bk', 'l1'], {}, R=str(R)); jobs.update(s['jobs'], j['id'], status='done')
+    st = RN.pending_state(s, 'bk/l1', str(R))
+    assert st['spend']['ok'] is True                                                    # test mode: allowed

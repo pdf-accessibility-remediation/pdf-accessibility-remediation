@@ -90,9 +90,10 @@ def credit_read(s):
 def check_credit(s):
     """"Check Credit Again": read the credit now (no book content is sent, nothing is paid), keep it for CREDIT_FRESH."""
     from . import credit as CR
-    usd, why = CR.check()
-    if s.get('test_reply_dir') or s.get('test_batch_from'): usd, why = (usd if usd is not None else 0.0), None   # test mode: never blocked here
+    usd, why = CR.check()                                    # stored as it is, test mode too (21-L1): a failed read is no
+                                                             #   credit (test mode lets that through), never $0.00
     d = {'usd': round(usd, 4) if usd is not None else None, 'why': why, 'at': datetime.datetime.now().isoformat(timespec='seconds'), 't': time.time()}
+    os.makedirs(s['jobs'], exist_ok=True)
     tmp = _credit_p(s) + '.tmp'; json.dump(d, open(tmp, 'w', encoding='utf-8')); os.replace(tmp, _credit_p(s))
     return d
 
