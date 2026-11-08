@@ -93,9 +93,12 @@ def row_of(s, run, R):
         except OSError: when = ''
     a = costs.actual(R)
     parts = run.split('/')
+    pages = ((rec or {}).get('document') or {}).get('pages') or (intake.get('original') or {}).get('pages')
+    if not pages and sha: pages = (_load(os.path.join(s['jobs'], 'books-cache.json')) or {}).get(sha, {}).get('pages')
     return {'run': run, 'lang_kind': None if rec else LG.asks(R), 'sha': sha, 'book': (BK.name_of_sha(s, sha, file) if sha else None) or BK.stem_name(file or parts[-2 if parts[0] != 'batches' else -1]),
             'file': BK.shown_file(file) if file else '', 'status': name, 'words': words, 'when': when,
-            'cost': a['usd'], 'reused': a['reused'], 'batch': parts[1] if parts[0] == 'batches' else None, 'finished': bool(rec)}
+            'cost': a['usd'], 'reused': a['reused'], 'batch': parts[1] if parts[0] == 'batches' else None, 'finished': bool(rec),
+            'pages': pages if isinstance(pages, int) else None}
 
 def index(s):
     """Every run's row (cached by its records' mtimes), newest first, with the app's jobs laid over them, and the batches."""
@@ -104,7 +107,7 @@ def index(s):
     rows, fresh, dirty = [], {}, False
     for run, R in run_folders(s['runs']):
         k = key_of(R); c = cache.get(run)
-        if c and c.get('key') == k and 'lang_kind' in c['row']: row = c['row']
+        if c and c.get('key') == k and 'pages' in c['row']: row = c['row']   # a row cached before Q5 has no pages: drawn again
         else:
             try: row = row_of(s, run, R)
             except Exception: continue                      # an unreadable folder is left out, never fails the page
@@ -158,6 +161,11 @@ def group_of(r):
     if st == 'Estimate Ready': return 'not-started'
     return 'in-progress'
 
+def pages_words(n, missing=0):
+    """A Pages cell: "321", "not counted", or a batch's total with the PDFs it leaves out said ("1,195 (1 PDF not counted)")."""
+    if not n: return 'not counted'
+    return f'{n:,}' + (f' ({missing} PDF{"" if missing == 1 else "s"} not counted)' if missing else '')
+
 def pill(g, words=None):
     """The group's pill (its name in words: color is never the only signal), and the exact status beside it."""
     name = GROUP_NAMES[g]
@@ -193,14 +201,15 @@ def batches(s, rows):
                  'not-started': 'Estimate Ready' if bs and all(r['status'] == 'Estimate Ready' for r in bs) else 'Not Started',
                  'in-progress': 'Stopped' if bs and all(r['status'] == 'Stopped' for r in bs) else f'{n_done} of {len(bs)} Ready or Shipped'}[g]
         when = meta.get('created') or min((r['when'] for r in bs if r['when']), default='') or ''
-        out.append({'label': lb, 'name': NM.batch_name(s, lb) or lb, 'books': len(bs) or len(meta.get('books') or []), 'done': done, 'state': state,
-                    'group': g, 'when': when, 'cost': round(sum(r['cost'] or 0 for r in bs), 6)})
+        n_books = len(bs) or len(meta.get('books') or [])
+        known = [r['pages'] for r in bs if r.get('pages')]
+        out.append({'label': lb, 'name': NM.batch_name(s, lb) or lb, 'books': n_books, 'done': done, 'state': state,
+                    'group': g, 'when': when, 'cost': round(sum(r['cost'] or 0 for r in bs), 6),
+                    'pages': sum(known) if known else None, 'pages_missing': n_books - len(known)})
     out.sort(key=lambda b: b['when'] or '', reverse=True)
     return out
 
 # ------------------------------------------------------------------ the page
-def money(x): return '$0.00' if not x else f'${x:.2f}' if x >= 0.01 else '< $0.01'
-
 def run_href(run): return '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
 
 def menu(mid, name, items):
@@ -308,24 +317,23 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
              (f'; the newest {len(shown)} are shown.' if len(shown) < len(items) else '.') + '</p>')
     if shown and view == 'runs':
         B.append('<div class="pp-tw" tabindex="0" role="region" aria-label="Single Runs Table"><table class="hm-t"><thead><tr><th scope="col">Run</th>'
-                 '<th scope="col">Status</th><th scope="col">Date Created</th><th scope="col">AI Cost</th><th scope="col">Action</th></tr></thead><tbody>')
-        for r in shown:
+                 '<th scope="col">Status</th><th scope="col">Pages</th><th scope="col">Date Created</th><th scope="col">Action</th></tr></thead><tbody>')
+        for r in shown:                                     # Q5 (Patrick's test, 2026-11-07): the pill alone; Pages; no AI Cost (it is on the run page)
             label = r.get('name') or r['run'].split('/')[-1]
             rid = 'hm-r-' + hashlib.sha1(r['run'].encode()).hexdigest()[:10]
-            B.append(f'<tr><th scope="row" id="{rid}"><span class="hm-run">{E(label)}</span>{book_cell(r["book"], r["file"])}</th><td>{pill(r["group"], r["words"])}</td>'
-                     f'<td class="pp-nw">{E(D.day(r["when"]) if r["when"] else "date not recorded")}</td>'
-                     f'<td>{E(money(r["cost"]))}' + (' <span class="pp-note">(saved reply)</span>' if r['reused'] else '') +
-                     f'</td><td class="hm-acts"><a class="pp-btn" href="{E(run_href(r["run"]))}" aria-describedby="{rid}">Open</a> ' +
+            B.append(f'<tr><th scope="row" id="{rid}"><span class="hm-run">{E(label)}</span>{book_cell(r["book"], r["file"])}</th><td>{pill(r["group"])}</td>'
+                     f'<td>{E(pages_words(r.get("pages")))}</td><td class="pp-nw">{E(D.day(r["when"]) if r["when"] else "date not recorded")}</td>'
+                     f'<td class="hm-acts"><a class="pp-btn" href="{E(run_href(r["run"]))}" aria-describedby="{rid}">Open</a> ' +
                      menu(f'{rid}-m', label, [('Edit Name', {'data-edit': 'run', 'data-run': r['run']}), ('Move to Trash', {'data-trash': 'run', 'data-run': r['run']})]) +
                      '</td></tr>')
         B.append('</tbody></table></div>')
     elif shown:
         B.append('<div class="pp-tw" tabindex="0" role="region" aria-label="Batches Table"><table class="hm-t"><thead><tr><th scope="col">Batch Name</th>'
-                 '<th scope="col">PDFs</th><th scope="col">Status</th><th scope="col">Date Created</th><th scope="col">AI Cost</th><th scope="col">Action</th></tr></thead><tbody>')
+                 '<th scope="col">Status</th><th scope="col">Pages</th><th scope="col">Date Created</th><th scope="col">Action</th></tr></thead><tbody>')
         for b in shown:
             bid = 'hm-b-' + hashlib.sha1(b['label'].encode()).hexdigest()[:10]
-            B.append(f'<tr><th scope="row" id="{bid}"><span class="hm-run">{E(b["name"])}</span></th><td>{b["done"]} of {b["books"]} PDFs finished</td><td>{pill(b["group"], b["state"])}</td>'
-                     f'<td class="pp-nw">{E(D.day(b["when"]) if b["when"] else "date not recorded")}</td><td>{E(money(b["cost"]))}</td>'
+            B.append(f'<tr><th scope="row" id="{bid}"><span class="hm-run">{E(b["name"])}</span></th><td>{pill(b["group"], b["state"])}</td>'
+                     f'<td>{E(pages_words(b.get("pages"), b.get("pages_missing") or 0))}</td><td class="pp-nw">{E(D.day(b["when"]) if b["when"] else "date not recorded")}</td>'
                      f'<td class="hm-acts"><a class="pp-btn" href="/batch/{E(urllib.parse.quote(b["label"], safe=""))}/" aria-describedby="{bid}">Open</a> ' +
                      menu(f'{bid}-m', b['name'], [('Edit Name', {'data-edit': 'batch', 'data-label': b['label']}), ('Move to Trash', {'data-trash': 'batch', 'data-label': b['label']})]) +
                      '</td></tr>')

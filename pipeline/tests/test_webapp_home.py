@@ -272,3 +272,32 @@ def test_home_js_menu_and_drop_zone():
         assert x in js, x
     tj = open(os.path.join(HERE, 'webapp', 'trash.js'), encoding='utf-8').read()
     assert "if (m) b = m.querySelector('.hm-more');" in tj                          # the dialog gives focus back to "⋯"
+
+def test_workspace_columns_pages_and_no_cost(app):
+    """Q5: single runs show the pill alone (no small status beside it), Pages right of Status, Date Created after it, no AI
+    Cost; batches keep the status words, show their total pages, and have no PDFs or AI Cost column."""
+    t = app['t']; s = S(t)
+    rec = json.loads((app['R'] / 'record.json').read_text()); rec['document']['pages'] = 321; rec['run'] = {'started': '2026-11-06T21:29:00'}
+    (app['R'] / 'record.json').write_text(json.dumps(rec))
+    page = get(app['port'], '/')[1].decode()
+    head = page[page.index('aria-label="Single Runs Table"'):]; head = head[:head.index('</tr>')]
+    assert [h for h in ('Run', 'Status', 'Pages', 'Date Created', 'Action') if f'>{h}</th>' in head] == ['Run', 'Status', 'Pages', 'Date Created', 'Action']
+    assert head.index('>Status<') < head.index('>Pages<') < head.index('>Date Created<') and 'AI Cost' not in head
+    assert '<td>321</td>' in page and 'class="hm-st"' not in page[page.index('Single Runs Table'):]
+    bp = get(app['port'], '/?view=batches')[1].decode()
+    bh = bp[bp.index('aria-label="Batches Table"'):]; bh = bh[:bh.index('</tr>')]
+    assert '>Pages<' in bh and 'AI Cost' not in bh and '>PDFs<' not in bh and 'PDFs finished' not in bp
+    assert 'class="hm-st"' in bp                                                       # the batch's status words stay
+
+@pytest.mark.parametrize('n,missing,want', [(321, 0, '321'), (1195, 0, '1,195'), (None, 0, 'not counted'), (0, 2, 'not counted'),
+                                            (900, 1, '900 (1 PDF not counted)'), (900, 2, '900 (2 PDFs not counted)')])
+def test_pages_words(n, missing, want):
+    assert HM.pages_words(n, missing) == want
+
+def test_a_batch_totals_its_pages(setup):
+    s = S(setup)
+    for n, p in (('a', 100), ('b', 23), ('c', None)):
+        R = setup / 'runs' / 'batches' / 'bp' / n; R.mkdir(parents=True)
+        (R / 'record.json').write_text(json.dumps({'document': {'file': f'{n}.pdf', **({'pages': p} if p else {})}}))
+    b = {x['label']: x for x in HM.index(s)['batches']}['bp']
+    assert (b['pages'], b['pages_missing']) == (123, 1)

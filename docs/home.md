@@ -37,8 +37,10 @@ the review page's "seen" cards use the same blue). The status pills keep their c
   original of a run made from it, so "Review Again" and the first apply of such runs keep working.
 - **My Workspace:** a switch between **Single Runs** and **Batches**, a search (by PDF or run name; by batch name), and a
   filter by status group with each group's count. A single run's row: its run name, the PDF's name, "Source PDF: <file
-  name>", its status, **Date Created**, its AI cost, **Open** and a "⋯" menu. A batch's row: its name, "N of M PDFs
-  finished", its status, Date Created, cost, **Open** and a "⋯" menu. 25 rows at a time (**Show More Runs** /
+  name>", its status pill, **Pages**, **Date Created**, **Open** and a "⋯" menu. A batch's row: its name, its status pill
+  with its state in words beside it ("0 of 2 Ready or Shipped"), Pages (the total of its PDFs; "(1 PDF not counted)"
+  when one has no count), Date Created, **Open** and a "⋯" menu. There is no AI Cost column (Patrick's test, 2026-11-07,
+  Q5): a run's cost is in its run page's header, a batch's on the batch page. 25 rows at a time (**Show More Runs** /
   **Show More Batches**). Listing a run never changes it.
 
 **The "⋯" menus** (Patrick's test, 2026-11-07). Beside **Open** (on a PDF, beside **New Run**), a "⋯" button named "More
@@ -50,7 +52,8 @@ show (`runs/.app/run-names.json`), never its folder; a batch's PDFs are named by
 name box closes, focus is back on the row's "⋯".
 
 **Status groups** (D6, Patrick 2026-11-06). Each row has a pill naming its group in words (color is never the only
-signal), with the exact status in small text beside it, so a Not Ready run never reads as done:
+signal). A batch has its state in small text beside it; a single run has the pill alone (Patrick's test, 2026-11-07),
+and its exact status is on its run page. Done is Ready or Shipped only, so a Not Ready run never reads as done:
 
 | Pill | Color | A run is in it when |
 |---|---|---|
