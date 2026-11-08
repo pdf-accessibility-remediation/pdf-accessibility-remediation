@@ -191,6 +191,12 @@ def test_timeout_counts_its_worst_case():
     res, b, _ = run_with([{'resp': None, 'timeout': True}, ok(cost=0.05)])
     assert res[0]['outcome'] == 'done' and b.spent == pytest.approx(0.45)
 
+def test_a_timeout_records_its_worst_case_and_tells_the_caller_once():
+    """06 M1: what a restart counts toward the book cap is written here (decide.py's on_timeout keeps run.json up to date)."""
+    seen = []; r = dict(req(worst=0.4), on_timeout=seen.append)
+    res, _, _ = run_with([{'resp': None, 'timeout': True}, ok(cost=0.05)], reqs=[r])
+    assert seen == [r] and res[0]['calls'][0]['worst_usd'] == 0.4 and 'worst_usd' not in res[0]['calls'][1]
+
 # ------------------------------------------------------------------ scope and merge
 def test_scope_keeps_only_its_own_figures_and_keys():
     items = digest(4)['figures'][:2] + [{'obj': 'page 9', 'page': 9}]

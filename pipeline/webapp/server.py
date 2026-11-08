@@ -42,9 +42,9 @@ with realpath and must stay inside the runs folder, and a file is served only wh
 Nothing outside the runs folder is ever served (.env, samples/, pipeline/).
 """
 import os, re, json, html, base64, hashlib, threading, traceback, urllib.parse, datetime
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler
 from html.parser import HTMLParser
-from review.server import local_request
+from review.server import local_request, Server
 from review import sessions as S
 from lib.titles import title_case as TC
 from . import config, jobs, runs, manualpage as MP, downloads as DL, home as HM, books as BK, newrun as NR, batches as BT, names as NMS
@@ -655,7 +655,7 @@ def make(s, setup, code=None):
             m = re.search(r'(?:^|;\s*)pdfrem_bn=(open|closed)\b', self.headers.get('Cookie') or '')
             return None if not m else m.group(1) == 'closed'
 
-    return ThreadingHTTPServer(('127.0.0.1', s['port']), H)
+    return Server(('127.0.0.1', s['port']), H)
 
 def card_border(page, R):
     """review.html as the run page serves it: while the PDF on disk is not the one the record describes (changed by hand, a
