@@ -203,8 +203,9 @@ def move_batch(s, label, names=None):
             why = plan_batch(s, label, names)['refused']
             if why: raise Refused(why)
             cost = sum(costs.actual(os.path.join(B, n))['usd'] or 0 for n in picked)
-            back = BT.give_back_all(s, label) if pl.get('saved') else []   # S7: never run, back to the upload list first
             name = _rename(s, B, f'batch - {label}')
+            if pl.get('saved'): BT.give_back_all(s, label, os.path.join(trash_dir(s), name))   # S7, 18-L1: back to the upload
+                                                            #   list only once the folder has moved (a refused move gives back nothing)
         plain = _drop_name(s, 'batches', label)
         log(s, {'what': 'batch', 'label': label, 'from': B, 'to': os.path.join(trash_dir(s), name), 'name': plain, 'pdfs': picked, 'cost_usd': round(cost, 6)})
         _drop_home_cache(s)

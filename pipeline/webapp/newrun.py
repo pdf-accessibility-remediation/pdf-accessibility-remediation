@@ -103,11 +103,10 @@ def take_pdf(s, book, R):
     except BK.Refused as e: raise ValueError(e.words)
 
 def give_back(s, p, mode, orig):
-    """Undo take_pdf when the job can't be made: a moved PDF goes back where it was, a copy is removed."""
+    """Undo take_pdf when the job can't be made: a moved PDF goes back to the upload list through take_back (under the
+    uploads lock, a numbered name when its own is taken: never over a PDF uploaded meanwhile, 18-N1); a copy is removed."""
     try:
-        if mode == 'moved':
-            os.rename(p, orig); n = p[:-4] + '.json'
-            if os.path.isfile(n): os.rename(n, orig[:-4] + '.json')
+        if mode == 'moved': BK.take_back(s, p)
         else: os.remove(p)
         os.rmdir(os.path.dirname(p))
     except OSError: pass

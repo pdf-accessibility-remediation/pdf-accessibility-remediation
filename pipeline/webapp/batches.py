@@ -96,12 +96,24 @@ def start(s, setup, keys, plain, estimate=True):
             try: os.rmdir(p) if os.path.isdir(p) else os.remove(p)
             except OSError: pass
         f.close(); raise
-    with f:
-        f.write(f'# batch {label}, made by the app {datetime.datetime.now().isoformat(timespec="seconds")}: <short name> <absolute path>\n')
-        for b in bs: f.write(f'{b["name"]} {b["path"]}\n')
-    json.dump({'label': label, 'created': datetime.datetime.now().isoformat(timespec='seconds'), 'langs': {}, 'saved': not estimate,
-               'books': [{k: b[k] for k in ('name', 'key', 'file', 'book')} for b in bs]},
-              open(meta_path(s, label), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
+    try:                                                 # 18-N3: the book list and the record too, or the moves are undone
+        with f:
+            f.write(f'# batch {label}, made by the app {datetime.datetime.now().isoformat(timespec="seconds")}: <short name> <absolute path>\n')
+            for b in bs: f.write(f'{b["name"]} {b["path"]}\n')
+        _write_meta(s, label, {'label': label, 'created': datetime.datetime.now().isoformat(timespec='seconds'), 'langs': {}, 'saved': not estimate,
+                               'books': [{k: b[k] for k in ('name', 'key', 'file', 'book')} for b in bs]})
+    except Exception:
+        for p, mode, orig, R in reversed(taken_): NR.give_back(s, p, mode, orig)
+        for b in bs:
+            for d in (os.path.join(folder(s, label), b['name'], 'source'), os.path.join(folder(s, label), b['name'])):
+                try: os.rmdir(d)
+                except OSError: pass
+        for p in (meta_path(s, label), list_path(s, label)):
+            try: os.remove(p)
+            except OSError: pass
+        try: os.rmdir(folder(s, label))
+        except OSError: pass
+        raise
     if plain: NM.set_run_name(s, label, plain, kind='batches')
     if not estimate: return []
     return [estimate_job(s, label, b) for b in bs]
@@ -169,12 +181,13 @@ def remove_saved(s, label, name):
         tmp = lp + '.tmp'; open(tmp, 'w', encoding='utf-8').writelines(keep); os.replace(tmp, lp)
     return back
 
-def give_back_all(s, label):
-    """A saved batch moved to the Trash (S7): its PDFs were never run, so they go back to the upload list, not the Trash."""
+def give_back_all(s, label, base=None):
+    """A saved batch moved to the Trash (S7): its PDFs were never run, so they go back to the upload list, not the Trash.
+    base: where the batch folder is now (in the Trash: the PDFs are taken back from there, after the move, 18-L1)."""
     from . import runs as RN
     out = []
     for b in (_load(meta_path(s, label)) or {}).get('books') or []:
-        R = os.path.join(folder(s, label), b['name']); p = RN.own_pdf(R)
+        R = os.path.join(base or folder(s, label), b['name']); p = RN.own_pdf(R)
         if p: out.append(_back_to_uploads(s, p))
         try: os.rmdir(os.path.join(R, 'source'))
         except OSError: pass

@@ -208,3 +208,35 @@ def test_a_copy_taken_back_is_removed_not_listed_twice(setup):
     BT.start(s, [], keys, 'Later', estimate=False)                                                                  # a.pdf: copied (still needed)
     assert [x['file'] for x in BK.listing(s)] == ['a.pdf']
     assert BT.remove_saved(s, 'Later', 'a') is None and sorted(f for f in os.listdir(setup / 'uploads') if not f.startswith('.')) == ['a.json', 'a.pdf']
+
+# ------------------------------------------------------------------ review 18: 18-L1, 18-N1, 18-N3
+def test_a_saved_batch_whose_trash_move_is_refused_gives_nothing_back(setup, monkeypatch):
+    """18-L1: the PDFs go back to the upload list only once the batch folder has moved; a refused move (the Trash on
+    another disk) leaves the batch as it was, its PDFs inside it."""
+    s = S(setup); keys = three(setup, s)
+    BT.start(s, [], keys, 'Later', estimate=False)
+    def refuse(*a, **k): raise TR.Refused('The Trash is on another disk.')
+    monkeypatch.setattr(TR, '_rename', refuse)
+    with pytest.raises(TR.Refused): TR.move_batch(s, 'Later')
+    assert BK.listing(s) == [] and BT.saved(s, 'Later')
+    assert all((setup / 'runs' / 'batches' / 'Later' / n / 'source' / f'{n}.pdf').is_file() for n in 'abc')
+
+def test_give_back_never_replaces_a_pdf_uploaded_meanwhile(setup):
+    """18-N1: a moved PDF put back when its job can't be made goes through take_back: a numbered name when its own is taken."""
+    s = S(setup); b = upload(setup, s)
+    R = setup / 'runs' / 'bk' / 'x'; R.mkdir(parents=True)
+    p, mode = NR.take_pdf(s, b, str(R))
+    (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'Another'))                                           # uploaded meanwhile
+    other = (setup / 'uploads' / 'bk.pdf').read_bytes()
+    NR.give_back(s, p, mode, b['path'])
+    assert (setup / 'uploads' / 'bk.pdf').read_bytes() == other and (setup / 'uploads' / 'bk-2.pdf').is_file()
+
+def test_a_batch_whose_record_cant_be_written_undoes_the_moves(setup, monkeypatch):
+    """18-N3: the batch record is written inside the rollback: when it fails, the PDFs go back and no batch is left."""
+    s = S(setup); keys = three(setup, s)
+    def boom(*a): raise OSError(28, 'No space left on device')
+    monkeypatch.setattr(BT, '_write_meta', boom)
+    with pytest.raises(OSError): BT.start(s, [], keys, 'Full')
+    monkeypatch.undo()
+    assert sorted(b['file'] for b in BK.listing(s)) == ['a.pdf', 'b.pdf', 'c.pdf']
+    assert not (setup / 'runs' / 'batches' / 'Full').exists() and not os.path.exists(BT.list_path(s, 'Full')) and not os.path.exists(BT.meta_path(s, 'Full'))

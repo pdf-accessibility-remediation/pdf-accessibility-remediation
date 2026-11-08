@@ -364,3 +364,4 @@ renamed to `ilokano-2.pdf` would look for `ilokano-2.txt`). A `--config` may als
 
 After a book has shipped and its record ZIP was downloaded, its run page may offer **Clear This Book's Files** to free
 space. It is optional, never suggested: see [Accessibility evaluation and release](release.md#clearing-a-shipped-book).
+It keeps the run's own original PDF (`source/`, R17): a cleared run still holds the full PDF it was made from.
