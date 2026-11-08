@@ -138,6 +138,17 @@ def save_name(s, label, plain):
     if not saved(s, label): raise ValueError('This batch has started already: its page shows where it is.')
     if not NM.set_run_name(s, label, plain, kind='batches'): raise ValueError('Enter a name for the batch.')
 
+def _back_to_uploads(s, p):
+    """A never-run PDF back to the upload list; a copy (the upload it came from is still listed: an older run needed it)
+    is removed instead, so the list never gets the same content twice."""
+    sha = BK.hashes(s, [p]).get(p)
+    if sha and any(b['key'] == sha for b in BK.listing(s)):
+        os.remove(p)
+        try: os.remove(p[:-4] + '.json')
+        except OSError: pass
+        return None
+    return BK.take_back(s, p)
+
 def remove_saved(s, label, name):
     """"Remove from Batch" while a saved batch hasn't started: the PDF goes back to the upload list (never run: nothing to
     keep), out of the batch's record and book list, and its empty folder goes."""
@@ -147,7 +158,7 @@ def remove_saved(s, label, name):
     if not any(b['name'] == name for b in meta.get('books') or []): raise ValueError('There is no such PDF in this batch.')
     R = os.path.join(folder(s, label), name)
     p = RN.own_pdf(R)
-    back = BK.take_back(s, p) if p else None
+    back = _back_to_uploads(s, p) if p else None
     for d in (os.path.join(R, 'source'), R):
         try: os.rmdir(d)
         except OSError: pass
@@ -164,7 +175,7 @@ def give_back_all(s, label):
     out = []
     for b in (_load(meta_path(s, label)) or {}).get('books') or []:
         R = os.path.join(folder(s, label), b['name']); p = RN.own_pdf(R)
-        if p: out.append(BK.take_back(s, p))
+        if p: out.append(_back_to_uploads(s, p))
         try: os.rmdir(os.path.join(R, 'source'))
         except OSError: pass
     return out

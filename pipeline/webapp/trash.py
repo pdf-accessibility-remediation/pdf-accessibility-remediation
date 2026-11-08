@@ -264,7 +264,8 @@ def upload_still_needed(s, path, sha):
     rp = os.path.realpath(path)
     for j in jobs.all_jobs(s['jobs']):
         R = jobs.run_dir(j, s['runs'])
-        if R and any(jobs.path_in(a, path) for a in j.get('argv') or []) and not os.path.isfile(os.path.join(R, 'record.json')): return j['run']
+        if R and os.path.isdir(R) and any(jobs.path_in(a, path) for a in j.get('argv') or []) and not os.path.isfile(os.path.join(R, 'record.json')):
+            return j['run']                                 # a run moved to the Trash (its folder gone) needs nothing
     BD = os.path.join(s['jobs'], 'batches')
     try: lists = sorted(f for f in os.listdir(BD) if f.endswith('.books.txt'))
     except OSError: lists = []
@@ -275,7 +276,8 @@ def upload_still_needed(s, path, sha):
         for line in lines:
             if line.startswith('#') or ' ' not in line: continue
             name, p = line.split(' ', 1)
-            if os.path.realpath(p) == rp and not os.path.isfile(os.path.join(BT.folder(s, label), name, 'record.json')): return f'batches/{label}/{name}'
+            bd = os.path.join(BT.folder(s, label), name)       # a batch moved to the Trash leaves its book list: its folder is gone
+            if os.path.realpath(p) == rp and os.path.isdir(bd) and not os.path.isfile(os.path.join(bd, 'record.json')): return f'batches/{label}/{name}'
     for u in runs_using(s, sha):
         R = u['R']
         if RN.own_pdf(R): continue

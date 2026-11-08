@@ -185,3 +185,26 @@ def test_the_saved_batch_routes(app):
     st, d = jpost(app['port'], '/api/batch/Later/start', {'label': 'Later'})
     assert st == 409 and 'two or more' in d['error']
     assert sorted(b['file'] for b in BK.listing(settings(t))) == ['b.pdf', 'c.pdf']
+
+def test_a_trashed_older_run_or_batch_no_longer_keeps_the_upload(setup):
+    """A run made before R17 that was moved to the Trash (its job files stay, its folder is gone), or a batch moved to the
+    Trash (its book list stays), needs nothing: the new run moves the upload."""
+    s = S(setup); b = upload(setup, s)
+    old = setup / 'runs' / 'bk' / 'old'; old.mkdir(parents=True); (old / 'run.json').write_text('{}')
+    e = jobs.create(s['jobs'], 'estimate', 'bk/old', ['bash', 'run_api.sh', b['path'], 'bk', 'old'], {}, R=str(old), book_sha=b['key'])
+    jobs.update(s['jobs'], e['id'], status='done')
+    os.makedirs(os.path.join(s['jobs'], 'batches'), exist_ok=True)
+    open(BT.list_path(s, 'gone'), 'w').write(f'# batch gone\nbk {b["path"]}\n')
+    assert TR.upload_still_needed(s, b['path'], b['key']) == 'bk/old'
+    TR.move_run(s, 'bk/old')
+    assert TR.upload_still_needed(s, b['path'], b['key']) is None
+    assert NR.start_estimate(s, [], b['key'], 'New')['pdf'] == 'moved'
+
+def test_a_copy_taken_back_is_removed_not_listed_twice(setup):
+    s = S(setup); keys = three(setup, s)
+    old = setup / 'runs' / 'a' / 'old'; old.mkdir(parents=True)
+    e = jobs.create(s['jobs'], 'estimate', 'a/old', ['bash', 'run_api.sh', str(setup / 'uploads' / 'a.pdf'), 'a', 'old'], {}, R=str(old))
+    jobs.update(s['jobs'], e['id'], status='done')
+    BT.start(s, [], keys, 'Later', estimate=False)                                                                  # a.pdf: copied (still needed)
+    assert [x['file'] for x in BK.listing(s)] == ['a.pdf']
+    assert BT.remove_saved(s, 'Later', 'a') is None and sorted(f for f in os.listdir(setup / 'uploads') if not f.startswith('.')) == ['a.json', 'a.pdf']
