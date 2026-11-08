@@ -221,7 +221,8 @@ def start_replay(s, run, R, label):
     if not src: raise ValueError('The book\'s original PDF wasn\'t found in the folder of original PDFs or of added books.')
     parent = os.path.dirname(R) if not run.startswith('batches/') else os.path.join(s['runs'], short_name(s, {'path': src, 'key': doc.get('sha256')}))   # 05 L2
     name = os.path.basename(parent)
-    D_ = os.path.join(parent, label)
+    D_ = os.path.realpath(os.path.join(parent, label))     # the Run Name passed RUN_NAME above; checked inside the book's folder too
+    if not D_.startswith(os.path.realpath(parent) + os.sep): raise ValueError('A Run Name starts with a letter or digit and uses only letters, digits, "-" and "_" (at most 64).')
     if run_taken(s, D_) or os.path.exists(D_.rstrip(os.sep) + '.reply.txt'): raise ValueError(f'A run named "{label}" already exists for this book. Choose another Run Name.')
     os.makedirs(D_)
     try: src = BK.copy_into(s, src, doc.get('sha256'), D_)   # R17: the new run carries its own copy (replay_to allows source/)
