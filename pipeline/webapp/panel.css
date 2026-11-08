@@ -139,7 +139,7 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .pp-appbar :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 /* the home page (P14: the run page's cards, review/palette.css colors; D6: one pill per status group, its name in words) */
 .hm-card { border-top: 5px solid var(--line); border-radius: 8px; }
-.hm-c-act { border-top-color: var(--accent); } .hm-c-pdfs { border-top-color: var(--seen); } .hm-c-ws { border-top-color: var(--ok); }
+.hm-c-act, .hm-c-pdfs, .hm-c-ws { border-top-color: var(--accent); }   /* Patrick, 2026-11-07: blue, never purple or pink */
 .hm-pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap;
            color: var(--panel); background: var(--muted); border: 1px solid transparent; }
 .hm-g-processing { background: var(--accent); } .hm-g-in-progress { background: var(--change); }

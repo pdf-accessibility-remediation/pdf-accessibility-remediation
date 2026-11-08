@@ -16,14 +16,15 @@ python3 app.py              # opens the home page
 ```
 
 Every page the app serves except the home page itself has a **Home Page** button at the top (after "Skip to the
-content"); on the run and batch pages it sits beside **Hide the Book List** / **Show the Book List (N)**, and on the
+content"); on the run and batch pages it sits beside **Hide the PDF List** / **Show the PDF List (N)**, and on the
 review page and the OCR-only page it follows the page count in the header line. Every link on the app's pages is drawn as
 a button (round 4, P5).
 
 ## The home page
 
 Titled "PDF Accessibility Remediation" (round 4, Patrick 2026-11-06). Its sections are cards like the run page's, in
-review/palette.css's colors.
+review/palette.css's colors; each card's top border is the accent blue (Patrick, 2026-11-07: no purple or pink anywhere;
+the review page's "seen" cards use the same blue). The status pills keep their colors.
 
 - **Runs in Progress:** shown only while a job runs or waits to start: each with its PDF, its run name, its step or
   "Waiting to Start", and **Open**, kept current while the page is open. A job that ends is announced; focus never moves
@@ -233,8 +234,8 @@ display name, "Source PDF:" and its status in words. Its left border shows its s
 opened yet, or while it is processing or waiting to start (then also a small spinning circle at its right edge, a still dot
 with reduced motion, named "Processing" for a screen reader); blue once its review is opened, up to Pending Evaluation;
 yellow when it stopped for a person (its language, for example); green when Ready or Shipped; red when its last job
-failed. The current PDF has the darker background and bold text; hovering gives a lighter shade. **Hide the Book List** /
-**Show the Book List (N)**, beside **Home Page**, closes and opens it; the choice is remembered in this browser (a cookie
+failed. The current PDF has the darker background and bold text; hovering gives a lighter shade. **Hide the PDF List** /
+**Show the PDF List (N)**, beside **Home Page**, closes and opens it; the choice is remembered in this browser (a cookie
 and local storage), and the server lays the page out with it, so moving from PDF to PDF doesn't shift the page (D7: the
 panel also keeps its height until it is drawn, the list keeps its scroll place, and pages cross-fade). Below 48em (a
 phone, 320 px included) it starts closed, in the page's flow, so nothing scrolls sideways. "Skip to the content" skips it.

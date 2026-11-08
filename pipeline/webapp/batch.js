@@ -27,7 +27,7 @@ function closed() {                                             // the server la
 function setOpen(open, remember) {
   const t = $('bn-toggle'), n = nav.querySelectorAll('#bn-list li').length; if (!t) return;
   nav.classList.toggle('closed', !open); document.body.classList.toggle('bn-closed', !open);
-  t.setAttribute('aria-expanded', String(open)); t.textContent = open ? 'Hide the Book List' : 'Show the Book List (' + n + ')';
+  t.setAttribute('aria-expanded', String(open)); t.textContent = open ? 'Hide the PDF List' : 'Show the PDF List (' + n + ')';
   if (remember) {
     try { localStorage.setItem(KEY, open ? '0' : '1'); } catch (e) {}
     document.cookie = 'pdfrem_bn=' + (open ? 'open' : 'closed') + '; path=/; max-age=31536000; SameSite=Strict';   // the server lays out the next page (D7)

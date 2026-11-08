@@ -356,7 +356,7 @@ def body_class(page, closed):
 def toggle(n, open_=True):
     """The side list's button, beside "Home Page" in the app bar (P5)."""
     return (f'<button type="button" class="pp-btn bn-toggle" id="bn-toggle" aria-expanded="{"true" if open_ else "false"}" aria-controls="bn-list">'
-            + ('Hide the Book List' if open_ else f'Show the Book List ({n})') + '</button>')
+            + ('Hide the PDF List' if open_ else f'Show the PDF List ({n})') + '</button>')
 
 def item(b, current):
     import html

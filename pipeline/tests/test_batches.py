@@ -106,7 +106,7 @@ def test_side_column_markup(two):
     assert n.count('aria-current="page"') == 1 and 'href="/run/batches/bb/Book_One/" aria-current="page"' in n and 'Source PDF: Book One.pdf' in n
     assert 'Estimate Ready' in n
     js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
-    assert "matchMedia('(max-width: 48em)')" in js and "setAttribute('aria-expanded'" in js and 'Show the Book List (' in js
+    assert "matchMedia('(max-width: 48em)')" in js and "setAttribute('aria-expanded'" in js and 'Show the PDF List (' in js
 
 def test_again_estimates_only_the_unfinished(two):
     s = settings(two, test_batch_from='v8-p7a')
