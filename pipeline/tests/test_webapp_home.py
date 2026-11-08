@@ -17,7 +17,8 @@ def pdf_bytes(pages=1, title=None, password=None):
     for _ in range(pages): p.add_blank_page()
     if title: p.docinfo['/Title'] = title
     b = io.BytesIO()
-    p.save(b, encryption=pikepdf.Encryption(owner='o', user=password) if password else None)
+    if password: p.save(b, encryption=pikepdf.Encryption(owner='o', user=password))   # qpdf can't fix an encrypted file's /ID
+    else: p.save(b, deterministic_id=True)            # 23-N1: a fixed /ID, so the same PDF written twice is byte-identical
     return b.getvalue()
 
 def S(t, **over): return settings(t, **over)

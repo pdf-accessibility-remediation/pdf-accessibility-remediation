@@ -25,7 +25,7 @@ def md_lines(after=()):
 
 def make_run(tmp_path, sections, after=()):
     R = tmp_path / 'run'; R.mkdir(parents=True)
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(300, 300)); doc.save(str(R / 'b_remediated.pdf'))
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(300, 300)); doc.save(str(R / 'b_remediated.pdf'), deterministic_id=True)
     rec = {'document': {'file': 'b.pdf', 'output': 'b_remediated.pdf', 'pages': 1, 'output_sha256': REL.sha_file(str(R / 'b_remediated.pdf'))},
            'verapdf': {'before': {'not_run': 'VERAPDF=off'}, 'after': {'not_run': 'VERAPDF=off'}}}
     L = md_lines(after)

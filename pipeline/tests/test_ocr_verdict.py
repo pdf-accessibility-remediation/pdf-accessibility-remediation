@@ -36,7 +36,7 @@ def run_folder(tmp_path, it=None, pdf=True):
             page = doc.add_blank_page(page_size=(300, 300))
             page.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font))
             page.Contents = doc.make_stream(f'BT /F1 12 Tf 20 250 Td ({t}) Tj ET'.encode())
-        doc.save(str(R / '_intake' / 'intake.pdf'))
+        doc.save(str(R / '_intake' / 'intake.pdf'), deterministic_id=True)
     return str(R)
 
 # ------------------------------------------------------------------ the checks
