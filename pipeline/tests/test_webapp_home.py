@@ -374,3 +374,16 @@ def test_workspace_swaps_in_place():
               "catch (err) { location.assign(url); }", "const view = sw ? e.submitter.value : cur", "'.hm-filter a, a#hm-more'",
               "e.ctrlKey || e.metaKey || e.shiftKey || e.button"):
         assert x in js, x
+
+def test_home_page_ends_the_source_line_on_a_single_run(setup):
+    """U3: a single run's header has "Home Page" at the end of its "Source PDF:" line, not beside the title; a batch PDF
+    keeps both buttons on its batch line."""
+    s = S(setup); R = setup / 'runs' / 'bk' / 'r1'; R.mkdir(parents=True)
+    (R / 'record.json').write_text(json.dumps({'document': {'file': 'bk.pdf', 'sha256': 'a' * 64}}))
+    h = W.app_header(s, 'bk/r1', str(R))
+    top = h[h.index('<div class="pp-hd-top">'):h.index('</div>')]
+    src = h[h.index('<div class="mc-book pp-hd-src">'):]
+    assert 'Home Page' not in top and src.index('Source PDF: bk.pdf') < src.index('>Home Page</a>') and h.count('aria-label="App"') == 1
+    B = setup / 'runs' / 'batches' / 'b1' / 'x'; B.mkdir(parents=True); (B / 'record.json').write_text(json.dumps({'document': {'file': 'x.pdf'}}))
+    hb = W.app_header(s, 'batches/b1/x', str(B))
+    assert '<div class="pp-hd-batch">' in hb and hb.index('<div class="pp-hd-batch">') < hb.index('>Home Page</a>')

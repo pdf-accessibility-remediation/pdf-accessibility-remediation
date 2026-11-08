@@ -135,6 +135,18 @@ def index(s):
     rows.sort(key=lambda r: r['when'] or '', reverse=True)
     return {'runs': rows, 'batches': batches(s, rows)}
 
+_warming = threading.Lock()
+def warm(s, wait=False):
+    """Bring the home list's cache up to date in the background (U3, Patrick 2026-11-07): after a job ends or a move, so
+    the next click on "Home Page" is served from a ready list. Only rows whose records changed are read again."""
+    def go():
+        if not _warming.acquire(blocking=False): return     # one at a time; a later pass catches up
+        try: index(s)
+        except Exception: pass
+        finally: _warming.release()
+    if wait: go()
+    else: threading.Thread(target=go, daemon=True).start()
+
 ACTIVE_WORDS = {'estimate': 'Estimating', 'spend': 'Running', 'rerun': 'Running', 'replay': 'Running', 'apply': 'Running',
                 'review': 'Waiting for Review', 'pin': 'Running', 'ocr': 'Waiting for Review', 'discard': 'Running', 'batch': 'Running'}
 

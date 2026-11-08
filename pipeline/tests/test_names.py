@@ -32,7 +32,7 @@ def test_a_person_names_a_book_and_every_page_follows(setup):
     assert {r['run']: r for r in HM.index(s)['runs']}['bk/r1']['book'] == 'A Good Book'
     assert os.path.isfile(os.path.join(s['jobs'], 'home-index.json'))
     NM.set_book_name(s, b['key'], '  The  Good‮ Book ')
-    assert not os.path.exists(os.path.join(s['jobs'], 'home-index.json'))        # the cache is built again
+    assert os.path.exists(os.path.join(s['jobs'], 'home-index.json'))            # U3: the cache stays; names are read on top
     assert BK.listing(s)[0]['name'] == 'The Good Book' and {r['run']: r for r in HM.index(s)['runs']}['bk/r1']['book'] == 'The Good Book'
     NM.set_book_name(s, b['key'], 'Third Name')
     e = json.load(open(os.path.join(s['jobs'], 'book-names.json')))[b['key']]

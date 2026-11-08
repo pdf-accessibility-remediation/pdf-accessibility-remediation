@@ -27,8 +27,15 @@ def ping(port):
 def interrupted(*a): raise KeyboardInterrupt
 
 def dispatcher(s, stop):
+    from webapp import home as HM
+    ended = None
+    HM.warm(s)                                                    # U3: the home list ready before the first click
     while not stop.wait(1.0):
-        try: jobs.tick(s['jobs'], s); runs.auto_apply(s)          # "Finish Review" applies at once (D3)
+        try:
+            jobs.tick(s['jobs'], s); runs.auto_apply(s)          # "Finish Review" applies at once (D3)
+            now = {j['id'] for j in jobs.all_jobs(s['jobs']) if j['status'] not in jobs.ACTIVE}
+            if ended is not None and now - ended: HM.warm(s)     # U3: a job ended: refresh the home list in the background
+            ended = now
         except Exception:
             with open(os.path.join(s['jobs'], 'server.log'), 'a', encoding='utf-8') as f: f.write(f'{datetime.datetime.now().isoformat(timespec="seconds")} dispatcher\n{traceback.format_exc()}\n')
 

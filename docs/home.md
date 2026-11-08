@@ -16,7 +16,8 @@ python3 app.py              # opens the home page
 ```
 
 Every page the app serves except the home page itself has a **Home Page** button at the top (after "Skip to the
-content"). On a single run's page it sits right beside the page's name, on the same line (R4); on the batch page
+content"). On a single run's page it ends the "Source PDF:" line, as on any page without a PDF list button (U3,
+Patrick 2026-11-07); on the batch page
 **Hide the PDF List** / **Show the PDF List (N)** comes first, then **Home Page** (S4); on a batch PDF's page both are on
 its "Assigned to the batch" line, in that order (S3). On the review page and the OCR-only page it follows the page count in the header line, spaced so it touches
 nothing else. Every link on the app's pages is drawn as a button (round 4, P5); the side list's entries, "Batch: <name>"
@@ -97,6 +98,12 @@ drawn, so a new name shows everywhere at once. Under it,
 everywhere a book is named (the home page, a run page's header, the batch page and its side column), a line reads
 "Source PDF: <file name>". This is the one file name the pages show (Patrick, 2026-11-05): it tells two copies of
 a book apart. Names are cleaned (no control or direction characters) and escaped.
+
+**The home list's speed** (U3, Patrick 2026-11-07). The list is cached (`runs/.app/home-index.json`), and only the rows
+whose records changed are read again. A rename used to throw the whole cache away: on 750 runs and 227 batches the next
+home page then took 3.0 s to rebuild, against 0.03 s warm. Names are now applied when the list is read, so a rename keeps
+the cache (0.05 s after one), and the app refreshes the list in the background whenever a job ends and after a move to
+the Trash, so a click on **Home Page** is served from a ready list.
 
 **Statuses** use one set of words everywhere: Not Ready, Pending Evaluation, Ready, Shipped (each followed by "· N
 issues noted" when it has them), Waiting for Review, Waiting for a Language, Estimating, Estimate Ready, Running, Waiting

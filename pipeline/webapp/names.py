@@ -84,8 +84,7 @@ def set_book_name(s, sha, raw):
         hist = (e.get('history') or []) + ([{'name': e['name'], 'at': e.get('at')}] if e.get('name') else [])
         d[sha] = {'name': name, 'at': now(), 'history': hist}
         _save(_p(s, 'book-names.json'), d)
-    try: os.remove(_p(s, 'home-index.json'))                # the home page's cache is built again
-    except OSError: pass
+    # the home page's cache stays (U3): names are applied when the list is read, so a rename never rebuilds it
     return name
 
 # ------------------------------------------------------------------ runs and batches
@@ -112,8 +111,7 @@ def set_run_name(s, run, raw, kind='runs'):
         d = _load(_p(s, 'run-names.json'))
         d.setdefault(kind, {})[run] = {'name': name, 'at': now()}
         _save(_p(s, 'run-names.json'), d)
-    try: os.remove(_p(s, 'home-index.json'))
-    except OSError: pass
+    # the home page's cache stays (U3): names are applied when the list is read
     return name
 
 def run_name(s, run):

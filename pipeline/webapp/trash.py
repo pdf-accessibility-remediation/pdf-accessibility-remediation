@@ -88,8 +88,9 @@ def _rename(s, src, base):
     raise Refused('The Trash already holds too many items of this name. Empty the Trash, then try again.')
 
 def _drop_home_cache(s):
-    try: os.remove(os.path.join(s['jobs'], 'home-index.json'))
-    except OSError: pass
+    """After a move: the home list drops the moved folders by itself (it lists what is on disk), so its cache is kept
+    and only refreshed in the background (U3: a whole rebuild took 3 s on 750 runs)."""
+    HM.warm(s)
 
 def _drop_name(s, kind, key):
     """A run's or batch's plain name out of run-names.json; returned for the log."""

@@ -320,3 +320,6 @@ header.nr-head { padding-top: 18px; } header.nr-head h1 { margin: 0 0 10px; }
 .pp-form-dlg .pp-field-e { margin: 4px 0 0; } .pp-form-dlg .dlg-msg { border: 1px solid var(--reject); border-radius: 4px; padding: 6px 10px; margin: 8px 0; }
 .pp-form-dlg .dlg-msg[hidden], .pp-form-dlg .pp-field-e[hidden] { display: none; }
 .pp-form-dlg .nb-pdf { display: block; flex: 1 1 14em; min-width: 0; }
+/* U3: "Home Page" at the end of the "Source PDF:" line where there is no PDF list button */
+.pp-hd-src { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 2px 0 4px; }
+.pp-hd-src .pp-appbar { margin: 0; padding: 0; max-width: none; }
