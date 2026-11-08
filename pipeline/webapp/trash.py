@@ -22,7 +22,7 @@ so a later run reusing the label from a terminal never shows it; the home page's
 """
 import os, re, json, errno, fcntl, datetime, contextlib
 from lib import runlock, costs, release as REL
-from . import jobs, books as BK, names as NM, home as HM
+from . import config, jobs, books as BK, names as NM, home as HM
 
 CONFIRM_RUN = 'The remediated PDF, its report and its review go with it.'
 SAVED_BACK = ('Nothing was run in this batch, so its PDFs go back to the upload list, not to the Trash. '
@@ -131,8 +131,12 @@ def _run_dir(s, run):
     holding a run's own files (HM.is_run); else Refused."""
     parts = run.split('/')
     if any(not x or x.startswith('.') for x in parts): raise Refused('There is no such run.')
-    R = os.path.realpath(os.path.join(s['runs'], *parts))
-    if not R.startswith(os.path.realpath(s['runs']) + os.sep) or not os.path.isdir(R) or not HM.is_run(R): raise Refused('There is no such run.')
+    base = os.path.realpath(s['runs']); R = base
+    for x in parts:                                      # each part picked from the folder's own listing (CodeQL py/path-injection)
+        R = config.entry(R, x)
+        if R is None: raise Refused('There is no such run.')
+    R = os.path.realpath(R)
+    if not R.startswith(base + os.sep) or not os.path.isdir(R) or not HM.is_run(R): raise Refused('There is no such run.')
     return R
 
 # ------------------------------------------------------------------ a single run
@@ -153,7 +157,7 @@ def move_run(s, run):
     with _locks([R]):
         why = why_busy(s, run, R)
         if why: raise Refused(why)
-        name = _rename(s, R, f'{run.split("/")[0]} - {run.split("/")[1]}')
+        name = _rename(s, R, f'{os.path.basename(os.path.dirname(R))} - {os.path.basename(R)}')   # the checked folder's own names
     plain = _drop_name(s, 'runs', run)
     log(s, {'what': 'run', 'run': run, 'from': R, 'to': os.path.join(trash_dir(s), name), 'name': plain, 'shipped': pl['shipped']})
     _drop_home_cache(s)
