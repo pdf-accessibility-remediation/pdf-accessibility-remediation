@@ -192,7 +192,7 @@ def replay_to(R, D):
     if os.path.exists(D) and [f for f in os.listdir(D) if f != 'source']: raise Refused(f'{D} is not empty: give a new run folder')   # source/: its own PDF (R17)
     reply = D.rstrip(os.sep) + '.reply.txt'
     if os.path.exists(reply): raise Refused(f'{reply} exists already')
-    from lib import ocrwords, origin
+    from lib import ocrwords, origin, replies
     os.makedirs(D, exist_ok=True)
     old_in = os.path.join(R, '_intake')
     if os.path.exists(os.path.join(old_in, 'intake.json')):
@@ -201,7 +201,8 @@ def replay_to(R, D):
             if os.path.exists(os.path.join(old_in, f)): shutil.copyfile(os.path.join(old_in, f), os.path.join(D, '_intake', f))
     open(reply, 'w', encoding='utf-8').write(rec['raw_reply'])
     run = rec.get('run') or {}
-    json.dump({**{k: run[k] for k in ('model', 'temperature') if k in run}, **ocrwords.carried(run), **origin.carried(rec)},
+    json.dump({**{k: run[k] for k in ('model', 'temperature') if k in run}, **ocrwords.carried(run), **origin.carried(rec),
+               **replies.write(rec, reply)},       # its figure requests' answers, beside it (issue #63)
               open(reply + '.meta.json', 'w'))
     doc = rec.get('document') or {}
     cmd = (f'INTAKE_REUSE=1 REPLY={reply} REVIEW=1 RUN_DIR={D} bash run_api.sh <the original PDF: {doc.get("file")}, '

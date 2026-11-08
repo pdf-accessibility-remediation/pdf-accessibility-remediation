@@ -75,7 +75,7 @@ ROWS = [
      'The run stopped before it finished.', 'The computer restarted or the run was stopped before the AI call. Nothing was sent.',
      'Select "Try Again": the steps already done are reused.', ['retry'], None),
     # --- run_api.sh before the pipeline (log only)
-    ('B7', 'start', has('MAX_USD must be a number of dollars'), ('run_api.sh', 'MAX_USD must be a number of dollars'),
+    ('B7', 'start', has('MAX_USD must be a number of dollars'), ('run_api.sh', '$v must be a number of dollars'),
      'The app sent a cost limit the run couldn\'t read.', 'Nothing was sent to the AI service.', WHOEVER, [], None),
     ('B1', 'start', has('no such PDF: '), ('run_api.sh', 'no such PDF: '),
      'The book\'s file couldn\'t be found.', 'The PDF this run was started from is no longer where it was. Nothing was sent.',
@@ -135,8 +135,11 @@ ROWS = [
     # --- the paid call (decide.py; run.json error, finish_reason)
     ('F0', 'call', has('could not reach OpenRouter to look up the model'), ('decide.py', 'could not reach OpenRouter to look up the model'),
      'The connection to the AI service failed before anything was sent.', 'Nothing was charged.', 'When this computer is online again, select "Get a New Estimate", then "Start Remediation".', ['estimate'], None),
-    ('F1', 'call', lambda c: re.search(r'refusing: worst-case \$[\d.]+ is over the \$[\d.]+ cap', c['text']), ('decide.py', "refusing: worst-case ${est_in + worst_out:.2f} is over the ${args.max_usd:.2f} cap"),
+    ('F1', 'call', lambda c: re.search(r'refusing: worst-case \$[\d.]+ is over the \$[\d.]+ cap', c['text']), ('decide.py', "refusing: worst-case ${worst:.2f} is over the ${args.max_usd:.2f} cap"),
      'The cost went over the limit after the estimate, so nothing was sent.', 'Prices or the request changed since the estimate, and the run kept to the amount you agreed to.',
+     'Select "Get a New Estimate" to see the new cost.', ['estimate'], None),
+    ('F1b', 'call', lambda c: re.search(r'refusing before any call: (the worst case of this book|figure request \S+ worst case)', c['text']), ('decide.py', 'book cap. To run it'),
+     'The cost went over the limit for this book after the estimate, so nothing was sent.', 'Prices or the request changed since the estimate, and the run kept to the amount you agreed to.',
      'Select "Get a New Estimate" to see the new cost.', ['estimate'], None),
     ('F2', 'call', lambda c: re.search(r'refusing: \$[\d.]+ credit available', c['text']), ('decide.py', 'credit available, worst case is'),
      'There isn\'t enough credit, so nothing was sent.', 'The AI service\'s credit is lower than the most this run could cost.',

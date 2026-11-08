@@ -60,7 +60,7 @@ def _workorder(R):
     per_call = max((p.get('worst_case_usd') or 0) for p in passes) if passes else e['worst_case_total_usd']
     att = _load(os.path.join(R, 'attempts.json')) or []
     spent = e.get('spent_before_usd')
-    if spent is None: spent = round(sum((a.get('cost_usd') or 0) for a in att if isinstance(a, dict)), 6)
+    if spent is None: spent = round(sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in att if isinstance(a, dict)), 6)   # decide.py's sum: a charge not known counts at its worst case
     covered = {'estimate': {k: v for k, v in e.items() if k != 'credit_available_usd'},
                'request': _sha(os.path.join(R, 'request.json')), 'digest': _sha(os.path.join(R, '_audit', 'digest.json')),
                'model': run.get('model'), 'prompt': run.get('prompt_sha256')}
@@ -93,8 +93,8 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
     total = float(e['worst_case_total_usd'])
     credit = e.get('credit_available_usd')
     if credit is None and credit_read is not None: credit = credit_read
-    book_cap = e.get('book_cap_usd')
-    per_book = min(L['per_book_usd'], book_cap) if book_cap is not None else L['per_book_usd']
+    book_cap = e.get('book_cap_usd')                     # present on #63's shape; the app's own limit is the one that binds (Spend passes it as BOOK_MAX_USD)
+    per_book = L['per_book_usd']
     fits = {'per_call': x['per_call'] <= L['per_call_usd'] if claude else None,
             'per_book': (total + x['spent_before']) <= per_book if claude else None,
             'credit': None if credit is None else total <= credit}
@@ -131,7 +131,7 @@ def actual(R):
             ai = origin.summary(rec)
         except Exception: ai = {}
         pages = (rec.get('document') or {}).get('pages')
-        return {'usd': round(this + earlier, 6), 'earlier_usd': round(earlier, 6), 'calls': (0 if reused else 1) + len(rec.get('earlier_attempts') or []),
+        return {'usd': round(this + earlier, 6), 'earlier_usd': round(earlier, 6), 'calls': (0 if reused else len(run.get('passes') or []) or 1) + len(rec.get('earlier_attempts') or []),
                 'per_page_usd': round((this + earlier) / pages, 6) if pages and (this + earlier) else None, 'reused': reused,
                 'original_call': {'usd': ai.get('cost_usd'), 'date': ai.get('date')} if reused else None, 'finished': True,
                 'estimate_usd': ((run.get('estimate') or {}).get('worst_case_total_usd'))}
@@ -139,7 +139,7 @@ def actual(R):
     reused = bool(run.get('response_from'))
     this = 0.0 if reused else ((run.get('usage') or {}).get('cost_usd') or 0.0)
     earlier = sum((a.get('cost_usd') or 0) for a in _load(os.path.join(R, 'attempts.json')) or [] if isinstance(a, dict))
-    return {'usd': round(this + earlier, 6), 'earlier_usd': round(earlier, 6), 'calls': (1 if this else 0) + len(_load(os.path.join(R, 'attempts.json')) or []),
+    return {'usd': round(this + earlier, 6), 'earlier_usd': round(earlier, 6), 'calls': (len(run.get('passes') or []) or (1 if this else 0)) + len(_load(os.path.join(R, 'attempts.json')) or []),
             'per_page_usd': None, 'reused': reused, 'original_call': None, 'finished': False,
             'estimate_usd': ((run.get('estimate') or {}).get('worst_case_total_usd'))}
 
@@ -149,18 +149,21 @@ def batch(Rs, limit=None, limits=None, credit_read=None):
     L = limits or limits_of()
     lim = L['per_batch_usd'] if limit is None else limit
     books, ceiling, spent, credit, per_call, blocked = [], 0.0, 0.0, None, 0.0, []
+    requests, per_book = 0, None                         # every AI request of the books to send, and the largest book's bound (#63's shape)
     for R in Rs:
         a = actual(R); spent += a['usd']
         if os.path.isfile(os.path.join(R, 'record.json')) or (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
             books.append({'R': R, 'estimate': None, 'adds_usd': 0.0}); continue
         e = estimate(R, limits=L, credit_read=credit_read)
         if e:
-            ceiling += e['ceiling_usd']; per_call = max(per_call, e['per_call_ceiling_usd'])
+            ceiling += e['ceiling_usd']; per_call = max(per_call, e['per_call_ceiling_usd']); requests += e['requests']
+            if e['bounds']['BOOK_MAX_USD'] is not None: per_book = max(per_book or 0, e['bounds']['BOOK_MAX_USD'])
             if e['credit_usd'] is not None: credit = e['credit_usd'] if credit is None else min(credit, e['credit_usd'])
             if e['blocked'] and e['blocked']['code'] not in ('credit', 'no_credit'): blocked.append((R, e['blocked']))
         books.append({'R': R, 'estimate': e, 'adds_usd': e['ceiling_usd'] if e else None})
-    return {'schema': SCHEMA, 'books': books, 'ceiling_usd': round(ceiling, 4), 'per_call_ceiling_usd': per_call, 'expected': None,
+    return {'schema': SCHEMA, 'books': books, 'ceiling_usd': round(ceiling, 4), 'per_call_ceiling_usd': per_call, 'expected': None, 'requests': requests,
             'spent_usd': round(spent, 6), 'credit_usd': credit, 'limit_usd': lim,
             'fits': {'batch': ceiling <= lim, 'credit': None if credit is None else ceiling <= credit},
             'blocked': blocked,
-            'bounds': {'MAX_USD': bound(per_call, L['per_call_usd']) if per_call else None, 'BATCH_MAX_USD': bound(ceiling, lim)}}
+            'bounds': {'MAX_USD': bound(per_call, L['per_call_usd']) if per_call else None, 'BATCH_MAX_USD': bound(ceiling, lim),
+                       **({'BOOK_MAX_USD': per_book} if per_book is not None else {})}}

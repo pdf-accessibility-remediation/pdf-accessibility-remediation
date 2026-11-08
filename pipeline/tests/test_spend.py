@@ -242,19 +242,13 @@ def test_test_mode_spend_is_a_saved_reply(setup):
     R2 = run_folder(setup, label='l2', price='ASSUMED $3 / $15 per million tokens (offline)')       # offline prices: allowed in test mode only
     assert costs.estimate(str(R2))['blocked']['code'] == 'offline'
 
-def test_run_api_carries_63s_max_usd_hunk():
-    """L1: the whole run_api.sh hunk of e9afcba (#63, alt text past 100 images), byte for byte."""
+def test_run_api_wires_each_cap_once():
+    """#63 (figure requests past 100 images): MAX_USD and BOOK_MAX_USD are checked as numbers and passed on, once each."""
     sh = open(os.path.join(HERE, 'run_api.sh'), encoding='utf-8').read()
-    for line in ('# MAX_USD=3 bash run_api.sh …   the cap on one call\'s worst case, in dollars (default 2, set in decide.py; Claude models only)',
-                 'if [[ -n ${MAX_USD:-} && ! $MAX_USD =~ ^[0-9]+([.][0-9]+)?$ ]]; then echo "MAX_USD must be a number of dollars: $MAX_USD"; exit 1; fi',
-                 '[[ -z ${MAX_USD:-} ]] || MT+=(--max-usd "$MAX_USD")',
-                 'echo "AUTO=1: sending without asking (decide.py still refuses a Claude estimate over the \\$${MAX_USD:-2} cap or your credit)"'):
-        assert line in sh, line
-    r = subprocess.run(['git', 'cat-file', '-e', 'e9afcba'], cwd=HERE, capture_output=True)
-    if r.returncode == 0:
-        theirs = subprocess.run(['git', 'diff', '-U0', 'e9afcba~1', 'e9afcba', '--', 'run_api.sh'], cwd=HERE, capture_output=True, text=True).stdout
-        for l in theirs.splitlines():
-            if l.startswith('+') and not l.startswith('+++'): assert l[1:] in sh
+    assert sh.count('--max-usd "$MAX_USD"') == 1 and sh.count('--book-max-usd "$BOOK_MAX_USD"') == 1
+    assert 'for v in MAX_USD BOOK_MAX_USD; do' in sh and '$v must be a number of dollars' in sh
+    assert "# MAX_USD=3 bash run_api.sh …   the cap on one call's worst case, in dollars (default 2, set in decide.py; Claude models only)" in sh
+    assert 'a book over the \\$${BOOK_MAX_USD:-5} book cap' in sh
 
 # ------------------------------------------------------------------ New Run's names and Try Again
 def test_short_name_is_unique_per_sha(setup):
@@ -419,3 +413,43 @@ def test_a_batchs_estimates_run_ten_at_once(setup):
     assert jobs.load(J, late['id'])['status'] in ('queued', 'done')                # and held the newer estimate behind it
     assert wait(lambda: (jobs.tick(J, s), jobs.load(J, late['id'])['status'] == 'done')[1], 30)
     assert jobs.load(J, late['id'])['started'] >= jobs.load(J, b['id'])['ended']
+
+# ------------------------------------------------------------------ figure requests (#63, figure requests past 100 images)
+PASSES = [{'pass': '1', 'worst_case_usd': 0.9}, {'pass': '2', 'worst_case_usd': 0.45}, {'pass': '3', 'worst_case_usd': 0.46}]
+
+def test_the_book_limit_is_the_apps_and_binds_the_books_total(setup):
+    R = run_folder(setup, worst=6.2, passes=[{'pass': '1', 'worst_case_usd': 0.9}], book_cap_usd=5.0)
+    e = costs.estimate(str(R))
+    assert e['blocked']['code'] == 'per_book' and e['limits']['per_book_usd'] == 5.0            # the default: $5
+    e = costs.estimate(str(R), limits=costs.limits_of({'limits': {'per_book_usd': 10}}))         # the app's setting can raise it
+    assert e['blocked'] is None and e['limits']['per_book_usd'] == 10 and e['bounds']['BOOK_MAX_USD'] == 6.21
+    e = costs.estimate(str(run_folder(setup, label='l2', worst=1.81, passes=PASSES, book_cap_usd=5.0)), limits=costs.limits_of({'limits': {'per_book_usd': 1.5}}))
+    assert e['blocked']['code'] == 'per_book'                                                    # and lower it
+
+def test_a_batch_adds_every_request_and_binds_the_largest_book(setup):
+    a = run_folder(setup, label='a', worst=1.81, passes=PASSES, book_cap_usd=5.0, spent_before_usd=0.2)
+    b = run_folder(setup, label='b', worst=0.5)
+    t = costs.batch([str(a), str(b)])
+    assert t['requests'] == 4 and t['ceiling_usd'] == 2.31 and t['per_call_ceiling_usd'] == 0.9
+    assert t['bounds'] == {'MAX_USD': 0.91, 'BATCH_MAX_USD': 2.32, 'BOOK_MAX_USD': 2.02}
+
+def test_actual_counts_every_request(setup):
+    R = run_folder(setup, label='done', worst=1.0)
+    (R / 'record.json').write_text(json.dumps({'cost_total_usd': 1.5, 'document': {'pages': 300},
+                                               'run': {'usage': {'cost_usd': 1.5}, 'passes': [{}] * 6}, 'earlier_attempts': []}))
+    assert costs.actual(str(R))['calls'] == 6
+
+@pytest.mark.parametrize('files,run,want', [
+    ({'response.json': {}}, {'usage': {'cost_usd': 0.9}, 'finish_reason': 'stop', 'figure_passes': {'state': 'calling'}}, 'estimate'),
+    ({'workorder.json': {}, 'response.json': {}}, {'usage': {'cost_usd': 0.9}, 'figure_passes': {'state': 'calling'}}, 'estimate'),
+    ({'workorder.json': {}, 'response.json': {}}, {'usage': {'cost_usd': 0.9}, 'figure_passes': {'state': 'merged'}}, 'rerun'),
+    ({'response.json': {}}, {'usage': {'cost_usd': 0.5}, 'finish_reason': 'stop', 'estimate': {'passes': [{}, {}]}}, 'estimate')])
+def test_try_again_with_figure_requests(tmp_path, files, run, want):
+    for n, d in files.items(): (tmp_path / n).write_text(json.dumps(d))
+    (tmp_path / 'run.json').write_text(json.dumps(run))
+    assert NR.retry_kind(str(tmp_path)) == want
+
+def test_the_pages_name_the_number_of_requests():
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert "' for ' + e.requests + ' AI requests'" in js
+    assert "T.requests + ' AI requests" in open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()

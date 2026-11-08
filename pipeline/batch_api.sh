@@ -186,7 +186,7 @@ PY
   SUMMARY_DONE=1
 }
 tidy() {   # the book lists and copied replies were only working files
-  [[ -n ${KEEP:-} ]] || rm -f "$B/books.tsv" "$B/todo.tsv" "$B"/*.reply.txt "$B"/*.reply.txt.meta.json
+  [[ -n ${KEEP:-} ]] || rm -f "$B/books.tsv" "$B/todo.tsv" "$B"/*.reply.txt "$B"/*.reply.txt.meta.json "$B"/*.reply.txt.passes.json
 }
 finish() {
   local rc=$?; trap - EXIT
@@ -296,7 +296,7 @@ if [[ -n ${FROM:-} ]]; then
   python3 - "$B/todo.tsv" "$RUNS_DIR" "$FROM" "$B" <<'PY' || exit 1
 import sys, json, os, math
 import shutil
-from lib import ocrwords, origin
+from lib import ocrwords, origin, replies
 books, runs, src, B = sys.argv[1:5]; bad = []
 for line in open(books):
     name = line.split('\t')[0]
@@ -314,7 +314,8 @@ for line in open(books):
     open(os.path.join(B, f'{name}.reply.txt'), 'w', encoding='utf-8').write(r['raw_reply'])
     json.dump({**{k: r['run'][k] for k in ('model', 'temperature') if k in r['run']},      # the new record keeps the original's
                **ocrwords.carried(r['run']),       # the OCR-word list the reply was written for (never the one it was replayed against)
-               **origin.carried(r)},               # the original call's cost, model, prompt and date (sponsor checklist 11.5)
+               **origin.carried(r),                # the original call's cost, model, prompt and date (sponsor checklist 11.5)
+               **replies.write(r, os.path.join(B, f'{name}.reply.txt'))},   # its figure requests' answers, beside it (issue #63)
               open(os.path.join(B, f'{name}.reply.txt.meta.json'), 'w'))
 if bad: sys.exit(f'stopped: no saved reply under {src} for {", ".join(bad)}')
 print('  saved replies found for every book')
@@ -342,7 +343,8 @@ for line in open(books):
     if e.get('approximate'): approx += e['worst_case_total_usd']        # not a Claude model: not counted against the cap
     else: total += e['worst_case_total_usd']; capped_n += 1
     if e.get('credit_available_usd') is not None: credit = e['credit_available_usd'] if credit is None else min(credit, e['credit_available_usd'])
-    rows.append(f'  {name:28} worst case ${e["worst_case_total_usd"]:.2f}{" (approximate)" if e.get("approximate") else ""}  ({e["input_tokens"]:,} input tokens, {e["images"]} images)')
+    rows.append(f'  {name:28} worst case ${e["worst_case_total_usd"]:.2f}{" (approximate)" if e.get("approximate") else ""}  ({e["input_tokens"]:,} input tokens, {e["images"]} images'
+                + (f' in {e["requests"]} requests' if (e.get('requests') or 1) > 1 else '') + ')')
 print('\n'.join(rows))
 cr = '' if credit is None else f'   credit ${credit:.2f}'
 if capped_n:                                     # at least one Claude book counts toward the cap

@@ -12,6 +12,12 @@
 # OUT=clan.pdf bash run_api.sh …   names the result; by default it is <original file name>_remediated.pdf
 # MAX_TOKENS=64000 bash run_api.sh …   output limit for Claude's reply, reasoning included (default 48000, set in decide.py)
 # MAX_USD=3 bash run_api.sh …   the cap on one call's worst case, in dollars (default 2, set in decide.py; Claude models only)
+# A book with more images than one request takes (100) gets figure requests after the first one, each sending up to 100
+# of the figures the first could not take (issue #63; docs/files.md):
+# BOOK_MAX_USD=6 bash run_api.sh …   the cap on the worst case of all of a book's requests together (default 5; Claude only)
+# FIGURE_PASSES=off bash run_api.sh …   no figure requests: figures past 100 go to a person, as before
+# FIGURE_MAX_TOKENS=48000 bash run_api.sh …   output limit for each figure request (default 32000)
+# FIGURE_PROBE=20 bash run_api.sh …   test only: also re-send 20 figures the first request answered (recorded, never used)
 # MODEL=openai/gpt-5 bash run_api.sh …   any OpenRouter model id for this run (default: DEFAULT_MODEL in decide.py)
 # Untagged PDFs first go through intake.py (local, no cost): OCR where pages have no text, then auto-tagging. Its
 # result (_intake/intake.pdf) is what the rest of the run works on; the original is never written to.
@@ -42,9 +48,19 @@ RUNS=${RUNS_DIR:-$(cd .. && pwd)/runs}
 R=${RUN_DIR:-$RUNS/$NAME/$RUN}; A=$R/_audit
 if [[ -f $R/record.json ]]; then echo "$R already holds a finished run: choose another run label"; exit 1; fi
 if [[ -n ${MAX_TOKENS:-} && ! $MAX_TOKENS =~ ^[0-9]+$ ]]; then echo "MAX_TOKENS must be a whole number: $MAX_TOKENS"; exit 1; fi
-if [[ -n ${MAX_USD:-} && ! $MAX_USD =~ ^[0-9]+([.][0-9]+)?$ ]]; then echo "MAX_USD must be a number of dollars: $MAX_USD"; exit 1; fi
+for v in MAX_USD BOOK_MAX_USD; do
+  if [[ -n ${!v:-} && ! ${!v} =~ ^[0-9]+([.][0-9]+)?$ ]]; then echo "$v must be a number of dollars: ${!v}"; exit 1; fi
+done
+for v in FIGURE_MAX_TOKENS FIGURE_PROBE; do
+  if [[ -n ${!v:-} && ! ${!v} =~ ^[0-9]+$ ]]; then echo "$v must be a whole number: ${!v}"; exit 1; fi
+done
+if [[ -n ${FIGURE_PASSES:-} && $FIGURE_PASSES != on && $FIGURE_PASSES != off ]]; then echo "FIGURE_PASSES must be on or off: $FIGURE_PASSES"; exit 1; fi
 MT=(); [[ -z ${MAX_TOKENS:-} ]] || MT=(--max-tokens "$MAX_TOKENS")
 [[ -z ${MAX_USD:-} ]] || MT+=(--max-usd "$MAX_USD")
+[[ -z ${BOOK_MAX_USD:-} ]] || MT+=(--book-max-usd "$BOOK_MAX_USD")
+[[ ${FIGURE_PASSES:-on} == on ]] || MT+=(--figure-requests off)
+[[ -z ${FIGURE_MAX_TOKENS:-} ]] || MT+=(--figure-max-tokens "$FIGURE_MAX_TOKENS")
+[[ -z ${FIGURE_PROBE:-} ]] || MT+=(--figure-probe "$FIGURE_PROBE")
 [[ -z ${MODEL:-} ]] || MT+=(--model "$MODEL")
 USE_MODEL=${MODEL:-$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")}
 NEW=; [[ -d $R ]] || NEW=1
@@ -55,30 +71,61 @@ log_attempt() {                # a paid call whose reply could not be used: keep
   python3 - "$R" <<'PY2'
 import sys, os, json, datetime
 R = sys.argv[1]; run = json.load(open(os.path.join(R, 'run.json'), encoding='utf-8'))
+now = datetime.datetime.now().isoformat(timespec='seconds')
+fp = run.get('figure_passes') or {}
+if fp.get('state') == 'calling' and not run.get('response_from'):   # stopped while its figure requests were being sent:
+    p = os.path.join(R, 'attempts.json'); att = json.load(open(p)) if os.path.exists(p) else []   # every request it paid for,
+    for c in run.get('passes') or []:                                # and the one in flight, whose charge is not known
+        att.append({'started': run.get('started'), 'pass': c['pass'], 'cost_usd': (c.get('usage') or {}).get('cost_usd') or 0,
+                    'finish_reason': c.get('finish_reason') or (c.get('calls') or [{}])[-1].get('finish_reason'), 'usage': c.get('usage'),
+                    **({'worst_usd': round(sum(x.get('worst_usd') or 0 for x in c['calls']), 4)} if any(x.get('worst_usd') for x in c.get('calls') or []) else {}),   # timed out: charge not known
+                    'stopped': True, 'logged': now})
+    if fp.get('in_flight'):
+        att.append({'started': run.get('started'), 'pass': fp['in_flight'], 'cost_usd': None, 'worst_usd': fp.get('in_flight_worst_usd'), 'stopped': True,
+                    'note': 'in flight when the run stopped; any charge is not known', 'logged': now})
+    json.dump(att, open(p, 'w'), indent=1)
+    for f in ('run.json', 'passes.json', 'workorder.json'):
+        if os.path.exists(os.path.join(R, f)): os.remove(os.path.join(R, f))
+    spent = sum((c.get('usage') or {}).get('cost_usd') or 0 for c in run.get('passes') or [])
+    print(f'▶ the earlier attempt was stopped while its figure requests were being sent: ${spent:.3f} it spent on '
+          f'{len(run.get("passes") or [])} request(s) is logged' + (' (and one request was in flight; its charge is not known)' if fp.get('in_flight') else '')
+          + '; the run starts over')
+    sys.exit(0)
 cost = (run.get('usage') or {}).get('cost_usd')
 if cost and not run.get('response_from'):                       # a paid call whose reply could not be used
     p = os.path.join(R, 'attempts.json'); att = json.load(open(p)) if os.path.exists(p) else []
     att.append({'started': run.get('started'), 'cost_usd': cost, 'finish_reason': run.get('finish_reason'),
                 'max_tokens': (run.get('estimate') or {}).get('max_tokens'), 'usage': run.get('usage'),
-                'logged': datetime.datetime.now().isoformat(timespec='seconds')})
+                'logged': now})
     json.dump(att, open(p, 'w'), indent=1)
     os.remove(os.path.join(R, 'run.json'))
     print(f'▶ earlier attempt logged: ${cost:.3f} spent, reply {"cut off" if run.get("finish_reason") == "length" else "unusable"}; making a new call')
 PY2
 }
-SAVED=; REVIEWED=
+fig_state() {                  # the state of an earlier attempt's figure requests (decide.py's run.json), or nothing
+  [[ -f $R/run.json ]] && python3 -c "import json,sys; print((json.load(open(sys.argv[1])).get('figure_passes') or {}).get('state') or '')" "$R/run.json" || true
+}
+SAVED=; REVIEWED=; MERGED=
+FIG=$(fig_state)
 if [[ -f $R/workorder.ai.json ]]; then         # stopped for a person's review (REVIEW=1): never decide again over it
   if [[ ! -f $R/review.json ]]; then
     echo "the AI's work order in $R is waiting for a review. Finish it first:"
     echo "  python3 $(pwd)/review_workorder.py \"$R\" --serve"; exit 1
   fi
   REVIEWED=1; echo "▶ the work order was reviewed by a person: applying the reviewed version (no API call)"
+elif [[ -z ${REPLY:-} && -f $R/workorder.json && $FIG == merged ]]; then
+  # every request of the earlier attempt finished, figure requests included, and a later step failed: its work order and
+  # run.json are this run's own (its calls stay counted as this run's spending; not a replay)
+  MERGED=1; echo "▶ every AI request of the earlier attempt finished (a later step failed): applying its work order, no new API call"
+elif [[ $FIG == calling ]]; then               # before the next branch: a stop just after workorder.json is written must not replay the first reply alone
+  log_attempt                                  # stopped while its figure requests were being sent: logged, then started over
 elif [[ -z ${REPLY:-} && -f $R/workorder.json && -f $R/response.json ]]; then
   REPLY=$R/response.json
   echo "▶ the earlier attempt's reply was complete (a later step failed): reusing it, no new API call"
 elif [[ -f $R/run.json ]]; then
   # a complete paid reply that could not be read: try it again with the current reader before paying for a new call
-  if [[ -z ${REPLY:-} && -f $R/response.json ]] && python3 -c "import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if (r.get('usage') or {}).get('cost_usd') and r.get('finish_reason') not in (None, 'length') and not r.get('error') and not r.get('response_from') else 1)" "$R/run.json"; then
+  # (not for a book planned with figure requests: they would need new calls, so its cost is logged and the run starts over)
+  if [[ -z ${REPLY:-} && -f $R/response.json ]] && python3 -c "import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if (r.get('usage') or {}).get('cost_usd') and r.get('finish_reason') not in (None, 'length') and not r.get('error') and not r.get('response_from') and not (r.get('estimate') or {}).get('passes') else 1)" "$R/run.json"; then
     SAVED=1
   else
     log_attempt
@@ -146,8 +193,8 @@ if [[ -n $SAVED ]]; then
     echo "▶ the saved reply still cannot be read: its cost is logged and a new call is made"; log_attempt
   fi
 fi
-if [[ -n ${ESTIMATE:-} && ( -n ${REPLY:-} || -n $REVIEWED ) ]]; then echo "estimate only: no cost, a saved reply will be reused"; summary; exit 0; fi
-if [[ -n ${REUSED:-} || -n $REVIEWED ]]; then
+if [[ -n ${ESTIMATE:-} && ( -n ${REPLY:-} || -n $REVIEWED || -n $MERGED ) ]]; then echo "estimate only: no cost, a saved reply will be reused"; summary; exit 0; fi
+if [[ -n ${REUSED:-} || -n $REVIEWED || -n $MERGED ]]; then
   :
 elif [[ -n ${REPLY:-} ]]; then
   stage "2/5 reuse saved reply (no cost)" python3 decide.py "$A" "$R" --response-file "$REPLY" ${MT[@]+"${MT[@]}"}
@@ -157,7 +204,7 @@ else
   if [[ -n ${AUTO:-} ]]; then
     ok=y
     if [[ $USE_MODEL == anthropic/* ]]; then
-      echo "AUTO=1: sending without asking (decide.py still refuses a Claude estimate over the \$${MAX_USD:-2} cap or your credit)"
+      echo "AUTO=1: sending without asking (decide.py still refuses a Claude call over the \$${MAX_USD:-2} cap, a book over the \$${BOOK_MAX_USD:-5} book cap, or more than your credit)"
     else
       echo "AUTO=1: sending without asking. The \$2 cap applies to Claude models only: the $USE_MODEL estimate is approximate and not capped; the OpenRouter bill is the real cost"
     fi

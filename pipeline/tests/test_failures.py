@@ -61,6 +61,7 @@ CASES = [
     ('E9', dict(log=EST + 'boom\n')),
     ('F0', dict(kind='spend', log=CALL + "could not reach OpenRouter to look up the model: <urlopen error>\n")),
     ('F1', dict(kind='spend', log=CALL + 'refusing: worst-case $0.54 is over the $0.01 cap\n', run={'estimate': {}})),
+    ('F1b', dict(kind='spend', log=CALL + "refusing before any call: the worst case of this book's 7 requests together is $6.20, over the $5.00 book cap. To run it, raise the cap for this run: BOOK_MAX_USD=7 bash run_api.sh …\n", run={'estimate': {}})),
     ('F2', dict(kind='spend', log=CALL + 'refusing: $0.10 credit available, worst case is $0.54 (OpenRouter would answer 402)\n', run={})),
     ('F3', dict(kind='spend', log=CALL + 'no OPENROUTER_API_KEY: put it in PDFREMPROTO1/.env\n', run={})),
     ('F4', dict(kind='spend', log=CALL + 'OpenRouter error 400: m rejected the temperature setting (0)\n', run={})),
