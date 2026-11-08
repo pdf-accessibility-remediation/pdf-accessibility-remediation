@@ -250,12 +250,13 @@ def form_page(s, key, run=None):
     if not book:
         return head + ('<header>' + HM.title_row('New Run') + '</header><main id="main" tabindex="-1"><div class="pp"><p>This PDF\'s file has changed or is gone.</p>'
                        '</div></main></body></html>')
-    return head + (f'<header>{HM.title_row("New Run")}<p class="mc-book">{HM.book_cell(book["name"], book["file"])}</p></header>'
+    # S6 (Patrick, 2026-11-07): more room above "New Run" and under it; "Home Page" at the end of the "Source PDF:" line
+    return head + (f'<header class="nr-head"><h1>New Run</h1><div class="mc-book"><span class="hm-book">{E(book["name"])}</span><span class="nr-src">'
+        f'<span class="hm-file">Source PDF: {E(book["file"])}</span>{HM.appbar()}</span></div></header>'
         '<main id="main" tabindex="-1"><form class="pp hm-form" id="hm-newrun" data-api="/api/new/estimate">'
         + (f'<input type="hidden" name="run" value="{E(run)}">' if run else f'<input type="hidden" name="book" value="{E(book["key"])}">') +
         '<div class="mc-field"><label for="nr-name">Run Name</label>'
-        '<input type="text" id="nr-name" name="run_name" maxlength="120" required aria-describedby="nr-name-h">'
-        '<p class="mc-help" id="nr-name-h">In your own words, for example "First pass, March". It names this run in My Workspace.</p></div>'
+        '<input type="text" id="nr-name" name="run_name" maxlength="120" required></div>'
         '<p class="mc-help">"Get the Estimate" prepares the PDF and works out what the AI call could cost. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the next page.</p>'
         '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'

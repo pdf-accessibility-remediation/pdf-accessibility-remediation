@@ -16,10 +16,12 @@ python3 app.py              # opens the home page
 ```
 
 Every page the app serves except the home page itself has a **Home Page** button at the top (after "Skip to the
-content"). On the run, batch, New Run and New Batch pages it sits right beside the page's name, on the same line, with
-**Hide the PDF List** / **Show the PDF List (N)** after it for a batch (Patrick's test, 2026-11-07, Q6, Q9, R4); on the
-review page and the OCR-only page it follows the page count in the header line, spaced so it touches nothing else. Every
-link on the app's pages is drawn as a button (round 4, P5). A button's only hover feedback is a highlight, never an
+content"). On a single run's page and the New Batch page it sits right beside the page's name, on the same line (R4);
+on the batch page **Hide the PDF List** / **Show the PDF List (N)** comes first, then **Home Page** (S4); on a batch
+PDF's page both are on its "Assigned to the batch" line, in that order (S3); on New Run, at the end of the "Source PDF:"
+line (S6). On the review page and the OCR-only page it follows the page count in the header line, spaced so it touches
+nothing else. Every link on the app's pages is drawn as a button (round 4, P5), with one exception: "Batch: <name>" at
+the top of the side list is drawn as a link (S2), since it is the way to the batch page. A button's only hover feedback is a highlight, never an
 underline; the keyboard's focus ring stays (`:focus-visible`, R1).
 
 **The run page's header** (Q6–Q8) starts at the top of the screen: the PDF's name, "Source PDF: <file name>", then the
@@ -28,8 +30,8 @@ pages · Run on November 6, 2026, at 9:29 PM · AI: Claude Sonnet 5.5 · AI Cost
 labels in Title Case, review 15 L1). The model is named in plain words (the original call's model for a run made from a
 saved reply), never by its id; "AI Cost: none (a saved reply was used)" when no new call was made, "AI Cost: not
 recorded" when the record has no cost, and no AI part before the AI has answered. A PDF in a batch adds "Assigned to the
-batch "<name>"" with **Open the Batch Page**, close under the details. The cost is no longer repeated in Run Actions
-(Q7). The batch page's header is "Batch: <name>" with **Home Page** and the list's button on its right (Q9).
+batch "<name>"" with the list's button and **Home Page** after it (S3: "Batch: <name>" in the side list leads to the batch
+page). The cost is no longer repeated in Run Actions (Q7).
 
 ## The home page
 
@@ -40,7 +42,7 @@ the review page's "seen" cards use the same blue). The status pills keep their c
 - **Runs in Progress:** shown only while a job runs or waits to start: each with its PDF, its run name, its step or
   "Waiting to Start", and **Open**, kept current while the page is open. A job that ends is announced; focus never moves
   by itself.
-- **Upload a PDF:** a drop zone (dashed border, an upload icon): **Choose PDFs**, "or Drop PDFs here", and "A copy goes
+- **Upload a PDF:** a drop zone (dashed border, an upload icon): **Choose PDFs**, "or drag PDFs here" (S1), and "A copy goes
   into the app's folder; the file you choose is not changed." Several PDFs at once, chosen or dropped; **Choose PDFs** is
   the keyboard path. Under it, the PDFs added this way, each with its pages and size, **New Run**, a "⋯" menu (**Edit
   Name**, **Move to Trash**) and a narrow **Select** column to pick PDFs for **Create a New Batch** ("Select two or more
@@ -67,7 +69,7 @@ show (`runs/.app/run-names.json`), never its folder; a batch's PDFs are named by
 name box closes, focus is back on the row's "⋯".
 
 **Status groups** (D6, Patrick 2026-11-06). Each row has a pill naming its group in words (color is never the only
-signal). A batch has its state in small text beside it; a single run has the pill alone (Patrick's test, 2026-11-07),
+signal). A batch has its state in small text beside it, a little apart from the pill (S5); a single run has the pill alone (Patrick's test, 2026-11-07),
 and its exact status is on its run page. Done is Ready or Shipped only, so a Not Ready run never reads as done:
 
 | Pill | Color | A run is in it when |
@@ -142,7 +144,7 @@ added but locked with a password or unreadable says so; the PDFs that were added
 
 ## A single run
 
-1. **New Run** opens a short form with one field: **Run Name** (required, in your own words). There is no OCR language
+1. **New Run** opens a short form with one field: **Run Name** (required; no example line under it, S6). There is no OCR language
    and no review choice on it (round 4: every app run stops for review, and the language is asked only when needed).
 2. **Get the Estimate** queues a free job, `ESTIMATE=1 ASK_LANG=1 bash run_api.sh <book> <name> <run name>`: intake, the
    audit and `decide.py --dry-run`. It asks OpenRouter for prices and the credit (free calls; no book content is sent).
@@ -303,9 +305,10 @@ display name, "Source PDF:" and its status in words. Its left border shows its s
 opened yet, or while it is processing or waiting to start (then also a small spinning circle at its right edge, a still dot
 with reduced motion, named "Processing" for a screen reader); blue once its review is opened, up to Pending Evaluation;
 yellow when it stopped for a person (its language, for example); green when Ready or Shipped; red when its last job
-failed. The current PDF has the darker background and bold text; hovering gives a lighter shade. "Batch: <name>" and the
-count under it start where the PDFs' names do, the list starts near the top, and on a wide screen the page's header meets
-the list with no gap (R6). **Hide the PDF List** /
+failed. The current PDF has the darker background and bold text; hovering gives a lighter shade. "Batch: <name>" is
+larger and drawn as a link (the way to the batch page), with "(N PDFs)" smaller under it; both start where the PDFs'
+names do, the list starts near the top, and on a wide screen the page's header and panels sit right against the list
+(R6, S2). **Hide the PDF List** /
 **Show the PDF List (N)**, beside **Home Page**, closes and opens it; the choice is remembered in this browser (a cookie
 and local storage), and the server lays the page out with it, so moving from PDF to PDF doesn't shift the page (D7: the
 panel also keeps its height until it is drawn, the list keeps its scroll place, and pages cross-fade). Below 48em (a

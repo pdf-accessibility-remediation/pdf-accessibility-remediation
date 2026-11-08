@@ -654,9 +654,9 @@ def app_header(s, run, R, pages=None):
     beyond "Source PDF:". review.html on disk keeps its own header."""
     name, file = runs.book_of(s, run, R)
     sg = run.split('/')
-    batch = (f'<p class="pp-hd-batch">Assigned to the batch "{html.escape(NMS.shown_run(s, run))}" '
-             f'<a class="pp-btn" href="/batch/{urllib.parse.quote(sg[1], safe="")}/">Open the Batch Page</a></p>') if len(sg) == 3 and sg[0] == 'batches' else ''
-    return (f'<header class="top pp-head pp-hd">{HM.title_row(html.escape(name))}'
+    inb = len(sg) == 3 and sg[0] == 'batches'             # S3: a batch PDF's buttons are on its batch line (with_nav adds the list's)
+    batch = (f'<div class="pp-hd-batch"><span>Assigned to the batch "{html.escape(NMS.shown_run(s, run))}"</span>{HM.appbar()}</div>') if inb else ''
+    return (f'<header class="top pp-head pp-hd">{HM.title_row(html.escape(name), bar=not inb)}'
             + (f'<p class="mc-book"><span class="hm-file">Source PDF: {html.escape(file)}</span></p>' if file else '')
             + '<p class="pp-hd-det">' + ' · '.join(html.escape(x) for x in runs.details(s, run, R, pages)) + f'</p>{batch}</header>')
 

@@ -240,16 +240,20 @@ def test_run_details_in_plain_words(setup):
     assert RN.model_words('google/gemini-3.1-pro-preview') == 'Gemini 3.1 Pro Preview' and RN.model_words(None) is None
 
 def test_a_batch_pdfs_header_and_the_batch_page_header(app):
-    """Q8, Q9: a batch PDF's run page says "Assigned to the batch" with "Open the Batch Page" in its header, and the side
-    list's button sits beside "Home Page" there; the batch page's header holds both on the right of "Batch: <name>"."""
+    """Q8, Q9, S3, S4: a batch PDF's run page says "Assigned to the batch" with "Show/Hide the PDF List (N)" and then "Home
+    Page" on that line (no "Open the Batch Page", no buttons on the title line); the batch page's header has the list's
+    button first, then "Home Page", beside "Batch: <name>"."""
     page = get(app['port'], '/run/batches/b1/x/')[1].decode()
     hd = page[page.index('<header class="top pp-head pp-hd">'):page.index('</header>')]
-    assert 'Assigned to the batch "b1" <a class="pp-btn" href="/batch/b1/">Open the Batch Page</a>' in hd and 'Part of the batch' not in page
-    assert 'id="bn-toggle"' in hd and 'Hide the PDF List' in hd and page.count('aria-label="App"') == 1
+    line = hd[hd.index('<div class="pp-hd-batch">'):]
+    assert line.index('Assigned to the batch "b1"') < line.index('id="bn-toggle"') < line.index('>Home Page</a>')
+    assert 'Open the Batch Page' not in page and 'Part of the batch' not in page and page.count('aria-label="App"') == 1
+    top = hd[hd.index('<div class="pp-hd-top">'):hd.index('</div>', hd.index('<div class="pp-hd-top">'))]
+    assert 'Home Page' not in top and 'Hide the PDF List' in hd
     assert page.index('Skip to the content') < page.index('id="pp-bnav"') < page.index('<header')     # the side list: never in the header
     bp = get(app['port'], '/batch/b1/')[1].decode()
     hd = bp[bp.index('<header'):bp.index('</header>')]
-    assert '<h1>Batch: b1</h1>' in hd and hd.index('<h1>') < hd.index('>Home Page<') < hd.index('id="bn-toggle"') and bp.count('aria-label="App"') == 1
+    assert '<h1>Batch: b1</h1>' in hd and hd.index('<h1>') < hd.index('id="bn-toggle"') < hd.index('>Home Page<') and bp.count('aria-label="App"') == 1
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert 'AI Cost: ' not in js and 'Part of the batch' not in js                  # Q7: the cost is in the header now
 
@@ -264,7 +268,7 @@ def test_the_pdf_section_and_its_menus(app):
     t = app['t']; (t / 'uploads').mkdir(exist_ok=True)
     for n in ('a', 'b'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n.upper()}'))
     page = get(app['port'], '/')[1].decode()
-    assert '<h2 id="hm-books-h">Upload a PDF</h2>' in page and 'id="hm-drop"' in page and '>Choose PDFs</button> <span>or Drop PDFs here</span>' in page
+    assert '<h2 id="hm-books-h">Upload a PDF</h2>' in page and 'id="hm-drop"' in page and '>Choose PDFs</button> <span>or drag PDFs here</span>' in page
     assert 'A copy goes into the app\'s folder; the file you choose is not changed.' in page and 'accept="application/pdf,.pdf" multiple hidden' in page
     assert 'Create a New Batch</button>' in page and 'Select two or more PDFs first.' in page and '<th scope="col" class="hm-sel">Select</th>' in page
     assert 'Edit the Name' not in page and 'New Batch with' not in page and '>Move to Trash</button></td>' not in page
@@ -342,14 +346,16 @@ def test_home_page_sits_beside_each_pages_name(app):
     t = app['t']; (t / 'uploads').mkdir(exist_ok=True)
     for n in ('a', 'b'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n.upper()}'))
     keys = [b['key'] for b in BK.listing(S(t))]
-    pages = {'run': '/run/old/r0/', 'batch pdf': '/run/batches/b1/x/', 'batch': '/batch/b1/',
-             'new batch': '/new-batch?book=' + keys[0] + '&book=' + keys[1], 'new run': '/new?book=' + keys[0]}
+    pages = {'run': '/run/old/r0/', 'batch': '/batch/b1/', 'new batch': '/new-batch?book=' + keys[0] + '&book=' + keys[1]}
     for what, path in pages.items():
         page = get(app['port'], path)[1].decode()
         assert "<div class=\"pp-hd-top\">" in page, what
         row = page[page.index("<div class=\"pp-hd-top\">"):]; row = row[:row.index("</nav></div>") + 12]
         assert row.index('<h1>') < row.index('>Home Page</a>') and page.count('aria-label="App"') == 1, what
-        if what in ('batch pdf', 'batch'): assert 'id="bn-toggle"' in row, what
+        if what == 'batch': assert row.index('id="bn-toggle"') < row.index('>Home Page</a>'), what     # S4: the list's button first
+    nr = get(app['port'], '/new?book=' + keys[0])[1].decode()                         # S6: at the end of the "Source PDF:" line
+    src = nr[nr.index('<span class="nr-src">'):]
+    assert src.index('Source PDF: a.pdf') < src.index('>Home Page</a>') and 'First pass, March' not in nr and nr.count('aria-label="App"') == 1
     nb = get(app['port'], pages['new batch'])[1].decode()
     assert 'Press backlist' not in nb and 'aria-describedby="nb-name-h"' not in nb       # R8
 

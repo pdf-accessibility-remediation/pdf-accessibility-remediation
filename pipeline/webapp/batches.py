@@ -500,7 +500,7 @@ def page(s, label, closed=None):
     return body_class('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             f'<title>Batch: {E(NM.shown_run(s, "batches/" + label))}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
             '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + nav(s, label, st=st, closed=closed) +
-            f'<header class="top pp-head pp-hd">' + HM.title_row(f'Batch: {E(NM.shown_run(s, "batches/" + label))}', toggle(len(st['books']), not closed)) +
+            f'<header class="top pp-head pp-hd">' + HM.title_row(f'Batch: {E(NM.shown_run(s, "batches/" + label))}', first=toggle(len(st['books']), not closed)) +
             '</header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
             '<h2 id="bt-h" tabindex="-1">This Batch</h2><div id="bt-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
@@ -511,7 +511,7 @@ def with_nav(page, s, label, current, closed=None):
     header: Patrick's test 2026-11-07, Q6), and the side column right after the skip link, laid out by the server (D7)."""
     from . import server as W
     st = state(s, label)
-    bar = HM.appbar(extra=toggle(len(st['books']), not closed)); side = nav(s, label, current, st=st, closed=closed)
+    bar = HM.appbar(first=toggle(len(st['books']), not closed)); side = nav(s, label, current, st=st, closed=closed)   # S3: the list's button first
     page = body_class(page, closed)
     if W.APPBAR_MARK in page:
         a = page.rfind('<nav', 0, page.find(W.APPBAR_MARK)); i = page.find('</nav>', a)

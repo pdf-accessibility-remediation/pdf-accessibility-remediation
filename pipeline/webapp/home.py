@@ -266,7 +266,7 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
              '<div class="hm-drop" id="hm-drop"><svg class="hm-drop-i" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="28" height="28">'
              '<path d="M12 16V4m0 0-5 5m5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="2" '
              'stroke-linecap="round" stroke-linejoin="round"/></svg><div class="hm-drop-t"><div class="hm-drop-r">'
-             '<button type="button" id="hm-choose" class="pp-primary">Choose PDFs</button> <span>or Drop PDFs here</span></div>'
+             '<button type="button" id="hm-choose" class="pp-primary">Choose PDFs</button> <span>or drag PDFs here</span></div>'
              '<p class="pp-note" id="hm-drop-n">A copy goes into the app\'s folder; the file you choose is not changed.</p></div>'
              '<input type="file" id="hm-file" accept="application/pdf,.pdf" multiple hidden tabindex="-1" aria-hidden="true"></div>'
              '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>')
@@ -354,12 +354,13 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
     B.append('</section></main><script src="/app/home.js" defer></script><script src="/app/trash.js" defer></script></body></html>')
     return '\n'.join(B)
 
-def title_row(h1, extra=''):
-    """A page's name with "Home Page" (and `extra`: the PDF list's button) right beside it, on the same line (R4, Patrick's
-    test 2026-11-07); the bar is the app bar's own nav, so with_appbar adds none. h1: the heading's escaped text."""
-    return f'<div class="pp-hd-top"><h1>{h1}</h1>{appbar(extra=extra)}</div>'
+def title_row(h1, extra='', first='', bar=True):
+    """A page's name with "Home Page" right beside it, on the same line (R4, Patrick's test 2026-11-07); `first`: the PDF
+    list's button, before "Home Page" (S3, S4); bar=False: no buttons on this line (a batch PDF's page has them on its
+    batch line, S3). The bar is the app bar's own nav, so with_appbar adds none. h1: the heading's escaped text."""
+    return f'<div class="pp-hd-top"><h1>{h1}</h1>' + (appbar(extra=extra, first=first) if bar else '') + '</div>'
 
-def appbar(current=False, extra=''):
+def appbar(current=False, extra='', first=''):
     """The app bar on every page the app serves except the home page itself (P1), right after the skip link: "Home Page"
     as a button (P5), and on run and batch pages the book list's own button beside it (`extra`)."""
-    return ('<nav class="pp-appbar" aria-label="App"><a class="pp-btn" href="/">Home Page</a>' + extra + '</nav>')
+    return ('<nav class="pp-appbar" aria-label="App">' + first + '<a class="pp-btn" href="/">Home Page</a>' + extra + '</nav>')
