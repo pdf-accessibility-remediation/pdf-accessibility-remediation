@@ -1,4 +1,4 @@
-"""lib/credit.py: the OpenRouter credit, read the way decide.py reads it (the key's remaining limit and the account's
+"""webapp/credit.py: the OpenRouter credit, read the way decide.py reads it (the key's remaining limit and the account's
 balance, the smaller), but saying why when it can't be read (U8, #45, Patrick 2026-11-07). A credit read sends no book
 content and costs nothing. The key is read from the environment or the nearest .env, never printed or logged.
 
@@ -7,7 +7,7 @@ content and costs nothing. The key is read from the environment or the nearest .
 """
 import os, json, urllib.request, urllib.error
 
-HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # pipeline/
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # pipeline/ (this file is in webapp/)
 
 def _key():
     k = os.environ.get('OPENROUTER_API_KEY')

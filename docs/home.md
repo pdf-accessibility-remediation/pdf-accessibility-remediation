@@ -231,7 +231,7 @@ says why, in place of "Start Remediation", and offers **Check Credit Again** (U8
 - OpenRouter couldn't be reached: check this computer's connection;
 - any other answer: try again in a moment.
 
-**Check Credit Again** reads the credit now (`lib/credit.py`, the same two OpenRouter endpoints decide.py reads) and keeps
+**Check Credit Again** reads the credit now (`webapp/credit.py`, the same two OpenRouter endpoints decide.py reads) and keeps
 it for 10 minutes (`runs/.app/credit.json`). When it fits, "Start Remediation" comes back; every check below still
 applies to it, and the estimate's fingerprint never covers the credit, so nothing else changes. The advice under a
 refusal fits its reason: not enough credit says to add credit, a limit says to raise it or use fewer PDFs, and a credit

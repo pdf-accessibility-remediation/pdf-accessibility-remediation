@@ -1,4 +1,4 @@
-"""test_credit.py: "Check Credit Again" and the credit's reasons (U8, #45, Patrick 2026-11-07). No network: lib/credit.py's
+"""test_credit.py: "Check Credit Again" and the credit's reasons (U8, #45, Patrick 2026-11-07). No network: webapp/credit.py's
 HTTP calls are replaced; no key is read or printed.
 
     python -m pytest tests/test_credit.py -q
@@ -8,7 +8,8 @@ import pytest
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # pipeline/
 sys.path.insert(0, HERE)
-from lib import credit as CR, costs  # noqa: E402
+from lib import costs  # noqa: E402
+from webapp import credit as CR  # noqa: E402
 from webapp import spend as SP, batches as BT, books as BK, jobs  # noqa: E402
 from test_webapp import setup, settings  # noqa: E402,F401
 from test_spend import run_folder  # noqa: E402
