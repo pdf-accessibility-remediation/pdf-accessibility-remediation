@@ -206,7 +206,7 @@ def test_workspace_switch_filter_and_pills(app):
     page = get(app['port'], '/?view=batches')[1].decode()
     assert 'aria-pressed="true">Batches' in page and 'Batch Name' in page
     page = get(app['port'], '/?group=done')[1].decode()
-    assert '0 runs, Done.' in page
+    assert '<p class="pp-note">0 runs · Done</p>' in page                           # T1: a middle dot
 
 def test_run_page_header_is_the_apps(app):
     """P7: review.html's own header (a file name, the prompt, the model, the run label) is replaced as served; the file

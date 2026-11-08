@@ -57,7 +57,7 @@ the review page's "seen" cards use the same blue). The status pills keep their c
   **Show More Batches**). Listing a run never changes it. The switch, a filter, a search
   and **Show More** swap the table in place, with no reload and no jump to the top (R15, Patrick's test 2026-11-07): the
   address keeps the choice (`history.replaceState`), so refreshing keeps it; focus stays on the control used, and the new
-  count ("3 batches, In Progress.") is announced. Enter in the search box keeps the view shown.
+  count ("3 batches · In Progress", T1: parts joined by a middle dot) is announced. Enter in the search box keeps the view shown.
 
 **The "⋯" menus** (Patrick's test, 2026-11-07). Beside **Open** (on a PDF, beside **New Run**), a "⋯" button named "More
 Actions for <name>" opens a menu: **Edit Name** and **Move to Trash** (in red). It is a menu button

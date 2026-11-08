@@ -322,8 +322,9 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
     plural = lambda k: f'{k} {what}' + ('' if k == 1 else 'es' if what == 'batch' else 's')
     lim = n if view == 'runs' else bn
     shown = items[:lim]
-    B.append(f'<p class="pp-note">{plural(len(items))}' + (f' matching "{E(q)}"' if q else '') + (f', {GROUP_NAMES[group]}' if group else '') +
-             (f'; the newest {len(shown)} are shown.' if len(shown) < len(items) else '.') + '</p>')
+    # T1 (Patrick, 2026-11-07): parts joined by a middle dot: "7 runs · Not Started", "3 batches matching "x" · Done"
+    B.append(f'<p class="pp-note">{plural(len(items))}' + (f' matching "{E(q)}"' if q else '') + (f' · {GROUP_NAMES[group]}' if group else '') +
+             (f' · the newest {len(shown)} are shown' if len(shown) < len(items) else '') + '</p>')
     if shown and view == 'runs':
         B.append('<div class="pp-tw" tabindex="0" role="region" aria-label="Single Runs Table"><table class="hm-t"><thead><tr><th scope="col">Run</th>'
                  '<th scope="col">Status</th><th scope="col">Pages</th><th scope="col">Date Created</th><th scope="col">Action</th></tr></thead><tbody>')
