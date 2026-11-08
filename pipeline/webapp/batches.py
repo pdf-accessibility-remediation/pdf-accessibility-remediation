@@ -288,7 +288,8 @@ def state(s, label):
         out.append({'name': b['name'], 'book': NM.book_name(s, b.get('key'), b.get('file') or '') if b.get('key') else b.get('book'), 'file': BK.shown_file(b.get('file') or ''), 'status': row['words'], 'finished': row['finished'],
                     'tone': tone(row, R), 'language': q,
                     'href': HM.run_href(f'batches/{label}/{b["name"]}'), 'cost': row.get('cost') or 0})
-    total = costs.batch(Rs, limits=costs.limits_of(s))
+    from . import spend as SP_
+    total = costs.batch(Rs, limits=costs.limits_of(s), credit_read=SP_.credit_read(s))   # U8: a fresh read counts
     spent = round(sum(x['cost'] or 0 for x in out if x['finished']) + total['spent_usd'], 6)
     active = batch_job and batch_job['status'] in jobs.ACTIVE
     needs = batch_job and batch_job['status'] == 'needs-spend'
@@ -303,13 +304,13 @@ def state(s, label):
     test = bool(s.get('test_batch_from'))
     spend = None
     if phase == 'ready':
-        why = None
+        why = code = None
         if not test:
-            if total['blocked']: why = total['blocked'][0][1]['words']
-            elif not total['fits']['batch']: why = f'This batch could cost more than the limit of ${total["limit_usd"]:.2f} per batch.'
-            elif total['fits']['credit'] is False: why = 'There isn\'t enough credit for this batch.'
-            elif total['credit_usd'] is None: why = 'The credit couldn\'t be checked, so the cost can\'t be compared with it.'
-        spend = {'ok': not why, 'why': why}
+            if total['blocked']: why, code = total['blocked'][0][1]['words'], total['blocked'][0][1]['code']
+            elif not total['fits']['batch']: why, code = f'This batch could cost more than the limit of ${total["limit_usd"]:.2f} per batch.', 'limit'
+            elif total['fits']['credit'] is False: why, code = 'There isn\'t enough credit for this batch.', 'credit'
+            elif total['credit_usd'] is None: why, code = SP_.credit_words(s), 'no_credit'   # U8: why, and "Check Credit Again"
+        spend = {'ok': not why, 'why': why, 'code': code}
     meta = _load(meta_path(s, label)) or {}
     return {'label': label, 'phase': phase, 'books': out, 'flagged': flagged, 'missing': missing, 'test': test, 'reviewing': reviewing, 'asking': asking,
             'from_app': bool(meta), 'ocr_name': meta.get('ocr_name'),   # a batch made before D4: its one OCR language
@@ -329,7 +330,8 @@ def spend(s, label, body):
     if st['phase'] != 'ready': raise ValueError('This batch isn\'t ready to send: reload the page.')
     if str(body.get('fingerprint') or '') != st['fingerprint']: raise ValueError(SP.CHANGED)
     Rs = [os.path.join(folder(s, label), b['name']) for b in st['books'] if not b['finished'] and b['name'] not in st['flagged']]
-    total = costs.batch(Rs, limits=costs.limits_of(s))
+    from . import spend as SP_
+    total = costs.batch(Rs, limits=costs.limits_of(s), credit_read=SP_.credit_read(s))   # U8
     try: a = SP.authorize_batch(s, label, list_path(s, label), total, st['fingerprint'])
     except SP.Refused as e: raise ValueError(str(e))
     env = dict(a['env_set'])

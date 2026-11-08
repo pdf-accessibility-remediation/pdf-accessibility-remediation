@@ -284,6 +284,10 @@ def make(s, setup, code=None):
                 try: n = NMS.set_book_name(s, b['key'], body.get('name'))
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 return self.send(202, {'name': n, 'location': '/?renamed=' + b['key']})
+            if p == '/api/credit':                                # U8: "Check Credit Again": a credit read (free, nothing of a book is sent)
+                from . import spend as SPD
+                d = SPD.check_credit(s)
+                return self.send(200, {'usd': d['usd'], 'why': d['why'], 'words': None if d['usd'] is not None else SPD.credit_words(s)})
             if p == '/api/rename/batch-pdf':                      # T2: a batch PDF's "Edit Name": its display name, by sha256 (never a file or folder)
                 B = batch_dir(s['runs'], str(body.get('label') or ''))
                 bk = next((b for b in (BT.books_of(s, os.path.basename(B)) if B else []) if b.get('name') == str(body.get('book') or '')), None)

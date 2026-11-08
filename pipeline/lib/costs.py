@@ -77,8 +77,10 @@ def _expected(x):
     """#65 (dollar-only cost limits): the expected cost and its range, {usd, low, high, basis}; None until #65 builds it."""
     return None
 
-def estimate(R, kind='workorder', limits=None):
-    """The estimate of the paid step `kind` in run folder R, or None when there is none yet. limits: limits_of(settings)."""
+def estimate(R, kind='workorder', limits=None, credit_read=None):
+    """The estimate of the paid step `kind` in run folder R, or None when there is none yet. limits: limits_of(settings).
+    credit_read: a fresher credit read ("Check Credit Again", U8) used when the estimate's own couldn't be read; the same checks
+    apply to it, and the fingerprint never covers the credit."""
     if kind == 'ocr-draft': raise NotBuilt('the OCR-draft estimate comes with #49 (AI drafts for hard OCR pages)')
     if kind not in KINDS: raise ValueError(f'unknown kind: {kind}')
     x = KINDS[kind](R)
@@ -90,6 +92,7 @@ def estimate(R, kind='workorder', limits=None):
     prices = bool(run.get('price_source')) and not str(run.get('price_source')).startswith(OFFLINE)
     total = float(e['worst_case_total_usd'])
     credit = e.get('credit_available_usd')
+    if credit is None and credit_read is not None: credit = credit_read
     book_cap = e.get('book_cap_usd')
     per_book = min(L['per_book_usd'], book_cap) if book_cap is not None else L['per_book_usd']
     fits = {'per_call': x['per_call'] <= L['per_call_usd'] if claude else None,
@@ -140,7 +143,7 @@ def actual(R):
             'per_page_usd': None, 'reused': reused, 'original_call': None, 'finished': False,
             'estimate_usd': ((run.get('estimate') or {}).get('worst_case_total_usd'))}
 
-def batch(Rs, limit=None, limits=None):
+def batch(Rs, limit=None, limits=None, credit_read=None):
     """The books of a batch added up: the worst case of every book still to send (one with a complete saved reply adds
     nothing), what was spent so far, and whether the total fits the batch limit and the credit."""
     L = limits or limits_of()
@@ -150,7 +153,7 @@ def batch(Rs, limit=None, limits=None):
         a = actual(R); spent += a['usd']
         if os.path.isfile(os.path.join(R, 'record.json')) or (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
             books.append({'R': R, 'estimate': None, 'adds_usd': 0.0}); continue
-        e = estimate(R, limits=L)
+        e = estimate(R, limits=L, credit_read=credit_read)
         if e:
             ceiling += e['ceiling_usd']; per_call = max(per_call, e['per_call_ceiling_usd'])
             if e['credit_usd'] is not None: credit = e['credit_usd'] if credit is None else min(credit, e['credit_usd'])

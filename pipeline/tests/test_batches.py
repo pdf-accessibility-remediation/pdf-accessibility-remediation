@@ -81,7 +81,7 @@ def test_state_and_test_mode_spend(two):
     s = settings(two, test_batch_from='v8-p7a')
     ready_batch(two, s)
     st = BT.state(s, 'bb')
-    assert st['phase'] == 'ready' and st['spend'] == {'ok': True, 'why': None} and st['totals']['ceiling_usd'] == 1.2 and st['test']
+    assert st['phase'] == 'ready' and st['spend'] == {'ok': True, 'why': None, 'code': None} and st['totals']['ceiling_usd'] == 1.2 and st['test']
     assert [b['status'] for b in st['books']] == ['Estimate Ready'] * 2 and sorted(b['file'] for b in st['books']) == ['Book One.pdf', 'two.pdf']
     with pytest.raises(ValueError, match='changed since'): BT.spend(s, 'bb', {'fingerprint': 'x'})
     j = BT.spend(s, 'bb', {'fingerprint': st['fingerprint']})

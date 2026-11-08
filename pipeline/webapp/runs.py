@@ -431,7 +431,8 @@ def pending_state(s, run, R):
     from . import newrun, failures, names as NM
     js = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]
     name, file = book_of(s, run, R, js)
-    try: est = costs.estimate(R, 'workorder', costs.limits_of(s))
+    from . import spend as SP
+    try: est = costs.estimate(R, 'workorder', costs.limits_of(s), credit_read=SP.credit_read(s))   # U8
     except Exception: est = None
     test = bool(s.get('test_reply_dir'))
     active = [j for j in js if j['status'] in jobs.ACTIVE]
@@ -449,7 +450,7 @@ def pending_state(s, run, R):
     if phase == 'estimate' and est:
         b = est['blocked']
         ok = not b or (test and b['code'] in ('offline', 'no_credit'))
-        spend = {'ok': ok, 'why': None if ok else b['words'], 'code': None if ok else b['code']}
+        spend = {'ok': ok, 'why': None if ok else (SP.credit_words(s) if b['code'] == 'no_credit' else b['words']), 'code': None if ok else b['code']}
     if lq: fail = None
     return {'run': run, 'mode': 'pending', 'title': name, 'file': file, 'run_name': NM.shown_run(s, run), 'phase': phase, 'language': lq,
             'estimate': est, 'sent': sent_words(est) if est else None, 'spend': spend, 'retry': retry, 'failure': fail, 'test': test,

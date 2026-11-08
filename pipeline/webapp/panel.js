@@ -547,8 +547,13 @@ function pendingBlock(s) {
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-retry" data-act="retry">Continue</button></div>';
   if (!e) return h + '<p>This run has no estimate yet.</p><div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
   h += '<p id="pp-cost"><b>' + esc(costLine(e)) + '</b></p>';                // P12: no "Review First" or "Sent to the AI" lines
+  if (s.spend && s.spend.code === 'no_credit') return h + '<p class="pp-warn-t">' + esc(s.spend.why) + '</p>' +   // U8: why, and a way on
+    '<div class="pp-row"><button type="button" class="pp-primary" id="pp-credit" data-act="credit">Check Credit Again</button>' +
+    '<button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
   if (!s.spend || !s.spend.ok) return h + '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This run can\'t be sent yet.') + '</p>' +
-    '<p>' + esc(s.spend && ['per_call', 'per_book', 'credit', 'no_credit', 'model'].includes(s.spend.code) ? 'Whoever looks after the app can raise the limit or add credit; then select "Get a New Estimate".' : 'Select "Get a New Estimate" to try again.') + '</p>' +
+    '<p>' + esc(s.spend && s.spend.code === 'credit' ? 'Whoever looks after the app can add credit; then select "Get a New Estimate".' :
+      s.spend && ['per_call', 'per_book'].includes(s.spend.code) ? 'Whoever looks after the app can raise the limit; then select "Get a New Estimate".' :
+      'Select "Get a New Estimate" to try again.') + '</p>' +
     '<div class="pp-row"><button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
   return h +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-spend" data-act="spend" aria-describedby="pp-cost">Start Remediation</button></div>' +
@@ -569,7 +574,7 @@ function langCard(q, id) {
     '<div class="pp-row pp-lang"><label for="' + id + '">Language of the Scanned Pages</label><select id="' + id + '">' + opts + '</select>' +
     '<button type="button" class="pp-primary" data-act="language" data-sel="' + id + '">Continue</button></div>';
 }
-const PHASE = { language: 'Language of the Scanned Pages', outside: 'Started Outside the App', batch: 'Part of a Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Waiting for a New Estimate', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
+const PHASE = { language: 'Language of the Scanned Pages', outside: 'Started Outside the App', batch: 'Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Waiting for a New Estimate', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
 
 // After a redraw: focus back on the element that had it (by id). When that element is gone (a finished job's card becomes
 // one line), focus goes to the panel's heading rather than being lost; for the Spend's landing (03 §14) that is still
@@ -656,6 +661,18 @@ box.addEventListener('click', async e => {
   }
   msg('');                                                       // any other panel button clears the message too
   if (act === 'reload') { location.replace(location.pathname + '?landed=1'); return; }
+  if (act === 'credit') {                                        // U8: "Check Credit Again" (free: no book content is sent)
+    b.disabled = true;
+    try {
+      const r = await fetch('/api/credit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const d = await r.json().catch(() => ({}));
+      await poll(true);
+      live(d.usd != null ? 'Credit checked: ' + usd(d.usd) + '.' : 'The credit still couldn\'t be checked.');
+      const f = $('pp-spend') || $('pp-credit'); if (f) f.focus();
+    } catch (err) { msg('The app is not running. ' + START + ' Then try again.', false, true); }
+    b.disabled = false;
+    return;
+  }
   if (['spend', 'estimate', 'dismiss', 'retry', 'replay', 'language'].includes(act)) {
     try {
       let s, r;

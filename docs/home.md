@@ -209,6 +209,22 @@ of another file (another sha256) gets "-2", "-3"…
 Until it does, a person decides before starting: a book with personal information is never sent to the AI service. That
 check is its own issue and branch.
 
+### When the credit couldn't be checked
+
+An estimate reads the OpenRouter credit (free: nothing of the book is sent). When that read fails, the run or batch page
+says why, in place of "Start Remediation", and offers **Check Credit Again** (U8, Patrick 2026-11-07):
+- the app has no key: whoever looks after the app adds it;
+- OpenRouter refused the key (HTTP 401 or 403: revoked or replaced): whoever looks after the app checks it;
+- OpenRouter couldn't be reached: check this computer's connection;
+- any other answer: try again in a moment.
+
+**Check Credit Again** reads the credit now (`lib/credit.py`, the same two OpenRouter endpoints decide.py reads) and keeps
+it for 10 minutes (`runs/.app/credit.json`). When it fits, "Start Remediation" comes back; every check below still
+applies to it, and the estimate's fingerprint never covers the credit, so nothing else changes. The advice under a
+refusal fits its reason: not enough credit says to add credit, a limit says to raise it or use fewer PDFs, and a credit
+that couldn't be read never says either. The reason stays on the page (it has no ×) while it is why "Start
+Remediation" is missing. A batch PDF's page headed "Part of a Batch" is now headed "Batch".
+
 ### What "Start Remediation" checks
 
 `webapp/spend.py` is the one gate every "Start Remediation" goes through, at the click:

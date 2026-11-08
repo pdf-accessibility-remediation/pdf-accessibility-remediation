@@ -41,6 +41,7 @@ One place, read in this order (later wins):
 | `batch_jobs` | `10` | How many PDFs of a batch are in progress at once, the next starting as each finishes (batch_api.sh's `JOBS`); also how many batch estimates go at once (R12). Subject to change once the hardware limits are measured. |
 | `max_books_per_batch` | `50` | The most books "New Batch" accepts. A setting whoever looks after the app can change; batch_api.sh in a terminal has no cap. |
 | `upload_max_mb` | `1024` | The largest PDF "Upload a PDF" accepts, in MB. |
+| (credit) | | "Check Credit Again" (U8) keeps the last credit read for 10 minutes in `runs/.app/credit.json` (dollars and the reason it failed, never the key). |
 | `limits` | `{"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 10}` | Dollars: what the estimates are compared with, and the most a "Start Remediation" may bind (`MAX_USD`, `BOOK_MAX_USD`, `BATCH_MAX_USD`). The batch limit is $10 (R13, Patrick's test 2026-11-07; `lib/costs.py`'s default for the terminal stays $40); a page to change the limits is a later issue. The pipeline's own caps stay as they are. |
 | `tools.VERAPDF` | empty | The veraPDF launcher. Empty: `verapdf` on the PATH. |
 | `tools.path_prepend` | `[]` | Folders put first on the PATH the app's commands get, for example Java's. |

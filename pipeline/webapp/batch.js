@@ -88,7 +88,12 @@ function body(s) {
     if (s.spend && s.spend.ok) h +=
       '<div class="pp-row"><button type="button" class="pp-primary" id="bt-spend" data-act="spend" aria-describedby="bt-cost">Start Remediation</button></div>' +
       '<p class="pp-note">' + (s.test ? 'Test: "Start Remediation" uses saved replies; nothing is sent to the AI service.' : '"Start Remediation" sends every PDF to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.') + '</p>';
-    else h += '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This batch can\'t be sent yet.') + '</p><p>Whoever looks after the app can raise the limit or add credit; or start a batch with fewer PDFs.</p>';
+    else if (s.spend && s.spend.code === 'no_credit') h += '<p class="pp-warn-t" id="bt-why">' + esc(s.spend.why) + '</p>' +   // U8: stays while it is the reason
+      '<div class="pp-row"><button type="button" class="pp-primary" id="bt-credit" data-act="credit">Check Credit Again</button></div>';
+    else h += '<p class="pp-warn-t" id="bt-why">' + esc((s.spend && s.spend.why) || 'This batch can\'t be sent yet.') + '</p><p>' +
+      (s.spend && s.spend.code === 'credit' ? 'Whoever looks after the app can add credit.' :
+       s.spend && s.spend.code === 'limit' ? 'Whoever looks after the app can raise the limit; or start a batch with fewer PDFs.' :
+       'Each PDF\'s page says more.') + '</p>';
   }
   if (s.phase === 'review' || (s.reviewing && s.reviewing.length && s.phase !== 'running')) h += '<p>' + s.reviewing.length + ' PDF' + (s.reviewing.length === 1 ? ' is' : 's are') +
     ' waiting for review. Open each one from the list; its "Finish Review" applies it, and this page and the dashboard follow.</p>';
@@ -192,6 +197,13 @@ if (panel) panel.addEventListener('click', async e => {
     let c, r;
     if (act === 'spend') {
       [c, r] = await api(API + '/spend', { fingerprint: st.fingerprint });
+    } else if (act === 'credit') {                                 // U8: "Check Credit Again" (free)
+      b.disabled = true;
+      const [c2, d] = await api('/api/credit', {});
+      await poll();
+      live(d.usd != null ? 'Credit checked: ' + usd(d.usd) + '.' : 'The credit still couldn\'t be checked.');
+      const f = $('bt-spend') || $('bt-credit'); if (f) f.focus();
+      return;
     } else if (act === 'language' || act === 'language-all') {
       const v = $(b.dataset.sel).value;
       if (!v) { msg('Choose a language first.', false, true); return; }

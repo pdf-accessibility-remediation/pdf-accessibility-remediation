@@ -18,7 +18,7 @@ the settings copied from the estimate's own job (never from a form again), paid,
 Test mode (test_reply_dir / test_batch_from from --config): REPLY= (or FROM=) instead of the call; prices offline are
 allowed, a missing saved reply is refused, never sent instead.
 """
-import os, re, datetime
+import os, re, json, time, datetime
 from lib import costs
 from . import config, jobs, books as BK
 
@@ -53,7 +53,7 @@ def last_estimate_job(s, run):
 
 def check_estimate(s, R, fingerprint, test, limits):
     """The estimate on disk, after checks 2–4; raises Refused."""
-    est = costs.estimate(R, 'workorder', limits)
+    est = costs.estimate(R, 'workorder', limits, credit_read=credit_read(s))   # U8: a fresh "Check Credit Again" read counts
     if est is None: raise Refused('There is no estimate for this run yet: select "Get a New Estimate".')
     if fingerprint != est['fingerprint']: raise Refused(CHANGED)
     model, prompt = current_model_and_prompt()
@@ -61,6 +61,45 @@ def check_estimate(s, R, fingerprint, test, limits):
     b = est['blocked']
     if b and not (test and b['code'] in ('offline', 'no_credit')): raise Refused(b['words'])
     return est
+
+# ------------------------------------------------------------------ "Check Credit Again" (U8, Patrick 2026-11-07)
+CREDIT_FRESH = 600                                           # a credit read counts for 10 minutes
+CREDIT_WHY = {
+    None: 'The credit couldn\'t be checked when the estimate was made. Select "Check Credit Again".',
+    'no_key': 'The app has no OpenRouter key, so the credit can\'t be checked. Whoever looks after the app can add it, then select "Check Credit Again".',
+    'refused': 'OpenRouter refused the app\'s key, so the credit can\'t be checked (the key may have been revoked or replaced). '
+               'Whoever looks after the app can check the key, then select "Check Credit Again".',
+    'unreachable': 'OpenRouter couldn\'t be reached. Check this computer\'s connection, then select "Check Credit Again".',
+    'error': 'OpenRouter didn\'t give the credit. Select "Check Credit Again" in a moment.'}
+
+def _credit_p(s): return os.path.join(s['jobs'], 'credit.json')
+
+def credit_now(s):
+    """The last credit read by "Check Credit Again": {usd, why, at}, or {} (none, or older than CREDIT_FRESH)."""
+    try: d = json.load(open(_credit_p(s), encoding='utf-8'))
+    except (OSError, ValueError): return {}
+    try: age = time.time() - float(d.get('t') or 0)
+    except (TypeError, ValueError): return {}
+    return d if 0 <= age <= CREDIT_FRESH else {}
+
+def credit_read(s):
+    """A fresh read's dollars for the checks, or None (the estimates' own credit is used as before)."""
+    v = credit_now(s).get('usd')
+    return float(v) if isinstance(v, (int, float)) else None
+
+def check_credit(s):
+    """"Check Credit Again": read the credit now (no book content is sent, nothing is paid), keep it for CREDIT_FRESH."""
+    from lib import credit as CR
+    usd, why = CR.check()
+    if s.get('test_reply_dir') or s.get('test_batch_from'): usd, why = (usd if usd is not None else 0.0), None   # test mode: never blocked here
+    d = {'usd': round(usd, 4) if usd is not None else None, 'why': why, 'at': datetime.datetime.now().isoformat(timespec='seconds'), 't': time.time()}
+    tmp = _credit_p(s) + '.tmp'; json.dump(d, open(tmp, 'w', encoding='utf-8')); os.replace(tmp, _credit_p(s))
+    return d
+
+def credit_words(s):
+    """Why the credit isn't known, in plain words, for the run and batch pages."""
+    d = credit_now(s)
+    return CREDIT_WHY.get(d.get('why'), CREDIT_WHY['error']) if d else CREDIT_WHY[None]
 
 def authorize(s, kind, run, R, fingerprint):
     """A single run's Spend (kind 'workorder'). Returns {argv, env_set, extra} for jobs.create(kind='spend', paid=True)."""
