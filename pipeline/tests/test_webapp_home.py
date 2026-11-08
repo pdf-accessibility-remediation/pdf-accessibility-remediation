@@ -135,7 +135,7 @@ def test_home_page_lists_books_and_runs(app):
     t = app['t']; (t / 'uploads').mkdir(exist_ok=True); (t / 'uploads' / 's.pdf').write_bytes(pdf_bytes(4, 'Sample Title'))
     st, b, h = get(app['port'], '/')
     page = b.decode()
-    assert st == 200 and 'Sample Title' in page and 'Source PDF: s.pdf' in page and 'href="/new?book=' in page
+    assert st == 200 and 'Sample Title' in page and 'Source PDF: s.pdf' in page and 'data-dialog="/api/form?what=run&amp;book=' in page
     assert 'aria-label="App"' not in page and '>Home Page<' not in page                # P1: no way home on the home page itself
     assert '<script src="/app/home.js" defer></script>' in page and "script-src 'self'" in h['Content-Security-Policy']
     assert 'My Workspace' in page and '/run/book/r1/' in page and 'None' not in page.replace('None yet', '')
@@ -302,7 +302,7 @@ def test_an_upload_says_when_the_pdf_is_locked(app):
     assert st == 201 and d['book']['locked'] is True and d['book']['unreadable'] is False
 
 def test_home_js_menu_and_drop_zone():
-    js = open(os.path.join(HERE, 'webapp', 'home.js'), encoding='utf-8').read()
+    js = open(os.path.join(HERE, 'webapp', 'home.js'), encoding='utf-8').read() + open(os.path.join(HERE, 'webapp', 'shared.js'), encoding='utf-8').read()
     for x in ("e.key === 'Escape') { e.preventDefault(); closeMenu(true); }", "else if (e.key === 'Tab') closeMenu(false);",
               "['dragover', 'drop'].forEach(k => addEventListener(k,", "if (e.key === 'Enter' && e.target === input) { e.preventDefault(); save(); }",
               "fresh.forEach((tr, i) => edit(tr.querySelector('[data-edit]'), !notes.length && i === 0));"):
@@ -346,18 +346,15 @@ def test_home_page_sits_beside_each_pages_name(app):
     t = app['t']; (t / 'uploads').mkdir(exist_ok=True)
     for n in ('a', 'b'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n.upper()}'))
     keys = [b['key'] for b in BK.listing(S(t))]
-    pages = {'run': '/run/old/r0/', 'batch': '/batch/b1/', 'new batch': '/new-batch?book=' + keys[0] + '&book=' + keys[1]}
+    pages = {'run': '/run/old/r0/', 'batch': '/batch/b1/'}
     for what, path in pages.items():
         page = get(app['port'], path)[1].decode()
         assert "<div class=\"pp-hd-top\">" in page, what
         row = page[page.index("<div class=\"pp-hd-top\">"):]; row = row[:row.index("</nav></div>") + 12]
         assert row.index('<h1>') < row.index('>Home Page</a>') and page.count('aria-label="App"') == 1, what
         if what == 'batch': assert row.index('id="bn-toggle"') < row.index('>Home Page</a>'), what     # S4: the list's button first
-    nr = get(app['port'], '/new?book=' + keys[0])[1].decode()                         # S6: at the end of the "Source PDF:" line
-    src = nr[nr.index('<span class="nr-src">'):]
-    assert src.index('Source PDF: a.pdf') < src.index('>Home Page</a>') and 'First pass, March' not in nr and nr.count('aria-label="App"') == 1
-    nb = get(app['port'], pages['new batch'])[1].decode()
-    assert 'Press backlist' not in nb and 'aria-describedby="nb-name-h"' not in nb       # R8
+    for path in ('/new?book=' + keys[0], '/new-batch?book=' + keys[0] + '&book=' + keys[1]):            # T4: pop-ups on the home page now
+        assert get(app['port'], path)[2].get('Location') == '/'
 
 def test_r1_r3_r7_wording_and_styles():
     css = open(os.path.join(HERE, 'webapp', 'panel.css'), encoding='utf-8').read()

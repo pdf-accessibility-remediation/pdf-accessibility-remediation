@@ -171,7 +171,7 @@ def test_the_batch_page_keeps_a_language_chosen_but_not_sent():
     yet sent ("KTimes 1985 7 2", with nothing preselected, came back to "Choose a language"). Now a chosen value survives
     a redraw, no redraw happens while a language list has focus, and the lists are keyed by the PDF's name."""
     js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
-    assert "if (bb && !(ae && ae.tagName === 'SELECT' && bb.contains(ae)))" in js
+    assert "if (bb && !busy_ && !(ae && ae.tagName === 'SELECT' && bb.contains(ae)))" in js
     assert "bb.querySelectorAll('select[data-book][data-chosen]').forEach(x => { chosen[x.dataset.book] = x.value; });" in js
     assert "e.target.dataset.chosen = '1'" in js and "id = 'bt-lang-' + b.name" in js
     assert 'Use for All Waiting PDFs' in js and "{ all: true, lang: v }" in js

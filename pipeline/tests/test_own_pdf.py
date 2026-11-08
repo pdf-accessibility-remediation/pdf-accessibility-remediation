@@ -56,7 +56,7 @@ def test_the_paid_rule_holds_after_the_move(setup):
 def test_new_run_of_this_pdf_copies_it(setup):
     s = S(setup); b = upload(setup, s)
     NR.start_estimate(s, [], b['key'], 'First')
-    page = NR.form_page(s, '', run='bk/First')
+    page = NR.form_part(s, '', run='bk/First')
     assert 'name="run" value="bk/First"' in page and 'Source PDF: bk.pdf' in page
     j = NR.start_estimate(s, [], '', 'Second', from_run='bk/First')
     one, two = setup / 'runs' / 'bk' / 'First' / 'source' / 'bk.pdf', setup / 'runs' / 'bk' / 'Second' / 'source' / 'bk.pdf'
@@ -127,7 +127,7 @@ def test_a_batch_moves_each_pdf_into_its_book_folder(setup):
     lines = [l for l in open(BT.list_path(s, 'Spring'), encoding='utf-8') if not l.startswith('#')]
     assert sorted(l.split(' ', 1)[1].strip() for l in lines) == sorted(str(B / n / 'source' / f'{n}.pdf') for n in 'abc')
     assert sorted(j['argv'][2] for j in js) == sorted(str(B / n / 'source' / f'{n}.pdf') for n in 'abc')
-    page = NR.form_page(s, '', run='batches/Spring/a')                                                              # New Run of This PDF
+    page = NR.form_part(s, '', run='batches/Spring/a')                                                              # New Run of This PDF
     assert 'Source PDF: a.pdf' in page
 
 def test_a_batch_that_cannot_move_one_pdf_moves_none(setup, monkeypatch):
@@ -151,7 +151,7 @@ def test_save_reopen_remove_then_estimate(setup):
     assert BK.listing(s) == [] and BT.saved(s, 'Later') and not jobs.all_jobs(s['jobs'])
     b = {x['label']: x for x in HM.index(s)['batches']}['Later']
     assert b['group'] == 'not-started' and b['state'] == 'Not Started'
-    page = BT.form_page(s, [], saved='Later')
+    page = BT.form_part(s, [], saved='Later')
     assert 'value="Later"' in page and page.count('Remove from Batch</button>') == 3 and 'data-api="/api/batch/Later/start"' in page
     back = BT.remove_saved(s, 'Later', 'c')
     assert back == str(setup / 'uploads' / 'c.pdf') and [x['file'] for x in BK.listing(s)] == ['c.pdf'] and (setup / 'uploads' / 'c.json').is_file()
@@ -178,8 +178,9 @@ def test_the_saved_batch_routes(app):
     for n in ('a', 'b', 'c'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n}'))
     keys = [b['key'] for b in BK.listing(settings(t))]
     assert jpost(app['port'], '/api/batch/new-later', {'books': keys, 'label': 'Later'}) == (202, {'location': '/?view=batches'})
-    page = get(app['port'], '/batch/Later/')[1].decode()
-    assert '<h1>New Batch</h1>' in page and page.count('>Remove from Batch</button>') == 3 and 'Save Batch for Later' in page
+    assert get(app['port'], '/batch/Later/')[2].get('Location') == '/?view=batches&open=Later'           # T4: its pop-up on the home page
+    page = json.loads(get(app['port'], '/api/form?what=batch&saved=Later')[1])['html']
+    assert '<h2 id="dlg-h">New Batch</h2>' in page and page.count('>Remove from Batch</button>') == 3 and 'Save Batch for Later' in page and 'data-cancel>Cancel' in page
     assert jpost(app['port'], '/api/batch/Later/remove', {'book': 'c'}) == (200, {'removed': True})
     assert jpost(app['port'], '/api/batch/Later/remove', {'book': 'b'})[0] == 200
     st, d = jpost(app['port'], '/api/batch/Later/start', {'label': 'Later'})
@@ -240,3 +241,43 @@ def test_a_batch_whose_record_cant_be_written_undoes_the_moves(setup, monkeypatc
     monkeypatch.undo()
     assert sorted(b['file'] for b in BK.listing(s)) == ['a.pdf', 'b.pdf', 'c.pdf']
     assert not (setup / 'runs' / 'batches' / 'Full').exists() and not os.path.exists(BT.list_path(s, 'Full')) and not os.path.exists(BT.meta_path(s, 'Full'))
+
+# ------------------------------------------------------------------ T2 (the batch dashboard's "⋯") and T4 (the pop-ups)
+def test_a_batch_pdfs_menu_edit_name_and_new_run(app):
+    """T2: each dashboard row has a "⋯" menu (Edit Name, New Run of This PDF). Edit Name sets the PDF's display name by
+    sha256 (shown wherever that file is named), never a folder, file or run name; New Run of This PDF opens New Run's pop-up."""
+    from test_webapp import get
+    from test_webapp_home import jpost
+    t = app['t']; s = settings(t); (t / 'uploads').mkdir(exist_ok=True)
+    for n in ('a', 'b'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n}'))
+    keys = {b['file']: b['key'] for b in BK.listing(s)}
+    BT.start(s, [], list(keys.values()), 'Spring', estimate=False)
+    assert jpost(app['port'], '/api/rename/batch-pdf', {'label': 'Spring', 'book': 'a', 'name': 'Annals, vol. 1'}) == (200, {'name': 'Annals, vol. 1'})
+    assert NM.book_name(s, keys['a.pdf'], 'a.pdf') == 'Annals, vol. 1' and (t / 'runs' / 'batches' / 'Spring' / 'a' / 'source' / 'a.pdf').is_file()
+    assert NM.run_name(s, 'batches/Spring/a') is None and [x['name'] for x in BT.books_of(s, 'Spring')] == ['a', 'b']
+    assert jpost(app['port'], '/api/rename/batch-pdf', {'label': 'Spring', 'book': 'zz', 'name': 'x'})[0] == 409
+    assert jpost(app['port'], '/api/rename/batch-pdf', {'label': '../x', 'book': 'a', 'name': 'x'})[0] == 409
+    js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert 'data-edit="batchpdf"' in js and '>New Run of This PDF</button>' in js and 'aria-haspopup="menu"' in js and "'More Actions for ' + esc(r.book)" in js
+    assert 'New Run of This PDF</a>' not in js                                                                   # the old button is gone
+    f = json.loads(get(app['port'], '/api/form?what=run&run=' + 'batches/Spring/a')[1])['html']                 # New Run of This PDF
+    assert '<h2 id="dlg-h">New Run</h2>' in f and 'name="run" value="batches/Spring/a"' in f and 'Annals, vol. 1' in f
+
+def test_the_pop_ups(app):
+    """T4: New Run and New Batch are pop-ups: their contents from /api/form (a heading, the fields, "Cancel"); the old pages
+    go home; the dialog is a native <dialog> (Tab stays inside), Esc and Cancel close it and give focus back."""
+    from test_webapp import get
+    t = app['t']; s = settings(t); (t / 'uploads').mkdir(exist_ok=True)
+    for n in ('a', 'b'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n}'))
+    keys = [b['key'] for b in BK.listing(s)]
+    r = json.loads(get(app['port'], '/api/form?what=run&book=' + keys[0])[1])['html']
+    assert '<h2 id="dlg-h">New Run</h2>' in r and 'aria-describedby="nr-name-e"' in r and '>Get the Estimate</button><button type="button" data-cancel>Cancel</button>' in r
+    b = json.loads(get(app['port'], '/api/form?what=batch&book=' + keys[0] + '&book=' + keys[1])[1])['html']
+    assert '<h2 id="dlg-h">New Batch</h2>' in b and 'data-api="/api/batch/new-later"' in b and 'data-cancel>Cancel' in b
+    assert get(app['port'], '/api/form?what=nope')[0] == 404
+    js = open(os.path.join(HERE, 'webapp', 'shared.js'), encoding='utf-8').read()
+    for x in ("dlg.showModal()", "dlg.setAttribute('aria-labelledby', 'dlg-h')", "dlg.addEventListener('cancel', e => { e.preventDefault(); closeDialog(); });",
+              "if (o && document.body.contains(o) && !o.closest('[hidden]')) o.focus();", "if (o && !document.body.contains(o) && o.id) o = $(o.id);", "nameIn.setAttribute('aria-invalid', 'true')"):
+        assert x in js, x
+    home = get(app['port'], '/')[1].decode()
+    assert '<script src="/app/shared.js" defer></script><script src="/app/home.js" defer></script>' in home and get(app['port'], '/app/shared.js')[0] == 200

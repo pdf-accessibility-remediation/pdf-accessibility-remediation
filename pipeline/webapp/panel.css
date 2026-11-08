@@ -287,7 +287,7 @@ header.top.pp-hd { padding-top: 8px; padding-bottom: 6px; }
   body.bn-on:not(.bn-closed) #pdfrem-panel > section.pp:first-of-type, body.bn-on:not(.bn-closed) #main > #pdfrem-checks { margin-left: 0; max-width: none; }
   body.bn-on:not(.bn-closed) #main > section.ship { margin-left: 0; }
   body.bn-on:not(.bn-closed) #pdfrem-panel > section.pp:first-of-type, body.bn-on:not(.bn-closed) #main > #pdfrem-checks > .pp-checks { border-left-width: 0; }
-  body.bn-on:not(.bn-closed) #main > :not(.ship):not(#pdfrem-checks) { margin-left: 16px; }
+  body.bn-on:not(.bn-closed) #pdfrem-panel ~ #main > :not(.ship):not(#pdfrem-checks) { margin-left: 16px; }   /* run pages only */
 }
 /* ---- end of T3 */
 /* S2, 18-L2 (Patrick, 2026-11-07): "Batch: <name>" is the way to the batch page: styled like the list's items (the text's
@@ -304,3 +304,19 @@ header.nr-head { padding-top: 18px; } header.nr-head h1 { margin: 0 0 10px; }
 .nr-src .pp-appbar { margin: 0; padding: 0; max-width: none; }
 /* S7: New Batch's "Home Page" 3 px left and 2 px down */
 .nb-page .pp-hd-top .pp-appbar { position: relative; left: -3px; top: 2px; }
+/* T2 (Patrick, 2026-11-07): the batch page's "This Batch" panel joins its header, and the side list when it is shown */
+#main > #bt-panel { margin-top: 0; border-top-width: 0; border-radius: 0; }
+@media (min-width: 48em) {
+  body.bn-on:not(.bn-closed) main:has(> #bt-panel) { max-width: none; margin-left: 0; margin-right: 0; padding-left: 0; }
+  body.bn-on:not(.bn-closed) #main > #bt-panel { margin-left: 0; border-left-width: 0; }
+}
+.bt-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; } .bt-acts .bt-open { margin-top: 0; }
+/* T4: New Run and New Batch as pop-ups */
+.pp-form-dlg { width: min(600px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow: auto; }
+.pp-form-dlg h3 { font-size: 15px; margin: 10px 0 4px; }
+.pp-form-dlg .mc-book { margin: 0 0 8px; } .pp-form-dlg .hm-active { margin: 4px 0 8px; }
+.pp-form-dlg .nb-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; }
+.pp-form-dlg .pp-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; } .pp-form-dlg .pp-row button { margin-right: 0; }
+.pp-form-dlg .pp-field-e { margin: 4px 0 0; } .pp-form-dlg .dlg-msg { border: 1px solid var(--reject); border-radius: 4px; padding: 6px 10px; margin: 8px 0; }
+.pp-form-dlg .dlg-msg[hidden], .pp-form-dlg .pp-field-e[hidden] { display: none; }
+.pp-form-dlg .nb-pdf { display: block; flex: 1 1 14em; min-width: 0; }

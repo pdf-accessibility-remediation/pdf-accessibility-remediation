@@ -52,6 +52,7 @@ function column(s) {                                             // the statuses
   s.books.forEach(b => {
     const a = nav.querySelector('a[data-book="' + CSS.escape(b.name) + '"]'); if (!a) return;
     const x = a.querySelector('.bn-st'); if (x.textContent !== b.status) x.textContent = b.status;
+    const nm = a.querySelector('.bn-name'); if (nm && b.book && nm.textContent !== b.book) nm.textContent = b.book;   // T2: a PDF renamed
     const c = 'bn-t-' + (b.tone || 'new');
     if (!a.classList.contains(c)) { a.className = c; }
     const sp = a.querySelector('.bn-spin');
@@ -126,8 +127,7 @@ function dash(s) {                                               // the batch da
     const x = r.result;
     h += '<tr><td><input type="checkbox" name="trash-pdf" value="' + esc(r.name) + '" id="bt-sel-' + i + '" aria-labelledby="bt-n' + i + '"' + (keep.has(r.name) ? ' checked' : '') + '></td>' +
       '<th scope="row" id="bt-n' + i + '"><span class="hm-book">' + esc(r.book) + '</span><span class="hm-file">Source PDF: ' + esc(r.file) + '</span>' +
-      '<a class="pp-btn bt-open" href="' + esc(r.href) + '" id="bt-o' + i + '">Open</a> <a class="pp-btn bt-open" href="/new?run=' + encodeURIComponent('batches/' + LABEL + '/' + r.name) +
-      '" aria-describedby="bt-n' + i + '">New Run of This PDF</a></th><td>' + esc(r.status) + (x && !x.reviewed ? ' <span class="pp-note">(not reviewed)</span>' : '') + '</td>';
+      '<span class="hm-acts bt-acts"><a class="pp-btn bt-open" href="' + esc(r.href) + '" id="bt-o' + i + '">Open</a> ' + rowMenu(r, i) + '</span></th><td>' + esc(r.status) + (x && !x.reviewed ? ' <span class="pp-note">(not reviewed)</span>' : '') + '</td>';
     if (!x) { h += '<td></td><td></td><td></td><td></td><td></td><td></td></tr>'; return; }
     h += '<td>' + x.needs + '</td><td>' + x.ai + '</td><td>' + esc(SAFE[x.safety] || x.safety) + '</td>' +
       '<td>' + (x.va == null ? 'not run' : (x.vb == null ? '–' : x.vb) + ' → ' + x.va + (x.new ? ' <b>(' + x.new + ' new)</b>' : '')) + '</td>' +
@@ -136,6 +136,16 @@ function dash(s) {                                               // the batch da
   return h + '</tbody></table></div><p class="pp-note">Sorted by "Needs a Person", most work first. Automated checks are evidence, not sign-off.</p>' +
     '<div class="pp-row"><button type="button" id="bt-trash-sel" data-trash="selected" data-label="' + esc(LABEL) + '">Move Selected to Trash</button>' +
     '<button type="button" id="bt-trash-all" data-trash="batch" data-label="' + esc(LABEL) + '">Move This Batch to Trash</button></div>';
+}
+// T2 (Patrick, 2026-11-07): a "⋯" menu per PDF, the same menu button as My Workspace's (webapp/shared.js): "Edit Name"
+// (its display name, kept by sha256: never a file, folder or run name) and "New Run of This PDF" (a pop-up)
+function rowMenu(r, i) {
+  const mid = 'bt-m' + i, lab = 'More Actions for ' + esc(r.book);
+  return '<span class="hm-menu"><button type="button" class="hm-more" id="bt-more-' + esc(r.name) + '" aria-haspopup="menu" aria-expanded="false" aria-controls="' + mid + '" aria-label="' + lab + '">' +
+    '<span aria-hidden="true">⋯</span></button><span class="hm-mlist" role="menu" id="' + mid + '" aria-label="' + lab + '" hidden>' +
+    '<button type="button" role="menuitem" tabindex="-1" data-edit="batchpdf" data-label="' + esc(LABEL) + '" data-book="' + esc(r.name) + '">Edit Name</button>' +
+    '<button type="button" role="menuitem" tabindex="-1" data-dialog="/api/form?what=run&amp;run=' + esc(encodeURIComponent('batches/' + LABEL + '/' + r.name)) + '">New Run of This PDF</button>' +
+    '</span></span>';
 }
 async function api(path, b) {
   const r = await fetch(path, b === undefined ? { cache: 'no-store' } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
@@ -154,7 +164,8 @@ async function poll() {
       // R9 (Patrick's test, 2026-11-07): a redraw never undoes a language chosen but not yet sent, and never happens while
       // a language list has focus (an open list would close under the person); the next poll draws it.
       const ae = document.activeElement;
-      if (bb && !(ae && ae.tagName === 'SELECT' && bb.contains(ae))) {
+      const busy_ = bb && (bb.querySelector('.hm-rename') || bb.querySelector('.hm-more[aria-expanded="true"]'));   // T2: never under an open menu or name box
+      if (bb && !busy_ && !(ae && ae.tagName === 'SELECT' && bb.contains(ae))) {
         const h = body(s), keep = ae && ae.id;
         if (bb.dataset.h !== h) {
           const chosen = {}; bb.querySelectorAll('select[data-book][data-chosen]').forEach(x => { chosen[x.dataset.book] = x.value; });

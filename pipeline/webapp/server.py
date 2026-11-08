@@ -122,7 +122,7 @@ def served(d, runs):
 
 STATIC = {'panel.js': os.path.join(config.HERE, 'panel.js'), 'panel.css': os.path.join(config.HERE, 'panel.css'),
           'manual.js': os.path.join(config.HERE, 'manual.js'), 'home.js': os.path.join(config.HERE, 'home.js'), 'batch.js': os.path.join(config.HERE, 'batch.js'),
-          'trash.js': os.path.join(config.HERE, 'trash.js'), 'palette.css': os.path.join(config.PIPELINE, 'review', 'palette.css')}
+          'trash.js': os.path.join(config.HERE, 'trash.js'), 'shared.js': os.path.join(config.HERE, 'shared.js'), 'palette.css': os.path.join(config.PIPELINE, 'review', 'palette.css')}
 SKIP = '<a class="skip" href="#main">Skip to the content</a>'
 
 FRAME = {'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'"}   # every response: never in a frame
@@ -284,6 +284,13 @@ def make(s, setup, code=None):
                 try: n = NMS.set_book_name(s, b['key'], body.get('name'))
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 return self.send(202, {'name': n, 'location': '/?renamed=' + b['key']})
+            if p == '/api/rename/batch-pdf':                      # T2: a batch PDF's "Edit Name": its display name, by sha256 (never a file or folder)
+                B = batch_dir(s['runs'], str(body.get('label') or ''))
+                bk = next((b for b in (BT.books_of(s, os.path.basename(B)) if B else []) if b.get('name') == str(body.get('book') or '')), None)
+                if not bk or not bk.get('key'): return self.send(409, {'error': 'This PDF is no longer in the batch. Reload the page.'})
+                try: n = NMS.set_book_name(s, bk['key'], body.get('name'))
+                except ValueError as e: return self.send(409, {'error': str(e)})
+                return self.send(200, {'name': n})
             if p in ('/api/rename/run', '/api/rename/batch'):    # My Workspace's "Edit Name" (Q4): the plain name only, never the folder
                 if p == '/api/rename/run':
                     run = str(body.get('run') or '')
@@ -459,7 +466,8 @@ def make(s, setup, code=None):
                 rest = segs[1:]
                 if not rest:
                     if not p.endswith('/'): return self.redirect(p + '/')
-                    if BT.saved(s, os.path.basename(B)): return self.send(200, BT.form_page(s, [], saved=os.path.basename(B)), 'text/html; charset=utf-8')   # S7
+                    if BT.saved(s, os.path.basename(B)):                 # S7, T4: a saved batch opens its pop-up on the home page
+                        return self.redirect('/?view=batches&open=' + urllib.parse.quote(os.path.basename(B), safe=''))
                     return self.send(200, BT.page(s, os.path.basename(B), closed=self.nav_closed()), 'text/html; charset=utf-8')   # the batch page (#45)
                 if rest == ['summary.html']:                     # the batch dashboard, with the app bar (#45: every page links home)
                     f = os.path.realpath(os.path.join(B, 'summary.html'))
@@ -509,9 +517,18 @@ def make(s, setup, code=None):
                         return self.send(200, with_version(REL.no_statement(t), run, sid), 'text/html; charset=utf-8')
                     return self.send(200, md_page(t, run, sid, base), 'text/html; charset=utf-8')   # review.md with a way back
                 return self.file(f)
-            if p == '/new': return self.send(200, NR.form_page(s, (q.get('book') or [''])[0], (q.get('run') or [''])[0] or None), 'text/html; charset=utf-8')
+            if p in ('/new', '/new-batch'): return self.redirect('/')   # T4: New Run and New Batch are pop-ups on the home page
+            if p == '/api/form':                                  # T4: a pop-up's contents (webapp/shared.js puts them in a dialog)
+                what = (q.get('what') or [''])[0]
+                if what == 'run': h = NR.form_part(s, (q.get('book') or [''])[0], (q.get('run') or [''])[0] or None)
+                elif what == 'batch':
+                    sv = (q.get('saved') or [''])[0]
+                    if sv and not (batch_dir(s['runs'], sv) and BT.saved(s, os.path.basename(batch_dir(s['runs'], sv)))):
+                        return self.send(409, {'error': 'This batch has started or is gone. Reload the page.'})
+                    h = BT.form_part(s, q.get('book') or [], saved=os.path.basename(batch_dir(s['runs'], sv)) if sv else None)
+                else: return self.send(404, {'error': 'no such form'})
+                return self.send(200, {'html': h})
             if p == '/book': return self.redirect('/')            # the name page went away (Q1, Q3): Edit Name is on the home page
-            if p == '/new-batch': return self.send(200, BT.form_page(s, q.get('book') or []), 'text/html; charset=utf-8')
             if p.startswith('/api/batch/'):
                 bs = segments(p[len('/api/batch/'):])
                 B = batch_dir(s['runs'], bs[0]) if bs and len(bs) == 1 else None

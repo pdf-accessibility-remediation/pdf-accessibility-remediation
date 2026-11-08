@@ -214,6 +214,7 @@ def batches(s, rows):
         n_books = len(bs) or len(meta.get('books') or [])
         known = [r['pages'] for r in bs if r.get('pages')]
         out.append({'label': lb, 'name': NM.batch_name(s, lb) or lb, 'books': n_books, 'done': done, 'state': state,
+                    'saved': bool(meta.get('saved')) and not lj and not any(jobs.related(j['run'], f'batches/{lb}') for j in jobs.all_jobs(s['jobs'])),
                     'group': g, 'when': when, 'cost': round(sum(r['cost'] or 0 for r in bs), 6),
                     'pages': sum(known) if known else None, 'pages_missing': n_books - len(known)})
     out.sort(key=lambda b: b['when'] or '', reverse=True)
@@ -284,7 +285,7 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
             cid = f'hm-sel-{i}'
             note = ' <span class="pp-note">Locked with a password: add an unlocked copy.</span>' if b['locked'] else \
                    ' <span class="pp-note">This PDF couldn\'t be read.</span>' if b['unreadable'] else ''
-            act = ('' if b['locked'] else f'<a class="pp-btn" href="/new?book={E(b["key"])}" aria-describedby="{cid}-n">New Run</a> ') + \
+            act = ('' if b['locked'] else f'<button type="button" data-dialog="/api/form?what=run&amp;book={E(b["key"])}" aria-describedby="{cid}-n">New Run</button> ') + \
                   menu(f'{cid}-m', b['name'], [('Edit Name', {'data-edit': 'pdf', 'data-key': b['key']}),
                                                ('Move to Trash', {'data-trash': 'pdf', 'data-key': b['key']})])
             sel = '' if b['locked'] else f'<input type="checkbox" name="book" value="{E(b["key"])}" id="{cid}" aria-labelledby="{cid}-n">'
@@ -334,7 +335,7 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
             B.append(f'<tr><th scope="row" id="{rid}"><span class="hm-run">{E(label)}</span>{book_cell(r["book"], r["file"])}</th><td>{pill(r["group"])}</td>'
                      f'<td>{E(pages_words(r.get("pages")))}</td><td class="pp-nw">{E(D.day(r["when"]) if r["when"] else "date not recorded")}</td>'
                      f'<td class="hm-acts"><a class="pp-btn" href="{E(run_href(r["run"]))}" aria-describedby="{rid}">Open</a> ' +
-                     menu(f'{rid}-m', label, [('New Run of This PDF', {'data-href': '/new?run=' + urllib.parse.quote(r['run'])}), ('Edit Name', {'data-edit': 'run', 'data-run': r['run']}),
+                     menu(f'{rid}-m', label, [('New Run of This PDF', {'data-dialog': '/api/form?what=run&run=' + urllib.parse.quote(r['run'])}), ('Edit Name', {'data-edit': 'run', 'data-run': r['run']}),
                                               ('Move to Trash', {'data-trash': 'run', 'data-run': r['run']})]) +
                      '</td></tr>')
         B.append('</tbody></table></div>')
@@ -345,14 +346,16 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
             bid = 'hm-b-' + hashlib.sha1(b['label'].encode()).hexdigest()[:10]
             B.append(f'<tr><th scope="row" id="{bid}"><span class="hm-run">{E(b["name"])}</span></th><td>{pill(b["group"], b["state"])}</td>'
                      f'<td>{E(pages_words(b.get("pages"), b.get("pages_missing") or 0))}</td><td class="pp-nw">{E(D.day(b["when"]) if b["when"] else "date not recorded")}</td>'
-                     f'<td class="hm-acts"><a class="pp-btn" href="/batch/{E(urllib.parse.quote(b["label"], safe=""))}/" aria-describedby="{bid}">Open</a> ' +
+                     f'<td class="hm-acts">' + (f'<button type="button" data-dialog="/api/form?what=batch&amp;saved={E(urllib.parse.quote(b["label"], safe=""))}" '   # T4: a saved
+                       f'aria-describedby="{bid}">Open</button> ' if b.get('saved') else   #   batch opens its pop-up
+                       f'<a class="pp-btn" href="/batch/{E(urllib.parse.quote(b["label"], safe=""))}/" aria-describedby="{bid}">Open</a> ') +
                      menu(f'{bid}-m', b['name'], [('Edit Name', {'data-edit': 'batch', 'data-label': b['label']}), ('Move to Trash', {'data-trash': 'batch', 'data-label': b['label']})]) +
                      '</td></tr>')
         B.append('</tbody></table></div>')
     if len(items) > lim:
         more = qs(view=view if view != 'runs' else None, q=q, group=group, n=n + 25 if view == 'runs' else n, bn=bn + 25 if view == 'batches' else bn)
         B.append(f'<p><a class="pp-btn" href="{E(more)}#hm-more" id="hm-more">Show More {"Runs" if view == "runs" else "Batches"}</a></p>')
-    B.append('</section></main><script src="/app/home.js" defer></script><script src="/app/trash.js" defer></script></body></html>')
+    B.append('</section></main><script src="/app/shared.js" defer></script><script src="/app/home.js" defer></script><script src="/app/trash.js" defer></script></body></html>')
     return '\n'.join(B)
 
 def title_row(h1, extra='', first='', bar=True):

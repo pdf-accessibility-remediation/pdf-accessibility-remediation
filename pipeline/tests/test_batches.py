@@ -130,10 +130,10 @@ def test_the_forms_send_what_the_routes_read(two):
     from webapp import newrun as NR
     s = settings(two)
     key = BK.listing(s)[0]['key']
-    assert f'name="book" value="{key}"' in NR.form_page(s, key)
+    assert f'name="book" value="{key}"' in NR.form_part(s, key)
     keys = [b['key'] for b in BK.listing(s)]
-    assert all(f'name="books" value="{k}"' in BT.form_page(s, keys) for k in keys)
-    js = open(os.path.join(HERE, 'webapp', 'home.js'), encoding='utf-8').read()
+    assert all(f'name="books" value="{k}"' in BT.form_part(s, keys) for k in keys)
+    js = open(os.path.join(HERE, 'webapp', 'shared.js'), encoding='utf-8').read()                # T4: the pop-ups' forms
     assert "if (x.name === 'books')" in js and "x.name === 'book')" not in js
 
 def test_a_tab_or_return_in_a_path_is_refused(setup, monkeypatch):

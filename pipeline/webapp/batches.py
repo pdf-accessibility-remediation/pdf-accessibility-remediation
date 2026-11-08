@@ -427,19 +427,18 @@ def answer_all(s, label, lang):
     return {'jobs': out, 'left': left}
 
 # ------------------------------------------------------------------ pages
-def form_page(s, keys, saved=None):
-    """New Batch's form; saved: a batch saved for later (S7), its page until its estimates start: the name editable, each
-    PDF with "Remove from Batch", "Get the Estimates" and "Save Batch for Later"."""
+def form_part(s, keys, saved=None):
+    """New Batch's pop-up (T4, Patrick 2026-11-07): its heading, the PDFs and the form, for webapp/shared.js to put in a
+    dialog on the home page; saved: a batch saved for later (S7), until its estimates start: the name editable, each PDF
+    with "Remove from Batch", "Get the Estimates" and "Save Batch for Later"."""
     import html
     from . import names as NM
     E = html.escape
-    head = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            '<title>New Batch</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page hm-page nb-page"><a class="skip" href="#main">Skip to the content</a><header>' + HM.title_row('New Batch') + '</header><main id="main" tabindex="-1">')
+    head = '<h2 id="dlg-h">New Batch</h2>'
     if saved:
         bs = (_load(meta_path(s, saved)) or {}).get('books') or []
         name = NM.batch_name(s, saved) or saved
-        items = ''.join(f'<li class="nb-item">{HM.book_cell(NM.book_name(s, b.get("key"), b.get("file") or "") if b.get("key") else b.get("book"), BK.shown_file(b.get("file") or ""))}'
+        items = ''.join(f'<li class="nb-item"><span class="nb-pdf">{HM.book_cell(NM.book_name(s, b.get("key"), b.get("file") or "") if b.get("key") else b.get("book"), BK.shown_file(b.get("file") or ""))}</span>'
                         f'<button type="button" data-remove="{E(b["name"])}" data-label="{E(saved)}" aria-label="Remove from Batch: {E(b.get("book") or b["name"])}">Remove from Batch</button></li>'
                         for b in bs)
         api, later, first = f'/api/batch/{urllib.parse.quote(saved, safe="")}/start', f'/api/batch/{urllib.parse.quote(saved, safe="")}/save', \
@@ -448,18 +447,19 @@ def form_page(s, keys, saved=None):
         keys = [k for k in dict.fromkeys(keys) if isinstance(k, str)]
         bs = [b for b in (BK.by_key(s, k) for k in keys) if b]
         if len(bs) < 2:
-            return head + '<div class="pp"><p>Select two or more PDFs on the home page first.</p></div></main></body></html>'
+            return head + '<p>Select two or more PDFs first.</p><div class="pp-row"><button type="button" data-cancel>Close</button></div>'
         name = ''
         items = ''.join(f'<li>{HM.book_cell(b["name"], b["file"])}<input type="hidden" name="books" value="{E(b["key"])}"></li>' for b in bs)
         api, later, first = '/api/batch/new', '/api/batch/new-later', ''
-    return head + (f'<form class="pp hm-form" id="hm-newbatch" data-api="{E(api)}">{first}<h2>PDFs ({len(bs)})</h2><ul class="hm-active">{items}</ul>'
+    return head + (f'<form class="hm-form" data-api="{E(api)}" novalidate>{first}<h3>PDFs ({len(bs)})</h3><ul class="hm-active">{items}</ul>'
         '<div class="mc-field"><label for="nb-name">Batch Name</label>'
-        f'<input type="text" id="nb-name" name="label" maxlength="120" required value="{E(name)}"></div>'
+        f'<input type="text" id="nb-name" name="label" maxlength="120" required value="{E(name)}" data-field="name" aria-describedby="nb-name-e">'
+        '<p class="pp-warn-t pp-field-e" id="nb-name-e" hidden></p></div>'
         '<p class="mc-help">"Get the Estimates" prepares every PDF and works out what the batch could cost. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the batch page. "Save Batch for Later" keeps the batch and its PDFs, with nothing started.</p>'
-        '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
-        f'<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button><button type="submit" data-api="{E(later)}">Save Batch for Later</button></div>'
-        '</form></main><script src="/app/home.js" defer></script></body></html>')
+        '<div class="pp-msg dlg-msg" tabindex="-1" hidden></div>'
+        f'<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button><button type="submit" data-api="{E(later)}">Save Batch for Later</button>'
+        '<button type="button" data-cancel>Cancel</button></div></form>')
 
 def tone(row, R):
     """A book's state in the side list's left border (P15, Patrick 2026-11-06), always with its status in words beside it:
@@ -528,7 +528,7 @@ def page(s, label, closed=None):
             '</header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
             '<h2 id="bt-h" tabindex="-1">This Batch</h2><div id="bt-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
-            '<script src="/app/batch.js" defer></script><script src="/app/trash.js" defer></script></body></html>', closed)
+            '<script src="/app/shared.js" defer></script><script src="/app/batch.js" defer></script><script src="/app/trash.js" defer></script></body></html>', closed)
 
 def with_nav(page, s, label, current, closed=None):
     """A book's run page inside a batch: the side list's button beside "Home Page" in the app bar (inside the run page's

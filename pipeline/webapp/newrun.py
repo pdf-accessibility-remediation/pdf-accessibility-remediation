@@ -237,27 +237,25 @@ def start_replay(s, run, R, label):
                        book_sha=doc.get('sha256'), book_file=doc.get('file'), book_name=BK.name_of_sha(s, doc.get('sha256'), doc.get('file')))
 
 # ------------------------------------------------------------------ the New Run page
-def form_page(s, key, run=None):
-    """New Run's form; run: "New Run of This PDF" (R17), the new run gets a copy of that run's PDF."""
+def form_part(s, key, run=None):
+    """New Run's pop-up (T4, Patrick 2026-11-07): its heading, the PDF and the form, for webapp/shared.js to put in a dialog
+    on the page it was opened from; run: "New Run of This PDF" (R17), the new run gets a copy of that run's PDF.
+    "Get the Estimate" starts only the free estimate (the paid step stays "Start Remediation" on the run page)."""
     import html
     E = html.escape
-    from . import home as HM
     book = book_of_run(s, run) if run else BK.by_key(s, key)
-    head = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            '<title>New Run</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>')
+    head = '<h2 id="dlg-h">New Run</h2>'
     if not book:
-        return head + ('<header>' + HM.title_row('New Run') + '</header><main id="main" tabindex="-1"><div class="pp"><p>This PDF\'s file has changed or is gone.</p>'
-                       '</div></main></body></html>')
-    # S6 (Patrick, 2026-11-07): more room above "New Run" and under it; "Home Page" at the end of the "Source PDF:" line
-    return head + (f'<header class="nr-head"><h1>New Run</h1><div class="mc-book"><span class="hm-book">{E(book["name"])}</span><span class="nr-src">'
-        f'<span class="hm-file">Source PDF: {E(book["file"])}</span>{HM.appbar()}</span></div></header>'
-        '<main id="main" tabindex="-1"><form class="pp hm-form" id="hm-newrun" data-api="/api/new/estimate">'
+        return head + ('<p>This PDF\'s file has changed or is gone. Reload the page.</p>'
+                       '<div class="pp-row"><button type="button" data-cancel>Close</button></div>')
+    return head + (f'<p class="mc-book"><span class="hm-book">{E(book["name"])}</span><span class="hm-file">Source PDF: {E(book["file"])}</span></p>'
+        '<form class="hm-form" data-api="/api/new/estimate" novalidate>'
         + (f'<input type="hidden" name="run" value="{E(run)}">' if run else f'<input type="hidden" name="book" value="{E(book["key"])}">') +
         '<div class="mc-field"><label for="nr-name">Run Name</label>'
-        '<input type="text" id="nr-name" name="run_name" maxlength="120" required></div>'
+        '<input type="text" id="nr-name" name="run_name" maxlength="120" required data-field="name" aria-describedby="nr-name-e">'
+        '<p class="pp-warn-t pp-field-e" id="nr-name-e" hidden></p></div>'
         '<p class="mc-help">"Get the Estimate" prepares the PDF and works out what the AI call could cost. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the next page.</p>'
-        '<div id="hm-msg" class="pp-msg" tabindex="-1" hidden></div>'
-        '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimate</button></div>'
-        '</form></main><script src="/app/home.js" defer></script></body></html>')
+        '<div class="pp-msg dlg-msg" tabindex="-1" hidden></div>'
+        '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimate</button><button type="button" data-cancel>Cancel</button></div>'
+        '</form>')

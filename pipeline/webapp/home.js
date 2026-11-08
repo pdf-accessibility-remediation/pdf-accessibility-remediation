@@ -20,38 +20,7 @@ function msg(text, ok, focus = true) {
 const live = t => { const l = $('hm-live'); if (!l) return; l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
 $('hm-msg').addEventListener('click', e => { if (e.target.closest('button.pp-x')) { msg(''); ($('hm-choose') || document.querySelector('form [name]')).focus(); } });
 
-// ---------------------------------------------------------------- the New Run and New Batch forms: JSON to the app, then its page
-document.querySelectorAll('form[data-api]').forEach(f => f.addEventListener('submit', async e => {
-  e.preventDefault();
-  const body = {};
-  f.querySelectorAll('[name]').forEach(x => {
-    if (x.name === 'books') { if (x.type !== 'checkbox' || x.checked) (body.books = body.books || []).push(x.value); }   // a list
-    else if (x.type === 'checkbox') body[x.name] = x.checked;
-    else body[x.name] = x.value;
-  });
-  const b = e.submitter || f.querySelector('button[type=submit]'); b.disabled = true;
-  try {
-    const api = (e.submitter && e.submitter.dataset.api) || f.dataset.api;   // "Save Batch for Later" posts elsewhere (S7)
-    const r = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    let d = {}; try { d = await r.json(); } catch (err) {}
-    if (r.status === 202 && d.location) { location.assign(d.location); return; }
-    msg(d.error || 'The app refused this.');
-  } catch (err) { msg('The app is not running. ' + START); }
-  finally { b.disabled = false; }
-}));
-// S7: "Remove from Batch" on a saved batch's page: the PDF goes back to the upload list, and the page is drawn again
-document.addEventListener('click', async e => {
-  const b = e.target.closest('button[data-remove]'); if (!b) return;
-  b.disabled = true;
-  try {
-    const r = await fetch('/api/batch/' + encodeURIComponent(b.dataset.label) + '/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ book: b.dataset.remove }) });
-    let d = {}; try { d = await r.json(); } catch (err) {}
-    if (r.ok) { location.reload(); return; }
-    msg(d.error || 'The app refused this.');
-  } catch (err) { msg('The app is not running. ' + START); }
-  b.disabled = false;
-});
+const edit = (...a) => window.Pdfrem.edit(...a), closeMenu = (...a) => window.Pdfrem.closeMenu(...a);   // webapp/shared.js
 if (!$('hm-active')) return;                                      // the New Run and New Batch pages stop here
 
 // ---------------------------------------------------------------- Upload a PDF: the drop zone (Q1, Patrick's test 2026-11-07)
@@ -102,101 +71,11 @@ if (drop) {
   drop.addEventListener('dragleave', e => { if (!drop.contains(e.relatedTarget)) drop.classList.remove('hm-over'); });
   drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('hm-over'); upload(e.dataTransfer.files); });
 }
-// ---------------------------------------------------------------- the "⋯" menus (Q4): a real menu button
-let openMenu = null;
-function closeMenu(focusBack) {
-  if (!openMenu) return;
-  const b = openMenu.previousElementSibling, m = openMenu; openMenu = null;
-  m.hidden = true; b.setAttribute('aria-expanded', 'false');
-  if (focusBack) b.focus();
-}
-function showMenu(b, first) {
-  closeMenu(false);
-  const m = b.nextElementSibling; m.hidden = false; b.setAttribute('aria-expanded', 'true'); openMenu = m;
-  place(b, m);
-  const items = [...m.querySelectorAll('[role=menuitem]')];
-  (first ? items[0] : items[items.length - 1]).focus();
-}
-function place(b, m) {                                              // against the window: the table's scroll box never clips it
-  const r = b.getBoundingClientRect(), h = m.offsetHeight;
-  m.style.right = Math.max(4, innerWidth - r.right) + 'px';
-  m.style.top = (r.bottom + 4 + h > innerHeight && r.top - 4 - h > 0 ? r.top - 4 - h : r.bottom + 4) + 'px';
-}
-addEventListener('resize', () => closeMenu(false));
-addEventListener('scroll', () => { if (openMenu) place(openMenu.previousElementSibling, openMenu); }, true);
-document.addEventListener('click', e => {
-  const b = e.target.closest('.hm-more');
-  if (b) { if (b.getAttribute('aria-expanded') === 'true') closeMenu(true); else showMenu(b, true); return; }
-  const it = e.target.closest('[role=menuitem]');
-  if (it && openMenu && openMenu.contains(it)) {                    // the menu closes first: the dialog or the name box returns focus to "⋯"
-    const more = openMenu.previousElementSibling; closeMenu(false);
-    if (it.dataset.edit) edit(it, true, more);
-    else if (it.dataset.href) location.assign(it.dataset.href);   // "New Run of This PDF" (R17)
-    return;                                                         // Move to Trash: trash.js, with "⋯" as the opener
-  }
-  if (openMenu && !openMenu.contains(e.target)) closeMenu(false);
-}, true);
-document.addEventListener('keydown', e => {
-  const b = e.target.closest && e.target.closest('.hm-more');
-  if (b && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); showMenu(b, e.key === 'ArrowDown'); return; }
-  if (!openMenu || !openMenu.contains(e.target)) return;
-  const items = [...openMenu.querySelectorAll('[role=menuitem]')], i = items.indexOf(e.target);
-  if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
-  else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
-  else if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
-  else if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
-  else if (e.key === 'Escape') { e.preventDefault(); closeMenu(true); }
-  else if (e.key === 'Tab') closeMenu(false);
-});
-
-// ---------------------------------------------------------------- Edit Name, in place (Q3, Q4)
-// The row's name becomes a text box: Enter or "Save Name" saves it, Esc or "Cancel" puts the name back. Only the name the
-// pages show changes: never a file or a folder. Focus goes back to the row's "⋯" button.
-const SAY = { pdf: ['PDF Name', '/api/book/name', d => ({ key: d.key })], run: ['Run Name', '/api/rename/run', d => ({ run: d.run })],
-              batch: ['Batch Name', '/api/rename/batch', d => ({ label: d.label })] };
-let nEdit = 0;
-function edit(item, focus, more) {
-  if (!item) return;
-  const tr = item.closest('tr'), kind = item.dataset.edit, el = tr.querySelector(kind === 'pdf' ? '.hm-book' : '.hm-run');
-  more = more || tr.querySelector('.hm-more');
-  if (!el || tr.querySelector('.hm-rename')) { const x = tr.querySelector('.hm-rename input'); if (x && focus) x.focus(); return; }
-  const id = 'hm-ed' + (++nEdit), old = el.textContent;
-  const box = document.createElement('div'); box.className = 'hm-rename';
-  box.innerHTML = '<label class="pp-sr" for="' + id + '">' + SAY[kind][0] + '</label><input type="text" id="' + id + '" maxlength="120" required value="' + esc(old) +
-    '" aria-describedby="' + id + '-e"> <button type="button" class="pp-primary" data-save>Save Name</button> <button type="button" data-cancel>Cancel</button>' +
-    '<span class="pp-warn-t" id="' + id + '-e" hidden></span>';
-  el.hidden = true; el.after(box);
-  const input = box.querySelector('input'), err = box.querySelector('.pp-warn-t');
-  const done = (name) => {
-    if (name) el.textContent = name;
-    box.remove(); el.hidden = false; tr.classList.remove('hm-new'); delete tr.dataset.new;
-    if (more) { more.setAttribute('aria-label', 'More Actions for ' + el.textContent); more.nextElementSibling.setAttribute('aria-label', 'More Actions for ' + el.textContent); more.focus(); }
-    if (name) live('Saved: the name is now ' + name + '.');
-  };
-  async function save() {
-    const v = input.value.trim();
-    if (!v) { err.hidden = false; err.textContent = 'Type a name first.'; input.setAttribute('aria-invalid', 'true'); input.focus(); return; }
-    if (v === old) return done(null);
-    box.querySelector('[data-save]').disabled = true;
-    try {
-      const r = await fetch(SAY[kind][1], { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ name: v }, SAY[kind][2](item.dataset))) });
-      let d = {}; try { d = await r.json(); } catch (x) {}
-      if (r.ok) return done(d.name || v);
-      err.hidden = false; err.textContent = d.error || 'The name was not saved.';
-    } catch (x) { err.hidden = false; err.textContent = 'The app is not running. ' + START; }
-    box.querySelector('[data-save]').disabled = false; input.setAttribute('aria-invalid', 'true'); input.focus();
-  }
-  box.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && e.target === input) { e.preventDefault(); save(); }     // never the batch form around the list
-    else if (e.key === 'Escape') { e.preventDefault(); done(null); }
-  });
-  box.querySelector('[data-save]').addEventListener('click', save);
-  box.querySelector('[data-cancel]').addEventListener('click', () => done(null));
-  if (focus) { input.focus(); input.select(); }
-}
-
 const qp = new URLSearchParams(location.search);
+if (qp.get('open')) {                                             // T4: a saved batch's page opens its pop-up here
+  const lab = qp.get('open'); qp.delete('open'); history.replaceState(null, '', '/' + (qp.toString() ? '?' + qp : ''));
+  window.Pdfrem.openDialog('/api/form?what=batch&saved=' + encodeURIComponent(lab), null);
+}
 const added = qp.get('added') || qp.get('renamed') || qp.get('trashed');
 if (added && $('hm-added')) {
   ['added', 'renamed', 'trashed'].forEach(k => qp.delete(k)); history.replaceState(null, '', '/' + (qp.toString() ? '?' + qp : ''));
@@ -215,8 +94,11 @@ form.addEventListener('change', () => {
   const n = picked();
   $('hm-batch-n').textContent = n < 2 ? 'Select two or more PDFs first.' + (n ? ' 1 selected.' : '') : n + ' PDFs selected.';
 });
-form.addEventListener('submit', e => {
-  if (picked() < 2) { e.preventDefault(); msg('Select two or more PDFs for a batch: one PDF is a "New Run".'); }
+form.addEventListener('submit', e => {                            // T4: New Batch is a pop-up on this page
+  e.preventDefault();
+  if (picked() < 2) { msg('Select two or more PDFs for a batch: one PDF is a "New Run".'); return; }
+  const p = new URLSearchParams([['what', 'batch'], ...[...form.querySelectorAll('input[name=book]:checked')].map(x => ['book', x.value])]);
+  window.Pdfrem.openDialog('/api/form?' + p, $('hm-batch-b'));
 });
 }
 

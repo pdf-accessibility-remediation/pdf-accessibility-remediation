@@ -16,10 +16,9 @@ python3 app.py              # opens the home page
 ```
 
 Every page the app serves except the home page itself has a **Home Page** button at the top (after "Skip to the
-content"). On a single run's page and the New Batch page it sits right beside the page's name, on the same line (R4);
-on the batch page **Hide the PDF List** / **Show the PDF List (N)** comes first, then **Home Page** (S4); on a batch
-PDF's page both are on its "Assigned to the batch" line, in that order (S3); on New Run, at the end of the "Source PDF:"
-line (S6). On the review page and the OCR-only page it follows the page count in the header line, spaced so it touches
+content"). On a single run's page it sits right beside the page's name, on the same line (R4); on the batch page
+**Hide the PDF List** / **Show the PDF List (N)** comes first, then **Home Page** (S4); on a batch PDF's page both are on
+its "Assigned to the batch" line, in that order (S3). On the review page and the OCR-only page it follows the page count in the header line, spaced so it touches
 nothing else. Every link on the app's pages is drawn as a button (round 4, P5); the side list's entries, "Batch: <name>"
 at its top included, are drawn as list rows. A button's only hover feedback is a highlight, never an
 underline; the keyboard's focus ring stays (`:focus-visible`, R1).
@@ -134,7 +133,7 @@ added but locked with a password or unreadable says so; the PDFs that were added
 - **When a run made before this change still reads that very upload** (its estimate or "Start Remediation" waiting, its
   first apply, an older batch's book list, or a finished run with no other copy), the new run gets a copy instead and
   the upload stays listed.
-- **"New Run of This PDF"** (a single run's "⋯" menu, and a batch PDF's row on the batch page) copies that run's PDF into
+- **"New Run of This PDF"** (a single run's "⋯" menu, and a batch PDF's "⋯" menu on the batch page) copies that run's PDF into
   the new run: the one time a second copy is made. It is written under a temporary name, checked by sha256, then renamed.
   "New Run from the Saved Reply" gives its new run a copy the same way.
 - **A run whose estimate fails** keeps its PDF and its page, with **Try Again**: a folder holding only its PDF is a run
@@ -146,8 +145,12 @@ added but locked with a password or unreadable says so; the PDFs that were added
 
 ## A single run
 
-1. **New Run** opens a short form with one field: **Run Name** (required; no example line under it, S6). There is no OCR language
-   and no review choice on it (round 4: every app run stops for review, and the language is asked only when needed).
+1. **New Run** opens a pop-up on the page (T4, Patrick 2026-11-07; it was a page of its own) with one field: **Run Name**
+   (required), **Get the Estimate** and **Cancel**. There is no OCR language and no review choice on it (round 4: every app
+   run stops for review, and the language is asked only when needed). The pop-up is a native dialog: focus moves into
+   it, Tab stays inside, a heading names it ("New Run"), and **Cancel** or Esc closes it, changes nothing and gives focus
+   back to the button that opened it. A refusal is shown inside it, under the name field when it is about the name.
+   "New Run of This PDF" opens the same pop-up. The old `/new` and `/new-batch` addresses go to the home page.
 2. **Get the Estimate** queues a free job, `ESTIMATE=1 ASK_LANG=1 bash run_api.sh <book> <name> <run name>`: intake, the
    audit and `decide.py --dry-run`. It asks OpenRouter for prices and the credit (free calls; no book content is sent).
    The browser goes to the run's own page at once, which follows each step.
@@ -257,9 +260,10 @@ error line, the record that holds it and where the full log is. Tool text and co
 
 ## Batches
 
-1. Select two or more PDFs on the home page and **Create a New Batch**. **Save Batch for Later** (S7, Patrick 2026-11-07)
+1. Select two or more PDFs on the home page and **Create a New Batch**: a pop-up, like New Run's (T4), with **Get the
+   Estimates**, **Save Batch for Later** and **Cancel**. **Save Batch for Later** (S7, Patrick 2026-11-07)
    saves the batch with its name and PDFs and no estimates: the PDFs move into the batch (and leave the upload list), and
-   it is a Not Started batch in My Workspace. Opening it shows the same form, the name editable, each PDF with **Remove
+   it is a Not Started batch in My Workspace. Its **Open** shows the same pop-up on the home page, the name editable, each PDF with **Remove
    from Batch** (back to the upload list; a PDF the batch took as a copy, because an older run still reads the upload,
    is removed instead, so the list never shows it twice); **Get the Estimates** starts it. Until then **Move to Trash** sends the batch
    to the Trash and its PDFs back to the upload list (nothing was run), as the confirmation says.
@@ -302,6 +306,12 @@ derived from it: letters and digits folded to plain ASCII, other characters as "
 left, and "_2", "_3"… when a folder or job already has it. The plain name is kept only by the app
 (`runs/.app/run-names.json`) and shown on every page; a run made from the terminal shows its label. The home page's search
 matches both.
+
+**The batch dashboard's rows** (T2, Patrick 2026-11-07) each have **Open** and a "⋯" menu, the same menu button as My
+Workspace's ("More Actions for <PDF name>"): **Edit Name** changes the PDF's display name in place (kept by sha256, so
+it shows on the dashboard, the side list, its run page and any other run of the same file; never a file, folder or run
+name: a batch's PDFs are named by the batch) and **New Run of This PDF** opens New Run's pop-up. The "This Batch" panel
+joins the header, and the side list when it is shown.
 
 **The side column** ("PDFs in This Batch") is on the batch page and on every PDF's page in the batch: each PDF with its
 display name, "Source PDF:" and its status in words. Its left border shows its state (P15): grey while its review isn't
