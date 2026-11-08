@@ -76,13 +76,14 @@ def find_run(runs, segs, waiting=False, pending=None):
     review (runs.waiting()) counts too; only the run page, its state and its review, apply and stop actions ask for it.
     pending: a callable(folder) → True for a run started from the home page that has no result yet (runs.pending): only
     the run page, its state and its estimate, spend, dismiss and retry actions ask for it."""
-    base = os.path.realpath(runs); d = base
+    base = os.path.realpath(runs); d = base; names = []
     for i, x in enumerate(segs, 1):
         d = config.entry(d, x)
         if d is None: return None
-        d = os.path.realpath(d)
+        names.append(os.path.basename(d))                # the run's name from the folder's own listing, never the request's
+        d = os.path.realpath(d)                          #   text (CodeQL py/path-injection: every later path is built from it)
         if not d.startswith(base + os.sep) or not os.path.isdir(d): return None
-        if os.path.isfile(os.path.join(d, 'record.json')) or (waiting and RUNS_MOD.waiting(d)) or (pending and pending(d)): return '/'.join(segs[:i]), d, segs[i:]
+        if os.path.isfile(os.path.join(d, 'record.json')) or (waiting and RUNS_MOD.waiting(d)) or (pending and pending(d)): return '/'.join(names), d, segs[i:]
     return None
 
 def version_dir(R, sid):
