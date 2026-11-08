@@ -31,7 +31,9 @@ labels in Title Case, review 15 L1). The model is named in plain words (the orig
 saved reply), never by its id; "AI Cost: none (a saved reply was used)" when no new call was made, "AI Cost: not
 recorded" when the record has no cost, and no AI part before the AI has answered. A PDF in a batch adds "Assigned to the
 batch "<name>"" with the list's button and **Home Page** after it (S3: "Batch: <name>" in the side list leads to the batch
-page). The cost is no longer repeated in Run Actions (Q7).
+page). The cost is no longer repeated in Run Actions (Q7). Run Actions, "Ready to Ship?" and the Accessibility Evaluation
+join the header and each other with no gaps, and the side list when it is shown; the review's own sections below them
+keep their gap from the list (T3, Patrick 2026-11-07: one CSS block in panel.css, easy to undo).
 
 ## The home page
 

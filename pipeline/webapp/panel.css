@@ -275,12 +275,21 @@ header.top.pp-hd { padding-top: 8px; padding-bottom: 6px; }
 .pp-hd-batch .pp-btn { padding: 3px 10px; min-height: 28px; }
 @media (max-width: 640px) { .pp-hd-top .pp-appbar { padding: 0; } }
 /* Patrick, 2026-11-07 (S2-S7) */
-/* S2: with the side list shown, the page sits right against it: the header and the panels start at its edge */
+/* S2: with the side list shown, the page's header sits right against it */
+@media (min-width: 48em) { body.bn-on:not(.bn-closed) header.top.pp-head { padding-left: 16px; } }
+/* ---- T3 (Patrick, 2026-11-07), one block: delete it to undo. Run Actions, Ready to Ship? and the Accessibility
+   Evaluation join the header and each other (no gaps), and the side list when it is shown; the review's own sections
+   below them keep their gap from the side list, as before. "Ready to Ship?" keeps its coloured left border (its status). */
+#pdfrem-panel > section.pp:first-of-type, #main > section.ship, #main > #pdfrem-checks > .pp-checks {
+  margin-top: 0; margin-bottom: 0; border-radius: 0; border-top-width: 0; }
 @media (min-width: 48em) {
-  body.bn-on:not(.bn-closed) header.top.pp-head { padding-left: 16px; }
-  body.bn-on:not(.bn-closed) main, body.bn-on:not(.bn-closed) #pdfrem-panel, body.bn-on:not(.bn-closed) .pp-wrap { margin-left: 0; padding-left: 0; }
-  body.bn-on:not(.bn-closed) main > .pp:first-child, body.bn-on:not(.bn-closed) #pdfrem-panel > .pp:first-child { margin-left: 0; }
+  body.bn-on:not(.bn-closed) #pdfrem-panel, body.bn-on:not(.bn-closed) #main { max-width: none; margin-left: 0; margin-right: 0; padding-left: 0; }
+  body.bn-on:not(.bn-closed) #pdfrem-panel > section.pp:first-of-type, body.bn-on:not(.bn-closed) #main > #pdfrem-checks { margin-left: 0; max-width: none; }
+  body.bn-on:not(.bn-closed) #main > section.ship { margin-left: 0; }
+  body.bn-on:not(.bn-closed) #pdfrem-panel > section.pp:first-of-type, body.bn-on:not(.bn-closed) #main > #pdfrem-checks > .pp-checks { border-left-width: 0; }
+  body.bn-on:not(.bn-closed) #main > :not(.ship):not(#pdfrem-checks) { margin-left: 16px; }
 }
+/* ---- end of T3 */
 /* S2, 18-L2 (Patrick, 2026-11-07): "Batch: <name>" is the way to the batch page: styled like the list's items (the text's
    colour, no underline, their hover highlight and focus ring), only bigger; its count smaller under it */
 .bn-h a { font-size: 17px; }
