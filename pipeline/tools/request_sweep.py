@@ -34,11 +34,12 @@ def books(runs):
         pdf = os.path.join(d, '_intake', 'intake.pdf')
         if not os.path.exists(pdf):
             pdf = next((p for g in TAGGED for p in [os.path.join(ROOT, 'samples', g, b + '.pdf')] if os.path.exists(p)), None)
-        if pdf: out[b] = (pdf, (r.get('run') or {}).get('digest_sha256'))
+        out[b] = (pdf, (r.get('run') or {}).get('digest_sha256'))        # no PDF left: its saved audit is still compared
     return out
 
 def audit(pdf, A):
     if os.path.exists(os.path.join(A, 'digest.json')): return
+    if not pdf: sys.exit(f'no audit in {A} and no PDF to make one from')
     tmp = A + '.tmp'; shutil.rmtree(tmp, ignore_errors=True)
     subprocess.run([sys.executable, os.path.join(HERE, 'audit.py'), pdf, tmp], cwd=HERE, check=True, stdout=subprocess.DEVNULL)
     os.rename(tmp, A)
