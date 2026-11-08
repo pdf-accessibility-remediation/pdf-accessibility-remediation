@@ -528,8 +528,8 @@ def test_job_titles_say_what_happened(tmp_path):
     lost = {'interrupted': {'state': 'done', 'text': 'done (the app lost track of the job): session 3 is the current result'}}
     assert runs.title(R, dict(j, kind='apply', what='Apply session 3', status='interrupted'), lost) == 'Apply Session 3 → Session 3 applied (sss, 6:19 PM)'
     assert runs.reason({'status': 'failed', 'outcome': 'refused: apply (no model) failed (exit 1): the current result is unchanged', 'exit': 1}) == \
-        'Apply (no model) failed (exit 1): the current result is unchanged'
-    assert runs.reason({'status': 'failed', 'outcome': None, 'exit': 2}) == 'The command ended with an error (exit 2).'
+        'Apply (no model) failed: the current result is unchanged'           # U4: its code under "Details"
+    assert runs.reason({'status': 'failed', 'outcome': None, 'exit': 2}) == 'The command ended with an error.'
 
 def test_the_page_shows_no_log_or_command_and_every_job(app):
     s = config.load(str(app['t'] / 'app.json'), environ={})
@@ -541,9 +541,9 @@ def test_the_page_shows_no_log_or_command_and_every_job(app):
     v = d['jobs'][-1]
     assert 'tail' not in v and 'command' not in v and v['log'] == os.path.join(s['jobs'], 'jobs', v['id'] + '.log')   # outside the repo: absolute
     assert runs.shown_path(os.path.join(config.ROOT, 'runs', '.app', 'jobs', 'x.log')) == os.path.join('runs', '.app', 'jobs', 'x.log')
-    assert v['reason'] == 'The command ended with an error (exit 1).' and v['title'] == 'Apply 11 → failed (10:00 AM)'
+    assert v['reason'] == 'The command ended with an error.' and v['title'] == 'Apply 11 → failed (10:00 AM)'
     js = src('webapp/panel.js')
-    assert 'Log and command' not in js and 'The same from a terminal' not in js and 'Previous Jobs (' in js and "The job\\'s full output, for whoever looks after the app, is saved in" in js
+    assert 'Log and command' not in js and 'The same from a terminal' not in js and 'Previous Jobs (' in js and "<li>The job\\'s full output, for whoever looks after the app: ' + esc(d.log)" in js
     assert 'Earlier jobs' not in js and v['action'] == 'Apply 11' and v['result'] == 'failed (10:00 AM)'
     assert 'aria-hidden="true"></span>' in js and 'pp-spin' in js
     assert 'prefers-reduced-motion: reduce) { .pp .pp-spin { animation: none; } }' in src('webapp/panel.css')
@@ -1102,7 +1102,7 @@ def test_finish_review_applies_at_once(setup, monkeypatch):
     assert runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto'] == {'state': 'starting'}
     jobs.update(s['jobs'], tr['id'], status='failed', exit=2)
     w2 = runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto']             # its own reason, not the first one's
-    assert w2['state'] == 'failed' and w2['why'] != w['why'] and '2' in w2['why']
+    assert w2['state'] == 'failed' and w2['job'] == tr['id'] != w['job']                  # its own job (its reason, its code under Details)
     js = src('webapp/panel.js')
     assert "w.auto.state === 'refused' || w.auto.state === 'failed'" in js and "Stopped: The Apply Didn\\'t Finish" in js
     os.remove(src_); (W / 'review_stop.json').write_text(json.dumps({'src': str(setup / 'gone.pdf'), 'name': 'book'}))

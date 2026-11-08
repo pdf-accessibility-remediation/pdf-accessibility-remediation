@@ -65,3 +65,23 @@ def test_the_advice_fits_the_reason():
     assert "s.spend.code === 'no_credit'" in js and 'Check Credit Again' in js and 'raise the limit or add credit' not in js
     pj = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert "s.spend.code === 'no_credit'" in pj and 'id="pp-credit" data-act="credit">Check Credit Again' in pj and "batch: 'Batch'" in pj
+
+# ------------------------------------------------------------------ U4: designed stops, and codes only under "Details"
+def test_designed_stops_are_never_failed(setup):
+    from webapp import runs as RN
+    s = settings(setup); R = setup / 'runs' / 'bk' / 'r1'; R.mkdir(parents=True)
+    def view(**kw):
+        j = jobs.create(s['jobs'], kw.pop('kind', 'estimate'), 'bk/r1', ['true'], {}, R=str(R))
+        jobs.update(s['jobs'], j['id'], **kw)
+        return RN.job_view(s, jobs.load(s['jobs'], j['id']))
+    a = view(status='failed', exit=4)                                            # stopped to ask the language
+    assert a['status'] == 'done' and a['reason'] is None and a['detail'] is None and 'stopped to ask the language' in a['result']
+    b = view(status='failed', exit=3)                                            # intake stopped the PDF for a person
+    assert b['status'] == 'stopped' and b['reason'] is None and 'stopped for a person' in b['result'] and 'failed' not in b['title']
+    c = view(status='failed', exit=1)                                            # a real error: its code and log folded
+    assert c['status'] == 'failed' and c['reason'] == 'The command ended with an error.' and 'exit' not in c['reason']
+    assert c['detail'] == {'exit': 1, 'log': c['log']}
+    d = view(kind='apply', status='failed', exit=4)                              # exit 4 is a stop only for an estimate
+    assert d['status'] == 'failed'
+    pj = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert "' Log: ' + esc(j.log)" not in pj and "is saved in ' + esc(j.log)" not in pj and '<details class="pp-details"><summary>Details</summary>' in pj

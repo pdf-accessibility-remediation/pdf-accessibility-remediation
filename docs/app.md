@@ -138,7 +138,8 @@ A run stopped before its first review (`workorder.ai.json`, no `record.json` yet
 ## When something goes wrong
 
 - **A refusal before anything starts** (the run is busy, no original found, nothing to apply): a message under the buttons, and focus moves to it. Nothing was started.
-- **A job that fails:** its card says **Failed**, with the reason in the command's own words (for example "Apply (no model) failed (exit 1): the current result is unchanged; the session stays finished") and where its log is saved. The button to use next is in the panel (**Apply** for a failed apply).
+- **A job that fails:** its card says **Failed**, with the reason in the command's own words (for example "Apply (no model) failed: the current result is unchanged; the session stays finished"). Its exit code and where its log is saved are inside a folded **Details**, never in plain view, on its card and in Previous Jobs (U4, Patrick 2026-11-07). The button to use next is in the panel (**Apply** for a failed apply).
+- **A designed stop is never a failure** (U4): an estimate that stopped to ask the language of the scanned pages (run_api.sh exit 4) reads "stopped to ask the language of the scanned pages", and a run whose intake stopped the PDF for a person (exit 3: no page to tag, a password, PDF 2.0) reads "stopped for a person"; neither is shown or counted as Failed, and the run page says why.
 - **A job that stopped without finishing** (the machine restarted, or the job was killed): **Interrupted**, with what is left, read from the run on disk, not from the job:
   - an apply that stopped partway: **Apply** finishes it (it may apply the session again; previous results stay in `reviews/versions/`);
   - a session finished and not applied: **Apply**;

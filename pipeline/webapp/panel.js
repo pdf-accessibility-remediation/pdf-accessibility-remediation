@@ -215,7 +215,7 @@ function msg(text, ok, focus) { showMsg($('pp-msg'), text, ok, focus); }
 // ---------------------------------------------------------------- the view
 const ordinal = n => n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || 'th');
 const lost = j => j.status === 'interrupted' && j.interrupted && j.interrupted.state === 'done';
-const ended = j => j.status === 'done' || lost(j);
+const ended = j => j.status === 'done' || j.status === 'stopped' || lost(j);   // U4: a designed stop ended as planned
 const stepWords = j => j.step ? j.step.words + ' (' + j.step.n + ' of ' + j.step.total + ')' : '';
 // a job's status line, in sentence case: what it is doing, or what came of it ("Done: session 5 applied (Kim, 21:04)")
 function jobWords(j) {
@@ -229,7 +229,7 @@ function jobWords(j) {
   if (j.status === 'needs-spend') return 'Waiting for a new estimate (the app restarted before the AI call)';
   const r = j.result || '';
   if (j.status === 'done' && j.kind === 'review' && / left open /.test(r)) return 'Stopped: ' + r;
-  if (j.status === 'failed' || (j.status === 'interrupted' && !lost(j))) return cap(r || j.status);
+  if (j.status === 'failed' || j.status === 'stopped' || (j.status === 'interrupted' && !lost(j))) return cap(r || j.status);
   if (lost(j)) return 'Done (the app lost track of the job): ' + r;
   return /^(done|pinned|discarded)\b/.test(r) ? cap(r) : 'Done: ' + r;
 }
@@ -250,10 +250,15 @@ function jobCard(j) {                                           // heading: the 
   if (j.kind === 'ocr' && j.status === 'running' && j.url)
     h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the OCR Text Review Page</a>' +
          '<button type="button" id="pp-stop" data-act="stop">Close Without a Verdict</button></div>';
-  if (j.reason) h += '<p><b>Why:</b> ' + esc(j.reason) + '</p><p class="pp-note">The job\'s full output, for whoever looks after the app, is saved in ' + esc(j.log) + '.</p>';
+  if (j.reason) h += '<p><b>Why:</b> ' + esc(j.reason) + '</p>' + details(j);   // U4: the exit code and the log only folded
   return h + '</article>';
 }
 
+function details(j) {                                          // U4: codes and file names never in plain view
+  const d = j.detail || {}; if (d.exit == null && !d.log) return '';
+  return '<details class="pp-details"><summary>Details</summary><ul class="pp-note">' + (d.exit != null ? '<li>Exit code: ' + esc(d.exit) + '</li>' : '') +
+    (d.log ? '<li>The job\'s full output, for whoever looks after the app: ' + esc(d.log) + '</li>' : '') + '</ul></details>';
+}
 function jobsBlock(s, noLast) {
   // running, waiting, and failed or interrupted ones not followed by a success: cards; the last finished one: one line;
   // every other finished one: folded under "Previous Jobs". Nothing drops off. One-line places are sentence case.
@@ -267,7 +272,7 @@ function jobsBlock(s, noLast) {
   let h = card.map(jobCard).join('');
   if (last && !noLast) h += '<p class="pp-last"><b>Last Job:</b> ' + esc(cap(last.title)) + '</p>';
   if (previous.length) h += '<details id="pp-previous"><summary>Previous Jobs (' + previous.length + ')</summary><ul>' +
-    previous.map(j => '<li>' + esc(cap(j.title)) + (j.reason ? ' <span class="pp-note">' + esc(j.reason) + ' Log: ' + esc(j.log) + '</span>' : '') + '</li>').join('') + '</ul></details>';
+    previous.map(j => '<li>' + esc(cap(j.title)) + (j.reason ? ' <span class="pp-note">' + esc(j.reason) + '</span>' + details(j) : '') + '</li>').join('') + '</ul></details>';
   return h;
 }
 

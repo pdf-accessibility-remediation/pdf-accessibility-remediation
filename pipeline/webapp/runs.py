@@ -149,7 +149,10 @@ def job_view(s, j, with_text=False, offset=0):
               next((x for x in al if x['status'] == 'running' and x.get('counted', True) and jobs.related(x['run'], j['run'])), None)
         if cur: v['waiting_for'] = ('the batch ' if cur['kind'] == 'batch' or cur['run'].startswith('batches/') else 'the run ') + \
                                    f'"{NM.shown_run(s, cur["run"])}"'      #   else its place in line (3 runs at once)
-    v['reason'] = reason(v) if j['status'] in ('failed', 'interrupted') else None
+    ds = designed_stop(j)                                          # U4: a designed stop is never Failed
+    if ds: v['status'] = 'done' if ds == 'asked' else 'stopped'
+    v['reason'] = reason(v) if v['status'] in ('failed', 'interrupted') else None
+    v['detail'] = {'exit': j.get('exit'), 'log': v.get('log')} if v['status'] in ('failed', 'interrupted') else None   # folded "Details" only
     if with_text:
         t, nxt = jobs.read_log(s['jobs'], j['id'], offset); v.update(text=t, next=nxt)
     return v
@@ -188,6 +191,7 @@ def result(R, j, v):
     if st == 'superseded': return ('dismissed' if j.get('note') == 'dismissed' else 'replaced by a new estimate') + when
     if j['kind'] in ('estimate', 'batch-estimate') and j['status'] == 'failed' and j.get('exit') == 4:
         return 'stopped to ask the language of the scanned pages' + when
+    if designed_stop(j) == 'stopped': return 'stopped for a person (see why on this page)' + when
     if st == 'failed': return 'failed' + when
     if j['kind'] in ('estimate', 'batch-estimate') and st == 'done': return 'estimate ready' + when
     if j['kind'] in ('spend', 'rerun', 'replay') and st == 'done':
@@ -214,6 +218,14 @@ def result(R, j, v):
     done = 'left open' if out.endswith('stays open') else 'applied'
     return shown(f'{S.label(sid)} {done} (' + (f'{who}, {at}' if done == 'applied' else at or 'time not recorded') + ')')
 
+STOP_KINDS = ('estimate', 'batch-estimate', 'spend', 'rerun', 'replay')
+def designed_stop(j):
+    """A job that ended by design, not by an error (U4, Patrick 2026-11-07): 'asked' (run_api.sh exit 4: stopped to ask the
+    language of the scanned pages) or 'stopped' (exit 3: intake stopped the PDF for a person, e.g. no page to tag, a
+    password, PDF 2.0); None otherwise. Never shown or counted as Failed."""
+    if j.get('status') != 'failed' or j.get('kind') not in STOP_KINDS: return None
+    return {4: 'asked', 3: 'stopped'}.get(j.get('exit')) if j['kind'] in ('estimate', 'batch-estimate') or j.get('exit') == 3 else None
+
 def title(R, j, v):
     """What the job did, in one line (sentence case, for "Last Job:" and Previous Jobs):
     "Review again from session 2 → session 3 applied (Kim, 18:19)". A job card shows the two halves apart."""
@@ -226,8 +238,9 @@ def reason(v):
     if v['status'] == 'interrupted': return 'The job stopped without finishing (the computer restarted, or the job was stopped).'
     out = v.get('outcome') or ''
     if S.FALLBACK.split('.')[0] in out: return S.FALLBACK_PAGE     # the pin refused: the command stays in the job's log
-    if out.startswith('refused: '): return out[len('refused: '):][:1].upper() + out[len('refused: ') + 1:]
-    return f'The command ended with an error (exit {v.get("exit")}).'
+    if out.startswith('refused: '):                          # the tool's own words, without its exit code (under "Details", U4)
+        x = re.sub(r'\s*\(exit \d+\)', '', out[len('refused: '):]); return x[:1].upper() + x[1:]
+    return 'The command ended with an error.'          # its exit code and log are under "Details" (U4)
 
 def after_interrupt(R, j):
     """An interrupted apply or review: what is left, from the run's state on disk, not from the job status (a killed wrapper
@@ -504,7 +517,7 @@ def waiting_state(s, run, R):
         aj = next((j for j in reversed(al) if j['run'] == run and j['kind'] == 'apply' and j.get('first') and j['id'] > last['id']), None)
         if aj and aj['status'] in ('failed', 'interrupted'):           # review 10 M1: the apply ended without a result
             v = job_view(s, aj)
-            auto = {'state': 'failed', 'why': v.get('reason') or 'The apply stopped before it finished.'}
+            auto = {'state': 'failed', 'why': v.get('reason') or 'The apply stopped before it finished.', 'job': aj['id']}
         elif not aj and tj == 'refused': auto = {'state': 'refused', 'why': last.get('then_why')}
         else: auto = {'state': 'starting'}
     return {'run': run, 'mode': 'waiting', 'title': waiting_title(run, R), 'book': name, 'file': file,
