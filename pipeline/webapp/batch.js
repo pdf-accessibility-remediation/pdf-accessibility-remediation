@@ -113,7 +113,7 @@ function body(s) {
         '</div></div>';
     });
   }
-  if (s.phase === 'running') h += '<p>The PDFs are being sent to the AI, a few at a time. Each PDF\'s status is in the list of PDFs.</p>';
+  if (s.phase === 'running') h += '<p>The PDFs are being sent to the AI, a few at a time. Each PDF\'s status is shown below.</p>';   // V1
   if (s.phase === 'stopped' && s.job && s.job.status !== 'done') h += '<div class="pp-fail"><h4>Stopped: The batch stopped before every PDF finished</h4><p>The PDFs that finished keep their results.</p>' +
     '<details><summary>Details</summary><ul class="pp-note"><li>Exit code: ' + esc(s.job.exit) + '</li><li>Full log: runs/.app/jobs/' + esc(s.job.id) + '.log</li></ul></details></div>';
   if (s.again) h += '<div class="pp-row"><button type="button" id="bt-again" data-act="again">Run the Unfinished PDFs Again</button>' +

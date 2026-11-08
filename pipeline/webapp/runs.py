@@ -395,10 +395,17 @@ def book_of(s, run, R, js=None):
     f = BK.shown_file(o.get('file') or '')
     return (BK.name_of_sha(s, o.get('sha256'), f) if o.get('sha256') else None) or BK.stem_name(f or run.split('/')[-1]), f
 
+MODEL_NAMES = {'gpt-4o': 'GPT-4o', 'gpt-4o-mini': 'GPT-4o mini', 'gpt-4.1': 'GPT-4.1', 'gpt-4.1-mini': 'GPT-4.1 mini',
+               'o3': 'OpenAI o3', 'o3-mini': 'OpenAI o3-mini', 'o4-mini': 'OpenAI o4-mini'}   # names the rule below reads badly (V2)
+
 def model_words(m):
-    """A model's plain name from its id: "anthropic/claude-sonnet-5.5" → "Claude Sonnet 5.5" (no provider, no id)."""
+    """A model's display name from its id: "anthropic/claude-sonnet-5.5" → "Claude Sonnet 5.5" (no provider, no id): the
+    table above for names the rule reads badly, else each part capitalized. A new model's name is checked when it is
+    adopted (docs/app.md)."""
     if not m: return None
-    w = str(m).split('/')[-1].split(':')[0].replace('_', '-').split('-')
+    k = str(m).split('/')[-1].split(':')[0]
+    if k in MODEL_NAMES: return MODEL_NAMES[k]
+    w = k.replace('_', '-').split('-')
     up = {'gpt': 'GPT', 'ai': 'AI', 'xl': 'XL'}
     return ' '.join(up.get(x.lower(), x if x[:1].isdigit() else x[:1].upper() + x[1:]) for x in w if x)
 

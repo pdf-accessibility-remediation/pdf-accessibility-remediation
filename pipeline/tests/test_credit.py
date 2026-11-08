@@ -101,3 +101,19 @@ def test_test_mode_keeps_a_failed_read_as_no_credit(setup, monkeypatch):
     j = jobs.create(s['jobs'], 'estimate', 'bk/l1', ['bash', 'run_api.sh', 'x.pdf', 'bk', 'l1'], {}, R=str(R)); jobs.update(s['jobs'], j['id'], status='done')
     st = RN.pending_state(s, 'bk/l1', str(R))
     assert st['spend']['ok'] is True                                                    # test mode: allowed
+
+# ------------------------------------------------------------------ V1, V2
+@pytest.mark.parametrize('label,want', [('3/5 anthropic/claude-sonnet-5.5 via OpenRouter', 'sending to the AI (Claude Sonnet 5.5)'),
+                                        ('3/5 anthropic/claude-opus-5.5 via OpenRouter', 'sending to the AI (Claude Opus 5.5)'),
+                                        ('3/5 openai/gpt-4o via OpenRouter', 'sending to the AI (GPT-4o)'),
+                                        ('3/5 openai/o3 via OpenRouter', 'sending to the AI (OpenAI o3)'),
+                                        ('4/5 apply (no model)', 'applying the reviewed decisions')])
+def test_the_ai_step_names_its_model_in_plain_words(label, want):
+    """V2: the AI step names the run's own model (from its log's label, never the settings' current one) by its display name."""
+    from webapp import logs
+    assert logs.plain(label) == want
+    assert logs.now_step('spend', [{'label': '3/5 anthropic/claude-sonnet-5.5 via OpenRouter', 'state': 'running', 'time': None}])['words'] == 'sending to the AI (Claude Sonnet 5.5)'
+
+def test_the_batch_running_line():
+    js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "Each PDF\\'s status is shown below." in js and 'is in the list of PDFs' not in js

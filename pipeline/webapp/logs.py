@@ -41,10 +41,18 @@ PLAIN = {'apply': 'applying the reviewed decisions', 'verify': 'checking the res
          'reuse saved reply': 'reading the saved reply'}
 NUMBERED = re.compile(r'^(\d+)/(\d+) ')
 
+AI_STEP = re.compile(r'^(\S+) via OpenRouter$')
+
 def plain(label):
     """A step's label in plain words: "apply (no model)" → "applying the reviewed decisions"; others without their notes
-    (a step run_api.sh did not run again reads as the step itself: P13)."""
+    (a step run_api.sh did not run again reads as the step itself: P13). The AI step names the model the run itself used
+    (run_api.sh writes it in the label) by its display name: "3/5 anthropic/claude-sonnet-5.5 via OpenRouter" →
+    "sending to the AI (Claude Sonnet 5.5)" (V2, Patrick 2026-11-07)."""
     core = re.sub(r'\s*\((?:no model|local, no model|no cost)\)', '', NUMBERED.sub('', label)).split(':')[0].strip()
+    m = AI_STEP.match(core)
+    if m:
+        from .runs import model_words
+        return f'sending to the AI ({model_words(m.group(1))})'
     return PLAIN.get(core, core)                                  # P13: a reused step reads as the step itself
 
 STEPS_OF = {'apply': 3, 'review': 3}                    # a re-apply's steps: apply, verify, report (review/sessions.py reapply)
