@@ -158,6 +158,15 @@ OCR'd for Chinese, Japanese or Korean text: when it finds some and the chosen la
 before, and the same question comes back with that evidence, offering only the CJK languages. The catalogue language
 (part 2 of #37) is not read.
 
+**In a batch** each waiting PDF has its own row with its list and **Continue**; with two or more waiting, each row also has
+**Use for All Waiting PDFs** (R10, Patrick's test 2026-11-07), which gives the language chosen on that row to every PDF
+still waiting. A PDF whose question doesn't offer it (intake's CJK stop offers only Chinese, Japanese and Korean) keeps
+its question, and the page names it. Nothing is preselected for a PDF with Chinese characters alone: the person chose the
+language. The page follows the estimates while you answer: a language chosen but not yet sent stays chosen when the page
+is drawn again, and the page isn't redrawn while a language list has focus (R9: before, a redraw every 2 seconds put a
+list back to "Choose a language"). After **Continue**, focus goes to the batch's status heading; no notice repeats it
+(R11).
+
 The short name (`runs/<name>/`) comes from the book's file name and is unique per book: a folder that already holds runs
 of another file (another sha256) gets "-2", "-3"…
 

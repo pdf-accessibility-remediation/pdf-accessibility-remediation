@@ -92,14 +92,16 @@ function body(s) {
   if (asking.length) {
     h += '<h3 id="bt-lang-h">Language of the Scanned Pages</h3><p>' + asking.length + ' PDF' + (asking.length === 1 ? ' has' : 's have') +
       ' scanned pages read by OCR. Choose each one\'s language; its estimate follows. The batch can start once every one is answered.</p>';
-    asking.forEach((b, i) => {
-      const q = b.language, id = 'bt-lang-' + i;
+    asking.forEach(b => {
+      const q = b.language, id = 'bt-lang-' + b.name;                // by the PDF's short name: a redraw keeps its focus and choice
       const opts = (q.suggested ? '' : '<option value="" selected disabled>Choose a language</option>') +
         q.choices.map(c => '<option value="' + esc(c[0]) + '"' + (c[0] === q.suggested ? ' selected' : '') + '>' + esc(c[1]) + '</option>').join('');
       h += '<div class="pp-job"><p><b>' + esc(b.book) + '</b><br><span class="hm-file">Source PDF: ' + esc(b.file) + '</span></p>' +
         (q.evidence && q.evidence.length ? '<ul class="pp-note">' + q.evidence.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
-        '<div class="pp-row"><label for="' + id + '">Language of the Scanned Pages</label><select id="' + id + '">' + opts + '</select>' +
-        '<button type="button" class="pp-primary" data-act="language" data-book="' + esc(b.name) + '" data-sel="' + id + '">Continue</button></div></div>';
+        '<div class="pp-row"><label for="' + esc(id) + '">Language of the Scanned Pages</label><select id="' + esc(id) + '" data-book="' + esc(b.name) + '">' + opts + '</select>' +
+        '<button type="button" class="pp-primary" data-act="language" data-book="' + esc(b.name) + '" data-sel="' + esc(id) + '">Continue</button>' +
+        (asking.length > 1 ? '<button type="button" data-act="language-all" data-book="' + esc(b.name) + '" data-sel="' + esc(id) + '">Use for All Waiting PDFs</button>' : '') +
+        '</div></div>';
     });
   }
   if (s.phase === 'running') h += '<p>The PDFs are being sent to the AI, a few at a time. Each PDF\'s status is in the list of PDFs.</p>';
@@ -145,9 +147,20 @@ async function poll() {
       for (const b of s.books) { const was = seen[b.name]; seen[b.name] = b.status; if (primed && was && was !== b.status) live(b.book + ': ' + b.status); }
       primed = true; st = s; column(s);
       const bb = $('bt-body');
-      if (bb) {
-        const h = body(s), keep = document.activeElement && document.activeElement.id;
-        if (bb.dataset.h !== h) { bb.innerHTML = h; bb.dataset.h = h; if (keep && $(keep)) $(keep).focus(); }
+      // R9 (Patrick's test, 2026-11-07): a redraw never undoes a language chosen but not yet sent, and never happens while
+      // a language list has focus (an open list would close under the person); the next poll draws it.
+      const ae = document.activeElement;
+      if (bb && !(ae && ae.tagName === 'SELECT' && bb.contains(ae))) {
+        const h = body(s), keep = ae && ae.id;
+        if (bb.dataset.h !== h) {
+          const chosen = {}; bb.querySelectorAll('select[data-book][data-chosen]').forEach(x => { chosen[x.dataset.book] = x.value; });
+          bb.innerHTML = h; bb.dataset.h = h;
+          bb.querySelectorAll('select[data-book]').forEach(x => {
+            const v = chosen[x.dataset.book];
+            if (v && [...x.options].some(o => o.value === v)) { x.value = v; x.dataset.chosen = '1'; }
+          });
+          if (keep && $(keep)) $(keep).focus();
+        }
       }
     }
   } catch (e) { if ($('bt-body')) msg('The app is not running, so this page can\'t follow the batch. ' + START); }
@@ -155,6 +168,7 @@ async function poll() {
   timer = setTimeout(poll, busy ? 2000 : 6000);
 }
 const panel = $('bt-panel');
+if (panel) panel.addEventListener('change', e => { if (e.target.matches('select[data-book]')) e.target.dataset.chosen = '1'; });   // the person's choice
 if (panel) panel.addEventListener('click', async e => {
   const b = e.target.closest('button[data-act]'); if (!b) return;
   const act = b.dataset.act;
@@ -163,13 +177,17 @@ if (panel) panel.addEventListener('click', async e => {
     let c, r;
     if (act === 'spend') {
       [c, r] = await api(API + '/spend', { fingerprint: st.fingerprint });
-    } else if (act === 'language') {
+    } else if (act === 'language' || act === 'language-all') {
       const v = $(b.dataset.sel).value;
       if (!v) { msg('Choose a language first.', false, true); return; }
-      [c, r] = await api(API + '/language', { book: b.dataset.book, lang: v });
+      [c, r] = await api(API + '/language', act === 'language' ? { book: b.dataset.book, lang: v } : { all: true, lang: v });   // R10
     } else [c, r] = await api(API + '/' + act, {});
     if (c !== 202 && c !== 200) return msg(r.error || 'The app refused this.', false, true);
-    msg(act === 'spend' ? 'The batch has started.' : act === 'dismiss' ? 'Dismissed: nothing was sent.' : act === 'language' ? 'Its estimate has started (free).' : 'New estimates have started (free).', true, false);
+    // R11: no notice that only repeats the status (the heading that takes focus says it); one that adds something stays
+    if (act === 'dismiss') msg('Dismissed: nothing was sent.', true, false);
+    else if (act === 'language-all' && r.left && r.left.length) msg(r.left.length + ' PDF' + (r.left.length === 1 ? ' still needs its' : 's still need their') +
+      ' own answer: the language chosen isn\'t one of ' + (r.left.length === 1 ? 'its' : 'their') + ' choices (' + r.left.join(', ') + ').', false, false);
+    else msg('');
     await poll(); $('bt-phase').focus();
   } catch (err) { msg('The app is not running. ' + START, false, true); }
 });

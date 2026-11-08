@@ -29,7 +29,10 @@ def pg(script, conf=10.0): return {'page': 1, 'script': script, 'orient_conf': c
     (C(), [pg(None)], 0, None, None, True, 'unknown'),                            # text whose script couldn't be told: asked
     (C(latin=2000), [], 0, C(GREEK=60), 'eng', False, 'latin'),                  # a math book's Greek letters (under 5%)
     (C(latin=500), [], 0, C(CYRILLIC=400), 'eng', True, 'other'),                # Russian text: asked
-    (C(han=2, latin=500), [], 0, None, 'eng', False, 'latin')])                  # a stray Chinese character
+    (C(han=2, latin=500), [], 0, None, 'eng', False, 'latin'),                   # a stray Chinese character
+    (C(), [pg('Korean', 1.9), pg('Latin', 2.23)], 0, None, 'kor+eng', True, 'cjk'),   # R9: KTimes 1985 8 2, a low-resolution Korean scan
+    (C(), [pg('Korean', 0.16), pg('Cyrillic', 3.4)], 0, None, 'eng', False, 'none'),  #   under 1.5 a CJK reading still counts as no text
+    (C(), [pg('HanT', 2.0)], 0, None, None, True, 'cjk')])                           #   and Han is never guessed
 def test_the_suggestion(sc, pages, viet, others, want, ask, found):
     r = intake.suggest_language(sc, viet, pages, others)
     assert (r['suggestion'], r['ask'], r['found']) == (want, ask, found)
@@ -140,3 +143,33 @@ def test_run_api_goes_on_when_the_scans_hold_no_text(tmp_path):
     d = json.load(open(R / '_intake' / 'languages.json'))
     assert d['needs_ocr'] and not d['ask'] and d['found'] == 'none' and r.returncode != 4
     assert 'Tesseract gave no orientation reading on any of the 1 sampled scans' in r.stdout   # review 12 N1: said in the log
+
+def test_use_for_all_waiting_pdfs(setup, monkeypatch):
+    """R10 (Patrick's test, 2026-11-07): the language chosen on one row, for every PDF still waiting; a PDF whose question
+    doesn't offer it (intake's CJK stop: CJK languages only) keeps its question; one being worked on is left alone."""
+    monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng', 'kor', 'jpn'])
+    s = settings(setup)
+    for n in ('a', 'b', 'c'): (setup / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n}'))
+    js = BT.start(s, [], [b['key'] for b in BK.listing(s)], 'Spring')
+    for j in js: jobs.update(s['jobs'], j['id'], status='failed', exit=4)
+    B = setup / 'runs' / 'batches' / 'Spring'
+    lj(B / 'a', suggestion=None); lj(B / 'b', suggestion='eng'); lj(B / 'c', suggestion=None)
+    (B / 'c' / '_intake' / 'intake.json').write_text(json.dumps({'status': 'stopped', 'flags': [{'what': 'OCR language needed', 'pages': [1]}]}))
+    r = BT.answer_all(s, 'Spring', 'eng')
+    assert len(r['jobs']) == 2 and r['left'] == ['Book c']                          # c offers only CJK languages
+    assert json.load(open(BT.meta_path(s, 'Spring')))['langs'] == {'a': 'eng', 'b': 'eng'}
+    assert sorted(BT.state(s, 'Spring')['asking']) == ['c']
+    r = BT.answer_all(s, 'Spring', 'kor+eng')
+    assert len(r['jobs']) == 1 and r['left'] == [] and json.load(open(BT.meta_path(s, 'Spring')))['langs']['c'] == 'kor+eng'
+    with pytest.raises(ValueError, match='No PDF of this batch is waiting'): BT.answer_all(s, 'Spring', 'eng')
+
+def test_the_batch_page_keeps_a_language_chosen_but_not_sent():
+    """R9: the batch page's poll redrew its body every 2 s while other estimates ran, resetting a language chosen but not
+    yet sent ("KTimes 1985 7 2", with nothing preselected, came back to "Choose a language"). Now a chosen value survives
+    a redraw, no redraw happens while a language list has focus, and the lists are keyed by the PDF's name."""
+    js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "if (bb && !(ae && ae.tagName === 'SELECT' && bb.contains(ae)))" in js
+    assert "bb.querySelectorAll('select[data-book][data-chosen]').forEach(x => { chosen[x.dataset.book] = x.value; });" in js
+    assert "e.target.dataset.chosen = '1'" in js and "id = 'bt-lang-' + b.name" in js
+    assert 'Use for All Waiting PDFs' in js and "{ all: true, lang: v }" in js
+    assert 'Its estimate has started (free).' not in js and 'New estimates have started (free).' not in js   # R11

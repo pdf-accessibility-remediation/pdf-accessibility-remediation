@@ -1052,6 +1052,11 @@ OSD_TEXT_CONF = 4.0     # --languages: Tesseract's orientation confidence at or 
                         #   "Cyrillic", a dwellings page "Devanagari"); several gave no reading at all. Its script
                         #   confidence doesn't tell them apart (the Korean scan's is 0.15), so it isn't used. A page under
                         #   it is "no text to read": OCR'd as English, as before (intake's CJK check still reads every page).
+OSD_CJK_CONF = 1.5      # a reading of a CJK script (Korean, Japanese, Han) counts from this lower confidence (R9, Patrick's
+                        #   test 2026-11-07: a low-resolution Korean newspaper scan, KTimes 1985 8 2, read "Korean" at 1.9,
+                        #   was not asked, and its estimate ran 3.5 minutes to intake's CJK stop before the question came).
+                        #   None of the 14 calibration pages under 4.0 was read as a CJK script; a wrong one costs only a
+                        #   question, with Korean or Japanese suggested and Han never guessed.
 TEXT_CJK_MIN, TEXT_OTHER_MIN, TEXT_OTHER_SHARE = 5, 50, 0.05   # text-layer letters before a script counts: a stray CJK
                                        #   character, or the Greek letters of a math book (under 5% of its letters), don't
                                        #   make the language matter
@@ -1062,7 +1067,8 @@ def suggest_language(sc, viet, pages, others=None):
     text whose script couldn't be told is seen; don't ask for the Latin script only, or when no text was found on the
     sampled scanned pages (a cover, a picture): those are OCR'd as English, as before. Japanese and Chinese are never
     guessed. pages: osd_detail() per sampled scanned page. "Latin only" and "no text found" are kept apart in `found`."""
-    seen = [d for d in pages if (d.get('orient_conf') or 0) >= OSD_TEXT_CONF]
+    seen = [d for d in pages if (d.get('orient_conf') or 0) >= OSD_TEXT_CONF
+            or (OSD_SCRIPTS.get(d.get('script')) and (d.get('orient_conf') or 0) >= OSD_CJK_CONF)]
     scan = collections.Counter(OSD_SCRIPTS.get(d['script'], d['script']) for d in seen if d.get('script'))
     unknown = [d['page'] for d in seen if not d.get('script')]
     kana = sc['kana'] >= TEXT_CJK_MIN or scan['kana'] > 0

@@ -307,6 +307,10 @@ def make(s, setup, code=None):
                 label = os.path.basename(batch_dir(s['runs'], bs[0]))
                 try:
                     if bs[1] == 'dismiss': return self.send(200, {'dismissed': jobs.dismiss(J, f'batches/{label}')})
+                    if bs[1] == 'language' and body.get('all') is True:   # R10: "Use for All Waiting PDFs"
+                        r = BT.answer_all(s, label, str(body.get('lang') or ''))
+                        jobs.tick(J, s)
+                        return self.send(202, {'answered': len(r['jobs']), 'left': r['left']})
                     if bs[1] == 'language':                       # D4: a PDF's "Language of the Scanned Pages", on its row
                         book = str(body.get('book') or '')
                         if any(jobs.related(x['run'], f'batches/{label}/{book}') and x['status'] in jobs.ACTIVE for x in jobs.all_jobs(J)):

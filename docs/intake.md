@@ -46,7 +46,10 @@ layer's letters by script, and each sampled scanned page's reading). No text-lay
   no text to read on the sampled scanned pages, such as a cover or a picture (`found: none`, kept apart from "Latin").
   A scanned page has text when Tesseract's orientation confidence is 4.0 or more (`OSD_TEXT_CONF`, calibrated on 14
   sampled pages of 7 books: text pages 4.7–20; covers, pictures and Part openers 0.08–3.4, some of them read as
-  "Cyrillic" or "Devanagari"). Its script confidence is not used: it doesn't tell text from pictures. When no sampled
+  "Cyrillic" or "Devanagari"). A reading of a CJK script (Korean, Japanese, Han) counts from 1.5 (`OSD_CJK_CONF`, R9 of
+  Patrick's test 2026-11-07: a low-resolution Korean newspaper scan read "Korean" at 1.9, wasn't asked, and its estimate
+  ran 3.5 minutes to intake's CJK stop before the question came; none of the calibration pages under 4.0 read as a CJK
+  script). Its script confidence is not used: it doesn't tell text from pictures. When no sampled
   scan gives any orientation reading (blank pages, or Tesseract's `osd.traineddata` missing), the log says so in one
   line ("Tesseract gave no orientation reading on any of the N sampled scans"), since every page then counts as "no text".
 - **Latin-script scans are OCR'd as English** (Patrick, 2026-11-07). On a scan the app sees only the script, not the

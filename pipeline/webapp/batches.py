@@ -304,6 +304,24 @@ def answer_language(s, label, name, lang):
         open(tmp, 'w', encoding='utf-8').write('# <short name> <TAB> <OCR_LANG>: written by the app (Language of the Scanned Pages)\n' + rows); os.replace(tmp, p)
     return estimate_job(s, label, b)
 
+def answer_all(s, label, lang):
+    """"Use for All Waiting PDFs" (R10, Patrick's test 2026-11-07): the language the person chose, for every PDF of the
+    batch still waiting for one. A PDF whose question doesn't offer it (intake's CJK stop offers only Chinese, Japanese
+    and Korean) keeps its question. Nothing is preselected for it: the person chose this language. Returns
+    {'jobs': [...], 'left': [book names]}; raises ValueError when no PDF is waiting."""
+    st = state(s, label)
+    waiting = [b for b in st['books'] if b.get('language')]
+    if not waiting: raise ValueError('No PDF of this batch is waiting for a language.')
+    out, left = [], []
+    for b in waiting:
+        if any(jobs.related(x['run'], f'batches/{label}/{b["name"]}') and x['status'] in jobs.ACTIVE for x in jobs.all_jobs(s['jobs'])):
+            continue                                        # being worked on (answered a moment ago): not asked now
+        if lang not in [c[0] for c in b['language']['choices']]: left.append(b['book']); continue
+        try: out.append(answer_language(s, label, b['name'], lang))
+        except ValueError: left.append(b['book'])
+    if not out and left: raise ValueError('The language chosen isn\'t one of the choices for the PDFs still waiting. Choose on each one\'s row.')
+    return {'jobs': out, 'left': left}
+
 # ------------------------------------------------------------------ pages
 def form_page(s, keys):
     import html
