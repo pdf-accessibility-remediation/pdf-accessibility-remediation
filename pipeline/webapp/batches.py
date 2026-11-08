@@ -167,7 +167,9 @@ def remove_saved(s, label, name):
     from . import runs as RN
     if not saved(s, label): raise ValueError('This batch has started: a PDF can\'t be taken out of it now.')
     meta = _load(meta_path(s, label)) or {}
-    if not any(b['name'] == name for b in meta.get('books') or []): raise ValueError('There is no such PDF in this batch.')
+    b = next((x for x in meta.get('books') or [] if x['name'] == name), None)
+    if not b: raise ValueError('There is no such PDF in this batch.')
+    name = b['name']                                     # the record's own name, never the request's text (CodeQL py/path-injection)
     R = os.path.join(folder(s, label), name)
     p = RN.own_pdf(R)
     back = _back_to_uploads(s, p) if p else None
@@ -399,6 +401,7 @@ def answer_language(s, label, name, lang):
     if not meta: raise ValueError('This batch wasn\'t made from the home page, so its settings aren\'t known here.')
     b = next((x for x in meta.get('books') or [] if x['name'] == name), None)
     if not b: raise ValueError('There is no such PDF in this batch.')
+    name = b['name']                                     # the record's own name, never the request's text (CodeQL py/path-injection)
     LG.check(s, os.path.join(folder(s, label), name), lang)
     with open(meta_path(s, label) + '.lock', 'a') as lk:
         fcntl.flock(lk, fcntl.LOCK_EX)
