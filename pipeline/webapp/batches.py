@@ -226,7 +226,7 @@ def _book_status(s, label, b, R, jl, batch_job):
         lp = os.path.join(folder(s, label), f'{b["name"]}.log')
         try: st = logs.now_step('apply', logs.steps(open(lp, encoding='utf-8', errors='replace').read()))
         except OSError: st = None
-        row['words'] = 'Running' + (f': {st["words"]}' if st else '') if os.path.exists(lp) or st else row['words']
+        row['words'] = 'Running' + (f': {st["words"][:1].upper()}{st["words"][1:]}' if st else '') if os.path.exists(lp) or st else row['words']
     elif not row["finished"] and LG.question(s, R, mine):     # D4: its language is asked on its row
         row['status'] = row['words'] = 'Waiting for a Language'
     elif mine and mine[-1]['status'] in ('failed', 'interrupted') and not row['finished']:

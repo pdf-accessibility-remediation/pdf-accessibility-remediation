@@ -117,3 +117,12 @@ def test_the_ai_step_names_its_model_in_plain_words(label, want):
 def test_the_batch_running_line():
     js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
     assert "Each PDF\\'s status is shown below." in js and 'is in the list of PDFs' not in js
+
+def test_step_words_are_capitalized_after_running():
+    """V2: "Running: Sending to the AI (Claude Sonnet 5.5)": sentence case after the label, on every page that shows it."""
+    hj = open(os.path.join(HERE, 'webapp', 'home.js'), encoding='utf-8').read()
+    pj = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    bp = open(os.path.join(HERE, 'webapp', 'batches.py'), encoding='utf-8').read()
+    assert "j.step.words.charAt(0).toUpperCase() + j.step.words.slice(1)" in hj
+    assert "const stepWords = j => j.step ? cap(j.step.words)" in pj
+    assert """f': {st["words"][:1].upper()}{st["words"][1:]}'""" in bp

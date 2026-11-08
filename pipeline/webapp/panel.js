@@ -216,7 +216,7 @@ function msg(text, ok, focus) { showMsg($('pp-msg'), text, ok, focus); }
 const ordinal = n => n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || 'th');
 const lost = j => j.status === 'interrupted' && j.interrupted && j.interrupted.state === 'done';
 const ended = j => j.status === 'done' || j.status === 'stopped' || lost(j);   // U4: a designed stop ended as planned
-const stepWords = j => j.step ? j.step.words + ' (' + j.step.n + ' of ' + j.step.total + ')' : '';
+const stepWords = j => j.step ? cap(j.step.words) + ' (' + j.step.n + ' of ' + j.step.total + ')' : '';
 // a job's status line, in sentence case: what it is doing, or what came of it ("Done: session 5 applied (Kim, 21:04)")
 function jobWords(j) {
   if (j.status === 'queued') return j.waiting_for ? 'Waiting: it starts when ' + j.waiting_for + ' ends' + (j.position > 1 ? ' (' + ordinal(j.position) + ' in line)' : '')
