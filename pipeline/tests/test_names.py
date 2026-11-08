@@ -66,9 +66,9 @@ def test_new_run_takes_a_plain_name(setup, monkeypatch):
     (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book'))
     key = BK.listing(s)[0]['key']
     j = NR.start_estimate(s, [], key, 'First pass, March')
-    k = NR.start_estimate(s, [], key, 'First pass March')        # folds to the same label
-    assert j['run'] == 'bk/First-pass-March' and k['run'] == 'bk/First-pass-March_2'
-    with pytest.raises(ValueError, match='Enter a name'): NR.start_estimate(s, [], key, ' ')   # P10: required
+    k = NR.start_estimate(s, [], '', 'First pass March', from_run=j['run'])   # folds to the same label (R17: the PDF moved
+    assert j['run'] == 'bk/First-pass-March' and k['run'] == 'bk/First-pass-March_2'   #   into the first run: "New Run of This PDF")
+    with pytest.raises(ValueError, match='Enter a name'): NR.start_estimate(s, [], '', ' ', from_run=j['run'])   # P10: required
     assert 'First pass, March' not in json.dumps({x: j[x] for x in ('run', 'argv', 'dir', 'env_set')})
     assert NM.shown_run(s, j['run']) == 'First pass, March' and NM.shown_run(s, k['run']) == 'First pass March'
     v = RN.job_view(s, jobs.load(s['jobs'], j['id']))
