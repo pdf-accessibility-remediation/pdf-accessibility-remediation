@@ -147,7 +147,7 @@ def test_a_bad_move_in_a_list_is_dropped_alone():
     wo = {'move_section': [{'pages': [2], 'before_page': 5}, {'pages': [6, 6], 'before_page': 8}]}
     assert whys(check(wo), 'move_section') == ['bad pages'] and wo['move_section'] == [{'pages': [6, 6], 'before_page': 8}]
 
-# a move is kept only where the audit finds a section read out of place (cadaverous and sands under v9: moves that fixed nothing)
+# a move is kept only where the audit finds a section read out of place (prompt v9 replies held moves that fixed nothing)
 def order_digest(lines):
     d = digest(); d['reading_order'] = lines; return d
 

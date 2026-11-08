@@ -1,0 +1,95 @@
+```json
+{
+  "schema": "workorder/0.2",
+  "sections": {
+    "toc_pages": [6],
+    "index_from": 228
+  },
+  "document": {
+    "title": "Language and Truth in North Korea",
+    "lang": "en-US",
+    "display_doc_title": true
+  },
+  "retype": [
+    {"obj": "2855 0", "type": "P", "why": "half-title repeat of the book title, not a heading"},
+    {"obj": "3332 0", "type": "P", "why": "half-title repeat before the Introduction, not a heading"},
+    {"obj": "3216 0", "type": "H2"},
+    {"obj": "3318 0", "type": "H2"},
+    {"obj": "3333 0", "type": "H2"},
+    {"obj": "3349 0", "type": "H2"},
+    {"obj": "3277 0", "type": "H2"},
+    {"obj": "3782 0", "type": "H2"},
+    {"obj": "3901 0", "type": "H2"},
+    {"obj": "3995 0", "type": "H2"},
+    {"obj": "4046 0", "type": "H2"},
+    {"obj": "4304 0", "type": "H2"},
+    {"obj": "4594 0", "type": "H2"},
+    {"obj": "3441 0", "type": "H3"},
+    {"obj": "3423 0", "type": "H3"},
+    {"obj": "3393 0", "type": "H3"},
+    {"obj": "3356 0", "type": "H3"},
+    {"obj": "3341 0", "type": "H3"},
+    {"obj": "3221 0", "type": "H3"},
+    {"obj": "3232 0", "type": "H3"},
+    {"obj": "3254 0", "type": "H3"},
+    {"obj": "3265 0", "type": "H3"},
+    {"obj": "3749 0", "type": "H3"},
+    {"obj": "3706 0", "type": "H3"},
+    {"obj": "3650 0", "type": "H3"},
+    {"obj": "3560 0", "type": "H3"},
+    {"obj": "3489 0", "type": "H3"},
+    {"obj": "3772 0", "type": "H3"},
+    {"obj": "3784 0", "type": "H3"},
+    {"obj": "3808 0", "type": "H3"},
+    {"obj": "3827 0", "type": "H3"},
+    {"obj": "3859 0", "type": "H3"},
+    {"obj": "3882 0", "type": "H3"},
+    {"obj": "3903 0", "type": "H3"},
+    {"obj": "3918 0", "type": "H3"},
+    {"obj": "3939 0", "type": "H3"},
+    {"obj": "3985 0", "type": "H3"},
+    {"obj": "3997 0", "type": "H3"},
+    {"obj": "4012 0", "type": "H3"},
+    {"obj": "4037 0", "type": "H3"},
+    {"obj": "3723 0", "type": "Caption", "why": "Table 1 title, tagged H2 at 9 pt"},
+    {"obj": "12107 0", "type": "Caption", "why": "Table 2 title, tagged H2 at 9 pt"},
+    {"obj": "3809 0", "type": "H4"},
+    {"obj": "3816 0", "type": "H4"},
+    {"obj": "3828 0", "type": "H4"},
+    {"obj": "3836 0", "type": "H4"},
+    {"obj": "3843 0", "type": "H4"},
+    {"obj": "3860 0", "type": "H4"},
+    {"obj": "3866 0", "type": "H4"},
+    {"obj": "3919 0", "type": "H4"},
+    {"obj": "3930 0", "type": "H4"},
+    {"obj": "3940 0", "type": "H4"},
+    {"obj": "3946 0", "type": "H4"},
+    {"obj": "3954 0", "type": "H4"},
+    {"obj": "3965 0", "type": "H4"},
+    {"obj": "3972 0", "type": "H4"},
+    {"obj": "3975 0", "type": "H4"},
+    {"obj": "3979 0", "type": "H4"}
+  ],
+  "flatten": [
+    {"obj": "4166 0", "why": "bibliography entries (publisher lines of References) tagged as a numbered list, not a real list"}
+  ],
+  "tables": [
+    {"obj": "12035 0", "title_rows": 0, "header_rows": 1, "header_cols": 0, "why": "Table 1 dialect word list; row 0 names the columns; title is a separate Caption before the table"},
+    {"obj": "12180 0", "title_rows": 0, "header_rows": 1, "header_cols": 0, "why": "Table 2 dialect word list; row 0 names the columns; title is a separate Caption before the table"}
+  ],
+  "alt": [
+    {"obj": "10770 0", "alt": "Book cover of Language and Truth in North Korea by Sonia Ryang. A map of the Korean peninsula, with the north colored blue and red-and-white like the North Korean flag with its red star, and a bronze statue of a man in a long coat with one arm raised in front. Faint Korean characters fill the beige background. The title is printed in red at the top and the author's name at the bottom."},
+    {"obj": "3200 0", "alt": "University of Hawai‘i Press logo"},
+    {"obj": "18134 0", "alt": "Creative Commons Attribution-NonCommercial-NoDerivatives (CC BY-NC-ND) license logo"}
+  ],
+  "move_to_document_start": ["10770 0"],
+  "deferrals": [
+    {"what": "Reading position of the Index section (Sect, PDF 228–236) and of the copyright-page Article (PDF 5)", "why": "The digest's reading_order lists the Index Sect first, before the front matter, so it may be read out of printed order. The listing is truncated and I can't confirm where the container sits after the executor moves it into the Document.", "pages": [5, 228, 236]},
+    {"what": "Drop caps split from their words in the text layer (e.g. 'W riting' on PDF 8, 'S onia' on PDF 238)", "why": "These are ActualText candidates, but the digest gives no obj for the paragraphs concerned, so I can't target them.", "pages": [8, 238]},
+    {"what": "Pages with no tagged text (PDF 3, 7, 13, 194, 214, 224, 226)", "why": "They are probably blank pages. A person should confirm they have no untagged content.", "pages": [3, 7, 13, 194, 214, 224, 226]},
+    {"what": "page_map ends at PDF 226 although the file has 239 pages, and its labels (e.g. 'About the Author' at PDF 225) don't match the headings list (PDF 238)", "why": "The digest's page numbering is inconsistent in the back matter. I cited page numbers from the headings list.", "pages": [225, 226, 238, 239]},
+    {"what": "veraPDF reports 1 failed rule that no work-order key can fix", "why": "It is not listed in pdfua_check.rules, so I can't tell what it is. A person should review it.", "pages": []}
+  ],
+  "notes_for_reviewer": "Heading outline is rebuilt by per-element retype: the book title on PDF 4 (printed iii) stays the only H1. The half-title repeats on PDF 2 (printed i) and PDF 12 (printed xi) became P. Contents, Acknowledgments, Introduction, chapters, References, Index and About the Author are H2. The former H2 sections are H3 and the former H3 subsections are H4. The publisher's Table 1 and 2 titles on PDF 75 (printed 62) were tagged H2 at 9 pt and are now Captions. Chapter headings already combine the number and title in one element, so no merges are needed. The bibliography 'list' on PDF 216 (printed 203) was flattened. The three numbered lists on PDF 86–88 (printed 73–75) are kept. Figure alt texts contained NUL characters and were replaced. The TOC is already tagged TOC/TOCI. Language stays en-US. Romanized Korean is not language-tagged."
+}
+```

@@ -32,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
           cache-dependency-path: pipeline/requirements.txt
 
@@ -63,7 +63,7 @@ jobs:
           python vera.py --check
           audit_dir="$(mktemp -d)"
           trap 'rm -rf "$audit_dir"' EXIT
-          python audit.py ../samples/group1/clans.pdf "$audit_dir"
+          python audit.py ../samples/tagged/northkorea.pdf "$audit_dir"
           python -c 'import json, sys; v = json.load(open(sys.argv[1])); "not_run" in v and sys.exit(v["not_run"]); print(v["totals"])' "$audit_dir/verapdf.json"
 
   regression:
@@ -71,12 +71,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        book: [godzone, clans, translation, cadaverous, sands, buddhist, ilokano]   # pipeline/tests/baseline/meta.json, one job each
-        python: ["3.13", "3.14"]                # the replies were made with 3.14 (the review.md files regenerated with 3.13); 3.13 checks the version docs/setup.md also allows
-        exclude:                                # 3.13 only where the version could matter: buddhist's ocr_words go through
-          - {book: cadaverous, python: "3.13"}  #   unicodedata (Unicode 15.1 in 3.13, 16.0 in 3.14)
-          - {book: sands, python: "3.13"}
-          - {book: ilokano, python: "3.13"}
+        book: [hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant, ilokano, romanization-ocr]   # pipeline/tests/baseline/meta.json, one job each
+        python: ["3.14"]                        # the version the baseline was made with (meta.json)
     name: regression (${{ matrix.book }}, Python ${{ matrix.python }})
     steps:
       - name: Check out repository

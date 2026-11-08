@@ -1,0 +1,94 @@
+```json
+{
+  "schema": "workorder/0.2",
+  "sections": {
+    "toc_pages": [6, 7, 8],
+    "index_from": 348
+  },
+  "artifacts": {
+    "text_rules": [
+      {"label": "running head (Contents)", "pages": [7, 8], "regex": "(vi Contents|Contents vii)", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head (Introduction)", "pages": [15, 16], "regex": "(2 Introduction|Caldwell and Leung 3)", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head (Index)", "pages": [349, 350], "regex": "(336 Index|Index 337)", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "folio v", "pages": [6, 6], "regex": "v", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio 1", "pages": [14, 14], "regex": "1", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio 66", "pages": [79, 79], "regex": "66", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio 335", "pages": [348, 348], "regex": "335", "band": "bottom", "type": "Pagination", "subtype": "Footer"}
+    ]
+  },
+  "document": {
+    "title": "Moral Foods: The Construction of Nutrition and Health in Modern Asia",
+    "lang": "en-US",
+    "display_doc_title": true
+  },
+  "rolemap": {
+    "TPHT": "P",
+    "TPT": "H1",
+    "TPST": "P",
+    "FMH": "H2",
+    "BMH": "H2",
+    "CT": "H2",
+    "CST": "P",
+    "PN": "P",
+    "PT": "H2",
+    "_H1_": "H3",
+    "H2": "H4",
+    "ENH": "H3"
+  },
+  "merges": [
+    {"style": "TPST", "direction": "prev", "with": ["TPT"]},
+    {"style": "CST", "direction": "prev", "with": ["CT"]},
+    {"style": "PN", "direction": "next", "with": ["PT"]}
+  ],
+  "actual_text": [
+    {"obj": "12407 0", "text": "Moral Foods THE CONSTRUCTION OF NUTRITION AND HEALTH IN MODERN ASIA"},
+    {"obj": "7601 0", "text": "Part I GOOD FOODS"},
+    {"obj": "8061 0", "text": "Part II BAD FOODS"},
+    {"obj": "8574 0", "text": "Part III MORAL FOODS"},
+    {"obj": "7509 0", "text": "Introduction Food and Health: Fortification and Modern Asian State Making"},
+    {"obj": "7603 0", "text": "1 Health, Wealth, and Solidarity Rice as Self in Japan and Malaysia"},
+    {"obj": "7739 0", "text": "2 Confronting the Cow Soybean Milk and the Fashioning of a Chinese Dairy Alternative"},
+    {"obj": "7841 0", "text": "3 Moral Responsibility for Nutritional Milk Motherhood and Breastfeeding in Modern Japan"},
+    {"obj": "7935 0", "text": "4 Eating Well for Survival Chinese Nutrition Experiments during World War II"},
+    {"obj": "8063 0", "text": "5 The Good, the Bad, and the Toxic Moral Foods in British India"},
+    {"obj": "8153 0", "text": "6 The Good, the Bad, and the Foreign Trajectories of Three Grains in Modern South Korea"},
+    {"obj": "8269 0", "text": "7 Snacking, Health, Modernity Moralizing Confections in Japan, 1890–1930"},
+    {"obj": "8414 0", "text": "8 Bad Meat Food and the Medicine of Modern Hygiene in Colonial Hong Kong"},
+    {"obj": "8575 0", "text": "9 Becoming Healthy Changing Perception of Tea’s Effects on the Body"},
+    {"obj": "8674 0", "text": "10 To Build or to Transform Vegetarian China Two Republican Projects"},
+    {"obj": "8791 0", "text": "11 From Civilizing Foods for Nourishing Life to a Global Traditional Chinese Medicine Dietetics Changing Perceptions of Foods in Chinese Medicine"},
+    {"obj": "8899 0", "text": "12 Good Food, Bad Bodies Lactose Intolerance and the Rise of Milk Culture in China"},
+    {"obj": "12431 0", "text": "Acknowledgments ix", "why": "stray space inside the word in the extracted contents entry", "confidence": 0.6},
+    {"obj": "12461 0", "text": "Glossary 285", "why": "contents entry extracted with scrambled digits; printed as Glossary 285", "confidence": 0.5},
+    {"obj": "12462 0", "text": "Bibliography 293", "why": "contents entry extracted with scrambled digits; printed as Bibliography 293", "confidence": 0.5},
+    {"obj": "12464 0", "text": "Index 335", "why": "contents entry extracted with the number first; printed as Index 335", "confidence": 0.5}
+  ],
+  "alt": [
+    {"obj": "7439 0", "alt": "Map of China in the 1940s showing Japanese-occupied areas. The occupied areas, shaded gray, cover the northeast and the eastern provinces from Rehe and Liaoning south through Hebei, Shanxi, Shandong, Jiangsu and Anhui to Zhejiang. Korea and Taiwan are shown in black as Japanese colonies. Shanghai on the east coast and the wartime capital Chongqing in the interior are labelled, and darker areas along the southern and western borders (India, Burma, Indochina) are territories under western powers. The legend also marks railroads, Great Walls, and lakes and rivers."},
+    {"obj": "7441 0", "alt": "Line chart of annual per capita grain consumption in South Korea, 1970–2016. Rice falls steadily from 136.4 to 71.2. Wheat stays roughly level between about 26 and 35, ending at 35.0. Barley drops from about 37 in the early 1970s to 1.3 by 2016."},
+    {"obj": "7443 0", "alt": "Black-and-white 1895 photograph of the upper floor of Central Market, City of Victoria, Hong Kong: a long, empty hall under an exposed iron-truss roof, with rows of wooden stalls and benches along both sides of a central aisle."},
+    {"obj": "7445 0", "alt": "Black-and-white 1894 photograph of the interior of the cattle slaughterhouse in the City of Victoria, Hong Kong: an empty room with a wet concrete floor, iron roof trusses, supporting columns and winch wheels along the back wall."},
+    {"obj": "7447 0", "alt": "The Chinese Food Pagoda (2016), titled in Chinese, “Balanced Diet Pagoda for Chinese Residents.” It is a five-tier pagoda: grains and starchy foods at the base, then vegetables and fruit, fish, meat and eggs, and dairy products with soy on the second-highest tier, and a measuring cup and spoon at the top. A jogger and a glass of water appear beside it, with a note to walk 6,000 steps a day."},
+    {"obj": "7449 0", "alt": "The U.S. Department of Agriculture Food Guide Pyramid, 1992, “A Guide to Daily Food Choices.” At the base is the bread, cereal, rice and pasta group (6–11 servings). Above it are vegetables (3–5 servings) and fruit (2–4 servings). Higher up are the milk, yogurt and cheese group (2–3 servings) beside the meat, poultry, fish, dry beans, eggs and nuts group (2–3 servings). The small tip is fats, oils and sweets, to be used sparingly."},
+    {"obj": "7451 0", "alt": "The 2016 Balanced Diet Plate for Chinese residents, with Chinese labels. A round plate is divided into four sections: cereals and tubers (largest), vegetables, fruit, and fish, meat, eggs and beans. A cup labelled for milk sits beside the plate, with chopsticks and a spoon."}
+  ],
+  "page_figures": [
+    {"page": 1, "alt": "Front cover of Moral Foods: The Construction of Nutrition and Health in Modern Asia, edited by Angela Ki Che Leung and Melissa L. Caldwell. On a dark background, one photograph shows a green rice plant with grain heads and the other a bowl of white cooked rice sprinkled with seeds. The title appears in large yellow-green capitals, with the subtitle in pale yellow."}
+  ],
+  "captions": {"style": "CAP"},
+  "toc": {"item_styles": ["CFMHF", "CCT", "CCT1", "CCA", "CPT", "CBMH"], "pages": [6, 8]},
+  "notes": {"styles": ["NTX", "NTX_Single"], "id_prefix": "note-"},
+  "language": {"kana_runs": "ja"},
+  "links": {"toc_text_fixes": [["Acknowl edgments", "Acknowledgments"], ["Glossary 2 85", "Glossary 285"]]},
+  "remove_empty_containers": true,
+  "deferrals": [
+    {"what": "Page 5 (copyright, CIP data) is untagged text", "why": "veraPDF 7.1-3: about 26 runs of real content are in no tag and not marked as artifact. A person must tag them as paragraphs in the source file; they cannot be artifacted. The other 7.1-3 failures are on cover page 1, which is handled by page_figures.", "pages": [5]},
+    {"what": "Chapter-opening paragraphs (style CO) have lost their drop-cap first letters in the text layer, e.g. “n today’s world” for “In today’s world”, “apan” for “Japan”, “ar” for “War”", "why": "The text layer is incomplete and I cannot supply whole paragraphs as ActualText without changing the text. A person should check how the drop caps are tagged.", "pages": [14, 36, 60, 79, 102, 124, 143, 163, 186, 214, 234, 254, 275]},
+    {"what": "About 150 Korean (hangul) runs have no language tag", "why": "The language key only offers kana → ja and per-run entries that need certain page and mcid values, which the digest does not give. A person should tag the hangul runs ko, mostly in the notes and bibliography of chapter 6 and the bibliography.", "pages": [143, 159, 305, 306, 324, 325]},
+    {"what": "Han-only Chinese/Japanese runs (about 1,020, in the glossary, bibliography and notes)", "why": "Han-only runs cannot be told apart as Chinese or Japanese; the executor sends them to a human.", "pages": [298, 299, 300, 301, 302, 303, 304, 305, 306]},
+    {"what": "Chapter-end endnotes are interleaved with the body, so sections.notes_pages is not set", "why": "The Notes sections are scattered through the book, not one contiguous block. Each is headed H3 “Notes” and its paragraphs become Note elements.", "pages": [28, 297]},
+    {"what": "Trailing PDF pages 357–361 have no tagged text", "why": "They could be blank pages or advertisements or a back cover; the digest does not show their content. A person should check them.", "pages": [357, 358, 359, 360, 361]}
+  ],
+  "notes_for_reviewer": "Heading plan: H1 is the book title (TPT merged with its subtitle TPST). H2 are part titles (“Part I GOOD FOODS” merged), chapter titles (number and title merged with subtitle), and Contents, Acknowledgments, Glossary, Bibliography, Contributors and Index. H3 are the _H1_ sections and the chapter “Notes” heads. H4 are the bold subsection heads (style H2). The half-title “Moral Foods” (TPHT) is demoted to P. Running heads and folios were found only as a handful of stray Story elements (RHR, RHV, DFOL), and I artifacted them page by page. The folio rules use the bottom band and exact pages so that note-reference numerals are not hit; the reviewer should confirm that they matched. The four actual_text entries on contents entries (12431 0, 12461 0, 12462 0, 12464 0) are guesses at the printed text; the executor may reject them. Figure alt text was rewritten because the publisher alts only repeated the captions; the captions are still tagged as Caption."
+}
+```

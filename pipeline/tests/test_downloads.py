@@ -46,25 +46,25 @@ def test_the_pdf_and_the_record_zip(mapp):
     os.makedirs(os.path.join(R, '_intake')); open(os.path.join(R, '_intake', 'intake.json'), 'w').write('{}')
     open(os.path.join(R, '.hidden'), 'w').write('x')
     M.record(R, 'pac', dict(PAC, items=dict(PAC['items'], contrast={'result': 'fail', 'note': 'grey on grey'})), say=lambda *a: None, batch=False)
-    sha = REL.sha_file(os.path.join(R, 'clans_remediated.pdf'))
+    sha = REL.sha_file(os.path.join(R, 'sample_remediated.pdf'))
     st, body, h = get(port, f'/run/{RUN}/download?what=pdf&v=current')
-    assert st == 200 and h['Content-Type'] == 'application/pdf' and body == open(os.path.join(R, 'clans_remediated.pdf'), 'rb').read()
-    assert h['Content-Disposition'] == REL.disposition('clans_remediated_no-review_not-ready.pdf') and h['X-Content-Type-Options'] == 'nosniff'
+    assert st == 200 and h['Content-Type'] == 'application/pdf' and body == open(os.path.join(R, 'sample_remediated.pdf'), 'rb').read()
+    assert h['Content-Disposition'] == REL.disposition('sample_remediated_no-review_not-ready.pdf') and h['X-Content-Type-Options'] == 'nosniff'
     st, body, h = get(port, f'/run/{RUN}/download?what=record&v=current')          # read to the end of the stream (K5)
     assert st == 200 and h['Content-Type'] == 'application/zip' and 'Content-Length' not in h
     z = zipfile.ZipFile(io.BytesIO(body)); assert z.testzip() is None
-    folder = 'clans_remediated_record_no-review_not-ready'
-    assert sorted(z.namelist()) == sorted(f'{folder}/{n}' for n in ('clans_remediated.pdf', 'review.html', 'han_review.csv', 'READ-ME.txt'))
+    folder = 'sample_remediated_record_no-review_not-ready'
+    assert sorted(z.namelist()) == sorted(f'{folder}/{n}' for n in ('sample_remediated.pdf', 'review.html', 'han_review.csv', 'READ-ME.txt'))
     # no review.md, evaluation-results.json or statement .md: the ZIP is for staff (Patrick, 2026-11-01; han_review.csv: review 30 S1)
-    pdf = z.getinfo(f'{folder}/clans_remediated.pdf')
-    assert pdf.compress_type == zipfile.ZIP_STORED and z.read(pdf) == open(os.path.join(R, 'clans_remediated.pdf'), 'rb').read()
+    pdf = z.getinfo(f'{folder}/sample_remediated.pdf')
+    assert pdf.compress_type == zipfile.ZIP_STORED and z.read(pdf) == open(os.path.join(R, 'sample_remediated.pdf'), 'rb').read()
     rd = z.read(f'{folder}/READ-ME.txt').decode()
     assert sha not in rd and 'sha256' not in rd and 'Status: Not Ready · 1 issue noted' in rd             # no hash line (Patrick, 2026-11-01)
-    assert rd.split('\n')[1] == 'Source PDF Filename: clans.pdf'
+    assert rd.split('\n')[1] == 'Source PDF: sample.pdf'
     assert ('- review.html: the report on this version (what was changed, what was checked, and the results of the accessibility '
             'evaluation). Open it in a web browser.') in rd
     assert 'Accessibility evaluation results recorded on this file: 1 (in review.html)' in rd and 'evaluation-results.json' not in rd
-    assert ('This folder holds:\n- clans_remediated.pdf: the remediated PDF of this version.\n- review.html: the report on this version' in rd
+    assert ('This folder holds:\n- sample_remediated.pdf: the remediated PDF of this version.\n- review.html: the report on this version' in rd
             and '- READ-ME.txt: this file.' in rd and 'review.md' not in rd)
     assert 'not legal sign-off' in rd and 'not a legal certification' in rd and 'The Clan Records' in rd
     for n in z.namelist(): assert not any(x in n for x in ('record.json', '_intake', '.hidden', 'drafts', 'reviews/', 'release/'))
@@ -91,8 +91,8 @@ def test_refusals_for_downloads(mapp):
 # ------------------------------------------------------------------ an earlier version, and one moment per download
 def add_version(R, vid='001', text='an earlier PDF'):
     V = os.path.join(R, 'reviews', 'versions', vid); os.makedirs(V)
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(200, 200)); doc.docinfo['/Title'] = text; doc.save(os.path.join(V, 'clans_remediated.pdf'))
-    core.save(os.path.join(V, 'record.json'), {'document': {'file': 'clans.pdf', 'output': 'clans_remediated.pdf'}})
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(200, 200)); doc.docinfo['/Title'] = text; doc.save(os.path.join(V, 'sample_remediated.pdf'), deterministic_id=True)
+    core.save(os.path.join(V, 'record.json'), {'document': {'file': 'sample.pdf', 'output': 'sample_remediated.pdf'}})
     open(os.path.join(V, 'review.md'), 'w').write('# old\n'); open(os.path.join(V, 'review.html'), 'w').write('<p>old</p>')
     return V
 
@@ -103,11 +103,11 @@ def test_an_earlier_version_is_listed_named_and_described_as_earlier(tmp_path):
     assert [x['id'] for x in vs] == ['current', '001'] and vs[1]['label'] == 'Session 1 (previous version)'
     assert DL.marked_line(vs[1]['state']) == 'The downloaded files are marked "previous version."'   # the period inside the quotes
     d = DL.prepare(R, 'r', '001', 'record')
-    assert d['name'] == 'clans_remediated_record_session-1_previous-version.zip'
+    assert d['name'] == 'sample_remediated_record_session-1_previous-version.zip'
     buf = io.BytesIO(); DL.stream_zip(buf, d)
-    rd = zipfile.ZipFile(buf).read('clans_remediated_record_session-1_previous-version/READ-ME.txt').decode()
+    rd = zipfile.ZipFile(buf).read('sample_remediated_record_session-1_previous-version/READ-ME.txt').decode()
     assert 'Status: previous version (not the current one; the current version is the version applied without a review)' in rd   # K3
-    os.remove(os.path.join(V, 'clans_remediated.pdf'))                                # its PDF gone: not offered
+    os.remove(os.path.join(V, 'sample_remediated.pdf'))                                # its PDF gone: not offered
     assert [x['id'] for x in DL.versions(R, rec)] == ['current']
     with pytest.raises(DL.Refused): DL.prepare(R, 'r', '001', 'pdf')
 
@@ -125,7 +125,7 @@ def test_a_failure_after_opening_closes_every_handle(tmp_path, monkeypatch):
     def boom(rec): raise RuntimeError('a later step failed')
     monkeypatch.setattr(MP, 'book', boom)                                         # after both files are open
     with pytest.raises(RuntimeError, match='a later step failed'): DL.prepare(R, 'r', 'current', 'record')
-    assert {os.path.basename(f.name) for f in opened} == {'clans_remediated.pdf', 'han_review.csv'}
+    assert {os.path.basename(f.name) for f in opened} == {'sample_remediated.pdf', 'han_review.csv'}
     assert all(f.closed for f in opened)
 
 @pytest.mark.parametrize('name', ['../outside.pdf', 'a/b.pdf', 'a\\b.pdf', '..pdf', '.hidden.pdf', 'bad\nname.pdf', ''])
@@ -133,13 +133,13 @@ def test_a_pdf_name_that_is_not_a_plain_file_name_is_refused(tmp_path, name):
     """A hand-edited record.json never makes a ZIP entry or a path outside its folder (35): the current version is refused
     in plain words, before its file is looked at; a previous version or a shipped copy with such a name is not offered."""
     R = make_run(str(tmp_path / 'r'), record_sha=True)
-    open(os.path.join(str(tmp_path), 'outside.pdf'), 'wb').write(open(os.path.join(R, 'clans_remediated.pdf'), 'rb').read())
-    assert not DL.plain_name(name) and DL.plain_name('clans_remediated.pdf') and DL.plain_name('Kū ʻĀina_remediated.pdf')
+    open(os.path.join(str(tmp_path), 'outside.pdf'), 'wb').write(open(os.path.join(R, 'sample_remediated.pdf'), 'rb').read())
+    assert not DL.plain_name(name) and DL.plain_name('sample_remediated.pdf') and DL.plain_name('Kū ʻĀina_remediated.pdf')
     rec = core.load(os.path.join(R, 'record.json')); rec['document']['output'] = name; core.save(os.path.join(R, 'record.json'), rec)
     for what in ('pdf', 'record'):
         with pytest.raises(DL.Refused) as e: DL.prepare(R, 'r', 'current', what)
         assert e.value.args[0] == DL.BAD_NAME and 'record.json' not in DL.BAD_NAME
-    rec['document']['output'] = 'clans_remediated.pdf'; core.save(os.path.join(R, 'record.json'), rec)
+    rec['document']['output'] = 'sample_remediated.pdf'; core.save(os.path.join(R, 'record.json'), rec)
     V = add_version(R)
     vrec = core.load(os.path.join(V, 'record.json')); vrec['document']['output'] = name; core.save(os.path.join(V, 'record.json'), vrec)
     assert [x['id'] for x in DL.versions(R, rec)] == ['current']                 # not offered
@@ -147,17 +147,17 @@ def test_a_pdf_name_that_is_not_a_plain_file_name_is_refused(tmp_path, name):
 
 def test_a_promotion_during_a_download_never_mixes_two_versions(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
-    old_pdf = open(os.path.join(R, 'clans_remediated.pdf'), 'rb').read()
+    old_pdf = open(os.path.join(R, 'sample_remediated.pdf'), 'rb').read()
     with open(os.path.join(R, 'review.html'), 'a') as f: f.write('<p>the old page</p>')
     d = DL.prepare(R, 'r', 'current', 'record')                                       # every member opened under the lock
     V = os.path.join(R, 'reviews', 'versions', 'ai'); os.makedirs(V)                  # a promotion: the files moved by rename,
-    for n in ('clans_remediated.pdf', 'review.md', 'review.html'): shutil.move(os.path.join(R, n), os.path.join(V, n))
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(400, 400)); doc.save(os.path.join(R, 'clans_remediated.pdf'))   # and new ones put in place
+    for n in ('sample_remediated.pdf', 'review.md', 'review.html'): shutil.move(os.path.join(R, n), os.path.join(V, n))
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(400, 400)); doc.save(os.path.join(R, 'sample_remediated.pdf'), deterministic_id=True)   # and new ones put in place
     open(os.path.join(R, 'review.html'), 'w').write('<p>the new page</p>')
     buf = io.BytesIO(); DL.stream_zip(buf, d)
     z = zipfile.ZipFile(buf); f = d['folder']
     page = z.read(f'{f}/review.html').decode()
-    assert z.read(f'{f}/clans_remediated.pdf') == old_pdf and 'the old page' in page and 'the new page' not in page
+    assert z.read(f'{f}/sample_remediated.pdf') == old_pdf and 'the old page' in page and 'the new page' not in page
     assert 'Version: the current version' in z.read(f'{f}/READ-ME.txt').decode()        # the read-me of the version opened
 
 # ------------------------------------------------------------------ "Available Downloads" on both pages (K6; Patrick, 2026-11-01)
@@ -193,7 +193,7 @@ def test_the_evaluation_page_offers_the_downloads_and_no_file_check(tmp_path):
 def test_an_earlier_version_whose_pdf_changed_is_refused(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True); V = add_version(R)
     vrec = core.load(os.path.join(V, 'record.json'))
-    vrec['document']['output_sha256'] = REL.sha_file(os.path.join(V, 'clans_remediated.pdf'))
+    vrec['document']['output_sha256'] = REL.sha_file(os.path.join(V, 'sample_remediated.pdf'))
     core.save(os.path.join(V, 'record.json'), vrec)
     assert DL.prepare(R, 'r', '001', 'pdf')['name'].endswith('_previous-version.pdf')        # its own hash: given
     vrec['document']['output_sha256'] = 'e' * 64; core.save(os.path.join(V, 'record.json'), vrec)

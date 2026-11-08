@@ -1,4 +1,0 @@
-{
- "model": "anthropic/claude-sonnet-5.5",
- "temperature": "omitted: OpenRouter lists this model as not accepting a temperature setting"
-}

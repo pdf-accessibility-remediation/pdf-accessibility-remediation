@@ -2,11 +2,13 @@
 .env
 .env.*
 
-# run output and book files. The tagged samples (samples/group*), samples/untagged/ilokano.pdf and the regression baseline (pipeline/tests/baseline/)
-# are open-source material committed on purpose; samples/ stays ignored so new books are added deliberately (git add -f)
+# run output and book files. The samples listed in samples/README.md (each with its license) and the regression baseline
+# (pipeline/tests/baseline/) are committed on purpose; samples/ stays ignored so new books are added deliberately (git add -f)
 **/pipeline/runs/
 runs/
 samples/
+# books added in the app ("Add a Book"): in copyright like samples/, never committed
+uploads/
 
 # the app's machine-specific settings (veraPDF and Java paths): docs/app.md
 pipeline/webapp/settings.local.json

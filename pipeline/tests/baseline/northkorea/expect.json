@@ -1,0 +1,106 @@
+{
+ "apply": {
+  "applied": {
+   "document: /Lang": 1,
+   "document: DisplayDocTitle": 1,
+   "document: title": 1,
+   "figure: alt text": 3,
+   "figure: moved into Document, first": 1,
+   "flatten: false list → paragraphs": 1,
+   "links: /Contents set": 1963,
+   "links: URL-only description replaced by the sentence around it": 14,
+   "links: joined existing Link": 1963,
+   "retype → Caption": 2,
+   "retype → H2": 11,
+   "retype → H3": 27,
+   "retype → H4": 16,
+   "retype → P": 2,
+   "structure: empty tag removed (proven empty)": 13,
+   "table: header cells marked (work order)": 0,
+   "tag tree index: entries pointing outside the tree cleared (ParentTree)": 1994
+  },
+  "deferred": 1,
+  "empty_notes_removed": 0,
+  "failed": 0,
+  "rejected": 0
+ },
+ "validation_dropped": [],
+ "verapdf": {
+  "after": {
+   "failed": {
+    "7.21.4.1-1": 1
+   },
+   "totals": {
+    "ua_only_failed_checks": 1,
+    "ua_only_failed_rules": 1,
+    "unclassified": [],
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
+   }
+  },
+  "before": {
+   "failed": {
+    "7.21.4.1-1": 1
+   },
+   "totals": {
+    "ua_only_failed_checks": 1,
+    "ua_only_failed_rules": 1,
+    "unclassified": [],
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
+   }
+  }
+ },
+ "verify": {
+  "artifact_chars": 24902,
+  "figures": {
+   "count": 3,
+   "generic_or_empty": 0,
+   "with_nul": 0
+  },
+  "headings": {
+   "H1": 1,
+   "H2": 11,
+   "H3": 27,
+   "H4": 16
+  },
+  "pixel_pages_differing": [],
+  "skipped_levels": [],
+  "structure": {
+   "captions_not_grouped": 2,
+   "empty_tables": 0,
+   "empty_tags": 0,
+   "links_url_only": 0,
+   "paragraphs_holding_only_figures": 0
+  },
+  "text_pages_changed": [],
+  "tree_types": {
+   "Art": 1,
+   "Caption": 2,
+   "Div": 4,
+   "Document": 1,
+   "Figure": 3,
+   "H1": 1,
+   "H2": 11,
+   "H3": 27,
+   "H4": 16,
+   "L": 3,
+   "LBody": 7,
+   "LI": 7,
+   "Lbl": 7,
+   "Link": 1961,
+   "P": 1046,
+   "Sect": 2,
+   "Span": 4,
+   "TBody": 2,
+   "TD": 90,
+   "TH": 6,
+   "THead": 2,
+   "TOC": 1,
+   "TOCI": 9,
+   "TR": 32,
+   "Table": 2
+  },
+  "untagged_chars": 0
+ }
+}

@@ -177,6 +177,7 @@ def record(R, fields, via, held=False, session=None, date=None, say=print, wait=
     (lib/runlock.py) is taken inside the verdict lock, before record.json is read, and held until every file is written;
     `wait`: how long to wait for it (a request thread passes runlock.REQUEST_WAIT). Returns (verdict, record.json or None).
     Raises ValueError (the fields) or sessions.Refused (a lock)."""
+    from .sessions import not_cleared; not_cleared(R)
     from . import sessions as S
     from lib import runlock
     R = os.path.abspath(R); ij = os.path.join(R, '_intake', 'intake.json'); rj = os.path.join(R, 'record.json')

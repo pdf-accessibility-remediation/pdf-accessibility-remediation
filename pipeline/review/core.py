@@ -287,9 +287,10 @@ def reading_order(digest, fulltext=None, wo=None):
 
 def reading_order_for(audit_dir, digest, wo):
     """reading_order() from an audit folder's fulltext.json (when there is one), with the review's trial run of the
-    executor (dryrun.json, when there is one) as dryrun."""
+    executor (dryrun.json, when there is one) as dryrun, without the key it was saved with (the page has no use for it)."""
     ro = reading_order(digest, load(os.path.join(audit_dir, 'fulltext.json')), wo)
-    ro['dryrun'] = load(os.path.join(audit_dir, 'dryrun.json'))
+    dr = load(os.path.join(audit_dir, 'dryrun.json'))
+    ro['dryrun'] = {k: v for k, v in dr.items() if k not in ('key', 'made')} if isinstance(dr, dict) else dr
     return ro
 
 def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
@@ -308,31 +309,77 @@ def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
         p.kill(); p.communicate(); raise
     return p.returncode, load(out + '.log.json')
 
+DRYRUN_ENV = ('APPLY_DRAFT', 'ALLOW_PDF20')            # every variable apply.py and lib/ read (a test keeps this list whole)
+DRYRUN_PKGS = ('pikepdf', 'pdfplumber', 'pypdfium2', 'pillow', 'fonttools')   # as apply.py's _versions()
+
+def dryrun_code():
+    """The files whose code makes the trial run's result: apply.py, every lib/*.py, and this module's dry_run and
+    section_moves. More than strictly needed, on purpose: too much costs a trial run, too little a wrong preview."""
+    return [os.path.join(HERE, 'apply.py')] + sorted(os.path.join(HERE, 'lib', n) for n in os.listdir(os.path.join(HERE, 'lib')) if n.endswith('.py'))
+
+def dryrun_key(pdf, wo):
+    """What a trial run's result depends on: the PDF, the order given to apply.py, the code, the Python and packages it runs
+    with, Tesseract (apply.py's digit check) and the variables it reads. A saved result is reused only while all match."""
+    import hashlib, inspect
+    from importlib.metadata import version
+    h = hashlib.sha256()
+    for f in dryrun_code():
+        h.update(os.path.basename(f).encode() + b'\0'); h.update(open(f, 'rb').read()); h.update(b'\0')
+    h.update(inspect.getsource(dry_run).encode()); h.update(inspect.getsource(section_moves).encode())
+    vs = {'python': sys.version.split()[0], 'executable': sys.executable}
+    for pkg in DRYRUN_PKGS:
+        try: vs[pkg] = version(pkg)
+        except Exception: vs[pkg] = 'not installed'
+    try:
+        r = subprocess.run(['tesseract', '--version'], capture_output=True, text=True, timeout=30)
+        vs['tesseract'] = ((r.stdout or r.stderr).splitlines() or ['no version given'])[0]
+    except (OSError, subprocess.SubprocessError): vs['tesseract'] = 'not installed'
+    return {'pdf_sha256': sha256_file(pdf), 'workorder_sha256': sha_json(wo), 'code_sha256': h.hexdigest(), 'versions': vs,
+            'env': {k: os.environ.get(k) for k in DRYRUN_ENV}}
+
+def sha_json(obj):
+    import hashlib
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode('utf-8')).hexdigest()
+
 def dry_run(R, pdf):
     """A trial run of apply.py with the AI's order (R/workorder.ai.json) on a temporary copy, for what the executor does on
     its own: the figures fix_figure_order moves back to their page (worked out with it on, even when the AI turned it off,
     so the card can show what turning it on or off changes); and what became of each of the AI's section moves
     (section_moves: [{made: where apply.py put it} or {refused: why}], in order; section_move: the first, or None when
     there is none). No model, nothing kept but the result: {figure_moves: [{page, label, was_after_page, now_after_page}],
-    section_moves, section_move, seconds}, or {figure_moves: None, why}.
-    REVIEW_DRYRUN=off skips it."""
+    section_moves, section_move, seconds, key, made}, or {figure_moves: None, why}.
+    The result saved in R/_audit/dryrun.json is returned as it is when its key (dryrun_key) still matches: nothing it
+    depends on has changed. A result that failed or was skipped has no key, so it is never reused (issue #52).
+    REVIEW_DRYRUN=off skips it; REVIEW_DRYRUN=fresh runs it even when a saved result matches."""
     if os.environ.get('REVIEW_DRYRUN') == 'off': return {'figure_moves': None, 'why': 'skipped: REVIEW_DRYRUN=off'}
-    print('  working out the figure moves and the section move: a trial run of apply.py on a copy (no model)…', flush=True)
-    t, tmp = time.time(), tempfile.mkdtemp(prefix='dryrun-')
+    t, tmp = time.time(), None
     try:
         ai = load(os.path.join(R, 'workorder.ai.json'))
-        code, log = run_apply(pdf, {k: v for k, v in (ai or {}).items() if not (k == 'fix_figure_order' and v is False)},
-                              os.path.join(tmp, 'out.pdf'))
+        wo = {k: v for k, v in (ai or {}).items() if not (k == 'fix_figure_order' and v is False)}
+        try: key = dryrun_key(pdf, wo)
+        except OSError: key = None                         # e.g. the PDF is gone: run as before (apply.py says why), keep no key
+        try: old = load(os.path.join(R, '_audit', 'dryrun.json'))
+        except ValueError: old = None                      # a cut-short or hand-edited file: run it again
+        if (key and os.environ.get('REVIEW_DRYRUN') != 'fresh' and isinstance(old, dict) and old.get('key') == key
+                and isinstance(old.get('figure_moves'), list)):
+            print(f'  figure moves and section moves: the trial run of apply.py made {old.get("made") or "earlier"} is reused '
+                  '(nothing it depends on has changed)', flush=True)
+            return old
+        print('  working out the figure moves and the section move: a trial run of apply.py on a copy (no model)…', flush=True)
+        tmp = tempfile.mkdtemp(prefix='dryrun-')
+        code, log = run_apply(pdf, wo, os.path.join(tmp, 'out.pdf'))
         if code != 0 or log is None:
             return {'figure_moves': None, 'why': f'the trial run of apply.py stopped (exit {code})'}
         sm = section_moves(log)
         res = {'figure_moves': log.get('figure_moves') or [], 'seconds': round(time.time() - t, 1),
-               'section_moves': sm, 'section_move': sm[0] if sm else None}
+               'section_moves': sm, 'section_move': sm[0] if sm else None,
+               **({'key': key, 'made': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} if key else {})}
         print(f'  figure moves: {len(res["figure_moves"])} ({res["seconds"]}s)', flush=True)
         return res
     except (OSError, ValueError, subprocess.SubprocessError) as e:
         return {'figure_moves': None, 'why': f'the trial run of apply.py could not run ({type(e).__name__})'}
-    finally: shutil.rmtree(tmp, ignore_errors=True)
+    finally:
+        if tmp: shutil.rmtree(tmp, ignore_errors=True)
 
 def section_moves(log):
     """What became of each section move in an apply.py log, in order: [{made: where it went} or {refused: why}]."""

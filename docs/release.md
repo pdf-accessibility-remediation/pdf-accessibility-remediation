@@ -73,10 +73,10 @@ The page's heading is **Accessibility Evaluation (PAC 2026 & Screen-Reader Test)
 
 ```bash
 cd pipeline
-python3 manual_checks.py ../runs/godzone/rv1 --show                      # status, "Ready to ship?", the version, every result
+python3 manual_checks.py ../runs/teika/rv1 --show                        # status, "Ready to ship?", the version, every result
 python3 manual_checks.py --template pac > pac.json                       # empty results to fill in
-python3 manual_checks.py ../runs/godzone/rv1 --record pac pac.json       # record it (screen-reader: --record screen-reader FILE)
-python3 manual_checks.py ../runs/godzone/rv1 --refresh                   # recompute the Overview and review.html (no PDF touched)
+python3 manual_checks.py ../runs/teika/rv1 --record pac pac.json         # record it (screen-reader: --record screen-reader FILE)
+python3 manual_checks.py ../runs/teika/rv1 --refresh                     # recompute the Overview and review.html (no PDF touched)
 ```
 
 `--for-sha SHA` records only when the PDF on disk still has that sha256 (the version you checked; `--show` prints it).
@@ -311,7 +311,7 @@ stylesheet, centered on the list's height in the page's text color (the browser'
   - review.html: the report, with the evaluation's results in it;
   - han_review.csv, when the book has one (review.html sends staff to it): the read-me calls it "passages in Chinese
     or Japanese a person needs to check, as a spreadsheet";
-  - `READ-ME.txt`, in plain words: the title and "Source PDF Filename: …" (the original PDF's name), the version, its
+  - `READ-ME.txt`, in plain words: the title and "Source PDF: …" (the original PDF's name), the version, its
     status (for a previous version: "previous version", naming the current one), each shipment of that file ("Shipment
     1, shipped on November 1, 2026 by Patrick", "Withdrawn on … by …: …" for a withdrawn
     one), the number of evaluation results recorded on it, the run details of that version's own record (a shipped
@@ -390,6 +390,56 @@ AI-generated version is always kept."
   `--remove-older-pdfs 3 5` names the sessions to remove (a dry run); add `--yes --by NAME` to remove those PDFs only
   (`review/prune.py`). `--yes` without sessions is refused: nothing is removed unless chosen.
 - **"Available Downloads"** lists only versions whose PDF exists.
+
+## Clearing a shipped book
+
+**Optional** (Patrick, 2026-11-05). A shipped book that is never cleared stays a full run, reachable from the home page at
+any time: **Review Again**, a newer version shipping as Shipment N+1, withdrawal, the downloads and the evaluation all
+keep working. **Clear This Book's Files** is offered only on the run page, and only once its gate is open; the home page
+never prompts for it, counts it, highlights it or lists it as a to-do, and no status or message suggests that a shipped
+book should be cleared.
+
+**The gate** (`review/clear.py`), read when the page is drawn and again under the locks:
+- the book is **Shipped**: its current PDF, hashed now, has a live (not withdrawn) shipment's hash;
+- the **record ZIP of that version was downloaded** in full: the app adds a line to `release/downloads.json` after the
+  ZIP's last byte is written (that the person kept it is not known);
+- the **shipped copy** in `release/shipped/NNN/` still has the shipment's hash;
+- **nothing is in progress**: no job of the run, no review lock, no promotion or re-apply, no open session, no finished
+  session waiting to be applied;
+- not cleared already.
+
+**The dialog** lists what goes, with sizes, and what stays, then asks for "Your Name" (never prefilled) and "Type CLEAR to
+Confirm". Locks are taken in Clean Up Space's order (`reviews/.lock`, which refuses, then the record lock). Afterwards the
+browser goes to the home page, where the row reads "Cleared on November 5, 2026 · shipped as Shipment 1".
+
+**What is deleted** (Patrick, 2026-11-05), only PDFs and images at named places, never a whole folder:
+- the run folder's finished PDF, only when its hash is the shipment's (the shipped copy keeps the same file);
+- `_intake/intake.pdf`;
+- every `reviews/versions/*/` PDF, the AI's own version (`ai`) and versions with evaluation results included. After
+  shipping, the AI's decisions (`workorder.ai.json`, the sessions' work orders) and the records are the evidence; the PDF
+  is a by-product. Before shipping, **Clean Up Space** still keeps the AI's version (below);
+- figure crops and page images (`.png`, `.jpg`, `.jpeg`) under `_audit/` and `reviews/_audit/`.
+
+**What is kept:** every `.json`, `.md`, `.html` and `.csv` file (record.json, review.md, review.html, han_review.csv, the
+sessions, the digest, intake's record and the OCR verdict, `release/*.json`); all of `release/shipped/NNN/`; and the
+original in `samples/` or `uploads/`, which is never touched.
+
+**A record is never an image or a PDF.** Under `_audit/` and `reviews/_audit/` the records (the digest, the full text,
+dryrun.json, the OCR-word list) are `.json` or `.csv`; clearing removes only the PDFs and images there ([Files](files.md)),
+so a later feature cannot lose a record by its choice of folder or file type, as long as it keeps that rule.
+
+**The record:** `release/cleared.json` lists every deleted file with its path, size and sha256 (`versions/ai`'s included).
+It is written as `planned` before anything is deleted and marked `done` after, with the space freed and the code's
+commit. A clear that stopped partway shows on the run page, and **Clear This Book's Files** finishes it: each planned file
+still there is hashed and deleted only when it matches the plan; one that changed is kept and named.
+
+**After clearing the book is read only**, from the app and the terminal alike (`review/sessions.py` `not_cleared`, read in
+either state of cleared.json): Review Again, Apply, an OCR verdict, the evaluation's Record, Mark as Shipped, Clean Up
+Space and New Run from the Saved Reply are refused ("This book's working files were cleared after it shipped …").
+Withdrawing a shipment still works. **Available Downloads** lists the shipped copies (built from `release/shipped/NNN/`)
+and no current version. `batch_api.sh` with `FROM=` refuses a cleared run as its source too ("cleared after shipping: its
+saved reply can't be reused"), since its intake result is gone. A rebuild from `workorder.ai.json` after clearing would run on today's code and would not be the
+original file; to work on the book again, start a new run from the home page.
 
 ## Mark as Shipped
 

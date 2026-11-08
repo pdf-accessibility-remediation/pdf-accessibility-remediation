@@ -5,10 +5,13 @@ nav_order: 5
 
 # Batch runs
 
+Batches can also be started from the app's home page, with a cost estimate before any paid call and a page that follows
+every book: see [The home page](home.md#batches). The commands below are what the app runs.
+
 ```bash
 AUTO=1 bash batch_api.sh batch1                                         # every PDF under samples (all subfolders)
-AUTO=1 bash batch_api.sh batch1 ../samples/group1                    # one folder
-AUTO=1 bash batch_api.sh batch1 ../samples/group1 ../samples/group3   # several folders
+AUTO=1 bash batch_api.sh batch1 ../samples/tagged                    # one folder
+AUTO=1 bash batch_api.sh batch1 ../samples/tagged ../samples/untagged # several folders
 AUTO=1 bash batch_api.sh batch1 ../books.txt                            # a list, to choose names yourself
 ```
 
@@ -17,24 +20,24 @@ Everything a batch makes goes in one folder:
 ```
 PDFREM/runs/batches/batch1/
 ├── summary.md
-├── cadaverous/
-│   ├── Cadaverous_remediated.pdf
+├── teika/
+│   ├── Teika_remediated.pdf
 │   ├── review.md
 │   └── record.json
-└── clans/ …
+└── fishers/ …
 ```
 
 Names, when you point at folders:
 
-- **Book folder:** a folder holding one PDF gives its folder name (`samples/cadaverous/x.pdf` → `batches/batch1/cadaverous/`). A folder holding several gives each file's name without `.pdf`.
+- **Book folder:** a folder holding one PDF gives its folder name (`samples/teika/x.pdf` → `batches/batch1/teika/`). A folder holding several gives each file's name without `.pdf`.
 - **Result:** always the original file name with `_remediated` added (`x.pdf` → `x_remediated.pdf`).
 
 A book list sets the book folder, and optionally the result name after a `|`:
 
 ```
 # <short-name> <path to pdf> [| <result name>]
-clan        samples/group3/3-most-accessible_9798880703333.pdf | Korea Five Clans.pdf
-cadaverous  samples/cadaverous/Cadaverous.pdf
+hawaii3     samples/tagged/hawaii3.pdf | The Value of Hawaii 3.pdf
+teika       samples/tagged/teika.pdf
 ```
 
 `batch_api.sh` refuses to start without `AUTO=1`, because it calls the API without asking. It works in three steps:
@@ -57,9 +60,9 @@ A label that already holds a batch is refused, unless you add `RETRY=1`: then on
 
 ```bash
 # a reply was cut off
-RETRY=1 MAX_TOKENS=96000 AUTO=1 bash batch_api.sh g2-run2 ../samples/group2
+RETRY=1 MAX_TOKENS=96000 AUTO=1 bash batch_api.sh t-run2 ../samples/tagged
 # a non-default model was rate-limited (429): wait, then one book at a time, same model
-RETRY=1 JOBS=1 MODEL=openai/gpt-6.1-sol AUTO=1 bash batch_api.sh group1SOL ../samples/group1
+RETRY=1 JOBS=1 MODEL=openai/gpt-6.1-sol AUTO=1 bash batch_api.sh t-sol ../samples/tagged
 ```
 
 Copy the printed command rather than retyping it: a `RETRY=1` without the original `MODEL=` would finish the books with the default model.
@@ -71,3 +74,19 @@ The summary's API cost includes calls whose reply was cut off (they are paid for
 To check that a code change left every `review.md` as it was, rerun the same books with `FROM=` before and after the change, then compare the two labels: `python3 tools/compare_runs.py <label-before> <label-after>` prints one line per book (identical, or how many lines were removed and added, and the first difference) and exits with 1 when any book differs. Only the "Time:" line and the run-start line are left out of the comparison.
 
 In a book list, relative paths count from the list file's folder. Short names must be unique across the batch.
+
+## Review stops, per-book OCR languages and the summary alone (from #45 round 4)
+
+- **`REVIEW=1`** (the app's batches): every book stops after the AI's decisions for a person's review. summary.md lists it
+  as **waiting for review** (never failed), and `RETRY=1` never runs it again ("waiting for review, skipped"); the app's
+  "Finish Review" applies that book (`run_api.sh`'s second call in its folder) and then writes the summary again.
+- **`ocr_langs.tsv`** in the batch folder, `<short name> <TAB> <OCR_LANG>` per line: that book's own OCR language (the
+  app writes it from "Language of the Scanned Pages"); a book not listed uses `OCR_LANG`. **`ASK_LANG=1`** is passed to
+  `run_api.sh`: a book with pages to OCR and no OCR language stops before intake (exit 4), is listed as **needs a
+  language** and is not sent.
+- **`SUMMARY_ONLY=1 bash batch_api.sh <label>`**: no run and no cost; summary.md and summary.html are written again from
+  the batch's book folders ("Credit left: not checked"). The app runs it after a book is applied or moved to the Trash.
+  When the batch folder has `trashed.json` (PDFs moved to the Trash from the app), summary.md adds "N PDFs moved to the
+  Trash (AI cost $X), not counted above".
+
+With none of these set, `batch_api.sh` behaves as before (checked on a terminal batch, 09-builder-report.md).

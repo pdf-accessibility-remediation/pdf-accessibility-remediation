@@ -24,7 +24,7 @@ def test_kind(text, kind):
     assert scripts.kind(text) == kind
 
 def test_private_use_is_not_cjk():
-    """A legacy font's private-use codes (U+E000-F8FF, e.g. U+F036 in translation) are not Chinese characters."""
+    """A legacy font's private-use codes (U+E000-F8FF, e.g. U+F036) are not Chinese characters."""
     assert scripts.kind('\uf036\uf036') is None and scripts.kind('\ue000') is None and not scripts.HAN.search('\uf8ff')
     assert scripts.HAN.search('\uf900') and scripts.HAN.search('\ufa6d')          # compatibility ideographs are
 

@@ -1,6 +1,6 @@
 """regression.py: does the pipeline still turn the baseline books into the same result? No model, no cost.
 
-    python3 tools/regression.py [--books godzone,clans] [--jobs N] [--out DIR] [--keep]
+    python3 tools/regression.py [--books hawaii3,northkorea] [--jobs N] [--out DIR] [--keep]
     python3 tools/regression.py --update --reason "why the output changed" [--seed RUNS_BATCH_DIR] [--from-dir DIR]
 
 Each baseline book (tests/baseline/<book>/) holds a saved model reply (reply.txt, with reply.txt.meta.json: the
@@ -34,7 +34,7 @@ import compare_runs
 from lib import ocrwords, origin, replies
 
 BASE = os.path.join(PIPE, 'tests', 'baseline')
-BOOKS = ['godzone', 'clans']
+BOOKS = ['hawaii3', 'northkorea']
 IGNORE = [re.compile(r'^Libraries: ')]       # with compare_runs.VOLATILE: Time and the run-start line
 VERAPDF_VERSION = re.compile(r'^(veraPDF )\d+(?:\.\d+)+')   # the installed veraPDF's version (Homebrew's 1.30.3 calls itself 1.30.0):
 def same_tool(lines): return [VERAPDF_VERSION.sub(r'\1(version)', l) for l in lines]   # compared without it; the profile hash still counts

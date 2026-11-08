@@ -33,7 +33,7 @@ def stub_vera(d, answer='veraPDF 1.30.3'):
 @pytest.fixture
 def setup(tmp_path):
     """Folders, a stub veraPDF, the fake job script and a --config file."""
-    for d in ('runs', 'samples', 'bin'): (tmp_path / d).mkdir()
+    for d in ('runs', 'samples', 'uploads', 'bin'): (tmp_path / d).mkdir()
     (tmp_path / 'bin' / 'fakejob.py').write_text(FAKEJOB); (tmp_path / 'bin' / 'envdump.py').write_text(ENVDUMP)
     cfg = {'runs': str(tmp_path / 'runs'), 'samples': str(tmp_path / 'samples'), 'uploads': str(tmp_path / 'uploads'),
            'jobs': str(tmp_path / 'runs' / '.app'), 'port': free_port(), 'max_jobs': 2, 'tools': {'VERAPDF': stub_vera(str(tmp_path / 'bin'))}}
@@ -90,7 +90,7 @@ def test_child_env_is_clean(setup):
              'REPLY': 'r.txt', 'FROM': 'v8-g1', 'KEEP': '1', 'RUNS_DIR': '/x', 'RUN_DIR': '/y', 'INTAKE': 'off', 'OCR': 'off', 'FORCE_OCR': '1',
              'MAX_TOKENS': '9', 'VERAPDF': 'off', 'OPENROUTER_API_KEY': 'sk-secret', 'AUTO': '1', 'PYTHONPATH': '/p'}
     env = config.child_env(s, {'REVIEW': '1'}, environ=dirty)
-    assert set(env) == {'PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'VERAPDF', 'PYTHONUNBUFFERED', 'REVIEW'}
+    assert set(env) == {'PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'VERAPDF', 'PYTHONUNBUFFERED', 'RUNS_DIR', 'REVIEW'}
     assert env['VERAPDF'] == s['tools']['VERAPDF'] and env['PATH'].split(os.pathsep)[0] == os.path.dirname(sys.executable)
     with pytest.raises(ValueError): config.child_env(s, {'MODEL': 'x'}, environ=dirty)
 
@@ -104,9 +104,9 @@ def test_setup_check_needs_a_verapdf_version_line(setup):
     assert not v['ok'] and 'install.sh' in v['fix']
 
 # ------------------------------------------------------------------ jobs
-def fake(t, s, run, secs=0.5, tag='', **kw):
+def fake(t, s, run, secs=0.5, tag='', kind='apply', **kw):
     out = str(t / 'times.txt')
-    return jobs.create(s['jobs'], 'apply', run, [sys.executable, str(t / 'bin' / 'fakejob.py'), out, str(secs), tag], config.child_env(s, kw.pop('env_set', None)), **kw)
+    return jobs.create(s['jobs'], kind, run, [sys.executable, str(t / 'bin' / 'fakejob.py'), out, str(secs), tag], config.child_env(s, kw.pop('env_set', None)), **kw)
 
 def wait(pred, timeout=20):
     end = time.time() + timeout
@@ -263,7 +263,7 @@ def test_then_and_restart(setup):
     s = settings(setup)
     nxt = {'kind': 'review', 'argv': [sys.executable, str(setup / 'bin' / 'fakejob.py'), str(setup / 'times.txt'), '0', 'then'], 'env': config.child_env(s), 'counted': False}
     j = fake(setup, s, 'a/r', 0.1, then=nxt)
-    paid = fake(setup, s, 'b/r', paid=True); free = fake(setup, s, 'c/r')
+    paid = fake(setup, s, 'b/r', kind='spend', paid=True); free = fake(setup, s, 'c/r')
     jobs.recover(s['jobs'])                                                              # what the app does at start
     assert jobs.load(s['jobs'], paid['id'])['status'] == 'needs-spend' and jobs.load(s['jobs'], free['id'])['status'] == 'queued'
     assert wait(lambda: (jobs.tick(s['jobs'], s), jobs.load(s['jobs'], j['id']).get('then_job'))[1])
@@ -335,10 +335,14 @@ def test_requests_must_come_from_the_app(app):
     assert get(app['port'], '/api/x', method='POST', headers={'Content-Type': 'text/plain'}, body='{}')[0] == 415
 
 def test_batch_route_and_a_run_with_no_dashboard(app):
-    st, b, _ = get(app['port'], '/batch/b1/')
-    assert st == 200 and b'x/review.html' in b
+    st, b, _ = get(app['port'], '/batch/b1/')                          # the batch page (#45, L4): its books, each linked
+    assert st == 200 and b'aria-label="PDFs in This Batch"' in b and b'href="/run/batches/b1/x/"' in b and b'/app/batch.js' in b
+    st, b, _ = get(app['port'], '/batch/b1/summary.html')                # the dashboard stays reachable, with the way home
+    assert st == 200 and b'x/review.html' in b and b'aria-label="App"' in b
     assert get(app['port'], '/batch/b1/x/review.html')[2].get('Location') == '/run/batches/b1/x/'
-    assert get(app['port'], '/run/batches/b1/summary.html')[2].get('Location') == '/batch/b1/'
+    assert get(app['port'], '/run/batches/b1/summary.html')[2].get('Location') == '/batch/b1/summary.html'   # a review.html's ../summary.html
+    st, b, _ = get(app['port'], '/run/batches/b1/x/')                    # a book's page in a batch: the side column, this book current
+    assert st == 200 and b.count(b'aria-label="PDFs in This Batch"') == 1 and b'aria-current="page" data-book="x"' in b
     st, b, _ = get(app['port'], '/run/old/r0/')
     assert st == 200 and b'has no dashboard' in b and b'href="review.md"' in b and b'None' not in b and b'unknown' not in b
 

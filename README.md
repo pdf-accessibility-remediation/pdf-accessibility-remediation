@@ -87,7 +87,7 @@ bash run_api.sh <original.pdf> <short-name> [run-label]
 For example:
 
 ```bash
-bash run_api.sh ../samples/group1/clans.pdf clanstest apirun1
+bash run_api.sh ../samples/tagged/northkorea.pdf nktest apirun1
 ```
 
 The short name sets the output folder, `runs/<short-name>/<run-label>/`. The run label is optional and defaults to a timestamp.
@@ -99,7 +99,7 @@ A label that already holds a finished run is refused, so use a new label for eac
 To retain intermediate files for debugging, set `KEEP=1`:
 
 ```
-KEEP=1 bash run_api.sh ../samples/group1/clans.pdf clanstest apirun2
+KEEP=1 bash run_api.sh ../samples/tagged/northkorea.pdf nktest apirun2
 ```
 
 ## Documentation

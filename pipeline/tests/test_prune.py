@@ -16,8 +16,8 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def add_version(R, vid, title):
     V = os.path.join(R, 'reviews', 'versions', vid); os.makedirs(V)
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(200, 200)); doc.docinfo['/Title'] = title; doc.save(os.path.join(V, 'clans_remediated.pdf'))
-    core.save(os.path.join(V, 'record.json'), {'document': {'file': 'clans.pdf', 'output': 'clans_remediated.pdf'}})
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(200, 200)); doc.docinfo['/Title'] = title; doc.save(os.path.join(V, 'sample_remediated.pdf'), deterministic_id=True)
+    core.save(os.path.join(V, 'record.json'), {'document': {'file': 'sample.pdf', 'output': 'sample_remediated.pdf'}})
     open(os.path.join(V, 'review.md'), 'w').write('# old\n')
     return V
 
@@ -26,7 +26,7 @@ def chk(sha): return {'id': 1, 'recorded': '2026-11-01T10:00:00', 'by': 'K', 'pd
 def test_the_plan_never_takes_the_ai_version_an_evaluated_or_a_shipped_one(tmp_path):
     R = make_run(str(tmp_path / 'r'), record_sha=True)
     for vid in ('ai', '001', '002', '003', '004'): add_version(R, vid, f'version {vid}')
-    sha = lambda v: REL.sha_file(os.path.join(R, 'reviews', 'versions', v, 'clans_remediated.pdf'))
+    sha = lambda v: REL.sha_file(os.path.join(R, 'reviews', 'versions', v, 'sample_remediated.pdf'))
     os.makedirs(os.path.join(R, 'release'))
     core.save(os.path.join(R, 'release', 'checks.json'), {'schema': REL.SCHEMA, 'pac': [chk(sha('002'))], 'screen_reader': []})
     core.save(os.path.join(R, 'release', 'shipped.json'), [{'n': 1, 'shipped': 'x', 'pdf': {'sha256': sha('003')}, 'withdrawn': {'by': 'L'}}])
@@ -41,7 +41,7 @@ def test_an_evaluated_or_a_shipped_version_posted_is_refused(mapp):
     hash, is refused as a changed list, through prune.remove() and the app's POST, and nothing is removed."""
     port, R = mapp['port'], mapp['R']
     for vid in ('001', '002', '003'): add_version(R, vid, f'version {vid}')
-    sha = lambda v: REL.sha_file(os.path.join(R, 'reviews', 'versions', v, 'clans_remediated.pdf'))
+    sha = lambda v: REL.sha_file(os.path.join(R, 'reviews', 'versions', v, 'sample_remediated.pdf'))
     os.makedirs(os.path.join(R, 'release'), exist_ok=True)
     core.save(os.path.join(R, 'release', 'checks.json'), {'schema': REL.SCHEMA, 'pac': [chk(sha('001'))], 'screen_reader': []})
     core.save(os.path.join(R, 'release', 'shipped.json'), [{'n': 1, 'shipped': 'x', 'pdf': {'sha256': sha('002')}},
@@ -53,7 +53,7 @@ def test_an_evaluated_or_a_shipped_version_posted_is_refused(mapp):
         assert str(e.value) == prune.LIST_CHANGED, vid
         st, r = js(port, 'POST', f'/api/run/{RUN}/remove-older-pdfs', {'by': 'Kim', 'chosen': bad})
         assert st == 409 and r['error'] == prune.LIST_CHANGED, vid
-    assert all(os.path.exists(os.path.join(R, 'reviews', 'versions', v, 'clans_remediated.pdf')) for v in ('001', '002', '003'))
+    assert all(os.path.exists(os.path.join(R, 'reviews', 'versions', v, 'sample_remediated.pdf')) for v in ('001', '002', '003'))
     assert REL.removed(R) == []
 
 def test_the_lock_is_named_in_plain_words(tmp_path, monkeypatch):
@@ -86,15 +86,15 @@ def test_remove_takes_only_the_chosen_versions_and_keeps_the_records(tmp_path, m
     os.makedirs(os.path.join(R, 'reviews', 'work'))
     with pytest.raises(S.Refused, match='being made'): prune.remove(R, chosen, 'Kim', say=lambda *a: None)
     os.rmdir(os.path.join(R, 'reviews', 'work'))
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(300, 300)); doc.save(os.path.join(V3, 'clans_remediated.pdf'))   # changed after it was shown
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(300, 300)); doc.save(os.path.join(V3, 'sample_remediated.pdf'), deterministic_id=True)   # changed after it was shown
     with pytest.raises(S.Refused, match='changed since they were shown'): prune.remove(R, chosen, 'Kim', say=lambda *a: None)
-    assert all(os.path.exists(os.path.join(V, 'clans_remediated.pdf')) for V in (V1, V2, V3))   # refused: nothing removed
+    assert all(os.path.exists(os.path.join(V, 'sample_remediated.pdf')) for V in (V1, V2, V3))   # refused: nothing removed
     chosen = pick(prune.plan(R), '001', '003')
     done = prune.remove(R, chosen, 'Kim', say=lambda *a: None)
-    assert [x['id'] for x in done] == ['001', '003'] and not os.path.exists(os.path.join(V1, 'clans_remediated.pdf'))
-    assert os.path.exists(os.path.join(V2, 'clans_remediated.pdf'))                  # not chosen: kept
+    assert [x['id'] for x in done] == ['001', '003'] and not os.path.exists(os.path.join(V1, 'sample_remediated.pdf'))
+    assert os.path.exists(os.path.join(V2, 'sample_remediated.pdf'))                  # not chosen: kept
     assert os.path.exists(os.path.join(V1, 'record.json')) and os.path.exists(os.path.join(V1, 'review.md'))
-    assert os.path.exists(os.path.join(R, 'reviews', 'versions', 'ai', 'clans_remediated.pdf'))
+    assert os.path.exists(os.path.join(R, 'reviews', 'versions', 'ai', 'sample_remediated.pdf'))
     log = REL.removed(R)
     assert [x['version'] for x in log] == ['001', '003'] and log[0]['sha256'] == chosen[0]['sha256'] and log[0]['by'] == 'Kim'
     assert [x['id'] for x in prune.plan(R)] == ['002'] and not os.path.exists(S.P(R)['lock'])   # the review lock released
@@ -129,7 +129,7 @@ def test_the_apps_post_the_panel_and_session_history(mapp):
     pj = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     blk = pj.split('function pruneBlock')[1][:4000]
     assert '>Clean Up Space</button></div>\';' in pj and 'Remove Older PDFs' not in pj and 'pp-note' not in blk.split('function removeLabel')[0]   # the button alone
-    assert ("Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in \"Session History.\" "
+    assert ("Deletes the PDF files of the previous versions you select to free up space. Their records and decisions stay in \"Session History\". "
             "The original AI-generated version is always kept.") in pj
     assert "This can\\'t be undone." in pj and 'type="checkbox"' in blk and 'value="yes" disabled>' in blk and 'yes.disabled = !vs.length' in blk
     assert "'Remove ' + n + ' PDF' + (n === 1 ? '' : 's')" in pj and 'Removed By' in blk and 'drafts' not in blk
@@ -151,10 +151,10 @@ def test_the_command_line_lists_and_removes_only_the_named_sessions(tmp_path):
     out = subprocess.run(cmd, cwd=HERE, capture_output=True, text=True)
     assert 'Session 1:' in out.stdout and 'Session 2:' in out.stdout and '--remove-older-pdfs 1 --yes --by NAME' in out.stdout
     out = subprocess.run(cmd + ['--yes', '--by', 'Kim'], cwd=HERE, capture_output=True, text=True)
-    assert out.returncode != 0 and 'nothing is removed unless chosen' in out.stderr and os.path.exists(os.path.join(V1, 'clans_remediated.pdf'))
+    assert out.returncode != 0 and 'nothing is removed unless chosen' in out.stderr and os.path.exists(os.path.join(V1, 'sample_remediated.pdf'))
     out = subprocess.run(cmd + ['2'], cwd=HERE, capture_output=True, text=True)
-    assert 'a dry run' in out.stdout and os.path.exists(os.path.join(V2, 'clans_remediated.pdf'))
+    assert 'a dry run' in out.stdout and os.path.exists(os.path.join(V2, 'sample_remediated.pdf'))
     out = subprocess.run(cmd + ['7'], cwd=HERE, capture_output=True, text=True)
     assert out.returncode != 0 and 'not offered' in out.stderr
     out = subprocess.run(cmd + ['002', '--yes', '--by', 'Kim'], cwd=HERE, capture_output=True, text=True)
-    assert 'removed 1 PDF(s)' in out.stdout and not os.path.exists(os.path.join(V2, 'clans_remediated.pdf')) and os.path.exists(os.path.join(V1, 'clans_remediated.pdf'))
+    assert 'removed 1 PDF(s)' in out.stdout and not os.path.exists(os.path.join(V2, 'sample_remediated.pdf')) and os.path.exists(os.path.join(V1, 'sample_remediated.pdf'))
