@@ -64,6 +64,16 @@ def find_original(s, sha, name=None):
     books.hashes(s, cands, stop=lambda p, h: h == sha and not found.append(p))
     return found[0] if found else None
 
+def own_pdf(R):
+    """The run's own original PDF (R17: <run>/source/), or None: a run made before R17 finds its original by sha256."""
+    return S.own_source(R)
+
+def own_sha(s, R):
+    p = own_pdf(R)
+    if not p: return None
+    from . import books as BK
+    return BK.hashes(s, [p]).get(p)
+
 def input_of(R, rec):
     """Where this run's next review reads its PDF from, before any search (shared by pdf_needed and the Trash's per-run
     warning, webapp/trash.py effect): {'kind': 'copy'} its own intake copy; {'kind': 'path', 'path'} the existing file its
@@ -90,6 +100,7 @@ def pdf_needed(s, R, rec):
     if i['kind'] in ('copy', 'path'): return None, None
     if i['kind'] in ('lost', 'unknown'): return None, i['why']
     sha, name = i['sha'], i['name']
+    if own_sha(s, R) == sha: return own_pdf(R), None       # R17: the run's own copy
     p = find_original(s, sha, name)
     if p: return p, None
     if moved_words(s, sha): return None, moved_words(s, sha)
@@ -462,6 +473,7 @@ def first_original(s, R):
     if not sha: return None, 'This run doesn\'t say which PDF it was made from, so its original PDF can\'t be found.'
     p = (load(os.path.join(R, 'review_stop.json')) or {}).get('src')
     if p and os.path.isfile(p) and S.sha_file(p) == sha: return p, None
+    if own_sha(s, R) == sha: return own_pdf(R), None       # R17: the run's own copy
     p = find_original(s, sha, name)
     if p: return p, None
     if moved_words(s, sha): return None, moved_words(s, sha).replace('"Review Again" needs', 'Applying the reviewed decisions needs')

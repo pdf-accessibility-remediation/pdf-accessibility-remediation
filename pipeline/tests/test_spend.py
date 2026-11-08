@@ -293,7 +293,8 @@ def test_replay_is_a_free_two_step_job(setup):
     assert j['kind'] == 'replay-copy' and j['argv'][1:] == ['review_workorder.py', str(R), '--replay-to', str(D)] and not j['paid']
     t = j['then']
     assert t['kind'] == 'replay' and t['env_set'] == {'INTAKE_REUSE': '1', 'REPLY': str(D) + '.reply.txt', 'REVIEW': '1', 'RUN_DIR': str(D)}
-    assert 'AUTO' not in t['env'] and t['argv'][1:] == ['run_api.sh', str(src), 'bk', 'again1']
+    assert 'AUTO' not in t['env'] and t['argv'][1:] == ['run_api.sh', str(D / 'source' / 'bk.pdf'), 'bk', 'again1']   # R17: its own copy
+    assert (D / 'source' / 'bk.pdf').read_bytes() == src.read_bytes() and src.is_file()                                 # samples/ only read
     with pytest.raises(ValueError): NR.start_replay(s, 'bk/old', str(R), 'again1')        # the name is taken now
     (R / 'release').mkdir(); (R / 'release' / 'cleared.json').write_text(json.dumps({'state': 'done'}))
     with pytest.raises(ValueError, match='cleared'): NR.start_replay(s, 'bk/old', str(R), 'again2')

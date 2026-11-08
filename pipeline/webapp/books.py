@@ -234,6 +234,71 @@ def receive(s, rfile, length, raw_name):
         try: os.remove(tmp)
         except OSError: pass
 
+# ------------------------------------------------------------------ a run's own PDF (R17, Patrick 2026-11-07)
+def _seed(s, old, new):
+    """A file renamed keeps its size and mtime: its cached sha256 moves with it (no second read of a large PDF)."""
+    cache_p = os.path.join(s['jobs'], 'sha256-cache.json')
+    with _lock:
+        cur = _load(cache_p) or {}
+        if old in cur: cur[new] = cur[old]; _save(cache_p, cur)
+
+def note_of(p):
+    """The upload's note beside it (<name>.json), when there is one."""
+    n = p[:-4] + '.json'
+    return n if os.path.isfile(n) else None
+
+def move_into(s, b, R):
+    """An added PDF into its run's own folder: <R>/source/<file name>.pdf, with its note, by rename (the same disk). The
+    upload list no longer shows it. Raises Refused in plain words and moves nothing when it can't."""
+    src = b['path']; d = os.path.join(R, 'source'); dst = os.path.join(d, os.path.basename(src))
+    try:
+        os.makedirs(d, exist_ok=True)
+        if os.path.exists(dst): raise FileExistsError(dst)
+        os.rename(src, dst)
+    except OSError as e:
+        raise Refused(409, f'The PDF couldn\'t be moved into the run\'s folder ({type(e).__name__}), so nothing was started and nothing was moved.')
+    _seed(s, src, dst)
+    n = note_of(src)
+    if n:
+        try: os.rename(n, dst[:-4] + '.json')
+        except OSError: pass                              # the note is a convenience: the PDF itself is what counts
+    return dst
+
+def copy_into(s, src, sha, R):
+    """A copy of a run's PDF for a new run ("New Run of This PDF", R17: the one time a second copy is made): written to a
+    temporary name, checked by sha256, then renamed into <R>/source/. Raises Refused in plain words."""
+    d = os.path.join(R, 'source'); dst = os.path.join(d, os.path.basename(src))
+    try: size = os.path.getsize(src)
+    except OSError: raise Refused(409, 'The PDF of that run wasn\'t found, so the new run wasn\'t started.')
+    os.makedirs(d, exist_ok=True)
+    if shutil.disk_usage(d).free < size + SPARE_BYTES: raise Refused(507, 'There isn\'t enough space on this computer for a copy of this PDF.')
+    tmp = os.path.join(d, '.' + secrets.token_hex(8) + '.part')
+    try:
+        shutil.copyfile(src, tmp)
+        if sha_file(tmp) != sha: raise Refused(409, 'The copy of the PDF didn\'t match the original, so the new run wasn\'t started.')
+        os.rename(tmp, dst)
+    finally:
+        try: os.remove(tmp)
+        except OSError: pass
+    return dst
+
+def take_back(s, p):
+    """A PDF that was never run back into the upload list (a saved batch's "Remove from Batch", or its Move to Trash): its
+    own name, numbered when the name is taken ("name-2.pdf", as an upload is), never replacing a file. Returns the path."""
+    U = s['uploads']; name = os.path.basename(p); stem = name[:-4]; n = 1
+    with _uploads_lock(U):
+        while True:
+            final = os.path.join(U, name if n == 1 else f'{stem}-{n}.pdf')
+            try: os.link(p, final); break
+            except FileExistsError: n += 1
+        os.remove(p)
+        note = p[:-4] + '.json'
+        if os.path.isfile(note) and not os.path.exists(final[:-4] + '.json'):
+            try: os.rename(note, final[:-4] + '.json')
+            except OSError: pass
+    _seed(s, p, final)
+    return final
+
 # ------------------------------------------------------------------ OCR languages (New Run, New Batch)
 # Each choice is shown only when every Tesseract pack it names is installed. English is the default; nothing is guessed.
 OCR_CHOICES = [('eng', 'English'), ('chi_tra+eng', 'Chinese (Traditional) and English'), ('chi_sim+eng', 'Chinese (Simplified) and English'),

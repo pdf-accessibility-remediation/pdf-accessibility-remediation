@@ -117,6 +117,7 @@ document.addEventListener('click', e => {
   if (it && openMenu && openMenu.contains(it)) {                    // the menu closes first: the dialog or the name box returns focus to "⋯"
     const more = openMenu.previousElementSibling; closeMenu(false);
     if (it.dataset.edit) edit(it, true, more);
+    else if (it.dataset.href) location.assign(it.dataset.href);   // "New Run of This PDF" (R17)
     return;                                                         // Move to Trash: trash.js, with "⋯" as the opener
   }
   if (openMenu && !openMenu.contains(e.target)) closeMenu(false);

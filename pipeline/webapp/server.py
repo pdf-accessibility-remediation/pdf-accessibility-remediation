@@ -337,7 +337,7 @@ def make(s, setup, code=None):
                 if p.endswith('move'): applog(f'moved to the Trash: {what} {body.get("run") or body.get("label") or body.get("key")} → {r.get("moved")}')
                 return self.send(200, r)
             if p == '/api/new/estimate':                          # New Run: the free estimate job, then its run page
-                try: j = NR.start_estimate(s, setup, str(body.get('book') or ''), body.get('run_name'))
+                try: j = NR.start_estimate(s, setup, str(body.get('book') or ''), body.get('run_name'), from_run=str(body.get('run') or '') or None)
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 jobs.tick(J, s)
                 return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id'])), 'location': HM.run_href(j['run'])})
@@ -497,7 +497,7 @@ def make(s, setup, code=None):
                         return self.send(200, with_version(REL.no_statement(t), run, sid), 'text/html; charset=utf-8')
                     return self.send(200, md_page(t, run, sid, base), 'text/html; charset=utf-8')   # review.md with a way back
                 return self.file(f)
-            if p == '/new': return self.send(200, NR.form_page(s, (q.get('book') or [''])[0]), 'text/html; charset=utf-8')
+            if p == '/new': return self.send(200, NR.form_page(s, (q.get('book') or [''])[0], (q.get('run') or [''])[0] or None), 'text/html; charset=utf-8')
             if p == '/book': return self.redirect('/')            # the name page went away (Q1, Q3): Edit Name is on the home page
             if p == '/new-batch': return self.send(200, BT.form_page(s, q.get('book') or []), 'text/html; charset=utf-8')
             if p.startswith('/api/batch/'):

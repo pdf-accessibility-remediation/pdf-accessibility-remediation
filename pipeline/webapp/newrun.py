@@ -30,9 +30,9 @@ def default_run_name(): return f'run-{datetime.datetime.now():%Y-%m-%d-%H%M}'
 def clean_stem(file):
     return re.sub(r'[^A-Za-z0-9_-]+', '_', os.path.splitext(os.path.basename(file))[0]).strip('_-') or 'book'
 
-def folder_shas(d):
-    """The sha256s of the books whose runs are in runs/<name>/ (each label's intake or record), and whether every label
-    could be read."""
+def folder_shas(d, s=None):
+    """The sha256s of the books whose runs are in runs/<name>/ (each label's intake or record, or its own PDF: R17), and
+    whether every label could be read."""
     out, all_known = set(), True
     try: labels = [e.path for e in os.scandir(d) if e.is_dir() and not e.name.startswith('.')]
     except OSError: return out, True
@@ -40,6 +40,9 @@ def folder_shas(d):
         sha = ((_load(os.path.join(L, '_intake', 'intake.json')) or {}).get('original') or {}).get('sha256') \
               or ((_load(os.path.join(L, 'record.json')) or {}).get('document') or {}).get('sha256') \
               or ((_load(os.path.join(L, 'review_stop.json')) or {}).get('sha256'))
+        if not sha and s is not None:
+            from . import runs as RN
+            sha = RN.own_sha(s, L)
         if sha: out.add(sha)
         elif os.listdir(L): all_known = False
     return out, all_known
@@ -54,7 +57,7 @@ def short_name(s, book, taken_jobs=None):
         others = {sh for nm, sh in taken_jobs if nm == name and sh != book['key']}
         if name not in ('batches',) and not others:
             if not os.path.isdir(d): return name
-            shas, known = folder_shas(d)
+            shas, known = folder_shas(d, s)
             if known and shas <= {book['key']}: return name
         n += 1
 
@@ -66,13 +69,56 @@ def check_untagged(s, setup, book):
     if book.get('tagged') is False and not checks.untagged_ready(setup or []):
         raise ValueError('Text recognition (OCR) isn\'t set up on this computer, and this book needs it. Whoever looks after the app can install it.')
 
+# ------------------------------------------------------------------ the PDF a new run takes (R17, Patrick 2026-11-07)
+def book_of_run(s, run):
+    """"New Run of This PDF": the PDF of an existing run (its own copy, or for a run made before R17 the original found
+    by sha256 in samples/ or uploads/), as a book entry {path, key, file, name, locked}, or None."""
+    from . import home as HM, runs as RN, names as NM
+    R = dict(HM.run_folders(s['runs'])).get(run)
+    if not R: return None
+    p = RN.own_pdf(R)
+    if p: sha, file = RN.own_sha(s, R), os.path.basename(p)
+    else:
+        rec = _load(os.path.join(R, 'record.json')) or {}
+        o = (_load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or {}
+        sha = (rec.get('document') or {}).get('sha256') or o.get('sha256'); file = (rec.get('document') or {}).get('file') or o.get('file')
+        p = RN.find_original(s, sha, file) if sha else None
+        if not p: return None
+    m = BK.read_meta(p)
+    return {'path': p, 'key': sha, 'file': BK.shown_file(file or os.path.basename(p)), 'name': NM.book_name(s, sha, file or os.path.basename(p)),
+            'locked': bool(m.get('locked')), 'from_run': run}
+
+def take_pdf(s, book, R):
+    """The new run's own PDF: the upload moved into <R>/source/ (rename; it leaves the upload list), or a copy when it
+    comes from another run, or when a run made before R17 still reads that very upload (it then stays listed).
+    Returns (path, 'moved' | 'copied'); raises ValueError in plain words, moving nothing."""
+    from . import trash as TR
+    try:
+        if book.get('from_run'): return BK.copy_into(s, book['path'], book['key'], R), 'copied'
+        with BK._uploads_lock(s['uploads']):
+            if not os.path.isfile(book['path']) or BK.sha_file(book['path']) != book['key']:
+                raise ValueError('This PDF\'s file has changed or is gone. Go back to the home page to see the list again.')
+            if TR.upload_still_needed(s, book['path'], book['key']): return BK.copy_into(s, book['path'], book['key'], R), 'copied'
+            return BK.move_into(s, book, R), 'moved'
+    except BK.Refused as e: raise ValueError(e.words)
+
+def give_back(s, p, mode, orig):
+    """Undo take_pdf when the job can't be made: a moved PDF goes back where it was, a copy is removed."""
+    try:
+        if mode == 'moved':
+            os.rename(p, orig); n = p[:-4] + '.json'
+            if os.path.isfile(n): os.rename(n, orig[:-4] + '.json')
+        else: os.remove(p)
+        os.rmdir(os.path.dirname(p))
+    except OSError: pass
+
 # ------------------------------------------------------------------ the estimate (free)
-def start_estimate(s, setup, key, plain):
+def start_estimate(s, setup, key, plain, from_run=None):
     """New Run: the free estimate job. `plain`: the Run Name in the person's own words (optional); the folder label is
-    derived from it (webapp/names.py label_for) and the plain name is kept by the app only. Returns the job; raises
-    ValueError with the reason (plain words)."""
+    derived from it (webapp/names.py label_for) and the plain name is kept by the app only. The run takes its PDF into
+    its own folder first (take_pdf, R17). Returns the job; raises ValueError with the reason (plain words)."""
     from . import names as NM
-    book = BK.by_key(s, key)
+    book = book_of_run(s, from_run) if from_run else BK.by_key(s, key)
     if not book: raise ValueError('This PDF\'s file has changed or is gone. Go back to the home page to see the list again.')
     if book['locked']: raise ValueError('This PDF is locked with a password. Add an unlocked copy and start a new run.')
     plain = NM.clean_name(plain)
@@ -86,11 +132,24 @@ def start_estimate(s, setup, key, plain):
         try: os.makedirs(R); break                       #   the second derives it again ("_2")
         except FileExistsError: continue
     else: raise ValueError('A run with this name is being started right now. Try again in a moment.')
+    try: path, mode = take_pdf(s, book, R)
+    except ValueError:
+        try: os.rmdir(os.path.join(R, 'source'))
+        except OSError: pass
+        try: os.rmdir(R)
+        except OSError: pass
+        raise
     if plain: NM.set_run_name(s, f'{name}/{run_name}', plain)
     env = {'ESTIMATE': '1', 'ASK_LANG': '1'}             # D4: the OCR language is asked only when pages need OCR (webapp/lang.py)
-    argv = ['bash', 'run_api.sh', book['path'], name, run_name]
-    return jobs.create(s['jobs'], 'estimate', f'{name}/{run_name}', argv, config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
-                       what='Get the estimate', book_sha=book['key'], book_file=book['file'])
+    argv = ['bash', 'run_api.sh', path, name, run_name]
+    try:
+        return jobs.create(s['jobs'], 'estimate', f'{name}/{run_name}', argv, config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
+                           what='Get the estimate', book_sha=book['key'], book_file=book['file'], pdf=mode)
+    except Exception:
+        give_back(s, path, mode, book['path'])
+        try: os.rmdir(R)
+        except OSError: pass
+        raise
 
 def answer_language(s, run, R, lang):
     """"Language of the Scanned Pages" answered (D4): the estimate again, with that OCR language (English: unset)."""
@@ -159,13 +218,16 @@ def start_replay(s, run, R, label):
     if not RUN_NAME.fullmatch(label): raise ValueError('A Run Name starts with a letter or digit and uses only letters, digits, "-" and "_" (at most 64).')
     from . import runs as RN
     doc = rec.get('document') or {}
-    src = RN.find_original(s, doc.get('sha256'), doc.get('file'))
+    src = RN.own_pdf(R) if RN.own_sha(s, R) == doc.get('sha256') else RN.find_original(s, doc.get('sha256'), doc.get('file'))
     if not src: raise ValueError('The book\'s original PDF wasn\'t found in the folder of original PDFs or of added books.')
     parent = os.path.dirname(R) if not run.startswith('batches/') else os.path.join(s['runs'], short_name(s, {'path': src, 'key': doc.get('sha256')}))   # 05 L2
     name = os.path.basename(parent)
     D_ = os.path.join(parent, label)
     if run_taken(s, D_) or os.path.exists(D_.rstrip(os.sep) + '.reply.txt'): raise ValueError(f'A run named "{label}" already exists for this book. Choose another Run Name.')
     os.makedirs(D_)
+    try: src = BK.copy_into(s, src, doc.get('sha256'), D_)   # R17: the new run carries its own copy (replay_to allows source/)
+    except BK.Refused as e:
+        import shutil; shutil.rmtree(D_, ignore_errors=True); raise ValueError(e.words)
     reply = D_.rstrip(os.sep) + '.reply.txt'
     env = {'INTAKE_REUSE': '1', 'REPLY': reply, 'REVIEW': '1', 'RUN_DIR': D_}
     nxt = {'kind': 'replay', 'argv': ['bash', 'run_api.sh', src, name, label], 'env': config.child_env(s, env), 'env_set': env,
@@ -176,11 +238,12 @@ def start_replay(s, run, R, label):
                        book_sha=doc.get('sha256'), book_file=doc.get('file'), book_name=BK.name_of_sha(s, doc.get('sha256'), doc.get('file')))
 
 # ------------------------------------------------------------------ the New Run page
-def form_page(s, key):
+def form_page(s, key, run=None):
+    """New Run's form; run: "New Run of This PDF" (R17), the new run gets a copy of that run's PDF."""
     import html
     E = html.escape
     from . import home as HM
-    book = BK.by_key(s, key)
+    book = book_of_run(s, run) if run else BK.by_key(s, key)
     head = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             '<title>New Run</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
             '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>')
@@ -189,7 +252,7 @@ def form_page(s, key):
                        '</div></main></body></html>')
     return head + (f'<header>{HM.title_row("New Run")}<p class="mc-book">{HM.book_cell(book["name"], book["file"])}</p></header>'
         '<main id="main" tabindex="-1"><form class="pp hm-form" id="hm-newrun" data-api="/api/new/estimate">'
-        f'<input type="hidden" name="book" value="{E(book["key"])}">'
+        + (f'<input type="hidden" name="run" value="{E(run)}">' if run else f'<input type="hidden" name="book" value="{E(book["key"])}">') +
         '<div class="mc-field"><label for="nr-name">Run Name</label>'
         '<input type="text" id="nr-name" name="run_name" maxlength="120" required aria-describedby="nr-name-h">'
         '<p class="mc-help" id="nr-name-h">In your own words, for example "First pass, March". It names this run in My Workspace.</p></div>'

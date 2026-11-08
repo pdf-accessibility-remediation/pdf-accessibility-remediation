@@ -25,6 +25,7 @@ from lib import runlock, costs, release as REL
 from . import jobs, books as BK, names as NM, home as HM
 
 CONFIRM_RUN = 'The remediated PDF, its report and its review go with it.'
+CONFIRM_OWN = 'Its original PDF goes with it too (it was kept in the run\'s folder).'   # R17
 CONFIRM_SHIPPED = 'This run was shipped. Its record of what was shipped and who approved it goes with it.'
 CONFIRM_USED = 'These runs keep their remediated PDF, report and downloads.'   # R7 (Patrick's test, 2026-11-07)
 STILL_WORKS = '"Review Again" still works: the run kept its own copy.'
@@ -138,7 +139,8 @@ def plan_run(s, run):
     R = _run_dir(s, run)
     row = HM.row_of(s, run, R)
     return {'what': 'run', 'run': run, 'name': NM.shown_run(s, run), 'pdf': NM.book_name(s, row.get('sha'), row.get('file')) if row.get('sha') else row['book'],
-            'file': row.get('file'), 'shipped': _shipped(R), 'words': [CONFIRM_RUN] + ([CONFIRM_SHIPPED] if _shipped(R) else []),
+            'file': row.get('file'), 'shipped': _shipped(R),
+            'words': [CONFIRM_RUN] + ([CONFIRM_OWN] if __import__('webapp.runs', fromlist=['x']).own_pdf(R) else []) + ([CONFIRM_SHIPPED] if _shipped(R) else []),
             'refused': why_busy(s, run, R)}
 
 def move_run(s, run):
@@ -177,7 +179,8 @@ def plan_batch(s, label, names=None):
           next((f'"{books[n]["book"]}": ' + w[0].lower() + w[1:] for n in pick for w in [why_busy(s, f'batches/{label}/{n}', os.path.join(B, n))] if w), None)
     return {'what': 'batch', 'label': label, 'name': NM.shown_run(s, f'batches/{label}'), 'whole': whole,
             'pdfs': [{'name': n, 'pdf': books[n]['book'], 'file': books[n]['file']} for n in pick],
-            'words': (['Each one\'s remediated PDF, report and review go with it.' + (' The batch\'s dashboard goes too.' if whole else '')]
+            'words': (['Each one\'s ' + ('original PDF, ' if any(__import__('webapp.runs', fromlist=['x']).own_pdf(os.path.join(B, n)) for n in pick) else '') +
+                       'remediated PDF, report and review go with it.' + (' The batch\'s dashboard goes too.' if whole else '')]
                       + ([f'{len(shipped)} of them {"was" if len(shipped) == 1 else "were"} shipped. The record of what was shipped and who approved it goes with '
                           + ('it.' if len(shipped) == 1 else 'them.')] if shipped else [])),
             'shipped': shipped, 'refused': why}
@@ -244,6 +247,37 @@ def runs_using(s, sha):
                     'date': r.get('when'), 'status': r.get('words'), 'R': os.path.join(s['runs'], *run.split('/'))})
     return out
 
+def upload_still_needed(s, path, sha):
+    """A run made before R17 that still needs this very upload, or None (Patrick, 2026-11-07: a new run takes its PDF into
+    its own folder; when an older run still reads the upload, the new run gets a copy and the upload stays listed):
+    an unfinished run whose job command names it (an estimate, a waiting "Start Remediation", a first apply), an older
+    batch's book list naming it for a PDF not finished, or a finished or waiting run that would find no other copy."""
+    from . import runs as RN, batches as BT
+    rp = os.path.realpath(path)
+    for j in jobs.all_jobs(s['jobs']):
+        R = jobs.run_dir(j, s['runs'])
+        if R and any(jobs.path_in(a, path) for a in j.get('argv') or []) and not os.path.isfile(os.path.join(R, 'record.json')): return j['run']
+    BD = os.path.join(s['jobs'], 'batches')
+    try: lists = sorted(f for f in os.listdir(BD) if f.endswith('.books.txt'))
+    except OSError: lists = []
+    for f in lists:
+        label = f[:-len('.books.txt')]
+        try: lines = open(os.path.join(BD, f), encoding='utf-8').read().splitlines()
+        except OSError: continue
+        for line in lines:
+            if line.startswith('#') or ' ' not in line: continue
+            name, p = line.split(' ', 1)
+            if os.path.realpath(p) == rp and not os.path.isfile(os.path.join(BT.folder(s, label), name, 'record.json')): return f'batches/{label}/{name}'
+    for u in runs_using(s, sha):
+        R = u['R']
+        if RN.own_pdf(R): continue
+        rec = RN.load(os.path.join(R, 'record.json'))
+        if rec:
+            i = RN.input_of(R, rec)
+            if (i['kind'] == 'path' and os.path.realpath(i['path']) == rp or i['kind'] == 'find') and not _other_copy(s, sha, path): return u['run']
+        elif RN.waiting(R) and not _other_copy(s, sha, path): return u['run']
+    return None
+
 def _other_copy(s, sha, path):
     """Another file with the same content in samples/ or uploads/ (the app finds an original by sha256)."""
     others = [p for p in BK.pdfs_in(s['samples']) + BK.pdfs_in(s['uploads']) if os.path.realpath(p) != os.path.realpath(path)]
@@ -279,7 +313,8 @@ def plan_pdf(s, key):
     if not b: raise Refused('This PDF\'s file has changed or is gone. Reload the page.')
     U = os.path.realpath(s['uploads'])
     if not os.path.realpath(b['path']).startswith(U + os.sep): raise Refused('Only a PDF added through "Upload a PDF" can be moved from here.')
-    used = runs_using(s, key)
+    from . import runs as RN
+    used = [u for u in runs_using(s, key) if not RN.own_pdf(u['R'])]   # R17: a run with its own PDF isn't touched by this move
     why = next((f'The run "{u["name"]}": ' + w[0].lower() + w[1:] for u in used for w in [why_busy(s, u['run'], u['R'])] if w), None) or \
           ('It is being read by a job right now. Try again when the job has stopped.' if jobs_reading(s, b['path']) else None)
     from lib import dates as D

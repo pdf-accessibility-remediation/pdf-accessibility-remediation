@@ -29,9 +29,15 @@ def _mt(p):
     try: return os.stat(p).st_mtime_ns
     except OSError: return None
 
+def has_source(R):
+    """A run folder holding only its own PDF (R17): just started, or saved in a batch for later, or its estimate failed
+    before intake wrote anything. It is a run, so its PDF is never hidden."""
+    try: return any(f.lower().endswith('.pdf') for f in os.listdir(os.path.join(R, 'source')))
+    except OSError: return False
+
 def is_run(R):
     return any(os.path.isfile(os.path.join(R, m)) for m in ('record.json', 'run.json', 'workorder.ai.json', os.path.join('_intake', 'intake.json'),
-                                                          os.path.join('_intake', 'languages.json')))   # D4: stopped to ask its language
+                                                          os.path.join('_intake', 'languages.json'))) or has_source(R)   # D4; R17
 
 def run_folders(runs):
     """[(run name, folder)] of every run folder: runs/<name>/<label>/ and runs/batches/<label>/<name>/."""
@@ -80,6 +86,9 @@ def row_of(s, run, R):
         o = intake.get('original') or {}
         stop = _load(os.path.join(R, 'review_stop.json')) or {}
         file, sha = o.get('file') or os.path.basename(stop.get('src') or '') or (runj.get('source') or {}).get('file') or '', o.get('sha256') or (runj.get('source') or {}).get('sha256')
+        if not sha and has_source(R):                       # R17: its own PDF says which book it is
+            from . import runs as RN
+            p = RN.own_pdf(R); sha = RN.own_sha(s, R); file = file or os.path.basename(p)
         when = runj.get('started') or intake.get('written') or ''
         if os.path.isfile(os.path.join(R, 'workorder.ai.json')):
             name = words = 'Waiting to Start' if os.path.isfile(os.path.join(R, 'review.json')) else 'Waiting for Review'   # reviewed: its apply comes next (D3)
@@ -87,6 +96,7 @@ def row_of(s, run, R):
         elif intake.get('status') == 'stopped': name, words = 'Stopped', 'Stopped: Needs a Person'
         elif intake.get('status') == 'failed' or runj.get('error') or runj.get('parse_error'): name = words = 'Failed'
         elif isinstance(runj.get('estimate'), dict) and not runj.get('usage'): name = words = 'Estimate Ready'
+        elif not intake and not runj and has_source(R): name = words = 'Not Started'   # R17: only its own PDF so far
         else: name, words = 'Stopped', 'Stopped before it finished'
     if not when:
         try: when = datetime.datetime.fromtimestamp(os.path.getmtime(R)).isoformat(timespec='seconds')
@@ -158,7 +168,7 @@ def group_of(r):
     if r.get('active') or st == 'Waiting to Start': return 'processing'
     if st == 'Failed': return 'failed'
     if st in ('Ready', 'Shipped', 'Cleared'): return 'done'
-    if st == 'Estimate Ready': return 'not-started'
+    if st in ('Estimate Ready', 'Not Started'): return 'not-started'
     return 'in-progress'
 
 def pages_words(n, missing=0):
@@ -323,7 +333,8 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
             B.append(f'<tr><th scope="row" id="{rid}"><span class="hm-run">{E(label)}</span>{book_cell(r["book"], r["file"])}</th><td>{pill(r["group"])}</td>'
                      f'<td>{E(pages_words(r.get("pages")))}</td><td class="pp-nw">{E(D.day(r["when"]) if r["when"] else "date not recorded")}</td>'
                      f'<td class="hm-acts"><a class="pp-btn" href="{E(run_href(r["run"]))}" aria-describedby="{rid}">Open</a> ' +
-                     menu(f'{rid}-m', label, [('Edit Name', {'data-edit': 'run', 'data-run': r['run']}), ('Move to Trash', {'data-trash': 'run', 'data-run': r['run']})]) +
+                     menu(f'{rid}-m', label, [('New Run of This PDF', {'data-href': '/new?run=' + urllib.parse.quote(r['run'])}), ('Edit Name', {'data-edit': 'run', 'data-run': r['run']}),
+                                              ('Move to Trash', {'data-trash': 'run', 'data-run': r['run']})]) +
                      '</td></tr>')
         B.append('</tbody></table></div>')
     elif shown:

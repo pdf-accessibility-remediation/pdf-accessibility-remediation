@@ -189,7 +189,7 @@ def replay_to(R, D):
     R, D = os.path.abspath(R), os.path.abspath(D)
     rec = load(os.path.join(R, 'record.json'))
     if not rec or not rec.get('raw_reply'): raise Refused(f'{R} has no record.json with a saved reply (raw_reply)')
-    if os.path.exists(D) and os.listdir(D): raise Refused(f'{D} is not empty: give a new run folder')
+    if os.path.exists(D) and [f for f in os.listdir(D) if f != 'source']: raise Refused(f'{D} is not empty: give a new run folder')   # source/: its own PDF (R17)
     reply = D.rstrip(os.sep) + '.reply.txt'
     if os.path.exists(reply): raise Refused(f'{reply} exists already')
     from lib import ocrwords, origin
@@ -236,6 +236,13 @@ def first_basis(R, inp):
     save(P(R)['basis'], b)
     return b
 
+def own_source(R):
+    """The run's own copy of its original PDF (R17, #45: <run>/source/<file>.pdf, moved or copied there by the app), or None."""
+    d = os.path.join(R, 'source')
+    try: fs = sorted(f for f in os.listdir(d) if f.lower().endswith('.pdf') and not f.startswith('.'))
+    except OSError: return None
+    return os.path.join(d, fs[0]) if fs else None
+
 def check_basis(R, rec, pdf=None):
     """Every reopen and re-apply: the input, the kept digest and the AI order must be the ones the run was made with.
     Returns (basis, input path, the AI order). Raises Refused, naming what differs."""
@@ -248,7 +255,9 @@ def check_basis(R, rec, pdf=None):
                       f'record {(rec.get("run") or {}).get("digest_sha256")}): {FALLBACK}')
     want = {(b.get('input') or {}).get('sha256'), ((rec.get('workorder') or {}).get('source') or {}).get('sha256')} - {None}
     own = os.path.join(R, '_intake', 'intake.pdf')        # the run's own intake result first: a run folder can be moved
-    inp = os.path.abspath(pdf) if pdf else own if os.path.isfile(own) and sha_file(own) in want else (b.get('input') or {}).get('path')
+    src = own_source(R)                                   # then its own original (R17): it moves with the folder too
+    inp = os.path.abspath(pdf) if pdf else own if os.path.isfile(own) and sha_file(own) in want else \
+          src if src and sha_file(src) in want else (b.get('input') or {}).get('path')
     if not inp or not os.path.isfile(inp):
         raise Refused('the input PDF is not where the basis says' + (f' ({inp})' if inp else '') + ': give --pdf <the original PDF>')
     got = sha_file(inp)

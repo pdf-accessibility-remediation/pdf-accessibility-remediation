@@ -126,7 +126,8 @@ function dash(s) {                                               // the batch da
     const x = r.result;
     h += '<tr><td><input type="checkbox" name="trash-pdf" value="' + esc(r.name) + '" id="bt-sel-' + i + '" aria-labelledby="bt-n' + i + '"' + (keep.has(r.name) ? ' checked' : '') + '></td>' +
       '<th scope="row" id="bt-n' + i + '"><span class="hm-book">' + esc(r.book) + '</span><span class="hm-file">Source PDF: ' + esc(r.file) + '</span>' +
-      '<a class="pp-btn bt-open" href="' + esc(r.href) + '" id="bt-o' + i + '">Open</a></th><td>' + esc(r.status) + (x && !x.reviewed ? ' <span class="pp-note">(not reviewed)</span>' : '') + '</td>';
+      '<a class="pp-btn bt-open" href="' + esc(r.href) + '" id="bt-o' + i + '">Open</a> <a class="pp-btn bt-open" href="/new?run=' + encodeURIComponent('batches/' + LABEL + '/' + r.name) +
+      '" aria-describedby="bt-n' + i + '">New Run of This PDF</a></th><td>' + esc(r.status) + (x && !x.reviewed ? ' <span class="pp-note">(not reviewed)</span>' : '') + '</td>';
     if (!x) { h += '<td></td><td></td><td></td><td></td><td></td><td></td></tr>'; return; }
     h += '<td>' + x.needs + '</td><td>' + x.ai + '</td><td>' + esc(SAFE[x.safety] || x.safety) + '</td>' +
       '<td>' + (x.va == null ? 'not run' : (x.vb == null ? '–' : x.vb) + ' → ' + x.va + (x.new ? ' <b>(' + x.new + ' new)</b>' : '')) + '</td>' +
