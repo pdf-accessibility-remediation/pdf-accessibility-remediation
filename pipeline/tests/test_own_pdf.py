@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # 
 sys.path.insert(0, HERE)
 from lib import costs  # noqa: E402
 from webapp import books as BK, newrun as NR, runs as RN, jobs, home as HM, trash as TR, spend as SP, names as NM  # noqa: E402
-from test_webapp import setup, settings  # noqa: E402,F401
+from test_webapp import setup, settings, app  # noqa: E402,F401
 from test_webapp_home import pdf_bytes  # noqa: E402
 from test_spend import run_folder  # noqa: E402
 
@@ -169,3 +169,19 @@ def test_a_saved_batch_moved_to_the_trash_gives_its_pdfs_back(setup):
     TR.move_batch(s, 'Later')
     assert sorted(b['file'] for b in BK.listing(s)) == ['a.pdf', 'b.pdf', 'c.pdf'] and (setup / 'Trash' / 'batch - Later').is_dir()
     assert not [f for d, _, fs in os.walk(setup / 'Trash') for f in fs if f.endswith('.pdf')]                       # no PDF in the Trash
+
+def test_the_saved_batch_routes(app):
+    """S7 through the app: save, the batch's page is the form, remove, then "Get the Estimates" refuses one PDF alone."""
+    from test_webapp import get
+    from test_webapp_home import jpost
+    t = app['t']; (t / 'uploads').mkdir(exist_ok=True)
+    for n in ('a', 'b', 'c'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n}'))
+    keys = [b['key'] for b in BK.listing(settings(t))]
+    assert jpost(app['port'], '/api/batch/new-later', {'books': keys, 'label': 'Later'}) == (202, {'location': '/?view=batches'})
+    page = get(app['port'], '/batch/Later/')[1].decode()
+    assert '<h1>New Batch</h1>' in page and page.count('>Remove from Batch</button>') == 3 and 'Save Batch for Later' in page
+    assert jpost(app['port'], '/api/batch/Later/remove', {'book': 'c'}) == (200, {'removed': True})
+    assert jpost(app['port'], '/api/batch/Later/remove', {'book': 'b'})[0] == 200
+    st, d = jpost(app['port'], '/api/batch/Later/start', {'label': 'Later'})
+    assert st == 409 and 'two or more' in d['error']
+    assert sorted(b['file'] for b in BK.listing(settings(t))) == ['b.pdf', 'c.pdf']
