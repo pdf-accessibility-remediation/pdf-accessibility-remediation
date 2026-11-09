@@ -227,6 +227,11 @@ def test_batch_api_refuses_on_the_same_money(two, tmp_path):
     r = subprocess.run(['bash', 'batch_api.sh', 'bx', str(lst)], cwd=HERE, env={**e, 'BATCH_MAX_USD': '5'}, capture_output=True, text=True, timeout=300)   # past the check; the call then can't reach OpenRouter
     assert 'Already Spent in This Batch: $0.37' in r.stdout and 'Batch Limit: $5.00' in r.stdout and 'stopped: this batch' not in r.stdout, r.stdout + r.stderr
     assert 'MAX_TOKENS=' not in r.stdout
+    tail = 'for previous attempts) · Max Estimated Cost: $'                     # nothing of this send has been paid for yet (the call can't reach OpenRouter)
+    assert '· AI Cost: $0.00 · Total Cost: $0.37 so far ($0.37 ' + tail in r.stdout, r.stdout
+    md = (B / 'summary.md').read_text()
+    assert 'Total Cost: $0.37 ($0.37 ' + tail in md and ', not including previous attempts' in md and 'API cost' not in md.split('books done')[1] and '$0.00 +' not in md
+    assert '1 PDF moved to the Trash (AI cost $0.070), counted above' in md
 
 @pytest.mark.parametrize('job,active,want', [
     ({'shown': {'ceiling_usd': 8.8, 'expected_usd': 4.1, 'spent_usd': 0, 'retry_usd': 0}}, True, '$1.20 so far (expected $4.10, max estimated $8.80)'),

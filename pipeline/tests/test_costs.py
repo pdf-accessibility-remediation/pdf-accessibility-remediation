@@ -205,6 +205,7 @@ def test_refusals_name_what_it_could_cost_and_the_limit(tmp_path, kw, code, word
     ({'usd': 3.4, 'retry_usd': .5, 'estimate_usd': 3.13}, '$3.40 ($2.90 + $0.50 to retry an answer that was cut off) · Max Estimated Cost: $3.13, not including the retry'),
     ({'usd': 3.4, 'retry_usd': .5, 'expected_usd': .31, 'estimate_usd': 3.13}, '$3.40 ($2.90 + $0.50 to retry an answer that was cut off) · Expected: $0.31 · Max Estimated Cost: $3.13, not including the retry'),
     ({'usd': 3.7, 'earlier_usd': .3, 'retry_usd': .5, 'expected_usd': .31, 'estimate_usd': 3.13}, '$3.70 ($2.90 + $0.30 for previous attempts + $0.50 to retry an answer that was cut off) · Max Estimated Cost: $3.13, not including previous attempts or the retry'),
+    ({'usd': 3.8, 'earlier_usd': 3.8, 'estimate_usd': .67}, '$3.80 ($3.80 for previous attempts) · Max Estimated Cost: $0.67, not including previous attempts'),
     ({'usd': .27}, '$0.27')])
 def test_the_after_run_words(a, want):
     assert C.cost_words(a) == want

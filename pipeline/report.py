@@ -437,7 +437,7 @@ L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '',
         else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: call did not finish') + ' · '
      + (f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None
         else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: call did not finish')
-     + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_bad):.3f} for {len(a_bad)} earlier call(s) whose reply was cut off or unusable' if a_bad else '')
+     + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_bad):.3f} for {len(a_bad)} previous call(s) whose reply was cut off or unusable' if a_bad else '')
      + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_stop):.3f} for {len([a for a in a_stop if a.get("cost_usd") is not None])} call(s) from a run '
         'that was stopped before it finished' + (' (one more was in flight: any charge is not known)' if any(a.get('cost_usd') is None for a in a_stop) else '') if a_stop else '')
      + (f' (total ${cost_this + cost_earlier:.3f})' if attempts else ''), '',

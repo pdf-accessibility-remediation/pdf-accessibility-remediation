@@ -16,6 +16,11 @@ os.environ['COST_HISTORY'] = os.path.join(_LEDGER_DIR, '.cost-history.jsonl')
 def _ledger_size():
     return os.path.getsize(_REAL_LEDGER) if os.path.exists(_REAL_LEDGER) else None
 
+@pytest.fixture(autouse=True)
+def own_cost_history(tmp_path, monkeypatch):
+    """Each test its own ledger, so one test's fake paid calls never enter the 80-call window of the next."""
+    monkeypatch.setenv('COST_HISTORY', str(tmp_path / '.cost-history.jsonl'))
+
 @pytest.fixture(scope='session', autouse=True)
 def real_cost_history_is_never_written():
     before = _ledger_size()

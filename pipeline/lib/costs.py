@@ -181,7 +181,8 @@ def cost_words(a, so_far=False):
     ceiling, exp = a.get('estimate_usd'), a.get('expected_usd')
     amount = f'${total:.2f}' + (' so far' if so_far else '')
     if prev or retry:
-        parts = [f'${total - prev - retry:.2f}'] + ([f'${prev:.2f} for previous attempts'] if prev else []) + ([f'${retry:.2f} to retry an answer that was cut off'] if retry else [])
+        new = round(total - prev - retry, 2)                 # nothing spent yet by this send (a batch sent again): no "$0.00 +"
+        parts = ([f'${new:.2f}'] if new else []) + ([f'${prev:.2f} for previous attempts'] if prev else []) + ([f'${retry:.2f} to retry an answer that was cut off'] if retry else [])
         s = f'{amount} ({" + ".join(parts)})'
         if retry and not prev and exp is not None: s += f' · Expected: ${exp:.2f}'
         left_out = ' or '.join((['previous attempts'] if prev else []) + (['the retry'] if retry else []))
