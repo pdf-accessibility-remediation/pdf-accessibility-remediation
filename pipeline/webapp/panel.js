@@ -515,7 +515,9 @@ const usd = x => '$' + Number(x || 0).toFixed(2);
 function costLine(e) {
   const x = e.expected;                                          // #65 (dollar-only cost limits) fills it; shown only when present
   return (x ? 'About ' + usd(x.usd) + (x.low != null && x.high != null ? ' (usually ' + usd(x.low) + '–' + usd(x.high) + ')' : '') + ' · ' : '') +
-    'Worst-case estimate ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + e.requests + ' AI requests' : '') + ' · Limit ' + usd(e.limits.per_call_usd) + ' per AI call' +
+    'Worst-case estimate ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + e.requests + ' AI requests' : '') +
+    (e.page_reads ? ', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + e.page_reads.pages + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' read by the AI' : '') +   // #49
+    ' · Limit ' + usd(e.limits.per_call_usd) + ' per AI call' +
     (e.limits.per_book_usd ? ' · Limit ' + usd(e.limits.per_book_usd) + ' per book' : '') +
     (e.spent_before_usd ? ' · Counted toward this book\'s limit so far ' + usd(e.spent_before_usd) : '') +
     (e.credit_usd != null ? ' · Credit ' + usd(e.credit_usd) : ' · Credit not checked');

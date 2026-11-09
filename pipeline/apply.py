@@ -2263,7 +2263,10 @@ def op_ocr_words(spec):
             pre, core, post = re.match(r'^(\W*)(.*?)(\W*)$', m.group(0), re.S).groups()
             if core not in fixes:                     # a footnote number after the word ("viida).26"); OCR also turns letters into digits, so only as a second try
                 pre, core, post = re.match(r'^(\W*)(.*?)(\W+\d+\W*)$', m.group(0), re.S).groups() if re.search(r'\W\d+\W*$', m.group(0)) else (pre, core, post)
-            if core in fixes: count[core] += 1; return pre + fixes[core] + post
+            if core in fixes:
+                count[core] += 1
+                if fixes[core].startswith(pagereads.ocrwords.OKINA) and pre and pre[-1] in pagereads.OKINA_LIKE: pre = pre[:-1]   # ‘ina → ʻāina, never ‘ʻāina
+                return pre + fixes[core] + post
             return m.group(0)
         return re.sub(r'\S+', one, text)
     for pno, page in enumerate(pages, 1):
@@ -2375,7 +2378,10 @@ def op_page_readings(spec):
         for ci, subs in by_cand.items():
             ckey, idx, text = cand[ci]
             for m, core, reading in sorted(subs, key=lambda x: -x[0].start()):          # from the end, so earlier offsets hold
-                text = text[:m.start()] + m.group(0).replace(core, reading, 1) + text[m.end():]
+                tok = m.group(0); at = tok.find(core); lead, rest = tok[:at], tok[at + len(core):]
+                if reading.startswith(pagereads.ocrwords.OKINA) and lead and lead[-1] in pagereads.OKINA_LIKE:
+                    lead = lead[:-1]                     # the OCR's quote mark was the ʻokina the reading now has: ‘o → ʻo, never ‘ʻo
+                text = text[:m.start()] + lead + reading + rest + text[m.end():]
             wrap[ckey][idx] = text
         _write_spans(conts, wrap)
         examples = [[words[wi][2], r] for wi, r in sorted(changes.items())][:200]
