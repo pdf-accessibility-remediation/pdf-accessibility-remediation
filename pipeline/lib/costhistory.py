@@ -25,8 +25,9 @@ The rule (handoff/cost-estimates/01, §3.5). Per model and kind, the last 80 cal
 log(output) = a + b log(input estimate), each book weighing the same; the range is the 5th to 95th percentile of actual/predicted
 with each ratio from a fit that left that book out. Output tokens are what it learns, so a price change needs no new history.
 It never decides anything: limits and credit are checked against the ceiling. No figure ("Not Available Yet") for fewer than
-12 calls from 6 books, for an input above the largest of its training calls, or after a cut-off in the same folder. A predicted
-output never passes the request's allowance and the figure never passes the ceiling.
+12 calls from 6 books, or after a cut-off in the same folder. A request larger than any learned still gets a figure, marked `beyond`
+for the terminal, because it tends to read high. A predicted output never passes the request's allowance and the figure never
+passes the ceiling.
 """
 import os, sys, json, math, hashlib, collections
 
@@ -128,11 +129,12 @@ def predict(m, input_est, max_tokens):
     return tuple(min(p * m[k], max_tokens) for k in ('lo', 'md', 'hi'))
 
 def expected(requests, model, price_in, price_out, ceiling, cut_off=False, history=None):
-    """requests: [{kind, input_est, max_tokens}]. Returns {usd, low, high, basis: {calls, books}}, or {none: reason, …} with the
-    reason a person could be told: too_few (calls and books so far), above_history, cut_off."""
+    """requests: [{kind, input_est, max_tokens}]. Returns {usd, low, high, basis: {calls, books}} (with beyond: True when a request is
+    larger than any its kind has learned from), or {none: reason, …} with the reason a person could be told: too_few (calls and books
+    so far), cut_off. The basis is the thinnest of the kinds used, so the terminal names the weaker evidence."""
     if cut_off: return {'none': 'cut_off'}
     history = rows() if history is None else history
-    usd = low = high = 0.0; basis, learned = None, {}
+    usd = low = high = 0.0; basis, learned, beyond = None, {}, False
     for q in requests:
         k = q['kind']
         if k not in learned:
@@ -141,22 +143,22 @@ def expected(requests, model, price_in, price_out, ceiling, cut_off=False, histo
         m, all_ = learned[k]
         if m is None:
             return {'none': 'too_few', 'kind': k, 'calls': len(all_), 'books': len({r['book'] for r in all_})}
-        if q['input_est'] > m['max_input']: return {'none': 'above_history', 'kind': k}
+        beyond = beyond or q['input_est'] > m['max_input']
         lo, md, hi = predict(m, q['input_est'], q['max_tokens'])
         cost_in = q['input_est'] * m['input_ratio'] * price_in
         usd += cost_in + md * price_out; low += cost_in + lo * price_out; high += cost_in + hi * price_out
-        basis = basis or {'calls': m['calls'], 'books': m['books']}
+        if basis is None or m['calls'] < basis['calls']: basis = {'calls': m['calls'], 'books': m['books']}
     usd, high = min(usd, ceiling), min(high, ceiling)
-    return {'usd': round(usd, 4), 'low': round(min(low, usd), 4), 'high': round(max(high, usd), 4), 'basis': basis}
+    return {'usd': round(usd, 4), 'low': round(min(low, usd), 4), 'high': round(max(high, usd), 4), 'basis': basis, **({'beyond': True} if beyond else {})}
 
 def terminal_line(x):
     """The terminal's "Expected Cost" line (the pages show the figure only, and no reason)."""
     if x.get('usd') is not None:
         b = x.get('basis') or {}
         return (f'Expected Cost: ${x["usd"]:.2f} (usually ${x["low"]:.2f}–${x["high"]:.2f})'
-                + (f', from the last {b["calls"]} calls ({b["books"]} PDFs)' if b.get('calls') else ''))
+                + (f', from the last {b["calls"]} calls ({b["books"]} PDFs)' if b.get('calls') else '')
+                + ('; larger than any request learned from, so it may read high' if x.get('beyond') else ''))
     why = {'cut_off': 'an AI answer was cut off in this folder, so past runs say little about the next one',
-           'above_history': 'larger than any PDF it has learned from',
            'too_few': f'{x.get("calls", 0)} past call{"" if x.get("calls") == 1 else "s"} of this kind, from {x.get("books", 0)} PDF{"" if x.get("books") == 1 else "s"}; needs {MIN_CALLS} from {MIN_BOOKS}'}
     return 'Expected Cost: Not Available Yet' + (f' ({why[x["none"]]})' if x.get('none') in why else '')
 

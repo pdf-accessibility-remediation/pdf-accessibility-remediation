@@ -274,6 +274,14 @@ def test_the_shown_figures_go_on_a_non_claude_send_and_stay_when_nothing_is_sent
     r = subprocess.run(['bash', 'batch_api.sh', 'bx', str(lst)], cwd=HERE, env=env(RUNS_DIR=runs, AUTO=1, RETRY=1, INTAKE='off', MODEL='openai/gpt-x'), capture_output=True, text=True, timeout=300)
     assert 'not counted against the limit' in r.stdout and not (B / '.shown.json').exists(), r.stdout + r.stderr
 
+def test_a_pdf_moved_to_the_trash_twice_is_one_entry(two):
+    """review 08 L2: dragged back and moved again, its earlier entry is replaced."""
+    s = settings(two); ready_batch(two, s); B = two / 'runs' / 'batches' / 'bb'
+    (B / 'trashed.json').write_text(json.dumps([{'name': 'a', 'cost_usd': 0.1, 'moved': 'then'}, {'name': 'b', 'cost_usd': 0.2, 'moved': 'then'}]))
+    BT.forget_books(s, 'bb', ['a'], [{'name': 'a', 'cost_usd': 0.15}])
+    got = json.loads((B / 'trashed.json').read_text())
+    assert sorted((x['name'], x['cost_usd']) for x in got) == [('a', 0.15), ('b', 0.2)]
+
 def test_the_trash_line_counts_only_the_pdfs_still_there(two, tmp_path):
     """review 06 L1: one filter for the page, summary.md and the money."""
     from lib import costs

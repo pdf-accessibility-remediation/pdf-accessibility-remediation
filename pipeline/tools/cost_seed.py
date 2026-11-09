@@ -56,7 +56,9 @@ def calls_of(run, sha):
     return out
 
 def collect(runs):
-    rows, seen, dropped = [], set(), 0
+    rows, seen, dropped, unproved = [], set(), 0, 0
+    # A row must be a call this project really paid for: in the committed seed or the real ledger, not only in a folder (a test against a fake service leaves folders too).
+    known = {H._call_key(r) for r in H.rows(os.environ.get('COST_HISTORY') or os.path.join(runs, H.LEDGER_NAME))}
     for d, subs, fs in os.walk(runs):
         subs[:] = [s for s in subs if s not in ('_audit', '_intake', 'release', 'reviews', '.app')]
         rec = _load(os.path.join(d, 'record.json')) if 'record.json' in fs else None
@@ -68,15 +70,16 @@ def collect(runs):
             if k in seen: continue
             seen.add(k)
             if not c['sha']: dropped += 1; continue
+            if H._call_key(c) not in known: unproved += 1; continue
             rows.append(c)
-    return sorted(rows, key=lambda c: c['date']), dropped
+    return sorted(rows, key=lambda c: c['date']), dropped, unproved
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('--runs', default=os.path.join(os.path.dirname(HERE), 'runs'))
     ap.add_argument('--out', default=H.SEED)
     a = ap.parse_args()
-    rows, dropped = collect(a.runs)
+    rows, dropped, unproved = collect(a.runs)
     map_path = os.path.join(a.runs, H.LABELS_NAME)
     labels = _load(map_path) or {}
     n = max([int(v[1:]) for v in labels.values()] or [0])
@@ -87,7 +90,7 @@ def main():
     with open(a.out, 'w', encoding='utf-8') as f:
         f.write('{"format": "cost-seed/1", "rows": [\n' + ',\n'.join(json.dumps({k: c[k] for k in H.SEED_KEYS}, ensure_ascii=False, separators=(',', ':')) for c in rows) + '\n]}\n')
     with open(map_path, 'w', encoding='utf-8') as f: json.dump(labels, f, indent=1)
-    print(f'{len(rows)} calls, {len({c["book"] for c in rows})} books, {dropped} dropped (no original PDF on record)')
+    print(f'{len(rows)} calls, {len({c["book"] for c in rows})} books, {dropped} dropped (no original PDF on record), {unproved} left out (not in the seed or the ledger)')
     print(f'written: {a.out}\nlabels (local only): {map_path}')
 
 if __name__ == '__main__':

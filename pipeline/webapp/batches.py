@@ -380,7 +380,8 @@ def forget_books(s, label, names, moved):
         keep = [l for l in open(ol, encoding='utf-8') if l.startswith('#') or l.split('\t', 1)[0] not in gone]
         tmp = ol + '.tmp'; open(tmp, 'w', encoding='utf-8').writelines(keep); os.replace(tmp, ol)
     tp = os.path.join(B, 'trashed.json')
-    d = (_load(tp) or []) + [{'name': m['name'], 'cost_usd': m['cost_usd'], 'moved': datetime.datetime.now().isoformat(timespec='seconds')} for m in moved]
+    again = {m['name'] for m in moved}                  # a PDF dragged back and moved again: its earlier entry is replaced, or its cost would count twice
+    d = [x for x in _load(tp) or [] if not (isinstance(x, dict) and x.get('name') in again)] + [{'name': m['name'], 'cost_usd': m['cost_usd'], 'moved': datetime.datetime.now().isoformat(timespec='seconds')} for m in moved]
     tmp = tp + '.tmp'; json.dump(d, open(tmp, 'w', encoding='utf-8'), indent=1); os.replace(tmp, tp)
     if os.path.isfile(os.path.join(B, 'summary.md')) or os.path.isfile(os.path.join(B, 'summary.html')):
         try:

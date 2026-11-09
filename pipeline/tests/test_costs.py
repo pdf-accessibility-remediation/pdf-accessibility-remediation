@@ -52,9 +52,21 @@ def test_too_little_history_gives_no_figure():
 def test_the_minimum_of_12_calls_from_6_books_gives_a_figure():
     x = ask(history(12, 6)); assert x['usd'] > 0 and x['low'] <= x['usd'] <= x['high'] and x['basis'] == {'calls': 12, 'books': 6}
 
-def test_an_input_above_its_training_calls_gives_no_figure():
+def test_a_request_larger_than_any_learned_still_gets_a_figure_and_says_so():
     h = history(30, 6); top = max(r['input_est'] for r in h)
-    assert ask(h, input_est=top)['usd'] > 0 and ask(h, input_est=top + 1) == {'none': 'above_history', 'kind': 'workorder'}
+    assert 'beyond' not in ask(h, input_est=top)
+    x = ask(h, input_est=top + 1, ceiling=9); assert x['usd'] > 0 and x['beyond'] is True and 'none' not in x
+    assert H.terminal_line(x).endswith('; larger than any request learned from, so it may read high')
+
+def test_a_figure_for_a_much_larger_request_keeps_to_both_limits():
+    h = history(30, 6)
+    x = ask(h, input_est=5_000_000, max_tokens=48000, ceiling=11); assert x['usd'] <= 11 and x['high'] <= 11
+    m = H.learn(sorted(h, key=lambda r: r['date'])); assert max(H.predict(m, 5_000_000, 48000)) == 48000
+
+def test_the_terminal_names_the_thinner_of_two_histories():
+    wo, fig = history(40, 8), [dict(r, kind='figure') for r in history(19, 6)]
+    q = [{'kind': 'workorder', 'input_est': 60000, 'max_tokens': 48000}, {'kind': 'figure', 'input_est': 60000, 'max_tokens': 32000}]
+    assert H.expected(q, MODEL, ceiling=9, history=wo + fig, **P)['basis'] == {'calls': 19, 'books': 6}
 
 def test_a_cut_off_in_the_folder_gives_no_figure():
     assert ask(history(30, 6), cut_off=True) == {'none': 'cut_off'}
@@ -114,6 +126,19 @@ def test_a_malformed_or_half_written_line_is_skipped(tmp_path):
 def test_no_ledger_is_the_seed_alone(tmp_path):
     S = seed(tmp_path, row('b01', 1))
     assert len(H.rows(str(tmp_path / 'absent.jsonl'), S)) == 1 and len(H.rows('', S)) == 1
+
+def seed_run(R, started):
+    R.mkdir(parents=True); (R / '_intake').mkdir()
+    (R / '_intake' / 'intake.json').write_text(json.dumps({'original': {'sha256': 'a' * 64}}))
+    (R / 'run.json').write_text(json.dumps({'model': MODEL, 'started': started, 'usage': {'cost_usd': 1, 'prompt_tokens': 1234, 'completion_tokens': 567}, 'finish_reason': 'stop', 'estimate': {'input_tokens': 2000, 'images': 1}}))
+
+def test_a_rebuilt_seed_takes_only_calls_in_the_seed_or_the_ledger(tmp_path):
+    """review 08 L1: a folder with a paid-looking call and an original on record isn't proof the call was real."""
+    import cost_seed
+    seed_run(tmp_path / 'fake', '2026-11-09T10:00:00')
+    rows, dropped, unproved = cost_seed.collect(str(tmp_path)); assert rows == [] and unproved == 1 and dropped == 0
+    H.append({'kind': 'workorder', 'model': MODEL, 'prompt': 'p', 'input_est': 2000, 'input_billed': 1234, 'output': 567, 'images': 1, 'forms': 0, 'date': '2026-11-09T10:00:00', 'book': 'x', 'pass': '1', 'attempt': 1})
+    rows, dropped, unproved = cost_seed.collect(str(tmp_path)); assert len(rows) == 1 and unproved == 0     # conftest's own ledger for this test
 
 def test_a_rebuilt_seed_has_one_row_per_finished_call_like_the_ledger():
     """review 06 L3: a request's usage is the sum of its calls. A cut-off is left out; each call that finished is a row of its own."""
@@ -175,18 +200,23 @@ def test_the_committed_seed_holds_only_the_listed_fields():
 
 # ------------------------------------------------------------------ the backtest, on the committed seed
 def test_the_backtest_holds_forward_in_time():
-    F, above = BT.forward(); N = BT.newest(F)
+    F = BT.forward(); N = BT.newest(F)
     assert len(F) >= 200 and BT.rate(F, BT.inside) >= 0.80 and BT.rate(N, BT.inside) >= 0.80
-    assert BT.rate(F, BT.within(0.25)) >= 0.80 and BT.rate(N, BT.within(0.25)) >= 0.75 and BT.rate(F, BT.within(0.5)) >= 0.95
+    assert BT.rate(F, BT.within(0.25)) >= 0.80 and BT.rate(N, BT.within(0.25)) >= 0.70 and BT.rate(F, BT.within(0.5)) >= 0.95
     assert all(x['expected'] > 0 for x in F)
+
+def test_nothing_is_left_out_of_the_backtest_for_its_size():
+    F = BT.forward(); big = [x for x in F if x['beyond']]
+    assert big and BT.rate(big, BT.inside) >= 0.7 and all(x['ratio'] > 1 for x in big)
+    assert len(BT.figure_held_out()) == len([x for x in H.seed_rows() if x['kind'] == 'figure' and x['model'] == MODEL])
 
 def test_the_seed_holds_the_figure_request_baseline():
     r = [x for x in H.seed_rows() if x['kind'] == 'figure' and x['model'] == MODEL]
     assert len(r) >= H.MIN_CALLS and len({x['book'] for x in r}) >= H.MIN_BOOKS
 
 def test_figure_requests_hold_out_each_pdf():
-    G, none = BT.figure_held_out()
-    assert len(G) + none == len([x for x in H.seed_rows() if x['kind'] == 'figure' and x['model'] == MODEL]) and BT.rate(G, BT.inside) >= 0.7
+    G = BT.figure_held_out()
+    assert len(G) == len([x for x in H.seed_rows() if x['kind'] == 'figure' and x['model'] == MODEL]) and BT.rate(G, BT.inside) >= 0.7
 
 def test_no_past_bill_is_above_its_recomputed_ceiling():
     assert BT.bills_above_ceiling() == []
