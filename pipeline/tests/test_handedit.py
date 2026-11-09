@@ -13,9 +13,11 @@ PIPE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def sha(p): return hashlib.sha256(open(p, 'rb').read()).hexdigest()
 
-def figures_pdf(path, colors=(b'\x00\x00\xff', b'\xff\x00\x00'), alts=('A blue square', 'A red square'), shuffle=False):
+def figures_pdf(path, colors=(b'\x00\x00\xff', b'\xff\x00\x00'), alts=('A blue square', 'A red square'), shuffle=False,
+                text='(Two figures.) Tj', untag_first=False):
     """One page, a paragraph and two figures; figure i draws a 2x2 image of colors[i]. shuffle: the objects are made in
-    another order, so their numbers differ from the first file's."""
+    another order, so their numbers differ from the first file's. text: how the paragraph is drawn. untag_first: the first
+    image is drawn with no marked content and its Figure is gone, as Acrobat's Edit PDF leaves a page it rewrote."""
     pdf = pikepdf.new()
     font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica,
                               Encoding=pikepdf.Name.WinAnsiEncoding)
@@ -23,8 +25,8 @@ def figures_pdf(path, colors=(b'\x00\x00\xff', b'\xff\x00\x00'), alts=('A blue s
         for _ in range(5): pdf.make_indirect(pikepdf.Dictionary(Filler=True))
     ims = {f'/Im{i + 1}': pikepdf.Stream(pdf, c * 4, Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Image, Width=2, Height=2,
                                         ColorSpace=pikepdf.Name.DeviceRGB, BitsPerComponent=8) for i, c in enumerate(colors)}
-    content = ('/P <</MCID 0>> BDC BT /F1 11 Tf 72 520 Td (Two figures.) Tj ET EMC\n'
-               '/Figure <</MCID 1>> BDC q 100 0 0 100 72 300 cm /Im1 Do Q EMC\n'
+    content = (f'/P <</MCID 0>> BDC BT /F1 11 Tf 72 520 Td {text} ET EMC\n'
+               + ('q 100 0 0 100 72 300 cm /Im1 Do Q\n' if untag_first else '/Figure <</MCID 1>> BDC q 100 0 0 100 72 300 cm /Im1 Do Q EMC\n') +
                '/Figure <</MCID 2>> BDC q 100 0 0 100 72 100 cm /Im2 Do Q EMC\n')
     page = pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 432, 576], StructParents=0,
                               Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font), XObject=pikepdf.Dictionary(ims)),
@@ -34,9 +36,9 @@ def figures_pdf(path, colors=(b'\x00\x00\xff', b'\xff\x00\x00'), alts=('A blue s
     doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
     p = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=doc, Pg=pg, K=0))
     figs = [pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Figure, P=doc, Pg=pg, K=i + 1,
-                                                 Alt=pikepdf.String(a))) for i, a in enumerate(alts)]
+                                                 Alt=pikepdf.String(a))) for i, a in enumerate(alts) if not (untag_first and i == 0)]
     doc.K = pikepdf.Array([p] + figs); root.K = doc
-    root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=[0, pikepdf.Array([p] + figs)]))
+    root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=[0, pikepdf.Array([p] + ([None] if untag_first else []) + figs)]))
     pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
     pdf.save(path)
     return str(path)
@@ -69,6 +71,23 @@ def test_stale_alt_is_removed_in_a_copy_and_the_edited_file_is_untouched(tmp_pat
     alts = sorted((f['alt'] or '') for f in handedit.figures(out))
     assert alts == ['', 'A blue square']                           # the unchanged figure keeps its alt
 
+def test_a_figure_whose_tag_was_dropped_is_listed_as_lost(tmp_path):
+    base = figures_pdf(tmp_path / 'base.pdf')
+    edited = figures_pdf(tmp_path / 'edited.pdf', untag_first=True, shuffle=True)   # same images; the blue one's tag gone
+    ch = handedit.changed(base, edited)
+    assert ch['figures_lost'] == [{'page': 1, 'alt': 'A blue square'}] and ch['figures'] == [] and ch['new_images'] == []
+
+def test_a_replaced_image_is_not_also_counted_as_lost(tmp_path):
+    assert handedit.changed(*edited_pair(tmp_path))['figures_lost'] == []
+
+def test_dropped_spaces_read_the_same_and_a_changed_word_does_not(tmp_path):
+    base = figures_pdf(tmp_path / 'base.pdf')
+    spaces = figures_pdf(tmp_path / 'spaces.pdf', text='[(Two) -400 (figures.)] TJ')     # no space character, a gap instead
+    word = figures_pdf(tmp_path / 'word.pdf', text='(Two figurez.) Tj')
+    assert handedit.changed(base, spaces)['text_pages'] == [{'page': 1, 'chars_before': 12, 'chars_after': 11, 'heard_same': True}]
+    assert [x['heard_same'] for x in handedit.changed(base, word)['text_pages']] == [False]
+    assert handedit.changed(base, figures_pdf(tmp_path / 'again.pdf', shuffle=True))['text_pages'] == []
+
 def test_a_figure_that_cannot_be_found_is_listed_not_guessed(tmp_path):
     base, edited = edited_pair(tmp_path)
     assert handedit.strip_stale_alt(edited, str(tmp_path / 'input.pdf'), ['9999 0']) == ['9999 0']
@@ -90,8 +109,12 @@ def parent_run(tmp_path):
     assert 'no credit used' in r.stdout                                  # nothing looked up at OpenRouter either
     return src, str(tmp_path / 'runs' / 'book' / 'parent')
 
-def swap_image(src, out):
-    pdf = pikepdf.open(src); pdf.pages[0].Resources.XObject['/Im2'].write(b'\x00\xff\x00' * 4); pdf.save(out); return str(out)
+def swap_image(src, out, word=False):
+    """The red image replaced by a green one; word: also "figures." changed to "figurez." in the page's text."""
+    pdf = pikepdf.open(src); pdf.pages[0].Resources.XObject['/Im2'].write(b'\x00\xff\x00' * 4)
+    if word:
+        c = pdf.pages[0].obj.Contents; assert b'figures.' in c.read_bytes(); c.write(c.read_bytes().replace(b'figures.', b'figurez.'))
+    pdf.save(out); return str(out)
 
 def test_no_model_writes_an_empty_order_the_check_accepts(tmp_path):
     src, P = parent_run(tmp_path)
@@ -109,13 +132,14 @@ def test_a_hand_edited_pdf_comes_back_for_review_and_is_recorded(tmp_path):
     keep = {p: sha(p) for p in (src, out)}
     r = sh([sys.executable, 'handedit.py', 'export', P, '--to', str(tmp_path / 'copy.pdf'), '--by', 'Pat'])
     assert r.returncode == 0, r.stderr
-    edited = swap_image(tmp_path / 'copy.pdf', tmp_path / 'edited.pdf'); ed_sha = sha(edited)
+    edited = swap_image(tmp_path / 'copy.pdf', tmp_path / 'edited.pdf', word=True); ed_sha = sha(edited)
     r = sh([sys.executable, 'handedit.py', 'import', P, edited, '--by', 'Pat', '--note', 'a better scan of the red square', '--label', 'he1'])
     assert r.returncode == 0, r.stdout + r.stderr
     C = os.path.join(os.path.dirname(P), 'he1')
     assert 'stopped for review' in r.stdout and not os.path.exists(os.path.join(C, 'record.json'))
     items = json.load(open(os.path.join(C, 'review_items.json'), encoding='utf-8'))
     assert items['hand_edit']['alt_removed'] == 1 and items['hand_edit']['figure_pages'] == [1]
+    assert items['hand_edit']['text_differs'] == [1] and items['hand_edit']['lost'] == []
     from review import core
     digest = json.load(open(os.path.join(C, '_audit', 'digest.json'), encoding='utf-8'))
     gap = next(g for g in core.gaps(json.load(open(os.path.join(C, 'workorder.json'))), digest) if g['id'] == 'figures_without_alt')
@@ -135,6 +159,7 @@ def test_a_hand_edited_pdf_comes_back_for_review_and_is_recorded(tmp_path):
     assert json.load(open(os.path.join(P, 'hand_edits.json')))['children'][0]['run'] == C
     md = open(os.path.join(C, 'review.md'), encoding='utf-8').read()
     assert 'Edited by Hand' in md and '"A red square" | "A green square"' in md and 'None' not in md
+    assert 'CHECK: the text reads differently after the edit on PDF 1' in md and 'lost' not in md
 
 def test_import_refuses_an_unchanged_file_a_missing_note_and_an_in_place_edit(tmp_path):
     src, P = parent_run(tmp_path)

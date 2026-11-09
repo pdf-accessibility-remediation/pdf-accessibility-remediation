@@ -465,8 +465,28 @@ if he:                                                # handedit.py import: what
               '| Page | Alt text removed | Alt text on that page in this run |', '|---|---|---|']
         L += [f'| {pg(f.get("page"))} | ' + (f'"{excerpt(f["alt"], n=120)}"' if f.get('alt') else 'none') + ' | '
               + ('; '.join(f'"{excerpt(a, n=120)}"' for a in new_alt.get(f.get('page'), [])) or '**none written: write it**') + ' |' for f in fc]
+    fl = he.get('figures_lost') or []
+    if fl:                                            # Acrobat's Edit PDF can rewrite a page nobody touched and drop its tags
+        on_page = collections.defaultdict(list)
+        for it in wo.get('alt') or []:
+            if (figs.get(it.get('obj')) or {}).get('page'): on_page[figs[it['obj']]['page']].append(it.get('alt'))
+        for it in wo.get('page_figures') or []: on_page[it.get('page')].append(it.get('alt'))
+        L += ['', line(f'- **{len(fl)} figure{"s" if len(fl) != 1 else ""} lost {"their tags" if len(fl) != 1 else "its tag"} in the edit**: the image is now untagged. '
+                       'A page left with no tags gets whole-page alt text on the review page; otherwise re-tag it in Acrobat, or check it is meant to be decoration.',
+                       key='hand_edit:figures_lost', pages=[f.get('page') for f in fl]), '',
+              '| Page | Alt text it had | Alt text on that page in this run |', '|---|---|---|']
+        L += [f'| {pg(f.get("page"))} | ' + (f'"{excerpt(f["alt"], n=120)}"' if f.get('alt') else 'none') + ' | '
+              + ('; '.join(f'"{excerpt(a, n=120)}"' for a in on_page.get(f.get('page'), []) if a) or '**none written**') + ' |' for f in fl]
     if he.get('outside_figures'):
         L += ['', f'- New images that no figure holds, on {pgs([x["page"] for x in he["outside_figures"]])}: check whether each needs to be a figure or decoration.']
+    tp = he.get('text_pages') or []
+    same, diff = [x['page'] for x in tp if x.get('heard_same')], [x['page'] for x in tp if not x.get('heard_same')]
+    if same:
+        L += ['', line(f'- Text changed on {pgs(same)}: only the spaces between words, so it reads the same with spaces from the gaps '
+                       '(Acrobat can drop space characters on pages it rewrites).', key='hand_edit:text_spaces', pages=same)]
+    if diff:
+        L += ['', line(f'- **CHECK: the text reads differently after the edit on {pgs(diff)}.** Compare these pages with the run it came from '
+                       'and with the print.', key='hand_edit:text_changed', pages=diff)]
     if (he.get('pages') or [None, None])[0] != (he.get('pages') or [None, None])[1]:
         L += ['', f'- Pages: {he["pages"][0]} before the edit, {he["pages"][1]} after.']
     L.append('')
