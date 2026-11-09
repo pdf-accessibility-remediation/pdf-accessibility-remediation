@@ -46,7 +46,7 @@ def test_an_unreadable_first_reply_of_a_planned_book_is_not_replayed(book, tmp_p
                                             'estimate': {'passes': [{}, {}]}, 'parse_error': 'no JSON object in the reply'}))
     (R / 'response.json').write_text('{}')
     r = run_api(book[0], R, ESTIMATE=1)
-    assert 'earlier attempt logged: $0.500' in r.stdout, r.stdout + r.stderr
+    assert 'previous attempt logged: $0.500' in r.stdout, r.stdout + r.stderr
     assert 'reading it again' not in r.stdout
 
 def test_a_charge_not_known_counts_its_worst_case_toward_the_book_cap(book, tmp_path):

@@ -9,8 +9,9 @@ VERAPDF, the Java path) < --config FILE < an exported VERAPDF. Relative paths ar
     batch_jobs         books of a batch in progress at once (batch_api.sh's JOBS, 10)
     max_books_per_batch   the most books New Batch accepts (the app only: batch_api.sh in a terminal has no cap)
     upload_max_mb      "Add a Book": the largest PDF accepted, in MB (default 1024)
-    limits             dollars: per_call_usd (one AI call), per_book_usd (a book, #63), per_batch_usd (a batch); what the
-                       pages compare estimates with, and the most a Spend may bind (lib/costs.py)
+    limits             dollars: per_call_usd (one AI call), per_book_usd (a PDF, #63), per_batch_usd (a batch); what the
+                       pages compare estimates with, and the most a Spend may bind. Not set in settings.json: the defaults are
+                       DEFAULT_LIMITS in lib/costs.py, the one place; set here only to override them on this computer
     tools              VERAPDF (path to the launcher) and path_prepend (folders put first on the children's PATH: Java)
     test_reply_dir     tests only, and only from --config: never from a committed or local settings file. Spend then runs
                        REPLY=<test_reply_dir>/<name>.txt instead of a paid call, and every page says "Test"
@@ -30,7 +31,8 @@ FOLDERS = ('runs', 'samples', 'uploads', 'jobs')
 BASE_ENV = ('PATH', 'HOME', 'LANG', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL')
 JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD', 'INTAKE', 'OUT',
            'JOBS', 'BATCH_MAX_USD', 'BOOK_MAX_USD', 'RETRY', 'MODEL', 'FROM',    # #45: batches, the caps, the estimate's model
-           'SUMMARY_ONLY', 'ASK_LANG')                                         # round 4: the batch summary rebuild (D3, D8), the language question (D4)
+           'SUMMARY_ONLY', 'ASK_LANG',                                         # round 4: the batch summary rebuild (D3, D8), the language question (D4)
+           'FIGURE_RETRY_MAX_USD', 'FIGURE_RETRY_BOOK_MAX_USD')                # #65: the person's real limits, for a figure request's doubled retry only
 # MODEL only as an anthropic/ id (the one the estimate used: 03 §5); FROM only in test mode (test_batch_from, --config);
 # never FORCE_OCR (Q7: no "OCR Every Page Instead" in the app)
 
@@ -86,7 +88,7 @@ def load(config=None, base=HERE, environ=None):
         s.setdefault(k, dflt)
         if not isinstance(s[k], int) or isinstance(s[k], bool) or s[k] < 1: raise Bad(f'{k} must be a whole number above 0: {s[k]!r}')
     lim = s.setdefault('limits', {})
-    if not isinstance(lim, dict): raise Bad('limits must be an object: {"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 5}')
+    if not isinstance(lim, dict): raise Bad('limits must be an object: {"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 10}')
     for k, v in lim.items():
         if k not in ('per_call_usd', 'per_book_usd', 'per_batch_usd'): raise Bad(f'limits: unknown key {k!r}')
         if not isinstance(v, (int, float)) or isinstance(v, bool) or not 0 < v <= 100: raise Bad(f'limits.{k} must be a number of dollars above 0 and at most 100: {v!r}')

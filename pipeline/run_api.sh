@@ -7,16 +7,14 @@
 # REPLY=path/to/reply.txt bash run_api.sh …   reuses a saved Claude reply instead of calling the API (no cost)
 # REVIEW=1 bash run_api.sh …   stops after the AI's decisions so a person can review them first (review_workorder.py --serve);
 #   rerunning the same label afterwards applies the reviewed work order. Not for batches.
-# AUTO=1 bash run_api.sh …   no y/N question: sends if the estimate is within the $2 cap and your credit
+# AUTO=1 bash run_api.sh …   no y/N question: sends if the estimate is within the dollar limits and your credit
 # ESTIMATE=1 bash run_api.sh …   audit + cost estimate only; a later run with the same label reuses the audit
 # OUT=clan.pdf bash run_api.sh …   names the result; by default it is <original file name>_remediated.pdf
-# MAX_TOKENS=64000 bash run_api.sh …   output limit for Claude's reply, reasoning included (default 48000, set in decide.py)
-# MAX_USD=3 bash run_api.sh …   the cap on one call's worst case, in dollars (default 2, set in decide.py; Claude models only)
+# MAX_USD=3 bash run_api.sh …   the limit on what one AI call could cost, in dollars (default 2, lib/costs.py; Claude models only)
 # A book with more images than one request takes (100) gets figure requests after the first one, each sending up to 100
 # of the figures the first could not take (issue #63; docs/files.md):
-# BOOK_MAX_USD=6 bash run_api.sh …   the cap on the worst case of all of a book's requests together (default 5; Claude only)
+# BOOK_MAX_USD=6 bash run_api.sh …   the limit on what all of a PDF's requests could cost together, previous attempts included (default 5, lib/costs.py; Claude only)
 # FIGURE_PASSES=off bash run_api.sh …   no figure requests: figures past 100 go to a person, as before
-# FIGURE_MAX_TOKENS=48000 bash run_api.sh …   output limit for each figure request (default 32000)
 # FIGURE_PROBE=20 bash run_api.sh …   test only: also re-send 20 figures the first request answered (recorded, never used)
 # MODEL=openai/gpt-5 bash run_api.sh …   any OpenRouter model id for this run (default: DEFAULT_MODEL in decide.py)
 # Untagged PDFs first go through intake.py (local, no cost): OCR where pages have no text, then auto-tagging. Its
@@ -26,8 +24,8 @@
 # OCR=off / INTAKE=off bash run_api.sh …   no OCR (image-only pages are only listed) / no intake step at all
 #
 # Rerunning a label that did not finish picks up where it stopped: the audit is reused; a reply that was cut off
-# is logged with its cost (attempts.json, folded into record.json) and a new call is made; a reply that was fine
-# but a later step failed is reused at no cost.
+# is logged with its cost (attempts.json, folded into record.json) and a new call is made with twice the room; a reply that
+# was fine but a later step failed is reused at no cost.
 # Outputs go to PDFREM/runs/<short-name>/<run-label>/ (beside pipeline). RUNS_DIR=/some/path overrides it.
 # RUN_DIR=/exact/folder sets the run folder itself (batch_api.sh uses it: runs/batches/<label>/<name>/).
 # ASK_LANG=1 (the app, #45 D4): with no OCR_LANG and no intake yet, intake.py --languages runs first; when pages need OCR
@@ -45,10 +43,11 @@ python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/
 VERA=$(python3 vera.py --check) || {                                                         # also before any paid call
   echo "$VERA"; echo "veraPDF is needed for the WCAG checks: bash verapdf/install.sh (see README), or run with VERAPDF=off to skip them"; exit 1; }
 RUNS=${RUNS_DIR:-$(cd .. && pwd)/runs}
+export COST_HISTORY=${COST_HISTORY:-$RUNS/.cost-history.jsonl}   # the local history behind "Expected Cost" (lib/costhistory.py)
 R=${RUN_DIR:-$RUNS/$NAME/$RUN}; A=$R/_audit
 if [[ -f $R/record.json ]]; then echo "$R already holds a finished run: choose another run label"; exit 1; fi
 if [[ -n ${MAX_TOKENS:-} && ! $MAX_TOKENS =~ ^[0-9]+$ ]]; then echo "MAX_TOKENS must be a whole number: $MAX_TOKENS"; exit 1; fi
-for v in MAX_USD BOOK_MAX_USD; do
+for v in MAX_USD BOOK_MAX_USD FIGURE_RETRY_MAX_USD FIGURE_RETRY_BOOK_MAX_USD; do
   if [[ -n ${!v:-} && ! ${!v} =~ ^[0-9]+([.][0-9]+)?$ ]]; then echo "$v must be a number of dollars: ${!v}"; exit 1; fi
 done
 for v in FIGURE_MAX_TOKENS FIGURE_PROBE; do
@@ -58,6 +57,8 @@ if [[ -n ${FIGURE_PASSES:-} && $FIGURE_PASSES != on && $FIGURE_PASSES != off ]];
 MT=(); [[ -z ${MAX_TOKENS:-} ]] || MT=(--max-tokens "$MAX_TOKENS")
 [[ -z ${MAX_USD:-} ]] || MT+=(--max-usd "$MAX_USD")
 [[ -z ${BOOK_MAX_USD:-} ]] || MT+=(--book-max-usd "$BOOK_MAX_USD")
+[[ -z ${FIGURE_RETRY_MAX_USD:-} ]] || MT+=(--figure-retry-max-usd "$FIGURE_RETRY_MAX_USD")                  # the app: the real limits, for a doubled figure retry only
+[[ -z ${FIGURE_RETRY_BOOK_MAX_USD:-} ]] || MT+=(--figure-retry-book-max-usd "$FIGURE_RETRY_BOOK_MAX_USD")
 [[ ${FIGURE_PASSES:-on} == on ]] || MT+=(--figure-requests off)
 [[ -z ${FIGURE_MAX_TOKENS:-} ]] || MT+=(--figure-max-tokens "$FIGURE_MAX_TOKENS")
 [[ -z ${FIGURE_PROBE:-} ]] || MT+=(--figure-probe "$FIGURE_PROBE")
@@ -66,7 +67,7 @@ USE_MODEL=${MODEL:-$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = 
 NEW=; [[ -d $R ]] || NEW=1
 mkdir -p "$R"
 
-# an earlier attempt in this folder that did not finish
+# a previous attempt in this folder that did not finish
 log_attempt() {                # a paid call whose reply could not be used: keep its cost on record, then a new call is made
   python3 - "$R" <<'PY2'
 import sys, os, json, datetime
@@ -87,7 +88,7 @@ if fp.get('state') == 'calling' and not run.get('response_from'):   # stopped wh
     for f in ('run.json', 'passes.json', 'workorder.json'):
         if os.path.exists(os.path.join(R, f)): os.remove(os.path.join(R, f))
     spent = sum((c.get('usage') or {}).get('cost_usd') or 0 for c in run.get('passes') or [])
-    print(f'▶ the earlier attempt was stopped while its figure requests were being sent: ${spent:.3f} it spent on '
+    print(f'▶ the previous attempt was stopped while its figure requests were being sent: ${spent:.3f} it spent on '
           f'{len(run.get("passes") or [])} request(s) is logged' + (' (and one request was in flight; its charge is not known)' if fp.get('in_flight') else '')
           + '; the run starts over')
     sys.exit(0)
@@ -99,7 +100,7 @@ if cost and not run.get('response_from'):                       # a paid call wh
                 'logged': now})
     json.dump(att, open(p, 'w'), indent=1)
     os.remove(os.path.join(R, 'run.json'))
-    print(f'▶ earlier attempt logged: ${cost:.3f} spent, reply {"cut off" if run.get("finish_reason") == "length" else "unusable"}; making a new call')
+    print(f'▶ previous attempt logged: ${cost:.3f} spent, reply {"cut off" if run.get("finish_reason") == "length" else "unusable"}; making a new call')
 PY2
 }
 fig_state() {                  # the state of an earlier attempt's figure requests (decide.py's run.json), or nothing
@@ -116,12 +117,12 @@ if [[ -f $R/workorder.ai.json ]]; then         # stopped for a person's review (
 elif [[ -z ${REPLY:-} && -f $R/workorder.json && $FIG == merged ]]; then
   # every request of the earlier attempt finished, figure requests included, and a later step failed: its work order and
   # run.json are this run's own (its calls stay counted as this run's spending; not a replay)
-  MERGED=1; echo "▶ every AI request of the earlier attempt finished (a later step failed): applying its work order, no new API call"
+  MERGED=1; echo "▶ every AI request of the previous attempt finished (a later step failed): applying its work order, no new API call"
 elif [[ $FIG == calling ]]; then               # before the next branch: a stop just after workorder.json is written must not replay the first reply alone
   log_attempt                                  # stopped while its figure requests were being sent: logged, then started over
 elif [[ -z ${REPLY:-} && -f $R/workorder.json && -f $R/response.json ]]; then
   REPLY=$R/response.json
-  echo "▶ the earlier attempt's reply was complete (a later step failed): reusing it, no new API call"
+  echo "▶ the previous attempt's reply was complete (a later step failed): reusing it, no new API call"
 elif [[ -f $R/run.json ]]; then
   # a complete paid reply that could not be read: try it again with the current reader before paying for a new call
   # (not for a book planned with figure requests: they would need new calls, so its cost is logged and the run starts over)
@@ -182,7 +183,7 @@ else
   stage "1/5 audit (no model)"          python3 audit.py "$PSRC" "$A"
 fi
 if [[ -n $SAVED ]]; then
-  echo "▶ 2/5 the earlier attempt's reply was complete but could not be read: reading it again (no cost)"
+  echo "▶ 2/5 the previous attempt's reply was complete but could not be read: reading it again (no cost)"
   cp "$R/run.json" "$R/run.prev.json"; s=$(now)
   if python3 decide.py "$A" "$R" --response-file "$R/response.json" ${MT[@]+"${MT[@]}"}; then
     rm -f "$R/run.prev.json"; e=$(now); d=$(python3 -c "print(f'{$e-$s:.2f}')")
@@ -204,9 +205,10 @@ else
   if [[ -n ${AUTO:-} ]]; then
     ok=y
     if [[ $USE_MODEL == anthropic/* ]]; then
-      echo "AUTO=1: sending without asking (decide.py still refuses a Claude call over the \$${MAX_USD:-2} cap, a book over the \$${BOOK_MAX_USD:-5} book cap, or more than your credit)"
+      read -r L_CALL L_BOOK < <(python3 -c "from lib import costs as c; L = c.DEFAULT_LIMITS; print(f'{L[\"per_call_usd\"]:.2f} {L[\"per_book_usd\"]:.2f}')")
+      echo "AUTO=1: sending without asking (still refused over the \$${MAX_USD:-$L_CALL} limit per AI call, the \$${BOOK_MAX_USD:-$L_BOOK} limit per PDF, or your credit)"
     else
-      echo "AUTO=1: sending without asking. The \$2 cap applies to Claude models only: the $USE_MODEL estimate is approximate and not capped; the OpenRouter bill is the real cost"
+      echo "AUTO=1: sending without asking. The dollar limits apply to Claude models only: the $USE_MODEL estimate is approximate and not a limit; the OpenRouter bill is the real cost"
     fi
   else
     read -r -p "Send to OpenRouter now? [y/N] " ok
@@ -220,6 +222,7 @@ if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews 
   cp "$R/workorder.json" "$R/workorder.ai.json"
   stage "review: page images (no model)" python3 review_workorder.py "$R" --prepare --pdf "$PSRC"
   write_timing                                   # intake, audit, the AI call and the page images: the apply adds its own
+  python3 -c 'from lib import costs; import sys; print(costs.after_line(sys.argv[1]))' "$R" || true
   # what the app's "Apply" needs to run this same script's second call (webapp/runs.py start_first_apply); report.py removes it
   python3 -c "import json,sys; json.dump({'src': sys.argv[1], 'name': sys.argv[2], 'env': {k: v for k, v in zip(('OCR_LANG', 'INTAKE_REUSE', 'INTAKE', 'OUT'), sys.argv[3:]) if v}}, open(sys.argv[7], 'w'), indent=1)" \
     "$SRC" "$NAME" "${OCR_LANG:-}" "${INTAKE_REUSE:-}" "${INTAKE:-}" "$USER_OUT" "$R/review_stop.json"
@@ -242,5 +245,6 @@ echo "done: $R"
 echo "  $OUT   the result: run PAC on this"
 echo "  review.md     what a person should check"
 echo "  record.json   the full record: decisions, cost, timing, checks"
+echo; python3 -c 'from lib import costs; import sys; print(costs.after_line(sys.argv[1]))' "$R" || true
 CREDIT=$(python3 decide.py --credit "$R/record.json" 2>/dev/null || true)
 if [[ -n $CREDIT ]]; then echo; echo "credit left: \$$CREDIT"; else echo; echo "credit left: could not check (no key, or OpenRouter unreachable)"; fi

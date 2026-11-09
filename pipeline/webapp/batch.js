@@ -7,7 +7,7 @@
    skips it. The statuses are kept current from /api/batch/<label>.
 
    The batch page: the estimate of every book added up, the batch limit and the credit, "Start Remediation" (with the
-   worst-case estimate beside it), the total cost, the batch dashboard drawn in the page (P8: report_html's own rows), and
+   expected and the max estimated cost beside it), the total cost, the batch dashboard drawn in the page (P8: report_html's own rows), and
    "Run the Unfinished PDFs Again". Focus moves only after the person's own action. */
 (() => {
 'use strict';
@@ -66,17 +66,21 @@ function body(s) {
   let h = '<h3 id="bt-phase" tabindex="-1">' + esc(PHASE[s.phase] || s.phase) + '</h3>';
   if (s.test) h += '<p class="pp pp-bar">Test: saved replies, no AI call.</p>';
   h += '<p>' + T.finished + ' of ' + n + ' PDFs finished' + (s.ocr_name ? ' · OCR Language: ' + esc(s.ocr_name) : '') + '</p>';
-  const x = T.expected;
+  const plural = k => k === 1 ? '' : 's';
+  const x = T.expected;                                          // no key on any estimate (made before #65): no line
+  const exp = !x ? '' : x.usd == null ? 'Expected Cost: Not Available Yet' :
+    'Expected Cost: ' + usd(x.usd) + ' for ' + (x.books === x.of ? '' : x.books + ' of ') + x.of + ' PDF' + plural(x.of) + (x.books === x.of ? '' : ' (Not Available Yet for ' + (x.of - x.books) + ' PDF' + plural(x.of - x.books) + ')');
+  const before = s.phase === 'ready' || s.phase === 'missing';
   if (s.phase === 'estimating' || s.phase === 'language') {      // R14: never "$0.00" while the estimates come in
-    if (T.estimated) h += '<p id="bt-cost"><b>Worst-case estimate so far ' + usd(T.ceiling_usd) + ' for ' + T.estimated + ' of ' + T.to_estimate +
-      ' PDF' + (T.to_estimate === 1 ? '' : 's') + ' (estimating) · Batch limit ' + usd(T.limit_usd) + '</b></p>';
-  } else if (s.phase === 'ready' || s.phase === 'missing')
-    h += '<p id="bt-cost"><b>' + (x ? 'About ' + usd(x.usd) + ' · ' : '') + 'Worst-case estimate ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' PDF' + (T.books_to_send === 1 ? '' : 's') +
-         (T.requests > T.books_to_send ? ' (' + T.requests + ' AI requests)' : '') + ' · Batch limit ' + usd(T.limit_usd) + (T.credit_usd != null ? ' · Credit ' + usd(T.credit_usd) : ' · Credit not checked') + '</b></p>';
-  if (T.spent_usd || s.phase === 'running' || s.phase === 'finished')
-    h += '<p><b>Total Cost:</b> ' + usd(T.spent_usd) + (T.shown_ceiling_usd != null ? ' (worst-case estimate ' + usd(T.shown_ceiling_usd) + ')' : '') + '</p>';
-  if (s.trashed && s.trashed.n) h += (T.spent_usd || s.phase === 'running' || s.phase === 'finished' ? '' : '<p><b>Total Cost:</b> ' + usd(T.spent_usd) + '</p>') +
-    '<p>' + s.trashed.n + ' PDF' + (s.trashed.n === 1 ? '' : 's') + ' moved to the Trash (AI cost ' + usd(s.trashed.cost_usd) + ')</p>';   // D8: the spend stays shown
+    if (T.estimated) h += '<p id="bt-cost"><b>Max Estimated Cost So Far: ' + usd(T.ceiling_usd) + ' for ' + T.estimated + ' of ' + T.to_estimate +
+      ' PDF' + plural(T.to_estimate) + ' (estimating) · Batch Limit: ' + usd(T.limit_usd) + '</b></p>';
+  } else if (before)
+    h += '<p id="bt-cost">' + (exp ? '<b>' + exp + '</b><br>' : '') + 'Max Estimated Cost: ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' PDF' + plural(T.books_to_send) +
+         (T.requests > T.books_to_send ? ' (' + T.requests + ' AI requests)' : '') + ' · Batch Limit: ' + usd(T.limit_usd) +
+         (T.spent_usd ? ' · Already Spent in This Batch: ' + usd(T.spent_usd) : '') + (T.credit_usd != null ? ' · Credit: ' + usd(T.credit_usd) : ' · Credit: Not Checked') + '</p>';
+  const total = !before && (T.spent_usd || s.phase === 'running' || s.phase === 'finished' || (s.trashed && s.trashed.n));
+  if (total) h += '<p><b>Total Cost:</b> ' + esc(T.cost_words) + '</p>';   // one wording with the run page and the terminal (lib/costs.py)
+  if (s.trashed && s.trashed.n) h += '<p>' + s.trashed.n + ' PDF' + plural(s.trashed.n) + ' moved to the Trash (AI cost ' + usd(s.trashed.cost_usd) + ', counted in the cost above)</p>';   // D8: the spend stays shown
   if (s.flagged.length) h += '<p>' + s.flagged.length + ' PDF' + (s.flagged.length === 1 ? '' : 's') + ' stopped and need' + (s.flagged.length === 1 ? 's' : '') +
     ' a person: ' + (s.flagged.length === 1 ? 'it is' : 'they are') + ' not sent. Each PDF\'s page says why.</p>';
   if (s.phase === 'estimating') h += '<p>Each PDF is being prepared and estimated (free). This page follows them; you can leave it and come back from the home page.</p>';
@@ -87,12 +91,12 @@ function body(s) {
   if (s.phase === 'ready') {
     if (s.spend && s.spend.ok) h +=
       '<div class="pp-row"><button type="button" class="pp-primary" id="bt-spend" data-act="spend" aria-describedby="bt-cost">Start Remediation</button></div>' +
-      '<p class="pp-note">' + (s.test ? 'Test: "Start Remediation" uses saved replies; nothing is sent to the AI service.' : '"Start Remediation" sends every PDF to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.') + '</p>';
+      '<p class="pp-note">' + (s.test ? 'Test: "Start Remediation" uses saved replies; nothing is sent to the AI service.' : '"Start Remediation" sends every PDF to the AI service. "Expected Cost" is based on the PDFs\' content and may vary. "Max Estimated Cost" is the estimated cost ceiling; it must fit within your spending limits and available credit. The actual cost is usually much lower.') + '</p>';
     else if (s.spend && s.spend.code === 'no_credit') h += '<p class="pp-warn-t" id="bt-why">' + esc(s.spend.why) + '</p>' +   // U8: stays while it is the reason
       '<div class="pp-row"><button type="button" class="pp-primary" id="bt-credit" data-act="credit">Check Credit Again</button></div>';
     else h += '<p class="pp-warn-t" id="bt-why">' + esc((s.spend && s.spend.why) || 'This batch can\'t be sent yet.') + '</p><p>' +
       (s.spend && s.spend.code === 'credit' ? 'Whoever looks after the app can add credit.' :
-       s.spend && s.spend.code === 'limit' ? 'Whoever looks after the app can raise the limit; or start a batch with fewer PDFs.' :
+       s.spend && s.spend.code === 'limit' ? 'Whoever looks after the app can raise the limit; or start a batch with fewer PDFs' + (s.spend.fit_n ? ' (' + s.spend.fit_n + ' of these would fit)' : '') + '.' :
        'Each PDF\'s page says more.') + '</p>';
   }
   if (s.phase === 'review' || (s.reviewing && s.reviewing.length && s.phase !== 'running')) h += '<p>' + s.reviewing.length + ' PDF' + (s.reviewing.length === 1 ? ' is' : 's are') +

@@ -226,14 +226,16 @@ def test_run_page_header_is_the_apps(app):
     assert '<p class="pp-hd-det">r1 · 12 pages · AI Cost: not recorded</p>' in hd
 
 def test_run_details_in_plain_words(setup):
-    """Q6: Run Name, pages, when it ran, the AI by its plain name and the AI cost with its worst-case estimate; a saved
+    """Q6: Run Name, pages, when it ran, the AI by its plain name and the AI cost with the max estimated cost; a saved
     reply says so; nothing recorded is left out, never "None"."""
     s = S(setup); R = setup / 'runs' / 'mm' / 'r1'; R.mkdir(parents=True)
     (R / 'record.json').write_text(json.dumps({'document': {'file': 'mm.pdf', 'pages': 321},
         'run': {'started': '2026-11-06T21:29:05', 'model': 'anthropic/claude-sonnet-5.5', 'usage': {'cost_usd': 0.27},
                 'estimate': {'worst_case_total_usd': 0.61}}, 'cost_total_usd': 0.27}))
     assert RN.details(s, 'mm/r1', str(R)) == ['r1', '321 pages', 'Run on November 6, 2026, at 9:29 PM', 'AI: Claude Sonnet 5.5',
-                                              'AI Cost: $0.27 (worst-case estimate $0.61)']
+                                              'AI Cost: $0.27 (max estimated $0.61)']
+    rec = json.loads((R / 'record.json').read_text()); rec['run']['estimate']['expected'] = {'usd': 0.31}; (R / 'record.json').write_text(json.dumps(rec))
+    assert RN.details(s, 'mm/r1', str(R))[-1] == 'AI Cost: $0.27 (expected $0.31, max estimated $0.61)'
     rec = json.loads((R / 'record.json').read_text()); rec['run']['response_from'] = '../x/reply.txt'; (R / 'record.json').write_text(json.dumps(rec))
     assert RN.details(s, 'mm/r1', str(R))[-1] == 'AI Cost: none (a saved reply was used)'
     E = setup / 'runs' / 'mm' / 'e1'; E.mkdir(); (E / 'run.json').write_text(json.dumps({'started': '2026-11-07T09:00:00', 'estimate': {}}))

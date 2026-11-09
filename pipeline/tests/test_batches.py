@@ -173,10 +173,69 @@ def test_batch_api_review_stops_summary_only_and_retry(tmp_path):
 
 def test_the_cost_line_while_estimating_never_says_zero():
     """R14 (Patrick's test, 2026-11-07): while a batch is estimating, the line says how far the estimates are, or nothing
-    before the first one; never "Worst-case estimate $0.00"."""
+    before the first one; never "Max Estimated Cost: $0.00"."""
     js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
-    assert "if (T.estimated) h += '<p id=\"bt-cost\"><b>Worst-case estimate so far '" in js and "' (estimating) · Batch limit '" in js
-    assert "} else if (s.phase === 'ready' || s.phase === 'missing')" in js
+    assert "if (T.estimated) h += '<p id=\"bt-cost\"><b>Max Estimated Cost So Far: '" in js and "' (estimating) · Batch Limit: '" in js
+    assert "} else if (before)" in js and "const before = s.phase === 'ready' || s.phase === 'missing';" in js
+
+def test_the_batch_pages_cost_wording():
+    """The wording Patrick decided, in batch.js's source: both lines, the partial and missing figure, and the note under the button."""
+    js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    for w in ("'Expected Cost: Not Available Yet'", "'Expected Cost: ' + usd(x.usd) + ' for '", "' (Not Available Yet for '", "'Max Estimated Cost: ' + usd(T.ceiling_usd) + ' for '",
+              "' AI requests)'", "' · Batch Limit: '", "' · Already Spent in This Batch: '", "' · Credit: Not Checked'", "'<p><b>Total Cost:</b> ' + esc(T.cost_words)", "' of these would fit)'",
+              '"Start Remediation" sends every PDF to the AI service. "Expected Cost" is based on the PDFs\\\' content and may vary. "Max Estimated Cost" is the estimated cost ceiling; it must fit within your spending limits and available credit. The actual cost is usually much lower.'):
+        assert w in js, w
+    assert 'usually $' not in js and '(usually' not in js                        # no batch range on a page
+
+def spent_batch(t, s):
+    """A batch with one PDF to send, one waiting for review (paid $0.50) and one moved to the Trash ($0.20)."""
+    ready_batch(t, s)
+    names = [b['name'] for b in BT.books_of(s, 'bb')]
+    wait = t / 'runs' / 'batches' / 'bb' / names[0]
+    run = json.loads((wait / 'run.json').read_text()); run['usage'] = {'cost_usd': 0.5}; (wait / 'run.json').write_text(json.dumps(run))
+    for f in ('workorder.ai.json', 'workorder.json', 'response.json'): (wait / f).write_text('{}')
+    (t / 'runs' / 'batches' / 'bb' / 'trashed.json').write_text(json.dumps([{'name': 'gone', 'cost_usd': 0.2}]))
+    return names
+
+def test_the_batch_counts_every_pdf_and_the_trash_as_spent(two):
+    s = settings(two); spent_batch(two, s)
+    st = BT.state(s, 'bb')
+    assert st['totals']['spent_usd'] == pytest.approx(0.7) and st['totals']['ceiling_usd'] == 0.6 and st['phase'] == 'ready' and st['spend']['ok']
+    j = BT.spend(s, 'bb', {'fingerprint': st['fingerprint']}); e = j['env_set']
+    assert e['BATCH_MAX_USD'] == '1.31' and e['FIGURE_RETRY_MAX_USD'] == '2.00' and e['FIGURE_RETRY_BOOK_MAX_USD'] == '5.00'     # spent + ceiling, bound
+    assert j['shown'] == {'ceiling_usd': 0.6, 'bounds': j['shown']['bounds'], 'expected_usd': None, 'spent_usd': pytest.approx(0.7), 'retry_usd': 0}
+
+def test_a_retry_over_the_limit_counts_what_was_spent(two):
+    s = settings(two, limits={'per_batch_usd': 1.0}); spent_batch(two, s)
+    st = BT.state(s, 'bb')
+    assert st['spend']['ok'] is False and st['spend']['code'] == 'limit' and st['spend']['fit_n'] == 0
+    assert st['spend']['why'] == 'This batch could cost up to $1.30, including $0.70 already spent, more than the limit of $1.00 per batch.'
+    with pytest.raises(ValueError): BT.spend(s, 'bb', {'fingerprint': st['fingerprint']})
+
+def test_batch_api_refuses_on_the_same_money(two, tmp_path):
+    """The terminal's own check: the whole batch's spent money, also what the to-do list leaves out."""
+    import subprocess
+    from test_figure_requests_run import env, figures_pdf
+    runs = tmp_path / 'r2'; B = runs / 'batches' / 'bx'; (B / 'wait').mkdir(parents=True)
+    (B / 'wait' / 'workorder.ai.json').write_text('{}'); (B / 'wait' / 'run.json').write_text(json.dumps({'usage': {'cost_usd': 0.3}, 'model': 'anthropic/x'}))
+    (B / 'trashed.json').write_text(json.dumps([{'name': 'gone', 'cost_usd': 0.07}]))
+    pdf = figures_pdf(tmp_path / 'new.pdf', n=2); lst = tmp_path / 'books.txt'; lst.write_text(f'wait {pdf}\nnew {pdf}\n')
+    e = env(RUNS_DIR=runs, AUTO=1, RETRY=1, INTAKE='off')
+    r = subprocess.run(['bash', 'batch_api.sh', 'bx', str(lst)], cwd=HERE, env={**e, 'BATCH_MAX_USD': '0.5'}, capture_output=True, text=True, timeout=300)
+    assert r.returncode != 0 and 'including $0.37 already spent, more than the limit of $0.50 per batch. Raise it (BATCH_MAX_USD=' in r.stdout + r.stderr, r.stdout + r.stderr
+    assert 'wait: waiting for review, skipped' in r.stdout and 'Expected Cost' in r.stdout
+    r = subprocess.run(['bash', 'batch_api.sh', 'bx', str(lst)], cwd=HERE, env={**e, 'BATCH_MAX_USD': '5'}, capture_output=True, text=True, timeout=300)   # past the check; the call then can't reach OpenRouter
+    assert 'Already Spent in This Batch: $0.37' in r.stdout and 'Batch Limit: $5.00' in r.stdout and 'stopped: this batch' not in r.stdout, r.stdout + r.stderr
+    assert 'MAX_TOKENS=' not in r.stdout
+
+@pytest.mark.parametrize('job,active,want', [
+    ({'shown': {'ceiling_usd': 8.8, 'expected_usd': 4.1, 'spent_usd': 0, 'retry_usd': 0}}, True, '$1.20 so far (expected $4.10, max estimated $8.80)'),
+    ({'shown': {'ceiling_usd': 8.8, 'expected_usd': 4.1, 'spent_usd': 0, 'retry_usd': 0}}, False, '$1.20 (expected $4.10, max estimated $8.80)'),
+    ({'shown': {'ceiling_usd': 0.67, 'expected_usd': 0.31, 'spent_usd': 0.29, 'retry_usd': 0}}, False, '$1.20 ($0.91 + $0.29 for previous attempts) · Max Estimated Cost: $0.67, not including previous attempts')])
+def test_total_cost_uses_what_was_agreed_at_the_click(tmp_path, job, active, want):
+    from lib import costs
+    R = tmp_path / 'b'; R.mkdir(); (R / 'run.json').write_text(json.dumps({'usage': {'cost_usd': 1.2}}))
+    assert costs.shown_words(str(tmp_path), job['shown'], so_far=active) == want
 
 def test_the_state_counts_the_estimates_in(two):
     """R14: totals.estimated (PDFs with an estimate) and totals.to_estimate (PDFs it is waiting on, a language too)."""
