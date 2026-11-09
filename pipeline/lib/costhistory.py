@@ -3,6 +3,7 @@ Local arithmetic on token counts: no network, no book content. It is the only mo
 
     rows()                                      the seed plus the local ledger, each call once
     expected(requests, model, prices, ceiling)  {usd, low, high, basis}, or {none: <reason>}
+    with_pages(x, page_estimate)                that figure with the page readings added (#49), or why there is none
     append(row)                                 one finished call added to the ledger (never raises)
     book_id(run_dir, digest)                    a short id from the original PDF's sha256
 
@@ -151,6 +152,18 @@ def expected(requests, model, price_in, price_out, ceiling, cut_off=False, histo
     usd, high = min(usd, ceiling), min(high, ceiling)
     return {'usd': round(usd, 4), 'low': round(min(low, usd), 4), 'high': round(max(high, usd), 4), 'basis': basis, **({'beyond': True} if beyond else {})}
 
+def with_pages(x, pr):
+    """The figure for the whole PDF: x (the work order and figure requests) with the page readings of pr (read_pages.py's estimate) added.
+    Leaving out pages that are going to be read would read low, so a figure needs a figure for them too, or it is "Not Available
+    Yet" with the page readings' own reason. No pages to read (none listed, or all read before): x as it is."""
+    if not isinstance(x, dict) or not isinstance(pr, dict) or not pr.get('to_read') or x.get('usd') is None: return x
+    p = pr.get('expected')
+    if not isinstance(p, dict) or p.get('usd') is None: return p if isinstance(p, dict) and p.get('none') else {'none': 'no_page_figure'}
+    bases = [b for b in (x.get('basis'), p.get('basis')) if b]
+    return {'usd': round(x['usd'] + p['usd'], 4), 'low': round(x.get('low', x['usd']) + p.get('low', p['usd']), 4),
+            'high': round(x.get('high', x['usd']) + p.get('high', p['usd']), 4), 'basis': min(bases, key=lambda b: b['calls']) if bases else None,
+            **({'beyond': True} if x.get('beyond') or p.get('beyond') else {})}
+
 def beyond_note(x):
     """What the terminal adds to a figure for a request larger than any learned (one wording: one PDF's line and a batch's rows)."""
     return '; larger than any request learned from, so it may read high' if x.get('beyond') else ''
@@ -162,8 +175,9 @@ def terminal_line(x):
         return (f'Expected Cost: ${x["usd"]:.2f} (usually ${x["low"]:.2f}–${x["high"]:.2f})'
                 + (f', from the last {b["calls"]} requests ({b["books"]} PDFs)' if b.get('calls') else '')
                 + beyond_note(x))
+    what = f'page reading{"" if x.get("calls") == 1 else "s"}' if x.get('kind') == 'page' else f'request{"" if x.get("calls") == 1 else "s"} of this kind'
     why = {'cut_off': 'an AI answer was cut off in this folder, so past runs say little about the next one',
-           'too_few': f'{x.get("calls", 0)} past request{"" if x.get("calls") == 1 else "s"} of this kind, from {x.get("books", 0)} PDF{"" if x.get("books") == 1 else "s"}; needs {MIN_CALLS} from {MIN_BOOKS}'}
+           'too_few': f'{x.get("calls", 0)} past {what}, from {x.get("books", 0)} PDF{"" if x.get("books") == 1 else "s"}; needs {MIN_CALLS} from {MIN_BOOKS}'}
     return 'Expected Cost: Not Available Yet' + (f' ({why[x["none"]]})' if x.get('none') in why else '')
 
 # ------------------------------------------------------------------ the ledger

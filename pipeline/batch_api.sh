@@ -22,8 +22,8 @@
 #                    that was cut off stays on record with its cost (the next attempt allows twice as much); a complete reply
 #                    whose later step failed is reused free
 #   FORCE_OCR=1, OCR_LANG=…, OCR=off, INTAKE=off   passed to every book's intake step (see run_api.sh)
-#   PAGE_READS=1     read each book's scanned, mostly Hawaiian pages whole with the AI (off in a batch: not in BATCH_MAX_USD;
-#                    each book's own PAGE_READS_MAX_USD cap applies, default 3)
+#   PAGE_READS=1     read each PDF's scanned, mostly Hawaiian pages whole with the AI (off in a batch unless set; counted in
+#                    BATCH_MAX_USD, and each PDF's own PAGE_READS_MAX_USD limit applies, default 3)
 #   REVIEW=1         every book stops after the AI's decisions for a person's review (the app's batches, #45 D2): summary.md
 #                    lists it as waiting for review, and RETRY=1 never runs it again ("Finish Review" in the app applies it)
 #   SUMMARY_ONLY=1   no run, no cost: summary.md and summary.html written again from the batch's book folders (the app,
@@ -67,7 +67,7 @@ now() { python3 -c 'import time; print(f"{time.time():.2f}")'; }
 T0=$(now); STARTED=$(date '+%Y-%m-%d %H:%M')
 DEFAULT_MODEL=$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")
 export MODEL=${MODEL:-}
-export PAGE_READS=${PAGE_READS:-off}   # page readings (#49) are off in a batch unless PAGE_READS=1 or all: BATCH_MAX_USD does not count them (each book's PAGE_READS_MAX_USD does)
+export PAGE_READS=${PAGE_READS:-off}   # page readings (#49) are off in a batch unless PAGE_READS=1 or all
 
 # ---- summary.md: written at the end, when a RETRY finds nothing left to run, and when a batch stops early
 SUMMARY_DONE=; RUNNING=; FAILED_AT=
@@ -104,6 +104,7 @@ for line in open(books):
         this = 0 if run.get('response_from') and not run.get('own_reply') else ((run.get('usage') or {}).get('cost_usd') or 0)
         earlier = sum(a.get('cost_usd') or 0 for a in load(os.path.join(R, 'attempts.json')) or [])
         if run.get('finish_reason') == 'length': wasted += this
+    this += ((rec or {}).get('page_reads') or {}).get('cost_usd') or 0 if rec else costs.pages_paid(R)   # page readings (#49): this PDF's own money at every stage
     wasted += earlier; total += this + earlier
     if run.get('model'): models[run['model']] += 1
     if run.get('prompt_file'): prompts[f'`{run["prompt_file"]}` ({run.get("prompt_sha256") or "hash not recorded"})'] += 1
@@ -353,9 +354,12 @@ for line in open(books):
     p = os.path.join(R, 'run.json')
     if not os.path.exists(p): bad.append(name); continue
     e = json.load(open(p))['estimate']
+    pr = costs.page_estimate(R) if os.environ.get('PAGE_READS', 'off') != 'off' else None   # page readings still to come (#49): part of what this PDF could cost
+    if pr: e = {**e, 'worst_case_total_usd': round(e['worst_case_total_usd'] + pr['worst_case_usd'], 4), 'requests': (e.get('requests') or 1) + pr['to_read']}
     if e.get('approximate'): approx += e['worst_case_total_usd']        # not a Claude model: not counted against the limit
     else:
         total += e['worst_case_total_usd']; capped_n += 1; requests += e.get('requests') or 1
+        e = {**e, 'expected': costhistory.with_pages(e.get('expected'), pr)}
         x = e.get('expected'); exp_of += 1
         if isinstance(x, dict): exp_seen = True
         if isinstance(x, dict) and x.get('usd') is not None: exp_usd += x['usd']; exp_n += 1

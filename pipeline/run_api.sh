@@ -18,8 +18,8 @@
 # FIGURE_PROBE=20 bash run_api.sh …   test only: also re-send 20 figures the first request answered (recorded, never used)
 # MODEL=openai/gpt-5 bash run_api.sh …   any OpenRouter model id for this run (default: DEFAULT_MODEL in decide.py)
 # Scanned, mostly Hawaiian pages are read whole with the AI by default (read_pages.py; paid, its own estimate, asks first
-# unless AUTO=1; a book with no such pages costs nothing). PAGE_READS=off bash run_api.sh …   no page readings
-# PAGE_READS=all bash run_api.sh …   every scanned page with text, not only mostly Hawaiian ones (English books with Hawaiian words throughout)
+# unless AUTO=1; a PDF with no such pages costs nothing). PAGE_READS=off bash run_api.sh …   no page readings
+# PAGE_READS=all bash run_api.sh …   every scanned page with text, not only mostly Hawaiian ones (English PDFs with Hawaiian words throughout)
 # Untagged PDFs first go through intake.py (local, no cost): OCR where pages have no text, then auto-tagging. Its
 # result (_intake/intake.pdf) is what the rest of the run works on; the original is never written to.
 # FORCE_OCR=1 bash run_api.sh …   if the text layer fails the OCR comparison, OCR every page anyway (else the book stops)
@@ -189,6 +189,7 @@ if same_source; then
 else
   stage "1/5 audit (no model)"          python3 audit.py "$PSRC" "$A"
 fi
+pages_listed() { python3 -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get('pages') else 1)" "$A/page_reads.json" 2>/dev/null; }   # the audit found pages to read (#49)
 if [[ -n $SAVED ]]; then
   echo "▶ 2/5 the previous attempt's reply was complete but could not be read: reading it again (no cost)"
   cp "$R/run.json" "$R/run.prev.json"; s=$(now)
@@ -207,11 +208,12 @@ if [[ -n ${REUSED:-} || -n $REVIEWED || -n $MERGED ]]; then
 elif [[ -n ${REPLY:-} ]]; then
   stage "2/5 reuse saved reply (no cost)" python3 decide.py "$A" "$R" --response-file "$REPLY" ${MT[@]+"${MT[@]}"}
 else
+  # the page readings' own estimate first (page_reads_estimate.json): the cost lines below and the app's estimate include it
+  if [[ $PAGE_READS != off ]] && pages_listed; then
+    python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"} || echo "(page readings over their limit: see the line above)"
+  else rm -f "$R/page_reads_estimate.json"; fi
   stage "2/5 cost estimate (no model)"  python3 decide.py "$A" "$R" --dry-run ${MT[@]+"${MT[@]}"}
   if [[ -n ${ESTIMATE:-} ]]; then
-    if [[ $PAGE_READS != off ]]; then           # the page readings' own estimate (page_reads_estimate.json): the app adds it to the book's
-      python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"} || echo "(the app judges this estimate by its own limits)"
-    else rm -f "$R/page_reads_estimate.json"; fi
     echo "estimate only: $R/run.json (audit kept for the real run)"; summary; exit 0
   fi
   if [[ -n ${AUTO:-} ]]; then
@@ -231,19 +233,19 @@ else
   stage "3/5 $USE_MODEL via OpenRouter" python3 decide.py "$A" "$R" ${MT[@]+"${MT[@]}"}
 fi
 # Page readings (on unless PAGE_READS=off): scanned pages the audit found mostly Hawaiian are read whole by the AI
-# (read_pages.py, issue #49): its own paid step, with its own estimate and cap (PAGE_READS_MAX_USD, default 3). A book
-# with no such pages costs nothing. Pages read before are reused at no cost. A saved reply (REPLY=…) makes no new call,
-# so it reads no pages. A refusal (over the cap, the credit, OpenRouter unreachable) or a "no" skips the step: the book
+# (read_pages.py, issue #49): its own paid step, with its own estimate and limit (PAGE_READS_MAX_USD, default 3). A PDF
+# with no such pages costs nothing. Pages read before are reused at no cost. A saved reply (REPLY=…) makes no new AI request,
+# so it reads no pages. A refusal (over the limit, the credit, OpenRouter unreachable) or a "no" skips the step: the PDF
 # goes on without readings and the report lists the pages for a person.
 page_reads_step() {             # each of its failures is reported and skipped, never the end of the run
-  python3 read_pages.py "$A" "$R" "$@" ${MODEL:+--model "$MODEL"} || { echo "page readings not done (above): the book goes on without them"; return 0; }
+  python3 read_pages.py "$A" "$R" "$@" ${MODEL:+--model "$MODEL"} || { echo "page readings not done (above): the PDF goes on without them"; return 0; }
 }
-if [[ ${PAGE_READS} != off && -z ${REPLY:-} && -z $REVIEWED ]] && python3 -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get('pages') else 1)" "$A/page_reads.json" 2>/dev/null; then
+if [[ ${PAGE_READS} != off && -z ${REPLY:-} && -z $REVIEWED ]] && pages_listed; then
   pr_ok=n
   if python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"}; then
-    if [[ -n ${AUTO:-} ]]; then pr_ok=y; echo "AUTO=1: reading the pages without asking (read_pages.py still refuses over its cap or your credit)"
+    if [[ -n ${AUTO:-} ]]; then pr_ok=y; echo "AUTO=1: reading the pages without asking (still refused over the page readings' limit or your credit)"
     else read -r -p "Read these pages with the AI now? [y/N] " pr_ok || pr_ok=n; fi      # no terminal: no
-  else echo "page readings not done (above): the book goes on without them"; fi
+  else echo "page readings not done (above): the PDF goes on without them"; fi
   if [[ ${pr_ok:-n} == [yY]* ]]; then stage "3b/5 page readings via OpenRouter" page_reads_step
   elif [[ -z ${AUTO:-} ]]; then echo "page readings skipped: the report lists the pages for a person"; fi
 fi

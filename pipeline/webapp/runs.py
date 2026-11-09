@@ -431,7 +431,7 @@ def details(s, run, R, pages=None):
         c = costs.actual(R)
         r_ = (rec or {}).get('run') or runj
         if c['reused']: out.append('AI Cost: none (a saved reply was used)')   # L1 (review 15): labels in Title Case
-        elif (rec or {}).get('cost_total_usd') is None and (r_.get('usage') or {}).get('cost_usd') is None and not c['earlier_usd']:
+        elif (rec or {}).get('cost_total_usd') is None and (r_.get('usage') or {}).get('cost_usd') is None and not c['usd']:
             out.append('AI Cost: not recorded')                # never a "$0.00" that was not measured
         else: out.append('AI Cost: ' + costs.cost_words(c))    # one wording with the batch page and the terminal
     return out

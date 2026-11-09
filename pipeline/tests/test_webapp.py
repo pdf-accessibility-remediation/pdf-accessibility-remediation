@@ -91,7 +91,7 @@ def test_child_env_is_clean(setup):
              'MAX_TOKENS': '9', 'VERAPDF': 'off', 'OPENROUTER_API_KEY': 'sk-secret', 'AUTO': '1', 'PYTHONPATH': '/p'}
     env = config.child_env(s, {'REVIEW': '1'}, environ=dirty)
     assert set(env) == {'PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'VERAPDF', 'PYTHONUNBUFFERED', 'RUNS_DIR', 'PAGE_READS', 'REVIEW'}
-    assert env['PAGE_READS'] == 'off'                 # page readings (#49): not in the app's estimate or Spend yet
+    assert env['PAGE_READS'] == 'off'
     assert env['VERAPDF'] == s['tools']['VERAPDF'] and env['PATH'].split(os.pathsep)[0] == os.path.dirname(sys.executable)
     with pytest.raises(ValueError): config.child_env(s, {'MODEL': 'x'}, environ=dirty)
 

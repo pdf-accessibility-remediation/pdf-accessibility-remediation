@@ -76,9 +76,9 @@ if sys.argv[1:2] == ['--credit']:                # credit left, for the end of a
     # prints the lower of that and OpenRouter's figure: OpenRouter's balance can lag a minute behind new calls.
     c = available_credit()
     if len(sys.argv) > 2 and os.path.exists(sys.argv[2]):
-        r = json.load(open(sys.argv[2], encoding='utf-8')); r = r.get('run', r)
+        whole = json.load(open(sys.argv[2], encoding='utf-8')); r = whole.get('run', whole)
         start = (r.get('estimate') or {}).get('credit_available_usd')
-        spent = 0 if r.get('response_from') else ((r.get('usage') or {}).get('cost_usd') or 0)
+        spent = (0 if r.get('response_from') else ((r.get('usage') or {}).get('cost_usd') or 0)) + ((whole.get('page_reads') or {}).get('cost_usd') or 0)
         if start is not None:
             worked = start - spent
             if c is None or worked < c - 0.005:
@@ -243,8 +243,9 @@ spent_before, prior_cut, cut_off_here = 0, None, False
 if not args.response_file:
     _att = os.path.join(args.run_dir, 'attempts.json')
     _attempts = json.load(open(_att, encoding='utf-8')) if os.path.exists(_att) else []
-    # a request whose charge is not known (in flight when the run stopped, or timed out) counts at its worst case
-    spent_before = round(sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in _attempts), 6)
+    # a request whose charge is not known (in flight when the run stopped, or timed out) counts at its worst case;
+    # page readings already paid for in this folder (#49) count too
+    spent_before = round(sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in _attempts) + costs.pages_paid(args.run_dir), 6)
     cut_off_here = any(a.get('finish_reason') == 'length' for a in _attempts)
     prior_cut = max((a['max_tokens'] for a in _attempts if a.get('finish_reason') == 'length' and str(a.get('pass') or '1') == '1'
                      and isinstance(a.get('max_tokens'), int)), default=None)
@@ -448,10 +449,13 @@ if reqs:
 credit = available_credit()
 if credit is not None: run['estimate']['credit_available_usd'] = round(credit, 4)
 if not args.response_file:                            # the lines a person reads first, then the one the limits are checked against
-    print(costhistory.terminal_line(est_['expected']))
-    n_ = 1 + len(reqs)
+    _pr = costs.page_estimate(args.run_dir)            # the page readings still to come (#49), when read_pages.py priced them: shown with the rest
+    _pr_usd = _pr['worst_case_usd'] if _pr else 0
+    _pr_words = f', including ${_pr_usd:.2f} for {_pr["to_read"]} Hawaiian page{"" if _pr["to_read"] == 1 else "s"} read by the AI' if _pr else ''
+    print(costhistory.terminal_line(costhistory.with_pages(est_['expected'], _pr)))
+    n_ = 1 + len(reqs) + (_pr['to_read'] if _pr else 0)
     if IS_CLAUDE:
-        print(f'Max Estimated Cost: ${total:.2f}' + (f' for {n_} AI requests' if n_ > 1 else '') + f' · Limits: ${args.max_usd:.2f} per AI request, ${args.book_max_usd:.2f} per PDF'
+        print(f'Max Estimated Cost: ${total + _pr_usd:.2f}' + (f' for {n_} AI requests' if n_ > 1 else '') + _pr_words + f' · Limits: ${args.max_usd:.2f} per AI request, ${args.book_max_usd:.2f} per PDF'
               + (f' · Counted Toward This PDF\'s Limit So Far: ${spent_before:.2f} (previous attempts in this folder)' if spent_before else '')
               + (' · Credit: Not Checked' if credit is None else f' · Credit: ${credit:.2f}'))
         if spent_before + total > args.book_max_usd:

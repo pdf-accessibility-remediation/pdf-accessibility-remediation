@@ -70,7 +70,7 @@ cost_this = (run.get('usage') or {}).get('cost_usd') or 0
 cost_earlier = round(sum(a.get('cost_usd') or 0 for a in attempts), 6)
 # whole-page AI readings of Hawaiian pages (read_pages.py, issue #49): their own paid step; a re-apply has them in the earlier record
 pr_run = load('page_reads_run.json') or ((prev or {}).get('page_reads') if prev is not None else None)
-cost_pages = 0 if prev is not None else round((pr_run or {}).get('cost_usd') or 0, 6)
+cost_pages = round((pr_run or {}).get('cost_usd') or 0, 6)   # a re-apply repeats the whole sum from the earlier record, so these stay in it, once
 pr_listed = (load('page_reads.json', base=A) or {}).get('pages') or []
 for need, name in ((wo, 'workorder.json'), (log, PDF + '.log.json'), (ver, PDF + '.verify.json')):
     if not need: sys.exit(f'{name} missing in {R}: run the whole pipeline first (nothing was deleted)')
@@ -301,7 +301,7 @@ checks = [
     *([('Page readings: a person who reads Hawaiian checked each page read by the AI', ok(False),
         (f'{len(prd)} of {len(pr_listed)} mostly Hawaiian pages read by the AI, {sum(x.get("changed") or 0 for x in prd)} words given their printed spelling: '
          f'check {pgs([x["page"] for x in prd])} against the scan' if prd else
-         f'{len(pr_listed)} scanned pages look mostly Hawaiian and their OCR has no ʻokina or kahakō; they were not read by the AI (turned off, declined, or refused over the cap or the credit: see the run log)'))]
+         f'{len(pr_listed)} scanned pages look mostly Hawaiian and their OCR has no ʻokina or kahakō; they were not read by the AI (turned off, declined, or refused over the limit or the credit: see the run log)'))]
       if pr_listed or prd else []),
     *([('Figure requests: every figure seen by the AI', ok(not fpr.get('failed') and not fpr.get('stale')),
         f'{nc(fpr.get("figures"))} figures past the first request, in {nc(fpr.get("requests"))} figure requests'
