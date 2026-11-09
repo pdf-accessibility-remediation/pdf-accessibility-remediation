@@ -13,7 +13,9 @@ import makes a new run of the same book, beside RUN_DIR (runs/<name>/<LABEL>/; d
     _handedit/input.pdf       the same with the alt text removed from each figure whose image changed (lib/handedit.py),
                               so the old alt is never reused for a new image; the run works on it (document.pipeline_input)
     _handedit/hand_edit.json  the link: parent run, base (output or original) and its sha256, the edited sha256, who, when,
-                              the note, the figures whose alt was removed; record.json keeps it as `hand_edit`
+                              the note, the figures whose alt was removed, the figures that lost their tag and the pages
+                              whose text changed (Acrobat's Edit PDF can do both to pages nobody touched); record.json
+                              keeps it as `hand_edit`
 Then it runs run_api.sh on it:
     --to review    (default) no AI call (DECIDE=none) and stops for review (REVIEW=1): a person writes the new alt text on
                    the review page, where each changed figure shows as a figure with no alt; rerun the printed command
@@ -149,13 +151,19 @@ def bring_back(argv):
               'edited': {'file': fname, 'sha256': ed_sha, 'given_as': edited}, 'input': inp,
               'pages': ch['pages'], 'figures_changed': [{'page': f['page'], 'alt': f['alt']} for f in ch['figures']],
               'alt_not_removed': [f for f in ch['figures'] if f['obj'] in missing],
-              'outside_figures': ch['outside_figures'], 'images_new': len(ch['new_images']), 'images_removed': len(ch['removed_images'])}
+              'outside_figures': ch['outside_figures'], 'images_new': len(ch['new_images']), 'images_removed': len(ch['removed_images']),
+              'figures_lost': ch['figures_lost'], 'text_pages': ch['text_pages']}
         with open(os.path.join(H, 'hand_edit.json'), 'w', encoding='utf-8') as f: json.dump(he, f, ensure_ascii=False, indent=1)
         log(R, 'children', {'when': he['when'], 'run': C, 'by': by, 'note': note, 'to': to, 'edited_sha256': ed_sha})
         print(f'  {len(ch["new_images"])} new image(s); {len(ch["figures"])} figure(s) hold a new one'
               + (f', alt text removed from {len(objs) - len(missing)}' if objs else '')
               + (f'; {len(ch["outside_figures"])} new image(s) in no figure' if ch['outside_figures'] else '')
               + (f'; pages {ch["pages"][0]} → {ch["pages"][1]}' if ch['pages'][0] != ch['pages'][1] else ''))
+        tp = ch['text_pages']; same = sum(1 for x in tp if x['heard_same'])
+        if ch['figures_lost'] or tp:
+            print('  ' + '; '.join(x for x in (
+                f'⚠ {len(ch["figures_lost"])} figure(s) lost their tag (PDF ' + ', '.join(str(f['page']) for f in ch['figures_lost']) + ')' if ch['figures_lost'] else '',
+                f'text changed on {len(tp)} page(s), of which {same} read the same with spaces from gaps' if tp else '') if x))
         if missing: print(f'  ⚠ alt text left on {len(missing)} figure(s) that could not be found again: check them on the review page')
     else: print(f'▶ {C}: the edited PDF is already in place; carrying on')
 

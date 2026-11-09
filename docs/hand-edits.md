@@ -39,6 +39,15 @@ Step 3 makes `runs/hawaii3/rv1-edit/` (by default the label is `handedit-<date>-
 
 `export` refuses when the run's PDF no longer matches `record.json`, because it was changed in place. So does `import`.
 
+## Before you edit in Acrobat
+
+Acrobat can change pages you never touched:
+
+- **Edit PDF can run text recognition (OCR) by itself** on a page that is one image, such as a cover. It rewrites that page: the image is saved again (in one test, as two images) and the page loses its tags, including the figure's alt text. Turn text recognition off before you start. In Edit PDF, look in the panel's settings for scanned documents. On a page that is all image, Acrobat also asks.
+- **It can drop the space characters between words** on pages it rewrites. The words usually stay apart on the page, so a reader still hears the spaces.
+
+`import` reports both, so nothing goes back unseen (below).
+
 ## Back into review, or back into the pipeline
 
 | `--to` | What runs | Cost |
@@ -64,6 +73,17 @@ A figure that now holds a new image keeps the old image's alt text in the edited
 
 New images that no figure holds are listed too, so you can decide whether each is a figure or decoration. A change in the number of pages is also listed.
 
+## Figures that lost their tag, and text that changed
+
+`import` also compares what it can of the rest of the file:
+
+- **A figure that lost its tag.** If a figure held an image in the exported file and no figure holds it in the edited one, it is listed with the alt text it had. The image is still drawn, but nothing tags it, so a screen reader skips it.
+  - A page left with no tags at all becomes a whole-page figure, and the review page asks for its alt text. The old alt text, shown in the line under the header, is usually right for it, because the image is the same picture.
+  - On a page that still has other tags, re-tag the image in Acrobat, or check that it is meant to be decoration.
+- **Text that changed.** Each page whose characters differ is listed:
+  - **Read the same:** only space characters went. The page still reads the same with spaces taken from the gaps between words, as the pipeline reads it. `review.md` says so in one line.
+  - **Reads differently:** `review.md` marks the pages as a CHECK, and the line under the review page's header names them. Compare them with the earlier run and with the print.
+
 ## Starting from the original
 
 To edit the original instead of the remediated result:
@@ -79,7 +99,7 @@ The original is checked against `record.json` (`document.sha256`). The run's ear
 |---|---|
 | `<new run>/_handedit/<edited file>` | A copy of the file you edited: the new run's source (`record.json` `document.sha256`). Your own file is never written to |
 | `<new run>/_handedit/input.pdf` | Only when a figure's alt text was removed: what the run worked on (`document.pipeline_input`) |
-| `<new run>/_handedit/hand_edit.json`, and `record.json` `hand_edit` | `by`, `when`, `note`, `to`, `base` (`output` or `original`) and `base_sha256`; `parent` (the run, its result and original, with their sha256s); `edited` (file, sha256, where it was given from); `input`; `pages` (before, after); `figures_changed` (page and the alt text removed); `alt_not_removed` (a figure that could not be found again, left as it was); `outside_figures`; `images_new`, `images_removed` |
+| `<new run>/_handedit/hand_edit.json`, and `record.json` `hand_edit` | `by`, `when`, `note`, `to`, `base` (`output` or `original`) and `base_sha256`; `parent` (the run, its result and original, with their sha256s); `edited` (file, sha256, where it was given from); `input`; `pages` (before, after); `figures_changed` (page and the alt text removed); `alt_not_removed` (a figure that could not be found again, left as it was); `outside_figures`; `images_new`, `images_removed`; `figures_lost` (page and the alt text the figure had); `text_pages` (page, characters before and after, `heard_same`) |
 | `<parent run>/hand_edits.json` | `exports` (who, when, which file, its sha256, where it went) and `children` (each run made from an edit: its folder, who, the note, the edited sha256). The only file `handedit.py` writes in the parent run |
 | `review.md` and `review.html` | The "Edited by hand" section. With `--to review`, the run line says "no AI call", the AI cost is $0, and the sections say "in this run" instead of "by the AI" |
 
@@ -87,7 +107,7 @@ A run with no AI call has `run.no_model` and `ai_call.no_model` in `record.json`
 
 ## Limits
 
-- **Only images are compared.** An edit to text, tags or reading order is not listed. The new run's audit, veraPDF and the review show its effect, and your `--note` says what it was.
+- **Only images, figure tags and text are compared.** Other changes to tags or reading order are not listed. The new run's audit, veraPDF and the review show their effect, and your `--note` says what you changed.
 - **Image resolution is not checked.** Nothing flags a low-resolution image. You find one by looking.
 - **Not in the app yet.** Export and import are terminal commands. The app opens the new run like any other.
 - **PDF 2.0.** An edited file saved as PDF 2.0 is refused (exit 3; see [Not supported yet: PDF 2.0](troubleshooting.md#not-supported-yet-pdf-20)).

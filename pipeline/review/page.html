@@ -476,7 +476,10 @@ if (DATA.hand_edit) {                                 // a PDF edited by hand an
     (he.base === 'original' ? 'original' : 'remediated') + ' PDF by hand' + (he.note ? ' (“' + esc(he.note) + '”)' : '') + '. ' +
     (he.alt_removed ? he.alt_removed + (he.alt_removed === 1 ? ' figure holds' : ' figures hold') + ' a new image (' + esc(pp(he.figure_pages)) +
       '): its old alt text was removed, so each needs new alt text. ' : 'No figure lost its alt text. ') +
-    (he.outside_pages && he.outside_pages.length ? 'New images that no figure holds: ' + esc(pp(he.outside_pages)) + '.' : '');
+    (he.outside_pages && he.outside_pages.length ? 'New images that no figure holds: ' + esc(pp(he.outside_pages)) + '. ' : '') +
+    (he.lost && he.lost.length ? he.lost.length + (he.lost.length === 1 ? ' figure' : ' figures') + ' lost the tag in the edit (' +
+      esc(pp(he.lost.map(f => f.page))) + '); the alt text it had: ' + he.lost.map(f => f.alt ? '“' + esc(f.alt) + '”' : 'none').join('; ') + '. ' : '') +
+    (he.text_differs && he.text_differs.length ? '<b>The text reads differently after the edit on ' + esc(pp(he.text_differs)) + '.</b>' : '');
 }
 if (SESSION && SESSION.reopened) {                    // a finished run reviewed again: where this session started, OCR
   const sn = id => 'Session ' + Number(id), nc = SESSION.not_carried || [];

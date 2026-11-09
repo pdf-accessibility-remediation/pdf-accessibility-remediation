@@ -738,7 +738,9 @@ def hand_edit(R):
     fc = he.get('figures_changed') or []
     return {'by': he.get('by'), 'when': he.get('when'), 'note': he.get('note'), 'base': he.get('base'),
             'figure_pages': sorted({f['page'] for f in fc if f.get('page')}), 'alt_removed': sum(1 for f in fc if f.get('alt')),
-            'outside_pages': sorted({x['page'] for x in he.get('outside_figures') or [] if x.get('page')})}
+            'outside_pages': sorted({x['page'] for x in he.get('outside_figures') or [] if x.get('page')}),
+            'lost': [{'page': f.get('page'), 'alt': f.get('alt')} for f in he.get('figures_lost') or []],
+            'text_differs': sorted(x['page'] for x in he.get('text_pages') or [] if not x.get('heard_same'))}
 
 def prepare(R, pdf):
     """Write review_items.json, and render the pages of the first group so the page opens with them. Runs when run_api.sh
