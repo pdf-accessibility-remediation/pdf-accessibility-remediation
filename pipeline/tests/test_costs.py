@@ -286,7 +286,7 @@ def test_a_reply_read_again_in_its_own_folder_stays_spent_before_and_after(tmp_p
     assert C.batch_spent(str(tmp_path))['usd'] == 0.3 and C.shown_words(str(tmp_path), shown) == '$0.30 ($0.30 for previous attempts) · Max Estimated Cost: $0.67, not including previous attempts'
 
 def test_a_finished_run_read_again_in_its_own_folder_counts_its_usage(tmp_path):
-    (tmp_path / 'record.json').write_text(json.dumps({'run': {'usage': {'cost_usd': 0.3}, 'response_from': 'x/response.json', 'own_reply': True, 'estimate': {'worst_case_total_usd': 0.67}}, 'cost_total_usd': 0, 'document': {}, 'earlier_attempts': []}))
+    (tmp_path / 'record.json').write_text(json.dumps({'run': {'usage': {'cost_usd': 0.3}, 'response_from': 'x/response.json', 'own_reply': True, 'estimate': {'worst_case_total_usd': 0.67}}, 'cost_total_usd': 0.3, 'document': {}, 'earlier_attempts': []}))
     a = C.actual(str(tmp_path)); assert a['usd'] == 0.3 and a['reused'] is False and a['finished']
 
 def test_a_reply_from_elsewhere_still_costs_nothing_here(tmp_path):

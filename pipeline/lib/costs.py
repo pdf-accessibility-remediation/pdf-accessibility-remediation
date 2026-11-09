@@ -156,7 +156,7 @@ def actual(R):
         reused = bool(run.get('response_from')) and not own
         earlier = sum((a.get('cost_usd') or 0) for a in rec.get('earlier_attempts') or [] if isinstance(a, dict))
         this = 0.0 if reused else ((run.get('usage') or {}).get('cost_usd') or 0.0)
-        if not reused and not own and isinstance(rec.get('cost_total_usd'), (int, float)): this = rec['cost_total_usd'] - earlier   # report.py's sum (a reused reply's is 0)
+        if not reused and not own and isinstance(rec.get('cost_total_usd'), (int, float)): this = rec['cost_total_usd'] - earlier   # report.py's sum
         try:
             from lib import origin
             ai = origin.summary(rec)
