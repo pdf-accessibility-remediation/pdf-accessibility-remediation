@@ -744,13 +744,13 @@ function handSections() {
   // the summary first (what the edit changed, and what to do), then a card per touched figure; the heading counts the cards
   const out = ts.length || view !== 'left' ? [{ id: 'edited', title: 'Edited by hand', hand: true, items: [{ summary: true }].concat(ts), count: ts.length }] : [];
   const er = he.earlier;
-  if (er && er.items && er.items.length && view !== 'left') out.push({ id: 'earlier', title: 'Earlier review', earlier: true, items: [er] , count: er.items.length });
+  if (er && er.items && er.items.length && view !== 'left') out.push({ id: 'earlier', title: 'Earlier review (for reference)', earlier: true, items: [er] , count: er.items.length });
   return out;
 }
 function sections() {
   const mine = view !== 'left' && state.additions.length ? [{ id: 'added', title: 'Added by you', adds: true, items: state.additions }] : [];
   const hs = handSections();
-  return hs.filter(s => s.hand).concat(mine, hs.filter(s => s.earlier), aiSections());
+  return hs.filter(s => s.hand).concat(mine, aiSections(), hs.filter(s => s.earlier));   // the earlier review last: reference, not work
 }
 function handSummary() {
   const he = DATA.hand_edit, pp = a => a.map(p => 'PDF ' + p).join(', '), plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
@@ -764,10 +764,25 @@ function handSummary() {
   if ((he.outside_pages || []).length) li.push('New images that no figure holds: ' + esc(pp(he.outside_pages)) + '. Check whether each is a figure or decoration.');
   if (he.text_same) li.push('Text changed on ' + plural(he.text_same, 'page', 'pages') + ': only the spaces between words, so it reads the same.');
   if ((he.text_differs || []).length) li.push('<b>The text reads differently on ' + esc(pp(he.text_differs)) + ': compare it with the print.</b>');
-  const todo = (he.targets || []).length;
   return '<div class="he-sum"><dl class="fields">' + rows.join('') + '</dl><h3>' + esc(tc('What the edit changed')) + '</h3>' +
     (li.length ? '<ul>' + li.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '<p class="ctx">No figure, image or text change was found.</p>') +
-    '<h3>' + esc(tc('What to do')) + '</h3><p>' + (todo ? 'Add alt text on each card below, then finish the review as usual.' : 'Nothing to add here: finish the review as usual.') + '</p></div>';
+    ((he.carried || []).length ? '<p>Carried from the earlier run, no action needed: ' + esc(he.carried.map(c => c.what).join('; ')) +
+      ', so the contents links keep their descriptions.</p>' : '') +
+    '<h3>' + esc(tc('Still to review')) + '</h3><ul id="heTodo">' + todoHtml() + '</ul></div>';
+}
+// what an edited PDF's review still asks for, worked out live (progress() redraws it): the Edited by Hand figures without
+// an addition, the Check First cards not reviewed (by group), and the other decisions not reviewed
+function todoHtml() {
+  const he = DATA.hand_edit || {}, ts = he.targets || [], open = it => !(state.decisions[it.id] || {}).status, li = [];
+  const alt = ts.filter(t => !added(t)).length;
+  li.push(alt ? '<li>Add alt text: ' + alt + ' of ' + ts.length + ' ' + (ts.length === 1 ? 'figure' : 'figures') + ' under "' + esc(tc('Edited by hand')) + '" (<a href="#edited" data-view="priority">go</a>)</li>'
+              : ts.length ? '<li>✓ Alt text added for every figure the edit touched</li>' : '');
+  const byG = {};
+  for (const it of items) if (it.priority && open(it)) (byG[it.priority] = byG[it.priority] || []).push(it);
+  for (const g of Object.keys(byG)) li.push('<li>Check: ' + byG[g].length + ' under "' + esc(tc(g + '. ' + DATA.groups[g])) + '" (<a href="#grp-' + g + '" data-view="priority">go</a>)</li>');
+  const other = items.filter(it => !it.priority && open(it));
+  if (other.length) li.push('<li>Other decisions: ' + other.length + ' not reviewed (<a href="#card-' + esc(other[0].id) + '" data-view="left">go</a>)</li>');
+  return li.join('') + (alt || Object.keys(byG).length || other.length ? '' : '<li>Nothing left: select "Finish Review."</li>');
 }
 function handCard(t) {
   if (t.summary) return handSummary();
@@ -1305,6 +1320,7 @@ function nav() {
 }
 
 function progress() {
+  const td = document.getElementById('heTodo'); if (td) td.innerHTML = todoHtml();     // an edited PDF's "Still to Review"
   const n = items.filter(it => (state.decisions[it.id] || {}).status).length;
   document.getElementById('progress').textContent = n + ' of ' + items.length + ' reviewed' + (state.additions.length ? ' · ' + state.additions.length + ' added' : '');
   document.getElementById('bar').style.width = (items.length ? 100 * n / items.length : 0) + '%';
@@ -1383,6 +1399,12 @@ cards.addEventListener('click', e => {
   const ln = t.closest('a[data-card]'); if (ln) { e.preventDefault(); goCard(ln.dataset.card); return; }
   if (t.dataset && t.dataset.addmove != null) { openAdd('move_section', t.dataset.addmove); return; }
   if (t.dataset && t.dataset.addKind) { openAdd(t.dataset.addKind, t.dataset.addTarget); return; }   // an Edited by Hand card
+  const va = t.closest('#heTodo a[data-view]');                  // "Still to Review": to that group or card, in its view
+  if (va) {
+    e.preventDefault();
+    if (va.dataset.view !== view) { view = va.dataset.view; document.querySelector('input[name=view][value=' + view + ']').checked = true; render(); }
+    return goTo(document.getElementById(va.getAttribute('href').slice(1)));
+  }
   if (t.dataset && t.dataset.act === 'status' && t.dataset.was === '1') { t.dataset.was = ''; clearChoice(t.closest('.card')); return; }
   if (t.dataset && t.dataset.act === 'clear') { clearChoice(t.closest('.card')); return; }
   if (t.dataset && t.dataset.act === 'remove') {

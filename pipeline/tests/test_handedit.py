@@ -272,3 +272,25 @@ def test_a_check_card_that_comes_back_shows_its_earlier_note_only_when_the_pages
         return core.prepare(str(R), 'x.pdf')['items'][0]['context']
     assert run_prepare([1, 1]) == {'earlier_note': 'fine as it is', 'earlier_status': 'seen'}
     assert run_prepare([1, 2]) == {}
+
+# ---- carried decisions: no card, still applied (review/core.py prepare, apply_decisions)
+def test_carried_decisions_get_no_card_and_are_still_applied(tmp_path, monkeypatch):
+    from review import core
+    R = tmp_path / 'child'; (R / '_audit').mkdir(parents=True)
+    ai = {'schema': 'workorder/0.2', 'sections': {'toc_pages': [6, 7, 8, 9, 10, 11]}}
+    (R / 'workorder.ai.json').write_text(json.dumps(ai)); (R / '_audit' / 'digest.json').write_text(json.dumps({'source': {'pages': 12}}))
+    cards = [{'id': 'key:sections', 'key': 'sections', 'kind': 'Other decisions', 'priority': None, 'images': [], 'context': {}, 'page': None},
+             {'id': 'reading_order:jump:3', 'key': 'reading_order', 'kind': 'Reading order check', 'priority': 5, 'images': [], 'context': {}, 'page': 3, 'loc': None}]
+    monkeypatch.setattr(core, 'dry_run', lambda R, pdf: {})
+    monkeypatch.setattr(core, 'reading_order_for', lambda *a: {'entries': []})
+    monkeypatch.setattr(core, 'build_items', lambda *a, **k: [dict(c, context={}) for c in cards] if len(a) > 2 else [])
+    monkeypatch.setattr(core, 'render_pages', lambda *a: None)
+    monkeypatch.setattr(core, 'addable', lambda *a: {k: [] for k in core.ADD_KINDS})
+    assert [it['id'] for it in core.prepare(str(R), 'x.pdf')['items']] == ['key:sections', 'reading_order:jump:3']   # not edited by hand: a card
+    (R / '_handedit').mkdir(); (R / '_handedit' / 'hand_edit.json').write_text(json.dumps({'pages': [12, 12]}))
+    (R / 'run.json').write_text(json.dumps({'no_model': 'x', 'carried_from_parent': ['sections']}))
+    d = core.prepare(str(R), 'x.pdf')
+    assert [it['id'] for it in d['items']] == ['reading_order:jump:3']
+    assert d['hand_edit']['carried'] == [{'key': 'sections', 'what': 'contents pages (PDF 6–11)'}]
+    wo = core.apply_decisions(ai, d['items'], {})
+    assert wo['sections'] == {'toc_pages': [6, 7, 8, 9, 10, 11]}                    # no card, still in the order Finish applies

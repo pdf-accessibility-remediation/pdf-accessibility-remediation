@@ -750,6 +750,20 @@ def hand_edit(R, he=None):
             'text_differs': sorted(x['page'] for x in he.get('text_pages') or [] if not x.get('heard_same')),
             'text_same': sum(1 for x in he.get('text_pages') or [] if x.get('heard_same'))}
 
+def carried_words(key, v):
+    """A carried decision in plain words, for the Edited by Hand summary: "contents pages (PDF 6–11)"."""
+    def span(ps):
+        ps = sorted(p for p in ps or [] if isinstance(p, int))
+        return '' if not ps else f' (PDF {ps[0]})' if ps[0] == ps[-1] else f' (PDF {ps[0]}–{ps[-1]})'
+    if key == 'sections' and isinstance(v, dict):
+        out = []
+        if v.get('toc_pages'): out.append('contents pages' + span(v['toc_pages']))
+        if v.get('notes_pages'): out.append('notes pages' + span(v['notes_pages']))
+        if v.get('index_from'): out.append(f'the index (from PDF {v["index_from"]})')
+        return ', '.join(out) or 'which pages are contents, notes and index'
+    if key == 'links': return 'fixes to the contents links\' text'
+    return key
+
 def hand_edit_targets(he, adds):
     """The banner's "Add Alt Text" links for a PDF edited by hand: [{kind, target, page, suggest}] from addable()'s items
     (adds), so a figure the work order already decides is left to its card. A figure holding a new image (its page in
@@ -826,6 +840,12 @@ def prepare(R, pdf):
     raw = hand_edit_raw(R); he = hand_edit(R, raw)
     if he:                                           # a PDF edited by hand: one-click alt text for what the edit touched
         he['targets'] = hand_edit_targets(he, data['addable'])
+        # the earlier run's page-based decisions carried only so apply.py keeps its link descriptions (decide.py --no-model):
+        # no card and nothing to review; they stay in the order and are applied as written
+        run = load(os.path.join(R, 'run.json')) or (load(os.path.join(os.path.dirname(os.path.normpath(R)), 'record.json')) or {}).get('run') or {}
+        carried = [k for k in run.get('carried_from_parent') or [] if k in ai]
+        he['carried'] = [{'key': k, 'what': carried_words(k, ai[k])} for k in carried]
+        items[:] = [it for it in items if it['id'] not in {f'key:{k}' for k in carried}]
         he['earlier'] = earlier_review(raw)          # the decisions it came from, for reference only
         if he['earlier'] and he['parent_pages_same']:   # a check card that comes back shows the note it had (it is still marked anew)
             prev = {x['id']: x for x in he['earlier']['items'] if x.get('note')}

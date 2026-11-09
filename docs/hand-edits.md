@@ -27,7 +27,7 @@ python3 handedit.py import ../runs/hawaii3/rv1 path/to/edited.pdf --by "Your Nam
     --note "replaced the low-resolution photo on PDF 12" --label rv1-edit
 ```
 
-**All from the app:** download the current version, then use **Bring Back an Edited PDF** on the run page instead of steps 1 and 3 (see [The app](app.md#the-run-page)). It offers only the review path (no AI call).
+**All from the app:** download the current version, edit it, then use **Bring Back an Edited PDF** on the run page and choose the edited file. It uploads the file and replaces steps 1 and 3 (see [The app](app.md#the-run-page)). It offers only the review path (no AI call).
 
 **From the app instead of step 1:** **Download the Remediated PDF** (under **Available Downloads**) gives the same file for the **current** version. The app logs it under `exports` with `via: "app download"` and no name, because the app has no logins. Never edit a download of an earlier version: `import` compares the edited file with the run's current result, so the changes it reports would be wrong.
 
@@ -95,13 +95,14 @@ New images that no figure holds are listed too, so you can decide whether each i
 The edited PDF already holds every decision of the run it came from: alt text, heading levels, decoration and the rest. The AI isn't asked again, and those decisions aren't shown as cards again. Approving them a second time would apply them twice, for example moving a section that is already in place, or hiding text a rule already hid. So the review page shows:
 
 - **Edited by Hand:** the figures the edit touched (above).
-- **The contents pages carried from the earlier run**, as one card.
+- **A "Still to Review" list** at the top of Edited by Hand, kept up to date as you work. It shows the figures still without alt text, the cards under Check First not yet reviewed (by group), and any other decision not yet reviewed, each with a link. When nothing is left, it says to select **Finish Review**.
+- **The decisions carried from the earlier run** (which pages are contents, notes and index, and fixes to contents link text) get no card: there is nothing to decide. They keep the contents links' descriptions, which `apply.py` writes again on every run. The summary names them ("Carried from the earlier run, no action needed: contents pages (PDF 6–11)"), and they are applied as written.
 - **What today's audit finds anywhere in the book.** These are not things the first run missed. Anything it fixed is in the file and doesn't come back. What comes back:
   - findings the pipeline can't fix, such as text that jumps back up a column on one page;
   - book-wide gaps, such as no H1 or a figure with no alt text.
 
   When such a check card was marked seen with a note in the earlier review, the card shows that note ("Earlier Note") if the number of pages is unchanged. You still mark it seen yourself.
-- **Earlier Review**, read-only: the earlier run's decisions by kind, each with its page, value, status (approved, changed, applied as the AI wrote it, …) and the reviewer's note. It is there for reference; nothing in it is applied again.
+- **Earlier Review (for reference)**, at the end of the page, read-only: the earlier run's decisions by kind, each with its page, value, status (approved, changed, applied as the AI wrote it, …) and the reviewer's note. It is there for reference; nothing in it is applied again.
 
 **To change an earlier decision after the edit**, add it in the edited run with **Add a Decision**: none of the earlier decisions is decided again there, so each one can be added.
 
