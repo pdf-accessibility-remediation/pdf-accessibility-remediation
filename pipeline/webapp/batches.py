@@ -314,7 +314,7 @@ def state(s, label):
             elif not total['fits']['batch']: why, code = costs.batch_over_words(total), 'limit'
             elif total['fits']['credit'] is False: why, code = f'This batch could cost up to ${costs.up(total["ceiling_usd"]):.2f}, more than the ${total["credit_usd"]:.2f} of credit left.', 'credit'
             elif total['credit_usd'] is None: why, code = SP_.credit_words(s), 'no_credit'   # U8: why, and "Check Credit Again"
-        spend = {'ok': not why, 'why': why, 'code': code, **({'fit_n': total['fit_n']} if code == 'limit' else {})}
+        spend = {'ok': not why, 'why': why, 'code': code, **({'advice': costs.batch_advice(total['fit_n'])} if code == 'limit' else {})}
     meta = _load(meta_path(s, label)) or {}
     return {'label': label, 'phase': phase, 'books': out, 'flagged': flagged, 'missing': missing, 'test': test, 'reviewing': reviewing, 'asking': asking,
             'from_app': bool(meta), 'ocr_name': meta.get('ocr_name'),   # a batch made before D4: its one OCR language

@@ -116,7 +116,7 @@ def authorize(s, kind, run, R, fingerprint):
         from . import runs as RN
         if RN.moved_words(s, ej.get('book_sha')) and not (src and os.path.isfile(src)):   # D8: a person moved it to the Trash
             raise Refused('This PDF was moved to the Trash. To go on, drag it from the Trash back into the app\'s folder of added PDFs (where it was).')
-        raise Refused('This book\'s file has changed or is gone since the estimate. Go back to the home page and start a new run.')
+        raise Refused('This PDF\'s file has changed or is gone since the estimate. Go back to the home page and start a new run.')
     keep = {k: v for k, v in (ej.get('env_set') or {}).items() if k in ('OCR_LANG',)}
     keep['REVIEW'] = '1'                                     # every app run stops for review (D2, Patrick 2026-11-06), whatever an older job file says
     if test:

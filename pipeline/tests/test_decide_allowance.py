@@ -128,7 +128,44 @@ def test_a_stop_during_the_retry_counts_the_cut_off_and_the_retry(book, tmp_path
         if n == 3: seen.update(load(R / 'run.json')['figure_passes'])
         return cut_second(b, n)
     live(book[1], R, monkeypatch, reply=r)
-    assert seen['in_flight'] == '2' and 0.3 + 0.64 < seen['in_flight_worst_usd'] < 0.3 + 0.75
+    assert seen['in_flight'] == '2' and seen['in_flight_paid_usd'] == 0.3 and seen['in_flight_cut_off'] is True and 0.64 < seen['in_flight_worst_usd'] < 0.75   # known and unknown apart
+
+def test_the_in_flight_fields_are_gone_once_a_request_is_done(book, tmp_path, monkeypatch):
+    R = tmp_path / 'r'; live(book[1], R, monkeypatch, reply=cut_second)
+    assert not [k for k in load(R / 'run.json')['figure_passes'] if k.startswith('in_flight')]
+
+# ------------------------------------------------------------------ a reply read again in its own folder (review 04 H1)
+PAID_REPLY = {'model': MODEL, 'choices': [{'message': {'content': reply_for([])}, 'finish_reason': 'stop'}], 'usage': {'prompt_tokens': 1000, 'completion_tokens': 100, 'cost': 0.3}}
+def paid_folder(book, tmp_path, name='r'):
+    A = small_audit(book, tmp_path, 3); R = tmp_path / name; R.mkdir()
+    (R / 'run.json').write_text(json.dumps({'model': MODEL, 'started': '2026-11-08T10:00:00', 'usage': {'prompt_tokens': 1000, 'completion_tokens': 100, 'cost_usd': 0.3}, 'finish_reason': 'stop',
+                                            'estimate': {'worst_case_total_usd': 0.67, 'expected': {'usd': 0.31}, 'credit_available_usd': 9.0, 'max_tokens': 48000}}))
+    (R / 'response.json').write_text(json.dumps(PAID_REPLY)); (R / 'workorder.json').write_text('{}')
+    return A, R
+
+def test_a_reply_read_again_in_its_own_folder_is_still_this_runs_money(book, tmp_path):
+    A, R = paid_folder(book, tmp_path); assert decide(A, R, '--response-file', R / 'response.json').returncode == 0
+    run = load(R / 'run.json'); assert run['own_reply'] is True and run['response_from'] and run['usage']['cost_usd'] == 0.3
+    assert run['estimate']['expected'] == {'usd': 0.31} and run['estimate']['worst_case_total_usd'] == 0.67 and 'credit_available_usd' not in run['estimate']   # as shown; the credit isn't kept stale
+    a = C.actual(str(R)); assert a['usd'] == 0.3 and a['reused'] is False
+    assert C.after_line(str(R)) == 'AI Cost: $0.30 (expected $0.31, max estimated $0.67)'
+
+def test_it_stays_so_when_read_a_second_time_and_after_the_folder_moved(book, tmp_path):
+    A, R = paid_folder(book, tmp_path); decide(A, R, '--response-file', R / 'response.json')
+    N = tmp_path / 'moved'; R.rename(N); assert C.actual(str(N))['usd'] == 0.3                                  # stored, not worked out from a path
+    assert decide(A, N, '--response-file', N / 'response.json').returncode == 0 and load(N / 'run.json')['own_reply'] is True and C.actual(str(N))['usd'] == 0.3
+
+def test_another_runs_response_json_is_not_this_runs_money(book, tmp_path):
+    A, R = paid_folder(book, tmp_path); O = tmp_path / 'other'
+    assert decide(A, O, '--response-file', R / 'response.json').returncode == 0
+    run = load(O / 'run.json'); assert 'own_reply' not in run and run['usage']['cost_usd'] == 0.3                 # the saved reply carries its cost, and it was spent elsewhere
+    a = C.actual(str(O)); assert a['usd'] == 0 and a['reused'] is True and C.after_line(str(O)) == 'AI Cost: none (a saved reply was used)'
+    assert decide(A, O, '--response-file', O / 'response.json').returncode == 0                                   # its response.json is now "here", but this folder never paid for it
+    assert 'own_reply' not in load(O / 'run.json') and C.actual(str(O))['usd'] == 0
+
+def test_a_saved_response_with_usage_writes_no_ledger_row(book, tmp_path):
+    A = small_audit(book, tmp_path, 3); led = tmp_path / 'led.jsonl'; rp = tmp_path / 'saved.json'; rp.write_text(json.dumps(PAID_REPLY))
+    assert decide(A, tmp_path / 'r', '--response-file', rp, COST_HISTORY=led).returncode == 0 and not led.exists()
 
 def test_the_probe_gets_no_retry_and_no_ledger_row(book, tmp_path, monkeypatch):
     led = tmp_path / 'led.jsonl'

@@ -70,6 +70,8 @@ CASES = [
     ('F7', dict(kind='spend', log=CALL + TB, run={})),
     ('F8m', dict(kind='spend', log=CALL + 'the reply was cut off at 128,000 output tokens\n', run={'finish_reason': 'length', 'usage': {'cost_usd': 1.4}, 'estimate': {'max_tokens': 128000}, 'model_limits': {'max_completion_tokens': 128000}})),
     ('F8', dict(kind='spend', log=CALL + 'the reply was cut off at 48,000 output tokens\n', run={'finish_reason': 'length', 'usage': {'cost_usd': 0.7}})),
+    ('F8', dict(kind='spend', log=CALL + 'the reply was cut off at 48,000 output tokens\n', run={'finish_reason': 'length', 'usage': {'cost_usd': 0.7}, 'estimate': {'max_tokens': 48000}, 'model_limits': {'max_completion_tokens': 128000}})),   # the model's maximum is known and not reached
+    ('E2m', dict(log=EST + "refusing: m writes at most 128,000 output tokens, and the previous attempt was already cut off at that length, so another attempt would be cut off too. Choose another model\n")),
     ('F9', dict(kind='spend', log=CALL + 'could not parse a JSON work order from reply.txt (x)\n', run={'finish_reason': 'stop'})),
     ('B6', dict(kind='rerun', log=EST + '', run={})),
     ('G1', dict(kind='spend', log=CALL + '  ✓ 3/5 x: 1s\n▶ review: page images (no model)\nTraceback (most recent call last):\nOSError: x\n', run={})),

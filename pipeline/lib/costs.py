@@ -145,15 +145,18 @@ def _expected_usd(run):
 
 def actual(R):
     """What the run's AI calls cost: the record's (with earlier cut-off attempts), else run.json's and attempts.json's for
-    a run that has not finished. A reused reply costs nothing new: its original call's cost is reported apart. retry_usd: the
+    a run that has not finished. A reply reused from elsewhere costs nothing new: its original call's cost is reported apart. A
+    reply this folder paid for and read again is different (run.own_reply, decided by decide.py when it reads it): that money was
+    spent on this run, so it counts like any other. retry_usd: the
     part that retried a figure request cut off; expected_usd and estimate_usd: what was shown before it was sent."""
     rec = _load(os.path.join(R, 'record.json'))
     if rec:
         run = rec.get('run') or {}
-        reused = bool(run.get('response_from'))
+        own = bool(run.get('own_reply'))
+        reused = bool(run.get('response_from')) and not own
         earlier = sum((a.get('cost_usd') or 0) for a in rec.get('earlier_attempts') or [] if isinstance(a, dict))
         this = 0.0 if reused else ((run.get('usage') or {}).get('cost_usd') or 0.0)
-        if not reused and isinstance(rec.get('cost_total_usd'), (int, float)): this = rec['cost_total_usd'] - earlier   # report.py's sum
+        if not reused and not own and isinstance(rec.get('cost_total_usd'), (int, float)): this = rec['cost_total_usd'] - earlier   # report.py's sum (a reused reply's is 0)
         try:
             from lib import origin
             ai = origin.summary(rec)
@@ -165,7 +168,7 @@ def actual(R):
                 'estimate_usd': ((run.get('estimate') or {}).get('worst_case_total_usd')),
                 'expected_usd': None if reused else _expected_usd(run), 'retry_usd': 0.0 if reused else _retry_usd(run)}
     run = _load(os.path.join(R, 'run.json')) or {}
-    reused = bool(run.get('response_from'))
+    reused = bool(run.get('response_from')) and not run.get('own_reply')
     this = 0.0 if reused else ((run.get('usage') or {}).get('cost_usd') or 0.0)
     earlier = sum((a.get('cost_usd') or 0) for a in _load(os.path.join(R, 'attempts.json')) or [] if isinstance(a, dict))
     return {'usd': round(this + earlier, 6), 'earlier_usd': round(earlier, 6), 'calls': (len(run.get('passes') or []) or (1 if this else 0)) + len(_load(os.path.join(R, 'attempts.json')) or []),
@@ -177,7 +180,8 @@ def cost_words(a, so_far=False):
     """The words after "AI Cost:" or "Total Cost:", one source for the run page, the batch page and the terminal. a: {usd,
     earlier_usd, retry_usd, expected_usd, estimate_usd}. "Max Estimated Cost" describes what was shown before sending, so when
     a previous attempt or a doubled retry was paid for the total is shown as an addition and says what the maximum leaves out."""
-    total, prev, retry = round(a.get('usd') or 0, 2), round(a.get('earlier_usd') or 0, 2), round(a.get('retry_usd') or 0, 2)
+    total = round(a.get('usd') or 0, 2)
+    retry = min(round(a.get('retry_usd') or 0, 2), total); prev = min(round(a.get('earlier_usd') or 0, 2), round(total - retry, 2))   # never a part larger than the whole, so none is negative
     ceiling, exp = a.get('estimate_usd'), a.get('expected_usd')
     amount = f'${total:.2f}' + (' so far' if so_far else '')
     if prev or retry:
@@ -204,7 +208,8 @@ def batch_spent(B):
     except OSError: dirs = []
     for R in dirs:
         a = actual(R); usd += a['usd']; earlier += a['earlier_usd']; retry += a['retry_usd']
-    trashed = sum((x.get('cost_usd') or 0) for x in _load(os.path.join(B, 'trashed.json')) or [] if isinstance(x, dict))
+    trashed = sum((x.get('cost_usd') or 0) for x in _load(os.path.join(B, 'trashed.json')) or []
+                  if isinstance(x, dict) and not (x.get('name') and os.path.isdir(os.path.join(B, str(x['name'])))))   # dragged back from the Trash: its folder counts it
     return {'usd': round(usd + trashed, 6), 'earlier_usd': round(earlier, 6), 'retry_usd': round(retry, 6), 'trashed_usd': round(trashed, 6)}
 
 def shown_words(B, shown, so_far=False):
@@ -222,6 +227,12 @@ def retry_env(L):
     """The limits a doubled figure-request retry may use: the person's real ones, for that retry only. The first send of every
     request stays bound to the estimate shown (MAX_USD, BOOK_MAX_USD)."""
     return {'FIGURE_RETRY_MAX_USD': f'{L["per_call_usd"]:.2f}', 'FIGURE_RETRY_BOOK_MAX_USD': f'{L["per_book_usd"]:.2f}'}
+
+WORDS = {2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine'}
+def batch_advice(fit_n):
+    """What a person can do about a batch over its limit. fit_n counts the smallest PDFs first, so the sentence says the smallest."""
+    who = '' if not fit_n else 'Only the smallest PDF in this batch' if fit_n == 1 else f'Only the {WORDS.get(fit_n, fit_n)} smallest PDFs in this batch'
+    return 'The app administrator can raise the limit or you can start a batch with fewer PDFs.' + (f' {who} would fit within the current limit.' if who else '')
 
 def batch_over_words(total):
     """Why a batch over its limit is refused: the most it could cost (with what it already spent) and the limit named."""

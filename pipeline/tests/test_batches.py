@@ -182,7 +182,7 @@ def test_the_batch_pages_cost_wording():
     """The wording Patrick decided, in batch.js's source: both lines, the partial and missing figure, and the note under the button."""
     js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
     for w in ("'Expected Cost: Not Available Yet'", "'Expected Cost: ' + usd(x.usd) + ' for '", "' (Not Available Yet for '", "'Max Estimated Cost: ' + usd(T.ceiling_usd) + ' for '",
-              "' AI requests)'", "' · Batch Limit: '", "' · Already Spent in This Batch: '", "' · Credit: Not Checked'", "'<p><b>Total Cost:</b> ' + esc(T.cost_words)", "' of these would fit)'",
+              "' AI requests)'", "' · Batch Limit: '", "' · Already Spent in This Batch: '", "' · Credit: Not Checked'", "'<p><b>Total Cost:</b> ' + esc(T.cost_words)", "esc(s.spend.advice)",
               '"Start Remediation" sends every PDF to the AI service. "Expected Cost" is based on the PDFs\\\' content and may vary. "Max Estimated Cost" is the estimated cost ceiling; it must fit within your spending limits and available credit. The actual cost is usually much lower.'):
         assert w in js, w
     assert 'usually $' not in js and '(usually' not in js                        # no batch range on a page
@@ -208,7 +208,7 @@ def test_the_batch_counts_every_pdf_and_the_trash_as_spent(two):
 def test_a_retry_over_the_limit_counts_what_was_spent(two):
     s = settings(two, limits={'per_batch_usd': 1.0}); spent_batch(two, s)
     st = BT.state(s, 'bb')
-    assert st['spend']['ok'] is False and st['spend']['code'] == 'limit' and st['spend']['fit_n'] == 0
+    assert st['spend']['ok'] is False and st['spend']['code'] == 'limit' and st['spend']['advice'] == 'The app administrator can raise the limit or you can start a batch with fewer PDFs.'   # none would fit
     assert st['spend']['why'] == 'This batch could cost up to $1.30, including $0.70 already spent, more than the limit of $1.00 per batch.'
     with pytest.raises(ValueError): BT.spend(s, 'bb', {'fingerprint': st['fingerprint']})
 
@@ -232,6 +232,39 @@ def test_batch_api_refuses_on_the_same_money(two, tmp_path):
     md = (B / 'summary.md').read_text()
     assert 'Total Cost: $0.37 ($0.37 ' + tail in md and ', not including previous attempts' in md and 'API cost' not in md.split('books done')[1] and '$0.00 +' not in md
     assert '1 PDF moved to the Trash (AI cost $0.070), counted above' in md
+
+def test_a_reply_read_again_stays_spent_through_batch_api(two, tmp_path):
+    """review 04 H1, in the terminal's own path: a PDF paid for whose apply failed, sent again with RETRY=1. It is reused in its folder, its
+    $0.30 stays spent before and after, and the next send's limit check still counts it (a limit between the ceiling and spent + ceiling)."""
+    import subprocess
+    from lib import costs
+    from test_figure_requests_run import env, figures_pdf
+    from test_decide_allowance import PAID_REPLY
+    runs = tmp_path / 'r2'; B = runs / 'batches' / 'bx'; R = B / 'paid'; R.mkdir(parents=True)
+    (R / 'run.json').write_text(json.dumps({'model': 'anthropic/claude-sonnet-5.5', 'started': '2026-11-08T10:00:00', 'usage': {'prompt_tokens': 1000, 'completion_tokens': 100, 'cost_usd': 0.3}, 'finish_reason': 'stop',
+                                            'estimate': {'worst_case_total_usd': 0.67, 'expected': {'usd': 0.31}, 'max_tokens': 48000}}))
+    (R / 'response.json').write_text(json.dumps(PAID_REPLY)); (R / 'workorder.json').write_text('{}')
+    pdf = figures_pdf(tmp_path / 'p.pdf', n=2); lst = tmp_path / 'books.txt'; lst.write_text(f'paid {pdf}\nnew {pdf}\n')
+    assert costs.batch_spent(str(B))['usd'] == 0.3
+    e = env(RUNS_DIR=runs, AUTO=1, RETRY=1, INTAKE='off')
+    r = subprocess.run(['bash', 'batch_api.sh', 'bx', str(lst)], cwd=HERE, env={**e, 'BATCH_MAX_USD': '5'}, capture_output=True, text=True, timeout=300)
+    assert 'Already Spent in This Batch: $0.30' in r.stdout and (R / 'record.json').exists(), r.stdout + r.stderr
+    rec = json.loads((R / 'record.json').read_text()); assert rec['run']['own_reply'] is True and rec['run']['response_from']
+    assert costs.batch_spent(str(B))['usd'] == 0.3 and costs.after_line(str(R)) == 'AI Cost: $0.30 (expected $0.31, max estimated $0.67)'
+    assert '$-' not in r.stdout and '$-' not in (B / 'summary.md').read_text()
+    words = costs.shown_words(str(B), json.loads((B / '.shown.json').read_text())); assert words.startswith('$0.30 ($0.30 for previous attempts) · Max Estimated Cost: $')
+    r = subprocess.run(['bash', 'batch_api.sh', 'bx'], cwd=HERE, env={**e, 'SUMMARY_ONLY': '1'}, capture_output=True, text=True, timeout=120); assert r.returncode == 0, r.stderr   # review 04 L4
+    assert 'Total Cost: ' + words in (B / 'summary.md').read_text()
+    r = subprocess.run(['bash', 'batch_api.sh', 'bx', str(lst)], cwd=HERE, env={**e, 'BATCH_MAX_USD': '0.9'}, capture_output=True, text=True, timeout=300)      # the ceiling alone (about $0.77) would fit
+    assert r.returncode != 0 and 'including $0.30 already spent, more than the limit of $0.90 per batch' in r.stdout + r.stderr, r.stdout + r.stderr
+
+def test_the_trash_line_has_no_clause_with_nothing_above_it():
+    js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "(T.spent_usd ? ', counted in the cost above' : '')" in js
+
+def test_the_terminals_batch_lines_have_the_decided_names():
+    sh = open(os.path.join(HERE, 'batch_api.sh'), encoding='utf-8').read()
+    assert "print('  Expected Cost: '" in sh and "print(f'  Max Estimated Cost: ${total:.2f}" in sh and 'cut_at' not in sh
 
 @pytest.mark.parametrize('job,active,want', [
     ({'shown': {'ceiling_usd': 8.8, 'expected_usd': 4.1, 'spent_usd': 0, 'retry_usd': 0}}, True, '$1.20 so far (expected $4.10, max estimated $8.80)'),

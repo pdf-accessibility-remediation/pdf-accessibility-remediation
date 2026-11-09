@@ -198,6 +198,12 @@ def test_the_room_for_the_retry_leaves_out_this_requests_own_plan(planned, limit
     r = rq(worst=planned); res, _, _ = run_with([ok(finish='length', cost=spent), ok()], reqs=[r], retry_cap=limit, call_cap=2)
     assert (len(res[0]['calls']) == 2) is fits
 
+def test_a_finished_requests_plan_is_freed_for_the_next_ones_retry():
+    """1.12 − 0.31 spent − nothing still planned ≥ 0.80: it fits only because the first request's 0.40 was freed when it finished."""
+    a, b_ = rq('2', worst=0.4), rq('3', worst=0.4)
+    res, _, _ = run_with([ok(cost=0.01), ok(finish='length', cost=0.3), ok()], reqs=[a, b_], retry_cap=1.12, call_cap=2)
+    assert len(res[1]['calls']) == 2 and res[1]['outcome'] == 'done'
+
 def test_the_other_requests_plans_are_held_back():
     a, b_ = rq('2', worst=0.4), rq('3', worst=0.4)
     res, _, _ = run_with([ok(finish='length', cost=0.3), ok(), ok()], reqs=[a, b_], retry_cap=1.1, call_cap=2)      # 1.1 - 0.3 - 0.4 = 0.4 < 0.8
@@ -216,11 +222,11 @@ def test_a_timeout_on_the_doubled_call_counts_its_own_worst_case():
     assert b.spent == pytest.approx(1.1) and res[0]['calls'][1]['worst_usd'] == 0.8
 
 def test_on_retry_tells_the_caller_what_a_stop_must_count():
-    seen = []; r = dict(rq(), on_retry=lambda q, paid, worst: seen.append((paid, worst)))
+    seen = []; r = dict(rq(), on_retry=lambda q, known, worst, cut: seen.append((known, worst, cut)))
     run_with([ok(finish='length', cost=0.3), ok()], reqs=[r], retry_cap=5, call_cap=2)
-    assert seen == [(pytest.approx(0.3), 0.8)]
+    assert seen == [(pytest.approx(0.3), 0.8, True)]
     seen.clear(); run_with([ok('no json', cost=0.1), ok()], reqs=[r], retry_cap=5, call_cap=2)      # the unreadable reply's retry too
-    assert seen == [(pytest.approx(0.1), 0.4)]
+    assert seen == [(pytest.approx(0.1), 0.4, False)]
 
 def test_a_429_then_a_cut_off_gets_the_doubled_retry():
     res, _, waits = run_with([{'resp': None, 'code': 429}, ok(finish='length', cost=0.3), ok()], reqs=[rq()], retry_cap=5, call_cap=2)
@@ -246,9 +252,9 @@ def test_timeout_counts_its_worst_case():
 
 def test_a_timeout_records_its_worst_case_and_tells_the_caller_once():
     """06 M1: what a restart counts toward the book cap is written here (decide.py's on_retry keeps run.json up to date)."""
-    seen = []; r = dict(req(worst=0.4), on_retry=lambda q, paid, worst: seen.append((q['pass'], paid, worst)))
+    seen = []; r = dict(req(worst=0.4), on_retry=lambda q, known, worst, cut: seen.append((q['pass'], known, worst, cut)))
     res, _, _ = run_with([{'resp': None, 'timeout': True}, ok(cost=0.05)], reqs=[r])
-    assert seen == [('2', 0.4, 0.4)] and res[0]['calls'][0]['worst_usd'] == 0.4 and 'worst_usd' not in res[0]['calls'][1]
+    assert seen == [('2', 0.0, 0.8, False)] and res[0]['calls'][0]['worst_usd'] == 0.4 and 'worst_usd' not in res[0]['calls'][1]   # known and unknown kept apart
 
 # ------------------------------------------------------------------ scope and merge
 def test_scope_keeps_only_its_own_figures_and_keys():

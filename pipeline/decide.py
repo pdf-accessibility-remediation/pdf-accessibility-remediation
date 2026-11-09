@@ -318,6 +318,17 @@ if args.response_file:                             # a saved reply: no call, so 
                                          'prompt_sha256': pr.get('prompt_sha256'), 'date': pr.get('started')}
         except Exception: kept = {}
     reused = kept.get('model') or reused
+    # This folder's own paid reply, read again (a later step failed, or it couldn't be read before): that money was spent on this
+    # run, unlike a reply from anywhere else. Decided here and stored (run.own_reply), so moving or copying the folder can't change
+    # it. Its path alone isn't enough: a replay of another run's reply also writes response.json here, so the run.json it replaces
+    # must itself be this folder's paid call.
+    own_prev = None
+    try:
+        if os.path.realpath(args.response_file) == os.path.realpath(os.path.join(args.run_dir, 'response.json')):
+            _pr = json.load(open(prev, encoding='utf-8'))
+            if (_pr.get('usage') or {}).get('cost_usd') and (not _pr.get('response_from') or _pr.get('own_reply')): own_prev = _pr
+    except (OSError, ValueError): pass
+    if own_prev: run['own_reply'] = True
     # the original call behind the reply (sponsor checklist 11.5): from its meta, else a record beside the reply that made it
     sys.path.insert(0, HERE); from lib import origin
     try: oc = kept.get('original_call') or origin.find(args.response_file, open(args.response_file, encoding='utf-8').read(), os.getcwd())
@@ -425,6 +436,8 @@ if not args.response_file:                            # never on a saved reply: 
             model, price['prompt'], price['completion'], total, cut_off=cut_off_here)
     except Exception as ex:                           # the figure is only ever shown: never a reason to stop
         est_['expected'] = {'none': 'error'}; print(f'note: the expected cost could not be worked out ({type(ex).__name__})')
+if args.response_file and own_prev and isinstance(own_prev.get('estimate'), dict):   # the estimate that was shown for this money; the credit is read again below
+    run['estimate'] = {k: v for k, v in own_prev['estimate'].items() if k != 'credit_available_usd'}
 print(json.dumps(run['estimate']), '| model', model, '|', run['price_source'])
 if reqs:
     n_fig = len([r for r in reqs if r['pass'] != 'probe'])
@@ -651,14 +664,15 @@ if reqs and not args.response_file:
         if r.get('reason'): e['reason'] = r['reason']
         return e
     def before(req): run['figure_passes'].update(in_flight=req['pass'], in_flight_worst_usd=round(req['worst'], 4)); save('run.json', run)
-    def on_retry(req, paid, worst):                   # run.passes is written only when a request is done: what a stop now must count
-        run['figure_passes'].update(in_flight=req['pass'], in_flight_worst_usd=round(paid + worst, 4)); save('run.json', run)
+    def on_retry(req, known, worst, cut_off):         # run.passes is written only when a request is done: what a stop now must count, known and unknown apart
+        run['figure_passes'].update(in_flight=req['pass'], in_flight_paid_usd=round(known, 6), in_flight_worst_usd=round(worst, 4), in_flight_cut_off=cut_off); save('run.json', run)
     def on_call(req, call):                           # as soon as its usage has arrived
         if req['pass'] != 'probe' and call.get('finish_reason') == 'stop':
             note_call('figure', req['pass'], call['attempt'], req['input_tokens'], len(req['items']), 0, call.get('usage') or {}, FIGURE_PROMPT_NAME)
     for r in reqs: r.update(on_retry=on_retry, on_call=on_call)
     def done(res):
-        run['figure_passes'].pop('in_flight', None); run['figure_passes'].pop('in_flight_worst_usd', None); run['passes'].append(entry(res))
+        for k in ('in_flight', 'in_flight_worst_usd', 'in_flight_paid_usd', 'in_flight_cut_off'): run['figure_passes'].pop(k, None)
+        run['passes'].append(entry(res))
         if res.get('cut_off_retry'): run['figure_passes'].setdefault('cut_off_retries', []).append({'pass': res['pass'], **res['cut_off_retry']})
         run['usage'] = figpasses.add_usage(run['usage'], res['usage']); save('run.json', run)
     budget = figpasses.Budget(args.book_max_usd if IS_CLAUDE else None, spent_before + (run['usage'].get('cost_usd') or 0), [r['worst'] for r in reqs if r.get('body')],

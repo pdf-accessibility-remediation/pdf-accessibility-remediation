@@ -80,7 +80,7 @@ function body(s) {
          (T.spent_usd ? ' · Already Spent in This Batch: ' + usd(T.spent_usd) : '') + (T.credit_usd != null ? ' · Credit: ' + usd(T.credit_usd) : ' · Credit: Not Checked') + '</p>';
   const total = !before && (T.spent_usd || s.phase === 'running' || s.phase === 'finished' || (s.trashed && s.trashed.n));
   if (total) h += '<p><b>Total Cost:</b> ' + esc(T.cost_words) + '</p>';   // one wording with the run page and the terminal (lib/costs.py)
-  if (s.trashed && s.trashed.n) h += '<p>' + s.trashed.n + ' PDF' + plural(s.trashed.n) + ' moved to the Trash (AI cost ' + usd(s.trashed.cost_usd) + ', counted in the cost above)</p>';   // D8: the spend stays shown
+  if (s.trashed && s.trashed.n) h += '<p>' + s.trashed.n + ' PDF' + plural(s.trashed.n) + ' moved to the Trash (AI cost ' + usd(s.trashed.cost_usd) + (T.spent_usd ? ', counted in the cost above' : '') + ')</p>';   // D8: the spend stays shown
   if (s.flagged.length) h += '<p>' + s.flagged.length + ' PDF' + (s.flagged.length === 1 ? '' : 's') + ' stopped and need' + (s.flagged.length === 1 ? 's' : '') +
     ' a person: ' + (s.flagged.length === 1 ? 'it is' : 'they are') + ' not sent. Each PDF\'s page says why.</p>';
   if (s.phase === 'estimating') h += '<p>Each PDF is being prepared and estimated (free). This page follows them; you can leave it and come back from the home page.</p>';
@@ -96,7 +96,7 @@ function body(s) {
       '<div class="pp-row"><button type="button" class="pp-primary" id="bt-credit" data-act="credit">Check Credit Again</button></div>';
     else h += '<p class="pp-warn-t" id="bt-why">' + esc((s.spend && s.spend.why) || 'This batch can\'t be sent yet.') + '</p><p>' +
       (s.spend && s.spend.code === 'credit' ? 'Whoever looks after the app can add credit.' :
-       s.spend && s.spend.code === 'limit' ? 'Whoever looks after the app can raise the limit; or start a batch with fewer PDFs' + (s.spend.fit_n ? ' (' + s.spend.fit_n + ' of these would fit)' : '') + '.' :
+       s.spend && s.spend.code === 'limit' ? esc(s.spend.advice) :
        'Each PDF\'s page says more.') + '</p>';
   }
   if (s.phase === 'review' || (s.reviewing && s.reviewing.length && s.phase !== 'running')) h += '<p>' + s.reviewing.length + ' PDF' + (s.reviewing.length === 1 ? ' is' : 's are') +

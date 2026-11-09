@@ -78,22 +78,24 @@ if fp.get('state') == 'calling' and not run.get('response_from'):   # stopped wh
     p = os.path.join(R, 'attempts.json'); att = json.load(open(p)) if os.path.exists(p) else []   # every request it paid for,
     for c in run.get('passes') or []:                                # and the one in flight, whose charge is not known
         att.append({'started': run.get('started'), 'pass': c['pass'], 'cost_usd': (c.get('usage') or {}).get('cost_usd') or 0,
-                    'finish_reason': c.get('finish_reason') or (c.get('calls') or [{}])[-1].get('finish_reason'), 'usage': c.get('usage'),
+                    'finish_reason': 'length' if any(x.get('finish_reason') == 'length' for x in c.get('calls') or []) else c.get('finish_reason') or (c.get('calls') or [{}])[-1].get('finish_reason'), 'usage': c.get('usage'),
                     **({'worst_usd': round(sum(x.get('worst_usd') or 0 for x in c['calls']), 4)} if any(x.get('worst_usd') for x in c.get('calls') or []) else {}),   # timed out: charge not known
                     'stopped': True, 'logged': now})
+    if fp.get('in_flight_paid_usd'):                                 # paid for already (a cut-off or an unreadable reply), with its retry in flight
+        att.append({'started': run.get('started'), 'pass': fp['in_flight'], 'cost_usd': fp['in_flight_paid_usd'], 'finish_reason': 'length' if fp.get('in_flight_cut_off') else 'stop', 'stopped': True, 'logged': now})
     if fp.get('in_flight'):
         att.append({'started': run.get('started'), 'pass': fp['in_flight'], 'cost_usd': None, 'worst_usd': fp.get('in_flight_worst_usd'), 'stopped': True,
                     'note': 'in flight when the run stopped; any charge is not known', 'logged': now})
     json.dump(att, open(p, 'w'), indent=1)
     for f in ('run.json', 'passes.json', 'workorder.json'):
         if os.path.exists(os.path.join(R, f)): os.remove(os.path.join(R, f))
-    spent = sum((c.get('usage') or {}).get('cost_usd') or 0 for c in run.get('passes') or [])
+    spent = sum((c.get('usage') or {}).get('cost_usd') or 0 for c in run.get('passes') or []) + (fp.get('in_flight_paid_usd') or 0)
     print(f'▶ the previous attempt was stopped while its figure requests were being sent: ${spent:.3f} it spent on '
           f'{len(run.get("passes") or [])} request(s) is logged' + (' (and one request was in flight; its charge is not known)' if fp.get('in_flight') else '')
           + '; the run starts over')
     sys.exit(0)
 cost = (run.get('usage') or {}).get('cost_usd')
-if cost and not run.get('response_from'):                       # a paid call whose reply could not be used
+if cost and (not run.get('response_from') or run.get('own_reply')):   # a paid call whose reply could not be used (a reply from elsewhere was not paid for here)
     p = os.path.join(R, 'attempts.json'); att = json.load(open(p)) if os.path.exists(p) else []
     att.append({'started': run.get('started'), 'cost_usd': cost, 'finish_reason': run.get('finish_reason'),
                 'max_tokens': (run.get('estimate') or {}).get('max_tokens'), 'usage': run.get('usage'),

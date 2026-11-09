@@ -254,3 +254,45 @@ def test_a_batch_adds_up_its_expected_figures_and_counts_the_rest(tmp_path):
 def test_fit_n_counts_how_many_of_these_would_fit(tmp_path):
     Rs = [str(folder(tmp_path, n, worst=w)) for n, w in (('a', 4.0), ('b', 3.0), ('c', 5.0), ('d', 3.5))]
     assert C.batch(Rs, limit=10)['fit_n'] == 2
+
+@pytest.mark.parametrize('n,want', [
+    (0, 'The app administrator can raise the limit or you can start a batch with fewer PDFs.'),
+    (1, 'The app administrator can raise the limit or you can start a batch with fewer PDFs. Only the smallest PDF in this batch would fit within the current limit.'),
+    (2, 'The app administrator can raise the limit or you can start a batch with fewer PDFs. Only the two smallest PDFs in this batch would fit within the current limit.'),
+    (9, 'The app administrator can raise the limit or you can start a batch with fewer PDFs. Only the nine smallest PDFs in this batch would fit within the current limit.'),
+    (10, 'The app administrator can raise the limit or you can start a batch with fewer PDFs. Only the 10 smallest PDFs in this batch would fit within the current limit.')])
+def test_the_advice_on_a_batch_over_its_limit(n, want):
+    assert C.batch_advice(n) == want
+
+@pytest.mark.parametrize('a', [{'usd': 0, 'earlier_usd': .3}, {'usd': .2, 'earlier_usd': .3, 'retry_usd': .3, 'estimate_usd': 1}, {'usd': .1, 'retry_usd': .5}])
+def test_no_part_of_the_addition_is_ever_negative(a):
+    assert '-' not in C.cost_words(a).replace(' - ', '') and '$-' not in C.cost_words(a)
+
+def spent_money(R, usd, retry=0.0, **extra):
+    R.mkdir(parents=True, exist_ok=True)
+    (R / 'run.json').write_text(json.dumps({'usage': {'cost_usd': usd}, 'figure_passes': {'cut_off_retries': [{'pass': '2', 'cost_usd': retry}] if retry else []}, **extra}))
+
+def test_a_batch_sent_again_keeps_an_earlier_retry_with_the_previous_money(tmp_path):
+    """shown.retry_usd is what was retried before this send: only what this send retried is named as a retry."""
+    spent_money(tmp_path / 'a', 1.0, retry=0.2); spent_money(tmp_path / 'b', 0.9, retry=0.25)
+    shown = {'ceiling_usd': 2.0, 'spent_usd': 1.0, 'retry_usd': 0.2}
+    assert C.shown_words(str(tmp_path), shown) == '$1.90 ($0.65 + $1.00 for previous attempts + $0.25 to retry an answer that was cut off) · Max Estimated Cost: $2.00, not including previous attempts or the retry'
+
+def test_a_reply_read_again_in_its_own_folder_stays_spent_before_and_after(tmp_path):
+    """review 04 H1: the money is the same on both sides of the reuse, and the total never goes negative."""
+    R = tmp_path / 'a'; spent_money(R, 0.3); shown = {'ceiling_usd': 0.67, 'spent_usd': C.batch_spent(str(tmp_path))['usd'], 'retry_usd': 0}
+    assert shown['spent_usd'] == 0.3
+    spent_money(R, 0.3, response_from=str(R / 'response.json'), own_reply=True)
+    assert C.batch_spent(str(tmp_path))['usd'] == 0.3 and C.shown_words(str(tmp_path), shown) == '$0.30 ($0.30 for previous attempts) · Max Estimated Cost: $0.67, not including previous attempts'
+
+def test_a_finished_run_read_again_in_its_own_folder_counts_its_usage(tmp_path):
+    (tmp_path / 'record.json').write_text(json.dumps({'run': {'usage': {'cost_usd': 0.3}, 'response_from': 'x/response.json', 'own_reply': True, 'estimate': {'worst_case_total_usd': 0.67}}, 'cost_total_usd': 0, 'document': {}, 'earlier_attempts': []}))
+    a = C.actual(str(tmp_path)); assert a['usd'] == 0.3 and a['reused'] is False and a['finished']
+
+def test_a_reply_from_elsewhere_still_costs_nothing_here(tmp_path):
+    (tmp_path / 'record.json').write_text(json.dumps({'run': {'usage': {'cost_usd': 0.3}, 'response_from': 'x/response.json'}, 'cost_total_usd': 0, 'document': {}, 'earlier_attempts': []}))
+    a = C.actual(str(tmp_path)); assert a['usd'] == 0 and a['reused'] is True
+
+def test_a_pdf_dragged_back_from_the_trash_counts_once(tmp_path):
+    spent_money(tmp_path / 'back', 0.3); (tmp_path / 'trashed.json').write_text(json.dumps([{'name': 'back', 'cost_usd': 0.3}, {'name': 'gone', 'cost_usd': 0.1}]))
+    assert C.batch_spent(str(tmp_path)) == {'usd': pytest.approx(0.4), 'earlier_usd': 0, 'retry_usd': 0, 'trashed_usd': 0.1}

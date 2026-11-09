@@ -87,7 +87,7 @@ done_pages = 0
 def intake_of(R):
     j = load(os.path.join(R, '_intake', 'intake.json')) or {}
     return j, (j.get('summary') or ('not run' if not j else j.get('status') or 'not recorded')).replace('|', '/')
-total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; flagged = []; cut_at = []; waiting = []; needs_lang = []
+total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; flagged = []; waiting = []; needs_lang = []
 call_cost = 0.0; call_pages = 0                       # the AI calls' own cost (the original call's for a reused reply)
 models, prompts, runs_at = collections.Counter(), collections.Counter(), []
 for line in open(books):
@@ -98,7 +98,7 @@ for line in open(books):
         earlier = sum(a.get('cost_usd') or 0 for a in rec.get('earlier_attempts') or [])
     else:                                                 # not finished: a paid call may still have happened
         run = load(os.path.join(R, 'run.json')) or {}
-        this = 0 if run.get('response_from') else ((run.get('usage') or {}).get('cost_usd') or 0)
+        this = 0 if run.get('response_from') and not run.get('own_reply') else ((run.get('usage') or {}).get('cost_usd') or 0)
         earlier = sum(a.get('cost_usd') or 0 for a in load(os.path.join(R, 'attempts.json')) or [])
         if run.get('finish_reason') == 'length': wasted += this
     wasted += earlier; total += this + earlier
@@ -122,8 +122,8 @@ for line in open(books):
         failed.append(name)
         if ij.get('status') == 'failed': why = f'**failed at intake**: {(ij.get("summary") or "")[:90].replace("|", "/")}'
         elif run.get('finish_reason') == 'length':
-            mt = (run.get('estimate') or {}).get('max_tokens') or 48000; cut_at.append(mt)
-            why = f'**failed**: reply cut off at {mt:,} tokens'
+            mt = (run.get('estimate') or {}).get('max_tokens')
+            why = f'**failed**: reply cut off at {mt:,} tokens' if mt else '**failed**: reply cut off'
         elif run.get('error'):                            # OpenRouter refused or failed the call
             er = run['error']; code = str(er.get('code'))
             if code == '429': rate_limited = True; why = '**failed**: OpenRouter 429, model rate-limited' + ('' if this else ' (nothing charged)')
@@ -187,7 +187,7 @@ PY
   SUMMARY_DONE=1
 }
 tidy() {   # the book lists and copied replies were only working files
-  [[ -n ${KEEP:-} ]] || rm -f "$B/books.tsv" "$B/todo.tsv" "$B/.shown.json" "$B"/*.reply.txt "$B"/*.reply.txt.meta.json "$B"/*.reply.txt.passes.json
+  [[ -n ${KEEP:-} ]] || rm -f "$B/books.tsv" "$B/todo.tsv" "$B"/*.reply.txt "$B"/*.reply.txt.meta.json "$B"/*.reply.txt.passes.json
 }
 finish() {
   local rc=$?; trap - EXIT
@@ -295,7 +295,8 @@ each() {   # each <step: estimate|run>
 FROM=${FROM:-}; KEEP=${KEEP:-}; export B LABEL STEP FROM KEEP
 
 if [[ -n ${FROM:-} ]]; then
-  echo; echo "1/3 reusing the replies saved under run label $FROM (no API calls, no cost; each record keeps its original model)"
+  rm -f "$B/.shown.json"                          # kept for summary.md rewrites of a paid batch; a FROM= rerun agreed to no cost
+echo; echo "1/3 reusing the replies saved under run label $FROM (no API calls, no cost; each record keeps its original model)"
   python3 - "$B/todo.tsv" "$RUNS_DIR" "$FROM" "$B" <<'PY' || exit 1
 import sys, json, os, math
 import shutil
@@ -366,13 +367,13 @@ cr = ' · Credit: Not Checked' if credit is None else f' · Credit: ${credit:.2f
 already = f' · Already Spent in This Batch: ${spent:.2f}' if spent else ''
 if capped_n:                                     # at least one Claude book counts toward the limit
     if exp_seen:
-        print(f'  {"Expected Cost":28} ' + ('Not Available Yet' if not exp_n else f'${exp_usd:.2f} for ' + (f'{exp_of} PDF{"" if exp_of == 1 else "s"}' if exp_n == exp_of else
+        print('  Expected Cost: ' + ('Not Available Yet' if not exp_n else f'${exp_usd:.2f} for ' + (f'{exp_of} PDF{"" if exp_of == 1 else "s"}' if exp_n == exp_of else
               f'{exp_n} of {exp_of} PDFs (Not Available Yet for {exp_of - exp_n} PDF{"" if exp_of - exp_n == 1 else "s"})')))
-    print(f'  {"Max Estimated Cost":28} ${total:.2f} for {capped_n} PDF{"" if capped_n == 1 else "s"}' + (f' ({requests} AI requests)' if requests > capped_n else '') + f' · Batch Limit: ${cap:.2f}{already}{cr}')
-    if approx: print(f'  {"non-Claude models":28} about ${approx:.2f}, approximate, not counted against the limit (the OpenRouter bill is the real cost)')
+    print(f'  Max Estimated Cost: ${total:.2f} for {capped_n} PDF{"" if capped_n == 1 else "s"}' + (f' ({requests} AI requests)' if requests > capped_n else '') + f' · Batch Limit: ${cap:.2f}{already}{cr}')
+    if approx: print(f'  Non-Claude Models: about ${approx:.2f}, approximate, not counted against the limit (the OpenRouter bill is the real cost)')
 elif approx:                                     # every book is non-Claude: no limit to show
-    print(f'  {"Max Estimated Cost":28} about ${approx:.2f}, approximate, not counted against the limit (the OpenRouter bill is the real cost){cr}')
-else: print(f'  {"Max Estimated Cost":28} $0.00 (nothing new to send){already}{cr}')
+    print(f'  Max Estimated Cost: about ${approx:.2f}, approximate, not counted against the limit (the OpenRouter bill is the real cost){cr}')
+else: print(f'  Max Estimated Cost: $0.00 (nothing new to send){already}{cr}')
 if bad: sys.exit(f'stopped: no estimate for {", ".join(bad)} (see their .estimate.log)')
 if flagged:                                      # not run: drop them from the to-do list (summary.md lists them)
     keep = [l for l in open(books) if l.split('\t')[0] not in flagged]
