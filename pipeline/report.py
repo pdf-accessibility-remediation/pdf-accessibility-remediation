@@ -500,7 +500,7 @@ if rv:
     if rv_session:
         sid, ss = rv_session['session'], {x['id']: x for x in rv_session.get('sessions') or []}
         me = ss.get(sid) or {}; frm = me.get('from')
-        start = ('the AI\'s decisions' if frm in ('ai', None) else 'the recorded summary of a previous review' if frm == 'summary'
+        start = (('an empty work order (no AI call)' if run.get('no_model') else 'the AI\'s decisions') if frm in ('ai', None) else 'the recorded summary of a previous review' if frm == 'summary'
                  else f'session {int(frm)}' + (' (summary only)' if (ss.get(frm) or {}).get('summary_only') else ''))
         L += [f'This result comes from review session {int(sid)}, started from {start}'
               + (f': {me["carried"]} choices carried from it, {me.get("since_start", 0)} changed in this session' if me.get('carried') else '')

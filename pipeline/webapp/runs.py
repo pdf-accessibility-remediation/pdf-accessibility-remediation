@@ -329,12 +329,12 @@ def state(s, run, R):
     ss = S.sessions(R); cur = S.current_id(rec)
     vers = S.P(R)['versions']
     gone = {str(x.get('version')) for x in REL.removed(R)}              # "Clean Up Space" took their PDF: the row stays, marked
-    rows = []
+    rows, nm = [], S.no_model(R)                       # no AI call (a PDF edited by hand): "the beginning", never "the AI's"
     for x in ss:
         r = S.summary_row(x)
         if x.get('status') == 'open': r.update(S.name_notes(load(S.P(R)['draft']), x['id']))   # the open session: as last saved
         v = os.path.join(vers, x['id'])
-        rows.append({**r, 'current': x['id'] == cur, 'from_label': S.from_label(r['from']), 'label': S.label(x['id']), 'pdf_removed': x['id'] in gone,
+        rows.append({**r, 'current': x['id'] == cur, 'from_label': S.from_label(r['from'], nm), 'label': S.label(x['id']), 'pdf_removed': x['id'] in gone,
                      'result': (f'reviews/versions/{x["id"]}/' + ('review.html' if os.path.isfile(os.path.join(v, 'review.html')) else 'review.md'))
                                if os.path.isdir(v) and x['id'] != cur else None})
     ai_v = os.path.join(vers, 'ai')
@@ -357,7 +357,7 @@ def state(s, run, R):
         'ocr': ocr_state(R),
         'manual': manual_strip(R, rec),
         'prune': prune_plan(R),
-        'hand_edits': hand_edits(s, R, rec),
+        'hand_edits': hand_edits(s, R, rec), 'no_model': nm,
         'lock': {'pid': h[0], 'what': h[1], 'since': h[2], 'words': jobs.lock_words(h[1], h[2])} if h else None,
         'live_review': job_view(s, live) if live else None,
         'jobs': [job_view(s, j) for j in rj],               # every job of the run: the page folds the earlier ones, none drop off
@@ -411,7 +411,7 @@ def start_first_review(s, run, R, port, app_pid=None):
         raise ValueError('The review page was not prepared when this run stopped, so it can\'t be opened. Run the book again.')
     back = f'http://127.0.0.1:{port}/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/?after=finish'
     argv = [sys.executable, 'review_workorder.py', R, '--serve', '--no-browser', '--return-to', back]
-    return jobs.create(s['jobs'], 'review', run, argv, config.child_env(s), counted=False, R=R, what='Review the AI\'s decisions',
+    return jobs.create(s['jobs'], 'review', run, argv, config.child_env(s), counted=False, R=R, what='Review the edited PDF' if S.no_model(R) else 'Review the AI\'s decisions',
                        app_pid=app_pid, first=True)
 
 def start_first_apply(s, run, R):
@@ -437,9 +437,10 @@ def start_review(s, run, R, port, src=None, discard_open=False, app_pid=None):
     argv = py + ['--reopen'] + (['--from', str(src)] if src else []) + (['--discard-open'] if discard_open else []) + \
            (['--pdf', pdf] if pdf else []) + ['--no-browser', '--return-to', back]
     ss = S.sessions(R); op = [x for x in ss if x.get('status') == 'open']; done = [x for x in ss if x.get('status') in ('finished', 'applied')]
-    what = ('Review again from the AI\'s decisions' if src == 'ai' else f'Review again from {S.label(f"{int(src):03d}")}' if src else
+    start = 'the beginning' if S.no_model(R) else 'the AI\'s decisions'   # no AI call: a PDF edited by hand
+    what = (f'Review again from {start}' if src == 'ai' else f'Review again from {S.label(f"{int(src):03d}")}' if src else
             f'Continue review ({S.label(op[-1]["id"]).capitalize()})' if op else f'Review again from {S.label(done[-1]["id"])}' if done else
-            'Review again from the AI\'s decisions')
+            f'Review again from {start}')
     review = {'kind': 'review', 'argv': argv, 'env': config.child_env(s), 'counted': False, 'extra': {'what': what, 'app_pid': app_pid}}
     pinned = S.basis(R) and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json'))
     if pinned:

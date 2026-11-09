@@ -124,7 +124,7 @@ function showMsg(m, text, ok, focus) {
 }
 function abandonText(open, from) {
   return cap(sn(open.id)) + ' is open (started ' + fmtWhen(open.started) + '). Starting from ' +
-         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; its choices stay in "Session History."';
+         (from === 'ai' ? (st.no_model ? 'the beginning' : 'the AI\'s decisions') : sn(from)) + ' marks it abandoned; its choices stay in "Session History."';
 }
 
 // ================================================================ in-page links
@@ -279,11 +279,11 @@ function actions(s) {
   if (active.length) return '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '. One job at a time per run.</p>';
   let h = '<div class="pp-row">';
   // in parentheses tc() leaves words as written: a session is named "Session N" there
-  const from = s.open ? null : s.latest ? cap(sn(s.latest.id)) : s.legacy_review ? 'the review recorded before sessions were kept' : 'the AI\'s decisions';
+  const from = s.open ? null : s.latest ? cap(sn(s.latest.id)) : s.legacy_review ? 'the review recorded before sessions were kept' : s.no_model ? 'the beginning' : 'the AI\'s decisions';
   h += s.open ? '<button type="button" class="pp-primary" id="pp-review" data-act="review">' + esc(tc('Continue review (' + cap(s.open.label) + ', open)')) + '</button>'
               : '<button type="button" class="pp-primary" id="pp-review" data-act="review">' + esc(tc('Review again (from ' + from + ')')) + '</button>';
   if (s.open) h += '<button type="button" id="pp-discard" data-act="discard">' + esc(tc('Discard ' + s.open.label)) + '</button>';
-  if (s.latest || s.open) h +='<button type="button" id="pp-ai" data-act="review" data-from="ai">Start Over from the AI\'s Decisions</button>';
+  if (s.latest || s.open) h +='<button type="button" id="pp-ai" data-act="review" data-from="ai">' + (s.no_model ? 'Start Over from the Beginning' : 'Start Over from the AI\'s Decisions') + '</button>';
   if (s.unapplied && !s.open) h += '<button type="button" id="pp-apply" data-act="apply">' + esc(tc('Apply ' + s.unapplied.label)) + '</button>';
   h += '</div>';
   if (s.ocr && s.ocr.needed)                                     // the OCR text verdict, on its own (no work-order session)

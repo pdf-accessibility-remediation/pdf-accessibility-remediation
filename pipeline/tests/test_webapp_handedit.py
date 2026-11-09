@@ -212,3 +212,11 @@ def test_upload_then_bring_back_queues_the_import_of_that_file(app):
     assert st == 202
     j = jobs.load(str(t / 'runs' / '.app'), b['job']['id'])
     assert j['argv'][4] == str(t / 'uploads' / 'My edit.pdf')
+
+# ------------------------------------------------------------------ a run with no AI call: "the beginning", never "the AI's"
+def test_the_panel_and_jobs_of_an_edited_run_never_credit_the_ai(setup):
+    s = settings(setup); W = setup / 'runs' / 'book' / 'he'; W.mkdir(parents=True)
+    (W / 'workorder.ai.json').write_text('{}'); (W / 'review_items.json').write_text('{}'); (W / 'run.json').write_text(json.dumps({'no_model': 'x'}))
+    assert runs.start_first_review(s, 'book/he', str(W), 8123)['what'] == 'Review the edited PDF'
+    p = src('webapp/panel.js')
+    assert "s.no_model ? 'Start Over from the Beginning'" in p and "s.no_model ? 'the beginning'" in p

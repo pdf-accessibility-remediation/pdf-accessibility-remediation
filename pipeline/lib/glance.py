@@ -370,7 +370,8 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
                        **({'session': record['review']['session']} if (record.get('review') or {}).get('session') else {})}
     return with_release({'schema': SCHEMA, 'ready': None, 'ship': ship, 'safety': saf, 'safety_ok': saf_ok,
             'needs_person': {'total': len(d_ai) + n_exec + n_check, 'ai_deferrals': len(d_ai), 'executor_deferrals': n_exec, 'check_rows': n_check},
-            'ai_decisions': {'count': n_decisions(wo), 'reviewed': reviewed},
+            'ai_decisions': {'count': n_decisions(wo), 'reviewed': reviewed,
+                             **({'no_model': True} if (record.get('run') or {}).get('no_model') else {})},   # a PDF edited by hand: no AI call
             'fixed_automatically': [{'what': k, 'count': c} for k, c in fixed.items()],
             'verapdf': vg, 'issues': issues, 'sections': secs, 'checks': rows,
             'pages': (record.get('document') or {}).get('pages'),
@@ -399,7 +400,7 @@ def glance_md(g, html_name='review.html', top=5):
     L.append(f'**Needs a person:** {np_["total"]} ({np_["ai_deferrals"]} deferred by the AI · {np_["executor_deferrals"]} deferred by the executor · '
              f'{np_["check_rows"]} CHECK row{"" if np_["check_rows"] == 1 else "s"})' + (f' · {needs_looked_text(g)}' if needs_looked_text(g) else '') + '  ')
     ad = g['ai_decisions']; r = ad.get('reviewed')
-    L.append(f'**AI decisions:** {_n(ad["count"])} in the work order, ' + (
+    L.append(f'**{"Decisions (no AI call)" if ad.get("no_model") else "AI decisions"}:** {_n(ad["count"])} in the work order, ' + (
         f'approved by {r["reviewer"]} on {D.day(r["date"])} ({r["changed"]} changed)' if r and g['ship'][0]['ok'] else
         f'reviewed by {r["reviewer"]} on {D.day(r["date"])} ({r["changed"]} changed), not signed off (see "Ready to ship?")' if r else
         'applied without review by a person') + '  ')
