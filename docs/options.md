@@ -19,6 +19,9 @@ nav_order: 4
 | `MAX_TOKENS=64000` | Output limit for the model's reply, reasoning included (default 48,000; Sonnet 5.5 allows up to 128,000 on OpenRouter). Raise it when a reply is cut off |
 | `MAX_USD=3` | The cap on one request's worst case, in dollars (default 2). Claude models only |
 | `BOOK_MAX_USD=6` | The cap on the worst case of all of a book's requests together, figure requests included (default 5). The run stops before any call when the estimate is over it, and says the value to set. Claude models only |
+| `PAGE_READS=1` | Scanned books: the pages the audit finds mostly Hawaiian are read whole by the AI (`read_pages.py`), after their own estimate and a question (`AUTO=1` skips the question). Off by default. See [OCR words](ocr-words.md#pages-read-whole) |
+| `PAGE_READS=all` | The same for every scanned page with text, not only mostly Hawaiian ones: for an English book with Hawaiian words on most pages. The audit lists the pages, so a run already audited without it needs a fresh audit |
+| `PAGE_READS_MAX_USD=5` | The cap on the worst case of the page readings together (default 3) |
 | `FIGURE_PASSES=off` | No figure requests: figures past the first request's 100 images go to a person, as before (see [Files](files.md)) |
 | `FIGURE_MAX_TOKENS=48000` | Output limit for each figure request (default 32,000) |
 | `FIGURE_PROBE=20` | Test only, terminal only: also re-sends 20 figures the first request answered, to compare the two answers; recorded in `record.json` (`run.passes`, `overlap`), never used, counted in the cost |
