@@ -30,6 +30,39 @@ The result, `_intake/intake.pdf`, is what audit, decide, apply and verify then w
 
 **Not done (yet):** OpenDataLoader's hybrid mode (a second, Docling-based server, which may handle complex tables better: 5.6–5.8), deskew/despeckle of degraded scans (2.2), re-reading low-confidence OCR lines (3.2), personal-information flagging (1.1), and PDF 2.0 books (stopped for a person: see [Not supported yet: PDF 2.0](troubleshooting.md#not-supported-yet-pdf-20)); veraPDF (11.2) is done (see [Verification with veraPDF](verapdf.md)). Accuracy of the OCR itself (CER/WER) needs a hand-corrected reference (11.1); the first candidate is `9780824882402.pdf`, PDF 381–386. Thresholds (5% / 15%, 15 words / 60%, the 25% image and 300-character rules, 5 pages, 100 private-use characters) are named constants at the top of `intake.py` and recorded in every `intake.json` (`settings.thresholds`); they are starting points to tune on real scores.
 
+**`--languages`** (#45 D4, part 1 of #37): `python3 intake.py <pdf> <out_dir> --languages` runs only the page triage and the
+script detection of step 3 (the text layer's scripts and Tesseract's on up to 5 image-only pages; one function,
+`scripts_seen()`, used by the full intake too) and writes `<out_dir>/languages.json`: whether pages need OCR, how many,
+whether their language matters (`ask`), what was found (`found`), a suggested OCR language and the evidence (the text
+layer's letters by script, and each sampled scanned page's reading). No text-layer test, no CJK check, no OCR, and
+`intake.json` is not touched (its reuse check is unchanged): seconds.
+
+- **The language matters (asked):** Japanese kana (suggests `jpn+eng`), Korean Hangul (`kor+eng`), Vietnamese letters
+  (`vie+eng`), Chinese characters with no kana or more than one CJK script (nothing suggested: never guessed), another
+  script such as Cyrillic or Greek (50 letters or more and 5% of the text layer's letters, so a math book's Greek
+  doesn't count; IPA and other Latin extensions count as Latin), or a scanned page with text whose script couldn't be
+  told (with a Latin text layer, English is preselected for these last two).
+- **It doesn't (no question; the run goes on as before, OCR'd as English):** the Latin script only (`found: latin`), or
+  no text to read on the sampled scanned pages, such as a cover or a picture (`found: none`, kept apart from "Latin").
+  A scanned page has text when Tesseract's orientation confidence is 4.0 or more (`OSD_TEXT_CONF`, calibrated on 14
+  sampled pages of 7 books: text pages 4.7–20; covers, pictures and Part openers 0.08–3.4, some of them read as
+  "Cyrillic" or "Devanagari"). A reading of a CJK script (Korean, Japanese, Han) counts from 1.5 (`OSD_CJK_CONF`, R9 of
+  Patrick's test 2026-11-07: a low-resolution Korean newspaper scan read "Korean" at 1.9, wasn't asked, and its estimate
+  ran 3.5 minutes to intake's CJK stop before the question came; none of the calibration pages under 4.0 read as a CJK
+  script). A "Japanese" reading under 4.0 counts as Chinese characters: asked, with nothing preselected (18-N2, Patrick
+  2026-11-07: Japanese and Chinese are never guessed from a weak reading); kana in the text layer still suggests Japanese.
+  Its script confidence is not used: it doesn't tell text from pictures. When no sampled
+  scan gives any orientation reading (blank pages, or Tesseract's `osd.traineddata` missing), the log says so in one
+  line ("Tesseract gave no orientation reading on any of the N sampled scans"), since every page then counts as "no text".
+- **Latin-script scans are OCR'd as English** (Patrick, 2026-11-07). On a scan the app sees only the script, not the
+  language, so a Hawaiian, Ilokano or Bikol scan is read with `eng`, as before this question existed. Lost ʻokina or
+  kahakō are then caught at "OCR Text Approval" (a person reads the OCR text). The catalogue language (part 2 of #37,
+  intake: suggest the OCR language) is the later fix.
+
+`run_api.sh` runs it when `ASK_LANG=1` and no `OCR_LANG` is set, and stops with exit 4 only when pages need OCR and
+their language matters, so the app can ask it ([The home page](home.md#language-of-the-scanned-pages)). The full intake's
+CJK check still runs afterwards, as above, and still stops a PDF whose pages to OCR hold CJK text.
+
 To see what intake would do to a folder of books without changing anything:
 
 ```bash

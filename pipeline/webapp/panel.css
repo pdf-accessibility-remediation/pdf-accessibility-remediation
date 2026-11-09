@@ -28,7 +28,13 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .pp button, .pp a.pp-btn { font: inherit; font-size: 14px; padding: 6px 12px; min-height: 32px; border: 1px solid var(--muted); border-radius: 4px;
       background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-block; }
 .pp button.pp-primary, .pp a.pp-btn.pp-primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
-.pp button:hover, .pp a.pp-btn:hover { text-decoration: underline; }
+/* R1 (Patrick's test, 2026-11-07): no underline on hover anywhere; the highlight is the only hover feedback, and the
+   keyboard keeps its focus ring (:focus-visible) */
+.pp button:hover:not(:disabled), .pp a.pp-btn:hover, .pp-dlg button:hover:not(:disabled), .mc button:hover:not(:disabled) {
+  text-decoration: none; background: color-mix(in srgb, var(--ink) 8%, var(--panel)); }
+.pp button.pp-primary:hover:not(:disabled), .pp a.pp-btn.pp-primary:hover, .pp-dlg button.pp-primary:hover:not(:disabled), .mc button.pp-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 82%, var(--ink)); }
+.pp button.pp-link:hover { background: none; }
 .pp :focus-visible, .pp-dlg :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 /* a heading or message the script moves focus to never shows an outline, on any page the app serves (Tab focus on
    buttons, links and fields keeps its own) */
@@ -129,3 +135,195 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .pp-checks .pp-dl h3, .pp-checks .pp-dl h4 { font-size: 15px; margin: 12px 0 4px; }   /* under the strip's own 15px heading */
 @media (max-width: 600px) { .pp-dl select { width: 100%; } }
 
+
+/* the app bar on every page the app serves (#45): the way home, right after the skip link */
+.pp-appbar { max-width: 1200px; margin: 0 auto; padding: 6px 16px 0; box-sizing: border-box; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.pp-appbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pp-appbar .pp-btn, .pp-hd-batch .pp-btn { font: inherit; font-size: 14px; padding: 6px 12px; min-height: 32px; border: 1px solid var(--muted); border-radius: 4px; box-sizing: border-box;
+      background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-block; font-weight: 600; }
+.pp-appbar .pp-btn:hover, .pp-hd-batch .pp-btn:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); }
+.pp-appbar :focus-visible, .pp-hd-batch :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* the home page (P14: the run page's cards, review/palette.css colors; D6: one pill per status group, its name in words) */
+.hm-card { border-top: 5px solid var(--line); border-radius: 8px; }
+.hm-c-act, .hm-c-pdfs, .hm-c-ws { border-top-color: var(--accent); }   /* Patrick, 2026-11-07: blue, never purple or pink */
+.hm-pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap;
+           color: var(--panel); background: var(--muted); border: 1px solid transparent; }
+.hm-g-processing { background: var(--accent); } .hm-g-in-progress { background: var(--change); }
+.hm-g-done { background: var(--ok); } .hm-g-failed { background: var(--reject); }
+.hm-st { font-size: 13px; color: var(--muted); }
+.hm-run { display: block; font-weight: 600; }
+.hm-ws { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 6px 0; }
+.hm-switch { display: inline-flex; } .pp .hm-switch button { border-radius: 0; margin: 0; }
+.pp .hm-switch button:first-child { border-radius: 4px 0 0 4px; } .pp .hm-switch button:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
+.pp .hm-switch button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+.hm-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.pp .hm-filter a.pp-btn { border-top: 4px solid var(--muted); }
+.pp .hm-filter a.hm-f-processing { border-top-color: var(--accent); } .pp .hm-filter a.hm-f-in-progress { border-top-color: var(--change); }
+.pp .hm-filter a.hm-f-done { border-top-color: var(--ok); } .pp .hm-filter a.hm-f-failed { border-top-color: var(--reject); }
+.pp .hm-filter a[aria-current="true"] { background: var(--bg); font-weight: 700; box-shadow: inset 0 -2px 0 var(--ink); }
+.hm-add { justify-content: flex-start; }
+@media (forced-colors: active) { .hm-pill { border-color: CanvasText; } }
+.hm-page .pp-tw { margin: 4px 0; }
+.hm-t { width: 100%; } .hm-t th[scope="row"] { font-weight: 400; background: none; min-width: 12em; }
+.hm-book { display: block; font-weight: 600; } .hm-file { display: block; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.hm-add, .hm-search { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0; }
+.hm-add label, .hm-search label { font-weight: 600; }
+.hm-search input[type=search] { font: inherit; padding: 4px 6px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); min-width: 14em; }
+.hm-active { list-style: none; padding-left: 0; } .hm-active li { margin: 6px 0; padding: 6px 0; border-bottom: 1px solid var(--line); } .hm-active li .pp-btn { margin-left: 8px; }
+.hm-page input[type=checkbox] { width: 20px; height: 20px; }
+.hm-page :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 640px) { .pp-appbar { padding-left: 10px; padding-right: 10px; } .hm-t th[scope="row"] { min-width: 9em; } }
+/* a run before its result (#45): the estimate's tick, a failure card with its folded "Details" */
+.pp .pp-check label { display: flex; align-items: flex-start; gap: 8px; min-height: 32px; font-weight: 600; }
+.pp .pp-check input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
+.pp .pp-fail { border-left: 4px solid var(--reject); padding: 2px 0 2px 12px; margin: 8px 0; }
+.pp .pp-fail h4 { margin: 8px 0 4px; }
+.hm-form { max-width: 48em; } .hm-form select { font: inherit; min-height: 32px; padding: 2px 6px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); }
+.hm-check { display: flex !important; align-items: center; gap: 8px; }
+.mc-book .hm-file { display: block; }
+/* the side column of a batch (#45): "PDFs in This Batch"; fixed at the left on a wide screen (bn-on), in the page's flow
+   below 48em; statuses in words, each PDF's state in its left border (P15), the current one by its background and bold */
+.bn { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--panel); box-sizing: border-box;
+      border: 1px solid var(--line); border-radius: 6px; margin: 8px 16px; padding: 2px 10px 6px; }
+.bn ul { list-style: none; padding: 0; margin: 4px 0; }
+/* P15: the left border is the PDF's state (its status in words stays under its name), the selected PDF is the darker
+   background and bold text; hover is a lighter shade than the selection (P6) */
+.bn li a { position: relative; display: block; padding: 6px 28px 6px 8px; margin: 2px 0; border-radius: 4px; text-decoration: none; color: var(--ink);
+           border-left: 5px solid var(--muted); }
+.bn li a:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); }
+.bn li a[aria-current="page"] { background: color-mix(in srgb, var(--ink) 13%, var(--panel)); font-weight: 700; }
+.bn li a[aria-current="page"] .bn-name { font-weight: 800; }
+.bn li a.bn-t-review { border-left-color: var(--accent); } .bn li a.bn-t-person { border-left-color: var(--change); }
+.bn li a.bn-t-done { border-left-color: var(--ok); } .bn li a.bn-t-failed { border-left-color: var(--reject); }
+.bn-spin { position: absolute; right: 8px; top: 50%; width: 12px; height: 12px; margin-top: -8px; border: 2px solid var(--line);
+           border-top-color: var(--accent); border-radius: 50%; animation: pp-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .bn-spin { animation: none; border-color: var(--accent); background: var(--accent); width: 8px; height: 8px; margin-top: -6px; } }
+.bn-name { display: block; font-weight: 600; overflow-wrap: anywhere; } .bn-st { display: block; font-size: 13px; }
+.bn .hm-file { font-size: 12px; }
+/* R6: "Batch: <name>" and its count start where the items' text does (their 5 px border and 8 px padding) */
+.bn-h { margin: 4px 0 2px; } .bn-h a { color: var(--ink); font-weight: 700; text-decoration: none; display: block; padding: 4px 8px 4px 13px; border-radius: 4px; }
+.bn-h > .pp-note { display: block; padding-left: 13px; }
+.bn-h a:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); } .bn-h a[aria-current="page"] { background: color-mix(in srgb, var(--ink) 13%, var(--panel)); }
+.bn :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.bn.closed { display: none; }
+.bt-dash th[scope="row"] { min-width: 14em; } .bt-dash .bt-open { margin-top: 4px; }
+@media (min-width: 48em) {
+  body.bn-on:not(.bn-closed) { padding-left: 16rem; }   /* R6: the header meets the side list */
+  body.bn-on .bn:not(.closed) { position: fixed; top: 0; left: 0; bottom: 0; width: 16rem; margin: 0; border-radius: 0; border-width: 0 1px 0 0; overflow-y: auto; z-index: 5; }
+}
+@media (max-width: 640px) { .bn { margin: 8px 10px; } }
+.pp .pp-cleared { margin: 8px 0; }
+/* P6/P7: the run page's header (the app's own, review.html's replaced as served) lines up with the app bar, the panel and
+   the report's 1200 px column, with the side list open or closed; P12: the name and "Source PDF:" close together */
+header.top.pp-head { max-width: none; margin: 0; box-sizing: border-box; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px max(16px, calc((100% - 1200px) / 2 + 16px)); }
+header.top.pp-head h1 { font-size: 19px; margin: 0; overflow-wrap: anywhere; }
+.pp-page header h1 { margin: 10px 0 0; } .pp-page header h1 + .mc-book, header.pp-head .mc-book { margin: 0 0 6px; }
+.mc-book .hm-file { line-height: 1.4; }
+/* P5: a link the app's pages show is a button, inside or outside a card */
+.pp-page a.pp-btn { font: inherit; font-size: 14px; padding: 6px 12px; min-height: 32px; border: 1px solid var(--muted); border-radius: 4px; box-sizing: border-box;
+      background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-block; }
+.pp-page a.pp-btn:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); text-decoration: none; }
+.pp-page a.pp-btn.pp-primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+.pp-page a.pp-btn.pp-primary:hover { background: color-mix(in srgb, var(--accent) 82%, var(--ink)); }
+/* D7: switching pages within the app fades instead of flashing (same-origin view transitions; no script, no CSP change),
+   the page background is set before anything draws, and a narrow screen with no choice made starts with the list closed */
+@view-transition { navigation: auto; }
+html { background: var(--bg); }
+@media (max-width: 48em) { body.bn-auto .bn { display: none; } }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+/* D4: "Language of the Scanned Pages": the label, its select and "Continue" on one row */
+.pp .pp-row label { font-weight: 600; }
+.pp .pp-row select { font: inherit; font-size: 14px; min-height: 32px; padding: 2px 6px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); max-width: 100%; }
+/* Patrick's test, 2026-11-07: the drop zone (Q1), the narrow Select column (Q3), the "⋯" menus (Q4), Edit Name in place */
+.hm-drop { display: flex; gap: 12px; align-items: center; border: 2px dashed var(--muted); border-radius: 8px; padding: 14px 16px; margin: 8px 0; }
+.hm-drop.hm-over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.hm-drop-i { flex: none; color: var(--accent); }
+.hm-drop-r { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.hm-drop .pp-note { margin: 4px 0 0; }
+.pp .hm-drop button { width: auto; }
+.hm-t .hm-sel { width: 1%; text-align: center; white-space: nowrap; padding-left: 8px; padding-right: 8px; }
+.hm-t .hm-sel input { margin: 0; }
+.hm-acts { white-space: nowrap; }
+.hm-menu { position: relative; display: inline-block; }
+.pp .hm-more { min-width: 36px; font-weight: 700; letter-spacing: 1px; }
+.hm-mlist { position: fixed; z-index: 20; display: flex; flex-direction: column; min-width: 11em;
+            background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
+.hm-mlist[hidden] { display: none; }
+.pp .hm-mlist button { border: 0; background: none; text-align: left; width: 100%; border-radius: 4px; }
+/* R3: a menu opened by the mouse shows no item highlighted; by the keyboard, the focused item (:focus-visible) */
+.pp .hm-mlist button:hover, .pp .hm-mlist button:focus-visible { background: color-mix(in srgb, var(--ink) 8%, var(--panel)); text-decoration: none; }
+.pp .hm-mlist button:focus:not(:focus-visible) { outline: none; }
+.pp .hm-mlist button:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.pp .hm-mlist .hm-danger { color: var(--reject); font-weight: 600; }
+.hm-t tr.hm-new > * { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.hm-rename { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 2px 0; }
+.hm-rename input { font: inherit; padding: 4px 6px; min-width: 14em; flex: 1 1 14em; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); }
+.hm-rename .pp-warn-t { flex-basis: 100%; }
+@media (max-width: 600px) { .pp .hm-mlist button, .pp .hm-more, .pp .hm-rename button { width: auto; } .hm-acts { white-space: normal; } }
+.hm-t .hm-book[hidden], .hm-t .hm-run[hidden] { display: none; }
+/* Patrick's test, 2026-11-07 (Q6, Q8, Q9): the run and batch pages' header at the top of the screen, "Home Page" (and the
+   side list's button) on its right; under the name, the run's details on one line and a batch PDF's batch */
+header.top.pp-hd { padding-top: 8px; padding-bottom: 6px; }
+/* R4: the page's name with "Home Page" (and the PDF list's button) right beside it, on the same line */
+.pp-hd-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.pp-hd-top h1 { margin: 0; }
+.pp-page header .pp-hd-top h1 { margin: 0; }
+.pp-hd-top .pp-appbar { margin: 0; padding: 0; max-width: none; flex: none; }
+/* R5: the details on one line where the width allows (they wrap only when they must), the batch line close under them */
+.pp-hd-det { margin: 2px 0 2px; font-size: 14px; overflow-wrap: anywhere; }
+.pp-hd-batch { margin: 0 0 2px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 14px; }
+.pp-hd-batch .pp-btn { padding: 3px 10px; min-height: 28px; }
+@media (max-width: 640px) { .pp-hd-top .pp-appbar { padding: 0; } }
+/* Patrick, 2026-11-07 (S2-S7) */
+/* S2: with the side list shown, the page's header sits right against it */
+@media (min-width: 48em) { body.bn-on:not(.bn-closed) header.top.pp-head { padding-left: 16px; } }
+/* ---- T3 as revised by U2 (Patrick, 2026-11-07), one block: delete it to undo. Run Actions meets the header with no
+   gap; Run Actions, "Ready to Ship?" and the Accessibility Evaluation keep their gaps between each other, and start at the
+   side list's edge when it is shown; the review's own sections below keep their gap from the list. */
+#pdfrem-panel > section.pp:first-of-type { margin-top: 0; border-top-width: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+@media (min-width: 48em) {
+  body.bn-on:not(.bn-closed) #pdfrem-panel, body.bn-on:not(.bn-closed) #main { max-width: none; margin-left: 0; margin-right: 0; padding-left: 0; }
+  body.bn-on:not(.bn-closed) #pdfrem-panel > section.pp:first-of-type, body.bn-on:not(.bn-closed) #main > #pdfrem-checks { margin-left: 0; max-width: none; }
+  body.bn-on:not(.bn-closed) #main > section.ship { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+  body.bn-on:not(.bn-closed) #pdfrem-panel > section.pp:first-of-type, body.bn-on:not(.bn-closed) #main > #pdfrem-checks > .pp-checks {
+    border-left-width: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+  body.bn-on:not(.bn-closed) #pdfrem-panel ~ #main > :not(.ship):not(#pdfrem-checks) { margin-left: 16px; }   /* run pages only */
+}
+/* ---- end of T3 */
+/* S2, 18-L2 (Patrick, 2026-11-07): "Batch: <name>" is the way to the batch page: styled like the list's items (the text's
+   colour, no underline, their hover highlight and focus ring), only bigger; its count smaller under it */
+.bn-h a { font-size: 17px; }
+.bn-h > .pp-note { font-size: 12px; }
+/* S3: a batch PDF's batch line holds the list's button and "Home Page" */
+.pp-hd-batch .pp-appbar { margin: 0; padding: 0; max-width: none; flex: none; }
+/* S5: room between a batch's pill and its words */
+.hm-st { margin-left: 6px; }
+/* S6: New Run's header */
+header.nr-head { padding-top: 18px; } header.nr-head h1 { margin: 0 0 10px; }
+.nr-src { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.nr-src .pp-appbar { margin: 0; padding: 0; max-width: none; }
+/* S7: New Batch's "Home Page" 3 px left and 2 px down */
+.nb-page .pp-hd-top .pp-appbar { position: relative; left: -3px; top: 2px; }
+/* T2 (Patrick, 2026-11-07): the batch page's "This Batch" panel joins its header, and the side list when it is shown */
+#main > #bt-panel { margin-top: 0; border-top-width: 0; border-radius: 0; }
+@media (min-width: 48em) {
+  body.bn-on:not(.bn-closed) main:has(> #bt-panel) { max-width: none; margin-left: 0; margin-right: 0; padding-left: 0; }
+  body.bn-on:not(.bn-closed) #main > #bt-panel { margin-left: 0; border-left-width: 0; }
+}
+.bt-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; } .bt-acts .bt-open { margin-top: 0; }
+/* T4: New Run and New Batch as pop-ups */
+.pp-form-dlg { width: min(600px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow: auto; }
+.pp-form-dlg h3 { font-size: 15px; margin: 10px 0 4px; }
+.pp-form-dlg .mc-book { margin: 0 0 8px; } .pp-form-dlg .hm-active { margin: 4px 0 8px; }
+.pp-form-dlg .nb-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; }
+.pp-form-dlg .pp-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; } .pp-form-dlg .pp-row button { margin-right: 0; }
+.pp-form-dlg .pp-field-e { margin: 4px 0 0; } .pp-form-dlg .dlg-msg { border: 1px solid var(--reject); border-radius: 4px; padding: 6px 10px; margin: 8px 0; }
+.pp-form-dlg .dlg-msg[hidden], .pp-form-dlg .pp-field-e[hidden] { display: none; }
+.pp-form-dlg .nb-pdf { display: block; flex: 1 1 14em; min-width: 0; }
+/* U3: "Home Page" at the end of the "Source PDF:" line where there is no PDF list button */
+.pp-hd-src { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 2px 0 4px; }
+.pp-hd-src .pp-appbar { margin: 0; padding: 0; max-width: none; }
+/* U6: while a pop-up is open the page behind doesn't scroll (and stays where it was) */
+html:has(dialog[open]) { overflow: hidden; }
+/* U7: "Home Page" (a link) and "Show/Hide the PDF List" (a button) the same size wherever they sit together */
+.pp-appbar .pp-btn { display: inline-flex; align-items: center; justify-content: center; line-height: 20px; height: 34px; min-height: 0; padding: 0 12px; vertical-align: middle; }

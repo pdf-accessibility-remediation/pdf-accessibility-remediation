@@ -60,7 +60,7 @@ def test_the_pdf_and_the_record_zip(mapp):
     assert pdf.compress_type == zipfile.ZIP_STORED and z.read(pdf) == open(os.path.join(R, 'sample_remediated.pdf'), 'rb').read()
     rd = z.read(f'{folder}/READ-ME.txt').decode()
     assert sha not in rd and 'sha256' not in rd and 'Status: Not Ready · 1 issue noted' in rd             # no hash line (Patrick, 2026-11-01)
-    assert rd.split('\n')[1] == 'Source PDF Filename: sample.pdf'
+    assert rd.split('\n')[1] == 'Source PDF: sample.pdf'
     assert ('- review.html: the report on this version (what was changed, what was checked, and the results of the accessibility '
             'evaluation). Open it in a web browser.') in rd
     assert 'Accessibility evaluation results recorded on this file: 1 (in review.html)' in rd and 'evaluation-results.json' not in rd
@@ -91,7 +91,7 @@ def test_refusals_for_downloads(mapp):
 # ------------------------------------------------------------------ an earlier version, and one moment per download
 def add_version(R, vid='001', text='an earlier PDF'):
     V = os.path.join(R, 'reviews', 'versions', vid); os.makedirs(V)
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(200, 200)); doc.docinfo['/Title'] = text; doc.save(os.path.join(V, 'sample_remediated.pdf'))
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(200, 200)); doc.docinfo['/Title'] = text; doc.save(os.path.join(V, 'sample_remediated.pdf'), deterministic_id=True)
     core.save(os.path.join(V, 'record.json'), {'document': {'file': 'sample.pdf', 'output': 'sample_remediated.pdf'}})
     open(os.path.join(V, 'review.md'), 'w').write('# old\n'); open(os.path.join(V, 'review.html'), 'w').write('<p>old</p>')
     return V
@@ -152,7 +152,7 @@ def test_a_promotion_during_a_download_never_mixes_two_versions(tmp_path):
     d = DL.prepare(R, 'r', 'current', 'record')                                       # every member opened under the lock
     V = os.path.join(R, 'reviews', 'versions', 'ai'); os.makedirs(V)                  # a promotion: the files moved by rename,
     for n in ('sample_remediated.pdf', 'review.md', 'review.html'): shutil.move(os.path.join(R, n), os.path.join(V, n))
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(400, 400)); doc.save(os.path.join(R, 'sample_remediated.pdf'))   # and new ones put in place
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(400, 400)); doc.save(os.path.join(R, 'sample_remediated.pdf'), deterministic_id=True)   # and new ones put in place
     open(os.path.join(R, 'review.html'), 'w').write('<p>the new page</p>')
     buf = io.BytesIO(); DL.stream_zip(buf, d)
     z = zipfile.ZipFile(buf); f = d['folder']

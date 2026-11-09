@@ -170,7 +170,7 @@ def bring_back(argv):
     else: print(f'▶ {C}: the edited PDF is already in place; carrying on')
 
     env = {'RUN_DIR': C, 'OUT': (rec.get('document') or {}).get('output') or ''}
-    if to == 'review': env.update({'DECIDE': 'none', 'REVIEW': '1'})
+    if to == 'review': env.update({'DECIDE': 'none', 'REVIEW': '1', 'PAGE_READS': 'off'})   # no AI call at all, page readings included
     cmd = ['bash', os.path.join(HERE, 'run_api.sh'), copy, name, label]
     shown = ' '.join(f'{k}={v}' for k, v in env.items() if v) + ' ' + ' '.join(f'"{x}"' if ' ' in x else x for x in cmd)
     if '--no-run' in argv: print(f'next (from {HERE}):\n  {shown}'); return 0

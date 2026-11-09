@@ -172,6 +172,10 @@ def build_items(wo, digest, order=None, ro=None):
         add(f'ocr_words:{it.get("id")}', 'ocr_words', 'OCR words', ['ocr_words', i], it.get('reads'), f'OCR read "{it.get("text")}"',
             page=(w.get('pages') or [None])[0], before=it.get('text'), edit='text', field='reads', count=it.get('count'),
             word=f'word/{it.get("id")}.png' if cell else None, sheet=None if cell else sheet, word_id=it.get('id'))
+    for i, it in enumerate(wo.get('page_readings') or []):    # read_pages.py (#49): a whole page transcribed by the AI
+        pg_ = it.get('page') if isinstance(it, dict) else None
+        add(f'page_readings:{i}', 'page_readings', 'Page readings', ['page_readings', i], (it or {}).get('text'),
+            f'AI reading of page {labels.get(pg_) or pg_}', page=pg_ if isinstance(pg_, int) else None, edit='text', field='text')
     for i, it in enumerate(wo.get('deferrals') or []):
         ps = [p for p in it.get('pages') or [] if isinstance(p, int)] if isinstance(it, dict) else []
         add(f'deferrals:{i}', 'deferrals', 'Deferred by the AI', ['deferrals', i], it, (it or {}).get('what') or 'Deferral',
@@ -203,7 +207,7 @@ def build_items(wo, digest, order=None, ro=None):
         add('notes_for_reviewer', 'notes_for_reviewer', 'Deferred by the AI', ['notes_for_reviewer'], wo['notes_for_reviewer'],
             'Note to the reviewer from the AI', page=refs[0] if refs else None, page_refs=refs)
     listed = {'retype', 'rolemap', 'actual_text', 'merges', 'document', 'alt', 'page_figures', 'tables', 'flatten', 'keep_lists',
-              'artifacts', 'ocr_words', 'deferrals', 'notes_for_reviewer', 'schema', *READING} | workorder_check.META
+              'artifacts', 'ocr_words', 'page_readings', 'deferrals', 'notes_for_reviewer', 'schema', *READING} | workorder_check.META
     if figures_card(ro): listed.add('fix_figure_order')            # the Figures Moved card is that decision
     for k, v in wo.items():
         if k not in listed:
@@ -899,7 +903,7 @@ def apply_decisions(ai_wo, items, decisions):
         for k in loc[:-1]: parent = parent[k]
         if isinstance(parent, list): del parent[loc[-1]]
         else: parent.pop(loc[-1], None)
-    for k in ('retype', 'alt', 'page_figures', 'tables', 'actual_text', 'merges', 'flatten', 'keep_lists', 'ocr_words', 'document', 'rolemap',
+    for k in ('retype', 'alt', 'page_figures', 'tables', 'actual_text', 'merges', 'flatten', 'keep_lists', 'ocr_words', 'page_readings', 'document', 'rolemap',
               'adopt_orphans', 'move_to_document_start', 'move_section'):
         if k in wo and wo[k] in ([], {}) and ai_wo.get(k): del wo[k]       # a key with every item rejected is left out, as the AI would
     return wo
@@ -1088,6 +1092,7 @@ FIX = {
     'group_rows and repeat_rows must list row numbers in the table': 'Some rows named here are not in the table. Reject this choice.',
     'no header rows or columns': 'Choose at least one header row or column. If the table has no headers, reject this choice.',
     'the same table twice': 'This table is decided twice. Keep one choice and reject or remove the other.',
+    'the same page twice': 'This page has two readings. Keep one and reject the other.',
     'not a BCP 47 language tag': 'Choose a language from the list, or choose Other and type a language tag such as en-US or haw.',
     'not a list the one-item rule would flatten': 'Nothing would flatten this list, so there is nothing to keep. Reject this choice.',
     'unknown style or direction': 'The book has no such style. Reject this choice.',
