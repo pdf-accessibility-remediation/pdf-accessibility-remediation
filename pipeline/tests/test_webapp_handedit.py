@@ -10,7 +10,7 @@ import pytest
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # pipeline/
 sys.path.insert(0, HERE)
-from webapp import jobs, runs  # noqa: E402
+from webapp import jobs, runs, books  # noqa: E402
 from test_webapp import setup, settings, get, app, wait  # noqa: E402,F401  (fixtures)
 from test_webapp_panel import post  # noqa: E402
 from test_webapp_checks import mapp, req  # noqa: E402,F401
@@ -26,7 +26,7 @@ def finished_run(t):
     return R
 
 def upload(t, name='edited.pdf', data=b'%PDF-1.7 edited'):
-    (t / 'uploads').mkdir(exist_ok=True); (t / 'uploads' / name).write_bytes(data); return t / 'uploads' / name
+    E = t / 'uploads' / '.edited'; E.mkdir(parents=True, exist_ok=True); (E / name).write_bytes(data); return E / name
 
 # ------------------------------------------------------------------ start_bring_back
 def test_bring_back_queues_handedit_import_as_a_new_run(setup):
@@ -163,14 +163,22 @@ def test_a_log_that_cannot_be_written_never_stops_the_download(mapp):
     os.mkdir(os.path.join(R, 'hand_edits.json'))                                        # a folder where the log would go
     assert req(port, 'GET', '/run/batches/d1/sample/download?what=pdf&v=current')[0] == 200
 
+def test_a_cleared_book_is_never_brought_back_or_started(setup):
+    s = settings(setup); R = finished_run(setup); upload(setup)
+    (R / 'release').mkdir(); (R / 'release' / 'cleared.json').write_text(json.dumps({'state': 'done'}))   # "Clear This Book's Files"
+    with pytest.raises(ValueError, match='were cleared'): runs.start_bring_back(s, 'book/r1', str(R), 'edited.pdf', 'Pat', 'n')
+    with pytest.raises(ValueError, match='were cleared'): runs.resume_bring_back(s, 'book/r1', str(R), 'cold')
+    assert "s.cleared ? ' · brought back but not run; this book" in src('webapp/panel.js')     # and the panel offers no Start
+
 # ------------------------------------------------------------------ the upload (POST /api/run/<run>/upload, raw PDF bytes)
-def put(port, path, data, name='edited.pdf', ctype='application/pdf', length=None, origin=None):
+def put(port, path, data, name='edited.pdf', ctype='application/pdf', length=None, origin=None, ours=True):
     c = http.client.HTTPConnection('127.0.0.1', port, timeout=15)
     try:
         c.putrequest('POST', path, skip_host=True, skip_accept_encoding=True)
         c.putheader('Host', f'127.0.0.1:{port}'); c.putheader('Content-Type', ctype)
         c.putheader('Content-Length', str(len(data)) if length is None else length)
         if name is not None: c.putheader('X-File-Name', urllib.parse.quote(name))
+        if ours: c.putheader('X-Pdfrem-Upload', '1')
         if origin: c.putheader('Origin', origin)
         c.endheaders(data)
         r = c.getresponse(); return r.status, json.loads(r.read() or b'{}')
@@ -178,15 +186,17 @@ def put(port, path, data, name='edited.pdf', ctype='application/pdf', length=Non
     finally: c.close()
 
 def test_an_uploaded_pdf_is_saved_under_a_clean_name_and_never_replaces_another(app):
-    port, t = app['port'], app['t']; U = t / 'uploads'
+    port, t = app['port'], app['t']; U = t / 'uploads' / '.edited'
     st, b = put(port, '/api/run/book/r1/upload', b'%PDF-1.7 one', 'edited.pdf')
     assert st == 200 and b == {'file': 'edited.pdf', 'sha256': hashlib.sha256(b'%PDF-1.7 one').hexdigest(), 'size': 12}
     assert (U / 'edited.pdf').read_bytes() == b'%PDF-1.7 one'
     assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7 one', 'edited.pdf')[1]['file'] == 'edited.pdf'    # the same file: its name
     assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7 two', 'edited.pdf')[1]['file'] == 'edited-2.pdf'  # another: a new name
-    assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7 x', '../../x\x01y')[1]['file'] == 'x_y.pdf'
+    assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7 x', '../../x\x01y')[1]['file'] == 'xy.pdf'
     assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7 z', '.hidden.PDF')[1]['file'] == 'hidden.pdf'
-    assert sorted(os.listdir(U)) == ['edited-2.pdf', 'edited.pdf', 'hidden.pdf', 'x_y.pdf']   # no .part file left
+    assert sorted(os.listdir(U)) == ['edited-2.pdf', 'edited.pdf', 'hidden.pdf', 'xy.pdf']   # no .part file left
+    assert not [n for n in os.listdir(t / 'uploads') if n.endswith('.pdf')]              # beside the books, never among them
+    assert books.listing(settings(t)) == []                                                # so never offered as a book
 
 def test_an_upload_is_refused_before_anything_is_kept(app):
     port, t = app['port'], app['t']
@@ -194,13 +204,15 @@ def test_an_upload_is_refused_before_anything_is_kept(app):
     assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7', ctype='application/json')[0] == 415
     assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7', length='12a')[0] == 411
     assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7', origin='http://evil.example')[0] == 403
+    assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7', ours=False)[0] == 403              # no X-Pdfrem-Upload
     assert put(port, '/api/run/book/nope/upload', b'%PDF-1.7')[0] == 404
-    st, b = put(port, '/api/run/book/r1/upload', b'%PDF-1.7', length=str(600 * 1_000_000))
-    assert st == 413 and b['error'] == 'The PDF is larger than the app accepts (500 MB).'
+    st, b = put(port, '/api/run/book/r1/upload', b'%PDF-1.7', length=str(1025 << 20))           # upload_max_mb, 1024 by default
+    assert st == 413 and b['error'] == 'The PDF is larger than the limit of 1 GB.'
     sk = socket.create_connection(('127.0.0.1', port))                             # Cancel: the body stops before its length
     sk.sendall(f'POST /api/run/book/r1/upload HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/pdf\r\n'
-               f'Content-Length: 100000\r\nX-File-Name: half.pdf\r\n\r\n'.encode() + b'%PDF-1.7 half'); sk.close()
-    parts = lambda: [f for f in (os.listdir(t / 'uploads') if (t / 'uploads').exists() else []) if f.endswith('.part') or f == 'half.pdf']
+               f'Content-Length: 100000\r\nX-Pdfrem-Upload: 1\r\nX-File-Name: half.pdf\r\n\r\n'.encode() + b'%PDF-1.7 half'); sk.close()
+    E = t / 'uploads' / '.edited'
+    parts = lambda: [f for f in (os.listdir(E) if E.exists() else []) if f.endswith('.part') or f == 'half.pdf']
     assert wait(lambda: parts() == [], 10), parts()
 
 def test_upload_then_bring_back_queues_the_import_of_that_file(app):
@@ -211,7 +223,7 @@ def test_upload_then_bring_back_queues_the_import_of_that_file(app):
     st, b = post(port, '/api/run/book/r1/bring-back', {'file': u['file'], 'by': 'Pat', 'note': 'new photo'})
     assert st == 202
     j = jobs.load(str(t / 'runs' / '.app'), b['job']['id'])
-    assert j['argv'][4] == str(t / 'uploads' / 'My edit.pdf')
+    assert j['argv'][4] == str(t / 'uploads' / '.edited' / 'My edit.pdf')
 
 # ------------------------------------------------------------------ a run with no AI call: "the beginning", never "the AI's"
 def test_the_panel_and_jobs_of_an_edited_run_never_credit_the_ai(setup):

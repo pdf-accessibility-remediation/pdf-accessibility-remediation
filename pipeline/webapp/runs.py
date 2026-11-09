@@ -13,7 +13,7 @@ and uploads/ (read only; sha256s cached in <jobs>/sha256-cache.json by path, siz
 import os, re, sys, json, signal, hashlib, datetime, urllib.parse
 from review import sessions as S
 from lib import dates as D, release as REL
-from . import config, jobs, logs
+from . import config, jobs, logs, books as BK
 
 def load(p):
     try: return json.load(open(p, encoding='utf-8'))
@@ -55,48 +55,64 @@ def ready(R, rec):
 
 # ------------------------------------------------------------------ the original, by sha256
 def find_original(s, sha, name=None):
-    """A PDF in samples/ or uploads/ whose sha256 is sha (files named `name` are tried first), or None."""
-    cache_p = os.path.join(s['jobs'], 'sha256-cache.json'); cache = load(cache_p) or {}
-    cands = []
-    for root in (s['samples'], s['uploads']):
-        if not os.path.isdir(root): continue
-        for d, _, fs in os.walk(root):
-            cands += [os.path.join(d, f) for f in fs if f.lower().endswith('.pdf')]
+    """A PDF in samples/ or uploads/ whose sha256 is sha (files named `name` are tried first), or None. Dot-folders are
+    left out (uploads/.incoming holds unfinished uploads); hashes come from the shared cache (webapp/books.py hashes)."""
+    from . import books
+    cands = books.pdfs_in(s['samples']) + books.pdfs_in(s['uploads'])
     cands.sort(key=lambda p: (os.path.basename(p) != name, p))
-    found, dirty = None, False
-    for p in cands:
-        try: st = os.stat(p)
-        except OSError: continue
-        key = [st.st_size, st.st_mtime_ns]
-        c = cache.get(p)
-        if not c or c[:2] != key:
-            c = key + [S.sha_file(p)]; cache[p] = c; dirty = True
-        if c[2] == sha: found = p; break
-    if dirty:
-        os.makedirs(s['jobs'], exist_ok=True); tmp = cache_p + '.tmp'
-        json.dump(cache, open(tmp, 'w'), indent=0); os.replace(tmp, cache_p)
-    return found
+    found = []
+    books.hashes(s, cands, stop=lambda p, h: h == sha and not found.append(p))
+    return found[0] if found else None
+
+def own_pdf(R):
+    """The run's own original PDF (R17: <run>/source/), or None: a run made before R17 finds its original by sha256."""
+    return S.own_source(R)
+
+def own_sha(s, R):
+    p = own_pdf(R)
+    if not p: return None
+    from . import books as BK
+    return BK.hashes(s, [p]).get(p)
+
+def input_of(R, rec):
+    """Where this run's next review reads its PDF from, before any search (shared by pdf_needed and the Trash's per-run
+    warning, webapp/trash.py effect): {'kind': 'copy'} its own intake copy; {'kind': 'path', 'path'} the existing file its
+    review basis names (for a tagged PDF, the original itself); {'kind': 'lost', 'why'} its own intake result is missing;
+    {'kind': 'unknown', 'why'} its record names no sha256; {'kind': 'find', 'sha', 'name'} the original, found by sha256."""
+    b = S.basis(R)
+    if b and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json')):
+        if os.path.isfile(os.path.join(R, '_intake', 'intake.pdf')): return {'kind': 'copy'}
+        inp = b.get('input') or {}
+        if inp.get('path') and os.path.isfile(inp['path']): return {'kind': 'path', 'path': inp['path']}
+        sha = inp.get('sha256')
+        if inp.get('path') and os.path.basename(os.path.dirname(inp['path'])) == '_intake':     # the run's own intake result
+            return {'kind': 'lost', 'why': (f'this run\'s input, {inp["path"]} (its intake result, sha256 {(sha or "")[:16]}), is missing: it was made by '
+                                            'intake and is not in samples/; the run cannot be reviewed again without it')}
+    else:
+        if ((rec.get('intake') or {}).get('result') or {}).get('pdf'): return {'kind': 'copy'}
+        sha = ((rec.get('workorder') or {}).get('source') or {}).get('sha256') or (rec.get('document') or {}).get('sha256')
+    if not sha: return {'kind': 'unknown', 'why': 'This run\'s record doesn\'t say which PDF it was made from, so its original PDF can\'t be found.'}
+    return {'kind': 'find', 'sha': sha, 'name': (rec.get('document') or {}).get('file')}
 
 def pdf_needed(s, R, rec):
     """(--pdf path or None, refusal or None) for this run's next review command."""
-    b = S.basis(R)
-    if b and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json')):
-        if os.path.isfile(os.path.join(R, '_intake', 'intake.pdf')): return None, None
-        inp = b.get('input') or {}
-        if inp.get('path') and os.path.isfile(inp['path']): return None, None
-        sha = inp.get('sha256')
-        if inp.get('path') and os.path.basename(os.path.dirname(inp['path'])) == '_intake':     # the run's own intake result
-            return None, (f'this run\'s input, {inp["path"]} (its intake result, sha256 {(sha or "")[:16]}), is missing: it was made by '
-                          'intake and is not in samples/; the run cannot be reviewed again without it')
-    else:
-        if ((rec.get('intake') or {}).get('result') or {}).get('pdf'): return None, None
-        sha = ((rec.get('workorder') or {}).get('source') or {}).get('sha256') or (rec.get('document') or {}).get('sha256')
-    name = (rec.get('document') or {}).get('file')
-    if not sha: return None, 'This run\'s record doesn\'t say which PDF it was made from, so its original PDF can\'t be found.'
+    i = input_of(R, rec)
+    if i['kind'] in ('copy', 'path'): return None, None
+    if i['kind'] in ('lost', 'unknown'): return None, i['why']
+    sha, name = i['sha'], i['name']
+    if own_sha(s, R) == sha: return own_pdf(R), None       # R17: the run's own copy
     p = find_original(s, sha, name)
     if p: return p, None
+    if moved_words(s, sha): return None, moved_words(s, sha)
     return None, (f'The book\'s original PDF ({name or "its file"}) wasn\'t found in the folder of original PDFs or of uploads. '
                   'Put a copy of it in one of them, then try again.')
+
+MOVED = ('The original PDF was moved to the Trash. "Review Again" needs it back: drag it from the Trash into the app\'s folder '
+         'of added PDFs (where it was), then try again.')
+def moved_words(s, sha):
+    """The plain sentence for an original PDF a person moved to the Trash (#45 D8), when the app's move log says so."""
+    from . import trash as TR
+    return MOVED if sha and TR.moved_pdf(s, sha) else None
 
 # ------------------------------------------------------------------ the panel's view of a run
 def live_review(s, run):
@@ -110,7 +126,10 @@ def job_view(s, j, with_text=False, offset=0):
     `log`); its steps in plain words, the step running now, its title (what happened), and for a failure the reason."""
     text = jobs.read_log(s['jobs'], j['id'])[0]
     R = jobs.run_dir(j, s['runs'])
-    v = {k: j.get(k) for k in ('id', 'kind', 'run', 'status', 'created', 'started', 'ended', 'exit', 'url', 'paid', 'after', 'then_job', 'note', 'what', 'first')}
+    v = {k: j.get(k) for k in ('id', 'kind', 'run', 'status', 'created', 'started', 'ended', 'exit', 'url', 'paid', 'after', 'then_job', 'note', 'what', 'first',
+                               'book_name', 'run_name')}
+    if j['kind'] in ('estimate', 'batch-estimate') and j['status'] == 'failed' and j.get('exit') == 4:
+        v['status'] = 'done'                                       # D4: stopped to ask the language (run_api.sh exit 4), not a failure
     if j.get('child'):                                  # Bring Back an Edited PDF: the new run it made, once there is one
         C = os.path.join(s['runs'], *str(j['child']).split('/'))
         v['child_url'] = run_url(s, C) if os.path.isdir(C) else None
@@ -123,7 +142,20 @@ def job_view(s, j, with_text=False, offset=0):
         v['interrupted'] = after_interrupt(R, j)
     v['step'] = logs.now_step(j['kind'], steps) if j['status'] == 'running' else None
     v['title'] = title(R, j, v); v['action'] = action(j); v['result'] = result(R, j, v)
-    v['reason'] = reason(v) if j['status'] in ('failed', 'interrupted') else None
+    from . import names as NM
+    if j.get('book_sha'): v['book_name'] = NM.book_name(s, j['book_sha'], j.get('book_file'))
+    elif j['kind'] == 'batch': v['book_name'] = 'Batch ' + NM.shown_run(s, j['run'])
+    v['run_name'] = NM.shown_run(s, j['run'])
+    if j['status'] == 'queued':                                    # what it waits for, by its plain name (Patrick, 2026-11-06)
+        al = jobs.all_jobs(s['jobs'])                              # a batch runs alone (D1): a run waits for it by name;
+        cur = next((x for x in al if x['status'] == 'running' and x['kind'] == 'batch'), None) or \
+              next((x for x in al if x['status'] == 'running' and x.get('counted', True) and jobs.related(x['run'], j['run'])), None)
+        if cur: v['waiting_for'] = ('the batch ' if cur['kind'] == 'batch' or cur['run'].startswith('batches/') else 'the run ') + \
+                                   f'"{NM.shown_run(s, cur["run"])}"'      #   else its place in line (3 runs at once)
+    ds = designed_stop(j)                                          # U4: a designed stop is never Failed
+    if ds: v['status'] = 'done' if ds == 'asked' else 'stopped'
+    v['reason'] = reason(v) if v['status'] in ('failed', 'interrupted') else None
+    v['detail'] = {'exit': j.get('exit'), 'log': v.get('log')} if v['status'] in ('failed', 'interrupted') else None   # folded "Details" only
     if with_text:
         t, nxt = jobs.read_log(s['jobs'], j['id'], offset); v.update(text=t, next=nxt)
     return v
@@ -137,7 +169,8 @@ SESSION_IN = re.compile(r'session (\d+)')
 
 def action(j):
     """The job's action, as it was asked for: "Review again from session 2"."""
-    return shown(j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin', 'ocr': 'Review OCR Text'}.get(j['kind'], j['kind']))
+    return shown(j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin', 'ocr': 'Review OCR Text', 'estimate': 'Get the estimate',
+                                    'spend': 'Start remediation: the AI call', 'rerun': 'Try again', 'batch': 'Run the batch'}.get(j['kind'], j['kind']))
 
 def shown(t):
     """A job line as the panel shows it, formatted when shown (so jobs recorded before the rule read the same): a session
@@ -158,7 +191,15 @@ def result(R, j, v):
     when = f' ({at})' if at else ''
     lost = st == 'interrupted' and (v.get('interrupted') or {}).get('state') == 'done'
     if st in ('queued', 'running', 'needs-spend'): return None
+    if st == 'superseded': return ('dismissed' if j.get('note') == 'dismissed' else 'replaced by a new estimate') + when
+    if j['kind'] in ('estimate', 'batch-estimate') and j['status'] == 'failed' and j.get('exit') == 4:
+        return 'stopped to ask the language of the scanned pages' + when
+    if designed_stop(j) == 'stopped': return 'stopped for a person (see why on this page)' + when
     if st == 'failed': return 'failed' + when
+    if j['kind'] in ('estimate', 'batch-estimate') and st == 'done': return 'estimate ready' + when
+    if j['kind'] in ('spend', 'rerun', 'replay') and st == 'done':
+        return ('stopped for review' if R and os.path.isfile(os.path.join(R, 'workorder.ai.json')) and not os.path.isfile(os.path.join(R, 'record.json'))
+                else 'finished') + when
     if st == 'interrupted' and not lost: return 'stopped without finishing' + when
     if j['kind'] == 'pin': return 'pinned' + when
     if j['kind'] == 'bring_back':                      # the new run waits for its review (or was applied since)
@@ -170,7 +211,10 @@ def result(R, j, v):
         return 'closed' + when + (f'; OCR verdict recorded: {got}' if got else '; no verdict recorded')
     if j.get('first') and j['kind'] == 'review':          # a waiting run's first review: Finish writes review.json
         rv = load(os.path.join(R, 'review.json')) if R else None
-        return f'review finished ({(rv or {}).get("reviewer") or "reviewer not recorded"}{", " + at if at else ""}), not applied yet' \
+        tj = j.get('then_job') or ''
+        after = '; its apply started' if re.fullmatch(r'\d{8}-\d{6}-\d+-apply', tj) else '; its apply couldn\'t start' if tj == 'refused' else \
+                ', applied next' if j.get('auto_apply') and tj in ('', 'starting') else ', not applied yet'          # D3
+        return f'review finished ({(rv or {}).get("reviewer") or "reviewer not recorded"}{", " + at if at else ""}){after}' \
             if rv else 'closed without "Finish Review"' + when
     m = SESSION_IN.search(out if out else (v.get('interrupted') or {}).get('text', ''))
     if not m and j.get('first') and j['kind'] == 'apply' and R and os.path.isfile(os.path.join(R, 'record.json')): m = SESSION_IN.search('session 1')
@@ -179,6 +223,14 @@ def result(R, j, v):
     who = ((S.session(R, sid) or {}).get('reviewer') if R else None) or 'reviewer not recorded'
     done = 'left open' if out.endswith('stays open') else 'applied'
     return shown(f'{S.label(sid)} {done} (' + (f'{who}, {at}' if done == 'applied' else at or 'time not recorded') + ')')
+
+STOP_KINDS = ('estimate', 'batch-estimate', 'spend', 'rerun', 'replay')
+def designed_stop(j):
+    """A job that ended by design, not by an error (U4, Patrick 2026-11-07): 'asked' (run_api.sh exit 4: stopped to ask the
+    language of the scanned pages) or 'stopped' (exit 3: intake stopped the PDF for a person, e.g. no page to tag, a
+    password, PDF 2.0); None otherwise. Never shown or counted as Failed."""
+    if j.get('status') != 'failed' or j.get('kind') not in STOP_KINDS: return None
+    return {4: 'asked', 3: 'stopped'}.get(j.get('exit')) if j['kind'] in ('estimate', 'batch-estimate') or j.get('exit') == 3 else None
 
 def title(R, j, v):
     """What the job did, in one line (sentence case, for "Last Job:" and Previous Jobs):
@@ -192,8 +244,9 @@ def reason(v):
     if v['status'] == 'interrupted': return 'The job stopped without finishing (the computer restarted, or the job was stopped).'
     out = v.get('outcome') or ''
     if S.FALLBACK.split('.')[0] in out: return S.FALLBACK_PAGE     # the pin refused: the command stays in the job's log
-    if out.startswith('refused: '): return out[len('refused: '):][:1].upper() + out[len('refused: ') + 1:]
-    return f'The command ended with an error (exit {v.get("exit")}).'
+    if out.startswith('refused: '):                          # the tool's own words, without its exit code (under "Details", U4)
+        x = re.sub(r'\s*\(exit \d+\)', '', out[len('refused: '):]); return x[:1].upper() + x[1:]
+    return 'The command ended with an error.'          # its exit code and log are under "Details" (U4)
 
 def after_interrupt(R, j):
     """An interrupted apply or review: what is left, from the run's state on disk, not from the job status (a killed wrapper
@@ -205,12 +258,12 @@ def after_interrupt(R, j):
     since = j.get('started') or ''
     applied = [x for x in ss if x.get('status') == 'applied' and (x.get('applied') or '') >= since]
     if os.path.exists(os.path.join(R, 'reviews', 'promoting.json')):
-        return {'state': 'apply', 'text': 'The apply stopped partway (reviews/promoting.json is there). Apply finishes it; it may apply the '
+        return {'state': 'apply', 'text': 'The apply stopped partway. "Try Again" finishes it; it may apply the '
                                           'session again. Previous results stay in reviews/versions/.'}
     if applied:
         return {'state': 'done', 'text': f'done (the app lost track of the job): {S.label(applied[-1]["id"])} is the current result'}
     u = unapplied(R)
-    if u: return {'state': 'apply', 'text': f'{u["label"].capitalize()} is finished and not applied: Apply applies it.'}
+    if u: return {'state': 'apply', 'text': f'{u["label"].capitalize()} is finished and not applied: "Try Again" applies it.'}
     op = [x for x in ss if x.get('status') == 'open']
     if j['kind'] == 'review' and op: return {'state': 'continue', 'text': f'{S.label(op[-1]["id"]).capitalize()} stays open: Continue review carries on with it.'}
     return {'state': 'none', 'text': 'The run shows no change from this job: start it again.'}
@@ -218,6 +271,11 @@ def after_interrupt(R, j):
 def run_path(run): return os.path.join(*run.split('/'))
 
 # ------------------------------------------------------------------ a PDF edited by hand (handedit.py, docs/hand-edits.md)
+def edited_dir(s):
+    """Where Bring Back an Edited PDF keeps its uploads: the uploads folder's .edited/, a dot-folder, so an edited copy is
+    never listed as a book to remediate, searched as an original or offered by the Trash (webapp/books.py pdfs_in)."""
+    return os.path.join(s['uploads'], '.edited')
+
 def run_url(s, P):
     """The app's page of a run folder under the runs folder, or None (outside it)."""
     rel = os.path.relpath(os.path.abspath(P), os.path.abspath(s['runs']))
@@ -254,6 +312,7 @@ def resume_bring_back(s, run, R, label):
     terminal command. The label must be one of this run's children; it is never used as a path on its own."""
     rec = load(os.path.join(R, 'record.json'))
     if not rec: raise ValueError('This run is not finished.')
+    if REL.cleared(R): raise ValueError('This book\'s working files were cleared, so an edited copy can\'t be compared with its result.')
     kid = next((c for c in (hand_edits(s, R, rec) or {}).get('children') or [] if c['label'] == label), None)
     if not kid: raise ValueError('No edited copy of this run has that name.')
     if kid['state'] != 'not started': raise ValueError(f'"{label}" is {kid["state"]}: there is nothing to start.')
@@ -273,6 +332,7 @@ def start_bring_back(s, run, R, name, by, note):
     its review (no AI call, $0; a paid run stays a terminal command). Refused, with words for the dialog, before anything runs."""
     rec = load(os.path.join(R, 'record.json'))
     if not rec: raise ValueError('This run is not finished: bring an edited PDF back to a finished run.')
+    if REL.cleared(R): raise ValueError('This book\'s working files were cleared, so an edited copy can\'t be compared with its result.')
     from . import manualpage as MP
     ds = MP.disk_state(R, rec)
     if ds['missing']: raise ValueError('This run\'s remediated PDF is missing, so an edited copy can\'t be compared with it.')
@@ -282,7 +342,7 @@ def start_bring_back(s, run, R, name, by, note):
         if not isinstance(v, str) or not v.strip(): raise ValueError(f'Say {what}.')
         if '\n' in v.strip() or len(v.strip()) > 200: raise ValueError(f'Say {what} in one line of at most 200 characters.')
     if not isinstance(name, str) or not name.lower().endswith('.pdf'): raise ValueError('Choose the edited PDF from the uploads folder.')
-    p = config.entry(s['uploads'], name) if s.get('uploads') else None   # a name from the uploads listing only, never a path
+    p = config.entry(edited_dir(s), name) if s.get('uploads') else None   # a name from the folder's listing only, never a path
     if not p or not os.path.isfile(p): raise ValueError(f'"{name}" is not in the uploads folder: save it there, then try again.')
     h = hashlib.sha256()
     with open(p, 'rb') as f:
@@ -296,6 +356,37 @@ def start_bring_back(s, run, R, name, by, note):
     argv = [sys.executable, 'handedit.py', 'import', R, p, '--by', by.strip(), '--note', note.strip(), '--label', label]
     return jobs.create(s['jobs'], 'bring_back', run, argv, config.child_env(s), R=R, what='Bring Back an Edited PDF',
                        child=os.path.relpath(C, s['runs']).replace(os.sep, '/'))
+
+def cleared_view(R):
+    """A cleared book's note for the panel: when, by whom, the shipment, the space freed; or None."""
+    c = REL.cleared(R)
+    if not c: return None
+    return {'state': c.get('state'), 'day': D.day(c.get('cleared') or c.get('planned')), 'by': c.get('by'), 'shipment': c.get('shipment'),
+            'mb': round((c.get('freed_bytes') or 0) / 1e6, 1)}
+
+def clear_offer(s, run, R, rec):
+    """"Clear This Book's Files" (#45, review/clear.py): offered only when its gate is open (never prompted elsewhere), with
+    what goes and what stays in words and sizes. Hashes come from the app's display cache; the clear itself hashes afresh."""
+    from review import clear as CL
+    from . import manualpage
+    try:
+        g = CL.gate(R, rec, sha=manualpage.disk_sha, busy=lambda: jobs.busy(s['jobs'], run, R))
+        if not g['ok']: return None
+        items = CL.plan(R, g['sha'], sha=manualpage.disk_sha, rec=rec) if not g.get('resume') else (REL.cleared(R) or {}).get('files') or []
+    except (OSError, ValueError, KeyError, TypeError): return None
+    return {'shipment': g['shipment'], 'resume': bool(g.get('resume')), 'confirm': CL.CONFIRM,
+            'goes': [{'what': x['what'], 'files': x['files'], 'size': f'{x["bytes"] / 1e6:.1f} MB'} for x in CL.summary(items)],
+            'size': f'{sum(x["bytes"] for x in items) / 1e6:.1f} MB'}
+
+def replay_offer(s, run, R):
+    """"New Run from the Saved Reply" (decided 2026-10-28) is offered once a review of this run was refused because the
+    run can no longer be reviewed (review/sessions.py FALLBACK), and the run has a saved reply and is not cleared."""
+    rj = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] in ('pin', 'review')]
+    if not rj or rj[-1]['status'] != 'failed': return None
+    if S.FALLBACK.split('.')[0] not in (logs.outcome(jobs.read_log(s['jobs'], rj[-1]['id'])[0]) or ''): return None
+    if REL.cleared(R) or not (load(os.path.join(R, 'record.json')) or {}).get('raw_reply'): return None
+    import datetime
+    return {'label': f'replay-{datetime.datetime.now():%Y-%m-%d-%H%M}'}
 
 def prune_plan(R):
     """"Clean Up Space": the previous versions whose PDF may be removed (review/prune.py plan, hashed through the app's
@@ -344,8 +435,11 @@ def state(s, run, R):
     live = live_review(s, run)
     h = jobs.lock_holder(R)
     rel = os.path.relpath(R, config.PIPELINE)
-    return {
-        'run': run, 'title': (rec.get('document') or {}).get('file') or run, 'review_html': os.path.isfile(os.path.join(R, 'review.html')),
+    from lib import costs
+    out = {
+        'run': run, 'mode': 'finished', 'run_name': __import__('webapp.names', fromlist=['x']).shown_run(s, run), 'file': BK.shown_file((rec.get('document') or {}).get('file') or ''), 'cost': costs.actual(R),
+        'cleared': cleared_view(R), 'clear': clear_offer(s, run, R, rec), 'replay': replay_offer(s, run, R),
+        'title': (rec.get('document') or {}).get('file') or run, 'review_html': os.path.isfile(os.path.join(R, 'review.html')),
         'review_md': os.path.isfile(os.path.join(R, 'review.md')), 'ready': ready(R, rec),
         'current': {'id': cur, 'label': S.label(cur)}, 'pending': (rec.get('review') or {}).get('pending'),
         'pinned': bool(S.basis(R)) and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json')),
@@ -365,6 +459,117 @@ def state(s, run, R):
         'batch': run.split('/')[1] if run.startswith('batches/') and len(run.split('/')) == 3 and
                  os.path.isfile(os.path.join(os.path.dirname(R), 'summary.html')) else None,
     }
+    sha = (rec.get('document') or {}).get('sha256')                  # D8: its original PDF moved to the Trash
+    if sha and moved_words(s, sha) and not find_original(s, sha, (rec.get('document') or {}).get('file')):
+        need = pdf_needed(s, R, rec)[1]
+        out['pdf_moved'] = {'text': 'The original PDF was moved to the Trash.' + (' "Review Again" needs it back: drag it from the Trash into the app\'s folder of added PDFs (where it was).'
+                                     if need else ' "Review Again" still works: it uses the copy the app made when it prepared the PDF.')}
+    if out['batch']: out['batch_name'] = __import__('webapp.names', fromlist=['x']).shown_run(s, f'batches/{out["batch"]}')   # 07 L4
+    return out
+
+# ------------------------------------------------------------------ a run started from the home page, before any result (#45)
+PENDING_MARKS = ('run.json', os.path.join('_intake', 'intake.json'), os.path.join('_intake', 'languages.json'), os.path.join('_audit', 'digest.json'))
+
+def pending(s, R):
+    """A run folder with no result yet and not stopped for its review: estimating, estimate ready, running, stopped or
+    failed. It holds one of run_api.sh's own files, or an app job names it (a run queued a moment ago is an empty folder)."""
+    if os.path.isfile(os.path.join(R, 'record.json')) or waiting(R): return False
+    if any(os.path.exists(os.path.join(R, m)) for m in PENDING_MARKS): return True
+    R = os.path.abspath(R)
+    return any(j.get('dir') == R and j['kind'] not in ('batch', 'summary') for j in jobs.all_jobs(s['jobs']))   # a batch's own jobs name its folder
+
+def book_of(s, run, R, js=None):
+    """(display name, file name) of a run's book: from the app's job, else intake's record or the estimate's source."""
+    from . import books as BK
+    for j in reversed(js if js is not None else [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]):
+        if j.get('book_sha') or j.get('book_name'):                 # resolved now: a rename shows at once (not the job's snapshot)
+            return (BK.name_of_sha(s, j.get('book_sha'), j.get('book_file')) if j.get('book_sha') else j['book_name']), BK.shown_file(j.get('book_file') or '')
+    o = (load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or (load(os.path.join(R, 'record.json')) or {}).get('document') \
+        or (load(os.path.join(R, 'run.json')) or {}).get('source') or {}
+    f = BK.shown_file(o.get('file') or '')
+    return (BK.name_of_sha(s, o.get('sha256'), f) if o.get('sha256') else None) or BK.stem_name(f or run.split('/')[-1]), f
+
+MODEL_NAMES = {'gpt-4o': 'GPT-4o', 'gpt-4o-mini': 'GPT-4o mini', 'gpt-4.1': 'GPT-4.1', 'gpt-4.1-mini': 'GPT-4.1 mini',
+               'o3': 'OpenAI o3', 'o3-mini': 'OpenAI o3-mini', 'o4-mini': 'OpenAI o4-mini'}   # names the rule below reads badly (V2)
+
+def model_words(m):
+    """A model's display name from its id: "anthropic/claude-sonnet-5.5" → "Claude Sonnet 5.5" (no provider, no id): the
+    table above for names the rule reads badly, else each part capitalized. A new model's name is checked when it is
+    adopted (docs/app.md)."""
+    if not m: return None
+    k = str(m).split('/')[-1].split(':')[0]
+    if k in MODEL_NAMES: return MODEL_NAMES[k]
+    w = k.replace('_', '-').split('-')
+    up = {'gpt': 'GPT', 'ai': 'AI', 'xl': 'XL'}
+    return ' '.join(up.get(x.lower(), x if x[:1].isdigit() else x[:1].upper() + x[1:]) for x in w if x)
+
+def details(s, run, R, pages=None):
+    """The run page header's line (Patrick's test, 2026-11-07, Q6, R5): "mm · 321 pages · Run on November 6, 2026,
+    at 9:29 PM · AI: Claude Sonnet 5.5 · AI Cost: $0.27 (worst-case estimate $0.61)", in plain words; a part with nothing
+    recorded is left out, and "AI" and "AI Cost" only once an AI reply exists (a saved one: "AI Cost: none (a saved reply
+    was used)"). The model is the original call's (lib/origin.py), never an id or a file name."""
+    from lib import dates as D, costs, origin
+    from . import names as NM
+    rec = load(os.path.join(R, 'record.json')); runj = load(os.path.join(R, 'run.json')) or {}
+    if not pages:
+        pages = ((rec or {}).get('document') or {}).get('pages') or ((load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or {}).get('pages')
+    try: pages = int(str(pages).replace(',', '')) if pages else None
+    except ValueError: pages = None
+    when = ((rec or {}).get('run') or {}).get('started') or runj.get('started')
+    out = [NM.shown_run(s, run)] + ([f'{pages:,} page{"" if pages == 1 else "s"}'] if pages else []) + \
+          ([f'Run on {D.when(when)}'] if when and D.parse(when) else [])
+    called = bool(rec) or os.path.isfile(os.path.join(R, 'workorder.ai.json')) or bool(runj.get('usage') or runj.get('response_from'))
+    if called:
+        model = (origin.summary(rec).get('model') if rec else None) or ((rec or {}).get('run') or {}).get('model') or runj.get('model')
+        if model_words(model): out.append(f'AI: {model_words(model)}')
+        c = costs.actual(R)
+        r_ = (rec or {}).get('run') or runj
+        if c['reused']: out.append('AI Cost: none (a saved reply was used)')   # L1 (review 15): labels in Title Case
+        elif (rec or {}).get('cost_total_usd') is None and (r_.get('usage') or {}).get('cost_usd') is None and not c['earlier_usd']:
+            out.append('AI Cost: not recorded')                # never a "$0.00" that was not measured
+        else: out.append(f'AI Cost: ${c["usd"]:.2f}' + (f' (worst-case estimate ${c["estimate_usd"]:.2f})' if c.get('estimate_usd') else ''))
+    return out
+
+def sent_words(est):
+    """What leaves the computer with the AI call, in words (02 M9): the parts counted from the estimate, a zero part left out."""
+    figs = max(0, (est.get('images') or 0) - (est.get('sheets') or 0)); sh = est.get('sheets') or 0
+    parts = ['the book\'s structure and much of its text']
+    if figs: parts.append(f'{figs} figure image{"" if figs == 1 else "s"}')
+    if sh: parts.append(f'{sh} image{"" if sh == 1 else "s"} of hard-to-read scanned words')
+    return 'Sent to the AI (Claude, through OpenRouter): ' + (', '.join(parts[:-1]) + (',' if len(parts) > 2 else '') + ' and ' + parts[-1] if len(parts) > 1 else parts[0]) + '.'
+
+def pending_state(s, run, R):
+    """The run page's view of a run started from the home page before its result: the estimate, Spend, the jobs, and what
+    "Try Again" does (decided from disk)."""
+    from lib import costs
+    from . import newrun, failures, names as NM
+    js = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]
+    name, file = book_of(s, run, R, js)
+    from . import spend as SP
+    try: est = costs.estimate(R, 'workorder', costs.limits_of(s), credit_read=SP.credit_read(s))   # U8
+    except Exception: est = None
+    test = bool(s.get('test_reply_dir'))
+    active = [j for j in js if j['status'] in jobs.ACTIVE]
+    needs = [j for j in js if j['status'] == 'needs-spend']
+    retry = newrun.retry_kind(R)
+    fail = None if active else failures.explain(s, R, js[-1] if js else None)
+    from . import lang as LG
+    lq = None if active else LG.question(s, R, js)                 # D4: "Language of the Scanned Pages"
+    phase = 'active' if active else 'needs-spend' if needs else 'language' if lq else 'stopped' if fail else 'saved-reply' if retry == 'rerun' else 'estimate' if est else 'new'
+    from_app = any(j['kind'] == 'estimate' for j in js)
+    batch = run.split('/')[1] if run.startswith('batches/') and len(run.split('/')) == 3 else None
+    if phase != 'active' and batch: phase = 'batch'            # a batch's book: its Spend is the batch's, on the batch page
+    elif phase != 'active' and not from_app: phase = 'outside'  # made from the terminal: its settings aren't known here
+    spend = None
+    if phase == 'estimate' and est:
+        b = est['blocked']
+        ok = not b or (test and b['code'] in ('offline', 'no_credit'))
+        spend = {'ok': ok, 'why': None if ok else (SP.credit_words(s) if b['code'] == 'no_credit' else b['words']), 'code': None if ok else b['code']}
+    if lq: fail = None
+    return {'run': run, 'mode': 'pending', 'title': name, 'file': file, 'run_name': NM.shown_run(s, run), 'phase': phase, 'language': lq,
+            'estimate': est, 'sent': sent_words(est) if est else None, 'spend': spend, 'retry': retry, 'failure': fail, 'test': test,
+            'from_app': from_app, 'batch': batch, 'batch_name': NM.shown_run(s, f'batches/{batch}') if batch else None,
+            'jobs': [job_view(s, j) for j in js]}
 
 # ------------------------------------------------------------------ a run stopped for its first review (REVIEW=1)
 def waiting(R):
@@ -383,47 +588,97 @@ def first_original(s, R):
     if not sha: return None, 'This run doesn\'t say which PDF it was made from, so its original PDF can\'t be found.'
     p = (load(os.path.join(R, 'review_stop.json')) or {}).get('src')
     if p and os.path.isfile(p) and S.sha_file(p) == sha: return p, None
+    if own_sha(s, R) == sha: return own_pdf(R), None       # R17: the run's own copy
     p = find_original(s, sha, name)
     if p: return p, None
+    if moved_words(s, sha): return None, moved_words(s, sha).replace('"Review Again" needs', 'Applying the reviewed decisions needs')
     return None, (f'The book\'s original PDF ({name or "its file"}) wasn\'t found in the folder of original PDFs or of uploads. '
                   'Put a copy of it in one of them, then try again.')
 
 def waiting_title(run, R):
     """A waiting run's heading: the original's file name (intake's record, else the path kept at the stop), else the run."""
     o = (load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or {}
-    return o.get('file') or os.path.basename((load(os.path.join(R, 'review_stop.json')) or {}).get('src') or '') or run
+    from . import books as BK
+    return BK.shown_file(o.get('file') or os.path.basename((load(os.path.join(R, 'review_stop.json')) or {}).get('src') or '') or run)
 
 def waiting_state(s, run, R):
     """The panel's view of a waiting run: whether its review is finished (review.json), and its jobs. No result, no
     sessions and no evaluation yet: those come with the first apply."""
     rv = load(os.path.join(R, 'review.json')) or {}
     live = live_review(s, run)
-    return {'run': run, 'title': waiting_title(run, R),
-            'waiting': {'reviewed': bool(rv), 'reviewer': rv.get('reviewer'), 'date': rv.get('date'),
+    name, file = book_of(s, run, R)
+    al = jobs.all_jobs(s['jobs'])                        # in the order they were made (job ids are timestamps)
+    rj = [j for j in al if j['run'] == run and j['kind'] == 'review' and j.get('first')]
+    last = rj[-1] if rj else {}
+    auto = None                                          # D3: what became of the apply "Finish Review" starts
+    if rv and last.get('auto_apply'):
+        tj = last.get('then_job')
+        # The newest first apply made after this review (review 12 L3): "Try Again" makes a new one, and the page follows
+        # it (the spinner while it is queued or running, the card with its own reason if it fails), never the first one's.
+        aj = next((j for j in reversed(al) if j['run'] == run and j['kind'] == 'apply' and j.get('first') and j['id'] > last['id']), None)
+        if aj and aj['status'] in ('failed', 'interrupted'):           # review 10 M1: the apply ended without a result
+            v = job_view(s, aj)
+            auto = {'state': 'failed', 'why': v.get('reason') or 'The apply stopped before it finished.', 'job': aj['id']}
+        elif not aj and tj == 'refused': auto = {'state': 'refused', 'why': last.get('then_why')}
+        else: auto = {'state': 'starting'}
+    return {'run': run, 'mode': 'waiting', 'title': waiting_title(run, R), 'book': name, 'file': file,
+            'waiting': {'reviewed': bool(rv), 'reviewer': rv.get('reviewer'), 'date': rv.get('date'), 'auto': auto,
                         'prepared': os.path.isfile(os.path.join(R, 'review_items.json'))},
             'live_review': job_view(s, live) if live else None,
-            'jobs': [job_view(s, j) for j in jobs.all_jobs(s['jobs']) if j['run'] == run]}
+            'jobs': [job_view(s, j) for j in al if j['run'] == run]}
 
 def start_first_review(s, run, R, port, app_pid=None):
     """Open the Review Page for a waiting run: review_workorder.py <run> --serve, as the terminal's step 1."""
-    if os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('The review is finished: "Apply" applies it.')
+    if os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('The review is finished: its decisions are being applied.')
     if not os.path.isfile(os.path.join(R, 'review_items.json')):
         raise ValueError('The review page was not prepared when this run stopped, so it can\'t be opened. Run the book again.')
     back = f'http://127.0.0.1:{port}/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/?after=finish'
     argv = [sys.executable, 'review_workorder.py', R, '--serve', '--no-browser', '--return-to', back]
     return jobs.create(s['jobs'], 'review', run, argv, config.child_env(s), counted=False, R=R, what='Review the edited PDF' if S.no_model(R) else 'Review the AI\'s decisions',
-                       app_pid=app_pid, first=True)
+                       app_pid=app_pid, first=True, auto_apply=True)
+
+def auto_apply(s):
+    """"Finish Review" applies at once (D3, Patrick 2026-11-06): after each dispatcher pass, a first review that has ended
+    with a review.json written since it started gets its apply (start_first_apply: the original is looked up now, never a
+    path kept from when the review opened). Only review jobs made with auto_apply (from this change on): an older review
+    finished before it is never applied by itself. The claim is made under the jobs lock, so two app servers never
+    both apply; the job records the apply's id, or why it could not start (then_why, shown with "Try Again")."""
+    J = s['jobs']
+    for j in jobs.all_jobs(J):
+        if j['kind'] != 'review' or not j.get('auto_apply') or j['status'] in jobs.ACTIVE or j.get('then_job'): continue
+        R = j.get('dir') or os.path.join(s['runs'], *j['run'].split('/'))
+        rv = os.path.join(R, 'review.json')
+        with jobs.locked(J):
+            cur = jobs.load(J, j['id']) or {}
+            if cur.get('then_job'): continue
+            if os.path.isfile(os.path.join(R, 'record.json')): cur['then_job'] = 'applied'
+            elif not (os.path.isfile(rv) and os.path.getmtime(rv) >= (jobs._at(j.get('started')) or 0) - 1): cur['then_job'] = 'not-finished'
+            else: cur['then_job'] = 'starting'
+            jobs.save(J, cur)
+        if cur['then_job'] != 'starting': continue
+        try: a = start_first_apply(s, j['run'], R)
+        except ValueError as e: jobs.update(J, j['id'], then_job='refused', then_why=str(e)); continue
+        except Exception as e:                                   # review 10 L1: never left at 'starting'
+            jobs.update(J, j['id'], then_job='refused', then_why=f'The apply couldn\'t start because of a problem in the app ({type(e).__name__}). Try again.'); continue
+        jobs.update(J, j['id'], then_job=a['id'])
 
 def start_first_apply(s, run, R):
     """Apply for a waiting run, after Finish Review: run_api.sh's second call (the same command the terminal is told to
     run), in this run's folder (RUN_DIR) with the settings it stopped with (review_stop.json)."""
-    if not os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('Finish the review first: "Open the Review Page," then "Finish Review."')
+    if not os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('Finish the review first: "Open the Review Page", then "Finish Review".')
     src, why = first_original(s, R)
     if why: raise ValueError(why)
     stop = load(os.path.join(R, 'review_stop.json')) or {}
     env = {'RUN_DIR': R, **{k: v for k, v in (stop.get('env') or {}).items() if k in ('OCR_LANG', 'INTAKE_REUSE', 'INTAKE', 'OUT') and v}}
-    argv = ['bash', 'run_api.sh', src, stop.get('name') or os.path.basename(os.path.dirname(R)), os.path.basename(R)]
-    return jobs.create(s['jobs'], 'apply', run, argv, config.child_env(s, env), env_set=env, R=R, what='Apply session 1', first=True)
+    name_, label_ = stop.get('name') or os.path.basename(os.path.dirname(R)), os.path.basename(R)
+    p_ = run.split('/')
+    if p_[0] == 'batches' and len(p_) == 3: name_, label_ = p_[2], p_[1]          # a batch's book: runs/batches/<label>/<name>
+    argv = ['bash', 'run_api.sh', src, name_, label_]
+    then = None
+    if p_[0] == 'batches' and len(p_) == 3:                  # a batch's book (D2a): its batch's summary is written again after
+        then = {'kind': 'summary', 'argv': ['bash', 'batch_api.sh', p_[1]], 'env': config.child_env(s, {'SUMMARY_ONLY': '1'}),
+                'env_set': {'SUMMARY_ONLY': '1'}, 'counted': False, 'extra': {'what': 'Write the batch summary again'}}
+    return jobs.create(s['jobs'], 'apply', run, argv, config.child_env(s, env), env_set=env, R=R, what='Apply session 1', first=True, then=then)
 
 # ------------------------------------------------------------------ starting jobs
 def start_review(s, run, R, port, src=None, discard_open=False, app_pid=None):

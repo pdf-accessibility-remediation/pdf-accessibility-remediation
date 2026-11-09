@@ -6,7 +6,7 @@ panel added at serve time, and the log lines the panel reads (pinned against the
 No book, no model. The review page itself is tested on a synthetic run (as test_review_sessions.py does); a real
 Review again → Finish → apply is in the real-run tests of the builder report.
 """
-import os, sys, json, time, signal, threading, subprocess, urllib.request, urllib.parse
+import os, sys, json, time, shutil, signal, threading, subprocess, urllib.request, urllib.parse
 import pytest
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # pipeline/
@@ -171,14 +171,14 @@ def test_an_interrupted_job_says_what_is_left_from_disk(tmp_path):
     def ses(**kw): (R / 'reviews' / 'sessions' / '002.json').write_text(json.dumps({'id': '002', **kw}))
     assert runs.after_interrupt(str(R), j)['state'] == 'none'
     ses(status='finished', finished='2026-10-29T09:59:00')
-    assert runs.after_interrupt(str(R), j) == {'state': 'apply', 'text': 'Session 2 is finished and not applied: Apply applies it.'}
+    assert runs.after_interrupt(str(R), j) == {'state': 'apply', 'text': 'Session 2 is finished and not applied: "Try Again" applies it.'}
     ses(status='applied', applied='2026-10-29T10:03:00')                                    # the orphan finished alone
     assert runs.after_interrupt(str(R), j) == {'state': 'done', 'text': 'done (the app lost track of the job): session 2 is the current result'}
     ses(status='applied', applied='2026-10-29T09:00:00')                                    # applied before this job: not its doing
     assert runs.after_interrupt(str(R), j)['state'] == 'none'
     (R / 'reviews' / 'promoting.json').write_text('{}')
     t = runs.after_interrupt(str(R), j)
-    assert t['state'] == 'apply' and 'Apply finishes it; it may apply the session again' in t['text'] and 'completes the promotion' not in t['text']
+    assert t['state'] == 'apply' and '"Try Again" finishes it; it may apply the session again' in t['text'] and 'completes the promotion' not in t['text']
     (R / 'reviews' / 'promoting.json').unlink(); ses(status='open')
     assert runs.after_interrupt(str(R), {'kind': 'review', 'started': START})['state'] == 'continue'
 
@@ -249,7 +249,7 @@ def test_review_needs_the_original_and_then_queues_a_pin_and_the_review(app):
     nxt = j['then']['argv']
     assert nxt[1:] == ['review_workorder.py', str(R), '--reopen', '--from', 'ai', '--pdf', str(orig), '--no-browser', '--return-to',
                        f'http://127.0.0.1:{port}/run/book/r1/?after=finish'] and j['then']['counted'] is False
-    assert set(j['env']) <= set(config.BASE_ENV) | {'VERAPDF', 'PYTHONUNBUFFERED', 'LC_ALL', 'LC_CTYPE'}
+    assert set(j['env']) <= set(config.BASE_ENV) | {'VERAPDF', 'PYTHONUNBUFFERED', 'RUNS_DIR', 'PAGE_READS', 'LC_ALL', 'LC_CTYPE'}
     st, b = post(port, '/api/run/book/r1/review')
     assert st == 409 and 'already' in b['error']
     assert wait(lambda: jobs.load(str(t / 'runs' / '.app'), j['id'])['status'] in ('failed', 'done'), 60)
@@ -281,26 +281,27 @@ def test_a_run_stopped_for_its_first_review_has_its_page(app):
     port, t = app['port'], app['t']
     W, src = waiting_run(t)
     st, b, _ = get(port, '/run/book/rv/'); page = b.decode()
-    assert st == 200 and '<div id="pdfrem-panel" data-run="book/rv" data-waiting="1">' in page and '<h1>book.pdf</h1>' in page
-    assert 'Nothing has been applied to this book yet. The report and the remediated PDF come with the first apply.' in page
+    assert st == 200 and '<div id="pdfrem-panel" data-run="book/rv" data-waiting="1">' in page and '<h1>book</h1>' in page
+    assert 'Source PDF: book.pdf' in page                      # the display name, then the file (#45, Q6)
+    assert 'Nothing has been applied to this book yet' not in page                   # P11
     st, b, _ = get(port, '/api/run/book/rv'); d = json.loads(b)
-    assert st == 200 and d['waiting'] == {'reviewed': False, 'reviewer': None, 'date': None, 'prepared': True} and d['title'] == 'book.pdf'
+    assert st == 200 and d['waiting'] == {'reviewed': False, 'reviewer': None, 'date': None, 'prepared': True, 'auto': None} and d['title'] == 'book.pdf'
     for path in ('/run/book/rv/checks', '/run/book/rv/download?what=pdf', '/api/run/book/rv/checks', '/run/book/rv/review.md'):
         assert get(port, path)[0] == 404
     st, b = post(port, '/api/run/book/rv/apply')
-    assert st == 409 and b['error'] == 'Finish the review first: "Open the Review Page," then "Finish Review."'
+    assert st == 409 and b['error'] == 'Finish the review first: "Open the Review Page", then "Finish Review".'
     for act in ('ship', 'discard', 'ocr', 'remove-older-pdfs'): assert post(port, f'/api/run/book/rv/{act}')[0] == 404
     assert post(port, '/api/run/book/rv/stop') == (409, {'error': 'no review page is open for this run'})
 
 def test_the_first_review_and_the_first_apply_are_the_terminal_commands(setup):
     s = settings(setup); W, src = waiting_run(setup)
     j = runs.start_first_review(s, 'book/rv', str(W), 8123)
-    assert j['kind'] == 'review' and j['first'] and j['counted'] is False and j['argv'][1:] == [
+    assert j['kind'] == 'review' and j['first'] and j['auto_apply'] and j['counted'] is False and j['argv'][1:] == [
         'review_workorder.py', str(W), '--serve', '--no-browser', '--return-to', 'http://127.0.0.1:8123/run/book/rv/?after=finish']
     v = runs.job_view(s, jobs.update(s['jobs'], j['id'], status='done', ended='2026-11-01T16:20:00'))
     assert v['title'] == 'Review the AI\'s decisions → closed without "Finish Review" (4:20 PM)'
     (W / 'review.json').write_text(json.dumps({'reviewer': 'Kim', 'date': '2026-11-01'}))
-    assert runs.job_view(s, jobs.load(s['jobs'], j['id']))['result'] == 'review finished (Kim, 4:20 PM), not applied yet'
+    assert runs.job_view(s, jobs.load(s['jobs'], j['id']))['result'] == 'review finished (Kim, 4:20 PM), applied next'
     with pytest.raises(ValueError, match='The review is finished'): runs.start_first_review(s, 'book/rv', str(W), 8123)
     a = runs.start_first_apply(s, 'book/rv', str(W))
     assert a['kind'] == 'apply' and a['argv'] == ['bash', 'run_api.sh', str(src), 'book', 'rv']
@@ -316,7 +317,7 @@ def test_the_review_stop_leads_with_the_app():
     sh = src('run_api.sh')
     assert 'echo "Open the run page to review and apply: python3 $(pwd)/app.py \\"$R\\""' in sh and 'echo "Or in the terminal:"' in sh
     assert "'review_stop.json'" in src('report.py')                             # removed with the other working files
-    assert 'open the run page and select "Apply": python3 ' in src('review_workorder.py')
+    assert 'from the app, "Finish Review" applies it by itself (the run page: python3 ' in src('review_workorder.py')
 
 def test_stop_only_before_finish(app):
     port, t, R = app['port'], app['t'], app['R']
@@ -507,9 +508,9 @@ def test_steps_in_plain_words():
     assert logs.now_step('review', steps) == {'words': 'checking the result', 'n': 2, 'total': 3}
     assert logs.now_step('pin', []) == {'words': 're-auditing the run to pin it (free)', 'n': 1, 'total': 1}
     assert logs.now_step('apply', logs.steps('▶ apply (no model)\n  ✓ apply (no model): 1.0s\n')) is None
-    assert logs.plain('0/5 intake: not re-run; applying to the intake result saved before the review stop') == 'reading and tagging the PDF (not run again)'
-    assert logs.plain('1/5 audit: reusing the audit already in /x/_audit') == 'auditing the PDF (not run again)'   # a waiting run's first apply
-    assert "esc(tc(!st.waiting ? 'First result' : st.waiting.reviewed ? 'Waiting to be applied' : 'Waiting for review'))" in src('webapp/panel.js')
+    assert logs.plain('0/5 intake: not re-run; applying to the intake result saved before the review stop') == 'reading and tagging the PDF'
+    assert logs.plain('1/5 audit: reusing the audit already in /x/_audit') == 'auditing the PDF'   # a waiting run's first apply
+    assert "esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? 'Waiting for review' :" in src('webapp/panel.js')
     assert "(j.first ? 'Stop Reviewing (Your Choices Are Saved)' : 'Stop Reviewing (the Session Stays Open)')" in src('webapp/panel.js')   # no session before Finish
 
 def test_job_titles_say_what_happened(tmp_path):
@@ -527,8 +528,8 @@ def test_job_titles_say_what_happened(tmp_path):
     lost = {'interrupted': {'state': 'done', 'text': 'done (the app lost track of the job): session 3 is the current result'}}
     assert runs.title(R, dict(j, kind='apply', what='Apply session 3', status='interrupted'), lost) == 'Apply Session 3 → Session 3 applied (sss, 6:19 PM)'
     assert runs.reason({'status': 'failed', 'outcome': 'refused: apply (no model) failed (exit 1): the current result is unchanged', 'exit': 1}) == \
-        'Apply (no model) failed (exit 1): the current result is unchanged'
-    assert runs.reason({'status': 'failed', 'outcome': None, 'exit': 2}) == 'The command ended with an error (exit 2).'
+        'Apply (no model) failed: the current result is unchanged'           # U4: its code under "Details"
+    assert runs.reason({'status': 'failed', 'outcome': None, 'exit': 2}) == 'The command ended with an error.'
 
 def test_the_page_shows_no_log_or_command_and_every_job(app):
     s = config.load(str(app['t'] / 'app.json'), environ={})
@@ -540,9 +541,9 @@ def test_the_page_shows_no_log_or_command_and_every_job(app):
     v = d['jobs'][-1]
     assert 'tail' not in v and 'command' not in v and v['log'] == os.path.join(s['jobs'], 'jobs', v['id'] + '.log')   # outside the repo: absolute
     assert runs.shown_path(os.path.join(config.ROOT, 'runs', '.app', 'jobs', 'x.log')) == os.path.join('runs', '.app', 'jobs', 'x.log')
-    assert v['reason'] == 'The command ended with an error (exit 1).' and v['title'] == 'Apply 11 → failed (10:00 AM)'
+    assert v['reason'] == 'The command ended with an error.' and v['title'] == 'Apply 11 → failed (10:00 AM)'
     js = src('webapp/panel.js')
-    assert 'Log and command' not in js and 'The same from a terminal' not in js and 'Previous Jobs (' in js and "The job\\'s full output, for whoever looks after the app, is saved in" in js
+    assert 'Log and command' not in js and 'The same from a terminal' not in js and 'Previous Jobs (' in js and "<li>The job\\'s full output, for whoever looks after the app: ' + esc(d.log)" in js
     assert 'Earlier jobs' not in js and v['action'] == 'Apply 11' and v['result'] == 'failed (10:00 AM)'
     assert 'aria-hidden="true"></span>' in js and 'pp-spin' in js
     assert 'prefers-reduced-motion: reduce) { .pp .pp-spin { animation: none; } }' in src('webapp/panel.css')
@@ -1052,7 +1053,8 @@ def test_the_panel_is_replaced_only_when_its_html_changed():
     body = js.split('function render() {')[1].split('\n}\n')[0]
     assert "if (body.dataset.h === h) return;\n  body.innerHTML = h; body.dataset.h = h;" in body
     assert body.rindex('if (body.dataset.h === h) return;') < body.index('opened.forEach') < body.rindex('.focus()')
-    assert body.count('innerHTML') == 2                                     # one write each (a waiting run's, the result's), after its check
+    assert body.count('innerHTML') == 3                                     # one write each (a pending run's, a waiting run's, the result's),
+    assert body.count('if (body.dataset.h === h) return;') == 3             # each after its check
     strip = js.split('function renderStrip(s) {')[1].split('\n}\n')[0]
     assert 'if (sb.dataset.h !== h) {' in strip                            # the strip's own check, unchanged
 
@@ -1070,3 +1072,77 @@ def test_fields_are_checked_as_they_are_saved():
     assert '<select data-act="langpick" aria-label="Language">' in page and "[0, 1, 2, 3].map(n =>" in page
     assert page.split('function editor(')[1].split('\n}\n')[0].count('inputmode="numeric"') == 3 and "f.value.replace(/\\D+/g, '')" in page
     assert page.index('id="finish"') < page.index('id="saveState"') < page.index('id="checkLine"')
+
+
+def test_finish_review_applies_at_once(setup, monkeypatch):
+    """D3 (Patrick, 2026-11-06): a first review that ends with review.json gets its apply from the dispatcher, once, with
+    the original looked up then; a review closed without Finish, or one made before this change, gets none; an apply that
+    can't start says why. A batch book's apply names its batch and writes the batch summary again after."""
+    s = settings(setup); W, src_ = waiting_run(setup)
+    j = runs.start_first_review(s, 'book/rv', str(W), 8123)
+    jobs.update(s['jobs'], j['id'], status='done', started='2026-01-01T00:00:00', ended='2026-01-01T00:05:00')
+    runs.auto_apply(s)
+    assert jobs.load(s['jobs'], j['id'])['then_job'] == 'not-finished' and not [x for x in jobs.all_jobs(s['jobs']) if x['kind'] == 'apply']
+    j = runs.start_first_review(s, 'book/rv', str(W), 8123)
+    jobs.update(s['jobs'], j['id'], status='done', started='2026-01-01T00:00:00')
+    (W / 'review.json').write_text(json.dumps({'reviewer': 'Kim', 'date': '2026-11-06'}))
+    runs.auto_apply(s); runs.auto_apply(s)                                        # twice: one apply
+    ap = [x for x in jobs.all_jobs(s['jobs']) if x['kind'] == 'apply']
+    assert len(ap) == 1 and jobs.load(s['jobs'], j['id'])['then_job'] == ap[0]['id'] and ap[0]['argv'][2] == str(src_)
+    assert runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto'] == {'state': 'starting'}
+    old = jobs.create(s['jobs'], 'review', 'book/old', ['true'], {}, counted=False, R=str(W), first=True)   # before this change
+    jobs.update(s['jobs'], old['id'], status='done'); runs.auto_apply(s)
+    assert not jobs.load(s['jobs'], old['id']).get('then_job')
+    jobs.update(s['jobs'], ap[0]['id'], status='failed', exit=1)
+    w = runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto']                # review 10 M1: never "applying" after it failed
+    assert w['state'] == 'failed' and w['why']
+    tr = runs.start_first_apply(s, 'book/rv', str(W))                            # review 12 L3: "Try Again" is followed
+    assert runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto'] == {'state': 'starting'}
+    jobs.update(s['jobs'], tr['id'], status='running')
+    assert runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto'] == {'state': 'starting'}
+    jobs.update(s['jobs'], tr['id'], status='failed', exit=2)
+    w2 = runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto']             # its own reason, not the first one's
+    assert w2['state'] == 'failed' and w2['job'] == tr['id'] != w['job']                  # its own job (its reason, its code under Details)
+    js = src('webapp/panel.js')
+    assert "w.auto.state === 'refused' || w.auto.state === 'failed'" in js and "Stopped: The Apply Didn\\'t Finish" in js
+    os.remove(src_); (W / 'review_stop.json').write_text(json.dumps({'src': str(setup / 'gone.pdf'), 'name': 'book'}))
+    j2 = jobs.create(s['jobs'], 'review', 'book/rv', ['true'], {}, counted=False, R=str(W), first=True, auto_apply=True)   # a second review's Finish
+    jobs.update(s['jobs'], j2['id'], status='done', started='2026-01-01T00:00:00')
+    runs.auto_apply(s)
+    x = jobs.load(s['jobs'], j2['id'])
+    assert x['then_job'] == 'refused' and "wasn't found" in x['then_why']
+    w = runs.waiting_state(s, 'book/rv', str(W))['waiting']['auto']
+    assert w['state'] == 'refused' and "wasn't found" in w['why']
+
+def test_a_batch_books_first_apply_names_its_batch(setup):
+    s = settings(setup); W, src_ = waiting_run(setup)
+    B = setup / 'runs' / 'batches' / 'b1' / 'bk'; B.parent.mkdir(parents=True); shutil.copytree(W, B)
+    (B / 'review.json').write_text('{}')
+    a = runs.start_first_apply(s, 'batches/b1/bk', str(B))
+    assert a['argv'][3:] == ['bk', 'b1'] and a['env']['RUN_DIR'] == str(B)
+    assert a['then']['argv'] == ['bash', 'batch_api.sh', 'b1'] and a['then']['env_set'] == {'SUMMARY_ONLY': '1'} and not a['then'].get('paid')
+
+
+def test_a_claim_left_starting_is_recovered_and_any_error_is_refused(setup, monkeypatch):
+    """Review 10 L1: an exception other than ValueError from the apply's start is "refused" with plain words; a claim
+    left at 'starting' (the app stopped in between) is unclaimed at the next start, so the next pass applies it."""
+    s = settings(setup); W, src_ = waiting_run(setup)
+    j = runs.start_first_review(s, 'book/rv', str(W), 8123)
+    jobs.update(s['jobs'], j['id'], status='done', started='2026-01-01T00:00:00')
+    (W / 'review.json').write_text('{}')
+    def boom(*a): raise OSError('disk')
+    monkeypatch.setattr(runs, 'start_first_apply', boom)
+    runs.auto_apply(s)
+    x = jobs.load(s['jobs'], j['id']); assert x['then_job'] == 'refused' and 'problem in the app' in x['then_why']
+    jobs.update(s['jobs'], j['id'], then_job='starting', then_why=None)
+    jobs.recover(s['jobs'])
+    assert jobs.load(s['jobs'], j['id'])['then_job'] is None
+    monkeypatch.undo()
+    runs.auto_apply(s)
+    assert [a for a in jobs.all_jobs(s['jobs']) if a['kind'] == 'apply']
+
+def test_the_app_is_built_on_the_review_servers_longer_queue(setup):
+    from review.server import Server
+    srv = W.make(dict(settings(setup), port=free_port()), [], code='c0ffee')
+    try: assert isinstance(srv, Server) and srv.request_queue_size == 128
+    finally: srv.server_close()

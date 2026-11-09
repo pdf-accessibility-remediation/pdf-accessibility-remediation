@@ -6,8 +6,21 @@
                             folder count and claim under one lock (max_jobs holds across both)
 
 Status: queued → running → done | failed (exit ≠ 0) | interrupted (the whole process group is gone without an exit
-recorded: a reboot, or a kill). A paid job (B) still queued when the app starts goes to needs-spend: a paid call never
-starts from a click made before a restart.
+recorded: a reboot, or a kill). A paid job still queued when the app starts goes to needs-spend: a paid call never
+starts from a click made before a restart. A needs-spend job ends as superseded when a new estimate (or "Dismiss") is
+made for its run (03 §1), so a restart never leaves a run blocked.
+
+The paid path (#45, 03 §2), enforced in create(), the one place jobs are made: AUTO (send without asking) only in a
+spend or batch job that is paid and carries the estimate's fingerprint; paid only for
+those kinds; and never as a `then` (a paid job always comes from its own Spend click; tick() refuses an older file's).
+
+Runs are related (one blocks the other) when they are the same run or one is inside the other: a batch
+(batches/<label>) and its books (batches/<label>/<name>), in busy() and in tick(). Every counted job takes one place of
+max_jobs (3: up to three single runs at once), except a batch's estimates, which take up to batch_jobs places of their
+own (10, R12 of Patrick's test 2026-11-07); a batch runs alone, with its own batch_jobs books at a time: it starts
+only when no counted job runs, and nothing counted starts while it runs (D1, Patrick 2026-11-06). Jobs start oldest
+first, so nothing is passed over: a queued batch holds every newer job behind it until the runs before it end. Not
+queued: "Review Again"'s apply, which runs inside its own review process after "Finish Review" (accepted, 08 D1).
 
 Each job runs under webapp/jobrun.py, started in a new session (its own process group), so Ctrl+C on the app does not
 reach it. Liveness is the process group: os.killpg(pgid, 0), and a process in that group whose command line is the
@@ -18,6 +31,25 @@ from . import logs, config
 from lib import dates as D
 
 ACTIVE = ('queued', 'running')
+PAID_KINDS = ('spend', 'batch')                     # the only jobs that may send to the AI service (03 §2)
+
+def related(a, b):
+    """The same run, or one inside the other (a batch and its books): never two jobs of them at once."""
+    return a == b or a.startswith(b + '/') or b.startswith(a + '/')
+
+def _sends(x):
+    return 'AUTO' in (x.get('env_set') or {}) or 'AUTO' in (x.get('env') or {})
+
+def paid_rule(kind, paid, env, env_set, then, extra):
+    """Refuses (ValueError) a job that could reach a paid call without its own Spend."""
+    x = {'env': env, 'env_set': env_set}
+    if paid and kind not in PAID_KINDS: raise ValueError(f'a {kind} job cannot be paid: only "Start Remediation" makes a paid job')
+    if _sends(x) and not (kind in PAID_KINDS and paid and extra.get('fingerprint')):
+        raise ValueError('a job that sends to the AI service needs its own start, with the estimate it was shown')
+    t = then
+    while t:
+        if t.get('paid') or _sends(t): raise ValueError('a paid job never follows another job: it needs its own "Start Remediation"')
+        t = t.get('then')
 WRAPPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'jobrun.py')
 PIPELINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -153,7 +185,8 @@ def lock_holder(R):
 
 LOCK_WORDS = {'reopen': 'Someone is already reviewing this run', 'ocr review': 'Someone is already reviewing this run\'s OCR text',
               'ocr verdict': 'An OCR verdict is being recorded for this run', 'apply': 'This run is being applied',
-              'discard': 'A session of this run is being discarded', 'clean up space': 'PDFs of this run\'s previous versions are being removed'}
+              'discard': 'A session of this run is being discarded', 'clean up space': 'PDFs of this run\'s previous versions are being removed',
+              'clear': 'This book\'s files are being cleared'}
 
 def lock_words(what, since):
     """The run's review lock in plain words for the pages: who or what holds it and since when, no process id."""
@@ -161,28 +194,55 @@ def lock_words(what, since):
     return (LOCK_WORDS.get(what, 'Someone is already working on this run') + (f' (since {at})' if at else '') + '. Try again when '
             + ('they\'re' if what in ('reopen', 'ocr review') else 'it\'s') + ' done.')
 
-def busy(J, run, R):
+AFTER_STOP = ('review', 'ocr', 'apply')
+
+def stopped_in_batch(run, R, other, kind):
+    """A PDF of a batch that stopped for its review (workorder.ai.json): the batch never touches it again, so its review
+    may open, and its apply be queued, while the batch's own job (`other`) still runs (Patrick, 2026-11-06: a review
+    finished while the batch runs shows "Waiting to Start" until the batch ends; tick() keeps the apply waiting)."""
+    return (kind in AFTER_STOP and other.startswith('batches/') and other.count('/') == 1 and run.startswith(other + '/')
+            and bool(R) and os.path.isfile(os.path.join(R, 'workorder.ai.json')))
+
+def busy(J, run, R, kind=None):
     """Why nothing new may start for this run now, or None (in plain words: the pages show it)."""
     h = lock_holder(R)
     if h: return lock_words(h[1], h[2])
     for j in all_jobs(J):
-        if j['run'] == run and j['status'] in ACTIVE + ('needs-spend',):
+        if j['kind'] == 'batch' and stopped_in_batch(run, R, j['run'], kind): continue
+        if related(j['run'], run) and j['status'] in ACTIVE + ('needs-spend',):
             at = D.clock(j.get('started') or j['created']) if D.parse(j.get('started') or j['created']) else ''
             return f'A job for this run is already {"waiting" if j["status"] != "running" else "running"}' + (f' (since {at})' if at else '') + '. One job at a time per run.'
     return None
 
 # ------------------------------------------------------------------ queue
-def create(J, kind, run, argv, env, env_set=None, counted=True, then=None, paid=False, R=None, **extra):
-    """A queued job, refused (ValueError with the reason) when the run is busy. env is the child's whole environment
-    (config.child_env); env_set the variables the job itself set."""
+def supersede(J, run, by):
+    """Inside locked(J): every needs-spend job of this run (or a related one) ends as superseded."""
+    n = 0
+    for j in all_jobs(J):
+        if related(j['run'], run) and j['status'] == 'needs-spend':
+            j.update(status='superseded', ended=now(), superseded_by=by,
+                     note='dismissed' if by == 'dismissed' else f'replaced by a new estimate ({by})'); save(J, j); n += 1
+    return n
+
+def dismiss(J, run):
+    """"Dismiss" on a needs-spend card: the waiting paid job ends; nothing is sent."""
+    with locked(J): return supersede(J, run, 'dismissed')
+
+def create(J, kind, run, argv, env, env_set=None, counted=True, then=None, paid=False, R=None, supersede_waiting=False, slots=1, **extra):
+    """A queued job, refused (ValueError with the reason) when the run is busy or the job breaks the paid-path rule. env
+    is the child's whole environment (config.child_env); env_set the variables the job itself set. supersede_waiting: a new
+    estimate (or Dismiss) ends the run's needs-spend jobs first, under the same lock (03 §1)."""
+    paid_rule(kind, paid, env, env_set, then, extra)
     with locked(J):
-        if R is not None:
-            why = busy(J, run, R)
-            if why: raise ValueError(why)
         jid = f'{datetime.datetime.now():%Y%m%d-%H%M%S-%f}-{kind}'
+        if supersede_waiting: supersede(J, run, jid)
+        if R is not None:
+            why = busy(J, run, R, kind)
+            if why: raise ValueError(why)
         job = {'id': jid, 'kind': kind, 'run': run, 'dir': os.path.abspath(R) if R is not None else None, 'argv': list(argv), 'env': env,
                'env_set': env_set or {}, 'counted': counted, 'then': then, 'paid': paid, 'status': 'queued', 'created': now(), 'started': None,
                'ended': None, 'exit': None, 'pid': None, 'pgid': None, 'log': os.path.basename(log_path(J, jid)), **extra}
+        if slots != 1: job['slots'] = int(slots)
         save(J, job)
         return job
 
@@ -192,9 +252,10 @@ def run_dir(job, runs=None):
     return job.get('dir') or (os.path.join(runs, *job['run'].split('/')) if runs else None)
 
 def counts(job, runs):
-    """A running job takes one of max_jobs: work jobs always, a review job once it is past Finish (it is applying)."""
-    if job.get('counted'): return True
-    return job['kind'] == 'review' and review_past_finish(run_dir(job, runs), job.get('started'))
+    """The places of max_jobs a running job takes: a work job its slots (1; a batch its JOBS), a review job one once it is
+    past Finish (it is applying), else none."""
+    if job.get('counted'): return 1                     # a batch too: one place, whatever its JOBS (Patrick, 2026-11-06)
+    return 1 if job['kind'] == 'review' and review_past_finish(run_dir(job, runs), job.get('started')) else 0
 
 def _start(J, job):
     lp = log_path(J, job['id'])
@@ -218,6 +279,10 @@ def tick(J, s):
                 if u: j['url'] = u; save(J, j)
             if j['status'] == 'done' and j.get('then') and not j.get('then_job'):
                 t = j['then']
+                try: paid_rule(t['kind'], t.get('paid', False), t.get('env'), t.get('env_set'), t.get('then'), t.get('extra') or {})
+                except ValueError:                           # an older job file asking for a paid job: never queued
+                    j['then_job'] = 'refused'; save(J, j); continue
+                if t.get('paid') or _sends(t): j['then_job'] = 'refused'; save(J, j); continue
                 nxt = {'id': f'{datetime.datetime.now():%Y%m%d-%H%M%S-%f}-{t["kind"]}', 'kind': t['kind'], 'run': j['run'], 'dir': j.get('dir'), 'argv': t['argv'],
                        'env': t['env'], 'env_set': t.get('env_set') or {}, 'counted': t.get('counted', True), 'then': t.get('then'),
                        'paid': t.get('paid', False), 'status': 'queued', 'created': now(), 'started': None, 'ended': None, 'exit': None,
@@ -225,21 +290,43 @@ def tick(J, s):
                 nxt['log'] = os.path.basename(log_path(J, nxt['id']))
                 save(J, nxt); j['then_job'] = nxt['id']; save(J, j); jobs.append(nxt)
         running = [j for j in jobs if j['status'] == 'running']
-        n = sum(1 for j in running if counts(j, s['runs']))
-        busy_runs = {j['run'] for j in running}
+        # Two pools (R12, Patrick's test 2026-11-07): a batch's estimates take up to batch_jobs places (10, like its paid
+        # step); everything else counted takes up to max_jobs (3). A batch still runs alone (D1): nothing counted starts
+        # while it runs, and it starts only when nothing counted runs.
+        est = lambda j: j['kind'] == 'batch-estimate'
+        n = sum(counts(j, s['runs']) for j in running if not est(j)); n_est = sum(counts(j, s['runs']) for j in running if est(j))
+        batch_on = any(j['kind'] == 'batch' for j in running)   # a batch runs alone (D1, Patrick 2026-11-06)
+        busy_runs = [j['run'] for j in running]
+        held = held_est = False                         # once a counted job waits for a place, newer ones of its pool wait behind it
         for j in sorted((j for j in jobs if j['status'] == 'queued'), key=lambda j: j['id']):
-            if j['run'] in busy_runs: continue
+            if any(related(j['run'], r) and not (j['kind'] in PERSON and stopped_in_batch(j['run'], run_dir(j, s['runs']), r, j['kind']))
+                   for r in busy_runs): continue                # a stopped PDF's review page opens while its batch runs; its apply waits
             if j.get('counted', True):
-                if n >= s['max_jobs']: continue
-                n += 1
-            _start(J, j); busy_runs.add(j['run'])
+                if est(j):
+                    if held_est or batch_on or n_est + 1 > s.get('batch_jobs', 10):
+                        held_est = True; continue
+                    n_est += 1
+                else:
+                    alone = j['kind'] == 'batch'
+                    if held or batch_on or n + 1 > s['max_jobs'] or (alone and n + n_est > 0):
+                        held = True                     # oldest first: a newer counted job never passes an older one
+                        if alone: held_est = True       # a waiting batch holds every newer job, estimates too
+                        continue
+                    n += 1; batch_on = batch_on or alone
+            _start(J, j); busy_runs.append(j['run'])
 
 def recover(J):
-    """At app start: a paid job still queued needs its Spend click again."""
+    """At app start: a paid job still queued needs its Spend click again; a "Finish Review" claim left at 'starting'
+    is given its apply if one was made, else unclaimed (runs.auto_apply starts it on its next pass)."""
     with locked(J):
-        for j in all_jobs(J):
+        js = all_jobs(J)
+        for j in js:
             if j['status'] == 'queued' and j.get('paid'):
-                j.update(status='needs-spend', note='the app was restarted before this paid job started: Spend again on a fresh estimate'); save(J, j)
+                j.update(status='needs-spend', note='the app was restarted before this paid job started: get a new estimate, then "Start Remediation" again'); save(J, j)
+            if j['kind'] == 'review' and j.get('then_job') == 'starting':   # review 10 L1: the app stopped between the claim and the apply
+                ap = next((x for x in js if x['kind'] == 'apply' and x['run'] == j['run'] and x['created'] >= (j.get('ended') or j['created'])), None)
+                j['then_job'] = ap['id'] if ap else None                    # its apply, or unclaimed: the next pass starts it
+                save(J, j)
 
 def position(J, jid):
     """1-based place in line among queued jobs, or None."""

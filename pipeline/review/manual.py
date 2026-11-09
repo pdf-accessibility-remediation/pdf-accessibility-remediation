@@ -112,6 +112,7 @@ def record(R, section, data, shown_sha=None, via='manual_checks.py', wait=runloc
     check stands; the section's draft is then cleared, best effort, leaving a tombstone at `draft_saved_at` (the page's
     last draft time) so an auto-save handled late never brings the recorded answers back. batch=False: the caller
     rebuilds the batch page itself (the app does it after replying)."""
+    S.not_cleared(R)
     R = os.path.abspath(R); rj = os.path.join(R, 'record.json')
     if section not in REL.SECTIONS: raise ValueError(f'unknown section {section!r}: pac or screen_reader')
     if not os.path.exists(rj): raise S.Refused('This book has no finished result yet, so there is nothing to check.')
@@ -270,6 +271,7 @@ def ship(R, by, note=None, shown_sha=None, via='manual_checks.py', wait=runlock.
     and evaluation results written into NNN.tmp; then the rename to NNN, the last step. Any failure before
     or at the rename: NNN.tmp removed, shipped.json restored, and write_run() run again so no page says Shipped.
     Returns the shipment."""
+    S.not_cleared(R)
     import shutil
     from review.core import clean_text
     import report_html as H

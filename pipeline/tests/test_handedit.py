@@ -375,3 +375,11 @@ def test_a_run_with_no_ai_call_never_credits_the_ai(tmp_path):
     assert '"Decisions (no AI call)" if ad.get("no_model")' in open(os.path.join(PIPE, 'lib', 'glance.py')).read()
     R = tmp_path / 'r'; R.mkdir(); (R / 'run.json').write_text(json.dumps({'no_model': 'x'}))
     assert S.no_model(str(R)) and not S.no_model(str(tmp_path))
+
+
+# ---- no AI call means none at all: main's page readings (#49, read_pages.py) are never offered with DECIDE=none
+def test_a_run_with_no_ai_call_reads_no_pages():
+    sh_ = open(os.path.join(PIPE, 'run_api.sh'), encoding='utf-8').read()
+    gate = next(l for l in sh_.splitlines() if l.startswith('if [[ ${PAGE_READS} != off'))
+    assert '${DECIDE:-} != none' in gate
+    assert "'DECIDE': 'none', 'REVIEW': '1', 'PAGE_READS': 'off'" in open(os.path.join(PIPE, 'handedit.py'), encoding='utf-8').read()

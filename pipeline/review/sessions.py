@@ -61,6 +61,15 @@ def P(R):
             'work': os.path.join(b, 'work'), 'promoting': os.path.join(b, 'promoting.json'),
             'items': os.path.join(b, 'review_items.json'), 'draft': os.path.join(b, 'review_decisions.json')}
 
+CLEARED = ('This book\'s working files were cleared after it shipped, so it can\'t be changed here. To work on it again, start a new '
+           'run of the book from the home page.')
+
+def not_cleared(R):
+    """Refused when the run's working files were cleared (or a clear is under way: release/cleared.json in either state;
+    review/clear.py, #45). Every command that writes a new version or result checks it, from the app or the terminal."""
+    from lib import release as REL
+    if REL.cleared(R): raise Refused(CLEARED)
+
 class Refused(Exception):
     """A check failed: nothing was written."""
 
@@ -149,6 +158,7 @@ def pin(R, pdf=None, say=say_):
     (the whole texts review.md quotes) and the OCR word sheets with a basis record. Writes only reviews/basis.json and
     reviews/_audit/{digest.json, fulltext.json, ocr_words/}; never touches record.json, review.md, review.html or the PDF.
     A run already pinned without fulltext.json gets it added (top_up). Returns what happened; raises Refused."""
+    not_cleared(R)
     R = os.path.abspath(R); p = P(R)
     if os.path.exists(p['basis']) and os.path.exists(os.path.join(p['audit'], 'digest.json')): return top_up(R, pdf, say)
     old = basis(R)                                         # a basis with no digest (a KEEP=1 review run): keep its run id
@@ -183,13 +193,14 @@ def replay_to(R, D):
     and beside D the reply (<D>.reply.txt) and its meta (model, temperature, the OCR-word list it was written for).
     Without the intake copy, run_api.sh would redo OCR and auto-tagging and the reply's ids could name other elements.
     The new run is on today's code: it is not a review of R's result. Returns (reply path, the command to run)."""
+    not_cleared(R)
     R, D = os.path.abspath(R), os.path.abspath(D)
     rec = load(os.path.join(R, 'record.json'))
     if not rec or not rec.get('raw_reply'): raise Refused(f'{R} has no record.json with a saved reply (raw_reply)')
-    if os.path.exists(D) and os.listdir(D): raise Refused(f'{D} is not empty: give a new run folder')
+    if os.path.exists(D) and [f for f in os.listdir(D) if f != 'source']: raise Refused(f'{D} is not empty: give a new run folder')   # source/: its own PDF (R17)
     reply = D.rstrip(os.sep) + '.reply.txt'
     if os.path.exists(reply): raise Refused(f'{reply} exists already')
-    from lib import ocrwords, origin
+    from lib import ocrwords, origin, replies
     os.makedirs(D, exist_ok=True)
     old_in = os.path.join(R, '_intake')
     if os.path.exists(os.path.join(old_in, 'intake.json')):
@@ -198,7 +209,8 @@ def replay_to(R, D):
             if os.path.exists(os.path.join(old_in, f)): shutil.copyfile(os.path.join(old_in, f), os.path.join(D, '_intake', f))
     open(reply, 'w', encoding='utf-8').write(rec['raw_reply'])
     run = rec.get('run') or {}
-    json.dump({**{k: run[k] for k in ('model', 'temperature') if k in run}, **ocrwords.carried(run), **origin.carried(rec)},
+    json.dump({**{k: run[k] for k in ('model', 'temperature') if k in run}, **ocrwords.carried(run), **origin.carried(rec),
+               **replies.write(rec, reply)},       # its figure requests' answers, beside it (issue #63)
               open(reply + '.meta.json', 'w'))
     doc = rec.get('document') or {}
     cmd = (f'INTAKE_REUSE=1 REPLY={reply} REVIEW=1 RUN_DIR={D} bash run_api.sh <the original PDF: {doc.get("file")}, '
@@ -233,6 +245,13 @@ def first_basis(R, inp):
     save(P(R)['basis'], b)
     return b
 
+def own_source(R):
+    """The run's own copy of its original PDF (R17, #45: <run>/source/<file>.pdf, moved or copied there by the app), or None."""
+    d = os.path.join(R, 'source')
+    try: fs = sorted(f for f in os.listdir(d) if f.lower().endswith('.pdf') and not f.startswith('.'))
+    except OSError: return None
+    return os.path.join(d, fs[0]) if fs else None
+
 def check_basis(R, rec, pdf=None):
     """Every reopen and re-apply: the input, the kept digest and the AI order must be the ones the run was made with.
     Returns (basis, input path, the AI order). Raises Refused, naming what differs."""
@@ -245,7 +264,9 @@ def check_basis(R, rec, pdf=None):
                       f'record {(rec.get("run") or {}).get("digest_sha256")}): {FALLBACK}')
     want = {(b.get('input') or {}).get('sha256'), ((rec.get('workorder') or {}).get('source') or {}).get('sha256')} - {None}
     own = os.path.join(R, '_intake', 'intake.pdf')        # the run's own intake result first: a run folder can be moved
-    inp = os.path.abspath(pdf) if pdf else own if os.path.isfile(own) and sha_file(own) in want else (b.get('input') or {}).get('path')
+    src = own_source(R)                                   # then its own original (R17): it moves with the folder too
+    inp = os.path.abspath(pdf) if pdf else own if os.path.isfile(own) and sha_file(own) in want else \
+          src if src and sha_file(src) in want else (b.get('input') or {}).get('path')
     if not inp or not os.path.isfile(inp):
         raise Refused('the input PDF is not where the basis says' + (f' ({inp})' if inp else '') + ': give --pdf <the original PDF>')
     got = sha_file(inp)
@@ -508,6 +529,7 @@ def open_session(R, rec, src=None, pdf=None, discard_open=False, say=say_):
     """Open a review of a finished run: a new session preloaded from src ('ai', an earlier session id, or None: the latest
     finished or applied one), or the open one carried on. Writes reviews/review_items.json (with the page's session
     block) and reviews/review_decisions.json for review/server.py. Returns the session record."""
+    not_cleared(R)
     p = P(R)
     b, inp, ai = check_basis(R, rec, pdf)
     digest = load(os.path.join(p['audit'], 'digest.json'))
@@ -695,6 +717,7 @@ def _run(args, say, what, quiet=False):
 def reapply(R, s, pdf=None, say=say_):
     """Apply session s's reviewed order to the run's input (no AI call), verify, report, and make it the current version.
     The current version is moved to reviews/versions/<its id>/ only after all three succeed."""
+    not_cleared(R)
     R = os.path.abspath(R); p = P(R)
     rec = load(os.path.join(R, 'record.json'))
     b, inp, ai = check_basis(R, rec, pdf)

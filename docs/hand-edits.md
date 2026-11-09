@@ -58,7 +58,7 @@ Acrobat can change pages you never touched:
 
 | `--to` | What runs | Cost |
 |---|---|---|
-| `review` (the default) | Intake (skipped for a tagged file), audit, **no AI call** (`DECIDE=none`: the work order starts empty), the review page, then apply, verify and report | $0 |
+| `review` (the default) | Intake (skipped for a tagged file), audit, **no AI call** (`DECIDE=none`: the work order starts empty, and no pages are read with the AI either, `PAGE_READS=off`), the review page, then apply, verify and report | $0 |
 | `pipeline` | The whole pipeline on the edited file, with a new AI call (`run_api.sh` asks y/N first; `ESTIMATE=1` and `REPLY=` work as usual) | a normal run |
 
 **Review is the usual choice.** The remediated result already holds the earlier run's fixes, so the review needs only what the edit changed.

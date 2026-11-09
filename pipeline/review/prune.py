@@ -69,6 +69,7 @@ def chosen_of(chosen):
 def remove(R, chosen, by, wait=runlock.COMMAND_WAIT, say=print):
     """Remove the PDFs of the chosen versions [{id, sha256}] (what the person selected, with the hash they were shown), if
     each is still offered by plan() with that hash, hashed afresh under the locks. Returns what was removed."""
+    S.not_cleared(R)
     from review.core import clean_text
     R = os.path.abspath(R)
     want = chosen_of(chosen)

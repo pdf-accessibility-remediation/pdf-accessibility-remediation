@@ -57,7 +57,7 @@ def test_the_gate_refuses_what_is_not_ready_in_ships_words(tmp_path):
 def test_a_shipped_book_whose_file_changed_keeps_shipped_with_a_warning(tmp_path):
     R, rec, sha = ready_run(tmp_path)
     core.save(os.path.join(R, 'release', 'shipped.json'), [ship_entry(sha)])
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'sample_remediated.pdf'))   # changed by hand
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'sample_remediated.pdf'), deterministic_id=True)   # changed by hand
     st = MP.app_glance(R, rec, rec['glance'])['status']
     assert st['name'] == 'Shipped' and st['text'] == 'Shipped · The current PDF has changed since this report was made.'
     assert st['warning'] == MP.SHIPPED_WARNING and st['current']['name'] == 'Not Ready'
@@ -172,7 +172,7 @@ def test_shipped_copies_in_the_downloads_and_the_file_check(tmp_path):
     assert d['name'] == 'b_remediated_record_shipment-1.zip' and [m[0] for m in d['members']] == ['b_remediated.pdf', 'review.html']
     buf = io.BytesIO(); DL.stream_zip(buf, d); names = zipfile.ZipFile(buf).namelist()
     assert not any(n.endswith('record.json') for n in names) and not any(n.endswith('.md') for n in names)   # N2: never the folder's record.json
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'b_remediated.pdf'))   # changed by hand (M7)
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'b_remediated.pdf'), deterministic_id=True)   # changed by hand (M7)
     vs = DL.versions(R, rec)
     assert [x['id'] for x in vs] == ['current', 'shipment-1'] and vs[1]['label'].startswith('Shipment 1, shipped on ')
     with pytest.raises(DL.Refused): DL.prepare(R, 'r', 'current', 'pdf')                        # the current download refused (L1)
@@ -249,7 +249,7 @@ def test_the_run_page_drops_the_green_border_while_the_pdf_on_disk_differs(tmp_p
         if ship: M.ship(R, 'Kim', say=lambda *a: None, batch=False)
         page = open(os.path.join(R, 'review.html'), encoding='utf-8').read()
         assert '<section class="ship yes" aria-labelledby="ship-h">' in page and W.card_border(page, R) == page, name   # unchanged: green
-        doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'b_remediated.pdf'))
+        doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'b_remediated.pdf'), deterministic_id=True)
         rec = core.load(os.path.join(R, 'record.json'))
         st = MP.app_glance(R, rec, rec['glance'])['status']
         assert (st['name'], st.get('warning')) == (REL.SHIPPED, MP.SHIPPED_WARNING) if ship else st['text'] == MP.CHANGED_STATUS, name
@@ -266,7 +266,7 @@ def test_a_standing_refusal_is_said_once_on_the_strip(tmp_path):
     assert s['refusal'] == 'A new version of this book is being made, so nothing can be recorded or marked as shipped now. Check it once it is done.'
     assert MP.ship_gate(R, rec)['why'] == "A new version of this book is being made, so this version can't be marked as shipped now."   # a POST: Ship's words
     os.rmdir(os.path.join(R, 'reviews', 'work'))
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'sample_remediated.pdf'))   # changed by hand
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(500, 500)); doc.save(os.path.join(R, 'sample_remediated.pdf'), deterministic_id=True)   # changed by hand
     s = MP.strip(R, rec)
     assert s['ship']['why'] is None and s['refusal'] == ("The book's PDF has changed since this report was made, so no results can be recorded for it "
                                                          "and it can't be marked as shipped. Whoever looks after the app can check it.")
@@ -356,7 +356,7 @@ def test_the_record_zip_holds_only_its_files_in_every_state(tmp_path):
     assert 'han_review.csv: passages in Chinese or Japanese a person needs to check, as a spreadsheet.' in fr and 'record.json: ' in fr and 'which identifies this exact file (sha256): ' + s['pdf']['sha256'] in fr
     # an earlier version: its own page, links leading out of the ZIP unwrapped
     V = os.path.join(R, 'reviews', 'versions', '001'); os.makedirs(V)
-    doc = pikepdf.new(); doc.add_blank_page(page_size=(200, 200)); doc.save(os.path.join(V, 'b_remediated.pdf'))
+    doc = pikepdf.new(); doc.add_blank_page(page_size=(200, 200)); doc.save(os.path.join(V, 'b_remediated.pdf'), deterministic_id=True)
     core.save(os.path.join(V, 'record.json'), {'document': {'file': 'b.pdf', 'output': 'b_remediated.pdf'}})
     shutil.copy2(os.path.join(R, 'review.html'), os.path.join(V, 'review.html'))
     with open(os.path.join(V, 'review.html'), 'a', encoding='utf-8') as f:            # and, written before 2026-11-01, a statement link and `where`

@@ -5,6 +5,9 @@ nav_order: 5
 
 # Batch runs
 
+Batches can also be started from the app's home page, with a cost estimate before any paid call and a page that follows
+every book: see [The home page](home.md#batches). The commands below are what the app runs.
+
 ```bash
 AUTO=1 bash batch_api.sh batch1                                         # every PDF under samples (all subfolders)
 AUTO=1 bash batch_api.sh batch1 ../samples/tagged                    # one folder
@@ -39,7 +42,7 @@ teika       samples/tagged/teika.pdf
 
 `batch_api.sh` refuses to start without `AUTO=1`, because it calls the API without asking. It works in three steps:
 
-1. **Estimate (no model).** It runs the intake step for untagged books (OCR and auto-tagging; free) and audits every book and adds up the worst-case cost. It stops before any API call if the Claude total is over `BATCH_MAX_USD` (default $5) or over your credit. The audits are kept, so a rerun with a higher cap reuses them. Only Claude models count against the cap and the credit check (see [Choosing the model](models.md#choosing-the-model)), so the total line depends on the model:
+1. **Estimate (no model).** It runs the intake step for untagged books (OCR and auto-tagging; free) and audits every book and adds up the worst-case cost. A book with more than 100 images counts every one of its requests (its row says "in N requests"; see [Files](files.md)), and each book is also held to its own book cap (`BOOK_MAX_USD`, $5) when it runs. It stops before any API call if the Claude total is over `BATCH_MAX_USD` (default $5) or over your credit. The audits are kept, so a rerun with a higher cap reuses them. Only Claude models count against the cap and the credit check (see [Choosing the model](models.md#choosing-the-model)), so the total line depends on the model:
 
    ```
    # Claude batch
@@ -71,3 +74,19 @@ The summary's API cost includes calls whose reply was cut off (they are paid for
 To check that a code change left every `review.md` as it was, rerun the same books with `FROM=` before and after the change, then compare the two labels: `python3 tools/compare_runs.py <label-before> <label-after>` prints one line per book (identical, or how many lines were removed and added, and the first difference) and exits with 1 when any book differs. Only the "Time:" line and the run-start line are left out of the comparison.
 
 In a book list, relative paths count from the list file's folder. Short names must be unique across the batch.
+
+## Review stops, per-book OCR languages and the summary alone (from #45 round 4)
+
+- **`REVIEW=1`** (the app's batches): every book stops after the AI's decisions for a person's review. summary.md lists it
+  as **waiting for review** (never failed), and `RETRY=1` never runs it again ("waiting for review, skipped"); the app's
+  "Finish Review" applies that book (`run_api.sh`'s second call in its folder) and then writes the summary again.
+- **`ocr_langs.tsv`** in the batch folder, `<short name> <TAB> <OCR_LANG>` per line: that book's own OCR language (the
+  app writes it from "Language of the Scanned Pages"); a book not listed uses `OCR_LANG`. **`ASK_LANG=1`** is passed to
+  `run_api.sh`: a book with pages to OCR and no OCR language stops before intake (exit 4), is listed as **needs a
+  language** and is not sent.
+- **`SUMMARY_ONLY=1 bash batch_api.sh <label>`**: no run and no cost; summary.md and summary.html are written again from
+  the batch's book folders ("Credit left: not checked"). The app runs it after a book is applied or moved to the Trash.
+  When the batch folder has `trashed.json` (PDFs moved to the Trash from the app), summary.md adds "N PDFs moved to the
+  Trash (AI cost $X), not counted above".
+
+With none of these set, `batch_api.sh` behaves as before (checked on a terminal batch, 09-builder-report.md).
