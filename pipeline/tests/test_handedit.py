@@ -140,6 +140,9 @@ def test_a_hand_edited_pdf_comes_back_for_review_and_is_recorded(tmp_path):
     items = json.load(open(os.path.join(C, 'review_items.json'), encoding='utf-8'))
     assert items['hand_edit']['alt_removed'] == 1 and items['hand_edit']['figure_pages'] == [1]
     assert items['hand_edit']['text_differs'] == [1] and items['hand_edit']['lost'] == []
+    (t,) = items['hand_edit']['targets']                                  # the banner's one-click "Add Alt Text"
+    assert t['kind'] == 'alt' and t['page'] == 1 and t['suggest'] is None
+    assert next(it for it in items['addable']['alt'] if it['target'] == t['target'])['default'] == ''   # a new image: no suggestion
     from review import core
     digest = json.load(open(os.path.join(C, '_audit', 'digest.json'), encoding='utf-8'))
     gap = next(g for g in core.gaps(json.load(open(os.path.join(C, 'workorder.json'))), digest) if g['id'] == 'figures_without_alt')
@@ -193,3 +196,25 @@ def test_no_model_carries_the_parents_page_decisions_only_when_the_pages_are_the
     assert run['carried_from_parent'] == ['sections', 'links'] and run['usage']['cost_usd'] == 0
     (tmp_path / 'b').mkdir(); wo, run = no_model_order(tmp_path / 'b', (5, 6))
     assert 'sections' not in wo and 'carried_from_parent' not in run
+
+# ---- the review page's banner: one-click alt text for what the edit touched (review/core.py hand_edit_targets)
+def add_item(kind, target, page, before=None, decoration=None):
+    return {'id': f'add:{kind}:{target}', 'kind': kind, 'target': target, 'page': page, 'before': before,
+            'context': {'decoration': decoration} if decoration else {}}
+
+def test_banner_targets_suggest_the_old_alt_only_for_a_figure_that_lost_its_tag():
+    from review import core
+    adds = {'alt': [add_item('alt', '820 0', 5), add_item('alt', '9 0', 5, before='kept alt'), add_item('alt', '7 0', 3)],
+            'page_figures': [add_item('page_figures', 1, 1)]}
+    he = {'figure_pages': [5], 'lost': [{'page': 1, 'alt': 'Book cover'}]}
+    assert core.hand_edit_targets(he, adds) == [
+        {'kind': 'page_figures', 'target': 1, 'page': 1, 'suggest': 'Book cover'},      # the cover, now a whole-page figure
+        {'kind': 'alt', 'target': '820 0', 'page': 5, 'suggest': None}]                  # the new logo: no suggestion
+
+def test_banner_targets_leave_out_decided_and_decoration_figures():
+    from review import core
+    adds = {'alt': [add_item('alt', '4 0', 2, decoration='artifacts.elements:4 0')], 'page_figures': []}   # 820 0 decided: not in adds
+    assert core.hand_edit_targets({'figure_pages': [2, 5], 'lost': [{'page': 2, 'alt': 'old'}]}, adds) == []
+    adds = {'alt': [add_item('alt', '5 0', 2)], 'page_figures': []}                    # a lost figure tagged anew on a tagged page
+    assert core.hand_edit_targets({'figure_pages': [], 'lost': [{'page': 2, 'alt': 'old'}]}, adds) == [
+        {'kind': 'alt', 'target': '5 0', 'page': 2, 'suggest': 'old'}]

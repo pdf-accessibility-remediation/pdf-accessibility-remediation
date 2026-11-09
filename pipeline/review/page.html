@@ -479,7 +479,13 @@ if (DATA.hand_edit) {                                 // a PDF edited by hand an
     (he.outside_pages && he.outside_pages.length ? 'New images that no figure holds: ' + esc(pp(he.outside_pages)) + '. ' : '') +
     (he.lost && he.lost.length ? he.lost.length + (he.lost.length === 1 ? ' figure' : ' figures') + ' lost the tag in the edit (' +
       esc(pp(he.lost.map(f => f.page))) + '); the alt text it had: ' + he.lost.map(f => f.alt ? '“' + esc(f.alt) + '”' : 'none').join('; ') + '. ' : '') +
-    (he.text_differs && he.text_differs.length ? '<b>The text reads differently after the edit on ' + esc(pp(he.text_differs)) + '.</b>' : '');
+    (he.text_differs && he.text_differs.length ? '<b>The text reads differently after the edit on ' + esc(pp(he.text_differs)) + '.</b> ' : '') +
+    (he.targets || []).map(t => '<a href="#" data-add-kind="' + esc(t.kind) + '" data-add-target="' + esc(t.target) + '">' + esc(tc('Add alt text')) +
+      ': PDF ' + esc(t.page) + (t.kind === 'page_figures' ? ' (whole page)' : '') + '</a>').join(' · ');
+  el.addEventListener('click', e => {                 // the same as a gap's Add: the form for that figure
+    const a = e.target.closest('a[data-add-kind]'); if (!a) return;
+    e.preventDefault(); openAdd(a.dataset.addKind, a.dataset.addTarget);
+  });
 }
 if (SESSION && SESSION.reopened) {                    // a finished run reviewed again: where this session started, OCR
   const sn = id => 'Session ' + Number(id), nc = SESSION.not_carried || [];
@@ -1434,6 +1440,7 @@ function fillDetail() {
   row(WHAT[t.kind] || 'Decision', '<b>' + esc(t.label) + '</b>');
   targetRows(t, row);
   if (t.kind === 'move_section') moveRowsFor(t.default, t.context, ' (suggested: change the pages after adding; the preview follows)', row);
+  if (t.context && t.context.suggested_from_before_edit) row('Suggested', 'the alt text this figure had before the edit. Check it still fits the image.');
   const blk = blockedBy(t);
   let h = '<dl class="fields">' + rows.join('') + '</dl>' + imagesHtml(t);
   if (blk) h += '<div class="flag">The AI marked this figure as decoration, so screen readers skip it. Reject that decision (<code>' + esc(blk) + '</code>) first, then add its alt text.</div>';

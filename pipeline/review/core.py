@@ -742,6 +742,25 @@ def hand_edit(R):
             'lost': [{'page': f.get('page'), 'alt': f.get('alt')} for f in he.get('figures_lost') or []],
             'text_differs': sorted(x['page'] for x in he.get('text_pages') or [] if not x.get('heard_same'))}
 
+def hand_edit_targets(he, adds):
+    """The banner's "Add Alt Text" links for a PDF edited by hand: [{kind, target, page, suggest}] from addable()'s items
+    (adds), so a figure the work order already decides is left to its card. A figure holding a new image (its page in
+    he['figure_pages'], no alt left) gets no suggestion: its old alt described the old image. A figure that lost its tag
+    (he['lost']) suggests the alt it had, since it is usually the same picture: as a whole-page figure when its page has no
+    tags left (page_figures), else as a figure on that page with no alt."""
+    out, seen = [], set()
+    def take(it, suggest=None):
+        if it['id'] in seen: return
+        seen.add(it['id']); out.append({'kind': it['kind'], 'target': it['target'], 'page': it.get('page'), 'suggest': suggest or None})
+    bare = [it for it in adds.get('alt') or [] if not str(it.get('before') or '').strip() and not (it.get('context') or {}).get('decoration')]
+    for f in he.get('lost') or []:
+        whole = [it for it in adds.get('page_figures') or [] if it['target'] == f.get('page')]
+        for it in whole or [it for it in bare if it.get('page') == f.get('page')]: take(it, f.get('alt'))
+    for p in he.get('figure_pages') or []:
+        for it in bare:
+            if it.get('page') == p: take(it)
+    return sorted(out, key=lambda t: (t['page'] or 0, t['kind']))
+
 def prepare(R, pdf):
     """Write review_items.json, and render the pages of the first group so the page opens with them. Runs when run_api.sh
     stops for review. Every other page image is rendered by the server as the reviewer scrolls to it."""
@@ -758,7 +777,13 @@ def prepare(R, pdf):
             'pdf': os.path.abspath(pdf), 'groups': GROUPS, 'levels': LEVELS, 'add_kinds': ADD_KINDS, 'items': items,
             'addable': addable(ai, digest, ro), 'reading_order': ro}
     he = hand_edit(R)
-    if he: data['hand_edit'] = he
+    if he:                                           # a PDF edited by hand: one-click alt text for what the edit touched
+        he['targets'] = hand_edit_targets(he, data['addable'])
+        by_id = {it['id']: it for its in data['addable'].values() for it in its}
+        for t in he['targets']:
+            it = by_id.get(f'add:{t["kind"]}:{t["target"]}')
+            if t['suggest'] and it: it['default'] = t['suggest']; it['context']['suggested_from_before_edit'] = True
+        data['hand_edit'] = he
     save(os.path.join(R, 'review_items.json'), data)
     return data
 
