@@ -565,7 +565,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
               E(f'{len(saf) - len(saf_bad)} of {len(saf)} checks OK' if len(saf) == n_want or saf_bad else f'{len(saf)} of the {n_want} checks recorded for this run, all OK'), safety_fold),
              ('Needs a person', np_cls, str(np_['total']),
               E(looked if looked else f'{np_["ai_deferrals"]} deferred by the AI · {np_["executor_deferrals"]} deferred by the executor · {np_["check_rows"]} automated check{"" if np_["check_rows"] == 1 else "s"}'), ''),
-             ('AI decisions', 'good' if g['ship'][0]['ok'] else 'warn', f'{ad["count"]:,}',
+             ('Decisions (no AI call)' if ad.get('no_model') else 'AI decisions', 'good' if g['ship'][0]['ok'] else 'warn', f'{ad["count"]:,}',
               E(f'approved by {ad["reviewed"]["reviewer"]} on {D.day(ad["reviewed"]["date"])}' if ad.get('reviewed') and g['ship'][0]['ok']
                else 'reviewed, not signed off' if ad.get('reviewed') else 'Not reviewed by a person'), ''),
              ('veraPDF (WCAG Rules)',('good' if vg.get('after_rules') == 0 else 'warn') if vg.get('ran_after') else 'warn',

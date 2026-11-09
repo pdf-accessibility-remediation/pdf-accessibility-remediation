@@ -43,7 +43,15 @@ def sha_obj(o):
 def norm(x): return json.loads(json.dumps(x, ensure_ascii=False))
 def sid_n(sid): return int(sid) if str(sid).isdigit() else 0
 def label(sid): return f'session {int(sid)}' if str(sid).isdigit() else 'the result applied without review' if sid == 'ai' else str(sid)
-def from_label(src): return 'the AI\'s decisions' if src in ('ai', None) else 'the recorded summary of a previous review' if src == 'summary' else label(src)
+NO_AI_START = 'the beginning (no AI call)'            # a PDF edited by hand, brought back for review (decide.py --no-model)
+def from_label(src, no_model=False): return (NO_AI_START if no_model else 'the AI\'s decisions') if src in ('ai', None) else \
+    'the recorded summary of a previous review' if src == 'summary' else label(src)
+def no_model(R):
+    """A run whose work order was not made by an AI (decide.py --no-model: a PDF edited by hand, brought back for review):
+    its "AI's decisions" are an empty order, so the page and the panel say "the beginning" instead."""
+    rec = load(os.path.join(R, 'record.json')) or {}
+    if (rec.get('run') or {}).get('no_model') or (load(os.path.join(R, 'run.json')) or {}).get('no_model'): return True
+    return str((basis(R) or {}).get('decided_by') or '').startswith('no AI call')
 
 def P(R):
     """The paths in a run folder's reviews/."""
@@ -540,7 +548,7 @@ def open_session(R, rec, src=None, pdf=None, discard_open=False, say=say_):
     data['run'] = os.path.relpath(R, os.path.dirname(HERE))
     data['session'] = {'key': f'{b["run_id"]}:{s["id"]}', 'id': s['id'], 'from': s['from'], 'name_default': f'Session {int(s["id"])}',
                        'from_name': (src_s or {}).get('name'), 'from_notes': (src_s or {}).get('notes'),   # shown read-only
-                       'from_text': ('the AI\'s decisions' if s['from'] == 'ai' else
+                       'from_text': (from_label('ai', no_model(R)) if s['from'] == 'ai' else
                                      (summary_text(src_s) if src_s and src_s.get('summary_only') else label(s['from']).capitalize())),
                        'carried': s.get('carried', 0), 'not_carried': s.get('not_carried') or [], 'gaps_ack': s.get('gaps_ack') or {},
                        'set_in': {k: d.get('set_in') for k, d in (s.get('start') or {}).items() if d.get('set_in')},

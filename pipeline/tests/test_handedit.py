@@ -164,6 +164,7 @@ def test_a_hand_edited_pdf_comes_back_for_review_and_is_recorded(tmp_path):
     md = open(os.path.join(C, 'review.md'), encoding='utf-8').read()
     assert 'Edited by Hand' in md and '"A red square" | "A green square"' in md and 'None' not in md
     assert 'CHECK: the text reads differently after the edit on PDF 1' in md and 'lost' not in md
+    assert '**Decisions (no AI call):**' in md and 'started from an empty work order (no AI call)' in md and '**AI decisions:**' not in md
 
 def test_import_refuses_an_unchanged_file_a_missing_note_and_an_in_place_edit(tmp_path):
     src, P = parent_run(tmp_path)
@@ -294,3 +295,83 @@ def test_carried_decisions_get_no_card_and_are_still_applied(tmp_path, monkeypat
     assert d['hand_edit']['carried'] == [{'key': 'sections', 'what': 'contents pages (PDF 6–11)'}]
     wo = core.apply_decisions(ai, d['items'], {})
     assert wo['sections'] == {'toc_pages': [6, 7, 8, 9, 10, 11]}                    # no card, still in the order Finish applies
+
+# ---- import paths: the original as base, an untagged file, PDF 2.0, pages added, a new image in no figure, a batch parent,
+#      running the same import again, and the hand_edit read back when reviewing again
+def no_run(P, edited, *more, label='x'):
+    return sh([sys.executable, 'handedit.py', 'import', P, str(edited), '--by', 'Pat', '--note', 'n', '--label', label, '--no-run', *more])
+
+def he_json(P, label='x'): return json.load(open(os.path.join(os.path.dirname(P), label, '_handedit', 'hand_edit.json')))
+
+def test_the_original_can_be_the_base_and_must_be_the_runs_own(tmp_path):
+    src, P = parent_run(tmp_path)
+    edited = swap_image(src, tmp_path / 'orig-edited.pdf')
+    r = no_run(P, edited, '--base', 'original', '--base-pdf', src)
+    assert r.returncode == 0, r.stderr
+    h = he_json(P); assert h['base'] == 'original' and h['base_sha256'] == sha(src) and [f['page'] for f in h['figures_changed']] == [1]
+    other = figures_pdf(tmp_path / 'other.pdf', alts=('x', 'y'))
+    r = no_run(P, edited, '--base', 'original', '--base-pdf', other, label='y')
+    assert r.returncode == 1 and "is not this run's original" in r.stderr and not os.path.exists(os.path.join(os.path.dirname(P), 'y'))
+
+def test_an_untagged_edited_file_gets_no_working_copy(tmp_path):
+    src, P = parent_run(tmp_path)
+    out = os.path.join(P, json.load(open(os.path.join(P, 'record.json')))['document']['output'])
+    pdf = pikepdf.open(out); del pdf.Root['/StructTreeRoot']; pdf.save(tmp_path / 'untagged.pdf')
+    assert no_run(P, tmp_path / 'untagged.pdf').returncode == 0
+    h = he_json(P); assert h['input'] is None and h['figures_changed'] == [] and len(h['figures_lost']) == 2   # intake tags it in the run
+
+def test_a_pdf_2_edit_stops_for_a_person_before_any_folder_is_made(tmp_path):
+    src, P = parent_run(tmp_path)
+    out = os.path.join(P, json.load(open(os.path.join(P, 'record.json')))['document']['output'])
+    pdf = pikepdf.open(swap_image(out, tmp_path / 'e.pdf')); pdf.save(tmp_path / 'v2.pdf', min_version='2.0')
+    r = no_run(P, tmp_path / 'v2.pdf')
+    assert r.returncode == 3 and 'refused: the edited PDF is not supported yet: PDF 2.0' in r.stderr
+    assert not os.path.exists(os.path.join(os.path.dirname(P), 'x'))
+
+def test_pages_added_are_recorded(tmp_path):
+    src, P = parent_run(tmp_path)
+    out = os.path.join(P, json.load(open(os.path.join(P, 'record.json')))['document']['output'])
+    pdf = pikepdf.open(out); pdf.add_blank_page(page_size=(432, 576)); pdf.save(tmp_path / 'more.pdf')
+    assert no_run(P, tmp_path / 'more.pdf').returncode == 0 and he_json(P)['pages'] == [1, 2]
+
+def test_a_new_image_that_no_figure_holds_is_listed(tmp_path):
+    base = figures_pdf(tmp_path / 'base.pdf')
+    edited = figures_pdf(tmp_path / 'edited.pdf', colors=(b'\x00\xff\x00', b'\xff\x00\x00'), untag_first=True)   # new, untagged
+    ch = handedit.changed(base, edited)
+    assert len(ch['outside_figures']) == 1 and ch['outside_figures'][0]['page'] == 1 and ch['figures'] == []
+    assert ch['figures_lost'] == [{'page': 1, 'alt': 'A blue square'}]
+
+def test_a_batch_books_edited_copy_lands_in_runs_name_label(tmp_path):
+    src, P = parent_run(tmp_path)
+    B = tmp_path / 'runs' / 'batches' / 'b1' / 'book'; shutil.copytree(P, B)
+    out = os.path.join(B, json.load(open(B / 'record.json'))['document']['output'])
+    assert no_run(str(B), swap_image(out, tmp_path / 'e.pdf'), label='fromb').returncode == 0
+    assert (tmp_path / 'runs' / 'book' / 'fromb' / '_handedit' / 'hand_edit.json').exists()
+    assert not (tmp_path / 'runs' / 'batches' / 'b1' / 'fromb').exists()
+
+def test_the_same_import_again_carries_on_and_another_file_is_refused(tmp_path):
+    src, P = parent_run(tmp_path)
+    out = os.path.join(P, json.load(open(os.path.join(P, 'record.json')))['document']['output'])
+    e1 = swap_image(out, tmp_path / 'e1.pdf')
+    assert no_run(P, e1).returncode == 0
+    r = no_run(P, e1); assert r.returncode == 0 and 'already in place' in r.stdout
+    e2 = swap_image(out, tmp_path / 'e2.pdf', word=True)
+    r = no_run(P, e2); assert r.returncode == 1 and 'already exists for another file or mode' in r.stderr
+
+def test_reviewing_again_reads_the_hand_edit_from_the_record(tmp_path):
+    from review import core
+    R = tmp_path / 'run'; (R / 'reviews').mkdir(parents=True)
+    (R / 'record.json').write_text(json.dumps({'hand_edit': {'by': 'Pat', 'figures_changed': [{'page': 2, 'alt': 'old'}]}}))
+    assert core.hand_edit_raw(str(R / 'reviews'))['by'] == 'Pat' and core.hand_edit(str(R / 'reviews'))['figure_pages'] == [2]
+    assert core.hand_edit_raw(str(R)) is None                                       # only reviews/ falls back to the record
+
+# ---- wording in a run with no AI call
+def test_a_run_with_no_ai_call_never_credits_the_ai(tmp_path):
+    from lib import glance as G
+    from review import sessions as S
+    g = {'ai_decisions': {'count': 1, 'reviewed': None, 'no_model': True}}
+    assert S.from_label('ai', True) == 'the beginning (no AI call)' and S.from_label('ai') == "the AI's decisions"
+    assert "'Decisions (no AI call)' if ad.get('no_model')" in open(os.path.join(PIPE, 'report_html.py')).read()
+    assert '"Decisions (no AI call)" if ad.get("no_model")' in open(os.path.join(PIPE, 'lib', 'glance.py')).read()
+    R = tmp_path / 'r'; R.mkdir(); (R / 'run.json').write_text(json.dumps({'no_model': 'x'}))
+    assert S.no_model(str(R)) and not S.no_model(str(tmp_path))
