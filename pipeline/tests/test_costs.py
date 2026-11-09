@@ -115,6 +115,13 @@ def test_no_ledger_is_the_seed_alone(tmp_path):
     S = seed(tmp_path, row('b01', 1))
     assert len(H.rows(str(tmp_path / 'absent.jsonl'), S)) == 1 and len(H.rows('', S)) == 1
 
+def test_a_rebuilt_seed_leaves_out_a_request_with_a_cut_off_call():
+    import cost_seed
+    p = {'pass': '2', 'usage': {'cost_usd': 1, 'prompt_tokens': 100, 'completion_tokens': 40000}, 'calls': [{'finish_reason': 'length'}, {'finish_reason': 'stop'}], 'finish_reason': None}
+    run = {'model': MODEL, 'started': '2026-11-08T10:00:00', 'passes': [p, dict(p, **{'pass': '3', 'calls': [{'finish_reason': 'stop'}]})],
+           'estimate': {'passes': [{'pass': '2', 'input_tokens': 5000, 'images': 3}, {'pass': '3', 'input_tokens': 5000, 'images': 3}]}}
+    assert [r['kind'] for r in cost_seed.calls_of(run, 'x')] == ['figure'] and cost_seed.calls_of(run, 'x')[0]['input_est'] == 5000
+
 def test_the_committed_seed_alone_gives_a_figure():
     x = H.expected([{'kind': 'workorder', 'input_est': 60000, 'max_tokens': 48000}], MODEL, ceiling=0.61, history=H.seed_rows(), **P)
     assert 0.05 < x['usd'] < 0.61 and x['basis']['calls'] == 80

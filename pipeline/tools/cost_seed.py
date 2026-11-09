@@ -42,7 +42,7 @@ def calls_of(run, sha):
         for p in run['passes']:
             k = str(p['pass'])
             if k == 'probe' or (p.get('usage') or {}).get('cost_usd') is None: continue
-            fin = p.get('finish_reason') or ((p.get('calls') or [{}])[-1]).get('finish_reason')
+            fin = 'length' if any(c.get('finish_reason') == 'length' for c in p.get('calls') or []) else p.get('finish_reason') or ((p.get('calls') or [{}])[-1]).get('finish_reason')   # a request's usage is the sum of its calls: one with a cut-off teaches nothing
             kind = 'workorder' if k == '1' else 'figure'
             prompt = run.get('prompt_file') if k == '1' else (run.get('figure_passes') or {}).get('prompt_file')
             ee = ep.get(k) or {}

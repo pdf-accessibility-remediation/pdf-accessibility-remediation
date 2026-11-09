@@ -155,6 +155,13 @@ def test_it_stays_so_when_read_a_second_time_and_after_the_folder_moved(book, tm
     N = tmp_path / 'moved'; R.rename(N); assert C.actual(str(N))['usd'] == 0.3                                  # stored, not worked out from a path
     assert decide(A, N, '--response-file', N / 'response.json').returncode == 0 and load(N / 'run.json')['own_reply'] is True and C.actual(str(N))['usd'] == 0.3
 
+def test_a_copied_folder_keeps_the_count_on_both_sides(book, tmp_path):
+    A, R = paid_folder(book, tmp_path); decide(A, R, '--response-file', R / 'response.json')
+    C2 = tmp_path / 'copy'; shutil.copytree(R, C2)
+    assert C.actual(str(R))['usd'] == 0.3 and C.actual(str(C2))['usd'] == 0.3
+    assert decide(A, C2, '--response-file', C2 / 'response.json').returncode == 0 and load(C2 / 'run.json')['own_reply'] is True
+    assert C.actual(str(R))['usd'] == 0.3 and C.actual(str(C2))['usd'] == 0.3
+
 def test_another_runs_response_json_is_not_this_runs_money(book, tmp_path):
     A, R = paid_folder(book, tmp_path); O = tmp_path / 'other'
     assert decide(A, O, '--response-file', R / 'response.json').returncode == 0

@@ -208,8 +208,9 @@ def batch_spent(B):
     except OSError: dirs = []
     for R in dirs:
         a = actual(R); usd += a['usd']; earlier += a['earlier_usd']; retry += a['retry_usd']
+    here = {os.path.basename(d) for d in dirs}
     trashed = sum((x.get('cost_usd') or 0) for x in _load(os.path.join(B, 'trashed.json')) or []
-                  if isinstance(x, dict) and not (x.get('name') and os.path.isdir(os.path.join(B, str(x['name'])))))   # dragged back from the Trash: its folder counts it
+                  if isinstance(x, dict) and x.get('name') not in here)   # dragged back from the Trash: its folder counts it
     return {'usd': round(usd + trashed, 6), 'earlier_usd': round(earlier, 6), 'retry_usd': round(retry, 6), 'trashed_usd': round(trashed, 6)}
 
 def shown_words(B, shown, so_far=False):
