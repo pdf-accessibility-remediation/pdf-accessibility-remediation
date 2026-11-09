@@ -83,8 +83,36 @@ def test_no_cost_line_on_a_page_says_tokens_or_the_old_words():
         cost = [l for l in js.splitlines() if ('Cost' in l or 'Remediation' in l) and 'token' in l.lower()]
         assert not cost and 'Worst-case' not in js and 'At Most' not in js and 'Estimated Cost:' not in js.replace('Max Estimated Cost', '')
 
-def test_ocr_draft_is_named_not_built(setup):
-    with pytest.raises(costs.NotBuilt): costs.estimate(str(run_folder(setup)), 'ocr-draft')
+def page_reads_estimate(R, worst=0.42, per_page=0.07, to_read=6, **kw):
+    (R / 'page_reads_estimate.json').write_text(json.dumps({'schema': 'page-reads-estimate/1', 'model': MODEL, 'prompt_sha256': 'p',
+        'pages': to_read, 'to_read': to_read, 'reused': 0, 'expected_usd': 0.2, 'worst_case_usd': worst, 'per_page_worst_usd': per_page,
+        'cap_usd': 3, 'images': {'5': 'abc'}, **kw}))
+
+def test_estimate_adds_the_page_readings(setup):
+    """#49: the pages read whole run in the same Spend, so their worst case is in the book's total, its checks and its
+    fingerprint, with a cap of their own; the work order's caps stay its own."""
+    R = run_folder(setup); fp = costs.estimate(str(R))['fingerprint']
+    page_reads_estimate(R)
+    e = costs.estimate(str(R))
+    assert e['ceiling_usd'] == 1.04 and e['page_reads'] == {'pages': 6, 'ceiling_usd': 0.42} and e['fingerprint'] != fp
+    assert e['bounds'] == {'MAX_USD': 0.63, 'BOOK_MAX_USD': None, 'PAGE_READS_MAX_USD': 0.43}
+    page_reads_estimate(R, images={'5': 'changed'})
+    assert costs.estimate(str(R))['fingerprint'] != e['fingerprint']        # a page image that changed is a new estimate
+    page_reads_estimate(R, to_read=0, worst=0.0)                            # every page read before: nothing added
+    assert costs.estimate(str(R))['fingerprint'] == fp and costs.estimate(str(R))['page_reads'] is None
+
+def test_page_readings_count_toward_the_credit_and_the_book(setup):
+    R = run_folder(setup, credit=0.9); page_reads_estimate(R)
+    assert costs.estimate(str(R))['blocked']['code'] == 'credit'           # 0.62 fits, 1.04 does not
+    R = run_folder(setup, label='l2', worst=1.9, passes=[{'pass': '1', 'worst_case_usd': 1.9}], book_cap_usd=5.0); page_reads_estimate(R, worst=3.5)
+    e = costs.estimate(str(R))
+    assert e['blocked']['code'] == 'per_book' and e['bounds']['BOOK_MAX_USD'] == 1.91
+
+def test_batch_binds_the_largest_books_page_readings(setup):
+    a, b = run_folder(setup, label='a'), run_folder(setup, label='b')
+    page_reads_estimate(a, worst=0.3); page_reads_estimate(b, worst=0.55)
+    t = costs.batch([str(a), str(b)])
+    assert t['ceiling_usd'] == round(0.62 * 2 + 0.3 + 0.55, 4) and t['bounds']['PAGE_READS_MAX_USD'] == 0.56
 
 def test_batch_sums(setup):
     a, b = run_folder(setup, label='a', worst=0.5), run_folder(setup, label='b', worst=0.7, credit=1.0)
@@ -225,6 +253,19 @@ def test_spend_binds_the_estimate_shown(setup):
     assert a['argv'][1:] == ['run_api.sh', str(setup / 'samples' / 'bk.pdf'), 'bk', 'l1'] and a['extra']['fingerprint'] == est['fingerprint']
     j = NR.start_spend(s, 'bk/l1', str(R), {'kind': 'workorder', 'fingerprint': est['fingerprint']})
     assert j['paid'] and j['kind'] == 'spend' and j['env']['MAX_USD'] == '0.63'
+
+def test_spend_sends_page_readings_only_as_shown(setup):
+    """#49: an estimate job prices the pages read whole; Spend sends them, bound to the estimate shown, only when it showed
+    them; every other job reads no pages."""
+    s, R, est = spend_setup(setup)
+    assert config.child_env(s, {'ESTIMATE': '1'})['PAGE_READS'] == '1' and config.child_env(s, {'REVIEW': '1'})['PAGE_READS'] == 'off'
+    assert SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])['env_set'].get('PAGE_READS') is None   # none shown: off
+    page_reads_estimate(R)
+    est = costs.estimate(str(R), limits=costs.limits_of(s))
+    a = SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    assert a['env_set']['PAGE_READS'] == '1' and a['env_set']['PAGE_READS_MAX_USD'] == '0.43' and a['env_set']['MAX_USD'] == '0.63'
+    j = NR.start_spend(s, 'bk/l1', str(R), {'kind': 'workorder', 'fingerprint': est['fingerprint']})
+    assert j['env']['PAGE_READS'] == '1' and j['env']['PAGE_READS_MAX_USD'] == '0.43'
 
 @pytest.mark.parametrize('change,words', [('fingerprint', 'changed since it was shown'), ('model', 'out of date'),
                                           ('prompt', 'out of date'), ('limit', 'limit of $0.50'), ('file', 'changed or is gone')])

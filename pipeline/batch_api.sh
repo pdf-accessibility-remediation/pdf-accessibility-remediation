@@ -22,6 +22,8 @@
 #                    that was cut off stays on record with its cost (the next attempt allows twice as much); a complete reply
 #                    whose later step failed is reused free
 #   FORCE_OCR=1, OCR_LANG=…, OCR=off, INTAKE=off   passed to every book's intake step (see run_api.sh)
+#   PAGE_READS=1     read each book's scanned, mostly Hawaiian pages whole with the AI (off in a batch: not in BATCH_MAX_USD;
+#                    each book's own PAGE_READS_MAX_USD cap applies, default 3)
 #   REVIEW=1         every book stops after the AI's decisions for a person's review (the app's batches, #45 D2): summary.md
 #                    lists it as waiting for review, and RETRY=1 never runs it again ("Finish Review" in the app applies it)
 #   SUMMARY_ONLY=1   no run, no cost: summary.md and summary.html written again from the batch's book folders (the app,
@@ -65,6 +67,7 @@ now() { python3 -c 'import time; print(f"{time.time():.2f}")'; }
 T0=$(now); STARTED=$(date '+%Y-%m-%d %H:%M')
 DEFAULT_MODEL=$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")
 export MODEL=${MODEL:-}
+export PAGE_READS=${PAGE_READS:-off}   # page readings (#49) are off in a batch unless PAGE_READS=1 or all: BATCH_MAX_USD does not count them (each book's PAGE_READS_MAX_USD does)
 
 # ---- summary.md: written at the end, when a RETRY finds nothing left to run, and when a batch stops early
 SUMMARY_DONE=; RUNNING=; FAILED_AT=

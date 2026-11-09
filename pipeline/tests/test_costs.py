@@ -33,9 +33,8 @@ def ask(hist, input_est=60000, max_tokens=48000, ceiling=0.61, kind='workorder',
 def test_the_work_order_allowance_is_todays_rule(forms, want):
     assert C.allowance('workorder', forms) == want
 
-def test_a_figure_request_has_32000_and_later_kinds_are_named():
+def test_a_figure_request_has_32000_and_an_unknown_kind_is_refused():
     assert C.allowance('figure') == 32000
-    with pytest.raises(C.NotBuilt): C.allowance('ocr-draft')
     with pytest.raises(ValueError): C.allowance('nonsense')
 
 def test_the_default_limits_are_in_one_place():
