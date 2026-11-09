@@ -296,7 +296,7 @@ FROM=${FROM:-}; KEEP=${KEEP:-}; export B LABEL STEP FROM KEEP
 
 if [[ -n ${FROM:-} ]]; then
   rm -f "$B/.shown.json"                          # kept for summary.md rewrites of a paid batch; a FROM= rerun agreed to no cost
-echo; echo "1/3 reusing the replies saved under run label $FROM (no API calls, no cost; each record keeps its original model)"
+echo; echo "1/3 reusing the replies saved under run label $FROM (no AI requests, no cost; each record keeps its original model)"
   python3 - "$B/todo.tsv" "$RUNS_DIR" "$FROM" "$B" <<'PY' || exit 1
 import sys, json, os, math
 import shutil
@@ -329,14 +329,14 @@ echo; echo "1/3 audit + cost estimate for every book (no model)"
 STEP=estimate each
 python3 - "$B/todo.tsv" "$RUNS_DIR" "$LABEL" "$MAX" <<'PY' || exit 1
 import sys, json, os, math
-from lib import costs
+from lib import costs, costhistory
 books, runs, label, cap = sys.argv[1], sys.argv[2], sys.argv[3], float(sys.argv[4])
 total, credit, rows, bad, approx, capped_n, flagged = 0.0, None, [], [], 0.0, 0, []
 exp_usd, exp_n, exp_of, exp_seen, requests = 0.0, 0, 0, False, 0
 def expected_words(x):
     if not isinstance(x, dict): return ''
     if x.get('usd') is None: return 'Expected Cost: Not Available Yet · '
-    return f'Expected Cost: ${x["usd"]:.2f}' + (f' (usually ${x["low"]:.2f}–${x["high"]:.2f})' if x.get('low') is not None else '') + ' · '
+    return f'Expected Cost: ${x["usd"]:.2f}' + (f' (usually ${x["low"]:.2f}–${x["high"]:.2f})' if x.get('low') is not None else '') + costhistory.beyond_note(x) + ' · '
 for line in open(books):
     name = line.split('\t')[0]; R = os.path.join(runs, 'batches', label, name)
     if os.path.exists(os.path.join(R, 'workorder.json')) and os.path.exists(os.path.join(R, 'response.json')):

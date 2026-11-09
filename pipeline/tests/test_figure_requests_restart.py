@@ -35,7 +35,7 @@ def test_a_run_stopped_during_its_figure_requests_logs_every_cost_and_starts_ove
 def test_a_run_whose_requests_all_finished_is_applied_with_no_new_call(book, tmp_path):
     R = stopped_folder(book, tmp_path, 'merged'); (R / 'workorder.json').write_text(json.dumps({'schema': 'workorder/0.2'}))
     r = run_api(book[0], R)
-    assert 'applying its work order, no new API call' in r.stdout, r.stdout + r.stderr
+    assert 'applying its work order, no new AI request' in r.stdout, r.stdout + r.stderr
     assert '2/5' not in r.stdout and '3/5' not in r.stdout                   # decide.py was never started
     run = json.load(open(R / 'record.json'))['run'] if (R / 'record.json').exists() else json.load(open(R / 'run.json'))
     assert run.get('response_from') is None and run['usage']['cost_usd'] == 0.9 and len(run['passes']) == 2

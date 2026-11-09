@@ -218,10 +218,10 @@ def test_run_page_header_is_the_apps(app):
     before = (R / 'review.html').read_bytes()
     page = get(app['port'], '/run/book/r1/')[1].decode()
     assert 'Review: book.pdf' not in page and 'workorder_v10' not in page and 'anthropic/x' not in page
-    assert 'class="top pp-head pp-hd"' in page and '12 pages' in page and '<p class="pp-hd-det">r1 · ' in page
+    assert 'class="top pp-head pp-hd pp-run-hd"' in page and '12 pages' in page and '<p class="pp-hd-det">r1 · ' in page
     assert (R / 'review.html').read_bytes() == before
     # Q6 (Patrick's test, 2026-11-07): "Home Page" inside the header, on its right; the details on one line; one app bar
-    hd = page[page.index('<header class="top pp-head pp-hd">'):page.index('</header>')]
+    hd = page[page.index('<header class="top pp-head pp-hd pp-run-hd">'):page.index('</header>')]
     assert '<nav class="pp-appbar" aria-label="App"><a class="pp-btn" href="/">Home Page</a></nav>' in hd and page.count('aria-label="App"') == 1
     assert '<p class="pp-hd-det">r1 · 12 pages · AI Cost: not recorded</p>' in hd
 
@@ -230,7 +230,7 @@ def test_a_job_recorded_before_the_wording_changed_reads_the_new_way():
 
 def test_the_home_page_button_moves_on_the_run_page_only():
     css = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'webapp', 'panel.css'), encoding='utf-8').read()
-    assert 'body.pp-page:not(.bn-on):not(.hm-page) header.pp-hd .pp-appbar { position: relative; left: -2px; }' in css
+    assert '.pp-run-hd .pp-appbar { position: relative; left: -2px; }' in css
 
 def test_run_details_in_plain_words(setup):
     """Q6: Run Name, pages, when it ran, the AI by its plain name and the AI cost with the max estimated cost; a saved

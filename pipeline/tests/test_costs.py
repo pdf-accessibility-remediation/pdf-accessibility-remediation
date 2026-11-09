@@ -63,6 +63,12 @@ def test_a_figure_for_a_much_larger_request_keeps_to_both_limits():
     x = ask(h, input_est=5_000_000, max_tokens=48000, ceiling=11); assert x['usd'] <= 11 and x['high'] <= 11
     m = H.learn(sorted(h, key=lambda r: r['date'])); assert max(H.predict(m, 5_000_000, 48000)) == 48000
 
+def test_the_note_for_a_larger_request_is_one_wording_for_a_pdf_and_a_batch():
+    x = {'usd': 1.0, 'low': 0.8, 'high': 1.2, 'basis': {'calls': 80, 'books': 30}, 'beyond': True}
+    assert H.beyond_note(x) in H.terminal_line(x) and H.beyond_note({'usd': 1.0}) == ''
+    sh = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'batch_api.sh'), encoding='utf-8').read()
+    assert 'costhistory.beyond_note(x)' in sh
+
 def test_the_terminal_names_the_thinner_of_two_histories():
     wo, fig = history(40, 8), [dict(r, kind='figure') for r in history(19, 6)]
     q = [{'kind': 'workorder', 'input_est': 60000, 'max_tokens': 48000}, {'kind': 'figure', 'input_est': 60000, 'max_tokens': 32000}]

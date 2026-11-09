@@ -304,7 +304,7 @@ header.nr-head { padding-top: 18px; } header.nr-head h1 { margin: 0 0 10px; }
 .nr-src .pp-appbar { margin: 0; padding: 0; max-width: none; }
 /* S7: New Batch's "Home Page" 3 px left and 2 px down */
 .nb-page .pp-hd-top .pp-appbar { position: relative; left: -3px; top: 2px; }
-body.pp-page:not(.bn-on):not(.hm-page) header.pp-hd .pp-appbar { position: relative; left: -2px; }   /* the run page's header only (Patrick's test): not the batch page or a batch PDF's */
+.pp-run-hd .pp-appbar { position: relative; left: -2px; }   /* the run page's header only (Patrick's test): not the batch page or a batch PDF's */
 /* T2 (Patrick, 2026-11-07): the batch page's "This Batch" panel joins its header, and the side list when it is shown */
 #main > #bt-panel { margin-top: 0; border-top-width: 0; border-radius: 0; }
 @media (min-width: 48em) {

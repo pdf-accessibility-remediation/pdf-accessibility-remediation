@@ -151,13 +151,17 @@ def expected(requests, model, price_in, price_out, ceiling, cut_off=False, histo
     usd, high = min(usd, ceiling), min(high, ceiling)
     return {'usd': round(usd, 4), 'low': round(min(low, usd), 4), 'high': round(max(high, usd), 4), 'basis': basis, **({'beyond': True} if beyond else {})}
 
+def beyond_note(x):
+    """What the terminal adds to a figure for a request larger than any learned (one wording: one PDF's line and a batch's rows)."""
+    return '; larger than any request learned from, so it may read high' if x.get('beyond') else ''
+
 def terminal_line(x):
     """The terminal's "Expected Cost" line (the pages show the figure only, and no reason)."""
     if x.get('usd') is not None:
         b = x.get('basis') or {}
         return (f'Expected Cost: ${x["usd"]:.2f} (usually ${x["low"]:.2f}–${x["high"]:.2f})'
                 + (f', from the last {b["calls"]} calls ({b["books"]} PDFs)' if b.get('calls') else '')
-                + ('; larger than any request learned from, so it may read high' if x.get('beyond') else ''))
+                + beyond_note(x))
     why = {'cut_off': 'an AI answer was cut off in this folder, so past runs say little about the next one',
            'too_few': f'{x.get("calls", 0)} past call{"" if x.get("calls") == 1 else "s"} of this kind, from {x.get("books", 0)} PDF{"" if x.get("books") == 1 else "s"}; needs {MIN_CALLS} from {MIN_BOOKS}'}
     return 'Expected Cost: Not Available Yet' + (f' ({why[x["none"]]})' if x.get('none') in why else '')

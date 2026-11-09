@@ -42,7 +42,7 @@ teika       samples/tagged/teika.pdf
 
 `batch_api.sh` refuses to start without `AUTO=1`, because it calls the API without asking. It works in three steps:
 
-1. **Estimate (no model).** It runs the intake step for untagged books (OCR and auto-tagging; free) and audits every book and adds up what it could cost. A book with more than 100 images counts every one of its requests (its row says "in N requests"; see [Files](files.md)), and each book is also held to its own limit (`BOOK_MAX_USD`, $5) when it runs. It stops before any API call if what the batch has already spent plus the Claude total is over `BATCH_MAX_USD` (default $10, from `lib/costs.py`), or the Claude total is over your credit. The audits are kept, so a rerun with a higher limit reuses them. Only Claude models count against the limit and the credit check (see [Choosing the model](models.md#choosing-the-model)), so the total lines depend on the model:
+1. **Estimate (no model).** It runs the intake step for untagged books (OCR and auto-tagging; free) and audits every book and adds up what it could cost. A book with more than 100 images counts every one of its requests (its row says "in N requests"; see [Files](files.md)), and each book is also held to its own limit (`BOOK_MAX_USD`, $5) when it runs. It stops before any AI request if what the batch has already spent plus the Claude total is over `BATCH_MAX_USD` (default $10, from `lib/costs.py`), or the Claude total is over your credit. The audits are kept, so a rerun with a higher limit reuses them. Only Claude models count against the limit and the credit check (see [Choosing the model](models.md#choosing-the-model)), so the total lines depend on the model:
 
    ```
    # Claude batch
@@ -74,7 +74,7 @@ Copy the printed command rather than retyping it: a `RETRY=1` without the origin
 
 The summary's API cost includes calls whose reply was cut off (they are paid for). Credit left is OpenRouter's balance, or, when OpenRouter hasn't caught up with the batch's calls yet, the credit before the batch minus what the batch spent.
 
-`FROM=<earlier-label>` re-runs a batch from the Claude replies saved in earlier `record.json` files: no API calls and no cost. Use it to apply pipeline fixes to past decisions. It looks for each book in the batch `runs/batches/<label>/<name>/` first, then in the single run `runs/<name>/<label>/`, so the book folder names must match the earlier run.
+`FROM=<earlier-label>` re-runs a batch from the Claude replies saved in earlier `record.json` files: no AI requests and no cost. Use it to apply pipeline fixes to past decisions. It looks for each book in the batch `runs/batches/<label>/<name>/` first, then in the single run `runs/<name>/<label>/`, so the book folder names must match the earlier run.
 
 To check that a code change left every `review.md` as it was, rerun the same books with `FROM=` before and after the change, then compare the two labels: `python3 tools/compare_runs.py <label-before> <label-after>` prints one line per book (identical, or how many lines were removed and added, and the first difference) and exits with 1 when any book differs. Only the "Time:" line and the run-start line are left out of the comparison.
 

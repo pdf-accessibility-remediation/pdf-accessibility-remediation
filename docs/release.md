@@ -329,7 +329,7 @@ stylesheet, centered on the list's height in the page's text color (the browser'
     Software: Python 3.13.9, pikepdf 10.5.1, pdfplumber 0.11.9, pypdfium2 5.7.1, Pillow 13.0.0, fontTools 4.62.1
     ```
 
-    The AI cost is always the call's real cost: for a reused reply, the original call's (`lib/origin.py`); "not
+    The AI cost is always the request's real cost: for a reused reply, the original request's (`lib/origin.py`); "not
     recorded" only when none is kept anywhere. A missing value reads "not recorded".
     - **OCR and Auto-Tagging** (Patrick, 2026-11-01; was "Before remediation") says plainly what intake did, from OCR's
       own lists of pages: "1 page is a picture with no text, so no text was added for it", "…, so OCR added its text",

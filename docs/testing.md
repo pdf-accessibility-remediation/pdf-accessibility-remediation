@@ -35,7 +35,7 @@ The expected values come from the module docstrings and from [Work order](work-o
 
 ## Regression test
 
-`tools/regression.py` runs the books in `pipeline/tests/baseline/` (hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant, ilokano and romanization-ocr; sources and licenses in `samples/README.md` in the repository) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved model reply is used instead of an API call. Each book's folder holds:
+`tools/regression.py` runs the books in `pipeline/tests/baseline/` (hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant, ilokano and romanization-ocr; sources and licenses in `samples/README.md` in the repository) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved model reply is used instead of an AI request. Each book's folder holds:
 
 | File | What it is |
 |---|---|
@@ -109,7 +109,7 @@ Make one update per PR, with its own reason. Don't fold several unrelated change
 
 **After a prompt change:** the saved replies were written for one prompt version (`meta.json` → `prompt`). When `decide.py` uses a new prompt, the test stops and asks for a re-seed instead of showing a diff. To re-seed:
 
-1. Run the baseline books with the new prompt. This is a paid call, about $1.90 for the nine (v10, 2026-11-03: $1.49 for the seven tagged books, $0.30 for romanization-ocr; ilokano about $0.10); ask first. ilokano and romanization-ocr are single runs (`bash run_api.sh ../samples/untagged/ilokano.pdf ilokano <label>`), the others a batch.
+1. Run the baseline books with the new prompt. This is a paid request, about $1.90 for the nine (v10, 2026-11-03: $1.49 for the seven tagged books, $0.30 for romanization-ocr; ilokano about $0.10); ask first. ilokano and romanization-ocr are single runs (`bash run_api.sh ../samples/untagged/ilokano.pdf ilokano <label>`), the others a batch.
 2. Run `python3 tools/regression.py --update --seed ../runs/batches/<label> --reason "prompt vN"` for the tagged books, and `--update --books ilokano --seed ../runs/ilokano/<label>` for ilokano (a single run folder; its `_intake/` is copied too), and the same for romanization-ocr.
 
 `--seed` copies each book's `raw_reply` from its `record.json`.

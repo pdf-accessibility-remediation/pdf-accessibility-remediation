@@ -115,16 +115,16 @@ if [[ -f $R/workorder.ai.json ]]; then         # stopped for a person's review (
     echo "the AI's work order in $R is waiting for a review. Finish it first:"
     echo "  python3 $(pwd)/review_workorder.py \"$R\" --serve"; exit 1
   fi
-  REVIEWED=1; echo "▶ the work order was reviewed by a person: applying the reviewed version (no API call)"
+  REVIEWED=1; echo "▶ the work order was reviewed by a person: applying the reviewed version (no AI request)"
 elif [[ -z ${REPLY:-} && -f $R/workorder.json && $FIG == merged ]]; then
   # every request of the earlier attempt finished, figure requests included, and a later step failed: its work order and
   # run.json are this run's own (its calls stay counted as this run's spending; not a replay)
-  MERGED=1; echo "▶ every AI request of the previous attempt finished (a later step failed): applying its work order, no new API call"
+  MERGED=1; echo "▶ every AI request of the previous attempt finished (a later step failed): applying its work order, no new AI request"
 elif [[ $FIG == calling ]]; then               # before the next branch: a stop just after workorder.json is written must not replay the first reply alone
   log_attempt                                  # stopped while its figure requests were being sent: logged, then started over
 elif [[ -z ${REPLY:-} && -f $R/workorder.json && -f $R/response.json ]]; then
   REPLY=$R/response.json
-  echo "▶ the previous attempt's reply was complete (a later step failed): reusing it, no new API call"
+  echo "▶ the previous attempt's reply was complete (a later step failed): reusing it, no new AI request"
 elif [[ -f $R/run.json ]]; then
   # a complete paid reply that could not be read: try it again with the current reader before paying for a new call
   # (not for a book planned with figure requests: they would need new calls, so its cost is logged and the run starts over)
@@ -216,7 +216,7 @@ else
     read -r -p "Send to OpenRouter now? [y/N] " ok
   fi
   if [[ ${ok:-n} != [yY]* ]]; then
-    echo "stopped before the API call"; [[ -z ${KEEP:-} && -n $NEW ]] && rm -rf "$R"; summary; exit 0
+    echo "stopped before the AI request"; [[ -z ${KEEP:-} && -n $NEW ]] && rm -rf "$R"; summary; exit 0
   fi
   stage "3/5 $USE_MODEL via OpenRouter" python3 decide.py "$A" "$R" ${MT[@]+"${MT[@]}"}
 fi
