@@ -17,6 +17,28 @@ tdiff, untag, art, offp = [], 0, 0, {}
 _alog = json.load(open(B + '.log.json')) if os.path.exists(B + '.log.json') else {}   # apply.py's log: font-map corrections
 FONTMAP = {(x['font'], x['old']): x['new'] for x in (_alog.get('font_maps') or {}).get('for_verify') or []}
 def _as_fixed(c): return FONTMAP.get((c.get('fontname'), c['text']), c['text'])     # the original's text with those corrections
+REWRITES = {int(k): v for k, v in (_alog.get('ocr_text_rewritten') or {}).items()}   # OCR words apply.py rewrote to their printed spelling (#49)
+def _rewritten(pno, ca, cb):
+    """True when the page's characters cb differ from ca only by the logged rewrites: each OCR word is its own marked
+    content (an MCID), so the words are compared one by one, and every word that changed must be one of the page's
+    logged [old, new] pairs, each used once. Text outside marked content must be unchanged."""
+    def words(cs, fix):
+        w, rest = collections.defaultdict(str), ''
+        for c in cs:
+            t = fix(c)
+            if c.get('mcid') is None: rest += t
+            else: w[c['mcid']] += t
+        return w, rest
+    (wa, ra), (wb, rb) = words(ca, _as_fixed), words(cb, lambda c: c['text'])
+    if ra != rb or set(wa) != set(wb): return False
+    left = collections.Counter((o.strip(), n.strip()) for o, n in REWRITES.get(pno, []))
+    for k in wa:
+        if wa[k] != wb[k]:
+            pair = (wa[k].strip(), wb[k].strip())
+            if not left[pair]: return False
+            left[pair] -= 1
+    return True
+rewritten_ok = []
 nouni, pua = collections.Counter(), collections.Counter(); pua_pages = collections.Counter()   # 3.6, read-aloud text only
 def _no_unicode(t): return t.startswith('(cid:') or t == '\ufffd' or (len(t) == 1 and ord(t) < 32 and t not in '\t\n\r')
 _CM = set()
@@ -25,7 +47,10 @@ with pdfplumber.open(A) as pa, pdfplumber.open(B) as pb:
     for i in range(len(pa.pages)):
         PA, PB = pa.pages[i], pb.pages[i]
         ca, cb = PA.chars, PB.chars
-        if ''.join(_as_fixed(c) for c in ca) != ''.join(c['text'] for c in cb): tdiff.append(i + 1)
+        ta, tb = ''.join(_as_fixed(c) for c in ca), ''.join(c['text'] for c in cb)
+        if ta != tb:
+            if (i + 1) in REWRITES and _rewritten(i + 1, ca, cb): rewritten_ok.append(i + 1)
+            else: tdiff.append(i + 1)
         untag += sum(1 for c in cb if c.get('mcid') is None and c.get('tag') != 'Artifact')
         art += sum(1 for c in cb if c.get('tag') == 'Artifact')
         mb, crop = PB.mediabox, PB.cropbox            # text outside the visible page area that is not an artifact
@@ -45,6 +70,7 @@ with pdfplumber.open(A) as pa, pdfplumber.open(B) as pb:
             if k not in _POS: _POS[k] = (c['top'], c['x0'], c['size'])
         _CM.update(content_mcids_page); PA.close(); PB.close()
 out['text_pages_changed'] = tdiff; out['untagged_chars'] = untag; out['artifact_chars'] = art
+if REWRITES: out['ocr_text_rewritten'] = {'pages': rewritten_ok, 'words': sum(len(v) for v in REWRITES.values())}   # the only text changes allowed
 out['offpage_chars_read_aloud'] = sum(offp.values()); out['offpage_pages'] = sorted(offp)
 with pikepdf.open(B) as _p:                       # pages with annotations, and those without /Tabs /S (WCAG 2.4.3)
     _ann = [i + 1 for i, pg in enumerate(_p.pages) if pg.obj.get('/Annots')]
@@ -544,8 +570,16 @@ wc['headings'] = {'count': len(hs),
                   'long': [{'page': _first_pg(n), 'chars': len(t), 'text': t} for n, t in hs if len(t) > 200],
                   'repeated': [{'page': _first_pg(b), 'text': tb} for (a, ta), (b, tb) in zip(hs, hs[1:]) if ta and ta.lower() == tb.lower()]}
 out['wcag'] = wc
-# 8 ActualText spans in page content (OCR words given their printed spelling)
-out['actual_text_spans'] = {'original': sum(_raw(p).count(b'/ActualText') for p in src.pages), 'result': sum(_raw(p).count(b'/ActualText') for p in pages)}
+# 8 ActualText spans in page content and in the form XObjects pages draw (OCR words and page readings given their printed spelling)
+def _spans(doc_pages):
+    n, seen = 0, set()
+    for p in doc_pages:
+        n += _raw(p).count(b'/ActualText')
+        for x in ((p.obj.get('/Resources') or {}).get('/XObject') or {}).values():
+            if isinstance(x, pikepdf.Stream) and str(x.get('/Subtype')) == '/Form' and x.objgen not in seen:
+                seen.add(x.objgen); n += x.read_bytes().count(b'/ActualText')
+    return n
+out['actual_text_spans'] = {'original': _spans(src.pages), 'result': _spans(pages)}
 out['verapdf'] = vera.finish(VERA)
 print(vera.line(out['verapdf']), file=sys.stderr)
 json.dump(out, open(B + '.verify.json', 'w'), ensure_ascii=False, indent=1)

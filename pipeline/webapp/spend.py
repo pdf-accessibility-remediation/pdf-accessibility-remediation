@@ -13,7 +13,8 @@ What a Spend checks, in this order, at the click:
      in the queue cannot lift the cap;
   3. the estimate fits the limits and the credit (lib/costs.py `blocked`);
   4. the book's file is still the one the estimate was made from (its sha256).
-Then the job: AUTO=1, MAX_USD (and BOOK_MAX_USD for #63's shape, BATCH_MAX_USD for a batch) bound to the estimate shown,
+Then the job: AUTO=1, MAX_USD (and BOOK_MAX_USD for #63's shape, BATCH_MAX_USD for a batch, PAGE_READS=1 with
+PAGE_READS_MAX_USD when the estimate included page readings, #49) bound to the estimate shown,
 the settings copied from the estimate's own job (never from a form again), paid, with the estimate's fingerprint.
 Test mode (test_reply_dir / test_batch_from from --config): REPLY= (or FROM=) instead of the call; prices offline are
 allowed, a missing saved reply is refused, never sent instead.
@@ -125,6 +126,8 @@ def authorize(s, kind, run, R, fingerprint):
     else:
         env = {**keep, 'AUTO': '1', 'MAX_USD': f'{est["bounds"]["MAX_USD"]:.2f}', 'MODEL': est['model']}
         if est['bounds'].get('BOOK_MAX_USD') is not None: env['BOOK_MAX_USD'] = f'{est["bounds"]["BOOK_MAX_USD"]:.2f}'
+        if est['bounds'].get('PAGE_READS_MAX_USD') is not None:   # #49: the pages read whole, as the estimate showed them
+            env.update(PAGE_READS='1', PAGE_READS_MAX_USD=f'{est["bounds"]["PAGE_READS_MAX_USD"]:.2f}')
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
              'shown': {'ceiling_usd': est['ceiling_usd'], 'per_call_ceiling_usd': est['per_call_ceiling_usd'], 'bounds': est['bounds'], 'model': est['model']},
              'test': test,
@@ -150,6 +153,8 @@ def authorize_batch(s, label, books_list, total, fingerprint):
         env = {'AUTO': '1', 'JOBS': jobs_n, 'BATCH_MAX_USD': f'{total["bounds"]["BATCH_MAX_USD"]:.2f}', 'MODEL': model}
         if total['bounds'].get('MAX_USD'): env['MAX_USD'] = f'{total["bounds"]["MAX_USD"]:.2f}'
         if total['bounds'].get('BOOK_MAX_USD'): env['BOOK_MAX_USD'] = f'{total["bounds"]["BOOK_MAX_USD"]:.2f}'   # the largest book's total (#63): decide.py holds each book to it
+        if total['bounds'].get('PAGE_READS_MAX_USD'):            # #49: some books have pages read whole; each is held to the largest's cap
+            env.update(PAGE_READS='1', PAGE_READS_MAX_USD=f'{total["bounds"]["PAGE_READS_MAX_USD"]:.2f}')
     env['REVIEW'] = '1'                                    # every book stops for review (D2a, Patrick 2026-11-06)
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
              'shown': {'ceiling_usd': total['ceiling_usd'], 'bounds': total['bounds']}, 'test': bool(test_from)}
