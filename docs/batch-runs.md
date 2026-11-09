@@ -48,13 +48,13 @@ teika       samples/tagged/teika.pdf
    # Claude batch
      sojourners                   Expected Cost: $0.31 (usually $0.22–$0.43) · Max Estimated Cost: $0.67  (75,927 input tokens, 25 images)
      dwellings                    Expected Cost: Not Available Yet · Max Estimated Cost: $3.13  (418,351 input tokens, 543 images in 6 requests)
-     Expected Cost                $0.31 for 1 of 2 PDFs (Not Available Yet for 1 PDF)
-     Max Estimated Cost           $3.80 for 2 PDFs (7 AI requests) · Batch Limit: $10.00 · Credit: $11.46
+     Expected Cost: $0.31 for 1 of 2 PDFs (Not Available Yet for 1 PDF)
+     Max Estimated Cost: $3.80 for 2 PDFs (7 AI requests) · Batch Limit: $10.00 · Credit: $11.46
    # non-Claude batch: one approximate line, no limit
-     Max Estimated Cost           about $0.75, approximate, not counted against the limit (the OpenRouter bill is the real cost) · Credit: $11.46
+     Max Estimated Cost: about $0.75, approximate, not counted against the limit (the OpenRouter bill is the real cost) · Credit: $11.46
    # mixed (e.g. a RETRY with another model): the Claude lines are the part counted
-     Max Estimated Cost           $0.50 for 1 PDF · Batch Limit: $10.00 · Credit: $11.46
-     non-Claude models            about $0.25, approximate, not counted against the limit (the OpenRouter bill is the real cost)
+     Max Estimated Cost: $0.50 for 1 PDF · Batch Limit: $10.00 · Credit: $11.46
+     Non-Claude Models: about $0.25, approximate, not counted against the limit (the OpenRouter bill is the real cost)
    ```
 
    There is no range on the batch's total: the rule tried for one held on about 95% of the earlier PDFs and 80% of the later ones. Each PDF's row keeps its own range.

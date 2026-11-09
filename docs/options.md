@@ -36,8 +36,8 @@ A run label that already holds a finished run is refused, so earlier results are
 
 - the audit is reused
 - a reply that was **cut off** at the output limit is logged with its cost (it ends up in `record.json` under `earlier_attempts`, and in the cost line of `review.md`), then a new call is made that **allows twice as much, automatically**, up to the model's maximum. Nothing needs setting; the new estimate shows what it could cost. A reply already cut off at the model's maximum stops, because another attempt would be cut off too
-- a reply that was complete, where a later step failed, is reused at no cost
-- a reply that was complete but could not be read as a work order is read again first, at no cost (useful after a pipeline fix). Only if it still can't be read is its cost logged and a new call made
+- a reply that was complete, where a later step failed, is reused with no new charge. What it cost stays this run's: it still counts toward the limits and in every cost shown
+- a reply that was complete but could not be read as a work order is read again first, with no new charge (useful after a pipeline fix). Only if it still can't be read is its cost logged and a new call made
 
 ## What a run may cost
 
