@@ -747,7 +747,8 @@ def hand_edit(R, he=None):
             'figure_pages': sorted({f['page'] for f in fc if f.get('page')}), 'alt_removed': sum(1 for f in fc if f.get('alt')),
             'outside_pages': sorted({x['page'] for x in he.get('outside_figures') or [] if x.get('page')}),
             'lost': [{'page': f.get('page'), 'alt': f.get('alt')} for f in he.get('figures_lost') or []],
-            'text_differs': sorted(x['page'] for x in he.get('text_pages') or [] if not x.get('heard_same'))}
+            'text_differs': sorted(x['page'] for x in he.get('text_pages') or [] if not x.get('heard_same')),
+            'text_same': sum(1 for x in he.get('text_pages') or [] if x.get('heard_same'))}
 
 def hand_edit_targets(he, adds):
     """The banner's "Add Alt Text" links for a PDF edited by hand: [{kind, target, page, suggest}] from addable()'s items

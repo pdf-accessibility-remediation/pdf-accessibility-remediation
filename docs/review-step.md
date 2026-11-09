@@ -179,7 +179,7 @@ Every save also runs the check: the same rules `decide.py` uses on the AI's repl
 
 ## Adding a decision
 
-The cards cover only what the AI decided. **Add a decision** (at the top) is for what it left out. Pick a kind, find the target by text, page or object number, and give a value and an optional note. The addition appears as a card under **Added by you**, where you can change its value or **Remove** it. In a run made from a PDF edited by hand ([Editing the PDF by hand](hand-edits.md)), the line under the header links straight to the form for each figure the edit touched (**Add Alt Text**).
+The cards cover only what the AI decided. **Add a decision** (at the top) is for what it left out. Pick a kind, find the target by text, page or object number, and give a value and an optional note. The addition appears as a card under **Added by you**, where you can change its value or **Remove** it. In a run made from a PDF edited by hand ([Editing the PDF by hand](hand-edits.md)), the **Edited by Hand** section opens with a summary of the edit and has a card for each figure it touched, whose **Add Alt Text** button opens this form.
 
 | Kind | What you can add it for | Value |
 |---|---|---|

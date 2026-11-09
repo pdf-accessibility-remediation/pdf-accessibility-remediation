@@ -30,7 +30,9 @@ from lib import support
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-def die(msg, code=1): print(msg, file=sys.stderr); sys.exit(code)
+def die(msg, code=1):
+    """Stop with a reason: "refused: …" (the app's job card shows the tool's own words from that line), or the usage text."""
+    print(msg if msg == __doc__ else f'refused: {msg}', file=sys.stderr); sys.exit(code)
 def sha_file(p):
     h = hashlib.sha256()
     with open(p, 'rb') as f:
@@ -119,7 +121,7 @@ def bring_back(argv):
     import pikepdf
     with pikepdf.open(edited) as pdf:
         why = support.unsupported(pdf)
-    if why: die(f'handedit: stopped: {why}', 3)
+    if why: die(f'the edited PDF is not supported yet: {why}', 3)
 
     label = opt(argv, '--label') or 'handedit-' + datetime.datetime.now().strftime('%Y%m%d-%H%M')
     C, name = child_dir(R, rec, label)

@@ -24,6 +24,8 @@ POST (JSON from the app's own pages only), each answered 202 {job} or 409 {error
     /api/run/<run>/discard     Discard the open session: review_workorder.py --discard-open (marked abandoned, kept);
                                refused while its review page is open or past Finish
     /api/run/<run>/ocr         Review OCR Text: the OCR-only review page (review_ocr.py --serve), a job that waits on a person
+    /api/run/<run>/bring-back  {file, by, note}: Bring Back an Edited PDF: handedit.py import of a PDF in the uploads folder,
+                               as a new run that stops for its review (no AI call); refused before anything runs
     /run/<run>/checks          the Manual Checks page (webapp/manualpage.py); GET /api/run/<run>/checks its data;
     POST /api/run/<run>/checks/draft and /checks/record: through review/manual.py in this process (no job), 200, 400 with
                                each problem tied to its field, or 409 with the refusal in its own words
@@ -273,7 +275,7 @@ def make(s, setup, code=None):
             segs = segments(p[len('/api/run/'):]) if p.startswith('/api/run/') else None
             if segs and len(segs) >= 3 and segs[-2] == 'checks' and segs[-1] in ('draft', 'record'):   # two-segment actions: the run is segs[:-2]
                 return self.checks_post(segs[:-2], segs[-1], body)
-            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship'): return self.send(404, {'error': 'not found'})
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship', 'bring-back'): return self.send(404, {'error': 'not found'})
             hit = find_run(s['runs'], segs[:-1], waiting=segs[-1] in ('review', 'apply', 'stop'))
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
             run, R, _ = hit
@@ -307,6 +309,7 @@ def make(s, setup, code=None):
                 elif segs[-1] == 'apply': j = runs.start_apply(s, run, R)
                 elif segs[-1] == 'ocr': j = runs.start_ocr(s, run, R, self.server.server_address[1], app_pid=os.getpid())
                 elif segs[-1] == 'discard': j = runs.start_discard(s, run, R)
+                elif segs[-1] == 'bring-back': j = runs.start_bring_back(s, run, R, body.get('file'), body.get('by'), body.get('note'))
                 elif segs[-1] == 'stop-other': return self.send(200, {'stopped': runs.stop_other(s, run, R)})
                 else: j = runs.stop_review(s, run, R); return self.send(200, {'stopped': j['id']})
             except ValueError as e: return self.send(409, {'error': str(e)})

@@ -27,7 +27,9 @@ python3 handedit.py import ../runs/hawaii3/rv1 path/to/edited.pdf --by "Your Nam
     --note "replaced the low-resolution photo on PDF 12" --label rv1-edit
 ```
 
-**From the app instead of step 1:** **Download the Remediated PDF** (under **Available Downloads**) gives the same file for the **current** version. It just isn't logged under `exports`. Never edit a download of an earlier version: `import` compares the edited file with the run's current result, so the changes it reports would be wrong.
+**All from the app:** download the current version, then use **Bring Back an Edited PDF** on the run page instead of steps 1 and 3 (see [The app](app.md#the-run-page)). It offers only the review path (no AI call).
+
+**From the app instead of step 1:** **Download the Remediated PDF** (under **Available Downloads**) gives the same file for the **current** version. The app logs it under `exports` with `via: "app download"` and no name, because the app has no logins. Never edit a download of an earlier version: `import` compares the edited file with the run's current result, so the changes it reports would be wrong.
 
 **Finish the work order first, and do the hand edit last.** The edited run starts from a file that already holds every earlier decision (see "What a review of an edited PDF shows" below).
 
@@ -71,7 +73,7 @@ Choose `pipeline` when the edit was large, for example new pages, or when the ed
 
 A figure that now holds a new image keeps the old image's alt text in the edited file. That text describes the old image. So it is removed (with any spoken text, `ActualText`) in a working copy, `_handedit/input.pdf`, which the run works on. The old alt text is never reused for a new image:
 
-- **On the review page**, each such figure is a figure with no alt text. It has a card under **Edited by Hand** and is listed under the gaps (Finish asks about it). A line under the header says what was edited, by whom, and which pages hold a new image.
+- **On the review page**, each such figure is a figure with no alt text. It has a card under **Edited by Hand** and is listed under the gaps (Finish asks about it). The summary at the top of that section says who edited the file, when, their note, and what the edit changed.
 - **With `--to pipeline`**, the AI sees those figures with no alt text and writes it.
 - **In `review.md`**, the "Edited by hand" section has a table: each figure's page, the alt text removed, and the alt text written on that page in this run. A row with none written says so.
 
@@ -86,7 +88,7 @@ New images that no figure holds are listed too, so you can decide whether each i
   - On a page that still has other tags, re-tag the image in Acrobat, or check that it is meant to be decoration.
 - **Text that changed.** Each page whose characters differ is listed:
   - **Read the same:** only space characters went. The page still reads the same with spaces taken from the gaps between words, as the pipeline reads it. `review.md` says so in one line.
-  - **Reads differently:** `review.md` marks the pages as a CHECK, and the line under the review page's header names them. Compare them with the earlier run and with the print.
+  - **Reads differently:** `review.md` marks the pages as a CHECK, and the summary at the top of the review page's Edited by Hand section names them. Compare them with the earlier run and with the print.
 
 ## What a review of an edited PDF shows
 
@@ -130,5 +132,5 @@ A run with no AI call has `run.no_model` and `ai_call.no_model` in `record.json`
 
 - **Only images, figure tags and text are compared.** Other changes to tags or reading order are not listed. The new run's audit, veraPDF and the review show their effect, and your `--note` says what you changed.
 - **Image resolution is not checked.** Nothing flags a low-resolution image. You find one by looking.
-- **Not in the app yet.** Export and import are terminal commands. The app opens the new run like any other.
+- **The app brings an edited PDF back for review only.** A new AI call (`--to pipeline`), `--base original` and `--label` are terminal options.
 - **PDF 2.0.** An edited file saved as PDF 2.0 is refused (exit 3; see [Not supported yet: PDF 2.0](troubleshooting.md#not-supported-yet-pdf-20)).

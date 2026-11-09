@@ -107,6 +107,15 @@ def marked_line(state):
     w = MARKED.get(state)
     return f'The downloaded files are marked "{w}."' if w else ''
 
+def log_export(R, sha):
+    """A download of the current version's PDF, logged as an export in the run's hand_edits.json (docs/hand-edits.md): a
+    person may edit it and bring it back. The app has no logins, so no name; a log that fails never stops the download."""
+    try:
+        import handedit as HE
+        HE.log(R, 'exports', {'when': datetime.datetime.now().isoformat(timespec='seconds'), 'by': None, 'via': 'app download',
+                              'base': 'output', 'sha256': sha, 'to': None})
+    except Exception: pass
+
 def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
     """The download of version `v` ('current' or an id from versions()), `what` 'pdf' or 'record', opened in one moment
     under the record lock. Raises Refused (409 words, or None: not found)."""
@@ -142,7 +151,9 @@ def prepare(R, run, v, what, wait=runlock.REQUEST_WAIT):
             if not plain_name(out): raise Refused(BAD_NAME)               # every version's name, as its record gives it
             pdf_name, zip_name = REL.download_names(out, ver['session'], ver['state'], ver.get('shipment') or next((s.get('n') for s in REL.live_shipments(REL.load(R)) if REL.sha_of(s) == ver['sha']), None))
             if what == 'pdf':
-                return {'name': pdf_name, 'ctype': 'application/pdf', 'fh': open(ver['pdf'], 'rb')}
+                fh = open(ver['pdf'], 'rb')
+                if ver['id'] == 'current' and not ver.get('shipment'): log_export(R, ver.get('sha'))
+                return {'name': pdf_name, 'ctype': 'application/pdf', 'fh': fh}
             members = []                                                  # every handle opened here is closed if a later step fails (35)
             try:
                 rel = REL.load(R)
