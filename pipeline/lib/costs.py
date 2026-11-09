@@ -10,7 +10,12 @@ page, the run page, the batch page) and, later, for run_api.sh and batch_api.sh.
 The estimate reads the run.json decide.py --dry-run wrote. Two shapes are read: main's (one request: worst_case_total_usd)
 and #63's (alt text past 100 images: estimate.passes, book_cap_usd, spent_before_usd, input_margin). `kind` names the paid
 step; each kind has a reader for its part of the run folder and says what its fingerprint covers, so a later paid step
-(#49, AI drafts for hard OCR pages: 'ocr-draft') adds a reader, not a new page.
+adds a reader, not a new page.
+
+Page readings (#49: scanned, mostly Hawaiian pages read whole by read_pages.py) run in the same Spend as the work order,
+so the 'workorder' estimate includes them when the estimate job wrote page_reads_estimate.json: their worst case is added
+to the book's (ceiling_usd, the per-book and credit checks) and to the fingerprint, and Spend binds them with their own
+cap (bounds.PAGE_READS_MAX_USD). MAX_USD and BOOK_MAX_USD stay the work order's own (decide.py's caps).
 
 `expected` is the hook for #65 (dollar-only cost limits): None until #65 fills it from _expected(); the pages show it
 only when present ("About $0.25 (usually $0.18–$0.36) · Worst-case estimate $0.62 …").
@@ -65,13 +70,13 @@ def _workorder(R):
                'request': _sha(os.path.join(R, 'request.json')), 'digest': _sha(os.path.join(R, '_audit', 'digest.json')),
                'model': run.get('model'), 'prompt': run.get('prompt_sha256')}
     sheets = (run.get('ocr_words') or {}).get('sheets') if isinstance(run.get('ocr_words'), dict) else None
+    pr = _load(os.path.join(R, 'page_reads_estimate.json'))
+    if not (isinstance(pr, dict) and isinstance(pr.get('worst_case_usd'), (int, float)) and pr.get('to_read')): pr = None
+    if pr: covered['page_reads'] = pr
     return {'run': run, 'e': e, 'passes': passes, 'per_call': per_call, 'spent_before': spent, 'covered': covered,
-            'sheets': sheets if isinstance(sheets, int) else None}
+            'sheets': sheets if isinstance(sheets, int) else None, 'page_reads': pr}
 
 KINDS = {'workorder': _workorder}
-
-class NotBuilt(Exception):
-    """A kind that is named for a later issue and has no reader yet."""
 
 def _expected(x):
     """#65 (dollar-only cost limits): the expected cost and its range, {usd, low, high, basis}; None until #65 builds it."""
@@ -81,7 +86,6 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
     """The estimate of the paid step `kind` in run folder R, or None when there is none yet. limits: limits_of(settings).
     credit_read: a fresher credit read ("Check Credit Again", U8) used when the estimate's own couldn't be read; the same checks
     apply to it, and the fingerprint never covers the credit."""
-    if kind == 'ocr-draft': raise NotBuilt('the OCR-draft estimate comes with #49 (AI drafts for hard OCR pages)')
     if kind not in KINDS: raise ValueError(f'unknown kind: {kind}')
     x = KINDS[kind](R)
     if x is None: return None
@@ -90,12 +94,16 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
     model = run.get('model') or ''
     claude = model.startswith('anthropic/')
     prices = bool(run.get('price_source')) and not str(run.get('price_source')).startswith(OFFLINE)
-    total = float(e['worst_case_total_usd'])
+    wo_total = float(e['worst_case_total_usd'])                 # the work order's own: decide.py's caps bind it
+    pr = x.get('page_reads')
+    pr_total = float(pr['worst_case_usd']) if pr else 0.0
+    total = wo_total + pr_total
     credit = e.get('credit_available_usd')
     if credit is None and credit_read is not None: credit = credit_read
     book_cap = e.get('book_cap_usd')                     # present on #63's shape; the app's own limit is the one that binds (Spend passes it as BOOK_MAX_USD)
     per_book = L['per_book_usd']
-    fits = {'per_call': x['per_call'] <= L['per_call_usd'] if claude else None,
+    per_call = max(x['per_call'], float(pr.get('per_page_worst_usd') or 0) if pr else 0)
+    fits = {'per_call': per_call <= L['per_call_usd'] if claude else None,
             'per_book': (total + x['spent_before']) <= per_book if claude else None,
             'credit': None if credit is None else total <= credit}
     blocked = None
@@ -109,11 +117,13 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
     return {'schema': SCHEMA, 'kind': kind, 'model': model, 'claude': claude, 'prices_checked': prices, 'prompt_sha256': run.get('prompt_sha256'),
             'requests': len(x['passes']) if x['passes'] else int(e.get('requests') or 1), 'images': int(e.get('images') or 0),
             'sheets': x['sheets'], 'input_tokens': e.get('input_tokens'),
-            'ceiling_usd': total, 'per_call_ceiling_usd': x['per_call'], 'spent_before_usd': x['spent_before'],
+            'ceiling_usd': round(total, 4), 'per_call_ceiling_usd': x['per_call'], 'spent_before_usd': x['spent_before'],
+            'page_reads': {'pages': int(pr['to_read']), 'ceiling_usd': pr_total} if pr else None,
             'limits': {'per_call_usd': L['per_call_usd'], 'per_book_usd': per_book if book_cap is not None else None},
             'credit_usd': credit, 'fits': fits, 'blocked': blocked, 'expected': _expected(x), 'fingerprint': fp,
             'bounds': {'MAX_USD': bound(x['per_call'], L['per_call_usd']),
-                       'BOOK_MAX_USD': bound(total + x['spent_before'], per_book) if book_cap is not None else None}}
+                       'BOOK_MAX_USD': bound(wo_total + x['spent_before'], per_book) if book_cap is not None else None,
+                       **({'PAGE_READS_MAX_USD': bound(pr_total, per_book)} if pr else {})}}
 
 # ------------------------------------------------------------------ after the run
 def actual(R):
@@ -149,7 +159,7 @@ def batch(Rs, limit=None, limits=None, credit_read=None):
     L = limits or limits_of()
     lim = L['per_batch_usd'] if limit is None else limit
     books, ceiling, spent, credit, per_call, blocked = [], 0.0, 0.0, None, 0.0, []
-    requests, per_book = 0, None                         # every AI request of the books to send, and the largest book's bound (#63's shape)
+    requests, per_book, pr_book = 0, None, None                         # every AI request of the books to send, and the largest book's bound (#63's shape)
     for R in Rs:
         a = actual(R); spent += a['usd']
         if os.path.isfile(os.path.join(R, 'record.json')) or (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
@@ -158,6 +168,7 @@ def batch(Rs, limit=None, limits=None, credit_read=None):
         if e:
             ceiling += e['ceiling_usd']; per_call = max(per_call, e['per_call_ceiling_usd']); requests += e['requests']
             if e['bounds']['BOOK_MAX_USD'] is not None: per_book = max(per_book or 0, e['bounds']['BOOK_MAX_USD'])
+            if e['bounds'].get('PAGE_READS_MAX_USD') is not None: pr_book = max(pr_book or 0, e['bounds']['PAGE_READS_MAX_USD'])
             if e['credit_usd'] is not None: credit = e['credit_usd'] if credit is None else min(credit, e['credit_usd'])
             if e['blocked'] and e['blocked']['code'] not in ('credit', 'no_credit'): blocked.append((R, e['blocked']))
         books.append({'R': R, 'estimate': e, 'adds_usd': e['ceiling_usd'] if e else None})
@@ -166,4 +177,5 @@ def batch(Rs, limit=None, limits=None, credit_read=None):
             'fits': {'batch': ceiling <= lim, 'credit': None if credit is None else ceiling <= credit},
             'blocked': blocked,
             'bounds': {'MAX_USD': bound(per_call, L['per_call_usd']) if per_call else None, 'BATCH_MAX_USD': bound(ceiling, lim),
-                       **({'BOOK_MAX_USD': per_book} if per_book is not None else {})}}
+                       **({'BOOK_MAX_USD': per_book} if per_book is not None else {}),
+                       **({'PAGE_READS_MAX_USD': pr_book} if pr_book is not None else {})}}

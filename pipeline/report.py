@@ -301,7 +301,7 @@ checks = [
     *([('Page readings: a person who reads Hawaiian checked each page read by the AI', ok(False),
         (f'{len(prd)} of {len(pr_listed)} mostly Hawaiian pages read by the AI, {sum(x.get("changed") or 0 for x in prd)} words given their printed spelling: '
          f'check {pgs([x["page"] for x in prd])} against the scan' if prd else
-         f'{len(pr_listed)} scanned pages look mostly Hawaiian and their OCR has no ʻokina or kahakō; they were not read by the AI (PAGE_READS=1 reads them)'))]
+         f'{len(pr_listed)} scanned pages look mostly Hawaiian and their OCR has no ʻokina or kahakō; they were not read by the AI (turned off, declined, or refused over the cap or the credit: see the run log)'))]
       if pr_listed or prd else []),
     *([('Figure requests: every figure seen by the AI', ok(not fpr.get('failed') and not fpr.get('stale')),
         f'{nc(fpr.get("figures"))} figures past the first request, in {nc(fpr.get("requests"))} figure requests'

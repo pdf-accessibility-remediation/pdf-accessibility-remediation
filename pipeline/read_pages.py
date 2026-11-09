@@ -11,7 +11,9 @@ place (ActualText), and the report asks a person who reads Hawaiian to check eve
     RUN_DIR/page_reads_run.json   model, prompt, the estimate, and each page's reply, usage and cost
 
 A page already read with the same model, prompt and image is reused, never paid for again. --dry-run prints the
-estimate and stops. The step refuses before any call when the worst case passes --max-usd (default 3) or the credit.
+estimate, writes it to RUN_DIR/page_reads_estimate.json (what the app's cost estimate adds to the book's, lib/costs.py)
+and stops; it writes the file before the cap check, so the app sees an estimate over the default cap and judges it by its
+own limits. The step refuses before any call when the worst case passes --max-usd (default 3) or the credit.
 The API key comes from OPENROUTER_API_KEY or the nearest .env, as for decide.py.
 """
 import sys, os, re, json, time, base64, hashlib, argparse, urllib.request, urllib.error
@@ -33,7 +35,10 @@ if not PROMPT_FILE: sys.exit(f'no prompt file {pagereads.PROMPT_NAME} in pipelin
 prompt = open(PROMPT_FILE, encoding='utf-8').read(); prompt_sha = hashlib.sha256(prompt.encode()).hexdigest()[:16]
 listing = os.path.join(args.audit_dir, 'page_reads.json')
 pages = (json.load(open(listing, encoding='utf-8')).get('pages') or []) if os.path.exists(listing) else []
-if not pages: print('page readings: no scanned Hawaiian pages in this book, nothing to read'); sys.exit(0)
+EST_PATH = os.path.join(args.run_dir, 'page_reads_estimate.json')
+if not pages:
+    if os.path.exists(EST_PATH): os.remove(EST_PATH)          # an earlier estimate of pages this audit no longer lists
+    print('page readings: no scanned Hawaiian pages in this book, nothing to read'); sys.exit(0)
 
 def load_env():
     d = HERE
@@ -77,7 +82,11 @@ for p in pages:
     todo.append({**p, 'raw': raw, 'image_sha256': sha, 'worst': t_in * pin + args.max_tokens * pout, 'expected': t_in / INPUT_MARGIN * pin + 3000 * pout})
 worst, expected = sum(t['worst'] for t in todo), sum(t['expected'] for t in todo)
 est = {'pages': len(pages), 'to_read': len(todo), 'reused': len(reused), 'expected_usd': round(expected, 4), 'worst_case_usd': round(worst, 4),
+       'per_page_worst_usd': round(max((t['worst'] for t in todo), default=0), 4),
        'cap_usd': args.max_usd, 'price_per_million': [round(pin * 1e6, 4), round(pout * 1e6, 4)]}
+if args.dry_run:
+    json.dump({'schema': 'page-reads-estimate/1', 'model': model, 'prompt_sha256': prompt_sha, **est,
+               'images': {str(t['page']): t['image_sha256'] for t in todo}}, open(EST_PATH, 'w', encoding='utf-8'), indent=1)
 print(f'page readings: {len(pages)} Hawaiian page{"s" if len(pages) != 1 else ""} ({len(reused)} already read) · {model} · '
       f'about ${expected:.2f}, worst case ${worst:.2f} (cap ${args.max_usd:.2f})')
 if worst > args.max_usd:

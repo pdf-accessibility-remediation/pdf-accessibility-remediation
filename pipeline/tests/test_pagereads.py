@@ -109,10 +109,10 @@ def test_the_same_page_twice_keeps_the_first():
 
 # ---- apply.py on a tiny tagged page, its OCR words on the page or in a form (OCRmyPDF 17 draws the layer in a form)
 WORDS = 'BT /F1 11 Tf 72 500 Td (Hawai\x91i) Tj 60 0 Td (na) Tj 30 0 Td (ke) Tj 30 0 Td (na) Tj ET'
-def hawaiian_pdf(path, in_form):
+def hawaiian_pdf(path, in_form, words=WORDS):
     pdf = pikepdf.new()
     font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica, Encoding=pikepdf.Name.WinAnsiEncoding)
-    marked = f'/P <</MCID 0>> BDC {WORDS} EMC\n'
+    marked = f'/P <</MCID 0>> BDC {words} EMC\n'
     res = pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font))
     page = pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 432, 576], Resources=res, StructParents=0)
     if in_form:
@@ -159,6 +159,23 @@ def test_apply_gives_each_place_its_reading(tmp_path, in_form):
     assert log['page_readings'][0]['changed'] == 2 and any('pages read by the AI' in d['what'] for d in log['deferred'])
     v = json.load(open(str(out) + '.verify.json', encoding='utf-8'))
     assert not v.get('pixel_pages_differing') and not v.get('text_pages_changed') and v['actual_text_spans']['result'] == 2
+
+@pytest.mark.parametrize('in_form', [False, True], ids=['on the page', 'in a form'])
+def test_a_quote_mark_read_for_a_word_initial_okina_is_replaced_not_kept(tmp_path, in_form):
+    """Tesseract reads a word-initial ʻokina as a quote mark (‘o, ‘aina): the reading's ʻ takes its place. A screen reader
+    is never given ‘ʻo (the quote mark and the ʻokina); a real quotation mark before a word stays."""
+    src = hawaiian_pdf(str(tmp_path / 'haw.pdf'), in_form, 'BT /F1 11 Tf 72 500 Td (\x91o) Tj 30 0 Td (Hina) Tj 40 0 Td (\x93\x91aina) Tj 50 0 Td (ka) Tj ET')
+    w = tmp_path / 'wo.json'; w.write_text(json.dumps({'schema': 'workorder/0.2', 'page_readings': [{'page': 1, 'text': 'ʻo Hina “ʻāina kā'}]}))
+    out = tmp_path / 'out.pdf'
+    run('apply.py', src, w, out)
+    assert spans(out) == ['ʻo', '“ʻāina', 'kā']
+
+def test_ocr_words_replace_the_quote_mark_too(tmp_path):
+    src = hawaiian_pdf(str(tmp_path / 'haw.pdf'), True, 'BT /F1 11 Tf 72 500 Td (\x91ina) Tj 40 0 Td (ka) Tj ET')
+    w = tmp_path / 'wo.json'; w.write_text(json.dumps({'schema': 'workorder/0.2', 'ocr_words': [{'id': 1, 'text': 'ina', 'reads': 'ʻāina', 'count': 1}]}))
+    out = tmp_path / 'out.pdf'
+    run('apply.py', src, w, out)
+    assert spans(out) == ['ʻāina']
 
 def test_a_shared_form_is_not_changed(tmp_path):
     """A form drawn from two places would show a change in both: its words are left alone."""
