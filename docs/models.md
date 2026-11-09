@@ -19,8 +19,6 @@ MODEL=google/gemini-3.8-flash ESTIMATE=1 bash run_api.sh ../samples/tagged/north
 # the same group with two models, to compare
 AUTO=1 bash batch_api.sh t-sonnet ../samples/tagged
 MODEL=anthropic/claude-opus-5.5 AUTO=1 bash batch_api.sh t-opus ../samples/tagged
-# a bigger output limit as well
-MODEL=openai/gpt-5 MAX_TOKENS=32000 AUTO=1 bash batch_api.sh t-gpt ../samples/tagged
 # finish the books a batch couldn't (keep the same MODEL as the first try; the summary prints this command)
 RETRY=1 MODEL=openai/gpt-5 AUTO=1 bash batch_api.sh t-gpt ../samples/tagged
 # the model was rate-limited (429): wait a few minutes, then one book at a time
@@ -35,14 +33,16 @@ Before anything is sent, `decide.py` looks the model up on OpenRouter and refuse
 
 - the id is not on OpenRouter
 - it cannot take images (the figure crops are part of every request)
-- its output limit is under `MAX_TOKENS`
-- the request (input estimate + `MAX_TOKENS`) does not fit its context window
+- it can't write as long an answer as the request needs
+- the request (input estimate + its room for a reply) does not fit its context window
 
-**Costs with other models.** The cost estimate uses Claude's token math (calibrated on Sonnet bills), so for any non-Claude model it is marked approximate. The $2 per-book cap, the batch cap and the credit check are not applied to it; the estimate is printed and the request is sent. If your credit is too low, OpenRouter refuses the request (HTTP 402) and nothing is charged. The OpenRouter bill, shown in the review and the summary, is the real cost. With `AUTO=1`, the line printed before sending says which case applies:
+**Costs with other models.** The cost estimate uses Claude's token math (calibrated on Sonnet bills), so for any non-Claude model it is marked approximate. The dollar limits and the credit check are not applied to it; the estimate is printed and the request is sent. If your credit is too low, OpenRouter refuses the request (HTTP 402) and nothing is charged. The OpenRouter bill, shown in the review and the summary, is the real cost. An Expected Cost appears for such a model only once it has 12 finished calls from 6 PDFs. Before sending, the terminal prints:
 
 ```
-AUTO=1: sending without asking (decide.py still refuses a Claude estimate over the $2 cap or your credit)
-AUTO=1: sending without asking. The $2 cap applies to Claude models only: the openai/gpt-5 estimate is approximate and not capped; the OpenRouter bill is the real cost
+Expected Cost: Not Available Yet (1 past call of this kind, from 1 PDF; needs 12 from 6)
+Max Estimated Cost: about $0.27, approximate and not a limit: the dollar limits apply to Claude models only. The OpenRouter bill is the real cost
+AUTO=1: sending without asking (still refused over the $2.00 limit per AI call, the $5.00 limit per PDF, or your credit)
+AUTO=1: sending without asking. The dollar limits apply to Claude models only: the openai/gpt-5 estimate is approximate and not a limit; the OpenRouter bill is the real cost
 ```
 
 **Where the model shows:** `review.md` (top line), `record.json` (`run.model`), the batch header and the top of `summary.md`, with the batch start time and the prompt file. `FROM=` and `REPLY=` re-runs keep the model that wrote the saved reply.
@@ -64,4 +64,4 @@ Every new run writes `run.temperature` in `record.json`: the number sent, or `"o
 
 If a model that is not on the list, and not flagged by OpenRouter, still rejects the setting, the run stops: OpenRouter charges nothing for the refused request, nothing is retried, and the message says to add the model to `OMIT_TEMPERATURE`.
 
-**Settings recorded in each run:** temperature (`TEMPERATURE`, or omitted as above), `data_collection: deny` (OpenRouter routes only to providers that don't keep or train on the data), at most 48,000 output tokens unless `MAX_TOKENS` says otherwise (a 30-minute wait for the reply); the output tokens are recorded as reasoning and visible (`run.usage.reasoning_tokens`, `visible_tokens`) when OpenRouter reports the split, $2 spending cap per book (Claude models).
+**Settings recorded in each run:** temperature (`TEMPERATURE`, or omitted as above), `data_collection: deny` (OpenRouter routes only to providers that don't keep or train on the data), at most 48,000 output tokens (more for a book with many OCR word forms, twice as much after a cut-off; a 30-minute wait for the reply); the output tokens are recorded as reasoning and visible (`run.usage.reasoning_tokens`, `visible_tokens`) when OpenRouter reports the split, the dollar limits in [What a run may cost](options.md#what-a-run-may-cost) (Claude models).

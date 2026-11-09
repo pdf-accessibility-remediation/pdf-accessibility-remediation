@@ -36,4 +36,4 @@ python3 verify.py $S $O                                   # no model, ~3 min; ve
 python3 report.py $R $A                                   # review.md, record.json, han_review.csv; add --keep to keep working files
 ```
 
-If `decide.py` fails after the API call, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and a higher `MAX_TOKENS` (see [Options](options.md)). For errors from OpenRouter itself, see [When the model call fails](troubleshooting.md#when-the-model-call-fails).
+If `decide.py` fails after the API call, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and the next attempt allows twice as much (see [Options](options.md)). For errors from OpenRouter itself, see [When the model call fails](troubleshooting.md#when-the-model-call-fails).
