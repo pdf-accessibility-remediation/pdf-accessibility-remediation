@@ -258,6 +258,36 @@ def test_a_reply_read_again_stays_spent_through_batch_api(two, tmp_path):
     r = subprocess.run(['bash', 'batch_api.sh', 'bx', str(lst)], cwd=HERE, env={**e, 'BATCH_MAX_USD': '0.9'}, capture_output=True, text=True, timeout=300)      # the ceiling alone (about $0.77) would fit
     assert r.returncode != 0 and 'including $0.30 already spent, more than the limit of $0.90 per batch' in r.stdout + r.stderr, r.stdout + r.stderr
 
+def test_the_shown_figures_go_on_a_non_claude_send_and_stay_when_nothing_is_sent(two, tmp_path):
+    """review 06 L2: a later send with another model agreed to no ceiling; a send that reuses every reply agreed to nothing new."""
+    import subprocess
+    from test_figure_requests_run import env, figures_pdf
+    from test_decide_allowance import PAID_REPLY
+    runs = tmp_path / 'r2'; B = runs / 'batches' / 'bx'; B.mkdir(parents=True); shown = {'ceiling_usd': 8.8, 'expected_usd': 4.1, 'spent_usd': 0, 'retry_usd': 0}
+    pdf = figures_pdf(tmp_path / 'p.pdf', n=2); lst = tmp_path / 'books.txt'; lst.write_text(f'done {pdf}\n')
+    R = B / 'done'; R.mkdir()
+    (R / 'run.json').write_text(json.dumps({'model': 'anthropic/claude-sonnet-5.5', 'started': '2026-11-08T10:00:00', 'usage': {'prompt_tokens': 1, 'completion_tokens': 1, 'cost_usd': 0.3}, 'finish_reason': 'stop', 'estimate': {'worst_case_total_usd': 0.67}}))
+    (R / 'response.json').write_text(json.dumps(PAID_REPLY)); (R / 'workorder.json').write_text('{}'); (B / '.shown.json').write_text(json.dumps(shown))
+    r = subprocess.run(['bash', 'batch_api.sh', 'bx', str(lst)], cwd=HERE, env=env(RUNS_DIR=runs, AUTO=1, RETRY=1, INTAKE='off'), capture_output=True, text=True, timeout=300)
+    assert json.loads((B / '.shown.json').read_text()) == shown, r.stdout + r.stderr                     # nothing was sent
+    lst.write_text(f'new {pdf}\n'); (B / '.shown.json').write_text(json.dumps(shown))
+    r = subprocess.run(['bash', 'batch_api.sh', 'bx', str(lst)], cwd=HERE, env=env(RUNS_DIR=runs, AUTO=1, RETRY=1, INTAKE='off', MODEL='openai/gpt-x'), capture_output=True, text=True, timeout=300)
+    assert 'not counted against the limit' in r.stdout and not (B / '.shown.json').exists(), r.stdout + r.stderr
+
+def test_the_trash_line_counts_only_the_pdfs_still_there(two, tmp_path):
+    """review 06 L1: one filter for the page, summary.md and the money."""
+    from lib import costs
+    s = settings(two); ready_batch(two, s); names = [b['name'] for b in BT.books_of(s, 'bb')]; B = two / 'runs' / 'batches' / 'bb'
+    (B / 'trashed.json').write_text(json.dumps([{'name': names[0], 'cost_usd': 0.2}, {'name': 'gone', 'cost_usd': 0.1}]))     # names[0]'s folder is back
+    assert [x['name'] for x in costs.still_trashed(str(B))] == ['gone'] and BT.state(s, 'bb')['trashed'] == {'n': 1, 'cost_usd': 0.1}
+    (B / 'trashed.json').write_text(json.dumps([{'name': names[0], 'cost_usd': 0.2}]))
+    assert BT.state(s, 'bb')['trashed'] == {'n': 0, 'cost_usd': 0}
+    sh = open(os.path.join(HERE, 'batch_api.sh'), encoding='utf-8').read(); assert 'tr = costs.still_trashed(B)' in sh
+
+def test_the_credit_line_names_the_app_administrator():
+    js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "'The app administrator can add credit.'" in js and "'Whoever looks after the app can add credit.'" not in js
+
 def test_the_trash_line_has_no_clause_with_nothing_above_it():
     js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
     assert "(T.spent_usd ? ', counted in the cost above' : '')" in js

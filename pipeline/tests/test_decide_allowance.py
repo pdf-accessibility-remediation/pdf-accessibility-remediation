@@ -170,6 +170,36 @@ def test_another_runs_response_json_is_not_this_runs_money(book, tmp_path):
     assert decide(A, O, '--response-file', O / 'response.json').returncode == 0                                   # its response.json is now "here", but this folder never paid for it
     assert 'own_reply' not in load(O / 'run.json') and C.actual(str(O))['usd'] == 0
 
+def ocr_folder(book, tmp_path):
+    """An own paid reply on a book with OCR words: the audit has one word sheet, the run.json the list the reply was written for."""
+    from PIL import Image
+    src, A0, d = book; A = tmp_path / '_audit_ocr'; shutil.copytree(A0, A)
+    Image.new('RGB', (40, 20), 'white').save(A / 'sheet.png')
+    d2 = dict(d, figures=d['figures'][:3], ocr_words=[{'id': 1, 'text': 'kaio', 'count': 1, 'pages': [1]}, {'id': 2, 'text': 'maka', 'count': 1, 'pages': [1]}], ocr_word_sheets=[{'ids': [1, 2], 'image': 'sheet.png'}])
+    json.dump(d2, open(A / 'digest.json', 'w', encoding='utf-8'), ensure_ascii=False)
+    R = tmp_path / 'r'; assert decide(A, R, '--dry-run').returncode == 0
+    run = load(R / 'run.json'); run.update(started='2026-11-01T09:00:00', prompt_file='workorder_v8.md', prompt_sha256='first', temperature=0, usage=PAID_REPLY['usage'] | {'cost_usd': 0.3}, finish_reason='stop')
+    (R / 'run.json').write_text(json.dumps(run))
+    (R / 'response.json').write_text(json.dumps(dict(PAID_REPLY, choices=[{'message': {'content': '```json\n{"ocr_words": {"1": "kaʻio", "2": "maka"}}\n```'}, 'finish_reason': 'stop'}])))
+    (R / 'workorder.json').write_text('{}')
+    return A, R
+
+def test_a_third_read_keeps_the_ocr_readings_and_the_first_calls_details(book, tmp_path):
+    """review 06 M1: reading the folder's own reply again keeps what the first call was, however many times it is read."""
+    A, R = ocr_folder(book, tmp_path)
+    for i in range(3):
+        r = decide(A, R, '--response-file', R / 'response.json'); assert r.returncode == 0, r.stderr
+        run = load(R / 'run.json'); oc = run['original_call']
+        assert run['own_reply'] is True and run['temperature'] == 0 and (oc['date'], oc['prompt_file'], oc['prompt_sha256'], oc['cost_usd']) == ('2026-11-01T09:00:00', 'workorder_v8.md', 'first', 0.3), i
+        assert run['ocr_words']['reply_check'] == 'same list' and load(R / 'workorder.json')['ocr_words'][0]['reads'] == 'kaʻio', i
+
+def test_another_file_over_an_own_folder_takes_nothing_from_it(book, tmp_path):
+    A, R = paid_folder(book, tmp_path); decide(A, R, '--response-file', R / 'response.json')
+    other = tmp_path / 'other.json'; other.write_text(json.dumps(dict(PAID_REPLY, model='anthropic/other')))
+    assert decide(A, R, '--response-file', other).returncode == 0
+    run = load(R / 'run.json'); assert run['model'] == 'anthropic/other' and 'own_reply' not in run and 'temperature' not in run and not run.get('original_call')
+    assert C.actual(str(R))['usd'] == 0
+
 def test_a_saved_response_with_usage_writes_no_ledger_row(book, tmp_path):
     A = small_audit(book, tmp_path, 3); led = tmp_path / 'led.jsonl'; rp = tmp_path / 'saved.json'; rp.write_text(json.dumps(PAID_REPLY))
     assert decide(A, tmp_path / 'r', '--response-file', rp, COST_HISTORY=led).returncode == 0 and not led.exists()

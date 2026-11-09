@@ -307,15 +307,16 @@ if args.response_file:                             # a saved reply: no call, so 
     except Exception: reused = None
     meta = args.response_file + '.meta.json'       # written by batch_api.sh FROM= from the earlier record
     prev = os.path.join(args.run_dir, 'run.json')  # or the earlier attempt in this folder whose reply is reused
+    own_file = os.path.realpath(args.response_file) == os.path.realpath(os.path.join(args.run_dir, 'response.json'))
     if os.path.exists(meta): kept = json.load(open(meta, encoding='utf-8'))
     elif os.path.exists(prev):
         try:
-            pr = json.load(open(prev, encoding='utf-8'))          # only a run.json from a call that was really sent
-            kept = {k: v for k, v in pr.items() if k in ('model', 'temperature')} if pr.get('usage') and not pr.get('response_from') else {}
+            pr = json.load(open(prev, encoding='utf-8'))          # only a run.json from a call that was really sent, or this folder's own paid reply read again
+            kept = {k: v for k, v in pr.items() if k in ('model', 'temperature')} if pr.get('usage') and (not pr.get('response_from') or (own_file and pr.get('own_reply'))) else {}
             if kept: sys.path.insert(0, HERE); from lib import ocrwords; kept.update(ocrwords.carried(pr))   # the OCR-word list it was written for
-            if kept and (pr.get('usage') or {}).get('cost_usd') is not None:   # that call's own cost, model, prompt and date
-                kept['original_call'] = {'cost_usd': pr['usage']['cost_usd'], 'model': pr.get('model'), 'prompt_file': pr.get('prompt_file'),
-                                         'prompt_sha256': pr.get('prompt_sha256'), 'date': pr.get('started')}
+            if kept and (pr.get('usage') or {}).get('cost_usd') is not None:   # that call's own cost, model, prompt and date (read again: the first call's, as already kept)
+                kept['original_call'] = pr.get('original_call') or {'cost_usd': pr['usage']['cost_usd'], 'model': pr.get('model'), 'prompt_file': pr.get('prompt_file'),
+                                                                    'prompt_sha256': pr.get('prompt_sha256'), 'date': pr.get('started')}
         except Exception: kept = {}
     reused = kept.get('model') or reused
     # This folder's own paid reply, read again (a later step failed, or it couldn't be read before): that money was spent on this
@@ -324,7 +325,7 @@ if args.response_file:                             # a saved reply: no call, so 
     # must itself be this folder's paid call.
     own_prev = None
     try:
-        if os.path.realpath(args.response_file) == os.path.realpath(os.path.join(args.run_dir, 'response.json')):
+        if own_file:
             _pr = json.load(open(prev, encoding='utf-8'))
             if (_pr.get('usage') or {}).get('cost_usd') and (not _pr.get('response_from') or _pr.get('own_reply')): own_prev = _pr
     except (OSError, ValueError): pass

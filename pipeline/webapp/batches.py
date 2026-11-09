@@ -391,8 +391,8 @@ def forget_books(s, label, names, moved):
                                                             # reads the folders live); everything above is already right
 
 def trashed(s, label):
-    """[{name, cost_usd, moved}]: PDFs of this batch moved to the Trash (the batch folder's trashed.json)."""
-    return _load(os.path.join(folder(s, label), 'trashed.json')) or []
+    """[{name, cost_usd, moved}]: PDFs of this batch still in the Trash (the batch folder's trashed.json, without any dragged back)."""
+    return costs.still_trashed(folder(s, label))
 
 def answer_language(s, label, name, lang):
     """A PDF's "Language of the Scanned Pages" answered on the batch page (D4): kept in the batch's record and, when it is

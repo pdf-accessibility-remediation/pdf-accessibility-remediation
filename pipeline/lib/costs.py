@@ -199,6 +199,13 @@ def after_line(R):
     a = actual(R)
     return 'AI Cost: none (a saved reply was used)' if a['reused'] else 'AI Cost: ' + cost_words(a)
 
+def still_trashed(B):
+    """The entries of a batch's trashed.json whose PDF is still in the Trash. One dragged back has its folder here again, and that
+    folder counts it. The one filter behind the batch's spent money, its page and summary.md."""
+    try: here = {e.name for e in os.scandir(B) if e.is_dir()}
+    except OSError: here = set()
+    return [x for x in _load(os.path.join(B, 'trashed.json')) or [] if isinstance(x, dict) and x.get('name') not in here]
+
 def batch_spent(B):
     """What the whole batch has spent: every book folder in it, whatever its state (waiting for review, finished, stopped), and
     the PDFs moved to the Trash (their folders are gone; trashed.json keeps their cost). The one definition behind the batch
@@ -208,9 +215,7 @@ def batch_spent(B):
     except OSError: dirs = []
     for R in dirs:
         a = actual(R); usd += a['usd']; earlier += a['earlier_usd']; retry += a['retry_usd']
-    here = {os.path.basename(d) for d in dirs}
-    trashed = sum((x.get('cost_usd') or 0) for x in _load(os.path.join(B, 'trashed.json')) or []
-                  if isinstance(x, dict) and x.get('name') not in here)   # dragged back from the Trash: its folder counts it
+    trashed = sum((x.get('cost_usd') or 0) for x in still_trashed(B))
     return {'usd': round(usd + trashed, 6), 'earlier_usd': round(earlier, 6), 'retry_usd': round(retry, 6), 'trashed_usd': round(trashed, 6)}
 
 def shown_words(B, shown, so_far=False):

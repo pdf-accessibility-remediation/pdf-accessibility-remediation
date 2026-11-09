@@ -95,7 +95,7 @@ function body(s) {
     else if (s.spend && s.spend.code === 'no_credit') h += '<p class="pp-warn-t" id="bt-why">' + esc(s.spend.why) + '</p>' +   // U8: stays while it is the reason
       '<div class="pp-row"><button type="button" class="pp-primary" id="bt-credit" data-act="credit">Check Credit Again</button></div>';
     else h += '<p class="pp-warn-t" id="bt-why">' + esc((s.spend && s.spend.why) || 'This batch can\'t be sent yet.') + '</p><p>' +
-      (s.spend && s.spend.code === 'credit' ? 'Whoever looks after the app can add credit.' :
+      (s.spend && s.spend.code === 'credit' ? 'The app administrator can add credit.' :
        s.spend && s.spend.code === 'limit' ? esc(s.spend.advice) :
        'Each PDF\'s page says more.') + '</p>';
   }

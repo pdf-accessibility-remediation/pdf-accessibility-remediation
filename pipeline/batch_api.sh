@@ -166,7 +166,7 @@ if worked is not None and (live is None or worked < live - 0.005):
 elif live is not None: L.append(f'Credit left: ${live:.2f}')
 elif only: L.append('Credit left: not checked (the summary was written again without a run)')
 else: L.append('Credit left: could not check (no key, or OpenRouter unreachable)')
-tr = load(os.path.join(B, 'trashed.json')) or []          # PDFs a person moved to the Trash from the app (#45 D8): their spend stays shown
+tr = costs.still_trashed(B)                               # PDFs a person moved to the Trash from the app (#45 D8): their spend stays shown
 if tr: L.append(f'{len(tr)} PDF{"" if len(tr) == 1 else "s"} moved to the Trash (AI cost ${sum(x.get("cost_usd") or 0 for x in tr):.3f}), {"counted" if shown else "not counted"} above')
 L.append('')
 if failed:
@@ -385,6 +385,8 @@ if credit is not None and total > credit: sys.exit(f'stopped: this batch could c
 if capped_n and not approx:                      # what was agreed before sending: the running total and summary.md read it, once
     json.dump({'ceiling_usd': round(total, 4), 'expected_usd': round(exp_usd, 4) if exp_n and exp_n == exp_of else None, 'spent_usd': spent, 'retry_usd': sp['retry_usd']},
               open(os.path.join(runs, 'batches', label, '.shown.json'), 'w'))
+elif approx and os.path.exists(os.path.join(runs, 'batches', label, '.shown.json')):   # a later non-Claude send agreed to no ceiling: an earlier send's must not stand for it
+    os.remove(os.path.join(runs, 'batches', label, '.shown.json'))
 PY
 
 fi

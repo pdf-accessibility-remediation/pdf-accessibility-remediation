@@ -115,12 +115,19 @@ def test_no_ledger_is_the_seed_alone(tmp_path):
     S = seed(tmp_path, row('b01', 1))
     assert len(H.rows(str(tmp_path / 'absent.jsonl'), S)) == 1 and len(H.rows('', S)) == 1
 
-def test_a_rebuilt_seed_leaves_out_a_request_with_a_cut_off_call():
+def test_a_rebuilt_seed_has_one_row_per_finished_call_like_the_ledger():
+    """review 06 L3: a request's usage is the sum of its calls. A cut-off is left out; each call that finished is a row of its own."""
     import cost_seed
-    p = {'pass': '2', 'usage': {'cost_usd': 1, 'prompt_tokens': 100, 'completion_tokens': 40000}, 'calls': [{'finish_reason': 'length'}, {'finish_reason': 'stop'}], 'finish_reason': None}
-    run = {'model': MODEL, 'started': '2026-11-08T10:00:00', 'passes': [p, dict(p, **{'pass': '3', 'calls': [{'finish_reason': 'stop'}]})],
-           'estimate': {'passes': [{'pass': '2', 'input_tokens': 5000, 'images': 3}, {'pass': '3', 'input_tokens': 5000, 'images': 3}]}}
-    assert [r['kind'] for r in cost_seed.calls_of(run, 'x')] == ['figure'] and cost_seed.calls_of(run, 'x')[0]['input_est'] == 5000
+    U = lambda out: {'prompt_tokens': 100, 'completion_tokens': out}
+    base = {'usage': {'cost_usd': 1, 'prompt_tokens': 200, 'completion_tokens': 99999}, 'finish_reason': None}
+    run = {'model': MODEL, 'started': '2026-11-08T10:00:00', 'passes': [
+               {'pass': '2', **base, 'calls': [{'finish_reason': 'length', 'usage': U(32000)}, {'finish_reason': 'stop', 'usage': U(40000), 'doubled': True}]},
+               {'pass': '3', **base, 'calls': [{'finish_reason': 'stop', 'usage': U(500)}, {'finish_reason': 'stop', 'usage': U(600)}]},
+               {'pass': '4', **base, 'calls': [{'finish_reason': 'length', 'usage': U(32000)}]},
+               {'pass': '5', **base, 'finish_reason': 'stop', 'calls': [{'finish_reason': 'stop'}]}],
+           'estimate': {'passes': [{'pass': str(i), 'input_tokens': 5000, 'images': 3} for i in range(2, 6)]}}
+    rows = cost_seed.calls_of(run, 'x')
+    assert [r['output'] for r in rows] == [40000, 500, 600, 99999] and all(r['input_est'] == 5000 and r['kind'] == 'figure' for r in rows)   # the last: an older record, no per-call usage
 
 def test_the_committed_seed_alone_gives_a_figure():
     x = H.expected([{'kind': 'workorder', 'input_est': 60000, 'max_tokens': 48000}], MODEL, ceiling=0.61, history=H.seed_rows(), **P)

@@ -42,11 +42,15 @@ def calls_of(run, sha):
         for p in run['passes']:
             k = str(p['pass'])
             if k == 'probe' or (p.get('usage') or {}).get('cost_usd') is None: continue
-            fin = 'length' if any(c.get('finish_reason') == 'length' for c in p.get('calls') or []) else p.get('finish_reason') or ((p.get('calls') or [{}])[-1]).get('finish_reason')   # a request's usage is the sum of its calls: one with a cut-off teaches nothing
             kind = 'workorder' if k == '1' else 'figure'
             prompt = run.get('prompt_file') if k == '1' else (run.get('figure_passes') or {}).get('prompt_file')
             ee = ep.get(k) or {}
-            add(kind, prompt, ee.get('input_tokens'), ee.get('images') if ee else p.get('images'), (ow.get('sent') or 0) if k == '1' else 0, p['usage'], fin)
+            images, forms = ee.get('images') if ee else p.get('images'), (ow.get('sent') or 0) if k == '1' else 0
+            calls = [c for c in p.get('calls') or [] if c.get('usage')]
+            if calls:                                  # one row per call that finished, as the ledger keeps them: a cut-off teaches nothing
+                for c in calls:
+                    if c.get('finish_reason') == 'stop': add(kind, prompt, ee.get('input_tokens'), images, forms, c['usage'], 'stop')
+            else: add(kind, prompt, ee.get('input_tokens'), images, forms, p['usage'], p.get('finish_reason') or ((p.get('calls') or [{}])[-1]).get('finish_reason'))
     elif (run.get('usage') or {}).get('cost_usd') is not None:
         add('workorder', run.get('prompt_file'), e.get('input_tokens'), e.get('images'), ow.get('sent') or 0, run['usage'], run.get('finish_reason'))
     return out
