@@ -6,6 +6,7 @@ VERAPDF, the Java path) < --config FILE < an exported VERAPDF. Relative paths ar
     host, port         where the app listens. Only a loopback address is accepted until the app has logins.
     runs, samples, uploads, jobs   the folders (jobs: the queue, logs and the dispatch lock)
     max_jobs           how many work jobs run at once, across every run (open review pages wait on a person: not counted)
+    max_upload_mb      the largest edited PDF Bring Back an Edited PDF accepts (default 500)
     tools              VERAPDF (path to the launcher) and path_prepend (folders put first on the children's PATH: Java)
     test_reply_dir     tests only, and only from --config: never from a committed or local settings file
 
@@ -67,7 +68,8 @@ def load(config=None, base=HERE, environ=None):
         s.setdefault('tools', {})['VERAPDF'] = environ['VERAPDF']
     if s.get('host') != '127.0.0.1':                         # the pages check Host against 127.0.0.1 / localhost
         raise Bad(f'host {s.get("host")!r}: the app has no logins yet, so it listens on 127.0.0.1 only')
-    for k in ('port', 'max_jobs'):
+    s.setdefault('max_upload_mb', 500)
+    for k in ('port', 'max_jobs', 'max_upload_mb'):
         if not isinstance(s.get(k), int) or isinstance(s.get(k), bool) or s[k] < 1: raise Bad(f'{k} must be a whole number above 0: {s.get(k)!r}')
     for k in FOLDERS:
         if not isinstance(s.get(k), str) or not s[k]: raise Bad(f'{k} must name a folder')

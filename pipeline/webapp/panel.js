@@ -303,42 +303,60 @@ function handEditBlock(s) {
   if ((he.children || []).length)
     h += '<h3>' + esc(tc('Edited copies')) + '</h3><ul>' + he.children.map(c => '<li><b>' + esc(c.label) + '</b> · ' + esc(c.state) +
       (c.by ? ' · ' + esc(c.by) : '') + (c.when ? ', ' + esc(fmtDay(c.when)) : '') + (c.note ? ' · “' + esc(c.note) + '”' : '') +
-      (c.url ? ' · <a href="' + esc(c.url) + '">Open</a>' : '') + '</li>').join('') + '</ul>';
+      (c.url ? ' · <a href="' + esc(c.url) + '">Open</a>' : '') +
+      (c.state === 'not started' ? (c.startable ? ' · brought back but not run yet <button type="button" id="pp-start-' + esc(c.label) + '" data-act="bring-start" data-label="' + esc(c.label) + '">Start</button>'
+                                                : ' · brought back for the full pipeline (a paid AI call): start it in a terminal') : '') + '</li>').join('') + '</ul>';
   return h;
 }
-// Bring Back an Edited PDF: the file (from the uploads folder), a name (never prefilled) and what was changed. The request is
-// sent from the dialog, so a refusal is shown in it, in the app's words; Escape or Cancel closes it.
+// Bring Back an Edited PDF: the edited file (chosen here and uploaded), a name (never prefilled) and what was changed. The
+// upload and the request are sent from the dialog, so a refusal is shown in it, in the app's words; Escape or Cancel closes it
+// (and stops an upload under way).
 function bringDlg(s, opener) {
   return new Promise(res => {
-    const d = $('pp-dlg'), up = s.uploads || { files: [] }, fs = up.files || [];
+    const d = $('pp-dlg');
     d.innerHTML = '<h2 id="pp-dlg-h">Bring Back an Edited PDF</h2>' +
       '<ol><li>Download this version with "Download the Remediated PDF."</li>' +
       '<li>Edit it in Acrobat. First turn off text recognition: Edit, then Edit settings, and uncheck "Recognize scanned text."</li>' +
-      '<li>Save the edited PDF in the project\'s uploads folder, beside its runs and samples folders' + (up.exists ? '' : ' (make the folder if it is not there)') + '.</li>' +
-      '<li>Choose it here.</li></ol>' +
+      '<li>Choose the edited PDF here.</li></ol>' +
       '<p>It comes back as a new run that stops for review: no AI call, no cost. This run is not changed.</p>' +
-      (fs.length ? '<p><label for="pp-bring-file">Edited PDF</label><br><select id="pp-bring-file">' + fs.map(f => '<option value="' + esc(f.name) + '">' + esc(f.name) +
-         ' (' + (f.size / 1e6).toFixed(1) + ' MB, saved ' + esc(fmtWhen(f.modified)) + ')</option>').join('') + '</select></p>'
-                 : '<p class="pp-warn-t">There is no PDF in the uploads folder yet. Save the edited PDF there, then open this again.</p>') +
+      '<p><label for="pp-bring-file">Edited PDF</label><br><input type="file" id="pp-bring-file" accept="application/pdf,.pdf"></p>' +
       '<p><label for="pp-bring-by">Edited By</label><br><input type="text" id="pp-bring-by" autocomplete="name"></p>' +
       '<p><label for="pp-bring-note">What You Changed</label><br><textarea id="pp-bring-note" rows="2" maxlength="200"></textarea></p>' +
-      '<p id="pp-bring-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes"' + (fs.length ? '' : ' disabled') + '>Bring Back</button>' +
+      '<p id="pp-bring-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Bring Back</button>' +
       '<button type="button" value="no">Cancel</button></div>';
-    const id = opener.id, done = v => { d.close(); ($(id) || opener).focus(); res(v); }, err = t => { $('pp-bring-err').textContent = t; };
+    let xhr = null;
+    const id = opener.id, err = t => { $('pp-bring-err').textContent = t; };
+    const done = v => { if (xhr) xhr.abort(); d.close(); ($(id) || opener).focus(); res(v); };
+    const send = file => new Promise(ok => {                    // the PDF's own bytes; its name in a header (percent-encoded)
+      xhr = new XMLHttpRequest();
+      xhr.open('POST', API + '/upload');
+      xhr.setRequestHeader('Content-Type', 'application/pdf');
+      xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+      xhr.upload.onprogress = ev => { if (ev.lengthComputable) err('Uploading… ' + Math.round(100 * ev.loaded / ev.total) + '%'); };
+      xhr.onload = () => { let r = {}; try { r = JSON.parse(xhr.responseText || '{}'); } catch (e) {} ok([xhr.status, r]); };
+      xhr.onerror = () => ok([0, { error: 'The app is not running. ' + START }]);
+      xhr.onabort = () => ok([-1, {}]);
+      xhr.send(file);
+    });
     d.querySelector('button[value=no]').addEventListener('click', () => done(null));
     d.querySelector('button[value=yes]').addEventListener('click', async ev => {
-      const by = $('pp-bring-by').value.trim(), note = $('pp-bring-note').value.trim();
+      const file = $('pp-bring-file').files[0], by = $('pp-bring-by').value.trim(), note = $('pp-bring-note').value.trim();
+      if (!file) { err('Choose the edited PDF.'); $('pp-bring-file').focus(); return; }
       if (!by) { err('Enter your name in "Edited By."'); $('pp-bring-by').focus(); return; }
       if (!note) { err('Say what you changed in "What You Changed."'); $('pp-bring-note').focus(); return; }
-      ev.target.disabled = true; err('');
+      ev.target.disabled = true; err('Uploading…');
+      const [c, u] = await send(file); xhr = null;
+      if (c === -1) return;                                        // cancelled
+      if (c !== 200) { err(u.error || 'The PDF was not uploaded.'); ev.target.disabled = false; return; }
+      err('Uploaded. Starting…');
       try {
-        const [c, r] = await api(API + '/bring-back', { file: $('pp-bring-file').value, by, note });
-        if (c === 202) return done(r.job);
+        const [c2, r] = await api(API + '/bring-back', { file: u.file, by, note });
+        if (c2 === 202) return done(r.job);
         err(r.error || 'The app refused this.'); ev.target.disabled = false;
       } catch (e) { err('The app is not running. ' + START); ev.target.disabled = false; }
     });
     d.oncancel = ev => { ev.preventDefault(); done(null); };
-    d.showModal(); (fs.length ? $('pp-bring-file') : d.querySelector('button[value=no]')).focus();
+    d.showModal(); $('pp-bring-file').focus();
   });
 }
 
@@ -547,6 +565,13 @@ box.addEventListener('click', async e => {
       if (c !== 200) return msg(r.error || 'The PDFs were not removed.', false, true);
       msg('Removed ' + r.removed + ' PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept in "Session History."', true, true);
       return poll(true);
+    } catch (e) { return msg('The app is not running. ' + START, false, true); }
+  }
+  if (act === 'bring-start') {                                   // an edited copy brought back but never run: run its review stop
+    try {
+      const [c, r] = await api(API + '/bring-back', { resume: b.dataset.label });
+      if (c !== 202) return msg(r.error || 'The app refused this.', false, true);
+      await poll(true); const hd = $('jh-' + r.job.id); if (hd) hd.focus(); return;
     } catch (e) { return msg('The app is not running. ' + START, false, true); }
   }
   if (act === 'bring-back') {                                    // the dialog sends it; on 202 the job's card takes focus

@@ -24,8 +24,11 @@ POST (JSON from the app's own pages only), each answered 202 {job} or 409 {error
     /api/run/<run>/discard     Discard the open session: review_workorder.py --discard-open (marked abandoned, kept);
                                refused while its review page is open or past Finish
     /api/run/<run>/ocr         Review OCR Text: the OCR-only review page (review_ocr.py --serve), a job that waits on a person
-    /api/run/<run>/bring-back  {file, by, note}: Bring Back an Edited PDF: handedit.py import of a PDF in the uploads folder,
-                               as a new run that stops for its review (no AI call); refused before anything runs
+    /api/run/<run>/bring-back  {file, by, note}: Bring Back an Edited PDF: handedit.py import of a PDF in the uploads folder
+                               (sent by /upload), as a new run that stops for its review (no AI call); {resume: label} starts
+                               an edited copy brought back but never run; refused before anything runs
+    /api/run/<run>/upload      the edited PDF's own bytes (Content-Type application/pdf, its name in X-File-Name), at most
+                               max_upload_mb: saved in the uploads folder under a cleaned name, 200 {file, sha256, size}
     /run/<run>/checks          the Manual Checks page (webapp/manualpage.py); GET /api/run/<run>/checks its data;
     POST /api/run/<run>/checks/draft and /checks/record: through review/manual.py in this process (no job), 200, 400 with
                                each problem tied to its field, or 409 with the refusal in its own words
@@ -43,7 +46,7 @@ id) only picks an entry from the real folder's listing (config.entry). The folde
 with realpath and must stay inside the runs folder, and a file is served only when its name is in the run's list.
 Nothing outside the runs folder is ever served (.env, samples/, pipeline/).
 """
-import os, re, json, html, base64, hashlib, threading, traceback, urllib.parse, datetime
+import os, re, json, html, base64, hashlib, tempfile, threading, traceback, urllib.parse, datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from html.parser import HTMLParser
 from review.server import local_request
@@ -58,6 +61,7 @@ FILES = ('review.html', 'review.md', 'han_review.csv')
 TYPES = {'.html': 'text/html; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.pdf': 'application/pdf',
          '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8'}
 RESERVED = ('ocr',)                                          # /run/<run>/checks is the Manual Checks page (#38)
+UPLOAD_IDLE = 60                                               # seconds an upload may send nothing before it is dropped
 MAX_BODY = 65536                                              # a POST body: digits only in Content-Length, at most this
 
 def segments(p):
@@ -70,6 +74,15 @@ def segments(p):
 def inside(root, p):
     root = os.path.realpath(root); p = os.path.realpath(p)
     return p == root or p.startswith(root + os.sep)
+
+def upload_name(raw):
+    """An uploaded PDF's name, from the browser's (X-File-Name, percent-encoded): its last part only, letters, digits and
+    " ._()-" kept (the rest becomes "_"), no leading dot, at most 120 characters, ending in .pdf."""
+    t = os.path.basename(urllib.parse.unquote(str(raw)).replace('\\', '/'))
+    t = re.sub(r'[^\w .()-]', '_', t, flags=re.UNICODE).strip(' .')
+    if t.lower().endswith('.pdf'): t = t[:-4]
+    t = re.sub(r'\s+', ' ', t).strip(' .')[:116] or 'edited'
+    return t + '.pdf'
 
 def find_run(runs, segs, waiting=False):
     """(run name, its folder, the remaining segments) for the shortest prefix holding record.json, or None. Each segment
@@ -263,6 +276,8 @@ def make(s, setup, code=None):
 
         def post(self):
             if not self.ours(): return self.send(403, {'error': 'not from the app\'s own pages'})
+            p = urllib.parse.urlsplit(self.path).path
+            if p.startswith('/api/run/') and p.endswith('/upload'): return self.upload(segments(p[len('/api/run/'):]))
             if (self.headers.get('Content-Type') or '').split(';')[0].strip().lower() != 'application/json':
                 return self.send(415, {'error': 'the app\'s pages send JSON'})
             n = (self.headers.get('Content-Length') or '').strip()   # checked before reading: rfile.read(-1) would wait for the
@@ -309,12 +324,56 @@ def make(s, setup, code=None):
                 elif segs[-1] == 'apply': j = runs.start_apply(s, run, R)
                 elif segs[-1] == 'ocr': j = runs.start_ocr(s, run, R, self.server.server_address[1], app_pid=os.getpid())
                 elif segs[-1] == 'discard': j = runs.start_discard(s, run, R)
-                elif segs[-1] == 'bring-back': j = runs.start_bring_back(s, run, R, body.get('file'), body.get('by'), body.get('note'))
+                elif segs[-1] == 'bring-back':
+                    j = (runs.resume_bring_back(s, run, R, str(body['resume'])) if body.get('resume') else
+                         runs.start_bring_back(s, run, R, body.get('file'), body.get('by'), body.get('note')))
                 elif segs[-1] == 'stop-other': return self.send(200, {'stopped': runs.stop_other(s, run, R)})
                 else: j = runs.stop_review(s, run, R); return self.send(200, {'stopped': j['id']})
             except ValueError as e: return self.send(409, {'error': str(e)})
             jobs.tick(J, s)                                   # start it now if a place is free, rather than within the second
             self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
+
+        def upload(self, segs):
+            """Bring Back an Edited PDF's file: the PDF's own bytes (application/pdf, its name in X-File-Name), streamed into
+            the uploads folder under a cleaned name. A new name for a different file, the same name for the same one."""
+            self.close_connection = True                     # a refused body is never read to its end
+            if (self.headers.get('Content-Type') or '').split(';')[0].strip().lower() != 'application/pdf':
+                return self.send(415, {'error': 'Choose a PDF.'})
+            hit = find_run(s['runs'], segs[:-1]) if segs and len(segs) >= 2 else None
+            if not hit or hit[2] or runs.waiting(hit[1]): return self.send(404, {'error': 'no such run'})
+            n = (self.headers.get('Content-Length') or '').strip()
+            if not n.isdecimal() or not n.isascii(): return self.send(411, {'error': 'the request has no valid length'})
+            n, cap = int(n), s['max_upload_mb']
+            if n > cap * 1_000_000: return self.send(413, {'error': f'The PDF is larger than the app accepts ({cap} MB).'})
+            head = self.rfile.read(min(n, 5))
+            if head != b'%PDF-': return self.send(400, {'error': 'This is not a PDF.'})
+            d = s['uploads']; os.makedirs(d, exist_ok=True)
+            self.connection.settimeout(UPLOAD_IDLE)          # a browser that stops sending never holds a half-written file
+            fd, part = tempfile.mkstemp(prefix='.upload-', suffix='.part', dir=d)
+            try:
+                h, got = hashlib.sha256(head), len(head)
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(head)
+                    while got < n:
+                        b = self.rfile.read(min(1 << 20, n - got))
+                        if not b: break
+                        f.write(b); h.update(b); got += len(b)
+                if got < n: return self.send(400, {'error': 'The upload stopped before the end of the file.'})
+                sha = h.hexdigest(); name = upload_name(self.headers.get('X-File-Name') or '')
+                stem, k = name[:-4], 1
+                while True:                                  # the same file keeps its name; another file never replaces one
+                    q = os.path.join(d, name)
+                    if not os.path.exists(q): os.replace(part, q); break
+                    if os.path.isfile(q) and REL.sha_file(q) == sha: break
+                    k += 1; name = f'{stem}-{k}.pdf'
+                applog(f'{hit[0]}: uploaded {name} ({got} bytes)')
+                return self.send(200, {'file': name, 'sha256': sha, 'size': got})
+            except TimeoutError: return self.send(400, {'error': 'The upload stopped before the end of the file.'})
+            except OSError as e:
+                try: return self.send(500, {'error': f'The PDF could not be saved ({e.strerror or e}).'})
+                except OSError: return None                  # the browser has gone (Cancel): nothing to answer
+            finally:
+                if os.path.exists(part): os.remove(part)
 
         def get(self):
             if not self.ours(): return self.send(403, {'error': f'open the app at http://127.0.0.1:{self.server.server_address[1]}/'})

@@ -456,7 +456,7 @@ if he:                                                # handedit.py import: what
     if run.get('carried_from_parent'):
         L += ['- Carried from that run\'s work order, since the pages are the same: '
               + ' and '.join({'sections': 'which pages are contents, notes and index', 'links': 'its fixes to contents link text'}.get(k, f'`{k}`')
-                             for k in run['carried_from_parent']) + '. Its other decisions are already in the file.']
+                             for k in run['carried_from_parent']) + ' (applied without a review card: nothing to decide). Its other decisions are already in the file.']
     if fc:
         new_alt = collections.defaultdict(list)
         for it in wo.get('alt') or []:

@@ -6,5 +6,6 @@
  "uploads": "../uploads",
  "jobs": "../runs/.app",
  "max_jobs": 2,
+ "max_upload_mb": 500,
  "tools": {"VERAPDF": "", "path_prepend": []}
 }

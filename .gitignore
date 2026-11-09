@@ -7,6 +7,8 @@
 **/pipeline/runs/
 runs/
 samples/
+# edited PDFs uploaded through the app (Bring Back an Edited PDF): whole books, like runs/
+uploads/
 
 # the app's machine-specific settings (veraPDF and Java paths): docs/app.md
 pipeline/webapp/settings.local.json

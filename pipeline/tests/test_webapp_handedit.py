@@ -5,13 +5,13 @@ panel), the run state's uploads and hand edits, and downloads of the current ver
 
 No book, no model: the job is queued and checked, never run (tests/test_handedit.py runs handedit.py itself).
 """
-import os, sys, json, hashlib
+import os, sys, json, socket, hashlib, http.client, urllib.parse
 import pytest
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # pipeline/
 sys.path.insert(0, HERE)
 from webapp import jobs, runs  # noqa: E402
-from test_webapp import setup, settings, get, app  # noqa: E402,F401  (fixtures)
+from test_webapp import setup, settings, get, app, wait  # noqa: E402,F401  (fixtures)
 from test_webapp_panel import post  # noqa: E402
 from test_webapp_checks import mapp, req  # noqa: E402,F401
 
@@ -82,22 +82,46 @@ def test_a_refusal_from_handedit_is_the_job_cards_reason(setup):
     assert runs.reason(v) == 'The edited PDF is not supported yet: PDF 2.0'
 
 # ------------------------------------------------------------------ the run state
-def test_state_lists_the_uploads_and_the_runs_made_from_edited_copies(setup):
+def child(t, R, label, to='review', state='not started'):
+    """An edited copy of R, as handedit.py import leaves it: its _handedit/ only (not started), stopped for review, or finished."""
+    C = t / 'runs' / 'book' / label; (C / '_handedit').mkdir(parents=True)
+    (C / '_handedit' / 'edited.pdf').write_bytes(b'%PDF-1.7 edited ' + label.encode())
+    (C / '_handedit' / 'hand_edit.json').write_text(json.dumps({'to': to, 'by': 'Pat', 'note': 'new photo', 'edited': {'file': 'edited.pdf'},
+                                                                'parent': {'run': str(R)}}))
+    if state == 'waiting': (C / 'workorder.ai.json').write_text('{}')
+    if state == 'finished': (C / 'record.json').write_text(json.dumps({'hand_edit': {'parent': {'run': str(R)}}}))
+    hp = R / 'hand_edits.json'; d = json.loads(hp.read_text()) if hp.exists() else {'exports': [], 'children': []}
+    d['children'].append({'when': '2026-11-09T10:00:00', 'run': str(C), 'by': 'Pat', 'note': 'new photo'}); hp.write_text(json.dumps(d))
+    return C
+
+def test_each_edited_copy_says_its_state_and_only_real_runs_are_linked(setup):
     s = settings(setup); R = finished_run(setup)
-    assert runs.uploads(s) == {'folder': runs.shown_path(str(setup / 'uploads')), 'exists': False, 'files': []}
-    upload(setup, 'a.pdf'); (setup / 'uploads' / 'notes.txt').write_text('x')
-    assert [f['name'] for f in runs.uploads(s)['files']] == ['a.pdf'] and runs.uploads(s)['exists']
     assert runs.hand_edits(s, str(R), {}) is None
-    C = setup / 'runs' / 'book' / 'he1'; C.mkdir()
-    (R / 'hand_edits.json').write_text(json.dumps({'exports': [], 'children': [
-        {'when': '2026-11-09T10:00:00', 'run': str(C), 'by': 'Pat', 'note': 'new photo'},
-        {'when': '2026-11-08T10:00:00', 'run': str(setup / 'runs' / 'book' / 'gone'), 'by': 'Kim', 'note': 'old'}]}))
+    child(setup, R, 'done', state='finished'); child(setup, R, 'wait', state='waiting'); child(setup, R, 'cold'); child(setup, R, 'paid', to='pipeline')
+    d = json.loads((R / 'hand_edits.json').read_text())
+    d['children'].append({'when': '2026-11-08T10:00:00', 'run': str(setup / 'runs' / 'book' / 'gone'), 'by': 'Kim', 'note': 'old'})
+    (R / 'hand_edits.json').write_text(json.dumps(d))
     he = runs.hand_edits(s, str(R), {})
-    assert he['parent'] is None and [(c['label'], c['state'], c['url']) for c in he['children']] == [
-        ('he1', 'waiting for its review', '/run/book/he1/'), ('gone', 'removed', None)]
-    (C / 'record.json').write_text(json.dumps({'hand_edit': {'parent': {'run': str(R)}}}))
-    assert runs.hand_edits(s, str(R), {})['children'][0]['state'] == 'finished'
-    assert runs.hand_edits(s, str(C), json.loads((C / 'record.json').read_text()))['parent'] == {'label': 'book/r1', 'url': '/run/book/r1/'}
+    assert he['parent'] is None and [(c['label'], c['state'], c['url'], c['startable']) for c in he['children']] == [
+        ('done', 'finished', '/run/book/done/', False), ('wait', 'waiting for its review', '/run/book/wait/', False),
+        ('cold', 'not started', None, True), ('paid', 'not started', None, False), ('gone', 'removed', None, False)]
+    j = runs.resume_bring_back(s, 'book/r1', str(R), 'cold')                      # being prepared while its job is queued
+    assert next(c for c in runs.hand_edits(s, str(R), {})['children'] if c['label'] == 'cold')['state'] == 'being prepared'
+    assert runs.hand_edits(s, str(setup / 'runs' / 'book' / 'done'), {'hand_edit': {'parent': {'run': str(R)}}})['parent'] == {
+        'label': 'book/r1', 'url': '/run/book/r1/'}
+
+def test_start_runs_the_same_import_again_for_a_copy_never_run(setup):
+    s = settings(setup); R = finished_run(setup); C = child(setup, R, 'cold')
+    j = runs.resume_bring_back(s, 'book/r1', str(R), 'cold')
+    assert j['kind'] == 'bring_back' and j['child'] == 'book/cold' and j['argv'][1:] == [
+        'handedit.py', 'import', str(R), str(C / '_handedit' / 'edited.pdf'), '--by', 'Pat', '--note', 'new photo', '--label', 'cold']
+
+@pytest.mark.parametrize('label, state, to, words', [('paid', 'not started', 'pipeline', 'full pipeline'), ('wait', 'waiting', 'review', 'nothing to start'),
+                                                      ('nope', None, None, 'No edited copy')])
+def test_start_is_refused_for_a_paid_copy_one_already_run_and_an_unknown_name(setup, label, state, to, words):
+    s = settings(setup); R = finished_run(setup)
+    if state: child(setup, R, label, to=to, state=state)
+    with pytest.raises(ValueError, match=words): runs.resume_bring_back(s, 'book/r1', str(R), label)
 
 # ------------------------------------------------------------------ the route and the panel
 def test_the_bring_back_route(app):
@@ -111,15 +135,15 @@ def test_the_bring_back_route(app):
     assert st == 202 and b['job']['kind'] == 'bring_back'
     st, b = post(port, '/api/run/book/r1/bring-back', {'file': 'edited.pdf', 'by': 'Pat', 'note': 'n'})
     assert st == 409 and 'already' in b['error']                                    # one job per run
-    d = json.loads(get(port, '/api/run/book/r1')[1])
-    assert [f['name'] for f in d['uploads']['files']] == ['edited.pdf']
 
 def test_the_panel_has_the_button_the_dialog_and_the_links():
     p = src('webapp/panel.js')
     assert 'data-act="bring-back"' in p and "api(API + '/bring-back', { file:" in p
     assert '<label for="pp-bring-by">Edited By</label>' in p and 'autocomplete="name"' in p and 'role="alert"' in p
     assert 'uncheck "Recognize scanned text."' in p and 'no AI call, no cost. This run is not changed.' in p
-    assert "uploads folder, beside its runs and samples folders" in p and 'up.folder' not in p    # plain words, no path (app.md)
+    assert '<input type="file" id="pp-bring-file" accept="application/pdf,.pdf">' in p and "'Uploading… '" in p and 'xhr.abort()' in p
+    assert 'uploads folder' not in p                                                 # the person never sees a folder (app.md)
+    assert 'data-act="bring-start"' in p and '{ resume: b.dataset.label }' in p
     assert 'Open the Edited Run' in p and "tc('Edited copies')" in p and 'Made from an edited copy of run ' in p
 
 # ------------------------------------------------------------------ a download of the current version, logged as an export
@@ -138,3 +162,53 @@ def test_a_log_that_cannot_be_written_never_stops_the_download(mapp):
     port, R = mapp['port'], mapp['R']
     os.mkdir(os.path.join(R, 'hand_edits.json'))                                        # a folder where the log would go
     assert req(port, 'GET', '/run/batches/d1/sample/download?what=pdf&v=current')[0] == 200
+
+# ------------------------------------------------------------------ the upload (POST /api/run/<run>/upload, raw PDF bytes)
+def put(port, path, data, name='edited.pdf', ctype='application/pdf', length=None, origin=None):
+    c = http.client.HTTPConnection('127.0.0.1', port, timeout=15)
+    try:
+        c.putrequest('POST', path, skip_host=True, skip_accept_encoding=True)
+        c.putheader('Host', f'127.0.0.1:{port}'); c.putheader('Content-Type', ctype)
+        c.putheader('Content-Length', str(len(data)) if length is None else length)
+        if name is not None: c.putheader('X-File-Name', urllib.parse.quote(name))
+        if origin: c.putheader('Origin', origin)
+        c.endheaders(data)
+        r = c.getresponse(); return r.status, json.loads(r.read() or b'{}')
+    except OSError: return None, {}
+    finally: c.close()
+
+def test_an_uploaded_pdf_is_saved_under_a_clean_name_and_never_replaces_another(app):
+    port, t = app['port'], app['t']; U = t / 'uploads'
+    st, b = put(port, '/api/run/book/r1/upload', b'%PDF-1.7 one', 'edited.pdf')
+    assert st == 200 and b == {'file': 'edited.pdf', 'sha256': hashlib.sha256(b'%PDF-1.7 one').hexdigest(), 'size': 12}
+    assert (U / 'edited.pdf').read_bytes() == b'%PDF-1.7 one'
+    assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7 one', 'edited.pdf')[1]['file'] == 'edited.pdf'    # the same file: its name
+    assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7 two', 'edited.pdf')[1]['file'] == 'edited-2.pdf'  # another: a new name
+    assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7 x', '../../x\x01y')[1]['file'] == 'x_y.pdf'
+    assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7 z', '.hidden.PDF')[1]['file'] == 'hidden.pdf'
+    assert sorted(os.listdir(U)) == ['edited-2.pdf', 'edited.pdf', 'hidden.pdf', 'x_y.pdf']   # no .part file left
+
+def test_an_upload_is_refused_before_anything_is_kept(app):
+    port, t = app['port'], app['t']
+    assert put(port, '/api/run/book/r1/upload', b'not a pdf at all')[0] == 400
+    assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7', ctype='application/json')[0] == 415
+    assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7', length='12a')[0] == 411
+    assert put(port, '/api/run/book/r1/upload', b'%PDF-1.7', origin='http://evil.example')[0] == 403
+    assert put(port, '/api/run/book/nope/upload', b'%PDF-1.7')[0] == 404
+    st, b = put(port, '/api/run/book/r1/upload', b'%PDF-1.7', length=str(600 * 1_000_000))
+    assert st == 413 and b['error'] == 'The PDF is larger than the app accepts (500 MB).'
+    sk = socket.create_connection(('127.0.0.1', port))                             # Cancel: the body stops before its length
+    sk.sendall(f'POST /api/run/book/r1/upload HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/pdf\r\n'
+               f'Content-Length: 100000\r\nX-File-Name: half.pdf\r\n\r\n'.encode() + b'%PDF-1.7 half'); sk.close()
+    parts = lambda: [f for f in (os.listdir(t / 'uploads') if (t / 'uploads').exists() else []) if f.endswith('.part') or f == 'half.pdf']
+    assert wait(lambda: parts() == [], 10), parts()
+
+def test_upload_then_bring_back_queues_the_import_of_that_file(app):
+    port, t, R = app['port'], app['t'], app['R']
+    rec = json.loads((R / 'record.json').read_text()); rec['document']['output_sha256'] = sha(R / 'book_remediated.pdf')
+    (R / 'record.json').write_text(json.dumps(rec))
+    st, u = put(port, '/api/run/book/r1/upload', b'%PDF-1.7 edited', 'My edit.pdf')
+    st, b = post(port, '/api/run/book/r1/bring-back', {'file': u['file'], 'by': 'Pat', 'note': 'new photo'})
+    assert st == 202
+    j = jobs.load(str(t / 'runs' / '.app'), b['job']['id'])
+    assert j['argv'][4] == str(t / 'uploads' / 'My edit.pdf')
