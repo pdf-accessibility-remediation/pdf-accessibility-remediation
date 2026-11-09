@@ -70,7 +70,6 @@ dialog.npad textarea { flex: 1; resize: none; border: 0; border-radius: 0 0 8px 
 .fin-check ul { margin: 4px 0 0; padding-left: 20px; } .fin-check.err { border-left-color: var(--reject); }
 #msg { margin-top: 6px; font-size: 14px; }
 .draft-line { margin-top: 6px; font-size: 14px; } .draft-line[hidden] { display: none; }
-.hand-edit { margin-top: 4px; }
 .draft-line .note { color: var(--muted); } .draft-line ul { margin: 4px 0 0 1.2em; padding: 0; } .draft-line a { color: var(--accent); }
 .draft-line .stale { color: var(--reject); font-weight: 600; }
 .draft-line details { display: inline-block; margin-left: 4px; } .draft-line summary { cursor: pointer; color: var(--accent); }
@@ -85,6 +84,7 @@ nav a { display: flex; justify-content: space-between; gap: 8px; color: var(--in
 nav a:hover { background: var(--line); }
 .col { flex: 1; min-width: 0; }
 .card.added { border-left-color: var(--accent); }
+.he-sum { margin: 0 0 12px; } .he-sum h3 { font-size: 15px; margin: 10px 0 4px; } .he-sum ul { margin: 0 0 4px 1.2em; padding: 0; }
 .card.hand { border-left-color: var(--change); } .card.hand[data-done] { border-left-color: var(--ok); }
 .earlier details { margin: 0 0 6px; } .earlier summary { cursor: pointer; } .earlier .ctx { margin: 0 0 8px; }
 .earlier table { border-collapse: collapse; width: 100%; font-size: 14px; } .earlier td, .earlier th { border-top: 1px solid var(--line); padding: 3px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
@@ -227,7 +227,6 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
   <div id="draftLine" class="draft-line" aria-live="polite" hidden></div>
   <div id="msg" role="status"></div>
   <div id="session" hidden></div>
-  <div id="handEdit" class="hand-edit" hidden></div>
   <div class="hdr-foot"><p id="back" hidden><a href="" class="btnlink">Back to the Run Page</a> (this review stays open; continue it from there)</p>
   <button type="button" id="hideHdr" class="hdr-toggle" aria-expanded="true" aria-controls="top">Hide Header</button></div>
 </header>
@@ -472,19 +471,6 @@ document.getElementById('checkBtn').addEventListener('click', () => {
 function dec(id) { return state.decisions[id] || (state.decisions[id] = {}); }
 
 document.getElementById('title').textContent = 'Work Order Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
-if (DATA.hand_edit) {                                 // a PDF edited by hand and brought back: what changed, and what it needs
-  const he = DATA.hand_edit, el = document.getElementById('handEdit'), pp = a => a.map(p => 'PDF ' + p).join(', ');
-  el.hidden = false;
-  el.innerHTML = '<b>' + esc(tc('Edited by hand')) + ':</b> ' + esc(he.by || 'someone') + ' changed the ' +
-    (he.base === 'original' ? 'original' : 'remediated') + ' PDF by hand' + (he.note ? ' (“' + esc(he.note) + '”)' : '') + '. ' +
-    (he.alt_removed ? he.alt_removed + (he.alt_removed === 1 ? ' figure holds' : ' figures hold') + ' a new image (' + esc(pp(he.figure_pages)) +
-      '): its old alt text was removed, so each needs new alt text. ' : 'No figure lost its alt text. ') +
-    (he.outside_pages && he.outside_pages.length ? 'New images that no figure holds: ' + esc(pp(he.outside_pages)) + '. ' : '') +
-    (he.lost && he.lost.length ? he.lost.length + (he.lost.length === 1 ? ' figure' : ' figures') + ' lost the tag in the edit (' +
-      esc(pp(he.lost.map(f => f.page))) + '); the alt text it had: ' + he.lost.map(f => f.alt ? '“' + esc(f.alt) + '”' : 'none').join('; ') + '. ' : '') +
-    (he.text_differs && he.text_differs.length ? '<b>The text reads differently after the edit on ' + esc(pp(he.text_differs)) + '.</b> ' : '') +
-    ((he.targets || []).length ? '<a href="#edited">' + esc(tc('Go to edited by hand')) + '</a>' : '');
-}
 if (SESSION && SESSION.reopened) {                    // a finished run reviewed again: where this session started, OCR
   const sn = id => 'Session ' + Number(id), nc = SESSION.not_carried || [];
   const ocr = DATA.ocr ? ' · OCR Text: <span id="hdrOcr"></span>' : '';   // filled by renderOcr()
@@ -755,7 +741,8 @@ const added = t => state.additions.find(a => aid(a) === 'add:' + t.kind + ':' + 
 function handSections() {
   const he = DATA.hand_edit; if (!he) return [];
   const ts = (he.targets || []).filter(t => view !== 'left' || !added(t));
-  const out = ts.length ? [{ id: 'edited', title: 'Edited by hand', hand: true, items: ts }] : [];
+  // the summary first (what the edit changed, and what to do), then a card per touched figure; the heading counts the cards
+  const out = ts.length || view !== 'left' ? [{ id: 'edited', title: 'Edited by hand', hand: true, items: [{ summary: true }].concat(ts), count: ts.length }] : [];
   const er = he.earlier;
   if (er && er.items && er.items.length && view !== 'left') out.push({ id: 'earlier', title: 'Earlier review', earlier: true, items: [er] , count: er.items.length });
   return out;
@@ -765,7 +752,25 @@ function sections() {
   const hs = handSections();
   return hs.filter(s => s.hand).concat(mine, hs.filter(s => s.earlier), aiSections());
 }
+function handSummary() {
+  const he = DATA.hand_edit, pp = a => a.map(p => 'PDF ' + p).join(', '), plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+  const rows = [], row = (k, v) => rows.push('<dt>' + tc(k) + '</dt><dd>' + v + '</dd>');
+  row('Edited by', esc(he.by || 'name not given') + (he.when ? ', ' + esc(fmtDay(he.when)) : ''));
+  row('Note', he.note ? '“' + esc(he.note) + '”' : 'none given');
+  row('Edited file', he.base === 'original' ? 'the original PDF' : 'the remediated PDF');
+  const li = [];
+  if (he.alt_removed) li.push(plural(he.alt_removed, 'figure holds', 'figures hold') + ' a new image (' + esc(pp(he.figure_pages)) + '): the old alt text was removed.');
+  if ((he.lost || []).length) li.push(plural(he.lost.length, 'figure', 'figures') + ' lost the tag (' + esc(pp(he.lost.map(f => f.page))) + '): screen readers skipped it until it gets alt text again.');
+  if ((he.outside_pages || []).length) li.push('New images that no figure holds: ' + esc(pp(he.outside_pages)) + '. Check whether each is a figure or decoration.');
+  if (he.text_same) li.push('Text changed on ' + plural(he.text_same, 'page', 'pages') + ': only the spaces between words, so it reads the same.');
+  if ((he.text_differs || []).length) li.push('<b>The text reads differently on ' + esc(pp(he.text_differs)) + ': compare it with the print.</b>');
+  const todo = (he.targets || []).length;
+  return '<div class="he-sum"><dl class="fields">' + rows.join('') + '</dl><h3>' + esc(tc('What the edit changed')) + '</h3>' +
+    (li.length ? '<ul>' + li.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '<p class="ctx">No figure, image or text change was found.</p>') +
+    '<h3>' + esc(tc('What to do')) + '</h3><p>' + (todo ? 'Add alt text on each card below, then finish the review as usual.' : 'Nothing to add here: finish the review as usual.') + '</p></div>';
+}
 function handCard(t) {
+  if (t.summary) return handSummary();
   const it = addById['add:' + t.kind + ':' + t.target], a = added(t), rows = [];
   const row = (k, v) => rows.push('<dt>' + tc(k) + '</dt><dd>' + v + '</dd>');
   row('Page', esc(pg(t.page, it && it.page_label) || 'PDF ' + t.page));

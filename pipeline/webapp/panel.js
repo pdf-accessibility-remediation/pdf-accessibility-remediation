@@ -239,6 +239,7 @@ function jobCard(j) {                                           // heading: the 
   if (j.kind === 'ocr' && j.status === 'running' && j.url)
     h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the OCR Text Review Page</a>' +
          '<button type="button" id="pp-stop" data-act="stop">Close Without a Verdict</button></div>';
+  if (j.child_url) h += '<div class="pp-row"><a class="pp-btn pp-primary" href="' + esc(j.child_url) + '">Open the Edited Run</a></div>';
   if (j.reason) h += '<p><b>Why:</b> ' + esc(j.reason) + '</p><p class="pp-note">The job\'s full output, for whoever looks after the app, is saved in ' + esc(j.log) + '.</p>';
   return h + '</article>';
 }
@@ -289,7 +290,56 @@ function actions(s) {
     h += '<div class="pp-row"><button type="button" id="pp-ocr" data-act="ocr">Review OCR Text</button>' +
          '<span class="pp-note">OCR Text: ' + esc(tc(s.ocr.verdict || 'not yet reviewed')) + '</span></div>';
   if (!s.pinned) h += '<p class="pp-note">Review again first re-audits this run to pin it (free, a minute or more).</p>';
+  h += '<div class="pp-row"><button type="button" id="pp-bring" data-act="bring-back">Bring Back an Edited PDF</button>' +
+       '<span class="pp-note">A copy you changed in Acrobat comes back as a new run for review (no AI call).</span></div>';
   return h;
+}
+
+// a PDF edited by hand (handedit.py, docs/hand-edits.md): the run it was made from, and the runs made from edited copies of it
+function handEditBlock(s) {
+  const he = s.hand_edits; if (!he) return '';
+  let h = '';
+  if (he.parent) h += '<p>Made from an edited copy of run ' + esc(he.parent.label) + (he.parent.url ? ': <a href="' + esc(he.parent.url) + '">open it</a>' : ' (its folder is gone)') + '.</p>';
+  if ((he.children || []).length)
+    h += '<h3>' + esc(tc('Edited copies')) + '</h3><ul>' + he.children.map(c => '<li><b>' + esc(c.label) + '</b> · ' + esc(c.state) +
+      (c.by ? ' · ' + esc(c.by) : '') + (c.when ? ', ' + esc(fmtDay(c.when)) : '') + (c.note ? ' · “' + esc(c.note) + '”' : '') +
+      (c.url ? ' · <a href="' + esc(c.url) + '">Open</a>' : '') + '</li>').join('') + '</ul>';
+  return h;
+}
+// Bring Back an Edited PDF: the file (from the uploads folder), a name (never prefilled) and what was changed. The request is
+// sent from the dialog, so a refusal is shown in it, in the app's words; Escape or Cancel closes it.
+function bringDlg(s, opener) {
+  return new Promise(res => {
+    const d = $('pp-dlg'), up = s.uploads || { files: [] }, fs = up.files || [];
+    d.innerHTML = '<h2 id="pp-dlg-h">Bring Back an Edited PDF</h2>' +
+      '<ol><li>Download this version with "Download the Remediated PDF."</li>' +
+      '<li>Edit it in Acrobat. First turn off text recognition: Edit, then Edit settings, and uncheck "Recognize scanned text."</li>' +
+      '<li>Save the edited PDF in the project\'s uploads folder, beside its runs and samples folders' + (up.exists ? '' : ' (make the folder if it is not there)') + '.</li>' +
+      '<li>Choose it here.</li></ol>' +
+      '<p>It comes back as a new run that stops for review: no AI call, no cost. This run is not changed.</p>' +
+      (fs.length ? '<p><label for="pp-bring-file">Edited PDF</label><br><select id="pp-bring-file">' + fs.map(f => '<option value="' + esc(f.name) + '">' + esc(f.name) +
+         ' (' + (f.size / 1e6).toFixed(1) + ' MB, saved ' + esc(fmtWhen(f.modified)) + ')</option>').join('') + '</select></p>'
+                 : '<p class="pp-warn-t">There is no PDF in the uploads folder yet. Save the edited PDF there, then open this again.</p>') +
+      '<p><label for="pp-bring-by">Edited By</label><br><input type="text" id="pp-bring-by" autocomplete="name"></p>' +
+      '<p><label for="pp-bring-note">What You Changed</label><br><textarea id="pp-bring-note" rows="2" maxlength="200"></textarea></p>' +
+      '<p id="pp-bring-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes"' + (fs.length ? '' : ' disabled') + '>Bring Back</button>' +
+      '<button type="button" value="no">Cancel</button></div>';
+    const id = opener.id, done = v => { d.close(); ($(id) || opener).focus(); res(v); }, err = t => { $('pp-bring-err').textContent = t; };
+    d.querySelector('button[value=no]').addEventListener('click', () => done(null));
+    d.querySelector('button[value=yes]').addEventListener('click', async ev => {
+      const by = $('pp-bring-by').value.trim(), note = $('pp-bring-note').value.trim();
+      if (!by) { err('Enter your name in "Edited By."'); $('pp-bring-by').focus(); return; }
+      if (!note) { err('Say what you changed in "What You Changed."'); $('pp-bring-note').focus(); return; }
+      ev.target.disabled = true; err('');
+      try {
+        const [c, r] = await api(API + '/bring-back', { file: $('pp-bring-file').value, by, note });
+        if (c === 202) return done(r.job);
+        err(r.error || 'The app refused this.'); ev.target.disabled = false;
+      } catch (e) { err('The app is not running. ' + START); ev.target.disabled = false; }
+    });
+    d.oncancel = ev => { ev.preventDefault(); done(null); };
+    d.showModal(); (fs.length ? $('pp-bring-file') : d.querySelector('button[value=no]')).focus();
+  });
 }
 
 // "Clean Up Space" (stage 3, review/prune.py): the button alone, shown only when a previous version's PDF can be removed;
@@ -470,7 +520,7 @@ function render() {
   else if (s.ocr && ocrSeen !== undefined && s.ocr.recorded !== ocrSeen)   // a verdict recorded since this page loaded: never reloads by itself
     h += '<p><b>OCR Verdict Recorded:</b> ' + esc(s.ocr.verdict || 'a new verdict') + '. The report below was made before it.</p>' +
       '<div class="pp-row"><button type="button" class="pp-primary" id="pp-show" data-act="reload">Show the Updated Report</button></div>';
-  h += actions(s) + jobsBlock(s) + historyBlock(s) + pruneBlock(s);
+  h += actions(s) + jobsBlock(s) + handEditBlock(s) + historyBlock(s) + pruneBlock(s);
   // replaced only when it changed, as the strip is: a poll whose data changed but not what the panel shows (the review
   // page saving a session's draft while a review is open) never swaps the buttons under the mouse or a selection
   const body = $('pp-body');
@@ -498,6 +548,11 @@ box.addEventListener('click', async e => {
       msg('Removed ' + r.removed + ' PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept in "Session History."', true, true);
       return poll(true);
     } catch (e) { return msg('The app is not running. ' + START, false, true); }
+  }
+  if (act === 'bring-back') {                                    // the dialog sends it; on 202 the job's card takes focus
+    const j = await bringDlg(st, b); if (!j) return;
+    msg('The edited PDF is coming back as a new run. When it is ready, open it from the job below.', true, true);
+    await poll(true); const hd = $('jh-' + j.id); if (hd) hd.focus(); return;
   }
   msg('');                                                       // any other panel button clears the message too
   if (act === 'reload') { location.replace(location.pathname + '?landed=1'); return; }
