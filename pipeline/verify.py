@@ -544,8 +544,16 @@ wc['headings'] = {'count': len(hs),
                   'long': [{'page': _first_pg(n), 'chars': len(t), 'text': t} for n, t in hs if len(t) > 200],
                   'repeated': [{'page': _first_pg(b), 'text': tb} for (a, ta), (b, tb) in zip(hs, hs[1:]) if ta and ta.lower() == tb.lower()]}
 out['wcag'] = wc
-# 8 ActualText spans in page content (OCR words given their printed spelling)
-out['actual_text_spans'] = {'original': sum(_raw(p).count(b'/ActualText') for p in src.pages), 'result': sum(_raw(p).count(b'/ActualText') for p in pages)}
+# 8 ActualText spans in page content and in the form XObjects pages draw (OCR words and page readings given their printed spelling)
+def _spans(doc_pages):
+    n, seen = 0, set()
+    for p in doc_pages:
+        n += _raw(p).count(b'/ActualText')
+        for x in ((p.obj.get('/Resources') or {}).get('/XObject') or {}).values():
+            if isinstance(x, pikepdf.Stream) and str(x.get('/Subtype')) == '/Form' and x.objgen not in seen:
+                seen.add(x.objgen); n += x.read_bytes().count(b'/ActualText')
+    return n
+out['actual_text_spans'] = {'original': _spans(src.pages), 'result': _spans(pages)}
 out['verapdf'] = vera.finish(VERA)
 print(vera.line(out['verapdf']), file=sys.stderr)
 json.dump(out, open(B + '.verify.json', 'w'), ensure_ascii=False, indent=1)

@@ -20,7 +20,7 @@ ALLOWED = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'Span', 'Caption', 'Note', '
 KNOWN = {'schema', 'sections', 'artifacts', 'document', 'rolemap', 'merges', 'actual_text', 'retype', 'flatten', 'alt',
          'move_to_document_start', 'captions', 'lists', 'toc', 'notes', 'language', 'links', 'move_section',
          'fix_figure_order', 'remove_empty_containers', 'deferrals', 'notes_for_reviewer', 'adopt_orphans', 'page_figures',
-         'keep_lists', 'ocr_words', 'tables'}
+         'keep_lists', 'ocr_words', 'tables', 'page_readings'}
 META = {'source', 'decided_by', 'reviewed_by'}       # written by the pipeline, not by the model: never checked or dropped
 
 JUNK = set("il1jtfrz;:'./|_~()¢£")           # what OCR turns unknown letters into: ñ → "ii", ṇ → "l;l" / "lJ" / "t:J."
@@ -114,6 +114,15 @@ def check(wo, digest, not_sent, words_sent, order=None):
             if why: drop('ocr_words', it, why); continue
             out.append({'id': i, 'text': words[i]['text'], 'reads': reads, 'count': words[i]['count']})
         if out: wo['ocr_words'] = out
+    if 'page_readings' in wo:                   # whole-page readings of scanned Hawaiian pages (read_pages.py): [{page, text}]
+        seen_p = set()
+        def page_reading(it):
+            if not isinstance(it, dict) or not isinstance(it.get('page'), int) or isinstance(it.get('page'), bool) or not 1 <= it['page'] <= N: return 'bad page'
+            if not isinstance(it.get('text'), str) or not it['text'].strip(): return 'empty'
+            if it['page'] in seen_p: return 'the same page twice'
+            seen_p.add(it['page']); it['text'] = unicodedata.normalize('NFC', it['text'])
+        wo['page_readings'] = keep('page_readings', wo['page_readings'] if isinstance(wo['page_readings'], list) else [], page_reading)
+        if not wo['page_readings']: del wo['page_readings']
     if 'flatten' in wo:
         wo['flatten'] = keep('flatten', wo['flatten'], lambda it: None if isinstance(it, dict) and it.get('obj') in flat_objs else 'not a list or table listed in the digest')
     if 'tables' in wo:                          # header rows / columns of a real table: [{obj, header_rows, header_cols}]

@@ -18,7 +18,7 @@ title, the XMP and the tags are the same as without it); Acrobat shows it under 
 """
 import sys, os, json, re, collections, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads  # plumb_fix first: it patches pdfplumber
 from lib.sections import excerpt
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
@@ -2251,24 +2251,66 @@ def op_ocr_words(spec):
     operator in tagged content whose words include that form is wrapped in /Span <</ActualText (…)>> BDC … EMC, the
     ActualText being the operator's own text with the form respelled (punctuation and spaces kept). Screen readers speak
     the ActualText and copying gives it; the OCR text, its fonts and the page stay exactly as they were. Only operators
-    drawn on a page (not inside a form XObject), inside marked content with an MCID, not inside an artifact and not
-    already inside an ActualText span are changed."""
+    inside marked content with an MCID, not inside an artifact and not already inside an ActualText span are changed:
+    on the page, or in a form XObject drawn from that one place (_page_text_ops: OCRmyPDF 17's OCR layer)."""
     fixes = {it['text']: it['reads'] for it in spec or [] if isinstance(it, dict) and it.get('text') and it.get('reads')}
     if not fixes: return
     expected = {it['text']: it.get('count') for it in spec if isinstance(it, dict) and it.get('text') in fixes}
     found, per_page, no_decoder = collections.Counter(), {}, set()
-    def respell(text):
+    covered = collections.Counter()                  # forms met inside a page reading's span: already given their spelling there
+    def respell(text, count=found):
         def one(m):
             pre, core, post = re.match(r'^(\W*)(.*?)(\W*)$', m.group(0), re.S).groups()
             if core not in fixes:                     # a footnote number after the word ("viida).26"); OCR also turns letters into digits, so only as a second try
                 pre, core, post = re.match(r'^(\W*)(.*?)(\W+\d+\W*)$', m.group(0), re.S).groups() if re.search(r'\W\d+\W*$', m.group(0)) else (pre, core, post)
-            if core in fixes: found[core] += 1; return pre + fixes[core] + post
+            if core in fixes: count[core] += 1; return pre + fixes[core] + post
             return m.group(0)
         return re.sub(r'\S+', one, text)
     for pno, page in enumerate(pages, 1):
-        fonts = (page.obj.get('/Resources') or {}).get('/Font') or {}
-        decs, out, changed, stack, gs, cur = {}, [], 0, [], [], None
-        for ins in pikepdf.parse_content_stream(page):
+        spanned = []
+        cand, conts = _page_text_ops(page, no_decoder, spanned)
+        for _, _, text in spanned: respell(text, covered)
+        wrap = collections.defaultdict(dict)
+        for ckey, i, text in cand:
+            new = respell(text)
+            if new != text: wrap[ckey][i] = new
+        if wrap: _write_spans(conts, wrap); per_page[pno] = sum(len(w) for w in wrap.values())
+    log['ocr_words'] = {'forms': len(fixes), 'operators': sum(per_page.values()), 'pages': sorted(per_page),
+                        'by_form': [{'text': t, 'reads': r, 'found': found[t], 'expected': expected.get(t), **({'in_page_readings': covered[t]} if covered[t] else {})}
+                                    for t, r in fixes.items()],
+                        'fonts_without_map': sorted(no_decoder)}
+    if per_page: ok('OCR words: printed spelling given as ActualText', sum(found.values()))
+    missing = [t for t in fixes if found[t] == 0 and covered[t] == 0]      # a form met only on pages read whole is handled there
+    if missing:
+        log['deferred'].append({'what': f'{len(missing)} OCR word forms with a reading were not found in the page text',
+                                'why': 'each may be split across text operators or drawn in a form several pages share; a person checks them: ' + ', '.join(missing)})
+
+# ================================================================== page readings: each OCR word on a Hawaiian page given its printed spelling at its own place
+_FORM_USES = None
+def _form_uses():
+    """How many times each form XObject is drawn from a page (by object), counted once per run."""
+    global _FORM_USES
+    if _FORM_USES is None:
+        _FORM_USES = collections.Counter()
+        for pg in pages:
+            for ins in pikepdf.parse_content_stream(pg):
+                if str(ins.operator) == 'Do':
+                    x = ((pg.obj.get('/Resources') or {}).get('/XObject') or {}).get(ins.operands[0])
+                    if isinstance(x, pikepdf.Stream) and str(x.get('/Subtype')) == '/Form': _FORM_USES[x.objgen] += 1
+    return _FORM_USES
+def _page_text_ops(page, no_decoder=None, spanned=None):
+    """The page's OCR text in drawing order: [(container, instruction index, text)] for each text-showing operator in
+    tagged content (an MCID, not an artifact, not already in an ActualText span), and {container key: (container,
+    instructions)}. A form XObject drawn from only this one place is followed (OCRmyPDF 17 draws each page's OCR layer
+    in its own form, with its own MCIDs); a shared form is not, since a change there would show wherever it is drawn.
+    spanned: a list that gets the operators already inside an ActualText span, in the same shape (to count, not change)."""
+    conts, cand, decs = {}, [], {}
+    def walk(c, ckey, res, depth):
+        fonts = (res.get('/Font') or {}) if res is not None else {}
+        xobjs = (res.get('/XObject') or {}) if res is not None else {}
+        ins_list = list(pikepdf.parse_content_stream(c)); conts[ckey] = (c, ins_list)
+        stack, gs, cur = [], [], None
+        for i, ins in enumerate(ins_list):
             op, ops = str(ins.operator), ins.operands
             if op in ('BDC', 'BMC'):
                 props = ops[1] if len(ops) > 1 and isinstance(ops[1], pikepdf.Dictionary) else None
@@ -2280,28 +2322,70 @@ def op_ocr_words(spec):
             elif op == 'Q':
                 if gs: cur = gs.pop()
             elif op == 'Tf': cur = fonts.get(ops[0])
-            elif op in TEXT_OPS and cur is not None and 'mc' in stack and 'art' not in stack and 'at' not in stack:
+            elif op == 'Do' and depth < 3 and 'art' not in stack and 'at' not in stack:
+                x = xobjs.get(ops[0])
+                if isinstance(x, pikepdf.Stream) and str(x.get('/Subtype')) == '/Form' and _form_uses()[x.objgen] == 1 and x.objgen not in conts:
+                    walk(x, x.objgen, x.get('/Resources') or res, depth + 1)
+            elif op in TEXT_OPS and cur is not None and 'mc' in stack and 'art' not in stack and ('at' not in stack or spanned is not None):
                 key = cur.objgen if cur.objgen != (0, 0) else id(cur)
                 if key not in decs: decs[key] = _decoder(cur)
-                if decs[key] is None: no_decoder.add(_font_name(cur)); out.append(ins); continue
+                if decs[key] is None:
+                    if no_decoder is not None: no_decoder.add(_font_name(cur))
+                    continue
                 strs = [ops[-1]] if op != 'TJ' else [y for y in ops[0] if isinstance(y, pikepdf.String)]
-                text = ''.join(decs[key](bytes(s)) for s in strs); new = respell(text)
-                if new != text:
-                    out += [pikepdf.ContentStreamInstruction([pikepdf.Name('/Span'), pikepdf.Dictionary(ActualText=pikepdf.String(new))],
-                                                              pikepdf.Operator('BDC')),
-                            ins, pikepdf.ContentStreamInstruction([], pikepdf.Operator('EMC'))]
-                    changed += 1; continue
-            out.append(ins)
-        if changed:
-            page.obj.Contents = pdf.make_stream(pikepdf.unparse_content_stream(out)); per_page[pno] = changed
-    log['ocr_words'] = {'forms': len(fixes), 'operators': sum(per_page.values()), 'pages': sorted(per_page),
-                        'by_form': [{'text': t, 'reads': r, 'found': found[t], 'expected': expected.get(t)} for t, r in fixes.items()],
-                        'fonts_without_map': sorted(no_decoder)}
-    if per_page: ok('OCR words: printed spelling given as ActualText', sum(found.values()))
-    missing = [t for t in fixes if found[t] == 0]
-    if missing:
-        log['deferred'].append({'what': f'{len(missing)} OCR word forms with a reading were not found in the page text',
-                                'why': 'each may be split across text operators or drawn inside a form; a person checks them: ' + ', '.join(missing)})
+                (spanned if 'at' in stack else cand).append((ckey, i, ''.join(decs[key](bytes(s)) for s in strs)))
+    walk(page, 'page', page.obj.get('/Resources'), 0)
+    return cand, conts
+def _write_spans(conts, wrap):
+    """wrap: {container key: {instruction index: ActualText}} → each such operator wrapped in /Span <</ActualText (…)>> BDC … EMC."""
+    for ckey, w in wrap.items():
+        c, ins_list = conts[ckey]; out = []
+        for i, ins in enumerate(ins_list):
+            if i in w:
+                out += [pikepdf.ContentStreamInstruction([pikepdf.Name('/Span'), pikepdf.Dictionary(ActualText=pikepdf.String(w[i]))], pikepdf.Operator('BDC')),
+                        ins, pikepdf.ContentStreamInstruction([], pikepdf.Operator('EMC'))]
+            else: out.append(ins)
+        data = pikepdf.unparse_content_stream(out)
+        if ckey == 'page': c.obj.Contents = pdf.make_stream(data)
+        else: c.write(data)
+def op_page_readings(spec):
+    """Each item is a whole-page AI reading of a scanned page (read_pages.py, issue #49): {page, text}. The page's OCR
+    words (_page_text_ops) are paired with the reading's words in order (lib/pagereads.py); an OCR word whose reading
+    differs only by its marks, or by a misreading ocr_words would also accept, gets that reading. Each changed operator
+    is wrapped in /Span <</ActualText (…)>> BDC … EMC with its own text respelled. Per place, not per form: na and nā
+    are both right, each where the page prints it. The OCR text, its fonts and the page stay as they were. Runs before
+    ocr_words, which leaves operators already in a span alone."""
+    items = [it for it in spec or [] if isinstance(it, dict) and isinstance(it.get('page'), int) and 1 <= it['page'] <= len(pages)]
+    res = []
+    for it in items:
+        page = pages[it['page'] - 1]
+        cand, conts = _page_text_ops(page)
+        words = []                                       # (candidate index, token match, core) for every word of the page's OCR text
+        for ci, (_, _, text) in enumerate(cand):
+            for m in re.finditer(r'\S+', text):
+                core = re.match(r'^\W*(.*?)\W*$', m.group(0), re.S).group(1)
+                if core: words.append((ci, m, core))
+        text, slip = pagereads.okina_slip(it['text'])
+        ai = [c for c in (re.match(r'^\W*(.*?)\W*$', t, re.S).group(1) for t in text.split()) if c]
+        changes, n = pagereads.align([w[2] for w in words], ai)
+        by_cand = collections.defaultdict(list)
+        for wi, reading in changes.items():
+            ci, m, core = words[wi]; by_cand[ci].append((m, core, reading))
+        wrap = collections.defaultdict(dict)             # container key -> {instruction index: ActualText}
+        for ci, subs in by_cand.items():
+            ckey, idx, text = cand[ci]
+            for m, core, reading in sorted(subs, key=lambda x: -x[0].start()):          # from the end, so earlier offsets hold
+                text = text[:m.start()] + m.group(0).replace(core, reading, 1) + text[m.end():]
+            wrap[ckey][idx] = text
+        _write_spans(conts, wrap)
+        examples = [[words[wi][2], r] for wi, r in sorted(changes.items())][:200]
+        res.append({'page': it['page'], **n, 'operators': sum(len(w) for w in wrap.values()), 'changes': examples, **({'okina_slip': slip} if slip else {})})
+        if n['changed']: ok('page readings: printed spelling given as ActualText', n['changed'])
+    log['page_readings'] = res
+    if res:
+        log['deferred'].append({'what': f'{len(res)} pages read by the AI (page readings)',
+                                'why': 'AI text is a draft: a person who reads Hawaiian checks each page against the scan before the book ships',
+                                'pages': [r['page'] for r in res]})
 
 # ================================================================== always: an invisible OCR text layer whose font defines no glyphs
 OCR_FONT_NAMES = {'HiddenHorzOCR', 'HiddenVertOCR', 'GlyphLessFont'}
@@ -2704,7 +2788,7 @@ def fix_font_maps():
 
 # ================================================================== run, in a fixed order
 STEPS = [('artifacts', op_artifacts), ('offpage', fix_offpage_text), ('document', op_document), ('adopt_orphans', op_adopt_orphans), ('rolemap', op_rolemap), ('merges', op_merges),
-         ('actual_text', op_actual_text), ('ocr_words', op_ocr_words), ('rolemap', op_rolemap_standard), ('retype', op_retype), ('list_rule', op_list_rule), ('flatten', op_flatten), ('tables', op_tables), ('alt', op_alt),
+         ('actual_text', op_actual_text), ('page_readings', op_page_readings), ('ocr_words', op_ocr_words), ('rolemap', op_rolemap_standard), ('retype', op_retype), ('list_rule', op_list_rule), ('flatten', op_flatten), ('tables', op_tables), ('alt', op_alt),
          ('move_to_document_start', op_move_to_document_start), ('captions', op_captions), ('lists', op_lists),
          ('toc', op_toc), ('notes', op_notes), ('language', op_language), ('links', op_links),
          ('move_section', op_move_section), ('fix_figure_order', op_fix_figure_order),

@@ -19,6 +19,8 @@
 # FIGURE_MAX_TOKENS=48000 bash run_api.sh …   output limit for each figure request (default 32000)
 # FIGURE_PROBE=20 bash run_api.sh …   test only: also re-send 20 figures the first request answered (recorded, never used)
 # MODEL=openai/gpt-5 bash run_api.sh …   any OpenRouter model id for this run (default: DEFAULT_MODEL in decide.py)
+# PAGE_READS=1 bash run_api.sh …   also read scanned, mostly Hawaiian pages whole with the AI (read_pages.py; paid, asks first)
+# PAGE_READS=all bash run_api.sh …   the same for every scanned page with text (English books with Hawaiian words throughout)
 # Untagged PDFs first go through intake.py (local, no cost): OCR where pages have no text, then auto-tagging. Its
 # result (_intake/intake.pdf) is what the rest of the run works on; the original is never written to.
 # FORCE_OCR=1 bash run_api.sh …   if the text layer fails the OCR comparison, OCR every page anyway (else the book stops)
@@ -215,6 +217,15 @@ else
     echo "stopped before the API call"; [[ -z ${KEEP:-} && -n $NEW ]] && rm -rf "$R"; summary; exit 0
   fi
   stage "3/5 $USE_MODEL via OpenRouter" python3 decide.py "$A" "$R" ${MT[@]+"${MT[@]}"}
+fi
+# PAGE_READS=1: scanned pages the audit found mostly Hawaiian are read whole by the AI (read_pages.py, issue #49): its own
+# paid step, with its own estimate and cap (PAGE_READS_MAX_USD, default 3). Pages read before are reused at no cost.
+if [[ -n ${PAGE_READS:-} && -z $REVIEWED ]] && python3 -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get('pages') else 1)" "$A/page_reads.json" 2>/dev/null; then
+  stage "3b/5 page readings: cost estimate (no model)" python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"}
+  if [[ -n ${AUTO:-} ]]; then pr_ok=y; echo "AUTO=1: reading the pages without asking (read_pages.py still refuses over its cap or your credit)"
+  else read -r -p "Read these pages with the AI now? [y/N] " pr_ok; fi
+  if [[ ${pr_ok:-n} == [yY]* ]]; then stage "3b/5 page readings via OpenRouter" python3 read_pages.py "$A" "$R" ${MODEL:+--model "$MODEL"}
+  else echo "page readings skipped: the report lists the pages for a person"; fi
 fi
 if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews the AI's decisions before anything is applied
   cp "$R/workorder.json" "$R/workorder.ai.json"
