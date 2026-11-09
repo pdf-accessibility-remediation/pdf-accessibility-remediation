@@ -6,7 +6,7 @@ paired with the OCR words, what the work-order check refuses, and what apply.py 
 The expected results follow docs/ocr-words.md ("Pages read whole"). No book content; nothing is sent anywhere; veraPDF is off.
 """
 import os, sys, json, subprocess
-import pikepdf, pytest
+import pikepdf, pdfplumber, pytest
 from lib import pagereads, workorder_check as wc
 
 PIPE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -176,6 +176,80 @@ def test_ocr_words_replace_the_quote_mark_too(tmp_path):
     out = tmp_path / 'out.pdf'
     run('apply.py', src, w, out)
     assert spans(out) == ['ʻāina']
+
+# ---- an OCR layer as OCRmyPDF 17 writes it: invisible text (3 Tr), a Type0 Identity-H font with a ToUnicode of single
+# codes, a CIDToGIDMap stream and per-code widths, one Tj per word, in a form drawn from the page
+OCR_CHARS = ' nao‘Hi'
+def ocrmypdf_like(path):
+    import io
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+    names = ['.notdef'] + [f'g{k}' for k in range(1, len(OCR_CHARS) + 1)]
+    fb = FontBuilder(1000, isTTF=True); fb.setupGlyphOrder(names); fb.setupCharacterMap({})
+    pen = TTGlyphPen(None); pen.moveTo((0, 0)); pen.lineTo((0, 500)); pen.lineTo((400, 500)); pen.closePath(); box = pen.glyph()
+    fb.setupGlyf({n: box for n in names}); fb.setupHorizontalMetrics({n: (500, 0) for n in names}); fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupNameTable({'familyName': 'TestOCR', 'styleName': 'Regular'}); fb.setupOS2(); fb.setupPost()
+    buf = io.BytesIO(); fb.font.save(buf)
+    pdf = pikepdf.new()
+    codes = {ch: k + 1 for k, ch in enumerate(OCR_CHARS)}                 # code k -> glyph k
+    tu = ('/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo\n<</Registry (Adobe)\n/Ordering (UCS)\n/Supplement 0\n>> def\n'
+          '/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n'
+          f'{len(codes)} beginbfchar\n' + ''.join(f'<{c:04X}> <{ch.encode("utf-16-be").hex().upper()}>\n' for ch, c in codes.items()) +
+          'endbfchar\nendcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n')
+    desc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.FontDescriptor, FontName=pikepdf.Name('/TestOCR'), Flags=4, FontBBox=[0, -200, 1000, 800],
+                                                ItalicAngle=0, Ascent=800, Descent=-200, CapHeight=700, StemV=80, FontFile2=pdf.make_stream(buf.getvalue())))
+    cid = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.CIDFontType2, BaseFont=pikepdf.Name('/TestOCR'),
+                                               CIDSystemInfo=pikepdf.Dictionary(Registry=pikepdf.String('Adobe'), Ordering=pikepdf.String('Identity'), Supplement=0),
+                                               FontDescriptor=desc, DW=500, W=pikepdf.Array([1, pikepdf.Array([250, 500, 500, 500, 300, 700, 250])]),
+                                               CIDToGIDMap=pdf.make_stream(b''.join(k.to_bytes(2, 'big') for k in range(len(OCR_CHARS) + 1)))))
+    font = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type0, BaseFont=pikepdf.Name('/TestOCR'),
+                                                Encoding=pikepdf.Name('/Identity-H'), DescendantFonts=pikepdf.Array([cid]), ToUnicode=pdf.make_stream(tu.encode())))
+    hexw = lambda w: ''.join(f'{codes[ch]:04X}' for ch in w)
+    body = 'BT 3 Tr 72 500 Td /F1 11 Tf ' + ' '.join(f'100 Tz /P <</MCID {k}>> BDC <{hexw(w)}> Tj EMC 40 0 Td' for k, w in enumerate(['na ', '‘o ', 'Hina ', 'na '])) + ' ET'
+    fx = pdf.make_indirect(pikepdf.Stream(pdf, body.encode())); fx.Type = pikepdf.Name.XObject; fx.Subtype = pikepdf.Name.Form
+    fx.BBox = [0, 0, 432, 576]; fx.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font)); fx.StructParents = 1
+    page = pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 432, 576], Resources=pikepdf.Dictionary(XObject=pikepdf.Dictionary(OCR=fx)), StructParents=0,
+                              Contents=pikepdf.Stream(pdf, b'q /OCR Do Q\n'))
+    pdf.pages.append(pikepdf.Page(page)); pg = pdf.pages[0].obj
+    root = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+    doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
+    p_ = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=doc, Pg=pg))
+    p_.K = pikepdf.Array([pikepdf.Dictionary(Type=pikepdf.Name.MCR, MCID=k, Pg=pg, Stm=fx) for k in range(4)])
+    doc.K = pikepdf.Array([p_]); root.K = pikepdf.Array([doc])
+    root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=pikepdf.Array([1, pikepdf.Array([p_] * 4)]))); root.ParentTreeNextKey = 2
+    pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('haw')
+    pdf.save(path, deterministic_id=True)
+    return path
+
+def test_an_ocrmypdf_layer_is_rewritten_in_place(tmp_path):
+    """#49: Acrobat's Read Out Loud and selection skip a word whose ActualText span sits inside its marked content in this
+    layer, so its own text is rewritten: new codes for ā and ʻ (a real glyph each, never .notdef), the word at its old
+    width, and verify.py allows exactly these changes. No ActualText is left."""
+    src = ocrmypdf_like(str(tmp_path / 'ocr.pdf'))
+    w = tmp_path / 'wo.json'; w.write_text(json.dumps({'schema': 'workorder/0.2', 'page_readings': [{'page': 1, 'text': 'nā ʻo Hina na'}]}))
+    out = tmp_path / 'out.pdf'
+    run('apply.py', src, w, out); run('verify.py', src, out)
+    assert spans(out) == []
+    with pdfplumber.open(str(out)) as d: words = [x['text'] for x in d.pages[0].extract_words()]
+    assert words == ['nā', 'ʻo', 'Hina', 'na']                  # the second na is printed without a kahakō: left alone
+    with pikepdf.open(str(out)) as pdf:
+        f = pdf.pages[0].Resources.XObject.OCR.Resources.Font.F1; g = f.DescendantFonts[0].CIDToGIDMap.read_bytes()
+        assert all(int.from_bytes(g[2 * c:2 * c + 2], 'big') for c in range(1, len(g) // 2))       # every code has a real glyph
+        tz = [float(i.operands[0]) for i in pikepdf.parse_content_stream(pdf.pages[0].Resources.XObject.OCR) if str(i.operator) == 'Tz']
+    assert tz[1] == 100 and tz[2] == 100                       # nā (a's width): the same width as na, so the same scaling
+    log = json.load(open(str(out) + '.log.json', encoding='utf-8'))
+    assert log['page_readings'][0]['rewritten'] == 2 and log['page_readings'][0]['spans'] == 0
+    v = json.load(open(str(out) + '.verify.json', encoding='utf-8'))
+    assert v['text_pages_changed'] == [] and v['ocr_text_rewritten'] == {'pages': [1], 'words': 2} and not v['pixel_pages_differing']
+
+def test_verify_flags_a_text_change_that_was_not_logged(tmp_path):
+    src = ocrmypdf_like(str(tmp_path / 'ocr.pdf'))
+    w = tmp_path / 'wo.json'; w.write_text(json.dumps({'schema': 'workorder/0.2', 'page_readings': [{'page': 1, 'text': 'nā ʻo Hina na'}]}))
+    out = tmp_path / 'out.pdf'; run('apply.py', src, w, out)
+    log = json.load(open(str(out) + '.log.json', encoding='utf-8')); log['ocr_text_rewritten']['1'] = log['ocr_text_rewritten']['1'][:1]
+    json.dump(log, open(str(out) + '.log.json', 'w', encoding='utf-8'))
+    run('verify.py', src, out)
+    assert json.load(open(str(out) + '.verify.json', encoding='utf-8'))['text_pages_changed'] == [1]
 
 def test_a_shared_form_is_not_changed(tmp_path):
     """A form drawn from two places would show a change in both: its words are left alone."""

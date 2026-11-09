@@ -612,13 +612,18 @@ if tq.get('producer_says_ocr') or (tq.get('pages_with_full_page_image', 0) > 0.5
                   + ('Misread words the AI could read from the scan are listed under "OCR words given their printed spelling"; other errors stay. '
                      if ow_forms else '') + 'Corrections to the text itself are an editorial decision.', '']
 dw = {w['text']: w for w in digest.get('ocr_words') or []}
+ow_rewritten = bool((log.get('ocr_text_rewritten') if isinstance(log, dict) else None))   # #49: the OCR text itself was rewritten
+ow_spans = bool((ver.get('actual_text_spans') or {}).get('result')) if isinstance(ver, dict) else False
 if ow_forms or digest.get('ocr_words'):
     n += 1; checked = ow_run.get('sent', len(dw))
     L += [f'### {n}. OCR words given their printed spelling ({len(ow_forms)} forms, {sum(x.get("found") or 0 for x in ow_forms)} places)', '',
           'The OCR misread these words, mostly letters with diacritics (ā or ū read as "ii"). The AI read each word from a crop of the scan. '
-          'Screen readers now speak the printed spelling, and copying gives it (ActualText); the OCR text underneath is unchanged, '
-          'so a text search still finds the OCR spelling. Apps that ignore ActualText (Preview and other PDFKit readers, some checkers) '
-          'still show the OCR spelling. Check each reading against the scan on its first page.', '']
+          + ('The OCR text itself now has the printed spelling (where the OCR layer is OCRmyPDF\'s), so screen readers, copying and search all give it'
+             + ('; elsewhere it is given as ActualText, which Preview and other PDFKit readers ignore' if ow_spans else '') + '. '
+             if ow_rewritten else
+             'Screen readers now speak the printed spelling, and copying gives it (ActualText); the OCR text underneath is unchanged, '
+             'so a text search still finds the OCR spelling. Apps that ignore ActualText (Preview and other PDFKit readers, some checkers) '
+             'still show the OCR spelling. ') + 'Check each reading against the scan on its first page.', '']
     if ow_forms:
         L += ['| OCR text | Printed (AI\'s reading) | Places | First pages |', '|---|---|---:|---|']
         L += [f'| {x["text"]} | {x["reads"]} | ' + (str(x['found']) if x.get('found') else 'on pages read whole' if x.get('in_page_readings') else '**not found**')
@@ -644,8 +649,11 @@ if prd:
     n += 1
     L += [f'### {n}. Pages read by the AI ({len(prd)} pages, {sum(x.get("changed") or 0 for x in prd)} words)', '',
           'Tesseract has no Hawaiian model, so the OCR of these pages lost the ʻokina and kahakō. The AI transcribed each page image exactly as printed, '
-          'and each OCR word was given its reading at its own place (ActualText): na and nā are each right where the page prints them. '
-          'The OCR text underneath and the page are unchanged. Readings too different from the OCR word to be a misreading of it, and words '
+          + ('and each OCR word was rewritten to its reading at its own place: na and nā are each right where the page prints them. '
+             'The page image is unchanged; screen readers, copying and search now give the printed spelling. '
+             if sum(x.get('rewritten') or 0 for x in prd) else
+             'and each OCR word was given its reading at its own place (ActualText): na and nā are each right where the page prints them. '
+             'The OCR text underneath and the page are unchanged. ') + 'Readings too different from the OCR word to be a misreading of it, and words '
           'the OCR split or joined, were left as the OCR read them. **AI text is a draft: a person who reads Hawaiian checks each page against the scan.**', '',
           '| Page | Words changed | Left as OCR read them | Examples (OCR → reading) |', '|---|---:|---:|---|']
     L += [f'| {pg(x["page"])} | {x.get("changed", 0)} | {(x.get("too_different") or 0) + (x.get("unpaired") or 0)} | '
