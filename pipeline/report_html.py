@@ -521,7 +521,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
          + ' · '.join(E(x) for x in [f'run {"/".join(os.path.normpath((rec.get("review") or {}).get("run") or R).split(os.sep)[-2:])}', f'{doc.get("pages") or "pages not counted"} pages',
                                       f'model {mp.get("model") or run.get("model") or "not recorded"}', f'prompt {mp.get("prompt_file") or "not recorded"}',
                                       (f'AI cost {origin.words(ai)[0]} · this run: no new call' if run.get('response_from')
-                                       else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: call did not finish'),
+                                       else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: AI request did not finish'),
                                       f'run {D.when(run.get("started"), "start time not recorded")}'])
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus
     # ---- ready to ship

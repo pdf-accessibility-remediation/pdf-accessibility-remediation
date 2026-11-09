@@ -264,7 +264,7 @@ def about_lines(rec):
     run = rec.get('run') or {}; doc = rec.get('document') or {}
     ai = origin.summary(rec); cost, model = origin.words(ai)
     if ai.get('cost_usd') is not None:
-        cost = origin.money(ai['cost_usd']) + (f', from the original call on {D.day(ai["date"])}' if ai.get('reused') and ai.get('date') else '')
+        cost = origin.money(ai['cost_usd']) + (f', from the original AI request on {D.day(ai["date"])}' if ai.get('reused') and ai.get('date') else '')
     per = origin.money(ai['cost_per_page_usd']) if ai.get('cost_per_page_usd') is not None else 'not recorded'
     env = rec.get('environment') or {}
     soft = ', '.join(f'{name} {env[k]}' for k, name in SOFTWARE if env.get(k))

@@ -39,7 +39,7 @@ Before anything is sent, `decide.py` looks the model up on OpenRouter and refuse
 **Costs with other models.** The cost estimate uses Claude's token math (calibrated on Sonnet bills), so for any non-Claude model it is marked approximate. The dollar limits and the credit check are not applied to it; the estimate is printed and the request is sent. If your credit is too low, OpenRouter refuses the request (HTTP 402) and nothing is charged. The OpenRouter bill, shown in the review and the summary, is the real cost. An Expected Cost appears for such a model only once it has 12 finished calls from 6 PDFs. Before sending, the terminal prints:
 
 ```
-Expected Cost: Not Available Yet (1 past call of this kind, from 1 PDF; needs 12 from 6)
+Expected Cost: Not Available Yet (1 past request of this kind, from 1 PDF; needs 12 from 6)
 Max Estimated Cost: about $0.27, approximate and not a limit: the dollar limits apply to Claude models only. The OpenRouter bill is the real cost
 AUTO=1: sending without asking (still refused over the $2.00 limit per AI request, the $5.00 limit per PDF, or your credit)
 AUTO=1: sending without asking. The dollar limits apply to Claude models only: the openai/gpt-5 estimate is approximate and not a limit; the OpenRouter bill is the real cost

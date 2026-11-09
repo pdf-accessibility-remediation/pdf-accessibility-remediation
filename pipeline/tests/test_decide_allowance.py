@@ -364,5 +364,5 @@ def test_a_model_other_than_claude_says_so(book, tmp_path, monkeypatch):
     try: runpy.run_path(os.path.join(HERE, 'decide.py'), run_name='__main__')
     except SystemExit: pass
     out = buf.getvalue()
-    assert 'Expected Cost: Not Available Yet (0 past calls of this kind, from 0 PDFs; needs 12 from 6)' in out
+    assert 'Expected Cost: Not Available Yet (0 past requests of this kind, from 0 PDFs; needs 12 from 6)' in out
     assert 'Max Estimated Cost: about $' in out and 'approximate and not a limit: the dollar limits apply to Claude models only' in out

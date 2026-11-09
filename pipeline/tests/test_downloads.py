@@ -232,7 +232,7 @@ def test_the_readme_gives_the_run_details_in_plain_words():
     L = DL.about_lines(rec)
     assert L[0] == 'Pages: 437' and L[1].startswith('Remediated: October 26, 2026')
     assert L[2] == 'AI model: anthropic/claude-sonnet-5.5 · Instructions: workorder_v8'      # the original call's, not today's prompt
-    assert L[3] == 'AI cost: $0.256, from the original call on October 26, 2026 · Cost per page: $0.0006'
+    assert L[3] == 'AI cost: $0.256, from the original AI request on October 26, 2026 · Cost per page: $0.0006'
     assert L[4] == 'OCR and Auto-Tagging: 6 pages are pictures with no text, so no text was added for them; the PDF had no tags and was tagged automatically.'
     assert L[5] == ('Total runtime: 3 min 52 s (intake 4 s, audit 37 s, AI request (a previous answer reused) 2 s, preparing the review 8 s, '
                     'applying and checks 3 min 2 s); the review time is not counted.')

@@ -163,7 +163,7 @@ def main():
             if os.path.exists(R): shutil.rmtree(R)
             t = time.time(); err = run_book(b, R); return b, err, time.time() - t
         jobs = max(1, min(a.jobs, len(books)))
-        print(f'running {len(books)} book{"" if len(books) == 1 else "s"} from saved replies (no API call), {jobs} at a time …', flush=True)
+        print(f'running {len(books)} book{"" if len(books) == 1 else "s"} from saved replies (no AI request), {jobs} at a time …', flush=True)
         with ThreadPoolExecutor(max_workers=jobs) as pool:
             biggest_first = sorted(books, key=lambda b: -os.path.getsize(sample(b)))   # the long runs don't end up queued last
             for f in as_completed([pool.submit(one, b) for b in biggest_first]):

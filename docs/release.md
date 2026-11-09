@@ -323,7 +323,7 @@ stylesheet, centered on the list's height in the page's text color (the browser'
     Pages: 437
     Remediated: October 26, 2026, at 6:48 AM
     AI model: anthropic/claude-sonnet-5.5 · Instructions: workorder_v8
-    AI cost: $0.256, from the original call on October 26, 2026 · Cost per page: $0.0006
+    AI cost: $0.256, from the original AI request on October 26, 2026 · Cost per page: $0.0006
     OCR and Auto-Tagging: 6 pages are pictures with no text, so no text was added for them; the PDF had no tags and was tagged automatically.
     Total runtime: 3 min 52 s (intake 4 s, audit 37 s, AI request (a previous answer reused) 2 s, preparing the review 8 s, applying and checks 3 min 2 s); the review time is not counted.
     Software: Python 3.13.9, pikepdf 10.5.1, pdfplumber 0.11.9, pypdfium2 5.7.1, Pillow 13.0.0, fontTools 4.62.1

@@ -160,10 +160,10 @@ def terminal_line(x):
     if x.get('usd') is not None:
         b = x.get('basis') or {}
         return (f'Expected Cost: ${x["usd"]:.2f} (usually ${x["low"]:.2f}–${x["high"]:.2f})'
-                + (f', from the last {b["calls"]} calls ({b["books"]} PDFs)' if b.get('calls') else '')
+                + (f', from the last {b["calls"]} requests ({b["books"]} PDFs)' if b.get('calls') else '')
                 + beyond_note(x))
     why = {'cut_off': 'an AI answer was cut off in this folder, so past runs say little about the next one',
-           'too_few': f'{x.get("calls", 0)} past call{"" if x.get("calls") == 1 else "s"} of this kind, from {x.get("books", 0)} PDF{"" if x.get("books") == 1 else "s"}; needs {MIN_CALLS} from {MIN_BOOKS}'}
+           'too_few': f'{x.get("calls", 0)} past request{"" if x.get("calls") == 1 else "s"} of this kind, from {x.get("books", 0)} PDF{"" if x.get("books") == 1 else "s"}; needs {MIN_CALLS} from {MIN_BOOKS}'}
     return 'Expected Cost: Not Available Yet' + (f' ({why[x["none"]]})' if x.get('none') in why else '')
 
 # ------------------------------------------------------------------ the ledger

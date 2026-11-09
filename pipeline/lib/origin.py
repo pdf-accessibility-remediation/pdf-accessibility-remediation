@@ -90,7 +90,7 @@ def words(ai):
     if ai.get('cost_usd') is None: cost = 'not recorded'
     else:
         cost = money(ai['cost_usd']) + (f' ({money(ai["cost_per_page_usd"])} per page)' if ai.get('cost_per_page_usd') is not None else '')
-        if ai.get('reused'): cost += f', from the original call on {D.day(ai.get("date"))}' if ai.get('date') else ', from the original call'
+        if ai.get('reused'): cost += f', from the original AI request on {D.day(ai.get("date"))}' if ai.get('date') else ', from the original AI request'
         if (ai.get('calls') or 1) > 1: cost += f' · {ai["calls"]} AI requests'
     instr = (ai.get('prompt_file') or '').removesuffix('.md') or 'not recorded'
     if ai.get('figure_prompt_file'): instr += ' + ' + ai['figure_prompt_file'].removesuffix('.md')

@@ -30,7 +30,7 @@
 #                    answers to "Language of the Scanned Pages", #45 D4); a book not listed uses OCR_LANG
 #   ASK_LANG=1       passed to run_api.sh: a book with pages to OCR and no OCR language stops before intake, and is
 #                    listed as needing a language (run_api.sh exit 4)
-#   FROM=<label>     no API calls: reuse each book's Claude reply saved in an earlier record.json, from the batch
+#   FROM=<label>     no AI requests: reuse each book's Claude reply saved in an earlier record.json, from the batch
 #                    runs/batches/<label>/<name>/ or the single run runs/<name>/<label>/ (free re-run after
 #                    pipeline changes); skips the cost step
 #

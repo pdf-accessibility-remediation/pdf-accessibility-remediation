@@ -69,6 +69,9 @@ def test_the_note_for_a_larger_request_is_one_wording_for_a_pdf_and_a_batch():
     sh = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'batch_api.sh'), encoding='utf-8').read()
     assert 'costhistory.beyond_note(x)' in sh
 
+def test_an_old_reason_in_a_stored_estimate_still_reads_properly():
+    assert H.terminal_line({'none': 'above_history'}) == 'Expected Cost: Not Available Yet'
+
 def test_the_terminal_names_the_thinner_of_two_histories():
     wo, fig = history(40, 8), [dict(r, kind='figure') for r in history(19, 6)]
     q = [{'kind': 'workorder', 'input_est': 60000, 'max_tokens': 48000}, {'kind': 'figure', 'input_est': 60000, 'max_tokens': 32000}]
@@ -99,8 +102,8 @@ def test_only_the_last_80_calls_are_learned_from():
     assert H.learn(sorted(history(200, 8), key=lambda r: r['date']))['calls'] == 80
 
 def test_the_terminal_line_names_the_range_and_why_none():
-    assert H.terminal_line({'usd': .31, 'low': .22, 'high': .43, 'basis': {'calls': 80, 'books': 29}}) == 'Expected Cost: $0.31 (usually $0.22–$0.43), from the last 80 calls (29 PDFs)'
-    assert H.terminal_line({'none': 'too_few', 'calls': 5, 'books': 1}) == 'Expected Cost: Not Available Yet (5 past calls of this kind, from 1 PDF; needs 12 from 6)'
+    assert H.terminal_line({'usd': .31, 'low': .22, 'high': .43, 'basis': {'calls': 80, 'books': 29}}) == 'Expected Cost: $0.31 (usually $0.22–$0.43), from the last 80 requests (29 PDFs)'
+    assert H.terminal_line({'none': 'too_few', 'calls': 5, 'books': 1}) == 'Expected Cost: Not Available Yet (5 past requests of this kind, from 1 PDF; needs 12 from 6)'
 
 # ------------------------------------------------------------------ seed + ledger: each call once, each book once
 def ledger(tmp_path, *rows, raw=''):
@@ -208,7 +211,7 @@ def test_the_committed_seed_holds_only_the_listed_fields():
 def test_the_backtest_holds_forward_in_time():
     F = BT.forward(); N = BT.newest(F)
     assert len(F) >= 200 and BT.rate(F, BT.inside) >= 0.80 and BT.rate(N, BT.inside) >= 0.80
-    assert BT.rate(F, BT.within(0.25)) >= 0.80 and BT.rate(N, BT.within(0.25)) >= 0.70 and BT.rate(F, BT.within(0.5)) >= 0.95
+    assert BT.rate(F, BT.within(0.25)) >= 0.80 and BT.rate(N, BT.within(0.25)) >= 0.72 and BT.rate(F, BT.within(0.5)) >= 0.95
     assert all(x['expected'] > 0 for x in F)
 
 def test_nothing_is_left_out_of_the_backtest_for_its_size():

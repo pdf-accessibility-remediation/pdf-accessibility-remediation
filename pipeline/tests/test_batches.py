@@ -178,6 +178,10 @@ def test_the_cost_line_while_estimating_never_says_zero():
     assert "if (T.estimated) h += '<p id=\"bt-cost\"><b>Max Estimated Cost So Far: '" in js and "' (estimating) · Batch Limit: '" in js
     assert "} else if (before)" in js and "const before = s.phase === 'ready' || s.phase === 'missing';" in js
 
+def test_the_batch_pages_expected_cost_is_not_bold():
+    js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "(exp ? exp + '<br>' : '')" in js and "'<b>' + exp" not in js
+
 def test_the_batch_pages_cost_wording():
     """The wording Patrick decided, in batch.js's source: both lines, the partial and missing figure, and the note under the button."""
     js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
