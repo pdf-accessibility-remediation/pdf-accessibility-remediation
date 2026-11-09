@@ -27,12 +27,16 @@ python3 handedit.py import ../runs/hawaii3/rv1 path/to/edited.pdf --by "Your Nam
     --note "replaced the low-resolution photo on PDF 12" --label rv1-edit
 ```
 
+**From the app instead of step 1:** **Download the Remediated PDF** (under **Available Downloads**) gives the same file for the **current** version. It just isn't logged under `exports`. Never edit a download of an earlier version: `import` compares the edited file with the run's current result, so the changes it reports would be wrong.
+
+**Finish the work order first, and do the hand edit last.** The edited run starts from a file that already holds every earlier decision (see "What a review of an edited PDF shows" below).
+
 Step 3 makes `runs/hawaii3/rv1-edit/` (by default the label is `handedit-<date>-<time>`) and stops for review, as `REVIEW=1` does. Then:
 
 1. Open the review page:
    - from the app: `python3 app.py ../runs/hawaii3/rv1-edit`;
    - or from the terminal: `python3 review_workorder.py ../runs/hawaii3/rv1-edit --serve`.
-2. Write the alt text the edit needs, then select **Finish Review**.
+2. Write the alt text the edit needs, then select **Finish Review**. The first section, **Edited by Hand**, has a card for each figure the edit touched: its page, what happened, the alt text it had, and an **Add Alt Text** button that opens the form for that figure. For a figure that lost its tag, the form starts with the alt text it had, as a suggestion to check. Once the alt text is added, the card says so.
 3. Apply the review: press **Apply** in the app, or run the command `handedit.py` printed. The result, `review.md`, `record.json` and the evaluation work as for any run.
 
 **Never edit the run's own PDF in place.** Its sha256 is what the [accessibility evaluation](release.md#each-check-belongs-to-one-file) counts. An edited result is evaluated and shipped in its own run.
@@ -43,7 +47,7 @@ Step 3 makes `runs/hawaii3/rv1-edit/` (by default the label is `handedit-<date>-
 
 Acrobat can change pages you never touched:
 
-- **Edit PDF can run text recognition (OCR) by itself** on a page that is one image, such as a cover. It rewrites that page: the image is saved again (in one test, as two images) and the page loses its tags, including the figure's alt text. Turn text recognition off before you start. In Edit PDF, look in the panel's settings for scanned documents. On a page that is all image, Acrobat also asks.
+- **Edit PDF can run text recognition (OCR) by itself** on a page that is one image, such as a cover. It rewrites that page: the image is saved again (in one test, as two images) and the page loses its tags, including the figure's alt text. Turn it off before you start: in Edit PDF, choose **Edit** → **Edit settings** and uncheck **Recognize scanned text**. With it off, a test that replaced one logo changed nothing else.
 - **It can drop the space characters between words** on pages it rewrites. The words usually stay apart on the page, so a reader still hears the spaces.
 
 `import` reports both, so nothing goes back unseen (below).
@@ -67,7 +71,7 @@ Choose `pipeline` when the edit was large, for example new pages, or when the ed
 
 A figure that now holds a new image keeps the old image's alt text in the edited file. That text describes the old image. So it is removed (with any spoken text, `ActualText`) in a working copy, `_handedit/input.pdf`, which the run works on. The old alt text is never reused for a new image:
 
-- **On the review page**, each such figure is a figure with no alt text. It is listed under the gaps (and Finish asks about it), with an **Add** link to write its alt text. A line under the header says what was edited, by whom, and which pages hold a new image.
+- **On the review page**, each such figure is a figure with no alt text. It has a card under **Edited by Hand** and is listed under the gaps (Finish asks about it). A line under the header says what was edited, by whom, and which pages hold a new image.
 - **With `--to pipeline`**, the AI sees those figures with no alt text and writes it.
 - **In `review.md`**, the "Edited by hand" section has a table: each figure's page, the alt text removed, and the alt text written on that page in this run. A row with none written says so.
 
@@ -78,11 +82,28 @@ New images that no figure holds are listed too, so you can decide whether each i
 `import` also compares what it can of the rest of the file:
 
 - **A figure that lost its tag.** If a figure held an image in the exported file and no figure holds it in the edited one, it is listed with the alt text it had. The image is still drawn, but nothing tags it, so a screen reader skips it.
-  - A page left with no tags at all becomes a whole-page figure, and the review page asks for its alt text. The old alt text, shown in the line under the header, is usually right for it, because the image is the same picture.
+  - A page left with no tags at all becomes a whole-page figure, and the review page asks for its alt text. Its card's **Add Alt Text** button opens the form with the old alt text already filled in, marked as a suggestion. It is usually right, because the image is the same picture.
   - On a page that still has other tags, re-tag the image in Acrobat, or check that it is meant to be decoration.
 - **Text that changed.** Each page whose characters differ is listed:
   - **Read the same:** only space characters went. The page still reads the same with spaces taken from the gaps between words, as the pipeline reads it. `review.md` says so in one line.
   - **Reads differently:** `review.md` marks the pages as a CHECK, and the line under the review page's header names them. Compare them with the earlier run and with the print.
+
+## What a review of an edited PDF shows
+
+The edited PDF already holds every decision of the run it came from: alt text, heading levels, decoration and the rest. The AI isn't asked again, and those decisions aren't shown as cards again. Approving them a second time would apply them twice, for example moving a section that is already in place, or hiding text a rule already hid. So the review page shows:
+
+- **Edited by Hand:** the figures the edit touched (above).
+- **The contents pages carried from the earlier run**, as one card.
+- **What today's audit finds anywhere in the book.** These are not things the first run missed. Anything it fixed is in the file and doesn't come back. What comes back:
+  - findings the pipeline can't fix, such as text that jumps back up a column on one page;
+  - book-wide gaps, such as no H1 or a figure with no alt text.
+
+  When such a check card was marked seen with a note in the earlier review, the card shows that note ("Earlier Note") if the number of pages is unchanged. You still mark it seen yourself.
+- **Earlier Review**, read-only: the earlier run's decisions by kind, each with its page, value, status (approved, changed, applied as the AI wrote it, …) and the reviewer's note. It is there for reference; nothing in it is applied again.
+
+**To change an earlier decision after the edit**, add it in the edited run with **Add a Decision**: none of the earlier decisions is decided again there, so each one can be added.
+
+Don't use `--reopen` on the earlier run for this: it rebuilds that run's PDF from the original and its work order, so the hand edit isn't in that result.
 
 ## Starting from the original
 

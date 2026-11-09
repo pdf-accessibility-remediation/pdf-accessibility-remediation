@@ -5,7 +5,7 @@
 Tiny hand-made PDFs with two figures, each one image; the "edited" file swaps one image for another and is saved with its
 objects in a different order, as an Acrobat save would. No book content; nothing is sent anywhere; veraPDF is off.
 """
-import os, sys, json, hashlib, subprocess
+import os, sys, json, shutil, hashlib, subprocess
 import pikepdf
 from lib import handedit, workorder_check
 
@@ -141,7 +141,8 @@ def test_a_hand_edited_pdf_comes_back_for_review_and_is_recorded(tmp_path):
     assert items['hand_edit']['alt_removed'] == 1 and items['hand_edit']['figure_pages'] == [1]
     assert items['hand_edit']['text_differs'] == [1] and items['hand_edit']['lost'] == []
     (t,) = items['hand_edit']['targets']                                  # the banner's one-click "Add Alt Text"
-    assert t['kind'] == 'alt' and t['page'] == 1 and t['suggest'] is None
+    assert t['kind'] == 'alt' and t['page'] == 1 and t['suggest'] is None and t['why'] == 'new_image' and t['old_alt'] == 'A red square'
+    assert items['hand_edit']['earlier'] == {'reviewed_by': None, 'reviewed_on': None, 'items': []}   # the parent's order was empty
     assert next(it for it in items['addable']['alt'] if it['target'] == t['target'])['default'] == ''   # a new image: no suggestion
     from review import core
     digest = json.load(open(os.path.join(C, '_audit', 'digest.json'), encoding='utf-8'))
@@ -206,10 +207,10 @@ def test_banner_targets_suggest_the_old_alt_only_for_a_figure_that_lost_its_tag(
     from review import core
     adds = {'alt': [add_item('alt', '820 0', 5), add_item('alt', '9 0', 5, before='kept alt'), add_item('alt', '7 0', 3)],
             'page_figures': [add_item('page_figures', 1, 1)]}
-    he = {'figure_pages': [5], 'lost': [{'page': 1, 'alt': 'Book cover'}]}
+    he = {'figure_pages': [5], 'changed': [{'page': 5, 'alt': 'Old logo'}], 'lost': [{'page': 1, 'alt': 'Book cover'}]}
     assert core.hand_edit_targets(he, adds) == [
-        {'kind': 'page_figures', 'target': 1, 'page': 1, 'suggest': 'Book cover'},      # the cover, now a whole-page figure
-        {'kind': 'alt', 'target': '820 0', 'page': 5, 'suggest': None}]                  # the new logo: no suggestion
+        {'kind': 'page_figures', 'target': 1, 'page': 1, 'why': 'lost_tag', 'old_alt': 'Book cover', 'suggest': 'Book cover'},   # now a whole-page figure
+        {'kind': 'alt', 'target': '820 0', 'page': 5, 'why': 'new_image', 'old_alt': 'Old logo', 'suggest': None}]   # shown, never suggested
 
 def test_banner_targets_leave_out_decided_and_decoration_figures():
     from review import core
@@ -217,4 +218,57 @@ def test_banner_targets_leave_out_decided_and_decoration_figures():
     assert core.hand_edit_targets({'figure_pages': [2, 5], 'lost': [{'page': 2, 'alt': 'old'}]}, adds) == []
     adds = {'alt': [add_item('alt', '5 0', 2)], 'page_figures': []}                    # a lost figure tagged anew on a tagged page
     assert core.hand_edit_targets({'figure_pages': [], 'lost': [{'page': 2, 'alt': 'old'}]}, adds) == [
-        {'kind': 'alt', 'target': '5 0', 'page': 2, 'suggest': 'old'}]
+        {'kind': 'alt', 'target': '5 0', 'page': 2, 'why': 'lost_tag', 'old_alt': 'old', 'suggest': 'old'}]
+
+# ---- the review page's Earlier Review section (review/core.py earlier_review), and earlier notes on check cards
+def reviewed_parent(tmp_path, review=True):
+    """The synthetic parent run, its record given one applied alt decision and (review) a reviewer's statuses and notes."""
+    src, P = parent_run(tmp_path)
+    digest = json.load(open(os.path.join(P, 'reviews', '_audit', 'digest.json'), encoding='utf-8'))
+    obj = digest['figures'][1]['obj']
+    rp = os.path.join(P, 'record.json'); rec = json.load(open(rp, encoding='utf-8'))
+    rec['workorder']['alt'] = [{'obj': obj, 'alt': 'A red square, darker'}]
+    if review:
+        rec['review'] = {'workorder': {'reviewer': 'Pat', 'date': '2026-11-09'}, 'decisions': [
+            {'id': f'alt:{obj}', 'kind': 'Alt text', 'label': f'Figure {obj}', 'page': 1, 'status': 'changed', 'note': 'darker red'},
+            {'id': 'reading_order:jump:1', 'kind': 'Reading order check', 'label': 'Text on PDF 1 jumps back up the page', 'page': 1,
+             'status': 'seen', 'note': 'fine as it is'}]}
+    else: rec.pop('review', None)
+    json.dump(rec, open(rp, 'w', encoding='utf-8'))
+    return P, obj
+
+def test_earlier_review_lists_the_parents_decisions_with_status_and_note(tmp_path):
+    from review import core
+    P, obj = reviewed_parent(tmp_path)
+    er = core.earlier_review({'parent': {'run': P}})
+    assert er['reviewed_by'] == 'Pat' and er['reviewed_on'] == '2026-11-09'
+    by = {x['id']: x for x in er['items']}
+    assert by[f'alt:{obj}']['value'] == 'A red square, darker' and by[f'alt:{obj}']['page'] == 1
+    assert by[f'alt:{obj}']['status'] == 'changed by the reviewer' and by[f'alt:{obj}']['note'] == 'darker red'
+    assert by['reading_order:jump:1']['status'] == 'seen' and by['reading_order:jump:1']['note'] == 'fine as it is'
+
+def test_earlier_review_of_an_unreviewed_parent_and_of_one_whose_digest_is_gone(tmp_path):
+    from review import core
+    P, obj = reviewed_parent(tmp_path, review=False)
+    er = core.earlier_review({'parent': {'run': P}})
+    assert er['reviewed_by'] is None and [x['status'] for x in er['items']] == ['applied as the AI wrote it']
+    os.remove(os.path.join(P, 'reviews', '_audit', 'digest.json'))
+    assert core.earlier_review({'parent': {'run': P}}) is None
+
+def test_a_check_card_that_comes_back_shows_its_earlier_note_only_when_the_pages_are_the_same(tmp_path, monkeypatch):
+    from review import core
+    P, obj = reviewed_parent(tmp_path)
+    R = tmp_path / 'child'; (R / '_handedit').mkdir(parents=True); (R / '_audit').mkdir()
+    shutil.copy(os.path.join(P, 'reviews', '_audit', 'digest.json'), R / '_audit' / 'digest.json')
+    (R / 'workorder.ai.json').write_text(json.dumps({'schema': 'workorder/0.2'}))
+    def run_prepare(pages):
+        (R / '_handedit' / 'hand_edit.json').write_text(json.dumps({'parent': {'run': P}, 'pages': pages, 'figures_changed': [], 'figures_lost': []}))
+        card = {'id': 'reading_order:jump:1', 'key': 'reading_order', 'kind': 'Reading order check', 'priority': 5, 'images': [], 'context': {}, 'page': 1}
+        monkeypatch.setattr(core, 'dry_run', lambda R, pdf: {})
+        monkeypatch.setattr(core, 'reading_order_for', lambda *a: {'entries': []})
+        monkeypatch.setattr(core, 'build_items', lambda *a, **k: [dict(card, context={})] if len(a) > 2 else [])
+        monkeypatch.setattr(core, 'render_pages', lambda *a: None)
+        monkeypatch.setattr(core, 'addable', lambda *a: {k: [] for k in core.ADD_KINDS})
+        return core.prepare(str(R), 'x.pdf')['items'][0]['context']
+    assert run_prepare([1, 1]) == {'earlier_note': 'fine as it is', 'earlier_status': 'seen'}
+    assert run_prepare([1, 2]) == {}
