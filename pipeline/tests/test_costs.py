@@ -242,7 +242,7 @@ def test_not_available_is_kept_as_it_is(tmp_path):
     assert C.estimate(str(folder(tmp_path, extra={'expected': {'none': 'too_few'}})))['expected'] == {'none': 'too_few'}
 
 @pytest.mark.parametrize('kw,code,words', [
-    ({'worst': 2.4, 'extra': {}}, 'per_call', 'This run could cost up to $2.40, more than the limit of $2.00 per AI call.'),
+    ({'worst': 2.4, 'extra': {}}, 'per_call', 'This run could cost up to $2.40, more than the limit of $2.00 per AI request.'),
     ({'worst': 5.9, 'extra': {'passes': [{'pass': '1', 'worst_case_usd': 0.9}], 'book_cap_usd': 5}}, 'per_book', 'This PDF could cost up to $5.90, more than the limit of $5.00 per PDF.'),
     ({'worst': 4.6, 'extra': {'passes': [{'pass': '1', 'worst_case_usd': 0.9}], 'book_cap_usd': 5, 'spent_before_usd': 0.6}}, 'per_book', 'This PDF could cost up to $5.20, including $0.60 already spent, more than the limit of $5.00 per PDF.'),
     ({'worst': 0.67, 'extra': {'credit_available_usd': 0.4}}, 'credit', 'This run could cost up to $0.67, more than the $0.40 of credit left.')])

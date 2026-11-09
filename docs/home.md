@@ -6,7 +6,7 @@ nav_order: 3.55
 # The home page: new runs and batches from the browser
 
 The app's home page (`http://127.0.0.1:8760/`) is where library staff start work without a terminal (#45, home
-interface): pick a PDF, see what the AI call could cost, "Start Remediation", follow the run, and land on the review page. It runs
+interface): pick a PDF, see what the AI request could cost, "Start Remediation", follow the run, and land on the review page. It runs
 the pipeline's own commands (`run_api.sh`, `batch_api.sh`) as jobs, exactly as a person would type them, so the command
 line keeps working as before. See [The app](app.md) for its settings, jobs and security.
 
@@ -26,9 +26,9 @@ underline; the keyboard's focus ring stays (`:focus-visible`, R1).
 
 **The run page's header** (Q6–Q8) starts at the top of the screen: the PDF's name, "Source PDF: <file name>", then the
 run's details in plain words on one line where the width allows, starting with the run's name, for example "mm · 321
-pages · Run on November 6, 2026, at 9:29 PM · AI: Claude Sonnet 5.5 · AI Cost: $0.27 (expected $0.31, max estimated $0.67)" (R5;
+pages · Run on November 6, 2026, at 9:29 PM · AI Model: Claude Sonnet 5.5 · AI Cost: $0.27 (expected $0.31, max estimated $0.67)" (R5;
 labels in Title Case, review 15 L1). The model is named in plain words (the original call's model for a run made from a
-saved reply), never by its id; "AI Cost: none (a saved reply was used)" when no new call was made, "AI Cost: not
+saved reply), never by its id; "AI Cost: none (a saved reply was used)" when no new request was made, "AI Cost: not
 recorded" when the record has no cost, and no AI part before the AI has answered. A PDF in a batch adds "Assigned to the
 batch "<name>"" with the list's button and **Home Page** after it (S3: "Batch: <name>" in the side list leads to the batch
 page). The cost is no longer repeated in Run Actions (Q7). Run Actions meets the header with no gap; Run Actions, "Ready
@@ -174,10 +174,10 @@ added but locked with a password or unreadable says so; the PDFs that were added
    read "Not Available Yet" (see [What a run may cost](options.md#what-a-run-may-cost)). A book with more than 100 images needs
    several AI requests (see [Files](files.md)): the second line then says "Max Estimated Cost: $3.13 for 6 AI requests · Credit: …",
    the whole PDF's maximum, every request together. After a paid previous attempt it adds "Counted Toward This PDF's Limit So Far: $0.60".
-5. **Start Remediation** is the only button that leads to a paid call, shown only when the estimate fits the limits and the credit.
+5. **Start Remediation** is the only button that leads to a paid request, shown only when the estimate fits the limits and the credit.
    Both cost lines are read with the button by a screen reader (`aria-describedby`). The next section says what it
    checks.
-6. **Progress:** the run page shows each step and the step running now. The run always stops after the AI call (D2:
+6. **Progress:** the run page shows each step and the step running now. The run always stops after the AI request (D2:
    every run the app starts stops for review; the terminal's `REVIEW=1` stays optional). The page announces "The AI's
    decisions are ready for your review" and shows **Open the Review Page**. Focus moves to that button only when it is
    still where the page put it after **Start Remediation** and no key or click has happened since; otherwise the page only
@@ -273,14 +273,14 @@ a run blocked.
 ### Try Again, Get a New Estimate, Continue
 
 - **Try Again** is decided from the run folder: when a complete AI reply is saved, the run goes on with it, free (no
-  `AUTO`, with `REVIEW=1`); otherwise the app gets a new estimate first, and a new call needs **Start Remediation** again. A free rerun that would
-  reach a new call stops before it (the page then says to get a new estimate).
-- **Continue** appears when the estimate found a saved reply: "No AI call is needed".
+  `AUTO`, with `REVIEW=1`); otherwise the app gets a new estimate first, and a new request needs **Start Remediation** again. A free rerun that would
+  reach a new request stops before it (the page then says to get a new estimate).
+- **Continue** appears when the estimate found a saved reply: "No AI request is needed".
 - **A run made from the terminal** (an estimate-only folder, for example) is listed and opens, but its page offers no
   "Start Remediation", Get a New Estimate or Try Again: its settings are not known to the app. It says to start a new run of the book
   from the home page.
 - **A PDF in a batch** has no "Start Remediation" of its own: its page points to the batch page, where the batch is sent.
-- **Get a New Estimate** appears only when the estimate is stale: the app restarted before the paid call started. The card
+- **Get a New Estimate** appears only when the estimate is stale: the app restarted before the paid request started. The card
   is then headed "Waiting for a New Estimate" (07 L2).
 - **New Run from the Saved Reply** appears on a finished run that can no longer be reviewed (the pipeline changed since):
   a new run of the book from its saved reply, free, on today's code, stopping for review. It is refused for a cleared
@@ -400,10 +400,10 @@ items go and how to put them back: [The app](app.md#move-to-trash).
 ## Test mode
 
 For the app's tests only, three keys accepted only from `--config` (never from a settings file): `test_reply_dir`
-("Start Remediation" runs `REPLY=<dir>/<short name>.txt INTAKE_REUSE=1` instead of a paid call; a missing reply is refused,
+("Start Remediation" runs `REPLY=<dir>/<short name>.txt INTAKE_REUSE=1` instead of a paid request; a missing reply is refused,
 never sent instead), `test_batch_from` (a batch's "Start Remediation" runs `FROM=<label>`, each PDF's saved reply found
 under `runs/batches/<label>/<short name>/` or `runs/<short name>/<label>/`) and `trash_dir` (where **Move to Trash**
-moves things instead of `~/.Trash`). Every page then says "Test: saved replies, no AI call". Estimates still ask
+moves things instead of `~/.Trash`). Every page then says "Test: saved replies, no AI request". Estimates still ask
 OpenRouter for prices and credit (free). A batch in test mode skips batch_api.sh's own estimate step and its cap (FROM=
 does), so only a real batch shows the cap working.
 

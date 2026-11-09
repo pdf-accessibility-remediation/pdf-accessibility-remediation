@@ -167,12 +167,12 @@ SESSION_IN = re.compile(r'session (\d+)')
 def action(j):
     """The job's action, as it was asked for: "Review again from session 2"."""
     return shown(j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin', 'ocr': 'Review OCR Text', 'estimate': 'Get the estimate',
-                                    'spend': 'Start remediation: the AI call', 'rerun': 'Try again', 'batch': 'Run the batch'}.get(j['kind'], j['kind']))
+                                    'spend': 'Start remediation: the AI request', 'rerun': 'Try again', 'batch': 'Run the batch'}.get(j['kind'], j['kind']))
 
 def shown(t):
     """A job line as the panel shows it, formatted when shown (so jobs recorded before the rule read the same): a session
     is "Session N", and the OCR button is "Review OCR Text" (it names the button; "OCR text" for the text itself stays)."""
-    t = re.sub(r'\bsession (\d+)', r'Session \1', str(t))
+    t = re.sub(r'\bsession (\d+)', r'Session \1', str(t)).replace('the AI call', 'the AI request')   # a job recorded before the wording changed
     return t.replace('Review OCR text', 'Review OCR Text')
 
 def ocr_recorded(R, since=''):
@@ -411,7 +411,7 @@ def model_words(m):
 
 def details(s, run, R, pages=None):
     """The run page header's line (Patrick's test, 2026-11-07, Q6, R5): "mm · 321 pages · Run on November 6, 2026,
-    at 9:29 PM · AI: Claude Sonnet 5.5 · AI Cost: $0.27 (expected $0.31, max estimated $0.67)", in plain words; a part with nothing
+    at 9:29 PM · AI Model: Claude Sonnet 5.5 · AI Cost: $0.27 (expected $0.31, max estimated $0.67)", in plain words; a part with nothing
     recorded is left out, and "AI" and "AI Cost" only once an AI reply exists (a saved one: "AI Cost: none (a saved reply
     was used)"). The model is the original call's (lib/origin.py), never an id or a file name."""
     from lib import dates as D, costs, origin
@@ -427,7 +427,7 @@ def details(s, run, R, pages=None):
     called = bool(rec) or os.path.isfile(os.path.join(R, 'workorder.ai.json')) or bool(runj.get('usage') or runj.get('response_from'))
     if called:
         model = (origin.summary(rec).get('model') if rec else None) or ((rec or {}).get('run') or {}).get('model') or runj.get('model')
-        if model_words(model): out.append(f'AI: {model_words(model)}')
+        if model_words(model): out.append(f'AI Model: {model_words(model)}')
         c = costs.actual(R)
         r_ = (rec or {}).get('run') or runj
         if c['reused']: out.append('AI Cost: none (a saved reply was used)')   # L1 (review 15): labels in Title Case

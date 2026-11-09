@@ -211,7 +211,7 @@ def test_the_other_requests_plans_are_held_back():
 
 def test_the_retry_is_held_to_the_limit_per_ai_call():
     res, _, _ = run_with([ok(finish='length', cost=0.3)], reqs=[rq(retry_worst=2.01)], retry_cap=5, call_cap=2)
-    assert len(res[0]['calls']) == 1 and res[0]['reason'] == 'cut off at 32,000 output tokens; not sent again: a longer answer could cost more than the limit per AI call'
+    assert len(res[0]['calls']) == 1 and res[0]['reason'] == 'cut off at 32,000 output tokens; not sent again: a longer answer could cost more than the limit per AI request'
 
 def test_a_failure_of_the_doubled_call_is_not_retried():
     res, _, waits = run_with([ok(finish='length', cost=0.3), {'resp': None, 'code': 502}], reqs=[rq()], retry_cap=5, call_cap=2)

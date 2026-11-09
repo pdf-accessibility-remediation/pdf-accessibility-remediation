@@ -10,7 +10,7 @@
 # AUTO=1 bash run_api.sh …   no y/N question: sends if the estimate is within the dollar limits and your credit
 # ESTIMATE=1 bash run_api.sh …   audit + cost estimate only; a later run with the same label reuses the audit
 # OUT=clan.pdf bash run_api.sh …   names the result; by default it is <original file name>_remediated.pdf
-# MAX_USD=3 bash run_api.sh …   the limit on what one AI call could cost, in dollars (default 2, lib/costs.py; Claude models only)
+# MAX_USD=3 bash run_api.sh …   the limit on what one AI request could cost, in dollars (default 2, lib/costs.py; Claude models only)
 # A book with more images than one request takes (100) gets figure requests after the first one, each sending up to 100
 # of the figures the first could not take (issue #63; docs/files.md):
 # BOOK_MAX_USD=6 bash run_api.sh …   the limit on what all of a PDF's requests could cost together, previous attempts included (default 5, lib/costs.py; Claude only)
@@ -24,7 +24,7 @@
 # OCR=off / INTAKE=off bash run_api.sh …   no OCR (image-only pages are only listed) / no intake step at all
 #
 # Rerunning a label that did not finish picks up where it stopped: the audit is reused; a reply that was cut off
-# is logged with its cost (attempts.json, folded into record.json) and a new call is made with twice the room; a reply that
+# is logged with its cost (attempts.json, folded into record.json) and a new request is made with twice the room; a reply that
 # was fine but a later step failed is reused at no cost.
 # Outputs go to PDFREM/runs/<short-name>/<run-label>/ (beside pipeline). RUNS_DIR=/some/path overrides it.
 # RUN_DIR=/exact/folder sets the run folder itself (batch_api.sh uses it: runs/batches/<label>/<name>/).
@@ -102,7 +102,7 @@ if cost and (not run.get('response_from') or run.get('own_reply')):   # a paid c
                 'logged': now})
     json.dump(att, open(p, 'w'), indent=1)
     os.remove(os.path.join(R, 'run.json'))
-    print(f'▶ previous attempt logged: ${cost:.3f} spent, reply {"cut off" if run.get("finish_reason") == "length" else "unusable"}; making a new call')
+    print(f'▶ previous attempt logged: ${cost:.3f} spent, reply {"cut off" if run.get("finish_reason") == "length" else "unusable"}; making a new request')
 PY2
 }
 fig_state() {                  # the state of an earlier attempt's figure requests (decide.py's run.json), or nothing
@@ -193,7 +193,7 @@ if [[ -n $SAVED ]]; then
     REPLY=$R/response.json; REUSED=1
   else
     mv "$R/run.prev.json" "$R/run.json"; rm -f "$R/workorder.json"
-    echo "▶ the saved reply still cannot be read: its cost is logged and a new call is made"; log_attempt
+    echo "▶ the saved reply still cannot be read: its cost is logged and a new request is made"; log_attempt
   fi
 fi
 if [[ -n ${ESTIMATE:-} && ( -n ${REPLY:-} || -n $REVIEWED || -n $MERGED ) ]]; then echo "estimate only: no cost, a saved reply will be reused"; summary; exit 0; fi
@@ -208,7 +208,7 @@ else
     ok=y
     if [[ $USE_MODEL == anthropic/* ]]; then
       read -r L_CALL L_BOOK < <(python3 -c "from lib import costs as c; L = c.DEFAULT_LIMITS; print(f'{L[\"per_call_usd\"]:.2f} {L[\"per_book_usd\"]:.2f}')")
-      echo "AUTO=1: sending without asking (still refused over the \$${MAX_USD:-$L_CALL} limit per AI call, the \$${BOOK_MAX_USD:-$L_BOOK} limit per PDF, or your credit)"
+      echo "AUTO=1: sending without asking (still refused over the \$${MAX_USD:-$L_CALL} limit per AI request, the \$${BOOK_MAX_USD:-$L_BOOK} limit per PDF, or your credit)"
     else
       echo "AUTO=1: sending without asking. The dollar limits apply to Claude models only: the $USE_MODEL estimate is approximate and not a limit; the OpenRouter bill is the real cost"
     fi

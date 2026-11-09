@@ -17,17 +17,17 @@ nav_order: 12
 | `no provider of <model> accepts our "don't keep or train on the data" setting` | No provider will serve the model under `data_collection: deny`; nothing was sent | Choose another model |
 | `OpenRouter error 402` | Not enough credit for the request | Add credit |
 | `OpenRouter error 413` | The request was too large | Report it: the figure images are already shrunk to fit |
-| `the reply held 2 JSON work orders and the last one … could not be read` / `could not parse a JSON work order` | The reply was paid for but holds no usable work order | Rerun the same command (batches: `RETRY=1`): the saved reply is read again first, then a new call is made if it still can't be used |
+| `the reply held 2 JSON work orders and the last one … could not be read` / `could not parse a JSON work order` | The reply was paid for but holds no usable work order | Rerun the same command (batches: `RETRY=1`): the saved reply is read again first, then a new request is made if it still can't be used |
 | `refusing: …` (before sending) | The model check failed: unknown id, no image input, it can't write as long an answer as the request needs, or the request is too large for its context window | Choose another model; nothing was sent |
-| `refusing: this call could cost up to $X, more than the limit of $2.00 per AI call` | One request's Max Estimated Cost passes `MAX_USD` | Run it with the value it names, e.g. `MAX_USD=3`; nothing was sent |
-| `refusing before any call: this PDF's N requests could cost up to $X, more than the limit of $5.00 per PDF` | A PDF's requests together, with what previous attempts in the folder spent, pass `BOOK_MAX_USD` (one-request PDFs too) | Run it with the value it names, e.g. `BOOK_MAX_USD=6`; nothing was sent |
+| `refusing: this request could cost up to $X, more than the limit of $2.00 per AI request` | One request's Max Estimated Cost passes `MAX_USD` | Run it with the value it names, e.g. `MAX_USD=3`; nothing was sent |
+| `refusing before any request: this PDF's N requests could cost up to $X, more than the limit of $5.00 per PDF` | A PDF's requests together, with what previous attempts in the folder spent, pass `BOOK_MAX_USD` (one-request PDFs too) | Run it with the value it names, e.g. `BOOK_MAX_USD=6`; nothing was sent |
 | `figure request K: OpenRouter 429; trying once more in 60 s` | A figure request failed without being charged | Nothing: it is sent once more. If it fails again its figures go to a person ("Alt text for N figures") and the run goes on |
 | `figure request K: cut off at 32,000 output tokens; sending it once more with room for 64,000` | A figure request's answer ran out of room | Nothing: it is sent once more with twice the room, if your limits allow. If that can't be sent or is cut off again, its figures go to a person ("Alt text for N figures") and the run goes on |
 | `the previous attempt was stopped while its figure requests were being sent` | A run was interrupted (Ctrl-C, a crash, the machine asleep) while its figure requests were being sent | Nothing: every cost it had is logged (`earlier_attempts`, and review.md's cost line), and the run starts over after the y/N. A request that was in flight is logged with its charge unknown |
-| `refusing: this reply was made with N figure requests, and their answers (reply.txt.passes.json) are not beside it` | A replay (`REPLY=`, `FROM=`) of a run with figure requests, without its answers file | Copy `reply.txt.passes.json` from where the reply came (`FROM=` and `--replay-to` write it); a replay never makes a new call |
+| `refusing: this reply was made with N figure requests, and their answers (reply.txt.passes.json) are not beside it` | A replay (`REPLY=`, `FROM=`) of a run with figure requests, without its answers file | Copy `reply.txt.passes.json` from where the reply came (`FROM=` and `--replay-to` write it); a replay never makes a new request |
 | `OpenRouter error <other code>: <message>` | Any other error from OpenRouter or the provider | Read the message; usually run again later |
 
-A failed call that OpenRouter did charge for is logged with its cost and counted in the record and the summary; a rerun with the same label makes a new call.
+A failed request that OpenRouter did charge for is logged with its cost and counted in the record and the summary; a rerun with the same label makes a new request.
 
 ## Runs started from the app
 
@@ -40,9 +40,9 @@ step; each matched string is checked against the tool that prints it (`tests/tes
 | Starting | the book's file can't be found; the app's tools are not set up; the run has already finished; it is waiting for a review; not the same file; a cost limit the run couldn't read | run_api.sh's first lines |
 | Intake | locked with a password; a newer format (PDF 2.0, namespaced tags); nothing to tag; the text doesn't match the pages; Chinese, Japanese or Korean text needs its OCR language; can't be opened; a tool is missing; a safety check (a step changed pages); recognition or tagging failed; an error | `_intake/intake.json` `summary` |
 | Estimate | the request couldn't be built; the model can't take this book; an error | decide.py's line |
-| AI call | the connection failed before anything was sent; the cost went over the limit after the estimate (nothing sent); not enough credit; no key; the service refused; busy (429); the connection was lost during the call (charge unknown); the answer was cut off (its cost kept); the answer couldn't be read; a new AI call is needed (a free rerun that would have called) | decide.py's line, `run.json` `error` |
+| AI request | the connection failed before anything was sent; the cost went over the limit after the estimate (nothing sent); not enough credit; no key; the service refused; busy (429); the connection was lost during the call (charge unknown); the answer was cut off (its cost kept); the answer couldn't be read; a new AI request is needed (a free rerun that would have called) | decide.py's line, `run.json` `error` |
 | Review, apply | the review page couldn't be prepared; decisions made for another file; an error while applying, checking or writing the report | the step's log line |
-| Interrupted | stopped before it finished (nothing sent); stopped during the AI call (charge unknown); stopped after the reply (going on is free) | the job file |
+| Interrupted | stopped before it finished (nothing sent); stopped during the AI request (charge unknown); stopped after the reply (going on is free) | the job file |
 
 "The text doesn't match the pages" offers no button: a person compares pages, or whoever looks after the app runs the book
 with every page recognized again from the terminal (`FORCE_OCR=1 OCR_LANG=… bash run_api.sh …`, in Details). An encrypted
@@ -50,7 +50,7 @@ PDF with only an owner password is not caught yet (branch reject-encrypted).
 
 ## Not supported yet: PDF 2.0
 
-The pipeline is built for PDF 1.x tagging (PDF/UA-1): veraPDF runs the PDF 1.x WCAG profile, and the audit, executor and checks read only the plain `/RoleMap`. Every sample book is PDF 1.3–1.7, and the auto-tagger writes PDF 1.x. A PDF 2.0 book is therefore **stopped before any paid call and before any change**, and goes to a person.
+The pipeline is built for PDF 1.x tagging (PDF/UA-1): veraPDF runs the PDF 1.x WCAG profile, and the audit, executor and checks read only the plain `/RoleMap`. Every sample book is PDF 1.3–1.7, and the auto-tagger writes PDF 1.x. A PDF 2.0 book is therefore **stopped before any paid request and before any change**, and goes to a person.
 
 **What happens now** (`lib/support.py`):
 

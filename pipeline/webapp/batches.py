@@ -463,7 +463,7 @@ def form_part(s, keys, saved=None):
         '<div class="mc-field"><label for="nb-name">Batch Name</label>'
         f'<input type="text" id="nb-name" name="label" maxlength="120" required value="{E(name)}" data-field="name" aria-describedby="nb-name-e">'
         '<p class="pp-warn-t pp-field-e" id="nb-name-e" hidden></p></div>'
-        '<p class="mc-help">"Get the Estimates" prepares every PDF and works out what the batch could cost. It is free: nothing is sent to the AI '
+        '<p class="mc-help">"Get the Estimates" prepares every PDF and calculates the expected cost of the AI requests. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the batch page. "Save Batch for Later" keeps the batch and its PDFs, with nothing started.</p>'
         '<div class="pp-msg dlg-msg" tabindex="-1" hidden></div>'
         f'<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button><button type="submit" data-api="{E(later)}">Save Batch for Later</button>'

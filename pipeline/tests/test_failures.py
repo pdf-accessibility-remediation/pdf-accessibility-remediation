@@ -60,8 +60,10 @@ CASES = [
     ('E2', dict(log=EST + 'refusing: the request needs about 300,000 tokens (input estimate + room for the reply), over m\'s 200,000-token context window\n')),
     ('E9', dict(log=EST + 'boom\n')),
     ('F0', dict(kind='spend', log=CALL + "could not reach OpenRouter to look up the model: <urlopen error>\n")),
-    ('F1', dict(kind='spend', log=CALL + 'refusing: this call could cost up to $0.54, more than the limit of $0.01 per AI call. To run it, raise the limit for this run: MAX_USD=1 bash run_api.sh …\n', run={'estimate': {}})),
+    ('F1', dict(kind='spend', log=CALL + 'refusing: this request could cost up to $0.54, more than the limit of $0.01 per AI request. To run it, raise the limit for this run: MAX_USD=1 bash run_api.sh …\n', run={'estimate': {}})),
     ('F1b', dict(kind='spend', log=CALL + "refusing before any call: this PDF's 7 requests could cost up to $6.20, more than the limit of $5.00 per PDF. To run it, raise the limit for this run: BOOK_MAX_USD=7 bash run_api.sh …\n", run={'estimate': {}})),
+    ('F1', dict(kind='spend', log=CALL + 'refusing: this call could cost up to $0.54, more than the limit of $0.01 per AI call.\n', run={'estimate': {}})),   # a log written before "AI request"
+    ('F1b', dict(kind='spend', log=CALL + "refusing before any request: this PDF's 7 requests could cost up to $6.20, more than the limit of $5.00 per PDF.\n", run={'estimate': {}})),
     ('F2', dict(kind='spend', log=CALL + 'refusing: $0.10 credit available, this run could cost up to $0.54 (OpenRouter would answer 402). Add credit\n', run={})),
     ('F3', dict(kind='spend', log=CALL + 'no OPENROUTER_API_KEY: put it in PDFREMPROTO1/.env\n', run={})),
     ('F4', dict(kind='spend', log=CALL + 'OpenRouter error 400: m rejected the temperature setting (0)\n', run={})),

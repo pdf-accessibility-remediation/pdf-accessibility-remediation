@@ -46,7 +46,7 @@ The first review is kept as **session 1** in the run's `reviews/` folder (see [R
 
 ## Reviewing again
 
-A finished run (with or without `REVIEW=1`) can be reviewed again: the page opens with every earlier choice preloaded, you change only what is needed, and Finish applies the reviewed order at once, with no AI call. The result is a new remediated PDF, `review.md` and `review.html`. Nothing earlier is overwritten.
+A finished run (with or without `REVIEW=1`) can be reviewed again: the page opens with every earlier choice preloaded, you change only what is needed, and Finish applies the reviewed order at once, with no AI request. The result is a new remediated PDF, `review.md` and `review.html`. Nothing earlier is overwritten.
 
 ```bash
 cd pipeline

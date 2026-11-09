@@ -195,7 +195,7 @@ class Budget:
         """May this request be sent again with twice the room? (True, None) or (False, why in plain words). What the request
         itself still had planned is freed for it: only the other requests' worst cases are held back."""
         if req.get('retry_max_tokens') is None: return False, req.get('no_retry_why') or 'this request is not sent again'
-        if self.call_cap is not None and req['retry_worst'] > self.call_cap: return False, 'a longer answer could cost more than the limit per AI call'
+        if self.call_cap is not None and req['retry_worst'] > self.call_cap: return False, 'a longer answer could cost more than the limit per AI request'
         if self.retry_cap is not None and self.retry_cap - self.spent - (sum(self.planned) - req['worst']) < req['retry_worst']:
             return False, 'a longer answer could cost more than the limit per PDF'
         return True, None

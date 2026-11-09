@@ -106,7 +106,7 @@ DEFAULT_PROMPT = next((p for p in (os.path.join(HERE, 'prompts', PROMPT_NAME),  
                                    os.path.join(os.path.dirname(HERE), 'prompts', PROMPT_NAME))   # prompts/ next to pipeline
                        if os.path.isfile(p)), os.path.join(HERE, 'prompts', PROMPT_NAME))
 ap.add_argument('--prompt', default=DEFAULT_PROMPT, help=f'system prompt file (default: {PROMPT_NAME} in pipeline/prompts/ or ../prompts/)')
-ap.add_argument('--max-usd', type=float, default=costs.DEFAULT_LIMITS['per_call_usd'], help='refuse to send if one AI call could cost more than this (Claude models only: the estimate uses Claude token math)')
+ap.add_argument('--max-usd', type=float, default=costs.DEFAULT_LIMITS['per_call_usd'], help='refuse to send if one AI request could cost more than this (Claude models only: the estimate uses Claude token math)')
 ap.add_argument('--max-tokens', type=int, default=None, help=argparse.SUPPRESS)   # developer only, terminal only (MAX_TOKENS=): beats the doubling after a cut-off, still held to the dollar limits
 ap.add_argument('--no-images', action='store_true')
 ap.add_argument('--max-images', type=int, default=100, help="images sent per request (Anthropic's limit is 100); figures past it go to figure requests")
@@ -213,7 +213,7 @@ if args.figure_requests == 'on' and not args.response_file and not args.no_image
         return None
     all_b64 = sheet_images(sheets_all)
     try: P = figpasses.plan([orig[f['obj']] for f in with_img], all_b64, args.max_images, IMAGE_BUDGET, shrink)
-    except figpasses.Refused as e: sys.exit(f'refusing before any call: {e}')
+    except figpasses.Refused as e: sys.exit(f'refusing before any request: {e}')
     send, (encoded, side, quality), later = P['first'], P['enc'], P['later']
     unsent = [f for c, _ in later for f in c]
     sheets, sheet_b64 = list(sheets_all), all_b64
@@ -451,12 +451,12 @@ if not args.response_file:                            # the lines a person reads
     print(costhistory.terminal_line(est_['expected']))
     n_ = 1 + len(reqs)
     if IS_CLAUDE:
-        print(f'Max Estimated Cost: ${total:.2f}' + (f' for {n_} AI requests' if n_ > 1 else '') + f' · Limits: ${args.max_usd:.2f} per AI call, ${args.book_max_usd:.2f} per PDF'
+        print(f'Max Estimated Cost: ${total:.2f}' + (f' for {n_} AI requests' if n_ > 1 else '') + f' · Limits: ${args.max_usd:.2f} per AI request, ${args.book_max_usd:.2f} per PDF'
               + (f' · Counted Toward This PDF\'s Limit So Far: ${spent_before:.2f} (previous attempts in this folder)' if spent_before else '')
               + (' · Credit: Not Checked' if credit is None else f' · Credit: ${credit:.2f}'))
         if spent_before + total > args.book_max_usd:
             print(f'  ⚠ this PDF could cost up to ${costs.up(spent_before + total):.2f}' + (f', including ${spent_before:.2f} already spent' if spent_before else '')
-                  + f', more than the limit of ${args.book_max_usd:.2f} per PDF: a real run stops before any call. To run it, raise the limit for this run: BOOK_MAX_USD={math.ceil(spent_before + total)}')
+                  + f', more than the limit of ${args.book_max_usd:.2f} per PDF: a real run stops before any request. To run it, raise the limit for this run: BOOK_MAX_USD={math.ceil(spent_before + total)}')
     else:
         print(f'Max Estimated Cost: about ${total:.2f}, approximate and not a limit: the dollar limits apply to Claude models only. The OpenRouter bill is the real cost')
 if credit is None:
@@ -486,14 +486,14 @@ if args.response_file:
     run['response_from'] = args.response_file
 else:
     if IS_CLAUDE and worst > args.max_usd:
-        sys.exit(f'refusing: this call could cost up to ${costs.up(worst):.2f}, more than the limit of ${args.max_usd:.2f} per AI call. '
+        sys.exit(f'refusing: this request could cost up to ${costs.up(worst):.2f}, more than the limit of ${args.max_usd:.2f} per AI request. '
                  f'To run it, raise the limit for this run: MAX_USD={math.ceil(worst)} bash run_api.sh …')
     for r in reqs if IS_CLAUDE else []:
         if r['worst'] > args.max_usd:
-            sys.exit(f'refusing before any call: figure request {r["pass"]} could cost up to ${costs.up(r["worst"]):.2f}, more than the limit of ${args.max_usd:.2f} per AI call. '
+            sys.exit(f'refusing before any request: figure request {r["pass"]} could cost up to ${costs.up(r["worst"]):.2f}, more than the limit of ${args.max_usd:.2f} per AI request. '
                      f'To run it, raise the limit for this run: MAX_USD={math.ceil(r["worst"])} bash run_api.sh …')
     if IS_CLAUDE and spent_before + total > args.book_max_usd:
-        sys.exit(f'refusing before any call: ' + (f'this PDF\'s {1 + len(reqs)} requests' if reqs else 'this PDF') + f' could cost up to ${costs.up(spent_before + total):.2f}'
+        sys.exit(f'refusing before any request: ' + (f'this PDF\'s {1 + len(reqs)} requests' if reqs else 'this PDF') + f' could cost up to ${costs.up(spent_before + total):.2f}'
                  + (f' (including ${spent_before:.2f} spent by previous attempts in this folder)' if spent_before else '')
                  + f', more than the limit of ${args.book_max_usd:.2f} per PDF. To run it, raise the limit for this run: '
                  f'BOOK_MAX_USD={math.ceil(spent_before + total)} bash run_api.sh …')
@@ -591,13 +591,13 @@ if not isinstance(wo, dict):
         _cap = (run.get('model_limits') or {}).get('max_completion_tokens')
         _next = min(2 * args.max_tokens, _cap) if _cap else 2 * args.max_tokens
         sys.exit(f'the reply was cut off at {args.max_tokens:,} output tokens (reasoning counts too), so it is not a complete work order. '
-                 'This call is already paid for; its cost stays in the record. '
+                 'This request is already paid for; its cost stays in the record. '
                  + (f'Another attempt would be cut off too: {model} writes at most {_cap:,} output tokens. Choose another model' if _cap and _next <= args.max_tokens
                     else f'MAX_TOKENS was set for this run and is kept on the next one: raise it, or leave it out so the next attempt allows {_next:,}' if max_tokens_given
                     else f'Run the same command again (batches: add RETRY=1): the next attempt allows {_next:,}, and the estimate shows what it could cost'))
     if len(blocks) > 1:
         sys.exit(f'the reply held {len(blocks)} JSON work orders and the last one, the model\'s final answer, could not be read ({err}). '
-                 'An earlier one is never used in its place. See reply.txt; a rerun makes a new call')
+                 'An earlier one is never used in its place. See reply.txt; a rerun makes a new request')
     sys.exit(f'could not parse a JSON work order from reply.txt ({err})')
 if len(blocks) > 1:
     print(f'note: the reply held {len(blocks)} JSON work orders; the last one (the model\'s final answer) is used. review.md shows this as a CHECK')

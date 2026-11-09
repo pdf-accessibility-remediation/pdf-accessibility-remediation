@@ -81,7 +81,7 @@ def gone_to_a_person(R):
     return run['figure_passes']['failed']['2'], [d for d in wo['deferrals'] if d['what'] == 'Alt text for 30 figures']
 
 @pytest.mark.parametrize('args,kw,why', [
-    (('--figure-retry-max-usd', '0.5'), {}, 'could cost more than the limit per AI call'),
+    (('--figure-retry-max-usd', '0.5'), {}, 'could cost more than the limit per AI request'),
     (('--figure-retry-book-max-usd', '0.9'), {}, 'could cost more than the limit per PDF'),
     (('--max-tokens', '10000'), {'ctx': 60000}, 'wouldn\'t fit what the AI model can take')])    # the first request (about 48,000) and the figure request (44,000) fit
 def test_a_retry_that_cannot_be_sent_goes_to_a_person_and_says_why(book, tmp_path, monkeypatch, args, kw, why):
@@ -96,7 +96,7 @@ def test_a_model_that_cannot_write_more_gets_no_retry(book, tmp_path, monkeypatc
 def test_the_retry_uses_the_real_limits_not_the_estimate_shown(book, tmp_path, monkeypatch):
     bound = ('--max-usd', '0.6', '--book-max-usd', '1.2')             # what Spend binds: under the retry's worst case (about $0.68)
     calls, _ = live(book[1], tmp_path / 'a', monkeypatch, *bound, reply=cut_second)
-    assert len(calls) == 2 and 'limit per AI call' in gone_to_a_person(tmp_path / 'a')[0]
+    assert len(calls) == 2 and 'limit per AI request' in gone_to_a_person(tmp_path / 'a')[0]
     calls, _ = live(book[1], tmp_path / 'b', monkeypatch, *bound, '--figure-retry-max-usd', '2', '--figure-retry-book-max-usd', '5', reply=cut_second)
     assert len(calls) == 3 and load(tmp_path / 'b' / 'run.json')['passes'][1]['outcome'] == 'done'
 
@@ -286,7 +286,7 @@ def test_the_cut_off_line_at_the_models_maximum_promises_nothing_more(book, tmp_
 def test_the_doubled_value_either_fits_or_the_run_stops(book, tmp_path, monkeypatch):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'; attempts(R, CUT)
     calls, code = live(A, R, monkeypatch, '--max-usd', '0.6')
-    assert not calls and 'more than the limit of $0.60 per AI call' in str(code)
+    assert not calls and 'more than the limit of $0.60 per AI request' in str(code)
 
 def test_a_replay_keeps_its_estimate_as_it_was(book, tmp_path):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'; attempts(R, CUT); rp = tmp_path / 'reply.txt'; rp.write_text(reply_for([]))
@@ -297,7 +297,7 @@ def test_a_replay_keeps_its_estimate_as_it_was(book, tmp_path):
 def test_a_one_request_pdf_is_held_to_the_limit_per_pdf(book, tmp_path, monkeypatch):
     A = small_audit(book, tmp_path, 3)
     calls, code = live(A, tmp_path / 'r', monkeypatch, '--book-max-usd', '0.1')
-    assert not calls and "refusing before any call: this PDF could cost up to" in str(code) and 'more than the limit of $0.10 per PDF' in str(code) and 'BOOK_MAX_USD=1' in str(code)
+    assert not calls and "refusing before any request: this PDF could cost up to" in str(code) and 'more than the limit of $0.10 per PDF' in str(code) and 'BOOK_MAX_USD=1' in str(code)
 
 def test_previous_attempts_count_toward_the_limit_per_pdf(book, tmp_path, monkeypatch):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'; attempts(R, {'cost_usd': 4.8, 'finish_reason': 'stop'})
@@ -321,7 +321,7 @@ def small_with_expected(book, tmp_path, *extra, **kw):
 def test_the_estimate_stores_the_expected_figure_and_the_terminal_prints_both(book, tmp_path):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'; r = decide(A, R, '--dry-run')
     x = load(R / 'run.json')['estimate']['expected']; assert x['usd'] > 0 and x['low'] <= x['usd'] <= x['high'] and x['basis']['calls'] == 80
-    assert 'Expected Cost: $' in r.stdout and '(usually $' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'Limits: $2.00 per AI call, $5.00 per PDF' in r.stdout
+    assert 'Expected Cost: $' in r.stdout and '(usually $' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'Limits: $2.00 per AI request, $5.00 per PDF' in r.stdout
 
 def stored(R, value, **changes):
     run = load(R / 'run.json'); run['estimate']['expected'] = value; run.update(changes); (R / 'run.json').write_text(json.dumps(run))

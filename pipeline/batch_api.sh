@@ -82,7 +82,7 @@ rate_limited = False
 def fmt(s): return f'{s:.0f}s' if s < 60 else f'{int(s // 60)}m {s % 60:02.0f}s'
 def load(p): return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else None
 ran = {l.split('\t')[0] for l in open(todo)}             # books run by this command (the others finished earlier)
-L = [f'# Batch {label}', '', '| Book | Status | Intake | Pages | API cost | AI call $/page | Time | Checks flagged | WCAG rules (veraPDF) | Result |', '|---|---|---|---:|---:|---:|---:|---:|---|---|']
+L = [f'# Batch {label}', '', '| Book | Status | Intake | Pages | API cost | AI request $/page | Time | Checks flagged | WCAG rules (veraPDF) | Result |', '|---|---|---|---:|---:|---:|---:|---:|---|---|']
 done_pages = 0
 def intake_of(R):
     j = load(os.path.join(R, '_intake', 'intake.json')) or {}
@@ -156,7 +156,7 @@ L[1:1] = ['', f'Batch started {started}' + (f' (books run from {span[0]} to {spa
 L += ['', f'{done} of {n} books done' + (f' · {len(flagged)} flagged at intake (not sent)' if flagged else '')
       + (f' · {len(waiting)} waiting for review' if waiting else '') + (f' · {len(needs_lang)} needing a language' if needs_lang else '')
       + (f' · Total Cost: {costs.shown_words(B, shown)}' if shown else f' · API cost ${total:.3f}' + (f' (includes ${wasted:.3f} for replies that were cut off)' if wasted else ''))
-      + (f' · AI calls {origin.money(call_cost / call_pages)} per page over {call_pages:,} pages (the original call\'s cost for a reused reply)' if call_pages else '')
+      + (f' · AI requests {origin.money(call_cost / call_pages)} per page over {call_pages:,} pages (the original request\'s cost for a reused reply)' if call_pages else '')
       + f' · wall time {fmt(wall)}', '']
 # OpenRouter's balance can lag behind new calls, so also work it out: credit seen before the calls minus what they cost
 live = float(credit.split()[0]) if credit.strip() else None

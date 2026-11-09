@@ -64,7 +64,7 @@ const PHASE = { language: 'Waiting for a Language', estimating: 'Estimating', re
 function body(s) {
   const T = s.totals, n = s.books.length;
   let h = '<h3 id="bt-phase" tabindex="-1">' + esc(PHASE[s.phase] || s.phase) + '</h3>';
-  if (s.test) h += '<p class="pp pp-bar">Test: saved replies, no AI call.</p>';
+  if (s.test) h += '<p class="pp pp-bar">Test: saved replies, no AI request.</p>';
   h += '<p>' + T.finished + ' of ' + n + ' PDFs finished' + (s.ocr_name ? ' · OCR Language: ' + esc(s.ocr_name) : '') + '</p>';
   const plural = k => k === 1 ? '' : 's';
   const x = T.expected;                                          // no key on any estimate (made before #65): no line
@@ -75,7 +75,7 @@ function body(s) {
     if (T.estimated) h += '<p id="bt-cost"><b>Max Estimated Cost So Far: ' + usd(T.ceiling_usd) + ' for ' + T.estimated + ' of ' + T.to_estimate +
       ' PDF' + plural(T.to_estimate) + ' (estimating) · Batch Limit: ' + usd(T.limit_usd) + '</b></p>';
   } else if (before)
-    h += '<p id="bt-cost">' + (exp ? '<b>' + exp + '</b><br>' : '') + 'Max Estimated Cost: ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' PDF' + plural(T.books_to_send) +
+    h += '<p id="bt-cost">' + (exp ? exp + '<br>' : '') + 'Max Estimated Cost: ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' PDF' + plural(T.books_to_send) +
          (T.requests > T.books_to_send ? ' (' + T.requests + ' AI requests)' : '') + ' · Batch Limit: ' + usd(T.limit_usd) +
          (T.spent_usd ? ' · Already Spent in This Batch: ' + usd(T.spent_usd) : '') + (T.credit_usd != null ? ' · Credit: ' + usd(T.credit_usd) : ' · Credit: Not Checked') + '</p>';
   const total = !before && (T.spent_usd || s.phase === 'running' || s.phase === 'finished' || (s.trashed && s.trashed.n));

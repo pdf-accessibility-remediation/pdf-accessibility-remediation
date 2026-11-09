@@ -63,7 +63,7 @@ def test_expected_is_shown_when_present(setup, monkeypatch):
     monkeypatch.setattr(costs, '_expected', lambda x: {'usd': 0.25, 'low': 0.18, 'high': 0.36, 'basis': 'test'})
     assert costs.estimate(str(run_folder(setup)))['expected']['usd'] == 0.25
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
-    assert "'<b>Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet') + '</b><br>'" in js and "'Max Estimated Cost: ' + usd(e.ceiling_usd)" in js
+    assert "'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet') + '<br>'" in js and "'Max Estimated Cost: ' + usd(e.ceiling_usd)" in js
     assert 'usually' not in js.split('function costLines')[1].split('const NEXT')[0] and 'Worst-case' not in js and 'About ' not in js.split('function costLines')[1].split('const NEXT')[0]
 
 def line_of(js, start):
@@ -266,7 +266,7 @@ def test_run_api_wires_each_cap_once():
     assert sh.count('--max-usd "$MAX_USD"') == 1 and sh.count('--book-max-usd "$BOOK_MAX_USD"') == 1
     assert sh.count('--figure-retry-max-usd "$FIGURE_RETRY_MAX_USD"') == 1 and sh.count('--figure-retry-book-max-usd "$FIGURE_RETRY_BOOK_MAX_USD"') == 1
     assert 'for v in MAX_USD BOOK_MAX_USD FIGURE_RETRY_MAX_USD FIGURE_RETRY_BOOK_MAX_USD; do' in sh and '$v must be a number of dollars' in sh
-    assert "# MAX_USD=3 bash run_api.sh …   the limit on what one AI call could cost, in dollars (default 2, lib/costs.py; Claude models only)" in sh
+    assert "# MAX_USD=3 bash run_api.sh …   the limit on what one AI request could cost, in dollars (default 2, lib/costs.py; Claude models only)" in sh
     assert 'the \\$${BOOK_MAX_USD:-$L_BOOK} limit per PDF' in sh and 'MAX_TOKENS=' not in sh.split('set -euo pipefail')[0]
 
 # ------------------------------------------------------------------ New Run's names and Try Again

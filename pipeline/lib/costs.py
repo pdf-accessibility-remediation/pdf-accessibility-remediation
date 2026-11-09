@@ -118,7 +118,7 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
     blocked = None
     if not claude: blocked = {'code': 'model', 'words': 'The AI model set for the app isn\'t one whose cost the app can check, so it can\'t be sent from here.'}
     elif not prices: blocked = {'code': 'offline', 'words': 'Prices and credit couldn\'t be checked, so the cost isn\'t known yet.'}
-    elif fits['per_call'] is False: blocked = {'code': 'per_call', 'words': f'This run could cost up to ${up(x["per_call"]):.2f}, more than the limit of ${L["per_call_usd"]:.2f} per AI call.'}
+    elif fits['per_call'] is False: blocked = {'code': 'per_call', 'words': f'This run could cost up to ${up(x["per_call"]):.2f}, more than the limit of ${L["per_call_usd"]:.2f} per AI request.'}
     elif fits['per_book'] is False: blocked = {'code': 'per_book', 'words': f'This PDF could cost up to ${up(total + x["spent_before"]):.2f}'
                                                + (f', including ${x["spent_before"]:.2f} already spent' if x['spent_before'] else '') + f', more than the limit of ${per_book:.2f} per PDF.'}
     elif fits['credit'] is False: blocked = {'code': 'credit', 'words': f'This run could cost up to ${up(total):.2f}, more than the ${credit:.2f} of credit left.'}
