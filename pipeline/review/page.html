@@ -1241,7 +1241,7 @@ function nav() {
     OCR.pages.map(p => '<a href="#ocr-page-' + p.page + '"><span>PDF ' + p.page + '</span><span></span></a>').join('');
   if (OCR_ONLY) { document.getElementById('navList').innerHTML = ocrNav; return; }
   let h = ocrNav;
-  h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + (view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
+  h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + esc(view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
   h += '<h2>Check First</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
   h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
   h += '<h2>Page Index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
