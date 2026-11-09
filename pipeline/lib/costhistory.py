@@ -107,11 +107,11 @@ def _median(v):
 
 def _ask(a, b, input_est): return math.exp(a + b * math.log(input_est / 1000))
 
-def learn(train):
+def learn(train, min_calls=MIN_CALLS, min_books=MIN_BOOKS):
     """What these calls teach, or None when they are too few. train: rows, oldest first (the window is cut here)."""
     tr = train[-WINDOW:]
     books = {r['book'] for r in tr}
-    if len(tr) < MIN_CALLS or len(books) < MIN_BOOKS: return None
+    if len(tr) < min_calls or len(books) < min_books: return None
     a, b = _line(tr); ratios = []
     for bk in books:
         rest = [r for r in tr if r['book'] != bk]

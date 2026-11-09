@@ -180,6 +180,14 @@ def test_the_backtest_holds_forward_in_time():
     assert BT.rate(F, BT.within(0.25)) >= 0.80 and BT.rate(N, BT.within(0.25)) >= 0.75 and BT.rate(F, BT.within(0.5)) >= 0.95
     assert all(x['expected'] > 0 for x in F)
 
+def test_the_seed_holds_the_figure_request_baseline():
+    r = [x for x in H.seed_rows() if x['kind'] == 'figure' and x['model'] == MODEL]
+    assert len(r) >= H.MIN_CALLS and len({x['book'] for x in r}) >= H.MIN_BOOKS
+
+def test_figure_requests_hold_out_each_pdf():
+    G, none = BT.figure_held_out()
+    assert len(G) + none == len([x for x in H.seed_rows() if x['kind'] == 'figure' and x['model'] == MODEL]) and BT.rate(G, BT.inside) >= 0.7
+
 def test_no_past_bill_is_above_its_recomputed_ceiling():
     assert BT.bills_above_ceiling() == []
 

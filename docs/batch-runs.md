@@ -47,8 +47,8 @@ teika       samples/tagged/teika.pdf
    ```
    # Claude batch
      sojourners                   Expected Cost: $0.31 (usually $0.22–$0.43) · Max Estimated Cost: $0.67  (75,927 input tokens, 25 images)
-     dwellings                    Expected Cost: Not Available Yet · Max Estimated Cost: $3.13  (418,351 input tokens, 543 images in 6 requests)
-     Expected Cost: $0.31 for 1 of 2 PDFs (Not Available Yet for 1 PDF)
+     dwellings                    Expected Cost: $1.54 (usually $1.04–$2.22) · Max Estimated Cost: $3.13  (418,351 input tokens, 543 images in 6 requests)
+     Expected Cost: $1.85 for 2 PDFs
      Max Estimated Cost: $3.80 for 2 PDFs (7 AI requests) · Batch Limit: $10.00 · Credit: $11.46
    # non-Claude batch: one approximate line, no limit
      Max Estimated Cost: about $0.75, approximate, not counted against the limit (the OpenRouter bill is the real cost) · Credit: $11.46
@@ -57,7 +57,7 @@ teika       samples/tagged/teika.pdf
      Non-Claude Models: about $0.25, approximate, not counted against the limit (the OpenRouter bill is the real cost)
    ```
 
-   There is no range on the batch's total: the rule tried for one held on about 95% of the earlier PDFs and 80% of the later ones. Each PDF's row keeps its own range.
+   A PDF with no figure yet reads "Expected Cost: Not Available Yet" on its row, and the total then says how many it covers ("$0.31 for 1 of 2 PDFs (Not Available Yet for 1 PDF)"). There is no range on the batch's total: the rule tried for one held on about 95% of the earlier PDFs and 80% of the later ones. Each PDF's row keeps its own range.
 2. **Run.** It runs every book through the full pipeline, `JOBS` at a time (default 3; each book needs about 0.5–1.5 GB of memory). Each line also gives that PDF's cost and the running total (`· AI Cost: $0.31 · Total Cost: $1.20 so far (expected $4.10, max estimated $8.80)`). A failed book doesn't stop the others. A book **flagged at intake** (e.g. its text layer failed the OCR comparison and `FORCE_OCR=1` was not set, or it needs a password) is not sent to the model: summary.md shows "flagged at intake" with the reason, and `<book>/_intake/intake.json` has the measurements.
 3. **Summary.** It prints the batch start time, model and prompt file, then a table of book, status, intake (what intake did: e.g. "OCR 6 pages · auto-tagged", or "none (already tagged)"), pages, API cost (what this batch spent), the AI call's cost per page (the original call's for a reused reply, "not recorded" when none is kept), time, checks flagged, veraPDF's failing WCAG rules before → after ("new" marks rules the result fails and the original passed) and result with a link to the book's `review.html`, then the total cost, the AI calls' cost per page over the books whose cost is known (checklist 11.5) and the credit you have left, and saves it as `summary.md`. A failed book's status says why: `reply cut off at 48,000 tokens`, `OpenRouter 429, model rate-limited (nothing charged)`, or OpenRouter's error code and message. Its log is kept beside the summary (`<name>.log`) only if that book failed; `KEEP=1` keeps every log and working file. `summary.md` is written whichever way the batch is started (no folder, one folder, several folders or a book list), and also when a batch stops early or is interrupted (books that did not run show as "not finished"); the terminal then says where it stopped.
 

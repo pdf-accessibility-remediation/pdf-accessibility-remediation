@@ -343,10 +343,12 @@ def test_a_cut_off_in_the_folder_gives_not_available_even_if_a_figure_was_shown(
     A, R = small_with_expected(book, tmp_path); stored(R, KEPT); attempts(R, CUT)
     r = decide(A, R, '--dry-run'); assert load(R / 'run.json')['estimate']['expected'] == {'none': 'cut_off'} and 'Expected Cost: Not Available Yet (' in r.stdout
 
-def test_a_pdf_past_100_images_has_no_figure_yet(book, tmp_path):
+def test_a_pdf_past_100_images_has_an_expected_figure_from_the_committed_seed(book, tmp_path):
+    """The figure-request baseline (19 calls from 6 PDFs): a computer with no ledger of its own gets a figure, and it stays under the maximum."""
     R = tmp_path / 'r'; r = decide(book[1], R, '--dry-run', COST_HISTORY=tmp_path / 'none.jsonl')      # the seed alone
-    assert load(R / 'run.json')['estimate']['expected'] == {'none': 'too_few', 'kind': 'figure', 'calls': 5, 'books': 1}
-    assert 'needs 12 from 6' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'for 2 AI requests' in r.stdout
+    e = load(R / 'run.json')['estimate']; x = e['expected']
+    assert 0 < x['low'] <= x['usd'] <= x['high'] <= e['worst_case_total_usd']
+    assert 'Expected Cost: $' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'for 2 AI requests' in r.stdout
 
 def test_a_model_other_than_claude_says_so(book, tmp_path, monkeypatch):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'
