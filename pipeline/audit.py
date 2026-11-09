@@ -8,6 +8,7 @@ Reads the original PDF and writes the compact view Claude decides from:
     OUT_DIR/figures/*.png       one crop per figure, long side at most 800 px
     OUT_DIR/verapdf.json        veraPDF (WCAG 2.2 machine profile) on the original: the "before" for review.md.
                                 digest.json carries only its pdfua_check view (failed rules and who fixes them).
+    OUT_DIR/page_reads.json     scanned pages that are mostly Hawaiian, for read_pages.py (images in page_reads/)
 
 Every element Claude may refer to is listed with its object number in the ORIGINAL file
 ("1234 0"); apply.py resolves those numbers against the same file. Text from the book is
@@ -15,7 +16,7 @@ included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads  # plumb_fix first: it patches pdfplumber
 import pikepdf, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -415,6 +416,7 @@ text_quality = {'producer_says_ocr': 'Paper Capture' in str(pdf.docinfo.get('/Pr
 #      and the executor gives every occurrence that spelling as ActualText. The OCR text itself is never changed.
 OCR_WORDS_MAX = 700             # distinct word forms sent, most frequent first; the rest are listed for a person
 SHEET_W, SHEET_H, CELL_W = 1200, 900, 600
+PAGE_READ_SIDE = 1568           # long side of a page image for an AI reading: the model scales larger images down to this
 ocr_words, ocr_word_sheets, ocr_words_not_sent = [], [], 0
 is_scan = text_quality['producer_says_ocr'] or full_page_imgs > 0.5 * len(pages)
 if is_scan:
@@ -466,6 +468,24 @@ if is_scan:
         cells[str(i)] = [x + 60, y, CELL_W - 70, h - 1]
         y += h
     if sheet is not None: save_sheet(len(ranked))
+
+# ---- whole pages for an AI reading (issue #49): scanned pages where most words have Hawaiian shape. Tesseract has no
+#      Hawaiian model, so their OCR lost the ʻokina and kahakō; read_pages.py (paid, its own step) sends each image here.
+#      Written beside the digest, not into it: the work-order call never sees these pages.
+#      PAGE_READS=all lists every scanned page with text (an English book with Hawaiian words on most pages).
+page_reads, read_all = [], os.environ.get('PAGE_READS') == 'all'
+if is_scan:
+    for pno, p in enumerate(PL.pages, 1):
+        share = pagereads.hawaiian_share([''.join(c['text'] for c in w) for w in ocrwords.words(p.chars, page_chars)])
+        if share is not None and (read_all or share >= pagereads.SHARE_MIN): page_reads.append({'page': pno, 'label': labels.get(pno), 'share': round(share, 2)})
+    if page_reads:
+        os.makedirs(os.path.join(OUT, 'page_reads'), exist_ok=True)
+        for r in page_reads:
+            w_, h_ = docs[r['page'] - 1].get_size(); im = docs[r['page'] - 1].render(scale=PAGE_READ_SIDE / max(w_, h_)).to_pil().convert('L')
+            r['image'] = f'page_reads/page_{r["page"]:04d}.png'; im.save(os.path.join(OUT, r['image']), optimize=True); im.close()
+json.dump({'rule': f'every scanned page with {pagereads.WORDS_MIN}+ words of {pagereads.LONG}+ letters (PAGE_READS=all)' if read_all else
+           f'scanned pages where at least {pagereads.SHARE_MIN:.0%} of the words of {pagereads.LONG}+ letters have Hawaiian shape',
+           'pages': page_reads}, open(os.path.join(OUT, 'page_reads.json'), 'w'), ensure_ascii=False, indent=1)
 
 # ---- the same validator before and after: veraPDF on the original (started at the top; verify.py runs it on the result).
 #      The full summary goes to verapdf.json for the before/after comparison; the digest gets every failed rule with

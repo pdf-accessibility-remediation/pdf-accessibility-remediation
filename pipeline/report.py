@@ -68,6 +68,10 @@ rv_unexplained = [g for g in (rv or {}).get('gaps') or [] if str(g.get('reason')
 wo_ai = load('workorder.ai.json') if rv else None     # the AI's version: kept in record.json for every reviewed run          # earlier paid calls in this folder whose reply couldn't be used
 cost_this = (run.get('usage') or {}).get('cost_usd') or 0
 cost_earlier = round(sum(a.get('cost_usd') or 0 for a in attempts), 6)
+# whole-page AI readings of Hawaiian pages (read_pages.py, issue #49): their own paid step; a re-apply has them in the earlier record
+pr_run = load('page_reads_run.json') or ((prev or {}).get('page_reads') if prev is not None else None)
+cost_pages = 0 if prev is not None else round((pr_run or {}).get('cost_usd') or 0, 6)
+pr_listed = (load('page_reads.json', base=A) or {}).get('pages') or []
 for need, name in ((wo, 'workorder.json'), (log, PDF + '.log.json'), (ver, PDF + '.verify.json')):
     if not need: sys.exit(f'{name} missing in {R}: run the whole pipeline first (nothing was deleted)')
 
@@ -97,7 +101,7 @@ record = {
     'run': run, 'workorder': wo, 'validation_dropped': val.get('dropped', []),
     'apply': {'applied': log.get('applied'), 'rejected': log.get('rejected'), 'failed': log.get('failed'),
               'deferred': log.get('deferred'), 'han_only_runs': len(han), 'empty_notes_removed': log.get('empty_notes_removed', []),
-              'ocr_words': log.get('ocr_words'),
+              'ocr_words': log.get('ocr_words'), **({'page_readings': log['page_readings']} if log.get('page_readings') else {}),
               **({'offpage': log['offpage']} if any((log.get('offpage') or {}).get(k) for k in ('artifacted', 'left', 'rejected', 'already')) else {}),
               **({'list_rule': log['list_rule']} if any((log.get('list_rule') or {}).get(k) for k in ('flattened', 'kept', 'skipped')) else {}),
               **({'actual_text_checked': log['actual_text_checked']} if log.get('actual_text_checked') else {}),
@@ -109,7 +113,9 @@ record = {
     'verify': {k: v for k, v in ver.items() if k != 'verapdf'},
     'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, 'raw_reply': reply,
     **({'raw_reply_passes': passes} if passes else {}), 'environment': log.get('environment'),
-    'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier, 6),
+    'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier + cost_pages, 6),
+    **({'page_reads': {k: v for k, v in pr_run.items() if k != 'pages'} | {'pages': [{k: v for k, v in x.items() if k != 'text'} for x in pr_run.get('pages') or []]}}
+       if pr_run else {}),
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),
     **({'workorder_ai': wo_ai} if rv and wo_ai is not None else {}),
 }
@@ -200,7 +206,8 @@ def v_status(k):
             else 'fixed' if k in v_fixed else '')
 wc = ver.get('wcag')
 so = (wc or {}).get('section_order')              # sections read away from their printed place (verify.py, lib/readorder.py)
-ow = log.get('ocr_words') or {}; ow_forms = ow.get('by_form') or []; ow_missing = [x for x in ow_forms if not x.get('found')]
+prd = log.get('page_readings') or []                    # apply.py: each page read by the AI, words paired and changed
+ow = log.get('ocr_words') or {}; ow_forms = ow.get('by_form') or []; ow_missing = [x for x in ow_forms if not x.get('found') and not x.get('in_page_readings')]
 ow_run = run.get('ocr_words') or {}
 # a reused reply written for another OCR-word list (decide.py: list changed, or no fingerprint): none of today's forms was read by it
 ow_stale = bool(run.get('response_from')) and ow_run.get('reply_check') not in (None, 'same list')
@@ -291,6 +298,11 @@ checks = [
         + (f' · {len(ow_missing)} not found in the page text' if ow_missing else '')
         + (f' · {ow_run["not_sent"] + digest.get("ocr_words_not_sent", 0)} suspect forms not read by the AI' if ow_run.get('not_sent') or digest.get('ocr_words_not_sent') else ''))]
       if ow_forms or digest.get('ocr_words') else []),
+    *([('Page readings: a person who reads Hawaiian checked each page read by the AI', ok(False),
+        (f'{len(prd)} of {len(pr_listed)} mostly Hawaiian pages read by the AI, {sum(x.get("changed") or 0 for x in prd)} words given their printed spelling: '
+         f'check {pgs([x["page"] for x in prd])} against the scan' if prd else
+         f'{len(pr_listed)} scanned pages look mostly Hawaiian and their OCR has no ʻokina or kahakō; they were not read by the AI (turned off, declined, or refused over the cap or the credit: see the run log)'))]
+      if pr_listed or prd else []),
     *([('Figure requests: every figure seen by the AI', ok(not fpr.get('failed') and not fpr.get('stale')),
         f'{nc(fpr.get("figures"))} figures past the first request, in {nc(fpr.get("requests"))} figure requests'
         + (' · did not finish: ' + '; '.join(f'request {k} ({v})' for k, v in fpr['failed'].items()) if fpr.get('failed') else '')
@@ -600,16 +612,21 @@ if tq.get('producer_says_ocr') or (tq.get('pages_with_full_page_image', 0) > 0.5
                   + ('Misread words the AI could read from the scan are listed under "OCR words given their printed spelling"; other errors stay. '
                      if ow_forms else '') + 'Corrections to the text itself are an editorial decision.', '']
 dw = {w['text']: w for w in digest.get('ocr_words') or []}
+ow_rewritten = bool((log.get('ocr_text_rewritten') if isinstance(log, dict) else None))   # #49: the OCR text itself was rewritten
+ow_spans = bool((ver.get('actual_text_spans') or {}).get('result')) if isinstance(ver, dict) else False
 if ow_forms or digest.get('ocr_words'):
     n += 1; checked = ow_run.get('sent', len(dw))
     L += [f'### {n}. OCR words given their printed spelling ({len(ow_forms)} forms, {sum(x.get("found") or 0 for x in ow_forms)} places)', '',
           'The OCR misread these words, mostly letters with diacritics (ā or ū read as "ii"). The AI read each word from a crop of the scan. '
-          'Screen readers now speak the printed spelling, and copying gives it (ActualText); the OCR text underneath is unchanged, '
-          'so a text search still finds the OCR spelling. Apps that ignore ActualText (Preview and other PDFKit readers, some checkers) '
-          'still show the OCR spelling. Check each reading against the scan on its first page.', '']
+          + ('The OCR text itself now has the printed spelling (where the OCR layer is OCRmyPDF\'s), so screen readers, copying and search all give it'
+             + ('; elsewhere it is given as ActualText, which Preview and other PDFKit readers ignore' if ow_spans else '') + '. '
+             if ow_rewritten else
+             'Screen readers now speak the printed spelling, and copying gives it (ActualText); the OCR text underneath is unchanged, '
+             'so a text search still finds the OCR spelling. Apps that ignore ActualText (Preview and other PDFKit readers, some checkers) '
+             'still show the OCR spelling. ') + 'Check each reading against the scan on its first page.', '']
     if ow_forms:
         L += ['| OCR text | Printed (AI\'s reading) | Places | First pages |', '|---|---|---:|---|']
-        L += [f'| {x["text"]} | {x["reads"]} | ' + (str(x['found']) if x.get('found') else '**not found**')
+        L += [f'| {x["text"]} | {x["reads"]} | ' + (str(x['found']) if x.get('found') else 'on pages read whole' if x.get('in_page_readings') else '**not found**')
               + f' | {pgs(dw.get(x["text"], {}).get("pages") or [])} |' for x in sorted(ow_forms, key=lambda x: -(x.get('found') or 0))]
         L.append('')
     if ow_stale:                                 # the reply was written for another list: say what it read, not today's count
@@ -627,6 +644,20 @@ if ow_forms or digest.get('ocr_words'):
                             + ', '.join(x['text'] for x in ow_missing) + '. A person checks these.', entry=False))
     unread = (ow_run.get('not_sent') or 0) + (digest.get('ocr_words_not_sent') or 0)
     if unread: L.append(line(f'- **{unread} suspect forms were not read by the AI** (over the image limit, or past the audit\'s cap). A person checks them against the scan.', entry=False))
+    L.append('')
+if prd:
+    n += 1
+    L += [f'### {n}. Pages read by the AI ({len(prd)} pages, {sum(x.get("changed") or 0 for x in prd)} words)', '',
+          'Tesseract has no Hawaiian model, so the OCR of these pages lost the ʻokina and kahakō. The AI transcribed each page image exactly as printed, '
+          + ('and each OCR word was rewritten to its reading at its own place: na and nā are each right where the page prints them. '
+             'The page image is unchanged; screen readers, copying and search now give the printed spelling. '
+             if sum(x.get('rewritten') or 0 for x in prd) else
+             'and each OCR word was given its reading at its own place (ActualText): na and nā are each right where the page prints them. '
+             'The OCR text underneath and the page are unchanged. ') + 'Readings too different from the OCR word to be a misreading of it, and words '
+          'the OCR split or joined, were left as the OCR read them. **AI text is a draft: a person who reads Hawaiian checks each page against the scan.**', '',
+          '| Page | Words changed | Left as OCR read them | Examples (OCR → reading) |', '|---|---:|---:|---|']
+    L += [f'| {pg(x["page"])} | {x.get("changed", 0)} | {(x.get("too_different") or 0) + (x.get("unpaired") or 0)} | '
+          + ', '.join(f'{a} → {b}' for a, b in (x.get('changes') or [])[:6]) + ' |' for x in prd]
     L.append('')
 uc = digest.get('unowned_content', [])
 if uc:
@@ -1030,7 +1061,7 @@ if not KEEP:
     if os.path.exists(os.path.join(A, 'digest.json')): RS.keep_audit(R, A, wo_ai if rv and wo_ai is not None else wo, INPUT)
     for name in ('request.json', 'response.json', 'reply.txt', 'run.json', 'validation.json', 'workorder.json', 'passes.json',
                  PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'attempts.json',
-                 'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json', 'review_stop.json'):
+                 'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json', 'review_stop.json', 'page_reads_run.json'):
         p = os.path.join(R, name)
         if os.path.exists(p): os.remove(p)
     if os.path.isdir(A) and os.path.exists(os.path.join(A, 'digest.json')): shutil.rmtree(A)
