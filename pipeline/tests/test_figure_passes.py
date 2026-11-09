@@ -162,11 +162,15 @@ def ok(text='```json\n{"alt": []}\n```', cost=0.01, finish='stop'):
                      'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'cost': cost}}, 'seconds': 1.0}
 
 def req(k='2', worst=0.4): return {'pass': k, 'items': digest(3)['figures'], 'body': {}, 'worst': worst, 'max_tokens': 32000}
+def rq(k='2', worst=0.4, retry_worst=0.8): return dict(req(k, worst), retry_max_tokens=64000, retry_worst=retry_worst, body={'max_tokens': 32000, 'keep': True})
 
-def run_with(outs, cap=5.0, spent=0.0, reqs=None):
+def run_with(outs, cap=5.0, spent=0.0, reqs=None, retry_cap=None, call_cap=None, bodies=None):
     reqs = reqs or [req()]; it = iter(outs); waits = []
-    b = F.Budget(cap, spent, [r['worst'] for r in reqs])
-    res = F.run(reqs, lambda body: next(it), b, sleep=waits.append, say=lambda *a: None)
+    b = F.Budget(cap, spent, [r['worst'] for r in reqs], retry_cap=retry_cap, call_cap=call_cap)
+    def send(body):
+        if bodies is not None: bodies.append(body)
+        return next(it)
+    res = F.run(reqs, send, b, sleep=waits.append, say=lambda *a: None)
     return res, b, waits
 
 def test_uncharged_429_is_retried_once_after_a_pause():
@@ -177,9 +181,58 @@ def test_two_failures_give_a_failed_request_with_its_reason():
     res, _, _ = run_with([{'resp': None, 'code': 429}, {'resp': None, 'code': 429}])
     assert res[0]['outcome'] == 'failed' and res[0]['reason'] == 'OpenRouter 429, twice'
 
-def test_cut_off_is_not_retried():
+def test_a_cut_off_without_a_retry_plan_goes_to_a_person():
     res, b, waits = run_with([ok(finish='length', cost=0.3)])
-    assert res[0]['outcome'] == 'failed' and 'cut off' in res[0]['reason'] and waits == [] and b.spent == pytest.approx(0.3)
+    assert res[0]['outcome'] == 'failed' and 'cut off' in res[0]['reason'] and waits == [] and b.spent == pytest.approx(0.3) and 'cut_off_retry' not in res[0]
+
+def test_a_cut_off_is_sent_again_with_twice_the_room_and_only_that_changes():
+    r = rq(); sent = []
+    res, b, waits = run_with([ok(finish='length', cost=0.3), ok(cost=0.05)], reqs=[r], bodies=sent, retry_cap=5, call_cap=2)
+    assert res[0]['outcome'] == 'done' and waits == [] and [s['max_tokens'] for s in sent] == [32000, 64000] and sent[1]['keep'] is True
+    assert r['body'] == {'max_tokens': 32000, 'keep': True} and res[0]['cut_off_retry'] == {'max_tokens': 64000, 'cost_usd': 0.05, 'outcome': 'done'}
+    assert [c['max_tokens'] for c in res[0]['calls']] == [32000, 64000] and res[0]['calls'][1]['doubled'] and not res[0]['reason']
+
+@pytest.mark.parametrize('planned,limit,spent,fits', [(0.4, 1.1, 0.3, True), (0.4, 1.09, 0.3, False)])
+def test_the_room_for_the_retry_leaves_out_this_requests_own_plan(planned, limit, spent, fits):
+    """limit − spent − (planned without this request) ≥ the retry's worst case: $1.10 − $0.30 − nothing ≥ $0.80."""
+    r = rq(worst=planned); res, _, _ = run_with([ok(finish='length', cost=spent), ok()], reqs=[r], retry_cap=limit, call_cap=2)
+    assert (len(res[0]['calls']) == 2) is fits
+
+def test_the_other_requests_plans_are_held_back():
+    a, b_ = rq('2', worst=0.4), rq('3', worst=0.4)
+    res, _, _ = run_with([ok(finish='length', cost=0.3), ok(), ok()], reqs=[a, b_], retry_cap=1.1, call_cap=2)      # 1.1 - 0.3 - 0.4 = 0.4 < 0.8
+    assert len(res[0]['calls']) == 1 and 'limit per PDF' in res[0]['reason']
+
+def test_the_retry_is_held_to_the_limit_per_ai_call():
+    res, _, _ = run_with([ok(finish='length', cost=0.3)], reqs=[rq(retry_worst=2.01)], retry_cap=5, call_cap=2)
+    assert len(res[0]['calls']) == 1 and res[0]['reason'] == 'cut off at 32,000 output tokens; not sent again: a longer answer could cost more than the limit per AI call'
+
+def test_a_failure_of_the_doubled_call_is_not_retried():
+    res, _, waits = run_with([ok(finish='length', cost=0.3), {'resp': None, 'code': 502}], reqs=[rq()], retry_cap=5, call_cap=2)
+    assert len(res[0]['calls']) == 2 and waits == [] and res[0]['outcome'] == 'failed' and res[0]['cut_off_retry']['outcome'] == 'failed' and res[0]['cut_off_retry']['cost_usd'] is None
+
+def test_a_timeout_on_the_doubled_call_counts_its_own_worst_case():
+    res, b, _ = run_with([ok(finish='length', cost=0.3), {'resp': None, 'timeout': True}], reqs=[rq(retry_worst=0.8)], retry_cap=5, call_cap=2)
+    assert b.spent == pytest.approx(1.1) and res[0]['calls'][1]['worst_usd'] == 0.8
+
+def test_on_retry_tells_the_caller_what_a_stop_must_count():
+    seen = []; r = dict(rq(), on_retry=lambda q, paid, worst: seen.append((paid, worst)))
+    run_with([ok(finish='length', cost=0.3), ok()], reqs=[r], retry_cap=5, call_cap=2)
+    assert seen == [(pytest.approx(0.3), 0.8)]
+    seen.clear(); run_with([ok('no json', cost=0.1), ok()], reqs=[r], retry_cap=5, call_cap=2)      # the unreadable reply's retry too
+    assert seen == [(pytest.approx(0.1), 0.4)]
+
+def test_a_429_then_a_cut_off_gets_the_doubled_retry():
+    res, _, waits = run_with([{'resp': None, 'code': 429}, ok(finish='length', cost=0.3), ok()], reqs=[rq()], retry_cap=5, call_cap=2)
+    assert len(res[0]['calls']) == 3 and res[0]['outcome'] == 'done' and waits == [60]
+
+def test_never_more_than_two_charged_calls():
+    res, _, _ = run_with([ok('no json', cost=0.2), ok(finish='length', cost=0.3)], reqs=[rq()], retry_cap=5, call_cap=2)
+    assert len(res[0]['calls']) == 2 and 'already been charged twice' in res[0]['reason']
+
+def test_the_probe_is_never_sent_again():
+    r = dict(req('probe')); res, _, _ = run_with([ok(finish='length')], reqs=[r], retry_cap=5, call_cap=2)
+    assert len(res[0]['calls']) == 1 and 'not sent again' in res[0]['reason']
 
 def test_unreadable_charged_reply_is_retried_only_with_room():
     res, _, _ = run_with([ok('no json', cost=0.2), ok()])
@@ -192,10 +245,10 @@ def test_timeout_counts_its_worst_case():
     assert res[0]['outcome'] == 'done' and b.spent == pytest.approx(0.45)
 
 def test_a_timeout_records_its_worst_case_and_tells_the_caller_once():
-    """06 M1: what a restart counts toward the book cap is written here (decide.py's on_timeout keeps run.json up to date)."""
-    seen = []; r = dict(req(worst=0.4), on_timeout=seen.append)
+    """06 M1: what a restart counts toward the book cap is written here (decide.py's on_retry keeps run.json up to date)."""
+    seen = []; r = dict(req(worst=0.4), on_retry=lambda q, paid, worst: seen.append((q['pass'], paid, worst)))
     res, _, _ = run_with([{'resp': None, 'timeout': True}, ok(cost=0.05)], reqs=[r])
-    assert seen == [r] and res[0]['calls'][0]['worst_usd'] == 0.4 and 'worst_usd' not in res[0]['calls'][1]
+    assert seen == [('2', 0.4, 0.4)] and res[0]['calls'][0]['worst_usd'] == 0.4 and 'worst_usd' not in res[0]['calls'][1]
 
 # ------------------------------------------------------------------ scope and merge
 def test_scope_keeps_only_its_own_figures_and_keys():

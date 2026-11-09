@@ -206,6 +206,17 @@ def batch_spent(B):
     trashed = sum((x.get('cost_usd') or 0) for x in _load(os.path.join(B, 'trashed.json')) or [] if isinstance(x, dict))
     return {'usd': round(usd + trashed, 6), 'earlier_usd': round(earlier, 6), 'retry_usd': round(retry, 6), 'trashed_usd': round(trashed, 6)}
 
+def shown_words(B, shown, so_far=False):
+    """The batch's total, in the page's words. shown: what was agreed before this send ({ceiling_usd, expected_usd, spent_usd, retry_usd})."""
+    sp = batch_spent(B)
+    return cost_words({'usd': sp['usd'], 'earlier_usd': shown.get('spent_usd') or 0, 'retry_usd': max(0, sp['retry_usd'] - (shown.get('retry_usd') or 0)),
+                       'expected_usd': shown.get('expected_usd'), 'estimate_usd': shown.get('ceiling_usd')}, so_far=so_far)
+
+def progress_words(B, name):
+    """What batch_api.sh prints after each PDF: its cost and the batch's running total."""
+    shown = _load(os.path.join(B, '.shown.json')) or {}
+    return f' · AI Cost: ${actual(os.path.join(B, name))["usd"]:.2f} · Total Cost: {shown_words(B, shown, so_far=True)}'
+
 def retry_env(L):
     """The limits a doubled figure-request retry may use: the person's real ones, for that retry only. The first send of every
     request stays bound to the estimate shown (MAX_USD, BOOK_MAX_USD)."""
@@ -238,15 +249,15 @@ def batch(Rs, limit=None, limits=None, credit_read=None, folder=None):
             if x is not None: exp_seen = True
             if x is not None and x.get('usd') is not None: exp_usd += x['usd']; exp_n += 1
         books.append({'R': R, 'estimate': e, 'adds_usd': e['ceiling_usd'] if e else None})
-    spent = batch_spent(folder)['usd'] if folder else round(sum(actual(R)['usd'] for R in Rs), 6)
-    could = spent + ceiling
+    sp = batch_spent(folder) if folder else {'usd': round(sum(actual(R)['usd'] for R in Rs), 6), 'retry_usd': round(sum(actual(R)['retry_usd'] for R in Rs), 6)}
+    spent = sp['usd']; could = spent + ceiling
     room, fit_n = lim - spent, 0
     for c in sorted(adds):
         if c > room: break
         room -= c; fit_n += 1
     return {'schema': SCHEMA, 'books': books, 'ceiling_usd': round(ceiling, 4), 'per_call_ceiling_usd': per_call,
             'expected': {'usd': round(exp_usd, 4) if exp_n else None, 'books': exp_n, 'of': exp_of} if exp_seen else None, 'requests': requests,
-            'spent_usd': round(spent, 6), 'could_cost_usd': round(could, 6), 'fit_n': fit_n, 'credit_usd': credit, 'limit_usd': lim,
+            'spent_usd': round(spent, 6), 'retry_usd': sp['retry_usd'], 'could_cost_usd': round(could, 6), 'fit_n': fit_n, 'credit_usd': credit, 'limit_usd': lim,
             'fits': {'batch': could <= lim, 'credit': None if credit is None else ceiling <= credit},
             'blocked': blocked,
             'bounds': {'MAX_USD': bound(per_call, L['per_call_usd']) if per_call else None, 'BATCH_MAX_USD': bound(could, lim),

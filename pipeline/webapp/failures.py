@@ -19,7 +19,7 @@ def _load(p):
 
 # ------------------------------------------------------------------ the context a row looks at
 STEP_OF = (('0/5 intake', 'intake'), ('1/5 ', 'audit'), ('2/5 cost estimate', 'estimate'), ('2/5 reuse saved reply', 'call'),
-           ('2/5 the earlier', 'call'), ('3/5 ', 'call'), ('review:', 'review'), ('4/5 apply', 'apply'), ('4/5 verify', 'apply'), ('5/5 report', 'apply'))
+           ('2/5 the earlier', 'call'), ('2/5 the previous', 'call'), ('3/5 ', 'call'), ('review:', 'review'), ('4/5 apply', 'apply'), ('4/5 verify', 'apply'), ('5/5 report', 'apply'))
 STEP_WORDS = {'start': 'starting the run', 'intake': 'reading and tagging the PDF (intake)', 'audit': 'auditing the PDF',
               'estimate': 'estimating the cost', 'call': 'the AI call', 'review': 'preparing the review page', 'apply': 'applying, checking or writing the report',
               'batch': 'the batch', 'app': 'the app'}
@@ -135,13 +135,13 @@ ROWS = [
     # --- the paid call (decide.py; run.json error, finish_reason)
     ('F0', 'call', has('could not reach OpenRouter to look up the model'), ('decide.py', 'could not reach OpenRouter to look up the model'),
      'The connection to the AI service failed before anything was sent.', 'Nothing was charged.', 'When this computer is online again, select "Get a New Estimate", then "Start Remediation".', ['estimate'], None),
-    ('F1', 'call', lambda c: re.search(r'refusing: worst-case \$[\d.]+ is over the \$[\d.]+ cap', c['text']), ('decide.py', "refusing: worst-case ${worst:.2f} is over the ${args.max_usd:.2f} cap"),
+    ('F1', 'call', lambda c: re.search(r'refusing: (worst-case \$[\d.]+ is over the \$[\d.]+ cap|this call could cost up to \$[\d.]+, more than the limit of)', c['text']), ('decide.py', "refusing: this call could cost up to $"),
      'The cost went over the limit after the estimate, so nothing was sent.', 'Prices or the request changed since the estimate, and the run kept to the amount you agreed to.',
      'Select "Get a New Estimate" to see the new cost.', ['estimate'], None),
-    ('F1b', 'call', lambda c: re.search(r'refusing before any call: (the worst case of this book|figure request \S+ worst case)', c['text']), ('decide.py', 'book cap. To run it'),
-     'The cost went over the limit for this book after the estimate, so nothing was sent.', 'Prices or the request changed since the estimate, and the run kept to the amount you agreed to.',
+    ('F1b', 'call', lambda c: re.search(r'refusing before any call: (the worst case of this book|figure request \S+ worst case|this PDF.{0,20} could cost up to|figure request \S+ could cost up to)', c['text']), ('decide.py', 'per PDF. To run it'),
+     'The cost went over the limit for this PDF after the estimate, so nothing was sent.', 'Prices or the request changed since the estimate, and the run kept to the amount you agreed to.',
      'Select "Get a New Estimate" to see the new cost.', ['estimate'], None),
-    ('F2', 'call', lambda c: re.search(r'refusing: \$[\d.]+ credit available', c['text']), ('decide.py', 'credit available, worst case is'),
+    ('F2', 'call', lambda c: re.search(r'refusing: \$[\d.]+ credit available', c['text']), ('decide.py', 'credit available, this run could cost up to'),
      'There isn\'t enough credit, so nothing was sent.', 'The AI service\'s credit is lower than the most this run could cost.',
      'Whoever looks after the app adds credit; then select "Get a New Estimate".', ['estimate'], None),
     ('F3', 'call', has('no OPENROUTER_API_KEY'), ('decide.py', 'no OPENROUTER_API_KEY: put it in'),
@@ -156,9 +156,12 @@ ROWS = [
     ('F7', 'call', lambda c: c['step'] == 'call' and re.search(r'URLError|TimeoutError|timed out|ConnectionResetError|RemoteDisconnected|IncompleteRead', c['text']), None,
      'The connection to the AI service was lost during the call.', 'It isn\'t known whether the call was charged.',
      'Whoever looks after the app can check the AI service\'s activity page. Then select "Get a New Estimate" and "Start Remediation".', ['estimate'], None),
+    ('F8m', 'call', lambda c: c['run'].get('finish_reason') == 'length' and (c['run'].get('model_limits') or {}).get('max_completion_tokens')
+                              and ((c['run'].get('estimate') or {}).get('max_tokens') or 0) >= c['run']['model_limits']['max_completion_tokens'], ('decide.py', 'Another attempt would be cut off too'),
+     'The AI\'s answer was cut off at the longest length this AI model can write.', 'Another attempt would be cut off too. Its cost is kept on record.', WHOEVER, [], None),
     ('F8', 'call', lambda c: c['run'].get('finish_reason') == 'length', ('decide.py', 'the reply was cut off at'),
      'The AI\'s answer was cut off.', 'It was too long to finish. Its cost is kept on record.',
-     'Select "Get a New Estimate" and "Start Remediation" to make a new call; whoever looks after the app may raise the answer\'s length limit first.', ['estimate'], None),
+     'Select "Get a New Estimate": the next call allows an answer twice as long, and the estimate shows what it could cost. Then select "Start Remediation".', ['estimate'], None),
     ('F9', 'call', lambda c: 'could not parse a JSON work order' in c['text'] or 'the last one, the model\'s final answer, could not be read' in c['text'],
      ('decide.py', 'could not parse a JSON work order from reply.txt'), 'The AI\'s answer couldn\'t be read.', 'Its cost is kept on record.',
      'Select "Try Again": the saved answer is read again first, free; a new call needs a new estimate.', ['retry'], None),

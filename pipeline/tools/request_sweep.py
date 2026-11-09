@@ -63,7 +63,8 @@ def dry_run(pipe, A, R):
     if p.returncode or not os.path.exists(sweep):
         return None, {'error': (p.stderr or p.stdout).strip().splitlines()[-1:] or ['no output']}
     run = json.load(open(os.path.join(R, 'run.json'), encoding='utf-8'))
-    run.pop('started', None); (run.get('estimate') or {}).pop('credit_available_usd', None)
+    run.pop('started', None); e = run.get('estimate') or {}
+    for k in ('credit_available_usd', 'book_cap_usd', 'expected'): e.pop(k, None)   # book_cap_usd and expected: intended additions (#65); the requests' own hashes must still match
     return json.load(open(sweep, encoding='utf-8'))['requests'], run
 
 def diff_keys(a, b, path=''):

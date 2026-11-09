@@ -422,7 +422,7 @@ def fig_block():
                            else 'saved answers written for a different figure list, not used' if p['pass'] in (fpr.get('stale') or [])
                            else f'did not finish ({p.get("reason") or "no reason recorded"}): a person writes their alt text')
                         + (f' · ${cu["cost_usd"]:.3f}' if cu.get('cost_usd') is not None else '')
-                        + (f' · {c["seconds"]}s' if c.get('seconds') else '') + (' · after one retry' if c.get('retry') else ''), entry=False))
+                        + (f' · {c["seconds"]}s' if c.get('seconds') else '') + (' · after one retry with room for a longer answer' if c.get('doubled') else ' · after one retry' if c.get('retry') else ''), entry=False))
     for p in run.get('passes') or []:
         if p.get('pass') == 'probe':
             out.append(line(f'- Overlap probe (test only): {p.get("images")} figures the first request answered were sent again; '
