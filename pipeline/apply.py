@@ -2269,6 +2269,7 @@ def op_ocr_words(spec):
                 return pre + fixes[core] + post
             return m.group(0)
         return re.sub(r'\S+', one, text)
+    n_rewritten = 0
     for pno, page in enumerate(pages, 1):
         spanned = []
         st = {}; cand, conts = _page_text_ops(page, no_decoder, spanned, st)
@@ -2277,12 +2278,13 @@ def op_ocr_words(spec):
         for ckey, i, text in cand:
             new = respell(text)
             if new != text: wrap[ckey][i] = new
-        if wrap: _write_fixes(page, conts, wrap, st); per_page[pno] = sum(len(w) for w in wrap.values())
+        if wrap:
+            rw, _ = _write_fixes(page, conts, wrap, st); per_page[pno] = sum(len(w) for w in wrap.values()); n_rewritten += rw
     log['ocr_words'] = {'forms': len(fixes), 'operators': sum(per_page.values()), 'pages': sorted(per_page),
                         'by_form': [{'text': t, 'reads': r, 'found': found[t], 'expected': expected.get(t), **({'in_page_readings': covered[t]} if covered[t] else {})}
                                     for t, r in fixes.items()],
                         'fonts_without_map': sorted(no_decoder)}
-    if per_page: ok('OCR words: printed spelling written into the OCR text (ActualText where it cannot be)', sum(found.values()))
+    if per_page: ok('OCR words: printed spelling written into the OCR text' if n_rewritten else 'OCR words: printed spelling given as ActualText', sum(found.values()))
     missing = [t for t in fixes if found[t] == 0 and covered[t] == 0]      # a form met only on pages read whole is handled there
     if missing:
         log['deferred'].append({'what': f'{len(missing)} OCR word forms with a reading were not found in the page text',
