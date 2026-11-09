@@ -109,6 +109,7 @@ A book whose OCR text needs a person's approval has an **OCR Text** section on t
 
 ## What the page shows
 
+- **A run made from a PDF edited by hand** ([Editing the PDF by hand](hand-edits.md)) starts with two more sections: **Edited by Hand** (a card for each figure the edit touched, with an **Add Alt Text** button) and a read-only **Earlier Review** (the decisions of the run it came from, already in the file).
 - **Check these first.** Decisions in categories where a mistake is likely or affects much of the book. They are chosen by fixed rules (no model), grouped in this order, and sorted by page within each group:
   1. **H1 and title:** any decision that makes or unmakes an H1, and the document title.
   2. **Style-wide mappings:** each `rolemap` entry, most elements first. One entry changes every element of that style.
@@ -178,7 +179,7 @@ Every save also runs the check: the same rules `decide.py` uses on the AI's repl
 
 ## Adding a decision
 
-The cards cover only what the AI decided. **Add a decision** (at the top) is for what it left out. Pick a kind, find the target by text, page or object number, and give a value and an optional note. The addition appears as a card under **Added by you**, where you can change its value or **Remove** it.
+The cards cover only what the AI decided. **Add a decision** (at the top) is for what it left out. Pick a kind, find the target by text, page or object number, and give a value and an optional note. The addition appears as a card under **Added by you**, where you can change its value or **Remove** it. In a run made from a PDF edited by hand ([Editing the PDF by hand](hand-edits.md)), the line under the header links straight to the form for each figure the edit touched (**Add Alt Text**).
 
 | Kind | What you can add it for | Value |
 |---|---|---|
