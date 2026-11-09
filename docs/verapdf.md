@@ -5,7 +5,7 @@ nav_order: 10
 
 # Verification with veraPDF
 
-The goal is WCAG 2.2 AA. [veraPDF](https://github.com/veraPDF) checks the original (in `audit.py`) and the result (in `verify.py`) with its **WCAG 2.2 machine** profile, pinned in `pipeline/verapdf/WCAG-2-2-Machine.xml` (from veraPDF-validation-profiles branch `rel/1.30`). That profile holds every machine-checkable PDF/UA-1 rule and a few WCAG-only ones (contrast, small text, link descriptions, redundant tags). veraPDF's CLI has no flavour for it, so it is passed with `-p`.
+The goal is WCAG 2.2 AA. [veraPDF](https://verapdf.org/) checks the original (in `audit.py`) and the result (in `verify.py`) with its **WCAG 2.2 machine** profile, pinned in `pipeline/verapdf/WCAG-2-2-Machine.xml` (from veraPDF-validation-profiles branch `rel/1.30`). That profile holds every machine-checkable PDF/UA-1 rule and a few WCAG-only ones (contrast, small text, link descriptions, redundant tags). veraPDF's CLI has no flavour for it, so it is passed with `-p`.
 
 Not every PDF/UA rule matters for WCAG. `pipeline/verapdf/rules.json` sorts every rule in the profile:
 
