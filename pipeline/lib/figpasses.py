@@ -9,7 +9,7 @@ the part of the digest those rules use, and may decide only alt text, decoration
     context(digest, pc, items, wo1, examples)            the data a figure request gets
     messages(prompt, data, items, encoded)               the figure request itself
     pick(...), examples(...), probe(...)                  style examples from the first request's validated alt texts
-    run(requests, send, budget)                          sends them in turn, one retry each where it is safe
+    run(requests, send, budget)                          sends them in turn, one retry each where it is safe, and one with twice the room after a cut-off
     scope(reply, items, k) / merge(wo, results, where)   each reply checked against its own figures, then one work order
     record(...) / fingerprint(...) / matches(...)        the saved form (record.json raw_reply_passes, reply.txt.passes.json)
 
@@ -184,32 +184,50 @@ def add_usage(a, b):
     return out
 
 class Budget:
-    """The book cap: what has been spent (a timed-out call counts its worst case) and the worst case still planned."""
-    def __init__(self, cap, spent, planned):
-        self.cap, self.spent, self.planned = cap, spent, list(planned)
+    """The book cap: what has been spent (a timed-out call counts its worst case) and the worst case still planned. retry_cap and
+    call_cap: the limits a doubled retry may use (the person's real ones, where the first send of each request stays bound to
+    the estimate shown). None: no limit (a model whose cost the estimate can't vouch for)."""
+    def __init__(self, cap, spent, planned, retry_cap=None, call_cap=None):
+        self.cap, self.spent, self.planned, self.retry_cap, self.call_cap = cap, spent, list(planned), retry_cap, call_cap
     def room(self):
         return None if self.cap is None else self.cap - self.spent - sum(self.planned)
+    def doubled_fits(self, req):
+        """May this request be sent again with twice the room? (True, None) or (False, why in plain words). What the request
+        itself still had planned is freed for it: only the other requests' worst cases are held back."""
+        if req.get('retry_max_tokens') is None: return False, req.get('no_retry_why') or 'this request is not sent again'
+        if self.call_cap is not None and req['retry_worst'] > self.call_cap: return False, 'a longer answer could cost more than the limit per AI request'
+        if self.retry_cap is not None and self.retry_cap - self.spent - (sum(self.planned) - req['worst']) < req['retry_worst']:
+            return False, 'a longer answer could cost more than the limit per PDF'
+        return True, None
+
+def cut_off(res): return any(c.get('finish_reason') == 'length' for c in res['calls'])
 
 def one(send, req, budget, sleep, say):
     """Send one figure request; one retry after an uncharged failure, a charged unreadable reply or a timeout, when the
-    book cap still has room. Returns the request's result."""
+    book cap still has room. A reply cut off gets one retry of its own with twice the room, within the real limits (Budget.doubled_fits);
+    the doubled call is not retried, and a request is never charged more than twice. Only that retry's body differs. Returns the result."""
     res = {'pass': req['pass'], 'items': req['items'], 'calls': [], 'usage': {}, 'outcome': 'failed', 'reason': None}
-    for attempt in (1, 2):
-        out = send(req['body'])
+    body, worst, max_tokens = req['body'], req['worst'], req['max_tokens']
+    attempt, charged, retried, doubled = 0, 0, False, False
+    known, unknown = 0.0, 0.0                          # costs that were reported; the worst case of a call whose charge is not known
+    while True:
+        attempt += 1
+        out = send(body)
         resp, u = out.get('resp'), ((out.get('resp') or {}).get('usage') or {})
         cost = u.get('cost')
-        call = {'attempt': attempt, 'seconds': out.get('seconds')}
+        call = {'attempt': attempt, 'seconds': out.get('seconds'), 'max_tokens': max_tokens}
+        if doubled: call['doubled'] = True
         if cost is not None or u.get('prompt_tokens') is not None:
             call['usage'] = {'prompt_tokens': u.get('prompt_tokens'), 'completion_tokens': u.get('completion_tokens'), 'cost_usd': cost}
             rt = (u.get('completion_tokens_details') or {}).get('reasoning_tokens')
             if rt is not None and u.get('completion_tokens') is not None: call['usage'].update(reasoning_tokens=rt, visible_tokens=u['completion_tokens'] - rt)
-            res['usage'] = add_usage(res['usage'], call['usage']); budget.spent += cost or 0
-        retry, why = False, None
+            res['usage'] = add_usage(res['usage'], call['usage']); budget.spent += cost or 0; known += cost or 0
+        if cost or out.get('timeout'): charged += 1
+        retry, double, why = False, False, None
         if out.get('timeout'):
             call['error'] = {'code': 'timeout', 'message': 'no reply in time; any charge is not known'}
-            call['worst_usd'] = round(req['worst'], 4)    # what a restart counts toward the book cap for it
-            if req.get('on_timeout'): req['on_timeout'](req)
-            budget.spent += req['worst']; why = 'no reply in time'; retry = True
+            call['worst_usd'] = round(worst, 4)           # what a restart counts toward the book cap for it
+            budget.spent += worst; unknown += worst; why = 'no reply in time'; retry = True
         elif resp is None or 'choices' not in resp:
             er = (resp or {}).get('error') or {}
             code = str(out.get('code') or er.get('code') or '?'); call['error'] = {'code': code, 'message': (out.get('message') or er.get('message') or '')[:300]}
@@ -219,8 +237,9 @@ def one(send, req, budget, sleep, say):
             text = ch.get('message', {}).get('content') or ''
             if isinstance(text, list): text = ''.join(p.get('text', '') for p in text)
             res['reply_text'] = text
+            if req.get('on_call'): req['on_call'](req, call)
             if call['finish_reason'] == 'length':
-                why = f'cut off at {req["max_tokens"]:,} output tokens'; retry = False          # not retried in this version
+                why = f'cut off at {max_tokens:,} output tokens'; double = True
             else:
                 d = parse(text)
                 if d is not None:
@@ -228,13 +247,25 @@ def one(send, req, budget, sleep, say):
                 why = 'the reply could not be read'; retry = True
         call['why'] = why; res['calls'].append(call)
         ws = [c['why'] for c in res['calls']]
-        res['reason'] = why if len(ws) == 1 else f'{ws[0]}, twice' if ws[0] == ws[1] else f'{ws[0]}, then {ws[1]}'
-        if not retry or attempt == 2: break
-        charged = bool(cost) or out.get('timeout')
-        if charged and budget.room() is not None and budget.room() < 0:
+        res['reason'] = why if len(ws) == 1 else f'{ws[0]}, twice' if len(ws) == 2 and ws[0] == ws[1] else ', then '.join(ws)
+        if doubled: break                              # the doubled call is the last: a failure of it is not retried
+        if double:
+            ok, no = (False, 'this request has already been charged twice') if charged >= 2 else budget.doubled_fits(req)
+            if not ok: res['reason'] += f'; not sent again: {no}'; break
+            body, worst, max_tokens, doubled = dict(req['body'], max_tokens=req['retry_max_tokens']), req['retry_worst'], req['retry_max_tokens'], True
+            if req.get('on_retry'): req['on_retry'](req, known, unknown + worst, cut_off(res))
+            say(f'  figure request {req["pass"]}: {why}; sending it once more with room for {max_tokens:,}')
+            continue
+        if not retry or retried: break
+        if (cost or out.get('timeout')) and budget.room() is not None and budget.room() < 0:
             res['reason'] = why + '; not retried: the book cap had no room left'; break
+        retried = True
+        if req.get('on_retry'): req['on_retry'](req, known, unknown + worst, cut_off(res))
         wait = PAUSE.get(str(out.get('code') or ''), 20)
         say(f'  figure request {req["pass"]}: {why}; trying once more in {wait} s'); sleep(wait)
+    if doubled:
+        last = res['calls'][-1]
+        res['cut_off_retry'] = {'max_tokens': max_tokens, 'cost_usd': (last.get('usage') or {}).get('cost_usd'), 'outcome': res['outcome']}
     budget.planned.remove(req['worst'])
     return res
 

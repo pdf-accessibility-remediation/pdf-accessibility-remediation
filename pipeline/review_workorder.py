@@ -119,7 +119,7 @@ def main():
     ap.add_argument('--sessions', action='store_true', help='list the review sessions of a run')
     ap.add_argument('--pin', action='store_true', help='keep a finished run\'s digest after checking its fingerprint (free re-audit)')
     ap.add_argument('--replay-to', metavar='DIR', help='a run that can no longer be reviewed: prepare a new run of the book in DIR '
-                    'from its intake and saved reply (no API call), and print the command')
+                    'from its intake and saved reply (no AI request), and print the command')
     ap.add_argument('--remove-older-pdfs', nargs='*', metavar='SESSION', help='"Clean Up Space" for a finished run: alone, list the '
                     'previous versions whose PDF may be removed (never the current, the AI\'s own, an evaluated or a shipped one); with '
                     'session numbers (e.g. 3 5) and --yes --by NAME, delete those PDFs only (review/prune.py)')

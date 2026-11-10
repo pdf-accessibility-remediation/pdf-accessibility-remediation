@@ -13,17 +13,17 @@
 #   result name    <original file name>_remediated.pdf, unless a book list line names it after a |
 #
 #   JOBS=3           books processed at the same time (each needs about 0.5–1.5 GB of memory)
-#   BATCH_MAX_USD=5  refuse to start if the summed worst-case estimate is higher
+#   BATCH_MAX_USD=10 refuse to start if what the batch has spent plus what it could cost is higher (default: lib/costs.py)
 #   KEEP=1           keep each run's working files and every log
 #   MODEL=<id>       any OpenRouter model id for every book in this batch (default: DEFAULT_MODEL in decide.py).
 #                    The batch cap only counts Claude models: for others the estimate is approximate and not capped
-#   MAX_TOKENS=64000 output limit for each Claude reply, reasoning included (default 48000, set in decide.py)
 #   RETRY=1          reuse a label that already ran: only the books without a finished result run again (give the
 #                    same folders/lists as the first time), then summary.md is rewritten for the whole batch. A reply
-#                    that was cut off stays on record with its cost; a complete reply whose later step failed is reused free
+#                    that was cut off stays on record with its cost (the next attempt allows twice as much); a complete reply
+#                    whose later step failed is reused free
 #   FORCE_OCR=1, OCR_LANG=…, OCR=off, INTAKE=off   passed to every book's intake step (see run_api.sh)
-#   PAGE_READS=1     read each book's scanned, mostly Hawaiian pages whole with the AI (off in a batch: not in BATCH_MAX_USD;
-#                    each book's own PAGE_READS_MAX_USD cap applies, default 3)
+#   PAGE_READS=1     read each PDF's scanned, mostly Hawaiian pages whole with the AI (off in a batch unless set; counted in
+#                    BATCH_MAX_USD, and each PDF's own PAGE_READS_MAX_USD limit applies, default 3)
 #   REVIEW=1         every book stops after the AI's decisions for a person's review (the app's batches, #45 D2): summary.md
 #                    lists it as waiting for review, and RETRY=1 never runs it again ("Finish Review" in the app applies it)
 #   SUMMARY_ONLY=1   no run, no cost: summary.md and summary.html written again from the batch's book folders (the app,
@@ -32,13 +32,13 @@
 #                    answers to "Language of the Scanned Pages", #45 D4); a book not listed uses OCR_LANG
 #   ASK_LANG=1       passed to run_api.sh: a book with pages to OCR and no OCR language stops before intake, and is
 #                    listed as needing a language (run_api.sh exit 4)
-#   FROM=<label>     no API calls: reuse each book's Claude reply saved in an earlier record.json, from the batch
+#   FROM=<label>     no AI requests: reuse each book's Claude reply saved in an earlier record.json, from the batch
 #                    runs/batches/<label>/<name>/ or the single run runs/<name>/<label>/ (free re-run after
 #                    pipeline changes); skips the cost step
 #
 # Everything goes in ../runs/batches/<run-label>/: summary.md and one folder per book.
-# 1. intake (untagged books: OCR where needed, auto-tag; local, no cost), then audits every book and adds up the
-#    worst-case cost (no model); stops if it exceeds BATCH_MAX_USD or your credit. A book flagged at intake (e.g. an
+# 1. intake (untagged books: OCR where needed, auto-tag; local, no cost), then audits every book and adds up what it
+#    could cost (no model); stops if that exceeds BATCH_MAX_USD or your credit. A book flagged at intake (e.g. an
 #    unusable text layer without FORCE_OCR=1) is not sent; summary.md lists it with the reason
 # 2. runs every book (AUTO=1 run_api.sh, reusing the audits), JOBS at a time
 # 3. prints the summary and saves it as summary.md. A book's log is kept only if that book failed
@@ -55,7 +55,8 @@ python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/
 if [[ -z ${SUMMARY_ONLY:-} ]]; then VERA=$(python3 vera.py --check) || {
   echo "$VERA"; echo "veraPDF is needed for the WCAG checks: bash verapdf/install.sh (see README), or run with VERAPDF=off to skip them"; exit 1; }; fi
 export RUNS_DIR=${RUNS_DIR:-$(cd .. && pwd)/runs}
-JOBS=${JOBS:-3}; MAX=${BATCH_MAX_USD:-5}
+JOBS=${JOBS:-3}; MAX=${BATCH_MAX_USD:-$(python3 -c "from lib import costs; print(costs.DEFAULT_LIMITS['per_batch_usd'])")}
+export COST_HISTORY=${COST_HISTORY:-$RUNS_DIR/.cost-history.jsonl}
 B=$RUNS_DIR/batches/$LABEL
 if [[ -n ${SUMMARY_ONLY:-} ]]; then [[ -d $B ]] || { echo "no batch $LABEL in $RUNS_DIR/batches"; exit 1; }
 elif [[ -z ${RETRY:-} ]] && { [[ -f $B/summary.md ]] || compgen -G "$B/*/record.json" > /dev/null; }; then
@@ -66,7 +67,7 @@ now() { python3 -c 'import time; print(f"{time.time():.2f}")'; }
 T0=$(now); STARTED=$(date '+%Y-%m-%d %H:%M')
 DEFAULT_MODEL=$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")
 export MODEL=${MODEL:-}
-export PAGE_READS=${PAGE_READS:-off}   # page readings (#49) are off in a batch unless PAGE_READS=1 or all: BATCH_MAX_USD does not count them (each book's PAGE_READS_MAX_USD does)
+export PAGE_READS=${PAGE_READS:-off}   # page readings (#49) are off in a batch unless PAGE_READS=1 or all
 
 # ---- summary.md: written at the end, when a RETRY finds nothing left to run, and when a batch stops early
 SUMMARY_DONE=; RUNNING=; FAILED_AT=
@@ -76,20 +77,20 @@ write_summary() {
   local WALL CREDIT
   WALL=$(python3 -c "print($(now)-$T0)"); CREDIT=
   [[ -n ${SUMMARY_ONLY:-} ]] || CREDIT=$(python3 decide.py --credit 2>/dev/null || true)
-python3 - "$B/books.tsv" "$B/todo.tsv" "$B" "$LABEL" "$WALL" "$CREDIT" "$AGAIN" "$STARTED" "${MAX_TOKENS:-}" "${SUMMARY_ONLY:-}" <<'PY'
+python3 - "$B/books.tsv" "$B/todo.tsv" "$B" "$LABEL" "$WALL" "$CREDIT" "$AGAIN" "$STARTED" "${SUMMARY_ONLY:-}" <<'PY'
 import sys, json, os, collections
-from lib import origin                                   # the AI call's real cost per page, also for a reused reply (11.5)
-books, todo, B, label, wall, credit, again, started, cur_mt, only = sys.argv[1:11]; wall = float(wall)
+from lib import origin, costs                            # the AI call's real cost per page, also for a reused reply (11.5)
+books, todo, B, label, wall, credit, again, started, only = sys.argv[1:10]; wall = float(wall)
 rate_limited = False
 def fmt(s): return f'{s:.0f}s' if s < 60 else f'{int(s // 60)}m {s % 60:02.0f}s'
 def load(p): return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else None
 ran = {l.split('\t')[0] for l in open(todo)}             # books run by this command (the others finished earlier)
-L = [f'# Batch {label}', '', '| Book | Status | Intake | Pages | API cost | AI call $/page | Time | Checks flagged | WCAG rules (veraPDF) | Result |', '|---|---|---|---:|---:|---:|---:|---:|---|---|']
+L = [f'# Batch {label}', '', '| Book | Status | Intake | Pages | API cost | AI request $/page | Time | Checks flagged | WCAG rules (veraPDF) | Result |', '|---|---|---|---:|---:|---:|---:|---:|---|---|']
 done_pages = 0
 def intake_of(R):
     j = load(os.path.join(R, '_intake', 'intake.json')) or {}
     return j, (j.get('summary') or ('not run' if not j else j.get('status') or 'not recorded')).replace('|', '/')
-total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; flagged = []; cut_at = []; waiting = []; needs_lang = []
+total = wasted = new_spend = 0.0; done = n = 0; starts = []; failed = []; flagged = []; waiting = []; needs_lang = []
 call_cost = 0.0; call_pages = 0                       # the AI calls' own cost (the original call's for a reused reply)
 models, prompts, runs_at = collections.Counter(), collections.Counter(), []
 for line in open(books):
@@ -100,9 +101,10 @@ for line in open(books):
         earlier = sum(a.get('cost_usd') or 0 for a in rec.get('earlier_attempts') or [])
     else:                                                 # not finished: a paid call may still have happened
         run = load(os.path.join(R, 'run.json')) or {}
-        this = 0 if run.get('response_from') else ((run.get('usage') or {}).get('cost_usd') or 0)
+        this = 0 if run.get('response_from') and not run.get('own_reply') else ((run.get('usage') or {}).get('cost_usd') or 0)
         earlier = sum(a.get('cost_usd') or 0 for a in load(os.path.join(R, 'attempts.json')) or [])
         if run.get('finish_reason') == 'length': wasted += this
+    this += ((rec or {}).get('page_reads') or {}).get('cost_usd') or 0 if rec else costs.pages_paid(R)   # page readings (#49): this PDF's own money at every stage
     wasted += earlier; total += this + earlier
     if run.get('model'): models[run['model']] += 1
     if run.get('prompt_file'): prompts[f'`{run["prompt_file"]}` ({run.get("prompt_sha256") or "hash not recorded"})'] += 1
@@ -124,8 +126,8 @@ for line in open(books):
         failed.append(name)
         if ij.get('status') == 'failed': why = f'**failed at intake**: {(ij.get("summary") or "")[:90].replace("|", "/")}'
         elif run.get('finish_reason') == 'length':
-            mt = (run.get('estimate') or {}).get('max_tokens') or 48000; cut_at.append(mt)
-            why = f'**failed**: reply cut off at {mt:,} tokens'
+            mt = (run.get('estimate') or {}).get('max_tokens')
+            why = f'**failed**: reply cut off at {mt:,} tokens' if mt else '**failed**: reply cut off'
         elif run.get('error'):                            # OpenRouter refused or failed the call
             er = run['error']; code = str(er.get('code'))
             if code == '429': rate_limited = True; why = '**failed**: OpenRouter 429, model rate-limited' + ('' if this else ' (nothing charged)')
@@ -150,14 +152,15 @@ for line in open(books):
     dash = f' · [dashboard]({name}/review.html)' if os.path.exists(os.path.join(R, 'review.html')) else ''
     L.append(f'| {name} | done | {intake} | {pages} | {cost} | {per_page} | {fmt(t)} | {checks} | {ua} | `{name}/{rec["document"].get("output") or ""}`{dash} |')
 def each_(c): return ', '.join(f'{k}' + (f' ×{v}' if len(c) > 1 else '') for k, v in c.items()) or 'not recorded'
+shown = load(os.path.join(B, '.shown.json'))             # what was agreed before sending (step 1); none on a FROM= rerun
 span = sorted({r[:16].replace('T', ' ') for r in runs_at})
 L[1:1] = ['', f'Batch started {started}' + (f' (books run from {span[0]} to {span[-1]})' if len(span) > 1 else '')
           + f' · model {", ".join(f"`{k}`" + (f" ×{v}" if len(models) > 1 else "") for k, v in models.items()) or "not recorded"}'
           + f' · prompt {each_(prompts)}', '', '[Open the batch dashboard](summary.html): ready to ship, needs a person and veraPDF per book, sortable']
 L += ['', f'{done} of {n} books done' + (f' · {len(flagged)} flagged at intake (not sent)' if flagged else '')
       + (f' · {len(waiting)} waiting for review' if waiting else '') + (f' · {len(needs_lang)} needing a language' if needs_lang else '')
-      + f' · API cost ${total:.3f}' + (f' (includes ${wasted:.3f} for replies that were cut off)' if wasted else '')
-      + (f' · AI calls {origin.money(call_cost / call_pages)} per page over {call_pages:,} pages (the original call\'s cost for a reused reply)' if call_pages else '')
+      + (f' · Total Cost: {costs.shown_words(B, shown)}' if shown else f' · API cost ${total:.3f}' + (f' (includes ${wasted:.3f} for replies that were cut off)' if wasted else ''))
+      + (f' · AI requests {origin.money(call_cost / call_pages)} per page over {call_pages:,} pages (the original request\'s cost for a reused reply)' if call_pages else '')
       + f' · wall time {fmt(wall)}', '']
 # OpenRouter's balance can lag behind new calls, so also work it out: credit seen before the calls minus what they cost
 live = float(credit.split()[0]) if credit.strip() else None
@@ -167,14 +170,13 @@ if worked is not None and (live is None or worked < live - 0.005):
 elif live is not None: L.append(f'Credit left: ${live:.2f}')
 elif only: L.append('Credit left: not checked (the summary was written again without a run)')
 else: L.append('Credit left: could not check (no key, or OpenRouter unreachable)')
-tr = load(os.path.join(B, 'trashed.json')) or []          # PDFs a person moved to the Trash from the app (#45 D8): their spend stays shown
-if tr: L.append(f'{len(tr)} PDF{"" if len(tr) == 1 else "s"} moved to the Trash (AI cost ${sum(x.get("cost_usd") or 0 for x in tr):.3f}), not counted above')
+tr = costs.still_trashed(B)                               # PDFs a person moved to the Trash from the app (#45 D8): their spend stays shown
+if tr: L.append(f'{len(tr)} PDF{"" if len(tr) == 1 else "s"} moved to the Trash (AI cost ${sum(x.get("cost_usd") or 0 for x in tr):.3f}), {"counted" if shown else "not counted"} above')
 L.append('')
 if failed:
-    mt = f'MAX_TOKENS={max(cut_at) * 2} ' if cut_at else (f'MAX_TOKENS={cur_mt} ' if cur_mt else '')
     jobs = 'JOBS=1 ' if rate_limited else ''
     L += [f'To run only the {len(failed)} unfinished book(s) again, from pipeline'
-          + (' (wait a few minutes first: the model was rate-limited)' if rate_limited else '') + ':', '', f'    RETRY=1 {jobs}{mt}{again}', '']
+          + (' (wait a few minutes first: the model was rate-limited)' if rate_limited else '') + ':', '', f'    RETRY=1 {jobs}{again}', '']
 L += [f'Results are relative to {B}/', '',
       'Checks flagged = rows marked CHECK in each review.md. Open the review.md of any book with flags before running PAC.',
       'WCAG rules = veraPDF\'s WCAG 2.2 machine-check rules failing on the original → on the result; "new" = rules the result fails and the original passed.']
@@ -265,7 +267,7 @@ if [[ $TODO == 0 ]]; then
   echo "every book in batch $LABEL has already finished: nothing to run; summary.md is rewritten"
   RUNNING=1; echo; echo "summary"; write_summary; exit 0
 fi
-echo "Batch $LABEL: $TODO of $N books to run, $JOBS at a time, model $( [[ -n ${FROM:-} ]] && echo "as recorded under $FROM" || echo "${MODEL:-$DEFAULT_MODEL}")${MAX_TOKENS:+, MAX_TOKENS=$MAX_TOKENS} → $B/"
+echo "Batch $LABEL: $TODO of $N books to run, $JOBS at a time, model $( [[ -n ${FROM:-} ]] && echo "as recorded under $FROM" || echo "${MODEL:-$DEFAULT_MODEL}") → $B/"
 cut -f1 "$B/todo.tsv" | sed 's/^/  · /'
 
 # run one step for every book, JOBS at a time; each book's output goes to its own log
@@ -290,12 +292,15 @@ each() {   # each <step: estimate|run>
     elif (( rc > 128 )); then echo "  ✗ $name: interrupted"; exit 255     # Ctrl-C: stop the whole batch, not only this book
     fi
     [[ ( $st == ok || $rc == 3 || $rc == 4 ) && -z ${KEEP:-} ]] && rm -f "$log"
-    echo "  $( [[ $st == ok ]] && echo ✓ || { [[ $rc == 3 || $rc == 4 ]] && echo ⚑ || echo ✗; } ) $name: $st, $(( $(date +%s) - s ))s"' _
+    tail=
+    if [[ $STEP == run && -f $B/.shown.json ]]; then tail=$(python3 -c "from lib import costs; import sys; print(costs.progress_words(sys.argv[1], sys.argv[2]))" "$B" "$name" 2>/dev/null || true); fi
+    echo "  $( [[ $st == ok ]] && echo ✓ || { [[ $rc == 3 || $rc == 4 ]] && echo ⚑ || echo ✗; } ) $name: $st, $(( $(date +%s) - s ))s$tail"' _
 }
 FROM=${FROM:-}; KEEP=${KEEP:-}; export B LABEL STEP FROM KEEP
 
 if [[ -n ${FROM:-} ]]; then
-  echo; echo "1/3 reusing the replies saved under run label $FROM (no API calls, no cost; each record keeps its original model)"
+  rm -f "$B/.shown.json"                          # kept for summary.md rewrites of a paid batch; a FROM= rerun agreed to no cost
+echo; echo "1/3 reusing the replies saved under run label $FROM (no AI requests, no cost; each record keeps its original model)"
   python3 - "$B/todo.tsv" "$RUNS_DIR" "$FROM" "$B" <<'PY' || exit 1
 import sys, json, os, math
 import shutil
@@ -328,12 +333,18 @@ echo; echo "1/3 audit + cost estimate for every book (no model)"
 STEP=estimate each
 python3 - "$B/todo.tsv" "$RUNS_DIR" "$LABEL" "$MAX" <<'PY' || exit 1
 import sys, json, os, math
+from lib import costs, costhistory
 books, runs, label, cap = sys.argv[1], sys.argv[2], sys.argv[3], float(sys.argv[4])
 total, credit, rows, bad, approx, capped_n, flagged = 0.0, None, [], [], 0.0, 0, []
+exp_usd, exp_n, exp_of, exp_seen, requests = 0.0, 0, 0, False, 0
+def expected_words(x):
+    if not isinstance(x, dict): return ''
+    if x.get('usd') is None: return 'Expected Cost: Not Available Yet · '
+    return f'Expected Cost: ${x["usd"]:.2f}' + (f' (usually ${x["low"]:.2f}–${x["high"]:.2f})' if x.get('low') is not None else '') + costhistory.beyond_note(x) + ' · '
 for line in open(books):
     name = line.split('\t')[0]; R = os.path.join(runs, 'batches', label, name)
     if os.path.exists(os.path.join(R, 'workorder.json')) and os.path.exists(os.path.join(R, 'response.json')):
-        rows.append(f'  {name:28} $0.00: reuses its earlier complete reply'); continue
+        rows.append(f'  {name:28} $0.00: reuses its previous complete reply'); continue
     ij = os.path.join(R, '_intake', 'intake.json')
     if os.path.exists(ij) and json.load(open(ij)).get('status') == 'stopped':
         rows.append(f'  {name:28} flagged at intake, not sent: {json.load(open(ij)).get("summary")}'); flagged.append(name); continue
@@ -343,26 +354,46 @@ for line in open(books):
     p = os.path.join(R, 'run.json')
     if not os.path.exists(p): bad.append(name); continue
     e = json.load(open(p))['estimate']
-    if e.get('approximate'): approx += e['worst_case_total_usd']        # not a Claude model: not counted against the cap
-    else: total += e['worst_case_total_usd']; capped_n += 1
+    pr = costs.page_estimate(R) if os.environ.get('PAGE_READS', 'off') != 'off' else None   # page readings still to come (#49): part of what this PDF could cost
+    if pr: e = {**e, 'worst_case_total_usd': round(e['worst_case_total_usd'] + pr['worst_case_usd'], 4), 'requests': (e.get('requests') or 1) + pr['to_read']}
+    if e.get('approximate'): approx += e['worst_case_total_usd']        # not a Claude model: not counted against the limit
+    else:
+        total += e['worst_case_total_usd']; capped_n += 1; requests += e.get('requests') or 1
+        e = {**e, 'expected': costhistory.with_pages(e.get('expected'), pr)}
+        x = e.get('expected'); exp_of += 1
+        if isinstance(x, dict): exp_seen = True
+        if isinstance(x, dict) and x.get('usd') is not None: exp_usd += x['usd']; exp_n += 1
     if e.get('credit_available_usd') is not None: credit = e['credit_available_usd'] if credit is None else min(credit, e['credit_available_usd'])
-    rows.append(f'  {name:28} worst case ${e["worst_case_total_usd"]:.2f}{" (approximate)" if e.get("approximate") else ""}  ({e["input_tokens"]:,} input tokens, {e["images"]} images'
-                + (f' in {e["requests"]} requests' if (e.get('requests') or 1) > 1 else '') + ')')
+    size = f'({e["input_tokens"]:,} input tokens, {e["images"]} images' + (f' in {e["requests"]} requests' if (e.get('requests') or 1) > 1 else '') + ')'
+    rows.append(f'  {name:28} about ${e["worst_case_total_usd"]:.2f}, approximate, not counted against the limit (the OpenRouter bill is the real cost)  {size}' if e.get('approximate')
+                else f'  {name:28} {expected_words(e.get("expected"))}Max Estimated Cost: ${e["worst_case_total_usd"]:.2f}  {size}')
 print('\n'.join(rows))
-cr = '' if credit is None else f'   credit ${credit:.2f}'
-if capped_n:                                     # at least one Claude book counts toward the cap
-    print(f'  {"worst case, capped (Claude)" if approx else "total worst case":28} ${total:.2f}   batch cap ${cap:.2f}{cr}')
-    if approx: print(f'  {"worst case, non-Claude":28} about ${approx:.2f}, approximate, not capped (the OpenRouter bill is the real cost)')
-elif approx:                                     # every book is non-Claude: no cap bucket to show
-    print(f'  {"worst case":28} about ${approx:.2f}, approximate, not capped (the OpenRouter bill is the real cost){cr}')
-else: print(f'  {"total worst case":28} $0.00 (nothing new to send){cr}')
+sp = costs.batch_spent(os.path.join(runs, 'batches', label))
+spent, could = sp['usd'], sp['usd'] + total
+cr = ' · Credit: Not Checked' if credit is None else f' · Credit: ${credit:.2f}'
+already = f' · Already Spent in This Batch: ${spent:.2f}' if spent else ''
+if capped_n:                                     # at least one Claude book counts toward the limit
+    if exp_seen:
+        print('  Expected Cost: ' + ('Not Available Yet' if not exp_n else f'${exp_usd:.2f} for ' + (f'{exp_of} PDF{"" if exp_of == 1 else "s"}' if exp_n == exp_of else
+              f'{exp_n} of {exp_of} PDFs (Not Available Yet for {exp_of - exp_n} PDF{"" if exp_of - exp_n == 1 else "s"})')))
+    print(f'  Max Estimated Cost: ${total:.2f} for {capped_n} PDF{"" if capped_n == 1 else "s"}' + (f' ({requests} AI requests)' if requests > capped_n else '') + f' · Batch Limit: ${cap:.2f}{already}{cr}')
+    if approx: print(f'  Non-Claude Models: about ${approx:.2f}, approximate, not counted against the limit (the OpenRouter bill is the real cost)')
+elif approx:                                     # every book is non-Claude: no limit to show
+    print(f'  Max Estimated Cost: about ${approx:.2f}, approximate, not counted against the limit (the OpenRouter bill is the real cost){cr}')
+else: print(f'  Max Estimated Cost: $0.00 (nothing new to send){already}{cr}')
 if bad: sys.exit(f'stopped: no estimate for {", ".join(bad)} (see their .estimate.log)')
 if flagged:                                      # not run: drop them from the to-do list (summary.md lists them)
     keep = [l for l in open(books) if l.split('\t')[0] not in flagged]
     open(books, 'w').writelines(keep)
     if not keep: sys.exit(f'stopped: every book was flagged at intake or needs a language ({", ".join(flagged)}); see summary.md')
-if total > cap: sys.exit(f'stopped: worst case ${total:.2f} is over BATCH_MAX_USD ${cap:.2f}. Raise it (BATCH_MAX_USD={math.ceil(total)}) or run fewer books; the audits are kept and will be reused')
-if credit is not None and total > credit: sys.exit(f'stopped: worst case ${total:.2f} is more than your ${credit:.2f} credit. Add credit or run fewer books')
+if total and could > cap: sys.exit(f'stopped: this batch could cost up to ${costs.up(could):.2f}' + (f', including ${spent:.2f} already spent' if spent else '')
+                                   + f', more than the limit of ${cap:.2f} per batch. Raise it (BATCH_MAX_USD={math.ceil(could)}) or run fewer PDFs; the audits are kept and will be reused')
+if credit is not None and total > credit: sys.exit(f'stopped: this batch could cost up to ${costs.up(total):.2f}, more than the ${credit:.2f} of credit left. Add credit or run fewer PDFs')
+if capped_n and not approx:                      # what was agreed before sending: the running total and summary.md read it, once
+    json.dump({'ceiling_usd': round(total, 4), 'expected_usd': round(exp_usd, 4) if exp_n and exp_n == exp_of else None, 'spent_usd': spent, 'retry_usd': sp['retry_usd']},
+              open(os.path.join(runs, 'batches', label, '.shown.json'), 'w'))
+elif approx and os.path.exists(os.path.join(runs, 'batches', label, '.shown.json')):   # a later non-Claude send agreed to no ceiling: an earlier send's must not stand for it
+    os.remove(os.path.join(runs, 'batches', label, '.shown.json'))
 PY
 
 fi

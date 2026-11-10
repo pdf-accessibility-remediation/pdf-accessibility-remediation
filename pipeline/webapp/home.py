@@ -267,7 +267,7 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
          '<title>PDF Accessibility Remediation</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>',
          '<body class="pp-page hm-page" data-home="1"><a class="skip" href="#main">Skip to the content</a>',
          '<header><h1>PDF Accessibility Remediation</h1></header><main id="main" tabindex="-1">']
-    if test: B.append('<p class="pp pp-bar">Test: saved replies, no AI call.</p>')
+    if test: B.append('<p class="pp pp-bar">Test: saved replies, no AI request.</p>')
     B.append('<section class="pp hm-card hm-c-act" id="hm-act-sec" aria-labelledby="hm-act-h"' + ('' if active else ' hidden') +
              '><h2 id="hm-act-h">Runs in Progress</h2><div id="hm-active"><p>Loading…</p></div></section>'
              '<div id="hm-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>')
