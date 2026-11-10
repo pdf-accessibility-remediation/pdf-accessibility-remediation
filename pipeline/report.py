@@ -445,7 +445,7 @@ L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '',
      f'{nc(src.get("pages"))} pages · run {DT.when(run.get("started"), "start time not recorded")} · '
      + (f'model `{mp["model"]}`' if mp.get('model') else 'model not recorded') + ' · '
      + (f'prompt `{mp["prompt_file"]}` ({mp.get("prompt_sha256") or "hash not recorded"})' if mp.get('prompt_file') else 'prompt not recorded') + ' · '
-     + (f'AI cost {origin.words(ai)[0]} · this run: no new call' if run.get('response_from')
+     + (f'AI cost {origin.words(ai)[0]} · this run: no new AI request' if run.get('response_from')
         else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: AI request did not finish') + ' · '
      + (f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None
         else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: AI request did not finish')

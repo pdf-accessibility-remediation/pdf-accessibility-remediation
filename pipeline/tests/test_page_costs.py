@@ -218,7 +218,7 @@ def test_decides_terminal_lines_include_the_pages(book, tmp_path):
     w(R / 'page_reads_estimate.json', {'model': MODEL, 'to_read': 5, 'worst_case_usd': 0.40, 'expected': {'none': 'too_few', 'kind': 'page', 'calls': 0, 'books': 0}})
     out = decide(A, R, '--dry-run').stdout
     assert 'Expected Cost: Not Available Yet (0 past page readings, from 0 PDFs; needs 12 from 6)' in out
-    assert ' for 6 AI requests, including $0.40 for 5 Hawaiian pages read by the AI · Limits:' in out
+    assert ' for 6 AI requests, including $0.40 for 5 Hawaiian pages to be read by the AI · Limits:' in out
     e = load(R / 'run.json')['estimate']                     # the work order's own figures stay stored: decide.py's limits bind those
     assert f"Max Estimated Cost: ${e['worst_case_total_usd'] + 0.4:.2f} for 6 AI requests" in out and e['expected'].get('kind') != 'page'
 

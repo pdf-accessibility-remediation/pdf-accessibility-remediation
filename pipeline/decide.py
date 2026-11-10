@@ -451,7 +451,7 @@ if credit is not None: run['estimate']['credit_available_usd'] = round(credit, 4
 if not args.response_file:                            # the lines a person reads first, then the one the limits are checked against
     _pr = costs.page_estimate(args.run_dir)            # the page readings still to come (#49), when read_pages.py priced them: shown with the rest
     _pr_usd = _pr['worst_case_usd'] if _pr else 0
-    _pr_words = f', including ${_pr_usd:.2f} for {_pr["to_read"]} Hawaiian page{"" if _pr["to_read"] == 1 else "s"} read by the AI' if _pr else ''
+    _pr_words = f', including ${_pr_usd:.2f} for {_pr["to_read"]} Hawaiian page{"" if _pr["to_read"] == 1 else "s"} to be read by the AI' if _pr else ''
     print(costhistory.terminal_line(costhistory.with_pages(est_['expected'], _pr)))
     n_ = 1 + len(reqs) + (_pr['to_read'] if _pr else 0)
     if IS_CLAUDE:
