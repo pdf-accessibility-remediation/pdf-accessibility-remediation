@@ -483,7 +483,7 @@ if (SESSION && SESSION.reopened) {                    // a finished run reviewed
   const el = document.getElementById('session'); el.hidden = false;
   el.innerHTML = 'Reviewing again: <b>' + sn(SESSION.id) + '</b>, started from ' + esc(SESSION.from_text) +
     (SESSION.from !== 'ai' ? ' · ' + SESSION.carried + ' choices preloaded' + (nc.length ? ' · <b>' + nc.length + ' not carried</b> (the decision is not the same; shown as not reviewed): ' + nc.slice(0, 6).map(x => esc(x.id)).join(', ') + (nc.length > 6 ? ' …' : '') : '') : '') +
-    ocr + ' · "Finish Review" re-applies the reviewed order (no AI call).';
+    ocr + ' · "Finish Review" re-applies the reviewed order (no AI request).';
 } else if (DATA.ocr && DATA.mode !== 'ocr') {            // a first review: the status line has the OCR verdict alone
   const el = document.getElementById('session'); el.hidden = false;
   el.innerHTML = 'OCR Text: <span id="hdrOcr"></span>';
@@ -1241,7 +1241,7 @@ function nav() {
     OCR.pages.map(p => '<a href="#ocr-page-' + p.page + '"><span>PDF ' + p.page + '</span><span></span></a>').join('');
   if (OCR_ONLY) { document.getElementById('navList').innerHTML = ocrNav; return; }
   let h = ocrNav;
-  h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + (view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
+  h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + esc(view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
   h += '<h2>Check First</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
   h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
   h += '<h2>Page Index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
@@ -1541,7 +1541,7 @@ async function askFinish() {
   dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2>' + checkHtml(chk) + '<div class="ctx" id="finCtx">' +
     (n ? n + (one ? ' decision is' : ' decisions are') + ' not reviewed: "Finish Review" records ' + (one ? 'it' : 'them') + ' as the AI wrote ' + (one ? 'it' : 'them') +
          ', marked "accepted without review", and "Ready to Ship?" stays No.' : 'Every decision has a choice.') +
-    (SESSION && SESSION.reopened ? ' "Finish Review" re-applies the reviewed order (no AI call).' : '') + ' The name and notes go to "Session History."' +
+    (SESSION && SESSION.reopened ? ' "Finish Review" re-applies the reviewed order (no AI request).' : '') + ' The name and notes go to "Session History."' +
     (OCR ? ' "OCR Text": ' + esc(ov) + '. An OCR verdict is recorded on its own under "OCR Text", not with "Finish Review."' : '') + '</div>' +
     '<label for="finName">Session Name</label><input type="text" id="finName" maxlength="80">' +
     '<label for="finNotes">Session Notes (optional)</label><textarea id="finNotes" maxlength="4000"></textarea>' +
@@ -1600,7 +1600,7 @@ finBtn.addEventListener('click', async () => {
     clearTimeout(draftPoll); draftLine.hidden = true;  // the server stops now, and the draft with it
     msg('Review finished · ' + b.changes + ' changes recorded' + dropText(b.dropped) + (b.gaps.length ? ' · ' + b.gaps.length + ' gaps left open, with your reasons' : '') +
         (RETURN_TO ? '. Going to the run page, which shows what happens next.' :
-         SESSION && SESSION.reopened ? '. The terminal is re-applying it now (no AI call); the current result is replaced when that finishes.' : '. Go back to the terminal to continue the run.'), b.dropped.length > 0);
+         SESSION && SESSION.reopened ? '. The terminal is re-applying it now (no AI request); the current result is replaced when that finishes.' : '. Go back to the terminal to continue the run.'), b.dropped.length > 0);
     try { localStorage.removeItem(KEY); } catch (e) {}
     render();
     if (RETURN_TO) location.assign(RETURN_TO);         // the person's own Finish opens the run page, with the re-apply's progress

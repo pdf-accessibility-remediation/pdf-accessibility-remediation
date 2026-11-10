@@ -189,7 +189,7 @@ def retry_kind(R):
 
 def start_rerun(s, run, R):
     """"Try Again" when a complete reply is saved: run_api.sh again, free (no AUTO, no ESTIMATE)."""
-    if retry_kind(R) != 'rerun': raise ValueError('A new AI call is needed. Get a new estimate first.')
+    if retry_kind(R) != 'rerun': raise ValueError('A new AI request is needed. Get a new estimate first.')
     ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] in ('estimate', 'spend', 'rerun')]
     if not ej: raise ValueError('This run wasn\'t started from the home page, so its settings aren\'t known here.')
     e = ej[-1]
@@ -203,7 +203,7 @@ def start_spend(s, run, R, body):
     try: a = SP.authorize(s, str(body.get('kind') or 'workorder'), run, R, str(body.get('fingerprint') or ''))
     except SP.Refused as e: raise ValueError(str(e))
     return jobs.create(s['jobs'], 'spend', run, a['argv'], config.child_env(s, a['env_set']), env_set=a['env_set'], R=R, paid=True,
-                       what='Start remediation: the AI call' + (' (test: a saved reply)' if a['extra']['test'] else ''), **a['extra'])
+                       what='Start remediation: the AI request' + (' (test: a saved reply)' if a['extra']['test'] else ''), **a['extra'])
 
 # ------------------------------------------------------------------ New Run from the Saved Reply (decided 2026-10-28)
 def start_replay(s, run, R, label):
@@ -259,7 +259,7 @@ def form_part(s, key, run=None):
         '<div class="mc-field"><label for="nr-name">Run Name</label>'
         '<input type="text" id="nr-name" name="run_name" maxlength="120" required data-field="name" aria-describedby="nr-name-e">'
         '<p class="pp-warn-t pp-field-e" id="nr-name-e" hidden></p></div>'
-        '<p class="mc-help">"Get the Estimate" prepares the PDF and works out what the AI call could cost. It is free: nothing is sent to the AI '
+        '<p class="mc-help">"Get the Estimate" prepares the PDF and calculates the expected cost of the AI request. It is free: nothing is sent to the AI '
         'until you select "Start Remediation" on the next page.</p>'
         '<div class="pp-msg dlg-msg" tabindex="-1" hidden></div>'
         '<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimate</button><button type="button" data-cancel>Cancel</button></div>'

@@ -226,7 +226,7 @@ function jobWords(j) {
     if (j.kind === 'review' && !j.past_finish) return j.url ? 'Waiting for you: the review page is open' : 'Opening the review page';
     return 'Running' + (j.step ? ': ' + stepWords(j) : '');
   }
-  if (j.status === 'needs-spend') return 'Waiting for a new estimate (the app restarted before the AI call)';
+  if (j.status === 'needs-spend') return 'Waiting for a new estimate (the app restarted before the AI request)';
   const r = j.result || '';
   if (j.status === 'done' && j.kind === 'review' && / left open /.test(r)) return 'Stopped: ' + r;
   if (j.status === 'failed' || j.status === 'stopped' || (j.status === 'interrupted' && !lost(j))) return cap(r || j.status);
@@ -509,18 +509,16 @@ function waitingBlock(s) {
 // ---------------------------------------------------------------- a run started from the home page, before its result (#45)
 // The estimate (lib/costs.py, one renderer for every page), the button that starts the paid call, the progress of the
 // jobs, and why it stopped with what the person can do (webapp/failures.py: plain words; the tool's own words only under
-// "Details"). The paid call is bound to the worst case shown (MAX_USD); the button is "Start Remediation" (Patrick, 2026-11-06),
-// described by the worst-case line (aria-describedby).
+// "Details"). The paid call is bound to the "Max Estimated Cost" shown (MAX_USD); the button is "Start Remediation" (Patrick,
+// 2026-11-06), described by both cost lines (aria-describedby).
 const usd = x => '$' + Number(x || 0).toFixed(2);
-function costLine(e) {
-  const x = e.expected;                                          // #65 (dollar-only cost limits) fills it; shown only when present
-  return (x ? 'About ' + usd(x.usd) + (x.low != null && x.high != null ? ' (usually ' + usd(x.low) + '–' + usd(x.high) + ')' : '') + ' · ' : '') +
-    'Worst-case estimate ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + e.requests + ' AI requests' : '') +
-    (e.page_reads ? ', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + e.page_reads.pages + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' read by the AI' : '') +   // #49
-    ' · Limit ' + usd(e.limits.per_call_usd) + ' per AI call' +
-    (e.limits.per_book_usd ? ' · Limit ' + usd(e.limits.per_book_usd) + ' per book' : '') +
-    (e.spent_before_usd ? ' · Counted toward this book\'s limit so far ' + usd(e.spent_before_usd) : '') +
-    (e.credit_usd != null ? ' · Credit ' + usd(e.credit_usd) : ' · Credit not checked');
+function costLines(e) {                                          // #65 (costs in dollars and an expected cost): the figure people read first, then the ceiling
+  const x = e.expected;                                          // no key (an estimate made before #65): no line; {none}: "Not Available Yet"
+  return (x ? 'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet') + '<br>' : '') +
+    'Max Estimated Cost: ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + e.requests + ' AI requests' : '') +
+    (e.page_reads ? ', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + e.page_reads.pages + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '') +   // #49
+    (e.spent_before_usd ? ' · Counted Toward This PDF\'s Limit So Far: ' + usd(e.spent_before_usd) : '') +
+    (e.credit_usd != null ? ' · Credit: ' + usd(e.credit_usd) : ' · Credit: Not Checked');
 }
 const NEXT = { estimate: ['estimate', 'Get a New Estimate'], retry: ['retry', 'Try Again'], dismiss: ['dismiss', 'Dismiss'], home: null };
 function failureCard(f) {
@@ -538,22 +536,22 @@ function failureCard(f) {
 }
 function pendingBlock(s) {
   const e = s.estimate;
-  let h = s.test ? '<p class="pp-bar pp">Test: saved replies, no AI call.</p>' : '';
+  let h = s.test ? '<p class="pp-bar pp">Test: saved replies, no AI request.</p>' : '';
   if (s.phase === 'outside') return h + (s.failure ? failureCard(Object.assign({}, s.failure, { next: [] })) : '') +
     '<p>This run was started outside the app, so it can\'t be sent or started again from here. To send this book, start a new run of it from the home page.</p>';
   if (s.phase === 'batch') return h + (s.failure ? failureCard(Object.assign({}, s.failure, { next: [] })) : '') +
     '<p>This PDF is assigned to the batch "' + esc(s.batch_name || s.batch) + '". Its estimate, "Start Remediation" and what to do next are on the batch page.</p>' +
     '<div class="pp-row"><a class="pp-btn pp-primary" href="/batch/' + encodeURIComponent(s.batch) + '/">Open the Batch Page</a></div>';
   if (s.phase === 'active') return h + '<p>Working on this book. This page follows each step; you can leave it and come back from the home page.</p>';
-  if (s.phase === 'needs-spend') return h + '<p>The app restarted before the AI call started, so nothing was sent. Get a new estimate, then select "Start Remediation" again.</p>' +
+  if (s.phase === 'needs-spend') return h + '<p>The app restarted before the AI request started, so nothing was sent. Get a new estimate, then select "Start Remediation" again.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button>' +
     '<button type="button" id="pp-dismiss" data-act="dismiss">Dismiss</button></div>';
   if (s.phase === 'language') return h + langCard(s.language, 'pp-lang');
   if (s.phase === 'stopped') return h + failureCard(s.failure);
-  if (s.phase === 'saved-reply') return h + '<p>No AI call is needed: the AI\'s reply from an earlier attempt is saved and will be used again, at no cost.</p>' +
+  if (s.phase === 'saved-reply') return h + '<p>No AI request is needed: the AI\'s reply from a previous attempt is saved and will be used again, at no cost.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-retry" data-act="retry">Continue</button></div>';
   if (!e) return h + '<p>This run has no estimate yet.</p><div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
-  h += '<p id="pp-cost"><b>' + esc(costLine(e)) + '</b></p>';                // P12: no "Review First" or "Sent to the AI" lines
+  h += '<p id="pp-cost">' + costLines(e) + '</p>';                           // P12: no "Review First" or "Sent to the AI" lines
   if (s.spend && s.spend.code === 'no_credit') return h + '<p class="pp-warn-t">' + esc(s.spend.why) + '</p>' +   // U8: why, and a way on
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-credit" data-act="credit">Check Credit Again</button>' +
     '<button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
@@ -565,7 +563,7 @@ function pendingBlock(s) {
   return h +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-spend" data-act="spend" aria-describedby="pp-cost">Start Remediation</button></div>' +
     (s.test ? '<p class="pp-note">Test: "Start Remediation" uses the saved reply; nothing is sent to the AI service.</p>' :
-    '<p class="pp-note">"Start Remediation" sends the book to the AI service. The cost is bound to the worst-case estimate above; the real cost is usually much lower.</p>');
+    '<p class="pp-note">"Start Remediation" sends the PDF to the AI service. "Expected Cost" is based on the PDF\'s content and may vary. "Max Estimated Cost" is the estimated cost ceiling; it must fit within your spending limits and available credit. The actual cost is usually much lower.</p>');
 }
 // "Language of the Scanned Pages" (D4): intake's suggestion preselected, its evidence in plain words; nothing preselected
 // when the characters can't tell (Chinese or Japanese is never guessed), and then "Continue" needs a choice
@@ -581,7 +579,7 @@ function langCard(q, id) {
     '<div class="pp-row pp-lang"><label for="' + id + '">Language of the Scanned Pages</label><select id="' + id + '">' + opts + '</select>' +
     '<button type="button" class="pp-primary" data-act="language" data-sel="' + id + '">Continue</button></div>';
 }
-const PHASE = { language: 'Language of the Scanned Pages', outside: 'Started Outside the App', batch: 'Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Waiting for a New Estimate', stopped: 'Stopped', 'saved-reply': 'No AI Call Is Needed', new: 'Not Started' };
+const PHASE = { language: 'Language of the Scanned Pages', outside: 'Started Outside the App', batch: 'Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Waiting for a New Estimate', stopped: 'Stopped', 'saved-reply': 'No AI Request Is Needed', new: 'Not Started' };
 
 // After a redraw: focus back on the element that had it (by id). When that element is gone (a finished job's card becomes
 // one line), focus goes to the panel's heading rather than being lost; for the Spend's landing (03 §14) that is still
@@ -626,7 +624,7 @@ function render() {
       'This book\'s working files were cleared on ' + esc(s.cleared.day) + (s.cleared.shipment ? ' after it shipped as Shipment ' + esc(s.cleared.shipment) : '') +
       ' (' + esc(s.cleared.mb) + ' MB freed). Its records and the shipped copy are kept; to work on it again, start a new run of the book from the home page.'
       : 'Clearing this book\'s files stopped partway. "Clear This Book\'s Files" finishes it.') + '</span></div>';
-  if (s.replay) h += '<p>A new run of this book from its saved AI reply can be made instead (free, no AI call; it runs on today\'s pipeline, so it is not a review of this result).</p>' +
+  if (s.replay) h += '<p>A new run of this book from its saved AI reply can be made instead (free, no AI request; it runs on today\'s pipeline, so it is not a review of this result).</p>' +
     '<div class="pp-row"><button type="button" id="pp-replay" data-act="replay">New Run from the Saved Reply</button></div>';
   h += (s.cleared && s.cleared.state === 'done' ? '' : actions(s)) + jobsBlock(s) + historyBlock(s) + (s.cleared ? '' : pruneBlock(s)) + clearBlock(s);
   // replaced only when it changed, as the strip is: a poll whose data changed but not what the panel shows (the review

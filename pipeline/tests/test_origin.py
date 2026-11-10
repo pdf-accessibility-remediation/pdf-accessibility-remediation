@@ -36,7 +36,7 @@ def test_a_replay_carries_the_original_call():
     assert origin.of_record(r) == oc                                          # never the replay's own $0 or today's prompt
     ai = origin.summary(r)
     assert ai['reused'] and ai['prompt_file'] == 'workorder_v8.md'
-    assert origin.words(ai)[0] == '$0.256 ($0.0006 per page), from the original call on October 26, 2026'
+    assert origin.words(ai)[0] == '$0.256 ($0.0006 per page), from the original AI request on October 26, 2026'
 
 def test_a_replay_of_a_replay_still_names_the_first_call(tmp_path):
     first = real()

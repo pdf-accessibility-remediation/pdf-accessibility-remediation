@@ -232,9 +232,9 @@ def test_the_readme_gives_the_run_details_in_plain_words():
     L = DL.about_lines(rec)
     assert L[0] == 'Pages: 437' and L[1].startswith('Remediated: October 26, 2026')
     assert L[2] == 'AI model: anthropic/claude-sonnet-5.5 · Instructions: workorder_v8'      # the original call's, not today's prompt
-    assert L[3] == 'AI cost: $0.256, from the original call on October 26, 2026 · Cost per page: $0.0006'
+    assert L[3] == 'AI cost: $0.256, from the original AI request on October 26, 2026 · Cost per page: $0.0006'
     assert L[4] == 'OCR and Auto-Tagging: 6 pages are pictures with no text, so no text was added for them; the PDF had no tags and was tagged automatically.'
-    assert L[5] == ('Total runtime: 3 min 52 s (intake 4 s, audit 37 s, AI call (a previous answer reused) 2 s, preparing the review 8 s, '
+    assert L[5] == ('Total runtime: 3 min 52 s (intake 4 s, audit 37 s, AI request (a previous answer reused) 2 s, preparing the review 8 s, '
                     'applying and checks 3 min 2 s); the review time is not counted.')
     assert L[6] == 'Software: Python 3.13.9, pikepdf 10.5.1, pdfplumber 0.11.9, pypdfium2 5.7.1, Pillow 13.0.0, fontTools 4.62.1'
     bare = DL.about_lines({'run': {'response_from': 'hand-written.txt'}, 'raw_reply': '{}'})   # nothing recorded
@@ -263,11 +263,11 @@ def test_the_total_runtime_names_what_was_not_recorded():
     """A REVIEW=1 run applied before the stop kept its timings (demo1): only the apply's steps, and the AI call's own seconds."""
     rec = {'intake': {'status': 'done'}, 'run': {'seconds': 29.1, 'response_from': None},
            'timing_seconds': {'4/5 apply (no model)': 4.3, '4/5 verify (no model)': 8.9}}
-    assert DL._runtime(rec) == ('Total runtime: at least 42 s (intake not recorded, audit not recorded, AI call 29 s, '
+    assert DL._runtime(rec) == ('Total runtime: at least 42 s (intake not recorded, audit not recorded, AI request 29 s, '
                                 'applying and checks 13 s); the review time is not counted.')
     rec['timing_seconds'].update({'0/5 intake (local, no model)': 6.2, '1/5 audit (no model)': 18.0, '3/5 anthropic/claude-sonnet-5.5 via OpenRouter': 30.4,
                                   '2/5 cost estimate (no model)': 0.4, 'review: page images (no model)': 0.3})
-    assert DL._runtime(rec) == ('Total runtime: 1 min 8 s (intake 6 s, audit 18 s, AI call 31 s, preparing the review less than 1 s, '
+    assert DL._runtime(rec) == ('Total runtime: 1 min 8 s (intake 6 s, audit 18 s, AI request 31 s, preparing the review less than 1 s, '
                                 'applying and checks 13 s); the review time is not counted.')
     assert DL._runtime({'run': {}, 'timing_seconds': {'4/5 apply (no model)': 61}}) == \
-        'Total runtime: at least 1 min 1 s (audit not recorded, AI call not recorded, applying and checks 1 min 1 s); the review time is not counted.'   # no intake: not a part
+        'Total runtime: at least 1 min 1 s (audit not recorded, AI request not recorded, applying and checks 1 min 1 s); the review time is not counted.'   # no intake: not a part

@@ -145,7 +145,7 @@ if (ws) {
 const seen = {}; let primed = false;
 function words(j) {
   if (j.status === 'queued') return 'Waiting to Start' + (j.waiting_for ? ': it starts when ' + j.waiting_for + ' ends' : j.position ? ' (' + j.position + ' in line)' : '');
-  if (j.status === 'needs-spend') return 'The app restarted before the AI call started: open it to get a new estimate';
+  if (j.status === 'needs-spend') return 'The app restarted before the AI request started: open it to get a new estimate';
   if (j.kind === 'review' && !j.past_finish) return j.url ? 'Waiting for you: the review page is open' : 'Opening the review page';
   return 'Running' + (j.step ? ': ' + j.step.words.charAt(0).toUpperCase() + j.step.words.slice(1) + ' (' + j.step.n + ' of ' + j.step.total + ')' : '');
 }

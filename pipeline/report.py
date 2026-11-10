@@ -70,7 +70,7 @@ cost_this = (run.get('usage') or {}).get('cost_usd') or 0
 cost_earlier = round(sum(a.get('cost_usd') or 0 for a in attempts), 6)
 # whole-page AI readings of Hawaiian pages (read_pages.py, issue #49): their own paid step; a re-apply has them in the earlier record
 pr_run = load('page_reads_run.json') or ((prev or {}).get('page_reads') if prev is not None else None)
-cost_pages = 0 if prev is not None else round((pr_run or {}).get('cost_usd') or 0, 6)
+cost_pages = round((pr_run or {}).get('cost_usd') or 0, 6)   # a re-apply repeats the whole sum from the earlier record, so these stay in it, once
 pr_listed = (load('page_reads.json', base=A) or {}).get('pages') or []
 for need, name in ((wo, 'workorder.json'), (log, PDF + '.log.json'), (ver, PDF + '.verify.json')):
     if not need: sys.exit(f'{name} missing in {R}: run the whole pipeline first (nothing was deleted)')
@@ -301,7 +301,7 @@ checks = [
     *([('Page readings: a person who reads Hawaiian checked each page read by the AI', ok(False),
         (f'{len(prd)} of {len(pr_listed)} mostly Hawaiian pages read by the AI, {sum(x.get("changed") or 0 for x in prd)} words given their printed spelling: '
          f'check {pgs([x["page"] for x in prd])} against the scan' if prd else
-         f'{len(pr_listed)} scanned pages look mostly Hawaiian and their OCR has no ʻokina or kahakō; they were not read by the AI (turned off, declined, or refused over the cap or the credit: see the run log)'))]
+         f'{len(pr_listed)} scanned pages look mostly Hawaiian and their OCR has no ʻokina or kahakō; they were not read by the AI (turned off, declined, or refused over the limit or the credit: see the run log)'))]
       if pr_listed or prd else []),
     *([('Figure requests: every figure seen by the AI', ok(not fpr.get('failed') and not fpr.get('stale')),
         f'{nc(fpr.get("figures"))} figures past the first request, in {nc(fpr.get("requests"))} figure requests'
@@ -434,7 +434,7 @@ def fig_block():
                            else 'saved answers written for a different figure list, not used' if p['pass'] in (fpr.get('stale') or [])
                            else f'did not finish ({p.get("reason") or "no reason recorded"}): a person writes their alt text')
                         + (f' · ${cu["cost_usd"]:.3f}' if cu.get('cost_usd') is not None else '')
-                        + (f' · {c["seconds"]}s' if c.get('seconds') else '') + (' · after one retry' if c.get('retry') else ''), entry=False))
+                        + (f' · {c["seconds"]}s' if c.get('seconds') else '') + (' · after one retry with room for a longer answer' if c.get('doubled') else ' · after one retry' if c.get('retry') else ''), entry=False))
     for p in run.get('passes') or []:
         if p.get('pass') == 'probe':
             out.append(line(f'- Overlap probe (test only): {p.get("images")} figures the first request answered were sent again; '
@@ -445,12 +445,12 @@ L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '',
      f'{nc(src.get("pages"))} pages · run {DT.when(run.get("started"), "start time not recorded")} · '
      + (f'model `{mp["model"]}`' if mp.get('model') else 'model not recorded') + ' · '
      + (f'prompt `{mp["prompt_file"]}` ({mp.get("prompt_sha256") or "hash not recorded"})' if mp.get('prompt_file') else 'prompt not recorded') + ' · '
-     + (f'AI cost {origin.words(ai)[0]} · this run: no new call' if run.get('response_from')
-        else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: call did not finish') + ' · '
+     + (f'AI cost {origin.words(ai)[0]} · this run: no new AI request' if run.get('response_from')
+        else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: AI request did not finish') + ' · '
      + (f'{u["prompt_tokens"]} in / {u["completion_tokens"]} out tokens' if u.get('prompt_tokens') is not None and u.get('completion_tokens') is not None
-        else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: call did not finish')
-     + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_bad):.3f} for {len(a_bad)} earlier call(s) whose reply was cut off or unusable' if a_bad else '')
-     + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_stop):.3f} for {len([a for a in a_stop if a.get("cost_usd") is not None])} call(s) from a run '
+        else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: AI request did not finish')
+     + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_bad):.3f} for {len(a_bad)} previous AI request(s) whose reply was cut off or unusable' if a_bad else '')
+     + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_stop):.3f} for {len([a for a in a_stop if a.get("cost_usd") is not None])} AI request(s) from a run '
         'that was stopped before it finished' + (' (one more was in flight: any charge is not known)' if any(a.get('cost_usd') is None for a in a_stop) else '') if a_stop else '')
      + (f' (total ${cost_this + cost_earlier:.3f})' if attempts else ''), '',
      *(fig_block() if fpr else []),
@@ -635,7 +635,7 @@ if ow_forms or digest.get('ocr_words'):
                        '- The saved reply was written for an earlier word list (its size was not recorded)')
                       + (f' and gave {dropped_n} readings' if dropped_n else ' and gave no readings') + f'; {checked} are listed now. '
                       + (f'Its readings were not used: {ow_stale_why}. ' if dropped_n else f'{ow_stale_why[:1].upper()}{ow_stale_why[1:]}. ')
-                      + f'None of today\'s {checked} forms counts as read by the AI: a person checks them against the scan, or a new call reads them.',
+                      + f'None of today\'s {checked} forms counts as read by the AI: a person checks them against the scan, or a new AI request reads them.',
                       entry=False))
     else:
         L.append(line(f'- {checked} suspect forms were checked by the AI; {max(0, checked - len(ow_forms))} were judged correct as the OCR read them, or unreadable '

@@ -28,7 +28,7 @@ R=../runs/teika/api-run1;  A=$R/_audit
 python3 intake.py $S $R/_intake                           # untagged only: OCR + auto-tag; then S=$R/_intake/intake.pdf
 python3 audit.py  $S $A                                   # no model, ~30 s; also veraPDF on the original → $A/verapdf.json
 python3 decide.py $A $R --dry-run                         # cost estimate + available credit; sends nothing
-python3 decide.py $A $R                                   # the API call
+python3 decide.py $A $R                                   # the AI request
 # REVIEW=1 stops here: workorder.ai.json + review_workorder.py $R --prepare --pdf $S, then a person runs --serve
 O=$R/<file>_remediated.pdf
 python3 apply.py  $S $R/workorder.json $O                 # no model, ~80 s
@@ -36,4 +36,4 @@ python3 verify.py $S $O                                   # no model, ~3 min; ve
 python3 report.py $R $A                                   # review.md, record.json, han_review.csv; add --keep to keep working files
 ```
 
-If `decide.py` fails after the API call, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and a higher `MAX_TOKENS` (see [Options](options.md)). For errors from OpenRouter itself, see [When the model call fails](troubleshooting.md#when-the-model-call-fails).
+If `decide.py` fails after the AI request, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and the next attempt allows twice as much (see [Options](options.md)). For errors from OpenRouter itself, see [When the model call fails](troubleshooting.md#when-the-model-call-fails).
