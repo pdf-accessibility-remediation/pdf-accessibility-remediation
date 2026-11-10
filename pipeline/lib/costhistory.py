@@ -77,7 +77,7 @@ def rows(ledger=None, seed=SEED):
         except ValueError: continue
         if not _good(r): continue
         r['book'] = labels.get(r['book'], r['book'])
-        k = (r['book'], r['date'], str(r.get('pass')), r.get('attempt'))
+        k = (r['kind'], r['book'], r['date'], str(r.get('pass')), r.get('attempt'))   # kind: page 1 and the work order (pass 1) may start in the same second
         if k in seen or _call_key(r) in known: continue
         seen.add(k); out.append(r)
     return out

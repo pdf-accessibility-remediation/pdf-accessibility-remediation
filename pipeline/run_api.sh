@@ -210,7 +210,7 @@ elif [[ -n ${REPLY:-} ]]; then
 else
   # the page readings' own estimate first (page_reads_estimate.json): the cost lines below and the app's estimate include it
   if [[ $PAGE_READS != off ]] && pages_listed; then
-    python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"} || echo "(page readings over their limit: see the line above)"
+    python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"} || echo "page readings: no estimate (see the line above)"
   else rm -f "$R/page_reads_estimate.json"; fi
   stage "2/5 cost estimate (no model)"  python3 decide.py "$A" "$R" --dry-run ${MT[@]+"${MT[@]}"}
   if [[ -n ${ESTIMATE:-} ]]; then

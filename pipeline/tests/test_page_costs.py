@@ -133,6 +133,16 @@ def test_the_page_history_does_not_touch_the_other_kinds(tmp_path):
     rows = H.rows(str(L), seed=str(tmp_path / 'no-seed.json'))
     assert H.expected([{'kind': 'workorder', 'input_est': 20000, 'max_tokens': 48000}], MODEL, 2e-6, 1e-5, 1.0, history=rows)['none'] == 'too_few'
 
+def test_a_page_and_a_work_order_started_in_the_same_second_both_count(tmp_path):
+    L = tmp_path / 'ledger.jsonl'
+    same = {'model': MODEL, 'input_est': 20000, 'input_billed': 20000, 'output': 3000, 'images': 1, 'forms': 0,
+            'date': '2026-11-01T10:00:00', 'book': 'b1', 'pass': '1', 'attempt': 1}
+    with open(L, 'w', encoding='utf-8') as f:
+        f.write(json.dumps({'kind': 'workorder', 'prompt': 'workorder_v10.md', **same}) + '\n')
+        f.write(json.dumps({'kind': 'page', 'prompt': 'page_reading_v1.md', **same}) + '\n')
+    rows = H.rows(str(L), seed=str(tmp_path / 'no-seed.json'))
+    assert sorted(r['kind'] for r in rows) == ['page', 'workorder']
+
 def test_no_history_means_not_available_yet(tmp_path, monkeypatch):
     A, R, L = audit_with_pages(tmp_path), tmp_path / 'r', tmp_path / 'ledger.jsonl'
     assert read(A, R, monkeypatch, '--dry-run', ledger=L) == []
