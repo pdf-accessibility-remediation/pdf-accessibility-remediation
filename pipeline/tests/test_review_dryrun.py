@@ -167,7 +167,9 @@ def test_a_trial_run_is_never_kept_when_it_could_differ(book, case, monkeypatch,
     R, src, calls = book
     applied(R, src, **({'fix_figure_order': False} if case == 'figure_step_off' else {}))
     A, kw = R / '_audit', {}
-    if case == 'figure_order_off_in_log':
+    if case == 'figure_step_off':                         # the order's own check alone (review 04 L-C): no figure_order_off in the log
+        lp = R / (OUT + '.log.json'); log = core.load(str(lp)); log.pop('figure_order_off', None); core.save(str(lp), log)
+    elif case == 'figure_order_off_in_log':
         lp = R / (OUT + '.log.json'); log = core.load(str(lp)); log['figure_order_off'] = True; core.save(str(lp), log)
     elif case == 'review_json': core.save(str(R / 'review.json'), {'reviewer': 'Kim'})
     elif case == 'review_session': core.save(str(R / 'review_session.json'), {'session': '002'})
