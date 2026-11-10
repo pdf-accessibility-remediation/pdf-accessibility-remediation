@@ -1054,6 +1054,14 @@ try:
     report_html.review_html(R, record, md, PLAB)
 except Exception as e: print(f'note: review.html not written ({type(e).__name__}: {e})')
 
+# ------------------------------------------------------------------ the apply's moves, kept for the first Review Again (#93)
+# A run that applied the AI's own order has, in its apply log, what Review Again's trial run would find: kept as
+# _audit/dryrun.json (review/core.py keep_trial says why when it isn't), which the tidy below copies into reviews/_audit.
+try:
+    from review import core as RC
+    print(RC.keep_trial(R, A, PDF, INPUT or os.path.join(R, '_intake', 'intake.pdf'), from_record=FROM_RECORD is not None))
+except Exception as e: print(f'figure moves and section moves not kept for a later review: {type(e).__name__}')
+
 # ------------------------------------------------------------------ tidy
 if not KEEP:
     from review import sessions as RS                 # the digest, fulltext and OCR word sheets stay, for a later review

@@ -266,6 +266,15 @@ if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews 
   echo "  2. ${INTAKE_REUSE:+INTAKE_REUSE=$INTAKE_REUSE }${OCR_LANG:+OCR_LANG=$OCR_LANG }${INTAKE:+INTAKE=$INTAKE }${USER_OUT:+OUT=$USER_OUT }${RUN_DIR:+RUN_DIR=$R }bash $(pwd)/run_api.sh \"$SRC\" $NAME $(basename "$R")     afterwards (without REVIEW=1): applies the reviewed work order"
   exit 0
 fi
+rm -f "$A/dryrun.key.json"                      # #93: the key of the order applied, for report.py to keep this apply's moves for
+if [[ -z $REVIEWED ]]; then                     # the first "Review Again" (review/core.py keep_trial); not a stage: no timing entry
+  python3 -c 'import sys
+try:
+    from review import core
+    core.save_key(*sys.argv[1:4])
+except Exception as e: print(f"note: the figure moves of this apply will not be kept for a later review ({type(e).__name__})")' \
+    "$PSRC" "$R/workorder.json" "$A/dryrun.key.json" || echo "note: the figure moves of this apply will not be kept for a later review"
+fi
 stage "4/5 apply (no model)"            python3 apply.py "$PSRC" "$R/workorder.json" "$R/$OUT"
 stage "4/5 verify (no model)"           bash -c 'python3 verify.py "$1" "$2" > /dev/null' _ "$PSRC" "$R/$OUT"
 write_timing
