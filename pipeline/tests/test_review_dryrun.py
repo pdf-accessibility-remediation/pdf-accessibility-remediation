@@ -235,3 +235,23 @@ def test_a_whole_run_keeps_its_apply_and_a_re_apply_never_touches_it(tmp_path, m
     r = subprocess.run([sys.executable, 'review_workorder.py', str(R), '--apply'], cwd=PIPE, env=pipeline_env(), capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
     assert 'figure moves and section moves kept for a later review' not in r.stdout and kept.read_bytes() == before
+
+@pytest.mark.parametrize('before_page', [3, 99])
+def test_a_kept_section_move_is_the_trial_runs(tmp_path, monkeypatch, before_page):
+    """Section moves too, made or refused with the reason (no saved reply on today's code has a section move the work-order
+    check keeps, so the synthetic four-page book stands in): the kept result equals a fresh trial run's, key included."""
+    from test_synthetic import sections_pdf
+    monkeypatch.setenv('VERAPDF', 'off'); monkeypatch.delenv('REVIEW_DRYRUN', raising=False)
+    for k in core.DRYRUN_ENV: monkeypatch.delenv(k, raising=False)
+    src = sections_pdf(tmp_path / 'sections.pdf'); R = tmp_path / 'run'; R.mkdir()
+    run('audit.py', src, R / '_audit')
+    core.save(str(R / 'workorder.ai.json'), {'schema': 'workorder/0.1', 'move_section': {'pages': [2, 2], 'before_page': before_page}})
+    applied(R, src)
+    assert 'kept for a later review (0 figure moves, 1 section move)' in core.keep_trial(str(R), str(R / '_audit'), OUT, str(src))
+    kept = core.load(str(R / '_audit' / 'dryrun.json'))
+    assert ('made' if before_page == 3 else 'refused') in kept['section_move']
+    F = R / 'fresh'; (F / '_audit').mkdir(parents=True); shutil.copyfile(R / 'workorder.json', F / 'workorder.ai.json')
+    monkeypatch.setenv('REVIEW_DRYRUN', 'fresh')
+    fresh = core.dry_run(str(F), str(src))
+    strip = lambda d: {k: v for k, v in d.items() if k not in ('seconds', 'made')}
+    assert strip(kept) == strip(fresh)
