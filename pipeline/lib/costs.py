@@ -2,7 +2,7 @@
 page, the run page, the batch page) and, later, for run_api.sh and batch_api.sh. No web code, no network, no writing.
 
     estimate(R, kind='workorder', limits=None)  → the estimate of the step `kind` in run folder R (schema cost-estimate/1)
-    actual(R)                                   → what the run's AI calls cost: {usd, earlier_usd, calls, per_page_usd, original_call}
+    actual(R, rec=)                             → what the run's AI calls cost: {usd, earlier_usd, calls, per_page_usd, original_call}
     batch(Rs, limit, folder=B)                  → the books of a batch added up; `folder` makes the money already spent the whole batch's
     batch_spent(B)                              → every book folder of a batch plus its PDFs moved to the Trash: the one definition of "spent"
     bound(x, limit)                             → a dollar cap for the step: the worst case rounded up to the cent, never above
@@ -175,14 +175,17 @@ def _page_money(pr):
     if not isinstance(pr, dict): return 0.0, 0, None
     return round(pr.get('cost_usd') or 0, 6), sum(1 for p in pr.get('pages') or [] if isinstance(p, dict) and p.get('cost_usd')), pr.get('estimate')
 
-def actual(R):
+_READ = object()                                   # actual()'s rec when the caller didn't read it
+
+def actual(R, rec=_READ):
     """What the run's AI calls cost: the record's (with earlier cut-off attempts), else run.json's and attempts.json's for
     a run that has not finished. A reply reused from elsewhere costs nothing new: its original call's cost is reported apart. A
     reply this folder paid for and read again is different (run.own_reply, decided by decide.py when it reads it): that money was
     spent on this run, so it counts like any other. Page readings (#49) are this folder's own money at every stage: from
     page_reads_run.json until report.py moves them into the record, then from the record, once. retry_usd: the
-    part that retried a figure request cut off; expected_usd and estimate_usd: what was shown before it was sent."""
-    rec = _load(os.path.join(R, 'record.json'))
+    part that retried a figure request cut off; expected_usd and estimate_usd: what was shown before it was sent.
+    rec: record.json as the caller already read it (None: there is none), so a page reads it once (#93); never changed here."""
+    if rec is _READ: rec = _load(os.path.join(R, 'record.json'))
     if rec:
         run = rec.get('run') or {}
         own = bool(run.get('own_reply'))
@@ -244,21 +247,23 @@ def still_trashed(B):
     except OSError: here = set()
     return [x for x in _load(os.path.join(B, 'trashed.json')) or [] if isinstance(x, dict) and x.get('name') not in here]
 
-def batch_spent(B):
+def batch_spent(B, rd=None):
     """What the whole batch has spent: every book folder in it, whatever its state (waiting for review, finished, stopped), and
     the PDFs moved to the Trash (their folders are gone; trashed.json keeps their cost). The one definition behind the batch
-    limit, the page's "Total Cost" and batch_api.sh's check. {usd, earlier_usd, retry_usd, trashed_usd}."""
+    limit, the page's "Total Cost" and batch_api.sh's check. {usd, earlier_usd, retry_usd, trashed_usd}. rd: a page's JSON
+    reader (path → data or None), so each record is read once per page (#93)."""
     usd = earlier = retry = 0.0
     try: dirs = sorted(e.path for e in os.scandir(B) if e.is_dir() and not e.name.startswith('.'))
     except OSError: dirs = []
     for R in dirs:
-        a = actual(R); usd += a['usd']; earlier += a['earlier_usd']; retry += a['retry_usd']
+        a = actual(R, rd(os.path.join(R, 'record.json'))) if rd else actual(R); usd += a['usd']; earlier += a['earlier_usd']; retry += a['retry_usd']
     trashed = sum((x.get('cost_usd') or 0) for x in still_trashed(B))
     return {'usd': round(usd + trashed, 6), 'earlier_usd': round(earlier, 6), 'retry_usd': round(retry, 6), 'trashed_usd': round(trashed, 6)}
 
-def shown_words(B, shown, so_far=False):
-    """The batch's total, in the page's words. shown: what was agreed before this send ({ceiling_usd, expected_usd, spent_usd, retry_usd})."""
-    sp = batch_spent(B)
+def shown_words(B, shown, so_far=False, rd=None):
+    """The batch's total, in the page's words. shown: what was agreed before this send ({ceiling_usd, expected_usd, spent_usd, retry_usd}).
+    rd: as batch_spent()."""
+    sp = batch_spent(B, rd)
     return cost_words({'usd': sp['usd'], 'earlier_usd': shown.get('spent_usd') or 0, 'retry_usd': max(0, sp['retry_usd'] - (shown.get('retry_usd') or 0)),
                        'expected_usd': shown.get('expected_usd'), 'estimate_usd': shown.get('ceiling_usd')}, so_far=so_far)
 
@@ -283,10 +288,10 @@ def batch_over_words(total):
     return (f'This batch could cost up to ${up(total["could_cost_usd"]):.2f}' + (f', including ${total["spent_usd"]:.2f} already spent' if total['spent_usd'] else '')
             + f', more than the limit of ${total["limit_usd"]:.2f} per batch.')
 
-def batch(Rs, limit=None, limits=None, credit_read=None, folder=None):
+def batch(Rs, limit=None, limits=None, credit_read=None, folder=None, rd=None):
     """The books of a batch added up: the worst case of every book still to send (one with a complete saved reply adds
     nothing), what was spent so far, and whether spent + worst case fits the batch limit, and the worst case the credit.
-    folder: the batch's folder, so "spent" is the whole batch's (batch_spent), not only these books'."""
+    folder: the batch's folder, so "spent" is the whole batch's (batch_spent), not only these books'. rd: as batch_spent()."""
     L = limits or limits_of()
     lim = L['per_batch_usd'] if limit is None else limit
     books, ceiling, credit, per_call, blocked = [], 0.0, None, 0.0, []
@@ -306,7 +311,7 @@ def batch(Rs, limit=None, limits=None, credit_read=None, folder=None):
             if x is not None: exp_seen = True
             if x is not None and x.get('usd') is not None: exp_usd += x['usd']; exp_n += 1
         books.append({'R': R, 'estimate': e, 'adds_usd': e['ceiling_usd'] if e else None})
-    sp = batch_spent(folder) if folder else {'usd': round(sum(actual(R)['usd'] for R in Rs), 6), 'retry_usd': round(sum(actual(R)['retry_usd'] for R in Rs), 6)}
+    sp = batch_spent(folder, rd) if folder else {'usd': round(sum(actual(R)['usd'] for R in Rs), 6), 'retry_usd': round(sum(actual(R)['retry_usd'] for R in Rs), 6)}
     spent = sp['usd']; could = spent + ceiling
     room, fit_n = lim - spent, 0
     for c in sorted(adds):

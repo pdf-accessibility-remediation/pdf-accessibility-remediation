@@ -299,11 +299,11 @@ def state(s, label, nm=None):
                     'tone': tone(row, R, rd), 'language': q,
                     'href': HM.run_href(f'batches/{label}/{b["name"]}'), 'cost': row.get('cost') or 0})
     from . import spend as SP_
-    total = costs.batch(Rs, limits=costs.limits_of(s), credit_read=SP_.credit_read(s), folder=B)   # U8: a fresh read counts; spent: the whole batch's
+    total = costs.batch(Rs, limits=costs.limits_of(s), credit_read=SP_.credit_read(s), folder=B, rd=rd)   # U8: a fresh read counts; spent: the whole batch's
     spent = total['spent_usd']
     active = batch_job and batch_job['status'] in jobs.ACTIVE
     shown = (batch_job or {}).get('shown') or {}             # what the click agreed to, frozen: finished books drop out of a live sum
-    cost_words = costs.shown_words(B, shown, so_far=bool(active))
+    cost_words = costs.shown_words(B, shown, so_far=bool(active), rd=rd)
     needs = batch_job and batch_job['status'] == 'needs-spend'
     finished = sum(1 for x in out if x['finished'])
     summary = os.path.isfile(os.path.join(B, 'summary.html'))

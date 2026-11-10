@@ -103,7 +103,7 @@ def row_of(s, run, R, rd=None, nm=None):
     if not when:
         try: when = datetime.datetime.fromtimestamp(os.path.getmtime(R)).isoformat(timespec='seconds')
         except OSError: when = ''
-    a = costs.actual(R)
+    a = costs.actual(R, rec)                                # the record read above: once (#93)
     parts = run.split('/')
     pages = ((rec or {}).get('document') or {}).get('pages') or (intake.get('original') or {}).get('pages')
     if not pages and sha: pages = (nm.cache() if nm else (_load(os.path.join(s['jobs'], 'books-cache.json')) or {})).get(sha, {}).get('pages')
