@@ -32,6 +32,13 @@ from lib import dates as D
 
 ACTIVE = ('queued', 'running')
 CHANGING = ACTIVE + ('needs-spend', 'interrupted')   # every status a job can still leave (the home page's lighter check, #93)
+
+def can_change(j):
+    """Can this job's status still change? Queued, running and needs-spend can; an interrupted one only while it may be
+    alive after all (no exit recorded and a process group: tick's fix-up, or its wrapper's own end), so jobs interrupted for
+    good (the app stopped, the machine restarted) drop out of the home page's check (review 04 L-B)."""
+    st = j.get('status')
+    return st in ('queued', 'running', 'needs-spend') or (st == 'interrupted' and j.get('exit') is None and bool(j.get('pgid')))
 PAID_KINDS = ('spend', 'batch')                     # the only jobs that may send to the AI service (03 §2)
 
 def related(a, b):

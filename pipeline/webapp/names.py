@@ -130,14 +130,14 @@ def snapshot(s):
 
 class Snapshot:
     """One request's reads (#93, fix 2): book-names.json, run-names.json and books-cache.json, and the app's job files, each
-    read at most once, on first use, with the same rules as the module functions below. A page makes one, passes it down
+    read at most once, on first use (and Tesseract's languages asked once), with the same rules as the module functions below. A page makes one, passes it down
     (`nm=`), and drops it with the request: it is never kept in the settings or in a module, so a rename shows on the next
     page, and the single uses (a button's answer, a form) read fresh every time. A rename made while a page is being drawn
     shows in all of its rows or in none of them.
 
     books-cache.json is written through (review 02 M1): books.meta() reads it here and, when it writes a missing Title,
     updates this copy too, so a row drawn after the PDF list sees the Title the list just wrote."""
-    def __init__(self, s): self.s, self._books, self._runs, self._cache, self._jobs = s, None, None, None, None
+    def __init__(self, s): self.s, self._books, self._runs, self._cache, self._jobs, self._langs = s, None, None, None, None, None
     def books(self):
         if self._books is None: self._books = _load(_p(self.s, 'book-names.json'))
         return self._books
@@ -157,6 +157,12 @@ class Snapshot:
             from . import jobs as JB
             self._jobs = JB.all_jobs(self.s['jobs'])
         return self._jobs
+    def langs(self):
+        """Tesseract's installed languages (books.installed_langs: one `tesseract --list-langs`), asked once (review 04 M-A)."""
+        if self._langs is None:
+            from . import books as BK
+            self._langs = BK.installed_langs(self.s)
+        return self._langs
     def book_name(self, sha, file, title=None):
         if sha:
             e = self.books().get(sha)

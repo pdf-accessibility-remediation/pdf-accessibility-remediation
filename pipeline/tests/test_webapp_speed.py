@@ -174,7 +174,7 @@ def test_a_listing_that_writes_a_title_is_seen_by_the_rows_after_it(setup):
     R = setup / 'runs' / 'bk' / 'l1'; R.mkdir(parents=True)
     (R / 'record.json').write_text(json.dumps({'document': {'file': 'a1.pdf', 'sha256': sha['a1.pdf']}, 'run': {'started': '2026-11-01T10:00:00'}}))
     h = HM.page(s)                                       # a0 (no Title) makes the snapshot read the cache before a1's Title is written
-    assert h.count('The Written Title') >= 2, h          # the PDF list's row and the run's row
+    assert '<span class="hm-run">l1</span><span class="hm-book">The Written Title</span>' in h, h   # the run's own row (review 04 L-A)
     nm = NM.snapshot(s); assert nm.book_name(sha['a1.pdf'], 'a1.pdf') == 'The Written Title' == NM.book_name(s, sha['a1.pdf'], 'a1.pdf')
 
 def test_a_snapshot_answers_as_the_module_functions(setup):
@@ -193,6 +193,31 @@ def test_snapshots_are_never_kept(setup):
     NM.set_run_name(s, 'bk/l1', 'Renamed Run')
     assert 'Renamed Run' in HM.page(s)
     assert not any(isinstance(v, NM.Snapshot) for m in (NM, HM, BT, RN, BK, W) for v in vars(m).values())
+
+def test_a_batch_request_asks_tesseract_for_its_languages_at_most_once(setup, monkeypatch):
+    """Review 04 M-A: a batch of estimated, not-started books (each unfinished and idle) asked `tesseract --list-langs`
+    twice per book on every page and poll; now once per request when a book asks its language, and not at all when none
+    does."""
+    from webapp import checks
+    s = settings(setup)
+    def book(label, n, cjk=False):
+        R = setup / 'runs' / 'batches' / label / n; (R / '_intake').mkdir(parents=True)
+        ij = {'status': 'stopped', 'flags': [{'what': 'OCR language needed', 'pages': [2]}], 'plan': {'ocr_pages': [2]}} if cjk else {'status': 'done'}
+        (R / '_intake' / 'intake.json').write_text(json.dumps(dict(ij, original={'file': f'{n}.pdf', 'sha256': n[0] * 64})))
+        (R / 'run.json').write_text(json.dumps({'estimate': {'worst_case_total_usd': 0.5}, 'started': '2026-11-05T10:00:00'}))
+    for n in ('a', 'b', 'c'): book('est', n); book('est2', n)
+    book('est', 'd', cjk=True)                                        # one book asks its language (intake's CJK stop)
+    asked = []; real = checks._run
+    monkeypatch.setattr(checks, '_run', lambda argv, *a, **k: (asked.append(argv), real(argv, *a, **k))[1] if argv[0] == 'tesseract' else real(argv, *a, **k))
+    with served(s) as port:
+        for path in ('/batch/est/', '/api/batch/est', '/run/batches/est/a/'):
+            asked.clear(); assert get(port, path)[0] == 200
+            assert len(asked) == 1, (path, len(asked))                # was 2 per book: 8
+        for path in ('/batch/est2/', '/api/batch/est2'):
+            asked.clear(); assert get(port, path)[0] == 200
+            assert asked == [], path                                  # no book asks a language: never asked
+    st = BT.state(s, 'est')
+    assert [b['language'] is not None for b in st['books']] == [False, False, False, True]
 
 # ------------------------------------------------------------------ fix 3: the home page's lighter check (H1)
 CAN_CHANGE = ('queued', 'running', 'needs-spend', 'interrupted')
@@ -218,15 +243,17 @@ def test_the_lighter_check_announces_what_todays_check_announces(setup):
     s = settings(setup)
     old = mk(s, 1, 'spend', 'a/r0', 'done', exit=0, paid=True)
     A = mk(s, 2, 'estimate', 'a/r1', 'queued'); B = mk(s, 3, 'spend', 'a/r2', 'running', paid=True)
-    C = mk(s, 4, 'spend', 'a/r3', 'needs-spend', paid=True); D = mk(s, 5, 'apply', 'a/r4', 'interrupted', ended='2026-11-10T09:00:00')
-    E = mk(s, 6, 'apply', 'a/r5', 'interrupted', ended='2026-11-10T09:00:00')
+    C = mk(s, 4, 'spend', 'a/r3', 'needs-spend', paid=True); D = mk(s, 5, 'apply', 'a/r4', 'interrupted', ended='2026-11-10T09:00:00', pgid=4242)
+    E = mk(s, 6, 'apply', 'a/r5', 'interrupted', ended='2026-11-10T09:00:00', pgid=4243)   # may be alive after all: no exit, a group
+    mk(s, 8, 'estimate', 'a/r8', 'interrupted', ended='2026-11-10T09:00:00')                 # interrupted for good (no process group)
+    mk(s, 9, 'apply', 'a/r9', 'interrupted', ended='2026-11-10T09:00:00', exit=1, pgid=4244)   # and with an exit recorded
     with served(s) as port:
         full, light = Page(port, False), Page(port, True)
         steps = [lambda: None,
                  lambda: (setj(s, A, status='done', exit=0, ended='2026-11-10T10:00:00'), setj(s, B, status='failed', exit=1, ended='2026-11-10T10:00:00')),
                  lambda: (setj(s, C, status='superseded', note='dismissed', superseded_by='dismissed', ended='2026-11-10T10:01:00'),
                           setj(s, D, status='done', exit=0, ended='2026-11-10T10:01:00'), setj(s, E, status='running', ended=None)),
-                 lambda: (setj(s, E, status='done', exit=0, ended='2026-11-10T10:02:00'), mk(s, 7, 'spend', 'a/r6', 'needs-spend', paid=True)),
+                 lambda: (setj(s, E, status='done', exit=0, ended='2026-11-10T10:02:00'), mk(s, 10, 'spend', 'a/r6', 'needs-spend', paid=True)),
                  lambda: setj(s, jobs.all_jobs(s['jobs'])[-1], status='superseded', note='dismissed', ended='2026-11-10T10:03:00')]
         got = []
         for f in steps:
@@ -239,17 +266,20 @@ def test_the_lighter_check_announces_what_todays_check_announces(setup):
     assert old['id'] not in [x for st in got for x, _ in st]
 
 def test_the_lighter_answer(setup):
-    """Its views equal the full list's, newest first; a done job not in seen is left out; seen is checked (job-id
+    """Its views equal the full list's, newest first; a done job not in seen is left out, and so is an interrupted job that
+    can't change any more (an exit recorded, or no process group: review 04 L-B) unless seen names it; seen is checked (job-id
     characters, duplicates once, unknown ids ignored, at most 500 ids, the parameter cut at 500 × 40 characters before it
     is split); ?active=1 wins over ?limit=."""
     s = settings(setup)
     d1 = mk(s, 1, 'estimate', 'a/r1', 'done', exit=0); d2 = mk(s, 2, 'estimate', 'a/r2', 'failed', exit=1)
     q = mk(s, 3, 'estimate', 'a/r3', 'queued'); r = mk(s, 4, 'spend', 'a/r4', 'running', paid=True)
-    n = mk(s, 5, 'spend', 'a/r5', 'needs-spend', paid=True); i = mk(s, 6, 'estimate', 'a/r6', 'interrupted')
+    n = mk(s, 5, 'spend', 'a/r5', 'needs-spend', paid=True); i = mk(s, 6, 'estimate', 'a/r6', 'interrupted', pgid=4242)
+    gone = mk(s, 7, 'estimate', 'a/r7', 'interrupted'); ended = mk(s, 8, 'estimate', 'a/r8', 'interrupted', exit=1, pgid=4243)   # can't change (L-B)
     ids = lambda js: [j['id'] for j in js]
     with served(s) as port:
         full = {v['id']: v for v in jget(port, '/api/jobs?limit=200')}
         assert jget(port, '/api/jobs?active=1') == [full[x] for x in (i['id'], n['id'], r['id'], q['id'])]          # newest first
+        assert ids(jget(port, f'/api/jobs?active=1&seen={gone["id"]},{ended["id"]}')) == [ended['id'], gone['id'], i['id'], n['id'], r['id'], q['id']]
         assert ids(jget(port, '/api/jobs?active=1&seen=' + d1['id'])) == [i['id'], n['id'], r['id'], q['id'], d1['id']]
         assert ids(jget(port, '/api/jobs?active=1&limit=1')) == [i['id'], n['id'], r['id'], q['id']]                # active wins
         bad = ','.join(['../x', '<b>', 'a b', 'x' * 65, '20991231-000000-000000-nope', d2['id'], d2['id']])

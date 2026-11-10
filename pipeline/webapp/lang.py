@@ -69,18 +69,21 @@ def asks(R):
     lj = _load(os.path.join(R, '_intake', 'languages.json')) or {}
     return 'first' if lj.get('needs_ocr') and lj.get('ask', True) else None       # ask: the language matters (intake.py)
 
-def question(s, R, js=None):
+def question(s, R, js=None, nm=None):
     """The question for a run folder, or None: {kind: first | cjk, pages, choices: [[value, name]], suggested, evidence}.
-    js: the run's jobs (oldest first); a 'first' question needs its latest estimate to have stopped to ask (exit 4)."""
+    js: the run's jobs (oldest first); a 'first' question needs its latest estimate to have stopped to ask (exit 4).
+    nm: the request's names snapshot, which asks Tesseract for its languages once per request (#93, review 04 M-A); the
+    languages are asked only for a question there is (most runs have none), never before the checks that return None."""
+    def choices_(): return [list(c) for c in BK.ocr_choices(nm.langs() if nm else BK.installed_langs(s))]
     if js is None:
         from . import jobs
         Ra = os.path.abspath(R)
         js = [j for j in jobs.all_jobs(s['jobs']) if j.get('dir') == Ra]
     ij = _load(os.path.join(R, '_intake', 'intake.json'))
-    choices = [list(c) for c in BK.ocr_choices(BK.installed_langs(s))]
     if ij:
         f = next((f for f in ij.get('flags') or [] if f.get('what') == 'OCR language needed'), None)
         if ij.get('status') != 'stopped' or not f: return None
+        choices = choices_()
         cj = [c for c in choices if any(x in c[0] for x in CJK)]
         pages = f.get('pages') or []
         return {'kind': 'cjk', 'pages': len((ij.get('plan') or {}).get('ocr_pages') or []) or None, 'choices': cj or choices, 'suggested': None,
@@ -91,7 +94,7 @@ def question(s, R, js=None):
     if not lj or not lj.get('needs_ocr') or not lj.get('ask', True): return None
     est = [j for j in js if j.get('kind') in ('estimate', 'batch-estimate')]
     if not est or not stopped_to_ask(est[-1]): return None            # answered since, and that estimate failed otherwise
-    sug = lj.get('suggestion')
+    sug = lj.get('suggestion'); choices = choices_()
     return {'kind': 'first', 'pages': lj.get('pages_to_ocr'), 'choices': choices,
             'suggested': sug if sug in [c[0] for c in choices] else None, 'evidence': evidence(lj)}
 

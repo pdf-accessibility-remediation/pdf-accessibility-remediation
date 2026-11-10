@@ -136,12 +136,12 @@ def view_context(s, nm=None):
             'running': [x for x in al if x['status'] == 'running' and x.get('counted', True)]}
 
 def changing_jobs(al, seen=''):
-    """The home page's lighter check (#93, fix 3; review 02 H1): every job whose status can still change (jobs.CHANGING),
+    """The home page's lighter check (#93, fix 3; review 02 H1): every job whose status can still change (jobs.can_change),
     and every job named in seen (the ids the page last saw in one of those statuses), in the jobs' own order. seen is cut
     at SEEN_MAX × 40 characters before it is split, only its first SEEN_MAX ids are read, each must be job-id characters,
     and an id is only compared with the jobs' own (never joined onto a path)."""
     want = {x for x in str(seen or '')[:SEEN_MAX * 40].split(',')[:SEEN_MAX] if JOB_ID.fullmatch(x)}
-    return [j for j in al if j['status'] in jobs.CHANGING or j['id'] in want]
+    return [j for j in al if jobs.can_change(j) or j['id'] in want]
 
 def job_view(s, j, with_text=False, offset=0, ctx=None):
     """A job for the page: no environment, no log lines and no command (the page shows none: the log stays on disk, at

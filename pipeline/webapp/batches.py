@@ -232,7 +232,7 @@ def _book_status(s, label, b, R, jl, batch_job, rd=None, nm=None):
         try: st = logs.now_step('apply', logs.steps(open(lp, encoding='utf-8', errors='replace').read()))
         except OSError: st = None
         row['words'] = 'Running' + (f': {st["words"][:1].upper()}{st["words"][1:]}' if st else '') if os.path.exists(lp) or st else row['words']
-    elif not row["finished"] and LG.question(s, R, mine):     # D4: its language is asked on its row
+    elif not row["finished"] and LG.question(s, R, mine, nm):     # D4: its language is asked on its row
         row['status'] = row['words'] = 'Waiting for a Language'
     elif mine and mine[-1]['status'] in ('failed', 'interrupted') and not row['finished']:
         it = (rd(os.path.join(R, '_intake', 'intake.json')) or {}).get('status')
@@ -287,7 +287,7 @@ def state(s, label, nm=None):
         stopped = (rd(os.path.join(R, '_intake', 'intake.json')) or {}).get('status') == 'stopped'
         mine = [j for j in jl if j['run'] == f'batches/{label}/{b["name"]}']
         if mine and mine[-1]['status'] in jobs.ACTIVE and mine[-1]['kind'] == 'batch-estimate': est_active = True
-        q = None if row['finished'] or (mine and mine[-1]['status'] in jobs.ACTIVE) else LG.question(s, R, mine)
+        q = None if row['finished'] or (mine and mine[-1]['status'] in jobs.ACTIVE) else LG.question(s, R, mine, nm)
         if os.path.isfile(os.path.join(R, 'workorder.ai.json')) and not row['finished']: reviewing.append(b['name'])   # D2a: never sent again
         elif q: asking.append(b['name'])                                         # D4: waits for its language
         elif stopped and not row['finished']: flagged.append(b['name'])
