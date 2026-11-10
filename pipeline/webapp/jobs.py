@@ -31,6 +31,7 @@ from . import logs, config
 from lib import dates as D
 
 ACTIVE = ('queued', 'running')
+CHANGING = ACTIVE + ('needs-spend', 'interrupted')   # every status a job can still leave (the home page's lighter check, #93)
 PAID_KINDS = ('spend', 'batch')                     # the only jobs that may send to the AI service (03 §2)
 
 def related(a, b):
@@ -333,16 +334,19 @@ def position(J, jid):
     q = [j['id'] for j in all_jobs(J) if j['status'] == 'queued']
     return q.index(jid) + 1 if jid in q else None
 
-def read_log(J, jid, offset=0, limit=256 * 1024):
+def read_log(J, jid, offset=0, limit=256 * 1024, job=None):
     """(text, next offset) from byte offset; whole lines only while the job may still write. jid is a loaded job's own id
-    (from the disk, never from a request: /api/job/<id> finds the job with load() first)."""
+    (from the disk, never from a request: /api/job/<id> finds the job with load() first). job: the job as the caller
+    already read it (the jobs check, #93), instead of loading it again after the log is read; its status is then the one
+    read just before the log, so only a job that went from interrupted back to running in between can show an unfinished
+    last line, for one check (review 02 L5)."""
     lp = os.path.realpath(log_path(J, jid))
     if not lp.startswith(os.path.realpath(folder(J)) + os.sep): return '', offset
     try:
         with open(lp, 'rb') as f:
             f.seek(max(0, int(offset))); b = f.read(limit)
     except OSError: return '', offset
-    job = load(J, jid) or {}
+    if job is None: job = load(J, jid) or {}
     if job.get('status') in ACTIVE and b and not b.endswith(b'\n'):
         cut = b.rfind(b'\n'); b = b[:cut + 1] if cut >= 0 else b''
     try: b.decode('utf-8')

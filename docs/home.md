@@ -45,7 +45,9 @@ the review page's "seen" cards use the same blue). The status pills keep their c
 
 - **Runs in Progress:** shown only while a job runs or waits to start: each with its PDF, its run name, its step or
   "Waiting to Start", and **Open**, kept current while the page is open. A job that ends is announced; focus never moves
-  by itself.
+  by itself. To keep this light as the jobs add up (#93), the page asks the app only about jobs whose status can still
+  change (waiting, running, waiting for a new estimate, or stopped without finishing) and about the ones it last saw so
+  (`/api/jobs?active=1&seen=…`): every 2 seconds while a job runs, else every 5, as before.
 - **Upload a PDF:** a drop zone (dashed border, an upload icon): **Choose PDFs**, "or drag PDFs here" (S1), and "A copy goes
   into the app's folder; the file you choose is not changed." Several PDFs at once, chosen or dropped; **Choose PDFs** is
   the keyboard path. Under it, the PDFs added this way, each with its pages and size, **New Run**, a "⋯" menu (**Edit

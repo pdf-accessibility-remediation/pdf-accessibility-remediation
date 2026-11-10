@@ -121,17 +121,42 @@ def live_review(s, run):
         if j['run'] == run and j['kind'] in jobs.PERSON and j['status'] == 'running': return j
     return None
 
-def job_view(s, j, with_text=False, offset=0):
+SEEN_MAX = 500                                          # ids a lighter check reads (the parameter is cut at 40 characters each)
+JOB_ID = re.compile(r'[0-9A-Za-z_-]{1,64}')
+
+def view_context(s, nm=None):
+    """One answer's view of the queue (#93, fix 1): the jobs read once (through the request's names snapshot nm), each queued
+    job's place in line (1-based, in the jobs folder's order, as jobs.position() and tick() count it: every job, not only
+    the ones the answer shows), the running batch and the running counted jobs (what a queued job waits for)."""
+    from . import names as NM
+    nm = nm or NM.snapshot(s); al = nm.jobs()
+    q = [j['id'] for j in al if j['status'] == 'queued']
+    return {'nm': nm, 'pos': {jid: i + 1 for i, jid in enumerate(q)},
+            'batch': next((x for x in al if x['status'] == 'running' and x['kind'] == 'batch'), None),
+            'running': [x for x in al if x['status'] == 'running' and x.get('counted', True)]}
+
+def changing_jobs(al, seen=''):
+    """The home page's lighter check (#93, fix 3; review 02 H1): every job whose status can still change (jobs.CHANGING),
+    and every job named in seen (the ids the page last saw in one of those statuses), in the jobs' own order. seen is cut
+    at SEEN_MAX × 40 characters before it is split, only its first SEEN_MAX ids are read, each must be job-id characters,
+    and an id is only compared with the jobs' own (never joined onto a path)."""
+    want = {x for x in str(seen or '')[:SEEN_MAX * 40].split(',')[:SEEN_MAX] if JOB_ID.fullmatch(x)}
+    return [j for j in al if j['status'] in jobs.CHANGING or j['id'] in want]
+
+def job_view(s, j, with_text=False, offset=0, ctx=None):
     """A job for the page: no environment, no log lines and no command (the page shows none: the log stays on disk, at
-    `log`); its steps in plain words, the step running now, its title (what happened), and for a failure the reason."""
-    text = jobs.read_log(s['jobs'], j['id'])[0]
+    `log`); its steps in plain words, the step running now, its title (what happened), and for a failure the reason.
+    ctx: the answer's view_context() (the jobs check), so the queue and the names are read once for every job in it."""
+    from . import names as NM
+    nm = ctx['nm'] if ctx else NM.snapshot(s)
+    text = jobs.read_log(s['jobs'], j['id'], job=j if ctx else None)[0]
     R = jobs.run_dir(j, s['runs'])
     v = {k: j.get(k) for k in ('id', 'kind', 'run', 'status', 'created', 'started', 'ended', 'exit', 'url', 'paid', 'after', 'then_job', 'note', 'what', 'first',
                                'book_name', 'run_name')}
     if j['kind'] in ('estimate', 'batch-estimate') and j['status'] == 'failed' and j.get('exit') == 4:
         v['status'] = 'done'                                       # D4: stopped to ask the language (run_api.sh exit 4), not a failure
     steps = logs.steps(text)
-    v.update(position=jobs.position(s['jobs'], j['id']), steps=[dict(x, words=logs.plain(x['label'])) for x in steps], outcome=logs.outcome(text),
+    v.update(position=ctx['pos'].get(j['id']) if ctx else jobs.position(s['jobs'], j['id']), steps=[dict(x, words=logs.plain(x['label'])) for x in steps], outcome=logs.outcome(text),
              log=shown_path(jobs.log_path(s['jobs'], j['id'])))
     if j['kind'] in jobs.PERSON and j['status'] == 'running':      # the OCR-only page has no Finish
         v['past_finish'] = j['kind'] == 'review' and jobs.review_past_finish(R, j.get('started'))
@@ -139,16 +164,17 @@ def job_view(s, j, with_text=False, offset=0):
         v['interrupted'] = after_interrupt(R, j)
     v['step'] = logs.now_step(j['kind'], steps) if j['status'] == 'running' else None
     v['title'] = title(R, j, v); v['action'] = action(j); v['result'] = result(R, j, v)
-    from . import names as NM
-    if j.get('book_sha'): v['book_name'] = NM.book_name(s, j['book_sha'], j.get('book_file'))
-    elif j['kind'] == 'batch': v['book_name'] = 'Batch ' + NM.shown_run(s, j['run'])
-    v['run_name'] = NM.shown_run(s, j['run'])
+    if j.get('book_sha'): v['book_name'] = nm.book_name(j['book_sha'], j.get('book_file'))
+    elif j['kind'] == 'batch': v['book_name'] = 'Batch ' + nm.shown_run(j['run'])
+    v['run_name'] = nm.shown_run(j['run'])
     if j['status'] == 'queued':                                    # what it waits for, by its plain name (Patrick, 2026-11-06)
-        al = jobs.all_jobs(s['jobs'])                              # a batch runs alone (D1): a run waits for it by name;
-        cur = next((x for x in al if x['status'] == 'running' and x['kind'] == 'batch'), None) or \
-              next((x for x in al if x['status'] == 'running' and x.get('counted', True) and jobs.related(x['run'], j['run'])), None)
+        if ctx: cur = ctx['batch'] or next((x for x in ctx['running'] if jobs.related(x['run'], j['run'])), None)
+        else:
+            al = nm.jobs()                                         # a batch runs alone (D1): a run waits for it by name;
+            cur = next((x for x in al if x['status'] == 'running' and x['kind'] == 'batch'), None) or \
+                  next((x for x in al if x['status'] == 'running' and x.get('counted', True) and jobs.related(x['run'], j['run'])), None)
         if cur: v['waiting_for'] = ('the batch ' if cur['kind'] == 'batch' or cur['run'].startswith('batches/') else 'the run ') + \
-                                   f'"{NM.shown_run(s, cur["run"])}"'      #   else its place in line (3 runs at once)
+                                   f'"{nm.shown_run(cur["run"])}"'      #   else its place in line (3 runs at once)
     ds = designed_stop(j)                                          # U4: a designed stop is never Failed
     if ds: v['status'] = 'done' if ds == 'asked' else 'stopped'
     v['reason'] = reason(v) if v['status'] in ('failed', 'interrupted') else None
@@ -376,24 +402,27 @@ def state(s, run, R):
 # ------------------------------------------------------------------ a run started from the home page, before any result (#45)
 PENDING_MARKS = ('run.json', os.path.join('_intake', 'intake.json'), os.path.join('_intake', 'languages.json'), os.path.join('_audit', 'digest.json'))
 
-def pending(s, R):
+def pending(s, R, nm=None):
     """A run folder with no result yet and not stopped for its review: estimating, estimate ready, running, stopped or
-    failed. It holds one of run_api.sh's own files, or an app job names it (a run queued a moment ago is an empty folder)."""
+    failed. It holds one of run_api.sh's own files, or an app job names it (a run queued a moment ago is an empty folder).
+    nm: the request's names snapshot (its job list: the page's path checks each parent folder, #93)."""
     if os.path.isfile(os.path.join(R, 'record.json')) or waiting(R): return False
     if any(os.path.exists(os.path.join(R, m)) for m in PENDING_MARKS): return True
     R = os.path.abspath(R)
-    return any(j.get('dir') == R and j['kind'] not in ('batch', 'summary') for j in jobs.all_jobs(s['jobs']))   # a batch's own jobs name its folder
+    return any(j.get('dir') == R and j['kind'] not in ('batch', 'summary') for j in (nm.jobs() if nm else jobs.all_jobs(s['jobs'])))   # a batch's own jobs name its folder
 
-def book_of(s, run, R, js=None):
-    """(display name, file name) of a run's book: from the app's job, else intake's record or the estimate's source."""
+def book_of(s, run, R, js=None, nm=None):
+    """(display name, file name) of a run's book: from the app's job, else intake's record or the estimate's source.
+    js: the run's jobs; nm: the request's names snapshot (its job list too)."""
     from . import books as BK
-    for j in reversed(js if js is not None else [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]):
+    if js is None: js = [j for j in (nm.jobs() if nm else jobs.all_jobs(s['jobs'])) if j['run'] == run]
+    for j in reversed(js):
         if j.get('book_sha') or j.get('book_name'):                 # resolved now: a rename shows at once (not the job's snapshot)
-            return (BK.name_of_sha(s, j.get('book_sha'), j.get('book_file')) if j.get('book_sha') else j['book_name']), BK.shown_file(j.get('book_file') or '')
+            return (BK.name_of_sha(s, j.get('book_sha'), j.get('book_file'), nm) if j.get('book_sha') else j['book_name']), BK.shown_file(j.get('book_file') or '')
     o = (load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or (load(os.path.join(R, 'record.json')) or {}).get('document') \
         or (load(os.path.join(R, 'run.json')) or {}).get('source') or {}
     f = BK.shown_file(o.get('file') or '')
-    return (BK.name_of_sha(s, o.get('sha256'), f) if o.get('sha256') else None) or BK.stem_name(f or run.split('/')[-1]), f
+    return (BK.name_of_sha(s, o.get('sha256'), f, nm) if o.get('sha256') else None) or BK.stem_name(f or run.split('/')[-1]), f
 
 MODEL_NAMES = {'gpt-4o': 'GPT-4o', 'gpt-4o-mini': 'GPT-4o mini', 'gpt-4.1': 'GPT-4.1', 'gpt-4.1-mini': 'GPT-4.1 mini',
                'o3': 'OpenAI o3', 'o3-mini': 'OpenAI o3-mini', 'o4-mini': 'OpenAI o4-mini'}   # names the rule below reads badly (V2)
@@ -409,7 +438,7 @@ def model_words(m):
     up = {'gpt': 'GPT', 'ai': 'AI', 'xl': 'XL'}
     return ' '.join(up.get(x.lower(), x if x[:1].isdigit() else x[:1].upper() + x[1:]) for x in w if x)
 
-def details(s, run, R, pages=None):
+def details(s, run, R, pages=None, nm=None):
     """The run page header's line (Patrick's test, 2026-11-07, Q6, R5): "mm · 321 pages · Run on November 6, 2026,
     at 9:29 PM · AI Model: Claude Sonnet 5.5 · AI Cost: $0.27 (expected $0.31, max estimated $0.67)", in plain words; a part with nothing
     recorded is left out, and "AI" and "AI Cost" only once an AI reply exists (a saved one: "AI Cost: none (a saved reply
@@ -422,7 +451,7 @@ def details(s, run, R, pages=None):
     try: pages = int(str(pages).replace(',', '')) if pages else None
     except ValueError: pages = None
     when = ((rec or {}).get('run') or {}).get('started') or runj.get('started')
-    out = [NM.shown_run(s, run)] + ([f'{pages:,} page{"" if pages == 1 else "s"}'] if pages else []) + \
+    out = [(nm or NM.snapshot(s)).shown_run(run)] + ([f'{pages:,} page{"" if pages == 1 else "s"}'] if pages else []) + \
           ([f'Run on {D.when(when)}'] if when and D.parse(when) else [])
     called = bool(rec) or os.path.isfile(os.path.join(R, 'workorder.ai.json')) or bool(runj.get('usage') or runj.get('response_from'))
     if called:

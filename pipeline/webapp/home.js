@@ -143,6 +143,9 @@ if (ws) {
 
 // ---------------------------------------------------------------- Runs in Progress
 const seen = {}; let primed = false;
+// #93: the app is asked only about jobs whose status can still change, and about the ones last seen in one of these
+// statuses (review 02 H1: a dismissed paid job, an interrupted job that finishes), so an end is announced as before
+const CAN_CHANGE = ['queued', 'running', 'needs-spend', 'interrupted'];
 function words(j) {
   if (j.status === 'queued') return 'Waiting to Start' + (j.waiting_for ? ': it starts when ' + j.waiting_for + ' ends' : j.position ? ' (' + j.position + ' in line)' : '');
   if (j.status === 'needs-spend') return 'The app restarted before the AI request started: open it to get a new estimate';
@@ -152,7 +155,8 @@ function words(j) {
 function href(j) { return j.kind === 'batch' || j.kind === 'batch-estimate' ? '/batch/' + encodeURIComponent(j.run.split('/')[1]) + '/' : '/run/' + enc(j.run) + '/'; }
 async function poll() {
   try {
-    const r = await fetch('/api/jobs?limit=200', { cache: 'no-store' }); const js = await r.json();
+    const ids = Object.keys(seen).filter(i => CAN_CHANGE.includes(seen[i])).slice(-500);
+    const r = await fetch('/api/jobs?active=1&seen=' + ids.map(encodeURIComponent).join(','), { cache: 'no-store' }); const js = await r.json();
     const act = js.filter(j => j.status === 'queued' || j.status === 'running');
     js.forEach(j => {
       const k = j.status, was = seen[j.id]; seen[j.id] = k;

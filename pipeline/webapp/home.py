@@ -72,11 +72,13 @@ def _status_of_record(R, rec):
         except Exception: pass
     return REL.NOT_READY, REL.NOT_READY
 
-def row_of(s, run, R):
-    """One run's row (without the jobs laid over it)."""
-    rec = _load(os.path.join(R, 'record.json'))
-    intake = _load(os.path.join(R, '_intake', 'intake.json')) or {}
-    runj = _load(os.path.join(R, 'run.json')) or {}
+def row_of(s, run, R, rd=None, nm=None):
+    """One run's row (without the jobs laid over it). rd: the request's reader (one read of each file per request: a
+    batch page's, #93); nm: the request's names snapshot."""
+    rd = rd or _load
+    rec = rd(os.path.join(R, 'record.json'))
+    intake = rd(os.path.join(R, '_intake', 'intake.json')) or {}
+    runj = rd(os.path.join(R, 'run.json')) or {}
     if rec:
         doc = rec.get('document') or {}
         file, sha = doc.get('file') or '', doc.get('sha256')
@@ -84,7 +86,7 @@ def row_of(s, run, R):
         when = (rec.get('run') or {}).get('started') or rec.get('generated') or ''
     else:
         o = intake.get('original') or {}
-        stop = _load(os.path.join(R, 'review_stop.json')) or {}
+        stop = rd(os.path.join(R, 'review_stop.json')) or {}
         file, sha = o.get('file') or os.path.basename(stop.get('src') or '') or (runj.get('source') or {}).get('file') or '', o.get('sha256') or (runj.get('source') or {}).get('sha256')
         if not sha and has_source(R):                       # R17: its own PDF says which book it is
             from . import runs as RN
@@ -104,14 +106,26 @@ def row_of(s, run, R):
     a = costs.actual(R)
     parts = run.split('/')
     pages = ((rec or {}).get('document') or {}).get('pages') or (intake.get('original') or {}).get('pages')
-    if not pages and sha: pages = (_load(os.path.join(s['jobs'], 'books-cache.json')) or {}).get(sha, {}).get('pages')
-    return {'run': run, 'lang_kind': None if rec else LG.asks(R), 'sha': sha, 'book': (BK.name_of_sha(s, sha, file) if sha else None) or BK.stem_name(file or parts[-2 if parts[0] != 'batches' else -1]),
+    if not pages and sha: pages = (nm.cache() if nm else (_load(os.path.join(s['jobs'], 'books-cache.json')) or {})).get(sha, {}).get('pages')
+    return {'run': run, 'lang_kind': None if rec else LG.asks(R), 'sha': sha, 'book': (BK.name_of_sha(s, sha, file, nm) if sha else None) or BK.stem_name(file or parts[-2 if parts[0] != 'batches' else -1]),
             'file': BK.shown_file(file) if file else '', 'status': name, 'words': words, 'when': when,
             'cost': a['usd'], 'reused': a['reused'], 'batch': parts[1] if parts[0] == 'batches' else None, 'finished': bool(rec),
             'pages': pages if isinstance(pages, int) else None}
 
-def index(s):
-    """Every run's row (cached by its records' mtimes), newest first, with the app's jobs laid over them, and the batches."""
+def reader():
+    """One request's JSON reader (#93): each file read once, later reads given the same object (never changed by a reader:
+    rows are built from it, never written into it). Made per request and dropped with it, never kept."""
+    memo = {}
+    def rd(p):
+        if p not in memo: memo[p] = _load(p)
+        return memo[p]
+    return rd
+
+def index(s, nm=None):
+    """Every run's row (cached by its records' mtimes), newest first, with the app's jobs laid over them, and the batches.
+    nm: the request's names snapshot (webapp/names.py), which reads each names file and the job files once."""
+    from . import names as NM
+    nm = nm or NM.snapshot(s)
     cp = os.path.join(s['jobs'], 'home-index.json')
     with _lock: cache = _load(cp) or {}
     rows, fresh, dirty = [], {}, False
@@ -119,7 +133,7 @@ def index(s):
         k = key_of(R); c = cache.get(run)
         if c and c.get('key') == k and 'pages' in c['row']: row = c['row']   # a row cached before Q5 has no pages: drawn again
         else:
-            try: row = row_of(s, run, R)
+            try: row = row_of(s, run, R, nm=nm)
             except Exception: continue                      # an unreadable folder is left out, never fails the page
             dirty = True
         fresh[run] = {'key': k, 'row': row}; rows.append(dict(row))
@@ -127,13 +141,12 @@ def index(s):
         with _lock:
             tmp = cp + f'.{os.getpid()}.tmp'
             os.makedirs(os.path.dirname(cp), exist_ok=True); json.dump(fresh, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False); os.replace(tmp, cp)
-    over(s, rows)
-    from . import names as NM
+    over(s, rows, nm)
     for r in rows:                                          # names resolved now: a rename shows at once (Patrick, 2026-11-06)
-        if r.get('sha'): r['book'] = NM.book_name(s, r['sha'], r.get('file'))
-        r['name'] = NM.shown_run(s, r['run'])
+        if r.get('sha'): r['book'] = nm.book_name(r['sha'], r.get('file'))
+        r['name'] = nm.shown_run(r['run'])
     rows.sort(key=lambda r: r['when'] or '', reverse=True)
-    return {'runs': rows, 'batches': batches(s, rows)}
+    return {'runs': rows, 'batches': batches(s, rows, nm)}
 
 _warming = threading.Lock()
 def warm(s, wait=False):
@@ -150,11 +163,12 @@ def warm(s, wait=False):
 ACTIVE_WORDS = {'estimate': 'Estimating', 'spend': 'Running', 'rerun': 'Running', 'replay': 'Running', 'apply': 'Running',
                 'review': 'Waiting for Review', 'pin': 'Running', 'ocr': 'Waiting for Review', 'discard': 'Running', 'batch': 'Running'}
 
-def over(s, rows):
+def over(s, rows, nm=None):
     """The app's jobs laid over the rows: a run with a job queued or running says so; a job's failure the record cannot
-    show (an estimate that stopped) says Failed."""
+    show (an estimate that stopped) says Failed. nm: the request's names snapshot (its job list)."""
+    from . import names as NM
     last = {}
-    for j in jobs.all_jobs(s['jobs']): last[j['run']] = j
+    for j in (nm or NM.snapshot(s)).jobs(): last[j['run']] = j
     for r in rows:
         j = last.get(r['run'])
         if r['status'] == 'Waiting to Start' and not r['finished'] and not (j and j['status'] in jobs.ACTIVE):   # reviewed, not applied
@@ -193,8 +207,10 @@ def pill(g, words=None):
     name = GROUP_NAMES[g]
     return f'<span class="hm-pill hm-g-{g}">{E(name)}</span>' + (f' <span class="hm-st">{E(words)}</span>' if words and words != name else '')
 
-def batches(s, rows):
-    """Every batch folder: its books, state, group, date and cost."""
+def batches(s, rows, nm=None):
+    """Every batch folder: its books, state, group, date and cost. nm: the request's names snapshot (its job list too)."""
+    from . import names as NM
+    nm = nm or NM.snapshot(s); js = nm.jobs()
     BB = os.path.join(s['runs'], 'batches')
     try: labels = sorted(e.name for e in os.scandir(BB) if e.is_dir() and not e.name.startswith('.'))
     except OSError: labels = []
@@ -202,10 +218,9 @@ def batches(s, rows):
     for r in rows:
         if r['batch']: by.setdefault(r['batch'], []).append(r)
     last = {}
-    for j in jobs.all_jobs(s['jobs']):
+    for j in js:
         if j['kind'] == 'batch': last[j['run']] = j
     out = []
-    from . import names as NM
     for lb in labels:
         bs = by.get(lb, [])
         B = os.path.join(BB, lb)
@@ -225,8 +240,8 @@ def batches(s, rows):
         when = meta.get('created') or min((r['when'] for r in bs if r['when']), default='') or ''
         n_books = len(bs) or len(meta.get('books') or [])
         known = [r['pages'] for r in bs if r.get('pages')]
-        out.append({'label': lb, 'name': NM.batch_name(s, lb) or lb, 'books': n_books, 'done': done, 'state': state,
-                    'saved': bool(meta.get('saved')) and not lj and not any(jobs.related(j['run'], f'batches/{lb}') for j in jobs.all_jobs(s['jobs'])),
+        out.append({'label': lb, 'name': nm.batch_name(lb) or lb, 'books': n_books, 'done': done, 'state': state,
+                    'saved': bool(meta.get('saved')) and not lj and not any(jobs.related(j['run'], f'batches/{lb}') for j in js),
                     'group': g, 'when': when, 'cost': round(sum(r['cost'] or 0 for r in bs), 6),
                     'pages': sum(known) if known else None, 'pages_missing': n_books - len(known)})
     out.sort(key=lambda b: b['when'] or '', reverse=True)
@@ -260,9 +275,11 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
     q = (q or '').strip()[:200]
     view = 'batches' if view == 'batches' else 'runs'
     group = group if group in GROUP_NAMES else ''
-    bk = BK.listing(s)                                      # first: it reads each PDF's Title, which the rows' names use
-    idx = index(s)
-    active = any(j['status'] in jobs.ACTIVE for j in jobs.all_jobs(s['jobs']))
+    from . import names as NM
+    nm = NM.snapshot(s)                                     # #93: each names file and the job files read once for the page
+    bk = BK.listing(s, nm)                                  # first: it reads each PDF's Title, which the rows' names use
+    idx = index(s, nm)
+    active = any(j['status'] in jobs.ACTIVE for j in nm.jobs())
     B = ['<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">',
          '<title>PDF Accessibility Remediation</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>',
          '<body class="pp-page hm-page" data-home="1"><a class="skip" href="#main">Skip to the content</a>',
