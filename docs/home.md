@@ -372,7 +372,8 @@ names do, the list starts near the top, and on a wide screen the page's header a
 (R6, S2). **Hide the PDF List** /
 **Show the PDF List (N)**, beside **Home Page**, closes and opens it; the choice is remembered in this browser (a cookie
 and local storage), and the server lays the page out with it, so moving from PDF to PDF doesn't shift the page (D7: the
-panel also keeps its height until it is drawn, the list keeps its scroll place, and pages cross-fade). Below 48em (a
+list keeps its scroll place, set before the page's first frame; pages switch in one step, with no fade:
+[Page changes](app.md#page-changes-in-one-step)). Below 48em (a
 phone, 320 px included) it starts closed, in the page's flow, so nothing scrolls sideways. "Skip to the content" skips it.
 On a PDF's page the list needs only the PDFs' statuses, so the page and its check of the batch (`/api/batch/<label>?nav=1`)
 never build the batch dashboard (review 09, 12a): for a batch made before this month's record format, building it opens

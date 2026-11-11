@@ -197,13 +197,43 @@ The panel follows WCAG 2.1 AA, the project's standard:
 - **In-page links move focus**, so a screen reader's cursor follows: the skip link ("Skip to the content") focuses the page's `<main>`; the report's § and Details links, its page map, and the review page's side list focus their target. Headings, sections and messages focused this way show no outline; the row a Details or § link lands on in the report keeps a thin blue outline (2 px), so a sighted reader sees where it landed. The page map is unchanged.
 - **Messages** (for example "Session 9 is discarded: …" or "The review page is closed. …") have a **×** button named "Dismiss message" (the × itself is hidden from screen readers). Dismissing moves focus to the **Run Actions** heading; any other panel button clears the message too. A message has a neutral box; an error keeps its red border and has the same button.
 - **Announcements:** one polite live region, and only for a step change, a job's start, "the review page is ready", and a job's end. It never reads out log lines.
-- **Focus:** it moves only after your own action. After a click it goes to the new job's heading, or to the refusal message. After an upload it goes to the first new PDF's name box, or to the message when a file failed; a pop-up (New Run, New Batch: T4) takes focus into it and gives it back to its opener when it closes; after a "⋯" menu's dialog or name box closes, back to that "⋯" (Patrick's test, 2026-11-07). After Finish it goes to the apply's heading on the run page; after **Show the New Result**, to "Current Result". When a job ends in the background it is announced ("New result ready" when an apply has made one), and focus stays where it is. One exception (Patrick, 2026-11-05): when a run started with **Start Remediation** stops for review, focus moves to **Open the Review Page** only when it is still where the page put it after the click and no key or click has happened since ([The home page](home.md#a-single-run)). The panel checks the run every second while a job runs or a review is open (every 5 s otherwise) and is redrawn only when what it shows changed, so a review page saving its draft never replaces the buttons under the mouse or a text selection. Its first answer comes with the page (#93, Patrick's test of the app): a JSON data block (`pp-first`: what `/api/run/<run>` and `/api/setup` return), so **Run Actions** and the evaluation strip are drawn on first load with no "Loading…"; the panel's script is loaded in the
-page's head and holds the page's first frame until it has run (`blocking="render"`, a Chrome and Edge feature; other
-browsers run it as before, after the page is read), so on a long report the page never appears, or starts its fade,
-without **Run Actions** (review 09, 12c); the page and its panel read the names files and the job files once together, and so does each later `/api/run/<run>` answer.
+- **Focus:** it moves only after your own action. After a click it goes to the new job's heading, or to the refusal message. After an upload it goes to the first new PDF's name box, or to the message when a file failed; a pop-up (New Run, New Batch: T4) takes focus into it and gives it back to its opener when it closes; after a "⋯" menu's dialog or name box closes, back to that "⋯" (Patrick's test, 2026-11-07). After Finish it goes to the apply's heading on the run page; after **Show the New Result**, to "Current Result". When a job ends in the background it is announced ("New result ready" when an apply has made one), and focus stays where it is. One exception (Patrick, 2026-11-05): when a run started with **Start Remediation** stops for review, focus moves to **Open the Review Page** only when it is still where the page put it after the click and no key or click has happened since ([The home page](home.md#a-single-run)). The panel checks the run every second while a job runs or a review is open (every 5 s otherwise) and is redrawn only when what it shows changed, so a review page saving its draft never replaces the buttons under the mouse or a text selection. Its first answer comes with the page (#93, Patrick's test of the app): a JSON data block (`pp-first`: what `/api/run/<run>` and `/api/setup` return), so **Run Actions** and the evaluation strip are drawn on first load with no "Loading…"; the page is drawn in one step (see
+[Page changes](#page-changes-in-one-step)); the page and its panel read the names files and the job files once together, and so does each later `/api/run/<run>` answer.
 - **Going on by itself:** only one thing does, the review page after your own **Review Again**, and only within 30 seconds of the click while you have not pressed a key or clicked since. Otherwise it says the page is ready and shows **Open the Review Page**. A new result never replaces the page you are reading.
 - **Status words:** a review closed with **Stop reviewing** says "Stopped (the session stays open)".
 - **The panel's place:** it comes after the report's own heading and before its content, so the page's h1 comes first.
+
+### Page changes in one step
+
+When you click to another page, the page you are on stays on screen, unchanged, while the app answers; then the new page
+replaces it complete, in one step (#93, Patrick 2026-11-11). There is no fade, no blank or white frame, no part of the
+page drawn after the rest, and no "Loading…" during a page change. This holds for every page the app serves (home, run,
+batch, evaluation, a previous result, review.md, the batch dashboard), the review page, the links between them, a saved
+batch's address (its pop-up opens with the page, filled), and the browser's back and forward.
+
+How:
+
+- **Every part of a first view is drawn while the page is read.** The scripts that draw (`panel.js`, `batch.js`,
+  `shared.js`, `home.js`, `manual.js`) are plain scripts in the page's head, so they are read before anything of the
+  page can be shown, and they only define. The page then calls each one right after the elements it fills: **Run
+  Actions** after its place, the evaluation strip after the "Ready to Ship?" card, a previous result's bar, the batch
+  side list (open or closed, at its scroll place), **This Batch**, **Runs in Progress**, the line after an upload, and
+  the evaluation forms. Each draws from the page's own first answer (a JSON data block), never from a request made
+  after the page shows. These calls are the only inline scripts the app adds; the page's content policy allows exactly
+  them, by their hashes, beside a report's own script.
+- **The app's own files are kept by the browser.** Each page names them with their version (`?v=`, the file's hash),
+  and a file asked for by its version is kept, so these scripts never wait on the network after the first page. Pages
+  and the app's answers are never kept (`no-store`).
+- **No frame is white.** html and body have the app's background, and every page names its color schemes in its head,
+  so a browser that draws the page's canvas before its stylesheets uses the dark one in dark mode.
+- **The review page** (its own server) reads its whole script, with its data, in its head, and draws itself from a call
+  at the end of the page. The line beside **Finish Review** (the check of your saved choices), the draft line and the
+  first OCR pages' text come with the page. The page images are the one exception: each is shown when the browser has it
+  (the first time a page image is asked for, it is rendered from the PDF), in a box already the image's size, so nothing
+  moves.
+- **Back and forward:** the browser may show the page you left from its own memory (the back/forward cache), as it
+  was; the page then brings itself up to date at its next check, as it does while you read it. Otherwise it is asked
+  for again, and drawn in one step like any other page.
 
 ## Security
 
