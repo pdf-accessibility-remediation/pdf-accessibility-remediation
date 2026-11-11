@@ -233,7 +233,9 @@ confirmation says) never deletes anything:
   run's job files stay in `runs/.app/jobs/` (the home page lists folders, so nothing shows for a moved run).
 - **Nothing is restored through the app** (#93, Patrick's test of the app): its pages say so ("… cannot be restored
   through the app.") and point a person who needs a PDF again to uploading the same PDF again with **Choose PDFs** on the
-  home page; the app finds it by its sha256, so its runs can "Review Again" again (a different file name is fine).
+  home page; the app finds it by its sha256, so its runs can "Review Again" again, and a run that was waiting for "Start
+  Remediation" (or "Get a New Estimate") goes on with the copy, its estimate unchanged (a different file name is fine;
+  the copy's sha256 is read again before it is used, and the result is named after the copy's file name).
 - **Putting one back by hand** (for whoever looks after the app, not offered on its pages): Finder's **Put Back** doesn't
   know items the app moved (Finder only remembers its own moves). Drag the item from the Trash back to the folder the log
   names under `from`: a run back into `runs/<short name>/` under its label, a batch into `runs/batches/` under its label,

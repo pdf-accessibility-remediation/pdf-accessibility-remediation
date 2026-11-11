@@ -12,7 +12,8 @@ What a Spend checks, in this order, at the click:
      checks its caps for Claude models only: 02 B6). The job then also gets MODEL=<that model>, so a change while it waits
      in the queue cannot lift the cap;
   3. the estimate fits the limits and the credit (lib/costs.py `blocked`);
-  4. the book's file is still the one the estimate was made from (its sha256).
+  4. the book's file is still the one the estimate was made from (its sha256); after a person moved it to the Trash and
+     uploaded it again, under any name, the copy found by its content (uploaded_again, #93) is sent instead.
 Then the job: AUTO=1, MAX_USD, BOOK_MAX_USD (BATCH_MAX_USD for a batch) bound to the estimate shown, PAGE_READS=1 with
 PAGE_READS_MAX_USD when the estimate included page readings (#49), and the person's real limits for
 a figure request's doubled retry only (FIGURE_RETRY_MAX_USD, FIGURE_RETRY_BOOK_MAX_USD; docs/options.md),
@@ -104,6 +105,31 @@ def credit_words(s):
     d = credit_now(s)
     return CREDIT_WHY.get(d.get('why'), CREDIT_WHY['error']) if d else CREDIT_WHY[None]
 
+MOVED = 'This PDF was moved to the Trash. To continue, upload the same PDF again with "Choose PDFs" on the home page, then try again.'
+
+def _sha_now(p):
+    """The file's sha256 read now, never from the shared cache (a copy found again is checked afresh before it is used)."""
+    import hashlib
+    h = hashlib.sha256()
+    try:
+        with open(p, 'rb') as f:
+            for b in iter(lambda: f.read(1 << 20), b''): h.update(b)
+    except OSError: return None
+    return h.hexdigest()
+
+def uploaded_again(s, ej):
+    """An estimate job's PDF that a person moved to the Trash (#45 D8) and uploaded again, under any file name (#93, review
+    09 M1): the copy found by its content in samples/ or uploads/, its sha256 checked afresh, or None (the job's own file is
+    still there, it was not moved by the app, or no copy is back). Its content is the estimate's, byte for byte, and the
+    estimate's fingerprint covers only the run folder's files (lib/costs.py), so the estimate stays valid for it."""
+    src = ej['argv'][2] if len(ej.get('argv') or []) > 2 else None
+    sha = ej.get('book_sha')
+    if not src or not sha or os.path.isfile(src): return None
+    from . import runs as RN
+    if not RN.moved_words(s, sha): return None
+    p = RN.find_original(s, sha, os.path.basename(src))
+    return p if p and _sha_now(p) == sha else None
+
 def authorize(s, kind, run, R, fingerprint):
     """A single run's Spend (kind 'workorder'). Returns {argv, env_set, extra} for jobs.create(kind='spend', paid=True)."""
     if kind != 'workorder': raise Refused('This kind of AI step can\'t be sent from here yet.')
@@ -112,12 +138,15 @@ def authorize(s, kind, run, R, fingerprint):
     est = check_estimate(s, R, fingerprint, test, L)
     ej = last_estimate_job(s, run)
     if not ej: raise Refused('There is no estimate for this run yet: select "Get a New Estimate".')
-    src = ej['argv'][2] if len(ej['argv']) > 2 else None
+    argv = list(ej['argv'])
+    src = argv[2] if len(argv) > 2 else None
     if not src or not os.path.isfile(src) or BK.hashes(s, [src]).get(src) != ej.get('book_sha'):
-        from . import runs as RN
-        if RN.moved_words(s, ej.get('book_sha')) and not (src and os.path.isfile(src)):   # D8: a person moved it to the Trash
-            raise Refused('This PDF was moved to the Trash. To continue, upload the same PDF again with "Choose PDFs" on the home page, then try again.')
-        raise Refused('This PDF\'s file has changed or is gone since the estimate. Go back to the home page and start a new run.')
+        back = uploaded_again(s, ej)                         # moved to the Trash, then uploaded again: the copy is used
+        if back: argv[2] = back
+        else:
+            from . import runs as RN
+            if RN.moved_words(s, ej.get('book_sha')) and not (src and os.path.isfile(src)): raise Refused(MOVED)   # D8: no copy back yet
+            raise Refused('This PDF\'s file has changed or is gone since the estimate. Go back to the home page and start a new run.')
     keep = {k: v for k, v in (ej.get('env_set') or {}).items() if k in ('OCR_LANG',)}
     keep['REVIEW'] = '1'                                     # every app run stops for review (D2, Patrick 2026-11-06), whatever an older job file says
     if test:
@@ -135,7 +164,7 @@ def authorize(s, kind, run, R, fingerprint):
                        'bounds': est['bounds'], 'model': est['model']},
              'test': test,
              **{k: ej.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name')}}
-    return {'argv': list(ej['argv']), 'env_set': env, 'extra': extra}
+    return {'argv': argv, 'env_set': env, 'extra': extra}
 
 def authorize_batch(s, label, books_list, total, fingerprint):
     """A batch's Spend: books_list is the app's book list file, total the costs.batch() shown (its fingerprint checked by

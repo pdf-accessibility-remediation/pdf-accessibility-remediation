@@ -169,9 +169,16 @@ def again_estimate(s, run, R):
     if os.path.isfile(os.path.join(R, 'record.json')): raise ValueError('This run has finished.')
     if os.path.isfile(os.path.join(R, 'workorder.ai.json')): raise ValueError('The AI\'s decisions are waiting for a review: "Open the Review Page".')
     e = ej[-1]
+    argv = list(e['argv'])
+    if len(argv) > 2 and not os.path.isfile(argv[2]):       # #93 (review 09 M1): moved to the Trash, then uploaded again
+        back = SP.uploaded_again(s, e)
+        if back: argv[2] = back
+        else:
+            from . import runs as RN
+            if RN.moved_words(s, e.get('book_sha')): raise ValueError(SP.MOVED)
     env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('ESTIMATE', 'OCR_LANG', 'ASK_LANG')}
     keep = {k: e.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name', 'ocr_name')}
-    return jobs.create(s['jobs'], 'estimate', run, e['argv'], config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
+    return jobs.create(s['jobs'], 'estimate', run, argv, config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
                        what='Get a new estimate', **keep)
 
 # ------------------------------------------------------------------ Try Again, decided from disk (03 §2)

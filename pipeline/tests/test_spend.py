@@ -284,6 +284,62 @@ def test_spend_refusals(setup, change, words):
     finally:
         if change in ('model', 'prompt'): SP.current_model_and_prompt = orig
 
+def moved_to_trash(s, setup):
+    """bk.pdf moved to the Trash by the app (its move log names its sha256): (its bytes, its sha256)."""
+    from webapp import trash as TR
+    src = setup / 'samples' / 'bk.pdf'
+    data = src.read_bytes(); sha = hashlib.sha256(data).hexdigest()
+    src.unlink()
+    TR.log(s, {'what': 'pdf', 'sha256': sha, 'file': 'bk.pdf', 'from': str(src), 'to': 'x'})
+    return data, sha
+
+def test_spend_goes_on_with_the_pdf_uploaded_again_under_another_name(setup):
+    """#93 (review 09 M1): after "Move to Trash", the same PDF uploaded again under another name ("bk 2.pdf", the name the
+    Trash gives on a clash) is found by its content and sent; the instruction is never given twice."""
+    s, R, est = spend_setup(setup)
+    data, sha = moved_to_trash(s, setup)
+    with pytest.raises(SP.Refused) as e: SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    assert str(e.value) == SP.MOVED
+    os.makedirs(s['uploads'], exist_ok=True)
+    back = os.path.join(s['uploads'], 'bk 2.pdf'); open(back, 'wb').write(data)
+    a = SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    assert a['argv'][1:] == ['run_api.sh', back, 'bk', 'l1'] and a['extra']['fingerprint'] == est['fingerprint'] and a['extra']['book_sha'] == sha
+    j = NR.start_spend(s, 'bk/l1', str(R), {'kind': 'workorder', 'fingerprint': est['fingerprint']})
+    assert j['paid'] and j['argv'][2] == back
+    assert last_estimate_argv(s) == str(setup / 'samples' / 'bk.pdf')        # the estimate job itself is never changed
+
+def last_estimate_argv(s):
+    return SP.last_estimate_job(s, 'bk/l1')['argv'][2]
+
+def test_spend_goes_on_with_the_pdf_back_under_its_own_name(setup):
+    s, R, est = spend_setup(setup)
+    data, sha = moved_to_trash(s, setup)
+    with pytest.raises(SP.Refused): SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    (setup / 'samples' / 'bk.pdf').write_bytes(data)                          # back at the estimate's own path
+    assert SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])['argv'][2] == str(setup / 'samples' / 'bk.pdf')
+
+def test_spend_never_takes_another_pdf_for_the_one_moved(setup, monkeypatch):
+    """A file with other content is never used, and a copy found through a stale cached hash is checked afresh."""
+    s, R, est = spend_setup(setup)
+    data, sha = moved_to_trash(s, setup)
+    os.makedirs(s['uploads'], exist_ok=True)
+    other = os.path.join(s['uploads'], 'bk 2.pdf'); open(other, 'wb').write(b'%PDF-1.4 another book')
+    with pytest.raises(SP.Refused) as e: SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    assert str(e.value) == SP.MOVED
+    monkeypatch.setattr(RN, 'find_original', lambda s_, sha_, name=None: other)   # as if the cache said it matched
+    with pytest.raises(SP.Refused) as e: SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    assert str(e.value) == SP.MOVED and not [j for j in jobs.all_jobs(s['jobs']) if j['kind'] == 'spend']
+
+def test_a_new_estimate_uses_the_pdf_uploaded_again(setup):
+    """"Get a New Estimate" after the move: refused in the same words until the PDF is back, then made from the copy."""
+    s, R, est = spend_setup(setup)
+    data, sha = moved_to_trash(s, setup)
+    with pytest.raises(ValueError) as e: NR.again_estimate(s, 'bk/l1', str(R))
+    assert str(e.value) == SP.MOVED
+    os.makedirs(s['uploads'], exist_ok=True)
+    back = os.path.join(s['uploads'], 'bk 2.pdf'); open(back, 'wb').write(data)
+    assert NR.again_estimate(s, 'bk/l1', str(R))['argv'][2] == back
+
 def test_model_and_prompt_come_from_decides_source():
     src = open(os.path.join(HERE, 'decide.py'), encoding='utf-8').read()
     assert f"DEFAULT_MODEL = '{MODEL}'" in src and MODEL.startswith('anthropic/') and len(PROMPT) == 16
