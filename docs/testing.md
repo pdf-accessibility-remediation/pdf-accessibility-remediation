@@ -5,12 +5,14 @@ nav_order: 12.5
 
 # Testing
 
-There are three kinds of tests. None of them makes an AI request, and none costs anything.
+This page explains the project's tests: what each kind checks, how to run it, when to update the regression baseline, and what CI runs. It ends with the rules for writing these docs. It is for developers.
+
+There are five kinds of tests. None of them makes an AI request, and none costs anything.
 
 | Test | What it checks | Run it (from `pipeline/`) | Time |
 |---|---|---|---|
 | **Unit tests** | That each small rule in `lib/` does its job, using made-up inputs; plus a few small synthetic PDFs through the real pdfplumber, `audit.py`, `apply.py` and `verify.py` | `python -m pytest tests -q` | a few seconds |
-| **Regression test** | That whole books still come out the same, using saved model replies | `python3 tools/regression.py --jobs 3` | about 10 minutes for all nine books (21 one at a time; `--books northkorea` about 2) |
+| **Regression test** | That whole books still come out the same, using saved AI replies | `python3 tools/regression.py --jobs 3` | about 10 minutes for all nine books (21 one at a time; `--books northkorea` about 2) |
 | **Reorder case** | That `move_section` works on a real book's tag tree, from a hand-written reply (one move, or `--moves 2`: two, made in turn) | `python3 tools/reorder_case.py [--moves 2]` | about 3 minutes each |
 | **Hand-edit case** | That a real book's result, edited by hand (one figure's image replaced) and brought back for review, is applied again safely: the figure is found, its alt is written again, nothing else changes | `python3 tools/handedit_case.py` | a few minutes |
 | **Intake cases** | That intake sorts pages and tag trees correctly, using small synthetic PDFs | `python3 tools/intake_cases.py <out_dir>` | under a minute |
@@ -24,33 +26,63 @@ The tests in `pipeline/tests/` call one function at a time with hand-made inputs
 - `test_gaptext.py`: where word breaks go in text that has no space characters. This covers a wide gap, letter-spaced type, a gap filled by another glyph, line ends with and without a hyphen, and vertical text.
 - `test_listrule.py`: real list markers (`•`, `1.`, `(a)`, `iv)`), and the false one-item list made from a paragraph's first word.
 - `test_langtag.py`: language tags that are tidied (`en_US` → `en-US`), and values that are not tags (`english`).
-- `test_workorder_check.py`: one test for each reason the work-order checks drop an item. That includes unknown keys and objects, section moves (one, or a list: one where the audit finds nothing out of place in its pages or where it lands (kept when it lands before the flagged one of a swapped pair), a fourth, an overlapping one and one landing inside another are dropped, each alone; the full reading order is used when given), tag types that are not allowed, bad regexes and page ranges, table header counts, alt text for an image that was not sent, and language tags. It also covers the [OCR word](ocr-words.md) readings, including the one-third limit and the quarter cost of OCR junk characters.
+- `test_workorder_check.py`: one test for each reason the work-order checks drop an item:
+  - unknown keys and objects; tag types that are not allowed; bad regexes and page ranges; table header counts; alt text for an image that was not sent; language tags
+  - section moves, one or a list. Dropped, each alone: one where the audit finds nothing out of place in its pages or where it lands (kept when it lands before the flagged one of a swapped pair), a fourth, an overlapping one, and one landing inside another. The full reading order is used when given.
+  - the [OCR word](ocr-words.md) readings, including the one-third limit and the quarter cost of OCR junk characters
 - `test_readorder.py`: which sections are read away from their printed place (a small misplaced story is flagged, not the chapter it sits in; a child is never compared with its parent; Divs around figures are skipped), the digest's line format read back, and the `move_section` match with one, none or several candidates.
-- `test_review_dryrun.py`: the review stop's trial run of `apply.py` is reused while nothing it depends on has changed (issue #52). On a three-page figure book with the real `apply.py`: the same inputs a second time reuse the saved result and give the same review items; a changed work order, PDF, code file or setting `apply.py` reads makes it again, while the AI turning the figure step off alone does not; a failed trial run, an older result without a key, a cut-short one and `REVIEW_DRYRUN=fresh` are never reused; the copy kept in `reviews/_audit` is reused by Review Again; and every variable `apply.py` or `lib/` reads is part of the key.
-- `test_review_core.py`: the review page's reading-order cards (group 5, their pages, the move preview, orphan text for their pages only), rejecting them, and the reading-order list from `fulltext.json` or from the digest's lines. The findings no decision answers: one seen-only card per section out of place that no text rule removes and per page jump, one card for the sections read late (none when rules remove them all), every rule that removes a section named by its card id and listed on that rule's card, and that marking them seen or rejected changes nothing in the work order. A section move added for a section out of place (only when the AI made none, with the suggested page and its preview; a second move refused), the captions decision in group 5, and the Figures Moved card from a trial run's result. The move preview leaves out what the text rules remove (a move onto or of a removed block is refused and names the rule; the preview on Save follows the reviewed rules, so rejecting the rule brings the block back), and the move card carries the trial run's outcome. Several moves: one card each (`move_section`, `move_section:1`), each previewed on the order the earlier ones leave; changing or rejecting one touches only it; an added move goes after the AI's, up to 3. The Figures Moved card is the `fix_figure_order` decision (Reject turns it off, or on when the AI turned it off).
-- `test_support.py`: the files the pipeline must refuse (issue #69), on one-page PDFs the test makes:
+- `test_review_dryrun.py`: the review stop's trial run of `apply.py` is reused while nothing it depends on has changed (#52). On a three-page figure PDF, with the real `apply.py`:
+  - the same inputs a second time reuse the saved result, and give the same review items
+  - a changed work order, PDF, code file or setting `apply.py` reads makes it again, while the AI turning the figure step off alone does not
+  - a failed trial run, an older result without a key, a cut-short one and `REVIEW_DRYRUN=fresh` are never reused
+  - the copy kept in `reviews/_audit` is reused by Review Again
+  - every variable `apply.py` or `lib/` reads is part of the key
+- `test_review_core.py`: the review page's reading-order cards:
+  - group 5, their pages, the move preview, and orphan text for their pages only; rejecting them; the reading-order list from `fulltext.json` or from the digest's lines
+  - the findings no decision answers: one seen-only card per section out of place that no text rule removes and per page jump, one card for the sections read late (none when rules remove them all), and every rule that removes a section named by its card id and listed on that rule's card. Marking them seen or rejected changes nothing in the work order.
+  - a section move added for a section out of place (only when the AI made none, with the suggested page and its preview; a second move refused), the captions decision in group 5, and the Figures Moved card from a trial run's result
+  - the move preview leaves out what the text rules remove: a move onto or of a removed block is refused and names the rule, and the preview on Save follows the reviewed rules, so rejecting the rule brings the block back. The move card carries the trial run's outcome.
+  - several moves: one card each (`move_section`, `move_section:1`), each previewed on the order the earlier ones leave. Changing or rejecting one touches only it; an added move goes after the AI's, up to 3.
+  - the Figures Moved card is the `fix_figure_order` decision: Reject turns it off, or on when the AI turned it off
+- `test_support.py`: the files the pipeline must refuse (#69), on one-page PDFs the test makes:
   - The support rule on its own: a PDF 2.0 file is refused, including a 1.7 header whose catalog says 2.0. So is a 1.7 file whose tag tree declares namespaces. A plain 1.7 file is accepted, and `ALLOW_PDF20=1` lets both refused files through.
   - The real scripts: `intake.py` stops a PDF locked with a password (exit 3, `stopped`), a damaged one (exit 1, `failed`) and a PDF 2.0 one (exit 3, with its flag). `audit.py` and `apply.py`, run with no intake before them, stop the same files with the same words and write nothing.
   - `run_api.sh` stops a locked PDF before the cost estimate, with and without intake.
   - The damaged file is the first 20 bytes of a PDF. A file cut in half is not enough, because qpdf rebuilds it and it opens.
 - `test_sections.py`: `review.md` turned into sections and back gives the same lines, and the WCAG-only view leaves out the PDF/UA-only parts.
 - `test_tablegrid.py`: where cells sit with spans counted, who heads what (plain grids, title, note, group and repeated rows, two-level headers, row headers spanning rows, empty cells, false header cells), and each reading that is refused.
-- `test_pagereads.py`: whole-page readings of Hawaiian pages (issue #49): which pages are read (the share of longer words with Hawaiian shape), which readings replace an OCR word at its place (marks, a misreading; not a garbled or split word), each place getting its own reading (na and nā), the work-order check's refusals, and `apply.py` on a tiny tagged page with its words on the page or in a form XObject drawn once (OCRmyPDF 17's layer), never in a shared one.
+- `test_pagereads.py`: whole-page readings of Hawaiian pages (#49):
+  - which pages are read (the share of longer words with Hawaiian shape)
+  - which readings replace an OCR word at its place (marks, a misreading; not a garbled or split word), and each place getting its own reading (na and nā)
+  - the work-order check's refusals
+  - `apply.py` on a tiny tagged page, with its words on the page or in a form XObject drawn once (OCRmyPDF 17's layer), never in a shared one
 - `test_page_costs.py`: what page readings cost: paid money counted at every stage and once, the per-PDF limit on a later attempt, a page reused at no cost, the "page" history and "Not Available Yet" until it exists (against a fake OpenRouter).
-- `test_synthetic.py`: small PDFs built by the test, for rules no tagged sample reaches. One page sets its words with no space characters, as TeX does (moves between words, or kerning inside one `TJ`); read through pdfplumber, the words must come out with spaces between them. One page has a tagged one-item list made from a paragraph's first word ("as …") next to a real list ("1.", "2."). `audit.py` must mark only the first for the rule, and `apply.py` with an empty work order must turn it into a paragraph, or keep it when `keep_lists` names it. A four-page book with one section read out of printed order goes through `audit.py`, the review page's preview, `apply.py` with a `move_section` and `verify.py`: the preview must show the order `apply.py` makes, and verify's section check must mark the original's flag as "already in the original" and a bad move's flag as new. The same move added by a reviewer (no AI move) is made the same way, and the review stop's trial run of `apply.py` returns the executor's figure moves and what it did with the section move (made, or refused and why), and says why when it cannot run. A six-page book with two sections out of place gets a list of two moves, made in turn as the chained previews show; a figure read after the last page is moved back unless `fix_figure_order` is false, and the trial run lists it even then. These run the real scripts with `VERAPDF=off`. A small table goes through the work order with a title, a group row, a source note and a false header cell: it must come out with a Caption, a paragraph after it, data cells tied to headers the IDTree can find, tags the ParentTree still owns, and the same page text.
+- `test_synthetic.py`: small PDFs built by the test, for rules no tagged sample reaches. These run the real scripts with `VERAPDF=off`.
+  - **Word breaks:** one page sets its words with no space characters, as TeX does (moves between words, or kerning inside one `TJ`). Read through pdfplumber, the words must come out with spaces between them.
+  - **The list rule:** one page has a tagged one-item list made from a paragraph's first word ("as …") next to a real list ("1.", "2."). `audit.py` must mark only the first for the rule, and `apply.py` with an empty work order must turn it into a paragraph, or keep it when `keep_lists` names it.
+  - **One section move:** a four-page PDF with one section read out of printed order goes through `audit.py`, the review page's preview, `apply.py` with a `move_section`, and `verify.py`. The preview must show the order `apply.py` makes, and verify's section check must mark the original's flag as "already in the original" and a bad move's flag as new.
+  - **A reviewer's move and the trial run:** the same move added by a reviewer (no AI move) is made the same way. The review stop's trial run of `apply.py` returns the executor's figure moves and what it did with the section move (made, or refused and why), and says why when it cannot run.
+  - **Two moves and figure order:** a six-page PDF with two sections out of place gets a list of two moves, made in turn as the chained previews show. A figure read after the last page is moved back unless `fix_figure_order` is false, and the trial run lists it even then.
+  - **A table:** a small table goes through the work order with a title, a group row, a source note and a false header cell. It must come out with a Caption, a paragraph after it, data cells tied to headers the IDTree can find, tags the ParentTree still owns, and the same page text.
 
 The expected values come from the module docstrings and from [Work order](work-order.md) and [OCR words](ocr-words.md), not from what the code happens to return. A failing unit test means a rule changed. If the change was intended, update the test's expected value in the same PR.
 
 ## Regression test
 
-`tools/regression.py` runs the books in `pipeline/tests/baseline/` (hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant, ilokano and romanization-ocr; sources and licenses in `samples/README.md` in the repository) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved model reply is used instead of an AI request. Each book's folder holds:
+`tools/regression.py` runs the books in `pipeline/tests/baseline/` (hawaii3, globalasias, northkorea, fishers, moralfoods, teika, migrant, ilokano and romanization-ocr; sources and licenses in `samples/README.md` in the repository) through the whole pipeline with `run_api.sh` and `REPLY=`, so the saved AI reply is used instead of an AI request. Each book's folder holds:
 
 | File | What it is |
 |---|---|
-| `reply.txt`, `reply.txt.meta.json` | The saved model reply, with the model and temperature that produced it, and for a scanned book the OCR-word list the reply was written for (`ocr_words_fingerprint`, `ocr_words_sent`, `ocr_words_list`). This is the run's fixed input. A reply whose list does not match today's audit, or has no fingerprint, has its OCR-word readings dropped on replay ([OCR words](ocr-words.md)): re-seed such a book with a new reply. |
+| `reply.txt`, `reply.txt.meta.json` | The saved AI reply, with the model and temperature that produced it, and for a scanned book the OCR-word list the reply was written for (`ocr_words_fingerprint`, `ocr_words_sent`, `ocr_words_list`). This is the run's fixed input (see [Saved replies and OCR words](#saved-replies-and-ocr-words)) |
 | `review.md` | The report the last accepted run wrote |
 | `_intake/` | Untagged books only (ilokano): `intake.json` and `intake.pdf`, the intake result the reply was written for. It is reused (`INTAKE_REUSE=1`, as `FROM=` batches do) instead of rerunning OCR and auto-tagging, whose output varies with the Tesseract and OpenDataLoader versions. A note is printed when `requirements.txt` pins another OpenDataLoader than the one that made it; re-seed then |
 | `expect.json` | A fingerprint of that run's `record.json`: veraPDF rules before and after, what `apply.py` did, what the work-order checks dropped, the tag counts, headings and figures `verify.py` found |
+
+### Saved replies and OCR words
+
+A reply whose OCR-word list does not match today's audit, or has no fingerprint, has its OCR-word readings dropped on replay ([OCR words](ocr-words.md)). Re-seed such a book with a new reply.
+
+### How it compares
 
 Each run is compared with the baseline in three ways:
 
@@ -66,11 +98,21 @@ Each run is compared with the baseline in three ways:
 
 The test prints one line per book (identical, or the fields and lines that differ) and exits with 1 when any book differs. It needs veraPDF (see [Verification with veraPDF](verapdf.md)). Run folders go to a temporary folder, which is kept when something differs; `--out DIR` puts them in `DIR` instead.
 
-**Running books in parallel.** `--jobs N` runs N books at once (default: the `JOBS` environment variable, as for `batch_api.sh`, else 1). The biggest books start first, and the report still lists the books in their usual order. A book whose run fails is reported with the end of its log while the others carry on. Each book needs about 0.5–1.5 GB of memory: with 8 GB, `--jobs 3` peaked at about 5 GB used and took about 10 minutes for all nine books, against 21 one at a time. No run can be shorter than the slowest book (migrant, about 4 minutes). On WSL, check `free -h`; if memory is short, raise `memory=` in `C:\Users\<you>\.wslconfig` and run `wsl --shutdown`. CI does not use `--jobs`: each book is its own job there.
+### Running books in parallel
 
-`meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code. CI runs the regression test on 3.14 only, and the unit tests on both versions [Setup](setup.md) allows (3.13 and 3.14). If a local run on 3.13 shows a difference, run it again on 3.14 before updating the baseline. Run one book with `--books teika`; `--update --books X` adds X to the baseline and keeps the others.
+`--jobs N` runs N books at once (default: the `JOBS` environment variable, as for `batch_api.sh`, else 1). The biggest books start first, and the report still lists the books in their usual order. A book whose run fails is reported with the end of its log while the others carry on.
 
-**What it covers, and what it does not.**
+Each book needs about 0.5–1.5 GB of memory: with 8 GB, `--jobs 3` peaked at about 5 GB used and took about 10 minutes for all nine books, against 21 one at a time. No run can be shorter than the slowest book (migrant, about 4 minutes).
+
+On WSL, check `free -h`; if memory is short, raise `memory=` in `C:\Users\<you>\.wslconfig` and run `wsl --shutdown`. CI does not use `--jobs`: each book is its own job there.
+
+### Python versions
+
+`meta.json` records the books, the prompt and the Python version the baseline was made with (Python 3.14). Another Python version prints a note, because a difference may come from the version and not from the code.
+
+CI runs the regression test on 3.14 only, and the unit tests on both versions [Setup](setup.md) allows (3.13 and 3.14). If a local run on 3.13 shows a difference, run it again on 3.14 before updating the baseline. Run one book with `--books teika`; `--update --books X` adds X to the baseline and keeps the others.
+
+### What it covers, and what it does not
 
 | Book | Adds |
 |---|---|
@@ -84,7 +126,15 @@ The test prints one line per book (identical, or the fields and lines that diffe
 | romanization-ocr | a scanned book whose OCR layer drops every tone mark (made from an open-access book for this test): the OCR-layer check (doubtful, diacritics missing), `ocr_words` (10 misread forms in 15 places), OCR fonts, OCR text approval |
 | ilokano | an untagged book: an OpenDataLoader tag tree, so the one-item list rule (15 lists) and word breaks that rely on gaps |
 
-Covered only in part: `move_section` (teika's moves are dropped by the work-order check, and the cover moves of globalasias and migrant are refused by the executor, so none is made; the synthetic test above and `tools/reorder_case.py` cover moves that are made). Not covered by the regression test: intake itself (frozen here; `tools/intake_cases.py` tests it on synthetic PDFs), OCR made by intake on a real book (romanization-ocr's layer comes with the file), a book written mainly in Chinese, Japanese or Korean, vertical text, math, forms and PDF 2.0. To check all the tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
+**Covered only in part:** `move_section`. teika's moves are dropped by the work-order check, and the cover moves of globalasias and migrant are refused by the executor, so none is made. The synthetic test above and `tools/reorder_case.py` cover moves that are made.
+
+**Not covered by the regression test:**
+- intake itself: frozen here; `tools/intake_cases.py` tests it on synthetic PDFs
+- OCR made by intake on a real book: romanization-ocr's layer comes with the file
+- a book written mainly in Chinese, Japanese or Korean
+- vertical text, math, forms and PDF 2.0
+
+To check all the tagged samples, rerun them from saved replies before and after your change, then compare the two batches with [compare_runs.py](batch-runs.md):
 
 ```bash
 FROM=v10-open AUTO=1 bash batch_api.sh before ../samples/tagged   # on main
@@ -124,9 +174,34 @@ Make one update per PR, with its own reason. Don't fold several unrelated change
 
 ## Reorder case
 
-`tools/reorder_case.py` covers `move_section` on a real tag tree without a model reply. It swaps one section with the next under a section host in a copy of a tagged sample (hawaii3 by default: a chapter on PDF 236–239 among its sibling sections), then runs the pipeline with a reply that holds only the `move_section` putting it back. It checks that the audit flags the pair, that the review page's preview finds one section and its host, that `apply.py` makes the move and logs the same section and host, that the host's sections read in the book's order again, that the preview's order is the one `apply.py` made, and that verify's section check no longer flags the swapped pair and finds nothing new. (The swap is in the file the run starts from, so if the move were not made, verify would count the pair's flag as already in the original, not as new: the first part is what catches that.) CI runs it (one move and `--moves 2`) whenever `pipeline/` changes; run it yourself after a change to `lib/readorder.py`, `op_move_section` or the review page's preview, for a quicker answer. `--moves 2` swaps two separate pairs (on hawaii3, PDF 236–239 and PDF 250–253) and puts both back with a reply holding a list of two moves: `apply.py` makes them in turn, and each is checked the same way against the review page's preview, chained as the page works it out.
+`tools/reorder_case.py` covers `move_section` on a real tag tree without an AI reply. It swaps one section with the next under a section host, in a copy of a tagged sample (hawaii3 by default: a chapter on PDF 236–239 among its sibling sections). Then it runs the pipeline with a reply that holds only the `move_section` putting it back.
 
-`tools/handedit_case.py` covers a PDF edited by hand and brought back (`handedit.py`, see [Editing the PDF by hand](hand-edits.md)) on a real book. It runs the book from its saved baseline reply, exports the result, replaces one figure's image in the copy (a solid image of the same size), and brings it back for review with no AI call. Then it writes that figure's alt text by hand (`review_workorder.py --reviewer`) and applies it. It checks that the import lists only that figure and removes its alt, that the review's gap names it, that the parent's result and the edited file are unchanged and `hand_edit` records both sha256s, that `apply.py` fails nothing and the safety checks pass, and that the new alt is in the result while no other figure lost its alt. It also prints what `apply.py` changed again on a file that already held the earlier fixes. Run it after a change to `handedit.py`, `lib/handedit.py`, or an automatic step in `apply.py`. The unit tests (`tests/test_handedit.py`) do the same on a one-page PDF.
+It checks that:
+- the audit flags the pair
+- the review page's preview finds one section and its host
+- `apply.py` makes the move, and logs the same section and host
+- the host's sections read in the book's order again
+- the preview's order is the one `apply.py` made
+- verify's section check no longer flags the swapped pair, and finds nothing new
+
+The swap is in the file the run starts from. So if the move were not made, verify would count the pair's flag as already in the original, not as new: the first check is what catches that.
+
+`--moves 2` swaps two separate pairs (on hawaii3, PDF 236–239 and PDF 250–253), and puts both back with a reply holding a list of two moves. `apply.py` makes them in turn, and each is checked the same way against the review page's preview, chained as the page works it out.
+
+CI runs it (one move and `--moves 2`) whenever `pipeline/` changes. Run it yourself after a change to `lib/readorder.py`, `op_move_section` or the review page's preview, for a quicker answer.
+
+## Hand-edit case
+
+`tools/handedit_case.py` covers a PDF edited by hand and brought back (`handedit.py`, see [Editing the PDF by hand](hand-edits.md)) on a real book. It runs the book from its saved baseline reply, exports the result, replaces one figure's image in the copy (a solid image of the same size), and brings it back for review with no AI call. Then it writes that figure's alt text by hand (`review_workorder.py --reviewer`) and applies it.
+
+It checks that:
+- the import lists only that figure, and removes its alt
+- the review's gap names it
+- the parent's result and the edited file are unchanged, and `hand_edit` records both sha256s
+- `apply.py` fails nothing, and the safety checks pass
+- the new alt is in the result, while no other figure lost its alt
+
+It also prints what `apply.py` changed again on a file that already held the earlier fixes. Run it after a change to `handedit.py`, `lib/handedit.py`, or an automatic step in `apply.py`. The unit tests (`tests/test_handedit.py`) do the same on a one-page PDF.
 
 ## Intake cases
 
@@ -138,9 +213,17 @@ Make one update per PR, with its own reason. Don't fold several unrelated change
 - two printed pages side by side (two-up spreads, a vertical-OCR spread, spreads with years in the running heads) and a landscape page with one wide column, which is not a spread
 - Japanese, vertical Japanese and Korean scans, and 14-page scans for the sampled CJK check
 
-It also checks that a spread's reading order is reordered and saved. It prints PASS, FAIL or SKIP per case, a summary line, and exits with 1 on any FAIL. `--full` also runs the whole intake on the empty-text scan (the empty text object is removed and OCR text added; needs OCRmyPDF 17), on the two placeholder-tree cases (the old tree is set aside and OpenDataLoader makes a real one) and on the two-up spreads (read half by half); auto-tagging needs Java 11 or later. This is what tests intake itself, since the regression test reuses ilokano's frozen intake result.
+It also checks that a spread's reading order is reordered and saved. It prints PASS, FAIL or SKIP per case, a summary line, and exits with 1 on any FAIL.
 
-Several scans are drawn with a font: the Japanese and Korean text, the breves, and the page the full empty-text case OCRs. On macOS that is Arial Unicode, on Linux Noto Sans CJK (`sudo apt install fonts-noto-cjk`); `INTAKE_CASES_FONT=/path/to/font` overrides both. Without such a font, PIL's default font draws no CJK and no breves, and its text is too small to OCR, so those cases are SKIPped. The summary line counts skips separately, so a skip is never mistaken for a pass. With `--strict` (as in CI) any skip counts as a failure and the script exits with 1. The CJK cases also need Tesseract's `osd`, `jpn`, `kor`, `chi_sim` and `chi_tra` packs, each with its `_vert` pack. Two OCR-layer cases need the `script/Latin` model (`tesseract-ocr-script-latn`; see [Setup](setup.md)); without it they are SKIPped. When an OCR-layer case fails, the script prints intake's OCR-layer test under it: the verdict, and each sample page's score or why it was not scored.
+`--full` also runs the whole intake on the empty-text scan (the empty text object is removed and OCR text added; needs OCRmyPDF 17), on the two placeholder-tree cases (the old tree is set aside and OpenDataLoader makes a real one) and on the two-up spreads (read half by half); auto-tagging needs Java 11 or later. This is what tests intake itself, since the regression test reuses ilokano's frozen intake result.
+
+### Fonts and skipped cases
+
+Several scans are drawn with a font: the Japanese and Korean text, the breves, and the page the full empty-text case OCRs. On macOS that is Arial Unicode, on Linux Noto Sans CJK (`sudo apt install fonts-noto-cjk`); `INTAKE_CASES_FONT=/path/to/font` overrides both. Without such a font, PIL's default font draws no CJK and no breves, and its text is too small to OCR, so those cases are SKIPped.
+
+The summary line counts skips separately, so a skip is never mistaken for a pass. With `--strict` (as in CI) any skip counts as a failure and the script exits with 1. The CJK cases also need Tesseract's `osd`, `jpn`, `kor`, `chi_sim` and `chi_tra` packs, each with its `_vert` pack. Two OCR-layer cases need the `script/Latin` model (`tesseract-ocr-script-latn`; see [Setup](setup.md)); without it they are SKIPped.
+
+When an OCR-layer case fails, the script prints intake's OCR-layer test under it: the verdict, and each sample page's score or why it was not scored.
 
 ## Updating the tests
 
@@ -155,7 +238,7 @@ Several scans are drawn with a font: the Japanese and Korean text, the breves, a
 ## In CI
 
 - **`ci.yml`, on every push and PR:**
-  - compile check, shell syntax and `pip-audit` (`pip-audit` on Python 3.14 only), as before
+  - compile check, shell syntax and `pip-audit` (`pip-audit` on Python 3.14 only)
   - the unit tests, on Python 3.13 and 3.14 (one job each)
   - a second job that installs Tesseract with its CJK packs, the `script/Latin` model and `fonts-noto-cjk`, then runs the intake cases, then `--full` with Java 17 and OCRmyPDF 17 (installed with pipx). Both steps are blocking and run with `--strict`, so a missing tool fails the job instead of skipping cases
 - **`pdf-validation.yml`, when `pipeline/`, `prompts/` or `samples/` change:**
@@ -178,5 +261,5 @@ When you write or change a page:
 - Say "PDF" for what the pipeline works on, and "the original" only to contrast it with the result. Say "book" only in a quoted app label or for the printed publication itself. Say "reviewer" for the person who checks the AI's decisions, and "library staff" when the app's users are meant.
 - Quote words the app shows exactly as it shows them (Title Case labels).
 - Don't cite the sponsor checklist's step numbers: say what the step does. Record coverage in `notes/checklist-coverage.md` instead.
-- Name only the open-access sample books in `samples/README.md`. For a measurement made on an earlier test book, say "an earlier test book".
+- Name the open-access sample books in `samples/README.md` freely. Don't name the old non-open-source samples: for a measurement made on one, say "an earlier test book". Published works used as test material may be named under "For developers" when a result needs them (as in [OCR words](ocr-words.md#results-on-test-books)).
 - Add a term the pages use without explaining it to the [Glossary](glossary.md).
