@@ -15,10 +15,17 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const usd = x => '$' + Number(x || 0).toFixed(2);
 const START = 'To start the app again, open a terminal in the project\'s pipeline folder and type python3 app.py.';
+const readBlock = id => { const el = $(id); if (!el) return null; try { return JSON.parse(el.textContent); } catch (e) { return null; } finally { el.remove(); } };
+// 15 (Patrick, 2026-11-11: page changes in one step): this script is loaded in the head and only defines. The page calls
+// Pdfrem.batchNav() right after the side list (laid out at once: open or closed, its scroll place), and the batch page
+// Pdfrem.batchPage() right after "This Batch" and its first answer, which draws it. Both run while the page is read, so
+// the first frame shown is the whole page.
+function startNav() {
 const nav = $('pp-bnav'); if (!nav) return;
 const LABEL = nav.dataset.label, API = '/api/batch/' + encodeURIComponent(LABEL);
+const ON_PAGE = document.body.dataset.batchPage === '1';          // the batch page itself (batches.py page()), not a book's page
 // review 09, 12a: on a book's page the side list needs only the books' statuses, so its poll never builds the dashboard
-const POLL = API + ($('bt-panel') ? '' : '?nav=1');
+const POLL = API + (ON_PAGE ? '' : '?nav=1');
 const narrow = matchMedia('(max-width: 48em)');
 const KEY = 'batchnav:closed';
 function closed() {                                             // the server laid it out from the cookie (D7); else the narrow default
@@ -166,7 +173,7 @@ async function api(path, b) {
 let timer = null;
 // #93 (Patrick's test of the app): on the batch page, the first answer comes with the page (batches.py page()), so "This
 // Batch" is drawn at once, with no "Loading…"; every later one is asked for. Read once, then removed.
-let first = (() => { const el = $('bt-first'); if (!el) return null; try { return JSON.parse(el.textContent); } catch (e) { return null; } finally { el.remove(); } })();
+let first = null;                                                // the batch page's first answer: read by startPage()
 async function poll() {
   clearTimeout(timer);
   try {
@@ -198,6 +205,8 @@ async function poll() {
   const busy = st && (['estimating', 'running'].includes(st.phase) || st.books.some(b => b.tone === 'processing'));
   timer = setTimeout(poll, busy ? 2000 : 6000);
 }
+function startPage() {
+first = readBlock('bt-first');
 const panel = $('bt-panel');
 if (panel) panel.addEventListener('change', e => { if (e.target.matches('select[data-book]')) e.target.dataset.chosen = '1'; });   // the person's choice
 if (panel) panel.addEventListener('click', async e => {
@@ -237,4 +246,11 @@ if (gone) {
   msg(gone.textContent, true, true); gone.remove();
 }
 poll();
+}
+window.Pdfrem.batchPage = startPage;
+if (!ON_PAGE) poll();                                           // a book's page: the statuses are kept current
+}
+
+const P = window.Pdfrem = window.Pdfrem || {};
+P.batchNav = startNav; P.batchPage = P.batchPage || (() => {});
 })();

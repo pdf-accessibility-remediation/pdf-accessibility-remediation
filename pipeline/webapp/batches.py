@@ -561,23 +561,25 @@ def page(s, label, closed=None, trashed=None, trashed_more=None):
     nm = NM.snapshot(s)                                     # #93: one read of each names file and of the jobs for the page
     st = state(s, label, nm)
     return body_class('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<title>Batch: {E(nm.shown_run("batches/" + label))}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + nav(s, label, st=st, closed=closed, nm=nm) +
+            f'<title>Batch: {E(nm.shown_run("batches/" + label))}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
+            '<script src="/app/shared.js"></script><script src="/app/batch.js"></script></head>'   # 15: in the head; the calls below draw
+            '<body class="pp-page hm-page" data-batch-page="1"><a class="skip" href="#main">Skip to the content</a>' + nav(s, label, st=st, closed=closed, nm=nm) + HM.call('batchNav') +
             f'<header class="top pp-head pp-hd">' + HM.title_row(f'Batch: {E(nm.shown_run("batches/" + label))}', first=toggle(len(st['books']), not closed)) +
             f'</header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
             '<h2 id="bt-h" tabindex="-1">This Batch</h2>' + (f'<p id="bt-trashed" hidden>{gone}</p>' if (gone := trashed_line(trashed, trashed_more)) else '') + '<div id="bt-body"></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
-            + HM.first_answer('bt-first', st) +                # #93: the panel drawn from the page itself, no "Loading…"
-            '<script src="/app/shared.js" defer></script><script src="/app/batch.js" defer></script><script src="/app/trash.js" defer></script></body></html>', closed)
+            + HM.first_answer('bt-first', st) + HM.call('batchPage') +   # #93: the panel drawn from the page itself, no "Loading…"; 15: right here
+            '<script src="/app/trash.js" defer></script></body></html>', closed)   # trash.js draws nothing until it is used
 
 def with_nav(page, s, label, current, closed=None, nm=None):
     """A book's run page inside a batch: the side list's button beside "Home Page" in the app bar (inside the run page's
-    header: Patrick's test 2026-11-07, Q6), and the side column right after the skip link, laid out by the server (D7).
+    header: Patrick's test 2026-11-07, Q6), and the side column right after the skip link, laid out by the server (D7),
+    with batch.js in the head and its call right after the column (15: the column is set before the first frame).
     nm: the page's names snapshot (the run page's header read through it too, #93)."""
     from . import server as W, names as NM
     nm = nm or NM.snapshot(s)
     st = state(s, label, nm, with_dashboard=False)          # the side list never shows the dashboard (review 09, 12a)
-    bar = HM.appbar(first=toggle(len(st['books']), not closed)); side = nav(s, label, current, st=st, closed=closed, nm=nm)   # S3: the list's button first
+    bar = HM.appbar(first=toggle(len(st['books']), not closed)); side = nav(s, label, current, st=st, closed=closed, nm=nm) + HM.call('batchNav')   # S3: the list's button first
     page = body_class(page, closed)
     if W.APPBAR_MARK in page:
         a = page.rfind('<nav', 0, page.find(W.APPBAR_MARK)); i = page.find('</nav>', a)
@@ -585,5 +587,4 @@ def with_nav(page, s, label, current, closed=None, nm=None):
     else: side = bar + side                                 # a page with no app bar of its own: the bar comes first
     if W.SKIP in page: page = page.replace(W.SKIP, W.SKIP + side, 1)
     else: page = W.after_body(page, side)
-    i = page.rfind('</body>'); js = '<script src="/app/batch.js" defer></script>\n'
-    return page[:i] + js + page[i:] if i >= 0 else page + js
+    return W.in_head(page, '<script src="/app/batch.js"></script>\n')   # 15: read before the page can show; the call above draws

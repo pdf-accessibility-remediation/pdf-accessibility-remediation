@@ -18,10 +18,17 @@ function msg(text, ok, focus = true) {
   if (text && focus) m.focus();
 }
 const live = t => { const l = $('hm-live'); if (!l) return; l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
-$('hm-msg').addEventListener('click', e => { if (e.target.closest('button.pp-x')) { msg(''); ($('hm-choose') || document.querySelector('form [name]')).focus(); } });
-
+const readBlock = id => { const el = $(id); if (!el) return null; try { return JSON.parse(el.textContent); } catch (e) { return null; } finally { el.remove(); } };
 const edit = (...a) => window.Pdfrem.edit(...a), closeMenu = (...a) => window.Pdfrem.closeMenu(...a);   // webapp/shared.js
-if (!$('hm-active')) return;                                      // the New Run and New Batch pages stop here
+const qp = new URLSearchParams(location.search);
+
+// 15 (Patrick, 2026-11-11: page changes in one step): this script is loaded in the head and only defines. The home page
+// calls Pdfrem.homeActive() right after "Runs in Progress" and its first answer, Pdfrem.homeAdded() right after "Upload a
+// PDF" (the line after an upload, a new name or a move to the Trash, and the new PDFs' name boxes), and Pdfrem.home() at
+// the end (everything that waits for the person, and the pop-up a saved batch's address opens). All of it runs while the
+// page is read, so the first frame shown is the whole page.
+function startHome() {
+$('hm-msg').addEventListener('click', e => { if (e.target.closest('button.pp-x')) { msg(''); ($('hm-choose') || document.querySelector('form [name]')).focus(); } });
 
 // ---------------------------------------------------------------- Upload a PDF: the drop zone (Q1, Patrick's test 2026-11-07)
 // Several PDFs at once, chosen ("Choose PDFs", the keyboard path) or dropped. Each is sent on its own, one after the other,
@@ -71,11 +78,16 @@ if (drop) {
   drop.addEventListener('dragleave', e => { if (!drop.contains(e.relatedTarget)) drop.classList.remove('hm-over'); });
   drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('hm-over'); upload(e.dataTransfer.files); });
 }
-const qp = new URLSearchParams(location.search);
 if (qp.get('open')) {                                             // T4: a saved batch's page opens its pop-up here
   const lab = qp.get('open'); qp.delete('open'); history.replaceState(null, '', '/' + (qp.toString() ? '?' + qp : ''));
-  window.Pdfrem.openDialog('/api/form?what=batch&saved=' + encodeURIComponent(lab), null);
+  const op = readBlock('hm-open');                                 // 15: its contents come with the page (no "Loading…")
+  window.Pdfrem.openDialog('/api/form?what=batch&saved=' + encodeURIComponent(lab), null, op && op.html);
 }
+
+
+}
+
+function startAdded() {
 const added = qp.get('added') || qp.get('renamed') || qp.get('trashed');
 if (added && $('hm-added')) {
   ['added', 'renamed', 'trashed'].forEach(k => qp.delete(k)); history.replaceState(null, '', '/' + (qp.toString() ? '?' + qp : ''));
@@ -84,8 +96,9 @@ if (added && $('hm-added')) {
   msg($('hm-added').textContent + (notes.length ? ' ' + notes.join(' ') : ''), !notes.length, !fresh.length || !!notes.length);
   fresh.forEach((tr, i) => edit(tr.querySelector('[data-edit]'), !notes.length && i === 0));   // the name boxes open; the first takes focus
 }
+}
 
-
+function startRest() {
 // ---------------------------------------------------------------- New Batch: two or more PDFs
 const form = $('hm-batch');
 if (form && $('hm-batch-n')) {
@@ -143,6 +156,8 @@ if (ws) {
   });
 }
 
+}
+
 // ---------------------------------------------------------------- Runs in Progress
 const seen = {}; let primed = false;
 // #93: the app is asked only about jobs whose status can still change, and about the ones last seen in one of these
@@ -157,7 +172,7 @@ function words(j) {
 function href(j) { return j.kind === 'batch' || j.kind === 'batch-estimate' ? '/batch/' + encodeURIComponent(j.run.split('/')[1]) + '/' : '/run/' + enc(j.run) + '/'; }
 // #93 (Patrick's test of the app): the first answer comes with the page (home.py first_answer), so the list is drawn at once,
 // with no "Loading…"; every later one is asked for. Read once, then removed.
-let first = (() => { const el = $('hm-first'); if (!el) return null; try { return JSON.parse(el.textContent); } catch (e) { return null; } finally { el.remove(); } })();
+let first = null;                                                  // read by startActive()
 async function poll() {
   try {
     let js;
@@ -185,5 +200,8 @@ async function poll() {
     setTimeout(poll, 5000);
   }
 }
-poll();
+function startActive() { if (!$('hm-active')) return; first = readBlock('hm-first'); poll(); }
+
+const P = window.Pdfrem = window.Pdfrem || {};
+P.homeActive = startActive; P.homeAdded = startAdded; P.home = () => { startHome(); startRest(); };
 })();

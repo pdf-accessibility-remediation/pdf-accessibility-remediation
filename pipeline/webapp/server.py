@@ -152,12 +152,17 @@ class Scripts(HTMLParser):
             if self.cur is not None: self.found.append(''.join(self.cur))
             self.cur = None
 
+def _sha(t): return f"'sha256-{base64.b64encode(hashlib.sha256(t.encode('utf-8')).digest()).decode()}'"
+CALL_TEXTS = {f'Pdfrem.{n}()' for n in HM.CALLS}           # the app's own calls (home.py call()), fixed text
+
 def csp(page):
-    """An HTML page's policy: no framing, and scripts only from the app itself plus the page's one inline script by its
-    sha256 (review.html and summary.html have exactly one; a JSON data block is not a script). A page with any other
-    count of inline scripts gets none allowed. A javascript: link in the report's text never runs."""
-    p = Scripts(); p.feed(page); p.close(); inline = p.found
-    h = f" 'sha256-{base64.b64encode(hashlib.sha256(inline[0].encode('utf-8')).digest()).decode()}'" if len(inline) == 1 else ''
+    """An HTML page's policy: no framing, and scripts only from the app itself, the app's own calls (home.py call(): a
+    fixed set of texts, 15) by their sha256, plus the page's one other inline script by its sha256 (review.html and
+    summary.html have exactly one; a JSON data block is not a script). A page with any other count of other inline
+    scripts gets none of those allowed. A javascript: link in the report's text never runs."""
+    p = Scripts(); p.feed(page); p.close()
+    calls = sorted({x for x in p.found if x in CALL_TEXTS}); inline = [x for x in p.found if x not in CALL_TEXTS]
+    h = ''.join(' ' + _sha(x) for x in calls) + (' ' + _sha(inline[0]) if len(inline) == 1 else '')
     return f"frame-ancestors 'none'; script-src 'self'{h}"
 
 def after_body(page, box):
@@ -172,12 +177,12 @@ def with_panel(page, run, current=None, waiting=False, first=None):
     tell when an apply has made a newer one. `first`: the panel's first answer (#93: panel_first), drawn at once by panel.js.
     The file on disk is never changed; opened as a file it is the plain report."""
     box = f'\n<div id="pdfrem-panel" data-run="{html.escape(run)}"' + (f' data-current="{html.escape(str(current))}"' if current else '') + \
-          (' data-waiting="1"' if waiting else '') + '></div>\n' + (HM.first_answer('pp-first', first) + '\n' if first is not None else '')
-    # review 09, 12c: panel.js in the head, render-blocking (Chromium; other browsers read it as a plain defer script), so
-    # the first frame (the one the page fade starts from) already holds Run Actions: a defer script at the end of a long
-    # report ran only after the whole report was parsed, a frame or more after the page was first shown. Still deferred:
-    # it runs once #pdfrem-panel is parsed, and before the other deferred scripts (batch.js); a load error unblocks it
-    head = '<link rel="stylesheet" href="/app/panel.css">\n<script src="/app/panel.js" defer blocking="render"></script>\n'
+          (' data-waiting="1"' if waiting else '') + '></div>\n' + (HM.first_answer('pp-first', first) + '\n' if first is not None else '') + \
+          HM.call('panel') + '\n'
+    # 15 (Patrick, 2026-11-11: page changes in one step, in every browser; review 09 12c's blocking="render" was Chromium's
+    # only): panel.js is a plain script in the head, so it is read before any of the page can be shown, and it only
+    # defines; the call right after the panel's place draws Run Actions from the first answer while the page is read
+    head = PANEL_HEAD
     page = in_head(page, head)
     if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
     elif SKIP in page: page = page.replace(SKIP, SKIP + box, 1)
@@ -200,20 +205,22 @@ def with_strip(page, run):
     i = page.find(SHIP_CARD)
     j = page.find('</section>', i) if i >= 0 else -1
     if j < 0: return page
-    box = f'\n<div id="pdfrem-checks" data-run="{html.escape(run)}"></div>\n'
-    return page[:j + len('</section>')] + box + page[j + len('</section>'):]
+    box = f'\n<div id="pdfrem-checks" data-run="{html.escape(run)}"></div>\n' + HM.call('strip') + '\n'   # 15: drawn right here
+    page = page[:j + len('</section>')] + box + page[j + len('</section>'):]
+    return page.replace('<div id="pdfrem-panel" ', '<div id="pdfrem-panel" data-strip="card" ', 1)   # the panel leaves it to that call
 
-def with_version(page, run, sid):
+PANEL_HEAD = '<link rel="stylesheet" href="/app/panel.css">\n<script src="/app/panel.js"></script>\n'
+
+def with_version(page, run, sid, first=None):
     """A previous result's review.html (reviews/versions/<id>/) as served: a bar after its header saying it is a previous
-    result, with "Back to the Current Result" and "Review Again from This Session" (webapp/panel.js draws it). The file's
-    own "replaced by" note is hidden there (panel.css), and stays in the file."""
-    box = f'\n<div id="pdfrem-version" data-run="{html.escape(run)}" data-session="{html.escape(sid)}"></div>\n'
-    head = '<link rel="stylesheet" href="/app/panel.css">\n'
-    i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
-    if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
-    else: page = after_body(page, box)
-    i = page.rfind('</body>'); js = '<script src="/app/panel.js" defer></script>\n'
-    return page[:i] + js + page[i:] if i >= 0 else page + js
+    result, with "Back to the Current Result" and "Review Again from This Session" (webapp/panel.js draws it, right
+    there, from `first`: panel_first()'s {run, setup}, 15). The file's own "replaced by" note is hidden
+    there (panel.css), and stays in the file."""
+    box = f'\n<div id="pdfrem-version" data-run="{html.escape(run)}" data-session="{html.escape(sid)}"></div>\n' + \
+          (HM.first_answer('pp-vfirst', first) + '\n' if first is not None else '') + HM.call('version') + '\n'
+    page = in_head(page, PANEL_HEAD)
+    if '</header>' in page: return page.replace('</header>', '</header>' + box, 1)
+    return after_body(page, box)
 
 def md_page(text, run, sid, base):
     """review.md inside a page with a way back (the run page; for a previous result, that result's dashboard too) and a
@@ -222,11 +229,10 @@ def md_page(text, run, sid, base):
     links = [f'<a href="{base}">Back to the Run Page</a>'] + ([f'<a href="review.html">This Previous Result\'s Dashboard</a>'] if sid else []) + \
             ['<a href="review.md?raw=1">The Plain File</a>']
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<title>review.md: {html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
+            f'<title>review.md: {html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css">{PANEL_HEAD}'
             f'</head><body class="pp-page">\n{SKIP}<header><h1>review.md of {html.escape(run)}: {which}</h1></header>'
             f'<nav class="pp-wrap" aria-label="Pages of this run"><p class="pp pp-bar">' + ' · '.join(links) + '</p></nav>'
-            f'<main id="main" tabindex="-1"><pre class="pp-md">{html.escape(text)}</pre></main>'
-            f'<script src="/app/panel.js" defer></script></body></html>')                 # panel.js: in-page links move focus
+            f'<main id="main" tabindex="-1"><pre class="pp-md">{html.escape(text)}</pre></main></body></html>')   # panel.js: in-page links move focus
 
 ASSET_CACHE = 'max-age=31536000, immutable'
 def versioned(page, ver):
@@ -614,7 +620,7 @@ def make(s, setup, code=None):
                     t = self.text(f)
                     if t is None: return self.send(404, {'error': 'not found'})
                     if name == 'review.html':                                              # a previous result: its bar
-                        return self.send(200, with_version(REL.no_statement(t), run, sid), 'text/html; charset=utf-8')
+                        return self.send(200, with_version(REL.no_statement(t), run, sid, first=self.panel_first(run, R)), 'text/html; charset=utf-8')
                     return self.send(200, md_page(t, run, sid, base), 'text/html; charset=utf-8')   # review.md with a way back
                 return self.file(f)
             if p in ('/new', '/new-batch'): return self.redirect('/')   # T4: New Run and New Batch are pop-ups on the home page
@@ -638,8 +644,17 @@ def make(s, setup, code=None):
                 return self.send(200, HM.page(s, (q.get('q') or [''])[0], (q.get('n') or ['25'])[0], test=bool(s.get('test_reply_dir')),
                                               added=(q.get('added') or [None])[0], bn=(q.get('bn') or ['25'])[0],
                                               renamed=(q.get('renamed') or [None])[0], view=(q.get('view') or ['runs'])[0],
-                                              group=(q.get('group') or [''])[0], trashed=(q.get('trashed') or [''])[0]), 'text/html; charset=utf-8')
+                                              group=(q.get('group') or [''])[0], trashed=(q.get('trashed') or [''])[0],
+                                              opened=self.saved_form((q.get('open') or [''])[0])), 'text/html; charset=utf-8')
             self.send(404, {'error': 'not found'})
+
+        def saved_form(self, label):
+            """?open=<label> on the home page (a saved batch's address, T4): {url, html} of its pop-up, as /api/form gives it,
+            so the page carries it (15); None when there is no such saved batch (the page then asks, and says why)."""
+            B = batch_dir(s['runs'], label) if label else None
+            if not B or not BT.saved(s, os.path.basename(B)): return None
+            try: return {'url': '/api/form?what=batch&saved=' + urllib.parse.quote(os.path.basename(B), safe=''), 'html': BT.form_part(s, [], saved=os.path.basename(B))}
+            except Exception: return None
 
         def json_ok(self):
             """A JSON POST's own checks (type, a digits-only length within MAX_BODY, a JSON object): self.body, or the

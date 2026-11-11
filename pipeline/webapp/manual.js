@@ -9,6 +9,10 @@
    not announced; focus moves only after the person's own action, and to a message or the error summary. */
 (() => {
 'use strict';
+// 15 (Patrick, 2026-11-11: page changes in one step): this script is loaded in the head and only defines; the page calls
+// Pdfrem.checks() right after its data, so each form is filled (a draft kept in this browser, the notes each choice
+// requires) while the page is read, before its first frame
+function start() {
 const D = JSON.parse(document.getElementById('mc-data').textContent);
 const $ = id => document.getElementById(id);
 const API = '/api/run/' + D.run.split('/').map(encodeURIComponent).join('/');
@@ -175,4 +179,6 @@ if (new URLSearchParams(location.search).get('recorded')) {      // after Record
   history.replaceState(null, '', location.pathname);
   const m = $('mc-msg'); if (m) m.focus();
 }
+}
+const P = window.Pdfrem = window.Pdfrem || {}; P.checks = start;
 })();

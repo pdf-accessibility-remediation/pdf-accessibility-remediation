@@ -55,7 +55,7 @@ def test_the_home_page_names_what_was_moved_to_the_trash(app):
     assert 'drag it' not in page and 'put it back' not in page
 
 # ------------------------------------------------------------------ review 09, 12c: Run Actions in the first frame
-PANEL_JS = '<script src="/app/panel.js" defer blocking="render"></script>'
+PANEL_JS = '<script src="/app/panel.js"></script>'                # 15: a plain blocking script in the head, every browser
 
 def in_head(page):
     """panel.js once, in the head (a render-blocking script counts only before <body>), and nowhere else."""

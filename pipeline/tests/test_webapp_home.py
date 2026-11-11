@@ -138,7 +138,8 @@ def test_home_page_lists_books_and_runs(app):
     page = unver(b)
     assert st == 200 and 'Sample Title' in page and 'Source PDF: s.pdf' in page and 'data-dialog="/api/form?what=run&amp;book=' in page
     assert 'aria-label="App"' not in page and '>Home Page<' not in page                # P1: no way home on the home page itself
-    assert '<script src="/app/home.js" defer></script>' in page and "script-src 'self'" in h['Content-Security-Policy']
+    assert '<script src="/app/home.js"></script>' in page.split('</head>')[0] and "script-src 'self'" in h['Content-Security-Policy']   # 15: in the head
+    assert page.index('id="hm-first"') < page.index('<script>Pdfrem.homeActive()</script>') < page.index('id="hm-books-h"')   # drawn right there
     assert 'My Workspace' in page and '/run/book/r1/' in page and 'None' not in page.replace('None yet', '')
     assert get(app['port'], '/app/home.js')[0] == 200
     st, b, _ = get(app['port'], '/?q=nothing-matches-this')

@@ -341,5 +341,6 @@ def test_a_book_page_in_a_batch_and_its_poll_never_build_the_dashboard(setup, mo
 
 def test_batch_js_asks_the_light_answer_on_a_book_page_only():
     t = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
-    assert "API = '/api/batch/' + encodeURIComponent(LABEL)" in t and "POLL = API + ($('bt-panel') ? '' : '?nav=1')" in t
+    assert "API = '/api/batch/' + encodeURIComponent(LABEL)" in t and "POLL = API + (ON_PAGE ? '' : '?nav=1')" in t
+    assert "const ON_PAGE = document.body.dataset.batchPage === '1';" in t      # 15: the batch page says so on its <body>
     assert 'await api(POLL)' in t and 'await api(API)' not in t

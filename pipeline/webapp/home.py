@@ -25,6 +25,17 @@ def _load(p):
     try: return json.load(open(p, encoding='utf-8'))
     except (OSError, ValueError): return None
 
+# 15 (Patrick, 2026-11-11: page changes in one step): each script that draws part of a page's first view is loaded in the
+# page's head (a plain blocking script: kept by the browser by its version, server.py versioned()) and only defines; the
+# page calls it right after the elements it fills, so the drawing happens while the page is read, before the browser can
+# show a frame of it, in every browser. These calls are the only inline scripts the app adds (server.py csp() allows
+# exactly these, by their hashes).
+CALLS = ('panel', 'strip', 'version', 'batchNav', 'batchPage', 'homeActive', 'homeAdded', 'home', 'checks')
+def call(name):
+    """The page's call to one of its scripts' drawing functions (window.Pdfrem.<name>), as an inline script."""
+    assert name in CALLS, name
+    return f'<script>Pdfrem.{name}()</script>'
+
 def first_answer(eid, obj):
     """A panel's first answer, in its page (#93, Patrick's test of the app): the JSON its first request would get, so the
     panel draws filled on first load, with no "Loading…" (Runs in Progress, Run Actions and the evaluation strip, This
@@ -284,7 +295,9 @@ def book_cell(name, file):
 
 def qs(**kw): return '/?' + urllib.parse.urlencode({k: v for k, v in kw.items() if v not in (None, '', 25)})
 
-def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs', group='', trashed=False):
+def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs', group='', trashed=False, opened=None):
+    """The home page. opened: {url, html} of the pop-up a saved batch's address opens (?open=, server.py), carried by the
+    page so the pop-up comes with it, filled (15)."""
     try: n = max(25, min(int(n), 100000))
     except (TypeError, ValueError): n = 25
     try: bn = max(25, min(int(bn), 100000))
@@ -298,7 +311,8 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
     idx = index(s, nm)
     active = any(j['status'] in jobs.ACTIVE for j in nm.jobs())
     B = ['<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">',
-         '<title>PDF Accessibility Remediation</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>',
+         '<title>PDF Accessibility Remediation</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
+         '<script src="/app/shared.js"></script><script src="/app/home.js"></script></head>',   # 15: in the head; the calls below draw
          '<body class="pp-page hm-page" data-home="1"><a class="skip" href="#main">Skip to the content</a>',
          '<header><h1>PDF Accessibility Remediation</h1></header><main id="main" tabindex="-1">']
     if test: B.append('<p class="pp pp-bar">Test: saved replies, no AI request.</p>')
@@ -306,7 +320,7 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
     B.append('<section class="pp hm-card hm-c-act" id="hm-act-sec" aria-labelledby="hm-act-h"' + ('' if active else ' hidden') +
              '><h2 id="hm-act-h">Runs in Progress</h2><div id="hm-active">' + ('' if first is not None else '<p>Loading…</p>') + '</div></section>'
              '<div id="hm-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>'
-             + (first_answer('hm-first', first) if first is not None else ''))
+             + (first_answer('hm-first', first) if first is not None else '') + call('homeActive'))
     # the PDFs added through the drop zone (samples/ is never listed: P3). Patrick's test, 2026-11-07 (Q1, Q3, Q4): one
     # drop zone for several PDFs; a new PDF comes first, highlighted, with its name box open (home.js); Edit Name in place.
     new = [k for k in (added or '').split(',') if k] if added else []
@@ -345,7 +359,7 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
         B.append('</tbody></table></div>')
         B.append('<div class="pp-row"><button type="submit" id="hm-batch-b">Create a New Batch</button>'
                  '<span class="pp-note" id="hm-batch-n">Select two or more PDFs first.</span></div>')
-    B.append('</form></section>')
+    B.append('</form></section>' + call('homeAdded'))
     # My Workspace: single runs or batches, searched and filtered by status group
     ql = q.casefold()
     runs_ = [r for r in idx['runs'] if not r['batch']]
@@ -405,7 +419,8 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
     if len(items) > lim:
         more = qs(view=view if view != 'runs' else None, q=q, group=group, n=n + 25 if view == 'runs' else n, bn=bn + 25 if view == 'batches' else bn)
         B.append(f'<p><a class="pp-btn" href="{E(more)}#hm-more" id="hm-more">Show More {"Runs" if view == "runs" else "Batches"}</a></p>')
-    B.append('</section></main><script src="/app/shared.js" defer></script><script src="/app/home.js" defer></script><script src="/app/trash.js" defer></script></body></html>')
+    B.append('</section></main>' + (first_answer('hm-open', opened) if opened else '') + call('home') +
+             '<script src="/app/trash.js" defer></script></body></html>')   # trash.js draws nothing until it is used
     return '\n'.join(B)
 
 def title_row(h1, extra='', first='', bar=True):

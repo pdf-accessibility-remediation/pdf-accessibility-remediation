@@ -141,7 +141,14 @@ document.addEventListener('click', e => {
   t.scrollIntoView(); t.focus({ preventScroll: true }); history.replaceState(null, '', '#' + t.id);
 });
 
+// A JSON data block the page carries (the first answer, #93), read once and removed; null when there is none
+function readBlock(id) { const el = $(id); if (!el) return null; try { return JSON.parse(el.textContent); } catch (e) { return null; } finally { el.remove(); } }
+
 // ================================================================ a previous result: the bar
+// 15 (Patrick, 2026-11-11: page changes in one step): drawn by the page's own call right after the bar's place (the
+// server's Pdfrem.version()), from the page's first answer (pp-vfirst), so the bar and its "Review Again" come with the
+// page's first frame; without that answer it asks the app, as before
+function startVersion() {
 const vbox = $('pdfrem-version');
 if (vbox) {
   const RUN = vbox.dataset.run, SID = vbox.dataset.session, API = '/api/run/' + encRun(RUN), BASE = '/run/' + encRun(RUN) + '/';
@@ -154,8 +161,7 @@ if (vbox) {
     showMsg($('pp-msg'), ''); vbox.querySelector('a').focus();
   });
   const label = SID === 'ai' ? 'Start Over from the AI\'s Decisions' : 'Review Again from This Session';
-  api(API).then(([s, st]) => {
-    if (s !== 200) return;
+  const drawAct = st => {
     const busy = st.live_review || st.lock || (st.jobs || []).some(j => j.status === 'queued' || j.status === 'running');
     $('pp-vact').innerHTML = busy ? '· A job for this run is running or waiting: see the current result.' :
       '<button type="button" id="pp-vreview">' + esc(label) + '</button>';
@@ -172,10 +178,17 @@ if (vbox) {
         showMsg(m, r.error || 'The app refused this', false, true);
       } catch (e) { showMsg(m, 'The app is not running. ' + START + ' Then try again.', false, true); }
     });
-  }).catch(() => {});
+  };
+  const vf = readBlock('pp-vfirst');
+  if (vf && vf.run) drawAct(vf.run); else api(API).then(([s, st]) => { if (s === 200) drawAct(st); }).catch(() => {});
+}
 }
 
 // ================================================================ the run page: the panel
+// 15: drawn by the page's own call right after the panel's place and its first answer (Pdfrem.panel()); the evaluation
+// strip, which sits after the "Ready to Ship?" card further down, by a second call right after its own place
+// (Pdfrem.strip()). This script itself is loaded in the head, so neither call waits for the network.
+function startPanel() {
 const box = $('pdfrem-panel'); if (!box) return;
 const RUN = box.dataset.run, API = '/api/run/' + encRun(RUN);
 const q = new URLSearchParams(location.search);
@@ -198,7 +211,7 @@ const seen = {};                                                // per job: the 
 // #93 (Patrick's test of the app): the panel's first answer comes with the page (server.py panel_first): {run, setup}, so
 // Run Actions and the evaluation strip are drawn in this same step, with no "Loading…"; every later update is asked for.
 // Read once, then removed.
-let first = (() => { const el = $('pp-first'); if (!el) return null; try { return JSON.parse(el.textContent); } catch (e) { return null; } finally { el.remove(); } })();
+let first = readBlock('pp-first');
 if (first && first.setup) setup = first.setup;
 box.innerHTML = '<section class="pp" aria-labelledby="pp-h"><h2 id="pp-h" tabindex="-1">Run Actions</h2>' +
   '<div id="pp-body">' + (first ? '' : '<p>Loading…</p>') + '</div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>' +
@@ -526,6 +539,7 @@ function dlForm(dd, hx) {
 }
 function renderStrip(s) {
   let sb = $('pdfrem-checks');
+  if (!sb && box.dataset.strip === 'card') return;               // its place, after the card, is not read yet: Pdfrem.strip() draws it
   if (!sb) { sb = document.createElement('div'); sb.id = 'pdfrem-checks'; sb.dataset.inPanel = '1'; box.querySelector('section.pp').appendChild(sb); }   // no card: in the panel
   const sel = $('pp-dlv'), chosen = sel ? sel.value : null;      // the picker keeps its choice when the strip is redrawn
   const h = stripBlock(s, sb.dataset.inPanel === '1'), keep = document.activeElement && sb.contains(document.activeElement) ? document.activeElement.id : null;
@@ -922,8 +936,13 @@ function followUp(s) {
 
 if (q.get('landed') === '1' || q.get('opening')) history.replaceState(null, '', location.pathname);
 if (!setup) api('/api/setup').then(([s, b]) => { if (s === 200) { setup = b; if (st) render(); } }).catch(() => {});
+window.Pdfrem.strip = () => { if (st && !WAITING) renderStrip(st); };   // as render() draws it
 poll(true).then(() => {
   if (q.get('landed') === '1') { const h = $('pp-cur'); if (h) h.focus(); }
   if (q.get('opening')) { const h = $('jh-' + q.get('opening')); if (h) h.focus(); }      // from a previous result's bar
 });
+}
+
+const P = window.Pdfrem = window.Pdfrem || {};
+P.panel = startPanel; P.version = startVersion; P.strip = P.strip || (() => {});
 })();

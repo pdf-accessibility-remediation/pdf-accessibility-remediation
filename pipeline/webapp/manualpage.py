@@ -16,6 +16,7 @@ import os, json, html, threading, urllib.parse
 from lib import release as REL, glance as G, langtag, dates as D
 from lib.titles import title_case as TC
 from review import sessions as S, manual as M            # imported at the app's start: manual.CODE is the running code's
+from . import home as HM
 
 def E(x): return html.escape('' if x is None else str(x))   # every value escaped, whatever its type
 _cache, _cache_lock = {}, threading.Lock()
@@ -393,6 +394,7 @@ def page(R, run, recorded=None):
                                         'notes': e.get('notes') or ''} for e in v['earlier']],
                             'start_draft': (v['draft_earlier'] or {}).get('data'), 'has_draft': bool(v['draft'])} for k, v in st['sections'].items()}
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<title>Accessibility Evaluation: {E(b["title"])}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
+            f'<title>Accessibility Evaluation: {E(b["title"])}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
+            '<script src="/app/manual.js"></script></head>'                    # 15: in the head; the call after the data draws
             '<body class="pp-page mc-page"><a class="skip" href="#main">Skip to the content</a>' + ''.join(B) +
-            f'<script type="application/json" id="mc-data">{_json_block(data)}</script><script src="/app/manual.js" defer></script></body></html>')
+            f'<script type="application/json" id="mc-data">{_json_block(data)}</script>{HM.call("checks")}</body></html>')
