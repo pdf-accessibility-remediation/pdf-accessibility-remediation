@@ -195,16 +195,6 @@ const WAITING = box.dataset.waiting === '1';                   // served before 
 let ocrSeen;                                                    // the OCR verdict's `recorded` when this page's report was read
 const seen = {};                                                // per job: the last step and status announced
 
-// D7: the panel keeps the height it had on the last page until its first draw, so the report below does not jump when
-// the person moves from PDF to PDF (sessionStorage: this tab only)
-const HKEY = 'pp-h:' + (WAITING ? 'w' : 'r');
-try { const h = +sessionStorage.getItem(HKEY); if (h > 0) box.style.minHeight = h + 'px'; } catch (e) {}
-let sized = false;
-function keepHeight() {
-  if (!sized) { sized = true; box.style.minHeight = ''; }
-  try { sessionStorage.setItem(HKEY, String(box.offsetHeight)); } catch (e) {}
-}
-addEventListener('pagehide', keepHeight);
 // #93 (Patrick's test of the app): the panel's first answer comes with the page (server.py panel_first): {run, setup}, so
 // Run Actions and the evaluation strip are drawn in this same step, with no "Loading…"; every later update is asked for.
 // Read once, then removed.
@@ -879,7 +869,6 @@ async function poll(force) {
       announce(b);
       followUp(b);
       if (force || JSON.stringify(before) !== JSON.stringify(b)) render();
-      if (!sized) keepHeight();
       landed(b, land && focusWas && !$(focusWas) && land.id === 'pp-cur' ? 'pp-cur' : focusWas);
     }
   }
