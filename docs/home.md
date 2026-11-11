@@ -48,7 +48,9 @@ the review page's "seen" cards use the same blue). The status pills keep their c
   "Waiting to Start", and **Open**, kept current while the page is open. A job that ends is announced; focus never moves
   by itself. To keep this light as the jobs add up (#93), the page asks the app only about jobs whose status can still
   change (waiting, running, waiting for a new estimate, or stopped without finishing while it may still be running) and about the ones it last saw so
-  (`/api/jobs?active=1&seen=…`): every 2 seconds while a job runs, else every 5, as before.
+  (`/api/jobs?active=1&seen=…`): every 2 seconds while a job runs, else every 5, as before. Its first answer comes with
+  the page (a JSON data block, `hm-first`: what that request would return for a page that has seen no job), so the list is
+  drawn on first load with no "Loading…" (#93, Patrick's test of the app); later answers are asked for as before.
 - **Upload a PDF:** a drop zone (dashed border, an upload icon): **Choose PDFs**, "or drag PDFs here" (S1), and "A copy goes
   into the app's folder; the file you choose is not changed." Several PDFs at once, chosen or dropped; **Choose PDFs** is
   the keyboard path. Under it, the PDFs added this way, each with its pages and size, **New Run**, a "⋯" menu (**Edit
@@ -64,7 +66,8 @@ the review page's "seen" cards use the same blue). The status pills keep their c
   **Show More Batches**). Listing a run never changes it. The switch, a filter, a search
   and **Show More** swap the table in place, with no reload and no jump to the top (R15, Patrick's test 2026-11-07): the
   address keeps the choice (`history.replaceState`), so refreshing keeps it; focus stays on the control used, and the new
-  count ("3 batches · In Progress", T1: parts joined by a middle dot) is announced. Enter in the search box keeps the view shown.
+  count ("3 batches · In Progress", T1: parts joined by a middle dot) is announced. Enter in the search box keeps the view shown,
+  and after the table is swapped the caret is at the end of the search text, so typing goes on where it stopped (#93).
 
 **The "⋯" menus** (Patrick's test, 2026-11-07). Beside **Open** (on a PDF, beside **New Run**), a "⋯" button named "More
 Actions for <name>" opens a menu: **Edit Name** and **Move to Trash** (in red). It is a menu button
@@ -353,7 +356,9 @@ matches both.
 Workspace's ("More Actions for <PDF name>"): **Edit Name** changes the PDF's display name in place (kept by sha256, so
 it shows on the dashboard, the side list, its run page and any other run of the same file; never a file, folder or run
 name: a batch's PDFs are named by the batch) and **New Run of This PDF** opens New Run's pop-up. The "This Batch" panel
-joins the header, and the side list when it is shown.
+joins the header, and the side list when it is shown. Its first answer comes with the page (#93: a JSON data block,
+`bt-first`, what `/api/batch/<label>` returns), so it is drawn on first load with no "Loading…"; later answers are asked
+for as before.
 
 **The side column** ("PDFs in This Batch") is on the batch page and on every PDF's page in the batch: each PDF with its
 display name, "Source PDF:" and its status in words. Its left border shows its state (P15): grey while its review isn't
@@ -374,7 +379,11 @@ phone, 320 px included) it starts closed, in the page's flow, so nothing scrolls
 
 **Move to Trash** (D8, Patrick 2026-11-06) is in the "⋯" menu of each single run and batch in My Workspace and of each
 PDF in the PDF list, and on the batch page (the whole batch, or the PDFs ticked in its dashboard: **Move Selected to Trash**). Every move asks
-first, naming what goes in plain words:
+first, naming what goes in plain words, and ends with what happens (#93, Patrick's test of the app): "This PDF will be
+moved to the Trash on this computer and cannot be restored through the app." (for a run or a batch: "This folder will
+be moved to …"; for several PDFs ticked in a batch: "These folders will be moved to …"). After the move the home page
+says "Moved to the Trash: <name>." (the PDF's, run's or batch's name). The app restores nothing: a PDF is used again by
+uploading the same PDF again with **Choose PDFs**, where the app finds it by its content (sha256).
 
 - **A run:** its run name and PDF, and "The remediated PDF, its report and its review go with it." A shipped run adds
   "This run was shipped. Its record of what was shipped and who approved it goes with it."
@@ -389,12 +398,13 @@ first, naming what goes in plain words:
   date and status, then "These runs keep their remediated PDF, report and downloads." (R7), and, per run, what the move changes (Patrick, 2026-11-07): ""Review
   Again" still works: the run kept its own copy" (its intake made one), "…the run uses another copy of the PDF" (its
   review reads a different file with the same content, e.g. in samples/) or "…another copy of the PDF is in the app's
-  folders" (found by sha256); ""Review Again" will need it back" (a tagged PDF whose review reads this very file: its
+  folders" (found by sha256); ""Review Again" will require this PDF: it can be uploaded again with "Choose PDFs" on the
+  home page." (#93; a tagged PDF whose review reads this very file: its
   review record names the original itself, review 12 M2); ""Review Again" already doesn't work for this run: …
   Moving this PDF doesn't change that" (its own intake copy is missing, or its record doesn't say which PDF it was made
   from: putting the PDF back wouldn't help, review 12 N2); "Applying its reviewed
-  decisions will need it back" (waiting for its first apply); a run before its result gets no line (R7). Those runs stay; a run that needs it says on its page that the original PDF was moved to the Trash and how to
-  put it back. The samples folder is never offered.
+  decisions will require this PDF: it can be uploaded again with …" (waiting for its first apply); a run before its result gets no line (R7). Those runs stay; a run that needs it says on its page: "The original PDF was moved to the Trash. "Review Again" requires it: to continue, upload the same PDF again with "Choose PDFs" on the home page." (and
+  "Start Remediation", refused for a PDF moved to the Trash, says the same, ending "then try again"). The samples folder is never offered.
 
 A move is refused, and nothing moves, while anything affected is processing, waiting to start or for a new estimate, has
 a review page open, or sits between "Finish Review" and its apply; a PDF also while any job's command names it. Where the
