@@ -74,7 +74,7 @@ def test_intake_stops_a_locked_pdf(tmp_path):
     r = run('intake.py', pdf_file(tmp_path / 'a.pdf', password='u'), tmp_path / 'in')
     assert r.returncode == 3, r.stdout + r.stderr
     j = intake_json(tmp_path / 'in')
-    assert j['status'] == 'stopped' and j['summary'] == support.NEEDS_PASSWORD
+    assert j['status'] == 'stopped' and j['summary'] == support.LOCKED
     assert not os.path.exists(tmp_path / 'in' / 'intake.pdf')
 
 def test_intake_fails_on_a_damaged_pdf(tmp_path):
@@ -104,7 +104,7 @@ def test_audit_stops_namespaced_tags(tmp_path):
     audit_stops(tmp_path, pdf_file(tmp_path / 'a.pdf', namespaces=True), 3, 'audit: stopped: namespaced tags')
 
 def test_audit_stops_a_locked_pdf(tmp_path):
-    audit_stops(tmp_path, pdf_file(tmp_path / 'a.pdf', password='u'), 3, 'audit: stopped: ' + support.NEEDS_PASSWORD)
+    audit_stops(tmp_path, pdf_file(tmp_path / 'a.pdf', password='u'), 3, 'audit: stopped: ' + support.LOCKED)
 
 def test_audit_fails_on_a_damaged_pdf(tmp_path):
     audit_stops(tmp_path, damaged_file(tmp_path / 'a.pdf'), 1, 'audit: failed: the PDF could not be opened (')
@@ -117,7 +117,7 @@ def apply_stops(tmp_path, src, code, words):
     assert not os.path.exists(out) and not os.path.exists(str(out) + '.log.json')
 
 def test_apply_stops_a_locked_pdf(tmp_path):
-    apply_stops(tmp_path, pdf_file(tmp_path / 'a.pdf', password='u'), 3, 'apply: stopped: ' + support.NEEDS_PASSWORD)
+    apply_stops(tmp_path, pdf_file(tmp_path / 'a.pdf', password='u'), 3, 'apply: stopped: ' + support.LOCKED)
 
 def test_apply_fails_on_a_damaged_pdf(tmp_path):
     apply_stops(tmp_path, damaged_file(tmp_path / 'a.pdf'), 1, 'apply: failed: the PDF could not be opened (')
@@ -136,12 +136,12 @@ def test_run_api_stops_a_locked_pdf_at_intake(tmp_path):
     R = tmp_path / 'run'
     r = run_api(pdf_file(tmp_path / 'a.pdf', password='u'), R)
     assert r.returncode == 3, r.stdout + r.stderr
-    assert 'intake: stopped: ' + support.NEEDS_PASSWORD in r.stdout and 'cost estimate' not in r.stdout
+    assert 'intake: stopped: ' + support.LOCKED in r.stdout and 'cost estimate' not in r.stdout
     assert not any(os.path.exists(R / f) for f in ('request.json', 'run.json', '_audit'))
 
 def test_run_api_stops_a_locked_pdf_at_audit_without_intake(tmp_path):
     R = tmp_path / 'run'
     r = run_api(pdf_file(tmp_path / 'a.pdf', password='u'), R, INTAKE='off')
     assert r.returncode == 3, r.stdout + r.stderr
-    assert 'audit: stopped: ' + support.NEEDS_PASSWORD in r.stderr and 'cost estimate' not in r.stdout
+    assert 'audit: stopped: ' + support.LOCKED in r.stderr and 'cost estimate' not in r.stdout
     assert not any(os.path.exists(R / f) for f in ('request.json', 'run.json', '_intake'))

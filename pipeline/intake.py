@@ -1185,7 +1185,7 @@ def main():
     if os.path.exists(PDF_OUT): os.remove(PDF_OUT)
     # ---- open
     try: pdf = pikepdf.open(SRC)
-    except pikepdf.PasswordError: return stop('stopped', support.NEEDS_PASSWORD, 3)      # the same words as audit.py / apply.py
+    except pikepdf.PasswordError: return stop('stopped', support.LOCKED, 3)      # the same words as audit.py / apply.py
     except Exception as e: return stop('failed', support.cannot_open(e), 1)
     rec['original']['pages'] = len(pdf.pages); rec['original']['encrypted'] = pdf.is_encrypted
     if '/PageLabels' in pdf.Root:

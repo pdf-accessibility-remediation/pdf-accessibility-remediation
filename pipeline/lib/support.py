@@ -18,7 +18,8 @@ import os, sys
 REASON = ('not supported yet. The checks and fixes are for PDF 1.x tagging (PDF/UA-1) and could downgrade correct '
           'PDF 2.0 tags. A person remediates this book; see README, "Not supported yet: PDF 2.0"')
 
-NEEDS_PASSWORD = 'the PDF needs a password to open; a person must supply an unlocked copy'
+# the words printed for a locked PDF (not named after a password, so code scanners don't take it for a secret)
+LOCKED = 'the PDF needs a password to open; a person must supply an unlocked copy'
 
 
 def cannot_open(e):
@@ -57,7 +58,7 @@ def open_or_stop(path, step):
     PDF 2.0 check. Only the open is guarded, so an error further on is never mistaken for a damaged file."""
     import pikepdf
     try: pdf = pikepdf.open(path)
-    except pikepdf.PasswordError: print(f'{step}: stopped: {NEEDS_PASSWORD}', file=sys.stderr); sys.exit(3)
+    except pikepdf.PasswordError: print(f'{step}: stopped: {LOCKED}', file=sys.stderr); sys.exit(3)
     except Exception as e: print(f'{step}: failed: {cannot_open(e)}', file=sys.stderr); sys.exit(1)
     stop_if_unsupported(pdf, step)
     return pdf
