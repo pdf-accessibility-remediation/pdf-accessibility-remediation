@@ -82,6 +82,7 @@ The pipeline lives in `pipeline/`; paths below are relative to it, apart from `p
 | `lib/dates.py` | Dates and times as a person reads them ("October 31, 2026", "4:32 PM"), wherever the app, the dashboards and review.md show one; the same rule in `webapp/panel.js` and `review/page.html` |
 | `lib/runlock.py` | The record lock: one writer at a time of a finished run's record.json, review.md, review.html and release/ (`<run>/.record.lock`, flock, not re-entrant, a bounded wait) |
 | `lib/glance.py` | The "Overview" numbers for a finished run (status, ready to ship, five safety checks, the veraPDF finding, needs a person, AI decisions, fixed automatically, veraPDF, top issues), from `record.json` and `review.md`; shared by `report.py`, `report_html.py` and `review_ocr.py` |
+| `lib/contentops.py` | The content-stream operators `verify.py`'s untagged-content loop acts on, and the filter that asks pikepdf for those only (an inline image named `BI ID EI`, all three); the loop and the filter share this one list |
 | `lib/plpages.py` | Reads each page once with pdfplumber and keeps only what `audit.py` and `apply.py` use: characters, image boxes, size and the visible area (CropBox) |
 | `lib/handedit.py` | What changed in a PDF edited by hand, for `handedit.py import`: the images on each page by their data's sha256, each Figure and the images it holds, the figures whose image is new, and a copy with their old alt text removed |
 | `lib/plumb_fix.py` | Fix for pdfplumber's nested marked-content bug (required; imported before pdfplumber reads a page) |

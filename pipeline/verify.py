@@ -1,7 +1,7 @@
 """Verify work/remediated.pdf against the original. Read-only."""
 import sys, json, re, collections
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, readorder, fontname  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
+from lib import plumb_fix, readorder, fontname, contentops as CO  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 import fontTools.cffLib, fontTools.ttLib  # noqa: F401  required: a font that can't be read must not pass as OK
 from PIL import ImageChops
@@ -218,7 +218,7 @@ with pdf.open_metadata(set_pikepdf_as_editor=False, update_docinfo=False) as m: 
 # 4 content that is neither tagged nor an artifact (text, paths, images), and font problems, in one pass over
 #   every content stream. A form XObject is counted once, however many pages draw it (as checkers do).
 import io
-PAINT = {'S', 's', 'f', 'F', 'f*', 'B', 'B*', 'b', 'b*'}; SHOW = {'Tj', 'TJ', "'", '"'}
+PAINT, SHOW, PATH = CO.PAINT, CO.SHOW, CO.PATH          # lib/contentops.py: the one list of operators this loop acts on
 free = collections.Counter(); free_pages = collections.defaultdict(collections.Counter); seen_forms = set()
 font_use = collections.defaultdict(lambda: {'refs': 0, 'ops': 0, 'pages': set(), 'modes': collections.Counter()})
 font_obj = {}
@@ -226,7 +226,7 @@ def _walk(stream, pno, resources, inherited, tr=0):
     stack = []; cur = None; path = False; gs = []
     fonts = {str(k): v for k, v in ((resources or {}).get('/Font') or {}).items()}
     xo = (resources or {}).get('/XObject') or {}
-    for operands, op in pikepdf.parse_content_stream(stream):
+    for operands, op in pikepdf.parse_content_stream(stream, CO.FILTER):     # only those operators (#93 C1): the rest never reach Python
         op = str(op)
         if op in ('BDC', 'BMC'):
             props = operands[1] if len(operands) > 1 else None
@@ -242,7 +242,7 @@ def _walk(stream, pno, resources, inherited, tr=0):
             continue
         if op == 'Tf': cur = str(operands[0]); continue
         if op == 'Tr': tr = int(operands[0]); continue
-        if op in ('m', 'l', 'c', 'v', 'y', 're'): path = True; continue
+        if op in PATH: path = True; continue
         if op == 'n': path = False; continue
         kind = None
         if op in PAINT and path: kind = 'path'; path = False
