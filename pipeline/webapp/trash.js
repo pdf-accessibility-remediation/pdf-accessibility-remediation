@@ -37,8 +37,17 @@ function body(p) {
       (r.effect ? '<br><span' + (/still works|doesn't change that/.test(r.effect) ? ' class="pp-note"' : ' class="pp-warn-t"') + '>' + esc(r.effect) + '</span>' : '') + '</li>').join('') + '</ul>';
   }
   (p.words || []).forEach(w => { h += '<p' + (/shipped/.test(w) ? ' class="pp-warn-t"' : '') + '>' + esc(w) + '</p>'; });   // the warnings stand out
-  return h + '<p class="pp-note">It goes to the Trash on this computer, nothing is deleted. To put it back, drag it from the Trash to where it was (the app\'s guide says where).</p>';
+  return h + '<p class="pp-note tr-note">' + esc(goes(p)) + '</p>';
 }
+// What happens, in one sentence (#93, Patrick's test of the app): a PDF, or the folder of a run or a batch (several PDFs
+// selected in a batch: their folders)
+function goes(p) {
+  const n = p.what === 'batch' && !p.whole && (p.pdfs || []).length > 1;
+  return (p.what === 'pdf' ? 'This PDF will be' : n ? 'These folders will be' : 'This folder will be') +
+         ' moved to the Trash on this computer and cannot be restored through the app.';
+}
+// The name the home page's message gives after the move ("Moved to the Trash: <name>.")
+function named(p) { return p.what === 'pdf' ? p.pdf : p.name; }
 async function ask(req, opener, after) {
   let c, p;
   try { [c, p] = await post('/api/trash/plan', req); }
@@ -46,7 +55,7 @@ async function ask(req, opener, after) {
   const title = req.what === 'pdf' ? 'Move This PDF to the Trash?' : req.what === 'run' ? 'Move This Run to the Trash?' :
                 p.whole ? 'Move This Batch to the Trash?' : 'Move the Selected PDFs to the Trash?';
   if (c !== 200) return show('<h2 id="tr-dlg-h">' + title + '</h2><p class="pp-warn-t">' + esc(p.error || 'The app refused this.') + '</p><div><button type="button" value="no">Close</button></div>', opener);
-  if (p.refused) return show('<h2 id="tr-dlg-h">' + title + '</h2>' + body(Object.assign({}, p, { words: [] })).replace(/<p class="pp-note">It goes.*$/, '') +
+  if (p.refused) return show('<h2 id="tr-dlg-h">' + title + '</h2>' + body(Object.assign({}, p, { words: [] })).replace(/<p class="pp-note tr-note">.*$/, '') +
     '<p class="pp-warn-t">This can\'t be moved now. ' + esc(p.refused) + '</p><div><button type="button" value="no">Close</button></div>', opener);
   show('<h2 id="tr-dlg-h">' + title + '</h2>' + body(p) + '<div id="tr-msg" class="pp-msg" hidden></div><div><button type="button" class="pp-primary" value="yes">Move to Trash</button>' +
        '<button type="button" value="no">Cancel</button></div>', opener, async () => {
@@ -65,9 +74,10 @@ document.addEventListener('click', e => {
     return ask({ what: 'batch', label: d.label, names }, b, (p, r) => { if (r.whole) location.assign('/?view=batches&trashed=1'); else location.reload(); });
   }
   const req = what === 'run' ? { what, run: d.run } : what === 'batch' ? { what, label: d.label } : { what, key: d.key };
-  ask(req, b, () => {
-    if (what === 'batch' && !document.body.dataset.home) location.assign('/?view=batches&trashed=1');
-    else location.assign(location.pathname + location.search.replace(/([?&])trashed=1&?/, '$1') + (location.search ? '&' : '?') + 'trashed=1');
+  ask(req, b, p => {
+    const t = 'trashed=' + encodeURIComponent(named(p) || '1');     // the home page names what was moved
+    if (what === 'batch' && !document.body.dataset.home) location.assign('/?view=batches&' + t);
+    else location.assign(location.pathname + location.search.replace(/([?&])trashed=[^&]*&?/, '$1') + (location.search ? '&' : '?') + t);
   });
 });
 })();

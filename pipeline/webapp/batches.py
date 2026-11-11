@@ -544,8 +544,9 @@ def page(s, label, closed=None):
             '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + nav(s, label, st=st, closed=closed, nm=nm) +
             f'<header class="top pp-head pp-hd">' + HM.title_row(f'Batch: {E(nm.shown_run("batches/" + label))}', first=toggle(len(st['books']), not closed)) +
             '</header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
-            '<h2 id="bt-h" tabindex="-1">This Batch</h2><div id="bt-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
+            '<h2 id="bt-h" tabindex="-1">This Batch</h2><div id="bt-body"></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
+            + HM.first_answer('bt-first', st) +                # #93: the panel drawn from the page itself, no "Loading…"
             '<script src="/app/shared.js" defer></script><script src="/app/batch.js" defer></script><script src="/app/trash.js" defer></script></body></html>', closed)
 
 def with_nav(page, s, label, current, closed=None, nm=None):

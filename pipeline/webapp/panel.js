@@ -205,8 +205,13 @@ function keepHeight() {
   try { sessionStorage.setItem(HKEY, String(box.offsetHeight)); } catch (e) {}
 }
 addEventListener('pagehide', keepHeight);
+// #93 (Patrick's test of the app): the panel's first answer comes with the page (server.py panel_first): {run, setup}, so
+// Run Actions and the evaluation strip are drawn in this same step, with no "Loading…"; every later update is asked for.
+// Read once, then removed.
+let first = (() => { const el = $('pp-first'); if (!el) return null; try { return JSON.parse(el.textContent); } catch (e) { return null; } finally { el.remove(); } })();
+if (first && first.setup) setup = first.setup;
 box.innerHTML = '<section class="pp" aria-labelledby="pp-h"><h2 id="pp-h" tabindex="-1">Run Actions</h2>' +
-  '<div id="pp-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>' +
+  '<div id="pp-body">' + (first ? '' : '<p>Loading…</p>') + '</div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>' +
   '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section>' +
   '<dialog class="pp-dlg" id="pp-dlg" aria-labelledby="pp-dlg-h"></dialog>';
 const live = t => { const l = $('pp-live'); l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
@@ -854,10 +859,14 @@ function announce(s) {
 async function poll(force) {
   clearTimeout(timer);
   let s, b;
-  try { [s, b] = await api(API); }
-  catch (e) {                                                    // no answer at all: the app is not running
-    banner('pp-offline', 'The app is not running, so this page cannot start or follow jobs; jobs already running carry on. ' + START);
-    offline = true;
+  if (first && first.run) { [s, b] = [200, first.run]; first = null; }   // the page's own first answer: no wait
+  else {
+    first = null;
+    try { [s, b] = await api(API); }
+    catch (e) {                                                  // no answer at all: the app is not running
+      banner('pp-offline', 'The app is not running, so this page cannot start or follow jobs; jobs already running carry on. ' + START);
+      offline = true;
+    }
   }
   if (s !== undefined) {
     if (offline) { offline = false; banner('pp-offline', null); live('The app is running again.'); }
@@ -923,7 +932,7 @@ function followUp(s) {
 }
 
 if (q.get('landed') === '1' || q.get('opening')) history.replaceState(null, '', location.pathname);
-api('/api/setup').then(([s, b]) => { if (s === 200) { setup = b; if (st) render(); } }).catch(() => {});
+if (!setup) api('/api/setup').then(([s, b]) => { if (s === 200) { setup = b; if (st) render(); } }).catch(() => {});
 poll(true).then(() => {
   if (q.get('landed') === '1') { const h = $('pp-cur'); if (h) h.focus(); }
   if (q.get('opening')) { const h = $('jh-' + q.get('opening')); if (h) h.focus(); }      // from a previous result's bar

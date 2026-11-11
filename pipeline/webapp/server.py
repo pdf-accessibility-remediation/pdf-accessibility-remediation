@@ -166,12 +166,13 @@ def after_body(page, box):
     j = page.find('>', i) if i >= 0 else -1
     return page[:j + 1] + box + page[j + 1:] if j >= 0 else box + page
 
-def with_panel(page, run, current=None, waiting=False):
+def with_panel(page, run, current=None, waiting=False, first=None):
     """review.html as served: the panel's stylesheet, its place (after the page's header, so its h2 follows the page's h1;
     else after the skip link) and its script added. `current`: the session whose result the page shows, so the panel can
-    tell when an apply has made a newer one. The file on disk is never changed; opened as a file it is the plain report."""
+    tell when an apply has made a newer one. `first`: the panel's first answer (#93: panel_first), drawn at once by panel.js.
+    The file on disk is never changed; opened as a file it is the plain report."""
     box = f'\n<div id="pdfrem-panel" data-run="{html.escape(run)}"' + (f' data-current="{html.escape(str(current))}"' if current else '') + \
-          (' data-waiting="1"' if waiting else '') + '></div>\n'
+          (' data-waiting="1"' if waiting else '') + '></div>\n' + (HM.first_answer('pp-first', first) + '\n' if first is not None else '')
     head = '<link rel="stylesheet" href="/app/panel.css">\n'
     i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
     if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
@@ -517,14 +518,15 @@ def make(s, setup, code=None):
                 return self.send(200, runs.job_view(s, job, with_text=True, offset=int(off) if off.isdecimal() and len(off) <= 12 else 0))
             if p.startswith('/api/run/'):
                 segs = segments(p[len('/api/run/'):])
-                hit = find_run(s['runs'], segs, waiting=True, pending=lambda d: runs.pending(s, d)) if segs else None
+                nm = NMS.snapshot(s)                             # #93: the names files and the jobs read once per answer
+                hit = find_run(s['runs'], segs, waiting=True, pending=lambda d: runs.pending(s, d, nm)) if segs else None
                 if hit and runs.waiting(hit[1]):
-                    return self.send(200, runs.waiting_state(s, hit[0], hit[1])) if not hit[2] else self.send(404, {'error': 'no such run'})
-                if hit and runs.pending(s, hit[1]):
-                    return self.send(200, runs.pending_state(s, hit[0], hit[1])) if not hit[2] else self.send(404, {'error': 'no such run'})
+                    return self.send(200, runs.waiting_state(s, hit[0], hit[1], nm)) if not hit[2] else self.send(404, {'error': 'no such run'})
+                if hit and runs.pending(s, hit[1], nm):
+                    return self.send(200, runs.pending_state(s, hit[0], hit[1], nm)) if not hit[2] else self.send(404, {'error': 'no such run'})
                 if hit and hit[2] == ['checks']: return self.send(200, MP.state(hit[1], hit[0]))   # the Manual Checks page's data
                 if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
-                return self.send(200, runs.state(s, hit[0], hit[1]))
+                return self.send(200, runs.state(s, hit[0], hit[1], nm))
             if p.startswith('/app/') and p[len('/app/'):] in assets: return self.send(200, *assets[p[len('/app/'):]])
             if p.startswith('/batch/'):
                 segs = segments(p[len('/batch/'):])
@@ -557,7 +559,7 @@ def make(s, setup, code=None):
                 if runs.waiting(R) or runs.pending(s, R, nm):                              # before its first result: its page only
                     if rest: return self.send(404, {'error': 'not found'})
                     if not p.endswith('/'): return self.redirect(p + '/')
-                    return self.send(200, self.in_batch(run, waiting_page(run, R, s, nm), nm), 'text/html; charset=utf-8')
+                    return self.send(200, self.in_batch(run, waiting_page(run, R, s, nm, first=self.panel_first(run, R, nm)), nm), 'text/html; charset=utf-8')
                 if not rest:
                     if not p.endswith('/'): return self.redirect(p + '/')
                     return self.run_page(run, R, nm)
@@ -607,7 +609,7 @@ def make(s, setup, code=None):
                 return self.send(200, HM.page(s, (q.get('q') or [''])[0], (q.get('n') or ['25'])[0], test=bool(s.get('test_reply_dir')),
                                               added=(q.get('added') or [None])[0], bn=(q.get('bn') or ['25'])[0],
                                               renamed=(q.get('renamed') or [None])[0], view=(q.get('view') or ['runs'])[0],
-                                              group=(q.get('group') or [''])[0], trashed=bool(q.get('trashed'))), 'text/html; charset=utf-8')
+                                              group=(q.get('group') or [''])[0], trashed=(q.get('trashed') or [''])[0]), 'text/html; charset=utf-8')
             self.send(404, {'error': 'not found'})
 
         def json_ok(self):
@@ -704,8 +706,20 @@ def make(s, setup, code=None):
             f = os.path.realpath(f)                                                  # checked inside the runs folder first
             t = self.text(f) if f.startswith(RUNS + os.sep) and os.path.isfile(f) else None
             nm = nm or NMS.snapshot(s)                                               # #93: the header and the side list read once
-            if t is not None: return self.send(200, self.in_batch(run, with_panel(with_app_header(card_border(REL.no_statement(t), R), s, run, R, nm), run, cur), nm), 'text/html; charset=utf-8')
-            return self.send(200, self.in_batch(run, no_dashboard(run, R, cur, s, nm), nm), 'text/html; charset=utf-8')
+            first = self.panel_first(run, R, nm)
+            if t is not None: return self.send(200, self.in_batch(run, with_panel(with_app_header(card_border(REL.no_statement(t), R), s, run, R, nm), run, cur, first=first), nm), 'text/html; charset=utf-8')
+            return self.send(200, self.in_batch(run, no_dashboard(run, R, cur, s, nm, first=first), nm), 'text/html; charset=utf-8')
+
+        def panel_first(self, run, R, nm=None):
+            """The run page panel's first answer (#93, Patrick's test of the app): {run: what GET /api/run/<run> gives now,
+            setup: what GET /api/setup gives}, so Run Actions and the evaluation strip draw filled on first load. None when
+            it can't be worked out: the panel then asks for it, as before. nm: the page's names snapshot, so the page and its
+            panel read the names files and the jobs once together."""
+            try:
+                st = (runs.waiting_state(s, run, R, nm) if runs.waiting(R) else runs.pending_state(s, run, R, nm) if runs.pending(s, R, nm)
+                      else runs.state(s, run, R, nm))
+                return {'run': st, 'setup': setup}
+            except Exception: return None
 
         def in_batch(self, run, page, nm=None):
             """A book's page inside a batch (runs/batches/<label>/<name>) gets the batch's side column. nm: the page's names
@@ -760,7 +774,7 @@ def with_app_header(page, s, run, R, nm=None):
     page = page[:a] + app_header(s, run, R, m.group(1) if m else None, nm) + page[b + len('</header>'):]
     return re.sub(r'<title>[^<]*</title>', lambda _: f'<title>{html.escape(runs.book_of(s, run, R, nm=nm)[0])}</title>', page, count=1)
 
-def no_dashboard(run, R, current=None, s=None, nm=None):
+def no_dashboard(run, R, current=None, s=None, nm=None, first=None):
     """A run with no review.html (older runs): the panel, the review.md link and a line saying there is no dashboard.
     No rebuild: report_html.py would write into the run."""
     rm = os.path.realpath(os.path.join(R, 'review.md'))           # checked inside the run folder before isfile
@@ -768,9 +782,9 @@ def no_dashboard(run, R, current=None, s=None, nm=None):
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
                       f'<title>{html.escape(runs.book_of(s, run, R, nm=nm)[0] if s else run)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
                       + (app_header(s, run, R, nm=nm) if s else f'<header><h1>{html.escape(run)}</h1></header>') + '<main id="main" tabindex="-1">'
-                      f'<p>This run has no dashboard: it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current)
+                      f'<p>This run has no dashboard: it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current, first=first)
 
-def waiting_page(run, R, s=None, nm=None):
+def waiting_page(run, R, s=None, nm=None, first=None):
     """A run before its first result: stopped for its first review (REVIEW=1: the panel's "Open the Review Page," then
     "Apply"), or started from the home page and estimating, ready to Spend, running, stopped or failed (the panel follows
     it). The book is named by its display name with "Source PDF:" under it, and the Run Name."""
@@ -779,7 +793,7 @@ def waiting_page(run, R, s=None, nm=None):
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
                       f'<title>{html.escape(name)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
                       f'{head}<main id="main" tabindex="-1"></main></body></html>',
-                      run, waiting=True)
+                      run, waiting=True, first=first)
 
 def refused_page(message, base):
     """A download that cannot be given now: its reason in plain words, and a way back (the person followed a link)."""

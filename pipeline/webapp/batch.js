@@ -162,10 +162,15 @@ async function api(path, b) {
   return [r.status, d];
 }
 let timer = null;
+// #93 (Patrick's test of the app): on the batch page, the first answer comes with the page (batches.py page()), so "This
+// Batch" is drawn at once, with no "Loading…"; every later one is asked for. Read once, then removed.
+let first = (() => { const el = $('bt-first'); if (!el) return null; try { return JSON.parse(el.textContent); } catch (e) { return null; } finally { el.remove(); } })();
 async function poll() {
   clearTimeout(timer);
   try {
-    const [c, s] = await api(API);
+    let c, s;
+    if (first !== null) { [c, s] = [200, first]; first = null; }   // drawn in this same step: nothing waits for the network
+    else [c, s] = await api(API);
     if (c === 200) {
       for (const b of s.books) { const was = seen[b.name]; seen[b.name] = b.status; if (primed && was && was !== b.status) live(b.book + ': ' + b.status); }
       primed = true; st = s; column(s);

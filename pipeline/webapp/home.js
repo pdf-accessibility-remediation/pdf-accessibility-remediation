@@ -115,6 +115,8 @@ async function swap(url, focusSel) {
     closeMenu(false);
     ws.innerHTML = nw.innerHTML; history.replaceState(null, '', url);
     const f = focusSel && ws.querySelector(focusSel); if (f) f.focus();
+    // #93 (Patrick's test of the app): the search box is new after the redraw, so the caret goes back to the end of its text
+    if (f && f.id === 'hm-q' && typeof f.setSelectionRange === 'function') { const n = f.value.length; f.setSelectionRange(n, n); }
     const note = ws.querySelector(':scope > p.pp-note'); live(note ? note.textContent : '');
   } catch (err) { location.assign(url); }                      // the app answers otherwise: the plain page
 }
@@ -153,10 +155,17 @@ function words(j) {
   return 'Running' + (j.step ? ': ' + j.step.words.charAt(0).toUpperCase() + j.step.words.slice(1) + ' (' + j.step.n + ' of ' + j.step.total + ')' : '');
 }
 function href(j) { return j.kind === 'batch' || j.kind === 'batch-estimate' ? '/batch/' + encodeURIComponent(j.run.split('/')[1]) + '/' : '/run/' + enc(j.run) + '/'; }
+// #93 (Patrick's test of the app): the first answer comes with the page (home.py first_answer), so the list is drawn at once,
+// with no "Loading…"; every later one is asked for. Read once, then removed.
+let first = (() => { const el = $('hm-first'); if (!el) return null; try { return JSON.parse(el.textContent); } catch (e) { return null; } finally { el.remove(); } })();
 async function poll() {
   try {
-    const ids = Object.keys(seen).filter(i => CAN_CHANGE.includes(seen[i])).slice(-500);
-    const r = await fetch('/api/jobs?active=1&seen=' + ids.map(encodeURIComponent).join(','), { cache: 'no-store' }); const js = await r.json();
+    let js;
+    if (first !== null) { js = first; first = null; }              // drawn in this same step: nothing waits for the network
+    else {
+      const ids = Object.keys(seen).filter(i => CAN_CHANGE.includes(seen[i])).slice(-500);
+      const r = await fetch('/api/jobs?active=1&seen=' + ids.map(encodeURIComponent).join(','), { cache: 'no-store' }); js = await r.json();
+    }
     const act = js.filter(j => j.status === 'queued' || j.status === 'running');
     js.forEach(j => {
       const k = j.status, was = seen[j.id]; seen[j.id] = k;

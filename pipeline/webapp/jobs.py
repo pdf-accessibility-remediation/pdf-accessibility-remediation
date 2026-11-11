@@ -211,11 +211,12 @@ def stopped_in_batch(run, R, other, kind):
     return (kind in AFTER_STOP and other.startswith('batches/') and other.count('/') == 1 and run.startswith(other + '/')
             and bool(R) and os.path.isfile(os.path.join(R, 'workorder.ai.json')))
 
-def busy(J, run, R, kind=None):
-    """Why nothing new may start for this run now, or None (in plain words: the pages show it)."""
+def busy(J, run, R, kind=None, al=None):
+    """Why nothing new may start for this run now, or None (in plain words: the pages show it). al: the jobs as a page
+    already read them (#93: what the page offers); every action that starts something reads them afresh (al None)."""
     h = lock_holder(R)
     if h: return lock_words(h[1], h[2])
-    for j in all_jobs(J):
+    for j in (al if al is not None else all_jobs(J)):
         if j['kind'] == 'batch' and stopped_in_batch(run, R, j['run'], kind): continue
         if related(j['run'], run) and j['status'] in ACTIVE + ('needs-spend',):
             at = D.clock(j.get('started') or j['created']) if D.parse(j.get('started') or j['created']) else ''

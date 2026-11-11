@@ -25,6 +25,23 @@ def _load(p):
     try: return json.load(open(p, encoding='utf-8'))
     except (OSError, ValueError): return None
 
+def first_answer(eid, obj):
+    """A panel's first answer, in its page (#93, Patrick's test of the app): the JSON its first request would get, so the
+    panel draws filled on first load, with no "Loading…" (Runs in Progress, Run Actions and the evaluation strip, This
+    Batch). The page's script reads it once; every later update is a request, as before. A JSON data block is never run
+    (server.py csp() counts only real scripts); <, > and & are written as \\u escapes, so no text in it can end the block."""
+    j = json.dumps(obj, ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+    return f'<script type="application/json" id="{E(eid)}">{j}</script>'
+
+def active_jobs(s, nm):
+    """Runs in Progress's first answer: what GET /api/jobs?active=1 gives a page that has seen no job yet, or None when it
+    can't be worked out (the page then asks for it)."""
+    try:
+        from . import runs
+        ctx = runs.view_context(s, nm)
+        return [runs.job_view(s, j, ctx=ctx) for j in reversed(runs.changing_jobs(ctx['nm'].jobs(), ''))]
+    except Exception: return None
+
 def _mt(p):
     try: return os.stat(p).st_mtime_ns
     except OSError: return None
@@ -285,9 +302,11 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
          '<body class="pp-page hm-page" data-home="1"><a class="skip" href="#main">Skip to the content</a>',
          '<header><h1>PDF Accessibility Remediation</h1></header><main id="main" tabindex="-1">']
     if test: B.append('<p class="pp pp-bar">Test: saved replies, no AI request.</p>')
+    first = active_jobs(s, nm)                              # #93: the list drawn from the page itself, no "Loading…"
     B.append('<section class="pp hm-card hm-c-act" id="hm-act-sec" aria-labelledby="hm-act-h"' + ('' if active else ' hidden') +
-             '><h2 id="hm-act-h">Runs in Progress</h2><div id="hm-active"><p>Loading…</p></div></section>'
-             '<div id="hm-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>')
+             '><h2 id="hm-act-h">Runs in Progress</h2><div id="hm-active">' + ('' if first is not None else '<p>Loading…</p>') + '</div></section>'
+             '<div id="hm-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>'
+             + (first_answer('hm-first', first) if first is not None else ''))
     # the PDFs added through the drop zone (samples/ is never listed: P3). Patrick's test, 2026-11-07 (Q1, Q3, Q4): one
     # drop zone for several PDFs; a new PDF comes first, highlighted, with its name box open (home.js); Edit Name in place.
     new = [k for k in (added or '').split(',') if k] if added else []
@@ -304,7 +323,9 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
     if ab: B.append('<p id="hm-added" hidden>' + (f'Added "{E(ab[0]["name"])}"' if len(ab) == 1 else f'Added {len(ab)} PDFs') + '</p>')   # R7
     elif renamed and next((b for b in bk if b['key'] == renamed), None):
         B.append(f'<p id="hm-added" hidden>The PDF is now named "{E(next(b for b in bk if b["key"] == renamed)["name"])}".</p>')
-    elif trashed: B.append('<p id="hm-added" hidden>Moved to the Trash. Nothing was deleted: to put it back, drag it from the Trash to where it was.</p>')
+    elif trashed:                                           # #93 (Patrick's test of the app): what was moved, by its name
+        t = str(trashed).strip()[:200] if trashed is not True and str(trashed).strip() not in ('', '1') else ''
+        B.append('<p id="hm-added" hidden>' + (f'Moved to the Trash: {E(t)}.' if t else 'Moved to the Trash.') + '</p>')
     B.append('<form id="hm-batch" method="get" action="/new-batch">')
     if not bk: B.append('<p>None yet. "Choose PDFs" adds one.</p>')
     else:

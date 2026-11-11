@@ -140,7 +140,8 @@ class Opens:
 NAMES = ('book-names.json', 'run-names.json', 'books-cache.json')
 
 @pytest.mark.parametrize('path,names', [('/', NAMES), ('/?view=batches', NAMES), ('/batch/b1/', NAMES), ('/api/batch/b1', ('book-names.json', 'books-cache.json')),
-                                        ('/api/jobs?limit=200', NAMES), ('/api/jobs?active=1', NAMES), ('/run/batches/b1/x/', NAMES)])
+                                        ('/api/jobs?limit=200', NAMES), ('/api/jobs?active=1', NAMES), ('/run/batches/b1/x/', NAMES),
+                                        ('/api/run/batches/b1/x', ('book-names.json', 'run-names.json')), ('/run/bk/l2/', NAMES), ('/api/run/bk/l2', NAMES)])   # the run page with its panel's first answer, and the panel's own request (#93)
 def test_a_page_reads_each_names_file_and_each_job_file_once(setup, monkeypatch, path, names):
     """Review 02 L4, L8: exactly one open of each names file the page needs, and of each job file it reads (two runs, three
     jobs, a queued one, a saved batch; one row would hide per-row reads). The batch PDF's page includes its run header.

@@ -4,7 +4,8 @@ My Workspace and the batch page), and a PDF added through "Upload a PDF" (the PD
 How a move works:
     Every item goes to the macOS Trash (~/.Trash; `trash_dir` from a --config only, for tests) with os.rename, under a
     unique name ("name", "name 2", …): never copied then deleted. Another disk is refused in plain words. Finder's
-    "Put Back" doesn't know these items: docs/app.md says to drag one back to the folder the move log names.
+    "Put Back" doesn't know these items, and the app restores nothing (#93: its pages say so); a PDF is used again by
+    uploading it again ("Choose PDFs"), where it is found by its sha256. The move log names each item's folder.
     runs/.app/trash-log.json records each move (what, from where, to which name, when, and for a PDF its sha256), under
     runs/.app/trash.lock; the run page reads it to say an original PDF was moved.
 
@@ -35,8 +36,8 @@ STILL_ELSEWHERE = '"Review Again" still works: the run uses another copy of the 
 ALREADY_LOST = '"Review Again" already doesn\'t work for this run: its own copy of the PDF is missing. Moving this PDF doesn\'t change that.'
 ALREADY_UNKNOWN = ('"Review Again" already doesn\'t work for this run: its record doesn\'t say which PDF it was made from. '
                    'Moving this PDF doesn\'t change that.')
-NEEDS_BACK = '"Review Again" will need it back.'
-APPLY_NEEDS = 'Applying its reviewed decisions will need it back.'
+NEEDS_BACK = '"Review Again" will require this PDF: it can be uploaded again with "Choose PDFs" on the home page.'   # #93: never restored through the app
+APPLY_NEEDS = 'Applying its reviewed decisions will require this PDF: it can be uploaded again with "Choose PDFs" on the home page.'
 GO_ON_NEEDS = None   # R7: a run before its result gets no line (removed by Patrick, 2026-11-07)
 OTHER_DISK = 'The Trash is on another disk than the app\'s folders, so this can\'t be moved there. Whoever looks after the app can move it by hand.'
 
