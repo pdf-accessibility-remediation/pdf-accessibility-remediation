@@ -94,7 +94,7 @@ def test_dry_run_plans_the_figure_requests_and_warns_over_the_book_cap(book, tmp
     e = json.load(open(R / 'run.json'))['estimate']
     assert e['requests'] == 2 and [p['images'] for p in e['passes']] == [100, 30]
     assert e['worst_case_total_usd'] == pytest.approx(sum(p['worst_case_usd'] for p in e['passes']), abs=1e-3)
-    assert 'over the $0.01 book cap' in r.stdout and 'BOOK_MAX_USD=' in r.stdout
+    assert 'more than the limit of $0.01 per PDF' in r.stdout and 'BOOK_MAX_USD=' in r.stdout
     q = json.load(open(sw))['requests']
     assert [x['pass'] for x in q] == [1, '2'] and 'normalised' in q[0]
 
@@ -214,7 +214,7 @@ def run_api(src, R, **kw):
     return subprocess.run(['bash', 'run_api.sh', str(src), 'book', 'x'], cwd=HERE, env=env(RUN_DIR=R, INTAKE='off', **kw),
                           capture_output=True, text=True, timeout=600)
 
-@pytest.mark.parametrize('var', ['MAX_USD', 'BOOK_MAX_USD'])
+@pytest.mark.parametrize('var', ['MAX_USD', 'BOOK_MAX_USD', 'FIGURE_RETRY_MAX_USD', 'FIGURE_RETRY_BOOK_MAX_USD'])
 def test_caps_must_be_numbers(book, tmp_path, var):
     r = run_api(book[0], tmp_path / 'r', **{var: '5 dollars'})
     assert r.returncode != 0 and f'{var} must be a number of dollars' in r.stdout

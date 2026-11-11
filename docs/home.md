@@ -6,7 +6,7 @@ nav_order: 3.55
 # The home page: new runs and batches from the browser
 
 The app's home page (`http://127.0.0.1:8760/`) is where library staff start work without a terminal (#45, home
-interface): pick a PDF, see what the AI call could cost, "Start Remediation", follow the run, and land on the review page. It runs
+interface): pick a PDF, see what the AI request could cost, "Start Remediation", follow the run, and land on the review page. It runs
 the pipeline's own commands (`run_api.sh`, `batch_api.sh`) as jobs, exactly as a person would type them, so the command
 line keeps working as before. See [The app](app.md) for its settings, jobs and security.
 
@@ -26,9 +26,10 @@ underline; the keyboard's focus ring stays (`:focus-visible`, R1).
 
 **The run page's header** (Q6–Q8) starts at the top of the screen: the PDF's name, "Source PDF: <file name>", then the
 run's details in plain words on one line where the width allows, starting with the run's name, for example "mm · 321
-pages · Run on November 6, 2026, at 9:29 PM · AI: Claude Sonnet 5.5 · AI Cost: $0.27 (worst-case estimate $0.61)" (R5;
+pages · Run on November 6, 2026, at 9:29 PM · AI Model: Claude Sonnet 5.5 · AI Cost: $0.27 (expected $0.31, max estimated $0.67)" (R5;
 labels in Title Case, review 15 L1). The model is named in plain words (the original call's model for a run made from a
-saved reply), never by its id; "AI Cost: none (a saved reply was used)" when no new call was made, "AI Cost: not
+saved reply), never by its id; "AI Cost: none (a saved reply was used)" when no new request was made, "AI Cost: none (no AI request: a PDF edited by
+hand)" for a run made from a hand edit and brought back for review (no model is named), "AI Cost: not
 recorded" when the record has no cost, and no AI part before the AI has answered. A PDF in a batch adds "Assigned to the
 batch "<name>"" with the list's button and **Home Page** after it (S3: "Batch: <name>" in the side list leads to the batch
 page). The cost is no longer repeated in Run Actions (Q7). Run Actions meets the header with no gap; Run Actions, "Ready
@@ -169,15 +170,15 @@ added but locked with a password or unreadable says so; the PDFs that were added
    The browser goes to the run's own page at once, which follows each step.
 3. **Language of the Scanned Pages** (D4, part 1 of #37, intake: suggest the OCR language). When pages need OCR, the
    estimate stops before any OCR and the run page asks their language (see below). Otherwise this step doesn't appear.
-4. **The estimate card** says "Worst-case estimate $0.54 · Limit $2.00 per AI call · Credit $22.68" and **Start
-   Remediation**, nothing else (no "Get a New Estimate", no job lines). When #65 (dollar-only cost limits) adds an
-   expected cost, the line starts "About $0.25 (usually $0.18–$0.36) ·". A book with more than 100 images needs several AI
-   requests (see [Files](files.md)): the line then says "Worst-case estimate $3.13 for 6 AI requests · Limit $2.00 per AI call ·
-   Limit $5.00 per book · …". The worst case is the whole book's, every request together; the $2.00 limit applies to each one.
-5. **Start Remediation** is the only button that leads to a paid call, shown only when the estimate fits the limits and the credit.
-   The worst-case line is read with the button by a screen reader (`aria-describedby`). The next section says what it
+4. **The estimate card** says "Expected Cost: $0.31", then "Max Estimated Cost: $0.67 · Credit: $22.68", and **Start
+   Remediation**, nothing else (no "Get a New Estimate", no job lines). Expected Cost is what to read first; it can also
+   read "Not Available Yet" (see [What a run may cost](options.md#what-a-run-may-cost)). A book with more than 100 images needs
+   several AI requests (see [Files](files.md)): the second line then says "Max Estimated Cost: $3.13 for 6 AI requests · Credit: …",
+   the whole PDF's maximum, every request together. After a paid previous attempt it adds "Counted Toward This PDF's Limit So Far: $0.60".
+5. **Start Remediation** is the only button that leads to a paid request, shown only when the estimate fits the limits and the credit.
+   Both cost lines are read with the button by a screen reader (`aria-describedby`). The next section says what it
    checks.
-6. **Progress:** the run page shows each step and the step running now. The run always stops after the AI call (D2:
+6. **Progress:** the run page shows each step and the step running now. The run always stops after the AI request (D2:
    every run the app starts stops for review; the terminal's `REVIEW=1` stays optional). The page announces "The AI's
    decisions are ready for your review" and shows **Open the Review Page**. Focus moves to that button only when it is
    still where the page put it after **Start Remediation** and no key or click has happened since; otherwise the page only
@@ -258,9 +259,11 @@ the settings copied from the estimate's own job (so intake and the audit are reu
 in its job file. `MAX_USD` is the largest request's worst case shown, rounded up to the cent from the stored
 value plus 0.0001, never above the limit (`run_api.sh` passes it to `decide.py --max-usd`). It binds decide.py's
 estimate, not the bill; the worst case allows the input 25% over its estimate (billed input has run up to 14.4% over it).
-A book with several AI requests also gets `BOOK_MAX_USD`, its whole worst case plus what earlier attempts in the same
-folder spent, bound the same way and never above the `limits.per_book_usd` setting ($5). A batch binds `BATCH_MAX_USD` to
-the sum of its books, `MAX_USD` to its largest request and `BOOK_MAX_USD` to its largest book. When a run stopped during
+Every book also gets `BOOK_MAX_USD`, its whole worst case plus what previous attempts in the same
+folder spent, bound the same way and never above the $5 limit per PDF. A batch binds `BATCH_MAX_USD` to what it has
+already spent plus the sum of its books, `MAX_USD` to its largest request and `BOOK_MAX_USD` to its largest book. Every Spend also passes
+the real limits for one thing only, the doubled retry of a figure request cut off (`FIGURE_RETRY_MAX_USD`, `FIGURE_RETRY_BOOK_MAX_USD`;
+see [What a run may cost](options.md#what-a-run-may-cost)): the first send of every request stays bound to the estimate shown. When a run stopped during
 its figure requests, "Try Again" asks for a new estimate first: what it spent is logged and counted toward the book's limit.
 
 **The paid-path rule** (webapp/jobs.py, where every job is made): `AUTO` appears only in a spend or batch job that is
@@ -271,14 +274,14 @@ a run blocked.
 ### Try Again, Get a New Estimate, Continue
 
 - **Try Again** is decided from the run folder: when a complete AI reply is saved, the run goes on with it, free (no
-  `AUTO`, with `REVIEW=1`); otherwise the app gets a new estimate first, and a new call needs **Start Remediation** again. A free rerun that would
-  reach a new call stops before it (the page then says to get a new estimate).
-- **Continue** appears when the estimate found a saved reply: "No AI call is needed".
+  `AUTO`, with `REVIEW=1`); otherwise the app gets a new estimate first, and a new request needs **Start Remediation** again. A free rerun that would
+  reach a new request stops before it (the page then says to get a new estimate).
+- **Continue** appears when the estimate found a saved reply: "No AI request is needed".
 - **A run made from the terminal** (an estimate-only folder, for example) is listed and opens, but its page offers no
   "Start Remediation", Get a New Estimate or Try Again: its settings are not known to the app. It says to start a new run of the book
   from the home page.
 - **A PDF in a batch** has no "Start Remediation" of its own: its page points to the batch page, where the batch is sent.
-- **Get a New Estimate** appears only when the estimate is stale: the app restarted before the paid call started. The card
+- **Get a New Estimate** appears only when the estimate is stale: the app restarted before the paid request started. The card
   is then headed "Waiting for a New Estimate" (07 L2).
 - **New Run from the Saved Reply** appears on a finished run that can no longer be reviewed (the pipeline changed since):
   a new run of the book from its saved reply, free, on today's code, stopping for review. It is refused for a cleared
@@ -314,11 +317,11 @@ error line, the record that holds it and where the full log is. Tool text and co
    batch folder's `ocr_langs.tsv`, which batch_api.sh reads to give that PDF its own `OCR_LANG`. The batch can start once
    every one is answered.
 5. **The batch page** (`/batch/<label>/`): the state (Waiting for a Language, Estimating, Ready to Start, Running,
-   Waiting for Review, Finished, Stopped), the worst case for the PDFs to send, the batch limit ($10, R13) and the credit
-   (while the estimates come in: "Worst-case estimate so far $0.42 for 1 of 4 PDFs (estimating)", and nothing before the
-   first one: never "$0.00", R14; when a book needs several AI requests the line adds how many in all, "for 4 PDFs (9 AI
-   requests)"), the PDFs
-   that stopped and need a person (not sent), **Start Remediation**, **Total Cost:**, and the batch dashboard drawn in
+   Waiting for Review, Finished, Stopped), "Expected Cost: $4.10 for 14 PDFs", then "Max Estimated Cost: $8.80 for 14 PDFs (18 AI requests) ·
+   Batch Limit: $10.00 · Credit: …" ($10, R13; "Already Spent in This Batch: $1.20" when something has been spent; while the estimates come in: "Max
+   Estimated Cost So Far: $0.42 for 1 of 4 PDFs (estimating)", and nothing before the first one: never "$0.00", R14), the PDFs
+   that stopped and need a person (not sent), **Start Remediation**, **Total Cost:** ("$1.20 so far (expected $4.10, max estimated $8.80)";
+   every PDF's cost counts, also while it waits for review, and PDFs moved to the Trash), and the batch dashboard drawn in
    the page (report_html's own rows: no separate page to open).
 6. **Start Remediation** runs `AUTO=1 REVIEW=1 JOBS=… BATCH_MAX_USD=<total, rounded up> MAX_USD=<largest book's call>
    MODEL=… bash batch_api.sh <label> <book list>`. batch_api.sh estimates again (intake and audits reused) and refuses on
@@ -398,10 +401,10 @@ items go and how to put them back: [The app](app.md#move-to-trash).
 ## Test mode
 
 For the app's tests only, three keys accepted only from `--config` (never from a settings file): `test_reply_dir`
-("Start Remediation" runs `REPLY=<dir>/<short name>.txt INTAKE_REUSE=1` instead of a paid call; a missing reply is refused,
+("Start Remediation" runs `REPLY=<dir>/<short name>.txt INTAKE_REUSE=1` instead of a paid request; a missing reply is refused,
 never sent instead), `test_batch_from` (a batch's "Start Remediation" runs `FROM=<label>`, each PDF's saved reply found
 under `runs/batches/<label>/<short name>/` or `runs/<short name>/<label>/`) and `trash_dir` (where **Move to Trash**
-moves things instead of `~/.Trash`). Every page then says "Test: saved replies, no AI call". Estimates still ask
+moves things instead of `~/.Trash`). Every page then says "Test: saved replies, no AI request". Estimates still ask
 OpenRouter for prices and credit (free). A batch in test mode skips batch_api.sh's own estimate step and its cap (FROM=
 does), so only a real batch shows the cap working.
 

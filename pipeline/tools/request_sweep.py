@@ -63,7 +63,8 @@ def dry_run(pipe, A, R):
     if p.returncode or not os.path.exists(sweep):
         return None, {'error': (p.stderr or p.stdout).strip().splitlines()[-1:] or ['no output']}
     run = json.load(open(os.path.join(R, 'run.json'), encoding='utf-8'))
-    run.pop('started', None); (run.get('estimate') or {}).pop('credit_available_usd', None)
+    run.pop('started', None); e = run.get('estimate') or {}
+    for k in ('credit_available_usd', 'book_cap_usd', 'expected'): e.pop(k, None)   # book_cap_usd and expected: intended additions (#65); the requests' own hashes must still match
     return json.load(open(sweep, encoding='utf-8'))['requests'], run
 
 def diff_keys(a, b, path=''):
@@ -98,14 +99,15 @@ def main():
         if q_old is None or q_new is None:
             rows.append(f'| {b} | **error** | old: {run_old.get("error") if q_old is None else "ok"} · new: {run_new.get("error") if q_new is None else "ok"} | {note or ""} |'); continue
         req = [f'request {i + 1}' for i in range(max(len(q_old), len(q_new)))
-               if i >= len(q_old) or i >= len(q_new) or q_old[i]['sha256'] != q_new[i].get('normalised', q_new[i]['sha256'])]
+               if i >= len(q_old) or i >= len(q_new)
+               or q_old[i]['sha256'] != (q_new[i]['sha256'] if 'normalised' in q_old[i] else q_new[i].get('normalised', q_new[i]['sha256']))]   # both sides already have figure requests: compared as sent
         keys = diff_keys(run_old, run_new)
         if not req and not keys: same += 1
         what = 'identical' if not req and not keys else '; '.join(
             ([f'{len(q_old)} → {len(q_new)} requests'] if len(q_old) != len(q_new) else [])
             + ([f'{", ".join(req)} differ'] if req else [])
             + ([f'run.json: {", ".join(keys[:12])}{" …" if len(keys) > 12 else ""}'] if keys else []))
-        norm = ' (pass 1 compared by its normalised hash)' if q_new and 'normalised' in q_new[0] else ''
+        norm = ' (pass 1 compared by its normalised hash)' if q_new and 'normalised' in q_new[0] and 'normalised' not in q_old[0] else ''
         rows.append(f'| {b} | {what}{norm} | {len(q_old)} / {len(q_new)} | {note or ""} |')
     L = [f'# Request sweep: {commit} against the working tree', '',
          f'{same} of {len(audits)} identical (whole request by sha256, and run.json without `started` and the credit).', '',

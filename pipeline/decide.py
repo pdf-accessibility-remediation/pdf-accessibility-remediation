@@ -1,6 +1,6 @@
 """decide.py: step 2 of the API pipeline. The only step that calls a model.
 
-    python decide.py AUDIT_DIR RUN_DIR [--model <openrouter id>] [--max-usd 2] [--dry-run]
+    python decide.py AUDIT_DIR RUN_DIR [--model <openrouter id>] [--max-usd 2] [--dry-run]     (dollar limits' defaults: lib/costs.py)
     python decide.py AUDIT_DIR RUN_DIR --response-file saved_response.json     # re-parse, no call
     python decide.py AUDIT_DIR RUN_DIR --no-model     # no call: an empty work order for a person (a PDF edited by hand)
 
@@ -77,9 +77,9 @@ if sys.argv[1:2] == ['--credit']:                # credit left, for the end of a
     # prints the lower of that and OpenRouter's figure: OpenRouter's balance can lag a minute behind new calls.
     c = available_credit()
     if len(sys.argv) > 2 and os.path.exists(sys.argv[2]):
-        r = json.load(open(sys.argv[2], encoding='utf-8')); r = r.get('run', r)
+        whole = json.load(open(sys.argv[2], encoding='utf-8')); r = whole.get('run', whole)
         start = (r.get('estimate') or {}).get('credit_available_usd')
-        spent = 0 if r.get('response_from') else ((r.get('usage') or {}).get('cost_usd') or 0)
+        spent = (0 if r.get('response_from') else ((r.get('usage') or {}).get('cost_usd') or 0)) + ((whole.get('page_reads') or {}).get('cost_usd') or 0)
         if start is not None:
             worked = start - spent
             if c is None or worked < c - 0.005:
@@ -98,6 +98,7 @@ if sys.argv[1:] == ['--check-key']:
             if e.code in (401, 403): sys.exit(f'OpenRouter rejected the key (HTTP {e.code})')
         except urllib.error.URLError as e: sys.exit(f'could not reach OpenRouter: {e}')
     sys.exit('could not check the key')
+sys.path.insert(0, HERE); from lib import costs, costhistory       # the dollar limits, each kind's max tokens, the expected cost (#65)
 ap = argparse.ArgumentParser()
 ap.add_argument('audit_dir'); ap.add_argument('run_dir')
 ap.add_argument('--model', default=DEFAULT_MODEL, help=f'OpenRouter model id (default {DEFAULT_MODEL}); auto:sonnet / auto:opus / auto:haiku pick the newest Claude of that family')
@@ -106,8 +107,8 @@ DEFAULT_PROMPT = next((p for p in (os.path.join(HERE, 'prompts', PROMPT_NAME),  
                                    os.path.join(os.path.dirname(HERE), 'prompts', PROMPT_NAME))   # prompts/ next to pipeline
                        if os.path.isfile(p)), os.path.join(HERE, 'prompts', PROMPT_NAME))
 ap.add_argument('--prompt', default=DEFAULT_PROMPT, help=f'system prompt file (default: {PROMPT_NAME} in pipeline/prompts/ or ../prompts/)')
-ap.add_argument('--max-usd', type=float, default=2.0, help='refuse to send if the worst-case cost estimate is higher (Claude models only: the estimate uses Claude token math)')
-ap.add_argument('--max-tokens', type=int, default=None, help='output limit (default 48000, or 16000 plus 45 per OCR word form sent when that is more)')
+ap.add_argument('--max-usd', type=float, default=costs.DEFAULT_LIMITS['per_call_usd'], help='refuse to send if one AI request could cost more than this (Claude models only: the estimate uses Claude token math)')
+ap.add_argument('--max-tokens', type=int, default=None, help=argparse.SUPPRESS)   # developer only, terminal only (MAX_TOKENS=): beats the doubling after a cut-off, still held to the dollar limits
 ap.add_argument('--no-images', action='store_true')
 ap.add_argument('--max-images', type=int, default=100, help="images sent per request (Anthropic's limit is 100); figures past it go to figure requests")
 FIGURE_PROMPT_NAME = 'figures_v1.md'
@@ -115,9 +116,11 @@ FIGURE_PROMPT = next((p for p in (os.path.join(HERE, 'prompts', FIGURE_PROMPT_NA
                       if os.path.isfile(p)), os.path.join(HERE, 'prompts', FIGURE_PROMPT_NAME))
 ap.add_argument('--figure-requests', choices=('on', 'off'), default='on',
                 help='figures past --max-images go to figure requests after the first one (on), or to a person as before (off)')
-ap.add_argument('--figure-max-tokens', type=int, default=32000, help='output limit for each figure request (default 32000)')
-ap.add_argument('--book-max-usd', type=float, default=5.0,
-                help='refuse to start if the worst case of all of this book\'s requests together is higher (Claude models only)')
+ap.add_argument('--figure-max-tokens', type=int, default=costs.allowance('figure'), help=argparse.SUPPRESS)   # developer only (FIGURE_MAX_TOKENS=)
+ap.add_argument('--book-max-usd', type=float, default=costs.DEFAULT_LIMITS['per_book_usd'],
+                help='refuse to start if all of this PDF\'s requests together could cost more than this, previous attempts in the folder included (Claude models only)')
+ap.add_argument('--figure-retry-max-usd', type=float, default=None, help=argparse.SUPPRESS)        # a figure request's doubled retry only: the person's real limits (FIGURE_RETRY_MAX_USD)
+ap.add_argument('--figure-retry-book-max-usd', type=float, default=None, help=argparse.SUPPRESS)   # (FIGURE_RETRY_BOOK_MAX_USD); default: --max-usd and --book-max-usd
 ap.add_argument('--figure-probe', type=int, default=0, help=argparse.SUPPRESS)   # test only: re-send N figures the first request answered (never merged)
 ap.add_argument('--dry-run', action='store_true', help='write the request and the cost estimate; do not call the API')
 ap.add_argument('--response-file', help='parse a saved OpenRouter response (or raw reply text) instead of calling the API')
@@ -243,7 +246,7 @@ if args.figure_requests == 'on' and not args.response_file and not args.no_image
         return None
     all_b64 = sheet_images(sheets_all)
     try: P = figpasses.plan([orig[f['obj']] for f in with_img], all_b64, args.max_images, IMAGE_BUDGET, shrink)
-    except figpasses.Refused as e: sys.exit(f'refusing before any call: {e}')
+    except figpasses.Refused as e: sys.exit(f'refusing before any request: {e}')
     send, (encoded, side, quality), later = P['first'], P['enc'], P['later']
     unsent = [f for c, _ in later for f in c]
     sheets, sheet_b64 = list(sheets_all), all_b64
@@ -267,7 +270,22 @@ run['ocr_words'] = {'forms': len(words), 'sent': len(words_sent), 'sheets': len(
 if words_sent:
     run['ocr_words']['fingerprint'] = hashlib.sha256('\n'.join(f'{i}\t{words[i]["text"]}' for i in sorted(words_sent)).encode()).hexdigest()[:16]
     run['ocr_words']['list'] = {str(i): words[i]['text'] for i in sorted(words_sent)}   # the list itself (id → form), so readings could later be re-matched by form
-if args.max_tokens is None: args.max_tokens = max(48000, 16000 + 45 * len(words_sent))   # room for the reasoning, and a reading per OCR word form (Buddhist used ~37 each)
+# What previous attempts in this folder spent, and whether one was cut off (attempts.json, logged by run_api.sh before this runs).
+# A saved reply makes no call, so none of this applies to it and its record stays as it was.
+spent_before, prior_cut, cut_off_here = 0, None, False
+if not args.response_file:
+    _att = os.path.join(args.run_dir, 'attempts.json')
+    _attempts = json.load(open(_att, encoding='utf-8')) if os.path.exists(_att) else []
+    # a request whose charge is not known (in flight when the run stopped, or timed out) counts at its worst case;
+    # page readings already paid for in this folder (#49) count too
+    spent_before = round(sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in _attempts) + costs.pages_paid(args.run_dir), 6)
+    cut_off_here = any(a.get('finish_reason') == 'length' for a in _attempts)
+    prior_cut = max((a['max_tokens'] for a in _attempts if a.get('finish_reason') == 'length' and str(a.get('pass') or '1') == '1'
+                     and isinstance(a.get('max_tokens'), int)), default=None)
+max_tokens_given = args.max_tokens is not None        # MAX_TOKENS= (developer only) beats the doubling below
+if not max_tokens_given:
+    args.max_tokens = costs.allowance('workorder', forms=len(words_sent))
+    if prior_cut: args.max_tokens = max(args.max_tokens, 2 * prior_cut)   # the next attempt after a cut-off allows twice as much, then the dollar limits decide
 to_send = dict(digest)
 to_send['ocr_words'] = [{k: v for k, v in w.items() if k != 'pages'} for w in digest.get('ocr_words') or [] if w['id'] in words_sent]
 to_send.pop('ocr_word_sheets', None)
@@ -323,17 +341,29 @@ if args.response_file:                             # a saved reply: no call, so 
     except Exception: reused = None
     meta = args.response_file + '.meta.json'       # written by batch_api.sh FROM= from the earlier record
     prev = os.path.join(args.run_dir, 'run.json')  # or the earlier attempt in this folder whose reply is reused
+    own_file = os.path.realpath(args.response_file) == os.path.realpath(os.path.join(args.run_dir, 'response.json'))
     if os.path.exists(meta): kept = json.load(open(meta, encoding='utf-8'))
     elif os.path.exists(prev):
         try:
-            pr = json.load(open(prev, encoding='utf-8'))          # only a run.json from a call that was really sent
-            kept = {k: v for k, v in pr.items() if k in ('model', 'temperature')} if pr.get('usage') and not pr.get('response_from') else {}
+            pr = json.load(open(prev, encoding='utf-8'))          # only a run.json from a call that was really sent, or this folder's own paid reply read again
+            kept = {k: v for k, v in pr.items() if k in ('model', 'temperature')} if pr.get('usage') and (not pr.get('response_from') or (own_file and pr.get('own_reply'))) else {}
             if kept: sys.path.insert(0, HERE); from lib import ocrwords; kept.update(ocrwords.carried(pr))   # the OCR-word list it was written for
-            if kept and (pr.get('usage') or {}).get('cost_usd') is not None:   # that call's own cost, model, prompt and date
-                kept['original_call'] = {'cost_usd': pr['usage']['cost_usd'], 'model': pr.get('model'), 'prompt_file': pr.get('prompt_file'),
-                                         'prompt_sha256': pr.get('prompt_sha256'), 'date': pr.get('started')}
+            if kept and (pr.get('usage') or {}).get('cost_usd') is not None:   # that call's own cost, model, prompt and date (read again: the first call's, as already kept)
+                kept['original_call'] = pr.get('original_call') or {'cost_usd': pr['usage']['cost_usd'], 'model': pr.get('model'), 'prompt_file': pr.get('prompt_file'),
+                                                                    'prompt_sha256': pr.get('prompt_sha256'), 'date': pr.get('started')}
         except Exception: kept = {}
     reused = kept.get('model') or reused
+    # This folder's own paid reply, read again (a later step failed, or it couldn't be read before): that money was spent on this
+    # run, unlike a reply from anywhere else. Decided here and stored (run.own_reply), so moving or copying the folder can't change
+    # it. Its path alone isn't enough: a replay of another run's reply also writes response.json here, so the run.json it replaces
+    # must itself be this folder's paid call.
+    own_prev = None
+    try:
+        if own_file:
+            _pr = json.load(open(prev, encoding='utf-8'))
+            if (_pr.get('usage') or {}).get('cost_usd') and (not _pr.get('response_from') or _pr.get('own_reply')): own_prev = _pr
+    except (OSError, ValueError): pass
+    if own_prev: run['own_reply'] = True
     # the original call behind the reply (sponsor checklist 11.5): from its meta, else a record beside the reply that made it
     sys.path.insert(0, HERE); from lib import origin
     try: oc = kept.get('original_call') or origin.find(args.response_file, open(args.response_file, encoding='utf-8').read(), os.getcwd())
@@ -361,12 +391,16 @@ if m and not args.response_file:                   # can this model take this re
     if 'image' not in mods:
         sys.exit(f'refusing: {model} cannot take images (input: {", ".join(mods) or "unknown"}); the figure crops are part of every request')
     out_cap = (m.get('top_provider') or {}).get('max_completion_tokens')
+    if out_cap and prior_cut and not max_tokens_given:
+        if out_cap <= prior_cut:                      # paying again for the same allowance would only be cut off again
+            sys.exit(f'refusing: {model} writes at most {out_cap:,} output tokens, and the previous attempt was already cut off at that length, so another attempt would be cut off too. Choose another model')
+        args.max_tokens = min(args.max_tokens, out_cap)
     if out_cap and out_cap < args.max_tokens:
-        sys.exit(f'refusing: {model} writes at most {out_cap:,} output tokens, under MAX_TOKENS {args.max_tokens:,}. Lower MAX_TOKENS or choose another model')
+        sys.exit(f'refusing: {model} writes at most {out_cap:,} output tokens, and this request needs room for {args.max_tokens:,}. Choose another model')
     ctx = m.get('context_length') or (m.get('top_provider') or {}).get('context_length')
     need = round(text_tokens + image_tokens) + args.max_tokens
     if ctx and need > ctx:
-        sys.exit(f'refusing: the request needs about {need:,} tokens (input estimate + MAX_TOKENS), over {model}\'s {ctx:,}-token context window')
+        sys.exit(f'refusing: the request needs about {need:,} tokens (input estimate + room for the reply), over {model}\'s {ctx:,}-token context window')
     run['model_limits'] = {'context_length': ctx, 'max_completion_tokens': out_cap, 'input_modalities': mods}
 if args.response_file:
     if 'temperature' in kept: run['temperature'] = kept['temperature']      # nothing is added where there was none
@@ -389,8 +423,10 @@ if later:
     fig_sha = hashlib.sha256(fig_prompt.encode()).hexdigest()[:16]
     lim = run.get('model_limits') or {}
     if lim.get('max_completion_tokens') and lim['max_completion_tokens'] < args.figure_max_tokens:
-        sys.exit(f'refusing: {model} writes at most {lim["max_completion_tokens"]:,} output tokens, under FIGURE_MAX_TOKENS {args.figure_max_tokens:,}')
+        sys.exit(f'refusing: {model} writes at most {lim["max_completion_tokens"]:,} output tokens, and each figure request needs room for {args.figure_max_tokens:,}. Choose another model')
     worst_fig_out = args.figure_max_tokens * price['completion']
+    # A figure request cut off is sent once more with twice the room (figpasses.one, only after a cut-off); worked out here, before anything is sent.
+    retry_mt = min(2 * args.figure_max_tokens, lim.get('max_completion_tokens') or 2 * args.figure_max_tokens)
     for i, (items, (enc, s_, q_)) in enumerate(later, 2):
         msgs = figpasses.messages(fig_prompt, figpasses.context(digest, to_send.get('pdfua_check'), items, {}, None), items, enc)
         t_ = (len(fig_prompt) + sum(len(c.get('text', '')) for c in msgs[1]['content']) + figpasses.EXAMPLE_ROOM) / CHARS_PER_TOKEN
@@ -400,44 +436,72 @@ if later:
                      f'{lim["context_length"]:,}-token context window')
         reqs.append({'pass': str(i), 'items': items, 'enc': enc, 'side': s_, 'quality': q_, 'msgs': msgs, 'max_tokens': args.figure_max_tokens,
                      'input_tokens': round(t_ + i_), 'image_tokens': round(i_), 'worst': (t_ + i_) * price['prompt'] * INPUT_MARGIN + worst_fig_out})
+        if retry_mt <= args.figure_max_tokens: reqs[-1]['no_retry_why'] = 'the AI model can\'t write a longer answer'
+        elif lim.get('context_length') and t_ + i_ + retry_mt > lim['context_length']: reqs[-1]['no_retry_why'] = 'a longer answer wouldn\'t fit what the AI model can take'
+        else: reqs[-1].update(retry_max_tokens=retry_mt, retry_worst=(t_ + i_) * price['prompt'] * INPUT_MARGIN + retry_mt * price['completion'])
     if args.figure_probe > 0:                         # test only: its figures are chosen after the first reply, so it is sized by the mean
         per = image_tokens / max(len(images), 1); t_ = (len(fig_prompt) + figpasses.EXAMPLE_ROOM + 700 * args.figure_probe) / CHARS_PER_TOKEN
         reqs.append({'pass': 'probe', 'items': [], 'probe': args.figure_probe, 'max_tokens': args.figure_max_tokens,
                      'input_tokens': round(t_ + per * args.figure_probe), 'image_tokens': round(per * args.figure_probe),
                      'worst': (t_ + per * args.figure_probe) * price['prompt'] * INPUT_MARGIN + worst_fig_out})
     total = worst + sum(r['worst'] for r in reqs)
-    # the book cap is per book: what earlier attempts in this folder spent (attempts.json: a cut-off reply, a stopped run) counts
-    # too, and a request whose charge is not known (in flight when the run stopped, or timed out) counts at its worst case
-    _att = os.path.join(args.run_dir, 'attempts.json')
-    spent_before = round(sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in json.load(open(_att, encoding='utf-8'))), 6) if os.path.exists(_att) else 0
     e_ = run['estimate']
     e_['passes'] = [{'pass': '1', 'images': len(images), 'input_tokens': e_['input_tokens'], 'worst_case_usd': round(worst, 4)}] + [
         {'pass': r['pass'], 'images': len(r['items']) or r.get('probe'), 'input_tokens': r['input_tokens'], 'worst_case_usd': round(r['worst'], 4)} for r in reqs]
     e_.update(requests=1 + len(reqs), input_tokens=sum(p['input_tokens'] for p in e_['passes']), images=sum(p['images'] for p in e_['passes']),
               image_tokens=round(image_tokens + sum(r['image_tokens'] for r in reqs)), worst_case_total_usd=round(total, 4),
-              figure_max_tokens=args.figure_max_tokens, book_cap_usd=args.book_max_usd if IS_CLAUDE else None)
-    if spent_before: e_['spent_before_usd'] = spent_before
+              figure_max_tokens=args.figure_max_tokens)
+est_ = run['estimate']
+if not args.response_file:                            # never on a saved reply: a FROM= record stays exactly as it was
+    est_['book_cap_usd'] = args.book_max_usd if IS_CLAUDE else None    # every Claude PDF, one request or many; previous attempts count
+    if spent_before: est_['spent_before_usd'] = spent_before
+    # The expected cost (#65): shown first, decides nothing. decide.py runs several times per book (the estimate, the dry run, the
+    # paid call) and a book finishing beside this one can add to the history in between, so a figure already shown is carried
+    # forward while the request is the same. "Not Available Yet" is worked out again: more history may have come.
+    try: _prev = json.load(open(os.path.join(args.run_dir, 'run.json'), encoding='utf-8'))
+    except (OSError, ValueError): _prev = {}
+    _pe = _prev.get('estimate') or {}
+    _same = (all(_prev.get(k) == run.get(k) for k in ('digest_sha256', 'prompt_sha256', 'model'))
+             and _pe.get('input_tokens') == est_['input_tokens'] and _pe.get('images') == est_['images'])
+    _kept = _pe.get('expected') if _same and not cut_off_here and isinstance(_pe.get('expected'), dict) and _pe['expected'].get('usd') is not None else None
+    try:
+        est_['expected'] = _kept or costhistory.expected(
+            [{'kind': 'workorder', 'input_est': round(text_tokens + image_tokens), 'max_tokens': args.max_tokens}]
+            + [{'kind': 'figure', 'input_est': r['input_tokens'], 'max_tokens': r['max_tokens']} for r in reqs if r['pass'] != 'probe'],
+            model, price['prompt'], price['completion'], total, cut_off=cut_off_here)
+    except Exception as ex:                           # the figure is only ever shown: never a reason to stop
+        est_['expected'] = {'none': 'error'}; print(f'note: the expected cost could not be worked out ({type(ex).__name__})')
+if args.response_file and own_prev and isinstance(own_prev.get('estimate'), dict):   # the estimate that was shown for this money; the credit is read again below
+    run['estimate'] = {k: v for k, v in own_prev['estimate'].items() if k != 'credit_available_usd'}
 print(json.dumps(run['estimate']), '| model', model, '|', run['price_source'])
 if reqs:
     n_fig = len([r for r in reqs if r['pass'] != 'probe'])
     print(f'{1 + len(reqs)} requests: the work order and {n_fig} figure request{"s" if n_fig > 1 else ""}'
-          + (' and the overlap probe (test only)' if n_fig < len(reqs) else '') + f'; worst case together ${total:.2f}'
-          + (f', plus ${spent_before:.2f} spent by earlier attempts in this folder' if spent_before else '')
-          + (f' (book cap ${args.book_max_usd:.2f})' if IS_CLAUDE else ' (approximate: the book cap applies to Claude models only)'))
-    if IS_CLAUDE and spent_before + total > args.book_max_usd:
-        print(f'  ⚠ over the ${args.book_max_usd:.2f} book cap: a real run stops before any call. To run it, raise the cap for this run: '
-              f'BOOK_MAX_USD={math.ceil(spent_before + total)}')
-if not IS_CLAUDE:
-    print(f'note: {model} is not a Claude model. The estimate uses Claude token math, so it is approximate and the '
-          f'${args.max_usd:.2f} cap is not applied. The OpenRouter bill is the real cost.')
+          + (' and the overlap probe (test only)' if n_fig < len(reqs) else ''))
 
 credit = available_credit()
-if credit is None: print('credit: could not check (no key, or OpenRouter unreachable)')
-else:
-    run['estimate']['credit_available_usd'] = round(credit, 4)
+if credit is not None: run['estimate']['credit_available_usd'] = round(credit, 4)
+if not args.response_file:                            # the lines a person reads first, then the one the limits are checked against
+    _pr = costs.page_estimate(args.run_dir)            # the page readings still to come (#49), when read_pages.py priced them: shown with the rest
+    _pr_usd = _pr['worst_case_usd'] if _pr else 0
+    _pr_words = f', including ${_pr_usd:.2f} for {_pr["to_read"]} Hawaiian page{"" if _pr["to_read"] == 1 else "s"} to be read by the AI' if _pr else ''
+    print(costhistory.terminal_line(costhistory.with_pages(est_['expected'], _pr)))
+    n_ = 1 + len(reqs) + (_pr['to_read'] if _pr else 0)
+    if IS_CLAUDE:
+        print(f'Max Estimated Cost: ${total + _pr_usd:.2f}' + (f' for {n_} AI requests' if n_ > 1 else '') + _pr_words + f' · Limits: ${args.max_usd:.2f} per AI request, ${args.book_max_usd:.2f} per PDF'
+              + (f' · Counted Toward This PDF\'s Limit So Far: ${spent_before:.2f} (previous attempts in this folder)' if spent_before else '')
+              + (' · Credit: Not Checked' if credit is None else f' · Credit: ${credit:.2f}'))
+        if spent_before + total > args.book_max_usd:
+            print(f'  ⚠ this PDF could cost up to ${costs.up(spent_before + total):.2f}' + (f', including ${spent_before:.2f} already spent' if spent_before else '')
+                  + f', more than the limit of ${args.book_max_usd:.2f} per PDF: a real run stops before any request. To run it, raise the limit for this run: BOOK_MAX_USD={math.ceil(spent_before + total)}')
+    else:
+        print(f'Max Estimated Cost: about ${total:.2f}, approximate and not a limit: the dollar limits apply to Claude models only. The OpenRouter bill is the real cost')
+if credit is None:
+    if args.response_file: print('credit: could not check (no key, or OpenRouter unreachable)')
+elif credit < total or args.response_file:
     print(f'credit available: ${credit:.2f}' + ('' if credit >= total else
-          (f'  ⚠ less than the worst case ${total:.2f}: OpenRouter will refuse with HTTP 402. Add credit, or lower --max-tokens'
-           if model.startswith('anthropic/') or args.response_file else f'  ⚠ less than the approximate worst case ${total:.2f}: OpenRouter may refuse with HTTP 402 (nothing is charged then)')))
+          (f'  ⚠ less than the ${total:.2f} this run could cost: OpenRouter will refuse with HTTP 402. Add credit'
+           if model.startswith('anthropic/') or args.response_file else f'  ⚠ less than the approximate ${total:.2f} this run could cost: OpenRouter may refuse with HTTP 402 (nothing is charged then)')))
 
 # ------------------------------------------------------------------ call, or reuse a saved reply
 if args.dry_run:
@@ -458,15 +522,19 @@ if args.response_file:
     except json.JSONDecodeError: resp = {'choices': [{'message': {'content': raw}}]}
     run['response_from'] = args.response_file
 else:
-    if IS_CLAUDE and worst > args.max_usd: sys.exit(f'refusing: worst-case ${worst:.2f} is over the ${args.max_usd:.2f} cap')
+    if IS_CLAUDE and worst > args.max_usd:
+        sys.exit(f'refusing: this request could cost up to ${costs.up(worst):.2f}, more than the limit of ${args.max_usd:.2f} per AI request. '
+                 f'To run it, raise the limit for this run: MAX_USD={math.ceil(worst)} bash run_api.sh …')
     for r in reqs if IS_CLAUDE else []:
-        if r['worst'] > args.max_usd: sys.exit(f'refusing before any call: figure request {r["pass"]}\'s worst case ${r["worst"]:.2f} is over the ${args.max_usd:.2f} cap per call')
-    if IS_CLAUDE and reqs and spent_before + total > args.book_max_usd:
-        sys.exit(f'refusing before any call: the worst case of this book\'s {1 + len(reqs)} requests together is ${total:.2f}'
-                 + (f' (plus ${spent_before:.2f} spent by earlier attempts in this folder)' if spent_before else '')
-                 + f', over the ${args.book_max_usd:.2f} book cap. To run it, raise the cap for this run: '
+        if r['worst'] > args.max_usd:
+            sys.exit(f'refusing before any request: figure request {r["pass"]} could cost up to ${costs.up(r["worst"]):.2f}, more than the limit of ${args.max_usd:.2f} per AI request. '
+                     f'To run it, raise the limit for this run: MAX_USD={math.ceil(r["worst"])} bash run_api.sh …')
+    if IS_CLAUDE and spent_before + total > args.book_max_usd:
+        sys.exit(f'refusing before any request: ' + (f'this PDF\'s {1 + len(reqs)} requests' if reqs else 'this PDF') + f' could cost up to ${costs.up(spent_before + total):.2f}'
+                 + (f' (including ${spent_before:.2f} spent by previous attempts in this folder)' if spent_before else '')
+                 + f', more than the limit of ${args.book_max_usd:.2f} per PDF. To run it, raise the limit for this run: '
                  f'BOOK_MAX_USD={math.ceil(spent_before + total)} bash run_api.sh …')
-    if IS_CLAUDE and credit is not None and credit < total: sys.exit(f'refusing: ${credit:.2f} credit available, worst case is ${total:.2f} (OpenRouter would answer 402). Add credit or lower --max-tokens')
+    if IS_CLAUDE and credit is not None and credit < total: sys.exit(f'refusing: ${credit:.2f} credit available, this run could cost up to ${costs.up(total):.2f} (OpenRouter would answer 402). Add credit')
     key = os.environ.get('OPENROUTER_API_KEY')
     if not key: sys.exit('no OPENROUTER_API_KEY: put it in PDFREMPROTO1/.env (see .env.example) or export it')
     body = {'model': model, 'messages': messages, 'max_tokens': args.max_tokens,
@@ -516,6 +584,15 @@ _rt = (u.get('completion_tokens_details') or {}).get('reasoning_tokens')      # 
 if _rt is not None and u.get('completion_tokens') is not None:
     run['usage'].update(reasoning_tokens=_rt, visible_tokens=u['completion_tokens'] - _rt)
 run['finish_reason'] = resp['choices'][0].get('finish_reason')
+def note_call(kind, pass_, attempt, input_est, n_images, forms, usage, prompt_file):
+    """One finished paid call into the local cost history (never on a saved reply; a cut-off call teaches nothing)."""
+    try:
+        if usage.get('prompt_tokens') and usage.get('completion_tokens'):
+            costhistory.append({'kind': kind, 'model': model, 'prompt': prompt_file, 'input_est': input_est, 'input_billed': usage['prompt_tokens'], 'output': usage['completion_tokens'],
+                                'images': n_images, 'forms': forms, 'date': run['started'], 'book': costhistory.book_id(args.run_dir, digest), 'pass': pass_, 'attempt': attempt})
+    except Exception: pass                            # a paid run is never stopped by the history
+if not args.response_file and run['finish_reason'] == 'stop':
+    note_call('workorder', '1', 1, round(text_tokens + image_tokens), len(images), len(words_sent), run['usage'], run['prompt_file'])
 
 # ------------------------------------------------------------------ parse and validate
 # One fenced JSON block is the normal reply. A model sometimes writes a work order, then a sentence such as "Correction: …"
@@ -548,12 +625,16 @@ if len(blocks) > 1:
 if not isinstance(wo, dict):
     save('run.json', run)
     if run['finish_reason'] == 'length':
-        sys.exit(f'the reply was cut off at {args.max_tokens} output tokens (reasoning counts too), so it is not a complete work order. '
-                 f'This call is already paid for. Rerun the same command with MAX_TOKENS={args.max_tokens * 2} in front '
-                 f'(batches: add RETRY=1 too); the earlier cost is kept in the record')
+        _cap = (run.get('model_limits') or {}).get('max_completion_tokens')
+        _next = min(2 * args.max_tokens, _cap) if _cap else 2 * args.max_tokens
+        sys.exit(f'the reply was cut off at {args.max_tokens:,} output tokens (reasoning counts too), so it is not a complete work order. '
+                 'This request is already paid for; its cost stays in the record. '
+                 + (f'Another attempt would be cut off too: {model} writes at most {_cap:,} output tokens. Choose another model' if _cap and _next <= args.max_tokens
+                    else f'MAX_TOKENS was set for this run and is kept on the next one: raise it, or leave it out so the next attempt allows {_next:,}' if max_tokens_given
+                    else f'Run the same command again (batches: add RETRY=1): the next attempt allows {_next:,}, and the estimate shows what it could cost'))
     if len(blocks) > 1:
         sys.exit(f'the reply held {len(blocks)} JSON work orders and the last one, the model\'s final answer, could not be read ({err}). '
-                 'An earlier one is never used in its place. See reply.txt; a rerun makes a new call')
+                 'An earlier one is never used in its place. See reply.txt; a rerun makes a new request')
     sys.exit(f'could not parse a JSON work order from reply.txt ({err})')
 if len(blocks) > 1:
     print(f'note: the reply held {len(blocks)} JSON work orders; the last one (the model\'s final answer) is used. review.md shows this as a CHECK')
@@ -621,13 +702,20 @@ if reqs and not args.response_file:
         if r.get('reason'): e['reason'] = r['reason']
         return e
     def before(req): run['figure_passes'].update(in_flight=req['pass'], in_flight_worst_usd=round(req['worst'], 4)); save('run.json', run)
-    def timed_out(req):                               # its retry is in flight now, and the timed-out call's charge is not known either
-        run['figure_passes']['in_flight_worst_usd'] = round(run['figure_passes']['in_flight_worst_usd'] + req['worst'], 4); save('run.json', run)
-    for r in reqs: r['on_timeout'] = timed_out
+    def on_retry(req, known, worst, cut_off):         # run.passes is written only when a request is done: what a stop now must count, known and unknown apart
+        run['figure_passes'].update(in_flight=req['pass'], in_flight_paid_usd=round(known, 6), in_flight_worst_usd=round(worst, 4), in_flight_cut_off=cut_off); save('run.json', run)
+    def on_call(req, call):                           # as soon as its usage has arrived
+        if req['pass'] != 'probe' and call.get('finish_reason') == 'stop':
+            note_call('figure', req['pass'], call['attempt'], req['input_tokens'], len(req['items']), 0, call.get('usage') or {}, FIGURE_PROMPT_NAME)
+    for r in reqs: r.update(on_retry=on_retry, on_call=on_call)
     def done(res):
-        run['figure_passes'].pop('in_flight', None); run['figure_passes'].pop('in_flight_worst_usd', None); run['passes'].append(entry(res))
+        for k in ('in_flight', 'in_flight_worst_usd', 'in_flight_paid_usd', 'in_flight_cut_off'): run['figure_passes'].pop(k, None)
+        run['passes'].append(entry(res))
+        if res.get('cut_off_retry'): run['figure_passes'].setdefault('cut_off_retries', []).append({'pass': res['pass'], **res['cut_off_retry']})
         run['usage'] = figpasses.add_usage(run['usage'], res['usage']); save('run.json', run)
-    budget = figpasses.Budget(args.book_max_usd if IS_CLAUDE else None, spent_before + (run['usage'].get('cost_usd') or 0), [r['worst'] for r in reqs if r.get('body')])
+    budget = figpasses.Budget(args.book_max_usd if IS_CLAUDE else None, spent_before + (run['usage'].get('cost_usd') or 0), [r['worst'] for r in reqs if r.get('body')],
+                              retry_cap=(args.book_max_usd if args.figure_retry_book_max_usd is None else args.figure_retry_book_max_usd) if IS_CLAUDE else None,
+                              call_cap=(args.max_usd if args.figure_retry_max_usd is None else args.figure_retry_max_usd) if IS_CLAUDE else None)
     fig_results = figpasses.run([r for r in reqs if r.get('body')], send_fn, budget, before=before, done=done)
     probe_res = [x for x in fig_results if x['pass'] == 'probe']; fig_results = [x for x in fig_results if x['pass'] != 'probe']
     for x in fig_results:
@@ -641,7 +729,8 @@ if reqs and not args.response_file:
     side_ = figpasses.record(send, sheets, note, fig_results, lambda x: {
         'model': model, 'prompt_file': FIGURE_PROMPT_NAME, 'prompt_sha256': fig_sha, 'usage': x['usage'],
         'seconds': round(sum(c.get('seconds') or 0 for c in x['calls']), 1), 'finish_reason': x['calls'][-1].get('finish_reason') if x['calls'] else None,
-        'retry': len(x['calls']) > 1})
+        'retry': len(x['calls']) > 1, 'max_tokens': x['calls'][-1].get('max_tokens') if x['calls'] else None,
+        **({'doubled': True} if x.get('cut_off_retry') else {})})
     save('passes.json', side_)
     run['figure_passes'].update(state='merged', fingerprint=figpasses.side_fingerprint(side_))
 elif saved_split:

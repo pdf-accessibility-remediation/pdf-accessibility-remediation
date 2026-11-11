@@ -246,7 +246,7 @@ def _ocr_tagging(rec):
     return f'{pages}; {tags}.'
 
 # the parts of a run's computer time (record.json timing_seconds, by run_api.sh's step labels; review/sessions.py reapply)
-PARTS = (('intake', ('0/5',)), ('audit', ('1/5',)), ('AI call', ('2/5', '3/5')), ('preparing the review', ('review:',)),
+PARTS = (('intake', ('0/5',)), ('audit', ('1/5',)), ('AI request', ('2/5', '3/5')), ('preparing the review', ('review:',)),
          ('applying and checks', ('4/5',)))
 
 def _runtime(rec):
@@ -259,8 +259,8 @@ def _runtime(rec):
     for name, pre in PARTS:
         got = [v for k, v in t.items() if k.startswith(pre)]
         if not got and (name == 'preparing the review' or (name == 'intake' and not rec.get('intake'))): continue   # not part of this run
-        if not got and name == 'AI call' and isinstance(run.get('seconds'), (int, float)) and not run.get('response_from'): got = [run['seconds']]
-        label = 'AI call (a previous answer reused)' if name == 'AI call' and run.get('response_from') else name
+        if not got and name == 'AI request' and isinstance(run.get('seconds'), (int, float)) and not run.get('response_from'): got = [run['seconds']]
+        label = 'AI request (a previous answer reused)' if name == 'AI request' and run.get('response_from') else name
         if not got: parts.append(f'{label} not recorded'); missing = True; continue
         total += sum(got); parts.append(f'{label} {_duration(sum(got))}')
     total += sum(v for k, v in t.items() if not any(k.startswith(x) for _, pre in PARTS for x in pre))
@@ -275,7 +275,7 @@ def about_lines(rec):
     run = rec.get('run') or {}; doc = rec.get('document') or {}
     ai = origin.summary(rec); cost, model = origin.words(ai)
     if ai.get('cost_usd') is not None:
-        cost = origin.money(ai['cost_usd']) + (f', from the original call on {D.day(ai["date"])}' if ai.get('reused') and ai.get('date') else '')
+        cost = origin.money(ai['cost_usd']) + (f', from the original AI request on {D.day(ai["date"])}' if ai.get('reused') and ai.get('date') else '')
     per = origin.money(ai['cost_per_page_usd']) if ai.get('cost_per_page_usd') is not None else 'not recorded'
     env = rec.get('environment') or {}
     soft = ', '.join(f'{name} {env[k]}' for k, name in SOFTWARE if env.get(k))
