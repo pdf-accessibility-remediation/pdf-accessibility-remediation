@@ -65,22 +65,22 @@ function body(s) {
   const T = s.totals, n = s.books.length;
   let h = '<h3 id="bt-phase" tabindex="-1">' + esc(PHASE[s.phase] || s.phase) + '</h3>';
   if (s.test) h += '<p class="pp pp-bar">Test: saved replies, no AI request.</p>';
-  h += '<p>' + T.finished + ' of ' + n + ' PDFs finished' + (s.ocr_name ? ' · OCR Language: ' + esc(s.ocr_name) : '') + '</p>';
+  h += '<p>' + esc(T.finished) + ' of ' + n + ' PDFs finished' + (s.ocr_name ? ' · OCR Language: ' + esc(s.ocr_name) : '') + '</p>';
   const plural = k => k === 1 ? '' : 's';
   const x = T.expected;                                          // no key on any estimate (made before #65): no line
   const exp = !x ? '' : x.usd == null ? 'Expected Cost: Not Available Yet' :
-    'Expected Cost: ' + usd(x.usd) + ' for ' + (x.books === x.of ? '' : x.books + ' of ') + x.of + ' PDF' + plural(x.of) + (x.books === x.of ? '' : ' (Not Available Yet for ' + (x.of - x.books) + ' PDF' + plural(x.of - x.books) + ')');
+    'Expected Cost: ' + usd(x.usd) + ' for ' + (x.books === x.of ? '' : esc(x.books) + ' of ') + esc(x.of) + ' PDF' + plural(x.of) + (x.books === x.of ? '' : ' (Not Available Yet for ' + (x.of - x.books) + ' PDF' + plural(x.of - x.books) + ')');
   const before = s.phase === 'ready' || s.phase === 'missing';
   if (s.phase === 'estimating' || s.phase === 'language') {      // R14: never "$0.00" while the estimates come in
-    if (T.estimated) h += '<p id="bt-cost"><b>Max Estimated Cost So Far: ' + usd(T.ceiling_usd) + ' for ' + T.estimated + ' of ' + T.to_estimate +
+    if (T.estimated) h += '<p id="bt-cost"><b>Max Estimated Cost So Far: ' + usd(T.ceiling_usd) + ' for ' + esc(T.estimated) + ' of ' + esc(T.to_estimate) +
       ' PDF' + plural(T.to_estimate) + ' (estimating) · Batch Limit: ' + usd(T.limit_usd) + '</b></p>';
   } else if (before)
-    h += '<p id="bt-cost">' + (exp ? exp + '<br>' : '') + 'Max Estimated Cost: ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' PDF' + plural(T.books_to_send) +
-         (T.requests > T.books_to_send ? ' (' + T.requests + ' AI requests)' : '') + ' · Batch Limit: ' + usd(T.limit_usd) +
+    h += '<p id="bt-cost">' + (exp ? exp + '<br>' : '') + 'Max Estimated Cost: ' + usd(T.ceiling_usd) + ' for ' + esc(T.books_to_send) + ' PDF' + plural(T.books_to_send) +
+         (T.requests > T.books_to_send ? ' (' + esc(T.requests) + ' AI requests)' : '') + ' · Batch Limit: ' + usd(T.limit_usd) +
          (T.spent_usd ? ' · Already Spent in This Batch: ' + usd(T.spent_usd) : '') + (T.credit_usd != null ? ' · Credit: ' + usd(T.credit_usd) : ' · Credit: Not Checked') + '</p>';
   const total = !before && (T.spent_usd || s.phase === 'running' || s.phase === 'finished' || (s.trashed && s.trashed.n));
   if (total) h += '<p><b>Total Cost:</b> ' + esc(T.cost_words) + '</p>';   // one wording with the run page and the terminal (lib/costs.py)
-  if (s.trashed && s.trashed.n) h += '<p>' + s.trashed.n + ' PDF' + plural(s.trashed.n) + ' moved to the Trash (AI cost ' + usd(s.trashed.cost_usd) + (T.spent_usd ? ', counted in the cost above' : '') + ')</p>';   // D8: the spend stays shown
+  if (s.trashed && s.trashed.n) h += '<p>' + esc(s.trashed.n) + ' PDF' + plural(s.trashed.n) + ' moved to the Trash (AI cost ' + usd(s.trashed.cost_usd) + (T.spent_usd ? ', counted in the cost above' : '') + ')</p>';   // D8: the spend stays shown
   if (s.flagged.length) h += '<p>' + s.flagged.length + ' PDF' + (s.flagged.length === 1 ? '' : 's') + ' stopped and need' + (s.flagged.length === 1 ? 's' : '') +
     ' a person: ' + (s.flagged.length === 1 ? 'it is' : 'they are') + ' not sent. Each PDF\'s page says why.</p>';
   if (s.phase === 'estimating') h += '<p>Each PDF is being prepared and estimated (free). This page follows them; you can leave it and come back from the home page.</p>';
@@ -138,9 +138,9 @@ function dash(s) {                                               // the batch da
       '<th scope="row" id="bt-n' + i + '"><span class="hm-book">' + esc(r.book) + '</span><span class="hm-file">Source PDF: ' + esc(r.file) + '</span>' +
       '<span class="hm-acts bt-acts"><a class="pp-btn bt-open" href="' + esc(r.href) + '" id="bt-o' + i + '">Open</a> ' + rowMenu(r, i) + '</span></th><td>' + esc(r.status) + (x && !x.reviewed ? ' <span class="pp-note">(not reviewed)</span>' : '') + '</td>';
     if (!x) { h += '<td></td><td></td><td></td><td></td><td></td><td></td></tr>'; return; }
-    h += '<td>' + x.needs + '</td><td>' + x.ai + '</td><td>' + esc(SAFE[x.safety] || x.safety) + '</td>' +
-      '<td>' + (x.va == null ? 'not run' : (x.vb == null ? '–' : x.vb) + ' → ' + x.va + (x.new ? ' <b>(' + x.new + ' new)</b>' : '')) + '</td>' +
-      '<td>' + money(x.cost) + '</td><td>' + (x.pages || 'not counted') + '</td></tr>';
+    h += '<td>' + esc(x.needs) + '</td><td>' + esc(x.ai) + '</td><td>' + esc(SAFE[x.safety] || x.safety) + '</td>' +
+      '<td>' + (x.va == null ? 'not run' : (x.vb == null ? '–' : esc(x.vb)) + ' → ' + esc(x.va) + (x.new ? ' <b>(' + esc(x.new) + ' new)</b>' : '')) + '</td>' +
+      '<td>' + esc(money(x.cost)) + '</td><td>' + esc(x.pages || 'not counted') + '</td></tr>';   // every value escaped (CodeQL js/xss-through-dom, #93)
   });
   return h + '</tbody></table></div><p class="pp-note">Sorted by "Needs a Person", most work first. Automated checks are evidence, not sign-off.</p>' +
     '<div class="pp-row"><button type="button" id="bt-trash-sel" data-trash="selected" data-label="' + esc(LABEL) + '">Move Selected to Trash</button>' +
