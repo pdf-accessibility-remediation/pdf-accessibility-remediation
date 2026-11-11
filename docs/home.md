@@ -81,7 +81,7 @@ and its exact status is on its run page. Done is Ready or Shipped only, so a Not
 |---|---|---|
 | Not Started | grey | its estimate is ready (or waits for a new one), nothing paid |
 | Processing | blue | a job runs or waits to start for it (an apply after "Finish Review" included) |
-| In Progress | amber | it waits for its review or its language, stopped for a person or was stopped, was interrupted (going on costs nothing when the reply is saved), Not Ready, Pending Evaluation |
+| In Progress | amber | it waits for its review or its language, stopped for a reviewer or was stopped, was interrupted (going on costs nothing when the reply is saved), Not Ready, Pending Evaluation |
 | Done | green | Ready or Shipped only |
 | Failed | red | its last job ended with an error |
 
@@ -221,7 +221,7 @@ list back to "Choose a language"). After **Continue**, focus goes to the batch's
 The short name (`runs/<name>/`) comes from the book's file name and is unique per book: a folder that already holds runs
 of another file (another sha256) gets "-2", "-3"…
 
-**Personal information.** The app doesn't yet ask whether a book holds personal information (sponsor checklist 1.1).
+**Personal information.** The app doesn't yet ask whether a book holds personal information. Such a PDF should never be sent to a cloud AI service.
 Until it does, a person decides before starting: a book with personal information is never sent to the AI service. That
 check is its own issue and branch.
 
@@ -357,7 +357,7 @@ joins the header, and the side list when it is shown.
 display name, "Source PDF:" and its status in words. Its left border shows its state (P15): grey while its review isn't
 opened yet, or while it is processing or waiting to start (then also a small spinning circle at its right edge, a still dot
 with reduced motion, named "Processing" for a screen reader); blue once its review is opened, up to Pending Evaluation;
-yellow when it stopped for a person (its language, for example); green when Ready or Shipped; red when its last job
+yellow when it stopped for a reviewer (its language, for example); green when Ready or Shipped; red when its last job
 failed. The current PDF has the darker background and bold text; hovering gives a lighter shade. "Batch: <name>" (the
 way to the batch page) is styled like the PDFs (no underline, the same hover shade and focus ring), only larger, with
 "(N PDFs)" smaller under it (S2, 18-L2); both start where the PDFs'

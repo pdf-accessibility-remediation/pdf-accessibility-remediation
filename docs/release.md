@@ -6,15 +6,15 @@ nav_order: 3.7
 # Accessibility evaluation, status and release
 
 A book is ready to ship only after a person has evaluated it by hand. The **accessibility evaluation** has two parts,
-recorded for each version of the book (issue #38; sponsor checklist rule 2, 11.2 and 11.3 in part: 11.3 asks for a task
-test with real screen-reader users, and this is a staff check against a checklist):
+recorded for each version of the book (issue #38). It follows the sponsor's rule that a person reviews AI output before it
+ships. It is a staff check against a checklist, not yet a task test with real screen-reader users:
 
 - **PAC 2026:** PAC 2026's WCAG check, plus a few checks that need eyes;
 - **the Screen-Reader Test:** a person listens to the book with a screen reader.
 
 **The evaluation is a report, not a gate on its results** (decided 2026-10-31). Both parts must be recorded for the
 version before it is Ready. A Fail never blocks: it needs a note, and it is counted as an issue noted in the status
-("Ready · 2 issues noted"), kept in the report and, once shipped, in the shipped folder, for a person to fix later. The
+("Ready · 2 issues noted"), kept in the report and, once shipped, in the shipped folder, for a reviewer to fix later. The
 evaluation is a record of what a person found, not a legal certification.
 
 Both parts are recorded on the app's **Accessibility Evaluation** page (below), or from the terminal with
@@ -252,7 +252,7 @@ and including its re-mirror (`lib/runlock.py`).
   `runs/.app/dispatch.lock` is never held together with it.
 - **A promotion** re-reads `release/` after it moves the new result in, then rewrites the Overview, review.html and the
   mirror, so a check recorded during a re-apply is not lost. It releases the lock before it rewrites the replaced
-  version's own page. The locked refresh takes about 0.1 s on dwellings (96 MB, 2026-10-31).
+  version's own page. The locked refresh takes about 0.1 s on a 96 MB PDF (2026-10-31).
 - **Readers take no lock;** every file is written whole (a temp file and a rename).
 
 ## In the report
@@ -369,7 +369,7 @@ ZIP's read-me no longer gives it (Patrick, 2026-11-01).
 ## Clean Up Space
 
 Every version is kept as a real PDF; there is no rebuilding from work orders. Repeated reviews keep one full PDF per
-version (13 MB for expedition, 96 MB for dwellings), so the run page offers a **Clean Up Space** button under Session
+version (13 MB and 96 MB for two earlier test books), so the run page offers a **Clean Up Space** button under Session
 History when there is something to remove, with no line under it. Its dialog explains: "Deletes the PDF files of the
 previous versions you select to free up space. Their records and decisions stay in "Session History." The original
 AI-generated version is always kept."

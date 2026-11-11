@@ -18,7 +18,7 @@ AUTO=1 bash batch_api.sh batch1 ../books.txt                            # a list
 Everything a batch makes goes in one folder:
 
 ```
-PDFREM/runs/batches/batch1/
+runs/batches/batch1/
 ├── summary.md
 ├── teika/
 │   ├── Teika_remediated.pdf
@@ -46,8 +46,8 @@ teika       samples/tagged/teika.pdf
 
    ```
    # Claude batch
-     sojourners                   Expected Cost: $0.31 (usually $0.22–$0.43) · Max Estimated Cost: $0.67  (75,927 input tokens, 25 images)
-     dwellings                    Expected Cost: $1.54 (usually $1.04–$2.22) · Max Estimated Cost: $3.13  (418,351 input tokens, 543 images in 6 requests)
+     book1                        Expected Cost: $0.31 (usually $0.22–$0.43) · Max Estimated Cost: $0.67  (75,927 input tokens, 25 images)
+     book2                        Expected Cost: $1.54 (usually $1.04–$2.22) · Max Estimated Cost: $3.13  (418,351 input tokens, 543 images in 6 requests)
      Expected Cost: $1.85 for 2 PDFs
      Max Estimated Cost: $3.80 for 2 PDFs (7 AI requests) · Batch Limit: $10.00 · Credit: $11.46
    # non-Claude batch: one approximate line, no limit
@@ -58,8 +58,8 @@ teika       samples/tagged/teika.pdf
    ```
 
    A PDF with no figure yet reads "Expected Cost: Not Available Yet" on its row, and the total then says how many it covers ("$0.31 for 1 of 2 PDFs (Not Available Yet for 1 PDF)"). There is no range on the batch's total: the rule tried for one held on about 95% of the earlier PDFs and 80% of the later ones. Each PDF's row keeps its own range.
-2. **Run.** It runs every book through the full pipeline, `JOBS` at a time (default 3; each book needs about 0.5–1.5 GB of memory). Each line also gives that PDF's cost and the running total (`· AI Cost: $0.31 · Total Cost: $1.20 so far (expected $4.10, max estimated $8.80)`). A failed book doesn't stop the others. A book **flagged at intake** (e.g. its text layer failed the OCR comparison and `FORCE_OCR=1` was not set, or it needs a password) is not sent to the model: summary.md shows "flagged at intake" with the reason, and `<book>/_intake/intake.json` has the measurements.
-3. **Summary.** It prints the batch start time, model and prompt file, then a table of book, status, intake (what intake did: e.g. "OCR 6 pages · auto-tagged", or "none (already tagged)"), pages, API cost (what this batch spent), the AI request's cost per page (the original call's for a reused reply, "not recorded" when none is kept), time, checks flagged, veraPDF's failing WCAG rules before → after ("new" marks rules the result fails and the original passed) and result with a link to the book's `review.html`, then the total cost, the AI requests' cost per page over the books whose cost is known (checklist 11.5) and the credit you have left, and saves it as `summary.md`. A failed book's status says why: `reply cut off at 48,000 tokens`, `OpenRouter 429, model rate-limited (nothing charged)`, or OpenRouter's error code and message. Its log is kept beside the summary (`<name>.log`) only if that book failed; `KEEP=1` keeps every log and working file. `summary.md` is written whichever way the batch is started (no folder, one folder, several folders or a book list), and also when a batch stops early or is interrupted (books that did not run show as "not finished"); the terminal then says where it stopped.
+2. **Run.** It runs every book through the full pipeline, `JOBS` at a time (default 3; each book needs about 0.5–1.5 GB of memory). Each line also gives that PDF's cost and the running total (`· AI Cost: $0.31 · Total Cost: $1.20 so far (expected $4.10, max estimated $8.80)`). A failed book doesn't stop the others. A book **flagged at intake** (e.g. its text layer failed the OCR comparison and `FORCE_OCR=1` was not set, or it needs a password) is not sent to the AI: summary.md shows "flagged at intake" with the reason, and `<book>/_intake/intake.json` has the measurements.
+3. **Summary.** It prints the batch start time, model and prompt file, then a table of book, status, intake (what intake did: e.g. "OCR 6 pages · auto-tagged", or "none (already tagged)"), pages, API cost (what this batch spent), the AI request's cost per page (the original call's for a reused reply, "not recorded" when none is kept), time, checks flagged, veraPDF's failing WCAG rules before → after ("new" marks rules the result fails and the original passed) and result with a link to the book's `review.html`, then the total cost, the AI requests' cost per page over the books whose cost is known, and the credit you have left, and saves it as `summary.md`. A failed book's status says why: `reply cut off at 48,000 tokens`, `OpenRouter 429, model rate-limited (nothing charged)`, or OpenRouter's error code and message. Its log is kept beside the summary (`<name>.log`) only if that book failed; `KEEP=1` keeps every log and working file. `summary.md` is written whichever way the batch is started (no folder, one folder, several folders or a book list), and also when a batch stops early or is interrupted (books that did not run show as "not finished"); the terminal then says where it stopped.
 
 A label that already holds a batch is refused, unless you add `RETRY=1`: then only the books without a finished result run again, and `summary.md` is rewritten for the whole batch. If every book has already finished, nothing runs and `summary.md` is simply rewritten (a free way to regenerate a missing summary). Give the same folders or list as the first time. When books fail, the summary prints the exact command to use. It repeats the batch's `MODEL=` and `FROM=`, and adds `JOBS=1` (with a note to wait a few minutes) if the model was rate-limited. A PDF whose reply was cut off needs nothing extra: its next attempt allows twice as much by itself. The limit also counts what the batch spent before the `RETRY`:
 
@@ -82,7 +82,7 @@ In a book list, relative paths count from the list file's folder. Short names mu
 
 ## Review stops, per-book OCR languages and the summary alone (from #45 round 4)
 
-- **`REVIEW=1`** (the app's batches): every book stops after the AI's decisions for a person's review. summary.md lists it
+- **`REVIEW=1`** (the app's batches): every book stops after the AI's decisions for review. summary.md lists it
   as **waiting for review** (never failed), and `RETRY=1` never runs it again ("waiting for review, skipped"); the app's
   "Finish Review" applies that book (`run_api.sh`'s second call in its folder) and then writes the summary again.
 - **`ocr_langs.tsv`** in the batch folder, `<short name> <TAB> <OCR_LANG>` per line: that book's own OCR language (the
