@@ -37,8 +37,9 @@ Every POST's Content-Length must be digits and at most MAX_BODY (65,536), checke
 OCR text is approved on the review page, or on the OCR-only page, both on the review server.
 
 Every response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none'), so another site cannot show a run
-page in a frame and trick a click. HTML pages also get script-src 'self' plus the sha256 of the page's one inline script,
-computed when it is served, so a javascript: link or any other script in a report's text never runs.
+page in a frame and trick a click. HTML pages also get script-src 'self' plus, by their sha256, the app's own calls the
+page makes (home.py CALLS: nine fixed one-line texts, 15) and the page's one other inline script (a report's), computed
+when it is served, so a javascript: link or any other script in a report's text never runs.
 
 A run is named by its path under the runs folder (teika/rv1, batches/d1/fishers): the shortest prefix of the request
 path that is a folder holding record.json. Every segment is checked (no empty, ".", "..", dot-names or backslashes),

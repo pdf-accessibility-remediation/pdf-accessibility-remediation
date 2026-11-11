@@ -228,7 +228,8 @@ How:
   so a browser that draws the page's canvas before its stylesheets uses the dark one in dark mode.
 - **The review page** (its own server) reads its whole script, with its data, in its head, and draws itself from a call
   at the end of the page. The line beside **Finish Review** (the check of your saved choices), the draft line and the
-  first OCR pages' text come with the page. The page images are the one exception: each is shown when the browser has it
+  first OCR pages' text come with the page (the text and the images' sizes are worked out as the review page's server
+  starts, so opening the page doesn't wait for them). The page images are the one exception: each is shown when the browser has it
   (the first time a page image is asked for, it is rendered from the PDF), in a box already the image's size, so nothing
   moves.
 - **Back and forward:** the browser may show the page you left from its own memory (the back/forward cache), as it
@@ -240,7 +241,7 @@ How:
 - **Only `127.0.0.1`.** No logins, no access from other computers. The settings keep the host and the folders in one place for a shared machine later.
 - **Only the app's own pages can act:** every request must name the app as its host, and every button's request must be JSON from the app's own pages.
 - **No framing:** every response of the app, and of the review page, says it may not be shown inside another page (`X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`). So another site cannot frame a run page and trick a click on a button.
-- **Scripts:** a run page (and any report page the app serves) runs only the app's own panel script and the page's one inline script, identified by its sha256 when it is served. A `javascript:` link in a report's text, or any other script, does not run. review.html on disk is unchanged; opened as a file it has no such policy, and no buttons.
+- **Scripts:** a run page (and any report page the app serves) runs only the app's own scripts, the app's own one-line calls to them (a fixed set of nine, see [Page changes](#page-changes-in-one-step)) and the page's one other inline script (the report's), each inline script identified by its sha256 when it is served. A `javascript:` link in a report's text, or any other script, does not run. review.html on disk is unchanged; opened as a file it has no such policy, and no buttons.
 - **Files:** only the files the run's pages need are served, and nothing outside the runs folder (never `.env`).
 
 ## Limits
