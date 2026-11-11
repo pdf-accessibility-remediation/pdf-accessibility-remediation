@@ -48,6 +48,12 @@ step; each matched string is checked against the tool that prints it (`tests/tes
 with every page recognized again from the terminal (`FORCE_OCR=1 OCR_LANG=… bash run_api.sh …`, in Details). An encrypted
 PDF with only an owner password is not caught yet (branch reject-encrypted).
 
+A run from the terminal with `INTAKE=off` skips intake, so `audit.py` is the first step to open the PDF. It stops a PDF
+locked with a password the same way (exit 3, flagged for a person) and a PDF that can't be opened at all, such as a
+damaged or cut-short file (exit 1), with the same words as intake, printed as `audit: stopped: …` or
+`audit: failed: …`. Nothing is written for the book, and the app shows the same card as at intake. `apply.py` does the
+same when it is run on such a file.
+
 ## Not supported yet: PDF 2.0
 
 The pipeline is built for PDF 1.x tagging (PDF/UA-1): veraPDF runs the PDF 1.x WCAG profile, and the audit, executor and checks read only the plain `/RoleMap`. Every sample book is PDF 1.3–1.7, and the auto-tagger writes PDF 1.x. A PDF 2.0 book is therefore **stopped before any paid request and before any change**, and goes to a person.
@@ -57,6 +63,7 @@ The pipeline is built for PDF 1.x tagging (PDF/UA-1): veraPDF runs the PDF 1.x W
 - A book is unsupported when its PDF version is 2.0 or later (the catalog's `/Version` counts when it is later than the header), or when its tag tree declares namespaces (`/Namespaces` in the structure tree root: PDF 2.0 tagging, even under a 1.7 header).
 - `intake.py` checks first, tagged or not: it stops with status `stopped` and exit 3, and `intake.md` / `intake.json` give the reason. A batch shows the book as **flagged at intake** and leaves it out of the cost estimate.
 - `audit.py` and `apply.py` check again (exit 3) for runs that skip intake (`INTAKE=off`) or reuse an older audit or a saved reply (`FROM=`, `REPLY=`), so no output file is written for such a book.
+- `tests/test_support.py` checks each of these stops on small PDFs made by the test.
 - `scan.py` shows each book's support in a **Supported** column, and counts unsupported books in its totals.
 - `ALLOW_PDF20=1` lets a book through. It is only for building PDF 2.0 support; never use it on real work.
 

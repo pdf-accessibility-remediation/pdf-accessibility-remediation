@@ -90,7 +90,9 @@ ROWS = [
      'This isn\'t the same file the run started with.', 'The book\'s file changed since the run started, so the AI\'s decisions may not fit it.',
      'Start a new run of the book from the home page.', [], None),
     # --- intake (_intake/intake.json: status and summary)
-    ('C1', 'intake', summ('the PDF needs a password to open'), ('intake.py', 'the PDF needs a password to open'),
+    # C1 and C6 also match audit.py's / apply.py's line (lib/support.py open_or_stop, a run with INTAKE=off): C1 before C2
+    ('C1', 'intake', lambda c: summ('the PDF needs a password to open')(c) or 'stopped: the PDF needs a password to open' in c['text'],
+     ('lib/support.py', 'the PDF needs a password to open'),
      'This PDF is locked with a password.', 'The app can\'t read a locked PDF. Nothing was sent to the AI service.',
      'Add an unlocked copy from the home page and start a new run with it.', [], None),
     ('C2', 'intake', lambda c: flagged('Not supported yet')(c) or 'audit: stopped: ' in c['text'], ('lib/support.py', "print(f'{step}: stopped: {why}'"),
@@ -106,7 +108,8 @@ ROWS = [
     ('C5', 'intake', summ('CJK text on pages to be OCR'), ('intake.py', "CJK text on pages to be OCR\\'d"),
      'Pages that need OCR have Chinese, Japanese or Korean text.', 'The OCR language is never guessed, so the run stopped before reading those pages. Nothing was sent.',
      'Start a new run of the book from the home page and choose its language under "OCR Language".', [], None),
-    ('C6', 'intake', summ('the PDF could not be opened'), ('intake.py', 'the PDF could not be opened'),
+    ('C6', 'intake', lambda c: summ('the PDF could not be opened')(c) or 'failed: the PDF could not be opened' in c['text'],
+     ('lib/support.py', 'the PDF could not be opened'),
      'This PDF couldn\'t be opened.', 'The file may be damaged. Nothing was sent to the AI service.', 'Add another copy of the book from the home page.', [], None),
     ('C7', 'intake', lambda c: summ('is not installed', 'is needed for auto-tagging', 'OCRmyPDF 17 or later is needed')(c), ('intake.py', 'OCRmyPDF 17 or later is needed'),
      'A tool the app needs for OCR is missing.', 'Text recognition or tagging can\'t run on this computer. Nothing was sent.', WHOEVER, [], None),
