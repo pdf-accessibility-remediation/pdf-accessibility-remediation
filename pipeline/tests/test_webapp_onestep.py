@@ -151,3 +151,22 @@ def test_the_previous_result_and_a_saved_batchs_address_come_with_what_they_draw
     assert "if (html) {\n    dlg.innerHTML = html; if (!dlg.open) dlg.showModal();" in sh
     assert "window.Pdfrem.openDialog('/api/form?what=batch&saved=' + encodeURIComponent(lab), null, op && op.html);" in read(WEB, 'home.js')
 
+
+def test_a_saved_batchs_address_opens_home_with_its_pop_up_filled(app):
+    """/batch/<a saved batch>/ goes to home with ?open=; the home page then carries the pop-up's contents (hm-open: exactly
+    what /api/form gives), so the pop-up opens with the page, filled, never with "Loading…" (15). An address naming no
+    saved batch carries none (the pop-up then asks, and says why)."""
+    from test_webapp_home import pdf_bytes, jpost
+    from webapp import books as BK
+    t = app['t']; (t / 'uploads').mkdir(exist_ok=True)
+    for n in ('a', 'b'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n}'))
+    keys = [b['key'] for b in BK.listing(settings(t))]
+    assert jpost(app['port'], '/api/batch/new-later', {'books': keys, 'label': 'Later'})[0] == 202
+    to = get(app['port'], '/batch/Later/')[2].get('Location')
+    assert to == '/?view=batches&open=Later'
+    page = get(app['port'], to)[1].decode('utf-8')
+    m = re.search(r'<script type="application/json" id="hm-open">(.*?)</script>', page)
+    assert m and json.loads(m.group(1)) == {'url': '/api/form?what=batch&saved=Later',
+                                            'html': json.loads(get(app['port'], '/api/form?what=batch&saved=Later')[1])['html']}
+    assert page.index('id="hm-open"') < page.index(HM.call('home'))                       # read by the call that opens it
+    assert 'id="hm-open"' not in get(app['port'], '/?view=batches&open=nope')[1].decode('utf-8')
