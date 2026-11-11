@@ -10,7 +10,8 @@ copy whatever pikepdf renumbers). Then it checks, PASS or FAIL each:
   - the review page's preview finds the one section and its host, and shows the order apply.py then makes;
   - apply.py made the move, and its log names the same section and host as the preview;
   - the sections under that host read in the original book's order again;
-  - verify.py's section check finds nothing new.
+  - verify.py's section check no longer flags the swapped pair, and finds nothing new. (The swap is in the run's input, so
+    to verify a move not made leaves an "original" flag, not a new one: "nothing new" alone would pass it.)
 --moves 2 swaps two separate pairs and puts both back with a reply holding two moves (a list, prompt v9), each
 matched on the tree the first left, and checks each the same way (the preview chained as the review page does).
 The section chosen has no sections inside it (or move_section would find several) and a sibling before it. The copy and
@@ -138,6 +139,9 @@ def main():
             (tag + 'apply.py moved what the preview showed', log.get('pages') == pv.get('moved_pages') and log.get('host_pages') == pv.get('host_pages'),
              f'apply {log.get("pages")} in {log.get("host_pages")}, preview {pv.get("moved_pages")} in {pv.get("host_pages")}'),
             (tag + 'the host reads in the original order again', host is not None and t.order(host) == before, f'now {t.order(host) if host is not None else "host not found"}, original {before}'),
+            # the swap is in the run's input, so a move not made leaves its flag "original" and not new: check it is gone
+            (tag + 'verify no longer flags the swapped pair', not any(x['page'] in (spec['pages'][0], spec['before_page']) for x in so['flagged']),
+             f'still flagged: {[(x["page"], x["state"]) for x in so["flagged"] if x["page"] in (spec["pages"][0], spec["before_page"])]}'),
         ]
         if k == len(specs) - 1 or cases[k + 1][2] != host_pages:     # the last move under this host: its order is the one apply.py made
             checks.append((tag + 'the preview shows the order apply.py made', host is not None and
