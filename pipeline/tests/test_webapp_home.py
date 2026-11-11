@@ -218,27 +218,47 @@ def test_run_page_header_is_the_apps(app):
     before = (R / 'review.html').read_bytes()
     page = get(app['port'], '/run/book/r1/')[1].decode()
     assert 'Review: book.pdf' not in page and 'workorder_v10' not in page and 'anthropic/x' not in page
-    assert 'class="top pp-head pp-hd"' in page and '12 pages' in page and '<p class="pp-hd-det">r1 · ' in page
+    assert 'class="top pp-head pp-hd pp-run-hd"' in page and '12 pages' in page and '<p class="pp-hd-det">r1 · ' in page
     assert (R / 'review.html').read_bytes() == before
     # Q6 (Patrick's test, 2026-11-07): "Home Page" inside the header, on its right; the details on one line; one app bar
-    hd = page[page.index('<header class="top pp-head pp-hd">'):page.index('</header>')]
+    hd = page[page.index('<header class="top pp-head pp-hd pp-run-hd">'):page.index('</header>')]
     assert '<nav class="pp-appbar" aria-label="App"><a class="pp-btn" href="/">Home Page</a></nav>' in hd and page.count('aria-label="App"') == 1
     assert '<p class="pp-hd-det">r1 · 12 pages · AI Cost: not recorded</p>' in hd
 
+def test_a_job_recorded_before_the_wording_changed_reads_the_new_way():
+    assert RN.shown('Start remediation: the AI call') == 'Start remediation: the AI request'
+
+def test_the_home_page_button_moves_on_the_run_page_only():
+    css = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'webapp', 'panel.css'), encoding='utf-8').read()
+    assert '.pp-run-hd .pp-appbar { position: relative; left: -2px; }' in css
+
 def test_run_details_in_plain_words(setup):
-    """Q6: Run Name, pages, when it ran, the AI by its plain name and the AI cost with its worst-case estimate; a saved
+    """Q6: Run Name, pages, when it ran, the AI by its plain name and the AI cost with the max estimated cost; a saved
     reply says so; nothing recorded is left out, never "None"."""
     s = S(setup); R = setup / 'runs' / 'mm' / 'r1'; R.mkdir(parents=True)
     (R / 'record.json').write_text(json.dumps({'document': {'file': 'mm.pdf', 'pages': 321},
         'run': {'started': '2026-11-06T21:29:05', 'model': 'anthropic/claude-sonnet-5.5', 'usage': {'cost_usd': 0.27},
                 'estimate': {'worst_case_total_usd': 0.61}}, 'cost_total_usd': 0.27}))
-    assert RN.details(s, 'mm/r1', str(R)) == ['r1', '321 pages', 'Run on November 6, 2026, at 9:29 PM', 'AI: Claude Sonnet 5.5',
-                                              'AI Cost: $0.27 (worst-case estimate $0.61)']
+    assert RN.details(s, 'mm/r1', str(R)) == ['r1', '321 pages', 'Run on November 6, 2026, at 9:29 PM', 'AI Model: Claude Sonnet 5.5',
+                                              'AI Cost: $0.27 (max estimated $0.61)']
+    rec = json.loads((R / 'record.json').read_text()); rec['run']['estimate']['expected'] = {'usd': 0.31}; (R / 'record.json').write_text(json.dumps(rec))
+    assert RN.details(s, 'mm/r1', str(R))[-1] == 'AI Cost: $0.27 (expected $0.31, max estimated $0.61)'
     rec = json.loads((R / 'record.json').read_text()); rec['run']['response_from'] = '../x/reply.txt'; (R / 'record.json').write_text(json.dumps(rec))
     assert RN.details(s, 'mm/r1', str(R))[-1] == 'AI Cost: none (a saved reply was used)'
     E = setup / 'runs' / 'mm' / 'e1'; E.mkdir(); (E / 'run.json').write_text(json.dumps({'started': '2026-11-07T09:00:00', 'estimate': {}}))
     assert RN.details(s, 'mm/e1', str(E)) == ['e1', 'Run on November 7, 2026, at 9:00 AM']      # an estimate only: no AI yet
     assert RN.model_words('google/gemini-3.1-pro-preview') == 'Gemini 3.1 Pro Preview' and RN.model_words(None) is None
+
+def test_run_details_of_a_run_with_no_ai_request(setup):
+    """A PDF edited by hand, brought back for review (decide.py --no-model): its header says there was no AI request, never
+    "$0.00" or a model; waiting for its review (run.json only) and finished (record.json) alike."""
+    s = S(setup); R = setup / 'runs' / 'mm' / 'he1'; R.mkdir(parents=True)
+    run = {'started': '2026-11-09T10:00:00', 'no_model': 'no AI call: a PDF edited by hand, brought back for review', 'model': None, 'usage': {'cost_usd': 0}}
+    (R / 'run.json').write_text(json.dumps(run))
+    assert RN.details(s, 'mm/he1', str(R))[-1] == 'AI Cost: none (no AI request: a PDF edited by hand)'
+    (R / 'record.json').write_text(json.dumps({'document': {'file': 'mm.pdf', 'pages': 321}, 'run': run, 'cost_total_usd': 0}))
+    d = RN.details(s, 'mm/he1', str(R))
+    assert d[-1] == 'AI Cost: none (no AI request: a PDF edited by hand)' and not any(x.startswith('AI Model') for x in d)
 
 def test_a_batch_pdfs_header_and_the_batch_page_header(app):
     """Q8, Q9, S3, S4: a batch PDF's run page says "Assigned to the batch" with "Show/Hide the PDF List (N)" and then "Home

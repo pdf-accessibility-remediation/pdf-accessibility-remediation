@@ -59,11 +59,29 @@ def test_estimate_blocked(setup, kw, code):
     assert costs.estimate(str(run_folder(setup, **kw)))['blocked']['code'] == code
 
 def test_expected_is_shown_when_present(setup, monkeypatch):
-    """The #65 (dollar-only cost limits) hook: one function fills `expected`; the pages read it as it is."""
+    """#65 (costs in dollars and an expected cost): one function fills `expected`; the page shows the figure, the ceiling second, and no range."""
     monkeypatch.setattr(costs, '_expected', lambda x: {'usd': 0.25, 'low': 0.18, 'high': 0.36, 'basis': 'test'})
     assert costs.estimate(str(run_folder(setup)))['expected']['usd'] == 0.25
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
-    assert "'About ' + usd(x.usd)" in js and "' (usually ' + usd(x.low) + '–' + usd(x.high) + ')'" in js and "'Worst-case estimate ' + usd(e.ceiling_usd)" in js
+    assert "'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet') + '<br>'" in js and "'Max Estimated Cost: ' + usd(e.ceiling_usd)" in js
+    assert 'usually' not in js.split('function costLines')[1].split('const NEXT')[0] and 'Worst-case' not in js and 'About ' not in js.split('function costLines')[1].split('const NEXT')[0]
+
+def line_of(js, start):
+    """The source of one function, for the wording tests."""
+    return js[js.index(start):]
+
+def test_the_run_pages_cost_wording():
+    """The wording Patrick decided (handoff/cost-estimates/03's brief): every state the run page can show, in its source."""
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    for w in ("' for ' + e.requests + ' AI requests'", "' · Counted Toward This PDF\\'s Limit So Far: '", "' · Credit: '", "' · Credit: Not Checked'",
+              '"Start Remediation" sends the PDF to the AI service. "Expected Cost" is based on the PDF\\\'s content and may vary. "Max Estimated Cost" is the estimated cost ceiling; it must fit within your spending limits and available credit. The actual cost is usually much lower.'):
+        assert w in js, w
+
+def test_no_cost_line_on_a_page_says_tokens_or_the_old_words():
+    for f in ('panel.js', 'batch.js'):
+        js = open(os.path.join(HERE, 'webapp', f), encoding='utf-8').read()
+        cost = [l for l in js.splitlines() if ('Cost' in l or 'Remediation' in l) and 'token' in l.lower()]
+        assert not cost and 'Worst-case' not in js and 'At Most' not in js and 'Estimated Cost:' not in js.replace('Max Estimated Cost', '')
 
 def page_reads_estimate(R, worst=0.42, per_page=0.07, to_read=6, **kw):
     (R / 'page_reads_estimate.json').write_text(json.dumps({'schema': 'page-reads-estimate/1', 'model': MODEL, 'prompt_sha256': 'p',
@@ -231,7 +249,7 @@ def spend_setup(setup, **kw):
 def test_spend_binds_the_estimate_shown(setup):
     s, R, est = spend_setup(setup)
     a = SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
-    assert a['env_set'] == {'OCR_LANG': 'eng', 'REVIEW': '1', 'AUTO': '1', 'MAX_USD': '0.63', 'MODEL': MODEL}
+    assert a['env_set'] == {'OCR_LANG': 'eng', 'REVIEW': '1', 'AUTO': '1', 'MAX_USD': '0.63', 'MODEL': MODEL, 'FIGURE_RETRY_MAX_USD': '2.00', 'FIGURE_RETRY_BOOK_MAX_USD': '5.00'}
     assert a['argv'][1:] == ['run_api.sh', str(setup / 'samples' / 'bk.pdf'), 'bk', 'l1'] and a['extra']['fingerprint'] == est['fingerprint']
     j = NR.start_spend(s, 'bk/l1', str(R), {'kind': 'workorder', 'fingerprint': est['fingerprint']})
     assert j['paid'] and j['kind'] == 'spend' and j['env']['MAX_USD'] == '0.63'
@@ -287,9 +305,10 @@ def test_run_api_wires_each_cap_once():
     """#63 (figure requests past 100 images): MAX_USD and BOOK_MAX_USD are checked as numbers and passed on, once each."""
     sh = open(os.path.join(HERE, 'run_api.sh'), encoding='utf-8').read()
     assert sh.count('--max-usd "$MAX_USD"') == 1 and sh.count('--book-max-usd "$BOOK_MAX_USD"') == 1
-    assert 'for v in MAX_USD BOOK_MAX_USD; do' in sh and '$v must be a number of dollars' in sh
-    assert "# MAX_USD=3 bash run_api.sh …   the cap on one call's worst case, in dollars (default 2, set in decide.py; Claude models only)" in sh
-    assert 'a book over the \\$${BOOK_MAX_USD:-5} book cap' in sh
+    assert sh.count('--figure-retry-max-usd "$FIGURE_RETRY_MAX_USD"') == 1 and sh.count('--figure-retry-book-max-usd "$FIGURE_RETRY_BOOK_MAX_USD"') == 1
+    assert 'for v in MAX_USD BOOK_MAX_USD FIGURE_RETRY_MAX_USD FIGURE_RETRY_BOOK_MAX_USD; do' in sh and '$v must be a number of dollars' in sh
+    assert "# MAX_USD=3 bash run_api.sh …   the limit on what one AI request could cost, in dollars (default 2, lib/costs.py; Claude models only)" in sh
+    assert 'the \\$${BOOK_MAX_USD:-$L_BOOK} limit per PDF' in sh and 'MAX_TOKENS=' not in sh.split('set -euo pipefail')[0]
 
 # ------------------------------------------------------------------ New Run's names and Try Again
 def test_short_name_is_unique_per_sha(setup):

@@ -13,8 +13,9 @@ What a Spend checks, in this order, at the click:
      in the queue cannot lift the cap;
   3. the estimate fits the limits and the credit (lib/costs.py `blocked`);
   4. the book's file is still the one the estimate was made from (its sha256).
-Then the job: AUTO=1, MAX_USD (and BOOK_MAX_USD for #63's shape, BATCH_MAX_USD for a batch, PAGE_READS=1 with
-PAGE_READS_MAX_USD when the estimate included page readings, #49) bound to the estimate shown,
+Then the job: AUTO=1, MAX_USD, BOOK_MAX_USD (BATCH_MAX_USD for a batch) bound to the estimate shown, PAGE_READS=1 with
+PAGE_READS_MAX_USD when the estimate included page readings (#49), and the person's real limits for
+a figure request's doubled retry only (FIGURE_RETRY_MAX_USD, FIGURE_RETRY_BOOK_MAX_USD; docs/options.md),
 the settings copied from the estimate's own job (never from a form again), paid, with the estimate's fingerprint.
 Test mode (test_reply_dir / test_batch_from from --config): REPLY= (or FROM=) instead of the call; prices offline are
 allowed, a missing saved reply is refused, never sent instead.
@@ -116,7 +117,7 @@ def authorize(s, kind, run, R, fingerprint):
         from . import runs as RN
         if RN.moved_words(s, ej.get('book_sha')) and not (src and os.path.isfile(src)):   # D8: a person moved it to the Trash
             raise Refused('This PDF was moved to the Trash. To go on, drag it from the Trash back into the app\'s folder of added PDFs (where it was).')
-        raise Refused('This book\'s file has changed or is gone since the estimate. Go back to the home page and start a new run.')
+        raise Refused('This PDF\'s file has changed or is gone since the estimate. Go back to the home page and start a new run.')
     keep = {k: v for k, v in (ej.get('env_set') or {}).items() if k in ('OCR_LANG',)}
     keep['REVIEW'] = '1'                                     # every app run stops for review (D2, Patrick 2026-11-06), whatever an older job file says
     if test:
@@ -126,10 +127,12 @@ def authorize(s, kind, run, R, fingerprint):
     else:
         env = {**keep, 'AUTO': '1', 'MAX_USD': f'{est["bounds"]["MAX_USD"]:.2f}', 'MODEL': est['model']}
         if est['bounds'].get('BOOK_MAX_USD') is not None: env['BOOK_MAX_USD'] = f'{est["bounds"]["BOOK_MAX_USD"]:.2f}'
+        env.update(costs.retry_env(L))
         if est['bounds'].get('PAGE_READS_MAX_USD') is not None:   # #49: the pages read whole, as the estimate showed them
             env.update(PAGE_READS='1', PAGE_READS_MAX_USD=f'{est["bounds"]["PAGE_READS_MAX_USD"]:.2f}')
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
-             'shown': {'ceiling_usd': est['ceiling_usd'], 'per_call_ceiling_usd': est['per_call_ceiling_usd'], 'bounds': est['bounds'], 'model': est['model']},
+             'shown': {'ceiling_usd': est['ceiling_usd'], 'per_call_ceiling_usd': est['per_call_ceiling_usd'], 'expected_usd': (est['expected'] or {}).get('usd'),
+                       'bounds': est['bounds'], 'model': est['model']},
              'test': test,
              **{k: ej.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name')}}
     return {'argv': list(ej['argv']), 'env_set': env, 'extra': extra}
@@ -147,15 +150,18 @@ def authorize_batch(s, label, books_list, total, fingerprint):
         prompts = {b['estimate']['prompt_sha256'] for b in total['books'] if b.get('estimate')}
         if not model or models - {model} or not model.startswith('anthropic/') or not prompt or prompts - {prompt}: raise Refused(OUT_OF_DATE)
         if total['blocked']: raise Refused(total['blocked'][0][1]['words'])
-        if not total['fits']['batch']: raise Refused(f'This batch could cost more than the limit of ${total["limit_usd"]:.2f} per batch.')
-        if total['fits']['credit'] is False: raise Refused('There isn\'t enough credit for this batch.')
+        if not total['fits']['batch']: raise Refused(costs.batch_over_words(total))
+        if total['fits']['credit'] is False: raise Refused(f'This batch could cost up to ${costs.up(total["ceiling_usd"]):.2f}, more than the ${total["credit_usd"]:.2f} of credit left.')
         if total['credit_usd'] is None: raise Refused('The credit couldn\'t be checked, so the cost can\'t be compared with it.')
         env = {'AUTO': '1', 'JOBS': jobs_n, 'BATCH_MAX_USD': f'{total["bounds"]["BATCH_MAX_USD"]:.2f}', 'MODEL': model}
         if total['bounds'].get('MAX_USD'): env['MAX_USD'] = f'{total["bounds"]["MAX_USD"]:.2f}'
         if total['bounds'].get('BOOK_MAX_USD'): env['BOOK_MAX_USD'] = f'{total["bounds"]["BOOK_MAX_USD"]:.2f}'   # the largest book's total (#63): decide.py holds each book to it
+        env.update(costs.retry_env(costs.limits_of(s)))
         if total['bounds'].get('PAGE_READS_MAX_USD'):            # #49: some books have pages read whole; each is held to the largest's cap
             env.update(PAGE_READS='1', PAGE_READS_MAX_USD=f'{total["bounds"]["PAGE_READS_MAX_USD"]:.2f}')
     env['REVIEW'] = '1'                                    # every book stops for review (D2a, Patrick 2026-11-06)
+    x = total.get('expected') or {}                         # a figure only when every PDF to send has one: a part of them would mislead after the run
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
-             'shown': {'ceiling_usd': total['ceiling_usd'], 'bounds': total['bounds']}, 'test': bool(test_from)}
+             'shown': {'ceiling_usd': total['ceiling_usd'], 'bounds': total['bounds'], 'expected_usd': x.get('usd') if x.get('books') == x.get('of') else None,
+                       'spent_usd': total['spent_usd'], 'retry_usd': total['retry_usd']}, 'test': bool(test_from)}
     return {'argv': ['bash', 'batch_api.sh', label, books_list], 'env_set': env, 'extra': extra}

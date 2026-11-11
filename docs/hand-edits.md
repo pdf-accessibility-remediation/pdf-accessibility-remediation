@@ -131,7 +131,7 @@ The original is checked against `record.json` (`document.sha256`). The run's ear
 | `<parent run>/hand_edits.json` | `exports` (who, when, which file, its sha256, where it went) and `children` (each run made from an edit: its folder, who, the note, the edited sha256). The only file `handedit.py` writes in the parent run |
 | `review.md` and `review.html` | The "Edited by hand" section. With `--to review`, the run line says "no AI call", the AI cost is $0, the sections say "in this run" instead of "by the AI", the Overview says "Decisions (no AI call)", and a review "started from an empty work order (no AI call)". On the run page and the review page, "the AI's decisions" becomes "the beginning" (**Start Over from the Beginning**) |
 
-A run with no AI call has `run.no_model` and `ai_call.no_model` in `record.json`, and `cost_total_usd` is 0.
+A run with no AI call has `run.no_model` and `ai_call.no_model` in `record.json`, and `cost_total_usd` is 0. The run page and the terminal say "AI Cost: none (no AI request: a PDF edited by hand)", and `run_api.sh` doesn't look up the credit left at OpenRouter.
 
 ## Limits
 

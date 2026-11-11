@@ -738,7 +738,7 @@ def app_header(s, run, R, pages=None):
     inb = len(sg) == 3 and sg[0] == 'batches'             # S3: a batch PDF's buttons are on its batch line (with_nav adds the list's)
     batch = (f'<div class="pp-hd-batch"><span>Assigned to the batch "{html.escape(NMS.shown_run(s, run))}"</span>{HM.appbar()}</div>') if inb else ''
     src_bar = not inb and bool(file)                     # U3: no list button here, so "Home Page" ends the "Source PDF:" line
-    return (f'<header class="top pp-head pp-hd">{HM.title_row(html.escape(name), bar=not inb and not file)}'
+    return (f'<header class="top pp-head pp-hd{"" if inb else " pp-run-hd"}">{HM.title_row(html.escape(name), bar=not inb and not file)}'
             + (f'<div class="mc-book pp-hd-src"><span class="hm-file">Source PDF: {html.escape(file)}</span>{HM.appbar() if src_bar else ""}</div>' if file else '')
             + '<p class="pp-hd-det">' + ' · '.join(html.escape(x) for x in runs.details(s, run, R, pages)) + f'</p>{batch}</header>')
 

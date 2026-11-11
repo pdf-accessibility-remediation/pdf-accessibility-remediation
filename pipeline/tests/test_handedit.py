@@ -106,7 +106,7 @@ def parent_run(tmp_path):
     src = figures_pdf(tmp_path / 'book.pdf')
     r = sh(['bash', 'run_api.sh', src, 'book', 'parent'], RUNS_DIR=str(tmp_path / 'runs'), DECIDE='none')
     assert r.returncode == 0, r.stdout + r.stderr
-    assert 'no credit used' in r.stdout                                  # nothing looked up at OpenRouter either
+    assert 'AI Cost: none (no AI request: a PDF edited by hand)' in r.stdout and 'credit left' not in r.stdout   # nothing looked up at OpenRouter either
     return src, str(tmp_path / 'runs' / 'book' / 'parent')
 
 def swap_image(src, out, word=False):

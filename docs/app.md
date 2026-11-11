@@ -42,7 +42,7 @@ One place, read in this order (later wins):
 | `max_books_per_batch` | `50` | The most books "New Batch" accepts. A setting whoever looks after the app can change; batch_api.sh in a terminal has no cap. |
 | `upload_max_mb` | `1024` | The largest PDF "Upload a PDF" and **Bring Back an Edited PDF** accept, in MB. |
 | (credit) | | "Check Credit Again" (U8) keeps the last credit read for 10 minutes in `runs/.app/credit.json` (dollars and the reason it failed, never the key). |
-| `limits` | `{"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 10}` | Dollars: what the estimates are compared with, and the most a "Start Remediation" may bind (`MAX_USD`, `BOOK_MAX_USD`, `BATCH_MAX_USD`). The batch limit is $10 (R13, Patrick's test 2026-11-07; `lib/costs.py`'s default for the terminal stays $40); a page to change the limits is a later issue. The pipeline's own caps stay as they are. |
+| `limits` | not set | Dollars: what the estimates are compared with, and the most a "Start Remediation" may bind (`MAX_USD`, `BOOK_MAX_USD`, `BATCH_MAX_USD`). The defaults are `DEFAULT_LIMITS` in `lib/costs.py`, one place for the app and the terminal: `{"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 10}`. A value here or in `settings.local.json` overrides them; a page to change the limits is a later issue (#87, App settings). See [What a run may cost](options.md#what-a-run-may-cost). |
 | `tools.VERAPDF` | empty | The veraPDF launcher. Empty: `verapdf` on the PATH. |
 | `tools.path_prepend` | `[]` | Folders put first on the PATH the app's commands get, for example Java's. |
 
@@ -63,7 +63,7 @@ On Linux or WSL, Java is usually on PATH already. If it is not, use the folder `
 **What the app's commands get.** Each command starts from a clean environment:
 - **Kept from the shell that started the app:** `PATH`, `HOME`, `LANG`, `LC_*`, `TMPDIR`, `USER`, `LOGNAME`, `SHELL`.
 - **Put first on PATH:** the venv's `bin/` and `path_prepend`.
-- **Added:** `VERAPDF` from the settings, and the variables the job itself sets, from a fixed list: `REVIEW`, `AUTO`, `ESTIMATE`, `OCR_LANG`, `RUN_DIR`, `INTAKE_REUSE`, `REPLY`, `MAX_USD`, `INTAKE`, `OUT`, `JOBS`, `BATCH_MAX_USD`, `BOOK_MAX_USD`, `RETRY`, `MODEL` (only a Claude model, the one the estimate used) and `FROM` (test mode only). Never `FORCE_OCR`.
+- **Added:** `VERAPDF` from the settings, and the variables the job itself sets, from a fixed list: `REVIEW`, `AUTO`, `ESTIMATE`, `OCR_LANG`, `RUN_DIR`, `INTAKE_REUSE`, `REPLY`, `MAX_USD`, `INTAKE`, `OUT`, `JOBS`, `BATCH_MAX_USD`, `BOOK_MAX_USD`, `FIGURE_RETRY_MAX_USD`, `FIGURE_RETRY_BOOK_MAX_USD`, `RETRY`, `MODEL` (only a Claude model, the one the estimate used) and `FROM` (test mode only). Never `FORCE_OCR`.
 - **Dropped:** everything else, for example `MODEL`, `REPLY`, `FROM`, `KEEP`, `RUNS_DIR`, `OCR_LANG`, `MAX_TOKENS` or an API key exported in the shell. So no setting meant for one terminal run changes an app job.
 - The job file records the whole environment each command was given.
 
