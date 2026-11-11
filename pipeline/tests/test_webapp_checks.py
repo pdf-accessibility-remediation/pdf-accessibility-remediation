@@ -73,7 +73,7 @@ def test_the_page_is_served_with_the_csp_and_names_no_file(mapp):
     import base64, hashlib                                                            # no inline script but the app's own call (15)
     assert st == 200 and h['Content-Security-Policy'] == "frame-ancestors 'none'; script-src 'self' 'sha256-" + base64.b64encode(hashlib.sha256(b'Pdfrem.checks()').digest()).decode() + "'"
     assert '<script src="/app/manual.js"></script>' in page.split('</head>')[0] and '<script type="application/json" id="mc-data">' in page
-    assert page.index('id="mc-data"') < page.index('<script>Pdfrem.checks()</script>') < page.index('</body>')
+    assert page.index('id="mc-data"') < page.index('class="mc-form" data-section=') < page.index('</form></section><script>Pdfrem.checks()</script>') < page.index('</body>')   # data first, each form then filled
     text = visible(page)
     assert 'The Clan Records' in text and 'Language: English' in text                 # the remediated PDF's title (Q2, F8)
     for bad in ('.pdf', 'review.md', 'release/', 'sha256', 'batches/d1', 'sample_remediated'): assert bad not in text, bad
@@ -203,7 +203,7 @@ def test_a_note_holding_a_script_end_tag_stays_text(tmp_path):
     M.record(R, 'pac', dict(PAC, items=dict(PAC['items'], contrast={'result': 'pass', 'note': 'fixed'})), say=lambda *a: None, batch=False)
     page = MP.page(R, 'r')                                                              # the first check is earlier: its notes are in the JSON block
     block = re.search(r'id="mc-data">(.*?)</script>', page, flags=re.S).group(1)
-    assert page.count('</script>') == 3 and '<script>Pdfrem.checks()</script>' in page and '\\u003c/script\\u003e' in block   # the block, the script, the call and '&' not in block   # F3: <, > and & escaped
+    assert page.count('</script>') == 4 and page.count('<script>Pdfrem.checks()</script>') == 2 and '\\u003c/script\\u003e' in block   # the block, the script, a call per form and '&' not in block   # F3: <, > and & escaped
     assert '<a href="https://example.com">' not in page                              # the earlier check's table escapes it too
     assert json.loads(block)['sections']['pac']['starts'][0]['items']['contrast']['note'] == evil   # and it round-trips as text
 

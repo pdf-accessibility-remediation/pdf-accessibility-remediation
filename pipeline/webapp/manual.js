@@ -9,13 +9,11 @@
    not announced; focus moves only after the person's own action, and to a message or the error summary. */
 (() => {
 'use strict';
-// 15 (Patrick, 2026-11-11: page changes in one step): this script is loaded in the head and only defines; the page calls
-// Pdfrem.checks() right after its data, so each form is filled (a draft kept in this browser, the notes each choice
-// requires) while the page is read, before its first frame
-function start() {
-const D = JSON.parse(document.getElementById('mc-data').textContent);
+// 15 (Patrick, 2026-11-11: page changes in one step): this script is loaded in the head and only defines. The page's data
+// comes before the forms, and the page calls Pdfrem.checks() right after each form, so each one is filled (a draft kept in
+// this browser, the notes each choice requires) while the page is read, before its first frame. Each call sets up the
+// forms read so far that are not set up yet; the page-wide parts are set up once, at the first call.
 const $ = id => document.getElementById(id);
-const API = '/api/run/' + D.run.split('/').map(encodeURIComponent).join('/');
 const START = 'To start the app again, open a terminal in the project\'s pipeline folder and type python3 app.py; this page then works again.';
 const say = (id, t) => { const l = $(id); l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
 const live = t => say('mc-live', t), alarm = t => say('mc-alert', t);
@@ -27,12 +25,18 @@ async function post(path, body) {
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } },
                 set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
                 del(k) { try { localStorage.removeItem(k); } catch (e) {} } };
-store.del('checks:by');                                         // names are never prefilled (Patrick, 2026-11-01): an old remembered one goes
-let leaving = false;
+let D = null, API = null, leaving = false, once = false;
 
 const secs = [];
+function start() {
+if (!D) {
+  D = JSON.parse($('mc-data').textContent);
+  API = '/api/run/' + D.run.split('/').map(encodeURIComponent).join('/');
+  store.del('checks:by');                                       // names are never prefilled (Patrick, 2026-11-01): an old remembered one goes
+}
 for (const [key, cfg] of Object.entries(D.sections)) {
-  const form = document.querySelector('form[data-section="' + key + '"]'); if (!form) continue;
+  const form = document.querySelector('form[data-section="' + key + '"]'); if (!form || form.dataset.mcOn) continue;
+  form.dataset.mcOn = '1';                                      // set up once, at the first call after it
   const sec = { key, cfg, form, p: cfg.p, ls: 'checks:' + D.run + ':' + key, saved_at: cfg.draft_saved_at || null,
                 dirty: false, inflight: false, again: false, timer: null, unsaved: false };   // unsaved: the last save failed
   secs.push(sec);
@@ -150,6 +154,9 @@ for (const [key, cfg] of Object.entries(D.sections)) {
     if (sec.dirty) sec.save();                                   // not recorded: the auto-save cancelled above carries on
   });
 }
+
+if (once) return;                                              // the page-wide parts: once
+once = true;
 
 // ---------------------------------------------------------------- Start from These Notes (never the results)
 document.addEventListener('click', e => {
