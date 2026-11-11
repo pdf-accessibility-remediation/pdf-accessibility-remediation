@@ -25,6 +25,8 @@
 # FORCE_OCR=1 bash run_api.sh …   if the text layer fails the OCR comparison, OCR every page anyway (else the book stops)
 # OCR_LANG=jpn+eng bash run_api.sh …   Tesseract languages for OCR (default eng; a scan with CJK text stops until this names a CJK pack; vertical Japanese: jpn_vert+jpn+eng)
 # OCR=off / INTAKE=off bash run_api.sh …   no OCR (image-only pages are only listed) / no intake step at all
+# DECIDE=none bash run_api.sh …   no AI call: an empty work order for a person to fill (with REVIEW=1). handedit.py import
+#   uses it for a PDF edited by hand and brought back for review; such a run works on _handedit/input.pdf when there is one
 #
 # Rerunning a label that did not finish picks up where it stopped: the audit is reused; a reply that was cut off
 # is logged with its cost (attempts.json, folded into record.json) and a new request is made with twice the room; a reply that
@@ -52,6 +54,7 @@ export COST_HISTORY=${COST_HISTORY:-$RUNS/.cost-history.jsonl}   # the local his
 R=${RUN_DIR:-$RUNS/$NAME/$RUN}; A=$R/_audit
 if [[ -f $R/record.json ]]; then echo "$R already holds a finished run: choose another run label"; exit 1; fi
 if [[ -n ${MAX_TOKENS:-} && ! $MAX_TOKENS =~ ^[0-9]+$ ]]; then echo "MAX_TOKENS must be a whole number: $MAX_TOKENS"; exit 1; fi
+if [[ -n ${DECIDE:-} && $DECIDE != none ]]; then echo "DECIDE is none (no AI call) or unset: $DECIDE"; exit 1; fi
 for v in MAX_USD BOOK_MAX_USD FIGURE_RETRY_MAX_USD FIGURE_RETRY_BOOK_MAX_USD; do
   if [[ -n ${!v:-} && ! ${!v} =~ ^[0-9]+([.][0-9]+)?$ ]]; then echo "$v must be a number of dollars: ${!v}"; exit 1; fi
 done
@@ -182,6 +185,8 @@ if [[ ${INTAKE:-auto} != off ]]; then
   fi
   [[ -f $R/_intake/intake.pdf ]] && PSRC=$R/_intake/intake.pdf
 fi
+# a PDF edited by hand (handedit.py import): the copy with stale alt text removed, unless intake had to tag it
+if [[ $PSRC == "$SRC" && $(dirname "$SRC") == "$R/_handedit" && -f $R/_handedit/input.pdf ]]; then PSRC=$R/_handedit/input.pdf; fi
 same_source() { [[ -f $A/digest.json ]] && python3 -c "import json,hashlib,sys; d=json.load(open('$A/digest.json')); sys.exit(0 if d['source']['sha256'] == hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest() else 1)" "$PSRC"; }
 if same_source; then
   echo "▶ 1/5 audit: reusing the audit already in $A"
@@ -202,9 +207,11 @@ if [[ -n $SAVED ]]; then
     echo "▶ the saved reply still cannot be read: its cost is logged and a new request is made"; log_attempt
   fi
 fi
-if [[ -n ${ESTIMATE:-} && ( -n ${REPLY:-} || -n $REVIEWED || -n $MERGED ) ]]; then echo "estimate only: no cost, a saved reply will be reused"; summary; exit 0; fi
+if [[ -n ${ESTIMATE:-} && ( -n ${REPLY:-} || -n $REVIEWED || -n $MERGED || ${DECIDE:-} == none ) ]]; then echo "estimate only: no cost, no new AI request will be made"; summary; exit 0; fi
 if [[ -n ${REUSED:-} || -n $REVIEWED || -n $MERGED ]]; then
   :
+elif [[ ${DECIDE:-} == none ]]; then
+  stage "2/5 no AI call (a person decides)" python3 decide.py "$A" "$R" --no-model
 elif [[ -n ${REPLY:-} ]]; then
   stage "2/5 reuse saved reply (no cost)" python3 decide.py "$A" "$R" --response-file "$REPLY" ${MT[@]+"${MT[@]}"}
 else
@@ -235,12 +242,13 @@ fi
 # Page readings (on unless PAGE_READS=off): scanned pages the audit found mostly Hawaiian are read whole by the AI
 # (read_pages.py, issue #49): its own paid step, with its own estimate and limit (PAGE_READS_MAX_USD, default 3). A PDF
 # with no such pages costs nothing. Pages read before are reused at no cost. A saved reply (REPLY=…) makes no new AI request,
-# so it reads no pages. A refusal (over the limit, the credit, OpenRouter unreachable) or a "no" skips the step: the PDF
-# goes on without readings and the report lists the pages for a person.
+# so it reads no pages, and neither does a run with no AI request (DECIDE=none: a PDF edited by hand). A refusal (over
+# the limit, the credit, OpenRouter unreachable) or a "no" skips the step: the PDF goes on without readings and the
+# report lists the pages for a person.
 page_reads_step() {             # each of its failures is reported and skipped, never the end of the run
   python3 read_pages.py "$A" "$R" "$@" ${MODEL:+--model "$MODEL"} || { echo "page readings not done (above): the PDF goes on without them"; return 0; }
 }
-if [[ ${PAGE_READS} != off && -z ${REPLY:-} && -z $REVIEWED ]] && pages_listed; then
+if [[ ${PAGE_READS} != off && -z ${REPLY:-} && -z $REVIEWED && ${DECIDE:-} != none ]] && pages_listed; then
   pr_ok=n
   if python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"}; then
     if [[ -n ${AUTO:-} ]]; then pr_ok=y; echo "AUTO=1: reading the pages without asking (still refused over the page readings' limit or your credit)"
@@ -286,5 +294,8 @@ echo "  $OUT   the result: run PAC on this"
 echo "  review.md     what a person should check"
 echo "  record.json   the full record: decisions, cost, timing, checks"
 echo; python3 -c 'from lib import costs; import sys; print(costs.after_line(sys.argv[1]))' "$R" || true
+if python3 -c "import json,sys; sys.exit(0 if (json.load(open(sys.argv[1])).get('run') or {}).get('no_model') else 1)" "$R/record.json" 2>/dev/null; then
+  exit 0                                                  # DECIDE=none: no AI request, so no credit used and nothing to look up at OpenRouter
+fi
 CREDIT=$(python3 decide.py --credit "$R/record.json" 2>/dev/null || true)
 if [[ -n $CREDIT ]]; then echo; echo "credit left: \$$CREDIT"; else echo; echo "credit left: could not check (no key, or OpenRouter unreachable)"; fi

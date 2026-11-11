@@ -356,3 +356,13 @@ def test_a_reply_from_elsewhere_still_costs_nothing_here(tmp_path):
 def test_a_pdf_dragged_back_from_the_trash_counts_once(tmp_path):
     spent_money(tmp_path / 'back', 0.3); (tmp_path / 'trashed.json').write_text(json.dumps([{'name': 'back', 'cost_usd': 0.3}, {'name': 'gone', 'cost_usd': 0.1}]))
     assert C.batch_spent(str(tmp_path)) == {'usd': pytest.approx(0.4), 'earlier_usd': 0, 'retry_usd': 0, 'trashed_usd': 0.1}
+
+def test_a_run_with_no_ai_request_costs_none_and_says_why(tmp_path):
+    """decide.py --no-model (a PDF edited by hand): no calls, $0, and "none (no AI request …)" rather than "$0.00"."""
+    run = {'no_model': 'no AI call: a PDF edited by hand, brought back for review', 'model': None, 'usage': {'cost_usd': 0}}
+    (tmp_path / 'run.json').write_text(json.dumps(run))
+    a = C.actual(str(tmp_path)); assert a['usd'] == 0 and a['calls'] == 0 and a['no_model']
+    (tmp_path / 'record.json').write_text(json.dumps({'run': run, 'cost_total_usd': 0, 'document': {'pages': 10}}))
+    a = C.actual(str(tmp_path)); assert a['usd'] == 0 and a['calls'] == 0 and a['no_model'] and not a['reused']
+    assert C.after_line(str(tmp_path)) == 'AI Cost: none (no AI request: a PDF edited by hand)'
+    assert C.actual(str(tmp_path / 'other'))['no_model'] is None

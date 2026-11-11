@@ -786,6 +786,100 @@ def render_pages(pdf, pages, out_dir, scale=1.0):
             if not os.path.exists(path): doc[p - 1].render(scale=scale).to_pil().save(path)
     finally: doc.close()
 
+def hand_edit_raw(R):
+    """hand_edit.json of a PDF edited by hand and brought back (handedit.py import): the run's _handedit/ at the review stop,
+    else record.json's copy when reviewing again (R is then the run's reviews/). None for every other run."""
+    he = load(os.path.join(R, '_handedit', 'hand_edit.json'))
+    if he is None and os.path.basename(os.path.normpath(R)) == 'reviews':
+        he = (load(os.path.join(os.path.dirname(os.path.normpath(R)), 'record.json')) or {}).get('hand_edit')
+    return he if isinstance(he, dict) else None
+
+def hand_edit(R, he=None):
+    """For the page's banner and its Edited by Hand section (see hand_edit_raw). None for every other run."""
+    he = hand_edit_raw(R) if he is None else he
+    if not isinstance(he, dict): return None
+    fc = he.get('figures_changed') or []
+    pg = he.get('pages') or [None, None]
+    return {'by': he.get('by'), 'when': he.get('when'), 'note': he.get('note'), 'base': he.get('base'),
+            'changed': [{'page': f.get('page'), 'alt': f.get('alt')} for f in fc], 'parent_pages_same': pg[0] == pg[1],
+            'figure_pages': sorted({f['page'] for f in fc if f.get('page')}), 'alt_removed': sum(1 for f in fc if f.get('alt')),
+            'outside_pages': sorted({x['page'] for x in he.get('outside_figures') or [] if x.get('page')}),
+            'lost': [{'page': f.get('page'), 'alt': f.get('alt')} for f in he.get('figures_lost') or []],
+            'text_differs': sorted(x['page'] for x in he.get('text_pages') or [] if not x.get('heard_same')),
+            'text_same': sum(1 for x in he.get('text_pages') or [] if x.get('heard_same'))}
+
+def carried_words(key, v):
+    """A carried decision in plain words, for the Edited by Hand summary: "contents pages (PDF 6–11)"."""
+    def span(ps):
+        ps = sorted(p for p in ps or [] if isinstance(p, int))
+        return '' if not ps else f' (PDF {ps[0]})' if ps[0] == ps[-1] else f' (PDF {ps[0]}–{ps[-1]})'
+    if key == 'sections' and isinstance(v, dict):
+        out = []
+        if v.get('toc_pages'): out.append('contents pages' + span(v['toc_pages']))
+        if v.get('notes_pages'): out.append('notes pages' + span(v['notes_pages']))
+        if v.get('index_from'): out.append(f'the index (from PDF {v["index_from"]})')
+        return ', '.join(out) or 'which pages are contents, notes and index'
+    if key == 'links': return 'fixes to the contents links\' text'
+    return key
+
+def hand_edit_targets(he, adds):
+    """The banner's "Add Alt Text" links for a PDF edited by hand: [{kind, target, page, suggest}] from addable()'s items
+    (adds), so a figure the work order already decides is left to its card. A figure holding a new image (its page in
+    he['figure_pages'], no alt left) gets no suggestion: its old alt described the old image. A figure that lost its tag
+    (he['lost']) suggests the alt it had, since it is usually the same picture: as a whole-page figure when its page has no
+    tags left (page_figures), else as a figure on that page with no alt."""
+    out, seen = [], set()
+    def take(it, why, old, suggest=None):
+        if it['id'] in seen: return
+        seen.add(it['id']); out.append({'kind': it['kind'], 'target': it['target'], 'page': it.get('page'), 'why': why,
+                                        'old_alt': old or None, 'suggest': suggest or None})
+    bare = [it for it in adds.get('alt') or [] if not str(it.get('before') or '').strip() and not (it.get('context') or {}).get('decoration')]
+    for f in he.get('lost') or []:
+        whole = [it for it in adds.get('page_figures') or [] if it['target'] == f.get('page')]
+        for it in whole or [it for it in bare if it.get('page') == f.get('page')]: take(it, 'lost_tag', f.get('alt'), f.get('alt'))
+    old = {}
+    for f in he.get('changed') or []: old.setdefault(f.get('page'), f.get('alt'))   # the old image's alt: shown, never suggested
+    for p in he.get('figure_pages') or []:
+        for it in bare:
+            if it.get('page') == p: take(it, 'new_image', old.get(p))
+    return sorted(out, key=lambda t: (t['page'] or 0, t['kind']))
+
+EARLIER_STATUS = {'approved': 'approved', 'changed': 'changed by the reviewer', 'rejected': 'rejected (not applied)',
+                  'seen': 'seen', 'accepted_unreviewed': 'accepted without review'}
+
+def _short(v, n=160):
+    t = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False) if v is not None else ''
+    t = re.sub(r'\s+', ' ', t).strip()
+    return t if len(t) <= n else t[:n - 1].rstrip() + '…'
+
+def earlier_review(he_raw):
+    """The decisions of the run a PDF edited by hand came from, for the page's read-only Earlier Review section: they are
+    already in the edited file, so they are shown for reference only. {reviewed_by, reviewed_on, items: [{id, kind, label,
+    page, page_label, value, status, note}]}, or None when the parent's record or kept digest is gone. Items: the parent's
+    applied work order labelled by build_items (its kept digest), with each card's status and note from the record's
+    review.decisions; a decision with no item (a reading-order check, a rejected decision) is listed from that row."""
+    P = ((he_raw or {}).get('parent') or {}).get('run')
+    if not P: return None
+    rec, digest = load(os.path.join(P, 'record.json')), load(os.path.join(P, 'reviews', '_audit', 'digest.json'))
+    if not isinstance(rec, dict) or not isinstance(digest, dict): return None
+    try: items = build_items(rec.get('workorder') or {}, digest)
+    except Exception: items = []                       # a digest older than today's build_items: the decisions list alone
+    rv = rec.get('review') or {}
+    dec = {d['id']: d for d in rv.get('decisions') or [] if isinstance(d, dict) and d.get('id')}
+    default = 'added by the reviewer' if rv else 'applied as the AI wrote it'
+    out = []
+    def row(id_, kind, label, page, page_label, value, d):
+        out.append({'id': id_, 'kind': kind, 'label': _short(label, 100), 'page': page, 'page_label': page_label,
+                    'value': _short(value) or None, 'status': EARLIER_STATUS.get(d.get('status'), default if not d else d.get('status')),
+                    'note': d.get('note') or None})
+    for it in items:
+        if it.get('key') == 'reading_order': continue      # only the cards the parent's review recorded (below)
+        row(it['id'], it['kind'], it['label'], it.get('page'), it.get('page_label'), it.get('ai'), dec.pop(it['id'], {}))
+    for d in dec.values(): row(d['id'], d.get('kind'), d.get('label'), d.get('page'), d.get('page_label'), None, d)
+    wr = rv.get('workorder') or {}
+    return {'reviewed_by': wr.get('reviewer') or None, 'reviewed_on': wr.get('date') or None,
+            'items': sorted(out, key=lambda x: (str(x['kind']), x['page'] if isinstance(x['page'], int) else 10 ** 9))}
+
 def prepare(R, pdf):
     """Write review_items.json, and render the pages of the first group so the page opens with them. Runs when run_api.sh
     stops for review. Every other page image is rendered by the server as the reviewer scrolls to it."""
@@ -801,6 +895,26 @@ def prepare(R, pdf):
     data = {'book': digest['source'].get('file'), 'run': os.path.basename(os.path.normpath(R)), 'pages': digest['source']['pages'],
             'pdf': os.path.abspath(pdf), 'groups': GROUPS, 'levels': LEVELS, 'add_kinds': ADD_KINDS, 'items': items,
             'addable': addable(ai, digest, ro), 'reading_order': ro}
+    raw = hand_edit_raw(R); he = hand_edit(R, raw)
+    if he:                                           # a PDF edited by hand: one-click alt text for what the edit touched
+        he['targets'] = hand_edit_targets(he, data['addable'])
+        # the earlier run's page-based decisions carried only so apply.py keeps its link descriptions (decide.py --no-model):
+        # no card and nothing to review; they stay in the order and are applied as written
+        run = load(os.path.join(R, 'run.json')) or (load(os.path.join(os.path.dirname(os.path.normpath(R)), 'record.json')) or {}).get('run') or {}
+        carried = [k for k in run.get('carried_from_parent') or [] if k in ai]
+        he['carried'] = [{'key': k, 'what': carried_words(k, ai[k])} for k in carried]
+        items[:] = [it for it in items if it['id'] not in {f'key:{k}' for k in carried}]
+        he['earlier'] = earlier_review(raw)          # the decisions it came from, for reference only
+        if he['earlier'] and he['parent_pages_same']:   # a check card that comes back shows the note it had (it is still marked anew)
+            prev = {x['id']: x for x in he['earlier']['items'] if x.get('note')}
+            for it in items:
+                x = prev.get(it['id'])
+                if x and it.get('key') == 'reading_order': it['context']['earlier_note'] = x['note']; it['context']['earlier_status'] = x['status']
+        by_id = {it['id']: it for its in data['addable'].values() for it in its}
+        for t in he['targets']:
+            it = by_id.get(f'add:{t["kind"]}:{t["target"]}')
+            if t['suggest'] and it: it['default'] = t['suggest']; it['context']['suggested_from_before_edit'] = True
+        data['hand_edit'] = he
     save(os.path.join(R, 'review_items.json'), data)
     return data
 

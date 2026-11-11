@@ -28,7 +28,8 @@ underline; the keyboard's focus ring stays (`:focus-visible`, R1).
 run's details in plain words on one line where the width allows, starting with the run's name, for example "mm · 321
 pages · Run on November 6, 2026, at 9:29 PM · AI Model: Claude Sonnet 5.5 · AI Cost: $0.27 (expected $0.31, max estimated $0.67)" (R5;
 labels in Title Case, review 15 L1). The model is named in plain words (the original call's model for a run made from a
-saved reply), never by its id; "AI Cost: none (a saved reply was used)" when no new request was made, "AI Cost: not
+saved reply), never by its id; "AI Cost: none (a saved reply was used)" when no new request was made, "AI Cost: none (no AI request: a PDF edited by
+hand)" for a run made from a hand edit and brought back for review (no model is named), "AI Cost: not
 recorded" when the record has no cost, and no AI part before the AI has answered. A PDF in a batch adds "Assigned to the
 batch "<name>"" with the list's button and **Home Page** after it (S3: "Batch: <name>" in the side list leads to the batch
 page). The cost is no longer repeated in Run Actions (Q7). Run Actions meets the header with no gap; Run Actions, "Ready
