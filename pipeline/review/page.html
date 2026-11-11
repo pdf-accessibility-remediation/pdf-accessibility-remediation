@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Work Order Review</title>
 <style>
 :root {
@@ -18,6 +19,7 @@
 /* a jump to a card or section lands below the sticky header. On the targets, not as html's scroll-padding: that padding
    also covered the header's own reviewer field, so the browser scrolled the list on every key typed there */
 main [id] { scroll-margin-top: calc(var(--top, 0px) + 8px); }
+html { background: var(--bg); }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 header.top { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; }
 .top h1 { font-size: 17px; margin: 0 0 6px; }

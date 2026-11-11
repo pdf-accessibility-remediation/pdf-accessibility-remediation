@@ -13,3 +13,23 @@ def test_no_fade_and_nothing_kept_for_it():
     css = read(WEB, 'panel.css'); js = read(WEB, 'panel.js')
     assert '@view-transition' not in css and 'view-transition' not in css
     assert 'pp-h:' not in js and 'keepHeight' not in js and 'minHeight' not in js
+
+import sys
+sys.path.insert(0, HERE); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from test_webapp import setup, settings, get, app  # noqa: E402,F401
+
+PAGES = ('/', '/?view=batches', '/run/book/r1/', '/run/old/r0/', '/run/book/r1/review.md', '/batch/b1/', '/batch/b1/summary.html',
+         '/run/batches/b1/x/', '/run/book/r1/download?what=nothing')
+
+def test_no_frame_is_ever_white(app):
+    """html and body carry the app's background (panel.css; the review page its own), and every HTML page the app serves
+    names its colour schemes in its head, once, so a canvas drawn before the stylesheets is dark in dark mode."""
+    assert 'html, body { background: var(--bg); }' in read(WEB, 'panel.css')
+    rp = read(HERE, 'review', 'page.html')
+    assert '<meta name="color-scheme" content="light dark">' in rp.split('</head>')[0] and 'html { background: var(--bg); }' in rp
+    for p in PAGES:
+        st, b, h = get(app['port'], p)
+        page = b.decode('utf-8')
+        assert h.get('Content-Type', '').startswith('text/html'), (p, st)
+        head = page.split('</head>')[0]
+        assert page.count('<meta name="color-scheme" content="light dark">') == 1 and '<meta name="color-scheme"' in head, p

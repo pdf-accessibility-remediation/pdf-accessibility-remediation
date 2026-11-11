@@ -228,6 +228,13 @@ def md_page(text, run, sid, base):
             f'<main id="main" tabindex="-1"><pre class="pp-md">{html.escape(text)}</pre></main>'
             f'<script src="/app/panel.js" defer></script></body></html>')                 # panel.js: in-page links move focus
 
+SCHEME = '<meta name="color-scheme" content="light dark">'
+def with_scheme(page):
+    """Every HTML page the app serves names its colour schemes in its head (15, Patrick 2026-11-11: no frame is ever white),
+    so a browser that draws the page's canvas before its stylesheets uses the dark canvas in dark mode; the stylesheets then
+    give html and body the app's own background. review.html and summary.html get it as served (the files are unchanged)."""
+    return page if SCHEME in page[:4000] else in_head(page, SCHEME)
+
 APPBAR_MARK = 'aria-label="App"'
 def with_appbar(page):
     """Every HTML page the app serves carries the app bar (the way home), right after its skip link, else right after
@@ -256,7 +263,7 @@ def make(s, setup, code=None):
             self.send_header('X-Frame-Options', FRAME['X-Frame-Options'])
             self.send_header('Content-Security-Policy', policy or FRAME['Content-Security-Policy'])
         def send(self, code, body, ctype='application/json; charset=utf-8', extra=None):
-            if ctype.startswith('text/html') and isinstance(body, str): body = with_appbar(body)
+            if ctype.startswith('text/html') and isinstance(body, str): body = with_scheme(with_appbar(body))
             b = body if isinstance(body, bytes) else (body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)).encode('utf-8')
             self.send_response(code); self.headers_(ctype, len(b), csp(b.decode('utf-8', 'replace')) if ctype.startswith('text/html') else None)
             for k, v in (extra or {}).items(): self.send_header(k, v)
