@@ -6,7 +6,7 @@ core.draft_pdf (the same check as Finish, then apply.py with APPLY_DRAFT=1) and 
 draft has the reviewer's changes and the draft mark, a build that fails leaves no file, nothing in the run folder is
 written but the auto-saved draft, and the draft's folder is gone once the server stops. No model; veraPDF is off.
 """
-import os, sys, json, time, glob, hashlib, tempfile, threading, subprocess, urllib.request
+import os, re, sys, json, time, glob, hashlib, tempfile, threading, subprocess, urllib.request
 import pikepdf
 import pytest
 
@@ -173,3 +173,37 @@ def test_a_burst_of_connections_is_never_refused():
     try:
         with C.ThreadPoolExecutor(40) as ex: assert set(ex.map(get, range(400))) == {200}
     finally: srv.shutdown(); srv.server_close()
+
+# ------------------------------------------------------------------ 15: the review page in one step (#93, Patrick 2026-11-11)
+
+def test_the_review_page_is_drawn_while_it_is_read_with_what_it_used_to_ask_for(R):
+    """The review page's script (with its data) is read in the head and only defines; the call at the end of the body draws
+    the page. The line beside Finish (the check of the saved choices), the draft line and the first OCR pages' text come
+    with the page: the check is exactly what /keep answers for the same choices."""
+    p = open(os.path.join(PIPE, 'review', 'page.html'), encoding='utf-8').read()
+    head = p.split('</head>')[0]
+    assert p.index('<script>\n') < p.index('function bootReview() {') < p.index('</head>') < p.index('<body>') < p.index('<script>bootReview()</script>') < p.index('</body>')
+    assert p.count('<script>') == 2 and '/*REVIEW_DATA*/null' in head
+    assert "if (DATA.check && !(state.saved_at && state.saved_at !== (srv.saved_at || ''))) { gotCheck(DATA.check, state.saved_at); refreshMoves(DATA.check.move_previews); }" in p
+    assert p.count("box(src, 220)") == 1 and "box('_audit/' + c.figure, 220)" in p and "const SIZES = DATA.img_sizes || {};" in p
+    assert "if (DATA.draft) firstDraft(DATA.draft); else fetch('/draft')" in p and "(OCR_TEXT[p.page] != null ? esc(OCR_TEXT[p.page]) : 'Loading the text…')" in p
+    port, t = start(R)
+    try:
+        assert call(port, '/keep', BODY)[0] == 200                                         # some saved choices on disk…
+    finally:
+        assert call(port, '/finish', FINISH)[0] == 200; t.join(10)
+    port, t = start(R)                                                                  # …which a new page starts from
+    try:
+        page = call(port, '/')[1].decode('utf-8')
+        data = json.loads(re.search(r'const DATA = (\{.*?\});\n', page, re.S).group(1))
+        assert data['draft'] == {'state': 'idle'} and data['ocr_text'] == {}
+        keep = json.loads(call(port, '/keep', dict(BODY, saved_at=data['saved']['saved_at']))[1])
+        assert data['check'] == {k: keep[k] for k in ('problems', 'gaps', 'move_previews')}
+        from PIL import Image                                                           # each image's box, set before it arrives
+        assert {f'review_pages/page_{n:03d}.png' for n in (1, 2, 3)} <= set(data['img_sizes'])
+        for k, wh in data['img_sizes'].items():
+            f = os.path.join(str(R), *k.split('/'))
+            if os.path.exists(f): assert list(Image.open(f).size) == wh, k
+            else: assert k.startswith('review_pages/') and wh[0] > 0 and wh[1] > 0, k   # not rendered yet: the PDF page's size
+    finally:
+        call(port, '/finish', FINISH); t.join(10)
