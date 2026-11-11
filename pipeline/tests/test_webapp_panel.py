@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # 
 sys.path.insert(0, HERE)
 from webapp import config, jobs, logs, runs, server as W  # noqa: E402
 from review import sessions as S, server as RS  # noqa: E402
-from test_webapp import setup, settings, fake, wait, get, free_port, sha, app  # noqa: E402,F401  (fixtures)
+from test_webapp import setup, settings, fake, wait, get, free_port, sha, app, unver  # noqa: E402,F401  (fixtures)
 from test_review_sessions import run_folder, ALL, digest, ai_order  # noqa: E402,F401
 import app as APP  # noqa: E402
 
@@ -219,7 +219,7 @@ def post(port, path, body=None, origin=None):
 
 def test_the_run_page_has_the_panel_and_the_file_is_unchanged(app):
     disk = (app['R'] / 'review.html').read_text(); before = sha(app['R'] / 'review.html')
-    st, b, _ = get(app['port'], '/run/book/r1/'); page = b.decode()
+    st, b, _ = get(app['port'], '/run/book/r1/'); page = unver(b)
     assert st == 200 and '<div id="pdfrem-panel" data-run="book/r1" data-current="ai">' in page and '<script src="/app/panel.js" defer blocking="render">' in page
     assert '<link rel="stylesheet" href="/app/panel.css">' in page and '<title>r1</title>' in page and 'review.md</a>' in page
     assert sha(app['R'] / 'review.html') == before and 'pdfrem-panel' not in disk

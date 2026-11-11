@@ -9,7 +9,7 @@ import pytest
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # pipeline/
 sys.path.insert(0, HERE)
 from webapp import books as BK, home as HM, runs as RN, server as W  # noqa: E402
-from test_webapp import setup, settings, get, app, wait, free_port  # noqa: E402,F401  (fixtures)
+from test_webapp import setup, settings, get, app, wait, free_port, unver  # noqa: E402,F401  (fixtures)
 
 def pdf_bytes(pages=1, title=None, password=None):
     import pikepdf
@@ -135,7 +135,7 @@ def test_upload_route_checks(app):
 def test_home_page_lists_books_and_runs(app):
     t = app['t']; (t / 'uploads').mkdir(exist_ok=True); (t / 'uploads' / 's.pdf').write_bytes(pdf_bytes(4, 'Sample Title'))
     st, b, h = get(app['port'], '/')
-    page = b.decode()
+    page = unver(b)
     assert st == 200 and 'Sample Title' in page and 'Source PDF: s.pdf' in page and 'data-dialog="/api/form?what=run&amp;book=' in page
     assert 'aria-label="App"' not in page and '>Home Page<' not in page                # P1: no way home on the home page itself
     assert '<script src="/app/home.js" defer></script>' in page and "script-src 'self'" in h['Content-Security-Policy']

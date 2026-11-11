@@ -33,3 +33,21 @@ def test_no_frame_is_ever_white(app):
         assert h.get('Content-Type', '').startswith('text/html'), (p, st)
         head = page.split('</head>')[0]
         assert page.count('<meta name="color-scheme" content="light dark">') == 1 and '<meta name="color-scheme"' in head, p
+
+def test_the_apps_own_files_are_kept_by_their_version(app):
+    """Each page names the app's scripts and stylesheets with their version (?v=, the sha256 of the file the server read at
+    its start), and the browser keeps a file asked for by that version: a blocking script then never waits on the network.
+    Asked for without it, or with another version, a file is never kept (an older page after an update gets the new file)."""
+    import hashlib
+    port = app['port']
+    page = get(port, '/run/book/r1/')[1].decode('utf-8') + get(port, '/run/old/r0/')[1].decode('utf-8')
+    found = re.findall(r'="/app/([\w.]+)\?v=([0-9a-f]{12})"', page)
+    assert {'panel.css', 'panel.js', 'palette.css'} <= {n for n, _ in found} and not re.search(r'="/app/[\w.]+"', page)
+    for n, v in set(found):
+        st, b, h = get(port, f'/app/{n}?v={v}')
+        assert st == 200 and h['Cache-Control'] == 'max-age=31536000, immutable' and hashlib.sha256(b).hexdigest()[:12] == v
+        assert b == open(os.path.join(HERE, 'review' if n == 'palette.css' else 'webapp', n), 'rb').read()
+        for q in ('', '?v=000000000000'):
+            st2, b2, h2 = get(port, f'/app/{n}{q}')
+            assert st2 == 200 and h2['Cache-Control'] == 'no-store' and b2 == b
+    assert get(port, '/run/book/r1/')[2]['Cache-Control'] == 'no-store' and get(port, '/api/setup')[2]['Cache-Control'] == 'no-store'

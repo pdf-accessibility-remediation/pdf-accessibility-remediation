@@ -9,7 +9,7 @@ script (the page's policy is unchanged) and no text in it can end it. Also the h
 import os, re, sys, json, urllib.parse
 PIPE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PIPE); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from test_webapp import setup, settings, get, app  # noqa: E402,F401
+from test_webapp import setup, settings, get, app, unver  # noqa: E402,F401
 from webapp import home as HM, server as W  # noqa: E402
 
 def block(page, eid):
@@ -59,7 +59,7 @@ PANEL_JS = '<script src="/app/panel.js" defer blocking="render"></script>'
 
 def in_head(page):
     """panel.js once, in the head (a render-blocking script counts only before <body>), and nowhere else."""
-    page = page.decode('utf-8') if isinstance(page, bytes) else page
+    page = unver(page)
     assert page.count('/app/panel.js') == 1 and page.count(PANEL_JS) == 1, page[-400:]
     if '</head>' not in page:                                           # the test's review.html has no head: right after its doctype
         return '<!doctype html><link rel="stylesheet" href="/app/panel.css">\n' + PANEL_JS in page

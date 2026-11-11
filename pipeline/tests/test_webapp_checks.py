@@ -13,7 +13,7 @@ sys.path.insert(0, HERE)
 from webapp import manualpage as MP, server as W  # noqa: E402
 from review import core, manual as M, sessions as S  # noqa: E402
 from lib import release as REL, runlock, langtag  # noqa: E402
-from test_webapp import setup, wait, free_port  # noqa: E402,F401  (fixtures)
+from test_webapp import setup, wait, free_port, unver  # noqa: E402,F401  (fixtures)
 
 RUN = 'batches/d1/sample'
 CARD = '<section class="ship" aria-labelledby="ship-h"><h2 id="ship-h">Ready to Ship? No</h2><ul role="list"><li>x</li></ul></section>'
@@ -69,7 +69,7 @@ def visible(page):
 
 # ------------------------------------------------------------------ serving
 def test_the_page_is_served_with_the_csp_and_names_no_file(mapp):
-    st, b, h = req(mapp['port'], 'GET', f'/run/{RUN}/checks'); page = b.decode()
+    st, b, h = req(mapp['port'], 'GET', f'/run/{RUN}/checks'); page = unver(b)
     assert st == 200 and h['Content-Security-Policy'] == "frame-ancestors 'none'; script-src 'self'"   # no inline script
     assert '<script type="application/json" id="mc-data">' in page and '<script src="/app/manual.js" defer></script>' in page
     text = visible(page)

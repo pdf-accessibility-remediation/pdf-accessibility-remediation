@@ -299,6 +299,11 @@ def app(setup):
     try: p.wait(timeout=10)
     except subprocess.TimeoutExpired: p.kill()
 
+def unver(page):
+    """A page as the app serves it, with each of the app's own files' version (?v=<12 hex>, 15) taken out of its address."""
+    import re
+    return re.sub(r'(="/app/[\w.]+)\?v=[0-9a-f]{12}"', r'\1"', page.decode('utf-8') if isinstance(page, bytes) else page)
+
 def get(port, path, host=None, method='GET', headers=None, body=None):
     c = http.client.HTTPConnection('127.0.0.1', port, timeout=10)
     try:

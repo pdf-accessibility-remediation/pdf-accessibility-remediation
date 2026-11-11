@@ -228,6 +228,15 @@ def md_page(text, run, sid, base):
             f'<main id="main" tabindex="-1"><pre class="pp-md">{html.escape(text)}</pre></main>'
             f'<script src="/app/panel.js" defer></script></body></html>')                 # panel.js: in-page links move focus
 
+ASSET_CACHE = 'max-age=31536000, immutable'
+def versioned(page, ver):
+    """The app's own scripts and stylesheets as an HTML page names them, each with its version (the sha256 of the file this
+    server read at its start: 15, Patrick 2026-11-11). The browser keeps a file asked for by its version (ASSET_CACHE), so
+    a page's blocking scripts never wait for the network after the first page; a change to a file is a new address. Only
+    the attribute values the app writes (="/app/<file>") are touched: a report's text never holds that quoted form."""
+    for n, v in ver.items(): page = page.replace(f'="/app/{n}"', f'="/app/{n}?v={v}"')
+    return page
+
 SCHEME = '<meta name="color-scheme" content="light dark">'
 def with_scheme(page):
     """Every HTML page the app serves names its colour schemes in its head (15, Patrick 2026-11-11: no frame is ever white),
@@ -253,19 +262,20 @@ def make(s, setup, code=None):
         with open(os.path.join(J, 'server.log'), 'a', encoding='utf-8') as f: f.write(f'{datetime.datetime.now().isoformat(timespec="seconds")} {msg}\n')
     RUNS = os.path.realpath(s['runs'])                   # every file the server reads for a request is inside this folder
     assets ={n: (open(p, 'rb').read(), TYPES.get(os.path.splitext(p)[1].lower(), 'application/octet-stream')) for n, p in STATIC.items()}
+    ver = {n: hashlib.sha256(b).hexdigest()[:12] for n, (b, _) in assets.items()}   # each file's own version, in its address
     code = code or config.code_fingerprint()
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
-        def headers_(self, ctype, length, policy=None):
+        def headers_(self, ctype, length, policy=None, cache='no-store'):
             self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(length))
-            self.send_header('Cache-Control', 'no-store'); self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Cache-Control', cache); self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('X-Frame-Options', FRAME['X-Frame-Options'])
             self.send_header('Content-Security-Policy', policy or FRAME['Content-Security-Policy'])
-        def send(self, code, body, ctype='application/json; charset=utf-8', extra=None):
-            if ctype.startswith('text/html') and isinstance(body, str): body = with_scheme(with_appbar(body))
+        def send(self, code, body, ctype='application/json; charset=utf-8', extra=None, cache='no-store'):
+            if ctype.startswith('text/html') and isinstance(body, str): body = versioned(with_scheme(with_appbar(body)), ver)
             b = body if isinstance(body, bytes) else (body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)).encode('utf-8')
-            self.send_response(code); self.headers_(ctype, len(b), csp(b.decode('utf-8', 'replace')) if ctype.startswith('text/html') else None)
+            self.send_response(code); self.headers_(ctype, len(b), csp(b.decode('utf-8', 'replace')) if ctype.startswith('text/html') else None, cache)
             for k, v in (extra or {}).items(): self.send_header(k, v)
             self.end_headers(); self.wfile.write(b)
         def file(self, p):
@@ -544,7 +554,9 @@ def make(s, setup, code=None):
                 if hit and hit[2] == ['checks']: return self.send(200, MP.state(hit[1], hit[0]))   # the Manual Checks page's data
                 if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
                 return self.send(200, runs.state(s, hit[0], hit[1], nm))
-            if p.startswith('/app/') and p[len('/app/'):] in assets: return self.send(200, *assets[p[len('/app/'):]])
+            if p.startswith('/app/') and p[len('/app/'):] in assets:     # 15: kept by the browser when asked by its version
+                n = p[len('/app/'):]
+                return self.send(200, *assets[n], cache=ASSET_CACHE if (q.get('v') or [''])[0] == ver[n] else 'no-store')
             if p.startswith('/batch/'):
                 segs = segments(p[len('/batch/'):])
                 if not segs: return self.send(404, {'error': 'no such batch'})
