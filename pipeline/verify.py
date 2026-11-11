@@ -260,7 +260,7 @@ def _walk(stream, pno, resources, inherited, tr=0):
             elif x.objgen not in seen_forms:
                 seen_forms.add(x.objgen); _walk(x, pno, x.get('/Resources') or resources, state, tr); continue
             else: continue
-        elif op in ('sh', 'BI'): kind = 'image'
+        elif op in ('sh', 'INLINE IMAGE'): kind = 'image'          # pikepdf names an inline image INLINE IMAGE, never BI
         if kind and state is None: free[kind] += 1; free_pages[pno][kind] += 1
 for i, pg in enumerate(pages, 1):
     try: _walk(pg, i, pg.obj.get('/Resources'), None)
