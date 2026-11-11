@@ -1,7 +1,7 @@
 """Synthetic test PDFs for intake's page and tag-tree classification and its CJK language rule, and a check of what
 intake.py does with each (no book content; nothing is sent anywhere; no model).
 
-    python3 tools/intake_cases.py <out_dir> [--full]
+    python3 tools/intake_cases.py <out_dir> [--full] [--strict]
 
 Builds each case in <out_dir>/<case>.pdf, runs `intake.py --plan-only` on it (with the case's OCR_LANG), and compares
 intake.json with what the case expects: PASS or FAIL per case, exit 1 on any FAIL. --full also runs the whole intake
@@ -15,6 +15,8 @@ fonts-noto-cjk package; INTAKE_CASES_FONT=/path/to/font overrides); text is the 
 CJK cases, the breves case and the full empty-text scan are SKIPped (the default font draws no CJK and no breves, and
 its text is too small to OCR) and the last line says so.
 The CJK cases also need Tesseract's osd, jpn, jpn_vert, kor, chi_sim and chi_tra packs (with their _vert packs).
+--strict (used in CI, which installs every tool the cases need) counts each SKIP as a failure, so a missing tool fails
+the run instead of passing it.
 """
 import json, os, shutil, subprocess, sys, zlib
 HERE = os.path.dirname(os.path.abspath(__file__)); PIPE = os.path.dirname(HERE)
@@ -252,6 +254,7 @@ def run_intake(pdf, out, lang, plan=True):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     if len(args) != 1: sys.exit(__doc__.split('\n\n')[1])
+    strict = '--strict' in sys.argv                                  # CI: a SKIP means a broken install, so it fails
     out = os.path.abspath(args[0]); made = build(os.path.join(out, 'pdfs')); bad = good = skipped = 0
     latin = bool({'script/Latin', 'Latin'} & tesseract_langs())     # Debian/Ubuntu packages list it as "Latin"
     for k, (what, case, lang, expect, test) in enumerate(CASES, 1):
@@ -306,8 +309,9 @@ def main():
             bad += not ok; good += ok
             print(f'{"PASS" if ok else "FAIL"}  full intake on {case}: old tree set aside, auto-tagged with text structure '
                   f'(got: {j["status"]}: {j.get("summary")})', flush=True)
-    print(f'{good} passed, {bad} failed, {skipped} skipped' + (' (see the SKIP lines for what is missing)' if skipped else ''))
-    sys.exit(1 if bad else 0)
+    print(f'{good} passed, {bad} failed, {skipped} skipped' + (' (see the SKIP lines for what is missing)' if skipped else '')
+          + (' (--strict: skips count as failures)' if strict and skipped else ''))
+    sys.exit(1 if bad or (strict and skipped) else 0)
 
 
 if __name__ == '__main__':
