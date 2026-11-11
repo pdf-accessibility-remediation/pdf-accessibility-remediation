@@ -109,6 +109,7 @@ A book whose OCR text needs a person's approval has an **OCR Text** section on t
 
 ## What the page shows
 
+- **A run made from a PDF edited by hand** ([Editing the PDF by hand](hand-edits.md)) starts with two more sections: **Edited by Hand** (a card for each figure the edit touched, with an **Add Alt Text** button) and a read-only **Earlier Review** (the decisions of the run it came from, already in the file).
 - **Check these first.** Decisions in categories where a mistake is likely or affects much of the book. They are chosen by fixed rules (no model), grouped in this order, and sorted by page within each group:
   1. **H1 and title:** any decision that makes or unmakes an H1, and the document title.
   2. **Style-wide mappings:** each `rolemap` entry, most elements first. One entry changes every element of that style.
@@ -178,7 +179,7 @@ Every save also runs the check: the same rules `decide.py` uses on the AI's repl
 
 ## Adding a decision
 
-The cards cover only what the AI decided. **Add a decision** (at the top) is for what it left out. Pick a kind, find the target by text, page or object number, and give a value and an optional note. The addition appears as a card under **Added by you**, where you can change its value or **Remove** it.
+The cards cover only what the AI decided. **Add a decision** (at the top) is for what it left out. Pick a kind, find the target by text, page or object number, and give a value and an optional note. The addition appears as a card under **Added by you**, where you can change its value or **Remove** it. In a run made from a PDF edited by hand ([Editing the PDF by hand](hand-edits.md)), the **Edited by Hand** section opens with a summary of the edit and has a card for each figure it touched, whose **Add Alt Text** button opens this form.
 
 | Kind | What you can add it for | Value |
 |---|---|---|
@@ -200,12 +201,13 @@ For example, after changing a half-title (PDF 2) from H1 to P on its card, add a
 
 ## Fixing the reading order by hand
 
-Some reading-order problems are left to a person: a page whose text jumps back up a column, a second section out of place, or a move the executor refuses. Fix them in Adobe Acrobat Pro, on the **remediated** PDF (never the original, and never a draft PDF from the review page: Finish builds a new file and those fixes would be lost), and say what you did in the card's note.
+Some reading-order problems are left to a person: a page whose text jumps back up a column, a second section out of place, or a move the executor refuses. Fix them in Adobe Acrobat Pro, on an exported copy of the **remediated** PDF (never the original, and never a draft PDF from the review page: Finish builds a new file and those fixes would be lost), and say what you did in the card's note.
 
 - **A screen reader follows the tag order.** Change the order in the **Tags** panel: drag a section's tag to where it belongs. The **Order** panel (and Acrobat's "reflow" order) does not change what a screen reader reads; changing it alone is a common mistake.
 - **A section read out of place:** in the Tags panel, find the section's tag (its first words are on the card) and drag it to just before the section it should be read before (the card's "read before PDF …").
 - **A page whose text jumps back up a column:** on that page, reorder its paragraph tags in the Tags panel so they follow the printed columns, or select the page with the **Reading Order** tool and retag it in order.
 - **Check it:** listen to the page with a screen reader (NVDA on Windows, VoiceOver on a Mac) or PAC's screen reader preview, then rerun veraPDF (see [Verification with veraPDF](verapdf.md)).
+- **Bring it back:** make the fix on an exported copy (`handedit.py export`), then bring the edited file back as a new run (`handedit.py import`), so it is audited, verified and reported again and can be evaluated and shipped. A fix made on the run's own PDF changes its sha256, so the accessibility evaluation refuses it. See [Editing the PDF by hand](hand-edits.md).
 
 ## Gaps
 

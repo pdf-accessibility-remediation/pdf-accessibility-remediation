@@ -249,6 +249,17 @@ def test_run_details_in_plain_words(setup):
     assert RN.details(s, 'mm/e1', str(E)) == ['e1', 'Run on November 7, 2026, at 9:00 AM']      # an estimate only: no AI yet
     assert RN.model_words('google/gemini-3.1-pro-preview') == 'Gemini 3.1 Pro Preview' and RN.model_words(None) is None
 
+def test_run_details_of_a_run_with_no_ai_request(setup):
+    """A PDF edited by hand, brought back for review (decide.py --no-model): its header says there was no AI request, never
+    "$0.00" or a model; waiting for its review (run.json only) and finished (record.json) alike."""
+    s = S(setup); R = setup / 'runs' / 'mm' / 'he1'; R.mkdir(parents=True)
+    run = {'started': '2026-11-09T10:00:00', 'no_model': 'no AI call: a PDF edited by hand, brought back for review', 'model': None, 'usage': {'cost_usd': 0}}
+    (R / 'run.json').write_text(json.dumps(run))
+    assert RN.details(s, 'mm/he1', str(R))[-1] == 'AI Cost: none (no AI request: a PDF edited by hand)'
+    (R / 'record.json').write_text(json.dumps({'document': {'file': 'mm.pdf', 'pages': 321}, 'run': run, 'cost_total_usd': 0}))
+    d = RN.details(s, 'mm/he1', str(R))
+    assert d[-1] == 'AI Cost: none (no AI request: a PDF edited by hand)' and not any(x.startswith('AI Model') for x in d)
+
 def test_a_batch_pdfs_header_and_the_batch_page_header(app):
     """Q8, Q9, S3, S4: a batch PDF's run page says "Assigned to the batch" with "Show/Hide the PDF List (N)" and then "Home
     Page" on that line (no "Open the Batch Page", no buttons on the title line); the batch page's header has the list's

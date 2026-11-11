@@ -7,7 +7,7 @@
 **/pipeline/runs/
 runs/
 samples/
-# books added in the app ("Add a Book"): in copyright like samples/, never committed
+# PDFs added in the app ("Add a Book", and edited copies brought back under uploads/.edited/): never committed
 uploads/
 
 # the app's machine-specific settings (veraPDF and Java paths): docs/app.md

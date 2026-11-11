@@ -124,7 +124,7 @@ function showMsg(m, text, ok, focus) {
 }
 function abandonText(open, from) {
   return cap(sn(open.id)) + ' is open (started ' + fmtWhen(open.started) + '). Starting from ' +
-         (from === 'ai' ? 'the AI\'s decisions' : sn(from)) + ' marks it abandoned; its choices stay in "Session History".';
+         (from === 'ai' ? (st.no_model ? 'the beginning' : 'the AI\'s decisions') : sn(from)) + ' marks it abandoned; its choices stay in "Session History".';
 }
 
 // ================================================================ in-page links
@@ -250,6 +250,7 @@ function jobCard(j) {                                           // heading: the 
   if (j.kind === 'ocr' && j.status === 'running' && j.url)
     h += '<div class="pp-row"><a class="pp-btn pp-primary" id="pp-open" href="' + esc(j.url) + '">Open the OCR Text Review Page</a>' +
          '<button type="button" id="pp-stop" data-act="stop">Close Without a Verdict</button></div>';
+  if (j.child_url) h += '<div class="pp-row"><a class="pp-btn pp-primary" href="' + esc(j.child_url) + '">Open the Edited Run</a></div>';
   if (j.reason) h += '<p><b>Why:</b> ' + esc(j.reason) + '</p>' + details(j);   // U4: the exit code and the log only folded
   return h + '</article>';
 }
@@ -294,11 +295,11 @@ function actions(s) {
   if (active.length) return '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '. One job at a time per run.</p>';
   let h = '<div class="pp-row">';
   // in parentheses tc() leaves words as written: a session is named "Session N" there
-  const from = s.open ? null : s.latest ? cap(sn(s.latest.id)) : s.legacy_review ? 'the review recorded before sessions were kept' : 'the AI\'s decisions';
+  const from = s.open ? null : s.latest ? cap(sn(s.latest.id)) : s.legacy_review ? 'the review recorded before sessions were kept' : s.no_model ? 'the beginning' : 'the AI\'s decisions';
   h += s.open ? '<button type="button" class="pp-primary" id="pp-review" data-act="review">' + esc(tc('Continue review (' + cap(s.open.label) + ', open)')) + '</button>'
               : '<button type="button" class="pp-primary" id="pp-review" data-act="review">' + esc(tc('Review again (from ' + from + ')')) + '</button>';
   if (s.open) h += '<button type="button" id="pp-discard" data-act="discard">' + esc(tc('Discard ' + s.open.label)) + '</button>';
-  if (s.latest || s.open) h +='<button type="button" id="pp-ai" data-act="review" data-from="ai">Start Over from the AI\'s Decisions</button>';
+  if (s.latest || s.open) h +='<button type="button" id="pp-ai" data-act="review" data-from="ai">' + (s.no_model ? 'Start Over from the Beginning' : 'Start Over from the AI\'s Decisions') + '</button>';
   if (s.unapplied && !s.open) h += '<button type="button" id="pp-apply" data-act="apply" aria-describedby="pp-unapplied">Try Again</button>' +
     '<span class="pp-note" id="pp-unapplied">' + esc(cap(s.unapplied.label)) + ' was finished and not applied.</span>';
   h += '</div>';
@@ -306,7 +307,75 @@ function actions(s) {
     h += '<div class="pp-row"><button type="button" id="pp-ocr" data-act="ocr">Review OCR Text</button>' +
          '<span class="pp-note">OCR Text: ' + esc(tc(s.ocr.verdict || 'not yet reviewed')) + '</span></div>';
   if (!s.pinned) h += '<p class="pp-note">Review again first re-audits this run to pin it (free, a minute or more).</p>';
+  h += '<div class="pp-row"><button type="button" id="pp-bring" data-act="bring-back">Bring Back an Edited PDF</button>' +
+       '<span class="pp-note">A copy you changed in Acrobat comes back as a new run for review (no AI call).</span></div>';
   return h;
+}
+
+// a PDF edited by hand (handedit.py, docs/hand-edits.md): the run it was made from, and the runs made from edited copies of it
+function handEditBlock(s) {
+  const he = s.hand_edits; if (!he) return '';
+  let h = '';
+  if (he.parent) h += '<p>Made from an edited copy of run ' + esc(he.parent.label) + (he.parent.url ? ': <a href="' + esc(he.parent.url) + '">open it</a>' : ' (its folder is gone)') + '.</p>';
+  if ((he.children || []).length)
+    h += '<h3>' + esc(tc('Edited copies')) + '</h3><ul>' + he.children.map(c => '<li><b>' + esc(c.label) + '</b> · ' + esc(c.state) +
+      (c.by ? ' · ' + esc(c.by) : '') + (c.when ? ', ' + esc(fmtDay(c.when)) : '') + (c.note ? ' · “' + esc(c.note) + '”' : '') +
+      (c.url ? ' · <a href="' + esc(c.url) + '">Open</a>' : '') +
+      (c.state === 'not started' ? (s.cleared ? ' · brought back but not run; this book\'s files were cleared, so it can\'t be started' : c.startable ? ' · brought back but not run yet <button type="button" id="pp-start-' + esc(c.label) + '" data-act="bring-start" data-label="' + esc(c.label) + '">Start</button>'
+                                                : ' · brought back for the full pipeline (a paid AI call): start it in a terminal') : '') + '</li>').join('') + '</ul>';
+  return h;
+}
+// Bring Back an Edited PDF: the edited file (chosen here and uploaded), a name (never prefilled) and what was changed. The
+// upload and the request are sent from the dialog, so a refusal is shown in it, in the app's words; Escape or Cancel closes it
+// (and stops an upload under way).
+function bringDlg(s, opener) {
+  return new Promise(res => {
+    const d = $('pp-dlg');
+    d.innerHTML = '<h2 id="pp-dlg-h">Bring Back an Edited PDF</h2>' +
+      '<ol><li>Download this version with "Download the Remediated PDF."</li>' +
+      '<li>Edit it in Acrobat. First turn off text recognition: Edit, then Edit settings, and uncheck "Recognize scanned text."</li>' +
+      '<li>Choose the edited PDF here.</li></ol>' +
+      '<p>It comes back as a new run that stops for review: no AI call, no cost. This run is not changed.</p>' +
+      '<p><label for="pp-bring-file">Edited PDF</label><br><input type="file" id="pp-bring-file" accept="application/pdf,.pdf"></p>' +
+      '<p><label for="pp-bring-by">Edited By</label><br><input type="text" id="pp-bring-by" autocomplete="name"></p>' +
+      '<p><label for="pp-bring-note">What You Changed</label><br><textarea id="pp-bring-note" rows="2" maxlength="200"></textarea></p>' +
+      '<p id="pp-bring-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Bring Back</button>' +
+      '<button type="button" value="no">Cancel</button></div>';
+    let xhr = null;
+    const id = opener.id, err = t => { $('pp-bring-err').textContent = t; };
+    const done = v => { if (xhr) xhr.abort(); d.close(); ($(id) || opener).focus(); res(v); };
+    const send = file => new Promise(ok => {                    // the PDF's own bytes; its name in a header (percent-encoded)
+      xhr = new XMLHttpRequest();
+      xhr.open('POST', API + '/upload');
+      xhr.setRequestHeader('Content-Type', 'application/pdf');
+      xhr.setRequestHeader('X-Pdfrem-Upload', '1');           // the app's own header, as "Upload a PDF" sends (server.py)
+      xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+      xhr.upload.onprogress = ev => { if (ev.lengthComputable) err('Uploading… ' + Math.round(100 * ev.loaded / ev.total) + '%'); };
+      xhr.onload = () => { let r = {}; try { r = JSON.parse(xhr.responseText || '{}'); } catch (e) {} ok([xhr.status, r]); };
+      xhr.onerror = () => ok([0, { error: 'The app is not running. ' + START }]);
+      xhr.onabort = () => ok([-1, {}]);
+      xhr.send(file);
+    });
+    d.querySelector('button[value=no]').addEventListener('click', () => done(null));
+    d.querySelector('button[value=yes]').addEventListener('click', async ev => {
+      const file = $('pp-bring-file').files[0], by = $('pp-bring-by').value.trim(), note = $('pp-bring-note').value.trim();
+      if (!file) { err('Choose the edited PDF.'); $('pp-bring-file').focus(); return; }
+      if (!by) { err('Enter your name in "Edited By."'); $('pp-bring-by').focus(); return; }
+      if (!note) { err('Say what you changed in "What You Changed."'); $('pp-bring-note').focus(); return; }
+      ev.target.disabled = true; err('Uploading…');
+      const [c, u] = await send(file); xhr = null;
+      if (c === -1) return;                                        // cancelled
+      if (c !== 200) { err(u.error || 'The PDF was not uploaded.'); ev.target.disabled = false; return; }
+      err('Uploaded. Starting…');
+      try {
+        const [c2, r] = await api(API + '/bring-back', { file: u.file, by, note });
+        if (c2 === 202) return done(r.job);
+        err(r.error || 'The app refused this.'); ev.target.disabled = false;
+      } catch (e) { err('The app is not running. ' + START); ev.target.disabled = false; }
+    });
+    d.oncancel = ev => { ev.preventDefault(); done(null); };
+    d.showModal(); $('pp-bring-file').focus();
+  });
 }
 
 // "Clean Up Space" (stage 3, review/prune.py): the button alone, shown only when a previous version's PDF can be removed;
@@ -626,7 +695,7 @@ function render() {
       : 'Clearing this book\'s files stopped partway. "Clear This Book\'s Files" finishes it.') + '</span></div>';
   if (s.replay) h += '<p>A new run of this book from its saved AI reply can be made instead (free, no AI request; it runs on today\'s pipeline, so it is not a review of this result).</p>' +
     '<div class="pp-row"><button type="button" id="pp-replay" data-act="replay">New Run from the Saved Reply</button></div>';
-  h += (s.cleared && s.cleared.state === 'done' ? '' : actions(s)) + jobsBlock(s) + historyBlock(s) + (s.cleared ? '' : pruneBlock(s)) + clearBlock(s);
+  h += (s.cleared && s.cleared.state === 'done' ? '' : actions(s)) + jobsBlock(s) + handEditBlock(s) + historyBlock(s) + (s.cleared ? '' : pruneBlock(s)) + clearBlock(s);
   // replaced only when it changed, as the strip is: a poll whose data changed but not what the panel shows (the review
   // page saving a session's draft while a review is open) never swaps the buttons under the mouse or a selection
   const body = $('pp-body');
@@ -663,6 +732,18 @@ box.addEventListener('click', async e => {
       msg('Removed ' + r.removed + ' PDF' + (r.removed === 1 ? '' : 's') + ' (' + (r.bytes / 1e6).toFixed(1) + ' MB freed). ' + (r.removed === 1 ? 'Its record and decisions are' : 'Their records and decisions are') + ' kept in "Session History".', true, true);
       return poll(true);
     } catch (e) { return msg('The app is not running. ' + START, false, true); }
+  }
+  if (act === 'bring-start') {                                   // an edited copy brought back but never run: run its review stop
+    try {
+      const [c, r] = await api(API + '/bring-back', { resume: b.dataset.label });
+      if (c !== 202) return msg(r.error || 'The app refused this.', false, true);
+      await poll(true); const hd = $('jh-' + r.job.id); if (hd) hd.focus(); return;
+    } catch (e) { return msg('The app is not running. ' + START, false, true); }
+  }
+  if (act === 'bring-back') {                                    // the dialog sends it; on 202 the job's card takes focus
+    const j = await bringDlg(st, b); if (!j) return;
+    msg('The edited PDF is coming back as a new run. When it is ready, open it from the job below.', true, true);
+    await poll(true); const hd = $('jh-' + j.id); if (hd) hd.focus(); return;
   }
   msg('');                                                       // any other panel button clears the message too
   if (act === 'reload') { location.replace(location.pathname + '?landed=1'); return; }

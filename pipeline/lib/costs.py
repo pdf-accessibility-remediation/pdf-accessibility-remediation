@@ -181,10 +181,12 @@ def actual(R):
     reply this folder paid for and read again is different (run.own_reply, decided by decide.py when it reads it): that money was
     spent on this run, so it counts like any other. Page readings (#49) are this folder's own money at every stage: from
     page_reads_run.json until report.py moves them into the record, then from the record, once. retry_usd: the
-    part that retried a figure request cut off; expected_usd and estimate_usd: what was shown before it was sent."""
+    part that retried a figure request cut off; expected_usd and estimate_usd: what was shown before it was sent. no_model:
+    run.no_model, set for a run with no AI request at all (decide.py --no-model: a PDF edited by hand), whose calls are 0."""
     rec = _load(os.path.join(R, 'record.json'))
     if rec:
         run = rec.get('run') or {}
+        nm = run.get('no_model') or None
         own = bool(run.get('own_reply'))
         saved = bool(run.get('response_from')) and not own
         pages, page_calls, pr = _page_money(rec.get('page_reads'))
@@ -197,11 +199,11 @@ def actual(R):
             ai = origin.summary(rec)
         except Exception: ai = {}
         doc_pages = (rec.get('document') or {}).get('pages')
-        return {'usd': round(this + earlier, 6), 'earlier_usd': round(earlier, 6), 'calls': (0 if saved else len(run.get('passes') or []) or 1) + len(rec.get('earlier_attempts') or []) + page_calls,
+        return {'usd': round(this + earlier, 6), 'earlier_usd': round(earlier, 6), 'calls': (0 if saved or nm else len(run.get('passes') or []) or 1) + len(rec.get('earlier_attempts') or []) + page_calls,
                 'per_page_usd': round((this + earlier) / doc_pages, 6) if doc_pages and (this + earlier) else None, 'reused': reused,
                 'original_call': {'usd': ai.get('cost_usd'), 'date': ai.get('date')} if reused else None, 'finished': True,
                 'estimate_usd': _estimate_usd(run, pr),
-                'expected_usd': None if reused else _expected_usd(run, pr), 'retry_usd': 0.0 if saved else _retry_usd(run)}
+                'expected_usd': None if reused else _expected_usd(run, pr), 'retry_usd': 0.0 if saved else _retry_usd(run), 'no_model': nm}
     run = _load(os.path.join(R, 'run.json')) or {}
     saved = bool(run.get('response_from')) and not run.get('own_reply')
     pages, page_calls, pr = _page_money(_load(os.path.join(R, 'page_reads_run.json')))
@@ -212,7 +214,10 @@ def actual(R):
     return {'usd': round(this + earlier, 6), 'earlier_usd': round(earlier, 6), 'calls': (len(run.get('passes') or []) or (1 if decided else 0)) + len(_load(os.path.join(R, 'attempts.json')) or []) + page_calls,
             'per_page_usd': None, 'reused': reused, 'original_call': None, 'finished': False,
             'estimate_usd': _estimate_usd(run, pr),
-            'expected_usd': None if reused else _expected_usd(run, pr), 'retry_usd': 0.0 if saved else _retry_usd(run)}
+            'expected_usd': None if reused else _expected_usd(run, pr), 'retry_usd': 0.0 if saved else _retry_usd(run),
+            'no_model': run.get('no_model') or None}
+
+NO_MODEL_WORDS = 'none (no AI request: a PDF edited by hand)'   # "AI Cost: …" for a run with no AI request at all
 
 def cost_words(a, so_far=False):
     """The words after "AI Cost:" or "Total Cost:", one source for the run page, the batch page and the terminal. a: {usd,
@@ -235,6 +240,7 @@ def cost_words(a, so_far=False):
 def after_line(R):
     """The terminal's line after a run, in the run page's words."""
     a = actual(R)
+    if a.get('no_model') and not a['usd']: return 'AI Cost: ' + NO_MODEL_WORDS
     return 'AI Cost: none (a saved reply was used)' if a['reused'] else 'AI Cost: ' + cost_words(a)
 
 def still_trashed(B):

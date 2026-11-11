@@ -86,6 +86,10 @@ nav a { display: flex; justify-content: space-between; gap: 8px; color: var(--in
 nav a:hover { background: var(--line); }
 .col { flex: 1; min-width: 0; }
 .card.added { border-left-color: var(--accent); }
+.he-sum { margin: 0 0 12px; } .he-sum h3 { font-size: 15px; margin: 10px 0 4px; } .he-sum ul { margin: 0 0 4px 1.2em; padding: 0; }
+.card.hand { border-left-color: var(--change); } .card.hand[data-done] { border-left-color: var(--ok); }
+.earlier details { margin: 0 0 6px; } .earlier summary { cursor: pointer; } .earlier .ctx { margin: 0 0 8px; }
+.earlier table { border-collapse: collapse; width: 100%; font-size: 14px; } .earlier td, .earlier th { border-top: 1px solid var(--line); padding: 3px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 #addPanel { background: var(--panel); border: 2px solid var(--accent); border-radius: 8px; padding: 10px 14px; margin: 0 0 16px; }
 #addPanel h2 { font-size: 16px; margin: 0 0 4px; }
 #addPanel .pick { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 6px 0; }
@@ -741,9 +745,80 @@ if (OCR_ONLY) {                                        // the OCR section alone:
   });
 }
 
+// a PDF edited by hand (DATA.hand_edit): its touched figures, each with an Add Alt Text button (not decisions: the alt text
+// is added through "Added by You"), and the review it came from, read-only (already in the file, never applied again)
+const added = t => state.additions.find(a => aid(a) === 'add:' + t.kind + ':' + t.target);
+function handSections() {
+  const he = DATA.hand_edit; if (!he) return [];
+  const ts = (he.targets || []).filter(t => view !== 'left' || !added(t));
+  // the summary first (what the edit changed, and what to do), then a card per touched figure; the heading counts the cards
+  const out = ts.length || view !== 'left' ? [{ id: 'edited', title: 'Edited by hand', hand: true, items: [{ summary: true }].concat(ts), count: ts.length }] : [];
+  const er = he.earlier;
+  if (er && er.items && er.items.length && view !== 'left') out.push({ id: 'earlier', title: 'Earlier review (for reference)', earlier: true, items: [er] , count: er.items.length });
+  return out;
+}
 function sections() {
   const mine = view !== 'left' && state.additions.length ? [{ id: 'added', title: 'Added by you', adds: true, items: state.additions }] : [];
-  return mine.concat(aiSections());
+  const hs = handSections();
+  return hs.filter(s => s.hand).concat(mine, aiSections(), hs.filter(s => s.earlier));   // the earlier review last: reference, not work
+}
+function handSummary() {
+  const he = DATA.hand_edit, pp = a => a.map(p => 'PDF ' + p).join(', '), plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+  const rows = [], row = (k, v) => rows.push('<dt>' + tc(k) + '</dt><dd>' + v + '</dd>');
+  row('Edited by', esc(he.by || 'name not given') + (he.when ? ', ' + esc(fmtDay(he.when)) : ''));
+  row('Note', he.note ? '“' + esc(he.note) + '”' : 'none given');
+  row('Edited file', he.base === 'original' ? 'the original PDF' : 'the remediated PDF');
+  const li = [];
+  if (he.alt_removed) li.push(plural(he.alt_removed, 'figure holds', 'figures hold') + ' a new image (' + esc(pp(he.figure_pages)) + '): the old alt text was removed.');
+  if ((he.lost || []).length) li.push(plural(he.lost.length, 'figure', 'figures') + ' lost the tag (' + esc(pp(he.lost.map(f => f.page))) + '): screen readers skipped it until it gets alt text again.');
+  if ((he.outside_pages || []).length) li.push('New images that no figure holds: ' + esc(pp(he.outside_pages)) + '. Check whether each is a figure or decoration.');
+  if (he.text_same) li.push('Text changed on ' + plural(he.text_same, 'page', 'pages') + ': only the spaces between words, so it reads the same.');
+  if ((he.text_differs || []).length) li.push('<b>The text reads differently on ' + esc(pp(he.text_differs)) + ': compare it with the print.</b>');
+  return '<div class="he-sum"><dl class="fields">' + rows.join('') + '</dl><h3>' + esc(tc('What the edit changed')) + '</h3>' +
+    (li.length ? '<ul>' + li.map(x => '<li>' + x + '</li>').join('') + '</ul>' : '<p class="ctx">No figure, image or text change was found.</p>') +
+    ((he.carried || []).length ? '<p>Carried from the earlier run, no action needed: ' + esc(he.carried.map(c => c.what).join('; ')) +
+      ', so the contents links keep their descriptions.</p>' : '') +
+    '<h3>' + esc(tc('Still to review')) + '</h3><ul id="heTodo">' + todoHtml() + '</ul></div>';
+}
+// what an edited PDF's review still asks for, worked out live (progress() redraws it): the Edited by Hand figures without
+// an addition, the Check First cards not reviewed (by group), and the other decisions not reviewed
+function todoHtml() {
+  const he = DATA.hand_edit || {}, ts = he.targets || [], open = it => !(state.decisions[it.id] || {}).status, li = [];
+  const alt = ts.filter(t => !added(t)).length;
+  li.push(alt ? '<li>Add alt text: ' + alt + ' of ' + ts.length + ' ' + (ts.length === 1 ? 'figure' : 'figures') + ' under "' + esc(tc('Edited by hand')) + '" (<a href="#edited" data-view="priority">go</a>)</li>'
+              : ts.length ? '<li>✓ Alt text added for every figure the edit touched</li>' : '');
+  const byG = {};
+  for (const it of items) if (it.priority && open(it)) (byG[it.priority] = byG[it.priority] || []).push(it);
+  for (const g of Object.keys(byG)) li.push('<li>Check: ' + byG[g].length + ' under "' + esc(tc(g + '. ' + DATA.groups[g])) + '" (<a href="#grp-' + g + '" data-view="priority">go</a>)</li>');
+  const other = items.filter(it => !it.priority && open(it));
+  if (other.length) li.push('<li>Other decisions: ' + other.length + ' not reviewed (<a href="#card-' + esc(other[0].id) + '" data-view="left">go</a>)</li>');
+  return li.join('') + (alt || Object.keys(byG).length || other.length ? '' : '<li>Nothing left: select "Finish Review."</li>');
+}
+function handCard(t) {
+  if (t.summary) return handSummary();
+  const it = addById['add:' + t.kind + ':' + t.target], a = added(t), rows = [];
+  const row = (k, v) => rows.push('<dt>' + tc(k) + '</dt><dd>' + v + '</dd>');
+  row('Page', esc(pg(t.page, it && it.page_label) || 'PDF ' + t.page));
+  row('What happened', t.why === 'lost_tag'
+    ? 'This figure lost its tag in the edit, so a screen reader skipped it. It is now read as ' + (t.kind === 'page_figures' ? 'the whole page.' : 'a figure again.')
+    : 'This figure holds a new image from the edit. Its old alt text described the old image, so it was removed.');
+  if (t.old_alt) row('Alt text it had', '“' + esc(t.old_alt) + '”' + (t.why === 'lost_tag' ? ' (suggested as the start of its new alt text)' : ''));
+  row('Now', a ? 'Added: “' + esc(String(a.value).slice(0, 160)) + '” · <a href="#card-' + esc(aid(a)) + '" data-card="card-' + esc(aid(a)) + '">' + esc(tc('go to your addition')) + '</a>'
+               : 'No alt text yet.');
+  return '<article class="card hand"' + (a ? ' data-done="1"' : '') + ' id="hand-' + esc(t.kind + '-' + t.target) + '"><dl class="fields">' + rows.join('') + '</dl>' +
+    (it ? imagesHtml(it) : '') +
+    (a ? '' : '<div class="controls"><button type="button" class="primary" data-add-kind="' + esc(t.kind) + '" data-add-target="' + esc(t.target) + '">' + esc(tc('Add alt text')) + '</button></div>') + '</article>';
+}
+function earlierList(er) {
+  const by = {};
+  for (const x of er.items) (by[x.kind] = by[x.kind] || []).push(x);
+  const who = er.reviewed_by ? 'reviewed by ' + esc(er.reviewed_by) + (er.reviewed_on ? ' on ' + esc(fmtDay(er.reviewed_on)) : '') : 'not reviewed by a person';
+  return '<div class="earlier"><p class="ctx">The decisions of the review this edited PDF came from (' + who + '). They are already in the file, ' +
+    'so nothing here is applied again. To change one, use "Add a Decision."' + (DATA.hand_edit.parent_pages_same ? '' : ' The pages may have shifted since.') + '</p>' +
+    Object.keys(by).map(k => '<details><summary>' + esc(tc(k)) + ' (' + by[k].length + ')</summary><table><thead><tr><th>' + tc('Page') + '</th><th>' + tc('Decision') +
+      '</th><th>' + tc('Value') + '</th><th>' + tc('Status') + '</th><th>' + tc('Note') + '</th></tr></thead><tbody>' +
+      by[k].map(x => '<tr><td>' + esc(x.page != null ? pg(x.page, x.page_label) : '—') + '</td><td>' + esc(x.label || '') + '</td><td>' + esc(x.value || '—') +
+        '</td><td>' + esc(x.status || '') + '</td><td>' + esc(x.note || '') + '</td></tr>').join('') + '</tbody></table></details>').join('') + '</div>';
 }
 function aiSections() {
   if (view === 'priority') {
@@ -1194,6 +1269,7 @@ function card(it) {
     '<label><input type="radio" name="st-' + esc(it.id) + '" data-act="status" value="' + v + '"' + (st === v ? ' checked' : '') + '> ' + l + '</label>').join('') +
     '<button type="button" class="clear" data-act="clear"' + (st ? '' : ' hidden') + ' title="Clear this choice: back to not reviewed">Clear</button></div>';
   if (it.edit && !SEEN_ONLY.has(it.key)) h += '<div class="edit"' + (st === 'changed' ? '' : ' hidden') + '><div class="edit-label">New Value</div>' + editor(it, d) + '</div>';
+  if (c.earlier_note) h += '<div class="ctx">' + esc(tc('Earlier note')) + ': “' + esc(c.earlier_note) + '” (' + esc(c.earlier_status || 'from the earlier review') + ', in the review this edited PDF came from)</div>';
   h += '<div class="note"><textarea data-act="note" placeholder="Note (optional)" aria-label="Note">' + esc(d.note || '') + '</textarea></div>';
   h += '<div class="id">ID <code>' + esc(it.id) + '</code></div>';
   return h + '</article>';
@@ -1203,7 +1279,8 @@ function render() {
   document.getElementById('roPark').appendChild(RO_BOX);   // out of #cards before it is replaced, so the panel survives
   const secs = sections();
   document.getElementById('cards').innerHTML = (finished ? '<div class="done">Review finished. Go back to ' + NEXT + ' to continue the run.</div>' : '') +
-    (secs.length ? secs.map(s => '<section id="' + s.id + '"><h2>' + esc(tc(s.title)) + ' (' + s.items.length + ')</h2>' + s.items.map(s.adds ? addCard : card).join('') + '</section>').join('')
+    (secs.length ? secs.map(s => '<section id="' + s.id + '"><h2>' + esc(tc(s.title)) + ' (' + (s.count ?? s.items.length) + ')</h2>' +
+      s.items.map(s.adds ? addCard : s.hand ? handCard : s.earlier ? earlierList : card).join('') + '</section>').join('')
                  : '<p>Nothing to show here.</p>');
   placeOrder(); nav(); progress(); refreshH1(); renderOrder(); markAll();
 }
@@ -1241,6 +1318,9 @@ function nav() {
     OCR.pages.map(p => '<a href="#ocr-page-' + p.page + '"><span>PDF ' + p.page + '</span><span></span></a>').join('');
   if (OCR_ONLY) { document.getElementById('navList').innerHTML = ocrNav; return; }
   let h = ocrNav;
+  const hs = handSections(), todo = DATA.hand_edit ? (DATA.hand_edit.targets || []).filter(t => !added(t)).length : 0;
+  if (hs.length) h += '<h2>' + tc('Edited by hand') + '</h2>' + hs.map(s => '<a href="#' + s.id + '" data-view="' + esc(view === 'left' ? 'priority' : view) + '"><span>' + esc(tc(s.title)) +
+    '</span><span>' + (s.hand ? todo : s.count) + '</span></a>').join('');
   h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + esc(view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
   h += '<h2>Check First</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
   h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
@@ -1250,6 +1330,7 @@ function nav() {
 }
 
 function progress() {
+  const td = document.getElementById('heTodo'); if (td) td.innerHTML = todoHtml();     // an edited PDF's "Still to Review"
   const n = items.filter(it => (state.decisions[it.id] || {}).status).length;
   document.getElementById('progress').textContent = n + ' of ' + items.length + ' reviewed' + (state.additions.length ? ' · ' + state.additions.length + ' added' : '');
   document.getElementById('bar').style.width = (items.length ? 100 * n / items.length : 0) + '%';
@@ -1327,6 +1408,13 @@ cards.addEventListener('click', e => {
   const t = e.target;
   const ln = t.closest('a[data-card]'); if (ln) { e.preventDefault(); goCard(ln.dataset.card); return; }
   if (t.dataset && t.dataset.addmove != null) { openAdd('move_section', t.dataset.addmove); return; }
+  if (t.dataset && t.dataset.addKind) { openAdd(t.dataset.addKind, t.dataset.addTarget); return; }   // an Edited by Hand card
+  const va = t.closest('#heTodo a[data-view]');                  // "Still to Review": to that group or card, in its view
+  if (va) {
+    e.preventDefault();
+    if (va.dataset.view !== view) { view = va.dataset.view; document.querySelector('input[name=view][value=' + view + ']').checked = true; render(); }
+    return goTo(document.getElementById(va.getAttribute('href').slice(1)));
+  }
   if (t.dataset && t.dataset.act === 'status' && t.dataset.was === '1') { t.dataset.was = ''; clearChoice(t.closest('.card')); return; }
   if (t.dataset && t.dataset.act === 'clear') { clearChoice(t.closest('.card')); return; }
   if (t.dataset && t.dataset.act === 'remove') {
@@ -1430,6 +1518,7 @@ function fillDetail() {
   row(WHAT[t.kind] || 'Decision', '<b>' + esc(t.label) + '</b>');
   targetRows(t, row);
   if (t.kind === 'move_section') moveRowsFor(t.default, t.context, ' (suggested: change the pages after adding; the preview follows)', row);
+  if (t.context && t.context.suggested_from_before_edit) row('Suggested', 'the alt text this figure had before the edit. Check it still fits the image.');
   const blk = blockedBy(t);
   let h = '<dl class="fields">' + rows.join('') + '</dl>' + imagesHtml(t);
   if (blk) h += '<div class="flag">The AI marked this figure as decoration, so screen readers skip it. Reject that decision (<code>' + esc(blk) + '</code>) first, then add its alt text.</div>';

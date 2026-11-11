@@ -10,7 +10,7 @@ run folder (record.json, review.md, reviews/) and the job files; the commands ar
 names no path), or a basis whose path no longer holds the file. The original is then found by its sha256 in samples/
 and uploads/ (read only; sha256s cached in <jobs>/sha256-cache.json by path, size and mtime).
 """
-import os, re, sys, json, signal, urllib.parse
+import os, re, sys, json, signal, hashlib, datetime, urllib.parse
 from review import sessions as S
 from lib import dates as D, release as REL
 from . import config, jobs, logs, books as BK
@@ -130,6 +130,9 @@ def job_view(s, j, with_text=False, offset=0):
                                'book_name', 'run_name')}
     if j['kind'] in ('estimate', 'batch-estimate') and j['status'] == 'failed' and j.get('exit') == 4:
         v['status'] = 'done'                                       # D4: stopped to ask the language (run_api.sh exit 4), not a failure
+    if j.get('child'):                                  # Bring Back an Edited PDF: the new run it made, once there is one
+        C = os.path.join(s['runs'], *str(j['child']).split('/'))
+        v['child_url'] = run_url(s, C) if os.path.isdir(C) else None
     steps = logs.steps(text)
     v.update(position=jobs.position(s['jobs'], j['id']), steps=[dict(x, words=logs.plain(x['label'])) for x in steps], outcome=logs.outcome(text),
              log=shown_path(jobs.log_path(s['jobs'], j['id'])))
@@ -199,6 +202,9 @@ def result(R, j, v):
                 else 'finished') + when
     if st == 'interrupted' and not lost: return 'stopped without finishing' + when
     if j['kind'] == 'pin': return 'pinned' + when
+    if j['kind'] == 'bring_back':                      # the new run waits for its review (or was applied since)
+        lab = str(j.get('child') or '').split('/')[-1] or 'a new run'
+        return f'brought back as {lab}' + when
     if j['kind'] == 'discard': return 'discarded' + when
     if j['kind'] == 'ocr':
         got = ocr_recorded(R, j.get('started'))
@@ -264,6 +270,93 @@ def after_interrupt(R, j):
 
 def run_path(run): return os.path.join(*run.split('/'))
 
+# ------------------------------------------------------------------ a PDF edited by hand (handedit.py, docs/hand-edits.md)
+def edited_dir(s):
+    """Where Bring Back an Edited PDF keeps its uploads: the uploads folder's .edited/, a dot-folder, so an edited copy is
+    never listed as a book to remediate, searched as an original or offered by the Trash (webapp/books.py pdfs_in)."""
+    return os.path.join(s['uploads'], '.edited')
+
+def run_url(s, P):
+    """The app's page of a run folder under the runs folder, or None (outside it)."""
+    rel = os.path.relpath(os.path.abspath(P), os.path.abspath(s['runs']))
+    if rel == '.' or rel.startswith('..'): return None
+    return '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in rel.split(os.sep)) + '/'
+
+def hand_edits(s, R, rec):
+    """The runs made from edited copies of this one (its hand_edits.json children), and the run this one was made from (its
+    hand_edit), each with its page; None for a run with neither."""
+    kids = []
+    busy = {str(j.get('child')) for j in jobs.all_jobs(s['jobs']) if j['kind'] == 'bring_back' and j['status'] in ('queued', 'running')}
+    for c in (load(os.path.join(R, 'hand_edits.json')) or {}).get('children') or []:
+        P = c.get('run') or ''
+        rel = os.path.relpath(os.path.abspath(P), os.path.abspath(s['runs'])).replace(os.sep, '/') if P else ''
+        if not P or not os.path.isdir(P): st = 'removed'
+        elif os.path.isfile(os.path.join(P, 'record.json')): st = 'finished'
+        elif waiting(P): st = 'waiting for its review'
+        elif rel in busy: st = 'being prepared'
+        else: st = 'not started'                       # brought back with --no-run, or its job failed or was stopped
+        to = (load(os.path.join(P, '_handedit', 'hand_edit.json')) or {}).get('to') if st == 'not started' else None
+        kids.append({'label': os.path.basename(os.path.normpath(P)) or 'run not recorded', 'when': c.get('when'), 'by': c.get('by'),
+                     'note': c.get('note'), 'state': st, 'url': run_url(s, P) if st in ('finished', 'waiting for its review') else None,
+                     'startable': st == 'not started' and to == 'review'})
+    he = rec.get('hand_edit') or load(os.path.join(R, '_handedit', 'hand_edit.json'))
+    parent = None
+    if isinstance(he, dict) and (he.get('parent') or {}).get('run'):
+        P = he['parent']['run']
+        parent = {'label': '/'.join(os.path.normpath(P).split(os.sep)[-2:]), 'url': run_url(s, P) if os.path.isdir(P) else None}
+    return {'children': kids, 'parent': parent} if kids or parent else None
+
+def resume_bring_back(s, run, R, label):
+    """Start, for an edited copy brought back but never run (handedit.py import --no-run, or a job that failed or was stopped):
+    the same import again, which carries on in its folder (same file, same mode). Only a review child: a paid run stays a
+    terminal command. The label must be one of this run's children; it is never used as a path on its own."""
+    rec = load(os.path.join(R, 'record.json'))
+    if not rec: raise ValueError('This run is not finished.')
+    if REL.cleared(R): raise ValueError('This book\'s working files were cleared, so an edited copy can\'t be compared with its result.')
+    kid = next((c for c in (hand_edits(s, R, rec) or {}).get('children') or [] if c['label'] == label), None)
+    if not kid: raise ValueError('No edited copy of this run has that name.')
+    if kid['state'] != 'not started': raise ValueError(f'"{label}" is {kid["state"]}: there is nothing to start.')
+    P = next(c.get('run') for c in (load(os.path.join(R, 'hand_edits.json')) or {}).get('children') or []
+             if os.path.basename(os.path.normpath(c.get('run') or '')) == label)
+    he = load(os.path.join(P, '_handedit', 'hand_edit.json')) or {}
+    if he.get('to') != 'review':
+        raise ValueError(f'"{label}" was brought back for the full pipeline (a paid AI call): start it in a terminal with handedit.py.')
+    f = os.path.join(P, '_handedit', (he.get('edited') or {}).get('file') or '')
+    if not os.path.isfile(f): raise ValueError(f'The edited PDF of "{label}" is missing from its folder: bring it back again.')
+    argv = [sys.executable, 'handedit.py', 'import', R, f, '--by', he.get('by') or '', '--note', he.get('note') or '', '--label', label]
+    return jobs.create(s['jobs'], 'bring_back', run, argv, config.child_env(s), R=R, what='Bring Back an Edited PDF',
+                       child=os.path.relpath(P, s['runs']).replace(os.sep, '/'))
+
+def start_bring_back(s, run, R, name, by, note):
+    """Bring Back an Edited PDF: handedit.py import of a PDF in the uploads folder, as a new run beside this one that stops for
+    its review (no AI call, $0; a paid run stays a terminal command). Refused, with words for the dialog, before anything runs."""
+    rec = load(os.path.join(R, 'record.json'))
+    if not rec: raise ValueError('This run is not finished: bring an edited PDF back to a finished run.')
+    if REL.cleared(R): raise ValueError('This book\'s working files were cleared, so an edited copy can\'t be compared with its result.')
+    from . import manualpage as MP
+    ds = MP.disk_state(R, rec)
+    if ds['missing']: raise ValueError('This run\'s remediated PDF is missing, so an edited copy can\'t be compared with it.')
+    if ds['same'] is False:
+        raise ValueError('This run\'s own PDF was changed after the run made it. Bring back an edited copy instead, and keep the run\'s PDF as it was made.')
+    for v, what in ((by, 'who edited the PDF'), (note, 'what was changed')):
+        if not isinstance(v, str) or not v.strip(): raise ValueError(f'Say {what}.')
+        if '\n' in v.strip() or len(v.strip()) > 200: raise ValueError(f'Say {what} in one line of at most 200 characters.')
+    if not isinstance(name, str) or not name.lower().endswith('.pdf'): raise ValueError('Choose the edited PDF from the uploads folder.')
+    p = config.entry(edited_dir(s), name) if s.get('uploads') else None   # a name from the folder's listing only, never a path
+    if not p or not os.path.isfile(p): raise ValueError(f'"{name}" is not in the uploads folder: save it there, then try again.')
+    h = hashlib.sha256()
+    with open(p, 'rb') as f:
+        for b in iter(lambda: f.read(1 << 20), b''): h.update(b)
+    if h.hexdigest() == (ds['sha'] or (rec.get('document') or {}).get('output_sha256')):
+        raise ValueError(f'"{name}" is the same file as this run\'s result: nothing was edited.')
+    import handedit as HE
+    base = 'handedit-' + datetime.datetime.now().strftime('%Y%m%d-%H%M'); label, n = base, 1
+    while os.path.exists(HE.child_dir(R, rec, label)[0]): n += 1; label = f'{base}-{n}'
+    C = HE.child_dir(R, rec, label)[0]
+    argv = [sys.executable, 'handedit.py', 'import', R, p, '--by', by.strip(), '--note', note.strip(), '--label', label]
+    return jobs.create(s['jobs'], 'bring_back', run, argv, config.child_env(s), R=R, what='Bring Back an Edited PDF',
+                       child=os.path.relpath(C, s['runs']).replace(os.sep, '/'))
+
 def cleared_view(R):
     """A cleared book's note for the panel: when, by whom, the shipment, the space freed; or None."""
     c = REL.cleared(R)
@@ -327,12 +420,12 @@ def state(s, run, R):
     ss = S.sessions(R); cur = S.current_id(rec)
     vers = S.P(R)['versions']
     gone = {str(x.get('version')) for x in REL.removed(R)}              # "Clean Up Space" took their PDF: the row stays, marked
-    rows = []
+    rows, nm = [], S.no_model(R)                       # no AI call (a PDF edited by hand): "the beginning", never "the AI's"
     for x in ss:
         r = S.summary_row(x)
         if x.get('status') == 'open': r.update(S.name_notes(load(S.P(R)['draft']), x['id']))   # the open session: as last saved
         v = os.path.join(vers, x['id'])
-        rows.append({**r, 'current': x['id'] == cur, 'from_label': S.from_label(r['from']), 'label': S.label(x['id']), 'pdf_removed': x['id'] in gone,
+        rows.append({**r, 'current': x['id'] == cur, 'from_label': S.from_label(r['from'], nm), 'label': S.label(x['id']), 'pdf_removed': x['id'] in gone,
                      'result': (f'reviews/versions/{x["id"]}/' + ('review.html' if os.path.isfile(os.path.join(v, 'review.html')) else 'review.md'))
                                if os.path.isdir(v) and x['id'] != cur else None})
     ai_v = os.path.join(vers, 'ai')
@@ -358,6 +451,7 @@ def state(s, run, R):
         'ocr': ocr_state(R),
         'manual': manual_strip(R, rec),
         'prune': prune_plan(R),
+        'hand_edits': hand_edits(s, R, rec), 'no_model': nm,
         'lock': {'pid': h[0], 'what': h[1], 'since': h[2], 'words': jobs.lock_words(h[1], h[2])} if h else None,
         'live_review': job_view(s, live) if live else None,
         'jobs': [job_view(s, j) for j in rj],               # every job of the run: the page folds the earlier ones, none drop off
@@ -431,6 +525,7 @@ def details(s, run, R, pages=None):
         c = costs.actual(R)
         r_ = (rec or {}).get('run') or runj
         if c['reused']: out.append('AI Cost: none (a saved reply was used)')   # L1 (review 15): labels in Title Case
+        elif c.get('no_model') and not c['usd']: out.append('AI Cost: ' + costs.NO_MODEL_WORDS)   # a PDF edited by hand: never "$0.00"
         elif (rec or {}).get('cost_total_usd') is None and (r_.get('usage') or {}).get('cost_usd') is None and not c['usd']:
             out.append('AI Cost: not recorded')                # never a "$0.00" that was not measured
         else: out.append('AI Cost: ' + costs.cost_words(c))    # one wording with the batch page and the terminal
@@ -540,7 +635,7 @@ def start_first_review(s, run, R, port, app_pid=None):
         raise ValueError('The review page was not prepared when this run stopped, so it can\'t be opened. Run the book again.')
     back = f'http://127.0.0.1:{port}/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/?after=finish'
     argv = [sys.executable, 'review_workorder.py', R, '--serve', '--no-browser', '--return-to', back]
-    return jobs.create(s['jobs'], 'review', run, argv, config.child_env(s), counted=False, R=R, what='Review the AI\'s decisions',
+    return jobs.create(s['jobs'], 'review', run, argv, config.child_env(s), counted=False, R=R, what='Review the edited PDF' if S.no_model(R) else 'Review the AI\'s decisions',
                        app_pid=app_pid, first=True, auto_apply=True)
 
 def auto_apply(s):
@@ -598,9 +693,10 @@ def start_review(s, run, R, port, src=None, discard_open=False, app_pid=None):
     argv = py + ['--reopen'] + (['--from', str(src)] if src else []) + (['--discard-open'] if discard_open else []) + \
            (['--pdf', pdf] if pdf else []) + ['--no-browser', '--return-to', back]
     ss = S.sessions(R); op = [x for x in ss if x.get('status') == 'open']; done = [x for x in ss if x.get('status') in ('finished', 'applied')]
-    what = ('Review again from the AI\'s decisions' if src == 'ai' else f'Review again from {S.label(f"{int(src):03d}")}' if src else
+    start = 'the beginning' if S.no_model(R) else 'the AI\'s decisions'   # no AI call: a PDF edited by hand
+    what = (f'Review again from {start}' if src == 'ai' else f'Review again from {S.label(f"{int(src):03d}")}' if src else
             f'Continue review ({S.label(op[-1]["id"]).capitalize()})' if op else f'Review again from {S.label(done[-1]["id"])}' if done else
-            'Review again from the AI\'s decisions')
+            f'Review again from {start}')
     review = {'kind': 'review', 'argv': argv, 'env': config.child_env(s), 'counted': False, 'extra': {'what': what, 'app_pid': app_pid}}
     pinned = S.basis(R) and os.path.exists(os.path.join(S.P(R)['audit'], 'digest.json'))
     if pinned:
