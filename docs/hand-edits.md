@@ -7,7 +7,7 @@ nav_order: 3.8
 
 Sometimes the PDF itself has to change in ways the work order can't express. Examples: a low-resolution photo that needs a better scan, or a reading-order fix only Acrobat can make (see [Fixing the reading order by hand](review-step.md#fixing-the-reading-order-by-hand)).
 
-Make the change in Acrobat or another tool, on an **exported copy**. Then bring the edited file back with `handedit.py`. It becomes a **new run** of the same book, linked to the run it came from. That run is audited, reviewed or decided, applied, verified and reported again, so the edit is checked like any other result.
+Make the change in Acrobat or another tool, on an **exported copy**. Then bring the edited file back with `handedit.py`. It becomes a **new run** of the same PDF, linked to the run it came from. That run is audited, reviewed or decided, applied, verified and reported again, so the edit is checked like any other result.
 
 The original PDF and the run's own result are never changed.
 
@@ -43,7 +43,9 @@ Step 3 makes `runs/hawaii3/rv1-edit/` (by default the label is `handedit-<date>-
 2. Write the alt text the edit needs, then select **Finish Review**. The first section, **Edited by Hand**, has a card for each figure the edit touched: its page, what happened, the alt text it had, and an **Add Alt Text** button that opens the form for that figure. For a figure that lost its tag, the form starts with the alt text it had, as a suggestion to check. Once the alt text is added, the card says so.
 3. Apply the review: press **Apply** in the app, or run the command `handedit.py` printed. The result, `review.md`, `record.json` and the evaluation work as for any run.
 
-**Then evaluate the edited run.** The review lists what the edit changed, and the new audit and veraPDF show what is still wrong in the file. But nothing checks that the edit itself is right: for example, that a new reading order follows the print, or that a re-tagged table reads correctly. That is the job of the [accessibility evaluation](release.md). Record PAC 2026 and the Screen-Reader Test again on the edited run, and look closely at the pages you edited. The earlier run's results don't count here, because the edited PDF is a different file.
+**Then evaluate the edited run.** The review lists what the edit changed, and the new audit and veraPDF show what is still wrong in the file. But nothing checks that the edit itself is right: for example, that a new reading order follows the print, or that a re-tagged table reads correctly. That is the job of the [accessibility evaluation](release.md).
+
+Record PAC 2026 and the Screen-Reader Test again on the edited run, and look closely at the pages you edited. The earlier run's results don't count here, because the edited PDF is a different file.
 
 **Never edit the run's own PDF in place.** Its sha256 is what the [accessibility evaluation](release.md#each-check-belongs-to-one-file) counts. An edited result is evaluated and shipped in its own run.
 
@@ -67,7 +69,13 @@ Acrobat can change pages you never touched:
 
 **Review is the usual choice.** The remediated result already holds the earlier run's fixes, so the review needs only what the edit changed.
 
-The empty work order does take two decisions from the run it came from, when the edit kept the number of pages: which pages are contents, notes and index (`sections`), and the fixes to contents link text (`links`). Both are by page number, so they still fit. `apply.py` redoes every link's description on each run, and without them a contents link would lose its "Chapter title, page 12" description. They are listed in `record.json` `run.carried_from_parent` and in `review.md`'s "Edited by hand" section. No decision by object number is carried, because an edited file's object numbers differ.
+The empty work order does take two decisions from the run it came from, when the edit kept the number of pages:
+- which pages are contents, notes and index (`sections`)
+- the fixes to contents link text (`links`)
+
+Both are by page number, so they still fit. `apply.py` redoes every link's description on each run, and without them a contents link would lose its "Chapter title, page 12" description. They are listed in `record.json` `run.carried_from_parent` and in `review.md`'s "Edited by hand" section.
+
+No decision by object number is carried, because an edited file's object numbers differ.
 
 Choose `pipeline` when the edit was large, for example new pages, or when the edited file is the **original** (`--base original`, below), which holds none of the earlier fixes.
 
@@ -101,9 +109,9 @@ The edited PDF already holds every decision of the run it came from: alt text, h
 - **Edited by Hand:** the figures the edit touched (above).
 - **A "Still to Review" list** at the top of Edited by Hand, kept up to date as you work. It shows the figures still without alt text, the cards under Check First not yet reviewed (by group), and any other decision not yet reviewed, each with a link. When nothing is left, it says to select **Finish Review**.
 - **The decisions carried from the earlier run** (which pages are contents, notes and index, and fixes to contents link text) get no card: there is nothing to decide. They keep the contents links' descriptions, which `apply.py` writes again on every run. The summary names them ("Carried from the earlier run, no action needed: contents pages (PDF 6–11)"), and they are applied as written.
-- **What today's audit finds anywhere in the book.** These are not things the first run missed. Anything it fixed is in the file and doesn't come back. What comes back:
+- **What today's audit finds anywhere in the PDF.** These are not things the first run missed. Anything it fixed is in the file and doesn't come back. What comes back:
   - findings the pipeline can't fix, such as text that jumps back up a column on one page;
-  - book-wide gaps, such as no H1 or a figure with no alt text.
+  - gaps across the whole PDF, such as no H1 or a figure with no alt text.
 
   When such a check card was marked seen with a note in the earlier review, the card shows that note ("Earlier Note") if the number of pages is unchanged. You still mark it seen yourself.
 - **Earlier Review (for reference)**, at the end of the page, read-only: the earlier run's decisions by kind, each with its page, value, status (approved, changed, applied as the AI wrote it, …) and the reviewer's note. It is there for reference; nothing in it is applied again.
@@ -121,21 +129,39 @@ To edit the original instead of the remediated result:
 
 The original is checked against `record.json` (`document.sha256`). The run's earlier work order is not carried over, because the edited file's object numbers differ. Use `--to pipeline`, unless you will make every decision yourself on the review page.
 
-## What is recorded
-
-| Where | What |
-|---|---|
-| `<new run>/_handedit/<edited file>` | A copy of the file you edited: the new run's source (`record.json` `document.sha256`). Your own file is never written to |
-| `<new run>/_handedit/input.pdf` | Only when a figure's alt text was removed: what the run worked on (`document.pipeline_input`) |
-| `<new run>/_handedit/hand_edit.json`, and `record.json` `hand_edit` | `by`, `when`, `note`, `to`, `base` (`output` or `original`) and `base_sha256`; `parent` (the run, its result and original, with their sha256s); `edited` (file, sha256, where it was given from); `input`; `pages` (before, after); `figures_changed` (page and the alt text removed); `alt_not_removed` (a figure that could not be found again, left as it was); `outside_figures`; `images_new`, `images_removed`; `figures_lost` (page and the alt text the figure had); `text_pages` (page, characters before and after, `heard_same`) |
-| `<parent run>/hand_edits.json` | `exports` (who, when, which file, its sha256, where it went) and `children` (each run made from an edit: its folder, who, the note, the edited sha256). The only file `handedit.py` writes in the parent run |
-| `review.md` and `review.html` | The "Edited by hand" section. With `--to review`, the run line says "no AI call", the AI cost is $0, the sections say "in this run" instead of "by the AI", the Overview says "Decisions (no AI call)", and a review "started from an empty work order (no AI call)". On the run page and the review page, "the AI's decisions" becomes "the beginning" (**Start Over from the Beginning**) |
-
-A run with no AI call has `run.no_model` and `ai_call.no_model` in `record.json`, and `cost_total_usd` is 0. The run page and the terminal say "AI Cost: none (no AI request: a PDF edited by hand)", and `run_api.sh` doesn't look up the credit left at OpenRouter.
-
 ## Limits
 
 - **Only images, figure tags and text are compared.** Other changes to tags or reading order are not listed. The new run's audit, veraPDF and the review show their effect, and your `--note` says what you changed.
 - **Image resolution is not checked.** Nothing flags a low-resolution image. You find one by looking.
 - **The app brings an edited PDF back for review only.** A new AI call (`--to pipeline`), `--base original` and `--label` are terminal options.
 - **PDF 2.0.** An edited file saved as PDF 2.0 is refused (exit 3; see [Not supported yet: PDF 2.0](troubleshooting.md#not-supported-yet-pdf-20)).
+
+## For developers
+
+### What is recorded
+
+| Where | What |
+|---|---|
+| `<new run>/_handedit/<edited file>` | A copy of the file you edited: the new run's source (`record.json` `document.sha256`). Your own file is never written to |
+| `<new run>/_handedit/input.pdf` | Only when a figure's alt text was removed: what the run worked on (`document.pipeline_input`) |
+| `<new run>/_handedit/hand_edit.json`, and `record.json` `hand_edit` | The edit's record (see below) |
+| `<parent run>/hand_edits.json` | `exports` (who, when, which file, its sha256, where it went) and `children` (each run made from an edit: its folder, who, the note, the edited sha256). The only file `handedit.py` writes in the parent run |
+| `review.md` and `review.html` | The "Edited by hand" section, and the wording of a run with no AI call (see below) |
+
+**`hand_edit.json`** holds:
+- `by`, `when`, `note`, `to`, `base` (`output` or `original`) and `base_sha256`
+- `parent`: the run, its result and original, with their sha256s
+- `edited`: file, sha256, where it was given from; and `input`
+- `pages`: before, after
+- `figures_changed`: page and the alt text removed
+- `alt_not_removed`: a figure that could not be found again, left as it was
+- `outside_figures`; `images_new`, `images_removed`
+- `figures_lost`: page and the alt text the figure had
+- `text_pages`: page, characters before and after, `heard_same`
+
+**A run with no AI call** (`--to review`):
+- The run line says "no AI call", the AI cost is $0, and the sections say "in this run" instead of "by the AI".
+- The Overview says "Decisions (no AI call)", and a review "started from an empty work order (no AI call)".
+- On the run page and the review page, "the AI's decisions" becomes "the beginning" (**Start Over from the Beginning**).
+- `record.json` has `run.no_model` and `ai_call.no_model`, and `cost_total_usd` is 0.
+- The run page and the terminal say "AI Cost: none (no AI request: a PDF edited by hand)", and `run_api.sh` doesn't look up the credit left at OpenRouter.

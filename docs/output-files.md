@@ -133,7 +133,7 @@ review.md keeps them all as the record.
 
 Each line reads "- ✓ Name: Value (details)" when satisfied, else "- Name: Value (details)". A PDF is ready only when:
 
-1. **Work Order Approval:** the work order was approved on the review page (`REVIEW=1`; see [Sign-off](review-step.md#sign-off-when-a-book-is-ready-to-ship)).
+1. **Work Order Approval:** the work order was approved on the review page (`REVIEW=1`; see [Sign-off](review-step.md#sign-off-when-a-pdf-is-ready-to-ship)).
 2. **OCR Text Approval:** the OCR text was approved, when intake added OCR text, found the PDF's existing OCR layer doubtful, unusable or missing diacritics, or could not check it because no sample page could be scored. An unknown layer is not "not needed" (decided 2026-10-25). A PDF with no OCR text added and no flagged OCR layer shows "Not Applicable"; that includes a publisher's own OCR layer that the test checked and did not flag.
 3. **Safety Checks:** the five safety checks are OK.
 4. **Accessibility Evaluation:** both parts (PAC 2026 and the screen-reader test) are recorded for this version of the PDF (from 2026-11). A Fail never blocks: it is an issue noted. It reads "Not Completed" when neither part is recorded, and names the part that is missing when one is: "Not Completed (Screen-Reader Test not recorded)".
