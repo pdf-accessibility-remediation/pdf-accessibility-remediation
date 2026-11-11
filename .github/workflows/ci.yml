@@ -77,7 +77,7 @@ jobs:
 
       - name: Intake classification cases (synthetic PDFs, plan only)
         working-directory: pipeline
-        run: python tools/intake_cases.py "$RUNNER_TEMP/intake-cases"
+        run: python tools/intake_cases.py "$RUNNER_TEMP/intake-cases" --strict    # every tool is installed above: a SKIP is a broken install
 
       - name: Set up Java (OpenDataLoader auto-tagging)
         uses: actions/setup-java@v6
@@ -89,6 +89,5 @@ jobs:
         run: pipx install ocrmypdf==17.13.0
 
       - name: Full intake (OCR of a scan, placeholder trees, two-up pages)
-        continue-on-error: true                 # new on Linux CI: make it blocking once it has passed a few times
         working-directory: pipeline
-        run: python tools/intake_cases.py "$RUNNER_TEMP/intake-full" --full
+        run: python tools/intake_cases.py "$RUNNER_TEMP/intake-full" --full --strict
