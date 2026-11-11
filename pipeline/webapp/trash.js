@@ -74,7 +74,9 @@ document.addEventListener('click', e => {
     return ask({ what: 'batch', label: d.label, names }, b, (p, r) => {
       if (r.whole) return location.assign('/?view=batches&trashed=' + encodeURIComponent(p.name || '1'));   // the home page names the batch
       const moved = r.moved || [];                                 // review 09 L1: the batch page names each PDF moved (its own trashed=)
-      const q = (p.pdfs || []).filter(x => moved.includes(x.name)).map(x => 'trashed=' + encodeURIComponent(x.pdf || x.name)).join('&');
+      const gone = (p.pdfs || []).filter(x => moved.includes(x.name)).map(x => x.pdf || x.name);   // the three shown, then a count:
+      const q = gone.slice(0, 3).map(n => 'trashed=' + encodeURIComponent(n))                       //   the address stays short
+        .concat(gone.length > 3 ? ['trashed_more=' + (gone.length - 3)] : []).join('&');
       location.assign(location.pathname + (q ? '?' + q : ''));
     });
   }

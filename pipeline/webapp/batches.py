@@ -536,21 +536,25 @@ def nav(s, label, current=None, st=None, closed=None, nm=None):
             f'>Batch: {E(nm.shown_run("batches/" + label))}</a> <span class="pp-note">({n} PDF{"" if n == 1 else "s"})</span></p><ul>{items}</ul></div></nav>')
 
 TRASHED_SHOWN = 3                                        # names given after "Move Selected to Trash"; the rest counted
-def trashed_line(names):
-    """The batch page's line after "Move Selected to Trash" (review 09 L1, as the home page's): each moved PDF's display
-    name from the address (?trashed=, one per PDF), escaped, each capped at 200 characters as on the home page; the first
-    three, then "and N more". '1' alone (no name known): "Moved to the Trash." None: no line."""
+def trashed_line(names, more=None):
+    """The batch page's line after "Move Selected to Trash" (review 09 L1, as the home page's): the moved PDFs' display
+    names from the address (?trashed=, one per PDF: trash.js sends the first three) and how many more were moved
+    (?trashed_more=, so a long list never makes the address too long), each name escaped and capped at 200 characters as
+    on the home page; three named, then "and N more". '1' alone (no name known): "Moved to the Trash." None: no line."""
     import html
     ns = [n for n in (str(x).strip()[:200] for x in (names or [])[:1000]) if n]
     if not ns: return None
-    if ns == ['1']: return 'Moved to the Trash.'
+    m = str(more or '').strip()
+    extra = int(m) if m.isdecimal() and m.isascii() and len(m) <= 6 else 0
+    if ns == ['1'] and not extra: return 'Moved to the Trash.'
     shown = [html.escape(n) for n in ns[:TRASHED_SHOWN]]
-    if len(ns) > TRASHED_SHOWN: words = ', '.join(shown) + f' and {len(ns) - TRASHED_SHOWN} more'
+    total = len(ns) + extra
+    if total > TRASHED_SHOWN or extra: words = ', '.join(shown) + f' and {total - len(shown)} more'
     elif len(ns) > 1: words = ', '.join(shown[:-1]) + ' and ' + shown[-1]
     else: words = shown[0]
     return f'Moved to the Trash: {words}.'
 
-def page(s, label, closed=None, trashed=None):
+def page(s, label, closed=None, trashed=None, trashed_more=None):
     import html
     from . import names as NM
     E = html.escape
@@ -561,7 +565,7 @@ def page(s, label, closed=None, trashed=None):
             '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + nav(s, label, st=st, closed=closed, nm=nm) +
             f'<header class="top pp-head pp-hd">' + HM.title_row(f'Batch: {E(nm.shown_run("batches/" + label))}', first=toggle(len(st['books']), not closed)) +
             f'</header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
-            '<h2 id="bt-h" tabindex="-1">This Batch</h2>' + (f'<p id="bt-trashed" hidden>{gone}</p>' if (gone := trashed_line(trashed)) else '') + '<div id="bt-body"></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
+            '<h2 id="bt-h" tabindex="-1">This Batch</h2>' + (f'<p id="bt-trashed" hidden>{gone}</p>' if (gone := trashed_line(trashed, trashed_more)) else '') + '<div id="bt-body"></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
             + HM.first_answer('bt-first', st) +                # #93: the panel drawn from the page itself, no "Loading…"
             '<script src="/app/shared.js" defer></script><script src="/app/batch.js" defer></script><script src="/app/trash.js" defer></script></body></html>', closed)

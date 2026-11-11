@@ -548,7 +548,7 @@ def make(s, setup, code=None):
                     if not p.endswith('/'): return self.redirect(p + '/')
                     if BT.saved(s, os.path.basename(B)):                 # S7, T4: a saved batch opens its pop-up on the home page
                         return self.redirect('/?view=batches&open=' + urllib.parse.quote(os.path.basename(B), safe=''))
-                    return self.send(200, BT.page(s, os.path.basename(B), closed=self.nav_closed(), trashed=q.get('trashed')), 'text/html; charset=utf-8')   # the batch page (#45)
+                    return self.send(200, BT.page(s, os.path.basename(B), closed=self.nav_closed(), trashed=q.get('trashed'), trashed_more=(q.get('trashed_more') or [''])[0]), 'text/html; charset=utf-8')   # the batch page (#45)
                 if rest == ['summary.html']:                     # the batch dashboard, with the app bar (#45: every page links home)
                     f = os.path.realpath(os.path.join(B, 'summary.html'))
                     if not f.startswith(RUNS + os.sep) or not os.path.isfile(f): return self.send(404, {'error': 'not found'})

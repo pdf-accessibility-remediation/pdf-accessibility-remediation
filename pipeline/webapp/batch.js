@@ -232,7 +232,7 @@ if (panel) panel.addEventListener('click', async e => {
 // review 09 L1: after "Move Selected to Trash", the page names the PDFs moved (as the home page does), once
 const gone = $('bt-trashed');
 if (gone) {
-  const qp = new URLSearchParams(location.search); qp.delete('trashed');
+  const qp = new URLSearchParams(location.search); qp.delete('trashed'); qp.delete('trashed_more');
   history.replaceState(null, '', location.pathname + (qp.toString() ? '?' + qp : ''));
   msg(gone.textContent, true, true); gone.remove();
 }

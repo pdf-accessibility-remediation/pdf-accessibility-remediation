@@ -84,8 +84,8 @@ def test_every_kind_of_run_page_loads_panel_js_in_its_head(app, setup):
 # ------------------------------------------------------------------ review 09, L1: the batch page after a partial move
 def test_the_batch_page_names_the_pdfs_moved_to_the_trash(app):
     port = app['port']
-    def line(*names):
-        q = '&'.join('trashed=' + urllib.parse.quote(n) for n in names)
+    def line(*names, more=None):
+        q = '&'.join(['trashed=' + urllib.parse.quote(n) for n in names] + ([f'trashed_more={more}'] if more is not None else []))
         page = get(port, '/batch/b1/' + ('?' + q if q else ''))[1].decode('utf-8')
         m = re.findall(r'<p id="bt-trashed" hidden>(.*?)</p>', page)
         assert len(m) <= 1; return m[0] if m else None
@@ -93,7 +93,9 @@ def test_the_batch_page_names_the_pdfs_moved_to_the_trash(app):
     assert line('One') == 'Moved to the Trash: One.'
     assert line('One', 'Two') == 'Moved to the Trash: One and Two.'
     assert line('One', 'Two, Part 2', 'Three') == 'Moved to the Trash: One, Two, Part 2 and Three.'   # a comma in a name stays its own
+    assert line('One', 'Two', 'Three', more=2) == 'Moved to the Trash: One, Two, Three and 2 more.'   # what trash.js sends
     assert line('One', 'Two', 'Three', 'Four', 'Five') == 'Moved to the Trash: One, Two, Three and 2 more.'
+    assert line('One', 'Two', 'Three', more='x') == line('One', 'Two', 'Three', more='1234567') == 'Moved to the Trash: One, Two and Three.'
     assert line('A <b>Book</b> & Co') == 'Moved to the Trash: A &lt;b&gt;Book&lt;/b&gt; &amp; Co.'
     assert line('x' * 300) == 'Moved to the Trash: ' + 'x' * 200 + '.'                             # each name capped, as home's
     assert line('1') == 'Moved to the Trash.' and line(' ') is None
@@ -101,6 +103,7 @@ def test_the_batch_page_names_the_pdfs_moved_to_the_trash(app):
 def test_trash_js_names_what_a_batch_move_took():
     t = open(os.path.join(PIPE, 'webapp', 'trash.js'), encoding='utf-8').read()
     assert "location.assign('/?view=batches&trashed=' + encodeURIComponent(p.name || '1'))" in t      # the whole batch
-    assert "(p.pdfs || []).filter(x => moved.includes(x.name)).map(x => 'trashed=' + encodeURIComponent(x.pdf || x.name))" in t
+    assert "(p.pdfs || []).filter(x => moved.includes(x.name)).map(x => x.pdf || x.name)" in t
+    assert "gone.slice(0, 3).map(n => 'trashed=' + encodeURIComponent(n))" in t and "['trashed_more=' + (gone.length - 3)]" in t
     b = open(os.path.join(PIPE, 'webapp', 'batch.js'), encoding='utf-8').read()
     assert "$('bt-trashed')" in b and "msg(gone.textContent, true, true)" in b
