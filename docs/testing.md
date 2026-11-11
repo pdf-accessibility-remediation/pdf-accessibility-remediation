@@ -5,7 +5,7 @@ nav_order: 12.5
 
 # Testing
 
-There are three kinds of tests. None of them calls the model, and none costs anything.
+There are three kinds of tests. None of them makes an AI request, and none costs anything.
 
 | Test | What it checks | Run it (from `pipeline/`) | Time |
 |---|---|---|---|
@@ -74,7 +74,7 @@ The test prints one line per book (identical, or the fields and lines that diffe
 
 | Book | Adds |
 |---|---|
-| hawaii3 | alt text, retyped headings (H1–H5), the role map, sections; ʻokina and kahakō; language tags that are not BCP 47 ("Hawaii"), deferred to a person, so veraPDF 7.2-29 still fails |
+| hawaii3 | alt text, retyped headings (H1–H5), the role map, sections; ʻokina and kahakō; language tags that are not BCP 47 ("Hawaii"), deferred to a reviewer, so veraPDF 7.2-29 still fails |
 | globalasias | `language` (Chinese, Japanese and Korean words in an English book), merged headings, ActualText the executor refuses, a cover move refused (no host) |
 | northkorea | `tables`, flattened tables, `move_to_document_start`, captions retyped; a file not made by Adobe (Aspose) |
 | fishers | `adopt_orphans`, notes, the role map, a wrong document language (fr-FR on an English book), Vietnamese diacritics |
@@ -162,3 +162,18 @@ Several scans are drawn with a font: the Japanese and Korean text, the breves, a
   - the existing veraPDF audit of one sample
   - a `regression` job per book on Python 3.14 (9 jobs in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)
   - a `reorder-case` job on Python 3.14 (no Java, no veraPDF) that runs `tools/reorder_case.py` on hawaii3, once with one move and once with `--moves 2` (about 3 minutes each), and uploads both folders when either fails (`reorder-case`)
+
+## Writing the docs
+
+A pull request that changes `pipeline/` or `prompts/` must also change `docs/`, unless it has the `no-docs-needed` label. The links in `README.md`, `docs/` and `notes/` are checked in CI. The README is a short overview; `docs/` is the full reference, so a fact the two share must say the same thing in both. When they differ, check the code.
+
+When you write or change a page:
+
+- Open it with one to three sentences on what the page is for and who it is for, before the first heading, table or code block.
+- Keep paragraphs to about 80 words. Split a long one, or turn a run of facts into a list.
+- Say "the AI" for what writes the work order. Say "model" only when choosing or naming one (`MODEL=`, [Models](models.md)), and "Claude" only for what applies to Claude alone, such as the dollar limits.
+- Say "PDF" for what the pipeline works on, and "the original" only to contrast it with the result. Say "reviewer" for the person who checks the AI's decisions, and "library staff" when the app's users are meant.
+- Quote words the app shows exactly as it shows them (Title Case labels).
+- Don't cite the sponsor checklist's step numbers: say what the step does. Record coverage in `notes/checklist-coverage.md` instead.
+- Name only the open-access sample books in `samples/README.md`. For a measurement made on an earlier test book, say "an earlier test book".
+- Add a term the pages use without explaining it to the [Glossary](glossary.md).

@@ -5,16 +5,20 @@ nav_order: 3
 
 # Running
 
+This page shows how to run one PDF from the terminal, and what `run_api.sh` does at each step. To run a folder of PDFs, see [Batch runs](batch-runs.md); to work in the browser instead, see [The home page](home.md).
+
 ## Run
 
 ```bash
 cd pipeline
-bash run_api.sh ../samples/tagged/northkorea.pdf nktest apirun1
+bash run_api.sh ../samples/tagged/northkorea.pdf nktest api-run1
 ```
 
-The script audits the PDF and shows the cost estimate and your available credit. It **asks before calling the API**, then applies Claude's work order, verifies the result and writes the report. Use a new run label (`api-run2` …) for each run. `KEEP=1 bash run_api.sh …` keeps the working files for debugging.
+The script audits the PDF and shows the cost estimate and your available credit. It **asks before calling the API**, then applies the AI's work order, verifies the result and writes the report. A label that already holds a finished run is refused, so use a new run label (`api-run2`, `api-run3` …) for each new run. `KEEP=1 bash run_api.sh …` keeps the working files for debugging.
 
-To have a person check the AI's decisions before they are applied, start with `REVIEW=1`: the run stops after the model call, and `review_workorder.py --serve` opens a review page (see [Reviewing the work order](review-step.md)).
+**If a run stops partway**, rerun the same command with the same label. It picks up where it stopped: the audit is reused, and so is any complete AI reply already paid for. A reply that was cut off is paid for once and asked for again with twice the room. See [Options](options.md) for the details.
+
+To have a reviewer check the AI's decisions before they are applied, start with `REVIEW=1`: the run stops after the AI request, and `review_workorder.py --serve` opens a review page (see [Reviewing the work order](review-step.md)).
 
 To review a finished run again from the browser, with no further commands, start the app: `python3 app.py ../runs/<name>/<label>` (see [The app](app.md)).
 
@@ -38,4 +42,4 @@ python3 verify.py $S $O                                   # no model, ~3 min; ve
 python3 report.py $R $A                                   # review.md, record.json, han_review.csv; add --keep to keep working files
 ```
 
-If `decide.py` fails after the AI request, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and the next attempt allows twice as much (see [Options](options.md)). For errors from OpenRouter itself, see [When the model call fails](troubleshooting.md#when-the-model-call-fails).
+If `decide.py` fails after the AI request, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and the next attempt allows twice as much (see [Options](options.md)). For errors from OpenRouter itself, see [When the AI request fails](troubleshooting.md#when-the-ai-request-fails).

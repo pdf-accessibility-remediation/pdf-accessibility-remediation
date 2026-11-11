@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One OpenRouter run, start to finish: Claude decides, the code applies, checks and reports.
 #   bash run_api.sh <original.pdf> <short-name> [run-label]
-#   bash run_api.sh ../samples/tagged/teika.pdf teika api-run1   →  PDFREM/runs/teika/api-run1/
+#   bash run_api.sh ../samples/tagged/teika.pdf teika api-run1   →  runs/teika/api-run1/ (beside pipeline/)
 # Needs OPENROUTER_API_KEY in a .env file in or above this folder. Asks before spending anything.
 # KEEP=1  bash run_api.sh …   keeps the working files (digest, figure crops, raw reply, logs) for debugging
 # REPLY=path/to/reply.txt bash run_api.sh …   reuses a saved Claude reply instead of calling the API (no cost)
@@ -31,7 +31,7 @@
 # Rerunning a label that did not finish picks up where it stopped: the audit is reused; a reply that was cut off
 # is logged with its cost (attempts.json, folded into record.json) and a new request is made with twice the room; a reply that
 # was fine but a later step failed is reused at no cost.
-# Outputs go to PDFREM/runs/<short-name>/<run-label>/ (beside pipeline). RUNS_DIR=/some/path overrides it.
+# Outputs go to runs/<short-name>/<run-label>/ (beside pipeline/). RUNS_DIR=/some/path overrides it.
 # RUN_DIR=/exact/folder sets the run folder itself (batch_api.sh uses it: runs/batches/<label>/<name>/).
 # ASK_LANG=1 (the app, #45 D4): with no OCR_LANG and no intake yet, intake.py --languages runs first; when pages need OCR
 # and their language matters (not Latin script only, not "no text found") the run stops with exit 4 before any OCR

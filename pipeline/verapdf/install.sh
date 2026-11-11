@@ -5,7 +5,7 @@
 set -euo pipefail
 DEST=${1:-$HOME/.local/opt/verapdf}
 VERSION=${VERAPDF_VERSION:-1.30.3}
-command -v java > /dev/null || { echo "java not found: install a Java 17 runtime first"; exit 1; }
+command -v java > /dev/null || { echo "java not found: install Java 11 or later (17 recommended) first"; exit 1; }
 DEST=$(mkdir -p "$DEST" && cd "$DEST" && pwd)
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 curl -fsSL -o "$TMP/installer.zip" "https://software.verapdf.org/rel/${VERSION%.*}/verapdf-greenfield-$VERSION-installer.zip" \

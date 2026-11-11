@@ -68,7 +68,7 @@ CASES = [
     ('F1', dict(kind='spend', log=CALL + 'refusing: this call could cost up to $0.54, more than the limit of $0.01 per AI call.\n', run={'estimate': {}})),   # a log written before "AI request"
     ('F1b', dict(kind='spend', log=CALL + "refusing before any request: this PDF's 7 requests could cost up to $6.20, more than the limit of $5.00 per PDF.\n", run={'estimate': {}})),
     ('F2', dict(kind='spend', log=CALL + 'refusing: $0.10 credit available, this run could cost up to $0.54 (OpenRouter would answer 402). Add credit\n', run={})),
-    ('F3', dict(kind='spend', log=CALL + 'no OPENROUTER_API_KEY: put it in PDFREMPROTO1/.env\n', run={})),
+    ('F3', dict(kind='spend', log=CALL + 'no OPENROUTER_API_KEY: put it in a .env file in pipeline/ or a folder above it, or export it\n', run={})),
     ('F4', dict(kind='spend', log=CALL + 'OpenRouter error 400: m rejected the temperature setting (0)\n', run={})),
     ('F5a', dict(kind='spend', log=CALL, run={'error': {'code': 429, 'message': 'rate limited'}})),
     ('F5', dict(kind='spend', log=CALL, run={'error': {'code': 502, 'message': 'bad gateway'}, 'usage': {'cost_usd': 0.01}})),

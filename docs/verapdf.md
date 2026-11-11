@@ -18,24 +18,24 @@ A rule veraPDF reports that is not in `rules.json` counts as WCAG and is named a
 
 | Who fixes | Rules | How it is used |
 |---|---|---|
-| the pipeline | flags, `DisplayDocTitle`, links tied and described, tab order, note IDs, the OCR layer's undefined glyphs, role-map loops (7.1-6), standard tags remapped (7.1-7), malformed `/Lang` spelling (7.2-29) | not sent to the model: the executor fixes these whatever the work order says, and review.md says how many it changed |
-| the AI | figure alt text, heading levels, natural language, untagged content, role mapping (including styles with no mapping), document title, table headers (7.5-x), broken table, list and contents structure | sent to the model in the digest (`pdfua_check`) as rule, count, example objects, the work-order `key` that fixes it and `objs` (up to 20 tags it failed on) |
+| the pipeline | flags, `DisplayDocTitle`, links tied and described, tab order, note IDs, the OCR layer's undefined glyphs, role-map loops (7.1-6), standard tags remapped (7.1-7), malformed `/Lang` spelling (7.2-29) | not sent to the AI: the executor fixes these whatever the work order says, and review.md says how many it changed |
+| the AI | figure alt text, heading levels, natural language, untagged content, role mapping (including styles with no mapping), document title, table headers (7.5-x), broken table, list and contents structure | sent to the AI in the digest (`pdfua_check`) as rule, count, example objects, the work-order `key` that fixes it and `objs` (up to 20 tags it failed on) |
 | a person | fonts, Formula alt, Figure bounding boxes, the PDF/UA claim | not sent; listed in `review.md` as known gaps |
 
 Which rules belong to whom, and which work-order key fixes each AI rule, is set in `pipeline/vera.py` (`EXECUTOR`, `KEY`, `PERSON`). The AI must address every rule it is sent with its key, or defer it naming the rule (prompt v8, step 9).
 
-**Targeting from the original's results.** The audit uses veraPDF's findings to make the flagged tags reachable: a Figure with no alt and no image of its own (a vector logo or drawing) gets a crop of its whole page (`image_is_whole_page`), so the model can see it; a table whose cells veraPDF flags is marked with `pdfua_rules` (and kept even past the 100-table cap).
+**Targeting from the original's results.** The audit uses veraPDF's findings to make the flagged tags reachable: a Figure with no alt and no image of its own (a vector logo or drawing) gets a crop of its whole page (`image_is_whole_page`), so the AI can see it; a table whose cells veraPDF flags is marked with `pdfua_rules` (and kept even past the 100-table cap).
 
 **Executor fixes for veraPDF rules** run on every book (after the work order, before the index rebuild) and change no page's look or text. Each records what it changed under `rule_fixes` in the apply log, shown in review.md's "Who fixes" column:
 
 | Rule | Fix |
 |---|---|
-| 7.1-6 | A RoleMap chain that loops is cut where it closes (that style → P) and listed for a person |
+| 7.1-6 | A RoleMap chain that loops is cut where it closes (that style → P) and listed for a reviewer |
 | 7.1-7 | A standard tag remapped in the RoleMap (for example `Caption → P`): its elements are retyped to what the RoleMap made them, and the entry removed |
 | 7.2-29 | `/Lang` spelling tidied (`en_US` → `en-US`, case, spaces; `lib/langtag.py`); an empty `/Lang` on a tag removed; anything else listed, never guessed |
 | 7.5-1/2 | A header cell (TH) with no direction gets one where the table makes it plain: a row of only TH → Column, a row whose only TH is its first cell → Row; others are listed |
 
-The work order's `tables` key (`op_tables`) marks the header rows and columns the AI names in a real table as TH with their Scope; spans that cross the header edge are rejected for a person. `rolemap` may add a mapping for a style the source never mapped (7.1-5).
+The work order's `tables` key (`op_tables`) marks the header rows and columns the AI names in a real table as TH with their Scope; spans that cross the header edge are rejected for a reviewer. `rolemap` may add a mapping for a style the source never mapped (7.1-5).
 
 veraPDF runs once per step, in the background while the step's own checks run. The audit's run is the "before" (`verapdf.json`, plus its `pdfua_check` view in the digest); it is printed with the audit, so a file that already passes (or fails thousands of checks) shows up before anything is spent. Verify's run is the "after". review.md gets two rows (no WCAG failures after; no rule newly failing or failing more often) and a "veraPDF" section with each failed rule's before and after counts, who fixes it, its status (newly failing, failing more often, still failing, fixed) and pages. `record.json` keeps both summaries under `verapdf`; `summary.md` shows each book's failing rules before → after.
 
@@ -51,7 +51,7 @@ veraPDF runs once per step, in the background while the step's own checks run. T
 | 2.4.4 | Link text like "click here" or "more" |
 | 2.4.6 | Headings with no text, over 200 characters, or the same twice in a row |
 
-The executor sets `/Tabs /S` on every page with annotations (2.4.3), so tab order follows the tag tree.
+The executor sets `/Tabs /S` on every page with annotations (WCAG 2.4.3), so tab order follows the tag tree.
 
 When an audit is reused and has no `verapdf.json` yet, `run_api.sh` runs veraPDF on the file the audit was made from (the intake result, if intake ran), and `decide.py` builds `pdfua_check` from it.
 
