@@ -20,7 +20,7 @@ from review import core, sessions as S  # noqa: E402
 def book(tmp_path, monkeypatch):
     """A run folder at the review stop (audit + the AI's order), and a counter of the real apply.py runs."""
     monkeypatch.setenv('VERAPDF', 'off'); monkeypatch.delenv('REVIEW_DRYRUN', raising=False)
-    for k in core.DRYRUN_ENV: monkeypatch.delenv(k, raising=False)
+    for k in set(core.DRYRUN_ENV) - set(core.TREE_CHECK_ENV): monkeypatch.delenv(k, raising=False)   # the check mode stays on
     src = figure_pdf(tmp_path / 'book.pdf')
     R = tmp_path / 'run'; R.mkdir()
     run('audit.py', src, R / '_audit')
@@ -203,7 +203,7 @@ def test_one_builder_makes_the_result_and_its_source_is_in_the_key(book, monkeyp
 def pipeline_env(**kw):
     e = dict(os.environ, VERAPDF='off', OPENROUTER_API_KEY='test-not-a-key', HTTPS_PROXY='http://127.0.0.1:9', https_proxy='http://127.0.0.1:9',
              PATH=os.path.dirname(sys.executable) + os.pathsep + os.environ.get('PATH', ''))
-    for k in ('INTAKE_REUSE', 'INTAKE', 'REPLY', 'REVIEW', 'KEEP', 'REVIEW_DRYRUN', 'AUTO', 'ESTIMATE', 'MAX_USD') + core.DRYRUN_ENV: e.pop(k, None)
+    for k in ('INTAKE_REUSE', 'INTAKE', 'REPLY', 'REVIEW', 'KEEP', 'REVIEW_DRYRUN', 'AUTO', 'ESTIMATE', 'MAX_USD') + tuple(set(core.DRYRUN_ENV) - set(core.TREE_CHECK_ENV)): e.pop(k, None)
     e.update({k: str(v) for k, v in kw.items()}); return e
 
 def test_a_whole_run_keeps_its_apply_and_a_re_apply_never_touches_it(tmp_path, monkeypatch):
@@ -211,7 +211,7 @@ def test_a_whole_run_keeps_its_apply_and_a_re_apply_never_touches_it(tmp_path, m
     first Review Again opens without a trial run; then a re-apply of that review (report.py with reviews/_audit as its
     audit folder, review 02 M3) leaves the kept file byte for byte as it was."""
     monkeypatch.setenv('VERAPDF', 'off'); monkeypatch.delenv('REVIEW_DRYRUN', raising=False)
-    for k in core.DRYRUN_ENV: monkeypatch.delenv(k, raising=False)
+    for k in set(core.DRYRUN_ENV) - set(core.TREE_CHECK_ENV): monkeypatch.delenv(k, raising=False)   # the check mode stays on
     src = figure_pdf(tmp_path / 'book.pdf'); R = tmp_path / 'run'
     reply = tmp_path / 'reply.txt'; reply.write_text('```json\n' + json.dumps({'schema': 'workorder/0.2', 'alt': [{'obj': '16 0', 'alt': 'A blue box'}]}) + '\n```\n')
     r = subprocess.run(['bash', 'run_api.sh', str(src), 'book', 'x'], cwd=PIPE, env=pipeline_env(RUN_DIR=R, INTAKE='off', REPLY=reply),
@@ -244,7 +244,7 @@ def test_a_kept_section_move_is_the_trial_runs(tmp_path, monkeypatch, before_pag
     check keeps, so the synthetic four-page book stands in): the kept result equals a fresh trial run's, key included."""
     from test_synthetic import sections_pdf
     monkeypatch.setenv('VERAPDF', 'off'); monkeypatch.delenv('REVIEW_DRYRUN', raising=False)
-    for k in core.DRYRUN_ENV: monkeypatch.delenv(k, raising=False)
+    for k in set(core.DRYRUN_ENV) - set(core.TREE_CHECK_ENV): monkeypatch.delenv(k, raising=False)   # the check mode stays on
     src = sections_pdf(tmp_path / 'sections.pdf'); R = tmp_path / 'run'; R.mkdir()
     run('audit.py', src, R / '_audit')
     core.save(str(R / 'workorder.ai.json'), {'schema': 'workorder/0.1', 'move_section': {'pages': [2, 2], 'before_page': before_page}})

@@ -28,7 +28,8 @@ ROOT = os.path.dirname(PIPELINE)                             # the repo
 FOLDERS = ('runs', 'samples', 'uploads', 'jobs')
 # what a child inherits from the app's own environment (RUNS_DIR is always the app's runs folder); everything else (MODEL, REPLY, FROM, KEEP, RUN_DIR,
 # INTAKE, OCR, FORCE_OCR, MAX_TOKENS, VERAPDF=off, …) is dropped, and a job adds only its own whitelisted variables
-BASE_ENV = ('PATH', 'HOME', 'LANG', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL')
+BASE_ENV = ('PATH', 'HOME', 'LANG', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL',
+            'APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG')   # the last two: apply.py's check mode, set only by the tests (#93 C2)
 JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 'REPLY', 'MAX_USD', 'INTAKE', 'OUT',
            'JOBS', 'BATCH_MAX_USD', 'BOOK_MAX_USD', 'RETRY', 'MODEL', 'FROM',    # #45: batches, the caps, the estimate's model
            'SUMMARY_ONLY', 'ASK_LANG',                                         # round 4: the batch summary rebuild (D3, D8), the language question (D4)

@@ -13,6 +13,26 @@ _REAL_LEDGER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 _LEDGER_DIR = tempfile.mkdtemp(prefix='cost-history-')
 os.environ['COST_HISTORY'] = os.path.join(_LEDGER_DIR, '.cost-history.jsonl')
 
+# apply.py's check mode (#93 (improve performance: home and batch pages, first-time "Review Again", and PDF pipeline step
+# timing), Part 3, C2) for the whole suite, every child process included: wherever apply.py would use its kept tag-tree
+# index, it walks again and compares, and stops with the line "TREE INDEX STALE: …" on any difference. Each stop is also
+# written to the file below, so a stop inside a trial run, a draft or a pipeline a test only half reads still fails the
+# session (review 12 M3). Production runs never set these.
+_STALE_LOG = os.path.join(_LEDGER_DIR, 'tree-index-stale.log')
+os.environ['APPLY_TREE_CHECK'] = '1'
+os.environ['APPLY_TREE_STALE_LOG'] = _STALE_LOG
+
+def _stops():
+    return open(_STALE_LOG, encoding='utf-8').read() if os.path.exists(_STALE_LOG) else ''
+
+@pytest.fixture(autouse=True)
+def apply_never_used_a_stale_tree_index():
+    """Fails the test during which any apply.py it started stopped in the check mode."""
+    before = len(_stops())
+    yield
+    new = _stops()[before:]
+    assert not new, 'apply.py stopped in its check mode (TREE INDEX STALE):\n' + new
+
 def _ledger_size():
     return os.path.getsize(_REAL_LEDGER) if os.path.exists(_REAL_LEDGER) else None
 

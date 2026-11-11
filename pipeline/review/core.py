@@ -297,6 +297,11 @@ def reading_order_for(audit_dir, digest, wo):
     ro['dryrun'] = {k: v for k, v in dr.items() if k not in ('key', 'made')} if isinstance(dr, dict) else dr
     return ro
 
+TREE_STALE_MARK = 'TREE INDEX STALE:'     # apply.py's check mode (APPLY_TREE_CHECK=1) prints it when its kept tag-tree index is wrong
+class TreeIndexStale(RuntimeError):
+    """apply.py stopped in its check mode (#93 Part 3, C2). Not an OSError, ValueError or SubprocessError, so dry_run() and
+    the draft don't turn it into a soft "the trial run stopped": in tests it fails loudly (review 12 M3)."""
+
 def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
     """apply.py on pdf with the work order wo (a dict, written beside out), into out. Returns (exit code, out's log, or
     None when it wrote none). low: at a lower priority (nice 10, where there is nice), so the review page stays quick
@@ -308,12 +313,15 @@ def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
     if low and shutil.which('nice'): cmd = ['nice', '-n', '10'] + cmd
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
     if on_start: on_start(p)
-    try: p.communicate(timeout=timeout)
+    try: so, se = p.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         p.kill(); p.communicate(); raise
+    if (env if env is not None else os.environ).get('APPLY_TREE_CHECK') == '1' and TREE_STALE_MARK in (so or '') + (se or ''):
+        raise TreeIndexStale(next(l for l in ((so or '') + '\n' + (se or '')).splitlines() if TREE_STALE_MARK in l))
     return p.returncode, load(out + '.log.json')
 
-DRYRUN_ENV = ('APPLY_DRAFT', 'ALLOW_PDF20')            # every variable apply.py and lib/ read (a test keeps this list whole)
+TREE_CHECK_ENV = ('APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG')   # apply.py's check mode (#93 C2): set by the tests, never in production
+DRYRUN_ENV = ('APPLY_DRAFT', 'ALLOW_PDF20') + TREE_CHECK_ENV            # every variable apply.py and lib/ read (a test keeps this list whole)
 DRYRUN_PKGS = ('pikepdf', 'pdfplumber', 'pypdfium2', 'pillow', 'fonttools')   # as apply.py's _versions()
 
 def dryrun_code():

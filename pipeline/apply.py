@@ -79,7 +79,20 @@ def obj(ref):
 def kids(n):
     k = n.get('/K')
     return [] if k is None else (list(k) if isinstance(k, pikepdf.Array) else [k])
-def set_kids(n, lst): n.K = pikepdf.Array(lst)
+# The tag-tree index (reindex(), all_elems() below) is kept between steps and walked again only after a write to the tree
+# (#93 (improve performance: home and batch pages, first-time "Review Again", and PDF pipeline step timing), Part 3, C2).
+# Every write of a key the index reads goes through tree_set(), which raises TREE_V first (so a write that fails halfway
+# still makes the next call walk again). tests/test_apply_tree_writes.py fails on any other write of these keys it can
+# read in this file; a write with a computed key is left to the check mode (APPLY_TREE_CHECK=1, below).
+TREE_KEYS = ('/K', '/P', '/Pg', '/Type', '/MCID', '/Stm')   # /P too, although the index never reads /P (parent_of comes from the
+TREE_V = 0                                                  #   walk): conservative on purpose, don't remove it to save a walk
+def tree_set(n, key, value):
+    """The one way to write a key of TREE_KEYS on a tag-tree object: marks the kept index stale, then writes."""
+    global TREE_V
+    if key not in TREE_KEYS: raise ValueError(f'tree_set: {key} is not a tag-tree key')
+    TREE_V += 1
+    n[key] = value
+def set_kids(n, lst): tree_set(n, '/K', pikepdf.Array(lst))
 def is_elem(k): return isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) not in ('/MCR', '/OBJR')
 def same(a, b): return isinstance(a, pikepdf.Dictionary) and isinstance(b, pikepdf.Dictionary) and a.objgen == b.objgen
 def S(n): return str(n.get('/S', '')).lstrip('/')
@@ -90,7 +103,7 @@ def is_mcr(k): return isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) 
 def is_pmcr(k): return is_mcr(k) and '/Stm' not in k
 def new_elem(stype, parent, K, pg=None, **extra):
     d = pikepdf.Dictionary(Type=pikepdf.Name('/StructElem'), S=pikepdf.Name('/' + stype), P=parent, K=pikepdf.Array(K))
-    if pg is not None: d.Pg = pages[pg - 1].obj
+    if pg is not None: tree_set(d, '/Pg', pages[pg - 1].obj)
     for k, v in extra.items(): d['/' + k] = v
     return pdf.make_indirect(d)
 def mcr(pg, m): return pikepdf.Dictionary(Type=pikepdf.Name('/MCR'), Pg=pages[pg - 1].obj, MCID=m)
@@ -105,19 +118,18 @@ GROUPING = readorder.GROUPING
 def is_container(n): return S(n) in GROUPING or mapped(S(n)) in GROUPING
 DOC = next((k for k in kids(st) if is_elem(k) and S(k) == 'Document'), None)   # fix_root() makes sure there is exactly one
 eff_pg, parent_of, owner = {}, {}, {}
-def reindex():
-    eff_pg.clear(); parent_of.clear(); owner.clear()
+def _index_into(eff, par_of, own):
     stack = [(k, st, None) for k in kids(st)]
     while stack:
         n, par, pg = stack.pop()
         if not is_elem(n): continue
         pg = pidx[n.Pg.objgen] if '/Pg' in n else pg
-        eff_pg[n.objgen] = pg; parent_of[n.objgen] = par
+        eff[n.objgen] = pg; par_of[n.objgen] = par
         for k in kids(n):
-            if isinstance(k, int): owner[(pg, k)] = n
-            elif is_pmcr(k): owner[(pidx[k.Pg.objgen] if '/Pg' in k else pg, int(k.MCID))] = n
+            if isinstance(k, int): own[(pg, k)] = n
+            elif is_pmcr(k): own[(pidx[k.Pg.objgen] if '/Pg' in k else pg, int(k.MCID))] = n
             elif is_elem(k): stack.append((k, n, pg))
-def all_elems():
+def _elems_walk():
     out, stack = [], [(k, st) for k in reversed(kids(st))]
     while stack:
         n, par = stack.pop()
@@ -125,6 +137,46 @@ def all_elems():
         out.append((n, par))
         for k in reversed(kids(n)): stack.append((k, n))
     return out
+# The check mode (APPLY_TREE_CHECK=1: always in pytest and tools/regression.py, never in production runs): whenever a kept
+# index is about to be used, walk again anyway and compare by objgen; on any difference, or an element stored as a direct
+# object (objgen (0, 0), which objgen can't tell apart), print the marker line and stop with TreeIndexStale, a
+# BaseException, so no `except Exception` in this file can swallow it. The kept result is what is returned either way.
+TREE_CHECK = os.environ.get('APPLY_TREE_CHECK') == '1'
+STALE_MARK = 'TREE INDEX STALE:'                            # fixed: review/core.py, conftest and regression.py look for it
+class TreeIndexStale(BaseException): pass
+def _stale(what):
+    f = sys._getframe(1)
+    while f is not None and f.f_code.co_name in ('_stale', '_check_direct', 'reindex', 'all_elems'): f = f.f_back
+    where = f'{f.f_code.co_name} (apply.py:{f.f_lineno})' if f is not None else 'apply.py'
+    print(f'{STALE_MARK} {what}, used by {where}', file=sys.stderr, flush=True)
+    if os.environ.get('APPLY_TREE_STALE_LOG'):              # tests/conftest.py: any stop fails the test session
+        with open(os.environ['APPLY_TREE_STALE_LOG'], 'a', encoding='utf-8') as f_: f_.write(f'{STALE_MARK} {what}, used by {where}\n')
+    raise TreeIndexStale(f'{what}, used by {where}')
+def _og(x): return x.objgen if x is not None else None
+def _check_direct(pairs):
+    if any(n.objgen == (0, 0) for n, _ in pairs): _stale('a tag-tree element stored as a direct object')
+_kept = {'index': None, 'elems': None}; _elems = []
+def reindex():
+    if _kept['index'] == TREE_V:
+        if TREE_CHECK:
+            e, p, o = {}, {}, {}; _index_into(e, p, o)
+            if (e != eff_pg or {k: _og(v) for k, v in p.items()} != {k: _og(v) for k, v in parent_of.items()}
+                    or {k: _og(v) for k, v in o.items()} != {k: _og(v) for k, v in owner.items()}): _stale('the kept tag-tree index differs from a new walk')
+            _check_direct(_elems_walk())
+        return
+    eff_pg.clear(); parent_of.clear(); owner.clear(); _index_into(eff_pg, parent_of, owner)
+    _kept['index'] = TREE_V
+    if TREE_CHECK: _check_direct(_elems_walk())
+def all_elems():
+    if _kept['elems'] == TREE_V:
+        if TREE_CHECK:
+            fresh = _elems_walk()
+            if [(_og(n), _og(p)) for n, p in fresh] != [(_og(n), _og(p)) for n, p in _elems]: _stale('the kept list of tag-tree elements differs from a new walk')
+            _check_direct(fresh)
+        return list(_elems)
+    _elems[:] = _elems_walk(); _kept['elems'] = TREE_V
+    if TREE_CHECK: _check_direct(_elems)
+    return list(_elems)
 def own_mcids(n, pg):
     out = []
     for k in kids(n):
@@ -712,7 +764,7 @@ def merge(el, direction, allowed):
             p = pidx[k.Pg.objgen] if '/Pg' in k else spg; moved.append(mcr(p, int(k.MCID))); pt_set_mcid(p, int(k.MCID), other)
         elif is_mcr(k): moved.append(k)                      # form-XObject content keeps its own reference
         else:
-            if is_elem(k): k.P = other
+            if is_elem(k): tree_set(k, '/P', other)
             moved.append(k)
     set_kids(other, moved + kids(other) if direction == 'next' else kids(other) + moved)
     detach(el); reindex(); ok(f'heading: merged into {direction}')
@@ -792,7 +844,7 @@ def op_move_to_document_start(spec):
         elif o.objgen in parent_of and same(kids(DOC)[0], o): continue          # already first
         elif o.objgen in parent_of: set_kids(DOC, [k for k in kids(DOC) if not same(k, o)])
         else: reject(f'move {ref}', 'not in the structure tree'); continue
-        o.P = DOC; set_kids(DOC, [o] + kids(DOC)); ok('figure: moved into Document, first')
+        tree_set(o, '/P', DOC); set_kids(DOC, [o] + kids(DOC)); ok('figure: moved into Document, first')
     reindex()
 
 def desc_mcids(n, pg=None, acc=None):
@@ -841,10 +893,10 @@ def tie_caption(cap, wrapper_style):
     par = parent_of[cap.objgen]; ks = kids(par); i = next(j for j, k in enumerate(ks) if same(k, cap))
     prv = ks[i - 1] if i > 0 else None
     if is_elem(prv) and wrapper_style and S(prv) == wrapper_style:
-        prv.S = pikepdf.Name('/Div'); detach(cap); cap.P = prv; set_kids(prv, kids(prv) + [cap]); reindex()
+        prv.S = pikepdf.Name('/Div'); detach(cap); tree_set(cap, '/P', prv); set_kids(prv, kids(prv) + [cap]); reindex()
         ok('figure: caption tied (existing wrapper → Div)'); return
     if figure_holder_for(prv, cap, cpg):
-        prv.S = pikepdf.Name('/Div'); detach(cap); cap.P = prv; set_kids(prv, kids(prv) + [cap]); reindex()
+        prv.S = pikepdf.Name('/Div'); detach(cap); tree_set(cap, '/P', prv); set_kids(prv, kids(prv) + [cap]); reindex()
         ok('figure: caption tied (figure holder just before it → Div)')
         if len(kids(prv)) > 2: log.setdefault('captions_grouped', []).append({'page': cpg, 'figures': len(kids(prv)) - 1,
                                                                             'caption': norm_ws(elem_text(cap))})
@@ -864,7 +916,7 @@ def tie_caption(cap, wrapper_style):
     anchor = next((j for j, k in enumerate(kids(bpar)) if same(k, blk)), len(kids(bpar)))
     detach(f); detach(cap)
     if is_container(par) and not kids(par): detach(par)
-    div = new_elem('Div', bpar, [f, cap], pg=cpg); f.P = div; cap.P = div
+    div = new_elem('Div', bpar, [f, cap], pg=cpg); tree_set(f, '/P', div); tree_set(cap, '/P', div)
     ks2 = kids(bpar)
     if same(blk, f): j = None
     else:
@@ -911,7 +963,7 @@ def build_list(first, rule):
                  A=pikepdf.Dictionary(O=pikepdf.Name('/List'), ListNumbering=pikepdf.Name('/' + rule.get('numbering', 'None'))))
     items = []
     for k in run:
-        li = new_elem('LI', L, [k]); k.P = li; k.S = pikepdf.Name('/LBody'); items.append(li)
+        li = new_elem('LI', L, [k]); tree_set(k, '/P', li); k.S = pikepdf.Name('/LBody'); items.append(li)
     set_kids(L, items); set_kids(par, ks[:i] + [L] + ks[i + len(run):]); ok('list: built')
 def op_lists(spec):
     for rule in spec:
@@ -942,7 +994,7 @@ def op_toc(spec):
             if is_elem(k) and is_entry(k): run.append(k)
             else: break
         toc = new_elem('TOC', par, [], pg=eff_pg.get(first.objgen))
-        for k in run: k.S = pikepdf.Name('/TOCI'); k.P = toc; done.add(k.objgen)
+        for k in run: k.S = pikepdf.Name('/TOCI'); tree_set(k, '/P', toc); done.add(k.objgen)
         set_kids(toc, run); set_kids(par, ks[:i] + [toc] + ks[i + len(run):]); reindex(); built += 1
         ok('contents: TOC entries', len(run))
     ok('contents: TOC built', built)
@@ -1011,7 +1063,7 @@ def tag_run(pno, m, lang):
     if i is None: reject(f'lang {PG(pno)} m{m}', 'entry not found'); return
     ks = kids(o)
     sp = new_elem('Span', o, [m if isinstance(ks[i], int) else ks[i]], pg=pno if isinstance(ks[i], int) else None, Lang=pikepdf.String(lang))
-    if isinstance(ks[i], int) and eff_pg.get(o.objgen) != pno: sp.K = pikepdf.Array([mcr(pno, m)])
+    if isinstance(ks[i], int) and eff_pg.get(o.objgen) != pno: tree_set(sp, '/K', pikepdf.Array([mcr(pno, m)]))
     ks[i] = sp; set_kids(o, ks); pt_set_mcid(pno, m, sp); owner[(pno, m)] = sp; eff_pg[sp.objgen] = pno
     ok(f'language: {lang} Span')
 def op_language(spec):
@@ -1163,7 +1215,7 @@ def op_links(spec):
             if h is not None and mapped(S(h)) == 'Link':
                 pt_set_key(int(a.StructParent), h); ok('links: already tied to a Link inside the document'); return
             W = new_elem('Link', st, []); pt_set_key(int(a.StructParent), W); ok('links: new Link element created')
-        W.S = pikepdf.Name('/Link'); W.Pg = pages[pno - 1].obj
+        W.S = pikepdf.Name('/Link'); tree_set(W, '/Pg', pages[pno - 1].obj)
         objr = pikepdf.Dictionary(Type=pikepdf.Name('/OBJR'), Obj=a, Pg=pages[pno - 1].obj)
         set_kids(st, [k for k in kids(st) if not same(k, W)])
         if under and not all((pno, m) in owner for m in under):      # the link's text is not in the tag tree
@@ -1178,16 +1230,16 @@ def op_links(spec):
             idxs = [mc_entry_index(o, pno, m) for m in under]
             if whole and same_owner and None not in idxs and sorted(idxs) == list(range(min(idxs), min(idxs) + len(idxs))):
                 ks = kids(o); lo, hi = min(idxs), max(idxs)
-                W.K = pikepdf.Array([mcr(pno, m) for m in under] + [objr])
+                tree_set(W, '/K', pikepdf.Array([mcr(pno, m) for m in under] + [objr]))
                 for m in under: pt_set_mcid(pno, m, W); owner[(pno, m)] = W
                 dp = dest_page(a)
                 if dp in NOTES and pno not in NOTES and S(o) != 'Reference':
-                    R = new_elem('Reference', o, [W], pg=pno); W.P = R; ks[lo:hi + 1] = [R]; ok('links: note reference wrapped')
+                    R = new_elem('Reference', o, [W], pg=pno); tree_set(W, '/P', R); ks[lo:hi + 1] = [R]; ok('links: note reference wrapped')
                 else:
-                    W.P = o; ks[lo:hi + 1] = [W]; ok('links: wraps its text')
+                    tree_set(W, '/P', o); ks[lo:hi + 1] = [W]; ok('links: wraps its text')
                 set_kids(o, ks); parent_of[W.objgen] = o; eff_pg[W.objgen] = pno; return
             i = max(x for x in idxs if x is not None) if any(x is not None for x in idxs) else len(kids(o)) - 1
-            W.K = pikepdf.Array([objr]); W.P = o
+            tree_set(W, '/K', pikepdf.Array([objr])); tree_set(W, '/P', o)
             ks = kids(o); ks.insert(i + 1, W); set_kids(o, ks); parent_of[W.objgen] = o
             ok('links: placed after shared text'); return
         H = float(PL.pages[pno - 1].height); x0, y0, x1, y1 = [float(v) for v in a.Rect]
@@ -1204,7 +1256,7 @@ def op_links(spec):
             if near is None: raise ValueError('no tagged text in the document')
             log['deferred'].append({'page': pno, 'what': 'link on a page with no tagged text', 'why': f'tied to tagged text on {PG(npg)}'})
         o = owner[(npg, near['mcid'])]; i = mc_entry_index(o, npg, near['mcid'])
-        W.K = pikepdf.Array([objr]); W.P = o
+        tree_set(W, '/K', pikepdf.Array([objr])); tree_set(W, '/P', o)
         ks = kids(o); ks.insert((i if i is not None else len(ks) - 1) + 1, W); set_kids(o, ks); parent_of[W.objgen] = o
         ok('links: placed beside nearest text')
     for pno, a in live: place(pno, a)
@@ -1304,7 +1356,7 @@ def op_move_section(_spec):
             log.setdefault('section_moves', []).append(None); continue
         s, spar = sec[0]; set_kids(spar, [k for k in kids(spar) if not same(k, s)])
         hk = kids(host); j = next(i for i, k in enumerate(hk) if is_elem(k) and pp(k) and min(pp(k)) >= before)
-        set_kids(host, hk[:j] + [s] + hk[j:]); s.P = host; ok('order: section moved')
+        set_kids(host, hk[:j] + [s] + hk[j:]); tree_set(s, '/P', host); ok('order: section moved')
         prev = next((max(pp(k)) for k in reversed(hk[:j]) if is_elem(k) and pp(k)), None)
         done = {'pages': [min(pp(s)), max(pp(s))], 'host': S(host), 'host_pages': [min(pp(host)), max(pp(host))],
                 'before_page': min(pp(hk[j])), 'after_page': prev}
@@ -1337,7 +1389,7 @@ def op_fix_figure_order(_spec):
         if target is None: reject(f'figure order {PG(fp)}', 'no target block'); continue
         set_kids(par, [k for k in kids(par) if not same(k, div)])
         tb, tp = target; tk = kids(tp); j = next(x for x, k in enumerate(tk) if same(k, tb))
-        set_kids(tp, tk[:j + 1] + [div] + tk[j + 1:]); div.P = tp
+        set_kids(tp, tk[:j + 1] + [div] + tk[j + 1:]); tree_set(div, '/P', tp)
         log.setdefault('figure_moves', []).append({'page': fp, 'label': labels.get(fp), 'was_after_page': max(prev_pages),
                                                    'now_after_page': max(pp(tb)) if pp(tb) else None})
         c = par
@@ -1368,9 +1420,9 @@ def op_toc_finalize(_spec):
                     elif is_pmcr(g): moved.append(g); pt_set_mcid(pidx[g.Pg.objgen] if '/Pg' in g else pg, int(g.MCID), ref)
                     elif is_mcr(g): moved.append(g)
                     else:
-                        if is_elem(g): g.P = ref
+                        if is_elem(g): tree_set(g, '/P', ref)
                         moved.append(g)
-                ref.K = pikepdf.Array(moved); k.K = pikepdf.Array([ref]); ok('contents: entry wrapped in Reference')
+                tree_set(ref, '/K', pikepdf.Array(moved)); tree_set(k, '/K', pikepdf.Array([ref])); ok('contents: entry wrapped in Reference')
             stack.append(k)
 def op_remove_empty_containers(_spec):
     for _ in range(3):
@@ -1385,7 +1437,7 @@ def fix_root():
     if not roots:                                   # Auto-Tag output often has Part/Sect/Figure at the root
         others = [k for k in kids(st) if is_elem(k)]
         DOC = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name('/StructElem'), S=pikepdf.Name('/Document'), P=st, K=pikepdf.Array(others)))
-        for k in others: k.P = DOC
+        for k in others: tree_set(k, '/P', DOC)
         set_kids(st, [DOC] + [k for k in kids(st) if not is_elem(k)]); ok('document: Document root created')
     else:
         DOC = roots[0]
@@ -1399,7 +1451,7 @@ def fix_root():
                     moved.append(k)
                     if '/StructParent' in k.Obj: pt_set_key(int(k.Obj.StructParent), DOC)
                 else:
-                    if is_elem(k): k.P = DOC
+                    if is_elem(k): tree_set(k, '/P', DOC)
                     moved.append(k)
             set_kids(DOC, kids(DOC) + moved); set_kids(st, [k for k in kids(st) if not same(k, extra_doc)])
             ok('document: second Document root merged')
@@ -1451,7 +1503,7 @@ def moved_kids(part, epg):
     for k in kids(part):
         if isinstance(k, int): out.append(k if ppg == epg or ppg is None else mcr(ppg, k))   # no page known: left as it is
         else:
-            if (is_mcr(k) or is_elem(k)) and '/Pg' not in k and ppg != epg and ppg: k.Pg = pages[ppg - 1].obj
+            if (is_mcr(k) or is_elem(k)) and '/Pg' not in k and ppg != epg and ppg: tree_set(k, '/Pg', pages[ppg - 1].obj)
             out.append(k)
     return out
 def point_at(el, ks, epg):
@@ -1621,7 +1673,7 @@ def op_tables(spec):
         def adopt(el, items, pg):
             set_kids(el, items)
             for k in items:
-                if is_elem(k): k.P = el
+                if is_elem(k): tree_set(k, '/P', el)
             point_at(el, items, pg)
             return el
         def cell_items(cells, pg):
@@ -1649,8 +1701,8 @@ def op_tables(spec):
                 if not is_block(k): run.append(k); continue
                 flush()
                 kpg = eff_pg.get(k.objgen) or pg
-                if '/Pg' not in k and kpg: k.Pg = pages[kpg - 1].obj      # it would take the page of its new parent
-                k.P = host; notes.append(k)
+                if '/Pg' not in k and kpg: tree_set(k, '/Pg', pages[kpg - 1].obj)      # it would take the page of its new parent
+                tree_set(k, '/P', host); notes.append(k)
             flush()
         for r in leaving: table_row_out(t, rows[r])
         if caption is not None: set_kids(t, [caption] + kids(t))
