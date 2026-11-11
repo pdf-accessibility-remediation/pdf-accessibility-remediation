@@ -173,19 +173,20 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 with Image.open(f) as im: return list(im.size)
             except Exception: return None
         doc = None
-        try:
-            for n in range(1, data.get('pages', 0) + 1):
-                f = os.path.join(R, 'review_pages', f'page_{n:03d}.png')
-                if os.path.exists(f): d = dim(f)
-                else:
-                    if doc is None:
-                        import pypdfium2 as pdfium
-                        doc = pdfium.PdfDocument(data['pdf']) if os.path.isfile(data.get('pdf') or '') else False
-                    d = [round(x) for x in doc[n - 1].get_size()] if doc else None
-                if d: sizes[f'review_pages/page_{n:03d}.png'] = d
-        except Exception: pass
-        finally:
-            if doc: doc.close()
+        with render_lock:                             # pdfium is not thread-safe: page images render in other threads
+            try:
+                for n in range(1, data.get('pages', 0) + 1):
+                    f = os.path.join(R, 'review_pages', f'page_{n:03d}.png')
+                    if os.path.exists(f): d = dim(f)
+                    else:
+                        if doc is None:
+                            import pypdfium2 as pdfium
+                            doc = pdfium.PdfDocument(data['pdf']) if os.path.isfile(data.get('pdf') or '') else False
+                        d = [round(x) for x in doc[n - 1].get_size()] if doc else None
+                    if d: sizes[f'review_pages/page_{n:03d}.png'] = d
+            except Exception: pass
+            finally:
+                if doc: doc.close()
         for u, (f, ct) in static.items():
             if u.startswith('/_audit/') and ct.startswith('image/') and (d := dim(f)): sizes[u[1:]] = d
         return sizes or {'': [0, 0]}
