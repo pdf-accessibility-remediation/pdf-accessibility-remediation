@@ -171,8 +171,11 @@ When you write or change a page:
 
 - Open it with one to three sentences on what the page is for and who it is for, before the first heading, table or code block.
 - Keep paragraphs to about 80 words. Split a long one, or turn a run of facts into a list.
+- Keep table cells to about 60 words. Put the rest in a section below the table and link to it from the cell.
+- Lead with what a user sees and does. Put internals (`record.json` keys, modules, internal flags, calibration figures) in a `## For developers` section at the end of the page.
+- Don't cite internal decision codes (such as R17 or D3) or name people. Link the issue (`#88`) when the history matters.
 - Say "the AI" for what writes the work order. Say "model" only when choosing or naming one (`MODEL=`, [Models](models.md)), and "Claude" only for what applies to Claude alone, such as the dollar limits.
-- Say "PDF" for what the pipeline works on, and "the original" only to contrast it with the result. Say "reviewer" for the person who checks the AI's decisions, and "library staff" when the app's users are meant.
+- Say "PDF" for what the pipeline works on, and "the original" only to contrast it with the result. Say "book" only in a quoted app label or for the printed publication itself. Say "reviewer" for the person who checks the AI's decisions, and "library staff" when the app's users are meant.
 - Quote words the app shows exactly as it shows them (Title Case labels).
 - Don't cite the sponsor checklist's step numbers: say what the step does. Record coverage in `notes/checklist-coverage.md` instead.
 - Name only the open-access sample books in `samples/README.md`. For a measurement made on an earlier test book, say "an earlier test book".
