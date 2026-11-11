@@ -512,4 +512,4 @@ def test_try_again_with_figure_requests(tmp_path, files, run, want):
 def test_the_pages_name_the_number_of_requests():
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert "' for ' + e.requests + ' AI requests'" in js
-    assert "T.requests + ' AI requests" in open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "esc(T.requests) + ' AI requests" in open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()   # escaped (#93, CodeQL)
