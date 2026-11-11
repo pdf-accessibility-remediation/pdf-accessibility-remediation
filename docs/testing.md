@@ -35,11 +35,34 @@ The tests in `pipeline/tests/` call one function at a time with hand-made inputs
 - `test_tablegrid.py`: where cells sit with spans counted, who heads what (plain grids, title, note, group and repeated rows, two-level headers, row headers spanning rows, empty cells, false header cells), and each reading that is refused.
 - `test_pagereads.py`: whole-page readings of Hawaiian pages (issue #49): which pages are read (the share of longer words with Hawaiian shape), which readings replace an OCR word at its place (marks, a misreading; not a garbled or split word), each place getting its own reading (na and nā), the work-order check's refusals, and `apply.py` on a tiny tagged page with its words on the page or in a form XObject drawn once (OCRmyPDF 17's layer), never in a shared one.
 - `test_page_costs.py`: what page readings cost: paid money counted at every stage and once, the per-PDF limit on a later attempt, a page reused at no cost, the "page" history and "Not Available Yet" until it exists (against a fake OpenRouter).
+- `test_apply_tree_writes.py`: `apply.py` keeps its tag-tree index between steps and walks the tree again only after a write to it (#93 Part 3, C2; see [apply.py's kept tag-tree index](#applypys-kept-tag-tree-index-and-its-check-mode) below). Read from the code of `apply.py` and of every lib module it imports: no write of `/K`, `/P`, `/Pg`, `/Type`, `/MCID` or `/Stm` except through `tree_set()` (no attribute or literal-key assignment or `del`, no `.update(` naming one, no `__setattr__`/`__setitem__` called by name, no `setattr`), and `/K` is read only through `kids()`; the rule is first shown to refuse each of those forms. On a real `apply.py` run (its globals kept): an `/MCID` written through `tree_set()` after a kept walk is seen by the next `reindex()`; one written around it is caught by the check mode, which prints its marker and stops with `TreeIndexStale`; `all_elems()` hands out a copy; and `review/core.py`'s `run_apply()` raises on the marker instead of returning a soft result.
 - `test_contentops.py`: verify.py's untagged-content loop asks pikepdf only for the operators it acts on (`lib/contentops.py`). The operator names the loop compares against, read from verify.py's own code, must be exactly the filter's list; the filter keeps an inline image as `BI ID EI`, all three (with `BI` alone pikepdf drops everything after the first inline image; without them inline images vanish), and refuses anything else; and the filtered parse gives the same operators, operands and order as the unfiltered one, on a page with inline images, text and paths and on three broken streams (pikepdf stops silently on those, in both modes).
 - `test_verify_inline.py`: `verify.py` counts an untagged inline image as untagged content, exactly as an image XObject: built with each in turn, untagged on the page, tagged, decoration, in a form drawn on two pages (counted once), in a form drawn inside tagged content, in a form inside a form, in the second stream of a `/Contents` array, after which text and a path still count; inside a Type 3 glyph, a tiling pattern or an annotation's appearance it isn't counted (the text or fill that paints it is). End to end with no AI request, review.md's safety-check row and "Untagged Content" section name it.
 - `test_synthetic.py`: small PDFs built by the test, for rules no tagged sample reaches. One page sets its words with no space characters, as TeX does (moves between words, or kerning inside one `TJ`); read through pdfplumber, the words must come out with spaces between them. One page has a tagged one-item list made from a paragraph's first word ("as …") next to a real list ("1.", "2."). `audit.py` must mark only the first for the rule, and `apply.py` with an empty work order must turn it into a paragraph, or keep it when `keep_lists` names it. A four-page book with one section read out of printed order goes through `audit.py`, the review page's preview, `apply.py` with a `move_section` and `verify.py`: the preview must show the order `apply.py` makes, and verify's section check must mark the original's flag as "already in the original" and a bad move's flag as new. The same move added by a reviewer (no AI move) is made the same way, and the review stop's trial run of `apply.py` returns the executor's figure moves and what it did with the section move (made, or refused and why), and says why when it cannot run. A six-page book with two sections out of place gets a list of two moves, made in turn as the chained previews show; a figure read after the last page is moved back unless `fix_figure_order` is false, and the trial run lists it even then. These run the real scripts with `VERAPDF=off`. A small table goes through the work order with a title, a group row, a source note and a false header cell: it must come out with a Caption, a paragraph after it, data cells tied to headers the IDTree can find, tags the ParentTree still owns, and the same page text.
 
 The expected values come from the module docstrings and from [Work order](work-order.md) and [OCR words](ocr-words.md), not from what the code happens to return. A failing unit test means a rule changed. If the change was intended, update the test's expected value in the same PR.
+
+### apply.py's kept tag-tree index and its check mode
+
+For whoever changes `apply.py` (#93 Part 3, C2). `reindex()` (page, parent and owner of every tag) and `all_elems()` (every
+tag in order) keep their result and walk the tag tree again only after `TREE_V` has gone up, which `tree_set()` does
+before every write. So:
+
+- **Write `/K`, `/P`, `/Pg`, `/Type`, `/MCID` and `/Stm` only through `tree_set(n, key, value)`** (or `set_kids()`, which
+  uses it), and read `/K` only through `kids()`. `test_apply_tree_writes.py` fails on any other write of those keys it can
+  read in the code. It can't read a write with a computed key (`n[key] = …`) or an `.update(` on an object built
+  elsewhere: those are the check mode's job.
+- **The check mode, `APPLY_TREE_CHECK=1`:** wherever a kept result is about to be used, `apply.py` walks the tree again
+  anyway and compares (by object number). On any difference, or a tag stored as a direct object, it prints one line
+  starting with **`TREE INDEX STALE:`** (what differed, and which step used it), and stops with `TreeIndexStale` (a
+  `BaseException`, so no `except Exception` in `apply.py` can swallow it). It returns the kept result, so what runs is the
+  production path.
+- **Where it is on:** always in pytest (`tests/conftest.py` sets it for every test and its child processes, with
+  `APPLY_TREE_STALE_LOG`; any stop fails the test that ran it) and in `tools/regression.py`'s runs (a stop in a run's log
+  fails the book). `review/core.py`'s `run_apply()` raises `TreeIndexStale` when it sees the marker, so a stop inside a
+  trial run or a draft is never turned into "the trial run stopped". Production runs never set it: there, a kept index is
+  used as it is.
+- If you see the marker: a write reached one of the keys above without `tree_set()`. Route it through `tree_set()`.
 
 ## Regression test
 
@@ -51,6 +74,8 @@ The expected values come from the module docstrings and from [Work order](work-o
 | `review.md` | The report the last accepted run wrote |
 | `_intake/` | Untagged books only (ilokano): `intake.json` and `intake.pdf`, the intake result the reply was written for. It is reused (`INTAKE_REUSE=1`, as `FROM=` batches do) instead of rerunning OCR and auto-tagging, whose output varies with the Tesseract and OpenDataLoader versions. A note is printed when `requirements.txt` pins another OpenDataLoader than the one that made it; re-seed then |
 | `expect.json` | A fingerprint of that run's `record.json`: veraPDF rules before and after, what `apply.py` did, what the work-order checks dropped, the tag counts, headings and figures `verify.py` found |
+
+Every run's `apply.py` runs in its check mode (`APPLY_TREE_CHECK=1`, [above](#applypys-kept-tag-tree-index-and-its-check-mode)): a `TREE INDEX STALE:` line in a run's log fails the book.
 
 Each run is compared with the baseline in three ways:
 
