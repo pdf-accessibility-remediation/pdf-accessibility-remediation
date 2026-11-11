@@ -374,6 +374,10 @@ names do, the list starts near the top, and on a wide screen the page's header a
 and local storage), and the server lays the page out with it, so moving from PDF to PDF doesn't shift the page (D7: the
 panel also keeps its height until it is drawn, the list keeps its scroll place, and pages cross-fade). Below 48em (a
 phone, 320 px included) it starts closed, in the page's flow, so nothing scrolls sideways. "Skip to the content" skips it.
+On a PDF's page the list needs only the PDFs' statuses, so the page and its check of the batch (`/api/batch/<label>?nav=1`)
+never build the batch dashboard (review 09, 12a): for a batch made before this month's record format, building it opens
+every finished PDF to read its page labels, which made the first open of such a PDF's page after the app started take up
+to two seconds. The batch page itself still builds it.
 
 ## Move to Trash
 
@@ -382,7 +386,9 @@ PDF in the PDF list, and on the batch page (the whole batch, or the PDFs ticked 
 first, naming what goes in plain words, and ends with what happens (#93, Patrick's test of the app): "This PDF will be
 moved to the Trash on this computer and cannot be restored through the app." (for a run or a batch: "This folder will
 be moved to …"; for several PDFs ticked in a batch: "These folders will be moved to …"). After the move the home page
-says "Moved to the Trash: <name>." (the PDF's, run's or batch's name). The app restores nothing: a PDF is used again by
+says "Moved to the Trash: <name>." (the PDF's, run's or batch's name). After **Move Selected to Trash** moves only some of a
+batch's PDFs, the batch page says it instead, naming each PDF moved: up to three, then "and N more" ("Moved to the Trash:
+A, B, C and 2 more."); the message takes focus, as the home page's does. The app restores nothing: a PDF is used again by
 uploading the same PDF again with **Choose PDFs**, where the app finds it by its content (sha256).
 
 - **A run:** its run name and PDF, and "The remediated PDF, its report and its review go with it." A shipped run adds
