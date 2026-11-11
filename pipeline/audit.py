@@ -21,10 +21,9 @@ import pikepdf, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
 RARE = 30            # styles with at most this many elements are listed one by one
-os.makedirs(os.path.join(OUT, 'figures'), exist_ok=True)
 
-pdf = pikepdf.open(SRC)
-support.stop_if_unsupported(pdf, 'audit')       # PDF 2.0 / namespaced tags (runs with INTAKE=off): exit 3 before any work
+pdf = support.open_or_stop(SRC, 'audit')        # locked (3), unreadable (1), PDF 2.0 / namespaced tags (3): runs with INTAKE=off
+os.makedirs(os.path.join(OUT, 'figures'), exist_ok=True)   # after the checks: a stopped book leaves no audit behind
 pages = list(pdf.pages); pidx = {p.obj.objgen: i + 1 for i, p in enumerate(pages)}
 labels = {i + 1: str(p.label) for i, p in enumerate(pages)}
 st = pdf.Root.get('/StructTreeRoot')

@@ -52,6 +52,9 @@ CASES = [
     ('C4', dict(log=INTAKE, exit=3, intake={'status': 'stopped', 'summary': 'text layer unusable (median CER 40%): flagged; FORCE_OCR=1 would OCR every page'})),
     ('C5', dict(log=INTAKE, exit=3, intake={'status': 'stopped', 'summary': "CJK text on pages to be OCR'd (3, 4): set OCR_LANG and run again"})),
     ('C6', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'the PDF could not be opened (bad xref)'})),
+    # INTAKE=off: audit.py opens the file first (lib/support.py open_or_stop), so no intake.json; same cards as at intake
+    ('C1', dict(log='▶ 1/5 audit (no model)\naudit: stopped: the PDF needs a password to open; a person must supply an unlocked copy\n', exit=3)),
+    ('C6', dict(log='▶ 1/5 audit (no model)\naudit: failed: the PDF could not be opened (unable to find trailer dictionary)\n')),
     ('C7', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'Tesseract is not installed: brew install tesseract tesseract-lang'})),
     ('C8', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'OCR changed pages it should not have (appearance [3], text []): stopped'})),
     ('C9', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'auto-tagging failed: java died'})),
