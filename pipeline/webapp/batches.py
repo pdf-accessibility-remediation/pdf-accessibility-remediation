@@ -565,7 +565,7 @@ def page(s, label, closed=None, trashed=None, trashed_more=None):
             '<script src="/app/shared.js"></script><script src="/app/batch.js"></script></head>'   # 15: in the head; the calls below draw
             '<body class="pp-page hm-page" data-batch-page="1"><a class="skip" href="#main">Skip to the content</a>' + nav(s, label, st=st, closed=closed, nm=nm) + HM.call('batchNav') +
             f'<header class="top pp-head pp-hd">' + HM.title_row(f'Batch: {E(nm.shown_run("batches/" + label))}', first=toggle(len(st['books']), not closed)) +
-            f'</header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
+            '</header>' + HM.call('batchNav') + f'<main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
             '<h2 id="bt-h" tabindex="-1">This Batch</h2>' + (f'<p id="bt-trashed" hidden>{gone}</p>' if (gone := trashed_line(trashed, trashed_more)) else '') + '<div id="bt-body"></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
             + HM.first_answer('bt-first', st) + HM.call('batchPage') +   # #93: the panel drawn from the page itself, no "Loading…"; 15: right here
@@ -583,7 +583,7 @@ def with_nav(page, s, label, current, closed=None, nm=None):
     page = body_class(page, closed)
     if W.APPBAR_MARK in page:
         a = page.rfind('<nav', 0, page.find(W.APPBAR_MARK)); i = page.find('</nav>', a)
-        page = page[:a] + bar + page[i + 6:]
+        page = page[:a] + bar + HM.call('batchNav') + page[i + 6:]          # 15: again right after the list's button
     else: side = bar + side                                 # a page with no app bar of its own: the bar comes first
     if W.SKIP in page: page = page.replace(W.SKIP, W.SKIP + side, 1)
     else: page = W.after_body(page, side)

@@ -91,9 +91,14 @@ def test_scripts_that_draw_are_plain_in_the_head_and_called_right_after_what_the
     assert re.findall(r'/app/(\w+\.js)', head(batch_book)) == ['panel.js', 'batch.js']
     nav_end = batch_book.index('</nav>', batch_book.index('id="pp-bnav"'))
     assert batch_book[nav_end:].startswith('</nav>' + HM.call('batchNav'))                                # the side list, set at once
+    t = batch_book.index('id="bn-toggle"')                                  # its button, in the header below: called again right after it
+    assert batch_book[batch_book.index('</nav>', t):].startswith('</nav>' + HM.call('batchNav'))
+    js = read(WEB, 'batch.js')
+    assert "if (t) { t.setAttribute('aria-expanded', String(open));" in js and 'window.Pdfrem.batchNav = wire;' in js
     b = pages['/batch/b1/']
     assert ['shared.js', 'batch.js'] == re.findall(r'/app/(\w+\.js)', head(b)) and 'data-batch-page="1"' in b
     assert b[b.index('</nav>', b.index('id="pp-bnav"')):].startswith('</nav>' + HM.call('batchNav'))
+    assert b.index('id="bn-toggle"') < b.index('</header>' + HM.call('batchNav'))
     assert b.index('id="bt-first"') < b.index(HM.call('batchPage')) and 'Loading' not in b
 
 DOC = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>r1</title></head><body><a class="skip" href="#main">Skip to the content</a>'

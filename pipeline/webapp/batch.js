@@ -34,9 +34,10 @@ function closed() {                                             // the server la
   try { const v = localStorage.getItem(KEY); return v === null ? narrow.matches : v === '1'; } catch (e) { return narrow.matches; }
 }
 function setOpen(open, remember) {
-  const t = $('bn-toggle'), n = nav.querySelectorAll('#bn-list li').length; if (!t) return;
+  const t = $('bn-toggle'), n = nav.querySelectorAll('#bn-list li').length;
   nav.classList.toggle('closed', !open); document.body.classList.toggle('bn-closed', !open);
-  t.setAttribute('aria-expanded', String(open)); t.textContent = open ? 'Hide the PDF List' : 'Show the PDF List (' + n + ')';
+  // 15: the button sits in the header, after the list: the page calls Pdfrem.batchNav() again right after it, which sets it
+  if (t) { t.setAttribute('aria-expanded', String(open)); t.textContent = open ? 'Hide the PDF List' : 'Show the PDF List (' + n + ')'; }
   if (remember) {
     try { localStorage.setItem(KEY, open ? '0' : '1'); } catch (e) {}
     document.cookie = 'pdfrem_bn=' + (open ? 'open' : 'closed') + '; path=/; max-age=31536000; SameSite=Strict';   // the server lays out the next page (D7)
@@ -48,7 +49,12 @@ try { const y = sessionStorage.getItem(SCROLL); if (y !== null) nav.scrollTop = 
 addEventListener('pagehide', () => { try { sessionStorage.setItem(SCROLL, String(nav.scrollTop)); } catch (e) {} });
 document.body.classList.add('bn-on');
 setOpen(!closed(), false);
-if ($('bn-toggle')) $('bn-toggle').addEventListener('click', () => setOpen(nav.classList.contains('closed'), true));
+const wire = () => {                                              // the button, once it is read: its words, then its click
+  const t = $('bn-toggle'); if (!t || t.dataset.wired) return;
+  t.dataset.wired = '1'; setOpen(!closed(), false);
+  t.addEventListener('click', () => setOpen(nav.classList.contains('closed'), true));
+};
+wire();
 
 let st = null, primed = false; const seen = {};
 const live = t => { const l = $('pp-live'); if (!l) return; l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
@@ -248,6 +254,7 @@ if (gone) {
 poll();
 }
 window.Pdfrem.batchPage = startPage;
+window.Pdfrem.batchNav = wire;                                    // the page's second call, right after the button
 if (!ON_PAGE) poll();                                           // a book's page: the statuses are kept current
 }
 
