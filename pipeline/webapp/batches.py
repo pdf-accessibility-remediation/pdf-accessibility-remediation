@@ -270,9 +270,11 @@ def fingerprint(total):
     return hashlib.sha256(json.dumps([[b['R'], (b['estimate'] or {}).get('fingerprint'), b['adds_usd']] for b in total['books']],
                                      sort_keys=True).encode()).hexdigest()
 
-def state(s, label, nm=None):
+def state(s, label, nm=None, with_dashboard=True):
     """The batch page's state. nm: the request's names snapshot (webapp/names.py); every job file, names file and run
-    record is read once for the whole state (#93)."""
+    record is read once for the whole state (#93). with_dashboard=False (a book's page in the batch: its side list, and
+    batch.js's ?nav=1 poll there, review 09 12a): 'dashboard' is None, never built; the side list shows only the books'
+    statuses, and for an older batch the dashboard opens every finished PDF on its first build after the app starts."""
     from . import names as NM
     nm = nm or NM.snapshot(s); rd = HM.reader()
     bs = books_of(s, label, rd, nm)
@@ -331,7 +333,7 @@ def state(s, label, nm=None):
                        'spent_usd': spent, 'cost_words': cost_words, 'books_to_send': len(Rs), 'finished': finished, 'expected': total['expected'], 'requests': total['requests'],
                        'estimated': sum(1 for x in total['books'] if x['adds_usd'] is not None), 'to_estimate': len(Rs) + len(asking),   # R14
                        'shown_ceiling_usd': shown.get('ceiling_usd')},
-            'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary, 'dashboard': dashboard(s, label, out),
+            'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary, 'dashboard': dashboard(s, label, out) if with_dashboard else None,
             'again': bool(meta) and phase in ('stopped', 'finished') and finished + len(reviewing) < len(out),
             'job': ({k: batch_job.get(k) for k in ('id', 'status', 'exit', 'started', 'ended')} if batch_job else None)}
 
@@ -570,7 +572,7 @@ def with_nav(page, s, label, current, closed=None, nm=None):
     nm: the page's names snapshot (the run page's header read through it too, #93)."""
     from . import server as W, names as NM
     nm = nm or NM.snapshot(s)
-    st = state(s, label, nm)
+    st = state(s, label, nm, with_dashboard=False)          # the side list never shows the dashboard (review 09, 12a)
     bar = HM.appbar(first=toggle(len(st['books']), not closed)); side = nav(s, label, current, st=st, closed=closed, nm=nm)   # S3: the list's button first
     page = body_class(page, closed)
     if W.APPBAR_MARK in page:

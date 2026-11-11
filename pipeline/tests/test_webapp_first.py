@@ -54,6 +54,33 @@ def test_the_home_page_names_what_was_moved_to_the_trash(app):
     assert '<p id="hm-added" hidden>Moved to the Trash.</p>' in get(port, '/?trashed=1')[1].decode('utf-8')   # an older link
     assert 'drag it' not in page and 'put it back' not in page
 
+# ------------------------------------------------------------------ review 09, 12c: Run Actions in the first frame
+PANEL_JS = '<script src="/app/panel.js" defer blocking="render"></script>'
+
+def in_head(page):
+    """panel.js once, in the head (a render-blocking script counts only before <body>), and nowhere else."""
+    page = page.decode('utf-8') if isinstance(page, bytes) else page
+    assert page.count('/app/panel.js') == 1 and page.count(PANEL_JS) == 1, page[-400:]
+    if '</head>' not in page:                                           # the test's review.html has no head: right after its doctype
+        return '<!doctype html><link rel="stylesheet" href="/app/panel.css">\n' + PANEL_JS in page
+    return page.index(PANEL_JS) < page.index('</head>') < page.index('<body')
+
+def test_every_kind_of_run_page_loads_panel_js_in_its_head(app, setup):
+    port = app['port']
+    for run in ('book/r1', 'old/r0', 'batches/b1/x'):                   # finished; no dashboard; a book in a batch
+        st, page, _ = get(port, f'/run/{run}/')
+        assert st == 200 and in_head(page), run
+    s = settings(setup)
+    W_ = (setup / 'runs' / 'wt' / 'l1'); W_.mkdir(parents=True)
+    assert in_head(W.waiting_page('wt/l1', str(W_), s=s, first={'run': {}, 'setup': {}}))   # waiting and pending runs
+    assert in_head(W.no_dashboard('wt/l1', str(W_)))
+    plain = W.with_panel('<!doctype html><html><head><title>t</title></head><body><header><h1>t</h1></header></body></html>', 'a/b')
+    assert in_head(plain) and plain.index('/app/panel.css') < plain.index(PANEL_JS)
+    bare = W.with_panel('<p>no head</p>', 'a/b')                         # no head, no doctype: before the page's own content
+    assert bare.count(PANEL_JS) == 1 and bare.index(PANEL_JS) < bare.index('<p>no head</p>')
+    dt = W.with_panel('<!DOCTYPE html><title>r1</title><p>x</p>', 'a/b')  # never before the doctype (quirks mode)
+    assert '<!DOCTYPE html><link rel="stylesheet" href="/app/panel.css">\n' + PANEL_JS in dt
+
 # ------------------------------------------------------------------ review 09, L1: the batch page after a partial move
 def test_the_batch_page_names_the_pdfs_moved_to_the_trash(app):
     port = app['port']

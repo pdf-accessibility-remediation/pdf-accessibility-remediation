@@ -220,7 +220,7 @@ def post(port, path, body=None, origin=None):
 def test_the_run_page_has_the_panel_and_the_file_is_unchanged(app):
     disk = (app['R'] / 'review.html').read_text(); before = sha(app['R'] / 'review.html')
     st, b, _ = get(app['port'], '/run/book/r1/'); page = b.decode()
-    assert st == 200 and '<div id="pdfrem-panel" data-run="book/r1" data-current="ai">' in page and '<script src="/app/panel.js" defer>' in page
+    assert st == 200 and '<div id="pdfrem-panel" data-run="book/r1" data-current="ai">' in page and '<script src="/app/panel.js" defer blocking="render">' in page
     assert '<link rel="stylesheet" href="/app/panel.css">' in page and '<title>r1</title>' in page and 'review.md</a>' in page
     assert sha(app['R'] / 'review.html') == before and 'pdfrem-panel' not in disk
     for f in ('panel.js', 'panel.css', 'palette.css'): assert get(app['port'], '/app/' + f)[0] == 200

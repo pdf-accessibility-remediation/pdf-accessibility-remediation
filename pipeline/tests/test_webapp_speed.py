@@ -316,3 +316,30 @@ def test_the_batch_dashboard_never_opens_a_pdf_for_labels(setup, monkeypatch):
     monkeypatch.setattr(H, 'glance_of', lambda R, rec=None, labels=None: seen.append(labels) or (_ for _ in ()).throw(KeyError('x')))
     BT._DASH.clear(); BT.state(s, 'b1')
     assert seen == [None, None]
+
+# ------------------------------------------------------------------ review 09, 12a: a book's page skips the dashboard
+def test_a_book_page_in_a_batch_and_its_poll_never_build_the_dashboard(setup, monkeypatch):
+    """The side list shows only the books' statuses: a book's page in a batch, and batch.js's poll on it (?nav=1), never
+    build the batch dashboard (for an older batch, a pikepdf open of every finished PDF on the first open after a start).
+    The batch page and its own poll still do, and the side list is the same either way."""
+    s = settings(setup); runs_fixture(setup, s)
+    calls = []; real = BT.dashboard
+    monkeypatch.setattr(BT, 'dashboard', lambda *a, **k: (calls.append(a[1]), real(*a, **k))[1])
+    BT._DASH.clear()
+    with served(s) as port:
+        for path in ('/run/batches/b1/x/', '/api/batch/b1?nav=1'):
+            calls.clear(); assert get(port, path)[0] == 200, path
+            assert calls == [], path
+        light, full = jget(port, '/api/batch/b1?nav=1'), jget(port, '/api/batch/b1')
+        page = get(port, '/run/batches/b1/x/')[1].decode('utf-8')
+        for path in ('/batch/b1/', '/api/batch/b1'):
+            calls.clear(); assert get(port, path)[0] == 200, path
+            assert calls == ['b1'], path
+    assert light['dashboard'] is None and full['dashboard'] and {k: v for k, v in full.items() if k != 'dashboard'} == {k: v for k, v in light.items() if k != 'dashboard'}
+    assert BT.nav(s, 'b1', 'x', st=BT.state(s, 'b1', with_dashboard=False)) == BT.nav(s, 'b1', 'x', st=BT.state(s, 'b1'))
+    assert 'aria-label="PDFs in This Batch"' in page and 'aria-current="page"' in page
+
+def test_batch_js_asks_the_light_answer_on_a_book_page_only():
+    t = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "API = '/api/batch/' + encodeURIComponent(LABEL)" in t and "POLL = API + ($('bt-panel') ? '' : '?nav=1')" in t
+    assert 'await api(POLL)' in t and 'await api(API)' not in t

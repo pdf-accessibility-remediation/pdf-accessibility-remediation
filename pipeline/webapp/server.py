@@ -173,14 +173,24 @@ def with_panel(page, run, current=None, waiting=False, first=None):
     The file on disk is never changed; opened as a file it is the plain report."""
     box = f'\n<div id="pdfrem-panel" data-run="{html.escape(run)}"' + (f' data-current="{html.escape(str(current))}"' if current else '') + \
           (' data-waiting="1"' if waiting else '') + '></div>\n' + (HM.first_answer('pp-first', first) + '\n' if first is not None else '')
-    head = '<link rel="stylesheet" href="/app/panel.css">\n'
-    i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
+    # review 09, 12c: panel.js in the head, render-blocking (Chromium; other browsers read it as a plain defer script), so
+    # the first frame (the one the page fade starts from) already holds Run Actions: a defer script at the end of a long
+    # report ran only after the whole report was parsed, a frame or more after the page was first shown. Still deferred:
+    # it runs once #pdfrem-panel is parsed, and before the other deferred scripts (batch.js); a load error unblocks it
+    head = '<link rel="stylesheet" href="/app/panel.css">\n<script src="/app/panel.js" defer blocking="render"></script>\n'
+    page = in_head(page, head)
     if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
     elif SKIP in page: page = page.replace(SKIP, SKIP + box, 1)
     else: page = after_body(page, box)
-    page = with_strip(page, run)
-    i = page.rfind('</body>'); js = '<script src="/app/panel.js" defer></script>\n'
-    return page[:i] + js + page[i:] if i >= 0 else page + js
+    return with_strip(page, run)
+
+DOCTYPE = re.compile(r'\s*<!doctype[^>]*>', re.I)
+def in_head(page, head):
+    """`head` added at the end of the page's head; a page with none gets it right after its doctype (never before it:
+    anything before the doctype puts the browser in quirks mode), else first."""
+    i = page.find('</head>')
+    if i < 0: m = DOCTYPE.match(page); i = m.end() if m else 0
+    return page[:i] + head + page[i:]
 
 SHIP_CARD = 'aria-labelledby="ship-h"'
 def with_strip(page, run):
@@ -604,7 +614,7 @@ def make(s, setup, code=None):
                 bs = segments(p[len('/api/batch/'):])
                 B = batch_dir(s['runs'], bs[0]) if bs and len(bs) == 1 else None
                 if not B: return self.send(404, {'error': 'no such batch'})
-                return self.send(200, BT.state(s, os.path.basename(B)))
+                return self.send(200, BT.state(s, os.path.basename(B), with_dashboard=(q.get('nav') or [''])[0] != '1'))   # ?nav=1: a book page's side list (review 09, 12a)
             if p == '/':
                 return self.send(200, HM.page(s, (q.get('q') or [''])[0], (q.get('n') or ['25'])[0], test=bool(s.get('test_reply_dir')),
                                               added=(q.get('added') or [None])[0], bn=(q.get('bn') or ['25'])[0],

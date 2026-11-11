@@ -17,6 +17,8 @@ const usd = x => '$' + Number(x || 0).toFixed(2);
 const START = 'To start the app again, open a terminal in the project\'s pipeline folder and type python3 app.py.';
 const nav = $('pp-bnav'); if (!nav) return;
 const LABEL = nav.dataset.label, API = '/api/batch/' + encodeURIComponent(LABEL);
+// review 09, 12a: on a book's page the side list needs only the books' statuses, so its poll never builds the dashboard
+const POLL = API + ($('bt-panel') ? '' : '?nav=1');
 const narrow = matchMedia('(max-width: 48em)');
 const KEY = 'batchnav:closed';
 function closed() {                                             // the server laid it out from the cookie (D7); else the narrow default
@@ -170,7 +172,7 @@ async function poll() {
   try {
     let c, s;
     if (first !== null) { [c, s] = [200, first]; first = null; }   // drawn in this same step: nothing waits for the network
-    else [c, s] = await api(API);
+    else [c, s] = await api(POLL);
     if (c === 200) {
       for (const b of s.books) { const was = seen[b.name]; seen[b.name] = b.status; if (primed && was && was !== b.status) live(b.book + ': ' + b.status); }
       primed = true; st = s; column(s);
