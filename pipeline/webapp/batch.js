@@ -227,5 +227,12 @@ if (panel) panel.addEventListener('click', async e => {
     await poll(); $('bt-phase').focus();
   } catch (err) { msg('The app is not running. ' + START, false, true); }
 });
+// review 09 L1: after "Move Selected to Trash", the page names the PDFs moved (as the home page does), once
+const gone = $('bt-trashed');
+if (gone) {
+  const qp = new URLSearchParams(location.search); qp.delete('trashed');
+  history.replaceState(null, '', location.pathname + (qp.toString() ? '?' + qp : ''));
+  msg(gone.textContent, true, true); gone.remove();
+}
 poll();
 })();

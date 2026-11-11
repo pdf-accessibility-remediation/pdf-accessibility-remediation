@@ -73,7 +73,7 @@ def line_of(js, start):
 def test_the_run_pages_cost_wording():
     """The wording Patrick decided (handoff/cost-estimates/03's brief): every state the run page can show, in its source."""
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
-    for w in ("' for ' + e.requests + ' AI requests'", "' · Counted Toward This PDF\\'s Limit So Far: '", "' · Credit: '", "' · Credit: Not Checked'",
+    for w in ("' for ' + esc(e.requests) + ' AI requests'", "' · Counted Toward This PDF\\'s Limit So Far: '", "' · Credit: '", "' · Credit: Not Checked'",
               '"Start Remediation" sends the PDF to the AI service. "Expected Cost" is based on the PDF\\\'s content and may vary. "Max Estimated Cost" is the estimated cost ceiling; it must fit within your spending limits and available credit. The actual cost is usually much lower.'):
         assert w in js, w
 
@@ -567,5 +567,5 @@ def test_try_again_with_figure_requests(tmp_path, files, run, want):
 
 def test_the_pages_name_the_number_of_requests():
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
-    assert "' for ' + e.requests + ' AI requests'" in js
+    assert "' for ' + esc(e.requests) + ' AI requests'" in js
     assert "esc(T.requests) + ' AI requests" in open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()   # escaped (#93, CodeQL)

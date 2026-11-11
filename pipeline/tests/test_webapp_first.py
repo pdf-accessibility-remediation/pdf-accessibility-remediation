@@ -32,6 +32,7 @@ def test_the_batch_page_carries_this_batchs_first_answer(app):
     st, page, _ = get(app['port'], '/batch/b1/')
     assert st == 200 and b'id="bt-body"></div>' in page and 'Loading' not in page.decode('utf-8')
     assert block(page, 'bt-first') == api(app['port'], '/api/batch/b1')
+    assert b'<section class="pp" id="bt-panel" data-label="b1" aria-labelledby="bt-h">' in page   # review 09 N1
 
 def test_the_home_page_carries_runs_in_progress(app):
     st, page, _ = get(app['port'], '/')
@@ -52,3 +53,27 @@ def test_the_home_page_names_what_was_moved_to_the_trash(app):
     assert '<p id="hm-added" hidden>Moved to the Trash: A &lt;b&gt;Book&lt;/b&gt;.</p>' in page
     assert '<p id="hm-added" hidden>Moved to the Trash.</p>' in get(port, '/?trashed=1')[1].decode('utf-8')   # an older link
     assert 'drag it' not in page and 'put it back' not in page
+
+# ------------------------------------------------------------------ review 09, L1: the batch page after a partial move
+def test_the_batch_page_names_the_pdfs_moved_to_the_trash(app):
+    port = app['port']
+    def line(*names):
+        q = '&'.join('trashed=' + urllib.parse.quote(n) for n in names)
+        page = get(port, '/batch/b1/' + ('?' + q if q else ''))[1].decode('utf-8')
+        m = re.findall(r'<p id="bt-trashed" hidden>(.*?)</p>', page)
+        assert len(m) <= 1; return m[0] if m else None
+    assert line() is None
+    assert line('One') == 'Moved to the Trash: One.'
+    assert line('One', 'Two') == 'Moved to the Trash: One and Two.'
+    assert line('One', 'Two, Part 2', 'Three') == 'Moved to the Trash: One, Two, Part 2 and Three.'   # a comma in a name stays its own
+    assert line('One', 'Two', 'Three', 'Four', 'Five') == 'Moved to the Trash: One, Two, Three and 2 more.'
+    assert line('A <b>Book</b> & Co') == 'Moved to the Trash: A &lt;b&gt;Book&lt;/b&gt; &amp; Co.'
+    assert line('x' * 300) == 'Moved to the Trash: ' + 'x' * 200 + '.'                             # each name capped, as home's
+    assert line('1') == 'Moved to the Trash.' and line(' ') is None
+
+def test_trash_js_names_what_a_batch_move_took():
+    t = open(os.path.join(PIPE, 'webapp', 'trash.js'), encoding='utf-8').read()
+    assert "location.assign('/?view=batches&trashed=' + encodeURIComponent(p.name || '1'))" in t      # the whole batch
+    assert "(p.pdfs || []).filter(x => moved.includes(x.name)).map(x => 'trashed=' + encodeURIComponent(x.pdf || x.name))" in t
+    b = open(os.path.join(PIPE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "$('bt-trashed')" in b and "msg(gone.textContent, true, true)" in b

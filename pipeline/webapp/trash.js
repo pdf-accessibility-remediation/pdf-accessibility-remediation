@@ -71,7 +71,12 @@ document.addEventListener('click', e => {
   if (what === 'selected') {                                       // the batch page: the PDFs ticked in its dashboard
     const names = [...document.querySelectorAll('input[name=trash-pdf]:checked')].map(x => x.value);
     if (!names.length) { show('<h2 id="tr-dlg-h">Move the Selected PDFs to the Trash?</h2><p>Select one or more PDFs in the dashboard first.</p><div><button type="button" value="no">Close</button></div>', b); return; }
-    return ask({ what: 'batch', label: d.label, names }, b, (p, r) => { if (r.whole) location.assign('/?view=batches&trashed=1'); else location.reload(); });
+    return ask({ what: 'batch', label: d.label, names }, b, (p, r) => {
+      if (r.whole) return location.assign('/?view=batches&trashed=' + encodeURIComponent(p.name || '1'));   // the home page names the batch
+      const moved = r.moved || [];                                 // review 09 L1: the batch page names each PDF moved (its own trashed=)
+      const q = (p.pdfs || []).filter(x => moved.includes(x.name)).map(x => 'trashed=' + encodeURIComponent(x.pdf || x.name)).join('&');
+      location.assign(location.pathname + (q ? '?' + q : ''));
+    });
   }
   const req = what === 'run' ? { what, run: d.run } : what === 'batch' ? { what, label: d.label } : { what, key: d.key };
   ask(req, b, p => {

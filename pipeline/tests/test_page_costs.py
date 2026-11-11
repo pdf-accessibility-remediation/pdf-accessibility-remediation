@@ -224,7 +224,8 @@ def test_decides_terminal_lines_include_the_pages(book, tmp_path):
 
 def test_the_run_page_names_the_pages_on_the_max_line_only():
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read().split('function costLines')[1].split('const NEXT')[0]
-    assert "', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + e.page_reads.pages + ' Hawaiian page'" in js and '<b>' not in js
+    assert "', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page'" in js and '<b>' not in js
+    assert "' for ' + esc(e.requests) + ' AI requests'" in js and "(e.page_reads.pages === 1 ? '' : 's')" in js   # review 09 L2: printed escaped, counted raw
     assert js.index("'Max Estimated Cost: '") < js.index("', including '") < js.index('Counted Toward')
 
 def test_run_api_prices_the_pages_before_the_cost_lines():
