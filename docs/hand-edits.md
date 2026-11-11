@@ -11,6 +11,8 @@ Make the change in Acrobat or another tool, on an **exported copy**. Then bring 
 
 The original PDF and the run's own result are never changed.
 
+**Every PDF edited outside the pipeline must come back before it ships.** **Mark as Shipped** ships a run's own result, and an evaluation counts only for that exact file (see [Each check belongs to one file](release.md#each-check-belongs-to-one-file)). An edited copy that never comes back has no audit, no review and no evaluation, and nothing records what changed in it. A result that nobody edited doesn't need to come back: evaluate and ship it as it is.
+
 ## Steps
 
 From `pipeline/`:
@@ -40,6 +42,8 @@ Step 3 makes `runs/hawaii3/rv1-edit/` (by default the label is `handedit-<date>-
    - or from the terminal: `python3 review_workorder.py ../runs/hawaii3/rv1-edit --serve`.
 2. Write the alt text the edit needs, then select **Finish Review**. The first section, **Edited by Hand**, has a card for each figure the edit touched: its page, what happened, the alt text it had, and an **Add Alt Text** button that opens the form for that figure. For a figure that lost its tag, the form starts with the alt text it had, as a suggestion to check. Once the alt text is added, the card says so.
 3. Apply the review: press **Apply** in the app, or run the command `handedit.py` printed. The result, `review.md`, `record.json` and the evaluation work as for any run.
+
+**Then evaluate the edited run.** The review lists what the edit changed, and the new audit and veraPDF show what is still wrong in the file. But nothing checks that the edit itself is right: for example, that a new reading order follows the print, or that a re-tagged table reads correctly. That is the job of the [accessibility evaluation](release.md). Record PAC 2026 and the Screen-Reader Test again on the edited run, and look closely at the pages you edited. The earlier run's results don't count here, because the edited PDF is a different file.
 
 **Never edit the run's own PDF in place.** Its sha256 is what the [accessibility evaluation](release.md#each-check-belongs-to-one-file) counts. An edited result is evaluated and shipped in its own run.
 
