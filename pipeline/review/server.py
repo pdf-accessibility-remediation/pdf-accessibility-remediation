@@ -161,12 +161,17 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             return {'problems': probs, 'gaps': gaps, 'move_previews': core.move_previews(data, d, a, wo)}
         except Exception: return None
 
-    sizes = {}
+    sizes = {}; sizes_lock = threading.Lock()
     def img_sizes():
         """15: {address: [width, height]} of every image the page can show, so each image's box is set before it arrives
         and no card grows when it loads: a page image already rendered by its file, one not rendered yet by its PDF page's
-        size (pdfium renders it at that size, scale 1), the figure crops and word sheets by their files. Worked out once."""
-        if sizes: return sizes
+        size (pdfium renders it at that size, scale 1; read without opening the page), the figure crops and word sheets by
+        their files. Worked out once (warm_up(), when the server starts)."""
+        with sizes_lock:
+            if not sizes: sizes.update(_img_sizes())
+            return sizes
+    def _img_sizes():
+        out = {}
         from PIL import Image
         def dim(f):
             try:
@@ -182,14 +187,23 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                         if doc is None:
                             import pypdfium2 as pdfium
                             doc = pdfium.PdfDocument(data['pdf']) if os.path.isfile(data.get('pdf') or '') else False
-                        d = [round(x) for x in doc[n - 1].get_size()] if doc else None
-                    if d: sizes[f'review_pages/page_{n:03d}.png'] = d
+                        d = [round(x) for x in doc.get_page_size(n - 1)] if doc else None
+                    if d: out[f'review_pages/page_{n:03d}.png'] = d
             except Exception: pass
             finally:
                 if doc: doc.close()
         for u, (f, ct) in static.items():
-            if u.startswith('/_audit/') and ct.startswith('image/') and (d := dim(f)): sizes[u[1:]] = d
-        return sizes or {'': [0, 0]}
+            if u.startswith('/_audit/') and ct.startswith('image/') and (d := dim(f)): out[u[1:]] = d
+        return out or {'': [0, 0]}
+
+    warmed = threading.Event(); WARM_WAIT = 3         # 15: GET / waits at most this long for warm_up(), then works out the rest
+    def warm_up():
+        """15: the page's first answer carries every image's size and the first OCR pages' text, worked out here, in the
+        background, as the server starts (on a 212-page book about 0.2 s for the first text, which opens the PDF), so the
+        person's first open of the page doesn't wait for them."""
+        try: img_sizes(); first_texts(ocr_section())
+        except Exception: pass
+        finally: warmed.set()
 
     FIRST_TEXTS = 2                                   # the OCR pages whose text comes with the page: the first screen's
     def first_texts(oc):
@@ -285,6 +299,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             if not self.ours(): return self.send(403, {'error': 'This page opens only at the address it was started at: use the link on the run page.'})
             path = self.path.split('?', 1)[0]
             if path in ('/', '/index.html'):
+                warmed.wait(WARM_WAIT)
                 oc = ocr_section()
                 boot = json.dumps({**data, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': oc,
                                    'check': first_check(), 'draft': None if ocr_only else draft_state(), 'ocr_text': first_texts(oc),
@@ -463,6 +478,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     if open_browser:
         try: webbrowser.open(url)
         except Exception: pass
+    threading.Thread(target=warm_up, daemon=True).start()
     t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
     try:
         while not done.wait(0.5): pass                 # a short wait, so Ctrl+C is seen
