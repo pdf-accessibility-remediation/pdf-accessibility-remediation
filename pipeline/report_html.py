@@ -145,6 +145,12 @@ def page_refs(text):
         out.update(range(a, b + 1) if 0 <= b - a <= 2000 else (a, b))
     return out
 
+def json_block(obj):
+    """JSON safe inside <script type="application/json">: <, > and & as \\u escapes (the app's own blocks do the same:
+    webapp/home.py first_answer), so no text in it can end the block or hide the report's script after it ("<!--" and a
+    later "<script" would). JSON.parse reads it back unchanged."""
+    return json.dumps(obj).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+
 def inline(t, links=True):
     """One line of review.md text as HTML: escaped first, then `code`, **bold**, [links](relative, #anchor or http) and
     page references (links to the page strip)."""
@@ -619,7 +625,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
             f'<span class="cell {lv.get(str(p), "")}" id="pg-{p}" data-p="{p}" data-l="{E(pgl(p))}" data-lv="{lv.get(str(p), "")}"'
             f' data-n="{E(" · ".join(notes.get(str(p), [])))}" title="{E(pgl(p))}"></span>' for p in range(1, n_pages + 1)) + '</div>'
             '<div id="stripinfo" aria-live="polite"></div><div id="strippreview" aria-live="polite"></div><div id="stripstatus" class="vh" role="status"></div>'
-            '<script type="application/json" id="mentions">' + json.dumps({p: [[i, t] for i, _, t in v] for p, v in mentions.items()}).replace('</', '<\\/') + '</script>')
+            '<script type="application/json" id="mentions">' + json_block({p: [[i, t] for i, _, t in v] for p, v in mentions.items()}) + '</script>')
         listed = sorted(lv, key=int)
         B.append(f'<details id="pagelist"><summary>Pages with Something Listed ({len(listed)})</summary><ul>'
                  + ''.join(f'<li><a class="pg" href="#pg-{p}">{E(pgl(p))}</a>: {"safety check failed: " if lv[p] == "safety" else ""}{E("; ".join(notes.get(p, [])))}</li>' for p in listed) + '</ul></details></section>')
