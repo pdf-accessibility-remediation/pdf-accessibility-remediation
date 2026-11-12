@@ -121,6 +121,18 @@ def test_the_strip_is_drawn_right_after_its_own_place():
     js = read(WEB, 'panel.js')
     assert "if (!sb && box.dataset.strip === 'card') return;" in js and 'window.Pdfrem.strip = () => { if (st && !WAITING) renderStrip(st); };' in js
 
+def test_the_gap_above_ready_to_ship_skips_the_panels_call(app):
+    """The panel's own 12 px margin is the gap above "Ready to Ship?" (<main> has no top padding after the panel), as on
+    b2004a5: the rule must skip the panel's call, which sits between them (review 16 M1: `+ main` stopped matching, and the
+    card moved 16 px down). On the served run page the panel's next element that isn't a script is <main>."""
+    css = read(WEB, 'panel.css')
+    assert '#pdfrem-panel ~ main { padding-top: 0; }' in css and '#pdfrem-panel + main' not in css
+    (app['R'] / 'review.html').write_text(DOC)
+    page = W_unver(get(app['port'], '/run/book/r1/')[1])
+    rest = page[page.index('</div>', page.index('<div id="pdfrem-panel"')) + len('</div>'):]
+    rest = re.sub(r'\s*<script\b[^>]*>.*?</script>\s*', '', rest, flags=re.S)
+    assert rest.startswith('<main'), rest[:80]
+
 def test_every_call_the_pages_make_is_defined_and_allowed():
     """Each call (home.py CALLS) is defined by one of the app's scripts, and the page's policy allows exactly the calls it
     holds, by their sha256, beside the one other inline script a report may have; a second other inline script is still

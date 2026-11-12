@@ -8,7 +8,8 @@
 /* the panel, the earlier-result bar and the review.md page's links line up with the report's main column: 1200 px at most,
    centred, with the report's own 16 px (10 px on a narrow screen) side padding */
 #pdfrem-panel, #pdfrem-version, .pp-wrap { max-width: 1200px; margin: 0 auto; padding: 0 16px; box-sizing: border-box; }
-#pdfrem-panel + main { padding-top: 0; }   /* the panel's own 12px margin is the gap to "Ready to Ship?", as from the card to the strip */
+#pdfrem-panel ~ main { padding-top: 0; }   /* the panel's own 12px margin is the gap to "Ready to Ship?", as from the card to the strip;
+   ~, not +: the panel's call (<script>Pdfrem.panel()</script>, round 15) sits between them (review 16 M1) */
 .pp { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink);
       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; box-sizing: border-box; }
 .pp h2 { font-size: 18px; margin: 0 0 6px; } .pp h3 { font-size: 16px; margin: 10px 0 4px; } .pp h4 { font-size: 15px; margin: 0 0 4px; }
