@@ -177,26 +177,30 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             try:
                 with Image.open(f) as im: return list(im.size)
             except Exception: return None
-        doc = None
-        with render_lock:                             # pdfium is not thread-safe: page images render in other threads
-            try:
-                for n in range(1, data.get('pages', 0) + 1):
-                    f = os.path.join(R, 'review_pages', f'page_{n:03d}.png')
-                    if os.path.exists(f): d = dim(f)
-                    else:
-                        if doc is None:
-                            import pypdfium2 as pdfium
-                            doc = pdfium.PdfDocument(data['pdf']) if os.path.isfile(data.get('pdf') or '') else False
-                        d = [round(x) for x in doc.get_page_size(n - 1)] if doc else None
-                    if d: out[f'review_pages/page_{n:03d}.png'] = d
-            except Exception: pass
-            finally:
-                if doc: doc.close()
+        todo = []                                     # review 16 L1: each page on its own, so one bad page leaves the rest
+        for n in range(1, data.get('pages', 0) + 1):
+            f = os.path.join(R, 'review_pages', f'page_{n:03d}.png')
+            if os.path.exists(f):                     # rendered already: its file's size (no PDF needed)
+                if d := dim(f): out[f'review_pages/page_{n:03d}.png'] = d
+            else: todo.append(n)
+        if todo and os.path.isfile(data.get('pdf') or ''):
+            with render_lock:                         # pdfium is not thread-safe: page images render in other threads
+                doc = None
+                try:
+                    import pypdfium2 as pdfium
+                    doc = pdfium.PdfDocument(data['pdf'])
+                    for n in todo:
+                        try: out[f'review_pages/page_{n:03d}.png'] = [round(x) for x in doc.get_page_size(n - 1)]
+                        except Exception: pass        # this page gets no box size: its card grows when the image comes, as before
+                except Exception: pass                # the PDF can't be opened: those pages too
+                finally:
+                    if doc: doc.close()
         for u, (f, ct) in static.items():
             if u.startswith('/_audit/') and ct.startswith('image/') and (d := dim(f)): out[u[1:]] = d
         return out or {'': [0, 0]}
 
-    warmed = threading.Event(); WARM_WAIT = 3         # 15: GET / waits at most this long for warm_up(), then works out the rest
+    warmed = threading.Event(); WARM_WAIT = 3         # 15: GET / waits for warm_up(), at most this long, then works out what is
+    # missing itself; review 16 L2: not a cap, since if warm_up() still holds sizes_lock then, img_sizes() waits for it to finish
     def warm_up():
         """15: the page's first answer carries every image's size and the first OCR pages' text, worked out here, in the
         background, as the server starts (on a 212-page book about 0.2 s for the first text, which opens the PDF), so the
