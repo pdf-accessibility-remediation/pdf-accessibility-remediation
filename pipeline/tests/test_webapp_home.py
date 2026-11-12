@@ -149,7 +149,35 @@ def test_home_page_lists_books_and_runs(app):
 def test_every_app_page_has_the_way_home(app, path):
     st, b, _ = get(app['port'], path)
     page = b.decode()
+    if path.endswith('review.md'):                       # in the page's own bar (Patrick, 2026-11-11), the app bar's place kept
+        assert page.count('>Home Page</a>') == 1 and 'aria-label="App"' not in page and W.HM.APPBAR_GAP in page, path
+        return
     assert page.count('<nav class="pp-appbar" aria-label="App"><a class="pp-btn" href="/">Home Page</a>') == 1, path
+
+def test_home_page_sits_in_the_bar_of_three_pages(app):
+    """Patrick, 2026-11-11: on review.md in a page (current or previous result) and a previous result's dashboard, "Home
+    Page" is in the page's own bar, after the bar's other buttons (on review.md's page: before "The Plain File"), not
+    above the title; the app bar's place keeps its height (an empty gap), so the title and everything below stay put. A
+    report whose text holds the bar's marker still gets the app bar: the marker counts only inside a tag."""
+    port, R = app['port'], app['R']
+    page = get(port, '/run/book/r1/review.md')[1].decode()
+    bar = page[page.index('<nav class="pp-wrap" aria-label="Pages of this run" data-appbar="bar">'):]
+    bar = bar[:bar.index('</nav>')]
+    assert bar.index('>Back to the Run Page</a>') < bar.index('<a class="pp-btn" href="/">Home Page</a>') < bar.index('>The Plain File</a>')
+    assert page.index(W.SKIP) < page.index(W.HM.APPBAR_GAP) < page.index('<header>')
+    (R / 'reviews' / 'versions' / '001').mkdir(parents=True, exist_ok=True)
+    (R / 'reviews' / 'versions' / '001' / 'review.md').write_text('# Review')
+    page = get(port, '/run/book/r1/reviews/versions/001/review.md')[1].decode()
+    assert page.index("This Previous Result's Dashboard</a>") < page.index('>Home Page</a>') < page.index('>The Plain File</a>')
+    (R / 'reviews' / 'versions' / '001' / 'review.html').write_text('<html><body>' + W.SKIP + '<header><h1>r1</h1></header><main>x</main></body></html>')
+    page = get(port, '/run/book/r1/reviews/versions/001/review.html')[1].decode()
+    assert 'aria-label="App"' not in page and '>Home Page<' not in page and W.HM.APPBAR_GAP in page   # panel.js draws it in the bar
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert ('Back to the Current Result</a> <span id="pp-vact"></span>\' +\n    \'<a class="pp-btn" id="pp-vhome" href="/">Home Page</a></p>\'') in js
+    css = open(os.path.join(HERE, 'webapp', 'panel.css'), encoding='utf-8').read()
+    assert '.pp-appbar-gap { height: 40px; }' in css and '@media (min-width: 601px) { #pp-vback { margin-left: 3px; } }' in css
+    text = W.with_appbar('<body>' + W.SKIP + '<main><p>a note: data-appbar="bar"</p></main></body>')        # escaped book text
+    assert 'aria-label="App"' in text and W.HM.APPBAR_GAP not in text
 
 def test_appbar_follows_the_skip_link():
     p = W.with_appbar('<body>' + W.SKIP + '<main>x</main></body>')

@@ -554,7 +554,7 @@ def test_every_report_has_a_way_back(app):
     (R / 'reviews' / 'versions' / '001' / 'review.html').write_text(PAGE)
     st, b, hd = get(port, '/run/book/r1/reviews/versions/001/review.html')
     page = b.decode()
-    assert st == 200 and '<div id="pdfrem-version" data-run="book/r1" data-session="001">' in page and '/app/panel.js' in page
+    assert st == 200 and '<div id="pdfrem-version" data-run="book/r1" data-session="001" data-appbar="bar">' in page and '/app/panel.js' in page
     assert page.index('</header>') < page.index('pdfrem-version') and 'pdfrem-panel' not in page
     js = src('webapp/panel.js')
     assert "You\\'re viewing" in js and 'Back to the Current Result' in js and 'Review Again from This Session' in js

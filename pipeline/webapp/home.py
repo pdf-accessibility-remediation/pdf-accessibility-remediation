@@ -429,6 +429,9 @@ def title_row(h1, extra='', first='', bar=True):
     batch line, S3). The bar is the app bar's own nav, so with_appbar adds none. h1: the heading's escaped text."""
     return f'<div class="pp-hd-top"><h1>{h1}</h1>' + (appbar(extra=extra, first=first) if bar else '') + '</div>'
 
+HOME_IN_BAR = 'data-appbar="bar"'      # on the bar of a page whose own bar holds "Home Page" (server.py with_appbar)
+APPBAR_GAP = '<div class="pp-appbar-gap"></div>'   # in the app bar's place there: its height, so nothing below moves
+
 def appbar(current=False, extra='', first=''):
     """The app bar on every page the app serves except the home page itself (P1), right after the skip link: "Home Page"
     as a button (P5), and on run and batch pages the book list's own button beside it (`extra`)."""

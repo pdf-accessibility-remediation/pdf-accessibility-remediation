@@ -214,25 +214,25 @@ PANEL_HEAD = '<link rel="stylesheet" href="/app/panel.css">\n<script src="/app/p
 
 def with_version(page, run, sid, first=None):
     """A previous result's review.html (reviews/versions/<id>/) as served: a bar after its header saying it is a previous
-    result, with "Back to the Current Result" and "Review Again from This Session" (webapp/panel.js draws it, right
-    there, from `first`: panel_first()'s {run, setup}, 15). The file's own "replaced by" note is hidden
+    result, with "Back to the Current Result", "Review Again from This Session" and "Home Page" (webapp/panel.js draws it,
+    right there, from `first`: panel_first()'s {run, setup}, 15). The file's own "replaced by" note is hidden
     there (panel.css), and stays in the file."""
-    box = f'\n<div id="pdfrem-version" data-run="{html.escape(run)}" data-session="{html.escape(sid)}"></div>\n' + \
+    box = f'\n<div id="pdfrem-version" data-run="{html.escape(run)}" data-session="{html.escape(sid)}" {HOME_IN_BAR}></div>\n' + \
           (HM.first_answer('pp-vfirst', first) + '\n' if first is not None else '') + HM.call('version') + '\n'
     page = in_head(page, PANEL_HEAD)
     if '</header>' in page: return page.replace('</header>', '</header>' + box, 1)
     return after_body(page, box)
 
 def md_page(text, run, sid, base):
-    """review.md inside a page with a way back (the run page; for a previous result, that result's dashboard too) and a
-    link to the plain file. The text is shown as written, escaped."""
+    """review.md inside a page with a way back (the run page; for a previous result, that result's dashboard too), "Home
+    Page", and a link to the plain file. The text is shown as written, escaped."""
     which = TC(f'a previous result ({S.label(sid).capitalize()})' if sid else 'the current result')   # TC leaves parentheses as written
     links = [f'<a href="{base}">Back to the Run Page</a>'] + ([f'<a href="review.html">This Previous Result\'s Dashboard</a>'] if sid else []) + \
-            ['<a href="review.md?raw=1">The Plain File</a>']
+            ['<a class="pp-btn" href="/">Home Page</a>', '<a href="review.md?raw=1">The Plain File</a>']   # Home Page after them (Patrick, 2026-11-11)
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             f'<title>review.md: {html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css">{PANEL_HEAD}'
             f'</head><body class="pp-page">\n{SKIP}<header><h1>review.md of {html.escape(run)}: {which}</h1></header>'
-            f'<nav class="pp-wrap" aria-label="Pages of this run"><p class="pp pp-bar">' + ' · '.join(links) + '</p></nav>'
+            f'<nav class="pp-wrap" aria-label="Pages of this run" {HOME_IN_BAR}><p class="pp pp-bar pp-mdbar">' + ' · '.join(links) + '</p></nav>'
             f'<main id="main" tabindex="-1"><pre class="pp-md">{html.escape(text)}</pre></main></body></html>')   # panel.js: in-page links move focus
 
 ASSET_CACHE = 'max-age=31536000, immutable'
@@ -252,11 +252,15 @@ def with_scheme(page):
     return page if SCHEME in page[:4000] else in_head(page, SCHEME)
 
 APPBAR_MARK = 'aria-label="App"'
+HOME_IN_BAR = HM.HOME_IN_BAR
+HOME_IN_BAR_TAG = re.compile(r'<(?:nav|div) [^<>]*' + HOME_IN_BAR)   # inside a tag: escaped text never holds "<"
 def with_appbar(page):
     """Every HTML page the app serves carries the app bar (the way home), right after its skip link, else right after
-    <body>; a page that has one already is left as it is."""
+    <body>; a page that has one already is left as it is. A page whose own bar holds "Home Page" (HOME_IN_BAR: the
+    evaluation page, a previous result's dashboard and review.md in a page, Patrick 2026-11-11) gets, in the bar's place,
+    an empty gap of the bar's height, so its title and everything below stay where they were."""
     if APPBAR_MARK in page or 'data-home="1"' in page[:2000]: return page          # the home page has none (P1)
-    bar = HM.appbar()
+    bar = HM.APPBAR_GAP if HOME_IN_BAR_TAG.search(page) else HM.appbar()
     if SKIP in page: return page.replace(SKIP, SKIP + bar, 1)
     return after_body(page, bar)
 

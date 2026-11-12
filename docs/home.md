@@ -16,7 +16,9 @@ python3 app.py              # opens the home page
 ```
 
 Every page the app serves except the home page itself has a **Home Page** button at the top (after "Skip to the
-content"). On a single run's page it ends the "Source PDF:" line, as on any page without a PDF list button (U3,
+content"), except three pages that have it in their own bar, after the bar's other buttons: the Accessibility Evaluation
+page (after "Back to the Run Page"), a previous result's dashboard (after "Review Again from This Session") and review.md
+in a page (before "The Plain File"); there the top keeps the bar's height, so the title doesn't move (Patrick, 2026-11-11). On a single run's page it ends the "Source PDF:" line, as on any page without a PDF list button (U3,
 Patrick 2026-11-07); on the batch page
 **Hide the PDF List** / **Show the PDF List (N)** comes first, then **Home Page** (S4); on a batch PDF's page both are on
 its "Assigned to the batch" line, in that order (S3). On the review page and the OCR-only page it follows the page count in the header line, spaced so it touches

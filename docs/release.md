@@ -36,7 +36,7 @@ The page's heading is **Accessibility Evaluation (PAC 2026 & Screen-Reader Test)
   the card's green border on the run page; review.html opened as a file keeps it until it is next rebuilt. When the run
   has no "Ready to Ship?" card, the strip goes at the end of the panel, as an h3.
 - **The page** (`/run/<run>/checks`) names the book as "PDF Title" (the remediated PDF's own title, else the original's
-  name without ".pdf"). Right after "Back to the Run Page" comes the **Overall Status**, with the unsatisfied
+  name without ".pdf"). Right after the bar ("Back to the Run Page", then "Home Page") comes the **Overall Status**, with the unsatisfied
   requirements when it is Not Ready ("Overall Status: Not Ready · Unsatisfied Requirements: Work Order Approval, OCR Text
   Approval"), then the version the results are for ("the version from Session 6, applied on October 30, 2026, at
   2:02 PM") and two help lines, as consecutive lines with no gap: when to complete the evaluation, and 'Every item needs

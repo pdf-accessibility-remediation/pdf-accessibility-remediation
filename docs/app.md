@@ -136,8 +136,9 @@ A run stopped before its first review (`workorder.ai.json`, no `record.json` yet
 
 **Every page has a way back,** so the browser's Back button is never the only one:
 - `/run/<run>/review.html` (which the "replaced by" note in a previous result's file links to) goes to the run page.
-- **A previous result** (`reviews/versions/<id>/review.html`) shows a bar: "You're viewing a previous result (session N)", with **Back to the Current Result** and **Review Again from This Session** (for the result applied without review, **Start Over from the AI's Decisions**). The button starts the review and goes to the run page, which follows it. The file's own "replaced by" note is hidden in the app (the bar says it); it stays in the file.
-- **review.md** opens inside a page with **Back to the Run Page** (and, for a previous result, its dashboard), and **The Plain File**.
+- **A previous result** (`reviews/versions/<id>/review.html`) shows a bar: "You're viewing a previous result (session N)", with **Back to the Current Result**, **Review Again from This Session** (for the result applied without review, **Start Over from the AI's Decisions**) and **Home Page**, in that order. The button starts the review and goes to the run page, which follows it. The file's own "replaced by" note is hidden in the app (the bar says it); it stays in the file.
+- **review.md** opens inside a page with **Back to the Run Page** (and, for a previous result, its dashboard), **Home Page** and **The Plain File**.
+- On these two pages and the Accessibility Evaluation page, **Home Page** is in the page's own bar, after its other buttons, not at the top (Patrick, 2026-11-11); the top keeps the height of the bar it replaces, so the title stays where it was.
 - **A PDF** opens in the browser's own viewer; its tab or Back button returns.
 
 **The same from a terminal** (not shown on the page), from `pipeline/`: `python3 review_workorder.py <run folder> --reopen [--from N|ai]`, `--sessions`, `--apply` (see [Reviewing the work order](review-step.md)).

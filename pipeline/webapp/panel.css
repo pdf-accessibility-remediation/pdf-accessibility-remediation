@@ -15,6 +15,16 @@
 .pp h2 { font-size: 18px; margin: 0 0 6px; } .pp h3 { font-size: 16px; margin: 10px 0 4px; } .pp h4 { font-size: 15px; margin: 0 0 4px; }
 .pp-bar { border-left: 6px solid var(--change); } .pp-bar p { margin: 2px 0; }
 #pp-vreview { margin-left: 12px; }                              /* apart from "Back to the Current Result" */
+@media (min-width: 601px) { #pp-vback { margin-left: 3px; } }   /* it and "Review Again …" 3 px right of "You're viewing …"
+   (Patrick, 2026-11-11); not on a narrow screen, where each button has its own full-width line */
+#pp-vhome { margin-left: 12px; }    /* "Home Page" after them, as far apart as they are */
+/* Patrick, 2026-11-11: on the evaluation page, a previous result's dashboard and review.md in a page, "Home Page" is in the
+   page's own bar; the app bar's place above the title keeps its height (6 px + the 34 px button), so nothing below moves */
+.pp-appbar-gap { height: 40px; }
+/* review.md's bar is a line of links: its "Home Page" button takes no more height than the line, so the bar keeps its own */
+.pp.pp-mdbar a.pp-btn { display: inline-flex; align-items: center; height: 34px; margin: -8px 0; padding: 0 12px; line-height: 20px; vertical-align: middle;
+  position: relative; top: -2px; width: auto; }   /* centred on the links' line; on a narrow screen too it stays in the line */
+@media (max-width: 600px) { .pp.pp-mdbar a.pp-btn { margin: 4px 0; top: 0; } }   /* there the line wraps: no overlap */
 body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar replaces the file's own "replaced by" note */
 .pp .pp-warn { border-left: 4px solid var(--change); padding-left: 10px; }   /* setup: only shown when a tool is missing */
 .pp .pp-nw { white-space: nowrap; }
