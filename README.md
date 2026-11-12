@@ -10,36 +10,25 @@ Two steps can cost money: the AI's work order (`decide.py`) and, for scanned pag
 
 ```
 original.pdf
-     ↓
-intake.py*        optional
-     ↓
-audit.py
-     ↓
-decide.py         paid
-     ↓
-read_pages.py     paid, optional
-     ↓
-review step       optional
-     ↓
-apply.py
-     ↓
-verify.py
-     ↓
-report.py
+   ↓
+intake.py*      OCR and tagging
+   ↓
+audit.py        a summary for the AI
+   ↓
+decide.py       the AI's work order (paid)
+   ↓
+read_pages.py   reads Hawaiian pages (paid)
+   ↓
+review step     a reviewer checks (optional)
+   ↓
+apply.py        makes the fixes on a copy
+   ↓
+verify.py       checks the result
+   ↓
+report.py       the PDF and the reports
+
+* untagged PDFs only
 ```
-
-| Step | What it does |
-|---|---|
-| `intake.py`\* | OCR and automatic tagging (untagged PDFs only; local tools, free) |
-| `audit.py` | a summary of the PDF for the AI, and veraPDF on the original |
-| `decide.py` | the AI returns the work order (paid) |
-| `read_pages.py` | the AI reads scanned Hawaiian pages whole (paid; only when there are such pages) |
-| review step | a reviewer approves or changes each decision (optional: REVIEW=1) |
-| `apply.py` | carries out the work order on a copy |
-| `verify.py` | veraPDF on the result, and checks that pages and text still match |
-| `report.py` | original_remediated.pdf, review.md, review.html, record.json |
-
-\* Tagged PDFs skip `intake.py`.
 
 **Untagged PDFs** first go through `intake.py`. It uses local tools to add text by OCR where pages have none, then tags the PDF automatically, with checks after each step. Intake makes no AI request. See [Intake: untagged PDFs](docs/intake.md).
 
