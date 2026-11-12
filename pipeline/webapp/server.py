@@ -257,10 +257,11 @@ HOME_IN_BAR_TAG = re.compile(r'<(?:nav|div) [^<>]*' + HOME_IN_BAR)   # inside a 
 def with_appbar(page):
     """Every HTML page the app serves carries the app bar (the way home), right after its skip link, else right after
     <body>; a page that has one already is left as it is. A page whose own bar holds "Home Page" (HOME_IN_BAR: the
-    evaluation page, a previous result's dashboard and review.md in a page, Patrick 2026-11-11) gets, in the bar's place,
-    an empty gap of the bar's height, so its title and everything below stay where they were."""
+    evaluation page, a previous result's dashboard and review.md in a page, Patrick 2026-11-11) gets none, and no gap in
+    its place: its title starts at the top (Patrick's decision on round 17, review 18 R1)."""
     if APPBAR_MARK in page or 'data-home="1"' in page[:2000]: return page          # the home page has none (P1)
-    bar = HM.APPBAR_GAP if HOME_IN_BAR_TAG.search(page) else HM.appbar()
+    if HOME_IN_BAR_TAG.search(page): return page
+    bar = HM.appbar()
     if SKIP in page: return page.replace(SKIP, SKIP + bar, 1)
     return after_body(page, bar)
 

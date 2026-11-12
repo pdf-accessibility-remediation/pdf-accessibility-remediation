@@ -81,7 +81,8 @@ def test_the_page_is_served_with_the_csp_and_names_no_file(mapp):
     assert 'WCAG 1.4.3' in text                                                         # the WCAG numbers stay (Q1)
     nav = page[page.index('<nav class="pp-wrap" aria-label="This page" data-appbar="bar">'):]; nav = nav[:nav.index('</nav>')]
     assert nav.index('>Back to the Run Page</a>') < nav.index('<a class="pp-btn" href="/">Home Page</a>')   # right after it (Patrick, 2026-11-11)
-    assert page.count('>Home Page</a>') == 1 and 'aria-label="App"' not in page and W.HM.APPBAR_GAP in page   # none above the title
+    assert page.count('>Home Page</a>') == 1 and 'aria-label="App"' not in page and 'pp-appbar-gap' not in page   # none above the title
+    assert W.SKIP + '<header>' in page                                                  # and no gap there (review 18 R1)
     assert req(mapp['port'], 'GET', '/app/manual.js')[0] == 200
 
 def test_the_name_falls_back_to_the_original_without_pdf(tmp_path):

@@ -19,8 +19,7 @@
    (Patrick, 2026-11-11); not on a narrow screen, where each button has its own full-width line */
 #pp-vhome { margin-left: 12px; }    /* "Home Page" after them, as far apart as they are */
 /* Patrick, 2026-11-11: on the evaluation page, a previous result's dashboard and review.md in a page, "Home Page" is in the
-   page's own bar; the app bar's place above the title keeps its height (6 px + the 34 px button), so nothing below moves */
-.pp-appbar-gap { height: 40px; }
+   page's own bar, and nothing takes the app bar's place above the title (review 18 R1) */
 /* review.md's bar is a line of links: its "Home Page" button takes no more height than the line, so the bar keeps its own */
 .pp.pp-mdbar a.pp-btn { display: inline-flex; align-items: center; height: 34px; margin: -8px 0; padding: 0 12px; line-height: 20px; vertical-align: middle;
   position: relative; top: -2px; width: auto; }   /* centred on the links' line; on a narrow screen too it stays in the line */
