@@ -1,5 +1,6 @@
 ---
 title: Options
+parent: Get started
 nav_order: 4
 ---
 

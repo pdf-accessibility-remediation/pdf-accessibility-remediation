@@ -1,6 +1,7 @@
 ---
 title: Intake
-nav_order: 8
+parent: How it works
+nav_order: 1
 ---
 
 # Intake: untagged PDFs

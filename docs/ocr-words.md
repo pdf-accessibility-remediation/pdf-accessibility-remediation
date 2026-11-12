@@ -1,6 +1,7 @@
 ---
 title: OCR words
-nav_order: 9
+parent: How it works
+nav_order: 2
 ---
 
 # OCR words in scanned PDFs

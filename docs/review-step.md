@@ -1,6 +1,7 @@
 ---
 title: Reviewing the work order
-nav_order: 3.5
+parent: Review and ship
+nav_order: 3
 ---
 
 # Reviewing the work order before it is applied

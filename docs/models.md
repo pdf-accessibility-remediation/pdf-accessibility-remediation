@@ -1,6 +1,7 @@
 ---
 title: Models
-nav_order: 6
+parent: Get started
+nav_order: 5
 ---
 
 # Models

@@ -1,6 +1,7 @@
 ---
 title: The app (browser)
-nav_order: 3.6
+parent: Review and ship
+nav_order: 2
 ---
 
 # The pipeline in the browser

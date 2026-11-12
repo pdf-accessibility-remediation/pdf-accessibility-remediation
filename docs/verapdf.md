@@ -1,6 +1,7 @@
 ---
 title: Verification with veraPDF
-nav_order: 10
+parent: How it works
+nav_order: 4
 ---
 
 # Verification with veraPDF
