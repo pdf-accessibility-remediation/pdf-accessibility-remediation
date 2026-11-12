@@ -148,7 +148,8 @@ def test_10_a_form_inside_a_form_follows_the_outer_state(tmp_path, kind):
 
 def test_8_review_md_names_the_untagged_inline_image(tmp_path):
     """run_api.sh end to end with no AI request (DECIDE=none, intake off, veraPDF off): the safety check's row and
-    review.md's "Untagged Content" section, in the existing wording."""
+    review.md's "Untagged Content" section: one object, in the singular, and content reused on several pages named
+    in plain words (review 14 N1)."""
     src = build(tmp_path / 'book.pdf', [b'q 10 0 0 10 50 50 cm ' + INLINE + b' Q\n'], 'inline')
     R = tmp_path / 'run'
     env = dict(os.environ, VERAPDF='off', OPENROUTER_API_KEY='test-not-a-key', HTTPS_PROXY='http://127.0.0.1:9', https_proxy='http://127.0.0.1:9',
@@ -158,5 +159,6 @@ def test_8_review_md_names_the_untagged_inline_image(tmp_path):
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
     md = (R / 'review.md').read_text(encoding='utf-8')
     row = next(l for l in md.splitlines() if l.startswith('| All content tagged or marked as decoration |'))
-    assert '| **CHECK** |' in row and '1 untagged objects (1 image)' in row, row
-    assert '### 2. Untagged Content (1 objects)' in md and ': 1 image' in md
+    assert '| **CHECK** |' in row and '1 untagged object (1 image)' in row and '1 untagged objects' not in row, row
+    assert '### 2. Untagged Content (1 object)' in md and ': 1 image' in md and '(1 objects)' not in md
+    assert '(content reused on several pages counts once)' in md and 'form XObject' not in md

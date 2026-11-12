@@ -53,3 +53,5 @@ Why each regression baseline update was made (newest last). Written by `tools/re
 - 2026-11-03 · teika · Python 3.14 · workorder_v10.md: #67: teika Table 3's note cell held a paragraph (TSN, mapped to P); it now moves out after the table as it is instead of being wrapped in a new P (P inside P), so one P fewer
 
 - 2026-11-04 · teika · Python 3.14 · workorder_v10.md: #67: the applied label counts Captions, not title rows (table: title row → Caption → table: caption made from the title rows; teika's 3 tables each have one title row, so still 3)
+
+- 2026-11-11 · hawaii3, moralfoods, teika · Python 3.13 · workorder_v10.md: #93 (improve performance: home and batch pages, first-time "Review Again", and PDF pipeline step timing), review 14 N1: the Untagged Content section reads "(content reused on several pages counts once)" (was "(a form XObject counts once)"), and one untagged object is written in the singular. One line per book (none of the three has exactly one object); no record field changed, expect.json and the replies unchanged

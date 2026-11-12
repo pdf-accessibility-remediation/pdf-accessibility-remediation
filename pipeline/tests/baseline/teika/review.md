@@ -2,13 +2,13 @@
 
 Result: `teika_remediated.pdf`
 
-281 pages · run November 4, 2026, at 2:26 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.226 ($0.0008 per page), from the original call on November 3, 2026 · this run: no new call · tokens: saved reply reused, not counted
+281 pages · run November 11, 2026, at 6:34 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.226 ($0.0008 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.5s · audit 42.2s · reuse saved reply 0.7s · apply 59.4s · verify 52.6s · total 155.4s
+Time: intake 0.9s · audit 37.9s · reuse saved reply 1.2s · apply 95.5s · verify 60.6s · total 196.1s
 
 ## Overview
 
@@ -183,7 +183,7 @@ Strokes directly under text, marked as decoration. An underline can carry meanin
 
 ### 9. Untagged Content (251 objects)
 
-Drawn content that is neither tagged nor marked as decoration (a form XObject counts once). Not changed by the pipeline; a person decides whether each is real content (tag it) or decoration (artifact it). Pages with the most:
+Drawn content that is neither tagged nor marked as decoration (content reused on several pages counts once). Not changed by the pipeline; a person decides whether each is real content (tag it) or decoration (artifact it). Pages with the most:
 
 - PDF 157 (printed 144): 87 text
 - PDF 158 (printed 145): 86 text
