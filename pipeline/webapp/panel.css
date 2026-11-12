@@ -28,6 +28,9 @@
 .pp.pp-mdbar a.pp-btn { display: inline-flex; align-items: center; height: 34px; margin: -8px 0; padding: 0 12px; line-height: 20px; vertical-align: middle;
   position: relative; top: -2px; width: auto; }   /* centred on the links' line; on a narrow screen too it stays in the line */
 @media (max-width: 600px) { .pp.pp-mdbar a.pp-btn { margin: 4px 0; top: 0; } }   /* there the line wraps: no overlap */
+#pdfrem-version ~ main { padding-top: 0; }                      /* a previous result: from its bar to "Ready to Ship?" as from
+   "Ready to Ship?" to the cards below it (Patrick, 2026-11-11): the bar's own margin only, 14 px as review.html's .cards */
+#pdfrem-version > nav.pp { margin-bottom: 14px; }
 body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar replaces the file's own "replaced by" note */
 .pp .pp-warn { border-left: 4px solid var(--change); padding-left: 10px; }   /* setup: only shown when a tool is missing */
 .pp .pp-nw { white-space: nowrap; }

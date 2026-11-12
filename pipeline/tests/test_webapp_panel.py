@@ -1154,3 +1154,11 @@ def test_session_historys_result_button_reads_open_and_says_what_it_opens():
     js = src('webapp/panel.js')
     assert ('\'" aria-label="\' + esc(\'Open the Previous Result (\' + cap(r.label) + \')\') + \'">Open</a>\'') in js
     assert '>Open the Previous Result</a>' not in js
+
+def test_a_previous_results_bar_is_as_far_from_ready_to_ship_as_that_is_from_the_cards():
+    """Patrick, 2026-11-11: on a previous result, the space from its bar to "Ready to Ship?" equals the space from "Ready to
+    Ship?" to the cards below it: <main> after the bar has no top padding, and the bar's bottom margin is review.html's
+    .cards margin (14 px), at every width."""
+    css, rep = src('webapp/panel.css'), src('report_html.py')
+    assert '#pdfrem-version ~ main { padding-top: 0; }' in css and '#pdfrem-version > nav.pp { margin-bottom: 14px; }' in css
+    assert '.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }' in rep
