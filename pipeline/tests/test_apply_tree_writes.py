@@ -4,7 +4,8 @@ review 12 M1 and M3). These rules keep the kept index right.
 
     python -m pytest tests/test_apply_tree_writes.py -q
 
-Rule 1, read from the code (apply.py and every lib module it imports): no write of a key the index depends on (/K /P /Pg
+Rule 1, read from the code (apply.py and every lib/*.py, whether apply.py imports it directly, through another module or
+not at all: review 14 L2): no write of a key the index depends on (/K /P /Pg
 /Type /MCID /Stm) except through tree_set(): no attribute assignment (n.K = …), no literal subscript assignment or del
 (n['/K'] = …), no .update( naming one of them in a dict literal or as a keyword, no __setattr__ / __setitem__ called by name,
 no setattr() naming one. What a rule can't read is left to the check mode: a write with a computed key (n[key] = …;
@@ -60,8 +61,16 @@ def rule1_breaches(path):
                     out.append(n.lineno)
     return out
 
+def all_libs():
+    """Every lib/*.py: a module apply.py reaches only through another one (ocrwords.py, workorder_check.py) is scanned
+    too, and so is one it may import later (review 14 L2)."""
+    import glob
+    return sorted(glob.glob(os.path.join(PIPE, 'lib', '*.py')))
+
 def test_rule_1_every_tree_write_goes_through_tree_set():
-    for p in [os.path.join(PIPE, 'apply.py')] + imported_libs():
+    libs = all_libs()
+    assert set(imported_libs()) <= set(libs) and len(libs) > len(imported_libs())
+    for p in [os.path.join(PIPE, 'apply.py')] + libs:
         assert rule1_breaches(p) == [], (os.path.basename(p), rule1_breaches(p))
 
 def test_rule_1_sees_each_write_form():
