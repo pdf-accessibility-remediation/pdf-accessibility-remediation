@@ -18,24 +18,46 @@ from lib import contentops as CO
 
 PIPE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-def walk_ops():
-    """Every operator name verify.py's _walk compares `op` against."""
-    tree = ast.parse(open(os.path.join(PIPE, 'verify.py'), encoding='utf-8').read())
+def walk_ops(src=None):
+    """Every operator name verify.py's _walk compares `op` against. Any other read of `op` in _walk (written the other way
+    round, `'cm' == op`, or through a call, `str(op) in (…)`) fails, so no operator the loop looks at can be left out
+    of the filter unseen (review 14 L1); the one exception is the line `op = str(op)`."""
+    tree = ast.parse(src if src is not None else open(os.path.join(PIPE, 'verify.py'), encoding='utf-8').read())
     fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_walk')
     names = {'PAINT': CO.PAINT, 'SHOW': CO.SHOW, 'PATH': CO.PATH}
-    seen = set()
+    seen, read = set(), set()
+    for a in (n for n in ast.walk(fn) if isinstance(n, ast.Assign)):           # op = str(op)
+        v = a.value
+        if ([type(t) for t in a.targets] == [ast.Name] and a.targets[0].id == 'op' and isinstance(v, ast.Call)
+                and isinstance(v.func, ast.Name) and v.func.id == 'str' and len(v.args) == 1 and not v.keywords
+                and isinstance(v.args[0], ast.Name) and v.args[0].id == 'op'):
+            read.add(id(v.args[0]))
     for c in (n for n in ast.walk(fn) if isinstance(n, ast.Compare)):
         if not (isinstance(c.left, ast.Name) and c.left.id == 'op'): continue
+        read.add(id(c.left))
         for comp in c.comparators:
             if isinstance(comp, ast.Constant) and isinstance(comp.value, str): seen.add(comp.value)
             elif isinstance(comp, (ast.Tuple, ast.List, ast.Set)) and all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in comp.elts):
                 seen |= {e.value for e in comp.elts}
             elif isinstance(comp, ast.Name) and comp.id in names: seen |= names[comp.id]
             else: raise AssertionError(f'a comparison of op this test cannot read: line {c.lineno}')
+    for n in ast.walk(fn):
+        if isinstance(n, ast.Name) and n.id == 'op' and isinstance(n.ctx, ast.Load) and id(n) not in read:
+            raise AssertionError(f'a read of op this test cannot follow: line {n.lineno}')
     return seen
 
 def test_the_loop_and_the_filter_name_the_same_operators():
     assert walk_ops() == CO.HANDLED
+
+@pytest.mark.parametrize('line', ["if 'cm' == op: continue", "if str(op) in ('cm', 'w'): continue", "f(op)"])
+def test_a_read_of_op_the_test_cannot_follow_fails(line):
+    """review 14 L1: verify.py's _walk with one more line that reads `op` some other way (on a copy of the source, in
+    memory): walk_ops refuses it instead of passing it by."""
+    src = open(os.path.join(PIPE, 'verify.py'), encoding='utf-8').read()
+    at = '        op = str(op)\n'
+    assert src.count(at) == 1
+    with pytest.raises(AssertionError, match='a read of op this test cannot follow'):
+        walk_ops(src.replace(at, at + '        ' + line + '\n'))
 
 def test_verify_parses_its_loop_with_the_filter():
     src = open(os.path.join(PIPE, 'verify.py'), encoding='utf-8').read()
