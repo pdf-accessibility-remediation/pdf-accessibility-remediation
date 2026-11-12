@@ -304,7 +304,10 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 boot = json.dumps({**data, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': oc,
                                    'check': first_check(), 'draft': None if ocr_only else draft_state(), 'ocr_text': first_texts(oc),
                                    'img_sizes': img_sizes()},
-                                  ensure_ascii=False).replace('</', '<\\/')
+                                  ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+                # review 16 M2: <, > and & as \u escapes (as home.first_answer), not only "</": "<!--" and a later "<script" in
+                # any text (a Session Note, a decision's note, book text, the first OCR pages) would otherwise make the
+                # browser read the rest of the page as script, and the page, whose script is in the head, would load blank
                 return self.send(200, open(PAGE, encoding='utf-8').read().replace('/*REVIEW_DATA*/null', boot), 'text/html; charset=utf-8')
             if path in text_urls:                      # the OCR text of a page the section can show; any other number: 404
                 n = text_urls[path]

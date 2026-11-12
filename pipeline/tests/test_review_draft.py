@@ -207,3 +207,25 @@ def test_the_review_page_is_drawn_while_it_is_read_with_what_it_used_to_ask_for(
             else: assert k.startswith('review_pages/') and wh[0] > 0 and wh[1] > 0, k   # not rendered yet: the PDF page's size
     finally:
         call(port, '/finish', FINISH); t.join(10)
+
+
+def test_a_note_holding_markup_never_ends_or_hides_the_pages_script(R):
+    """review 16 M2: the page's data is written into its script with <, > and & as \\u escapes, so a saved Session Note
+    holding "<!--" and then "<script" (or "</script>") can't make the browser read the rest of the page as script (the page
+    would load blank, every time). The note still reaches the page exactly as written."""
+    note = 'The <!-- comment and the <script> tag in chapter 3 are code samples; so is </script> & more.'
+    core.save(str(R / 'review_decisions.json'), dict(BODY, session_name='<!--<script>', session_notes=note, saved_at='2026-11-11T10:00:00Z'))
+    port, t = start(R)
+    try:
+        page = call(port, '/')[1].decode('utf-8')
+    finally:
+        call(port, '/finish', FINISH); t.join(10)
+    head = page.split('</head>')[0]
+    s = head.index('<script>\n') + len('<script>\n'); script = head[s:head.index('</script>', s)]
+    assert 'const DATA = {' in script and 'function bootReview() {' in script            # the whole script, ended by its own tag
+    assert '<!--' not in script and '<script' not in script and '</script' not in script
+    raw = re.search(r'const DATA = (\{.*?\});\n', script, re.S).group(1)
+    assert not set('<>&') & set(raw) and '\\u003c!--\\u003cscript\\u003e' in raw                # all three escaped in the data
+    data = json.loads(raw)
+    assert data['saved']['session_notes'] == note and data['saved']['session_name'] == '<!--<script>'
+    assert page.index('<body>') < page.index('<script>bootReview()</script>') < page.index('</body>')
