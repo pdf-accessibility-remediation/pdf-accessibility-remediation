@@ -151,13 +151,21 @@ def json_block(obj):
     later "<script" would). JSON.parse reads it back unchanged."""
     return json.dumps(obj).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
 
+SCHEME = re.compile(r'^[A-Za-z][A-Za-z0-9+.-]*:')
+def safe_href(u):
+    """A link review.md's text may make live: "#…", http:, https: or a relative path. Any other scheme (javascript:,
+    data:, …) is refused. u is the escaped text, so it is unescaped first, as the browser reads the attribute."""
+    raw = html.unescape(u)
+    return raw.startswith('#') or raw.lower().startswith(('http://', 'https://')) or not SCHEME.match(raw)
+
 def inline(t, links=True):
     """One line of review.md text as HTML: escaped first, then `code`, **bold**, [links](relative, #anchor or http) and
-    page references (links to the page strip)."""
+    page references (links to the page strip). A link to any other scheme (javascript:, data:, …) stays as its text."""
     t = E(t, quote=False)
     t = re.sub(r'`([^`]+)`', r'<code>\1</code>', t)
     t = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', t)
-    t = re.sub(r'\[([^\]]+)\]\(((?:#|https?://|[\w./-]+)[^)\s]*)\)', lambda m: f'<a href="{E(m.group(2))}">{m.group(1)}</a>', t)
+    t = re.sub(r'\[([^\]]+)\]\(((?:#|https?://|[\w./-]+)[^)\s]*)\)',
+               lambda m: f'<a href="{E(m.group(2))}">{m.group(1)}</a>' if safe_href(m.group(2)) else m.group(0), t)
     return page_links(t) if links else t
 
 NOWRAP = re.compile(r'^(?:\*\*CHECK\*\*|CHECK|OK|FAILED.*|—|not counted|not run|page: not on this tag'
