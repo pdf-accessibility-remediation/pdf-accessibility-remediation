@@ -229,3 +229,34 @@ def test_a_note_holding_markup_never_ends_or_hides_the_pages_script(R):
     data = json.loads(raw)
     assert data['saved']['session_notes'] == note and data['saved']['session_name'] == '<!--<script>'
     assert page.index('<body>') < page.index('<script>bootReview()</script>') < page.index('</body>')
+
+
+@pytest.mark.parametrize('bad', ['one page', 'the whole PDF'])
+def test_a_page_whose_size_cant_be_read_leaves_the_others_their_sizes(R, monkeypatch, bad):
+    """review 18 L2 (b19efdf, review 16 L1): image sizes are read page by page. A rendered page image is measured from its
+    file, without the PDF; a page not rendered yet from its PDF page's size, each in its own try. One page whose size
+    pdfium can't read leaves the others theirs; a PDF that can't be opened leaves the rendered images theirs."""
+    import pypdfium2 as pdfium
+    from PIL import Image
+    real = pdfium.PdfDocument
+    class Doc(real):
+        def __init__(self, *a, **k):
+            if bad == 'the whole PDF': raise pdfium.PdfiumError('cannot open')
+            super().__init__(*a, **k)
+        def get_page_size(self, i):
+            if i == 1: raise pdfium.PdfiumError('cannot read page 2')
+            return super().get_page_size(i)
+    monkeypatch.setattr(pdfium, 'PdfDocument', Doc)
+    pages = R / 'review_pages'; pages.mkdir(exist_ok=True)
+    for f in pages.glob('page_*.png'): f.unlink()
+    Image.new('RGB', (50, 60), 'white').save(pages / 'page_001.png')                  # page 1 rendered already
+    port, t = start(R)
+    try:
+        page = call(port, '/')[1].decode('utf-8')
+    finally:
+        call(port, '/finish', FINISH); t.join(10)
+    sizes = json.loads(re.search(r'const DATA = (\{.*?\});\n', page, re.S).group(1))['img_sizes']
+    assert sizes['review_pages/page_001.png'] == [50, 60]                              # from its file
+    assert 'review_pages/page_002.png' not in sizes                                     # its card grows when the image comes
+    if bad == 'one page': assert sizes['review_pages/page_003.png'][0] > 0 and sizes['review_pages/page_003.png'][1] > 0
+    else: assert 'review_pages/page_003.png' not in sizes
