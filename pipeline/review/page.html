@@ -996,7 +996,7 @@ const settleWords = st => st.clear ? 'the AI\'s decoration rules remove the text
   : (st.rules.length === 1 ? 'the AI\'s rule “' + esc(st.rules[0].label) + '” removes it' : 'the AI\'s rules ' + st.rules.map(r => '“' + esc(r.label) + '”').join(' and ') + ' remove it') +
     ' from the reading order if you approve ' + (st.rules.length === 1 ? 'the rule' : 'them');
 const unsettled = x => (x.hidden_by_rules || []).length || x.tied_by ? ' The AI\'s decision that would take care of it is rejected.' : '';
-const HANDFIX = '<a href="https://pdf-accessibility-remediation.github.io/review-step.html#fixing-the-reading-order-by-hand" target="_blank" rel="noopener">How to fix it by hand</a> (opens the documentation in a new tab).';
+const HANDFIX = '<a href="https://pdf-accessibility-remediation.github.io/review-reading-order.html#fixing-the-reading-order-by-hand" target="_blank" rel="noopener">How to fix it by hand</a> (opens the documentation in a new tab).';
 const cardLink = (id, text) => byId[id] ? '<a href="#card-' + esc(id) + '" data-card="card-' + esc(id) + '">' + text + '</a>' : text;
 function findingRows(it, row) {                        // a reading-order finding: what was found, and what a person can do
   const c = it.context, a = it.ai;

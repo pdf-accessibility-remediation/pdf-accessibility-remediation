@@ -48,7 +48,7 @@ It opens with an Overview (see [The Overview](#the-overview)).
 
 ### What it shows, from the top
 
-1. **"Ready to Ship?"**, with the PDF's status and its four requirements (see [Accessibility evaluation and release](release.md)).
+1. **"Ready to Ship?"**, with the PDF's status and its four requirements (see ["Ready to ship?"](evaluation.md#ready-to-ship)).
 2. **An Accessibility Evaluation section**, once a result is recorded: a summary line per part, its failed items and notes, and "View Full Results" in a pop-up (in place, in print).
 3. **Four status cards** (see [The status cards](#the-status-cards)).
 4. **A folded "Run details":** result file, intake, libraries, time.
@@ -120,7 +120,7 @@ review.md keeps them all as the record.
 
 `review.md` opens with an "Overview" block (called "At a glance" in runs made before 2026-10-21), and `_intake/intake.md` with its own.
 
-- **Status:** Not Ready, Pending Evaluation, Ready or Shipped. Each is followed by "· N issues noted" when its version's evaluation has Fails. See [Accessibility evaluation and release](release.md).
+- **Status:** Not Ready, Pending Evaluation, Ready or Shipped. Each is followed by "· N issues noted" when its version's evaluation has Fails. See [The status](release.md#the-status).
 - **Ready to ship?** Four requirements: **Work Order Approval**, **OCR Text Approval**, **Safety Checks** and **Accessibility Evaluation** (see [The four requirements](#the-four-requirements)).
 - **Safety checks:** pages look the same, text unchanged, all content tagged or decoration, the tag-tree index points into the tree, every font readable. Each reads "OK ✔" or "FAILED ✘", never color alone.
 - **Needs a person:** the AI's deferrals, plus the executor's deferrals, plus CHECK rows (see [What "needs a person" counts](#what-needs-a-person-counts)).
@@ -134,7 +134,7 @@ review.md keeps them all as the record.
 
 Each line reads "- ✓ Name: Value (details)" when satisfied, else "- Name: Value (details)". A PDF is ready only when:
 
-1. **Work Order Approval:** the work order was approved on the review page (`REVIEW=1`; see [Sign-off](review-step.md#sign-off-when-a-pdf-is-ready-to-ship)).
+1. **Work Order Approval:** the work order was approved on the review page (`REVIEW=1`; see [Sign-off](review-finish.md#sign-off-when-a-pdf-is-ready-to-ship)).
 2. **OCR Text Approval:** the OCR text was approved, when intake added OCR text, found the PDF's existing OCR layer doubtful, unusable or missing diacritics, or could not check it because no sample page could be scored. An unknown layer is not "not needed" (decided 2026-10-25). A PDF with no OCR text added and no flagged OCR layer shows "Not Applicable"; that includes a publisher's own OCR layer that the test checked and did not flag.
 3. **Safety Checks:** the five safety checks are OK.
 4. **Accessibility Evaluation:** both parts (PAC 2026 and the screen-reader test) are recorded for this version of the PDF (from 2026-11). A Fail never blocks: it is an issue noted. It reads "Not Completed" when neither part is recorded, and names the part that is missing when one is: "Not Completed (Screen-Reader Test not recorded)".
@@ -230,7 +230,7 @@ Reviewed runs also keep:
 - `sessions/NNN.json` and `NNN.workorder.json`: each review session and the order it applied
 - `versions/<id>/`: each previous result (PDF, record.json, review.md, review.html), never edited except a "replaced by" note on review.html
 
-The top level always holds the current result. See [Reviewing again](review-step.md#reviewing-again).
+The top level always holds the current result. See [Reviewing again](review-again.md#reviewing-again).
 
 ### The release folder
 

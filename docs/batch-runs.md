@@ -6,7 +6,7 @@ nav_order: 3
 
 # Batch runs
 
-A batch runs a folder (or a list) of PDFs with one command and writes one summary. Batches can also be started from the app's home page, with a cost estimate before any paid request and a page that follows every PDF: see [The home page](home.md#batches). The commands below are what the app runs.
+A batch runs a folder (or a list) of PDFs with one command and writes one summary. Batches can also be started from the app's home page, with a cost estimate before any paid request and a page that follows every PDF: see [The home page](home-batches.md#batches). The commands below are what the app runs.
 
 ```bash
 AUTO=1 bash batch_api.sh batch1                                         # every PDF under samples (all subfolders)

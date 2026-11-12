@@ -12,7 +12,7 @@
     finish(R, ai_wo, wo2, reviewer, date, method, …)  # checks the order again, writes review.json and the reviewed workorder.json
     draft_pdf(R, pdf, ai_wo, wo2, out, …)            # the same check, then apply.py into out (a draft: nothing in R is written)
 
-The formats a front end needs (also in docs/review-step.md):
+The formats a front end needs (also in docs/review-page.md):
   item:      {id, key, kind, label, page, page_label, pages, before, ai, edit, options, context, priority, images}
   addable:   {kind: [{id, kind, target, label, page, page_label, before, default, edit, options, context, images}]}
   decisions: {id: {status: approved | changed | rejected | seen, value?, note?}}

@@ -8,7 +8,7 @@ It reads only what a finished run keeps: record.json and review.md (its "Automat
 "For a person to check" sections), so a dashboard can be rebuilt for any finished run. `labels` is the remediated
 PDF's page-label table ({page: label}); `han_pages` the PDF pages of the Han-only runs (from han_review.csv).
 
-Definitions (docs/output-files.md, docs/release.md):
+Definitions (docs/output-files.md, docs/release.md, docs/evaluation.md):
   ready to ship      the work order approved on the review page, the OCR text approved (when intake added OCR text, or
                      found an existing OCR layer doubtful, unusable or missing diacritics, or could not check it),
                      the five safety checks OK, and the accessibility evaluation completed on this version of the PDF

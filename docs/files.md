@@ -65,7 +65,7 @@ It is on by default in `run_api.sh` and in the app's runs and batches, where the
 | `review/sessions.py` | The review loop's records, with no server and no HTML (see [review/sessions.py](#reviewsessionspy)) |
 | `review/ocr.py` | The OCR text verdict: the one writer for the review page and `review_ocr.py` (see [review/ocr.py](#reviewocrpy)) |
 | `review/manual.py` | The one writer of the accessibility evaluation's results (see [review/manual.py](#reviewmanualpy)) |
-| `review/clear.py` | "Clear This Book's Files" for a shipped PDF: the gate, the PDFs and images it deletes, `release/cleared.json` ([Accessibility evaluation and release](release.md#clearing-a-shipped-book)) |
+| `review/clear.py` | "Clear This Book's Files" for a shipped PDF: the gate, the PDFs and images it deletes, `release/cleared.json` ([Accessibility evaluation and release](shipping.md#clearing-a-shipped-book)) |
 | `review/prune.py` | "Clean Up Space": which previous versions' PDFs can go (never the current version, the AI's own, an evaluated or a shipped one), and their removal under `reviews/.lock` and the record lock, recorded in `release/removed.json`. `review_workorder.py --remove-older-pdfs` is its command line |
 | `webapp/` | The app's core parts (see [webapp/](#webapp)) |
 | `webapp/home.py`, `webapp/home.js` | The home page ([The home page](home.md)): the PDFs, runs in progress, My Workspace (cached in `runs/.app/home-index.json`), the "Upload a PDF" drop zone, the "⋯" menus and Edit Name in place, and the app bar on every page but the home page |
@@ -75,7 +75,7 @@ It is on by default in `run_api.sh` and in the app's runs and batches, where the
 | `webapp/newrun.py`, `webapp/spend.py` | A single run from the home page (see [webapp/newrun.py and spend.py](#webappnewrunpy-and-spendpy)) |
 | `webapp/batches.py`, `webapp/batch.js` | Batches from the home page: the list of PDFs (`runs/.app/batches/<label>.books.txt`) and record, per-PDF estimates, totals, the batch's "Start Remediation" (batch_api.sh), the batch page and the side column |
 | `webapp/lang.py` | "Language of the Scanned Pages" (#45): the question from `_intake/languages.json` (or intake's CJK stop), its evidence in plain words, and the answer's environment |
-| `webapp/trash.py`, `webapp/trash.js` | "Move to Trash" (#45): a run, a batch whole or in part, an added PDF; the plans the confirmations show, the refusals, the moves, `runs/.app/trash-log.json` ([The app](app.md#move-to-trash)) |
+| `webapp/trash.py`, `webapp/trash.js` | "Move to Trash" (#45): a run, a batch whole or in part, an added PDF; the plans the confirmations show, the refusals, the moves, `runs/.app/trash-log.json` ([The app](app-setup.md#move-to-trash)) |
 | `webapp/manualpage.py`, `webapp/manual.js` | The app's Accessibility Evaluation page (see [webapp/manualpage.py](#webappmanualpagepy)) |
 | `webapp/downloads.py` | A run's versions and their downloads (see [webapp/downloads.py](#webappdownloadspy)) |
 | `webapp/failures.py` | Why a run stopped, in plain words, as a table by step, with the tool's own words only under "Details" |
@@ -111,7 +111,7 @@ See [Editing the PDF by hand](hand-edits.md).
 
 ### review/sessions.py
 
-The basis and its checks, pinning, sessions, carrying choices, a summary-only session for reviews made before sessions were kept, the lock, and the re-apply and promotion of a new result. See [Reviewing again](review-step.md#reviewing-again).
+The basis and its checks, pinning, sessions, carrying choices, a summary-only session for reviews made before sessions were kept, the lock, and the re-apply and promotion of a new result. See [Reviewing again](review-again.md#reviewing-again).
 
 ### review/ocr.py
 
@@ -120,11 +120,11 @@ The basis and its checks, pinning, sessions, carrying choices, a summary-only se
 - the one writer for the review page and `review_ocr.py`: its locks, and every file written whole
 - the review page's OCR Text section: pages, intake's findings, page text
 
-See [The OCR text](review-step.md#the-ocr-text).
+See [The OCR text](review-ocr.md#the-ocr-text).
 
 ### review/manual.py
 
-It records PAC 2026 or screen-reader test results under the record lock. It refuses while a new version is being made, or when the PDF on disk is not the one shown and described. It takes a first hash for older runs. See [Accessibility evaluation and release](release.md).
+It records PAC 2026 or screen-reader test results under the record lock. It refuses while a new version is being made, or when the PDF on disk is not the one shown and described. It takes a first hash for older runs. See [Downloads and shipping](shipping.md#downloads).
 
 `write_run` is the refresh every writer of a finished run's record shares: release/ mirrored, the glance, review.md's Overview and its Accessibility Evaluation section, and review.html, each file written whole.
 
@@ -147,7 +147,7 @@ It records PAC 2026 or screen-reader test results under the record lock. It refu
 
 ### webapp/manualpage.py
 
-Its data and HTML, escaped, with its data in a JSON block with `<`, `>` and `&` escaped. It also holds the display-only hash of the remediated PDF, and the run page's strip after "Ready to Ship?". The script (`manual.js`) saves drafts and records through `review/manual.py`. See [Accessibility evaluation and release](release.md).
+Its data and HTML, escaped, with its data in a JSON block with `<`, `>` and `&` escaped. It also holds the display-only hash of the remediated PDF, and the run page's strip after "Ready to Ship?". The script (`manual.js`) saves drafts and records through `review/manual.py`. See [The accessibility evaluation](evaluation.md).
 
 ### webapp/downloads.py
 
@@ -336,7 +336,7 @@ Expected cost: about $0.002–0.003 per figure, plus about $0.05 per request. Th
 - **Records:** `run.usage` and `cost_total_usd` are the sum of every request. `run.passes` lists each request with its figures, usage, time and outcome; `run.figure_passes` sums them up; `raw_reply_passes` holds each figure request's answer and the figures it was written for (see [Output files](output-files.md)). review.md lists the requests under the run line, with a check row "Figure requests: every figure seen by the AI".
 - **Replays** (`FROM=`, `REPLY=`, "Review Again") use the recorded split, never a new one, and make no call. A saved reply made with figure requests needs its answers file (`reply.txt.passes.json`) beside it; without it, the replay stops. Older single replies replay exactly as before.
 - **`FIGURE_PASSES=off`** sends one request as before: figures past 100 go to a reviewer, listed in the review under the AI's deferrals.
-- **With `REVIEW=1`,** every alt text is a decision on the review page, whichever request wrote it, and every figure left without alt text is a gap at Finish (see [Reviewing the work order](review-step.md)).
+- **With `REVIEW=1`,** every alt text is a decision on the review page, whichever request wrote it, and every figure left without alt text is a gap at Finish (see [Gaps](review-page.md#gaps)).
 
 ## Where records live
 
@@ -344,7 +344,7 @@ Expected cost: about $0.002–0.003 per figure, plus about $0.05 per request. Th
 - records: the digest, its full text, dryrun.json, the OCR-word list, all `.json` or `.csv`
 - figure crops and page images
 
-Clearing a shipped PDF removes the PDFs and images there, and keeps every `.json`, `.md`, `.html` and `.csv` file ([Accessibility evaluation and release](release.md#clearing-a-shipped-book)). A new record goes beside record.json, in `reviews/` or in `release/`.
+Clearing a shipped PDF removes the PDFs and images there, and keeps every `.json`, `.md`, `.html` and `.csv` file ([Accessibility evaluation and release](shipping.md#clearing-a-shipped-book)). A new record goes beside record.json, in `reviews/` or in `release/`.
 
 **The app's own files** are in `runs/.app/` (the `jobs` setting):
 - `jobs/<id>.json` and `.log`: each job, its environment, its log

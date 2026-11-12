@@ -142,7 +142,7 @@ def test_the_panel_has_the_button_the_dialog_and_the_links():
     assert '<label for="pp-bring-by">Edited By</label>' in p and 'autocomplete="name"' in p and 'role="alert"' in p
     assert 'uncheck "Recognize scanned text."' in p and 'no AI call, no cost. This run is not changed.' in p
     assert '<input type="file" id="pp-bring-file" accept="application/pdf,.pdf">' in p and "'Uploading… '" in p and 'xhr.abort()' in p
-    assert 'uploads folder' not in p                                                 # the person never sees a folder (app.md)
+    assert 'uploads folder' not in p                                                 # the person never sees a folder (app-run-page.md)
     assert 'data-act="bring-start"' in p and '{ resume: b.dataset.label }' in p
     assert 'Open the Edited Run' in p and "tc('Edited copies')" in p and 'Made from an edited copy of run ' in p
 
