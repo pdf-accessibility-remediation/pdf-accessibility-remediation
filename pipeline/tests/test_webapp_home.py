@@ -178,7 +178,8 @@ def test_home_page_sits_in_the_bar_of_three_pages(app):
     assert ('Back to the Current Result</a> <span id="pp-vact"></span> \' +\n    \'<a class="pp-btn" id="pp-vhome" href="/">Home Page</a></p>\'') in js   # a space before each
     css = open(os.path.join(HERE, 'webapp', 'panel.css'), encoding='utf-8').read()
     assert 'pp-appbar-gap' not in css and '@media (min-width: 601px) { #pp-vback { margin-left: 3px; } }' in css
-    assert '@media (min-width: 601px) { #pp-vreview, #pp-vhome { margin-left: 9px; } }' in css   # gaps equal, 3 px less (Patrick)
+    assert '@media (min-width: 601px) { #pp-vreview, #pp-vhome, .pp-vbusy { margin-left: 9px; } }' in css   # the busy sentence too (review 20 L1)
+    assert '<span class="pp-vbusy">· A job for this run is running or waiting: see the current result.</span>' in js
     assert '@media (min-width: 601px) { .mc-nav a.pp-btn[href="/"] { margin-left: -3px; } }' in css   # the evaluation page's, 3 px closer
     text = W.with_appbar('<body>' + W.SKIP + '<main><p>a note: data-appbar="bar"</p></main></body>')        # escaped book text
     assert 'aria-label="App"' in text

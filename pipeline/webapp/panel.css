@@ -18,8 +18,9 @@
 @media (min-width: 601px) { #pp-vback { margin-left: 3px; } }   /* it and "Review Again …" 3 px right of "You're viewing …"
    (Patrick, 2026-11-11); not on a narrow screen, where each button has its own full-width line */
 #pp-vhome { margin-left: 12px; }    /* "Home Page" after them, as far apart as they are */
-@media (min-width: 601px) { #pp-vreview, #pp-vhome { margin-left: 9px; } }   /* Patrick, 2026-11-11: both gaps 3 px less and equal:
-   a space and 9 px each (panel.js puts a space before "Home Page" too), so they match in any font */
+@media (min-width: 601px) { #pp-vreview, #pp-vhome, .pp-vbusy { margin-left: 9px; } }   /* Patrick, 2026-11-11: both gaps 3 px less and equal:
+   a space and 9 px each (panel.js puts a space before "Home Page" too), so they match in any font; the sentence that
+   replaces "Review Again …" while a job runs too (review 20 L1) */
 @media (min-width: 601px) { .mc-nav a.pp-btn[href="/"] { margin-left: -3px; } }   /* the evaluation page's "Home Page", 3 px closer
    to "Back to the Run Page" (Patrick, 2026-11-11); not on a narrow screen, where each button has its own full-width line */
 /* Patrick, 2026-11-11: on the evaluation page, a previous result's dashboard and review.md in a page, "Home Page" is in the

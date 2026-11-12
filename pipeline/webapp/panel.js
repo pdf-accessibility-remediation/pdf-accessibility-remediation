@@ -164,7 +164,7 @@ if (vbox) {
   const label = SID === 'ai' ? 'Start Over from the AI\'s Decisions' : 'Review Again from This Session';
   const drawAct = st => {
     const busy = st.live_review || st.lock || (st.jobs || []).some(j => j.status === 'queued' || j.status === 'running');
-    $('pp-vact').innerHTML = busy ? '· A job for this run is running or waiting: see the current result.' :
+    $('pp-vact').innerHTML = busy ? '<span class="pp-vbusy">· A job for this run is running or waiting: see the current result.</span>' :   // as far from both buttons as the button it replaces (review 20 L1)
       '<button type="button" id="pp-vreview">' + esc(label) + '</button>';
     const b = $('pp-vreview'); if (!b) return;
     b.addEventListener('click', async () => {
