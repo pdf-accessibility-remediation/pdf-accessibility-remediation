@@ -97,7 +97,7 @@ The app's own tests do not weaken this: they unset `VERAPDF` and give, through `
 
 A name already in the Trash gets " 2", " 3"…, before a PDF's ".pdf": "ilokano 2.pdf", with its note "ilokano 2.json".
 
-**Nothing is restored through the app** (#93, Patrick's test of the app). Its pages say so ("… cannot be restored through the app."), and point a person who needs a PDF again to uploading the same PDF again with **Choose PDFs** on the home page. The app finds it by its sha256, so its runs can "Review Again" again, and a run that was waiting for "Start Remediation" (or "Get a New Estimate") goes on with the copy, its estimate unchanged. A different file name is fine: the copy's sha256 is read again before it is used, and the result is named after the copy's file name.
+**Nothing is restored through the app** (#93). Its pages say so ("… cannot be restored through the app."), and point a person who needs a PDF again to uploading the same PDF again with **Choose PDFs** on the home page. The app finds it by its sha256, so its runs can "Review Again" again, and a run that was waiting for "Start Remediation" (or "Get a New Estimate") goes on with the copy, its estimate unchanged. A different file name is fine: the copy's sha256 is read again before it is used, and the result is named after the copy's file name.
 
 **Putting one back by hand** (for whoever looks after the app, not offered on its pages): Finder's **Put Back** doesn't know items the app moved; Finder only remembers its own moves. Open the Trash in Finder and drag the item back to the folder the move log names under `from`:
 - a run back into `runs/<short name>/` under its label

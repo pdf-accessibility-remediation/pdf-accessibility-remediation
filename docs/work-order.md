@@ -176,7 +176,7 @@ A missing ToUnicode map is not flagged for a simple, non-symbolic font whose enc
 
 ### Untagged content
 
-`verify.py` counts every text, path and image that is neither tagged nor an artifact (a form XObject once, as checkers do; an image drawn inline in the content stream counts as an image, as an image XObject does: before #93 Part 3, inline images were never counted). `review.md` lists the pages with the most, with a separate row for untagged paths.
+`verify.py` counts every text, path and image that is neither tagged nor an artifact (a form XObject once, as checkers do; an image drawn inline in the content stream counts as an image, as an image XObject does: before #93, inline images were never counted). `review.md` lists the pages with the most, with a separate row for untagged paths.
 
 - Untagged text is marked as decoration only in the two `artifacts.untagged` cases.
 - Untagged paths only by the path rule above.

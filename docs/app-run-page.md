@@ -131,7 +131,7 @@ The browser's Back button is never the only way back:
 - `/run/<run>/review.html` (which the "replaced by" note in a previous result's file links to) goes to the run page.
 - **A previous result** (`reviews/versions/<id>/review.html`) shows a bar: "You're viewing a previous result (session N)", with **Back to the Current Result**, **Review Again from This Session** (for the result applied without review, **Start Over from the AI's Decisions**) and **Home Page**, in that order. The button starts the review and goes to the run page, which follows it. While a job for the run is running or waiting, a sentence saying so takes the button's place. The file's own "replaced by" note is hidden in the app (the bar says it); it stays in the file.
 - **review.md** opens inside a page with **Back to the Run Page** (and, for a previous result, its dashboard), **Home Page** and **The Plain File**.
-- On these two pages and the Accessibility Evaluation page, **Home Page** is in the page's own bar, after its other buttons, not at the top (Patrick, 2026-11-11). Nothing takes its place there, so the title starts at the top.
+- On these two pages and the Accessibility Evaluation page, **Home Page** is in the page's own bar, after its other buttons, not at the top. Nothing takes its place there, so the title starts at the top.
 - **A PDF** opens in the browser's own viewer; its tab or Back button returns.
 
 ### Wording on the pages
@@ -187,7 +187,7 @@ The panel checks the run every second while a job runs or a review is open (ever
 
 ## Page changes in one step
 
-When you click to another page, the page you are on stays on screen, unchanged, while the app answers; then the new page replaces it complete, in one step (#93, Patrick 2026-11-11). There is no fade, no blank or white frame, no part of the page drawn after the rest, and no "Loading…" during a page change. This holds for every page the app serves (home, run, batch, evaluation, a previous result, review.md, the batch dashboard), the review page, the links between them, a saved batch's address (its pop-up opens with the page, filled), and the browser's back and forward.
+When you click to another page, the page you are on stays on screen, unchanged, while the app answers; then the new page replaces it complete, in one step (#93). There is no fade, no blank or white frame, no part of the page drawn after the rest, and no "Loading…" during a page change. This holds for every page the app serves (home, run, batch, evaluation, a previous result, review.md, the batch dashboard), the review page, the links between them, a saved batch's address (its pop-up opens with the page, filled), and the browser's back and forward.
 
 How:
 

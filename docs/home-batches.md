@@ -65,7 +65,7 @@ The current PDF has the darker background and bold text; hovering gives a lighte
 
 Below 48em (a phone, 320 px included) the list starts closed, in the page's flow, so nothing scrolls sideways. "Skip to the content" skips it.
 
-On a PDF's page the list needs only the PDFs' statuses, so the page and its check of the batch (`/api/batch/<label>?nav=1`) never build the batch dashboard (#93, review 09, 12a). For a batch made before this month's record format, building it opens every finished PDF to read its page labels, which made the first open of such a PDF's page after the app started take up to two seconds. The batch page itself still builds it.
+On a PDF's page the list needs only the PDFs' statuses, so the page and its check of the batch (`/api/batch/<label>?nav=1`) never build the batch dashboard (#93). For a batch made before this month's record format, building it opens every finished PDF to read its page labels, which made the first open of such a PDF's page after the app started take up to two seconds. The batch page itself still builds it.
 
 ### Runs at once
 
