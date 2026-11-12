@@ -8,39 +8,29 @@ Two steps can cost money: the AI's work order (`decide.py`) and, for scanned pag
 
 ## How it works
 
-```mermaid
-flowchart TD
-    accTitle: How the pipeline works
-    accDescr {
-        The original PDF goes through eight steps in order.
-        intake.py runs only for untagged PDFs; tagged PDFs go straight to audit.py.
-        Then decide.py (paid), read_pages.py (paid, optional), the review step (optional),
-        apply.py, verify.py and report.py, which writes the remediated PDF and the reports.
-    }
-    pdf(["original.pdf"])
-    intake["intake.py<br>optional"]
-    audit["audit.py"]
-    decide["decide.py<br>paid"]
-    read["read_pages.py<br>paid, optional"]
-    review["review step<br>optional"]
-    apply["apply.py"]
-    verify["verify.py"]
-    report["report.py"]
-    pdf -- "untagged PDFs" --> intake --> audit
-    pdf -. "tagged PDFs" .-> audit
-    audit --> decide --> read --> review --> apply --> verify --> report
-    classDef paid stroke-width:4px
-    classDef optional stroke-dasharray:6 4
-    class decide paid
-    class read paid
-    class read,intake,review optional
 ```
-
-Paid steps have a thick border, and optional steps a dashed one.
+original.pdf
+     ↓
+intake.py*        optional
+     ↓
+audit.py
+     ↓
+decide.py         paid
+     ↓
+read_pages.py     paid, optional
+     ↓
+review step       optional
+     ↓
+apply.py
+     ↓
+verify.py
+     ↓
+report.py
+```
 
 | Step | What it does |
 |---|---|
-| `intake.py` | OCR and automatic tagging (untagged PDFs only; local tools, free) |
+| `intake.py`\* | OCR and automatic tagging (untagged PDFs only; local tools, free) |
 | `audit.py` | a summary of the PDF for the AI, and veraPDF on the original |
 | `decide.py` | the AI returns the work order (paid) |
 | `read_pages.py` | the AI reads scanned Hawaiian pages whole (paid; only when there are such pages) |
@@ -49,7 +39,7 @@ Paid steps have a thick border, and optional steps a dashed one.
 | `verify.py` | veraPDF on the result, and checks that pages and text still match |
 | `report.py` | original_remediated.pdf, review.md, review.html, record.json |
 
-Tagged PDFs skip `intake.py`.
+\* Tagged PDFs skip `intake.py`.
 
 **Untagged PDFs** first go through `intake.py`. It uses local tools to add text by OCR where pages have none, then tags the PDF automatically, with checks after each step. Intake makes no AI request. See [Intake: untagged PDFs](docs/intake.md).
 
