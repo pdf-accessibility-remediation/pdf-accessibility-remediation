@@ -2,7 +2,7 @@
 
     python -m pytest tests/test_readorder.py -q
 
-The expected results follow docs/verapdf.md (the section-order check) and docs/review-step.md (the reading-order list).
+The expected results follow docs/verapdf.md (the section-order check) and docs/review-reading-order.md (the reading-order list).
 """
 from lib import readorder as ro
 

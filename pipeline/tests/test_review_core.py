@@ -2,7 +2,7 @@
 
     python -m pytest tests/test_review_core.py -q
 
-The expected results follow docs/review-step.md ("What the page shows": group 5, the reading-order list).
+The expected results follow docs/review-page.md ("What the page shows": group 5) and docs/review-reading-order.md (the reading-order list).
 """
 from review import core
 

@@ -536,7 +536,7 @@ else:
                  f'BOOK_MAX_USD={math.ceil(spent_before + total)} bash run_api.sh …')
     if IS_CLAUDE and credit is not None and credit < total: sys.exit(f'refusing: ${credit:.2f} credit available, this run could cost up to ${costs.up(total):.2f} (OpenRouter would answer 402). Add credit')
     key = os.environ.get('OPENROUTER_API_KEY')
-    if not key: sys.exit('no OPENROUTER_API_KEY: put it in PDFREMPROTO1/.env (see .env.example) or export it')
+    if not key: sys.exit('no OPENROUTER_API_KEY: put it in a .env file in pipeline/ or a folder above it, or export it')
     body = {'model': model, 'messages': messages, 'max_tokens': args.max_tokens,
             'usage': {'include': True}, 'provider': {'data_collection': 'deny'}}
     if isinstance(run['temperature'], (int, float)): body['temperature'] = run['temperature']

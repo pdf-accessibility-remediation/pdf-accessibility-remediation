@@ -2,32 +2,43 @@
 
 [![CI](https://github.com/pdf-accessibility-remediation/pdf-accessibility-remediation/actions/workflows/ci.yml/badge.svg)](https://github.com/pdf-accessibility-remediation/pdf-accessibility-remediation/actions/workflows/ci.yml)
 
-This pipeline uses Claude via OpenRouter to help remediate PDF accessibility issues. The model reads a compact summary of a tagged PDF and returns a JSON **work order** containing decisions such as heading levels, alternative text, artifacts, document language, and reading-order fixes. The code applies those decisions, validates the result, and generates a review report. The original PDF is never modified.
+This pipeline helps make PDF books accessible. The AI (Claude by default, through OpenRouter) reads a short summary of a tagged PDF and returns a **work order**: a JSON list of decisions such as heading levels, alternative text, decorative content to hide (artifacts), the document language and reading-order fixes. The code carries out those decisions on a copy, checks the result and writes a report for a reviewer. The original PDF is never changed.
 
-The only paid step is the model call in `decide.py`.
+Two steps can cost money: the AI's work order (`decide.py`) and, for scanned pages that are mostly in Hawaiian, a reading of each page by the AI (`read_pages.py`). Both show an estimate and ask before anything is sent.
 
 ## How it works
 
 ```
-original.pdf ──► intake.py* ──► audit.py ──► decide.py ──► apply.py ──► verify.py ──► report.py
-                  OCR +          summary +     Claude via                 veraPDF        │
-                  auto-tag       veraPDF       OpenRouter                 (after)        ▼
-                                 (before)                                               original_remediated.pdf
-                                                                                        review.md + review.html
-                                                                                        record.json
+original.pdf
+   ↓
+intake.py*      OCR and tagging
+   ↓
+audit.py        a summary for the AI
+   ↓
+decide.py       the AI's work order (paid)
+   ↓
+read_pages.py   reads Hawaiian pages (paid)
+   ↓
+review step     a reviewer checks (optional)
+   ↓
+apply.py        makes the fixes on a copy
+   ↓
+verify.py       checks the result
+   ↓
+report.py       the PDF and the reports
 
-* Untagged PDFs only; tagged PDFs skip intake.py.
+* untagged PDFs only
 ```
 
-**Untagged PDFs** first go through `intake.py`, which uses local tools to perform OCR when pages lack text and then attempts automatic tagging. Checks run after each step. This process does not require an AI model call.
+**Untagged PDFs** first go through `intake.py`. It uses local tools to add text by OCR where pages have none, then tags the PDF automatically, with checks after each step. Intake makes no AI request. See [Intake: untagged PDFs](docs/intake.md).
 
-**Tagged PDFs** skip intake and proceed directly to the audit.
+**Tagged PDFs** skip intake and go straight to the audit.
 
-The pipeline uses veraPDF's WCAG 2.2 machine profile for validation during both audit and verification. The review report classifies failed rules as fixed, still failing, or newly failing. Newly failing rules indicate potential regressions introduced by remediation and are flagged for review.
+The pipeline checks the PDF with veraPDF's WCAG 2.2 machine profile twice: on the original during the audit, and on the result during verification. The report sorts every failed rule into fixed, still failing or newly failing. A newly failing rule may be a problem the remediation caused, so it is flagged for review.
 
 ## Setup
 
-The following steps are sufficient for processing tagged PDFs. Untagged PDFs need additional intake dependencies.
+The following steps are enough for tagged PDFs. Untagged PDFs also need the intake tools (OCRmyPDF, Tesseract and Java): see [Setup](docs/setup.md), step 2.
 
 1. **Install Python dependencies.** From the `pipeline/` directory, create and activate a virtual environment with Python 3.13 or 3.14 (`python3.14 -m venv .venv` works the same way), then install the requirements. Don't use Python 3.15: pikepdf 10.5.1, which the pipeline pins, has no ready-made Python 3.15 build.
     ```
@@ -70,11 +81,11 @@ The following steps are sufficient for processing tagged PDFs. Untagged PDFs nee
     python3 vera.py --check
     ```
 
-    The pipeline checks veraPDF before making a paid model call. To run without veraPDF, set `VERAPDF=off`; the WCAG checks are then skipped.
+    The pipeline checks veraPDF before making a paid AI request. To run without veraPDF, set `VERAPDF=off`; the WCAG checks are then skipped.
 
-5. **Prepare your files.** Sample PDFs are in `samples/<name>/`; place your own PDFs there as well. The system prompts ship in `prompts/`, so no setup is needed. Outputs are written to `runs/<name>/<run-label>/` beside `pipeline/`.
+5. **Prepare your files.** Sample PDFs are in `samples/tagged/`, `samples/scanned/` and `samples/untagged/`. They are open-access books, listed with their licenses in [samples/README.md](samples/README.md). The prompts the AI is given ship in `prompts/`, so they need no setup. Outputs are written to `runs/<short-name>/<run-label>/` beside `pipeline/`.
 
-    Keep your own PDFs and run outputs out of version control, particularly when they contain copyrighted material.
+    Keep your own PDFs and the `runs/` folder out of version control, particularly when they contain copyrighted material.
 
 ## Run
 
@@ -87,19 +98,19 @@ bash run_api.sh <original.pdf> <short-name> [run-label]
 For example:
 
 ```bash
-bash run_api.sh ../samples/tagged/northkorea.pdf nktest apirun1
+bash run_api.sh ../samples/tagged/northkorea.pdf nktest api-run1
 ```
 
 The short name sets the output folder, `runs/<short-name>/<run-label>/`. The run label is optional and defaults to a timestamp.
 
-The script audits the PDF, displays a cost estimate and available credit, and asks for confirmation before calling the API. It then applies the model's work order, verifies the result, and generates the review report: `review.md`, which opens with an "Overview" summary (including "Ready to ship?"), and `review.html`, the same run as an offline dashboard. A batch also gets `summary.html`. See [Output files](docs/output-files.md).
+The script audits the PDF, displays a cost estimate and available credit, and asks for confirmation before calling the API. It then applies the AI's work order, verifies the result, and generates the review report: `review.md`, which opens with an "Overview" summary (including "Ready to ship?"), and `review.html`, the same run as an offline dashboard. A batch also gets `summary.html`. See [Output files](docs/output-files.md).
 
 A label that already holds a finished run is refused, so use a new label for each new run. If a run stops partway, rerun the same command with the same label: it picks up where it stopped, reusing the audit and any usable reply already paid for.
 
 To retain intermediate files for debugging, set `KEEP=1`:
 
 ```
-KEEP=1 bash run_api.sh ../samples/tagged/northkorea.pdf nktest apirun2
+KEEP=1 bash run_api.sh ../samples/tagged/northkorea.pdf nktest api-run2
 ```
 
 ## Documentation
@@ -110,17 +121,17 @@ The full documentation, covering setup, run options, batch runs, models, output 
 
 GitHub Actions runs the following checks:
 
-- **CI** — Compiles Python sources, validates shell-script syntax, installs dependencies, and runs `pip-audit`.
-- **PDF validation** — Installs Java 17 and veraPDF, then runs `audit.py` (with veraPDF on the original) against a sample PDF when pipeline or sample files change.
+- **CI** — Compiles the Python sources, checks shell-script syntax, runs the unit tests on Python 3.13 and 3.14, tests intake's handling of synthetic PDFs, and runs `pip-audit` on the pinned dependencies.
+- **PDF validation** — When pipeline, prompt or sample files change: runs the audit with veraPDF on a sample PDF, reruns every regression-test book from its saved AI reply and compares the result with the saved baseline, and tests section moves on a real book.
 - **Dependency review** — Reviews dependency changes in pull requests and fails on high-severity vulnerabilities.
 - **CodeQL** — Performs static security analysis of the Python code on pushes, pull requests, and weekly.
 - **Documentation checks** — Checks documentation links and requires documentation changes when `pipeline/` or `prompts/` changes, unless the pull request has the `no-docs-needed` label.
 
-These workflows do not run `run_api.sh` or make OpenRouter API calls automatically.
+These workflows never make a paid AI request. See [Testing](docs/testing.md#in-ci) for the details.
 
 ## Limitations and human review
 
-Automated remediation and validation do not guarantee that a PDF is fully accessible. Machine-checkable rules cannot assess every aspect of accessibility, and model-generated alternative text, heading assignments, and reading-order decisions may require correction.
+Automated remediation and validation do not guarantee that a PDF is fully accessible. Machine-checkable rules cannot assess every aspect of accessibility, and the AI's alternative text, heading levels and reading-order decisions may need correcting.
 
 PDF 2.0 is not supported yet. A PDF 2.0 file, or one whose tag tree declares namespaces, is stopped before any paid call or change and goes to a person.
 

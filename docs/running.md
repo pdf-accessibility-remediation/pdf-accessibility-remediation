@@ -1,28 +1,39 @@
 ---
 title: Running
-nav_order: 3
+parent: Get started
+nav_order: 2
 ---
 
 # Running
+
+This page shows how to run one PDF from the terminal, and what `run_api.sh` does at each step. To run a folder of PDFs, see [Batch runs](batch-runs.md); to work in the browser instead, see [The home page](home.md).
 
 ## Run
 
 ```bash
 cd pipeline
-bash run_api.sh ../samples/tagged/northkorea.pdf nktest apirun1
+bash run_api.sh ../samples/tagged/northkorea.pdf nktest api-run1
 ```
 
-The script audits the PDF and shows the cost estimate and your available credit. It **asks before calling the API**, then applies Claude's work order, verifies the result and writes the report. Use a new run label (`api-run2` …) for each run. `KEEP=1 bash run_api.sh …` keeps the working files for debugging.
+The script audits the PDF and shows the cost estimate and your available credit. It **asks before calling the API**, then applies the AI's work order, verifies the result and writes the report.
 
-To have a person check the AI's decisions before they are applied, start with `REVIEW=1`: the run stops after the model call, and `review_workorder.py --serve` opens a review page (see [Reviewing the work order](review-step.md)).
+The short name (`nktest`) names the run folder: `runs/nktest/api-run1/`. The result is named after the original with `_remediated` added (`<file>_remediated.pdf`); `OUT=north-korea.pdf bash run_api.sh …` names it yourself.
 
-To review a finished run again from the browser, with no further commands, start the app: `python3 app.py ../runs/<name>/<label>` (see [The app](app.md)).
+A label that already holds a finished run is refused, so use a new run label (`api-run2`, `api-run3` …) for each new run. `KEEP=1 bash run_api.sh …` keeps the working files for debugging. Every setting is listed in [Options](options.md).
 
-To change the PDF itself (a better scan of an image, a fix only Acrobat can make), edit an exported copy and bring it back as a new run with `handedit.py` (see [Editing the PDF by hand](hand-edits.md)).
+## If a run stops partway
 
-The short name (`nktest`) names the run folder. The result is named after the original with `_remediated` added (`<file>_remediated.pdf`); `OUT=north-korea.pdf bash run_api.sh …` names it yourself.
+Rerun the same command with the same label. It picks up where it stopped: the audit is reused, and so is any complete AI reply already paid for. A reply that was cut off is paid for once and asked for again with twice the room. See [If a run stops partway](options.md#if-a-run-stops-partway) for the details.
+
+## Next steps
+
+- **To have a reviewer check the AI's decisions before they are applied,** start with `REVIEW=1`. The run stops after the AI request, and `review_workorder.py --serve` opens a review page (see [Reviewing the work order](review-step.md)).
+- **To review a finished run again from the browser,** with no further commands, start the app: `python3 app.py ../runs/<name>/<label>` (see [The app](app.md)).
+- **To change the PDF itself** (a better scan of an image, a fix only Acrobat can make), edit an exported copy and bring it back as a new run with `handedit.py` (see [Editing the PDF by hand](hand-edits.md)).
 
 ## Step by step (what `run_api.sh` does)
+
+These are the commands `run_api.sh` runs, in order. You don't need to run them yourself; they help when a step fails and you want to rerun just that step.
 
 ```bash
 S=../samples/tagged/teika.pdf
@@ -31,11 +42,14 @@ python3 intake.py $S $R/_intake                           # untagged only: OCR +
 python3 audit.py  $S $A                                   # no model, ~30 s; also veraPDF on the original → $A/verapdf.json
 python3 decide.py $A $R --dry-run                         # cost estimate + available credit; sends nothing
 python3 decide.py $A $R                                   # the AI request
-# REVIEW=1 stops here: workorder.ai.json + review_workorder.py $R --prepare --pdf $S, then a person runs --serve
+python3 read_pages.py $A $R                               # scanned Hawaiian pages read whole (paid; only when the audit lists such pages)
+# REVIEW=1 stops here: workorder.ai.json + review_workorder.py $R --prepare --pdf $S, then a reviewer uses --serve
 O=$R/<file>_remediated.pdf
 python3 apply.py  $S $R/workorder.json $O                 # no model, ~80 s
 python3 verify.py $S $O                                   # no model, ~3 min; veraPDF on the result runs alongside
 python3 report.py $R $A                                   # review.md, record.json, han_review.csv; add --keep to keep working files
 ```
 
-If `decide.py` fails after the AI request, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and the next attempt allows twice as much (see [Options](options.md)). For errors from OpenRouter itself, see [When the model call fails](troubleshooting.md#when-the-model-call-fails).
+## When a step fails
+
+If `decide.py` fails after the AI request, the raw reply is in `$R/reply.txt` and OpenRouter's full response in `$R/response.json`. A reply that was cut off can't be used; rerun `run_api.sh` with the same label and the next attempt allows twice as much (see [Options](options.md)). For errors from OpenRouter itself, see [When the AI request fails](troubleshooting.md#when-the-ai-request-fails).

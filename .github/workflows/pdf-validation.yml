@@ -116,3 +116,36 @@ jobs:
           name: regression-runs-${{ matrix.book }}-py${{ matrix.python }}
           path: ${{ runner.temp }}/regression
           retention-days: 7
+
+  reorder-case:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r pipeline/requirements.txt
+
+      - name: One section move on hawaii3 (hand-written reply, no API call)
+        working-directory: pipeline
+        run: VERAPDF=off python tools/reorder_case.py --out "$RUNNER_TEMP/reorder-1"
+
+      - name: Two section moves on hawaii3
+        if: ${{ !cancelled() }}                 # runs even when the one-move case failed
+        working-directory: pipeline
+        run: VERAPDF=off python tools/reorder_case.py --moves 2 --out "$RUNNER_TEMP/reorder-2"
+
+      - name: Keep the runs for a failed reorder case
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reorder-case
+          path: ${{ runner.temp }}/reorder-*
+          retention-days: 7

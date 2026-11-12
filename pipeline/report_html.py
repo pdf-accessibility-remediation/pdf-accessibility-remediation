@@ -483,7 +483,7 @@ def review_card(R, rec):
         kinds = {k: G.n_decisions({k: v}) for k, v in wo.items() if k not in G.META}
         kinds = {k: c for k, c in kinds.items() if c}; n = G.n_decisions(wo)
         B.append(f'<p>{n:,} decisions, all applied without review by a person: ' + E(', '.join(f'{v} {k.replace("_", " ")}' for k, v in kinds.items())) + '.</p>')
-    B.append('</section>')                                       # the terminal commands are in docs/app.md and review-step.md
+    B.append('</section>')                                       # the terminal commands are in docs/app-run-page.md and review-again.md
     return B
 
 def review_html(R, rec=None, md=None, labels=None, banner=None):

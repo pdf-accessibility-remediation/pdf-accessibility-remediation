@@ -31,8 +31,7 @@ want = wo.get('source', {}).get('sha256')
 if want and hashlib.sha256(open(SRC, 'rb').read()).hexdigest() != want:
     sys.exit('work order was written for a different file (sha256 mismatch)')
 
-pdf = pikepdf.open(SRC)
-support.stop_if_unsupported(pdf, 'apply')       # PDF 2.0 / namespaced tags (a reused audit, FROM=/REPLY=): exit 3, nothing written
+pdf = support.open_or_stop(SRC, 'apply')        # locked (3), unreadable (1), PDF 2.0 / namespaced tags (3): nothing written
 pages = list(pdf.pages); pidx = {p.obj.objgen: i + 1 for i, p in enumerate(pages)}
 labels = {i + 1: p.label for i, p in enumerate(pages)}
 def PG(n):

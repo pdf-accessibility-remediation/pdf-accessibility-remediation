@@ -5,7 +5,8 @@ How a move works:
     Every item goes to the macOS Trash (~/.Trash; `trash_dir` from a --config only, for tests) with os.rename, under a
     unique name ("name", "name 2", …): never copied then deleted. Another disk is refused in plain words. Finder's
     "Put Back" doesn't know these items, and the app restores nothing (#93: its pages say so); a PDF is used again by
-    uploading it again ("Choose PDFs"), where it is found by its sha256. The move log names each item's folder.
+    uploading it again ("Choose PDFs"), where it is found by its sha256. By hand, docs/app-setup.md says to drag one back
+    to the folder the move log names.
     runs/.app/trash-log.json records each move (what, from where, to which name, when, and for a PDF its sha256), under
     runs/.app/trash.lock; the run page reads it to say an original PDF was moved.
 

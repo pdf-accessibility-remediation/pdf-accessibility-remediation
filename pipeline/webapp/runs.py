@@ -531,7 +531,7 @@ MODEL_NAMES = {'gpt-4o': 'GPT-4o', 'gpt-4o-mini': 'GPT-4o mini', 'gpt-4.1': 'GPT
 def model_words(m):
     """A model's display name from its id: "anthropic/claude-sonnet-5.5" → "Claude Sonnet 5.5" (no provider, no id): the
     table above for names the rule reads badly, else each part capitalized. A new model's name is checked when it is
-    adopted (docs/app.md)."""
+    adopted (docs/app-jobs.md)."""
     if not m: return None
     k = str(m).split('/')[-1].split(':')[0]
     if k in MODEL_NAMES: return MODEL_NAMES[k]

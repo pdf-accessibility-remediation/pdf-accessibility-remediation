@@ -6,7 +6,7 @@ panel added at serve time, and the log lines the panel reads (pinned against the
 No book, no model. The review page itself is tested on a synthetic run (as test_review_sessions.py does); a real
 Review again → Finish → apply is in the real-run tests of the builder report.
 """
-import os, sys, json, time, shutil, signal, threading, subprocess, urllib.request, urllib.parse
+import os, re, sys, json, time, shutil, signal, threading, subprocess, urllib.request, urllib.parse
 import pytest
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # pipeline/
@@ -1008,6 +1008,35 @@ def test_last_polish():
     assert '<th scope="col">Type</th>' in out and '<th scope="col">Kind</th>' not in out
     assert '<li class="met"><span class="mark" aria-hidden="true">✓</span>' in src('report_html.py')
 
+REVIEW_DOCS = ['../docs/' + f for f in sorted(os.listdir(os.path.join(HERE, '../docs'))) if f.startswith('review-') and f != 'review-and-ship.md']
+
+def doc_anchors(md):
+    """The #anchors the docs site gives a page's headings (lowercase, punctuation dropped, spaces to -; a repeat gets -1)."""
+    out, seen, fence = [], {}, False
+    for ln in src(md).split('\n'):
+        if ln.startswith('```'):
+            fence = not fence
+        m = None if fence else re.match(r'#{1,6} (.*)$', ln)
+        if m:
+            a = re.sub(r'[^\w\- ]', '', m.group(1).strip().lower()).replace(' ', '-')
+            out.append('%s-%d' % (a, seen[a]) if a in seen else a)
+            seen[a] = seen.get(a, 0) + 1
+    return out
+
+def test_links_to_the_docs_site_land_on_a_section():
+    """Every link from the pages to the docs site names a page in docs/ and a heading on it (#115 split the long pages,
+    and a static site can't redirect an anchor). The review page's "How to fix it by hand" is pinned to its new page."""
+    site = re.compile(r'https://pdf-accessibility-remediation\.github\.io/([\w-]+)\.html(?:#([\w-]+))?')
+    found = []
+    for d in ('.', 'lib', 'review', 'webapp'):
+        for f in sorted(os.listdir(os.path.join(HERE, d))):
+            if f.endswith(('.py', '.html', '.js', '.sh')):
+                found += [(d + '/' + f,) + m.groups() for m in site.finditer(src(d + '/' + f))]
+    assert ('review/page.html', 'review-reading-order', 'fixing-the-reading-order-by-hand') in found
+    for where, page, anchor in found:
+        assert os.path.exists(os.path.join(HERE, '../docs', page + '.md')), (where, page)
+        assert anchor is None or anchor in doc_anchors('../docs/' + page + '.md'), (where, page, anchor)
+
 def test_review_14_and_the_last_pass():
     """Review 14: gaps in the Finish dialog with their Add links, and a count beside the save status (L1); no Save
     button named anywhere (L2); leaving with unsaved changes asks first, and the last edits go as the page closes when a
@@ -1016,10 +1045,10 @@ def test_review_14_and_the_last_pass():
     page, js, srv = src('review/page.html'), src('webapp/panel.js'), src('review/server.py')
     assert "gp.map(g => esc(g.what) + addLink(g))" in page and 'id="checkLine" class="check-line" role="status"' in page and 'gotCheck(b, at)' in page
     assert "if (ad) { e.preventDefault(); toAdd = [ad.dataset.addKind, ad.dataset.addTarget]; dlg.close(); return; }" in page
-    assert 'after each Save' not in srv and '(Save, Keep' not in srv and 'Save message' not in src('../docs/review-step.md') and 'Save does not know' not in src('../docs/review-step.md')
+    assert 'after each Save' not in srv and '(Save, Keep' not in srv and not any('Save message' in src(f) or 'Save does not know' in src(f) for f in REVIEW_DOCS)
     assert "const unsaved = () => (dirty || saving) && !finished && DATA.mode !== 'ocr';" in page
     assert "addEventListener('beforeunload', e => { if (unsaved())" in page and 'if (body.length > 60000) return;' in page
-    assert '64 KiB' in src('../docs/review-step.md')
+    assert '64 KiB' in src('../docs/review-page.md')
     assert '.ship li .mark { position: absolute; left: -20px; top: 0; width: 20px; height: 1.5em; display: flex; align-items: center; justify-content: center; color: var(--ink); }' in H.CSS
     assert 'padding: 9px 14px 11px' in H.CSS
     assert 'OCR review page' not in js and 'Open the OCR Text Review Page' in js and 'OCR review page' not in page

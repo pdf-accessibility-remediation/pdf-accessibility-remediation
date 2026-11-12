@@ -1185,8 +1185,8 @@ def main():
     if os.path.exists(PDF_OUT): os.remove(PDF_OUT)
     # ---- open
     try: pdf = pikepdf.open(SRC)
-    except pikepdf.PasswordError: return stop('stopped', 'the PDF needs a password to open; a person must supply an unlocked copy', 3)
-    except Exception as e: return stop('failed', f'the PDF could not be opened ({str(e)[:120]})', 1)
+    except pikepdf.PasswordError: return stop('stopped', support.LOCKED, 3)      # the same words as audit.py / apply.py
+    except Exception as e: return stop('failed', support.cannot_open(e), 1)
     rec['original']['pages'] = len(pdf.pages); rec['original']['encrypted'] = pdf.is_encrypted
     if '/PageLabels' in pdf.Root:
         try: page_labels.update({i: str(pg.label) for i, pg in enumerate(pdf.pages, 1)})
@@ -1559,7 +1559,7 @@ def main():
                     flag('Vertical text likely', f'OCR_LANG={ocr_lang} has no _vert pack, but these pages read better with one.' + vhint, vert)
                 if cjk_pages and not (mode == 'sample' and not PLAN_ONLY):   # a full run with a sample: listed from the OCR text
                     flag('CJK OCR: needs a person', f'these pages hold CJK text{part}, OCR\'d with OCR_LANG={ocr_lang}: CJK OCR is often wrong '
-                         '(sojourners\' glossary: many entries junk) and multi-column CJK lists may be read across the columns; a person '
+                         '(on an earlier test book\'s glossary, many entries were junk) and multi-column CJK lists may be read across the columns; a person '
                          'checks the text and its reading order', cjk_pages)
         if rec.get('spreads'):                           # 6.1-6.4: the tag tree reads a spread half by half
             vt = ((rec.get('cjk_probe') or {}).get('vertical_trial') or {}).get('vertical_pages')
