@@ -1,6 +1,7 @@
 ---
 title: The home page (new runs and batches)
-nav_order: 3.55
+parent: Review and ship
+nav_order: 1
 ---
 
 # The home page: new runs and batches from the browser

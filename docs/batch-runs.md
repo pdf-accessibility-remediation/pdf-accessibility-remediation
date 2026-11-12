@@ -1,6 +1,7 @@
 ---
 title: Batch runs
-nav_order: 5
+parent: Get started
+nav_order: 3
 ---
 
 # Batch runs

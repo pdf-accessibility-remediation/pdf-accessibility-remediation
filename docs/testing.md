@@ -1,6 +1,7 @@
 ---
 title: Testing
-nav_order: 12.5
+parent: For developers
+nav_order: 1
 ---
 
 # Testing
@@ -263,3 +264,5 @@ When you write or change a page:
 - Don't cite the sponsor checklist's step numbers: say what the step does. Record coverage in `notes/checklist-coverage.md` instead.
 - Name the open-access sample books in `samples/README.md` freely. Don't name the old non-open-source samples: for a measurement made on one, say "an earlier test book". Published works used as test material may be named under "For developers" when a result needs them (as in [OCR words](ocr-words.md#results-on-test-books)).
 - Add a term the pages use without explaining it to the [Glossary](glossary.md).
+- Give a new page a `parent:` in its front matter: one of `Get started`, `Review and ship`, `How it works` or `For developers` (#112). Its `nav_order` is a whole number within that group. Add it to the group page's list and to "Where to go next" in [Overview](index.md#where-to-go-next) too. A page without a parent shows at the top level of the sidebar, beside Troubleshooting and Glossary.
+- The pipeline diagram is a short text diagram in a code block: each step with a few words beside it, and lines of 46 characters or less so it fits a phone screen. The full explanations belong on the docs pages, not in the diagram. It is in both `README.md` and [Overview](index.md#how-it-works): change the two together so they stay identical.

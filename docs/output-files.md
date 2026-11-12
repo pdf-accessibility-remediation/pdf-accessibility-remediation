@@ -1,6 +1,7 @@
 ---
 title: Output files
-nav_order: 7
+parent: How it works
+nav_order: 5
 ---
 
 # What a run leaves in `runs/<name>/<run-label>/`

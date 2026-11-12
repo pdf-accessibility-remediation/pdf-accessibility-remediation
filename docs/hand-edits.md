@@ -1,6 +1,7 @@
 ---
 title: Editing the PDF by hand
-nav_order: 3.8
+parent: Review and ship
+nav_order: 4
 ---
 
 # Editing the PDF by hand and bringing it back

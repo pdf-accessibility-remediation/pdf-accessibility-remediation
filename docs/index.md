@@ -15,32 +15,24 @@ Two steps can cost money: the AI's work order (`decide.py`) and, for scanned pag
 
 ```
 original.pdf
-   │
-   ▼
-intake.py*      OCR and automatic tagging (untagged PDFs only; local tools, free)
-   │
-   ▼
-audit.py        a summary of the PDF for the AI, and veraPDF on the original
-   │
-   ▼
-decide.py       the AI returns the work order (paid)
-   │
-   ▼
-read_pages.py   the AI reads scanned Hawaiian pages whole (paid; only when there are such pages)
-   │
-   ▼
-review step     a reviewer approves or changes each decision (optional: REVIEW=1)
-   │
-   ▼
-apply.py        carries out the work order on a copy
-   │
-   ▼
-verify.py       veraPDF on the result, and checks that pages and text still match
-   │
-   ▼
-report.py       original_remediated.pdf, review.md, review.html, record.json
+   ↓
+intake.py*      OCR and tagging
+   ↓
+audit.py        a summary for the AI
+   ↓
+decide.py       the AI's work order (paid)
+   ↓
+read_pages.py   reads Hawaiian pages (paid)
+   ↓
+review step     a reviewer checks (optional)
+   ↓
+apply.py        makes the fixes on a copy
+   ↓
+verify.py       checks the result
+   ↓
+report.py       the PDF and the reports
 
-* Tagged PDFs skip intake.py.
+* untagged PDFs only
 ```
 
 **Untagged PDFs** first go through `intake.py`. It uses local tools to add text by OCR where pages have none, then tags the PDF automatically, with checks after each step. Intake makes no AI request. See [Intake: untagged PDFs](intake.md).
@@ -53,25 +45,29 @@ The pipeline checks the PDF with veraPDF's WCAG 2.2 machine profile, which inclu
 
 ## Where to go next
 
-**Start**
+The sidebar groups these pages the same way.
+
+**[Get started](get-started.md)**
 - [Setup](setup.md): install Python, veraPDF and the intake tools, and add your OpenRouter key.
 - [Running](running.md): run one PDF from the terminal, step by step.
-
-**Review and ship**
-- [Reviewing the work order](review-step.md): check the AI's decisions before they are applied.
-- [The home page](home.md) and [The app](app.md): start runs and review them in the browser.
-- [Accessibility evaluation and release](release.md): what "ready to ship" means and how a PDF is released.
-- [Editing the PDF by hand](hand-edits.md): fix something in Acrobat and bring the PDF back.
-
-**Reference**
-- [Options](options.md): every setting you can put before the command, and what a run may cost.
 - [Batch runs](batch-runs.md): run a folder of PDFs.
+- [Options](options.md): every setting you can put before the command, and what a run may cost.
 - [Models](models.md): choose which AI model to use.
+
+**[Review and ship](review-and-ship.md)**
+- [The home page](home.md) and [The app](app.md): start runs and review them in the browser.
+- [Reviewing the work order](review-step.md): check the AI's decisions before they are applied.
+- [Editing the PDF by hand](hand-edits.md): fix something in Acrobat and bring the PDF back.
+- [Accessibility evaluation and release](release.md): what "ready to ship" means and how a PDF is released.
+
+**[How it works](how-it-works.md)**
+- [Intake](intake.md), [OCR words](ocr-words.md), [Work order](work-order.md) and [Verification with veraPDF](verapdf.md): how each part works.
 - [Output files](output-files.md): what a run leaves behind.
-- [Intake](intake.md), [OCR words](ocr-words.md), [Verification with veraPDF](verapdf.md) and [Work order](work-order.md): how each part works.
+
+**Help**
 - [Troubleshooting](troubleshooting.md): what an error means and what to do.
 - [Glossary](glossary.md): the terms these pages use.
 
-**Developers**
+**[For developers](developers.md)**
 - [Testing](testing.md): the unit tests, the regression test and the checks in CI.
 - [Files](files.md): what each script and module does.

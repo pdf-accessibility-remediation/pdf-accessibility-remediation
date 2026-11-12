@@ -1,6 +1,7 @@
 ---
 title: Setup
-nav_order: 2
+parent: Get started
+nav_order: 1
 ---
 
 # Setup (once)

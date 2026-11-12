@@ -1,6 +1,7 @@
 ---
 title: Accessibility evaluation and release
-nav_order: 3.7
+parent: Review and ship
+nav_order: 5
 ---
 
 # Accessibility evaluation, status and release

@@ -1,6 +1,7 @@
 ---
 title: Running
-nav_order: 3
+parent: Get started
+nav_order: 2
 ---
 
 # Running

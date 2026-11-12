@@ -1,6 +1,7 @@
 ---
 title: Work order
-nav_order: 11
+parent: How it works
+nav_order: 3
 ---
 
 # Work order
