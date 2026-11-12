@@ -175,9 +175,11 @@ def test_home_page_sits_in_the_bar_of_three_pages(app):
     assert 'aria-label="App"' not in page and '>Home Page<' not in page and 'pp-appbar-gap' not in page   # panel.js draws it in the bar
     assert W.SKIP + '<header>' in page
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
-    assert ('Back to the Current Result</a> <span id="pp-vact"></span>\' +\n    \'<a class="pp-btn" id="pp-vhome" href="/">Home Page</a></p>\'') in js
+    assert ('Back to the Current Result</a> <span id="pp-vact"></span> \' +\n    \'<a class="pp-btn" id="pp-vhome" href="/">Home Page</a></p>\'') in js   # a space before each
     css = open(os.path.join(HERE, 'webapp', 'panel.css'), encoding='utf-8').read()
     assert 'pp-appbar-gap' not in css and '@media (min-width: 601px) { #pp-vback { margin-left: 3px; } }' in css
+    assert '@media (min-width: 601px) { #pp-vreview, #pp-vhome { margin-left: 9px; } }' in css   # gaps equal, 3 px less (Patrick)
+    assert '@media (min-width: 601px) { .mc-nav a.pp-btn[href="/"] { margin-left: -3px; } }' in css   # the evaluation page's, 3 px closer
     text = W.with_appbar('<body>' + W.SKIP + '<main><p>a note: data-appbar="bar"</p></main></body>')        # escaped book text
     assert 'aria-label="App"' in text
 
@@ -261,7 +263,7 @@ def test_a_job_recorded_before_the_wording_changed_reads_the_new_way():
 
 def test_the_home_page_button_moves_on_the_run_page_only():
     css = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'webapp', 'panel.css'), encoding='utf-8').read()
-    assert '.pp-run-hd .pp-appbar { position: relative; left: -2px; }' in css
+    assert '.pp-run-hd .pp-appbar { position: relative; left: -4px; }' in css   # 2 px more (Patrick, 2026-11-11)
 
 def test_run_details_in_plain_words(setup):
     """Q6: Run Name, pages, when it ran, the AI by its plain name and the AI cost with the max estimated cost; a saved

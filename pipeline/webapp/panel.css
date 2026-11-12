@@ -18,6 +18,10 @@
 @media (min-width: 601px) { #pp-vback { margin-left: 3px; } }   /* it and "Review Again …" 3 px right of "You're viewing …"
    (Patrick, 2026-11-11); not on a narrow screen, where each button has its own full-width line */
 #pp-vhome { margin-left: 12px; }    /* "Home Page" after them, as far apart as they are */
+@media (min-width: 601px) { #pp-vreview, #pp-vhome { margin-left: 9px; } }   /* Patrick, 2026-11-11: both gaps 3 px less and equal:
+   a space and 9 px each (panel.js puts a space before "Home Page" too), so they match in any font */
+@media (min-width: 601px) { .mc-nav a.pp-btn[href="/"] { margin-left: -3px; } }   /* the evaluation page's "Home Page", 3 px closer
+   to "Back to the Run Page" (Patrick, 2026-11-11); not on a narrow screen, where each button has its own full-width line */
 /* Patrick, 2026-11-11: on the evaluation page, a previous result's dashboard and review.md in a page, "Home Page" is in the
    page's own bar, and nothing takes the app bar's place above the title (review 18 R1) */
 /* review.md's bar is a line of links: its "Home Page" button takes no more height than the line, so the bar keeps its own */
@@ -312,7 +316,7 @@ header.nr-head { padding-top: 18px; } header.nr-head h1 { margin: 0 0 10px; }
 .nr-src .pp-appbar { margin: 0; padding: 0; max-width: none; }
 /* S7: New Batch's "Home Page" 3 px left and 2 px down */
 .nb-page .pp-hd-top .pp-appbar { position: relative; left: -3px; top: 2px; }
-.pp-run-hd .pp-appbar { position: relative; left: -2px; }   /* the run page's header only (Patrick's test): not the batch page or a batch PDF's */
+.pp-run-hd .pp-appbar { position: relative; left: -4px; }   /* the run page's header only (Patrick's test): not the batch page or a batch PDF's */
 /* T2 (Patrick, 2026-11-07): the batch page's "This Batch" panel joins its header, and the side list when it is shown */
 #main > #bt-panel { margin-top: 0; border-top-width: 0; border-radius: 0; }
 @media (min-width: 48em) {

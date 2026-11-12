@@ -154,7 +154,7 @@ if (vbox) {
   const RUN = vbox.dataset.run, SID = vbox.dataset.session, API = '/api/run/' + encRun(RUN), BASE = '/run/' + encRun(RUN) + '/';
   const what = SID === 'ai' ? 'the result applied without review' : 'a previous result (' + sn(SID) + ')';
   vbox.innerHTML = '<nav class="pp pp-bar" aria-label="Previous result"><p><b>You\'re viewing ' + esc(what) + '.</b> ' +
-    '<a class="pp-btn" id="pp-vback" href="' + BASE + '">Back to the Current Result</a> <span id="pp-vact"></span>' +
+    '<a class="pp-btn" id="pp-vback" href="' + BASE + '">Back to the Current Result</a> <span id="pp-vact"></span> ' +
     '<a class="pp-btn" id="pp-vhome" href="/">Home Page</a></p>' +   // after them, not above the title (Patrick, 2026-11-11)
     '<div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div></nav><dialog class="pp-dlg" id="pp-dlg" aria-labelledby="pp-dlg-h"></dialog>';
   vbox.addEventListener('click', e => {                          // dismiss: the message goes, focus to the bar's first link
