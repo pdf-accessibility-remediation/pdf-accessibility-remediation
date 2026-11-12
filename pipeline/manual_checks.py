@@ -1,4 +1,4 @@
-"""manual_checks.py: a finished run's manual checks from the terminal (issue #38; docs/release.md). The app's Manual
+"""manual_checks.py: a finished run's manual checks from the terminal (issue #38; docs/evaluation.md). The app's Manual
 Checks page (planned) records through the same code (review/manual.py).
 
     python3 manual_checks.py <run> --show                       the status, "Ready to ship?", the version and every check

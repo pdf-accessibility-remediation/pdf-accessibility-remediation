@@ -11,7 +11,7 @@ replaced (a PDF moved to the Trash is moved, never deleted).
 
 The display name (#45, Q6): the PDF's own Title when it looks like a title (not empty, not "untitled", not a file or
 program name), else the file name without ".pdf", with "_" and "-" read as spaces. Wherever a book is named, the page also
-shows "Source PDF: <file name>" under it (the one file name the pages show; docs/app.md). Titles and page counts
+shows "Source PDF: <file name>" under it (the one file name the pages show; docs/home-workspace.md). Titles and page counts
 are read once per sha256 into runs/.app/books-cache.json. Reading an untrusted PDF never fails the page: any error falls
 back to the file name, and a password-locked PDF is listed as locked.
 """

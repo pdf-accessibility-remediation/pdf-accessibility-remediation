@@ -186,13 +186,13 @@ Money spent by previous attempts in the folder is shown the same way.
 | `FIGURE_MAX_TOKENS=` | The same for figure requests |
 | `FIGURE_RETRY_MAX_USD`, `FIGURE_RETRY_BOOK_MAX_USD` | The real limits for a figure request's doubled retry. The app passes them; in the terminal they default to `MAX_USD` and `BOOK_MAX_USD` |
 | `FIGURE_PROBE=20` | Test only, terminal only: also re-sends 20 figures the first request answered, to compare the two answers. Recorded in `record.json` (`run.passes`, `overlap`), never used, counted in the cost |
-| `APPLY_DRAFT=1` | Set by the review page's **Build a Draft PDF** for its own run of `apply.py`, not by hand: marks the output as a draft (a RemediationDraft document property). See [Checking a draft PDF while you review](review-step.md#checking-a-draft-pdf-while-you-review) |
+| `APPLY_DRAFT=1` | Set by the review page's **Build a Draft PDF** for its own run of `apply.py`, not by hand: marks the output as a draft (a RemediationDraft document property). See [Checking a draft PDF while you review](review-finish.md#checking-a-draft-pdf-while-you-review) |
 | `ALLOW_PDF20=1` | Lets a PDF 2.0 file (or one with namespaced tags) through instead of stopping it. Only for building PDF 2.0 support; never on real work (see [Not supported yet: PDF 2.0](troubleshooting.md#not-supported-yet-pdf-20)) |
 | `COST_HISTORY=/path` | Writes the cost history somewhere other than `runs/.cost-history.jsonl` |
 
 ### Where the limits live
 
-`lib/costs.py` holds the limit defaults in one place (`DEFAULT_LIMITS`). The app and the terminal read them from there; the app's `webapp/settings.json` no longer lists them (see [The app](app.md)).
+`lib/costs.py` holds the limit defaults in one place (`DEFAULT_LIMITS`). The app and the terminal read them from there; the app's `webapp/settings.json` no longer lists them (see [Settings](app-setup.md#settings)).
 
 ### Page readings in the app
 

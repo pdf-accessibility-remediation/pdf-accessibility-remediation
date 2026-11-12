@@ -175,12 +175,12 @@ How much text the tag tree reaches is recorded.
   - spreads ("One printed page per PDF page": CHECK, with how many pages were reordered)
   - word breaks
   - the OCR, with any low-resolution, language, unmapped-character or left empty-text issue
-  - **"OCR text reviewed by a person"**, which stays CHECK until someone records "approved", on the review page's OCR Text section or with `review_ocr.py`. A verdict can also be "sent to a language reader": see [Sign-off](review-step.md#sign-off-when-a-pdf-is-ready-to-ship).
+  - **"OCR text reviewed by a person"**, which stays CHECK until someone records "approved", on the review page's OCR Text section or with `review_ocr.py`. A verdict can also be "sent to a language reader": see [Sign-off](review-finish.md#sign-off-when-a-pdf-is-ready-to-ship).
 - An "Intake: OCR and auto-tagging" section with the per-page text-layer scores (a page that was not scored shows why, and which page replaced it), the OCR'd pages, and every flag.
 
 ## Asking for the OCR language
 
-The app asks for the language of scanned pages only when it matters ([The home page](home.md#language-of-the-scanned-pages); #45, part 1 of #37). `python3 intake.py <pdf> <out_dir> --languages` runs only the page triage and the script detection of step 3, and writes `<out_dir>/languages.json`. It does no text-layer test, no CJK check and no OCR, so it takes seconds.
+The app asks for the language of scanned pages only when it matters ([The home page](home-runs.md#language-of-the-scanned-pages); #45, part 1 of #37). `python3 intake.py <pdf> <out_dir> --languages` runs only the page triage and the script detection of step 3, and writes `<out_dir>/languages.json`. It does no text-layer test, no CJK check and no OCR, so it takes seconds.
 
 **The language matters (asked):**
 - Japanese kana (suggests `jpn+eng`)

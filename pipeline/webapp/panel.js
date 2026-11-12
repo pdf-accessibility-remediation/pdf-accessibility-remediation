@@ -886,7 +886,7 @@ function banner(id, text) {                                     // one banner pe
 
 // When a Spend's run stops for review (03 §14, Patrick 2026-11-05): focus moves to "Open the Review Page" only when focus is
 // still where the panel put it after the Spend click (by its id: the card is redrawn while polling) and no key or pointer
-// has been pressed since; otherwise the page announces it and shows the button (docs/app.md: focus stays where it is).
+// has been pressed since; otherwise the page announces it and shows the button (docs/app-run-page.md: focus stays where it is).
 function landed(s, focusWas) {
   if (!land || land.done) return;
   if (s.mode === 'waiting' && s.waiting && !s.waiting.reviewed) {
