@@ -157,8 +157,8 @@ def _sha(t): return f"'sha256-{base64.b64encode(hashlib.sha256(t.encode('utf-8')
 CALL_TEXTS = {f'Pdfrem.{n}()' for n in HM.CALLS}           # the app's own calls (home.py call()), fixed text
 
 def csp(page):
-    """An HTML page's policy: no framing, and scripts only from the app itself, the app's own calls (home.py call(): a
-    fixed set of texts, 15) by their sha256, plus the page's one other inline script by its sha256 (review.html and
+    """An HTML page's policy: no framing, and scripts only from the app itself, the app's own calls (home.py call():
+    nine fixed texts (round 15)) by their sha256, plus the page's one other inline script by its sha256 (review.html and
     summary.html have exactly one; a JSON data block is not a script). A page with any other count of other inline
     scripts gets none of those allowed. A javascript: link in the report's text never runs."""
     p = Scripts(); p.feed(page); p.close()
