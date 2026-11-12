@@ -1559,7 +1559,7 @@ def main():
                     flag('Vertical text likely', f'OCR_LANG={ocr_lang} has no _vert pack, but these pages read better with one.' + vhint, vert)
                 if cjk_pages and not (mode == 'sample' and not PLAN_ONLY):   # a full run with a sample: listed from the OCR text
                     flag('CJK OCR: needs a person', f'these pages hold CJK text{part}, OCR\'d with OCR_LANG={ocr_lang}: CJK OCR is often wrong '
-                         '(sojourners\' glossary: many entries junk) and multi-column CJK lists may be read across the columns; a person '
+                         '(on an earlier test book\'s glossary, many entries were junk) and multi-column CJK lists may be read across the columns; a person '
                          'checks the text and its reading order', cjk_pages)
         if rec.get('spreads'):                           # 6.1-6.4: the tag tree reads a spread half by half
             vt = ((rec.get('cjk_probe') or {}).get('vertical_trial') or {}).get('vertical_pages')
