@@ -154,7 +154,9 @@ def json_block(obj):
 SCHEME = re.compile(r'^[A-Za-z][A-Za-z0-9+.-]*:')
 def safe_href(u):
     """A link review.md's text may make live: "#…", http:, https: or a relative path. Any other scheme (javascript:,
-    data:, …) is refused. u is the escaped text, so it is unescaped first, as the browser reads the attribute."""
+    data:, …) is refused. u is the link's address as inline() found it (review.md's text escaped once), so it is unescaped
+    first: the check reads the address as written in review.md. The href attribute is that text escaped again, so the
+    browser reads it with the same scheme, or none: escaping only adds "&", which can't be part of a scheme (review 18 L1)."""
     raw = html.unescape(u)
     return raw.startswith('#') or raw.lower().startswith(('http://', 'https://')) or not SCHEME.match(raw)
 

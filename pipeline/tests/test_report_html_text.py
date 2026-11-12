@@ -5,7 +5,8 @@ http:, https: and relative paths.
 
     python -m pytest tests/test_report_html_text.py -q
 """
-import os, re, sys, json
+import os, re, sys, json, html
+import pytest
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 import report_html as H  # noqa: E402
@@ -38,3 +39,22 @@ def test_only_safe_links_in_review_md_become_live(tmp_path):
     assert not re.search(r'href="\s*(?:javascript|data|foo):', page, re.I)
     for u in ('#x', 'http://a', 'HTTPS://a', 'review.md', 'a/b:c', './x:y', 'r%C3%A9vision.md'): assert H.safe_href(u), u
     for u in ('javascript:x', 'JavaScript:x', 'data:x', 'vbscript:x', 'foo:bar', 'mailto:a@b'): assert not H.safe_href(u), u
+
+def browser_scheme(attr):
+    """The scheme a browser reads in an href attribute as written in the page: the attribute's character references
+    decoded once, leading and trailing spaces and control characters dropped, tabs and line ends removed (the URL
+    parser's rules), then an ASCII letter followed by letters, digits, "+", "-" or "." up to ":"."""
+    v = re.sub(r'[\t\n\r]', '', html.unescape(attr).strip(''.join(map(chr, range(33)))))   # C0 controls and space
+    m = H.SCHEME.match(v)
+    return m.group(0)[:-1].lower() if m else None
+
+@pytest.mark.parametrize('addr', ['java&#115;cript:alert(1)', 'javascript&colon;alert(1)', ' javascript:alert(1)',
+                                  'javascript:alert(1)', 'JaVaScRiPt:alert(1)'])
+def test_no_link_a_browser_reads_with_another_scheme(addr):
+    """review 18 L1: whatever inline() writes for [x](<addr>), no href in it is read by a browser as javascript: or any
+    scheme but http(s). The entity forms are live links today only because the attribute is the text escaped twice (a
+    relative path to the browser); if the attribute were ever written from the unescaped text, this fails."""
+    out = H.inline(f'See [x]({addr}) here.', links=False)
+    for attr in re.findall(r'href="([^"]*)"', out):
+        assert browser_scheme(attr) in (None, 'http', 'https'), (addr, attr)
+    assert browser_scheme('javascript&#58;x') == 'javascript' and browser_scheme(' \x01java\tscript:x') == 'javascript'   # the helper itself
