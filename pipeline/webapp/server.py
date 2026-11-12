@@ -190,12 +190,19 @@ def with_panel(page, run, current=None, waiting=False, first=None):
     else: page = after_body(page, box)
     return with_strip(page, run)
 
-DOCTYPE = re.compile(r'\s*<!doctype[^>]*>', re.I)
+def doctype_end(page):
+    """Where a doctype at the very start of the page ends (after its ">"; leading white space allowed), else 0. Plain
+    string steps, so a page of any size is read once (CodeQL py/polynomial-redos on the regex this replaces)."""
+    s = page.lstrip(); k = len(page) - len(s)
+    if s[:9].lower() != '<!doctype': return 0
+    j = page.find('>', k + 9)
+    return j + 1 if j >= 0 else 0
+
 def in_head(page, head):
     """`head` added at the end of the page's head; a page with none gets it right after its doctype (never before it:
     anything before the doctype puts the browser in quirks mode), else first."""
     i = page.find('</head>')
-    if i < 0: m = DOCTYPE.match(page); i = m.end() if m else 0
+    if i < 0: i = doctype_end(page)
     return page[:i] + head + page[i:]
 
 SHIP_CARD = 'aria-labelledby="ship-h"'

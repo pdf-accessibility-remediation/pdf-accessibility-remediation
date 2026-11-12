@@ -63,7 +63,7 @@ def _cut(page):
     return min(i for i in (page.find(t) for t in ('<body', '<header', '<p', '<a ', '<div', '<main', '<nav')) if i >= 0)
 def head(page): return page[:_cut(page)]
 def body(page): return page[_cut(page):]
-def scripts(page): return re.findall(r'<script\b([^>]*)>', page)
+def scripts(page): return re.findall(r'<script\b([^>]*)>', page, re.I)
 
 def test_scripts_that_draw_are_plain_in_the_head_and_called_right_after_what_they_fill(app):
     """Each script that draws part of a first view (panel.js, batch.js, shared.js, home.js, manual.js) is a plain blocking
@@ -130,7 +130,7 @@ def test_the_gap_above_ready_to_ship_skips_the_panels_call(app):
     (app['R'] / 'review.html').write_text(DOC)
     page = W_unver(get(app['port'], '/run/book/r1/')[1])
     rest = page[page.index('</div>', page.index('<div id="pdfrem-panel"')) + len('</div>'):]
-    rest = re.sub(r'\s*<script\b[^>]*>.*?</script>\s*', '', rest, flags=re.S)
+    rest = re.sub(r'\s*<script\b[^>]*>.*?</script\b[^>]*>\s*', '', rest, flags=re.S | re.I)
     assert rest.startswith('<main'), rest[:80]
 
 def test_every_call_the_pages_make_is_defined_and_allowed():

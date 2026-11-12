@@ -107,3 +107,14 @@ def test_trash_js_names_what_a_batch_move_took():
     assert "gone.slice(0, 3).map(n => 'trashed=' + encodeURIComponent(n))" in t and "['trashed_more=' + (gone.length - 3)]" in t
     b = open(os.path.join(PIPE, 'webapp', 'batch.js'), encoding='utf-8').read()
     assert "$('bt-trashed')" in b and "msg(gone.textContent, true, true)" in b
+
+def test_the_doctype_is_found_with_plain_string_steps():
+    """in_head()'s doctype, found without a regex (CodeQL py/polynomial-redos): the same place as `\\s*<!doctype[^>]*>`
+    matched at the start, and a long page with no ">" is read once."""
+    import re, time
+    old = re.compile(r'\s*<!doctype[^>]*>', re.I)
+    for c in ('<!DOCTYPE html><p>x', '  \n<!doctype html>\n<p>', '<p>no', '<!doctype html', '', '   ', '<!DOCTYPEhtml>x',
+              ' <!doctype x>y', '<!-- c --><!doctype html>'):
+        m = old.match(c)
+        assert W.doctype_end(c) == (m.end() if m else 0), c
+    t = time.perf_counter(); W.doctype_end(' ' * 200000 + '<!doctype' * 20000); assert time.perf_counter() - t < 0.5
