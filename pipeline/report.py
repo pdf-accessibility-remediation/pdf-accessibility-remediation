@@ -285,7 +285,7 @@ checks = [
     ('Every page looks the same as the original', ok(ver.get('pixel_pages_differing') == []), f'{len(ver.get("pixel_pages_differing") or [])} pages differ'),
     ('Published text unchanged', ok(ver.get('text_pages_changed') == []), f'{len(ver.get("text_pages_changed") or [])} pages changed'),
     ('All content tagged or marked as decoration', ok(ver.get('untagged_chars') == 0 and not uo.get('total')),
-     f'{ver["untagged_chars"] if ver.get("untagged_chars") is not None else "not counted"} untagged characters · {uo["total"] if uo.get("total") is not None else "not counted"} untagged objects'
+     f'{ver["untagged_chars"] if ver.get("untagged_chars") is not None else "not counted"} untagged characters · {uo["total"] if uo.get("total") is not None else "not counted"} untagged object{"" if uo.get("total") == 1 else "s"}'
      + (' (' + ', '.join(f'{v} {k}' for k, v in (uo.get('by_kind') or {}).items()) + ')' if uo.get('total') else '')),
     ('Untagged paths: none left', ok(n_paths == 0),
      f'{n_paths} untagged paths' + (f' · {pl["artifacted"]} rules, borders and lines marked as decoration by this run' if pl.get('artifacted') else '')
@@ -810,8 +810,8 @@ if pl.get('artifacted') or pl.get('left'):
         L += [f'- {c} paths: {w}' + (f' ({pgs((pl.get("left_pages") or {}).get(w, []))})' if (pl.get('left_pages') or {}).get(w) else '')
               for w, c in pl['left'].items()] + ['']
 if uo.get('total'):
-    n += 1; L += [f'### {n}. Untagged content ({uo["total"]} objects)', '',
-                  'Drawn content that is neither tagged nor marked as decoration (a form XObject counts once). Not changed by the pipeline; '
+    n += 1; L += [f'### {n}. Untagged content ({uo["total"]} object{"" if uo["total"] == 1 else "s"})', '',
+                  'Drawn content that is neither tagged nor marked as decoration (content reused on several pages counts once). Not changed by the pipeline; '
                   'a person decides whether each is real content (tag it) or decoration (artifact it). Pages with the most:', '']
     L += [f'- {pg(p)}: ' + ', '.join(f'{v} {k}' for k, v in c.items()) for p, c in uo.get('top_pages') or []] + ['']
 ad = log.get('adopted') or []
@@ -1108,6 +1108,14 @@ try:
     import report_html
     report_html.review_html(R, record, md, PLAB)
 except Exception as e: print(f'note: review.html not written ({type(e).__name__}: {e})')
+
+# ------------------------------------------------------------------ the apply's moves, kept for the first Review Again (#93)
+# A run that applied the AI's own order has, in its apply log, what Review Again's trial run would find: kept as
+# _audit/dryrun.json (review/core.py keep_trial says why when it isn't), which the tidy below copies into reviews/_audit.
+try:
+    from review import core as RC
+    print(RC.keep_trial(R, A, PDF, INPUT or os.path.join(R, '_intake', 'intake.pdf'), from_record=FROM_RECORD is not None))
+except Exception as e: print(f'figure moves and section moves not kept for a later review: {type(e).__name__}')
 
 # ------------------------------------------------------------------ tidy
 if not KEEP:

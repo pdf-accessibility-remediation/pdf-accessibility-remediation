@@ -77,7 +77,7 @@ For any other model the estimate is approximate and is not a limit. The line pri
 
 At the review stop, the pipeline runs `apply.py` once as a trial. It works out which figures the executor moves, and whether it makes the AI's section move. It takes about as long as the apply step: about 2 minutes for a 250-page PDF.
 
-`REVIEW_DRYRUN=off` skips it; the review page then says the figure moves were not worked out. A later review reuses the saved trial run while nothing it depends on has changed. `REVIEW_DRYRUN=fresh` makes it again regardless.
+`REVIEW_DRYRUN=off` skips it; the review page then says the figure moves were not worked out. A later review reuses the saved trial run while nothing it depends on has changed. A run applied from the AI's own decisions (no review stop) keeps its apply's result the same way, so its first Review Again reuses that (#93). `REVIEW_DRYRUN=fresh` makes it again regardless.
 
 ### Page readings
 

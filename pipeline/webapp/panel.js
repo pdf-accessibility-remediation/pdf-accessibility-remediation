@@ -141,23 +141,30 @@ document.addEventListener('click', e => {
   t.scrollIntoView(); t.focus({ preventScroll: true }); history.replaceState(null, '', '#' + t.id);
 });
 
+// A JSON data block the page carries (the first answer, #93), read once and removed; null when there is none
+function readBlock(id) { const el = $(id); if (!el) return null; try { return JSON.parse(el.textContent); } catch (e) { return null; } finally { el.remove(); } }
+
 // ================================================================ a previous result: the bar
+// 15 (Patrick, 2026-11-11: page changes in one step): drawn by the page's own call right after the bar's place (the
+// server's Pdfrem.version()), from the page's first answer (pp-vfirst), so the bar and its "Review Again" come with the
+// page's first frame; without that answer it asks the app, as before
+function startVersion() {
 const vbox = $('pdfrem-version');
 if (vbox) {
   const RUN = vbox.dataset.run, SID = vbox.dataset.session, API = '/api/run/' + encRun(RUN), BASE = '/run/' + encRun(RUN) + '/';
   const what = SID === 'ai' ? 'the result applied without review' : 'a previous result (' + sn(SID) + ')';
   vbox.innerHTML = '<nav class="pp pp-bar" aria-label="Previous result"><p><b>You\'re viewing ' + esc(what) + '.</b> ' +
-    '<a class="pp-btn" href="' + BASE + '">Back to the Current Result</a> <span id="pp-vact"></span></p>' +
+    '<a class="pp-btn" id="pp-vback" href="' + BASE + '">Back to the Current Result</a> <span id="pp-vact"></span> ' +
+    '<a class="pp-btn" id="pp-vhome" href="/">Home Page</a></p>' +   // after them, not above the title (Patrick, 2026-11-11)
     '<div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div></nav><dialog class="pp-dlg" id="pp-dlg" aria-labelledby="pp-dlg-h"></dialog>';
   vbox.addEventListener('click', e => {                          // dismiss: the message goes, focus to the bar's first link
     if (!e.target.closest('button[data-act="dismiss"]')) return;
     showMsg($('pp-msg'), ''); vbox.querySelector('a').focus();
   });
   const label = SID === 'ai' ? 'Start Over from the AI\'s Decisions' : 'Review Again from This Session';
-  api(API).then(([s, st]) => {
-    if (s !== 200) return;
+  const drawAct = st => {
     const busy = st.live_review || st.lock || (st.jobs || []).some(j => j.status === 'queued' || j.status === 'running');
-    $('pp-vact').innerHTML = busy ? '· A job for this run is running or waiting: see the current result.' :
+    $('pp-vact').innerHTML = busy ? '<span class="pp-vbusy">· A job for this run is running or waiting: see the current result.</span>' :   // as far from both buttons as the button it replaces (review 20 L1)
       '<button type="button" id="pp-vreview">' + esc(label) + '</button>';
     const b = $('pp-vreview'); if (!b) return;
     b.addEventListener('click', async () => {
@@ -172,10 +179,17 @@ if (vbox) {
         showMsg(m, r.error || 'The app refused this', false, true);
       } catch (e) { showMsg(m, 'The app is not running. ' + START + ' Then try again.', false, true); }
     });
-  }).catch(() => {});
+  };
+  const vf = readBlock('pp-vfirst');
+  if (vf && vf.run) drawAct(vf.run); else api(API).then(([s, st]) => { if (s === 200) drawAct(st); }).catch(() => {});
+}
 }
 
 // ================================================================ the run page: the panel
+// 15: drawn by the page's own call right after the panel's place and its first answer (Pdfrem.panel()); the evaluation
+// strip, which sits after the "Ready to Ship?" card further down, by a second call right after its own place
+// (Pdfrem.strip()). This script itself is loaded in the head, so neither call waits for the network.
+function startPanel() {
 const box = $('pdfrem-panel'); if (!box) return;
 const RUN = box.dataset.run, API = '/api/run/' + encRun(RUN);
 const q = new URLSearchParams(location.search);
@@ -195,18 +209,13 @@ const WAITING = box.dataset.waiting === '1';                   // served before 
 let ocrSeen;                                                    // the OCR verdict's `recorded` when this page's report was read
 const seen = {};                                                // per job: the last step and status announced
 
-// D7: the panel keeps the height it had on the last page until its first draw, so the report below does not jump when
-// the person moves from PDF to PDF (sessionStorage: this tab only)
-const HKEY = 'pp-h:' + (WAITING ? 'w' : 'r');
-try { const h = +sessionStorage.getItem(HKEY); if (h > 0) box.style.minHeight = h + 'px'; } catch (e) {}
-let sized = false;
-function keepHeight() {
-  if (!sized) { sized = true; box.style.minHeight = ''; }
-  try { sessionStorage.setItem(HKEY, String(box.offsetHeight)); } catch (e) {}
-}
-addEventListener('pagehide', keepHeight);
+// #93 (Patrick's test of the app): the panel's first answer comes with the page (server.py panel_first): {run, setup}, so
+// Run Actions and the evaluation strip are drawn in this same step, with no "Loading…"; every later update is asked for.
+// Read once, then removed.
+let first = readBlock('pp-first');
+if (first && first.setup) setup = first.setup;
 box.innerHTML = '<section class="pp" aria-labelledby="pp-h"><h2 id="pp-h" tabindex="-1">Run Actions</h2>' +
-  '<div id="pp-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>' +
+  '<div id="pp-body">' + (first ? '' : '<p>Loading…</p>') + '</div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>' +
   '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section>' +
   '<dialog class="pp-dlg" id="pp-dlg" aria-labelledby="pp-dlg-h"></dialog>';
 const live = t => { const l = $('pp-live'); l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
@@ -452,10 +461,11 @@ function historyBlock(s) {
     '<th scope="col">Session</th><th scope="col">Status</th><th scope="col">Reviewer</th><th scope="col">Date</th><th scope="col">Started From</th>' +
     '<th scope="col">Changes from the AI</th><th scope="col">Set in This Session</th><th scope="col">Notes</th><th scope="col">Result</th><th scope="col">Action</th></tr></thead><tbody>' +
     // a session's name and notes are a person's own text: escaped, never Title Cased
+    // "Result": "Open", its name for a screen reader "Open the Previous Result (Session N)" (Patrick, 2026-11-11)
     rows.map(r => '<tr><th scope="row"><span class="pp-nw">' + esc(cap(r.label)) + (r.current ? ' (current)' : '') + '</span>' + (r.name ? '<span class="pp-name' + ([...r.name].length > 40 ? ' pp-long' : '') + '">' + esc(r.name) + '</span>' : '') + '</th><td>' + esc(r.status) + (r.summary_only ? ' (summary only)' : r.inferred ? ' (inferred)' : '') +
       '</td><td>' + esc(r.reviewer || 'not recorded') + '</td><td class="pp-nw">' + esc(r.date || r.started ? fmtDay(r.date || r.started) : 'not recorded') + '</td><td class="pp-nw">' + esc(/^session \d/.test(r.from_label) ? cap(r.from_label) : r.from_label) +
       '</td><td>' + esc(r.changes) + '</td><td>' + esc(r.since_start) + '</td><td>' +
-      (r.notes ? '<button type="button" class="pp-link" id="pp-notes-' + esc(r.id) + '" data-act="notes" data-id="' + esc(r.id) + '">Notes</button>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a class="pp-btn" href="' + esc(r.result) + '">Open the Previous Result</a>' : 'none') + (r.pdf_removed ? '<span class="pp-note"> · PDF removed</span>' : '') +
+      (r.notes ? '<button type="button" class="pp-link" id="pp-notes-' + esc(r.id) + '" data-act="notes" data-id="' + esc(r.id) + '">Notes</button>' : 'none') + '</td><td>' + (r.current ? 'this page' : r.result ? '<a class="pp-btn" href="' + esc(r.result) + '" aria-label="' + esc('Open the Previous Result (' + cap(r.label) + ')') + '">Open</a>' : 'none') + (r.pdf_removed ? '<span class="pp-note"> · PDF removed</span>' : '') +
       '</td><td>' + ((r.status === 'finished' || r.status === 'applied') && !s.live_review && !s.lock && !s.cleared ? '<button type="button" id="pp-from-' + esc(r.id) + '" data-act="review" data-from="' + esc(r.id) + '">' + esc(tc('Review again from ' + r.label)) + '</button>' : '') +
       '</td></tr>').join('') + '</tbody></table></div>';
   if (s.ai_result) h += '<p class="pp-row"><a class="pp-btn" href="' + esc(s.ai_result) + '">Open the Result Applied Without Review</a> <span class="pp-note">(kept with the run)</span></p>';
@@ -531,6 +541,7 @@ function dlForm(dd, hx) {
 }
 function renderStrip(s) {
   let sb = $('pdfrem-checks');
+  if (!sb && box.dataset.strip === 'card') return;               // its place, after the card, is not read yet: Pdfrem.strip() draws it
   if (!sb) { sb = document.createElement('div'); sb.id = 'pdfrem-checks'; sb.dataset.inPanel = '1'; box.querySelector('section.pp').appendChild(sb); }   // no card: in the panel
   const sel = $('pp-dlv'), chosen = sel ? sel.value : null;      // the picker keeps its choice when the strip is redrawn
   const h = stripBlock(s, sb.dataset.inPanel === '1'), keep = document.activeElement && sb.contains(document.activeElement) ? document.activeElement.id : null;
@@ -584,8 +595,8 @@ const usd = x => '$' + Number(x || 0).toFixed(2);
 function costLines(e) {                                          // #65 (costs in dollars and an expected cost): the figure people read first, then the ceiling
   const x = e.expected;                                          // no key (an estimate made before #65): no line; {none}: "Not Available Yet"
   return (x ? 'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet') + '<br>' : '') +
-    'Max Estimated Cost: ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + e.requests + ' AI requests' : '') +
-    (e.page_reads ? ', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + e.page_reads.pages + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '') +   // #49
+    'Max Estimated Cost: ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + esc(e.requests) + ' AI requests' : '') +
+    (e.page_reads ? ', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '') +   // #49
     (e.spent_before_usd ? ' · Counted Toward This PDF\'s Limit So Far: ' + usd(e.spent_before_usd) : '') +
     (e.credit_usd != null ? ' · Credit: ' + usd(e.credit_usd) : ' · Credit: Not Checked');
 }
@@ -854,10 +865,14 @@ function announce(s) {
 async function poll(force) {
   clearTimeout(timer);
   let s, b;
-  try { [s, b] = await api(API); }
-  catch (e) {                                                    // no answer at all: the app is not running
-    banner('pp-offline', 'The app is not running, so this page cannot start or follow jobs; jobs already running carry on. ' + START);
-    offline = true;
+  if (first && first.run) { [s, b] = [200, first.run]; first = null; }   // the page's own first answer: no wait
+  else {
+    first = null;
+    try { [s, b] = await api(API); }
+    catch (e) {                                                  // no answer at all: the app is not running
+      banner('pp-offline', 'The app is not running, so this page cannot start or follow jobs; jobs already running carry on. ' + START);
+      offline = true;
+    }
   }
   if (s !== undefined) {
     if (offline) { offline = false; banner('pp-offline', null); live('The app is running again.'); }
@@ -870,7 +885,6 @@ async function poll(force) {
       announce(b);
       followUp(b);
       if (force || JSON.stringify(before) !== JSON.stringify(b)) render();
-      if (!sized) keepHeight();
       landed(b, land && focusWas && !$(focusWas) && land.id === 'pp-cur' ? 'pp-cur' : focusWas);
     }
   }
@@ -923,9 +937,14 @@ function followUp(s) {
 }
 
 if (q.get('landed') === '1' || q.get('opening')) history.replaceState(null, '', location.pathname);
-api('/api/setup').then(([s, b]) => { if (s === 200) { setup = b; if (st) render(); } }).catch(() => {});
+if (!setup) api('/api/setup').then(([s, b]) => { if (s === 200) { setup = b; if (st) render(); } }).catch(() => {});
+window.Pdfrem.strip = () => { if (st && !WAITING) renderStrip(st); };   // as render() draws it
 poll(true).then(() => {
   if (q.get('landed') === '1') { const h = $('pp-cur'); if (h) h.focus(); }
   if (q.get('opening')) { const h = $('jh-' + q.get('opening')); if (h) h.focus(); }      // from a previous result's bar
 });
+}
+
+const P = window.Pdfrem = window.Pdfrem || {};
+P.panel = startPanel; P.version = startVersion; P.strip = P.strip || (() => {});
 })();

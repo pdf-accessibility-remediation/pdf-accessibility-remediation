@@ -145,13 +145,29 @@ def page_refs(text):
         out.update(range(a, b + 1) if 0 <= b - a <= 2000 else (a, b))
     return out
 
+def json_block(obj):
+    """JSON safe inside <script type="application/json">: <, > and & as \\u escapes (the app's own blocks do the same:
+    webapp/home.py first_answer), so no text in it can end the block or hide the report's script after it ("<!--" and a
+    later "<script" would). JSON.parse reads it back unchanged."""
+    return json.dumps(obj).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+
+SCHEME = re.compile(r'^[A-Za-z][A-Za-z0-9+.-]*:')
+def safe_href(u):
+    """A link review.md's text may make live: "#…", http:, https: or a relative path. Any other scheme (javascript:,
+    data:, …) is refused. u is the link's address as inline() found it (review.md's text escaped once), so it is unescaped
+    first: the check reads the address as written in review.md. The href attribute is that text escaped again, so the
+    browser reads it with the same scheme, or none: escaping only adds "&", which can't be part of a scheme (review 18 L1)."""
+    raw = html.unescape(u)
+    return raw.startswith('#') or raw.lower().startswith(('http://', 'https://')) or not SCHEME.match(raw)
+
 def inline(t, links=True):
     """One line of review.md text as HTML: escaped first, then `code`, **bold**, [links](relative, #anchor or http) and
-    page references (links to the page strip)."""
+    page references (links to the page strip). A link to any other scheme (javascript:, data:, …) stays as its text."""
     t = E(t, quote=False)
     t = re.sub(r'`([^`]+)`', r'<code>\1</code>', t)
     t = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', t)
-    t = re.sub(r'\[([^\]]+)\]\(((?:#|https?://|[\w./-]+)[^)\s]*)\)', lambda m: f'<a href="{E(m.group(2))}">{m.group(1)}</a>', t)
+    t = re.sub(r'\[([^\]]+)\]\(((?:#|https?://|[\w./-]+)[^)\s]*)\)',
+               lambda m: f'<a href="{E(m.group(2))}">{m.group(1)}</a>' if safe_href(m.group(2)) else m.group(0), t)
     return page_links(t) if links else t
 
 NOWRAP = re.compile(r'^(?:\*\*CHECK\*\*|CHECK|OK|FAILED.*|—|not counted|not run|page: not on this tag'
@@ -619,7 +635,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
             f'<span class="cell {lv.get(str(p), "")}" id="pg-{p}" data-p="{p}" data-l="{E(pgl(p))}" data-lv="{lv.get(str(p), "")}"'
             f' data-n="{E(" · ".join(notes.get(str(p), [])))}" title="{E(pgl(p))}"></span>' for p in range(1, n_pages + 1)) + '</div>'
             '<div id="stripinfo" aria-live="polite"></div><div id="strippreview" aria-live="polite"></div><div id="stripstatus" class="vh" role="status"></div>'
-            '<script type="application/json" id="mentions">' + json.dumps({p: [[i, t] for i, _, t in v] for p, v in mentions.items()}).replace('</', '<\\/') + '</script>')
+            '<script type="application/json" id="mentions">' + json_block({p: [[i, t] for i, _, t in v] for p, v in mentions.items()}) + '</script>')
         listed = sorted(lv, key=int)
         B.append(f'<details id="pagelist"><summary>Pages with Something Listed ({len(listed)})</summary><ul>'
                  + ''.join(f'<li><a class="pg" href="#pg-{p}">{E(pgl(p))}</a>: {"safety check failed: " if lv[p] == "safety" else ""}{E("; ".join(notes.get(p, [])))}</li>' for p in listed) + '</ul></details></section>')

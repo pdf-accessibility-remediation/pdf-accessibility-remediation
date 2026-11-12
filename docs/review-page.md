@@ -192,7 +192,7 @@ Every save also runs the check: the same rules `decide.py` uses on the AI's repl
 - **Choices you didn't make.** The check can flag one of the AI's choices that you never touched (it judges section moves against the full reading order), or a choice carried over from an earlier session that is no longer accepted. Its message adds "reject it to continue, or change it". **Reject** is on the card.
 - **Choices left out.** A choice the check doesn't accept but that no card holds (for example a page number in one of the AI's deferrals) is listed as left out. It is not applied, as before, and it never stops **Finish Review**.
 
-**The line beside Finish Review** counts what the cards show and the gaps, for example "2 choices need fixing · 1 conflict · 1 gap open", or "All choices can be applied". Screen readers announce it only when its words change. **Show Details** beside it lists everything, each with a link to its card (or the **Add** form, for a gap).
+**The line beside Finish Review** counts what the cards show and the gaps, for example "2 choices need fixing · 1 conflict · 1 gap open", or "All choices can be applied". Screen readers announce it only when its words change. It comes with the page, already counted for your saved choices, so the page opens complete ([Page changes](app-run-page.md#page-changes-in-one-step)). **Show Details** beside it lists everything, each with a link to its card (or the **Add** form, for a gap).
 
 **Finish Review refuses** while any choice needs fixing or conflicts: the dialog's button is off. If a choice changed after the dialog opened, Finish says so and leaves the page as it was. Fix the value, or reject the choice.
 

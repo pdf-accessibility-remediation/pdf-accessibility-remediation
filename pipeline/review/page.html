@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Work Order Review</title>
 <style>
 :root {
@@ -18,6 +19,7 @@
 /* a jump to a card or section lands below the sticky header. On the targets, not as html's scroll-padding: that padding
    also covered the header's own reviewer field, so the browser scrolled the list on every key typed there */
 main [id] { scroll-margin-top: calc(var(--top, 0px) + 8px); }
+html { background: var(--bg); }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 header.top { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; }
 .top h1 { font-size: 17px; margin: 0 0 6px; }
@@ -206,58 +208,11 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 }
 @media (prefers-reduced-motion: reduce) { nav { transition: none !important; } }
 </style>
-</head>
-<body>
-<button type="button" id="showHdr" class="hdr-toggle" aria-expanded="false" aria-controls="top" hidden>Show Header</button>
-<header class="top" id="top">
-  <h1 id="title" tabindex="-1">Work Order Review</h1>
-  <div class="row">
-    <span class="who"><label>Reviewer <input type="text" id="reviewer" placeholder="Your Name" size="18"></label>
-    <span class="sname"><label for="sessionName">Session Name</label><input type="text" id="sessionName" maxlength="80" size="18"><button type="button" id="notesBtn" aria-expanded="false" aria-controls="notepad">Session Notes</button></span></span>
-    <span><span class="bar"><i id="bar"></i></span> <span id="progress"></span></span>
-    <span class="show" role="radiogroup" aria-label="Show">Show:
-      <label><input type="radio" name="view" value="priority" checked> Check First</label>
-      <label><input type="radio" name="view" value="all"> All</label>
-      <label><input type="radio" name="view" value="left"> Not Reviewed</label>
-    </span>
-    <span class="actions"><button id="addBtn" type="button">Add a Decision</button>
-    <button id="draftBtn" type="button">Build a Draft PDF</button>
-    <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close Without a Verdict</button>
-    <span id="saveState" class="save-state">All changes saved</span><span id="checkLine" class="check-line" role="status"></span><button type="button" id="checkBtn" hidden>Show Details</button></span>
-  </div>
-  <div id="saveAlert" role="alert" class="save-alert"></div>
-  <div id="draftLine" class="draft-line" aria-live="polite" hidden></div>
-  <div id="msg" role="status"></div>
-  <div id="session" hidden></div>
-  <div class="hdr-foot"><p id="back" hidden><a href="" class="btnlink">Back to the Run Page</a> (this review stays open; continue it from there)</p>
-  <button type="button" id="hideHdr" class="hdr-toggle" aria-expanded="true" aria-controls="top">Hide Header</button></div>
-</header>
-<!-- the session's notes as a notepad beside the page: the same note as the Session Notes box (typing in either updates both) -->
-<dialog id="notepad" class="npad" aria-labelledby="npadTitle">
-  <div class="npad-bar"><h2 id="npadTitle">Session Notes</h2>
-    <button type="button" id="npadMin" aria-label="Minimize Session Notes"><span aria-hidden="true">–</span></button>
-    <button type="button" id="npadX" aria-label="Close Session Notes"><span aria-hidden="true">×</span></button></div>
-  <textarea id="padNotes" maxlength="4000" aria-labelledby="npadTitle"></textarea>
-</dialog>
-<button type="button" id="npadRestore" class="npad-restore" hidden>Session Notes</button>
-<div class="navbar"><button id="navToggle" type="button" aria-expanded="false" aria-controls="nav">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>Sections</button></div>
-<div id="navBackdrop" hidden></div>
-<main>
-  <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close Sections"><span aria-hidden="true">×</span></button></div><div id="navList"></div></nav>
-  <div class="col">
-    <section id="this-session" aria-labelledby="tsTitle"><h2 id="tsTitle"><label for="sessionNotes">Session Notes (optional)</label></h2>
-      <textarea id="sessionNotes" maxlength="4000"></textarea>
-      <div id="fromNotes"></div>
-    </section>
-    <section id="ocr-text" aria-labelledby="ocrTitle" hidden></section>
-    <div id="addPanel" hidden></div><div id="roPark" hidden><div id="readingOrder"></div></div><div id="cards"></div></div>
-</main>
-<div id="zoom"><img alt=""></div>
-<dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>
-<dialog id="finishDialog" aria-labelledby="finTitle" aria-describedby="finCtx"></dialog>
-<dialog id="checkDialog" aria-labelledby="chkTitle"></dialog>
 <script>
+// 15 (Patrick, 2026-11-11: page changes in one step): the whole script, with the page's data, is read in the head, where
+// nothing of the page can be shown yet, and it only defines; the call at the end of the body (bootReview()) draws the
+// page while it is read, so the first frame shown is the whole page, never its header with empty sections.
+function bootReview() {
 const DATA = /*REVIEW_DATA*/null;
 // the browser draft belongs to one run and one session (the run id is written once, in reviews/basis.json)
 const SESSION = DATA.session || null;
@@ -555,6 +510,7 @@ if (SESSION && /^\d+$/.test(String(SESSION.from || ''))) {   // the session this
 // section alone.
 const OCR_ONLY = DATA.mode === 'ocr';
 let OCR = DATA.ocr || null, ocrPagesOpen = null;
+const OCR_TEXT = DATA.ocr_text || {};                  // 15: the first pages' text, with the page ({page: text}); the rest asked for
 const ocrBox = document.getElementById('ocr-text');
 const VERDICT_LABEL = { 'approved': 'Approved', 'not approved': 'Not Approved', 'sent to a language reader': 'Sent to a Language Reader' };
 const png = n => '/review_pages/page_' + String(n).padStart(3, '0') + '.png';
@@ -578,8 +534,8 @@ function ocrWord(w) {                                  // an OCR-word reading: t
 }
 function ocrCard(p) {
   return '<article class="card ocr-card" id="ocr-page-' + p.page + '"><h3>PDF ' + p.page + ' · ' + esc(p.source === 'intake OCR' ? 'OCR Text Added during Intake' : 'The Book\'s Own OCR Text') + '</h3>' +
-    '<div class="ocr-pair"><div class="imgs"><img loading="lazy" src="' + png(p.page) + '" alt="PDF ' + p.page + ', the page as scanned"></div>' +
-    '<div><div class="edit-label">Text in the PDF</div><pre class="ocrtext" data-page="' + p.page + '"' + (OCR.lang ? ' lang="' + esc(OCR.lang) + '"' : '') + '>Loading the text…</pre></div></div>' +
+    '<div class="ocr-pair"><div class="imgs"><img loading="lazy" src="' + png(p.page) + '"' + box(png(p.page).slice(1), 0) + ' alt="PDF ' + p.page + ', the page as scanned"></div>' +
+    '<div><div class="edit-label">Text in the PDF</div><pre class="ocrtext" data-page="' + p.page + '"' + (OCR.lang ? ' lang="' + esc(OCR.lang) + '"' : '') + '>' + (OCR_TEXT[p.page] != null ? esc(OCR_TEXT[p.page]) : 'Loading the text…') + '</pre></div></div>' +
     ((p.findings || []).length ? '<ul>' + p.findings.map(f => '<li>' + esc(f) + '</li>').join('') + '</ul>' : '') +
     ((p.words || []).length ? '<div class="ctx">OCR words on this page: ' + p.words.map(ocrWord).join(' · ') + '</div>' : '') + '</article>';
 }
@@ -619,7 +575,7 @@ function renderOcr() {
     (OCR.flagged && (OCR.showable || []).length > OCR.pages.length ? '<div class="field"><label for="ocrMore">Show Another Page</label><input type="text" inputmode="numeric" id="ocrMore" size="6"> <button type="button" id="ocrMoreBtn">Show Page</button><div class="ctx">' +
       (OCR.showable.length) + ' pages have the book\'s own OCR text.</div></div>' : '') + '</details>';
   ocrBox.innerHTML = h;
-  ocrBox.querySelectorAll('pre.ocrtext').forEach(x => textSeen.observe(x));
+  ocrBox.querySelectorAll('pre.ocrtext').forEach(x => { if (OCR_TEXT[x.dataset.page] == null) textSeen.observe(x); });
   document.getElementById('ocrPagesFold').addEventListener('toggle', e => { ocrPagesOpen = e.target.open; });
 }
 function ocrSay(t, err) { const m = document.getElementById('ocrMsg'); m.innerHTML = t; m.className = err ? 'err' : ''; m.focus({ preventScroll: false }); }
@@ -723,11 +679,12 @@ draftBtn.addEventListener('click', async () => {
   } catch (e) { draftBtn.disabled = false; draftShow({ state: 'failed', error: 'This page can\'t reach its server: the review was closed, or the app stopped.' }); }
 });
 draftLine.addEventListener('click', e => { const a = e.target.closest('a[data-card]'); if (a) { e.preventDefault(); goCard(a.dataset.card); } });
-if (!OCR_ONLY) fetch('/draft').then(r => r.json()).then(d => {   // a reload while a draft is being built, or after: show it
+const firstDraft = d => {                                // a reload while a draft is being built, or after: show it
   if (!d || d.state === 'idle') return;
   draftBasis = choicesNow(); draftStale = !!(state.saved_at && d.basis && state.saved_at > d.basis);
   draftShow(d); if (d.state === 'building') draftPoll = setTimeout(draftWatch, 2000);
-}).catch(() => {});
+};
+if (!OCR_ONLY) { if (DATA.draft) firstDraft(DATA.draft); else fetch('/draft').then(r => r.json()).then(firstDraft).catch(() => {}); }   // 15: with the page
 if (OCR_ONLY) {                                        // the OCR section alone: no session, no decisions
   document.getElementById('title').textContent = 'OCR Text Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
   document.title = 'OCR Text Review';
@@ -932,14 +889,23 @@ const WHAT = { retype: 'Text on the page', actual_text: 'Text on the page', role
                notes_for_reviewer: 'From', artifacts: 'Rule', flatten: 'Element', keep_lists: 'Element', merges: 'Merge',
                move_section: 'Section', move_to_document_start: 'Element', adopt_orphans: 'Pages' };
 const FINDING_WHAT = { away: 'Section', jump: 'Finding', late: 'Finding', figures: 'Finding' };
+// 15 (page changes in one step): each image's box is set before the image arrives, from its size in the page's data
+// (DATA.img_sizes: the page images from the PDF, the figure crops and word sheets from their files), so a card never
+// grows when its images load: the page is laid out at its first frame
+const SIZES = DATA.img_sizes || {};
+function box(src, maxH) {
+  const s = SIZES[src]; if (!s || !(s[0] > 0 && s[1] > 0)) return '';
+  const h = maxH ? Math.min(s[1], maxH) : s[1];
+  return ' style="width:' + (Math.round(s[0] * h / s[1] * 100) / 100) + 'px;aspect-ratio:' + s[0] + ' / ' + s[1] + '"';
+}
 function imagesHtml(it) {
   const c = it.context, imgs = [];
   if (c.word) imgs.push('<figure class="word"><img loading="lazy" src="' + esc(c.word) + '" alt="The word in the scan"><figcaption>the word in the scan (as the AI saw it)</figcaption></figure>');
-  else if (c.sheet) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.sheet) + '" alt="OCR word sheet"><figcaption>word sheet: find word ' + esc(c.word_id) + '</figcaption></figure>');
-  if (c.figure) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.figure) + '" alt="The figure"><figcaption>figure</figcaption></figure>');
+  else if (c.sheet) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.sheet) + '"' + box('_audit/' + c.sheet, 220) + ' alt="OCR word sheet"><figcaption>word sheet: find word ' + esc(c.word_id) + '</figcaption></figure>');
+  if (c.figure) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.figure) + '"' + box('_audit/' + c.figure, 220) + ' alt="The figure"><figcaption>figure</figcaption></figure>');
   for (const src of it.images || []) {
     const p = +src.match(/(\d+)\.png$/)[1];
-    imgs.push('<figure' + (p === it.page ? ' class="here"' : '') + '><img loading="lazy" src="' + esc(src) + '" alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure>');
+    imgs.push('<figure' + (p === it.page ? ' class="here"' : '') + '><img loading="lazy" src="' + esc(src) + '"' + box(src, 220) + ' alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure>');
   }
   return imgs.length ? '<div class="imgs">' + imgs.join('') + '</div>' : '';
 }
@@ -1212,7 +1178,7 @@ document.getElementById('readingOrder').addEventListener('click', e => {        
   const b = e.target.closest('.ro-row'); if (!b) return;
   const li = b.parentElement, had = li.querySelector('.imgs'); if (had) { had.remove(); return; }
   const p = RO.entries[+b.dataset.ro].first;
-  li.insertAdjacentHTML('beforeend', '<div class="imgs"><figure><img loading="lazy" src="review_pages/page_' + String(p).padStart(3, '0') + '.png" alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure></div>');
+  li.insertAdjacentHTML('beforeend', '<div class="imgs"><figure><img loading="lazy" src="review_pages/page_' + String(p).padStart(3, '0') + '.png"' + box('review_pages/page_' + String(p).padStart(3, '0') + '.png', 220) + ' alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure></div>');
 });
 
 function card(it) {
@@ -1697,8 +1663,64 @@ finBtn.addEventListener('click', async () => {
 });
 renderOcr();
 render();
+// 15: the check of the saved choices (what /keep answers for them) comes with the page, so the line beside Finish and each
+// card's marks are drawn now; the quiet save below then finds the same
+if (DATA.check && !(state.saved_at && state.saved_at !== (srv.saved_at || ''))) { gotCheck(DATA.check, state.saved_at); refreshMoves(DATA.check.move_previews); }
 if (state.saved_at && state.saved_at !== (srv.saved_at || '')) saveSoon();   // this browser's copy is newer than the run's: save it
 else if (DATA.mode !== 'ocr') saveNow();               // nothing new: one quiet save, which also brings the count of open gaps
+}
 </script>
+</head>
+<body>
+<button type="button" id="showHdr" class="hdr-toggle" aria-expanded="false" aria-controls="top" hidden>Show Header</button>
+<header class="top" id="top">
+  <h1 id="title" tabindex="-1">Work Order Review</h1>
+  <div class="row">
+    <span class="who"><label>Reviewer <input type="text" id="reviewer" placeholder="Your Name" size="18"></label>
+    <span class="sname"><label for="sessionName">Session Name</label><input type="text" id="sessionName" maxlength="80" size="18"><button type="button" id="notesBtn" aria-expanded="false" aria-controls="notepad">Session Notes</button></span></span>
+    <span><span class="bar"><i id="bar"></i></span> <span id="progress"></span></span>
+    <span class="show" role="radiogroup" aria-label="Show">Show:
+      <label><input type="radio" name="view" value="priority" checked> Check First</label>
+      <label><input type="radio" name="view" value="all"> All</label>
+      <label><input type="radio" name="view" value="left"> Not Reviewed</label>
+    </span>
+    <span class="actions"><button id="addBtn" type="button">Add a Decision</button>
+    <button id="draftBtn" type="button">Build a Draft PDF</button>
+    <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close Without a Verdict</button>
+    <span id="saveState" class="save-state">All changes saved</span><span id="checkLine" class="check-line" role="status"></span><button type="button" id="checkBtn" hidden>Show Details</button></span>
+  </div>
+  <div id="saveAlert" role="alert" class="save-alert"></div>
+  <div id="draftLine" class="draft-line" aria-live="polite" hidden></div>
+  <div id="msg" role="status"></div>
+  <div id="session" hidden></div>
+  <div class="hdr-foot"><p id="back" hidden><a href="" class="btnlink">Back to the Run Page</a> (this review stays open; continue it from there)</p>
+  <button type="button" id="hideHdr" class="hdr-toggle" aria-expanded="true" aria-controls="top">Hide Header</button></div>
+</header>
+<!-- the session's notes as a notepad beside the page: the same note as the Session Notes box (typing in either updates both) -->
+<dialog id="notepad" class="npad" aria-labelledby="npadTitle">
+  <div class="npad-bar"><h2 id="npadTitle">Session Notes</h2>
+    <button type="button" id="npadMin" aria-label="Minimize Session Notes"><span aria-hidden="true">–</span></button>
+    <button type="button" id="npadX" aria-label="Close Session Notes"><span aria-hidden="true">×</span></button></div>
+  <textarea id="padNotes" maxlength="4000" aria-labelledby="npadTitle"></textarea>
+</dialog>
+<button type="button" id="npadRestore" class="npad-restore" hidden>Session Notes</button>
+<div class="navbar"><button id="navToggle" type="button" aria-expanded="false" aria-controls="nav">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>Sections</button></div>
+<div id="navBackdrop" hidden></div>
+<main>
+  <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close Sections"><span aria-hidden="true">×</span></button></div><div id="navList"></div></nav>
+  <div class="col">
+    <section id="this-session" aria-labelledby="tsTitle"><h2 id="tsTitle"><label for="sessionNotes">Session Notes (optional)</label></h2>
+      <textarea id="sessionNotes" maxlength="4000"></textarea>
+      <div id="fromNotes"></div>
+    </section>
+    <section id="ocr-text" aria-labelledby="ocrTitle" hidden></section>
+    <div id="addPanel" hidden></div><div id="roPark" hidden><div id="readingOrder"></div></div><div id="cards"></div></div>
+</main>
+<div id="zoom"><img alt=""></div>
+<dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>
+<dialog id="finishDialog" aria-labelledby="finTitle" aria-describedby="finCtx"></dialog>
+<dialog id="checkDialog" aria-labelledby="chkTitle"></dialog>
+<script>bootReview()</script>
 </body>
 </html>

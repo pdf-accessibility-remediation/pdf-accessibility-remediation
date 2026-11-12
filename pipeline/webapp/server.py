@@ -37,8 +37,9 @@ Every POST's Content-Length must be digits and at most MAX_BODY (65,536), checke
 OCR text is approved on the review page, or on the OCR-only page, both on the review server.
 
 Every response forbids framing (X-Frame-Options: DENY, CSP frame-ancestors 'none'), so another site cannot show a run
-page in a frame and trick a click. HTML pages also get script-src 'self' plus the sha256 of the page's one inline script,
-computed when it is served, so a javascript: link or any other script in a report's text never runs.
+page in a frame and trick a click. HTML pages also get script-src 'self' plus, by their sha256, the app's own calls the
+page makes (home.py CALLS: nine fixed one-line texts, 15) and the page's one other inline script (a report's), computed
+when it is served, so a javascript: link or any other script in a report's text never runs.
 
 A run is named by its path under the runs folder (teika/rv1, batches/d1/fishers): the shortest prefix of the request
 path that is a folder holding record.json. Every segment is checked (no empty, ".", "..", dot-names or backslashes),
@@ -152,12 +153,17 @@ class Scripts(HTMLParser):
             if self.cur is not None: self.found.append(''.join(self.cur))
             self.cur = None
 
+def _sha(t): return f"'sha256-{base64.b64encode(hashlib.sha256(t.encode('utf-8')).digest()).decode()}'"
+CALL_TEXTS = {f'Pdfrem.{n}()' for n in HM.CALLS}           # the app's own calls (home.py call()), fixed text
+
 def csp(page):
-    """An HTML page's policy: no framing, and scripts only from the app itself plus the page's one inline script by its
-    sha256 (review.html and summary.html have exactly one; a JSON data block is not a script). A page with any other
-    count of inline scripts gets none allowed. A javascript: link in the report's text never runs."""
-    p = Scripts(); p.feed(page); p.close(); inline = p.found
-    h = f" 'sha256-{base64.b64encode(hashlib.sha256(inline[0].encode('utf-8')).digest()).decode()}'" if len(inline) == 1 else ''
+    """An HTML page's policy: no framing, and scripts only from the app itself, the app's own calls (home.py call():
+    nine fixed texts (round 15)) by their sha256, plus the page's one other inline script by its sha256 (review.html and
+    summary.html have exactly one; a JSON data block is not a script). A page with any other count of other inline
+    scripts gets none of those allowed. A javascript: link in the report's text never runs."""
+    p = Scripts(); p.feed(page); p.close()
+    calls = sorted({x for x in p.found if x in CALL_TEXTS}); inline = [x for x in p.found if x not in CALL_TEXTS]
+    h = ''.join(' ' + _sha(x) for x in calls) + (' ' + _sha(inline[0]) if len(inline) == 1 else '')
     return f"frame-ancestors 'none'; script-src 'self'{h}"
 
 def after_body(page, box):
@@ -166,20 +172,38 @@ def after_body(page, box):
     j = page.find('>', i) if i >= 0 else -1
     return page[:j + 1] + box + page[j + 1:] if j >= 0 else box + page
 
-def with_panel(page, run, current=None, waiting=False):
+def with_panel(page, run, current=None, waiting=False, first=None):
     """review.html as served: the panel's stylesheet, its place (after the page's header, so its h2 follows the page's h1;
     else after the skip link) and its script added. `current`: the session whose result the page shows, so the panel can
-    tell when an apply has made a newer one. The file on disk is never changed; opened as a file it is the plain report."""
+    tell when an apply has made a newer one. `first`: the panel's first answer (#93: panel_first), drawn at once by panel.js.
+    The file on disk is never changed; opened as a file it is the plain report."""
     box = f'\n<div id="pdfrem-panel" data-run="{html.escape(run)}"' + (f' data-current="{html.escape(str(current))}"' if current else '') + \
-          (' data-waiting="1"' if waiting else '') + '></div>\n'
-    head = '<link rel="stylesheet" href="/app/panel.css">\n'
-    i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
+          (' data-waiting="1"' if waiting else '') + '></div>\n' + (HM.first_answer('pp-first', first) + '\n' if first is not None else '') + \
+          HM.call('panel') + '\n'
+    # 15 (Patrick, 2026-11-11: page changes in one step, in every browser; review 09 12c's blocking="render" was Chromium's
+    # only): panel.js is a plain script in the head, so it is read before any of the page can be shown, and it only
+    # defines; the call right after the panel's place draws Run Actions from the first answer while the page is read
+    head = PANEL_HEAD
+    page = in_head(page, head)
     if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
     elif SKIP in page: page = page.replace(SKIP, SKIP + box, 1)
     else: page = after_body(page, box)
-    page = with_strip(page, run)
-    i = page.rfind('</body>'); js = '<script src="/app/panel.js" defer></script>\n'
-    return page[:i] + js + page[i:] if i >= 0 else page + js
+    return with_strip(page, run)
+
+def doctype_end(page):
+    """Where a doctype at the very start of the page ends (after its ">"; leading white space allowed), else 0. Plain
+    string steps, so a page of any size is read once (CodeQL py/polynomial-redos on the regex this replaces)."""
+    s = page.lstrip(); k = len(page) - len(s)
+    if s[:9].lower() != '<!doctype': return 0
+    j = page.find('>', k + 9)
+    return j + 1 if j >= 0 else 0
+
+def in_head(page, head):
+    """`head` added at the end of the page's head; a page with none gets it right after its doctype (never before it:
+    anything before the doctype puts the browser in quirks mode), else first."""
+    i = page.find('</head>')
+    if i < 0: i = doctype_end(page)
+    return page[:i] + head + page[i:]
 
 SHIP_CARD = 'aria-labelledby="ship-h"'
 def with_strip(page, run):
@@ -189,39 +213,61 @@ def with_strip(page, run):
     i = page.find(SHIP_CARD)
     j = page.find('</section>', i) if i >= 0 else -1
     if j < 0: return page
-    box = f'\n<div id="pdfrem-checks" data-run="{html.escape(run)}"></div>\n'
-    return page[:j + len('</section>')] + box + page[j + len('</section>'):]
+    box = f'\n<div id="pdfrem-checks" data-run="{html.escape(run)}"></div>\n' + HM.call('strip') + '\n'   # 15: drawn right here
+    page = page[:j + len('</section>')] + box + page[j + len('</section>'):]
+    return page.replace('<div id="pdfrem-panel" ', '<div id="pdfrem-panel" data-strip="card" ', 1)   # the panel leaves it to that call
 
-def with_version(page, run, sid):
+PANEL_HEAD = '<link rel="stylesheet" href="/app/panel.css">\n<script src="/app/panel.js"></script>\n'
+
+def with_version(page, run, sid, first=None):
     """A previous result's review.html (reviews/versions/<id>/) as served: a bar after its header saying it is a previous
-    result, with "Back to the Current Result" and "Review Again from This Session" (webapp/panel.js draws it). The file's
-    own "replaced by" note is hidden there (panel.css), and stays in the file."""
-    box = f'\n<div id="pdfrem-version" data-run="{html.escape(run)}" data-session="{html.escape(sid)}"></div>\n'
-    head = '<link rel="stylesheet" href="/app/panel.css">\n'
-    i = page.find('</head>'); page = page[:i] + head + page[i:] if i >= 0 else head + page
-    if '</header>' in page: page = page.replace('</header>', '</header>' + box, 1)
-    else: page = after_body(page, box)
-    i = page.rfind('</body>'); js = '<script src="/app/panel.js" defer></script>\n'
-    return page[:i] + js + page[i:] if i >= 0 else page + js
+    result, with "Back to the Current Result", "Review Again from This Session" and "Home Page" (webapp/panel.js draws it,
+    right there, from `first`: panel_first()'s {run, setup}, 15). The file's own "replaced by" note is hidden
+    there (panel.css), and stays in the file."""
+    box = f'\n<div id="pdfrem-version" data-run="{html.escape(run)}" data-session="{html.escape(sid)}" {HOME_IN_BAR}></div>\n' + \
+          (HM.first_answer('pp-vfirst', first) + '\n' if first is not None else '') + HM.call('version') + '\n'
+    page = in_head(page, PANEL_HEAD)
+    if '</header>' in page: return page.replace('</header>', '</header>' + box, 1)
+    return after_body(page, box)
 
 def md_page(text, run, sid, base):
-    """review.md inside a page with a way back (the run page; for a previous result, that result's dashboard too) and a
-    link to the plain file. The text is shown as written, escaped."""
+    """review.md inside a page with a way back (the run page; for a previous result, that result's dashboard too), "Home
+    Page", and a link to the plain file. The text is shown as written, escaped."""
     which = TC(f'a previous result ({S.label(sid).capitalize()})' if sid else 'the current result')   # TC leaves parentheses as written
     links = [f'<a href="{base}">Back to the Run Page</a>'] + ([f'<a href="review.html">This Previous Result\'s Dashboard</a>'] if sid else []) + \
-            ['<a href="review.md?raw=1">The Plain File</a>']
+            ['<a class="pp-btn" href="/">Home Page</a>', '<a href="review.md?raw=1">The Plain File</a>']   # Home Page after them (Patrick, 2026-11-11)
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<title>review.md: {html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
+            f'<title>review.md: {html.escape(run)}</title><link rel="stylesheet" href="/app/palette.css">{PANEL_HEAD}'
             f'</head><body class="pp-page">\n{SKIP}<header><h1>review.md of {html.escape(run)}: {which}</h1></header>'
-            f'<nav class="pp-wrap" aria-label="Pages of this run"><p class="pp pp-bar">' + ' · '.join(links) + '</p></nav>'
-            f'<main id="main" tabindex="-1"><pre class="pp-md">{html.escape(text)}</pre></main>'
-            f'<script src="/app/panel.js" defer></script></body></html>')                 # panel.js: in-page links move focus
+            f'<nav class="pp-wrap" aria-label="Pages of this run" {HOME_IN_BAR}><p class="pp pp-bar pp-mdbar">' + ' · '.join(links) + '</p></nav>'
+            f'<main id="main" tabindex="-1"><pre class="pp-md">{html.escape(text)}</pre></main></body></html>')   # panel.js: in-page links move focus
+
+ASSET_CACHE = 'max-age=31536000, immutable'
+def versioned(page, ver):
+    """The app's own scripts and stylesheets as an HTML page names them, each with its version (the sha256 of the file this
+    server read at its start: 15, Patrick 2026-11-11). The browser keeps a file asked for by its version (ASSET_CACHE), so
+    a page's blocking scripts never wait for the network after the first page; a change to a file is a new address. Only
+    the attribute values the app writes (="/app/<file>") are touched: a report's text never holds that quoted form."""
+    for n, v in ver.items(): page = page.replace(f'="/app/{n}"', f'="/app/{n}?v={v}"')
+    return page
+
+SCHEME = '<meta name="color-scheme" content="light dark">'
+def with_scheme(page):
+    """Every HTML page the app serves names its colour schemes in its head (15, Patrick 2026-11-11: no frame is ever white),
+    so a browser that draws the page's canvas before its stylesheets uses the dark canvas in dark mode; the stylesheets then
+    give html and body the app's own background. review.html and summary.html get it as served (the files are unchanged)."""
+    return page if SCHEME in page[:4000] else in_head(page, SCHEME)
 
 APPBAR_MARK = 'aria-label="App"'
+HOME_IN_BAR = HM.HOME_IN_BAR
+HOME_IN_BAR_TAG = re.compile(r'<(?:nav|div) [^<>]*' + HOME_IN_BAR)   # inside a tag: escaped text never holds "<"
 def with_appbar(page):
     """Every HTML page the app serves carries the app bar (the way home), right after its skip link, else right after
-    <body>; a page that has one already is left as it is."""
+    <body>; a page that has one already is left as it is. A page whose own bar holds "Home Page" (HOME_IN_BAR: the
+    evaluation page, a previous result's dashboard and review.md in a page, Patrick 2026-11-11) gets none, and no gap in
+    its place: its title starts at the top (Patrick's decision on round 17, review 18 R1)."""
     if APPBAR_MARK in page or 'data-home="1"' in page[:2000]: return page          # the home page has none (P1)
+    if HOME_IN_BAR_TAG.search(page): return page
     bar = HM.appbar()
     if SKIP in page: return page.replace(SKIP, SKIP + bar, 1)
     return after_body(page, bar)
@@ -235,19 +281,20 @@ def make(s, setup, code=None):
         with open(os.path.join(J, 'server.log'), 'a', encoding='utf-8') as f: f.write(f'{datetime.datetime.now().isoformat(timespec="seconds")} {msg}\n')
     RUNS = os.path.realpath(s['runs'])                   # every file the server reads for a request is inside this folder
     assets ={n: (open(p, 'rb').read(), TYPES.get(os.path.splitext(p)[1].lower(), 'application/octet-stream')) for n, p in STATIC.items()}
+    ver = {n: hashlib.sha256(b).hexdigest()[:12] for n, (b, _) in assets.items()}   # each file's own version, in its address
     code = code or config.code_fingerprint()
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
-        def headers_(self, ctype, length, policy=None):
+        def headers_(self, ctype, length, policy=None, cache='no-store'):
             self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(length))
-            self.send_header('Cache-Control', 'no-store'); self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Cache-Control', cache); self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('X-Frame-Options', FRAME['X-Frame-Options'])
             self.send_header('Content-Security-Policy', policy or FRAME['Content-Security-Policy'])
-        def send(self, code, body, ctype='application/json; charset=utf-8', extra=None):
-            if ctype.startswith('text/html') and isinstance(body, str): body = with_appbar(body)
+        def send(self, code, body, ctype='application/json; charset=utf-8', extra=None, cache='no-store'):
+            if ctype.startswith('text/html') and isinstance(body, str): body = versioned(with_scheme(with_appbar(body)), ver)
             b = body if isinstance(body, bytes) else (body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)).encode('utf-8')
-            self.send_response(code); self.headers_(ctype, len(b), csp(b.decode('utf-8', 'replace')) if ctype.startswith('text/html') else None)
+            self.send_response(code); self.headers_(ctype, len(b), csp(b.decode('utf-8', 'replace')) if ctype.startswith('text/html') else None, cache)
             for k, v in (extra or {}).items(): self.send_header(k, v)
             self.end_headers(); self.wfile.write(b)
         def file(self, p):
@@ -501,10 +548,14 @@ def make(s, setup, code=None):
             p = url.path
             if p == '/api/ping': return self.send(200, {'app': 'pdfrem', 'root': config.ROOT, 'settings': s['sha'], 'code': code})
             if p == '/api/setup': return self.send(200, setup)
-            if p == '/api/jobs':                             # the newest first, up to ?limit= (default 50, at most 500)
-                lim = (q.get('limit') or ['50'])[0]                   # isdecimal: '²' is a digit but not a number int() reads
-                lim = min(int(lim), 500) if lim.isdecimal() and len(lim) <= 4 and int(lim) > 0 else 50
-                return self.send(200, [runs.job_view(s, j) for j in reversed(jobs.all_jobs(J)[-lim:])])
+            if p == '/api/jobs':                             # the newest first, up to ?limit= (default 50, at most 500); ?active=1:
+                ctx = runs.view_context(s)                   # the home page's lighter check (#93): the jobs read once per answer
+                if (q.get('active') or [''])[0] == '1': pick = runs.changing_jobs(ctx['nm'].jobs(), (q.get('seen') or [''])[0])
+                else:
+                    lim = (q.get('limit') or ['50'])[0]               # isdecimal: '²' is a digit but not a number int() reads
+                    lim = min(int(lim), 500) if lim.isdecimal() and len(lim) <= 4 and int(lim) > 0 else 50
+                    pick = ctx['nm'].jobs()[-lim:]           # the queue was counted from every job, before this cut
+                return self.send(200, [runs.job_view(s, j, ctx=ctx) for j in reversed(pick)])
             if p.startswith('/api/job/'):
                 jid = p[len('/api/job/'):]
                 job = jobs.load(J, jid) if re.fullmatch(r'[0-9A-Za-z_-]+', jid or '') else None
@@ -513,15 +564,18 @@ def make(s, setup, code=None):
                 return self.send(200, runs.job_view(s, job, with_text=True, offset=int(off) if off.isdecimal() and len(off) <= 12 else 0))
             if p.startswith('/api/run/'):
                 segs = segments(p[len('/api/run/'):])
-                hit = find_run(s['runs'], segs, waiting=True, pending=lambda d: runs.pending(s, d)) if segs else None
+                nm = NMS.snapshot(s)                             # #93: the names files and the jobs read once per answer
+                hit = find_run(s['runs'], segs, waiting=True, pending=lambda d: runs.pending(s, d, nm)) if segs else None
                 if hit and runs.waiting(hit[1]):
-                    return self.send(200, runs.waiting_state(s, hit[0], hit[1])) if not hit[2] else self.send(404, {'error': 'no such run'})
-                if hit and runs.pending(s, hit[1]):
-                    return self.send(200, runs.pending_state(s, hit[0], hit[1])) if not hit[2] else self.send(404, {'error': 'no such run'})
+                    return self.send(200, runs.waiting_state(s, hit[0], hit[1], nm)) if not hit[2] else self.send(404, {'error': 'no such run'})
+                if hit and runs.pending(s, hit[1], nm):
+                    return self.send(200, runs.pending_state(s, hit[0], hit[1], nm)) if not hit[2] else self.send(404, {'error': 'no such run'})
                 if hit and hit[2] == ['checks']: return self.send(200, MP.state(hit[1], hit[0]))   # the Manual Checks page's data
                 if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
-                return self.send(200, runs.state(s, hit[0], hit[1]))
-            if p.startswith('/app/') and p[len('/app/'):] in assets: return self.send(200, *assets[p[len('/app/'):]])
+                return self.send(200, runs.state(s, hit[0], hit[1], nm))
+            if p.startswith('/app/') and p[len('/app/'):] in assets:     # 15: kept by the browser when asked by its version
+                n = p[len('/app/'):]
+                return self.send(200, *assets[n], cache=ASSET_CACHE if (q.get('v') or [''])[0] == ver[n] else 'no-store')
             if p.startswith('/batch/'):
                 segs = segments(p[len('/batch/'):])
                 if not segs: return self.send(404, {'error': 'no such batch'})
@@ -532,7 +586,7 @@ def make(s, setup, code=None):
                     if not p.endswith('/'): return self.redirect(p + '/')
                     if BT.saved(s, os.path.basename(B)):                 # S7, T4: a saved batch opens its pop-up on the home page
                         return self.redirect('/?view=batches&open=' + urllib.parse.quote(os.path.basename(B), safe=''))
-                    return self.send(200, BT.page(s, os.path.basename(B), closed=self.nav_closed()), 'text/html; charset=utf-8')   # the batch page (#45)
+                    return self.send(200, BT.page(s, os.path.basename(B), closed=self.nav_closed(), trashed=q.get('trashed'), trashed_more=(q.get('trashed_more') or [''])[0]), 'text/html; charset=utf-8')   # the batch page (#45)
                 if rest == ['summary.html']:                     # the batch dashboard, with the app bar (#45: every page links home)
                     f = os.path.realpath(os.path.join(B, 'summary.html'))
                     if not f.startswith(RUNS + os.sep) or not os.path.isfile(f): return self.send(404, {'error': 'not found'})
@@ -546,16 +600,17 @@ def make(s, setup, code=None):
                 if segs is None: return self.send(404, {'error': 'not found'})
                 if len(segs) == 3 and segs[0] == 'batches' and segs[2] in ('summary.html', 'summary.md'):    # a review.html's ../summary.html: the dashboard
                     return self.redirect(f'/batch/{urllib.parse.quote(segs[1])}/' + segs[2])
-                hit = find_run(s['runs'], segs, waiting=True, pending=lambda d: runs.pending(s, d))
+                nm = NMS.snapshot(s)                             # #93: the page's one read of the names files and the jobs
+                hit = find_run(s['runs'], segs, waiting=True, pending=lambda d: runs.pending(s, d, nm))
                 if not hit: return self.send(404, {'error': 'no such run'})
                 run, R, rest = hit
-                if runs.waiting(R) or runs.pending(s, R):                                  # before its first result: its page only
+                if runs.waiting(R) or runs.pending(s, R, nm):                              # before its first result: its page only
                     if rest: return self.send(404, {'error': 'not found'})
                     if not p.endswith('/'): return self.redirect(p + '/')
-                    return self.send(200, self.in_batch(run, waiting_page(run, R, s)), 'text/html; charset=utf-8')
+                    return self.send(200, self.in_batch(run, waiting_page(run, R, s, nm, first=self.panel_first(run, R, nm)), nm), 'text/html; charset=utf-8')
                 if not rest:
                     if not p.endswith('/'): return self.redirect(p + '/')
-                    return self.run_page(run, R)
+                    return self.run_page(run, R, nm)
                 if len(rest) == 1 and rest[0] in RESERVED: return self.send(404, {'error': 'this page is not built yet'})
                 if rest == ['download']:                                                   # a version's PDF or record ZIP (stage 3)
                     return self.download(run, R, q)
@@ -578,7 +633,7 @@ def make(s, setup, code=None):
                     t = self.text(f)
                     if t is None: return self.send(404, {'error': 'not found'})
                     if name == 'review.html':                                              # a previous result: its bar
-                        return self.send(200, with_version(REL.no_statement(t), run, sid), 'text/html; charset=utf-8')
+                        return self.send(200, with_version(REL.no_statement(t), run, sid, first=self.panel_first(run, R)), 'text/html; charset=utf-8')
                     return self.send(200, md_page(t, run, sid, base), 'text/html; charset=utf-8')   # review.md with a way back
                 return self.file(f)
             if p in ('/new', '/new-batch'): return self.redirect('/')   # T4: New Run and New Batch are pop-ups on the home page
@@ -597,13 +652,22 @@ def make(s, setup, code=None):
                 bs = segments(p[len('/api/batch/'):])
                 B = batch_dir(s['runs'], bs[0]) if bs and len(bs) == 1 else None
                 if not B: return self.send(404, {'error': 'no such batch'})
-                return self.send(200, BT.state(s, os.path.basename(B)))
+                return self.send(200, BT.state(s, os.path.basename(B), with_dashboard=(q.get('nav') or [''])[0] != '1'))   # ?nav=1: a book page's side list (review 09, 12a)
             if p == '/':
                 return self.send(200, HM.page(s, (q.get('q') or [''])[0], (q.get('n') or ['25'])[0], test=bool(s.get('test_reply_dir')),
                                               added=(q.get('added') or [None])[0], bn=(q.get('bn') or ['25'])[0],
                                               renamed=(q.get('renamed') or [None])[0], view=(q.get('view') or ['runs'])[0],
-                                              group=(q.get('group') or [''])[0], trashed=bool(q.get('trashed'))), 'text/html; charset=utf-8')
+                                              group=(q.get('group') or [''])[0], trashed=(q.get('trashed') or [''])[0],
+                                              opened=self.saved_form((q.get('open') or [''])[0])), 'text/html; charset=utf-8')
             self.send(404, {'error': 'not found'})
+
+        def saved_form(self, label):
+            """?open=<label> on the home page (a saved batch's address, T4): {url, html} of its pop-up, as /api/form gives it,
+            so the page carries it (15); None when there is no such saved batch (the page then asks, and says why)."""
+            B = batch_dir(s['runs'], label) if label else None
+            if not B or not BT.saved(s, os.path.basename(B)): return None
+            try: return {'url': '/api/form?what=batch&saved=' + urllib.parse.quote(os.path.basename(B), safe=''), 'html': BT.form_part(s, [], saved=os.path.basename(B))}
+            except Exception: return None
 
         def json_ok(self):
             """A JSON POST's own checks (type, a digits-only length within MAX_BODY, a JSON object): self.body, or the
@@ -692,20 +756,34 @@ def make(s, setup, code=None):
                 try: DL.note_download(d)                 # every byte written: the download is recorded (#45, clearing's gate)
                 except Exception as e: applog(f'{run}: download not recorded ({type(e).__name__}: {e})')
 
-        def run_page(self, run, R):
+        def run_page(self, run, R, nm=None):
             f = os.path.join(R, 'review.html')
             rec = os.path.realpath(os.path.join(R, 'record.json'))
             cur = S.current_id((runs.load(rec) if rec.startswith(RUNS + os.sep) else None) or {})
             f = os.path.realpath(f)                                                  # checked inside the runs folder first
             t = self.text(f) if f.startswith(RUNS + os.sep) and os.path.isfile(f) else None
-            if t is not None: return self.send(200, self.in_batch(run, with_panel(with_app_header(card_border(REL.no_statement(t), R), s, run, R), run, cur)), 'text/html; charset=utf-8')
-            return self.send(200, self.in_batch(run, no_dashboard(run, R, cur, s)), 'text/html; charset=utf-8')
+            nm = nm or NMS.snapshot(s)                                               # #93: the header and the side list read once
+            first = self.panel_first(run, R, nm)
+            if t is not None: return self.send(200, self.in_batch(run, with_panel(with_app_header(card_border(REL.no_statement(t), R), s, run, R, nm), run, cur, first=first), nm), 'text/html; charset=utf-8')
+            return self.send(200, self.in_batch(run, no_dashboard(run, R, cur, s, nm, first=first), nm), 'text/html; charset=utf-8')
 
-        def in_batch(self, run, page):
-            """A book's page inside a batch (runs/batches/<label>/<name>) gets the batch's side column."""
+        def panel_first(self, run, R, nm=None):
+            """The run page panel's first answer (#93, Patrick's test of the app): {run: what GET /api/run/<run> gives now,
+            setup: what GET /api/setup gives}, so Run Actions and the evaluation strip draw filled on first load. None when
+            it can't be worked out: the panel then asks for it, as before. nm: the page's names snapshot, so the page and its
+            panel read the names files and the jobs once together."""
+            try:
+                st = (runs.waiting_state(s, run, R, nm) if runs.waiting(R) else runs.pending_state(s, run, R, nm) if runs.pending(s, R, nm)
+                      else runs.state(s, run, R, nm))
+                return {'run': st, 'setup': setup}
+            except Exception: return None
+
+        def in_batch(self, run, page, nm=None):
+            """A book's page inside a batch (runs/batches/<label>/<name>) gets the batch's side column. nm: the page's names
+            snapshot (webapp/names.py), so the whole page reads each names file and the job files once."""
             sg = run.split('/')
             if len(sg) != 3 or sg[0] != 'batches': return page
-            try: return BT.with_nav(with_appbar(page), s, sg[1], sg[2], closed=self.nav_closed())
+            try: return BT.with_nav(with_appbar(page), s, sg[1], sg[2], closed=self.nav_closed(), nm=nm)
             except Exception: return page
 
         def nav_closed(self):
@@ -727,49 +805,52 @@ def card_border(page, R):
     except (OSError, ValueError, KeyError, TypeError): return page
     return page.replace(green, '<section class="ship" aria-labelledby="ship-h">', 1) if changed else page
 
-def app_header(s, run, R, pages=None):
+def app_header(s, run, R, pages=None, nm=None):
     """The run page's header as the app shows it (P7, Patrick 2026-11-06; Patrick's test 2026-11-07, Q6, Q8): at the top of
     the screen, the PDF's display name and "Source PDF:", then the run's details on one line (runs.details: Run Name, pages,
     when it ran, the AI and its cost); for a PDF in a batch, "Assigned to the batch "<name>"" with "Open the Batch Page";
     "Home Page" on the right, inside the header (the app bar's own nav, so with_appbar adds none). No codes or file names
-    beyond "Source PDF:". review.html on disk keeps its own header."""
-    name, file = runs.book_of(s, run, R)
+    beyond "Source PDF:". review.html on disk keeps its own header. nm: the page's names snapshot (#93)."""
+    nm = nm or NMS.snapshot(s)
+    name, file = runs.book_of(s, run, R, nm=nm)
     sg = run.split('/')
     inb = len(sg) == 3 and sg[0] == 'batches'             # S3: a batch PDF's buttons are on its batch line (with_nav adds the list's)
-    batch = (f'<div class="pp-hd-batch"><span>Assigned to the batch "{html.escape(NMS.shown_run(s, run))}"</span>{HM.appbar()}</div>') if inb else ''
+    batch = (f'<div class="pp-hd-batch"><span>Assigned to the batch "{html.escape(nm.shown_run(run))}"</span>{HM.appbar()}</div>') if inb else ''
     src_bar = not inb and bool(file)                     # U3: no list button here, so "Home Page" ends the "Source PDF:" line
     return (f'<header class="top pp-head pp-hd{"" if inb else " pp-run-hd"}">{HM.title_row(html.escape(name), bar=not inb and not file)}'
             + (f'<div class="mc-book pp-hd-src"><span class="hm-file">Source PDF: {html.escape(file)}</span>{HM.appbar() if src_bar else ""}</div>' if file else '')
-            + '<p class="pp-hd-det">' + ' · '.join(html.escape(x) for x in runs.details(s, run, R, pages)) + f'</p>{batch}</header>')
+            + '<p class="pp-hd-det">' + ' · '.join(html.escape(x) for x in runs.details(s, run, R, pages, nm)) + f'</p>{batch}</header>')
 
-def with_app_header(page, s, run, R):
-    """review.html as served, with its own header (a file name, the prompt, the model, the run label) replaced by app_header()."""
+def with_app_header(page, s, run, R, nm=None):
+    """review.html as served, with its own header (a file name, the prompt, the model, the run label) replaced by app_header().
+    nm: the page's names snapshot (#93)."""
+    nm = nm or NMS.snapshot(s)
     a = page.find('<header class="top">'); b = page.find('</header>', a)
     if a < 0 or b < 0: return page
     m = re.search(r'· (\d[\d,]*) pages ·', page[a:b])
-    page = page[:a] + app_header(s, run, R, m.group(1) if m else None) + page[b + len('</header>'):]
-    return re.sub(r'<title>[^<]*</title>', lambda _: f'<title>{html.escape(runs.book_of(s, run, R)[0])}</title>', page, count=1)
+    page = page[:a] + app_header(s, run, R, m.group(1) if m else None, nm) + page[b + len('</header>'):]
+    return re.sub(r'<title>[^<]*</title>', lambda _: f'<title>{html.escape(runs.book_of(s, run, R, nm=nm)[0])}</title>', page, count=1)
 
-def no_dashboard(run, R, current=None, s=None):
+def no_dashboard(run, R, current=None, s=None, nm=None, first=None):
     """A run with no review.html (older runs): the panel, the review.md link and a line saying there is no dashboard.
     No rebuild: report_html.py would write into the run."""
     rm = os.path.realpath(os.path.join(R, 'review.md'))           # checked inside the run folder before isfile
     md = '<p><a class="pp-btn" href="review.md">Open the Report</a> <span class="pp-note">what a person should check</span></p>' if rm.startswith(os.path.realpath(R) + os.sep) and os.path.isfile(rm) else ''
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-                      f'<title>{html.escape(runs.book_of(s, run, R)[0] if s else run)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
-                      + (app_header(s, run, R) if s else f'<header><h1>{html.escape(run)}</h1></header>') + '<main id="main" tabindex="-1">'
-                      f'<p>This run has no dashboard: it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current)
+                      f'<title>{html.escape(runs.book_of(s, run, R, nm=nm)[0] if s else run)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
+                      + (app_header(s, run, R, nm=nm) if s else f'<header><h1>{html.escape(run)}</h1></header>') + '<main id="main" tabindex="-1">'
+                      f'<p>This run has no dashboard: it was made before the dashboards, or without one.</p>{md}</main></body></html>', run, current, first=first)
 
-def waiting_page(run, R, s=None):
+def waiting_page(run, R, s=None, nm=None, first=None):
     """A run before its first result: stopped for its first review (REVIEW=1: the panel's "Open the Review Page," then
     "Apply"), or started from the home page and estimating, ready to Spend, running, stopped or failed (the panel follows
     it). The book is named by its display name with "Source PDF:" under it, and the Run Name."""
-    name, file = runs.book_of(s, run, R) if s else (runs.waiting_title(run, R), '')
-    head = app_header(s, run, R) if s else f'<header><h1>{html.escape(name)}</h1></header>'
+    name, file = runs.book_of(s, run, R, nm=nm) if s else (runs.waiting_title(run, R), '')
+    head = app_header(s, run, R, nm=nm) if s else f'<header><h1>{html.escape(name)}</h1></header>'
     return with_panel(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
                       f'<title>{html.escape(name)}</title><link rel="stylesheet" href="/app/palette.css"></head><body class="pp-page">\n{SKIP}'
                       f'{head}<main id="main" tabindex="-1"></main></body></html>',
-                      run, waiting=True)
+                      run, waiting=True, first=first)
 
 def refused_page(message, base):
     """A download that cannot be given now: its reason in plain words, and a way back (the person followed a link)."""

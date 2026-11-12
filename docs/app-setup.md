@@ -77,7 +77,7 @@ The app's own tests do not weaken this: they unset `VERAPDF` and give, through `
 - **Only `127.0.0.1`.** No logins, no access from other computers. The settings keep the host and the folders in one place for a shared machine later.
 - **Only the app's own pages can act:** every request must name the app as its host, and every button's request must be JSON from the app's own pages.
 - **No framing:** every response of the app, and of the review page, says it may not be shown inside another page (`X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`). So another site cannot frame a run page and trick a click on a button.
-- **Scripts:** a run page (and any report page the app serves) runs only the app's own panel script and the page's one inline script, identified by its sha256 when it is served. A `javascript:` link in a report's text, or any other script, does not run. review.html on disk is unchanged; opened as a file it has no such policy, and no buttons.
+- **Scripts:** a run page (and any report page the app serves) runs only the app's own scripts, the app's own one-line calls to them (a fixed set of nine, see [Page changes in one step](app-run-page.md#page-changes-in-one-step)) and the page's one other inline script (the report's), each inline script identified by its sha256 when it is served. A `javascript:` link in a report's text, or any other script, does not run (and report_html.py no longer makes such a link live in the first place: only "#…", http:, https: and relative paths). review.html on disk is unchanged; opened as a file it has no such policy, and no buttons.
 - **Files:** only the files the run's pages need are served, and nothing outside the runs folder (never `.env`).
 
 ## Limits
@@ -97,7 +97,9 @@ The app's own tests do not weaken this: they unset `VERAPDF` and give, through `
 
 A name already in the Trash gets " 2", " 3"…, before a PDF's ".pdf": "ilokano 2.pdf", with its note "ilokano 2.json".
 
-**Putting one back:** Finder's **Put Back** doesn't know items the app moved; Finder only remembers its own moves. Open the Trash in Finder and drag the item back to the folder the move log names under `from`:
+**Nothing is restored through the app** (#93). Its pages say so ("… cannot be restored through the app."), and point a person who needs a PDF again to uploading the same PDF again with **Choose PDFs** on the home page. The app finds it by its sha256, so its runs can "Review Again" again, and a run that was waiting for "Start Remediation" (or "Get a New Estimate") goes on with the copy, its estimate unchanged. A different file name is fine: the copy's sha256 is read again before it is used, and the result is named after the copy's file name.
+
+**Putting one back by hand** (for whoever looks after the app, not offered on its pages): Finder's **Put Back** doesn't know items the app moved; Finder only remembers its own moves. Open the Trash in Finder and drag the item back to the folder the move log names under `from`:
 - a run back into `runs/<short name>/` under its label
 - a batch into `runs/batches/` under its label
 - an added PDF into the uploads folder (`uploads/` at the repository root) under its file name

@@ -30,8 +30,10 @@ def meta_path(s, label): return os.path.join(s['jobs'], 'batches', f'{label}.jso
 def list_path(s, label): return os.path.join(s['jobs'], 'batches', f'{label}.books.txt')
 def folder(s, label): return os.path.join(s['runs'], 'batches', label)
 
-def books_of(s, label):
-    """[{name, key, file, book}]: the app's record of the batch, else (a batch made from the terminal) its folders."""
+def books_of(s, label, rd=None, nm=None):
+    """[{name, key, file, book}]: the app's record of the batch, else (a batch made from the terminal) its folders. rd, nm:
+    the request's reader (home.reader) and names snapshot (#93)."""
+    rd = rd or _load
     m = _load(meta_path(s, label))
     if m and isinstance(m.get('books'), list): return m['books']
     B = folder(s, label); out = []
@@ -40,11 +42,11 @@ def books_of(s, label):
     for n in names:
         R = os.path.join(B, n)
         if not HM.is_run(R): continue
-        rec = _load(os.path.join(R, 'record.json')) or {}
-        o = (_load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or {}
+        rec = rd(os.path.join(R, 'record.json')) or {}
+        o = (rd(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or {}
         f = (rec.get('document') or {}).get('file') or o.get('file') or ''
         sha = (rec.get('document') or {}).get('sha256') or o.get('sha256')
-        out.append({'name': n, 'key': sha, 'file': f, 'book': (BK.name_of_sha(s, sha, f) if sha else None) or BK.stem_name(f or n)})
+        out.append({'name': n, 'key': sha, 'file': f, 'book': (BK.name_of_sha(s, sha, f, nm) if sha else None) or BK.stem_name(f or n)})
     return out
 
 def exists(s, label):
@@ -119,10 +121,12 @@ def start(s, setup, keys, plain, estimate=True):
     return [estimate_job(s, label, b) for b in bs]
 
 # ------------------------------------------------------------------ a batch saved for later (S7, Patrick 2026-11-07)
-def saved(s, label):
-    """A batch saved with "Save Batch for Later" whose estimates haven't started: its page is the New Batch form again."""
+def saved(s, label, nm=None):
+    """A batch saved with "Save Batch for Later" whose estimates haven't started: its page is the New Batch form again.
+    nm: the request's names snapshot (its job list)."""
     m = _load(meta_path(s, label)) or {}
-    return bool(m.get('saved')) and not any(j['run'].startswith(f'batches/{label}/') and j['kind'] == 'batch-estimate' for j in jobs.all_jobs(s['jobs']))
+    return bool(m.get('saved')) and not any(j['run'].startswith(f'batches/{label}/') and j['kind'] == 'batch-estimate'
+                                            for j in (nm.jobs() if nm else jobs.all_jobs(s['jobs'])))
 
 def _write_meta(s, label, meta):
     tmp = meta_path(s, label) + '.tmp'; json.dump(meta, open(tmp, 'w', encoding='utf-8'), indent=1, ensure_ascii=False); os.replace(tmp, meta_path(s, label))
@@ -211,11 +215,12 @@ def estimate_job(s, label, b):
                        book_sha=b['key'], book_file=b['file'])
 
 # ------------------------------------------------------------------ the batch's state
-def _book_status(s, label, b, R, jl, batch_job):
-    """A book's status in the home page's words, from disk and the jobs."""
+def _book_status(s, label, b, R, jl, batch_job, rd=None, nm=None):
+    """A book's status in the home page's words, from disk and the jobs (jl: every job, as the request read them)."""
+    rd = rd or _load
     if HM.is_run(R):
-        row = HM.row_of(s, f'batches/{label}/{b["name"]}', R)
-        HM.over(s, [row])
+        row = HM.row_of(s, f'batches/{label}/{b["name"]}', R, rd, nm)
+        HM.over(s, [row], nm)
     else: row = {'status': 'Waiting', 'words': 'Waiting', 'finished': False}
     mine = [j for j in jl if j['run'] == f'batches/{label}/{b["name"]}']
     if mine and mine[-1]['status'] in jobs.ACTIVE:
@@ -227,10 +232,10 @@ def _book_status(s, label, b, R, jl, batch_job):
         try: st = logs.now_step('apply', logs.steps(open(lp, encoding='utf-8', errors='replace').read()))
         except OSError: st = None
         row['words'] = 'Running' + (f': {st["words"][:1].upper()}{st["words"][1:]}' if st else '') if os.path.exists(lp) or st else row['words']
-    elif not row["finished"] and LG.question(s, R, mine):     # D4: its language is asked on its row
+    elif not row["finished"] and LG.question(s, R, mine, nm):     # D4: its language is asked on its row
         row['status'] = row['words'] = 'Waiting for a Language'
     elif mine and mine[-1]['status'] in ('failed', 'interrupted') and not row['finished']:
-        it = (_load(os.path.join(R, '_intake', 'intake.json')) or {}).get('status')
+        it = (rd(os.path.join(R, '_intake', 'intake.json')) or {}).get('status')
         row['words'] = 'Stopped: Needs a Person' if it == 'stopped' else 'Failed'
     return row
 
@@ -251,7 +256,7 @@ def dashboard(s, label, out):
             if r is None:
                 try:
                     rec = json.load(open(os.path.join(R, 'record.json'), encoding='utf-8'))
-                    g = report_html.glance_of(R, rec, report_html.labels_of(R, rec)); vg = g['verapdf']
+                    g = report_html.glance_of(R, rec); vg = g['verapdf']   # #93: page labels only for an older record, read there
                     r = {'needs': g['needs_person']['total'], 'ai': g['ai_decisions']['count'], 'safety': report_html.safety_state(g),
                          'vb': vg.get('before_rules'), 'va': vg.get('after_rules'), 'new': len(vg.get('newly_failing') or []),
                          'cost': b.get('cost') or 0, 'pages': (rec.get('document') or {}).get('pages'), 'reviewed': bool(g['ship'][0]['ok'])}
@@ -265,20 +270,26 @@ def fingerprint(total):
     return hashlib.sha256(json.dumps([[b['R'], (b['estimate'] or {}).get('fingerprint'), b['adds_usd']] for b in total['books']],
                                      sort_keys=True).encode()).hexdigest()
 
-def state(s, label):
-    bs = books_of(s, label)
-    jl = jobs.all_jobs(s['jobs'])
+def state(s, label, nm=None, with_dashboard=True):
+    """The batch page's state. nm: the request's names snapshot (webapp/names.py); every job file, names file and run
+    record is read once for the whole state (#93). with_dashboard=False (a book's page in the batch: its side list, and
+    batch.js's ?nav=1 poll there, review 09 12a): 'dashboard' is None, never built; the side list shows only the books'
+    statuses, and for an older batch the dashboard opens every finished PDF on its first build after the app starts."""
+    from . import names as NM
+    nm = nm or NM.snapshot(s); rd = HM.reader()
+    bs = books_of(s, label, rd, nm)
+    jl = nm.jobs()
     bj = [j for j in jl if j['run'] == f'batches/{label}' and j['kind'] == 'batch']
     batch_job = bj[-1] if bj else None
     B = folder(s, label)
     out, Rs, flagged, missing, est_active, reviewing, asking = [], [], [], [], False, [], []
     for b in bs:
         R = os.path.join(B, b['name'])
-        row = _book_status(s, label, b, R, jl, batch_job)
-        stopped = (_load(os.path.join(R, '_intake', 'intake.json')) or {}).get('status') == 'stopped'
+        row = _book_status(s, label, b, R, jl, batch_job, rd, nm)
+        stopped = (rd(os.path.join(R, '_intake', 'intake.json')) or {}).get('status') == 'stopped'
         mine = [j for j in jl if j['run'] == f'batches/{label}/{b["name"]}']
         if mine and mine[-1]['status'] in jobs.ACTIVE and mine[-1]['kind'] == 'batch-estimate': est_active = True
-        q = None if row['finished'] or (mine and mine[-1]['status'] in jobs.ACTIVE) else LG.question(s, R, mine)
+        q = None if row['finished'] or (mine and mine[-1]['status'] in jobs.ACTIVE) else LG.question(s, R, mine, nm)
         if os.path.isfile(os.path.join(R, 'workorder.ai.json')) and not row['finished']: reviewing.append(b['name'])   # D2a: never sent again
         elif q: asking.append(b['name'])                                         # D4: waits for its language
         elif stopped and not row['finished']: flagged.append(b['name'])
@@ -286,16 +297,15 @@ def state(s, label):
             Rs.append(R)
             if not costs.estimate(R) and not (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
                 missing.append(b['name'])
-        from . import names as NM
-        out.append({'name': b['name'], 'book': NM.book_name(s, b.get('key'), b.get('file') or '') if b.get('key') else b.get('book'), 'file': BK.shown_file(b.get('file') or ''), 'status': row['words'], 'finished': row['finished'],
-                    'tone': tone(row, R), 'language': q,
+        out.append({'name': b['name'], 'book': nm.book_name(b.get('key'), b.get('file') or '') if b.get('key') else b.get('book'), 'file': BK.shown_file(b.get('file') or ''), 'status': row['words'], 'finished': row['finished'],
+                    'tone': tone(row, R, rd), 'language': q,
                     'href': HM.run_href(f'batches/{label}/{b["name"]}'), 'cost': row.get('cost') or 0})
     from . import spend as SP_
-    total = costs.batch(Rs, limits=costs.limits_of(s), credit_read=SP_.credit_read(s), folder=B)   # U8: a fresh read counts; spent: the whole batch's
+    total = costs.batch(Rs, limits=costs.limits_of(s), credit_read=SP_.credit_read(s), folder=B, rd=rd)   # U8: a fresh read counts; spent: the whole batch's
     spent = total['spent_usd']
     active = batch_job and batch_job['status'] in jobs.ACTIVE
     shown = (batch_job or {}).get('shown') or {}             # what the click agreed to, frozen: finished books drop out of a live sum
-    cost_words = costs.shown_words(B, shown, so_far=bool(active))
+    cost_words = costs.shown_words(B, shown, so_far=bool(active), rd=rd)
     needs = batch_job and batch_job['status'] == 'needs-spend'
     finished = sum(1 for x in out if x['finished'])
     summary = os.path.isfile(os.path.join(B, 'summary.html'))
@@ -323,7 +333,7 @@ def state(s, label):
                        'spent_usd': spent, 'cost_words': cost_words, 'books_to_send': len(Rs), 'finished': finished, 'expected': total['expected'], 'requests': total['requests'],
                        'estimated': sum(1 for x in total['books'] if x['adds_usd'] is not None), 'to_estimate': len(Rs) + len(asking),   # R14
                        'shown_ceiling_usd': shown.get('ceiling_usd')},
-            'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary, 'dashboard': dashboard(s, label, out),
+            'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary, 'dashboard': dashboard(s, label, out) if with_dashboard else None,
             'again': bool(meta) and phase in ('stopped', 'finished') and finished + len(reviewing) < len(out),
             'job': ({k: batch_job.get(k) for k in ('id', 'status', 'exit', 'started', 'ended')} if batch_job else None)}
 
@@ -469,7 +479,7 @@ def form_part(s, keys, saved=None):
         f'<div class="pp-row"><button type="submit" class="pp-primary">Get the Estimates</button><button type="submit" data-api="{E(later)}">Save Batch for Later</button>'
         '<button type="button" data-cancel>Cancel</button></div></form>')
 
-def tone(row, R):
+def tone(row, R, rd=None):
     """A book's state in the side list's left border (P15, Patrick 2026-11-06), always with its status in words beside it:
     processing (grey, with a spinner), new (grey: its review not opened yet), review (blue: the review opened, choices
     saved or finished, up to Pending Evaluation), person (yellow: stopped for a person), done (green: Ready or Shipped),
@@ -482,7 +492,7 @@ def tone(row, R):
     opened = any(os.path.exists(os.path.join(R, *x)) for x in (('review.json',), ('review_decisions.json',), ('record.json',),
                                                                  ('reviews', 'review_decisions.json'), ('reviews', 'sessions')))
     if os.path.exists(os.path.join(R, 'record.json')):
-        rec = _load(os.path.join(R, 'record.json')) or {}
+        rec = (rd or _load)(os.path.join(R, 'record.json')) or {}
         ship = (rec.get('glance') or {}).get('ship') or []
         opened = bool(ship and ship[0].get('ok')) or os.path.isdir(os.path.join(R, 'reviews', 'sessions'))
     return 'review' if opened else 'new'
@@ -510,46 +520,71 @@ def item(b, current):
             f' data-book="{E(b["name"])}"><span class="bn-name">{E(b["book"])}</span><span class="hm-file">Source PDF: {E(b["file"])}</span>'
             f'<span class="bn-st">{E(b["status"])}</span>{spin}</a></li>')
 
-def nav(s, label, current=None, st=None, closed=None):
+def nav(s, label, current=None, st=None, closed=None, nm=None):
     """The side column (03 §7, 01 §3.2): the batch's PDFs, each with its status in words and its state in its left border
     (P15); the current one marked by its background and bold name. It is added at serve time; batch.js keeps the statuses
     current, and the button that hides it sits in the app bar (toggle())."""
     import html
     E = html.escape
     from . import names as NM
-    st = st or state(s, label)
+    nm = nm or NM.snapshot(s)
+    st = st or state(s, label, nm)
     items = ''.join(item(b, current) for b in st['books'])
     n = len(st['books'])
     return (f'<nav class="bn{" closed" if closed else ""}" id="pp-bnav" aria-label="PDFs in This Batch" data-label="{E(label)}">'
             f'<div id="bn-list"><p class="bn-h"><a href="/batch/{E(urllib.parse.quote(label, safe=""))}/"' + (' aria-current="page"' if current is None else '') +
-            f'>Batch: {E(NM.shown_run(s, "batches/" + label))}</a> <span class="pp-note">({n} PDF{"" if n == 1 else "s"})</span></p><ul>{items}</ul></div></nav>')
+            f'>Batch: {E(nm.shown_run("batches/" + label))}</a> <span class="pp-note">({n} PDF{"" if n == 1 else "s"})</span></p><ul>{items}</ul></div></nav>')
 
-def page(s, label, closed=None):
+TRASHED_SHOWN = 3                                        # names given after "Move Selected to Trash"; the rest counted
+def trashed_line(names, more=None):
+    """The batch page's line after "Move Selected to Trash" (review 09 L1, as the home page's): the moved PDFs' display
+    names from the address (?trashed=, one per PDF: trash.js sends the first three) and how many more were moved
+    (?trashed_more=, so a long list never makes the address too long), each name escaped and capped at 200 characters as
+    on the home page; three named, then "and N more". '1' alone (no name known): "Moved to the Trash." None: no line."""
+    import html
+    ns = [n for n in (str(x).strip()[:200] for x in (names or [])[:1000]) if n]
+    if not ns: return None
+    m = str(more or '').strip()
+    extra = int(m) if m.isdecimal() and m.isascii() and len(m) <= 6 else 0
+    if ns == ['1'] and not extra: return 'Moved to the Trash.'
+    shown = [html.escape(n) for n in ns[:TRASHED_SHOWN]]
+    total = len(ns) + extra
+    if total > TRASHED_SHOWN or extra: words = ', '.join(shown) + f' and {total - len(shown)} more'
+    elif len(ns) > 1: words = ', '.join(shown[:-1]) + ' and ' + shown[-1]
+    else: words = shown[0]
+    return f'Moved to the Trash: {words}.'
+
+def page(s, label, closed=None, trashed=None, trashed_more=None):
     import html
     from . import names as NM
     E = html.escape
-    st = state(s, label)
+    nm = NM.snapshot(s)                                     # #93: one read of each names file and of the jobs for the page
+    st = state(s, label, nm)
     return body_class('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<title>Batch: {E(NM.shown_run(s, "batches/" + label))}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page hm-page"><a class="skip" href="#main">Skip to the content</a>' + nav(s, label, st=st, closed=closed) +
-            f'<header class="top pp-head pp-hd">' + HM.title_row(f'Batch: {E(NM.shown_run(s, "batches/" + label))}', first=toggle(len(st['books']), not closed)) +
-            '</header><main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
-            '<h2 id="bt-h" tabindex="-1">This Batch</h2><div id="bt-body"><p>Loading…</p></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
+            f'<title>Batch: {E(nm.shown_run("batches/" + label))}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
+            '<script src="/app/shared.js"></script><script src="/app/batch.js"></script></head>'   # 15: in the head; the calls below draw
+            '<body class="pp-page hm-page" data-batch-page="1"><a class="skip" href="#main">Skip to the content</a>' + nav(s, label, st=st, closed=closed, nm=nm) + HM.call('batchNav') +
+            f'<header class="top pp-head pp-hd">' + HM.title_row(f'Batch: {E(nm.shown_run("batches/" + label))}', first=toggle(len(st['books']), not closed)) +
+            '</header>' + HM.call('batchNav') + f'<main id="main" tabindex="-1"><section class="pp" id="bt-panel" data-label="{E(label)}" aria-labelledby="bt-h">'
+            '<h2 id="bt-h" tabindex="-1">This Batch</h2>' + (f'<p id="bt-trashed" hidden>{gone}</p>' if (gone := trashed_line(trashed, trashed_more)) else '') + '<div id="bt-body"></div><div id="pp-msg" class="pp-msg" tabindex="-1" hidden></div>'
             '<div id="pp-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div></section></main>'
-            '<script src="/app/shared.js" defer></script><script src="/app/batch.js" defer></script><script src="/app/trash.js" defer></script></body></html>', closed)
+            + HM.first_answer('bt-first', st) + HM.call('batchPage') +   # #93: the panel drawn from the page itself, no "Loading…"; 15: right here
+            '<script src="/app/trash.js" defer></script></body></html>', closed)   # trash.js draws nothing until it is used
 
-def with_nav(page, s, label, current, closed=None):
+def with_nav(page, s, label, current, closed=None, nm=None):
     """A book's run page inside a batch: the side list's button beside "Home Page" in the app bar (inside the run page's
-    header: Patrick's test 2026-11-07, Q6), and the side column right after the skip link, laid out by the server (D7)."""
-    from . import server as W
-    st = state(s, label)
-    bar = HM.appbar(first=toggle(len(st['books']), not closed)); side = nav(s, label, current, st=st, closed=closed)   # S3: the list's button first
+    header: Patrick's test 2026-11-07, Q6), and the side column right after the skip link, laid out by the server (D7),
+    with batch.js in the head and its call right after the column (15: the column is set before the first frame).
+    nm: the page's names snapshot (the run page's header read through it too, #93)."""
+    from . import server as W, names as NM
+    nm = nm or NM.snapshot(s)
+    st = state(s, label, nm, with_dashboard=False)          # the side list never shows the dashboard (review 09, 12a)
+    bar = HM.appbar(first=toggle(len(st['books']), not closed)); side = nav(s, label, current, st=st, closed=closed, nm=nm) + HM.call('batchNav')   # S3: the list's button first
     page = body_class(page, closed)
     if W.APPBAR_MARK in page:
         a = page.rfind('<nav', 0, page.find(W.APPBAR_MARK)); i = page.find('</nav>', a)
-        page = page[:a] + bar + page[i + 6:]
+        page = page[:a] + bar + HM.call('batchNav') + page[i + 6:]          # 15: again right after the list's button
     else: side = bar + side                                 # a page with no app bar of its own: the bar comes first
     if W.SKIP in page: page = page.replace(W.SKIP, W.SKIP + side, 1)
     else: page = W.after_body(page, side)
-    i = page.rfind('</body>'); js = '<script src="/app/batch.js" defer></script>\n'
-    return page[:i] + js + page[i:] if i >= 0 else page + js
+    return W.in_head(page, '<script src="/app/batch.js"></script>\n')   # 15: read before the page can show; the call above draws

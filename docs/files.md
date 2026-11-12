@@ -18,7 +18,7 @@ This page lists what each script, module and data file in the repository does. I
 | `audit.py` | Original → digest, the summary the AI reads. No AI (see [audit.py](#auditpy)) |
 | `decide.py` | The AI request: estimates cost, checks credit, sends the digest and crops, parses and validates the reply (see [decide.py](#decidepy)) |
 | `read_pages.py` | Scanned PDFs with mostly Hawaiian pages only: sends each such page image to the AI to transcribe as printed. Paid (see [read_pages.py](#read_pagespy)) |
-| `apply.py` | The executor. Original + work order → `<original>_remediated.pdf`. pikepdf only; checks each target first and rejects what doesn't fit |
+| `apply.py` | The executor. Original + work order → `<original>_remediated.pdf`. pikepdf only; checks each target first and rejects what doesn't fit. Keeps its tag-tree index between steps and walks the tree again only after a write through `tree_set()`; `APPLY_TREE_CHECK=1` (tests and `tools/regression.py` only) checks that kept index against a new walk ([Testing](testing.md#applypys-kept-tag-tree-index-and-its-check-mode)) |
 | `verify.py` | Checks the result against the original, adds the WCAG checks veraPDF does not make, and runs veraPDF on the result |
 | `report.py` | Writes `review.md`, `record.json`, `han_review.csv` and `review.html`, then removes the working files (see [report.py](#reportpy)) |
 | `report_html.py` | The offline dashboards: `review.html` for a run (`report.py` runs it) and, with `--summary <batch>`, `summary.html` for a batch (`batch_api.sh` runs it). Also rebuilds them for any finished run. See [Output files](output-files.md) |
@@ -236,6 +236,7 @@ It takes the result of a run from its saved reply, replaces one figure's image i
 | `lib/glance.py` | The "Overview" numbers for a finished run, from `record.json` and `review.md`; shared by `report.py`, `report_html.py` and `review_ocr.py` (see [lib/glance.py](#libglancepy)) |
 | `lib/plpages.py` | Reads each page once with pdfplumber, and keeps only what `audit.py` and `apply.py` use: characters, image boxes, size and the visible area (CropBox) |
 | `lib/handedit.py` | What changed in a PDF edited by hand, for `handedit.py import`: the images on each page by their data's sha256, each Figure and the images it holds, the figures whose image is new, and a copy with their old alt text removed |
+| `lib/contentops.py` | The content-stream operators `verify.py`'s untagged-content loop acts on, and the filter that asks pikepdf for those only (an inline image named `BI ID EI`, all three); the loop and the filter share this one list |
 | `lib/plumb_fix.py` | Fix for pdfplumber's nested marked-content bug. Required; imported before pdfplumber reads a page |
 
 ### lib/sections.py

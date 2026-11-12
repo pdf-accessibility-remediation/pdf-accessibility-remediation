@@ -25,6 +25,34 @@ def _load(p):
     try: return json.load(open(p, encoding='utf-8'))
     except (OSError, ValueError): return None
 
+# 15 (Patrick, 2026-11-11: page changes in one step): each script that draws part of a page's first view is loaded in the
+# page's head (a plain blocking script: kept by the browser by its version, server.py versioned()) and only defines; the
+# page calls it right after the elements it fills, so the drawing happens while the page is read, before the browser can
+# show a frame of it, in every browser. These calls are the only inline scripts the app adds (server.py csp() allows
+# exactly these, by their hashes).
+CALLS = ('panel', 'strip', 'version', 'batchNav', 'batchPage', 'homeActive', 'homeAdded', 'home', 'checks')
+def call(name):
+    """The page's call to one of its scripts' drawing functions (window.Pdfrem.<name>), as an inline script."""
+    assert name in CALLS, name
+    return f'<script>Pdfrem.{name}()</script>'
+
+def first_answer(eid, obj):
+    """A panel's first answer, in its page (#93, Patrick's test of the app): the JSON its first request would get, so the
+    panel draws filled on first load, with no "Loading…" (Runs in Progress, Run Actions and the evaluation strip, This
+    Batch). The page's script reads it once; every later update is a request, as before. A JSON data block is never run
+    (server.py csp() counts only real scripts); <, > and & are written as \\u escapes, so no text in it can end the block."""
+    j = json.dumps(obj, ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+    return f'<script type="application/json" id="{E(eid)}">{j}</script>'
+
+def active_jobs(s, nm):
+    """Runs in Progress's first answer: what GET /api/jobs?active=1 gives a page that has seen no job yet, or None when it
+    can't be worked out (the page then asks for it)."""
+    try:
+        from . import runs
+        ctx = runs.view_context(s, nm)
+        return [runs.job_view(s, j, ctx=ctx) for j in reversed(runs.changing_jobs(ctx['nm'].jobs(), ''))]
+    except Exception: return None
+
 def _mt(p):
     try: return os.stat(p).st_mtime_ns
     except OSError: return None
@@ -72,11 +100,13 @@ def _status_of_record(R, rec):
         except Exception: pass
     return REL.NOT_READY, REL.NOT_READY
 
-def row_of(s, run, R):
-    """One run's row (without the jobs laid over it)."""
-    rec = _load(os.path.join(R, 'record.json'))
-    intake = _load(os.path.join(R, '_intake', 'intake.json')) or {}
-    runj = _load(os.path.join(R, 'run.json')) or {}
+def row_of(s, run, R, rd=None, nm=None):
+    """One run's row (without the jobs laid over it). rd: the request's reader (one read of each file per request: a
+    batch page's, #93); nm: the request's names snapshot."""
+    rd = rd or _load
+    rec = rd(os.path.join(R, 'record.json'))
+    intake = rd(os.path.join(R, '_intake', 'intake.json')) or {}
+    runj = rd(os.path.join(R, 'run.json')) or {}
     if rec:
         doc = rec.get('document') or {}
         file, sha = doc.get('file') or '', doc.get('sha256')
@@ -84,7 +114,7 @@ def row_of(s, run, R):
         when = (rec.get('run') or {}).get('started') or rec.get('generated') or ''
     else:
         o = intake.get('original') or {}
-        stop = _load(os.path.join(R, 'review_stop.json')) or {}
+        stop = rd(os.path.join(R, 'review_stop.json')) or {}
         file, sha = o.get('file') or os.path.basename(stop.get('src') or '') or (runj.get('source') or {}).get('file') or '', o.get('sha256') or (runj.get('source') or {}).get('sha256')
         if not sha and has_source(R):                       # R17: its own PDF says which book it is
             from . import runs as RN
@@ -101,17 +131,29 @@ def row_of(s, run, R):
     if not when:
         try: when = datetime.datetime.fromtimestamp(os.path.getmtime(R)).isoformat(timespec='seconds')
         except OSError: when = ''
-    a = costs.actual(R)
+    a = costs.actual(R, rec)                                # the record read above: once (#93)
     parts = run.split('/')
     pages = ((rec or {}).get('document') or {}).get('pages') or (intake.get('original') or {}).get('pages')
-    if not pages and sha: pages = (_load(os.path.join(s['jobs'], 'books-cache.json')) or {}).get(sha, {}).get('pages')
-    return {'run': run, 'lang_kind': None if rec else LG.asks(R), 'sha': sha, 'book': (BK.name_of_sha(s, sha, file) if sha else None) or BK.stem_name(file or parts[-2 if parts[0] != 'batches' else -1]),
+    if not pages and sha: pages = (nm.cache() if nm else (_load(os.path.join(s['jobs'], 'books-cache.json')) or {})).get(sha, {}).get('pages')
+    return {'run': run, 'lang_kind': None if rec else LG.asks(R), 'sha': sha, 'book': (BK.name_of_sha(s, sha, file, nm) if sha else None) or BK.stem_name(file or parts[-2 if parts[0] != 'batches' else -1]),
             'file': BK.shown_file(file) if file else '', 'status': name, 'words': words, 'when': when,
             'cost': a['usd'], 'reused': a['reused'], 'batch': parts[1] if parts[0] == 'batches' else None, 'finished': bool(rec),
             'pages': pages if isinstance(pages, int) else None}
 
-def index(s):
-    """Every run's row (cached by its records' mtimes), newest first, with the app's jobs laid over them, and the batches."""
+def reader():
+    """One request's JSON reader (#93): each file read once, later reads given the same object (never changed by a reader:
+    rows are built from it, never written into it). Made per request and dropped with it, never kept."""
+    memo = {}
+    def rd(p):
+        if p not in memo: memo[p] = _load(p)
+        return memo[p]
+    return rd
+
+def index(s, nm=None):
+    """Every run's row (cached by its records' mtimes), newest first, with the app's jobs laid over them, and the batches.
+    nm: the request's names snapshot (webapp/names.py), which reads each names file and the job files once."""
+    from . import names as NM
+    nm = nm or NM.snapshot(s)
     cp = os.path.join(s['jobs'], 'home-index.json')
     with _lock: cache = _load(cp) or {}
     rows, fresh, dirty = [], {}, False
@@ -119,7 +161,7 @@ def index(s):
         k = key_of(R); c = cache.get(run)
         if c and c.get('key') == k and 'pages' in c['row']: row = c['row']   # a row cached before Q5 has no pages: drawn again
         else:
-            try: row = row_of(s, run, R)
+            try: row = row_of(s, run, R, nm=nm)
             except Exception: continue                      # an unreadable folder is left out, never fails the page
             dirty = True
         fresh[run] = {'key': k, 'row': row}; rows.append(dict(row))
@@ -127,13 +169,12 @@ def index(s):
         with _lock:
             tmp = cp + f'.{os.getpid()}.tmp'
             os.makedirs(os.path.dirname(cp), exist_ok=True); json.dump(fresh, open(tmp, 'w', encoding='utf-8'), ensure_ascii=False); os.replace(tmp, cp)
-    over(s, rows)
-    from . import names as NM
+    over(s, rows, nm)
     for r in rows:                                          # names resolved now: a rename shows at once (Patrick, 2026-11-06)
-        if r.get('sha'): r['book'] = NM.book_name(s, r['sha'], r.get('file'))
-        r['name'] = NM.shown_run(s, r['run'])
+        if r.get('sha'): r['book'] = nm.book_name(r['sha'], r.get('file'))
+        r['name'] = nm.shown_run(r['run'])
     rows.sort(key=lambda r: r['when'] or '', reverse=True)
-    return {'runs': rows, 'batches': batches(s, rows)}
+    return {'runs': rows, 'batches': batches(s, rows, nm)}
 
 _warming = threading.Lock()
 def warm(s, wait=False):
@@ -150,11 +191,12 @@ def warm(s, wait=False):
 ACTIVE_WORDS = {'estimate': 'Estimating', 'spend': 'Running', 'rerun': 'Running', 'replay': 'Running', 'apply': 'Running',
                 'review': 'Waiting for Review', 'pin': 'Running', 'ocr': 'Waiting for Review', 'discard': 'Running', 'batch': 'Running'}
 
-def over(s, rows):
+def over(s, rows, nm=None):
     """The app's jobs laid over the rows: a run with a job queued or running says so; a job's failure the record cannot
-    show (an estimate that stopped) says Failed."""
+    show (an estimate that stopped) says Failed. nm: the request's names snapshot (its job list)."""
+    from . import names as NM
     last = {}
-    for j in jobs.all_jobs(s['jobs']): last[j['run']] = j
+    for j in (nm or NM.snapshot(s)).jobs(): last[j['run']] = j
     for r in rows:
         j = last.get(r['run'])
         if r['status'] == 'Waiting to Start' and not r['finished'] and not (j and j['status'] in jobs.ACTIVE):   # reviewed, not applied
@@ -193,8 +235,10 @@ def pill(g, words=None):
     name = GROUP_NAMES[g]
     return f'<span class="hm-pill hm-g-{g}">{E(name)}</span>' + (f' <span class="hm-st">{E(words)}</span>' if words and words != name else '')
 
-def batches(s, rows):
-    """Every batch folder: its books, state, group, date and cost."""
+def batches(s, rows, nm=None):
+    """Every batch folder: its books, state, group, date and cost. nm: the request's names snapshot (its job list too)."""
+    from . import names as NM
+    nm = nm or NM.snapshot(s); js = nm.jobs()
     BB = os.path.join(s['runs'], 'batches')
     try: labels = sorted(e.name for e in os.scandir(BB) if e.is_dir() and not e.name.startswith('.'))
     except OSError: labels = []
@@ -202,10 +246,9 @@ def batches(s, rows):
     for r in rows:
         if r['batch']: by.setdefault(r['batch'], []).append(r)
     last = {}
-    for j in jobs.all_jobs(s['jobs']):
+    for j in js:
         if j['kind'] == 'batch': last[j['run']] = j
     out = []
-    from . import names as NM
     for lb in labels:
         bs = by.get(lb, [])
         B = os.path.join(BB, lb)
@@ -225,8 +268,8 @@ def batches(s, rows):
         when = meta.get('created') or min((r['when'] for r in bs if r['when']), default='') or ''
         n_books = len(bs) or len(meta.get('books') or [])
         known = [r['pages'] for r in bs if r.get('pages')]
-        out.append({'label': lb, 'name': NM.batch_name(s, lb) or lb, 'books': n_books, 'done': done, 'state': state,
-                    'saved': bool(meta.get('saved')) and not lj and not any(jobs.related(j['run'], f'batches/{lb}') for j in jobs.all_jobs(s['jobs'])),
+        out.append({'label': lb, 'name': nm.batch_name(lb) or lb, 'books': n_books, 'done': done, 'state': state,
+                    'saved': bool(meta.get('saved')) and not lj and not any(jobs.related(j['run'], f'batches/{lb}') for j in js),
                     'group': g, 'when': when, 'cost': round(sum(r['cost'] or 0 for r in bs), 6),
                     'pages': sum(known) if known else None, 'pages_missing': n_books - len(known)})
     out.sort(key=lambda b: b['when'] or '', reverse=True)
@@ -252,7 +295,9 @@ def book_cell(name, file):
 
 def qs(**kw): return '/?' + urllib.parse.urlencode({k: v for k, v in kw.items() if v not in (None, '', 25)})
 
-def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs', group='', trashed=False):
+def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs', group='', trashed=False, opened=None):
+    """The home page. opened: {url, html} of the pop-up a saved batch's address opens (?open=, server.py), carried by the
+    page so the pop-up comes with it, filled (15)."""
     try: n = max(25, min(int(n), 100000))
     except (TypeError, ValueError): n = 25
     try: bn = max(25, min(int(bn), 100000))
@@ -260,17 +305,22 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
     q = (q or '').strip()[:200]
     view = 'batches' if view == 'batches' else 'runs'
     group = group if group in GROUP_NAMES else ''
-    bk = BK.listing(s)                                      # first: it reads each PDF's Title, which the rows' names use
-    idx = index(s)
-    active = any(j['status'] in jobs.ACTIVE for j in jobs.all_jobs(s['jobs']))
+    from . import names as NM
+    nm = NM.snapshot(s)                                     # #93: each names file and the job files read once for the page
+    bk = BK.listing(s, nm)                                  # first: it reads each PDF's Title, which the rows' names use
+    idx = index(s, nm)
+    active = any(j['status'] in jobs.ACTIVE for j in nm.jobs())
     B = ['<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">',
-         '<title>PDF Accessibility Remediation</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>',
+         '<title>PDF Accessibility Remediation</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
+         '<script src="/app/shared.js"></script><script src="/app/home.js"></script></head>',   # 15: in the head; the calls below draw
          '<body class="pp-page hm-page" data-home="1"><a class="skip" href="#main">Skip to the content</a>',
          '<header><h1>PDF Accessibility Remediation</h1></header><main id="main" tabindex="-1">']
     if test: B.append('<p class="pp pp-bar">Test: saved replies, no AI request.</p>')
+    first = active_jobs(s, nm)                              # #93: the list drawn from the page itself, no "Loading…"
     B.append('<section class="pp hm-card hm-c-act" id="hm-act-sec" aria-labelledby="hm-act-h"' + ('' if active else ' hidden') +
-             '><h2 id="hm-act-h">Runs in Progress</h2><div id="hm-active"><p>Loading…</p></div></section>'
-             '<div id="hm-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>')
+             '><h2 id="hm-act-h">Runs in Progress</h2><div id="hm-active">' + ('' if first is not None else '<p>Loading…</p>') + '</div></section>'
+             '<div id="hm-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>'
+             + (first_answer('hm-first', first) if first is not None else '') + call('homeActive'))
     # the PDFs added through the drop zone (samples/ is never listed: P3). Patrick's test, 2026-11-07 (Q1, Q3, Q4): one
     # drop zone for several PDFs; a new PDF comes first, highlighted, with its name box open (home.js); Edit Name in place.
     new = [k for k in (added or '').split(',') if k] if added else []
@@ -287,7 +337,9 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
     if ab: B.append('<p id="hm-added" hidden>' + (f'Added "{E(ab[0]["name"])}"' if len(ab) == 1 else f'Added {len(ab)} PDFs') + '</p>')   # R7
     elif renamed and next((b for b in bk if b['key'] == renamed), None):
         B.append(f'<p id="hm-added" hidden>The PDF is now named "{E(next(b for b in bk if b["key"] == renamed)["name"])}".</p>')
-    elif trashed: B.append('<p id="hm-added" hidden>Moved to the Trash. Nothing was deleted: to put it back, drag it from the Trash to where it was.</p>')
+    elif trashed:                                           # #93 (Patrick's test of the app): what was moved, by its name
+        t = str(trashed).strip()[:200] if trashed is not True and str(trashed).strip() not in ('', '1') else ''
+        B.append('<p id="hm-added" hidden>' + (f'Moved to the Trash: {E(t)}.' if t else 'Moved to the Trash.') + '</p>')
     B.append('<form id="hm-batch" method="get" action="/new-batch">')
     if not bk: B.append('<p>None yet. "Choose PDFs" adds one.</p>')
     else:
@@ -307,7 +359,7 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
         B.append('</tbody></table></div>')
         B.append('<div class="pp-row"><button type="submit" id="hm-batch-b">Create a New Batch</button>'
                  '<span class="pp-note" id="hm-batch-n">Select two or more PDFs first.</span></div>')
-    B.append('</form></section>')
+    B.append('</form></section>' + call('homeAdded'))
     # My Workspace: single runs or batches, searched and filtered by status group
     ql = q.casefold()
     runs_ = [r for r in idx['runs'] if not r['batch']]
@@ -367,7 +419,8 @@ def page(s, q='', n=25, test=False, added=None, bn=25, renamed=None, view='runs'
     if len(items) > lim:
         more = qs(view=view if view != 'runs' else None, q=q, group=group, n=n + 25 if view == 'runs' else n, bn=bn + 25 if view == 'batches' else bn)
         B.append(f'<p><a class="pp-btn" href="{E(more)}#hm-more" id="hm-more">Show More {"Runs" if view == "runs" else "Batches"}</a></p>')
-    B.append('</section></main><script src="/app/shared.js" defer></script><script src="/app/home.js" defer></script><script src="/app/trash.js" defer></script></body></html>')
+    B.append('</section></main>' + (first_answer('hm-open', opened) if opened else '') + call('home') +
+             '<script src="/app/trash.js" defer></script></body></html>')   # trash.js draws nothing until it is used
     return '\n'.join(B)
 
 def title_row(h1, extra='', first='', bar=True):
@@ -375,6 +428,8 @@ def title_row(h1, extra='', first='', bar=True):
     list's button, before "Home Page" (S3, S4); bar=False: no buttons on this line (a batch PDF's page has them on its
     batch line, S3). The bar is the app bar's own nav, so with_appbar adds none. h1: the heading's escaped text."""
     return f'<div class="pp-hd-top"><h1>{h1}</h1>' + (appbar(extra=extra, first=first) if bar else '') + '</div>'
+
+HOME_IN_BAR = 'data-appbar="bar"'      # on the bar of a page whose own bar holds "Home Page" (server.py with_appbar)
 
 def appbar(current=False, extra='', first=''):
     """The app bar on every page the app serves except the home page itself (P1), right after the skip link: "Home Page"

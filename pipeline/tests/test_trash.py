@@ -5,7 +5,7 @@ so and refuses "Review Again" in plain words. No book, no model.
 
     python -m pytest tests/test_trash.py -q
 """
-import os, sys, json, errno
+import os, sys, json, errno, shutil
 import pytest
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # pipeline/
@@ -106,10 +106,11 @@ def test_a_pdf_used_by_runs_goes_and_the_run_says_so(setup):
     assert not (setup / 'uploads' / 'bk.pdf').exists() and (setup / 'Trash' / 'bk.pdf').exists() and BK.by_key(s, key) is None
     assert TR.moved_pdf(s, key)['runs'] == ['r1']
     st = RN.state(s, 'bk/r1', str(R))
-    assert st['pdf_moved']['text'].startswith('The original PDF was moved to the Trash. "Review Again" needs it back')
-    with pytest.raises(ValueError, match='moved to the Trash'): RN.start_review(s, 'bk/r1', str(R), 8123)
-    os.rename(setup / 'Trash' / 'bk.pdf', setup / 'uploads' / 'bk.pdf')       # put back by hand: found again
-    assert 'pdf_moved' not in RN.state(s, 'bk/r1', str(R))
+    assert st['pdf_moved']['text'] == ('The original PDF was moved to the Trash. "Review Again" requires it: to continue, '
+                                       'upload the same PDF again with "Choose PDFs" on the home page.')   # #93: no drag-back
+    with pytest.raises(ValueError, match='upload the same PDF again with "Choose PDFs"'): RN.start_review(s, 'bk/r1', str(R), 8123)
+    shutil.copyfile(setup / 'Trash' / 'bk.pdf', setup / 'uploads' / 'bk-again.pdf')   # uploaded again, under another name
+    assert 'pdf_moved' not in RN.state(s, 'bk/r1', str(R))                    # found again by its content
 
 def test_a_pdf_whose_run_is_busy_is_refused(setup):
     s = S(setup)

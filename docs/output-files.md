@@ -78,6 +78,8 @@ The strip has one cell per page of the PDF, shaded by its most serious issue. It
 
 Every page reference in the report ("PDF 152 (printed 143)") links to that page in the strip and pins it there. It shows what needs a person on that page and every section that mentions it, each linked to the exact item. A page reference counts only as a whole word: not "veraPDF 1.30.3" or "PDF 2.0".
 
+A link written in review.md's text (`[text](address)`) becomes a link only to "#…", http:, https: or a relative path. Any other kind (javascript:, data:, mailto:, …) stays as the text it was. The strip's data (which sections mention each page) is written so that no text in it can end it early or hide the page's script (<, > and & as \u escapes).
+
 ### Sections and their counts
 
 A "§N Details" link opens the folded section at the very item, and outlines it in blue until the next click elsewhere (one at a time).
@@ -220,10 +222,10 @@ Every run keeps `reviews/`, so the run can be reviewed again after code changes:
   - `digest.json` (46–355 KB in the 19 test books)
   - `fulltext.json`: the whole texts review.md quotes, local only, 4–186 KB
   - the OCR word sheets of a scanned PDF
-  - for a reviewed run, `dryrun.json` (below)
+  - for a reviewed run, or a run applied from the AI's own decisions with the figure step on (#93), `dryrun.json` (below)
   - never the figure crops
 
-**`dryrun.json`** records the figure moves a trial run of `apply.py` found at the review stop, and what it did with the AI's section move (`section_move`: made, with where, or refused, with why). It carries the fingerprint of what it depended on (`key`: the input PDF's sha256, the order's, the code's, the package versions and the settings), so a later review reuses it while that still matches.
+**`dryrun.json`** records the figure moves a trial run of `apply.py` found at the review stop (a reviewed run), or that the run's own apply made (a run applied from the AI's own decisions with the figure step on, #93), and what it did with the AI's section move (`section_move`: made, with where, or refused, with why). It carries the fingerprint of what it depended on (`key`: the input PDF's sha256, the order's, the code's, the package versions and the settings), so a later review reuses it while that still matches.
 
 Reviewed runs also keep:
 - `workorder.ai.json`

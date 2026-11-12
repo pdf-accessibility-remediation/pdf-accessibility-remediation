@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # 
 sys.path.insert(0, HERE)
 from webapp import config, jobs, logs, runs, server as W  # noqa: E402
 from review import sessions as S, server as RS  # noqa: E402
-from test_webapp import setup, settings, fake, wait, get, free_port, sha, app  # noqa: E402,F401  (fixtures)
+from test_webapp import setup, settings, fake, wait, get, free_port, sha, app, unver  # noqa: E402,F401  (fixtures)
 from test_review_sessions import run_folder, ALL, digest, ai_order  # noqa: E402,F401
 import app as APP  # noqa: E402
 
@@ -219,8 +219,8 @@ def post(port, path, body=None, origin=None):
 
 def test_the_run_page_has_the_panel_and_the_file_is_unchanged(app):
     disk = (app['R'] / 'review.html').read_text(); before = sha(app['R'] / 'review.html')
-    st, b, _ = get(app['port'], '/run/book/r1/'); page = b.decode()
-    assert st == 200 and '<div id="pdfrem-panel" data-run="book/r1" data-current="ai">' in page and '<script src="/app/panel.js" defer>' in page
+    st, b, _ = get(app['port'], '/run/book/r1/'); page = unver(b)
+    assert st == 200 and '<div id="pdfrem-panel" data-run="book/r1" data-current="ai">' in page and '<script src="/app/panel.js"></script>' in page
     assert '<link rel="stylesheet" href="/app/panel.css">' in page and '<title>r1</title>' in page and 'review.md</a>' in page
     assert sha(app['R'] / 'review.html') == before and 'pdfrem-panel' not in disk
     for f in ('panel.js', 'panel.css', 'palette.css'): assert get(app['port'], '/app/' + f)[0] == 200
@@ -365,6 +365,7 @@ def test_every_response_refuses_framing_and_run_pages_get_the_script_policy(app)
     import base64, hashlib
     (app['R'] / 'review.html').write_text(PAGE); (app['R'] / 'reviews' / 'versions' / '001' / 'review.html').write_text(PAGE)
     h = base64.b64encode(hashlib.sha256(INLINE.encode()).digest()).decode()
+    call = lambda n: base64.b64encode(hashlib.sha256(f'Pdfrem.{n}()'.encode()).digest()).decode()   # 15: the app's own calls
     for path, method in (('/run/book/r1/', 'GET'), ('/run/book/r1/reviews/versions/001/review.html', 'GET'), ('/run/book/r1/review.md', 'GET'), ('/app/panel.js', 'GET'),
                          ('/batch/b1/', 'GET'), ('/api/ping', 'GET'), ('/api/run/book/r1', 'GET'), ('/run/nope/', 'GET'), ('/run/book/r1', 'GET'),
                          ('/api/run/book/r1/apply', 'POST')):
@@ -372,13 +373,13 @@ def test_every_response_refuses_framing_and_run_pages_get_the_script_policy(app)
                         body='{}' if method == 'POST' else None)
         assert hd.get('X-Frame-Options') == 'DENY' and "frame-ancestors 'none'" in hd.get('Content-Security-Policy', ''), (path, hd)
         if path in ('/run/book/r1/', '/run/book/r1/reviews/versions/001/review.html'):
-            assert hd['Content-Security-Policy'] == f"frame-ancestors 'none'; script-src 'self' 'sha256-{h}'", path
+            assert hd['Content-Security-Policy'] == f"frame-ancestors 'none'; script-src 'self' 'sha256-{call('panel' if path == '/run/book/r1/' else 'version')}' 'sha256-{h}'", path
     st, b, hd = get(app['port'], '/run/book/r1/')
     page = b.decode()
     assert page.index('</header>') < page.index('id="pdfrem-panel"') < page.index('<main id="main">')    # the panel's h2 follows the h1
     assert 'data-current="ai"' in page and f'<script>{INLINE}</script>' in page                        # the inline script unchanged, so its hash holds
     st, b, hd = get(app['port'], '/run/old/r0/')
-    assert hd['Content-Security-Policy'] == "frame-ancestors 'none'; script-src 'self'" and b.decode().index('</header>') < b.decode().index('pdfrem-panel')
+    assert hd['Content-Security-Policy'] == f"frame-ancestors 'none'; script-src 'self' 'sha256-{call('panel')}'" and b.decode().index('</header>') < b.decode().index('pdfrem-panel')
 
 def test_the_review_page_refuses_framing(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)
@@ -553,7 +554,7 @@ def test_every_report_has_a_way_back(app):
     (R / 'reviews' / 'versions' / '001' / 'review.html').write_text(PAGE)
     st, b, hd = get(port, '/run/book/r1/reviews/versions/001/review.html')
     page = b.decode()
-    assert st == 200 and '<div id="pdfrem-version" data-run="book/r1" data-session="001">' in page and '/app/panel.js' in page
+    assert st == 200 and '<div id="pdfrem-version" data-run="book/r1" data-session="001" data-appbar="bar">' in page and '/app/panel.js' in page
     assert page.index('</header>') < page.index('pdfrem-version') and 'pdfrem-panel' not in page
     js = src('webapp/panel.js')
     assert "You\\'re viewing" in js and 'Back to the Current Result' in js and 'Review Again from This Session' in js
@@ -759,7 +760,7 @@ def test_in_page_link_targets_take_focus():
     assert "const t = document.getElementById(a.getAttribute('href').slice(1));" in page and 'goTo(t);' in page
     assert "goTo(document.getElementById('card-' + t.id));" in page
     assert '[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible { outline: none; }' in page
-    assert srv.count('<main id="main" tabindex="-1">') == 4 and '<script src="/app/panel.js" defer></script></body></html>' in srv
+    assert srv.count('<main id="main" tabindex="-1">') == 4 and "{PANEL_HEAD}" in srv and "PANEL_HEAD = '<link rel=\"stylesheet\" href=\"/app/panel.css\">\\n<script src=\"/app/panel.js\"></script>\\n'" in srv   # 15: in the head
 
 def test_finish_not_yet_is_200_with_needs(tmp_path):
     R, rec, ai, dg = run_folder(tmp_path)
@@ -1175,3 +1176,18 @@ def test_the_app_is_built_on_the_review_servers_longer_queue(setup):
     srv = W.make(dict(settings(setup), port=free_port()), [], code='c0ffee')
     try: assert isinstance(srv, Server) and srv.request_queue_size == 128
     finally: srv.server_close()
+
+def test_session_historys_result_button_reads_open_and_says_what_it_opens():
+    """Patrick, 2026-11-11: the "Result" column's button reads "Open"; its name for a screen reader keeps what it opens,
+    "Open the Previous Result (Session N)", starting with the visible word (WCAG 2.5.3)."""
+    js = src('webapp/panel.js')
+    assert ('\'" aria-label="\' + esc(\'Open the Previous Result (\' + cap(r.label) + \')\') + \'">Open</a>\'') in js
+    assert '>Open the Previous Result</a>' not in js
+
+def test_a_previous_results_bar_is_as_far_from_ready_to_ship_as_that_is_from_the_cards():
+    """Patrick, 2026-11-11: on a previous result, the space from its bar to "Ready to Ship?" equals the space from "Ready to
+    Ship?" to the cards below it: <main> after the bar has no top padding, and the bar's bottom margin is review.html's
+    .cards margin (14 px), at every width."""
+    css, rep = src('webapp/panel.css'), src('report_html.py')
+    assert '#pdfrem-version ~ main { padding-top: 0; }' in css and '#pdfrem-version > nav.pp { margin-bottom: 14px; }' in css
+    assert '.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }' in rep

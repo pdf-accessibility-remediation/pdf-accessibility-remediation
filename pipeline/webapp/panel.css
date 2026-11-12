@@ -8,12 +8,30 @@
 /* the panel, the earlier-result bar and the review.md page's links line up with the report's main column: 1200 px at most,
    centred, with the report's own 16 px (10 px on a narrow screen) side padding */
 #pdfrem-panel, #pdfrem-version, .pp-wrap { max-width: 1200px; margin: 0 auto; padding: 0 16px; box-sizing: border-box; }
-#pdfrem-panel + main { padding-top: 0; }   /* the panel's own 12px margin is the gap to "Ready to Ship?", as from the card to the strip */
+#pdfrem-panel ~ main { padding-top: 0; }   /* the panel's own 12px margin is the gap to "Ready to Ship?", as from the card to the strip;
+   ~, not +: the panel's call (<script>Pdfrem.panel()</script>, round 15) sits between them (review 16 M1) */
 .pp { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink);
       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; box-sizing: border-box; }
 .pp h2 { font-size: 18px; margin: 0 0 6px; } .pp h3 { font-size: 16px; margin: 10px 0 4px; } .pp h4 { font-size: 15px; margin: 0 0 4px; }
 .pp-bar { border-left: 6px solid var(--change); } .pp-bar p { margin: 2px 0; }
 #pp-vreview { margin-left: 12px; }                              /* apart from "Back to the Current Result" */
+@media (min-width: 601px) { #pp-vback { margin-left: 3px; } }   /* it and "Review Again …" 3 px right of "You're viewing …"
+   (Patrick, 2026-11-11); not on a narrow screen, where each button has its own full-width line */
+#pp-vhome { margin-left: 12px; }    /* "Home Page" after them, as far apart as they are */
+@media (min-width: 601px) { #pp-vreview, #pp-vhome, .pp-vbusy { margin-left: 9px; } }   /* Patrick, 2026-11-11: both gaps 3 px less and equal:
+   a space and 9 px each (panel.js puts a space before "Home Page" too), so they match in any font; the sentence that
+   replaces "Review Again …" while a job runs too (review 20 L1) */
+@media (min-width: 601px) { .mc-nav a.pp-btn[href="/"] { margin-left: -3px; } }   /* the evaluation page's "Home Page", 3 px closer
+   to "Back to the Run Page" (Patrick, 2026-11-11); not on a narrow screen, where each button has its own full-width line */
+/* Patrick, 2026-11-11: on the evaluation page, a previous result's dashboard and review.md in a page, "Home Page" is in the
+   page's own bar, and nothing takes the app bar's place above the title (review 18 R1) */
+/* review.md's bar is a line of links: its "Home Page" button takes no more height than the line, so the bar keeps its own */
+.pp.pp-mdbar a.pp-btn { display: inline-flex; align-items: center; height: 34px; margin: -8px 0; padding: 0 12px; line-height: 20px; vertical-align: middle;
+  position: relative; top: -2px; width: auto; }   /* centred on the links' line; on a narrow screen too it stays in the line */
+@media (max-width: 600px) { .pp.pp-mdbar a.pp-btn { margin: 4px 0; top: 0; } }   /* there the line wraps: no overlap */
+#pdfrem-version ~ main { padding-top: 0; }                      /* a previous result: from its bar to "Ready to Ship?" as from
+   "Ready to Ship?" to the cards below it (Patrick, 2026-11-11): the bar's own margin only, 14 px as review.html's .cards */
+#pdfrem-version > nav.pp { margin-bottom: 14px; }
 body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar replaces the file's own "replaced by" note */
 .pp .pp-warn { border-left: 4px solid var(--change); padding-left: 10px; }   /* setup: only shown when a tool is missing */
 .pp .pp-nw { white-space: nowrap; }
@@ -225,12 +243,10 @@ header.top.pp-head h1 { font-size: 19px; margin: 0; overflow-wrap: anywhere; }
 .pp-page a.pp-btn:hover { background: color-mix(in srgb, var(--ink) 6%, var(--panel)); text-decoration: none; }
 .pp-page a.pp-btn.pp-primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
 .pp-page a.pp-btn.pp-primary:hover { background: color-mix(in srgb, var(--accent) 82%, var(--ink)); }
-/* D7: switching pages within the app fades instead of flashing (same-origin view transitions; no script, no CSP change),
-   the page background is set before anything draws, and a narrow screen with no choice made starts with the list closed */
-@view-transition { navigation: auto; }
-html { background: var(--bg); }
+/* Page changes switch in one step (Patrick, 2026-11-11: no fade, no in-between frame): the page background is set before
+   anything draws, and a narrow screen with no choice made starts with the side list closed (D7) */
+html, body { background: var(--bg); }
 @media (max-width: 48em) { body.bn-auto .bn { display: none; } }
-@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
 /* D4: "Language of the Scanned Pages": the label, its select and "Continue" on one row */
 .pp .pp-row label { font-weight: 600; }
 .pp .pp-row select { font: inherit; font-size: 14px; min-height: 32px; padding: 2px 6px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); max-width: 100%; }
@@ -304,7 +320,7 @@ header.nr-head { padding-top: 18px; } header.nr-head h1 { margin: 0 0 10px; }
 .nr-src .pp-appbar { margin: 0; padding: 0; max-width: none; }
 /* S7: New Batch's "Home Page" 3 px left and 2 px down */
 .nb-page .pp-hd-top .pp-appbar { position: relative; left: -3px; top: 2px; }
-.pp-run-hd .pp-appbar { position: relative; left: -2px; }   /* the run page's header only (Patrick's test): not the batch page or a batch PDF's */
+.pp-run-hd .pp-appbar { position: relative; left: -4px; }   /* the run page's header only (Patrick's test): not the batch page or a batch PDF's */
 /* T2 (Patrick, 2026-11-07): the batch page's "This Batch" panel joins its header, and the side list when it is shown */
 #main > #bt-panel { margin-top: 0; border-top-width: 0; border-radius: 0; }
 @media (min-width: 48em) {

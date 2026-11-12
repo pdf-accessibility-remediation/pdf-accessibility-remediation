@@ -15,8 +15,17 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const usd = x => '$' + Number(x || 0).toFixed(2);
 const START = 'To start the app again, open a terminal in the project\'s pipeline folder and type python3 app.py.';
+const readBlock = id => { const el = $(id); if (!el) return null; try { return JSON.parse(el.textContent); } catch (e) { return null; } finally { el.remove(); } };
+// 15 (Patrick, 2026-11-11: page changes in one step): this script is loaded in the head and only defines. The page calls
+// Pdfrem.batchNav() right after the side list (laid out at once: open or closed, its scroll place), and the batch page
+// Pdfrem.batchPage() right after "This Batch" and its first answer, which draws it. Both run while the page is read, so
+// the first frame shown is the whole page.
+function startNav() {
 const nav = $('pp-bnav'); if (!nav) return;
 const LABEL = nav.dataset.label, API = '/api/batch/' + encodeURIComponent(LABEL);
+const ON_PAGE = document.body.dataset.batchPage === '1';          // the batch page itself (batches.py page()), not a book's page
+// review 09, 12a: on a book's page the side list needs only the books' statuses, so its poll never builds the dashboard
+const POLL = API + (ON_PAGE ? '' : '?nav=1');
 const narrow = matchMedia('(max-width: 48em)');
 const KEY = 'batchnav:closed';
 function closed() {                                             // the server laid it out from the cookie (D7); else the narrow default
@@ -25,9 +34,10 @@ function closed() {                                             // the server la
   try { const v = localStorage.getItem(KEY); return v === null ? narrow.matches : v === '1'; } catch (e) { return narrow.matches; }
 }
 function setOpen(open, remember) {
-  const t = $('bn-toggle'), n = nav.querySelectorAll('#bn-list li').length; if (!t) return;
+  const t = $('bn-toggle'), n = nav.querySelectorAll('#bn-list li').length;
   nav.classList.toggle('closed', !open); document.body.classList.toggle('bn-closed', !open);
-  t.setAttribute('aria-expanded', String(open)); t.textContent = open ? 'Hide the PDF List' : 'Show the PDF List (' + n + ')';
+  // 15: the button sits in the header, after the list: the page calls Pdfrem.batchNav() again right after it, which sets it
+  if (t) { t.setAttribute('aria-expanded', String(open)); t.textContent = open ? 'Hide the PDF List' : 'Show the PDF List (' + n + ')'; }
   if (remember) {
     try { localStorage.setItem(KEY, open ? '0' : '1'); } catch (e) {}
     document.cookie = 'pdfrem_bn=' + (open ? 'open' : 'closed') + '; path=/; max-age=31536000; SameSite=Strict';   // the server lays out the next page (D7)
@@ -39,7 +49,12 @@ try { const y = sessionStorage.getItem(SCROLL); if (y !== null) nav.scrollTop = 
 addEventListener('pagehide', () => { try { sessionStorage.setItem(SCROLL, String(nav.scrollTop)); } catch (e) {} });
 document.body.classList.add('bn-on');
 setOpen(!closed(), false);
-if ($('bn-toggle')) $('bn-toggle').addEventListener('click', () => setOpen(nav.classList.contains('closed'), true));
+const wire = () => {                                              // the button, once it is read: its words, then its click
+  const t = $('bn-toggle'); if (!t || t.dataset.wired) return;
+  t.dataset.wired = '1'; setOpen(!closed(), false);
+  t.addEventListener('click', () => setOpen(nav.classList.contains('closed'), true));
+};
+wire();
 
 let st = null, primed = false; const seen = {};
 const live = t => { const l = $('pp-live'); if (!l) return; l.textContent = ''; setTimeout(() => { l.textContent = t; }, 50); };
@@ -65,22 +80,22 @@ function body(s) {
   const T = s.totals, n = s.books.length;
   let h = '<h3 id="bt-phase" tabindex="-1">' + esc(PHASE[s.phase] || s.phase) + '</h3>';
   if (s.test) h += '<p class="pp pp-bar">Test: saved replies, no AI request.</p>';
-  h += '<p>' + T.finished + ' of ' + n + ' PDFs finished' + (s.ocr_name ? ' · OCR Language: ' + esc(s.ocr_name) : '') + '</p>';
+  h += '<p>' + esc(T.finished) + ' of ' + n + ' PDFs finished' + (s.ocr_name ? ' · OCR Language: ' + esc(s.ocr_name) : '') + '</p>';
   const plural = k => k === 1 ? '' : 's';
   const x = T.expected;                                          // no key on any estimate (made before #65): no line
   const exp = !x ? '' : x.usd == null ? 'Expected Cost: Not Available Yet' :
-    'Expected Cost: ' + usd(x.usd) + ' for ' + (x.books === x.of ? '' : x.books + ' of ') + x.of + ' PDF' + plural(x.of) + (x.books === x.of ? '' : ' (Not Available Yet for ' + (x.of - x.books) + ' PDF' + plural(x.of - x.books) + ')');
+    'Expected Cost: ' + usd(x.usd) + ' for ' + (x.books === x.of ? '' : esc(x.books) + ' of ') + esc(x.of) + ' PDF' + plural(x.of) + (x.books === x.of ? '' : ' (Not Available Yet for ' + (x.of - x.books) + ' PDF' + plural(x.of - x.books) + ')');
   const before = s.phase === 'ready' || s.phase === 'missing';
   if (s.phase === 'estimating' || s.phase === 'language') {      // R14: never "$0.00" while the estimates come in
-    if (T.estimated) h += '<p id="bt-cost"><b>Max Estimated Cost So Far: ' + usd(T.ceiling_usd) + ' for ' + T.estimated + ' of ' + T.to_estimate +
+    if (T.estimated) h += '<p id="bt-cost"><b>Max Estimated Cost So Far: ' + usd(T.ceiling_usd) + ' for ' + esc(T.estimated) + ' of ' + esc(T.to_estimate) +
       ' PDF' + plural(T.to_estimate) + ' (estimating) · Batch Limit: ' + usd(T.limit_usd) + '</b></p>';
   } else if (before)
-    h += '<p id="bt-cost">' + (exp ? exp + '<br>' : '') + 'Max Estimated Cost: ' + usd(T.ceiling_usd) + ' for ' + T.books_to_send + ' PDF' + plural(T.books_to_send) +
-         (T.requests > T.books_to_send ? ' (' + T.requests + ' AI requests)' : '') + ' · Batch Limit: ' + usd(T.limit_usd) +
+    h += '<p id="bt-cost">' + (exp ? exp + '<br>' : '') + 'Max Estimated Cost: ' + usd(T.ceiling_usd) + ' for ' + esc(T.books_to_send) + ' PDF' + plural(T.books_to_send) +
+         (T.requests > T.books_to_send ? ' (' + esc(T.requests) + ' AI requests)' : '') + ' · Batch Limit: ' + usd(T.limit_usd) +
          (T.spent_usd ? ' · Already Spent in This Batch: ' + usd(T.spent_usd) : '') + (T.credit_usd != null ? ' · Credit: ' + usd(T.credit_usd) : ' · Credit: Not Checked') + '</p>';
   const total = !before && (T.spent_usd || s.phase === 'running' || s.phase === 'finished' || (s.trashed && s.trashed.n));
   if (total) h += '<p><b>Total Cost:</b> ' + esc(T.cost_words) + '</p>';   // one wording with the run page and the terminal (lib/costs.py)
-  if (s.trashed && s.trashed.n) h += '<p>' + s.trashed.n + ' PDF' + plural(s.trashed.n) + ' moved to the Trash (AI cost ' + usd(s.trashed.cost_usd) + (T.spent_usd ? ', counted in the cost above' : '') + ')</p>';   // D8: the spend stays shown
+  if (s.trashed && s.trashed.n) h += '<p>' + esc(s.trashed.n) + ' PDF' + plural(s.trashed.n) + ' moved to the Trash (AI cost ' + usd(s.trashed.cost_usd) + (T.spent_usd ? ', counted in the cost above' : '') + ')</p>';   // D8: the spend stays shown
   if (s.flagged.length) h += '<p>' + s.flagged.length + ' PDF' + (s.flagged.length === 1 ? '' : 's') + ' stopped and need' + (s.flagged.length === 1 ? 's' : '') +
     ' a person: ' + (s.flagged.length === 1 ? 'it is' : 'they are') + ' not sent. Each PDF\'s page says why.</p>';
   if (s.phase === 'estimating') h += '<p>Each PDF is being prepared and estimated (free). This page follows them; you can leave it and come back from the home page.</p>';
@@ -138,9 +153,9 @@ function dash(s) {                                               // the batch da
       '<th scope="row" id="bt-n' + i + '"><span class="hm-book">' + esc(r.book) + '</span><span class="hm-file">Source PDF: ' + esc(r.file) + '</span>' +
       '<span class="hm-acts bt-acts"><a class="pp-btn bt-open" href="' + esc(r.href) + '" id="bt-o' + i + '">Open</a> ' + rowMenu(r, i) + '</span></th><td>' + esc(r.status) + (x && !x.reviewed ? ' <span class="pp-note">(not reviewed)</span>' : '') + '</td>';
     if (!x) { h += '<td></td><td></td><td></td><td></td><td></td><td></td></tr>'; return; }
-    h += '<td>' + x.needs + '</td><td>' + x.ai + '</td><td>' + esc(SAFE[x.safety] || x.safety) + '</td>' +
-      '<td>' + (x.va == null ? 'not run' : (x.vb == null ? '–' : x.vb) + ' → ' + x.va + (x.new ? ' <b>(' + x.new + ' new)</b>' : '')) + '</td>' +
-      '<td>' + money(x.cost) + '</td><td>' + (x.pages || 'not counted') + '</td></tr>';
+    h += '<td>' + esc(x.needs) + '</td><td>' + esc(x.ai) + '</td><td>' + esc(SAFE[x.safety] || x.safety) + '</td>' +
+      '<td>' + (x.va == null ? 'not run' : (x.vb == null ? '–' : esc(x.vb)) + ' → ' + esc(x.va) + (x.new ? ' <b>(' + esc(x.new) + ' new)</b>' : '')) + '</td>' +
+      '<td>' + esc(money(x.cost)) + '</td><td>' + esc(x.pages || 'not counted') + '</td></tr>';   // every value escaped (CodeQL js/xss-through-dom, #93)
   });
   return h + '</tbody></table></div><p class="pp-note">Sorted by "Needs a Person", most work first. Automated checks are evidence, not sign-off.</p>' +
     '<div class="pp-row"><button type="button" id="bt-trash-sel" data-trash="selected" data-label="' + esc(LABEL) + '">Move Selected to Trash</button>' +
@@ -162,10 +177,15 @@ async function api(path, b) {
   return [r.status, d];
 }
 let timer = null;
+// #93 (Patrick's test of the app): on the batch page, the first answer comes with the page (batches.py page()), so "This
+// Batch" is drawn at once, with no "Loading…"; every later one is asked for. Read once, then removed.
+let first = null;                                                // the batch page's first answer: read by startPage()
 async function poll() {
   clearTimeout(timer);
   try {
-    const [c, s] = await api(API);
+    let c, s;
+    if (first !== null) { [c, s] = [200, first]; first = null; }   // drawn in this same step: nothing waits for the network
+    else [c, s] = await api(POLL);
     if (c === 200) {
       for (const b of s.books) { const was = seen[b.name]; seen[b.name] = b.status; if (primed && was && was !== b.status) live(b.book + ': ' + b.status); }
       primed = true; st = s; column(s);
@@ -191,6 +211,8 @@ async function poll() {
   const busy = st && (['estimating', 'running'].includes(st.phase) || st.books.some(b => b.tone === 'processing'));
   timer = setTimeout(poll, busy ? 2000 : 6000);
 }
+function startPage() {
+first = readBlock('bt-first');
 const panel = $('bt-panel');
 if (panel) panel.addEventListener('change', e => { if (e.target.matches('select[data-book]')) e.target.dataset.chosen = '1'; });   // the person's choice
 if (panel) panel.addEventListener('click', async e => {
@@ -222,5 +244,20 @@ if (panel) panel.addEventListener('click', async e => {
     await poll(); $('bt-phase').focus();
   } catch (err) { msg('The app is not running. ' + START, false, true); }
 });
+// review 09 L1: after "Move Selected to Trash", the page names the PDFs moved (as the home page does), once
+const gone = $('bt-trashed');
+if (gone) {
+  const qp = new URLSearchParams(location.search); qp.delete('trashed'); qp.delete('trashed_more');
+  history.replaceState(null, '', location.pathname + (qp.toString() ? '?' + qp : ''));
+  msg(gone.textContent, true, true); gone.remove();
+}
 poll();
+}
+window.Pdfrem.batchPage = startPage;
+window.Pdfrem.batchNav = wire;                                    // the page's second call, right after the button
+if (!ON_PAGE) poll();                                           // a book's page: the statuses are kept current
+}
+
+const P = window.Pdfrem = window.Pdfrem || {};
+P.batchNav = startNav; P.batchPage = P.batchPage || (() => {});
 })();

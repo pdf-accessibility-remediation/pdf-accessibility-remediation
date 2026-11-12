@@ -31,6 +31,14 @@ from . import logs, config
 from lib import dates as D
 
 ACTIVE = ('queued', 'running')
+CHANGING = ACTIVE + ('needs-spend', 'interrupted')   # every status a job can still leave (the home page's lighter check, #93)
+
+def can_change(j):
+    """Can this job's status still change? Queued, running and needs-spend can; an interrupted one only while it may be
+    alive after all (no exit recorded and a process group: tick's fix-up, or its wrapper's own end), so jobs interrupted for
+    good (the app stopped, the machine restarted) drop out of the home page's check (review 04 L-B)."""
+    st = j.get('status')
+    return st in ('queued', 'running', 'needs-spend') or (st == 'interrupted' and j.get('exit') is None and bool(j.get('pgid')))
 PAID_KINDS = ('spend', 'batch')                     # the only jobs that may send to the AI service (03 §2)
 
 def related(a, b):
@@ -203,11 +211,12 @@ def stopped_in_batch(run, R, other, kind):
     return (kind in AFTER_STOP and other.startswith('batches/') and other.count('/') == 1 and run.startswith(other + '/')
             and bool(R) and os.path.isfile(os.path.join(R, 'workorder.ai.json')))
 
-def busy(J, run, R, kind=None):
-    """Why nothing new may start for this run now, or None (in plain words: the pages show it)."""
+def busy(J, run, R, kind=None, al=None):
+    """Why nothing new may start for this run now, or None (in plain words: the pages show it). al: the jobs as a page
+    already read them (#93: what the page offers); every action that starts something reads them afresh (al None)."""
     h = lock_holder(R)
     if h: return lock_words(h[1], h[2])
-    for j in all_jobs(J):
+    for j in (al if al is not None else all_jobs(J)):
         if j['kind'] == 'batch' and stopped_in_batch(run, R, j['run'], kind): continue
         if related(j['run'], run) and j['status'] in ACTIVE + ('needs-spend',):
             at = D.clock(j.get('started') or j['created']) if D.parse(j.get('started') or j['created']) else ''
@@ -333,16 +342,19 @@ def position(J, jid):
     q = [j['id'] for j in all_jobs(J) if j['status'] == 'queued']
     return q.index(jid) + 1 if jid in q else None
 
-def read_log(J, jid, offset=0, limit=256 * 1024):
+def read_log(J, jid, offset=0, limit=256 * 1024, job=None):
     """(text, next offset) from byte offset; whole lines only while the job may still write. jid is a loaded job's own id
-    (from the disk, never from a request: /api/job/<id> finds the job with load() first)."""
+    (from the disk, never from a request: /api/job/<id> finds the job with load() first). job: the job as the caller
+    already read it (the jobs check, #93), instead of loading it again after the log is read; its status is then the one
+    read just before the log, so only a job that went from interrupted back to running in between can show an unfinished
+    last line, for one check (review 02 L5)."""
     lp = os.path.realpath(log_path(J, jid))
     if not lp.startswith(os.path.realpath(folder(J)) + os.sep): return '', offset
     try:
         with open(lp, 'rb') as f:
             f.seek(max(0, int(offset))); b = f.read(limit)
     except OSError: return '', offset
-    job = load(J, jid) or {}
+    if job is None: job = load(J, jid) or {}
     if job.get('status') in ACTIVE and b and not b.endswith(b'\n'):
         cut = b.rfind(b'\n'); b = b[:cut + 1] if cut >= 0 else b''
     try: b.decode('utf-8')

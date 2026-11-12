@@ -147,6 +147,78 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             except Exception: p.kill()
         if draft_dir: shutil.rmtree(draft_dir, ignore_errors=True)
 
+    def first_check():
+        """15 (page changes in one step): what /keep answers for the saved choices the page starts from (its problems, the gaps
+        and each move's preview), so the line beside Finish and the cards' marks come with the page; None on the OCR-only
+        page, or when it can't be worked out (the page's first save then brings it, as before)."""
+        if ocr_only: return None
+        try:
+            d = saved.get('decisions') if isinstance(saved.get('decisions'), dict) else {}
+            a = [x for x in saved.get('additions') or [] if isinstance(x, dict)] if isinstance(saved.get('additions'), list) else []
+            rv = str(saved.get('reviewer') or '').strip()
+            wo = core.apply_decisions(ai, items, d); core.add_entries(wo, a, adds, rv)   # as /keep's build()
+            probs, gaps = core.problems(R, ai, items, d, a, adds, rv, set_in)
+            return {'problems': probs, 'gaps': gaps, 'move_previews': core.move_previews(data, d, a, wo)}
+        except Exception: return None
+
+    sizes = {}; sizes_lock = threading.Lock()
+    def img_sizes():
+        """15: {address: [width, height]} of every image the page can show, so each image's box is set before it arrives
+        and no card grows when it loads: a page image already rendered by its file, one not rendered yet by its PDF page's
+        size (pdfium renders it at that size, scale 1; read without opening the page), the figure crops and word sheets by
+        their files. Worked out once (warm_up(), when the server starts)."""
+        with sizes_lock:
+            if not sizes: sizes.update(_img_sizes())
+            return sizes
+    def _img_sizes():
+        out = {}
+        from PIL import Image
+        def dim(f):
+            try:
+                with Image.open(f) as im: return list(im.size)
+            except Exception: return None
+        todo = []                                     # review 16 L1: each page on its own, so one bad page leaves the rest
+        for n in range(1, data.get('pages', 0) + 1):
+            f = os.path.join(R, 'review_pages', f'page_{n:03d}.png')
+            if os.path.exists(f):                     # rendered already: its file's size (no PDF needed)
+                if d := dim(f): out[f'review_pages/page_{n:03d}.png'] = d
+            else: todo.append(n)
+        if todo and os.path.isfile(data.get('pdf') or ''):
+            with render_lock:                         # pdfium is not thread-safe: page images render in other threads
+                doc = None
+                try:
+                    import pypdfium2 as pdfium
+                    doc = pdfium.PdfDocument(data['pdf'])
+                    for n in todo:
+                        try: out[f'review_pages/page_{n:03d}.png'] = [round(x) for x in doc.get_page_size(n - 1)]
+                        except Exception: pass        # this page gets no box size: its card grows when the image comes, as before
+                except Exception: pass                # the PDF can't be opened: those pages too
+                finally:
+                    if doc: doc.close()
+        for u, (f, ct) in static.items():
+            if u.startswith('/_audit/') and ct.startswith('image/') and (d := dim(f)): out[u[1:]] = d
+        return out or {'': [0, 0]}
+
+    warmed = threading.Event(); WARM_WAIT = 3         # 15: GET / waits for warm_up(), at most this long, then works out what is
+    # missing itself; review 16 L2: not a cap, since if warm_up() still holds sizes_lock then, img_sizes() waits for it to finish
+    def warm_up():
+        """15: the page's first answer carries every image's size and the first OCR pages' text, worked out here, in the
+        background, as the server starts (on a 212-page book about 0.2 s for the first text, which opens the PDF), so the
+        person's first open of the page doesn't wait for them."""
+        try: img_sizes(); first_texts(ocr_section())
+        except Exception: pass
+        finally: warmed.set()
+
+    FIRST_TEXTS = 2                                   # the OCR pages whose text comes with the page: the first screen's
+    def first_texts(oc):
+        """15: {page: text} of the first OCR pages the OCR Text section shows (oc: ocr_section()), so they never read "Loading
+        the text…" when the page opens; every other page's text is asked for when it scrolls near, as before."""
+        out, can = {}, set(text_urls.values())
+        for n in [p.get('page') for p in (oc or {}).get('pages') or [] if p.get('page') in can][:FIRST_TEXTS]:
+            try: out[n] = page_text(n) or '(no text on this page)'
+            except Exception: pass
+        return out
+
     def draft_state():
         with draft_lock:
             d = {k: v for k, v in draft.items() if k not in ('started', 'stopping')}
@@ -231,8 +303,15 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             if not self.ours(): return self.send(403, {'error': 'This page opens only at the address it was started at: use the link on the run page.'})
             path = self.path.split('?', 1)[0]
             if path in ('/', '/index.html'):
-                boot = json.dumps({**data, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': ocr_section()},
-                                  ensure_ascii=False).replace('</', '<\\/')
+                warmed.wait(WARM_WAIT)
+                oc = ocr_section()
+                boot = json.dumps({**data, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': oc,
+                                   'check': first_check(), 'draft': None if ocr_only else draft_state(), 'ocr_text': first_texts(oc),
+                                   'img_sizes': img_sizes()},
+                                  ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+                # review 16 M2: <, > and & as \u escapes (as home.first_answer), not only "</": "<!--" and a later "<script" in
+                # any text (a Session Note, a decision's note, book text, the first OCR pages) would otherwise make the
+                # browser read the rest of the page as script, and the page, whose script is in the head, would load blank
                 return self.send(200, open(PAGE, encoding='utf-8').read().replace('/*REVIEW_DATA*/null', boot), 'text/html; charset=utf-8')
             if path in text_urls:                      # the OCR text of a page the section can show; any other number: 404
                 n = text_urls[path]
@@ -406,6 +485,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     if open_browser:
         try: webbrowser.open(url)
         except Exception: pass
+    threading.Thread(target=warm_up, daemon=True).start()
     t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
     try:
         while not done.wait(0.5): pass                 # a short wait, so Ctrl+C is seen

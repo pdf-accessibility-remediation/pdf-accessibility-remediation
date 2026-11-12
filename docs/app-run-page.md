@@ -101,7 +101,7 @@ A session is "Session N" and the OCR button "Review OCR Text" in every job line,
 
 ### Session History
 
-Session History lists every session, newest first: its name under its number, who, when, where it started ("Session 1", or the AI's decisions), changes from the AI, and what changed in that session. Each has a link to its previous result, and a **Notes** button that opens its notes in a pop-up box (one box per session, several at once). An open session shows its name and notes as last saved. See [Session names and notes](review-page.md#session-names-and-notes).
+Session History lists every session, newest first: its name under its number, who, when, where it started ("Session 1", or the AI's decisions), changes from the AI, and what changed in that session. Each has an **Open** button to its previous result (a screen reader names it "Open the Previous Result (Session N)"), and a **Notes** button that opens its notes in a pop-up box (one box per session, several at once). An open session shows its name and notes as last saved. See [Session names and notes](review-page.md#session-names-and-notes).
 
 ### Review is always on in the app
 
@@ -129,8 +129,9 @@ The review page also has **Back to the Run Page**, which leaves the review open.
 
 The browser's Back button is never the only way back:
 - `/run/<run>/review.html` (which the "replaced by" note in a previous result's file links to) goes to the run page.
-- **A previous result** (`reviews/versions/<id>/review.html`) shows a bar: "You're viewing a previous result (session N)", with **Back to the Current Result** and **Review Again from This Session** (for the result applied without review, **Start Over from the AI's Decisions**). The button starts the review and goes to the run page, which follows it. The file's own "replaced by" note is hidden in the app (the bar says it); it stays in the file.
-- **review.md** opens inside a page with **Back to the Run Page** (and, for a previous result, its dashboard), and **The Plain File**.
+- **A previous result** (`reviews/versions/<id>/review.html`) shows a bar: "You're viewing a previous result (session N)", with **Back to the Current Result**, **Review Again from This Session** (for the result applied without review, **Start Over from the AI's Decisions**) and **Home Page**, in that order. The button starts the review and goes to the run page, which follows it. While a job for the run is running or waiting, a sentence saying so takes the button's place. The file's own "replaced by" note is hidden in the app (the bar says it); it stays in the file.
+- **review.md** opens inside a page with **Back to the Run Page** (and, for a previous result, its dashboard), **Home Page** and **The Plain File**.
+- On these two pages and the Accessibility Evaluation page, **Home Page** is in the page's own bar, after its other buttons, not at the top. Nothing takes its place there, so the title starts at the top.
 - **A PDF** opens in the browser's own viewer; its tab or Back button returns.
 
 ### Wording on the pages
@@ -181,6 +182,20 @@ One exception: when a run started with **Start Remediation** stops for review, f
 **Going on by itself:** only one thing does, the review page after your own **Review Again**, and only within 30 seconds of the click while you have not pressed a key or clicked since. Otherwise it says the page is ready and shows **Open the Review Page**. A new result never replaces the page you are reading.
 
 The panel checks the run every second while a job runs or a review is open (every 5 s otherwise), and is redrawn only when what it shows changed. So a review page saving its draft never replaces the buttons under the mouse, or a text selection.
+
+**Its first answer comes with the page** (#93): a JSON data block (`pp-first`: what `/api/run/<run>` and `/api/setup` return), so **Run Actions** and the evaluation strip are drawn on first load with no "Loading…", and the page is drawn in one step ([Page changes in one step](#page-changes-in-one-step)). The page and its panel read the names files and the job files once together, and so does each later `/api/run/<run>` answer.
+
+## Page changes in one step
+
+When you click to another page, the page you are on stays on screen, unchanged, while the app answers; then the new page replaces it complete, in one step (#93). There is no fade, no blank or white frame, no part of the page drawn after the rest, and no "Loading…" during a page change. This holds for every page the app serves (home, run, batch, evaluation, a previous result, review.md, the batch dashboard), the review page, the links between them, a saved batch's address (its pop-up opens with the page, filled), and the browser's back and forward.
+
+How:
+
+- **Every part of a first view is drawn while the page is read.** The scripts that draw (`panel.js`, `batch.js`, `shared.js`, `home.js`, `manual.js`) are plain scripts in the page's head, so they are read before anything of the page can be shown, and they only define. The page then calls each one right after the elements it fills: **Run Actions** after its place, the evaluation strip after the "Ready to Ship?" card, a previous result's bar, the batch side list (open or closed, at its scroll place), **This Batch**, **Runs in Progress**, the line after an upload, and the evaluation forms. Each draws from the page's own first answer (a JSON data block), never from a request made after the page shows. These calls are the only inline scripts the app adds; the page's content policy allows exactly them, by their hashes, beside a report's own script.
+- **The app's own files are kept by the browser.** Each page names them with their version (`?v=`, the file's hash), and a file asked for by its version is kept, so these scripts never wait on the network after the first page. Pages and the app's answers are never kept (`no-store`).
+- **No frame is white.** html and body have the app's background, and every page names its color schemes in its head, so a browser that draws the page's canvas before its stylesheets uses the dark one in dark mode.
+- **The review page** (its own server) reads its whole script, with its data, in its head, and draws itself from a call at the end of the page. The line beside **Finish Review** (the check of your saved choices), the draft line and the first OCR pages' text come with the page (the text and the images' sizes are worked out as the review page's server starts, so opening the page doesn't wait for them). The page images are the one exception: each is shown when the browser has it (the first time a page image is asked for, it is rendered from the PDF), in a box already the image's size, so nothing moves.
+- **Back and forward:** the browser may show the page you left from its own memory (the back/forward cache), as it was; the page then brings itself up to date at its next check, as it does while you read it. Otherwise it is asked for again, and drawn in one step like any other page.
 
 ## For developers
 
