@@ -33,6 +33,14 @@ def apply_never_used_a_stale_tree_index():
     new = _stops()[before:]
     assert not new, 'apply.py stopped in its check mode (TREE INDEX STALE):\n' + new
 
+def pytest_sessionfinish(session, exitstatus):
+    """review 14 L3: a stop written after the last test's own check (a draft or trial run still finishing in another
+    thread or process when its test ended) fails the session too: the stale log must be empty at the very end."""
+    left = _stops()
+    if left:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        sys.stderr.write('\napply.py stopped in its check mode (TREE INDEX STALE) during the session:\n' + left)
+
 def _ledger_size():
     return os.path.getsize(_REAL_LEDGER) if os.path.exists(_REAL_LEDGER) else None
 

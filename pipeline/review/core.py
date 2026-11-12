@@ -300,7 +300,11 @@ def reading_order_for(audit_dir, digest, wo):
 TREE_STALE_MARK = 'TREE INDEX STALE:'     # apply.py's check mode (APPLY_TREE_CHECK=1) prints it when its kept tag-tree index is wrong
 class TreeIndexStale(RuntimeError):
     """apply.py stopped in its check mode (#93 Part 3, C2). Not an OSError, ValueError or SubprocessError, so dry_run() and
-    the draft don't turn it into a soft "the trial run stopped": in tests it fails loudly (review 12 M3)."""
+    the draft don't turn it into a soft "the trial run stopped": in tests it fails loudly (review 12 M3). One place does
+    catch it: the draft's build thread in review/server.py (its `except Exception`, about line 427) reports a stop there as a
+    failed draft ("The draft could not be built (TreeIndexStale)."). The stop is still written to APPLY_TREE_STALE_LOG, and
+    tests/conftest.py fails the test and, at the end, the whole session on any line in it: that log is the backstop
+    (review 14 L3)."""
 
 def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
     """apply.py on pdf with the work order wo (a dict, written beside out), into out. Returns (exit code, out's log, or
