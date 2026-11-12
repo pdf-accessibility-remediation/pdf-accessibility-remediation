@@ -1147,3 +1147,10 @@ def test_the_app_is_built_on_the_review_servers_longer_queue(setup):
     srv = W.make(dict(settings(setup), port=free_port()), [], code='c0ffee')
     try: assert isinstance(srv, Server) and srv.request_queue_size == 128
     finally: srv.server_close()
+
+def test_session_historys_result_button_reads_open_and_says_what_it_opens():
+    """Patrick, 2026-11-11: the "Result" column's button reads "Open"; its name for a screen reader keeps what it opens,
+    "Open the Previous Result (Session N)", starting with the visible word (WCAG 2.5.3)."""
+    js = src('webapp/panel.js')
+    assert ('\'" aria-label="\' + esc(\'Open the Previous Result (\' + cap(r.label) + \')\') + \'">Open</a>\'') in js
+    assert '>Open the Previous Result</a>' not in js
