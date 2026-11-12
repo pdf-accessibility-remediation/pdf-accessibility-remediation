@@ -33,6 +33,7 @@ from lib import glance as G0
 from lib import dates as DT
 from lib import readorder
 from lib import origin
+from lib.lowres import LOW_PPI
 
 COUNT_WORDS = {'accepted_unreviewed': 'accepted without review'}   # the stored key stays; these are review.html's and the review page's words
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
@@ -187,6 +188,8 @@ pfw = log.get('page_figures') or {}; vpf = {x['page']: x for x in ver.get('page_
 pfw_wrapped = pfw.get('wrapped') or []; pfw_left = pfw.get('left') or []
 pfw_noalt = [w for w in pfw_wrapped if not vpf.get(w['page'], {}).get('alt', w.get('alt'))]
 pfw_bad = [p for p, x in vpf.items() if x.get('figures') != 1 or x.get('untagged_left')]
+low_res = sorted(digest.get('low_resolution') or [], key=lambda x: (x['page'], x['ppi']))   # issue #97: the audit's list, for a person
+LOW_RES_LISTED = 20
 stc = ver.get('structure'); idx = ver.get('index'); et = log.get('empty_tags') or {}
 et_lost = [h for h in et.get('headings') or [] if not h.get('found')]
 rb = run.get('reply_blocks')
@@ -318,6 +321,11 @@ checks = [
      + (' · no alt text yet: ' + '; '.join(f'{pg(w["page"])} is a figure wrap. Write the alt text.' for w in pfw_noalt) if pfw_noalt else '')
      + (' · not wrapped: ' + '; '.join(f'{pg(x["page"])} ({x["why"]})' for x in pfw_left) if pfw_left else '')
      + (f' · check failed on {pgs(pfw_bad)}' if pfw_bad else '')),
+    *([(f'Figures: none below {LOW_PPI} ppi', ok(False),
+        f'{len(low_res)} figure{"s" if len(low_res) != 1 else ""} below {LOW_PPI} ppi, likely to look blurry: '
+        + '; '.join(f'{x["ppi"]} ppi on {pg(x["page"])}' for x in low_res[:LOW_RES_LISTED])
+        + (f'; and {len(low_res) - LOW_RES_LISTED} more' if len(low_res) > LOW_RES_LISTED else '')
+        + ' · a person puts in a sharper copy by hand, where one exists')] if low_res else []),
     ('Empty tags removed when proven empty', ok(not et.get('kept') and not et_lost),
      f'{len(et.get("removed") or [])} removed' + (f' ({len(et["tables_removed"])} whole empty tables)' if et.get('tables_removed') else '')
      + (f' · {len(et["kept"])} kept: something refers to them or they carry an attribute (listed)' if et.get('kept') else '')

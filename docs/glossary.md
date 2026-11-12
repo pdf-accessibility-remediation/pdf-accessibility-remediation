@@ -29,6 +29,8 @@ These are the words the other pages use without explaining them each time. Each 
 
 **Intake.** The first step for an untagged PDF (`intake.py`): OCR where pages have no text, then automatic tagging. Local tools only, no AI request. See [Intake](intake.md).
 
+**Low-resolution figure.** A figure whose image is printed at under 150 pixels per inch (ppi), so it is likely to look blurry when printed or zoomed. The audit lists them, and the report flags them for a person to replace by hand. See [Finding images that need a better copy](hand-edits.md#finding-images-that-need-a-better-copy).
+
 **Newly failing rule.** A veraPDF rule that passed on the original and fails on the result. It may be a problem the remediation caused, so the report flags it. See [Verification with veraPDF](verapdf.md).
 
 **OCR layer.** The invisible text laid over a scanned page so it can be searched and read aloud. It comes from optical character recognition, so it can contain misread words. See [OCR words](ocr-words.md).

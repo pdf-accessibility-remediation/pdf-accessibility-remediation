@@ -14,6 +14,12 @@ The original PDF and the run's own result are never changed.
 
 **Every PDF edited outside the pipeline must come back before it ships.** **Mark as Shipped** ships a run's own result, and an evaluation counts only for that exact file (see [Each check belongs to one file](evaluation.md#each-check-belongs-to-one-file)). An edited copy that never comes back has no audit, no review and no evaluation, and nothing records what changed in it. A result that nobody edited doesn't need to come back: evaluate and ship it as it is.
 
+## Finding images that need a better copy
+
+The audit measures each figure's image at the size it is printed on the page, in pixels per inch (ppi). A figure below 150 ppi is likely to look blurry when printed or zoomed, so the report gets a **CHECK** row, "Figures: none below 150 ppi", listing each one with its page and ppi. On the review page, that figure's card has an **Image Resolution** line.
+
+Replacing the image is a hand edit: put in a sharper copy, where one exists, and bring the file back as below. The new run's audit measures the image again, so the row goes away once every listed figure is sharp enough. The check doesn't judge whether a sharper copy exists, or whether a low ppi matters for that image (a small logo, for example).
+
 ## Steps
 
 From `pipeline/`:
@@ -133,7 +139,7 @@ The original is checked against `record.json` (`document.sha256`). The run's ear
 ## Limits
 
 - **Only images, figure tags and text are compared.** Other changes to tags or reading order are not listed. The new run's audit, veraPDF and the review show their effect, and your `--note` says what you changed.
-- **Image resolution is not checked.** Nothing flags a low-resolution image. You find one by looking.
+- **Image resolution is measured, not image quality.** The check reads the pixels stored in the PDF. An image that was enlarged before it went into the PDF passes, and heavy compression isn't judged. Scanned PDFs are left out, because intake already flags scans under 300 dpi (see [Intake](intake.md)). So are whole-page figures, images under an inch across and drawings that hold no image.
 - **The app brings an edited PDF back for review only.** A new AI call (`--to pipeline`), `--base original` and `--label` are terminal options.
 - **PDF 2.0.** An edited file saved as PDF 2.0 is refused (exit 3; see [Not supported yet: PDF 2.0](troubleshooting.md#not-supported-yet-pdf-20)).
 
@@ -159,6 +165,8 @@ The original is checked against `record.json` (`document.sha256`). The run's ear
 - `outside_figures`; `images_new`, `images_removed`
 - `figures_lost`: page and the alt text the figure had
 - `text_pages`: page, characters before and after, `heard_same`
+
+**Low-resolution figures** (#97): `lib/lowres.py` divides each image's stored pixel size (pdfplumber's `srcsize`) by its drawn size in inches, short side with short side, and takes a figure's lowest image of at least 72 pt on its long side, rounded to a whole ppi (an image made at 150 ppi can measure 149.9). Figures under `LOW_PPI` (150) go into the digest as `low_resolution: [{obj, page, ppi}]`, with `low_resolution_rule`. `decide.py` removes both before sending, so the AI never sees them and its request is unchanged. `report.py` writes the CHECK row only when the list has entries (up to 20 figures named), and `review/core.py` puts `low_ppi` on the card of each listed figure.
 
 **A run with no AI call** (`--to review`):
 - The run line says "no AI call", the AI cost is $0, and the sections say "in this run" instead of "by the AI".

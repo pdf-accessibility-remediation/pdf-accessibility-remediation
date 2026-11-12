@@ -16,7 +16,7 @@ included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads, lowres  # plumb_fix first: it patches pdfplumber
 import pikepdf, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -195,7 +195,7 @@ def crop(pg, box, name):
     c = im.crop((max(0, x0 - 4), max(0, t - 4), min(im.width, x1 + 4), min(im.height, b + 4)))
     if max(c.size) > 800: c.thumbnail((800, 800))
     c.convert('RGB').save(os.path.join(OUT, 'figures', name)); return c.size
-figures = []
+figures = []; fig_images = {}       # obj -> the figure's own images, for lib/lowres.py (kept out of the digest's figures)
 for e in elems:
     if mapped(e['style']) != 'Figure': continue
     pg = first_page(e); box = None
@@ -213,6 +213,7 @@ for e in elems:
         name = f'p{pg:03d}_{e["el"].objgen[0]}.png'; px = crop(pg, box, name)
         if px: f['image'] = 'figures/' + name; f['image_px'] = px
         else: f['outside_visible_area'] = True            # drawn only outside the visible page area: no crop
+    if box and pg: fig_images[f['obj']] = ims
     if f['alt'] and '\x00' in f['alt']: f['alt_has_nul'] = True; f['alt'] = f['alt'].replace('\x00', '\\x00')
     figures.append(f)
 
@@ -508,6 +509,9 @@ for t in tables:                       # veraPDF names cells (TD, TH): tell the 
     inside = desc_refs(by_ref[t['obj']], set()) if t['obj'] in by_ref else {t['obj']}
     rs = sorted({r['rule'] for r in pdfua_check.get('rules') or [] if r.get('who') == 'model' for o in r.get('objs') or [] if o in inside})
     if rs: t['pdfua_rules'] = rs
+# ---- figures drawn at a low resolution (issue #97): for a person to replace by hand. Not on a scan (intake flags scans
+#      under 300 dpi) and not for a whole-page crop. In the digest for the report and the review page; decide.py never sends it.
+low_resolution = [] if is_scan else lowres.flag(figures, fig_images)
 tables_sent = tables[:100] + [t for t in tables[100:] if t.get('pdfua_rules')]
 
 af = pdf.Root.get('/AcroForm')
@@ -559,6 +563,9 @@ digest = {
     'page_map_format': 'page|printed label|first tagged line',
     'page_map': page_map,
     'front_matter': front,
+    'low_resolution_rule': f'figures whose images are drawn below {lowres.LOW_PPI} ppi (stored pixels over drawn inches); '
+                           'scanned PDFs and whole-page figures left out. Never sent to the AI',
+    'low_resolution': low_resolution,
     'cjk_runs': dict(cjk), 'cjk_han_only_examples': cjk_ex,
     'links': {'annotations': sum(link_pages.values()),
               'per_page_top': [[p, n] for p, n in sorted(link_pages.items(), key=lambda x: -x[1])[:15]]},
@@ -568,6 +575,7 @@ json.dump(FULL, open(os.path.join(OUT, 'fulltext.json'), 'w', encoding='utf-8'),
 print(f'digest: {len(styles)} styles · {len(headings)} headings + {len(candidates)} candidates · {len(lists)} lists · {len(tables)} tables · '
       f'unowned {dict(unowned_tot)} · {len(rare)} other listed · {len(figures)} figures ({sum(1 for f in figures if f["image"])} crops) · '
       f'{len(page_figures)} page figures · '
+      + (f'{len(low_resolution)} figures below {lowres.LOW_PPI} ppi · ' if low_resolution else '')
       + (f'{len(ocr_words)} suspect OCR words on {len(ocr_word_sheets)} sheets · ' if ocr_words else '')
       + f'{len(repeated)} repeated lines · {len(page_map)} pages · {os.path.getsize(os.path.join(OUT, "digest.json")) // 1024} KB')
 print(vera.line(vr) + ' (verapdf.json)')

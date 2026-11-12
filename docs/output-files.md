@@ -217,7 +217,7 @@ Every run keeps `reviews/`, so the run can be reviewed again after code changes:
 
 - `basis.json`: the run id, the input PDF's path and sha256, the digest's fingerprint, and the AI order's sha256
 - `_audit/`, which holds:
-  - `digest.json` (46–355 KB in the 19 test books)
+  - `digest.json` (46–355 KB in the 19 test books). Its `low_resolution` list (figures under 150 ppi) is for the report and the review page only; the AI never sees it (see [Editing the PDF by hand](hand-edits.md#for-developers))
   - `fulltext.json`: the whole texts review.md quotes, local only, 4–186 KB
   - the OCR word sheets of a scanned PDF
   - for a reviewed run, `dryrun.json` (below)

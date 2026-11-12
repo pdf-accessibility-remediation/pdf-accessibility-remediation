@@ -55,3 +55,5 @@ Commit IDs below were updated to the rewritten history on 2026-11-10 (#80: the o
 - 2026-11-03 · teika · Python 3.14 · workorder_v10.md: #67: teika Table 3's note cell held a paragraph (TSN, mapped to P); it now moves out after the table as it is instead of being wrapped in a new P (P inside P), so one P fewer
 
 - 2026-11-04 · teika · Python 3.14 · workorder_v10.md: #67: the applied label counts Captions, not title rows (table: title row → Caption → table: caption made from the title rows; teika's 3 tables each have one title row, so still 3)
+
+- 2026-11-11 · globalasias, migrant · Python 3.14 · workorder_v10.md: #97: the audit flags figures drawn below 150 ppi; a CHECK row "Figures: none below 150 ppi" (globalasias 20 figures, migrant 30, all 95-96 ppi) and one more on the Overview's Needs a person line. No record field changed; expect.json and the replies unchanged

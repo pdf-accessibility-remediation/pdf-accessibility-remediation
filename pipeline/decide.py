@@ -289,6 +289,7 @@ if not max_tokens_given:
 to_send = dict(digest)
 to_send['ocr_words'] = [{k: v for k, v in w.items() if k != 'pages'} for w in digest.get('ocr_words') or [] if w['id'] in words_sent]
 to_send.pop('ocr_word_sheets', None)
+for k in ('low_resolution', 'low_resolution_rule'): to_send.pop(k, None)   # for a person (issue #97): the AI's input stays as it was
 if 'pdfua_check' not in digest and os.path.exists(os.path.join(args.audit_dir, 'verapdf.json')):   # an audit made before the digest carried it
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
     digest['pdfua_check'] = vera.pdfua_check(json.load(open(os.path.join(args.audit_dir, 'verapdf.json'), encoding='utf-8')))

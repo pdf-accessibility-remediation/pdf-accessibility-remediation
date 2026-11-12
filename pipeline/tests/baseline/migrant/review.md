@@ -2,13 +2,13 @@
 
 Result: `migrant_remediated.pdf`
 
-321 pages · run November 3, 2026, at 12:32 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.244 ($0.0008 per page), from the original call on November 3, 2026 · this run: no new call · tokens: saved reply reused, not counted
+321 pages · run November 11, 2026, at 4:40 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.244 ($0.0008 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.8s · audit 72.4s · reuse saved reply 0.8s · apply 88.5s · verify 80.8s · total 243.3s
+Time: intake 0.5s · audit 60.5s · reuse saved reply 1.6s · apply 69.2s · verify 64.4s · total 196.2s
 
 ## Overview
 
@@ -23,7 +23,7 @@ Time: intake 0.8s · audit 72.4s · reuse saved reply 0.8s · apply 88.5s · ver
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 9 (6 deferred by the AI · 0 deferred by the executor · 3 CHECK rows)  
+**Needs a person:** 10 (6 deferred by the AI · 0 deferred by the executor · 4 CHECK rows)  
 **AI decisions:** 54 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 6,486 · note IDs 1,013 · tag-tree index entries 43 · link descriptions that were only a URL 5 · Document root 1 · title shown in the window 1  
 **veraPDF (WCAG 2.2 machine checks):** 0 WCAG rules failing before (0 checks) → 0 after (0 checks) · 0 newly failing
@@ -32,12 +32,12 @@ Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
+| Figures: none below 150 ppi: 30 figures below 150 ppi, likely to look blurry: 96 ppi on PDF 11 (printed x); 96 ppi on PDF 12 (printed xi); 96 ppi on PDF 29 (printed 12); 96 ppi on PDF 31 (printed 14); 96 ppi on PDF 34 (printed 17); 96 ppi on PDF 50 (printed 33); 96 ppi on PDF 57 (printed 40); 96 ppi on PDF 72 (printed 55); 96 ppi on PDF 75 (printed 58); 96 ppi on PDF 78 (printed 61); 96 ppi on PDF 88 (printed 71); 96 ppi on PDF 89 (printed 72); 96 ppi on PDF 92 (printed 75); 96 ppi on PDF 108 (printed 91); 96 ppi on PDF 110 (printed 93); 96 ppi on PDF 111 (printed 94); 96 ppi on PDF 121 (printed 104); 96 ppi on PDF 126 (printed 109); 96 ppi on PDF 128 (printed 111); 96 ppi on PDF 135 (printed 118); and 10 more · a person puts in a sharper copy by hand, where one exists | 20 pages, PDF 11 (printed x) to PDF 135 (printed 118) | [Automated Checks](#automated-checks) |
 | Executor applied every decision: 1 rejected · 0 failed (listed under "Decisions not applied") | see §11 | [§11](#11-decisions-not-applied-1) |
 | Reading order jumps back up a column (6 jumps) | PDF 210 (printed 193), PDF 211 (printed 194) | [§8](#8-wcag-checks-verapdf-does-not-make) |
 | Headings: none empty, very long or repeated in a row (2.4.6): 0 empty · 0 long · 6 repeated | see §8 | [§8](#8-wcag-checks-verapdf-does-not-make) |
 | Chapter and front/back-matter titles have no heading tag of their own. The Introduction (PDF 18), the 14 cha… | 19 pages, PDF 14 (printed xiii) to PDF 302 (printed 285) | [§9](#9-deferred-by-the-ai) |
-| The continuation of Table 11.1 on PDF 211 (printed 194) sits outside the table, in Art containers and a Stor… | PDF 210 (printed 193), PDF 211 (printed 194) | [§9](#9-deferred-by-the-ai) |
-| … and 4 more | | §9 |
+| … and 5 more | | §9 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -51,6 +51,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Untagged paths: none left | OK | 0 untagged paths |
 | Invisible OCR text: every glyph defined | OK | no undefined glyphs in invisible text |
 | Page-level figure wrap | OK | no page with only an untagged drawing |
+| Figures: none below 150 ppi | **CHECK** | 30 figures below 150 ppi, likely to look blurry: 96 ppi on PDF 11 (printed x); 96 ppi on PDF 12 (printed xi); 96 ppi on PDF 29 (printed 12); 96 ppi on PDF 31 (printed 14); 96 ppi on PDF 34 (printed 17); 96 ppi on PDF 50 (printed 33); 96 ppi on PDF 57 (printed 40); 96 ppi on PDF 72 (printed 55); 96 ppi on PDF 75 (printed 58); 96 ppi on PDF 78 (printed 61); 96 ppi on PDF 88 (printed 71); 96 ppi on PDF 89 (printed 72); 96 ppi on PDF 92 (printed 75); 96 ppi on PDF 108 (printed 91); 96 ppi on PDF 110 (printed 93); 96 ppi on PDF 111 (printed 94); 96 ppi on PDF 121 (printed 104); 96 ppi on PDF 126 (printed 109); 96 ppi on PDF 128 (printed 111); 96 ppi on PDF 135 (printed 118); and 10 more · a person puts in a sharper copy by hand, where one exists |
 | Empty tags removed when proven empty | OK | 0 removed |
 | Tag-tree index points only into the tree | OK | 0 dangling entries · 0 stale entries (marked content no longer drawn) |
 | No empty tables | OK | none |

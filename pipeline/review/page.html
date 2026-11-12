@@ -932,6 +932,9 @@ const WHAT = { retype: 'Text on the page', actual_text: 'Text on the page', role
                notes_for_reviewer: 'From', artifacts: 'Rule', flatten: 'Element', keep_lists: 'Element', merges: 'Merge',
                move_section: 'Section', move_to_document_start: 'Element', adopt_orphans: 'Pages' };
 const FINDING_WHAT = { away: 'Section', jump: 'Finding', late: 'Finding', figures: 'Finding' };
+// a figure the audit found drawn at a low resolution (issue #97): a person replaces it by hand, after the review
+const lowPpiWords = n => '<span class="flag">' + esc(n) + ' ppi: low resolution, likely to look blurry when printed or zoomed</span> ' +
+  'A sharper copy of this image can be put in by hand after the review.';
 function imagesHtml(it) {
   const c = it.context, imgs = [];
   if (c.word) imgs.push('<figure class="word"><img loading="lazy" src="' + esc(c.word) + '" alt="The word in the scan"><figcaption>the word in the scan (as the AI saw it)</figcaption></figure>');
@@ -954,6 +957,7 @@ function targetRows(t, row) {
   else row('Now', t.before == null || t.before === '' ? 'none' : esc(show(t.before)));
   if (c.style && t.kind === 'retype') row('Style', esc(c.style) + (c.size ? ' · ' + esc(c.size) + ' pt' : ''));
   if (c.next) row('Text after it', '“' + esc(String(c.next).slice(0, 120)) + '”');
+  if (c.low_ppi != null) row('Image resolution', lowPpiWords(c.low_ppi));
   if (c.count != null) row(t.kind === 'ocr_words' ? 'Occurs' : 'Elements', esc(c.count) + (t.kind === 'ocr_words' ? ' times in the book' : ' in this style'));
   if (c.samples) row('Samples', c.samples.map(x => '“' + esc(String(x).slice(0, 120)) + '”').join(' · '));
   if (c.first_rows) row('First rows', c.first_rows.map(x => '“' + esc(String(x).slice(0, 100)) + '”').join(' · '));
@@ -1258,6 +1262,7 @@ function card(it) {
   if (c.samples) row('Samples', c.samples.map(x => '“' + esc(String(x).slice(0, 120)) + '”').join(' · '));
   if (c.first || c.first_rows) row('First rows', (c.first || c.first_rows).map(x => '“' + esc(String(x).slice(0, 100)) + '”').join(' · '));
   if (c.page_refs) row('Pages named', esc(c.page_refs.join(', ')));
+  if (c.low_ppi != null) row('Image resolution', lowPpiWords(c.low_ppi));
   const was = SESSION && SESSION.set_in && SESSION.set_in[it.id];
   if (was) row('Previous review', 'preloaded from session ' + Number(was) + (SESSION.inferred && SESSION.inferred[it.id] ? ': ' + esc(SESSION.inferred[it.id]) + ' (inferred from that session\'s recorded changes and counts)' : ''));
   h += '<dl class="fields">' + rows.join('') + '</dl>';

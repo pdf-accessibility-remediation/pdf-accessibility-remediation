@@ -92,12 +92,18 @@ def _index(digest):
     return (labels, by_obj, {s['style']: s for s in digest.get('styles') or []}, {f['obj']: f for f in digest.get('figures') or []},
             {pf['page']: pf for pf in digest.get('page_figures') or []}, {w['id']: w for w in digest.get('ocr_words') or []}, sheet_of)
 
+def low_ppi(digest):
+    """{figure obj: ppi} of the figures the audit found drawn at a low resolution (issue #97, lib/lowres.py): their
+    cards show it, so the reviewer knows which images a person should replace by hand."""
+    return {x['obj']: x['ppi'] for x in digest.get('low_resolution') or [] if isinstance(x, dict) and x.get('obj')}
+
 def build_items(wo, digest, order=None, ro=None):
     """order: the reading order's entries, for the move preview. ro: the whole reading order (reading_order()); with it,
     each finding no decision answers becomes a card (seen only), and each text rule's card lists what it hides."""
     N = digest['source']['pages']
     labels, by_obj, styles, figs, pfigs, words, sheet_of = _index(digest)
     doc = digest.get('document') or {}
+    low = low_ppi(digest)
     items = []
 
     def add(id_, key, kind, loc, ai, label, page=None, before=None, edit=None, field=None, options=None, pages=None, **context):
@@ -137,7 +143,7 @@ def build_items(wo, digest, order=None, ro=None):
         f = figs.get(it.get('obj')) or {}
         add(f'alt:{it.get("obj")}', 'alt', 'Alt text', ['alt', i], it.get('alt'), f'Figure {it.get("obj")}', page=f.get('page'),
             before=f.get('alt'), edit='text', field='alt', figure=f.get('image'), area_pct=f.get('area_pct'), why=it.get('why'),
-            confidence=it.get('confidence'), obj=it.get('obj'))
+            confidence=it.get('confidence'), obj=it.get('obj'), low_ppi=low.get(it.get('obj')))
     for i, it in enumerate(wo.get('page_figures') or []):
         pf = pfigs.get(it.get('page')) or {}
         add(f'page_figures:{it.get("page")}', 'page_figures', 'Alt text', ['page_figures', i], it.get('alt'), f'Whole page {it.get("page")} as one figure',
@@ -646,6 +652,7 @@ def addable(wo, digest, ro=None):
     N = digest['source']['pages']
     labels, by_obj, styles, figs, pfigs, words, sheet_of = _index(digest)
     doc = digest.get('document') or {}
+    low = low_ppi(digest)
     out = {k: [] for k in ADD_KINDS}
 
     def add(kind, target, label, page=None, before=None, default=None, edit=None, options=None, **context):
@@ -671,7 +678,7 @@ def addable(wo, digest, ro=None):
         if o in has_alt: continue
         add('alt', o, f'Figure {o}', page=f.get('page'), before=f.get('alt'), default='', edit='text',
             figure=f.get('image'), area_pct=f.get('area_pct'), next=(f.get('next') or {}).get('text'),
-            decoration=f'artifacts.elements:{o}' if o in decoration else None)       # the AI hid it: reject that first
+            decoration=f'artifacts.elements:{o}' if o in decoration else None, low_ppi=low.get(o))       # the AI hid it: reject that first
     done = {it.get('page') for it in wo.get('page_figures') or [] if isinstance(it, dict)}
     for p, pf in pfigs.items():
         if p not in done: add('page_figures', p, f'Whole page {p} as one figure', page=p, default='', edit='text', figure=pf.get('image'))

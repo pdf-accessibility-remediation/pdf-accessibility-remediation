@@ -153,6 +153,8 @@ Decoration rules are described in words (**Hides**, **Where on the page**, **Mar
 
 **Images:** every card with a page shows that page; heading decisions also show the pages either side. Alt text shows the figure crop. An OCR word shows the word cut from the scan, the same image the AI read. Page images are made the first time you scroll to them, so there is no limit on how many a PDF can have. Click an image to enlarge it.
 
+**A figure drawn at a low resolution** (under 150 ppi) has an **Image Resolution** line on its alt text card, or on the card for adding its alt text. Write the alt text as usual: replacing the image is a hand edit, done after the review (see [Finding images that need a better copy](hand-edits.md#finding-images-that-need-a-better-copy)).
+
 **An orphan-text card** shows the text no tag owns on its pages: up to six runs per page, from the audit.
 
 ### Changing a value
