@@ -90,6 +90,16 @@ def language_paid(R):
     if not isinstance(lr, dict) or (lr.get('response_from') and not lr.get('own_reply')): return 0
     return lr.get('cost_usd') or 0
 
+def book_spent(R):
+    """What this run folder has spent toward the PDF's limit so far, for every paid step's book check (review 06, M2):
+    earlier attempts (a charge not known counts at its worst case), the work order's own paid call (run.json, unless its
+    reply came from elsewhere), the page readings and the language step (their own files, this folder's money only)."""
+    att = _load(os.path.join(R, 'attempts.json')) or []
+    s = sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in att if isinstance(a, dict))
+    run = _load(os.path.join(R, 'run.json')) or {}
+    if not run.get('response_from') or run.get('own_reply'): s += (run.get('usage') or {}).get('cost_usd') or 0
+    return round(s + pages_paid(R) + language_paid(R), 6)
+
 def _workorder(R):
     """The work-order call (decide.py): run.json's estimate; the fingerprint covers the estimate without the credit,
     request.json's sha256, the digest's sha256, the model and the prompt's sha256."""

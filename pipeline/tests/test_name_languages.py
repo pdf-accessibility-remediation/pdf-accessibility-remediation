@@ -98,3 +98,14 @@ def test_a_cut_off_reply_keeps_what_it_finished(tmp_path, monkeypatch):
     run(src, A, R, monkeypatch, reply=cut)
     lr = load(R / 'language_run.json')
     assert len(lr['decisions']) == 2 and lr['not_decided'] == 1 and len(load(R / 'workorder.json')['language_parts']['parts']) == 2
+
+def test_reuse_reads_saved_replies_that_were_never_parsed(tmp_path, monkeypatch):
+    """review 06, M3: a step that stopped after paying and before parsing left decisions {} beside complete replies;
+    --reuse reads the replies again (no request) and lists what stays undecided by group."""
+    src, A, R = folders(tmp_path)
+    run(src, A, R, monkeypatch)
+    lr = load(R / 'language_run.json'); lr['decisions'] = {}; (R / 'language_run.json').write_text(json.dumps(lr))
+    wo = load(R / 'workorder.json'); wo.pop('language_parts'); (R / 'workorder.json').write_text(json.dumps(wo))
+    assert run(src, A, R, monkeypatch, '--reuse') == []
+    lr2 = load(R / 'language_run.json')
+    assert len(lr2['decisions']) == 3 and lr2['not_decided'] == 0 and len(load(R / 'workorder.json')['language_parts']['parts']) == 3

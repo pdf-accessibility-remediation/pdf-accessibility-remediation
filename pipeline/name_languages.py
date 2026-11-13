@@ -78,6 +78,8 @@ def main():
     ap.add_argument('--dry-run', action='store_true'); ap.add_argument('--model', default=None)
     ap.add_argument('--max-usd', type=float, default=float(os.environ.get('LANGUAGE_MAX_USD') or 4))
     ap.add_argument('--max-forms', type=int, default=int(os.environ.get('LANGUAGE_MAX_FORMS') or 5000))
+    ap.add_argument('--book-max-usd', type=float, default=float(os.environ.get('BOOK_MAX_USD') or costs.DEFAULT_LIMITS['per_book_usd']),
+                    help="the PDF's limit, shared with the work order and the page readings (review 06, M2)")
     g = ap.add_mutually_exclusive_group(); g.add_argument('--response-file'); g.add_argument('--reuse', action='store_true')
     args = ap.parse_args()
     R = args.run_dir
@@ -100,7 +102,17 @@ def main():
     if args.response_file or args.reuse:
         src = args.response_file or run_path
         old = json.load(open(src, encoding='utf-8')) if os.path.exists(src) else None
-        if not isinstance(old, dict) or not isinstance(old.get('decisions'), dict):
+        if isinstance(old, dict) and old.get('requests'):
+            # the saved replies themselves, read again (review 06, M3): a step that stopped after paying and before parsing
+            # left decisions {} beside complete replies; reading them costs nothing
+            found = dict(old.get('decisions') or {})
+            for x in old['requests']:
+                if not x.get('text'): continue
+                idk = x.get('id_keys') or dict(zip(x.get('ids') or [], x.get('keys') or []))
+                d, _ = langreq.parse(x['text'], set(idk))
+                for i, v in d.items(): found.setdefault(idk[i], v)
+            old['decisions'] = found
+        if not isinstance(old, dict) or not old.get('decisions'):
             print(f'language step: no saved decisions in {src}: not run')
             merge(R, wo_path, fs, {}, {'schema': 'language-run/1', 'decisions': {}, 'requests': [], 'cost_usd': 0, 'response_from': os.path.abspath(src)},
                   note='not run (the saved reply has no language decisions)'); return
@@ -151,6 +163,10 @@ def main():
     if worst > args.max_usd:
         sys.exit(f'refusing before any AI request: the language step could cost up to ${worst:.2f}, more than the limit of ${args.max_usd:.2f}. '
                  f'To run it, raise the limit for this run: LANGUAGE_MAX_USD={int(worst) + 1}')
+    spent = costs.book_spent(R)
+    if not args.dry_run and spent + worst > args.book_max_usd:
+        sys.exit(f'refusing before any AI request: this PDF has spent ${spent:.2f} and the language step could add ${worst:.2f}, more than the '
+                 f'limit of ${args.book_max_usd:.2f} per PDF. To run it, raise the limit for this run: BOOK_MAX_USD={int(spent + worst) + 1}')
     if args.dry_run: print('dry run: nothing sent'); return
     rec = {'schema': 'language-run/1', 'model': model, 'prompt_file': os.path.basename(prompt_file), 'prompt_sha256': prompt_sha,
            'started': time.strftime('%Y-%m-%dT%H:%M:%S'), 'estimate': est, 'fingerprint': fp, 'candidates': how,
@@ -175,7 +191,7 @@ def main():
             except urllib.error.HTTPError as e: print(f'  request {t["n"]}: OpenRouter error {e.code}: {e.read().decode("utf-8", "replace")[:300]} (not retried)'); continue
             except (urllib.error.URLError, TimeoutError) as e: print(f'  request {t["n"]}: no reply ({e}); not retried'); continue
             u = d.get('usage') or {}; ch = (d.get('choices') or [{}])[0]
-            x = {'n': t['n'], 'sha256': t['sha256'], 'ids': [it['id'] for it in t['req']['items']], 'keys': [form_key(f) for f in sent if f['id'] in {it['id'] for it in t['req']['items']}],
+            x = {'n': t['n'], 'sha256': t['sha256'], 'ids': [it['id'] for it in t['req']['items']], 'id_keys': {f['id']: form_key(f) for f in sent if f['id'] in {it['id'] for it in t['req']['items']}},
                  'text': (ch.get('message') or {}).get('content') or '', 'finish': ch.get('finish_reason'), 'input_tokens': u.get('prompt_tokens'),
                  'output_tokens': u.get('completion_tokens'), 'cost_usd': u.get('cost'), 'seconds': round(time.time() - t0, 1)}
             rec['requests'].append(x); rec['cost_usd'] = round(rec['cost_usd'] + (x['cost_usd'] or 0), 6)
@@ -222,6 +238,10 @@ def merge(R, wo_path, fs, dec, rec, held=(), note=None):
     rec['needs_person'] = person; rec['parts'] = len((wo.get('language_parts') or {}).get('parts') or []); rec['parts_dropped'] = dropped[:50]
     rec['language_parts'] = wo.get('language_parts') or {'parts': []}      # decide.py puts these back when it rebuilds workorder.json (M8)
     rec['held_back'] = [f['form'] for f in held][:200]; rec['held_back_count'] = len(held)
+    nd = collections.defaultdict(list)                  # forms with no decision (cut off, invalid, a failed request), by group
+    for f in fs:
+        if f['id'] not in dec: nd[f['group']].append(f['form'])
+    rec['not_decided_forms'] = {g: v[:200] for g, v in nd.items()}; rec['not_decided'] = sum(len(v) for v in nd.values())
     if note: rec['note'] = note
     json.dump(rec, open(os.path.join(R, 'language_run.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 

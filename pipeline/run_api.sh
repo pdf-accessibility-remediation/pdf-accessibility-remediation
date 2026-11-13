@@ -252,7 +252,7 @@ fi
 # the limit, the credit, OpenRouter unreachable) or a "no" skips the step: the PDF goes on without readings and the
 # report lists the pages for a person.
 page_reads_step() {             # each of its failures is reported and skipped, never the end of the run
-  python3 read_pages.py "$A" "$R" "$@" ${MODEL:+--model "$MODEL"} || { echo "page readings not done (above): the PDF goes on without them"; return 0; }
+  python3 read_pages.py "$A" "$R" "$@" ${MODEL:+--model "$MODEL"} ${BOOK_MAX_USD:+--book-max-usd "$BOOK_MAX_USD"} || { echo "page readings not done (above): the PDF goes on without them"; return 0; }
 }
 if [[ ${PAGE_READS} != off && -z ${REPLY:-} && -z $REVIEWED && ${DECIDE:-} != none ]] && pages_listed; then
   pr_ok=n
@@ -269,7 +269,7 @@ fi
 # never starts a request (review 02, M3): its saved language decisions are used (LANG_REPLY=, or this folder's own
 # language_run.json when the reply is this folder's own), else the step is not run and the record says so.
 lang_step() {                   # each failure is reported and skipped, never the end of the run
-  python3 name_languages.py "$A" "$R" --pdf "$PSRC" "$@" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} || { echo "language tags not done (above): the PDF goes on without them"; return 0; }
+  python3 name_languages.py "$A" "$R" --pdf "$PSRC" "$@" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} ${BOOK_MAX_USD:+--book-max-usd "$BOOK_MAX_USD"} || { echo "language tags not done (above): the PDF goes on without them"; return 0; }
 }
 if [[ ( $LANG_TAGS != off || -n ${LANG_REPLY:-} ) && -z $REVIEWED && ${DECIDE:-} != none && -f $R/workorder.json ]]; then   # saved decisions apply even with the step off: no cost
   if [[ -n ${REPLY:-} || -n $MERGED ]]; then

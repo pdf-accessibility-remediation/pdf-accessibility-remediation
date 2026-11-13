@@ -18,13 +18,15 @@ The API key comes from OPENROUTER_API_KEY or the nearest .env, as for decide.py.
 """
 import sys, os, re, json, time, base64, hashlib, argparse, urllib.request, urllib.error
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-from lib import pagereads, costhistory
+from lib import pagereads, costhistory, costs
 
 ap = argparse.ArgumentParser()
 ap.add_argument('audit_dir'); ap.add_argument('run_dir')
 ap.add_argument('--dry-run', action='store_true')
 ap.add_argument('--model', default=None, help="OpenRouter model id (default: the run's work-order model, else decide.py's DEFAULT_MODEL)")
 ap.add_argument('--max-usd', type=float, default=float(os.environ.get('PAGE_READS_MAX_USD') or 3), help='the limit on what this step could cost, in dollars')
+ap.add_argument('--book-max-usd', type=float, default=float(os.environ.get('BOOK_MAX_USD') or costs.DEFAULT_LIMITS['per_book_usd']),
+                help="the PDF's limit, shared with the work order and the language step (review 06, M2)")
 ap.add_argument('--max-tokens', type=int, default=8000, help='output limit per page (a dense Hawaiian page took 2,300–3,400)')
 args = ap.parse_args()
 
@@ -96,6 +98,10 @@ if todo: print('page readings: ' + costhistory.terminal_line(est['expected']))
 print(f'page readings: Max Estimated Cost: ${worst:.2f} · Limit: ${args.max_usd:.2f}')
 if worst > args.max_usd:
     sys.exit(f'refusing before any AI request: the page readings could cost up to ${worst:.2f}, more than the limit of ${args.max_usd:.2f}. To run it, raise the limit for this run: PAGE_READS_MAX_USD={int(worst) + 1}')
+_spent = costs.book_spent(args.run_dir)
+if not args.dry_run and _spent + worst > args.book_max_usd:
+    sys.exit(f'refusing before any AI request: this PDF has spent ${_spent:.2f} and the page readings could add ${worst:.2f}, more than the '
+             f'limit of ${args.book_max_usd:.2f} per PDF. To run it, raise the limit for this run: BOOK_MAX_USD={int(_spent + worst) + 1}')
 # cost_usd is the step's running total: a page read again after a cut-off keeps the first charge, a page reused adds nothing
 rec = {'schema': 'page-reads/1', 'model': model, 'prompt_file': os.path.basename(PROMPT_FILE), 'prompt_sha256': prompt_sha, 'estimate': est,
        'pages': sorted(reused, key=lambda x: x['page']), 'cost_usd': round(max(done.get('cost_usd') or 0, sum(x.get('cost_usd') or 0 for x in done.get('pages') or [])), 6)}
