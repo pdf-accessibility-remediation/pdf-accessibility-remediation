@@ -147,7 +147,7 @@ The spend job is then `AUTO=1 MAX_USD=<bound> MODEL=<the estimate's model> REVIE
 
 **How the limits are bound:**
 - `MAX_USD` is the largest request's worst case shown, rounded up to the cent from the stored value plus 0.0001, never above the limit. `run_api.sh` passes it to `decide.py --max-usd`. It binds decide.py's estimate, not the bill; the worst case allows the input 25% over its estimate (billed input has run up to 14.4% over it).
-- Every PDF also gets `BOOK_MAX_USD`: its whole worst case plus what previous attempts in the same folder spent, bound the same way and never above the $5 limit per PDF.
+- Every PDF also gets `BOOK_MAX_USD`: its whole worst case plus what previous attempts in the same folder spent, bound the same way and never above the $5 limit per PDF. The whole worst case includes the page readings and the language step only when they fit with the work order; one that doesn't is left out of the estimate and the run (see [The limit per PDF](options.md#the-limit-per-pdf)).
 - A batch binds `BATCH_MAX_USD` to what it has already spent plus the sum of its PDFs, `MAX_USD` to its largest request, and `BOOK_MAX_USD` to its largest PDF.
 - Every Spend also passes the real limits for one thing only, the doubled retry of a figure request cut off (`FIGURE_RETRY_MAX_USD`, `FIGURE_RETRY_BOOK_MAX_USD`; see [What a run may cost](options.md#what-a-run-may-cost)). The first send of every request stays bound to the estimate shown.
 

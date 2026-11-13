@@ -478,9 +478,18 @@ if reqs:
 credit = available_credit()
 if credit is not None: run['estimate']['credit_available_usd'] = round(credit, 4)
 if not args.response_file:                            # the lines a person reads first, then the one the limits are checked against
-    _pr = costs.page_estimate(args.run_dir)            # the page readings still to come (#49), when read_pages.py priced them: shown with the rest
+    # the page readings (#49) and the language step (#118) still to come, when they priced themselves: each counts only when it
+    # fits the PDF's limit together with the work order; one that doesn't is left out and refuses itself later, never the
+    # work order (review 08, H1)
+    _kept, _left = costs.fit_optional(spent_before, total, [('page_reads', costs.page_estimate(args.run_dir, book=False)),
+                                                            ('language', costs.language_estimate(args.run_dir, book=False))],
+                                      args.book_max_usd if IS_CLAUDE else None)
+    for _k in _kept: costs.mark_refused(args.run_dir, _k, None, None)      # fits under this run's limit: an earlier refusal is lifted
+    for _x in _left:
+        costs.mark_refused(args.run_dir, _x['kind'], 'book', _x['words'])
+        print(f'  ⚠ {_x["words"]} To include it, raise the limit for this run: BOOK_MAX_USD={math.ceil(_x["could_usd"])}')
+    _pr, _le = _kept.get('page_reads'), _kept.get('language')
     _pr_usd = _pr['worst_case_usd'] if _pr else 0
-    _le = costs.language_estimate(args.run_dir)        # the language step still to come (#118), when name_languages.py priced it
     _le_usd = _le['worst_case_usd'] if _le else 0
     _pr_words = (f', including ${_pr_usd:.2f} for {_pr["to_read"]} Hawaiian page{"" if _pr["to_read"] == 1 else "s"} to be read by the AI' if _pr else '') \
         + (f', including ${_le_usd:.2f} for the language tags ({_le["to_send"]} AI request{"" if _le["to_send"] == 1 else "s"})' if _le else '')
@@ -528,14 +537,13 @@ else:
         if r['worst'] > args.max_usd:
             sys.exit(f'refusing before any request: figure request {r["pass"]} could cost up to ${costs.up(r["worst"]):.2f}, more than the limit of ${args.max_usd:.2f} per AI request. '
                      f'To run it, raise the limit for this run: MAX_USD={math.ceil(r["worst"])} bash run_api.sh …')
-    # the page readings and language tags to come share the PDF's limit (review 06, M2): their worst cases count here
-    _later = ((costs.page_estimate(args.run_dir) or {}).get('worst_case_usd') or 0) + ((costs.language_estimate(args.run_dir) or {}).get('worst_case_usd') or 0)
-    if IS_CLAUDE and spent_before + total + _later > args.book_max_usd:
-        sys.exit(f'refusing before any request: ' + (f'this PDF\'s {1 + len(reqs)} requests' if reqs else 'this PDF') + f' could cost up to ${costs.up(spent_before + total + _later):.2f}'
-                 + (f' (including ${_later:.2f} for the page readings and language tags to come)' if _later else '')
+    # the page readings and language tags to come share the PDF's limit (review 06, M2), but only those that fit with the
+    # work order count; the rest were marked refused above and run without (review 08, H1)
+    if IS_CLAUDE and spent_before + total > args.book_max_usd:
+        sys.exit(f'refusing before any request: ' + (f'this PDF\'s {1 + len(reqs)} requests' if reqs else 'this PDF') + f' could cost up to ${costs.up(spent_before + total):.2f}'
                  + (f' (including ${spent_before:.2f} spent by previous attempts in this folder)' if spent_before else '')
                  + f', more than the limit of ${args.book_max_usd:.2f} per PDF. To run it, raise the limit for this run: '
-                 f'BOOK_MAX_USD={math.ceil(spent_before + total + _later)} bash run_api.sh …')
+                 f'BOOK_MAX_USD={math.ceil(spent_before + total)} bash run_api.sh …')
     if IS_CLAUDE and credit is not None and credit < total: sys.exit(f'refusing: ${credit:.2f} credit available, this run could cost up to ${costs.up(total):.2f} (OpenRouter would answer 402). Add credit')
     key = os.environ.get('OPENROUTER_API_KEY')
     if not key: sys.exit('no OPENROUTER_API_KEY: put it in a .env file in pipeline/ or a folder above it, or export it')

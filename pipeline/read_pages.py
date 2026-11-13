@@ -90,14 +90,19 @@ if todo:                                           # the expected cost (#65): le
     try: est['expected'] = costhistory.expected([{'kind': 'page', 'input_est': t['input_est'], 'max_tokens': args.max_tokens} for t in todo], model, pin, pout, worst,
                                                 cut_off=any(x.get('finish') == 'length' for x in done.get('pages') or []))
     except Exception as ex: est['expected'] = {'none': 'error'}; print(f'note: the expected cost could not be worked out ({type(ex).__name__})')
-if args.dry_run:
+if args.dry_run:                                   # one over its own cap is marked refused: never counted toward the PDF (review 08, H1)
     json.dump({'schema': 'page-reads-estimate/1', 'model': model, 'prompt_sha256': prompt_sha, **est,
-               'images': {str(t['page']): t['image_sha256'] for t in todo}}, open(EST_PATH, 'w', encoding='utf-8'), indent=1)
+               'images': {str(t['page']): t['image_sha256'] for t in todo},
+               **({'refused': {'why': 'cap', 'words': f'The page readings could cost up to ${worst:.2f}, more than their limit of ${args.max_usd:.2f}.'}} if worst > args.max_usd else {})},
+              open(EST_PATH, 'w', encoding='utf-8'), indent=1)
 print(f'page readings: {len(pages)} Hawaiian page{"s" if len(pages) != 1 else ""} ({len(reused)} already read) · {model}')
 if todo: print('page readings: ' + costhistory.terminal_line(est['expected']))
 print(f'page readings: Max Estimated Cost: ${worst:.2f} · Limit: ${args.max_usd:.2f}')
 if worst > args.max_usd:
     sys.exit(f'refusing before any AI request: the page readings could cost up to ${worst:.2f}, more than the limit of ${args.max_usd:.2f}. To run it, raise the limit for this run: PAGE_READS_MAX_USD={int(worst) + 1}')
+_ref = costs.refused(args.run_dir, 'page_reads') if not args.dry_run and todo else None
+if _ref and _ref.get('why') == 'book':             # decide.py left them out of the PDF's estimate: they stay out (review 08, H1)
+    sys.exit(f'refusing before any AI request: {_ref.get("words") or "the page readings were left out of this PDF\'s estimate"}')
 _spent = costs.book_spent(args.run_dir)
 if not args.dry_run and _spent + worst > args.book_max_usd:
     sys.exit(f'refusing before any AI request: this PDF has spent ${_spent:.2f} and the page readings could add ${worst:.2f}, more than the '

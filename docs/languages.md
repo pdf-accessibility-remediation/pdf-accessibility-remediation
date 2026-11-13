@@ -46,7 +46,9 @@ an English word (`apply.py` `haw_elements`). See [OCR words](ocr-words.md#pages-
 The step is on by default (`LANG_TAGS=on`, see [Options](options.md#language-tags)). It has its own model
 (`LANGUAGE_MODEL`, default the work order's), limit (`LANGUAGE_MAX_USD`, default $4) and form limit
 (`LANGUAGE_MAX_FORMS`, default 5000). The PDF's limit (`BOOK_MAX_USD`, default $5) is shared by the work order, the
-page readings and this step.
+page readings and this step. The step never stops the work order: when it doesn't fit the PDF's limit with the work order,
+or passes its own limit, it alone is left out and the PDF goes on without language tags (see
+[The limit per PDF](options.md#the-limit-per-pdf)).
 
 | File | What it holds |
 |---|---|

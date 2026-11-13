@@ -68,20 +68,74 @@ def bound(x, limit):
     return min(round_up(x), limit) if limit is not None else round_up(x)
 
 # ------------------------------------------------------------------ kinds
-def page_estimate(R):
-    """read_pages.py's estimate in run folder R when it has pages to read (the ones read before cost nothing), else None."""
-    pr = _load(os.path.join(R, 'page_reads_estimate.json'))
-    return pr if isinstance(pr, dict) and isinstance(pr.get('worst_case_usd'), (int, float)) and pr.get('to_read') else None
+# The optional steps (page readings, language tags) never stop the work order (review 08, H1). Each writes its estimate
+# file; one over its own cap is marked refused there by the step itself ({'refused': {'why': 'cap', …}}), and one that
+# doesn't fit the PDF's limit together with the work order is marked by decide.py ({'why': 'book', …}). A refused
+# estimate is never counted, and the step refuses itself with the reason recorded.
+OPTIONAL = (('page_reads', 'page_reads_estimate.json', 'to_read'), ('language', 'language_estimate.json', 'to_send'))
+OPTIONAL_WORDS = {'page_reads': 'The AI reading of scanned Hawaiian pages', 'language': 'The language step'}
+
+def _optional(R, kind, book=True):
+    """An optional step's estimate in R when it has something to send, else None. book=False keeps one decide.py left out
+    for the PDF's limit, so the app can fit it again against its own limit; one over its own cap is never kept."""
+    name, n = {k: (f, c) for k, f, c in OPTIONAL}[kind]
+    e = _load(os.path.join(R, name))
+    if not (isinstance(e, dict) and isinstance(e.get('worst_case_usd'), (int, float)) and e.get(n)): return None
+    ref = e.get('refused')
+    if isinstance(ref, dict) and (book or ref.get('why') != 'book'): return None
+    return e
+
+def page_estimate(R, book=True):
+    """read_pages.py's estimate in run folder R when it has pages to read (the ones read before cost nothing) and was not
+    refused, else None."""
+    return _optional(R, 'page_reads', book)
+
+def fit_optional(spent, wo_total, steps, per_book):
+    """Which optional steps fit the PDF's limit together with the work order (review 08, H1): steps is [(kind, estimate or
+    None)] in order (page readings first: they change the text the rest reads). The work order always counts; a step that
+    doesn't fit is left out, never the work order. per_book None (no limit: not a Claude model) keeps every step.
+    Returns (kept {kind: estimate}, left_out [{kind, worst_case_usd, could_usd, limit_usd, words}])."""
+    kept, out, room = {}, [], None if per_book is None else per_book - spent - wo_total
+    for kind, e in steps:
+        if not e: continue
+        w = float(e['worst_case_usd'])
+        if room is None or w <= room + 1e-9:
+            kept[kind] = e
+            if room is not None: room -= w
+            continue
+        could = spent + wo_total + sum(float(x['worst_case_usd']) for x in kept.values()) + w
+        out.append({'kind': kind, 'worst_case_usd': round(w, 4), 'could_usd': round(could, 4), 'limit_usd': per_book,
+                    'words': f'{OPTIONAL_WORDS[kind]} is left out of this run: with it, this PDF could cost up to ${up(could):.2f}, more '
+                             f'than the limit of ${per_book:.2f} per PDF. The PDF is processed without it.'})
+    return kept, out
+
+def mark_refused(R, kind, why, words):
+    """Record in the step's own estimate file that it will not run (why: 'cap' or 'book'), so it is never counted and the step
+    refuses itself with these words; why None lifts a 'book' refusal. Nothing is written when there is no estimate file."""
+    name = {k: f for k, f, _ in OPTIONAL}[kind]
+    p = os.path.join(R, name)
+    e = _load(p)
+    if not isinstance(e, dict): return
+    if why is None:                                      # fits now (a higher limit): the earlier 'book' refusal is lifted
+        if (e.get('refused') or {}).get('why') != 'book': return
+        e.pop('refused')
+    else: e['refused'] = {'why': why, 'words': words}
+    with open(p, 'w', encoding='utf-8') as f: json.dump(e, f, indent=1)
+
+def refused(R, kind):
+    """The refusal recorded in an optional step's estimate file ({why, words}), else None."""
+    e = _load(os.path.join(R, {k: f for k, f, _ in OPTIONAL}[kind]))
+    r = e.get('refused') if isinstance(e, dict) else None
+    return r if isinstance(r, dict) else None
 
 def pages_paid(R):
     """What the page readings of an unfinished run have cost so far (page_reads_run.json); report.py moves it into the record."""
     pr = _load(os.path.join(R, 'page_reads_run.json'))
     return (pr.get('cost_usd') or 0) if isinstance(pr, dict) else 0
 
-def language_estimate(R):
-    """name_languages.py's estimate in run folder R when it has requests to send (#118), else None."""
-    le = _load(os.path.join(R, 'language_estimate.json'))
-    return le if isinstance(le, dict) and isinstance(le.get('worst_case_usd'), (int, float)) and le.get('to_send') else None
+def language_estimate(R, book=True):
+    """name_languages.py's estimate in run folder R when it has requests to send (#118) and was not refused, else None."""
+    return _optional(R, 'language', book)
 
 def language_paid(R):
     """What the language step of an unfinished run has cost so far (language_run.json; a saved reply from elsewhere
@@ -115,9 +169,9 @@ def _workorder(R):
                'request': _sha(os.path.join(R, 'request.json')), 'digest': _sha(os.path.join(R, '_audit', 'digest.json')),
                'model': run.get('model'), 'prompt': run.get('prompt_sha256')}
     sheets = (run.get('ocr_words') or {}).get('sheets') if isinstance(run.get('ocr_words'), dict) else None
-    pr = page_estimate(R)
+    pr = page_estimate(R, book=False)                 # fitted against the limit in estimate() (review 08, H1)
     if pr: covered['page_reads'] = {k: v for k, v in pr.items() if k != 'expected'}     # the expected figure stays out, like the credit
-    le = language_estimate(R)
+    le = language_estimate(R, book=False)
     if le: covered['language'] = {k: v for k, v in le.items() if k != 'expected'}
     return {'run': run, 'e': e, 'passes': passes, 'per_call': per_call, 'spent_before': spent, 'covered': covered,
             'sheets': sheets if isinstance(sheets, int) else None, 'page_reads': pr, 'language': le}
@@ -147,15 +201,17 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
     claude = model.startswith('anthropic/')
     prices = bool(run.get('price_source')) and not str(run.get('price_source')).startswith(OFFLINE)
     wo_total = float(e['worst_case_total_usd'])                 # the work order's own: decide.py's caps bind it
-    pr = x.get('page_reads')
-    pr_total = float(pr['worst_case_usd']) if pr else 0.0
-    le = x.get('language')
-    le_total = float(le['worst_case_usd']) if le else 0.0
-    total = wo_total + pr_total + le_total
     credit = e.get('credit_available_usd')
     if credit is None and credit_read is not None: credit = credit_read
     book_cap = e.get('book_cap_usd')                     # present on #63's shape; the app's own limit is the one that binds (Spend passes it as BOOK_MAX_USD)
     per_book = L['per_book_usd']
+    # an optional step counts only when it fits the PDF's limit with the work order; otherwise it alone is left out (review 08, H1)
+    kept, left_out = fit_optional(x['spent_before'], wo_total, [('page_reads', x.get('page_reads')), ('language', x.get('language'))],
+                                  per_book if claude and book_cap is not None else None)
+    pr, le = kept.get('page_reads'), kept.get('language')
+    pr_total = float(pr['worst_case_usd']) if pr else 0.0
+    le_total = float(le['worst_case_usd']) if le else 0.0
+    total = wo_total + pr_total + le_total
     per_call = max(x['per_call'], float(pr.get('per_page_worst_usd') or 0) if pr else 0, float(le.get('per_call_worst_usd') or 0) if le else 0)
     fits = {'per_call': per_call <= L['per_call_usd'] if claude else None,
             'per_book': (total + x['spent_before']) <= per_book if claude else None,
@@ -178,9 +234,11 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
             'language': {'forms': int(le.get('sent') or 0), 'requests': int(le['to_send']), 'ceiling_usd': le_total, 'model': le.get('model'),
                          'prompt_sha256': le.get('prompt_sha256')} if le else None,
             'limits': {'per_call_usd': L['per_call_usd'], 'per_book_usd': per_book if book_cap is not None else None},
-            'credit_usd': credit, 'fits': fits, 'blocked': blocked, 'expected': _expected(x), 'fingerprint': fp,
+            'credit_usd': credit, 'fits': fits, 'blocked': blocked, 'expected': _expected({**x, 'page_reads': pr, 'language': le}), 'fingerprint': fp,
+            'left_out': left_out,
             'bounds': {'MAX_USD': bound(x['per_call'], L['per_call_usd']),
-                       'BOOK_MAX_USD': bound(wo_total + x['spent_before'], per_book) if book_cap is not None else None,
+                       # the steps kept count here too: decide.py, read_pages.py and name_languages.py check the PDF's total against it
+                       'BOOK_MAX_USD': bound(total + x['spent_before'], per_book) if book_cap is not None else None,
                        **({'PAGE_READS_MAX_USD': bound(pr_total, per_book)} if pr else {}),
                        **({'LANGUAGE_MAX_USD': bound(le_total, per_book)} if le else {})}}
 

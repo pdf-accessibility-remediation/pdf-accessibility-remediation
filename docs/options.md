@@ -72,6 +72,12 @@ For any other model the estimate is approximate and is not a limit. The line pri
 
 `BOOK_MAX_USD` counts every request for the PDF: the work order, its figure requests, and what previous attempts in the same run folder spent. The run stops before any request when the total is over the limit, and says the value to set.
 
+The page readings and the language step are optional, and never stop the work order. Each counts toward `BOOK_MAX_USD`
+only when it fits together with the work order (the page readings first, then the language step). One that doesn't fit is
+left out: the run says so with the value to set, the step refuses itself, and the PDF goes on without it. A step over its
+own limit (`PAGE_READS_MAX_USD`, `LANGUAGE_MAX_USD`) is never counted either. The app's estimate does the same, and lists
+what it left out under "Max Estimated Cost".
+
 ### No AI request
 
 `DECIDE=none` makes an empty work order for a reviewer to fill in on the review page (with `REVIEW=1`). It costs nothing and reads no pages. With `ESTIMATE=1` it only says there is nothing to estimate.

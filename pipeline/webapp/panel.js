@@ -597,8 +597,10 @@ function costLines(e) {                                          // #65 (costs i
   return (x ? 'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet') + '<br>' : '') +
     'Max Estimated Cost: ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + esc(e.requests) + ' AI requests' : '') +
     (e.page_reads ? ', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '') +   // #49
+    (e.language ? ', including ' + usd(e.language.ceiling_usd) + ' for the language tags' : '') +   // #118
     (e.spent_before_usd ? ' · Counted Toward This PDF\'s Limit So Far: ' + usd(e.spent_before_usd) : '') +
-    (e.credit_usd != null ? ' · Credit: ' + usd(e.credit_usd) : ' · Credit: Not Checked');
+    (e.credit_usd != null ? ' · Credit: ' + usd(e.credit_usd) : ' · Credit: Not Checked') +
+    (e.left_out || []).map(x => '<br>' + esc(x.words)).join('');   // review 08, H1: an optional step that doesn't fit is left out, never the PDF
 }
 const NEXT = { estimate: ['estimate', 'Get a New Estimate'], retry: ['retry', 'Try Again'], dismiss: ['dismiss', 'Dismiss'], home: null };
 function failureCard(f) {
