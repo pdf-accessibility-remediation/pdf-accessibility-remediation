@@ -2,13 +2,13 @@
 
 Result: `moralfoods_remediated.pdf`
 
-361 pages · run November 13, 2026, at 3:39 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.240 ($0.0007 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+361 pages · run November 13, 2026, at 1:38 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.240 ($0.0007 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.8s · audit 36.1s · reuse saved reply 1.3s · apply 138.6s · verify 49.0s · total 225.8s
+Time: intake 0.8s · audit 33.2s · reuse saved reply 1.3s · apply 129.4s · verify 45.2s · total 209.9s
 
 ## Overview
 
@@ -292,7 +292,7 @@ Rejected by validation or by the executor; nothing was half-applied.
 
 ### 17. Language Tags
 
-Words and passages in another language get a language tag, so a screen reader switches to that language's voice (WCAG 3.1.2). A person decides every tag on the review page.
+Words and passages in another language get a language tag, so a screen reader switches to that language's voice (WCAG 3.1.2). Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.
 
 ## What Was Changed
 

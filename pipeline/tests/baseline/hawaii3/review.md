@@ -2,13 +2,13 @@
 
 Result: `hawaii3_remediated.pdf`
 
-301 pages · run November 13, 2026, at 3:35 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.208 ($0.0007 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+301 pages · run November 13, 2026, at 1:35 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.208 ($0.0007 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.6s · audit 28.0s · reuse saved reply 1.2s · apply 22.2s · verify 27.4s · total 79.4s
+Time: intake 0.5s · audit 24.0s · reuse saved reply 1.4s · apply 20.6s · verify 25.2s · total 71.7s
 
 ## Overview
 
@@ -24,21 +24,21 @@ Time: intake 0.6s · audit 28.0s · reuse saved reply 1.2s · apply 22.2s · ver
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · FAILED ✘ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 6 (4 deferred by the AI · 0 deferred by the executor · 2 CHECK rows)  
+**Needs a person:** 25 (4 deferred by the AI · 18 deferred by the executor · 3 CHECK rows)  
 **AI decisions:** 43 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 186 · link descriptions that were only a URL 62 · tag-tree index entries 6 · title shown in the window 1  
-**veraPDF (WCAG 2.2 machine checks):** 1 WCAG rule failing before (7 checks) → 0 after (0 checks) · 0 newly failing
+**veraPDF (WCAG 2.2 machine checks):** 1 WCAG rule failing before (7 checks) → 1 after (1 check) · 0 newly failing
 
 Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
 | All content tagged or marked as decoration: 399 untagged characters · 7 untagged objects (7 text) | see Automated Checks | [Automated Checks](#automated-checks) |
+| If the Lang entry is present in the document's Catalog dictionary or i (veraPDF 7.2-29, 1 check) | PDF 224 (printed 211) | [§8](#8-verapdf-wcag-22-machine-profile-before-and-after) |
 | Reading order jumps back up a column (2 jumps) | PDF 71 (printed 58) | [§9](#9-wcag-checks-verapdf-does-not-make) |
-| Untagged page numbers on the contents pages (“198” and “253”) are in no tag and not marked as artifacts | PDF 9 (printed viii), PDF 10 (printed ix) | [§10](#10-deferred-by-the-ai) |
-| Five untagged runs of body text on this page, the continuation of the chapter text before the Notes and Work… | PDF 35 (printed 22) | [§10](#10-deferred-by-the-ai) |
-| Several headings read in a different word order from the printed one: the title page, “as Home and a Place o… | PDF 4 (printed iii), PDF 100 (printed 87), PDF 144 (printed 131), PDF 295 (printed 282) | [§10](#10-deferred-by-the-ai) |
-| … and 1 more | | §10 |
+| /Lang "Hawaii" on Span names Hawaiian, but "Tengan" is not spelled with Hawaiian letters: "P. Kāwika Tengan" (2) | PDF 75 (printed 62), PDF 78 (printed 65) | [§11](#11-deferred-by-the-executor) |
+| /Lang "Hawaii" on Span names Hawaiian, but "Nyéléni" is not spelled with Hawaiian letters: "Nyéléni" (2) | PDF 127 (printed 114) | [§11](#11-deferred-by-the-executor) |
+| … and 16 more | | §10, §11 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -71,7 +71,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Bookmarks present (documents over 9 pages) | OK | 198 bookmarks |
 | Model reply held one work order | OK | one |
 | Executor applied every decision | OK | 0 rejected · 0 failed (listed under "Decisions not applied") |
-| Nothing deferred by the executor | **CHECK** | 1 deferred (listed under "Deferred by the executor") |
+| Nothing deferred by the executor | **CHECK** | 22 deferred (listed under "Deferred by the executor") |
 | Fonts: every glyph defined (no .notdef) | OK | none found |
 | Fonts: every embedded font program could be read | OK | all read |
 | Fonts: embedded and mapped to Unicode | OK | 0 not embedded · 0 without ToUnicode |
@@ -79,8 +79,8 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Characters with no Unicode value (checklist 3.6) | OK | 0 read-aloud characters with no Unicode value |
 | Private-use characters (checklist 3.6) | OK | 0 read-aloud characters with private-use codes |
 | Title and language set | OK | "The Value of Hawaiʻi 3: Hulihia, the Turning" · en-US |
-| veraPDF WCAG 2.2 (machine): no WCAG failures | OK | before: 1 WCAG rule failed (7 checks) → after: 0 WCAG rules failed (0 checks) · 1 PDF/UA-only rules not counted (listed under "veraPDF") |
-| veraPDF: no rule newly failing or failing more often | OK | 1 fixed · 1 still failing · 0 newly failing |
+| veraPDF WCAG 2.2 (machine): no WCAG failures | **CHECK** | before: 1 WCAG rule failed (7 checks) → after: 1 WCAG rule failed (1 checks) · 1 PDF/UA-only rules not counted (listed under "veraPDF") |
+| veraPDF: no rule newly failing or failing more often | OK | 0 fixed · 2 still failing · 0 newly failing |
 | Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 11 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
 | Reading order: no page jumps back up a column (1.3.2) | **CHECK** | 1 of 288 pages flagged |
@@ -236,11 +236,11 @@ Entries that pointed at a tag no longer in the tag tree (left by the source file
 
 ### 8. veraPDF (WCAG 2.2 machine profile), Before and After
 
-veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 1 rule failing (the AI can act on 0, the pipeline on 1, only a person on 0). After: 0.
+veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 1 rule failing (the AI can act on 0, the pipeline on 1, only a person on 0). After: 1.
 
 | Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |
 |---|---|---|---|---:|---:|---|---|
-| ISO 14289-1 7.2-29 | 3.1.1, 3.1.2 | If the Lang entry is present in the document's Catalog dictionary or in a structure element dictionary or property list, its value shall be a language identifier as described in ISO 32000-1:2008, 14.9.2. A language identifier shall be a Language-Tag as defined in RFC 3066, Tags for the Identification of Languages | the pipeline (429 changed) | 7 | 0 | fixed | PDF 30 (printed 17), PDF 31 (printed 18), PDF 224 (printed 211) |
+| ISO 14289-1 7.2-29 | 3.1.1, 3.1.2 | If the Lang entry is present in the document's Catalog dictionary or in a structure element dictionary or property list, its value shall be a language identifier as described in ISO 32000-1:2008, 14.9.2. A language identifier shall be a Language-Tag as defined in RFC 3066, Tags for the Identification of Languages e.g. "Value Hungarian of the Lang entry is not a Language-Tag" | the pipeline (403 changed) | 7 | 1 | still failing | PDF 224 (printed 211) |
 
 PDF/UA-only, not required for WCAG (not counted):
 
@@ -264,6 +264,69 @@ Reviewer note from the AI: Heading outline: H1 is the book title (half-title pag
 ### 11. Deferred by the Executor
 
 - the source file already claims PDF/UA conformance: not verified by this pipeline; check it with PAC before relying on it
+- /Lang "Hawaii" on Span names Hawaiian, but "Tengan" is not spelled with Hawaiian letters: "P. Kāwika Tengan" (PDF 75 (printed 62)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Tengan" is not spelled with Hawaiian letters: "P. Kāwika Tengan" (PDF 78 (printed 65)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Nyéléni" is not spelled with Hawaiian letters: "Nyéléni" (PDF 127 (printed 114)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Nyéléni" is not spelled with Hawaiian letters: "Nyéléni" (PDF 127 (printed 114)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "mī-gusui" is not spelled with Hawaiian letters: "“mī-gusui, mimi-gusui, nuchi-gusui.”" (PDF 148 (printed 135)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Mī-gusui" is not spelled with Hawaiian letters: "Mī-gusui, mimi-gusui, nuchi-gusui" (PDF 148 (printed 135)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "mimi-gusui" is not spelled with Hawaiian letters: "mimi-gusui." (PDF 150 (printed 137)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "mī-gusui" is not spelled with Hawaiian letters: "mī-gusui" (PDF 150 (printed 137)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "mimi-gusui" is not spelled with Hawaiian letters: "mimi-gusui" (PDF 150 (printed 137)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "nuchi-gusui" is not spelled with Hawaiian letters: "nuchi-gusui" (PDF 150 (printed 137)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Sustʻāinable" is not spelled with Hawaiian letters: "Sustʻāinable" (PDF 163 (printed 150)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Sustʻāinable" is not spelled with Hawaiian letters: "Sustʻāinable" (PDF 164 (printed 151)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Sustʻāinable" is not spelled with Hawaiian letters: "Sustʻāinable" (PDF 164 (printed 151)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Sustʻāinable" is not spelled with Hawaiian letters: "Sustʻāinable" (PDF 165 (printed 152)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Sustʻāinable" is not spelled with Hawaiian letters: "Sustʻāinable" (PDF 165 (printed 152)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Tatiana" is not spelled with Hawaiian letters: "Tatiana Kalaniʻōpua Young" (PDF 187 (printed 174)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Tatiana" is not spelled with Hawaiian letters: "Tatiana Kalaniʻōpua Young" (PDF 190 (printed 177)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "irensia" is not spelled with Hawaiian letters: "I irensia na'lå'la' i espiritu-ta." (PDF 218 (printed 205)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Famalåo'an" is not spelled with Hawaiian letters: "Famalåo'an:" (PDF 221 (printed 208)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "famalåo'an" is not spelled with Hawaiian letters: "famalåo'an" (PDF 221 (printed 208)): set the right tag (e.g. haw, en), or remove it
+- 6 more language names whose words look like another language
+
+### 12. Language Tags
+
+Words and passages in another language get a language tag, so a screen reader switches to that language's voice (WCAG 3.1.2). Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.
+
+**The PDF's language names, written as language codes (403 tags):** a language's name is not a language tag, so each is replaced by the code it names. Check that the words are in that language.
+
+- "Hawaii" → haw (Hawaiian): 331 tags · e.g. "Noelani Goodyear-Ka‘ōpua,", "Mānoa,", "Goodyear-Ka‘ōpua," · PDF 3 (printed ii), PDF 4 (printed iii), PDF 12 (printed xi), PDF 14 (printed 1)
+- "Hawaiian" → haw (Hawaiian): 64 tags · e.g. "Hulihia,", "Kuaʻāina", "ʻāina momona" · PDF 4 (printed iii), PDF 229 (printed 216), PDF 237 (printed 224), PDF 245 (printed 232)
+- "Marshallese" → mh (Marshallese): 3 tags · e.g. "Kathy Jetñil-Kijiner", "Kathy Jetñil-Kijiner’s" · PDF 30 (printed 17), PDF 31 (printed 18)
+- "Marshallese" → mh (Marshallese): 3 tags · e.g. "“Bwebwenato in Lōrro”/“Story about Lōrro", "lōrro", "lōrro." · PDF 30 (printed 17), PDF 31 (printed 18)
+- "Hawai" → haw (Hawaiian): 1 tag · e.g. "Ka ʻĀina Moana" · PDF 104 (printed 91)
+- "hawaii" → haw (Hawaiian): 1 tag · e.g. "kānaka" · PDF 107 (printed 94)
+
+**Language names left for a person (26):** the words under them look like another language, so they stay as written.
+
+- "Hawaii" (Hawaiian) on "P. Kāwika Tengan": "Tengan" is not spelled with Hawaiian letters · PDF 75 (printed 62)
+- "Hawaii" (Hawaiian) on "P. Kāwika Tengan": "Tengan" is not spelled with Hawaiian letters · PDF 78 (printed 65)
+- "Hawaii" (Hawaiian) on "Nyéléni": "Nyéléni" is not spelled with Hawaiian letters · PDF 127 (printed 114)
+- "Hawaii" (Hawaiian) on "Nyéléni": "Nyéléni" is not spelled with Hawaiian letters · PDF 127 (printed 114)
+- "Hawaii" (Hawaiian) on "“mī-gusui, mimi-gusui, nuchi-gusui.”": "mī-gusui" is not spelled with Hawaiian letters · PDF 148 (printed 135)
+- "Hawaii" (Hawaiian) on "Mī-gusui, mimi-gusui, nuchi-gusui": "Mī-gusui" is not spelled with Hawaiian letters · PDF 148 (printed 135)
+- "Hawaii" (Hawaiian) on "mimi-gusui.": "mimi-gusui" is not spelled with Hawaiian letters · PDF 150 (printed 137)
+- "Hawaii" (Hawaiian) on "mī-gusui": "mī-gusui" is not spelled with Hawaiian letters · PDF 150 (printed 137)
+- "Hawaii" (Hawaiian) on "mimi-gusui": "mimi-gusui" is not spelled with Hawaiian letters · PDF 150 (printed 137)
+- "Hawaii" (Hawaiian) on "nuchi-gusui": "nuchi-gusui" is not spelled with Hawaiian letters · PDF 150 (printed 137)
+- "Hawaii" (Hawaiian) on "Sustʻāinable": "Sustʻāinable" is not spelled with Hawaiian letters · PDF 163 (printed 150)
+- "Hawaii" (Hawaiian) on "Sustʻāinable": "Sustʻāinable" is not spelled with Hawaiian letters · PDF 164 (printed 151)
+- "Hawaii" (Hawaiian) on "Sustʻāinable": "Sustʻāinable" is not spelled with Hawaiian letters · PDF 164 (printed 151)
+- "Hawaii" (Hawaiian) on "Sustʻāinable": "Sustʻāinable" is not spelled with Hawaiian letters · PDF 165 (printed 152)
+- "Hawaii" (Hawaiian) on "Sustʻāinable": "Sustʻāinable" is not spelled with Hawaiian letters · PDF 165 (printed 152)
+- "Hawaii" (Hawaiian) on "Tatiana Kalaniʻōpua Young": "Tatiana" is not spelled with Hawaiian letters · PDF 187 (printed 174)
+- "Hawaii" (Hawaiian) on "Tatiana Kalaniʻōpua Young": "Tatiana" is not spelled with Hawaiian letters · PDF 190 (printed 177)
+- "Hawaii" (Hawaiian) on "I irensia na'lå'la' i espiritu-ta.": "irensia" is not spelled with Hawaiian letters · PDF 218 (printed 205)
+- "Hawaii" (Hawaiian) on "Famalåo'an:": "Famalåo'an" is not spelled with Hawaiian letters · PDF 221 (printed 208)
+- "Hawaii" (Hawaiian) on "famalåo'an": "famalåo'an" is not spelled with Hawaiian letters · PDF 221 (printed 208)
+- "Hawaii" (Hawaiian) on "Guåhan": "Guåhan" is not spelled with Hawaiian letters · PDF 222 (printed 209)
+- "Hungarian" (Hungarian) on "Noa Emmett Aluli, MD": its words look Hawaiian · PDF 224 (printed 211)
+- "Hawaii" (Hawaiian) on "Davianna Pōmaikaʻi McGregor": "Davianna" is not spelled with Hawaiian letters · PDF 225 (printed 212)
+- "Hawaiian" (Hawaiian) on "Benjamin Treviño and Victoria Treviño": "Treviño" is not spelled with Hawaiian letters · PDF 250 (printed 237)
+- "Hawaiian" (Hawaiian) on "Ulu Kukui o Kaulike: Kealoha Fox. Kukui art: Lisanne Paikai.": "Lisanne" is not spelled with Hawaiian letters · PDF 273 (printed 260)
+- "Hawaiian" (Hawaiian) on "Puʻuhonua o Puʻuhuluhulu en masse": "masse" is not spelled with Hawaiian letters · PDF 279 (printed 266)
 
 ## What Was Changed
 
@@ -283,7 +346,7 @@ Reviewer note from the AI: Heading outline: H1 is the book title (half-title pag
 | links: /Contents set | 186 |
 | links: joined existing Link | 186 |
 | links: URL-only description replaced by the sentence around it | 62 |
-| language: a language name written as /Lang replaced by its code | 429 |
+| language: a language name written as /Lang replaced by its code | 403 |
 | tag tree index: entries pointing outside the tree cleared (ParentTree) | 6 |
 
 ## Accessibility Evaluation
