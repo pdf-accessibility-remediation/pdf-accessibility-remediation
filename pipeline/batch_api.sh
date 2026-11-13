@@ -282,7 +282,7 @@ each() {   # each <step: estimate|run>
       RUN_DIR=$B/$name ESTIMATE=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
       st="FAILED (see $name.estimate.log)"
     else
-      unset LANG_REPLY                                 # never a caller's: only this book's own saved language decisions (review 06, L2)
+      unset LANG_REPLY                                 # never from the caller: only this book own saved decisions (review 06, L2)
       if [[ -n ${FROM:-} ]]; then export REPLY="$B/$name.reply.txt" INTAKE_REUSE=1; [[ -f $B/$name.language.json ]] && export LANG_REPLY="$B/$name.language.json"; fi
       log=$B/$name.log
       RUN_DIR=$B/$name AUTO=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
