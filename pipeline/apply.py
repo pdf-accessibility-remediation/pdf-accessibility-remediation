@@ -1110,22 +1110,27 @@ def drawn_here(pno, m, n):
         return 'run drawn inside a form XObject, not in the page' if str(e) == 'run not drawn in the page content' else str(e)
     return None if got == n else 'characters do not line up with the run'
 def remove_existing(lp):
-    """The PDF's own language tags a person removed on the review page (language_parts version 2: forms with `current` and
-    decided 'remove'): the element that carries that value over the run loses its /Lang, and the run's marks lose theirs
-    (in the late pass). A tag a person changed is tagged anew like any other part (expand)."""
+    """The PDF's own language tags a person decided on the review page (language_parts version 2: forms with `current`).
+    Removed ('remove'): the element that carries that value over the run loses its /Lang, and the run's marks lose theirs
+    (in the late pass). Kept ('kept', "Keep the Tag", review 08 M5): when an element over the run carries the value, the
+    run's marks lose their own /Lang (an en-US in the marks would be read instead of the kept tag, 02 H1); a value carried
+    by the marks alone stays as it is. A tag a person changed is tagged anew like any other part (expand)."""
     if not isinstance(lp, dict) or lp.get('version') != 2: return
     forms = lp.get('forms') or []
     for r in lp.get('parts') or []:
         if not (isinstance(r, list) and len(r) == 5 and 0 <= r[4] < len(forms)): continue
         f = forms[r[4]]
-        if not (f.get('current') and f.get('decided') == 'remove'): continue
+        if not (f.get('current') and f.get('decided') in ('remove', 'kept')): continue
         pno, m = r[0], r[1]
-        el = owner.get((pno, m))
+        el, carrier = owner.get((pno, m)), None
         for _ in range(8):
             if el is None or not is_elem(el): break
-            if '/Lang' in el and str(el.Lang).strip() == str(f['current']).strip():
-                del el['/Lang']; ok('language: a tag in the PDF removed'); break
+            if '/Lang' in el and str(el.Lang).strip() == str(f['current']).strip(): carrier = el; break
             el = parent_of.get(el.objgen)
+        if f['decided'] == 'kept':
+            if carrier is not None: _LANG_DROP.append((pno, m)); LANG['existing_kept'] = LANG.get('existing_kept', 0) + 1
+            continue
+        if carrier is not None: del carrier['/Lang']; ok('language: a tag in the PDF removed')
         _LANG_DROP.append((pno, m)); LANG['existing_removed'] = LANG.get('existing_removed', 0) + 1
 def language_parts(parts):
     """The language step's tags (workorder.json `language_parts`, checked by workorder_check.check_language_parts): a

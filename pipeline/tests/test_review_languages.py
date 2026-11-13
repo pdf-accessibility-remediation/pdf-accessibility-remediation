@@ -75,6 +75,23 @@ def test_a_publishers_tag_a_person_removed_is_gone(tmp_path):
     v = json.load(open(out + '.verify.json'))
     assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['language']['publisher_conflicts'] == 0
 
+def test_a_publishers_tag_a_person_kept_is_the_one_read(tmp_path):
+    """review 08, M5: the PDF tags a line fr-FR on its element but en-US in its marks; "Keep the Tag" drops the marks' value
+    so the kept tag is read, and verify no longer counts it as a conflict."""
+    w0 = wo(); items = core.build_items(w0, DIGEST); cid = next(it['id'] for it in items if it['label'] == 'Copyright')
+    assert core.apply_decisions(w0, items, {cid: {'status': 'approved'}})['language_parts']['forms'][4]['decided'] == 'kept'
+    src = langpdf.build(str(tmp_path / 'k.pdf'), [{'lang': 'en-US', 'span_lang': 'fr-FR', 'text': 'Droits reserves'}])   # lang: the marks'
+    lp = {'version': 2, 'forms': [{**form('Droits reserves', 'existing', ['existing'], None, None, current='fr-FR', tag=False, person=True), 'decided': 'kept'}],
+          'parts': [[1, 0, 0, 15, 0]]}
+    run('verify.py', src, src)
+    assert json.load(open(src + '.verify.json'))['language']['publisher_conflicts'] == 1          # before: the marks win
+    w = tmp_path / 'wo.json'; w.write_text(json.dumps({'language_parts': lp}))
+    out = str(tmp_path / 'out.pdf'); run('apply.py', src, w, out); run('verify.py', src, out)
+    assert '/Lang' not in marks(out)[0]
+    pdf = pikepdf.open(out); assert str(pdf.Root.StructTreeRoot.K[0].K[0].get('/Lang')) == 'fr-FR'
+    v = json.load(open(out + '.verify.json'))
+    assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['language']['publisher_conflicts'] == 0
+
 def with_languages():
     import test_review_problems as TP
     return {**TP.ai_order(), 'language_parts': wo()['language_parts']}

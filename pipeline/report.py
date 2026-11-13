@@ -1087,7 +1087,7 @@ if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the langu
     for r_ in lp_.get('parts') or []:
         if isinstance(r_, list) and len(r_) == 5: pages_of_[r_[4]].add(r_[0])
     tagged_ = [(i, f) for i, f in enumerate(forms_) if f.get('tag') and f.get('lang')]
-    person_ = [(i, f) for i, f in enumerate(forms_) if not f.get('tag') and f.get('person') and f.get('decided') not in ('untagged', 'remove')]
+    person_ = [(i, f) for i, f in enumerate(forms_) if not f.get('tag') and f.get('person') and f.get('decided') not in ('untagged', 'remove', 'kept')]
     exempt_ = collections.Counter(f.get('why') for f in forms_ if not f.get('tag') and not f.get('person'))
     n += 1; L += [f'### {n}. Language Tags', '',
                   'Words and passages in another language get a language tag, so a screen reader switches to that language\'s voice (WCAG 3.1.2). '

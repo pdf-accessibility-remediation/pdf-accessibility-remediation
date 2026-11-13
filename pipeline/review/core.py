@@ -1007,7 +1007,7 @@ def apply_decisions(ai_wo, items, decisions):
             f = wo['language_parts']['forms'][it['loc'][2]]
             if st == 'rejected': f['tag'] = False; f['decided'] = 'remove' if f.get('current') else 'untagged'   # the PDF's own tag: removed
             elif st == 'changed' and d.get('value'): f['lang'] = str(d['value']).strip(); f['tag'] = True; f['decided'] = 'changed'
-            elif st in ('approved', 'changed'): f['decided'] = 'tagged' if f.get('tag') else 'untagged'
+            elif st in ('approved', 'changed'): f['decided'] = 'tagged' if f.get('tag') else 'kept' if f.get('current') else 'untagged'   # "Keep the Tag" (review 08, M5)
             continue
         if it['loc'] is None: continue                   # a reading-order finding: not in the work order
         if st == 'rejected' and it['key'] not in SEEN_ONLY: drop.append(it['loc'])
