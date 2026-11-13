@@ -15,7 +15,12 @@ import langpdf  # noqa: E402
 from test_decide_allowance import fake, MODEL  # noqa: E402
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
-from lib import plumb_fix, plpages, langcands  # noqa: F401,E402
+from lib import plumb_fix, plpages, langcands, langreq  # noqa: F401,E402
+
+def tagged(R):
+    """The places workorder.json tags (language_parts version 2, as apply.py reads them)."""
+    wo = load(R / 'workorder.json')
+    return langreq.expand(wo.get('language_parts'))
 
 def answer_all(lang='ja-Latn'):
     def reply(body, n):
@@ -53,10 +58,10 @@ def test_a_live_run_writes_parts_and_its_record(tmp_path, monkeypatch):
     assert len(calls) == 1 and LAST['exit'] is None
     body = json.loads(calls[0])
     assert 'temperature' not in body and body['provider'] == {'data_collection': 'deny'}       # the fake list gives no temperature
-    parts = load(R / 'workorder.json')['language_parts']['parts']
-    assert sorted(p['text'] for p in parts) == ['Onjōji', 'mappō', 'ryōgen'] and {p['lang'] for p in parts} == {'ja-Latn'}
+    parts = tagged(R)
+    assert sorted(p['form'] for p in parts) == ['Onjōji', 'mappō', 'ryōgen'] and {p['lang'] for p in parts} == {'ja-Latn'}
     lr = load(R / 'language_run.json')
-    assert lr['cost_usd'] == 0.004 and len(lr['decisions']) == 3 and lr['language_parts']['parts'] == parts
+    assert lr['cost_usd'] == 0.004 and len(lr['decisions']) == 3 and langreq.expand(lr['language_parts']) == parts
     assert os.path.exists(R / 'language_requests' / '001.request.json')
     assert run(src, A, R, monkeypatch) == [] and load(R / 'language_run.json')['cost_usd'] == 0.004     # answered before: never paid again
 
@@ -64,7 +69,7 @@ def test_the_estimate_and_the_limit_come_first(tmp_path, monkeypatch):
     src, A, R = folders(tmp_path)
     assert run(src, A, R, monkeypatch, '--dry-run') == [] and load(R / 'language_estimate.json')['to_send'] == 1
     assert run(src, A, R, monkeypatch, '--max-usd', '0.0001') == [] and 'refusing before any AI request' in str(LAST['exit'])
-    assert 'language_parts' not in load(R / 'workorder.json')
+    assert tagged(R) == []
 
 def test_a_saved_reply_is_applied_by_form_with_no_request(tmp_path, monkeypatch):
     src, A, R = folders(tmp_path)
@@ -78,13 +83,13 @@ def test_a_saved_reply_is_applied_by_form_with_no_request(tmp_path, monkeypatch)
     assert calls == []
     lr = load(R2 / 'language_run.json')
     assert lr['replay']['used'] == 2 and lr['replay']['vanished_count'] == 2 and lr['cost_usd'] == 0 and lr['response_from']
-    assert sorted(p['text'] for p in load(R2 / 'workorder.json')['language_parts']['parts']) == ['Onjōji', 'mappō']
+    assert sorted(p['form'] for p in tagged(R2)) == ['Onjōji', 'mappō']
 
 def test_a_saved_reply_without_decisions_runs_nothing(tmp_path, monkeypatch):
     src, A, R = folders(tmp_path)
     (tmp_path / 'empty.json').write_text('{}')
     assert run(src, A, R, monkeypatch, '--response-file', tmp_path / 'empty.json') == []
-    assert 'not run' in load(R / 'language_run.json')['note'] and 'language_parts' not in load(R / 'workorder.json')
+    assert 'not run' in load(R / 'language_run.json')['note'] and tagged(R) == []
 
 def test_a_cut_off_reply_keeps_what_it_finished(tmp_path, monkeypatch):
     """A reply cut off at max_tokens (finish 'length') keeps every decision object it finished; the rest are counted as
@@ -97,7 +102,7 @@ def test_a_cut_off_reply_keeps_what_it_finished(tmp_path, monkeypatch):
                 'usage': {'prompt_tokens': 900, 'completion_tokens': 100, 'cost': 0.004}}
     run(src, A, R, monkeypatch, reply=cut)
     lr = load(R / 'language_run.json')
-    assert len(lr['decisions']) == 2 and lr['not_decided'] == 1 and len(load(R / 'workorder.json')['language_parts']['parts']) == 2
+    assert len(lr['decisions']) == 2 and lr['not_decided'] == 1 and len(tagged(R)) == 2
 
 def test_reuse_reads_saved_replies_that_were_never_parsed(tmp_path, monkeypatch):
     """review 06, M3: a step that stopped after paying and before parsing left decisions {} beside complete replies;
@@ -108,4 +113,4 @@ def test_reuse_reads_saved_replies_that_were_never_parsed(tmp_path, monkeypatch)
     wo = load(R / 'workorder.json'); wo.pop('language_parts'); (R / 'workorder.json').write_text(json.dumps(wo))
     assert run(src, A, R, monkeypatch, '--reuse') == []
     lr2 = load(R / 'language_run.json')
-    assert len(lr2['decisions']) == 3 and lr2['not_decided'] == 0 and len(load(R / 'workorder.json')['language_parts']['parts']) == 3
+    assert len(lr2['decisions']) == 3 and lr2['not_decided'] == 0 and len(tagged(R)) == 3

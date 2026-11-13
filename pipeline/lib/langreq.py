@@ -167,3 +167,44 @@ def to_parts(fs, decisions, tag_conf=('high', 'medium')):
             parts.append({'page': p['page'], 'mcid': p['mcid'], 'first': p['first'], 'last': p['last'], 'lang': d['lang'],
                           'text': p['text'], 'form': f['form'], 'class': f['class'], 'confidence': d['confidence']})
     return {'parts': parts}
+
+NON_LATIN = ('cjk:', 'script:')
+
+def needs_person(f, d):
+    """True when a form's place must be decided by a person even untagged (review 02, M6): CJK or another non-Latin
+    script the AI left untagged or low, an existing tag, or a form with no decision at all."""
+    non_latin = any(c.startswith(NON_LATIN) for c in f['class'])
+    return f['group'] == 'existing' or not d or (non_latin and (not d.get('lang') or d.get('confidence') == 'low'))
+
+def to_rows(fs, decisions, tag_conf=('high', 'medium'), contexts=None):
+    """Decisions → language_parts, version 2 (review 06, record size): one entry per form, with the AI's answer and whether
+    it is tagged (`tag`: high or medium confidence with a language), and the places as rows [page, mcid, first, last,
+    form index]. Every form with places is kept, tagged or not, so a person can tag what the AI left untagged; apply.py
+    tags only forms with `tag` true. Existing tags carry `current` (the PDF's value), never `tag`: a person decides them."""
+    forms, rows = [], []
+    for f in fs:
+        d = decisions.get(f['id']) or {}
+        e = {'key': f'{f["group"]}|{f["form"]}' + (f'|{f["current"]}' if f.get('current') else ''), 'form': f['form'], 'group': f['group'],
+             'class': f['class'], 'lang': d.get('lang'), 'confidence': d.get('confidence'), 'why': d.get('why'),
+             **({'evidence': d['evidence']} if d.get('evidence') else {}), **({'current': f['current']} if f.get('current') else {}),
+             'tag': bool(f['group'] != 'existing' and d.get('lang') and d.get('confidence') in tag_conf),
+             **({'person': True} if needs_person(f, d) else {}), 'places': len(f['places'])}
+        if contexts and contexts.get(f['id']): e['context'] = contexts[f['id']]
+        i = len(forms); forms.append(e)
+        for p in f['places']: rows.append([p['page'], p['mcid'], p['first'], p['last'], i])
+    return {'version': 2, 'forms': forms, 'parts': rows}
+
+def expand(lp):
+    """language_parts of either version → the parts to tag, as dicts {page, mcid, first, last, lang, form, text?}: version 1
+    as written (every part tagged), version 2 the rows of forms with `tag` true. apply.py and the checks read this."""
+    if not isinstance(lp, dict): return []
+    if lp.get('version') != 2: return list(lp.get('parts') or [])
+    forms = lp.get('forms') or []
+    out = []
+    for r in lp.get('parts') or []:
+        if not (isinstance(r, list) and len(r) == 5 and isinstance(r[4], int) and 0 <= r[4] < len(forms)): continue
+        f = forms[r[4]]
+        if f.get('tag') and f.get('lang'):
+            out.append({'page': r[0], 'mcid': r[1], 'first': r[2], 'last': r[3], 'lang': f['lang'], 'form': f.get('form'),
+                        'class': f.get('class'), 'confidence': f.get('confidence')})
+    return out

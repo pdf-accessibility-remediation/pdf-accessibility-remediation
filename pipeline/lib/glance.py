@@ -83,13 +83,15 @@ def language_line(record):
     only when a person decided every one on the review page (record['language_review'], written by the review step's
     Languages section); otherwise Not Reviewed, with what is left. Until that section exists every such book reads Not
     Reviewed (review 06, H2: approving the work order as one item must not approve its language tags)."""
-    parts = ((record.get('workorder') or {}).get('language_parts') or {}).get('parts') or []
+    lp = (record.get('workorder') or {}).get('language_parts') or {}
+    if lp.get('version') == 2: todo = [f for f in lp.get('forms') or [] if f.get('tag') or f.get('person')]   # what a person decides
+    else: todo = list({(p.get('form') or p.get('text')) for p in lp.get('parts') or []})
     lr = record.get('language_review') or {}
-    if not parts and not lr.get('forms'): return True, 'Not Applicable'
+    if not todo and not lr.get('forms'): return True, 'Not Applicable'
     left = lr.get('not_reviewed') if lr else None
     if lr and left == 0:
         return True, f'Approved ({lr.get("reviewer")} on {D.day(lr.get("date"))})'
-    n = len({(p.get('group') or '', p.get('form') or p.get('text')) for p in parts}) if left is None else left
+    n = len(todo) if left is None else left
     return False, f'Not Reviewed ({n:,} word form{"" if n == 1 else "s"} to decide on the review page)'
 def ship_name(s): return SHIP_NAMES.get(s['what'], s['what'])
 

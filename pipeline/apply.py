@@ -18,7 +18,7 @@ title, the XMP and the tags are the same as without it); Acrobat shows it under 
 """
 import sys, os, json, re, collections, hashlib, unicodedata
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq  # plumb_fix first: it patches pdfplumber
 from lib.sections import excerpt
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
@@ -1059,6 +1059,7 @@ def op_notes(spec):
 # that most born-digital books put inside every run's marks ('en-US'), which would override the tag (review 02, H1).
 _LANG_WHOLE = []                                   # (page, mcid): runs tagged whole, whose marks lose their /Lang
 _LANG_SPLITS = collections.defaultdict(list)       # (page, mcid) -> parts to split out of that run
+_LANG_DROP = []                                    # (page, mcid): runs whose marks lose a publisher's /Lang a person removed
 LANG = log['language_parts'] = {'spans': [], 'whole': 0, 'split': 0, 'refused': collections.Counter(), 'refused_places': [],
                                 'retried_pages': [], 'restored_pages': [], 'marks_lang_removed': 0}
 def lang_refuse(pno, m, why, part=None):
@@ -1108,6 +1109,24 @@ def drawn_here(pno, m, n):
     except mcsplit.Refuse as e:                     # a count only (review 06, M1): the split's own refusals stay with the split
         return 'run drawn inside a form XObject, not in the page' if str(e) == 'run not drawn in the page content' else str(e)
     return None if got == n else 'characters do not line up with the run'
+def remove_existing(lp):
+    """The PDF's own language tags a person removed on the review page (language_parts version 2: forms with `current` and
+    decided 'remove'): the element that carries that value over the run loses its /Lang, and the run's marks lose theirs
+    (in the late pass). A tag a person changed is tagged anew like any other part (expand)."""
+    if not isinstance(lp, dict) or lp.get('version') != 2: return
+    forms = lp.get('forms') or []
+    for r in lp.get('parts') or []:
+        if not (isinstance(r, list) and len(r) == 5 and 0 <= r[4] < len(forms)): continue
+        f = forms[r[4]]
+        if not (f.get('current') and f.get('decided') == 'remove'): continue
+        pno, m = r[0], r[1]
+        el = owner.get((pno, m))
+        for _ in range(8):
+            if el is None or not is_elem(el): break
+            if '/Lang' in el and str(el.Lang).strip() == str(f['current']).strip():
+                del el['/Lang']; ok('language: a tag in the PDF removed'); break
+            el = parent_of.get(el.objgen)
+        _LANG_DROP.append((pno, m)); LANG['existing_removed'] = LANG.get('existing_removed', 0) + 1
 def language_parts(parts):
     """The language step's tags (workorder.json `language_parts`, checked by workorder_check.check_language_parts): a
     place that covers its whole run (no letter or digit outside it) is tagged as a run; any other is queued for a split.
@@ -1149,8 +1168,9 @@ def op_language(spec):
     # covering the whole run, adds nothing and is dropped; a part in another language stays, split out under the new
     # Span. Han the AI left untagged in a run the local rule defers goes on the deferred list, as without the step.
     by_run = collections.defaultdict(list)
-    for p in ((wo.get('language_parts') or {}).get('parts')) or []:
+    for p in langreq.expand(wo.get('language_parts')):          # version 2: the rows of forms marked to tag
         by_run[(p['page'], p['mcid'])].append(p)
+    remove_existing(wo.get('language_parts'))
     keep, local_tag, local_defer = [], {}, {}
     for (pno, m), ps in by_run.items():
         cs = run_chars(pno, m) if 1 <= pno <= len(pages) else []
@@ -3104,7 +3124,7 @@ def fix_language_parts():
     import time
     t0 = time.time()
     jobs = collections.defaultdict(lambda: {'drop': set(), 'split': {}})
-    for pno, m in _LANG_WHOLE: jobs[pno]['drop'].add(m)
+    for pno, m in _LANG_WHOLE + _LANG_DROP: jobs[pno]['drop'].add(m)
     for (pno, m), parts in _LANG_SPLITS.items(): jobs[pno]['split'][m] = sorted(parts, key=lambda p: p['first'])
     if not jobs: return
     reindex()
@@ -3231,7 +3251,7 @@ try: fix_paths()
 except Exception as e: log['failed'].append({'op': 'fix_paths', 'error': f'{type(e).__name__}: {e}'[:300]})
 try: fix_language_parts()                  # after every step that reads text by MCID from PL (the source): review 02, Notes
 except Exception as e: log['failed'].append({'op': 'fix_language_parts', 'error': f'{type(e).__name__}: {e}'[:300]})
-if not (LANG['spans'] or LANG['refused']) and not any(f['op'] == 'fix_language_parts' for f in log['failed']): log.pop('language_parts')      # nothing tagged or refused: no entry
+if not (LANG['spans'] or LANG['refused'] or LANG.get('existing_removed')) and not any(f['op'] == 'fix_language_parts' for f in log['failed']): log.pop('language_parts')      # nothing tagged or refused: no entry
 for fn in (fix_rolemap_cycles, fix_standard_remaps, fix_th_scope, fix_lang_values):   # veraPDF rules the executor fixes by itself
     try: fn()
     except Exception as e: log['failed'].append({'op': fn.__name__, 'error': f'{type(e).__name__}: {e}'[:300]})

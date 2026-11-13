@@ -213,6 +213,7 @@ def check_language_parts(wo, pages, places=None):
     dropped = []
     lp = wo.get('language_parts')
     if lp is None: return dropped
+    if isinstance(lp, dict) and lp.get('version') == 2: return _check_rows(lp, pages, dropped)
     if not isinstance(lp, dict) or not isinstance(lp.get('parts'), list):
         dropped.append({'where': 'language_parts', 'item': lp, 'why': 'not a {"parts": [...]} object'}); wo.pop('language_parts'); return dropped
     def whole(v): return isinstance(v, int) and not isinstance(v, bool)
@@ -234,5 +235,39 @@ def check_language_parts(wo, pages, places=None):
             else: seen.setdefault(key, []).append((it['first'], it['last']))
         if why: dropped.append({'where': 'language_parts', 'item': it, 'why': why})
         else: keep.append(it)
+    lp['parts'] = keep
+    return dropped
+
+FORM_KEYS = {'key', 'form', 'group', 'class', 'lang', 'confidence', 'why', 'evidence', 'current', 'tag', 'person', 'places', 'context',
+             'decided', 'note'}
+
+def _check_rows(lp, pages, dropped):
+    """language_parts version 2 (lib/langreq.to_rows): forms, and rows [page, mcid, first, last, form index]. A form whose
+    language is not one the step may write is not tagged (its `tag` set false, its places kept for a person); a row that is
+    not five whole numbers in range, or that overlaps a row of a tagged form in the same run, is dropped."""
+    forms = lp.get('forms') if isinstance(lp.get('forms'), list) else []
+    lp['forms'] = forms
+    for i, f in enumerate(forms):
+        if not isinstance(f, dict): forms[i] = f = {'tag': False}; dropped.append({'where': 'language_parts.forms', 'item': i, 'why': 'not an object'})
+        if set(f) - FORM_KEYS: dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': f'unknown keys: {sorted(set(f) - FORM_KEYS)}'})
+        if f.get('lang') is not None and not langtag.valid_part(f.get('lang')):
+            dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': f'language tag not allowed: {f.get("lang")!r}'
+                            + (f' (shortest form: {langtag.shortest(f.get("lang"))})' if langtag.shortest(f.get('lang')) not in (None, f.get('lang')) else '')})
+            f['tag'] = False; f['lang'] = None
+        if f.get('tag') and not f.get('lang'): f['tag'] = False
+    def whole(v): return isinstance(v, int) and not isinstance(v, bool)
+    keep, seen = [], {}
+    for r in lp.get('parts') if isinstance(lp.get('parts'), list) else []:
+        why = None
+        if not (isinstance(r, list) and len(r) == 5 and all(whole(x) for x in r)): why = 'not five whole numbers'
+        elif not 1 <= r[0] <= pages: why = 'page not in the book'
+        elif r[1] < 0 or not 0 <= r[2] <= r[3]: why = 'run or character indexes not in order'
+        elif not 0 <= r[4] < len(forms): why = 'no such form'
+        elif forms[r[4]].get('tag'):
+            k = (r[0], r[1])
+            if any(not (r[3] < a or r[2] > b) for a, b in seen.get(k, [])): why = 'overlaps another part in the same run'
+            else: seen.setdefault(k, []).append((r[2], r[3]))
+        if why: dropped.append({'where': 'language_parts', 'item': r, 'why': why})
+        else: keep.append(r)
     lp['parts'] = keep
     return dropped

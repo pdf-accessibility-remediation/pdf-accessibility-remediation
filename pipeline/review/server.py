@@ -305,7 +305,9 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             if path in ('/', '/index.html'):
                 warmed.wait(WARM_WAIT)
                 oc = ocr_section()
-                boot = json.dumps({**data, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': oc,
+                light = {**data, 'items': [it for it in data['items'] if it.get('kind') != core.LANG_KIND],   # #118: the language rows come
+                         'languages': core.language_summary(data['items'])}                                     # by /languages.json
+                boot = json.dumps({**light, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': oc,
                                    'check': first_check(), 'draft': None if ocr_only else draft_state(), 'ocr_text': first_texts(oc),
                                    'img_sizes': img_sizes()},
                                   ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
@@ -313,6 +315,12 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 # any text (a Session Note, a decision's note, book text, the first OCR pages) would otherwise make the
                 # browser read the rest of the page as script, and the page, whose script is in the head, would load blank
                 return self.send(200, open(PAGE, encoding='utf-8').read().replace('/*REVIEW_DATA*/null', boot), 'text/html; charset=utf-8')
+            if path == '/languages.json' and not ocr_only:   # one fold of the Languages section, LANG_PAGE rows at a time (#118)
+                from urllib.parse import parse_qs
+                q = parse_qs(self.path.split('?', 1)[1] if '?' in self.path else '')
+                try: start = max(0, int((q.get('start') or ['0'])[0]))
+                except ValueError: start = 0
+                return self.send(200, core.language_rows(data['items'], (q.get('group') or [''])[0], start))
             if path in text_urls:                      # the OCR text of a page the section can show; any other number: 404
                 n = text_urls[path]
                 try: return self.send(200, {'page': n, 'text': page_text(n)})

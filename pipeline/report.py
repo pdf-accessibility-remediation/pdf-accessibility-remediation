@@ -131,6 +131,7 @@ record = {
     **({'page_reads': {k: v for k, v in pr_run.items() if k != 'pages'} | {'pages': [{k: v for k, v in x.items() if k != 'text'} for x in pr_run.get('pages') or []]}}
        if pr_run else {}),
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),
+    **({'language_review': rv['language']} if rv and rv.get('language') else {}),     # #118: the Languages section's decisions (lib/glance.py)
     **({'workorder_ai': wo_ai} if rv and wo_ai is not None else {}),
 }
 # the AI call behind the work order (sponsor checklist 11.5): a reused reply carries the original call's cost, model, prompt

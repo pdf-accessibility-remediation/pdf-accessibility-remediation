@@ -106,6 +106,16 @@ dialog .buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: fl
 #gapErr { color: var(--reject); }
 section > h2 { font-size: 16px; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
 .card { background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 10px; }
+/* #118: the Languages section, one fold per language, one row per word form */
+#languages details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; padding: 6px 12px; }
+#languages summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.lang-row { border-top: 1px solid var(--line); padding: 8px 0; display: grid; grid-template-columns: minmax(8em, 1fr) 3fr; gap: 4px 12px; }
+.lang-row[data-status] { border-left: 4px solid var(--accent); padding-left: 8px; }
+.lang-form { font-weight: 600; overflow-wrap: anywhere; }
+.lang-ctx, .lang-meta { color: var(--muted, #555); font-size: .92em; overflow-wrap: anywhere; }
+.lang-acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.lang-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+@media (max-width: 600px) { .lang-row { grid-template-columns: 1fr; } }
 .card[data-status=approved] { border-left-color: var(--ok); }
 .card[data-status=changed] { border-left-color: var(--change); }
 .card[data-status=rejected] { border-left-color: var(--reject); }
@@ -1300,7 +1310,9 @@ function progress() {
   const n = items.filter(it => (state.decisions[it.id] || {}).status).length;
   document.getElementById('progress').textContent = n + ' of ' + items.length + ' reviewed' + (state.additions.length ? ' · ' + state.additions.length + ' added' : '');
   document.getElementById('bar').style.width = (items.length ? 100 * n / items.length : 0) + '%';
+  if (typeof progressLang === 'function' && LANG_READY) progressLang();
 }
+let LANG_READY = false;
 
 const cards = document.getElementById('cards');
 function clearChoice(art) {
@@ -1662,6 +1674,101 @@ finBtn.addEventListener('click', async () => {
   } catch (e) { msg('This page can\'t reach its server: the review was closed, or the app stopped. Your choices are kept in this browser.', true); }
 });
 renderOcr();
+
+// ---------------------------------------------------------------- #118: the Languages section
+// One fold per language (and one for words the AI left untagged, one for the PDF's own tags). A fold's rows come from
+// /languages.json when it opens, 100 at a time. A choice is stored like any card's (state.decisions[id]), so auto-save,
+// "Finish Review" and the count of what is left treat it the same way. "Approve All Shown" approves the shown rows that
+// qualify (one language, high confidence, never Chinese characters alone, an existing tag or a mixed answer), and each
+// such choice is recorded as part of a group approval.
+const LANGS = DATA.languages || { groups: [], total: 0, names: [] };
+const langBox = document.getElementById('languages');
+const langRows = {};                                     // group -> the rows loaded so far
+function langStatusWord(r, d) {
+  if (!d || !d.status) return 'Not reviewed';
+  if (d.status === 'changed') return 'Tagged as ' + ((LANGS.names.find(x => x.code === d.value) || {}).name || d.value);
+  if (d.status === 'rejected') return r.current ? 'Tag removed' : 'Left untagged';
+  return r.current ? 'Tag kept' : r.ai ? 'Approved' + (d.bulk ? ' (in a group approval)' : '') : 'Left untagged';
+}
+function langRowHtml(r) {
+  const d = state.decisions[r.id] || {};
+  const opts = '<option value="">Change Language…</option>' + LANGS.names.map(x => '<option value="' + esc(x.code) + '"' + (d.value === x.code ? ' selected' : '') + '>' + esc(x.name) + '</option>').join('');
+  const pagesTxt = (r.pages || []).slice(0, 8).map(p => 'PDF ' + p).join(', ') + ((r.pages || []).length > 8 ? ', …' : '');
+  const what = r.current ? 'The PDF tags it as "' + esc(r.current) + '"' + (r.ai ? '; the AI suggests ' + esc(r.lang_name || r.ai) : '')
+             : r.ai ? 'The AI tags it as <b>' + esc(r.lang_name || r.ai) + '</b>' + (r.confidence ? ' (' + esc(r.confidence) + ' confidence)' : '')
+             : 'The AI left it untagged' + (r.why ? ' (' + esc({ name: 'a name', english: 'part of English', indeterminate: 'not a word of a known language', unsure: 'not sure', varies: 'it varies' }[r.why] || r.why) + ')' : '');
+  const keep = r.current ? 'Keep the Tag' : r.ai ? 'Approve' : 'Leave Untagged';
+  const drop = r.current ? 'Remove the Tag' : r.ai ? 'Leave Untagged' : null;
+  return '<div class="lang-row" id="lang-' + esc(r.id) + '" data-id="' + esc(r.id) + '"' + (d.status ? ' data-status="' + esc(d.status) + '"' : '') + '>' +
+    '<div class="lang-form" lang="' + esc(r.ai || '') + '">' + esc(r.form) + '</div>' +
+    '<div><div>' + what + '</div>' + (r.snippet ? '<div class="lang-ctx">' + esc(r.snippet) + '</div>' : '') +
+    '<div class="lang-meta">' + esc(r.places || 0) + ' place' + (r.places === 1 ? '' : 's') + (pagesTxt ? ' · ' + esc(pagesTxt) : '') +
+    (r.evidence ? ' · Evidence: ' + esc(r.evidence) : '') + '</div></div>' +
+    '<div class="lang-acts"><button type="button" data-lang="keep">' + keep + '</button>' + (drop ? '<button type="button" data-lang="drop">' + drop + '</button>' : '') +
+    '<select data-lang="change" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select>' +
+    '<span class="lang-meta" role="status">' + esc(langStatusWord(r, d)) + '</span></div></div>';
+}
+function langFold(g) {
+  const rows = langRows[g.group] || [], left = rows.filter(r => !(state.decisions[r.id] || {}).status).length;
+  const bulk = rows.filter(r => r.bulk && !(state.decisions[r.id] || {}).status).length;
+  return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + g.count + ' word form' + (g.count === 1 ? '' : 's') +
+    ' (' + g.places + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
+    '<div class="lang-bar">' + (g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + bulk + ')</button>' : '') +
+    '<span class="lang-meta">' + (rows.length ? rows.length + ' of ' + g.count + ' shown' + (left ? ' · ' + left + ' not reviewed' : '') : '') + '</span></div>' +
+    '<div class="lang-list">' + rows.map(langRowHtml).join('') + '</div>' +
+    (rows.length < g.count ? '<button type="button" data-lang="more">Show More</button>' : '') + '</details>';
+}
+function renderLanguages() {
+  if (!LANGS.total || OCR_ONLY) { langBox.hidden = true; return; }
+  const open = new Set([...langBox.querySelectorAll('details[open]')].map(d => d.dataset.group));
+  langBox.hidden = false;
+  langBox.innerHTML = '<h2 id="langTitle">Languages (' + LANGS.total + ')</h2>' +
+    '<p>Words and passages in another language, found in the PDF. A screen reader switches to a language\'s voice for the words tagged with it. ' +
+    'Decide each word form: the choice applies to every place it appears. "Approve All Shown" approves only rows with a high-confidence answer, ' +
+    'never words in Chinese characters alone or the PDF\'s own tags. Hawaiian: most screen readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.</p>' +
+    LANGS.groups.map(langFold).join('');
+  langBox.querySelectorAll('details').forEach(d => { if (open.has(d.dataset.group)) d.open = true; });
+}
+async function langLoad(group) {
+  const have = langRows[group] || [];
+  try {
+    const r = await fetch('/languages.json?group=' + encodeURIComponent(group) + '&start=' + have.length), b = await r.json();
+    langRows[group] = have.concat(b.rows || []);
+  } catch (e) { saveAlert('The rows could not be loaded. Reload the page.'); return; }
+  renderLanguages();
+  const d = [...langBox.querySelectorAll('details')].find(x => x.dataset.group === group); if (d) d.open = true;
+}
+function langSet(id, st, value, bulk) {
+  const d = dec(id); d.status = st; if (value !== undefined) d.value = value; else delete d.value;
+  if (bulk) d.bulk = true; else delete d.bulk;
+}
+langBox.addEventListener('toggle', e => {
+  const d = e.target; if (d.tagName !== 'DETAILS' || !d.open) return;
+  if (!langRows[d.dataset.group]) langLoad(d.dataset.group);
+}, true);
+langBox.addEventListener('click', e => {
+  const b = e.target.closest('button[data-lang]'); if (!b || finished) return;
+  const fold = b.closest('details'), group = fold && fold.dataset.group, act = b.dataset.lang;
+  if (act === 'more') { langLoad(group); return; }
+  if (act === 'bulk') { for (const r of langRows[group] || []) if (r.bulk && !(state.decisions[r.id] || {}).status) langSet(r.id, 'approved', undefined, true); }
+  else {
+    const row = b.closest('.lang-row'), id = row.dataset.id;
+    langSet(id, act === 'keep' ? 'approved' : 'rejected');
+  }
+  persist(); renderLanguages(); progressLang();
+});
+langBox.addEventListener('change', e => {
+  const sel = e.target.closest('select[data-lang=change]'); if (!sel || finished || !sel.value) return;
+  langSet(sel.closest('.lang-row').dataset.id, 'changed', sel.value);
+  persist(); renderLanguages(); progressLang();
+});
+function progressLang() {
+  const n = Object.entries(state.decisions).filter(([k, d]) => k.startsWith('language:') && d && d.status).length;
+  const el = document.getElementById('progress');
+  if (el && LANGS.total) el.textContent = el.textContent.replace(/ · languages: .*$/, '') + ' · languages: ' + n + ' of ' + LANGS.total + ' decided';
+}
+LANG_READY = true; renderLanguages(); progressLang();
+
 render();
 // 15: the check of the saved choices (what /keep answers for them) comes with the page, so the line beside Finish and each
 // card's marks are drawn now; the quiet save below then finds the same
@@ -1715,7 +1822,8 @@ else if (DATA.mode !== 'ocr') saveNow();               // nothing new: one quiet
       <div id="fromNotes"></div>
     </section>
     <section id="ocr-text" aria-labelledby="ocrTitle" hidden></section>
-    <div id="addPanel" hidden></div><div id="roPark" hidden><div id="readingOrder"></div></div><div id="cards"></div></div>
+    <div id="addPanel" hidden></div><div id="roPark" hidden><div id="readingOrder"></div></div><div id="cards"></div>
+    <section id="languages" aria-labelledby="langTitle" hidden></section></div>
 </main>
 <div id="zoom"><img alt=""></div>
 <dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>

@@ -28,7 +28,7 @@ def test_a_saved_reply_never_starts_the_language_step(tmp_path):
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
     assert 'language tags: not run' in r.stdout and 'language tags via OpenRouter' not in r.stdout
     rec = json.load(open(R / 'record.json'))
-    assert 'language_run' not in rec and 'language_parts' not in rec['workorder']
+    assert 'language_run' not in rec and 'language_parts' not in rec['workorder']           # the step never ran: no forms either
 
 def test_saved_language_decisions_are_applied_at_no_cost(tmp_path):
     saved = {'schema': 'language-run/1', 'model': 'anthropic/claude-sonnet-5.5', 'cost_usd': 0.05,
@@ -40,5 +40,6 @@ def test_saved_language_decisions_are_applied_at_no_cost(tmp_path):
     assert 'language tags: saved decisions (no cost)' in r.stdout
     rec = json.load(open(R / 'record.json'))
     assert rec['language_run']['replay']['used'] == 2 and rec['cost_total_usd'] == 0.3      # the saved reply's own; the language replay adds nothing
-    assert sorted(p['text'] for p in rec['workorder']['language_parts']['parts']) == ['Onjōji', 'mappō']
+    sys.path.insert(0, HERE); from lib import langreq
+    assert sorted(p['form'] for p in langreq.expand(rec['workorder']['language_parts'])) == ['Onjōji', 'mappō']
     assert rec['apply']['language_parts']['split'] == 2

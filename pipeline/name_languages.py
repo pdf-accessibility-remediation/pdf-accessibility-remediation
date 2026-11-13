@@ -127,7 +127,7 @@ def main():
                'decisions': by_key, 'requests': old.get('requests') if args.reuse else [], 'cost_usd': (old.get('cost_usd') or 0) if args.reuse else 0,
                'original_cost_usd': old.get('cost_usd'), 'candidates': how}
         if not args.reuse: json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-        merge(R, wo_path, sent, dec, rec, held=held)
+        merge(R, wo_path, sent, dec, rec, held=held, contexts=contexts_of(sent, words))
         print(f'language step: saved decisions applied by form ({len(dec)} of {len(sent)} forms; {replay["vanished_count"]} no longer found; '
               f'{replay["not_decided"]} not decided) · no AI request'); return
     # --- the model, its price and parameters (any model is capped: M7)
@@ -211,21 +211,32 @@ def main():
     rec['dropped'] = dropped[:200]
     rec['not_decided'] = sum(1 for f in sent if f['id'] not in dec)          # cut off, invalid, or never sent: listed for a person
     json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    merge(R, wo_path, sent, dec, rec, held=held)
+    merge(R, wo_path, sent, dec, rec, held=held, contexts=contexts_of(sent, words))
     print(f'language step: {len(dec)} of {len(sent)} forms decided ({rec["not_decided"]} not decided) · ${rec["cost_usd"]:.4f} spent on this step')
 
-def merge(R, wo_path, fs, dec, rec, held=(), note=None):
+def contexts_of(fs, words, n=12):
+    """{form id: the words around its first place, the place in [brackets]}: what the review page shows beside a form."""
+    out = {}
+    for f in fs:
+        p = next((q for q in f['places'] if q.get('w0') is not None), None)
+        if p is None: continue
+        pw = words.get(str(p['page'])) or []
+        out[f['id']] = ' '.join(pw[max(0, p['w0'] - n):p['w0']] + ['[' + ' '.join(pw[p['w0']:p['w1'] + 1]) + ']'] + pw[p['w1'] + 1:p['w1'] + 1 + n])[:400]
+    return out
+
+def merge(R, wo_path, fs, dec, rec, held=(), note=None, contexts=None):
     """workorder.json's language_parts from the decisions (checked as every work order is), and, beside them in
     language_run.json, what a person must decide: non-Latin places the AI left untagged (review 02, M6) and every
     existing tag's answer. Always written, on every path (a fresh call, a reuse, a saved reply), so a later rebuild of
     workorder.json (decide.py --response-file) can put them back (review 02, M8)."""
     if not os.path.exists(wo_path): return
     wo = json.load(open(wo_path, encoding='utf-8'))
-    lp = langreq.to_parts(fs, dec)
+    lp = langreq.to_rows(fs, dec, contexts=contexts)
     pages = max([p['page'] for f in fs for p in f['places']] + [1])
     tmp = {'language_parts': lp}; dropped = workorder_check.check_language_parts(tmp, 10 ** 6)
     if tmp.get('language_parts', {}).get('parts'): wo['language_parts'] = tmp['language_parts']
     else: wo.pop('language_parts', None)
+    lp = wo.get('language_parts') or {}
     json.dump(wo, open(wo_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     if rec is None: return
     person = []
@@ -235,7 +246,7 @@ def merge(R, wo_path, fs, dec, rec, held=(), note=None):
         if f['group'] == 'existing' or (non_latin and (not d or not d.get('lang') or d.get('confidence') == 'low')):
             person.append({'form': f['form'], 'group': f['group'], 'places': len(f['places']), 'current': f.get('current'),
                            'answer': d, 'pages': sorted({p['page'] for p in f['places']})[:20]})
-    rec['needs_person'] = person; rec['parts'] = len((wo.get('language_parts') or {}).get('parts') or []); rec['parts_dropped'] = dropped[:50]
+    rec['needs_person'] = person; rec['parts'] = len(langreq.expand(wo.get('language_parts'))); rec['parts_dropped'] = dropped[:50]
     rec['language_parts'] = wo.get('language_parts') or {'parts': []}      # decide.py puts these back when it rebuilds workorder.json (M8)
     rec['held_back'] = [f['form'] for f in held][:200]; rec['held_back_count'] = len(held)
     nd = collections.defaultdict(list)                  # forms with no decision (cut off, invalid, a failed request), by group
