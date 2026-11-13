@@ -221,6 +221,7 @@ def prices():
     except Exception as e:
         return {'anthropic/claude-sonnet-5.5': (2e-6, 10e-6), 'anthropic/claude-opus-5.5': (4e-6, 20e-6), 'anthropic/claude-haiku-5.5': (1e-7, 5e-7)}, f'ASSUMED ({type(e).__name__})'
 
+NO_REASONING = False       # send --no-reasoning
 SUPPORTED = {}             # model -> supported_parameters, from the same public list
 OUT_PER_ITEM = 75          # tokens per decision: {"id":"…","lang":"ja-Latn","confidence":"high","why":"language"}, + a note now and then
 
@@ -313,6 +314,7 @@ def send(out_dir, model, run, which, cap, prompt_file=None, req_dir='requests', 
         if spent_now + e1 > cap: sys.exit(f'stopped before request {n}: ${spent_now:.2f} spent + ${e1:.2f} worst case would pass the ${cap:.2f} cap')
         print(f'  request {n}/{len(reqs)}: {len(r["request"]["items"])} items, estimate up to ${e1:.3f} … ', end='', flush=True)
         b = langreq.body(r['request'], model, prompt, mt, SUPPORTED.get(model)); b['usage'] = {'include': True}
+        if NO_REASONING: b['reasoning'] = {'enabled': False}     # Haiku 5.5 reasons by default, and its reasoning filled max_tokens
         json.dump(b, open(os.path.join(od, f'{n:03d}.request.json'), 'w', encoding='utf-8'), ensure_ascii=False)
         req = urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', data=json.dumps(b).encode(),
                                      headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'})
@@ -329,8 +331,9 @@ if __name__ == '__main__':
     ap.add_argument('--model'); ap.add_argument('--run', type=int, default=1); ap.add_argument('--set', default='tune'); ap.add_argument('--cap', type=float, default=10.0)
     ap.add_argument('--prompt', default=None, help='a prompt file instead of language_v1.md (the paid check: language_v2.md)')
     ap.add_argument('--requests', default='requests', help='the folder of request sets (the paid check: requests-v2)')
+    ap.add_argument('--no-reasoning', action='store_true', help="ask the model not to reason first (reasoning enabled false)")
     ap.add_argument('--ledger', default='spend.json', help='the ledger file and its own cap (the paid check: spend-check.json)')
-    a = ap.parse_args()
+    a = ap.parse_args(); NO_REASONING = a.no_reasoning
     if a.cmd == 'build': build(a.out_dir, dict(b.split('=', 1) for b in a.books))
     elif a.cmd == 'build-v2': build_v2(a.out_dir, dict(b.split('=', 1) for b in a.books))
     else: send(a.out_dir, a.model, a.run, a.set, a.cap, a.prompt, a.requests, a.ledger)
