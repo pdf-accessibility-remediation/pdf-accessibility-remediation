@@ -74,3 +74,24 @@ def test_a_publishers_tag_a_person_removed_is_gone(tmp_path):
     pdf = pikepdf.open(out); assert '/Lang' not in pdf.Root.StructTreeRoot.K[0].K[0]
     v = json.load(open(out + '.verify.json'))
     assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['language']['publisher_conflicts'] == 0
+
+def with_languages():
+    import test_review_problems as TP
+    return {**TP.ai_order(), 'language_parts': wo()['language_parts']}
+
+def test_the_check_accepts_the_review_pages_marker(tmp_path):
+    """review 08, M1: problems() marks each entry with its card before the check; a language form must not come back as
+    "left out" for that marker."""
+    import test_review_problems as TP
+    p = TP.probs(tmp_path, {}, ai=with_languages())
+    assert p['unplaced'] == [] and p['fields'] == [] and p['conflicts'] == []
+
+def test_language_rows_stay_out_of_the_work_orders_counts(tmp_path):
+    """review 08, M2: "Work Order Approval" counts the work order's cards only; the Language Tags line owns the forms."""
+    import test_review_problems as TP
+    R, ai, items, _adds = TP.run(tmp_path, with_languages())
+    cards = [it for it in items if it['kind'] != core.LANG_KIND]; assert cards
+    rv = core.finish(R, ai, core.apply_decisions(ai, items, {}), 'Kim', '2026-11-13', 'page', decisions={}, items=items,
+                     gap_default='left open for the test')
+    assert sum(rv['counts'].values()) == len(cards) and rv['counts']['accepted_unreviewed'] == len(cards)
+    assert rv['language']['not_reviewed'] == 4

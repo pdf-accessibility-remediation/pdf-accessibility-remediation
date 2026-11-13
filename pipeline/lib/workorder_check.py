@@ -249,7 +249,8 @@ def _check_rows(lp, pages, dropped):
     lp['forms'] = forms
     for i, f in enumerate(forms):
         if not isinstance(f, dict): forms[i] = f = {'tag': False}; dropped.append({'where': 'language_parts.forms', 'item': i, 'why': 'not an object'})
-        if set(f) - FORM_KEYS: dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': f'unknown keys: {sorted(set(f) - FORM_KEYS)}'})
+        extra = set(f) - FORM_KEYS - {'_card'}            # _card: the review page's marker for its own check (review/core.problems; review 08, M1)
+        if extra: dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': f'unknown keys: {sorted(extra)}'})
         if f.get('lang') is not None and not langtag.valid_part(f.get('lang')):
             dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': f'language tag not allowed: {f.get("lang")!r}'
                             + (f' (shortest form: {langtag.shortest(f.get("lang"))})' if langtag.shortest(f.get('lang')) not in (None, f.get('lang')) else '')})

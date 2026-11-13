@@ -1366,7 +1366,9 @@ def finish(R, ai_wo, wo, reviewer, date, method, decisions=None, items=None, not
         if not reason: raise ValueError(f'say why this is left open, or add what is missing: {g["what"]}')
         open_gaps.append({'id': g['id'], 'what': g['what'], 'reason': reason})
     decisions = decisions or {}
-    statuses = [_status(it, decisions.get(it['id'])) for it in items or []]
+    # the work order's own cards only: the Languages section's word forms are counted in language_review, and the Language
+    # Tags line owns them (review 08, M2)
+    statuses = [_status(it, decisions.get(it['id'])) for it in items or [] if it.get('kind') != LANG_KIND]
     counts = {s: statuses.count(s) for s in ('approved', 'changed', 'rejected', 'seen', 'accepted_unreviewed')} if items else None
     if counts is not None and additions: counts['added'] = len(additions)
     notes = {k: d['note'] for k, d in decisions.items() if (d or {}).get('note')}
