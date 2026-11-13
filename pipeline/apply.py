@@ -1060,7 +1060,7 @@ def op_notes(spec):
 _LANG_WHOLE = []                                   # (page, mcid): runs tagged whole, whose marks lose their /Lang
 _LANG_SPLITS = collections.defaultdict(list)       # (page, mcid) -> parts to split out of that run
 LANG = log['language_parts'] = {'spans': [], 'whole': 0, 'split': 0, 'refused': collections.Counter(), 'refused_places': [],
-                                'undone_pages': [], 'marks_lang_removed': 0}
+                                'retried_pages': [], 'restored_pages': [], 'marks_lang_removed': 0}
 def lang_refuse(pno, m, why, part=None):
     LANG['refused'][why] += 1
     if len(LANG['refused_places']) < 200:
@@ -3010,55 +3010,54 @@ def _inherited(page, key):
         n = n.get('/Parent')
     return None
 def _render_pages(items):
-    """{page number: RGB bytes at verify.py's scale} for (page number, page, contents) items, drawn from a scratch PDF
-    holding only those pages (their size, rotation, resources and the given contents)."""
+    """[RGB image at verify.py's scale] for (page, contents) items, in order, drawn from a scratch PDF holding only those
+    pages (their size, rotation, resources and the given contents)."""
     import io, pypdfium2 as pdfium
-    scratch = pikepdf.new(); order = []
-    for pno, page, contents in items:
+    scratch = pikepdf.new()
+    for page, contents in items:
         held = {'/Type': pikepdf.Name.Page, '/Contents': contents, '/Resources': _inherited(page, '/Resources') or pikepdf.Dictionary()}
         for k in ('/MediaBox', '/CropBox', '/Rotate', '/UserUnit'):
             v = _inherited(page, k)
             if v is not None: held[k] = v
         # copy_foreign takes indirect objects only: the page's parts go across inside one holder (never saved: nothing
         # in this file refers to it)
-        d = scratch.copy_foreign(pdf.make_indirect(pikepdf.Dictionary(held)))
-        scratch.pages.append(pikepdf.Page(d)); order.append(pno)
+        scratch.pages.append(pikepdf.Page(scratch.copy_foreign(pdf.make_indirect(pikepdf.Dictionary(held)))))
     buf = io.BytesIO(); scratch.save(buf)
-    doc = pdfium.PdfDocument(buf.getvalue()); out = {}
-    try:
-        for i, pno in enumerate(order): out[pno] = doc[i].render(scale=1.2).to_pil().convert('RGB')
+    doc = pdfium.PdfDocument(buf.getvalue())
+    try: return [doc[i].render(scale=1.2).to_pil().convert('RGB') for i in range(len(items))]
     finally: doc.close()
-    return out
+def _same_image(a, b):
+    from PIL import ImageChops
+    return ImageChops.difference(a, b).getbbox() is None
 def fix_language_parts():
     """The content edits of the language step, in two phases (review 02, M9.1). First, on every page with work: remove the
     /Lang inside the marks of each run tagged whole (H1), and split each run that holds a tagged place (lib/mcsplit.py).
-    Then each such page is drawn before and after at verify.py's scale; a page that differs by one pixel gets its original
-    content back, and its places are listed as not tagged. Only then is the structure written, for the pages that passed:
-    a Span with the language per place, and the run's new pieces in the owner's /K and the tag-tree index."""
+    Then each such page is drawn before and after at verify.py's scale. A page that differs by one pixel is tried again
+    run by run: the marks edits (which draw nothing) and every split that leaves the page the same on its own are kept,
+    the others are listed as not tagged; if the page still differs, it gets its original content back. Only then is the
+    structure written, for what passed: a Span with the language per place, and the run's new pieces in the owner's /K
+    and the tag-tree index."""
     import time
-    from PIL import ImageChops
     t0 = time.time()
     jobs = collections.defaultdict(lambda: {'drop': set(), 'split': {}})
     for pno, m in _LANG_WHOLE: jobs[pno]['drop'].add(m)
     for (pno, m), parts in _LANG_SPLITS.items(): jobs[pno]['split'][m] = sorted(parts, key=lambda p: p['first'])
     if not jobs: return
     reindex()
-    edited = {}
-    for pno in sorted(jobs):
+    def edit(pno, runs=None):
+        """(new contents or None, plans, marks edits, {run: why refused}) for page pno: the marks edits, and the splits
+        of `runs` (every run with work when None)."""
         page, job = pages[pno - 1], jobs[pno]
-        def refuse_all(why):
-            for m, parts in job['split'].items():
-                for p in parts: lang_refuse(pno, m, why, p)
         try: ins = list(pikepdf.parse_content_stream(page))
-        except Exception: refuse_all('page content not readable'); continue
+        except Exception: return None, [], 0, {m: 'page content not readable' for m in job['split']}
         fonts = (_inherited(page, '/Resources') or {}).get('/Font')
         dropped = 0
         for m in sorted(job['drop']):
             ins, ch = mcsplit.drop_lang(ins, m); dropped += ch
-        arr = pt_arr(pno)
-        plans = []
-        if job['split'] and arr is None: refuse_all('page has no tag-tree index'); job['split'] = {}
-        if job['split']:
+        arr, plans, refused = pt_arr(pno), [], {}
+        todo = {m: ps for m, ps in job['split'].items() if runs is None or m in runs}
+        if todo and arr is None: return None, [], 0, {m: 'page has no tag-tree index' for m in job['split']}
+        if todo:
             used = mcsplit.drawn_mcids(ins) | {mm for (pg, mm) in owner if pg == pno}
             nxt = [max(used | {len(arr) - 1}) + 1]
             def new_mcid():
@@ -3066,31 +3065,49 @@ def fix_language_parts():
                 m_ = nxt[0]; nxt[0] += 1
                 assert m_ >= len(arr) or arr[m_] is None, 'a new MCID would land on a used index entry'
                 return m_
-            for m, parts in sorted(job['split'].items()):
+            for m, parts in sorted(todo.items()):
                 try:
                     ins2, pieces = mcsplit.split_run(ins, fonts, m, [(p['first'], p['last']) for p in parts], new_mcid, expect_n=len(run_chars(pno, m)))
-                except mcsplit.Refuse as e:
-                    for p in parts: lang_refuse(pno, m, str(e), p)
-                    continue
+                except mcsplit.Refuse as e: refused[m] = str(e); continue
                 ins = ins2; plans.append((m, pieces, parts))
-        if dropped or plans: edited[pno] = (page.obj.get('/Contents'), plans, pdf.make_stream(pikepdf.unparse_content_stream(ins)), dropped)
+        new = pdf.make_stream(pikepdf.unparse_content_stream(ins)) if (dropped or plans) else None
+        return new, plans, dropped, refused
+    edited = {}
+    for pno in sorted(jobs):
+        new, plans, dropped, refused = edit(pno)
+        for m, why in refused.items():
+            for p in jobs[pno]['split'].get(m, []): lang_refuse(pno, m, why, p)
+        if new is not None: edited[pno] = (pages[pno - 1].obj.get('/Contents'), new, plans, dropped)
     if not edited: return
-    before = _render_pages([(pno, pages[pno - 1], e[0]) for pno, e in edited.items()])
-    after = _render_pages([(pno, pages[pno - 1], e[2]) for pno, e in edited.items()])
-    for pno, (old, plans, new, dropped) in sorted(edited.items()):
-        if ImageChops.difference(before[pno], after[pno]).getbbox():
-            LANG['undone_pages'].append(pno)
-            for m, _, parts in plans:
+    order = sorted(edited)
+    before = dict(zip(order, _render_pages([(pages[p - 1], edited[p][0]) for p in order])))
+    after = dict(zip(order, _render_pages([(pages[p - 1], edited[p][1]) for p in order])))
+    LANG['pages_checked'] = len(order)
+    for pno in order:
+        if _same_image(before[pno], after[pno]): continue
+        old, _, plans, _ = edited[pno]
+        LANG['retried_pages'].append(pno)                # tried again run by run
+        runs = [m for m, _, _ in plans]
+        alone = _render_pages([(pages[pno - 1], edit(pno, {m})[0]) for m in runs])
+        good = {m for m, im in zip(runs, alone) if _same_image(before[pno], im)}
+        for keep in (good, set()):
+            new, plans2, dropped, _ = edit(pno, keep)
+            if new is not None and _same_image(before[pno], _render_pages([(pages[pno - 1], new)])[0]):
+                edited[pno] = (old, new, plans2, dropped); break
+        else:
+            edited[pno] = (old, None, [], 0); LANG['restored_pages'].append(pno)
+        kept = {m for m, _, _ in edited[pno][2]}
+        for m, _, parts in plans:
+            if m not in kept:
                 for p in parts: lang_refuse(pno, m, 'the page would look different', p)
-            continue
+    for pno in order:
+        old, new, plans, dropped = edited[pno]
+        if new is None: continue
         pages[pno - 1].obj.Contents = new
         LANG['marks_lang_removed'] += dropped
         for m, pieces, parts in plans:
             o = owner.get((pno, m)); i = mc_entry_index(o, pno, m) if o is not None else None
-            if i is None:                                       # cannot happen once the content is written: put the page back
-                pages[pno - 1].obj.Contents = old; LANG['undone_pages'].append(pno)
-                for p in parts: lang_refuse(pno, m, 'run entry not found in its tag', p)
-                break
+            if i is None: raise RuntimeError(f'run {m} on page {pno} lost its tag entry after the content was written')
             ks = kids(o); same_pg = isinstance(ks[i], int)
             new_k = []
             for mc, kind, ci in pieces:
@@ -3104,7 +3121,6 @@ def fix_language_parts():
                     LANG['split'] += 1; ok(f'language: {part["lang"]} Span (part of a run)')
             ks[i:i + 1] = new_k; set_kids(o, ks)
     LANG['render_check_seconds'] = round(time.time() - t0, 2)
-    LANG['pages_checked'] = len(edited)
 
 # ================================================================== run, in a fixed order
 STEPS = [('artifacts', op_artifacts), ('offpage', fix_offpage_text), ('document', op_document), ('adopt_orphans', op_adopt_orphans), ('rolemap', op_rolemap), ('merges', op_merges),

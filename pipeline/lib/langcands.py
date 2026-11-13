@@ -134,12 +134,18 @@ def page_places(pno, chars, page_chars=None, italic=None):
     # 1. words, in order; each with its run, its index range and its text
     words = []
     for w0 in ocrwords.words(chars, pc):
-        for w in _pieces(w0):
+        ps = list(_pieces(w0))
+        pos = {id(c): k for k, c in enumerate(w0)}
+        if not ps: words.append({'chars': [], 'text': '', 'all': ''.join(c['text'] for c in w0), 'mcid': None}); continue
+        prev = -1
+        for n_, w in enumerate(ps):
+            end = pos[id(w[-1])] if n_ < len(ps) - 1 else len(w0) - 1
+            shown = ''.join(c['text'] for c in w0[prev + 1:end + 1]); prev = end      # the cut characters stay in the context
             i0, i1 = _core_span(w)
             core = ''.join(c['text'] for c in w[i0:i1 + 1]) if i0 <= i1 else ''
             ms = {idx[id(c)][0] for c in w[i0:i1 + 1]} if core else set()
             words.append({'chars': w[i0:i1 + 1] if core else [], 'text': unicodedata.normalize('NFC', core),
-                          'all': ''.join(c['text'] for c in w), 'mcid': next(iter(ms)) if len(ms) == 1 else None})
+                          'all': shown, 'mcid': next(iter(ms)) if len(ms) == 1 else None})
     # 2. rejoin a word broken by a hyphen at a line end, for the list check only
     for a, b in zip(words, words[1:]):
         if a['all'][-1:] in HYPHENS and a['chars'] and b['chars'] and abs(a['chars'][-1]['top'] - b['chars'][0]['top']) > 3 \
