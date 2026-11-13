@@ -233,3 +233,16 @@ def test_a_run_whose_entry_moved_keeps_the_page_whole(tmp_path, monkeypatch):
     assert lp['split'] == 0 and lp['refused'] == {"the run's tag entry moved before the split was written": 1}
     assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
     assert not any(f['op'].startswith('fix_language_parts') for f in log['failed'])
+
+def test_hawaiian_lines_on_page_read_pages_are_tagged_whole(tmp_path):
+    """L6 of 03: on a page read whole (page readings), an element whose words are mostly Hawaiian-shape gets /Lang haw on
+    itself; an English line, and a page not read, stay as they are."""
+    src = langpdf.build(str(tmp_path / 'h.pdf'), [{'text': 'Ua hele mai ka wahine i ka hale'}, {'text': 'The house stood on the hill above the bay'}])
+    w = tmp_path / 'wo.json'; w.write_text(json.dumps({'page_readings': [{'page': 1, 'text': 'Ua hele mai ka wahine i ka hale The house stood on the hill above the bay'}]}))
+    out = str(tmp_path / 'out.pdf'); run('apply.py', src, w, out); run('verify.py', src, out)
+    P = pikepdf.open(out); els = P.Root.StructTreeRoot.K[0].K
+    assert str(els[0].get('/Lang')) == 'haw' and '/Lang' not in els[1]
+    v = json.load(open(out + '.verify.json')); assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+    w.write_text(json.dumps({}))
+    out2 = str(tmp_path / 'out2.pdf'); run('apply.py', src, w, out2)
+    P2 = pikepdf.open(out2); assert '/Lang' not in P2.Root.StructTreeRoot.K[0].K[0]

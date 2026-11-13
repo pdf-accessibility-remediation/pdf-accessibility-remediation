@@ -31,7 +31,9 @@ book ships. Han the AI leaves untagged goes to a person (`han_review.csv`), as b
 ### Hawaiian
 
 Most Hawaiian words carry a kahakō or ʻokina and are found by their marks. Names of people and places stay untagged.
-On pages read whole by the AI (`PAGE_READS`), see [OCR words](ocr-words.md#pages-read-whole).
+On scanned pages read whole by the AI (page readings, `PAGE_READS`), a whole line or element (a paragraph, a list
+item, a cell) is tagged `haw` when at least 60% of its words, and at least 3, have Hawaiian shape and one of them is not
+an English word (`apply.py` `haw_elements`). See [OCR words](ocr-words.md#pages-read-whole).
 
 ### What stays untagged
 
