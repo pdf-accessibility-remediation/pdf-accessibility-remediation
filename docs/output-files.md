@@ -18,7 +18,8 @@ Each run writes its results to its own folder, beside `pipeline/`. This page lis
 | `record.json` | the archive | Everything vital about the run in one file (see [record.json](#recordjson)) |
 | `reviews/` | a later review | What is needed to review the run again after code changes (see [The reviews folder](#the-reviews-folder)) |
 | `release/` | the archive | The accessibility evaluation's results and each shipment (see [The release folder](#the-release-folder)) |
-| `han_review.csv` | a Japanese / Chinese reader | Only when the PDF has Han-only CJK runs: one row per run, with a blank decision column |
+| `han_review.csv` | a Japanese / Chinese reader | Only when the PDF has Han-only CJK runs the language step left untagged: one row per run, with a blank decision column |
+| `language_run.json` | the archive | The language step's requests, replies, cost and decisions (see [Language tags](languages.md)) |
 | `_intake/intake.md` | a reviewer | Untagged originals only: the intake record in plain words (see [Intake files](#intake-files)) |
 | `_intake/intake.json` | the archive | Untagged originals only: what intake measured and did (see [Intake files](#intake-files)) |
 | `_intake/intake.pdf` | the pipeline | Untagged originals only, when intake changed anything: the OCR'd and auto-tagged copy the rest of the run worked on |

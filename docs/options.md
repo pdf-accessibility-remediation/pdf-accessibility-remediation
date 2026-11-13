@@ -99,7 +99,7 @@ No pages are read:
 
 By default (`LANG_TAGS=on`), after the work order and the page readings, `name_languages.py` sends the words and passages
 the audit found likely to be in another language (`lang_candidates.json`) to the AI, with about 15 words of context
-each, and adds its tags to the work order as `language_parts` (#118). It has its own model, estimate, limit and question;
+each, and adds its tags to the work order as `language_parts` (#118; see [Language tags](languages.md)). It has its own model, estimate, limit and question;
 `AUTO=1` skips the question. A PDF with no candidates costs nothing. If the step is refused (over its limit or your
 credit), the PDF goes on without it.
 
@@ -118,7 +118,7 @@ A scan with Chinese, Japanese or Korean text on pages to be OCR'd stops until `O
 - `jpn+eng` for Japanese
 - `chi_tra+eng` or `chi_sim+eng` for Chinese
 
-Chinese characters with no kana are never guessed as Chinese or Japanese.
+Chinese characters with no kana are read in the document's language by OCR; the language step may name them Japanese or Chinese for a person to approve ([Language tags](languages.md)).
 
 For **vertical** Japanese, which the stop message points out, use `jpn_vert+jpn+eng`. With `jpn+eng` alone the OCR text is mostly junk. On one 13-page sample it gave 5% Japanese and left 8 pages without text, against 85% and every page with the `_vert` pack.
 

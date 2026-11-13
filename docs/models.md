@@ -6,7 +6,7 @@ nav_order: 5
 
 # Models
 
-The AI that writes the work order is Claude Sonnet by default, reached through OpenRouter. This page explains how to choose another model, what that changes about costs, and the temperature setting sent with each request.
+The AI that writes the work order is Claude Sonnet by default, reached through OpenRouter. The language step has its own model setting, `LANGUAGE_MODEL` (default: the same model; see [Language tags](languages.md)); Haiku 5.5 was measured for it and not adopted (one confident wrong answer in 569 test items). This page explains how to choose another model, what that changes about costs, and the temperature setting sent with each request.
 
 ## Choosing the model
 

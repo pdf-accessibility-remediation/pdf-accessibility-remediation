@@ -181,6 +181,21 @@ The header says **All changes saved** or **Saving…**, right of **Finish Review
 
 **Leaving the page.** While a change hasn't reached the run yet, closing the tab or leaving the page first shows the browser's leave-page prompt. If you leave anyway, the last edits are sent as the page goes. A browser sends at most 64 KiB that way, so a very large draft (a big PDF fully decided, with long notes) may not be sent then. The browser's own copy still has it, and the review picks it up when opened again in the same browser at the same address.
 
+## Languages
+
+The "Languages" section lists every word form the language step found in another language, one row per form, with
+its places and a line of context. One choice covers every place the form occurs (#118, see [Language tags](languages.md)).
+
+- **Folds by language** (for example "Japanese (Romanized)", "Hawaiian"), plus "Not Decided by the AI" (non-Latin
+  text the AI left untagged) and "Tags Already in the PDF" (the publisher's own tags).
+- **Each row:** "Approve", "Leave Untagged", or "Change Language…" for another language. A publisher's tag offers
+  "Keep the Tag" or "Remove the Tag".
+- **"Approve All Shown (N)"** approves the rows shown in a fold at once, only where the AI was highly confident and
+  the form is not Chinese characters alone, not a publisher's tag, and not tagged differently in different places.
+  Other rows are decided one by one.
+- Rows load 100 at a time ("Show More").
+- "Language Tags" on "Ready to Ship?" reads "Approved" once every form is decided.
+
 ## Checks as you go
 
 Every save also runs the check: the same rules `decide.py` uses on the AI's reply (`lib/workorder_check.py`), on the order your choices make so far. Anything it would drop is shown on the card it belongs to.
