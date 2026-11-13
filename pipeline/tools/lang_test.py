@@ -272,7 +272,7 @@ def send(out_dir, model, run, which, cap):
     if how != 'live' or SUPPORTED.get(model) is None: sys.exit(f'refused: OpenRouter\'s model list not read ({how}), so the request\'s parameters cannot be checked')
     pi, po = pr[model]
     worst = sum(langreq.size(r['request'], prompt) * pi + (len(r['request']['items']) * 100 + 300) * po for r in reqs)
-    if spent + worst > cap: sys.exit(f'refused: ${spent:.2f} spent + ${worst:.2f} worst case passes the ${cap:.2f} cap')
+    if spent + worst > cap: print(f'note: ${spent:.2f} spent + ${worst:.2f} worst case for the whole set passes the ${cap:.2f} cap: each request is checked, and the set stops before one could pass it')
     od = os.path.join(out_dir, 'replies', model.split('/')[-1], f'run{run}', which); os.makedirs(od, exist_ok=True)
     print(f'{which} on {model}, run {run}: {len(reqs)} requests, worst case ${worst:.2f}; ${spent:.2f} spent of the ${cap:.2f} cap so far')
     for n, r in enumerate(reqs, 1):
