@@ -84,7 +84,7 @@ def test_ready_comes_from_the_glance_then_review_md_then_says_not_recorded(tmp_p
     R = str(tmp_path)
     g = {'glance': {'ready': True, 'ship': [{'what': 'Safety checks', 'ok': True, 'text': 'OK'}]}}   # a stored `ready` is never trusted
     assert runs.ready(R, g) == {'answer': 'No', 'lines': ['Safety checks: Not Checked (only 0 of the 5 checks were recorded for this run)',
-                                                          'Accessibility evaluation: Not Completed'],
+                                                          'Language tags: Not Applicable', 'Accessibility evaluation: Not Completed'],
                                 'status': 'Not Ready', 'current': 'Not Ready', 'source': 'record.json'}
     (tmp_path / 'review.md').write_text('## Overview\n\n**Status:** Ready\n\n**Ready to ship?** Yes\n- Safety checks: OK\n- PAC: not run\n\nmore\n')
     assert runs.ready(R, {}) == {'answer': 'Yes', 'lines': ['Safety checks: OK', 'PAC: not run'], 'status': 'Ready', 'source': 'review.md'}   # an older run
@@ -1059,7 +1059,7 @@ def test_the_ready_to_ship_card_and_select():
     import report_html as H
     from lib import glance as G                                                   # the four requirements' names (2026-10-31)
     assert G.SHIP_NAMES == {'Work order approved on the review page': 'Work Order Approval', 'OCR text approved': 'OCR Text Approval',
-                            'Safety checks': 'Safety Checks', 'Accessibility evaluation': 'Accessibility Evaluation'}
+                            'Safety checks': 'Safety Checks', 'Language tags': 'Language Tags', 'Accessibility evaluation': 'Accessibility Evaluation'}
     rh = src('report_html.py')
     assert '<ul role="list">' in rh and '<li><span class="mark" aria-hidden="true"><i class="bul"></i></span>' in rh
     for f in ('webapp/panel.js', 'webapp/runs.py', 'report_html.py', 'review/page.html'):

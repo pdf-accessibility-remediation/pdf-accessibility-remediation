@@ -71,11 +71,26 @@ SAFETY = [('Every page looks the same as the original', 'pages look the same'),
           ('Fonts: every embedded font program could be read', 'every font readable')]
 POINTER_ROWS = {'Nothing deferred by the executor'}        # a CHECK row that only points at a list counted separately
 SAFETY_VERA = 'no WCAG rule newly failing (veraPDF)'   # the sixth safety check of glance/0.4 (a finding from 0.5): dropped on read
-SHIP_BASE = ('Work order approved on the review page', 'OCR text approved', 'Safety checks')   # from the run; the rest from release/
+SHIP_LANG = 'Language tags'             # #118: the language step's tags, approved one by one (review 06, H2)
+SHIP_BASE = ('Work order approved on the review page', 'OCR text approved', 'Safety checks', SHIP_LANG)   # from the run; the rest from release/
 SHIP_EVAL = 'Accessibility evaluation'
 # the names a person reads (the card, review.md, the page, the strip); the keys above stay as stored (decided 2026-10-31)
 SHIP_NAMES = {'Work order approved on the review page': 'Work Order Approval', 'OCR text approved': 'OCR Text Approval',
-              'Safety checks': 'Safety Checks', SHIP_EVAL: 'Accessibility Evaluation'}
+              SHIP_LANG: 'Language Tags', 'Safety checks': 'Safety Checks', SHIP_EVAL: 'Accessibility Evaluation'}
+
+def language_line(record):
+    """(ok, text) of the Language Tags requirement (#118). No tags from the language step: Not Applicable. Tags: Approved
+    only when a person decided every one on the review page (record['language_review'], written by the review step's
+    Languages section); otherwise Not Reviewed, with what is left. Until that section exists every such book reads Not
+    Reviewed (review 06, H2: approving the work order as one item must not approve its language tags)."""
+    parts = ((record.get('workorder') or {}).get('language_parts') or {}).get('parts') or []
+    lr = record.get('language_review') or {}
+    if not parts and not lr.get('forms'): return True, 'Not Applicable'
+    left = lr.get('not_reviewed') if lr else None
+    if lr and left == 0:
+        return True, f'Approved ({lr.get("reviewer")} on {D.day(lr.get("date"))})'
+    n = len({(p.get('group') or '', p.get('form') or p.get('text')) for p in parts}) if left is None else left
+    return False, f'Not Reviewed ({n:,} word form{"" if n == 1 else "s"} to decide on the review page)'
 def ship_name(s): return SHIP_NAMES.get(s['what'], s['what'])
 
 def safety_line(five):
@@ -175,10 +190,15 @@ def with_release(g, record, release=None, cur=None):
         if s['what'] not in SHIP_BASE: continue
         s = dict(s)
         if s['what'] == 'Safety checks': s['ok'], s['text'] = safety_line(five)
+        if s['what'] == SHIP_LANG: s['ok'], s['text'] = language_line(record)          # always from the record as it is now
         ship.append(s)
+    if SHIP_LANG not in [s['what'] for s in ship]:     # a glance stored before #118: the line from the record (Not Applicable without tags)
+        ok_, txt_ = language_line(record)
+        ship.insert(min(3, len(ship)), {'what': SHIP_LANG, 'ok': ok_, 'text': txt_})
     ok, txt = REL.evaluation_line(rel, cur)
     ship.append({'what': SHIP_EVAL, 'ok': ok, 'text': txt})
-    base_ok = g.get('schema') in READY_SCHEMAS and [s['what'] for s in ship[:3]] == list(SHIP_BASE) and all(s['ok'] is True for s in ship[:3])
+    nb = len(SHIP_BASE)
+    base_ok = g.get('schema') in READY_SCHEMAS and [s['what'] for s in ship[:nb]] == list(SHIP_BASE) and all(s['ok'] is True for s in ship[:nb])
     st = REL.status(rel, cur, base_ok, rel.get('newer'), (record.get('review') or {}).get('session'))
     p = REL.part(rel, 'pac', cur); it = ((p['check'] or {}).get('items') or {}).get('needs_person') or {} if p['state'] != 'earlier version' else {}
     looked = {'result': it.get('result'), 'by': p['check'].get('by'), 'recorded': p['check'].get('recorded')} if it.get('result') else None
@@ -248,9 +268,11 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
     else: newly, vera_safe = None, {'what': SAFETY_VERA, 'ok': False, 'state': 'not checked', 'detail': 'veraPDF did not run on both files'}
     saf = [{'what': label, 'ok': byname[name]['ok']} for name, label in SAFETY if name in byname]   # the five damage checks only
     saf_ok = safety_line(saf)[0]                                   # the line, the Safety card and summary.html: one rule
+    lang_ok, lang_txt = language_line(record)
     ship = [{'what': 'Work order approved on the review page', 'ok': wo_ok, 'text': wo_txt},
             {'what': 'OCR text approved', 'ok': ocr_ok, 'text': ocr_txt},
-            {'what': 'Safety checks', 'ok': safety_line(saf)[0], 'text': safety_line(saf)[1]}]
+            {'what': 'Safety checks', 'ok': safety_line(saf)[0], 'text': safety_line(saf)[1]},
+            {'what': SHIP_LANG, 'ok': lang_ok, 'text': lang_txt}]
 
     # ---- issues: everything that needs a person, ranked (0 safety, 1 ship conditions, 2 CHECK rows, 3 executor, 4 AI)
     issues = []

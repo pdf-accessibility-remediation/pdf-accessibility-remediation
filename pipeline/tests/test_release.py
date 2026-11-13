@@ -92,7 +92,7 @@ def test_a_failed_screen_reader_test_never_blocks_ready():
     assert out['ready'] is False and out['status']['text'] == 'Pending Evaluation' and out['ship'][-1]['what'] == G.SHIP_EVAL
     out = G.with_release(g, rec, rel(pac=[chk(A, PAC_OK)], sr=[chk(A, failing(SR_OK, 'links'))]))
     assert out['ready'] is True and out['status']['text'] == 'Ready · 1 issue noted'
-    assert out['ship'][-1] == {'what': G.SHIP_EVAL, 'ok': True, 'text': 'Completed (1 issue noted)'} and len(out['ship']) == 4
+    assert out['ship'][-1] == {'what': G.SHIP_EVAL, 'ok': True, 'text': 'Completed (1 issue noted)'} and len(out['ship']) == 5      # with Language Tags (#118)
     out = G.with_release(g, rec, rel(pac=[chk(A, PAC_OK)], sr=[chk(A, SR_OK)], shipped=[ship(A)]))
     assert out['ready'] is False and out['status']['name'] == 'Shipped'               # H9: ready means the status is Ready
 
@@ -157,7 +157,7 @@ def test_status_line_sits_above_ready_to_ship_and_the_old_heading_still_parses()
     i = L.index('**Status:** Not Ready')
     assert L[i + 2] == '**Ready to ship?**' and L[i + 3] == '- Work Order Approval: Not Approved (applied without a review)'
     assert L[i + 4] == '- ✓ OCR Text Approval: Not Applicable' and L[i + 5] == '- ✓ Safety Checks: Passed'
-    assert L[i + 6] == '- Accessibility Evaluation: Not Completed'
+    assert L[i + 6] == '- ✓ Language Tags: Not Applicable' and L[i + 7] == '- Accessibility Evaluation: Not Completed'      # #118
     rows, _ = G.parse_md(md_with(True).replace('## Automated Checks', '## Automated checks'))
     assert len(rows) == 6
 
