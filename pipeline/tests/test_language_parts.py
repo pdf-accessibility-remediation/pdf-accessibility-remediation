@@ -303,6 +303,7 @@ def test_the_letter_guard_on_words_and_pages():
     from lib import ocrwords, pagereads
     assert [ocrwords.not_hawaiian_letters(x) for x in ('te', 'whare', 'fiefia', 'ngangi', 'hale', 'kākou', 'kakoü', 'Häwaii', 'the', 'sulphates')] == \
         [True, True, True, True, False, False, False, False, False, True]
+    assert [ocrwords.not_hawaiian_letters(x) for x in ('ʻāina’s', 'ʻāina-based', 'mī-gusui', 'Nyéléni')] == [False, False, True, True]
     haw = 'Aloha mai kākou. E hele ana au i ka hale kūʻai. He mea maikaʻi loa ia no ka poʻe o ka ʻāina.'.split() * 6
     mao = 'Kei te pēhea koe? Kia ora koe e hoa. He maunga, he awa, he moana. Ko te whare nui o te iwi.'.split() * 6
     assert pagereads.hawaiian_page(haw)[1] == 0 and pagereads.hawaiian_page(mao)[1] >= pagereads.FOREIGN_MAX

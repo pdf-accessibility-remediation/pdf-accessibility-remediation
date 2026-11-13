@@ -340,7 +340,7 @@ def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
         raise TreeIndexStale(next(l for l in ((so or '') + '\n' + (se or '')).splitlines() if TREE_STALE_MARK in l))
     return p.returncode, load(out + '.log.json')
 
-TREE_CHECK_ENV = ('APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG', 'APPLY_TEST_LOSE_ENTRY')   # set by the tests only, never in production (#93 C2; #118 review 06 M6)
+TREE_CHECK_ENV = ('APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG', 'APPLY_TEST_LOSE_ENTRY', 'APPLY_FAIL_LANG_PAGE')   # set by the tests only, never in production (#93 C2; #118 review 06 M6, review 08 L1)
 DRYRUN_ENV = ('APPLY_DRAFT', 'ALLOW_PDF20') + TREE_CHECK_ENV            # every variable apply.py and lib/ read (a test keeps this list whole)
 DRYRUN_PKGS = ('pikepdf', 'pdfplumber', 'pypdfium2', 'pillow', 'fonttools')   # as apply.py's _versions()
 
