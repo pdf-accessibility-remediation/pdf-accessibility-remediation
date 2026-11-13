@@ -1099,6 +1099,20 @@ def language_parts(parts):
     Returns the (page, mcid) runs the parts covered, so the CJK rules below leave them alone."""
     done = set()
     rewritten = {pidx[k] for k, v in _REWRITES.items() if v and k in pidx}
+    content = {}
+    def drawn_here(pno, m, n):
+        """None when run m is drawn in the page's own content with exactly the n characters pdfplumber lists for it;
+        otherwise why not. pdfplumber also lists text drawn inside a form XObject under the form's own MCIDs, which may
+        share a number with a page run: a tag must never land on that other run (#118 stress run, sojourners)."""
+        if pno not in content:
+            try: content[pno] = list(pikepdf.parse_content_stream(pages[pno - 1]))
+            except Exception: content[pno] = None
+        if content[pno] is None: return 'page content not readable'
+        try: mcsplit.split_run(content[pno], (_inherited(pages[pno - 1], '/Resources') or {}).get('/Font'), m, [], lambda: None, expect_n=n)
+        except mcsplit.Refuse as e:
+            if str(e) == 'run not drawn in the page content': return 'run drawn inside a form XObject, not in the page'
+            if str(e) == 'characters do not line up with the run': return str(e)
+        return None
     for p in parts:
         pno, m, f, l, lang = p['page'], p['mcid'], p['first'], p['last'], p['lang']
         if not (1 <= pno <= len(pages)): lang_refuse(pno, m, 'page not in the book', p); continue
@@ -1107,12 +1121,16 @@ def language_parts(parts):
         rest = ''.join(c['text'] for k, c in enumerate(cs) if k < f or k > l)
         text = ''.join(c['text'] for c in cs[f:l + 1])
         done.add((pno, m))
-        if not re.search(r'[^\W_]', rest): tag_run(pno, m, lang, ''.join(c['text'] for c in cs)); continue
         o = owner.get((pno, m))
         if o is None: lang_refuse(pno, m, 'run not in the tag tree', p); continue
+        why = drawn_here(pno, m, len(cs))
+        if why: lang_refuse(pno, m, why, p); continue
+        if not re.search(r'[^\W_]', rest): tag_run(pno, m, lang, ''.join(c['text'] for c in cs)); continue
         why = unspoken_owner(o)
         if why: lang_refuse(pno, m, why, p); continue
         if pno in rewritten: lang_refuse(pno, m, 'page text rewritten from OCR: whole runs only', p); continue
+        if any(c.get('upright') is False for c in cs):        # rotated or vertical text: not covered yet (#118 stress run, sands)
+            lang_refuse(pno, m, 'rotated or vertical text: whole runs only', p); continue
         _LANG_SPLITS[(pno, m)].append({**p, 'text': text})
     return done
 def op_language(spec):

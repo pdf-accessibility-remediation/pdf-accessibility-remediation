@@ -127,3 +127,20 @@ def test_candidates_line_up_with_runs(tmp_path):
     v = json.load(open(out + '.verify.json')); log = json.load(open(out + '.log.json'))
     assert not log['language_parts']['refused'] and v['language']['all_match'] and v['language']['spans_written'] == len(places)
     assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
+
+def test_form_mcid_that_shares_a_number_is_never_tagged(tmp_path):
+    """pdfplumber lists text drawn in a form XObject under the form's own MCIDs; one may share its number with a page run
+    (#118 stress run, sojourners). A place on it is refused, and the page run with that number is left alone."""
+    src = langpdf.build(str(tmp_path / 'f.pdf'), [{'lang': 'en-US', 'text': 'Plain page text.'}])
+    pdf = pikepdf.open(src); page = pdf.pages[0]
+    form = pdf.make_stream(b'/P <</MCID 0>> BDC BT /F1 11 Tf 72 600 Td (kalo) Tj ET EMC',
+                           Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Form, BBox=[0, 0, 612, 792],
+                           Resources=pikepdf.Dictionary(Font=page.obj.Resources.Font))
+    page.obj.Resources.XObject = pikepdf.Dictionary(Fm1=form)
+    page.obj.Contents = pdf.make_stream(page.obj.Contents.read_bytes() + b'\nq /Fm1 Do Q')
+    src2 = str(tmp_path / 'f2.pdf'); pdf.save(src2)
+    wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'language_parts': {'parts': [part(1, 0, 0, 3, 'haw')]}}))
+    out = str(tmp_path / 'out.pdf'); run('apply.py', src2, wo, out)
+    log = json.load(open(out + '.log.json'))
+    assert log['language_parts']['spans'] == [] and sum(log['language_parts']['refused'].values()) == 1
+    assert str(marks(out)[0]['/Lang']) == 'en-US'
