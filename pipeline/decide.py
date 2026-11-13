@@ -31,6 +31,11 @@ from lib.models import TEMPERATURE, OMIT_TEMPERATURE   # shared with the languag
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+def load_json(p):
+    """A JSON file's content, or None when it is missing or unreadable."""
+    try: return json.load(open(p, encoding='utf-8'))
+    except (OSError, ValueError): return None
+
 def load_env():
     """Read KEY=value lines from the nearest .env: pipeline/, then each folder above it. Real env vars win."""
     d = HERE
@@ -766,6 +771,18 @@ fp_ = run.get('figure_passes') or {}
 if fig_where:                                     # the note to the first request and the figure requests' own prompt (11.5)
     wo['decided_by'] += (f' with note {(fp_.get("note") or {}).get("version") or "not recorded"} + {fp_.get("prompt_file") or "figure prompt not recorded"} '
                          f'({fp_.get("prompt_sha256") or "hash not recorded"}) for {len(fig_where)} figures')
+if args.response_file and own_file:
+    # this folder's own reply read again (a later step failed: run_api.sh's retry, the app's "Try Again"): the paid steps
+    # after the work order wrote into the workorder.json this rebuild replaces. Their results are put back from their own
+    # files, with no network and no flag: the page readings (#49; review 02 M8: they were lost before) and the language
+    # step's parts (#118). A reply from anywhere else carries neither.
+    _pr = load_json(os.path.join(args.run_dir, 'page_reads_run.json'))
+    if isinstance(_pr, dict):
+        _pages = [{'page': x['page'], 'text': x['text']} for x in _pr.get('pages') or [] if x.get('finish') == 'stop' and (x.get('text') or '').strip()]
+        if _pages: wo['page_readings'] = _pages
+    _lr = load_json(os.path.join(args.run_dir, 'language_run.json'))
+    if isinstance(_lr, dict) and isinstance(_lr.get('language_parts'), dict) and _lr['language_parts'].get('parts'):
+        wo['language_parts'] = _lr['language_parts']
 save('workorder.json', wo)
 save('validation.json', {'dropped': dropped,        # context: what review_workorder.py needs to check a reviewed work order the same way
                          'context': {'not_sent': sorted(not_sent), 'words_sent': sorted(words_sent),
