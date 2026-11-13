@@ -1107,6 +1107,21 @@ if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the langu
         L += [f'**Not placed by the executor ({lang_refused}):** the page and its text stay as they were; the words are read in the book\'s language.', '']
         L += [line(f'- {w}: {c}', entry=False) for w, c in sorted((lang_log.get('refused') or {}).items(), key=lambda x: -x[1])]
         L.append('')
+    nc_, nn_ = lang_log.get('names_converted') or [], lang_log.get('names_not_converted') or []      # review 08, M4
+    if nc_:
+        L += [f'**The PDF\'s language names, written as language codes ({sum(c["count"] for c in nc_):,} tags):** a language\'s name is not a '
+              'language tag, so each is replaced by the code it names. Check that the words are in that language.', '']
+        L += [line(f'- "{c["value"].strip()}" → {c["code"]} ({LT.name(c["code"]) or c["code"]}): {c["count"]:,} tag{"" if c["count"] == 1 else "s"}'
+                   + (' · e.g. ' + ', '.join(f'"{excerpt(x)}"' for x in c['samples'][:3]) if c.get('samples') else '')
+                   + (f' · {", ".join(pg(p) for p in sorted(c["pages"])[:4])}' if c.get('pages') else ''),
+                   key=f'lang:name:{c["value"].strip()}', pages=sorted(c.get('pages') or [])[:4]) for c in nc_]
+        L.append('')
+    if nn_:
+        L += [f'**Language names left for a person ({len(nn_)}):** the words under them look like another language, so they stay as written.', '']
+        L += [line(f'- "{x["value"].strip()}" ({LT.name(x["code"]) or x["code"]}) on "{excerpt(x.get("text"))}": {x["why"]}'
+                   + (f' · {pg(x["page"])}' if x.get('page') else ''), key=f'lang:name-left:{x["value"].strip()}:{i}', pages=[x['page']] if x.get('page') else None)
+              for i, x in enumerate(nn_)]
+        L.append('')
     if haw_el_:
         L += [f'**Tagged Hawaiian by a fixed rule on pages read by the AI ({len(haw_el_)}):** whole lines and paragraphs whose words are '
               'Hawaiian in shape; the person who reads Hawaiian checks them with each page.', '']

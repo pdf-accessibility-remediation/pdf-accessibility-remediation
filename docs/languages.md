@@ -18,7 +18,11 @@ approved.
    The work-order prompt (`workorder_v11.md`) leaves language tags to this step.
 4. **A person decides every form** on the review page's "Languages" section (see [Review page](review-page.md#languages)).
 5. **The executor applies the tags** (`apply.py`, `op_language`): a tagged word gets its own Span with `/Lang`; a whole
-   element gets `/Lang` on itself. A publisher's tag a person removed is taken off the element and its marked content.
+   element gets `/Lang` on itself. A publisher's tag a person removed is taken off the element and its marked content;
+   one a person kept ("Keep the Tag") loses only a different `/Lang` in its marked content, so the kept tag is the one
+   read. A publisher's language name (`Hawaii`, `Hungarian`) is shown on the review page by the language it names, with
+   the value as written; the executor writes its code and lists each conversion in review.md, unless the words look like
+   another language (then it stays for a person: see [veraPDF](verapdf.md), 7.2-29).
 6. **verify.py checks** that every tag holds its words and language. A tag that does not match is a rank-1 finding.
 
 ### Chinese, Japanese and Korean

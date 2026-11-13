@@ -948,8 +948,19 @@ def language_rows(items, group, start=0, n=LANG_PAGE, contexts=None):
         out.append({'id': it['id'], 'form': it['label'], 'ai': it['ai'], 'lang_name': c.get('lang_name'), 'confidence': c.get('confidence'),
                     'evidence': c.get('evidence'), 'why': c.get('why'), 'current': c.get('current'), 'places': c.get('places'),
                     'pages': c.get('page_list'), 'snippet': c.get('snippet') or (contexts or {}).get(c.get('form_key')),
-                    'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person'))})
+                    'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person')), **current_words(c.get('current'))})
     return {'group': group, 'start': start, 'total': len(rows), 'rows': out}
+
+def current_words(cur):
+    """A publisher's /Lang value as staff read it (review 08, L4, M4): the language's name; the value as written too when it
+    is a name rather than a code ("Hawaii"); a value that is neither is marked so. {} when there is none."""
+    if not cur: return {}
+    from lib import langtag
+    code = langtag.norm(cur)
+    if code: return {'current_name': langtag.name(langtag.shortest(code)) or langtag.name(code) or cur, 'current_written': None}
+    code = langtag.from_name(cur)
+    if code: return {'current_name': langtag.name(code) or code, 'current_written': str(cur).strip()}
+    return {'current_name': None, 'current_written': str(cur).strip()}
 
 def prepare(R, pdf):
     """Write review_items.json, and render the pages of the first group so the page opens with them. Runs when run_api.sh

@@ -1918,10 +1918,29 @@ def fix_standard_remaps():
         del st.RoleMap['/' + k]; RMAP.pop(k, None)
         ok(f'role map: standard tag {k} was remapped to {t}; retyped', cnt[k]); rule_fix('7.1-7', cnt[k] or 1, f'{k} → {t} ({cnt[k]} tags)')
     reindex()
+NON_LATIN = {'ja', 'zh', 'ko', 'yue', 'ru', 'uk', 'bg', 'sr', 'mk', 'be', 'el', 'ar', 'fa', 'ur', 'he', 'yi', 'th', 'lo', 'km', 'my',
+             'hi', 'mr', 'ne', 'bn', 'ta', 'te', 'kn', 'ml', 'gu', 'pa', 'si', 'ka', 'hy', 'am', 'bo', 'mn'}
+def name_misfit(code, text):
+    """Why a language's name written as /Lang doesn't fit its words (review 08, M4), or None when nothing local says so:
+    the script differs (a Latin-script language on Chinese characters, or the reverse), most words are Hawaiian in shape
+    for a language that isn't Hawaiian ("Hungarian" on "Noa Emmett Aluli"), or a Hawaiian tag holds a word Hawaiian
+    can't spell (the letter guard: "Sustʻāinable"). Never a guess at the right language: a person decides."""
+    from lib import ocrwords, langcands
+    words = [w for w in (ocrwords.core(x) for x in str(text or '').split()) if len(w) >= 2 and any(ch.isalpha() for ch in w)]
+    if not words: return None
+    p = code.split('-')[0].lower(); other = langcands.other_script(text)
+    if other and p not in NON_LATIN: return f'its words are in {other}'
+    if not other and p in NON_LATIN: return 'its words are in Latin script'
+    if p == 'haw':
+        bad = [w for w in words if ocrwords.not_hawaiian_letters(w)]
+        return f'"{bad[0]}" is not spelled with Hawaiian letters' if bad else None
+    haw = [w for w in words if ocrwords.hawaiian_shape(w) and not langcands.in_english(w)]
+    return 'its words look Hawaiian' if len(haw) * 2 >= len(words) else None
+
 def fix_lang_values():
     """veraPDF 7.2-29: a /Lang value must be a language tag. Spelling only is tidied (en_US → en-US, case, spaces); an
     empty /Lang on a tag is removed (it inherits); anything else is listed for a person, never guessed."""
-    reindex(); n, named, bad = 0, 0, []
+    reindex(); n, named, bad, misfit, names = 0, 0, [], [], {}
     def tidy(d, where, page, root=False):
         nonlocal n, named
         v = d.get('/Lang')
@@ -1933,7 +1952,16 @@ def fix_lang_values():
             return
         tag = langtag.norm(raw)
         if tag is None and langtag.from_name(raw):         # a language's name with one certain code (#118): "Hawaiian", "Marshallese "
-            d.Lang = pikepdf.String(langtag.from_name(raw)); named += 1; return
+            code = langtag.from_name(raw); text = '' if root else elem_gaptext(d)
+            why = name_misfit(code, text)
+            if why:                                        # review 08, M4: "Hungarian" on a Hawaiian name stays for a person
+                misfit.append((where, raw, code, why, text, page)); return
+            d.Lang = pikepdf.String(code); named += 1
+            c = names.setdefault((raw, code), {'value': raw, 'code': code, 'count': 0, 'samples': [], 'pages': []})
+            c['count'] += 1
+            if text.strip() and len(c['samples']) < 5 and text.strip()[:40] not in c['samples']: c['samples'].append(text.strip()[:40])
+            if page and page not in c['pages'] and len(c['pages']) < 8: c['pages'].append(page)
+            return
         if tag is not None: tag = langtag.shortest(tag)    # the shortest form: jpn → ja (#118, review 02 L2)
         if tag is None: bad.append((where, raw, page))
         elif tag != raw: d.Lang = pikepdf.String(tag); n += 1
@@ -1942,6 +1970,12 @@ def fix_lang_values():
     if n: ok('language: /Lang spelling tidied', n)
     if named: ok('language: a language name written as /Lang replaced by its code', named)
     n += named
+    if names: LANG['names_converted'] = sorted(names.values(), key=lambda c: -c['count'])      # review.md lists each (review 08, M4)
+    if misfit: LANG['names_not_converted'] = [{'value': r, 'code': c, 'why': w, 'text': t.strip()[:60], 'page': p} for _, r, c, w, t, p in misfit[:50]]
+    for where, raw, code, why, text, page in misfit[:20]:
+        log['deferred'].append({'what': f'/Lang "{raw[:40]}" on {where} names {langtag.name(code) or code}, but {why}: "{text.strip()[:40]}"',
+                                'why': 'set the right tag (e.g. haw, en), or remove it', **({'page': page} if page else {})})
+    if len(misfit) > 20: log['deferred'].append({'what': f'{len(misfit) - 20} more language names whose words look like another language'})
     rule_fix('7.2-29', n)
     for where, raw, page in bad[:20]:
         log['deferred'].append({'what': f'/Lang "{raw[:40]}" on {where} is not a language tag', 'why': 'set the right tag (e.g. en, ja, zh-Hant)', **({'page': page} if page else {})})
@@ -3294,10 +3328,10 @@ try: fix_paths()
 except Exception as e: log['failed'].append({'op': 'fix_paths', 'error': f'{type(e).__name__}: {e}'[:300]})
 try: fix_language_parts()                  # after every step that reads text by MCID from PL (the source): review 02, Notes
 except Exception as e: log['failed'].append({'op': 'fix_language_parts', 'error': f'{type(e).__name__}: {e}'[:300]})
-if not (LANG['spans'] or LANG['refused'] or LANG.get('existing_removed')) and not any(f['op'] == 'fix_language_parts' for f in log['failed']): log.pop('language_parts')      # nothing tagged or refused: no entry
 for fn in (fix_rolemap_cycles, fix_standard_remaps, fix_th_scope, fix_lang_values):   # veraPDF rules the executor fixes by itself
     try: fn()
     except Exception as e: log['failed'].append({'op': fn.__name__, 'error': f'{type(e).__name__}: {e}'[:300]})
+if not (LANG['spans'] or LANG['refused'] or LANG.get('existing_removed') or LANG.get('existing_kept') or LANG.get('names_converted') or LANG.get('names_not_converted')) and not any(f['op'] == 'fix_language_parts' for f in log['failed']): log.pop('language_parts')      # nothing tagged, refused or converted (fix_lang_values, M4 of 08): no entry
 try: fix_parenttree()
 except Exception as e: log['failed'].append({'op': 'fix_parenttree', 'error': f'{type(e).__name__}: {e}'[:300]})
 try: fix_index()

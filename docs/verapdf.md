@@ -39,7 +39,7 @@ Which rules belong to whom, and which work-order key fixes each AI rule, is set 
 |---|---|
 | 7.1-6 | A RoleMap chain that loops is cut where it closes (that style → P) and listed for a reviewer |
 | 7.1-7 | A standard tag remapped in the RoleMap (for example `Caption → P`): its elements are retyped to what the RoleMap made them, and the entry removed |
-| 7.2-29 | `/Lang` spelling tidied (`en_US` → `en-US`, case, spaces; `lib/langtag.py`); an empty `/Lang` on a tag removed; a language name written as a tag (`Hawaiian`, `Chinese`) replaced by its code (`haw`, `zh`), and three-letter codes shortened where a two-letter one exists (`jpn-Latn` → `ja-Latn`); anything else listed |
+| 7.2-29 | `/Lang` spelling tidied (`en_US` → `en-US`, case, spaces; `lib/langtag.py`); an empty `/Lang` on a tag removed; a language name written as a tag (`Hawaiian`, `Chinese`) replaced by its code (`haw`, `zh`) and listed in review.md's "Language Tags" section, unless its words look like another language (`Hungarian` on a Hawaiian name, `Japanese` on Latin script: listed for a person and left as written), and three-letter codes shortened where a two-letter one exists (`jpn-Latn` → `ja-Latn`); anything else listed |
 | 7.5-1/2 | A header cell (TH) with no direction gets one where the table makes it plain: a row of only TH → Column, a row whose only TH is its first cell → Row; others are listed |
 
 The work order's `tables` key (`op_tables`) marks the header rows and columns the AI names in a real table as TH with their Scope; spans that cross the header edge are rejected for a reviewer. `rolemap` may add a mapping for a style the source never mapped (7.1-5).

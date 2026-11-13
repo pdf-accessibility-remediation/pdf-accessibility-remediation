@@ -39,7 +39,9 @@ def test_rows_per_form_and_the_summary():
     assert groups['Japanese (Romanized)']['bulk'] == 1 and groups['Japanese']['bulk'] == 0               # never Chinese characters alone
     assert all(x['code'] != 'qaa' for x in s['names'])
     rows = core.language_rows(items, core.LANG_EXISTING)['rows']
-    assert rows[0]['current'] == 'fr-FR' and rows[0]['ai'] is None
+    assert rows[0]['current'] == 'fr-FR' and rows[0]['ai'] is None and rows[0]['current_name'] == 'French' and rows[0]['current_written'] is None
+    assert core.current_words('Hawaii') == {'current_name': 'Hawaiian', 'current_written': 'Hawaii'}      # review 08, L4: names, never codes
+    assert core.current_words('xx-nonsense!') == {'current_name': None, 'current_written': 'xx-nonsense!'}
 
 def test_decisions_apply_to_the_form_and_are_counted():
     w = wo(); items = core.build_items(w, DIGEST); by = {it['label']: it['id'] for it in items if it['kind'] == core.LANG_KIND}
@@ -91,6 +93,21 @@ def test_a_publishers_tag_a_person_kept_is_the_one_read(tmp_path):
     pdf = pikepdf.open(out); assert str(pdf.Root.StructTreeRoot.K[0].K[0].get('/Lang')) == 'fr-FR'
     v = json.load(open(out + '.verify.json'))
     assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['language']['publisher_conflicts'] == 0
+
+def test_publisher_language_names_are_converted_listed_or_left(tmp_path):
+    """review 08, M4: a language's name written as /Lang becomes its code and is listed; a name whose words look like another
+    language ("Hungarian" on a Hawaiian name) stays as written, for a person. Synthetic lines."""
+    src = langpdf.build(str(tmp_path / 'n.pdf'), [{'span_lang': 'Hawaiian', 'text': 'Aloha mai kakou e hele ana'},
+                                                  {'span_lang': 'Hungarian', 'text': 'Noa Emmett Aluli, MD'},
+                                                  {'span_lang': 'Japanese', 'text': 'Kyoto temples'}])
+    w = tmp_path / 'wo.json'; w.write_text(json.dumps({}))
+    out = str(tmp_path / 'out.pdf'); run('apply.py', src, w, out)
+    pdf = pikepdf.open(out); els = pdf.Root.StructTreeRoot.K[0].K
+    assert [str(e.get('/Lang')) for e in els] == ['haw', 'Hungarian', 'Japanese']
+    lp = json.load(open(out + '.log.json'))['language_parts']
+    assert [(c['value'], c['code'], c['count']) for c in lp['names_converted']] == [('Hawaiian', 'haw', 1)]
+    assert {(x['value'], x['why']) for x in lp['names_not_converted']} == {('Hungarian', 'its words look Hawaiian'), ('Japanese', 'its words are in Latin script')}
+    assert any('/Lang "Hungarian"' in d['what'] for d in json.load(open(out + '.log.json'))['deferred'])
 
 def with_languages():
     import test_review_problems as TP

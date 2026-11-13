@@ -1694,7 +1694,9 @@ function langRowHtml(r) {
   const d = state.decisions[r.id] || {};
   const opts = '<option value="">Change Language…</option>' + LANGS.names.map(x => '<option value="' + esc(x.code) + '"' + (d.value === x.code ? ' selected' : '') + '>' + esc(x.name) + '</option>').join('');
   const pagesTxt = (r.pages || []).slice(0, 8).map(p => 'PDF ' + p).join(', ') + ((r.pages || []).length > 8 ? ', …' : '');
-  const what = r.current ? 'The PDF tags it as "' + esc(r.current) + '"' + (r.ai ? '; the AI suggests ' + esc(r.lang_name || r.ai) : '')
+  const cur = r.current_name ? esc(r.current_name) + (r.current_written ? ' (written "' + esc(r.current_written) + '")' : '')   // review 08, L4: a name, never a code
+            : '"' + esc(r.current_written || r.current) + '", which is not a known language';
+  const what = r.current ? 'The PDF tags it as ' + cur + (r.ai ? '; the AI suggests ' + esc(r.lang_name || r.ai) : '')
              : r.ai ? 'The AI tags it as <b>' + esc(r.lang_name || r.ai) + '</b>' + (r.confidence ? ' (' + esc(r.confidence) + ' confidence)' : '')
              : 'The AI left it untagged' + (r.why ? ' (' + esc({ name: 'a name', english: 'part of English', indeterminate: 'not a word of a known language', unsure: 'not sure', varies: 'it varies' }[r.why] || r.why) + ')' : '');
   const keep = r.current ? 'Keep the Tag' : r.ai ? 'Approve' : 'Leave Untagged';
