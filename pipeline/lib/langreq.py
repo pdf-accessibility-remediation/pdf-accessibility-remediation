@@ -21,7 +21,7 @@ CONTEXT = 15                    # words on each side
 SNIPPETS_PER_FORM = 2           # contexts per form: the first place, and one more (italic vs roman, or a later chapter)
 FORMS_PER_REQUEST = 150
 LOCAL = ('cjk:kana', 'cjk:hangul')                     # decided locally (lib/scripts.py), never sent
-ORDER = ['existing', 'cjk', 'marks', 'hawaiian', 'script', 'passage', 'accented', 'unknown']   # request order (review 02, L4)
+ORDER = ['existing', 'cjk', 'marks', 'hawaiian', 'script', 'passage', 'accented', 'latin', 'unknown']   # request order (review 02, L4)
 WHY = {'language', 'name', 'english', 'indeterminate', 'unsure', 'varies'}
 CONF = {'high', 'medium', 'low'}
 
@@ -40,7 +40,9 @@ def forms(places, skip=LOCAL, unknown_italic_only=False):
         if 'passage' in p['class']: g = 'passage'
         if unknown_italic_only and g == 'unknown' and not p.get('italic'): continue
         key = (p['form'], g)
-        f = by.setdefault(key, {'form': p['form'], 'group': g, 'class': sorted(set(p['class'])), 'places': [], 'italic_any': False, 'roman_any': False})
+        if 'existing' in p['class']: g = 'existing'; key = (p['form'], g, p.get('current'))
+        f = by.setdefault(key, {'form': p['form'], 'group': g, 'class': sorted(set(p['class'])), 'places': [], 'italic_any': False, 'roman_any': False,
+                                **({'current': p['current']} if p.get('current') else {})})
         f['places'].append(p); f['italic_any'] |= bool(p.get('italic')); f['roman_any'] |= not p.get('italic')
     out = list(by.values())
     out.sort(key=lambda f: (ORDER.index(f['group']) if f['group'] in ORDER else 99, f['places'][0]['page']))
@@ -95,7 +97,7 @@ def requests(book, fs, words, per=FORMS_PER_REQUEST):
             shown = {id(p) for p in _contexts(f)}
             for p in f['places']: pairs.append((f['id'], p, id(p) in shown))
         items = [{'id': f['id'], 'form': f['form'], 'class': f['class'], 'italic': f['italic_any'] and not f['roman_any'],
-                  'places': len(f['places'])} for f in chunk]
+                  'places': len(f['places']), **({'current': f['current']} if f.get('current') else {})} for f in chunk]
         out.append({'book': {'title': book.get('title') or '', 'language': book.get('language') or ''},
                     'snippets': [{'s': n + 1, 'text': s['text']} for n, s in enumerate(_snippets(pairs, words))],
                     'items': items})
@@ -138,7 +140,8 @@ def parse(text, ids):
         if lang is not None and not langtag.valid_part(lang): dropped.append({'id': i, 'why': f'tag not allowed: {lang!r}'}); continue
         if conf not in CONF: dropped.append({'id': i, 'why': f'confidence not allowed: {conf!r}'}); continue
         if why not in WHY: dropped.append({'id': i, 'why': f'reason not allowed: {why!r}'}); continue
-        out[i] = {'lang': lang, 'confidence': conf, 'why': why, **({'note': str(d['note'])[:120]} if d.get('note') else {})}
+        out[i] = {'lang': lang, 'confidence': conf, 'why': why, **({'evidence': str(d['evidence'])[:160]} if d.get('evidence') else {}),
+                  **({'note': str(d['note'])[:120]} if d.get('note') else {})}
     for i in ids:
         if i not in out and not any(x['id'] == i for x in dropped): dropped.append({'id': i, 'why': 'not answered'})
     return out, dropped
@@ -148,6 +151,7 @@ def to_parts(fs, decisions, tag_conf=('high', 'medium')):
     stay untagged (listed for a person: review page, stage D)."""
     parts = []
     for f in fs:
+        if f['group'] == 'existing': continue           # a tag already in the PDF: the decision is a person's to apply (stage D)
         d = decisions.get(f['id'])
         if not d or not d['lang'] or d['confidence'] not in tag_conf: continue
         for p in f['places']:

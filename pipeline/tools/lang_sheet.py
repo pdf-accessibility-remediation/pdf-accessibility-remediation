@@ -7,13 +7,26 @@ The items are the test's Han-only forms with no reading nearby (tools/lang_test.
 nothing else measures. Each row shows the form, its sentence and a crop of the printed line, and asks: Japanese, Chinese,
 another language, or can't tell.
 """
-import sys, os, json, csv, html
+import sys, os, json, csv, html, collections
+PER_LANG = 14
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib import plumb_fix, plpages  # noqa: F401
 import pypdfium2 as pdfium
 
 def main(test_dir, books):
-    items = [it for it in json.load(open(os.path.join(test_dir, 'items.json'), encoding='utf-8'))['items'] if it['source'] == 'nokey'][:25]
+    nk = [it for it in json.load(open(os.path.join(test_dir, 'items.json'), encoding='utf-8'))['items'] if it['source'] == 'nokey']
+    # the sheet's first 25 items stay as they were (earlier builds); then Chinese and Korean books until each of the three
+    # languages has about as many as Japanese allows: up to PER_LANG items of each
+    first = nk[:25]
+    lang_of = {'cadaverous': 'ja', 'teika': 'ja', 'globalasias': 'zh', 'taiwan-matters': 'zh', 'tclt7': 'zh', 'korea-matters': 'ko', 'memorial-ko': 'ko'}
+    have = collections.Counter(lang_of.get(it['book']) for it in first); items = list(first)
+    for it in nk[25:]:
+        lg = lang_of.get(it['book'])
+        if lg in ('zh', 'ko') and have[lg] < PER_LANG: items.append(it); have[lg] += 1
+    # Korean: Hanja beside Hangul is tagged locally, so no Korean item lacks evidence; a Korean reader checks the
+    # romanized-Korean key instead (silver:yale_italic: the key, not the AI, is what is checked)
+    allit = json.load(open(os.path.join(test_dir, 'items.json'), encoding='utf-8'))['items']
+    for it in [x for x in allit if x['source'] == 'silver:yale_italic'][:PER_LANG - have['ko']]: items.append({**it, 'checks_key': it['key']})
     cands = {n: json.load(open(os.path.join(test_dir, 'cand', f'{n}.json'), encoding='utf-8')) for n in {it['book'] for it in items}}
     out = os.path.join(test_dir, 'spotcheck'); os.makedirs(os.path.join(out, 'crops'), exist_ok=True)
     PLs, docs = {}, {}
@@ -32,17 +45,18 @@ def main(test_dir, books):
         words = cands[b]['words'].get(str(it['page'])) or []
         ctx = ' '.join(words[max(0, it['w0'] - 15):it['w0']] + [f'[{it["text"]}]'] + words[it['w1'] + 1:it['w1'] + 16]) if it.get('w0') is not None else ''
         rows.append({'n': n, 'id': it['id'], 'book': b, 'page': it['page'], 'form': it['form'], 'context': ctx, 'crop': crop,
+                     'asks': 'Is this romanized Korean?' if it.get('checks_key') else 'Japanese, Chinese, another language, or can\'t tell?',
                      'language (Japanese / Chinese / other / can\'t tell)': '', 'note': ''})
     with open(os.path.join(out, 'sheet.csv'), 'w', newline='', encoding='utf-8') as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
     h = ['<!doctype html><meta charset="utf-8"><title>Language spot check</title>',
          '<style>body{font:15px/1.5 system-ui,sans-serif;max-width:900px;margin:24px auto;padding:0 16px}td,th{border-top:1px solid #ccc;padding:8px;vertical-align:top}img{max-width:100%}</style>',
          '<h1>Language Spot Check</h1>',
-         '<p>For each item: is the text in brackets Japanese, Chinese, another language, or can\'t you tell? Write the answer in the '
+         '<p>For each item, answer the question shown (for most: is the text in brackets Japanese, Chinese, another language, or can\'t you tell?). Write the answer in the '
          'sheet (sheet.csv, the column "language"). The crop shows the printed line.</p><table><tr><th>#</th><th>Form and Sentence</th><th>Printed Line</th></tr>']
     for r in rows:
         img = f'<img src="{r["crop"]}" alt="">' if r['crop'] else ''
-        h.append(f'<tr><td>{r["n"]}</td><td><b>{html.escape(r["form"])}</b><br>{html.escape(r["context"])}<br><small>{html.escape(r["book"])}, PDF page {r["page"]}</small></td>'
+        h.append(f'<tr><td>{r["n"]}</td><td><i>{html.escape(r["asks"])}</i><br><b>{html.escape(r["form"])}</b><br>{html.escape(r["context"])}<br><small>{html.escape(r["book"])}, PDF page {r["page"]}</small></td>'
                  f'<td>{img}</td></tr>')
     h.append('</table>')
     open(os.path.join(out, 'sheet.html'), 'w', encoding='utf-8').write('\n'.join(h))

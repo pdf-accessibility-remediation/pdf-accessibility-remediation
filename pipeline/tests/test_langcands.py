@@ -40,3 +40,29 @@ def test_places_on_a_page(tmp_path):
     p = by[(0, 'mappō')]
     assert (p['first'], p['last'], p['n'], p['whole']) == (9, 13, 30, False)
     assert words[p['w0']].startswith('mapp')
+
+def test_cjk_document_reverse_direction(tmp_path):
+    """In a Chinese, Japanese or Korean document, Latin-script words are candidates even when English ('latin'), and
+    CJK text in the document's own language is not."""
+    runs = [{'text': 'see the house here'}, {'font': 'F3', 'text': 'mappō'}]
+    src = langpdf.build(str(tmp_path / 'z.pdf'), runs, doc_lang='zh')
+    chars = plpages.Pages(src).pages[0].chars
+    zh, _ = langcands.page_places(1, chars, doc_lang='zh')
+    en, _ = langcands.page_places(1, chars, doc_lang='en')
+    assert any('latin' in p['class'] and p['text'] == 'see the house here' for p in zh)
+    assert not any('latin' in p['class'] for p in en)
+    assert any(p['text'] == 'mappō' for p in zh) and any(p['text'] == 'mappō' for p in en)
+
+def test_spoken_text_finds_what_ocr_hid(tmp_path):
+    """review 02, M5: on a scanned page the OCR lost the marks (ʻāina → aina, Māui → Maui); the readings (OCR-word forms,
+    or a page reading paired word by word) decide the class, and the place stays on the OCR characters."""
+    runs = [{'text': 'The aina was'}, {'text': 'good on Maui here'}]
+    src = langpdf.build(str(tmp_path / 's.pdf'), runs)
+    chars = plpages.Pages(src).pages[0].chars
+    plain, _ = langcands.page_places(1, chars)
+    assert not any(p['form'] == 'ʻāina' for p in plain)
+    by_form, _ = langcands.page_places(1, chars, spoken={'forms': {'aina': 'ʻāina'}})
+    p = next(p for p in by_form if p['text'] == 'aina')
+    assert p['form'] == 'ʻāina' and 'hawaiian' in p['class'] and (p['mcid'], p['first'], p['last']) == (0, 4, 7)
+    by_page, words = langcands.page_places(1, chars, spoken={'reading': 'The ʻāina was good on Māui here'})
+    assert {p['form'] for p in by_page} >= {'ʻāina'} and any('ʻāina' in w for w in words)

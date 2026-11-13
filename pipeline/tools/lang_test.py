@@ -25,24 +25,43 @@ PIPE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROMPT = os.path.join(os.path.dirname(PIPE), 'prompts', 'language_v1.md')
 MODELS = ['anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5']
 SUBJECT = {'cadaverous': 'japan', 'teika': 'japan', 'evangelist': 'japan', 'transnational': 'japan', 'buddhist': 'pali',
-           'hawaii3': 'hawaii', 'expedition': 'china', 'sojourners': 'china', 'dwellings': 'china', 'globalasias': 'mixed'}
+           'hawaii3': 'hawaii', 'expedition': 'china', 'sojourners': 'china', 'dwellings': 'china', 'globalasias': 'mixed',
+           'korea-matters': 'korea', 'chung-taka': 'korea', 'yoon-topics': 'korea', 'memorial-ko': 'korea', 'ktimes-1990': 'korea',
+           'taiwan-matters': 'china', 'tclt7': 'china', 'romanization-guide': 'china', 'taichen': 'china',
+           'yao-history': 'china', 'yao-intelligences': 'china', 'yao-popularizing': 'china', 'mohr-zen': 'japan',
+           'vietnamese': 'vietnam', 'ryukyu': 'ryukyu'}
+# The body text's own language, where it is not English (from each sample's manifest): CJK documents, whose Latin-script
+# parts are the reverse direction (English inside Chinese, Japanese or Korean)
+DOC_LANG = {'yao-history': 'zh', 'yao-intelligences': 'zh', 'yao-popularizing': 'zh', 'mohr-zen': 'ja', 'ktimes-1990': 'ko'}
+NOKEY_BOOKS = ('cadaverous', 'teika', 'globalasias', 'taiwan-matters', 'tclt7', 'korea-matters', 'memorial-ko', 'ryukyu')
 PER_SOURCE = 25
+NOKEY_PER_BOOK = 12
 HEPBURN_ONLY = re.compile(r'[ōū]')
 IAST = re.compile(r'[ṣṇṭḍśṛṃṅṁḥ]')
 JA_SYL = re.compile(r"(?i)^(?:(?:ky|sh|ch|ts|ny|hy|my|ry|gy|by|py|j|[kgsztdnhbpmyrwf])?[aiueoāīūēō]|n(?![aiueoāīūēōy]))+$")
 PINYIN = re.compile(r"(?i)^(?:(?:zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw])?(?:iang|iong|uang|ang|eng|ing|ong|ian|iao|uai|uan|üan|ai|ei|ao|ou|an|en|in|un|ün|ia|ie|iu|ua|uo|ui|üe|er|a|o|e|i|u|ü)(?:n|ng)?)+$")
 SIMPLIFIED = set('创农乐这们说时为长门见车东发书马习头实对应现经过还进动边关开问间听记识语')   # simplified-only: never in Japanese (国, 数, 学 are)
 HAW_LETTERS = set('aeiouāēīōūhklmnpwʻ')
+BREVE = re.compile(r'[ŏŭŎŬ]')                 # McCune-Reischauer (Korean) and Wade-Giles (Chinese: tzŭ) use them
+TONE = re.compile(r'[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]')
+VIET = re.compile(r'[ơưđạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹƠƯĐ]')
 BUDDHIST = {'cadaverous', 'buddhist'}         # books on Buddhism: IAST letters there are Sanskrit or Pali
+
+def toneless(w):
+    """A pinyin word without its tone marks (ü kept): 'zhōngguó' → 'zhongguo'."""
+    import unicodedata
+    return unicodedata.normalize('NFC', ''.join(c for c in unicodedata.normalize('NFD', w) if not unicodedata.combining(c) or c == '\u0308'))
 
 def half(i): return 'tune' if int(hashlib.sha256(i.encode()).hexdigest(), 16) % 2 == 0 else 'score'
 
 def candidates(name, pdf, cache):
     f = os.path.join(cache, f'{name}.json')
-    if os.path.exists(f): return json.load(open(f, encoding='utf-8'))
-    r = langcands.book(plpages.Pages(pdf)); r['title'] = ''
+    if os.path.exists(f):
+        r = json.load(open(f, encoding='utf-8')); r['language'] = DOC_LANG.get(name) or 'en'; return r
+    r = langcands.book(plpages.Pages(pdf), doc_lang=DOC_LANG.get(name)); r['title'] = ''
     import pikepdf
-    with pikepdf.open(pdf) as p: r['title'] = str(p.docinfo.get('/Title', '')).strip(); r['language'] = str(p.Root.get('/Lang', '') or 'en')
+    with pikepdf.open(pdf) as p: r['title'] = str(p.docinfo.get('/Title', '')).strip()
+    r['language'] = DOC_LANG.get(name) or 'en'      # every other sample's body is English (intake may set /Lang from the OCR language: ryukyu ja, vietnamese vi)
     json.dump(r, open(f, 'w', encoding='utf-8'), ensure_ascii=False)
     return r
 
@@ -64,11 +83,12 @@ def silver(name, cand):
     han = [p for p in P if 'cjk:han_only' in p['class']]
     for p in han:
         nb = [latin_core(w) for w in neighbour_words(W, p)]
-        if subj == 'japan' and near(P, p, lambda q: 'cjk:kana' in q['class']): out['kana_next_to_han'].append((p, 'ja'))
-        elif subj == 'japan' and any(HEPBURN_ONLY.search(w) and JA_SYL.match(w.lower()) and not IAST.search(w) for w in nb if w):
+        if subj in ('japan', 'ryukyu') and near(P, p, lambda q: 'cjk:kana' in q['class']): out['kana_next_to_han'].append((p, 'ja'))
+        elif subj in ('japan', 'ryukyu') and any(HEPBURN_ONLY.search(w) and JA_SYL.match(w.lower()) and not IAST.search(w) for w in nb if w):
             out['hepburn_next_to_han'].append((p, 'ja'))
         elif (subj == 'china' or set(p['text']) & SIMPLIFIED) and any(len(w) > 3 and PINYIN.match(w) and not langcands.in_english(w) for w in nb if w):
             out['pinyin_next_to_han'].append((p, 'zh'))
+        elif subj == 'korea' and near(P, p, lambda q: 'cjk:hangul' in q['class']): out['hangul_next_to_han'].append((p, 'ko'))
     for p in P:
         f = p['form']
         if ' ' in f or 'passage' in p['class']: continue
@@ -80,6 +100,18 @@ def silver(name, cand):
             out['iast_marks'].append((p, 'sa-Latn|pi-Latn'))
         elif subj == 'hawaii' and 'hawaiian' in p['class'] and 'ʻ' in f and set(lw) <= HAW_LETTERS and f[:1].islower():
             out['okina_hawaiian'].append((p, 'haw'))
+        elif subj == 'korea' and BREVE.search(f) and not TONE.search(f):
+            out['breve_korean'].append((p, 'ko-Latn'))
+        elif subj == 'korea' and p.get('italic') and 'unknown' in p['class'] and f[:1].islower():
+            out['yale_italic'].append((p, 'ko-Latn'))     # Korean linguistics papers set Yale romanization in italics (mwulkoki-lul)
+        elif subj == 'china' and BREVE.search(f) and f[:1].islower():
+            out['breve_wade_giles'].append((p, 'zh-Latn'))
+        elif subj == 'china' and TONE.search(f) and PINYIN.match(toneless(lw)):
+            out['tone_pinyin'].append((p, 'zh-Latn'))
+        elif subj == 'vietnam' and VIET.search(f) and f[:1].islower():
+            out['vietnamese_letters'].append((p, 'vi'))
+        elif name in DOC_LANG and 'latin' in p['class'] and langcands.in_english(f) and len(f) >= 4:
+            out['english_in_cjk_doc'].append((p, 'en'))
     return out
 
 def no_evidence(cand):
@@ -96,6 +128,8 @@ def no_evidence(cand):
 
 def build(out_dir, books):
     os.makedirs(out_dir, exist_ok=True); cache = os.path.join(out_dir, 'cand'); os.makedirs(cache, exist_ok=True)
+    prev = os.path.join(out_dir, 'items.json')
+    earlier_nokey = [it for it in json.load(open(prev, encoding='utf-8'))['items'] if it['source'] == 'nokey'] if os.path.exists(prev) else []
     rnd = random.Random(118)
     C = {n: candidates(n, p, cache) for n, p in books.items()}
     items = []
@@ -138,12 +172,16 @@ def build(out_dir, books):
     for n, (p, key) in enumerate(syn[:10]):
         words = ['In', 'the', 'source', 'the', 'phrase', p['text'], 'is', 'quoted', 'without', 'a', 'translation.']
         add('synthetic', key, 'synthetic', {**p, 'page': 9000 + n, 'mcid': 0, 'first': 0, 'last': len(p['text']) - 1, 'w0': 5, 'w1': 5}, synthetic_words=words)
-    # 4. no evidence: Han-only with nothing nearby
-    for name in ('cadaverous', 'teika', 'globalasias'):
+    # 4. no evidence: Han-only with nothing nearby. The items of an earlier build come first (the spot-check sheet keeps
+    #    them), then up to NOKEY_PER_BOOK forms per book, drawn with their own seed.
+    for it in earlier_nokey:
+        if it['book'] in C: add('nokey', None, it['book'], {k: it[k] for k in ('page', 'mcid', 'first', 'last', 'text', 'form', 'class', 'w0', 'w1')} | {'italic': it['italic']})
+    r2 = random.Random(119)
+    for name in NOKEY_BOOKS:
         if name not in C: continue
-        ne = no_evidence(C[name]); rnd.shuffle(ne); seen = set()
+        ne = no_evidence(C[name]); r2.shuffle(ne); seen = {it['form'] for it in items if it['source'] == 'nokey' and it['book'] == name}
         for p in ne:
-            if p['form'] in seen or len(seen) >= 12: continue
+            if p['form'] in seen or len(seen) >= NOKEY_PER_BOOK: continue
             seen.add(p['form']); add('nokey', None, name, p)
     json.dump({'built': time.strftime('%Y-%m-%dT%H:%M:%S'), 'books': {n: os.path.basename(p) for n, p in books.items()},
                'detector_recall_globalasias': f'{recall} of 42' if 'globalasias' in C else None, 'items': items},
@@ -183,7 +221,7 @@ def prices():
         return {'anthropic/claude-sonnet-5.5': (2e-6, 10e-6), 'anthropic/claude-opus-5.5': (4e-6, 20e-6)}, f'ASSUMED ({type(e).__name__})'
 
 SUPPORTED = {}             # model -> supported_parameters, from the same public list
-OUT_PER_ITEM = 30          # tokens per decision: {"id":"…","lang":"ja-Latn","confidence":"high","why":"language"}, + a note now and then
+OUT_PER_ITEM = 45          # tokens per decision: {"id":"…","lang":"ja-Latn","confidence":"high","why":"language"}, + a note now and then
 
 def write_requests(out_dir, C, items):
     prompt = open(PROMPT, encoding='utf-8').read()
@@ -233,11 +271,11 @@ def send(out_dir, model, run, which, cap):
     pr, how = prices()
     if how != 'live' or SUPPORTED.get(model) is None: sys.exit(f'refused: OpenRouter\'s model list not read ({how}), so the request\'s parameters cannot be checked')
     pi, po = pr[model]
-    worst = sum(langreq.size(r['request'], prompt) * pi + (len(r['request']['items']) * 60 + 200) * po for r in reqs)
+    worst = sum(langreq.size(r['request'], prompt) * pi + (len(r['request']['items']) * 80 + 200) * po for r in reqs)
     if spent + worst > cap: sys.exit(f'refused: ${spent:.2f} spent + ${worst:.2f} worst case passes the ${cap:.2f} cap')
     od = os.path.join(out_dir, 'replies', model.split('/')[-1], f'run{run}', which); os.makedirs(od, exist_ok=True)
     for n, r in enumerate(reqs, 1):
-        mt = len(r['request']['items']) * 60 + 200
+        mt = len(r['request']['items']) * 80 + 200
         b = langreq.body(r['request'], model, prompt, mt, SUPPORTED.get(model)); b['usage'] = {'include': True}
         json.dump(b, open(os.path.join(od, f'{n:03d}.request.json'), 'w', encoding='utf-8'), ensure_ascii=False)
         req = urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', data=json.dumps(b).encode(),

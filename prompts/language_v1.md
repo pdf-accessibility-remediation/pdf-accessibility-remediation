@@ -25,7 +25,8 @@ A JSON object:
     - `accented`: other Latin accents;
     - `unknown`: not in an English word list;
     - `script:<name>`: Greek, Cyrillic and so on;
-    - `passage`: most of a line is candidates.
+    - `passage`: most of a line is candidates;
+    - `existing`: text the PDF already tags with a language, given in `current`.
   - `italic`: whether it is set in italics;
   - `places`: how often it occurs in the book.
 
@@ -34,7 +35,7 @@ A JSON object:
 Reply with one JSON object and nothing else:
 
 ```
-{"decisions": [{"id": "…", "lang": "ja-Latn", "confidence": "high", "why": "language"}, …]}
+{"decisions": [{"id": "…", "lang": "ja-Latn", "confidence": "high", "why": "language", "evidence": "Hepburn ō; Japanese Buddhist term"}, …]}
 ```
 
 Give exactly one decision per item id:
@@ -47,6 +48,10 @@ Give exactly one decision per item id:
   - `indeterminate`: not a word of any language you can name;
   - `unsure`: you cannot tell;
   - `varies`: the same form is in different languages in different snippets.
+- **`evidence`:** at most 10 words naming what decided it, as a reviewer could check it on the page: a mark ("Hepburn
+  ō", "IAST ṣ"), a nearby reading ("kana reading next to it", "pinyin zizhu chuangxin beside it"), a script feature
+  ("simplified 农"), the text naming the language ("text says 'in Cantonese'"), or the book's subject. Never "context"
+  alone.
 - **`note`:** optional, at most 12 words, only when a reviewer needs it.
 
 ## How to decide
@@ -92,6 +97,23 @@ When the evidence is thin, say so with `medium` or `low`.
 - titles of works written in another language, in a bibliography or in the text (Nihon koten bungaku taikei, Ichiaku no
   suna). Tag the whole title as one item when it is one;
 - a name inside a longer phrase in another language, with the phrase.
+
+**When the book's main language is Chinese, Japanese or Korean** (`book.language` is `zh`, `ja` or `ko`, with or
+without a region or script):
+- items of class `latin` are Latin-script words and passages: English ones get `en`, romanized terms get their language
+  with `-Latn`, and other languages their own tag;
+- the exemptions above do not apply to them, since a Chinese, Japanese or Korean voice reads them badly. A name in
+  Latin letters gets the language it is written in (usually `en`);
+- Chinese characters inside Korean text are Korean (`ko`), and inside Japanese text Japanese (`ja`). The step sends
+  only text that is not in the document's own language.
+
+**Existing tags (`existing`).** The publisher already tagged this text with `current`. Answer with the right tag:
+- the same language as `current` (in its shortest form) when it is right;
+- another language when it is wrong;
+- the book's main language (`en` for an English book) when the text is in it, which means "remove the tag";
+- `null` with `unsure` when you cannot tell.
+
+A value that is not a language code ("Hawaiian", "Hawaii") stands for the language it names.
 
 **Hawaiian.**
 - The local check marks a word as Hawaiian from its shape (only Hawaiian letters, ending in a vowel), an ʻokina or a

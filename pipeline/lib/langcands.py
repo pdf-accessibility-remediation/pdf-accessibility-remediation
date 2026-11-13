@@ -20,6 +20,7 @@ Classes (a place may have more than one):
   marks       romanization marks (Hepburn, IAST: ā ī ū ē ō ś ṣ ṇ ṭ ḍ ṃ ṛ ḥ ñ …)
   accented    other Latin accents (é è ü ö ç …)
   unknown     4+ letters, lower case, not in the English list
+  latin       in a Chinese, Japanese or Korean document only: any Latin-script word of 2+ letters (English, romanization …)
 A word whose letters, with marks and the ʻokina folded away, are in the English list is part of English and never a
 candidate on its own (lūʻau, ʻukulele, sūtra: Patrick, 2026-11-12); a run of 3+ Hawaiian-shape words still takes it in.
 Names are not removed here: deciding what is a name is the AI's job (WCAG exempts Latin-script names only; CJK and other
@@ -121,10 +122,11 @@ def _core_span(cs):
     if i1 - i0 >= 2 and cs[i1]['text'] in ('s', 'S') and cs[i1 - 1]['text'] in "’'": i1 -= 2
     return i0, i1
 
-def page_places(pno, chars, page_chars=None, italic=None):
+def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=None):
     """chars: one page's pdfplumber characters in content order (plpages). Returns (places, words): the page's candidate
     places, and the page's words in reading order (for context: each place names its words by index)."""
     italic = italic or (lambda fn: bool(ITALIC.search((fn or '').split('+')[-1])))
+    cjk_doc = scripts.primary(doc_lang) in scripts.CJK_DOC          # a Chinese, Japanese or Korean document
     idx, runs = {}, collections.defaultdict(list)           # id(char) -> (mcid, index in its run); mcid -> chars
     for c in chars:
         m = c.get('mcid')
@@ -146,6 +148,24 @@ def page_places(pno, chars, page_chars=None, italic=None):
             ms = {idx[id(c)][0] for c in w[i0:i1 + 1]} if core else set()
             words.append({'chars': w[i0:i1 + 1] if core else [], 'text': unicodedata.normalize('NFC', core),
                           'all': shown, 'mcid': next(iter(ms)) if len(ms) == 1 else None})
+    # 1b. scanned books (review 02, M5): the text a screen reader speaks, where the OCR text was given a reading. spoken =
+    #     {'forms': {OCR form: reading}} (the work order's ocr_words) and/or {'reading': the page's AI reading} (page_readings,
+    #     paired word by word as apply.py pairs them). The reading decides the class and the form; the place stays the OCR
+    #     characters (the indexes), so the tag lands where apply.py put the reading.
+    if spoken:
+        forms_ = spoken.get('forms') or {}
+        for w in words:
+            if w['text'] in forms_: w['spoken'] = unicodedata.normalize('NFC', forms_[w['text']])
+        if spoken.get('reading'):
+            from lib import pagereads
+            text, _ = pagereads.okina_slip(spoken['reading'])
+            ai = [c for c in (re.match(r'^\W*(.*?)\W*$', t, re.S).group(1) for t in text.split()) if c]
+            idx_ = [k for k, w in enumerate(words) if w['text']]
+            changes, _ = pagereads.align([words[k]['text'] for k in idx_], ai)
+            for i_, r in changes.items(): words[idx_[i_]]['spoken'] = r
+        for w in words:
+            if 'spoken' in w:
+                w['printed'] = w['text']; w['all'] = w['all'].replace(w['text'], w['spoken'], 1) if w['text'] else w['all']; w['text'] = w['spoken']
     # 2. rejoin a word broken by a hyphen at a line end, for the list check only
     for a, b in zip(words, words[1:]):
         if a['all'][-1:] in HYPHENS and a['chars'] and b['chars'] and abs(a['chars'][-1]['top'] - b['chars'][0]['top']) > 3 \
@@ -160,6 +180,9 @@ def page_places(pno, chars, page_chars=None, italic=None):
         form = w.get('joined', t)
         it = all(italic(c.get('fontname')) for c in w['chars'] if c['text'].strip())
         w['italic'] = it; w['cls'] = classify(form, it); w['form'] = form
+        if cjk_doc and not w['cls'] and LATIN.search(form) and sum(ch.isalpha() for ch in form) >= 2 and not NUMERAL.fullmatch(form) \
+                and not ocrwords.URL.search(form):
+            w['cls'] = ['latin']                     # in a CJK document every Latin-script word is in another language (English, …)
         if w['cls'] and 'hy_to' in w:
             b = w['hy_to']; b['cls'] = list(w['cls']); b['form'] = form; b['italic'] = it
     # a run of HAW_RUN or more Hawaiian-shape words of 2+ letters in one run (single vowels between them allowed: "E iho
@@ -202,6 +225,7 @@ def page_places(pno, chars, page_chars=None, italic=None):
             while l > k and not letter(cs[l]['text']): l -= 1                    # trailing CJK punctuation stays outside
             text = ''.join(c['text'] for c in cs[k:l + 1])
             kd = scripts.kind(text)
+            if cjk_doc and scripts.action(kd, text, doc_lang)[0] == 'inherit': k = j + 1; continue   # the document's own language
             ws = [wix[id(c)] for c in cs[k:l + 1] if id(c) in wix]
             place(m, k, l, [f'cjk:{"mixed" if kd == "mixed_with_latin" else kd}'], re.sub(r'\s+', '', text), False,
                   (min(ws), max(ws)) if ws else (None, None))
@@ -244,18 +268,68 @@ def page_places(pno, chars, page_chars=None, italic=None):
     out.sort(key=lambda p: (p['mcid'], p['first']))
     return out, [w['all'] for w in words]
 
-def book(PL, pages=None):
-    """Every page's places, the page word lists (for context), and counts. PL: plpages.Pages."""
+def book(PL, pages=None, doc_lang=None, spoken=None):
+    """Every page's places, the page word lists (for context), and counts. PL: plpages.Pages. doc_lang: the document's
+    language (its /Lang, or the work order's): in a Chinese, Japanese or Korean document, Latin-script words are
+    candidates ('latin') and CJK text in the document's own language is not. spoken: {'forms': {OCR form: reading},
+    'pages': {page: reading}} for a scanned book's readings (M5), else None."""
     allp, words, C = [], {}, collections.Counter()
     for pno, pg in enumerate(PL.pages, 1):
         if pages and pno not in pages: continue
-        pls, ws = page_places(pno, pg.chars, lambda p, _c=pg.chars: _c)
+        pls, ws = page_places(pno, pg.chars, lambda p, _c=pg.chars: _c, doc_lang=doc_lang,
+                              spoken={'forms': (spoken or {}).get('forms') or {}, 'reading': ((spoken or {}).get('pages') or {}).get(pno)} if spoken else None)
         allp += pls; words[str(pno)] = ws
     forms = collections.defaultdict(set)
     for p in allp:
         for c in p['class']:
             C[c] += 1; C[f'{c}:{"whole" if p["whole"] else "split"}'] += 1; forms[c].add(p['form'])
     fp = hashlib.sha256(json.dumps(sorted((p['form'], p['class']) for p in allp), ensure_ascii=False).encode()).hexdigest()[:16]
-    return {'version': 1, 'wordlist_sha256': list_sha256()[:16], 'fingerprint': fp, 'places': allp, 'words': words,
+    return {'version': 1, 'document_lang': doc_lang or '', 'wordlist_sha256': list_sha256()[:16], 'fingerprint': fp, 'places': allp, 'words': words,
             'stats': {'places': len(allp), 'by_class': dict(sorted(C.items())),
                       'forms': {k: len(v) for k, v in sorted(forms.items())}}}
+
+def existing(pdf, PL, doc_lang, limit=300):
+    """Language tags already in the PDF (a publisher's), on text not in the document's language: one place per run, its
+    whole text, with `current` the value as written (fr-FR on an English copyright page, "Hawaiian", JA on Chinese). From
+    the marks' /Lang in each page's content and from the /Lang of tag-tree elements over their own runs. pdf: pikepdf."""
+    import pikepdf
+    doc = scripts.primary(doc_lang)
+    runs = collections.defaultdict(dict)
+    for pno, pg in enumerate(PL.pages, 1):
+        for c in pg.chars:
+            if c.get('mcid') is not None: runs[pno].setdefault(c['mcid'], []).append(c['text'])
+    found = {}
+    pidx = {p.obj.objgen: i for i, p in enumerate(pdf.pages, 1)}
+    for pno, page in enumerate(pdf.pages, 1):
+        try:
+            for x in pikepdf.parse_content_stream(page, 'BDC'):
+                pr = x.operands[1] if len(x.operands) > 1 else None
+                if isinstance(pr, pikepdf.Dictionary) and '/MCID' in pr and '/Lang' in pr and scripts.primary(str(pr.Lang)) != doc:
+                    found[(pno, int(pr.MCID))] = str(pr.Lang)
+        except Exception: pass
+    st = pdf.Root.get('/StructTreeRoot')
+    stack = [(k, None) for k in (st.get('/K') if isinstance(st.get('/K'), pikepdf.Array) else [st.get('/K')])] if st is not None else []
+    seen = set()
+    while stack and len(seen) < 200000:
+        n, pg = stack.pop()
+        if not isinstance(n, pikepdf.Dictionary) or n.objgen in seen: continue
+        seen.add(n.objgen)
+        pg = pidx.get(n.Pg.objgen) if '/Pg' in n else pg
+        lang = str(n.get('/Lang', '')) if '/Lang' in n else None
+        k = n.get('/K'); ks = list(k) if isinstance(k, pikepdf.Array) else ([k] if k is not None else [])
+        for kid in ks:
+            if isinstance(kid, int):
+                if lang and scripts.primary(lang) != doc and pg: found.setdefault((pg, kid), lang)
+            elif isinstance(kid, pikepdf.Dictionary):
+                if str(kid.get('/Type')) == '/MCR' and '/Stm' not in kid:
+                    p_ = pidx.get(kid.Pg.objgen) if '/Pg' in kid else pg
+                    if lang and scripts.primary(lang) != doc and p_: found.setdefault((p_, int(kid.MCID)), lang)
+                else: stack.append((kid, pg))
+    out = []
+    for (pno, m), cur in sorted(found.items()):
+        cs = runs.get(pno, {}).get(m)
+        if not cs or not ''.join(cs).strip(): continue
+        out.append({'page': pno, 'mcid': m, 'first': 0, 'last': len(cs) - 1, 'n': len(cs), 'text': ''.join(cs), 'form': ''.join(cs).strip(),
+                    'class': ['existing'], 'current': cur, 'italic': False, 'whole': True, 'w0': None, 'w1': None})
+        if len(out) >= limit: break
+    return out
