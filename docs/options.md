@@ -36,6 +36,11 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | `PAGE_READS=off` | No page readings: scanned Hawaiian pages are not read whole by the AI (see [Page readings](#page-readings)) |
 | `PAGE_READS=all` | Page readings for every scanned page with text, not only mostly Hawaiian ones |
 | `PAGE_READS_MAX_USD=5` | The limit on what the page readings together could cost, in dollars (default 3) |
+| `LANG_TAGS=off` | No language step: words and passages in other languages are not sent to the AI (see [Language tags](#language-tags)) |
+| `LANGUAGE_MODEL=…` | The model the language step uses (default: the work order's model) |
+| `LANGUAGE_MAX_USD=6` | The limit on what the language step could cost, in dollars (default 4) |
+| `LANGUAGE_MAX_FORMS=2000` | Send at most this many word forms to the language step (default 5000); the rest are listed, not sent |
+| `LANG_REPLY=…` | A saved language reply (a `language_run.json`) to apply instead of a request; `FROM=` sets it per book |
 | `FIGURE_PASSES=off` | No figure requests: figures past the first request's 100 images go to a reviewer (see [Files](files.md)) |
 
 ## Untagged PDFs (intake)
@@ -89,6 +94,22 @@ No pages are read:
 - in command-line batches, unless you turn it on with `PAGE_READS=1 bash batch_api.sh …`. `BATCH_MAX_USD` then counts it.
 
 `PAGE_READS=all` is for an English PDF with Hawaiian words on most pages. The audit lists the pages to read, so a run already audited without it needs a fresh audit. See [OCR words](ocr-words.md#pages-read-whole).
+
+### Language tags
+
+By default (`LANG_TAGS=on`), after the work order and the page readings, `name_languages.py` sends the words and passages
+the audit found likely to be in another language (`lang_candidates.json`) to the AI, with about 15 words of context
+each, and adds its tags to the work order as `language_parts` (#118). It has its own model, estimate, limit and question;
+`AUTO=1` skips the question. A PDF with no candidates costs nothing. If the step is refused (over its limit or your
+credit), the PDF goes on without it.
+
+No request is made:
+- with a saved reply (`REPLY=…`, `FROM=`): the saved language decisions are applied by word form instead, at no cost,
+  when the earlier run had them (`LANG_REPLY=`); otherwise the step is not run and the record says so
+- with no AI request (`DECIDE=none`)
+- in command-line batches, unless you turn it on with `LANG_TAGS=on bash batch_api.sh …`
+
+A retry that reuses the run's own reply keeps the tags already paid for.
 
 ### OCR languages
 

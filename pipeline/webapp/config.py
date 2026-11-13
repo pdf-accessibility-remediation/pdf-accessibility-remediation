@@ -34,7 +34,8 @@ JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 
            'JOBS', 'BATCH_MAX_USD', 'BOOK_MAX_USD', 'RETRY', 'MODEL', 'FROM',    # #45: batches, the caps, the estimate's model
            'SUMMARY_ONLY', 'ASK_LANG',                                         # round 4: the batch summary rebuild (D3, D8), the language question (D4)
            'FIGURE_RETRY_MAX_USD', 'FIGURE_RETRY_BOOK_MAX_USD',                # #65: the person's real limits, for a figure request's doubled retry only
-           'PAGE_READS', 'PAGE_READS_MAX_USD')                                 # #49: page readings, set by Spend from the estimate shown
+           'PAGE_READS', 'PAGE_READS_MAX_USD',                                 # #49: page readings, set by Spend from the estimate shown
+           'LANG_TAGS', 'LANGUAGE_MAX_USD', 'LANGUAGE_MODEL')                  # #118: the language step, the same way
 # MODEL only as an anthropic/ id (the one the estimate used: 03 §5); FROM only in test mode (test_batch_from, --config);
 # never FORCE_OCR (Q7: no "OCR Every Page Instead" in the app)
 
@@ -139,9 +140,10 @@ def child_env(s, job_env=None, environ=None):
     # page readings (#49): an estimate prices them (page_reads_estimate.json, in lib/costs.py's total); only a Spend that
     # showed them sends them (PAGE_READS=1 and PAGE_READS_MAX_USD from spend.py); every other job reads no pages
     env['PAGE_READS'] = '1' if 'ESTIMATE' in (job_env or {}) else 'off'
+    env['LANG_TAGS'] = 'on' if 'ESTIMATE' in (job_env or {}) else 'off'      # #118: the language step, the same rule
     for k, v in (job_env or {}).items():
         if k not in JOB_ENV: raise ValueError(f'{k} is not a variable a job may set')
-        if k == 'MODEL' and not str(v).startswith('anthropic/'): raise ValueError(f'MODEL {v!r}: the app sends only to a Claude model whose cost it can check')
+        if k in ('MODEL', 'LANGUAGE_MODEL') and not str(v).startswith('anthropic/'): raise ValueError(f'{k} {v!r}: the app sends only to a Claude model whose cost it can check')
         if k == 'FROM' and not s.get('test_batch_from'): raise ValueError('FROM is for test mode only (test_batch_from, from --config)')
         env[k] = str(v)
     return env

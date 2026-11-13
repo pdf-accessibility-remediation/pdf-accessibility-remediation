@@ -74,6 +74,9 @@ cost_earlier = round(sum(a.get('cost_usd') or 0 for a in attempts), 6)
 pr_run = load('page_reads_run.json') or ((prev or {}).get('page_reads') if prev is not None else None)
 cost_pages = round((pr_run or {}).get('cost_usd') or 0, 6)   # a re-apply repeats the whole sum from the earlier record, so these stay in it, once
 pr_listed = (load('page_reads.json', base=A) or {}).get('pages') or []
+# the language step (name_languages.py, #118): its own paid step; a saved reply from elsewhere costs nothing here
+lr_run = load('language_run.json') or ((prev or {}).get('language_run') if prev is not None else None)
+cost_lang = 0 if not lr_run or (lr_run.get('response_from') and not lr_run.get('own_reply')) else round(lr_run.get('cost_usd') or 0, 6)
 for need, name in ((wo, 'workorder.json'), (log, PDF + '.log.json'), (ver, PDF + '.verify.json')):
     if not need: sys.exit(f'{name} missing in {R}: run the whole pipeline first (nothing was deleted)')
 
@@ -114,11 +117,14 @@ record = {
               **({'section_moves': log['section_moves']} if len(log.get('section_moves') or []) > 1 else {}),   # each, when there are several
               **({'figure_order_off': True} if log.get('figure_order_off') else {}),   # fix_figure_order: false for this book
               **({'font_maps': log['font_maps']} if (log.get('font_maps') or {}).get('fonts') or (log.get('font_maps') or {}).get('skipped') else {}),
-              'tabs_set': log.get('tabs_set'), **({'text_rule_guard': log['text_rule_guard']} if log.get('text_rule_guard') else {})},
+              'tabs_set': log.get('tabs_set'), **({'text_rule_guard': log['text_rule_guard']} if log.get('text_rule_guard') else {}),
+              **({'language_parts': log['language_parts']} if log.get('language_parts') else {})},      # #118: the tags written, refused, the render check
     'verify': {k: v for k, v in ver.items() if k != 'verapdf'},
     'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, 'raw_reply': reply,
     **({'raw_reply_passes': passes} if passes else {}), 'environment': log.get('environment'),
-    'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier + cost_pages, 6),
+    'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier + cost_pages + cost_lang, 6),
+    **({'language_run': {k: v for k, v in lr_run.items() if k != 'requests'}
+                        | {'requests': [{k: v for k, v in x.items() if k != 'text'} for x in lr_run.get('requests') or []]}} if lr_run else {}),
     **({'page_reads': {k: v for k, v in pr_run.items() if k != 'pages'} | {'pages': [{k: v for k, v in x.items() if k != 'text'} for x in pr_run.get('pages') or []]}}
        if pr_run else {}),
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),
@@ -1124,7 +1130,8 @@ if not KEEP:
     if os.path.exists(os.path.join(A, 'digest.json')): RS.keep_audit(R, A, wo_ai if rv and wo_ai is not None else wo, INPUT)
     for name in ('request.json', 'response.json', 'reply.txt', 'run.json', 'validation.json', 'workorder.json', 'passes.json',
                  PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'attempts.json',
-                 'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json', 'review_stop.json', 'page_reads_run.json'):
+                 'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json', 'review_stop.json', 'page_reads_run.json',
+                 'language_run.json', 'language_estimate.json'):
         p = os.path.join(R, name)
         if os.path.exists(p): os.remove(p)
     if os.path.isdir(A) and os.path.exists(os.path.join(A, 'digest.json')): shutil.rmtree(A)

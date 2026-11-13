@@ -36,6 +36,7 @@ def allowance(kind, forms=0):
     The work order has room for the reasoning and a reading per OCR word form (Buddhist used ~37 each)."""
     if kind == 'workorder': return max(48000, 16000 + 45 * forms)
     if kind == 'figure': return 32000
+    if kind == 'language': return 300 + 100 * forms       # name_languages.py: a decision with its evidence is 65–75 tokens (#118)
     raise ValueError(f'unknown kind: {kind}')
 
 def _load(p):
@@ -77,6 +78,18 @@ def pages_paid(R):
     pr = _load(os.path.join(R, 'page_reads_run.json'))
     return (pr.get('cost_usd') or 0) if isinstance(pr, dict) else 0
 
+def language_estimate(R):
+    """name_languages.py's estimate in run folder R when it has requests to send (#118), else None."""
+    le = _load(os.path.join(R, 'language_estimate.json'))
+    return le if isinstance(le, dict) and isinstance(le.get('worst_case_usd'), (int, float)) and le.get('to_send') else None
+
+def language_paid(R):
+    """What the language step of an unfinished run has cost so far (language_run.json; a saved reply from elsewhere
+    costs nothing here); report.py moves it into the record."""
+    lr = _load(os.path.join(R, 'language_run.json'))
+    if not isinstance(lr, dict) or (lr.get('response_from') and not lr.get('own_reply')): return 0
+    return lr.get('cost_usd') or 0
+
 def _workorder(R):
     """The work-order call (decide.py): run.json's estimate; the fingerprint covers the estimate without the credit,
     request.json's sha256, the digest's sha256, the model and the prompt's sha256."""
@@ -87,15 +100,17 @@ def _workorder(R):
     per_call = max((p.get('worst_case_usd') or 0) for p in passes) if passes else e['worst_case_total_usd']
     att = _load(os.path.join(R, 'attempts.json')) or []
     spent = e.get('spent_before_usd')
-    if spent is None: spent = round(sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in att if isinstance(a, dict)) + pages_paid(R), 6)   # decide.py's sum: a charge not known counts at its worst case
+    if spent is None: spent = round(sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in att if isinstance(a, dict)) + pages_paid(R) + language_paid(R), 6)   # decide.py's sum: a charge not known counts at its worst case
     covered = {'estimate': {k: v for k, v in e.items() if k not in ('credit_available_usd', 'expected')},
                'request': _sha(os.path.join(R, 'request.json')), 'digest': _sha(os.path.join(R, '_audit', 'digest.json')),
                'model': run.get('model'), 'prompt': run.get('prompt_sha256')}
     sheets = (run.get('ocr_words') or {}).get('sheets') if isinstance(run.get('ocr_words'), dict) else None
     pr = page_estimate(R)
     if pr: covered['page_reads'] = {k: v for k, v in pr.items() if k != 'expected'}     # the expected figure stays out, like the credit
+    le = language_estimate(R)
+    if le: covered['language'] = {k: v for k, v in le.items() if k != 'expected'}
     return {'run': run, 'e': e, 'passes': passes, 'per_call': per_call, 'spent_before': spent, 'covered': covered,
-            'sheets': sheets if isinstance(sheets, int) else None, 'page_reads': pr}
+            'sheets': sheets if isinstance(sheets, int) else None, 'page_reads': pr, 'language': le}
 
 KINDS = {'workorder': _workorder}
 
@@ -103,7 +118,7 @@ def _expected(x):
     """What decide.py stored at the estimate, with the page readings to come added: {usd, low, high, basis}, {none: reason}, or
     None (an estimate made before #65)."""
     v = x['e'].get('expected')
-    return costhistory.with_pages(v, x.get('page_reads')) if isinstance(v, dict) and (v.get('usd') is not None or v.get('none')) else None
+    return costhistory.with_language(costhistory.with_pages(v, x.get('page_reads')), x.get('language')) if isinstance(v, dict) and (v.get('usd') is not None or v.get('none')) else None
 
 def up(x):
     """A dollar figure in a sentence that says "up to": never rounded down."""
@@ -124,12 +139,14 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
     wo_total = float(e['worst_case_total_usd'])                 # the work order's own: decide.py's caps bind it
     pr = x.get('page_reads')
     pr_total = float(pr['worst_case_usd']) if pr else 0.0
-    total = wo_total + pr_total
+    le = x.get('language')
+    le_total = float(le['worst_case_usd']) if le else 0.0
+    total = wo_total + pr_total + le_total
     credit = e.get('credit_available_usd')
     if credit is None and credit_read is not None: credit = credit_read
     book_cap = e.get('book_cap_usd')                     # present on #63's shape; the app's own limit is the one that binds (Spend passes it as BOOK_MAX_USD)
     per_book = L['per_book_usd']
-    per_call = max(x['per_call'], float(pr.get('per_page_worst_usd') or 0) if pr else 0)
+    per_call = max(x['per_call'], float(pr.get('per_page_worst_usd') or 0) if pr else 0, float(le.get('per_call_worst_usd') or 0) if le else 0)
     fits = {'per_call': per_call <= L['per_call_usd'] if claude else None,
             'per_book': (total + x['spent_before']) <= per_book if claude else None,
             'credit': None if credit is None else total <= credit}
@@ -143,15 +160,19 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
     elif credit is None: blocked = {'code': 'no_credit', 'words': 'The credit couldn\'t be checked, so the cost can\'t be compared with it.'}
     fp = hashlib.sha256(json.dumps(x['covered'], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     return {'schema': SCHEMA, 'kind': kind, 'model': model, 'claude': claude, 'prices_checked': prices, 'prompt_sha256': run.get('prompt_sha256'),
-            'requests': (len(x['passes']) if x['passes'] else int(e.get('requests') or 1)) + (int(pr['to_read']) if pr else 0), 'images': int(e.get('images') or 0),
+            'requests': (len(x['passes']) if x['passes'] else int(e.get('requests') or 1)) + (int(pr['to_read']) if pr else 0) + (int(le['to_send']) if le else 0),
+            'images': int(e.get('images') or 0),
             'sheets': x['sheets'], 'input_tokens': e.get('input_tokens'),
             'ceiling_usd': round(total, 4), 'per_call_ceiling_usd': x['per_call'], 'spent_before_usd': x['spent_before'],
             'page_reads': {'pages': int(pr['to_read']), 'ceiling_usd': pr_total} if pr else None,
+            'language': {'forms': int(le.get('sent') or 0), 'requests': int(le['to_send']), 'ceiling_usd': le_total, 'model': le.get('model'),
+                         'prompt_sha256': le.get('prompt_sha256')} if le else None,
             'limits': {'per_call_usd': L['per_call_usd'], 'per_book_usd': per_book if book_cap is not None else None},
             'credit_usd': credit, 'fits': fits, 'blocked': blocked, 'expected': _expected(x), 'fingerprint': fp,
             'bounds': {'MAX_USD': bound(x['per_call'], L['per_call_usd']),
                        'BOOK_MAX_USD': bound(wo_total + x['spent_before'], per_book) if book_cap is not None else None,
-                       **({'PAGE_READS_MAX_USD': bound(pr_total, per_book)} if pr else {})}}
+                       **({'PAGE_READS_MAX_USD': bound(pr_total, per_book)} if pr else {}),
+                       **({'LANGUAGE_MAX_USD': bound(le_total, per_book)} if le else {})}}
 
 # ------------------------------------------------------------------ after the run
 def _retry_usd(run):
@@ -168,6 +189,12 @@ def _estimate_usd(run, pr=None):
     """The Max Estimated Cost that was shown: the work order's and figure requests', with the pages that were to be read."""
     c = (run.get('estimate') or {}).get('worst_case_total_usd')
     return round(c + (pr.get('worst_case_usd') or 0), 4) if c is not None and isinstance(pr, dict) and pr.get('to_read') else c
+
+def _language_money(lr):
+    """(paid, requests paid for) of the language step: the record's language_run or language_run.json. A saved reply from
+    elsewhere costs nothing here."""
+    if not isinstance(lr, dict) or (lr.get('response_from') and not lr.get('own_reply')): return 0.0, 0
+    return round(lr.get('cost_usd') or 0, 6), sum(1 for r in lr.get('requests') or [] if isinstance(r, dict) and r.get('cost_usd'))
 
 def _page_money(pr):
     """(paid, requests paid for, the estimate shown) of the page readings: the record's page_reads or page_reads_run.json. cost_usd
@@ -193,6 +220,8 @@ def actual(R, rec=_READ):
         own = bool(run.get('own_reply'))
         saved = bool(run.get('response_from')) and not own
         pages, page_calls, pr = _page_money(rec.get('page_reads'))
+        lang, lang_calls = _language_money(rec.get('language_run'))
+        pages, page_calls = round(pages + lang, 6), page_calls + lang_calls       # the language step is this folder's own money too
         reused = saved and not pages
         earlier = sum((a.get('cost_usd') or 0) for a in rec.get('earlier_attempts') or [] if isinstance(a, dict))
         this = pages + (0.0 if saved else ((run.get('usage') or {}).get('cost_usd') or 0.0))
@@ -210,6 +239,8 @@ def actual(R, rec=_READ):
     run = _load(os.path.join(R, 'run.json')) or {}
     saved = bool(run.get('response_from')) and not run.get('own_reply')
     pages, page_calls, pr = _page_money(_load(os.path.join(R, 'page_reads_run.json')))
+    lang, lang_calls = _language_money(_load(os.path.join(R, 'language_run.json')))
+    pages, page_calls = round(pages + lang, 6), page_calls + lang_calls
     reused = saved and not pages
     decided = 0.0 if saved else ((run.get('usage') or {}).get('cost_usd') or 0.0)
     this = decided + pages
@@ -301,7 +332,7 @@ def batch(Rs, limit=None, limits=None, credit_read=None, folder=None, rd=None):
     L = limits or limits_of()
     lim = L['per_batch_usd'] if limit is None else limit
     books, ceiling, credit, per_call, blocked = [], 0.0, None, 0.0, []
-    requests, per_book, pr_book = 0, None, None          # every AI request of the books to send, and the largest book's bounds (#63's shape, #49's page readings)
+    requests, per_book, pr_book, le_book = 0, None, None, None          # every AI request of the books to send, and the largest book's bounds (#63's shape, #49's page readings)
     exp_usd, exp_n, exp_of, exp_seen, adds = 0.0, 0, 0, False, []
     for R in Rs:
         if os.path.isfile(os.path.join(R, 'record.json')) or (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
@@ -311,6 +342,7 @@ def batch(Rs, limit=None, limits=None, credit_read=None, folder=None, rd=None):
             ceiling += e['ceiling_usd']; per_call = max(per_call, e['per_call_ceiling_usd']); requests += e['requests']; adds.append(e['ceiling_usd'])
             if e['bounds']['BOOK_MAX_USD'] is not None: per_book = max(per_book or 0, e['bounds']['BOOK_MAX_USD'])
             if e['bounds'].get('PAGE_READS_MAX_USD') is not None: pr_book = max(pr_book or 0, e['bounds']['PAGE_READS_MAX_USD'])
+            if e['bounds'].get('LANGUAGE_MAX_USD') is not None: le_book = max(le_book or 0, e['bounds']['LANGUAGE_MAX_USD'])
             if e['credit_usd'] is not None: credit = e['credit_usd'] if credit is None else min(credit, e['credit_usd'])
             if e['blocked'] and e['blocked']['code'] not in ('credit', 'no_credit'): blocked.append((R, e['blocked']))
             x = e['expected']; exp_of += 1
@@ -330,4 +362,5 @@ def batch(Rs, limit=None, limits=None, credit_read=None, folder=None, rd=None):
             'blocked': blocked,
             'bounds': {'MAX_USD': bound(per_call, L['per_call_usd']) if per_call else None, 'BATCH_MAX_USD': bound(could, lim),
                        **({'BOOK_MAX_USD': per_book} if per_book is not None else {}),
-                       **({'PAGE_READS_MAX_USD': pr_book} if pr_book is not None else {})}}
+                       **({'PAGE_READS_MAX_USD': pr_book} if pr_book is not None else {}),
+                       **({'LANGUAGE_MAX_USD': le_book} if le_book is not None else {})}}

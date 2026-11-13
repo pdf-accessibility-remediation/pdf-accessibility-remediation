@@ -49,6 +49,25 @@ def current_model_and_prompt():
                 sha = hashlib.sha256(open(p, encoding='utf-8').read().encode()).hexdigest()[:16]; break
     return (m.group(1) if m else None), sha
 
+def current_language_prompt():
+    """The language step's prompt sha256[:16] as name_languages.py computes it (issue 118), or None."""
+    try: src = open(os.path.join(config.PIPELINE, 'name_languages.py'), encoding='utf-8').read()
+    except OSError: return None
+    pn = re.search(r"^PROMPT_NAME = '([^']+)'", src, re.M)
+    if not pn: return None
+    import hashlib
+    for d in (os.path.join(config.PIPELINE, 'prompts'), os.path.join(config.ROOT, 'prompts')):
+        p = os.path.join(d, pn.group(1))
+        if os.path.isfile(p): return hashlib.sha256(open(p, encoding='utf-8').read().encode()).hexdigest()[:16]
+    return None
+
+def language_env(est):
+    """The language step as the estimate showed it (issue 118): its cap and model when it was in the estimate, else off, so a
+    job never sends what the person was not shown (config.child_env keeps it off otherwise)."""
+    lg = est.get('language') if isinstance(est, dict) else None
+    if not lg or est['bounds'].get('LANGUAGE_MAX_USD') is None: return {}          # config.child_env: off unless set here
+    return {'LANG_TAGS': 'on', 'LANGUAGE_MAX_USD': f'{est["bounds"]["LANGUAGE_MAX_USD"]:.2f}', 'LANGUAGE_MODEL': lg['model']}
+
 def last_estimate_job(s, run):
     """The run's newest estimate job that finished: its settings are the ones Spend uses."""
     ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] == 'estimate' and j['status'] == 'done']   # a single run's (a batch's book: the batch's Spend)
@@ -61,6 +80,8 @@ def check_estimate(s, R, fingerprint, test, limits):
     if fingerprint != est['fingerprint']: raise Refused(CHANGED)
     model, prompt = current_model_and_prompt()
     if not est['claude'] or model != est['model'] or not prompt or prompt != est['prompt_sha256']: raise Refused(OUT_OF_DATE)   # fails closed (05 M5)
+    lg = est.get('language')
+    if lg and (not str(lg.get('model') or '').startswith('anthropic/') or lg.get('prompt_sha256') != current_language_prompt()): raise Refused(OUT_OF_DATE)
     b = est['blocked']
     if b and not (test and b['code'] in ('offline', 'no_credit')): raise Refused(b['words'])
     return est
@@ -159,6 +180,7 @@ def authorize(s, kind, run, R, fingerprint):
         env.update(costs.retry_env(L))
         if est['bounds'].get('PAGE_READS_MAX_USD') is not None:   # #49: the pages read whole, as the estimate showed them
             env.update(PAGE_READS='1', PAGE_READS_MAX_USD=f'{est["bounds"]["PAGE_READS_MAX_USD"]:.2f}')
+        env.update(language_env(est))                       # #118: the language step only as the estimate showed it
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
              'shown': {'ceiling_usd': est['ceiling_usd'], 'per_call_ceiling_usd': est['per_call_ceiling_usd'], 'expected_usd': (est['expected'] or {}).get('usd'),
                        'bounds': est['bounds'], 'model': est['model']},
@@ -188,6 +210,8 @@ def authorize_batch(s, label, books_list, total, fingerprint):
         env.update(costs.retry_env(costs.limits_of(s)))
         if total['bounds'].get('PAGE_READS_MAX_USD'):            # #49: some books have pages read whole; each is held to the largest's cap
             env.update(PAGE_READS='1', PAGE_READS_MAX_USD=f'{total["bounds"]["PAGE_READS_MAX_USD"]:.2f}')
+        if total['bounds'].get('LANGUAGE_MAX_USD'):              # #118: each book's language step held to the largest's cap
+            env.update(LANG_TAGS='on', LANGUAGE_MAX_USD=f'{total["bounds"]["LANGUAGE_MAX_USD"]:.2f}')
     env['REVIEW'] = '1'                                    # every book stops for review (D2a, Patrick 2026-11-06)
     x = total.get('expected') or {}                         # a figure only when every PDF to send has one: a part of them would mislead after the run
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),

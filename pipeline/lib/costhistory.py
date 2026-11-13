@@ -164,6 +164,17 @@ def with_pages(x, pr):
             'high': round(x.get('high', x['usd']) + p.get('high', p['usd']), 4), 'basis': min(bases, key=lambda b: b['calls']) if bases else None,
             **({'beyond': True} if x.get('beyond') or p.get('beyond') else {})}
 
+def with_language(x, le):
+    """with_pages() for the language step (#118): x with the language step's expected cost (name_languages.py's estimate)
+    added; "Not Available Yet" with its own reason when the step has requests to send but no figure yet."""
+    if not isinstance(x, dict) or not isinstance(le, dict) or not le.get('to_send') or x.get('usd') is None: return x
+    p = le.get('expected')
+    if not isinstance(p, dict) or p.get('usd') is None: return p if isinstance(p, dict) and p.get('none') else {'none': 'no_language_figure'}
+    bases = [b for b in (x.get('basis'), p.get('basis')) if b]
+    return {'usd': round(x['usd'] + p['usd'], 4), 'low': round(x.get('low', x['usd']) + p.get('low', p['usd']), 4),
+            'high': round(x.get('high', x['usd']) + p.get('high', p['usd']), 4), 'basis': min(bases, key=lambda b: b['calls']) if bases else None,
+            **({'beyond': True} if x.get('beyond') or p.get('beyond') else {})}
+
 def beyond_note(x):
     """What the terminal adds to a figure for a request larger than any learned (one wording: one PDF's line and a batch's rows)."""
     return '; larger than any request learned from, so it may read high' if x.get('beyond') else ''
