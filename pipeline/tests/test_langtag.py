@@ -15,3 +15,9 @@ def test_tidied(value, tag):
 @pytest.mark.parametrize('value', ['english', 'English', '', 'en US', 'en--US', 'e', '12', 'en-'])
 def test_not_a_tag(value):
     assert langtag.norm(value) is None
+
+def test_from_name_maps_only_certain_names():
+    from lib import langtag as L
+    assert [L.from_name(x) for x in ('Hawaiian', 'Hawaii', 'Marshallese ', ' japanese', 'Hawai', 'Kyoto', 'English (US)', '')] == \
+        ['haw', 'haw', 'mh', 'ja', 'haw', None, None, None]
+    assert L.shortest('jpn-Latn') == 'ja-Latn' and L.shortest('haw') == 'haw'

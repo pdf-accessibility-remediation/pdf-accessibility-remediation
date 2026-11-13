@@ -1916,9 +1916,9 @@ def fix_standard_remaps():
 def fix_lang_values():
     """veraPDF 7.2-29: a /Lang value must be a language tag. Spelling only is tidied (en_US → en-US, case, spaces); an
     empty /Lang on a tag is removed (it inherits); anything else is listed for a person, never guessed."""
-    reindex(); n, bad = 0, []
+    reindex(); n, named, bad = 0, 0, []
     def tidy(d, where, page, root=False):
-        nonlocal n
+        nonlocal n, named
         v = d.get('/Lang')
         if v is None: return
         raw = str(v)
@@ -1927,11 +1927,16 @@ def fix_lang_values():
             else: bad.append((where, raw, page))
             return
         tag = langtag.norm(raw)
+        if tag is None and langtag.from_name(raw):         # a language's name with one certain code (#118): "Hawaiian", "Marshallese "
+            d.Lang = pikepdf.String(langtag.from_name(raw)); named += 1; return
+        if tag is not None: tag = langtag.shortest(tag)    # the shortest form: jpn → ja (#118, review 02 L2)
         if tag is None: bad.append((where, raw, page))
         elif tag != raw: d.Lang = pikepdf.String(tag); n += 1
     tidy(pdf.Root, 'document', None, root=True)
     for e, _ in all_elems(): tidy(e, S(e), eff_pg.get(e.objgen))
     if n: ok('language: /Lang spelling tidied', n)
+    if named: ok('language: a language name written as /Lang replaced by its code', named)
+    n += named
     rule_fix('7.2-29', n)
     for where, raw, page in bad[:20]:
         log['deferred'].append({'what': f'/Lang "{raw[:40]}" on {where} is not a language tag', 'why': 'set the right tag (e.g. en, ja, zh-Hant)', **({'page': page} if page else {})})

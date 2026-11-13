@@ -84,3 +84,18 @@ def name(tag):
     parts = t.split('-')
     if len(parts) > 1 and f'{parts[0]}-{parts[1]}' in NAMES: return NAMES[f'{parts[0]}-{parts[1]}']
     return NAMES.get(parts[0])
+
+# A language's name written where a code belongs ("Hawaiian", "Marshallese "): the code, only when the name has one
+# certain meaning (#118; review 02 of the scoping: hawaii3 writes "Hawaii", "Hawaiian", "Marshallese"). "Hawaii" is the
+# place's name, used by that publisher for the language; no other place name is read as a language.
+NAME_ALIASES = {'hawaii': 'haw', 'hawai': 'haw', "hawai'i": 'haw', 'hawaiʻi': 'haw', 'hawai‘i': 'haw', 'olelo hawaii': 'haw', 'ʻōlelo hawaiʻi': 'haw',
+                'mandarin': 'zh', 'chinese': 'zh', 'cantonese': 'yue'}
+
+def from_name(value):
+    """The code for a language name written as a value ('Hawaiian' → 'haw', 'Japanese' → 'ja'), case and spaces ignored;
+    None for anything else (never guessed)."""
+    v = ' '.join(str(value or '').split()).strip().lower()
+    if not v: return None
+    if v in NAME_ALIASES: return NAME_ALIASES[v]
+    plain = {n.lower(): c for c, n in NAMES.items() if '(' not in n and c != 'qaa'}
+    return plain.get(v)
