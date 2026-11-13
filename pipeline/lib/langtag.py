@@ -35,7 +35,46 @@ NAMES = {'en': 'English', 'fr': 'French', 'de': 'German', 'es': 'Spanish', 'pt':
          'la': 'Latin', 'haw': 'Hawaiian', 'tl': 'Tagalog', 'fil': 'Filipino', 'ilo': 'Ilokano', 'bik': 'Bikol', 'vi': 'Vietnamese',
          'id': 'Indonesian', 'ms': 'Malay', 'mi': 'Māori', 'sm': 'Samoan', 'to': 'Tongan', 'ja': 'Japanese', 'ko': 'Korean',
          'zh': 'Chinese', 'zh-Hant': 'Chinese (Traditional)', 'zh-Hans': 'Chinese (Simplified)', 'ar': 'Arabic', 'he': 'Hebrew',
-         'ru': 'Russian', 'el': 'Greek', 'th': 'Thai'}
+         'ru': 'Russian', 'el': 'Greek', 'th': 'Thai',
+         # #118 (language tagging): every language the language step may write, so the pages never show a code
+         'ja-Latn': 'Japanese (Romanized)', 'zh-Latn': 'Chinese (Romanized)', 'ko-Latn': 'Korean (Romanized)',
+         'sa': 'Sanskrit', 'sa-Latn': 'Sanskrit (Romanized)', 'pi': 'Pali', 'pi-Latn': 'Pali (Romanized)', 'yue': 'Cantonese',
+         'mh': 'Marshallese', 'chk': 'Chuukese', 'pon': 'Pohnpeian', 'ch': 'Chamorro', 'ty': 'Tahitian', 'fj': 'Fijian',
+         'gil': 'Gilbertese', 'ceb': 'Cebuano', 'hil': 'Hiligaynon', 'pam': 'Kapampangan', 'pag': 'Pangasinan', 'war': 'Waray',
+         'bo': 'Tibetan', 'mn': 'Mongolian', 'hi': 'Hindi', 'ur': 'Urdu', 'fa': 'Persian', 'tr': 'Turkish', 'km': 'Khmer',
+         'my': 'Burmese', 'lo': 'Lao', 'ug': 'Uyghur', 'ain': 'Ainu', 'ryu': 'Okinawan', 'sv': 'Swedish', 'da': 'Danish',
+         'no': 'Norwegian', 'pl': 'Polish', 'cs': 'Czech', 'hu': 'Hungarian', 'fi': 'Finnish', 'grc': 'Ancient Greek',
+         'qaa': 'Placeholder (local use)'}
+
+# ISO 639-2 three-letter codes whose language has a two-letter ISO 639-1 code: BCP 47 uses the shortest (jpn → ja). The
+# languages above and their neighbours; a three-letter code not listed here is left as it is (haw, chk, pon have no
+# two-letter code).
+SHORT = {'eng': 'en', 'fra': 'fr', 'fre': 'fr', 'deu': 'de', 'ger': 'de', 'spa': 'es', 'por': 'pt', 'ita': 'it', 'nld': 'nl',
+         'dut': 'nl', 'lat': 'la', 'tgl': 'tl', 'vie': 'vi', 'ind': 'id', 'msa': 'ms', 'may': 'ms', 'mri': 'mi', 'mao': 'mi',
+         'smo': 'sm', 'ton': 'to', 'jpn': 'ja', 'kor': 'ko', 'zho': 'zh', 'chi': 'zh', 'ara': 'ar', 'heb': 'he', 'rus': 'ru',
+         'ell': 'el', 'gre': 'el', 'tha': 'th', 'san': 'sa', 'pli': 'pi', 'mah': 'mh', 'cha': 'ch', 'tah': 'ty', 'fij': 'fj',
+         'bod': 'bo', 'tib': 'bo', 'mon': 'mn', 'hin': 'hi', 'urd': 'ur', 'fas': 'fa', 'per': 'fa', 'tur': 'tr', 'khm': 'km',
+         'mya': 'my', 'bur': 'my', 'lao': 'lo', 'uig': 'ug', 'swe': 'sv', 'dan': 'da', 'nor': 'no', 'pol': 'pl', 'ces': 'cs',
+         'cze': 'cs', 'hun': 'hu', 'fin': 'fi'}
+DEPRECATED = {'iw', 'in', 'jw', 'ji', 'mo'}      # replaced by he, id, jv, yi, ro
+
+def shortest(tag):
+    """The tag with its primary language subtag in its shortest form ('jpn-Latn' → 'ja-Latn'), or None if not a tag."""
+    t = norm(tag) if tag else None
+    if not t: return None
+    parts = t.split('-')
+    parts[0] = SHORT.get(parts[0], parts[0])
+    return '-'.join(parts)
+
+def valid_part(tag):
+    """True for a tag the language step may write: well formed and in canonical case, its language subtag in its shortest
+    form, not deprecated, and a language this module can name (or qaa, reserved for local use). Refuses 'jp', 'cn',
+    'eng', 'iw' (review 02, L2)."""
+    if not isinstance(tag, str) or norm(tag) != tag or shortest(tag) != tag: return False
+    parts = tag.split('-')
+    if parts[0] in DEPRECATED: return False
+    if parts[0] == 'qaa': return True
+    return name(tag) is not None and (len(parts) == 1 or f'{parts[0]}-{parts[1]}' in NAMES or len(parts[1]) == 2 or parts[1].isdigit())
 
 def name(tag):
     """A language tag's name ('en-US' → 'English', 'zh-Hant-TW' → 'Chinese (Traditional)'), or None when the table has no
