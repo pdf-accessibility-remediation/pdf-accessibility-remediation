@@ -54,12 +54,25 @@ ITALIC = re.compile(r'(?i)ital|oblique|-it$|-it[A-Z]|It$')
 NUMERAL = re.compile(r'(?i)[ivxlcdm]+|\d[\d,.]*\w{0,3}')
 
 # the shapes of romanized Japanese (Hepburn syllables) and Chinese (pinyin syllables), marks removed: a word in the English
-# list with one of these shapes ("Nihon", "Kyoto") may still join a romanized title (grow); "Annals", "Buddhism" may not
+# list with one of these shapes ("Nihon", "Kyoto") may still join a romanized title (grow); "Annals", "Buddhism" may not, nor
+# a common English word of that shape or an English name of a people ("China", "Home", "King", "Japanese": common_romanized)
 JA_SYL = re.compile(r"(?i)^(?:(?:ky|sh|ch|ts|ny|hy|my|ry|gy|by|py|j|[kgsztdnhbpmyrwf])?[aiueo]|n(?![aiueoy]))+$")
 PINYIN = re.compile(r"(?i)^(?:(?:zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw])?(?:iang|iong|uang|ang|eng|ing|ong|ian|iao|uai|uan|ai|ei|ao|ou|an|en|in|un|ia|ie|iu|ua|uo|ui|er|a|o|e|i|u|ü)(?:n|ng)?)+$")
 def romanized_shape(w):
     b = ''.join(ch for ch in unicodedata.normalize('NFD', w.lower()) if not unicodedata.combining(ch))
     return bool(b) and b.isalpha() and bool(JA_SYL.match(b) or PINYIN.match(b))
+
+COMMON = os.path.join(HERE, 'data', 'english-common-romanized.txt')   # SCOWL sizes 10-35 with a romanized shape (review 08, M6)
+EN_PEOPLE = {'japan', 'japanese', 'korea', 'korean', 'chinese', 'taiwanese', 'tibetan'}   # English names of places and peoples
+_COMMON = None
+def common_romanized(w):
+    """A common English word (SCOWL sizes 10-35) that has a romanized shape, or an English name of a people or place (Japan,
+    Japanese): it never joins a romanized title through the shape exception (China, Home, One, King, Rite; review 08, M6)."""
+    global _COMMON
+    if _COMMON is None:
+        with open(COMMON, encoding='utf-8') as f: _COMMON = frozenset(x.strip() for x in f if x.strip())
+    b = ''.join(ch for ch in unicodedata.normalize('NFD', w.lower()) if not unicodedata.combining(ch))
+    return b in _COMMON or b in EN_PEOPLE
 
 _LIST = None
 def wordlist():
@@ -254,7 +267,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                 particle such as no, to, wa only with a word that is not English beyond it: "Nihon no kenkyū", never "of the")."""
                 if not (0 <= i < len(words) and i > last_end and words[i]['mcid'] == m0 and latin_word(words[i])): return False
                 t = words[i]['text']
-                if not in_english(t) or (t[:1].isupper() and romanized_shape(t)): return True
+                if not in_english(t) or (t[:1].isupper() and romanized_shape(t) and not common_romanized(t)): return True
                 return step != 0 and len(t) <= 2 and t.islower() and same(i + step, step) and not in_english(words[i + step]['text'])
             if all(is_italic(x) for x in words[k:j + 1]):                    # the italic run
                 while same(k - 1, -1) and is_italic(words[k - 1]): k -= 1

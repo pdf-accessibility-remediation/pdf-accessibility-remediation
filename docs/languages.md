@@ -51,6 +51,10 @@ See [OCR words](ocr-words.md#pages-read-whole).
 
 ## Running it
 
+Two options are off by default: `LANG_GROW=on` tags a title in another language whole (the voice switches once, not
+mid-title), and `LANG_GROUP=on` makes adjacent single Chinese characters one word form. Title growth stays off until a
+screen-reader check of a title tagged in pieces (see [Options](options.md#language-tags)).
+
 The step is on by default (`LANG_TAGS=on`, see [Options](options.md#language-tags)). It has its own model
 (`LANGUAGE_MODEL`, default the work order's), limit (`LANGUAGE_MAX_USD`, default $4) and form limit
 (`LANGUAGE_MAX_FORMS`, default 5000). The PDF's limit (`BOOK_MAX_USD`, default $5) is shared by the work order, the

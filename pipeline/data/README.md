@@ -19,3 +19,15 @@ tagging). A word on this list is never sent to the AI as a candidate, unless it 
   with the copies.
 
 To update the list, build it from a newer release the same way, and replace both files and the numbers above.
+
+## english-common-romanized.txt
+
+The common English words that look like romanized Japanese or Chinese (review 08, M6 of #118). With title growth on
+(`LANG_GROW=on`), a capitalized word in the English list may join a romanized title when it has a Hepburn or pinyin shape
+("Nihon", "Kamakura"), unless it is on this list ("China", "Home", "One", "King", "Rite").
+
+- **Source:** the same SCOWL 2020.12.07 release and lists as `english-words.txt`, sizes 10 to 35 only (SCOWL's common
+  words), decoded and normalised the same way, kept when `lib/langcands.romanized_shape` accepts them.
+- **Builder:** `runs/118-language-tagging/m6/build_common.py` (local only).
+- **Result:** 3,788 words, sha256 `fd316845694c859e413efcb42b45236fb0bce3d6113d7bb072a0ee706e8d37c6`.
+- **Licence:** as above (`english-words.COPYRIGHT`).

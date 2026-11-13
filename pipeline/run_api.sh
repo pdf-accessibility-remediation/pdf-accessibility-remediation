@@ -46,6 +46,11 @@ PAGE_READS=${PAGE_READS:-1}; [[ $PAGE_READS == 0 || $PAGE_READS == no ]] && PAGE
 [[ $PAGE_READS == 1 || $PAGE_READS == all || $PAGE_READS == off ]] || { echo "PAGE_READS is 1 (the default), all or off: $PAGE_READS"; exit 1; }
 LANG_TAGS=${LANG_TAGS:-on}; [[ $LANG_TAGS == 0 || $LANG_TAGS == no ]] && LANG_TAGS=off      # the language step (#118): on unless LANG_TAGS=off
 [[ $LANG_TAGS == on || $LANG_TAGS == 1 || $LANG_TAGS == off ]] || { echo "LANG_TAGS is on (the default) or off: $LANG_TAGS"; exit 1; }
+# LANG_GROW=on: a title's whole extent is tagged; LANG_GROUP=on: adjacent single Chinese characters are one form (review 08,
+# M6). Both off by default, read by name_languages.py; title growth stays off until the Windows check of a title in pieces.
+for v in LANG_GROW LANG_GROUP; do
+  case ${!v:-off} in on|off|1|0) ;; *) echo "$v is on or off (the default): ${!v}"; exit 1;; esac
+done
 cd "$(dirname "$0")"
 python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
   echo "missing Python libraries in $(command -v python3): from pipeline/, run  python3 -m pip install -r requirements.txt"; exit 1; }

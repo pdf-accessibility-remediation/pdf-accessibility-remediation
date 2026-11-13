@@ -77,3 +77,13 @@ def test_title_growth_takes_the_whole_italic_title(tmp_path):
     on = {p['form'] for p in langcands.page_places(1, chars, grow=True)[0]}
     assert 'koten bungaku taikei' in off and 'Nihon koten bungaku taikei' in on
     assert 'mappoji' in on and not any('Annals' in f for f in on)
+
+def test_title_growth_leaves_common_english_words_out(tmp_path):
+    """review 08, M6: a common English word with a romanized shape (King, China) or an English name of a people (Japanese)
+    never joins a title through the shape exception; a rarer one (Nihon, Kamakura) still does. Synthetic lines."""
+    runs = [{'font': 'F6', 'text': 'King Kujaku myoo'}, {'text': 'and'}, {'font': 'F6', 'text': 'Kamakura bukkyo'}, {'text': 'in'},
+            {'font': 'F6', 'text': 'Konjaku monogatarishu Japanese'}]
+    src = langpdf.build(str(tmp_path / 'c.pdf'), runs)
+    on = {p['form'] for p in langcands.page_places(1, plpages.Pages(src).pages[0].chars, grow=True)[0]}
+    assert 'Kamakura bukkyo' in on and not any('King' in f or 'Japanese' in f for f in on)
+    assert langcands.common_romanized('China') and langcands.common_romanized('Kongō') is False and langcands.common_romanized('Japanese')

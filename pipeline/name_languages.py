@@ -19,6 +19,10 @@ language_run.json, complete): the saved decisions are applied by printed form (r
 or not decided are listed. A request already answered with the same model and prompt is reused, never paid for again.
 The step refuses before any call when its worst case passes --max-usd (LANGUAGE_MAX_USD, default 4) or the credit, for any
 model (review 02, M7). Forms past LANGUAGE_MAX_FORMS (default 5000) are not sent, and listed.
+
+Two options, both off by default (review 08, M6): LANG_GROW=on (--grow) finds the candidates again with a title's whole
+extent (lib/langcands.book grow=True), and LANG_GROUP=on (--group) makes adjacent one-character Han places one form
+(lib/langreq.forms group=True). language_run.json records them under `options`.
 """
 import sys, os, re, json, time, hashlib, argparse, urllib.request, urllib.error, collections
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
@@ -60,10 +64,11 @@ def candidates(args, wo):
     saved = json.load(open(path, encoding='utf-8')) if os.path.exists(path) else None
     sp = spoken_of(wo, None)
     PL = None
-    if sp or saved is None or (doc_lang and saved.get('document_lang', '') != doc_lang):
+    if sp or saved is None or args.grow or (doc_lang and saved.get('document_lang', '') != doc_lang):
         PL = plpages.Pages(args.pdf)
-        c = langcands.book(PL, doc_lang=doc_lang or None, spoken=sp)
-        how = 'found again over the spoken text' if sp else 'found with the work order\'s document language'
+        c = langcands.book(PL, doc_lang=doc_lang or None, spoken=sp, grow=args.grow)
+        how = ('found again over the spoken text' if sp else 'found with the work order\'s document language' if not args.grow or (doc_lang and saved and saved.get('document_lang', '') != doc_lang)
+               else 'found again') + (', titles grown (LANG_GROW)' if args.grow else '')
     else: c, how = saved, 'the audit\'s'
     places = list(c['places'])
     try:
@@ -80,6 +85,9 @@ def main():
     ap.add_argument('--max-forms', type=int, default=int(os.environ.get('LANGUAGE_MAX_FORMS') or 5000))
     ap.add_argument('--book-max-usd', type=float, default=float(os.environ.get('BOOK_MAX_USD') or costs.DEFAULT_LIMITS['per_book_usd']),
                     help="the PDF's limit, shared with the work order and the page readings (review 06, M2)")
+    on = lambda k: os.environ.get(k, 'off').lower() in ('1', 'on', 'yes', 'true')
+    ap.add_argument('--grow', action='store_true', default=on('LANG_GROW'), help="a title's whole extent (LANG_GROW=on; off by default, review 08 M6)")
+    ap.add_argument('--group', action='store_true', default=on('LANG_GROUP'), help='adjacent one-character Han places as one form (LANG_GROUP=on; off by default)')
     g = ap.add_mutually_exclusive_group(); g.add_argument('--response-file'); g.add_argument('--reuse', action='store_true')
     args = ap.parse_args()
     R = args.run_dir
@@ -89,7 +97,7 @@ def main():
     if not prompt_file: sys.exit(f'no prompt file {PROMPT_NAME}')
     prompt = open(prompt_file, encoding='utf-8').read(); prompt_sha = hashlib.sha256(prompt.encode()).hexdigest()[:16]
     places, words, doc_lang, how, fp = candidates(args, wo)
-    fs = langreq.forms(places)
+    fs = langreq.forms(places, group=args.group)      # LANG_GROUP: adjacent one-character Han places as one form (review 08, M6)
     est_path, run_path = os.path.join(R, 'language_estimate.json'), os.path.join(R, 'language_run.json')
     if not fs:
         for p in (est_path,):
@@ -176,6 +184,7 @@ def main():
     if args.dry_run: print('dry run: nothing sent'); return
     rec = {'schema': 'language-run/1', 'model': model, 'prompt_file': os.path.basename(prompt_file), 'prompt_sha256': prompt_sha,
            'started': time.strftime('%Y-%m-%dT%H:%M:%S'), 'estimate': est, 'fingerprint': fp, 'candidates': how,
+           'options': {'grow': bool(args.grow), 'group': bool(args.group)},
            'requests': [answered[t['sha256']] for t in todo if t['reused']], 'decisions': {}, 'cost_usd': round(done.get('cost_usd') or 0, 6) if reuse_ok else 0}
     if send:
         key = os.environ.get('OPENROUTER_API_KEY') or sys.exit('no OPENROUTER_API_KEY: put it in .env or export it')

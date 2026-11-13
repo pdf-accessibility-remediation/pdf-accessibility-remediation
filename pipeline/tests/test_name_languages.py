@@ -114,3 +114,15 @@ def test_reuse_reads_saved_replies_that_were_never_parsed(tmp_path, monkeypatch)
     assert run(src, A, R, monkeypatch, '--reuse') == []
     lr2 = load(R / 'language_run.json')
     assert len(lr2['decisions']) == 3 and lr2['not_decided'] == 0 and len(tagged(R)) == 3
+
+def test_title_growth_and_han_grouping_are_options_off_by_default(tmp_path, monkeypatch):
+    """review 08, M6: LANG_GROW and LANG_GROUP reach the real step (recorded under options); both are off unless set."""
+    src, A, R = folders(tmp_path)
+    monkeypatch.delenv('LANG_GROW', raising=False); monkeypatch.delenv('LANG_GROUP', raising=False)
+    run(src, A, R, monkeypatch)
+    assert load(R / 'language_run.json')['options'] == {'grow': False, 'group': False}
+    (tmp_path / 'b').mkdir(); src2, A2, R2 = folders(tmp_path / 'b')
+    monkeypatch.setenv('LANG_GROW', 'on'); monkeypatch.setenv('LANG_GROUP', 'on')
+    run(src2, A2, R2, monkeypatch)
+    lr = load(R2 / 'language_run.json')
+    assert lr['options'] == {'grow': True, 'group': True} and 'titles grown' in lr['candidates']

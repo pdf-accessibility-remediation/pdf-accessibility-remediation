@@ -40,6 +40,8 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | `LANGUAGE_MODEL=…` | The model the language step uses (default: the work order's model) |
 | `LANGUAGE_MAX_USD=6` | The limit on what the language step could cost, in dollars (default 4) |
 | `LANGUAGE_MAX_FORMS=2000` | Send at most this many word forms to the language step (default 5000); the rest are listed, not sent |
+| `LANG_GROW=on` | The language step tags a title's whole extent (romanized words around a candidate, inside quotes or italics, or before a Chinese-character gloss), so the voice switches once. Off by default, until the Windows screen-reader check of a title tagged in pieces (see [Language tags](#language-tags)) |
+| `LANG_GROUP=on` | Adjacent single Chinese characters become one word form for the language step and the review page (fewer rows). Off by default |
 | `LANG_REPLY=…` | A saved language reply (a `language_run.json`) to apply instead of a request; `FROM=` sets it per book |
 | `FIGURE_PASSES=off` | No figure requests: figures past the first request's 100 images go to a reviewer (see [Files](files.md)) |
 
@@ -116,6 +118,12 @@ No request is made:
 - in command-line batches, unless you turn it on with `LANG_TAGS=on bash batch_api.sh …`
 
 A retry that reuses the run's own reply keeps the tags already paid for.
+
+Two options change what is sent, both off by default (`language_run.json` records them under `options`):
+- `LANG_GROW=on`: a title in another language is tagged whole. A capitalized word in the English list joins a title
+  only when it looks romanized and is not a common English word or an English name of a people (*Nihon* and *Kamakura*
+  join; *China*, *King*, *Japanese* don't; `data/english-common-romanized.txt`); see [Language tags](languages.md).
+- `LANG_GROUP=on`: adjacent single Chinese characters are one word form.
 
 ### OCR languages
 
