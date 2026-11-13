@@ -378,9 +378,11 @@ checks = [
      f'{len(log.get("rejected") or [])} rejected · {len(log.get("failed") or [])} failed (listed under "Decisions not applied")'
      + (f' · {lang_refused} language tag{"" if lang_refused == 1 else "s"} not placed (listed under "Language Tags")' if lang_refused else '')),
     *([('Language tags hold their words', ok(ver_lang.get('all_match', True)),
-        f'{ver_lang.get("spans_written", 0):,} tags checked · {ver_lang.get("mismatches", 0)} not matching their words or language'
+        f'{ver_lang.get("spans_written", 0) + (ver_lang.get("haw_elements") or 0):,} tags checked'
+        + (f' ({ver_lang["haw_elements"]:,} Hawaiian lines on pages read by the AI)' if ver_lang.get('haw_elements') else '')
+        + f' · {ver_lang.get("mismatches", 0)} not matching their words or language'
         + (f' · {ver_lang.get("publisher_conflicts")} of the PDF\'s own tags say another language in their text' if ver_lang.get('publisher_conflicts') else ''))]
-      if ver_lang.get('spans_written') else []),
+      if ver_lang.get('spans_written') or ver_lang.get('haw_elements') else []),
     ('Nothing deferred by the executor',
      ok(not log.get('deferred')) if not any(d.get('scope') == 'pdfua' for d in log.get('deferred') or []) else    # review.html: WCAG deferrals only
      line(pdfua(ok(not log.get('deferred')), ok(not [d for d in log['deferred'] if d.get('scope') != 'pdfua']))),
@@ -1077,7 +1079,8 @@ if bad:
     L += [f'- {json.dumps(b, ensure_ascii=False)}' for b in bad]
     L.append('')
 lp_ = (wo or {}).get('language_parts') or {}
-if lp_.get('version') == 2 or lang_log:                   # #118: what the language step tagged, left untagged and could not place
+haw_el_ = (log.get('haw_elements') or {}).get('elements') or []     # review 08, H2: whole lines tagged Hawaiian on pages read by the AI
+if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the language step tagged, left untagged and could not place
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from lib import langtag as LT
     forms_ = lp_.get('forms') or []
     pages_of_ = collections.defaultdict(set)
@@ -1088,7 +1091,7 @@ if lp_.get('version') == 2 or lang_log:                   # #118: what the langu
     exempt_ = collections.Counter(f.get('why') for f in forms_ if not f.get('tag') and not f.get('person'))
     n += 1; L += [f'### {n}. Language Tags', '',
                   'Words and passages in another language get a language tag, so a screen reader switches to that language\'s voice (WCAG 3.1.2). '
-                  'A person decides every tag on the review page.', '']
+                  'Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.', '']
     by_lang = collections.Counter()
     for i, f in tagged_: by_lang[f['lang']] += f.get('places') or 0
     if by_lang: L += ['| Language | Word forms | Places |', '|---|---:|---:|'] + [line(f'| {LT.name(k) or k} | {sum(1 for _, f in tagged_ if f["lang"] == k)} | {v} |', entry=False)
@@ -1103,6 +1106,11 @@ if lp_.get('version') == 2 or lang_log:                   # #118: what the langu
     if lang_refused:
         L += [f'**Not placed by the executor ({lang_refused}):** the page and its text stay as they were; the words are read in the book\'s language.', '']
         L += [line(f'- {w}: {c}', entry=False) for w, c in sorted((lang_log.get('refused') or {}).items(), key=lambda x: -x[1])]
+        L.append('')
+    if haw_el_:
+        L += [f'**Tagged Hawaiian by a fixed rule on pages read by the AI ({len(haw_el_)}):** whole lines and paragraphs whose words are '
+              'Hawaiian in shape; the person who reads Hawaiian checks them with each page.', '']
+        L += [line(f'- "{excerpt(e.get("text"))}" · {pg(e.get("page"))}', key=f'lang:haw:{e.get("page")}:{i}', pages=[e.get('page')]) for i, e in enumerate(haw_el_)]
         L.append('')
     if tagged_:
         L += [f'**Tagged ({len(tagged_)} word forms):**', '']

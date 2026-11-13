@@ -33,7 +33,11 @@ book ships. Han the AI leaves untagged goes to a person (`han_review.csv`), as b
 Most Hawaiian words carry a kahakō or ʻokina and are found by their marks. Names of people and places stay untagged.
 On scanned pages read whole by the AI (page readings, `PAGE_READS`), a whole line or element (a paragraph, a list
 item, a cell) is tagged `haw` when at least 60% of its words, and at least 3, have Hawaiian shape and one of them is not
-an English word (`apply.py` `haw_elements`). See [OCR words](ocr-words.md#pages-read-whole).
+an English word, and none of its words is outside the English list with a letter Hawaiian lacks (the letter guard: *te*,
+*whare*, *fiefia* rule out Māori, Tongan, Samoan …; a word the page reading corrected is read as corrected) (`apply.py`
+`haw_elements`). These tags come from a fixed rule, not the Languages section: review.md lists each one under "Language
+Tags" for the person who reads Hawaiian and checks those pages, and verify.py counts them with the other language tags.
+See [OCR words](ocr-words.md#pages-read-whole).
 
 ### What stays untagged
 

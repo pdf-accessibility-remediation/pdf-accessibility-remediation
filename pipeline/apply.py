@@ -2651,24 +2651,33 @@ def _write_fixes(page, conts, wrap, state):
     return n_rw, n_sp
 HAW_SHARE, HAW_MIN = 0.6, 3                 # a line or element is Hawaiian when 60% of its words, and at least 3, have Hawaiian shape
 HAW_BLOCKS = {'P', 'H', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'LBody', 'Lbl', 'TD', 'TH', 'Caption', 'BlockQuote', 'Quote', 'Note', 'Span'}
-def haw_elements(pnos):
+def haw_elements(pnos, readings=None):
     """L6 of 03 (#118): on scanned pages read whole by the AI (page readings, Hawaiian pages), the local rule tags a whole
     element haw when most of its words (60%, at least 3) have Hawaiian shape (lib/ocrwords.hawaiian_shape) and one of
-    them is not in the English list (SCOWL lists ka, hale, wahine), as langcands's run rule: one /Lang on the element (a P, a list item, a cell), never a Span per word. Elements with a /Lang already, or in
-    a Hawaiian document, are left alone. Reads the OCR text (marks may be missing there; the shape test ignores them)."""
+    them is not in the English list (SCOWL lists ka, hale, wahine), as langcands's run rule: one /Lang on the element (a P,
+    a list item, a cell), never a Span per word. Elements with a /Lang already, or in a Hawaiian document, are left alone.
+    The letter guard (review 08, H2): an element with any word outside the English list that uses a letter Hawaiian lacks
+    (te, fiefia, whare: Māori, Tongan, Samoan …) is not tagged. Reads the OCR text, with each word the page reading
+    changed read as the reading has it (readings: {page: {OCR word: reading}}), so an OCR misreading such as rnaikai does
+    not trip the guard. Each element tagged is listed (log['haw_elements']['elements']) for the Hawaiian reader."""
     from lib import ocrwords, langcands
-    out = {'pages': sorted(pnos), 'tagged': 0, 'examples': []}
+    out = {'pages': sorted(pnos), 'tagged': 0, 'ruled_out': 0, 'elements': []}
     log['haw_elements'] = out
     if not pnos or str(pdf.Root.get('/Lang') or '').lower().startswith('haw'): return
+    readings = readings or {}
     for n, _par in all_elems():
         if mapped(S(n)) not in HAW_BLOCKS or '/Lang' in n or any(is_elem(k) for k in kids(n)): continue
         pg = eff_pg.get(n.objgen); own = own_mcids(n, pg)
         if not own or any(p not in pnos for p, _ in own): continue
-        words = [c for c in (re.sub(r"^[^\w‘’ʻ']+|[^\w‘’ʻ']+$", '', w) for w in elem_gaptext(n).split()) if len(c) >= 2 and any(ch.isalpha() for ch in c)]
+        fix = readings.get(pg) or {}
+        words = [fix.get(c, c) for c in (re.sub(r"^[^\w‘’ʻ']+|[^\w‘’ʻ']+$", '', w) for w in elem_gaptext(n).split()) if len(c) >= 2 and any(ch.isalpha() for ch in c)]
         haw = [w for w in words if ocrwords.hawaiian_shape(w)]
         if len(haw) >= HAW_MIN and len(haw) >= HAW_SHARE * len(words) and any(not langcands.in_english(w) for w in haw):
+            bad = [w for w in words if ocrwords.not_hawaiian_letters(w)]
+            if bad: out['ruled_out'] += 1; continue
             n.Lang = pikepdf.String('haw'); out['tagged'] += 1
-            if len(out['examples']) < 20: out['examples'].append({'page': pg, 'words': len(words), 'hawaiian': len(haw), 'text': ' '.join(words[:12])})
+            out['elements'].append({'page': pg, 'type': mapped(S(n)), 'words': len(words), 'hawaiian': len(haw), 'text': ' '.join(words[:12]),
+                                    'keys': [[p, m] for p, m in own]})          # verify.py finds the element again by its marked content
     if out['tagged']: ok('Hawaiian lines on page-read pages tagged haw (whole element)', out['tagged'])
 
 def op_page_readings(spec):
@@ -2679,7 +2688,7 @@ def op_page_readings(spec):
     are both right, each where the page prints it. The OCR text, its fonts and the page stay as they were. Runs before
     ocr_words, which leaves operators already in a span alone."""
     items = [it for it in spec or [] if isinstance(it, dict) and isinstance(it.get('page'), int) and 1 <= it['page'] <= len(pages)]
-    res = []
+    res, read_as = [], {}
     for it in items:
         page = pages[it['page'] - 1]
         st = {}; cand, conts = _page_text_ops(page, state=st)
@@ -2706,9 +2715,10 @@ def op_page_readings(spec):
         n_rw, n_sp = _write_fixes(page, conts, wrap, st)
         examples = [[words[wi][2], r] for wi, r in sorted(changes.items())][:200]
         res.append({'page': it['page'], **n, 'operators': n_rw + n_sp, 'rewritten': n_rw, 'spans': n_sp, 'changes': examples, **({'okina_slip': slip} if slip else {})})
+        read_as[it['page']] = {words[wi][2]: r for wi, r in changes.items()}
         if n['changed']: ok('page readings: printed spelling written into the OCR text', n['changed'])
     log['page_readings'] = res
-    haw_elements({r['page'] for r in res})
+    haw_elements({r['page'] for r in res}, read_as)
     if res:
         log['deferred'].append({'what': f'{len(res)} pages read by the AI (page readings)',
                                 'why': 'AI text is a draft: a person who reads Hawaiian checks each page against the scan before the book ships',

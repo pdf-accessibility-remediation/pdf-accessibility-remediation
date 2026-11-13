@@ -292,7 +292,8 @@ def _lang_section():
         elif any(kk in _BDC_LANG and not same_lang(_BDC_LANG[kk], sp['lang']) for kk in keys):
             why = f'its marked content says {next(_BDC_LANG[kk] for kk in keys if kk in _BDC_LANG)}'
         if why: mism.append({'page': sp['page'], 'mcid': sp['mcid'], 'lang': sp['lang'], 'text': sp['text'][:80], 'why': why})
-    mine = {(sp['page'], x) for sp in written for x in sp.get('mcids') or [sp['mcid']]}
+    haw_el = ((_alog.get('haw_elements') or {}).get('elements')) or []
+    mine = {(sp['page'], x) for sp in written for x in sp.get('mcids') or [sp['mcid']]} | {tuple(k) for e in haw_el for k in e.get('keys') or []}
     conflicts, invalid = [], collections.Counter()
     langs_seen = collections.Counter()
     for k, og in owner.items():
@@ -306,7 +307,17 @@ def _lang_section():
     for og in set(owner.values()):
         el = pdf.get_object(og)
         if '/Lang' in el and langtag.norm(str(el.Lang)) is None: invalid[str(el.Lang)] += 1
-    return {'spans_written': len(written), 'by_language': dict(by_lang), 'all_match': not mism, 'mismatches': len(mism),
+    # whole elements tagged haw on page-read pages (apply.py haw_elements, review 08 H2): each still says haw, and no marks
+    # under it name another language
+    for e in haw_el:
+        ks = [tuple(k) for k in e.get('keys') or []]
+        og = owner.get(ks[0]) if ks else None; el = pdf.get_object(og) if og else None
+        why = None
+        if el is None: why = 'not in the tag tree'
+        elif str(el.get('/Lang', '')) != 'haw': why = f'its tag says {str(el.get("/Lang", "")) or "no language"}'
+        elif any(k in _BDC_LANG and not same_lang(_BDC_LANG[k], 'haw') for k in ks): why = f'its marked content says {next(_BDC_LANG[k] for k in ks if k in _BDC_LANG)}'
+        if why: mism.append({'page': e.get('page'), 'mcid': ks[0][1] if ks else None, 'lang': 'haw', 'text': str(e.get('text') or '')[:80], 'why': why})
+    return {'spans_written': len(written), 'haw_elements': len(haw_el), 'by_language': dict(by_lang), 'all_match': not mism, 'mismatches': len(mism),
             'mismatch_examples': mism[:20], 'publisher_conflicts': len(conflicts), 'publisher_conflict_examples': conflicts[:10],
             'marks_with_lang': sum(langs_seen.values()), 'marks_languages': dict(langs_seen.most_common(8)),
             'invalid_values': dict(invalid)}

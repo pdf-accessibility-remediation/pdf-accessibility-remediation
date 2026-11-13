@@ -243,6 +243,34 @@ def test_hawaiian_lines_on_page_read_pages_are_tagged_whole(tmp_path):
     P = pikepdf.open(out); els = P.Root.StructTreeRoot.K[0].K
     assert str(els[0].get('/Lang')) == 'haw' and '/Lang' not in els[1]
     v = json.load(open(out + '.verify.json')); assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+    assert v['language']['haw_elements'] == 1 and v['language']['all_match']                 # review 08, H2: verify counts them
+    el = json.load(open(out + '.log.json'))['haw_elements']['elements']
+    assert len(el) == 1 and el[0]['page'] == 1 and el[0]['text'].startswith('Ua hele mai')   # listed for the Hawaiian reader
     w.write_text(json.dumps({}))
     out2 = str(tmp_path / 'out2.pdf'); run('apply.py', src, w, out2)
     P2 = pikepdf.open(out2); assert '/Lang' not in P2.Root.StructTreeRoot.K[0].K[0]
+
+def test_the_letter_guard_keeps_other_pacific_languages_untagged(tmp_path):
+    """review 08, H2: a line with a word outside the English list that uses a letter Hawaiian lacks (te, whare, fiefia) is
+    not Hawaiian, though most of its words have Hawaiian shape; a word the page reading corrected (an OCR misreading with
+    rn for m) is read as the reading has it. Sentences written for the test (the reviewer's), not from any book."""
+    lines = [{'text': 'He maunga he awa he moana. Ko te whare nui o te iwi.'},          # Māori
+             {'text': 'Malo e lelei. Oku ou fiefia ke u alu ki he fale.'},                # Tongan (marks left out: Helvetica)
+             {'text': 'He mea rnaikai loa ia no ka poe o ka aina.'}]                      # Hawaiian, with an OCR misreading
+    src = langpdf.build(str(tmp_path / 'g.pdf'), lines)
+    w = tmp_path / 'wo.json'
+    w.write_text(json.dumps({'page_readings': [{'page': 1, 'text': ' '.join(l['text'] for l in lines).replace('rnaikai', 'maikaʻi')}]}))
+    out = str(tmp_path / 'out.pdf'); run('apply.py', src, w, out)
+    P = pikepdf.open(out); els = P.Root.StructTreeRoot.K[0].K
+    assert [str(e.get('/Lang', '')) for e in els] == ['', '', 'haw']
+    log = json.load(open(out + '.log.json'))['haw_elements']
+    assert log['tagged'] == 1 and log['ruled_out'] == 2
+
+def test_the_letter_guard_on_words_and_pages():
+    from lib import ocrwords, pagereads
+    assert [ocrwords.not_hawaiian_letters(x) for x in ('te', 'whare', 'fiefia', 'ngangi', 'hale', 'kākou', 'kakoü', 'Häwaii', 'the', 'sulphates')] == \
+        [True, True, True, True, False, False, False, False, False, True]
+    haw = 'Aloha mai kākou. E hele ana au i ka hale kūʻai. He mea maikaʻi loa ia no ka poʻe o ka ʻāina.'.split() * 6
+    mao = 'Kei te pēhea koe? Kia ora koe e hoa. He maunga, he awa, he moana. Ko te whare nui o te iwi.'.split() * 6
+    assert pagereads.hawaiian_page(haw)[1] == 0 and pagereads.hawaiian_page(mao)[1] >= pagereads.FOREIGN_MAX
+    assert pagereads.hawaiian_page(mao)[0] >= pagereads.SHARE_MIN          # the shape test alone would select it

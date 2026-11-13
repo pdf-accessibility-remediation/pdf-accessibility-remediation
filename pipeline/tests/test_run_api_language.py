@@ -48,3 +48,21 @@ def test_saved_language_decisions_are_applied_at_no_cost(tmp_path):
     assert '| Language tags hold their words | OK | 2 tags checked · 0 not matching their words or language |' in md
     g = rec['glance']; lang_line = next(x for x in g['ship'] if x['what'] == 'Language tags')
     assert lang_line['ok'] is False and lang_line['text'].startswith('Not Reviewed (')          # not reviewed: never Ready
+
+def test_hawaiian_lines_are_listed_for_the_hawaiian_reader(tmp_path):
+    """review 08, H2: a line tagged Hawaiian by the fixed rule on a page read by the AI is listed in review.md's Language
+    Tags section, and counted by the check row. The page reading comes with the saved reply's work order here."""
+    src = langpdf.build(str(tmp_path / 'book.pdf'), [{'text': 'Ua hele mai ka wahine i ka hale'}, {'text': 'The house stood on the hill above the bay'}])
+    wo = {'document': {'lang': 'en', 'title': 'Synthetic Hawaiian test'},
+          'page_readings': [{'page': 1, 'text': 'Ua hele mai ka wahine i ka hale The house stood on the hill above the bay'}]}
+    (tmp_path / 'reply.txt').write_text(json.dumps({'model': 'anthropic/claude-sonnet-5.5', 'choices': [{'message': {'content': json.dumps(wo)}, 'finish_reason': 'stop'}],
+                                                    'usage': {'prompt_tokens': 1000, 'completion_tokens': 100, 'cost': 0.3}}))
+    env = dict(os.environ, VERAPDF='off', RUN_DIR=str(tmp_path / 'run'), REPLY=str(tmp_path / 'reply.txt'), INTAKE='off', OPENROUTER_API_KEY='test-not-a-key',
+               HTTPS_PROXY='http://127.0.0.1:9', HTTP_PROXY='http://127.0.0.1:9', https_proxy='http://127.0.0.1:9', http_proxy='http://127.0.0.1:9',
+               RUNS_DIR=str(tmp_path / 'runs'), PATH=os.path.dirname(sys.executable) + os.pathsep + os.environ.get('PATH', ''))
+    for k in ('AUTO', 'FROM', 'LANG_REPLY', 'LANG_TAGS', 'REVIEW'): env.pop(k, None)
+    r = subprocess.run(['bash', 'run_api.sh', src, 'book', 'l1'], cwd=HERE, env=env, capture_output=True, text=True, timeout=600)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    md = open(tmp_path / 'run' / 'review.md', encoding='utf-8').read()
+    assert '**Tagged Hawaiian by a fixed rule on pages read by the AI (1):**' in md and '- "Ua hele mai ka wahine ka hale" · PDF 1' in md
+    assert '1 tags checked (1 Hawaiian lines on pages read by the AI) · 0 not matching their words or language' in md

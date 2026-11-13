@@ -26,6 +26,19 @@ def hawaiian_share(words):
     if len(long_) < WORDS_MIN: return None
     return sum(ocrwords.hawaiian_shape(w) for w in long_) / len(long_)
 
+FOREIGN_MAX = 0.10         # a page is not Hawaiian when 10% of its words (2+ letters) use a letter Hawaiian lacks and are not
+                           # English (review 08, H2). Real Hawaiian OCR (kalo-1911, 15 pages): 0.4–3.9%, OCR misreadings such as
+                           # rnaikai; other Pacific languages (synthetic sentences): 22–70%.
+def foreign_share(words):
+    """The share of a page's words of 2+ letters that ocrwords.not_hawaiian_letters rules out; None with none."""
+    ws = [w for w in (ocrwords.core(x) for x in words) if len(w) >= 2 and any(ch.isalpha() for ch in w)]
+    return sum(ocrwords.not_hawaiian_letters(w) for w in ws) / len(ws) if ws else None
+
+def hawaiian_page(words):
+    """(share, foreign): the page's Hawaiian share (hawaiian_share) and its foreign share; a page is read as Hawaiian when
+    share >= SHARE_MIN and foreign < FOREIGN_MAX."""
+    return hawaiian_share(words), foreign_share(words)
+
 SLIP_MIN = 5               # quote marks inside Hawaiian-shaped words, with no ʻokina at all, before a reading counts as a slip
 def okina_slip(text):
     """The model sometimes writes every ʻokina on a page as a quote mark (Makalei p. 59: 169 times as ‘ in one run, all
