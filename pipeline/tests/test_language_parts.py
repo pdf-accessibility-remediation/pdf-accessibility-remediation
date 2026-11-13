@@ -57,6 +57,39 @@ def test_split_and_whole_runs_tagged(tmp_path):
     for s in lp['spans']: assert '/Lang' not in m[s['mcid']]                         # H1: the tagged marks name no language
     assert str(m[3]['/Lang']) == 'en-US'                                               # untouched runs keep theirs
 
+def test_a_page_that_fails_keeps_its_content_and_its_tree(tmp_path):
+    """review 08, L1: a failure while a page's splits are planned leaves the page as it was, content and tag tree: no Span,
+    no new marked content in an owner's /K, no tag-tree index entry for a run that is not drawn."""
+    runs = [{'text': 'The city of Heiankyo was the capital.'}, {'text': 'Plain English text stays as it is.'}]
+    src = langpdf.build(str(tmp_path / 'src.pdf'), runs)
+    wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'language_parts': {'parts': [part(1, 0, 12, 19, 'ja-Latn')]}}))
+    out = str(tmp_path / 'out.pdf')
+    r = subprocess.run([sys.executable, os.path.join(PIPE, 'apply.py'), src, str(wo), out], env=dict(os.environ, VERAPDF='off', APPLY_FAIL_LANG_PAGE='1'),
+                       capture_output=True, text=True, cwd=PIPE)
+    assert r.returncode == 0, r.stderr[-2000:]
+    run('verify.py', src, out)
+    log, v = json.load(open(out + '.log.json')), json.load(open(out + '.verify.json'))
+    assert log['language_parts']['restored_pages'] == [1] and any(f['op'] == 'fix_language_parts page 1' for f in log['failed'])
+    assert log['language_parts']['spans'] == [] and v['index']['dangling'] == 0
+    assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+    P = pikepdf.open(out); els = P.Root.StructTreeRoot.K[0].K
+    assert [e.K if not isinstance(e.K, pikepdf.Array) else [int(k) for k in e.K] for e in els] in ([0, 1], [[0], [1]])
+
+def test_a_persons_decision_wins_over_an_explicit_run(tmp_path):
+    """review 08, L2: a v10 work order's explicit run (language.runs) does not tag a run whose form a person decided to leave
+    untagged on the review page."""
+    src = langpdf.build(str(tmp_path / 'src.pdf'), [{'font': 'F3', 'text': 'mappō'}, {'text': 'Plain English text.'}])
+    lp = {'version': 2, 'forms': [{'key': 'marks|mappō', 'form': 'mappō', 'group': 'marks', 'class': ['marks'], 'lang': 'ja-Latn',
+                                   'tag': False, 'decided': 'untagged', 'places': 1}], 'parts': [[1, 0, 0, 4, 0]]}
+    wo = tmp_path / 'wo.json'
+    wo.write_text(json.dumps({'language': {'runs': [{'page': 1, 'mcid': 0, 'lang': 'ja-Latn'}]}, 'language_parts': lp}))
+    out = str(tmp_path / 'out.pdf'); run('apply.py', src, wo, out)
+    def tagged(o): return [(s_['mcid'], s_['lang']) for s_ in (json.load(open(o + '.log.json')).get('language_parts') or {}).get('spans', [])]
+    assert tagged(out) == [] and json.load(open(out + '.log.json'))['language_parts']['explicit_overridden'] == 1
+    wo.write_text(json.dumps({'language': {'runs': [{'page': 1, 'mcid': 0, 'lang': 'ja-Latn'}]}}))   # no decision: the run is tagged as before
+    out2 = str(tmp_path / 'out2.pdf'); run('apply.py', src, wo, out2)
+    assert tagged(out2) == [(0, 'ja-Latn')]
+
 def test_today_cjk_tags_lose_the_marks_lang(tmp_path):
     """review 02, H1, on today's rule: a kana run is tagged ja as before, and the en-US inside its marks is removed."""
     runs = [{'lang': 'en-US', 'font': 'F2', 'text': 'Plain text.'}, {'lang': 'en-US', 'text': 'more'}]

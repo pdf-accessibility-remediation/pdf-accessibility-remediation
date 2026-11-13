@@ -1166,6 +1166,11 @@ def op_language(spec):
     spec = spec or {}
     reindex()
     explicit = {(r['page'], r['mcid']): r['lang'] for r in spec.get('runs', [])}
+    lp_ = wo.get('language_parts') if isinstance(wo.get('language_parts'), dict) else {}
+    fs_ = lp_.get('forms') or [] if lp_.get('version') == 2 else []
+    decided = {(r[0], r[1]) for r in lp_.get('parts') or [] if isinstance(r, list) and len(r) == 5 and 0 <= r[4] < len(fs_) and fs_[r[4]].get('decided')}
+    for k in decided & set(explicit):                             # a person's decision on a form wins over a v10 explicit run (review 08, L2)
+        explicit.pop(k); LANG['explicit_overridden'] = LANG.get('explicit_overridden', 0) + 1
     doc_lang = str(pdf.Root.get('/Lang', ''))                     # set by op_document, which runs before this step
     han, counts = [], collections.Counter()
     # The language step's parts (#118). The local rule comes first on the runs they touch (review 06, H1): a run it tags
@@ -3273,29 +3278,36 @@ def fix_language_parts():
                 for p in parts: lang_refuse(pno, m, 'the run\'s tag entry moved before the split was written', p)
             new, plans, dropped, _ = edit(pno, set())
             if new is None: continue
-        try:
-            pages[pno - 1].obj.Contents = new
-            LANG['marks_lang_removed'] += dropped
+        try:                                               # first the page's whole plan, with nothing in the tree changed yet (review 08, L1)
+            built = []                                     # (owner, entry index, its new kids, [(mcid, element)], [Span records], run, pieces)
+            if os.environ.get('APPLY_FAIL_LANG_PAGE') == str(pno): raise RuntimeError('test: a failure while the page is planned')   # tests only
             for m, pieces, parts in plans:
                 o = owner[(pno, m)]; i = mc_entry_index(o, pno, m)
-                ks = kids(o); same_pg = isinstance(ks[i], int)
-                new_k = []
+                if i is None: raise ValueError(f'run {m}: its tag entry is gone')
+                same_pg = isinstance(kids(o)[i], int)
+                new_k, maps, recs = [], [], []
                 for mc, kind, ci in pieces:
-                    if kind == 'run':
-                        new_k.append(mc if same_pg else mcr(pno, mc)); pt_set_mcid(pno, mc, o); owner[(pno, mc)] = o
+                    if kind == 'run': new_k.append(mc if same_pg else mcr(pno, mc)); maps.append((mc, o))
                     else:
                         part = parts[ci]
-                        sp = new_elem('Span', o, [mc], pg=pno, Lang=pikepdf.String(part['lang']))
-                        new_k.append(sp); pt_set_mcid(pno, mc, sp); owner[(pno, mc)] = sp; eff_pg[sp.objgen] = pno
-                        LANG['spans'].append({'page': pno, 'mcid': mc, 'lang': part['lang'], 'text': part['text'], 'whole': False})
-                        LANG['split'] += 1; ok(f'language: {part["lang"]} Span (part of a run)')
-                ks[i:i + 1] = new_k; set_kids(o, ks)
-                for sp in LANG['spans']:                   # a run tagged whole and split under its Span: the Span holds every piece
-                    if sp.get('whole') and sp['page'] == pno and sp['mcid'] == m: sp['mcids'] = [mc for mc, _, _ in pieces]
-        except Exception as e:                             # one page's failure stays on that page (review 06, M6)
-            pages[pno - 1].obj.Contents = old
+                        sp = new_elem('Span', o, [mc], pg=pno, Lang=pikepdf.String(part['lang']))   # not in any /K until written below
+                        new_k.append(sp); maps.append((mc, sp))
+                        recs.append({'page': pno, 'mcid': mc, 'lang': part['lang'], 'text': part['text'], 'whole': False})
+                built.append((o, i, new_k, maps, recs, m, pieces))
+        except Exception as e:                             # one page's failure stays on that page (review 06, M6): its content and its tree as they were
             LANG['restored_pages'].append(pno)
             log['failed'].append({'op': f'fix_language_parts page {pno}', 'error': f'{type(e).__name__}: {e}'[:300]})
+            continue
+        pages[pno - 1].obj.Contents = new                  # then all of it: the content, each owner's /K, the index, the records
+        LANG['marks_lang_removed'] += dropped
+        for o, i, new_k, maps, recs, m, pieces in built:
+            ks = kids(o); ks[i:i + 1] = new_k; set_kids(o, ks)
+            for mc, el in maps:
+                pt_set_mcid(pno, mc, el); owner[(pno, mc)] = el
+                if el is not o: eff_pg[el.objgen] = pno
+            for r in recs: LANG['spans'].append(r); LANG['split'] += 1; ok(f'language: {r["lang"]} Span (part of a run)')
+            for sp in LANG['spans']:                       # a run tagged whole and split under its Span: the Span holds every piece
+                if sp.get('whole') and sp['page'] == pno and sp['mcid'] == m: sp['mcids'] = [mc for mc, _, _ in pieces]
     LANG['render_check_seconds'] = round(time.time() - t0, 2)
 
 # ================================================================== run, in a fixed order
@@ -3331,7 +3343,7 @@ except Exception as e: log['failed'].append({'op': 'fix_language_parts', 'error'
 for fn in (fix_rolemap_cycles, fix_standard_remaps, fix_th_scope, fix_lang_values):   # veraPDF rules the executor fixes by itself
     try: fn()
     except Exception as e: log['failed'].append({'op': fn.__name__, 'error': f'{type(e).__name__}: {e}'[:300]})
-if not (LANG['spans'] or LANG['refused'] or LANG.get('existing_removed') or LANG.get('existing_kept') or LANG.get('names_converted') or LANG.get('names_not_converted')) and not any(f['op'] == 'fix_language_parts' for f in log['failed']): log.pop('language_parts')      # nothing tagged, refused or converted (fix_lang_values, M4 of 08): no entry
+if not (LANG['spans'] or LANG['refused'] or LANG.get('existing_removed') or LANG.get('existing_kept') or LANG.get('names_converted') or LANG.get('names_not_converted') or LANG.get('restored_pages') or LANG.get('explicit_overridden')) and not any(f['op'].startswith('fix_language_parts') for f in log['failed']): log.pop('language_parts')      # nothing tagged, refused or converted (fix_lang_values, M4 of 08): no entry
 try: fix_parenttree()
 except Exception as e: log['failed'].append({'op': 'fix_parenttree', 'error': f'{type(e).__name__}: {e}'[:300]})
 try: fix_index()
