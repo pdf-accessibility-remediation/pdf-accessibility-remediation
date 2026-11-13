@@ -106,7 +106,7 @@ def silver(name, cand):
             out['yale_italic'].append((p, 'ko-Latn'))     # Korean linguistics papers set Yale romanization in italics (mwulkoki-lul)
         elif subj == 'china' and BREVE.search(f) and f[:1].islower():
             out['breve_wade_giles'].append((p, 'zh-Latn'))
-        elif subj == 'china' and TONE.search(f) and PINYIN.match(toneless(lw)):
+        elif subj == 'china' and TONE.search(f) and f[:1].islower() and not langcands.in_english(f) and PINYIN.match(toneless(lw)) and not JA_SYL.match(lw) and not set(lw) <= HAW_LETTERS:
             out['tone_pinyin'].append((p, 'zh-Latn'))
         elif subj == 'vietnam' and VIET.search(f) and f[:1].islower():
             out['vietnamese_letters'].append((p, 'vi'))
@@ -221,7 +221,7 @@ def prices():
         return {'anthropic/claude-sonnet-5.5': (2e-6, 10e-6), 'anthropic/claude-opus-5.5': (4e-6, 20e-6)}, f'ASSUMED ({type(e).__name__})'
 
 SUPPORTED = {}             # model -> supported_parameters, from the same public list
-OUT_PER_ITEM = 45          # tokens per decision: {"id":"…","lang":"ja-Latn","confidence":"high","why":"language"}, + a note now and then
+OUT_PER_ITEM = 75          # tokens per decision: {"id":"…","lang":"ja-Latn","confidence":"high","why":"language"}, + a note now and then
 
 def write_requests(out_dir, C, items):
     prompt = open(PROMPT, encoding='utf-8').read()
@@ -271,11 +271,16 @@ def send(out_dir, model, run, which, cap):
     pr, how = prices()
     if how != 'live' or SUPPORTED.get(model) is None: sys.exit(f'refused: OpenRouter\'s model list not read ({how}), so the request\'s parameters cannot be checked')
     pi, po = pr[model]
-    worst = sum(langreq.size(r['request'], prompt) * pi + (len(r['request']['items']) * 80 + 200) * po for r in reqs)
+    worst = sum(langreq.size(r['request'], prompt) * pi + (len(r['request']['items']) * 100 + 300) * po for r in reqs)
     if spent + worst > cap: sys.exit(f'refused: ${spent:.2f} spent + ${worst:.2f} worst case passes the ${cap:.2f} cap')
     od = os.path.join(out_dir, 'replies', model.split('/')[-1], f'run{run}', which); os.makedirs(od, exist_ok=True)
+    print(f'{which} on {model}, run {run}: {len(reqs)} requests, worst case ${worst:.2f}; ${spent:.2f} spent of the ${cap:.2f} cap so far')
     for n, r in enumerate(reqs, 1):
-        mt = len(r['request']['items']) * 80 + 200
+        mt = len(r['request']['items']) * 100 + 300
+        e1 = langreq.size(r['request'], prompt) * pi + mt * po
+        spent_now = sum(c.get('cost') or 0 for c in ledger['calls'])
+        if spent_now + e1 > cap: sys.exit(f'stopped before request {n}: ${spent_now:.2f} spent + ${e1:.2f} worst case would pass the ${cap:.2f} cap')
+        print(f'  request {n}/{len(reqs)}: {len(r["request"]["items"])} items, estimate up to ${e1:.3f} … ', end='', flush=True)
         b = langreq.body(r['request'], model, prompt, mt, SUPPORTED.get(model)); b['usage'] = {'include': True}
         json.dump(b, open(os.path.join(od, f'{n:03d}.request.json'), 'w', encoding='utf-8'), ensure_ascii=False)
         req = urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', data=json.dumps(b).encode(),
@@ -285,7 +290,7 @@ def send(out_dir, model, run, which, cap):
         cost = (rep.get('usage') or {}).get('cost')
         ledger['calls'].append({'model': model, 'run': run, 'set': which, 'n': n, 'cost': cost, 'at': time.strftime('%Y-%m-%dT%H:%M:%S')})
         json.dump(ledger, open(ledger_f, 'w'), indent=1)
-        print(f'{which} {n}/{len(reqs)}: ${cost}')
+        print(f'${cost:.4f}' if isinstance(cost, (int, float)) else 'cost not given')
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()

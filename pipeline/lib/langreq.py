@@ -110,7 +110,8 @@ def tokens(text):
     cjk = len(re.findall(r'[　-鿿豈-﫿가-힯＀-￯]', text))
     return cjk + (len(text) - cjk) / 3.5
 
-def size(req, prompt): return int(tokens(prompt) + tokens(user_text(req))) + 10
+INPUT_MARGIN = 1.7            # billed input / tokens() on the first paid round (Sonnet 5.5, 18 requests: 1.52–1.66), 2026-11-12
+def size(req, prompt): return int((tokens(prompt) + tokens(user_text(req))) * INPUT_MARGIN) + 10
 
 def body(req, model, prompt, max_tokens, supported=None):
     """supported: the model's supported_parameters from OpenRouter's model list (None: not known). Temperature is sent as
@@ -129,8 +130,16 @@ def parse(text, ids):
     m = re.search(r'\{.*\}', text or '', re.S)
     try: data = json.loads(m.group(0)) if m else None
     except ValueError: data = None
-    if not isinstance(data, dict) or not isinstance(data.get('decisions'), list): return {}, [{'id': None, 'why': 'reply is not a decisions object'}]
     out, dropped = {}, []
+    if not isinstance(data, dict) or not isinstance(data.get('decisions'), list):
+        # not valid JSON as a whole (a stray brace, a cut string): keep every decision object that is itself valid
+        found = []
+        for x in re.finditer(r'\{[^{}]*"id"[^{}]*\}', text or ''):
+            try: found.append(json.loads(x.group(0)))
+            except ValueError: pass
+        if not found: return {}, [{'id': None, 'why': 'reply is not a decisions object'}]
+        dropped.append({'id': None, 'why': f'reply not valid JSON: {len(found)} decisions read one by one'})
+        data = {'decisions': found}
     for d in data['decisions']:
         if not isinstance(d, dict): dropped.append({'id': None, 'why': 'not an object'}); continue
         i = str(d.get('id'))

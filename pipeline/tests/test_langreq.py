@@ -51,3 +51,11 @@ def test_parse_and_parts():
     assert set(dec2) == {'2'} and "tag not allowed: 'jp'" in dropped2[0]['why']
     assert langreq.to_parts(fs, dec2)['parts'] == []        # low and null are never tagged
     assert langreq.parse('no json', {'1'})[1][0]['why'] == 'reply is not a decisions object'
+
+def test_parse_salvages_decisions_from_broken_json():
+    """Sonnet 5.5 sent a stray brace or a cut string in 5 of 18 replies (#118 test, round 1): each decision object that
+    is valid on its own is kept, and the reply is counted as not valid JSON."""
+    t = ('{"decisions":[{"id":"1","lang":"haw","confidence":"high","why":"language","evidence":"okina"}},'
+         '{"id":"2","lang":"ja","confidence":"medium","why":"language"},{"id":"3","lang":"zh","conf')
+    dec, dropped = langreq.parse(t, {'1', '2', '3'})
+    assert set(dec) == {'1', '2'} and 'not valid JSON' in dropped[0]['why'] and dropped[-1] == {'id': '3', 'why': 'not answered'}

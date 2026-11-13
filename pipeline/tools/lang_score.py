@@ -38,11 +38,12 @@ def verdict(ans, accept):
             return 'right' if latn(lang) == latn(a) else 'script'
     return 'wrong'
 
-def answers(test_dir):
+def answers(test_dir, runs=None):
     """{(model, run): {item id: decision}} from every saved reply, read with langreq.parse against its own request."""
     out = collections.defaultdict(dict)
     for rep in sorted(glob.glob(os.path.join(test_dir, 'replies', '*', 'run*', '*', '*.reply.json'))):
         model, run = rep.split(os.sep)[-4], rep.split(os.sep)[-3]
+        if runs and run not in runs: continue
         req = json.load(open(rep.replace('.reply.json', '.request.json'), encoding='utf-8'))
         ids = [it['id'] for it in json.loads(req['messages'][1]['content'])['items']]
         r = json.load(open(rep, encoding='utf-8'))
@@ -51,9 +52,9 @@ def answers(test_dir):
         out[(model, run)].update(dec)
     return out
 
-def score(test_dir, which='score'):
+def score(test_dir, which='score', runs=None):
     items = json.load(open(os.path.join(test_dir, 'items.json'), encoding='utf-8'))['items']
-    A = answers(test_dir)
+    A = answers(test_dir, runs)
     runs = sorted(A)
     keyed = [it for it in items if it['source'] != 'nokey' and (which == 'all' or it['half'] == which)]
     keys = collections.OrderedDict()
@@ -99,4 +100,5 @@ def score(test_dir, which='score'):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(); ap.add_argument('test_dir'); ap.add_argument('--half', default='score', choices=['score', 'tune', 'all'])
-    a = ap.parse_args(); score(a.test_dir, a.half)
+    ap.add_argument('--runs', default=None, help='comma-separated run folders to score (run1,run2); default every run')
+    a = ap.parse_args(); score(a.test_dir, a.half, set(a.runs.split(',')) if a.runs else None)

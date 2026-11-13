@@ -72,7 +72,7 @@ def fold(w):
 def in_english(word):
     """True when the word, or every part of it between hyphens, is in the English list (marks folded)."""
     L = wordlist(); w = fold(word)
-    if w in L or w.replace("'", '') in L: return True
+    if w in L or w.replace("'", '') in L or unicodedata.normalize('NFC', word).lower() in L: return True    # café is listed with its accent
     parts = [p for p in re.split(r"[-‐‑]", w) if p]
     return len(parts) > 1 and all(p in L for p in parts)
 
