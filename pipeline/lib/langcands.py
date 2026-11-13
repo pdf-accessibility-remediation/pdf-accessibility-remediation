@@ -53,6 +53,14 @@ HYPHENS = '-‐‑'
 ITALIC = re.compile(r'(?i)ital|oblique|-it$|-it[A-Z]|It$')
 NUMERAL = re.compile(r'(?i)[ivxlcdm]+|\d[\d,.]*\w{0,3}')
 
+# the shapes of romanized Japanese (Hepburn syllables) and Chinese (pinyin syllables), marks removed: a word in the English
+# list with one of these shapes ("Nihon", "Kyoto") may still join a romanized title (grow); "Annals", "Buddhism" may not
+JA_SYL = re.compile(r"(?i)^(?:(?:ky|sh|ch|ts|ny|hy|my|ry|gy|by|py|j|[kgsztdnhbpmyrwf])?[aiueo]|n(?![aiueoy]))+$")
+PINYIN = re.compile(r"(?i)^(?:(?:zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw])?(?:iang|iong|uang|ang|eng|ing|ong|ian|iao|uai|uan|ai|ei|ao|ou|an|en|in|un|ia|ie|iu|ua|uo|ui|er|a|o|e|i|u|ü)(?:n|ng)?)+$")
+def romanized_shape(w):
+    b = ''.join(ch for ch in unicodedata.normalize('NFD', w.lower()) if not unicodedata.combining(ch))
+    return bool(b) and b.isalpha() and bool(JA_SYL.match(b) or PINYIN.match(b))
+
 _LIST = None
 def wordlist():
     global _LIST
@@ -246,7 +254,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                 particle such as no, to, wa only with a word that is not English beyond it: "Nihon no kenkyū", never "of the")."""
                 if not (0 <= i < len(words) and i > last_end and words[i]['mcid'] == m0 and latin_word(words[i])): return False
                 t = words[i]['text']
-                if not in_english(t): return True
+                if not in_english(t) or (t[:1].isupper() and romanized_shape(t)): return True
                 return step != 0 and len(t) <= 2 and t.islower() and same(i + step, step) and not in_english(words[i + step]['text'])
             if all(is_italic(x) for x in words[k:j + 1]):                    # the italic run
                 while same(k - 1, -1) and is_italic(words[k - 1]): k -= 1
