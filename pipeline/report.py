@@ -118,13 +118,16 @@ record = {
               **({'figure_order_off': True} if log.get('figure_order_off') else {}),   # fix_figure_order: false for this book
               **({'font_maps': log['font_maps']} if (log.get('font_maps') or {}).get('fonts') or (log.get('font_maps') or {}).get('skipped') else {}),
               'tabs_set': log.get('tabs_set'), **({'text_rule_guard': log['text_rule_guard']} if log.get('text_rule_guard') else {}),
-              **({'language_parts': log['language_parts']} if log.get('language_parts') else {})},      # #118: the tags written, refused, the render check
+              **({'language_parts': {k: v for k, v in log['language_parts'].items() if k != 'spans'}       # #118: counts, refusals, the render check;
+                                    | {'spans': len(log['language_parts'].get('spans') or []),         # each Span is in the PDF and checked by verify.py
+                                       'by_language': dict(collections.Counter(x['lang'] for x in log['language_parts'].get('spans') or []))}}
+                 if log.get('language_parts') else {})},
     'verify': {k: v for k, v in ver.items() if k != 'verapdf'},
     'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, 'raw_reply': reply,
     **({'raw_reply_passes': passes} if passes else {}), 'environment': log.get('environment'),
     'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier + cost_pages + cost_lang, 6),
-    **({'language_run': {k: v for k, v in lr_run.items() if k != 'requests'}
-                        | {'requests': [{k: v for k, v in x.items() if k != 'text'} for x in lr_run.get('requests') or []]}} if lr_run else {}),
+    **({'language_run': {k: v for k, v in lr_run.items() if k not in ('requests', 'language_parts')}       # the parts are in workorder.language_parts
+                        | {'requests': [{k: v for k, v in x.items() if k not in ('text', 'keys', 'ids')} for x in lr_run.get('requests') or []]}} if lr_run else {}),
     **({'page_reads': {k: v for k, v in pr_run.items() if k != 'pages'} | {'pages': [{k: v for k, v in x.items() if k != 'text'} for x in pr_run.get('pages') or []]}}
        if pr_run else {}),
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),

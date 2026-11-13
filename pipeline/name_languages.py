@@ -179,7 +179,7 @@ def main():
                  'text': (ch.get('message') or {}).get('content') or '', 'finish': ch.get('finish_reason'), 'input_tokens': u.get('prompt_tokens'),
                  'output_tokens': u.get('completion_tokens'), 'cost_usd': u.get('cost'), 'seconds': round(time.time() - t0, 1)}
             rec['requests'].append(x); rec['cost_usd'] = round(rec['cost_usd'] + (x['cost_usd'] or 0), 6)
-            print(f'  request {t["n"]}/{len(todo)}: {x["output_tokens"]} tokens, ${x["cost_usd"] or 0:.4f}' + ('' if x['finish'] == 'stop' else f' · cut off ({x["finish"]}): not used'))
+            print(f'  request {t["n"]}/{len(todo)}: {x["output_tokens"]} tokens, ${x["cost_usd"] or 0:.4f}' + ('' if x['finish'] == 'stop' else f' · cut off ({x["finish"]}): its finished decisions are kept'))
             json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
             if x['finish'] == 'stop' and x['input_tokens'] and x['output_tokens']:
                 try: costhistory.append({'kind': 'language', 'model': model, 'prompt': os.path.basename(prompt_file), 'input_est': t['input_est'], 'input_billed': x['input_tokens'],
@@ -189,14 +189,14 @@ def main():
     # decisions by form, from every complete reply
     dec, dropped = {}, []
     by_id = {f['id']: f for f in sent}
-    for x in rec['requests']:
-        if x.get('finish') != 'stop': continue
-        d, dr = langreq.parse(x['text'], set(x['ids'])); dec.update(d); dropped += dr
+    for x in rec['requests']:                        # a reply cut off (finish 'length') keeps every decision it finished
+        d, dr = langreq.parse(x.get('text') or '', set(x['ids'])); dec.update(d); dropped += dr
     rec['decisions'] = {form_key(by_id[i]): v for i, v in dec.items() if i in by_id}
     rec['dropped'] = dropped[:200]
+    rec['not_decided'] = sum(1 for f in sent if f['id'] not in dec)          # cut off, invalid, or never sent: listed for a person
     json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     merge(R, wo_path, sent, dec, rec, held=held)
-    print(f'language step: {len(dec)} of {len(sent)} forms decided · ${rec["cost_usd"]:.4f} spent on this step')
+    print(f'language step: {len(dec)} of {len(sent)} forms decided ({rec["not_decided"]} not decided) · ${rec["cost_usd"]:.4f} spent on this step')
 
 def merge(R, wo_path, fs, dec, rec, held=(), note=None):
     """workorder.json's language_parts from the decisions (checked as every work order is), and, beside them in

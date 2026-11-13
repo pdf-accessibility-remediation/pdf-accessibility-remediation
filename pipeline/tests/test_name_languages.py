@@ -85,3 +85,16 @@ def test_a_saved_reply_without_decisions_runs_nothing(tmp_path, monkeypatch):
     (tmp_path / 'empty.json').write_text('{}')
     assert run(src, A, R, monkeypatch, '--response-file', tmp_path / 'empty.json') == []
     assert 'not run' in load(R / 'language_run.json')['note'] and 'language_parts' not in load(R / 'workorder.json')
+
+def test_a_cut_off_reply_keeps_what_it_finished(tmp_path, monkeypatch):
+    """A reply cut off at max_tokens (finish 'length') keeps every decision object it finished; the rest are counted as
+    not decided, never lost silently (05, advisor)."""
+    src, A, R = folders(tmp_path)
+    def cut(body, n):
+        items = json.loads(body['messages'][1]['content'])['items']
+        whole = json.dumps({'decisions': [{'id': it['id'], 'lang': 'ja-Latn', 'confidence': 'high', 'why': 'language'} for it in items]})
+        return {'choices': [{'message': {'content': whole[:whole.rfind('{"id"') + 12]}, 'finish_reason': 'length'}],
+                'usage': {'prompt_tokens': 900, 'completion_tokens': 100, 'cost': 0.004}}
+    run(src, A, R, monkeypatch, reply=cut)
+    lr = load(R / 'language_run.json')
+    assert len(lr['decisions']) == 2 and lr['not_decided'] == 1 and len(load(R / 'workorder.json')['language_parts']['parts']) == 2
