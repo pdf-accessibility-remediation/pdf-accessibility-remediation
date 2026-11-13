@@ -3164,28 +3164,41 @@ def fix_language_parts():
         for m, _, parts in plans:
             if m not in kept:
                 for p in parts: lang_refuse(pno, m, 'the page would look different', p)
+    lose = {int(x) for x in os.environ.get('APPLY_TEST_LOSE_ENTRY', '').split(',') if x.strip().isdigit()}   # tests only (review 06, M6)
     for pno in order:
         old, new, plans, dropped = edited[pno]
         if new is None: continue
-        pages[pno - 1].obj.Contents = new
-        LANG['marks_lang_removed'] += dropped
-        for m, pieces, parts in plans:
-            o = owner.get((pno, m)); i = mc_entry_index(o, pno, m) if o is not None else None
-            if i is None: raise RuntimeError(f'run {m} on page {pno} lost its tag entry after the content was written')
-            ks = kids(o); same_pg = isinstance(ks[i], int)
-            new_k = []
-            for mc, kind, ci in pieces:
-                if kind == 'run':
-                    new_k.append(mc if same_pg else mcr(pno, mc)); pt_set_mcid(pno, mc, o); owner[(pno, mc)] = o
-                else:
-                    part = parts[ci]
-                    sp = new_elem('Span', o, [mc], pg=pno, Lang=pikepdf.String(part['lang']))
-                    new_k.append(sp); pt_set_mcid(pno, mc, sp); owner[(pno, mc)] = sp; eff_pg[sp.objgen] = pno
-                    LANG['spans'].append({'page': pno, 'mcid': mc, 'lang': part['lang'], 'text': part['text'], 'whole': False})
-                    LANG['split'] += 1; ok(f'language: {part["lang"]} Span (part of a run)')
-            ks[i:i + 1] = new_k; set_kids(o, ks)
-            for sp in LANG['spans']:                       # a run tagged whole and split under its Span: the Span holds every piece
-                if sp.get('whole') and sp['page'] == pno and sp['mcid'] == m: sp['mcids'] = [mc for mc, _, _ in pieces]
+        # resolve every run's tag entry before the page's content is written (review 06, M6): a run whose entry moved
+        # since op_language (links, section moves, figure order) is refused, and the page keeps only its marks edits
+        lost = [m for m, _, _ in plans if pno in lose or owner.get((pno, m)) is None or mc_entry_index(owner[(pno, m)], pno, m) is None]
+        if lost:
+            for m, _, parts in plans:
+                for p in parts: lang_refuse(pno, m, 'the run\'s tag entry moved before the split was written', p)
+            new, plans, dropped, _ = edit(pno, set())
+            if new is None: continue
+        try:
+            pages[pno - 1].obj.Contents = new
+            LANG['marks_lang_removed'] += dropped
+            for m, pieces, parts in plans:
+                o = owner[(pno, m)]; i = mc_entry_index(o, pno, m)
+                ks = kids(o); same_pg = isinstance(ks[i], int)
+                new_k = []
+                for mc, kind, ci in pieces:
+                    if kind == 'run':
+                        new_k.append(mc if same_pg else mcr(pno, mc)); pt_set_mcid(pno, mc, o); owner[(pno, mc)] = o
+                    else:
+                        part = parts[ci]
+                        sp = new_elem('Span', o, [mc], pg=pno, Lang=pikepdf.String(part['lang']))
+                        new_k.append(sp); pt_set_mcid(pno, mc, sp); owner[(pno, mc)] = sp; eff_pg[sp.objgen] = pno
+                        LANG['spans'].append({'page': pno, 'mcid': mc, 'lang': part['lang'], 'text': part['text'], 'whole': False})
+                        LANG['split'] += 1; ok(f'language: {part["lang"]} Span (part of a run)')
+                ks[i:i + 1] = new_k; set_kids(o, ks)
+                for sp in LANG['spans']:                   # a run tagged whole and split under its Span: the Span holds every piece
+                    if sp.get('whole') and sp['page'] == pno and sp['mcid'] == m: sp['mcids'] = [mc for mc, _, _ in pieces]
+        except Exception as e:                             # one page's failure stays on that page (review 06, M6)
+            pages[pno - 1].obj.Contents = old
+            LANG['restored_pages'].append(pno)
+            log['failed'].append({'op': f'fix_language_parts page {pno}', 'error': f'{type(e).__name__}: {e}'[:300]})
     LANG['render_check_seconds'] = round(time.time() - t0, 2)
 
 # ================================================================== run, in a fixed order

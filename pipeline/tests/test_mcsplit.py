@@ -143,3 +143,14 @@ def test_refused(tmp_path, name, runs, cuts, why):
     with pytest.raises(mcsplit.Refuse) as e:
         mcsplit.split_run(ins, pdf.pages[0].obj.Resources.Font, 0, cuts, lambda: 99, expect_n=n)
     assert why in str(e.value)
+
+def test_an_expansion_stays_on_the_first_piece_only(tmp_path):
+    """review 06, L4: a run's /E (what an abbreviation expands to) is not copied onto every reopened piece."""
+    src = langpdf.build(str(tmp_path / 'e.pdf'), [{'text': 'The age of mappo was near.'}])
+    pdf = pikepdf.open(src); page = pdf.pages[0]
+    ins = list(pikepdf.parse_content_stream(page))
+    i0 = next(i for i, x in enumerate(ins) if str(x.operator) == 'BDC')
+    ins[i0] = pikepdf.ContentStreamInstruction([ins[i0].operands[0], pikepdf.Dictionary(MCID=0, E=pikepdf.String('Expanded'))], pikepdf.Operator('BDC'))
+    out, pieces = mcsplit.split_run(ins, page.obj.Resources.Font, 0, [(11, 15)], iter(range(1, 9)).__next__, expect_n=26)
+    es = [('/E' in x.operands[1], int(x.operands[1].MCID)) for x in out if str(x.operator) == 'BDC']
+    assert es == [(True, 0), (False, 1), (False, 2)]

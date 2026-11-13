@@ -16,7 +16,8 @@ How a run is split, with nothing that draws or moves the pen added, removed or c
      … EMC ET), one run per text object (the first keeps the MCID, later ones get new MCIDs), so no marked content crosses
      a text object once it is split. A run that draws anything outside its text objects is refused.
   2. Text-showing operators are cut at each place's first and last character: a Tj into Tj + Tj, a TJ into TJ + TJ, each
-     kerning number staying with the text after it. ' becomes T* Tj inside the run; a run with " is refused (pdfminer
+     kerning number staying with the text before it when a string precedes it in that piece, else moving to the next
+     piece (the pen moves the same either way). ' becomes T* Tj inside the run; a run with " is refused (pdfminer
      reads " without its line move, so the text verify.py reads would change).
   3. Marks: the run is closed before the place, /Span <</MCID s>> opened for it (no /Lang: the structure element carries
      the language, and marked content that names another language would override it: review 02, H1), and the run
@@ -225,7 +226,8 @@ def split_run(ins, fonts, mcid, cuts, new_mcid, expect_n=None):
     # 4. rewrite each segment: cut showing operators where the piece changes, and put marks between pieces
     def bdc(pc):
         if pc[1] == 'span': return I([pikepdf.Name.Span, pikepdf.Dictionary(MCID=pc[0])], Op('BDC'))
-        return I([tag, pikepdf.Dictionary({**{k: v for k, v in p0.items() if k != '/MCID'}, '/MCID': pc[0]})], Op('BDC'))
+        drop = ('/MCID',) if pc[0] == mcid else ('/MCID', '/E')   # /E (the expansion of an abbreviation) stays on the first piece only
+        return I([tag, pikepdf.Dictionary({**{k: v for k, v in p0.items() if k not in drop}, '/MCID': pc[0]})], Op('BDC'))
     by_ins = {}
     for u, un in enumerate(units): by_ins.setdefault(un['i'], []).append(u)
     out = list(ins[:start]) if inside else list(ins[:start])

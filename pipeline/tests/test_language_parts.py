@@ -222,3 +222,14 @@ def test_a_path_inside_the_run_does_not_open_the_form_mcid_guard(tmp_path):
     out = str(tmp_path / 'out.pdf'); run('apply.py', src2, wo, out)
     log = json.load(open(out + '.log.json'))
     assert log['language_parts']['spans'] == [] and log['language_parts']['refused'] == {'characters do not line up with the run': 1}
+
+def test_a_run_whose_entry_moved_keeps_the_page_whole(tmp_path, monkeypatch):
+    """review 06, M6: when a run's tag entry can't be found at the late pass, its page keeps its content (only the marks
+    edits are written), its places are refused with a reason, and the other pages go on."""
+    monkeypatch.setenv('APPLY_TEST_LOSE_ENTRY', '1')
+    runs = [{'lang': 'en-US', 'text': 'The city of Heiankyo was the capital.'}]
+    src, out, log, v = apply_verify(tmp_path, runs, [part(1, 0, 12, 19, 'ja-Latn')])
+    lp = log['language_parts']
+    assert lp['split'] == 0 and lp['refused'] == {"the run's tag entry moved before the split was written": 1}
+    assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
+    assert not any(f['op'].startswith('fix_language_parts') for f in log['failed'])
