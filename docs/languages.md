@@ -76,8 +76,10 @@ or passes its own limit, it alone is left out and the PDF goes on without langua
 - **Not Reviewed (N word forms to decide on the review page)** until a person has decided every form;
 - **Approved (reviewer on date)** when none is left.
 
-Work orders from before #118 (language parts written by the work-order prompt, version 1) are approved with the work
-order and read "Not Applicable" here.
+Work orders from before #118 (the work-order prompt's `language` key: kana runs and explicit runs) are approved with the
+work order and read "Not Applicable" here. Runs made during #118's stage C (`language_parts` version 1, before the
+Languages section existed) have no rows to decide: their "Language Tags" line stays "Not Reviewed". To review such a
+book, run it again (a fresh run, or a FROM= rerun with LANG_REPLY= of a version 2 language run).
 
 ## Cost
 

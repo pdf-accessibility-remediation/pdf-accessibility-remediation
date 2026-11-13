@@ -129,3 +129,11 @@ def test_language_rows_stay_out_of_the_work_orders_counts(tmp_path):
                      gap_default='left open for the test')
     assert sum(rv['counts'].values()) == len(cards) and rv['counts']['accepted_unreviewed'] == len(cards)
     assert rv['language']['not_reviewed'] == 4
+
+def test_the_page_counts_language_forms_for_staff():
+    """review 08, L4: numbers with thousands separators, a sidebar entry, and the "Finish Review" dialog counting the word
+    forms not decided (the page's own text; checked in a browser on a copy of cadaverous)."""
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    assert "function fmtN(x) { return Number(x || 0).toLocaleString('en-US'); }" in page
+    assert "<h2>Languages</h2><a href=\"#languages\"><span>Word Forms Not Reviewed</span>" in page
+    assert '"Language Tags" in "Ready to Ship?" stays Not Reviewed.' in page

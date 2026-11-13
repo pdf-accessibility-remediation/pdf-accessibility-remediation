@@ -1299,6 +1299,7 @@ function nav() {
     '</span><span>' + (s.hand ? todo : s.count) + '</span></a>').join('');
   h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + esc(view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
   h += '<h2>Check First</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
+  if ((DATA.languages || {}).total) h += '<h2>Languages</h2><a href="#languages"><span>Word Forms Not Reviewed</span><span id="navLangLeft">' + fmtN(langLeft()) + '</span></a>';   // review 08, L4
   h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
   h += '<h2>Page Index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
     '<a href="#card-' + esc(pages[p][0]) + '" data-view="priority"><span>p. ' + p + '</span><span>' + pages[p].length + '</span></a>').join('');
@@ -1608,6 +1609,9 @@ async function askFinish() {
   dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2>' + checkHtml(chk) + '<div class="ctx" id="finCtx">' +
     (n ? n + (one ? ' decision is' : ' decisions are') + ' not reviewed: "Finish Review" records ' + (one ? 'it' : 'them') + ' as the AI wrote ' + (one ? 'it' : 'them') +
          ', marked "accepted without review", and "Ready to Ship?" stays No.' : 'Every decision has a choice.') +
+    ((DATA.languages || {}).total && !OCR_ONLY ? (langLeft() ? ' ' + fmtN(langLeft()) + (langLeft() === 1 ? ' word form' : ' word forms') + ' under "Languages" ' + (langLeft() === 1 ? 'is' : 'are') +
+         ' not decided: "Finish Review" applies ' + (langLeft() === 1 ? 'it' : 'them') + ' as the AI decided, and "Language Tags" in "Ready to Ship?" stays Not Reviewed.'
+         : ' Every word form under "Languages" is decided.') : '') +
     (SESSION && SESSION.reopened ? ' "Finish Review" re-applies the reviewed order (no AI request).' : '') + ' The name and notes go to "Session History."' +
     (OCR ? ' "OCR Text": ' + esc(ov) + '. An OCR verdict is recorded on its own under "OCR Text", not with "Finish Review."' : '') + '</div>' +
     '<label for="finName">Session Name</label><input type="text" id="finName" maxlength="80">' +
@@ -1710,13 +1714,17 @@ function langRowHtml(r) {
     '<select data-lang="change" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select>' +
     '<span class="lang-meta" role="status">' + esc(langStatusWord(r, d)) + '</span></div></div>';
 }
+function fmtN(x) { return Number(x || 0).toLocaleString('en-US'); }      // review 08, L4: 1,130 word forms, never 1130
+function langLeft() {                                    // word forms under "Languages" with no choice yet (declared, not const: nav() runs before LANGS is set)
+  return Math.max(0, ((DATA.languages || {}).total || 0) - Object.keys(state.decisions).filter(k => k.startsWith('language:') && (state.decisions[k] || {}).status).length);
+}
 function langFold(g) {
   const rows = langRows[g.group] || [], left = rows.filter(r => !(state.decisions[r.id] || {}).status).length;
   const bulk = rows.filter(r => r.bulk && !(state.decisions[r.id] || {}).status).length;
-  return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + g.count + ' word form' + (g.count === 1 ? '' : 's') +
-    ' (' + g.places + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
+  return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
+    ' (' + fmtN(g.places) + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
     '<div class="lang-bar">' + (g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + bulk + ')</button>' : '') +
-    '<span class="lang-meta">' + (rows.length ? rows.length + ' of ' + g.count + ' shown' + (left ? ' · ' + left + ' not reviewed' : '') : '') + '</span></div>' +
+    '<span class="lang-meta">' + (rows.length ? fmtN(rows.length) + ' of ' + fmtN(g.count) + ' shown' + (left ? ' · ' + fmtN(left) + ' not reviewed' : '') : '') + '</span></div>' +
     '<div class="lang-list">' + rows.map(langRowHtml).join('') + '</div>' +
     (rows.length < g.count ? '<button type="button" data-lang="more">Show More</button>' : '') + '</details>';
 }
@@ -1724,7 +1732,7 @@ function renderLanguages() {
   if (!LANGS.total || OCR_ONLY) { langBox.hidden = true; return; }
   const open = new Set([...langBox.querySelectorAll('details[open]')].map(d => d.dataset.group));
   langBox.hidden = false;
-  langBox.innerHTML = '<h2 id="langTitle">Languages (' + LANGS.total + ')</h2>' +
+  langBox.innerHTML = '<h2 id="langTitle">Languages (' + fmtN(LANGS.total) + ')</h2>' +
     '<p>Words and passages in another language, found in the PDF. A screen reader switches to a language\'s voice for the words tagged with it. ' +
     'Decide each word form: the choice applies to every place it appears. "Approve All Shown" approves only rows with a high-confidence answer, ' +
     'never words in Chinese characters alone or the PDF\'s own tags. Hawaiian: most screen readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.</p>' +
@@ -1767,7 +1775,8 @@ langBox.addEventListener('change', e => {
 function progressLang() {
   const n = Object.entries(state.decisions).filter(([k, d]) => k.startsWith('language:') && d && d.status).length;
   const el = document.getElementById('progress');
-  if (el && LANGS.total) el.textContent = el.textContent.replace(/ · languages: .*$/, '') + ' · languages: ' + n + ' of ' + LANGS.total + ' decided';
+  if (el && LANGS.total) el.textContent = el.textContent.replace(/ · languages: .*$/, '') + ' · languages: ' + fmtN(n) + ' of ' + fmtN(LANGS.total) + ' decided';
+  const nl = document.getElementById('navLangLeft'); if (nl) nl.textContent = fmtN(langLeft());     // the sidebar's count (review 08, L4)
 }
 LANG_READY = true; renderLanguages(); progressLang();
 

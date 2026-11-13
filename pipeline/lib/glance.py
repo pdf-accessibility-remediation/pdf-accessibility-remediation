@@ -233,7 +233,7 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
     # ---- ready to ship
     if rv and rv.get('method') == 'page':
         unexpl = [x for x in rv.get('gaps') or [] if str(x.get('reason') or '').startswith('hand edit: no reason asked for')]
-        why = ([f'{(rv.get("counts") or {}).get("accepted_unreviewed")} decisions not reviewed'] if (rv.get('counts') or {}).get('accepted_unreviewed') else []) \
+        why = ([f'{(rv.get("counts") or {}).get("accepted_unreviewed"):,} decisions not reviewed'] if (rv.get('counts') or {}).get('accepted_unreviewed') else []) \
             + ([f'{len(rv["dropped_on_check"])} edits dropped by the check'] if rv.get('dropped_on_check') else []) \
             + ([f'{len(unexpl)} gaps left without a reason'] if unexpl else [])
         wo_ok = not why
