@@ -59,3 +59,17 @@ def test_parse_salvages_decisions_from_broken_json():
          '{"id":"2","lang":"ja","confidence":"medium","why":"language"},{"id":"3","lang":"zh","conf')
     dec, dropped = langreq.parse(t, {'1', '2', '3'})
     assert set(dec) == {'1', '2'} and 'not valid JSON' in dropped[0]['why'] and dropped[-1] == {'id': '3', 'why': 'not answered'}
+
+def test_one_character_han_places_on_a_line_form_one_word():
+    ps = [place(5, i, 0, 0, ch, ['cjk:han_only'], 10 + i) for i, ch in enumerate('日本考古')] + [place(5, 9, 0, 0, '年', ['cjk:han_only'], 30)]
+    fs = langreq.forms(ps, group=True)
+    assert [(f['form'], len(f['places'])) for f in fs] == [('日本考古', 4), ('年', 1)]
+    assert [f['form'] for f in langreq.forms(ps)] == ['日', '本', '考', '古', '年']
+
+def test_a_form_echo_that_does_not_match_drops_the_decision():
+    """review 06, L1: an id off by one would put a decision on another form; the echo catches it."""
+    t = json.dumps({'decisions': [{'id': '1', 'form': 'mappō', 'lang': 'ja-Latn', 'confidence': 'high', 'why': 'language'},
+                                  {'id': '2', 'form': 'mappō', 'lang': 'ja', 'confidence': 'high', 'why': 'language'},
+                                  {'id': '3', 'form': ' ONRYŌ ', 'lang': 'ja-Latn', 'confidence': 'high', 'why': 'language'}]})
+    dec, dropped = langreq.parse(t, {'1', '2', '3'}, forms={'1': 'mappō', '2': '源信', '3': 'onryō'})
+    assert set(dec) == {'1', '3'} and dropped[0] == {'id': '2', 'why': 'its form does not match the item'}

@@ -17,13 +17,14 @@ Halves: each item's id is hashed into "tune" or "score" (fixed); the prompt is t
 A whole book (cadaverous) is sent once per model, to measure the cost per book.
 No book text is written outside OUT_DIR (runs/, never committed).
 """
-import sys, os, json, re, hashlib, random, collections, argparse, time, urllib.request
+import sys, os, json, re, hashlib, random, collections, argparse, time, shutil, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib import plumb_fix, plpages, langcands, langreq, scripts, models  # noqa: F401
 
 PIPE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROMPT = os.path.join(os.path.dirname(PIPE), 'prompts', 'language_v1.md')
-MODELS = ['anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5']
+PROMPT_V2 = os.path.join(os.path.dirname(PIPE), 'prompts', 'language_v2.md')
+MODELS = ['anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5', 'anthropic/claude-haiku-5.5']
 SUBJECT = {'cadaverous': 'japan', 'teika': 'japan', 'evangelist': 'japan', 'transnational': 'japan', 'buddhist': 'pali',
            'hawaii3': 'hawaii', 'expedition': 'china', 'sojourners': 'china', 'dwellings': 'china', 'globalasias': 'mixed',
            'korea-matters': 'korea', 'chung-taka': 'korea', 'yoon-topics': 'korea', 'memorial-ko': 'korea', 'ktimes-1990': 'korea',
@@ -218,7 +219,7 @@ def prices():
         SUPPORTED.update({m['id']: m.get('supported_parameters') for m in data if m['id'] in MODELS})
         return {m['id']: (float(m['pricing']['prompt']), float(m['pricing']['completion'])) for m in data if m['id'] in MODELS}, 'live'
     except Exception as e:
-        return {'anthropic/claude-sonnet-5.5': (2e-6, 10e-6), 'anthropic/claude-opus-5.5': (4e-6, 20e-6)}, f'ASSUMED ({type(e).__name__})'
+        return {'anthropic/claude-sonnet-5.5': (2e-6, 10e-6), 'anthropic/claude-opus-5.5': (4e-6, 20e-6), 'anthropic/claude-haiku-5.5': (1e-7, 5e-7)}, f'ASSUMED ({type(e).__name__})'
 
 SUPPORTED = {}             # model -> supported_parameters, from the same public list
 OUT_PER_ITEM = 75          # tokens per decision: {"id":"…","lang":"ja-Latn","confidence":"high","why":"language"}, + a note now and then
@@ -254,8 +255,38 @@ def write_requests(out_dir, C, items):
     open(os.path.join(out_dir, 'estimate.md'), 'w').write('\n'.join(lines) + '\n')
     print('\n'.join(lines))
 
+def build_v2(out_dir, books):
+    """The paid check's requests (07; review 06 M4 and 05 §8.1): the same test items as requests/ (only the prompt changes:
+    language_v2.md, the form echo and shorter replies), and each named book whole with title growth (langcands grow=True)
+    and one-character Han grouping (langreq.forms group=True), in requests-v2/book-<name>.json, with v1's whole-book
+    requests beside them for the counts."""
+    cache = os.path.join(out_dir, 'cand-v2'); os.makedirs(cache, exist_ok=True)
+    rq = os.path.join(out_dir, 'requests-v2'); os.makedirs(rq, exist_ok=True)
+    for st in ('tune', 'score', 'nokey'): shutil.copyfile(os.path.join(out_dir, 'requests', f'{st}.json'), os.path.join(rq, f'{st}.json'))
+    prompt = open(PROMPT_V2, encoding='utf-8').read(); summary = {}
+    for name, pdf in books.items():
+        f = os.path.join(cache, f'{name}.json')
+        if os.path.exists(f): cand = json.load(open(f, encoding='utf-8'))
+        else:
+            cand = langcands.book(plpages.Pages(pdf), doc_lang=DOC_LANG.get(name), grow=True)
+            json.dump(cand, open(f, 'w', encoding='utf-8'), ensure_ascii=False)
+        v1 = candidates(name, pdf, os.path.join(out_dir, 'cand'))
+        meta = {'title': v1.get('title') or name, 'language': DOC_LANG.get(name) or 'en'}
+        fs = langreq.forms(cand['places'], group=True)
+        reqs = [{'book': name, 'request': r} for r in langreq.requests(meta, fs, cand['words'])]
+        json.dump(reqs, open(os.path.join(rq, f'book-{name}.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+        fs1 = langreq.forms(v1['places'])
+        summary[name] = {'forms_v1': len(fs1), 'forms_v2': len(fs), 'places_v1': sum(len(x['places']) for x in fs1), 'places_v2': sum(len(x['places']) for x in fs),
+                         'requests': len(reqs), 'in_tokens': sum(langreq.size(r['request'], prompt) for r in reqs),
+                         'titles_grown': sum(1 for p in cand['places'] if 'title' in p['class'])}
+    for st in ('tune', 'score', 'nokey'):
+        reqs = json.load(open(os.path.join(rq, f'{st}.json'), encoding='utf-8'))
+        summary[st] = {'requests': len(reqs), 'items': sum(len(r['request']['items']) for r in reqs), 'in_tokens': sum(langreq.size(r['request'], prompt) for r in reqs)}
+    json.dump(summary, open(os.path.join(out_dir, 'estimate-v2.json'), 'w'), indent=1)
+    print(json.dumps(summary, indent=1))
+
 # ---- sending (paid; only on Patrick's OK)
-def send(out_dir, model, run, which, cap):
+def send(out_dir, model, run, which, cap, prompt_file=None, req_dir='requests', ledger_name='spend.json'):
     key = None
     for d in [PIPE, os.path.dirname(PIPE)]:
         f = os.path.join(d, '.env')
@@ -263,9 +294,9 @@ def send(out_dir, model, run, which, cap):
             for line in open(f):
                 if line.startswith('OPENROUTER_API_KEY='): key = line.split('=', 1)[1].strip().strip('"\'')
     if not key: sys.exit('no OPENROUTER_API_KEY in .env')
-    prompt = open(PROMPT, encoding='utf-8').read()
-    reqs = json.load(open(os.path.join(out_dir, 'requests', f'{which}.json'), encoding='utf-8'))
-    ledger_f = os.path.join(out_dir, 'spend.json')
+    prompt = open(prompt_file or PROMPT, encoding='utf-8').read()
+    reqs = json.load(open(os.path.join(out_dir, req_dir, f'{which}.json'), encoding='utf-8'))
+    ledger_f = os.path.join(out_dir, ledger_name)
     ledger = json.load(open(ledger_f)) if os.path.exists(ledger_f) else {'cap': cap, 'calls': []}
     spent = sum(c.get('cost') or 0 for c in ledger['calls'])
     pr, how = prices()
@@ -294,8 +325,12 @@ def send(out_dir, model, run, which, cap):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('cmd', choices=['build', 'send']); ap.add_argument('out_dir'); ap.add_argument('books', nargs='*')
+    ap.add_argument('cmd', choices=['build', 'build-v2', 'send']); ap.add_argument('out_dir'); ap.add_argument('books', nargs='*')
     ap.add_argument('--model'); ap.add_argument('--run', type=int, default=1); ap.add_argument('--set', default='tune'); ap.add_argument('--cap', type=float, default=10.0)
+    ap.add_argument('--prompt', default=None, help='a prompt file instead of language_v1.md (the paid check: language_v2.md)')
+    ap.add_argument('--requests', default='requests', help='the folder of request sets (the paid check: requests-v2)')
+    ap.add_argument('--ledger', default='spend.json', help='the ledger file and its own cap (the paid check: spend-check.json)')
     a = ap.parse_args()
     if a.cmd == 'build': build(a.out_dir, dict(b.split('=', 1) for b in a.books))
-    else: send(a.out_dir, a.model, a.run, a.set, a.cap)
+    elif a.cmd == 'build-v2': build_v2(a.out_dir, dict(b.split('=', 1) for b in a.books))
+    else: send(a.out_dir, a.model, a.run, a.set, a.cap, a.prompt, a.requests, a.ledger)

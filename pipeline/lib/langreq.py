@@ -14,7 +14,7 @@ about CONTEXT words before and after up to SNIPPETS_PER_FORM of its places. Each
 every candidate in it marked [[id|text]]. Kana and hangul runs are not sent: their language is known locally
 (lib/scripts.py).
 """
-import json, re, collections
+import json, re, collections, unicodedata
 from lib import langtag, models
 
 CONTEXT = 15                    # words on each side
@@ -31,9 +31,28 @@ def group_of(classes):
         if c == g or c.startswith(g + ':') or c.startswith(g): return g
     return 'unknown'
 
-def forms(places, skip=LOCAL, unknown_italic_only=False):
-    """Places grouped by (printed form, group): one decision per form. Each form keeps all its places."""
+def group_han(places):
+    """Adjacent one-character Han places on a line (each drawn as its own run, as OCR or a typesetter may: ryukyu's
+    bibliography) read as one form, so 年, 前 and 本 are judged together as the word they spell (05 §8.1). The places stay
+    one per run; only their form is the joined text."""
+    one = lambda p: 'cjk:han_only' in p['class'] and len(p['class']) == 1 and len(p['text'].strip()) == 1 and p.get('w0') is not None
+    ps = sorted(places, key=lambda p: (p['page'], p.get('w0') if p.get('w0') is not None else -1, p['mcid'], p['first']))
+    out, i = [], 0
+    while i < len(ps):
+        j = i
+        while one(ps[i]) and j + 1 < len(ps) and one(ps[j + 1]) and ps[j + 1]['page'] == ps[j]['page'] and ps[j + 1]['w0'] == ps[j]['w1'] + 1: j += 1
+        if j > i:
+            form = ''.join(p['text'].strip() for p in ps[i:j + 1])
+            out += [{**p, 'form': form, 'class': ['cjk:han_only']} for p in ps[i:j + 1]]
+        else: out.append(ps[i])
+        i = j + 1
+    return out
+
+def forms(places, skip=LOCAL, unknown_italic_only=False, group=False):
+    """Places grouped by (printed form, group): one decision per form. Each form keeps all its places. group: adjacent
+    one-character Han places become one form first (group_han)."""
     by = collections.OrderedDict()
+    if group: places = group_han(places)
     for p in places:
         if any(c in skip for c in p['class']) and len(p['class']) == 1: continue
         g = group_of([c for c in p['class'] if c != 'passage'] or p['class'])
@@ -123,7 +142,10 @@ def body(req, model, prompt, max_tokens, supported=None):
     if not models.temperature_omitted(model) and (supported is None or 'temperature' in supported): b['temperature'] = models.TEMPERATURE
     return b
 
-def parse(text, ids):
+def _same_form(a, b):
+    return unicodedata.normalize('NFC', ' '.join(str(a or '').split())).casefold() == unicodedata.normalize('NFC', ' '.join(str(b or '').split())).casefold()
+
+def parse(text, ids, forms=None):
     """The model's reply text → ({id: decision}, dropped). A decision: {lang (or None), confidence, why, note?}. A
     decision is dropped when its id is unknown or repeated, its tag is not one the step may write (langtag.valid_part),
     or its confidence or reason is not one of the listed words."""
@@ -146,6 +168,8 @@ def parse(text, ids):
         lang = d.get('lang'); conf = d.get('confidence'); why = d.get('why')
         if i not in ids: dropped.append({'id': i, 'why': 'unknown id'}); continue
         if i in out: dropped.append({'id': i, 'why': 'answered twice'}); continue
+        if forms and 'form' in d and not _same_form(d['form'], forms.get(i)):        # the form echo (review 06, L1): an id off by one
+            dropped.append({'id': i, 'why': 'its form does not match the item'}); continue
         if lang is not None and not langtag.valid_part(lang): dropped.append({'id': i, 'why': f'tag not allowed: {lang!r}'}); continue
         if conf not in CONF: dropped.append({'id': i, 'why': f'confidence not allowed: {conf!r}'}); continue
         if why not in WHY: dropped.append({'id': i, 'why': f'reason not allowed: {why!r}'}); continue

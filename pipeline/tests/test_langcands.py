@@ -66,3 +66,14 @@ def test_spoken_text_finds_what_ocr_hid(tmp_path):
     assert p['form'] == 'ʻāina' and 'hawaiian' in p['class'] and (p['mcid'], p['first'], p['last']) == (0, 4, 7)
     by_page, words = langcands.page_places(1, chars, spoken={'reading': 'The ʻāina was good on Māui here'})
     assert {p['form'] for p in by_page} >= {'ʻāina'} and any('ʻāina' in w for w in words)
+
+def test_title_growth_takes_the_whole_italic_title(tmp_path):
+    """review 06, M4: a romanized title is one place, capitalized and short words included; an English title around a
+    foreign word is not swallowed."""
+    runs = [{'font': 'F6', 'text': 'Nihon koten bungaku taikei'}, {'text': 'See the'}, {'font': 'F6', 'text': 'Annals of mappoji Buddhism'}]
+    src = langpdf.build(str(tmp_path / 't.pdf'), runs)
+    chars = plpages.Pages(src).pages[0].chars
+    off = {p['form'] for p in langcands.page_places(1, chars)[0]}
+    on = {p['form'] for p in langcands.page_places(1, chars, grow=True)[0]}
+    assert 'koten bungaku taikei' in off and 'Nihon koten bungaku taikei' in on
+    assert 'mappoji' in on and not any('Annals' in f for f in on)

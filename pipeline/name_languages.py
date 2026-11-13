@@ -24,7 +24,7 @@ import sys, os, re, json, time, hashlib, argparse, urllib.request, urllib.error,
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 from lib import plumb_fix, plpages, langcands, langreq, costhistory, costs, workorder_check  # noqa: F401
 
-PROMPT_NAME = 'language_v1.md'
+PROMPT_NAME = 'language_v1.md'                   # language_v2.md (form echo, shorter replies) only if the paid check adopts it
 CHARS_PER_TOKEN = 3.5
 
 def load_env():
@@ -206,7 +206,7 @@ def main():
     dec, dropped = {}, []
     by_id = {f['id']: f for f in sent}
     for x in rec['requests']:                        # a reply cut off (finish 'length') keeps every decision it finished
-        d, dr = langreq.parse(x.get('text') or '', set(x['ids'])); dec.update(d); dropped += dr
+        d, dr = langreq.parse(x.get('text') or '', set(x['ids']), forms={i: by_id[i]['form'] for i in x['ids'] if i in by_id}); dec.update(d); dropped += dr
     rec['decisions'] = {form_key(by_id[i]): v for i, v in dec.items() if i in by_id}
     rec['dropped'] = dropped[:200]
     rec['not_decided'] = sum(1 for f in sent if f['id'] not in dec)          # cut off, invalid, or never sent: listed for a person

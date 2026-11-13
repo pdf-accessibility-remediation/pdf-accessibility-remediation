@@ -122,7 +122,7 @@ def _core_span(cs):
     if i1 - i0 >= 2 and cs[i1]['text'] in ('s', 'S') and cs[i1 - 1]['text'] in "’'": i1 -= 2
     return i0, i1
 
-def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=None):
+def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=None, grow=False):
     """chars: one page's pdfplumber characters in content order (plpages). Returns (places, words): the page's candidate
     places, and the page's words in reading order (for context: each place names its words by index)."""
     italic = italic or (lambda fn: bool(ITALIC.search((fn or '').split('+')[-1])))
@@ -230,13 +230,37 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
             place(m, k, l, [f'cjk:{"mixed" if kd == "mixed_with_latin" else kd}'], re.sub(r'\s+', '', text), False,
                   (min(ws), max(ws)) if ws else (None, None))
             k = j + 1
-    k = 0
+    def latin_word(x): return bool(x['text']) and x['mcid'] is not None and bool(LATIN.search(x['text'])) and not _is_cjk(x['text'])
+    def is_italic(x): return bool(x['chars']) and all(italic(c.get('fontname')) for c in x['chars'] if c['text'].strip())
+    k, last_end = 0, -1
     while k < len(words):
         w = words[k]
         if not w.get('cls') or w['mcid'] is None: k += 1; continue
         j = k
         while j + 1 < len(words) and words[j + 1].get('cls') and words[j + 1]['mcid'] == w['mcid']:
             j += 1
+        if grow:                                     # a title's whole extent (review 06, M4): the voice switches once, not mid-title
+            m0 = w['mcid']
+            def same(i, step=0):
+                """Word i may join the title: Latin script, in this run, after the last place, and not English (a short
+                particle such as no, to, wa only with a word that is not English beyond it: "Nihon no kenkyū", never "of the")."""
+                if not (0 <= i < len(words) and i > last_end and words[i]['mcid'] == m0 and latin_word(words[i])): return False
+                t = words[i]['text']
+                if not in_english(t): return True
+                return step != 0 and len(t) <= 2 and t.islower() and same(i + step, step) and not in_english(words[i + step]['text'])
+            if all(is_italic(x) for x in words[k:j + 1]):                    # the italic run
+                while same(k - 1, -1) and is_italic(words[k - 1]): k -= 1
+                while same(j + 1, 1) and is_italic(words[j + 1]): j += 1
+            else:
+                a = next((i for i in range(k, max(last_end, k - 10), -1) if words[i]['all'].lstrip()[:1] in '“"«'), None)   # inside quotes
+                b = next((i for i in range(j, min(len(words), j + 10)) if words[i]['all'].rstrip(' ,.;:')[-1:] in '”"»'), None)
+                if a is not None and b is not None and all(same(i) or k <= i <= j for i in range(a, b + 1)): k, j = a, b
+                elif j + 1 < len(words) and words[j + 1]['text'] and _is_cjk(words[j + 1]['text']):    # the romanized words before a Han gloss
+                    while same(k - 1, -1) and len(words[k:j + 1]) < 8 and words[k - 1]['all'].rstrip()[-1:] not in '.;:,)':
+                        k -= 1
+            for x in words[k:j + 1]:
+                if not x.get('cls'): x['cls'] = ['title']; x.setdefault('form', x['text']); x.setdefault('italic', is_italic(x))
+        last_end = j
         grp = words[k:j + 1]
         f = idx[id(grp[0]['chars'][0])][1]; l = idx[id(grp[-1]['chars'][-1])][1]
         form = ' '.join(x.get('form', x['text']) for n_, x in enumerate(grp) if n_ == 0 or 'joined_from' not in x)   # a rejoined half once
@@ -268,7 +292,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
     out.sort(key=lambda p: (p['mcid'], p['first']))
     return out, [w['all'] for w in words]
 
-def book(PL, pages=None, doc_lang=None, spoken=None):
+def book(PL, pages=None, doc_lang=None, spoken=None, grow=False):
     """Every page's places, the page word lists (for context), and counts. PL: plpages.Pages. doc_lang: the document's
     language (its /Lang, or the work order's): in a Chinese, Japanese or Korean document, Latin-script words are
     candidates ('latin') and CJK text in the document's own language is not. spoken: {'forms': {OCR form: reading},
@@ -276,7 +300,7 @@ def book(PL, pages=None, doc_lang=None, spoken=None):
     allp, words, C = [], {}, collections.Counter()
     for pno, pg in enumerate(PL.pages, 1):
         if pages and pno not in pages: continue
-        pls, ws = page_places(pno, pg.chars, lambda p, _c=pg.chars: _c, doc_lang=doc_lang,
+        pls, ws = page_places(pno, pg.chars, lambda p, _c=pg.chars: _c, doc_lang=doc_lang, grow=grow,
                               spoken={'forms': (spoken or {}).get('forms') or {}, 'reading': ((spoken or {}).get('pages') or {}).get(pno)} if spoken else None)
         allp += pls; words[str(pno)] = ws
     forms = collections.defaultdict(set)
