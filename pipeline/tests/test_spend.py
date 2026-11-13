@@ -360,7 +360,7 @@ def test_test_mode_spend_is_a_saved_reply(setup):
 def test_run_api_wires_each_cap_once():
     """#63 (figure requests past 100 images): MAX_USD and BOOK_MAX_USD are checked as numbers and passed on, once each."""
     sh = open(os.path.join(HERE, 'run_api.sh'), encoding='utf-8').read()
-    assert sh.count('--max-usd "$MAX_USD"') == 1 and sh.count('--book-max-usd "$BOOK_MAX_USD"') == 1
+    assert sh.count('--max-usd "$MAX_USD"') == 1 and sh.count('--book-max-usd "$BOOK_MAX_USD"') == 3   # decide.py, read_pages.py, name_languages.py (review 06 M2)
     assert sh.count('--figure-retry-max-usd "$FIGURE_RETRY_MAX_USD"') == 1 and sh.count('--figure-retry-book-max-usd "$FIGURE_RETRY_BOOK_MAX_USD"') == 1
     assert 'for v in MAX_USD BOOK_MAX_USD FIGURE_RETRY_MAX_USD FIGURE_RETRY_BOOK_MAX_USD; do' in sh and '$v must be a number of dollars' in sh
     assert "# MAX_USD=3 bash run_api.sh …   the limit on what one AI request could cost, in dollars (default 2, lib/costs.py; Claude models only)" in sh
