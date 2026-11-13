@@ -7,6 +7,7 @@
    "figure: alt text": 11,
    "heading: standard tag H1 → H3 (retyped)": 76,
    "heading: standard tag H2 → H4 (retyped)": 113,
+   "language: a language name written as /Lang replaced by its code": 429,
    "links: /Contents set": 186,
    "links: URL-only description replaced by the sentence around it": 62,
    "links: joined existing Link": 186,
@@ -17,7 +18,7 @@
    "retype → P": 1,
    "tag tree index: entries pointing outside the tree cleared (ParentTree)": 6
   },
-  "deferred": 22,
+  "deferred": 1,
   "empty_notes_removed": 0,
   "failed": 0,
   "rejected": 0
@@ -26,15 +27,14 @@
  "verapdf": {
   "after": {
    "failed": {
-    "7.2-29": 7,
     "7.21.5-1": 48
    },
    "totals": {
     "ua_only_failed_checks": 48,
     "ua_only_failed_rules": 1,
     "unclassified": [],
-    "wcag_failed_checks": 7,
-    "wcag_failed_rules": 1
+    "wcag_failed_checks": 0,
+    "wcag_failed_rules": 0
    }
   },
   "before": {

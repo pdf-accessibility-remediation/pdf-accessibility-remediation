@@ -2,13 +2,13 @@
 
 Result: `teika_remediated.pdf`
 
-281 pages · run November 11, 2026, at 6:34 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.226 ($0.0008 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+281 pages · run November 13, 2026, at 3:40 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.226 ($0.0008 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.9s · audit 37.9s · reuse saved reply 1.2s · apply 95.5s · verify 60.6s · total 196.1s
+Time: intake 0.8s · audit 26.8s · reuse saved reply 1.2s · apply 84.1s · verify 41.6s · total 154.5s
 
 ## Overview
 
@@ -20,6 +20,7 @@ Time: intake 0.9s · audit 37.9s · reuse saved reply 1.2s · apply 95.5s · ver
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - Safety Checks: Failed (all content tagged or decoration)
+- ✓ Language Tags: Not Applicable
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · FAILED ✘ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  

@@ -2,13 +2,13 @@
 
 Result: `fishers_remediated.pdf`
 
-285 pages · run November 3, 2026, at 12:31 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.220 ($0.0008 per page), from the original call on November 3, 2026 · this run: no new call · tokens: saved reply reused, not counted
+285 pages · run November 13, 2026, at 3:36 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.220 ($0.0008 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.3s · audit 61.6s · reuse saved reply 0.9s · apply 54.3s · verify 43.2s · total 160.3s
+Time: intake 1.2s · audit 35.5s · reuse saved reply 1.2s · apply 101.7s · verify 36.7s · total 176.3s
 
 ## Overview
 
@@ -20,6 +20,7 @@ Time: intake 0.3s · audit 61.6s · reuse saved reply 0.9s · apply 54.3s · ver
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
+- ✓ Language Tags: Not Applicable
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  

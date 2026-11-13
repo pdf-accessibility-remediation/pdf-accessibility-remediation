@@ -2,13 +2,13 @@
 
 Result: `ilokano_remediated.pdf`
 
-49 pages · run November 1, 2026, at 7:41 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost not recorded · this run: no new call · tokens: saved reply reused, not counted
+49 pages · run November 13, 2026, at 3:41 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost not recorded · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: 1 picture page without OCR text · auto-tagged · tagged by OpenDataLoader 2.5.12 · the pipeline worked on `_intake/intake.pdf`; the original was not changed
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.1s · audit 3.3s · reuse saved reply 1.3s · apply 4.4s · verify 10.2s · total 19.3s
+Time: intake 0.1s · audit 3.5s · reuse saved reply 1.5s · apply 5.8s · verify 7.5s · total 18.4s
 
 ## Overview
 
@@ -20,6 +20,7 @@ Time: intake 0.1s · audit 3.3s · reuse saved reply 1.3s · apply 4.4s · verif
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
+- ✓ Language Tags: Not Applicable
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  

@@ -2,13 +2,13 @@
 
 Result: `moralfoods_remediated.pdf`
 
-361 pages · run November 11, 2026, at 6:34 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.240 ($0.0007 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+361 pages · run November 13, 2026, at 3:39 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.240 ($0.0007 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.0s · audit 48.6s · reuse saved reply 1.4s · apply 177.4s · verify 58.5s · total 286.9s
+Time: intake 0.8s · audit 36.1s · reuse saved reply 1.3s · apply 138.6s · verify 49.0s · total 225.8s
 
 ## Overview
 
@@ -20,6 +20,7 @@ Time: intake 1.0s · audit 48.6s · reuse saved reply 1.4s · apply 177.4s · ve
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - Safety Checks: Failed (all content tagged or decoration)
+- ✓ Language Tags: Not Applicable
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · FAILED ✘ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
@@ -70,6 +71,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Bookmarks present (documents over 9 pages) | OK | 27 bookmarks |
 | Model reply held one work order | OK | one |
 | Executor applied every decision | **CHECK** | 1 rejected · 0 failed (listed under "Decisions not applied") |
+| Language tags hold their words | OK | 317 tags checked · 0 not matching their words or language |
 | Nothing deferred by the executor | **CHECK** | 6 deferred (listed under "Deferred by the executor") |
 | Fonts: every glyph defined (no .notdef) | OK | none found |
 | Fonts: every embedded font program could be read | OK | all read |
@@ -287,6 +289,10 @@ Reviewer note from the AI: Heading plan: H1 is the book title (TPT merged with i
 Rejected by validation or by the executor; nothing was half-applied.
 
 - {"op": "figure order PDF 106 (printed 93)", "why": "no target block"}
+
+### 17. Language Tags
+
+Words and passages in another language get a language tag, so a screen reader switches to that language's voice (WCAG 3.1.2). A person decides every tag on the review page.
 
 ## What Was Changed
 

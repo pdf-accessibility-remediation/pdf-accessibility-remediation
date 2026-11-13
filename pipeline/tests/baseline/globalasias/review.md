@@ -2,13 +2,13 @@
 
 Result: `globalasias_remediated.pdf`
 
-393 pages · run November 3, 2026, at 12:33 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.238 ($0.0006 per page), from the original call on November 3, 2026 · this run: no new call · tokens: saved reply reused, not counted
+393 pages · run November 13, 2026, at 3:37 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.238 ($0.0006 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.5s · audit 53.2s · reuse saved reply 1.2s · apply 58.6s · verify 70.7s · total 184.2s
+Time: intake 1.4s · audit 33.4s · reuse saved reply 1.3s · apply 87.3s · verify 57.1s · total 180.5s
 
 ## Overview
 
@@ -20,6 +20,7 @@ Time: intake 0.5s · audit 53.2s · reuse saved reply 1.2s · apply 58.6s · ver
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
+- ✓ Language Tags: Not Applicable
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
@@ -70,6 +71,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Bookmarks present (documents over 9 pages) | OK | 84 bookmarks |
 | Model reply held one work order | OK | one |
 | Executor applied every decision | **CHECK** | 6 rejected · 0 failed (listed under "Decisions not applied") |
+| Language tags hold their words | OK | 12 tags checked · 0 not matching their words or language · 32 of the PDF's own tags say another language in their text |
 | Nothing deferred by the executor | **CHECK** | 2 deferred (listed under "Deferred by the executor") |
 | Fonts: every glyph defined (no .notdef) | OK | none found |
 | Fonts: every embedded font program could be read | OK | all read |
@@ -297,6 +299,10 @@ Rejected by validation or by the executor; nothing was half-applied.
 - {"op": "actual_text 14996 0", "why": "the spoken text adds or changes words or punctuation (sponsor rule 1): printed \"Interleaf—New ­ ­Roots/New­Routes\", spoken \"Interleaf—New Roots/New Routes\""}
 - {"op": "actual_text 16459 0", "why": "the spoken text adds or changes words or punctuation (sponsor rule 1): printed \"Interleaf—­“Beyond­­English”\", spoken \"Interleaf—“Beyond English”\""}
 - {"op": "move_section", "why": "1 candidate sections, host found: False"}
+
+### 12. Language Tags
+
+Words and passages in another language get a language tag, so a screen reader switches to that language's voice (WCAG 3.1.2). A person decides every tag on the review page.
 
 ## What Was Changed
 
