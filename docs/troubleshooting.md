@@ -17,7 +17,7 @@ OpenRouter sometimes sends an error inside a normal-looking reply (for example a
 |---|---|---|
 | `OpenRouter error 429 … rate-limited … Nothing was charged` | The model's maker is throttling requests, often when a batch sends several at once | Wait a few minutes. Single run: the same command again. Batch: `RETRY=1 JOBS=1 MODEL=<same model> AUTO=1 bash batch_api.sh <label> <same folders>` (the summary prints it) |
 | `reply was cut off at 48,000 output tokens` | The reply ran out of output tokens; it was paid for | The same command again (batches: add `RETRY=1`): the next attempt allows twice as much, and the estimate shows what it could cost. The previous cost stays in the record. If it was already at the model's maximum, choose another model |
-| `rejected the temperature setting … Add "<model>" … to OMIT_TEMPERATURE` | The model refuses a temperature value; nothing was charged or retried | Add the model id (or its prefix) to `OMIT_TEMPERATURE` in `decide.py`, then run again |
+| `rejected the temperature setting … Add "<model>" … to OMIT_TEMPERATURE` | The model refuses a temperature value; nothing was charged or retried | Add the model id (or its prefix) to `OMIT_TEMPERATURE` in `lib/models.py`, then run again |
 | `no provider of <model> accepts our "don't keep or train on the data" setting` | No provider will serve the model under `data_collection: deny`; nothing was sent | Choose another model |
 | `OpenRouter error 402` | Not enough credit for the request | Add credit |
 | `OpenRouter error 413` | The request was too large | Report it: the figure images are already shrunk to fit |

@@ -64,7 +64,7 @@ One line near the top of `decide.py` sets it for every run: `TEMPERATURE = 0`. T
 
 No temperature is sent when the model's maker says to leave it at the default, or the model rejects other values. That is the case when:
 
-- the model id starts with an entry in `OMIT_TEMPERATURE` (in `decide.py`): Opus 4.7 and later, OpenAI reasoning models (`openai/o1`, `o3`, `o4`, `gpt-5`), and `google/gemini-3` (every Gemini 3 model). Add a line there for any other model
+- the model id starts with an entry in `OMIT_TEMPERATURE` (in `lib/models.py`): Opus 4.7 and later, OpenAI reasoning models (`openai/o1`, `o3`, `o4`, `gpt-5`), and `google/gemini-3` (every Gemini 3 model). Add a line there for any other model
 - or OpenRouter lists the model as not accepting a temperature setting
 
 Sonnet matches neither, so it gets `0`.

@@ -27,17 +27,7 @@ import sys, os, re, json, time, math, copy, socket, base64, hashlib, argparse, d
 DEFAULT_MODEL = 'anthropic/claude-sonnet-5.5'
 API_TIMEOUT = 1800        # seconds to wait for the reply: 48,000 output tokens at ~40 tokens/s is ~20 minutes
 
-# The temperature sent with every request. Changing it changes every run that sends one; there is no command-line override.
-TEMPERATURE = 0
-# Models whose maker says to leave temperature at its default, or that reject any other value: no temperature is sent.
-# An id matches if it starts with an entry. A model OpenRouter lists as not accepting temperature is also left out.
-OMIT_TEMPERATURE = [
-    'anthropic/claude-opus-4.7', 'anthropic/claude-opus-4.8', 'anthropic/claude-opus-4.9',   # Opus 4.7 and later
-    'anthropic/claude-opus-5',                                                               # (add each new Opus major here)
-    'openai/o1', 'openai/o3', 'openai/o4',                                                   # OpenAI reasoning models
-    'openai/gpt-5',                                                                          # GPT-5 family (reasoning)
-    'google/gemini-3',                                                                       # every Gemini 3 model
-]
+from lib.models import TEMPERATURE, OMIT_TEMPERATURE   # shared with the language step's requests (lib/langreq.py)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -565,7 +555,7 @@ else:
                      '(provider data_collection: deny), so nothing was sent or charged. See error.txt')
         if 'temperature' in body and 'temperature' in err.lower():
             sys.exit(f'OpenRouter error {e.code}: {model} rejected the temperature setting ({body["temperature"]}). Nothing was charged and '
-                     f'nothing was retried. Add "{model}" (or its prefix) to OMIT_TEMPERATURE in decide.py and run again. See error.txt')
+                     f'nothing was retried. Add "{model}" (or its prefix) to OMIT_TEMPERATURE in lib/models.py and run again. See error.txt')
         try: msg = (json.loads(err).get('error') or {}).get('message')
         except Exception: msg = err[:300]
         openrouter_error(e.code, msg)
