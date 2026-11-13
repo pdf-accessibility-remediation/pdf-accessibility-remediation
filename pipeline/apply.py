@@ -1093,26 +1093,27 @@ def tag_run(pno, m, lang, text=None):
         ok(f'language: {lang} Span')
     _LANG_WHOLE.append((pno, m)); LANG['whole'] += 1
     LANG['spans'].append({'page': pno, 'mcid': m, 'lang': lang, 'text': text if text is not None else mc_text(pno, m), 'whole': True})
+_CONTENT = {}
+def drawn_here(pno, m, n):
+    """None when run m is drawn in the page's own content with exactly the n characters pdfplumber lists for it;
+    otherwise why not. pdfplumber also lists text drawn inside a form XObject under the form's own MCIDs, which may
+    share a number with a page run: a tag must never land on that other run (#118 stress run, sojourners). Read before
+    any language edit (fix_language_parts runs later), so the page's content is the one pdfplumber read."""
+    if pno not in _CONTENT:
+        try: _CONTENT[pno] = list(pikepdf.parse_content_stream(pages[pno - 1]))
+        except Exception: _CONTENT[pno] = None
+    if _CONTENT[pno] is None: return 'page content not readable'
+    try: mcsplit.split_run(_CONTENT[pno], (_inherited(pages[pno - 1], '/Resources') or {}).get('/Font'), m, [], lambda: None, expect_n=n)
+    except mcsplit.Refuse as e:
+        if str(e) == 'run not drawn in the page content': return 'run drawn inside a form XObject, not in the page'
+        if str(e) == 'characters do not line up with the run': return str(e)
+    return None
 def language_parts(parts):
     """The language step's tags (workorder.json `language_parts`, checked by workorder_check.check_language_parts): a
     place that covers its whole run (no letter or digit outside it) is tagged as a run; any other is queued for a split.
     Returns the (page, mcid) runs the parts covered, so the CJK rules below leave them alone."""
     done = set()
     rewritten = {pidx[k] for k, v in _REWRITES.items() if v and k in pidx}
-    content = {}
-    def drawn_here(pno, m, n):
-        """None when run m is drawn in the page's own content with exactly the n characters pdfplumber lists for it;
-        otherwise why not. pdfplumber also lists text drawn inside a form XObject under the form's own MCIDs, which may
-        share a number with a page run: a tag must never land on that other run (#118 stress run, sojourners)."""
-        if pno not in content:
-            try: content[pno] = list(pikepdf.parse_content_stream(pages[pno - 1]))
-            except Exception: content[pno] = None
-        if content[pno] is None: return 'page content not readable'
-        try: mcsplit.split_run(content[pno], (_inherited(pages[pno - 1], '/Resources') or {}).get('/Font'), m, [], lambda: None, expect_n=n)
-        except mcsplit.Refuse as e:
-            if str(e) == 'run not drawn in the page content': return 'run drawn inside a form XObject, not in the page'
-            if str(e) == 'characters do not line up with the run': return str(e)
-        return None
     for p in parts:
         pno, m, f, l, lang = p['page'], p['mcid'], p['first'], p['last'], p['lang']
         if not (1 <= pno <= len(pages)): lang_refuse(pno, m, 'page not in the book', p); continue
@@ -1145,17 +1146,23 @@ def op_language(spec):
     doc_lang = str(pdf.Root.get('/Lang', ''))                     # set by op_document, which runs before this step
     han, counts = [], collections.Counter()
     for pno in range(1, len(pages) + 1):
-        by = collections.defaultdict(str)
+        by, n_chars = collections.defaultdict(str), collections.Counter()
         for c in PL.pages[pno - 1].chars:
-            if c.get('mcid') is not None: by[c['mcid']] += c['text']
+            if c.get('mcid') is not None: by[c['mcid']] += c['text']; n_chars[c['mcid']] += 1
+        def ok_here(m):                                           # never a run drawn in a form under a page run's number
+            why = drawn_here(pno, m, n_chars[m])
+            if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why)
+            return why is None
         for m, t in by.items():
             if (pno, m) in covered: continue                      # the language step decided this run
-            if (pno, m) in explicit: tag_run(pno, m, explicit[(pno, m)]); continue
+            if (pno, m) in explicit:
+                if ok_here(m): tag_run(pno, m, explicit[(pno, m)])
+                continue
             k = scripts.kind(t)
             if k is None: continue
             what, val = scripts.action(k, t, doc_lang, spec.get('kana_runs'))
             counts[f'{k}: {what}'] += 1
-            if what == 'tag': tag_run(pno, m, val)
+            if what == 'tag' and ok_here(m): tag_run(pno, m, val)
             elif what == 'defer' and k == 'han_only': han.append({'page': pno, 'label': labels.get(pno), 'mcid': m, 'text': t.strip()})
             elif what == 'defer': log['deferred'].append({'page': pno, 'mcid': m, 'what': val})
     if han: log['deferred'].append({'what': 'Han-only runs (ja vs zh)', 'count': len(han)})

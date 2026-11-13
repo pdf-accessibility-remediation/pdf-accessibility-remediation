@@ -144,3 +144,22 @@ def test_form_mcid_that_shares_a_number_is_never_tagged(tmp_path):
     log = json.load(open(out + '.log.json'))
     assert log['language_parts']['spans'] == [] and sum(log['language_parts']['refused'].values()) == 1
     assert str(marks(out)[0]['/Lang']) == 'en-US'
+
+def test_cjk_rule_never_tags_a_form_run_under_a_page_runs_number(tmp_path):
+    """op_language's CJK rule (and a work order's explicit runs) check the run the same way: text drawn in a form
+    XObject under MCID 0 must not get a page run 0 tagged (#118, 04 §6 item 1)."""
+    src = langpdf.build(str(tmp_path / 'f.pdf'), [{'lang': 'en-US', 'text': 'Plain page text.'}])
+    pdf = pikepdf.open(src); page = pdf.pages[0]
+    form = pdf.make_stream(b'/P <</MCID 0>> BDC BT /F1 11 Tf 72 600 Td (kana) Tj ET EMC',
+                           Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Form, BBox=[0, 0, 612, 792],
+                           Resources=pikepdf.Dictionary(Font=page.obj.Resources.Font))
+    page.obj.Resources.XObject = pikepdf.Dictionary(Fm1=form)
+    page.obj.Contents = pdf.make_stream(page.obj.Contents.read_bytes() + b'\nq /Fm1 Do Q')
+    src2 = str(tmp_path / 'f2.pdf'); pdf.save(src2)
+    wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'language': {'runs': [{'page': 1, 'mcid': 0, 'lang': 'ja'}]}}))
+    out = str(tmp_path / 'out.pdf'); run('apply.py', src2, wo, out)
+    log = json.load(open(out + '.log.json'))
+    assert log['language_parts']['spans'] == [] and log['language_parts']['refused'] == {'characters do not line up with the run': 1}
+    assert str(marks(out)[0]['/Lang']) == 'en-US'
+    res = pikepdf.open(out)
+    assert not any(str(k.get('/S')) == '/Span' for k in res.Root.StructTreeRoot.K[0].K)
