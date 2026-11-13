@@ -9,6 +9,8 @@ Reads the original PDF and writes the compact view Claude decides from:
     OUT_DIR/verapdf.json        veraPDF (WCAG 2.2 machine profile) on the original: the "before" for review.md.
                                 digest.json carries only its pdfua_check view (failed rules and who fixes them).
     OUT_DIR/page_reads.json     scanned pages that are mostly Hawaiian, for read_pages.py (images in page_reads/)
+    OUT_DIR/lang_candidates.json  words and passages that may be in another language (lib/langcands.py), for the
+                                language step (#118); local only, never in the digest
 
 Every element Claude may refer to is listed with its object number in the ORIGINAL file
 ("1234 0"); apply.py resolves those numbers against the same file. Text from the book is
@@ -16,7 +18,7 @@ included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads, langcands  # plumb_fix first: it patches pdfplumber
 import pikepdf, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -485,6 +487,11 @@ if is_scan:
 json.dump({'rule': f'every scanned page with {pagereads.WORDS_MIN}+ words of {pagereads.LONG}+ letters (PAGE_READS=all)' if read_all else
            f'scanned pages where at least {pagereads.SHARE_MIN:.0%} of the words of {pagereads.LONG}+ letters have Hawaiian shape',
            'pages': page_reads}, open(os.path.join(OUT, 'page_reads.json'), 'w'), ensure_ascii=False, indent=1)
+
+# ---- words and passages that may be in another language (#118, language tagging; WCAG 3.1.2): found locally, written
+#      beside the digest, never into it (the work-order call doesn't see them). Places are character positions within
+#      their marked-content run (lib/langcands.py), so apply.py can find them without reading the text again.
+json.dump(langcands.book(PL), open(os.path.join(OUT, 'lang_candidates.json'), 'w', encoding='utf-8'), ensure_ascii=False)
 
 # ---- the same validator before and after: veraPDF on the original (started at the top; verify.py runs it on the result).
 #      The full summary goes to verapdf.json for the before/after comparison; the digest gets every failed rule with
