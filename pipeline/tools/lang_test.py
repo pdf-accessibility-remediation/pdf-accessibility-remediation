@@ -177,10 +177,12 @@ def prices():
     """Live prices from OpenRouter's public model list (no key, no book text): {model: (in, out) $ per token}."""
     try:
         with urllib.request.urlopen('https://openrouter.ai/api/v1/models', timeout=30) as r: data = json.load(r)['data']
+        SUPPORTED.update({m['id']: m.get('supported_parameters') for m in data if m['id'] in MODELS})
         return {m['id']: (float(m['pricing']['prompt']), float(m['pricing']['completion'])) for m in data if m['id'] in MODELS}, 'live'
     except Exception as e:
         return {'anthropic/claude-sonnet-5.5': (2e-6, 10e-6), 'anthropic/claude-opus-5.5': (4e-6, 20e-6)}, f'ASSUMED ({type(e).__name__})'
 
+SUPPORTED = {}             # model -> supported_parameters, from the same public list
 OUT_PER_ITEM = 30          # tokens per decision: {"id":"…","lang":"ja-Latn","confidence":"high","why":"language"}, + a note now and then
 
 def write_requests(out_dir, C, items):
@@ -228,13 +230,15 @@ def send(out_dir, model, run, which, cap):
     ledger_f = os.path.join(out_dir, 'spend.json')
     ledger = json.load(open(ledger_f)) if os.path.exists(ledger_f) else {'cap': cap, 'calls': []}
     spent = sum(c.get('cost') or 0 for c in ledger['calls'])
-    pr, _ = prices(); pi, po = pr[model]
+    pr, how = prices()
+    if how != 'live' or SUPPORTED.get(model) is None: sys.exit(f'refused: OpenRouter\'s model list not read ({how}), so the request\'s parameters cannot be checked')
+    pi, po = pr[model]
     worst = sum(langreq.size(r['request'], prompt) * pi + (len(r['request']['items']) * 60 + 200) * po for r in reqs)
     if spent + worst > cap: sys.exit(f'refused: ${spent:.2f} spent + ${worst:.2f} worst case passes the ${cap:.2f} cap')
     od = os.path.join(out_dir, 'replies', model.split('/')[-1], f'run{run}', which); os.makedirs(od, exist_ok=True)
     for n, r in enumerate(reqs, 1):
         mt = len(r['request']['items']) * 60 + 200
-        b = langreq.body(r['request'], model, prompt, mt); b['usage'] = {'include': True}
+        b = langreq.body(r['request'], model, prompt, mt, SUPPORTED.get(model)); b['usage'] = {'include': True}
         json.dump(b, open(os.path.join(od, f'{n:03d}.request.json'), 'w', encoding='utf-8'), ensure_ascii=False)
         req = urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', data=json.dumps(b).encode(),
                                      headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'})

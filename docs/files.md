@@ -36,6 +36,8 @@ Positions are measured in the visible page area (CropBox): running-head bands (t
 
 The whole texts the digest shortens (elements, first list items, first table rows), and the full reading order of the containers for the review page (with each container's child styles), go to `fulltext.json` beside it. That file is for review.md, review.html and the review page only: never sent to the AI. It is kept in the run's `reviews/_audit/` with the digest (not the crops), for a later review.
 
+Words and passages that may be in another language go to `lang_candidates.json` beside it (`lib/langcands.py`, #118). Each place is a page, a marked-content run and the first and last character within it, with its text, its classes and the page's words for context. Nothing in it is sent anywhere yet, and it is not in the digest. A word in the offline English list (`pipeline/data/english-words.txt`, SCOWL) is not a candidate on its own. The file is a working file, removed with the audit folder when the report is written.
+
 ### decide.py
 
 Options: `--dry-run`, `--response-file`, `--no-model` (no AI request: an empty work order for a reviewer, `DECIDE=none`), `--check-key`, `--credit` (credit left), `--max-images` (default 100).

@@ -29,10 +29,12 @@ def test_each_snippet_once_with_every_candidate_marked():
 
 def test_body_temperature_as_decide_sends_it():
     r = {'book': {}, 'snippets': [], 'items': []}
-    assert langreq.body(r, 'anthropic/claude-sonnet-5.5', 'p', 100)['temperature'] == 0
-    b = langreq.body(r, 'anthropic/claude-opus-5.5', 'p', 100)
+    assert langreq.body(r, 'anthropic/claude-sonnet-5.5', 'p', 100)['temperature'] == 0          # model list not known
+    assert 'temperature' not in langreq.body(r, 'anthropic/claude-sonnet-5.5', 'p', 100, ['max_tokens', 'response_format'])
+    b = langreq.body(r, 'anthropic/claude-opus-5.5', 'p', 100, ['temperature', 'response_format'])
     assert 'temperature' not in b and models.temperature_omitted('anthropic/claude-opus-5.5') == 'anthropic/claude-opus-5'
-    assert b['provider'] == {'data_collection': 'deny'}
+    assert b['provider'] == {'data_collection': 'deny'} and b['response_format'] == {'type': 'json_object'}
+    assert 'response_format' not in langreq.body(r, 'x/y', 'p', 100)
 
 def test_parse_and_parts():
     fs = langreq.forms(PLACES)

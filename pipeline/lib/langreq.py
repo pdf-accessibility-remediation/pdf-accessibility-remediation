@@ -110,10 +110,14 @@ def tokens(text):
 
 def size(req, prompt): return int(tokens(prompt) + tokens(user_text(req))) + 10
 
-def body(req, model, prompt, max_tokens):
+def body(req, model, prompt, max_tokens, supported=None):
+    """supported: the model's supported_parameters from OpenRouter's model list (None: not known). Temperature is sent as
+    decide.py sends it: never to a model in OMIT_TEMPERATURE or one OpenRouter lists without it (Sonnet 5.5 and Opus 5.5
+    both, 2026-11-12); response_format only where it is listed."""
     b = {'model': model, 'max_tokens': max_tokens, 'messages': [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': user_text(req)}],
-         'provider': {'data_collection': 'deny'}, 'response_format': {'type': 'json_object'}}
-    if not models.temperature_omitted(model): b['temperature'] = models.TEMPERATURE
+         'provider': {'data_collection': 'deny'}}
+    if supported is not None and 'response_format' in supported: b['response_format'] = {'type': 'json_object'}
+    if not models.temperature_omitted(model) and (supported is None or 'temperature' in supported): b['temperature'] = models.TEMPERATURE
     return b
 
 def parse(text, ids):
