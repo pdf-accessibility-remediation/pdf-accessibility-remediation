@@ -55,6 +55,37 @@ def find_run(ins, mcid):
             if d == 0: return start, k
     raise Refuse('run not closed')
 
+def count_codes(ins, fonts, mcid, xobjects=None):
+    """How many character codes run `mcid` shows in these instructions, nested marked content and spoken-text spans
+    included: the count pdfplumber gives its MCID when the run is drawn here. Raises Refuse only when the run is not
+    drawn here, or its codes can't be counted (a font with an unknown encoding, a form drawn inside it). Unlike
+    split_run, nothing else refuses: a run with a path, an image, its own ActualText or a " operator is still counted
+    (review 06, M1: apply.py's check that a tag lands on the run pdfplumber read)."""
+    se = find_run(ins, mcid)
+    if se is None: raise Refuse('run not drawn in the page content')
+    start, end = se
+    cur = _font_state(ins, start, fonts); q = []; n = 0
+    for i in range(start + 1, end):
+        x = ins[i]; op = str(x.operator)
+        if op == 'Tf': cur = (str(x.operands[0]), fonts.get(x.operands[0]) if fonts is not None else None)
+        elif op == 'q': q.append(cur)
+        elif op == 'Q' and q: cur = q.pop()
+        elif op == 'Do':                             # an image adds no characters; a form may (with or without its own MCIDs)
+            xo = (xobjects or {}).get(x.operands[0]) if xobjects is not None else None
+            if xo is None or str(xo.get('/Subtype')) != '/Image': raise Refuse('cannot count: a form drawn inside the run')
+        elif op in ('Tj', 'TJ', "'", '"'):
+            f = cur[1] if cur else None
+            if f is None: raise Refuse('cannot count: text before any font')
+            st = str(f.get('/Subtype'))
+            if st == '/Type0':
+                if str(f.get('/Encoding')) not in ('/Identity-H', '/Identity-V'): raise Refuse('cannot count: two-byte font with another encoding')
+                nb = 2
+            else: nb = 1
+            arg = x.operands[-1]
+            strs = [y for y in arg if isinstance(y, pikepdf.String)] if op == 'TJ' else [arg]
+            n += sum(len(bytes(y)) // nb for y in strs)
+    return n
+
 def code_bytes(font):
     """Bytes per character code: 1 (simple font), 2 (Type0, Identity-H). Refused otherwise."""
     if font is None: raise Refuse('text before any font')

@@ -1103,11 +1103,11 @@ def drawn_here(pno, m, n):
         try: _CONTENT[pno] = list(pikepdf.parse_content_stream(pages[pno - 1]))
         except Exception: _CONTENT[pno] = None
     if _CONTENT[pno] is None: return 'page content not readable'
-    try: mcsplit.split_run(_CONTENT[pno], (_inherited(pages[pno - 1], '/Resources') or {}).get('/Font'), m, [], lambda: None, expect_n=n)
-    except mcsplit.Refuse as e:
-        if str(e) == 'run not drawn in the page content': return 'run drawn inside a form XObject, not in the page'
-        if str(e) == 'characters do not line up with the run': return str(e)
-    return None
+    res = _inherited(pages[pno - 1], '/Resources') or {}
+    try: got = mcsplit.count_codes(_CONTENT[pno], res.get('/Font'), m, res.get('/XObject') or {})
+    except mcsplit.Refuse as e:                     # a count only (review 06, M1): the split's own refusals stay with the split
+        return 'run drawn inside a form XObject, not in the page' if str(e) == 'run not drawn in the page content' else str(e)
+    return None if got == n else 'characters do not line up with the run'
 def language_parts(parts):
     """The language step's tags (workorder.json `language_parts`, checked by workorder_check.check_language_parts): a
     place that covers its whole run (no letter or digit outside it) is tagged as a run; any other is queued for a split.
@@ -1141,10 +1141,49 @@ def op_language(spec):
     guessed). Runs on every book (ALWAYS), with or without a `language` key, so no CJK run is left unlisted (3.1.2)."""
     spec = spec or {}
     reindex()
-    covered = language_parts(((wo.get('language_parts') or {}).get('parts')) or [])
     explicit = {(r['page'], r['mcid']): r['lang'] for r in spec.get('runs', [])}
     doc_lang = str(pdf.Root.get('/Lang', ''))                     # set by op_document, which runs before this step
     han, counts = [], collections.Counter()
+    # The language step's parts (#118). The local rule comes first on the runs they touch (review 06, H1): a run it tags
+    # whole today (kana → ja, hangul → ko) is tagged whole again; an AI part in that run with the same language, or one
+    # covering the whole run, adds nothing and is dropped; a part in another language stays, split out under the new
+    # Span. Han the AI left untagged in a run the local rule defers goes on the deferred list, as without the step.
+    by_run = collections.defaultdict(list)
+    for p in ((wo.get('language_parts') or {}).get('parts')) or []:
+        by_run[(p['page'], p['mcid'])].append(p)
+    keep, local_tag, local_defer = [], {}, {}
+    for (pno, m), ps in by_run.items():
+        cs = run_chars(pno, m) if 1 <= pno <= len(pages) else []
+        t = ''.join(c['text'] for c in cs); k = scripts.kind(t)
+        what, val = scripts.action(k, t, doc_lang, spec.get('kana_runs')) if k else (None, None)
+        if (pno, m) in explicit: what, val = 'tag', explicit[(pno, m)]
+        if what == 'tag':
+            local_tag[(pno, m)] = (k, val)
+            for p in ps:
+                rest = ''.join(c['text'] for i, c in enumerate(cs) if i < p['first'] or i > p['last'])
+                if scripts.primary(p['lang']) == scripts.primary(val) or not re.search(r'[^\W_]', rest):
+                    LANG['dropped_by_local_rule'] = LANG.get('dropped_by_local_rule', 0) + 1; continue
+                keep.append(p)
+        else:
+            keep += ps
+            if what == 'defer': local_defer[(pno, m)] = (k, val, t, ps)
+    for (pno, m), (k, val) in sorted(local_tag.items()):
+        counts[f'{k or "explicit"}: tag'] += 1
+        why = drawn_here(pno, m, len(run_chars(pno, m)))
+        if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why); continue
+        tag_run(pno, m, val)
+    language_parts(keep)
+    queued = {(pno, m): [(p['first'], p['last']) for p in ps] for (pno, m), ps in _LANG_SPLITS.items()}
+    tagged_whole = {(sp['page'], sp['mcid']) for sp in LANG['spans'] if sp.get('whole')}
+    for (pno, m), (k, val, t, ps) in sorted(local_defer.items()):
+        counts[f'{k}: defer'] += 1
+        if (pno, m) in tagged_whole: continue
+        cs = run_chars(pno, m); spans_ = queued.get((pno, m), [])
+        left = [i for i, c in enumerate(cs) if scripts.CJK.search(c['text']) and not any(a <= i <= b for a, b in spans_)]
+        if not left: continue
+        if k == 'han_only': han.append({'page': pno, 'label': labels.get(pno), 'mcid': m, 'text': t.strip()})
+        else: log['deferred'].append({'page': pno, 'mcid': m, 'what': val})
+    covered = set(by_run)
     for pno in range(1, len(pages) + 1):
         by, n_chars = collections.defaultdict(str), collections.Counter()
         for c in PL.pages[pno - 1].chars:
@@ -3145,6 +3184,8 @@ def fix_language_parts():
                     LANG['spans'].append({'page': pno, 'mcid': mc, 'lang': part['lang'], 'text': part['text'], 'whole': False})
                     LANG['split'] += 1; ok(f'language: {part["lang"]} Span (part of a run)')
             ks[i:i + 1] = new_k; set_kids(o, ks)
+            for sp in LANG['spans']:                       # a run tagged whole and split under its Span: the Span holds every piece
+                if sp.get('whole') and sp['page'] == pno and sp['mcid'] == m: sp['mcids'] = [mc for mc, _, _ in pieces]
     LANG['render_check_seconds'] = round(time.time() - t0, 2)
 
 # ================================================================== run, in a fixed order

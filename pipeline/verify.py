@@ -280,14 +280,19 @@ def _lang_section():
     for sp in written:
         k = (sp['page'], sp['mcid']); by_lang[sp['lang']] += 1
         og = owner.get(k); el = pdf.get_object(og) if og else None
-        got = ''.join(_TXT.get(k, ()))
+        for _ in range(4):                     # a run split under its Span: its first piece may sit in a part's Span below it
+            if el is None or str(el.get('/Lang', '')) == sp['lang'] or not sp.get('mcids'): break
+            el = el.get('/P')
+        keys = [(sp['page'], x) for x in sp.get('mcids') or [sp['mcid']]]     # a run tagged whole, then split under its Span
+        got = ''.join(t for kk in keys for t in _TXT.get(kk, ()))
         why = None
         if el is None: why = 'not in the tag tree'
         elif str(el.get('/Lang', '')) != sp['lang']: why = f'its tag says {str(el.get("/Lang", "")) or "no language"}'
         elif got != sp['text']: why = 'its marked content holds other text'
-        elif k in _BDC_LANG and not same_lang(_BDC_LANG[k], sp['lang']): why = f'its marked content says {_BDC_LANG[k]}'
+        elif any(kk in _BDC_LANG and not same_lang(_BDC_LANG[kk], sp['lang']) for kk in keys):
+            why = f'its marked content says {next(_BDC_LANG[kk] for kk in keys if kk in _BDC_LANG)}'
         if why: mism.append({'page': sp['page'], 'mcid': sp['mcid'], 'lang': sp['lang'], 'text': sp['text'][:80], 'why': why})
-    mine = {(sp['page'], sp['mcid']) for sp in written}
+    mine = {(sp['page'], x) for sp in written for x in sp.get('mcids') or [sp['mcid']]}
     conflicts, invalid = [], collections.Counter()
     langs_seen = collections.Counter()
     for k, og in owner.items():

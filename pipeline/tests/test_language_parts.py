@@ -163,3 +163,62 @@ def test_cjk_rule_never_tags_a_form_run_under_a_page_runs_number(tmp_path):
     assert str(marks(out)[0]['/Lang']) == 'en-US'
     res = pikepdf.open(out)
     assert not any(str(k.get('/S')) == '/Span' for k in res.Root.StructTreeRoot.K[0].K)
+
+# ---- review 06, H1: the local rule comes first on runs the language step touches
+def lang_of_span_over(out, text):
+    """The /Lang of the Span whose marked content holds exactly `text` (pdfplumber), or None."""
+    from lib import plumb_fix, plpages  # noqa: F401
+    by = {}
+    for c in plpages.Pages(out).pages[0].chars:
+        if c.get('mcid') is not None: by.setdefault(c['mcid'], []).append(c['text'])
+    pdf = pikepdf.open(out); st = pdf.Root.StructTreeRoot
+    arr = st.ParentTree.Nums[1]
+    for m, t in by.items():
+        el = arr[m] if m < len(arr) else None
+        while el is not None and isinstance(el, pikepdf.Dictionary) and '/Lang' not in el: el = el.get('/P')
+        if ''.join(t) == text and el is not None and '/Lang' in el: return str(el.Lang)
+    return None
+
+def test_a_kana_run_keeps_its_ja_when_the_ai_tags_part_of_it(tmp_path):
+    runs = [{'font': 'F2', 'lang': 'en-US', 'text': '地獄と極楽'}]
+    src, out, log, v = apply_verify(tmp_path, runs, [part(1, 0, 0, 1, 'ja')])           # 地獄: the same language as the run's
+    lp = log['language_parts']
+    assert lp['whole'] == 1 and lp['split'] == 0 and lp['dropped_by_local_rule'] == 1
+    assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+    assert '/Lang' not in marks(out)[0]
+
+def test_a_part_in_another_language_is_split_under_the_runs_span(tmp_path):
+    runs = [{'font': 'F2', 'lang': 'en-US', 'text': '地獄と極楽'}]
+    src, out, log, v = apply_verify(tmp_path, runs, [part(1, 0, 3, 4, 'zh')])           # 極楽 said to be Chinese
+    lp = log['language_parts']
+    assert lp['whole'] == 1 and lp['split'] == 1
+    whole = next(s for s in lp['spans'] if s['whole'])
+    assert whole['lang'] == 'ja' and len(whole['mcids']) == 2 and whole['text'] == '地獄と極楽'
+    assert v['language']['all_match'] and v['language']['spans_written'] == 2, v['language']
+    assert lang_of_span_over(out, '極楽') == 'zh' and lang_of_span_over(out, '地獄と') == 'ja'
+    assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
+
+def test_han_the_ai_left_untagged_goes_back_on_the_deferred_list(tmp_path):
+    runs = [{'font': 'F2', 'lang': 'en-US', 'text': '地獄 極楽 中文'}]
+    src, out, log, v = apply_verify(tmp_path, runs, [part(1, 0, 0, 1, 'ja')])           # only 地獄 tagged
+    assert [h['mcid'] for h in log['han_only']] == [0]
+    (tmp_path / 'b').mkdir()
+    src2, out2, log2, v2 = apply_verify(tmp_path / 'b', runs, [part(1, 0, 0, 1, 'ja'), part(1, 0, 3, 4, 'ja'), part(1, 0, 6, 7, 'zh')])
+    assert log2['han_only'] == []                                                     # every Han place tagged: nothing left
+
+def test_a_path_inside_the_run_does_not_open_the_form_mcid_guard(tmp_path):
+    """review 06, M1: the page's run 0 draws a rule inside its marks (the split would refuse it for that), and a form on
+    the page draws kana under its own MCID 0. The count check still sees the page run's own characters only, so the CJK
+    tag (here an explicit run) is refused instead of landing on the English run."""
+    src = langpdf.build(str(tmp_path / 'p.pdf'), [{'lang': 'en-US', 'body': ['(Plain page text.) Tj', 'ET', '72 700 m 300 700 l S', 'BT /F1 11 Tf 72 690 Td', '(more) Tj'], 'outside': True}])
+    pdf = pikepdf.open(src); page = pdf.pages[0]
+    form = pdf.make_stream(b'/P <</MCID 0>> BDC BT /F1 11 Tf 72 600 Td (kana) Tj ET EMC',
+                           Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Form, BBox=[0, 0, 612, 792],
+                           Resources=pikepdf.Dictionary(Font=page.obj.Resources.Font))
+    page.obj.Resources.XObject = pikepdf.Dictionary(Fm1=form)
+    page.obj.Contents = pdf.make_stream(page.obj.Contents.read_bytes() + b'\nq /Fm1 Do Q')
+    src2 = str(tmp_path / 'p2.pdf'); pdf.save(src2)
+    wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'language': {'runs': [{'page': 1, 'mcid': 0, 'lang': 'ja'}]}}))
+    out = str(tmp_path / 'out.pdf'); run('apply.py', src2, wo, out)
+    log = json.load(open(out + '.log.json'))
+    assert log['language_parts']['spans'] == [] and log['language_parts']['refused'] == {'characters do not line up with the run': 1}

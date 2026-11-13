@@ -30,7 +30,7 @@ def _cmap(entries, ranges=()):
             + (f'{len(ranges)} beginbfrange\n{rng}endbfrange\n' if ranges else '')
             + 'endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n').encode()
 
-T0_CHARS = [chr(c) for c in range(32, 127)] + list('ōāūīʻēŚṣṇ') + ['ﬁ']
+T0_CHARS = [chr(c) for c in range(32, 127)] + list('ōāūīʻēŚṣṇ') + ['ﬁ'] + list('地獄と極楽中文한국어')   # CJK appended: earlier codes unchanged
 
 def t0_hex(text):
     """F2's codes for text, as a hex string; 'ﬁ' stands for one ligature glyph that reads as 'fi'."""
