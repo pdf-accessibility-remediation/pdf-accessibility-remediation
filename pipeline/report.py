@@ -50,6 +50,8 @@ def load(name, base=R, default=None):
 run = load('run.json', default={}); wo = load('workorder.json', default={}); val = load('validation.json', default={'dropped': []})
 prev = json.load(open(FROM_RECORD, encoding='utf-8')) if FROM_RECORD else None   # a re-apply: the AI call's own record
 log = load(PDF + '.log.json', default={}); ver = load(PDF + '.verify.json', default={})
+lang_log = log.get('language_parts') or {}; ver_lang = ver.get('language') or {}            # #118: the language step's tags
+lang_refused = sum((lang_log.get('refused') or {}).values())
 digest = load('digest.json', base=A, default={})
 fulltext = load('fulltext.json', base=A, default={}) or {}   # the whole texts the digest shortens (local only, never sent)
 vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the original, from the audit
@@ -126,7 +128,7 @@ record = {
     'verapdf': {'before': vera_before, 'after': ver.get('verapdf')}, 'timing_seconds': timing, 'raw_reply': reply,
     **({'raw_reply_passes': passes} if passes else {}), 'environment': log.get('environment'),
     'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier + cost_pages + cost_lang, 6),
-    **({'language_run': {k: v for k, v in lr_run.items() if k not in ('requests', 'language_parts')}       # the parts are in workorder.language_parts
+    **({'language_run': {k: v for k, v in lr_run.items() if k not in ('requests', 'language_parts', 'contexts')}       # the parts are in workorder.language_parts
                         | {'requests': [{k: v for k, v in x.items() if k not in ('text', 'keys', 'ids')} for x in lr_run.get('requests') or []]}} if lr_run else {}),
     **({'page_reads': {k: v for k, v in pr_run.items() if k != 'pages'} | {'pages': [{k: v for k, v in x.items() if k != 'text'} for x in pr_run.get('pages') or []]}}
        if pr_run else {}),
@@ -372,8 +374,13 @@ checks = [
         + ' (see "Work order reviewed by a person")')] if rv else []),
     ('Model reply held one work order', ok(not rb),
      f'{rb["count"]} work orders; the last one (the model\'s final answer) was used, as written (see "The model\'s reply held {rb["count"]} work orders")' if rb else 'one'),
-    ('Executor applied every decision', ok(not log.get('rejected') and not log.get('failed')),
-     f'{len(log.get("rejected") or [])} rejected · {len(log.get("failed") or [])} failed (listed under "Decisions not applied")'),
+    ('Executor applied every decision', ok(not log.get('rejected') and not log.get('failed') and not lang_refused),
+     f'{len(log.get("rejected") or [])} rejected · {len(log.get("failed") or [])} failed (listed under "Decisions not applied")'
+     + (f' · {lang_refused} language tag{"" if lang_refused == 1 else "s"} not placed (listed under "Language Tags")' if lang_refused else '')),
+    *([('Language tags hold their words', ok(ver_lang.get('all_match', True)),
+        f'{ver_lang.get("spans_written", 0):,} tags checked · {ver_lang.get("mismatches", 0)} not matching their words or language'
+        + (f' · {ver_lang.get("publisher_conflicts")} of the PDF\'s own tags say another language in their text' if ver_lang.get('publisher_conflicts') else ''))]
+      if ver_lang.get('spans_written') else []),
     ('Nothing deferred by the executor',
      ok(not log.get('deferred')) if not any(d.get('scope') == 'pdfua' for d in log.get('deferred') or []) else    # review.html: WCAG deferrals only
      line(pdfua(ok(not log.get('deferred')), ok(not [d for d in log['deferred'] if d.get('scope') != 'pdfua']))),
@@ -1069,6 +1076,40 @@ if bad:
         L += ['| What | Why | Count |', '|---|---|---:|'] + [line(f'| {o} | {w.replace("|", "/")} | {c} |', entry=False) for (o, w), c in grp.most_common()] + ['', 'Each one:', '']
     L += [f'- {json.dumps(b, ensure_ascii=False)}' for b in bad]
     L.append('')
+lp_ = (wo or {}).get('language_parts') or {}
+if lp_.get('version') == 2 or lang_log:                   # #118: what the language step tagged, left untagged and could not place
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from lib import langtag as LT
+    forms_ = lp_.get('forms') or []
+    pages_of_ = collections.defaultdict(set)
+    for r_ in lp_.get('parts') or []:
+        if isinstance(r_, list) and len(r_) == 5: pages_of_[r_[4]].add(r_[0])
+    tagged_ = [(i, f) for i, f in enumerate(forms_) if f.get('tag') and f.get('lang')]
+    person_ = [(i, f) for i, f in enumerate(forms_) if not f.get('tag') and f.get('person') and f.get('decided') not in ('untagged', 'remove')]
+    exempt_ = collections.Counter(f.get('why') for f in forms_ if not f.get('tag') and not f.get('person'))
+    n += 1; L += [f'### {n}. Language Tags', '',
+                  'Words and passages in another language get a language tag, so a screen reader switches to that language\'s voice (WCAG 3.1.2). '
+                  'A person decides every tag on the review page.', '']
+    by_lang = collections.Counter()
+    for i, f in tagged_: by_lang[f['lang']] += f.get('places') or 0
+    if by_lang: L += ['| Language | Word forms | Places |', '|---|---:|---:|'] + [line(f'| {LT.name(k) or k} | {sum(1 for _, f in tagged_ if f["lang"] == k)} | {v} |', entry=False)
+                                                                              for k, v in by_lang.most_common()] + ['']
+    if exempt_: L += [line('Left untagged by the AI: ' + ' · '.join(f'{c} {({"name": "names", "english": "part of English", "indeterminate": "not words of a known language", "unsure": "not sure", "varies": "mixed"}).get(w, w or "no answer")}'
+                                                            for w, c in exempt_.most_common()) + ' (Latin script: no decision needed).', entry=False), '']
+    if person_:
+        L += [f'**Not tagged, for a person to decide ({len(person_)}):**', '']
+        L += [line(f'- "{excerpt(f.get("form"))}"' + (f' (the PDF tags it "{f["current"]}")' if f.get('current') else '')
+                   + f' · {", ".join(pg(p) for p in sorted(pages_of_.get(i) or [])[:6])}', key=f'lang:person:{f.get("key")}', pages=sorted(pages_of_.get(i) or [])[:6]) for i, f in person_]
+        L.append('')
+    if lang_refused:
+        L += [f'**Not placed by the executor ({lang_refused}):** the page and its text stay as they were; the words are read in the book\'s language.', '']
+        L += [line(f'- {w}: {c}', entry=False) for w, c in sorted((lang_log.get('refused') or {}).items(), key=lambda x: -x[1])]
+        L.append('')
+    if tagged_:
+        L += [f'**Tagged ({len(tagged_)} word forms):**', '']
+        L += [line(f'- "{excerpt(f.get("form"))}": {LT.name(f["lang"]) or f["lang"]}' + (' (changed by the reviewer)' if f.get('decided') == 'changed' else '')
+                   + f' · {f.get("places") or 0} place{"" if f.get("places") == 1 else "s"} · {", ".join(pg(p) for p in sorted(pages_of_.get(i) or [])[:4])}',
+                   key=f'lang:{f.get("key")}', pages=sorted(pages_of_.get(i) or [])[:4]) for i, f in tagged_]
+        L.append('')
 if n == 0: L.append('Nothing flagged.')
 
 L += ['## What was changed', '', '| Change | Count |', '|---|---:|'] + [f'| {k} | {v} |' for k, v in (log.get('applied') or {}).items()]
@@ -1128,6 +1169,9 @@ try:
 except Exception as e: print(f'figure moves and section moves not kept for a later review: {type(e).__name__}')
 
 # ------------------------------------------------------------------ tidy
+if lr_run and lr_run.get('contexts'):               # the words around each language form (#118): for a later review, beside the digest
+    os.makedirs(os.path.join(R, 'reviews', '_audit'), exist_ok=True)
+    json.dump(lr_run['contexts'], open(os.path.join(R, 'reviews', '_audit', 'language_contexts.json'), 'w', encoding='utf-8'), ensure_ascii=False)
 if not KEEP:
     from review import sessions as RS                 # the digest, fulltext and OCR word sheets stay, for a later review
     if rv: RS.keep_first(R, A)

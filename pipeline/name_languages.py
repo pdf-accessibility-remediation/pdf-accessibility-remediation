@@ -231,7 +231,7 @@ def merge(R, wo_path, fs, dec, rec, held=(), note=None, contexts=None):
     workorder.json (decide.py --response-file) can put them back (review 02, M8)."""
     if not os.path.exists(wo_path): return
     wo = json.load(open(wo_path, encoding='utf-8'))
-    lp = langreq.to_rows(fs, dec, contexts=contexts)
+    lp = langreq.to_rows(fs, dec)
     pages = max([p['page'] for f in fs for p in f['places']] + [1])
     tmp = {'language_parts': lp}; dropped = workorder_check.check_language_parts(tmp, 10 ** 6)
     if tmp.get('language_parts', {}).get('parts'): wo['language_parts'] = tmp['language_parts']
@@ -248,6 +248,9 @@ def merge(R, wo_path, fs, dec, rec, held=(), note=None, contexts=None):
                            'answer': d, 'pages': sorted({p['page'] for p in f['places']})[:20]})
     rec['needs_person'] = person; rec['parts'] = len(langreq.expand(wo.get('language_parts'))); rec['parts_dropped'] = dropped[:50]
     rec['language_parts'] = wo.get('language_parts') or {'parts': []}      # decide.py puts these back when it rebuilds workorder.json (M8)
+    if contexts:                                       # the words around each form, for the review page only (kept beside the digest, never in the record)
+        key_of = {f['id']: e['key'] for f, e in zip(fs, (wo.get('language_parts') or {}).get('forms') or [])}
+        rec['contexts'] = {key_of[i]: c for i, c in contexts.items() if i in key_of}
     rec['held_back'] = [f['form'] for f in held][:200]; rec['held_back_count'] = len(held)
     nd = collections.defaultdict(list)                  # forms with no decision (cut off, invalid, a failed request), by group
     for f in fs:

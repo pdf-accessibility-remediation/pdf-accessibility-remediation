@@ -127,6 +127,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     adds = data['addable']
     saved = core.load(os.path.join(R, 'review_decisions.json'), {}) or {}
     done = threading.Event(); finishing = threading.Event(); result = {}
+    lang_ctx = {}                                     # the language rows' sentences, read once when a fold first opens (#118)
     render_lock = threading.Lock()                    # pdfium is not thread-safe: one page image at a time
     write_lock = threading.Lock()                     # every write of this server, one at a time (auto-save, the Finish check and Finish can race)
     gate = threading.Condition(); inside = {'n': 0, 'closed': False}   # POSTs under way; closed: the server is stopping
@@ -320,7 +321,8 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 q = parse_qs(self.path.split('?', 1)[1] if '?' in self.path else '')
                 try: start = max(0, int((q.get('start') or ['0'])[0]))
                 except ValueError: start = 0
-                return self.send(200, core.language_rows(data['items'], (q.get('group') or [''])[0], start))
+                if 'contexts' not in lang_ctx: lang_ctx['contexts'] = core.language_contexts(run_dir)
+                return self.send(200, core.language_rows(data['items'], (q.get('group') or [''])[0], start, contexts=lang_ctx['contexts']))
             if path in text_urls:                      # the OCR text of a page the section can show; any other number: 404
                 n = text_urls[path]
                 try: return self.send(200, {'page': n, 'text': page_text(n)})

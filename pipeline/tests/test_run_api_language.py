@@ -43,3 +43,8 @@ def test_saved_language_decisions_are_applied_at_no_cost(tmp_path):
     sys.path.insert(0, HERE); from lib import langreq
     assert sorted(p['form'] for p in langreq.expand(rec['workorder']['language_parts'])) == ['Onjōji', 'mappō']
     assert rec['apply']['language_parts']['split'] == 2
+    md = open(R / 'review.md', encoding='utf-8').read()
+    assert '. Language Tags' in md and '| Japanese (Romanized) | 2 | 2 |' in md and '- "Onjōji": Japanese (Romanized)' in md
+    assert '| Language tags hold their words | OK | 2 tags checked · 0 not matching their words or language |' in md
+    g = rec['glance']; lang_line = next(x for x in g['ship'] if x['what'] == 'Language tags')
+    assert lang_line['ok'] is False and lang_line['text'].startswith('Not Reviewed (')          # not reviewed: never Ready

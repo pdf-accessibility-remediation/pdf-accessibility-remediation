@@ -216,7 +216,7 @@ def build_items(wo, digest, order=None, ro=None):
                 f.get('form') or '', page=ps[0] if ps else None, pages=[ps[0], ps[-1]] if ps else None, edit='lang', field='lang',
                 lang_name=langtag.name(f.get('lang')) if f.get('tag') and f.get('lang') else None, group=f.get('group'), why=f.get('why'),
                 evidence=f.get('evidence'), current=f.get('current'), places=f.get('places'), page_list=ps[:30],
-                snippet=f.get('context'), bulk=bulk or None, needs_person=bool(f.get('person')) or None, confidence=f.get('confidence'))
+                form_key=f.get('key'), bulk=bulk or None, needs_person=bool(f.get('person')) or None, confidence=f.get('confidence'))
     if wo.get('notes_for_reviewer'):
         refs = sorted({int(m.group(1)) for m in PAGE_REF.finditer(wo['notes_for_reviewer']) if 1 <= int(m.group(1)) <= N})
         add('notes_for_reviewer', 'notes_for_reviewer', 'Deferred by the AI', ['notes_for_reviewer'], wo['notes_for_reviewer'],
@@ -931,7 +931,15 @@ def language_summary(items):
     names = sorted({(code, name) for code, name in langtag.NAMES.items() if code != 'qaa'}, key=lambda x: x[1])
     return {'groups': order, 'total': sum(x['count'] for x in order), 'names': [{'code': c, 'name': n} for c, n in names]}
 
-def language_rows(items, group, start=0, n=LANG_PAGE):
+def language_contexts(R):
+    """{form key: the words around its first place}: the language step's own file while the run waits for review, else the
+    copy report.py keeps beside the digest. {} when neither is there (the rows then show no sentence)."""
+    for p in (os.path.join(R, 'language_run.json'), os.path.join(R, 'reviews', '_audit', 'language_contexts.json')):
+        x = load(p)
+        if isinstance(x, dict): return x.get('contexts') if p.endswith('language_run.json') else x
+    return {}
+
+def language_rows(items, group, start=0, n=LANG_PAGE, contexts=None):
     """One page of a fold's rows: what the review page shows per word form."""
     rows = [it for it in items if it.get('kind') == LANG_KIND and lang_group(it) == group]
     out = []
@@ -939,7 +947,8 @@ def language_rows(items, group, start=0, n=LANG_PAGE):
         c = it.get('context') or {}
         out.append({'id': it['id'], 'form': it['label'], 'ai': it['ai'], 'lang_name': c.get('lang_name'), 'confidence': c.get('confidence'),
                     'evidence': c.get('evidence'), 'why': c.get('why'), 'current': c.get('current'), 'places': c.get('places'),
-                    'pages': c.get('page_list'), 'snippet': c.get('snippet'), 'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person'))})
+                    'pages': c.get('page_list'), 'snippet': c.get('snippet') or (contexts or {}).get(c.get('form_key')),
+                    'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person'))})
     return {'group': group, 'start': start, 'total': len(rows), 'rows': out}
 
 def prepare(R, pdf):

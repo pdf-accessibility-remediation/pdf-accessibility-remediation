@@ -301,6 +301,9 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
             add(1, 'ship', 'OCR text ' + (('waiting for a language reader' if v.get('verdict') == SENT else 'not approved') if isinstance(v, dict) else 'not yet reviewed'),
                 ocr_pages, sec('Intake'), find='- OCR text added', key='intake:ocr')
         elif name in GATE_ROWS: add(1, 'ship', f'{name}: {det}', [], sec('Work order reviewed'))
+        elif name == 'Language tags hold their words':          # #118: a tag on other words or under another language (review 06, stage D)
+            add(1, 'check', f'{name}: {det}', [x['page'] for x in (ve.get('language') or {}).get('mismatch_examples') or [] if isinstance(x.get('page'), int)],
+                sec('Language Tags'), key='check:language')
         elif name.startswith('veraPDF WCAG'):
             wr = [x for x in vrules.values() if x.get('scope') == 'wcag']
             for x in wr or [None]:

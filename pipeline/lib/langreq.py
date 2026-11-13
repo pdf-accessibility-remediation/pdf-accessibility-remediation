@@ -176,7 +176,7 @@ def needs_person(f, d):
     non_latin = any(c.startswith(NON_LATIN) for c in f['class'])
     return f['group'] == 'existing' or not d or (non_latin and (not d.get('lang') or d.get('confidence') == 'low'))
 
-def to_rows(fs, decisions, tag_conf=('high', 'medium'), contexts=None):
+def to_rows(fs, decisions, tag_conf=('high', 'medium')):
     """Decisions → language_parts, version 2 (review 06, record size): one entry per form, with the AI's answer and whether
     it is tagged (`tag`: high or medium confidence with a language), and the places as rows [page, mcid, first, last,
     form index]. Every form with places is kept, tagged or not, so a person can tag what the AI left untagged; apply.py
@@ -189,7 +189,6 @@ def to_rows(fs, decisions, tag_conf=('high', 'medium'), contexts=None):
              **({'evidence': d['evidence']} if d.get('evidence') else {}), **({'current': f['current']} if f.get('current') else {}),
              'tag': bool(f['group'] != 'existing' and d.get('lang') and d.get('confidence') in tag_conf),
              **({'person': True} if needs_person(f, d) else {}), 'places': len(f['places'])}
-        if contexts and contexts.get(f['id']): e['context'] = contexts[f['id']]
         i = len(forms); forms.append(e)
         for p in f['places']: rows.append([p['page'], p['mcid'], p['first'], p['last'], i])
     return {'version': 2, 'forms': forms, 'parts': rows}
