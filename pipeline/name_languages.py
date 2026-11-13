@@ -164,9 +164,11 @@ def main():
         try: est['expected'] = costhistory.expected([{'kind': 'language', 'input_est': t['input_est'], 'max_tokens': t['max_tokens']} for t in send], model, pin, pout, worst)
         except Exception as ex: est['expected'] = {'none': 'error'}; print(f'note: the expected cost could not be worked out ({type(ex).__name__})')
     over_cap = worst > args.max_usd
+    kept = {}
     if args.dry_run:                                   # one over its own cap is marked refused: never counted toward the PDF (review 08, H1)
-        json.dump({'schema': 'language-estimate/1', 'model': model, 'prompt_sha256': prompt_sha, **est,
-                   **({'refused': {'why': 'cap', 'words': f'The language step could cost up to ${worst:.2f}, more than its limit of ${args.max_usd:.2f}.'}} if over_cap else {})},
+        new = {'schema': 'language-estimate/1', 'model': model, 'prompt_sha256': prompt_sha, **est}
+        kept = {} if over_cap else costs.kept_refusal(R, 'language', new)      # decide.py's "left out" survives this dry run
+        json.dump({**new, **({'refused': {'why': 'cap', 'words': f'The language step could cost up to ${worst:.2f}, more than its limit of ${args.max_usd:.2f}.'}} if over_cap else kept)},
                   open(est_path, 'w', encoding='utf-8'), indent=1)
     print(f'language step: {len(fs)} forms ({len(held)} held back by LANGUAGE_MAX_FORMS) in {len(todo)} requests ({len(todo) - len(send)} answered before) · {model}')
     if send: print('language step: ' + costhistory.terminal_line(est['expected']))
@@ -174,6 +176,8 @@ def main():
     if over_cap:
         sys.exit(f'refusing before any AI request: the language step could cost up to ${worst:.2f}, more than the limit of ${args.max_usd:.2f}. '
                  f'To run it, raise the limit for this run: LANGUAGE_MAX_USD={int(worst) + 1}')
+    if kept and os.path.exists(os.path.join(R, 'response.json')):       # the work order has run: the step stays left out
+        sys.exit(f'refusing before any AI request: {kept["refused"].get("words")}')
     ref = costs.refused(R, 'language') if not args.dry_run and send else None
     if ref and ref.get('why') == 'book':               # decide.py left it out of the PDF's estimate: it stays out (review 08, H1)
         sys.exit(f'refusing before any AI request: {ref.get("words") or "the language step was left out of this PDF's estimate"}')

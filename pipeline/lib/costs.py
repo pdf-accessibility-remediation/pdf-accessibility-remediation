@@ -122,6 +122,15 @@ def mark_refused(R, kind, why, words):
     else: e['refused'] = {'why': why, 'words': words}
     with open(p, 'w', encoding='utf-8') as f: json.dump(e, f, indent=1)
 
+def kept_refusal(R, kind, est):
+    """A dry run rewrites its estimate file; decide.py's 'book' refusal in it is kept when the step is the same (model,
+    prompt, worst case), so the dry run run_api.sh makes before asking never lifts it (review 08, H1). {} or {'refused': …}."""
+    old = _load(os.path.join(R, {k: f for k, f, _ in OPTIONAL}[kind]))
+    ref = old.get('refused') if isinstance(old, dict) else None
+    if not (isinstance(ref, dict) and ref.get('why') == 'book'): return {}
+    same = all(old.get(k) == est.get(k) for k in ('model', 'prompt_sha256', 'worst_case_usd'))
+    return {'refused': ref} if same else {}
+
 def refused(R, kind):
     """The refusal recorded in an optional step's estimate file ({why, words}), else None."""
     e = _load(os.path.join(R, {k: f for k, f, _ in OPTIONAL}[kind]))

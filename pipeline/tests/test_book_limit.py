@@ -57,10 +57,15 @@ def test_a_language_step_that_fits_its_cap_but_not_the_book_is_the_one_left_out(
     assert real_run_passed_the_book_check(decide(A, R))
     r = decide(A, R, '--dry-run', '--book-max-usd', '9')                  # a higher limit: counted again
     assert 'for the language tags (3 AI requests)' in r.stdout and C.refused(str(R), 'language') is None
-    # name_languages.py then refuses itself, with decide.py's reason
+    # name_languages.py then refuses itself, with decide.py's reason, through run_api.sh's order: its dry run, decide.py's
+    # mark, the work order's call, its dry run again before the question (which must not lift the mark), the real step
     src, A2, R2 = TN.folders(tmp_path)
     TN.run(src, A2, R2, monkeypatch, '--dry-run')
     C.mark_refused(str(R2), 'language', 'book', 'The language step is left out of this run: with it, this PDF could cost up to $5.62.')
+    TN.run(src, A2, R2, monkeypatch, '--dry-run')
+    assert C.refused(str(R2), 'language')['why'] == 'book'                  # kept by a dry run of the same step
+    (R2 / 'response.json').write_text('{}')                                 # the work order has run
+    assert TN.run(src, A2, R2, monkeypatch, '--dry-run') == [] and 'left out of this run' in str(TN.LAST['exit'])
     assert TN.run(src, A2, R2, monkeypatch) == [] and 'left out of this run' in str(TN.LAST['exit'])
 
 def test_fit_optional_keeps_the_page_readings_first():
@@ -83,3 +88,15 @@ def test_the_language_step_refuses_over_the_books_limit(tmp_path, monkeypatch):
     w(R / 'run.json', {'usage': {'cost_usd': 4.999}})
     assert TN.run(src, A, R, monkeypatch) == [] and 'per PDF' in str(TN.LAST['exit'])
     assert len(TN.run(src, A, R, monkeypatch, '--book-max-usd', '6')) == 1
+
+def test_page_readings_left_out_stay_left_out_through_the_second_dry_run(tmp_path, monkeypatch):
+    """review 08, H1: run_api.sh dry-runs read_pages.py again before its question; decide.py's "left out" survives it, and
+    once the work order has run the step stops with that reason."""
+    A = audit_with_pages(tmp_path); R = tmp_path / 'r'
+    read(A, R, monkeypatch, '--model', TN.MODEL, '--dry-run')
+    C.mark_refused(str(R), 'page_reads', 'book', 'The AI reading of scanned Hawaiian pages is left out of this run: with it, this PDF could cost up to $5.40.')
+    read(A, R, monkeypatch, '--model', TN.MODEL, '--dry-run')
+    assert C.refused(str(R), 'page_reads')['why'] == 'book' and C.page_estimate(str(R)) is None
+    (R / 'response.json').write_text('{}')
+    assert read(A, R, monkeypatch, '--model', TN.MODEL, '--dry-run') == [] and 'left out of this run' in str(PLAST['exit'])
+    assert read(A, R, monkeypatch, '--model', TN.MODEL) == [] and 'left out of this run' in str(PLAST['exit'])
