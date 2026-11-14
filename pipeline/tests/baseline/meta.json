@@ -1,5 +1,5 @@
 {
- "prompt": "workorder_v10.md",
+ "prompt": "workorder_v11.md",
  "books": [
   "hawaii3",
   "globalasias",
@@ -11,5 +11,5 @@
   "ilokano",
   "romanization-ocr"
  ],
- "python": "3.14"
+ "python": "3.13"
 }

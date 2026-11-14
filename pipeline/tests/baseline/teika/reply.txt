@@ -8,28 +8,32 @@
   },
   "artifacts": {
     "text_rules": [
-      {"label": "notes running heads and page numbers", "pages": [229, 256], "regex": "(\\d+ )?Notes to Pages \\d+–\\d+( \\d+)?|\\d+", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "running heads, acknowledgments", "pages": [11, 11], "regex": "((\\d+|[ivxl]+) )?(Acknowl edgments|Index of Poems Cited|Index|Introduction|Chapter One|A Documentary Biography)( (\\d+|[ivxl]+))?|\\d+|[ivxl]+", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "running heads, introduction", "pages": [15, 16], "regex": "((\\d+|[ivxl]+) )?(Acknowl edgments|Index of Poems Cited|Index|Introduction|Chapter One|A Documentary Biography)( (\\d+|[ivxl]+))?|\\d+|[ivxl]+", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "running heads, chapter one", "pages": [23, 24], "regex": "((\\d+|[ivxl]+) )?(Acknowl edgments|Index of Poems Cited|Index|Introduction|Chapter One|A Documentary Biography)( (\\d+|[ivxl]+))?|\\d+|[ivxl]+", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "running heads, index", "pages": [271, 272], "regex": "((\\d+|[ivxl]+) )?(Acknowl edgments|Index of Poems Cited|Index|Introduction|Chapter One|A Documentary Biography)( (\\d+|[ivxl]+))?|\\d+|[ivxl]+", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "running heads, index of poems", "pages": [277, 278], "regex": "((\\d+|[ivxl]+) )?(Acknowl edgments|Index of Poems Cited|Index|Introduction|Chapter One|A Documentary Biography)( (\\d+|[ivxl]+))?|\\d+|[ivxl]+", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "drop folios", "pages": [8, 270], "regex": "[ivxlc]+|\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"}
+      {"label": "running head, Acknowledgments", "pages": [11, 11], "regex": "(\\d+ |x )?Acknowl edgments( \\d+| x)?|x", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head, Introduction", "pages": [15, 16], "regex": "(\\d+ )?Introduction( \\d+)?|\\d+", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head, Chapter One", "pages": [23, 24], "regex": "(\\d+ )?(Chapter One|A Documentary Biography)( \\d+)?|\\d+", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head, Notes", "pages": [229, 256], "regex": "(\\d+ )?Notes to Pages \\d+–\\d+( \\d+)?", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "page number, Notes", "pages": [229, 256], "regex": "\\d+", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head, Index", "pages": [271, 275], "regex": "(\\d+ )?Index( \\d+)?", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "running head, Index of Poems Cited", "pages": [277, 278], "regex": "(\\d+ )?Index of Poems Cited( \\d+)?", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "folio, contents page", "pages": [8, 8], "regex": "[ivxlc]+", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio, Introduction opener", "pages": [14, 14], "regex": "\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio, Chapter Three opener", "pages": [101, 101], "regex": "\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "folio, Notes opener", "pages": [228, 228], "regex": "\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"}
     ]
   },
   "document": {
     "title": "Teika: The Life and Works of a Medieval Japanese Poet",
     "lang": "en-US",
-    "display_doc_title": true,
-    "remove_empty_acroform": true
+    "display_doc_title": true
   },
   "rolemap": {
+    "TPT": "H1",
     "CT": "H2",
     "FMH": "H2",
     "BMH": "H2",
     "ATAH": "H2",
-    "BMH1": "H3",
-    "H1": "H3"
+    "H1": "H3",
+    "BMH1": "H3"
   },
   "merges": [
     {"style": "CN", "direction": "next", "with": ["CT"]},
@@ -40,46 +44,39 @@
     {"obj": "5903 0", "text": "Chapter Two The Bodhidharma Style and the Poetry Contest in Six Hundred Rounds"},
     {"obj": "6289 0", "text": "Chapter Three Teika’s Poetics"},
     {"obj": "6567 0", "text": "Chapter Four Spirit of Han, Genius of Yamato"},
-    {"obj": "6761 0", "text": "Chapter Five Teika after Teika A History of Reception"},
-    {"obj": "6380 0", "text": "Revisiting MAIGETSUSHŌ and TEIKA JITTEI"},
-    {"obj": "6433 0", "text": "Teika’s Judgments at SENGOHYAKUBAN UTAAWASE"},
-    {"obj": "6727 0", "text": "China in THE TALE OF MATSURA"}
-  ],
-  "retype": [
-    {"obj": "10868 0", "type": "H1", "why": "book title on the title page"},
-    {"obj": "6299 0", "type": "H4", "why": "numbered subdivision under 'Limits of Teika's Theoretical Oeuvre'"},
-    {"obj": "6314 0", "type": "H4", "why": "numbered subdivision under 'Limits of Teika's Theoretical Oeuvre'"},
-    {"obj": "6317 0", "type": "H4", "why": "numbered subdivision under 'Limits of Teika's Theoretical Oeuvre'"}
+    {"obj": "6761 0", "text": "Chapter Five Teika after Teika A History of Reception"}
   ],
   "tables": [
-    {"obj": "5636 0", "title_rows": 1, "header_rows": 1, "header_cols": 0, "note_rows": 1},
-    {"obj": "5514 0", "title_rows": 1, "header_rows": 1, "header_cols": 0},
-    {"obj": "5347 0", "title_rows": 1, "header_rows": 1, "header_cols": 0}
+    {"obj": "5636 0", "title_rows": 1, "header_rows": 1, "header_cols": 1, "note_rows": 1},
+    {"obj": "5514 0", "title_rows": 1, "header_rows": 1, "header_cols": 1},
+    {"obj": "5347 0", "title_rows": 1, "header_rows": 1, "header_cols": 1}
   ],
   "alt": [
-    {"obj": "3759 0", "alt": "University of Hawaiʻi Press logo", "confidence": 0.8}
+    {"obj": "3759 0", "alt": "University of Hawai‘i Press logo"}
   ],
   "page_figures": [
-    {"page": 1, "alt": "Front cover of Teika: The Life and Works of a Medieval Japanese Poet by Paul S. Atkins. Three maple leaves, two in grey and one in white, on a black background, with the title TEIKA in large white capitals, the subtitle in gold, and the author's name at the bottom."},
-    {"page": 5, "alt": "Copyright page. © 2017 University of Hawaiʻi Press, all rights reserved, printed in the United States of America. Library of Congress Cataloging-in-Publication data for Teika: the life and works of a medieval Japanese poet by Paul S. Atkins (LCCN 2016032550; subject: Fujiwara, Sadaie, 1162–1241). Creative Commons BY-NC-ND 4.0 open access notice with ISBNs 9798880702541 (OA PDF) and 9798880702558 (OA EPUB). Funded by the National Endowment for the Humanities Fellowships Open Book Program. Printed on acid-free paper."}
+    {"page": 1, "alt": "Book cover: white, gray and dark-gray Japanese maple leaves on a black background. The title TEIKA appears in large white capitals, with the subtitle “The Life and Works of a Medieval Japanese Poet” in gold below it, and the author’s name, Paul S. Atkins, near the bottom."},
+    {"page": 5, "alt": "Copyright page. © 2017 University of Hawai‘i Press, all rights reserved, printed in the United States of America. Library of Congress Cataloging-in-Publication Data: Atkins, Paul S. (Paul Stephen). Teika: the life and works of a medieval Japanese poet. Honolulu: University of Hawai‘i Press, 2017. Includes bibliographical references and index. LCCN 2016032550; ISBN 9780824858506 (hardcover, alk. paper). Subject: Fujiwara, Sadaie, 1162–1241; Poets, Japanese, 1185–1600, Biography. LCC PL791.Z5 A85 2017; DDC 895.61/22 [B]. The Open Access edition is licensed under Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0), so digital editions may be freely downloaded and shared for non-commercial purposes with credit to the author; commercial uses and derivative publications require permission from the publisher. The license does not apply to separately copyrighted material. ISBN 9798880702541 (OA PDF), 9798880702558 (OA EPUB). The Open Access edition was funded by the National Endowment for the Humanities Fellowships Open Book Program. University of Hawai‘i Press books are printed on acid-free paper and meet the guidelines for permanence and durability of the Council on Library Resources."}
+  ],
+  "lists": [
+    {"first_style": "BLF", "item_prefix": "BL", "last_style": "BLL", "numbering": "None"}
   ],
   "toc": {"item_styles": ["CFMH", "CCT", "CBMH"], "pages": [8, 8]},
   "notes": {"styles": ["NTX", "NTXI"], "id_prefix": "note-"},
   "move_section": [
-    {"pages": [94, 94], "before_page": 97, "why": "Table 1 container is read after the main text; return it to its place in printed order"},
-    {"pages": [95, 95], "before_page": 97, "why": "Table 2 container is read after the main text"},
-    {"pages": [96, 96], "before_page": 97, "why": "Table 3 container is read after the main text"}
+    {"pages": [94, 94], "before_page": 95, "why": "Table 1 sits in a separate Story read after the whole main flow (after the Index); return it to its printed position."},
+    {"pages": [95, 95], "before_page": 96, "why": "Table 2 is read after the main flow; return it to its printed position."},
+    {"pages": [96, 96], "before_page": 97, "why": "Table 3 is read after the main flow; return it to its printed position."}
   ],
   "remove_empty_containers": true,
   "deferrals": [
-    {"what": "Entire body text of three pages is untagged (not in any tag, not artifact): real content that cannot be fixed by this work order. A person must tag it in reading order. This is the main source of veraPDF 7.1-3 failures.", "why": "veraPDF 7.1-3. Untagged real content (poem, quotations, running text); cannot be artifacted.", "pages": [85, 157, 158]},
-    {"what": "Copyright/CIP page is untagged text. It is given a descriptive alt text as a page figure, but ideally the text should be tagged as real paragraphs.", "why": "veraPDF 7.1-3. Untagged real content on a page treated as a figure.", "pages": [5]},
-    {"what": "Index entries have lost or scrambled page numbers in the text layer (for example 'calligraphy, , , –, , –, 38164196972012069 242'). Reading order and numbers need a human check.", "why": "Text-layer problem; the text cannot be changed here.", "pages": [270, 278]},
-    {"what": "Numbered and lettered paragraph runs (styles NLF/NL/NLL, intro and chapter 3 outlines) and the bulleted participant lists (BLF/BL/BLL) are plain P with literal markers; not converted to L/LI.", "why": "Mixed numbering schemes (1., I., A.) and literal bullets in the text; converting could duplicate markers.", "pages": [20, 21, 77, 102, 104]},
-    {"what": "Title page has ornament-like elements (style TPTORNF/TPTORNL with text 'P') and an empty TPCIT element.", "why": "Meaning unclear; harmless but a person should check the title page reading order.", "pages": [4]},
-    {"what": "Heading levels inside chapters: all H1-styled section heads are mapped to H3; small-cap-run heads (8 pt) may be a lower level in some chapters (for example chapter 5 under 'Muromachi Period'). Only the 'I./II./III.' heads on PDF 102–104 were set to H4.", "why": "Digest does not show a clear hierarchy for the rest.", "pages": [58, 220]},
-    {"what": "Han-only CJK runs (68) left for the executor to defer to a human (Japanese or Chinese ambiguity).", "why": "Ambiguous language, never guessed.", "pages": [60, 61, 73, 76, 98, 137]}
+    {"what": "Body text that is not tagged at all (running heads, poem lines, and paragraphs of the chapter text)", "why": "veraPDF 7.1-3: about 154 untagged runs on these pages. The text is real content, so it cannot be artifacted and no work-order key can tag it. A person must tag these pages in the source or in Acrobat.", "pages": [85, 157, 158]},
+    {"what": "Numbered and lettered paragraph runs in styles NLF/NL/NLL (e.g. “1. Biography…”, “A. Kindai shūka…”)", "why": "There are 6 NLF starts but only 5 NLL ends, and the runs are interrupted by headings. The grouping cannot be checked from the digest, so they are left as paragraphs for review.", "pages": [20, 21, 102, 103, 104, 188, 189]},
+    {"what": "Heading levels below chapter title and section heads", "why": "All style “H1” section heads were mapped to H3 under the chapter H2. Some may really be subsections of other section heads (e.g. “Plot Summary” and “Framing Devices” under “China and THE TALE OF MATSURA”; “I./II./III. Texts…” under “Limits of Teika’s Theoretical Oeuvre”), but the digest cannot show this. A reviewer should check the outline.", "pages": [58, 102, 104, 163, 164, 165, 167, 169]},
+    {"what": "Two tagged elements with the text “P” on the title page (styles TPTORNF and TPTORNL, obj 10867 0 and 10869 0)", "why": "They look like ornament glyphs mapped to the letter P and would be read aloud as “P”. I cannot confirm they are single marked-content runs, so I left them out of the artifact list.", "pages": [4]},
+    {"what": "Index: page numbers and folios", "why": "The extracted index entries have page numbers detached from their entries or missing (e.g. “Ariwara no Narihira, , , ;”). A bare-number artifact rule could hit real page references, so the folios on the index pages (PDF 270 and the numeric running-head runs on PDF 271–278) were left tagged. A person should check the text layer of the index and these folios.", "pages": [270, 271, 272, 273, 274, 275, 276, 277, 278]},
+    {"what": "veraPDF 7.1-3 on the cover and copyright pages", "why": "Handled by wrapping PDF 1 and PDF 5 as page figures. Any remaining failures are on the untagged pages listed above.", "pages": [1, 5]}
   ],
-  "notes_for_reviewer": "Rolemap: CT (chapter titles), FMH, BMH and ATAH become H2; BMH1 (chapter heads in Notes) H3; the existing H1 style (in-chapter section heads) H3; the only H1 is the book title on PDF 4 (printed iii). Chapter labels (CN) are merged into the chapter titles and the Chapter Five subtitle (CST) is merged into its title. Running heads and drop folios are artifacted by rule; check that a rule did not miss a run on PDF 11, 15–16, 23–24, 229–256, 271–272 and 277–278. The three tables (PDF 94–96) are read after the main text in the current tree, so move_section puts each one before the first block on PDF 97; please check this reading order after the move. Language of the whole document is en-US; romanized Japanese is not tagged."
+  "notes_for_reviewer": "Book title (TPT on PDF 4) is the only H1; chapter, front-matter, back-matter and index titles are H2; the section heads (style H1 in the file) become H3 and the per-chapter heads in the Notes (BMH1) become H3. “Chapter N” labels and the subtitle “A History of Reception” are merged into their chapter titles, with ActualText giving the combined reading. The empty CN elements for the Introduction and Conclusion fold into their titles. Running heads and folios are artifacted with rules limited to the pages where they are tagged, and body-page running heads appear to be untagged already. Tables 1–3 have a title row, a header row and a row-header column; Table 1 also has a note row (the Takeuchi source line). The three tables sit in Stories read after the end of the book, and move_section returns each to its own page. If the executor rejects a move, they need a manual reading-order fix. Japanese and other-language runs are left for the language step."
 }
 ```

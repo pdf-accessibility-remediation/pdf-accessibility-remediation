@@ -11,8 +11,8 @@
     "display_doc_title": true
   },
   "retype": [
-    {"obj": "2855 0", "type": "P", "why": "half-title repeat of the book title, not a heading"},
-    {"obj": "3332 0", "type": "P", "why": "half-title repeat before the Introduction, not a heading"},
+    {"obj": "2855 0", "type": "P", "why": "half-title repeat of the book title (PDF 2, printed i); the title page on PDF 4 carries the single H1"},
+    {"obj": "3332 0", "type": "P", "why": "half-title repeat before the Introduction (PDF 12, printed xi)"},
     {"obj": "3216 0", "type": "H2"},
     {"obj": "3318 0", "type": "H2"},
     {"obj": "3333 0", "type": "H2"},
@@ -24,6 +24,7 @@
     {"obj": "4046 0", "type": "H2"},
     {"obj": "4304 0", "type": "H2"},
     {"obj": "4594 0", "type": "H2"},
+
     {"obj": "3441 0", "type": "H3"},
     {"obj": "3423 0", "type": "H3"},
     {"obj": "3393 0", "type": "H3"},
@@ -51,8 +52,7 @@
     {"obj": "3997 0", "type": "H3"},
     {"obj": "4012 0", "type": "H3"},
     {"obj": "4037 0", "type": "H3"},
-    {"obj": "3723 0", "type": "Caption", "why": "Table 1 title, tagged H2 at 9 pt"},
-    {"obj": "12107 0", "type": "Caption", "why": "Table 2 title, tagged H2 at 9 pt"},
+
     {"obj": "3809 0", "type": "H4"},
     {"obj": "3816 0", "type": "H4"},
     {"obj": "3828 0", "type": "H4"},
@@ -68,28 +68,36 @@
     {"obj": "3965 0", "type": "H4"},
     {"obj": "3972 0", "type": "H4"},
     {"obj": "3975 0", "type": "H4"},
-    {"obj": "3979 0", "type": "H4"}
+    {"obj": "3979 0", "type": "H4"},
+
+    {"obj": "3723 0", "type": "Caption", "why": "Table 1 title, 9 pt, not a section heading"},
+    {"obj": "12107 0", "type": "Caption", "why": "Table 2 title, 9 pt, not a section heading"}
   ],
   "flatten": [
-    {"obj": "4166 0", "why": "bibliography entries (publisher lines of References) tagged as a numbered list, not a real list"}
+    {"obj": "4166 0", "why": "Bibliography entries (PDF 216, printed 203) tagged as a numbered list; the '1.' and '2.' are not list markers"}
   ],
   "tables": [
-    {"obj": "12035 0", "title_rows": 0, "header_rows": 1, "header_cols": 0, "why": "Table 1 dialect word list; row 0 names the columns; title is a separate Caption before the table"},
-    {"obj": "12180 0", "title_rows": 0, "header_rows": 1, "header_cols": 0, "why": "Table 2 dialect word list; row 0 names the columns; title is a separate Caption before the table"}
+    {"obj": "12035 0", "title_rows": 0, "header_rows": 1, "header_cols": 0},
+    {"obj": "12180 0", "title_rows": 0, "header_rows": 1, "header_cols": 0}
   ],
   "alt": [
-    {"obj": "10770 0", "alt": "Book cover of Language and Truth in North Korea by Sonia Ryang. A map of the Korean peninsula, with the north colored blue and red-and-white like the North Korean flag with its red star, and a bronze statue of a man in a long coat with one arm raised in front. Faint Korean characters fill the beige background. The title is printed in red at the top and the author's name at the bottom."},
-    {"obj": "3200 0", "alt": "University of Hawai‘i Press logo"},
-    {"obj": "18134 0", "alt": "Creative Commons Attribution-NonCommercial-NoDerivatives (CC BY-NC-ND) license logo"}
+    {"obj": "10770 0", "alt": "Cover of Language and Truth in North Korea by Sonia Ryang. A bronze statue of a standing man with one arm raised stands over a map of the Korean peninsula. The northern half is coloured in the blue, red and white of the North Korean flag, and faint Korean script covers the beige background. The title appears at the top and the author's name at the bottom."},
+    {"obj": "3200 0", "alt": "University of Hawaiʻi Press logo"},
+    {"obj": "18134 0", "alt": "Creative Commons logo with the Attribution, NonCommercial and NoDerivatives icons (CC BY-NC-ND)"}
   ],
   "move_to_document_start": ["10770 0"],
   "deferrals": [
-    {"what": "Reading position of the Index section (Sect, PDF 228–236) and of the copyright-page Article (PDF 5)", "why": "The digest's reading_order lists the Index Sect first, before the front matter, so it may be read out of printed order. The listing is truncated and I can't confirm where the container sits after the executor moves it into the Document.", "pages": [5, 228, 236]},
-    {"what": "Drop caps split from their words in the text layer (e.g. 'W riting' on PDF 8, 'S onia' on PDF 238)", "why": "These are ActualText candidates, but the digest gives no obj for the paragraphs concerned, so I can't target them.", "pages": [8, 238]},
-    {"what": "Pages with no tagged text (PDF 3, 7, 13, 194, 214, 224, 226)", "why": "They are probably blank pages. A person should confirm they have no untagged content.", "pages": [3, 7, 13, 194, 214, 224, 226]},
-    {"what": "page_map ends at PDF 226 although the file has 239 pages, and its labels (e.g. 'About the Author' at PDF 225) don't match the headings list (PDF 238)", "why": "The digest's page numbering is inconsistent in the back matter. I cited page numbers from the headings list.", "pages": [225, 226, 238, 239]},
-    {"what": "veraPDF reports 1 failed rule that no work-order key can fix", "why": "It is not listed in pdfua_check.rules, so I can't tell what it is. A person should review it.", "pages": []}
+    {
+      "what": "Drop-cap spacing at the start of paragraphs, e.g. 'W riting books' on the Acknowledgments page and 'S onia Ryang is the T. T. and W. F. Chao Professor' in About the Author",
+      "why": "The initial letter is separated from the rest of the word in the text layer. ActualText would have to cover the whole paragraph; a person should decide whether that is worth doing.",
+      "pages": [8, 238]
+    },
+    {
+      "what": "Reading order of the container holding the copyright page (Document > Article > Story) and the Index Sect",
+      "why": "The digest's reading_order lists the Index Sect (PDF 228–236) first, and the page 5 container is nested separately. Check that after the executor's Document-root step the order is cover, title page, copyright, contents, front matter, chapters, references, index. The logo Figure on PDF 4 (printed iii) is also at the tree root and may land out of place.",
+      "pages": [4, 5, 228, 236]
+    }
   ],
-  "notes_for_reviewer": "Heading outline is rebuilt by per-element retype: the book title on PDF 4 (printed iii) stays the only H1. The half-title repeats on PDF 2 (printed i) and PDF 12 (printed xi) became P. Contents, Acknowledgments, Introduction, chapters, References, Index and About the Author are H2. The former H2 sections are H3 and the former H3 subsections are H4. The publisher's Table 1 and 2 titles on PDF 75 (printed 62) were tagged H2 at 9 pt and are now Captions. Chapter headings already combine the number and title in one element, so no merges are needed. The bibliography 'list' on PDF 216 (printed 203) was flattened. The three numbered lists on PDF 86–88 (printed 73–75) are kept. Figure alt texts contained NUL characters and were replaced. The TOC is already tagged TOC/TOCI. Language stays en-US. Romanized Korean is not language-tagged."
+  "notes_for_reviewer": "The tagger gave all chapter-level titles H1 and section titles H2/H3. I retyped per element so the outline is one H1 (the title page, PDF 4 (printed iii)), then H2 for the contents, acknowledgments, introduction, chapters, conclusion, references, index and About the Author. Sections are H3 and subsections are H4. The half-title repeats on PDF 2 (printed i) and PDF 12 (printed xi) became paragraphs. The Table 1 and Table 2 titles became captions; the tables themselves are real, with a header row. The three numbered lists on PDF 86–88 (printed 73–75) are real lists and are kept. Figure alt texts in the file contained stray NUL characters and are replaced. Contents, links and index are already tagged as TOC/TOCI and Link and need no work-order changes. The veraPDF check listed no failures a work order can fix."
 }
 ```

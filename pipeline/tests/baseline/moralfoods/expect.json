@@ -1,10 +1,16 @@
 {
  "apply": {
   "applied": {
-   "artifact: \"folio 1\"": 1,
-   "artifact: \"folio 335\"": 1,
-   "artifact: \"folio 66\"": 1,
-   "artifact: \"folio v\"": 1,
+   "artifact: \"folio p14\"": 1,
+   "artifact: \"folio p348\"": 1,
+   "artifact: \"folio p6\"": 1,
+   "artifact: \"folio p79\"": 1,
+   "artifact: \"running head p15\"": 2,
+   "artifact: \"running head p16\"": 3,
+   "artifact: \"running head p349\"": 2,
+   "artifact: \"running head p350\"": 2,
+   "artifact: \"running head p7\"": 2,
+   "artifact: \"running head p8\"": 3,
    "artifact: untagged path with no content (rule, border, line)": 12,
    "contents: TOC built": 1,
    "contents: TOC entries": 34,
@@ -17,7 +23,7 @@
    "figure: alt text from the work order (page figure)": 1,
    "figure: caption tied (figure moved out of its paragraph)": 7,
    "figure: whole page wrapped as one Figure": 1,
-   "heading: ActualText": 21,
+   "heading: ActualText": 18,
    "heading: RoleMap level": 10,
    "heading: merged into next": 3,
    "heading: merged into prev": 14,
@@ -33,15 +39,16 @@
    "links: placed beside nearest text": 2,
    "links: wraps its text": 854,
    "notes: Note with /ID": 838,
-   "order: empty container removed": 4,
+   "order: empty container removed": 10,
+   "order: figure moved to its page": 7,
    "structure: empty tag removed (proven empty)": 7,
    "tab order: /Tabs /S set on pages with annotations": 1,
    "tag tree index: entries repaired": 1
   },
-  "deferred": 6,
+  "deferred": 3,
   "empty_notes_removed": 0,
   "failed": 0,
-  "rejected": 1
+  "rejected": 0
  },
  "validation_dropped": [],
  "verapdf": {
@@ -74,7 +81,7 @@
   }
  },
  "verify": {
-  "artifact_chars": 3973,
+  "artifact_chars": 4051,
   "figures": {
    "count": 8,
    "generic_or_empty": 0,
@@ -108,9 +115,9 @@
    "H4": 8,
    "Link": 2933,
    "Note": 838,
-   "P": 1862,
+   "P": 1856,
    "Reference": 34,
-   "Sect": 12,
+   "Sect": 6,
    "Span": 2846,
    "TOC": 1,
    "TOCI": 34
