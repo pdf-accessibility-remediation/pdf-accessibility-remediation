@@ -32,10 +32,10 @@ def replies(out_dir, model, which):
         run = d.split(os.sep)[-2]; got = {}
         for rep in sorted(glob.glob(os.path.join(d, '*.reply.json'))):
             req = json.load(open(rep.replace('.reply.json', '.request.json'), encoding='utf-8'))
-            ids = [it['id'] for it in json.loads(req['messages'][1]['content'])['items']]
+            its = json.loads(req['messages'][1]['content'])['items']
             r = json.load(open(rep, encoding='utf-8'))
             text = ((r.get('choices') or [{}])[0].get('message') or {}).get('content') or ''
-            dec, _ = langreq.parse(text, set(ids)); got.update(dec)
+            dec, _ = langreq.parse(text, {it['id'] for it in its}, forms={it['id']: it['form'] for it in its}); got.update(dec)   # as production (review 16, Note 1)
         out[run] = got
     return out
 
