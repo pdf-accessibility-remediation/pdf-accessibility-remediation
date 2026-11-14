@@ -216,7 +216,8 @@ def build_items(wo, digest, order=None, ro=None):
                 f.get('form') or '', page=ps[0] if ps else None, pages=[ps[0], ps[-1]] if ps else None, edit='lang', field='lang',
                 lang_name=langtag.name(f.get('lang')) if f.get('tag') and f.get('lang') else None, group=f.get('group'), why=f.get('why'),
                 evidence=f.get('evidence'), current=f.get('current'), carried=f.get('carried'), places=f.get('places'), page_list=ps[:30],
-                form_key=f.get('key'), bulk=bulk or None, needs_person=bool(f.get('person')) or None, confidence=f.get('confidence'))
+                form_key=f.get('key'), bulk=bulk or None, needs_person=bool(f.get('person')) or None, confidence=f.get('confidence'),
+                guess=f.get('lang') if not f.get('tag') and f.get('lang') else None)   # an untagged answer's language (review 14, 2)
     if wo.get('notes_for_reviewer'):
         refs = sorted({int(m.group(1)) for m in PAGE_REF.finditer(wo['notes_for_reviewer']) if 1 <= int(m.group(1)) <= N})
         add('notes_for_reviewer', 'notes_for_reviewer', 'Deferred by the AI', ['notes_for_reviewer'], wo['notes_for_reviewer'],
@@ -962,7 +963,8 @@ def language_rows(items, group, start=0, n=LANG_PAGE, contexts=None):
         out.append({'id': it['id'], 'form': it['label'], 'ai': it['ai'], 'lang_name': c.get('lang_name'), 'confidence': c.get('confidence'),
                     'evidence': c.get('evidence'), 'why': c.get('why'), 'current': c.get('current'), 'places': c.get('places'),
                     'pages': c.get('page_list'), 'snippet': c.get('snippet') or (contexts or {}).get(c.get('form_key')),
-                    'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person')), 'written': lang_written(it), **current_words(c.get('current'))})
+                    'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person')), 'written': lang_written(it), 'guess': c.get('guess'), 'guess_name': langtag.name(c['guess']) if c.get('guess') else None,
+                    **current_words(c.get('current'))})
     return {'group': group, 'start': start, 'total': len(rows), 'rows': out}
 
 def current_words(cur):

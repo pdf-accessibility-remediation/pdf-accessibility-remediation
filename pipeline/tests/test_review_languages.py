@@ -169,7 +169,7 @@ def test_the_polynesian_set_names_rennell_bellona_by_its_code():
 LANG_INTRO = ("Words and passages in another language found in the PDF. A screen reader switches to a language\\'s voice for the "
               "words tagged with it. Decide each word form: the choice applies to every place it appears. Words in Chinese "
               "characters alone are decided one by one, because the same characters are used in Chinese and Japanese. Language "
-              "tags already in the PDF are also decided one by one, so a person confirms each of them. Hawaiian: most screen "
+              "tags already in the PDF are also decided one by one, so a person confirms each of them. For Hawaiian, most screen "
               "readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.")
 
 def test_the_languages_introduction_is_patricks_paragraph():
@@ -186,7 +186,7 @@ def test_group_approval_is_off_and_never_shown():
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
     assert len(re.findall(r'const LANG_BULK = (true|false);', page)) == 1 and 'const LANG_BULK = false;' in page
     i = page.index('data-lang="bulk"'); assert page.rfind('LANG_BULK && g.bulk ?', 0, i) > i - 120     # the markup only under it
-    assert "if (act === 'bulk' && LANG_BULK)" in page and "(LANG_BULK && d.bulk ? ' (in a group approval)' : '')" in page   # a restored draft
+    assert "if (act === 'bulk') { if (LANG_BULK)" in page and "else if (act === 'keep' || act === 'drop')" in page and "(LANG_BULK && d.bulk ? ' (in a group approval)' : '')" in page   # a restored draft
     shown = page.split('<script', 1)[0] + LANG_INTRO
     assert 'Approve All' not in shown and 'group approval' not in shown
     assert 'Approve All' not in open(os.path.join(HERE, '..', 'docs', 'review-page.md'), encoding='utf-8').read()
@@ -230,3 +230,32 @@ def test_the_code_shown_is_the_lang_written(tmp_path):
     assert sorted(x for e in els[:2] for x in spans(e)) == ['ja', 'ja-Latn']                      # the AI row, the changed row
     assert [str(e.get('/Lang')) for e in els[2:5]] == ['fr-FR', 'haw', 'Hawaii']
     assert str(marks(out)[5]['/Lang']) == 'fr-fr'                                                # the marks alone: as written
+
+
+def test_untagged_rows_say_why_in_staff_words():
+    """review 14, 2: a low-confidence guess named with its code; an unmapped reason never printed; no reason, no
+    parentheses. The rows carry the guess; the page words it (checked in the browser too)."""
+    forms = [form('般若', 'cjk', ['cjk:han_only'], 'ja', 'low', why='language', person=True),
+             form('不二', 'cjk', ['cjk:han_only'], None, 'medium', why='varies', person=True),
+             form('如来', 'cjk', ['cjk:han_only'], None, None, why=None, person=True)]
+    w = {'language_parts': {'version': 2, 'forms': forms, 'parts': [[1, 0, 0, 1, 0], [1, 1, 0, 1, 1], [1, 2, 0, 1, 2]]}}
+    items = core.build_items(w, DIGEST)
+    rows = {r['form']: r for r in core.language_rows(items, core.LANG_UNTAGGED)['rows']}
+    assert (rows['般若']['guess'], rows['般若']['guess_name'], rows['般若']['ai']) == ('ja', 'Japanese', None)
+    assert rows['不二']['guess'] is None and rows['如来']['guess'] is None and rows['如来']['why'] is None
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    assert "bits.push('low confidence; its guess: ' + esc(r.guess_name || r.guess) + langCode(r.guess_name ? r.guess : ''))" in page
+    assert "if (LANG_WHY[r.why]) bits.push(LANG_WHY[r.why]);" in page and "|| r.why)" not in page           # never the raw word
+    assert "'The AI left it untagged' + (bits.length ? ' (' + bits.join('; ') + ')' : '')" in page
+
+def test_the_status_sits_under_the_form_outside_its_language():
+    """review 14, 4-6: "label: value" under the word form, outside the lang-attributed element, with role status; Kept and
+    Removed for a publisher's tag; "Change Language" with no ellipsis; the same column edge on every row."""
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    i = page.index("'<div class=\"lang-left\"><div class=\"lang-form\" lang=\"'")
+    seg = page[i:i + 400]
+    assert seg.index('</div>') < seg.index('lang-status') and 'role=\"status\"' in seg       # closed before the status
+    for w in ("'Tagged: '", "'Removed: '", "'Kept: '", "'Approved: '", "'Left untagged'", "'Not reviewed'"): assert w in page
+    assert 'Tagged as' not in page and 'Tag kept' not in page and 'Tag removed' not in page
+    assert "'<option value=\"\">Change Language</option>'" in page and 'Change Language…' not in page
+    assert '.lang-row[data-status] { border-left-color: var(--accent); }' in page and 'border-left: 4px solid transparent' in page

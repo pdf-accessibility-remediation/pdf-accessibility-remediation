@@ -191,17 +191,24 @@ It opens with one paragraph, the same on every PDF:
 > Words and passages in another language found in the PDF. A screen reader switches to a language's voice for the
 > words tagged with it. Decide each word form: the choice applies to every place it appears. Words in Chinese
 > characters alone are decided one by one, because the same characters are used in Chinese and Japanese. Language
-> tags already in the PDF are also decided one by one, so a person confirms each of them. Hawaiian: most screen
+> tags already in the PDF are also decided one by one, so a person confirms each of them. For Hawaiian, most screen
 > readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.
 
 - **Folds by language** (for example "Japanese (Romanized)", "Hawaiian"), plus "Left Untagged by the AI" (non-Latin
   text the AI left untagged) and "Existing Language Tags" (the publisher's own tags).
-- **Each row:** "Approve", "Leave Untagged", or "Change Language…" for another language. A publisher's tag offers
-  "Keep the Tag" or "Remove the Tag".
+- **Each row:** the word form on the left with its status under it, the AI's answer, a line of context and its pages
+  on the right; under them, "Approve" and "Leave Untagged" (a publisher's tag: "Keep the Tag" and "Remove the Tag";
+  a form the AI left untagged: "Leave Untagged" alone) on the left and "Change Language" on the right, so the answer
+  and the list start at the same edge on every row. At phone width the row stacks.
+- **The status** reads "Not reviewed", "Approved: Chinese · zh", "Tagged: Chinese · zh" (after "Change Language"),
+  "Kept: Hawaiian · haw" or "Removed: Hawaiian · haw" (a publisher's tag), or "Left untagged".
+- **A form the AI left untagged** says why in plain words: "a name", "part of English", "not a word of a known
+  language", "not sure", "it varies", or, for a low-confidence answer (never tagged), "low confidence; its guess:
+  Japanese · ja". A reason with no such wording is not shown, and no reason shows no parentheses.
 - Every word form is decided on its own row.
 - **The tag written into the PDF** is shown beside each language's name, in grey, in this section only: on a fold's
   heading when all its rows write the same tag ("Japanese (Romanized) · ja-Latn"), on each row ("The AI tags it as
-  Japanese · ja"), in the "Change Language…" list ("Japanese · ja"), and after a change ("Tagged as Japanese · ja").
+  Japanese · ja"), in the "Change Language" list ("Japanese · ja"), and in the status ("Tagged: Japanese · ja").
   It is the value that becomes the PDF's /Lang, never one worked out from the name. For a tag already in the PDF it is
   what "Keep the Tag" leaves: a code tidied to its shortest form, a language's name replaced by its code when its words
   fit ("Hawaiian" → haw), or the value as written when it is left for a person ("Hawaii" on mostly English words) or
