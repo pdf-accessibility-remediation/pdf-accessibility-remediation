@@ -1610,7 +1610,7 @@ async function askFinish() {
     (n ? n + (one ? ' decision is' : ' decisions are') + ' not reviewed: "Finish Review" records ' + (one ? 'it' : 'them') + ' as the AI wrote ' + (one ? 'it' : 'them') +
          ', marked "accepted without review", and "Ready to Ship?" stays No.' : 'Every decision has a choice.') +
     ((DATA.languages || {}).total && !OCR_ONLY ? (langLeft() ? ' ' + fmtN(langLeft()) + (langLeft() === 1 ? ' word form' : ' word forms') + ' under "Languages" ' + (langLeft() === 1 ? 'is' : 'are') +
-         ' not decided: "Finish Review" applies ' + (langLeft() === 1 ? 'it' : 'them') + ' as the AI decided, and "Language Tags" in "Ready to Ship?" stays Not Reviewed.'
+         ' not decided: "Finish Review" applies ' + (langLeft() === 1 ? 'it' : 'them') + ' as the AI decided (the PDF\'s own tags stay as they are), and "Language Tags" in "Ready to Ship?" stays Not Reviewed.'
          : ' Every word form under "Languages" is decided.') : '') +
     (SESSION && SESSION.reopened ? ' "Finish Review" re-applies the reviewed order (no AI request).' : '') + ' The name and notes go to "Session History."' +
     (OCR ? ' "OCR Text": ' + esc(ov) + '. An OCR verdict is recorded on its own under "OCR Text", not with "Finish Review."' : '') + '</div>' +

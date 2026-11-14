@@ -139,4 +139,4 @@ def test_the_page_counts_language_forms_for_staff():
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
     assert "function fmtN(x) { return Number(x || 0).toLocaleString('en-US'); }" in page
     assert "<h2>Languages</h2><a href=\"#languages\"><span>Word Forms Not Reviewed</span>" in page
-    assert '"Language Tags" in "Ready to Ship?" stays Not Reviewed.' in page
+    assert '"Language Tags" in "Ready to Ship?" stays Not Reviewed.' in page and "(the PDF\\'s own tags stay as they are)" in page   # review 10, L6

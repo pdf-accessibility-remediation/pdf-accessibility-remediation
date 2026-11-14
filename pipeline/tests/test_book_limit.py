@@ -52,7 +52,7 @@ def test_a_language_step_that_fits_its_cap_but_not_the_book_is_the_one_left_out(
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'
     w(R / 'language_estimate.json', {'worst_case_usd': 4.99, 'to_send': 3})
     r = decide(A, R, '--dry-run')
-    assert r.returncode == 0 and 'The language step is left out of this run' in r.stdout and 'BOOK_MAX_USD=' in r.stdout
+    assert r.returncode == 0 and '"Language Tags (AI)" are left out of this run' in r.stdout and 'BOOK_MAX_USD=' in r.stdout
     assert C.refused(str(R), 'language')['why'] == 'book' and C.language_estimate(str(R)) is None
     assert real_run_passed_the_book_check(decide(A, R))
     r = decide(A, R, '--dry-run', '--book-max-usd', '9')                  # a higher limit: counted again
