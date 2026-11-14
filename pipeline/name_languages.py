@@ -7,7 +7,7 @@ read_pages.py, with its own model (LANGUAGE_MODEL) and limit (LANGUAGE_MAX_USD).
 The candidates are the audit's (AUDIT_DIR/lang_candidates.json, lib/langcands.py). On a scanned book whose work order
 gives OCR words or pages a reading (ocr_words, page_readings), they are found again over what a screen reader speaks
 (review 02, M5). The PDF's own language tags (lib/langcands.existing) go too, so a person can confirm, correct or remove
-them. lib/langreq.py builds the requests with prompts/language_v1.md: one decision per printed form, about 15 words of
+them. lib/langreq.py builds the requests with prompts/language_v3.md: one decision per printed form, about 15 words of
 context, each snippet once per request, data_collection deny. The decisions become workorder.json's `language_parts`.
 
     RUN_DIR/language_estimate.json   --dry-run: the worst case and expected cost (lib/costs.py adds it to the PDF's)
@@ -28,7 +28,7 @@ import sys, os, re, json, time, hashlib, argparse, urllib.request, urllib.error,
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 from lib import plumb_fix, plpages, langcands, langreq, costhistory, costs, workorder_check  # noqa: F401
 
-PROMPT_NAME = 'language_v1.md'                   # language_v2.md (form echo, shorter replies) only if the paid check adopts it
+PROMPT_NAME = 'language_v3.md'                   # v1 with v2's form echo and dictionary-phrase line (adopted 2026-11-13, 11 §2)
 CHARS_PER_TOKEN = 3.5
 
 def load_env():

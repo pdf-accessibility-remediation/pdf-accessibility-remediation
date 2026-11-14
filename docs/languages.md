@@ -10,10 +10,14 @@ approved.
    use (kahakō, macrons, ʻokina), runs in another script (Chinese characters, kana, hangul, Greek, Cyrillic, …) and
    words outside the English word list (SCOWL 2020.12.07). Each printed form is one candidate, with every place it
    occurs. A publisher's own `/Lang` tags are listed too ("existing").
-2. **The language step asks the AI** (`name_languages.py`, prompt `prompts/language_v1.md`): each word form with about
+2. **The language step asks the AI** (`name_languages.py`, prompt `prompts/language_v3.md`): each word form with about
    15 words of context, each sentence once per request, through OpenRouter with `data_collection: deny`. The AI names
    a language and a confidence, or says it is a name or English. Nothing else of the book is sent for this step. A book
    flagged for personal information (1.1) is never sent. Requests and replies are kept in `language_run.json`.
+   Each decision echoes its word form; one whose form doesn't match its item is not used. Phrases English dictionaries
+   list (*a priori*, *ad hoc*) count as English. (language_v3 is language_v1 with these two lines from language_v2,
+   adopted after a paid check on the test items, 2026-11-13: 248 and 249 right against 246 and 232, the same one wrong
+   medium-confidence answer, no reply cut off.)
 3. **The decisions go into the work order** as `language_parts` (version 2: one row per word form, with its places).
    The work-order prompt (`workorder_v11.md`) leaves language tags to this step.
 4. **A person decides every form** on the review page's "Languages" section (see [Review page](review-page.md#languages)).
