@@ -504,6 +504,30 @@ def hard_items(out_dir, n=100, seed=100):
     json.dump(out, open(os.path.join(out_dir, 'hard-items.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     return out
 
+def exp_requests_packed(out_dir, variant, ctx, per=langreq.FORMS_PER_REQUEST, halves=('score',)):
+    """Round 17, check 2: the same items packed as production packs a book's forms, up to `per` forms a request. The
+    test items come from about 50 books, so a request holds several books' items under one neutral header per document
+    language (the book's title is absent: a known difference from the small requests). Each book page keeps a page of
+    its own, so items on one page still join; a masked item keeps its own page."""
+    items = [it for it in json.load(open(os.path.join(out_dir, 'items.json'), encoding='utf-8'))['items'] if it['half'] in halves and it['kind'] != 'nokey']
+    C = {b: json.load(open(os.path.join(out_dir, 'cand', f'{b}.json'), encoding='utf-8')) for b in {it['book'] for it in items if it['book'] != 'synthetic'}}
+    pages, words, by = {}, {}, collections.defaultdict(list)
+    for it in items:
+        key = ('own', it['id']) if it.get('words') else (it['book'], it['page'])
+        if key not in pages:
+            pages[key] = 400000 + len(pages)
+            words[str(pages[key])] = it['words'] if it.get('words') else (C[it['book']]['words'].get(str(it['page'])) or [])
+        pl = {k: it[k] for k in ('mcid', 'first', 'last', 'text', 'w0', 'w1')} | {'page': pages[key], 'italic': it['italic']}
+        by[DOC_LANG.get(it['book']) or 'en'].append({'id': it['id'], 'form': it['form'], 'group': langreq.group_of(it['class']), 'class': it['class'],
+                                                     'italic_any': it['italic'], 'roman_any': not it['italic'], 'places': [pl]})
+    reqs = []
+    for lang, fs in by.items():
+        for r in langreq.requests({'title': 'Test items from several books', 'language': lang}, fs, words, per=per, ctx=ctx):
+            reqs.append({'book': f'packed-{lang}', 'request': r})
+    rq = os.path.join(out_dir, 'requests'); os.makedirs(rq, exist_ok=True)
+    json.dump(reqs, open(os.path.join(rq, f'{variant}.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    return reqs
+
 # ---- sending (paid; only on Patrick's OK)
 def send(out_dir, model, run, which, cap, prompt_file=None, req_dir='requests', ledger_name='spend.json'):
     key = None
