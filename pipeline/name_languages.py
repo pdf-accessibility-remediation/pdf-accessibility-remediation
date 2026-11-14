@@ -235,14 +235,16 @@ def main():
     merge(R, wo_path, sent, dec, rec, held=held, contexts=contexts_of(sent, words))
     print(f'language step: {len(dec)} of {len(sent)} forms decided ({rec["not_decided"]} not decided) · ${rec["cost_usd"]:.4f} spent on this step')
 
-def contexts_of(fs, words, n=12):
-    """{form id: the words around its first place, the place in [brackets]}: what the review page shows beside a form."""
+CONTEXT_CUT = 2000                 # characters: well above the longest adopted context (sentence mode caps each side)
+def contexts_of(fs, words):
+    """{form id: its first place's context exactly as the requests send it (langreq.place_text, langreq.CTX), the place
+    in [brackets]}: what the review page shows beside a form (review 14, item 1). Rows of a finished run keep the
+    contexts stored when its language step ran."""
     out = {}
     for f in fs:
         p = next((q for q in f['places'] if q.get('w0') is not None), None)
         if p is None: continue
-        pw = words.get(str(p['page'])) or []
-        out[f['id']] = ' '.join(pw[max(0, p['w0'] - n):p['w0']] + ['[' + ' '.join(pw[p['w0']:p['w1'] + 1]) + ']'] + pw[p['w1'] + 1:p['w1'] + 1 + n])[:400]
+        out[f['id']] = langreq.place_text(p, words)[:CONTEXT_CUT]
     return out
 
 def merge(R, wo_path, fs, dec, rec, held=(), note=None, contexts=None):

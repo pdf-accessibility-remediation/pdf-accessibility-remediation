@@ -73,3 +73,36 @@ def test_a_form_echo_that_does_not_match_drops_the_decision():
                                   {'id': '3', 'form': ' ONRYŌ ', 'lang': 'ja-Latn', 'confidence': 'high', 'why': 'language'}]})
     dec, dropped = langreq.parse(t, {'1', '2', '3'}, forms={'1': 'mappō', '2': '源信', '3': 'onryō'})
     assert set(dec) == {'1', '3'} and dropped[0] == {'id': '2', 'why': 'its form does not match the item'}
+
+# ---- review 14, item 1: the context is configurable (unit, size, sentence mode, CJK cap, joining, item snippet numbers)
+PW = ['First', 'sentence', 'here.', 'The', 'monk', '(52),', 'wrote', 'X', 'in', 'Kyoto.', 'Then', 'he', 'left', 'for', 'Nara.', 'End', 'piece.']
+
+def test_words_count_letters_and_cjk_while_numbers_ride_along():
+    from lib import langreq as L
+    assert L.span(PW, 7, 7, {'unit': 'pieces', 'size': 2}) == (5, 9)
+    assert L.span(PW, 7, 7, {'unit': 'words', 'size': 2}) == (4, 9)          # "(52)," rides along, "monk" counts
+    assert L.span(PW, 7, 7, {'unit': 'words', 'size': 1}) == (6, 8)
+
+def test_sentence_mode_takes_one_sentence_each_side_capped():
+    from lib import langreq as L
+    assert L.span(PW, 7, 7, {'mode': 'sentence', 'unit': 'words', 'cap': 60}) == (0, 14)    # sentence before, own, after
+    assert L.span(PW, 7, 7, {'mode': 'sentence', 'unit': 'words', 'cap': 2}) == (4, 9)      # capped at 2 words a side
+    pw = ['See', 'p.', '4', 'and', 'Dr.', 'Li', 'on', 'X', 'here.']
+    assert L.span(pw, 7, 7, {'mode': 'sentence', 'unit': 'words', 'cap': 60}) == (0, 8)     # "p." and "Dr." end no sentence
+
+def test_the_cjk_cap_keeps_the_characters_nearest_the_place():
+    from lib import langreq as L
+    pw = ['甲' * 50, 'X', '乙' * 50, 'end']
+    t = L.place_text({'page': 1, 'w0': 1, 'w1': 1}, {'1': pw}, {'cjk_cap': 10})
+    assert t == '…' + '甲' * 10 + ' [X] ' + '乙' * 10 + '… end'
+    assert L.place_text({'page': 1, 'w0': 1, 'w1': 1}, {'1': pw}) == ' '.join(['甲' * 50, '[X]', '乙' * 50, 'end'])   # default: whole
+
+def test_joining_and_item_snippet_numbers():
+    from lib import langreq as L
+    words = {'1': ['a'] * 10 + ['X'] + ['b'] * 3 + ['Y'] + ['c'] * 10}
+    fs = [{'id': '1', 'form': 'X', 'class': ['latin'], 'italic_any': False, 'roman_any': True, 'places': [{'page': 1, 'mcid': 0, 'first': 0, 'last': 0, 'text': 'X', 'w0': 10, 'w1': 10}]},
+          {'id': '2', 'form': 'Y', 'class': ['latin'], 'italic_any': False, 'roman_any': True, 'places': [{'page': 1, 'mcid': 0, 'first': 0, 'last': 0, 'text': 'Y', 'w0': 14, 'w1': 14}]}]
+    one = L.requests({'title': 't'}, fs, words, ctx={'size': 5})[0]
+    two = L.requests({'title': 't'}, fs, words, ctx={'size': 5, 'join': False, 'item_snippets': True})[0]
+    assert len(one['snippets']) == 1 and 's' not in one['items'][0]
+    assert len(two['snippets']) == 2 and [it['s'] for it in two['items']] == [[1, 2], [1, 2]]   # each window holds both marks

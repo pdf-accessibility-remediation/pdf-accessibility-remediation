@@ -37,7 +37,6 @@ from lib import scripts, ocrwords
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORDLIST = os.path.join(HERE, 'data', 'english-words.txt')
-CONTEXT_WORDS = 15                  # words of context on each side, for the AI (M11: about ±15 words)
 PASSAGE_SHARE, PASSAGE_MIN = 0.75, 6      # of the run's words of 2+ letters
 HAW_RUN = 3                         # this many Hawaiian-shape words in a row make a phrase without marks
 

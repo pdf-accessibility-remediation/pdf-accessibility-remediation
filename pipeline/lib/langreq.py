@@ -10,14 +10,25 @@ candidates (lib/langcands.py), counts their size, reads a model's reply, and tur
     langreq.to_parts(forms, decisions)              -> language_parts {'parts': [...]}, as apply.py reads them
 
 What leaves the machine (review 02, M11): for each item its printed form, class, italic flag and number of places, and
-about CONTEXT words before and after up to SNIPPETS_PER_FORM of its places. Each snippet is sent once per request, with
-every candidate in it marked [[id|text]]. Kana and hangul runs are not sent: their language is known locally
-(lib/scripts.py).
+the context CTX sets around up to SNIPPETS_PER_FORM of its places (span(); docs/languages.md). Each snippet is sent once
+per request, with every candidate in it marked [[id|text]]. Kana and hangul runs are not sent: their language is known
+locally (lib/scripts.py).
 """
 import json, re, collections, unicodedata
 from lib import langtag, models
 
-CONTEXT = 15                    # words on each side
+# The context sent around a place (review 14, item 1; measured in round 15, docs/languages.md):
+#   unit      'pieces': every space-separated piece counts ("),", "52," and a spaceless run of Chinese characters each
+#             count one); 'words': only a piece with a letter or a CJK character counts, numbers and punctuation ride along
+#   size      counted pieces on each side (window mode)
+#   mode      'window': size on each side; 'sentence': the place's sentence, one before and one after, at most `cap` on
+#             each side
+#   cjk_cap   a piece of CJK characters with no spaces longer than this keeps only the characters nearest the place
+#             (None: whole), so no piece carries more than about a sentence
+#   join      True: windows that meet on a page are sent as one snippet; False: each place's window on its own
+#   item_snippets  True: each item lists the numbers of the snippets that hold it ("s": [1, 4])
+CTX = {'unit': 'pieces', 'size': 15, 'mode': 'window', 'cap': 60, 'cjk_cap': None, 'join': True, 'item_snippets': False}
+CONTEXT = CTX['size']           # kept for callers that read the old name
 SNIPPETS_PER_FORM = 2           # contexts per form: the first place, and one more (italic vs roman, or a later chapter)
 FORMS_PER_REQUEST = 150
 LOCAL = ('cjk:kana', 'cjk:hangul')                     # decided locally (lib/scripts.py), never sent
@@ -78,38 +89,108 @@ def _contexts(f):
         if other: pick.append(other)
     return pick
 
-def _snippets(items, words):
-    """Snippets for these (form, place) pairs: windows of CONTEXT words around each place, merged where they meet on a
-    page, each candidate inside marked [[id|text]] (every candidate of this request found in it, not only the one it was
-    made for)."""
-    win = collections.defaultdict(list)                  # page -> [(w0, w1, id, text)]
+_CJK = re.compile(r'[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]')
+_COUNTS = re.compile(r'[^\W\d_]')                                 # a letter or a CJK character
+_END = re.compile(r'[.!?\u3002\uff01\uff1f]["\u201d\u2019\u00bb)\]\u300d\u300f]*$')   # . ! ? 。！？, closing quotes or brackets after
+_ABBR = {'e.g.', 'i.e.', 'cf.', 'fl.', 'ca.', 'c.', 'vol.', 'vols.', 'no.', 'nos.', 'p.', 'pp.', 'ed.', 'eds.', 'trans.', 'mr.', 'mrs.',
+         'dr.', 'st.', 'ch.', 'chap.', 'fig.', 'jr.', 'sr.', 'vs.', 'etc.', 'r.', 'd.', 'b.', 'ibid.', 'op.', 'cit.', 'jap.', 'chin.', 'kor.'}
+
+def ctx_of(ctx=None): return {**CTX, **(ctx or {})}
+
+def _ends(w):
+    """A piece that ends a sentence: a final . ! ? 。！？ (closing quotes or brackets may follow), never an abbreviation, an
+    initial ("N.") or a number ("52.")."""
+    if not _END.search(w): return False
+    core = w.lower().strip('"\u201c\u201d\u2018\u2019()[]')
+    if core in _ABBR or re.fullmatch(r'[^\W\d_]\.', core) or re.fullmatch(r'[\d.,:–-]+', core): return False
+    return True
+
+def span(pw, w0, w1, ctx=None):
+    """(a, b): the indexes of the first and last piece of a place's context on its page (pw: the page's pieces)."""
+    c = ctx_of(ctx); n = len(pw)
+    counts = (lambda w: True) if c['unit'] == 'pieces' else (lambda w: bool(_COUNTS.search(w)))
+    def walk(size):
+        a, k, i = w0, 0, w0 - 1
+        while i >= 0 and k < size:
+            if counts(pw[i]): k += 1
+            a = i; i -= 1
+        b, k, i = w1, 0, w1 + 1
+        while i < n and k < size:
+            if counts(pw[i]): k += 1
+            b = i; i += 1
+        return a, b
+    if c['mode'] != 'sentence':
+        return walk(c['size'])
+    i = w0 - 1
+    while i >= 0 and not _ends(pw[i]): i -= 1             # i: the end of the sentence before (or -1)
+    if i >= 0:
+        j = i - 1
+        while j >= 0 and not _ends(pw[j]): j -= 1
+        a = j + 1
+    else: a = 0
+    k = w1
+    while k < n - 1 and not _ends(pw[k]): k += 1          # k: the end of the place's sentence
+    m = k + 1
+    while m < n - 1 and not _ends(pw[m]): m += 1
+    b = min(m, n - 1) if k < n - 1 else n - 1
+    ca, cb = walk(c['cap'])
+    return max(a, ca), min(b, cb)
+
+def _trim(w, keep_end, cap):
+    """A spaceless CJK piece longer than cap: the cap characters nearest the place, '…' where it was cut."""
+    if not cap or len(w) <= cap or not _CJK.search(w): return w
+    return '…' + w[-cap:] if keep_end else w[:cap] + '…'
+
+def _text(pw, a, b, marks, cap):
+    """The snippet text of pieces a..b, each candidate inside marked [[id|text]] (overlapping marks: the first wins);
+    pieces before the first mark keep their end, pieces after the last keep their start."""
+    ms = sorted((m for m in marks if m[0] >= a and m[1] <= b), key=lambda m: m[0])
+    toks, k, ids = [], a, []
+    first = ms[0][0] if ms else b + 1
+    for w0, w1, fid, text in ms:
+        if w0 < k: continue
+        toks += [_trim(w, x < first, cap) for x, w in zip(range(k, w0), pw[k:w0])]
+        toks.append(f'[[{fid}|{text}]]'); ids.append(fid); k = w1 + 1
+    toks += [_trim(w, False, cap) for w in pw[k:b + 1]]
+    return ' '.join(toks), ids
+
+def place_text(p, words, ctx=None):
+    """One place's context as the requests send it, the place in [brackets]: what the review page shows beside a form."""
+    pw = words.get(str(p['page'])) or []
+    if p.get('w0') is None or p['w0'] >= len(pw): return ''
+    c = ctx_of(ctx); a, b = span(pw, p['w0'], p['w1'], c)
+    left = [_trim(w, True, c['cjk_cap']) for w in pw[a:p['w0']]]; right = [_trim(w, False, c['cjk_cap']) for w in pw[p['w1'] + 1:b + 1]]
+    return ' '.join(left + ['[' + ' '.join(pw[p['w0']:p['w1'] + 1]) + ']'] + right)
+
+def _snippets(items, words, ctx=None):
+    """Snippets for these (form, place) pairs: the context (span()) around each shown place, merged where they meet on a
+    page when ctx['join'], each candidate inside marked [[id|text]] (every candidate of this request found in it, not only
+    the one it was made for). Returns [{'page', 'text', 'ids'}]."""
+    c = ctx_of(ctx)
+    win = collections.defaultdict(list)                  # page -> [(a, b)]
     marks = collections.defaultdict(list)
     for fid, p, shown in items:
         if p.get('w0') is None: continue
         marks[p['page']].append((p['w0'], p['w1'], fid, p['text']))
-        if shown: win[p['page']].append((max(0, p['w0'] - CONTEXT), p['w1'] + CONTEXT))
+        if shown:
+            pw = words.get(str(p['page'])) or []
+            if p['w0'] < len(pw): win[p['page']].append(span(pw, p['w0'], p['w1'], c))
     out = []
     for page, ws in sorted(win.items()):
         ws.sort(); merged = []
         for a, b in ws:
-            if merged and a <= merged[-1][1] + 1: merged[-1][1] = max(merged[-1][1], b)
+            if c['join'] and merged and a <= merged[-1][1] + 1: merged[-1][1] = max(merged[-1][1], b)
             else: merged.append([a, b])
         pw = words.get(str(page)) or []
         for a, b in merged:
-            b = min(b, len(pw) - 1)
-            ms = sorted((m for m in marks[page] if m[0] >= a and m[1] <= b), key=lambda m: m[0])
-            toks, k = [], a
-            for w0, w1, fid, text in ms:
-                if w0 < k: continue                         # overlapping marks: the first wins
-                toks += pw[k:w0]; toks.append(f'[[{fid}|{text}]]'); k = w1 + 1
-            toks += pw[k:b + 1]
-            out.append({'page': page, 'text': ' '.join(toks)})
+            t, ids = _text(pw, a, min(b, len(pw) - 1), marks[page], c['cjk_cap'])
+            out.append({'page': page, 'text': t, 'ids': ids})
     return out
 
-def requests(book, fs, words, per=FORMS_PER_REQUEST):
+def requests(book, fs, words, per=FORMS_PER_REQUEST, ctx=None):
     """book: {'title', 'language'}. fs: forms (forms()), words: the audit's page word lists. Requests of at most `per`
-    forms, in ORDER; each carries its own snippets."""
-    out = []
+    forms, in ORDER; each carries its own snippets, built as ctx (CTX) says."""
+    c = ctx_of(ctx); out = []
     for i in range(0, len(fs), per):
         chunk = fs[i:i + per]
         pairs = []
@@ -118,8 +199,11 @@ def requests(book, fs, words, per=FORMS_PER_REQUEST):
             for p in f['places']: pairs.append((f['id'], p, id(p) in shown))
         items = [{'id': f['id'], 'form': f['form'], 'class': f['class'], 'italic': f['italic_any'] and not f['roman_any'],
                   'places': len(f['places']), **({'current': f['current']} if f.get('current') else {})} for f in chunk]
+        sn = _snippets(pairs, words, c)
+        if c['item_snippets']:
+            for it in items: it['s'] = [n + 1 for n, x in enumerate(sn) if it['id'] in x['ids']]
         out.append({'book': {'title': book.get('title') or '', 'language': book.get('language') or ''},
-                    'snippets': [{'s': n + 1, 'text': s['text']} for n, s in enumerate(_snippets(pairs, words))],
+                    'snippets': [{'s': n + 1, 'text': x['text']} for n, x in enumerate(sn)],
                     'items': items})
     return out
 
