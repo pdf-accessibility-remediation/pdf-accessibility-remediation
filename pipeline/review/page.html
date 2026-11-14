@@ -1688,6 +1688,8 @@ renderOcr();
 const LANGS = DATA.languages || { groups: [], total: 0, names: [] };
 const langBox = document.getElementById('languages');
 const langRows = {};                                     // group -> the rows loaded so far
+// The section's introduction, one paragraph, the same on every PDF (Patrick, 2026-11-13): plain text, no markup
+const LANG_INTRO = 'Words and passages in another language found in the PDF. A screen reader switches to a language\'s voice for the words tagged with it. Decide each word form: the choice applies to every place it appears. Words in Chinese characters alone are decided one by one, because the same characters are used in Chinese and Japanese. Language tags already in the PDF are also decided one by one, so a person confirms each of them. Hawaiian: most screen readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.';
 function langStatusWord(r, d) {
   if (!d || !d.status) return 'Not reviewed';
   if (d.status === 'changed') return 'Tagged as ' + ((LANGS.names.find(x => x.code === d.value) || {}).name || d.value);
@@ -1733,9 +1735,7 @@ function renderLanguages() {
   const open = new Set([...langBox.querySelectorAll('details[open]')].map(d => d.dataset.group));
   langBox.hidden = false;
   langBox.innerHTML = '<h2 id="langTitle">Languages (' + fmtN(LANGS.total) + ')</h2>' +
-    '<p>Words and passages in another language, found in the PDF. A screen reader switches to a language\'s voice for the words tagged with it. ' +
-    'Decide each word form: the choice applies to every place it appears. "Approve All Shown" approves only rows with a high-confidence answer, ' +
-    'never words in Chinese characters alone or the PDF\'s own tags. Hawaiian: most screen readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.</p>' +
+    '<p>' + LANG_INTRO + '</p>' +
     LANGS.groups.map(langFold).join('');
   langBox.querySelectorAll('details').forEach(d => { if (open.has(d.dataset.group)) d.open = true; });
 }

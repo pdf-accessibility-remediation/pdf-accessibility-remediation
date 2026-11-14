@@ -166,3 +166,16 @@ def test_the_polynesian_set_names_rennell_bellona_by_its_code():
     node = next(n for n in ast.parse(src).body if isinstance(n, ast.Assign) and getattr(n.targets[0], 'id', '') == 'POLYNESIAN')
     codes = ast.literal_eval(node.value)
     assert 'mnv' in codes and 'rnl' not in codes and {'mi', 'to', 'sm', 'ty'} <= codes
+
+LANG_INTRO = ("Words and passages in another language found in the PDF. A screen reader switches to a language\\'s voice for the "
+              "words tagged with it. Decide each word form: the choice applies to every place it appears. Words in Chinese "
+              "characters alone are decided one by one, because the same characters are used in Chinese and Japanese. Language "
+              "tags already in the PDF are also decided one by one, so a person confirms each of them. Hawaiian: most screen "
+              "readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.")
+
+def test_the_languages_introduction_is_patricks_paragraph():
+    """Patrick, 2026-11-13 (review 12, B, without the fold): one paragraph, exactly, the same on every PDF."""
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    assert f"const LANG_INTRO = '{LANG_INTRO}';" in page and "'<p>' + LANG_INTRO + '</p>'" in page
+    assert page.count('LANG_INTRO') == 2                                              # defined once, drawn once, on every PDF
+    assert 'data-lang="more">Show More</button>' in page                              # the row-loading button keeps its name
