@@ -1697,7 +1697,7 @@ function langStatusWord(r, d) {
   if (!d || !d.status) return 'Not reviewed';
   if (d.status === 'changed') return 'Tagged as ' + ((LANGS.names.find(x => x.code === d.value) || {}).name || d.value) + ' · ' + d.value;
   if (d.status === 'rejected') return r.current ? 'Tag removed' : 'Left untagged';
-  return r.current ? 'Tag kept' + (r.written ? ' · ' + r.written : '') : r.ai ? 'Approved' + (d.bulk ? ' (in a group approval)' : '') : 'Left untagged';
+  return r.current ? 'Tag kept' + (r.written ? ' · ' + r.written : '') : r.ai ? 'Approved' + (LANG_BULK && d.bulk ? ' (in a group approval)' : '') : 'Left untagged';
 }
 function langRowHtml(r) {
   const d = state.decisions[r.id] || {};

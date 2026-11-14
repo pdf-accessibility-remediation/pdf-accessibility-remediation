@@ -165,10 +165,11 @@ def n_decisions(wo):
     return n
 
 def n_forms(wo):
-    """The language step's word forms (version 2), or its distinct words (version 1): what the "Languages" section lists."""
+    """The word forms the "Languages" section lists: version 2's forms a person decides (`tag` or `person`, as
+    review/core.py build_items and language_line), or version 1's distinct words."""
     lp = (wo or {}).get('language_parts') or {}
     if not isinstance(lp, dict): return 0
-    if lp.get('version') == 2: return len(lp.get('forms') or [])
+    if lp.get('version') == 2: return sum(1 for f in lp.get('forms') or [] if isinstance(f, dict) and (f.get('tag') or f.get('person')))
     return len({(p.get('form') or p.get('text')) for p in lp.get('parts') or [] if isinstance(p, dict)})
 def forms_text(n): return f'{n:,} word form{"" if n == 1 else "s"} under "Languages"'
 

@@ -145,8 +145,9 @@ def test_the_ai_decisions_count_leaves_the_word_forms_out():
     """review 12, M2 (Patrick's A): the work order's own decisions only; the word forms named beside them for staff."""
     import test_review_problems as TP
     ai = with_languages()
-    assert G.n_decisions(ai) == G.n_decisions(TP.ai_order()) and G.n_forms(ai) == 5
-    assert G.forms_text(2722) == '2,722 word forms under "Languages"'
+    assert G.n_decisions(ai) == G.n_decisions(TP.ai_order()) and G.n_forms(ai) == 4             # Kyōto is listed, not decided
+    assert G.n_forms(ai) == core.language_summary(core.build_items(ai, DIGEST))['total']           # the section's own total
+    assert G.forms_text(2190) == '2,190 word forms under "Languages"'
 
 def test_deciding_word_forms_changes_nothing_in_the_work_order_count(tmp_path):
     """review 12, M2: approving or changing forms adds 0 to "N changed" (a form has no identity in diff)."""
@@ -185,7 +186,7 @@ def test_group_approval_is_off_and_never_shown():
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
     assert len(re.findall(r'const LANG_BULK = (true|false);', page)) == 1 and 'const LANG_BULK = false;' in page
     i = page.index('data-lang="bulk"'); assert page.rfind('LANG_BULK && g.bulk ?', 0, i) > i - 120     # the markup only under it
-    assert "if (act === 'bulk' && LANG_BULK)" in page
+    assert "if (act === 'bulk' && LANG_BULK)" in page and "(LANG_BULK && d.bulk ? ' (in a group approval)' : '')" in page   # a restored draft
     shown = page.split('<script', 1)[0] + LANG_INTRO
     assert 'Approve All' not in shown and 'group approval' not in shown
     assert 'Approve All' not in open(os.path.join(HERE, '..', 'docs', 'review-page.md'), encoding='utf-8').read()
