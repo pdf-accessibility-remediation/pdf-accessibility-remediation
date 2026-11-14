@@ -42,8 +42,8 @@ def replies(out_dir, model, which):
 def cost(out_dir, model, which, ledger='spend-ctx15.json'):
     p = os.path.join(out_dir, ledger)
     if not os.path.exists(p): return None
-    calls = [c for c in json.load(open(p))['calls'] if c['model'] == model and c['set'] == which]
-    runs = collections.defaultdict(float)
+    calls = [c for c in json.load(open(p))['calls'] if c['model'].split('/')[-1] == model.split('/')[-1] and c['set'] == which]
+    runs = collections.defaultdict(float)                # the ledger names the model with its provider ("anthropic/…")
     for c in calls: runs[c['run']] += c.get('cost') or 0
     return {'total': round(sum(runs.values()), 4), 'per_run': round(sum(runs.values()) / max(1, len(runs)), 4), 'runs': len(runs)}
 
