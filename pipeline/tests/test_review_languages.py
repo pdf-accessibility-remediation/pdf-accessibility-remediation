@@ -158,3 +158,11 @@ def test_deciding_word_forms_changes_nothing_in_the_work_order_count(tmp_path):
     assert wo2['language_parts'] != ai['language_parts'] and core.diff(ai, wo2) == []
     rv = core.finish(R, ai, wo2, 'Kim', '2026-11-13', 'page', decisions=dec, items=items, gap_default='left open for the test')
     assert rv['changes'] == [] and rv['language']['approved'] == 1
+
+def test_the_polynesian_set_names_rennell_bellona_by_its_code():
+    """review 12, note: Rennell-Bellona is mnv; rnl is Ranglong, a Kuki-Chin language."""
+    import ast
+    src = open(os.path.join(HERE, 'apply.py'), encoding='utf-8').read()
+    node = next(n for n in ast.parse(src).body if isinstance(n, ast.Assign) and getattr(n.targets[0], 'id', '') == 'POLYNESIAN')
+    codes = ast.literal_eval(node.value)
+    assert 'mnv' in codes and 'rnl' not in codes and {'mi', 'to', 'sm', 'ty'} <= codes

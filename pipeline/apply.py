@@ -1925,7 +1925,7 @@ def fix_standard_remaps():
     reindex()
 NON_LATIN = {'ja', 'zh', 'ko', 'yue', 'ru', 'uk', 'bg', 'sr', 'mk', 'be', 'el', 'ar', 'fa', 'ur', 'he', 'yi', 'th', 'lo', 'km', 'my',
              'hi', 'mr', 'ne', 'bn', 'ta', 'te', 'kn', 'ml', 'gu', 'pa', 'si', 'ka', 'hy', 'am', 'bo', 'mn'}
-POLYNESIAN = {'mi', 'to', 'sm', 'ty', 'rap', 'mrq', 'mqm', 'mrv', 'rnl', 'rar', 'niu', 'tkl', 'tvl', 'wls', 'fud', 'pkp'}   # Polynesian languages (review 10, L1)
+POLYNESIAN = {'mi', 'to', 'sm', 'ty', 'rap', 'mrq', 'mqm', 'mrv', 'mnv', 'rar', 'niu', 'tkl', 'tvl', 'wls', 'fud', 'pkp'}   # Polynesian languages (review 10, L1; Rennell-Bellona is mnv, review 12)
 def name_misfit(code, text):
     """Why a language's name written as /Lang doesn't fit its words (review 08, M4), or None when nothing local says so:
     the script differs (a Latin-script language on Chinese characters, or the reverse), most words are Hawaiian in shape
