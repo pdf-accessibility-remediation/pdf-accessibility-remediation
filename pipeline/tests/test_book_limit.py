@@ -52,7 +52,7 @@ def test_a_language_step_that_fits_its_cap_but_not_the_book_is_the_one_left_out(
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'
     w(R / 'language_estimate.json', {'worst_case_usd': 4.99, 'to_send': 3})
     r = decide(A, R, '--dry-run')
-    assert r.returncode == 0 and '"Language Tags (AI)" are left out of this run' in r.stdout and 'BOOK_MAX_USD=' in r.stdout
+    assert r.returncode == 0 and 'Language tags from the AI are left out of this run' in r.stdout and 'BOOK_MAX_USD=' in r.stdout
     assert C.refused(str(R), 'language')['why'] == 'book' and C.language_estimate(str(R)) is None
     assert real_run_passed_the_book_check(decide(A, R))
     r = decide(A, R, '--dry-run', '--book-max-usd', '9')                  # a higher limit: counted again
@@ -103,3 +103,13 @@ def test_page_readings_left_out_stay_left_out_through_the_second_dry_run(tmp_pat
     (R / 'response.json').write_text('{}')
     assert read(A, R, monkeypatch, '--model', TN.MODEL, '--dry-run') == [] and 'left out of this run' in str(PLAST['exit'])
     assert read(A, R, monkeypatch, '--model', TN.MODEL) == [] and 'left out of this run' in str(PLAST['exit'])
+
+def test_the_left_out_words_are_the_panels_with_no_names_in_quotes():
+    """review 12, L1: no quoted names that appear on no screen, and no "app's settings" (a file, not a screen)."""
+    le = {'worst_case_usd': 1.5}; pr = {'worst_case_usd': 1.0}
+    out = {x['kind']: x['words'] for x in C.fit_optional(0, 4.5, [('page_reads', pr), ('language', le)], 5.0)[1]}
+    assert out['page_reads'].startswith('The AI reading of Hawaiian pages is left out of this run: ')
+    assert out['page_reads'].endswith('To include it, the app administrator can raise the limit per PDF.')
+    assert out['language'].startswith('Language tags from the AI are left out of this run: ')
+    assert out['language'].endswith('The PDF is processed without language tags from the AI. To include them, the app administrator can raise the limit per PDF.')
+    assert not any('"' in w or 'settings' in w for w in out.values())

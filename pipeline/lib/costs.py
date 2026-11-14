@@ -73,7 +73,9 @@ def bound(x, limit):
 # doesn't fit the PDF's limit together with the work order is marked by decide.py ({'why': 'book', …}). A refused
 # estimate is never counted, and the step refuses itself with the reason recorded.
 OPTIONAL = (('page_reads', 'page_reads_estimate.json', 'to_read'), ('language', 'language_estimate.json', 'to_send'))
-OPTIONAL_WORDS = {'page_reads': ('"Hawaiian Page Readings (AI)" are', 'their readings'), 'language': ('"Language Tags (AI)" are', 'language tags from the AI')}   # staff words (review 10, L3)
+# staff words, the panel's own (panel.js's estimate lines), no names in quotes: none of these is a name on a screen (review 12, L1)
+OPTIONAL_WORDS = {'page_reads': ('The AI reading of Hawaiian pages is', 'the AI reading of its Hawaiian pages', 'it'),
+                  'language': ('Language tags from the AI are', 'language tags from the AI', 'them')}
 
 def _optional(R, kind, book=True):
     """An optional step's estimate in R when it has something to send, else None. book=False keeps one decide.py left out
@@ -107,7 +109,7 @@ def fit_optional(spent, wo_total, steps, per_book):
         out.append({'kind': kind, 'worst_case_usd': round(w, 4), 'could_usd': round(could, 4), 'limit_usd': per_book,
                     'words': f'{OPTIONAL_WORDS[kind][0]} left out of this run: with them, this PDF could cost up to ${up(could):.2f}, more '
                              f'than the limit of ${per_book:.2f} per PDF. The PDF is processed without {OPTIONAL_WORDS[kind][1]}. '
-                             'To include them, the app administrator can raise the limit per PDF in the app\'s settings.'})
+                             f'To include {OPTIONAL_WORDS[kind][2]}, the app administrator can raise the limit per PDF.'})
     return kept, out
 
 def mark_refused(R, kind, why, words):

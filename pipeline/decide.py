@@ -487,7 +487,7 @@ if not args.response_file:                            # the lines a person reads
     for _k in _kept: costs.mark_refused(args.run_dir, _k, None, None)      # fits under this run's limit: an earlier refusal is lifted
     for _x in _left:
         costs.mark_refused(args.run_dir, _x['kind'], 'book', _x['words'])
-        print(f'  ⚠ {_x["words"].split(" To include them")[0]} To include them, raise the limit for this run: BOOK_MAX_USD={math.ceil(_x["could_usd"])}')
+        print(f'  ⚠ {_x["words"].split(" To include ")[0]} To include them, raise the limit for this run: BOOK_MAX_USD={math.ceil(_x["could_usd"])}')
     _pr, _le = _kept.get('page_reads'), _kept.get('language')
     _pr_usd = _pr['worst_case_usd'] if _pr else 0
     _le_usd = _le['worst_case_usd'] if _le else 0
