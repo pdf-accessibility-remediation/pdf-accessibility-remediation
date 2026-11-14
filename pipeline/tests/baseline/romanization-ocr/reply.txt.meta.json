@@ -36,10 +36,10 @@
   "30": "liiyezi"
  },
  "original_call": {
-  "cost_usd": 0.300264,
+  "cost_usd": 0.299592,
   "model": "anthropic/claude-sonnet-5.5",
-  "prompt_file": "workorder_v10.md",
-  "prompt_sha256": "15b5aa0ade9c6549",
-  "date": "2026-11-03T01:19:53"
+  "prompt_file": "workorder_v11.md",
+  "prompt_sha256": "3fd29e7f3ef071ec",
+  "date": "2026-11-13T15:24:05"
  }
 }
