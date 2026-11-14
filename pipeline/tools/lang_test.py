@@ -470,6 +470,8 @@ def key_sheet(out_dir, n=40, seed=40):
     for it in items: by[(it['lang'], it['book'])].append(it)
     for v in by.values(): rnd.shuffle(v)
     langs = sorted({it['lang'] for it in items}); per = {l: max(1, round(n * sum(1 for it in items if it['lang'] == l) / len(items))) for l in langs}
+    share = {l: sum(1 for it in items if it['lang'] == l) for l in langs}
+    while sum(per.values()) < n: per[max(langs, key=lambda l: (share[l] - per[l] * len(items) / n, l))] += 1   # rounding: n keys in all
     pick = []
     for l in langs:
         cells = [k for k in sorted(by) if k[0] == l]; i = 0
