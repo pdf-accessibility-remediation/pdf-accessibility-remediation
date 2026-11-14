@@ -1925,11 +1925,13 @@ def fix_standard_remaps():
     reindex()
 NON_LATIN = {'ja', 'zh', 'ko', 'yue', 'ru', 'uk', 'bg', 'sr', 'mk', 'be', 'el', 'ar', 'fa', 'ur', 'he', 'yi', 'th', 'lo', 'km', 'my',
              'hi', 'mr', 'ne', 'bn', 'ta', 'te', 'kn', 'ml', 'gu', 'pa', 'si', 'ka', 'hy', 'am', 'bo', 'mn'}
+POLYNESIAN = {'mi', 'to', 'sm', 'ty', 'rap', 'mrq', 'mqm', 'mrv', 'rnl', 'rar', 'niu', 'tkl', 'tvl', 'wls', 'fud', 'pkp'}   # Polynesian languages (review 10, L1)
 def name_misfit(code, text):
     """Why a language's name written as /Lang doesn't fit its words (review 08, M4), or None when nothing local says so:
     the script differs (a Latin-script language on Chinese characters, or the reverse), most words are Hawaiian in shape
-    for a language that isn't Hawaiian ("Hungarian" on "Noa Emmett Aluli"), or a Hawaiian tag holds a word Hawaiian
-    can't spell (the letter guard: "Sustʻāinable"). Never a guess at the right language: a person decides."""
+    for a language that isn't Hawaiian or another Polynesian one ("Hungarian" on "Kaleo Mahoe Akana"), or a Hawaiian tag
+    holds a word Hawaiian can't spell (the letter guard: "Sustʻāinable") or mostly English words. Never a guess at the
+    right language: a person decides."""
     from lib import ocrwords, langcands
     words = [w for w in (ocrwords.core(x) for x in str(text or '').split()) if len(w) >= 2 and any(ch.isalpha() for ch in w)]
     if not words: return None
@@ -1938,7 +1940,10 @@ def name_misfit(code, text):
     if not other and p in NON_LATIN: return 'its words are in Latin script'
     if p == 'haw':
         bad = [w for w in words if ocrwords.not_hawaiian_letters(w)]
-        return f'"{bad[0]}" is not spelled with Hawaiian letters' if bad else None
+        if bad: return f'"{bad[0]}" is not spelled with Hawaiian letters'
+        eng = [w for w in words if langcands.in_english(w) and not ocrwords.hawaiian_shape(w)]
+        return 'most of its words are English' if len(eng) * 2 > len(words) else None     # "Oʻahu, a Giant Military Base" (review 10, L2)
+    if p in POLYNESIAN: return None                    # Māori, Tongan, Samoan …: Hawaiian-shaped words are theirs too (review 10, L1)
     haw = [w for w in words if ocrwords.hawaiian_shape(w) and not langcands.in_english(w)]
     return 'its words look Hawaiian' if len(haw) * 2 >= len(words) else None
 
@@ -1962,7 +1967,7 @@ def fix_lang_values():
             if why:                                        # review 08, M4: "Hungarian" on a Hawaiian name stays for a person
                 misfit.append((where, raw, code, why, text, page)); return
             d.Lang = pikepdf.String(code); named += 1
-            c = names.setdefault((raw, code), {'value': raw, 'code': code, 'count': 0, 'samples': [], 'pages': []})
+            c = names.setdefault((raw.strip(), code), {'value': raw.strip(), 'code': code, 'count': 0, 'samples': [], 'pages': []})   # "Marshallese " is "Marshallese" (review 10)
             c['count'] += 1
             if text.strip() and len(c['samples']) < 5 and text.strip()[:40] not in c['samples']: c['samples'].append(text.strip()[:40])
             if page and page not in c['pages'] and len(c['pages']) < 8: c['pages'].append(page)

@@ -98,15 +98,18 @@ def test_publisher_language_names_are_converted_listed_or_left(tmp_path):
     """review 08, M4: a language's name written as /Lang becomes its code and is listed; a name whose words look like another
     language ("Hungarian" on a Hawaiian name) stays as written, for a person. Synthetic lines."""
     src = langpdf.build(str(tmp_path / 'n.pdf'), [{'span_lang': 'Hawaiian', 'text': 'Aloha mai kakou e hele ana'},
-                                                  {'span_lang': 'Hungarian', 'text': 'Noa Emmett Aluli, MD'},
-                                                  {'span_lang': 'Japanese', 'text': 'Kyoto temples'}])
+                                                  {'span_lang': 'Hungarian', 'text': 'Kaleo Mahoe Akana, MD'},
+                                                  {'span_lang': 'Japanese', 'text': 'Kyoto temples'},
+                                                  {'span_lang': 'Tongan', 'text': 'Malo e lelei, oku ou fiefia'},          # review 10, L1: Polynesian
+                                                  {'span_lang': 'Hawaii', 'text': 'Oahu, a Giant Military Base'}])        # review 10, L2: mostly English
     w = tmp_path / 'wo.json'; w.write_text(json.dumps({}))
     out = str(tmp_path / 'out.pdf'); run('apply.py', src, w, out)
     pdf = pikepdf.open(out); els = pdf.Root.StructTreeRoot.K[0].K
-    assert [str(e.get('/Lang')) for e in els] == ['haw', 'Hungarian', 'Japanese']
+    assert [str(e.get('/Lang')) for e in els] == ['haw', 'Hungarian', 'Japanese', 'to', 'Hawaii']
     lp = json.load(open(out + '.log.json'))['language_parts']
-    assert [(c['value'], c['code'], c['count']) for c in lp['names_converted']] == [('Hawaiian', 'haw', 1)]
-    assert {(x['value'], x['why']) for x in lp['names_not_converted']} == {('Hungarian', 'its words look Hawaiian'), ('Japanese', 'its words are in Latin script')}
+    assert sorted((c['value'], c['code'], c['count']) for c in lp['names_converted']) == [('Hawaiian', 'haw', 1), ('Tongan', 'to', 1)]
+    assert {(x['value'], x['why']) for x in lp['names_not_converted']} == {('Hungarian', 'its words look Hawaiian'), ('Japanese', 'its words are in Latin script'),
+                                                                          ('Hawaii', 'most of its words are English')}
     assert any('/Lang "Hungarian"' in d['what'] for d in json.load(open(out + '.log.json'))['deferred'])
 
 def with_languages():
