@@ -95,14 +95,20 @@ def test_the_cjk_cap_keeps_the_characters_nearest_the_place():
     pw = ['甲' * 50, 'X', '乙' * 50, 'end']
     t = L.place_text({'page': 1, 'w0': 1, 'w1': 1}, {'1': pw}, {'cjk_cap': 10})
     assert t == '…' + '甲' * 10 + ' [X] ' + '乙' * 10 + '… end'
-    assert L.place_text({'page': 1, 'w0': 1, 'w1': 1}, {'1': pw}) == ' '.join(['甲' * 50, '[X]', '乙' * 50, 'end'])   # default: whole
+    assert L.place_text({'page': 1, 'w0': 1, 'w1': 1}, {'1': pw}, {'cjk_cap': None}) == ' '.join(['甲' * 50, '[X]', '乙' * 50, 'end'])   # no cap: whole
+    assert L.place_text({'page': 1, 'w0': 1, 'w1': 1}, {'1': pw}) == '…' + '甲' * 40 + ' [X] ' + '乙' * 40 + '… end'          # the adopted 40
 
 def test_joining_and_item_snippet_numbers():
     from lib import langreq as L
     words = {'1': ['a'] * 10 + ['X'] + ['b'] * 3 + ['Y'] + ['c'] * 10}
     fs = [{'id': '1', 'form': 'X', 'class': ['latin'], 'italic_any': False, 'roman_any': True, 'places': [{'page': 1, 'mcid': 0, 'first': 0, 'last': 0, 'text': 'X', 'w0': 10, 'w1': 10}]},
           {'id': '2', 'form': 'Y', 'class': ['latin'], 'italic_any': False, 'roman_any': True, 'places': [{'page': 1, 'mcid': 0, 'first': 0, 'last': 0, 'text': 'Y', 'w0': 14, 'w1': 14}]}]
-    one = L.requests({'title': 't'}, fs, words, ctx={'size': 5})[0]
+    one = L.requests({'title': 't'}, fs, words, ctx={'size': 5, 'item_snippets': False})[0]
     two = L.requests({'title': 't'}, fs, words, ctx={'size': 5, 'join': False, 'item_snippets': True})[0]
     assert len(one['snippets']) == 1 and 's' not in one['items'][0]
     assert len(two['snippets']) == 2 and [it['s'] for it in two['items']] == [[1, 2], [1, 2]]   # each window holds both marks
+
+def test_the_adopted_context_is_the_default():
+    """Round 15's experiment (handoff 15 §5): 15 pieces, the 40-character CJK cap, joined snippets with item numbers."""
+    from lib import langreq as L
+    assert L.CTX == {'unit': 'pieces', 'size': 15, 'mode': 'window', 'cap': 60, 'cjk_cap': 40, 'join': True, 'item_snippets': True}

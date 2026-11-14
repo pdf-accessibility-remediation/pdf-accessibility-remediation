@@ -10,8 +10,15 @@ approved.
    use (kahakō, macrons, ʻokina), runs in another script (Chinese characters, kana, hangul, Greek, Cyrillic, …) and
    words outside the English word list (SCOWL 2020.12.07). Each printed form is one candidate, with every place it
    occurs. A publisher's own `/Lang` tags are listed too ("existing").
-2. **The language step asks the AI** (`name_languages.py`, prompt `prompts/language_v3.md`): each word form with about
-   15 words of context, each sentence once per request, through OpenRouter with `data_collection: deny`. The AI names
+2. **The language step asks the AI** (`name_languages.py`, prompt `prompts/language_v3.md`): each word form with its
+   context, each snippet once per request, through OpenRouter with `data_collection: deny`. The context
+   (`lib/langreq.py` `CTX`) is 15 space-separated pieces on each side of up to two places per form; a piece of CJK
+   characters with no spaces keeps only the 40 characters nearest the place; windows that meet on a page are sent as
+   one snippet, and each word form lists the numbers of the snippets that hold it. This setup was chosen by a paid
+   experiment (2026-11-14, 473 test items, 3 runs per variant) against 15 and 30 words, a sentence each side, and
+   unjoined or unnumbered snippets: the longer contexts gave more wrong answers, and the snippet numbers gave fewer
+   wrong answers where the reading beside Chinese characters was removed. The review page shows each form's first
+   place exactly as it is sent; rows of runs made before this keep the context stored when their language step ran. The AI names
    a language and a confidence, or says it is a name or English. Nothing else of the book is sent for this step. A book
    flagged for personal information (1.1) is never sent. Requests and replies are kept in `language_run.json`.
    Each decision echoes its word form; one whose form doesn't match its item is not used. Phrases English dictionaries
