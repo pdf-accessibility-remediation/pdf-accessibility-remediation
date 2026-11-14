@@ -190,21 +190,26 @@ def build(out_dir, books):
     write_requests(out_dir, C, items)
     return items
 
-def item_requests(C, items, which):
-    """Requests for the chosen items, one batch per book (each book its own header), forms as langreq builds them."""
+def item_requests(C, items, which, ctx=None):
+    """Requests for the chosen items, one batch per book (each book its own header), forms as langreq builds them with
+    context ctx (langreq.CTX). A masked-clue item carries its own page of words (its reading removed): those go in a batch
+    of their own per book, each on a page of its own."""
     out = []
     by_book = collections.defaultdict(list)
     for it in items:
-        if which(it): by_book[it['book']].append(it)
-    for book, its in by_book.items():
+        if which(it): by_book[(it['book'], it.get('kind') == 'masked')].append(it)
+    for (book, is_masked), its in by_book.items():
         if book == 'synthetic':
             words = {str(it['page']): it['words'] for it in its}; meta = {'title': 'Synthetic sentences', 'language': 'en'}
+        elif is_masked:
+            words = {str(it['page']): it['words'] for it in its}
+            meta = {'title': C[book].get('title') or book, 'language': C[book].get('language') or 'en'}
         else:
             words = C[book]['words']; meta = {'title': C[book].get('title') or book, 'language': C[book].get('language') or 'en'}
         fs = [{'id': it['id'], 'form': it['form'], 'group': langreq.group_of(it['class']), 'class': it['class'], 'italic_any': it['italic'],
                'roman_any': not it['italic'], 'places': [{k: it[k] for k in ('page', 'mcid', 'first', 'last', 'text', 'w0', 'w1')} | {'italic': it['italic']}]}
               for it in its]
-        for r in langreq.requests(meta, fs, words):
+        for r in langreq.requests(meta, fs, words, ctx=ctx):
             out.append({'book': book, 'request': r})
     return out
 
@@ -285,6 +290,216 @@ def build_v2(out_dir, books):
         summary[st] = {'requests': len(reqs), 'items': sum(len(r['request']['items']) for r in reqs), 'in_tokens': sum(langreq.size(r['request'], prompt) for r in reqs)}
     json.dump(summary, open(os.path.join(out_dir, 'estimate-v2.json'), 'w'), indent=1)
     print(json.dumps(summary, indent=1))
+
+# ---- round 15 (review 14, item 1, as Patrick widened it): masked-clue Han-only items, the hard places, variants
+HANGUL = re.compile(r'[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]')
+KANA_ = re.compile(r'[\u3040-\u30ff]')
+RR = re.compile(r'(?i)eo|eu')                                 # Revised Romanization's vowels, never Hepburn's or pinyin's
+
+TONE_OTHER = re.compile(r'[áǎàéěèíǐìóǒòúǔùǖǘǚǜ]')       # pinyin tones Hepburn never writes
+def reading_of(w, subj, toned=False):
+    """The language a piece beside a Han-only place proves, or None: kana or a Hepburn word (ja); pinyin (zh); hangul, a
+    McCune-Reischauer word with breves, or a Revised Romanization word in a book on Korea (ko). A word with Hepburn
+    macrons that also fits pinyin ("dōu", "soba-manjū") is Japanese, unless the book writes pinyin with tone marks
+    (toned: then it is not decided); a romanization
+    without marks proves zh only when it is long, not English and not Japanese in shape; breves prove ko only in a book
+    on Korea (Wade-Giles uses them for Chinese)."""
+    if KANA_.search(w): return 'ja'
+    if HANGUL.search(w): return 'ko'
+    c = latin_core(w); lw = c.lower(); bare = toneless(lw).replace("'", '').replace('’', '')
+    if not c or not bare.replace('-', '').isalpha(): return None
+    shape = bool(PINYIN.match(bare.replace('-', ''))); pin = shape and not langcands.in_english(lw)
+    hep = bool(HEPBURN_ONLY.search(lw) and JA_SYL.match(lw.replace('-', '')) and not IAST.search(lw) and not TONE_OTHER.search(lw))
+    if hep and shape: return None if toned else 'ja'
+    if hep: return 'ja'
+    if subj == 'korea' and (BREVE.search(c) and not TONE.search(c) or (RR.search(lw) and not langcands.in_english(lw) and len(lw) > 3)): return 'ko'
+    if pin and not BREVE.search(c) and (TONE_OTHER.search(lw) or (len(bare) > 3 and not JA_SYL.match(bare.replace('-', '')))): return 'zh'
+    return None
+
+PUNCT_ONLY = re.compile(r'^[\W_]+$')
+def beside(pw, w0, w1, subj, toned=False):
+    """{index: language} of the reading directly beside a place: the run of reading pieces that ends right before it
+    (a piece of punctuation alone may sit between), else the kana or hangul right after it, at most 3 pieces. A
+    reading two pieces away that belongs to a neighbouring entry (a glossary's "soju 소주 su 酥") is never taken."""
+    for step, start in ((-1, w0 - 1), (1, w1 + 1)):
+        i, got = start, {}
+        if 0 <= i < len(pw) and PUNCT_ONLY.match(pw[i]): i += step
+        while 0 <= i < len(pw) and len(got) < 3:
+            r = reading_of(pw[i], subj, toned)
+            if step == 1 and r and not (KANA_.search(pw[i]) or HANGUL.search(pw[i])): r = None   # a romanization after: the next entry's
+            if not r: break
+            got[i] = r; i += step
+        if got: return got
+    return {}
+
+def subject_of(cand):
+    """A book's subject from the readings beside its Han-only places (for books outside SUBJECT): the most common."""
+    W, c = cand['words'], collections.Counter()
+    for p in cand['places']:
+        if 'cjk:han_only' not in p['class'] or p.get('w0') is None: continue
+        pw = W.get(str(p['page'])) or []
+        for w in pw[max(0, p['w0'] - 3):p['w0']] + pw[p['w1'] + 1:p['w1'] + 4]:
+            r = reading_of(w, None) or ('ko' if HANGUL.search(w) else None)
+            if r: c[r] += 1
+    return {'ja': 'japan', 'zh': 'china', 'ko': 'korea'}.get(c.most_common(1)[0][0]) if c else None
+
+NEAR, WIDE = 15, 60          # "within 15 words" for the hard places; 60: the widest context tested
+
+def clue_near(pw, w0, w1, span, subj):
+    return any(reading_of(w, subj) for w in pw[max(0, w0 - span):w0] + pw[w1 + 1:w1 + 1 + span])
+
+def masked(name, cand, subj):
+    """(items, hard, share): masked-clue items (a Han-only place whose reading beside it, within 3 pieces, proves one
+    language; that reading's pieces removed from a copy of the page's words: test input only), the hard places (no
+    reading within NEAR pieces), and the book's shares of Han-only places with a reading within 3 and within NEAR."""
+    W = cand['words']; out, hard = [], []; n = n3 = n15 = 0
+    toned = sum(1 for pw in W.values() for w in pw if TONE_OTHER.search(w)) > 20       # writes pinyin with tone marks
+    for p in cand['places']:
+        if 'cjk:han_only' not in p['class'] or len(p['class']) != 1 or p.get('w0') is None: continue
+        pw = W.get(str(p['page'])) or []
+        if p['w1'] >= len(pw): continue
+        n += 1
+        idx = [i for i in list(range(max(0, p['w0'] - 3), p['w0'])) + list(range(p['w1'] + 1, min(len(pw), p['w1'] + 4)))]
+        if any(reading_of(pw[i], subj) for i in idx): n3 += 1
+        rs = beside(pw, p['w0'], p['w1'], subj, toned)
+        if clue_near(pw, p['w0'], p['w1'], NEAR, subj): n15 += 1
+        else: hard.append(p)
+        langs = set(rs.values())
+        if len(langs) != 1: continue                          # none, or two languages beside it: not settled
+        key = langs.pop()
+        if key == 'ja' and subj == 'korea' and not any(KANA_.search(pw[i]) for i in rs): continue
+        if key == 'ko' and subj == 'japan' and not any(HANGUL.search(pw[i]) for i in rs): continue
+        mw = [w for i, w in enumerate(pw) if i not in rs]
+        shift = sum(1 for i in rs if i < p['w0'])
+        q = {**p, 'w0': p['w0'] - shift, 'w1': p['w1'] - shift}
+        out.append({'p': q, 'key': key, 'reading': [pw[i] for i in sorted(rs)], 'masked_words': mw,
+                    'other_clue_15': clue_near(mw, q['w0'], q['w1'], NEAR, subj), 'other_clue_60': clue_near(mw, q['w0'], q['w1'], WIDE, subj),
+                    'printed': ' '.join(pw[max(0, p['w0'] - 6):p['w1'] + 7])})
+    return out, hard, {'han_only_places': n, 'reading_within_3': n3, 'reading_within_15': n15}
+
+CLASS_OF = {'kana_next_to_han': 'Han-only', 'hepburn_next_to_han': 'Han-only', 'pinyin_next_to_han': 'Han-only', 'hangul_next_to_han': 'Han-only',
+            'hepburn_marks': 'romanized', 'iast_marks': 'romanized', 'tone_pinyin': 'romanized', 'breve_korean': 'romanized',
+            'breve_wade_giles': 'romanized', 'yale_italic': 'romanized', 'okina_hawaiian': 'Hawaiian'}
+def kind_class(it):
+    """(kind, class) of an item for the round-15 tables."""
+    src = it['source'].split(':')
+    if src[0] == 'masked': return 'masked', 'masked Han-only'
+    if src[0] == 'silver': return 'silver', CLASS_OF.get(src[1], 'other')
+    if src[0] == 'synthetic': return 'synthetic', 'kana'
+    if src[0] == 'nokey': return 'nokey', 'Han-only'
+    f = it['form']
+    cl = 'Han-only' if not KANA_.search(f) and re.search(r'[\u3400-\u9fff]', f) else 'kana' if KANA_.search(f) else 'other'
+    return 'ga', cl
+
+# Books left out of the masked items: a body in Chinese or Japanese (its Han-only places are the body text, so the key is
+# the document's language), and the Ryukyu book (kana or romanization beside its characters may be Okinawan)
+MASK_SKIP = {'tclt7': 'body in Chinese', 'mohr-zen': 'body in Japanese', 'yao-history': 'body in Chinese', 'yao-intelligences': 'body in Chinese',
+             'yao-popularizing': 'body in Chinese', 'ktimes-1990': 'body in Korean', 'ryukyu': 'readings may be Okinawan'}
+CANTONESE = {'sojourners'}          # Chinese in Hawaii: many readings are Cantonese, so a zh key accepts yue too
+def build_exp(out_dir, old_dir, per_lang=140, cap=0.25, drop=()):
+    """Round 15's item set: the earlier items (kind and class marked) and masked-clue Han-only items from every cached
+    book in out_dir/cand, at most per_lang per language and no book over `cap` of the masked set; one place per form and
+    book, places with no other reading within NEAR pieces first. Writes items.json, hard.json (the hard places) and
+    shares.json (per book). Free, no network."""
+    old = json.load(open(os.path.join(old_dir, 'items.json'), encoding='utf-8'))['items']
+    items = []
+    for it in old:
+        k, c = kind_class(it)
+        items.append({**it, 'kind': k, 'cls': c, 'lang': (it.get('key') or '').split('|')[0].split('-')[0] or None})
+    cache = os.path.join(out_dir, 'cand'); pool = collections.defaultdict(list); hard = []; shares = {}
+    for f in sorted(os.listdir(cache)):
+        name = f[:-5]; cand = json.load(open(os.path.join(cache, f), encoding='utf-8'))
+        subj = SUBJECT.get(name) or subject_of(cand)
+        got, hd, sh = masked(name, cand, subj)
+        shares[name] = {**sh, 'subject': subj}
+        hard += [{'book': name, **{k: p[k] for k in ('page', 'mcid', 'first', 'last', 'text', 'form', 'class', 'w0', 'w1')}} for p in hd]
+        seen = set()
+        if name in MASK_SKIP: shares[name]['left_out'] = MASK_SKIP[name]; continue
+        for x in got:
+            if (name, x['key']) in drop or x['p']['form'] in seen: continue
+            seen.add(x['p']['form']); pool[x['key']].append((name, x))
+    rnd = random.Random(1515); chosen = []
+    total_target = sum(min(per_lang, len(v)) for v in pool.values())
+    book_cap = max(1, int(cap * total_target))
+    per_book = collections.Counter()
+    for lang in sorted(pool):
+        cands = pool[lang][:]; rnd.shuffle(cands)
+        cands.sort(key=lambda t: (t[1]['other_clue_15'], t[1]['other_clue_60']))       # clean ones first (stable: shuffled within)
+        n = 0
+        by_book = collections.defaultdict(list)
+        for name, x in cands: by_book[name].append(x)
+        while n < per_lang and any(by_book.values()):           # round robin over books, so no book dominates
+            for name in sorted(by_book, key=lambda b: per_book[b]):
+                if not by_book[name] or n >= per_lang: continue
+                if per_book[name] >= book_cap: by_book[name] = []; continue
+                x = by_book[name].pop(0); chosen.append((name, x)); per_book[name] += 1; n += 1
+    for n, (name, x) in enumerate(chosen):
+        p = x['p']; iid = f'mask-{name[:8]}-{p["page"]}-{p["mcid"]}-{p["first"]}'
+        items.append({'id': iid, 'source': 'masked', 'kind': 'masked', 'cls': 'masked Han-only', 'lang': x['key'], 'book': name,
+                      'page': 200000 + n, 'orig_page': p['page'], 'mcid': p['mcid'], 'first': p['first'], 'last': p['last'],
+                      'text': p['text'], 'form': p['form'], 'class': p['class'], 'italic': p.get('italic', False), 'w0': p['w0'], 'w1': p['w1'],
+                      'key': x['key'], 'accept': [x['key']] + (['yue'] if x['key'] == 'zh' and name in CANTONESE else []), 'half': half(iid), 'words': x['masked_words'], 'reading': x['reading'],
+                      'printed': x['printed'], 'other_clue_15': x['other_clue_15'], 'other_clue_60': x['other_clue_60']})
+    json.dump({'built': time.strftime('%Y-%m-%dT%H:%M:%S'), 'book_cap': book_cap, 'per_lang': per_lang, 'items': items},
+              open(os.path.join(out_dir, 'items.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    json.dump(hard, open(os.path.join(out_dir, 'hard.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    json.dump(shares, open(os.path.join(out_dir, 'shares.json'), 'w'), indent=1)
+    m = [it for it in items if it['kind'] == 'masked']
+    print('masked:', collections.Counter((it['lang'], it['half']) for it in m), 'books:', collections.Counter(it['book'] for it in m))
+    return items
+
+def exp_requests(out_dir, variant, ctx, halves=('score',)):
+    """One variant's request set (requests/<variant>.json): every keyed item of the given halves (masked included), built
+    with context ctx. The estimate comes from these requests' own text (langreq.size)."""
+    items = json.load(open(os.path.join(out_dir, 'items.json'), encoding='utf-8'))['items']
+    C = {}
+    for b in {it['book'] for it in items if it['book'] != 'synthetic'}:
+        C[b] = json.load(open(os.path.join(out_dir, 'cand', f'{b}.json'), encoding='utf-8')); C[b]['language'] = DOC_LANG.get(b) or 'en'
+    reqs = item_requests(C, items, lambda it: it['half'] in halves and it['kind'] != 'nokey', ctx)
+    rq = os.path.join(out_dir, 'requests'); os.makedirs(rq, exist_ok=True)
+    json.dump(reqs, open(os.path.join(rq, f'{variant}.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    return reqs
+
+def key_sheet(out_dir, n=40, seed=40):
+    """The masked-clue key sheet: n keys drawn at random, stratified by language and book, each with the place as
+    printed, the reading that set the key, and the key, for a reader of Japanese, Chinese and Korean (key-sheet.csv)."""
+    import csv
+    items = [it for it in json.load(open(os.path.join(out_dir, 'items.json'), encoding='utf-8'))['items'] if it['kind'] == 'masked']
+    rnd = random.Random(seed); by = collections.defaultdict(list)
+    for it in items: by[(it['lang'], it['book'])].append(it)
+    for v in by.values(): rnd.shuffle(v)
+    langs = sorted({it['lang'] for it in items}); per = {l: max(1, round(n * sum(1 for it in items if it['lang'] == l) / len(items))) for l in langs}
+    pick = []
+    for l in langs:
+        cells = [k for k in sorted(by) if k[0] == l]; i = 0
+        while sum(1 for it in pick if it['lang'] == l) < per[l] and any(by[k] for k in cells):
+            k = cells[i % len(cells)]; i += 1
+            if by[k]: pick.append(by[k].pop())
+    pick = pick[:n]
+    with open(os.path.join(out_dir, 'key-sheet.csv'), 'w', newline='', encoding='utf-8') as f:
+        w = csv.writer(f)
+        w.writerow(['n', 'item', 'book', 'form', 'place as printed', 'reading that set the key', 'key', 'reader: key right? (yes / no / cannot tell)', 'reader: note'])
+        for k, it in enumerate(pick, 1): w.writerow([k, it['id'], it['book'], it['form'], it['printed'], ' '.join(it['reading']), it['key'], '', ''])
+    return pick
+
+def hard_items(out_dir, n=100, seed=100):
+    """Up to n of the real hard places (Han-only, no reading within NEAR pieces), stratified by book, one per form and
+    book, as items with no key (kind 'hard'): sent once on the adopted setup for the second reader sheet."""
+    hard = json.load(open(os.path.join(out_dir, 'hard.json'), encoding='utf-8'))
+    rnd = random.Random(seed); by = collections.defaultdict(list); seen = set()
+    for p in hard:
+        if p['book'] in MASK_SKIP or (p['book'], p['form']) in seen: continue
+        seen.add((p['book'], p['form'])); by[p['book']].append(p)
+    for v in by.values(): rnd.shuffle(v)
+    pick, i, books = [], 0, sorted(by)
+    while len(pick) < n and any(by.values()):
+        b = books[i % len(books)]; i += 1
+        if by[b]: pick.append(by[b].pop())
+    out = [{'id': f'hard-{p["book"][:8]}-{p["page"]}-{p["mcid"]}-{p["first"]}', 'source': 'hard', 'kind': 'hard', 'cls': 'hard Han-only', 'lang': None,
+            'book': p['book'], **{k: p[k] for k in ('page', 'mcid', 'first', 'last', 'text', 'form', 'class', 'w0', 'w1')}, 'italic': False,
+            'key': None, 'accept': [], 'half': 'hard'} for p in pick]
+    json.dump(out, open(os.path.join(out_dir, 'hard-items.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    return out
 
 # ---- sending (paid; only on Patrick's OK)
 def send(out_dir, model, run, which, cap, prompt_file=None, req_dir='requests', ledger_name='spend.json'):
