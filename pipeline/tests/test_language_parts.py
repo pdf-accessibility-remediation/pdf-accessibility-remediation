@@ -333,3 +333,37 @@ def test_the_letter_guard_on_words_and_pages():
     mao = 'Kei te pēhea koe? Kia ora koe e hoa. He maunga, he awa, he moana. Ko te whare nui o te iwi.'.split() * 6
     assert pagereads.hawaiian_page(haw)[1] == 0 and pagereads.hawaiian_page(mao)[1] >= pagereads.FOREIGN_MAX
     assert pagereads.hawaiian_page(mao)[0] >= pagereads.SHARE_MIN          # the shape test alone would select it
+
+def _lang_spans(e, par=None):
+    if isinstance(e, pikepdf.Dictionary):
+        if e.get('/S') == '/Span' and e.get('/Lang') is not None: yield e, par
+        k = e.get('/K')
+        for x in (k if isinstance(k, pikepdf.Array) else [k] if isinstance(k, pikepdf.Dictionary) else []): yield from _lang_spans(x, e)
+
+def test_a_tag_outside_the_tree_fails_all_content_tagged_alone(tmp_path):
+    """review 12, L2 (Patrick's rule, review 10): a language Span its owner's /K no longer lists, its index entry pointing at
+    the owner (the stale-index fault's shape), fails "All content tagged" and so the safety checks, the other four OK; a
+    verify file written before `not_in_tree` existed reads OK."""
+    R, A = tmp_path / 'run', tmp_path / 'audit'; R.mkdir(); A.mkdir()
+    src = langpdf.build(str(tmp_path / 'src.pdf'), [{'lang': 'en-US', 'text': 'The city of Heiankyo was the capital.'},
+                                                   {'lang': 'en-US', 'text': 'Plain English text stays as it is.'}])
+    wo = R / 'workorder.json'; wo.write_text(json.dumps({'language_parts': {'parts': [part(1, 0, 12, 19, 'ja-Latn')]}}))
+    out = str(R / 'book.pdf'); run('apply.py', src, wo, out)
+    pdf = pikepdf.open(out, allow_overwriting_input=True)
+    sp, par = next(_lang_spans(pdf.Root.StructTreeRoot))
+    par.K = pikepdf.Array([x for x in par.K if not (isinstance(x, pikepdf.Dictionary) and x.objgen == sp.objgen)])
+    nums = pdf.Root.StructTreeRoot.ParentTree.Nums
+    for j in range(1, len(nums), 2):
+        if isinstance(nums[j], pikepdf.Array):
+            nums[j] = pikepdf.Array([par if isinstance(x, pikepdf.Dictionary) and x.objgen == sp.objgen else x for x in nums[j]])
+    pdf.save(out)
+    run('verify.py', src, out); run('report.py', R, A, '--keep')
+    assert json.load(open(out + '.verify.json'))['language']['not_in_tree'] == 1
+    g = json.load(open(R / 'record.json'))['glance']
+    assert [s['what'] for s in g['safety'] if not s['ok']] == ['all content tagged or decoration'] and g['safety_ok'] is False
+    md = (R / 'review.md').read_text(encoding='utf-8')
+    assert any(l.startswith('| All content tagged') and '1 language tag not in the tag tree' in l for l in md.splitlines())
+    v = json.load(open(out + '.verify.json')); del v['language']['not_in_tree']; json.dump(v, open(out + '.verify.json', 'w'))
+    run('report.py', R, A, '--keep')
+    g = json.load(open(R / 'record.json'))['glance']
+    assert all(s['ok'] for s in g['safety']) and g['safety_ok'] is True
