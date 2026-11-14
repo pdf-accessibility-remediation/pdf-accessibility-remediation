@@ -126,3 +126,20 @@ def test_title_growth_and_han_grouping_are_options_off_by_default(tmp_path, monk
     run(src2, A2, R2, monkeypatch)
     lr = load(R2 / 'language_run.json')
     assert lr['options'] == {'grow': True, 'group': True} and 'titles grown' in lr['candidates']
+
+def test_reuse_keeps_a_mismatched_form_echo_dropped(tmp_path, monkeypatch):
+    """review 12, M1: two decisions echo "mappō", the second under another item's id. The first parse drops it; --reuse
+    reads the replies again with the forms, so that item stays undecided instead of coming back at high confidence."""
+    src, A, R = folders(tmp_path)
+    def echo(body, n):
+        items = json.loads(body['messages'][1]['content'])['items']
+        m = next(it for it in items if it['form'] == 'mappō'); other = next(it for it in items if it['form'] != 'mappō')
+        dec = [{'id': m['id'], 'form': 'mappō', 'lang': 'ja-Latn', 'confidence': 'high', 'why': 'language'},
+               {'id': other['id'], 'form': 'mappō', 'lang': 'ja-Latn', 'confidence': 'high', 'why': 'language'}]
+        return {'choices': [{'message': {'content': json.dumps({'decisions': dec})}, 'finish_reason': 'stop'}],
+                'usage': {'prompt_tokens': 900, 'completion_tokens': 60, 'cost': 0.004}}
+    run(src, A, R, monkeypatch, reply=echo)
+    first = load(R / 'language_run.json'); assert len(first['decisions']) == 1
+    assert run(src, A, R, monkeypatch, '--reuse') == []
+    lr = load(R / 'language_run.json')
+    assert sorted(lr['decisions']) == sorted(first['decisions']) and [p['form'] for p in tagged(R)] == ['mappō']

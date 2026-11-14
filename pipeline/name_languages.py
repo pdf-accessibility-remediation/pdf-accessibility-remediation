@@ -114,10 +114,12 @@ def main():
             # the saved replies themselves, read again (review 06, M3): a step that stopped after paying and before parsing
             # left decisions {} beside complete replies; reading them costs nothing
             found = dict(old.get('decisions') or {})
+            form_of = {form_key(f): f['form'] for f in fs}
             for x in old['requests']:
                 if not x.get('text'): continue
                 idk = x.get('id_keys') or dict(zip(x.get('ids') or [], x.get('keys') or []))
-                d, _ = langreq.parse(x['text'], set(idk))
+                # with the forms, as the first parse: a decision whose form echo names another item stays dropped (review 12, M1)
+                d, _ = langreq.parse(x['text'], set(idk), forms={i: form_of.get(k, k.split('|')[1] if '|' in k else k) for i, k in idk.items()})
                 for i, v in d.items(): found.setdefault(idk[i], v)
             old['decisions'] = found
         if not isinstance(old, dict) or not old.get('decisions'):
