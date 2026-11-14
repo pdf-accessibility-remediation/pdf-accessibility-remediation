@@ -3300,7 +3300,8 @@ def fix_language_parts():
             continue
         pages[pno - 1].obj.Contents = new                  # then all of it: the content, each owner's /K, the index, the records
         LANG['marks_lang_removed'] += dropped
-        for o, i, new_k, maps, recs, m, pieces in built:
+        for o, _i, new_k, maps, recs, m, pieces in built:
+            i = mc_entry_index(o, pno, m)                  # on the /K as it is now: an earlier split of this owner moved its entries (review 10, H1)
             ks = kids(o); ks[i:i + 1] = new_k; set_kids(o, ks)
             for mc, el in maps:
                 pt_set_mcid(pno, mc, el); owner[(pno, mc)] = el

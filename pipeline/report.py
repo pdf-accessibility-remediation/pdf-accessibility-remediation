@@ -296,9 +296,10 @@ fpr = run.get('figure_passes') or {}                  # figure requests past the
 checks = [
     ('Every page looks the same as the original', ok(ver.get('pixel_pages_differing') == []), f'{len(ver.get("pixel_pages_differing") or [])} pages differ'),
     ('Published text unchanged', ok(ver.get('text_pages_changed') == []), f'{len(ver.get("text_pages_changed") or [])} pages changed'),
-    ('All content tagged or marked as decoration', ok(ver.get('untagged_chars') == 0 and not uo.get('total')),
+    ('All content tagged or marked as decoration', ok(ver.get('untagged_chars') == 0 and not uo.get('total') and not ver_lang.get('not_in_tree')),
      f'{ver["untagged_chars"] if ver.get("untagged_chars") is not None else "not counted"} untagged characters · {uo["total"] if uo.get("total") is not None else "not counted"} untagged object{"" if uo.get("total") == 1 else "s"}'
-     + (' (' + ', '.join(f'{v} {k}' for k, v in (uo.get('by_kind') or {}).items()) + ')' if uo.get('total') else '')),
+     + (' (' + ', '.join(f'{v} {k}' for k, v in (uo.get('by_kind') or {}).items()) + ')' if uo.get('total') else '')
+     + (f' · {ver_lang["not_in_tree"]:,} language tag{"" if ver_lang["not_in_tree"] == 1 else "s"} not in the tag tree' if ver_lang.get('not_in_tree') else '')),
     ('Untagged paths: none left', ok(n_paths == 0),
      f'{n_paths} untagged paths' + (f' · {pl["artifacted"]} rules, borders and lines marked as decoration by this run' if pl.get('artifacted') else '')
      + ('; left: ' + '; '.join(f'{c} {w.split(":")[0]}' for w, c in (pl.get('left') or {}).items()) if pl.get('left') else '')),

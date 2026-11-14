@@ -57,6 +57,31 @@ def test_split_and_whole_runs_tagged(tmp_path):
     for s in lp['spans']: assert '/Lang' not in m[s['mcid']]                         # H1: the tagged marks name no language
     assert str(m[3]['/Lang']) == 'en-US'                                               # untouched runs keep theirs
 
+def one_owner(path, mcids):
+    """The fixture of review 10, H1: the first element (a P) owns the runs `mcids` of page 1; the others go."""
+    pdf = pikepdf.open(path, allow_overwriting_input=True); st = pdf.Root.StructTreeRoot; doc = st.K[0]; els = list(doc.K)
+    els[0].K = pikepdf.Array(mcids); doc.K = pikepdf.Array([els[0]] + els[len(mcids):])
+    nums = st.ParentTree.Nums[1]
+    for m in mcids: nums[m] = els[0]
+    pdf.save(path)
+
+def test_two_split_runs_under_one_element(tmp_path):
+    """review 10, H1: one P owns two runs of a page, and each has a part split out. Both Spans land in the P's /K, each
+    MCID once, nothing outside the tree, and the tagging safety check's count (not_in_tree) is 0."""
+    src = langpdf.build(str(tmp_path / 'src.pdf'), [{'lang': 'en-US', 'text': 'The city of Heiankyo was the capital.'},
+                                                    {'lang': 'en-US', 'text': 'He chanted namu amida butsu daily.'},
+                                                    {'lang': 'en-US', 'text': 'Plain English text stays as it is.'}])
+    one_owner(src, [0, 1])
+    wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'language_parts': {'parts': [part(1, 0, 12, 19, 'ja-Latn'), part(1, 1, 11, 26, 'ja-Latn')]}}))
+    out = str(tmp_path / 'out.pdf'); run('apply.py', src, wo, out); run('verify.py', src, out)
+    v = json.load(open(out + '.verify.json'))
+    assert v['language']['all_match'] and v['language']['not_in_tree'] == 0 and v['index']['dangling'] == 0
+    assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+    P = pikepdf.open(out); k = list(P.Root.StructTreeRoot.K[0].K[0].K)
+    mc = [int(x) for x in k if isinstance(x, int)] + [int(y) for x in k if isinstance(x, pikepdf.Dictionary) for y in x.K]
+    spans = [x for x in k if isinstance(x, pikepdf.Dictionary)]
+    assert len(spans) == 2 and len(mc) == len(set(mc)) == 6
+
 def test_a_page_that_fails_keeps_its_content_and_its_tree(tmp_path):
     """review 08, L1: a failure while a page's splits are planned leaves the page as it was, content and tag tree: no Span,
     no new marked content in an owner's /K, no tag-tree index entry for a run that is not drawn."""

@@ -317,7 +317,9 @@ def _lang_section():
         elif str(el.get('/Lang', '')) != 'haw': why = f'its tag says {str(el.get("/Lang", "")) or "no language"}'
         elif any(k in _BDC_LANG and not same_lang(_BDC_LANG[k], 'haw') for k in ks): why = f'its marked content says {next(_BDC_LANG[k] for k in ks if k in _BDC_LANG)}'
         if why: mism.append({'page': e.get('page'), 'mcid': ks[0][1] if ks else None, 'lang': 'haw', 'text': str(e.get('text') or '')[:80], 'why': why})
-    return {'spans_written': len(written), 'haw_elements': len(haw_el), 'by_language': dict(by_lang), 'all_match': not mism, 'mismatches': len(mism),
+    return {'spans_written': len(written), 'haw_elements': len(haw_el),
+            'not_in_tree': sum(1 for x in mism if x['why'] == 'not in the tag tree'),   # content not tagged: a failed tagging safety check (Patrick, review 10 H1)
+            'by_language': dict(by_lang), 'all_match': not mism, 'mismatches': len(mism),
             'mismatch_examples': mism[:20], 'publisher_conflicts': len(conflicts), 'publisher_conflict_examples': conflicts[:10],
             'marks_with_lang': sum(langs_seen.values()), 'marks_languages': dict(langs_seen.most_common(8)),
             'invalid_values': dict(invalid)}
