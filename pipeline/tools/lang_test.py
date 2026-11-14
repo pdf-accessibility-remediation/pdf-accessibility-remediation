@@ -313,6 +313,7 @@ def reading_of(w, subj, toned=False):
     if hep and shape: return None if toned else 'ja'
     if hep: return 'ja'
     if subj == 'korea' and (BREVE.search(c) and not TONE.search(c) or (RR.search(lw) and not langcands.in_english(lw) and len(lw) > 3)): return 'ko'
+    if subj == 'korea': return None                 # McCune-Reischauer without breves looks like pinyin ("minyu bangbon")
     if pin and not BREVE.search(c) and (TONE_OTHER.search(lw) or (len(bare) > 3 and not JA_SYL.match(bare.replace('-', '')))): return 'zh'
     return None
 

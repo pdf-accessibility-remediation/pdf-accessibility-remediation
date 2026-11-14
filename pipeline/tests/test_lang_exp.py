@@ -15,6 +15,7 @@ def test_a_reading_proves_one_language_or_none():
     assert T.reading_of('soba-manjū', 'china') == 'ja' and T.reading_of('rekishōhen', 'china') == 'ja'   # macrons that also fit pinyin
     assert T.reading_of('dōu', 'china', toned=True) is None                                            # a book with tone marks: not settled
     assert T.reading_of('Chosŏn', 'korea') == 'ko' and T.reading_of('tzŭ', 'china') is None          # breves: Korean only in a book on Korea
+    assert T.reading_of('bangbon', 'korea') is None and T.reading_of('bangbon', 'china') == 'zh'      # a Korean reading without breves
     assert T.reading_of('the', 'china') is None and T.reading_of('Li', 'china') is None              # English, or too short
 
 def test_only_a_reading_directly_beside_counts():
