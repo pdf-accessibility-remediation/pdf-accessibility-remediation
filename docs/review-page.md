@@ -198,11 +198,14 @@ It opens with one paragraph, the same on every PDF:
   text the AI left untagged) and "Existing Language Tags" (the publisher's own tags).
 - **Each row:** "Approve", "Leave Untagged", or "Change Language…" for another language. A publisher's tag offers
   "Keep the Tag" or "Remove the Tag".
-- **"Approve All Shown (N)"** approves the rows shown in a fold at once, only where the AI was highly confident and
-  the form is not Chinese characters alone, not a publisher's tag, and not tagged differently in different places.
-  Other rows are decided one by one.
+- Every word form is decided on its own row.
 - Rows load 100 at a time ("Show More").
 - "Language Tags" on "Ready to Ship?" reads "Approved" once every form is decided.
+
+Bulk approval exists but is turned off (2026-11-13). The server still marks the rows that would qualify (the AI
+highly confident, not Chinese characters alone, not a publisher's tag, not tagged differently in different places) and
+records such choices as part of a group approval; the page shows no button for it. Turning it on is one line in
+`review/page.html`: `const LANG_BULK = true;`.
 
 ## Checks as you go
 

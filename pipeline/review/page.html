@@ -1682,9 +1682,11 @@ renderOcr();
 // ---------------------------------------------------------------- #118: the Languages section
 // One fold per language (and one for words the AI left untagged, one for the PDF's own tags). A fold's rows come from
 // /languages.json when it opens, 100 at a time. A choice is stored like any card's (state.decisions[id]), so auto-save,
-// "Finish Review" and the count of what is left treat it the same way. "Approve All Shown" approves the shown rows that
-// qualify (one language, high confidence, never Chinese characters alone, an existing tag or a mixed answer), and each
-// such choice is recorded as part of a group approval.
+// "Finish Review" and the count of what is left treat it the same way. Group approval (a fold's button approving the
+// shown rows that qualify: one language, high confidence, never Chinese characters alone, an existing tag or a mixed
+// answer, each recorded as part of a group approval) is turned off (Patrick, 2026-11-13): LANG_BULK below turns it on.
+// The server's rules for it (review/core.py `bulk`) stay, with their tests.
+const LANG_BULK = false;                                  // group approval: off, so every word form is decided on its own row
 const LANGS = DATA.languages || { groups: [], total: 0, names: [] };
 const langBox = document.getElementById('languages');
 const langRows = {};                                     // group -> the rows loaded so far
@@ -1725,7 +1727,7 @@ function langFold(g) {
   const bulk = rows.filter(r => r.bulk && !(state.decisions[r.id] || {}).status).length;
   return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
     ' (' + fmtN(g.places) + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
-    '<div class="lang-bar">' + (g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + bulk + ')</button>' : '') +
+    '<div class="lang-bar">' + (LANG_BULK && g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + bulk + ')</button>' : '') +
     '<span class="lang-meta">' + (rows.length ? fmtN(rows.length) + ' of ' + fmtN(g.count) + ' shown' + (left ? ' · ' + fmtN(left) + ' not reviewed' : '') : '') + '</span></div>' +
     '<div class="lang-list">' + rows.map(langRowHtml).join('') + '</div>' +
     (rows.length < g.count ? '<button type="button" data-lang="more">Show More</button>' : '') + '</details>';
@@ -1760,7 +1762,7 @@ langBox.addEventListener('click', e => {
   const b = e.target.closest('button[data-lang]'); if (!b || finished) return;
   const fold = b.closest('details'), group = fold && fold.dataset.group, act = b.dataset.lang;
   if (act === 'more') { langLoad(group); return; }
-  if (act === 'bulk') { for (const r of langRows[group] || []) if (r.bulk && !(state.decisions[r.id] || {}).status) langSet(r.id, 'approved', undefined, true); }
+  if (act === 'bulk' && LANG_BULK) { for (const r of langRows[group] || []) if (r.bulk && !(state.decisions[r.id] || {}).status) langSet(r.id, 'approved', undefined, true); }
   else {
     const row = b.closest('.lang-row'), id = row.dataset.id;
     langSet(id, act === 'keep' ? 'approved' : 'rejected');

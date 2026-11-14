@@ -179,3 +179,15 @@ def test_the_languages_introduction_is_patricks_paragraph():
     assert f"const LANG_INTRO = '{LANG_INTRO}';" in page and "'<p>' + LANG_INTRO + '</p>'" in page
     assert page.count('LANG_INTRO') == 2                                              # defined once, drawn once, on every PDF
     assert 'data-lang="more">Show More</button>' in page                              # the row-loading button keeps its name
+
+def test_group_approval_is_off_and_never_shown():
+    """Patrick, 2026-11-13: the button is hidden behind one switch, off; the page never shows it or mentions it. Its server
+    rules stay (test_rows_per_form_and_the_summary: `bulk`; test_decisions_apply_to_the_form_and_are_counted)."""
+    import re
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    assert len(re.findall(r'const LANG_BULK = (true|false);', page)) == 1 and 'const LANG_BULK = false;' in page
+    i = page.index('data-lang="bulk"'); assert page.rfind('LANG_BULK && g.bulk ?', 0, i) > i - 120     # the markup only under it
+    assert "if (act === 'bulk' && LANG_BULK)" in page
+    shown = page.split('<script', 1)[0] + LANG_INTRO
+    assert 'Approve All' not in shown and 'group approval' not in shown
+    assert 'Approve All' not in open(os.path.join(HERE, '..', 'docs', 'review-page.md'), encoding='utf-8').read()
