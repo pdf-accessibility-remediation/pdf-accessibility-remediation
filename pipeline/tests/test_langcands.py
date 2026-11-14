@@ -87,3 +87,4 @@ def test_title_growth_leaves_common_english_words_out(tmp_path):
     on = {p['form'] for p in langcands.page_places(1, plpages.Pages(src).pages[0].chars, grow=True)[0]}
     assert 'Kamakura bukkyo' in on and not any('King' in f or 'Japanese' in f for f in on)
     assert langcands.common_romanized('China') and langcands.common_romanized('Kongō') is False and langcands.common_romanized('Japanese')
+    assert not langcands.common_romanized('Hō') and not langcands.common_romanized('Tang') and not langcands.common_romanized('Song')   # review 10, L4

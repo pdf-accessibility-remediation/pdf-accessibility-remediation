@@ -63,6 +63,7 @@ def romanized_shape(w):
     return bool(b) and b.isalpha() and bool(JA_SYL.match(b) or PINYIN.match(b))
 
 COMMON = os.path.join(HERE, 'data', 'english-common-romanized.txt')   # SCOWL sizes 10-35 with a romanized shape (review 08, M6)
+DYNASTIES = {'xia', 'shang', 'zhou', 'qin', 'han', 'jin', 'sui', 'tang', 'song', 'liao', 'yuan', 'ming', 'qing', 'wei', 'liang', 'chen'}   # may join a title (review 10, L4)
 EN_PEOPLE = {'japan', 'japanese', 'korea', 'korean', 'chinese', 'taiwanese', 'tibetan'}   # English names of places and peoples
 _COMMON = None
 def common_romanized(w):
@@ -71,7 +72,10 @@ def common_romanized(w):
     global _COMMON
     if _COMMON is None:
         with open(COMMON, encoding='utf-8') as f: _COMMON = frozenset(x.strip() for x in f if x.strip())
-    b = ''.join(ch for ch in unicodedata.normalize('NFD', w.lower()) if not unicodedata.combining(ch))
+    d = unicodedata.normalize('NFD', w.lower())
+    if any(unicodedata.combining(ch) for ch in d): return False          # Hō, Dō, Shō: a word with marks is never common English (review 10, L4)
+    b = ''.join(ch for ch in d if not unicodedata.combining(ch))
+    if b in DYNASTIES: return False                                       # Song gaoseng zhuan, Tang huiyao
     return b in _COMMON or b in EN_PEOPLE
 
 _LIST = None

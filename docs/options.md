@@ -122,7 +122,7 @@ A retry that reuses the run's own reply keeps the tags already paid for.
 Two options change what is sent, both off by default (`language_run.json` records them under `options`):
 - `LANG_GROW=on`: a title in another language is tagged whole. A capitalized word in the English list joins a title
   only when it looks romanized and is not a common English word or an English name of a people (*Nihon* and *Kamakura*
-  join; *China*, *King*, *Japanese* don't; `data/english-common-romanized.txt`); see [Language tags](languages.md).
+  join; *China*, *King*, *Japanese* don't; `data/english-common-romanized.txt`). A word with marks (*Hō*, *Dō*) and a dynasty name (*Song*, *Tang*, *Ming*, *Qing* …) may always join; see [Language tags](languages.md).
 - `LANG_GROUP=on`: adjacent single Chinese characters are one word form.
 
 ### OCR languages
