@@ -57,7 +57,29 @@ NUMERAL = re.compile(r'(?i)[ivxlcdm]+|\d[\d,.]*\w{0,3}')
 # list with one of these shapes ("Nihon", "Kyoto") may still join a romanized title (grow); "Annals", "Buddhism" may not, nor
 # a common English word of that shape or an English name of a people ("China", "Home", "King", "Japanese": common_romanized)
 JA_SYL = re.compile(r"(?i)^(?:(?:ky|sh|ch|ts|ny|hy|my|ry|gy|by|py|j|[kgsztdnhbpmyrwf])?[aiueo]|n(?![aiueoy]))+$")
-PINYIN = re.compile(r"(?i)^(?:(?:zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw])?(?:iang|iong|uang|ang|eng|ing|ong|ian|iao|uai|uan|ai|ei|ao|ou|an|en|in|un|ia|ie|iu|ua|uo|ui|er|a|o|e|i|u|ü)(?:n|ng)?)+$")
+_PY_INITIALS = ('zh', 'ch', 'sh') + tuple('bpmfdtnlgkhjqxrzcsyw') + ('',)
+_PY_FINALS = ('iang', 'iong', 'uang', 'ang', 'eng', 'ing', 'ong', 'ian', 'iao', 'uai', 'uan', 'ai', 'ei', 'ao', 'ou', 'an', 'en', 'in',
+              'un', 'ia', 'ie', 'iu', 'ua', 'uo', 'ui', 'er', 'a', 'o', 'e', 'i', 'u', 'ü')
+_PY_UNITS = sorted({i + f + t for i in _PY_INITIALS for f in _PY_FINALS for t in ('', 'n', 'ng')}, key=len, reverse=True)
+class _Pinyin:
+    """The pinyin shape: the word is a run of syllables (an initial or none, a final, an optional n or ng), case ignored.
+    Matched by segmenting in linear time: the regular expression it replaces could backtrack exponentially (CodeQL
+    py/redos, #118 final round). match(w) is truthy exactly when that expression matched."""
+    MAX = max(len(u) for u in _PY_UNITS)
+    UNITS = frozenset(_PY_UNITS)
+    def match(self, w):
+        w = (w or '').lower(); n = len(w)
+        if not n: return False
+        ok = [False] * (n + 1); ok[0] = True
+        for i in range(n):
+            if not ok[i]: continue
+            for j in range(i + 1, min(n, i + self.MAX) + 1):
+                if w[i:j] in self.UNITS: ok[j] = True
+        return ok[n]
+PINYIN = _Pinyin()
+class _PinyinU(_Pinyin):
+    UNITS = frozenset(_PY_UNITS) | {i + f + t for i in _PY_INITIALS for f in ('üan', 'ün', 'üe') for t in ('', 'n', 'ng')}
+PINYIN_U = _PinyinU()   # tools/lang_test.py's variant
 def romanized_shape(w):
     b = ''.join(ch for ch in unicodedata.normalize('NFD', w.lower()) if not unicodedata.combining(ch))
     return bool(b) and b.isalpha() and bool(JA_SYL.match(b) or PINYIN.match(b))
