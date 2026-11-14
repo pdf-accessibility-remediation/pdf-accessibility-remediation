@@ -143,3 +143,14 @@ def test_reuse_keeps_a_mismatched_form_echo_dropped(tmp_path, monkeypatch):
     assert run(src, A, R, monkeypatch, '--reuse') == []
     lr = load(R / 'language_run.json')
     assert sorted(lr['decisions']) == sorted(first['decisions']) and [p['form'] for p in tagged(R)] == ['mappō']
+
+def test_the_estimate_follows_the_language_allowance(tmp_path, monkeypatch):
+    """Round 17 (review 16, item 1): language_estimate.json's max_tokens are costs.allowance's, and its worst case is
+    each request's input and allowance at the listed prices."""
+    from lib import costs
+    src, A, R = folders(tmp_path)
+    run(src, A, R, monkeypatch, '--dry-run')
+    e = load(R / 'language_estimate.json')
+    assert e['max_tokens'] == [costs.allowance('language', 3)] == [1400]
+    pin, pout = (x / 1e6 for x in e['price_per_million'])
+    assert e['worst_case_usd'] > 1400 * pout and e['worst_case_usd'] == round(e['worst_case_usd'], 4)

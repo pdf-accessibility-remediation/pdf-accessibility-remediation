@@ -28,7 +28,8 @@ import sys, os, re, json, time, hashlib, argparse, urllib.request, urllib.error,
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 from lib import plumb_fix, plpages, langcands, langreq, costhistory, costs, workorder_check  # noqa: F401
 
-PROMPT_NAME = 'language_v3.md'                   # v1 with v2's form echo and dictionary-phrase line (adopted 2026-11-13, 11 §2)
+PROMPT_NAME = 'language_v3.md'
+DEFAULT_MODEL = 'anthropic/claude-sonnet-5.5'   # kept after round 15's experiment: Opus 5.5 no more accurate at 2.2 times the cost                   # v1 with v2's form echo and dictionary-phrase line (adopted 2026-11-13, 11 §2)
 CHARS_PER_TOKEN = 3.5
 
 def load_env():
@@ -142,9 +143,7 @@ def main():
               f'{replay["not_decided"]} not decided) · no AI request'); return
     # --- the model, its price and parameters (any model is capped: M7)
     load_env()
-    run_json = os.path.join(R, 'run.json')
-    model = args.model or os.environ.get('LANGUAGE_MODEL') or ((json.load(open(run_json, encoding='utf-8')).get('model') if os.path.exists(run_json) else None)) \
-        or re.search(r"^DEFAULT_MODEL = '([^']+)'", open(os.path.join(HERE, 'decide.py'), encoding='utf-8').read(), re.M).group(1)
+    model = args.model or os.environ.get('LANGUAGE_MODEL') or DEFAULT_MODEL     # its own default, never the work order's (Patrick, 2026-11-14)
     try: m = next((x for x in get('https://openrouter.ai/api/v1/models')['data'] if x['id'] == model), None)
     except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as e: sys.exit(f'could not reach OpenRouter to look up the model: {e}')
     if m is None: sys.exit(f'refusing: model "{model}" is not on OpenRouter')
@@ -161,7 +160,7 @@ def main():
     worst = sum(t['worst'] for t in send)
     est = {'forms': len(fs), 'sent': len(sent), 'held_back': len(held), 'requests': len(todo), 'to_send': len(send), 'reused': len(todo) - len(send),
            'worst_case_usd': round(worst, 4), 'per_call_worst_usd': round(max((t['worst'] for t in send), default=0), 4), 'cap_usd': args.max_usd,
-           'price_per_million': [round(pin * 1e6, 4), round(pout * 1e6, 4)], 'words_sent': sum(len(s['text'].split()) for r in reqs for s in r['snippets'])}
+           'price_per_million': [round(pin * 1e6, 4), round(pout * 1e6, 4)], 'max_tokens': [t['max_tokens'] for t in send], 'words_sent': sum(len(s['text'].split()) for r in reqs for s in r['snippets'])}
     if send:
         try: est['expected'] = costhistory.expected([{'kind': 'language', 'input_est': t['input_est'], 'max_tokens': t['max_tokens']} for t in send], model, pin, pout, worst)
         except Exception as ex: est['expected'] = {'none': 'error'}; print(f'note: the expected cost could not be worked out ({type(ex).__name__})')

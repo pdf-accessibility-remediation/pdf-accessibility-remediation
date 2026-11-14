@@ -35,6 +35,7 @@ def test_the_work_order_allowance_is_todays_rule(forms, want):
 
 def test_a_figure_request_has_32000_and_an_unknown_kind_is_refused():
     assert C.allowance('figure') == 32000
+    assert [C.allowance('language', n) for n in (1, 3, 10, 27, 150)] == [1000, 1400, 2800, 5710, 21700]   # round 17: raised
     with pytest.raises(ValueError): C.allowance('nonsense')
 
 def test_the_default_limits_are_in_one_place():

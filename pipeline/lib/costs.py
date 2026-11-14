@@ -36,7 +36,12 @@ def allowance(kind, forms=0):
     The work order has room for the reasoning and a reading per OCR word form (Buddhist used ~37 each)."""
     if kind == 'workorder': return max(48000, 16000 + 45 * forms)
     if kind == 'figure': return 32000
-    if kind == 'language': return 300 + 100 * forms       # name_languages.py: a decision with its evidence is 65–75 tokens (#118)
+    if kind == 'language':                                # name_languages.py (#118; raised in round 17, Patrick's decision)
+        # 58 of 1,040 replies in round 15's experiment hit 300 + 100 x forms. Finished replies: a fixed overhead up to
+        # 489 tokens on 1-2 forms, at most 140 a form from 7 forms; the whole-book v1 test, 84 a form at 150 forms. So:
+        # 800, plus 200 a form for the first 20 forms and 130 for each further one; every finished reply of the
+        # experiment sits under 56% of it. Output is billed as used: this only raises the worst-case estimate.
+        return 800 + 200 * min(forms, 20) + 130 * max(0, forms - 20)
     raise ValueError(f'unknown kind: {kind}')
 
 def _load(p):

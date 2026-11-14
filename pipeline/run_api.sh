@@ -270,7 +270,7 @@ if [[ ${PAGE_READS} != off && -z ${REPLY:-} && -z $REVIEWED && ${DECIDE:-} != no
 fi
 # Language tags (#118; on unless LANG_TAGS=off): name_languages.py names the language of the candidate words and
 # passages the audit found, and writes language_parts into the work order. Its own paid step, with its own model
-# (LANGUAGE_MODEL, default the work order's), estimate and limit (LANGUAGE_MAX_USD, default 4). A saved reply (REPLY=, FROM=)
+# (LANGUAGE_MODEL, default Sonnet 5.5), estimate and limit (LANGUAGE_MAX_USD, default 4). A saved reply (REPLY=, FROM=)
 # never starts a request (review 02, M3): its saved language decisions are used (LANG_REPLY=, or this folder's own
 # language_run.json when the reply is this folder's own), else the step is not run and the record says so.
 lang_step() {                   # each failure is reported and skipped, never the end of the run

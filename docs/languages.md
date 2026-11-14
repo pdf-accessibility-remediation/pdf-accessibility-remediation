@@ -67,7 +67,7 @@ mid-title), and `LANG_GROUP=on` makes adjacent single Chinese characters one wor
 screen-reader check of a title tagged in pieces (see [Options](options.md#language-tags)).
 
 The step is on by default (`LANG_TAGS=on`, see [Options](options.md#language-tags)). It has its own model
-(`LANGUAGE_MODEL`, default the work order's), limit (`LANGUAGE_MAX_USD`, default $4) and form limit
+(`LANGUAGE_MODEL`, default Sonnet 5.5, whatever model the work order uses), limit (`LANGUAGE_MAX_USD`, default $4) and form limit
 (`LANGUAGE_MAX_FORMS`, default 5000). The PDF's limit (`BOOK_MAX_USD`, default $5) is shared by the work order, the
 page readings and this step. The step never stops the work order: when it doesn't fit the PDF's limit with the work order,
 or passes its own limit, it alone is left out and the PDF goes on without language tags (see
@@ -94,5 +94,12 @@ book, run it again (a fresh run, or a FROM= rerun with LANG_REPLY= of a version 
 
 ## Cost
 
-Sonnet 5.5, measured on the test books (2026-11-13): about $0.09 per 100 forms. A book with 2,800 forms (cadaverous)
+Each request's answer may run to 800 tokens plus 200 for each of its first 20 word forms and 130 for each further one
+(`lib/costs.py allowance`; raised 2026-11-14 after 58 of 1,040 test replies reached the earlier 300 + 100 per form).
+Output is billed as used, so this raises only the worst case the estimate shows, not what a book costs. On cadaverous
+(2,722 forms, 19 requests) the worst case is now about $4.91 (was $3.74), which passes the default `LANGUAGE_MAX_USD` of
+$4: the step is then left out of the run unless the limit is raised (see [The limit per PDF](options.md#the-limit-per-pdf)).
+
+Sonnet 5.5 stays the language step's model (2026-11-14): Opus 5.5 was no more accurate on the 473 test items and costs
+about 2.2 times as much. Sonnet 5.5, measured on the test books (2026-11-13): about $0.09 per 100 forms. A book with 2,800 forms (cadaverous)
 cost $2.53; one with 840 forms (ryukyu) $0.78. A book with no candidates costs nothing.
