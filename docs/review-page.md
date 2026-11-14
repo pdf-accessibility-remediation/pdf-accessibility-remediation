@@ -199,6 +199,15 @@ It opens with one paragraph, the same on every PDF:
 - **Each row:** "Approve", "Leave Untagged", or "Change Language…" for another language. A publisher's tag offers
   "Keep the Tag" or "Remove the Tag".
 - Every word form is decided on its own row.
+- **The tag written into the PDF** is shown beside each language's name, in grey, in this section only: on a fold's
+  heading when all its rows write the same tag ("Japanese (Romanized) · ja-Latn"), on each row ("The AI tags it as
+  Japanese · ja"), in the "Change Language…" list ("Japanese · ja"), and after a change ("Tagged as Japanese · ja").
+  It is the value that becomes the PDF's /Lang, never one worked out from the name. For a tag already in the PDF it is
+  what "Keep the Tag" leaves: a code tidied to its shortest form, a language's name replaced by its code when its words
+  fit ("Hawaiian" → haw), or the value as written when it is left for a person ("Hawaii" on mostly English words) or
+  sits in the page's marked content alone. A name's fit is checked on the word form's text; apply.py checks the whole
+  tag's text, so the two could differ for a tag that holds more than one run. The OCR language choice, the "Finish
+  Review" dialog and the run page show names only.
 - Rows load 100 at a time ("Show More").
 - "Language Tags" on "Ready to Ship?" reads "Approved" once every form is decided.
 

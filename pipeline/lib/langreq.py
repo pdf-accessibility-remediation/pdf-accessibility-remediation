@@ -63,6 +63,7 @@ def forms(places, skip=LOCAL, unknown_italic_only=False, group=False):
         f = by.setdefault(key, {'form': p['form'], 'group': g, 'class': sorted(set(p['class'])), 'places': [], 'italic_any': False, 'roman_any': False,
                                 **({'current': p['current']} if p.get('current') else {})})
         f['places'].append(p); f['italic_any'] |= bool(p.get('italic')); f['roman_any'] |= not p.get('italic')
+        if p.get('carried'): f['carried'] = p['carried'] if f.get('carried') in (None, p['carried']) else 'mixed'   # review 12, C
     out = list(by.values())
     out.sort(key=lambda f: (ORDER.index(f['group']) if f['group'] in ORDER else 99, f['places'][0]['page']))
     for i, f in enumerate(out, 1): f.setdefault('id', str(i))
@@ -211,6 +212,7 @@ def to_rows(fs, decisions, tag_conf=('high', 'medium')):
         e = {'key': f'{f["group"]}|{f["form"]}' + (f'|{f["current"]}' if f.get('current') else ''), 'form': f['form'], 'group': f['group'],
              'class': f['class'], 'lang': d.get('lang'), 'confidence': d.get('confidence'), 'why': d.get('why'),
              **({'evidence': d['evidence']} if d.get('evidence') else {}), **({'current': f['current']} if f.get('current') else {}),
+             **({'carried': f['carried']} if f.get('carried') else {}),
              'tag': bool(f['group'] != 'existing' and d.get('lang') and d.get('confidence') in tag_conf),
              **({'person': True} if needs_person(f, d) else {}), 'places': len(f['places'])}
         i = len(forms); forms.append(e)

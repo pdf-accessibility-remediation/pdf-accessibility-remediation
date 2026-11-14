@@ -215,7 +215,7 @@ def build_items(wo, digest, order=None, ro=None):
             add(f'language:{f.get("key") or i}', 'language_parts', 'Languages', ['language_parts', 'forms', i], f.get('lang') if f.get('tag') else None,
                 f.get('form') or '', page=ps[0] if ps else None, pages=[ps[0], ps[-1]] if ps else None, edit='lang', field='lang',
                 lang_name=langtag.name(f.get('lang')) if f.get('tag') and f.get('lang') else None, group=f.get('group'), why=f.get('why'),
-                evidence=f.get('evidence'), current=f.get('current'), places=f.get('places'), page_list=ps[:30],
+                evidence=f.get('evidence'), current=f.get('current'), carried=f.get('carried'), places=f.get('places'), page_list=ps[:30],
                 form_key=f.get('key'), bulk=bulk or None, needs_person=bool(f.get('person')) or None, confidence=f.get('confidence'))
     if wo.get('notes_for_reviewer'):
         refs = sorted({int(m.group(1)) for m in PAGE_REF.finditer(wo['notes_for_reviewer']) if 1 <= int(m.group(1)) <= N})
@@ -920,13 +920,27 @@ def lang_group(it):
     if it.get('ai') is None: return LANG_UNTAGGED
     return langtag.name(it['ai']) or 'Another Language'
 
+def lang_written(it):
+    """The value a row writes into the PDF as it stands (review 12, C; Patrick, 2026-11-13: shown in the "Languages" section
+    only): the AI's tag as checked (langtag.valid_part keeps it in its shortest form); for the PDF's own tag kept, what
+    apply.py leaves: on an element, fix_lang_values's tidied value (langtag.kept_value, worked out on the word form's text),
+    in the marks alone, the value as written; both values when its places differ. None when nothing is written."""
+    c = it.get('context') or {}; cur = c.get('current')
+    if not cur: return it.get('ai')
+    el, raw = langtag.kept_value(cur, it.get('label') or ''), str(cur)
+    vals = {'marks': [raw], 'mixed': [el, raw]}.get(c.get('carried'), [el])       # no `carried` (made before it): on an element
+    return ', '.join(dict.fromkeys(vals))
+
 def language_summary(items):
-    """The Languages section's folds, for the page's first load (the rows themselves come by language_rows)."""
-    g = collections.OrderedDict()
+    """The Languages section's folds, for the page's first load (the rows themselves come by language_rows). `code`: the
+    one value the fold's rows write, when they all write the same (review 12, C), else None."""
+    g = collections.OrderedDict(); codes = collections.defaultdict(set)
     for it in items:
         if it.get('kind') != LANG_KIND: continue
         k = lang_group(it); x = g.setdefault(k, {'group': k, 'count': 0, 'bulk': 0, 'places': 0})
         x['count'] += 1; x['bulk'] += bool((it.get('context') or {}).get('bulk')); x['places'] += (it.get('context') or {}).get('places') or 0
+        codes[k].add(lang_written(it))
+    for k, x in g.items(): x['code'] = next(iter(codes[k])) if len(codes[k]) == 1 and k != LANG_UNTAGGED else None
     order = sorted(g.values(), key=lambda x: (x['group'] in (LANG_UNTAGGED, LANG_EXISTING), x['group']))
     names = sorted({(code, name) for code, name in langtag.NAMES.items() if code != 'qaa'}, key=lambda x: x[1])
     return {'groups': order, 'total': sum(x['count'] for x in order), 'names': [{'code': c, 'name': n} for c, n in names]}
@@ -948,7 +962,7 @@ def language_rows(items, group, start=0, n=LANG_PAGE, contexts=None):
         out.append({'id': it['id'], 'form': it['label'], 'ai': it['ai'], 'lang_name': c.get('lang_name'), 'confidence': c.get('confidence'),
                     'evidence': c.get('evidence'), 'why': c.get('why'), 'current': c.get('current'), 'places': c.get('places'),
                     'pages': c.get('page_list'), 'snippet': c.get('snippet') or (contexts or {}).get(c.get('form_key')),
-                    'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person')), **current_words(c.get('current'))})
+                    'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person')), 'written': lang_written(it), **current_words(c.get('current'))})
     return {'group': group, 'start': start, 'total': len(rows), 'rows': out}
 
 def current_words(cur):

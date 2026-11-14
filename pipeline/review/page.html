@@ -113,6 +113,7 @@ section > h2 { font-size: 16px; margin: 18px 0 8px; padding-bottom: 4px; border-
 .lang-row[data-status] { border-left: 4px solid var(--accent); padding-left: 8px; }
 .lang-form { font-weight: 600; overflow-wrap: anywhere; }
 .lang-ctx, .lang-meta { color: var(--muted, #555); font-size: .92em; overflow-wrap: anywhere; }
+.lang-code { color: var(--muted, #555); font-weight: 400; font-size: .92em; }
 .lang-acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .lang-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
 @media (max-width: 600px) { .lang-row { grid-template-columns: 1fr; } }
@@ -1694,18 +1695,18 @@ const langRows = {};                                     // group -> the rows lo
 const LANG_INTRO = 'Words and passages in another language found in the PDF. A screen reader switches to a language\'s voice for the words tagged with it. Decide each word form: the choice applies to every place it appears. Words in Chinese characters alone are decided one by one, because the same characters are used in Chinese and Japanese. Language tags already in the PDF are also decided one by one, so a person confirms each of them. Hawaiian: most screen readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.';
 function langStatusWord(r, d) {
   if (!d || !d.status) return 'Not reviewed';
-  if (d.status === 'changed') return 'Tagged as ' + ((LANGS.names.find(x => x.code === d.value) || {}).name || d.value);
+  if (d.status === 'changed') return 'Tagged as ' + ((LANGS.names.find(x => x.code === d.value) || {}).name || d.value) + ' · ' + d.value;
   if (d.status === 'rejected') return r.current ? 'Tag removed' : 'Left untagged';
-  return r.current ? 'Tag kept' : r.ai ? 'Approved' + (d.bulk ? ' (in a group approval)' : '') : 'Left untagged';
+  return r.current ? 'Tag kept' + (r.written ? ' · ' + r.written : '') : r.ai ? 'Approved' + (d.bulk ? ' (in a group approval)' : '') : 'Left untagged';
 }
 function langRowHtml(r) {
   const d = state.decisions[r.id] || {};
-  const opts = '<option value="">Change Language…</option>' + LANGS.names.map(x => '<option value="' + esc(x.code) + '"' + (d.value === x.code ? ' selected' : '') + '>' + esc(x.name) + '</option>').join('');
+  const opts = '<option value="">Change Language…</option>' + LANGS.names.map(x => '<option value="' + esc(x.code) + '"' + (d.value === x.code ? ' selected' : '') + '>' + esc(x.name) + ' · ' + esc(x.code) + '</option>').join('');   // the value written (review 12, C)
   const pagesTxt = (r.pages || []).slice(0, 8).map(p => 'PDF ' + p).join(', ') + ((r.pages || []).length > 8 ? ', …' : '');
   const cur = r.current_name ? esc(r.current_name) + (r.current_written ? ' (written "' + esc(r.current_written) + '")' : '')   // review 08, L4: a name, never a code
             : '"' + esc(r.current_written || r.current) + '", which is not a known language';
-  const what = r.current ? 'The PDF tags it as ' + cur + (r.ai ? '; the AI suggests ' + esc(r.lang_name || r.ai) : '')
-             : r.ai ? 'The AI tags it as <b>' + esc(r.lang_name || r.ai) + '</b>' + (r.confidence ? ' (' + esc(r.confidence) + ' confidence)' : '')
+  const what = r.current ? 'The PDF tags it as ' + cur + langCode(r.written) + (r.ai ? '; the AI suggests ' + esc(r.lang_name || r.ai) : '')
+             : r.ai ? 'The AI tags it as <b>' + esc(r.lang_name || r.ai) + '</b>' + langCode(r.written) + (r.confidence ? ' (' + esc(r.confidence) + ' confidence)' : '')
              : 'The AI left it untagged' + (r.why ? ' (' + esc({ name: 'a name', english: 'part of English', indeterminate: 'not a word of a known language', unsure: 'not sure', varies: 'it varies' }[r.why] || r.why) + ')' : '');
   const keep = r.current ? 'Keep the Tag' : r.ai ? 'Approve' : 'Leave Untagged';
   const drop = r.current ? 'Remove the Tag' : r.ai ? 'Leave Untagged' : null;
@@ -1718,6 +1719,9 @@ function langRowHtml(r) {
     '<select data-lang="change" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select>' +
     '<span class="lang-meta" role="status">' + esc(langStatusWord(r, d)) + '</span></div></div>';
 }
+// The tag written into the PDF, beside a language's name: in the "Languages" section only (review 12, C; Patrick,
+// 2026-11-13). The server sends the value that becomes /Lang (core.lang_written), never one worked out from the name.
+function langCode(v) { return v ? ' <span class="lang-code">· ' + esc(v) + '</span>' : ''; }
 function fmtN(x) { return Number(x || 0).toLocaleString('en-US'); }      // review 08, L4: 1,130 word forms, never 1130
 function langLeft() {                                    // word forms under "Languages" with no choice yet (declared, not const: nav() runs before LANGS is set)
   return Math.max(0, ((DATA.languages || {}).total || 0) - Object.keys(state.decisions).filter(k => k.startsWith('language:') && (state.decisions[k] || {}).status).length);
@@ -1725,7 +1729,7 @@ function langLeft() {                                    // word forms under "La
 function langFold(g) {
   const rows = langRows[g.group] || [], left = rows.filter(r => !(state.decisions[r.id] || {}).status).length;
   const bulk = rows.filter(r => r.bulk && !(state.decisions[r.id] || {}).status).length;
-  return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
+  return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + langCode(g.code) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
     ' (' + fmtN(g.places) + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
     '<div class="lang-bar">' + (LANG_BULK && g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + bulk + ')</button>' : '') +
     '<span class="lang-meta">' + (rows.length ? fmtN(rows.length) + ' of ' + fmtN(g.count) + ' shown' + (left ? ' · ' + fmtN(left) + ' not reviewed' : '') : '') + '</span></div>' +

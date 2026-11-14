@@ -379,28 +379,33 @@ def existing(pdf, PL, doc_lang, limit=300):
                     found[(pno, int(pr.MCID))] = str(pr.Lang)
         except Exception: pass
     st = pdf.Root.get('/StructTreeRoot')
-    stack = [(k, None) for k in (st.get('/K') if isinstance(st.get('/K'), pikepdf.Array) else [st.get('/K')])] if st is not None else []
-    seen = set()
+    stack = [(k, None, ()) for k in (st.get('/K') if isinstance(st.get('/K'), pikepdf.Array) else [st.get('/K')])] if st is not None else []
+    seen, chain = set(), {}                              # chain: (page, mcid) -> the /Lang of its owner and the owner's ancestors
     while stack and len(seen) < 200000:
-        n, pg = stack.pop()
+        n, pg, up = stack.pop()
         if not isinstance(n, pikepdf.Dictionary) or n.objgen in seen: continue
         seen.add(n.objgen)
         pg = pidx.get(n.Pg.objgen) if '/Pg' in n else pg
         lang = str(n.get('/Lang', '')) if '/Lang' in n else None
+        here = ((lang,) + up)[:8]                        # apply.py's remove_existing looks at the owner and 7 ancestors
         k = n.get('/K'); ks = list(k) if isinstance(k, pikepdf.Array) else ([k] if k is not None else [])
         for kid in ks:
             if isinstance(kid, int):
+                if pg: chain.setdefault((pg, kid), here)
                 if lang and scripts.primary(lang) != doc and pg: found.setdefault((pg, kid), lang)
             elif isinstance(kid, pikepdf.Dictionary):
                 if str(kid.get('/Type')) == '/MCR' and '/Stm' not in kid:
                     p_ = pidx.get(kid.Pg.objgen) if '/Pg' in kid else pg
+                    if p_: chain.setdefault((p_, int(kid.MCID)), here)
                     if lang and scripts.primary(lang) != doc and p_: found.setdefault((p_, int(kid.MCID)), lang)
-                else: stack.append((kid, pg))
+                else: stack.append((kid, pg, here))
     out = []
     for (pno, m), cur in sorted(found.items()):
         cs = runs.get(pno, {}).get(m)
         if not cs or not ''.join(cs).strip(): continue
+        # carried: an element over the run holds the value (apply.py tidies it there), or the marks alone (left as written)
+        on_el = any(x is not None and x.strip() == cur.strip() for x in chain.get((pno, m), ()))
         out.append({'page': pno, 'mcid': m, 'first': 0, 'last': len(cs) - 1, 'n': len(cs), 'text': ''.join(cs), 'form': ''.join(cs).strip(),
-                    'class': ['existing'], 'current': cur, 'italic': False, 'whole': True, 'w0': None, 'w1': None})
+                    'class': ['existing'], 'current': cur, 'carried': 'element' if on_el else 'marks', 'italic': False, 'whole': True, 'w0': None, 'w1': None})
         if len(out) >= limit: break
     return out

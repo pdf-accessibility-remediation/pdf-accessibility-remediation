@@ -161,10 +161,8 @@ def test_deciding_word_forms_changes_nothing_in_the_work_order_count(tmp_path):
 
 def test_the_polynesian_set_names_rennell_bellona_by_its_code():
     """review 12, note: Rennell-Bellona is mnv; rnl is Ranglong, a Kuki-Chin language."""
-    import ast
-    src = open(os.path.join(HERE, 'apply.py'), encoding='utf-8').read()
-    node = next(n for n in ast.parse(src).body if isinstance(n, ast.Assign) and getattr(n.targets[0], 'id', '') == 'POLYNESIAN')
-    codes = ast.literal_eval(node.value)
+    from lib import langtag
+    codes = langtag.POLYNESIAN                           # moved from apply.py with name_misfit (review 12, C)
     assert 'mnv' in codes and 'rnl' not in codes and {'mi', 'to', 'sm', 'ty'} <= codes
 
 LANG_INTRO = ("Words and passages in another language found in the PDF. A screen reader switches to a language\\'s voice for the "
@@ -191,3 +189,43 @@ def test_group_approval_is_off_and_never_shown():
     shown = page.split('<script', 1)[0] + LANG_INTRO
     assert 'Approve All' not in shown and 'group approval' not in shown
     assert 'Approve All' not in open(os.path.join(HERE, '..', 'docs', 'review-page.md'), encoding='utf-8').read()
+
+def test_the_code_shown_is_the_lang_written(tmp_path):
+    """review 12, C (Patrick, 2026-11-13): beside each row, the value that becomes /Lang in the output PDF: an AI row, a
+    changed row, and the PDF's own tags kept: a code on an element (fr-FR), a name converted (Hawaiian → haw), a name left
+    for a person (Hawaii on mostly English words), and a value in the marks alone (left as written). Synthetic lines."""
+    from lib import plpages, langcands
+    src = langpdf.build(str(tmp_path / 'c.pdf'), [{'lang': 'en-US', 'text': 'He chanted mappo daily.'},
+                                                  {'lang': 'en-US', 'text': 'The city of Heiankyo grew.'},
+                                                  {'lang': 'en-US', 'span_lang': 'fr-FR', 'text': 'Droits reserves'},
+                                                  {'span_lang': 'Hawaiian', 'text': 'Aloha mai kakou e hele ana'},
+                                                  {'span_lang': 'Hawaii', 'text': 'Oahu, a Giant Military Base'},
+                                                  {'lang': 'fr-fr', 'text': 'Bonjour tout le monde'}])
+    with pikepdf.open(src) as pdf: places = langcands.existing(pdf, plpages.Pages(src), 'en')
+    assert {p['form']: p['carried'] for p in places} == {'Droits reserves': 'element', 'Aloha mai kakou e hele ana': 'element',
+                                                         'Oahu, a Giant Military Base': 'element', 'Bonjour tout le monde': 'marks'}
+    lp = langreq.to_rows(langreq.forms(places), {})
+    n = len(lp['forms'])
+    lp['forms'] += [form('mappo', 'marks', ['marks'], 'ja-Latn', 'high'), form('Heiankyo', 'marks', ['marks'], 'ja-Latn', 'high')]
+    lp['parts'] += [[1, 0, 11, 15, n], [1, 1, 12, 19, n + 1]]
+    w = {'language_parts': lp}
+    items = core.build_items(w, DIGEST); by = {it['label']: it for it in items if it['kind'] == core.LANG_KIND}
+    rows = {r['form']: r for g in core.language_summary(items)['groups'] for r in core.language_rows(items, g['group'])['rows']}
+    assert {f: r['written'] for f, r in rows.items()} == {'mappo': 'ja-Latn', 'Heiankyo': 'ja-Latn', 'Droits reserves': 'fr-FR',
+                                                         'Aloha mai kakou e hele ana': 'haw', 'Oahu, a Giant Military Base': 'Hawaii',
+                                                         'Bonjour tout le monde': 'fr-fr'}
+    heads = {g['group']: g['code'] for g in core.language_summary(items)['groups']}
+    assert heads == {'Japanese (Romanized)': 'ja-Latn', core.LANG_EXISTING: None}               # several codes: none in the heading
+    dec = {it['id']: {'status': 'approved'} for it in by.values()}
+    dec[by['Heiankyo']['id']] = {'status': 'changed', 'value': 'ja'}                              # "Tagged as Japanese · ja"
+    wo = tmp_path / 'wo.json'; wo.write_text(json.dumps(core.apply_decisions(w, items, dec)))
+    out = str(tmp_path / 'out.pdf'); run('apply.py', src, wo, out)
+    pdf = pikepdf.open(out); els = list(pdf.Root.StructTreeRoot.K[0].K)
+    def spans(e):
+        if isinstance(e, pikepdf.Dictionary):
+            if e.get('/S') == '/Span' and '/Lang' in e: yield str(e.Lang)
+            k = e.get('/K')
+            for x in (k if isinstance(k, pikepdf.Array) else []): yield from spans(x)
+    assert sorted(x for e in els[:2] for x in spans(e)) == ['ja', 'ja-Latn']                      # the AI row, the changed row
+    assert [str(e.get('/Lang')) for e in els[2:5]] == ['fr-FR', 'haw', 'Hawaii']
+    assert str(marks(out)[5]['/Lang']) == 'fr-fr'                                                # the marks alone: as written
