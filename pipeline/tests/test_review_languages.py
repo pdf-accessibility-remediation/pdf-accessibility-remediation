@@ -140,3 +140,21 @@ def test_the_page_counts_language_forms_for_staff():
     assert "function fmtN(x) { return Number(x || 0).toLocaleString('en-US'); }" in page
     assert "<h2>Languages</h2><a href=\"#languages\"><span>Word Forms Not Reviewed</span>" in page
     assert '"Language Tags" in "Ready to Ship?" stays Not Reviewed.' in page and "(the PDF\\'s own tags stay as they are)" in page   # review 10, L6
+
+def test_the_ai_decisions_count_leaves_the_word_forms_out():
+    """review 12, M2 (Patrick's A): the work order's own decisions only; the word forms named beside them for staff."""
+    import test_review_problems as TP
+    ai = with_languages()
+    assert G.n_decisions(ai) == G.n_decisions(TP.ai_order()) and G.n_forms(ai) == 5
+    assert G.forms_text(2722) == '2,722 word forms under "Languages"'
+
+def test_deciding_word_forms_changes_nothing_in_the_work_order_count(tmp_path):
+    """review 12, M2: approving or changing forms adds 0 to "N changed" (a form has no identity in diff)."""
+    import test_review_problems as TP
+    R, ai, items, _adds = TP.run(tmp_path, with_languages())
+    by = {it['label']: it['id'] for it in items if it['kind'] == core.LANG_KIND}
+    dec = {by['mappō']: {'status': 'approved'}, by['地獄']: {'status': 'changed', 'value': 'zh'}}
+    wo2 = core.apply_decisions(ai, items, dec)
+    assert wo2['language_parts'] != ai['language_parts'] and core.diff(ai, wo2) == []
+    rv = core.finish(R, ai, wo2, 'Kim', '2026-11-13', 'page', decisions=dec, items=items, gap_default='left open for the test')
+    assert rv['changes'] == [] and rv['language']['approved'] == 1

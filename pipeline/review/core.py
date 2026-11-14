@@ -1146,11 +1146,13 @@ def _ident(x):
     return json.dumps(x, ensure_ascii=False, sort_keys=True)
 
 def diff(ai, final, where=''):
-    """What changed from the AI's order to the reviewed one: [{where, id, change: changed|removed|added, ai, person}]."""
+    """What changed from the AI's order to the reviewed one: [{where, id, change: changed|removed|added, ai, person}]. The
+    language step's word forms are left out: the "Languages" section's decisions are counted in language_review, and a
+    form's decision would otherwise count as one removed and one added (review 12, M2)."""
     out = []
     if isinstance(ai, dict) and isinstance(final, dict):
         for k in list(ai) + [k for k in final if k not in ai]:
-            if not where and k in workorder_check.META: continue
+            if not where and (k in workorder_check.META or k == 'language_parts'): continue
             w = f'{where}.{k}' if where else k
             if k not in final: out.append({'where': w, 'change': 'removed', 'ai': ai[k]})
             elif k not in ai: out.append({'where': w, 'change': 'added', 'person': final[k]})

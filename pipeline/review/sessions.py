@@ -424,7 +424,8 @@ def from_summary(ai, final, rv, digest):
     if core.add_entries(wo, additions, adds, rv.get('reviewer') or ''): return None
     from lib import workorder_check
     workorder_check.check(wo, digest, set(), {w['id'] for w in digest.get('ocr_words') or []})
-    if norm(core.diff(ai, wo)) != norm(rv.get('changes') or []): return None
+    kept = [c for c in rv.get('changes') or [] if not str(c.get('where') or '').startswith('language_parts')]   # recorded before review 12's M2
+    if norm(core.diff(ai, wo)) != norm(kept): return None
     st = [core._status(it, decisions.get(it['id'])) for it in items if it.get('kind') != core.LANG_KIND]   # as finish(): cards only (review 08, M2)
     counts = {s: st.count(s) for s in ('approved', 'changed', 'rejected', 'seen', 'accepted_unreviewed')}
     if additions: counts['added'] = len(additions)

@@ -481,8 +481,9 @@ def review_card(R, rec):
         B.append('<p>Per-decision choices were not recorded for this review (' + E(counts_text(c) or 'no counts') + ').</p>')
     else:
         kinds = {k: G.n_decisions({k: v}) for k, v in wo.items() if k not in G.META}
-        kinds = {k: c for k, c in kinds.items() if c}; n = G.n_decisions(wo)
-        B.append(f'<p>{n:,} decisions, all applied without review by a person: ' + E(', '.join(f'{v} {k.replace("_", " ")}' for k, v in kinds.items())) + '.</p>')
+        kinds = {k: c for k, c in kinds.items() if c}; n = G.n_decisions(wo); nf = G.n_forms(wo)
+        B.append(f'<p>{n:,} decisions, all applied without review by a person: ' + E(', '.join(f'{v:,} {k.replace("_", " ")}' for k, v in kinds.items())
+                 + (f' · {G.forms_text(nf)}' if nf else '')) + '.</p>')
     B.append('</section>')                                       # the terminal commands are in docs/app-run-page.md and review-again.md
     return B
 

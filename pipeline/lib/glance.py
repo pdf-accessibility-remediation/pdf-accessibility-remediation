@@ -20,7 +20,9 @@ Definitions (docs/output-files.md, docs/release.md, docs/evaluation.md):
                      near the top of `issues` (rank 1), not a safety check (2026-10-31).
   needs a person     the AI's deferrals + the executor's deferrals (counted by kind and page) + CHECK rows, leaving out
                      the "Nothing deferred by the executor" row, which only points at that list.
-  AI decisions       every entry in the work order (deferrals and notes are not decisions).
+  AI decisions       every entry in the work order (deferrals and notes are not decisions), leaving out the language
+                     step's word forms (`language_parts`): a person decides those under "Languages" on the review page,
+                     and the Language Tags requirement counts them (review 12, M2).
   fixed automatically  the executor's own fixes, by kind, with no total (several touch the same links).
 """
 import re
@@ -156,11 +158,19 @@ def pages_text(ps, labels=None):
 def n_decisions(wo):
     n = 0
     for k, v in (wo or {}).items():
-        if k in META or v in (None, False, {}, []): continue
+        if k in META or k == 'language_parts' or v in (None, False, {}, []): continue
         if isinstance(v, list): n += len(v)
         elif isinstance(v, dict): n += sum(len(x) if isinstance(x, (list, dict)) else 1 for x in v.values() if x not in (None, False, {}, []))
         else: n += 1
     return n
+
+def n_forms(wo):
+    """The language step's word forms (version 2), or its distinct words (version 1): what the "Languages" section lists."""
+    lp = (wo or {}).get('language_parts') or {}
+    if not isinstance(lp, dict): return 0
+    if lp.get('version') == 2: return len(lp.get('forms') or [])
+    return len({(p.get('form') or p.get('text')) for p in lp.get('parts') or [] if isinstance(p, dict)})
+def forms_text(n): return f'{n:,} word form{"" if n == 1 else "s"} under "Languages"'
 
 def from_sections(secs):
     """rows and sections as parse_md gives them, read from record.json `sections` instead of review.md's text."""
@@ -398,6 +408,7 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
     return with_release({'schema': SCHEMA, 'ready': None, 'ship': ship, 'safety': saf, 'safety_ok': saf_ok,
             'needs_person': {'total': len(d_ai) + n_exec + n_check, 'ai_deferrals': len(d_ai), 'executor_deferrals': n_exec, 'check_rows': n_check},
             'ai_decisions': {'count': n_decisions(wo), 'reviewed': reviewed,
+                             **({'word_forms': n_forms(wo)} if n_forms(wo) else {}),
                              **({'no_model': True} if (record.get('run') or {}).get('no_model') else {})},   # a PDF edited by hand: no AI call
             'fixed_automatically': [{'what': k, 'count': c} for k, c in fixed.items()],
             'verapdf': vg, 'issues': issues, 'sections': secs, 'checks': rows,
@@ -427,7 +438,8 @@ def glance_md(g, html_name='review.html', top=5):
     L.append(f'**Needs a person:** {np_["total"]} ({np_["ai_deferrals"]} deferred by the AI · {np_["executor_deferrals"]} deferred by the executor · '
              f'{np_["check_rows"]} CHECK row{"" if np_["check_rows"] == 1 else "s"})' + (f' · {needs_looked_text(g)}' if needs_looked_text(g) else '') + '  ')
     ad = g['ai_decisions']; r = ad.get('reviewed')
-    L.append(f'**{"Decisions (no AI call)" if ad.get("no_model") else "AI decisions"}:** {_n(ad["count"])} in the work order, ' + (
+    L.append(f'**{"Decisions (no AI call)" if ad.get("no_model") else "AI decisions"}:** {_n(ad["count"])} in the work order'
+             + (f' · {forms_text(ad["word_forms"])}' if ad.get('word_forms') else '') + ', ' + (
         f'approved by {r["reviewer"]} on {D.day(r["date"])} ({r["changed"]} changed)' if r and g['ship'][0]['ok'] else
         f'reviewed by {r["reviewer"]} on {D.day(r["date"])} ({r["changed"]} changed), not signed off (see "Ready to ship?")' if r else
         'applied without review by a person') + '  ')
