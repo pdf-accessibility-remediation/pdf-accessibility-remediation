@@ -112,3 +112,16 @@ def test_the_adopted_context_is_the_default():
     """Round 15's experiment (handoff 15 §5): 15 pieces, the 40-character CJK cap, joined snippets with item numbers."""
     from lib import langreq as L
     assert L.CTX == {'unit': 'pieces', 'size': 15, 'mode': 'window', 'cap': 60, 'cjk_cap': 40, 'join': True, 'item_snippets': True}
+
+def test_a_cjk_piece_between_two_marks_keeps_the_side_nearer_its_nearer_mark():
+    """review 16, L1: a 60-character piece between two marks, nearer the second, keeps its end (next to the second mark);
+    one nearer the first keeps its start."""
+    from lib import langreq as L
+    long = '甲' * 30 + '乙' * 30
+    pw = ['X', 'a', 'b', long, 'Y']                                     # nearer Y (1 piece away) than X (3 away)
+    marks = [(0, 0, '1', 'X'), (4, 4, '2', 'Y')]
+    t, _ = L._text(pw, 0, 4, marks, 40)
+    assert t == '[[1|X]] a b …' + '甲' * 10 + '乙' * 30 + ' [[2|Y]]'
+    pw = ['X', long, 'a', 'b', 'Y']                                     # nearer X
+    t, _ = L._text(pw, 0, 4, [(0, 0, '1', 'X'), (4, 4, '2', 'Y')], 40)
+    assert t == '[[1|X]] ' + '甲' * 30 + '乙' * 10 + '… a b [[2|Y]]'

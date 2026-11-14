@@ -145,16 +145,21 @@ def _trim(w, keep_end, cap):
     return '…' + w[-cap:] if keep_end else w[:cap] + '…'
 
 def _text(pw, a, b, marks, cap):
-    """The snippet text of pieces a..b, each candidate inside marked [[id|text]] (overlapping marks: the first wins);
-    pieces before the first mark keep their end, pieces after the last keep their start."""
-    ms = sorted((m for m in marks if m[0] >= a and m[1] <= b), key=lambda m: m[0])
+    """The snippet text of pieces a..b, each candidate inside marked [[id|text]] (overlapping marks: the first wins). A
+    long CJK piece keeps the characters nearest its nearer mark: its end when the next mark is nearer (or it comes
+    before the first), its start otherwise (review 16, L1: a piece between two marks once kept the far side)."""
+    ms, k = [], a
+    for m in sorted((m for m in marks if m[0] >= a and m[1] <= b), key=lambda m: m[0]):
+        if m[0] >= k: ms.append(m); k = m[1] + 1
+    def keep_end(x):
+        prev = max((m[1] for m in ms if m[1] < x), default=None); nxt = min((m[0] for m in ms if m[0] > x), default=None)
+        if nxt is None: return False
+        return prev is None or nxt - x <= x - prev
     toks, k, ids = [], a, []
-    first = ms[0][0] if ms else b + 1
     for w0, w1, fid, text in ms:
-        if w0 < k: continue
-        toks += [_trim(w, x < first, cap) for x, w in zip(range(k, w0), pw[k:w0])]
+        toks += [_trim(pw[x], keep_end(x), cap) for x in range(k, w0)]
         toks.append(f'[[{fid}|{text}]]'); ids.append(fid); k = w1 + 1
-    toks += [_trim(w, False, cap) for w in pw[k:b + 1]]
+    toks += [_trim(pw[x], keep_end(x), cap) for x in range(k, b + 1)]
     return ' '.join(toks), ids
 
 def place_text(p, words, ctx=None):
