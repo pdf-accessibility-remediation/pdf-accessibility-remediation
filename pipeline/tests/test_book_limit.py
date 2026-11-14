@@ -62,7 +62,10 @@ def test_a_language_step_that_fits_its_cap_but_not_the_book_is_the_one_left_out(
     src, A2, R2 = TN.folders(tmp_path)
     TN.run(src, A2, R2, monkeypatch, '--dry-run')
     C.mark_refused(str(R2), 'language', 'book', 'The language step is left out of this run: with it, this PDF could cost up to $5.62.')
+    w0 = C._load(str(R2 / 'language_estimate.json'))['worst_case_usd']
+    (R2 / 'workorder.json').write_text(json.dumps({'document': {'lang': 'en', 'title': 'A much longer title the work order set between the two dry runs'}}))
     TN.run(src, A2, R2, monkeypatch, '--dry-run')
+    assert C._load(str(R2 / 'language_estimate.json'))['worst_case_usd'] != w0       # the title moved the worst case (review 10, M1)
     assert C.refused(str(R2), 'language')['why'] == 'book'                  # kept by a dry run of the same step
     (R2 / 'response.json').write_text('{}')                                 # the work order has run
     assert TN.run(src, A2, R2, monkeypatch, '--dry-run') == [] and 'left out of this run' in str(TN.LAST['exit'])
