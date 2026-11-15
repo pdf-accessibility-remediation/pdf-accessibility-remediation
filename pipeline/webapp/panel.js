@@ -247,7 +247,7 @@ const spins = j => j.status === 'running' && !(person(j) && !j.past_finish && j.
 function jobCard(j) {                                           // heading: the action (Title Case); outcome on the status line
   const cls = j.status === 'failed' || j.status === 'interrupted' ? ' pp-failed' : '';
   let h = '<article class="pp-job" id="job-' + esc(j.id) + '" aria-labelledby="jh-' + esc(j.id) + '">' +
-    '<h4 id="jh-' + esc(j.id) + '" tabindex="-1">' + esc(tc(j.action || j.title)) + '</h4>' +
+    '<h4 id="jh-' + esc(j.id) + '" tabindex="-1">' + esc(tc(j.heading || j.action || j.title)) + '</h4>' +
     '<p>' + (spins(j) ? '<span class="pp-spin" aria-hidden="true"></span>' : '') + '<span class="pp-state' + cls + '">' + esc(jobWords(j)) + '</span>' +
     (j.started ? ' <span class="pp-note">· started ' + esc(fmtClock(j.started)) + '</span>' : '') + '</p>';
   const steps = j.steps || [];                                  // the step running now is in the status line: no ": running" here

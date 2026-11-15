@@ -89,7 +89,7 @@ On the review page, **Build a Draft PDF** makes a PDF of the choices so far, to 
 
 The jobs have no heading of their own:
 
-- **Cards** for jobs that are running or waiting, and for failed or interrupted jobs that no later job of the run has succeeded after. A card's heading is the action in Title Case ("Review Again from Session 4"); its status line says what came of it, in sentence case ("Done: Session 5 applied (Kim, 21:04)").
+- **Cards** for jobs that are running or waiting, and for failed or interrupted jobs that no later job of the run has succeeded after. A card's heading is the action in Title Case ("Review Again from Session 4"); a job that processes the PDF reads "Processing: …" ("Processing: Cost Estimate", "Processing: AI Request", "Processing: Applying the Reviewed Decisions"). Its status line says what came of it, in sentence case ("Done: Session 5 applied (Kim, 21:04)"). The "Last Job:" line and **Previous Jobs** keep the action's own words ("Get the estimate → estimate ready").
 - **One line** for the last finished job, after the label **Last Job:**, in sentence case: "Review again from Session 4 → Session 5 applied (Kim, 21:04)".
 - **Every other job,** folded under **Previous Jobs (N)**, one line each in the same form. Nothing drops off.
 

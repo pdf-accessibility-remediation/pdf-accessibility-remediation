@@ -679,7 +679,7 @@ def test_the_same_title_case_rule_in_the_pages():
 
 def test_a_job_card_and_its_one_line_forms():
     js = src('webapp/panel.js')
-    assert "esc(tc(j.action || j.title))" in js                                   # card heading: the action, Title Case
+    assert "esc(tc(j.heading || j.action || j.title))" in js                      # card heading: "Processing: …" or the action, Title Case
     assert "return /^(done|pinned|discarded)\\b/.test(r) ? cap(r) : 'Done: ' + r;" in js   # status line: "Done: Session 5 applied (…)"
     assert "<b>Last Job:</b> ' + esc(cap(last.title))" in js and "'<li>' + esc(cap(j.title))" in js
 
@@ -1200,3 +1200,19 @@ def test_a_previous_results_bar_is_as_far_from_ready_to_ship_as_that_is_from_the
     css, rep = src('webapp/panel.css'), src('report_html.py')
     assert '#pdfrem-version ~ main { padding-top: 0; }' in css and '#pdfrem-version > nav.pp { margin-bottom: 14px; }' in css
     assert '.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }' in rep
+
+
+def test_job_card_headings_read_processing():
+    h = lambda kind, what=None, **k: runs.heading({'kind': kind, 'what': what, **k})
+    assert h('spend', 'Start remediation: the AI request') == 'Processing: AI Request'
+    assert h('spend', 'Start remediation: the AI request (test: a saved reply)') == 'Processing: AI Request (test: a saved reply)'
+    assert h('estimate', 'Get the estimate') == 'Processing: Cost Estimate'
+    assert h('estimate', 'Get a new estimate') == 'Processing: New Cost Estimate'
+    assert h('estimate', 'Get the estimate (Hawaiian)') == 'Processing: Cost Estimate (Hawaiian)'
+    assert h('batch-estimate', 'Get the estimate') == 'Processing: Cost Estimate'
+    assert h('apply', 'Apply session 1', first=True) == 'Processing: Applying the Reviewed Decisions'
+    assert h('apply', 'Apply session 3') == 'Processing: Applying the Reviewed Decisions (Session 3)'
+    assert h('rerun', 'Try again (the saved reply is reused)') == 'Processing: Trying Again (the saved reply is reused)'
+    assert h('review', "Review the AI's decisions") == "Review the AI's decisions"      # a person's own action keeps its words
+    assert h('ocr', 'Review OCR Text') == 'Review OCR Text' and h('discard', 'Discard session 2') == 'Discard Session 2'
+    assert runs.action({'kind': 'spend', 'what': 'Start remediation: the AI request'}) == 'Start remediation: the AI request'   # "Last Job:" unchanged

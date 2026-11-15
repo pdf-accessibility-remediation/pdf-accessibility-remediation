@@ -167,7 +167,7 @@ def job_view(s, j, with_text=False, offset=0, ctx=None):
     if j['status'] == 'interrupted' and j['kind'] in ('apply', 'review', 'ocr'):
         v['interrupted'] = after_interrupt(R, j)
     v['step'] = logs.now_step(j['kind'], steps) if j['status'] == 'running' else None
-    v['title'] = title(R, j, v); v['action'] = action(j); v['result'] = result(R, j, v)
+    v['title'] = title(R, j, v); v['action'] = action(j); v['heading'] = heading(j); v['result'] = result(R, j, v)
     if j.get('book_sha'): v['book_name'] = nm.book_name(j['book_sha'], j.get('book_file'))
     elif j['kind'] == 'batch': v['book_name'] = 'Batch ' + nm.shown_run(j['run'])
     v['run_name'] = nm.shown_run(j['run'])
@@ -198,6 +198,26 @@ def action(j):
     """The job's action, as it was asked for: "Review again from session 2"."""
     return shown(j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin', 'ocr': 'Review OCR Text', 'estimate': 'Get the estimate',
                                     'spend': 'Start remediation: the AI request', 'rerun': 'Try again', 'batch': 'Run the batch'}.get(j['kind'], j['kind']))
+
+def heading(j):
+    """A job card's heading (Patrick, round 24 of #118): a job that processes the PDF reads "Processing: …"; a person's own
+    action (a review, the OCR page, a discard) keeps its action. The "Last Job:" line and Previous Jobs keep action()."""
+    a, k = action(j), j['kind']
+    test = ' (test: a saved reply)' if '(test: a saved reply)' in a else ' (test: saved replies)' if '(test: saved replies)' in a else ''
+    if k == 'spend': return 'Processing: AI Request' + test
+    if k in ('estimate', 'batch-estimate'):
+        m = re.match(r'Get the estimate (\(.*\))$', a)      # "Get the estimate (Hawaiian)": the OCR language chosen
+        return 'Processing: ' + ('New Cost Estimate' if a == 'Get a new estimate' else 'Cost Estimate') + (f' {m.group(1)}' if m else '')
+    if k == 'apply':
+        m = re.match(r'Apply (Session \d+)$', a)
+        return 'Processing: Applying the Reviewed Decisions' + (f' ({m.group(1)})' if m and not j.get('first') else '')
+    if k == 'rerun': return 'Processing: Trying Again (the saved reply is reused)'
+    if k == 'replay': return 'Processing: The PDF from the Saved Reply'
+    if k == 'replay-copy': return 'Processing: Copying the Saved Reply and the Intake Result'
+    if k == 'batch': return 'Processing: The Batch' + test
+    if k == 'summary': return 'Processing: The Batch Summary'
+    if k == 'bring_back': return 'Processing: Bringing Back an Edited PDF'
+    return a
 
 def shown(t):
     """A job line as the panel shows it, formatted when shown (so jobs recorded before the rule read the same): a session
