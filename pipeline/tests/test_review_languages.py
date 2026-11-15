@@ -290,3 +290,9 @@ def test_when_the_ai_tagged_nothing_a_person_confirms_each_form():
     rec['language_review'] = {**core.language_review(items, dec), 'reviewer': 'Kim', 'date': '2026-11-14'}
     assert G.language_line(rec) == (True, 'Approved (Kim on November 14, 2026)')
     w2 = wo(); assert [it['label'] for it in core.build_items(w2, DIGEST) if it['kind'] == core.LANG_KIND] == ['mappō', '地獄', '極楽', 'Copyright']   # unchanged otherwise
+
+
+def test_no_check_line_when_nothing_is_wrong():
+    """Patrick, 2026-11-14: the line beside "Finish Review" says nothing when there is no problem."""
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    assert "parts.length ? parts.join(' · ') : '';" in page and 'All choices can be applied' not in page

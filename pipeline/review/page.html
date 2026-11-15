@@ -424,7 +424,7 @@ function checkLine() {
   const n = (k, one, many) => k + ' ' + (k === 1 ? one : many);
   const parts = [f && n(f, 'choice needs fixing', 'choices need fixing'), c && n(c, 'conflict', 'conflicts'),
                  g && n(g, 'gap open', 'gaps open'), u && n(u, 'choice left out', 'choices left out')].filter(Boolean);
-  const t = parts.length ? parts.join(' · ') : 'All choices can be applied';
+  const t = parts.length ? parts.join(' · ') : '';                   // nothing to say when nothing needs a person (2026-11-14)
   if (t !== lineText) { lineText = t; el.textContent = t; }   // the same words again: not announced again
   el.classList.toggle('bad', f + c > 0);
   document.getElementById('checkBtn').hidden = !parts.length;
