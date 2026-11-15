@@ -142,6 +142,15 @@ TAGGER_LOCKS = os.environ.get('INTAKE_TAGGER_LOCKS') or os.path.join(tempfile.ge
 TAGGER_OOM = ('the auto-tagger ran out of memory on this book (it holds the whole book in memory). Run it again when no other '
               'long book is being processed; if it stops again, give the tagger more memory with JAVA_TOOL_OPTIONS=-Xmx10g '
               '(or another size) before the command')
+PAGE_FIGURE_COVER = 0.85                   # #122: a Figure drawing an image over 85% of the visible page is page-sized; a tree with
+PAGE_FIGURE_TREE, PAGE_FIGURE_TEXT = 0.5, 0.1   # such Figures on half its pages or more and text elements on 10% or less is a
+                                           #   placeholder. Set on the sponsors' 18 such trees (figures on 99.2-99.9% of pages, text on
+                                           #   0-0.8%) against every tagged sample (figures on 0-4.2%, text on 89-99%; 03-builder-report.md)
+LAYER_CJK_SAMPLE = 3                       # #121: existing Latin OCR layer: up to 3 sample page images probed for CJK
+SCAN_TEXT_INK = 0.02                       # #128: on a page with an existing OCR layer, the whole-page scan becomes decoration only
+SCAN_INK_DPI, SCAN_INK_GRAY, SCAN_INK_PAD = 100, 200, 3   # when ink outside the layer's text boxes is 2% of the page or less
+                                           #   (100 dpi, gray < 200, boxes padded 3 px). 60 labelled pages: text 0-1.7%, pictures
+                                           #   2.7%+, mixed 4.2%+ (runs/127-intake-cover-figures/labels/); above 2%, the Figure stays
 BORN_DIGITAL = re.compile(r'(?i)pdftex|xetex|luatex|prince|microsoft|adobe pdf library|indesign')
                                            # producers that write text, not scan it: an "unusable" verdict on them is no
                                            #   reason to suggest FORCE_OCR
@@ -441,7 +450,7 @@ def _mcid_image_boxes(page, mcids):
             old = out.get(open_mc[-1])
             out[open_mc[-1]] = [round(v, 1) for v in (box if old is None else [min(old[0], box[0]), min(old[1], box[1]), max(old[2], box[2]), max(old[3], box[3])])]
     return out
-def tag_status(pdf, figures=False):
+def tag_status(pdf, figures=False, page_figure_trees=True):
     """('untagged' | 'placeholder' | 'tagged', details). A tree with no text-bearing element (TEXT_BEARING, after RoleMap) is a
     placeholder: it says nothing about the text's structure, so intake treats the book as untagged. MarkInfo is recorded
     but does not decide it (12 of the sponsors' 148 have full trees with MarkInfo missing or Marked false).
@@ -472,6 +481,11 @@ def tag_status(pdf, figures=False):
                          'kind': None if alt is None else ('placeholder' if PUBLISHER_PLACEHOLDER_ALT.fullmatch(alt) else 'publisher')})
         if '/K' in k: todo.append(k.K)
     info.update({'elements': dict(counts.most_common()), 'text_elements': sum(v for r, v in counts.items() if r in TEXT_BEARING)})
+    pft = None
+    if page_figure_trees and info['text_elements'] and counts.get('/Figure', 0) >= PAGE_FIGURE_TREE * len(pdf.pages):   # #122: cheap test first
+        cov = page_figure_coverage(pdf)
+        if cov['figure_page_share'] >= PAGE_FIGURE_TREE and cov['text_page_share'] <= PAGE_FIGURE_TEXT:
+            pft = info['page_figure_tree'] = cov
     if figures:
         figs.sort(key=lambda f: (f['page'] or 0, f['mcids']))
         for f in figs:
@@ -480,10 +494,77 @@ def tag_status(pdf, figures=False):
                 if boxes:
                     b = list(boxes.values()); f['image_box'] = [min(x[0] for x in b), min(x[1] for x in b), max(x[2] for x in b), max(x[3] for x in b)]
         info['figures'] = figs
-    return ('tagged' if info['text_elements'] else 'placeholder'), info
-def tagged(pdf):
-    """A real tag tree (text-bearing elements), not a placeholder: intake leaves such a book alone."""
-    return tag_status(pdf)[0] == 'tagged'
+    return ('tagged' if info['text_elements'] and not pft else 'placeholder'), info
+def page_figure_coverage(pdf):
+    """#122: how much of a tag tree is page-sized Figures. {'figure_pages': pages with a Figure whose marked content draws an
+    image covering PAGE_FIGURE_COVER+ of the visible page (through forms, by the ParentTree), 'text_pages': pages reached
+    by a text-bearing element (TEXT_BEARING after RoleMap, by /Pg of the element or its content), and both as shares}."""
+    st = pdf.Root.get('/StructTreeRoot'); n_pages = len(pdf.pages)
+    rolemap = {str(k): str(v) for k, v in (st.get('/RoleMap') or {}).items()}
+    role = lambda e: rolemap.get(str(e.get('/S')), str(e.get('/S')))
+    pidx = _page_index(pdf); pt = {}
+    def nums(nd, d=0):
+        if '/Nums' in nd:
+            a = nd.Nums
+            for k in range(0, len(a) - 1, 2): pt[int(a[k])] = a[k + 1]
+        for kid in nd.get('/Kids', []) if d < 20 else []: nums(kid, d + 1)
+    if '/ParentTree' in st: nums(st.ParentTree)
+    text_pages, seen, todo = set(), set(), [(st.get('/K'), None)]
+    while todo:                                          # pages reached by text-bearing elements
+        k, pg = todo.pop()
+        if isinstance(k, pikepdf.Array): todo.extend((x, pg) for x in k); continue
+        if not isinstance(k, pikepdf.Dictionary): continue
+        if '/S' not in k: continue                       # a marked-content or object reference: read with its element
+        if k.is_indirect:
+            if k.objgen in seen: continue
+            seen.add(k.objgen)
+        p = pidx.get(k.Pg.objgen) if '/Pg' in k else pg
+        if role(k) in TEXT_BEARING:
+            ks = k.get('/K'); ks = list(ks) if isinstance(ks, pikepdf.Array) else [ks]
+            for x in ks:                                 # MCIDs, as numbers or references ({/MCID n /Stm …}: /Type and /Pg optional)
+                if isinstance(x, int): text_pages.add(p)
+                elif isinstance(x, pikepdf.Dictionary) and '/MCID' in x: text_pages.add(pidx.get(x.Pg.objgen) if '/Pg' in x else p)
+        if '/K' in k: todo.append((k.K, p))
+    text_pages.discard(None)
+    fig_pages = set()
+    for n, pg in enumerate(pdf.pages, 1):                # pages whose Figure draws a page-sized image
+        vr = visible_rect(pg); found = []
+        def walk(owner, res, ctm, arr, depth, outer=None):          # outer: (MCID, ParentTree array) open around this form
+            try: ops = pikepdf.parse_content_stream(owner)
+            except Exception: return
+            xo = (res or {}).get('/XObject') or {}; stk, mc = [], []
+            for ins in ops:
+                o, a = str(ins.operator), ins.operands
+                if o == 'q': stk.append(ctm)
+                elif o == 'Q' and stk: ctm = stk.pop()
+                elif o == 'cm': ctm = _mul([float(x) for x in a], ctm)
+                elif o == 'BDC': mc.append(int(a[1].MCID) if isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1] else None)
+                elif o == 'BMC': mc.append(None)
+                elif o == 'EMC' and mc: mc.pop()
+                elif o == 'Do':
+                    x = xo.get(a[0])
+                    if x is None: continue
+                    if x.get('/Subtype') == '/Image':
+                        m = next((v for v in reversed(mc) if v is not None), None); a_ = arr
+                        if m is None and outer: m, a_ = outer
+                        el = a_[m] if isinstance(a_, pikepdf.Array) and m is not None and m < len(a_) else None
+                        if isinstance(el, pikepdf.Dictionary) and role(el) == '/Figure' and visible_cover(ctm, vr) >= PAGE_FIGURE_COVER:
+                            found.append(True); return
+                    elif x.get('/Subtype') == '/Form' and depth < 3:
+                        farr = pt.get(int(x.StructParents)) if '/StructParents' in x else arr
+                        m = next((v for v in reversed(mc) if v is not None), None)
+                        walk(x, x.get('/Resources', res), _mul([float(v) for v in x.get('/Matrix', [1, 0, 0, 1, 0, 0])], ctm), farr, depth + 1,
+                             (m, arr) if m is not None else outer)
+                        if found: return
+        walk(pg, pg.obj.get('/Resources'), [1, 0, 0, 1, 0, 0], pt.get(int(pg.obj.StructParents)) if '/StructParents' in pg.obj else None, 0)
+        if found: fig_pages.add(n)
+    return {'figure_pages': len(fig_pages), 'text_pages': len(text_pages),
+            'figure_page_share': round(len(fig_pages) / max(n_pages, 1), 3), 'text_page_share': round(len(text_pages) / max(n_pages, 1), 3)}
+def tagged(pdf, page_figure_trees=True):
+    """A real tag tree (text-bearing elements), not a placeholder: intake leaves such a book alone. page_figure_trees=False
+    (the check after auto-tagging): a tree of page-sized figures counts too, since the tagger's own tree of a picture book
+    is one figure per page."""
+    return tag_status(pdf, page_figure_trees=page_figure_trees)[0] == 'tagged'
 def remove_tag_tree(path):
     """On intake's own working copy only: drop the placeholder tree (StructTreeRoot, MarkInfo, StructParents/StructParent
     on pages, annotations and forms) so the book is auto-tagged as untagged. Marked-content operators stay in the pages;
@@ -897,64 +978,123 @@ def strip_ocr_layer(path, pages):
             pg.obj.Contents = p.make_stream(pikepdf.unparse_content_stream(keep))
             for k in names: del xo[k]
         p.save(path)
-def artifact_page_scans(path, pages):
-    """On OCR'd pages, a Figure that is only the whole-page scan image becomes decoration (checklist 5.1: an image
-    covering the whole page is the scan itself, not a figure). Returns the pages changed."""
-    done = []
-    with pikepdf.open(path, allow_overwriting_input=True) as p:
-        st = p.Root.get('/StructTreeRoot')
-        if st is None: return done
-        pt = {}
-        def nums(n, d=0):
-            if '/Nums' in n:
-                a = n.Nums
-                for k in range(0, len(a) - 1, 2): pt[int(a[k])] = a[k + 1]
-            for kid in n.get('/Kids', []) if d < 20 else []: nums(kid, d + 1)
-        nums(st.ParentTree)
-        for n in pages:
-            pg = p.pages[n - 1]; vr = visible_rect(pg)
-            arr = pt.get(int(pg.obj.StructParents)) if '/StructParents' in pg.obj else None
-            if not isinstance(arr, pikepdf.Array): continue
-            ops = list(pikepdf.parse_content_stream(pg)); xo = pg.Resources.get('/XObject') or {}
-            ctm, stk, open_mc, changed = [1, 0, 0, 1, 0, 0], [], [], False
-            hits = []                                   # (index of BDC op, mcid) whose content is one big image
-            for idx, (a, o) in enumerate(ops):
-                o = str(o)
-                if o == 'q': stk.append(ctm)
-                elif o == 'Q' and stk: ctm = stk.pop()
-                elif o == 'cm': ctm = _mul([float(x) for x in a], ctm)
-                elif o == 'BDC':
-                    mc = int(a[1].MCID) if isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1] else None
-                    open_mc.append([idx, str(a[0]), mc, 0, 0])
-                elif o == 'BMC': open_mc.append([idx, str(a[0]), None, 0, 0])
-                elif o == 'EMC' and open_mc:
-                    bi, tag, mc, imgs, other = open_mc.pop()
-                    if tag == '/Figure' and mc is not None and imgs == 1 and other == 0: hits.append((bi, mc))
-                elif o in TXT_OPS and open_mc: open_mc[-1][4] += 1
-                elif o == 'Do' and open_mc:
-                    x = xo.get(a[0])
-                    if x is not None and x.get('/Subtype') == '/Image':
-                        if visible_cover(ctm, vr) >= 0.85: open_mc[-1][3] += 1        # the whole visible page: the scan
-                        else: open_mc[-1][4] += 1
-                    else: open_mc[-1][4] += 1
-            for bi, mc in hits:
-                el = arr[mc] if mc < len(arr) else None
-                if not isinstance(el, pikepdf.Dictionary) or str(el.get('/S')) != '/Figure': continue
-                k = el.get('/K'); kids = list(k) if isinstance(k, pikepdf.Array) else [k]
-                if len(kids) != 1: continue                       # the Figure holds more than this image: leave it
-                ops[bi] = ([pikepdf.Name('/Artifact'), pikepdf.Dictionary(Type=pikepdf.Name('/Layout'))], pikepdf.Operator('BDC'))
-                arr[mc] = None
-                par = el.get('/P')
-                if par is not None:
-                    pk = par.get('/K')
-                    if isinstance(pk, pikepdf.Array):
-                        par.K = pikepdf.Array([x for x in pk if not (isinstance(x, pikepdf.Dictionary) and x.objgen == el.objgen)])
-                    elif isinstance(pk, pikepdf.Dictionary) and pk.objgen == el.objgen: del par['/K']
-                changed = True
-            if changed:
-                pg.obj.Contents = p.make_stream(pikepdf.unparse_content_stream(ops)); done.append(n)
-        p.save(path)
-    return done
+def scan_page_is_text(doc, n):
+    """(page of text?, ink outside the text boxes as a share of the page) for page n of an open PDFium document: the page is
+    rendered at SCAN_INK_DPI, ink is gray < SCAN_INK_GRAY (thin lines of a drawing count), and the OCR layer's text boxes
+    (PDFium text rects, padded SCAN_INK_PAD px) are masked out. A page of text leaves almost no ink outside its text; a
+    photo, a plate (with or without a caption) or a page with a photo leaves a lot. Set on 60 labelled pages
+    (runs/127-intake-cover-figures/labels/: text pages 0-1.7% of the page, pictures 2.7% and up, mixed pages 4.2% and up)."""
+    from PIL import Image, ImageDraw, ImageChops
+    page = doc[n - 1]; s = SCAN_INK_DPI / 72
+    img = page.render(scale=s, grayscale=True).to_pil(); l, b, r, t = page.get_cropbox()
+    mask = Image.new('L', img.size, 0); dr = ImageDraw.Draw(mask); tp = page.get_textpage()
+    for i in range(tp.count_rects()):
+        x0, y0, x1, y1 = tp.get_rect(i)
+        dr.rectangle([(x0 - l) * s - SCAN_INK_PAD, (t - y1) * s - SCAN_INK_PAD, (x1 - l) * s + SCAN_INK_PAD, (t - y0) * s + SCAN_INK_PAD], fill=255)
+    ink = img.point(lambda v: 255 if v < SCAN_INK_GRAY else 0)
+    share = ImageChops.subtract(ink, mask).histogram()[255] / max(img.width * img.height, 1)
+    return share <= SCAN_TEXT_INK, round(share, 4)
+def _form_pages(pdf):
+    """{form objgen: pages whose resources reach it}: a form reached from more than one page is shared."""
+    use = collections.defaultdict(set)
+    for n, pg in enumerate(pdf.pages, 1):
+        todo, seen = [pg.obj.get('/Resources')], set()
+        while todo:
+            res = todo.pop()
+            for x in ((res or {}).get('/XObject') or {}).values():
+                if isinstance(x, pikepdf.Stream) and x.get('/Subtype') == '/Form' and x.objgen not in seen:
+                    seen.add(x.objgen); use[x.objgen].add(n); todo.append(x.get('/Resources'))
+    return use
+def artifact_page_scans(path, pages, picture_test=()):
+    """A Figure that is only the whole-page scan image becomes decoration (checklist 5.1: an image covering the whole page
+    is the scan itself, not a figure), on the given pages. The image may be drawn in the page or inside a form (the
+    sponsors' scans wrap each page in one form; the tagger then numbers the form's own marked content through its
+    /StructParents). picture_test: pages with an existing OCR layer, where the scan becomes decoration only on a page of
+    text (scan_page_is_text); any other page keeps its Figure (pictures, plates, pages with photos, and unclear pages).
+    A form shared with another page, or one nested deeper than FORM_DEPTH, is a misfit (left as tagged).
+    Returns {'pages': changed pages, 'kept': {page: ink share}, 'measured': {page: ink share}, 'misfits': [[page, why]]}."""
+    out = {'pages': [], 'kept': {}, 'measured': {}, 'misfits': []}
+    picture_test = set(picture_test); doc = pdfium.PdfDocument(path) if picture_test else None
+    try:
+        with pikepdf.open(path, allow_overwriting_input=True) as p:
+            st = p.Root.get('/StructTreeRoot')
+            if st is None: return out
+            pt = {}
+            def nums(nd, d=0):
+                if '/Nums' in nd:
+                    a = nd.Nums
+                    for k in range(0, len(a) - 1, 2): pt[int(a[k])] = a[k + 1]
+                for kid in nd.get('/Kids', []) if d < 20 else []: nums(kid, d + 1)
+            nums(st.ParentTree)
+            shared = _form_pages(p); changed_any = False
+            for n in pages:
+                pg = p.pages[n - 1]; vr = visible_rect(pg)
+                parr = pt.get(int(pg.obj.StructParents)) if '/StructParents' in pg.obj else None
+                hits, streams, bad = [], {}, None            # hits: (stream key, op index, mcid, ParentTree array)
+                def walk(owner, res, ctm, arr, key, depth):
+                    nonlocal bad
+                    ops = list(pikepdf.parse_content_stream(owner)); streams[key] = (owner, ops)
+                    xo = (res or {}).get('/XObject') or {}; stk, open_mc = [], []
+                    for idx, ins in enumerate(ops):
+                        o, a = str(ins.operator), ins.operands
+                        if o == 'q': stk.append(ctm)
+                        elif o == 'Q' and stk: ctm = stk.pop()
+                        elif o == 'cm': ctm = _mul([float(x) for x in a], ctm)
+                        elif o == 'BDC':
+                            mc = int(a[1].MCID) if isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1] else None
+                            open_mc.append([idx, str(a[0]), mc, 0, 0])
+                        elif o == 'BMC': open_mc.append([idx, str(a[0]), None, 0, 0])
+                        elif o == 'EMC' and open_mc:
+                            bi, tag, mc, imgs, other = open_mc.pop()
+                            if tag == '/Figure' and mc is not None and imgs == 1 and other == 0: hits.append((key, bi, mc, arr))
+                            if open_mc: open_mc[-1][3] += imgs; open_mc[-1][4] += other
+                        elif o in TXT_OPS and open_mc: open_mc[-1][4] += 1
+                        elif o == 'Do':
+                            x = xo.get(a[0])
+                            if x is None: continue
+                            if x.get('/Subtype') == '/Image':
+                                if open_mc: open_mc[-1][3 if visible_cover(ctm, vr) >= 0.85 else 4] += 1   # the whole visible page: the scan
+                            elif x.get('/Subtype') == '/Form':
+                                if open_mc: open_mc[-1][4] += 1
+                                if depth >= tagfix.FORM_DEPTH: bad = f'a form is nested deeper than {tagfix.FORM_DEPTH}'; return
+                                m = [float(v) for v in x.get('/Matrix', [1, 0, 0, 1, 0, 0])]
+                                farr = pt.get(int(x.StructParents)) if '/StructParents' in x else arr
+                                walk(x, x.get('/Resources', res), _mul(m, ctm), farr, key + (x.objgen,), depth + 1)
+                try: walk(pg, pg.obj.get('/Resources'), [1, 0, 0, 1, 0, 0], parr, ('page',), 0)
+                except Exception as e: bad = f'content could not be read ({str(e)[:80]})'
+                if bad: out['misfits'].append([n, bad]); continue
+                hits = [h for h in hits if isinstance(h[3], pikepdf.Array)]
+                if not hits: continue
+                if n in picture_test:
+                    is_text, share = scan_page_is_text(doc, n); out['measured'][n] = share
+                    if not is_text: out['kept'][n] = share; continue
+                if any(len(shared.get(k[-1], ())) > 1 for k, _, _, _ in hits if k != ('page',)):
+                    out['misfits'].append([n, 'the scan sits in a form another page uses too']); continue
+                changed = set()
+                for key, bi, mc, arr in hits:
+                    el = arr[mc] if mc < len(arr) else None
+                    if not isinstance(el, pikepdf.Dictionary) or str(el.get('/S')) != '/Figure': continue
+                    k = el.get('/K'); kids = list(k) if isinstance(k, pikepdf.Array) else [k]
+                    if len(kids) != 1: continue                       # the Figure holds more than this image: leave it
+                    streams[key][1][bi] = pikepdf.ContentStreamInstruction(
+                        [pikepdf.Name('/Artifact'), pikepdf.Dictionary(Type=pikepdf.Name('/Layout'))], pikepdf.Operator('BDC'))
+                    arr[mc] = None
+                    par = el.get('/P')
+                    if par is not None:
+                        pk = par.get('/K')
+                        if isinstance(pk, pikepdf.Array):
+                            par.K = pikepdf.Array([x for x in pk if not (isinstance(x, pikepdf.Dictionary) and x.objgen == el.objgen)])
+                        elif isinstance(pk, pikepdf.Dictionary) and pk.objgen == el.objgen: del par['/K']
+                    changed.add(key)
+                for key in changed:
+                    owner, ops = streams[key]; data = pikepdf.unparse_content_stream(ops)
+                    if key == ('page',): pg.obj.Contents = p.make_stream(data)
+                    else: owner.write(data)
+                if changed: out['pages'].append(n); changed_any = True
+            if changed_any: p.save(path)
+    finally:
+        if doc is not None: doc.close()
+    return out
 
 # ------------------------------------------------------------------ intake.md: the record for a person
 def _pages(ps, labels):
@@ -1298,7 +1438,13 @@ def main():
         rec['tag_tree']['figures'] = figs                # the publisher's alt text, recorded only (passing it on is a later step)
         pub = [f for f in figs if f['kind'] == 'publisher']; phd = [f for f in figs if f['kind'] == 'placeholder']
         els = ', '.join(f'{k.lstrip("/")} {v}' for k, v in tinfo['elements'].items())
-        flag('Placeholder tag tree', f'the PDF has a tag tree with no text structure ({els}; MarkInfo '
+        pft = tinfo.get('page_figure_tree')
+        if pft: flag('Placeholder tag tree', f'tag tree with one figure per page and {tinfo["text_elements"]} text elements ({els}): '
+                     f'page-sized figures on {pft["figure_pages"]} of {len(pdf.pages)} pages, text elements on {pft["text_pages"]}, so it says '
+                     'nothing about the text: treated as untagged. The old tree (with its element counts and any publisher alt text) is '
+                     'recorded in intake.json and removed from intake\'s working copy (the original is unchanged); the book is auto-tagged, '
+                     'which tags the text of its few text elements again', check=False)
+        else: flag('Placeholder tag tree', f'the PDF has a tag tree with no text structure ({els}; MarkInfo '
              f'{ {None: "missing", True: "true", False: "Marked false"}[tinfo["markinfo"]]}): it is treated as untagged. The old '
              'tree is removed from intake\'s working copy (the original is unchanged) and the book is auto-tagged'
              + (f'. {len(phd)} of its figures had alt text that says nothing (e.g. "{phd[0]["alt"]}"): recorded as placeholder alt' if phd else ''),
@@ -1812,10 +1958,27 @@ def main():
         if cmp['page_count'] or cmp['pixels'] or cmp['text']:
             return stop('failed', f'auto-tagging changed page appearance or text (appearance {cmp["pixels"][:8]}, text {cmp["text"][:8]}): stopped', 1)
         with pikepdf.open(tagged_out) as tp:
-            if not tagged(tp): return stop('failed', 'auto-tagging produced no tag tree', 1)
-        if plan['ocr_mode']:
-            art = artifact_page_scans(tagged_out, rec['ocr']['pages_with_ocr_text'])
-            rec['ocr']['scan_images_marked_decoration'] = art
+            if not tagged(tp, page_figure_trees=False): return stop('failed', 'auto-tagging produced no tag tree', 1)
+        # 5.1: a whole-page scan under OCR text is the page, not a figure. Pages intake OCR'd (as before), and since #128 pages
+        #   with an existing OCR layer, where only a page of text loses its scan Figure (scan_page_is_text)
+        layer_pages = list(kinds['ocr-layer'])           # with an existing OCR layer (also when read again by REOCR)
+        ocr_done = [p_ for p_ in (rec['ocr']['pages_with_ocr_text'] if plan['ocr_mode'] else []) if p_ not in layer_pages]
+        if ocr_done or layer_pages:
+            art = artifact_page_scans(tagged_out, sorted(set(ocr_done) | set(layer_pages)), picture_test=layer_pages)
+            if plan['ocr_mode']: rec['ocr']['scan_images_marked_decoration'] = [p_ for p_ in art['pages'] if p_ in ocr_done]
+            if layer_pages:
+                rec['page_scans'] = {'layer_pages': len(layer_pages), 'marked_decoration': [p_ for p_ in art['pages'] if p_ in layer_pages],
+                                     'kept_as_figure': {str(k): v for k, v in sorted(art['kept'].items())},
+                                     'ink_outside_text': {str(k): v for k, v in sorted(art['measured'].items())},
+                                     'rule': f'ink outside the OCR text boxes at most {SCAN_TEXT_INK:.0%} of the page', 'misfits': art['misfits'][:30]}
+                if art['kept']:
+                    flag('Page scans kept as figures', f'on these pages with an existing OCR layer, the page image holds more than text (a picture, '
+                         f'a plate or a photo: over {SCAN_TEXT_INK:.0%} of the page is ink outside the OCR text), so the whole-page '
+                         'image stays a figure for the AI or a person to describe. A photo inside a page of text gets no figure of its own',
+                         sorted(art['kept'])[:20], check=False)
+            if art['misfits']:
+                flag('Page scans not checked', 'on these pages the whole-page scan could not be marked as decoration safely ('
+                     f'{art["misfits"][0][1]}): it stays a figure', [m[0] for m in art['misfits']][:20], check=False)
             cmp = compare(cur, tagged_out, near=True)
             if cmp['pixels'] or cmp['text']: return stop('failed', 'marking page scans as decoration changed a page: stopped', 1)
         ph = drop_placeholder_alt(tagged_out); rec['checks']['placeholder_alt_removed'] = ph

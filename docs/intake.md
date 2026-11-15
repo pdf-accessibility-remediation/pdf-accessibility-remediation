@@ -33,6 +33,8 @@ A rerun with the same settings reuses an earlier intake. `FROM=` reruns copy the
 
 A tag tree counts only when it has at least one element that carries text structure: P, H1–H6, lists, tables, Span, Note, Link, Caption and the like, after the RoleMap. A tree with only grouping elements (Document, Part, Sect, Div, Art), or only Figure tags, is a **placeholder**. In the sponsors' 148 books, 25 of the 59 "tagged" ones had one: Acrobat Distiller/APL 8.0 books with one Part per page, and Prince books with Figure tags only.
 
+**Page-figure trees (#122).** Some scans are "tagged" with one Figure per page and a handful of paragraphs: the tree says nothing about the text, whose OCR layer is outside it (often marked as an artifact). Element kinds can't tell these apart, since they do have a few text elements (some also /Part and /H5), so coverage decides: a tree counts as a placeholder when **page-sized Figures** (a Figure whose content draws an image over 85% of the visible page, directly or inside a form) are on **half its pages or more**, and its text elements reach **10% of its pages or fewer**. Set on the sponsors' collection: its 18 such trees have page-sized Figures on 99.2–99.9% of pages and text on 0–0.8%; every real tree checked (samples/tagged/, the tagged reference books, the tagged books among the sponsors' 148: 50 in all) has page-sized Figures on 0–4.2% and text on 89–99%. `intake.md` says in a plain line why the tree was set aside ("tag tree with one figure per page and 6 text elements…"), and the tree's element counts and any publisher alt text are recorded; the auto-tagger then tags the text of those few elements again. The check after auto-tagging ("a tag tree exists") does not apply this rule, since the tagger's own tree of a picture book is one figure per page.
+
 Intake removes a placeholder tree from its working copy only, and handles the PDF as untagged. The original is unchanged, and a check confirms pages and text did not change.
 
 Publisher alt text found in a placeholder tree is recorded, but not yet carried into `intake.pdf` or passed to the AI; a CHECK says so.
@@ -142,7 +144,15 @@ When the text layer is unusable, the PDF **stops**, flagged, unless `FORCE_OCR=1
 
 ## 5. Auto-tag
 
-OpenDataLoader (local mode) adds a tag tree: headings, paragraphs, lists, tables, figures, captions and links. Running heads and page numbers become artifacts. When there is OCR text, the invisible OCR text is tagged too. On OCR'd pages, a Figure that is only the whole-page scan image is then marked as decoration: it is the page itself, not a figure.
+OpenDataLoader (local mode) adds a tag tree: headings, paragraphs, lists, tables, figures, captions and links. Running heads and page numbers become artifacts. When there is OCR text, the invisible OCR text is tagged too.
+
+**Whole-page scans (checklist 5.1).** The tagger tags each scanned page's image as a Figure, covering the whole page. A Figure that is only that image is then marked as decoration: it is the page itself, not a figure. This happens:
+- on pages intake OCR'd, always (as before);
+- on pages with an existing OCR layer (#128), only when the page is a page of text. The page is measured: rendered at 100 dpi, with the OCR text's boxes masked out, how much ink is left (gray below 200, so thin lines of a drawing count). A page of text leaves almost none. A photo, a plate, a drawing, or a page with a photo leaves a lot. When 2% of the page or less is ink outside the text, the scan becomes decoration; above that, it stays a figure, for the AI or a person to describe.
+
+The 2% line was set on 60 pages labelled by eye from six books: pages of text measured 0–1.7%, pictures 2.7% and up, pages mixing text and photos 4.2% and up. A plate with a caption (a photo or drawing with a line or two of text under it) measured 79–92% and keeps its figure, as do line-drawing plates with labels (2.7–4%). A page that holds a photo printed inside a page of text keeps its figure only when the photo puts it over the line; a small photo in a page of text gets no figure of its own until region detection exists. The scan image may be drawn directly in the page or inside a form (the sponsors' scans wrap each page in one); a form another page also uses, or one nested more than 3 deep, is left as tagged and listed ("Page scans not checked").
+
+Pages kept as figures are a note in `intake.md` ("Page scans kept as figures"). In review.md, the intake section names the pages whose scan became decoration.
 
 **Spreads.** The tagger's own reading order mixes the two halves of a spread. On spread pages only, intake reorders the tagger's elements by half:
 - the right half first when the text is vertical CJK, with its columns from right to left

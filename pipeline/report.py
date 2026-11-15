@@ -546,6 +546,11 @@ if intake and intake.get('status') == 'done':
               'Moved: ' + '; '.join(f'"{x}"' for x in r['moved'])]
     if o.get('scan_images_marked_decoration'):
         L += ['- The whole-page scan image on ' + pgs(o['scan_images_marked_decoration']) + ' is marked as decoration: it is the page itself, not a figure (checklist 5.1).']
+    ps_ = intake.get('page_scans') or {}
+    if ps_.get('marked_decoration'):                  # #128: pages with an existing OCR layer
+        L += ['- On pages with an existing OCR layer, the whole-page scan image on ' + pgs(ps_['marked_decoration']) + ' is marked as decoration: '
+              'it is the page itself, not a figure (checklist 5.1).' + (f' {len(ps_.get("kept_as_figure") or {})} such pages kept their figure: their image holds more than text.'
+                                                                     if ps_.get('kept_as_figure') else '')]
     for f in intake.get('flags') or []:
         L.append(line(f'- **{f["what"]}**: ', nolink(f['why']), f' ({pgs(f["pages"])})' if f.get('pages') else '', pages=f.get('pages')))   # why: general text
     L.append('')
