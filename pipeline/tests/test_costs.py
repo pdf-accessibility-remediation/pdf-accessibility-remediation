@@ -35,10 +35,11 @@ def test_the_work_order_allowance_is_todays_rule(forms, want):
 
 def test_a_figure_request_has_32000_and_an_unknown_kind_is_refused():
     assert C.allowance('figure') == 32000
+    assert [C.allowance('language', n) for n in (1, 3, 10, 27, 150)] == [1000, 1400, 2800, 5710, 21700]   # round 17: raised
     with pytest.raises(ValueError): C.allowance('nonsense')
 
 def test_the_default_limits_are_in_one_place():
-    assert C.DEFAULT_LIMITS == {'per_call_usd': 2.0, 'per_book_usd': 5.0, 'per_batch_usd': 10.0}
+    assert C.DEFAULT_LIMITS == {'per_call_usd': 2.0, 'per_book_usd': 8.0, 'per_batch_usd': 10.0} and C.DEFAULT_LANGUAGE_USD == 6.0   # 2026-11-14
 
 def test_the_retry_limits_are_the_persons_real_limits():
     assert C.retry_env(C.limits_of({'limits': {'per_call_usd': 3, 'per_book_usd': 7}})) == {'FIGURE_RETRY_MAX_USD': '3.00', 'FIGURE_RETRY_BOOK_MAX_USD': '7.00'}
@@ -254,7 +255,7 @@ def test_not_available_is_kept_as_it_is(tmp_path):
     ({'worst': 5.9, 'extra': {'passes': [{'pass': '1', 'worst_case_usd': 0.9}], 'book_cap_usd': 5}}, 'per_book', 'This PDF could cost up to $5.90, more than the limit of $5.00 per PDF.'),
     ({'worst': 4.6, 'extra': {'passes': [{'pass': '1', 'worst_case_usd': 0.9}], 'book_cap_usd': 5, 'spent_before_usd': 0.6}}, 'per_book', 'This PDF could cost up to $5.20, including $0.60 already spent, more than the limit of $5.00 per PDF.'),
     ({'worst': 0.67, 'extra': {'credit_available_usd': 0.4}}, 'credit', 'This run could cost up to $0.67, more than the $0.40 of credit left.')])
-def test_refusals_name_what_it_could_cost_and_the_limit(tmp_path, kw, code, words):
+def test_refusals_name_what_it_could_cost_and_the_limit(tmp_path, kw, code, words, limits_of_2026_11):
     b = C.estimate(str(folder(tmp_path, **kw)))['blocked']; assert b['code'] == code and b['words'] == words
 
 # ------------------------------------------------------------------ after a run: one wording
@@ -308,8 +309,16 @@ def test_a_batch_adds_up_its_expected_figures_and_counts_the_rest(tmp_path):
     c = folder(tmp_path, 'c', extra={'expected': {'none': 'too_few'}})
     assert C.batch([str(a), str(b)])['expected'] == {'usd': .7, 'books': 2, 'of': 2}
     assert C.batch([str(a), str(b), str(c)])['expected'] == {'usd': .7, 'books': 2, 'of': 3}
-    assert C.batch([str(c)])['expected'] == {'usd': None, 'books': 0, 'of': 1}
+    assert C.batch([str(c)])['expected'] == {'usd': None, 'books': 0, 'of': 1, 'none': 'too_few'}       # the reason, for the batch page
+    d = folder(tmp_path, 'd', extra={'expected': {'none': 'cut_off'}})
+    assert C.batch([str(c), str(d)])['expected']['none'] == 'cut_off'                                     # a cut-off answer comes first
     assert C.batch([str(folder(tmp_path, 'old'))])['expected'] is None           # no estimate has the key: no "Expected Cost" line
+
+def test_the_pages_say_why_there_is_no_expected_cost_yet():
+    """Patrick, 2026-11-14: the run page and the batch page add the reason in plain words; an unknown reason, nothing."""
+    for f in ('panel.js', 'batch.js'):
+        js = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'webapp', f), encoding='utf-8').read()
+        assert "too_few: 'not enough past runs to calculate it'" in js and "cut_off: \"an earlier answer was cut off, so it can't be calculated\"" in js
 
 def test_fit_n_counts_how_many_of_these_would_fit(tmp_path):
     Rs = [str(folder(tmp_path, n, worst=w)) for n, w in (('a', 4.0), ('b', 3.0), ('c', 5.0), ('d', 3.5))]
@@ -366,3 +375,9 @@ def test_a_run_with_no_ai_request_costs_none_and_says_why(tmp_path):
     a = C.actual(str(tmp_path)); assert a['usd'] == 0 and a['calls'] == 0 and a['no_model'] and not a['reused']
     assert C.after_line(str(tmp_path)) == 'AI Cost: none (no AI request: a PDF edited by hand)'
     assert C.actual(str(tmp_path / 'other'))['no_model'] is None
+
+
+def test_the_extra_alt_text_requests_are_named_apart(tmp_path):     # round 24: the figure requests after the first one
+    e = C.estimate(str(folder(tmp_path, 'a', worst=0.9847, extra={'passes': [{'pass': '1', 'worst_case_usd': 0.6441}, {'pass': '2', 'worst_case_usd': 0.3406}]})))
+    assert e['figures'] == {'requests': 1, 'ceiling_usd': 0.3406} and e['requests'] == 2
+    assert C.estimate(str(folder(tmp_path, 'b')))['figures'] is None          # one request: nothing extra

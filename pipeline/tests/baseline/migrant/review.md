@@ -2,13 +2,13 @@
 
 Result: `migrant_remediated.pdf`
 
-321 pages · run November 3, 2026, at 12:32 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.244 ($0.0008 per page), from the original call on November 3, 2026 · this run: no new call · tokens: saved reply reused, not counted
+321 pages · run November 14, 2026, at 3:28 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.247 ($0.0008 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.8s · audit 72.4s · reuse saved reply 0.8s · apply 88.5s · verify 80.8s · total 243.3s
+Time: intake 3.0s · audit 40.5s · reuse saved reply 1.4s · apply 144.6s · verify 76.6s · total 266.1s
 
 ## Overview
 
@@ -20,6 +20,7 @@ Time: intake 0.8s · audit 72.4s · reuse saved reply 0.8s · apply 88.5s · ver
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
+- Language Tags: Not Done (the language step was not run)
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
@@ -35,8 +36,8 @@ Automated checks are evidence, not sign-off.
 | Executor applied every decision: 1 rejected · 0 failed (listed under "Decisions not applied") | see §11 | [§11](#11-decisions-not-applied-1) |
 | Reading order jumps back up a column (6 jumps) | PDF 210 (printed 193), PDF 211 (printed 194) | [§8](#8-wcag-checks-verapdf-does-not-make) |
 | Headings: none empty, very long or repeated in a row (2.4.6): 0 empty · 0 long · 6 repeated | see §8 | [§8](#8-wcag-checks-verapdf-does-not-make) |
-| Chapter and front/back-matter titles have no heading tag of their own. The Introduction (PDF 18), the 14 cha… | 19 pages, PDF 14 (printed xiii) to PDF 302 (printed 285) | [§9](#9-deferred-by-the-ai) |
-| The continuation of Table 11.1 on PDF 211 (printed 194) sits outside the table, in Art containers and a Stor… | PDF 210 (printed 193), PDF 211 (printed 194) | [§9](#9-deferred-by-the-ai) |
+| Chapter, Introduction, Preface, About the Contributors and Index titles have no heading tag (no style in the… | 19 pages, PDF 14 (printed xiii) to PDF 302 (printed 285) | [§9](#9-deferred-by-the-ai) |
+| Table of contents entries are tagged as Link elements, not TOC/TOCI | PDF 8 (printed vii), PDF 9 (printed viii) | [§9](#9-deferred-by-the-ai) |
 | … and 4 more | | §9 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
@@ -94,41 +95,41 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 (printed Cover) | COVER\x00 | Book cover: Migrant Ecologies: Environmental Histories of the Pacific World, edited by James Beattie, Ryan Tucker Jones, and Edward Dallam Melillo. Title and editors appear on a teal band across a pale abstract artwork of sea and horizon, with small dark curved boat-like shapes. |
-| PDF 3 (printed ii) | Logo | Perspectives on the Global Past series logo: two arrows forming a circle. |
-| PDF 5 (printed iv) | Logo\x00 | Knowledge Unlatched logo, marking the open access edition. |
-| PDF 5 (printed iv) | Creative Commons logo\x00 | Creative Commons license logo: Attribution, NonCommercial, NoDerivatives (CC BY-NC-ND). |
-| PDF 11 (printed x) | Map of Pacific Ocean | Left half of a two-page map of the Pacific World. It shows East and Southeast Asia, Russia, Japan, Australia, New Zealand and the island groups of Micronesia, Melanesia and Polynesia, with latitude and longitude lines and a key of country abbreviations. |
-| PDF 12 (printed xi) | Map of Pacific Ocean | Right half of the two-page map of the Pacific World. It shows Alaska, Canada, the United States, Mexico, Central and South America, Hawai‘i, French Polynesia, the Galápagos and Easter Island, with an inset showing the map projection. Credit: G. Wallace Cartography & GIS. |
-| PDF 29 (printed 12) | Map of Fukushima Radioisotopes and migratory species | Infographic map of the North Pacific, rotated sideways, titled 'Fukushima radioisotopes can track the routes and rates of migratory species.' Arrows show bluefin tuna born in 2011 in Japanese waters contaminated with cesium-134 from the Dai-ichi nuclear plant migrating across the Pacific to the California coast. Bluefin caught before the disaster had no elevated cesium-134. Yellowfin tuna, which stay near Japan, did not contain it. |
-| PDF 31 (printed 14) | Energy Distribution Tsunami | Rotated map of the Pacific Ocean showing maximum wave amplitudes, in centimeters, of the Tohoku tsunami of March 11, 2011. The energy radiates from Japan, strongest in beams across the central and eastern Pacific, with monitoring stations marked along the Americas and islands. NOAA Center for Tsunami Research. |
-| PDF 34 (printed 17) | Sooty Shearwater Migrations | Map of the Pacific with white tracks of three sooty shearwaters. The birds loop from their New Zealand breeding grounds to feeding areas off Japan and Alaska and the North American coast, and return along the South American side, in a figure-eight pattern. |
-| PDF 50 (printed 33) | Map of Tuna Diaspora | Map of the Pacific Ocean showing diasporas. Lines mark Polynesian triangles and outposts (c. 1000–1500 C.E.), sweet potato dispersals, breadfruit encounters (1789–1889) and the spread of salmon, furs, sugar and labor around the Northwest Coast, Hawai‘i and Guangzhou (1786–1893). Symbols mark tuna fisheries, canneries and consumers, 1954–2015. |
-| PDF 57 (printed 40) | Photo of shipping container | Photograph of stacked shipping containers, some marked Maersk, on a paved container yard at Pago Pago Harbor, American Samoa, with a green hillside behind. |
-| PDF 72 (printed 55) | Railway Image | Nineteenth-century engraving 'Across the Continent: The Snow Sheds on the Central Pacific Railroad, in the Sierra Nevada Mountains.' A steam train emerges from a snow shed and tunnel in a mountain landscape while workers wave hats. |
-| PDF 75 (printed 58) | Dairy Farm on Aurora Road | Historic photograph of a wooden dairy factory on Aurora Road in Taranaki, with horse-drawn wagons loaded with milk cans in front and tree stumps and cleared ground around it. |
-| PDF 78 (printed 61) | Chew Chong and Family | Studio portrait, c. 1903, of Chew Chong and his family. The elderly Chew Chong sits at the center, surrounded by seated and standing adult children and a young boy in Western dress. |
-| PDF 88 (printed 71) | Map of California | Map of California and neighboring states showing Spanish missions, forts (presidios) and towns (pueblos) from 1769 to 1844, with the names of Native tribes such as Pomo, Miwok, Chumash and Yokuts across their territories. A scale bar is included. |
-| PDF 89 (printed 72) | Vista del Presidio | Drawing by José Cardero (1791–1792) of the Presidio of Monterey, a walled adobe fort on open ground by the sea, with small figures at work and ships on the horizon. |
-| PDF 92 (printed 75) | Cattle Roundup | Pen-and-ink drawing by Emanuel Wyttenbach of a rodeo. Mounted vaqueros drive cattle and sheep past the long arcaded facade of a California mission. |
-| PDF 108 (printed 91) | Stoveboat Smashed | Painting by Charles Sidney Raleigh (1877) of a whale's tail smashing a whaleboat. Oars, a barrel and whalemen are flung into the air above rough seas, with a ship in the distance. |
-| PDF 110 (printed 93) | Portrait of Amos Haskins | Daguerreotype portrait of Captain Amos Haskins, a Wampanoag man in a dark coat and white waistcoat, shown half-length in an ornate frame. |
-| PDF 111 (printed 94) | Depiction of American whalemen in Japan | Japanese scroll painting by Usui Shozo of three American whalemen in Japan, standing in a row in hats and vests, with a ship at left and columns of Japanese text. |
-| PDF 121 (printed 104) | Cocospalme | Photograph from 1900 of a coconut palm laden with nuts, seen from below, with fronds spreading against the sky. |
-| PDF 126 (printed 109) | Fruit-Bearing Coconut Tree | Photograph c. 1900 of a fruit-bearing coconut palm in Samoa. A man climbs the trunk, with other palms and a clearing behind and cut fronds on the ground. |
-| PDF 128 (printed 111) | Map of DHPG Plantation in Mulifanua | Historical map of the DHPG plantation at Mulifanua, Samoa, 1900. It shows two plantation areas, Le Utu Sao Vaa and Fagalepolu & Fatuosofia, divided into long numbered parcels of cultivated and uncultivated land, with a legend. |
-| PDF 135 (printed 118) | Rongo, the Maori god of kumara | Black-and-white photograph of a carved stone head representing Rongo, the Māori god of kumara and cultivated plants, with spiral-carved eyes and a mouth. |
-| PDF 138 (printed 121) | Engraving Depicting Confiscation and Destruction of Idol Gods | Engraving of the confiscation and destruction of idol gods on Rarotonga. A crowd gathers before missionaries seated in front of a house, with carved idols laid on the ground, palms and mountains behind. Caption in the image: 'And the idols he shall utterly abolish.' Isaiah ii. 18. |
-| PDF 162 (printed 145) | Man with a Horse | Photograph from 1878 of Edwin Dun in riding clothes standing beside a saddled horse imported from the United States, on a farm in Hokkaido. |
-| PDF 164 (printed 147) | Stacks of Lumber | Photograph from the 1900s of the Ōji paper manufacturing company plant in Tomakomai, with tall smoking chimneys and stacks of cut logs in the foreground. |
-| PDF 165 (printed 148) | Ainu Men in Cano | Early modern ink painting of three Ainu men paddling a wooden canoe across water, with vertical Japanese text at right. |
-| PDF 193 (printed 176) | Ka Nupepa Kuokoa | Masthead of the Hawaiian-language newspaper Ka Nupepa Kuokoa, Honolulu, January 7, 1871 (Buke X, Helu 1), with ornate lettering inside a decorative frame. |
-| PDF 196 (printed 179) | Growing Kona Coffee | Photograph of a coffee harvester's hands holding ripe red Kona coffee cherries above a bucket full of cherries. |
-| PDF 203 (printed 186) | Maunalua 1915 | Photograph from 1915 looking down from Kohelepelepe over Maunalua, Hawai‘i: dry scrubby land with tall poles in the foreground, a wide bay and hills beyond. |
-| PDF 213 (printed 196) | Endonyms | Rotated map of Maunalua on O‘ahu showing its Hawaiian place names (endonyms) along the coast, including Makapu‘u, Hālona, Kahauloa and Kuapā, with valleys, springs, fishing ponds, fishing shrines, heiau and other features marked. An inset of O‘ahu marks the mapped area. |
-| PDF 221 (printed 204) | Exonyms | Rotated map of Hawai‘i Kai, the same area as Maunalua, showing the current landscape and English-language names (exonyms) such as Koko Head, Koko Marina, Sandy Beach, Toilet Bowl, Pele's Chair and Spitting Caves. An inset of O‘ahu marks the mapped area. |
-| PDF 248 (printed 231) | Drawing of two snipes (birds) | Nineteenth-century illustration of two shorebirds standing by water and reeds: a Latham's snipe at left with a long bill and streaked brown plumage, and an Australian painted snipe at right with a black breast and white eye ring. |
-| PDF 316 (printed 299) | Logo | Perspectives on the Global Past series logo: two arrows forming a circle. |
+| PDF 1 (printed Cover) | COVER\x00 | Book cover of Migrant Ecologies: Environmental Histories of the Pacific World, edited by James Beattie, Ryan Tucker Jones, and Edward Dallam Melillo. A teal band across the middle carries the title in italic capitals and the editors' names. Above and below it is a white panel with a few small dark curved, boat-like marks. A panel of horizontal grey, blue and beige bands runs down the right side. |
+| PDF 3 (printed ii) | Logo | Perspectives on the Global Past series logo: two arrows chasing each other in a circle. |
+| PDF 5 (printed iv) | Logo\x00 | Knowledge Unlatched open access logo. |
+| PDF 5 (printed iv) | Creative Commons logo\x00 | Creative Commons logo with the BY, NC and ND icons: Attribution-NonCommercial-NoDerivatives license. |
+| PDF 11 (printed x) | Map of Pacific Ocean | Left half of a two-page map of the Pacific World, a globe view centered on the Pacific Ocean. It shows Russia, Mongolia, China, Japan, Southeast Asia, Indonesia, Papua New Guinea, Australia and New Zealand. It also shows island groups such as the Marshall Islands, Kiribati, Fiji, Samoa and Tonga, with latitude and longitude lines. A key at lower left lists two-letter country abbreviations such as BS for Bahamas and VN for Vietnam. |
+| PDF 12 (printed xi) | Map of Pacific Ocean | Right half of the two-page map of the Pacific World. It shows the eastern Pacific, with Alaska, Canada, the United States, Mexico, Central America and South America from Colombia to Chile. It also shows Hawaiʻi, the Line Islands, the Marquesas, French Polynesia, Tahiti, the Pitcairn Islands, Easter Island and the Galápagos, with the South Pacific and Southern oceans. An inset globe at lower right shows the map's orientation; the credit reads cartography by Geoffrey Wallace. |
+| PDF 29 (printed 12) | Map of Fukushima Radioisotopes and migratory species | Rotated infographic map of the North Pacific titled 'Fukushima radioisotopes can track the routes and rates of migratory species.' Dashed arrows run from Japan across the Pacific to the California coast. Juvenile bluefin tuna born in 2011 fed in Japanese waters contaminated with cesium-134 from the Dai-ichi nuclear plant, then migrated across the Pacific to feed off California. Bluefin tuna born before the disaster did not have elevated cesium-134, but those caught in August 2011 did. Yellowfin tuna, which do not migrate and feed near Japan, did not contain cesium-134. Silhouettes of tuna, a seabird, a turtle and whales mark the species. |
+| PDF 31 (printed 14) | Energy Distribution Tsunami | Rotated NOAA map of the Pacific showing the maximum wave amplitudes of the Japan (Tohoku) tsunami of March 11, 2011. The energy radiates in beams from Japan in the west toward the Americas in the east. Numbered triangles mark ocean buoy and tide-gauge stations, and a color scale gives wave height in centimeters. |
+| PDF 34 (printed 17) | Sooty Shearwater Migrations | Map of the Pacific with white tracks showing the migrations of three sooty shearwaters. The tracks form a loop between breeding grounds around New Zealand in the south and feeding areas off Japan, Alaska and California in the north. |
+| PDF 50 (printed 33) | Map of Tuna Diaspora | Map of the Pacific Ocean showing diasporas of people, plants and animals. Heavy lines link the Polynesian Triangle of Hawaiʻi, Rapa Nui and Aotearoa, with Samoa, Fiji, Tonga and Niue inside it. Dotted lines show sweet potato dispersals and symbols mark breadfruit encounters. Curved arrows show the salmon, fur, sugar and labor trade between the Northwest Coast, Hawaiʻi, San Francisco, Guangzhou and Manila. A key marks twentieth-century tuna fisheries, canneries and consumers. |
+| PDF 57 (printed 40) | Photo of shipping container | Twenty-first-century shipping containers stacked in rows on a cracked paved yard at Pago Pago Harbor, American Samoa, with a green hill behind. Some containers carry Maersk and Cronos markings. |
+| PDF 72 (printed 55) | Railway Image | Nineteenth-century engraving 'Across the Continent: The snow sheds on the Central Pacific Railroad, in the Sierra Nevada Mountains.' A steam train emerges from a snow shed and tunnel in a forested mountain pass, and workers in the foreground wave their hats. |
+| PDF 75 (printed 58) | Dairy Farm on Aurora Road | Black-and-white photograph of a dairy farm on Aurora Road in Taranaki, New Zealand. Horse-drawn wagons stand at a low wooden creamery building beside a muddy cleared hollow, with a few people standing near a second building. |
+| PDF 78 (printed 61) | Chew Chong and Family | Studio photograph, c. 1903, of Chew Chong and his family. The elderly Chinese-born businessman sits at the center, surrounded by women, men and a small boy in Western dress. |
+| PDF 88 (printed 71) | Map of California | Map of California, 1769–1844, showing Spanish and Mexican missions, forts (presidios) and towns (pueblos) from San Diego north to Sonoma and Fort Ross. Italic labels name the Native tribes across the state, among them Chumash, Miwok, Yokuts, Pomo, Ohlone and Tongva. A scale bar and the neighboring Oregon, Nevada, Arizona and Mexico appear at the edges. |
+| PDF 89 (printed 72) | Vista del Presidio | Drawing by José Cardero, 1791–1792, of the Presidio of Monterey, California. A walled fort of low buildings stands on cleared fields near the sea, with people and animals in the foreground and ships on the horizon. |
+| PDF 92 (printed 75) | Cattle Roundup | Pen-and-ink drawing by Emanuel Wyttenbach of a rodeo at a California mission. A mounted vaquero drives cattle and sheep past the long arcaded mission building with its bell gable. |
+| PDF 108 (printed 91) | Stoveboat Smashed | Painting by Charles Sidney Raleigh, 1877, of a whale staving a boat. The whale's fluke rises from churning sea, and a whaleboat splinters in the air with oars, barrels and men flung upside down. A sailing ship is visible at right. |
+| PDF 110 (printed 93) | Portrait of Amos Haskins | Daguerreotype portrait of Captain Amos Haskins, a Wampanoag man in his 1850s. He wears a dark jacket and a white high-collared shirt with a frilled front, with his hands in his pockets. |
+| PDF 111 (printed 94) | Depiction of American whalemen in Japan | Japanese scroll painting by Usui Shozo of three American whalemen standing in a row. One holds a spyglass, one lifts the hat of another, and the third raises a hat in greeting. A ship's rigging is at left, and columns of Japanese script surround the figures. |
+| PDF 121 (printed 104) | Cocospalme | Photograph from 1900 of a coconut palm (Cocospalme) with a cluster of nuts below its spreading fronds, in a plantation clearing. |
+| PDF 126 (printed 109) | Fruit-Bearing Coconut Tree | Photograph, c. 1900, of a fruit-bearing coconut tree (Cocos nucifera) in Samoa. A man climbs the trunk toward a cluster of nuts, with other palms and fallen fronds around. |
+| PDF 128 (printed 111) | Map of DHPG Plantation in Mulifanua | Historical plantation map of the DHPG plantation at Mulifanua, Samoa, 1900, in two panels headed 'Le Utu Sao Vaa' and 'Fagalepolu & Fatuosofia.' Long narrow numbered parcels are drawn in rows and blocks, with hatching and legends in German. |
+| PDF 135 (printed 118) | Rongo, the Maori god of kumara | Photograph of a carved stone figure of Rongo, the Māori god of kumara and cultivated plants. A face with spiral eyes is incised into the rough stone, which rests on a wooden floor. |
+| PDF 138 (printed 121) | Engraving Depicting Confiscation and Destruction of Idol Gods | Nineteenth-century engraving of the confiscation and destruction of idol gods in the Cook Islands. Islanders carry and lay out carved idols in front of seated missionaries, with a mission house and mountains behind. The caption line quotes 'And the idols he shall utterly abolish.'—Isaiah ii. 18. |
+| PDF 162 (printed 145) | Man with a Horse | Photograph of Edwin Dun, in riding jacket and breeches, standing beside a saddled horse imported from the United States, in 1878 in Hokkaido. Low farm buildings are in the background. |
+| PDF 164 (printed 147) | Stacks of Lumber | Photograph from the 1900s of the Ōji paper manufacturing company in Tomakomai, Hokkaido. Stacked and scattered logs lie in the foreground, with factory buildings and two tall smokestacks behind. |
+| PDF 165 (printed 148) | Ainu Men in Cano | Early modern Japanese ink painting of three Ainu men in a long wooden boat, paddling and fishing. A column of Japanese script appears at right. |
+| PDF 193 (printed 176) | Ka Nupepa Kuokoa | Masthead of the Hawaiian-language newspaper Ka Nupepa Kuokoa from January 7, 1871, in ornate lettering with a decorative frame, the banner 'Ke Kilohana Pookela no ka Lahui Hawaii', and the issue line 'Buke X, Helu 1, Honolulu, Ianuari 7, 1871.' |
+| PDF 196 (printed 179) | Growing Kona Coffee | Close-up photograph of a woman's hands holding a handful of ripe Kona coffee cherries over a bucket full of harvested cherries. |
+| PDF 203 (printed 186) | Maunalua 1915 | Photograph from 1915 looking down from Kohelepelepe (Puʻumaʻi) over the Maunalua area of Oʻahu. A wide shallow bay with fishponds lies below, with sparse scrub, tall poles and a ridge on the far side. |
+| PDF 213 (printed 196) | Endonyms | Rotated map of the endonyms of Maunalua, Oʻahu, and a theoretical landscape of the area. It shows the shoreline from Makapuʻu to Kawaihoa and the valleys behind it, such as Kamilonui, Kaluanui, Hahaʻione and Niu, labeled with Hawaiian place names. Symbols mark wetlands, springs, fishing ponds and shrines, heiau and other cultural features. An inset of Oʻahu shows the mapped area, and a compass rose and scale bar are included. |
+| PDF 221 (printed 204) | Exonyms | Rotated map of the exonyms of Hawaiʻi Kai and the current landscape of the Maunalua area, Oʻahu. English place names such as Koko Head, Koko Crater, Sandy Beach, Hawaii Kai Golf Course, Koko Marina, Toilet Bowl, Spitting Caves and China Walls are marked along the coast and ridges. An inset of Oʻahu shows the mapped area, and a compass rose and scale bar are included. |
+| PDF 248 (printed 231) | Drawing of two snipes (birds) | Nineteenth-century illustration of a Latham's snipe (left) beside an Australian painted snipe (right), standing on a marshy shore among reeds. The Latham's snipe is mottled brown with a long bill; the painted snipe has a dark breast and white-ringed eye. |
+| PDF 316 (printed 299) | Logo | Perspectives on the Global Past series logo: two arrows chasing each other in a circle. |
 
 ### 2. Headings
 
@@ -136,16 +137,18 @@ Heading levels by style (as applied):
 
 | Style | Level | How | Elements |
 |---|---|---|---:|
-| ENH | H2 | RoleMap | 17 |
 | FMH | H2 | RoleMap | 1 |
+| ENH | H2 | RoleMap | 17 |
 | H1 | H2 | retype (standard tag) | 48 |
+
+Merged: `TPST` into the prev `TPT`
 
 Spoken text set by the AI (should match what is printed):
 
 | Page | Text |
 |---|---|
-| PDF 2 (printed i) | MIGRANT ECOLOGIES |
-| PDF 4 (printed iii) | Migrant Ecologies |
+| PDF 2 (printed i) | Migrant Ecologies |
+| PDF 4 (printed iii) | Migrant Ecologies Environmental Histories of the Pacific World |
 
 ### 3. Elements Retyped by the AI (1)
 
@@ -167,8 +170,8 @@ Tables kept as tables (1): check header cells and reading order.
 
 A spoken text may differ from the printed characters only in spacing, letter case and line-end hyphens (sponsor rule 1). Accepted ones that differ are listed so a person can listen to them; rejected ones added or changed words or punctuation.
 
-- Accepted, PDF 2 (printed i): printed "MI GRANT ECOLOGIES" → spoken "MIGRANT ECOLOGIES"
-- Accepted, PDF 4 (printed iii): printed "Mi grant Ecologies" → spoken "Migrant Ecologies"
+- Accepted, PDF 2 (printed i): printed "MI GRANT ECOLOGIES" → spoken "Migrant Ecologies"
+- Accepted, PDF 4 (printed iii): printed "Mi grant Ecologies Environmental Histories of the Pacific World" → spoken "Migrant Ecologies Environmental Histories of the Pacific World"
 
 ### 6. Links Whose Description Was Only a URL (5)
 
@@ -245,14 +248,14 @@ Each item is something to look at, not a proven failure.
 
 ### 9. Deferred by the AI
 
-- **Chapter and front/back-matter titles have no heading tag of their own. The Introduction (PDF 18), the 14 chapter openers, the Preface, About the Contributors and Index are not listed as elements, so I cannot target them. A person should tag them as H2.**: Chapter openers are on PDF 28, 47, 64, 85, 103, 117, 134, 152, 171, 185, 202, 226, 246, 258 and 274. I mapped the in-chapter section headings (style H1) and 'NOTES' to H2 to avoid skipping from H1 to H3. If chapter titles become H2, these section headings should drop to H3. [PDF 14 (printed xiii), PDF 18 (printed 1), PDF 28 (printed 11), PDF 47 (printed 30), PDF 64 (printed 47), PDF 85 (printed 68), PDF 103 (printed 86), PDF 117 (printed 100), PDF 134 (printed 117), PDF 152 (printed 135), PDF 171 (printed 154), PDF 185 (printed 168), PDF 202 (printed 185), PDF 226 (printed 209), PDF 246 (printed 229), PDF 258 (printed 241), PDF 274 (printed 257), PDF 297 (printed 280), PDF 302 (printed 285)]
-- **The continuation of Table 11.1 on PDF 211 (printed 194) sits outside the table, in Art containers and a Story container read after the Index, with empty Art elements and the title and source notes.**: I cannot tell from the digest which pieces belong to the table, and merging them is outside this work order's vocabulary. [PDF 210 (printed 193), PDF 211 (printed 194)]
-- **The Index text layer separates entries from their page numbers (e.g. 'activism, anti-war, , – 245249252'), so the index reads wrongly.**: ActualText per entry is not feasible here; a person should check or retag it. [PDF 302 (printed 285), PDF 303 (printed 286), PDF 304 (printed 287), PDF 305 (printed 288), PDF 306 (printed 289), PDF 307 (printed 290), PDF 308 (printed 291), PDF 309 (printed 292), PDF 310 (printed 293), PDF 311 (printed 294), PDF 312 (printed 295), PDF 313 (printed 296), PDF 314 (printed 297), PDF 315 (printed 298)]
-- **The contents entries on PDF 8–9 (printed vii–viii) are Link elements inside body paragraphs, with no entry style, so I could not request TOC/TOCI.**: The `toc` key needs an entry style or P with exact pages, and the digest does not show how the entries are tagged. [PDF 8 (printed vii), PDF 9 (printed viii)]
-- **Several pages have no tagged text: 7, 13, 17, 301 and 318–321, and perhaps 11–12 apart from the map figures.**: They are probably blank or ad pages, but the digest does not confirm it. A person should check for lost content. [PDF 7 (printed vi), PDF 13 (printed xii), PDF 17 (printed xvi), PDF 301 (printed 284), PDF 318 (printed 301), PDF 319 (printed 302), PDF 320 (printed 303), PDF 321 (printed 304)]
-- **The extracted text has stray word breaks ('Rus sian', 'Pa cific', 'Mi grant') and drop-cap chapter openers whose first letter is split off ('O', 'T', 'F').**: I can only choose ActualText for headings, so I fixed the title only. A person should check the chapter openers. [PDF 28 (printed 11), PDF 47 (printed 30), PDF 64 (printed 47), PDF 85 (printed 68), PDF 103 (printed 86), PDF 117 (printed 100), PDF 134 (printed 117), PDF 152 (printed 135), PDF 171 (printed 154), PDF 185 (printed 168), PDF 202 (printed 185), PDF 226 (printed 209), PDF 246 (printed 229), PDF 258 (printed 241), PDF 274 (printed 257)]
+- **Chapter, Introduction, Preface, About the Contributors and Index titles have no heading tag (no style in the digest carries them, and their text is not in the elements list)**: Chapter openers (INTRODUCTION, Chapters 1–14) are not separately tagged. Their titles need to be found and tagged H2 by a person. The in-chapter section headings (style H1) and the NOTES headings are mapped to H2 for now so the outline has no skipped level. Once chapter titles are H2, those section headings should drop to H3 and NOTES to H3. [PDF 14 (printed xiii), PDF 18 (printed 1), PDF 28 (printed 11), PDF 47 (printed 30), PDF 64 (printed 47), PDF 85 (printed 68), PDF 103 (printed 86), PDF 117 (printed 100), PDF 134 (printed 117), PDF 152 (printed 135), PDF 171 (printed 154), PDF 185 (printed 168), PDF 202 (printed 185), PDF 226 (printed 209), PDF 246 (printed 229), PDF 258 (printed 241), PDF 274 (printed 257), PDF 279 (printed 262), PDF 302 (printed 285)]
+- **Table of contents entries are tagged as Link elements, not TOC/TOCI**: Converting them would remove the link semantics, so I made no toc decision. A person should decide whether to wrap them in TOC/TOCI while keeping the links. [PDF 8 (printed vii), PDF 9 (printed viii)]
+- **Table 11.1 reading order (veraPDF not flagged)**: The continuation of the table on PDF 211 (printed 194) sits in a separate Story container after the Index in the reading order, with loose Art cells such as 'Current Use' and 'First'. A person should check the order and the cells of rows 2–14. [PDF 210 (printed 193), PDF 211 (printed 194)]
+- **Knowledge Unlatched logo, obj 1692 0**: This figure has no attached image. The alt text is inferred from the adjoining open access statement, so please verify it. [PDF 5 (printed iv)]
+- **PDF pages 318–321 (printed 301–304) have no tagged text**: They may be blank or carry untagged content; please check. [PDF 318 (printed 301), PDF 319 (printed 302), PDF 320 (printed 303), PDF 321 (printed 304)]
+- **Caption-styled body text on PDF 29–31**: One Caption style sample ('at the Strait of Magellan…') is body text rather than a caption, near the rotated figures on pages 29 and 31. A person should check whether captions and body text are mixed up there. [PDF 29 (printed 12), PDF 31 (printed 14)]
 
-Reviewer note from the AI: Language changed from en-GB to en-US because the text uses American spelling and the publisher is a US press. The two Figure alts with NUL characters (1692 0, 1696 0) and the cover alt (26594 0) are replaced. The logo on PDF 5 (obj 1692 0) has no image in the digest; I inferred 'Knowledge Unlatched' from the neighboring text, so please verify. The numbered list on PDF 158 is a low-confidence request. The cover move is a reading-order fix, and the executor will reject it if the container does not match. The repeated_lines entries (THE, AND, ariki) are ordinary words, not running heads, so I made no artifact rules. No pdfua_check failures were reported.
+Reviewer note from the AI: veraPDF reports no failed rules that a work-order decision can fix. The publisher's rolemap leaves almost every paragraph style mapped to P, and only the in-chapter section headings were tagged as headings. I mapped H1, FMH and ENH to H2 and made the title-page title the only H1, merging the subtitle into it. The detected 'repeated lines' (THE, AND, ariki) are small-caps heading line wraps, not running heads, so no artifact rules were added. Endnote styles NTX and NUL became Notes; the numbered recommendations list on PDF 158 (printed 141) was given list structure (NLF/NL/NLL). Figure alt texts were replaced where they had placeholders or NUL characters; the cover, the page 5 logos and the page 3 and 316 logos were rewritten.
 
 ### 10. Deferred by the Executor
 
@@ -273,6 +276,7 @@ Rejected by validation or by the executor; nothing was half-applied.
 | document: DisplayDocTitle | 1 |
 | document: /Lang | 1 |
 | heading: RoleMap level | 2 |
+| heading: merged into prev | 1 |
 | heading: ActualText | 2 |
 | heading: standard tag H1 → H2 (retyped) | 48 |
 | retype → H1 | 1 |

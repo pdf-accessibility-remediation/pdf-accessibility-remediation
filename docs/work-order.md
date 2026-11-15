@@ -51,7 +51,7 @@ The executor tags CJK runs with their language where it differs from the documen
 
 A run in the document's own language needs no tag: Chinese characters in a Chinese, Japanese or Korean document (Japanese kanji, Korean hanja), hangul in a Korean one, kana in a Japanese one.
 
-Elsewhere, Han-only runs (Japanese or Chinese, never guessed) and runs mixing CJK with Latin letters go to a reviewer (`han_review.csv`).
+Other language tags come from the language step, not the work order (from `workorder_v11.md`; see [Language tags](languages.md)). Han-only runs the AI leaves untagged and runs mixing CJK with Latin letters go to a reviewer (`han_review.csv`).
 
 ### Text outside the visible page
 

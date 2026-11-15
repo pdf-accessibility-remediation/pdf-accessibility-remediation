@@ -31,11 +31,18 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 |---|---|
 | `MODEL=openai/gpt-5` | Any OpenRouter model id for this run or batch (default: `DEFAULT_MODEL` in `decide.py`, `anthropic/claude-sonnet-5.5`; see [Models](models.md)) |
 | `MAX_USD=3` | The limit on what one AI request could cost, in dollars (default 2). Claude models only |
-| `BOOK_MAX_USD=6` | The limit on what all of a PDF's requests could cost together (default 5). Claude models only (see [The limit per PDF](#the-limit-per-pdf)) |
+| `BOOK_MAX_USD=6` | The limit on what all of a PDF's requests could cost together (default 8). Claude models only (see [The limit per PDF](#the-limit-per-pdf)) |
 | `BATCH_MAX_USD=20` | Batches only: the limit on what the batch has already spent plus what it could still cost (default 10) |
 | `PAGE_READS=off` | No page readings: scanned Hawaiian pages are not read whole by the AI (see [Page readings](#page-readings)) |
 | `PAGE_READS=all` | Page readings for every scanned page with text, not only mostly Hawaiian ones |
 | `PAGE_READS_MAX_USD=5` | The limit on what the page readings together could cost, in dollars (default 3) |
+| `LANG_TAGS=off` | No language step: words and passages in other languages are not sent to the AI (see [Language tags](#language-tags)) |
+| `LANGUAGE_MODEL=…` | The model the language step uses (default: Sonnet 5.5, whatever the work order uses) |
+| `LANGUAGE_MAX_USD=6` | The limit on what the language step could cost, in dollars (default 6) |
+| `LANGUAGE_MAX_FORMS=2000` | Send at most this many word forms to the language step (default 5000); the rest are listed, not sent |
+| `LANG_GROW=on` | The language step tags a title's whole extent (romanized words around a candidate, inside quotes or italics, or before a Chinese-character gloss), so the voice switches once. Off by default, until the Windows screen-reader check of a title tagged in pieces (see [Language tags](#language-tags)) |
+| `LANG_GROUP=on` | Adjacent single Chinese characters become one word form for the language step and the review page (fewer rows). Off by default |
+| `LANG_REPLY=…` | A saved language reply (a `language_run.json`) to apply instead of a request; `FROM=` sets it per book |
 | `FIGURE_PASSES=off` | No figure requests: figures past the first request's 100 images go to a reviewer (see [Files](files.md)) |
 
 ## Untagged PDFs (intake)
@@ -67,6 +74,12 @@ For any other model the estimate is approximate and is not a limit. The line pri
 
 `BOOK_MAX_USD` counts every request for the PDF: the work order, its figure requests, and what previous attempts in the same run folder spent. The run stops before any request when the total is over the limit, and says the value to set.
 
+The page readings and the language step are optional, and never stop the work order. Each counts toward `BOOK_MAX_USD`
+only when it fits together with the work order (the page readings first, then the language step). One that doesn't fit is
+left out: the run says so with the value to set, the step refuses itself, and the PDF goes on without it. A step over its
+own limit (`PAGE_READS_MAX_USD`, `LANGUAGE_MAX_USD`) is never counted either. The app's estimate does the same, and lists
+what it left out under "Max Estimated Cost".
+
 ### No AI request
 
 `DECIDE=none` makes an empty work order for a reviewer to fill in on the review page (with `REVIEW=1`). It costs nothing and reads no pages. With `ESTIMATE=1` it only says there is nothing to estimate.
@@ -90,6 +103,31 @@ No pages are read:
 
 `PAGE_READS=all` is for an English PDF with Hawaiian words on most pages. The audit lists the pages to read, so a run already audited without it needs a fresh audit. See [OCR words](ocr-words.md#pages-read-whole).
 
+### Language tags
+
+By default (`LANG_TAGS=on`), after the work order and the page readings, `name_languages.py` sends the words and passages
+the audit found likely to be in another language (`lang_candidates.json`) to the AI, with about 15 words of context
+each, and adds its tags to the work order as `language_parts` (#118; see [Language tags](languages.md)). It has its own model, estimate, limit and question;
+`AUTO=1` skips the question. A PDF with no candidates costs nothing. If the step is refused (over its limit or your
+credit), the PDF goes on without it.
+
+No request is made:
+- with a saved reply (`REPLY=…`, `FROM=`): the saved language decisions are applied by word form instead, at no cost,
+  when the earlier run had them (`LANG_REPLY=`); otherwise the step is not run and the record says so
+- with no AI request (`DECIDE=none`)
+- in command-line batches, unless you turn it on with `LANG_TAGS=on bash batch_api.sh …`. A batch with the step off
+  says so when it starts: "Language tags are off for this batch: books with words in other languages will read
+  'Language Tags: Not Done' and can't be Ready. Add LANG_TAGS=on to include them." (An `AUTO=1` batch spends without asking, so the step stays off unless
+  you turn it on.)
+
+A retry that reuses the run's own reply keeps the tags already paid for.
+
+Two options change what is sent, both off by default (`language_run.json` records them under `options`):
+- `LANG_GROW=on`: a title in another language is tagged whole. A capitalized word in the English list joins a title
+  only when it looks romanized and is not a common English word or an English name of a people (*Nihon* and *Kamakura*
+  join; *China*, *King*, *Japanese* don't; `data/english-common-romanized.txt`). A word with marks (*Hō*, *Dō*) and a dynasty name (*Song*, *Tang*, *Ming*, *Qing* …) may join (it still needs the romanized shape); see [Language tags](languages.md).
+- `LANG_GROUP=on`: adjacent single Chinese characters are one word form.
+
 ### OCR languages
 
 A scan with Chinese, Japanese or Korean text on pages to be OCR'd stops until `OCR_LANG` names a CJK pack:
@@ -97,7 +135,7 @@ A scan with Chinese, Japanese or Korean text on pages to be OCR'd stops until `O
 - `jpn+eng` for Japanese
 - `chi_tra+eng` or `chi_sim+eng` for Chinese
 
-Chinese characters with no kana are never guessed as Chinese or Japanese.
+Chinese characters with no kana are read in the document's language by OCR; the language step may name them Japanese or Chinese for a person to approve ([Language tags](languages.md)).
 
 For **vertical** Japanese, which the stop message points out, use `jpn_vert+jpn+eng`. With `jpn+eng` alone the OCR text is mostly junk. On one 13-page sample it gave 5% Japanese and left 8 pages without text, against 85% and every page with the `_vert` pack.
 
@@ -128,7 +166,7 @@ The cost of a cut-off reply is listed in `record.json` under `earlier_attempts`,
 
 ## What a run may cost
 
-**The dollar limits are the only limits you set:** $2 per AI request, $5 per PDF and $10 per batch. The app and the terminal use the same defaults. They apply to Claude models only.
+**The dollar limits are the only limits you set:** $2 per AI request, $8 per PDF and $10 per batch. The app and the terminal use the same defaults. They apply to Claude models only.
 
 Before each AI request, the pipeline shows two figures:
 
@@ -140,8 +178,12 @@ Before each AI request, the pipeline shows two figures:
 Expected Cost is learned from the last 80 finished AI requests of the same model and kind: work order, figure request or page reading. Each PDF weighs the same. The terminal also prints the usual range. The figure can't pass the Max Estimated Cost.
 
 It reads **Not Available Yet**:
-- until there are 12 past requests from 6 PDFs for that model and kind (today Opus 5.5 and every non-Claude model)
-- after an answer was cut off in that run's folder
+- until there are 12 past requests from 6 PDFs for that model and kind (today Opus 5.5 and every non-Claude model);
+  the run and batch pages add "(not enough past runs to calculate it)"
+- after an answer was cut off in that run's folder; the pages add "(an earlier answer was cut off, so it can't be
+  calculated)"
+
+Another reason shows no words in parentheses.
 
 **A request larger than any learned from still gets a figure,** and the terminal says so. It rests on few PDFs and tends to read high: in testing, work orders of that size came in at a median of 0.85 of the figure, and figure requests at 0.57.
 

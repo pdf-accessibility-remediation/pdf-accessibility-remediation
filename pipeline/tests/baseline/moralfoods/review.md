@@ -2,13 +2,13 @@
 
 Result: `moralfoods_remediated.pdf`
 
-361 pages · run November 11, 2026, at 6:34 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.240 ($0.0007 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+361 pages · run November 14, 2026, at 3:32 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.240 ($0.0007 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.0s · audit 48.6s · reuse saved reply 1.4s · apply 177.4s · verify 58.5s · total 286.9s
+Time: intake 0.9s · audit 37.3s · reuse saved reply 1.2s · apply 166.1s · verify 54.8s · total 260.3s
 
 ## Overview
 
@@ -20,12 +20,13 @@ Time: intake 1.0s · audit 48.6s · reuse saved reply 1.4s · apply 177.4s · ve
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - Safety Checks: Failed (all content tagged or decoration)
+- Language Tags: Not Done (the language step was not run)
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · FAILED ✘ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 18 (6 deferred by the AI · 5 deferred by the executor · 7 CHECK rows)  
-**AI decisions:** 74 in the work order, applied without review by a person  
-**Fixed automatically (no AI):** links tied and described 2,963 · note IDs 838 · decorative lines marked 12 · link descriptions that were only a URL 7 · empty tags removed 7 · marked as tagged 1 · title shown in the window 1 · whole-page figures wrapped 1 · tag-tree index entries 1 · pages given tab order 1  
+**Needs a person:** 12 (4 deferred by the AI · 2 deferred by the executor · 6 CHECK rows)  
+**AI decisions:** 70 in the work order, applied without review by a person  
+**Fixed automatically (no AI):** links tied and described 2,963 · note IDs 838 · decorative lines marked 12 · link descriptions that were only a URL 7 · figures moved to their page 7 · empty tags removed 7 · marked as tagged 1 · title shown in the window 1 · whole-page figures wrapped 1 · tag-tree index entries 1 · pages given tab order 1  
 **veraPDF (WCAG 2.2 machine checks):** 4 WCAG rules failing before (3,172 checks) → 1 after (260 checks) · 0 newly failing
 
 Automated checks are evidence, not sign-off.
@@ -34,10 +35,10 @@ Automated checks are evidence, not sign-off.
 |---|---|---|
 | All content tagged or marked as decoration: 1526 untagged characters · 260 untagged objects (258 text, 2 image) | see Automated Checks | [Automated Checks](#automated-checks) |
 | Page-level figure wrap: PDF 1 (printed COVER) wrapped as one Figure · not wrapped: PDF 5 (printed iv) (has 2 annotation(s) (links)) | PDF 1 (printed COVER), PDF 5 (printed iv) | [Automated Checks](#automated-checks) |
-| Empty tags removed when proven empty: 7 removed · 1 kept: something refers to them or they carry an attribute (listed) | see §10 | [§10](#10-empty-tags-7-removed-1-kept) |
-| No empty tags: 1 empty tag (page: not on this tag) | see §10 | [§10](#10-empty-tags-7-removed-1-kept) |
-| No link whose only text is a URL: 2: PDF 5 (printed iv) | PDF 5 (printed iv) | [§9](#9-links-whose-description-was-only-a-url-9-and-1-address-that-looks-broken) |
-| … and 13 more | | §12, §14, §15, §16 |
+| Empty tags removed when proven empty: 7 removed · 1 kept: something refers to them or they carry an attribute (listed) | see §11 | [§11](#11-empty-tags-7-removed-1-kept) |
+| No empty tags: 1 empty tag (page: not on this tag) | see §11 | [§11](#11-empty-tags-7-removed-1-kept) |
+| No link whose only text is a URL: 2: PDF 5 (printed iv) | PDF 5 (printed iv) | [§10](#10-links-whose-description-was-only-a-url-9-and-1-address-that-looks-broken) |
+| … and 7 more | | §13, §15, §16 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -69,8 +70,9 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Every Note has a unique ID | OK | 838 notes · 0 without ID · 0 duplicate · 0 not in the ID tree |
 | Bookmarks present (documents over 9 pages) | OK | 27 bookmarks |
 | Model reply held one work order | OK | one |
-| Executor applied every decision | **CHECK** | 1 rejected · 0 failed (listed under "Decisions not applied") |
-| Nothing deferred by the executor | **CHECK** | 6 deferred (listed under "Deferred by the executor") |
+| Executor applied every decision | OK | 0 rejected · 0 failed (listed under "Decisions not applied") |
+| Language tags hold their words | OK | 317 tags checked · 0 not matching their words or language |
+| Nothing deferred by the executor | **CHECK** | 3 deferred (listed under "Deferred by the executor") |
 | Fonts: every glyph defined (no .notdef) | OK | none found |
 | Fonts: every embedded font program could be read | OK | all read |
 | Fonts: embedded and mapped to Unicode | OK | 0 not embedded · 0 without ToUnicode (3 more have none and need none: standard encoding, non-symbolic) |
@@ -83,7 +85,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 8 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
 | Reading order: no page jumps back up a column (1.3.2) | OK | 0 of 304 pages flagged |
-| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 6 already in the original, of 20 sections and blocks |
+| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 0 already in the original, of 14 sections and blocks |
 | Title is not a file name or placeholder (2.4.2) | OK | "Moral Foods: The Construction of Nutrition and Health in Modern Asia" |
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
@@ -94,20 +96,20 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 Pages with nothing tagged and nothing marked as decoration that hold a drawing (a full-page map, plate or cover). Each page was wrapped whole in one Figure; nothing on it was changed or removed.
 
-- PDF 1 (printed COVER): read first in the document. Alt text from the AI: "Front cover of Moral Foods: The Construction of Nutrition and Health in Modern Asia, edited by Angela Ki Che Leung and Melissa L. Caldwell. On a dark background, one photograph shows a green rice plant with grain heads and the other a bowl of white cooked rice sprinkled with seeds. The title appears in large yellow-green capitals, with the subtitle in pale yellow."
+- PDF 1 (printed COVER): read first in the document. Alt text from the AI: "Cover of Moral Foods: The Construction of Nutrition and Health in Modern Asia, edited by Angela Ki Che Leung and Melissa L. Caldwell. On a dark background, one photograph shows a green rice stalk heavy with grain and another shows a bowl of white cooked rice sprinkled with seeds. The title "Moral Foods" appears in large yellow-green capitals, with the subtitle in pale yellow beneath the editors' names."
 - PDF 5 (printed iv): not wrapped, left as it is (has 2 annotation(s) (links)).
 
 ### 2. Alt Text Written or Changed by the AI (7)
 
 | Page | Before | After |
 |---|---|---|
-| PDF 106 (printed 93) | Map of China in the 1940s showing Japanese-occupied areas. Source: GIS Center, Academia Sinica, Taipei, Taiwan. | Map of China in the 1940s showing Japanese-occupied areas. The occupied areas, shaded gray, cover the northeast and the eastern provinces from Rehe and Liaoning south through Hebei, Shanxi, Shandong, Jiangsu and Anhui to Zhejiang. Korea and Taiwan are shown in black as Japanese colonies. Shanghai on the east coast and the wartime capital Chongqing in the interior are labelled, and darker areas along the southern and western borders (India, Burma, Indochina) are territories under western powers. The legend also marks railroads, Great Walls, and lakes and rivers. |
-| PDF 155 (printed 142) | Annual consumption (per capita) of rice, wheat, and barley in South Korea, 1970–2016. Drawn by the author, based on the statistics from “Grain Consumption, per Capita, per Year, 1963–2016,” Korean Statistical Information Service, http://kosis.kr. | Line chart of annual per capita grain consumption in South Korea, 1970–2016. Rice falls steadily from 136.4 to 71.2. Wheat stays roughly level between about 26 and 35, ending at 35.0. Barley drops from about 37 in the early 1970s to 1.3 by 2016. |
-| PDF 202 (printed 189) | “Central Market, Hong Kong; Retail Stores, Ground Floor,” 1895. The National Archives of the UK (TNA): Public Record Office (PRO), Kew, Colonial Office Records (CO), Series 1069/446 (28). | Black-and-white 1895 photograph of the upper floor of Central Market, City of Victoria, Hong Kong: a long, empty hall under an exposed iron-truss roof, with rows of wooden stalls and benches along both sides of a central aisle. |
-| PDF 204 (printed 191) | “Cattle Slaughter House Interior, Hong Kong,” 1894. The National Archives of the UK (TNA): Public Record Office (PRO), Kew, Colonial Office Records (CO), Series 1069/446 (23). | Black-and-white 1894 photograph of the interior of the cattle slaughterhouse in the City of Victoria, Hong Kong: an empty room with a wet concrete floor, iron roof trusses, supporting columns and winch wheels along the back wall. |
-| PDF 276 (printed 263) | The Chinese Food Pagoda, 2016. The left side of the pagoda’s second-highest tier represents dairy products. Used with permission from Chinese Nutrition Society, 2016 Dietary Guideline for Chinese (Zhongguo jumin shanshi zhinan 2016) (Beijing: People’s Medical Publishing House, 2016). | The Chinese Food Pagoda (2016), titled in Chinese, “Balanced Diet Pagoda for Chinese Residents.” It is a five-tier pagoda: grains and starchy foods at the base, then vegetables and fruit, fish, meat and eggs, and dairy products with soy on the second-highest tier, and a measuring cup and spoon at the top. A jogger and a glass of water appear beside it, with a note to walk 6,000 steps a day. |
-| PDF 286 (printed 273) | The Food Guide Pyramid of the United States Department of Agriculture, 1992. Dairy products are located on the left-hand side of the second-highest tier, just as in the later Chinese food pagoda. Courtesy of the U.S. Department of Agriculture. | The U.S. Department of Agriculture Food Guide Pyramid, 1992, “A Guide to Daily Food Choices.” At the base is the bread, cereal, rice and pasta group (6–11 servings). Above it are vegetables (3–5 servings) and fruit (2–4 servings). Higher up are the milk, yogurt and cheese group (2–3 servings) beside the meat, poultry, fish, dry beans, eggs and nuts group (2–3 servings). The small tip is fats, oils and sweets, to be used sparingly. |
-| PDF 293 (printed 280) | 2016 Balanced Diet Plate for Chinese. Used with permission from Chinese Nutrition Society, 2016 Dietary Guideline for Chinese (Zhongguo jumin shanshi zhinan 2016) (Beijing: People’s Medical Publishing House, 2016). | The 2016 Balanced Diet Plate for Chinese residents, with Chinese labels. A round plate is divided into four sections: cereals and tubers (largest), vegetables, fruit, and fish, meat, eggs and beans. A cup labelled for milk sits beside the plate, with chopsticks and a spoon. |
+| PDF 106 (printed 93) | Map of China in the 1940s showing Japanese-occupied areas. Source: GIS Center, Academia Sinica, Taipei, Taiwan. | Map of China in the 1940s showing Japanese-occupied areas. Areas under Japanese occupation are shaded gray along the northeast and east coast, covering parts of Hebei, Shanxi, Shandong, Henan, Jiangsu and Anhui, with Shanghai marked on the coast. Korea and Taiwan are shown in black as Japanese colonies. Chongqing, the wartime capital, is marked in the southwest within territory under Chinese rule. Outer Mongolia, and territory held by Britain (India, Burma) and France (Indochina), are shown as western-power or neighboring areas. The legend also marks railroads, Great Walls, lakes and rivers. Source: GIS Center, Academia Sinica, Taipei. |
+| PDF 155 (printed 142) | Annual consumption (per capita) of rice, wheat, and barley in South Korea, 1970–2016. Drawn by the author, based on the statistics from “Grain Consumption, per Capita, per Year, 1963–2016,” Korean Statistical Information Service, http://kosis.kr. | Line chart of annual per capita consumption of rice, wheat, and barley in South Korea, 1970–2016. Rice falls steadily from 136.4 to 71.2. Wheat stays roughly level at 26 to 37, ending at 35.0. Barley falls sharply from about 37 in the early 1970s to 1.3 at the end. Wheat overtakes barley by the late 1970s and approaches rice by the end. Drawn by the author from Korean Statistical Information Service data. |
+| PDF 202 (printed 189) | “Central Market, Hong Kong; Retail Stores, Ground Floor,” 1895. The National Archives of the UK (TNA): Public Record Office (PRO), Kew, Colonial Office Records (CO), Series 1069/446 (28). | Black-and-white photograph of the interior of the Central Market, Hong Kong, 1895 (upper floor shops). A long empty hall with an exposed pitched roof truss ceiling and a central aisle, lined on both sides with open wooden stalls and benches. The mount is labeled "City of Victoria Hong Kong, Central Market 1895" and "Shops, Upper Floor." The National Archives of the UK, Colonial Office Records. |
+| PDF 204 (printed 191) | “Cattle Slaughter House Interior, Hong Kong,” 1894. The National Archives of the UK (TNA): Public Record Office (PRO), Kew, Colonial Office Records (CO), Series 1069/446 (23). | Black-and-white photograph of the interior of the cattle slaughter house, Hong Kong, 1894. An empty hall with timber roof beams, a wet concrete floor, iron posts and winch wheels, and dark stalls along the back wall. The mount is labeled "City of Victoria Hong Kong" and "Cattle Slaughter House (Interior)." The National Archives of the UK, Colonial Office Records. |
+| PDF 276 (printed 263) | The Chinese Food Pagoda, 2016. The left side of the pagoda’s second-highest tier represents dairy products. Used with permission from Chinese Nutrition Society, 2016 Dietary Guideline for Chinese (Zhongguo jumin shanshi zhinan 2016) (Beijing: People’s Medical Publishing House, 2016). | The Chinese Food Pagoda, 2016, titled in Chinese "Chinese Residents' Balanced Diet Pagoda (2016)." A five-tier pagoda illustration with the broadest tier at the bottom holding grains and staple foods, then vegetables and fruits, then fish, meat and eggs. The second-highest tier, with milk, cheese and other dairy products on its left side, sits below a small top tier with oil and seasonings. A running figure and a glass of water at the left carry the note "6,000 steps a day." Used with permission from the Chinese Nutrition Society. |
+| PDF 286 (printed 273) | The Food Guide Pyramid of the United States Department of Agriculture, 1992. Dairy products are located on the left-hand side of the second-highest tier, just as in the later Chinese food pagoda. Courtesy of the U.S. Department of Agriculture. | The Food Guide Pyramid of the United States Department of Agriculture, 1992, titled "A Guide to Daily Food Choices." The pyramid has four levels. The base is the Bread, Cereal, Rice and Pasta group, 6 to 11 servings. Above it are the Vegetable group (3 to 5 servings) and the Fruit group (2 to 4 servings). Above those are the Milk, Yogurt and Cheese group (2 to 3 servings) on the left and the Meat, Poultry, Fish, Dry Beans, Eggs and Nuts group (2 to 3 servings) on the right. At the tip are Fats, Oils and Sweets, "use sparingly." Dairy sits on the left of the second-highest tier, as in the later Chinese pagoda. Courtesy of the U.S. Department of Agriculture. |
+| PDF 293 (printed 280) | 2016 Balanced Diet Plate for Chinese. Used with permission from Chinese Nutrition Society, 2016 Dietary Guideline for Chinese (Zhongguo jumin shanshi zhinan 2016) (Beijing: People’s Medical Publishing House, 2016). | The 2016 Balanced Diet Plate for Chinese, titled in Chinese "Chinese Residents' Balanced Diet Plate (2016)." A round plate is divided by a curved yin-yang-like line into four sections: grains and tubers (the largest), fish, meat, eggs and beans, vegetables, and fruits. Beside the plate are a cup marked "milk," chopsticks and a spoon. Used with permission from the Chinese Nutrition Society. |
 
 ### 3. Headings
 
@@ -115,8 +117,8 @@ Heading levels by style (as applied):
 
 | Style | Level | How | Elements |
 |---|---|---|---:|
-| TPHT | P | RoleMap | 2 |
 | TPT | H1 | RoleMap | 1 |
+| TPHT | P | RoleMap | 2 |
 | TPST | P | RoleMap | 1 |
 | FMH | H2 | RoleMap | 2 |
 | BMH | H2 | RoleMap | 4 |
@@ -128,7 +130,7 @@ Heading levels by style (as applied):
 | ENH | H3 | RoleMap | 13 |
 | H2 | H4 | retype (standard tag) | 8 |
 
-Merged: `TPST` into the prev `TPT`; `CST` into the prev `CT`; `PN` into the next `PT`
+Merged: `PN` into the next `PT`; `CST` into the prev `CT`; `TPST` into the prev `TPT`
 
 Spoken text set by the AI (should match what is printed):
 
@@ -136,9 +138,6 @@ Spoken text set by the AI (should match what is printed):
 |---|---|
 | PDF 4 (printed iii) | Moral Foods THE CONSTRUCTION OF NUTRITION AND HEALTH IN MODERN ASIA |
 | PDF 6 (printed v) | Acknowledgments ix |
-| PDF 8 (printed vii) | Glossary 285 |
-| PDF 8 (printed vii) | Bibliography 293 |
-| PDF 8 (printed vii) | Index 335 |
 | PDF 14 (printed 1) | Introduction Food and Health: Fortification and Modern Asian State Making |
 | PDF 34 (printed 21) | Part I GOOD FOODS |
 | PDF 36 (printed 23) | 1 Health, Wealth, and Solidarity Rice as Self in Japan and Malaysia |
@@ -164,25 +163,40 @@ Pages: PDF 5 (printed iv)
 
 ### 5. Hidden from Screen Readers (artifacts)
 
-- "running head (Contents)": text matching `(vi Contents|Contents vii)` on PDF 7–8 (printed vi–vii)
-- "running head (Introduction)": text matching `(2 Introduction|Caldwell and Leung 3)` on PDF 15–16 (printed 2–3)
-- "running head (Index)": text matching `(336 Index|Index 337)` on PDF 349–350 (printed 336–337)
-- "folio v": text matching `v` on PDF 6 (printed v)
-- "folio 1": text matching `1` on PDF 14 (printed 1)
-- "folio 66": text matching `66` on PDF 79 (printed 66)
-- "folio 335": text matching `335` on PDF 348 (printed 335)
+- "running head p7": text matching `vi|Contents|vi Contents` on PDF 7 (printed vi)
+- "running head p8": text matching `vii|Contents|Contents vii` on PDF 8 (printed vii)
+- "running head p15": text matching `2|Introduction|2 Introduction` on PDF 15 (printed 2)
+- "running head p16": text matching `3|Caldwell and Leung|Caldwell and Leung 3` on PDF 16 (printed 3)
+- "running head p349": text matching `336|Index|336 Index` on PDF 349 (printed 336)
+- "running head p350": text matching `337|Index|Index 337` on PDF 350 (printed 337)
+- "folio p6": text matching `v` on PDF 6 (printed v)
+- "folio p14": text matching `1` on PDF 14 (printed 1)
+- "folio p79": text matching `66` on PDF 79 (printed 66)
+- "folio p348": text matching `335` on PDF 348 (printed 335)
 
-### 6. Untagged Paths (rules, borders, lines)
+### 6. Reading Order Changes
+
+Listen through these spots with a screen reader.
+
+- Figure on PDF 106 (printed 93) moved to read with its page (it read after PDF 356 (printed 343); now after PDF 107 (printed 94))
+- Figure on PDF 155 (printed 142) moved to read with its page (it read after PDF 356 (printed 343); now after PDF 156 (printed 143))
+- Figure on PDF 202 (printed 189) moved to read with its page (it read after PDF 356 (printed 343); now after PDF 202 (printed 189))
+- Figure on PDF 204 (printed 191) moved to read with its page (it read after PDF 356 (printed 343); now after PDF 205 (printed 192))
+- Figure on PDF 276 (printed 263) moved to read with its page (it read after PDF 356 (printed 343); now after PDF 277 (printed 264))
+- Figure on PDF 286 (printed 273) moved to read with its page (it read after PDF 356 (printed 343); now after PDF 286 (printed 273))
+- Figure on PDF 293 (printed 280) moved to read with its page (it read after PDF 356 (printed 343); now after PDF 293 (printed 280))
+
+### 7. Untagged Paths (rules, borders, lines)
 
 12 paths drawn outside any tag were marked as decoration: none of them carries text, an image or a link, and none touches untagged text or images.
 
-### 7. Untagged Content (260 objects)
+### 8. Untagged Content (260 objects)
 
 Drawn content that is neither tagged nor marked as decoration (content reused on several pages counts once). Not changed by the pipeline; a person decides whether each is real content (tag it) or decoration (artifact it). Pages with the most:
 
 - PDF 5 (printed iv): 258 text, 2 image
 
-### 8. Spoken Text (ActualText) Checked Against the Print (18 accepted with differences, 0 rejected)
+### 9. Spoken Text (ActualText) Checked Against the Print (18 accepted with differences, 0 rejected)
 
 A spoken text may differ from the printed characters only in spacing, letter case and line-end hyphens (sponsor rule 1). Accepted ones that differ are listed so a person can listen to them; rejected ones added or changed words or punctuation.
 
@@ -205,7 +219,7 @@ A spoken text may differ from the printed characters only in spacing, letter cas
 - Accepted, PDF 254 (printed 241): printed "11 From Civilizing Foods for Nourishing Life to a Global Traditional Chinese Medicine Dietetics…" → spoken "11 From Civilizing Foods for Nourishing Life to a Global Traditional Chinese Medicine Dietetics Changing Perceptions of Foods in Chinese Medicine"
 - Accepted, PDF 275 (printed 262): printed "12 Good Food, Bad Bodies Lactose Intolerance and the Rise of Milk Culture in China" → spoken "12 Good Food, Bad Bodies Lactose Intolerance and the Rise of Milk Culture in China"
 
-### 9. Links Whose Description Was Only a URL (9, and 1 address that looks broken)
+### 10. Links Whose Description Was Only a URL (9, and 1 address that looks broken)
 
 The description (what a screen reader announces) was set to the book's own sentence around the link, with the URL removed. No words were added and the visible URL is unchanged. Replace any of these with a better description if needed.
 
@@ -225,20 +239,20 @@ Link addresses that look broken (listed, not changed):
 
 - PDF 101 (printed 88): `http://www.mhlw.go.jp.`: the address ends with punctuation or an unmatched closing bracket from the printed text; probably broken
 
-### 10. Empty Tags (7 removed, 1 kept)
+### 11. Empty Tags (7 removed, 1 kept)
 
 A tag is removed only when proven empty: nothing under it holds content, it carries no Alt, ActualText, E or ID, and nothing in the file refers to it except its parent. Table cells are never removed one by one; a table goes only when every part is empty.
 
 - Removed: 4 TNI, 3 P
 - **Kept, empty: Note (page: not on this tag)**, because carries /ID "note-0838"; IDTree "note-0838".
 
-### 11. Structure Left for a Person
+### 12. Structure Left for a Person
 
 - 1 empty tag: Note (page: not on this tag)
 - PDF 5 (printed iv): a link's description is only its URL (www.knowledgeunlatched.org)
 - PDF 5 (printed iv): a link's description is only its URL (https://creativecommons.org/licenses/by-nc-nd/4.0/)
 
-### 12. veraPDF (WCAG 2.2 machine profile), Before and After
+### 13. veraPDF (WCAG 2.2 machine profile), Before and After
 
 veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 4 rules failing (the AI can act on 1, the pipeline on 3, only a person on 0). After: 1.
 
@@ -249,61 +263,53 @@ veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 | ISO 14289-1 6.2-1 | 1.3.1 | The document catalog dictionary shall include a MarkInfo dictionary containing an entry, Marked, whose value shall be true | the pipeline (1 changed) | 1 | 0 | fixed | page: not on this tag |
 | ISO 14289-1 7.18.3-1 | 2.4.3 | Every page on which there is an annotation shall contain in its page dictionary the key Tabs, and its value shall be S | the pipeline (1 changed) | 1 | 0 | fixed | PDF 5 (printed iv) |
 
-### 13. WCAG Checks veraPDF Does Not Make
+### 14. WCAG Checks veraPDF Does Not Make
 
 Each item is something to look at, not a proven failure.
 
-- 1.3.2 2 small sections are read more than 5 pages after their printed page, after a longer section that covers them. Not a failure (long stories overlap in InDesign books), but a screen reader hears them far from where they are printed: PDF 12 (printed xi) read after PDF 350 (printed 337); PDF 106 (printed 93) read after PDF 350 (printed 337)
-- 1.3.2 6 sections read away from their printed place, as in the original (this run did not move them). Listen through each where it is read, or move it with move_section:
-  - PDF 7 (printed vi): Story "vi Contents", read before PDF 2 (printed i)
-  - PDF 8 (printed vii): Story "Contents vii", read before PDF 2 (printed i)
-  - PDF 15 (printed 2): Story "2 Introduction", read before PDF 2 (printed i)
-  - PDF 16 (printed 3): Story "Caldwell and Leung 3", read before PDF 2 (printed i)
-  - PDF 349 (printed 336): Story "336 Index", read before PDF 2 (printed i)
-  - PDF 350 (printed 337): Story "Index 337", read before PDF 2 (printed i)
+- 1.3.2 1 small section is read more than 5 pages after its printed page, after a longer section that covers it. Not a failure (long stories overlap in InDesign books), but a screen reader hears them far from where they are printed: PDF 106 (printed 93) read after PDF 343 (printed 330)
 
-### 14. Deferred by the AI
+### 15. Deferred by the AI
 
-- **Page 5 (copyright, CIP data) is untagged text**: veraPDF 7.1-3: about 26 runs of real content are in no tag and not marked as artifact. A person must tag them as paragraphs in the source file; they cannot be artifacted. The other 7.1-3 failures are on cover page 1, which is handled by page_figures. [PDF 5 (printed iv)]
-- **Chapter-opening paragraphs (style CO) have lost their drop-cap first letters in the text layer, e.g. “n today’s world” for “In today’s world”, “apan” for “Japan”, “ar” for “War”**: The text layer is incomplete and I cannot supply whole paragraphs as ActualText without changing the text. A person should check how the drop caps are tagged. [PDF 14 (printed 1), PDF 36 (printed 23), PDF 60 (printed 47), PDF 79 (printed 66), PDF 102 (printed 89), PDF 124 (printed 111), PDF 143 (printed 130), PDF 163 (printed 150), PDF 186 (printed 173), PDF 214 (printed 201), PDF 234 (printed 221), PDF 254 (printed 241), PDF 275 (printed 262)]
-- **About 150 Korean (hangul) runs have no language tag**: The language key only offers kana → ja and per-run entries that need certain page and mcid values, which the digest does not give. A person should tag the hangul runs ko, mostly in the notes and bibliography of chapter 6 and the bibliography. [PDF 143 (printed 130), PDF 159 (printed 146), PDF 305 (printed 292), PDF 306 (printed 293), PDF 324 (printed 311), PDF 325 (printed 312)]
-- **Han-only Chinese/Japanese runs (about 1,020, in the glossary, bibliography and notes)**: Han-only runs cannot be told apart as Chinese or Japanese; the executor sends them to a human. [PDF 298 (printed 285), PDF 299 (printed 286), PDF 300 (printed 287), PDF 301 (printed 288), PDF 302 (printed 289), PDF 303 (printed 290), PDF 304 (printed 291), PDF 305 (printed 292), PDF 306 (printed 293)]
-- **Chapter-end endnotes are interleaved with the body, so sections.notes_pages is not set**: The Notes sections are scattered through the book, not one contiguous block. Each is headed H3 “Notes” and its paragraphs become Note elements. [PDF 28 (printed 15), PDF 297 (printed 284)]
-- **Trailing PDF pages 357–361 have no tagged text**: They could be blank pages or advertisements or a back cover; the digest does not show their content. A person should check them. [PDF 357 (printed 344), PDF 358 (printed 345), PDF 359 (printed 346), PDF 360 (printed 347), PDF 361 (printed 348)]
+- **Copyright page text and Library of Congress CIP data are untagged (26 runs)**: veraPDF 7.1-3 (content neither tagged nor artifact). This is real content, not decoration, so it cannot be hidden. A person must tag it as paragraphs. The cover page (PDF 1) is handled by page_figures. [PDF 5 (printed iv)]
+- **Contents entries for Glossary, Bibliography and Index have garbled text ("5 Glossary 28", "3 Bibliography 29", "335 Index"); printed forms are "Glossary 285", "Bibliography 293", "Index 335"**: The text layer's digit order does not match the printed order, so ActualText would likely be rejected. A person should fix it. [PDF 8 (printed vii)]
+- **First paragraph of each chapter (style CO) begins without its drop-cap letter ("n today’s world…", "apan and Malaysia…")**: The initial letter is missing from the tag text. The tag text can't be changed here and ActualText for whole paragraphs is impractical, so a person should check how a screen reader reads these. [PDF 14 (printed 1), PDF 36 (printed 23), PDF 60 (printed 47), PDF 79 (printed 66), PDF 102 (printed 89), PDF 124 (printed 111), PDF 143 (printed 130), PDF 163 (printed 150), PDF 186 (printed 173), PDF 214 (printed 201), PDF 234 (printed 221), PDF 254 (printed 241), PDF 275 (printed 262)]
+- **Endnotes sit at the end of each chapter, so sections.notes_pages is not set**: There is no single notes section; notes are tagged Note by style. [PDF 28 (printed 15), PDF 57 (printed 44), PDF 74 (printed 61), PDF 98 (printed 85), PDF 116 (printed 103), PDF 139 (printed 126), PDF 159 (printed 146), PDF 183 (printed 170), PDF 206 (printed 193), PDF 231 (printed 218), PDF 248 (printed 235), PDF 272 (printed 259), PDF 293 (printed 280)]
 
-Reviewer note from the AI: Heading plan: H1 is the book title (TPT merged with its subtitle TPST). H2 are part titles (“Part I GOOD FOODS” merged), chapter titles (number and title merged with subtitle), and Contents, Acknowledgments, Glossary, Bibliography, Contributors and Index. H3 are the _H1_ sections and the chapter “Notes” heads. H4 are the bold subsection heads (style H2). The half-title “Moral Foods” (TPHT) is demoted to P. Running heads and folios were found only as a handful of stray Story elements (RHR, RHV, DFOL), and I artifacted them page by page. The folio rules use the bottom band and exact pages so that note-reference numerals are not hit; the reviewer should confirm that they matched. The four actual_text entries on contents entries (12431 0, 12461 0, 12462 0, 12464 0) are guesses at the printed text; the executor may reject them. Figure alt text was rewritten because the publisher alts only repeated the captions; the captions are still tagged as Caption.
+Reviewer note from the AI: Outline: one H1 (book title, with subtitle merged in); front/back matter, part titles and chapter titles are H2 (part number merged into part name, chapter subtitle merged into chapter title); chapter sections and chapter Notes headings are H3; subsections are H4. Half-title lines on PDF 2 and PDF 12 are demoted to paragraphs. Running heads and folios (only 10 tagged ones) are artifacted by page-specific rules. Figure alt text was rewritten because the publisher alt text only repeated the captions. CJK, Korean and Japanese runs are left for the language step.
 
-### 15. Deferred by the Executor
+### 16. Deferred by the Executor
 
 - **1020 Han-only CJK runs** need a Japanese / Chinese decision: fill in `han_review.csv`.
-- text rule "running head (Contents)" matched no text on PDF 7–8 (printed vi–vii): nothing was hidden by this rule; check its pattern against the page (spacing, split runs)
-- text rule "running head (Introduction)" matched no text on PDF 15–16 (printed 2–3): nothing was hidden by this rule; check its pattern against the page (spacing, split runs)
-- text rule "running head (Index)" matched no text on PDF 349–350 (printed 336–337): nothing was hidden by this rule; check its pattern against the page (spacing, split runs)
 - link on a page with no tagged text (PDF 5 (printed iv)): tied to tagged text on PDF 4 (printed iii)
 - link on a page with no tagged text (PDF 5 (printed iv)): tied to tagged text on PDF 4 (printed iii)
 
-### 16. Decisions Not Applied (1)
+### 17. Language Tags
 
-Rejected by validation or by the executor; nothing was half-applied.
-
-- {"op": "figure order PDF 106 (printed 93)", "why": "no target block"}
+Words and passages in another language get a language tag, so a screen reader switches to that language's voice (WCAG 3.1.2). Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.
 
 ## What Was Changed
 
 | Change | Count |
 |---|---:|
 | document: marked as tagged | 1 |
-| artifact: "folio v" | 1 |
-| artifact: "folio 1" | 1 |
-| artifact: "folio 66" | 1 |
-| artifact: "folio 335" | 1 |
+| artifact: "folio p6" | 1 |
+| artifact: "running head p7" | 2 |
+| artifact: "running head p8" | 3 |
+| artifact: "folio p14" | 1 |
+| artifact: "running head p15" | 2 |
+| artifact: "running head p16" | 3 |
+| artifact: "folio p79" | 1 |
+| artifact: "folio p348" | 1 |
+| artifact: "running head p349" | 2 |
+| artifact: "running head p350" | 2 |
 | document: title | 1 |
 | document: DisplayDocTitle | 1 |
 | document: /Lang | 1 |
 | heading: RoleMap level | 10 |
-| heading: merged into prev | 14 |
 | heading: merged into next | 3 |
-| heading: ActualText | 21 |
+| heading: merged into prev | 14 |
+| heading: ActualText | 18 |
 | heading: standard tag H2 → H4 (retyped) | 8 |
 | figure: alt text | 7 |
 | figure: caption tied (figure moved out of its paragraph) | 7 |
@@ -320,8 +326,9 @@ Rejected by validation or by the executor; nothing was half-applied.
 | links: wraps its text | 854 |
 | links: placed after shared text | 2038 |
 | links: URL-only description replaced by the sentence around it | 7 |
+| order: figure moved to its page | 7 |
 | contents: entry wrapped in Reference | 34 |
-| order: empty container removed | 4 |
+| order: empty container removed | 10 |
 | figure: whole page wrapped as one Figure | 1 |
 | figure: alt text from the work order (page figure) | 1 |
 | structure: empty tag removed (proven empty) | 7 |

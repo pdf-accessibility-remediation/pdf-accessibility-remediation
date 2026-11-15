@@ -127,6 +127,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     adds = data['addable']
     saved = core.load(os.path.join(R, 'review_decisions.json'), {}) or {}
     done = threading.Event(); finishing = threading.Event(); result = {}
+    lang_ctx = {}                                     # the language rows' sentences, read once when a fold first opens (#118)
     render_lock = threading.Lock()                    # pdfium is not thread-safe: one page image at a time
     write_lock = threading.Lock()                     # every write of this server, one at a time (auto-save, the Finish check and Finish can race)
     gate = threading.Condition(); inside = {'n': 0, 'closed': False}   # POSTs under way; closed: the server is stopping
@@ -240,7 +241,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             while inside['n']: gate.wait(0.2)
     sid = (data.get('session') or {}).get('id') or '001'
     set_in = (data.get('session') or {}).get('set_in') or {}   # choices carried from an earlier session (a reopen)
-    if not ocr_only: data['languages'] = core.languages()     # the language list (for runs prepared before it too)
+    if not ocr_only: data['language_list'] = core.languages()     # the document-language card's list (data['languages'] is the Languages section's)
     ocr_wo = wo if ocr_only else ai
     def ocr_section(): return O.section(run_dir, digest, ocr_wo)
     intake = core.load(os.path.join(run_dir, '_intake', 'intake.json')) or {}
@@ -305,7 +306,9 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             if path in ('/', '/index.html'):
                 warmed.wait(WARM_WAIT)
                 oc = ocr_section()
-                boot = json.dumps({**data, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': oc,
+                light = {**data, 'items': [it for it in data['items'] if it.get('kind') != core.LANG_KIND],   # #118: the language rows come
+                         'languages': core.language_summary(data['items'])}                                     # by /languages.json
+                boot = json.dumps({**light, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': oc,
                                    'check': first_check(), 'draft': None if ocr_only else draft_state(), 'ocr_text': first_texts(oc),
                                    'img_sizes': img_sizes()},
                                   ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
@@ -313,6 +316,13 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 # any text (a Session Note, a decision's note, book text, the first OCR pages) would otherwise make the
                 # browser read the rest of the page as script, and the page, whose script is in the head, would load blank
                 return self.send(200, open(PAGE, encoding='utf-8').read().replace('/*REVIEW_DATA*/null', boot), 'text/html; charset=utf-8')
+            if path == '/languages.json' and not ocr_only:   # one fold of the Languages section, LANG_PAGE rows at a time (#118)
+                from urllib.parse import parse_qs
+                q = parse_qs(self.path.split('?', 1)[1] if '?' in self.path else '')
+                try: start = max(0, int((q.get('start') or ['0'])[0]))
+                except ValueError: start = 0
+                if 'contexts' not in lang_ctx: lang_ctx['contexts'] = core.language_contexts(run_dir)
+                return self.send(200, core.language_rows(data['items'], (q.get('group') or [''])[0], start, contexts=lang_ctx['contexts']))
             if path in text_urls:                      # the OCR text of a page the section can show; any other number: 404
                 n = text_urls[path]
                 try: return self.send(200, {'page': n, 'text': page_text(n)})

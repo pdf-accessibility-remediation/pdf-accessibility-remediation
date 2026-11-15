@@ -6,7 +6,7 @@ nav_order: 5
 
 # Models
 
-The AI that writes the work order is Claude Sonnet by default, reached through OpenRouter. This page explains how to choose another model, what that changes about costs, and the temperature setting sent with each request.
+The AI that writes the work order is Claude Sonnet by default, reached through OpenRouter. The language step has its own model setting, `LANGUAGE_MODEL` (default: the same model; see [Language tags](languages.md)); Haiku 5.5 was measured for it and not adopted (one confident wrong answer in 569 test items). This page explains how to choose another model, what that changes about costs, and the temperature setting sent with each request.
 
 ## Choosing the model
 
@@ -48,7 +48,7 @@ If your credit is too low, OpenRouter refuses the request (HTTP 402) and nothing
 ```
 Expected Cost: Not Available Yet (1 past request of this kind, from 1 PDF; needs 12 from 6)
 Max Estimated Cost: about $0.27, approximate and not a limit: the dollar limits apply to Claude models only. The OpenRouter bill is the real cost
-AUTO=1: sending without asking (still refused over the $2.00 limit per AI request, the $5.00 limit per PDF, or your credit)
+AUTO=1: sending without asking (still refused over the $2.00 limit per AI request, the $8.00 limit per PDF, or your credit)
 AUTO=1: sending without asking. The dollar limits apply to Claude models only: the openai/gpt-5 estimate is approximate and not a limit; the OpenRouter bill is the real cost
 ```
 
@@ -64,7 +64,7 @@ One line near the top of `decide.py` sets it for every run: `TEMPERATURE = 0`. T
 
 No temperature is sent when the model's maker says to leave it at the default, or the model rejects other values. That is the case when:
 
-- the model id starts with an entry in `OMIT_TEMPERATURE` (in `decide.py`): Opus 4.7 and later, OpenAI reasoning models (`openai/o1`, `o3`, `o4`, `gpt-5`), and `google/gemini-3` (every Gemini 3 model). Add a line there for any other model
+- the model id starts with an entry in `OMIT_TEMPERATURE` (in `lib/models.py`): Opus 4.7 and later, OpenAI reasoning models (`openai/o1`, `o3`, `o4`, `gpt-5`), and `google/gemini-3` (every Gemini 3 model). Add a line there for any other model
 - or OpenRouter lists the model as not accepting a temperature setting
 
 Sonnet matches neither, so it gets `0`.

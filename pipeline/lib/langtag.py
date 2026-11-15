@@ -35,7 +35,46 @@ NAMES = {'en': 'English', 'fr': 'French', 'de': 'German', 'es': 'Spanish', 'pt':
          'la': 'Latin', 'haw': 'Hawaiian', 'tl': 'Tagalog', 'fil': 'Filipino', 'ilo': 'Ilokano', 'bik': 'Bikol', 'vi': 'Vietnamese',
          'id': 'Indonesian', 'ms': 'Malay', 'mi': 'Māori', 'sm': 'Samoan', 'to': 'Tongan', 'ja': 'Japanese', 'ko': 'Korean',
          'zh': 'Chinese', 'zh-Hant': 'Chinese (Traditional)', 'zh-Hans': 'Chinese (Simplified)', 'ar': 'Arabic', 'he': 'Hebrew',
-         'ru': 'Russian', 'el': 'Greek', 'th': 'Thai'}
+         'ru': 'Russian', 'el': 'Greek', 'th': 'Thai',
+         # #118 (language tagging): every language the language step may write, so the pages never show a code
+         'ja-Latn': 'Japanese (Romanized)', 'zh-Latn': 'Chinese (Romanized)', 'ko-Latn': 'Korean (Romanized)',
+         'sa': 'Sanskrit', 'sa-Latn': 'Sanskrit (Romanized)', 'pi': 'Pali', 'pi-Latn': 'Pali (Romanized)', 'yue': 'Cantonese',
+         'mh': 'Marshallese', 'chk': 'Chuukese', 'pon': 'Pohnpeian', 'ch': 'Chamorro', 'ty': 'Tahitian', 'fj': 'Fijian',
+         'gil': 'Gilbertese', 'ceb': 'Cebuano', 'hil': 'Hiligaynon', 'pam': 'Kapampangan', 'pag': 'Pangasinan', 'war': 'Waray',
+         'bo': 'Tibetan', 'mn': 'Mongolian', 'hi': 'Hindi', 'ur': 'Urdu', 'fa': 'Persian', 'tr': 'Turkish', 'km': 'Khmer',
+         'my': 'Burmese', 'lo': 'Lao', 'ug': 'Uyghur', 'ain': 'Ainu', 'ryu': 'Okinawan', 'sv': 'Swedish', 'da': 'Danish',
+         'no': 'Norwegian', 'pl': 'Polish', 'cs': 'Czech', 'hu': 'Hungarian', 'fi': 'Finnish', 'grc': 'Ancient Greek',
+         'qaa': 'Placeholder (local use)'}
+
+# ISO 639-2 three-letter codes whose language has a two-letter ISO 639-1 code: BCP 47 uses the shortest (jpn → ja). The
+# languages above and their neighbours; a three-letter code not listed here is left as it is (haw, chk, pon have no
+# two-letter code).
+SHORT = {'eng': 'en', 'fra': 'fr', 'fre': 'fr', 'deu': 'de', 'ger': 'de', 'spa': 'es', 'por': 'pt', 'ita': 'it', 'nld': 'nl',
+         'dut': 'nl', 'lat': 'la', 'tgl': 'tl', 'vie': 'vi', 'ind': 'id', 'msa': 'ms', 'may': 'ms', 'mri': 'mi', 'mao': 'mi',
+         'smo': 'sm', 'ton': 'to', 'jpn': 'ja', 'kor': 'ko', 'zho': 'zh', 'chi': 'zh', 'ara': 'ar', 'heb': 'he', 'rus': 'ru',
+         'ell': 'el', 'gre': 'el', 'tha': 'th', 'san': 'sa', 'pli': 'pi', 'mah': 'mh', 'cha': 'ch', 'tah': 'ty', 'fij': 'fj',
+         'bod': 'bo', 'tib': 'bo', 'mon': 'mn', 'hin': 'hi', 'urd': 'ur', 'fas': 'fa', 'per': 'fa', 'tur': 'tr', 'khm': 'km',
+         'mya': 'my', 'bur': 'my', 'lao': 'lo', 'uig': 'ug', 'swe': 'sv', 'dan': 'da', 'nor': 'no', 'pol': 'pl', 'ces': 'cs',
+         'cze': 'cs', 'hun': 'hu', 'fin': 'fi'}
+DEPRECATED = {'iw', 'in', 'jw', 'ji', 'mo'}      # replaced by he, id, jv, yi, ro
+
+def shortest(tag):
+    """The tag with its primary language subtag in its shortest form ('jpn-Latn' → 'ja-Latn'), or None if not a tag."""
+    t = norm(tag) if tag else None
+    if not t: return None
+    parts = t.split('-')
+    parts[0] = SHORT.get(parts[0], parts[0])
+    return '-'.join(parts)
+
+def valid_part(tag):
+    """True for a tag the language step may write: well formed and in canonical case, its language subtag in its shortest
+    form, not deprecated, and a language this module can name (or qaa, reserved for local use). Refuses 'jp', 'cn',
+    'eng', 'iw' (review 02, L2)."""
+    if not isinstance(tag, str) or norm(tag) != tag or shortest(tag) != tag: return False
+    parts = tag.split('-')
+    if parts[0] in DEPRECATED: return False
+    if parts[0] == 'qaa': return True
+    return name(tag) is not None and (len(parts) == 1 or f'{parts[0]}-{parts[1]}' in NAMES or len(parts[1]) == 2 or parts[1].isdigit())
 
 def name(tag):
     """A language tag's name ('en-US' → 'English', 'zh-Hant-TW' → 'Chinese (Traditional)'), or None when the table has no
@@ -45,3 +84,54 @@ def name(tag):
     parts = t.split('-')
     if len(parts) > 1 and f'{parts[0]}-{parts[1]}' in NAMES: return NAMES[f'{parts[0]}-{parts[1]}']
     return NAMES.get(parts[0])
+
+# A language's name written where a code belongs ("Hawaiian", "Marshallese "): the code, only when the name has one
+# certain meaning (#118; review 02 of the scoping: hawaii3 writes "Hawaii", "Hawaiian", "Marshallese"). "Hawaii" is the
+# place's name, used by that publisher for the language; no other place name is read as a language.
+NAME_ALIASES = {'hawaii': 'haw', 'hawai': 'haw', "hawai'i": 'haw', 'hawaiʻi': 'haw', 'hawai‘i': 'haw', 'olelo hawaii': 'haw', 'ʻōlelo hawaiʻi': 'haw',
+                'mandarin': 'zh', 'chinese': 'zh', 'cantonese': 'yue'}
+
+def from_name(value):
+    """The code for a language name written as a value ('Hawaiian' → 'haw', 'Japanese' → 'ja'), case and spaces ignored;
+    None for anything else (never guessed)."""
+    v = ' '.join(str(value or '').split()).strip().lower()
+    if not v: return None
+    if v in NAME_ALIASES: return NAME_ALIASES[v]
+    plain = {n.lower(): c for c, n in NAMES.items() if '(' not in n and c != 'qaa'}
+    return plain.get(v)
+
+# ------------------------------------------------------------------ a publisher's language name on its words
+# Moved unchanged from apply.py (review 12, C): the review page shows the value a kept tag writes, from the same rule.
+NON_LATIN = {'ja', 'zh', 'ko', 'yue', 'ru', 'uk', 'bg', 'sr', 'mk', 'be', 'el', 'ar', 'fa', 'ur', 'he', 'yi', 'th', 'lo', 'km', 'my',
+             'hi', 'mr', 'ne', 'bn', 'ta', 'te', 'kn', 'ml', 'gu', 'pa', 'si', 'ka', 'hy', 'am', 'bo', 'mn'}
+POLYNESIAN = {'mi', 'to', 'sm', 'ty', 'rap', 'mrq', 'mqm', 'mrv', 'mnv', 'rar', 'niu', 'tkl', 'tvl', 'wls', 'fud', 'pkp'}   # Polynesian languages (review 10, L1; Rennell-Bellona is mnv, review 12)
+def name_misfit(code, text):
+    """Why a language's name written as /Lang doesn't fit its words (review 08, M4), or None when nothing local says so:
+    the script differs (a Latin-script language on Chinese characters, or the reverse), most words are Hawaiian in shape
+    for a language that isn't Hawaiian or another Polynesian one ("Hungarian" on "Kaleo Mahoe Akana"), or a Hawaiian tag
+    holds a word Hawaiian can't spell (the letter guard: "Sustʻāinable") or mostly English words. Never a guess at the
+    right language: a person decides."""
+    from lib import ocrwords, langcands
+    words = [w for w in (ocrwords.core(x) for x in str(text or '').split()) if len(w) >= 2 and any(ch.isalpha() for ch in w)]
+    if not words: return None
+    p = code.split('-')[0].lower(); other = langcands.other_script(text)
+    if other and p not in NON_LATIN: return f'its words are in {other}'
+    if not other and p in NON_LATIN: return 'its words are in Latin script'
+    if p == 'haw':
+        bad = [w for w in words if ocrwords.not_hawaiian_letters(w)]
+        if bad: return f'"{bad[0]}" is not spelled with Hawaiian letters'
+        eng = [w for w in words if langcands.in_english(w) and not ocrwords.hawaiian_shape(w)]
+        return 'most of its words are English' if len(eng) * 2 > len(words) else None     # "Oʻahu, a Giant Military Base" (review 10, L2)
+    if p in POLYNESIAN: return None                    # Māori, Tongan, Samoan …: Hawaiian-shaped words are theirs too (review 10, L1)
+    haw = [w for w in words if ocrwords.hawaiian_shape(w) and not langcands.in_english(w)]
+    return 'its words look Hawaiian' if len(haw) * 2 >= len(words) else None
+
+def kept_value(raw, text=''):
+    """The /Lang a publisher's value carried by a tag-tree element leaves after apply.py's fix_lang_values (#118, review 12,
+    C): a language tag in its shortest form; a language's name as its code when its words fit (name_misfit); anything else
+    as written (a name that doesn't fit, or a value that is no tag), for a person."""
+    tag = norm(raw)
+    if tag is None:
+        code = from_name(raw)
+        return code if code and not name_misfit(code, text) else str(raw)
+    return shortest(tag)

@@ -83,7 +83,8 @@ function body(s) {
   h += '<p>' + esc(T.finished) + ' of ' + n + ' PDFs finished' + (s.ocr_name ? ' · OCR Language: ' + esc(s.ocr_name) : '') + '</p>';
   const plural = k => k === 1 ? '' : 's';
   const x = T.expected;                                          // no key on any estimate (made before #65): no line
-  const exp = !x ? '' : x.usd == null ? 'Expected Cost: Not Available Yet' :
+  const NONE_WHY = { too_few: 'not enough past runs to calculate it', cut_off: "an earlier answer was cut off, so it can't be calculated" };   // as panel.js
+  const exp = !x ? '' : x.usd == null ? 'Expected Cost: Not Available Yet' + (NONE_WHY[x.none] ? ' (' + NONE_WHY[x.none] + ')' : '') :
     'Expected Cost: ' + usd(x.usd) + ' for ' + (x.books === x.of ? '' : esc(x.books) + ' of ') + esc(x.of) + ' PDF' + plural(x.of) + (x.books === x.of ? '' : ' (Not Available Yet for ' + (x.of - x.books) + ' PDF' + plural(x.of - x.books) + ')');
   const before = s.phase === 'ready' || s.phase === 'missing';
   if (s.phase === 'estimating' || s.phase === 'language') {      // R14: never "$0.00" while the estimates come in

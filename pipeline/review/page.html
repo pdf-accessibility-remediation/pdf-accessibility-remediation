@@ -106,6 +106,32 @@ dialog .buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: fl
 #gapErr { color: var(--reject); }
 section > h2 { font-size: 16px; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
 .card { background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 10px; }
+/* #118: the Languages section, one fold per language, one row per word form */
+#languages details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; padding: 6px 12px; }
+#languages summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+/* one row per word form (round 24, Patrick's correction of round 23): the fold's rows share two columns (a subgrid), so
+   rows within a fold line up. Column 1 is as wide as the fold's widest set of buttons; "Change Language" sits beside the
+   last button and the text block starts at the same edge; the edge may differ from fold to fold. The word form and its
+   status don't widen column 1 (contain: inline-size): they wrap within it. */
+.lang-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 6px; }
+.lang-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: 6px; align-items: start;
+            border-top: 1px solid var(--line); border-left: 4px solid transparent; padding: 8px 0 8px 8px; }
+.lang-row[data-status] { border-left-color: var(--accent); }                     /* marked without moving the content */
+.lang-left { grid-column: 1; grid-row: 1; min-width: 0; contain: inline-size; }
+.lang-info { grid-column: 2; grid-row: 1; min-width: 0; }
+.lang-status { margin-top: 4px; }
+.lang-form { font-weight: 600; overflow-wrap: anywhere; }
+.lang-ctx, .lang-meta { color: var(--muted, #555); font-size: .92em; overflow-wrap: anywhere; }
+.lang-code { color: var(--muted, #555); font-weight: 400; font-size: .92em; }
+.lang-btns { grid-column: 1; grid-row: 2; display: flex; gap: 6px; align-self: center; }
+.lang-btns button { white-space: nowrap; }
+.lang-acts { grid-column: 2; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.lang-acts select { width: 15em; max-width: 100%; }
+.lang-clear { margin-left: auto; white-space: nowrap; }        /* bottom right of a decided row */
+.lang-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+@media (max-width: 600px) {                                   /* stacked: form, text, buttons, then the list and "Clear Choice" */
+  .lang-list { display: block; } .lang-row { display: flex; flex-direction: column; align-items: stretch; }
+  .lang-left { contain: none; } .lang-btns { flex-wrap: wrap; align-self: flex-start; } }
 .card[data-status=approved] { border-left-color: var(--ok); }
 .card[data-status=changed] { border-left-color: var(--change); }
 .card[data-status=rejected] { border-left-color: var(--reject); }
@@ -197,6 +223,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 @media (max-width: 800px) {
   main { flex-direction: column; padding: 16px; }
   header.top { position: static; }
+  .actions { flex-wrap: wrap; }       /* no sideways scroll at 375 px (round 24); desktop keeps one line */
   .navbar { display: block; position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 8px 16px; }
   /* the side list becomes a drawer over the page: the cards never move */
   /* align-self: stretch, or the desktop flex-start makes the drawer as tall as its list and nothing scrolls */
@@ -407,7 +434,7 @@ function checkLine() {
   const n = (k, one, many) => k + ' ' + (k === 1 ? one : many);
   const parts = [f && n(f, 'choice needs fixing', 'choices need fixing'), c && n(c, 'conflict', 'conflicts'),
                  g && n(g, 'gap open', 'gaps open'), u && n(u, 'choice left out', 'choices left out')].filter(Boolean);
-  const t = parts.length ? parts.join(' · ') : 'All choices can be applied';
+  const t = parts.length ? parts.join(' · ') : '';                   // nothing to say when nothing needs a person (2026-11-14)
   if (t !== lineText) { lineText = t; el.textContent = t; }   // the same words again: not announced again
   el.classList.toggle('bad', f + c > 0);
   document.getElementById('checkBtn').hidden = !parts.length;
@@ -869,7 +896,7 @@ function editor(it, d) {
     (it.key === 'rolemap' && it.context.count ? ' <span class="flag">changes all ' + it.context.count + ' elements of this style</span>' : '');
   if (it.edit === 'text') return '<textarea data-act="value" aria-label="New value">' + esc(v) + '</textarea>';
   if (it.edit === 'lang') {                            // a language from the list, or Other: the tag typed (kept as it is, never swapped for a near one)
-    const L = DATA.languages || [], known = L.some(([t]) => t === v);
+    const L = DATA.language_list || [], known = L.some(([t]) => t === v);     // not DATA.languages: the Languages section's summary
     return '<select data-act="langpick" aria-label="Language">' + L.map(([t, n]) => '<option value="' + esc(t) + '"' + (t === v ? ' selected' : '') + '>' + esc(n) + '</option>').join('') +
       '<option value=""' + (known ? '' : ' selected') + '>Other</option></select> <input type="text" data-act="value" aria-label="Language tag" value="' + esc(v) + '" size="12"' + (known ? ' hidden' : '') + '>' +
       ' <span class="ctx">Under Other, type a language tag such as en-AU, ja, haw.</span>';
@@ -1289,6 +1316,7 @@ function nav() {
     '</span><span>' + (s.hand ? todo : s.count) + '</span></a>').join('');
   h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + esc(view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
   h += '<h2>Check First</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
+  if ((DATA.languages || {}).total) h += '<h2>Languages</h2><a href="#languages"><span>Word Forms</span><span id="navLangLeft">' + fmtN(langLeft()) + '</span></a>';   // review 08, L4
   h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
   h += '<h2>Page Index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
     '<a href="#card-' + esc(pages[p][0]) + '" data-view="priority"><span>p. ' + p + '</span><span>' + pages[p].length + '</span></a>').join('');
@@ -1300,7 +1328,9 @@ function progress() {
   const n = items.filter(it => (state.decisions[it.id] || {}).status).length;
   document.getElementById('progress').textContent = n + ' of ' + items.length + ' reviewed' + (state.additions.length ? ' · ' + state.additions.length + ' added' : '');
   document.getElementById('bar').style.width = (items.length ? 100 * n / items.length : 0) + '%';
+  if (typeof progressLang === 'function' && LANG_READY) progressLang();
 }
+let LANG_READY = false;
 
 const cards = document.getElementById('cards');
 function clearChoice(art) {
@@ -1596,6 +1626,9 @@ async function askFinish() {
   dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2>' + checkHtml(chk) + '<div class="ctx" id="finCtx">' +
     (n ? n + (one ? ' decision is' : ' decisions are') + ' not reviewed: "Finish Review" records ' + (one ? 'it' : 'them') + ' as the AI wrote ' + (one ? 'it' : 'them') +
          ', marked "accepted without review", and "Ready to Ship?" stays No.' : 'Every decision has a choice.') +
+    ((DATA.languages || {}).total && !OCR_ONLY ? (langLeft() ? ' ' + fmtN(langLeft()) + (langLeft() === 1 ? ' word form' : ' word forms') + ' under "Languages" ' + (langLeft() === 1 ? 'is' : 'are') +
+         ' not decided: "Finish Review" applies ' + (langLeft() === 1 ? 'it' : 'them') + ' as the AI decided (the PDF\'s own tags stay as they are), and "Language Tags" in "Ready to Ship?" stays Not Reviewed.'
+         : ' Every word form under "Languages" is decided.') : '') +
     (SESSION && SESSION.reopened ? ' "Finish Review" re-applies the reviewed order (no AI request).' : '') + ' The name and notes go to "Session History."' +
     (OCR ? ' "OCR Text": ' + esc(ov) + '. An OCR verdict is recorded on its own under "OCR Text", not with "Finish Review."' : '') + '</div>' +
     '<label for="finName">Session Name</label><input type="text" id="finName" maxlength="80">' +
@@ -1662,6 +1695,132 @@ finBtn.addEventListener('click', async () => {
   } catch (e) { msg('This page can\'t reach its server: the review was closed, or the app stopped. Your choices are kept in this browser.', true); }
 });
 renderOcr();
+
+// ---------------------------------------------------------------- #118: the Languages section
+// One fold per language (and one for words the AI left untagged, one for the PDF's own tags). A fold's rows come from
+// /languages.json when it opens, 100 at a time. A choice is stored like any card's (state.decisions[id]), so auto-save,
+// "Finish Review" and the count of what is left treat it the same way. Group approval (a fold's button approving the
+// shown rows that qualify: one language, high confidence, never Chinese characters alone, an existing tag or a mixed
+// answer, each recorded as part of a group approval) is turned off (Patrick, 2026-11-13): LANG_BULK below turns it on.
+// The server's rules for it (review/core.py `bulk`) stay, with their tests.
+const LANG_BULK = false;                                  // group approval: off, so every word form is decided on its own row
+const LANGS = DATA.languages || { groups: [], total: 0, names: [] };
+const langBox = document.getElementById('languages');
+const langRows = {};                                     // group -> the rows loaded so far
+// The section's introduction, one paragraph, the same on every PDF (Patrick, 2026-11-13): plain text, no markup
+const LANG_INTRO = 'Words and passages in another language found in the PDF. A screen reader switches to a language\'s voice for the words tagged with it. Decide each word form: the choice applies to every place it appears. Words in Chinese characters alone are decided one by one, because the same characters are used in Chinese and Japanese. Language tags already in the PDF are also decided one by one, so a person confirms each of them. For Hawaiian, most screen readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.';
+// The status under the word form, as "label: value" (review 14, 4; Patrick, 2026-11-13): HTML, the code in grey
+function langStatusHtml(r, d) {
+  const nameOf = c => (LANGS.names.find(x => x.code === c) || {}).name || c;
+  const val = (name, code) => esc(name || code || '') + langCode(name ? code : '');
+  if (!d || !d.status) return 'Not reviewed';
+  if (d.status === 'changed') return 'Tagged: ' + val(nameOf(d.value), d.value);
+  if (r.current) return (d.status === 'rejected' ? 'Removed: ' : 'Kept: ') + val(r.current_name, r.written || r.current_written || r.current);
+  if (d.status === 'rejected' || !r.ai) return 'Left untagged';
+  return 'Approved: ' + val(r.lang_name || nameOf(r.ai), r.written || r.ai) + (LANG_BULK && d.bulk ? ' (in a group approval)' : '');
+}
+// Why the AI left a form untagged, in staff words (review 14, 2): a low-confidence guess named with its code; a reason
+// word with no wording here never prints; no reason, no parentheses
+const LANG_WHY = { name: 'a name', english: 'part of English', indeterminate: 'not a word of a known language', unsure: 'not sure', varies: 'it varies' };
+function langUntagged(r) {
+  const bits = [];
+  if (LANG_WHY[r.why]) bits.push(LANG_WHY[r.why]);
+  if (r.guess && r.confidence === 'low') bits.push('low confidence; its guess: ' + esc(r.guess_name || r.guess));
+  return 'The AI left it untagged' + (bits.length ? ' (' + bits.join('; ') + ')' : '');
+}
+function langRowHtml(r) {
+  const d = state.decisions[r.id] || {};
+  const opts = '<option value="">Change Language</option>' + LANGS.names.map(x => '<option value="' + esc(x.code) + '"' + (d.value === x.code ? ' selected' : '') + '>' + esc(x.name) + ' · ' + esc(x.code) + '</option>').join('');   // the value written (review 12, C)
+  const pagesTxt = (r.pages || []).slice(0, 8).map(p => 'PDF ' + p).join(', ') + ((r.pages || []).length > 8 ? ', …' : '');
+  const cur = r.current_name ? esc(r.current_name) + (r.current_written ? ' (written "' + esc(r.current_written) + '")' : '')   // review 08, L4: a name, never a code
+            : '"' + esc(r.current_written || r.current) + '", which is not a known language';
+  const what = r.current ? 'The PDF tags it as ' + cur + (r.ai ? '; the AI suggests ' + esc(r.lang_name || r.ai) : '')
+             : r.ai ? 'The AI tags it as <b>' + esc(r.lang_name || r.ai) + '</b>' + (r.confidence ? ' (' + esc(r.confidence) + ' confidence)' : '')
+             : langUntagged(r);
+  const keep = r.current ? 'Keep the Tag' : r.ai ? 'Approve' : 'Leave Untagged';
+  const drop = r.current ? 'Remove the Tag' : r.ai ? 'Leave Untagged' : null;
+  return '<div class="lang-row" id="lang-' + esc(r.id) + '" data-id="' + esc(r.id) + '"' + (d.status ? ' data-status="' + esc(d.status) + '"' : '') + '>' +
+    '<div class="lang-left"><div class="lang-form" lang="' + esc(r.ai || '') + '">' + esc(r.form) + '</div>' +   // the status outside the lang element
+    '<div class="lang-meta lang-status" role="status">' + langStatusHtml(r, d) + '</div></div>' +
+    '<div class="lang-info"><div>' + what + '</div>' + (r.snippet ? '<div class="lang-ctx">' + esc(r.snippet) + '</div>' : '') +
+    '<div class="lang-meta">' + esc(r.places || 0) + ' place' + (r.places === 1 ? '' : 's') + (pagesTxt ? ' · ' + esc(pagesTxt) : '') +
+    (r.evidence ? ' · Evidence: ' + esc(r.evidence) : '') + '</div></div>' +
+    '<div class="lang-btns"><button type="button" data-lang="keep">' + keep + '</button>' + (drop ? '<button type="button" data-lang="drop">' + drop + '</button>' : '') + '</div>' +
+    '<div class="lang-acts">' +
+    '<select data-lang="change" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select>' +
+    (d.status ? '<button type="button" class="lang-clear" data-lang="clear" aria-label="Clear Choice for ' + esc(r.form) + '">Clear Choice</button>' : '') +   // back to "Not reviewed"
+    '</div></div>';
+}
+// The tag written into the PDF, beside a language's name: only in each row's status and the "Change Language" list
+// (review 12, C; Patrick, 2026-11-13, revised 2026-11-14). The server sends the value that becomes /Lang (core.lang_written), never one worked out from the name.
+function langCode(v) { return v ? ' <span class="lang-code">· ' + esc(v) + '</span>' : ''; }
+function fmtN(x) { return Number(x || 0).toLocaleString('en-US'); }      // review 08, L4: 1,130 word forms, never 1130
+function langLeft() {                                    // word forms under "Languages" with no choice yet (declared, not const: nav() runs before LANGS is set)
+  return Math.max(0, ((DATA.languages || {}).total || 0) - Object.keys(state.decisions).filter(k => k.startsWith('language:') && (state.decisions[k] || {}).status).length);
+}
+function langFold(g) {
+  const rows = langRows[g.group] || [], left = rows.filter(r => !(state.decisions[r.id] || {}).status).length;
+  const bulk = rows.filter(r => r.bulk && !(state.decisions[r.id] || {}).status).length;
+  return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
+    ' (' + fmtN(g.places) + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
+    '<div class="lang-bar">' + (LANG_BULK && g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + bulk + ')</button>' : '') +
+    '<span class="lang-meta">' + (rows.length ? fmtN(rows.length) + ' of ' + fmtN(g.count) + ' shown' + (left ? ' · ' + fmtN(left) + ' not reviewed' : '') : '') + '</span></div>' +
+    '<div class="lang-list">' + rows.map(langRowHtml).join('') + '</div>' +
+    (rows.length < g.count ? '<button type="button" data-lang="more">Show More</button>' : '') + '</details>';
+}
+function renderLanguages() {
+  if (!LANGS.total || OCR_ONLY) { langBox.hidden = true; return; }
+  const open = new Set([...langBox.querySelectorAll('details[open]')].map(d => d.dataset.group));
+  langBox.hidden = false;
+  langBox.innerHTML = '<h2 id="langTitle">Languages (' + fmtN(LANGS.total) + ')</h2>' +
+    '<p>' + LANG_INTRO + '</p>' +
+    LANGS.groups.map(langFold).join('');
+  langBox.querySelectorAll('details').forEach(d => { if (open.has(d.dataset.group)) d.open = true; });
+}
+async function langLoad(group) {
+  const have = langRows[group] || [];
+  try {
+    const r = await fetch('/languages.json?group=' + encodeURIComponent(group) + '&start=' + have.length), b = await r.json();
+    langRows[group] = have.concat(b.rows || []);
+  } catch (e) { saveAlert('The rows could not be loaded. Reload the page.'); return; }
+  renderLanguages();
+  const d = [...langBox.querySelectorAll('details')].find(x => x.dataset.group === group); if (d) d.open = true;
+}
+function langSet(id, st, value, bulk) {
+  const d = dec(id); d.status = st; if (value !== undefined) d.value = value; else delete d.value;
+  if (bulk) d.bulk = true; else delete d.bulk;
+}
+langBox.addEventListener('toggle', e => {
+  const d = e.target; if (d.tagName !== 'DETAILS' || !d.open) return;
+  if (!langRows[d.dataset.group]) langLoad(d.dataset.group);
+}, true);
+langBox.addEventListener('click', e => {
+  const b = e.target.closest('button[data-lang]'); if (!b || finished) return;
+  const fold = b.closest('details'), group = fold && fold.dataset.group, act = b.dataset.lang;
+  if (act === 'more') { langLoad(group); return; }
+  if (act === 'bulk') { if (LANG_BULK) for (const r of langRows[group] || []) if (r.bulk && !(state.decisions[r.id] || {}).status) langSet(r.id, 'approved', undefined, true); }
+  else if (act === 'clear') {                                      // the row as if never decided (2026-11-14): "Not reviewed", the counts again
+    delete state.decisions[b.closest('.lang-row').dataset.id];
+  }
+  else if (act === 'keep' || act === 'drop') {                     // review 14, Note 1: no other act reaches a row
+    const row = b.closest('.lang-row'), id = row.dataset.id;
+    langSet(id, act === 'keep' ? 'approved' : 'rejected');
+  }
+  persist(); renderLanguages(); progressLang();
+});
+langBox.addEventListener('change', e => {
+  const sel = e.target.closest('select[data-lang=change]'); if (!sel || finished || !sel.value) return;
+  langSet(sel.closest('.lang-row').dataset.id, 'changed', sel.value);
+  persist(); renderLanguages(); progressLang();
+});
+function progressLang() {
+  const n = Object.entries(state.decisions).filter(([k, d]) => k.startsWith('language:') && d && d.status).length;
+  const el = document.getElementById('progress');
+  if (el && LANGS.total) el.textContent = el.textContent.replace(/ · languages: .*$/, '') + ' · languages: ' + fmtN(n) + ' of ' + fmtN(LANGS.total) + ' decided';
+  const nl = document.getElementById('navLangLeft'); if (nl) nl.textContent = fmtN(langLeft());     // the sidebar's count (review 08, L4)
+}
+LANG_READY = true; renderLanguages(); progressLang();
+
 render();
 // 15: the check of the saved choices (what /keep answers for them) comes with the page, so the line beside Finish and each
 // card's marks are drawn now; the quiet save below then finds the same
@@ -1715,7 +1874,8 @@ else if (DATA.mode !== 'ocr') saveNow();               // nothing new: one quiet
       <div id="fromNotes"></div>
     </section>
     <section id="ocr-text" aria-labelledby="ocrTitle" hidden></section>
-    <div id="addPanel" hidden></div><div id="roPark" hidden><div id="readingOrder"></div></div><div id="cards"></div></div>
+    <div id="addPanel" hidden></div><div id="roPark" hidden><div id="readingOrder"></div></div><div id="cards"></div>
+    <section id="languages" aria-labelledby="langTitle" hidden></section></div>
 </main>
 <div id="zoom"><img alt=""></div>
 <dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>

@@ -1,7 +1,7 @@
 """Verify work/remediated.pdf against the original. Read-only."""
 import sys, json, re, collections
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, readorder, fontname, contentops as CO  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
+from lib import plumb_fix, readorder, fontname, langtag, contentops as CO  # noqa: F401  plumb_fix before pdfplumber reads a page: it patches pdfplumber
 import pikepdf, pdfplumber, pypdfium2 as pdfium
 import fontTools.cffLib, fontTools.ttLib  # noqa: F401  required: a font that can't be read must not pass as OK
 from PIL import ImageChops
@@ -222,7 +222,8 @@ PAINT, SHOW, PATH = CO.PAINT, CO.SHOW, CO.PATH          # lib/contentops.py: the
 free = collections.Counter(); free_pages = collections.defaultdict(collections.Counter); seen_forms = set()
 font_use = collections.defaultdict(lambda: {'refs': 0, 'ops': 0, 'pages': set(), 'modes': collections.Counter()})
 font_obj = {}
-def _walk(stream, pno, resources, inherited, tr=0):
+_BDC_LANG = {}                                     # (page, MCID) -> the /Lang inside that run's own marks (page content only)
+def _walk(stream, pno, resources, inherited, tr=0, top=False):
     stack = []; cur = None; path = False; gs = []
     fonts = {str(k): v for k, v in ((resources or {}).get('/Font') or {}).items()}
     xo = (resources or {}).get('/XObject') or {}
@@ -230,6 +231,7 @@ def _walk(stream, pno, resources, inherited, tr=0):
         op = str(op)
         if op in ('BDC', 'BMC'):
             props = operands[1] if len(operands) > 1 else None
+            if top and isinstance(props, pikepdf.Dictionary) and '/MCID' in props and '/Lang' in props: _BDC_LANG[(pno, int(props.MCID))] = str(props.Lang)
             stack.append('art' if str(operands[0]) == '/Artifact' else ('mc' if isinstance(props, pikepdf.Dictionary) and '/MCID' in props else 'x'))
             continue
         if op == 'EMC':
@@ -263,9 +265,65 @@ def _walk(stream, pno, resources, inherited, tr=0):
         elif op in ('sh', 'INLINE IMAGE'): kind = 'image'          # pikepdf names an inline image INLINE IMAGE, never BI
         if kind and state is None: free[kind] += 1; free_pages[pno][kind] += 1
 for i, pg in enumerate(pages, 1):
-    try: _walk(pg, i, pg.obj.get('/Resources'), None)
+    try: _walk(pg, i, pg.obj.get('/Resources'), None, top=True)
     except Exception as e: free['unreadable stream'] += 1
 out['untagged_paths'] = free.get('path', 0)          # a vector path drawn outside any tag and any artifact
+# language tags (#118, WCAG 3.1.2): every Span apply.py tagged holds exactly its place's characters, carries its language,
+# and no /Lang inside its marked content names another language (review 02, H1: a marked-content /Lang would override the
+# element's). Publishers' own tags whose marks name another language are counted and listed, not ranked (they come from
+# the book, and go to the language step as existing tags). Every /Lang on an element or in marks must be a BCP 47 tag.
+def _lang_section():
+    def same_lang(a, b): return scripts_primary(a) == scripts_primary(b)
+    def scripts_primary(t): return re.split(r'[-_]', str(t or '').strip())[0].lower()
+    written = (_alog.get('language_parts') or {}).get('spans') or []
+    mism, by_lang = [], collections.Counter()
+    for sp in written:
+        k = (sp['page'], sp['mcid']); by_lang[sp['lang']] += 1
+        og = owner.get(k); el = pdf.get_object(og) if og else None
+        for _ in range(4):                     # a run split under its Span: its first piece may sit in a part's Span below it
+            if el is None or str(el.get('/Lang', '')) == sp['lang'] or not sp.get('mcids'): break
+            el = el.get('/P')
+        keys = [(sp['page'], x) for x in sp.get('mcids') or [sp['mcid']]]     # a run tagged whole, then split under its Span
+        got = ''.join(t for kk in keys for t in _TXT.get(kk, ()))
+        why = None
+        if el is None: why = 'not in the tag tree'
+        elif str(el.get('/Lang', '')) != sp['lang']: why = f'its tag says {str(el.get("/Lang", "")) or "no language"}'
+        elif got != sp['text']: why = 'its marked content holds other text'
+        elif any(kk in _BDC_LANG and not same_lang(_BDC_LANG[kk], sp['lang']) for kk in keys):
+            why = f'its marked content says {next(_BDC_LANG[kk] for kk in keys if kk in _BDC_LANG)}'
+        if why: mism.append({'page': sp['page'], 'mcid': sp['mcid'], 'lang': sp['lang'], 'text': sp['text'][:80], 'why': why})
+    haw_el = ((_alog.get('haw_elements') or {}).get('elements')) or []
+    mine = {(sp['page'], x) for sp in written for x in sp.get('mcids') or [sp['mcid']]} | {tuple(k) for e in haw_el for k in e.get('keys') or []}
+    conflicts, invalid = [], collections.Counter()
+    langs_seen = collections.Counter()
+    for k, og in owner.items():
+        el = pdf.get_object(og)
+        if '/Lang' not in el: continue
+        if k in mine: continue
+        if k in _BDC_LANG and not same_lang(_BDC_LANG[k], el.Lang): conflicts.append({'page': k[0], 'mcid': k[1], 'tag': str(el.Lang), 'marks': _BDC_LANG[k]})
+    for k, v in _BDC_LANG.items():
+        langs_seen[v] += 1
+        if langtag.norm(v) is None: invalid[v] += 1
+    for og in set(owner.values()):
+        el = pdf.get_object(og)
+        if '/Lang' in el and langtag.norm(str(el.Lang)) is None: invalid[str(el.Lang)] += 1
+    # whole elements tagged haw on page-read pages (apply.py haw_elements, review 08 H2): each still says haw, and no marks
+    # under it name another language
+    for e in haw_el:
+        ks = [tuple(k) for k in e.get('keys') or []]
+        og = owner.get(ks[0]) if ks else None; el = pdf.get_object(og) if og else None
+        why = None
+        if el is None: why = 'not in the tag tree'
+        elif str(el.get('/Lang', '')) != 'haw': why = f'its tag says {str(el.get("/Lang", "")) or "no language"}'
+        elif any(k in _BDC_LANG and not same_lang(_BDC_LANG[k], 'haw') for k in ks): why = f'its marked content says {next(_BDC_LANG[k] for k in ks if k in _BDC_LANG)}'
+        if why: mism.append({'page': e.get('page'), 'mcid': ks[0][1] if ks else None, 'lang': 'haw', 'text': str(e.get('text') or '')[:80], 'why': why})
+    return {'spans_written': len(written), 'haw_elements': len(haw_el),
+            'not_in_tree': sum(1 for x in mism if x['why'] == 'not in the tag tree'),   # content not tagged: a failed tagging safety check (Patrick, review 10 H1)
+            'by_language': dict(by_lang), 'all_match': not mism, 'mismatches': len(mism),
+            'mismatch_examples': mism[:20], 'publisher_conflicts': len(conflicts), 'publisher_conflict_examples': conflicts[:10],
+            'marks_with_lang': sum(langs_seen.values()), 'marks_languages': dict(langs_seen.most_common(8)),
+            'invalid_values': dict(invalid)}
+out['language'] = _lang_section()
 out['untagged_objects'] = {'total': sum(free.values()), 'by_kind': dict(free),
                            'top_pages': [[p, dict(c)] for p, c in sorted(free_pages.items(), key=lambda kv: -sum(kv[1].values()))[:8]]}
 def _glyph_count(f):

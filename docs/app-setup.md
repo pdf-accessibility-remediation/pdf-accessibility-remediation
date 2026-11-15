@@ -48,7 +48,7 @@ Settings come from one place, read in this order (later wins):
 
 ### The limits
 
-`limits` sets, in dollars, what the estimates are compared with and the most a "Start Remediation" may bind (`MAX_USD`, `BOOK_MAX_USD`, `BATCH_MAX_USD`). The defaults are `DEFAULT_LIMITS` in `lib/costs.py`, one place for the app and the terminal: `{"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 10}`.
+`limits` sets, in dollars, what the estimates are compared with and the most a "Start Remediation" may bind (`MAX_USD`, `BOOK_MAX_USD`, `BATCH_MAX_USD`). The defaults are `DEFAULT_LIMITS` in `lib/costs.py`, one place for the app and the terminal: `{"per_call_usd": 2, "per_book_usd": 8, "per_batch_usd": 10}`. The language step has its own limit beside them, `DEFAULT_LANGUAGE_USD` ($6; `LANGUAGE_MAX_USD` for one run), which `limits` does not set.
 
 A value here or in `settings.local.json` overrides them. A page to change the limits is a later issue (#87). See [What a run may cost](options.md#what-a-run-may-cost).
 

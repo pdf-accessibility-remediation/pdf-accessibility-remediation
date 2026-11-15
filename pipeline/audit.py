@@ -9,6 +9,8 @@ Reads the original PDF and writes the compact view Claude decides from:
     OUT_DIR/verapdf.json        veraPDF (WCAG 2.2 machine profile) on the original: the "before" for review.md.
                                 digest.json carries only its pdfua_check view (failed rules and who fixes them).
     OUT_DIR/page_reads.json     scanned pages that are mostly Hawaiian, for read_pages.py (images in page_reads/)
+    OUT_DIR/lang_candidates.json  words and passages that may be in another language (lib/langcands.py), for the
+                                language step (#118); local only, never in the digest
 
 Every element Claude may refer to is listed with its object number in the ORIGINAL file
 ("1234 0"); apply.py resolves those numbers against the same file. Text from the book is
@@ -16,7 +18,7 @@ included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads, langcands  # plumb_fix first: it patches pdfplumber
 import pikepdf, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -475,16 +477,23 @@ if is_scan:
 page_reads, read_all = [], os.environ.get('PAGE_READS') == 'all'
 if is_scan:
     for pno, p in enumerate(PL.pages, 1):
-        share = pagereads.hawaiian_share([''.join(c['text'] for c in w) for w in ocrwords.words(p.chars, page_chars)])
-        if share is not None and (read_all or share >= pagereads.SHARE_MIN): page_reads.append({'page': pno, 'label': labels.get(pno), 'share': round(share, 2)})
+        share, foreign = pagereads.hawaiian_page([''.join(c['text'] for c in w) for w in ocrwords.words(p.chars, page_chars)])
+        hawaiian = share is not None and share >= pagereads.SHARE_MIN and (foreign or 0) < pagereads.FOREIGN_MAX   # the letter guard (review 08, H2): not Māori, Tongan …
+        if share is not None and (read_all or hawaiian): page_reads.append({'page': pno, 'label': labels.get(pno), 'share': round(share, 2), 'foreign': round(foreign or 0, 3)})
     if page_reads:
         os.makedirs(os.path.join(OUT, 'page_reads'), exist_ok=True)
         for r in page_reads:
             w_, h_ = docs[r['page'] - 1].get_size(); im = docs[r['page'] - 1].render(scale=PAGE_READ_SIDE / max(w_, h_)).to_pil().convert('L')
             r['image'] = f'page_reads/page_{r["page"]:04d}.png'; im.save(os.path.join(OUT, r['image']), optimize=True); im.close()
 json.dump({'rule': f'every scanned page with {pagereads.WORDS_MIN}+ words of {pagereads.LONG}+ letters (PAGE_READS=all)' if read_all else
-           f'scanned pages where at least {pagereads.SHARE_MIN:.0%} of the words of {pagereads.LONG}+ letters have Hawaiian shape',
+           f'scanned pages where at least {pagereads.SHARE_MIN:.0%} of the words of {pagereads.LONG}+ letters have Hawaiian shape, '
+           f'and under {pagereads.FOREIGN_MAX:.0%} of the words use a letter Hawaiian lacks',
            'pages': page_reads}, open(os.path.join(OUT, 'page_reads.json'), 'w'), ensure_ascii=False, indent=1)
+
+# ---- words and passages that may be in another language (#118, language tagging; WCAG 3.1.2): found locally, written
+#      beside the digest, never into it (the work-order call doesn't see them). Places are character positions within
+#      their marked-content run (lib/langcands.py), so apply.py can find them without reading the text again.
+json.dump(langcands.book(PL, doc_lang=str(pdf.Root.get('/Lang', '') or '')), open(os.path.join(OUT, 'lang_candidates.json'), 'w', encoding='utf-8'), ensure_ascii=False)
 
 # ---- the same validator before and after: veraPDF on the original (started at the top; verify.py runs it on the result).
 #      The full summary goes to verapdf.json for the before/after comparison; the digest gets every failed rule with

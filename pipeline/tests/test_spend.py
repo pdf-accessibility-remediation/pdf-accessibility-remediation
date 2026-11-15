@@ -63,7 +63,7 @@ def test_expected_is_shown_when_present(setup, monkeypatch):
     monkeypatch.setattr(costs, '_expected', lambda x: {'usd': 0.25, 'low': 0.18, 'high': 0.36, 'basis': 'test'})
     assert costs.estimate(str(run_folder(setup)))['expected']['usd'] == 0.25
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
-    assert "'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet') + '<br>'" in js and "'Max Estimated Cost: ' + usd(e.ceiling_usd)" in js
+    assert "'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet' + noneWhy(x)) + '<br>'" in js and "'Max Estimated Cost: ' + usd(e.ceiling_usd)" in js
     assert 'usually' not in js.split('function costLines')[1].split('const NEXT')[0] and 'Worst-case' not in js and 'About ' not in js.split('function costLines')[1].split('const NEXT')[0]
 
 def line_of(js, start):
@@ -105,8 +105,31 @@ def test_page_readings_count_toward_the_credit_and_the_book(setup):
     R = run_folder(setup, credit=0.9); page_reads_estimate(R)
     assert costs.estimate(str(R))['blocked']['code'] == 'credit'           # 0.62 fits, 1.04 does not
     R = run_folder(setup, label='l2', worst=1.9, passes=[{'pass': '1', 'worst_case_usd': 1.9}], book_cap_usd=5.0); page_reads_estimate(R, worst=3.5)
+    e = costs.estimate(str(R))                                              # the readings don't fit with the work order: they alone are left out (review 08, H1)
+    assert e['blocked'] is None and e['page_reads'] is None and e['bounds']['BOOK_MAX_USD'] == 1.91 and 'PAGE_READS_MAX_USD' not in e['bounds']
+    assert [x['kind'] for x in e['left_out']] == ['page_reads'] and 'left out of this run' in e['left_out'][0]['words']
+    page_reads_estimate(R, worst=1.0)                                       # fits: counted, and the PDF's bound includes it
     e = costs.estimate(str(R))
-    assert e['blocked']['code'] == 'per_book' and e['bounds']['BOOK_MAX_USD'] == 1.91
+    assert e['left_out'] == [] and e['ceiling_usd'] == 2.9 and e['bounds']['BOOK_MAX_USD'] == 2.91
+
+def language_estimate(R, worst, **kw):
+    (R / 'language_estimate.json').write_text(json.dumps({'schema': 'language-estimate/1', 'model': MODEL, 'prompt_sha256': 'p',
+        'sent': 40, 'to_send': 2, 'worst_case_usd': worst, 'per_call_worst_usd': worst / 2, **kw}))
+
+def test_the_language_step_never_blocks_spend(setup):
+    """review 08, H1, for the app: over its own cap it is never counted; over the PDF's limit with the work order it alone is
+    left out, and Spend runs the work order without it."""
+    R = run_folder(setup, label='l3', worst=0.62, passes=[{'pass': '1', 'worst_case_usd': 0.62}], book_cap_usd=5.0)
+    language_estimate(R, 4.50, refused={'why': 'cap', 'words': 'over its limit'})
+    e = costs.estimate(str(R))
+    assert e['blocked'] is None and e['language'] is None and e['left_out'] == [] and e['ceiling_usd'] == 0.62
+    language_estimate(R, 4.39)                                              # fits its own cap, not the PDF with the work order
+    e = costs.estimate(str(R))
+    assert e['blocked'] is None and e['language'] is None and [x['kind'] for x in e['left_out']] == ['language']
+    assert SP.language_env(e) == {} and e['bounds']['BOOK_MAX_USD'] == 0.63
+    language_estimate(R, 4.39, refused={'why': 'book', 'words': 'decide.py, at $5'})   # decide.py's refusal is fitted again against the app's limit
+    e = costs.estimate(str(R), limits=costs.limits_of({'limits': {'per_book_usd': 6.0}}))
+    assert e['language']['ceiling_usd'] == 4.39 and e['bounds']['BOOK_MAX_USD'] == 5.02 and SP.language_env(e)['LANGUAGE_MAX_USD'] == '4.40'
 
 def test_batch_binds_the_largest_books_page_readings(setup):
     a, b = run_folder(setup, label='a'), run_folder(setup, label='b')
@@ -360,7 +383,7 @@ def test_test_mode_spend_is_a_saved_reply(setup):
 def test_run_api_wires_each_cap_once():
     """#63 (figure requests past 100 images): MAX_USD and BOOK_MAX_USD are checked as numbers and passed on, once each."""
     sh = open(os.path.join(HERE, 'run_api.sh'), encoding='utf-8').read()
-    assert sh.count('--max-usd "$MAX_USD"') == 1 and sh.count('--book-max-usd "$BOOK_MAX_USD"') == 1
+    assert sh.count('--max-usd "$MAX_USD"') == 1 and sh.count('--book-max-usd "$BOOK_MAX_USD"') == 3   # decide.py, read_pages.py, name_languages.py (review 06 M2)
     assert sh.count('--figure-retry-max-usd "$FIGURE_RETRY_MAX_USD"') == 1 and sh.count('--figure-retry-book-max-usd "$FIGURE_RETRY_BOOK_MAX_USD"') == 1
     assert 'for v in MAX_USD BOOK_MAX_USD FIGURE_RETRY_MAX_USD FIGURE_RETRY_BOOK_MAX_USD; do' in sh and '$v must be a number of dollars' in sh
     assert "# MAX_USD=3 bash run_api.sh …   the limit on what one AI request could cost, in dollars (default 2, lib/costs.py; Claude models only)" in sh
@@ -569,3 +592,7 @@ def test_the_pages_name_the_number_of_requests():
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert "' for ' + esc(e.requests) + ' AI requests'" in js
     assert "esc(T.requests) + ' AI requests" in open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()   # escaped (#93, CodeQL)
+
+@pytest.fixture(autouse=True)
+def _limits(limits_of_2026_11):
+    """These scenarios were written for $5 per PDF and $4 for the language step (conftest.py)."""

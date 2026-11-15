@@ -18,7 +18,8 @@ Each run writes its results to its own folder, beside `pipeline/`. This page lis
 | `record.json` | the archive | Everything vital about the run in one file (see [record.json](#recordjson)) |
 | `reviews/` | a later review | What is needed to review the run again after code changes (see [The reviews folder](#the-reviews-folder)) |
 | `release/` | the archive | The accessibility evaluation's results and each shipment (see [The release folder](#the-release-folder)) |
-| `han_review.csv` | a Japanese / Chinese reader | Only when the PDF has Han-only CJK runs: one row per run, with a blank decision column |
+| `han_review.csv` | a Japanese / Chinese reader | Only when the PDF has Han-only CJK runs the language step left untagged: one row per run, with a blank decision column |
+| `language_run.json` | the archive | The language step's requests, replies, cost and decisions (see [Language tags](languages.md)) |
 | `_intake/intake.md` | a reviewer | Untagged originals only: the intake record in plain words (see [Intake files](#intake-files)) |
 | `_intake/intake.json` | the archive | Untagged originals only: what intake measured and did (see [Intake files](#intake-files)) |
 | `_intake/intake.pdf` | the pipeline | Untagged originals only, when intake changed anything: the OCR'd and auto-tagged copy the rest of the run worked on |
@@ -126,7 +127,7 @@ review.md keeps them all as the record.
 - **Ready to ship?** Four requirements: **Work Order Approval**, **OCR Text Approval**, **Safety Checks** and **Accessibility Evaluation** (see [The four requirements](#the-four-requirements)).
 - **Safety checks:** pages look the same, text unchanged, all content tagged or decoration, the tag-tree index points into the tree, every font readable. Each reads "OK ✔" or "FAILED ✘", never color alone.
 - **Needs a person:** the AI's deferrals, plus the executor's deferrals, plus CHECK rows (see [What "needs a person" counts](#what-needs-a-person-counts)).
-- **AI decisions:** every entry in the work order. Deferrals and the note to the reviewer are not decisions. It reads "approved by NAME on DATE" once the review page has approved it.
+- **AI decisions:** every entry in the work order. Deferrals and the note to the reviewer are not decisions. The language step's word forms are not in this count: they are decided under "Languages" on the review page and counted by the **Language Tags** requirement, and the line adds them after the count ("67 in the work order · 2,190 word forms under "Languages""). The "N changed" figure leaves them out too. It reads "approved by NAME on DATE" once the review page has approved it. A run reported before this rule keeps its stored count until it is reported again.
 - **Fixed automatically (no AI):** the executor's own fixes, by kind: links tied and described, note IDs, tag-tree index entries, standard tags un-remapped, empty tags, decorative lines, tab order, font maps, and others. There is no total, because several touch the same link.
 - **Top issues:** safety failures first, then the ship conditions (OCR text, the review), CHECK rows, the executor's deferrals and the AI's. review.md shows five and "… and N more"; the dashboard shows all of them. Each points to its review.md section.
 

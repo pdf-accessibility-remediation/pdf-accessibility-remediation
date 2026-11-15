@@ -2,13 +2,13 @@
 
 Result: `hawaii3_remediated.pdf`
 
-301 pages · run November 11, 2026, at 6:34 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.208 ($0.0007 per page), from the original AI request on November 3, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+301 pages · run November 14, 2026, at 3:28 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.171 ($0.0006 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.6s · audit 35.3s · reuse saved reply 1.5s · apply 26.1s · verify 32.3s · total 95.8s
+Time: intake 0.5s · audit 25.1s · reuse saved reply 1.3s · apply 22.0s · verify 25.1s · total 74.0s
 
 ## Overview
 
@@ -20,24 +20,25 @@ Time: intake 0.6s · audit 35.3s · reuse saved reply 1.5s · apply 26.1s · ver
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - Safety Checks: Failed (all content tagged or decoration)
+- Language Tags: Not Done (the language step was not run)
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · FAILED ✘ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 19 (4 deferred by the AI · 12 deferred by the executor · 3 CHECK rows)  
-**AI decisions:** 43 in the work order, applied without review by a person  
+**Needs a person:** 24 (3 deferred by the AI · 18 deferred by the executor · 3 CHECK rows)  
+**AI decisions:** 23 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 186 · link descriptions that were only a URL 62 · tag-tree index entries 6 · title shown in the window 1  
-**veraPDF (WCAG 2.2 machine checks):** 1 WCAG rule failing before (7 checks) → 1 after (7 checks) · 0 newly failing
+**veraPDF (WCAG 2.2 machine checks):** 1 WCAG rule failing before (7 checks) → 1 after (1 check) · 0 newly failing
 
 Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
 | All content tagged or marked as decoration: 399 untagged characters · 7 untagged objects (7 text) | see Automated Checks | [Automated Checks](#automated-checks) |
-| If the Lang entry is present in the document's Catalog dictionary or i (veraPDF 7.2-29, 7 checks) | PDF 30 (printed 17), PDF 31 (printed 18), PDF 224 (printed 211) | [§8](#8-verapdf-wcag-22-machine-profile-before-and-after) |
+| If the Lang entry is present in the document's Catalog dictionary or i (veraPDF 7.2-29, 1 check) | PDF 224 (printed 211) | [§8](#8-verapdf-wcag-22-machine-profile-before-and-after) |
 | Reading order jumps back up a column (2 jumps) | PDF 71 (printed 58) | [§9](#9-wcag-checks-verapdf-does-not-make) |
-| /Lang "Hawaii" on Span is not a language tag (19) | 10 pages, PDF 3 (printed ii) to PDF 21 (printed 8) | [§11](#11-deferred-by-the-executor) |
-| /Lang "Hawaiian" on Span is not a language tag | PDF 4 (printed iii) | [§11](#11-deferred-by-the-executor) |
-| … and 5 more | | §10, §11 |
+| /Lang "Hawaii" on Span names Hawaiian, but "Tengan" is not spelled with Hawaiian letters: "P. Kāwika Tengan" (2) | PDF 75 (printed 62), PDF 78 (printed 65) | [§11](#11-deferred-by-the-executor) |
+| /Lang "Hawaii" on Span names Hawaiian, but "Nyéléni" is not spelled with Hawaiian letters: "Nyéléni" (2) | PDF 127 (printed 114) | [§11](#11-deferred-by-the-executor) |
+| … and 15 more | | §10, §11 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -63,7 +64,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | One Document root | OK | Document 1 |
 | Every link tied to its text and described | OK | 0 unresolved · 0 without description · 0 pointing to no annotation |
 | No link nested inside another | OK | 0 |
-| Headings: no skipped levels | OK | H1 1 · H2 10 · H3 65 · H4 112 · H5 8 |
+| Headings: no skipped levels | OK | H1 1 · H2 73 · H3 113 · H4 8 |
 | Headings: exactly one H1 (the title) | OK | 1 H1 (several H1s usually mean parts or chapters were not demoted) |
 | Figures: none with empty or placeholder alt | OK | 11 figures, 0 placeholder |
 | Every Note has a unique ID | OK | 11 notes · 0 without ID · 0 duplicate · 0 not in the ID tree |
@@ -78,7 +79,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Characters with no Unicode value (checklist 3.6) | OK | 0 read-aloud characters with no Unicode value |
 | Private-use characters (checklist 3.6) | OK | 0 read-aloud characters with private-use codes |
 | Title and language set | OK | "The Value of Hawaiʻi 3: Hulihia, the Turning" · en-US |
-| veraPDF WCAG 2.2 (machine): no WCAG failures | **CHECK** | before: 1 WCAG rule failed (7 checks) → after: 1 WCAG rule failed (7 checks) · 1 PDF/UA-only rules not counted (listed under "veraPDF") |
+| veraPDF WCAG 2.2 (machine): no WCAG failures | **CHECK** | before: 1 WCAG rule failed (7 checks) → after: 1 WCAG rule failed (1 checks) · 1 PDF/UA-only rules not counted (listed under "veraPDF") |
 | veraPDF: no rule newly failing or failing more often | OK | 0 fixed · 2 still failing · 0 newly failing |
 | Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 11 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
@@ -94,17 +95,17 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 (printed Cover) | Cover: The Value of Hawaiʻi 3: Hulihia, the Turning Edited by Noelani Goodyear-Ka‘ōpua, Craig Howes, Jonathan Kay Kamakawiwo‘ole Osorio, and Aiko Yamashiro\x00 | Book cover: a large black teardrop shape filled with cracked lava, its fissures glowing red and orange, set against a green background with white swirling edges. Title: The Value of Hawaiʻi 3: Hulihia, the Turning. Edited by Noelani Goodyear-Kaʻōpua, Craig Howes, Jonathan Kay Kamakawiwoʻole Osorio, and Aiko Yamashiro. |
-| PDF 5 (printed iv) | CC BY-NC-ND 4.0\x00 | CC BY-NC-ND 4.0 logo (Creative Commons Attribution-NonCommercial-NoDerivatives) |
-| PDF 93 (printed 80) | Illustration of different ecosystems from the mountains to the plains, shore, and sea, with human dwellings, agriculture, and aquaculture depicted\x00 | Painting “Makamalunohonaokalani” by Marilyn Kahalewai: an ahupuaʻa seen from the mountains to the sea. A stream runs down through forest and loʻi kalo (taro pond fields) to a shore with thatched houses, a canoe hale and canoes on the blue water. |
-| PDF 121 (printed 108) | Word cloud where the words indigenous, agriculture, people, system, family, practices, and Hawaiian are most prominent\x00 | Word cloud made from the speakers’ transcripts. The most prominent words are “Indigenous”, “people”, “system”, “agriculture”, “food”, “land”, “practices”, “family”, “Hawaiian”, “knowledge” and “values”. |
-| PDF 244 (printed 231) | Map of world showing higher temperatures in more urban areas\x00 | Dot map of the world in which each dot is a climate sensor. Dots are densest over North America, Europe, South and East Asia, and coastal Africa and South America, showing the extent of urbanism and higher temperatures in urban areas. |
-| PDF 245 (printed 232) | Map of Oahu highlighting areas around Schofield barracks, Pearl Harbor, Fort Kamehameha, Fort Armstrong, Fort DeRussey, and Diamond Head\x00 | Relief map of Oʻahu showing the original land defense of the island. Red areas mark Schofield Barracks, Pearl Harbor, Ft. Kamehameha, Ft. Armstrong, Ft. DeRussy and Diamond Head. Dotted lines show the railway gun route, the Diamond Head fire range and direct visibility. |
-| PDF 246 (printed 233) | Graphic image of a row of tanks compared to Aloha Tower, each tank is about two to three times as large as Aloha Tower\x00 | Computer rendering of a row of huge red underground fuel tanks (Red Hill) receding into the distance, each with a model of the Aloha Tower in front of it. Each tank is two to three times as large as the tower. |
-| PDF 247 (printed 234) | Two maps of Oahu showing high correlation between military training areas and bases and urbanism\x00 | Two maps of Oʻahu side by side. Left, “Military Land Use (Territory)”, shows training areas in gray and bases in black. Right, “State Land Use (2020)”, shows agriculture in gray and urban areas in black. Military bases and training areas correspond closely to urbanized land. |
-| PDF 248 (printed 235) | Map of Waikiki’s wetlands, streams, marshes, fields, dams, reefs, and direction of storm water inputs and clean water outputs \x00 | Aerial map of Waikīkī proposing recovery of its hydrology. Labeled features include Mānoa-Pālolo marsh, Waikīkī kalo fields, Kapahulu linear wetland, Ala Wai wetland park, Makiki stream park, Kālia dam, Kālia fens and the oyster reef. Red arrows show stormwater inputs and blue arrows show clean water outputs. |
-| PDF 273 (printed 260) | Chart titled Advancing Justice for Kanaka Maoli in One Generation Through Health Policy, a vision statement for health policy to advance equity for Native Hawaiians—and eliminate health disparities—within one generation. Seven steps are described, beginning with “cultural foundation” and ending with “population strengthening,” spanning history through 2030\x00 | Chart: “Ulu Kukui o Kaulike: Advancing Justice for Kānaka Maoli in One Generation Through Health Policy”, a vision to advance health equity for Native Hawaiians and eliminate health disparities within one generation. Seven steps run from “Millennia ago” to 2030, each with a plant illustration: cultural foundation, community cohesion, equity research and policy analyses, systems advocacy, legislative compliance and enforcement, investment for SDOH and disparate populations, and population strengthening. Long description: the steps are explained in the surrounding chapter text. |
-| PDF 297 (printed 284) | Illustration of an ahupuaa from the mountains to the sea, with plants, animals, people, and other natural features\x00 | Illustration, a vision map for a future Hāmākua by Haley Kailiehu (2020): an ahupuaʻa from mountain ridge to sea. A river and waterfall run past a flowering ʻōhiʻa tree, gardens, terraces and a gathering house to the ocean, with seabirds, fish and whales. |
+| PDF 1 (printed Cover) | Cover: The Value of Hawaiʻi 3: Hulihia, the Turning Edited by Noelani Goodyear-Ka‘ōpua, Craig Howes, Jonathan Kay Kamakawiwo‘ole Osorio, and Aiko Yamashiro\x00 | Front cover: a painting of a black teardrop shape filled with glowing red and orange lava-like cracks, set against a green background with a swirling white border. The title 'The Value of Hawaiʻi 3: Hulihia, the Turning' appears at the top, and the editors' names (Noelani Goodyear-Kaʻōpua, Craig Howes, Jonathan Kay Kamakawiwoʻole Osorio, and Aiko Yamashiro) appear at the bottom. |
+| PDF 5 (printed iv) | CC BY-NC-ND 4.0\x00 | Creative Commons license icon: CC BY-NC-ND 4.0 (Attribution, NonCommercial, NoDerivatives). |
+| PDF 93 (printed 80) | Illustration of different ecosystems from the mountains to the plains, shore, and sea, with human dwellings, agriculture, and aquaculture depicted\x00 | Painting 'Makamalunohonaokalani' by Marilyn Kahalewai showing an ahupuaʻa from mountain to sea: a stream runs down through forest and terraced taro fields to a shore with thatched houses, past a fishing canoe house, to the ocean where canoes and swimmers are shown. |
+| PDF 121 (printed 108) | Word cloud where the words indigenous, agriculture, people, system, family, practices, and Hawaiian are most prominent\x00 | Word cloud made from the speakers' transcripts. The most prominent words are Indigenous, people, system, agriculture, food, family, practices, land, Hawaiian, knowledge, and values. |
+| PDF 244 (printed 231) | Map of world showing higher temperatures in more urban areas\x00 | World map made of dots from climate sensors. The dots are densest, and the temperatures higher, in urban regions such as eastern North America, Europe, India, East Asia, and coastal South America, showing the extent of urbanism. |
+| PDF 245 (printed 232) | Map of Oahu highlighting areas around Schofield barracks, Pearl Harbor, Fort Kamehameha, Fort Armstrong, Fort DeRussey, and Diamond Head\x00 | Relief map of Oʻahu with the original land defenses highlighted in red: Schofield Barracks, Pearl Harbor, Fort Kamehameha, Fort Armstrong, Fort DeRussy, and Diamond Head. Dotted lines mark the railway gun route, direct lines of visibility, and the Diamond Head fire range. |
+| PDF 246 (printed 233) | Graphic image of a row of tanks compared to Aloha Tower, each tank is about two to three times as large as Aloha Tower\x00 | Rendering comparing the underground Red Hill fuel tanks with Aloha Tower. A row of large red tanks stands behind a row of Aloha Tower models, and each tank is about two to three times as large as the tower. |
+| PDF 247 (printed 234) | Two maps of Oahu showing high correlation between military training areas and bases and urbanism\x00 | Two side-by-side maps of Oʻahu. The left map, 'Military Land Use (Territory)', shows training areas and bases. The right map, 'State Land Use (2020)', shows agriculture and urban areas. Urban areas and military bases overlap closely, showing the correlation between military land and urbanism. |
+| PDF 248 (printed 235) | Map of Waikiki’s wetlands, streams, marshes, fields, dams, reefs, and direction of storm water inputs and clean water outputs \x00 | Aerial map of Waikīkī with a hypothetical plan to recover its hydrology. It labels Mānoa-Pālolo marsh, Waikīkī kalo fields, Kapahulu linear wetland, Ala Wai wetland park, Makiki stream park, Kālia fens, Kālia dam, and an oyster reef. Red arrows show stormwater inputs and blue arrows show clean water outputs. |
+| PDF 273 (printed 260) | Chart titled Advancing Justice for Kanaka Maoli in One Generation Through Health Policy, a vision statement for health policy to advance equity for Native Hawaiians—and eliminate health disparities—within one generation. Seven steps are described, beginning with “cultural foundation” and ending with “population strengthening,” spanning history through 2030\x00 | Chart titled 'Ulu Kukui o Kaulike: Advancing Justice for Kānaka Maoli in One Generation Through Health Policy', a vision for health policy that advances equity for Native Hawaiians and eliminates health disparities within one generation. Long description: seven steps, each shown by a plant illustration over a timeline from millennia ago to 2020–2030. 1. Cultural foundation: improving health from an authentic worldview of Mauli Ola and Kānaka Maoli well-being. 2. Community cohesion (2010–2014): population health goals to eliminate health disparities and inequalities among Native Hawaiians. 3. Equity research and policy analyses (2014): cross-sectoral research based on community needs shapes appropriate health policy solutions. 4. Systems advocacy (2015): harness community cohesion to enact legislation that integrates Native Hawaiian values. 5. Legislative compliance and enforcement (2015–2019): substantive policy change requires ongoing attention for complex health goals to be achieved. 6. Investment for SDOH and disparate populations (2019): meaningful long-term investment by federal, state, and local government is needed to uplift Native Hawaiians. 7. Population strengthening (2020–2030): at the core of social justice for Kānaka Maoli is racial equity and healing. |
+| PDF 297 (printed 284) | Illustration of an ahupuaa from the mountains to the sea, with plants, animals, people, and other natural features\x00 | Digital illustration, a vision map for a future Hāmākua, by Haley Kailiehu. A flowering ʻōhiʻa tree stands on a headland above a winding stream and waterfall that run to the sea. Seabirds fly overhead, fish and whales swim below, and gardens, stone structures, and a gathering house with people sit between the mountain and the shore. |
 
 ### 2. Headings
 
@@ -112,36 +113,19 @@ Heading levels by style (as applied):
 
 | Style | Level | How | Elements |
 |---|---|---|---:|
-| H1 | H3 | retype (standard tag) | 76 |
-| H2 | H4 | retype (standard tag) | 113 |
+| H1 | H2 | retype (standard tag) | 76 |
+| H2 | H3 | retype (standard tag) | 113 |
+| H3 | H4 | retype (standard tag) | 8 |
 
-### 3. Elements Retyped by the AI (21)
+### 3. Elements Retyped by the AI (3)
 
 Check each one is (or is not) a heading as decided.
 
 | Page | Text | Before | After |
 |---|---|---|---|
 | PDF 2 (printed i) | The Value of Hawaiʻi 3 | H1 | H1 |
-| PDF 3 (printed ii) | BIOGRAPHY MONOGRAPHS | H1 | H2 |
+| PDF 3 (printed ii) | BIOGRAPHY MONOGRAPHS | H1 | P |
 | PDF 4 (printed iii) | The Value of Hawaiʻi 3 the Turning Hulihia, | H1 | P |
-| PDF 6 (printed v) | CONTENTS | H1 | H2 |
-| PDF 12 (printed xi) | ACKNOWLEDGMENTS | H1 | H2 |
-| PDF 14 (printed 1) | A Prayer, Lifting | H1 | H2 |
-| PDF 17 (printed 4) | Independence Kūʻokoʻa | H1 | H2 |
-| PDF 21 (printed 8) | Works Cited | H2 | H3 |
-| PDF 22 (printed 9) | Introduction | H1 | H2 |
-| PDF 26 (printed 13) | I Overlapping Emergencies— (Over)Turnings | H1 | H2 |
-| PDF 86 (printed 73) | II Resources and Values— Turning to Our Strengths | H1 | H2 |
-| PDF 152 (printed 139) | III Community Building— Turning Toward Each Other | H1 | H2 |
-| PDF 167 (printed 154) | Believe that all people have the right and the capacity to lead themselves. | H3 | H5 |
-| PDF 168 (printed 155) | Seek to develop meaningful relationships and build trust. | H3 | H5 |
-| PDF 168 (printed 155) | Be ready to give grace and be grateful to receive grace. | H3 | H5 |
-| PDF 168 (printed 155) | Everyone has a role to play (Jojo’s “Fix your face!”). | H3 | H5 |
-| PDF 169 (printed 156) | What would Jojo do? | H3 | H5 |
-| PDF 224 (printed 211) | Noa Emmett Aluli, MD | H3 | H5 |
-| PDF 225 (printed 212) | Davianna Pōmaikaʻi McGregor | H3 | H5 |
-| PDF 226 (printed 213) | Rosanna ʻAnolani Alegado | H3 | H5 |
-| PDF 232 (printed 219) | IV Emerging Futures— Turning Anew | H1 | H2 |
 
 ### 4. Text a Screen Reader Could Not Reach (before this run)
 
@@ -239,7 +223,7 @@ veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 
 | Rule | WCAG | What it checks | Who fixes | Before | After | Status | Pages (after, else before) |
 |---|---|---|---|---:|---:|---|---|
-| ISO 14289-1 7.2-29 | 3.1.1, 3.1.2 | If the Lang entry is present in the document's Catalog dictionary or in a structure element dictionary or property list, its value shall be a language identifier as described in ISO 32000-1:2008, 14.9.2. A language identifier shall be a Language-Tag as defined in RFC 3066, Tags for the Identification of Languages e.g. "Value Marshallese of the Lang entry is not a Language-Tag" | the pipeline | 7 | 7 | still failing | PDF 30 (printed 17), PDF 31 (printed 18), PDF 224 (printed 211) |
+| ISO 14289-1 7.2-29 | 3.1.1, 3.1.2 | If the Lang entry is present in the document's Catalog dictionary or in a structure element dictionary or property list, its value shall be a language identifier as described in ISO 32000-1:2008, 14.9.2. A language identifier shall be a Language-Tag as defined in RFC 3066, Tags for the Identification of Languages e.g. "Value Hungarian of the Lang entry is not a Language-Tag" | the pipeline (401 changed) | 7 | 1 | still failing | PDF 224 (printed 211) |
 
 PDF/UA-only, not required for WCAG (not counted):
 
@@ -253,37 +237,79 @@ Each item is something to look at, not a proven failure.
 
 ### 10. Deferred by the AI
 
-- **Untagged page numbers on the contents pages (“198” and “253”) are in no tag and not marked as artifacts**: They are real contents entries (page numbers), not decoration, so they cannot be artifacted. A person must tag them in their contents entries. [PDF 9 (printed viii), PDF 10 (printed ix)]
-- **Five untagged runs of body text on this page, the continuation of the chapter text before the Notes and Works Cited**: Real content that is not tagged. A person must tag it and check the reading order. [PDF 35 (printed 22)]
-- **Several headings read in a different word order from the printed one: the title page, “as Home and a Place of Learning Waikīkī”, the chapter title on PDF 144 (printed 131) and “of Abundance from a Future Hāmākua 2120 A Moʻolelo” (the printed order is probably “Hāmākua 2120: A Moʻolelo of Abundance from a Future”)**: I cannot confirm the printed order and punctuation from the digest, so ActualText was not attempted. A person should check them against the page. [PDF 4 (printed iii), PDF 100 (printed 87), PDF 144 (printed 131), PDF 295 (printed 282)]
-- **Hawaiian-language passages and poems (for example PDF 14–16 and PDF 30) are not language-tagged**: Hawaiian words are in Latin script, there is no Hawaiian run tool in the work order, and runs mix English and Hawaiian. A person may add haw tags. [PDF 14 (printed 1), PDF 16 (printed 3), PDF 30 (printed 17)]
+- **Untagged body text: five lines of running text in the chapter on 'Catastrophic Failure of the Planet' (starting 'place on natural systems. Across 65% of the terre…') are in no tag and not marked.**: This is real content, which this work order can neither artifact nor tag. A person must tag it and place it in the correct reading order. [PDF 35 (printed 22)]
+- **Untagged page numbers in the contents ('198' on PDF 9 (printed viii) and '253' on PDF 10 (printed ix)).**: They are the page-number part of contents entries, so they are real content and not pagination. A person must tag them into their TOC entries. [PDF 9 (printed viii), PDF 10 (printed ix)]
+- **veraPDF reports 2 failed rules, but pdfua_check lists no rule that a work-order key can fix.**: These are failures only a person can fix, or the executor fixes by itself. Re-run veraPDF after applying this work order.
 
-Reviewer note from the AI: Heading outline: H1 is the book title (half-title page). H2 covers front-matter titles, the opening pieces and the four part titles. H3 covers chapters inside the parts, and the two chapters outside them were set to H2. H4 covers section heads and the Works Cited/Notes heads. H5 covers the contributor names and value statements that sat at H3 under those sections. The style-level rolemap moves the existing H1 and H2 styles down one or two levels, and per-element retypes fix the exceptions. The title-page line (6375 0) was demoted to P because it repeats the title. Existing alt text on every figure ended in a NUL character (\x00); all figures have been rewritten without it. The contents pages already carry TOC/TOCI tags, so no toc key was given. The six bulleted lists are real lists and were kept. The book has no tables. veraPDF listed no fixable rules.
+Reviewer note from the AI: Heading plan: the book title is the only H1 (half-title, PDF 2 (printed i)). The rolemap shifts every H1-styled chapter, part, and front/back-matter title to H2, subheads to H3, and the lower subheads to H4. Parts (I–IV) and chapters are therefore both H2, as the convention directs. The title-page lines and the series page are demoted to P. Contributor names under chapter titles are already P and were left alone. Epigraph questions on part-opener pages (e.g. PDF 28 (printed 15), 88 (printed 75), 154 (printed 141), 234 (printed 221)) are left as P. Several part-opener pages have no tagged text (e.g. PDF 13, 27, 29, 72, 74, 76, 85, 87, 89); these look like blank pages or artwork and may be worth a quick visual check. All figure alt texts originally contained NUL characters, and all have been replaced with clean text. The six existing bullet lists, the TOC/TOCI structure, and the Notes were judged correct and left as is. Reading order looked correct in the digest, so no move_section was requested.
 
 ### 11. Deferred by the Executor
 
 - the source file already claims PDF/UA conformance: not verified by this pipeline; check it with PAC before relying on it
-- /Lang "Hawaii" on Span is not a language tag (PDF 3 (printed ii)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 3 (printed ii)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaiian" on Span is not a language tag (PDF 4 (printed iii)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 4 (printed iii)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 12 (printed xi)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 12 (printed xi)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 14 (printed 1)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 15 (printed 2)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 16 (printed 3)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 16 (printed 3)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 16 (printed 3)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 16 (printed 3)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 17 (printed 4)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 17 (printed 4)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 19 (printed 6)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 19 (printed 6)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 20 (printed 7)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 20 (printed 7)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 21 (printed 8)): set the right tag (e.g. en, ja, zh-Hant)
-- /Lang "Hawaii" on Span is not a language tag (PDF 21 (printed 8)): set the right tag (e.g. en, ja, zh-Hant)
-- 409 more /Lang values that are not language tags
+- /Lang "Hawaii" on Span names Hawaiian, but "Tengan" is not spelled with Hawaiian letters: "P. Kāwika Tengan" (PDF 75 (printed 62)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Tengan" is not spelled with Hawaiian letters: "P. Kāwika Tengan" (PDF 78 (printed 65)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Nyéléni" is not spelled with Hawaiian letters: "Nyéléni" (PDF 127 (printed 114)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Nyéléni" is not spelled with Hawaiian letters: "Nyéléni" (PDF 127 (printed 114)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "mī-gusui" is not spelled with Hawaiian letters: "“mī-gusui, mimi-gusui, nuchi-gusui.”" (PDF 148 (printed 135)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Mī-gusui" is not spelled with Hawaiian letters: "Mī-gusui, mimi-gusui, nuchi-gusui" (PDF 148 (printed 135)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "mimi-gusui" is not spelled with Hawaiian letters: "mimi-gusui." (PDF 150 (printed 137)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "mī-gusui" is not spelled with Hawaiian letters: "mī-gusui" (PDF 150 (printed 137)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "mimi-gusui" is not spelled with Hawaiian letters: "mimi-gusui" (PDF 150 (printed 137)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "nuchi-gusui" is not spelled with Hawaiian letters: "nuchi-gusui" (PDF 150 (printed 137)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Sustʻāinable" is not spelled with Hawaiian letters: "Sustʻāinable" (PDF 163 (printed 150)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Sustʻāinable" is not spelled with Hawaiian letters: "Sustʻāinable" (PDF 164 (printed 151)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Sustʻāinable" is not spelled with Hawaiian letters: "Sustʻāinable" (PDF 164 (printed 151)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Sustʻāinable" is not spelled with Hawaiian letters: "Sustʻāinable" (PDF 165 (printed 152)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Sustʻāinable" is not spelled with Hawaiian letters: "Sustʻāinable" (PDF 165 (printed 152)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Tatiana" is not spelled with Hawaiian letters: "Tatiana Kalaniʻōpua Young" (PDF 187 (printed 174)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Tatiana" is not spelled with Hawaiian letters: "Tatiana Kalaniʻōpua Young" (PDF 190 (printed 177)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but most of its words are English: "Sāmoan," (PDF 207 (printed 194)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "irensia" is not spelled with Hawaiian letters: "I irensia na'lå'la' i espiritu-ta." (PDF 218 (printed 205)): set the right tag (e.g. haw, en), or remove it
+- /Lang "Hawaii" on Span names Hawaiian, but "Famalåo'an" is not spelled with Hawaiian letters: "Famalåo'an:" (PDF 221 (printed 208)): set the right tag (e.g. haw, en), or remove it
+- 8 more language names whose words look like another language
+
+### 12. Language Tags
+
+Words and passages in another language get a language tag, so a screen reader switches to that language's voice (WCAG 3.1.2). Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.
+
+**The PDF's language names, written as language codes (401 tags):** a language's name is not a language tag, so each is replaced by the code it names. Check that the words are in that language.
+
+- "Hawaii" → haw (Hawaiian): 330 tags · e.g. "Noelani Goodyear-Ka‘ōpua,", "Mānoa,", "Goodyear-Ka‘ōpua," · PDF 3 (printed ii), PDF 4 (printed iii), PDF 12 (printed xi), PDF 14 (printed 1)
+- "Hawaiian" → haw (Hawaiian): 63 tags · e.g. "Hulihia,", "Kuaʻāina", "ʻāina momona" · PDF 4 (printed iii), PDF 229 (printed 216), PDF 237 (printed 224), PDF 249 (printed 236)
+- "Marshallese" → mh (Marshallese): 6 tags · e.g. "Kathy Jetñil-Kijiner", "“Bwebwenato in Lōrro”/“Story about Lōrro", "lōrro" · PDF 30 (printed 17), PDF 31 (printed 18)
+- "Hawai" → haw (Hawaiian): 1 tag · e.g. "Ka ʻĀina Moana" · PDF 104 (printed 91)
+- "hawaii" → haw (Hawaiian): 1 tag · e.g. "kānaka" · PDF 107 (printed 94)
+
+**Language names left for a person (28):** the words under them look like another language, so they stay as written.
+
+- "Hawaii" (Hawaiian) on "P. Kāwika Tengan": "Tengan" is not spelled with Hawaiian letters · PDF 75 (printed 62)
+- "Hawaii" (Hawaiian) on "P. Kāwika Tengan": "Tengan" is not spelled with Hawaiian letters · PDF 78 (printed 65)
+- "Hawaii" (Hawaiian) on "Nyéléni": "Nyéléni" is not spelled with Hawaiian letters · PDF 127 (printed 114)
+- "Hawaii" (Hawaiian) on "Nyéléni": "Nyéléni" is not spelled with Hawaiian letters · PDF 127 (printed 114)
+- "Hawaii" (Hawaiian) on "“mī-gusui, mimi-gusui, nuchi-gusui.”": "mī-gusui" is not spelled with Hawaiian letters · PDF 148 (printed 135)
+- "Hawaii" (Hawaiian) on "Mī-gusui, mimi-gusui, nuchi-gusui": "Mī-gusui" is not spelled with Hawaiian letters · PDF 148 (printed 135)
+- "Hawaii" (Hawaiian) on "mimi-gusui.": "mimi-gusui" is not spelled with Hawaiian letters · PDF 150 (printed 137)
+- "Hawaii" (Hawaiian) on "mī-gusui": "mī-gusui" is not spelled with Hawaiian letters · PDF 150 (printed 137)
+- "Hawaii" (Hawaiian) on "mimi-gusui": "mimi-gusui" is not spelled with Hawaiian letters · PDF 150 (printed 137)
+- "Hawaii" (Hawaiian) on "nuchi-gusui": "nuchi-gusui" is not spelled with Hawaiian letters · PDF 150 (printed 137)
+- "Hawaii" (Hawaiian) on "Sustʻāinable": "Sustʻāinable" is not spelled with Hawaiian letters · PDF 163 (printed 150)
+- "Hawaii" (Hawaiian) on "Sustʻāinable": "Sustʻāinable" is not spelled with Hawaiian letters · PDF 164 (printed 151)
+- "Hawaii" (Hawaiian) on "Sustʻāinable": "Sustʻāinable" is not spelled with Hawaiian letters · PDF 164 (printed 151)
+- "Hawaii" (Hawaiian) on "Sustʻāinable": "Sustʻāinable" is not spelled with Hawaiian letters · PDF 165 (printed 152)
+- "Hawaii" (Hawaiian) on "Sustʻāinable": "Sustʻāinable" is not spelled with Hawaiian letters · PDF 165 (printed 152)
+- "Hawaii" (Hawaiian) on "Tatiana Kalaniʻōpua Young": "Tatiana" is not spelled with Hawaiian letters · PDF 187 (printed 174)
+- "Hawaii" (Hawaiian) on "Tatiana Kalaniʻōpua Young": "Tatiana" is not spelled with Hawaiian letters · PDF 190 (printed 177)
+- "Hawaii" (Hawaiian) on "Sāmoan,": most of its words are English · PDF 207 (printed 194)
+- "Hawaii" (Hawaiian) on "I irensia na'lå'la' i espiritu-ta.": "irensia" is not spelled with Hawaiian letters · PDF 218 (printed 205)
+- "Hawaii" (Hawaiian) on "Famalåo'an:": "Famalåo'an" is not spelled with Hawaiian letters · PDF 221 (printed 208)
+- "Hawaii" (Hawaiian) on "famalåo'an": "famalåo'an" is not spelled with Hawaiian letters · PDF 221 (printed 208)
+- "Hawaii" (Hawaiian) on "Guåhan": "Guåhan" is not spelled with Hawaiian letters · PDF 222 (printed 209)
+- "Hungarian" (Hungarian) on "Noa Emmett Aluli, MD": its words look Hawaiian · PDF 224 (printed 211)
+- "Hawaii" (Hawaiian) on "Davianna Pōmaikaʻi McGregor": "Davianna" is not spelled with Hawaiian letters · PDF 225 (printed 212)
+- "Hawaiian" (Hawaiian) on "Oʻahu, a Giant Military Base": most of its words are English · PDF 245 (printed 232)
+- "Hawaiian" (Hawaiian) on "Benjamin Treviño and Victoria Treviño": "Treviño" is not spelled with Hawaiian letters · PDF 250 (printed 237)
+- "Hawaiian" (Hawaiian) on "Ulu Kukui o Kaulike: Kealoha Fox. Kukui art: Lisanne Paikai.": "Lisanne" is not spelled with Hawaiian letters · PDF 273 (printed 260)
+- "Hawaiian" (Hawaiian) on "Puʻuhonua o Puʻuhuluhulu en masse": "masse" is not spelled with Hawaiian letters · PDF 279 (printed 266)
 
 ## What Was Changed
 
@@ -292,17 +318,16 @@ Reviewer note from the AI: Heading outline: H1 is the book title (half-title pag
 | document: title | 1 |
 | document: DisplayDocTitle | 1 |
 | document: /Lang | 1 |
-| heading: standard tag H1 → H3 (retyped) | 76 |
-| heading: standard tag H2 → H4 (retyped) | 113 |
+| heading: standard tag H1 → H2 (retyped) | 76 |
+| heading: standard tag H2 → H3 (retyped) | 113 |
+| heading: standard tag H3 → H4 (retyped) | 8 |
 | retype → H1 | 1 |
-| retype → P | 1 |
-| retype → H2 | 10 |
-| retype → H3 | 1 |
-| retype → H5 | 8 |
+| retype → P | 2 |
 | figure: alt text | 11 |
 | links: /Contents set | 186 |
 | links: joined existing Link | 186 |
 | links: URL-only description replaced by the sentence around it | 62 |
+| language: a language name written as /Lang replaced by its code | 401 |
 | tag tree index: entries pointing outside the tree cleared (ParentTree) | 6 |
 
 ## Accessibility Evaluation

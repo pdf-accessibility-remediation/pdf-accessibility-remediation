@@ -13,7 +13,7 @@
 # MAX_USD=3 bash run_api.sh …   the limit on what one AI request could cost, in dollars (default 2, lib/costs.py; Claude models only)
 # A book with more images than one request takes (100) gets figure requests after the first one, each sending up to 100
 # of the figures the first could not take (issue #63; docs/files.md):
-# BOOK_MAX_USD=6 bash run_api.sh …   the limit on what all of a PDF's requests could cost together, previous attempts included (default 5, lib/costs.py; Claude only)
+# BOOK_MAX_USD=6 bash run_api.sh …   the limit on what all of a PDF's requests could cost together, previous attempts included (default 8, lib/costs.py; Claude only)
 # FIGURE_PASSES=off bash run_api.sh …   no figure requests: figures past 100 go to a person, as before
 # FIGURE_PROBE=20 bash run_api.sh …   test only: also re-send 20 figures the first request answered (recorded, never used)
 # MODEL=openai/gpt-5 bash run_api.sh …   any OpenRouter model id for this run (default: DEFAULT_MODEL in decide.py)
@@ -44,6 +44,13 @@ BASE=$(basename "$SRC"); USER_OUT=${OUT:-}; OUT=${OUT:-${BASE%.*}_remediated.pdf
 [[ $OUT != */* ]] || { echo "OUT is a file name, not a path: $OUT"; exit 1; }
 PAGE_READS=${PAGE_READS:-1}; [[ $PAGE_READS == 0 || $PAGE_READS == no ]] && PAGE_READS=off
 [[ $PAGE_READS == 1 || $PAGE_READS == all || $PAGE_READS == off ]] || { echo "PAGE_READS is 1 (the default), all or off: $PAGE_READS"; exit 1; }
+LANG_TAGS=${LANG_TAGS:-on}; [[ $LANG_TAGS == 0 || $LANG_TAGS == no ]] && LANG_TAGS=off      # the language step (#118): on unless LANG_TAGS=off
+[[ $LANG_TAGS == on || $LANG_TAGS == 1 || $LANG_TAGS == off ]] || { echo "LANG_TAGS is on (the default) or off: $LANG_TAGS"; exit 1; }
+# LANG_GROW=on: a title's whole extent is tagged; LANG_GROUP=on: adjacent single Chinese characters are one form (review 08,
+# M6). Both off by default, read by name_languages.py; title growth stays off until the Windows check of a title in pieces.
+for v in LANG_GROW LANG_GROUP; do
+  case ${!v:-off} in on|off|1|0) ;; *) echo "$v is on or off (the default): ${!v}"; exit 1;; esac
+done
 cd "$(dirname "$0")"
 python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
   echo "missing Python libraries in $(command -v python3): from pipeline/, run  python3 -m pip install -r requirements.txt"; exit 1; }
@@ -219,6 +226,10 @@ else
   if [[ $PAGE_READS != off ]] && pages_listed; then
     python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"} || echo "page readings: no estimate (see the line above)"
   else rm -f "$R/page_reads_estimate.json"; fi
+  # the language step's own estimate too (language_estimate.json, #118): the cost lines and the app's estimate include it
+  if [[ $LANG_TAGS != off ]]; then
+    python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} || echo "language tags: no estimate (see the line above)"
+  else rm -f "$R/language_estimate.json"; fi
   stage "2/5 cost estimate (no model)"  python3 decide.py "$A" "$R" --dry-run ${MT[@]+"${MT[@]}"}
   if [[ -n ${ESTIMATE:-} ]]; then
     echo "estimate only: $R/run.json (audit kept for the real run)"; summary; exit 0
@@ -246,7 +257,7 @@ fi
 # the limit, the credit, OpenRouter unreachable) or a "no" skips the step: the PDF goes on without readings and the
 # report lists the pages for a person.
 page_reads_step() {             # each of its failures is reported and skipped, never the end of the run
-  python3 read_pages.py "$A" "$R" "$@" ${MODEL:+--model "$MODEL"} || { echo "page readings not done (above): the PDF goes on without them"; return 0; }
+  python3 read_pages.py "$A" "$R" "$@" ${MODEL:+--model "$MODEL"} ${BOOK_MAX_USD:+--book-max-usd "$BOOK_MAX_USD"} || { echo "page readings not done (above): the PDF goes on without them"; return 0; }
 }
 if [[ ${PAGE_READS} != off && -z ${REPLY:-} && -z $REVIEWED && ${DECIDE:-} != none ]] && pages_listed; then
   pr_ok=n
@@ -256,6 +267,29 @@ if [[ ${PAGE_READS} != off && -z ${REPLY:-} && -z $REVIEWED && ${DECIDE:-} != no
   else echo "page readings not done (above): the PDF goes on without them"; fi
   if [[ ${pr_ok:-n} == [yY]* ]]; then stage "3b/5 page readings via OpenRouter" page_reads_step
   elif [[ -z ${AUTO:-} ]]; then echo "page readings skipped: the report lists the pages for a person"; fi
+fi
+# Language tags (#118; on unless LANG_TAGS=off): name_languages.py names the language of the candidate words and
+# passages the audit found, and writes language_parts into the work order. Its own paid step, with its own model
+# (LANGUAGE_MODEL, default Sonnet 5.5), estimate and limit (LANGUAGE_MAX_USD, default 6). A saved reply (REPLY=, FROM=)
+# never starts a request (review 02, M3): its saved language decisions are used (LANG_REPLY=, or this folder's own
+# language_run.json when the reply is this folder's own), else the step is not run and the record says so.
+lang_step() {                   # each failure is reported and skipped, never the end of the run
+  python3 name_languages.py "$A" "$R" --pdf "$PSRC" "$@" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} ${BOOK_MAX_USD:+--book-max-usd "$BOOK_MAX_USD"} || { echo "language tags not done (above): the PDF goes on without them"; return 0; }
+}
+if [[ ( $LANG_TAGS != off || -n ${LANG_REPLY:-} ) && -z $REVIEWED && ${DECIDE:-} != none && -f $R/workorder.json ]]; then   # saved decisions apply even with the step off: no cost
+  if [[ -n ${REPLY:-} || -n $MERGED ]]; then
+    if [[ -n ${LANG_REPLY:-} && -f ${LANG_REPLY:-} ]]; then stage "3c/5 language tags: saved decisions (no cost)" lang_step --response-file "$LANG_REPLY"
+    elif [[ -f $R/language_run.json && ( $REPLY == "$R/response.json" || -n $MERGED ) ]]; then stage "3c/5 language tags: this run's own decisions (no cost)" lang_step --reuse
+    else echo "language tags: not run (a saved reply makes no new AI request, and none of its language decisions was saved)"; fi
+  else
+    lt_ok=n
+    if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
+      if [[ -n ${AUTO:-} ]]; then lt_ok=y; echo "AUTO=1: naming languages without asking (still refused over the language step's limit or your credit)"
+      else read -r -p "Name the languages of these words and passages with the AI now? [y/N] " lt_ok || lt_ok=n; fi
+    else echo "language tags not done (above): the PDF goes on without them"; fi
+    if [[ ${lt_ok:-n} == [yY]* ]]; then stage "3c/5 language tags via OpenRouter" lang_step
+    elif [[ -z ${AUTO:-} ]]; then echo "language tags skipped: the PDF goes on without them"; fi
+  fi
 fi
 if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews the AI's decisions before anything is applied
   cp "$R/workorder.json" "$R/workorder.ai.json"
@@ -286,7 +320,7 @@ fi
 stage "4/5 apply (no model)"            python3 apply.py "$PSRC" "$R/workorder.json" "$R/$OUT"
 stage "4/5 verify (no model)"           bash -c 'python3 verify.py "$1" "$2" > /dev/null' _ "$PSRC" "$R/$OUT"
 write_timing
-stage "5/5 report"                      python3 report.py "$R" "$A" "--pdf=$OUT" "--input=$PSRC" ${KEEP:+--keep}
+stage "5/5 report"                      python3 report.py "$R" "$A" "--pdf=$OUT" "--input=$PSRC" "--lang-tags=$LANG_TAGS" ${KEEP:+--keep}
 summary
 echo
 echo "done: $R"

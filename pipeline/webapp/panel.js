@@ -247,7 +247,7 @@ const spins = j => j.status === 'running' && !(person(j) && !j.past_finish && j.
 function jobCard(j) {                                           // heading: the action (Title Case); outcome on the status line
   const cls = j.status === 'failed' || j.status === 'interrupted' ? ' pp-failed' : '';
   let h = '<article class="pp-job" id="job-' + esc(j.id) + '" aria-labelledby="jh-' + esc(j.id) + '">' +
-    '<h4 id="jh-' + esc(j.id) + '" tabindex="-1">' + esc(tc(j.action || j.title)) + '</h4>' +
+    '<h4 id="jh-' + esc(j.id) + '" tabindex="-1">' + esc(tc(j.heading || j.action || j.title)) + '</h4>' +
     '<p>' + (spins(j) ? '<span class="pp-spin" aria-hidden="true"></span>' : '') + '<span class="pp-state' + cls + '">' + esc(jobWords(j)) + '</span>' +
     (j.started ? ' <span class="pp-note">· started ' + esc(fmtClock(j.started)) + '</span>' : '') + '</p>';
   const steps = j.steps || [];                                  // the step running now is in the status line: no ": running" here
@@ -592,13 +592,23 @@ function waitingBlock(s) {
 // "Details"). The paid call is bound to the "Max Estimated Cost" shown (MAX_USD); the button is "Start Remediation" (Patrick,
 // 2026-11-06), described by both cost lines (aria-describedby).
 const usd = x => '$' + Number(x || 0).toFixed(2);
+// Why there is no expected cost yet, in plain words (Patrick, 2026-11-14), from lib/costhistory.py's {none: reason}; an
+// unknown reason shows nothing more. batch.js has the same words.
+const NONE_WHY = { too_few: 'not enough past runs to calculate it', cut_off: "an earlier answer was cut off, so it can't be calculated" };
+function noneWhy(x) { return x && NONE_WHY[x.none] ? ' (' + NONE_WHY[x.none] + ')' : ''; }
+function including(e) {                                         // the parts of the ceiling beyond the first request, in one list (round 24)
+  const parts = [e.figures && e.figures.requests ? usd(e.figures.ceiling_usd) + ' for the extra alt-text request' + (e.figures.requests === 1 ? '' : 's') : '',   // #63
+    e.page_reads ? usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '',   // #49
+    e.language ? usd(e.language.ceiling_usd) + ' for the language tags' : ''].filter(Boolean);   // #118
+  return parts.length ? ', including ' + (parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]) : '';
+}
 function costLines(e) {                                          // #65 (costs in dollars and an expected cost): the figure people read first, then the ceiling
   const x = e.expected;                                          // no key (an estimate made before #65): no line; {none}: "Not Available Yet"
-  return (x ? 'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet') + '<br>' : '') +
-    'Max Estimated Cost: ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + esc(e.requests) + ' AI requests' : '') +
-    (e.page_reads ? ', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '') +   // #49
+  return (x ? 'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet' + noneWhy(x)) + '<br>' : '') +
+    'Max Estimated Cost: ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + esc(e.requests) + ' AI requests' : '') + including(e) +
     (e.spent_before_usd ? ' · Counted Toward This PDF\'s Limit So Far: ' + usd(e.spent_before_usd) : '') +
-    (e.credit_usd != null ? ' · Credit: ' + usd(e.credit_usd) : ' · Credit: Not Checked');
+    (e.credit_usd != null ? ' · Credit: ' + usd(e.credit_usd) : ' · Credit: Not Checked') +
+    (e.left_out || []).map(x => '<br>' + esc(x.words)).join('');   // review 08, H1: an optional step that doesn't fit is left out, never the PDF
 }
 const NEXT = { estimate: ['estimate', 'Get a New Estimate'], retry: ['retry', 'Try Again'], dismiss: ['dismiss', 'Dismiss'], home: null };
 function failureCard(f) {
@@ -622,7 +632,7 @@ function pendingBlock(s) {
   if (s.phase === 'batch') return h + (s.failure ? failureCard(Object.assign({}, s.failure, { next: [] })) : '') +
     '<p>This PDF is assigned to the batch "' + esc(s.batch_name || s.batch) + '". Its estimate, "Start Remediation" and what to do next are on the batch page.</p>' +
     '<div class="pp-row"><a class="pp-btn pp-primary" href="/batch/' + encodeURIComponent(s.batch) + '/">Open the Batch Page</a></div>';
-  if (s.phase === 'active') return h + '<p>Working on this book. This page follows each step; you can leave it and come back from the home page.</p>';
+  if (s.phase === 'active') return h + '<p>Working on this PDF. This page follows each step; you can leave it and come back from the home page.</p>';
   if (s.phase === 'needs-spend') return h + '<p>The app restarted before the AI request started, so nothing was sent. Get a new estimate, then select "Start Remediation" again.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button>' +
     '<button type="button" id="pp-dismiss" data-act="dismiss">Dismiss</button></div>';

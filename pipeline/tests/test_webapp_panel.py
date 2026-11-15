@@ -84,7 +84,7 @@ def test_ready_comes_from_the_glance_then_review_md_then_says_not_recorded(tmp_p
     R = str(tmp_path)
     g = {'glance': {'ready': True, 'ship': [{'what': 'Safety checks', 'ok': True, 'text': 'OK'}]}}   # a stored `ready` is never trusted
     assert runs.ready(R, g) == {'answer': 'No', 'lines': ['Safety checks: Not Checked (only 0 of the 5 checks were recorded for this run)',
-                                                          'Accessibility evaluation: Not Completed'],
+                                                          'Language tags: Not Applicable', 'Accessibility evaluation: Not Completed'],
                                 'status': 'Not Ready', 'current': 'Not Ready', 'source': 'record.json'}
     (tmp_path / 'review.md').write_text('## Overview\n\n**Status:** Ready\n\n**Ready to ship?** Yes\n- Safety checks: OK\n- PAC: not run\n\nmore\n')
     assert runs.ready(R, {}) == {'answer': 'Yes', 'lines': ['Safety checks: OK', 'PAC: not run'], 'status': 'Ready', 'source': 'review.md'}   # an older run
@@ -249,7 +249,7 @@ def test_review_needs_the_original_and_then_queues_a_pin_and_the_review(app):
     nxt = j['then']['argv']
     assert nxt[1:] == ['review_workorder.py', str(R), '--reopen', '--from', 'ai', '--pdf', str(orig), '--no-browser', '--return-to',
                        f'http://127.0.0.1:{port}/run/book/r1/?after=finish'] and j['then']['counted'] is False
-    assert set(j['env']) <= set(config.BASE_ENV) | {'VERAPDF', 'PYTHONUNBUFFERED', 'RUNS_DIR', 'PAGE_READS', 'LC_ALL', 'LC_CTYPE'}
+    assert set(j['env']) <= set(config.BASE_ENV) | {'VERAPDF', 'PYTHONUNBUFFERED', 'RUNS_DIR', 'PAGE_READS', 'LANG_TAGS', 'LC_ALL', 'LC_CTYPE'}
     st, b = post(port, '/api/run/book/r1/review')
     assert st == 409 and 'already' in b['error']
     assert wait(lambda: jobs.load(str(t / 'runs' / '.app'), j['id'])['status'] in ('failed', 'done'), 60)
@@ -503,7 +503,7 @@ def test_ctrl_c_before_finish_still_stops(tmp_path):
 
 # ------------------------------------------------------------------ Patrick's pass on the run page
 def test_steps_in_plain_words():
-    assert logs.plain('apply (no model)') == 'applying the reviewed decisions' and logs.plain('verify (no model)') == 'checking the result'
+    assert logs.plain('apply (no model)') == 'applying the decisions' and logs.plain('verify (no model)') == 'checking the result'
     assert logs.plain('report') == 'writing the report' and logs.plain('1/5 audit (no model)') == 'auditing the PDF'
     steps = logs.steps('▶ apply (no model)\n  ✓ apply (no model): 12.0s\n▶ verify (no model)\n')
     assert logs.now_step('review', steps) == {'words': 'checking the result', 'n': 2, 'total': 3}
@@ -511,6 +511,22 @@ def test_steps_in_plain_words():
     assert logs.now_step('apply', logs.steps('▶ apply (no model)\n  ✓ apply (no model): 1.0s\n')) is None
     assert logs.plain('0/5 intake: not re-run; applying to the intake result saved before the review stop') == 'reading and tagging the PDF'
     assert logs.plain('1/5 audit: reusing the audit already in /x/_audit') == 'auditing the PDF'   # a waiting run's first apply
+    # round 24: no step numbers or "via OpenRouter" on the page
+    assert logs.plain('3b/5 page readings via OpenRouter') == 'sending to the AI: Hawaiian page readings'
+    assert logs.plain('3c/5 language tags via OpenRouter') == 'sending to the AI: language tags'
+    assert logs.plain('3c/5 language tags: saved decisions (no cost)') == 'using the saved language tags (no AI request)'
+    assert logs.plain("3c/5 language tags: this run's own decisions (no cost)") == 'using the saved language tags (no AI request)'
+    assert logs.plain('figure request 2 of 4') == 'sending to the AI: figures, request 1 of 3'   # pass 2 is the first figure request
+    after_review = ('▶ the work order was reviewed by a person: applying the reviewed version\n▶ 0/5 intake: not re-run; applying to the '
+                    'intake result saved before the review stop\n▶ 1/5 audit: reusing the audit already in /r/_audit\n▶ 4/5 apply (no model)\n'
+                    '  ✓ 4/5 apply (no model): 3.0s\n▶ 4/5 verify (no model)\n  ✓ 4/5 verify (no model): 2.0s\n▶ 5/5 report\n')
+    words = [logs.plain(s['label']) for s in logs.steps(after_review)]                 # no step name twice on one card
+    assert len(words) == len(set(words)) and words[0] == 'starting from the reviewed decisions', words
+    fig = logs.steps('▶ figure request 2 of 3: 40 figures\n▶ figure request 3 of 3: 12 figures\n▶ 5/5 report\n')
+    assert [logs.plain(s['label']) for s in fig][:2] == ['sending to the AI: figures, request 1 of 2', 'sending to the AI: figures, request 2 of 2']
+    for s in logs.steps('▶ 0/5 intake\n▶ 1/5 audit (no model)\n▶ 2/5 veraPDF on the original\n▶ 3/5 decide\n▶ figure request 2 of 3\n'):
+        w = logs.plain(s['label'] if isinstance(s, dict) else s)
+        assert not re.search(r'\d/\d|OpenRouter', w), w
     assert "esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? 'Waiting for review' :" in src('webapp/panel.js')
     assert "(j.first ? 'Stop Reviewing (Your Choices Are Saved)' : 'Stop Reviewing (the Session Stays Open)')" in src('webapp/panel.js')   # no session before Finish
 
@@ -670,7 +686,7 @@ def test_the_same_title_case_rule_in_the_pages():
 
 def test_a_job_card_and_its_one_line_forms():
     js = src('webapp/panel.js')
-    assert "esc(tc(j.action || j.title))" in js                                   # card heading: the action, Title Case
+    assert "esc(tc(j.heading || j.action || j.title))" in js                      # card heading: "Processing: …" or the action, Title Case
     assert "return /^(done|pinned|discarded)\\b/.test(r) ? cap(r) : 'Done: ' + r;" in js   # status line: "Done: Session 5 applied (…)"
     assert "<b>Last Job:</b> ' + esc(cap(last.title))" in js and "'<li>' + esc(cap(j.title))" in js
 
@@ -1059,7 +1075,7 @@ def test_the_ready_to_ship_card_and_select():
     import report_html as H
     from lib import glance as G                                                   # the four requirements' names (2026-10-31)
     assert G.SHIP_NAMES == {'Work order approved on the review page': 'Work Order Approval', 'OCR text approved': 'OCR Text Approval',
-                            'Safety checks': 'Safety Checks', 'Accessibility evaluation': 'Accessibility Evaluation'}
+                            'Safety checks': 'Safety Checks', 'Language tags': 'Language Tags', 'Accessibility evaluation': 'Accessibility Evaluation'}
     rh = src('report_html.py')
     assert '<ul role="list">' in rh and '<li><span class="mark" aria-hidden="true"><i class="bul"></i></span>' in rh
     for f in ('webapp/panel.js', 'webapp/runs.py', 'report_html.py', 'review/page.html'):
@@ -1191,3 +1207,22 @@ def test_a_previous_results_bar_is_as_far_from_ready_to_ship_as_that_is_from_the
     css, rep = src('webapp/panel.css'), src('report_html.py')
     assert '#pdfrem-version ~ main { padding-top: 0; }' in css and '#pdfrem-version > nav.pp { margin-bottom: 14px; }' in css
     assert '.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }' in rep
+
+
+def test_job_card_headings_read_processing():
+    h = lambda kind, what=None, **k: runs.heading({'kind': kind, 'what': what, **k})
+    assert h('spend', 'Start remediation: the AI request') == 'Processing: AI Request'
+    assert h('spend', 'Start remediation: the AI request (test: a saved reply)') == 'Processing: AI Request (test: a saved reply)'
+    assert h('estimate', 'Get the estimate') == 'Processing: Cost Estimate'
+    assert h('estimate', 'Get a new estimate') == 'Processing: New Cost Estimate'
+    assert h('estimate', 'Get the estimate (Hawaiian)') == 'Processing: Cost Estimate (Hawaiian)'
+    assert h('batch-estimate', 'Get the estimate') == 'Processing: Cost Estimate'
+    assert h('apply', 'Apply session 1', first=True) == 'Processing: Applying the Reviewed Decisions'
+    assert h('apply', 'Apply session 3') == 'Processing: Applying the Reviewed Decisions (Session 3)'
+    assert h('rerun', 'Try again (the saved reply is reused)') == 'Processing: Trying Again (the saved reply is reused)'
+    assert h('replay', 'Run the book from the saved reply') == 'Processing: PDF from the Saved Reply'      # no "The" (Patrick, round 26)
+    assert h('batch', 'Run the batch') == 'Processing: Batch' and h('summary', 'Write the batch summary again') == 'Processing: Batch Summary'
+    assert h('batch', 'Run the batch (test: saved replies)') == 'Processing: Batch (test: saved replies)'
+    assert h('review', "Review the AI's decisions") == "Review the AI's decisions"      # a person's own action keeps its words
+    assert h('ocr', 'Review OCR Text') == 'Review OCR Text' and h('discard', 'Discard session 2') == 'Discard Session 2'
+    assert runs.action({'kind': 'spend', 'what': 'Start remediation: the AI request'}) == 'Start remediation: the AI request'   # "Last Job:" unchanged

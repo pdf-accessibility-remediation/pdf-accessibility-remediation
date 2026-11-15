@@ -27,19 +27,14 @@ import sys, os, re, json, time, math, copy, socket, base64, hashlib, argparse, d
 DEFAULT_MODEL = 'anthropic/claude-sonnet-5.5'
 API_TIMEOUT = 1800        # seconds to wait for the reply: 48,000 output tokens at ~40 tokens/s is ~20 minutes
 
-# The temperature sent with every request. Changing it changes every run that sends one; there is no command-line override.
-TEMPERATURE = 0
-# Models whose maker says to leave temperature at its default, or that reject any other value: no temperature is sent.
-# An id matches if it starts with an entry. A model OpenRouter lists as not accepting temperature is also left out.
-OMIT_TEMPERATURE = [
-    'anthropic/claude-opus-4.7', 'anthropic/claude-opus-4.8', 'anthropic/claude-opus-4.9',   # Opus 4.7 and later
-    'anthropic/claude-opus-5',                                                               # (add each new Opus major here)
-    'openai/o1', 'openai/o3', 'openai/o4',                                                   # OpenAI reasoning models
-    'openai/gpt-5',                                                                          # GPT-5 family (reasoning)
-    'google/gemini-3',                                                                       # every Gemini 3 model
-]
+from lib.models import TEMPERATURE, OMIT_TEMPERATURE   # shared with the language step's requests (lib/langreq.py)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+def load_json(p):
+    """A JSON file's content, or None when it is missing or unreadable."""
+    try: return json.load(open(p, encoding='utf-8'))
+    except (OSError, ValueError): return None
 
 def load_env():
     """Read KEY=value lines from the nearest .env: pipeline/, then each folder above it. Real env vars win."""
@@ -102,7 +97,7 @@ sys.path.insert(0, HERE); from lib import costs, costhistory       # the dollar 
 ap = argparse.ArgumentParser()
 ap.add_argument('audit_dir'); ap.add_argument('run_dir')
 ap.add_argument('--model', default=DEFAULT_MODEL, help=f'OpenRouter model id (default {DEFAULT_MODEL}); auto:sonnet / auto:opus / auto:haiku pick the newest Claude of that family')
-PROMPT_NAME = 'workorder_v10.md'
+PROMPT_NAME = 'workorder_v11.md'
 DEFAULT_PROMPT = next((p for p in (os.path.join(HERE, 'prompts', PROMPT_NAME),                    # pipeline/prompts/
                                    os.path.join(os.path.dirname(HERE), 'prompts', PROMPT_NAME))   # prompts/ next to pipeline
                        if os.path.isfile(p)), os.path.join(HERE, 'prompts', PROMPT_NAME))
@@ -278,7 +273,8 @@ if not args.response_file:
     _attempts = json.load(open(_att, encoding='utf-8')) if os.path.exists(_att) else []
     # a request whose charge is not known (in flight when the run stopped, or timed out) counts at its worst case;
     # page readings already paid for in this folder (#49) count too
-    spent_before = round(sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in _attempts) + costs.pages_paid(args.run_dir), 6)
+    spent_before = round(sum((a.get('cost_usd') or 0) + (a.get('worst_usd') or 0) for a in _attempts) + costs.pages_paid(args.run_dir)
+                         + costs.language_paid(args.run_dir), 6)
     cut_off_here = any(a.get('finish_reason') == 'length' for a in _attempts)
     prior_cut = max((a['max_tokens'] for a in _attempts if a.get('finish_reason') == 'length' and str(a.get('pass') or '1') == '1'
                      and isinstance(a.get('max_tokens'), int)), default=None)
@@ -482,18 +478,30 @@ if reqs:
 credit = available_credit()
 if credit is not None: run['estimate']['credit_available_usd'] = round(credit, 4)
 if not args.response_file:                            # the lines a person reads first, then the one the limits are checked against
-    _pr = costs.page_estimate(args.run_dir)            # the page readings still to come (#49), when read_pages.py priced them: shown with the rest
+    # the page readings (#49) and the language step (#118) still to come, when they priced themselves: each counts only when it
+    # fits the PDF's limit together with the work order; one that doesn't is left out and refuses itself later, never the
+    # work order (review 08, H1)
+    _kept, _left = costs.fit_optional(spent_before, total, [('page_reads', costs.page_estimate(args.run_dir, book=False)),
+                                                            ('language', costs.language_estimate(args.run_dir, book=False))],
+                                      args.book_max_usd if IS_CLAUDE else None)
+    for _k in _kept: costs.mark_refused(args.run_dir, _k, None, None)      # fits under this run's limit: an earlier refusal is lifted
+    for _x in _left:
+        costs.mark_refused(args.run_dir, _x['kind'], 'book', _x['words'])
+        print(f'  ⚠ {_x["words"].split(" To include ")[0]} To include them, raise the limit for this run: BOOK_MAX_USD={math.ceil(_x["could_usd"])}')
+    _pr, _le = _kept.get('page_reads'), _kept.get('language')
     _pr_usd = _pr['worst_case_usd'] if _pr else 0
-    _pr_words = f', including ${_pr_usd:.2f} for {_pr["to_read"]} Hawaiian page{"" if _pr["to_read"] == 1 else "s"} to be read by the AI' if _pr else ''
-    print(costhistory.terminal_line(costhistory.with_pages(est_['expected'], _pr)))
-    n_ = 1 + len(reqs) + (_pr['to_read'] if _pr else 0)
+    _le_usd = _le['worst_case_usd'] if _le else 0
+    _pr_words = (f', including ${_pr_usd:.2f} for {_pr["to_read"]} Hawaiian page{"" if _pr["to_read"] == 1 else "s"} to be read by the AI' if _pr else '') \
+        + (f', including ${_le_usd:.2f} for the language tags ({_le["to_send"]} AI request{"" if _le["to_send"] == 1 else "s"})' if _le else '')
+    print(costhistory.terminal_line(costhistory.with_language(costhistory.with_pages(est_['expected'], _pr), _le)))
+    n_ = 1 + len(reqs) + (_pr['to_read'] if _pr else 0) + (_le['to_send'] if _le else 0)
     if IS_CLAUDE:
-        print(f'Max Estimated Cost: ${total + _pr_usd:.2f}' + (f' for {n_} AI requests' if n_ > 1 else '') + _pr_words + f' · Limits: ${args.max_usd:.2f} per AI request, ${args.book_max_usd:.2f} per PDF'
+        print(f'Max Estimated Cost: ${total + _pr_usd + _le_usd:.2f}' + (f' for {n_} AI requests' if n_ > 1 else '') + _pr_words + f' · Limits: ${args.max_usd:.2f} per AI request, ${args.book_max_usd:.2f} per PDF'
               + (f' · Counted Toward This PDF\'s Limit So Far: ${spent_before:.2f} (previous attempts in this folder)' if spent_before else '')
               + (' · Credit: Not Checked' if credit is None else f' · Credit: ${credit:.2f}'))
-        if spent_before + total > args.book_max_usd:
-            print(f'  ⚠ this PDF could cost up to ${costs.up(spent_before + total):.2f}' + (f', including ${spent_before:.2f} already spent' if spent_before else '')
-                  + f', more than the limit of ${args.book_max_usd:.2f} per PDF: a real run stops before any request. To run it, raise the limit for this run: BOOK_MAX_USD={math.ceil(spent_before + total)}')
+        if spent_before + total + _pr_usd + _le_usd > args.book_max_usd:
+            print(f'  ⚠ this PDF could cost up to ${costs.up(spent_before + total + _pr_usd + _le_usd):.2f}' + (f', including ${spent_before:.2f} already spent' if spent_before else '')
+                  + f', more than the limit of ${args.book_max_usd:.2f} per PDF: a real run stops before any request. To run it, raise the limit for this run: BOOK_MAX_USD={math.ceil(spent_before + total + _pr_usd + _le_usd)}')
     else:
         print(f'Max Estimated Cost: about ${total:.2f}, approximate and not a limit: the dollar limits apply to Claude models only. The OpenRouter bill is the real cost')
 if credit is None:
@@ -529,6 +537,8 @@ else:
         if r['worst'] > args.max_usd:
             sys.exit(f'refusing before any request: figure request {r["pass"]} could cost up to ${costs.up(r["worst"]):.2f}, more than the limit of ${args.max_usd:.2f} per AI request. '
                      f'To run it, raise the limit for this run: MAX_USD={math.ceil(r["worst"])} bash run_api.sh …')
+    # the page readings and language tags to come share the PDF's limit (review 06, M2), but only those that fit with the
+    # work order count; the rest were marked refused above and run without (review 08, H1)
     if IS_CLAUDE and spent_before + total > args.book_max_usd:
         sys.exit(f'refusing before any request: ' + (f'this PDF\'s {1 + len(reqs)} requests' if reqs else 'this PDF') + f' could cost up to ${costs.up(spent_before + total):.2f}'
                  + (f' (including ${spent_before:.2f} spent by previous attempts in this folder)' if spent_before else '')
@@ -565,7 +575,7 @@ else:
                      '(provider data_collection: deny), so nothing was sent or charged. See error.txt')
         if 'temperature' in body and 'temperature' in err.lower():
             sys.exit(f'OpenRouter error {e.code}: {model} rejected the temperature setting ({body["temperature"]}). Nothing was charged and '
-                     f'nothing was retried. Add "{model}" (or its prefix) to OMIT_TEMPERATURE in decide.py and run again. See error.txt')
+                     f'nothing was retried. Add "{model}" (or its prefix) to OMIT_TEMPERATURE in lib/models.py and run again. See error.txt')
         try: msg = (json.loads(err).get('error') or {}).get('message')
         except Exception: msg = err[:300]
         openrouter_error(e.code, msg)
@@ -776,6 +786,18 @@ fp_ = run.get('figure_passes') or {}
 if fig_where:                                     # the note to the first request and the figure requests' own prompt (11.5)
     wo['decided_by'] += (f' with note {(fp_.get("note") or {}).get("version") or "not recorded"} + {fp_.get("prompt_file") or "figure prompt not recorded"} '
                          f'({fp_.get("prompt_sha256") or "hash not recorded"}) for {len(fig_where)} figures')
+if args.response_file and own_file:
+    # this folder's own reply read again (a later step failed: run_api.sh's retry, the app's "Try Again"): the paid steps
+    # after the work order wrote into the workorder.json this rebuild replaces. Their results are put back from their own
+    # files, with no network and no flag: the page readings (#49; review 02 M8: they were lost before) and the language
+    # step's parts (#118). A reply from anywhere else carries neither.
+    _pr = load_json(os.path.join(args.run_dir, 'page_reads_run.json'))
+    if isinstance(_pr, dict):
+        _pages = [{'page': x['page'], 'text': x['text']} for x in _pr.get('pages') or [] if x.get('finish') == 'stop' and (x.get('text') or '').strip()]
+        if _pages: wo['page_readings'] = _pages
+    _lr = load_json(os.path.join(args.run_dir, 'language_run.json'))
+    if isinstance(_lr, dict) and isinstance(_lr.get('language_parts'), dict) and _lr['language_parts'].get('parts'):
+        wo['language_parts'] = _lr['language_parts']
 save('workorder.json', wo)
 save('validation.json', {'dropped': dropped,        # context: what review_workorder.py needs to check a reviewed work order the same way
                          'context': {'not_sent': sorted(not_sent), 'words_sent': sorted(words_sent),

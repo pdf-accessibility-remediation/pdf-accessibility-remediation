@@ -18,7 +18,7 @@ title, the XMP and the tags are the same as without it); Acrobat shows it under 
 """
 import sys, os, json, re, collections, hashlib, unicodedata
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq  # plumb_fix first: it patches pdfplumber
 from lib.sections import excerpt
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
@@ -1054,17 +1054,110 @@ def op_notes(spec):
         st.IDTree.Names = pikepdf.Array(flat)
 
 # ================================================================== 6. language
-def tag_run(pno, m, lang):
+# #118 (language tagging): a tag on a whole run is written here (structure only); a tag on part of a run waits for
+# fix_language_parts, after fix_paths, which makes every content edit in one late pass: the splits, and removing the /Lang
+# that most born-digital books put inside every run's marks ('en-US'), which would override the tag (review 02, H1).
+_LANG_WHOLE = []                                   # (page, mcid): runs tagged whole, whose marks lose their /Lang
+_LANG_SPLITS = collections.defaultdict(list)       # (page, mcid) -> parts to split out of that run
+_LANG_DROP = []                                    # (page, mcid): runs whose marks lose a publisher's /Lang a person removed
+LANG = log['language_parts'] = {'spans': [], 'whole': 0, 'split': 0, 'refused': collections.Counter(), 'refused_places': [],
+                                'retried_pages': [], 'restored_pages': [], 'marks_lang_removed': 0}
+def lang_refuse(pno, m, why, part=None):
+    LANG['refused'][why] += 1
+    if len(LANG['refused_places']) < 200:
+        LANG['refused_places'].append({'page': pno, 'mcid': m, 'why': why, **({'text': part.get('text'), 'lang': part.get('lang')} if part else {})})
+def unspoken_owner(o):
+    """Why a tag under this element would never be heard: it or an ancestor has its own spoken text or alt text, or is a
+    Figure or Formula (review 02, M9.3). None when a tag there is read."""
+    n = o
+    for _ in range(200):
+        if n is None or not is_elem(n): return None
+        if '/ActualText' in n or '/Alt' in n: return 'under an element with its own spoken or alt text'
+        if mapped(S(n)) in ('Figure', 'Formula'): return f'inside a {mapped(S(n))}'
+        n = parent_of.get(n.objgen)
+    return None
+def run_chars(pno, m): return [c for c in PL.pages[pno - 1].chars if c.get('mcid') == m]
+def tag_run(pno, m, lang, text=None):
     o = owner.get((pno, m))
     if o is None: reject(f'lang {PG(pno)} m{m}', 'run not in tree'); return
-    if S(o) == 'Span' and len(kids(o)) == 1: o.Lang = pikepdf.String(lang); ok(f'language: {lang} on existing Span'); return
-    i = mc_entry_index(o, pno, m)
-    if i is None: reject(f'lang {PG(pno)} m{m}', 'entry not found'); return
-    ks = kids(o)
-    sp = new_elem('Span', o, [m if isinstance(ks[i], int) else ks[i]], pg=pno if isinstance(ks[i], int) else None, Lang=pikepdf.String(lang))
-    if isinstance(ks[i], int) and eff_pg.get(o.objgen) != pno: tree_set(sp, '/K', pikepdf.Array([mcr(pno, m)]))
-    ks[i] = sp; set_kids(o, ks); pt_set_mcid(pno, m, sp); owner[(pno, m)] = sp; eff_pg[sp.objgen] = pno
-    ok(f'language: {lang} Span')
+    why = unspoken_owner(o)
+    if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why); return
+    if S(o) == 'Span' and len(kids(o)) == 1:
+        o.Lang = pikepdf.String(lang); ok(f'language: {lang} on existing Span')
+    else:
+        i = mc_entry_index(o, pno, m)
+        if i is None: reject(f'lang {PG(pno)} m{m}', 'entry not found'); return
+        ks = kids(o)
+        sp = new_elem('Span', o, [m if isinstance(ks[i], int) else ks[i]], pg=pno if isinstance(ks[i], int) else None, Lang=pikepdf.String(lang))
+        if isinstance(ks[i], int) and eff_pg.get(o.objgen) != pno: tree_set(sp, '/K', pikepdf.Array([mcr(pno, m)]))
+        ks[i] = sp; set_kids(o, ks); pt_set_mcid(pno, m, sp); owner[(pno, m)] = sp; eff_pg[sp.objgen] = pno
+        ok(f'language: {lang} Span')
+    _LANG_WHOLE.append((pno, m)); LANG['whole'] += 1
+    LANG['spans'].append({'page': pno, 'mcid': m, 'lang': lang, 'text': text if text is not None else mc_text(pno, m), 'whole': True})
+_CONTENT = {}
+def drawn_here(pno, m, n):
+    """None when run m is drawn in the page's own content with exactly the n characters pdfplumber lists for it;
+    otherwise why not. pdfplumber also lists text drawn inside a form XObject under the form's own MCIDs, which may
+    share a number with a page run: a tag must never land on that other run (#118 stress run, sojourners). Read before
+    any language edit (fix_language_parts runs later), so the page's content is the one pdfplumber read."""
+    if pno not in _CONTENT:
+        try: _CONTENT[pno] = list(pikepdf.parse_content_stream(pages[pno - 1]))
+        except Exception: _CONTENT[pno] = None
+    if _CONTENT[pno] is None: return 'page content not readable'
+    res = _inherited(pages[pno - 1], '/Resources') or {}
+    try: got = mcsplit.count_codes(_CONTENT[pno], res.get('/Font'), m, res.get('/XObject') or {})
+    except mcsplit.Refuse as e:                     # a count only (review 06, M1): the split's own refusals stay with the split
+        return 'run drawn inside a form XObject, not in the page' if str(e) == 'run not drawn in the page content' else str(e)
+    return None if got == n else 'characters do not line up with the run'
+def remove_existing(lp):
+    """The PDF's own language tags a person decided on the review page (language_parts version 2: forms with `current`).
+    Removed ('remove'): the element that carries that value over the run loses its /Lang, and the run's marks lose theirs
+    (in the late pass). Kept ('kept', "Keep the Tag", review 08 M5): when an element over the run carries the value, the
+    run's marks lose their own /Lang (an en-US in the marks would be read instead of the kept tag, 02 H1); a value carried
+    by the marks alone stays as it is. A tag a person changed is tagged anew like any other part (expand)."""
+    if not isinstance(lp, dict) or lp.get('version') != 2: return
+    forms = lp.get('forms') or []
+    for r in lp.get('parts') or []:
+        if not (isinstance(r, list) and len(r) == 5 and 0 <= r[4] < len(forms)): continue
+        f = forms[r[4]]
+        if not (f.get('current') and f.get('decided') in ('remove', 'kept')): continue
+        pno, m = r[0], r[1]
+        el, carrier = owner.get((pno, m)), None
+        for _ in range(8):
+            if el is None or not is_elem(el): break
+            if '/Lang' in el and str(el.Lang).strip() == str(f['current']).strip(): carrier = el; break
+            el = parent_of.get(el.objgen)
+        if f['decided'] == 'kept':
+            if carrier is not None: _LANG_DROP.append((pno, m)); LANG['existing_kept'] = LANG.get('existing_kept', 0) + 1
+            continue
+        if carrier is not None: del carrier['/Lang']; ok('language: a tag in the PDF removed')
+        _LANG_DROP.append((pno, m)); LANG['existing_removed'] = LANG.get('existing_removed', 0) + 1
+def language_parts(parts):
+    """The language step's tags (workorder.json `language_parts`, checked by workorder_check.check_language_parts): a
+    place that covers its whole run (no letter or digit outside it) is tagged as a run; any other is queued for a split.
+    Returns the (page, mcid) runs the parts covered, so the CJK rules below leave them alone."""
+    done = set()
+    rewritten = {pidx[k] for k, v in _REWRITES.items() if v and k in pidx}
+    for p in parts:
+        pno, m, f, l, lang = p['page'], p['mcid'], p['first'], p['last'], p['lang']
+        if not (1 <= pno <= len(pages)): lang_refuse(pno, m, 'page not in the book', p); continue
+        cs = run_chars(pno, m)
+        if l >= len(cs): lang_refuse(pno, m, 'characters do not line up with the run', p); continue
+        rest = ''.join(c['text'] for k, c in enumerate(cs) if k < f or k > l)
+        text = ''.join(c['text'] for c in cs[f:l + 1])
+        done.add((pno, m))
+        o = owner.get((pno, m))
+        if o is None: lang_refuse(pno, m, 'run not in the tag tree', p); continue
+        why = drawn_here(pno, m, len(cs))
+        if why: lang_refuse(pno, m, why, p); continue
+        if not re.search(r'[^\W_]', rest): tag_run(pno, m, lang, ''.join(c['text'] for c in cs)); continue
+        why = unspoken_owner(o)
+        if why: lang_refuse(pno, m, why, p); continue
+        if pno in rewritten: lang_refuse(pno, m, 'page text rewritten from OCR: whole runs only', p); continue
+        if any(c.get('upright') is False for c in cs):        # rotated or vertical text: not covered yet (#118 stress run, sands)
+            lang_refuse(pno, m, 'rotated or vertical text: whole runs only', p); continue
+        _LANG_SPLITS[(pno, m)].append({**p, 'text': text})
+    return done
 def op_language(spec):
     """CJK runs (lib/scripts.py): a run in the document's own language needs no tag (Han-only text in a Chinese, Japanese
     or Korean document; hangul in a Korean one; kana in a Japanese one). Otherwise hangul runs get ko, kana runs the AI's
@@ -1073,19 +1166,72 @@ def op_language(spec):
     spec = spec or {}
     reindex()
     explicit = {(r['page'], r['mcid']): r['lang'] for r in spec.get('runs', [])}
+    lp_ = wo.get('language_parts') if isinstance(wo.get('language_parts'), dict) else {}
+    fs_ = lp_.get('forms') or [] if lp_.get('version') == 2 else []
+    decided = {(r[0], r[1]) for r in lp_.get('parts') or [] if isinstance(r, list) and len(r) == 5 and 0 <= r[4] < len(fs_) and fs_[r[4]].get('decided')}
+    for k in decided & set(explicit):                             # a person's decision on a form wins over a v10 explicit run (review 08, L2)
+        explicit.pop(k); LANG['explicit_overridden'] = LANG.get('explicit_overridden', 0) + 1
     doc_lang = str(pdf.Root.get('/Lang', ''))                     # set by op_document, which runs before this step
     han, counts = [], collections.Counter()
+    # The language step's parts (#118). The local rule comes first on the runs they touch (review 06, H1): a run it tags
+    # whole today (kana → ja, hangul → ko) is tagged whole again; an AI part in that run with the same language, or one
+    # covering the whole run, adds nothing and is dropped; a part in another language stays, split out under the new
+    # Span. Han the AI left untagged in a run the local rule defers goes on the deferred list, as without the step.
+    by_run = collections.defaultdict(list)
+    for p in langreq.expand(wo.get('language_parts')):          # version 2: the rows of forms marked to tag
+        by_run[(p['page'], p['mcid'])].append(p)
+    remove_existing(wo.get('language_parts'))
+    keep, local_tag, local_defer = [], {}, {}
+    for (pno, m), ps in by_run.items():
+        cs = run_chars(pno, m) if 1 <= pno <= len(pages) else []
+        t = ''.join(c['text'] for c in cs); k = scripts.kind(t)
+        what, val = scripts.action(k, t, doc_lang, spec.get('kana_runs')) if k else (None, None)
+        if (pno, m) in explicit: what, val = 'tag', explicit[(pno, m)]
+        if what == 'tag':
+            local_tag[(pno, m)] = (k, val)
+            for p in ps:
+                rest = ''.join(c['text'] for i, c in enumerate(cs) if i < p['first'] or i > p['last'])
+                if scripts.primary(p['lang']) == scripts.primary(val) or not re.search(r'[^\W_]', rest):
+                    LANG['dropped_by_local_rule'] = LANG.get('dropped_by_local_rule', 0) + 1; continue
+                keep.append(p)
+        else:
+            keep += ps
+            if what == 'defer': local_defer[(pno, m)] = (k, val, t, ps)
+    for (pno, m), (k, val) in sorted(local_tag.items()):
+        counts[f'{k or "explicit"}: tag'] += 1
+        why = drawn_here(pno, m, len(run_chars(pno, m)))
+        if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why); continue
+        tag_run(pno, m, val)
+    language_parts(keep)
+    queued = {(pno, m): [(p['first'], p['last']) for p in ps] for (pno, m), ps in _LANG_SPLITS.items()}
+    tagged_whole = {(sp['page'], sp['mcid']) for sp in LANG['spans'] if sp.get('whole')}
+    for (pno, m), (k, val, t, ps) in sorted(local_defer.items()):
+        counts[f'{k}: defer'] += 1
+        if (pno, m) in tagged_whole: continue
+        cs = run_chars(pno, m); spans_ = queued.get((pno, m), [])
+        left = [i for i, c in enumerate(cs) if scripts.CJK.search(c['text']) and not any(a <= i <= b for a, b in spans_)]
+        if not left: continue
+        if k == 'han_only': han.append({'page': pno, 'label': labels.get(pno), 'mcid': m, 'text': t.strip()})
+        else: log['deferred'].append({'page': pno, 'mcid': m, 'what': val})
+    covered = set(by_run)
     for pno in range(1, len(pages) + 1):
-        by = collections.defaultdict(str)
+        by, n_chars = collections.defaultdict(str), collections.Counter()
         for c in PL.pages[pno - 1].chars:
-            if c.get('mcid') is not None: by[c['mcid']] += c['text']
+            if c.get('mcid') is not None: by[c['mcid']] += c['text']; n_chars[c['mcid']] += 1
+        def ok_here(m):                                           # never a run drawn in a form under a page run's number
+            why = drawn_here(pno, m, n_chars[m])
+            if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why)
+            return why is None
         for m, t in by.items():
-            if (pno, m) in explicit: tag_run(pno, m, explicit[(pno, m)]); continue
+            if (pno, m) in covered: continue                      # the language step decided this run
+            if (pno, m) in explicit:
+                if ok_here(m): tag_run(pno, m, explicit[(pno, m)])
+                continue
             k = scripts.kind(t)
             if k is None: continue
             what, val = scripts.action(k, t, doc_lang, spec.get('kana_runs'))
             counts[f'{k}: {what}'] += 1
-            if what == 'tag': tag_run(pno, m, val)
+            if what == 'tag' and ok_here(m): tag_run(pno, m, val)
             elif what == 'defer' and k == 'han_only': han.append({'page': pno, 'label': labels.get(pno), 'mcid': m, 'text': t.strip()})
             elif what == 'defer': log['deferred'].append({'page': pno, 'mcid': m, 'what': val})
     if han: log['deferred'].append({'what': 'Han-only runs (ja vs zh)', 'count': len(han)})
@@ -1780,9 +1926,9 @@ def fix_standard_remaps():
 def fix_lang_values():
     """veraPDF 7.2-29: a /Lang value must be a language tag. Spelling only is tidied (en_US → en-US, case, spaces); an
     empty /Lang on a tag is removed (it inherits); anything else is listed for a person, never guessed."""
-    reindex(); n, bad = 0, []
+    reindex(); n, named, bad, misfit, names = 0, 0, [], [], {}
     def tidy(d, where, page, root=False):
-        nonlocal n
+        nonlocal n, named
         v = d.get('/Lang')
         if v is None: return
         raw = str(v)
@@ -1791,11 +1937,31 @@ def fix_lang_values():
             else: bad.append((where, raw, page))
             return
         tag = langtag.norm(raw)
+        if tag is None and langtag.from_name(raw):         # a language's name with one certain code (#118): "Hawaiian", "Marshallese "
+            code = langtag.from_name(raw); text = '' if root else elem_gaptext(d)
+            why = langtag.name_misfit(code, text)
+            if why:                                        # review 08, M4: "Hungarian" on a Hawaiian name stays for a person
+                misfit.append((where, raw, code, why, text, page)); return
+            d.Lang = pikepdf.String(code); named += 1
+            c = names.setdefault((raw.strip(), code), {'value': raw.strip(), 'code': code, 'count': 0, 'samples': [], 'pages': []})   # "Marshallese " is "Marshallese" (review 10)
+            c['count'] += 1
+            if text.strip() and len(c['samples']) < 5 and text.strip()[:40] not in c['samples']: c['samples'].append(text.strip()[:40])
+            if page and page not in c['pages'] and len(c['pages']) < 8: c['pages'].append(page)
+            return
+        if tag is not None: tag = langtag.shortest(tag)    # the shortest form: jpn → ja (#118, review 02 L2)
         if tag is None: bad.append((where, raw, page))
         elif tag != raw: d.Lang = pikepdf.String(tag); n += 1
     tidy(pdf.Root, 'document', None, root=True)
     for e, _ in all_elems(): tidy(e, S(e), eff_pg.get(e.objgen))
     if n: ok('language: /Lang spelling tidied', n)
+    if named: ok('language: a language name written as /Lang replaced by its code', named)
+    n += named
+    if names: LANG['names_converted'] = sorted(names.values(), key=lambda c: -c['count'])      # review.md lists each (review 08, M4)
+    if misfit: LANG['names_not_converted'] = [{'value': r, 'code': c, 'why': w, 'text': t.strip()[:60], 'page': p} for _, r, c, w, t, p in misfit[:50]]
+    for where, raw, code, why, text, page in misfit[:20]:
+        log['deferred'].append({'what': f'/Lang "{raw[:40]}" on {where} names {langtag.name(code) or code}, but {why}: "{text.strip()[:40]}"',
+                                'why': 'set the right tag (e.g. haw, en), or remove it', **({'page': page} if page else {})})
+    if len(misfit) > 20: log['deferred'].append({'what': f'{len(misfit) - 20} more language names whose words look like another language'})
     rule_fix('7.2-29', n)
     for where, raw, page in bad[:20]:
         log['deferred'].append({'what': f'/Lang "{raw[:40]}" on {where} is not a language tag', 'why': 'set the right tag (e.g. en, ja, zh-Hant)', **({'page': page} if page else {})})
@@ -2508,6 +2674,37 @@ def _write_fixes(page, conts, wrap, state):
         else: c.write(data)
     _finish_font_maps(); _log_rewrites()
     return n_rw, n_sp
+HAW_SHARE, HAW_MIN = 0.6, 3                 # a line or element is Hawaiian when 60% of its words, and at least 3, have Hawaiian shape
+HAW_BLOCKS = {'P', 'H', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'LBody', 'Lbl', 'TD', 'TH', 'Caption', 'BlockQuote', 'Quote', 'Note', 'Span'}
+def haw_elements(pnos, readings=None):
+    """L6 of 03 (#118): on scanned pages read whole by the AI (page readings, Hawaiian pages), the local rule tags a whole
+    element haw when most of its words (60%, at least 3) have Hawaiian shape (lib/ocrwords.hawaiian_shape) and one of
+    them is not in the English list (SCOWL lists ka, hale, wahine), as langcands's run rule: one /Lang on the element (a P,
+    a list item, a cell), never a Span per word. Elements with a /Lang already, or in a Hawaiian document, are left alone.
+    The letter guard (review 08, H2): an element with any word outside the English list that uses a letter Hawaiian lacks
+    (te, fiefia, whare: Māori, Tongan, Samoan …) is not tagged. Reads the OCR text, with each word the page reading
+    changed read as the reading has it (readings: {page: {OCR word: reading}}), so an OCR misreading such as rnaikai does
+    not trip the guard. Each element tagged is listed (log['haw_elements']['elements']) for the Hawaiian reader."""
+    from lib import ocrwords, langcands
+    out = {'pages': sorted(pnos), 'tagged': 0, 'ruled_out': 0, 'elements': []}
+    log['haw_elements'] = out
+    if not pnos or str(pdf.Root.get('/Lang') or '').lower().startswith('haw'): return
+    readings = readings or {}
+    for n, _par in all_elems():
+        if mapped(S(n)) not in HAW_BLOCKS or '/Lang' in n or any(is_elem(k) for k in kids(n)): continue
+        pg = eff_pg.get(n.objgen); own = own_mcids(n, pg)
+        if not own or any(p not in pnos for p, _ in own): continue
+        fix = readings.get(pg) or {}
+        words = [fix.get(c, c) for c in (re.sub(r"^[^\w‘’ʻ']+|[^\w‘’ʻ']+$", '', w) for w in elem_gaptext(n).split()) if len(c) >= 2 and any(ch.isalpha() for ch in c)]
+        haw = [w for w in words if ocrwords.hawaiian_shape(w)]
+        if len(haw) >= HAW_MIN and len(haw) >= HAW_SHARE * len(words) and any(not langcands.in_english(w) for w in haw):
+            bad = [w for w in words if ocrwords.not_hawaiian_letters(w)]
+            if bad: out['ruled_out'] += 1; continue
+            n.Lang = pikepdf.String('haw'); out['tagged'] += 1
+            out['elements'].append({'page': pg, 'type': mapped(S(n)), 'words': len(words), 'hawaiian': len(haw), 'text': ' '.join(words[:12]),
+                                    'keys': [[p, m] for p, m in own]})          # verify.py finds the element again by its marked content
+    if out['tagged']: ok('Hawaiian lines on page-read pages tagged haw (whole element)', out['tagged'])
+
 def op_page_readings(spec):
     """Each item is a whole-page AI reading of a scanned page (read_pages.py, issue #49): {page, text}. The page's OCR
     words (_page_text_ops) are paired with the reading's words in order (lib/pagereads.py); an OCR word whose reading
@@ -2516,7 +2713,7 @@ def op_page_readings(spec):
     are both right, each where the page prints it. The OCR text, its fonts and the page stay as they were. Runs before
     ocr_words, which leaves operators already in a span alone."""
     items = [it for it in spec or [] if isinstance(it, dict) and isinstance(it.get('page'), int) and 1 <= it['page'] <= len(pages)]
-    res = []
+    res, read_as = [], {}
     for it in items:
         page = pages[it['page'] - 1]
         st = {}; cand, conts = _page_text_ops(page, state=st)
@@ -2543,8 +2740,10 @@ def op_page_readings(spec):
         n_rw, n_sp = _write_fixes(page, conts, wrap, st)
         examples = [[words[wi][2], r] for wi, r in sorted(changes.items())][:200]
         res.append({'page': it['page'], **n, 'operators': n_rw + n_sp, 'rewritten': n_rw, 'spans': n_sp, 'changes': examples, **({'okina_slip': slip} if slip else {})})
+        read_as[it['page']] = {words[wi][2]: r for wi, r in changes.items()}
         if n['changed']: ok('page readings: printed spelling written into the OCR text', n['changed'])
     log['page_readings'] = res
+    haw_elements({r['page'] for r in res}, read_as)
     if res:
         log['deferred'].append({'what': f'{len(res)} pages read by the AI (page readings)',
                                 'why': 'AI text is a draft: a person who reads Hawaiian checks each page against the scan before the book ships',
@@ -2949,6 +3148,150 @@ def fix_font_maps():
         res['fonts'].append({'font': bf, 'obj': f'{f.objgen[0]} {f.objgen[1]}', 'checked': len(cand), 'passed': len(fixed), 'failed': failed,
                              'fixed': {str(c): bytes.fromhex(v).decode('utf-16-be') for c, v in fixed.items()}})
 
+# ================================================================== after fix_paths: the language step's content edits (#118)
+def _inherited(page, key):
+    n = page.obj
+    for _ in range(50):
+        if n is None: return None
+        if key in n: return n[key]
+        n = n.get('/Parent')
+    return None
+def _render_pages(items):
+    """[RGB image at verify.py's scale] for (page, contents) items, in order, drawn from a scratch PDF holding only those
+    pages (their size, rotation, resources and the given contents)."""
+    import io, pypdfium2 as pdfium
+    scratch = pikepdf.new()
+    for page, contents in items:
+        held = {'/Type': pikepdf.Name.Page, '/Contents': contents, '/Resources': _inherited(page, '/Resources') or pikepdf.Dictionary()}
+        for k in ('/MediaBox', '/CropBox', '/Rotate', '/UserUnit'):
+            v = _inherited(page, k)
+            if v is not None: held[k] = v
+        # copy_foreign takes indirect objects only: the page's parts go across inside one holder (never saved: nothing
+        # in this file refers to it)
+        scratch.pages.append(pikepdf.Page(scratch.copy_foreign(pdf.make_indirect(pikepdf.Dictionary(held)))))
+    buf = io.BytesIO(); scratch.save(buf)
+    doc = pdfium.PdfDocument(buf.getvalue())
+    try: return [doc[i].render(scale=1.2).to_pil().convert('RGB') for i in range(len(items))]
+    finally: doc.close()
+def _same_image(a, b):
+    from PIL import ImageChops
+    return ImageChops.difference(a, b).getbbox() is None
+def fix_language_parts():
+    """The content edits of the language step, in two phases (review 02, M9.1). First, on every page with work: remove the
+    /Lang inside the marks of each run tagged whole (H1), and split each run that holds a tagged place (lib/mcsplit.py).
+    Then each such page is drawn before and after at verify.py's scale. A page that differs by one pixel is tried again
+    run by run: the marks edits (which draw nothing) and every split that leaves the page the same on its own are kept,
+    the others are listed as not tagged; if the page still differs, it gets its original content back. Only then is the
+    structure written, for what passed: a Span with the language per place, and the run's new pieces in the owner's /K
+    and the tag-tree index."""
+    import time
+    t0 = time.time()
+    jobs = collections.defaultdict(lambda: {'drop': set(), 'split': {}})
+    for pno, m in _LANG_WHOLE + _LANG_DROP: jobs[pno]['drop'].add(m)
+    for (pno, m), parts in _LANG_SPLITS.items(): jobs[pno]['split'][m] = sorted(parts, key=lambda p: p['first'])
+    if not jobs: return
+    reindex()
+    def edit(pno, runs=None):
+        """(new contents or None, plans, marks edits, {run: why refused}) for page pno: the marks edits, and the splits
+        of `runs` (every run with work when None)."""
+        page, job = pages[pno - 1], jobs[pno]
+        try: ins = list(pikepdf.parse_content_stream(page))
+        except Exception: return None, [], 0, {m: 'page content not readable' for m in job['split']}
+        fonts = (_inherited(page, '/Resources') or {}).get('/Font')
+        dropped = 0
+        for m in sorted(job['drop']):
+            ins, ch = mcsplit.drop_lang(ins, m); dropped += ch
+        arr, plans, refused = pt_arr(pno), [], {}
+        todo = {m: ps for m, ps in job['split'].items() if runs is None or m in runs}
+        if todo and arr is None: return None, [], 0, {m: 'page has no tag-tree index' for m in job['split']}
+        if todo:
+            used = mcsplit.drawn_mcids(ins) | {mm for (pg, mm) in owner if pg == pno}
+            nxt = [max(used | {len(arr) - 1}) + 1]
+            def new_mcid():
+                while nxt[0] < len(arr) and arr[nxt[0]] is not None: nxt[0] += 1
+                m_ = nxt[0]; nxt[0] += 1
+                assert m_ >= len(arr) or arr[m_] is None, 'a new MCID would land on a used index entry'
+                return m_
+            for m, parts in sorted(todo.items()):
+                try:
+                    ins2, pieces = mcsplit.split_run(ins, fonts, m, [(p['first'], p['last']) for p in parts], new_mcid, expect_n=len(run_chars(pno, m)))
+                except mcsplit.Refuse as e: refused[m] = str(e); continue
+                ins = ins2; plans.append((m, pieces, parts))
+        new = pdf.make_stream(pikepdf.unparse_content_stream(ins)) if (dropped or plans) else None
+        return new, plans, dropped, refused
+    edited = {}
+    for pno in sorted(jobs):
+        new, plans, dropped, refused = edit(pno)
+        for m, why in refused.items():
+            for p in jobs[pno]['split'].get(m, []): lang_refuse(pno, m, why, p)
+        if new is not None: edited[pno] = (pages[pno - 1].obj.get('/Contents'), new, plans, dropped)
+    if not edited: return
+    order = sorted(edited)
+    before = dict(zip(order, _render_pages([(pages[p - 1], edited[p][0]) for p in order])))
+    after = dict(zip(order, _render_pages([(pages[p - 1], edited[p][1]) for p in order])))
+    LANG['pages_checked'] = len(order)
+    for pno in order:
+        if _same_image(before[pno], after[pno]): continue
+        old, _, plans, _ = edited[pno]
+        LANG['retried_pages'].append(pno)                # tried again run by run
+        runs = [m for m, _, _ in plans]
+        alone = _render_pages([(pages[pno - 1], edit(pno, {m})[0]) for m in runs])
+        good = {m for m, im in zip(runs, alone) if _same_image(before[pno], im)}
+        for keep in (good, set()):
+            new, plans2, dropped, _ = edit(pno, keep)
+            if new is not None and _same_image(before[pno], _render_pages([(pages[pno - 1], new)])[0]):
+                edited[pno] = (old, new, plans2, dropped); break
+        else:
+            edited[pno] = (old, None, [], 0); LANG['restored_pages'].append(pno)
+        kept = {m for m, _, _ in edited[pno][2]}
+        for m, _, parts in plans:
+            if m not in kept:
+                for p in parts: lang_refuse(pno, m, 'the page would look different', p)
+    lose = {int(x) for x in os.environ.get('APPLY_TEST_LOSE_ENTRY', '').split(',') if x.strip().isdigit()}   # tests only (review 06, M6)
+    for pno in order:
+        old, new, plans, dropped = edited[pno]
+        if new is None: continue
+        # resolve every run's tag entry before the page's content is written (review 06, M6): a run whose entry moved
+        # since op_language (links, section moves, figure order) is refused, and the page keeps only its marks edits
+        lost = [m for m, _, _ in plans if pno in lose or owner.get((pno, m)) is None or mc_entry_index(owner[(pno, m)], pno, m) is None]
+        if lost:
+            for m, _, parts in plans:
+                for p in parts: lang_refuse(pno, m, 'the run\'s tag entry moved before the split was written', p)
+            new, plans, dropped, _ = edit(pno, set())
+            if new is None: continue
+        try:                                               # first the page's whole plan, with nothing in the tree changed yet (review 08, L1)
+            built = []                                     # (owner, entry index, its new kids, [(mcid, element)], [Span records], run, pieces)
+            if os.environ.get('APPLY_FAIL_LANG_PAGE') == str(pno): raise RuntimeError('test: a failure while the page is planned')   # tests only
+            for m, pieces, parts in plans:
+                o = owner[(pno, m)]; i = mc_entry_index(o, pno, m)
+                if i is None: raise ValueError(f'run {m}: its tag entry is gone')
+                same_pg = isinstance(kids(o)[i], int)
+                new_k, maps, recs = [], [], []
+                for mc, kind, ci in pieces:
+                    if kind == 'run': new_k.append(mc if same_pg else mcr(pno, mc)); maps.append((mc, o))
+                    else:
+                        part = parts[ci]
+                        sp = new_elem('Span', o, [mc], pg=pno, Lang=pikepdf.String(part['lang']))   # not in any /K until written below
+                        new_k.append(sp); maps.append((mc, sp))
+                        recs.append({'page': pno, 'mcid': mc, 'lang': part['lang'], 'text': part['text'], 'whole': False})
+                built.append((o, i, new_k, maps, recs, m, pieces))
+        except Exception as e:                             # one page's failure stays on that page (review 06, M6): its content and its tree as they were
+            LANG['restored_pages'].append(pno)
+            log['failed'].append({'op': f'fix_language_parts page {pno}', 'error': f'{type(e).__name__}: {e}'[:300]})
+            continue
+        pages[pno - 1].obj.Contents = new                  # then all of it: the content, each owner's /K, the index, the records
+        LANG['marks_lang_removed'] += dropped
+        for o, _i, new_k, maps, recs, m, pieces in built:
+            i = mc_entry_index(o, pno, m)                  # on the /K as it is now: an earlier split of this owner moved its entries (review 10, H1)
+            ks = kids(o); ks[i:i + 1] = new_k; set_kids(o, ks)
+            for mc, el in maps:
+                pt_set_mcid(pno, mc, el); owner[(pno, mc)] = el
+                if el is not o: eff_pg[el.objgen] = pno
+            for r in recs: LANG['spans'].append(r); LANG['split'] += 1; ok(f'language: {r["lang"]} Span (part of a run)')
+            for sp in LANG['spans']:                       # a run tagged whole and split under its Span: the Span holds every piece
+                if sp.get('whole') and sp['page'] == pno and sp['mcid'] == m: sp['mcids'] = [mc for mc, _, _ in pieces]
+    LANG['render_check_seconds'] = round(time.time() - t0, 2)
+
 # ================================================================== run, in a fixed order
 STEPS = [('artifacts', op_artifacts), ('offpage', fix_offpage_text), ('document', op_document), ('adopt_orphans', op_adopt_orphans), ('rolemap', op_rolemap), ('merges', op_merges),
          ('actual_text', op_actual_text), ('page_readings', op_page_readings), ('ocr_words', op_ocr_words), ('rolemap', op_rolemap_standard), ('retype', op_retype), ('list_rule', op_list_rule), ('flatten', op_flatten), ('tables', op_tables), ('alt', op_alt),
@@ -2977,9 +3320,12 @@ try: fix_outline()
 except Exception as e: log['failed'].append({'op': 'fix_outline', 'error': f'{type(e).__name__}: {e}'[:300]})
 try: fix_paths()
 except Exception as e: log['failed'].append({'op': 'fix_paths', 'error': f'{type(e).__name__}: {e}'[:300]})
+try: fix_language_parts()                  # after every step that reads text by MCID from PL (the source): review 02, Notes
+except Exception as e: log['failed'].append({'op': 'fix_language_parts', 'error': f'{type(e).__name__}: {e}'[:300]})
 for fn in (fix_rolemap_cycles, fix_standard_remaps, fix_th_scope, fix_lang_values):   # veraPDF rules the executor fixes by itself
     try: fn()
     except Exception as e: log['failed'].append({'op': fn.__name__, 'error': f'{type(e).__name__}: {e}'[:300]})
+if not (LANG['spans'] or LANG['refused'] or LANG.get('existing_removed') or LANG.get('existing_kept') or LANG.get('names_converted') or LANG.get('names_not_converted') or LANG.get('restored_pages') or LANG.get('explicit_overridden')) and not any(f['op'].startswith('fix_language_parts') for f in log['failed']): log.pop('language_parts')      # nothing tagged, refused or converted (fix_lang_values, M4 of 08): no entry
 try: fix_parenttree()
 except Exception as e: log['failed'].append({'op': 'fix_parenttree', 'error': f'{type(e).__name__}: {e}'[:300]})
 try: fix_index()

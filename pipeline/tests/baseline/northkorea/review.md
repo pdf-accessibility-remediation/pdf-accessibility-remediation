@@ -2,13 +2,13 @@
 
 Result: `northkorea_remediated.pdf`
 
-239 pages · run November 3, 2026, at 12:35 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost $0.115 ($0.0005 per page), from the original call on November 3, 2026 · this run: no new call · tokens: saved reply reused, not counted
+239 pages · run November 14, 2026, at 3:32 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.109 ($0.0005 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.2s · audit 25.4s · reuse saved reply 0.6s · apply 29.0s · verify 40.4s · total 95.6s
+Time: intake 0.6s · audit 19.6s · reuse saved reply 1.2s · apply 36.5s · verify 33.6s · total 91.5s
 
 ## Overview
 
@@ -20,10 +20,11 @@ Time: intake 0.2s · audit 25.4s · reuse saved reply 0.6s · apply 29.0s · ver
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
+- Language Tags: Not Done (the language step was not run)
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 10 (5 deferred by the AI · 1 deferred by the executor · 4 CHECK rows)  
+**Needs a person:** 7 (2 deferred by the AI · 1 deferred by the executor · 4 CHECK rows)  
 **AI decisions:** 70 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** tag-tree index entries 1,994 · links tied and described 1,963 · link descriptions that were only a URL 14 · empty tags removed 13 · title shown in the window 1 · Document root 1  
 **veraPDF (WCAG 2.2 machine checks):** 0 WCAG rules failing before (0 checks) → 0 after (0 checks) · 0 newly failing
@@ -37,7 +38,7 @@ Automated checks are evidence, not sign-off.
 | One Document root: P 707, H1 1, Figure 1, H2 10, TOC 1, H3 27, Caption 2, Table 2, L 3, H4 16, Div 1, Sect 1, Document 1 | see Automated Checks | [Automated Checks](#automated-checks) |
 | Fonts: embedded and mapped to Unicode: 1 not embedded · 0 without ToUnicode | see §5 | [§5](#5-fonts) |
 | elements still outside the Document | see §13 | [§13](#13-deferred-by-the-executor) |
-| … and 5 more | | §12 |
+| … and 2 more | | §12 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -96,9 +97,9 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 |---|---|---|
 | PDF 1 (printed Cover) | Cover Page of Language and Truth in North Korea
 
-Author: Sonia Ryang\x00 | Book cover of Language and Truth in North Korea by Sonia Ryang. A map of the Korean peninsula, with the north colored blue and red-and-white like the North Korean flag with its red star, and a bronze statue of a man in a long coat with one arm raised in front. Faint Korean characters fill the beige background. The title is printed in red at the top and the author's name at the bottom. |
-| PDF 4 (printed iii) | Logo of University of Hawai‘i Press\x00 | University of Hawai‘i Press logo |
-| PDF 5 (printed iv) | Creative Commons logo\x00 | Creative Commons Attribution-NonCommercial-NoDerivatives (CC BY-NC-ND) license logo |
+Author: Sonia Ryang\x00 | Cover of Language and Truth in North Korea by Sonia Ryang. A bronze statue of a standing man with one arm raised stands over a map of the Korean peninsula. The northern half is coloured in the blue, red and white of the North Korean flag, and faint Korean script covers the beige background. The title appears at the top and the author's name at the bottom. |
+| PDF 4 (printed iii) | Logo of University of Hawai‘i Press\x00 | University of Hawaiʻi Press logo |
+| PDF 5 (printed iv) | Creative Commons logo\x00 | Creative Commons logo with the Attribution, NonCommercial and NoDerivatives icons (CC BY-NC-ND) |
 
 ### 2. Elements Retyped by the AI (58)
 
@@ -167,7 +168,7 @@ Check each one is (or is not) a heading as decided.
 
 ### 3. Lists and Tables
 
-- Flattened list on PDF 216 (printed 203): "1. Pyongyang: Joseon rodongdang chulpansa. ———. 1992b. Hoegorok: Segiwa deobureo (With the Century…" (bibliography entries (publisher lines of References) tagged as a numbered list, not a real list)
+- Flattened list on PDF 216 (printed 203): "1. Pyongyang: Joseon rodongdang chulpansa. ———. 1992b. Hoegorok: Segiwa deobureo (With the Century…" (Bibliography entries (PDF 216, printed 203) tagged as a numbered list; the '1.' and '2.' are not list markers)
 - Header cells marked by the AI on PDF 75 (printed 62): 1 header row(s), 0 header column(s), 0 cells changed to header cells. Check they are the real headers.
 - Header cells marked by the AI on PDF 75 (printed 62): 1 header row(s), 0 header column(s), 0 cells changed to header cells. Check they are the real headers.
 
@@ -244,13 +245,10 @@ Each item is something to look at, not a proven failure.
 
 ### 12. Deferred by the AI
 
-- **Reading position of the Index section (Sect, PDF 228–236) and of the copyright-page Article (PDF 5)**: The digest's reading_order lists the Index Sect first, before the front matter, so it may be read out of printed order. The listing is truncated and I can't confirm where the container sits after the executor moves it into the Document. [PDF 5 (printed iv), PDF 228 (printed 215), PDF 236 (printed 223)]
-- **Drop caps split from their words in the text layer (e.g. 'W riting' on PDF 8, 'S onia' on PDF 238)**: These are ActualText candidates, but the digest gives no obj for the paragraphs concerned, so I can't target them. [PDF 8 (printed vii), PDF 238 (printed 225)]
-- **Pages with no tagged text (PDF 3, 7, 13, 194, 214, 224, 226)**: They are probably blank pages. A person should confirm they have no untagged content. [PDF 3 (printed ii), PDF 7 (printed vi), PDF 13 (printed xii), PDF 194 (printed 181), PDF 214 (printed 201), PDF 224 (printed 211), PDF 226 (printed 213)]
-- **page_map ends at PDF 226 although the file has 239 pages, and its labels (e.g. 'About the Author' at PDF 225) don't match the headings list (PDF 238)**: The digest's page numbering is inconsistent in the back matter. I cited page numbers from the headings list. [PDF 225 (printed 212), PDF 226 (printed 213), PDF 238 (printed 225), PDF 239 (printed 226)]
-- **veraPDF reports 1 failed rule that no work-order key can fix**: It is not listed in pdfua_check.rules, so I can't tell what it is. A person should review it.
+- **Drop-cap spacing at the start of paragraphs, e.g. 'W riting books' on the Acknowledgments page and 'S onia Ryang is the T. T. and W. F. Chao Professor' in About the Author**: The initial letter is separated from the rest of the word in the text layer. ActualText would have to cover the whole paragraph; a person should decide whether that is worth doing. [PDF 8 (printed vii), PDF 238 (printed 225)]
+- **Reading order of the container holding the copyright page (Document > Article > Story) and the Index Sect**: The digest's reading_order lists the Index Sect (PDF 228–236) first, and the page 5 container is nested separately. Check that after the executor's Document-root step the order is cover, title page, copyright, contents, front matter, chapters, references, index. The logo Figure on PDF 4 (printed iii) is also at the tree root and may land out of place. [PDF 4 (printed iii), PDF 5 (printed iv), PDF 228 (printed 215), PDF 236 (printed 223)]
 
-Reviewer note from the AI: Heading outline is rebuilt by per-element retype: the book title on PDF 4 (printed iii) stays the only H1. The half-title repeats on PDF 2 (printed i) and PDF 12 (printed xi) became P. Contents, Acknowledgments, Introduction, chapters, References, Index and About the Author are H2. The former H2 sections are H3 and the former H3 subsections are H4. The publisher's Table 1 and 2 titles on PDF 75 (printed 62) were tagged H2 at 9 pt and are now Captions. Chapter headings already combine the number and title in one element, so no merges are needed. The bibliography 'list' on PDF 216 (printed 203) was flattened. The three numbered lists on PDF 86–88 (printed 73–75) are kept. Figure alt texts contained NUL characters and were replaced. The TOC is already tagged TOC/TOCI. Language stays en-US. Romanized Korean is not language-tagged.
+Reviewer note from the AI: The tagger gave all chapter-level titles H1 and section titles H2/H3. I retyped per element so the outline is one H1 (the title page, PDF 4 (printed iii)), then H2 for the contents, acknowledgments, introduction, chapters, conclusion, references, index and About the Author. Sections are H3 and subsections are H4. The half-title repeats on PDF 2 (printed i) and PDF 12 (printed xi) became paragraphs. The Table 1 and Table 2 titles became captions; the tables themselves are real, with a header row. The three numbered lists on PDF 86–88 (printed 73–75) are real lists and are kept. Figure alt texts in the file contained stray NUL characters and are replaced. Contents, links and index are already tagged as TOC/TOCI and Link and need no work-order changes. The veraPDF check listed no failures a work order can fix.
 
 ### 13. Deferred by the Executor
 
@@ -266,8 +264,8 @@ Reviewer note from the AI: Heading outline is rebuilt by per-element retype: the
 | retype → P | 2 |
 | retype → H2 | 11 |
 | retype → H3 | 27 |
-| retype → Caption | 2 |
 | retype → H4 | 16 |
+| retype → Caption | 2 |
 | flatten: false list → paragraphs | 1 |
 | table: header cells marked (work order) | 0 |
 | figure: alt text | 3 |
