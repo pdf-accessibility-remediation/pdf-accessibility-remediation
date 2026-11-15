@@ -251,6 +251,9 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
             'images': int(e.get('images') or 0),
             'sheets': x['sheets'], 'input_tokens': e.get('input_tokens'),
             'ceiling_usd': round(total, 4), 'per_call_ceiling_usd': x['per_call'], 'spent_before_usd': x['spent_before'],
+            # the figure requests after the first one (#63): the extra alt-text requests, named on the run page (round 24)
+            'figures': {'requests': len(x['passes']) - 1, 'ceiling_usd': round(sum(float(p.get('worst_case_usd') or 0) for p in x['passes'][1:]), 4)}
+                       if x['passes'] and len(x['passes']) > 1 else None,
             'page_reads': {'pages': int(pr['to_read']), 'ceiling_usd': pr_total} if pr else None,
             'language': {'forms': int(le.get('sent') or 0), 'requests': int(le['to_send']), 'ceiling_usd': le_total, 'model': le.get('model'),
                          'prompt_sha256': le.get('prompt_sha256')} if le else None,

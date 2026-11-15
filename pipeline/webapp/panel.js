@@ -596,12 +596,16 @@ const usd = x => '$' + Number(x || 0).toFixed(2);
 // unknown reason shows nothing more. batch.js has the same words.
 const NONE_WHY = { too_few: 'not enough past runs to calculate it', cut_off: "an earlier answer was cut off, so it can't be calculated" };
 function noneWhy(x) { return x && NONE_WHY[x.none] ? ' (' + NONE_WHY[x.none] + ')' : ''; }
+function including(e) {                                         // the parts of the ceiling beyond the first request, in one list (round 24)
+  const parts = [e.figures && e.figures.requests ? usd(e.figures.ceiling_usd) + ' for the extra alt-text request' + (e.figures.requests === 1 ? '' : 's') : '',   // #63
+    e.page_reads ? usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '',   // #49
+    e.language ? usd(e.language.ceiling_usd) + ' for the language tags' : ''].filter(Boolean);   // #118
+  return parts.length ? ', including ' + (parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]) : '';
+}
 function costLines(e) {                                          // #65 (costs in dollars and an expected cost): the figure people read first, then the ceiling
   const x = e.expected;                                          // no key (an estimate made before #65): no line; {none}: "Not Available Yet"
   return (x ? 'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet' + noneWhy(x)) + '<br>' : '') +
-    'Max Estimated Cost: ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + esc(e.requests) + ' AI requests' : '') +
-    (e.page_reads ? ', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '') +   // #49
-    (e.language ? ', including ' + usd(e.language.ceiling_usd) + ' for the language tags' : '') +   // #118
+    'Max Estimated Cost: ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + esc(e.requests) + ' AI requests' : '') + including(e) +
     (e.spent_before_usd ? ' · Counted Toward This PDF\'s Limit So Far: ' + usd(e.spent_before_usd) : '') +
     (e.credit_usd != null ? ' · Credit: ' + usd(e.credit_usd) : ' · Credit: Not Checked') +
     (e.left_out || []).map(x => '<br>' + esc(x.words)).join('');   // review 08, H1: an optional step that doesn't fit is left out, never the PDF

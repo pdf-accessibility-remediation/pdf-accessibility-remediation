@@ -375,3 +375,9 @@ def test_a_run_with_no_ai_request_costs_none_and_says_why(tmp_path):
     a = C.actual(str(tmp_path)); assert a['usd'] == 0 and a['calls'] == 0 and a['no_model'] and not a['reused']
     assert C.after_line(str(tmp_path)) == 'AI Cost: none (no AI request: a PDF edited by hand)'
     assert C.actual(str(tmp_path / 'other'))['no_model'] is None
+
+
+def test_the_extra_alt_text_requests_are_named_apart(tmp_path):     # round 24: the figure requests after the first one
+    e = C.estimate(str(folder(tmp_path, 'a', worst=0.9847, extra={'passes': [{'pass': '1', 'worst_case_usd': 0.6441}, {'pass': '2', 'worst_case_usd': 0.3406}]})))
+    assert e['figures'] == {'requests': 1, 'ceiling_usd': 0.3406} and e['requests'] == 2
+    assert C.estimate(str(folder(tmp_path, 'b')))['figures'] is None          # one request: nothing extra
