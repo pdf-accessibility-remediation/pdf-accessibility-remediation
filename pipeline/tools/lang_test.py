@@ -577,7 +577,7 @@ def send(out_dir, model, run, which, cap, prompt_file=None, req_dir='requests', 
         with urllib.request.urlopen(req, timeout=600) as resp: rep = json.load(resp)
         json.dump(rep, open(os.path.join(od, f'{n:03d}.reply.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         cost = (rep.get('usage') or {}).get('cost')
-        ledger['calls'].append({'model': model, 'run': run, 'set': which, 'n': n, 'cost': cost, 'at': time.strftime('%Y-%m-%dT%H:%M:%S')})
+        ledger['calls'].append({'model': model, 'run': run, 'set': which, 'n': n, 'cost': cost, 'cap': cap, 'at': time.strftime('%Y-%m-%dT%H:%M:%S')})   # the cap this send used (review 19, Note 2)
         json.dump(ledger, open(ledger_f, 'w'), indent=1)
         print(f'${cost:.4f}' if isinstance(cost, (int, float)) else 'cost not given')
 

@@ -28,8 +28,8 @@ import sys, os, re, json, time, hashlib, argparse, urllib.request, urllib.error,
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 from lib import plumb_fix, plpages, langcands, langreq, costhistory, costs, workorder_check  # noqa: F401
 
-PROMPT_NAME = 'language_v3.md'
-DEFAULT_MODEL = 'anthropic/claude-sonnet-5.5'   # kept after round 15's experiment: Opus 5.5 no more accurate at 2.2 times the cost                   # v1 with v2's form echo and dictionary-phrase line (adopted 2026-11-13, 11 §2)
+PROMPT_NAME = 'language_v3.md'                   # v1 with v2's form echo and dictionary-phrase line (adopted 2026-11-13, 11 §2)
+DEFAULT_MODEL = 'anthropic/claude-sonnet-5.5'   # kept after round 15's experiment: Opus 5.5 no more accurate at 2.2 times the cost
 CHARS_PER_TOKEN = 3.5
 
 def load_env():
