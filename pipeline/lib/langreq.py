@@ -171,6 +171,31 @@ def place_text(p, words, ctx=None):
     left = [_trim(w, True, c['cjk_cap']) for w in pw[a:p['w0']]]; right = [_trim(w, False, c['cjk_cap']) for w in pw[p['w1'] + 1:b + 1]]
     return ' '.join(left + ['[' + ' '.join(pw[p['w0']:p['w1'] + 1]) + ']'] + right)
 
+_MARK = re.compile(r'\[\[([^|\]]+)\|([^\]]*)\]\]')
+def sent_contexts(reqs, ctx=None):
+    """{form id: its first marked place in the requests as built, the other marks unmarked, the place in [brackets], cut
+    to the context window}: what the review page shows, taken from the text actually sent (review 19, L1), so a long CJK
+    piece is cut on the same side as in the request."""
+    c = ctx_of(ctx); size = c['cap'] if c['mode'] == 'sentence' else c['size']
+    counts = (lambda w: True) if c['unit'] == 'pieces' else (lambda w: bool(_COUNTS.search(w)))
+    def keep(ws, n, from_end):
+        out, k = [], 0
+        for w in (reversed(ws) if from_end else ws):
+            if k >= n: break
+            out.append(w); k += counts(w)
+        return list(reversed(out)) if from_end else out
+    out = {}
+    for r in reqs:
+        for sn in r.get('snippets') or []:
+            t = sn['text']
+            for m in _MARK.finditer(t):
+                fid = m.group(1)
+                if fid in out: continue
+                left = _MARK.sub(lambda x: x.group(2), t[:m.start()]).split()
+                right = _MARK.sub(lambda x: x.group(2), t[m.end():]).split()
+                out[fid] = ' '.join(keep(left, size, True) + ['[' + m.group(2) + ']'] + keep(right, size, False))
+    return out
+
 def _snippets(items, words, ctx=None):
     """Snippets for these (form, place) pairs: the context (span()) around each shown place, merged where they meet on a
     page when ctx['join'], each candidate inside marked [[id|text]] (every candidate of this request found in it, not only

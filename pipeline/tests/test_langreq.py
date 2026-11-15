@@ -125,3 +125,19 @@ def test_a_cjk_piece_between_two_marks_keeps_the_side_nearer_its_nearer_mark():
     pw = ['X', long, 'a', 'b', 'Y']                                     # nearer X
     t, _ = L._text(pw, 0, 4, [(0, 0, '1', 'X'), (4, 4, '2', 'Y')], 40)
     assert t == '[[1|X]] ' + '甲' * 30 + '乙' * 10 + '… a b [[2|Y]]'
+
+def test_the_page_sentence_is_the_sent_text():
+    """review 19, L1: the review page's context sentence comes from the built snippet, so a long CJK piece nearer another
+    mark is cut on the same side as in the request (it used to be cut toward the place on the page only)."""
+    from lib import langreq as L
+    long = '甲' * 30 + '乙' * 30
+    words = {'1': ['X', 'a', 'b', long, 'Y', 'c']}
+    fs = [{'id': '1', 'form': 'X', 'class': ['latin'], 'italic_any': False, 'roman_any': True, 'places': [{'page': 1, 'mcid': 0, 'first': 0, 'last': 0, 'text': 'X', 'w0': 0, 'w1': 0}]},
+          {'id': '2', 'form': 'Y', 'class': ['latin'], 'italic_any': False, 'roman_any': True, 'places': [{'page': 1, 'mcid': 0, 'first': 0, 'last': 0, 'text': 'Y', 'w0': 4, 'w1': 4}]}]
+    reqs = L.requests({'title': 't'}, fs, words)
+    sent = reqs[0]['snippets'][0]['text']
+    assert sent == '[[1|X]] a b …' + '甲' * 10 + '乙' * 30 + ' [[2|Y]] c'                        # cut toward Y, the nearer mark
+    page = L.sent_contexts(reqs)
+    assert page['1'] == '[X] a b …' + '甲' * 10 + '乙' * 30 + ' Y c'                              # the same cut on the page
+    assert page['2'] == 'X a b …' + '甲' * 10 + '乙' * 30 + ' [Y] c'
+    assert L.place_text(fs[0]['places'][0], words) != page['1']                                   # the old way cut it the other side

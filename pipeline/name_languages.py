@@ -138,7 +138,7 @@ def main():
                'decisions': by_key, 'requests': old.get('requests') if args.reuse else [], 'cost_usd': (old.get('cost_usd') or 0) if args.reuse else 0,
                'original_cost_usd': old.get('cost_usd'), 'candidates': how}
         if not args.reuse: json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-        merge(R, wo_path, sent, dec, rec, held=held, contexts=contexts_of(sent, words))
+        merge(R, wo_path, sent, dec, rec, held=held, contexts=contexts_of(sent, words, reqs))
         print(f'language step: saved decisions applied by form ({len(dec)} of {len(sent)} forms; {replay["vanished_count"]} no longer found; '
               f'{replay["not_decided"]} not decided) · no AI request'); return
     # --- the model, its price and parameters (any model is capped: M7)
@@ -231,16 +231,18 @@ def main():
     rec['dropped'] = dropped[:200]
     rec['not_decided'] = sum(1 for f in sent if f['id'] not in dec)          # cut off, invalid, or never sent: listed for a person
     json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    merge(R, wo_path, sent, dec, rec, held=held, contexts=contexts_of(sent, words))
+    merge(R, wo_path, sent, dec, rec, held=held, contexts=contexts_of(sent, words, reqs))
     print(f'language step: {len(dec)} of {len(sent)} forms decided ({rec["not_decided"]} not decided) · ${rec["cost_usd"]:.4f} spent on this step')
 
 CONTEXT_CUT = 2000                 # characters: well above the longest adopted context (sentence mode caps each side)
-def contexts_of(fs, words):
-    """{form id: its first place's context exactly as the requests send it (langreq.place_text, langreq.CTX), the place
-    in [brackets]}: what the review page shows beside a form (review 14, item 1). Rows of a finished run keep the
-    contexts stored when its language step ran."""
+def contexts_of(fs, words, reqs=None):
+    """{form id: its first place's context as the requests sent it, the place in [brackets]}: what the review page shows
+    beside a form. Taken from the built requests' own snippets (langreq.sent_contexts, review 19 L1); a form no snippet
+    shows falls back to langreq.place_text. Rows of a finished run keep the contexts stored when its step ran."""
+    sent = langreq.sent_contexts(reqs or [])
     out = {}
     for f in fs:
+        if f['id'] in sent: out[f['id']] = sent[f['id']][:CONTEXT_CUT]; continue
         p = next((q for q in f['places'] if q.get('w0') is not None), None)
         if p is None: continue
         out[f['id']] = langreq.place_text(p, words)[:CONTEXT_CUT]
