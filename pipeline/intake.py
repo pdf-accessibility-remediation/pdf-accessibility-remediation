@@ -80,8 +80,9 @@ NARROW_GAP = 0.19                          # a gap-only word break narrower than
 NARROW_BOOK_RATE = 10                      # narrow breaks per text page, averaged over the book: at or above, a CHECK; below, a note
 CJK_PROBE_LANGS = 'chi_tra+chi_sim+jpn+kor'  # before OCR, each planned page is read once with these Tesseract packs:
 CJK_PROBE_MIN, CJK_PROBE_CONF = 10, 60     #   10 or more CJK characters at 60% confidence or more = the page holds CJK text.
-CJK_PROBE_SHARE = 0.05                     #   #121, pages with an existing OCR layer: and 5%+ of what the packs read (Hawaiian pages
-                                           #   1-2%, real CJK pages 13-93%: 03-builder-report.md)
+CJK_PROBE_DISTINCT = 20                    #   #121, pages with an existing OCR layer: and 20+ different CJK characters. Misreads
+                                           #   repeat a few (Hawaiian text, a bibliography, a table of X marks: 5-11 different);
+                                           #   real CJK pages 29-192, a glossary page 38 (03-builder-report.md)
 PROBE_ALL_MAX, PROBE_SAMPLE = 12, 8        #   18-60 s a page on a newspaper scan: with more than 12 pages to OCR, the probe stops at
                                            #   the first CJK page when OCR_LANG has no CJK pack (the book stops either way) and reads
                                            #   8 spread pages when it has one (a full run then lists the CJK pages from the OCR text);
@@ -725,16 +726,16 @@ def textlike(text):
 def cjk_char(ch):
     o = ord(ch)
     return 0x3040 <= o <= 0x30ff or 0x4e00 <= o <= 0x9fff or 0x3400 <= o <= 0x4dbf or 0xac00 <= o <= 0xd7af or 0xf900 <= o <= 0xfaff
-def cjk_probe(img, langs, share=False):
+def cjk_probe(img, langs, distinct=False):
     """CJK characters Tesseract reads on the page image at CJK_PROBE_CONF confidence or more, with the CJK packs only.
-    share=True: (that count, its share of all letters, digits and CJK characters read at that confidence). On a page of
-    text, Tesseract's CJK packs put a few confident CJK characters into Latin text with diacritics (16 of 802 on a
-    Hawaiian page), so on existing-layer pages a page counts as CJK only at CJK_PROBE_SHARE or more (#121)."""
+    distinct=True: (that count, how many different CJK characters). On a page of text, Tesseract's CJK packs misread a
+    few shapes again and again (kahako vowels, X marks in a table: 5-11 different characters), so on existing-layer pages
+    a page counts as CJK only with CJK_PROBE_DISTINCT different characters or more (#121)."""
     import csv, io
     r = run(['tesseract', img, 'stdout', '-l', langs, '--psm', '3', 'tsv'])
     rows = [w for w in csv.DictReader(io.StringIO(r.stdout), delimiter='\t', quoting=csv.QUOTE_NONE) if float(w.get('conf') or -1) >= CJK_PROBE_CONF]
-    t = ''.join(w.get('text') or '' for w in rows); n = sum(1 for ch in t if cjk_char(ch))
-    return (n, n / max(sum(1 for ch in t if ch.isalnum()), 1)) if share else n
+    t = ''.join(w.get('text') or '' for w in rows); cj = [ch for ch in t if cjk_char(ch)]
+    return (len(cj), len(set(cj))) if distinct else len(cj)
 def junk_stats(text):
     """Share of OCR tokens that look like junk: a symbol from JUNK_SYMBOLS, capitals with no vowel ("MBH"), or letters and
     digits mixed ("f7") other than ordinals; CJK tokens and plain numbers are fine."""
@@ -1740,9 +1741,9 @@ def main():
             if have and not any(r.get('script') in ('kana', 'hangul', 'han') for r in ol['pages']):
                 t2 = time.time(); probe = pick[:: max(1, len(pick) // LAYER_CJK_SAMPLE)][:LAYER_CJK_SAMPLE]; hit = {}; checked = 0
                 for i in probe:
-                    img = os.path.join(tmp, f'olc{i}.png'); render(doc, i - 1, OCR_DPI, img); n, sh = cjk_probe(img, '+'.join(have), share=True); os.remove(img)
+                    img = os.path.join(tmp, f'olc{i}.png'); render(doc, i - 1, OCR_DPI, img); n, nd = cjk_probe(img, '+'.join(have), distinct=True); os.remove(img)
                     checked += 1
-                    if n >= CJK_PROBE_MIN and sh >= CJK_PROBE_SHARE: hit[i] = n; break
+                    if n >= CJK_PROBE_MIN and nd >= CJK_PROBE_DISTINCT: hit[i] = n; break
                 ol['cjk_probe'] = {'langs': '+'.join(have), 'pages_checked': checked, 'seconds': round(time.time() - t2, 1)}
                 if hit:
                     ol['cjk_on_images'] = {'pages': sorted(hit), 'cjk_characters': {str(k): v for k, v in hit.items()}}
@@ -1814,8 +1815,8 @@ def main():
                 for p in todo:
                     img = os.path.join(tmp, f'cjk{p}.png'); render(doc, p - 1, OCR_DPI, img)
                     if plan['ocr_mode'] == 'redo' and p in (plan.get('reocr_pages') or []):   # a page of text: the share counts too
-                        n, sh = cjk_probe(img, '+'.join(have), share=True)
-                        if sh < CJK_PROBE_SHARE: n = 0
+                        n, nd = cjk_probe(img, '+'.join(have), distinct=True)
+                        if nd < CJK_PROBE_DISTINCT: n = 0
                     else: n = cjk_probe(img, '+'.join(have))
                     os.remove(img); checked += 1
                     if n: found[p] = n
