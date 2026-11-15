@@ -511,6 +511,15 @@ def test_steps_in_plain_words():
     assert logs.now_step('apply', logs.steps('▶ apply (no model)\n  ✓ apply (no model): 1.0s\n')) is None
     assert logs.plain('0/5 intake: not re-run; applying to the intake result saved before the review stop') == 'reading and tagging the PDF'
     assert logs.plain('1/5 audit: reusing the audit already in /x/_audit') == 'auditing the PDF'   # a waiting run's first apply
+    # round 24: no step numbers or "via OpenRouter" on the page
+    assert logs.plain('3b/5 page readings via OpenRouter') == 'sending to the AI: Hawaiian page readings'
+    assert logs.plain('3c/5 language tags via OpenRouter') == 'sending to the AI: language tags'
+    assert logs.plain('3c/5 language tags: saved decisions (no cost)') == 'sending to the AI: language tags (saved decisions, no cost)'
+    assert logs.plain("3c/5 language tags: this run's own decisions (no cost)") == 'sending to the AI: language tags (saved decisions, no cost)'
+    assert logs.plain('figure request 2 of 4') == 'sending to the AI: figures, request 1 of 3'   # pass 2 is the first figure request
+    for s in logs.steps('▶ 0/5 intake\n▶ 1/5 audit (no model)\n▶ 2/5 veraPDF on the original\n▶ 3/5 decide\n▶ figure request 2 of 3\n'):
+        w = logs.plain(s['label'] if isinstance(s, dict) else s)
+        assert not re.search(r'\d/\d|OpenRouter', w), w
     assert "esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? 'Waiting for review' :" in src('webapp/panel.js')
     assert "(j.first ? 'Stop Reviewing (Your Choices Are Saved)' : 'Stop Reviewing (the Session Stays Open)')" in src('webapp/panel.js')   # no session before Finish
 

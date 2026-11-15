@@ -272,8 +272,10 @@ def one(send, req, budget, sleep, say):
 def run(requests, send, budget, sleep=None, say=print, before=None, done=None):
     """Each request in turn; before(request) and done(result) around each, so the caller can save its state."""
     out = []; sleep = sleep or time.sleep
+    last = max((int(r['pass']) for r in requests if str(r.get('pass', '')).isdigit()), default=None)
     for req in requests:
-        say(f'▶ figure request {req["pass"]}: {len(req["items"])} figures')
+        of = f' of {last}' if last else ''                             # the app names it "request N of M" (webapp/logs.py)
+        say(f'▶ figure request {req["pass"]}{of}: {len(req["items"])} figures')
         if before: before(req)
         r = one(send, req, budget, sleep, say); out.append(r)
         if done: done(r)
