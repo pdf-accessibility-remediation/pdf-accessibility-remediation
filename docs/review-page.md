@@ -201,6 +201,8 @@ It opens with one paragraph, the same on every PDF:
   "Leave Untagged", "Change Language" (a publisher's tag: "Keep the Tag", "Remove the Tag", "Change Language"; a form
   the AI left untagged: "Leave Untagged", "Change Language"). The buttons sit in an area of one fixed width, so the
   list and the text block start at the same edge on every row. At phone width the row stacks.
+- **"Clear Choice"**, at the bottom right of a row that has a choice, puts the row back as if never decided ("Not
+  reviewed"), and the counts update. An undecided row doesn't show it.
 - **The status** reads "Not reviewed", "Approved: Chinese · zh", "Tagged: Chinese · zh" (after "Change Language"),
   "Kept: Hawaiian · haw" or "Removed: Hawaiian · haw" (a publisher's tag), or "Left untagged".
 - **A form the AI left untagged** says why in plain words: "a name", "part of English", "not a word of a known

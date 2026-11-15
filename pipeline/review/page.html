@@ -118,14 +118,15 @@ section > h2 { font-size: 16px; margin: 18px 0 8px; padding-bottom: 4px; border-
 .lang-ctx, .lang-meta { color: var(--muted, #555); font-size: .92em; overflow-wrap: anywhere; }
 .lang-code { color: var(--muted, #555); font-weight: 400; font-size: .92em; }
 /* the bottom row (2026-11-14, as Patrick meant it): the buttons in a fixed-width area, then "Change Language", whose left
-   edge is the text block's */
+   edge is the text block's; "Clear Choice" at the right on a decided row */
 .lang-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; }
 .lang-btns { display: flex; gap: 6px; flex: 0 0 var(--lang-btn-w); width: var(--lang-btn-w); }
 .lang-btns button { white-space: nowrap; }        /* "Keep the Tag" + "Remove the Tag" fit the area */
 .lang-acts select { width: 15em; max-width: calc(100% - var(--lang-btn-w) - 12px); }   /* beside the buttons whatever the row's width */
+.lang-clear { margin-left: auto; white-space: nowrap; }        /* on a line of its own, right, when the row is narrow */
 .lang-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
 @media (max-width: 600px) { .lang-top { grid-template-columns: minmax(0, 1fr); } .lang-acts { flex-wrap: wrap; }
-  .lang-btns { flex: 1 1 100%; width: auto; flex-wrap: wrap; } .lang-acts select { max-width: 100%; } }
+  .lang-btns { flex: 1 1 100%; width: auto; flex-wrap: wrap; } .lang-acts select { max-width: 100%; } .lang-clear { margin-left: 0; } }
 .card[data-status=approved] { border-left-color: var(--ok); }
 .card[data-status=changed] { border-left-color: var(--change); }
 .card[data-status=rejected] { border-left-color: var(--reject); }
@@ -1740,6 +1741,7 @@ function langRowHtml(r) {
     (r.evidence ? ' · Evidence: ' + esc(r.evidence) : '') + '</div></div></div>' +
     '<div class="lang-acts"><div class="lang-btns"><button type="button" data-lang="keep">' + keep + '</button>' + (drop ? '<button type="button" data-lang="drop">' + drop + '</button>' : '') + '</div>' +
     '<select data-lang="change" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select>' +
+    (d.status ? '<button type="button" class="lang-clear" data-lang="clear" aria-label="Clear Choice for ' + esc(r.form) + '">Clear Choice</button>' : '') +   // back to "Not reviewed"
     '</div></div>';
 }
 // The tag written into the PDF, beside a language's name: only in each row's status and the "Change Language" list
@@ -1790,6 +1792,9 @@ langBox.addEventListener('click', e => {
   const fold = b.closest('details'), group = fold && fold.dataset.group, act = b.dataset.lang;
   if (act === 'more') { langLoad(group); return; }
   if (act === 'bulk') { if (LANG_BULK) for (const r of langRows[group] || []) if (r.bulk && !(state.decisions[r.id] || {}).status) langSet(r.id, 'approved', undefined, true); }
+  else if (act === 'clear') {                                      // the row as if never decided (2026-11-14): "Not reviewed", the counts again
+    delete state.decisions[b.closest('.lang-row').dataset.id];
+  }
   else if (act === 'keep' || act === 'drop') {                     // review 14, Note 1: no other act reaches a row
     const row = b.closest('.lang-row'), id = row.dataset.id;
     langSet(id, act === 'keep' ? 'approved' : 'rejected');

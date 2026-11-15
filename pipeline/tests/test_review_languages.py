@@ -314,3 +314,10 @@ def test_rows_have_one_bottom_line():
     assert '.lang-top { display: grid; grid-template-columns: var(--lang-btn-w) minmax(0, 1fr); gap: 6px 12px;' in page
     assert '.lang-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;' in page and 'flex: 0 0 var(--lang-btn-w); width: var(--lang-btn-w);' in page
     assert '.lang-acts select { width: 15em; max-width: calc(100% - var(--lang-btn-w) - 12px); }' in page
+
+def test_a_decided_row_has_clear_choice():
+    """Patrick, 2026-11-14: "Clear Choice" at the bottom right of a decided row only; clearing deletes the row's choice,
+    the same as never decided (the whole draft is saved, so it stays deleted)."""
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    assert """(d.status ? '<button type="button" class="lang-clear" data-lang="clear"""" in page and '>Clear Choice</button>' in page
+    assert "else if (act === 'clear') {" in page and "delete state.decisions[b.closest('.lang-row').dataset.id];" in page
