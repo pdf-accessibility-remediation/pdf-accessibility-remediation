@@ -212,10 +212,10 @@ def heading(j):
         m = re.match(r'Apply (Session \d+)$', a)
         return 'Processing: Applying the Reviewed Decisions' + (f' ({m.group(1)})' if m and not j.get('first') else '')
     if k == 'rerun': return 'Processing: Trying Again (the saved reply is reused)'
-    if k == 'replay': return 'Processing: The PDF from the Saved Reply'
+    if k == 'replay': return 'Processing: PDF from the Saved Reply'
     if k == 'replay-copy': return 'Processing: Copying the Saved Reply and the Intake Result'
-    if k == 'batch': return 'Processing: The Batch' + test
-    if k == 'summary': return 'Processing: The Batch Summary'
+    if k == 'batch': return 'Processing: Batch' + test
+    if k == 'summary': return 'Processing: Batch Summary'
     if k == 'bring_back': return 'Processing: Bringing Back an Edited PDF'
     return a
 

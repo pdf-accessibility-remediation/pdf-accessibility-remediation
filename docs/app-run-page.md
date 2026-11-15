@@ -89,13 +89,13 @@ On the review page, **Build a Draft PDF** makes a PDF of the choices so far, to 
 
 The jobs have no heading of their own:
 
-- **Cards** for jobs that are running or waiting, and for failed or interrupted jobs that no later job of the run has succeeded after. A card's heading is the action in Title Case ("Review Again from Session 4"); a job that processes the PDF reads "Processing: …" ("Processing: Cost Estimate", "Processing: AI Request", "Processing: Applying the Reviewed Decisions"). Its status line says what came of it, in sentence case ("Done: Session 5 applied (Kim, 21:04)"). The "Last Job:" line and **Previous Jobs** keep the action's own words ("Get the estimate → estimate ready").
+- **Cards** for jobs that are running or waiting, and for failed or interrupted jobs that no later job of the run has succeeded after. A card's heading is the action in Title Case ("Review Again from Session 4"); a job that processes the PDF reads "Processing: …" ("Processing: Cost Estimate", "Processing: AI Request", "Processing: Applying the Reviewed Decisions", "Processing: Batch"). Its status line says what came of it, in sentence case ("Done: Session 5 applied (Kim, 21:04)"). The "Last Job:" line and **Previous Jobs** keep the action's own words ("Get the estimate → estimate ready").
 - **One line** for the last finished job, after the label **Last Job:**, in sentence case: "Review again from Session 4 → Session 5 applied (Kim, 21:04)".
 - **Every other job,** folded under **Previous Jobs (N)**, one line each in the same form. Nothing drops off.
 
 A session is "Session N" and the OCR button "Review OCR Text" in every job line, also for jobs recorded before that rule (the line is formatted when shown): "Review OCR Text → closed (10:24); no verdict recorded".
 
-**A running job** says its step in words, with a small spinner: "Running: checking the result (2 of 3)". Its list of steps shows the finished ones with their times ("Applying the reviewed decisions: done, 15.0s"), and the current one by name only. The spinner is decorative: screen readers skip it, and it stands still when the system asks for reduced motion.
+**A running job** says its step in words, with a small spinner: "Running: checking the result (2 of 3)". Its list of steps shows the finished ones with their times ("Applying the decisions: done, 15.0s"), and the current one by name only. The spinner is decorative: screen readers skip it, and it stands still when the system asks for reduced motion.
 
 **A failed or interrupted job** says why in plain words. One line says where the job's full output is saved, for whoever looks after the app. The page shows no log lines and no commands.
 

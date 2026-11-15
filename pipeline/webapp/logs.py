@@ -36,7 +36,8 @@ def steps(text):
             else: out.append({'label': m.group(1), 'state': 'done', 'time': m.group(2)})
     return out
 
-PLAIN = {'apply': 'applying the reviewed decisions', 'verify': 'checking the result', 'report': 'writing the report',
+PLAIN = {'apply': 'applying the decisions',   # also a run with no review (review 25, Note 1)
+         'verify': 'checking the result', 'report': 'writing the report',
          'intake': 'reading and tagging the PDF', 'audit': 'auditing the PDF', 'cost estimate': 'estimating the cost',
          'reuse saved reply': 'reading the saved reply',
          # every other stage label run_api.sh and review/sessions.py write (Patrick's dakine test, 2026-11-14)
@@ -56,12 +57,12 @@ NUMBERED = re.compile(r'^(\d+)[a-z]?/(\d+) ')               # 3/5, and 3b/5 or 3
 AI_STEP = re.compile(r'^(\S+) via OpenRouter$')
 
 def plain(label):
-    """A step's label in plain words: "apply (no model)" → "applying the reviewed decisions"; others without their notes
+    """A step's label in plain words: "apply (no model)" → "applying the decisions"; others without their notes
     (a step run_api.sh did not run again reads as the step itself: P13). The AI step names the model the run itself used
     (run_api.sh writes it in the label) by its display name: "3/5 anthropic/claude-sonnet-5.5 via OpenRouter" →
     "sending to the AI (Claude Sonnet 5.5)" (V2, Patrick 2026-11-07)."""
     bare = re.sub(r'\s*\((?:no model|local, no model|no cost)\)', '', NUMBERED.sub('', label)).strip()
-    if SAVED_LANG.match(bare): return 'sending to the AI: language tags (saved decisions, no cost)'
+    if SAVED_LANG.match(bare): return 'using the saved language tags (no AI request)'   # review 25, Low 1
     core = bare.split(':')[0].strip()
     f = FIGURES.match(core)
     if f:                                              # "figure request 3 of 4" (passes) → "request 2 of 3" (figure requests)

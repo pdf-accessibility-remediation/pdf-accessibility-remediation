@@ -503,7 +503,7 @@ def test_ctrl_c_before_finish_still_stops(tmp_path):
 
 # ------------------------------------------------------------------ Patrick's pass on the run page
 def test_steps_in_plain_words():
-    assert logs.plain('apply (no model)') == 'applying the reviewed decisions' and logs.plain('verify (no model)') == 'checking the result'
+    assert logs.plain('apply (no model)') == 'applying the decisions' and logs.plain('verify (no model)') == 'checking the result'
     assert logs.plain('report') == 'writing the report' and logs.plain('1/5 audit (no model)') == 'auditing the PDF'
     steps = logs.steps('▶ apply (no model)\n  ✓ apply (no model): 12.0s\n▶ verify (no model)\n')
     assert logs.now_step('review', steps) == {'words': 'checking the result', 'n': 2, 'total': 3}
@@ -514,8 +514,8 @@ def test_steps_in_plain_words():
     # round 24: no step numbers or "via OpenRouter" on the page
     assert logs.plain('3b/5 page readings via OpenRouter') == 'sending to the AI: Hawaiian page readings'
     assert logs.plain('3c/5 language tags via OpenRouter') == 'sending to the AI: language tags'
-    assert logs.plain('3c/5 language tags: saved decisions (no cost)') == 'sending to the AI: language tags (saved decisions, no cost)'
-    assert logs.plain("3c/5 language tags: this run's own decisions (no cost)") == 'sending to the AI: language tags (saved decisions, no cost)'
+    assert logs.plain('3c/5 language tags: saved decisions (no cost)') == 'using the saved language tags (no AI request)'
+    assert logs.plain("3c/5 language tags: this run's own decisions (no cost)") == 'using the saved language tags (no AI request)'
     assert logs.plain('figure request 2 of 4') == 'sending to the AI: figures, request 1 of 3'   # pass 2 is the first figure request
     after_review = ('▶ the work order was reviewed by a person: applying the reviewed version\n▶ 0/5 intake: not re-run; applying to the '
                     'intake result saved before the review stop\n▶ 1/5 audit: reusing the audit already in /r/_audit\n▶ 4/5 apply (no model)\n'
@@ -1220,6 +1220,9 @@ def test_job_card_headings_read_processing():
     assert h('apply', 'Apply session 1', first=True) == 'Processing: Applying the Reviewed Decisions'
     assert h('apply', 'Apply session 3') == 'Processing: Applying the Reviewed Decisions (Session 3)'
     assert h('rerun', 'Try again (the saved reply is reused)') == 'Processing: Trying Again (the saved reply is reused)'
+    assert h('replay', 'Run the book from the saved reply') == 'Processing: PDF from the Saved Reply'      # no "The" (Patrick, round 26)
+    assert h('batch', 'Run the batch') == 'Processing: Batch' and h('summary', 'Write the batch summary again') == 'Processing: Batch Summary'
+    assert h('batch', 'Run the batch (test: saved replies)') == 'Processing: Batch (test: saved replies)'
     assert h('review', "Review the AI's decisions") == "Review the AI's decisions"      # a person's own action keeps its words
     assert h('ocr', 'Review OCR Text') == 'Review OCR Text' and h('discard', 'Discard session 2') == 'Discard Session 2'
     assert runs.action({'kind': 'spend', 'what': 'Start remediation: the AI request'}) == 'Start remediation: the AI request'   # "Last Job:" unchanged

@@ -107,7 +107,7 @@ def test_test_mode_keeps_a_failed_read_as_no_credit(setup, monkeypatch):
                                         ('3/5 anthropic/claude-opus-5.5 via OpenRouter', 'sending to the AI (Claude Opus 5.5)'),
                                         ('3/5 openai/gpt-4o via OpenRouter', 'sending to the AI (GPT-4o)'),
                                         ('3/5 openai/o3 via OpenRouter', 'sending to the AI (OpenAI o3)'),
-                                        ('4/5 apply (no model)', 'applying the reviewed decisions')])
+                                        ('4/5 apply (no model)', 'applying the decisions')])
 def test_the_ai_step_names_its_model_in_plain_words(label, want):
     """V2: the AI step names the run's own model (from its log's label, never the settings' current one) by its display name."""
     from webapp import logs
