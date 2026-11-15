@@ -69,6 +69,9 @@ DEFAULT_MODEL=$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^'
 export MODEL=${MODEL:-}
 export PAGE_READS=${PAGE_READS:-off}   # page readings (#49) are off in a batch unless PAGE_READS=1 or all
 export LANG_TAGS=${LANG_TAGS:-off}     # the language step (#118) is off in a batch unless LANG_TAGS=on (a FROM= rerun still applies saved decisions)
+if [[ $LANG_TAGS == off || $LANG_TAGS == 0 || $LANG_TAGS == no ]]; then   # Patrick, 2026-11-14: said at the start of every such batch
+  echo "Language tags are off for this batch: books will read 'Language Tags: Not Done' and can't be Ready. Add LANG_TAGS=on to include them."
+fi
 
 # ---- summary.md: written at the end, when a RETRY finds nothing left to run, and when a batch stops early
 SUMMARY_DONE=; RUNNING=; FAILED_AT=

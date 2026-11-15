@@ -115,7 +115,10 @@ No request is made:
 - with a saved reply (`REPLY=…`, `FROM=`): the saved language decisions are applied by word form instead, at no cost,
   when the earlier run had them (`LANG_REPLY=`); otherwise the step is not run and the record says so
 - with no AI request (`DECIDE=none`)
-- in command-line batches, unless you turn it on with `LANG_TAGS=on bash batch_api.sh …`
+- in command-line batches, unless you turn it on with `LANG_TAGS=on bash batch_api.sh …`. A batch with the step off
+  says so when it starts: "Language tags are off for this batch: books will read 'Language Tags: Not Done' and can't
+  be Ready. Add LANG_TAGS=on to include them." (An `AUTO=1` batch spends without asking, so the step stays off unless
+  you turn it on.)
 
 A retry that reuses the run's own reply keeps the tags already paid for.
 
