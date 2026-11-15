@@ -109,6 +109,11 @@ book, run it again (a fresh run, or a FROM= rerun with LANG_REPLY= of a version 
 ## Request size
 
 A request holds up to 150 word forms of one book (`lib/langreq.py` `FORMS_PER_REQUEST`), under that book's title.
+This was tested on 2026-11-14 against 50 forms a request, on the same first 300 or 150 word forms of three test books
+(Chinese in Hawaii, the Ryukyus, a book on Japan), each request under its own book's title, 3 runs each: 150 forms gave
+no more wrong answers than 50 (2 against 14 over three runs on 46 test items; 0 against 4 counted once per item) and
+the same number left for a person, at a lower cost. An earlier test that mixed books in one request lost each book's
+title, and showed how much the title matters (Cantonese answers on the book on Chinese in Hawaii).
 
 ## Cost
 

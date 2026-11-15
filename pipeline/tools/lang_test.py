@@ -528,6 +528,20 @@ def exp_requests_packed(out_dir, variant, ctx, per=langreq.FORMS_PER_REQUEST, ha
     json.dump(reqs, open(os.path.join(rq, f'{variant}.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     return reqs
 
+def exp_requests_books(out_dir, variant, books, per, ctx=None):
+    """Round 18, the batch test: each book's first N word forms in production order (langreq.forms), under the book's own
+    title, packed `per` to a request as production packs them. books: {name: N}; the same forms at every size, so the
+    test items among them are compared pair by pair."""
+    reqs = []
+    for name, n in books.items():
+        cand = json.load(open(os.path.join(out_dir, 'cand', f'{name}.json'), encoding='utf-8'))
+        fs = langreq.forms(cand['places'])[:n]
+        meta = {'title': cand.get('title') or name, 'language': DOC_LANG.get(name) or 'en'}
+        reqs += [{'book': name, 'request': r} for r in langreq.requests(meta, fs, cand['words'], per=per, ctx=ctx)]
+    rq = os.path.join(out_dir, 'requests'); os.makedirs(rq, exist_ok=True)
+    json.dump(reqs, open(os.path.join(rq, f'{variant}.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    return reqs
+
 # ---- sending (paid; only on Patrick's OK)
 def send(out_dir, model, run, which, cap, prompt_file=None, req_dir='requests', ledger_name='spend.json'):
     key = None
