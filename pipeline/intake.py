@@ -2040,6 +2040,7 @@ def main():
             if not tagged(tp, page_figure_trees=False): return stop('failed', 'auto-tagging produced no tag tree', 1)
         # 5.1: a whole-page scan under OCR text is the page, not a figure. Pages intake OCR'd (as before), and since #128 pages
         #   with an existing OCR layer, where only a page of text loses its scan Figure (scan_page_is_text)
+        if plan['ocr_mode']: rec['ocr']['scan_images_marked_decoration'] = []   # (as before: always there when intake OCR'd)
         layer_pages = list(kinds['ocr-layer'])           # with an existing OCR layer (also when read again by REOCR)
         ocr_done = [p_ for p_ in (rec['ocr']['pages_with_ocr_text'] if plan['ocr_mode'] else []) if p_ not in layer_pages]
         if ocr_done or layer_pages:
