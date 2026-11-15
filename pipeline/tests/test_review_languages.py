@@ -319,5 +319,5 @@ def test_a_decided_row_has_clear_choice():
     """Patrick, 2026-11-14: "Clear Choice" at the bottom right of a decided row only; clearing deletes the row's choice,
     the same as never decided (the whole draft is saved, so it stays deleted)."""
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
-    assert """(d.status ? '<button type="button" class="lang-clear" data-lang="clear"""" in page and '>Clear Choice</button>' in page
+    assert '(d.status ? \'<button type="button" class="lang-clear" data-lang="clear"' in page and '>Clear Choice</button>' in page
     assert "else if (act === 'clear') {" in page and "delete state.decisions[b.closest('.lang-row').dataset.id];" in page
