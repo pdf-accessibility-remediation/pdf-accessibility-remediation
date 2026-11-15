@@ -18,6 +18,8 @@ def test_java_options_keep_a_persons_setting_first(monkeypatch):
     assert intake.tagger_java_options() == '-XX:MaxRAMPercentage=40'
     monkeypatch.setenv('JAVA_TOOL_OPTIONS', '-Xmx10g')
     assert intake.tagger_java_options() == '-Xmx10g -XX:MaxRAMPercentage=40'     # -Xmx wins over the percentage in Java
+    monkeypatch.delenv('JAVA_TOOL_OPTIONS')
+    assert intake.tagger_java_options(1467) == '-XX:MaxRAMPercentage=50'          # a book over 1,000 pages: alone, 50%
 
 
 def test_a_third_tagger_waits_for_a_free_slot(tmp_path, monkeypatch):
@@ -41,3 +43,20 @@ def test_a_third_tagger_waits_for_a_free_slot(tmp_path, monkeypatch):
     release.set(); t3.join(10)
     for t in ts: t.join(5)
     assert got and got['waited'] > 0
+
+
+def test_a_long_book_waits_until_it_can_run_alone(tmp_path, monkeypatch):
+    monkeypatch.setattr(intake, 'TAGGER_LOCKS', str(tmp_path)); monkeypatch.setattr(intake, 'TAGGER_SLOTS', 2)
+    release, got, held = threading.Event(), {}, threading.Event()
+
+    def short():
+        with intake.tagger_slot(300):
+            held.set(); release.wait(5)
+    t1 = threading.Thread(target=short); t1.start(); held.wait(5)
+
+    def long_():
+        with intake.tagger_slot(1467) as s: got.update(s)
+    t2 = threading.Thread(target=long_); t2.start(); time.sleep(0.3)
+    assert not got                                                 # one short book is tagging: the long one waits
+    release.set(); t2.join(10); t1.join(5)
+    assert got['slot'] == 'all' and got['waited'] > 0

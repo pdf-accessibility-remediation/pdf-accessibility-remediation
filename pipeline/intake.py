@@ -134,8 +134,10 @@ GUTTER_INK, GUTTER_MIN, SPREAD_SIDE = 0.10, 0.006, 0.25   # a gutter in the midd
                                            #   the same size next to one counts too (a chapter end leaves a half blank).
                                            #   Calibrated: mohr 16+1 of 17, reynolds-magazines 10 of 10, 0 in the 148 and the 30
 TAGGER_SLOTS, TAGGER_RAM_PCT = 2, 40       # #129: at most 2 auto-taggers at once on this machine (a lock shared by every job), each
-                                           #   with a heap of up to 40% of memory. Measured: Cost 28 (1,467 pages) ran out of the
-                                           #   default heap (25%: 4 GB of 16 GB) and passed with more (03-builder-report.md)
+                                           #   with a heap of up to 40% of memory; a book over TAGGER_LONG pages runs alone (it takes
+TAGGER_LONG, TAGGER_LONG_PCT = 1000, 50    #   every slot) with up to 50%. Measured on 16 GB: a 1,467-page book ran out of the default
+                                           #   heap (25%); two long books at 40% each finished but grew swap by 7.3 GB; one alone at
+                                           #   40% or 50% passed (03-builder-report.md)
 TAGGER_LOCKS = os.environ.get('INTAKE_TAGGER_LOCKS') or os.path.join(tempfile.gettempdir(), 'pdfrem-tagger-slots')
 TAGGER_OOM = ('the auto-tagger ran out of memory on this book (it holds the whole book in memory). Run it again when no other '
               'long book is being processed; if it stops again, give the tagger more memory with JAVA_TOOL_OPTIONS=-Xmx10g '
@@ -752,11 +754,28 @@ def moved_fragments(a, b, n=5):
         if op in ('delete', 'replace') and a[i1:i2] not in out: out.append(a[i1:i2])
     return [f[:60] for f in out[:n]]
 @contextlib.contextmanager
-def tagger_slot():
+def tagger_slot(pages=0):
     """#129: hold one of TAGGER_SLOTS machine-wide slots (file locks, released by the OS if the process dies) while the
-    auto-tagger runs, so long books at once cannot overcommit memory. Waits for a free slot; yields {slot, waited}."""
+    auto-tagger runs, so long books at once cannot overcommit memory. A book over TAGGER_LONG pages holds every slot (it
+    runs alone; slots are taken in order, so two long books cannot block each other). Waits; yields {slot, waited}."""
     import fcntl
     os.makedirs(TAGGER_LOCKS, exist_ok=True); t0 = time.time(); told = False
+    if pages > TAGGER_LONG:
+        fs = []
+        try:
+            for k in range(TAGGER_SLOTS):
+                f = open(os.path.join(TAGGER_LOCKS, f'slot{k}.lock'), 'w'); fs.append(f)
+                try: fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    if not told: print(f'intake: waiting for the auto-tagger to be free (a book over {TAGGER_LONG} pages runs alone)', flush=True); told = True
+                    fcntl.flock(f, fcntl.LOCK_EX)
+            yield {'slot': 'all', 'waited': round(time.time() - t0, 1)}
+        finally:
+            for f in fs:
+                try: fcntl.flock(f, fcntl.LOCK_UN)
+                except OSError: pass
+                f.close()
+        return
     while True:
         for k in range(TAGGER_SLOTS):
             f = open(os.path.join(TAGGER_LOCKS, f'slot{k}.lock'), 'w')
@@ -772,10 +791,11 @@ def tagger_error(e):
     words are in the CalledProcessError's stderr (quiet mode), not in str(e); the whole text is searched (#129)."""
     full = '\n'.join(str(x) for x in (e, getattr(e, 'stderr', None), getattr(e, 'output', None)) if x)
     return full[-600:], 'OutOfMemoryError' in full
-def tagger_java_options():
-    """JAVA_TOOL_OPTIONS for the tagger: any options already set, then the heap cap (an -Xmx set by a person wins)."""
+def tagger_java_options(pages=0):
+    """JAVA_TOOL_OPTIONS for the tagger: any options already set, then the heap cap (an -Xmx set by a person wins):
+    TAGGER_RAM_PCT, or TAGGER_LONG_PCT for a book over TAGGER_LONG pages (which runs alone)."""
     old = (os.environ.get('JAVA_TOOL_OPTIONS') or '').strip()
-    return (old + ' ' if old else '') + f'-XX:MaxRAMPercentage={TAGGER_RAM_PCT}'
+    return (old + ' ' if old else '') + f'-XX:MaxRAMPercentage={TAGGER_LONG_PCT if pages > TAGGER_LONG else TAGGER_RAM_PCT}'
 def spoken_values(values):
     """Restored ActualText values in a few words: invisible characters by name, others quoted."""
     out = []
@@ -1741,8 +1761,8 @@ def main():
         kw = dict(input_path=[cur], output_dir=odl_dir, format='tagged-pdf', quiet=True)
         if hidden: kw['content_safety_off'] = 'hidden-text'
         err = oom = None; t1 = time.time()
-        with tagger_slot() as slot:                      # #129: at most TAGGER_SLOTS taggers at once on this machine
-            java_opts = tagger_java_options()
+        with tagger_slot(len(inv)) as slot:              # #129: at most TAGGER_SLOTS taggers at once on this machine
+            java_opts = tagger_java_options(len(inv))
             old_opts = os.environ.get('JAVA_TOOL_OPTIONS'); os.environ['JAVA_TOOL_OPTIONS'] = java_opts
             t1 = time.time()
             try: opendataloader_pdf.convert(**kw)
