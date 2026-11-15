@@ -179,9 +179,9 @@ Expected Cost is learned from the last 80 finished AI requests of the same model
 
 It reads **Not Available Yet**:
 - until there are 12 past requests from 6 PDFs for that model and kind (today Opus 5.5 and every non-Claude model);
-  the run and batch pages add "(not enough past runs to estimate cost)"
-- after an answer was cut off in that run's folder; the pages add "(an earlier answer was cut off, so cost can't be
-  estimated)"
+  the run and batch pages add "(not enough past runs to calculate it)"
+- after an answer was cut off in that run's folder; the pages add "(an earlier answer was cut off, so it can't be
+  calculated)"
 
 Another reason shows no words in parentheses.
 

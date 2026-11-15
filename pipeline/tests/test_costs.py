@@ -318,7 +318,7 @@ def test_the_pages_say_why_there_is_no_expected_cost_yet():
     """Patrick, 2026-11-14: the run page and the batch page add the reason in plain words; an unknown reason, nothing."""
     for f in ('panel.js', 'batch.js'):
         js = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'webapp', f), encoding='utf-8').read()
-        assert "too_few: 'not enough past runs to estimate cost'" in js and "cut_off: \"an earlier answer was cut off, so cost can't be estimated\"" in js
+        assert "too_few: 'not enough past runs to calculate it'" in js and "cut_off: \"an earlier answer was cut off, so it can't be calculated\"" in js
 
 def test_fit_n_counts_how_many_of_these_would_fit(tmp_path):
     Rs = [str(folder(tmp_path, n, worst=w)) for n, w in (('a', 4.0), ('b', 3.0), ('c', 5.0), ('d', 3.5))]

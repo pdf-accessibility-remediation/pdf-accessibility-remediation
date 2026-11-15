@@ -594,7 +594,7 @@ function waitingBlock(s) {
 const usd = x => '$' + Number(x || 0).toFixed(2);
 // Why there is no expected cost yet, in plain words (Patrick, 2026-11-14), from lib/costhistory.py's {none: reason}; an
 // unknown reason shows nothing more. batch.js has the same words.
-const NONE_WHY = { too_few: 'not enough past runs to estimate cost', cut_off: "an earlier answer was cut off, so cost can't be estimated" };
+const NONE_WHY = { too_few: 'not enough past runs to calculate it', cut_off: "an earlier answer was cut off, so it can't be calculated" };
 function noneWhy(x) { return x && NONE_WHY[x.none] ? ' (' + NONE_WHY[x.none] + ')' : ''; }
 function costLines(e) {                                          // #65 (costs in dollars and an expected cost): the figure people read first, then the ceiling
   const x = e.expected;                                          // no key (an estimate made before #65): no line; {none}: "Not Available Yet"
