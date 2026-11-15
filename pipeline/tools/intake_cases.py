@@ -50,17 +50,18 @@ JA = 'これは試験用の日本語の文章です。縦書きと横書きの�
 KO = '이것은 시험용 한국어 문장입니다. 가로쓰기와 세로쓰기를 확인합니다.'
 RO = 'Sŏngwŏn met Hŏ Chŏk and Pak Yŏng-man in Ch\'ŏngju; Wŏllyang wrote to Kŭmsŏng.'   # McCune-Reischauer breves
 RO_PLAIN = 'Songwon met Ho Chok and Pak Yong-man in Ch\'ongju; Wollyang wrote to Kumsong.'
-ZH = '這是測試用的中文文字。每一行都一樣。'      # the test's own text (#121: Chinese print under a Latin-only layer)
+ZH = ['這本書講述了一個小村莊的歷史。', '今天天氣很好，我們去公園散步。', '老師說明年學校會有新的圖書館。']   # the test's own text (#121), 38 different characters
 W_IN, H_IN, DPI = 6, 8, 300
 
 
 def text_image(text, lines=12, vertical=False, size=44):
-    """A white page image with the text drawn in black, horizontally or in vertical columns right to left."""
+    """A white page image with the text drawn in black, horizontally or in vertical columns right to left. A list of
+    texts is drawn line by line in turn (horizontal only)."""
     w, h = W_IN * DPI, H_IN * DPI
     img = Image.new('L', (w, h), 255); d = ImageDraw.Draw(img)
     f = ImageFont.truetype(FONT, size) if FONT else ImageFont.load_default()
     if not vertical:
-        for k in range(lines): d.text((150, 150 + k * int(size * 1.8)), text, fill=0, font=f)
+        for k in range(lines): d.text((150, 150 + k * int(size * 1.8)), text[k % len(text)] if isinstance(text, list) else text, fill=0, font=f)
     else:
         per_col = (h - 300) // int(size * 1.15); chars = list(text * 4); x = w - 200
         while chars and x > 150:
@@ -199,8 +200,8 @@ def build(out):
     pdf = pikepdf.new(); wrapped(pdf, photo, '3 Tr\nBT /F1 10.5 Tf 36 52 Td (Plate 1. A grey field.) Tj ET\n'); save('wrapped-plate', pdf)
     # #121: Chinese print under an English-only OCR layer (Latin noise), and the same wrapped for the redo chain
     noise = '3 Tr\n' + ''.join(f'BT /F1 10.5 Tf 36 {H_IN * 72 - 40 - k * 20} Td (Ii ft, & i S # * i IE iff 2 i t f n S j X 1) Tj ET\n' for k in range(16))
-    # (Latin noise with no parentheses or backslashes; 16 lines at 64 px: Tesseract's page layout reads a sparser
-    #  synthetic Chinese page as empty, which real pages are not)
+    # (Latin noise with no parentheses or backslashes; 16 lines at 64 px, three sentences in turn: Tesseract's page layout
+    #  reads a sparser synthetic Chinese page as empty, and intake's CJK check wants 20+ different characters)
     pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + noise, [text_image(ZH, lines=16, size=64)], font=True); save('cjk-under-latin-layer', pdf)
     pdf = pikepdf.new()                              # #129: 300 pages of text, too much for an 8 MB Java heap
     for _ in range(300): new_page(pdf, TEXT_LINES, font=True)
