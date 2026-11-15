@@ -546,6 +546,9 @@ if intake and intake.get('status') == 'done':
               'Moved: ' + '; '.join(f'"{x}"' for x in r['moved'])]
     if o.get('scan_images_marked_decoration'):
         L += ['- The whole-page scan image on ' + pgs(o['scan_images_marked_decoration']) + ' is marked as decoration: it is the page itself, not a figure (checklist 5.1).']
+    if o.get('scan_images_kept_as_figure'):           # review 04, decision 4: pages intake OCR'd whose image holds more than text
+        L += ['- The whole-page scan image on ' + pgs([int(k) for k in o['scan_images_kept_as_figure']])
+              + ' kept its figure: OCR text was added to the page, but the image holds more than text (a picture, a plate, a map or a drawing).']
     ps_ = intake.get('page_scans') or {}
     if ps_.get('marked_decoration'):                  # #128: pages with an existing OCR layer
         L += ['- On pages with an existing OCR layer, the whole-page scan image on ' + pgs(ps_['marked_decoration']) + ' is marked as decoration: '

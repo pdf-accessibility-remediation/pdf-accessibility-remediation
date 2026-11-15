@@ -79,8 +79,8 @@ def test_a_picture_page_keeps_its_figure(tmp_path):
     assert out['pages'] == [] and out['kept'][1] > intake.SCAN_TEXT_INK and figures(p) == 1
 
 
-def test_pages_intake_ocrd_are_not_picture_tested(tmp_path):
-    p = scan_pdf(str(tmp_path / 'a.pdf'), ink=0)                    # as before #128: OCR'd pages lose the scan Figure
+def test_without_the_picture_test_every_scan_is_decorated(tmp_path):
+    p = scan_pdf(str(tmp_path / 'a.pdf'), ink=0)                    # the function's default; intake passes every page (review 04)
     out = intake.artifact_page_scans(p, [1])
     assert out['pages'] == [1] and out['measured'] == {} and figures(p) == 0
 

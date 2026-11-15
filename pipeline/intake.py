@@ -150,10 +150,14 @@ PAGE_FIGURE_TREE, PAGE_FIGURE_TEXT = 0.5, 0.1   # such Figures on half its pages
                                            #   placeholder. Set on the sponsors' 18 such trees (figures on 99.2-99.9% of pages, text on
                                            #   0-0.8%) against every tagged sample (figures on 0-4.2%, text on 89-99%; 03-builder-report.md)
 LAYER_CJK_SAMPLE = 3                       # #121: existing Latin OCR layer: up to 3 sample page images probed for CJK
-SCAN_TEXT_INK = 0.02                       # #128: on a page with an existing OCR layer, the whole-page scan becomes decoration only
-SCAN_INK_DPI, SCAN_INK_GRAY, SCAN_INK_PAD = 100, 200, 3   # when ink outside the layer's text boxes is 2% of the page or less
-                                           #   (100 dpi, gray < 200, boxes padded 3 px). 60 labelled pages: text 0-1.7%, pictures
-                                           #   2.7%+, mixed 4.2%+ (runs/127-intake-cover-figures/labels/); above 2%, the Figure stays
+LAYER_FIGURE_CJK_SAMPLE = 8                # #121 with #128 (review 04 H2): and up to 8 spread pages whose scan looks like a picture
+                                           #   (more than SCAN_TEXT_INK ink outside the layer's text), stopping at the first with CJK
+SCAN_TEXT_INK = 0.01                       # #128: a whole-page scan under OCR text becomes decoration only when ink outside the
+SCAN_INK_DPI, SCAN_INK_GRAY, SCAN_INK_PAD = 100, 200, 3   # text boxes is 1% of the page or less (100 dpi, gray < 200, boxes
+                                           #   padded 3 px); above, the Figure stays. Interim: on 96 labelled existing-layer pages
+                                           #   from 21 books text runs 0-4.95%, pictures 2.69%+, mixed pages (text with a drawing or
+                                           #   a map) 0.58%+, so no line separates them (runs/127-intake-cover-figures/labels/,
+                                           #   05-builder-report.md); 1% keeps most text-with-boxes pages as figures (the safe error)
 BORN_DIGITAL = re.compile(r'(?i)pdftex|xetex|luatex|prince|microsoft|adobe pdf library|indesign')
                                            # producers that write text, not scan it: an "unusable" verdict on them is no
                                            #   reason to suggest FORCE_OCR
@@ -1048,8 +1052,8 @@ def scan_page_is_text(doc, n):
     """(page of text?, ink outside the text boxes as a share of the page) for page n of an open PDFium document: the page is
     rendered at SCAN_INK_DPI, ink is gray < SCAN_INK_GRAY (thin lines of a drawing count), and the OCR layer's text boxes
     (PDFium text rects, padded SCAN_INK_PAD px) are masked out. A page of text leaves almost no ink outside its text; a
-    photo, a plate (with or without a caption) or a page with a photo leaves a lot. Set on 60 labelled pages
-    (runs/127-intake-cover-figures/labels/: text pages 0-1.7% of the page, pictures 2.7% and up, mixed pages 4.2% and up)."""
+    photo, a plate (with or without a caption) or a page with a photo leaves a lot, but text in boxes or rules, and text
+    the layer lacks (CJK under a Latin layer), leaves some too: see SCAN_TEXT_INK for the labelled pages and the line."""
     from PIL import Image, ImageDraw, ImageChops
     page = doc[n - 1]; s = SCAN_INK_DPI / 72
     img = page.render(scale=s, grayscale=True).to_pil(); l, b, r, t = page.get_cropbox()
@@ -2083,24 +2087,29 @@ def main():
             return stop('failed', f'auto-tagging changed page appearance or text (appearance {cmp["pixels"][:8]}, text {cmp["text"][:8]}): stopped', 1)
         with pikepdf.open(tagged_out) as tp:
             if not tagged(tp, page_figure_trees=False): return stop('failed', 'auto-tagging produced no tag tree', 1)
-        # 5.1: a whole-page scan under OCR text is the page, not a figure. Pages intake OCR'd (as before), and since #128 pages
-        #   with an existing OCR layer, where only a page of text loses its scan Figure (scan_page_is_text)
+        # 5.1: a whole-page scan under OCR text is the page, not a figure: it becomes decoration only on a page of text
+        #   (scan_page_is_text), on pages with an existing OCR layer (#128) and, since review 04 (decision 4), on pages intake
+        #   OCR'd itself (before, every one lost its scan Figure, so a plate with a caption was decorated)
         if plan['ocr_mode']: rec['ocr']['scan_images_marked_decoration'] = []   # (as before: always there when intake OCR'd)
         layer_pages = list(kinds['ocr-layer'])           # with an existing OCR layer (also when read again by REOCR)
         ocr_done = [p_ for p_ in (rec['ocr']['pages_with_ocr_text'] if plan['ocr_mode'] else []) if p_ not in layer_pages]
         if ocr_done or layer_pages:
-            art = artifact_page_scans(tagged_out, sorted(set(ocr_done) | set(layer_pages)), picture_test=layer_pages)
-            if plan['ocr_mode']: rec['ocr']['scan_images_marked_decoration'] = [p_ for p_ in art['pages'] if p_ in ocr_done]
+            both = sorted(set(ocr_done) | set(layer_pages))
+            art = artifact_page_scans(tagged_out, both, picture_test=both)
+            rule_ = f'ink outside the OCR text boxes at most {SCAN_TEXT_INK:.0%} of the page'
+            if plan['ocr_mode']:
+                rec['ocr']['scan_images_marked_decoration'] = [p_ for p_ in art['pages'] if p_ in ocr_done]
+                if ocr_done: rec['ocr']['scan_images_kept_as_figure'] = {str(k): v for k, v in sorted(art['kept'].items()) if k in ocr_done}
             if layer_pages:
                 rec['page_scans'] = {'layer_pages': len(layer_pages), 'marked_decoration': [p_ for p_ in art['pages'] if p_ in layer_pages],
-                                     'kept_as_figure': {str(k): v for k, v in sorted(art['kept'].items())},
-                                     'ink_outside_text': {str(k): v for k, v in sorted(art['measured'].items())},
-                                     'rule': f'ink outside the OCR text boxes at most {SCAN_TEXT_INK:.0%} of the page', 'misfits': art['misfits'][:30]}
-                if art['kept']:
-                    flag('Page scans kept as figures', f'on these pages with an existing OCR layer, the page image holds more than text (a picture, '
-                         f'a plate or a photo: over {SCAN_TEXT_INK:.0%} of the page is ink outside the OCR text), so the whole-page '
-                         'image stays a figure for the AI or a person to describe. A photo inside a page of text gets no figure of its own',
-                         sorted(art['kept'])[:20], check=False)
+                                     'kept_as_figure': {str(k): v for k, v in sorted(art['kept'].items()) if k in layer_pages},
+                                     'ink_outside_text': {str(k): v for k, v in sorted(art['measured'].items()) if k in layer_pages},
+                                     'rule': rule_, 'misfits': art['misfits'][:30]}
+            if art['kept']:
+                flag('Page scans kept as figures', f'on these pages with OCR text, the page image holds more than text (a picture, '
+                     f'a plate, a map or a drawing: over {SCAN_TEXT_INK:.0%} of the page is ink outside the OCR text), so the whole-page '
+                     'image stays a figure for the AI or a person to describe; a page of text in boxes or ruled tables can land here too. '
+                     'A photo inside a page of text gets no figure of its own', sorted(art['kept'])[:20], check=False)
             if art['misfits']:
                 flag('Page scans not checked', 'on these pages the whole-page scan could not be marked as decoration safely ('
                      f'{art["misfits"][0][1]}): it stays a figure', [m[0] for m in art['misfits']][:20], check=False)
