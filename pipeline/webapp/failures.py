@@ -115,6 +115,10 @@ ROWS = [
      'A tool the app needs for OCR is missing.', 'Text recognition or tagging can\'t run on this computer. Nothing was sent.', WHOEVER, [], None),
     ('C8', 'intake', lambda c: summ('changed pages', 'changed page', 'changed a page', 'lost ')(c), ('intake.py', 'changed pages it should not have'),
      'A safety check stopped the run.', 'A step would have changed how the pages look or read, so nothing was kept and nothing was sent.', WHOEVER, [], None),
+    ('C9m', 'intake', summ('the auto-tagger ran out of memory'), ('intake.py', 'the auto-tagger ran out of memory'),     # #129
+     'This book is too long for the tagging tool\'s memory.', 'Tagging stopped because the tool ran out of memory on this book. Nothing was sent to the AI service.',
+     'Select "Try Again" when no other long book is being processed. If it stops again, whoever looks after the app can give the tagging tool more memory (the setting is in "Details").',
+     ['retry'], 'JAVA_TOOL_OPTIONS=-Xmx10g bash run_api.sh <the book> <name> <run name>'),
     ('C9', 'intake', summ('OCRmyPDF failed', 'auto-tagging failed', 'auto-tagging produced no tag tree'), ('intake.py', 'auto-tagging failed: '),
      'Text recognition or tagging failed.', 'A tool stopped while reading or tagging the PDF. Nothing was sent to the AI service.',
      'Select "Try Again". If it stops again, whoever looks after the app can check it.', ['retry'], None),

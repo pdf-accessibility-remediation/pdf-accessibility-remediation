@@ -27,7 +27,8 @@ What it does, in order, and only where needed:
               it is left for the figure step.
               If the 1.2 test says the text layer is unusable, the book STOPS (flagged) unless FORCE_OCR=1 is set;
               then every page is OCR'd with --mode force (page images + new invisible text; the old text is replaced).
-  4. tag      OpenDataLoader adds a tag tree to a still-untagged file (--format tagged-pdf). A whole-page scan image
+  4. tag      OpenDataLoader adds a tag tree to a still-untagged file (--format tagged-pdf); the ActualText spans it drops are put
+              back (lib/tagfix.py). A whole-page scan image
               on an OCR'd page is then marked as decoration (it is the page, not a figure: checklist 5.1)
   5. checks   after each step: page appearance and text unchanged where nothing should change; a tag tree exists
               and covers the text; bookmarks, links and page labels kept. A failed check stops the book.
@@ -46,9 +47,10 @@ Needs, only when used: Tesseract and OCRmyPDF 17 (brew install ocrmypdf tesserac
 and the opendataloader-pdf package for auto-tagging. Exit codes: 0 done or nothing to do · 3 flagged (stopped, see
 intake.json) · 1 error.
 """
-import sys, os, re, json, time, shutil, hashlib, subprocess, tempfile, unicodedata, difflib, collections, datetime, statistics, math
+import sys, os, re, json, time, shutil, hashlib, subprocess, tempfile, unicodedata, difflib, collections, datetime, statistics, math, contextlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import support
+from lib import tagfix
 from lib.glance import ocr_layer_flagged
 from lib import dates as D
 import pikepdf, pypdfium2 as pdfium, pypdfium2.raw as pdfium_raw
@@ -131,6 +133,13 @@ GUTTER_INK, GUTTER_MIN, SPREAD_SIDE = 0.10, 0.006, 0.25   # a gutter in the midd
                                            #   ink, 0.6%+ of the width) and 25%+ of the ink on each side; a landscape page of
                                            #   the same size next to one counts too (a chapter end leaves a half blank).
                                            #   Calibrated: mohr 16+1 of 17, reynolds-magazines 10 of 10, 0 in the 148 and the 30
+TAGGER_SLOTS, TAGGER_RAM_PCT = 2, 40       # #129: at most 2 auto-taggers at once on this machine (a lock shared by every job), each
+                                           #   with a heap of up to 40% of memory. Measured: Cost 28 (1,467 pages) ran out of the
+                                           #   default heap (25%: 4 GB of 16 GB) and passed with more (03-builder-report.md)
+TAGGER_LOCKS = os.environ.get('INTAKE_TAGGER_LOCKS') or os.path.join(tempfile.gettempdir(), 'pdfrem-tagger-slots')
+TAGGER_OOM = ('the auto-tagger ran out of memory on this book (it holds the whole book in memory). Run it again when no other '
+              'long book is being processed; if it stops again, give the tagger more memory with JAVA_TOOL_OPTIONS=-Xmx10g '
+              '(or another size) before the command')
 BORN_DIGITAL = re.compile(r'(?i)pdftex|xetex|luatex|prince|microsoft|adobe pdf library|indesign')
                                            # producers that write text, not scan it: an "unusable" verdict on them is no
                                            #   reason to suggest FORCE_OCR
@@ -670,10 +679,15 @@ def compare(a_path, b_path, redrawn=(), near=False):
       compared (it was replaced on purpose)."""
     # near=True also: a page over NEAR gets a second look at TILE_DPI in quarter-inch tiles (sub-pixel shifts vanish,
     #   a missing mark does not), and a page whose text holds exactly the same characters in a different order passes
-    #   as "reordered" (the tagger re-sequenced text runs), with the moved fragments listed
+    #   as "reordered" (the tagger re-sequenced text runs), with the moved fragments listed.
+    # near=True, #127: a page whose PDFium text still differs passes as "read differently" only when (a) it draws exactly
+    #   the same (lib/tagfix.same_drawing: operators to four decimals, fonts by fingerprint, marked content aside),
+    #   (b) its /ActualText values are the same, in order, and (c) pdfplumber's text (no merging rules) is identical,
+    #   ignoring white space. The pixel check above still applies to it. What PDFium reads differently is listed.
     a, b = pdfium.PdfDocument(a_path), pdfium.PdfDocument(b_path)
     if len(a) != len(b): return {'page_count': [len(a), len(b)], 'pixels': [], 'text': []}
-    px, tx, tiles, reord = [], [], [], []
+    px, tx, tiles, reord, rdiff = [], [], [], [], []
+    second = {}                                     # opened on the first page that needs them
     for i in range(len(a)):
         if (i + 1) in redrawn:
             if _blurred_diff(a, b, i) > REDRAWN: px.append(i + 1)
@@ -690,9 +704,33 @@ def compare(a_path, b_path, redrawn=(), near=False):
                 ha, hb = ta.translate(HYPHEN_MARKS), tb.translate(HYPHEN_MARKS)
                 if ha == hb: continue
                 if collections.Counter(ha) == collections.Counter(hb): reord.append({'page': i + 1, 'moved': moved_fragments(ha, hb)}); continue
+                rd = read_differently(a_path, b_path, i + 1, ha, hb, second)
+                if rd: rdiff.append(rd); continue
             tx.append(i + 1)
     a.close(); b.close()
-    return {'page_count': None, 'pixels': px, 'text': tx, 'tile_passed': tiles, 'reordered': reord}
+    for k in ('pk_a', 'pk_b', 'pl_a', 'pl_b'):
+        if k in second: second[k].close()
+    return {'page_count': None, 'pixels': px, 'text': tx, 'tile_passed': tiles, 'reordered': reord, 'read_differently': rdiff}
+def read_differently(a_path, b_path, n, ta, tb, opened):
+    """#127: page n's PDFium text differs, but the page draws exactly the same: the record of what PDFium reads
+    differently, or None when any of (a), (b), (c) fails (see compare())."""
+    from lib import tagfix
+    if 'pk_a' not in opened:
+        from lib import plumb_fix  # noqa: F401
+        import pdfplumber
+        opened.update(pk_a=pikepdf.open(a_path), pk_b=pikepdf.open(b_path), pl_a=pdfplumber.open(a_path), pl_b=pdfplumber.open(b_path))
+    same, props, why = tagfix.same_drawing(opened['pk_a'], opened['pk_b'], n)
+    if not same or not props: return None
+    pt = lambda pl: re.sub(r'\s+', '', ''.join(c['text'] for c in pl.pages[n - 1].chars))
+    if pt(opened['pl_a']) != pt(opened['pl_b']): return None
+    changed = []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, ta, tb, autojunk=False).get_opcodes():
+        if op != 'equal': changed.append({'before': ta[i1:i2][:40], 'after': tb[j1:j2][:40]})
+    chars = ''.join(c['before'] + c['after'] for c in changed)
+    ld = sum(1 for ch in chars if unicodedata.category(ch)[0] in 'LN')
+    return {'page': n, 'characters': len(chars), 'letters_digits': ld, 'symbols': len(chars) - ld,
+            'letters_digits_read_differently': ''.join(ch for ch in chars if unicodedata.category(ch)[0] in 'LN')[:60],
+            'changes': changed[:20]}
 HYPHEN_MARKS = str.maketrans({'\ufffe': '-', '\x02': '-'})
 def _worst_tile(a, b, i):
     """Changed pixels in the worst quarter-inch tile at TILE_DPI, after the same softening and step as the 72-dpi check."""
@@ -713,6 +751,40 @@ def moved_fragments(a, b, n=5):
     for op, i1, i2, j1, j2 in sm.get_opcodes():
         if op in ('delete', 'replace') and a[i1:i2] not in out: out.append(a[i1:i2])
     return [f[:60] for f in out[:n]]
+@contextlib.contextmanager
+def tagger_slot():
+    """#129: hold one of TAGGER_SLOTS machine-wide slots (file locks, released by the OS if the process dies) while the
+    auto-tagger runs, so long books at once cannot overcommit memory. Waits for a free slot; yields {slot, waited}."""
+    import fcntl
+    os.makedirs(TAGGER_LOCKS, exist_ok=True); t0 = time.time(); told = False
+    while True:
+        for k in range(TAGGER_SLOTS):
+            f = open(os.path.join(TAGGER_LOCKS, f'slot{k}.lock'), 'w')
+            try: fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError: f.close(); continue
+            try: yield {'slot': k, 'waited': round(time.time() - t0, 1)}
+            finally: fcntl.flock(f, fcntl.LOCK_UN); f.close()
+            return
+        if not told: print(f'intake: waiting for a free auto-tagger slot ({TAGGER_SLOTS} in use)', flush=True); told = True
+        time.sleep(2)
+def tagger_error(e):
+    """(the error's last 600 characters, ran out of memory?) for an exception from opendataloader_pdf.convert. The JVM's own
+    words are in the CalledProcessError's stderr (quiet mode), not in str(e); the whole text is searched (#129)."""
+    full = '\n'.join(str(x) for x in (e, getattr(e, 'stderr', None), getattr(e, 'output', None)) if x)
+    return full[-600:], 'OutOfMemoryError' in full
+def tagger_java_options():
+    """JAVA_TOOL_OPTIONS for the tagger: any options already set, then the heap cap (an -Xmx set by a person wins)."""
+    old = (os.environ.get('JAVA_TOOL_OPTIONS') or '').strip()
+    return (old + ' ' if old else '') + f'-XX:MaxRAMPercentage={TAGGER_RAM_PCT}'
+def spoken_values(values):
+    """Restored ActualText values in a few words: invisible characters by name, others quoted."""
+    out = []
+    for v, n in values.most_common(6):
+        if len(v) == 1 and not unicodedata.category(v).startswith(('L', 'N', 'P', 'S')):
+            out.append(f'{n} × {unicodedata.name(v, "character").lower()} (U+{ord(v):04X})')
+        else: out.append(f'{n} × "{v[:20]}"')
+    more = sum(values.values()) - sum(n for _, n in values.most_common(6))
+    return ', '.join(out) + (f', {more} more' if more else '')
 def keepers(path):
     """What must survive every step: bookmarks, link annotations, page labels, page count."""
     with pikepdf.open(path) as p:
@@ -1668,17 +1740,46 @@ def main():
         hidden = bool(plan['ocr_mode']) or bool(kinds['ocr-layer'])           # invisible OCR text must not be filtered out
         kw = dict(input_path=[cur], output_dir=odl_dir, format='tagged-pdf', quiet=True)
         if hidden: kw['content_safety_off'] = 'hidden-text'
-        t1 = time.time()
-        try: opendataloader_pdf.convert(**kw); err = None
-        except Exception as e: err = str(e)[-600:]
+        err = oom = None; t1 = time.time()
+        with tagger_slot() as slot:                      # #129: at most TAGGER_SLOTS taggers at once on this machine
+            java_opts = tagger_java_options()
+            old_opts = os.environ.get('JAVA_TOOL_OPTIONS'); os.environ['JAVA_TOOL_OPTIONS'] = java_opts
+            t1 = time.time()
+            try: opendataloader_pdf.convert(**kw)
+            except Exception as e: err, oom = tagger_error(e)
+            finally:
+                if old_opts is None: os.environ.pop('JAVA_TOOL_OPTIONS', None)
+                else: os.environ['JAVA_TOOL_OPTIONS'] = old_opts
         tagged_out = os.path.join(odl_dir, os.path.splitext(os.path.basename(cur))[0] + '_tagged.pdf')
         rec['steps'].append({'step': 'autotag', 'tool': f'OpenDataLoader {tv["opendataloader_pdf"]} (Java {tv["java"]})',
                              'options': {k: v for k, v in kw.items() if k not in ('input_path', 'output_dir')},
+                             'java_options': java_opts, 'slot': slot['slot'], 'waited_for_slot_seconds': slot['waited'],
                              'seconds': round(time.time() - t1, 1), 'error': err})
+        if oom: return stop('failed', TAGGER_OOM, 1)
         if err or not os.path.exists(tagged_out): return stop('failed', f'auto-tagging failed: {err or "no output file"}', 1)
+        # #127 (rule 1, 3.6): put back the spans that set how text is spoken (ActualText), which the tagger drops
+        rs = tagfix.restore(cur, tagged_out)
+        rec['checks']['actualtext_restored'] = {'spans': rs['spans'], 'pages': {str(k): v for k, v in rs['pages'].items()},
+                                                'values': dict(rs['values'].most_common(30)),
+                                                'misfits': [{'page': p, 'stream': s, 'why': w} for p, s, w in rs['misfits'][:30]]}
+        if rs['spans']:
+            flag('Spoken text restored', f'the auto-tagger dropped {rs["spans"]} marked span{"" if rs["spans"] == 1 else "s"} that set how their text is spoken '
+                 f'(ActualText: {spoken_values(rs["values"])}); they were put back, so the text reads as in the original', sorted(rs['pages']), check=False)
+        if rs['misfits']:
+            flag('Spoken text not restored', f'{len(rs["misfits"])} places where the auto-tagger dropped spoken text (ActualText) could not '
+                 f'be put back safely (e.g. {rs["misfits"][0][2]}): a person checks what a screen reader says there',
+                 sorted({p for p, _, _ in rs['misfits'] if p})[:20])
         cmp = compare(cur, tagged_out, near=True)
         rec['checks']['after_autotag'] = {'pixels_differ': cmp['pixels'], 'text_differs': cmp['text'], 'page_count': cmp['page_count'],
-                                          'tile_passed': cmp['tile_passed'], 'reordered': cmp['reordered']}
+                                          'tile_passed': cmp['tile_passed'], 'reordered': cmp['reordered'],
+                                          'read_differently': cmp['read_differently']}
+        if cmp['read_differently']:
+            rdl = cmp['read_differently']; n = sum(r['characters'] for r in rdl); ld = sum(r['letters_digits'] for r in rdl)
+            letters = ''.join(r['letters_digits_read_differently'] for r in rdl)[:40]
+            flag('Read differently, drawn the same', f'on these pages the auto-tagger split text runs without changing what is drawn: '
+                 'the same glyphs in the same places, fonts and spoken text, and a second reader (pdfplumber) reads the same text. '
+                 f'The PDFium text check reads {n} characters differently: {n - ld} symbols, {ld} letters and digits'
+                 + (f' ("{letters}")' if letters else '') + ' (each page listed in intake.json)', [r['page'] for r in rdl], check=False)
         if cmp['reordered']:
             flag('Text reordered by auto-tagging', 'on these pages the text holds exactly the same characters as before, in a different '
                  'order: the tagger re-sequenced text runs, so text extraction meets some fragments elsewhere. Nothing was lost; '

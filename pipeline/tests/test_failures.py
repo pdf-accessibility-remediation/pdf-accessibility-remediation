@@ -58,6 +58,7 @@ CASES = [
     ('C7', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'Tesseract is not installed: brew install tesseract tesseract-lang'})),
     ('C8', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'OCR changed pages it should not have (appearance [3], text []): stopped'})),
     ('C9', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'auto-tagging failed: java died'})),
+    ('C9m', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'the auto-tagger ran out of memory on this book (it holds the whole book in memory). Run it again'})),
     ('C10', dict(log=INTAKE + 'Traceback (most recent call last):\nKeyError: x\n', intake={'status': None})),
     ('D3', dict(log=AUDIT + 'Traceback (most recent call last):\nValueError: x\n', intake={'status': 'done'})),
     ('E2', dict(log=EST + 'refusing: the request needs about 300,000 tokens (input estimate + room for the reply), over m\'s 200,000-token context window\n')),
