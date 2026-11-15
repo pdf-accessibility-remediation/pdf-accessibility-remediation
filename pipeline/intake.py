@@ -80,6 +80,8 @@ NARROW_GAP = 0.19                          # a gap-only word break narrower than
 NARROW_BOOK_RATE = 10                      # narrow breaks per text page, averaged over the book: at or above, a CHECK; below, a note
 CJK_PROBE_LANGS = 'chi_tra+chi_sim+jpn+kor'  # before OCR, each planned page is read once with these Tesseract packs:
 CJK_PROBE_MIN, CJK_PROBE_CONF = 10, 60     #   10 or more CJK characters at 60% confidence or more = the page holds CJK text.
+CJK_PROBE_SHARE = 0.05                     #   #121, pages with an existing OCR layer: and 5%+ of what the packs read (Hawaiian pages
+                                           #   1-2%, real CJK pages 13-93%: 03-builder-report.md)
 PROBE_ALL_MAX, PROBE_SAMPLE = 12, 8        #   18-60 s a page on a newspaper scan: with more than 12 pages to OCR, the probe stops at
                                            #   the first CJK page when OCR_LANG has no CJK pack (the book stops either way) and reads
                                            #   8 spread pages when it has one (a full run then lists the CJK pages from the OCR text);
@@ -723,12 +725,16 @@ def textlike(text):
 def cjk_char(ch):
     o = ord(ch)
     return 0x3040 <= o <= 0x30ff or 0x4e00 <= o <= 0x9fff or 0x3400 <= o <= 0x4dbf or 0xac00 <= o <= 0xd7af or 0xf900 <= o <= 0xfaff
-def cjk_probe(img, langs):
-    """CJK characters Tesseract reads on the page image at CJK_PROBE_CONF confidence or more, with the CJK packs only."""
+def cjk_probe(img, langs, share=False):
+    """CJK characters Tesseract reads on the page image at CJK_PROBE_CONF confidence or more, with the CJK packs only.
+    share=True: (that count, its share of all letters, digits and CJK characters read at that confidence). On a page of
+    text, Tesseract's CJK packs put a few confident CJK characters into Latin text with diacritics (16 of 802 on a
+    Hawaiian page), so on existing-layer pages a page counts as CJK only at CJK_PROBE_SHARE or more (#121)."""
     import csv, io
     r = run(['tesseract', img, 'stdout', '-l', langs, '--psm', '3', 'tsv'])
-    rows = csv.DictReader(io.StringIO(r.stdout), delimiter='\t', quoting=csv.QUOTE_NONE)
-    return sum(sum(1 for ch in (w.get('text') or '') if cjk_char(ch)) for w in rows if float(w.get('conf') or -1) >= CJK_PROBE_CONF)
+    rows = [w for w in csv.DictReader(io.StringIO(r.stdout), delimiter='\t', quoting=csv.QUOTE_NONE) if float(w.get('conf') or -1) >= CJK_PROBE_CONF]
+    t = ''.join(w.get('text') or '' for w in rows); n = sum(1 for ch in t if cjk_char(ch))
+    return (n, n / max(sum(1 for ch in t if ch.isalnum()), 1)) if share else n
 def junk_stats(text):
     """Share of OCR tokens that look like junk: a symbol from JUNK_SYMBOLS, capitals with no vowel ("MBH"), or letters and
     digits mixed ("f7") other than ordinals; CJK tokens and plain numbers are fine."""
@@ -1734,9 +1740,9 @@ def main():
             if have and not any(r.get('script') in ('kana', 'hangul', 'han') for r in ol['pages']):
                 t2 = time.time(); probe = pick[:: max(1, len(pick) // LAYER_CJK_SAMPLE)][:LAYER_CJK_SAMPLE]; hit = {}; checked = 0
                 for i in probe:
-                    img = os.path.join(tmp, f'olc{i}.png'); render(doc, i - 1, OCR_DPI, img); n = cjk_probe(img, '+'.join(have)); os.remove(img)
+                    img = os.path.join(tmp, f'olc{i}.png'); render(doc, i - 1, OCR_DPI, img); n, sh = cjk_probe(img, '+'.join(have), share=True); os.remove(img)
                     checked += 1
-                    if n >= CJK_PROBE_MIN: hit[i] = n; break
+                    if n >= CJK_PROBE_MIN and sh >= CJK_PROBE_SHARE: hit[i] = n; break
                 ol['cjk_probe'] = {'langs': '+'.join(have), 'pages_checked': checked, 'seconds': round(time.time() - t2, 1)}
                 if hit:
                     ol['cjk_on_images'] = {'pages': sorted(hit), 'cjk_characters': {str(k): v for k, v in hit.items()}}
@@ -1807,7 +1813,11 @@ def main():
                 checked = 0
                 for p in todo:
                     img = os.path.join(tmp, f'cjk{p}.png'); render(doc, p - 1, OCR_DPI, img)
-                    n = cjk_probe(img, '+'.join(have)); os.remove(img); checked += 1
+                    if plan['ocr_mode'] == 'redo' and p in (plan.get('reocr_pages') or []):   # a page of text: the share counts too
+                        n, sh = cjk_probe(img, '+'.join(have), share=True)
+                        if sh < CJK_PROBE_SHARE: n = 0
+                    else: n = cjk_probe(img, '+'.join(have))
+                    os.remove(img); checked += 1
                     if n: found[p] = n
                     if mode == 'until the first CJK page' and n >= CJK_PROBE_MIN: break
                 vhave = [l for l in VERT_PROBE_LANGS.split('+') if l in tv['tesseract_langs']]
@@ -1906,14 +1916,19 @@ def main():
                               'image_pages_without_text': [d['page'] for d in dropped], 'per_page': kept + dropped}
                 if plan['ocr_mode'] == 'redo':
                     rec['ocr']['reocr_pages'] = plan['reocr_pages']
-                    od = pdfium.PdfDocument(out)             # a page the new reading found (almost) no text on has lost its text
-                    def thin_(s): return not textlike(s)[0] and sum(1 for ch in s if cjk_char(ch)) < CJK_CHARS   # CJK has no word breaks
-                    thin = [p_ for p_ in plan['reocr_pages'] if thin_(od[p_ - 1].get_textpage().get_text_range())]; od.close()
+                    import gzip                              # a page that came back with much less text than it had has lost text:
+                    old_ = json.load(gzip.open(os.path.join(OUTD, 'old_ocr_layer.json.gz'), 'rt', encoding='utf-8'))   # under half
+                    ns_ = lambda s: len(re.sub(r'\s+', '', s))   # the old characters, unless it reads 20+ CJK characters (which say
+                    od = pdfium.PdfDocument(out)             # far more per character than the Latin noise they replace)
+                    def thin_(p_):
+                        s = od[p_ - 1].get_textpage().get_text_range(); o_ = ns_(old_.get(str(p_), ''))
+                        return o_ >= 50 and ns_(s) < 0.5 * o_ and sum(1 for ch in s if cjk_char(ch)) < CJK_CHARS
+                    thin = [p_ for p_ in plan['reocr_pages'] if thin_(p_)]; od.close()
                     if thin:
                         rec['ocr']['reocr_little_text'] = thin
-                        flag('OCR text read again: little or no text', 'on these pages the new OCR reading found little or no text, so they '
-                             'now carry less text than before (the old text is kept in old_ocr_layer.json.gz): a person compares each with its '
-                             'page image, or the book is run again without REOCR', thin[:20])
+                        flag('OCR text read again: little or no text', 'on these pages the new OCR reading found less than half the text the '
+                             'old layer had (the old text is kept in old_ocr_layer.json.gz): a person compares each with its page image, or the '
+                             'book is run again without REOCR', thin[:20])
                     flag('OCR text read again', f'REOCR=1: the existing OCR text on {len(plan["reocr_pages"])} page{"s" if len(plan["reocr_pages"]) != 1 else ""} '
                          f'was replaced by a new OCR reading ({ocr_lang}); the page images are unchanged (checked pixel for pixel). The old '
                          'text is kept in old_ocr_layer.json.gz. The new text is machine output: a person compares it with the page images '
