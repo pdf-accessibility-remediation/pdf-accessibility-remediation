@@ -628,7 +628,7 @@ function pendingBlock(s) {
   if (s.phase === 'batch') return h + (s.failure ? failureCard(Object.assign({}, s.failure, { next: [] })) : '') +
     '<p>This PDF is assigned to the batch "' + esc(s.batch_name || s.batch) + '". Its estimate, "Start Remediation" and what to do next are on the batch page.</p>' +
     '<div class="pp-row"><a class="pp-btn pp-primary" href="/batch/' + encodeURIComponent(s.batch) + '/">Open the Batch Page</a></div>';
-  if (s.phase === 'active') return h + '<p>Working on this book. This page follows each step; you can leave it and come back from the home page.</p>';
+  if (s.phase === 'active') return h + '<p>Working on this PDF. This page follows each step; you can leave it and come back from the home page.</p>';
   if (s.phase === 'needs-spend') return h + '<p>The app restarted before the AI request started, so nothing was sent. Get a new estimate, then select "Start Remediation" again.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-reest" data-act="estimate">Get a New Estimate</button>' +
     '<button type="button" id="pp-dismiss" data-act="dismiss">Dismiss</button></div>';
