@@ -9,13 +9,17 @@ restore(src, tagged)   puts back the marked-content spans the auto-tagger droppe
                          - it uses the ' or " operators (they move to a new line as they show text);
                          - a span's ends fall inside one of the tagger's show operators;
                          - a span's run would cross the tagger's own marked content;
-                         - its form sits deeper than FORM_DEPTH.
+                         - its form sits deeper than FORM_DEPTH;
+                         - the page or a form draws with a tiling pattern that shows text or draws a form (review 04 M1).
+                       restore checks the glyph bytes only, not where they are drawn: the geometry is compare()'s (intake
+                       runs it on every page after the restore: pixels, then text).
 same_drawing(a, b, n)  page n draws exactly the same in both files: the operators through the page and its forms, with
                        the marked-content operators left out and consecutive Tj/TJ merged into one show sequence (a split
                        run is neutral in PDF: character spacing applies per glyph, word spacing per space byte, numbers in
                        order); operands compared to four decimals, TJ numbers of 0 dropped; each font compared by its
                        fingerprint (program, widths, encoding, ToUnicode), not by its resource name. A form deeper than
-                       FORM_DEPTH makes the page a misfit, never a pass.
+                       FORM_DEPTH, or a tiling pattern that shows text or draws a form (its content is not walked),
+                       makes the page a misfit, never a pass. Annotation appearance streams are not walked.
 Pure pikepdf: no Java, no OCR."""
 import hashlib, collections
 import pikepdf
@@ -27,8 +31,28 @@ MC = {'BDC', 'BMC', 'EMC'}
 FORM_DEPTH = 3                             # forms nested deeper than this are not read: a misfit, not a pass
 
 
-class TooDeep(Exception):
+class Unreadable(Exception):
+    """A page this module does not read in full: a misfit for restore, never a pass for same_drawing."""
+
+
+class TooDeep(Unreadable):
     pass
+
+
+class PatternText(Unreadable):
+    pass
+
+
+def _patterns(res):
+    """PatternText when a tiling pattern in these resources shows text or draws a form (review 04 M1: its content is not
+    walked, so a change there would pass the operator comparison; PDFium's text check does not read it either)."""
+    for name, pt in ((res or {}).get('/Pattern') or {}).items():
+        if not isinstance(pt, pikepdf.Stream) or int(pt.get('/PatternType', 0)) != 1: continue
+        xo = (pt.get('/Resources') or {}).get('/XObject') or {}
+        for ins in pikepdf.parse_content_stream(pt):
+            op = str(ins.operator)
+            if op in SHOW or op in MOVE_SHOW or op == 'Do' and (xo.get(ins.operands[0]) or {}).get('/Subtype') == '/Form':
+                raise PatternText(f'tiling pattern {name} {"shows text" if op != "Do" else "draws a form"}')
 
 
 def _ins(ops):
@@ -40,11 +64,12 @@ def _parse(owner):
 
 
 def streams(page):
-    """{name path: (owner, resources)} for the page and every form it draws, depth first. TooDeep past FORM_DEPTH."""
+    """{name path: (owner, resources)} for the page and every form it draws, depth first. TooDeep past FORM_DEPTH,
+    PatternText for a tiling pattern that shows text or draws a form."""
     out = {}
 
     def walk(owner, res, key, d):
-        out[key] = (owner, res)
+        out[key] = (owner, res); _patterns(res)
         for ins in _parse(owner):
             if str(ins.operator) != 'Do': continue
             x = ((res or {}).get('/XObject') or {}).get(ins.operands[0])
@@ -123,7 +148,7 @@ def restore(src, tagged):
         for n, (sp, tp) in enumerate(zip(s.pages, t.pages), 1):
             if not _has_restorable(sp): continue
             try: ss, ts = streams(sp), streams(tp)
-            except TooDeep as e: rep['misfits'].append((n, None, str(e))); continue
+            except Unreadable as e: rep['misfits'].append((n, None, str(e))); continue
             for key, (sown, sres) in ss.items():
                 want, sbytes, smove = _spans(_ins(_parse(sown)), sres)
                 if not want: continue
@@ -221,10 +246,12 @@ def font_fingerprint(font, cache):
 
 
 def drawing(page):
-    """(normalised operator list, RESTORE_KEYS values in order) for a page and its forms. TooDeep past FORM_DEPTH."""
+    """(normalised operator list, RESTORE_KEYS values in order) for a page and its forms. TooDeep past FORM_DEPTH,
+    PatternText for a tiling pattern that shows text or draws a form."""
     out, props, cache = [], [], {}
 
     def walk(owner, res, d):
+        _patterns(res)
         for ins in _parse(owner):
             op, a = str(ins.operator), list(ins.operands)
             if op in MC:
@@ -267,5 +294,5 @@ def same_drawing(a_pdf, b_pdf, n):
     """(same drawing, same spoken-text properties, why) for page n of two open pikepdf files; why is set on a misfit."""
     try:
         da, pa = drawing(a_pdf.pages[n - 1]); db, pb = drawing(b_pdf.pages[n - 1])
-    except TooDeep as e: return False, False, str(e)
+    except Unreadable as e: return False, False, str(e)
     return da == db, pa == pb, None

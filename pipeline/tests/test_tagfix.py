@@ -167,3 +167,27 @@ def test_p4_a_form_deeper_than_the_limit_is_a_misfit_not_a_pass(tmp_path):
     assert sd is False and why and 'deeper' in why
     with pikepdf.open(pa) as A, pikepdf.open(pa) as B:
         assert TF.same_drawing(A, B, 1)[2]                          # even identical files: never an unchecked pass
+
+
+def pattern_pdf(path, text, actualtext=False):
+    """The reviewer's probe P (review 04 M1): text inside a tiling pattern used as a fill colour."""
+    pdf = pikepdf.new()
+    f = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica))
+    p = pdf.make_stream(b'BT /F1 40 Tf 10 20 Td (' + text + b') Tj ET', Type=pikepdf.Name.Pattern, PatternType=1, PaintType=1, TilingType=1,
+                        BBox=[0, 0, 300, 100], XStep=300, YStep=100, Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=f)))
+    pg = pdf.add_blank_page(page_size=(300, 100))
+    pg.Resources = pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=f), Pattern=pikepdf.Dictionary(P0=p),
+                                      ColorSpace=pikepdf.Dictionary(CS0=pikepdf.Array([pikepdf.Name.Pattern])))
+    span = b'/Span <</ActualText (N)>> BDC BT /F1 12 Tf 10 80 Td (N) Tj ET EMC ' if actualtext else b''
+    pg.Contents = pdf.make_stream(span + b'/CS0 cs /P0 scn 10 30 280 60 re f')
+    pdf.save(path); return path
+
+
+def test_text_in_a_tiling_pattern_is_a_misfit_not_a_pass(tmp_path):
+    a, b = pattern_pdf(str(tmp_path / 'a.pdf'), b'Hello'), pattern_pdf(str(tmp_path / 'b.pdf'), b'Hallo')
+    with pikepdf.open(a) as pa, pikepdf.open(b) as pb:
+        same_, props, why = TF.same_drawing(pa, pb, 1)
+    assert same_ is False and props is False and 'tiling pattern' in why
+    s, t = pattern_pdf(str(tmp_path / 's.pdf'), b'Hello', actualtext=True), pattern_pdf(str(tmp_path / 't.pdf'), b'Hello')
+    rep = TF.restore(s, t)
+    assert rep['spans'] == 0 and rep['misfits'] and 'tiling pattern' in rep['misfits'][0][2]
