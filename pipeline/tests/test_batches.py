@@ -347,7 +347,7 @@ def test_a_batch_with_the_language_step_off_says_so_at_the_start(tmp_path):
     import subprocess
     (tmp_path / 'src').mkdir(); env = dict(os.environ, AUTO='1', RUNS_DIR=str(tmp_path / 'runs'), VERAPDF='off')
     env.pop('LANG_TAGS', None)
-    line = "Language tags are off for this batch: books will read 'Language Tags: Not Done' and can't be Ready. Add LANG_TAGS=on to include them."
+    line = "Language tags are off for this batch: books with words in other languages will read 'Language Tags: Not Done' and can't be Ready. Add LANG_TAGS=on to include them."
     off = subprocess.run(['bash', 'batch_api.sh', 'lt-off', str(tmp_path / 'src')], cwd=HERE, env=env, capture_output=True, text=True, timeout=120)
     on = subprocess.run(['bash', 'batch_api.sh', 'lt-on', str(tmp_path / 'src')], cwd=HERE, env=dict(env, LANG_TAGS='on'), capture_output=True, text=True, timeout=120)
     assert line in off.stdout and line not in on.stdout

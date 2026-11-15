@@ -18,8 +18,8 @@ AUTO=1 bash batch_api.sh batch1 ../books.txt                            # a list
 `batch_api.sh` refuses to start without `AUTO=1`, because it makes AI requests without asking.
 
 The language step is off in a batch unless you add `LANG_TAGS=on` (see [Language tags](languages.md)). A batch with it
-off says so when it starts: "Language tags are off for this batch: books will read 'Language Tags: Not Done' and can't
-be Ready. Add LANG_TAGS=on to include them." Batches started from the app turn it on from their estimate.
+off says so when it starts: "Language tags are off for this batch: books with words in other languages will read 'Language Tags:
+Not Done' and can't be Ready. Add LANG_TAGS=on to include them." Batches started from the app turn it on from their estimate.
 
 ## Where the results go
 
