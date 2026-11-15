@@ -2,13 +2,13 @@
 
 Result: `moralfoods_remediated.pdf`
 
-361 pages · run November 13, 2026, at 3:30 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.240 ($0.0007 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+361 pages · run November 14, 2026, at 3:32 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.240 ($0.0007 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.0s · audit 38.2s · reuse saved reply 1.3s · apply 140.6s · verify 49.4s · total 230.5s
+Time: intake 0.9s · audit 37.3s · reuse saved reply 1.2s · apply 166.1s · verify 54.8s · total 260.3s
 
 ## Overview
 
@@ -20,7 +20,7 @@ Time: intake 1.0s · audit 38.2s · reuse saved reply 1.3s · apply 140.6s · ve
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - Safety Checks: Failed (all content tagged or decoration)
-- ✓ Language Tags: Not Applicable
+- Language Tags: Not Done (the language step was not run)
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · FAILED ✘ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  

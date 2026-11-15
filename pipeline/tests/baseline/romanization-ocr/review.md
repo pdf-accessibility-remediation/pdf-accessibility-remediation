@@ -2,13 +2,13 @@
 
 Result: `romanization-ocr_remediated.pdf`
 
-49 pages · run November 13, 2026, at 3:26 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.300 ($0.0061 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+49 pages · run November 14, 2026, at 3:28 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.300 ($0.0061 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: 1 picture page without OCR text · auto-tagged · text layer: not enough pages scored · OCR layer doubtful · OCR layer lacks diacritics · tagged by OpenDataLoader 2.5.12 · the pipeline worked on `_intake/intake.pdf`; the original was not changed
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.1s · audit 9.0s · reuse saved reply 1.6s · apply 13.1s · verify 10.5s · total 34.3s
+Time: intake 0.1s · audit 8.0s · reuse saved reply 1.4s · apply 13.4s · verify 10.2s · total 33.1s
 
 ## Overview
 
@@ -20,7 +20,7 @@ Time: intake 0.1s · audit 9.0s · reuse saved reply 1.6s · apply 13.1s · veri
 - Work Order Approval: Not Approved (applied without a review)
 - OCR Text Approval: Not Reviewed (the existing OCR layer is doubtful (12% character error) and missing diacritics)
 - ✓ Safety Checks: Passed
-- ✓ Language Tags: Not Applicable
+- Language Tags: Not Done (the language step was not run)
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  

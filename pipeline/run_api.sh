@@ -320,7 +320,7 @@ fi
 stage "4/5 apply (no model)"            python3 apply.py "$PSRC" "$R/workorder.json" "$R/$OUT"
 stage "4/5 verify (no model)"           bash -c 'python3 verify.py "$1" "$2" > /dev/null' _ "$PSRC" "$R/$OUT"
 write_timing
-stage "5/5 report"                      python3 report.py "$R" "$A" "--pdf=$OUT" "--input=$PSRC" ${KEEP:+--keep}
+stage "5/5 report"                      python3 report.py "$R" "$A" "--pdf=$OUT" "--input=$PSRC" "--lang-tags=$LANG_TAGS" ${KEEP:+--keep}
 summary
 echo
 echo "done: $R"

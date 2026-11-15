@@ -259,3 +259,17 @@ def test_the_status_sits_under_the_form_outside_its_language():
     assert 'Tagged as' not in page and 'Tag kept' not in page and 'Tag removed' not in page
     assert "'<option value=\"\">Change Language</option>'" in page and 'Change Language…' not in page
     assert '.lang-row[data-status] { border-left-color: var(--accent); }' in page and 'border-left: 4px solid transparent' in page
+
+def test_the_language_line_is_not_applicable_only_without_candidates():
+    """Round 18 (Patrick, 2026-11-14): with word forms found but none decided, the line reads Not Done with the reason and
+    blocks Ready; Not Applicable only when the audit found none; a record from before has no status and reads as before."""
+    def line(state, n): return G.language_line({'language_status': {'candidates': n, 'state': state}})
+    assert line('off', 0) == (True, 'Not Applicable') and line('not_run', 0) == (True, 'Not Applicable')
+    assert line('off', 12) == (False, 'Not Done (the language step was turned off)')
+    assert line('left_out_book', 12) == (False, 'Not Done (the language step was left out: over the limit per PDF)')
+    assert line('left_out_cap', 12) == (False, 'Not Done (the language step was left out: over its own limit)')
+    assert line('failed', 12) == (False, 'Not Done (the language step did not finish)')
+    assert line('not_run', 12) == (False, 'Not Done (the language step was not run)')
+    assert G.language_line({}) == (True, 'Not Applicable')                                 # a record made before round 18
+    rec = {'workorder': wo(), 'language_status': {'candidates': 5, 'state': 'decided'}}
+    assert G.language_line(rec) == (False, 'Not Reviewed (4 word forms to decide on the review page)')

@@ -25,6 +25,7 @@ run the review is kept as session 001 in reviews/sessions/ and the AI's order as
     --from-record=PATH   a re-apply (review_workorder.py): run, validation, reply, attempts and veraPDF "before" come from
                          that record.json instead of the working files, so the AI call's model, prompt and cost carry over
     --intake=DIR         where the run's _intake/ is (a re-apply works in reviews/work/)
+    --lang-tags=on|off   the language step's switch (run_api.sh LANG_TAGS): "off" is recorded as turned off
 """
 import sys, os, re, csv, json, shutil, datetime, collections
 from lib.sections import line, pdfua, nolink, excerpt, to_sections, render_md, VERSION as SECTIONS_VERSION
@@ -79,6 +80,27 @@ pr_listed = (load('page_reads.json', base=A) or {}).get('pages') or []
 # the language step (name_languages.py, #118): its own paid step; a saved reply from elsewhere costs nothing here
 lr_run = load('language_run.json') or ((prev or {}).get('language_run') if prev is not None else None)
 cost_lang = 0 if not lr_run or (lr_run.get('response_from') and not lr_run.get('own_reply')) else round(lr_run.get('cost_usd') or 0, 6)
+def language_status():
+    """What became of the language step (#118, round 18), for the Language Tags line (lib/glance.py language_line):
+    {candidates: the word forms the audit found for it, state: decided | off | left_out_book | left_out_cap | failed |
+    not_run}. Worked out here, before the working files go; a re-report keeps the earlier record's."""
+    if prev is not None and (prev or {}).get('language_status') and not os.path.exists(os.path.join(R, 'language_estimate.json')) \
+            and not load('language_run.json'):
+        return prev['language_status']
+    lc = load('lang_candidates.json', base=A)
+    try:
+        from lib import langreq
+        n = len(langreq.forms((lc or {}).get('places') or []))
+    except Exception: n = None
+    est = load('language_estimate.json') or {}
+    ref = (est.get('refused') or {}).get('why') if isinstance(est.get('refused'), dict) else None
+    if (wo.get('language_parts') or {}).get('forms') or (wo.get('language_parts') or {}).get('parts'): state = 'decided'
+    elif opt('lang-tags') == 'off' and not lr_run: state = 'off'
+    elif ref == 'book': state = 'left_out_book'
+    elif ref == 'cap': state = 'left_out_cap'
+    elif lr_run: state = 'failed'                       # it started (its run file exists) and decided nothing
+    else: state = 'not_run'
+    return {'candidates': n, 'state': state}
 for need, name in ((wo, 'workorder.json'), (log, PDF + '.log.json'), (ver, PDF + '.verify.json')):
     if not need: sys.exit(f'{name} missing in {R}: run the whole pipeline first (nothing was deleted)')
 
@@ -134,6 +156,7 @@ record = {
        if pr_run else {}),
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),
     **({'language_review': rv['language']} if rv and rv.get('language') else {}),     # #118: the Languages section's decisions (lib/glance.py)
+    'language_status': language_status(),                                              # round 18: Not Applicable only without candidates
     **({'workorder_ai': wo_ai} if rv and wo_ai is not None else {}),
 }
 # the AI call behind the work order (sponsor checklist 11.5): a reused reply carries the original call's cost, model, prompt

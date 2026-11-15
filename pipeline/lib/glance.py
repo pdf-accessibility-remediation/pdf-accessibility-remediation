@@ -80,8 +80,15 @@ SHIP_EVAL = 'Accessibility evaluation'
 SHIP_NAMES = {'Work order approved on the review page': 'Work Order Approval', 'OCR text approved': 'OCR Text Approval',
               SHIP_LANG: 'Language Tags', 'Safety checks': 'Safety Checks', SHIP_EVAL: 'Accessibility Evaluation'}
 
+# Why the language step decided nothing although the audit found word forms for it (record language_status, report.py):
+# the Language Tags line then reads "Not Done (…)" and blocks Ready (Patrick, 2026-11-14)
+LANG_NOT_DONE = {'off': 'the language step was turned off', 'left_out_book': 'the language step was left out: over the limit per PDF',
+                 'left_out_cap': 'the language step was left out: over its own limit', 'failed': 'the language step did not finish',
+                 'not_run': 'the language step was not run'}
 def language_line(record):
-    """(ok, text) of the Language Tags requirement (#118). No tags from the language step: Not Applicable. Tags: Approved
+    """(ok, text) of the Language Tags requirement (#118). Not Applicable only when the audit found no word forms for
+    the language step (record language_status.candidates 0; a record made before round 18 has no status and keeps the
+    old reading); forms found but none decided: Not Done (why), which blocks Ready. Tags: Approved
     only when a person decided every one on the review page (record['language_review'], written by the review step's
     Languages section); otherwise Not Reviewed, with what is left. Until that section exists every such book reads Not
     Reviewed (review 06, H2: approving the work order as one item must not approve its language tags)."""
@@ -89,6 +96,9 @@ def language_line(record):
     if lp.get('version') == 2: todo = [f for f in lp.get('forms') or [] if f.get('tag') or f.get('person')]   # what a person decides
     else: todo = list({(p.get('form') or p.get('text')) for p in lp.get('parts') or []})
     lr = record.get('language_review') or {}
+    st = record.get('language_status')
+    if not lp and isinstance(st, dict) and st.get('candidates') and st.get('state') != 'decided':
+        return False, f'Not Done ({LANG_NOT_DONE.get(st.get("state"), LANG_NOT_DONE["not_run"])})'     # round 18: never Not Applicable
     if not todo and not lr.get('forms'): return True, 'Not Applicable'
     left = lr.get('not_reviewed') if lr else None
     if lr and left == 0:

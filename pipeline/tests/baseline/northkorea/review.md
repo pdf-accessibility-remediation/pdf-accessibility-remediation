@@ -2,13 +2,13 @@
 
 Result: `northkorea_remediated.pdf`
 
-239 pages · run November 13, 2026, at 3:31 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.109 ($0.0005 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+239 pages · run November 14, 2026, at 3:32 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.109 ($0.0005 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.5s · audit 17.3s · reuse saved reply 1.4s · apply 30.8s · verify 27.8s · total 77.8s
+Time: intake 0.6s · audit 19.6s · reuse saved reply 1.2s · apply 36.5s · verify 33.6s · total 91.5s
 
 ## Overview
 
@@ -20,7 +20,7 @@ Time: intake 0.5s · audit 17.3s · reuse saved reply 1.4s · apply 30.8s · ver
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
-- ✓ Language Tags: Not Applicable
+- Language Tags: Not Done (the language step was not run)
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  

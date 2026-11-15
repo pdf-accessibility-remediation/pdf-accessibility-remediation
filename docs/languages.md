@@ -86,10 +86,20 @@ or passes its own limit, it alone is left out and the PDF goes on without langua
 ## The Ready rule
 
 "Ready to Ship?" lists "Language Tags":
-- **Not Applicable** when the book has no word forms to decide;
+- **Not Applicable** when the audit found no word forms for the language step (kana and hangul are tagged locally and
+  don't count);
+- **Not Done (why)** when it found some but the step decided none. This blocks Ready, since the book would ship
+  without language tags. The reason is one of:
+  - "the language step was turned off" (`LANG_TAGS=off`);
+  - "the language step was left out: over the limit per PDF";
+  - "the language step was left out: over its own limit";
+  - "the language step did not finish";
+  - "the language step was not run".
 - **Not Reviewed (N word forms to decide on the review page)** until a person has decided every form;
 - **Approved (reviewer on date)** when none is left.
 
+The record keeps what happened as `language_status` (`candidates`: the word forms found, and `state`). A record made
+before this (2026-11-14) has none, and its line reads as it did.
 
 Work orders from before #118 (the work-order prompt's `language` key: kana runs and explicit runs) are approved with the
 work order and read "Not Applicable" here. Runs made during #118's stage C (`language_parts` version 1, before the
@@ -104,9 +114,8 @@ A request holds up to 150 word forms of one book (`lib/langreq.py` `FORMS_PER_RE
 
 Each request's answer may run to 800 tokens plus 200 for each of its first 20 word forms and 130 for each further one
 (`lib/costs.py allowance`; raised 2026-11-14 after 58 of 1,040 test replies reached the earlier 300 + 100 per form).
-Output is billed as used, so this raises only the worst case the estimate shows, not what a book costs. On cadaverous
-(2,722 forms, 19 requests) the worst case is now about $4.91 (was $3.74), which passes the default `LANGUAGE_MAX_USD` of
-$4: the step is then left out of the run unless the limit is raised (see [The limit per PDF](options.md#the-limit-per-pdf)).
+Output is billed as used, so this raises only the worst case the estimate shows, not what a book costs. On cadaverous (2,722 forms, 19 requests, 10 words of context) the worst case is about $4.84 (expected about $2.90),
+within the language step's default limit of $6; with the work order it is about $5.46, within the default $8 per PDF.
 
 Sonnet 5.5 stays the language step's model (2026-11-14): Opus 5.5 was no more accurate on the 473 test items and costs
 about 2.2 times as much. Sonnet 5.5, measured on the test books (2026-11-13): about $0.09 per 100 forms. A book with 2,800 forms (cadaverous)
