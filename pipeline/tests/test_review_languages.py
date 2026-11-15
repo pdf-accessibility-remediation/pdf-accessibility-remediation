@@ -244,7 +244,7 @@ def test_untagged_rows_say_why_in_staff_words():
     assert (rows['般若']['guess'], rows['般若']['guess_name'], rows['般若']['ai']) == ('ja', 'Japanese', None)
     assert rows['不二']['guess'] is None and rows['如来']['guess'] is None and rows['如来']['why'] is None
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
-    assert "bits.push('low confidence; its guess: ' + esc(r.guess_name || r.guess) + langCode(r.guess_name ? r.guess : ''))" in page
+    assert "bits.push('low confidence; its guess: ' + esc(r.guess_name || r.guess));" in page          # a name only (2026-11-14)
     assert "if (LANG_WHY[r.why]) bits.push(LANG_WHY[r.why]);" in page and "|| r.why)" not in page           # never the raw word
     assert "'The AI left it untagged' + (bits.length ? ' (' + bits.join('; ') + ')' : '')" in page
 
@@ -296,3 +296,13 @@ def test_no_check_line_when_nothing_is_wrong():
     """Patrick, 2026-11-14: the line beside "Finish Review" says nothing when there is no problem."""
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
     assert "parts.length ? parts.join(' · ') : '';" in page and 'All choices can be applied' not in page
+
+
+def test_codes_only_in_the_status_and_the_list():
+    """Patrick, 2026-11-14: the language code shows only in each row's status and in the "Change Language" list, not in
+    the fold headings, the AI's line, the guess or the PDF's own tags line."""
+    import re
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    assert len(re.findall(r'langCode\(', page)) == 2                                 # its definition and the status's val()
+    assert "const val = (name, code) => esc(name || code || '') + langCode(name ? code : '');" in page
+    assert "'>' + esc(x.name) + ' · ' + esc(x.code) + '</option>'" in page             # the list keeps "Japanese · ja"

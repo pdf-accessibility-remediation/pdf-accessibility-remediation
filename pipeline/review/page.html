@@ -1715,7 +1715,7 @@ const LANG_WHY = { name: 'a name', english: 'part of English', indeterminate: 'n
 function langUntagged(r) {
   const bits = [];
   if (LANG_WHY[r.why]) bits.push(LANG_WHY[r.why]);
-  if (r.guess && r.confidence === 'low') bits.push('low confidence; its guess: ' + esc(r.guess_name || r.guess) + langCode(r.guess_name ? r.guess : ''));
+  if (r.guess && r.confidence === 'low') bits.push('low confidence; its guess: ' + esc(r.guess_name || r.guess));
   return 'The AI left it untagged' + (bits.length ? ' (' + bits.join('; ') + ')' : '');
 }
 function langRowHtml(r) {
@@ -1724,8 +1724,8 @@ function langRowHtml(r) {
   const pagesTxt = (r.pages || []).slice(0, 8).map(p => 'PDF ' + p).join(', ') + ((r.pages || []).length > 8 ? ', …' : '');
   const cur = r.current_name ? esc(r.current_name) + (r.current_written ? ' (written "' + esc(r.current_written) + '")' : '')   // review 08, L4: a name, never a code
             : '"' + esc(r.current_written || r.current) + '", which is not a known language';
-  const what = r.current ? 'The PDF tags it as ' + cur + langCode(r.written) + (r.ai ? '; the AI suggests ' + esc(r.lang_name || r.ai) : '')
-             : r.ai ? 'The AI tags it as <b>' + esc(r.lang_name || r.ai) + '</b>' + langCode(r.written) + (r.confidence ? ' (' + esc(r.confidence) + ' confidence)' : '')
+  const what = r.current ? 'The PDF tags it as ' + cur + (r.ai ? '; the AI suggests ' + esc(r.lang_name || r.ai) : '')
+             : r.ai ? 'The AI tags it as <b>' + esc(r.lang_name || r.ai) + '</b>' + (r.confidence ? ' (' + esc(r.confidence) + ' confidence)' : '')
              : langUntagged(r);
   const keep = r.current ? 'Keep the Tag' : r.ai ? 'Approve' : 'Leave Untagged';
   const drop = r.current ? 'Remove the Tag' : r.ai ? 'Leave Untagged' : null;
@@ -1738,8 +1738,8 @@ function langRowHtml(r) {
     '<div class="lang-btns"><button type="button" data-lang="keep">' + keep + '</button>' + (drop ? '<button type="button" data-lang="drop">' + drop + '</button>' : '') + '</div>' +
     '<div class="lang-pick"><select data-lang="change" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select></div></div>';
 }
-// The tag written into the PDF, beside a language's name: in the "Languages" section only (review 12, C; Patrick,
-// 2026-11-13). The server sends the value that becomes /Lang (core.lang_written), never one worked out from the name.
+// The tag written into the PDF, beside a language's name: only in each row's status and the "Change Language" list
+// (review 12, C; Patrick, 2026-11-13, revised 2026-11-14). The server sends the value that becomes /Lang (core.lang_written), never one worked out from the name.
 function langCode(v) { return v ? ' <span class="lang-code">· ' + esc(v) + '</span>' : ''; }
 function fmtN(x) { return Number(x || 0).toLocaleString('en-US'); }      // review 08, L4: 1,130 word forms, never 1130
 function langLeft() {                                    // word forms under "Languages" with no choice yet (declared, not const: nav() runs before LANGS is set)
@@ -1748,7 +1748,7 @@ function langLeft() {                                    // word forms under "La
 function langFold(g) {
   const rows = langRows[g.group] || [], left = rows.filter(r => !(state.decisions[r.id] || {}).status).length;
   const bulk = rows.filter(r => r.bulk && !(state.decisions[r.id] || {}).status).length;
-  return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + langCode(g.code) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
+  return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
     ' (' + fmtN(g.places) + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
     '<div class="lang-bar">' + (LANG_BULK && g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + bulk + ')</button>' : '') +
     '<span class="lang-meta">' + (rows.length ? fmtN(rows.length) + ' of ' + fmtN(g.count) + ' shown' + (left ? ' · ' + fmtN(left) + ' not reviewed' : '') : '') + '</span></div>' +

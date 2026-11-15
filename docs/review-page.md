@@ -206,9 +206,11 @@ It opens with one paragraph, the same on every PDF:
   language", "not sure", "it varies", or, for a low-confidence answer (never tagged), "low confidence; its guess:
   Japanese · ja". A reason with no such wording is not shown, and no reason shows no parentheses.
 - Every word form is decided on its own row.
-- **The tag written into the PDF** is shown beside each language's name, in grey, in this section only: on a fold's
-  heading when all its rows write the same tag ("Japanese (Romanized) · ja-Latn"), on each row ("The AI tags it as
-  Japanese · ja"), in the "Change Language" list ("Japanese · ja"), and in the status ("Tagged: Japanese · ja").
+- **The tag written into the PDF** is shown beside a language's name, in grey, in two places only: each row's status
+  under the word form ("Tagged: Chinese (Traditional) · zh-Hant", "Approved: …", "Kept: …", "Removed: …") and the
+  "Change Language" list ("Chinese (Traditional) · zh-Hant"). Fold headings ("Chinese (Romanized): 110 word forms (241
+  places)"), the AI's line ("The AI tags it as Chinese (Romanized) (high confidence)"), the low-confidence guess
+  ("low confidence; its guess: Japanese") and the PDF's own tags line show names only.
   It is the value that becomes the PDF's /Lang, never one worked out from the name. For a tag already in the PDF it is
   what "Keep the Tag" leaves: a code tidied to its shortest form, a language's name replaced by its code when its words
   fit ("Hawaiian" → haw), or the value as written when it is left for a person ("Hawaii" on mostly English words) or
