@@ -36,7 +36,7 @@ body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar
 .pp .pp-warn { border-left: 4px solid var(--change); padding-left: 10px; }   /* setup: only shown when a tool is missing */
 .pp .pp-nw { white-space: nowrap; }
 .pp-md { white-space: pre-wrap; word-break: break-word; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
-.pp .pp-spin { display: inline-block; width: .9em; height: .9em; margin-right: 6px; vertical-align: -2px; border: 2px solid var(--line);
+.pp .pp-spin { display: inline-block; width: .9em; height: .9em; margin-right: 6px; vertical-align: calc(-.1em - 2px);   /* centred on the capitals (round 24) */ border: 2px solid var(--line);
                border-top-color: var(--accent); border-radius: 50%; animation: pp-spin 1s linear infinite; }
 @keyframes pp-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .pp .pp-spin { animation: none; } }
