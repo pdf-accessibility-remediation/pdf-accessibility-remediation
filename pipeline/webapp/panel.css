@@ -257,7 +257,7 @@ html, body { background: var(--bg); }
 .hm-drop-r { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 .hm-drop .pp-note { margin: 4px 0 0; }
 .pp .hm-drop button { width: auto; }
-.hm-t .hm-sel { width: 1%; text-align: center; white-space: nowrap; padding-left: 8px; padding-right: 8px; }
+.hm-t .hm-sel { width: 1%; text-align: center; vertical-align: middle; white-space: nowrap; padding-left: 8px; padding-right: 8px; }   /* the box centred in its row (2026-11-14) */
 .hm-t .hm-sel input { margin: 0; }
 .hm-acts { white-space: nowrap; }
 .hm-menu { position: relative; display: inline-block; }
