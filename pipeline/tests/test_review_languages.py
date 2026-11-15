@@ -274,3 +274,19 @@ def test_the_language_line_is_not_applicable_only_without_candidates():
     assert line('off', None) == (False, 'Not Done (not checked)') and line('not_run', None) == (False, 'Not Done (not checked)')   # fail closed
     rec = {'workorder': wo(), 'language_status': {'candidates': 5, 'state': 'decided'}}
     assert G.language_line(rec) == (False, 'Not Reviewed (4 word forms to decide on the review page)')
+
+def test_when_the_ai_tagged_nothing_a_person_confirms_each_form():
+    """Patrick, 2026-11-14 (review 22, point 1): the step ran and no form has a tag or goes to a person; the forms are rows
+    under "Left Untagged by the AI" and the line reads Not Reviewed until each is decided, then Approved; never Not
+    Applicable."""
+    forms = [form('Kyōto', 'marks', ['marks'], None, None, why='name', tag=False), form('Fuji', 'latin', ['latin'], None, None, why='name', tag=False)]
+    w = {'language_parts': {'version': 2, 'forms': forms, 'parts': [[1, 0, 0, 4, 0], [1, 1, 0, 3, 1]]}}
+    items = core.build_items(w, DIGEST); rows = [it for it in items if it['kind'] == core.LANG_KIND]
+    assert [it['label'] for it in rows] == ['Kyōto', 'Fuji'] and {core.lang_group(it) for it in rows} == {core.LANG_UNTAGGED}
+    rec = {'workorder': w, 'language_status': {'candidates': 2, 'state': 'decided'}}
+    assert G.language_line(rec) == (False, 'Not Reviewed (2 word forms the AI left untagged to confirm on the review page)')
+    assert G.n_forms(w) == 2 == core.language_summary(items)['total']
+    dec = {it['id']: {'status': 'approved'} for it in rows}
+    rec['language_review'] = {**core.language_review(items, dec), 'reviewer': 'Kim', 'date': '2026-11-14'}
+    assert G.language_line(rec) == (True, 'Approved (Kim on November 14, 2026)')
+    w2 = wo(); assert [it['label'] for it in core.build_items(w2, DIGEST) if it['kind'] == core.LANG_KIND] == ['mappō', '地獄', '極楽', 'Copyright']   # unchanged otherwise

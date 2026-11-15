@@ -337,6 +337,14 @@ def to_rows(fs, decisions, tag_conf=('high', 'medium')):
         for p in f['places']: rows.append([p['page'], p['mcid'], p['first'], p['last'], i])
     return {'version': 2, 'forms': forms, 'parts': rows}
 
+def to_decide(forms):
+    """The indexes of the version-2 forms a person decides on the review page: those the AI tagged or left to a person;
+    when the AI proposed no tag at all, every form, so a person confirms what it left untagged (Patrick, 2026-11-14:
+    never Not Applicable after the step ran). One rule for the review page's rows and the Language Tags line."""
+    fs = [f if isinstance(f, dict) else {} for f in forms or []]
+    pick = [i for i, f in enumerate(fs) if f.get('tag') or f.get('person')]
+    return pick if pick else list(range(len(fs)))
+
 def expand(lp):
     """language_parts of either version → the parts to tag, as dicts {page, mcid, first, last, lang, form, text?}: version 1
     as written (every part tagged), version 2 the rows of forms with `tag` true. apply.py and the checks read this."""

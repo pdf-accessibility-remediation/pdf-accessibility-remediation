@@ -25,7 +25,7 @@ import os, re, sys, copy, json, time, shutil, datetime, tempfile, subprocess, th
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
-from lib import workorder_check, readorder, gaptext, langtag  # noqa: E402
+from lib import workorder_check, readorder, gaptext, langtag, langreq  # noqa: E402
 
 LEVELS = sorted(workorder_check.ALLOWED - {'Figure'}, key=lambda t: (not t.startswith('H'), t))
 HEADING = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6'}
@@ -207,8 +207,9 @@ def build_items(wo, digest, order=None, ro=None):
         pages_of = collections.defaultdict(set)
         for r in lp.get('parts') or []:
             if isinstance(r, list) and len(r) == 5: pages_of[r[4]].add(r[0])
-        for i, f in enumerate(lp.get('forms') or []):
-            if not (f.get('tag') or f.get('person')): continue      # Latin-script names and English words left untagged: listed, not decided
+        rows = set(langreq.to_decide(lp.get('forms')))            # Latin-script names and English words left untagged: listed, not decided,
+        for i, f in enumerate(lp.get('forms') or []):              # unless the AI tagged nothing at all (then every form is a row)
+            if i not in rows: continue
             ps = sorted(pages_of.get(i) or [])
             han_only = 'cjk:han_only' in (f.get('class') or [])
             bulk = bool(f.get('tag') and f.get('confidence') == 'high' and not han_only and f.get('group') != 'existing' and f.get('why') != 'varies')

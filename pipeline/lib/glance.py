@@ -26,7 +26,7 @@ Definitions (docs/output-files.md, docs/release.md, docs/evaluation.md):
   fixed automatically  the executor's own fixes, by kind, with no total (several touch the same links).
 """
 import re
-from lib import dates as D
+from lib import dates as D, langreq
 
 SCHEMA = 'glance/0.5'                 # 0.5 (2026-11): five safety checks, the accessibility evaluation, four statuses
 READY_SCHEMAS = ('glance/0.4', 'glance/0.5')   # written under every current base rule; 0.3 predates three of them (review 14 H1)
@@ -94,7 +94,8 @@ def language_line(record):
     Languages section); otherwise Not Reviewed, with what is left. Until that section exists every such book reads Not
     Reviewed (review 06, H2: approving the work order as one item must not approve its language tags)."""
     lp = (record.get('workorder') or {}).get('language_parts') or {}
-    if lp.get('version') == 2: todo = [f for f in lp.get('forms') or [] if f.get('tag') or f.get('person')]   # what a person decides
+    none_tagged = lp.get('version') == 2 and bool(lp.get('forms')) and not any(isinstance(f, dict) and (f.get('tag') or f.get('person')) for f in lp['forms'])
+    if lp.get('version') == 2: todo = [lp['forms'][i] for i in langreq.to_decide(lp.get('forms'))]   # what a person decides
     else: todo = list({(p.get('form') or p.get('text')) for p in lp.get('parts') or []})
     lr = record.get('language_review') or {}
     st = record.get('language_status')
@@ -107,6 +108,8 @@ def language_line(record):
     if lr and left == 0:
         return True, f'Approved ({lr.get("reviewer")} on {D.day(lr.get("date"))})'
     n = len(todo) if left is None else left
+    if none_tagged:                                    # the AI proposed no tag: a person confirms what it left untagged
+        return False, f'Not Reviewed ({n:,} word form{"" if n == 1 else "s"} the AI left untagged to confirm on the review page)'
     return False, f'Not Reviewed ({n:,} word form{"" if n == 1 else "s"} to decide on the review page)'
 def ship_name(s): return SHIP_NAMES.get(s['what'], s['what'])
 
@@ -182,7 +185,7 @@ def n_forms(wo):
     review/core.py build_items and language_line), or version 1's distinct words."""
     lp = (wo or {}).get('language_parts') or {}
     if not isinstance(lp, dict): return 0
-    if lp.get('version') == 2: return sum(1 for f in lp.get('forms') or [] if isinstance(f, dict) and (f.get('tag') or f.get('person')))
+    if lp.get('version') == 2: return len(langreq.to_decide(lp.get('forms')))
     return len({(p.get('form') or p.get('text')) for p in lp.get('parts') or [] if isinstance(p, dict)})
 def forms_text(n): return f'{n:,} word form{"" if n == 1 else "s"} under "Languages"'
 

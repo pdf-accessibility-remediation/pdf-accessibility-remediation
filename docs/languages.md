@@ -98,6 +98,9 @@ or passes its own limit, it alone is left out and the PDF goes on without langua
 - **Not Done (not checked)** when the count couldn't be made (the audit's `lang_candidates.json` missing, or an
   error): the line fails closed and blocks Ready.
 - **Not Reviewed (N word forms to decide on the review page)** until a person has decided every form;
+- **Not Reviewed (N word forms the AI left untagged to confirm on the review page)** when the step ran but the AI
+  proposed no tag at all: every form is then a row under "Left Untagged by the AI", for a person to confirm or tag,
+  so the line never reads Not Applicable after the step ran;
 - **Approved (reviewer on date)** when none is left.
 
 The record keeps what happened as `language_status` (`candidates`: the word forms found, and `state`). A record made
