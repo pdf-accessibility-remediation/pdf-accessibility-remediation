@@ -86,8 +86,8 @@ or passes its own limit, it alone is left out and the PDF goes on without langua
 ## The Ready rule
 
 "Ready to Ship?" lists "Language Tags":
-- **Not Applicable** when the audit found no word forms for the language step (kana and hangul are tagged locally and
-  don't count);
+- **Not Applicable** when the word forms for the language step were counted and there were none: the audit's
+  candidates (kana and hangul are tagged locally and don't count) and the PDF's own language tags;
 - **Not Done (why)** when it found some but the step decided none. This blocks Ready, since the book would ship
   without language tags. The reason is one of:
   - "the language step was turned off" (`LANG_TAGS=off`);
@@ -95,6 +95,8 @@ or passes its own limit, it alone is left out and the PDF goes on without langua
   - "the language step was left out: over its own limit";
   - "the language step did not finish";
   - "the language step was not run".
+- **Not Done (not checked)** when the count couldn't be made (the audit's `lang_candidates.json` missing, or an
+  error): the line fails closed and blocks Ready.
 - **Not Reviewed (N word forms to decide on the review page)** until a person has decided every form;
 - **Approved (reviewer on date)** when none is left.
 

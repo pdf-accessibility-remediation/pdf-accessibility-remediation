@@ -271,5 +271,6 @@ def test_the_language_line_is_not_applicable_only_without_candidates():
     assert line('failed', 12) == (False, 'Not Done (the language step did not finish)')
     assert line('not_run', 12) == (False, 'Not Done (the language step was not run)')
     assert G.language_line({}) == (True, 'Not Applicable')                                 # a record made before round 18
+    assert line('off', None) == (False, 'Not Done (not checked)') and line('not_run', None) == (False, 'Not Done (not checked)')   # fail closed
     rec = {'workorder': wo(), 'language_status': {'candidates': 5, 'state': 'decided'}}
     assert G.language_line(rec) == (False, 'Not Reviewed (4 word forms to decide on the review page)')

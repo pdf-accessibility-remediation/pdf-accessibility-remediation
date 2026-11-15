@@ -88,10 +88,22 @@ def language_status():
             and not load('language_run.json'):
         return prev['language_status']
     lc = load('lang_candidates.json', base=A)
-    try:
-        from lib import langreq
-        n = len(langreq.forms((lc or {}).get('places') or []))
-    except Exception: n = None
+    n = None                                           # None: not counted, which the line reads as "Not Done (not checked)"
+    if isinstance(lc, dict):                           # the audit always writes it: missing, the count can't be made
+        try:
+            from lib import langreq
+            n = len(langreq.forms(lc.get('places') or []))
+        except Exception: n = None
+    if n == 0:                                         # the PDF's own language tags are candidates too (review 19, L3)
+        try:
+            import pikepdf
+            from lib import langcands, plpages
+            src = opt('input')
+            if not src or not os.path.exists(src): n = None
+            else:
+                with pikepdf.open(src) as pdf:
+                    n = len(langcands.existing(pdf, plpages.Pages(src), lc.get('document_lang') or str(pdf.Root.get('/Lang', '') or '')))
+        except Exception: n = None
     est = load('language_estimate.json') or {}
     ref = (est.get('refused') or {}).get('why') if isinstance(est.get('refused'), dict) else None
     if (wo.get('language_parts') or {}).get('forms') or (wo.get('language_parts') or {}).get('parts'): state = 'decided'

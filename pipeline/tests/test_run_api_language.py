@@ -10,8 +10,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import langpdf  # noqa: E402
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-def run_api(tmp_path, **extra):
-    src = langpdf.build(str(tmp_path / 'book.pdf'), [{'font': 'F3', 'text': 'The temple of Onjōji and mappō.'}])
+def run_api(tmp_path, runs=None, **extra):
+    src = langpdf.build(str(tmp_path / 'book.pdf'), runs or [{'font': 'F3', 'text': 'The temple of Onjōji and mappō.'}])
     wo = {'document': {'lang': 'en', 'title': 'Synthetic language test'}}
     (tmp_path / 'reply.txt').write_text(json.dumps({'model': 'anthropic/claude-sonnet-5.5', 'choices': [{'message': {'content': json.dumps(wo)}, 'finish_reason': 'stop'}],
                                                     'usage': {'prompt_tokens': 1000, 'completion_tokens': 100, 'cost': 0.3}}))
@@ -66,3 +66,31 @@ def test_hawaiian_lines_are_listed_for_the_hawaiian_reader(tmp_path):
     md = open(tmp_path / 'run' / 'review.md', encoding='utf-8').read()
     assert '**Tagged Hawaiian by a fixed rule on pages read by the AI (1):**' in md and '- "Ua hele mai ka wahine ka hale" · PDF 1' in md
     assert '1 tags checked (1 Hawaiian lines on pages read by the AI) · 0 not matching their words or language' in md
+
+def line_of(R):
+    return next(l for l in open(R / 'review.md', encoding='utf-8').read().splitlines() if 'Language Tags:' in l)
+
+def test_the_publishers_own_tags_count_as_candidates(tmp_path):
+    """review 19, L3: a PDF whose only other-language text is the publisher's own tag (fr-FR on English words: no other
+    candidate), run with the step off, reads Not Done, never Not Applicable."""
+    r, R = run_api(tmp_path, runs=[{'lang': 'en-US', 'span_lang': 'fr-FR', 'text': 'Copyright notice for this book'},
+                                   {'lang': 'en-US', 'text': 'Plain English text stays as it is.'}], LANG_TAGS='off')
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    rec = json.load(open(R / 'record.json'))
+    assert rec['language_status'] == {'candidates': 1, 'state': 'off'}
+    assert line_of(R) == '- Language Tags: Not Done (the language step was turned off)'
+
+def test_not_applicable_only_when_counted_and_none_and_not_checked_otherwise(tmp_path):
+    """Patrick, 2026-11-14 (fail closed): counted and 0 reads Not Applicable; when the count can't be made (the audit's
+    lang_candidates.json missing) the line reads Not Done (not checked)."""
+    r, R = run_api(tmp_path, runs=[{'lang': 'en-US', 'text': 'Plain English text stays as it is.'}], LANG_TAGS='off', KEEP='1')
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    assert json.load(open(R / 'record.json'))['language_status'] == {'candidates': 0, 'state': 'off'}
+    assert line_of(R) == '- ✓ Language Tags: Not Applicable'
+    A = R / '_audit'; os.remove(A / 'lang_candidates.json')
+    pdf = next(p for p in R.glob('*_remediated.pdf'))
+    r2 = subprocess.run([sys.executable, 'report.py', str(R), str(A), f'--pdf={pdf}', f'--input={tmp_path / "book.pdf"}', '--lang-tags=off', '--keep'],
+                        cwd=HERE, env=dict(os.environ, VERAPDF='off'), capture_output=True, text=True, timeout=300)
+    assert r2.returncode == 0, r2.stdout[-2000:] + r2.stderr[-2000:]
+    assert json.load(open(R / 'record.json'))['language_status'] == {'candidates': None, 'state': 'off'}
+    assert line_of(R) == '- Language Tags: Not Done (not checked)'

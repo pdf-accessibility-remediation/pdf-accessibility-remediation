@@ -87,8 +87,9 @@ LANG_NOT_DONE = {'off': 'the language step was turned off', 'left_out_book': 'th
                  'not_run': 'the language step was not run'}
 def language_line(record):
     """(ok, text) of the Language Tags requirement (#118). Not Applicable only when the audit found no word forms for
-    the language step (record language_status.candidates 0; a record made before round 18 has no status and keeps the
-    old reading); forms found but none decided: Not Done (why), which blocks Ready. Tags: Approved
+    the language step (record language_status.candidates 0, the PDF's own language tags counted too; a record made
+    before round 18 has no status and keeps the old reading); forms found but none decided: Not Done (why); the count
+    not made (candidates None): Not Done (not checked). Both block Ready. Tags: Approved
     only when a person decided every one on the review page (record['language_review'], written by the review step's
     Languages section); otherwise Not Reviewed, with what is left. Until that section exists every such book reads Not
     Reviewed (review 06, H2: approving the work order as one item must not approve its language tags)."""
@@ -97,8 +98,10 @@ def language_line(record):
     else: todo = list({(p.get('form') or p.get('text')) for p in lp.get('parts') or []})
     lr = record.get('language_review') or {}
     st = record.get('language_status')
-    if not lp and isinstance(st, dict) and st.get('candidates') and st.get('state') != 'decided':
-        return False, f'Not Done ({LANG_NOT_DONE.get(st.get("state"), LANG_NOT_DONE["not_run"])})'     # round 18: never Not Applicable
+    if not lp and isinstance(st, dict) and st.get('state') != 'decided':
+        if st.get('candidates') is None: return False, 'Not Done (not checked)'       # the count couldn't be made: fail closed
+        if st['candidates']:
+            return False, f'Not Done ({LANG_NOT_DONE.get(st.get("state"), LANG_NOT_DONE["not_run"])})'     # round 18: never Not Applicable
     if not todo and not lr.get('forms'): return True, 'Not Applicable'
     left = lr.get('not_reviewed') if lr else None
     if lr and left == 0:
