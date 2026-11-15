@@ -1144,14 +1144,16 @@ def gaps(wo, digest):
     deco = {it.get('obj') for it in (wo.get('artifacts') or {}).get('elements') or []}
     bare = [o for o, f in figs.items() if not str(f.get('alt') or '').strip() and o not in alt and o not in deco]
     if bare:
+        # pages, not object numbers (round 24): a person finds a figure by its page; the objects stay in 'objs' for the add form
+        pages = sorted({figs[o].get('page') for o in bare if isinstance(figs[o].get('page'), int)})
+        on = (', on PDF ' + ', '.join(map(str, pages[:12])) + (f' and {len(pages) - 12} more pages' if len(pages) > 12 else '')) if pages else ''
         out.append({'id': 'figures_without_alt', 'what': f'{len(bare)} figure{"s" if len(bare) != 1 else ""} with no alt text '
-                    'and not marked as decoration: ' + ', '.join(f'{o} (PDF p. {figs[o].get("page")})' for o in bare[:12])
-                    + (f' and {len(bare) - 12} more' if len(bare) > 12 else ''), 'add': {'kind': 'alt', 'target': bare[0]}, 'objs': bare})
+                    'and not marked as decoration' + on, 'add': {'kind': 'alt', 'target': bare[0]}, 'objs': bare})
     done = {it.get('page') for it in wo.get('page_figures') or [] if str(it.get('alt') or '').strip()}
     left = [p for p in pfigs if p not in done]
     if left:
         out.append({'id': 'page_figures_without_alt', 'what': f'{len(left)} whole-page figure{"s" if len(left) != 1 else ""} '
-                    'with no alt text: PDF p. ' + ', '.join(map(str, left[:12])) + (f' and {len(left) - 12} more' if len(left) > 12 else ''),
+                    'with no alt text, on PDF ' + ', '.join(map(str, left[:12])) + (f' and {len(left) - 12} more pages' if len(left) > 12 else ''),
                     'add': {'kind': 'page_figures', 'target': left[0]}})
     return out
 

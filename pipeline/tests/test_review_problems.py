@@ -171,3 +171,13 @@ def test_the_document_language_card_and_the_languages_section_keep_their_own_dat
     assert isinstance(data['language_list'], list) and all(isinstance(x, list) and len(x) == 2 for x in data['language_list'])
     assert isinstance(data['languages'], dict) and data['languages']['total'] == 4
     assert "const L = DATA.language_list || [], known = L.some(" in page
+
+
+def test_the_figure_gap_lists_pages_not_object_numbers():        # round 24: object numbers stay in the docs and logs
+    from review import core
+    figs = [{'obj': f'{100 + i} 0', 'page': p} for i, p in enumerate([34, 26, 27, 26] + list(range(40, 53)))]
+    g = next(x for x in core.gaps({}, {'figures': figs, 'page_figures': [{'page': 7}]}) if x['id'] == 'figures_without_alt')
+    assert g['what'] == ('17 figures with no alt text and not marked as decoration, on PDF 26, 27, 34, 40, 41, 42, 43, 44, 45, '
+                         '46, 47, 48 and 4 more pages') and ' 0' not in g['what'] and g['objs'][0] == '100 0'
+    p = next(x for x in core.gaps({}, {'figures': [], 'page_figures': [{'page': 7}]}) if x['id'] == 'page_figures_without_alt')
+    assert p['what'] == '1 whole-page figure with no alt text, on PDF 7'
