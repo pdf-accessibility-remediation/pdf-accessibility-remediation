@@ -138,7 +138,7 @@ def test_the_page_counts_language_forms_for_staff():
     forms not decided (the page's own text; checked in a browser on a copy of cadaverous)."""
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
     assert "function fmtN(x) { return Number(x || 0).toLocaleString('en-US'); }" in page
-    assert "<h2>Languages</h2><a href=\"#languages\"><span>Word Forms Not Reviewed</span>" in page
+    assert "<h2>Languages</h2><a href=\"#languages\"><span>Word Forms</span>" in page
     assert '"Language Tags" in "Ready to Ship?" stays Not Reviewed.' in page and "(the PDF\\'s own tags stay as they are)" in page   # review 10, L6
 
 def test_the_ai_decisions_count_leaves_the_word_forms_out():

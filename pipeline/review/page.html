@@ -1306,7 +1306,7 @@ function nav() {
     '</span><span>' + (s.hand ? todo : s.count) + '</span></a>').join('');
   h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + esc(view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
   h += '<h2>Check First</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
-  if ((DATA.languages || {}).total) h += '<h2>Languages</h2><a href="#languages"><span>Word Forms Not Reviewed</span><span id="navLangLeft">' + fmtN(langLeft()) + '</span></a>';   // review 08, L4
+  if ((DATA.languages || {}).total) h += '<h2>Languages</h2><a href="#languages"><span>Word Forms</span><span id="navLangLeft">' + fmtN(langLeft()) + '</span></a>';   // review 08, L4
   h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
   h += '<h2>Page Index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
     '<a href="#card-' + esc(pages[p][0]) + '" data-view="priority"><span>p. ' + p + '</span><span>' + pages[p].length + '</span></a>').join('');
