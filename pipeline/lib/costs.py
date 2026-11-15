@@ -422,7 +422,7 @@ def batch(Rs, limit=None, limits=None, credit_read=None, folder=None, rd=None):
     lim = L['per_batch_usd'] if limit is None else limit
     books, ceiling, credit, per_call, blocked = [], 0.0, None, 0.0, []
     requests, per_book, pr_book, le_book = 0, None, None, None          # every AI request of the books to send, and the largest book's bounds (#63's shape, #49's page readings)
-    exp_usd, exp_n, exp_of, exp_seen, adds = 0.0, 0, 0, False, []
+    exp_usd, exp_n, exp_of, exp_seen, adds, exp_none = 0.0, 0, 0, False, [], set()
     for R in Rs:
         if os.path.isfile(os.path.join(R, 'record.json')) or (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
             books.append({'R': R, 'estimate': None, 'adds_usd': 0.0}); continue
@@ -436,6 +436,7 @@ def batch(Rs, limit=None, limits=None, credit_read=None, folder=None, rd=None):
             if e['blocked'] and e['blocked']['code'] not in ('credit', 'no_credit'): blocked.append((R, e['blocked']))
             x = e['expected']; exp_of += 1
             if x is not None: exp_seen = True
+            if isinstance(x, dict) and x.get('none'): exp_none.add(x['none'])
             if x is not None and x.get('usd') is not None: exp_usd += x['usd']; exp_n += 1
         books.append({'R': R, 'estimate': e, 'adds_usd': e['ceiling_usd'] if e else None})
     sp = batch_spent(folder, rd) if folder else {'usd': round(sum(actual(R)['usd'] for R in Rs), 6), 'retry_usd': round(sum(actual(R)['retry_usd'] for R in Rs), 6)}
@@ -445,7 +446,9 @@ def batch(Rs, limit=None, limits=None, credit_read=None, folder=None, rd=None):
         if c > room: break
         room -= c; fit_n += 1
     return {'schema': SCHEMA, 'books': books, 'ceiling_usd': round(ceiling, 4), 'per_call_ceiling_usd': per_call,
-            'expected': {'usd': round(exp_usd, 4) if exp_n else None, 'books': exp_n, 'of': exp_of} if exp_seen else None, 'requests': requests,
+            'expected': {'usd': round(exp_usd, 4) if exp_n else None, 'books': exp_n, 'of': exp_of,
+                         **({'none': next(r for r in ('cut_off', 'too_few') if r in exp_none)} if not exp_n and exp_none & {'cut_off', 'too_few'} else {})}
+                        if exp_seen else None, 'requests': requests,
             'spent_usd': round(spent, 6), 'retry_usd': sp['retry_usd'], 'could_cost_usd': round(could, 6), 'fit_n': fit_n, 'credit_usd': credit, 'limit_usd': lim,
             'fits': {'batch': could <= lim, 'credit': None if credit is None else ceiling <= credit},
             'blocked': blocked,

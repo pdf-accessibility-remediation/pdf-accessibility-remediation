@@ -178,8 +178,12 @@ Before each AI request, the pipeline shows two figures:
 Expected Cost is learned from the last 80 finished AI requests of the same model and kind: work order, figure request or page reading. Each PDF weighs the same. The terminal also prints the usual range. The figure can't pass the Max Estimated Cost.
 
 It reads **Not Available Yet**:
-- until there are 12 past requests from 6 PDFs for that model and kind (today Opus 5.5 and every non-Claude model)
-- after an answer was cut off in that run's folder
+- until there are 12 past requests from 6 PDFs for that model and kind (today Opus 5.5 and every non-Claude model);
+  the run and batch pages add "(not enough past runs to estimate cost)"
+- after an answer was cut off in that run's folder; the pages add "(an earlier answer was cut off, so cost can't be
+  estimated)"
+
+Another reason shows no words in parentheses.
 
 **A request larger than any learned from still gets a figure,** and the terminal says so. It rests on few PDFs and tends to read high: in testing, work orders of that size came in at a median of 0.85 of the figure, and figure requests at 0.57.
 

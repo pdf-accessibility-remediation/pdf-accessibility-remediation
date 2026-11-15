@@ -592,9 +592,13 @@ function waitingBlock(s) {
 // "Details"). The paid call is bound to the "Max Estimated Cost" shown (MAX_USD); the button is "Start Remediation" (Patrick,
 // 2026-11-06), described by both cost lines (aria-describedby).
 const usd = x => '$' + Number(x || 0).toFixed(2);
+// Why there is no expected cost yet, in plain words (Patrick, 2026-11-14), from lib/costhistory.py's {none: reason}; an
+// unknown reason shows nothing more. batch.js has the same words.
+const NONE_WHY = { too_few: 'not enough past runs to estimate cost', cut_off: "an earlier answer was cut off, so cost can't be estimated" };
+function noneWhy(x) { return x && NONE_WHY[x.none] ? ' (' + NONE_WHY[x.none] + ')' : ''; }
 function costLines(e) {                                          // #65 (costs in dollars and an expected cost): the figure people read first, then the ceiling
   const x = e.expected;                                          // no key (an estimate made before #65): no line; {none}: "Not Available Yet"
-  return (x ? 'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet') + '<br>' : '') +
+  return (x ? 'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet' + noneWhy(x)) + '<br>' : '') +
     'Max Estimated Cost: ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + esc(e.requests) + ' AI requests' : '') +
     (e.page_reads ? ', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page' + (e.page_reads.pages === 1 ? '' : 's') + ' to be read by the AI' : '') +   // #49
     (e.language ? ', including ' + usd(e.language.ceiling_usd) + ' for the language tags' : '') +   // #118
