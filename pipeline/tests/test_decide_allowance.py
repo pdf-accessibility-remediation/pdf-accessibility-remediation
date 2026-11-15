@@ -261,7 +261,7 @@ CUT = {'cost_usd': 0.5, 'finish_reason': 'length', 'max_tokens': 48000}
     ([dict(CUT, **{'pass': '1'})], 96000, 5.0)])
 def test_only_a_work_order_cut_off_doubles_the_next_attempt(book, tmp_path, rows, want, book_cap):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'; attempts(R, *rows)
-    assert decide(A, R, '--dry-run').returncode == 0
+    assert decide(A, R, '--dry-run', '--book-max-usd', '5').returncode == 0          # the $5 these were written for
     e = load(R / 'run.json')['estimate']; assert e['max_tokens'] == want and e['spent_before_usd'] and e['book_cap_usd'] == book_cap
 
 def test_max_tokens_beats_the_doubling(book, tmp_path):
@@ -321,7 +321,7 @@ def small_with_expected(book, tmp_path, *extra, **kw):
 def test_the_estimate_stores_the_expected_figure_and_the_terminal_prints_both(book, tmp_path):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'; r = decide(A, R, '--dry-run')
     x = load(R / 'run.json')['estimate']['expected']; assert x['usd'] > 0 and x['low'] <= x['usd'] <= x['high'] and x['basis']['calls'] == 80
-    assert 'Expected Cost: $' in r.stdout and '(usually $' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'Limits: $2.00 per AI request, $5.00 per PDF' in r.stdout
+    assert 'Expected Cost: $' in r.stdout and '(usually $' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'Limits: $2.00 per AI request, $8.00 per PDF' in r.stdout
 
 def stored(R, value, **changes):
     run = load(R / 'run.json'); run['estimate']['expected'] = value; run.update(changes); (R / 'run.json').write_text(json.dumps(run))
@@ -389,3 +389,7 @@ def test_a_reply_from_elsewhere_brings_no_readings_or_tags(book, tmp_path):
     (O / 'page_reads_run.json').write_text(json.dumps(PAGES_RUN)); (O / 'language_run.json').write_text(json.dumps(LANG_RUN))
     assert decide(A, O, '--response-file', R / 'response.json').returncode == 0
     wo = load(O / 'workorder.json'); assert 'page_readings' not in wo and 'language_parts' not in wo
+
+@pytest.fixture(autouse=True)
+def _limits(limits_of_2026_11):
+    """These scenarios were written for $5 per PDF and $4 for the language step (conftest.py)."""

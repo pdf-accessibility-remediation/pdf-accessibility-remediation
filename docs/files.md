@@ -319,7 +319,7 @@ A PDF whose images fit by count but not within 20 MB keeps one request: the figu
 **One retry:** a figure request that fails without being charged (OpenRouter 429 or 5xx, no connection) is sent once more after a pause: 60 s after a 429, 20 s otherwise. So is one whose reply could not be read, or that got no reply in time, when the PDF's limit still has room for it. A request that still fails leaves its figures to a reviewer, as one deferral ("Alt text for N figures"), and the run goes on; its cost is recorded.
 
 **After a cut-off:** a reply cut off at its output limit (32,000) is sent once more, automatically and with no pause, with twice the room (64,000, trimmed to the model's maximum). So every image gets its alt text whenever it can. Only that request's `max_tokens` changes; a request not cut off is sent byte for byte as before.
-- It must fit the real limits ($2 per AI request, and $5 per PDF with what is spent and what the other requests still planned), not the estimate shown, and the model's maximum and context.
+- It must fit the real limits ($2 per AI request, and $8 per PDF with what is spent and what the other requests still planned), not the estimate shown, and the model's maximum and context.
 - A request is never charged more than twice, and the doubled call isn't retried.
 - If it can't be sent or is cut off again, its figures go to a reviewer as above, and the reason says why.
 - A replay uses the final answer, free. The cost line says when a retry was paid for (see [What a run may cost](options.md#what-a-run-may-cost)).

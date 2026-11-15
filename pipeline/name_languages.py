@@ -17,7 +17,7 @@ context, each snippet once per request, data_collection deny. The decisions beco
 No request is ever sent with --response-file (a saved language_run.json: FROM= or REPLY=) or --reuse (this folder's own
 language_run.json, complete): the saved decisions are applied by printed form (review 02, M4), and forms no longer found
 or not decided are listed. A request already answered with the same model and prompt is reused, never paid for again.
-The step refuses before any call when its worst case passes --max-usd (LANGUAGE_MAX_USD, default 4) or the credit, for any
+The step refuses before any call when its worst case passes --max-usd (LANGUAGE_MAX_USD, default 6, lib/costs.py) or the credit, for any
 model (review 02, M7). Forms past LANGUAGE_MAX_FORMS (default 5000) are not sent, and listed.
 
 Two options, both off by default (review 08, M6): LANG_GROW=on (--grow) finds the candidates again with a title's whole
@@ -82,7 +82,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('audit_dir'); ap.add_argument('run_dir'); ap.add_argument('--pdf', required=True)
     ap.add_argument('--dry-run', action='store_true'); ap.add_argument('--model', default=None)
-    ap.add_argument('--max-usd', type=float, default=float(os.environ.get('LANGUAGE_MAX_USD') or 4))
+    ap.add_argument('--max-usd', type=float, default=float(os.environ.get('LANGUAGE_MAX_USD') or costs.DEFAULT_LANGUAGE_USD))
     ap.add_argument('--max-forms', type=int, default=int(os.environ.get('LANGUAGE_MAX_FORMS') or 5000))
     ap.add_argument('--book-max-usd', type=float, default=float(os.environ.get('BOOK_MAX_USD') or costs.DEFAULT_LIMITS['per_book_usd']),
                     help="the PDF's limit, shared with the work order and the page readings (review 06, M2)")

@@ -31,14 +31,14 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 |---|---|
 | `MODEL=openai/gpt-5` | Any OpenRouter model id for this run or batch (default: `DEFAULT_MODEL` in `decide.py`, `anthropic/claude-sonnet-5.5`; see [Models](models.md)) |
 | `MAX_USD=3` | The limit on what one AI request could cost, in dollars (default 2). Claude models only |
-| `BOOK_MAX_USD=6` | The limit on what all of a PDF's requests could cost together (default 5). Claude models only (see [The limit per PDF](#the-limit-per-pdf)) |
+| `BOOK_MAX_USD=6` | The limit on what all of a PDF's requests could cost together (default 8). Claude models only (see [The limit per PDF](#the-limit-per-pdf)) |
 | `BATCH_MAX_USD=20` | Batches only: the limit on what the batch has already spent plus what it could still cost (default 10) |
 | `PAGE_READS=off` | No page readings: scanned Hawaiian pages are not read whole by the AI (see [Page readings](#page-readings)) |
 | `PAGE_READS=all` | Page readings for every scanned page with text, not only mostly Hawaiian ones |
 | `PAGE_READS_MAX_USD=5` | The limit on what the page readings together could cost, in dollars (default 3) |
 | `LANG_TAGS=off` | No language step: words and passages in other languages are not sent to the AI (see [Language tags](#language-tags)) |
 | `LANGUAGE_MODEL=…` | The model the language step uses (default: Sonnet 5.5, whatever the work order uses) |
-| `LANGUAGE_MAX_USD=6` | The limit on what the language step could cost, in dollars (default 4) |
+| `LANGUAGE_MAX_USD=6` | The limit on what the language step could cost, in dollars (default 6) |
 | `LANGUAGE_MAX_FORMS=2000` | Send at most this many word forms to the language step (default 5000); the rest are listed, not sent |
 | `LANG_GROW=on` | The language step tags a title's whole extent (romanized words around a candidate, inside quotes or italics, or before a Chinese-character gloss), so the voice switches once. Off by default, until the Windows screen-reader check of a title tagged in pieces (see [Language tags](#language-tags)) |
 | `LANG_GROUP=on` | Adjacent single Chinese characters become one word form for the language step and the review page (fewer rows). Off by default |
@@ -163,7 +163,7 @@ The cost of a cut-off reply is listed in `record.json` under `earlier_attempts`,
 
 ## What a run may cost
 
-**The dollar limits are the only limits you set:** $2 per AI request, $5 per PDF and $10 per batch. The app and the terminal use the same defaults. They apply to Claude models only.
+**The dollar limits are the only limits you set:** $2 per AI request, $8 per PDF and $10 per batch. The app and the terminal use the same defaults. They apply to Claude models only.
 
 Before each AI request, the pipeline shows two figures:
 

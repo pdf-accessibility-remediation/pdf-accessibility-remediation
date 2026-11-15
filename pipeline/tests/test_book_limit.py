@@ -1,3 +1,4 @@
+import pytest
 """test_book_limit.py: the three paid steps share the PDF's limit in terminal runs (review 06, M2; Patrick 2026-11-12).
 
     python -m pytest tests/test_book_limit.py -q
@@ -51,7 +52,7 @@ def test_a_language_step_over_its_own_cap_never_counts(book, tmp_path, monkeypat
 def test_a_language_step_that_fits_its_cap_but_not_the_book_is_the_one_left_out(book, tmp_path, monkeypatch):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'
     w(R / 'language_estimate.json', {'worst_case_usd': 4.99, 'to_send': 3})
-    r = decide(A, R, '--dry-run')
+    r = decide(A, R, '--dry-run', '--book-max-usd', '5')                                # the $5 this was written for
     assert r.returncode == 0 and 'Language tags from the AI are left out of this run' in r.stdout and 'BOOK_MAX_USD=' in r.stdout
     assert C.refused(str(R), 'language')['why'] == 'book' and C.language_estimate(str(R)) is None
     assert real_run_passed_the_book_check(decide(A, R))
@@ -113,3 +114,7 @@ def test_the_left_out_words_are_the_panels_with_no_names_in_quotes():
     assert out['language'].startswith('Language tags from the AI are left out of this run: ')
     assert out['language'].endswith('The PDF is processed without language tags from the AI. To include them, the app administrator can raise the limit per PDF.')
     assert not any('"' in w or 'settings' in w for w in out.values())
+
+@pytest.fixture(autouse=True)
+def _limits(limits_of_2026_11):
+    """These scenarios were written for $5 per PDF and $4 for the language step (conftest.py)."""

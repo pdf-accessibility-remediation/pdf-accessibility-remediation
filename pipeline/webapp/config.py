@@ -91,7 +91,7 @@ def load(config=None, base=HERE, environ=None):
         s.setdefault(k, dflt)
         if not isinstance(s[k], int) or isinstance(s[k], bool) or s[k] < 1: raise Bad(f'{k} must be a whole number above 0: {s[k]!r}')
     lim = s.setdefault('limits', {})
-    if not isinstance(lim, dict): raise Bad('limits must be an object: {"per_call_usd": 2, "per_book_usd": 5, "per_batch_usd": 10}')
+    if not isinstance(lim, dict): raise Bad('limits must be an object: {"per_call_usd": 2, "per_book_usd": 8, "per_batch_usd": 10}')
     for k, v in lim.items():
         if k not in ('per_call_usd', 'per_book_usd', 'per_batch_usd'): raise Bad(f'limits: unknown key {k!r}')
         if not isinstance(v, (int, float)) or isinstance(v, bool) or not 0 < v <= 100: raise Bad(f'limits.{k} must be a number of dollars above 0 and at most 100: {v!r}')

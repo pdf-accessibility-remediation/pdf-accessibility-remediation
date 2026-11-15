@@ -70,8 +70,8 @@ mid-title), and `LANG_GROUP=on` makes adjacent single Chinese characters one wor
 screen-reader check of a title tagged in pieces (see [Options](options.md#language-tags)).
 
 The step is on by default (`LANG_TAGS=on`, see [Options](options.md#language-tags)). It has its own model
-(`LANGUAGE_MODEL`, default Sonnet 5.5, whatever model the work order uses), limit (`LANGUAGE_MAX_USD`, default $4) and form limit
-(`LANGUAGE_MAX_FORMS`, default 5000). The PDF's limit (`BOOK_MAX_USD`, default $5) is shared by the work order, the
+(`LANGUAGE_MODEL`, default Sonnet 5.5, whatever model the work order uses), limit (`LANGUAGE_MAX_USD`, default $6) and form limit
+(`LANGUAGE_MAX_FORMS`, default 5000). The PDF's limit (`BOOK_MAX_USD`, default $8) is shared by the work order, the
 page readings and this step. The step never stops the work order: when it doesn't fit the PDF's limit with the work order,
 or passes its own limit, it alone is left out and the PDF goes on without language tags (see
 [The limit per PDF](options.md#the-limit-per-pdf)).
@@ -89,6 +89,7 @@ or passes its own limit, it alone is left out and the PDF goes on without langua
 - **Not Applicable** when the book has no word forms to decide;
 - **Not Reviewed (N word forms to decide on the review page)** until a person has decided every form;
 - **Approved (reviewer on date)** when none is left.
+
 
 Work orders from before #118 (the work-order prompt's `language` key: kana runs and explicit runs) are approved with the
 work order and read "Not Applicable" here. Runs made during #118's stage C (`language_parts` version 1, before the

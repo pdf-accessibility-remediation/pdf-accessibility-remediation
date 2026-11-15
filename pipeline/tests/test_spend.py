@@ -592,3 +592,7 @@ def test_the_pages_name_the_number_of_requests():
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert "' for ' + esc(e.requests) + ' AI requests'" in js
     assert "esc(T.requests) + ' AI requests" in open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()   # escaped (#93, CodeQL)
+
+@pytest.fixture(autouse=True)
+def _limits(limits_of_2026_11):
+    """These scenarios were written for $5 per PDF and $4 for the language step (conftest.py)."""

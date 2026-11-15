@@ -39,7 +39,7 @@ def test_a_figure_request_has_32000_and_an_unknown_kind_is_refused():
     with pytest.raises(ValueError): C.allowance('nonsense')
 
 def test_the_default_limits_are_in_one_place():
-    assert C.DEFAULT_LIMITS == {'per_call_usd': 2.0, 'per_book_usd': 5.0, 'per_batch_usd': 10.0}
+    assert C.DEFAULT_LIMITS == {'per_call_usd': 2.0, 'per_book_usd': 8.0, 'per_batch_usd': 10.0} and C.DEFAULT_LANGUAGE_USD == 6.0   # 2026-11-14
 
 def test_the_retry_limits_are_the_persons_real_limits():
     assert C.retry_env(C.limits_of({'limits': {'per_call_usd': 3, 'per_book_usd': 7}})) == {'FIGURE_RETRY_MAX_USD': '3.00', 'FIGURE_RETRY_BOOK_MAX_USD': '7.00'}
@@ -255,7 +255,7 @@ def test_not_available_is_kept_as_it_is(tmp_path):
     ({'worst': 5.9, 'extra': {'passes': [{'pass': '1', 'worst_case_usd': 0.9}], 'book_cap_usd': 5}}, 'per_book', 'This PDF could cost up to $5.90, more than the limit of $5.00 per PDF.'),
     ({'worst': 4.6, 'extra': {'passes': [{'pass': '1', 'worst_case_usd': 0.9}], 'book_cap_usd': 5, 'spent_before_usd': 0.6}}, 'per_book', 'This PDF could cost up to $5.20, including $0.60 already spent, more than the limit of $5.00 per PDF.'),
     ({'worst': 0.67, 'extra': {'credit_available_usd': 0.4}}, 'credit', 'This run could cost up to $0.67, more than the $0.40 of credit left.')])
-def test_refusals_name_what_it_could_cost_and_the_limit(tmp_path, kw, code, words):
+def test_refusals_name_what_it_could_cost_and_the_limit(tmp_path, kw, code, words, limits_of_2026_11):
     b = C.estimate(str(folder(tmp_path, **kw)))['blocked']; assert b['code'] == code and b['words'] == words
 
 # ------------------------------------------------------------------ after a run: one wording

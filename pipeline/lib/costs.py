@@ -28,7 +28,9 @@ import os, json, math, hashlib
 from lib import costhistory
 
 SCHEMA = 'cost-estimate/1'
-DEFAULT_LIMITS = {'per_call_usd': 2.0, 'per_book_usd': 5.0, 'per_batch_usd': 10.0}  # the one place: decide.py, run_api.sh, batch_api.sh and the app read these
+DEFAULT_LIMITS = {'per_call_usd': 2.0, 'per_book_usd': 8.0, 'per_batch_usd': 10.0}  # the one place: decide.py, run_api.sh, batch_api.sh and the app read these
+                                                         # per PDF $8 (was $5; Patrick, 2026-11-14: room for the language step on a large CJK book)
+DEFAULT_LANGUAGE_USD = 6.0                               # the language step's own limit, LANGUAGE_MAX_USD (was $4; Patrick, 2026-11-14)
 OFFLINE = 'ASSUMED'                                      # decide.py's price_source when OpenRouter could not be reached
 
 def allowance(kind, forms=0):

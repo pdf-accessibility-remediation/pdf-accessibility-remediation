@@ -336,3 +336,7 @@ def test_the_side_lists_batch_title_looks_like_its_items():
     assert '.bn-h a { font-size: 17px; }' in css and '.bn-h > .pp-note { font-size: 12px; }' in css
     assert '.bn-h a { color: var(--ink); font-weight: 700; text-decoration: none;' in css and '.bn-h a:hover {' in css and '.bn :focus-visible {' in css
     assert 'color: var(--accent); text-decoration: underline; text-underline-offset' not in css
+
+@pytest.fixture(autouse=True)
+def _limits(limits_of_2026_11):
+    """These scenarios were written for $5 per PDF and $4 for the language step (conftest.py)."""
