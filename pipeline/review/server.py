@@ -241,7 +241,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             while inside['n']: gate.wait(0.2)
     sid = (data.get('session') or {}).get('id') or '001'
     set_in = (data.get('session') or {}).get('set_in') or {}   # choices carried from an earlier session (a reopen)
-    if not ocr_only: data['languages'] = core.languages()     # the language list (for runs prepared before it too)
+    if not ocr_only: data['language_list'] = core.languages()     # the document-language card's list (data['languages'] is the Languages section's)
     ocr_wo = wo if ocr_only else ai
     def ocr_section(): return O.section(run_dir, digest, ocr_wo)
     intake = core.load(os.path.join(run_dir, '_intake', 'intake.json')) or {}

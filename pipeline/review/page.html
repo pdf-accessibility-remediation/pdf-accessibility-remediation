@@ -890,7 +890,7 @@ function editor(it, d) {
     (it.key === 'rolemap' && it.context.count ? ' <span class="flag">changes all ' + it.context.count + ' elements of this style</span>' : '');
   if (it.edit === 'text') return '<textarea data-act="value" aria-label="New value">' + esc(v) + '</textarea>';
   if (it.edit === 'lang') {                            // a language from the list, or Other: the tag typed (kept as it is, never swapped for a near one)
-    const L = DATA.languages || [], known = L.some(([t]) => t === v);
+    const L = DATA.language_list || [], known = L.some(([t]) => t === v);     // not DATA.languages: the Languages section's summary
     return '<select data-act="langpick" aria-label="Language">' + L.map(([t, n]) => '<option value="' + esc(t) + '"' + (t === v ? ' selected' : '') + '>' + esc(n) + '</option>').join('') +
       '<option value=""' + (known ? '' : ' selected') + '>Other</option></select> <input type="text" data-act="value" aria-label="Language tag" value="' + esc(v) + '" size="12"' + (known ? ' hidden' : '') + '>' +
       ' <span class="ctx">Under Other, type a language tag such as en-AU, ja, haw.</span>';

@@ -151,3 +151,23 @@ def test_keep_marks_and_finish_refuses_until_fixed(tmp_path):
     assert b['finished'] and b['dropped'] == []
     t.join(5)
     assert core.load(os.path.join(R, 'workorder.json'))['alt'][0]['alt'] == 'A map of Oʻahu'
+
+def test_the_document_language_card_and_the_languages_section_keep_their_own_data(tmp_path):
+    """Patrick's dakine test (2026-11-14): with a document-language card and language rows in one order, the page's data
+    holds the card's list under `language_list` ([tag, name] pairs, which the card's editor reads with .some) and the
+    Languages section's summary under `languages` (an object). Both under `languages` crashed the All and Not Reviewed
+    views ("L.some is not a function")."""
+    import re, test_review_languages as TL
+    ai = {**ai_order(), 'document': {'title': 'The Book', 'lang': 'en-US'}, 'language_parts': TL.wo()['language_parts']}
+    R, ai, items, adds = run(tmp_path, ai)
+    assert any(it.get('edit') == 'lang' and it['kind'] != core.LANG_KIND for it in items)       # the document-language card
+    core.save(os.path.join(R, 'review_items.json'), {'book': 'book.pdf', 'run': 'run', 'pages': 80, 'pdf': '', 'groups': core.GROUPS,
+                                                   'levels': core.LEVELS, 'add_kinds': core.ADD_KINDS, 'items': items, 'addable': adds})
+    port = free_port()
+    threading.Thread(target=lambda: __import__('review.server', fromlist=['serve']).serve(R, '2026-11-14', port, open_browser=False), daemon=True).start(); up(port)
+    req = urllib.request.Request(f'http://127.0.0.1:{port}/', headers={'Host': f'127.0.0.1:{port}'})
+    with urllib.request.urlopen(req, timeout=20) as r: page = r.read().decode('utf-8')
+    data = json.loads(re.search(r'const DATA = (.*?);\n', page, re.S).group(1))
+    assert isinstance(data['language_list'], list) and all(isinstance(x, list) and len(x) == 2 for x in data['language_list'])
+    assert isinstance(data['languages'], dict) and data['languages']['total'] == 4
+    assert "const L = DATA.language_list || [], known = L.some(" in page
