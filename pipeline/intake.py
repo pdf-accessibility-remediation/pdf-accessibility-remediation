@@ -1958,13 +1958,13 @@ def main():
                               'image_pages_without_text': [d['page'] for d in dropped], 'per_page': kept + dropped}
                 if plan['ocr_mode'] == 'redo':
                     rec['ocr']['reocr_pages'] = plan['reocr_pages']
-                    import gzip                              # a page that came back with much less text than it had has lost text:
-                    old_ = json.load(gzip.open(os.path.join(OUTD, 'old_ocr_layer.json.gz'), 'rt', encoding='utf-8'))   # under half
-                    ns_ = lambda s: len(re.sub(r'\s+', '', s))   # the old characters, unless it reads 20+ CJK characters (which say
-                    od = pdfium.PdfDocument(out)             # far more per character than the Latin noise they replace)
+                    import gzip                              # a page that came back with under half the characters it had (any
+                    old_ = json.load(gzip.open(os.path.join(OUTD, 'old_ocr_layer.json.gz'), 'rt', encoding='utf-8'))   # old text,
+                    ns_ = lambda s: len(re.sub(r'\s+', '', s))   # CJK characters counted as characters) has lost text (review 04 M4)
+                    od = pdfium.PdfDocument(out)
                     def thin_(p_):
-                        s = od[p_ - 1].get_textpage().get_text_range(); o_ = ns_(old_.get(str(p_), ''))
-                        return o_ >= 50 and ns_(s) < 0.5 * o_ and sum(1 for ch in s if cjk_char(ch)) < CJK_CHARS
+                        o_ = ns_(old_.get(str(p_), ''))
+                        return o_ > 0 and ns_(od[p_ - 1].get_textpage().get_text_range()) < 0.5 * o_
                     thin = [p_ for p_ in plan['reocr_pages'] if thin_(p_)]; od.close()
                     if thin:
                         rec['ocr']['reocr_little_text'] = thin
