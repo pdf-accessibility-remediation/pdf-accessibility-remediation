@@ -28,7 +28,7 @@ FONT = next((p for p in (os.environ.get('INTAKE_CASES_FONT') or '', '/System/Lib
                           '/Library/Fonts/Arial Unicode.ttf', '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
                           '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc') if p and os.path.exists(p)), None)
 FONT_CASES = {'japanese-scan', 'japanese-vertical-scan', 'korean-scan', 'japanese-scan-14', 'english-scan-cjk-on-13',   # need FONT: the
-              'ocr-layer-missing-marks'}   # default font draws no CJK and no breves, and its text is too small to OCR
+              'ocr-layer-missing-marks', 'cjk-under-latin-layer'}   # default font draws no CJK and no breves, and its text is too small to OCR
 LATIN_CASES = {'ocr-layer-missing-marks', 'ocr-layer-matching'}   # scored with Tesseract's script/Latin model
 
 
@@ -50,6 +50,7 @@ JA = 'これは試験用の日本語の文章です。縦書きと横書きの�
 KO = '이것은 시험용 한국어 문장입니다. 가로쓰기와 세로쓰기를 확인합니다.'
 RO = 'Sŏngwŏn met Hŏ Chŏk and Pak Yŏng-man in Ch\'ŏngju; Wŏllyang wrote to Kŭmsŏng.'   # McCune-Reischauer breves
 RO_PLAIN = 'Songwon met Ho Chok and Pak Yong-man in Ch\'ongju; Wollyang wrote to Kumsong.'
+ZH = '這是測試用的中文文字。每一行都一樣。'      # the test's own text (#121: Chinese print under a Latin-only layer)
 W_IN, H_IN, DPI = 6, 8, 300
 
 
@@ -166,6 +167,44 @@ def build(out):
     save('english-scan-cjk-on-13', pdf)
     for name, txt, vert in (('japanese-scan', JA, False), ('japanese-vertical-scan', JA, True), ('korean-scan', KO, False)):
         pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE, [text_image(txt, vertical=vert)]); save(name, pdf)
+    # #127: a cover whose small-capitals font maps a capital to its lowercase letter, the true capital marked with
+    # ActualText (as the sponsors' generated covers do); the tagger drops the span, intake puts it back
+    pdf = pikepdf.new()
+    tu = pdf.make_stream(b'/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /T def 1 begincodespacerange '
+                         b'<00> <FF> endcodespacerange 2 beginbfchar <4E> <006E> <20> <0020> endbfchar 1 beginbfrange <41> <4D> <0061> '
+                         b'endbfrange endcmap CMapName currentdict /CMap defineresource pop end end')
+    f1 = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica,
+                                              Encoding=pikepdf.Name.WinAnsiEncoding, ToUnicode=tu))
+    cover = ('BT /F1 28 Tf 72 500 Td (JAPAN ) Tj /Span <</ActualText (N)>> BDC (N) Tj EMC (EW) Tj ET\n'
+             'BT /F1 14 Tf 72 440 Td (A BIG BOOK) Tj ET\n')
+    pdf.pages.append(pikepdf.Page(pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, W_IN * 72, H_IN * 72],
+                                  Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=f1)), Contents=pikepdf.Stream(pdf, cover.encode()))))
+    new_page(pdf, TEXT_LINES, font=True); save('cover-actualtext', pdf)
+    # #127: an OCR layer that draws one letter four times on itself, in numbered list lines the tagger splits
+    dup = '3 Tr\n' + ''.join(f'BT /F1 11 Tf 72 {500 - k * 20} Td ({k + 1}. ) Tj [(F) 611 (F) 611 (F) 611 (F)] TJ ( {EN}) Tj ET\n' for k in range(10))   # F 611 wide
+    pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + dup, [en_img], font=True); save('duplicate-letters', pdf)
+    # #128: the sponsors' layout, each page one form holding the scan and its invisible OCR text: a page of text, and a
+    # plate (a photo with a short caption)
+    def wrapped(pdf, img, text_ops):
+        font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica, Encoding=pikepdf.Name.WinAnsiEncoding)
+        form = pikepdf.Stream(pdf, (FULL_IMAGE + text_ops).encode('latin-1'), Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Form,
+                              BBox=[0, 0, W_IN * 72, H_IN * 72], Resources=pikepdf.Dictionary(XObject=pikepdf.Dictionary(Im0=image_xobject(pdf, img)),
+                                                                                               Font=pikepdf.Dictionary(F1=font)))
+        pdf.pages.append(pikepdf.Page(pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, W_IN * 72, H_IN * 72],
+                         Resources=pikepdf.Dictionary(XObject=pikepdf.Dictionary(Fm0=form)), Contents=pikepdf.Stream(pdf, b'q /Fm0 Do Q'))))
+    pdf = pikepdf.new(); wrapped(pdf, en_img, layer_lines(EN)); save('wrapped-scan', pdf)
+    photo = Image.new('L', (W_IN * DPI, H_IN * DPI), 255); d = ImageDraw.Draw(photo)
+    for k in range(0, 1400, 7): d.line((0, 300 + k, W_IN * DPI, 200 + k + (k % 90)), fill=40 + (k % 120), width=4)
+    d.text((150, 2200), 'Plate 1. A grey field.', fill=0, font=ImageFont.truetype(FONT, 44) if FONT else None)
+    pdf = pikepdf.new(); wrapped(pdf, photo, '3 Tr\nBT /F1 10.5 Tf 36 52 Td (Plate 1. A grey field.) Tj ET\n'); save('wrapped-plate', pdf)
+    # #121: Chinese print under an English-only OCR layer (Latin noise), and the same wrapped for the redo chain
+    noise = '3 Tr\n' + ''.join(f'BT /F1 10.5 Tf 36 {H_IN * 72 - 40 - k * 20} Td (Ii ft, & i S # * i IE iff 2 i t f n S j X 1) Tj ET\n' for k in range(16))
+    # (Latin noise with no parentheses or backslashes; 16 lines at 64 px: Tesseract's page layout reads a sparser
+    #  synthetic Chinese page as empty, which real pages are not)
+    pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + noise, [text_image(ZH, lines=16, size=64)], font=True); save('cjk-under-latin-layer', pdf)
+    pdf = pikepdf.new()                              # #129: 300 pages of text, too much for an 8 MB Java heap
+    for _ in range(300): new_page(pdf, TEXT_LINES, font=True)
+    save('long-text', pdf)
     return made
 
 
@@ -240,12 +279,17 @@ CASES = [  # (case, pdf, OCR_LANG, what is expected, test on intake.json)
      lambda j: j['status'] == 'stopped' and (j.get('cjk_probe') or {}).get('cjk_pages') == [13]),
     ('Korean scan, OCR_LANG unset → stops, no _vert hint', 'korean-scan', None, 'stopped, no vertical hint',
      lambda j: j['status'] == 'stopped' and 'set OCR_LANG' in j['summary'] and 'vertical' not in j['summary']),
+    ('Chinese print under a Latin-only OCR layer → "OCR layer: CJK missing" CHECK, re-OCR suggested (#121)', 'cjk-under-latin-layer', None,
+     'CHECK, reocr_suggested cjk, OCR text approval needed',
+     lambda j: any(f['what'] == 'OCR layer: CJK missing' and f['check'] for f in j['flags']) and 'cjk' in ((j.get('reocr_suggested') or {}).get('why') or [])
+     and (j.get('glance') or {}).get('ocr_layer_flagged') is True),
 ]
 
 
-def run_intake(pdf, out, lang, plan=True):
-    env = dict(os.environ); env.pop('OCR_LANG', None)
+def run_intake(pdf, out, lang, plan=True, extra=None):
+    env = dict(os.environ); env.pop('OCR_LANG', None); env.pop('REOCR', None)
     if lang: env['OCR_LANG'] = lang
+    env.update(extra or {})
     subprocess.run([sys.executable, os.path.join(PIPE, 'intake.py'), pdf, out] + (['--plan-only'] if plan else []), env=env,
                    capture_output=True, text=True)
     return json.load(open(os.path.join(out, 'intake.json')))
@@ -309,6 +353,32 @@ def main():
             bad += not ok; good += ok
             print(f'{"PASS" if ok else "FAIL"}  full intake on {case}: old tree set aside, auto-tagged with text structure '
                   f'(got: {j["status"]}: {j.get("summary")})', flush=True)
+    if '--full' in sys.argv:                         # #127, #128, #121, #129: the real tagger and OCRmyPDF
+        full_new = [
+            ('cover with ActualText small capitals: the span the tagger drops is put back, the text check passes (#127)', 'cover-actualtext', None, {},
+             lambda j: j['status'] == 'done' and (j['checks'].get('actualtext_restored') or {}).get('spans', 0) >= 1
+             and not (j['checks'].get('after_autotag') or {}).get('text_differs')),
+            ('OCR layer drawing a letter four times on itself: no stop (#127; read differently, drawn the same, if PDFium differs)', 'duplicate-letters', None, {},
+             lambda j: j['status'] == 'done' and not (j['checks'].get('after_autotag') or {}).get('text_differs')),
+            ('wrapped page of text with an OCR layer: its scan becomes decoration (#128)', 'wrapped-scan', None, {},
+             lambda j: j['status'] == 'done' and (j.get('page_scans') or {}).get('marked_decoration') == [1]),
+            ('wrapped plate with a one-line caption: its scan stays a figure (#128)', 'wrapped-plate', None, {},
+             lambda j: j['status'] == 'done' and list(((j.get('page_scans') or {}).get('kept_as_figure') or {}).keys()) == ['1']),
+            ('Chinese print under a Latin layer, REOCR=1 OCR_LANG=chi_tra+eng: layer replaced, page pixel-identical, old layer kept (#121)',
+             'cjk-under-latin-layer', 'chi_tra+eng', {'REOCR': '1'},
+             lambda j: j['status'] == 'done' and (j.get('ocr') or {}).get('reocr_pages') == [1] and not (j['checks'].get('after_ocr') or {}).get('pixels_differ')
+             and (j.get('reocr') or {}).get('old_text_file') == 'old_ocr_layer.json.gz'),
+            ('redo chain on a wrapped scan, REOCR=1: redo, auto-tag, then the scan becomes decoration (#121 with #128)', 'wrapped-scan', None, {'REOCR': '1'},
+             lambda j: j['status'] == 'done' and (j.get('ocr') or {}).get('mode') == 'redo' and (j.get('page_scans') or {}).get('marked_decoration') == [1]),
+            ('the tagger with a forced tiny heap (300 pages, 8 MB): a plain out-of-memory stop (#129)', 'long-text', None, {'JAVA_TOOL_OPTIONS': '-Xmx8m'},
+             lambda j: j['status'] == 'failed' and 'ran out of memory' in (j.get('summary') or '')),
+        ]
+        for what, case, lang, extra, test in full_new:
+            if not shutil.which('ocrmypdf') or (case in FONT_CASES and not FONT):
+                skipped += 1; print(f'SKIP  full intake: {what}  (OCRmyPDF or a font for its text is missing)', flush=True); continue
+            j = run_intake(made[case], os.path.join(out, 'full', case + ('-' + '-'.join(f'{k}' for k in extra) if extra else '')), lang, plan=False, extra=extra)
+            ok = test(j); bad += not ok; good += ok
+            print(f'{"PASS" if ok else "FAIL"}  full intake: {what}  (got: {j["status"]}: {j.get("summary")})', flush=True)
     print(f'{good} passed, {bad} failed, {skipped} skipped' + (' (see the SKIP lines for what is missing)' if skipped else '')
           + (' (--strict: skips count as failures)' if strict and skipped else ''))
     sys.exit(1 if bad or (strict and skipped) else 0)
