@@ -27,10 +27,11 @@ from lib import langtag, models
 #             (None: whole), so no piece carries more than about a sentence
 #   join      True: windows that meet on a page are sent as one snippet; False: each place's window on its own
 #   item_snippets  True: each item lists the numbers of the snippets that hold it ("s": [1, 4])
-# Adopted in round 15 (2026-11-14) by the fixed rule on 473 test items, 3 runs each (handoff 15 §5): 15 pieces with the
-# 40-character CJK cap (stage 1: 30 words and sentence mode gave more wrong answers; 15 words was too close to tell and
-# cost more), joined snippets with each item's snippet numbers (stage 2: fewer wrong answers on masked-clue items)
-CTX = {'unit': 'pieces', 'size': 15, 'mode': 'window', 'cap': 60, 'cjk_cap': 40, 'join': True, 'item_snippets': True}
+# Adopted 2026-11-14 (Patrick, handoff 17 §3): 10 words each side (numbers and punctuation ride along), the
+# 40-character CJK cap, joined snippets with each item's snippet numbers. On 473 test items, 3 runs each: fewer wrong
+# answers on the masked-clue items than 15 pieces (12 against 19), a few more left for a person (11 against 3), the same
+# cost; the differences are small (3 and 2 items). 30 words and sentence mode gave more wrong answers (round 15).
+CTX = {'unit': 'words', 'size': 10, 'mode': 'window', 'cap': 60, 'cjk_cap': 40, 'join': True, 'item_snippets': True}
 CONTEXT = CTX['size']           # kept for callers that read the old name
 SNIPPETS_PER_FORM = 2           # contexts per form: the first place, and one more (italic vs roman, or a later chapter)
 FORMS_PER_REQUEST = 150

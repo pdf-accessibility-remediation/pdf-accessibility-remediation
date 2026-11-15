@@ -109,9 +109,9 @@ def test_joining_and_item_snippet_numbers():
     assert len(two['snippets']) == 2 and [it['s'] for it in two['items']] == [[1, 2], [1, 2]]   # each window holds both marks
 
 def test_the_adopted_context_is_the_default():
-    """Round 15's experiment (handoff 15 §5): 15 pieces, the 40-character CJK cap, joined snippets with item numbers."""
+    """Patrick's decision on handoff 17 §3: 10 words, the 40-character CJK cap, joined snippets with item numbers."""
     from lib import langreq as L
-    assert L.CTX == {'unit': 'pieces', 'size': 15, 'mode': 'window', 'cap': 60, 'cjk_cap': 40, 'join': True, 'item_snippets': True}
+    assert L.CTX == {'unit': 'words', 'size': 10, 'mode': 'window', 'cap': 60, 'cjk_cap': 40, 'join': True, 'item_snippets': True}
 
 def test_a_cjk_piece_between_two_marks_keeps_the_side_nearer_its_nearer_mark():
     """review 16, L1: a 60-character piece between two marks, nearer the second, keeps its end (next to the second mark);

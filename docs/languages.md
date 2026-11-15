@@ -12,16 +12,15 @@ approved.
    occurs. A publisher's own `/Lang` tags are listed too ("existing").
 2. **The language step asks the AI** (`name_languages.py`, prompt `prompts/language_v3.md`): each word form with its
    context, each snippet once per request, through OpenRouter with `data_collection: deny`. The context
-   (`lib/langreq.py` `CTX`) is 15 space-separated pieces on each side of up to two places per form; a piece of CJK
-   characters with no spaces keeps only the 40 characters nearest the place; windows that meet on a page are sent as
-   one snippet, and each word form lists the numbers of the snippets that hold it. This setup was chosen by a paid
-   experiment (2026-11-14, 473 test items, 3 runs per variant) against 15 and 30 words, a sentence each side, and
-   unjoined or unnumbered snippets: the longer contexts gave more wrong answers, and the snippet numbers gave fewer
-   wrong answers where the reading beside Chinese characters was removed. A second check (2026-11-14) counted the
-   context in words instead (5, 10 and 15 words each side, numbers and punctuation riding along): 10 words gave fewer
-   wrong answers on the masked items but left more of them to a person, so 15 pieces were kept. Requests of 150 and
-   50 forms (production packs up to 150) were also tested against the small test requests; the packed test requests
-   lacked each book's title, which the results show matters, so the request size stays as it is. The review page shows each form's first
+   (`lib/langreq.py` `CTX`) is 10 words on each side of up to two places per form (a word is a piece with a letter or
+   a CJK character; numbers and punctuation ride along without counting); a piece of CJK characters with no spaces
+   keeps only the 40 characters nearest the place; windows that meet on a page are sent as one snippet, and each word
+   form lists the numbers of the snippets that hold it. This setup was chosen by paid experiments (2026-11-14, 473 test
+   items, 3 runs per variant) against 5, 15 and 30 words, 15 space-separated pieces, a sentence each side, and unjoined
+   or unnumbered snippets: longer contexts gave more wrong answers, and so did 5 words. Against 15 pieces, 10 words gave
+   fewer wrong answers where the reading beside Chinese characters was removed and left a few more to a person, at the
+   same cost; the differences are small (a few items). Requests of 150 and 50 forms: see [Request size](#request-size).
+   The review page shows each form's first
    place exactly as it is sent; rows of runs made before this keep the context stored when their language step ran. The AI names
    a language and a confidence, or says it is a name or English. Nothing else of the book is sent for this step. A book
    flagged for personal information (1.1) is never sent. Requests and replies are kept in `language_run.json`.
@@ -95,6 +94,10 @@ Work orders from before #118 (the work-order prompt's `language` key: kana runs 
 work order and read "Not Applicable" here. Runs made during #118's stage C (`language_parts` version 1, before the
 Languages section existed) have no rows to decide: their "Language Tags" line stays "Not Reviewed". To review such a
 book, run it again (a fresh run, or a FROM= rerun with LANG_REPLY= of a version 2 language run).
+
+## Request size
+
+A request holds up to 150 word forms of one book (`lib/langreq.py` `FORMS_PER_REQUEST`), under that book's title.
 
 ## Cost
 
