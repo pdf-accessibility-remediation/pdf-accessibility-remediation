@@ -60,3 +60,44 @@ def test_a_long_book_waits_until_it_can_run_alone(tmp_path, monkeypatch):
     assert not got                                                 # one short book is tagging: the long one waits
     release.set(); t2.join(10); t1.join(5)
     assert got['slot'] == 'all' and got['waited'] > 0
+
+
+def test_a_tagger_that_outlives_its_intake_keeps_the_slot(tmp_path, monkeypatch):
+    """Review 04 M2: the lock goes when intake dies (SIGKILL), but its tagger child may still run: the slot stays busy
+    while the process recorded in the slot file is alive (a `sleep` stands in for the Java tagger)."""
+    import os, signal, sys
+    monkeypatch.setattr(intake, 'TAGGER_LOCKS', str(tmp_path)); monkeypatch.setattr(intake, 'TAGGER_SLOTS', 1)
+    holder = subprocess.Popen([sys.executable, '-c', (
+        'import sys, subprocess, time; sys.path.insert(0, %r); import intake\n'
+        'intake.TAGGER_LOCKS = %r; intake.TAGGER_SLOTS = 1\n'
+        'with intake.tagger_slot() as s:\n'
+        '    kid = subprocess.Popen(["sleep", "30"]); intake.tagger_record(s, [kid.pid]); print(kid.pid, flush=True); time.sleep(60)\n'
+    ) % (os.path.dirname(os.path.dirname(os.path.abspath(__file__))), str(tmp_path))], stdout=subprocess.PIPE, text=True)
+    kid = int(holder.stdout.readline())
+    try:
+        assert intake._take_slot(str(tmp_path / 'slot0.lock')) is None            # held by the holder
+        holder.send_signal(signal.SIGKILL); holder.wait(5)
+        assert intake._proc_command(kid) == 'sleep'                               # its child still runs
+        assert intake._take_slot(str(tmp_path / 'slot0.lock')) is None            # so the slot is still busy
+        os.kill(kid, signal.SIGKILL)
+        for _ in range(50):
+            if intake._proc_command(kid) is None: break
+            time.sleep(0.05)
+        f = intake._take_slot(str(tmp_path / 'slot0.lock'))                       # the child is gone: free again
+        assert f is not None and f.read() == ''
+        f.close()
+    finally:
+        for p in (holder.pid, kid):
+            try: os.kill(p, signal.SIGKILL)
+            except ProcessLookupError: pass
+
+
+def test_the_watcher_records_the_taggers_process(tmp_path, monkeypatch):
+    import os
+    monkeypatch.setattr(intake, 'TAGGER_LOCKS', str(tmp_path)); monkeypatch.setattr(intake, 'TAGGER_SLOTS', 1)
+    with intake.tagger_slot() as s:
+        stop = threading.Event(); w = threading.Thread(target=intake._tagger_children, args=(stop, s), daemon=True); w.start()
+        kid = subprocess.Popen(['sleep', '5']); time.sleep(1.6)
+        assert f'{kid.pid} sleep' in (tmp_path / 'slot0.lock').read_text()
+        stop.set(); w.join(3); kid.kill(); kid.wait()
+    assert (tmp_path / 'slot0.lock').read_text() == ''                            # cleared when the slot is given back

@@ -843,36 +843,75 @@ def moved_fragments(a, b, n=5):
     for op, i1, i2, j1, j2 in sm.get_opcodes():
         if op in ('delete', 'replace') and a[i1:i2] not in out: out.append(a[i1:i2])
     return [f[:60] for f in out[:n]]
+def _proc_command(pid):
+    """The command name of a running process, or None when there is none (a pid recorded in a slot file may be reused)."""
+    try: os.kill(pid, 0)
+    except ProcessLookupError: return None
+    except PermissionError: pass
+    r = subprocess.run(['ps', '-p', str(pid), '-o', 'comm='], capture_output=True, text=True)
+    return r.stdout.strip() or None
+def _take_slot(path, wait=False):
+    """The slot's lock file, locked, or None when another process holds it or a tagger recorded in it still runs. The lock
+    is released by the OS when its process dies, but the Java tagger is a child process that can outlive it (a direct kill
+    of intake; review 04 M2): the tagger's pid and command are written in the slot file while it runs (tagger_record), and
+    a slot whose recorded tagger is still alive counts as busy."""
+    import fcntl
+    f = open(path, 'a+')
+    try: fcntl.flock(f, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+    except OSError: f.close(); return None
+    f.seek(0)
+    for line in f.read().splitlines():
+        pid, _, comm = line.partition(' ')
+        if pid.isdigit() and comm and _proc_command(int(pid)) == comm:
+            fcntl.flock(f, fcntl.LOCK_UN); f.close(); return None
+    f.seek(0); f.truncate(); return f
+def tagger_record(slot, pids):
+    """Write the running tagger's processes (pid and command) into every slot file held (see _take_slot)."""
+    lines = ''.join(f'{p} {c}\n' for p in pids for c in [_proc_command(p)] if c)
+    for f in slot.get('files') or []:
+        try: f.seek(0); f.truncate(); f.write(lines); f.flush()
+        except (OSError, ValueError): pass
+def _tagger_children(stop, slot):
+    """Thread: while the tagger runs, record intake's child processes in the slot files (pgrep -P), once a second."""
+    seen = set()
+    while not stop.wait(1):
+        r = subprocess.run(['pgrep', '-P', str(os.getpid())], capture_output=True, text=True)
+        kids = {int(x) for x in r.stdout.split() if x.isdigit()}
+        if kids and kids != seen: tagger_record(slot, sorted(kids)); seen = kids
 @contextlib.contextmanager
 def tagger_slot(pages=0):
-    """#129: hold one of TAGGER_SLOTS machine-wide slots (file locks, released by the OS if the process dies) while the
-    auto-tagger runs, so long books at once cannot overcommit memory. A book over TAGGER_LONG pages holds every slot (it
-    runs alone; slots are taken in order, so two long books cannot block each other). Waits; yields {slot, waited}."""
+    """#129: hold one of TAGGER_SLOTS machine-wide slots (file locks, released by the OS if the process dies; a tagger child
+    still running keeps its slot busy: _take_slot) while the auto-tagger runs, so long books at once cannot overcommit
+    memory. A book over TAGGER_LONG pages holds every slot (it runs alone; slots are taken in order, so two long books
+    cannot block each other; it can wait behind a stream of short books, since waiters are not served in order).
+    Waits; yields {slot, waited, files}."""
     import fcntl
     os.makedirs(TAGGER_LOCKS, exist_ok=True); t0 = time.time(); told = False
     if pages > TAGGER_LONG:
         fs = []
         try:
             for k in range(TAGGER_SLOTS):
-                f = open(os.path.join(TAGGER_LOCKS, f'slot{k}.lock'), 'w'); fs.append(f)
-                try: fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except OSError:
+                p_ = os.path.join(TAGGER_LOCKS, f'slot{k}.lock'); f = _take_slot(p_)
+                while f is None:
                     if not told: print(f'intake: waiting for the auto-tagger to be free (a book over {TAGGER_LONG} pages runs alone)', flush=True); told = True
-                    fcntl.flock(f, fcntl.LOCK_EX)
-            yield {'slot': 'all', 'waited': round(time.time() - t0, 1)}
+                    time.sleep(2); f = _take_slot(p_)
+                fs.append(f)
+            yield {'slot': 'all', 'waited': round(time.time() - t0, 1), 'files': fs}
         finally:
             for f in fs:
-                try: fcntl.flock(f, fcntl.LOCK_UN)
-                except OSError: pass
+                try: f.seek(0); f.truncate(); fcntl.flock(f, fcntl.LOCK_UN)
+                except (OSError, ValueError): pass
                 f.close()
         return
     while True:
         for k in range(TAGGER_SLOTS):
-            f = open(os.path.join(TAGGER_LOCKS, f'slot{k}.lock'), 'w')
-            try: fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError: f.close(); continue
-            try: yield {'slot': k, 'waited': round(time.time() - t0, 1)}
-            finally: fcntl.flock(f, fcntl.LOCK_UN); f.close()
+            f = _take_slot(os.path.join(TAGGER_LOCKS, f'slot{k}.lock'))
+            if f is None: continue
+            try: yield {'slot': k, 'waited': round(time.time() - t0, 1), 'files': [f]}
+            finally:
+                try: f.seek(0); f.truncate(); fcntl.flock(f, fcntl.LOCK_UN)
+                except (OSError, ValueError): pass
+                f.close()
             return
         if not told: print(f'intake: waiting for a free auto-tagger slot ({TAGGER_SLOTS} in use)', flush=True); told = True
         time.sleep(2)
@@ -1990,12 +2029,15 @@ def main():
         if hidden: kw['content_safety_off'] = 'hidden-text'
         err = oom = None; t1 = time.time()
         with tagger_slot(len(inv)) as slot:              # #129: at most TAGGER_SLOTS taggers at once on this machine
+            import threading
             java_opts = tagger_java_options(len(inv))
             old_opts = os.environ.get('JAVA_TOOL_OPTIONS'); os.environ['JAVA_TOOL_OPTIONS'] = java_opts
-            t1 = time.time()
+            t1 = time.time(); stop_w = threading.Event()    # the tagger's pid goes in the slot file (review 04 M2)
+            watch = threading.Thread(target=_tagger_children, args=(stop_w, slot), daemon=True); watch.start()
             try: opendataloader_pdf.convert(**kw)
             except Exception as e: err, oom = tagger_error(e)
             finally:
+                stop_w.set(); watch.join(5)
                 if old_opts is None: os.environ.pop('JAVA_TOOL_OPTIONS', None)
                 else: os.environ['JAVA_TOOL_OPTIONS'] = old_opts
         tagged_out = os.path.join(odl_dir, os.path.splitext(os.path.basename(cur))[0] + '_tagged.pdf')
