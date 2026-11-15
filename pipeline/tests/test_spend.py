@@ -63,7 +63,7 @@ def test_expected_is_shown_when_present(setup, monkeypatch):
     monkeypatch.setattr(costs, '_expected', lambda x: {'usd': 0.25, 'low': 0.18, 'high': 0.36, 'basis': 'test'})
     assert costs.estimate(str(run_folder(setup)))['expected']['usd'] == 0.25
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
-    assert "'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet') + '<br>'" in js and "'Max Estimated Cost: ' + usd(e.ceiling_usd)" in js
+    assert "'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet' + noneWhy(x)) + '<br>'" in js and "'Max Estimated Cost: ' + usd(e.ceiling_usd)" in js
     assert 'usually' not in js.split('function costLines')[1].split('const NEXT')[0] and 'Worst-case' not in js and 'About ' not in js.split('function costLines')[1].split('const NEXT')[0]
 
 def line_of(js, start):
