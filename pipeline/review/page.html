@@ -24,7 +24,7 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 syst
 header.top { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; }
 .top h1 { font-size: 17px; margin: 0 0 6px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px 32px; align-items: center; }
-.actions { display: flex; flex-wrap: wrap; gap: 10px; }   /* wraps on a phone: no sideways scroll at 375 px (round 24) */
+.actions { display: flex; gap: 10px; }
 .show label { margin-left: 8px; }
 .bar { width: 160px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
 .bar i { display: block; height: 100%; background: var(--accent); }
@@ -223,6 +223,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 @media (max-width: 800px) {
   main { flex-direction: column; padding: 16px; }
   header.top { position: static; }
+  .actions { flex-wrap: wrap; }       /* no sideways scroll at 375 px (round 24); desktop keeps one line */
   .navbar { display: block; position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 8px 16px; }
   /* the side list becomes a drawer over the page: the cards never move */
   /* align-self: stretch, or the desktop flex-start makes the drawer as tall as its list and nothing scrolls */

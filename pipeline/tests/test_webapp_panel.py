@@ -517,6 +517,13 @@ def test_steps_in_plain_words():
     assert logs.plain('3c/5 language tags: saved decisions (no cost)') == 'sending to the AI: language tags (saved decisions, no cost)'
     assert logs.plain("3c/5 language tags: this run's own decisions (no cost)") == 'sending to the AI: language tags (saved decisions, no cost)'
     assert logs.plain('figure request 2 of 4') == 'sending to the AI: figures, request 1 of 3'   # pass 2 is the first figure request
+    after_review = ('▶ the work order was reviewed by a person: applying the reviewed version\n▶ 0/5 intake: not re-run; applying to the '
+                    'intake result saved before the review stop\n▶ 1/5 audit: reusing the audit already in /r/_audit\n▶ 4/5 apply (no model)\n'
+                    '  ✓ 4/5 apply (no model): 3.0s\n▶ 4/5 verify (no model)\n  ✓ 4/5 verify (no model): 2.0s\n▶ 5/5 report\n')
+    words = [logs.plain(s['label']) for s in logs.steps(after_review)]                 # no step name twice on one card
+    assert len(words) == len(set(words)) and words[0] == 'starting from the reviewed decisions', words
+    fig = logs.steps('▶ figure request 2 of 3: 40 figures\n▶ figure request 3 of 3: 12 figures\n▶ 5/5 report\n')
+    assert [logs.plain(s['label']) for s in fig][:2] == ['sending to the AI: figures, request 1 of 2', 'sending to the AI: figures, request 2 of 2']
     for s in logs.steps('▶ 0/5 intake\n▶ 1/5 audit (no model)\n▶ 2/5 veraPDF on the original\n▶ 3/5 decide\n▶ figure request 2 of 3\n'):
         w = logs.plain(s['label'] if isinstance(s, dict) else s)
         assert not re.search(r'\d/\d|OpenRouter', w), w

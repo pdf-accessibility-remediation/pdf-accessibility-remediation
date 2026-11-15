@@ -44,7 +44,7 @@ PLAIN = {'apply': 'applying the reviewed decisions', 'verify': 'checking the res
          'no AI call': 'no AI request (a person decides)', 'page readings via OpenRouter': 'sending to the AI: Hawaiian page readings',
          'language tags via OpenRouter': 'sending to the AI: language tags', 'review': 'preparing the review page',
          "the previous attempt's reply was complete but could not be read": 'reading the saved reply again',
-         'the work order was reviewed by a person': 'applying the reviewed decisions',
+         'the work order was reviewed by a person': 'starting from the reviewed decisions',
          'every AI request of the previous attempt finished (a later step failed)': 'reusing the finished AI answers',
          "the previous attempt's reply was complete (a later step failed)": 'reusing the finished AI answer',
          'the previous attempt was stopped while its figure requests were being sent': 'resuming the figure requests',
