@@ -109,20 +109,23 @@ section > h2 { font-size: 16px; margin: 18px 0 8px; padding-bottom: 4px; border-
 /* #118: the Languages section, one fold per language, one row per word form */
 #languages details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; padding: 6px 12px; }
 #languages summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
-.lang-row { border-top: 1px solid var(--line); border-left: 4px solid transparent; padding: 8px 0 8px 8px; display: grid;
-            grid-template-columns: 17.5em minmax(0, 1fr); gap: 6px 12px; align-items: start; }   /* review 14, 5: the same edge on every row */
+.lang-row { --lang-btn-w: 17.5em; border-top: 1px solid var(--line); border-left: 4px solid transparent; padding: 8px 0 8px 8px; }
 .lang-row[data-status] { border-left-color: var(--accent); }                     /* marked without moving the content */
+.lang-top { display: grid; grid-template-columns: var(--lang-btn-w) minmax(0, 1fr); gap: 6px 12px; align-items: start; }
 .lang-left { min-width: 0; }
 .lang-status { margin-top: 4px; }
 .lang-form { font-weight: 600; overflow-wrap: anywhere; }
 .lang-ctx, .lang-meta { color: var(--muted, #555); font-size: .92em; overflow-wrap: anywhere; }
 .lang-code { color: var(--muted, #555); font-weight: 400; font-size: .92em; }
-.lang-btns { display: flex; gap: 6px; flex-wrap: nowrap; }
-.lang-btns button { white-space: nowrap; }        /* "Keep the Tag" + "Remove the Tag" fit the 17.5em column */
-.lang-pick { min-width: 0; }
-.lang-pick select { max-width: 100%; }
+/* the bottom row (2026-11-14, as Patrick meant it): the buttons in a fixed-width area, then "Change Language", whose left
+   edge is the text block's */
+.lang-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; }
+.lang-btns { display: flex; gap: 6px; flex: 0 0 var(--lang-btn-w); width: var(--lang-btn-w); }
+.lang-btns button { white-space: nowrap; }        /* "Keep the Tag" + "Remove the Tag" fit the area */
+.lang-acts select { width: 15em; max-width: calc(100% - var(--lang-btn-w) - 12px); }   /* beside the buttons whatever the row's width */
 .lang-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
-@media (max-width: 600px) { .lang-row { grid-template-columns: minmax(0, 1fr); } .lang-btns { flex-wrap: wrap; } }
+@media (max-width: 600px) { .lang-top { grid-template-columns: minmax(0, 1fr); } .lang-acts { flex-wrap: wrap; }
+  .lang-btns { flex: 1 1 100%; width: auto; flex-wrap: wrap; } .lang-acts select { max-width: 100%; } }
 .card[data-status=approved] { border-left-color: var(--ok); }
 .card[data-status=changed] { border-left-color: var(--change); }
 .card[data-status=rejected] { border-left-color: var(--reject); }
@@ -1730,13 +1733,14 @@ function langRowHtml(r) {
   const keep = r.current ? 'Keep the Tag' : r.ai ? 'Approve' : 'Leave Untagged';
   const drop = r.current ? 'Remove the Tag' : r.ai ? 'Leave Untagged' : null;
   return '<div class="lang-row" id="lang-' + esc(r.id) + '" data-id="' + esc(r.id) + '"' + (d.status ? ' data-status="' + esc(d.status) + '"' : '') + '>' +
-    '<div class="lang-left"><div class="lang-form" lang="' + esc(r.ai || '') + '">' + esc(r.form) + '</div>' +   // the status outside the lang element
+    '<div class="lang-top"><div class="lang-left"><div class="lang-form" lang="' + esc(r.ai || '') + '">' + esc(r.form) + '</div>' +   // the status outside the lang element
     '<div class="lang-meta lang-status" role="status">' + langStatusHtml(r, d) + '</div></div>' +
     '<div class="lang-info"><div>' + what + '</div>' + (r.snippet ? '<div class="lang-ctx">' + esc(r.snippet) + '</div>' : '') +
     '<div class="lang-meta">' + esc(r.places || 0) + ' place' + (r.places === 1 ? '' : 's') + (pagesTxt ? ' · ' + esc(pagesTxt) : '') +
-    (r.evidence ? ' · Evidence: ' + esc(r.evidence) : '') + '</div></div>' +
-    '<div class="lang-btns"><button type="button" data-lang="keep">' + keep + '</button>' + (drop ? '<button type="button" data-lang="drop">' + drop + '</button>' : '') + '</div>' +
-    '<div class="lang-pick"><select data-lang="change" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select></div></div>';
+    (r.evidence ? ' · Evidence: ' + esc(r.evidence) : '') + '</div></div></div>' +
+    '<div class="lang-acts"><div class="lang-btns"><button type="button" data-lang="keep">' + keep + '</button>' + (drop ? '<button type="button" data-lang="drop">' + drop + '</button>' : '') + '</div>' +
+    '<select data-lang="change" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select>' +
+    '</div></div>';
 }
 // The tag written into the PDF, beside a language's name: only in each row's status and the "Change Language" list
 // (review 12, C; Patrick, 2026-11-13, revised 2026-11-14). The server sends the value that becomes /Lang (core.lang_written), never one worked out from the name.

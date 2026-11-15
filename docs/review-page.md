@@ -196,10 +196,11 @@ It opens with one paragraph, the same on every PDF:
 
 - **Folds by language** (for example "Japanese (Romanized)", "Hawaiian"), plus "Left Untagged by the AI" (non-Latin
   text the AI left untagged) and "Existing Language Tags" (the publisher's own tags).
-- **Each row:** the word form on the left with its status under it, the AI's answer, a line of context and its pages
-  on the right; under them, "Approve" and "Leave Untagged" (a publisher's tag: "Keep the Tag" and "Remove the Tag";
-  a form the AI left untagged: "Leave Untagged" alone) on the left and "Change Language" on the right, so the answer
-  and the list start at the same edge on every row. At phone width the row stacks.
+- **Each row:** the word form on the left with its status under it, and beside them the text block: the AI's answer,
+  a line of context, its places and evidence. The bottom line holds the buttons, then "Change Language": "Approve",
+  "Leave Untagged", "Change Language" (a publisher's tag: "Keep the Tag", "Remove the Tag", "Change Language"; a form
+  the AI left untagged: "Leave Untagged", "Change Language"). The buttons sit in an area of one fixed width, so the
+  list and the text block start at the same edge on every row. At phone width the row stacks.
 - **The status** reads "Not reviewed", "Approved: Chinese · zh", "Tagged: Chinese · zh" (after "Change Language"),
   "Kept: Hawaiian · haw" or "Removed: Hawaiian · haw" (a publisher's tag), or "Left untagged".
 - **A form the AI left untagged** says why in plain words: "a name", "part of English", "not a word of a known

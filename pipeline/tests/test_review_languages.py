@@ -252,7 +252,7 @@ def test_the_status_sits_under_the_form_outside_its_language():
     """review 14, 4-6: "label: value" under the word form, outside the lang-attributed element, with role status; Kept and
     Removed for a publisher's tag; "Change Language" with no ellipsis; the same column edge on every row."""
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
-    i = page.index("'<div class=\"lang-left\"><div class=\"lang-form\" lang=\"'")
+    i = page.index('<div class="lang-left"><div class="lang-form" lang="')                        # inside .lang-top since 2026-11-14
     seg = page[i:i + 400]
     assert seg.index('</div>') < seg.index('lang-status') and 'role=\"status\"' in seg       # closed before the status
     for w in ("'Tagged: '", "'Removed: '", "'Kept: '", "'Approved: '", "'Left untagged'", "'Not reviewed'"): assert w in page
@@ -306,3 +306,11 @@ def test_codes_only_in_the_status_and_the_list():
     assert len(re.findall(r'langCode\(', page)) == 2                                 # its definition and the status's val()
     assert "const val = (name, code) => esc(name || code || '') + langCode(name ? code : '');" in page
     assert "'>' + esc(x.name) + ' · ' + esc(x.code) + '</option>'" in page             # the list keeps "Japanese · ja"
+
+def test_rows_have_one_bottom_line():
+    """Patrick, 2026-11-14: the bottom line holds the buttons (a fixed-width area), then "Change Language"; the text
+    block's left edge is the list's (one width, one gap)."""
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    assert '.lang-top { display: grid; grid-template-columns: var(--lang-btn-w) minmax(0, 1fr); gap: 6px 12px;' in page
+    assert '.lang-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;' in page and 'flex: 0 0 var(--lang-btn-w); width: var(--lang-btn-w);' in page
+    assert '.lang-acts select { width: 15em; max-width: calc(100% - var(--lang-btn-w) - 12px); }' in page
