@@ -148,6 +148,14 @@ def meta(s, sha, path, nm=None):
     if nm is not None: nm.put(sha, m)
     return m
 
+def cached_pages(s, sha, nm=None):
+    """A book's page count as read at upload (the books cache), or None; never opens the PDF."""
+    if not sha: return None
+    if nm is not None: c = nm.cache()
+    else:
+        with _lock: c = _load(os.path.join(s['jobs'], 'books-cache.json')) or {}
+    return (c.get(sha) or {}).get('pages')
+
 # ------------------------------------------------------------------ the list
 def listing(s, nm=None):
     """Every PDF added through "Upload a PDF" (the uploads folder), in folder order; a content listed twice is shown once.

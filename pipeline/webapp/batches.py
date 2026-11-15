@@ -262,7 +262,8 @@ def dashboard(s, label, out):
                          'cost': b.get('cost') or 0, 'pages': (rec.get('document') or {}).get('pages'), 'reviewed': bool(g['ship'][0]['ok'])}
                 except (OSError, ValueError, KeyError, TypeError, IndexError): r = None
                 _DASH[k] = r
-        rows.append({'name': b['name'], 'book': b['book'], 'file': b['file'], 'status': b['status'], 'tone': b.get('tone'), 'href': b['href'], 'result': r})
+        rows.append({'name': b['name'], 'book': b['book'], 'file': b['file'], 'status': b['status'], 'tone': b.get('tone'), 'href': b['href'], 'result': r,
+                     'long': b.get('long')})
     rows.sort(key=lambda x: (x['result'] is None, -((x['result'] or {}).get('needs') or 0)))
     return rows
 
@@ -275,7 +276,7 @@ def state(s, label, nm=None, with_dashboard=True):
     record is read once for the whole state (#93). with_dashboard=False (a book's page in the batch: its side list, and
     batch.js's ?nav=1 poll there, review 09 12a): 'dashboard' is None, never built; the side list shows only the books'
     statuses, and for an older batch the dashboard opens every finished PDF on its first build after the app starts."""
-    from . import names as NM
+    from . import names as NM, runs as RN
     nm = nm or NM.snapshot(s); rd = HM.reader()
     bs = books_of(s, label, rd, nm)
     jl = nm.jobs()
@@ -299,6 +300,7 @@ def state(s, label, nm=None, with_dashboard=True):
                 missing.append(b['name'])
         out.append({'name': b['name'], 'book': nm.book_name(b.get('key'), b.get('file') or '') if b.get('key') else b.get('book'), 'file': BK.shown_file(b.get('file') or ''), 'status': row['words'], 'finished': row['finished'],
                     'tone': tone(row, R, rd), 'language': q,
+                    'long': not row['finished'] and (BK.cached_pages(s, b.get('key'), nm) or 0) > RN.LONG_BOOK,   # M6 (review 04)
                     'href': HM.run_href(f'batches/{label}/{b["name"]}'), 'cost': row.get('cost') or 0})
     from . import spend as SP_
     total = costs.batch(Rs, limits=costs.limits_of(s), credit_read=SP_.credit_read(s), folder=B, rd=rd)   # U8: a fresh read counts; spent: the whole batch's

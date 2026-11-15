@@ -820,7 +820,9 @@ def app_header(s, run, R, pages=None, nm=None):
     src_bar = not inb and bool(file)                     # U3: no list button here, so "Home Page" ends the "Source PDF:" line
     return (f'<header class="top pp-head pp-hd{"" if inb else " pp-run-hd"}">{HM.title_row(html.escape(name), bar=not inb and not file)}'
             + (f'<div class="mc-book pp-hd-src"><span class="hm-file">Source PDF: {html.escape(file)}</span>{HM.appbar() if src_bar else ""}</div>' if file else '')
-            + '<p class="pp-hd-det">' + ' · '.join(html.escape(x) for x in runs.details(s, run, R, pages, nm)) + f'</p>{batch}</header>')
+            + '<p class="pp-hd-det">' + ' · '.join(html.escape(x) for x in runs.details(s, run, R, pages, nm)) + '</p>'
+            + (f'<p class="pp-note pp-hd-long">{html.escape(runs.long_words(lb))}</p>' if (lb := runs.long_book(s, run, R, nm=nm)) else '')
+            + f'{batch}</header>')
 
 def with_app_header(page, s, run, R, nm=None):
     """review.html as served, with its own header (a file name, the prompt, the model, the run label) replaced by app_header().
