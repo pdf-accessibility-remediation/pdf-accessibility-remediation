@@ -208,7 +208,7 @@ def over(s, rows, nm=None):
             r['active'] = True
         elif j['status'] == 'needs-spend': r['status'], r['words'] = 'Estimate Ready', 'Waiting: open it and select "Get a New Estimate"'   # 05 M2
         elif j['status'] in ('failed', 'interrupted') and not r['finished'] and r['status'] not in ('Stopped', 'Waiting for Review') \
-                and not (r['status'] == 'Waiting for a Language' and (r.get('lang_kind') == 'cjk' or LG.stopped_to_ask(j))):   # a later failure shows
+                and not (r['status'] == 'Waiting for a Language' and (r.get('lang_kind') in ('cjk', 'reocr') or LG.stopped_to_ask(j))):   # a later failure shows
             r['status'] = r['words'] = 'Failed' if j['status'] == 'failed' else 'Stopped before it finished'
 
 GROUPS = (('not-started', 'Not Started'), ('processing', 'Processing'), ('in-progress', 'In Progress'), ('done', 'Done'), ('failed', 'Failed'))

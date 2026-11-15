@@ -28,7 +28,8 @@ FONT = next((p for p in (os.environ.get('INTAKE_CASES_FONT') or '', '/System/Lib
                           '/Library/Fonts/Arial Unicode.ttf', '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
                           '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc') if p and os.path.exists(p)), None)
 FONT_CASES = {'japanese-scan', 'japanese-vertical-scan', 'korean-scan', 'japanese-scan-14', 'english-scan-cjk-on-13',   # need FONT: the
-              'ocr-layer-missing-marks', 'cjk-under-latin-layer'}   # default font draws no CJK and no breves, and its text is too small to OCR
+              'ocr-layer-missing-marks', 'cjk-under-latin-layer', 'cjk-short-under-latin-layer', 'cjk-page-among-english-layer',
+              'plate-scan'}   # default font draws no CJK and no breves, and its text is too small to OCR
 LATIN_CASES = {'ocr-layer-missing-marks', 'ocr-layer-matching'}   # scored with Tesseract's script/Latin model
 
 
@@ -50,7 +51,11 @@ JA = 'これは試験用の日本語の文章です。縦書きと横書きの�
 KO = '이것은 시험용 한국어 문장입니다. 가로쓰기와 세로쓰기를 확인합니다.'
 RO = 'Sŏngwŏn met Hŏ Chŏk and Pak Yŏng-man in Ch\'ŏngju; Wŏllyang wrote to Kŭmsŏng.'   # McCune-Reischauer breves
 RO_PLAIN = 'Songwon met Ho Chok and Pak Yong-man in Ch\'ongju; Wollyang wrote to Kumsong.'
-ZH = ['這本書講述了一個小村莊的歷史。', '今天天氣很好，我們去公園散步。', '老師說明年學校會有新的圖書館。']   # the test's own text (#121), 38 different characters
+ZH = ['春天來了，山上的花都開了。', '村裡的孩子們跑到河邊玩水。', '老人坐在樹下講古老的故事。', '市場上有新鮮的魚和青菜。',   # the test's own
+      '今年的雨水比去年多一些。', '學校後面有一片安靜的竹林。', '他每天早上騎車去城裡工作。', '晚上大家一起吃飯聊天。',   #   text (#121): a
+      '這條路通往東邊的小港口。', '冬天的風很冷，要多穿衣服。', '書店裡擺滿了各種新書。', '她寫信告訴朋友家裡的近況。',   #   page of Chinese
+      '遠處傳來寺廟的鐘聲。', '田裡的稻子快要成熟了。', '火車站前面總是很熱鬧。', '我們明年想去南方旅行。']   #   with no line twice
+ZH_SHORT = '春天的山上開滿了紅色花朵'   # a short Chinese page: one line of 12 different characters (review 04 M3)
 W_IN, H_IN, DPI = 6, 8, 300
 
 
@@ -200,9 +205,22 @@ def build(out):
     pdf = pikepdf.new(); wrapped(pdf, photo, '3 Tr\nBT /F1 10.5 Tf 36 52 Td (Plate 1. A grey field.) Tj ET\n'); save('wrapped-plate', pdf)
     # #121: Chinese print under an English-only OCR layer (Latin noise), and the same wrapped for the redo chain
     noise = '3 Tr\n' + ''.join(f'BT /F1 10.5 Tf 36 {H_IN * 72 - 40 - k * 20} Td (Ii ft, & i S # * i IE iff 2 i t f n S j X 1) Tj ET\n' for k in range(16))
-    # (Latin noise with no parentheses or backslashes; 16 lines at 64 px, three sentences in turn: Tesseract's page layout
-    #  reads a sparser synthetic Chinese page as empty, and intake's CJK check wants 20+ different characters)
-    pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + noise, [text_image(ZH, lines=16, size=64)], font=True); save('cjk-under-latin-layer', pdf)
+    # (Latin noise with no parentheses or backslashes)
+    zh_img = text_image(ZH, lines=16, size=64)
+    pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + noise, [zh_img], font=True); save('cjk-under-latin-layer', pdf)
+    pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE + noise[:noise.index('ET') + 3], [text_image([ZH_SHORT], lines=1, size=64)], font=True)
+    save('cjk-short-under-latin-layer', pdf)         # review 04 M3: a short page counts by its share of different characters
+    pdf = pikepdf.new()                              # review 04 H2: one Chinese page among English ones whose layer matches:
+    for k in range(12):                              #   the layer test's 3 CJK sample pages miss it, the probe of pages whose
+        if k == 7: new_page(pdf, FULL_IMAGE + noise, [zh_img], font=True)   # scan looks like a picture finds it (page 8:
+        new_page(pdf, FULL_IMAGE + layer_lines(EN), [en_img], font=True)   # outside the layer test's sample)
+    save('cjk-page-among-english-layer', pdf)
+    # decision 4 (review 04): a plate intake OCRs itself, a photo with a caption long enough to keep its OCR text
+    cap = ['Plate 2. A grey field at the edge of the village,', 'photographed in the early morning before the', 'workers arrived for the day.']
+    plate = Image.new('L', (W_IN * DPI, H_IN * DPI), 255); dp = ImageDraw.Draw(plate)
+    for k in range(0, 1400, 7): dp.line((0, 300 + k, W_IN * DPI, 200 + k + (k % 90)), fill=40 + (k % 120), width=4)
+    for k, t in enumerate(cap): dp.text((150, 2120 + k * 70), t, fill=0, font=ImageFont.truetype(FONT, 44) if FONT else None)
+    pdf = pikepdf.new(); new_page(pdf, FULL_IMAGE, [plate]); save('plate-scan', pdf)
     pdf = pikepdf.new()                              # #129: 300 pages of text, too much for an 8 MB Java heap
     for _ in range(300): new_page(pdf, TEXT_LINES, font=True)
     save('long-text', pdf)
@@ -280,10 +298,17 @@ CASES = [  # (case, pdf, OCR_LANG, what is expected, test on intake.json)
      lambda j: j['status'] == 'stopped' and (j.get('cjk_probe') or {}).get('cjk_pages') == [13]),
     ('Korean scan, OCR_LANG unset → stops, no _vert hint', 'korean-scan', None, 'stopped, no vertical hint',
      lambda j: j['status'] == 'stopped' and 'set OCR_LANG' in j['summary'] and 'vertical' not in j['summary']),
-    ('Chinese print under a Latin-only OCR layer → "OCR layer: CJK missing" CHECK, re-OCR suggested (#121)', 'cjk-under-latin-layer', None,
-     'CHECK, reocr_suggested cjk, OCR text approval needed',
-     lambda j: any(f['what'] == 'OCR layer: CJK missing' and f['check'] for f in j['flags']) and 'cjk' in ((j.get('reocr_suggested') or {}).get('why') or [])
-     and (j.get('glance') or {}).get('ocr_layer_flagged') is True),
+    ('Chinese print under a Latin-only OCR layer → stops for a re-OCR, "OCR layer: CJK missing" CHECK (#121, review 04 H2)', 'cjk-under-latin-layer', None,
+     'stopped: CJK text the existing OCR text lacks; CHECK; reocr_suggested cjk',
+     lambda j: j['status'] == 'stopped' and j['summary'].startswith('CJK text the existing OCR text lacks')
+     and any(f['what'] == 'OCR layer: CJK missing' and f['check'] for f in j['flags']) and 'cjk' in ((j.get('reocr_suggested') or {}).get('why') or [])),
+    ('a short Chinese page (12 characters) under a Latin-only OCR layer → stops for a re-OCR (review 04 M3)', 'cjk-short-under-latin-layer', None,
+     'stopped: CJK text the existing OCR text lacks',
+     lambda j: j['status'] == 'stopped' and j['summary'].startswith('CJK text the existing OCR text lacks')),
+    ('one Chinese page among 12 English OCR-layer pages → found by the picture-like page probe, stops (review 04 H2)', 'cjk-page-among-english-layer', None,
+     'stopped; found on page 8 by the picture-like probe',
+     lambda j: j['status'] == 'stopped' and ((j.get('ocr_layer_test') or {}).get('cjk_on_images') or {}).get('pages') == [8]
+     and 'picture_like_checked' in ((j.get('ocr_layer_test') or {}).get('cjk_probe') or {})),
 ]
 
 
@@ -369,6 +394,9 @@ def main():
              'cjk-under-latin-layer', 'chi_tra+eng', {'REOCR': '1'},
              lambda j: j['status'] == 'done' and (j.get('ocr') or {}).get('reocr_pages') == [1] and not (j['checks'].get('after_ocr') or {}).get('pixels_differ')
              and (j.get('reocr') or {}).get('old_text_file') == 'old_ocr_layer.json.gz'),
+            ('a plate intake OCRs itself, with a three-line caption: its scan stays a figure (review 04, decision 4)', 'plate-scan', None, {},
+             lambda j: j['status'] == 'done' and (j.get('ocr') or {}).get('pages_with_ocr_text') == [1]
+             and list(((j.get('ocr') or {}).get('scan_images_kept_as_figure') or {}).keys()) == ['1'] and not (j.get('ocr') or {}).get('scan_images_marked_decoration')),
             ('redo chain on a wrapped scan, REOCR=1: redo, auto-tag, then the scan becomes decoration (#121 with #128)', 'wrapped-scan', None, {'REOCR': '1'},
              lambda j: j['status'] == 'done' and (j.get('ocr') or {}).get('mode') == 'redo' and (j.get('page_scans') or {}).get('marked_decoration') == [1]),
             ('the tagger with a forced tiny heap (300 pages, 8 MB): a plain out-of-memory stop (#129)', 'long-text', None, {'JAVA_TOOL_OPTIONS': '-Xmx8m'},

@@ -87,3 +87,43 @@ def test_keep_or_read_again(setup, monkeypatch):
 
 def test_env_for():
     assert LG.env_for('eng') == {'ESTIMATE': '1'} and LG.env_for('eng', reocr=True) == {'ESTIMATE': '1', 'REOCR': '1'}
+
+
+def stopped_json(R, **kw):
+    intake_json(R, status='stopped', summary='CJK text the existing OCR text lacks (page 3): run again with REOCR=1 and OCR_LANG naming the language',
+                flags=[{'what': 'OCR layer: CJK missing', 'why': '…', 'pages': [3], 'check': True}],
+                reocr_suggested={'why': ['cjk'], 'pages': [3]}, **kw)
+
+
+def test_the_reocr_stop_question(setup, monkeypatch):
+    """Review 04 H2: CJK under an OCR layer that lacks it stops the run; the question offers only CJK languages, no Keep."""
+    monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng', 'mri', 'chi_tra', 'jpn'])
+    s = settings(setup); R = setup / 'runs' / 'bk' / 'r1'
+    stopped_json(R)
+    q = LG.question(s, str(R))
+    assert LG.asks(str(R)) == 'reocr' and q['kind'] == 'reocr' and q['stopped'] and q['suggested'] is None
+    assert q['choices'] and all(any(x in c[0] for x in LG.CJK) for c in q['choices']) and LG.KEEP not in [c[0] for c in q['choices']]
+    assert 'pictures of text' in q['evidence'][1]
+    with pytest.raises(ValueError, match='Choose a language'): LG.check(s, str(R), LG.KEEP)
+    stopped_json(R, settings={'REOCR': True})                                  # stopped again after a re-OCR: not this question
+    assert LG.question(s, str(R)) is None
+    B = setup / 'runs' / 'batches' / 'b1' / 'bk'; stopped_json(B)             # a batch's PDF: stopped with a CHECK, not asked
+    assert LG.question(s, str(B)) is None and not LG.asks(str(B))
+
+
+def test_the_reocr_stop_answer(setup, monkeypatch):
+    monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng', 'chi_tra'])
+    s = settings(setup)
+    (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book'))
+    key = BK.listing(s)[0]['key']
+    j = NR.start_estimate(s, [], key, 'First'); jobs.update(s['jobs'], j['id'], status='failed', exit=3)
+    R = setup / 'runs' / 'bk' / 'First'; stopped_json(R)
+    a = NR.answer_language(s, 'bk/First', str(R), 'chi_tra+eng')
+    assert a['env_set'] == {'ESTIMATE': '1', 'OCR_LANG': 'chi_tra+eng', 'REOCR': '1'} and 'read again' in a['what']
+
+
+def test_the_cjk_page_rule():
+    """Review 04 M3: 20+ different CJK characters, or 10+ that are 60%+ of those read; misreads repeat a few shapes."""
+    assert intake.cjk_page(12, 12) and intake.cjk_page(19, 17) and intake.cjk_page(560, 86)
+    assert not intake.cjk_page(40, 11) and not intake.cjk_page(30, 11) and not intake.cjk_page(16, 8) and not intake.cjk_page(7, 5)
+    assert not intake.cjk_page(9, 9)                                           # under CJK_PROBE_MIN characters

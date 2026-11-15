@@ -67,13 +67,14 @@ def asks(R):
     (stopped_to_ask): the home page checks that against the jobs, question() too, so a later failure is never hidden."""
     ij = _load(os.path.join(R, '_intake', 'intake.json'))
     if ij: return 'cjk' if ij.get('status') == 'stopped' and any(f.get('what') == 'OCR language needed' for f in ij.get('flags') or []) \
-        else 'reocr' if reocr_pending(R, ij) else None
+        else 'reocr' if reocr_stopped(R, ij) or reocr_pending(R, ij) else None
     if os.path.isfile(os.path.join(R, 'record.json')): return None
     lj = _load(os.path.join(R, '_intake', 'languages.json')) or {}
     return 'first' if lj.get('needs_ocr') and lj.get('ask', True) else None       # ask: the language matters (intake.py)
 
 def question(s, R, js=None, nm=None):
-    """The question for a run folder, or None: {kind: first | cjk, pages, choices: [[value, name]], suggested, evidence}.
+    """The question for a run folder, or None: {kind: first | cjk | reocr, pages, choices: [[value, name]], suggested, evidence}
+    (a reocr question from intake's stop also carries stopped: True, and offers only the CJK languages).
     js: the run's jobs (oldest first); a 'first' question needs its latest estimate to have stopped to ask (exit 4).
     nm: the request's names snapshot, which asks Tesseract for its languages once per request (#93, review 04 M-A); the
     languages are asked only for a question there is (most runs have none), never before the checks that return None."""
@@ -84,6 +85,13 @@ def question(s, R, js=None, nm=None):
         js = [j for j in jobs.all_jobs(s['jobs']) if j.get('dir') == Ra]
     ij = _load(os.path.join(R, '_intake', 'intake.json'))
     if ij:
+        if reocr_stopped(R, ij):                       # review 04 H2: CJK under an OCR layer that lacks it stops the run
+            choices = choices_(); n = ((ij.get('triage') or {}).get('counts') or {}).get('ocr-layer')
+            return {'kind': 'reocr', 'stopped': True, 'pages': n, 'choices': [c for c in choices if any(x in c[0] for x in CJK)] or choices,
+                    'suggested': None,
+                    'evidence': ['The page images show Chinese, Japanese or Korean text that the existing OCR text lacks.',
+                                 'Without that text, those pages would be sent to the AI as pictures of text, so the run stopped before any AI request.',
+                                 'Chinese and Japanese are never guessed: choose the one the PDF is in.']}
         f = next((f for f in ij.get('flags') or [] if f.get('what') == 'OCR language needed'), None)
         if ij.get('status') != 'stopped' or not f:
             if not reocr_pending(R, ij): return None
@@ -119,6 +127,14 @@ def reocr_pending(R, ij):
     if '/batches/' in os.path.abspath(R).replace(os.sep, '/') + '/': return False
     if any(os.path.isfile(os.path.join(R, f)) for f in ('record.json', 'workorder.ai.json')): return False
     return not os.path.isfile(os.path.join(R, '_intake', KEEP_FILE))
+
+def reocr_stopped(R, ij):
+    """Review 04 H2 (interim, until #119): intake stopped because the page images show CJK text the existing OCR layer lacks
+    ("OCR layer: CJK missing"), on a run started from the home page (a batch's PDF stops with a CHECK: the batch page doesn't
+    ask this yet), not read again yet. The answer is a CJK language, read again with REOCR=1; there is no "Keep" here."""
+    if ij.get('status') != 'stopped' or (ij.get('settings') or {}).get('REOCR'): return False
+    if not any(f.get('what') == 'OCR layer: CJK missing' for f in ij.get('flags') or []): return False
+    return '/batches/' not in os.path.abspath(R).replace(os.sep, '/') + '/'
 
 def keep_layer(R):
     """#121: "Keep the Existing OCR Text": recorded beside intake's record, so the question is not asked again."""
