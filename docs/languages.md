@@ -17,7 +17,11 @@ approved.
    one snippet, and each word form lists the numbers of the snippets that hold it. This setup was chosen by a paid
    experiment (2026-11-14, 473 test items, 3 runs per variant) against 15 and 30 words, a sentence each side, and
    unjoined or unnumbered snippets: the longer contexts gave more wrong answers, and the snippet numbers gave fewer
-   wrong answers where the reading beside Chinese characters was removed. The review page shows each form's first
+   wrong answers where the reading beside Chinese characters was removed. A second check (2026-11-14) counted the
+   context in words instead (5, 10 and 15 words each side, numbers and punctuation riding along): 10 words gave fewer
+   wrong answers on the masked items but left more of them to a person, so 15 pieces were kept. Requests of 150 and
+   50 forms (production packs up to 150) were also tested against the small test requests; the packed test requests
+   lacked each book's title, which the results show matters, so the request size stays as it is. The review page shows each form's first
    place exactly as it is sent; rows of runs made before this keep the context stored when their language step ran. The AI names
    a language and a confidence, or says it is a name or English. Nothing else of the book is sent for this step. A book
    flagged for personal information (1.1) is never sent. Requests and replies are kept in `language_run.json`.
