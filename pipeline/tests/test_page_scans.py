@@ -108,3 +108,17 @@ def test_the_ink_rule(tmp_path):
     assert intake.scan_page_is_text(pdfium.PdfDocument(white), 1) == (True, 0.0)
     is_text, share = intake.scan_page_is_text(pdfium.PdfDocument(black), 1)
     assert is_text is False and share > 0.9                        # the text box is masked out; the rest is ink
+
+
+def test_compare_only_reads_the_pages_asked_for(tmp_path):
+    def two(path, second):
+        pdf = pikepdf.new()
+        font = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica))
+        for t in (b'same text', second):
+            pdf.pages.append(pikepdf.Page(pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 300, 300],
+                             Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font)),
+                             Contents=pdf.make_stream(b'BT /F1 12 Tf 20 200 Td (' + t + b') Tj ET'))))
+        pdf.save(path); return path
+    a, b = two(str(tmp_path / 'a.pdf'), b'page two'), two(str(tmp_path / 'b.pdf'), b'page 2!!')
+    assert intake.compare(a, b, near=True)['text'] == [2]
+    assert intake.compare(a, b, near=True, only={1})['text'] == [] and intake.compare(a, b, near=True, only={2})['text'] == [2]

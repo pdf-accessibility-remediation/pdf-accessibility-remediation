@@ -760,13 +760,14 @@ def _blurred_diff(a, b, i):
     h = ImageChops.difference(ia, ib).histogram()
     return sum(h[49:]) / (ia.width * ia.height)
 NEAR, REDRAWN = 0.0005, 0.003
-def compare(a_path, b_path, redrawn=(), near=False):
+def compare(a_path, b_path, redrawn=(), near=False, only=None):
     """Pages whose appearance or text (ignoring white space) differs.
     exact (default): the 40-dpi renderings must be identical (OCR --mode skip adds only invisible text).
     near=True: auto-tagging may split a text run to tag a list label or a link separately, which can move glyph
       edges by a fraction of a pixel; at most 0.05% of the softened page may differ.
     redrawn pages (force OCR re-draws the page as an image: 400 dpi, 1-bit in our test): at most 0.3% may differ, and their text is not
-      compared (it was replaced on purpose)."""
+      compared (it was replaced on purpose).
+    only: compare just these pages (a step that changed only them); the others are left out."""
     # near=True also: a page over NEAR gets a second look at TILE_DPI in quarter-inch tiles (sub-pixel shifts vanish,
     #   a missing mark does not), and a page whose text holds exactly the same characters in a different order passes
     #   as "reordered" (the tagger re-sequenced text runs), with the moved fragments listed.
@@ -779,6 +780,7 @@ def compare(a_path, b_path, redrawn=(), near=False):
     px, tx, tiles, reord, rdiff = [], [], [], [], []
     second = {}                                     # opened on the first page that needs them
     for i in range(len(a)):
+        if only is not None and (i + 1) not in only: continue
         if (i + 1) in redrawn:
             if _blurred_diff(a, b, i) > REDRAWN: px.append(i + 1)
             continue
@@ -2060,7 +2062,7 @@ def main():
             if art['misfits']:
                 flag('Page scans not checked', 'on these pages the whole-page scan could not be marked as decoration safely ('
                      f'{art["misfits"][0][1]}): it stays a figure', [m[0] for m in art['misfits']][:20], check=False)
-            cmp = compare(cur, tagged_out, near=True)
+            cmp = compare(cur, tagged_out, near=True, only=set(art['pages']))   # only those pages' content changed (shared forms are misfits)
             if cmp['pixels'] or cmp['text']: return stop('failed', 'marking page scans as decoration changed a page: stopped', 1)
         ph = drop_placeholder_alt(tagged_out); rec['checks']['placeholder_alt_removed'] = ph
         if rec.get('spreads'):                           # each spread read half by half: tree order only, checked
