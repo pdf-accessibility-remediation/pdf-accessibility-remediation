@@ -252,7 +252,7 @@ def test_the_status_sits_under_the_form_outside_its_language():
     """review 14, 4-6: "label: value" under the word form, outside the lang-attributed element, with role status; Kept and
     Removed for a publisher's tag; "Change Language" with no ellipsis; the same column edge on every row."""
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
-    i = page.index('<div class="lang-left"><div class="lang-form" lang="')                        # inside .lang-top since 2026-11-14
+    i = page.index('<div class="lang-left"><div class="lang-form" lang="')                        # column 1 of the row (round 24)
     seg = page[i:i + 400]
     assert seg.index('</div>') < seg.index('lang-status') and 'role=\"status\"' in seg       # closed before the status
     for w in ("'Tagged: '", "'Removed: '", "'Kept: '", "'Approved: '", "'Left untagged'", "'Not reviewed'"): assert w in page
@@ -308,12 +308,18 @@ def test_codes_only_in_the_status_and_the_list():
     assert "'>' + esc(x.name) + ' · ' + esc(x.code) + '</option>'" in page             # the list keeps "Japanese · ja"
 
 def test_rows_have_one_bottom_line():
-    """Patrick, 2026-11-14: the bottom line holds the buttons (a fixed-width area), then "Change Language"; the text
-    block's left edge is the list's (one width, one gap)."""
+    """Patrick, round 24 (correcting round 23): no fixed-width button area. "Change Language" sits beside the last button
+    (normal button spacing); the text block starts at the list's edge on that row; rows within a fold line up (a subgrid on
+    the fold's list), the edge may differ between folds; at phone width the row stacks."""
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
-    assert '.lang-top { display: grid; grid-template-columns: var(--lang-btn-w) minmax(0, 1fr); gap: 6px 12px;' in page
-    assert '.lang-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;' in page and 'flex: 0 0 var(--lang-btn-w); width: var(--lang-btn-w);' in page
-    assert '.lang-acts select { width: 15em; max-width: calc(100% - var(--lang-btn-w) - 12px); }' in page
+    assert '--lang-btn-w' not in page and 'lang-top' not in page
+    assert '.lang-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 6px; }' in page
+    assert 'grid-template-columns: subgrid;' in page and '.lang-left { grid-column: 1; grid-row: 1; min-width: 0; contain: inline-size; }' in page
+    assert '.lang-info { grid-column: 2; grid-row: 1;' in page and '.lang-btns { grid-column: 1; grid-row: 2; display: flex; gap: 6px;' in page
+    assert '.lang-acts { grid-column: 2; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;' in page
+    i = page.index("'<div class=\"lang-btns\">"); j = page.index("'<div class=\"lang-acts\">' +"); k = page.index('<select data-lang="change"')
+    assert i < j < k                                              # the buttons, then the list (and "Clear Choice") in column 2
+    assert '.lang-list { display: block; } .lang-row { display: flex; flex-direction: column;' in page   # stacked at phone width
 
 def test_a_decided_row_has_clear_choice():
     """Patrick, 2026-11-14: "Clear Choice" at the bottom right of a decided row only; clearing deletes the row's choice,

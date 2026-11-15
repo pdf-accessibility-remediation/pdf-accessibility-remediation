@@ -199,8 +199,10 @@ It opens with one paragraph, the same on every PDF:
 - **Each row:** the word form on the left with its status under it, and beside them the text block: the AI's answer,
   a line of context, its places and evidence. The bottom line holds the buttons, then "Change Language": "Approve",
   "Leave Untagged", "Change Language" (a publisher's tag: "Keep the Tag", "Remove the Tag", "Change Language"; a form
-  the AI left untagged: "Leave Untagged", "Change Language"). The buttons sit in an area of one fixed width, so the
-  list and the text block start at the same edge on every row. At phone width the row stacks.
+  the AI left untagged: "Leave Untagged", "Change Language"). "Change Language" sits right after the last button, and
+  the text block starts at the list's edge. The rows of one fold line up on that edge; it may differ from fold to fold,
+  since the buttons differ. A decided row has "Clear Choice" at its bottom right. At phone width the row stacks, with no
+  sideways scroll.
 - **"Clear Choice"**, at the bottom right of a row that has a choice, puts the row back as if never decided ("Not
   reviewed"), and the counts update. An undecided row doesn't show it.
 - **The status** reads "Not reviewed", "Approved: Chinese · zh", "Tagged: Chinese · zh" (after "Change Language"),

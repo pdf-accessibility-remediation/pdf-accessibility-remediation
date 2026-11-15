@@ -24,7 +24,7 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 syst
 header.top { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; }
 .top h1 { font-size: 17px; margin: 0 0 6px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px 32px; align-items: center; }
-.actions { display: flex; gap: 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }   /* wraps on a phone: no sideways scroll at 375 px (round 24) */
 .show label { margin-left: 8px; }
 .bar { width: 160px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
 .bar i { display: block; height: 100%; background: var(--accent); }
@@ -109,24 +109,29 @@ section > h2 { font-size: 16px; margin: 18px 0 8px; padding-bottom: 4px; border-
 /* #118: the Languages section, one fold per language, one row per word form */
 #languages details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; padding: 6px 12px; }
 #languages summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
-.lang-row { --lang-btn-w: 17.5em; border-top: 1px solid var(--line); border-left: 4px solid transparent; padding: 8px 0 8px 8px; }
+/* one row per word form (round 24, Patrick's correction of round 23): the fold's rows share two columns (a subgrid), so
+   rows within a fold line up. Column 1 is as wide as the fold's widest set of buttons; "Change Language" sits beside the
+   last button and the text block starts at the same edge; the edge may differ from fold to fold. The word form and its
+   status don't widen column 1 (contain: inline-size): they wrap within it. */
+.lang-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 6px; }
+.lang-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: 6px; align-items: start;
+            border-top: 1px solid var(--line); border-left: 4px solid transparent; padding: 8px 0 8px 8px; }
 .lang-row[data-status] { border-left-color: var(--accent); }                     /* marked without moving the content */
-.lang-top { display: grid; grid-template-columns: var(--lang-btn-w) minmax(0, 1fr); gap: 6px 12px; align-items: start; }
-.lang-left { min-width: 0; }
+.lang-left { grid-column: 1; grid-row: 1; min-width: 0; contain: inline-size; }
+.lang-info { grid-column: 2; grid-row: 1; min-width: 0; }
 .lang-status { margin-top: 4px; }
 .lang-form { font-weight: 600; overflow-wrap: anywhere; }
 .lang-ctx, .lang-meta { color: var(--muted, #555); font-size: .92em; overflow-wrap: anywhere; }
 .lang-code { color: var(--muted, #555); font-weight: 400; font-size: .92em; }
-/* the bottom row (2026-11-14, as Patrick meant it): the buttons in a fixed-width area, then "Change Language", whose left
-   edge is the text block's; "Clear Choice" at the right on a decided row */
-.lang-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; }
-.lang-btns { display: flex; gap: 6px; flex: 0 0 var(--lang-btn-w); width: var(--lang-btn-w); }
-.lang-btns button { white-space: nowrap; }        /* "Keep the Tag" + "Remove the Tag" fit the area */
-.lang-acts select { width: 15em; max-width: calc(100% - var(--lang-btn-w) - 12px); }   /* beside the buttons whatever the row's width */
-.lang-clear { margin-left: auto; white-space: nowrap; }        /* on a line of its own, right, when the row is narrow */
+.lang-btns { grid-column: 1; grid-row: 2; display: flex; gap: 6px; align-self: center; }
+.lang-btns button { white-space: nowrap; }
+.lang-acts { grid-column: 2; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.lang-acts select { width: 15em; max-width: 100%; }
+.lang-clear { margin-left: auto; white-space: nowrap; }        /* bottom right of a decided row */
 .lang-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
-@media (max-width: 600px) { .lang-top { grid-template-columns: minmax(0, 1fr); } .lang-acts { flex-wrap: wrap; }
-  .lang-btns { flex: 1 1 100%; width: auto; flex-wrap: wrap; } .lang-acts select { max-width: 100%; } .lang-clear { margin-left: 0; } }
+@media (max-width: 600px) {                                   /* stacked: form, text, buttons, then the list and "Clear Choice" */
+  .lang-list { display: block; } .lang-row { display: flex; flex-direction: column; align-items: stretch; }
+  .lang-left { contain: none; } .lang-btns { flex-wrap: wrap; align-self: flex-start; } }
 .card[data-status=approved] { border-left-color: var(--ok); }
 .card[data-status=changed] { border-left-color: var(--change); }
 .card[data-status=rejected] { border-left-color: var(--reject); }
@@ -1734,12 +1739,13 @@ function langRowHtml(r) {
   const keep = r.current ? 'Keep the Tag' : r.ai ? 'Approve' : 'Leave Untagged';
   const drop = r.current ? 'Remove the Tag' : r.ai ? 'Leave Untagged' : null;
   return '<div class="lang-row" id="lang-' + esc(r.id) + '" data-id="' + esc(r.id) + '"' + (d.status ? ' data-status="' + esc(d.status) + '"' : '') + '>' +
-    '<div class="lang-top"><div class="lang-left"><div class="lang-form" lang="' + esc(r.ai || '') + '">' + esc(r.form) + '</div>' +   // the status outside the lang element
+    '<div class="lang-left"><div class="lang-form" lang="' + esc(r.ai || '') + '">' + esc(r.form) + '</div>' +   // the status outside the lang element
     '<div class="lang-meta lang-status" role="status">' + langStatusHtml(r, d) + '</div></div>' +
     '<div class="lang-info"><div>' + what + '</div>' + (r.snippet ? '<div class="lang-ctx">' + esc(r.snippet) + '</div>' : '') +
     '<div class="lang-meta">' + esc(r.places || 0) + ' place' + (r.places === 1 ? '' : 's') + (pagesTxt ? ' · ' + esc(pagesTxt) : '') +
-    (r.evidence ? ' · Evidence: ' + esc(r.evidence) : '') + '</div></div></div>' +
-    '<div class="lang-acts"><div class="lang-btns"><button type="button" data-lang="keep">' + keep + '</button>' + (drop ? '<button type="button" data-lang="drop">' + drop + '</button>' : '') + '</div>' +
+    (r.evidence ? ' · Evidence: ' + esc(r.evidence) : '') + '</div></div>' +
+    '<div class="lang-btns"><button type="button" data-lang="keep">' + keep + '</button>' + (drop ? '<button type="button" data-lang="drop">' + drop + '</button>' : '') + '</div>' +
+    '<div class="lang-acts">' +
     '<select data-lang="change" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select>' +
     (d.status ? '<button type="button" class="lang-clear" data-lang="clear" aria-label="Clear Choice for ' + esc(r.form) + '">Clear Choice</button>' : '') +   // back to "Not reviewed"
     '</div></div>';
