@@ -661,11 +661,15 @@ function langCard(q, id) {
   if (!q) return '';
   const opts = (q.suggested ? '' : '<option value="" selected disabled>Choose a language</option>') +
     q.choices.map(c => '<option value="' + esc(c[0]) + '"' + (c[0] === q.suggested ? ' selected' : '') + '>' + esc(c[1]) + '</option>').join('');
-  return '<p>' + (q.kind === 'cjk' ? 'The scanned pages need a language with Chinese, Japanese or Korean characters before they can be read (OCR).' :
+  return '<p>' + (q.kind === 'reocr' ? 'This PDF already has OCR text, but it seems to have lost characters that the page images show. ' +
+      'The scanned pages can be read again by OCR in their language; the page images stay exactly as they are. Text read again ' +
+      'requires a person\'s approval ("OCR Text Approval") before the PDF can be ready to ship.' :
+      q.kind === 'cjk' ? 'The scanned pages need a language with Chinese, Japanese or Korean characters before they can be read (OCR).' :
       (q.pages === 1 ? '1 page of this PDF is a scan with no text, so it is read by OCR. Choose the language it is in.' :
        (q.pages ? q.pages + ' pages of this PDF are scans' : 'Some pages are scans') + ' with no text, so they are read by OCR. Choose the language they are in.')) + '</p>' +
     (q.evidence && q.evidence.length ? '<ul class="pp-note">' + q.evidence.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
-    (q.suggested ? '<p class="pp-note">The suggestion below comes from these findings; check it before you continue.</p>' : '') +
+    (q.kind === 'reocr' ? '<p class="pp-note">"Keep the Existing OCR Text" goes on with the current estimate. Choosing a language gets a new estimate with the pages read again.</p>' :
+     q.suggested ? '<p class="pp-note">The suggestion below comes from these findings; check it before you continue.</p>' : '') +
     '<div class="pp-row pp-lang"><label for="' + id + '">Language of the Scanned Pages</label><select id="' + id + '">' + opts + '</select>' +
     '<button type="button" class="pp-primary" data-act="language" data-sel="' + id + '">Continue</button></div>';
 }
@@ -787,6 +791,7 @@ box.addEventListener('click', async e => {
         const v = $(b.dataset.sel).value;
         if (!v) { msg('Choose a language first.', false, true); $(b.dataset.sel).focus(); return; }
         [s, r] = await api(API + '/language', { lang: v });
+        if (s === 200 && r.kept) { msg('The existing OCR text is kept.', true, true); return poll(true); }   // #121: no job
       } else if (act === 'spend') {
         [s, r] = await api(API + '/spend', { kind: 'workorder', fingerprint: st.estimate.fingerprint });
       } else if (act === 'replay') {

@@ -438,6 +438,7 @@ def make(s, setup, code=None):
                     elif segs[-1] == 'language': j = NR.answer_language(s, run, R, str(body.get('lang') or ''))   # D4
                     else: j = NR.start_rerun(s, run, R) if NR.retry_kind(R) == 'rerun' else NR.again_estimate(s, run, R)
                 except ValueError as e: return self.send(409, {'error': str(e)})
+                if j is None: return self.send(200, {'kept': True})   # #121: "Keep the Existing OCR Text" starts no job
                 jobs.tick(J, s)
                 return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
             if segs[-1] == 'replay':                            # New Run from the Saved Reply (free)

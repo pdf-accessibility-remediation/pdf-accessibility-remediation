@@ -101,9 +101,23 @@ The test above can't score an existing OCR layer, because its pages are images. 
 - **Diacritics:** on pages whose letters agree, when the script model reads many marked vowels and the layer has almost none, it is a CHECK "OCR layer: diacritics". Such a page is judged on its letters.
 - Latin pages with 10 or more math symbols are not scored.
 
-This is never a stop, and the layer is never replaced: it may be the library's record.
+- **Chinese, Japanese or Korean missing (#121):** when the layer is in Latin letters, up to 3 of the sample page images are also read with the CJK packs (stopping at the first one that holds CJK). An English layer over CJK print is Latin noise to the script model too, so this is the only way to see it. Pages whose images show CJK the layer lacks are a CHECK, "OCR layer: CJK missing".
 
-A flagged layer (doubtful, unusable or missing diacritics), or one the test could not check ("OCR layer not checked"), makes OCR text approval part of "Ready to ship". An unknown layer is not "not needed". The same goes for OCR text intake added. The row "OCR text reviewed by a person" stays CHECK until the review page's OCR Text section (or `review_ocr.py`) records "approved".
+This is never a stop, and the layer is never replaced unless a person asks for it (next section): it may be the library's record. With diacritics or CJK missing, intake suggests reading the pages again (`reocr_suggested` in `intake.json`), and the app asks.
+
+### Reading an existing OCR layer again (re-OCR)
+
+`REOCR=1` with `OCR_LANG` (in the app: "Read the Scanned Pages Again" in "Language of the Scanned Pages") reads the pages that have an existing OCR layer again, with OCRmyPDF's redo mode: the old invisible text is removed and a new reading takes its place. The page images stay exactly as they are. It differs from `FORCE_OCR=1`, which redraws every page as a new image and replaces any text; the two can't be combined.
+
+- **Which pages:** only those triage found with an existing OCR layer, plus image-only pages that would be OCR'd anyway. A page with visible text, such as a generated cover, is never read again: redo would add OCR text over it.
+- **The check:** every page must look exactly as before, pixel for pixel at 40 dpi (the same check as for added OCR text), and text may change only on the pages read again. Anything else stops the book.
+- **On record:** the old layer's text, page by page, in `_intake/old_ocr_layer.json.gz`, its sha256 per page in `intake.json` (`reocr`), with the producer and the layer test's scores, so a person can compare what was replaced.
+- **Approval:** the new text is OCR text intake added, so "OCR Text Approval" is required before the book can be ready to ship.
+- **Languages:** Tesseract has no Hawaiian pack. The Māori pack (`mri+eng`, "Hawaiian or Māori and English" in the app) reads kahakō; the ʻokina comes out as a left quotation mark (U+2018) or an apostrophe, not U+02BB. Chinese, Japanese and Korean are read with their packs, but how accurately is not known until a reader checks; pinyin tone marks are lost. Better CJK OCR is #119.
+- **Time:** on an 8-core Mac, about 0.4–0.7 s per page for Latin or Korean pages, and about 3 s per page for a dense Chinese dictionary (about 74 minutes for 1,521 pages). Other machines were not measured.
+- Some lines can read worse than the old layer did (on one test page, exercise labels such as "2. a." came out as other letters): that is why the approval is required.
+
+A flagged layer (doubtful, unusable, missing diacritics, or missing CJK the page images show), or one the test could not check ("OCR layer not checked"), makes OCR text approval part of "Ready to ship". An unknown layer is not "not needed". The same goes for OCR text intake added. The row "OCR text reviewed by a person" stays CHECK until the review page's OCR Text section (or `review_ocr.py`) records "approved".
 
 ## 3. Language
 

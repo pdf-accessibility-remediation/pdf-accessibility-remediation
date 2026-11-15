@@ -18,6 +18,8 @@ import os, json
 from . import books as BK
 
 CJK = ('chi_tra', 'chi_sim', 'jpn', 'kor')
+KEEP = 'keep'                                        # #121: "Keep the Existing OCR Text", the default answer to a re-OCR question
+KEEP_FILE = 'reocr_choice.json'                      # _intake/<this>: the person kept the existing OCR text (the question goes)
 SCRIPT_WORDS = {'kana': 'Japanese', 'hangul': 'Korean', 'han': 'Chinese characters', 'Latin': 'Latin script', 'Japanese': 'Japanese', 'Hiragana': 'Japanese', 'Katakana': 'Japanese', 'Korean': 'Korean',
                 'Hangul': 'Korean', 'Han': 'Chinese characters', 'HanS': 'Chinese characters', 'HanT': 'Chinese characters',
                 'Cyrillic': 'Cyrillic script', 'Greek': 'Greek script', 'Arabic': 'Arabic script', 'Hebrew': 'Hebrew script',
@@ -64,7 +66,8 @@ def asks(R):
     (the home page's cached rows). A 'first' is a question only while the run's latest estimate stopped to ask
     (stopped_to_ask): the home page checks that against the jobs, question() too, so a later failure is never hidden."""
     ij = _load(os.path.join(R, '_intake', 'intake.json'))
-    if ij: return 'cjk' if ij.get('status') == 'stopped' and any(f.get('what') == 'OCR language needed' for f in ij.get('flags') or []) else None
+    if ij: return 'cjk' if ij.get('status') == 'stopped' and any(f.get('what') == 'OCR language needed' for f in ij.get('flags') or []) \
+        else 'reocr' if reocr_pending(R, ij) else None
     if os.path.isfile(os.path.join(R, 'record.json')): return None
     lj = _load(os.path.join(R, '_intake', 'languages.json')) or {}
     return 'first' if lj.get('needs_ocr') and lj.get('ask', True) else None       # ask: the language matters (intake.py)
@@ -82,7 +85,12 @@ def question(s, R, js=None, nm=None):
     ij = _load(os.path.join(R, '_intake', 'intake.json'))
     if ij:
         f = next((f for f in ij.get('flags') or [] if f.get('what') == 'OCR language needed'), None)
-        if ij.get('status') != 'stopped' or not f: return None
+        if ij.get('status') != 'stopped' or not f:
+            if not reocr_pending(R, ij): return None
+            rs = ij['reocr_suggested']; n = ((ij.get('triage') or {}).get('counts') or {}).get('ocr-layer')
+            ev = (['The page images show accents or other marks that the existing OCR text lacks.'] if 'diacritics' in rs.get('why', []) else []) \
+                + (['The page images show Chinese, Japanese or Korean text that the existing OCR text lacks.'] if 'cjk' in rs.get('why', []) else [])
+            return {'kind': 'reocr', 'pages': n, 'choices': [[KEEP, 'Keep the Existing OCR Text']] + choices_(), 'suggested': KEEP, 'evidence': ev}
         choices = choices_()
         cj = [c for c in choices if any(x in c[0] for x in CJK)]
         pages = f.get('pages') or []
@@ -98,9 +106,25 @@ def question(s, R, js=None, nm=None):
     return {'kind': 'first', 'pages': lj.get('pages_to_ocr'), 'choices': choices,
             'suggested': sug if sug in [c[0] for c in choices] else None, 'evidence': evidence(lj)}
 
-def env_for(lang):
-    """The estimate's environment for an answer: English leaves OCR_LANG unset (intake's own default: the run is as before)."""
-    return {'ESTIMATE': '1', **({} if lang == 'eng' else {'OCR_LANG': lang})}
+def env_for(lang, reocr=False):
+    """The estimate's environment for an answer: English leaves OCR_LANG unset (intake's own default: the run is as before).
+    reocr (#121): the existing OCR text is read again (REOCR=1), in that language."""
+    return {'ESTIMATE': '1', **({} if lang == 'eng' else {'OCR_LANG': lang}), **({'REOCR': '1'} if reocr else {})}
+
+def reocr_pending(R, ij):
+    """#121: intake suggested reading the existing OCR text again, and nobody has answered: a run started from the home page
+    (not a batch's PDF: the batch page doesn't ask this yet), its intake done without REOCR, nothing decided by the AI yet,
+    and "Keep the Existing OCR Text" not chosen."""
+    if not ij.get('reocr_suggested') or ij.get('status') != 'done' or (ij.get('settings') or {}).get('REOCR'): return False
+    if '/batches/' in os.path.abspath(R).replace(os.sep, '/') + '/': return False
+    if any(os.path.isfile(os.path.join(R, f)) for f in ('record.json', 'workorder.ai.json')): return False
+    return not os.path.isfile(os.path.join(R, '_intake', KEEP_FILE))
+
+def keep_layer(R):
+    """#121: "Keep the Existing OCR Text": recorded beside intake's record, so the question is not asked again."""
+    import datetime
+    p = os.path.join(R, '_intake', KEEP_FILE); tmp = p + '.tmp'
+    json.dump({'choice': KEEP, 'written': datetime.datetime.now().isoformat(timespec='seconds')}, open(tmp, 'w', encoding='utf-8')); os.replace(tmp, p)
 
 def check(s, R, lang):
     """The answer, checked against the question this run asks now; raises ValueError in plain words."""

@@ -168,7 +168,7 @@ def authorize(s, kind, run, R, fingerprint):
             from . import runs as RN
             if RN.moved_words(s, ej.get('book_sha')) and not (src and os.path.isfile(src)): raise Refused(MOVED)   # D8: no copy back yet
             raise Refused('This PDF\'s file has changed or is gone since the estimate. Go back to the home page and start a new run.')
-    keep = {k: v for k, v in (ej.get('env_set') or {}).items() if k in ('OCR_LANG',)}
+    keep = {k: v for k, v in (ej.get('env_set') or {}).items() if k in ('OCR_LANG', 'REOCR')}   # #121: the intake it was estimated on
     keep['REVIEW'] = '1'                                     # every app run stops for review (D2, Patrick 2026-11-06), whatever an older job file says
     if test:
         reply = os.path.join(s['test_reply_dir'], f'{ej["argv"][3]}.txt')

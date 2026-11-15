@@ -311,6 +311,7 @@ def take_back(s, p):
 # Each choice is shown only when every Tesseract pack it names is installed. English is the default; nothing is guessed.
 OCR_CHOICES = [('eng', 'English'), ('chi_tra+eng', 'Chinese (Traditional) and English'), ('chi_sim+eng', 'Chinese (Simplified) and English'),
                ('jpn+eng', 'Japanese and English'), ('jpn_vert+jpn+eng', 'Japanese (vertical text) and English'), ('kor+eng', 'Korean and English'),
+               ('mri+eng', 'Hawaiian or Māori and English'),   # #121: Tesseract has no Hawaiian pack; Māori's reads the kahakō
                ('vie+eng', 'Vietnamese and English'), ('tgl+eng', 'Tagalog and English'), ('fra+eng', 'French and English'),
                ('deu+eng', 'German and English'), ('spa+eng', 'Spanish and English')]
 

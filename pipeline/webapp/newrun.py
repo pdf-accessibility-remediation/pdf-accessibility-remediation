@@ -153,14 +153,17 @@ def start_estimate(s, setup, key, plain, from_run=None):
 def answer_language(s, run, R, lang):
     """"Language of the Scanned Pages" answered (D4): the estimate again, with that OCR language (English: unset)."""
     from . import lang as LG
+    q = LG.question(s, R) or {}
     name = LG.check(s, R, lang)
+    if q.get('kind') == 'reocr' and lang == LG.KEEP:     # #121: nothing to run; the estimate already shown stands
+        LG.keep_layer(R); return None
     ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] == 'estimate']
     if not ej: raise ValueError('This run wasn\'t started from the home page, so its settings aren\'t known here. Start a new run from the home page.')
     e = ej[-1]
-    env = LG.env_for(lang)
+    env = LG.env_for(lang, reocr=q.get('kind') == 'reocr')
     keep = {k: e.get(k) for k in ('book_sha', 'book_file')}
     return jobs.create(s['jobs'], 'estimate', run, e['argv'], config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
-                       what=f'Get the estimate ({name})', ocr_name=name, **keep)
+                       what=f'Get the estimate ({"OCR text read again: " if q.get("kind") == "reocr" else ""}{name})', ocr_name=name, **keep)
 
 def again_estimate(s, run, R):
     """"Get a New Estimate": the same settings as the run's last estimate job (never a form again)."""
@@ -176,7 +179,7 @@ def again_estimate(s, run, R):
         else:
             from . import runs as RN
             if RN.moved_words(s, e.get('book_sha')): raise ValueError(SP.MOVED)
-    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('ESTIMATE', 'OCR_LANG', 'ASK_LANG')}
+    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('ESTIMATE', 'OCR_LANG', 'ASK_LANG', 'REOCR')}
     keep = {k: e.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name', 'ocr_name')}
     return jobs.create(s['jobs'], 'estimate', run, argv, config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
                        what='Get a new estimate', **keep)
@@ -200,7 +203,7 @@ def start_rerun(s, run, R):
     ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] in ('estimate', 'spend', 'rerun')]
     if not ej: raise ValueError('This run wasn\'t started from the home page, so its settings aren\'t known here.')
     e = ej[-1]
-    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('OCR_LANG',)}
+    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('OCR_LANG', 'REOCR')}   # #121: the intake it was estimated on
     env['REVIEW'] = '1'                                  # every app run stops for review (D2), whatever an older job file says
     keep = {k: e.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name', 'ocr_name')}
     return jobs.create(s['jobs'], 'rerun', run, e['argv'], config.child_env(s, env), env_set=env, R=R, what='Try again (the saved reply is reused)', **keep)

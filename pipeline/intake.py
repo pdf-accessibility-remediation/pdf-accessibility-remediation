@@ -886,6 +886,24 @@ def spoken_values(values):
         else: out.append(f'{n} × "{v[:20]}"')
     more = sum(values.values()) - sum(n for _, n in values.most_common(6))
     return ', '.join(out) + (f', {more} more' if more else '')
+def reocr_pages(kinds, scan_pages, ocr_setting):
+    """#121: the pages REOCR reads again, from triage only: the pages with an existing OCR layer ('ocr-layer'), and the
+    image-only pages that OCR would read anyway. A page with visible text (born-digital, such as the generated cover) is
+    never on the list: redo would add OCR text over it."""
+    return {'reocr': sorted(kinds.get('ocr-layer') or []), 'image': sorted(scan_pages) if ocr_setting != 'off' else []}
+def keep_old_layer(path, pages, outd, rec, lang):
+    """#121 (M9): the existing OCR layer that REOCR replaces, kept on record: each page's text (PDFium) in
+    <out_dir>/old_ocr_layer.json.gz and its sha256 in intake.json, with the producer and the layer test's scores."""
+    import gzip
+    d = pdfium.PdfDocument(path); old = {}
+    try:
+        for n in pages: old[str(n)] = d[n - 1].get_textpage().get_text_range()
+    finally: d.close()
+    with gzip.open(os.path.join(outd, 'old_ocr_layer.json.gz'), 'wt', encoding='utf-8') as f: json.dump(old, f, ensure_ascii=False)
+    ol = rec.get('ocr_layer_test') or {}
+    return {'pages': pages, 'language': lang, 'producer': rec['original'].get('producer'),
+            'layer_test': {k: ol.get(k) for k in ('verdict', 'median_cer', 'scored', 'diacritics', 'cjk_on_images')},
+            'old_text_file': 'old_ocr_layer.json.gz', 'old_text_sha256': {k: hashlib.sha256(v.encode('utf-8')).hexdigest()[:16] for k, v in old.items()}}
 def keepers(path):
     """What must survive every step: bookmarks, link annotations, page labels, page count."""
     with pikepdf.open(path) as p:
@@ -1368,7 +1386,7 @@ def main():
     SRC, OUTD = os.path.abspath(args[0]), os.path.abspath(args[1]); PLAN_ONLY = '--plan-only' in sys.argv
     os.makedirs(OUTD, exist_ok=True)
     if '--languages' in sys.argv: return languages_only(SRC, OUTD)
-    settings = {'FORCE_OCR': os.environ.get('FORCE_OCR') == '1', 'OCR': os.environ.get('OCR', 'auto'),
+    settings = {'FORCE_OCR': os.environ.get('FORCE_OCR') == '1', 'REOCR': os.environ.get('REOCR') == '1', 'OCR': os.environ.get('OCR', 'auto'),
                 'OCR_LANG': os.environ.get('OCR_LANG') or None, 'plan_only': PLAN_ONLY,
                 'thresholds': {'cer_ok': CER_OK, 'cer_bad': CER_BAD, 'ocr_dpi': OCR_DPI, 'sample': SAMPLE, 'extra': EXTRA,
                                'min_scored': MIN_SCORED, 'score_min_chars': SCORE_MIN_CHARS,
@@ -1384,8 +1402,9 @@ def main():
     # an earlier finished intake for the same file and settings is reused (batch estimate → run, FROM= reruns)
     if os.path.exists(J) and not PLAN_ONLY:
         old = json.load(open(J))
-        same = old.get('original', {}).get('sha256') == src_sha and {k: old.get('settings', {}).get(k) for k in ('FORCE_OCR', 'OCR', 'OCR_LANG')} \
-               == {k: settings[k] for k in ('FORCE_OCR', 'OCR', 'OCR_LANG')}
+        same = old.get('original', {}).get('sha256') == src_sha and {k: old.get('settings', {}).get(k, False if k == 'REOCR' else None)
+                                                                     for k in ('FORCE_OCR', 'REOCR', 'OCR', 'OCR_LANG')} \
+               == {k: settings[k] for k in ('FORCE_OCR', 'REOCR', 'OCR', 'OCR_LANG')}
         if os.environ.get('INTAKE_REUSE') == '1' and old.get('original', {}).get('sha256') == src_sha:
             same = True                                  # FROM= rerun: the saved reply was written for this intake result
         elif same and old.get('status') == 'skipped':    # skipped by an older intake: still a real tag tree today?
@@ -1701,13 +1720,31 @@ def main():
                     ol['diacritics'] = {'marked_vowels_ocr': mv_ocr, 'marked_vowels_layer': mv_layer, 'pages': mark_pages}
                     flag('OCR layer: diacritics', f'the page images show diacritics the existing OCR layer lacks ({mv_ocr} marked vowels '
                          f'read on {n_lat} sample pages, {mv_layer} in the layer: e.g. ŏ/ŭ lost as o/u). The OCR model reads the marks '
-                         'only roughly, so a person compares the pages; the layer is not changed', mark_pages[:20] or None)
+                         'only roughly, so a person compares the pages; the layer is not changed. A re-OCR in the book\'s language is '
+                         'suggested (REOCR=1 with OCR_LANG; in the app, "Read the Scanned Pages Again")', mark_pages[:20] or None)
             else:
                 ol['verdict'] = 'not enough pages scored'
                 why_ = sorted({str(r.get('reason')) for r in ol['pages'] if r.get('reason')})
                 flag('OCR layer not checked', 'the existing OCR layer on the scanned pages could not be compared with a fresh OCR '
                      'reading on any sample page (' + ('; '.join(why_)[:300] or 'no sample page') + '): a person compares a few pages with '
                      'the page image', [r['page'] for r in ol['pages']][:20])
+            # #121: a Latin layer over CJK print reads as Latin noise on both sides, so the sample page images are also
+            #   probed for CJK, as before OCR (up to LAYER_CJK_SAMPLE pages, stopping at the first that holds CJK)
+            have = [l for l in CJK_PROBE_LANGS.split('+') if l in tv['tesseract_langs']]
+            if have and not any(r.get('script') in ('kana', 'hangul', 'han') for r in ol['pages']):
+                t2 = time.time(); probe = pick[:: max(1, len(pick) // LAYER_CJK_SAMPLE)][:LAYER_CJK_SAMPLE]; hit = {}; checked = 0
+                for i in probe:
+                    img = os.path.join(tmp, f'olc{i}.png'); render(doc, i - 1, OCR_DPI, img); n = cjk_probe(img, '+'.join(have)); os.remove(img)
+                    checked += 1
+                    if n >= CJK_PROBE_MIN: hit[i] = n; break
+                ol['cjk_probe'] = {'langs': '+'.join(have), 'pages_checked': checked, 'seconds': round(time.time() - t2, 1)}
+                if hit:
+                    ol['cjk_on_images'] = {'pages': sorted(hit), 'cjk_characters': {str(k): v for k, v in hit.items()}}
+                    flag('OCR layer: CJK missing', 'The page images show Chinese, Japanese or Korean text that the existing OCR text lacks. '
+                         'A re-OCR with that language is suggested (REOCR=1 with OCR_LANG; in the app, "Read the Scanned Pages Again")', sorted(hit))
+            if ol.get('diacritics') or ol.get('cjk_on_images'):
+                rec['reocr_suggested'] = {'why': (['diacritics'] if ol.get('diacritics') else []) + (['cjk'] if ol.get('cjk_on_images') else []),
+                                          'pages': (ol.get('diacritics') or {}).get('pages') or (ol.get('cjk_on_images') or {}).get('pages')}
             rec['ocr_layer_test'] = ol
         # ---- the plan
         force = tt['verdict'] == 'unusable'
@@ -1717,6 +1754,9 @@ def main():
             or sum(1 for i in text_pages if inv[i - 1]['math_fonts']) >= max(3, 0.1 * len(text_pages))
         why_ocr = (f'the producer ({rec["original"]["producer"][:40]}) writes text rather than scanning it' if BORN_DIGITAL.search(rec['original'].get('producer') or '')
                    else 'the book has math') if written else None
+        if settings['REOCR'] and settings['FORCE_OCR']:
+            rec['plan'] = plan
+            return stop('stopped', 'REOCR=1 and FORCE_OCR=1 are both set: choose one (REOCR keeps the page images, FORCE_OCR redraws them)', 3)
         if force and not settings['FORCE_OCR']:
             rec['plan'] = plan
             if written:
@@ -1739,13 +1779,21 @@ def main():
             plan['ocr_mode'] = 'force'; plan['ocr_pages'] = list(range(1, len(inv) + 1))
             flag('Force OCR', 'FORCE_OCR=1: every page is now a page image with OCR text over it; the original text layer '
                  'was replaced. OCR text is machine output: a person should check it before it ships')
-        elif scan_pages:
+        elif scan_pages and not settings['REOCR']:
             if settings['OCR'] == 'off':
                 flag('OCR off', 'OCR=off: these image-only pages have no text for a screen reader', scan_pages)
             else: plan['ocr_mode'] = 'skip'; plan['ocr_pages'] = scan_pages
+        if settings['REOCR'] and not force:              # #121: read the existing OCR layer's pages again (redo mode)
+            rp = reocr_pages(kinds, scan_pages, settings['OCR'])
+            if not rp['reocr']:
+                flag('Re-OCR', 'REOCR=1, but no page has an existing OCR layer: nothing was read again', check=False)
+                if rp['image']: plan['ocr_mode'] = 'skip'; plan['ocr_pages'] = rp['image']
+            else:
+                plan['ocr_mode'] = 'redo'; plan['ocr_pages'] = rp['reocr'] + rp['image']; plan['ocr_pages'].sort()
+                plan['reocr_pages'] = rp['reocr']
         rec['plan'] = plan
         # ---- CJK text on the pages to be OCR'd (3.7): never guessed; OCR_LANG must name the language
-        if plan['ocr_mode'] == 'skip' and plan['ocr_pages']:
+        if plan['ocr_mode'] in ('skip', 'redo') and plan['ocr_pages']:
             have = [l for l in CJK_PROBE_LANGS.split('+') if l in tv['tesseract_langs']]
             if not have:
                 flag('CJK check not run', f'none of the Tesseract packs {CJK_PROBE_LANGS} is installed: CJK text on the OCR pages '
@@ -1754,7 +1802,7 @@ def main():
                 found = {}; cjk_lang = any(l in ocr_lang for l in ('chi', 'jpn', 'kor')); ps = plan['ocr_pages']
                 sample = sorted({ps[int(k * (len(ps) - 1) / (PROBE_SAMPLE - 1))] for k in range(PROBE_SAMPLE)})   # spread through the book
                 if len(ps) <= PROBE_ALL_MAX: mode, todo = 'all', ps
-                elif cjk_lang: mode, todo = 'sample', sample
+                elif cjk_lang or plan['ocr_mode'] == 'redo': mode, todo = 'sample', sample   # redo: hundreds of pages, a sample
                 else: mode, todo = 'until the first CJK page', sample + [p for p in ps if p not in sample]
                 checked = 0
                 for p in todo:
@@ -1838,22 +1886,38 @@ def main():
         if plan['ocr_mode']:
             out = os.path.join(tmp, 'ocr.pdf')
             cmd = ['ocrmypdf', '--mode', plan['ocr_mode'], '--output-type', 'pdf', '--optimize', '0', '--oversample', str(OCR_DPI),
-                   '-l', ocr_lang] + (['--pages', ','.join(map(str, plan['ocr_pages']))] if plan['ocr_mode'] == 'skip' else []) + [cur, out]
+                   '-l', ocr_lang] + (['--pages', ','.join(map(str, plan['ocr_pages']))] if plan['ocr_mode'] in ('skip', 'redo') else []) + [cur, out]
+            if plan['ocr_mode'] == 'redo':               # #121 (M9): the layer being replaced, kept on record (text and hash)
+                rec['reocr'] = keep_old_layer(cur, plan['reocr_pages'], OUTD, rec, ocr_lang)
             t1 = time.time(); r = run(cmd)
             rec['steps'].append({'step': 'ocr', 'tool': f'OCRmyPDF {tv["ocrmypdf"]} / Tesseract {tv["tesseract"]}',
                                  'command': ' '.join(cmd[:-2]) + ' <in> <out>', 'seconds': round(time.time() - t1, 1),
                                  'exit': r.returncode, 'log_tail': (r.stderr or '')[-1500:]})
             if r.returncode != 0: return stop('failed', f'OCRmyPDF failed (exit {r.returncode}): see intake.json', 1)
             # image-only pages whose OCR text is not text-like keep no OCR text (they are pictures)
-            if plan['ocr_mode'] == 'skip':
+            if plan['ocr_mode'] in ('skip', 'redo'):
                 od = pdfium.PdfDocument(out); kept, dropped = [], []
-                for i in plan['ocr_pages']:
+                for i in [p_ for p_ in plan['ocr_pages'] if p_ not in (plan.get('reocr_pages') or [])]:   # image-only pages only
                     ok, good, toks = textlike(od[i - 1].get_textpage().get_text_range())
                     (kept if ok else dropped).append({'page': i, 'words': good, 'tokens': toks})
                 od.close()
                 if dropped: strip_ocr_layer(out, [d['page'] for d in dropped])
-                rec['ocr'] = {'mode': 'skip', 'pages_with_ocr_text': [k['page'] for k in kept],
+                rec['ocr'] = {'mode': plan['ocr_mode'], 'pages_with_ocr_text': sorted([k['page'] for k in kept] + (plan.get('reocr_pages') or [])),
                               'image_pages_without_text': [d['page'] for d in dropped], 'per_page': kept + dropped}
+                if plan['ocr_mode'] == 'redo':
+                    rec['ocr']['reocr_pages'] = plan['reocr_pages']
+                    od = pdfium.PdfDocument(out)             # a page the new reading found (almost) no text on has lost its text
+                    def thin_(s): return not textlike(s)[0] and sum(1 for ch in s if cjk_char(ch)) < CJK_CHARS   # CJK has no word breaks
+                    thin = [p_ for p_ in plan['reocr_pages'] if thin_(od[p_ - 1].get_textpage().get_text_range())]; od.close()
+                    if thin:
+                        rec['ocr']['reocr_little_text'] = thin
+                        flag('OCR text read again: little or no text', 'on these pages the new OCR reading found little or no text, so they '
+                             'now carry less text than before (the old text is kept in old_ocr_layer.json.gz): a person compares each with its '
+                             'page image, or the book is run again without REOCR', thin[:20])
+                    flag('OCR text read again', f'REOCR=1: the existing OCR text on {len(plan["reocr_pages"])} page{"s" if len(plan["reocr_pages"]) != 1 else ""} '
+                         f'was replaced by a new OCR reading ({ocr_lang}); the page images are unchanged (checked pixel for pixel). The old '
+                         'text is kept in old_ocr_layer.json.gz. The new text is machine output: a person compares it with the page images '
+                         'and approves it before the book ships', plan['reocr_pages'][:20])
                 if dropped:
                     flag('Image pages with no text', 'image-only pages where OCR found no readable text: left as pictures '
                          'for the figure step (alt text). Check none is a page of text', [d['page'] for d in dropped], check=False)
@@ -2019,10 +2083,12 @@ def describe(rec):
     plan, o = rec.get('plan') or {}, rec.get('ocr') or {}
     parts = ['placeholder tag tree set aside'] if (rec.get('tag_tree') or {}).get('status') == 'placeholder' else []
     if plan.get('ocr_mode') == 'force': parts.append(f'force OCR, {len(plan["ocr_pages"])} pages')
+    elif plan.get('ocr_mode') == 'redo': parts.append(f'existing OCR text read again on {len(plan.get("reocr_pages") or [])} pages'
+                                                      + ('' if o else ' (planned)'))
     elif plan.get('ocr_mode') and not o:
         parts.append(f'OCR planned for {len(plan["ocr_pages"])} image-only page{"s" if len(plan["ocr_pages"]) != 1 else ""}')
-    elif plan.get('ocr_mode'):
-        n, m = len(o.get('pages_with_ocr_text', [])), len(o.get('image_pages_without_text', []))
+    if plan.get('ocr_mode') in ('skip', 'redo') and o:
+        n, m = len(set(o.get('pages_with_ocr_text', [])) - set(o.get('reocr_pages') or [])), len(o.get('image_pages_without_text', []))
         if n: parts.append(f'OCR {n} page{"s" if n != 1 else ""}')
         if m: parts.append(f'{m} picture page{"s" if m != 1 else ""} without OCR text')
     off = next((f for f in rec.get('flags') or [] if f['what'] == 'OCR off'), None)

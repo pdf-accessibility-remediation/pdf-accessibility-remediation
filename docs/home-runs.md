@@ -79,6 +79,8 @@ A Hawaiian, Ilokano or Bikol scan is Latin script, so it is read as English too.
 
 **Continue** starts the estimate again with that language. English is intake's own default, so the run is exactly what it was before the question existed.
 
+**Read the scanned pages again (#121).** A PDF that already has OCR text is not asked about the language before the estimate. When intake finds that its OCR text lacks marks or Chinese, Japanese or Korean characters the page images show, the run page asks once, after the estimate: "This PDF already has OCR text, but it seems to have lost characters that the page images show…", with **Keep the Existing OCR Text** preselected. Keeping it goes on with the estimate already made. Choosing a language gets a new estimate with the pages read again by OCR; the page images stay exactly as they are, and the new text requires "OCR Text Approval". A PDF in a batch is not asked this yet (from the terminal: `REOCR=1 OCR_LANG=…`).
+
 The full intake still checks every page to be OCR'd for Chinese, Japanese or Korean text. When it finds some and the chosen language has no CJK pack, the PDF stops as before, and the same question comes back with that evidence, offering only the CJK languages.
 
 **In a batch,** each waiting PDF has its own row with its list and **Continue**. With two or more waiting, each row also has **Use for All Waiting PDFs**, which gives the language chosen on that row to every PDF still waiting.
