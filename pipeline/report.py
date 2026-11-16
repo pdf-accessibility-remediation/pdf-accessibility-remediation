@@ -53,6 +53,7 @@ prev = json.load(open(FROM_RECORD, encoding='utf-8')) if FROM_RECORD else None  
 log = load(PDF + '.log.json', default={}); ver = load(PDF + '.verify.json', default={})
 lang_log = log.get('language_parts') or {}; ver_lang = ver.get('language') or {}            # #118: the language step's tags
 lang_refused = sum((lang_log.get('refused') or {}).values())
+LANG_REFUSED_SHOWN = 20                       # refused language-tag places listed in review.md under each reason; the rest are in the record
 digest = load('digest.json', base=A, default={})
 fulltext = load('fulltext.json', base=A, default={}) or {}   # the whole texts the digest shortens (local only, never sent)
 vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the original, from the audit
@@ -1168,7 +1169,19 @@ if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the langu
         L.append('')
     if lang_refused:
         L += [f'**Not placed by the executor ({lang_refused}):** the page and its text stay as they were; the words are read in the book\'s language.', '']
-        L += [line(f'- {w}: {c}', entry=False) for w, c in sorted((lang_log.get('refused') or {}).items(), key=lambda x: -x[1])]
+        places_ = [x for x in lang_log.get('refused_places') or [] if isinstance(x, dict)]
+        for w, c in sorted((lang_log.get('refused') or {}).items(), key=lambda x: -x[1]):
+            L.append(line(f'- {w}: {c}', entry=False))
+            ps_ = by_page([x for x in places_ if x.get('why') == w])          # each place under its reason, as the record keeps it
+            shown_ = ps_[:LANG_REFUSED_SHOWN]
+            L += [xl(lambda X, x=x: '  - ' + (f'"{X(x["text"])}"' if (x.get('text') or '').strip() else 'a run whose words were not recorded')
+                     + (f' ({LT.name(x["lang"]) or x["lang"]})' if x.get('lang') else '') + f' · {pg(x.get("page"))}',
+                     key=f'lang:refused:{x.get("page")}:{x.get("mcid")}:{i}', pages=[x.get('page')]) for i, x in enumerate(shown_)]
+            more_, listed_ = c - len(shown_), len(ps_) - len(shown_)
+            if more_ > 0:
+                L.append(line(f'  - and {more_} more' + (', in `record.json` (`apply.language_parts.refused_places`)' if listed_ == more_ else
+                              f'; `record.json` lists {listed_} of them (`apply.language_parts.refused_places` keeps the first 200 places)' if listed_ else
+                              ' (`record.json` keeps only the first 200 places)'), entry=False))
         L.append('')
     nc_, nn_ = lang_log.get('names_converted') or [], lang_log.get('names_not_converted') or []      # review 08, M4
     if nc_:

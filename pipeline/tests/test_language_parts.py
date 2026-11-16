@@ -9,7 +9,7 @@ Synthetic pages only (tests/langpdf.py), veraPDF off, the tag-tree check mode on
     marks never override the tag (review 02, H1); verify.py's language section finds every Span it should;
   - the work-order check keeps valid parts and drops bad ones (review 02, L2); the audit's candidates line up with the runs.
 """
-import os, sys, json, subprocess
+import os, re, sys, json, subprocess
 import pikepdf, pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import langpdf  # noqa: E402
@@ -367,3 +367,45 @@ def test_a_tag_outside_the_tree_fails_all_content_tagged_alone(tmp_path):
     run('report.py', R, A, '--keep')
     g = json.load(open(R / 'record.json'))['glance']
     assert all(s['ok'] for s in g['safety']) and g['safety_ok'] is True
+
+def _refused_report(tmp_path, places, refused=None):
+    """A finished run whose log says the executor refused these language-tag places; review.md and review.html rebuilt."""
+    R, A = tmp_path / 'run', tmp_path / 'audit'; R.mkdir(); A.mkdir()
+    src = langpdf.build(str(tmp_path / 'src.pdf'), [{'lang': 'en-US', 'text': 'The idea of mono no aware and the koan text.'}])
+    wo = R / 'workorder.json'; wo.write_text(json.dumps({'language_parts': {'parts': [part(1, 0, 11, 20, 'ja-Latn')]}}))
+    out = str(R / 'book.pdf'); run('apply.py', src, wo, out); run('verify.py', src, out)
+    lg = json.load(open(out + '.log.json'))
+    lp = lg.setdefault('language_parts', {})
+    lp['refused'] = refused or {'the page would look different': len(places)}; lp['refused_places'] = places
+    json.dump(lg, open(out + '.log.json', 'w'))
+    run('report.py', R, A, '--keep')
+    return (R / 'review.md').read_text(encoding='utf-8'), (R / 'review.html').read_text(encoding='utf-8')
+
+def test_refused_places_listed_under_their_reason(tmp_path):
+    """review.md names each place the executor could not tag (its words, language and page) under the reason's count
+    line, which stays as it was; review.html shows them too."""
+    why = 'the page would look different'
+    md, html = _refused_report(tmp_path, [{'page': 1, 'mcid': 0, 'why': why, 'text': 'mono no aware', 'lang': 'ja-Latn'},
+                                          {'page': 1, 'mcid': 0, 'why': why, 'text': 'kōan', 'lang': 'ja-Latn'}])
+    lines = md.splitlines(); i = lines.index(f'- {why}: 2')
+    assert lines[i + 1:i + 3] == ['  - "mono no aware" (Japanese (Romanized)) · PDF 1', '  - "kōan" (Japanese (Romanized)) · PDF 1']
+    assert '**Not placed by the executor (2):**' in md and 'more, in' not in md
+    assert re.search(r'<li[^>]*>the page would look different: 2<ul><li[^>]*>"mono no aware" \(Japanese \(Romanized\)\) · <a [^>]*>PDF 1</a></li>'
+                     r'<li[^>]*>"kōan" \(Japanese \(Romanized\)\) · <a [^>]*>PDF 1</a></li></ul></li>', html), 'a nested list in review.html'
+
+def test_refused_places_past_twenty_point_to_the_record(tmp_path):
+    why = 'the page would look different'
+    md, _ = _refused_report(tmp_path, [{'page': 1, 'mcid': 0, 'why': why, 'text': f'word{i}', 'lang': 'ja-Latn'} for i in range(25)])
+    shown = [l for l in md.splitlines() if l.startswith('  - "word')]
+    assert len(shown) == 20 and '  - and 5 more, in `record.json` (`apply.language_parts.refused_places`)' in md
+    (tmp_path / 'b').mkdir()
+    md, _ = _refused_report(tmp_path / 'b', [{'page': 1, 'mcid': 0, 'why': why}], refused={why: 230})
+    assert '  - a run whose words were not recorded · PDF 1' in md
+    assert '  - and 229 more (`record.json` keeps only the first 200 places)' in md
+
+def test_refused_whole_run_records_its_words(tmp_path):
+    """A whole-run tag refused (here: under an element with its own spoken text) keeps the run's words and language for
+    review.md, as a refused part does."""
+    t = 'The city of Heiankyo was the capital.'
+    src, out, log, v = apply_verify(tmp_path, [{'text': t, 'actual_text': t.replace('Heiankyo', 'Heian-kyo')}], [part(1, 0, 0, len(t) - 1, 'ja-Latn')])
+    assert log['language_parts']['refused_places'] == [{'page': 1, 'mcid': 0, 'why': 'under an element with its own spoken or alt text', 'text': t, 'lang': 'ja-Latn'}]

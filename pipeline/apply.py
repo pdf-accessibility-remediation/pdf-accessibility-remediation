@@ -1094,11 +1094,14 @@ def unspoken_owner(o):
         n = parent_of.get(n.objgen)
     return None
 def run_chars(pno, m): return [c for c in PL.pages[pno - 1].chars if c.get('mcid') == m]
+def whole_part(pno, m, lang, text=None):
+    """A refused whole-run tag as review.md lists it (its words and language), like a refused part."""
+    return {'text': text if text is not None else ''.join(c['text'] for c in run_chars(pno, m)), 'lang': lang}
 def tag_run(pno, m, lang, text=None):
     o = owner.get((pno, m))
     if o is None: reject(f'lang {PG(pno)} m{m}', 'run not in tree'); return
     why = unspoken_owner(o)
-    if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why); return
+    if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why, whole_part(pno, m, lang, text)); return
     if S(o) == 'Span' and len(kids(o)) == 1:
         o.Lang = pikepdf.String(lang); ok(f'language: {lang} on existing Span')
     else:
@@ -1217,7 +1220,7 @@ def op_language(spec):
     for (pno, m), (k, val) in sorted(local_tag.items()):
         counts[f'{k or "explicit"}: tag'] += 1
         why = drawn_here(pno, m, len(run_chars(pno, m)))
-        if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why); continue
+        if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why, whole_part(pno, m, val)); continue
         tag_run(pno, m, val)
     language_parts(keep)
     queued = {(pno, m): [(p['first'], p['last']) for p in ps] for (pno, m), ps in _LANG_SPLITS.items()}
@@ -1235,20 +1238,20 @@ def op_language(spec):
         by, n_chars = collections.defaultdict(str), collections.Counter()
         for c in PL.pages[pno - 1].chars:
             if c.get('mcid') is not None: by[c['mcid']] += c['text']; n_chars[c['mcid']] += 1
-        def ok_here(m):                                           # never a run drawn in a form under a page run's number
+        def ok_here(m, lang):                                     # never a run drawn in a form under a page run's number
             why = drawn_here(pno, m, n_chars[m])
-            if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why)
+            if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why, {'text': by[m], 'lang': lang})
             return why is None
         for m, t in by.items():
             if (pno, m) in covered: continue                      # the language step decided this run
             if (pno, m) in explicit:
-                if ok_here(m): tag_run(pno, m, explicit[(pno, m)])
+                if ok_here(m, explicit[(pno, m)]): tag_run(pno, m, explicit[(pno, m)])
                 continue
             k = scripts.kind(t)
             if k is None: continue
             what, val = scripts.action(k, t, doc_lang, spec.get('kana_runs'))
             counts[f'{k}: {what}'] += 1
-            if what == 'tag' and ok_here(m): tag_run(pno, m, val)
+            if what == 'tag' and ok_here(m, val): tag_run(pno, m, val)
             elif what == 'defer' and k == 'han_only': han.append({'page': pno, 'label': labels.get(pno), 'mcid': m, 'text': t.strip()})
             elif what == 'defer': log['deferred'].append({'page': pno, 'mcid': m, 'what': val})
     if han: log['deferred'].append({'what': 'Han-only runs (ja vs zh)', 'count': len(han)})

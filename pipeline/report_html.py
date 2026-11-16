@@ -320,7 +320,12 @@ def items_html(items, need=()):
             out.append('<ul>')
             while i < len(items) and items[i]['kind'] == 'li':
                 x = items[i]; i += 1; nd = x.get('id') in need
-                out.append(f'<li{idattr(x)}{" class=\"need\"" if nd else ""}>{DOT if nd else ""}{item_inline(x, 2)}{full_toggle(x)}</li>')
+                sub = []                                    # review.md's "  - " lines under this item: a nested list
+                while i < len(items) and items[i]['kind'] == 'p' and S.text_wcag(items[i]).startswith('  - '):
+                    y = items[i]; i += 1; nd_ = y.get('id') in need
+                    sub.append(f'<li{idattr(y)}{" class=\"need\"" if nd_ else ""}>{DOT if nd_ else ""}{item_inline(y, 4)}{full_toggle(y)}</li>')
+                out.append(f'<li{idattr(x)}{" class=\"need\"" if nd else ""}>{DOT if nd else ""}{item_inline(x, 2)}{full_toggle(x)}'
+                           + (f'<ul>{"".join(sub)}</ul>' if sub else '') + '</li>')
             out.append('</ul>'); continue
         if k == 'quote': out.append(f'<blockquote{idattr(it)}>{item_inline(it, 2)}{full_toggle(it)}</blockquote>')
         elif k == 'p' and S.text_wcag(it).strip(): out.append(f'<p{idattr(it)}>{item_inline(it)}{full_toggle(it)}</p>')

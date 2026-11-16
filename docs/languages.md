@@ -38,6 +38,12 @@ approved.
    read. A publisher's language name (`Hawaii`, `Hungarian`) is shown on the review page by the language it names, with
    the value as written; the executor writes its code and lists each conversion in review.md, unless the words look like
    another language (then it stays for a person: see [veraPDF](verapdf.md), 7.2-29).
+   A tag the executor can't place (the page would look different, the words sit under an element with its own spoken
+   text, …) is left out, and the page and its text stay as they were. review.md's "Not placed by the executor (N)" counts
+   these by reason. Under each reason it lists every place: the words (an excerpt), the language and the page, as
+   `"mono no aware" (Japanese (Romanized)) · PDF 12 (printed 3)`. It shows 20 per reason; the rest are in
+   `record.json` (`apply.language_parts.refused_places`, the first 200 places in all). review.html shows the same list,
+   nested under each reason.
 6. **verify.py checks** that every tag holds its words and language. A tag that does not match is a rank-1 finding.
 
 ### Chinese, Japanese and Korean
