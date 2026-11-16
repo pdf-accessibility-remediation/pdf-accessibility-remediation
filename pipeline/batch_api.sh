@@ -46,6 +46,7 @@
 # all finished just rewrites it (no cost). A missing library stops the batch before any paid call.
 set -euo pipefail
 [[ -n ${AUTO:-} || -n ${SUMMARY_ONLY:-} ]] || { echo "batch runs call the API without asking: start with  AUTO=1 bash batch_api.sh <run-label> [folder | books.txt] …"; exit 1; }
+[[ -z ${KEEP_CJK_PAGES:-} ]] || { echo "KEEP_CJK_PAGES names pages of one book: run that book alone (KEEP_CJK_PAGES=… bash run_api.sh <the book> <name> <run name>), not a batch"; exit 1; }
 LABEL=${1:?run label used for every book, e.g. batch1}; shift
 SOURCES=("$@")
 START_DIR=$(pwd)

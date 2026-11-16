@@ -313,7 +313,7 @@ CASES = [  # (case, pdf, OCR_LANG, what is expected, test on intake.json)
 
 
 def run_intake(pdf, out, lang, plan=True, extra=None):
-    env = dict(os.environ); env.pop('OCR_LANG', None); env.pop('REOCR', None)
+    env = dict(os.environ); env.pop('OCR_LANG', None); env.pop('REOCR', None); env.pop('KEEP_CJK_PAGES', None)
     if lang: env['OCR_LANG'] = lang
     env.update(extra or {})
     subprocess.run([sys.executable, os.path.join(PIPE, 'intake.py'), pdf, out] + (['--plan-only'] if plan else []), env=env,
@@ -336,6 +336,20 @@ def main():
         ok = test(j); bad += not ok; good += ok
         print(f'{"PASS" if ok else "FAIL"}  {what}  (expected: {expect}; got: {j["status"]}: {j.get("summary")})', flush=True)
         if not ok and case.startswith('ocr-layer'): print(f'      OCR-layer test: {ocr_layer_details(j)}', flush=True)
+    if FONT:                                         # review 06 H1: Keep at the CJK stop, intake twice with the choice stored between
+        d = os.path.join(out, 'plan', 'keep-cjk-page-among-english-layer')
+        j1 = run_intake(made['cjk-page-among-english-layer'], d, None)
+        json.dump({'pages': [8], 'by': 'Test Person', 'at': '2026-11-15T10:00:00', 'counts': {}}, open(os.path.join(d, 'cjk_keep.json'), 'w'))
+        j2 = run_intake(made['cjk-page-among-english-layer'], d, None, extra={'KEEP_CJK_PAGES': '8'})
+        k2 = (j2.get('ocr_layer_test') or {}).get('cjk_kept') or {}
+        ok = j1['status'] == 'stopped' and os.path.isfile(os.path.join(d, 'cjk_page_8.png')) and j2['status'] == 'planned' \
+            and not (j2.get('ocr_layer_test') or {}).get('cjk_on_images') and k2.get('pages') == [8] and k2.get('by') == 'Test Person' \
+            and (k2.get('counts') or {}).get('8', {}).get('cjk_distinct') is not None and j2['settings'].get('KEEP_CJK_PAGES') == [8] \
+            and any(f['what'] == 'OCR layer: CJK kept' and f.get('pages') == [8] for f in j2['flags'])
+        bad += not ok; good += ok
+        print(f'{"PASS" if ok else "FAIL"}  Chinese page among English OCR-layer pages, kept by a person (KEEP_CJK_PAGES=8) → the second intake '
+              f'skips it and records it as kept  (got: {j1["status"]} → {j2["status"]}: kept {k2})', flush=True)
+    else: skipped += 1; print('SKIP  Keep at the CJK stop  (no font for its text: install fonts-noto-cjk or set INTAKE_CASES_FONT)', flush=True)
     ok, got = reorder_saved_case(out); bad += not ok; good += ok
     print(f'{"PASS" if ok else "FAIL"}  right-first spread already in half order, columns left to right → reorder saved  (got: {got})', flush=True)
     if '--full' in sys.argv:

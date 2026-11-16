@@ -54,14 +54,14 @@ from html.parser import HTMLParser
 from review.server import local_request, Server
 from review import sessions as S
 from lib.titles import title_case as TC
-from . import config, jobs, runs, manualpage as MP, downloads as DL, home as HM, books as BK, newrun as NR, batches as BT, names as NMS
+from . import config, jobs, runs, manualpage as MP, downloads as DL, home as HM, books as BK, newrun as NR, batches as BT, names as NMS, lang as LG
 RUNS_MOD = runs                                       # find_run's own `runs` is the runs folder
 from review import manual as M
 from lib import release as REL, runlock
 
 FILES = ('review.html', 'review.md', 'han_review.csv')
 TYPES = {'.html': 'text/html; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.pdf': 'application/pdf',
-         '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8'}
+         '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png'}
 RESERVED = ('ocr',)                                          # /run/<run>/checks is the Manual Checks page (#38)
 UPLOAD_IDLE = 60                                               # seconds an upload may send nothing before it is dropped
 MAX_BODY = 65536                                              # a POST body: digits only in Content-Length, at most this
@@ -435,7 +435,7 @@ def make(s, setup, code=None):
                         n = jobs.dismiss(J, run); return self.send(200, {'dismissed': n})
                     if segs[-1] == 'spend': j = NR.start_spend(s, run, R, body)
                     elif segs[-1] == 'estimate': j = NR.again_estimate(s, run, R)
-                    elif segs[-1] == 'language': j = NR.answer_language(s, run, R, str(body.get('lang') or ''))   # D4
+                    elif segs[-1] == 'language': j = NR.answer_language(s, run, R, str(body.get('lang') or ''), str(body.get('by') or ''))   # D4
                     else: j = NR.start_rerun(s, run, R) if NR.retry_kind(R) == 'rerun' else NR.again_estimate(s, run, R)
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 if j is None: return self.send(200, {'kept': True})   # #121: "Keep the Existing OCR Text" starts no job
@@ -606,6 +606,12 @@ def make(s, setup, code=None):
                 if not hit: return self.send(404, {'error': 'no such run'})
                 run, R, rest = hit
                 if runs.waiting(R) or runs.pending(s, R, nm):                              # before its first result: its page only
+                    if len(rest) == 1 and re.fullmatch(r'cjk-page-[1-9][0-9]{0,5}\.png', rest[0]):  # review 06 H1: a CJK stop's page image
+                        pg = int(rest[0][len('cjk-page-'):-len('.png')])
+                        ij = LG._load(os.path.join(R, '_intake', 'intake.json')) or {}
+                        if pg in (((ij.get('ocr_layer_test') or {}).get('cjk_on_images') or {}).get('pages') or []) and os.path.isfile(LG.cjk_image(R, pg)):
+                            return self.file(LG.cjk_image(R, pg))
+                        return self.send(404, {'error': 'not found'})
                     if rest: return self.send(404, {'error': 'not found'})
                     if not p.endswith('/'): return self.redirect(p + '/')
                     return self.send(200, self.in_batch(run, waiting_page(run, R, s, nm, first=self.panel_first(run, R, nm)), nm), 'text/html; charset=utf-8')

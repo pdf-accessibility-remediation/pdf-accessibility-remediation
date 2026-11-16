@@ -286,6 +286,16 @@ def intake_rows():
                + (f'; diacritics missing from the layer ({d["marked_vowels_ocr"]} marked vowels read, {d["marked_vowels_layer"]} in the layer: '
                   f'{pgs(d.get("pages") or [])})' if d else ''))
         rows.append(('Existing OCR layer agrees with a fresh OCR reading (checklist 1.2, 3.1)', ok(ol.get('verdict') == 'usable' and not d), txt))
+        ck = ol.get('cjk_kept')
+        if ck and ck.get('pages'):                     # review 06 H1: kept at intake's CJK stop (KEEP_CJK_PAGES): not an OCR approval
+            def cnt_(p_):
+                c_ = (ck.get('counts') or {}).get(str(p_)) or {}
+                return (f'{pgs([p_])}: {c_["cjk_characters"]} CJK characters read' + (f', {c_["cjk_distinct"]} different' if c_.get('cjk_distinct') is not None else '')
+                        if c_.get('cjk_characters') is not None else pgs([p_]))
+            rows.append(('CJK text not in the layer (checklist 3.7)', 'CHECK',
+                         f'kept by a person on {pgs(ck["pages"])} (' + (f'{ck["by"]}, {DT.day(ck.get("at"))}' if ck.get('by') else 'set with KEEP_CJK_PAGES, no name recorded')
+                         + '): ' + '; '.join(cnt_(p_) for p_ in ck['pages']) + '. These pages go to the AI as pictures; any Chinese, Japanese or Korean text '
+                         'on them is not in the text layer'))
     sp = intake.get('spreads')
     if sp:                                             # two printed pages per PDF page: read half by half after auto-tagging
         rr = ((intake.get('checks') or {}).get('spreads_reordered') or {}).get('pages') or {}

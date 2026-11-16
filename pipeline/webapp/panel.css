@@ -344,3 +344,9 @@ header.nr-head { padding-top: 18px; } header.nr-head h1 { margin: 0 0 10px; }
 html:has(dialog[open]) { overflow: hidden; }
 /* U7: "Home Page" (a link) and "Show/Hide the PDF List" (a button) the same size wherever they sit together */
 .pp-appbar .pp-btn { display: inline-flex; align-items: center; justify-content: center; line-height: 20px; height: 34px; min-height: 0; padding: 0 12px; vertical-align: middle; }
+/* review 06 H1: the CJK stop's pages, each with its image, and "Your Name" for Keep */
+.pp .pp-found { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-wrap: wrap; gap: 12px; }
+.pp .pp-found li { max-width: 260px; }
+.pp .pp-found p { margin: 0 0 4px; font-size: 14px; }
+.pp .pp-found img { display: block; max-width: 100%; height: auto; border: 1px solid var(--muted); }
+.pp .pp-row input[type=text] { font: inherit; font-size: 14px; min-height: 32px; padding: 2px 6px; border: 1px solid var(--muted); border-radius: 4px; background: var(--panel); color: var(--ink); max-width: 100%; }

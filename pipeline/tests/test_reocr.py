@@ -92,19 +92,25 @@ def test_env_for():
 def stopped_json(R, **kw):
     intake_json(R, status='stopped', summary='CJK text the existing OCR text lacks (page 3): run again with REOCR=1 and OCR_LANG naming the language',
                 flags=[{'what': 'OCR layer: CJK missing', 'why': '…', 'pages': [3], 'check': True}],
-                reocr_suggested={'why': ['cjk'], 'pages': [3]}, **kw)
+                reocr_suggested={'why': ['cjk'], 'pages': [3]},
+                **{'ocr_layer_test': {'cjk_on_images': {'pages': [3], 'cjk_characters': {'3': 14}, 'cjk_distinct': {'3': 12}, 'found_by': {'3': 'picture-like page'}}}, **kw})
 
 
 def test_the_reocr_stop_question(setup, monkeypatch):
-    """Review 04 H2: CJK under an OCR layer that lacks it stops the run; the question offers only CJK languages, no Keep."""
+    """Review 04 H2: CJK under an OCR layer that lacks it stops the run; the question offers the CJK languages and, since
+    review 06 H1, "Keep the Existing OCR Text" with a person's name, and shows each page with its counts."""
     monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng', 'mri', 'chi_tra', 'jpn'])
     s = settings(setup); R = setup / 'runs' / 'bk' / 'r1'
     stopped_json(R)
     q = LG.question(s, str(R))
     assert LG.asks(str(R)) == 'reocr' and q['kind'] == 'reocr' and q['stopped'] and q['suggested'] is None
-    assert q['choices'] and all(any(x in c[0] for x in LG.CJK) for c in q['choices']) and LG.KEEP not in [c[0] for c in q['choices']]
+    assert q['choices'][0] == [LG.KEEP, 'Keep the Existing OCR Text'] and q['needs_name'] == LG.KEEP
+    assert len(q['choices']) > 1 and all(any(x in c[0] for x in LG.CJK) for c in q['choices'][1:])
+    assert q['found'] == [{'page': 3, 'characters': 14, 'different': 12, 'picture': True, 'image': False}]
+    (R / '_intake' / 'cjk_page_3.png').write_bytes(b'\x89PNG')
+    assert LG.question(s, str(R))['found'][0]['image']
     assert 'pictures of text' in q['evidence'][1]
-    with pytest.raises(ValueError, match='Choose a language'): LG.check(s, str(R), LG.KEEP)
+    assert LG.check(s, str(R), LG.KEEP) == 'Keep the Existing OCR Text'
     stopped_json(R, settings={'REOCR': True})                                  # stopped again after a re-OCR: not this question
     assert LG.question(s, str(R)) is None
     B = setup / 'runs' / 'batches' / 'b1' / 'bk'; stopped_json(B)             # a batch's PDF: stopped with a CHECK, not asked
@@ -120,6 +126,54 @@ def test_the_reocr_stop_answer(setup, monkeypatch):
     R = setup / 'runs' / 'bk' / 'First'; stopped_json(R)
     a = NR.answer_language(s, 'bk/First', str(R), 'chi_tra+eng')
     assert a['env_set'] == {'ESTIMATE': '1', 'OCR_LANG': 'chi_tra+eng', 'REOCR': '1'} and 'read again' in a['what']
+
+
+def test_keep_at_the_cjk_stop(setup, monkeypatch):
+    """Review 06 H1: Keep at the CJK stop records the pages, the name, the date and the counts, and gets the estimate again
+    with KEEP_CJK_PAGES; every later job of the run carries it (the next estimate, Try Again, Spend), so intake is reused."""
+    from webapp import config, spend as SP
+    monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng', 'chi_tra'])
+    s = settings(setup)
+    (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book'))
+    key = BK.listing(s)[0]['key']
+    j = NR.start_estimate(s, [], key, 'First'); jobs.update(s['jobs'], j['id'], status='failed', exit=3)
+    R = setup / 'runs' / 'bk' / 'First'; stopped_json(R)
+    with pytest.raises(ValueError, match='Your Name'): NR.answer_language(s, 'bk/First', str(R), LG.KEEP)
+    with pytest.raises(ValueError, match='Your Name'): NR.answer_language(s, 'bk/First', str(R), LG.KEEP, '   ')
+    a = NR.answer_language(s, 'bk/First', str(R), LG.KEEP, '  Kim   Lee ')
+    assert a['env_set'] == {'ESTIMATE': '1', 'KEEP_CJK_PAGES': '3'} and 'kept on page 3' in a['what']
+    k = json.loads((R / '_intake' / LG.CJK_KEEP_FILE).read_text())
+    assert k['pages'] == [3] and k['by'] == 'Kim Lee' and k['at'] and k['counts'] == {'3': {'cjk_characters': 14, 'cjk_distinct': 12}}
+    jobs.update(s['jobs'], a['id'], status='failed', exit=3)                  # stopped again on another page: both are kept
+    stopped_json(R, settings={'REOCR': False, 'KEEP_CJK_PAGES': [3]}, ocr_layer_test={'cjk_on_images': {
+        'pages': [9], 'cjk_characters': {'9': 30}, 'cjk_distinct': {'9': 21}, 'found_by': {'9': 'picture-like page'}}})
+    a = NR.answer_language(s, 'bk/First', str(R), LG.KEEP, 'Kim')
+    assert a['env_set']['KEEP_CJK_PAGES'] == '3,9'
+    k = json.loads((R / '_intake' / LG.CJK_KEEP_FILE).read_text())
+    assert k['pages'] == [3, 9] and set(k['counts']) == {'3', '9'}
+    jobs.update(s['jobs'], a['id'], status='done'); intake_json(R, settings={'REOCR': False, 'KEEP_CJK_PAGES': [3, 9]}, reocr_suggested=None)
+    assert NR.again_estimate(s, 'bk/First', str(R))['env_set']['KEEP_CJK_PAGES'] == '3,9'
+    assert 'KEEP_CJK_PAGES' in config.JOB_ENV
+    assert config.child_env(s, {'KEEP_CJK_PAGES': '3,9'}).get('KEEP_CJK_PAGES') == '3,9'
+    import inspect                                                              # Spend and Try Again: the same carry lists
+    assert "'KEEP_CJK_PAGES')" in inspect.getsource(SP.authorize) and "'KEEP_CJK_PAGES')" in inspect.getsource(NR.start_rerun)
+
+
+def test_kept_pages_are_skipped_by_the_cjk_check():
+    """Review 06 H1: the samples are drawn as before and the kept pages left out (no other page probed in their place);
+    every picture-like hit is found at once, so one Keep covers the book."""
+    seen = []
+    def probe(i): seen.append(i); return {35: (14, 12), 41: (30, 21), 50: (0, 0)}.get(i, (0, 0))
+    pick = list(range(1, 31)); pics = lambda: [5, 35, 41, 50, 60, 70, 80, 90, 100, 110]
+    hit, by_, r = intake.layer_cjk_hits(pick, pics, set(), probe)
+    assert hit == {35: (14, 12), 41: (30, 21)} and by_ == {35: 'picture-like page', 41: 'picture-like page'}
+    assert seen == [1, 11, 21, 5, 35, 41, 50, 60, 70, 80, 90] and r['picture_like_checked'] == 8 and r['picture_like_pages'] == 10
+    seen.clear(); hit, by_, r = intake.layer_cjk_hits(pick, pics, {35, 41}, probe)
+    assert hit == {} and seen == [1, 11, 21, 5, 50, 60, 70, 80, 90] and r['kept_pages_skipped'] == [35, 41]
+    seen.clear(); hit, _, r = intake.layer_cjk_hits(pick, None, set(), probe)  # REOCR: the sample pages only
+    assert seen == [1, 11, 21] and 'picture_like_pages' not in r
+    seen.clear(); hit, by_, _ = intake.layer_cjk_hits([35, 40, 45], pics, set(), probe)   # a sample-page hit stops at once
+    assert hit == {35: (14, 12)} and by_ == {35: 'sample page'} and seen == [35]
 
 
 def test_the_cjk_page_rule():

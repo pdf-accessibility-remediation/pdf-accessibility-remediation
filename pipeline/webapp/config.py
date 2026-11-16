@@ -36,7 +36,8 @@ JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 
            'FIGURE_RETRY_MAX_USD', 'FIGURE_RETRY_BOOK_MAX_USD',                # #65: the person's real limits, for a figure request's doubled retry only
            'PAGE_READS', 'PAGE_READS_MAX_USD',                                 # #49: page readings, set by Spend from the estimate shown
            'LANG_TAGS', 'LANGUAGE_MAX_USD', 'LANGUAGE_MODEL',                  # #118: the language step, the same way
-           'REOCR')                                                            # #121: read the existing OCR text again (keeps the page images)
+           'REOCR',                                                            # #121: read the existing OCR text again (keeps the page images)
+           'KEEP_CJK_PAGES')                                                   # review 06 H1: pages kept at intake's CJK stop
 # MODEL only as an anthropic/ id (the one the estimate used: 03 §5); FROM only in test mode (test_batch_from, --config);
 # never FORCE_OCR (Q7: no "OCR Every Page Instead" in the app)
 

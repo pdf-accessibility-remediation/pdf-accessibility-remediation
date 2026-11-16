@@ -20,6 +20,7 @@ from . import books as BK
 CJK = ('chi_tra', 'chi_sim', 'jpn', 'kor')
 KEEP = 'keep'                                        # #121: "Keep the Existing OCR Text", the default answer to a re-OCR question
 KEEP_FILE = 'reocr_choice.json'                      # _intake/<this>: the person kept the existing OCR text (the question goes)
+CJK_KEEP_FILE = 'cjk_keep.json'                      # review 06 H1: _intake/<this>: pages kept at intake's CJK stop, by whom, when
 SCRIPT_WORDS = {'kana': 'Japanese', 'hangul': 'Korean', 'han': 'Chinese characters', 'Latin': 'Latin script', 'Japanese': 'Japanese', 'Hiragana': 'Japanese', 'Katakana': 'Japanese', 'Korean': 'Korean',
                 'Hangul': 'Korean', 'Han': 'Chinese characters', 'HanS': 'Chinese characters', 'HanT': 'Chinese characters',
                 'Cyrillic': 'Cyrillic script', 'Greek': 'Greek script', 'Arabic': 'Arabic script', 'Hebrew': 'Hebrew script',
@@ -87,8 +88,9 @@ def question(s, R, js=None, nm=None):
     if ij:
         if reocr_stopped(R, ij):                       # review 04 H2: CJK under an OCR layer that lacks it stops the run
             choices = choices_(); n = ((ij.get('triage') or {}).get('counts') or {}).get('ocr-layer')
-            return {'kind': 'reocr', 'stopped': True, 'pages': n, 'choices': [c for c in choices if any(x in c[0] for x in CJK)] or choices,
-                    'suggested': None,
+            return {'kind': 'reocr', 'stopped': True, 'pages': n,
+                    'choices': [[KEEP, 'Keep the Existing OCR Text']] + ([c for c in choices if any(x in c[0] for x in CJK)] or choices),   # review 06 H1
+                    'suggested': None, 'found': cjk_found(R, ij), 'needs_name': KEEP,
                     'evidence': ['The page images show Chinese, Japanese or Korean text that the existing OCR text lacks.',
                                  'Without that text, those pages would be sent to the AI as pictures of text, so the run stopped before any AI request.',
                                  'Chinese and Japanese are never guessed: choose the one the PDF is in.']}
@@ -131,10 +133,39 @@ def reocr_pending(R, ij):
 def reocr_stopped(R, ij):
     """Review 04 H2 (interim, until #119): intake stopped because the page images show CJK text the existing OCR layer lacks
     ("OCR layer: CJK missing"), on a run started from the home page (a batch's PDF stops with a CHECK: the batch page doesn't
-    ask this yet), not read again yet. The answer is a CJK language, read again with REOCR=1; there is no "Keep" here."""
+    ask this yet), not read again yet. The answer is a CJK language, read again with REOCR=1, or "Keep the Existing OCR Text"
+    with a person's name (review 06 H1: keep_cjk, then the estimate again with KEEP_CJK_PAGES)."""
     if ij.get('status') != 'stopped' or (ij.get('settings') or {}).get('REOCR'): return False
     if not any(f.get('what') == 'OCR layer: CJK missing' for f in ij.get('flags') or []): return False
     return '/batches/' not in os.path.abspath(R).replace(os.sep, '/') + '/'
+
+def cjk_found(R, ij):
+    """The pages intake's CJK check stopped on, for the stopped question: [{page, characters, different, picture, image}]
+    (image: the page image intake wrote, served at cjk-page-<page>.png on the run page)."""
+    c = (ij.get('ocr_layer_test') or {}).get('cjk_on_images') or {}
+    return [{'page': p, 'characters': (c.get('cjk_characters') or {}).get(str(p)), 'different': (c.get('cjk_distinct') or {}).get(str(p)),
+             'picture': (c.get('found_by') or {}).get(str(p)) == 'picture-like page',
+             'image': os.path.isfile(cjk_image(R, p))} for p in c.get('pages') or [] if isinstance(p, int)]
+
+def cjk_image(R, page):
+    """The file of a stop page's image (intake.py CJK_STOP_IMAGES): built from an integer page, never from a request's text."""
+    return os.path.join(R, '_intake', f'cjk_page_{int(page)}.png')
+
+def keep_cjk(R, by):
+    """Review 06 H1: "Keep the Existing OCR Text" at intake's CJK stop: the stopped pages (with any kept before) are recorded
+    with the person's name, the date and the check's counts in _intake/cjk_keep.json; the estimate runs again with
+    KEEP_CJK_PAGES naming them, so the CJK check skips those pages. Returns the pages."""
+    import datetime
+    ij = _load(os.path.join(R, '_intake', 'intake.json')) or {}
+    by = ' '.join(str(by or '').split())[:80]
+    if not by: raise ValueError('Enter your name in "Your Name" to keep the existing OCR text.')
+    old = _load(os.path.join(R, '_intake', CJK_KEEP_FILE)) or {}
+    pages = sorted({int(p) for p in (ij.get('settings') or {}).get('KEEP_CJK_PAGES') or []} | {f['page'] for f in cjk_found(R, ij)})
+    counts = {**(old.get('counts') or {}), **{str(f['page']): {'cjk_characters': f['characters'], 'cjk_distinct': f['different']} for f in cjk_found(R, ij)}}
+    p = os.path.join(R, '_intake', CJK_KEEP_FILE); tmp = p + '.tmp'
+    json.dump({'pages': pages, 'by': by, 'at': datetime.datetime.now().isoformat(timespec='seconds'), 'counts': {k: v for k, v in counts.items() if int(k) in pages}},
+              open(tmp, 'w', encoding='utf-8'), indent=1, ensure_ascii=False); os.replace(tmp, p)
+    return pages
 
 def keep_layer(R):
     """#121: "Keep the Existing OCR Text": recorded beside intake's record, so the question is not asked again."""

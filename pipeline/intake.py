@@ -153,6 +153,7 @@ PAGE_FIGURE_TREE, PAGE_FIGURE_TEXT = 0.5, 0.1   # such Figures on half its pages
                                            #   0-0.8%) against every tagged sample (figures on 0-4.2%, text on 89-99%; 03-builder-report.md)
 LAYER_CJK_SAMPLE = 3                       # #121: existing Latin OCR layer: up to 3 sample page images probed for CJK
 LAYER_FIGURE_CJK_SAMPLE = 8                # #121 with #128 (review 04 H2): and up to 8 spread pages whose scan looks like a picture
+CJK_STOP_IMAGES = 8                        # review 06 H1: page images written for the run page's question (60 dpi, _intake/cjk_page_N.png)
                                            #   (more than SCAN_TEXT_INK ink outside the layer's text), stopping at the first with CJK
 SCAN_TEXT_INK = 0.01                       # #128: a whole-page scan under OCR text becomes decoration only when ink outside the
 SCAN_INK_DPI, SCAN_INK_GRAY, SCAN_INK_PAD = 100, 200, 3   # text boxes is 1% of the page or less (100 dpi, gray < 200, boxes
@@ -742,6 +743,29 @@ def cjk_probe(img, langs, distinct=False):
     rows = [w for w in csv.DictReader(io.StringIO(r.stdout), delimiter='\t', quoting=csv.QUOTE_NONE) if float(w.get('conf') or -1) >= CJK_PROBE_CONF]
     t = ''.join(w.get('text') or '' for w in rows); cj = [ch for ch in t if cjk_char(ch)]
     return (len(cj), len(set(cj))) if distinct else len(cj)
+def layer_cjk_hits(pick, pictures, keep, probe):
+    """#121, review 04 H2, review 06 H1: the pages of an existing OCR layer whose image holds CJK text the layer lacks.
+    First up to LAYER_CJK_SAMPLE spread pages of pick (the layer test's sample), stopping at the first that holds CJK; if
+    none does and pictures (a callable: the layer's pages whose scan looks like a picture; None with REOCR) is given, up to
+    LAYER_FIGURE_CJK_SAMPLE spread pages of those, every one probed, so all hits are shown at once (one "Keep" covers the
+    book). Pages in keep (KEEP_CJK_PAGES: kept by a person) are skipped; both samples are drawn as before, the kept pages
+    then left out, so no other page is probed in their place. probe(page) -> (CJK characters, different ones).
+    Returns ({page: (n, nd)}, {page: 'sample page' | 'picture-like page'}, record)."""
+    t2 = time.time(); hit, by_ = {}, {}; checked = 0
+    for i in pick[:: max(1, len(pick) // LAYER_CJK_SAMPLE)][:LAYER_CJK_SAMPLE]:
+        if i in keep: continue
+        n, nd = probe(i); checked += 1
+        if cjk_page(n, nd): hit[i] = (n, nd); by_[i] = 'sample page'; break
+    rec_ = {'pages_checked': checked, 'seconds': round(time.time() - t2, 1)}
+    if not hit and pictures is not None:   # a page whose scan looks like a picture may be CJK text the layer lacks (its
+        t3 = time.time(); pics = pictures(); checked = 0   #   glyphs lie outside the layer's boxes)
+        for i in pics[:: max(1, len(pics) // LAYER_FIGURE_CJK_SAMPLE)][:LAYER_FIGURE_CJK_SAMPLE]:
+            if i in keep: continue
+            n, nd = probe(i); checked += 1
+            if cjk_page(n, nd): hit[i] = (n, nd); by_[i] = 'picture-like page'
+        rec_.update({'picture_like_pages': len(pics), 'picture_like_checked': checked, 'picture_like_seconds': round(time.time() - t3, 1)})
+    if keep: rec_['kept_pages_skipped'] = sorted(keep)
+    return hit, by_, rec_
 def cjk_page(n, nd):
     """A page of an existing OCR layer holds CJK text: CJK_PROBE_MIN characters or more, with CJK_PROBE_DISTINCT different
     ones, or CJK_PROBE_SHORT different ones that are CJK_PROBE_SHARE or more of those read (a short page: a title, a caption).
@@ -1447,6 +1471,7 @@ def main():
     if '--languages' in sys.argv: return languages_only(SRC, OUTD)
     settings = {'FORCE_OCR': os.environ.get('FORCE_OCR') == '1', 'REOCR': os.environ.get('REOCR') == '1', 'OCR': os.environ.get('OCR', 'auto'),
                 'OCR_LANG': os.environ.get('OCR_LANG') or None, 'plan_only': PLAN_ONLY,
+                'KEEP_CJK_PAGES': sorted({int(x) for x in re.findall(r'\d+', os.environ.get('KEEP_CJK_PAGES') or '')}),   # review 06 H1
                 'thresholds': {'cer_ok': CER_OK, 'cer_bad': CER_BAD, 'ocr_dpi': OCR_DPI, 'sample': SAMPLE, 'extra': EXTRA,
                                'min_scored': MIN_SCORED, 'score_min_chars': SCORE_MIN_CHARS,
                                'score_image_cover': SCORE_IMAGE_COVER, 'cjk_chars': CJK_CHARS, 'cjk_share': CJK_SHARE,
@@ -1458,12 +1483,15 @@ def main():
                                'tile_dpi': TILE_DPI, 'tile_px': TILE_PX, 'tile_max': TILE_MAX}}
     J = os.path.join(OUTD, 'intake.json'); PDF_OUT = os.path.join(OUTD, 'intake.pdf')
     src_sha = sha256(SRC)
+    prior_cjk = {}                                      # review 06 H1: the stop's counts for pages a person keeps (KEEP_CJK_PAGES)
+    try: prior_cjk = (json.load(open(J)).get('ocr_layer_test') or {}).get('cjk_on_images') or {}
+    except (OSError, ValueError): pass
     # an earlier finished intake for the same file and settings is reused (batch estimate → run, FROM= reruns)
     if os.path.exists(J) and not PLAN_ONLY:
         old = json.load(open(J))
-        same = old.get('original', {}).get('sha256') == src_sha and {k: old.get('settings', {}).get(k, False if k == 'REOCR' else None)
-                                                                     for k in ('FORCE_OCR', 'REOCR', 'OCR', 'OCR_LANG')} \
-               == {k: settings[k] for k in ('FORCE_OCR', 'REOCR', 'OCR', 'OCR_LANG')}
+        same = old.get('original', {}).get('sha256') == src_sha and {k: old.get('settings', {}).get(k, False if k == 'REOCR' else [] if k == 'KEEP_CJK_PAGES' else None)
+                                                                     for k in ('FORCE_OCR', 'REOCR', 'OCR', 'OCR_LANG', 'KEEP_CJK_PAGES')} \
+               == {k: settings[k] for k in ('FORCE_OCR', 'REOCR', 'OCR', 'OCR_LANG', 'KEEP_CJK_PAGES')}
         if os.environ.get('INTAKE_REUSE') == '1' and old.get('original', {}).get('sha256') == src_sha:
             same = True                                  # FROM= rerun: the saved reply was written for this intake result
         elif same and old.get('status') == 'skipped':    # skipped by an older intake: still a real tag tree today?
@@ -1790,28 +1818,43 @@ def main():
             # #121: a Latin layer over CJK print reads as Latin noise on both sides, so the sample page images are also
             #   probed for CJK, as before OCR (up to LAYER_CJK_SAMPLE pages, stopping at the first that holds CJK)
             have = [l for l in CJK_PROBE_LANGS.split('+') if l in tv['tesseract_langs']]
-            if have and not any(r.get('script') in ('kana', 'hangul', 'han') for r in ol['pages']):
-                t2 = time.time(); probe = pick[:: max(1, len(pick) // LAYER_CJK_SAMPLE)][:LAYER_CJK_SAMPLE]; hit = {}; checked = 0
-                for i in probe:
-                    img = os.path.join(tmp, f'olc{i}.png'); render(doc, i - 1, OCR_DPI, img); n, nd = cjk_probe(img, '+'.join(have), distinct=True); os.remove(img)
-                    checked += 1
-                    if cjk_page(n, nd): hit[i] = n; break
-                ol['cjk_probe'] = {'langs': '+'.join(have), 'pages_checked': checked, 'seconds': round(time.time() - t2, 1)}
-                if not hit and not settings['REOCR']:   # review 04 H2: a page whose scan looks like a picture may be CJK text the
-                    t3 = time.time()                    #   layer lacks (its glyphs lie outside the layer's boxes): a spread sample
-                    pics = [i for i in kinds['ocr-layer'] if not scan_page_is_text(doc, i)[0]]   # of those pages is probed too
-                    probe = pics[:: max(1, len(pics) // LAYER_FIGURE_CJK_SAMPLE)][:LAYER_FIGURE_CJK_SAMPLE]; checked = 0
-                    for i in probe:
-                        img = os.path.join(tmp, f'olf{i}.png'); render(doc, i - 1, OCR_DPI, img); n, nd = cjk_probe(img, '+'.join(have), distinct=True); os.remove(img)
-                        checked += 1
-                        if cjk_page(n, nd): hit[i] = n; break
-                    ol['cjk_probe'].update({'picture_like_pages': len(pics), 'picture_like_checked': checked, 'picture_like_seconds': round(time.time() - t3, 1)})
+            keep_ = set(settings['KEEP_CJK_PAGES'])      # review 06 H1: pages a person kept: never probed (the samples are drawn as
+            if have and not any(r.get('script') in ('kana', 'hangul', 'han') for r in ol['pages']):   #   before, then these skipped)
+                def probe_(i):
+                    img = os.path.join(tmp, f'olc{i}.png'); render(doc, i - 1, OCR_DPI, img)
+                    try: return cjk_probe(img, '+'.join(have), distinct=True)
+                    finally: os.remove(img)
+                pics = (lambda: [i for i in kinds['ocr-layer'] if not scan_page_is_text(doc, i)[0]]) if not settings['REOCR'] else None
+                hit, by_, ol['cjk_probe'] = layer_cjk_hits(pick, pics, keep_, probe_)
+                ol['cjk_probe']['langs'] = '+'.join(have)
                 if hit:
-                    ol['cjk_on_images'] = {'pages': sorted(hit), 'cjk_characters': {str(k): v for k, v in hit.items()}}
+                    ol['cjk_on_images'] = {'pages': sorted(hit), 'cjk_characters': {str(k): v[0] for k, v in sorted(hit.items())},
+                                           'cjk_distinct': {str(k): v[1] for k, v in sorted(hit.items())},
+                                           'found_by': {str(k): by_[k] for k in sorted(hit)}}
+                    if not settings['REOCR']:           # the page images, for the run page's question (webapp/lang.py)
+                        for k in sorted(hit)[:CJK_STOP_IMAGES]:
+                            try: render(doc, k - 1, 60, os.path.join(OUTD, f'cjk_page_{k}.png'))
+                            except Exception: pass
                     flag('OCR layer: CJK missing', 'The page images show Chinese, Japanese or Korean text that the existing OCR text lacks, '
                          'so these pages would reach the AI as pictures of text' + ('. The text was read again (REOCR=1)' if settings['REOCR'] else
-                         ': the run stopped. Run it again with REOCR=1 and OCR_LANG naming the language (e.g. chi_tra+eng, jpn+eng, kor+eng); '
-                         'in the app, choose the language under "Language of the Scanned Pages"'), sorted(hit))
+                         ': the run stopped. Run it again with REOCR=1 and OCR_LANG naming the language (e.g. chi_tra+eng, jpn+eng, kor+eng), '
+                         'or, where a page holds no such text (a map, a chart), with KEEP_CJK_PAGES naming the pages; in the app, choose under '
+                         '"Language of the Scanned Pages"'), sorted(hit))
+            if keep_:                                    # review 06 H1: a person kept the existing OCR text on these pages (the
+                ck = {}                                  #   app writes its name, date and the stop's counts in cjk_keep.json)
+                try: ck = json.load(open(os.path.join(OUTD, 'cjk_keep.json'), encoding='utf-8'))
+                except (OSError, ValueError): pass
+                if not isinstance(ck, dict) or sorted(ck.get('pages') or []) != sorted(keep_): ck = {}   # set otherwise (terminal, batch)
+                cnt = {}
+                for p_ in sorted(keep_):
+                    c_ = (ck.get('counts') or {}).get(str(p_)) or ({'cjk_characters': prior_cjk['cjk_characters'][str(p_)],
+                                                                   'cjk_distinct': (prior_cjk.get('cjk_distinct') or {}).get(str(p_))}
+                                                                  if str(p_) in (prior_cjk.get('cjk_characters') or {}) else None)
+                    if c_: cnt[str(p_)] = c_
+                ol['cjk_kept'] = {'pages': sorted(keep_), 'by': ck.get('by'), 'at': ck.get('at'), 'counts': cnt}
+                flag('OCR layer: CJK kept', 'a person kept the existing OCR text on these pages although the CJK check read Chinese, '
+                     'Japanese or Korean text on their images (KEEP_CJK_PAGES' + (f', {ck["by"]}' if ck.get('by') else '') + '): '
+                     'they go to the AI as pictures, and any CJK text on them is not in the text layer', sorted(keep_), check=False)
             if ol.get('diacritics') or ol.get('cjk_on_images'):
                 rec['reocr_suggested'] = {'why': (['diacritics'] if ol.get('diacritics') else []) + (['cjk'] if ol.get('cjk_on_images') else []),
                                           'pages': (ol.get('diacritics') or {}).get('pages') or (ol.get('cjk_on_images') or {}).get('pages')}
@@ -1865,7 +1908,8 @@ def main():
         if (rec.get('ocr_layer_test') or {}).get('cjk_on_images') and not settings['REOCR']:   # review 04 H2 (interim, until #119)
             pg_ = rec['ocr_layer_test']['cjk_on_images']['pages']
             return stop('stopped', f'CJK text the existing OCR text lacks (page {", ".join(map(str, pg_))}): run again with REOCR=1 and '
-                        'OCR_LANG naming the language', 3)
+                        f'OCR_LANG naming the language, or with KEEP_CJK_PAGES={",".join(map(str, sorted(set(pg_) | set(settings["KEEP_CJK_PAGES"]))))} '
+                        'to keep the existing OCR text on those pages', 3)
         # ---- CJK text on the pages to be OCR'd (3.7): never guessed; OCR_LANG must name the language
         if plan['ocr_mode'] in ('skip', 'redo') and plan['ocr_pages']:
             have = [l for l in CJK_PROBE_LANGS.split('+') if l in tv['tesseract_langs']]
