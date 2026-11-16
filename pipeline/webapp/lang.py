@@ -91,7 +91,7 @@ def question(s, R, js=None, nm=None):
             return {'kind': 'reocr', 'stopped': True, 'pages': n,
                     'choices': [[KEEP, 'Keep the Existing OCR Text']] + ([c for c in choices if any(x in c[0] for x in CJK)] or choices),   # review 06 H1
                     'suggested': None, 'found': cjk_found(R, ij), 'needs_name': KEEP,
-                    'evidence': ['The page images show Chinese, Japanese or Korean text that the existing OCR text lacks.',
+                    'evidence': ['The check read Chinese, Japanese or Korean characters on the page images below that the existing OCR text lacks. It can misread a map or a chart.',
                                  'Without that text, those pages would be sent to the AI as pictures of text, so the run stopped before any AI request.',
                                  'Chinese and Japanese are never guessed: choose the one the PDF is in.']}
         f = next((f for f in ij.get('flags') or [] if f.get('what') == 'OCR language needed'), None)
