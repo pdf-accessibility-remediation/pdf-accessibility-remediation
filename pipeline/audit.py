@@ -563,9 +563,10 @@ digest = {
     'page_map_format': 'page|printed label|first tagged line',
     'page_map': page_map,
     'front_matter': front,
-    'low_resolution_rule': f'figures whose images are drawn below {lowres.LOW_PPI} ppi (stored pixels over drawn inches); '
-                           'scanned PDFs and whole-page figures left out. Never sent to the AI',
-    'low_resolution': low_resolution,
+    # only when a figure is flagged: a PDF with none keeps the digest it had before #97, so its older runs still pin (review/sessions.py)
+    **({'low_resolution_rule': f'figures whose images are drawn below {lowres.LOW_PPI} ppi (stored pixels over drawn inches); '
+                               'scanned PDFs and whole-page figures left out. Never sent to the AI',
+        'low_resolution': low_resolution} if low_resolution else {}),
     'cjk_runs': dict(cjk), 'cjk_han_only_examples': cjk_ex,
     'links': {'annotations': sum(link_pages.values()),
               'per_page_top': [[p, n] for p, n in sorted(link_pages.items(), key=lambda x: -x[1])[:15]]},

@@ -94,7 +94,7 @@ def test_the_audit_lists_only_the_blurry_figure(tmp_path):
 def test_a_scanned_pdf_is_left_to_intake(tmp_path):
     src, _ = figures_pdf(tmp_path / 'scan.pdf', producer='OCRmyPDF')
     d, _ = audit(src, tmp_path / 'audit')
-    assert d['low_resolution'] == []
+    assert 'low_resolution' not in d and 'low_resolution_rule' not in d   # nothing flagged: the digest is as it was before #97
 
 # ---- the review page
 def test_the_cards_of_a_blurry_figure_say_so(tmp_path):

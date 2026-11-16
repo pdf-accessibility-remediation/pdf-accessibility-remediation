@@ -18,7 +18,7 @@ The original PDF and the run's own result are never changed.
 
 The audit measures each figure's image at the size it is printed on the page, in pixels per inch (ppi). A figure below 150 ppi is likely to look blurry when printed or zoomed, so the report gets a **CHECK** row, "Figures: none below 150 ppi", listing each one with its page and ppi. On the review page, that figure's card has an **Image Resolution** line.
 
-Replacing the image is a hand edit: put in a sharper copy, where one exists, and bring the file back as below. The new run's audit measures the image again, so the row goes away once every listed figure is sharp enough. The check doesn't judge whether a sharper copy exists, or whether a low ppi matters for that image (a small logo, for example).
+Replacing the image is a hand edit: put in a sharper copy, where one exists, and bring the file back as below. The new run's audit measures the image again, so the row goes away once every listed figure is sharp enough. Runs made before this check have no flags, even when reviewed again (see [Older runs](review-again.md#older-runs-and-runs-that-cant-be-reviewed-again)). The check doesn't judge whether a sharper copy exists, or whether a low ppi matters for that image (a small logo, for example).
 
 ## Steps
 
@@ -166,7 +166,7 @@ The original is checked against `record.json` (`document.sha256`). The run's ear
 - `figures_lost`: page and the alt text the figure had
 - `text_pages`: page, characters before and after, `heard_same`
 
-**Low-resolution figures** (#97): `lib/lowres.py` divides each image's stored pixel size (pdfplumber's `srcsize`) by its drawn size in inches, short side with short side, and takes a figure's lowest image of at least 72 pt on its long side, rounded to a whole ppi (an image made at 150 ppi can measure 149.9). Figures under `LOW_PPI` (150) go into the digest as `low_resolution: [{obj, page, ppi}]`, with `low_resolution_rule`. `decide.py` removes both before sending, so the AI never sees them and its request is unchanged. `report.py` writes the CHECK row only when the list has entries (up to 20 figures named), and `review/core.py` puts `low_ppi` on the card of each listed figure.
+**Low-resolution figures** (#97): `lib/lowres.py` divides each image's stored pixel size (pdfplumber's `srcsize`) by its drawn size in inches, short side with short side, and takes a figure's lowest image of at least 72 pt on its long side, rounded to a whole ppi (an image made at 150 ppi can measure 149.9). Figures under `LOW_PPI` (150) go into the digest as `low_resolution: [{obj, page, ppi}]`, with `low_resolution_rule`, both only when a figure is flagged: a PDF with none keeps a digest byte-identical to its earlier audits, so its older runs still pin. `decide.py` removes both before sending, so the AI never sees them and its request is unchanged. `report.py` writes the CHECK row only when the list has entries (up to 20 figures named), and `review/core.py` puts `low_ppi` on the card of each listed figure.
 
 **A run with no AI call** (`--to review`):
 - The run line says "no AI call", the AI cost is $0, and the sections say "in this run" instead of "by the AI".

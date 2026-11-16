@@ -69,6 +69,8 @@ This re-audits the run's input (free, no AI request), checks the digest against 
 
 The app's run page says this in plain words ("This run can't be reviewed again: the pipeline has changed since it was made. A new run of the book from its saved AI reply is needed …"). The commands are in the job's log, and in [Replaying a saved reply](#replaying-a-saved-reply).
 
+**Low-resolution figures in older runs.** Runs made before the audit checked image resolution show no low-resolution flags, on the review page or in the report, even when reviewed again. A review again uses the audit the run was made with, never today's. To see the flags, make a new run of the PDF from its saved reply ([Replaying a saved reply](#replaying-a-saved-reply), free, no AI request). For a PDF with no low-resolution figures, nothing changes: its older runs can still be pinned and reviewed again as before.
+
 **Reviews made before sessions were kept** become session 1, *summary only*: "Session 1 (summary only): 159 approved, 8 seen, no changes; per-decision choices were not recorded before 2026-10-27". When nothing was accepted without review, each card's choice is rebuilt from the recorded changes. Those cards show "approved (inferred)" and point to session 1. Otherwise the new session starts from the AI's decisions, with the summary on the page.
 
 **Batches:** re-applying a PDF in a batch folder rebuilds the batch's `summary.html`; `summary.md` stays as the batch run wrote it.
