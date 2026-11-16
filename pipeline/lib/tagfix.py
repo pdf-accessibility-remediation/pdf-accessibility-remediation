@@ -96,9 +96,10 @@ def _props(a, res):
     return p if isinstance(p, pikepdf.Dictionary) else None
 
 
-def _spans(ops, res):
+def _spans(ops, res, empty=None):
     """Spans carrying RESTORE_KEYS: [(props {key: value}, glyph start, glyph end)], the stream's glyph bytes, and whether
-    it uses ' or "."""
+    it uses ' or ". empty: a list that receives the props of each such span holding no glyph bytes (an image, a path or
+    nothing: review 09 H-A), which restore cannot place by byte offset."""
     out, stack, buf, moves = [], [], bytearray(), False
     for ins, op, a in ops:
         if op == 'BDC':
@@ -109,6 +110,7 @@ def _spans(ops, res):
         elif op == 'EMC' and stack:
             keep, s = stack.pop()
             if keep and len(buf) > s: out.append((keep, s, len(buf)))
+            elif keep and empty is not None: empty.append(keep)
         elif op in SHOW or op in MOVE_SHOW:
             moves = moves or op in MOVE_SHOW
             buf += _glyphs(op, a)
@@ -152,12 +154,17 @@ def restore(src, tagged):
             try: ss, ts = streams(sp), streams(tp)
             except Unreadable as e: rep['misfits'].append((n, None, str(e))); continue
             for key, (sown, sres) in ss.items():
-                want, sbytes, smove = _spans(_ins(_parse(sown)), sres)
-                if not want: continue
+                s_empty, t_empty = [], []
+                want, sbytes, smove = _spans(_ins(_parse(sown)), sres, s_empty)
+                if not want and not s_empty: continue
                 where = '/'.join(key)
                 if key not in ts: rep['misfits'].append((n, where, 'stream missing after tagging')); continue
                 town, tres = ts[key]; tops = _ins(_parse(town))
-                have, tbytes, tmove = _spans(tops, tres)
+                have, tbytes, tmove = _spans(tops, tres, t_empty)
+                lost = collections.Counter(_key(p) for p in s_empty) - collections.Counter(_key(p) for p in t_empty)
+                if lost:                                  # review 09 H-A: spoken text on an image or a drawing (no glyphs to place by)
+                    rep['misfits'].append((n, where, f'spoken text on an image or a drawing was dropped ({", ".join(str(dict(k)) for k in list(lost)[:3])})'))
+                if not want: continue
                 if smove or tmove: rep['misfits'].append((n, where, "uses the ' or \" operator")); continue
                 if sbytes != tbytes: rep['misfits'].append((n, where, 'glyph bytes differ from the source')); continue
                 present = {(_key(p), b0, b1) for p, b0, b1 in have}
@@ -206,6 +213,22 @@ def restore(src, tagged):
                     for v in p.values(): rep['values'][str(v)] += 1
         if changed: t.save(tagged)
     return rep
+
+
+def lost_values(src, tagged):
+    """The whole-file backstop after restore (review 09 H-A): {page: [RESTORE_KEYS values the source carries that the tagged
+    file does not]}, each value counted as often as it occurs on the page and in the forms it draws (drawing's props).
+    A page either file cannot read in full is left out (restore lists it as a misfit)."""
+    out = {}
+    with pikepdf.open(src) as s, pikepdf.open(tagged) as t:
+        if len(s.pages) != len(t.pages): return out
+        for n, (sp, tp) in enumerate(zip(s.pages, t.pages), 1):
+            if not _has_restorable(sp): continue
+            try: a, b = collections.Counter(drawing(sp)[1]), collections.Counter(drawing(tp)[1])
+            except Unreadable: continue
+            miss = a - b
+            if miss: out[n] = sorted(v for (k, v), c in miss.items() for _ in range(c))
+    return out
 
 
 # ------------------------------------------------------------------ same drawing

@@ -2159,6 +2159,12 @@ def main():
         if rs['spans']:
             flag('Spoken text restored', f'the auto-tagger dropped {rs["spans"]} marked span{"" if rs["spans"] == 1 else "s"} that set how their text is spoken '
                  f'(ActualText: {spoken_values(rs["values"])}); they were put back, so the text reads as in the original', sorted(rs['pages']), check=False)
+        lv = tagfix.lost_values(cur, tagged_out)          # review 09 H-A: the whole file, after the restore: every spoken text kept?
+        if lv:
+            rec['checks']['actualtext_restored']['values_lost'] = {str(p): v[:10] for p, v in sorted(lv.items())[:30]}
+            for p, v in sorted(lv.items()):
+                if not any(m[0] == p for m in rs['misfits']): rs['misfits'].append((p, None, f'spoken text missing after tagging ({", ".join(v[:3])})'))
+            rec['checks']['actualtext_restored']['misfits'] = [{'page': p, 'stream': s_, 'why': w} for p, s_, w in rs['misfits'][:30]]
         if rs['misfits']:
             flag('Spoken text not restored', f'{len(rs["misfits"])} places where the auto-tagger dropped spoken text (ActualText) could not '
                  f'be put back safely (e.g. {rs["misfits"][0][2]}): a person checks what a screen reader says there',

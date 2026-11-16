@@ -206,3 +206,42 @@ def test_a_tiling_patterns_path_or_colour_change_is_seen():
     base = build(b'0.2 g 0 0 20 20 re f\n')
     for other, same_ in ((build(b'0.9 g 0 0 20 20 re f\n'), False), (build(b'0.2 g 0 0 30 20 re f\n'), False), (build(b'0.2 g 0 0 20 20 re f\n'), True)):
         assert TF.same_drawing(base, other, 1)[0] is same_
+
+
+def kana_page(path, content):
+    """Review 09 H-A: "Ka", a 4 × 4 image standing for the letter ā, "na"; the image carries ActualText (ā) in the source."""
+    pdf = pikepdf.new()
+    font = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica,
+                                                Encoding=pikepdf.Name.WinAnsiEncoding))
+    img = pikepdf.Stream(pdf, b'\x00' * 16, Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Image, Width=4, Height=4,
+                         ColorSpace=pikepdf.Name.DeviceGray, BitsPerComponent=8)
+    pdf.pages.append(pikepdf.Page(pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 612, 792],
+                                                     Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font), XObject=pikepdf.Dictionary(Im1=img)),
+                                                     Contents=pdf.make_stream(content))))
+    pdf.save(path)
+    return path
+
+
+A_MACRON = b'/Span <</ActualText <FEFF0101>>> BDC q 8 0 0 12 98 700 cm /Im1 Do Q EMC'
+KANA_SRC = b'BT /F1 12 Tf 72 700 Td (Ka) Tj ET ' + A_MACRON + b' BT /F1 12 Tf 108 700 Td (na) Tj ET'
+KANA_TAG = (b'/P <</MCID 0>> BDC BT /F1 12 Tf 72 700 Td (Ka) Tj ET EMC /Figure <</MCID 1>> BDC q 8 0 0 12 98 700 cm /Im1 Do Q EMC '
+            b'/P <</MCID 2>> BDC BT /F1 12 Tf 108 700 Td (na) Tj ET EMC')
+
+
+def test_spoken_text_on_an_image_dropped_by_the_tagger_is_listed_never_passed(tmp_path):
+    """Review 09 H-A: the tagger drops the span around the image (as OpenDataLoader does); the restore can't place it by its
+    glyph bytes (it has none), so it is a misfit, and the whole-file check lists the value as missing."""
+    s = kana_page(str(tmp_path / 's.pdf'), KANA_SRC); t = kana_page(str(tmp_path / 't.pdf'), KANA_TAG)
+    rep = TF.restore(s, t)
+    assert rep['spans'] == 0 and len(rep['misfits']) == 1 and rep['misfits'][0][0] == 1 and 'image or a drawing' in rep['misfits'][0][2]
+    assert TF.lost_values(s, t) == {1: ['ā']}
+    kept = kana_page(str(tmp_path / 'k.pdf'), KANA_TAG.replace(b'/Figure <</MCID 1>> BDC q', b'/Figure <</MCID 1>> BDC ' + A_MACRON.split(b' q ')[0] + b' q')
+                     .replace(b'Do Q EMC /P <</MCID 2>>', b'Do Q EMC EMC /P <</MCID 2>>'))
+    assert not TF.restore(s, kept)['misfits'] and TF.lost_values(s, kept) == {}     # the tagger kept it: nothing listed
+
+
+def test_the_whole_file_check_is_quiet_after_a_glyph_restore(tmp_path):
+    s = make(str(tmp_path / 's.pdf'), SRC); t = make(str(tmp_path / 't.pdf'), TAG)
+    assert TF.lost_values(s, t) == {1: ['N']}                                   # before the restore: missing
+    TF.restore(s, t)
+    assert TF.lost_values(s, t) == {}                                           # put back: nothing missing
