@@ -220,6 +220,8 @@ def test_keep_cjk_pages_takes_only_pages_the_stop_named(tmp_path):
     j = run('3', stop_); assert j['status'] == 'stopped' and 'page 3, which the last CJK stop of this run did not name (it named 1, 2, 4)' in j['summary']
     assert 'pages 9' not in run('9', stop_)['summary'] and 'page 9' in run('9', stop_)['summary']   # outside the book
     j = run('2, 4,1', stop_); assert 'KEEP_CJK_PAGES' not in (j.get('summary') or '')              # named or kept before: accepted
+    out = tmp_path / 'new'; out.mkdir()                     # review 11 M1: a new folder holds no stop, and the message says where to run
+    j = run('2'); assert 'no CJK stop is recorded in this run folder' in j['summary'] and 'with RUN_DIR for a book of a batch' in j['summary']
 
 
 def test_a_keep_keeps_ocr_text_approval_required(tmp_path):

@@ -1560,7 +1560,7 @@ def main():
             return stop('stopped', f'KEEP_CJK_PAGES must be a comma list of page numbers, such as 35,41 (given: {kraw[:60]!r})', 3)
         bad = [p_ for p_ in settings['KEEP_CJK_PAGES'] if not 1 <= p_ <= len(pdf.pages) or p_ not in named]
         if bad: return stop('stopped', f'KEEP_CJK_PAGES names {"page" if len(bad) == 1 else "pages"} {", ".join(map(str, bad))}, which the last CJK '
-                            f'stop of this run did not name' + (f' (it named {", ".join(map(str, sorted(named)))})' if named else ' (no CJK stop is recorded in this run folder)')
+                            f'stop of this run did not name' + (f' (it named {", ".join(map(str, sorted(named)))})' if named else ' (no CJK stop is recorded in this run folder: run it in the stopped run\'s folder, with RUN_DIR for a book of a batch)')
                             + ': only pages the check stopped on can be kept', 3)
     if '/PageLabels' in pdf.Root:
         try: page_labels.update({i: str(pg.label) for i, pg in enumerate(pdf.pages, 1)})

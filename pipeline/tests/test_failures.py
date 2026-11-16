@@ -108,6 +108,16 @@ def test_details_hold_the_tools_words(setup):
     f = case(setup, s, kind='spend', log=CALL + TB, run={})
     assert 'URLError' in f['details']['line'] and 'decide.py:327' in f['details']['line']
 
+def test_cjk_stop_commands_run_in_the_books_own_folder(setup):
+    """Review 11 M1: KEEP_CJK_PAGES is checked against the stop recorded in the run folder, so both commands in a batch
+    book's "Details" name that folder (RUN_DIR); in a new folder the Keep would always stop."""
+    s = settings(setup)
+    f = case(setup, s, log=INTAKE, exit=3, intake={'status': 'stopped', 'summary': 'CJK text the existing OCR text lacks (page 12): run again with REOCR=1'})
+    assert f['code'] == 'C5r'
+    lines = f['details']['command'].splitlines()
+    assert len(lines) == 2 and all(l.startswith("RUN_DIR=<this book's folder in the batch> ") for l in lines)
+    assert 'REOCR=1 OCR_LANG=' in lines[0] and 'KEEP_CJK_PAGES=<the pages named above>' in lines[1]
+
 def test_a_finished_or_running_job_has_no_failure(setup):
     s = settings(setup)
     assert case(setup, s, status='done', exit=0, log=EST) is None

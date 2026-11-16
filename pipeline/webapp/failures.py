@@ -111,8 +111,9 @@ ROWS = [
     ('C5r', 'intake', summ('CJK text the existing OCR text lacks'), ('intake.py', 'CJK text the existing OCR text lacks'),   # review 04 H2
      'The OCR text seems to lack Chinese, Japanese or Korean text that the pages show.', 'Those pages would have been sent to the AI as pictures of text, so the run stopped. Nothing was sent.',
      'A person looks at the pages named in "Details". If they hold such text, they are read again by OCR in its language; if they don\'t (a map, a chart), the existing OCR text can be kept on those pages. On the run page of a PDF started from the home page, choose under "Language of the Scanned Pages". In a batch, whoever looks after the app runs this one book again (both commands are in "Details").',
-     [], 'REOCR=1 OCR_LANG=<language> bash run_api.sh <the book> <name> <run name>   (pages hold such text)\n'
-         'KEEP_CJK_PAGES=<the pages named above> bash run_api.sh <the book> <name> <run name>   (pages hold none: the existing OCR text is kept on them)'),
+     [], 'RUN_DIR=<this book\'s folder in the batch> REOCR=1 OCR_LANG=<language> bash run_api.sh <the book> <name> <run name>   (pages hold such text)\n'
+         'RUN_DIR=<this book\'s folder in the batch> KEEP_CJK_PAGES=<the pages named above> bash run_api.sh <the book> <name> <run name>   '
+         '(pages hold none: the existing OCR text is kept on them)'),     # review 11 M1: RUN_DIR, the folder where the stop is recorded
     ('C6', 'intake', lambda c: summ('the PDF could not be opened')(c) or 'failed: the PDF could not be opened' in c['text'],
      ('lib/support.py', 'the PDF could not be opened'),
      'This PDF couldn\'t be opened.', 'The file may be damaged. Nothing was sent to the AI service.', 'Add another copy of the book from the home page.', [], None),
