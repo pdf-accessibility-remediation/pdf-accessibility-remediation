@@ -1163,9 +1163,27 @@ if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the langu
               'Hawaiian in shape; the person who reads Hawaiian checks them with each page.', '']
         L += [line(f'- "{excerpt(e.get("text"))}" · {pg(e.get("page"))}', key=f'lang:haw:{e.get("page")}:{i}', pages=[e.get('page')]) for i, e in enumerate(haw_el_)]
         L.append('')
+    rule_ = [f for _, f in tagged_ if f.get('rule') and f.get('decided') != 'changed']      # #123: decided by the reading printed beside them
+    grp_ = [(i, f) for i, f in tagged_ if isinstance(f.get('group_approval'), dict)]   # #124: approved with a group-approval button
+    if rule_:
+        L += [line(f'Decided by the reading printed beside the characters at every place, not by the AI (#123): {len(rule_)} word form'
+                   f'{"" if len(rule_) == 1 else "s"} in Chinese characters ('
+                   + ', '.join(f'{LT.name(k) or k} {v}' for k, v in collections.Counter(f["lang"] for f in rule_).most_common()) + '); a person decides each on the review page, like the AI\'s.', entry=False), '']
+    if grp_:
+        by_btn = collections.Counter(f['group_approval'].get('button') for _, f in grp_)
+        L += [f'**Approved in a group approval ({len(grp_)} word forms):** '
+              + ' · '.join(f'{ {"all_shown": "Approve All Shown", "readings": "Approve Characters with Matching Readings"}.get(b, b)}: {c}' for b, c in by_btn.most_common()), '']
+        L += [line(f'- "{excerpt(f.get("form"))}": {LT.name(f["group_approval"].get("lang") or f["lang"]) or f["lang"]}'
+                   f' · {({"all_shown": "Approve All Shown", "readings": "Matching Readings"}).get(f["group_approval"].get("button"), "group approval")}'
+                   f' · {excerpt(f["group_approval"].get("evidence") or "")}'
+                   + f' · {", ".join(pg(p) for p in sorted(pages_of_.get(i) or [])[:4])}',
+                   key=f'lang:group:{f.get("key")}', pages=sorted(pages_of_.get(i) or [])[:4]) for i, f in grp_]
+        L.append('')
     if tagged_:
         L += [f'**Tagged ({len(tagged_)} word forms):**', '']
         L += [line(f'- "{excerpt(f.get("form"))}": {LT.name(f["lang"]) or f["lang"]}' + (' (changed by the reviewer)' if f.get('decided') == 'changed' else '')
+                   + (' (by the reading printed beside it)' if f.get('rule') and f.get('decided') != 'changed' else '')
+                   + (' (group approval)' if isinstance(f.get('group_approval'), dict) and f.get('decided') != 'changed' else '')
                    + f' · {f.get("places") or 0} place{"" if f.get("places") == 1 else "s"} · {", ".join(pg(p) for p in sorted(pages_of_.get(i) or [])[:4])}',
                    key=f'lang:{f.get("key")}', pages=sorted(pages_of_.get(i) or [])[:4]) for i, f in tagged_]
         L.append('')

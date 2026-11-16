@@ -52,7 +52,8 @@ def test_decisions_apply_to_the_form_and_are_counted():
     assert (f[1]['lang'], f[1]['tag']) == ('zh', True) and (f[3]['lang'], f[3]['tag']) == ('ja', True) and f[4]['decided'] == 'remove'
     assert sorted((p['form'], p['lang']) for p in langreq.expand(out['language_parts'])) == [('mappō', 'ja-Latn'), ('地獄', 'zh'), ('極楽', 'ja')]
     lr = core.language_review(items, dec)
-    assert lr == {'forms': 4, 'approved': 1, 'changed': 2, 'rejected': 1, 'not_reviewed': 0, 'bulk': 1}
+    assert lr == {'forms': 4, 'approved': 1, 'changed': 2, 'rejected': 1, 'not_reviewed': 0, 'bulk': 1,
+                  'bulk_by': {'all_shown': 1, 'readings': 0}, 'local': 0}
     lr2 = core.language_review(items, {by['mappō']: {'status': 'approved'}})
     assert lr2['not_reviewed'] == 3
 
@@ -168,28 +169,34 @@ def test_the_polynesian_set_names_rennell_bellona_by_its_code():
 
 LANG_INTRO = ("Words and passages in another language found in the PDF. A screen reader switches to a language\\'s voice for the "
               "words tagged with it. Decide each word form: the choice applies to every place it appears. Words in Chinese "
-              "characters alone are decided one by one, because the same characters are used in Chinese and Japanese. Language "
+              "characters alone are decided one by one, because the same characters are used in Chinese and Japanese, unless the "
+              "reading printed beside them (kana, a Hepburn or pinyin reading, hangul) names the same language: those can be "
+              "approved together. Language "
               "tags already in the PDF are also decided one by one, so a person confirms each of them. For Hawaiian, most screen "
               "readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.")
 
 def test_the_languages_introduction_is_patricks_paragraph():
-    """Patrick, 2026-11-13 (review 12, B, without the fold): one paragraph, exactly, the same on every PDF."""
+    """Patrick, 2026-11-13 (review 12, B, without the fold): one paragraph, exactly, the same on every PDF. #124 adds the
+    clause on Chinese characters with a matching reading, which can now be approved together."""
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
     assert f"const LANG_INTRO = '{LANG_INTRO}';" in page and "'<p>' + LANG_INTRO + '</p>'" in page
     assert page.count('LANG_INTRO') == 2                                              # defined once, drawn once, on every PDF
     assert 'data-lang="more">Show More</button>' in page                              # the row-loading button keeps its name
 
-def test_group_approval_is_off_and_never_shown():
-    """Patrick, 2026-11-13: the button is hidden behind one switch, off; the page never shows it or mentions it. Its server
-    rules stay (test_rows_per_form_and_the_summary: `bulk`; test_decisions_apply_to_the_form_and_are_counted)."""
+def test_group_approval_is_on_with_its_two_buttons():
+    """#124: group approval is on again. "Approve All Shown" keeps its rules (the shown rows with `bulk`); "Approve
+    Characters with Matching Readings" approves every row of the fold the server lists (reading_ids), loaded or not;
+    each decision records its button, and the status says so."""
     import re
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
-    assert len(re.findall(r'const LANG_BULK = (true|false);', page)) == 1 and 'const LANG_BULK = false;' in page
-    i = page.index('data-lang="bulk"'); assert page.rfind('LANG_BULK && g.bulk ?', 0, i) > i - 120     # the markup only under it
-    assert "if (act === 'bulk') { if (LANG_BULK)" in page and "else if (act === 'keep' || act === 'drop')" in page and "(LANG_BULK && d.bulk ? ' (in a group approval)' : '')" in page   # a restored draft
-    shown = page.split('<script', 1)[0] + LANG_INTRO
-    assert 'Approve All' not in shown and 'group approval' not in shown
-    assert 'Approve All' not in open(os.path.join(HERE, '..', 'docs', 'review-page.md'), encoding='utf-8').read()
+    assert len(re.findall(r'const LANG_BULK = (true|false);', page)) == 1 and 'const LANG_BULK = true;' in page
+    i = page.index('data-lang="bulk"'); assert page.rfind('LANG_BULK && g.bulk ?', 0, i) > i - 120     # each button only under the switch
+    i = page.index('data-lang="readings"'); assert page.rfind("LANG_BULK && (g.reading_ids || []).length ?", 0, i) > i - 120
+    assert '>Approve All Shown (' in page and '>Approve Characters with Matching Readings (' in page
+    assert "langSet(r.id, 'approved', undefined, 'all_shown')" in page and "langSet(id, 'approved', undefined, 'readings')" in page
+    assert "if (r.bulk && !(state.decisions[r.id] || {}).status)" in page                   # Approve All Shown: its own rows only
+    assert "else if (act === 'keep' || act === 'drop')" in page
+    assert "' (in a group approval: matching reading)'" in page and "' (in a group approval)'" in page   # a restored draft says how
 
 def test_the_code_shown_is_the_lang_written(tmp_path):
     """review 12, C (Patrick, 2026-11-13): beside each row, the value that becomes /Lang in the output PDF: an AI row, a
