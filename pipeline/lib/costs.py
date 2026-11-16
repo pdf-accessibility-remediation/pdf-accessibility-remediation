@@ -158,6 +158,15 @@ def language_estimate(R, book=True):
     """name_languages.py's estimate in run folder R when it has requests to send (#118) and was not refused, else None."""
     return _optional(R, 'language', book)
 
+def language_local(R):
+    """Word forms the language step decides by the reading printed beside them (#123), at no cost, from its estimate in R:
+    0 when there is none or the step was refused. A book whose forms are all decided this way has nothing to send, so no
+    language estimate counts; the step still runs, for free (webapp/spend.py language_env)."""
+    e = _load(os.path.join(R, 'language_estimate.json'))
+    if not isinstance(e, dict) or isinstance(e.get('refused'), dict): return 0
+    n = e.get('local')
+    return n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0
+
 def language_paid(R):
     """What the language step of an unfinished run has cost so far (language_run.json; a saved reply from elsewhere
     costs nothing here); report.py moves it into the record."""
@@ -194,8 +203,10 @@ def _workorder(R):
     if pr: covered['page_reads'] = {k: v for k, v in pr.items() if k != 'expected'}     # the expected figure stays out, like the credit
     le = language_estimate(R, book=False)
     if le: covered['language'] = {k: v for k, v in le.items() if k != 'expected'}
+    local = language_local(R)
+    if local: covered['language_local'] = local
     return {'run': run, 'e': e, 'passes': passes, 'per_call': per_call, 'spent_before': spent, 'covered': covered,
-            'sheets': sheets if isinstance(sheets, int) else None, 'page_reads': pr, 'language': le}
+            'sheets': sheets if isinstance(sheets, int) else None, 'page_reads': pr, 'language': le, 'language_local': local}
 
 KINDS = {'workorder': _workorder}
 
@@ -256,7 +267,8 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
                        if x['passes'] and len(x['passes']) > 1 else None,
             'page_reads': {'pages': int(pr['to_read']), 'ceiling_usd': pr_total} if pr else None,
             'language': {'forms': int(le.get('sent') or 0), 'requests': int(le['to_send']), 'ceiling_usd': le_total, 'model': le.get('model'),
-                         'prompt_sha256': le.get('prompt_sha256')} if le else None,
+                         'prompt_sha256': le.get('prompt_sha256'), 'local': int(le.get('local') or 0)} if le else None,
+            'language_local': x.get('language_local') or 0,     # #123: forms decided by a printed reading, at no cost
             'limits': {'per_call_usd': L['per_call_usd'], 'per_book_usd': per_book if book_cap is not None else None},
             'credit_usd': credit, 'fits': fits, 'blocked': blocked, 'expected': _expected({**x, 'page_reads': pr, 'language': le}), 'fingerprint': fp,
             'left_out': left_out,
@@ -425,6 +437,7 @@ def batch(Rs, limit=None, limits=None, credit_read=None, folder=None, rd=None):
     lim = L['per_batch_usd'] if limit is None else limit
     books, ceiling, credit, per_call, blocked = [], 0.0, None, 0.0, []
     requests, per_book, pr_book, le_book = 0, None, None, None          # every AI request of the books to send, and the largest book's bounds (#63's shape, #49's page readings)
+    local = 0                                                           # #123: word forms decided by a printed reading, in books to send
     exp_usd, exp_n, exp_of, exp_seen, adds, exp_none = 0.0, 0, 0, False, [], set()
     for R in Rs:
         if os.path.isfile(os.path.join(R, 'record.json')) or (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
@@ -435,6 +448,7 @@ def batch(Rs, limit=None, limits=None, credit_read=None, folder=None, rd=None):
             if e['bounds']['BOOK_MAX_USD'] is not None: per_book = max(per_book or 0, e['bounds']['BOOK_MAX_USD'])
             if e['bounds'].get('PAGE_READS_MAX_USD') is not None: pr_book = max(pr_book or 0, e['bounds']['PAGE_READS_MAX_USD'])
             if e['bounds'].get('LANGUAGE_MAX_USD') is not None: le_book = max(le_book or 0, e['bounds']['LANGUAGE_MAX_USD'])
+            if not any((x or {}).get('kind') == 'language' for x in e.get('left_out') or []): local += e.get('language_local') or 0
             if e['credit_usd'] is not None: credit = e['credit_usd'] if credit is None else min(credit, e['credit_usd'])
             if e['blocked'] and e['blocked']['code'] not in ('credit', 'no_credit'): blocked.append((R, e['blocked']))
             x = e['expected']; exp_of += 1
@@ -453,6 +467,7 @@ def batch(Rs, limit=None, limits=None, credit_read=None, folder=None, rd=None):
                          **({'none': next(r for r in ('cut_off', 'too_few') if r in exp_none)} if not exp_n and exp_none & {'cut_off', 'too_few'} else {})}
                         if exp_seen else None, 'requests': requests,
             'spent_usd': round(spent, 6), 'retry_usd': sp['retry_usd'], 'could_cost_usd': round(could, 6), 'fit_n': fit_n, 'credit_usd': credit, 'limit_usd': lim,
+            'language_local': local,
             'fits': {'batch': could <= lim, 'credit': None if credit is None else ceiling <= credit},
             'blocked': blocked,
             'bounds': {'MAX_USD': bound(per_call, L['per_call_usd']) if per_call else None, 'BATCH_MAX_USD': bound(could, lim),

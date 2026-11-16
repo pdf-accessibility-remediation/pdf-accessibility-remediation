@@ -42,6 +42,7 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | `LANGUAGE_MAX_FORMS=2000` | Send at most this many word forms to the language step (default 5000); the rest are listed, not sent |
 | `LANG_GROW=on` | The language step tags a title's whole extent (romanized words around a candidate, inside quotes or italics, or before a Chinese-character gloss), so the voice switches once. Off by default, until the Windows screen-reader check of a title tagged in pieces (see [Language tags](#language-tags)) |
 | `LANG_GROUP=on` | Adjacent single Chinese characters become one word form for the language step and the review page (fewer rows). Off by default |
+| `LANG_READING_RULE=off` | Every word form in Chinese characters goes to the AI, even one with a reading printed beside every place (by default those are decided locally, #123; see [Language tags](#language-tags)) |
 | `LANG_REPLY=…` | A saved language reply (a `language_run.json`) to apply instead of a request; `FROM=` sets it per book |
 | `FIGURE_PASSES=off` | No figure requests: figures past the first request's 100 images go to a reviewer (see [Files](files.md)) |
 
@@ -121,6 +122,12 @@ No request is made:
   you turn it on.)
 
 A retry that reuses the run's own reply keeps the tags already paid for.
+
+Words in Chinese characters alone with a reading printed beside every place (kana or a Hepburn word, pinyin, hangul or
+a Korean romanization), all naming one language, are decided locally and
+never sent (#123; `LANG_READING_RULE=off` sends them too). They are left out of the estimate. A PDF whose word forms
+are all decided this way sends nothing: the step runs without asking, and the app runs it with a $0 limit. See
+[Language tags](languages.md#chinese-japanese-and-korean).
 
 Two options change what is sent, both off by default (`language_run.json` records them under `options`):
 - `LANG_GROW=on`: a title in another language is tagged whole. A capitalized word in the English list joins a title

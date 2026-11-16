@@ -65,7 +65,12 @@ def language_env(est):
     """The language step as the estimate showed it (issue 118): its cap and model when it was in the estimate, else off, so a
     job never sends what the person was not shown (config.child_env keeps it off otherwise)."""
     lg = est.get('language') if isinstance(est, dict) else None
-    if not lg or est['bounds'].get('LANGUAGE_MAX_USD') is None: return {}          # config.child_env: off unless set here
+    if not lg or est['bounds'].get('LANGUAGE_MAX_USD') is None:                    # config.child_env: off unless set here
+        # #123: every word form decided by the reading printed beside it: the step runs with a $0 cap, so it sends nothing
+        # (any form it would send is refused); never when the estimate left the language step out
+        if isinstance(est, dict) and est.get('language_local') and not any((x or {}).get('kind') == 'language' for x in est.get('left_out') or []):
+            return {'LANG_TAGS': 'on', 'LANGUAGE_MAX_USD': '0.00'}
+        return {}
     return {'LANG_TAGS': 'on', 'LANGUAGE_MAX_USD': f'{est["bounds"]["LANGUAGE_MAX_USD"]:.2f}', 'LANGUAGE_MODEL': lg['model']}
 
 def last_estimate_job(s, run):
@@ -212,6 +217,8 @@ def authorize_batch(s, label, books_list, total, fingerprint):
             env.update(PAGE_READS='1', PAGE_READS_MAX_USD=f'{total["bounds"]["PAGE_READS_MAX_USD"]:.2f}')
         if total['bounds'].get('LANGUAGE_MAX_USD'):              # #118: each book's language step held to the largest's cap
             env.update(LANG_TAGS='on', LANGUAGE_MAX_USD=f'{total["bounds"]["LANGUAGE_MAX_USD"]:.2f}')
+        elif total.get('language_local'):                       # #123: only forms decided by a printed reading: the step, sending nothing
+            env.update(LANG_TAGS='on', LANGUAGE_MAX_USD='0.00')
     env['REVIEW'] = '1'                                    # every book stops for review (D2a, Patrick 2026-11-06)
     x = total.get('expected') or {}                         # a figure only when every PDF to send has one: a part of them would mislead after the run
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),

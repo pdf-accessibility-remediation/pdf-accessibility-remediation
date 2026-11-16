@@ -30,7 +30,8 @@ approved.
    medium-confidence answer, no reply cut off.)
 3. **The decisions go into the work order** as `language_parts` (version 2: one row per word form, with its places).
    The work-order prompt (`workorder_v11.md`) leaves language tags to this step.
-4. **A person decides every form** on the review page's "Languages" section (see [Review page](review-page.md#languages)).
+4. **A person decides every form** on the review page's "Languages" section (see [Review page](review-page.md#languages)),
+   one by one or with a group approval ([Group approval](review-page.md#group-approval), #124).
 5. **The executor applies the tags** (`apply.py`, `op_language`): a tagged word gets its own Span with `/Lang`; a whole
    element gets `/Lang` on itself. A publisher's tag a person removed is taken off the element and its marked content;
    one a person kept ("Keep the Tag") loses only a different `/Lang` in its marked content, so the kept tag is the one
@@ -45,6 +46,44 @@ The local rule (`lib/scripts.py`) runs first on every run: hangul is tagged Kore
 AI parts in the same language as the local tag are dropped; AI parts in another language are split under it.
 Chinese characters with no kana (Han-only) may be named Japanese or Chinese by the AI; a person approves it before the
 book ships. Han the AI leaves untagged goes to a person (`han_review.csv`), as before.
+
+**Decided by the reading printed beside them (#123).** Before any request, `lib/hanreading.py` decides a Han-only word
+form without the AI when every place of it has a reading directly beside it and all of them name the same language:
+
+- **Readings:** kana or a Hepburn word (Japanese), a pinyin word (Chinese), or hangul, a McCune-Reischauer word with
+  breves or a Revised Romanization word in a book on Korea (Korean), printed right before the characters (a piece of
+  punctuation alone may sit between), or kana or hangul right after them. A romanization after the characters is never
+  taken: in a list it is the next entry's. These are the rules the test tools used to make answer keys
+  (`tools/lang_test.py` now imports them).
+- **A word that introduces the characters is never their reading:** one ending with a colon, semicolon or period. In a
+  bibliography that is the publisher's name before a title ("Tokyo: Iwanami Shōten. 自然と文化…", invented), the trap that
+  made the issue ask to leave glossary and bibliography lines out. This guard is the pipeline's only; the test tools'
+  answer keys were made without it.
+- **Glossaries and bibliographies are not left out.** The issue asked for it, but measured (2026-11-15) it cut the forms
+  decided on the large Japanese-subject test book from 492 to 318 and on the Ryukyu book from 18 to 0, while every form
+  it left out that was checked was right (35 of 35 sampled, and all 18). The guard above catches the real trap.
+- **Never in a Chinese, Japanese or Korean document** (its Han-only text is the body's language).
+- **What it writes:** the decision (`rule: "reading"`, high confidence, the reading as evidence) goes into
+  `language_parts` like the AI's, and into `language_run.json` under `local` (the AI's stay under `decisions`). The
+  form is never sent and never counted in the estimate (`language_estimate.json` `local`). A person approves it on
+  the review page like the AI's. A saved reply never overrides it.
+- **Turn it off** with `LANG_READING_RULE=off`.
+
+Measured 2026-11-15 (free, no AI request; checked by eye where it says so):
+- **The large Japanese-subject test book** (cadaverous, 2,722 forms, 1,276 of them Han-only): 492 decided (425 Japanese, 67 Chinese), against 494 by the rule without the guard. The step's worst case drops from $4.84 to $3.98 (19 requests to 15). Checked by eye: the 47 Chinese outside the bibliography and index, 40 Japanese, and 35 of the 174 in the bibliography and index; one is wrong (see the known limit).
+- **The Ryukyu book** (814 forms, 488 Han-only, its characters all in its character list and bibliographies): 18
+  decided, all checked right by eye; the guard refused 16 that the issue's count of 34 had included, publisher names
+  read as readings.
+- **Moral Foods**: 302 (209 Chinese, 92 Japanese, 1 Korean), most in its glossary; 36 checked, all right. **Teika**: 4 (the guard refuses a Chinese couplet after "the Wakan rōeishū:"). **Global Asias**: 5.
+- **Known limit:** a name in another language whose romanization has the shape of pinyin is read as Chinese (one on the
+  large test book: a Korean monk's name). A person approves every form, and the row shows the reading.
+
+**Every Han-only form's reading (#124)** is kept with its `language_parts` entry as `reading` (its language, every
+language found, the first reading, places with one, places), counted over its places outside bibliographies, with kana
+in the same phrase as the characters (大福もち) counted too. The review page's "Approve Characters with Matching
+Readings" uses it: see [Review page](review-page.md#group-approval). Measured 2026-11-15: 370 forms on cadaverous have a
+reading of one language this way (361 of them decided by the rule), 90 on moralfoods (73) and 40 on the Ryukyu book (5).
+A form the rule decided only from bibliography entries has none, so it is approved on its own row.
 
 ### Hawaiian
 
@@ -80,7 +119,7 @@ or passes its own limit, it alone is left out and the PDF goes on without langua
 |---|---|
 | `audit/lang_candidates.json` | every candidate form and its places |
 | `language_estimate.json` | the expected and worst-case cost, before any request |
-| `language_run.json` | model, prompt, each request's reply, usage, cost, the decisions by form |
+| `language_run.json` | model, prompt, each request's reply, usage, cost, the AI's decisions by form, the reading rule's (`local`, `reading_rule`) |
 | `reviews/_audit/language_contexts.json` | the context lines the review page shows |
 
 ## The Ready rule

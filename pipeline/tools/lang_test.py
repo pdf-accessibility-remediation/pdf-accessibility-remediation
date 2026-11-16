@@ -37,21 +37,14 @@ DOC_LANG = {'yao-history': 'zh', 'yao-intelligences': 'zh', 'yao-popularizing': 
 NOKEY_BOOKS = ('cadaverous', 'teika', 'globalasias', 'taiwan-matters', 'tclt7', 'korea-matters', 'memorial-ko', 'ryukyu')
 PER_SOURCE = 25
 NOKEY_PER_BOOK = 12
-HEPBURN_ONLY = re.compile(r'[ōū]')
-IAST = re.compile(r'[ṣṇṭḍśṛṃṅṁḥ]')
-JA_SYL = re.compile(r"(?i)^(?:(?:ky|sh|ch|ts|ny|hy|my|ry|gy|by|py|j|[kgsztdnhbpmyrwf])?[aiueoāīūēō]|n(?![aiueoāīūēōy]))+$")
-PINYIN = langcands.PINYIN_U          # the pinyin shape with üan, ün, üe, matched in linear time (CodeQL py/redos)
+# the reading rules (reading_of, beside, subject_of) live in lib/hanreading.py since #123, shared with the pipeline
+from lib.hanreading import HEPBURN_ONLY, IAST, JA_SYL, PINYIN, BREVE, TONE, TONE_OTHER, HANGUL, KANA_, RR, PUNCT_ONLY, \
+    toneless, latin_core, reading_of, beside  # noqa: E402,F401
+from lib import hanreading  # noqa: E402
 SIMPLIFIED = set('创农乐这们说时为长门见车东发书马习头实对应现经过还进动边关开问间听记识语')   # simplified-only: never in Japanese (国, 数, 学 are)
 HAW_LETTERS = set('aeiouāēīōūhklmnpwʻ')
-BREVE = re.compile(r'[ŏŭŎŬ]')                 # McCune-Reischauer (Korean) and Wade-Giles (Chinese: tzŭ) use them
-TONE = re.compile(r'[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]')
 VIET = re.compile(r'[ơưđạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹƠƯĐ]')
 BUDDHIST = {'cadaverous', 'buddhist'}         # books on Buddhism: IAST letters there are Sanskrit or Pali
-
-def toneless(w):
-    """A pinyin word without its tone marks (ü kept): 'zhōngguó' → 'zhongguo'."""
-    import unicodedata
-    return unicodedata.normalize('NFC', ''.join(c for c in unicodedata.normalize('NFD', w) if not unicodedata.combining(c) or c == '\u0308'))
 
 def half(i): return 'tune' if int(hashlib.sha256(i.encode()).hexdigest(), 16) % 2 == 0 else 'score'
 
@@ -76,7 +69,6 @@ def neighbour_words(words, p, span=3):
     if p.get('w0') is None: return []
     return pw[max(0, p['w0'] - span):p['w0']] + pw[p['w1'] + 1:p['w1'] + 1 + span]
 
-def latin_core(w): return re.sub(r"^\W+|\W+$", '', w)
 
 def silver(name, cand):
     """{source: [item]} by local evidence, two signals per item (the rule, and the book's subject)."""
@@ -292,57 +284,9 @@ def build_v2(out_dir, books):
     print(json.dumps(summary, indent=1))
 
 # ---- round 15 (review 14, item 1, as Patrick widened it): masked-clue Han-only items, the hard places, variants
-HANGUL = re.compile(r'[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]')
-KANA_ = re.compile(r'[\u3040-\u30ff]')
-RR = re.compile(r'(?i)eo|eu')                                 # Revised Romanization's vowels, never Hepburn's or pinyin's
-
-TONE_OTHER = re.compile(r'[áǎàéěèíǐìóǒòúǔùǖǘǚǜ]')       # pinyin tones Hepburn never writes
-def reading_of(w, subj, toned=False):
-    """The language a piece beside a Han-only place proves, or None: kana or a Hepburn word (ja); pinyin (zh); hangul, a
-    McCune-Reischauer word with breves, or a Revised Romanization word in a book on Korea (ko). A word with Hepburn
-    macrons that also fits pinyin ("dōu", "soba-manjū") is Japanese, unless the book writes pinyin with tone marks
-    (toned: then it is not decided); a romanization
-    without marks proves zh only when it is long, not English and not Japanese in shape; breves prove ko only in a book
-    on Korea (Wade-Giles uses them for Chinese)."""
-    if KANA_.search(w): return 'ja'
-    if HANGUL.search(w): return 'ko'
-    c = latin_core(w); lw = c.lower(); bare = toneless(lw).replace("'", '').replace('’', '')
-    if not c or not bare.replace('-', '').isalpha(): return None
-    shape = bool(PINYIN.match(bare.replace('-', ''))); pin = shape and not langcands.in_english(lw)
-    hep = bool(HEPBURN_ONLY.search(lw) and JA_SYL.match(lw.replace('-', '')) and not IAST.search(lw) and not TONE_OTHER.search(lw))
-    if hep and shape: return None if toned else 'ja'
-    if hep: return 'ja'
-    if subj == 'korea' and (BREVE.search(c) and not TONE.search(c) or (RR.search(lw) and not langcands.in_english(lw) and len(lw) > 3)): return 'ko'
-    if subj == 'korea': return None                 # McCune-Reischauer without breves looks like pinyin ("minyu bangbon")
-    if pin and not BREVE.search(c) and (TONE_OTHER.search(lw) or (len(bare) > 3 and not JA_SYL.match(bare.replace('-', '')))): return 'zh'
-    return None
-
-PUNCT_ONLY = re.compile(r'^[\W_]+$')
-def beside(pw, w0, w1, subj, toned=False):
-    """{index: language} of the reading directly beside a place: the run of reading pieces that ends right before it
-    (a piece of punctuation alone may sit between), else the kana or hangul right after it, at most 3 pieces. A
-    reading two pieces away that belongs to a neighbouring entry (a glossary's "soju 소주 su 酥") is never taken."""
-    for step, start in ((-1, w0 - 1), (1, w1 + 1)):
-        i, got = start, {}
-        if 0 <= i < len(pw) and PUNCT_ONLY.match(pw[i]): i += step
-        while 0 <= i < len(pw) and len(got) < 3:
-            r = reading_of(pw[i], subj, toned)
-            if step == 1 and r and not (KANA_.search(pw[i]) or HANGUL.search(pw[i])): r = None   # a romanization after: the next entry's
-            if not r: break
-            got[i] = r; i += step
-        if got: return got
-    return {}
-
 def subject_of(cand):
     """A book's subject from the readings beside its Han-only places (for books outside SUBJECT): the most common."""
-    W, c = cand['words'], collections.Counter()
-    for p in cand['places']:
-        if 'cjk:han_only' not in p['class'] or p.get('w0') is None: continue
-        pw = W.get(str(p['page'])) or []
-        for w in pw[max(0, p['w0'] - 3):p['w0']] + pw[p['w1'] + 1:p['w1'] + 4]:
-            r = reading_of(w, None) or ('ko' if HANGUL.search(w) else None)
-            if r: c[r] += 1
-    return {'ja': 'japan', 'zh': 'china', 'ko': 'korea'}.get(c.most_common(1)[0][0]) if c else None
+    return hanreading.subject_of(cand['places'], cand['words'])
 
 NEAR, WIDE = 15, 60          # "within 15 words" for the hard places; 60: the widest context tested
 

@@ -608,7 +608,15 @@ function costLines(e) {                                          // #65 (costs i
     'Max Estimated Cost: ' + usd(e.ceiling_usd) + (e.requests > 1 ? ' for ' + esc(e.requests) + ' AI requests' : '') + including(e) +
     (e.spent_before_usd ? ' · Counted Toward This PDF\'s Limit So Far: ' + usd(e.spent_before_usd) : '') +
     (e.credit_usd != null ? ' · Credit: ' + usd(e.credit_usd) : ' · Credit: Not Checked') +
-    (e.left_out || []).map(x => '<br>' + esc(x.words)).join('');   // review 08, H1: an optional step that doesn't fit is left out, never the PDF
+    (e.left_out || []).map(x => '<br>' + esc(x.words)).join('') +   // review 08, H1: an optional step that doesn't fit is left out, never the PDF
+    localLine(e);
+}
+// #123: word forms in Chinese characters decided by the reading printed beside them are never sent, so they cost nothing
+function localLine(e) {
+  const n = Number(e.language_local || 0);
+  if (!n || (e.left_out || []).some(x => x.kind === 'language')) return '';
+  return '<br>' + n.toLocaleString('en-US') + ' word form' + (n === 1 ? ' in Chinese characters is' : 's in Chinese characters are') +
+    ' tagged by the reading printed beside ' + (n === 1 ? 'it' : 'them') + ', at no cost (a person approves each tag on the review page).';
 }
 const NEXT = { estimate: ['estimate', 'Get a New Estimate'], retry: ['retry', 'Try Again'], dismiss: ['dismiss', 'Dismiss'], home: null };
 function failureCard(f) {
