@@ -58,6 +58,8 @@ CASES = [
     ('C7', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'Tesseract is not installed: brew install tesseract tesseract-lang'})),
     ('C8', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'OCR changed pages it should not have (appearance [3], text []): stopped'})),
     ('C9', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'auto-tagging failed: java died'})),
+    ('C9m', dict(log=INTAKE, intake={'status': 'failed', 'summary': 'the auto-tagger ran out of memory on this book (it holds the whole book in memory). Run it again'})),
+    ('C5r', dict(log=INTAKE, exit=3, intake={'status': 'stopped', 'summary': 'CJK text the existing OCR text lacks (page 12): run again with REOCR=1 and OCR_LANG naming the language'})),
     ('C10', dict(log=INTAKE + 'Traceback (most recent call last):\nKeyError: x\n', intake={'status': None})),
     ('D3', dict(log=AUDIT + 'Traceback (most recent call last):\nValueError: x\n', intake={'status': 'done'})),
     ('E2', dict(log=EST + 'refusing: the request needs about 300,000 tokens (input estimate + room for the reply), over m\'s 200,000-token context window\n')),
@@ -105,6 +107,16 @@ def test_details_hold_the_tools_words(setup):
     assert f['details']['line'] == 'OpenRouter error 502: bad gateway (cost reported: $0.0123)'
     f = case(setup, s, kind='spend', log=CALL + TB, run={})
     assert 'URLError' in f['details']['line'] and 'decide.py:327' in f['details']['line']
+
+def test_cjk_stop_commands_run_in_the_books_own_folder(setup):
+    """Review 11 M1: KEEP_CJK_PAGES is checked against the stop recorded in the run folder, so both commands in a batch
+    book's "Details" name that folder (RUN_DIR); in a new folder the Keep would always stop."""
+    s = settings(setup)
+    f = case(setup, s, log=INTAKE, exit=3, intake={'status': 'stopped', 'summary': 'CJK text the existing OCR text lacks (page 12): run again with REOCR=1'})
+    assert f['code'] == 'C5r'
+    lines = f['details']['command'].splitlines()
+    assert len(lines) == 2 and all(l.startswith("RUN_DIR=<this book's folder in the batch> ") for l in lines)
+    assert 'REOCR=1 OCR_LANG=' in lines[0] and 'KEEP_CJK_PAGES=<the pages named above>' in lines[1]
 
 def test_a_finished_or_running_job_has_no_failure(setup):
     s = settings(setup)

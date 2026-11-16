@@ -669,12 +669,28 @@ function langCard(q, id) {
   if (!q) return '';
   const opts = (q.suggested ? '' : '<option value="" selected disabled>Choose a language</option>') +
     q.choices.map(c => '<option value="' + esc(c[0]) + '"' + (c[0] === q.suggested ? ' selected' : '') + '>' + esc(c[1]) + '</option>').join('');
-  return '<p>' + (q.kind === 'cjk' ? 'The scanned pages need a language with Chinese, Japanese or Korean characters before they can be read (OCR).' :
+  return '<p>' + (q.kind === 'reocr' && q.stopped ? 'This PDF already has OCR text, but the page images seem to show Chinese, Japanese or Korean text that it lacks. ' +
+      'Look at the pages below. If they hold such text, choose its language: the scanned pages are read again by OCR in that language; the page images stay exactly as they are. Text read again ' +
+      'requires a person\'s approval ("OCR Text Approval") before the PDF can be ready to ship.' :
+      q.kind === 'reocr' ? 'This PDF already has OCR text, but it seems to have lost characters that the page images show. ' +
+      'The scanned pages can be read again by OCR in their language; the page images stay exactly as they are. Text read again ' +
+      'requires a person\'s approval ("OCR Text Approval") before the PDF can be ready to ship.' :
+      q.kind === 'cjk' ? 'The scanned pages need a language with Chinese, Japanese or Korean characters before they can be read (OCR).' :
       (q.pages === 1 ? '1 page of this PDF is a scan with no text, so it is read by OCR. Choose the language it is in.' :
        (q.pages ? q.pages + ' pages of this PDF are scans' : 'Some pages are scans') + ' with no text, so they are read by OCR. Choose the language they are in.')) + '</p>' +
     (q.evidence && q.evidence.length ? '<ul class="pp-note">' + q.evidence.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
-    (q.suggested ? '<p class="pp-note">The suggestion below comes from these findings; check it before you continue.</p>' : '') +
+    (q.found && q.found.length ? '<ul class="pp-found">' + q.found.map(f => '<li><p>Page ' + esc(String(f.page)) + ': ' +
+      (f.characters != null ? f.characters + ' Chinese, Japanese or Korean character' + (f.characters === 1 ? '' : 's') + ' read' +
+       (f.different != null ? ', ' + f.different + ' of them different' : '') : 'Chinese, Japanese or Korean characters read') +
+      (f.picture ? ' (on a page that looks like a picture)' : '') + '.</p>' +
+      (f.image ? '<img src="cjk-page-' + esc(String(f.page)) + '.png" alt="Page ' + esc(String(f.page)) + ' of the PDF, as scanned" loading="lazy">' : '') + '</li>').join('') + '</ul>' : '') +
+    (q.kind === 'reocr' && q.stopped ? '<p class="pp-note">"Keep the Existing OCR Text" is for pages that hold no such text (a map, a chart, a drawing): ' +
+      'it gets a new estimate with these pages left as they are. Keep sends each page to the AI as a picture, and any Chinese, Japanese or Korean text on it is not in the OCR text. ' +
+      'Keeping requires your name, which is recorded. Choosing a language gets a new estimate with the pages read again.</p>' :
+     q.kind === 'reocr' ? '<p class="pp-note">"Keep the Existing OCR Text" continues with the current estimate. Choosing a language gets a new estimate with the pages read again.</p>' :
+     q.suggested ? '<p class="pp-note">The suggestion below comes from these findings; check it before you continue.</p>' : '') +
     '<div class="pp-row pp-lang"><label for="' + id + '">Language of the Scanned Pages</label><select id="' + id + '">' + opts + '</select>' +
+    (q.needs_name ? '<label for="' + id + '-by">Your Name</label><input type="text" id="' + id + '-by" autocomplete="name" data-for="' + esc(q.needs_name) + '">' : '') +
     '<button type="button" class="pp-primary" data-act="language" data-sel="' + id + '">Continue</button></div>';
 }
 const PHASE = { language: 'Language of the Scanned Pages', outside: 'Started Outside the App', batch: 'Batch', active: 'In Progress', estimate: 'Cost Estimate', 'needs-spend': 'Waiting for a New Estimate', stopped: 'Stopped', 'saved-reply': 'No AI Request Is Needed', new: 'Not Started' };
@@ -792,9 +808,12 @@ box.addEventListener('click', async e => {
     try {
       let s, r;
       if (act === 'language') {                                 // D4: the answer, then the estimate again
-        const v = $(b.dataset.sel).value;
+        const v = $(b.dataset.sel).value, nb = $(b.dataset.sel + '-by');
         if (!v) { msg('Choose a language first.', false, true); $(b.dataset.sel).focus(); return; }
-        [s, r] = await api(API + '/language', { lang: v });
+        const by = nb && v === nb.dataset.for ? nb.value.trim() : '';   // review 06 H1: Keep at the CJK stop records a name
+        if (nb && v === nb.dataset.for && !by) { msg('Enter your name in "Your Name" to keep the existing OCR text.', false, true); nb.focus(); return; }
+        [s, r] = await api(API + '/language', by ? { lang: v, by: by } : { lang: v });
+        if (s === 200 && r.kept) { msg('The existing OCR text is kept.', true, true); return poll(true); }   // #121: no job
       } else if (act === 'spend') {
         [s, r] = await api(API + '/spend', { kind: 'workorder', fingerprint: st.estimate.fingerprint });
       } else if (act === 'replay') {

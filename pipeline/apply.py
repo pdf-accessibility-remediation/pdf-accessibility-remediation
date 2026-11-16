@@ -18,7 +18,7 @@ title, the XMP and the tags are the same as without it); Acrobat shows it under 
 """
 import sys, os, json, re, collections, hashlib, unicodedata
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq, keptscans  # plumb_fix first: it patches pdfplumber
 from lib.sections import excerpt
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
@@ -830,10 +830,29 @@ def op_retype(spec):
         set_attr(it, '/S', pikepdf.Name('/' + it['type'])); ok(f'retype → {it["type"]}')
 
 # ================================================================== 4. figures
+KEPT_SCANS = keptscans.from_intake(SRC)        # review 06 H2: page scans intake kept as figures (lib/keptscans.py)
+def page_scan_figure(o, pg):
+    """The Figure's images cover PAGE_SCAN_AREA or more of the visible page: the audit's test for the figure it marks
+    kept_by_picture_test (audit.py), so the guard applies to that figure only, not to another figure on the page. Images
+    only, at the audit's rounding (keptscans.covers_page, review 11 L1): a Figure of a small image and page-wide text is
+    not the page scan."""
+    ms = {m for p, m in desc_mcids(o, eff_pg.get(o.objgen)) if p == pg}
+    ims = [i for i in PL.pages[pg - 1].images if i.get('mcid') in ms]
+    if not ims: return False
+    return keptscans.covers_page((min(i['x0'] for i in ims), min(i['top'] for i in ims), max(i['x1'] for i in ims),
+                                  max(i['bottom'] for i in ims)), PL.pages[pg - 1].vis)
 def op_alt(spec):
     for it in spec:
         o = obj(it['obj'])
         if S(o) != 'Figure': reject(f'alt {it["obj"]}', 'not a Figure'); continue
+        if KEPT_SCANS and not it.get('changed_by') and not str(it.get('why') or '').startswith(('added by ', 'added in review')):
+            pg = eff_pg.get(o.objgen) or min((p for p, m in desc_mcids(o) if p), default=None)   # a person's addition or change stands
+            if pg in KEPT_SCANS and page_scan_figure(o, pg):   # the kept page scan itself (review 08 H1: not another figure on the
+                why = keptscans.copied_text(it['alt'], ''.join(c['text'] for c in PL.pages[pg - 1].chars))   # page): its alt must
+                if why:                                                                                      # not copy the page's text (rule 1)
+                    reject(f'alt {it["obj"]}', f'alt text on the page scan of {PG(pg)} (Figure {it["obj"]}) refused: {why}; the figure is left without alt text for a person')
+                    log.setdefault('alt_refused_copied_text', []).append({'obj': it['obj'], 'page': pg, 'why': why, 'alt': it['alt']})
+                    continue
         set_attr(it, '/Alt', pikepdf.String(it['alt'])); ok('figure: alt text')
 def op_move_to_document_start(spec):
     for ref in spec:
@@ -1077,11 +1096,14 @@ def unspoken_owner(o):
         n = parent_of.get(n.objgen)
     return None
 def run_chars(pno, m): return [c for c in PL.pages[pno - 1].chars if c.get('mcid') == m]
+def whole_part(pno, m, lang, text=None):
+    """A refused whole-run tag as review.md lists it (its words and language), like a refused part."""
+    return {'text': text if text is not None else ''.join(c['text'] for c in run_chars(pno, m)), 'lang': lang}
 def tag_run(pno, m, lang, text=None):
     o = owner.get((pno, m))
     if o is None: reject(f'lang {PG(pno)} m{m}', 'run not in tree'); return
     why = unspoken_owner(o)
-    if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why); return
+    if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why, whole_part(pno, m, lang, text)); return
     if S(o) == 'Span' and len(kids(o)) == 1:
         o.Lang = pikepdf.String(lang); ok(f'language: {lang} on existing Span')
     else:
@@ -1200,7 +1222,7 @@ def op_language(spec):
     for (pno, m), (k, val) in sorted(local_tag.items()):
         counts[f'{k or "explicit"}: tag'] += 1
         why = drawn_here(pno, m, len(run_chars(pno, m)))
-        if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why); continue
+        if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why, whole_part(pno, m, val)); continue
         tag_run(pno, m, val)
     language_parts(keep)
     queued = {(pno, m): [(p['first'], p['last']) for p in ps] for (pno, m), ps in _LANG_SPLITS.items()}
@@ -1218,20 +1240,20 @@ def op_language(spec):
         by, n_chars = collections.defaultdict(str), collections.Counter()
         for c in PL.pages[pno - 1].chars:
             if c.get('mcid') is not None: by[c['mcid']] += c['text']; n_chars[c['mcid']] += 1
-        def ok_here(m):                                           # never a run drawn in a form under a page run's number
+        def ok_here(m, lang):                                     # never a run drawn in a form under a page run's number
             why = drawn_here(pno, m, n_chars[m])
-            if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why)
+            if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why, {'text': by[m], 'lang': lang})
             return why is None
         for m, t in by.items():
             if (pno, m) in covered: continue                      # the language step decided this run
             if (pno, m) in explicit:
-                if ok_here(m): tag_run(pno, m, explicit[(pno, m)])
+                if ok_here(m, explicit[(pno, m)]): tag_run(pno, m, explicit[(pno, m)])
                 continue
             k = scripts.kind(t)
             if k is None: continue
             what, val = scripts.action(k, t, doc_lang, spec.get('kana_runs'))
             counts[f'{k}: {what}'] += 1
-            if what == 'tag' and ok_here(m): tag_run(pno, m, val)
+            if what == 'tag' and ok_here(m, val): tag_run(pno, m, val)
             elif what == 'defer' and k == 'han_only': han.append({'page': pno, 'label': labels.get(pno), 'mcid': m, 'text': t.strip()})
             elif what == 'defer': log['deferred'].append({'page': pno, 'mcid': m, 'what': val})
     if han: log['deferred'].append({'what': 'Han-only runs (ja vs zh)', 'count': len(han)})

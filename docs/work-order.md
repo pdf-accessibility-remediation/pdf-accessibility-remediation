@@ -125,6 +125,10 @@ The Figure gets a bounding box, and goes in reading order after the block holdin
 
 Its alt text comes only from the work order (`page_figures`). Without one, the Figure has none, and `review.md` says "Page N is a figure wrap. Write the alt text." A page that fails the guard is left as it is, and listed with the reason.
 
+### Page scans kept as pictures
+
+In a scanned book, intake keeps a whole-page scan as a Figure when its image holds more than text (a plate, a map, a photo page; see [Intake](intake.md)), and the digest marks it `kept_by_picture_test`. Alt text for such a Figure must describe the picture: the executor refuses alt text that repeats 20 or more characters of the page's OCR text (white space removed, letter case ignored), or holds 6 or more Chinese, Japanese or Korean characters the OCR text lacks. A refused Figure is left without alt text (the executor never writes alt text of its own), the refusal is in the log (`alt_refused_copied_text`) and review.md lists it under "Alt text refused on page scans kept as pictures". Only the page scan itself is checked: a Figure whose images cover 80% or more of the visible page, measured as the audit measures it (images only, rounded to 0.1%: the audit's test for the figure it marks), not another figure on the same page, and not a Figure whose text spreads over the page around a small image. A person's own alt text is not checked: an addition on the review page ("added by … in review"), or an AI alt text a person changed (the review step writes `changed_by` on it; a change of white space only, such as an added space or line break, leaves it the AI's text). The review page runs the same check first and shows it on the figure's card before "Finish Review".
+
 ### Captions and figure order
 
 - **A caption is grouped with the element just before it** when that element holds nothing but figures, on the caption's page and above it. The element becomes a Div, whether or not the work order names a wrapper style. A paragraph left behind when a figure moves out to join its caption is removed only when proven empty (the same proof as Note shells).

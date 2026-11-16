@@ -273,14 +273,17 @@ The numbers: status, ready to ship, the five safety checks, the veraPDF finding,
 
 | File | Role |
 |---|---|
-| `prompts/workorder_v10.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run (see [Prompt versions](#prompt-versions)) |
-| `prompts/figures_v1.md` | The figure requests' system prompt (PDFs with more than 100 images, below): the figure rules of `workorder_v10.md`, copied word for word, and what a figure request may return. Its hash is recorded in `run.figure_passes` |
+| `prompts/workorder_v12.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run (see [Prompt versions](#prompt-versions)) |
+| `prompts/figures_v2.md` | The figure requests' system prompt (PDFs with more than 100 images, below): the figure rules of `workorder_v12.md`, copied word for word, and what a figure request may return. Its hash is recorded in `run.figure_passes` |
 | `prompts/page_reading_v1.md` | The page readings' prompt (`read_pages.py`): transcribe the page exactly as printed, with ʻokina and kahakō only where the page prints them. Its hash is recorded in `record.json` under `page_reads` |
 | `verapdf/` | `WCAG-2-2-Machine.xml` (the pinned profile), `rules.json` (each rule's WCAG success criteria, or why it is PDF/UA-only), `install.sh` |
 
 ### Prompt versions
 
 Older prompt versions are kept as a record; v8 and older are no longer used.
+
+- **v12** (with `figures_v2.md`, review 06): in a scanned book, a whole-page Figure marked `kept_by_picture_test` (a page scan intake kept because its image holds more than text) is described, not artifacted, and its alt text never copies the page's printed text; other page scans are still artifacted. The executor refuses alt text that does (see [Intake](intake.md)). Work orders from v11 are still read.
+- **v11** moves language tags out of the work order into the language step (#118).
 
 - **v10** reads a table's rows from the digest's `row_shapes` (`title_rows`, `note_rows`, `group_rows`, `repeat_rows`), and stops counting a title row as a header. Work orders from v9 are still read.
 - **v9** (schema `workorder/0.2`) makes `move_section` a list of up to 3 moves, made in order. It lets the AI turn the figure-order step off for a PDF (`fix_figure_order: false`, for figures meant to be read apart from their page). Work orders from v8 (one move) are still read.
@@ -302,7 +305,7 @@ Each figure request sees:
 - the veraPDF failures that name those figures
 - ten alt texts the first request wrote, as style examples, picked evenly through the PDF from the ones that passed the checks
 
-Its instructions are `prompts/figures_v1.md`: the figure rules of `workorder_v10.md`, copied word for word (a test keeps the two in step). A figure request may decide only alt text, decoration and deferrals, and only for its own figures; anything else is dropped.
+Its instructions are `prompts/figures_v2.md`: the figure rules of `workorder_v12.md`, copied word for word (a test keeps the two in step). A figure request may decide only alt text, decoration and deferrals, and only for its own figures; anything else is dropped.
 
 The first request is told, in a note after the digest, which figures another request will answer. Any decision it still makes about them is dropped: each figure has one decision, from the request that saw it. Then the answers are merged into one work order, which goes through the same checks as always.
 

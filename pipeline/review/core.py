@@ -25,7 +25,7 @@ import os, re, sys, copy, json, time, shutil, datetime, tempfile, subprocess, th
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
-from lib import workorder_check, readorder, gaptext, langtag, langreq  # noqa: E402
+from lib import workorder_check, readorder, gaptext, langtag, langreq, keptscans  # noqa: E402
 
 LEVELS = sorted(workorder_check.ALLOWED - {'Figure'}, key=lambda t: (not t.startswith('H'), t))
 HEADING = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6'}
@@ -1066,6 +1066,10 @@ def prepare(R, pdf):
     return data
 
 # ------------------------------------------------------------------ decisions
+def _ws(x):
+    """Text with its white space collapsed (review 11 L3): an added space or line break leaves the AI's alt text the AI's."""
+    return ' '.join(x.split()) if isinstance(x, str) else x
+
 def apply_decisions(ai_wo, items, decisions):
     """A copy of the AI's work order with a person's decisions applied. Unreviewed and approved items stay as the AI wrote them."""
     wo = copy.deepcopy(ai_wo)
@@ -1106,7 +1110,11 @@ def apply_decisions(ai_wo, items, decisions):
                     except (TypeError, ValueError): return x
                 ps = v.get('pages') if isinstance(v.get('pages'), list) else parent[last].get('pages')
                 parent[last] = {**parent[last], 'pages': [num(x) for x in ps], 'before_page': num(v.get('before_page', parent[last].get('before_page')))}
-            elif it['field']: parent[last][it['field']] = v
+            elif it['field']:
+                parent[last][it['field']] = v
+                if it['key'] == 'alt' and it['field'] == 'alt' and isinstance(parent[last], dict) and _ws(v) != _ws(it.get('ai')):   # review 11 L3
+                    parent[last]['changed_by'] = 'person'   # review 08, decision 2: a person's alt text; apply.py's alt-text guard
+                                                            #   (lib/keptscans.py) checks the AI's, never a person's
             else: parent[last] = v
     for loc in sorted(drop, key=lambda l: [str(x) if not isinstance(x, int) else f'{x:09d}' for x in l], reverse=True):
         parent = wo
@@ -1276,6 +1284,14 @@ def preview(R, wo):
 # What to do about each reason the check (lib/workorder_check.py) or add_entries gives, for the page: sentence case, no
 # file names. Keyed by the reason with its numbers as N (_key); {pages} is the book's page count, {moves} the most
 # section moves a work order may hold. A reason with no entry is shown as it is (test_review_core pins that none is missing).
+# review 11 M2 (Patrick's wording): one text per finding, each opening with what was found; shown without the generic
+# "This is the AI's choice" tail ('tail': False), which repeated its last sentence
+ALT_COPIES_FIX = ('This alt text repeats the page\'s own printed text. This page is a scan kept as a picture: its alt text should '
+                  'describe the picture, since a screen reader already reads the page\'s OCR text and the AI must not write the '
+                  'book\'s text. Select "Change" and describe the picture, or select "Reject" when the image is only printed text.')
+ALT_CJK_FIX = ('This alt text holds Chinese, Japanese or Korean characters that the page\'s OCR text lacks. The AI must not write '
+               'the book\'s text, so the alt text can\'t carry them. Select "Change" and describe the picture, or select "Reject" '
+               'when the image is only printed text.')
 FIX = {
     'unknown key': 'The pipeline does not know this decision, so it cannot be applied. Reject it.',
     'unknown obj': 'This points at something the audit did not find in the book. Reject it.',
@@ -1411,6 +1427,18 @@ def problems(R, ai_wo, items, decisions, additions, adds, reviewer='', set_in=No
             ps = d['item'].get('pages') if isinstance(d['item'].get('pages'), list) and len(d['item']['pages']) == 2 else None
             p['parts'] = ([f for f, v in zip(('a', 'b'), ps) if not page_ok(v)] if ps else ['a', 'b']) + ([] if page_ok(d['item'].get('before_page')) else ['before_page'])
         out['fields'].append(p)
+    kt = (load(os.path.join(R, '_audit', 'fulltext.json')) or {}).get('kept_page_text') or {}
+    if kt:                                             # review 09 M-B: apply.py's alt-text guard, shown on the card before "Finish Review"
+        kf = {f['obj']: f for f in digest.get('figures') or [] if f.get('kept_by_picture_test')}
+        for a in wo.get('alt') or []:
+            f, c = kf.get(a.get('obj')) if isinstance(a, dict) else None, a.get('_card') if isinstance(a, dict) else None
+            if not f or not c or c not in ids or a.get('changed_by') or str(a.get('why') or '').startswith(('added by ', 'added in review')): continue
+            w_ = keptscans.copied_text(a.get('alt'), kt.get(str(f.get('page')), ''))
+            if w_:
+                rep = w_.startswith('it repeats')
+                out['fields'].append({'card': c, 'origin': origin(c), 'tail': False, 'fix': ALT_COPIES_FIX if rep else ALT_CJK_FIX,
+                                      'why': ('this alt text repeats the page\'s own printed text' if rep else
+                                              'this alt text holds Chinese, Japanese or Korean characters that the page\'s OCR text lacks')})
     for r in refused:
         aid, why = r['id'], r['why']
         kind, _, target = aid[4:].partition(':')

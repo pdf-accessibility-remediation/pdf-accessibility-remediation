@@ -40,10 +40,13 @@ def with_spread_labels(labels, intake):
 def ocr_layer_flagged(intake):
     """Intake's test of an existing OCR layer on scanned pages found it doubtful, unusable or missing diacritics, or could
     not check it (no sample page scored: an unknown layer is not "not needed"): then its OCR text needs a person's
-    approval before the book ships, as added OCR text does (decided 2026-10-25). A book with no existing OCR layer has no
-    `ocr_layer_test` and is not flagged."""
+    approval before the book ships, as added OCR text does (decided 2026-10-25); so does a layer over page images that show
+    Chinese, Japanese or Korean text the layer lacks (#121), and one whose such pages a person kept at the CJK stop
+    (`cjk_kept`, review 09 M-A: the Keep is a typed name before any review, not an approval of the text). A book with no
+    existing OCR layer has no `ocr_layer_test` and is not flagged."""
     ol = (intake or {}).get('ocr_layer_test') or {}
-    return ol.get('verdict') in ('doubtful', 'unusable', 'not enough pages scored') or bool(ol.get('diacritics'))
+    return (ol.get('verdict') in ('doubtful', 'unusable', 'not enough pages scored') or bool(ol.get('diacritics')) or bool(ol.get('cjk_on_images'))
+            or bool((ol.get('cjk_kept') or {}).get('pages')))
 def ocr_review_needed(intake):
     """The OCR-text gate's condition, in one place (review.md, review_ocr.py, the review page): intake added OCR text, or
     flagged the book's existing OCR layer."""

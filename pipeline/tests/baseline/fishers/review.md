@@ -2,13 +2,13 @@
 
 Result: `fishers_remediated.pdf`
 
-285 pages · run November 14, 2026, at 3:29 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.230 ($0.0008 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+285 pages · run November 15, 2026, at 10:03 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.220 ($0.0008 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.1s · audit 32.8s · reuse saved reply 1.4s · apply 96.4s · verify 45.4s · total 177.1s
+Time: intake 1.5s · audit 52.5s · reuse saved reply 1.5s · apply 140.1s · verify 40.6s · total 236.2s
 
 ## Overview
 
@@ -24,8 +24,8 @@ Time: intake 1.1s · audit 32.8s · reuse saved reply 1.4s · apply 96.4s · ver
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 16 (8 deferred by the AI · 1 deferred by the executor · 7 CHECK rows)  
-**AI decisions:** 117 in the work order, applied without review by a person  
+**Needs a person:** 20 (11 deferred by the AI · 1 deferred by the executor · 8 CHECK rows)  
+**AI decisions:** 95 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 4,277 · empty tags removed 163 · tag-tree index entries 61 · link descriptions that were only a URL 12 · Document root 1 · title shown in the window 1  
 **veraPDF (WCAG 2.2 machine checks):** 3 WCAG rules failing before (104 checks) → 0 after (0 checks) · 0 newly failing
 
@@ -37,8 +37,8 @@ Automated checks are evidence, not sign-off.
 | No empty tags: 3 empty tags (page: not on this tag) | see §10 | [§10](#10-empty-tags-163-removed-3-kept) |
 | Every link tied to its text and described: 1 unresolved · 0 without description · 0 pointing to no annotation | see §9 | [§9](#9-links-whose-description-was-only-a-url-12-and-4-addresses-that-look-broken) |
 | No link nested inside another: 11 | see §9 | [§9](#9-links-whose-description-was-only-a-url-12-and-4-addresses-that-look-broken) |
-| Fonts: embedded and mapped to Unicode: 1 not embedded · 0 without ToUnicode | see §7 | [§7](#7-fonts) |
-| … and 11 more | | §7, §14, §15, §16 |
+| 7 figures without alt text, or with placeholder alt | see §1 | [§1](#1-alt-text-written-or-changed-by-the-ai-16) |
+| … and 15 more | | §7, §14, §15, §16 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -66,7 +66,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | No link nested inside another | **CHECK** | 11 |
 | Headings: no skipped levels | OK | H1 1 · H2 15 · H3 40 · H4 5 |
 | Headings: exactly one H1 (the title) | OK | 1 H1 (several H1s usually mean parts or chapters were not demoted) |
-| Figures: none with empty or placeholder alt | OK | 15 figures, 0 placeholder |
+| Figures: none with empty or placeholder alt | **CHECK** | 38 figures, 7 placeholder |
 | Every Note has a unique ID | OK | 60 notes · 0 without ID · 0 duplicate · 0 not in the ID tree |
 | Bookmarks present (documents over 9 pages) | OK | 16 bookmarks |
 | Model reply held one work order | OK | one |
@@ -78,46 +78,46 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Tab order follows the tag structure on pages with links or other annotations | OK | 0 of 67 pages with annotations lack /Tabs /S |
 | Characters with no Unicode value (checklist 3.6) | OK | 0 read-aloud characters with no Unicode value |
 | Private-use characters (checklist 3.6) | **CHECK** | 7 read-aloud characters with private-use codes (U+F068: 7) on 7 pages |
-| Title and language set | OK | "Fishers, Monks and Cadres: Navigating State, Religion and the South China Sea in Central Vietnam" · en-GB |
+| Title and language set | OK | "Fishers, Monks and Cadres: Navigating State, Religion and the South China Sea in Central Vietnam" · en |
 | veraPDF WCAG 2.2 (machine): no WCAG failures | OK | before: 3 WCAG rules failed (104 checks) → after: 0 WCAG rules failed (0 checks) · 1 PDF/UA-only rules not counted (listed under "veraPDF") |
 | veraPDF: no rule newly failing or failing more often | OK | 4 fixed · 1 still failing · 0 newly failing |
-| Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 15 figures flagged |
+| Alt text: none like a file name or repeated on many figures (1.1.1) | **CHECK** | 12 of 38 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
-| Reading order: no page jumps back up a column (1.3.2) | **CHECK** | 1 of 279 pages flagged |
-| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 0 already in the original, of 6 sections and blocks |
+| Reading order: no page jumps back up a column (1.3.2) | OK | 0 of 279 pages flagged |
+| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 0 already in the original, of 7 sections and blocks |
 | Title is not a file name or placeholder (2.4.2) | OK | "Fishers, Monks and Cadres: Navigating State, Religion and the South China Sea in Central Vietnam" |
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
 
 ## For a Person to Check
 
-### 1. Alt Text Written or Changed by the AI (15)
+### 1. Alt Text Written or Changed by the AI (16)
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 (printed COVER) | Couverture | Book cover: colour photograph of a blue fishing boat dressed with flags, balloons, a portrait and a red banner, moving along a river in central Vietnam with a green hill behind. The title 'Fishers, Monks and Cadres: Navigating State, Religion and the South China Sea in Central Vietnam' is printed at the top and the author's name, Edyta Roszko, at the bottom. |
-| PDF 5 (printed iv) | Illustrations | Creative Commons logo: CC BY-NC-ND (Attribution, NonCommercial, NoDerivatives). |
-| PDF 20 (printed xix) | Map of the field sites of Sa Huỳnh and Lý Sơn. | Map 1: the field sites of Sa Huỳnh and Lý Sơn. Map of the Vietnamese coast and the South China Sea. Sa Huỳnh (Phổ Thạnh commune) is on the central coast and Lý Sơn Island lies just offshore. The Paracel Islands lie further east, Hainan and China to the north, and Laos, Thailand and Cambodia to the west. Hanoi and Phnom Penh are marked. |
-| PDF 21 (printed xx) | Map of the religious sites in Sa Huỳnh in Quảng Ngãi Province in Central Vietnam.\x00 | Map 2: religious sites in Sa Huỳnh (Phổ Thạnh commune), Quảng Ngãi Province, Central Vietnam. Map of a coastal strip between hills and the South China Sea, crossed by a railway and a road. Villages are shaded by main income source (salt-making, fishing, agriculture, forestry and agriculture). Twelve numbered sacred places and temples are marked, including Thanh Minh temple, the Quan Âm statue, Whale Spirit temples, Thủy Long palace, Thiên Ya Na temple and Từ Phước pagoda. |
-| PDF 22 (printed xxi) | Map of the religious sites in An Hải Commune on Lý Sơn Island.\x00 | Map 3: religious sites in An Hải Commune, Lý Sơn Island. Non-scaled sketch map. A volcanic mountain with a crater sits in the centre, surrounded by fields and forest. The built-up East Village and West Village lie along the south coast, and An Vĩnh Commune is to the west. Seventeen numbered sacred places are marked, including temples, a pagoda, shrines, a cemetery and a palace. |
-| PDF 23 (printed xxii) | Map of the religious sites in An Vĩnh Commune on Lý Sơn Island.\x00 | Map 4: religious sites in An Vĩnh Commune, Lý Sơn Island. Non-scaled sketch map. Pasture and fields fill the interior, and West Village and East Village run along the western and southern coast with a harbour at the west. An Hải Commune is to the east. Twenty-three numbered sacred places are marked, including pagodas, temples, shrines, tombs and the village founders' shrine. |
-| PDF 25 (printed xxiv) | Photo of a wooden statue recovered by fishermen from the South China Sea.  | Black-and-white photograph: a small wooden statue of a seated figure, sheltered by an umbrella and fenced in with chain-link among potted plants. Two men crouch in front of it. This is the statue recovered by fishermen from the South China Sea. |
-| PDF 53 (printed 28) | View of Sa Huỳnh in Central Vietnam.\x00 | Black-and-white photograph: view from a hillside over Sa Huỳnh, with rice fields on the left, houses along a sandy beach and a wooded headland reaching into the sea. |
-| PDF 79 (printed 54) | Photo of an altar in the yard of a house for the Earth Spirit in Sa Huỳnh.\x00 | Black-and-white photograph: an altar for the Earth Spirit in a yard in Sa Huỳnh. A concrete pillar topped with an old television casing holds an incense pot and offerings, with palms and a fence behind. |
-| PDF 105 (printed 80) | Photo of a procession in honour of the village’s founders in An Hải Village in Lý Sơn.\x00 | Black-and-white photograph: men in dark traditional robes and headdresses carry a canopied ceremonial shrine in a procession in front of a tile-roofed temple in An Hải Village, Lý Sơn. Onlookers stand behind. |
-| PDF 131 (printed 106) | Photo of the head of the fishing community worshipping Quan Âm in Sa Huỳnh.\x00 | Black-and-white photograph: a white statue of the bodhisattva Quan Âm stands on a stepped stone base beside the water in Sa Huỳnh, framed by trees and a stone balustrade. |
-| PDF 151 (printed 126) | Photo of the Paracel Memorial erected by Quảng Ngãi Province on Lý Sơn Island.\x00 | Black-and-white photograph: the Paracel (Hoàng Sa) Memorial on Lý Sơn Island. A tall stone slab with sculpted figures of three men stands on a stone base in a paved courtyard, with a tile-roofed building behind. |
-| PDF 154 (printed 129) | Imaginary map of Vietnam’s land and the sea with Lý Sơn in the middle.\x00 | Imaginary map of Vietnam's land and the sea, in a circle. Vietnam's long, S-shaped landmass fills the left side. Lý Sơn Island is marked with a star on the central coast, in the middle of the picture. The Paracel Islands lie to the east and the Spratly Islands to the south-east, with open sea between them and the mainland. |
-| PDF 185 (printed 160) | Photo of women on the way to Thiên Y A Na temple in Sa Huỳnh.\x00 | Black-and-white photograph: four women walk towards the camera across a sandy beach in Sa Huỳnh, with boats and a harbour behind them. One carries a pair of sandals and another a bunch of flowers, on their way to the Thiên Y A Na temple. |
-| PDF 221 (printed 196) | Photo of monks, cadres and fishers during the ‘Celebration for the Peace of the Paracels and Spratlys’ in Lý Sơn Island.\x00 | Black-and-white photograph: Buddhist monks in robes and local officials gather around an altar with offerings during the 'Celebration for the Peace of the Paracels and Spratlys' on Lý Sơn Island. A man in a white shirt holds out a paper, and a microphone is held at the right. |
+| PDF 1 (printed COVER) | Couverture | Cover of Fishers, Monks and Cadres by Edyta Roszko: a blue Vietnamese fishing boat decked with the red national flag, coloured pennants, balloons and a red banner sails past a green hillside coast. The title, the subtitle 'Navigating State, Religion and the South China Sea in Central Vietnam' and the author's name are printed over the sky and sea. |
+| PDF 4 (printed iii) | Illustrations | University of Hawai‘i Press logo |
+| PDF 5 (printed iv) | Illustrations | Creative Commons BY-NC-ND (Attribution-NonCommercial-NoDerivatives) licence logo |
+| PDF 20 (printed xix) | Map of the field sites of Sa Huỳnh and Lý Sơn. | Map 1 of the field sites of Sa Huỳnh and Lý Sơn. It shows the coast of central Vietnam, with Sa Huỳnh (Phổ Thạnh commune) on the mainland and Lý Sơn Island just offshore. The Paracel Islands lie farther out in the South China Sea. Hainan, China, Laos, Thailand, Cambodia, Hanoi and Phnom Penh are marked for orientation. |
+| PDF 21 (printed xx) | Map of the religious sites in Sa Huỳnh in Quảng Ngãi Province in Central Vietnam.\x00 | Map 2 of the religious sites in Sa Huỳnh (Phổ Thạnh commune), Quảng Ngãi Province, central Vietnam. The coast, railway, road and province border are shown. Villages are marked by main income source: salt-making, fishing, agriculture, or forestry and agriculture. Twelve numbered sacred places and temples are listed in the legend, including Thanh Minh temple, Whale Spirit temples, the Quan Âm statue, Thiên Ya Na temple and Từ Phước pagoda, clustered mostly near the coast. |
+| PDF 22 (printed xxi) | Map of the religious sites in An Hải Commune on Lý Sơn Island.\x00 | Sketch map 3 of the religious sites in An Hải Commune on Lý Sơn Island. It shows fields, forest, beach with garlic and onion fields, built-up areas and a street, with the volcanic mountain crater at the centre, East Village and West Village on the coast, and An Vĩnh commune to the west. Seventeen numbered sacred places are listed in the legend, including the Seafaring Deity temple, Hang pagoda, Từ Quang pagoda, Thiên Y A Na temples, Whale Spirit temple and the cemetery. |
+| PDF 23 (printed xxii) | Map of the religious sites in An Vĩnh Commune on Lý Sơn Island.\x00 | Sketch map 4 of the religious sites in An Vĩnh Commune on Lý Sơn Island. It shows pasture, fields, beach, garlic and onion fields, built-up areas and a street, with West Village and the harbour on the west coast, East Village to the south, and An Hải commune to the east. Twenty-three numbered sacred places are listed in the legend, including Đụn pagoda, Âm Linh Tự temple, Whale Spirit temples, Thiên Y A Na temple, the Village Founders shrine, Lady Roi temple and Vĩnh An pagoda. |
+| PDF 25 (printed xxiv) | Photo of a wooden statue recovered by fishermen from the South China Sea.  | Black-and-white photo of a small wooden statue recovered by fishermen from the South China Sea. It sits in a shrine behind a chain-link fence, under a plaid umbrella among potted plants, while two men crouch in front of it. |
+| PDF 53 (printed 28) | View of Sa Huỳnh in Central Vietnam.\x00 | Black-and-white view of Sa Huỳnh from a hillside: fields and a road run down to a village and a curving beach, with a forested headland and the sea beyond. |
+| PDF 79 (printed 54) | Photo of an altar in the yard of a house for the Earth Spirit in Sa Huỳnh.\x00 | Black-and-white photo of an altar for the Earth Spirit in a yard in Sa Huỳnh: an old television casing stands on a concrete pillar and holds small offerings and incense, with palm trees and a fence behind. |
+| PDF 105 (printed 80) | Photo of a procession in honour of the village’s founders in An Hải Village in Lý Sơn.\x00 | Black-and-white photo of a procession in honour of the village's founders in An Hải Village, Lý Sơn. Men in traditional dark robes and headdresses carry a small ornate palanquin and ritual objects across the yard of a tiled-roof communal house. |
+| PDF 131 (printed 106) | Photo of the head of the fishing community worshipping Quan Âm in Sa Huỳnh.\x00 | Black-and-white photo of the head of the fishing community worshipping Quan Âm in Sa Huỳnh. A white statue of the bodhisattva stands on a stepped platform beside the water, framed by trees and a stone balustrade, with a figure in the shadows at left. |
+| PDF 151 (printed 126) | Photo of the Paracel Memorial erected by Quảng Ngãi Province on Lý Sơn Island.\x00 | Black-and-white photo of the Paracel (Hoàng Sa) Memorial erected by Quảng Ngãi Province on Lý Sơn Island: a large stone monument with a sculpted group of three figures stands before a tiled-roof building on a paved courtyard. |
+| PDF 154 (printed 129) | Imaginary map of Vietnam’s land and the sea with Lý Sơn in the middle.\x00 | Imaginary map of Vietnam's land and the sea, in a circle. Vietnam's long coastal silhouette is dark grey on the left. Lý Sơn Island is marked with a star on the coast at the centre of the picture, with the Paracel Islands to its east and the Spratly Islands to the south-east. |
+| PDF 185 (printed 160) | Photo of women on the way to Thiên Y A Na temple in Sa Huỳnh.\x00 | Black-and-white photo of four women on the way to the Thiên Y A Na temple in Sa Huỳnh, walking along a sandy beach with a small boat and moored fishing vessels behind them. One carries flowers and another holds a pair of sandals. |
+| PDF 221 (printed 196) | Photo of monks, cadres and fishers during the ‘Celebration for the Peace of the Paracels and Spratlys’ in Lý Sơn Island.\x00 | Black-and-white photo of monks, cadres and fishers during the ‘Celebration for the Peace of the Paracels and Spratlys’ on Lý Sơn Island. Monks in robes stand around an altar with offerings while a man in a white shirt holds up a paper, and onlookers and a microphone are visible. |
 
-### 2. Figures That Kept Their Existing Alt Text (23)
+### 2. Figures That Kept Their Existing Alt Text (22)
 
 Not changed by the AI. Check they are adequate.
 
 | Page | Alt text |
 |---|---|
-| PDF 4 (printed iii) | Illustrations |
 | PDF 8 (printed vii) | Illustrations |
 | PDF 8 (printed vii) | Illustrations |
 | PDF 8 (printed vii) | Illustrations |
@@ -147,9 +147,9 @@ Heading levels by style (as applied):
 
 | Style | Level | How | Elements |
 |---|---|---|---:|
-| Artifact | Span | RoleMap (added: the style had no mapping) | 1 |
+| Artifact | Div | RoleMap (added: the style had no mapping) | 1 |
 
-### 4. Elements Retyped by the AI (84)
+### 4. Elements Retyped by the AI (61)
 
 Check each one is (or is not) a heading as decided.
 
@@ -216,29 +216,6 @@ Check each one is (or is not) a heading as decided.
 | PDF 242 (printed 217) | Unpublished Manuscripts | P | H3 |
 | PDF 242 (printed 217) | Published sources cited in Vietnamese | P | H3 |
 | PDF 266 (printed 241) | Index | P | H2 |
-| page: not on this tag | (no text) | (no style) | P |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
-| page: not on this tag | (no text) | (no style) | Span |
 
 ### 5. Text a Screen Reader Could Not Reach (before this run)
 
@@ -262,9 +239,9 @@ The pipeline changes no other font: it never embeds one, replaces a visible one,
 
 Real content that was marked but in no tag, now read in page order after the last tagged block on its page. Listen through these pages:
 
-- PDF 8 (printed vii) ("contents label"): 1 runs → 1 paragraphs, starting "1."
-- PDF 18 (printed xvii) ("glossary entries"): 30 runs → 16 paragraphs, starting "và Du Lịch"
-- PDF 19 (printed xviii) ("glossary entries"): 8 runs → 3 paragraphs, starting "Giáo Hội Phật Giáo Việt"
+- PDF 8 (printed vii) ("contents chapter number label"): 1 runs → 1 paragraphs, starting "1."
+- PDF 18 (printed xvii) ("glossary terms and definitions"): 30 runs → 16 paragraphs, starting "và Du Lịch"
+- PDF 19 (printed xviii) ("glossary terms and definitions"): 8 runs → 3 paragraphs, starting "Giáo Hội Phật Giáo Việt"
 - PDF 54 (printed 29) ("chapter 1 notes"): 2 runs → 1 paragraphs, starting "In 1909, the French scholar M. Vinet identified jar burials, pottery, and other objects with…"
 - PDF 86 (printed 61) ("chapter 2 notes"): 4 runs → 1 paragraphs, starting "Scott speaks of any state, not just authoritarian or socialist ones, and his argument thus remains…"
 - PDF 94 (printed 69) ("chapter 2 notes"): 2 runs → 1 paragraphs, starting "According to the Ministry of Culture, by 1996 a total of 1,860 ‘historical and cultural monuments’…"
@@ -338,20 +315,34 @@ PDF/UA-only, not required for WCAG (not counted):
 
 Each item is something to look at, not a proven failure.
 
-- 1.3.2 the reading order jumps back up the same column on 1 page. Listen through them with a screen reader (or the PAC screen-reader preview): PDF 8 (printed vii) (2 jumps)
+- 1.1.1 PDF 8 (printed vii): alt text "Illustrations": the same alt text on 12 figures
+- 1.1.1 PDF 8 (printed vii): alt text "Illustrations": the same alt text on 12 figures
+- 1.1.1 PDF 8 (printed vii): alt text "Illustrations": the same alt text on 12 figures
+- 1.1.1 PDF 8 (printed vii): alt text "Illustrations": the same alt text on 12 figures
+- 1.1.1 PDF 8 (printed vii): alt text "Illustrations": the same alt text on 12 figures
+- 1.1.1 PDF 8 (printed vii): alt text "Illustrations": the same alt text on 12 figures
+- 1.1.1 PDF 8 (printed vii): alt text "Illustrations": the same alt text on 12 figures
+- 1.1.1 PDF 8 (printed vii): alt text "Illustrations": the same alt text on 12 figures
+- 1.1.1 PDF 54 (printed 29): alt text "Illustrations": the same alt text on 12 figures
+- 1.1.1 PDF 54 (printed 29): alt text "Illustrations": the same alt text on 12 figures
+- 1.1.1 PDF 86 (printed 61): alt text "Illustrations": the same alt text on 12 figures
+- 1.1.1 PDF 86 (printed 61): alt text "Illustrations": the same alt text on 12 figures
 
 ### 15. Deferred by the AI
 
-- **Empty L elements (no LI children) holding footnote labels and notes**: The lists on PDF 54 (printed 29), 86 (printed 61), 94 (printed 69), 112 (printed 87), 178 (printed 153), 198 (printed 173) and 209 (printed 184) have no list items. They are footnotes and need a person to check their structure. The two real footnote lists (PDF 37 and 144) are kept. [PDF 54 (printed 29), PDF 86 (printed 61), PDF 94 (printed 69), PDF 112 (printed 87), PDF 178 (printed 153), PDF 198 (printed 173), PDF 209 (printed 184)]
-- **Headings 'List of Illustrations', 'Maps', 'Figures' on PDF 9 (printed viii), and 'TERMS FOR ORGANIZATIONS' on PDF 19 (printed xviii)**: They are not clearly identifiable as body-tagged candidates. 'Maps' and 'Figures' (11 pt bold) would need a parent H2 that is not safely identifiable, so no heading level was assigned. [PDF 9 (printed viii), PDF 19 (printed xviii)]
-- **Chapter 4 title is split over four P lines (11762 0 to 11765 0)**: Only the first line was made H2. A person should merge the four lines into one heading. The other three lines (11763 0, 11764 0, 11765 0) remain P. [PDF 132 (printed 107)]
-- **'INTRODUCTION' (PDF 26) and 'CONCLUSION' (PDF 222) labels and 'CHAPTER n' labels on chapter openers**: These sit as separate P lines before the H2 titles. A person should decide whether to fold them into the headings. [PDF 26 (printed 1), PDF 54 (printed 29), PDF 80 (printed 55), PDF 106 (printed 81), PDF 132 (printed 107), PDF 152 (printed 127), PDF 186 (printed 161), PDF 222 (printed 197)]
-- **Drop capitals retyped from Figure to Span**: Their letter is part of the first word, but the executor cannot verify that the glyph is text. Check the reading of the first word on each chapter opening. [PDF 10 (printed ix), PDF 16 (printed xv), PDF 26 (printed 1), PDF 54 (printed 29), PDF 80 (printed 55), PDF 106 (printed 81), PDF 132 (printed 107), PDF 152 (printed 127), PDF 186 (printed 161), PDF 222 (printed 197)]
-- **veraPDF 7.1-3 (content neither tagged nor artifact)**: Orphan runs on the glossary, contents and notes pages are adopted into the tree. The adopted text sits after the last tagged block on each page, so a person must check the reading order on those pages. Any remaining unmarked content should be re-run after this order is applied. [PDF 8 (printed vii), PDF 18 (printed xvii), PDF 19 (printed xviii), PDF 54 (printed 29), PDF 86 (printed 61), PDF 94 (printed 69), PDF 112 (printed 87), PDF 178 (printed 153), PDF 198 (printed 173), PDF 209 (printed 184)]
-- **Text-layer quality**: Vietnamese diacritic letters are missing or wrong in places (e.g. 'Ph m', 'Th nh', 'Viê.t', 'Hương ưóc'), with 36 suspect tokens per 1000. The text was not changed. The worst pages are listed. [PDF 18 (printed xvii), PDF 151 (printed 126), PDF 185 (printed 160), PDF 240 (printed 215), PDF 241 (printed 216), PDF 242 (printed 217), PDF 243 (printed 218), PDF 244 (printed 219)]
-- **Figure captions**: Captions are plain P elements directly after each figure. The executor groups captions with figures by itself. A person should confirm they are paired. [PDF 20 (printed xix), PDF 21 (printed xx), PDF 22 (printed xxi), PDF 23 (printed xxii), PDF 25 (printed xxiv), PDF 53 (printed 28), PDF 79 (printed 54), PDF 105 (printed 80), PDF 131 (printed 106), PDF 151 (printed 126), PDF 154 (printed 129), PDF 185 (printed 160), PDF 221 (printed 196)]
+- **Four-line chapter 4 title ('Discipline, Purification, / and Indiscipline among / State Agents, Religious / Modernizers, and Fishers') is tagged as four separate paragraphs. Only the first line was made H2; the other lines (obj 11763 0, 11764 0, 11765 0) remain P. A person should fold them into one heading.**: Merges work by style and all four lines share style P. [PDF 132 (printed 107)]
+- **Subheads 'Maps' and 'Figures' (obj 12852 0, 12858 0) and the 'List of Illustrations' title were left as paragraphs.**: The 'List of Illustrations' title has no obj in the digest, so a heading hierarchy cannot be built safely. [PDF 9 (printed viii)]
+- **Figures with placeholder alt 'Illustrations' and no image, sitting inside Link elements on the contents page (obj 12957 0, 12948 0, 12949 0, 12938 0, 12939 0, 12925 0, 12926 0, 12919 0) and inside Note elements on PDF 54 and PDF 86 (obj 12630 0, 12626 0, 12473 0, 12469 0). They look like contents entries or note text mis-tagged as Figure.**: No image to describe; a person should retype them (probably Span) or confirm. [PDF 8 (printed vii), PDF 54 (printed 29), PDF 86 (printed 61)]
+- **Single-letter drop-cap or initial Figures: alt is null at obj 12832 0, 12811 0, 12511 0, 12328 0, 12208 0, 12089 0 and 11369 0; alt is a bare letter at obj 12791 0, 12635 0 and 11180 0. A person should check that the initial is read once and in the right order with the hyphenated text that follows.**: The letters cannot be confirmed from the digest. [PDF 10 (printed ix), PDF 16 (printed xv), PDF 26 (printed 1), PDF 54 (printed 29), PDF 80 (printed 55), PDF 106 (printed 81), PDF 132 (printed 107), PDF 152 (printed 127), PDF 186 (printed 161), PDF 222 (printed 197)]
+- **Chapter-opener labels ('CHAPTER 1' … 'CHAPTER 6', 'INTRODUCTION', 'CONCLUSION') are separate paragraphs above the H2 titles, and the repeated 'CHAPTER #' lines were not artifacted because they are content. A person may wish to fold each label into its title.**: Label and title share style P, so no style merge is possible. [PDF 26 (printed 1), PDF 54 (printed 29), PDF 80 (printed 55), PDF 106 (printed 81), PDF 132 (printed 107), PDF 152 (printed 127), PDF 186 (printed 161), PDF 222 (printed 197)]
+- **Unlisted subheads such as 'The centrality of the maritime periphery', 'A local heroine or ghostly spirit?', 'Ancestors and ghosts of Lý Sơn' and 'TERMS FOR ORGANIZATIONS' were not in heading_candidates and so are not tagged as headings. The heading 'Cham and Viê.t legacies' has a stray dot in its text layer; no ActualText was set.**: No obj in the digest, or the printed form is uncertain. [PDF 19 (printed xviii), PDF 56 (printed 31), PDF 145 (printed 120), PDF 154 (printed 129), PDF 198 (printed 173)]
+- **Reading order of the adopted orphan text should be checked: glossary terms and definitions, and note paragraphs that sit apart from their empty L elements.**: adopt_orphans places them after the last tagged block of each page. [PDF 8 (printed vii), PDF 18 (printed xvii), PDF 19 (printed xviii), PDF 54 (printed 29), PDF 86 (printed 61), PDF 94 (printed 69), PDF 112 (printed 87), PDF 178 (printed 153), PDF 198 (printed 173), PDF 209 (printed 184)]
+- **Index (PDF 266–285) is tagged in two-column runs that appear merged (e.g. 'ladies’) Christianity n2, Chúa Ngu Ma Nương'), and the bibliography and index text layer has dropped diacritics (e.g. 'Th nh'). A person should check reading order and spelling.**: Suspect-token rate is highest on PDF 240–244; the text must not be changed here. [PDF 240 (printed 215), PDF 241 (printed 216), PDF 242 (printed 217), PDF 243 (printed 218), PDF 244 (printed 219), PDF 266 (printed 241), PDF 267 (printed 242), PDF 268 (printed 243)]
+- **The page 4 Figure (obj 11372 0) was given 'University of Hawai‘i Press logo' from its text sample alone, with no image attached.**: Low confidence; please confirm. [PDF 4 (printed iii)]
+- **Document language was set to plain 'en' (the file said fr-FR). The text uses British spelling and the publisher's locale is not clear.**: A person may prefer en-GB. [PDF 1 (printed COVER)]
+- **veraPDF 7.1-3: the unmarked content on PDF 8, 18 and 19 is treated as orphan runs and adopted into the tag tree. Any content still unmarked after this should be re-checked.**: The rule's objs list is empty, so the targets come from unowned_content. [PDF 8 (printed vii), PDF 18 (printed xvii), PDF 19 (printed xviii)]
 
-Reviewer note from the AI: The title page had two H1s; the book title stays H1 and the subtitle became P. Chapter titles, front/back-matter titles and the Introduction/Conclusion titles are H2, 14 pt bold section heads are H3 and 11 pt bold sub-heads are H4. Language was fr-FR; it is now en-GB (British spelling). The 'Figure' tag on 22 elements was a misuse: they hold contents-page text, note text, the title-page publisher line or drop capitals, so they were retyped (Span or P). The 16 real images got new alt text, which replaces alt text containing stray NUL characters. The existing TOC/TOCI tags were kept, so no toc key is given. The reading order of the large nested Part/Sect/Div containers looks to be in page order, so no move_section was made.
+Reviewer note from the AI: Headings were retyped one element at a time because the book's chapter and section titles are all tagged P: H1 is the book title, H2 chapter and matter titles, H3 sections, H4 the 11-pt bold subsections. The subtitle H1 on the title page became a paragraph so one H1 remains. veraPDF 7.1-5 (the non-standard 'Artifact' structure type, obj 9981 0) is fixed by mapping it to Div. Empty L elements on note pages are removed by remove_empty_containers. No running heads were found, so there are no text rules. The footnote lists on PDF 37 and PDF 144 are kept as real lists. No table is present. No section is read out of order, so there is no move_section.
 
 ### 16. Deferred by the Executor
 
@@ -365,20 +356,19 @@ Reviewer note from the AI: The title page had two H1s; the book title stays H1 a
 | document: title | 1 |
 | document: DisplayDocTitle | 1 |
 | document: /Lang | 1 |
-| orphans: adopted as paragraphs ("contents label") | 1 |
-| orphans: adopted as paragraphs ("glossary entries") | 19 |
+| orphans: adopted as paragraphs ("contents chapter number label") | 1 |
+| orphans: adopted as paragraphs ("glossary terms and definitions") | 19 |
 | orphans: adopted as paragraphs ("chapter 1 notes") | 1 |
 | orphans: adopted as paragraphs ("chapter 2 notes") | 2 |
 | orphans: adopted as paragraphs ("chapter 3 notes") | 1 |
 | orphans: adopted as paragraphs ("chapter 5 notes") | 1 |
 | orphans: adopted as paragraphs ("chapter 6 notes") | 3 |
 | role map: style with no mapping mapped | 1 |
-| retype → P | 2 |
+| retype → P | 1 |
 | retype → H2 | 15 |
 | retype → H3 | 40 |
 | retype → H4 | 5 |
-| retype → Span | 22 |
-| figure: alt text | 15 |
+| figure: alt text | 16 |
 | links: /Contents set | 4277 |
 | links: joined existing Link | 4273 |
 | links: new Link element created | 3 |

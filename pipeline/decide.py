@@ -97,7 +97,7 @@ sys.path.insert(0, HERE); from lib import costs, costhistory       # the dollar 
 ap = argparse.ArgumentParser()
 ap.add_argument('audit_dir'); ap.add_argument('run_dir')
 ap.add_argument('--model', default=DEFAULT_MODEL, help=f'OpenRouter model id (default {DEFAULT_MODEL}); auto:sonnet / auto:opus / auto:haiku pick the newest Claude of that family')
-PROMPT_NAME = 'workorder_v11.md'
+PROMPT_NAME = 'workorder_v12.md'
 DEFAULT_PROMPT = next((p for p in (os.path.join(HERE, 'prompts', PROMPT_NAME),                    # pipeline/prompts/
                                    os.path.join(os.path.dirname(HERE), 'prompts', PROMPT_NAME))   # prompts/ next to pipeline
                        if os.path.isfile(p)), os.path.join(HERE, 'prompts', PROMPT_NAME))
@@ -106,7 +106,7 @@ ap.add_argument('--max-usd', type=float, default=costs.DEFAULT_LIMITS['per_call_
 ap.add_argument('--max-tokens', type=int, default=None, help=argparse.SUPPRESS)   # developer only, terminal only (MAX_TOKENS=): beats the doubling after a cut-off, still held to the dollar limits
 ap.add_argument('--no-images', action='store_true')
 ap.add_argument('--max-images', type=int, default=100, help="images sent per request (Anthropic's limit is 100); figures past it go to figure requests")
-FIGURE_PROMPT_NAME = 'figures_v1.md'
+FIGURE_PROMPT_NAME = 'figures_v2.md'
 FIGURE_PROMPT = next((p for p in (os.path.join(HERE, 'prompts', FIGURE_PROMPT_NAME), os.path.join(os.path.dirname(HERE), 'prompts', FIGURE_PROMPT_NAME))
                       if os.path.isfile(p)), os.path.join(HERE, 'prompts', FIGURE_PROMPT_NAME))
 ap.add_argument('--figure-requests', choices=('on', 'off'), default='on',
@@ -301,7 +301,7 @@ images, logged = [], []
 for f, (b64, px) in zip(send, encoded):
     where = f'PDF {f["page"]}' + (f' (printed {f["label"]})' if f.get('label') and str(f['label']) != str(f['page']) else '')
     label = (f'Page figure: {where}, the whole page; nothing on it is tagged. Write its alt text in page_figures.'
-             if str(f['obj']).startswith('page ') else f'Figure obj "{f["obj"]}", {where}, {f.get("area_pct", "?")}% of the page.')
+             if str(f['obj']).startswith('page ') else f'Figure obj "{f["obj"]}", {where}, {f.get("area_pct", "?")}% of the page.' + (' A page scan kept as a picture (kept_by_picture_test): describe the picture, never copy the page\'s text.' if f.get('kept_by_picture_test') else ''))
     content += [{'type': 'text', 'text': label}, {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,' + b64}}]
     images.append(px); logged.append({'label': label, 'image': f['image']})
 for sh, (b64, px) in zip(sheets, sheet_b64):

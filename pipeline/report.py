@@ -53,6 +53,7 @@ prev = json.load(open(FROM_RECORD, encoding='utf-8')) if FROM_RECORD else None  
 log = load(PDF + '.log.json', default={}); ver = load(PDF + '.verify.json', default={})
 lang_log = log.get('language_parts') or {}; ver_lang = ver.get('language') or {}            # #118: the language step's tags
 lang_refused = sum((lang_log.get('refused') or {}).values())
+LANG_REFUSED_SHOWN = 20                       # refused language-tag places listed in review.md under each reason; the rest are in the record
 digest = load('digest.json', base=A, default={})
 fulltext = load('fulltext.json', base=A, default={}) or {}   # the whole texts the digest shortens (local only, never sent)
 vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the original, from the audit
@@ -149,6 +150,7 @@ record = {
               **({'offpage': log['offpage']} if any((log.get('offpage') or {}).get(k) for k in ('artifacted', 'left', 'rejected', 'already')) else {}),
               **({'list_rule': log['list_rule']} if any((log.get('list_rule') or {}).get(k) for k in ('flattened', 'kept', 'skipped')) else {}),
               **({'actual_text_checked': log['actual_text_checked']} if log.get('actual_text_checked') else {}),
+              **({'alt_refused_copied_text': log['alt_refused_copied_text']} if log.get('alt_refused_copied_text') else {}),
               **({'section_move': log['section_move']} if log.get('section_move') else {}),   # where move_section put the section
               **({'section_moves': log['section_moves']} if len(log.get('section_moves') or []) > 1 else {}),   # each, when there are several
               **({'figure_order_off': True} if log.get('figure_order_off') else {}),   # fix_figure_order: false for this book
@@ -290,6 +292,16 @@ def intake_rows():
                + (f'; diacritics missing from the layer ({d["marked_vowels_ocr"]} marked vowels read, {d["marked_vowels_layer"]} in the layer: '
                   f'{pgs(d.get("pages") or [])})' if d else ''))
         rows.append(('Existing OCR layer agrees with a fresh OCR reading (checklist 1.2, 3.1)', ok(ol.get('verdict') == 'usable' and not d), txt))
+        ck = ol.get('cjk_kept')
+        if ck and ck.get('pages'):                     # review 06 H1: kept at intake's CJK stop (KEEP_CJK_PAGES): not an OCR approval
+            def cnt_(p_):
+                c_ = (ck.get('counts') or {}).get(str(p_)) or {}
+                return (f'{pgs([p_])}: {c_["cjk_characters"]} CJK characters read' + (f', {c_["cjk_distinct"]} different' if c_.get('cjk_distinct') is not None else '')
+                        if c_.get('cjk_characters') is not None else pgs([p_]))
+            rows.append(('CJK text not in the layer (checklist 3.7)', 'CHECK',
+                         f'kept by a person on {pgs(ck["pages"])} (' + (f'{str(ck["by"]).replace("|", "/")}, {DT.day(ck.get("at"))}' if ck.get('by') else 'set with KEEP_CJK_PAGES, no name recorded')
+                         + '): ' + '; '.join(cnt_(p_) for p_ in ck['pages']) + '. These pages go to the AI as pictures; any Chinese, Japanese or Korean text '
+                         'on them is not in the text layer'))
     sp = intake.get('spreads')
     if sp:                                             # two printed pages per PDF page: read half by half after auto-tagging
         rr = ((intake.get('checks') or {}).get('spreads_reordered') or {}).get('pages') or {}
@@ -553,6 +565,14 @@ if intake and intake.get('status') == 'done':
               'Moved: ' + '; '.join(f'"{x}"' for x in r['moved'])]
     if o.get('scan_images_marked_decoration'):
         L += ['- The whole-page scan image on ' + pgs(o['scan_images_marked_decoration']) + ' is marked as decoration: it is the page itself, not a figure (checklist 5.1).']
+    if o.get('scan_images_kept_as_figure'):           # review 04, decision 4: pages intake OCR'd whose image holds more than text
+        L += ['- The whole-page scan image on ' + pgs([int(k) for k in o['scan_images_kept_as_figure']])
+              + ' kept its figure: OCR text was added to the page, but the image holds more than text (a picture, a plate, a map or a drawing).']
+    ps_ = intake.get('page_scans') or {}
+    if ps_.get('marked_decoration'):                  # #128: pages with an existing OCR layer
+        L += ['- On pages with an existing OCR layer, the whole-page scan image on ' + pgs(ps_['marked_decoration']) + ' is marked as decoration: '
+              'it is the page itself, not a figure (checklist 5.1).' + (f' {len(ps_.get("kept_as_figure") or {})} such pages kept their figure: their image holds more than text.'
+                                                                     if ps_.get('kept_as_figure') else '')]
     for f in intake.get('flags') or []:
         L.append(line(f'- **{f["what"]}**: ', nolink(f['why']), f' ({pgs(f["pages"])})' if f.get('pages') else '', pages=f.get('pages')))   # why: general text
     L.append('')
@@ -912,6 +932,14 @@ if atc.get('accepted_different') or atc.get('rejected'):
                   'Accepted ones that differ are listed so a person can listen to them; rejected ones added or changed words or punctuation.', '']
     L += [xl(lambda X: f'- Accepted, {pg(x["page"])}: printed "{X(x["printed"])}" → spoken "{x["spoken"]}"') for x in by_page(atc.get('accepted_different') or [])]
     L += [xl(lambda X: f'- **Rejected**, {pg(x["page"])}: printed "{X(x["printed"])}" → spoken "{x["spoken"]}"') for x in by_page(atc.get('rejected') or [])] + ['']
+arc = log.get('alt_refused_copied_text') or []
+if arc:                                                # review 06 H2: a kept page scan's alt text that copied the page's text
+    n += 1; L += [f'### {n}. Alt text refused on page scans kept as pictures ({len(arc)})', '',
+                  'These whole-page scans were kept as figures because the image holds more than text (a plate, a map, a photo page). '
+                  'Their alt text repeated the page\'s OCR text, or held Chinese, Japanese or Korean text the OCR text lacks, so it was '
+                  'not written (the AI must not write the book\'s text; sponsor rule 1). Each figure is left without alt text: a person '
+                  'writes it, or marks the figure as decoration when the image is only text.', '']
+    L += [xl(lambda X: f'- **Refused**, {pg(x["page"])}, Figure {x["obj"]}: {x["why"]}; the alt text was "{X(x["alt"])}"') for x in by_page(arc)] + ['']
 tg = log.get('text_rule_guard') or []
 if tg:
     n += 1; L += [f'### {n}. Text a running-head or page-number rule matched but left visible ({len(tg)})', '',
@@ -1148,7 +1176,19 @@ if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the langu
         L.append('')
     if lang_refused:
         L += [f'**Not placed by the executor ({lang_refused}):** the page and its text stay as they were; the words are read in the book\'s language.', '']
-        L += [line(f'- {w}: {c}', entry=False) for w, c in sorted((lang_log.get('refused') or {}).items(), key=lambda x: -x[1])]
+        places_ = [x for x in lang_log.get('refused_places') or [] if isinstance(x, dict)]
+        for w, c in sorted((lang_log.get('refused') or {}).items(), key=lambda x: -x[1]):
+            L.append(line(f'- {w}: {c}', entry=False))
+            ps_ = by_page([x for x in places_ if x.get('why') == w])          # each place under its reason, as the record keeps it
+            shown_ = ps_[:LANG_REFUSED_SHOWN]
+            L += [xl(lambda X, x=x: '  - ' + (f'"{X(x["text"])}"' if (x.get('text') or '').strip() else 'a run whose words were not recorded')
+                     + (f' ({LT.name(x["lang"]) or x["lang"]})' if x.get('lang') else '') + f' · {pg(x.get("page"))}',
+                     key=f'lang:refused:{x.get("page")}:{x.get("mcid")}:{i}', pages=[x.get('page')]) for i, x in enumerate(shown_)]
+            more_, listed_ = c - len(shown_), len(ps_) - len(shown_)
+            if more_ > 0:
+                L.append(line(f'  - and {more_} more' + (', in `record.json` (`apply.language_parts.refused_places`)' if listed_ == more_ else
+                              f'; `record.json` lists {listed_} of them (`apply.language_parts.refused_places` keeps the first 200 places)' if listed_ else
+                              ' (`record.json` keeps only the first 200 places)'), entry=False))
         L.append('')
     nc_, nn_ = lang_log.get('names_converted') or [], lang_log.get('names_not_converted') or []      # review 08, M4
     if nc_:

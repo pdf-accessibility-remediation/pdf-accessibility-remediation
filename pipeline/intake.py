@@ -27,7 +27,8 @@ What it does, in order, and only where needed:
               it is left for the figure step.
               If the 1.2 test says the text layer is unusable, the book STOPS (flagged) unless FORCE_OCR=1 is set;
               then every page is OCR'd with --mode force (page images + new invisible text; the old text is replaced).
-  4. tag      OpenDataLoader adds a tag tree to a still-untagged file (--format tagged-pdf). A whole-page scan image
+  4. tag      OpenDataLoader adds a tag tree to a still-untagged file (--format tagged-pdf); the ActualText spans it drops are put
+              back (lib/tagfix.py). A whole-page scan image
               on an OCR'd page is then marked as decoration (it is the page, not a figure: checklist 5.1)
   5. checks   after each step: page appearance and text unchanged where nothing should change; a tag tree exists
               and covers the text; bookmarks, links and page labels kept. A failed check stops the book.
@@ -46,9 +47,10 @@ Needs, only when used: Tesseract and OCRmyPDF 17 (brew install ocrmypdf tesserac
 and the opendataloader-pdf package for auto-tagging. Exit codes: 0 done or nothing to do · 3 flagged (stopped, see
 intake.json) · 1 error.
 """
-import sys, os, re, json, time, shutil, hashlib, subprocess, tempfile, unicodedata, difflib, collections, datetime, statistics, math
+import sys, os, re, json, time, shutil, hashlib, subprocess, tempfile, unicodedata, difflib, collections, datetime, statistics, math, contextlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import support
+from lib import tagfix
 from lib.glance import ocr_layer_flagged
 from lib import dates as D
 import pikepdf, pypdfium2 as pdfium, pypdfium2.raw as pdfium_raw
@@ -78,6 +80,14 @@ NARROW_GAP = 0.19                          # a gap-only word break narrower than
 NARROW_BOOK_RATE = 10                      # narrow breaks per text page, averaged over the book: at or above, a CHECK; below, a note
 CJK_PROBE_LANGS = 'chi_tra+chi_sim+jpn+kor'  # before OCR, each planned page is read once with these Tesseract packs:
 CJK_PROBE_MIN, CJK_PROBE_CONF = 10, 60     #   10 or more CJK characters at 60% confidence or more = the page holds CJK text.
+CJK_PROBE_DISTINCT = 20                    #   #121, pages with an existing OCR layer: and 20+ different CJK characters, or 10+
+CJK_PROBE_SHORT, CJK_PROBE_SHARE = 10, 0.6 #   different ones that are 60%+ of those read (a short page). Misreads repeat a few
+                                           #   shapes: 6 false pages (Hawaiian text, a bibliography, a table of X marks) read 3-11
+                                           #   different, and those with 10+ read 28-37% different; 22 real CJK pages read 17-263
+                                           #   different, the shortest (17 of 19) 89% (05-builder-report.md, M3). Those margins hold
+                                           #   for text pages only: on picture-like pages a map (14 read, 12 different) and a chart
+                                           #   with rotated labels (30, 21) pass, against real 11 of 11 and 17 of 17; an English
+                                           #   co-read did not separate them (07-builder-report.md, M2): a person keeps such pages
 PROBE_ALL_MAX, PROBE_SAMPLE = 12, 8        #   18-60 s a page on a newspaper scan: with more than 12 pages to OCR, the probe stops at
                                            #   the first CJK page when OCR_LANG has no CJK pack (the book stops either way) and reads
                                            #   8 spread pages when it has one (a full run then lists the CJK pages from the OCR text);
@@ -131,6 +141,31 @@ GUTTER_INK, GUTTER_MIN, SPREAD_SIDE = 0.10, 0.006, 0.25   # a gutter in the midd
                                            #   ink, 0.6%+ of the width) and 25%+ of the ink on each side; a landscape page of
                                            #   the same size next to one counts too (a chapter end leaves a half blank).
                                            #   Calibrated: mohr 16+1 of 17, reynolds-magazines 10 of 10, 0 in the 148 and the 30
+TAGGER_SLOTS, TAGGER_RAM_PCT = 2, 40       # #129: at most 2 auto-taggers at once on this machine (a lock shared by every job), each
+                                           #   with a heap of up to 40% of memory; a book over TAGGER_LONG pages runs alone (it takes
+TAGGER_LONG, TAGGER_LONG_PCT = 1000, 50    #   every slot) with up to 50%. Measured on 16 GB: a 1,467-page book ran out of the default
+                                           #   heap (25%); two long books at 40% each finished but grew swap by 7.3 GB; one alone at
+                                           #   40% or 50% passed (03-builder-report.md)
+TAGGER_LOCKS = os.environ.get('INTAKE_TAGGER_LOCKS') or os.path.join(   # review 09 L-A: one folder per user, whatever TMPDIR a process
+    os.path.expanduser('~/Library/Caches') if sys.platform == 'darwin' else os.environ.get('XDG_CACHE_HOME') or os.path.expanduser('~/.cache'),
+    'pdfrem', 'tagger-slots')                                            #   has (a launchd job, env -i), so every intake shares the slots
+TAGGER_OOM = ('the auto-tagger ran out of memory on this book (it holds the whole book in memory). Run it again when no other '
+              'long book is being processed; if it stops again, give the tagger more memory with JAVA_TOOL_OPTIONS=-Xmx10g '
+              '(or another size) before the command')
+PAGE_FIGURE_COVER = 0.85                   # #122: a Figure drawing an image over 85% of the visible page is page-sized; a tree with
+PAGE_FIGURE_TREE, PAGE_FIGURE_TEXT = 0.5, 0.1   # such Figures on half its pages or more and text elements on 10% or less is a
+                                           #   placeholder. Set on the sponsors' 18 such trees (figures on 99.2-99.9% of pages, text on
+                                           #   0-0.8%) against every tagged sample (figures on 0-4.2%, text on 89-99%; 03-builder-report.md)
+LAYER_CJK_SAMPLE = 3                       # #121: existing Latin OCR layer: up to 3 sample page images probed for CJK
+LAYER_FIGURE_CJK_SAMPLE = 8                # #121 with #128 (review 04 H2): and up to 8 spread pages whose scan looks like a picture
+                                           #   (more than SCAN_TEXT_INK ink outside the layer's text); both samples read in full (review 08 M2)
+CJK_STOP_IMAGES = 8                        # review 06 H1: page images written for the run page's question (60 dpi, _intake/cjk_page_N.png)
+SCAN_TEXT_INK = 0.01                       # #128: a whole-page scan under OCR text becomes decoration only when ink outside the
+SCAN_INK_DPI, SCAN_INK_GRAY, SCAN_INK_PAD = 100, 200, 3   # text boxes is 1% of the page or less (100 dpi, gray < 200, boxes
+                                           #   padded 3 px); above, the Figure stays. Interim: on 96 labelled existing-layer pages
+                                           #   from 21 books text runs 0-4.95%, pictures 2.69%+, mixed pages (text with a drawing or
+                                           #   a map) 0.58%+, so no line separates them (runs/127-intake-cover-figures/labels/,
+                                           #   05-builder-report.md); 1% keeps most text-with-boxes pages as figures (the safe error)
 BORN_DIGITAL = re.compile(r'(?i)pdftex|xetex|luatex|prince|microsoft|adobe pdf library|indesign')
                                            # producers that write text, not scan it: an "unusable" verdict on them is no
                                            #   reason to suggest FORCE_OCR
@@ -430,7 +465,7 @@ def _mcid_image_boxes(page, mcids):
             old = out.get(open_mc[-1])
             out[open_mc[-1]] = [round(v, 1) for v in (box if old is None else [min(old[0], box[0]), min(old[1], box[1]), max(old[2], box[2]), max(old[3], box[3])])]
     return out
-def tag_status(pdf, figures=False):
+def tag_status(pdf, figures=False, page_figure_trees=True):
     """('untagged' | 'placeholder' | 'tagged', details). A tree with no text-bearing element (TEXT_BEARING, after RoleMap) is a
     placeholder: it says nothing about the text's structure, so intake treats the book as untagged. MarkInfo is recorded
     but does not decide it (12 of the sponsors' 148 have full trees with MarkInfo missing or Marked false).
@@ -461,6 +496,11 @@ def tag_status(pdf, figures=False):
                          'kind': None if alt is None else ('placeholder' if PUBLISHER_PLACEHOLDER_ALT.fullmatch(alt) else 'publisher')})
         if '/K' in k: todo.append(k.K)
     info.update({'elements': dict(counts.most_common()), 'text_elements': sum(v for r, v in counts.items() if r in TEXT_BEARING)})
+    pft = None
+    if page_figure_trees and info['text_elements'] and counts.get('/Figure', 0) >= PAGE_FIGURE_TREE * len(pdf.pages):   # #122: cheap test first
+        cov = page_figure_coverage(pdf)
+        if cov['figure_page_share'] >= PAGE_FIGURE_TREE and cov['text_page_share'] <= PAGE_FIGURE_TEXT:
+            pft = info['page_figure_tree'] = cov
     if figures:
         figs.sort(key=lambda f: (f['page'] or 0, f['mcids']))
         for f in figs:
@@ -469,10 +509,77 @@ def tag_status(pdf, figures=False):
                 if boxes:
                     b = list(boxes.values()); f['image_box'] = [min(x[0] for x in b), min(x[1] for x in b), max(x[2] for x in b), max(x[3] for x in b)]
         info['figures'] = figs
-    return ('tagged' if info['text_elements'] else 'placeholder'), info
-def tagged(pdf):
-    """A real tag tree (text-bearing elements), not a placeholder: intake leaves such a book alone."""
-    return tag_status(pdf)[0] == 'tagged'
+    return ('tagged' if info['text_elements'] and not pft else 'placeholder'), info
+def page_figure_coverage(pdf):
+    """#122: how much of a tag tree is page-sized Figures. {'figure_pages': pages with a Figure whose marked content draws an
+    image covering PAGE_FIGURE_COVER+ of the visible page (through forms, by the ParentTree), 'text_pages': pages reached
+    by a text-bearing element (TEXT_BEARING after RoleMap, by /Pg of the element or its content), and both as shares}."""
+    st = pdf.Root.get('/StructTreeRoot'); n_pages = len(pdf.pages)
+    rolemap = {str(k): str(v) for k, v in (st.get('/RoleMap') or {}).items()}
+    role = lambda e: rolemap.get(str(e.get('/S')), str(e.get('/S')))
+    pidx = _page_index(pdf); pt = {}
+    def nums(nd, d=0):
+        if '/Nums' in nd:
+            a = nd.Nums
+            for k in range(0, len(a) - 1, 2): pt[int(a[k])] = a[k + 1]
+        for kid in nd.get('/Kids', []) if d < 20 else []: nums(kid, d + 1)
+    if '/ParentTree' in st: nums(st.ParentTree)
+    text_pages, seen, todo = set(), set(), [(st.get('/K'), None)]
+    while todo:                                          # pages reached by text-bearing elements
+        k, pg = todo.pop()
+        if isinstance(k, pikepdf.Array): todo.extend((x, pg) for x in k); continue
+        if not isinstance(k, pikepdf.Dictionary): continue
+        if '/S' not in k: continue                       # a marked-content or object reference: read with its element
+        if k.is_indirect:
+            if k.objgen in seen: continue
+            seen.add(k.objgen)
+        p = pidx.get(k.Pg.objgen) if '/Pg' in k else pg
+        if role(k) in TEXT_BEARING:
+            ks = k.get('/K'); ks = list(ks) if isinstance(ks, pikepdf.Array) else [ks]
+            for x in ks:                                 # MCIDs, as numbers or references ({/MCID n /Stm …}: /Type and /Pg optional)
+                if isinstance(x, int): text_pages.add(p)
+                elif isinstance(x, pikepdf.Dictionary) and '/MCID' in x: text_pages.add(pidx.get(x.Pg.objgen) if '/Pg' in x else p)
+        if '/K' in k: todo.append((k.K, p))
+    text_pages.discard(None)
+    fig_pages = set()
+    for n, pg in enumerate(pdf.pages, 1):                # pages whose Figure draws a page-sized image
+        vr = visible_rect(pg); found = []
+        def walk(owner, res, ctm, arr, depth, outer=None):          # outer: (MCID, ParentTree array) open around this form
+            try: ops = pikepdf.parse_content_stream(owner)
+            except Exception: return
+            xo = (res or {}).get('/XObject') or {}; stk, mc = [], []
+            for ins in ops:
+                o, a = str(ins.operator), ins.operands
+                if o == 'q': stk.append(ctm)
+                elif o == 'Q' and stk: ctm = stk.pop()
+                elif o == 'cm': ctm = _mul([float(x) for x in a], ctm)
+                elif o == 'BDC': mc.append(int(a[1].MCID) if isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1] else None)
+                elif o == 'BMC': mc.append(None)
+                elif o == 'EMC' and mc: mc.pop()
+                elif o == 'Do':
+                    x = xo.get(a[0])
+                    if x is None: continue
+                    if x.get('/Subtype') == '/Image':
+                        m = next((v for v in reversed(mc) if v is not None), None); a_ = arr
+                        if m is None and outer: m, a_ = outer
+                        el = a_[m] if isinstance(a_, pikepdf.Array) and m is not None and m < len(a_) else None
+                        if isinstance(el, pikepdf.Dictionary) and role(el) == '/Figure' and visible_cover(ctm, vr) >= PAGE_FIGURE_COVER:
+                            found.append(True); return
+                    elif x.get('/Subtype') == '/Form' and depth < 3:
+                        farr = pt.get(int(x.StructParents)) if '/StructParents' in x else arr
+                        m = next((v for v in reversed(mc) if v is not None), None)
+                        walk(x, x.get('/Resources', res), _mul([float(v) for v in x.get('/Matrix', [1, 0, 0, 1, 0, 0])], ctm), farr, depth + 1,
+                             (m, arr) if m is not None else outer)
+                        if found: return
+        walk(pg, pg.obj.get('/Resources'), [1, 0, 0, 1, 0, 0], pt.get(int(pg.obj.StructParents)) if '/StructParents' in pg.obj else None, 0)
+        if found: fig_pages.add(n)
+    return {'figure_pages': len(fig_pages), 'text_pages': len(text_pages),
+            'figure_page_share': round(len(fig_pages) / max(n_pages, 1), 3), 'text_page_share': round(len(text_pages) / max(n_pages, 1), 3)}
+def tagged(pdf, page_figure_trees=True):
+    """A real tag tree (text-bearing elements), not a placeholder: intake leaves such a book alone. page_figure_trees=False
+    (the check after auto-tagging): a tree of page-sized figures counts too, since the tagger's own tree of a picture book
+    is one figure per page."""
+    return tag_status(pdf, page_figure_trees=page_figure_trees)[0] == 'tagged'
 def remove_tag_tree(path):
     """On intake's own working copy only: drop the placeholder tree (StructTreeRoot, MarkInfo, StructParents/StructParent
     on pages, annotations and forms) so the book is auto-tagged as untagged. Marked-content operators stay in the pages;
@@ -631,12 +738,46 @@ def textlike(text):
 def cjk_char(ch):
     o = ord(ch)
     return 0x3040 <= o <= 0x30ff or 0x4e00 <= o <= 0x9fff or 0x3400 <= o <= 0x4dbf or 0xac00 <= o <= 0xd7af or 0xf900 <= o <= 0xfaff
-def cjk_probe(img, langs):
-    """CJK characters Tesseract reads on the page image at CJK_PROBE_CONF confidence or more, with the CJK packs only."""
+def cjk_probe(img, langs, distinct=False):
+    """CJK characters Tesseract reads on the page image at CJK_PROBE_CONF confidence or more, with the CJK packs only.
+    distinct=True: (that count, how many different CJK characters). On a page of text, Tesseract's CJK packs misread a
+    few shapes again and again (kahako vowels, X marks in a table: 5-11 different characters), so on existing-layer pages
+    a page counts as CJK only by cjk_page (#121)."""
     import csv, io
     r = run(['tesseract', img, 'stdout', '-l', langs, '--psm', '3', 'tsv'])
-    rows = csv.DictReader(io.StringIO(r.stdout), delimiter='\t', quoting=csv.QUOTE_NONE)
-    return sum(sum(1 for ch in (w.get('text') or '') if cjk_char(ch)) for w in rows if float(w.get('conf') or -1) >= CJK_PROBE_CONF)
+    rows = [w for w in csv.DictReader(io.StringIO(r.stdout), delimiter='\t', quoting=csv.QUOTE_NONE) if float(w.get('conf') or -1) >= CJK_PROBE_CONF]
+    t = ''.join(w.get('text') or '' for w in rows); cj = [ch for ch in t if cjk_char(ch)]
+    return (len(cj), len(set(cj))) if distinct else len(cj)
+def layer_cjk_hits(pick, pictures, keep, probe):
+    """#121, review 04 H2, review 06 H1: the pages of an existing OCR layer whose image holds CJK text the layer lacks.
+    Up to LAYER_CJK_SAMPLE spread pages of pick (the layer test's sample) and, when pictures (a callable: the layer's pages
+    whose scan looks like a picture; None with REOCR) is given, up to LAYER_FIGURE_CJK_SAMPLE spread pages of those: every
+    one probed, so all hits are shown at once and one "Keep" covers what the check reads (review 08 M2; with REOCR, the
+    sample stops at its first hit, which is all the redo needs). Pages in keep (KEEP_CJK_PAGES: kept by a person) are skipped; both samples are drawn as before, the kept pages
+    then left out, so no other page is probed in their place. probe(page) -> (CJK characters, different ones).
+    Returns ({page: (n, nd)}, {page: 'sample page' | 'picture-like page'}, record)."""
+    t2 = time.time(); hit, by_ = {}, {}; checked = 0
+    for i in pick[:: max(1, len(pick) // LAYER_CJK_SAMPLE)][:LAYER_CJK_SAMPLE]:
+        if i in keep: continue
+        n, nd = probe(i); checked += 1
+        if cjk_page(n, nd):
+            hit[i] = (n, nd); by_[i] = 'sample page'
+            if pictures is None: break
+    rec_ = {'pages_checked': checked, 'seconds': round(time.time() - t2, 1)}
+    if pictures is not None:   # a page whose scan looks like a picture may be CJK text the layer lacks (its
+        t3 = time.time(); pics = pictures(); checked = 0   #   glyphs lie outside the layer's boxes)
+        for i in pics[:: max(1, len(pics) // LAYER_FIGURE_CJK_SAMPLE)][:LAYER_FIGURE_CJK_SAMPLE]:
+            if i in keep or i in hit: continue
+            n, nd = probe(i); checked += 1
+            if cjk_page(n, nd): hit[i] = (n, nd); by_[i] = 'picture-like page'
+        rec_.update({'picture_like_pages': len(pics), 'picture_like_checked': checked, 'picture_like_seconds': round(time.time() - t3, 1)})
+    if keep: rec_['kept_pages_skipped'] = sorted(keep)
+    return hit, by_, rec_
+def cjk_page(n, nd):
+    """A page of an existing OCR layer holds CJK text: CJK_PROBE_MIN characters or more, with CJK_PROBE_DISTINCT different
+    ones, or CJK_PROBE_SHORT different ones that are CJK_PROBE_SHARE or more of those read (a short page: a title, a caption).
+    Misreads repeat a few shapes (#121; review 04 M3)."""
+    return n >= CJK_PROBE_MIN and (nd >= CJK_PROBE_DISTINCT or nd >= CJK_PROBE_SHORT and nd / n >= CJK_PROBE_SHARE)
 def junk_stats(text):
     """Share of OCR tokens that look like junk: a symbol from JUNK_SYMBOLS, capitals with no vowel ("MBH"), or letters and
     digits mixed ("f7") other than ordinals; CJK tokens and plain numbers are fine."""
@@ -661,20 +802,27 @@ def _blurred_diff(a, b, i):
     h = ImageChops.difference(ia, ib).histogram()
     return sum(h[49:]) / (ia.width * ia.height)
 NEAR, REDRAWN = 0.0005, 0.003
-def compare(a_path, b_path, redrawn=(), near=False):
+def compare(a_path, b_path, redrawn=(), near=False, only=None):
     """Pages whose appearance or text (ignoring white space) differs.
     exact (default): the 40-dpi renderings must be identical (OCR --mode skip adds only invisible text).
     near=True: auto-tagging may split a text run to tag a list label or a link separately, which can move glyph
       edges by a fraction of a pixel; at most 0.05% of the softened page may differ.
     redrawn pages (force OCR re-draws the page as an image: 400 dpi, 1-bit in our test): at most 0.3% may differ, and their text is not
-      compared (it was replaced on purpose)."""
+      compared (it was replaced on purpose).
+    only: compare just these pages (a step that changed only them); the others are left out."""
     # near=True also: a page over NEAR gets a second look at TILE_DPI in quarter-inch tiles (sub-pixel shifts vanish,
     #   a missing mark does not), and a page whose text holds exactly the same characters in a different order passes
-    #   as "reordered" (the tagger re-sequenced text runs), with the moved fragments listed
+    #   as "reordered" (the tagger re-sequenced text runs), with the moved fragments listed.
+    # near=True, #127: a page whose PDFium text still differs passes as "read differently" only when (a) it draws exactly
+    #   the same (lib/tagfix.same_drawing: operators to four decimals, fonts by fingerprint, marked content aside),
+    #   (b) its /ActualText values are the same, in order, and (c) pdfplumber's text (no merging rules) is identical,
+    #   ignoring white space. The pixel check above still applies to it. What PDFium reads differently is listed.
     a, b = pdfium.PdfDocument(a_path), pdfium.PdfDocument(b_path)
     if len(a) != len(b): return {'page_count': [len(a), len(b)], 'pixels': [], 'text': []}
-    px, tx, tiles, reord = [], [], [], []
+    px, tx, tiles, reord, rdiff = [], [], [], [], []
+    second = {}                                     # opened on the first page that needs them
     for i in range(len(a)):
+        if only is not None and (i + 1) not in only: continue
         if (i + 1) in redrawn:
             if _blurred_diff(a, b, i) > REDRAWN: px.append(i + 1)
             continue
@@ -690,9 +838,33 @@ def compare(a_path, b_path, redrawn=(), near=False):
                 ha, hb = ta.translate(HYPHEN_MARKS), tb.translate(HYPHEN_MARKS)
                 if ha == hb: continue
                 if collections.Counter(ha) == collections.Counter(hb): reord.append({'page': i + 1, 'moved': moved_fragments(ha, hb)}); continue
+                rd = read_differently(a_path, b_path, i + 1, ha, hb, second)
+                if rd: rdiff.append(rd); continue
             tx.append(i + 1)
     a.close(); b.close()
-    return {'page_count': None, 'pixels': px, 'text': tx, 'tile_passed': tiles, 'reordered': reord}
+    for k in ('pk_a', 'pk_b', 'pl_a', 'pl_b'):
+        if k in second: second[k].close()
+    return {'page_count': None, 'pixels': px, 'text': tx, 'tile_passed': tiles, 'reordered': reord, 'read_differently': rdiff}
+def read_differently(a_path, b_path, n, ta, tb, opened):
+    """#127: page n's PDFium text differs, but the page draws exactly the same: the record of what PDFium reads
+    differently, or None when any of (a), (b), (c) fails (see compare())."""
+    from lib import tagfix
+    if 'pk_a' not in opened:
+        from lib import plumb_fix  # noqa: F401
+        import pdfplumber
+        opened.update(pk_a=pikepdf.open(a_path), pk_b=pikepdf.open(b_path), pl_a=pdfplumber.open(a_path), pl_b=pdfplumber.open(b_path))
+    same, props, why = tagfix.same_drawing(opened['pk_a'], opened['pk_b'], n)
+    if not same or not props: return None
+    pt = lambda pl: re.sub(r'\s+', '', ''.join(c['text'] for c in pl.pages[n - 1].chars))
+    if pt(opened['pl_a']) != pt(opened['pl_b']): return None
+    changed = []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, ta, tb, autojunk=False).get_opcodes():
+        if op != 'equal': changed.append({'before': ta[i1:i2][:40], 'after': tb[j1:j2][:40]})
+    chars = ''.join(c['before'] + c['after'] for c in changed)
+    ld = sum(1 for ch in chars if unicodedata.category(ch)[0] in 'LN')
+    return {'page': n, 'characters': len(chars), 'letters_digits': ld, 'symbols': len(chars) - ld,
+            'letters_digits_read_differently': ''.join(ch for ch in chars if unicodedata.category(ch)[0] in 'LN')[:60],
+            'changes': changed[:20]}
 HYPHEN_MARKS = str.maketrans({'\ufffe': '-', '\x02': '-'})
 def _worst_tile(a, b, i):
     """Changed pixels in the worst quarter-inch tile at TILE_DPI, after the same softening and step as the 72-dpi check."""
@@ -713,6 +885,126 @@ def moved_fragments(a, b, n=5):
     for op, i1, i2, j1, j2 in sm.get_opcodes():
         if op in ('delete', 'replace') and a[i1:i2] not in out: out.append(a[i1:i2])
     return [f[:60] for f in out[:n]]
+def _proc_command(pid):
+    """The command name of a running process, or None when there is none (a pid recorded in a slot file may be reused)."""
+    try: os.kill(pid, 0)
+    except ProcessLookupError: return None
+    except PermissionError: pass
+    r = subprocess.run(['ps', '-p', str(pid), '-o', 'comm='], capture_output=True, text=True)
+    return r.stdout.strip() or None
+BUSY = {}                                       # review 06 L8: why each slot file was last found busy, for the waiting message
+def _take_slot(path, wait=False):
+    """The slot's lock file, locked, or None when another process holds it or a tagger recorded in it still runs. The lock
+    is released by the OS when its process dies, but the Java tagger is a child process that can outlive it (a direct kill
+    of intake; review 04 M2): the tagger's pid and command are written in the slot file while it runs (tagger_record), and
+    a slot whose recorded tagger is still alive counts as busy."""
+    import fcntl
+    f = open(path, 'a+')
+    try: fcntl.flock(f, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+    except OSError: f.close(); BUSY[path] = 'held by another intake'; return None
+    f.seek(0)
+    for line in f.read().splitlines():
+        pid, _, comm = line.partition(' ')
+        if pid.isdigit() and comm and _proc_command(int(pid)) == comm:
+            fcntl.flock(f, fcntl.LOCK_UN); f.close(); BUSY[path] = f'a tagger left running by an intake that ended: process {pid} ({comm})'; return None
+    BUSY.pop(path, None); f.seek(0); f.truncate(); return f
+def tagger_record(slot, pids):
+    """Write the running tagger's processes (pid and command) into every slot file held (see _take_slot)."""
+    lines = ''.join(f'{p} {c}\n' for p in pids for c in [_proc_command(p)] if c)
+    for f in slot.get('files') or []:
+        try: f.seek(0); f.truncate(); f.write(lines); f.flush()
+        except (OSError, ValueError): pass
+WATCH_FAST, WATCH_SLOW = 0.1, 1.0               # review 06 M1: the tagger's process is recorded within 0.1 s of its start, then
+def _tagger_children(stop, slot, say=None):     #   checked once a second (a fast loop for an hour would start 36,000 pgreps)
+    """Thread: while the tagger runs, record intake's child processes in the slot files (pgrep -P): every WATCH_FAST seconds
+    until the first is recorded, then every WATCH_SLOW. A pass that fails (pgrep missing, a file error) is logged once by
+    its kind and the loop goes on, so one failure never leaves the slot unprotected for the rest of the run (review 06 M1)."""
+    seen, told = set(), set(); say = say or (lambda m: print(m, file=sys.stderr, flush=True))
+    while not stop.wait(WATCH_SLOW if seen else WATCH_FAST):
+        try:
+            r = subprocess.run(['pgrep', '-P', str(os.getpid())], capture_output=True, text=True)
+            kids = {int(x) for x in r.stdout.split() if x.isdigit()}
+            if kids and kids != seen: tagger_record(slot, sorted(kids)); seen = kids
+        except Exception as e:                 # noqa: BLE001: the watcher must outlive any one pass
+            if type(e).__name__ not in told: told.add(type(e).__name__); say(f'intake: the auto-tagger watcher could not check its processes ({type(e).__name__}: {e}); it goes on')
+@contextlib.contextmanager
+def tagger_slot(pages=0):
+    """#129: hold one of TAGGER_SLOTS machine-wide slots (file locks, released by the OS if the process dies; a tagger child
+    still running keeps its slot busy: _take_slot) while the auto-tagger runs, so long books at once cannot overcommit
+    memory. A book over TAGGER_LONG pages holds every slot (it runs alone; slots are taken in order, so two long books
+    cannot block each other; it can wait behind a stream of short books, since waiters are not served in order).
+    Waits; yields {slot, waited, files}."""
+    import fcntl
+    os.makedirs(TAGGER_LOCKS, exist_ok=True); t0 = time.time(); told = False
+    if pages > TAGGER_LONG:
+        fs = []
+        try:
+            for k in range(TAGGER_SLOTS):
+                p_ = os.path.join(TAGGER_LOCKS, f'slot{k}.lock'); f = _take_slot(p_)
+                while f is None:
+                    if told != BUSY.get(p_):
+                        told = BUSY.get(p_)
+                        print(f'intake: waiting for the auto-tagger to be free (a book over {TAGGER_LONG} pages runs alone; slot {k + 1}: {told or "busy"})', flush=True)
+                    time.sleep(2); f = _take_slot(p_)
+                fs.append(f)
+            yield {'slot': 'all', 'waited': round(time.time() - t0, 1), 'files': fs}
+        finally:
+            for f in fs:
+                try: f.seek(0); f.truncate(); fcntl.flock(f, fcntl.LOCK_UN)
+                except (OSError, ValueError): pass
+                f.close()
+        return
+    while True:
+        for k in range(TAGGER_SLOTS):
+            f = _take_slot(os.path.join(TAGGER_LOCKS, f'slot{k}.lock'))
+            if f is None: continue
+            try: yield {'slot': k, 'waited': round(time.time() - t0, 1), 'files': [f]}
+            finally:
+                try: f.seek(0); f.truncate(); fcntl.flock(f, fcntl.LOCK_UN)
+                except (OSError, ValueError): pass
+                f.close()
+            return
+        why = '; '.join(sorted({v for k_, v in BUSY.items() if k_.startswith(TAGGER_LOCKS)} - {'held by another intake'}))
+        if told is False or told != why:
+            print(f'intake: waiting for a free auto-tagger slot ({TAGGER_SLOTS} in use' + (f'; {why}' if why else '') + ')', flush=True); told = why
+        time.sleep(2)
+def tagger_error(e):
+    """(the error's last 600 characters, ran out of memory?) for an exception from opendataloader_pdf.convert. The JVM's own
+    words are in the CalledProcessError's stderr (quiet mode), not in str(e); the whole text is searched (#129)."""
+    full = '\n'.join(str(x) for x in (e, getattr(e, 'stderr', None), getattr(e, 'output', None)) if x)
+    return full[-600:], 'OutOfMemoryError' in full
+def tagger_java_options(pages=0):
+    """JAVA_TOOL_OPTIONS for the tagger: any options already set, then the heap cap (an -Xmx set by a person wins):
+    TAGGER_RAM_PCT, or TAGGER_LONG_PCT for a book over TAGGER_LONG pages (which runs alone)."""
+    old = (os.environ.get('JAVA_TOOL_OPTIONS') or '').strip()
+    return (old + ' ' if old else '') + f'-XX:MaxRAMPercentage={TAGGER_LONG_PCT if pages > TAGGER_LONG else TAGGER_RAM_PCT}'
+def spoken_values(values):
+    """Restored ActualText values in a few words: invisible characters by name, others quoted."""
+    out = []
+    for v, n in values.most_common(6):
+        if len(v) == 1 and not unicodedata.category(v).startswith(('L', 'N', 'P', 'S')):
+            out.append(f'{n} × {unicodedata.name(v, "character").lower()} (U+{ord(v):04X})')
+        else: out.append(f'{n} × "{v[:20]}"')
+    more = sum(values.values()) - sum(n for _, n in values.most_common(6))
+    return ', '.join(out) + (f', {more} more' if more else '')
+def reocr_pages(kinds, scan_pages, ocr_setting):
+    """#121: the pages REOCR reads again, from triage only: the pages with an existing OCR layer ('ocr-layer'), and the
+    image-only pages that OCR would read anyway. A page with visible text (born-digital, such as the generated cover) is
+    never on the list: redo would add OCR text over it."""
+    return {'reocr': sorted(kinds.get('ocr-layer') or []), 'image': sorted(scan_pages) if ocr_setting != 'off' else []}
+def keep_old_layer(path, pages, outd, rec, lang):
+    """#121 (M9): the existing OCR layer that REOCR replaces, kept on record: each page's text (PDFium) in
+    <out_dir>/old_ocr_layer.json.gz and its sha256 in intake.json, with the producer and the layer test's scores."""
+    import gzip
+    d = pdfium.PdfDocument(path); old = {}
+    try:
+        for n in pages: old[str(n)] = d[n - 1].get_textpage().get_text_range()
+    finally: d.close()
+    with gzip.open(os.path.join(outd, 'old_ocr_layer.json.gz'), 'wt', encoding='utf-8') as f: json.dump(old, f, ensure_ascii=False)
+    ol = rec.get('ocr_layer_test') or {}
+    return {'pages': pages, 'language': lang, 'producer': rec['original'].get('producer'),
+            'layer_test': {k: ol.get(k) for k in ('verdict', 'median_cer', 'scored', 'diacritics', 'cjk_on_images')},
+            'old_text_file': 'old_ocr_layer.json.gz', 'old_text_sha256': {k: hashlib.sha256(v.encode('utf-8')).hexdigest()[:16] for k, v in old.items()}}
 def keepers(path):
     """What must survive every step: bookmarks, link annotations, page labels, page count."""
     with pikepdf.open(path) as p:
@@ -805,64 +1097,130 @@ def strip_ocr_layer(path, pages):
             pg.obj.Contents = p.make_stream(pikepdf.unparse_content_stream(keep))
             for k in names: del xo[k]
         p.save(path)
-def artifact_page_scans(path, pages):
-    """On OCR'd pages, a Figure that is only the whole-page scan image becomes decoration (checklist 5.1: an image
-    covering the whole page is the scan itself, not a figure). Returns the pages changed."""
-    done = []
-    with pikepdf.open(path, allow_overwriting_input=True) as p:
-        st = p.Root.get('/StructTreeRoot')
-        if st is None: return done
-        pt = {}
-        def nums(n, d=0):
-            if '/Nums' in n:
-                a = n.Nums
-                for k in range(0, len(a) - 1, 2): pt[int(a[k])] = a[k + 1]
-            for kid in n.get('/Kids', []) if d < 20 else []: nums(kid, d + 1)
-        nums(st.ParentTree)
-        for n in pages:
-            pg = p.pages[n - 1]; vr = visible_rect(pg)
-            arr = pt.get(int(pg.obj.StructParents)) if '/StructParents' in pg.obj else None
-            if not isinstance(arr, pikepdf.Array): continue
-            ops = list(pikepdf.parse_content_stream(pg)); xo = pg.Resources.get('/XObject') or {}
-            ctm, stk, open_mc, changed = [1, 0, 0, 1, 0, 0], [], [], False
-            hits = []                                   # (index of BDC op, mcid) whose content is one big image
-            for idx, (a, o) in enumerate(ops):
-                o = str(o)
-                if o == 'q': stk.append(ctm)
-                elif o == 'Q' and stk: ctm = stk.pop()
-                elif o == 'cm': ctm = _mul([float(x) for x in a], ctm)
-                elif o == 'BDC':
-                    mc = int(a[1].MCID) if isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1] else None
-                    open_mc.append([idx, str(a[0]), mc, 0, 0])
-                elif o == 'BMC': open_mc.append([idx, str(a[0]), None, 0, 0])
-                elif o == 'EMC' and open_mc:
-                    bi, tag, mc, imgs, other = open_mc.pop()
-                    if tag == '/Figure' and mc is not None and imgs == 1 and other == 0: hits.append((bi, mc))
-                elif o in TXT_OPS and open_mc: open_mc[-1][4] += 1
-                elif o == 'Do' and open_mc:
-                    x = xo.get(a[0])
-                    if x is not None and x.get('/Subtype') == '/Image':
-                        if visible_cover(ctm, vr) >= 0.85: open_mc[-1][3] += 1        # the whole visible page: the scan
-                        else: open_mc[-1][4] += 1
-                    else: open_mc[-1][4] += 1
-            for bi, mc in hits:
-                el = arr[mc] if mc < len(arr) else None
-                if not isinstance(el, pikepdf.Dictionary) or str(el.get('/S')) != '/Figure': continue
-                k = el.get('/K'); kids = list(k) if isinstance(k, pikepdf.Array) else [k]
-                if len(kids) != 1: continue                       # the Figure holds more than this image: leave it
-                ops[bi] = ([pikepdf.Name('/Artifact'), pikepdf.Dictionary(Type=pikepdf.Name('/Layout'))], pikepdf.Operator('BDC'))
-                arr[mc] = None
-                par = el.get('/P')
-                if par is not None:
-                    pk = par.get('/K')
-                    if isinstance(pk, pikepdf.Array):
-                        par.K = pikepdf.Array([x for x in pk if not (isinstance(x, pikepdf.Dictionary) and x.objgen == el.objgen)])
-                    elif isinstance(pk, pikepdf.Dictionary) and pk.objgen == el.objgen: del par['/K']
-                changed = True
-            if changed:
-                pg.obj.Contents = p.make_stream(pikepdf.unparse_content_stream(ops)); done.append(n)
-        p.save(path)
-    return done
+def scan_page_is_text(doc, n):
+    """(page of text?, ink outside the text boxes as a share of the page) for page n of an open PDFium document: the page is
+    rendered at SCAN_INK_DPI, ink is gray < SCAN_INK_GRAY (thin lines of a drawing count), and the OCR layer's text boxes
+    (PDFium text rects, padded SCAN_INK_PAD px) are masked out. A page of text leaves almost no ink outside its text; a
+    photo, a plate (with or without a caption) or a page with a photo leaves a lot, but text in boxes or rules, and text
+    the layer lacks (CJK under a Latin layer), leaves some too: see SCAN_TEXT_INK for the labelled pages and the line."""
+    from PIL import Image, ImageDraw, ImageChops
+    page = doc[n - 1]; s = SCAN_INK_DPI / 72
+    img = page.render(scale=s, grayscale=True).to_pil(); l, b, r, t = page.get_cropbox()
+    mask = Image.new('L', img.size, 0); dr = ImageDraw.Draw(mask); tp = page.get_textpage()
+    for i in range(tp.count_rects()):
+        x0, y0, x1, y1 = tp.get_rect(i)
+        dr.rectangle([(x0 - l) * s - SCAN_INK_PAD, (t - y1) * s - SCAN_INK_PAD, (x1 - l) * s + SCAN_INK_PAD, (t - y0) * s + SCAN_INK_PAD], fill=255)
+    ink = img.point(lambda v: 255 if v < SCAN_INK_GRAY else 0)
+    share = ImageChops.subtract(ink, mask).histogram()[255] / max(img.width * img.height, 1)
+    return share <= SCAN_TEXT_INK, round(share, 4)
+def _form_pages(pdf):
+    """{form objgen: pages whose resources reach it}: a form reached from more than one page is shared."""
+    use = collections.defaultdict(set)
+    for n, pg in enumerate(pdf.pages, 1):
+        todo, seen = [pg.obj.get('/Resources')], set()
+        while todo:
+            res = todo.pop()
+            for x in ((res or {}).get('/XObject') or {}).values():
+                if isinstance(x, pikepdf.Stream) and x.get('/Subtype') == '/Form' and x.objgen not in seen:
+                    seen.add(x.objgen); use[x.objgen].add(n); todo.append(x.get('/Resources'))
+    return use
+def artifact_page_scans(path, pages, picture_test=(), keep=()):
+    """A Figure that is only the whole-page scan image becomes decoration (checklist 5.1: an image covering the whole page
+    is the scan itself, not a figure), on the given pages. The image may be drawn in the page or inside a form (the
+    sponsors' scans wrap each page in one form; the tagger then numbers the form's own marked content through its
+    /StructParents). picture_test: pages with an existing OCR layer, where the scan becomes decoration only on a page of
+    text (scan_page_is_text); any other page keeps its Figure (pictures, plates, pages with photos, and unclear pages).
+    keep (review 08, decision 5): pages a person kept at the CJK stop (KEEP_CJK_PAGES): their scan always keeps its Figure,
+    whatever its ink, so the page reaches the AI as a picture, as the Keep note says. A form shared with another page, or one
+    nested deeper than FORM_DEPTH, is a misfit (left as tagged).
+    Returns {'pages': changed pages, 'kept': {page: ink share}, 'kept_by_person': [pages], 'measured': {page: ink share},
+    'misfits': [[page, why]]}."""
+    out = {'pages': [], 'kept': {}, 'kept_by_person': [], 'measured': {}, 'misfits': []}; keep = set(keep)
+    picture_test = set(picture_test); doc = pdfium.PdfDocument(path) if picture_test else None
+    try:
+        with pikepdf.open(path, allow_overwriting_input=True) as p:
+            st = p.Root.get('/StructTreeRoot')
+            if st is None: return out
+            pt = {}
+            def nums(nd, d=0):
+                if '/Nums' in nd:
+                    a = nd.Nums
+                    for k in range(0, len(a) - 1, 2): pt[int(a[k])] = a[k + 1]
+                for kid in nd.get('/Kids', []) if d < 20 else []: nums(kid, d + 1)
+            nums(st.ParentTree)
+            shared = _form_pages(p); changed_any = False
+            for n in pages:
+                pg = p.pages[n - 1]; vr = visible_rect(pg)
+                parr = pt.get(int(pg.obj.StructParents)) if '/StructParents' in pg.obj else None
+                hits, streams, bad = [], {}, None            # hits: (stream key, op index, mcid, ParentTree array)
+                def walk(owner, res, ctm, arr, key, depth):
+                    nonlocal bad
+                    ops = list(pikepdf.parse_content_stream(owner)); streams[key] = (owner, ops)
+                    xo = (res or {}).get('/XObject') or {}; stk, open_mc = [], []
+                    for idx, ins in enumerate(ops):
+                        o, a = str(ins.operator), ins.operands
+                        if o == 'q': stk.append(ctm)
+                        elif o == 'Q' and stk: ctm = stk.pop()
+                        elif o == 'cm': ctm = _mul([float(x) for x in a], ctm)
+                        elif o == 'BDC':
+                            mc = int(a[1].MCID) if isinstance(a[1], pikepdf.Dictionary) and '/MCID' in a[1] else None
+                            open_mc.append([idx, str(a[0]), mc, 0, 0])
+                        elif o == 'BMC': open_mc.append([idx, str(a[0]), None, 0, 0])
+                        elif o == 'EMC' and open_mc:
+                            bi, tag, mc, imgs, other = open_mc.pop()
+                            if tag == '/Figure' and mc is not None and imgs == 1 and other == 0: hits.append((key, bi, mc, arr))
+                            if open_mc: open_mc[-1][3] += imgs; open_mc[-1][4] += other
+                        elif o in TXT_OPS and open_mc: open_mc[-1][4] += 1
+                        elif o == 'Do':
+                            x = xo.get(a[0])
+                            if x is None: continue
+                            if x.get('/Subtype') == '/Image':
+                                if open_mc: open_mc[-1][3 if visible_cover(ctm, vr) >= 0.85 else 4] += 1   # the whole visible page: the scan
+                            elif x.get('/Subtype') == '/Form':
+                                if open_mc: open_mc[-1][4] += 1
+                                if depth >= tagfix.FORM_DEPTH: bad = f'a form is nested deeper than {tagfix.FORM_DEPTH}'; return
+                                m = [float(v) for v in x.get('/Matrix', [1, 0, 0, 1, 0, 0])]
+                                farr = pt.get(int(x.StructParents)) if '/StructParents' in x else arr
+                                walk(x, x.get('/Resources', res), _mul(m, ctm), farr, key + (x.objgen,), depth + 1)
+                try: walk(pg, pg.obj.get('/Resources'), [1, 0, 0, 1, 0, 0], parr, ('page',), 0)
+                except Exception as e: bad = f'content could not be read ({str(e)[:80]})'
+                if bad: out['misfits'].append([n, bad]); continue
+                hits = [h for h in hits if isinstance(h[3], pikepdf.Array)]
+                if not hits: continue
+                if n in picture_test:
+                    is_text, share = scan_page_is_text(doc, n); out['measured'][n] = share
+                    if not is_text or n in keep:
+                        out['kept'][n] = share
+                        if n in keep and is_text: out['kept_by_person'].append(n)
+                        continue
+                elif n in keep: out['kept'][n] = None; out['kept_by_person'].append(n); continue
+                if any(len(shared.get(k[-1], ())) > 1 for k, _, _, _ in hits if k != ('page',)):
+                    out['misfits'].append([n, 'the scan sits in a form another page uses too']); continue
+                changed = set()
+                for key, bi, mc, arr in hits:
+                    el = arr[mc] if mc < len(arr) else None
+                    if not isinstance(el, pikepdf.Dictionary) or str(el.get('/S')) != '/Figure': continue
+                    k = el.get('/K'); kids = list(k) if isinstance(k, pikepdf.Array) else [k]
+                    if len(kids) != 1: continue                       # the Figure holds more than this image: leave it
+                    streams[key][1][bi] = pikepdf.ContentStreamInstruction(
+                        [pikepdf.Name('/Artifact'), pikepdf.Dictionary(Type=pikepdf.Name('/Layout'))], pikepdf.Operator('BDC'))
+                    arr[mc] = None
+                    par = el.get('/P')
+                    if par is not None:
+                        pk = par.get('/K')
+                        if isinstance(pk, pikepdf.Array):
+                            par.K = pikepdf.Array([x for x in pk if not (isinstance(x, pikepdf.Dictionary) and x.objgen == el.objgen)])
+                        elif isinstance(pk, pikepdf.Dictionary) and pk.objgen == el.objgen: del par['/K']
+                    changed.add(key)
+                for key in changed:
+                    owner, ops = streams[key]; data = pikepdf.unparse_content_stream(ops)
+                    if key == ('page',): pg.obj.Contents = p.make_stream(data)
+                    else: owner.write(data)
+                if changed: out['pages'].append(n); changed_any = True
+            if changed_any: p.save(path)
+    finally:
+        if doc is not None: doc.close()
+    return out
 
 # ------------------------------------------------------------------ intake.md: the record for a person
 def _pages(ps, labels):
@@ -1136,8 +1494,9 @@ def main():
     SRC, OUTD = os.path.abspath(args[0]), os.path.abspath(args[1]); PLAN_ONLY = '--plan-only' in sys.argv
     os.makedirs(OUTD, exist_ok=True)
     if '--languages' in sys.argv: return languages_only(SRC, OUTD)
-    settings = {'FORCE_OCR': os.environ.get('FORCE_OCR') == '1', 'OCR': os.environ.get('OCR', 'auto'),
+    settings = {'FORCE_OCR': os.environ.get('FORCE_OCR') == '1', 'REOCR': os.environ.get('REOCR') == '1', 'OCR': os.environ.get('OCR', 'auto'),
                 'OCR_LANG': os.environ.get('OCR_LANG') or None, 'plan_only': PLAN_ONLY,
+                'KEEP_CJK_PAGES': sorted({int(x) for x in re.findall(r'\d+', os.environ.get('KEEP_CJK_PAGES') or '')}),   # review 06 H1
                 'thresholds': {'cer_ok': CER_OK, 'cer_bad': CER_BAD, 'ocr_dpi': OCR_DPI, 'sample': SAMPLE, 'extra': EXTRA,
                                'min_scored': MIN_SCORED, 'score_min_chars': SCORE_MIN_CHARS,
                                'score_image_cover': SCORE_IMAGE_COVER, 'cjk_chars': CJK_CHARS, 'cjk_share': CJK_SHARE,
@@ -1149,11 +1508,17 @@ def main():
                                'tile_dpi': TILE_DPI, 'tile_px': TILE_PX, 'tile_max': TILE_MAX}}
     J = os.path.join(OUTD, 'intake.json'); PDF_OUT = os.path.join(OUTD, 'intake.pdf')
     src_sha = sha256(SRC)
+    prior_cjk, prior_kept = {}, []                      # review 06 H1: the stop's counts for pages a person keeps (KEEP_CJK_PAGES)
+    try:
+        ol_ = json.load(open(J)).get('ocr_layer_test') or {}
+        prior_cjk, prior_kept = ol_.get('cjk_on_images') or {}, (ol_.get('cjk_kept') or {}).get('pages') or []
+    except (OSError, ValueError, AttributeError): pass
     # an earlier finished intake for the same file and settings is reused (batch estimate → run, FROM= reruns)
     if os.path.exists(J) and not PLAN_ONLY:
         old = json.load(open(J))
-        same = old.get('original', {}).get('sha256') == src_sha and {k: old.get('settings', {}).get(k) for k in ('FORCE_OCR', 'OCR', 'OCR_LANG')} \
-               == {k: settings[k] for k in ('FORCE_OCR', 'OCR', 'OCR_LANG')}
+        same = old.get('original', {}).get('sha256') == src_sha and {k: old.get('settings', {}).get(k, False if k == 'REOCR' else [] if k == 'KEEP_CJK_PAGES' else None)
+                                                                     for k in ('FORCE_OCR', 'REOCR', 'OCR', 'OCR_LANG', 'KEEP_CJK_PAGES')} \
+               == {k: settings[k] for k in ('FORCE_OCR', 'REOCR', 'OCR', 'OCR_LANG', 'KEEP_CJK_PAGES')}
         if os.environ.get('INTAKE_REUSE') == '1' and old.get('original', {}).get('sha256') == src_sha:
             same = True                                  # FROM= rerun: the saved reply was written for this intake result
         elif same and old.get('status') == 'skipped':    # skipped by an older intake: still a real tag tree today?
@@ -1188,6 +1553,15 @@ def main():
     except pikepdf.PasswordError: return stop('stopped', support.LOCKED, 3)      # the same words as audit.py / apply.py
     except Exception as e: return stop('failed', support.cannot_open(e), 1)
     rec['original']['pages'] = len(pdf.pages); rec['original']['encrypted'] = pdf.is_encrypted
+    kraw = os.environ.get('KEEP_CJK_PAGES') or ''          # review 09 L-B: a comma list of pages the last CJK stop named (or kept before)
+    if kraw.strip():
+        named = set(prior_cjk.get('pages') or []) | set(prior_kept)
+        if not re.fullmatch(r'\s*\d+(\s*,\s*\d+)*\s*', kraw):
+            return stop('stopped', f'KEEP_CJK_PAGES must be a comma list of page numbers, such as 35,41 (given: {kraw[:60]!r})', 3)
+        bad = [p_ for p_ in settings['KEEP_CJK_PAGES'] if not 1 <= p_ <= len(pdf.pages) or p_ not in named]
+        if bad: return stop('stopped', f'KEEP_CJK_PAGES names {"page" if len(bad) == 1 else "pages"} {", ".join(map(str, bad))}, which the last CJK '
+                            f'stop of this run did not name' + (f' (it named {", ".join(map(str, sorted(named)))})' if named else ' (no CJK stop is recorded in this run folder: run it in the stopped run\'s folder, with RUN_DIR for a book of a batch)')
+                            + ': only pages the check stopped on can be kept', 3)
     if '/PageLabels' in pdf.Root:
         try: page_labels.update({i: str(pg.label) for i, pg in enumerate(pdf.pages, 1)})
         except Exception: pass
@@ -1206,7 +1580,13 @@ def main():
         rec['tag_tree']['figures'] = figs                # the publisher's alt text, recorded only (passing it on is a later step)
         pub = [f for f in figs if f['kind'] == 'publisher']; phd = [f for f in figs if f['kind'] == 'placeholder']
         els = ', '.join(f'{k.lstrip("/")} {v}' for k, v in tinfo['elements'].items())
-        flag('Placeholder tag tree', f'the PDF has a tag tree with no text structure ({els}; MarkInfo '
+        pft = tinfo.get('page_figure_tree')
+        if pft: flag('Placeholder tag tree', f'tag tree with one figure per page and {tinfo["text_elements"]} text elements ({els}): '
+                     f'page-sized figures on {pft["figure_pages"]} of {len(pdf.pages)} pages, text elements on {pft["text_pages"]}, so it says '
+                     'nothing about the text: treated as untagged. The old tree (with its element counts and any publisher alt text) is '
+                     'recorded in intake.json and removed from intake\'s working copy (the original is unchanged); the book is auto-tagged, '
+                     'which tags the text of its few text elements again', check=False)
+        else: flag('Placeholder tag tree', f'the PDF has a tag tree with no text structure ({els}; MarkInfo '
              f'{ {None: "missing", True: "true", False: "Marked false"}[tinfo["markinfo"]]}): it is treated as untagged. The old '
              'tree is removed from intake\'s working copy (the original is unchanged) and the book is auto-tagged'
              + (f'. {len(phd)} of its figures had alt text that says nothing (e.g. "{phd[0]["alt"]}"): recorded as placeholder alt' if phd else ''),
@@ -1463,13 +1843,57 @@ def main():
                     ol['diacritics'] = {'marked_vowels_ocr': mv_ocr, 'marked_vowels_layer': mv_layer, 'pages': mark_pages}
                     flag('OCR layer: diacritics', f'the page images show diacritics the existing OCR layer lacks ({mv_ocr} marked vowels '
                          f'read on {n_lat} sample pages, {mv_layer} in the layer: e.g. ŏ/ŭ lost as o/u). The OCR model reads the marks '
-                         'only roughly, so a person compares the pages; the layer is not changed', mark_pages[:20] or None)
+                         'only roughly, so a person compares the pages; the layer is not changed. A re-OCR in the book\'s language is '
+                         'suggested (REOCR=1 with OCR_LANG; in the app, choose the language under "Language of the Scanned Pages")', mark_pages[:20] or None)
             else:
                 ol['verdict'] = 'not enough pages scored'
                 why_ = sorted({str(r.get('reason')) for r in ol['pages'] if r.get('reason')})
                 flag('OCR layer not checked', 'the existing OCR layer on the scanned pages could not be compared with a fresh OCR '
                      'reading on any sample page (' + ('; '.join(why_)[:300] or 'no sample page') + '): a person compares a few pages with '
                      'the page image', [r['page'] for r in ol['pages']][:20])
+            # #121: a Latin layer over CJK print reads as Latin noise on both sides, so the sample page images are also
+            #   probed for CJK, as before OCR (up to LAYER_CJK_SAMPLE pages, stopping at the first that holds CJK)
+            have = [l for l in CJK_PROBE_LANGS.split('+') if l in tv['tesseract_langs']]
+            keep_ = set(settings['KEEP_CJK_PAGES'])      # review 06 H1: pages a person kept: never probed (the samples are drawn as
+            if have and not any(r.get('script') in ('kana', 'hangul', 'han') for r in ol['pages']):   #   before, then these skipped)
+                def probe_(i):
+                    img = os.path.join(tmp, f'olc{i}.png'); render(doc, i - 1, OCR_DPI, img)
+                    try: return cjk_probe(img, '+'.join(have), distinct=True)
+                    finally: os.remove(img)
+                pics = (lambda: [i for i in kinds['ocr-layer'] if not scan_page_is_text(doc, i)[0]]) if not settings['REOCR'] else None
+                hit, by_, ol['cjk_probe'] = layer_cjk_hits(pick, pics, keep_, probe_)
+                ol['cjk_probe']['langs'] = '+'.join(have)
+                if hit:
+                    ol['cjk_on_images'] = {'pages': sorted(hit), 'cjk_characters': {str(k): v[0] for k, v in sorted(hit.items())},
+                                           'cjk_distinct': {str(k): v[1] for k, v in sorted(hit.items())},
+                                           'found_by': {str(k): by_[k] for k in sorted(hit)}}
+                    if not settings['REOCR']:           # the page images, for the run page's question (webapp/lang.py)
+                        for k in sorted(hit)[:CJK_STOP_IMAGES]:
+                            try: render(doc, k - 1, 60, os.path.join(OUTD, f'cjk_page_{k}.png'))
+                            except Exception: pass
+                    flag('OCR layer: CJK missing', 'The page images show Chinese, Japanese or Korean text that the existing OCR text lacks, '
+                         'so these pages would reach the AI as pictures of text' + ('. The text was read again (REOCR=1)' if settings['REOCR'] else
+                         ': the run stopped. Run it again with REOCR=1 and OCR_LANG naming the language (e.g. chi_tra+eng, jpn+eng, kor+eng), '
+                         'or, where a page holds no such text (a map, a chart), with KEEP_CJK_PAGES naming the pages; in the app, choose under '
+                         '"Language of the Scanned Pages"'), sorted(hit))
+            if keep_:                                    # review 06 H1: a person kept the existing OCR text on these pages (the
+                ck = {}                                  #   app writes its name, date and the stop's counts in cjk_keep.json)
+                try: ck = json.load(open(os.path.join(OUTD, 'cjk_keep.json'), encoding='utf-8'))
+                except (OSError, ValueError): pass
+                if not isinstance(ck, dict) or sorted(ck.get('pages') or []) != sorted(keep_): ck = {}   # set otherwise (terminal, batch)
+                cnt = {}
+                for p_ in sorted(keep_):
+                    c_ = (ck.get('counts') or {}).get(str(p_)) or ({'cjk_characters': prior_cjk['cjk_characters'][str(p_)],
+                                                                   'cjk_distinct': (prior_cjk.get('cjk_distinct') or {}).get(str(p_))}
+                                                                  if str(p_) in (prior_cjk.get('cjk_characters') or {}) else None)
+                    if c_: cnt[str(p_)] = c_
+                ol['cjk_kept'] = {'pages': sorted(keep_), 'by': ck.get('by'), 'at': ck.get('at'), 'counts': cnt}
+                flag('OCR layer: CJK kept', 'a person kept the existing OCR text on these pages although the CJK check read Chinese, '
+                     'Japanese or Korean text on their images (KEEP_CJK_PAGES' + (f', {ck["by"]}' if ck.get('by') else '') + '): '
+                     'they go to the AI as pictures, and any CJK text on them is not in the text layer', sorted(keep_), check=False)
+            if ol.get('diacritics') or ol.get('cjk_on_images'):
+                rec['reocr_suggested'] = {'why': (['diacritics'] if ol.get('diacritics') else []) + (['cjk'] if ol.get('cjk_on_images') else []),
+                                          'pages': (ol.get('diacritics') or {}).get('pages') or (ol.get('cjk_on_images') or {}).get('pages')}
             rec['ocr_layer_test'] = ol
         # ---- the plan
         force = tt['verdict'] == 'unusable'
@@ -1479,6 +1903,9 @@ def main():
             or sum(1 for i in text_pages if inv[i - 1]['math_fonts']) >= max(3, 0.1 * len(text_pages))
         why_ocr = (f'the producer ({rec["original"]["producer"][:40]}) writes text rather than scanning it' if BORN_DIGITAL.search(rec['original'].get('producer') or '')
                    else 'the book has math') if written else None
+        if settings['REOCR'] and settings['FORCE_OCR']:
+            rec['plan'] = plan
+            return stop('stopped', 'REOCR=1 and FORCE_OCR=1 are both set: choose one (REOCR keeps the page images, FORCE_OCR redraws them)', 3)
         if force and not settings['FORCE_OCR']:
             rec['plan'] = plan
             if written:
@@ -1501,13 +1928,26 @@ def main():
             plan['ocr_mode'] = 'force'; plan['ocr_pages'] = list(range(1, len(inv) + 1))
             flag('Force OCR', 'FORCE_OCR=1: every page is now a page image with OCR text over it; the original text layer '
                  'was replaced. OCR text is machine output: a person should check it before it ships')
-        elif scan_pages:
+        elif scan_pages and not settings['REOCR']:
             if settings['OCR'] == 'off':
                 flag('OCR off', 'OCR=off: these image-only pages have no text for a screen reader', scan_pages)
             else: plan['ocr_mode'] = 'skip'; plan['ocr_pages'] = scan_pages
+        if settings['REOCR'] and not force:              # #121: read the existing OCR layer's pages again (redo mode)
+            rp = reocr_pages(kinds, scan_pages, settings['OCR'])
+            if not rp['reocr']:
+                flag('Re-OCR', 'REOCR=1, but no page has an existing OCR layer: nothing was read again', check=False)
+                if rp['image']: plan['ocr_mode'] = 'skip'; plan['ocr_pages'] = rp['image']
+            else:
+                plan['ocr_mode'] = 'redo'; plan['ocr_pages'] = rp['reocr'] + rp['image']; plan['ocr_pages'].sort()
+                plan['reocr_pages'] = rp['reocr']
         rec['plan'] = plan
+        if (rec.get('ocr_layer_test') or {}).get('cjk_on_images') and not settings['REOCR']:   # review 04 H2 (interim, until #119)
+            pg_ = rec['ocr_layer_test']['cjk_on_images']['pages']
+            return stop('stopped', f'CJK text the existing OCR text lacks (page {", ".join(map(str, pg_))}): run again with REOCR=1 and '
+                        f'OCR_LANG naming the language, or with KEEP_CJK_PAGES={",".join(map(str, sorted(set(pg_) | set(settings["KEEP_CJK_PAGES"]))))} '
+                        'to keep the existing OCR text on those pages', 3)
         # ---- CJK text on the pages to be OCR'd (3.7): never guessed; OCR_LANG must name the language
-        if plan['ocr_mode'] == 'skip' and plan['ocr_pages']:
+        if plan['ocr_mode'] in ('skip', 'redo') and plan['ocr_pages']:
             have = [l for l in CJK_PROBE_LANGS.split('+') if l in tv['tesseract_langs']]
             if not have:
                 flag('CJK check not run', f'none of the Tesseract packs {CJK_PROBE_LANGS} is installed: CJK text on the OCR pages '
@@ -1516,12 +1956,16 @@ def main():
                 found = {}; cjk_lang = any(l in ocr_lang for l in ('chi', 'jpn', 'kor')); ps = plan['ocr_pages']
                 sample = sorted({ps[int(k * (len(ps) - 1) / (PROBE_SAMPLE - 1))] for k in range(PROBE_SAMPLE)})   # spread through the book
                 if len(ps) <= PROBE_ALL_MAX: mode, todo = 'all', ps
-                elif cjk_lang: mode, todo = 'sample', sample
+                elif cjk_lang or plan['ocr_mode'] == 'redo': mode, todo = 'sample', sample   # redo: hundreds of pages, a sample
                 else: mode, todo = 'until the first CJK page', sample + [p for p in ps if p not in sample]
                 checked = 0
                 for p in todo:
                     img = os.path.join(tmp, f'cjk{p}.png'); render(doc, p - 1, OCR_DPI, img)
-                    n = cjk_probe(img, '+'.join(have)); os.remove(img); checked += 1
+                    if plan['ocr_mode'] == 'redo' and p in (plan.get('reocr_pages') or []):   # a page of text: the share counts too
+                        n, nd = cjk_probe(img, '+'.join(have), distinct=True)
+                        if not cjk_page(n, nd): n = 0
+                    else: n = cjk_probe(img, '+'.join(have))
+                    os.remove(img); checked += 1
                     if n: found[p] = n
                     if mode == 'until the first CJK page' and n >= CJK_PROBE_MIN: break
                 vhave = [l for l in VERT_PROBE_LANGS.split('+') if l in tv['tesseract_langs']]
@@ -1600,22 +2044,43 @@ def main():
         if plan['ocr_mode']:
             out = os.path.join(tmp, 'ocr.pdf')
             cmd = ['ocrmypdf', '--mode', plan['ocr_mode'], '--output-type', 'pdf', '--optimize', '0', '--oversample', str(OCR_DPI),
-                   '-l', ocr_lang] + (['--pages', ','.join(map(str, plan['ocr_pages']))] if plan['ocr_mode'] == 'skip' else []) + [cur, out]
+                   '-l', ocr_lang] + (['--pages', ','.join(map(str, plan['ocr_pages']))] if plan['ocr_mode'] in ('skip', 'redo') else []) + [cur, out]
+            if plan['ocr_mode'] == 'redo':               # #121 (M9): the layer being replaced, kept on record (text and hash)
+                rec['reocr'] = keep_old_layer(cur, plan['reocr_pages'], OUTD, rec, ocr_lang)
             t1 = time.time(); r = run(cmd)
             rec['steps'].append({'step': 'ocr', 'tool': f'OCRmyPDF {tv["ocrmypdf"]} / Tesseract {tv["tesseract"]}',
                                  'command': ' '.join(cmd[:-2]) + ' <in> <out>', 'seconds': round(time.time() - t1, 1),
                                  'exit': r.returncode, 'log_tail': (r.stderr or '')[-1500:]})
             if r.returncode != 0: return stop('failed', f'OCRmyPDF failed (exit {r.returncode}): see intake.json', 1)
             # image-only pages whose OCR text is not text-like keep no OCR text (they are pictures)
-            if plan['ocr_mode'] == 'skip':
+            if plan['ocr_mode'] in ('skip', 'redo'):
                 od = pdfium.PdfDocument(out); kept, dropped = [], []
-                for i in plan['ocr_pages']:
+                for i in [p_ for p_ in plan['ocr_pages'] if p_ not in (plan.get('reocr_pages') or [])]:   # image-only pages only
                     ok, good, toks = textlike(od[i - 1].get_textpage().get_text_range())
                     (kept if ok else dropped).append({'page': i, 'words': good, 'tokens': toks})
                 od.close()
                 if dropped: strip_ocr_layer(out, [d['page'] for d in dropped])
-                rec['ocr'] = {'mode': 'skip', 'pages_with_ocr_text': [k['page'] for k in kept],
+                rec['ocr'] = {'mode': plan['ocr_mode'], 'pages_with_ocr_text': sorted([k['page'] for k in kept] + (plan.get('reocr_pages') or [])),
                               'image_pages_without_text': [d['page'] for d in dropped], 'per_page': kept + dropped}
+                if plan['ocr_mode'] == 'redo':
+                    rec['ocr']['reocr_pages'] = plan['reocr_pages']
+                    import gzip                              # a page that came back with under half the characters it had (any
+                    old_ = json.load(gzip.open(os.path.join(OUTD, 'old_ocr_layer.json.gz'), 'rt', encoding='utf-8'))   # old text,
+                    ns_ = lambda s: len(re.sub(r'\s+', '', s))   # CJK characters counted as characters) has lost text (review 04 M4)
+                    od = pdfium.PdfDocument(out)
+                    def thin_(p_):
+                        o_ = ns_(old_.get(str(p_), ''))
+                        return o_ > 0 and ns_(od[p_ - 1].get_textpage().get_text_range()) < 0.5 * o_
+                    thin = [p_ for p_ in plan['reocr_pages'] if thin_(p_)]; od.close()
+                    if thin:
+                        rec['ocr']['reocr_little_text'] = thin
+                        flag('OCR text read again: little or no text', 'on these pages the new OCR reading found less than half the text the '
+                             'old layer had (the old text is kept in old_ocr_layer.json.gz): a person compares each with its page image, or the '
+                             'book is run again without REOCR', thin[:20])
+                    flag('OCR text read again', f'REOCR=1: the existing OCR text on {len(plan["reocr_pages"])} page{"s" if len(plan["reocr_pages"]) != 1 else ""} '
+                         f'was replaced by a new OCR reading ({ocr_lang}); the page images are unchanged (checked pixel for pixel). The old '
+                         'text is kept in old_ocr_layer.json.gz. The new text is machine output: a person compares it with the page images '
+                         'and approves it before the book ships', plan['reocr_pages'][:20])
                 if dropped:
                     flag('Image pages with no text', 'image-only pages where OCR found no readable text: left as pictures '
                          'for the figure step (alt text). Check none is a page of text', [d['page'] for d in dropped], check=False)
@@ -1668,17 +2133,55 @@ def main():
         hidden = bool(plan['ocr_mode']) or bool(kinds['ocr-layer'])           # invisible OCR text must not be filtered out
         kw = dict(input_path=[cur], output_dir=odl_dir, format='tagged-pdf', quiet=True)
         if hidden: kw['content_safety_off'] = 'hidden-text'
-        t1 = time.time()
-        try: opendataloader_pdf.convert(**kw); err = None
-        except Exception as e: err = str(e)[-600:]
+        err = oom = None; t1 = time.time()
+        with tagger_slot(len(inv)) as slot:              # #129: at most TAGGER_SLOTS taggers at once on this machine
+            import threading
+            java_opts = tagger_java_options(len(inv))
+            old_opts = os.environ.get('JAVA_TOOL_OPTIONS'); os.environ['JAVA_TOOL_OPTIONS'] = java_opts
+            t1 = time.time(); stop_w = threading.Event()    # the tagger's pid goes in the slot file (review 04 M2)
+            watch = threading.Thread(target=_tagger_children, args=(stop_w, slot), daemon=True); watch.start()
+            try: opendataloader_pdf.convert(**kw)
+            except Exception as e: err, oom = tagger_error(e)
+            finally:
+                stop_w.set(); watch.join(5)
+                if old_opts is None: os.environ.pop('JAVA_TOOL_OPTIONS', None)
+                else: os.environ['JAVA_TOOL_OPTIONS'] = old_opts
         tagged_out = os.path.join(odl_dir, os.path.splitext(os.path.basename(cur))[0] + '_tagged.pdf')
         rec['steps'].append({'step': 'autotag', 'tool': f'OpenDataLoader {tv["opendataloader_pdf"]} (Java {tv["java"]})',
                              'options': {k: v for k, v in kw.items() if k not in ('input_path', 'output_dir')},
+                             'java_options': java_opts, 'slot': slot['slot'], 'waited_for_slot_seconds': slot['waited'],
                              'seconds': round(time.time() - t1, 1), 'error': err})
+        if oom: return stop('failed', TAGGER_OOM, 1)
         if err or not os.path.exists(tagged_out): return stop('failed', f'auto-tagging failed: {err or "no output file"}', 1)
+        # #127 (rule 1, 3.6): put back the spans that set how text is spoken (ActualText), which the tagger drops
+        rs = tagfix.restore(cur, tagged_out)
+        rec['checks']['actualtext_restored'] = {'spans': rs['spans'], 'pages': {str(k): v for k, v in rs['pages'].items()},
+                                                'values': dict(rs['values'].most_common(30)),
+                                                'misfits': [{'page': p, 'stream': s, 'why': w} for p, s, w in rs['misfits'][:30]]}
+        if rs['spans']:
+            flag('Spoken text restored', f'the auto-tagger dropped {rs["spans"]} marked span{"" if rs["spans"] == 1 else "s"} that set how their text is spoken '
+                 f'(ActualText: {spoken_values(rs["values"])}); they were put back, so the text reads as in the original', sorted(rs['pages']), check=False)
+        lv = tagfix.lost_values(cur, tagged_out)          # review 09 H-A: the whole file, after the restore: every spoken text kept?
+        if lv:
+            rec['checks']['actualtext_restored']['values_lost'] = {str(p): v[:10] for p, v in sorted(lv.items())[:30]}
+            for p, v in sorted(lv.items()):
+                if not any(m[0] == p for m in rs['misfits']): rs['misfits'].append((p, None, f'spoken text missing after tagging ({", ".join(v[:3])})'))
+            rec['checks']['actualtext_restored']['misfits'] = [{'page': p, 'stream': s_, 'why': w} for p, s_, w in rs['misfits'][:30]]
+        if rs['misfits']:
+            flag('Spoken text not restored', f'{len(rs["misfits"])} places where the auto-tagger dropped spoken text (ActualText) could not '
+                 f'be put back safely (e.g. {rs["misfits"][0][2]}): a person checks what a screen reader says there',
+                 sorted({p for p, _, _ in rs['misfits'] if p})[:20])
         cmp = compare(cur, tagged_out, near=True)
         rec['checks']['after_autotag'] = {'pixels_differ': cmp['pixels'], 'text_differs': cmp['text'], 'page_count': cmp['page_count'],
-                                          'tile_passed': cmp['tile_passed'], 'reordered': cmp['reordered']}
+                                          'tile_passed': cmp['tile_passed'], 'reordered': cmp['reordered'],
+                                          'read_differently': cmp['read_differently']}
+        if cmp['read_differently']:
+            rdl = cmp['read_differently']; n = sum(r['characters'] for r in rdl); ld = sum(r['letters_digits'] for r in rdl)
+            letters = ''.join(r['letters_digits_read_differently'] for r in rdl)[:40]
+            flag('Read differently, drawn the same', f'on these pages the auto-tagger split text runs without changing what is drawn: '
+                 'the same glyphs in the same places, fonts and spoken text, and a second reader (pdfplumber) reads the same text. '
+                 f'The PDFium text check reads {n} characters differently: {n - ld} symbols, {ld} letters and digits'
+                 + (f' ("{letters}")' if letters else '') + ' (each page listed in intake.json)', [r['page'] for r in rdl], check=False)
         if cmp['reordered']:
             flag('Text reordered by auto-tagging', 'on these pages the text holds exactly the same characters as before, in a different '
                  'order: the tagger re-sequenced text runs, so text extraction meets some fragments elsewhere. Nothing was lost; '
@@ -1691,11 +2194,35 @@ def main():
         if cmp['page_count'] or cmp['pixels'] or cmp['text']:
             return stop('failed', f'auto-tagging changed page appearance or text (appearance {cmp["pixels"][:8]}, text {cmp["text"][:8]}): stopped', 1)
         with pikepdf.open(tagged_out) as tp:
-            if not tagged(tp): return stop('failed', 'auto-tagging produced no tag tree', 1)
-        if plan['ocr_mode']:
-            art = artifact_page_scans(tagged_out, rec['ocr']['pages_with_ocr_text'])
-            rec['ocr']['scan_images_marked_decoration'] = art
-            cmp = compare(cur, tagged_out, near=True)
+            if not tagged(tp, page_figure_trees=False): return stop('failed', 'auto-tagging produced no tag tree', 1)
+        # 5.1: a whole-page scan under OCR text is the page, not a figure: it becomes decoration only on a page of text
+        #   (scan_page_is_text), on pages with an existing OCR layer (#128) and, since review 04 (decision 4), on pages intake
+        #   OCR'd itself (before, every one lost its scan Figure, so a plate with a caption was decorated)
+        if plan['ocr_mode']: rec['ocr']['scan_images_marked_decoration'] = []   # (as before: always there when intake OCR'd)
+        layer_pages = list(kinds['ocr-layer'])           # with an existing OCR layer (also when read again by REOCR)
+        ocr_done = [p_ for p_ in (rec['ocr']['pages_with_ocr_text'] if plan['ocr_mode'] else []) if p_ not in layer_pages]
+        if ocr_done or layer_pages:
+            both = sorted(set(ocr_done) | set(layer_pages))
+            art = artifact_page_scans(tagged_out, both, picture_test=both, keep=settings['KEEP_CJK_PAGES'])
+            rule_ = f'ink outside the OCR text boxes at most {SCAN_TEXT_INK:.0%} of the page'
+            if plan['ocr_mode']:
+                rec['ocr']['scan_images_marked_decoration'] = [p_ for p_ in art['pages'] if p_ in ocr_done]
+                if ocr_done: rec['ocr']['scan_images_kept_as_figure'] = {str(k): v for k, v in sorted(art['kept'].items()) if k in ocr_done}
+            if layer_pages:
+                rec['page_scans'] = {'layer_pages': len(layer_pages), 'marked_decoration': [p_ for p_ in art['pages'] if p_ in layer_pages],
+                                     'kept_as_figure': {str(k): v for k, v in sorted(art['kept'].items()) if k in layer_pages},
+                                     **({'kept_by_person': [p_ for p_ in art['kept_by_person'] if p_ in layer_pages]} if art['kept_by_person'] else {}),
+                                     'ink_outside_text': {str(k): v for k, v in sorted(art['measured'].items()) if k in layer_pages},
+                                     'rule': rule_, 'misfits': art['misfits'][:30]}
+            if art['kept']:
+                flag('Page scans kept as figures', f'on these pages with OCR text, the page image holds more than text (a picture, '
+                     f'a plate, a map or a drawing: over {SCAN_TEXT_INK:.0%} of the page is ink outside the OCR text), so the whole-page '
+                     'image stays a figure for the AI or a person to describe; a page of text in boxes or ruled tables can land here too. '
+                     'A photo inside a page of text gets no figure of its own', sorted(art['kept'])[:20], check=False)
+            if art['misfits']:
+                flag('Page scans not checked', 'on these pages the whole-page scan could not be marked as decoration safely ('
+                     f'{art["misfits"][0][1]}): it stays a figure', [m[0] for m in art['misfits']][:20], check=False)
+            cmp = compare(cur, tagged_out, near=True, only=set(art['pages']))   # only those pages' content changed (shared forms are misfits)
             if cmp['pixels'] or cmp['text']: return stop('failed', 'marking page scans as decoration changed a page: stopped', 1)
         ph = drop_placeholder_alt(tagged_out); rec['checks']['placeholder_alt_removed'] = ph
         if rec.get('spreads'):                           # each spread read half by half: tree order only, checked
@@ -1735,10 +2262,12 @@ def describe(rec):
     plan, o = rec.get('plan') or {}, rec.get('ocr') or {}
     parts = ['placeholder tag tree set aside'] if (rec.get('tag_tree') or {}).get('status') == 'placeholder' else []
     if plan.get('ocr_mode') == 'force': parts.append(f'force OCR, {len(plan["ocr_pages"])} pages')
+    elif plan.get('ocr_mode') == 'redo': parts.append(f'existing OCR text read again on {len(plan.get("reocr_pages") or [])} pages'
+                                                      + ('' if o else ' (planned)'))
     elif plan.get('ocr_mode') and not o:
         parts.append(f'OCR planned for {len(plan["ocr_pages"])} image-only page{"s" if len(plan["ocr_pages"]) != 1 else ""}')
-    elif plan.get('ocr_mode'):
-        n, m = len(o.get('pages_with_ocr_text', [])), len(o.get('image_pages_without_text', []))
+    if plan.get('ocr_mode') in ('skip', 'redo') and o:
+        n, m = len(set(o.get('pages_with_ocr_text', [])) - set(o.get('reocr_pages') or [])), len(o.get('image_pages_without_text', []))
         if n: parts.append(f'OCR {n} page{"s" if n != 1 else ""}')
         if m: parts.append(f'{m} picture page{"s" if m != 1 else ""} without OCR text')
     off = next((f for f in rec.get('flags') or [] if f['what'] == 'OCR off'), None)

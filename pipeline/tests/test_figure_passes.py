@@ -14,8 +14,8 @@ sys.path.insert(0, HERE)
 from lib import figpasses as F
 
 PROMPTS = os.path.join(os.path.dirname(HERE), 'prompts')
-V10 = open(os.path.join(PROMPTS, 'workorder_v10.md'), encoding='utf-8').read()
-FIG = open(os.path.join(PROMPTS, 'figures_v1.md'), encoding='utf-8').read()
+V10 = open(os.path.join(PROMPTS, 'workorder_v12.md'), encoding='utf-8').read()   # the current work-order prompt (name kept from v10)
+FIG = open(os.path.join(PROMPTS, 'figures_v2.md'), encoding='utf-8').read()
 
 def fig(i, page=None, area=10.0, px=(400, 300)):
     return {'obj': f'{1000 + i} 0', 'page': page or (i // 2 + 1), 'label': str(page or (i // 2 + 1)), 'alt': None, 'single_run': True,
@@ -125,7 +125,7 @@ def test_copied_rules_match_v10_word_for_word():
     for name in FIELDS: assert field_text(name) in fields, name
 
 # backticked names in the copied lines that are not digest fields a figure request must carry, each with its reason
-NOT_FIELDS = {'obj': 'a figure entry\'s own field', 'page': 'a figure entry\'s own field', 'label': 'a figure entry\'s own field',
+NOT_FIELDS = {'obj': 'a figure entry\'s own field', 'kept_by_picture_test': 'a figure entry\'s own field (review 06)', 'page': 'a figure entry\'s own field', 'label': 'a figure entry\'s own field',
               'pages': 'a deferral field', 'deferrals': 'a key the request writes', 'artifacts.elements': 'a key the request writes',
               'key': 'a field of each pdfua_check rule', 'objs': 'a field of each pdfua_check rule',
               'page_figure': 'a marker inside unowned_content runs', 'image_is_whole_page': 'a figure field the audit sets when needed',
@@ -142,7 +142,7 @@ def test_every_field_the_copied_rules_name_is_in_the_request():
     named = set(re.findall(r'(?<!`)`([^`\n]+)`(?!`)', FIG))
     for n in sorted(named):
         if n in NOT_FIELDS or n in F.ALLOWED: continue
-        assert n in data, f'`{n}` is named in figures_v1.md but missing from the figure request\'s data'
+        assert n in data, f'`{n}` is named in figures_v2.md but missing from the figure request\'s data'
     for k in data:                                       # C2: every field of the digest that has a _format line keeps it
         if k + '_format' in d: assert k + '_format' in data, k
 

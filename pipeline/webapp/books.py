@@ -148,6 +148,14 @@ def meta(s, sha, path, nm=None):
     if nm is not None: nm.put(sha, m)
     return m
 
+def cached_pages(s, sha, nm=None):
+    """A book's page count as read at upload (the books cache), or None; never opens the PDF."""
+    if not sha: return None
+    if nm is not None: c = nm.cache()
+    else:
+        with _lock: c = _load(os.path.join(s['jobs'], 'books-cache.json')) or {}
+    return (c.get(sha) or {}).get('pages')
+
 # ------------------------------------------------------------------ the list
 def listing(s, nm=None):
     """Every PDF added through "Upload a PDF" (the uploads folder), in folder order; a content listed twice is shown once.
@@ -311,6 +319,7 @@ def take_back(s, p):
 # Each choice is shown only when every Tesseract pack it names is installed. English is the default; nothing is guessed.
 OCR_CHOICES = [('eng', 'English'), ('chi_tra+eng', 'Chinese (Traditional) and English'), ('chi_sim+eng', 'Chinese (Simplified) and English'),
                ('jpn+eng', 'Japanese and English'), ('jpn_vert+jpn+eng', 'Japanese (vertical text) and English'), ('kor+eng', 'Korean and English'),
+               ('mri+eng', 'Hawaiian or Māori and English'),   # #121: Tesseract has no Hawaiian pack; Māori's reads the kahakō
                ('vie+eng', 'Vietnamese and English'), ('tgl+eng', 'Tagalog and English'), ('fra+eng', 'French and English'),
                ('deu+eng', 'German and English'), ('spa+eng', 'Spanish and English')]
 

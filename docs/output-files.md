@@ -298,7 +298,7 @@ The first request's entry carries the note it was given (`note`: version and has
 #### run.figure_passes
 
 - `requests`, and `figures`: how many went to figure requests
-- `prompt_file` and `prompt_sha256` (`figures_v1.md`), and `note`
+- `prompt_file` and `prompt_sha256` (`figures_v2.md`; `figures_v1.md` in runs before review 06), and `note`
 - `state`: `calling` while they are sent, `merged` when done
 - `fingerprint`: of the saved split
 - `cut_off_retries`: each request sent again with twice the room after a cut-off (`pass`, `max_tokens`, `cost_usd`, `outcome`)

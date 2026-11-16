@@ -377,6 +377,7 @@ const cardName = id => { const t = byId[id] || addById[id]; return t ? (t.kind |
 const probLink = id => byId[id] || addById[id] ? '<a href="#card-' + esc(id) + '" data-card="card-' + esc(id) + '">' + esc(cardName(id)) + '</a>' : esc(cardName(id));   // in a card: goCard
 const NOT_YOURS = { ai: ' This is the AI\'s choice: reject it to continue, or change it.',
                     earlier: ' This choice was carried over from an earlier session: reject it to continue, or change it.' };
+const tailOf = p => p.tail === false ? '' : (NOT_YOURS[p.origin] || '');   // review 11 M2: a text that says it already has no tail
 function gotCheck(b, at) {
   if (!b || at !== state.saved_at) return;
   if (Array.isArray(b.gaps)) GAPS = b.gaps;
@@ -386,7 +387,7 @@ function gotCheck(b, at) {
 function wanted() {                                    // card id → {html, parts, whole} the latest problems ask for
   const w = {}, P = PROBS || {};
   const put = (id, html, parts) => { const m = w[id] || (w[id] = { html: [], parts: [], whole: false }); m.html.push(html); if (parts) m.parts.push(...parts); else m.whole = true; };
-  for (const p of P.fields || []) put(p.card, esc(p.fix) + (NOT_YOURS[p.origin] || ''), p.parts);
+  for (const p of P.fields || []) put(p.card, esc(p.fix) + tailOf(p), p.parts);
   for (const c of P.conflicts || []) for (const id of c.cards)
     put(id, esc(c.fix) + (c.cards.length > 1 ? ' It conflicts with ' + c.cards.filter(x => x !== id).map(probLink).join(' and ') + '.' : '') + (NOT_YOURS[c.origin] || ''));
   return w;
@@ -672,7 +673,7 @@ function draftShow(d) {
   const list = (n, one, many, rows) => n ? '<div><b>' + n + ' ' + (n === 1 ? one : many) + '</b>:<ul>' + rows.join('') + '</ul></div>' : '';
   const why = t => ' <details><summary>' + tc('details') + '</summary>' + esc(t) + '</details>';   // the executor's own words, folded away
   // the check's verdict on this draft, worded as on the cards (core.problems: the same fix, the same links)
-  const left = (P.fields || []).map(p => '<li>' + probLink(p.card) + ': ' + esc(p.fix) + (NOT_YOURS[p.origin] || '') + '</li>')
+  const left = (P.fields || []).map(p => '<li>' + probLink(p.card) + ': ' + esc(p.fix) + tailOf(p) + '</li>')
     .concat((P.conflicts || []).map(c => '<li>' + c.cards.map(probLink).join(' and ') + ': ' + esc(c.fix) + (NOT_YOURS[c.origin] || '') + '</li>'))
     .concat((P.unplaced || []).map(u => '<li>' + esc(u.fix) + '</li>'));
   h += list(left.length, 'choice left out of this draft', 'choices left out of this draft', left);
@@ -1606,7 +1607,7 @@ function checkHtml(c) {
   let h = '';
   if (bad) h += '<div class="fin-check err" id="finBad"><b>' + bad + (bad === 1 ? ' choice needs' : ' choices need') + ' fixing before the review can finish</b>: the check doesn\'t accept ' +
     (bad === 1 ? 'it' : 'them') + ', so ' + (bad === 1 ? 'it' : 'they') + ' would not be applied at all. Each is marked on its card.<ul>' +
-    fl.map(p => '<li>' + link(p.card, cardName(p.card)) + ': ' + esc(p.fix) + (NOT_YOURS[p.origin] || '') + '</li>').join('') +
+    fl.map(p => '<li>' + link(p.card, cardName(p.card)) + ': ' + esc(p.fix) + tailOf(p) + '</li>').join('') +
     cf.map(x => '<li>' + x.cards.map(id => link(id, cardName(id))).join(' and ') + ': ' + esc(x.fix) + '</li>').join('') + '</ul></div>';
   if (up.length) h += '<div class="fin-check"><b>' + up.length + (up.length === 1 ? ' choice is' : ' choices are') + ' left out</b>: the check doesn\'t accept ' +
     (up.length === 1 ? 'it, and it has' : 'them, and they have') + ' no card to change here, so ' + (up.length === 1 ? 'it is' : 'they are') + ' not applied.<ul>' +

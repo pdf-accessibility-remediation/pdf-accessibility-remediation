@@ -152,7 +152,7 @@ function dash(s) {                                               // the batch da
     const x = r.result;
     h += '<tr><td><input type="checkbox" name="trash-pdf" value="' + esc(r.name) + '" id="bt-sel-' + i + '" aria-labelledby="bt-n' + i + '"' + (keep.has(r.name) ? ' checked' : '') + '></td>' +
       '<th scope="row" id="bt-n' + i + '"><span class="hm-book">' + esc(r.book) + '</span><span class="hm-file">Source PDF: ' + esc(r.file) + '</span>' +
-      '<span class="hm-acts bt-acts"><a class="pp-btn bt-open" href="' + esc(r.href) + '" id="bt-o' + i + '">Open</a> ' + rowMenu(r, i) + '</span></th><td>' + esc(r.status) + (x && !x.reviewed ? ' <span class="pp-note">(not reviewed)</span>' : '') + '</td>';
+      '<span class="hm-acts bt-acts"><a class="pp-btn bt-open" href="' + esc(r.href) + '" id="bt-o' + i + '">Open</a> ' + rowMenu(r, i) + '</span></th><td>' + esc(r.status) + (x && !x.reviewed ? ' <span class="pp-note">(not reviewed)</span>' : '') + (r.long && !x ? ' <span class="pp-note">(long book)</span>' : '') + '</td>';
     if (!x) { h += '<td></td><td></td><td></td><td></td><td></td><td></td></tr>'; return; }
     h += '<td>' + esc(x.needs) + '</td><td>' + esc(x.ai) + '</td><td>' + esc(SAFE[x.safety] || x.safety) + '</td>' +
       '<td>' + (x.va == null ? 'not run' : (x.vb == null ? '–' : esc(x.vb)) + ' → ' + esc(x.va) + (x.new ? ' <b>(' + esc(x.new) + ' new)</b>' : '')) + '</td>' +

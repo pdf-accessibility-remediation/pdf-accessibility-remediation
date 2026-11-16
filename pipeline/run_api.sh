@@ -24,6 +24,8 @@
 # result (_intake/intake.pdf) is what the rest of the run works on; the original is never written to.
 # FORCE_OCR=1 bash run_api.sh …   if the text layer fails the OCR comparison, OCR every page anyway (else the book stops)
 # OCR_LANG=jpn+eng bash run_api.sh …   Tesseract languages for OCR (default eng; a scan with CJK text stops until this names a CJK pack; vertical Japanese: jpn_vert+jpn+eng)
+# KEEP_CJK_PAGES=35,41 bash run_api.sh …   intake's CJK stop answered "keep": the existing OCR text is kept on those pages
+#                                          (their images hold no Chinese, Japanese or Korean text: a map, a chart)
 # OCR=off / INTAKE=off bash run_api.sh …   no OCR (image-only pages are only listed) / no intake step at all
 # DECIDE=none bash run_api.sh …   no AI call: an empty work order for a person to fill (with REVIEW=1). handedit.py import
 #   uses it for a PDF edited by hand and brought back for review; such a run works on _handedit/input.pdf when there is one

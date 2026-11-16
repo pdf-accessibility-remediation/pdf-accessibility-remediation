@@ -18,7 +18,7 @@ included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads, langcands  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads, langcands, keptscans  # plumb_fix first: it patches pdfplumber
 import pikepdf, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -197,6 +197,7 @@ def crop(pg, box, name):
     c = im.crop((max(0, x0 - 4), max(0, t - 4), min(im.width, x1 + 4), min(im.height, b + 4)))
     if max(c.size) > 800: c.thumbnail((800, 800))
     c.convert('RGB').save(os.path.join(OUT, 'figures', name)); return c.size
+KEPT = keptscans.from_intake(SRC)                 # page scans intake kept as figures: {page: {ink_outside_text, reason?}}
 figures = []
 for e in elems:
     if mapped(e['style']) != 'Figure': continue
@@ -216,6 +217,8 @@ for e in elems:
         if px: f['image'] = 'figures/' + name; f['image_px'] = px
         else: f['outside_visible_area'] = True            # drawn only outside the visible page area: no crop
     if f['alt'] and '\x00' in f['alt']: f['alt_has_nul'] = True; f['alt'] = f['alt'].replace('\x00', '\\x00')
+    if pg in KEPT and (f.get('area_pct') or 0) >= 100 * keptscans.PAGE_SCAN_AREA:   # review 06: the page scan intake's picture test kept (a plate, a map, a photo page)
+        f['kept_by_picture_test'] = dict(KEPT[pg])
     figures.append(f)
 
 # ---- pages with no tags at all that hold a drawing (a full-page map, plate or cover): the executor wraps each
@@ -548,6 +551,9 @@ digest = {
     'lists': lists[:200],
     'tables': tables_sent,
     'figures': figures,
+    **({'kept_page_scans_format': 'figures marked kept_by_picture_test are whole-page scans that intake kept because the image holds more than '
+                                  'text (a plate, a map, a photo page): ink_outside_text is the share of the page inked outside the OCR text. '
+                                  'Describe the picture; never copy the page\'s printed text into the alt text'} if any(f.get('kept_by_picture_test') for f in figures) else {}),
     'page_figures_format': 'pages with no tags at all that hold a drawing (map, plate, cover); the executor wraps each whole page in one Figure. Its letters are labels, not body text. Write page_figures alt text from the page image.',
     'page_figures': page_figures,
     'unowned_content_format': 'per page: counts of orphan runs (marked, no tag owns them) and untagged runs (not marked), by band; runs inside figures; up to 6 runs, top to bottom, EACH ITEM ONE SEPARATE RUN',
@@ -573,6 +579,8 @@ digest = {
               'per_page_top': [[p, n] for p, n in sorted(link_pages.items(), key=lambda x: -x[1])[:15]]},
 }
 json.dump(digest, open(os.path.join(OUT, 'digest.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+kp_ = sorted({f['page'] for f in figures if f.get('kept_by_picture_test')})   # review 09 M-B: the kept page scans' OCR text, for the
+if kp_: FULL['kept_page_text'] = {str(p_): ''.join(c['text'] for c in page_chars(p_)) for p_ in kp_}   #   review page's alt-text check
 json.dump(FULL, open(os.path.join(OUT, 'fulltext.json'), 'w', encoding='utf-8'), ensure_ascii=False)   # local only, never sent
 print(f'digest: {len(styles)} styles · {len(headings)} headings + {len(candidates)} candidates · {len(lists)} lists · {len(tables)} tables · '
       f'unowned {dict(unowned_tot)} · {len(rare)} other listed · {len(figures)} figures ({sum(1 for f in figures if f["image"])} crops) · '

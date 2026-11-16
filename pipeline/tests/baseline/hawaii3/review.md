@@ -2,13 +2,13 @@
 
 Result: `hawaii3_remediated.pdf`
 
-301 pages · run November 14, 2026, at 3:28 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.171 ($0.0006 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+301 pages · run November 15, 2026, at 10:02 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.217 ($0.0007 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.5s · audit 25.1s · reuse saved reply 1.3s · apply 22.0s · verify 25.1s · total 74.0s
+Time: intake 0.6s · audit 39.5s · reuse saved reply 1.7s · apply 29.9s · verify 41.0s · total 112.7s
 
 ## Overview
 
@@ -24,8 +24,8 @@ Time: intake 0.5s · audit 25.1s · reuse saved reply 1.3s · apply 22.0s · ver
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · FAILED ✘ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 24 (3 deferred by the AI · 18 deferred by the executor · 3 CHECK rows)  
-**AI decisions:** 23 in the work order, applied without review by a person  
+**Needs a person:** 25 (4 deferred by the AI · 18 deferred by the executor · 3 CHECK rows)  
+**AI decisions:** 104 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 186 · link descriptions that were only a URL 62 · tag-tree index entries 6 · title shown in the window 1  
 **veraPDF (WCAG 2.2 machine checks):** 1 WCAG rule failing before (7 checks) → 1 after (1 check) · 0 newly failing
 
@@ -38,7 +38,7 @@ Automated checks are evidence, not sign-off.
 | Reading order jumps back up a column (2 jumps) | PDF 71 (printed 58) | [§9](#9-wcag-checks-verapdf-does-not-make) |
 | /Lang "Hawaii" on Span names Hawaiian, but "Tengan" is not spelled with Hawaiian letters: "P. Kāwika Tengan" (2) | PDF 75 (printed 62), PDF 78 (printed 65) | [§11](#11-deferred-by-the-executor) |
 | /Lang "Hawaii" on Span names Hawaiian, but "Nyéléni" is not spelled with Hawaiian letters: "Nyéléni" (2) | PDF 127 (printed 114) | [§11](#11-deferred-by-the-executor) |
-| … and 15 more | | §10, §11 |
+| … and 16 more | | §10, §11 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -95,17 +95,17 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 (printed Cover) | Cover: The Value of Hawaiʻi 3: Hulihia, the Turning Edited by Noelani Goodyear-Ka‘ōpua, Craig Howes, Jonathan Kay Kamakawiwo‘ole Osorio, and Aiko Yamashiro\x00 | Front cover: a painting of a black teardrop shape filled with glowing red and orange lava-like cracks, set against a green background with a swirling white border. The title 'The Value of Hawaiʻi 3: Hulihia, the Turning' appears at the top, and the editors' names (Noelani Goodyear-Kaʻōpua, Craig Howes, Jonathan Kay Kamakawiwoʻole Osorio, and Aiko Yamashiro) appear at the bottom. |
-| PDF 5 (printed iv) | CC BY-NC-ND 4.0\x00 | Creative Commons license icon: CC BY-NC-ND 4.0 (Attribution, NonCommercial, NoDerivatives). |
-| PDF 93 (printed 80) | Illustration of different ecosystems from the mountains to the plains, shore, and sea, with human dwellings, agriculture, and aquaculture depicted\x00 | Painting 'Makamalunohonaokalani' by Marilyn Kahalewai showing an ahupuaʻa from mountain to sea: a stream runs down through forest and terraced taro fields to a shore with thatched houses, past a fishing canoe house, to the ocean where canoes and swimmers are shown. |
-| PDF 121 (printed 108) | Word cloud where the words indigenous, agriculture, people, system, family, practices, and Hawaiian are most prominent\x00 | Word cloud made from the speakers' transcripts. The most prominent words are Indigenous, people, system, agriculture, food, family, practices, land, Hawaiian, knowledge, and values. |
-| PDF 244 (printed 231) | Map of world showing higher temperatures in more urban areas\x00 | World map made of dots from climate sensors. The dots are densest, and the temperatures higher, in urban regions such as eastern North America, Europe, India, East Asia, and coastal South America, showing the extent of urbanism. |
-| PDF 245 (printed 232) | Map of Oahu highlighting areas around Schofield barracks, Pearl Harbor, Fort Kamehameha, Fort Armstrong, Fort DeRussey, and Diamond Head\x00 | Relief map of Oʻahu with the original land defenses highlighted in red: Schofield Barracks, Pearl Harbor, Fort Kamehameha, Fort Armstrong, Fort DeRussy, and Diamond Head. Dotted lines mark the railway gun route, direct lines of visibility, and the Diamond Head fire range. |
-| PDF 246 (printed 233) | Graphic image of a row of tanks compared to Aloha Tower, each tank is about two to three times as large as Aloha Tower\x00 | Rendering comparing the underground Red Hill fuel tanks with Aloha Tower. A row of large red tanks stands behind a row of Aloha Tower models, and each tank is about two to three times as large as the tower. |
-| PDF 247 (printed 234) | Two maps of Oahu showing high correlation between military training areas and bases and urbanism\x00 | Two side-by-side maps of Oʻahu. The left map, 'Military Land Use (Territory)', shows training areas and bases. The right map, 'State Land Use (2020)', shows agriculture and urban areas. Urban areas and military bases overlap closely, showing the correlation between military land and urbanism. |
-| PDF 248 (printed 235) | Map of Waikiki’s wetlands, streams, marshes, fields, dams, reefs, and direction of storm water inputs and clean water outputs \x00 | Aerial map of Waikīkī with a hypothetical plan to recover its hydrology. It labels Mānoa-Pālolo marsh, Waikīkī kalo fields, Kapahulu linear wetland, Ala Wai wetland park, Makiki stream park, Kālia fens, Kālia dam, and an oyster reef. Red arrows show stormwater inputs and blue arrows show clean water outputs. |
-| PDF 273 (printed 260) | Chart titled Advancing Justice for Kanaka Maoli in One Generation Through Health Policy, a vision statement for health policy to advance equity for Native Hawaiians—and eliminate health disparities—within one generation. Seven steps are described, beginning with “cultural foundation” and ending with “population strengthening,” spanning history through 2030\x00 | Chart titled 'Ulu Kukui o Kaulike: Advancing Justice for Kānaka Maoli in One Generation Through Health Policy', a vision for health policy that advances equity for Native Hawaiians and eliminates health disparities within one generation. Long description: seven steps, each shown by a plant illustration over a timeline from millennia ago to 2020–2030. 1. Cultural foundation: improving health from an authentic worldview of Mauli Ola and Kānaka Maoli well-being. 2. Community cohesion (2010–2014): population health goals to eliminate health disparities and inequalities among Native Hawaiians. 3. Equity research and policy analyses (2014): cross-sectoral research based on community needs shapes appropriate health policy solutions. 4. Systems advocacy (2015): harness community cohesion to enact legislation that integrates Native Hawaiian values. 5. Legislative compliance and enforcement (2015–2019): substantive policy change requires ongoing attention for complex health goals to be achieved. 6. Investment for SDOH and disparate populations (2019): meaningful long-term investment by federal, state, and local government is needed to uplift Native Hawaiians. 7. Population strengthening (2020–2030): at the core of social justice for Kānaka Maoli is racial equity and healing. |
-| PDF 297 (printed 284) | Illustration of an ahupuaa from the mountains to the sea, with plants, animals, people, and other natural features\x00 | Digital illustration, a vision map for a future Hāmākua, by Haley Kailiehu. A flowering ʻōhiʻa tree stands on a headland above a winding stream and waterfall that run to the sea. Seabirds fly overhead, fish and whales swim below, and gardens, stone structures, and a gathering house with people sit between the mountain and the shore. |
+| PDF 1 (printed Cover) | Cover: The Value of Hawaiʻi 3: Hulihia, the Turning Edited by Noelani Goodyear-Ka‘ōpua, Craig Howes, Jonathan Kay Kamakawiwo‘ole Osorio, and Aiko Yamashiro\x00 | Book cover: The Value of Hawaiʻi 3: Hulihia, the Turning, edited by Noelani Goodyear-Kaʻōpua, Craig Howes, Jonathan Kay Kamakawiwoʻole Osorio, and Aiko Yamashiro. A painting of a large black teardrop shape filled with a network of glowing red and orange lava cracks, set against a swirled green and white background. |
+| PDF 5 (printed iv) | CC BY-NC-ND 4.0\x00 | Creative Commons Attribution-NonCommercial-NoDerivatives (CC BY-NC-ND) license logo |
+| PDF 93 (printed 80) | Illustration of different ecosystems from the mountains to the plains, shore, and sea, with human dwellings, agriculture, and aquaculture depicted\x00 | Painting of an ahupuaʻa seen from mountain to sea: a stream runs down through forest and terraced taro fields past thatched houses on the shore to a bay where people paddle canoes and a sailing canoe approaches. |
+| PDF 121 (printed 108) | Word cloud where the words indigenous, agriculture, people, system, family, practices, and Hawaiian are most prominent\x00 | Word cloud made from the speakers' transcripts. The largest words are Indigenous, people, system, agriculture, food, land, practices, family, knowledge and Hawaiian. Smaller words include community, values, resources, relationships and management. |
+| PDF 244 (printed 231) | Map of world showing higher temperatures in more urban areas\x00 | World map made of dots, one for each climate sensor. The dots cluster densely in eastern North America, Europe, India, East Asia, coastal South America and southern Africa, which shows where cities are concentrated. |
+| PDF 245 (printed 232) | Map of Oahu highlighting areas around Schofield barracks, Pearl Harbor, Fort Kamehameha, Fort Armstrong, Fort DeRussey, and Diamond Head\x00 | Shaded relief map of Oʻahu with the military defense sites of the original land defense marked in red: Schofield Barracks, Pearl Harbor, Fort Kamehameha, Fort Armstrong, Fort DeRussy and Diamond Head. Dotted lines show the Railway Gun range, the Diamond Head fire range and direct lines of visibility. |
+| PDF 246 (printed 233) | Graphic image of a row of tanks compared to Aloha Tower, each tank is about two to three times as large as Aloha Tower\x00 | Computer rendering of a row of large red underground fuel tanks with copies of Aloha Tower standing in front of them. Each tank is two to three times the size of the tower. |
+| PDF 247 (printed 234) | Two maps of Oahu showing high correlation between military training areas and bases and urbanism\x00 | Two side-by-side maps of Oʻahu. The left map, Military Land Use (Territory), shows large training areas in the interior and bases along the south coast. The right map, State Land Use (2020), shows agriculture in the interior and urban land concentrated along the south shore. The two patterns overlap closely. |
+| PDF 248 (printed 235) | Map of Waikiki’s wetlands, streams, marshes, fields, dams, reefs, and direction of storm water inputs and clean water outputs \x00 | Aerial map of Waikīkī with a proposal to restore its hydrology. Red arrows show stormwater inputs flowing from the mountains toward the shore; blue arrows show clean water outputs to the sea. Labeled features are Makiki Stream Park, Ala Wai Wetland Park, Mānoa-Pālolo Marsh, Waikīkī Kalo Fields, Kapahulu Linear Wetland, Kālia Fens, Kālia Dam and the oyster reef. |
+| PDF 273 (printed 260) | Chart titled Advancing Justice for Kanaka Maoli in One Generation Through Health Policy, a vision statement for health policy to advance equity for Native Hawaiians—and eliminate health disparities—within one generation. Seven steps are described, beginning with “cultural foundation” and ending with “population strengthening,” spanning history through 2030\x00 | Chart titled Ulu Kukui o Kaulike: Advancing Justice for Kānaka Maoli in One Generation Through Health Policy, a vision statement for health policy that advances equity for Native Hawaiians and eliminates health disparities within one generation. Seven steps run left to right along a timeline, each shown with a drawing of a plant growing from a seed to a mature tree and then nuts. Long description: 1. Millennia ago: Cultural foundation, improving health from an authentic worldview of Mauli Ola and Kānaka Maoli well-being. 2. 2010–2014: Community cohesion, population health goals to eliminate health disparities and inequalities among Native Hawaiians. 3. 2014: Equity research and policy analyses, cross-sectoral research based on community needs shapes appropriate health policy solutions. 4. 2015: Systems advocacy, harness community cohesion to enact legislation that integrates Native Hawaiian values. 5. 2015–2019: Legislative compliance and enforcement, substantive policy change requires ongoing attention for complex health goals to be achieved. 6. 2019: Investment for SDOH and disparate populations, meaningful long-term investment by federal, state and local government is needed to uplift Native Hawaiians. 7. 2020–2030: Population strengthening, at the core of social justice for Kānaka Maoli is racial equity and healing. |
+| PDF 297 (printed 284) | Illustration of an ahupuaa from the mountains to the sea, with plants, animals, people, and other natural features\x00 | Digital illustration, a vision map for a future Hāmākua, showing an ahupuaʻa from mountain to sea. A stream and waterfall run past a large flowering tree, terraced gardens and a thatched meetinghouse with gathered people, down to a shoreline with fish and whales in the sea. Seabirds fly overhead under a rising sun. |
 
 ### 2. Headings
 
@@ -113,19 +113,97 @@ Heading levels by style (as applied):
 
 | Style | Level | How | Elements |
 |---|---|---|---:|
-| H1 | H2 | retype (standard tag) | 76 |
 | H2 | H3 | retype (standard tag) | 113 |
-| H3 | H4 | retype (standard tag) | 8 |
 
-### 3. Elements Retyped by the AI (3)
+### 3. Elements Retyped by the AI (83)
 
 Check each one is (or is not) a heading as decided.
 
 | Page | Text | Before | After |
 |---|---|---|---|
-| PDF 2 (printed i) | The Value of Hawaiʻi 3 | H1 | H1 |
+| PDF 2 (printed i) | The Value of Hawaiʻi 3 | H1 | P |
 | PDF 3 (printed ii) | BIOGRAPHY MONOGRAPHS | H1 | P |
-| PDF 4 (printed iii) | The Value of Hawaiʻi 3 the Turning Hulihia, | H1 | P |
+| PDF 6 (printed v) | CONTENTS | H1 | H2 |
+| PDF 12 (printed xi) | ACKNOWLEDGMENTS | H1 | H2 |
+| PDF 14 (printed 1) | A Prayer, Lifting | H1 | H2 |
+| PDF 17 (printed 4) | Independence Kūʻokoʻa | H1 | H2 |
+| PDF 22 (printed 9) | Introduction | H1 | H2 |
+| PDF 26 (printed 13) | I Overlapping Emergencies— (Over)Turnings | H1 | H2 |
+| PDF 30 (printed 17) | Grounded | H1 | H2 |
+| PDF 32 (printed 19) | Catastrophic Failure of the Planet | H1 | H2 |
+| PDF 36 (printed 23) | This Is Just the Beginning Climate Change, Positive Peace, and the “New Normal” | H1 | H2 |
+| PDF 40 (printed 27) | The COVID-19 Crisis | H1 | H2 |
+| PDF 43 (printed 30) | COVID-19, the Disease that Has Shined a Light on Health Equity | H1 | H2 |
+| PDF 47 (printed 34) | Local Foods Through Crisis | H1 | H2 |
+| PDF 51 (printed 38) | Reopening the Hawai‘i Tourism Economy in the Age of COVID-19 | H1 | H2 |
+| PDF 55 (printed 42) | Of Pandemics and Financial Emergencies Will We Restructure or Transform the University? | H1 | H2 |
+| PDF 59 (printed 46) | Food Insecurity—An Institutional Response | H1 | H2 |
+| PDF 63 (printed 50) | Inu i ka Wai ʻAwaʻawa Drink of the Bitter Waters | H1 | H2 |
+| PDF 67 (printed 54) | Political Engagement A New Article of Lived Faith | H1 | H2 |
+| PDF 71 (printed 58) | This Is Not a Drill Notes on Surviving the End of the World, Again | H1 | H2 |
+| PDF 75 (printed 62) | The Future Is Koa | H1 | H2 |
+| PDF 79 (printed 66) | Waiʻaleʻale | H1 | H2 |
+| PDF 86 (printed 73) | II Resources and Values— Turning to Our Strengths | H1 | H2 |
+| PDF 90 (printed 77) | We Da Waiwai | H1 | H2 |
+| PDF 92 (printed 79) | Ahupuaʻa Values Should Enlighten Next Generation Investing in Hawaiʻi | H1 | H2 |
+| PDF 96 (printed 83) | An Aloha Economy— Give, Take, Regenerate ʻĀina | H1 | H2 |
+| PDF 100 (printed 87) | Hawaiʻi and Tourism Reimagined | H1 | H2 |
+| PDF 104 (printed 91) | Ka ʻĀina Moana | H1 | H2 |
+| PDF 108 (printed 95) | From Wai to Waiwai | H1 | H2 |
+| PDF 112 (printed 99) | Renewable Energy—Stop Burning Stuff | H1 | H2 |
+| PDF 116 (printed 103) | E Pū Paʻakai Kākou | H1 | H2 |
+| PDF 120 (printed 107) | The State of Our Starch | H1 | H2 |
+| PDF 124 (printed 111) | Food of Our Future Grows from Seeds of Our Past | H1 | H2 |
+| PDF 128 (printed 115) | Toward a Smaller, Smarter Correctional System for Hawaiʻi | H1 | H2 |
+| PDF 132 (printed 119) | Labor and Social Justice against the Colonial University A Union for Radical Solidarity | H1 | H2 |
+| PDF 136 (printed 123) | The Sustaining Force of Sports | H1 | H2 |
+| PDF 140 (printed 127) | The Value of Mele | H1 | H2 |
+| PDF 144 (printed 131) | He Makeʻe He Makeʻe To Lose Our Language Is to Forget Who We Are ʻŌlelo Hawaiʻi, Lāhui | H1 | H2 |
+| PDF 148 (printed 135) | Nuchi-gusui Sustenance and Nourishment for Living | H1 | H2 |
+| PDF 152 (printed 139) | III Community Building— Turning Toward Each Other | H1 | H2 |
+| PDF 156 (printed 143) | Kumpang Economy | H1 | H2 |
+| PDF 158 (printed 145) | Hey! Let’s Get Organized, Hawaiʻi! | H1 | H2 |
+| PDF 162 (printed 149) | Hoʻokuʻikahi Aloha Molokaʻi | H1 | H2 |
+| PDF 166 (printed 153) | Lessons from Jojo Organizing Side-by-Side with Power, Heart, and Grace | H1 | H2 |
+| PDF 167 (printed 154) | Believe that all people have the right and the capacity to lead themselves. | H3 | H4 |
+| PDF 168 (printed 155) | Seek to develop meaningful relationships and build trust. | H3 | H4 |
+| PDF 168 (printed 155) | Be ready to give grace and be grateful to receive grace. | H3 | H4 |
+| PDF 168 (printed 155) | Everyone has a role to play (Jojo’s “Fix your face!”). | H3 | H4 |
+| PDF 169 (printed 156) | What would Jojo do? | H3 | H4 |
+| PDF 170 (printed 157) | Teachers, Public Education, and Civic Leadership | H1 | H2 |
+| PDF 177 (printed 164) | Hawaiʻi Needs to Stand Governing on Its Head | H1 | H2 |
+| PDF 181 (printed 168) | Civic Engagement—Picking a Fight | H1 | H2 |
+| PDF 184 (printed 171) | Molokai ‘Āina Momona | H1 | H2 |
+| PDF 187 (printed 174) | Home Is What We Make It | H1 | H2 |
+| PDF 191 (printed 178) | Reconnecting Spiritual Roots in Our Faith Communities | H1 | H2 |
+| PDF 195 (printed 182) | We Need to Talk How a Con Con Can Secure Hawai‘i’s Post-COVID Future | H1 | H2 |
+| PDF 199 (printed 186) | Hawaiʻi Breathes Multilingualism | H1 | H2 |
+| PDF 207 (printed 194) | Activist Genealogy Visions and Enactments of Solidarity Across Black and Kanaka Maoli Movements | H1 | H2 |
+| PDF 211 (printed 198) | “If people aren’t locking rocks together, we ain’t got a story” Connecting Stories of Community… | H1 | H2 |
+| PDF 215 (printed 202) | Wednesdays with Grandma | H1 | H2 |
+| PDF 218 (printed 205) | We Are Art | H1 | H2 |
+| PDF 223 (printed 210) | Lessons from Activism Visioning and Planning for Our Islands and Communities in the Wake of COVID-19… | H1 | H2 |
+| PDF 224 (printed 211) | Noa Emmett Aluli, MD | H3 | H4 |
+| PDF 225 (printed 212) | Davianna Pōmaikaʻi McGregor | H3 | H4 |
+| PDF 226 (printed 213) | Rosanna ʻAnolani Alegado | H3 | H4 |
+| PDF 232 (printed 219) | IV Emerging Futures— Turning Anew | H1 | H2 |
+| PDF 236 (printed 223) | The Story and Sisterhood Behind the World’s First Feminist Economic Recovery Plan for COVID-19 | H1 | H2 |
+| PDF 240 (printed 227) | Air Pollution and the Pandemic How Will COVID-19 Shape Hawai‘i’s Response to Global Climate Change? | H1 | H2 |
+| PDF 244 (printed 231) | Our City as Ahupuaʻa For Justice-Advancing Futures | H1 | H2 |
+| PDF 250 (printed 237) | ʻOhana Urbanism | H1 | H2 |
+| PDF 254 (printed 241) | Prisons—Has COVID-19 Offered Hawaiʻi the Road to Redemption? | H1 | H2 |
+| PDF 258 (printed 245) | Housing and Aloha ʻĀina Beyond Building Our Way Out of the Crisis | H1 | H2 |
+| PDF 262 (printed 249) | The Responsibility Belongs to Us No Kākou Ke Kuleana | H1 | H2 |
+| PDF 266 (printed 253) | Technology, Entrepreneurship, and Waiwai | H1 | H2 |
+| PDF 270 (printed 257) | Advancing Justice for Kānaka Maoli in One Generation Through Health Policy Ulu Kukui O Kaulike | H1 | H2 |
+| PDF 274 (printed 261) | Shine Your Light Wherever You Go | H1 | H2 |
+| PDF 278 (printed 265) | University He Puʻuhonua o Puʻuhuluhulu Kīpuka Aloha ʻĀina no ka ʻImi Naʻauao | H1 | H2 |
+| PDF 281 (printed 268) | Haumāna | H1 | H2 |
+| PDF 284 (printed 271) | Ancient Is Modern—Transforming Public Education for Hawaiians | H1 | H2 |
+| PDF 288 (printed 275) | Writing in the Path of Our Ancestors Student Council Ke Ea Hawaiʻi | H1 | H2 |
+| PDF 291 (printed 278) | The Next Aloha ʻĀina | H1 | H2 |
+| PDF 295 (printed 282) | of Abundance from a Future Hāmākua 2120 A Moʻolelo | H1 | H2 |
+| PDF 299 (printed 286) | Dear Reader Making the Value of Hawaiʻi Together | H1 | H2 |
 
 ### 4. Text a Screen Reader Could Not Reach (before this run)
 
@@ -237,11 +315,12 @@ Each item is something to look at, not a proven failure.
 
 ### 10. Deferred by the AI
 
-- **Untagged body text: five lines of running text in the chapter on 'Catastrophic Failure of the Planet' (starting 'place on natural systems. Across 65% of the terre…') are in no tag and not marked.**: This is real content, which this work order can neither artifact nor tag. A person must tag it and place it in the correct reading order. [PDF 35 (printed 22)]
-- **Untagged page numbers in the contents ('198' on PDF 9 (printed viii) and '253' on PDF 10 (printed ix)).**: They are the page-number part of contents entries, so they are real content and not pagination. A person must tag them into their TOC entries. [PDF 9 (printed viii), PDF 10 (printed ix)]
-- **veraPDF reports 2 failed rules, but pdfua_check lists no rule that a work-order key can fix.**: These are failures only a person can fix, or the executor fixes by itself. Re-run veraPDF after applying this work order.
+- **Untagged body text on PDF 35 (printed 22)**: Five runs of real endnote or body text ('place on natural systems. Across 65% of the terre…' and similar) are in no tag and not marked. This work order cannot tag them; a person must tag them in reading order. [PDF 35 (printed 22)]
+- **Untagged numbers '198' and '253' on contents pages PDF 9 (printed viii) and PDF 10 (printed ix)**: They are the page numbers of contents entries, so real content outside any tag. They cannot be artifacted. A person should add them to the matching TOC entries. [PDF 9 (printed viii), PDF 10 (printed ix)]
+- **Heading text order and punctuation in some titles**: Some heading tags join title and subtitle in a different order from the print, or without the colon. Examples: PDF 4 title reads 'The Value of Hawaiʻi 3 the Turning Hulihia,' where the print reads 'Hulihia, the Turning'; PDF 17 reads 'Independence Kūʻokoʻa' where the contents reads 'Kūʻokoʻa: Independence'. ActualText cannot reorder words or add punctuation, so a person should check these. [PDF 4 (printed iii), PDF 17 (printed 4)]
+- **veraPDF failures not listed in pdfua_check**: The check reports 2 failed rules in total but lists none that a work-order key can fix, so there was nothing to target.
 
-Reviewer note from the AI: Heading plan: the book title is the only H1 (half-title, PDF 2 (printed i)). The rolemap shifts every H1-styled chapter, part, and front/back-matter title to H2, subheads to H3, and the lower subheads to H4. Parts (I–IV) and chapters are therefore both H2, as the convention directs. The title-page lines and the series page are demoted to P. Contributor names under chapter titles are already P and were left alone. Epigraph questions on part-opener pages (e.g. PDF 28 (printed 15), 88 (printed 75), 154 (printed 141), 234 (printed 221)) are left as P. Several part-opener pages have no tagged text (e.g. PDF 13, 27, 29, 72, 74, 76, 85, 87, 89); these look like blank pages or artwork and may be worth a quick visual check. All figure alt texts originally contained NUL characters, and all have been replaced with clean text. The six existing bullet lists, the TOC/TOCI structure, and the Notes were judged correct and left as is. Reading order looked correct in the digest, so no move_section was requested.
+Reviewer note from the AI: Heading plan: the title page (PDF 4) holds the single H1. Every other former H1 (contents, acknowledgments, introduction, part titles, essay titles) is retyped one by one to H2, because mapping the H1 style would also hit the title. The H2 style (essay subsections, Works Cited, Note) is mapped to H3 in the rolemap. The Jojo values and the author lines under Lessons from Activism sections were H3 and are retyped to H4. This gives H1 > H2 > H3 > H4 with no skips. The half-title (PDF 2) and series name (PDF 3) are demoted to P. Part titles and essays share level H2, so the outline is flat; nesting essays under parts would need a further per-element retype. All figure alt texts were rewritten because the old ones carried NUL characters. The six bullet lists are real lists and are left as they are. The TOC, TOCI and Note tags already exist. There are no tables, running heads, OCR words or untagged pages.
 
 ### 11. Deferred by the Executor
 
@@ -318,11 +397,10 @@ Words and passages in another language get a language tag, so a screen reader sw
 | document: title | 1 |
 | document: DisplayDocTitle | 1 |
 | document: /Lang | 1 |
-| heading: standard tag H1 → H2 (retyped) | 76 |
 | heading: standard tag H2 → H3 (retyped) | 113 |
-| heading: standard tag H3 → H4 (retyped) | 8 |
-| retype → H1 | 1 |
 | retype → P | 2 |
+| retype → H2 | 73 |
+| retype → H4 | 8 |
 | figure: alt text | 11 |
 | links: /Contents set | 186 |
 | links: joined existing Link | 186 |

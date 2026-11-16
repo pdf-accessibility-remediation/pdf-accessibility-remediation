@@ -559,6 +559,22 @@ def model_words(m):
     up = {'gpt': 'GPT', 'ai': 'AI', 'xl': 'XL'}
     return ' '.join(up.get(x.lower(), x if x[:1].isdigit() else x[:1].upper() + x[1:]) for x in w if x)
 
+LONG_BOOK = 1000                                       # intake.TAGGER_LONG (tests/test_webapp_long.py keeps them equal)
+
+def long_book(s, run, R, js=None, nm=None):
+    """The page count of an unfinished run's book when it is over LONG_BOOK pages (M6, review 04: the run page says
+    processing can take over an hour), else None: intake's count, else the count read at upload (the books cache)."""
+    if os.path.isfile(os.path.join(R, 'record.json')): return None
+    n = ((load(os.path.join(R, '_intake', 'intake.json')) or {}).get('original') or {}).get('pages')
+    if not n:
+        from . import books as BK
+        if js is None: js = [j for j in (nm.jobs() if nm else jobs.all_jobs(s['jobs'])) if j['run'] == run]
+        sha = next((j.get('book_sha') for j in reversed(js) if j.get('book_sha')), None)
+        n = BK.cached_pages(s, sha, nm)
+    return n if isinstance(n, int) and n > LONG_BOOK else None
+
+def long_words(n): return f'This is a long book ({n:,} pages). Processing can take over an hour.'
+
 def details(s, run, R, pages=None, nm=None):
     """The run page header's line (Patrick's test, 2026-11-07, Q6, R5): "mm · 321 pages · Run on November 6, 2026,
     at 9:29 PM · AI Model: Claude Sonnet 5.5 · AI Cost: $0.27 (expected $0.31, max estimated $0.67)", in plain words; a part with nothing
