@@ -84,7 +84,10 @@ CJK_PROBE_DISTINCT = 20                    #   #121, pages with an existing OCR 
 CJK_PROBE_SHORT, CJK_PROBE_SHARE = 10, 0.6 #   different ones that are 60%+ of those read (a short page). Misreads repeat a few
                                            #   shapes: 6 false pages (Hawaiian text, a bibliography, a table of X marks) read 3-11
                                            #   different, and those with 10+ read 28-37% different; 22 real CJK pages read 17-263
-                                           #   different, the shortest (17 of 19) 89% (05-builder-report.md, M3)
+                                           #   different, the shortest (17 of 19) 89% (05-builder-report.md, M3). Those margins hold
+                                           #   for text pages only: on picture-like pages a map (14 read, 12 different) and a chart
+                                           #   with rotated labels (30, 21) pass, against real 11 of 11 and 17 of 17; an English
+                                           #   co-read did not separate them (07-builder-report.md, M2): a person keeps such pages
 PROBE_ALL_MAX, PROBE_SAMPLE = 12, 8        #   18-60 s a page on a newspaper scan: with more than 12 pages to OCR, the probe stops at
                                            #   the first CJK page when OCR_LANG has no CJK pack (the book stops either way) and reads
                                            #   8 spread pages when it has one (a full run then lists the CJK pages from the OCR text);
