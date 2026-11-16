@@ -69,10 +69,10 @@ def test_glossary_and_bibliography_places_count_for_the_rule_but_not_as_group_ev
         assert ev['1']['with'] == (1 if kind == 'bibliography' else 2) and ev['1']['back'] == (1 if kind == 'bibliography' else 0)
 
 def test_a_publishers_name_before_a_title_is_not_its_reading():
-    """The bibliography's trap ("Tokyo: Iwanami Shōten. 自然と文化…", invented): the publisher's name ends with a period,
+    """The bibliography's trap ("Tokyo: Kōdansha. 自然と文化…", invented): the publisher's name ends with a period,
     so it introduces the title's characters and never reads them."""
-    pw = ['Bunka.', 'Tokyo:', 'Iwanami', 'Shōten.', '自然と文化。']
-    assert H.beside(pw, 4, 4, 'japan', strict=True) == {} and H.beside(pw, 4, 4, 'japan') == {3: 'ja'}
+    pw = ['Bunka.', 'Tokyo:', 'Kōdansha.', '自然と文化。']
+    assert H.beside(pw, 3, 3, 'japan', strict=True) == {} and H.beside(pw, 3, 3, 'japan') == {2: 'ja'}
 
 def test_kana_in_the_same_phrase_is_evidence_for_group_approval_only():
     """#124 counts kana in the same phrase as the characters (大福もち: the piece that holds them) as a Japanese reading;

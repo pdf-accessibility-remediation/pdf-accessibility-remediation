@@ -56,7 +56,7 @@ form without the AI when every place of it has a reading directly beside it and 
   taken: in a list it is the next entry's. These are the rules the test tools used to make answer keys
   (`tools/lang_test.py` now imports them).
 - **A word that introduces the characters is never their reading:** one ending with a colon, semicolon or period. In a
-  bibliography that is the publisher's name before a title ("Tokyo: Iwanami Shōten. 自然と文化…", invented), the trap that
+  bibliography that is the publisher's name before a title ("Tokyo: Kōdansha. 自然と文化…", invented), the trap that
   made the issue ask to leave glossary and bibliography lines out. This guard is the pipeline's only; the test tools'
   answer keys were made without it.
 - **Glossaries and bibliographies are not left out.** The issue asked for it, but measured (2026-11-15) it cut the forms
