@@ -146,7 +146,9 @@ TAGGER_SLOTS, TAGGER_RAM_PCT = 2, 40       # #129: at most 2 auto-taggers at onc
 TAGGER_LONG, TAGGER_LONG_PCT = 1000, 50    #   every slot) with up to 50%. Measured on 16 GB: a 1,467-page book ran out of the default
                                            #   heap (25%); two long books at 40% each finished but grew swap by 7.3 GB; one alone at
                                            #   40% or 50% passed (03-builder-report.md)
-TAGGER_LOCKS = os.environ.get('INTAKE_TAGGER_LOCKS') or os.path.join(tempfile.gettempdir(), 'pdfrem-tagger-slots')
+TAGGER_LOCKS = os.environ.get('INTAKE_TAGGER_LOCKS') or os.path.join(   # review 09 L-A: one folder per user, whatever TMPDIR a process
+    os.path.expanduser('~/Library/Caches') if sys.platform == 'darwin' else os.environ.get('XDG_CACHE_HOME') or os.path.expanduser('~/.cache'),
+    'pdfrem', 'tagger-slots')                                            #   has (a launchd job, env -i), so every intake shares the slots
 TAGGER_OOM = ('the auto-tagger ran out of memory on this book (it holds the whole book in memory). Run it again when no other '
               'long book is being processed; if it stops again, give the tagger more memory with JAVA_TOOL_OPTIONS=-Xmx10g '
               '(or another size) before the command')
