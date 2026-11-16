@@ -252,14 +252,37 @@ else
 fi
 # Page readings (on unless PAGE_READS=off): scanned pages the audit found mostly Hawaiian are read whole by the AI
 # (read_pages.py, issue #49): its own paid step, with its own estimate and limit (PAGE_READS_MAX_USD, default 3). A PDF
-# with no such pages costs nothing. Pages read before are reused at no cost. A saved reply (REPLY=…) makes no new AI request,
-# so it reads no pages, and neither does a run with no AI request (DECIDE=none: a PDF edited by hand). A refusal (over
-# the limit, the credit, OpenRouter unreachable) or a "no" skips the step: the PDF goes on without readings and the
-# report lists the pages for a person.
+# with no such pages costs nothing. Pages read before are reused at no cost. A saved reply from elsewhere (FROM=, or
+# REPLY= of another folder) makes no new AI request, so it reads no pages, and neither does a run with no AI request
+# (DECIDE=none: a PDF edited by hand). A retry on this folder's own reply (a later step failed: the same command again,
+# or the app's "Try Again", #95) gets the pages already read back from page_reads_run.json (decide.py, no cost, no
+# network); pages the interrupted step never read are read now, under the step's own estimate, limit and credit, as on a
+# first run (the app's "Try Again" runs with PAGE_READS=off: they are listed for a person). A refusal (over the limit,
+# the credit, OpenRouter unreachable) or a "no" skips the step: the PDF goes on without readings and the report lists the
+# pages for a person.
 page_reads_step() {             # each of its failures is reported and skipped, never the end of the run
   python3 read_pages.py "$A" "$R" "$@" ${MODEL:+--model "$MODEL"} ${BOOK_MAX_USD:+--book-max-usd "$BOOK_MAX_USD"} || { echo "page readings not done (above): the PDF goes on without them"; return 0; }
 }
-if [[ ${PAGE_READS} != off && -z ${REPLY:-} && -z $REVIEWED && ${DECIDE:-} != none ]] && pages_listed; then
+OWN_REPLY=; [[ -n ${REPLY:-} && -f $R/response.json && $(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$REPLY") == $(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$R/response.json") ]] && OWN_REPLY=1
+pages_left() {                  # pages the audit lists that page_reads_run.json holds no complete reading for (#95)
+  python3 -c 'import json,os,sys
+listed = {p["page"] for p in json.load(open(sys.argv[1])).get("pages") or []}
+run = json.load(open(sys.argv[2])) if os.path.exists(sys.argv[2]) else {}
+done = {x.get("page") for x in run.get("pages") or [] if x.get("finish") == "stop" and (x.get("text") or "").strip()}
+print(len(listed - done))' "$A/page_reads.json" "$R/page_reads_run.json" 2>/dev/null || echo 1
+}
+if [[ -n $MERGED && -f $R/page_reads_run.json ]]; then   # #95: the merged path keeps workorder.json as it was; an interruption
+  # before read_pages.py wrote into it would lose pages already paid for, so they are put back from their own file, as
+  # decide.py does on a retry of its own reply (no cost, no network)
+  python3 -c 'import json,sys
+run = json.load(open(sys.argv[1])); wo = json.load(open(sys.argv[2]))
+pages = [{"page": x["page"], "text": x["text"]} for x in run.get("pages") or [] if x.get("finish") == "stop" and (x.get("text") or "").strip()]
+if pages: wo["page_readings"] = pages; json.dump(wo, open(sys.argv[2], "w", encoding="utf-8"), ensure_ascii=False, indent=1)' "$R/page_reads_run.json" "$R/workorder.json" \
+    || echo "page readings: the pages read before could not be put back (see above)"
+fi
+if [[ ( -n $OWN_REPLY || -n $MERGED ) && -f $R/page_reads_run.json && $(pages_left) == 0 ]] && pages_listed; then
+  echo "page readings: every page was read before: their readings are kept (no cost, no AI request)"
+elif [[ ${PAGE_READS} != off && ( -z ${REPLY:-} || -n $OWN_REPLY ) && -z $REVIEWED && ${DECIDE:-} != none ]] && pages_listed; then
   pr_ok=n
   if python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"}; then
     if [[ -n ${AUTO:-} ]]; then pr_ok=y; echo "AUTO=1: reading the pages without asking (still refused over the page readings' limit or your credit)"

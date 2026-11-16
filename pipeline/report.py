@@ -259,6 +259,10 @@ def v_status(k):
 wc = ver.get('wcag')
 so = (wc or {}).get('section_order')              # sections read away from their printed place (verify.py, lib/readorder.py)
 prd = log.get('page_readings') or []                    # apply.py: each page read by the AI, words paired and changed
+# #95: the pages read and paid for (page_reads_run.json, or the earlier record's), and the listed pages never read
+#      (an earlier record keeps each page without its text: there a page that finished ("stop") counts as read)
+pr_read = {x.get('page') for x in (pr_run or {}).get('pages') or [] if x.get('finish') == 'stop' and ((x.get('text') or '').strip() if 'text' in x else True)}
+pr_unread = sorted({p.get('page') for p in pr_listed if isinstance(p, dict)} - pr_read - {x.get('page') for x in prd})
 ow = log.get('ocr_words') or {}; ow_forms = ow.get('by_form') or []; ow_missing = [x for x in ow_forms if not x.get('found') and not x.get('in_page_readings')]
 ow_run = run.get('ocr_words') or {}
 # a reused reply written for another OCR-word list (decide.py: list changed, or no fingerprint): none of today's forms was read by it
@@ -354,7 +358,10 @@ checks = [
     *([('Page readings: a person who reads Hawaiian checked each page read by the AI', ok(False),
         (f'{len(prd)} of {len(pr_listed)} mostly Hawaiian pages read by the AI, {sum(x.get("changed") or 0 for x in prd)} words given their printed spelling: '
          f'check {pgs([x["page"] for x in prd])} against the scan' if prd else
-         f'{len(pr_listed)} scanned pages look mostly Hawaiian and their OCR has no ʻokina or kahakō; they were not read by the AI (turned off, declined, or refused over the limit or the credit: see the run log)'))]
+         f'{len(pr_read)} of {len(pr_listed)} mostly Hawaiian pages were read and paid for, but their readings were not applied: see the run log' if pr_read else
+         f'{len(pr_listed)} scanned pages look mostly Hawaiian and their OCR has no ʻokina or kahakō; they were not read by the AI (turned off, declined, or refused over the limit or the credit: see the run log)')
+        + (f' · read and paid for but not applied: {pgs(sorted(pr_read - {x["page"] for x in prd}))} (see the run log)' if prd and pr_read - {x['page'] for x in prd} else '')
+        + (f' · not read by the AI: {pgs(pr_unread)}; a person checks them against the scan' if (prd or pr_read) and pr_unread else ''))]
       if pr_listed or prd else []),
     *([('Figure requests: every figure seen by the AI', ok(not fpr.get('failed') and not fpr.get('stale')),
         f'{nc(fpr.get("figures"))} figures past the first request, in {nc(fpr.get("requests"))} figure requests'
