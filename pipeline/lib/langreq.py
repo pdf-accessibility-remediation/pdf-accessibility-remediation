@@ -319,17 +319,20 @@ def needs_person(f, d):
     non_latin = any(c.startswith(NON_LATIN) for c in f['class'])
     return f['group'] == 'existing' or not d or (non_latin and (not d.get('lang') or d.get('confidence') == 'low'))
 
-def to_rows(fs, decisions, tag_conf=('high', 'medium')):
+def to_rows(fs, decisions, tag_conf=('high', 'medium'), readings=None):
     """Decisions → language_parts, version 2 (review 06, record size): one entry per form, with the AI's answer and whether
     it is tagged (`tag`: high or medium confidence with a language), and the places as rows [page, mcid, first, last,
     form index]. Every form with places is kept, tagged or not, so a person can tag what the AI left untagged; apply.py
-    tags only forms with `tag` true. Existing tags carry `current` (the PDF's value), never `tag`: a person decides them."""
+    tags only forms with `tag` true. Existing tags carry `current` (the PDF's value), never `tag`: a person decides them.
+    A decision made by the reading rule (lib/hanreading.py, #123) carries `rule`; readings ({form id: the reading printed
+    beside a Han-only form, hanreading.compact}) go into each form's `reading` (#124's group approval)."""
     forms, rows = [], []
     for f in fs:
         d = decisions.get(f['id']) or {}
         e = {'key': f'{f["group"]}|{f["form"]}' + (f'|{f["current"]}' if f.get('current') else ''), 'form': f['form'], 'group': f['group'],
              'class': f['class'], 'lang': d.get('lang'), 'confidence': d.get('confidence'), 'why': d.get('why'),
              **({'evidence': d['evidence']} if d.get('evidence') else {}), **({'current': f['current']} if f.get('current') else {}),
+             **({'rule': d['rule']} if d.get('rule') else {}), **({'reading': (readings or {})[f['id']]} if f['id'] in (readings or {}) else {}),
              **({'carried': f['carried']} if f.get('carried') else {}),
              'tag': bool(f['group'] != 'existing' and d.get('lang') and d.get('confidence') in tag_conf),
              **({'person': True} if needs_person(f, d) else {}), 'places': len(f['places'])}

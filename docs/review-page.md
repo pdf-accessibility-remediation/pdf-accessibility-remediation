@@ -190,9 +190,11 @@ It opens with one paragraph, the same on every PDF:
 
 > Words and passages in another language found in the PDF. A screen reader switches to a language's voice for the
 > words tagged with it. Decide each word form: the choice applies to every place it appears. Words in Chinese
-> characters alone are decided one by one, because the same characters are used in Chinese and Japanese. Language
-> tags already in the PDF are also decided one by one, so a person confirms each of them. For Hawaiian, most screen
-> readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.
+> characters alone are decided one by one, because the same characters are used in Chinese and Japanese, unless the
+> reading printed beside them (kana, a Hepburn or pinyin reading, hangul) names the same language: those can be
+> approved together. Language tags already in the PDF are also decided one by one, so a person confirms each of them.
+> For Hawaiian, most screen readers have no Hawaiian voice, so those words are read with the default voice; the tag is
+> still required.
 
 - **Folds by language** (for example "Japanese (Romanized)", "Hawaiian"), plus "Left Untagged by the AI" (non-Latin
   text the AI left untagged) and "Existing Language Tags" (the publisher's own tags).
@@ -210,7 +212,13 @@ It opens with one paragraph, the same on every PDF:
 - **A form the AI left untagged** says why in plain words: "a name", "part of English", "not a word of a known
   language", "not sure", "it varies", or, for a low-confidence answer (never tagged), "low confidence; its guess:
   Japanese · ja". A reason with no such wording is not shown, and no reason shows no parentheses.
-- Every word form is decided on its own row.
+- **A form decided by the reading rule** (#123: Chinese characters alone with a reading printed beside every place)
+  says "The reading printed beside it tags it as Japanese (a fixed rule, not the AI: every place has the reading)". A
+  person approves it like the AI's.
+- **The reading printed beside the characters**, for a form in Chinese characters alone that has one outside a
+  bibliography, is shown under the text block: 'Reading printed beside it: "fujō" (Japanese)', with ", not the language
+  of the tag" when it names another language, both languages when its readings disagree, and "at 1 of 3 places" when
+  not every place has it. It is worked out from the text around the characters (`lib/hanreading.py`), never from the AI.
 - **The tag written into the PDF** is shown beside a language's name, in grey, in two places only: each row's status
   under the word form ("Tagged: Chinese (Traditional) · zh-Hant", "Approved: …", "Kept: …", "Removed: …") and the
   "Change Language" list ("Chinese (Traditional) · zh-Hant"). Fold headings ("Chinese (Romanized): 110 word forms (241
@@ -225,10 +233,28 @@ It opens with one paragraph, the same on every PDF:
 - Rows load 100 at a time ("Show More").
 - "Language Tags" on "Ready to Ship?" reads "Approved" once every form is decided.
 
-Bulk approval exists but is turned off (2026-11-13). The server still marks the rows that would qualify (the AI
-highly confident, not Chinese characters alone, not a publisher's tag, not tagged differently in different places) and
-records such choices as part of a group approval; the page shows no button for it. Turning it on is one line in
-`review/page.html`: `const LANG_BULK = true;`.
+### Group approval
+
+Each language fold has up to two buttons (#124). Neither touches a low-confidence row, a row whose answer varies from
+place to place, or a publisher's tag, and a single decision is the same as before.
+
+- **"Approve All Shown (N)"** approves the rows shown so far that the AI tagged with high confidence, never words in
+  Chinese characters alone.
+- **"Approve Characters with Matching Readings (N)"** approves every undecided row of the fold, shown or not, that is
+  written in Chinese characters alone and whose reading printed beside the characters names the row's language: kana
+  or a Hepburn word (Japanese), real pinyin syllables (Chinese), hangul or a Korean romanization (Korean), or kana in
+  the same phrase as the characters (大福もち). The tag must
+  be high or medium confidence; a row with no reading, readings of two languages, or a reading of another language is
+  never included. A reading in a bibliography is not counted (there it often belongs to the next entry); one in a
+  glossary or index is, since the AI's language must match it too. Rows the reading rule decided (#123) qualify when a
+  reading outside a bibliography names their language; one decided only from bibliography entries is approved on its own.
+
+Each row approved this way says "Approved: Japanese · ja (in a group approval: matching reading)" (or "(in a group
+approval)"). The server counts a group approval only when the row qualifies for that button, so a draft saved under
+other rules, or an edited page, can't approve a row the rules leave out: such a row stays to decide. The work order
+records each one on its form (`group_approval`: the button, the language and the evidence), the review record counts
+them by button (`language_review.bulk_by`), and review.md lists them under "Language Tags". Both buttons are turned
+off with one line in `review/page.html`: `const LANG_BULK = false;`.
 
 ## Checks as you go
 

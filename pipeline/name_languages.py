@@ -20,14 +20,22 @@ or not decided are listed. A request already answered with the same model and pr
 The step refuses before any call when its worst case passes --max-usd (LANGUAGE_MAX_USD, default 6, lib/costs.py) or the credit, for any
 model (review 02, M7). Forms past LANGUAGE_MAX_FORMS (default 5000) are not sent, and listed.
 
+Words in Chinese characters alone with a reading printed beside every place (kana or a Hepburn word, pinyin, hangul
+or a Korean romanization), all naming one language, are decided by a local rule (lib/hanreading.py, #123): never sent,
+never counted in the estimate, the same way every time. Their
+decisions carry `rule: "reading"` and the reading as evidence; a person approves them on the review page like the AI's.
+Every Han-only form's reading (#124: bibliographies left out) is kept in its language_parts entry as `reading`, for the
+review page's "Approve Characters with Matching Readings". LANG_READING_RULE=off turns the rule off (every form to the AI).
+
 Two options, both off by default (review 08, M6): LANG_GROW=on (--grow) finds the candidates again with a title's whole
 extent (lib/langcands.book grow=True), and LANG_GROUP=on (--group) makes adjacent one-character Han places one form
 (lib/langreq.forms group=True). language_run.json records them under `options`.
 """
 import sys, os, re, json, time, hashlib, argparse, urllib.request, urllib.error, collections
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-from lib import plumb_fix, plpages, langcands, langreq, costhistory, costs, workorder_check  # noqa: F401
+from lib import plumb_fix, plpages, langcands, langreq, costhistory, costs, workorder_check, hanreading  # noqa: F401
 
+RULE_NAME = hanreading.RULE
 PROMPT_NAME = 'language_v3.md'                   # v1 with v2's form echo and dictionary-phrase line (adopted 2026-11-13, 11 §2)
 DEFAULT_MODEL = 'anthropic/claude-sonnet-5.5'   # kept after round 15's experiment: Opus 5.5 no more accurate at 2.2 times the cost
 CHARS_PER_TOKEN = 3.5
@@ -78,6 +86,16 @@ def candidates(args, wo):
     except Exception as e: print(f'language step: existing tags not read ({type(e).__name__})')
     return places, c['words'], doc_lang, how, c.get('fingerprint')
 
+def local_rule(args, fs, words, doc_lang, places):
+    """The reading rule (#123) and every Han-only form's reading (#124): (local {form id: decision}, readings {form id:
+    compact evidence}, stats). Off (nothing local) with LANG_READING_RULE=off; readings are kept either way."""
+    try: digest = json.load(open(os.path.join(args.audit_dir, 'digest.json'), encoding='utf-8'))
+    except (OSError, ValueError): digest = None           # no headings: the rule still runs; #124's evidence needs the bibliography's pages
+    local, evid, stats = hanreading.decide(fs, words, digest or {}, doc_lang, places)
+    if os.environ.get('LANG_READING_RULE', 'on').lower() in ('0', 'off', 'no', 'false'):
+        local, stats = {}, {**stats, 'decided': 0, 'by_language': {}, 'off': 'LANG_READING_RULE=off'}
+    return local, {i: hanreading.compact(e) for i, e in evid.items()}, stats
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('audit_dir'); ap.add_argument('run_dir'); ap.add_argument('--pdf', required=True)
@@ -104,9 +122,18 @@ def main():
         for p in (est_path,):
             if os.path.exists(p): os.remove(p)
         print('language step: no candidates in this PDF, nothing to send'); merge(R, wo_path, fs, {}, None); return
-    sent, held = fs[:args.max_forms], fs[args.max_forms:]
+    local, readings, rule = local_rule(args, fs, words, doc_lang, places)     # #123: decided here, never sent
+    ai_fs = [f for f in fs if f['id'] not in local]
+    sent, held = ai_fs[:args.max_forms], ai_fs[args.max_forms:]
+    sent_ids = {x['id'] for x in sent}
+    written = [f for f in fs if f['id'] in local or f['id'] in sent_ids]      # the forms written into the work order, in their order
     title = str(((wo.get('document') or {}).get('title')) or '')
     reqs = langreq.requests({'title': title, 'language': doc_lang}, sent, words)
+    rule_rec = {'rule': RULE_NAME, 'decided': len(local), **{k: v for k, v in rule.items() if k != 'decided'}}
+    if local or rule.get('off'):
+        print(f'language step: {len(local)} word form{"" if len(local) == 1 else "s"} in Chinese characters decided by the reading printed '
+              f'beside every place (no AI request)' + (f' · {", ".join(f"{k} {v}" for k, v in sorted(rule.get("by_language", {}).items()))}' if local else '')
+              + (f' · rule off: {rule["off"]}' if rule.get('off') else ''))
     # --- replay: decisions by printed form (M4), never a request
     if args.response_file or args.reuse:
         src = args.response_file or run_path
@@ -123,24 +150,40 @@ def main():
                 d, _ = langreq.parse(x['text'], set(idk), forms={i: form_of.get(k, k.split('|')[1] if '|' in k else k) for i, k in idk.items()})
                 for i, v in d.items(): found.setdefault(idk[i], v)
             old['decisions'] = found
-        if not isinstance(old, dict) or not old.get('decisions'):
+        if not isinstance(old, dict) or not (old.get('decisions') or (local and not ai_fs)):   # #123: a book decided wholly by the rule
             print(f'language step: no saved decisions in {src}: not run')
             merge(R, wo_path, fs, {}, {'schema': 'language-run/1', 'decisions': {}, 'requests': [], 'cost_usd': 0, 'response_from': os.path.abspath(src)},
                   note='not run (the saved reply has no language decisions)'); return
-        by_key = old['decisions']
+        by_key = old.get('decisions') or {}
         dec = {f['id']: by_key[form_key(f)] for f in sent if form_key(f) in by_key}
         now_keys = {form_key(f) for f in sent}
-        replay = {'from': os.path.abspath(src), 'used': len(dec), 'vanished': sorted(k for k in by_key if k not in now_keys)[:200],
-                  'vanished_count': sum(1 for k in by_key if k not in now_keys), 'not_decided': sum(1 for f in sent if form_key(f) not in by_key),
+        local_keys = {form_key(f) for f in fs if f['id'] in local}         # decided by the reading rule now: never the saved answer
+        replay = {'from': os.path.abspath(src), 'used': len(dec), 'vanished': sorted(k for k in by_key if k not in now_keys and k not in local_keys)[:200],
+                  'vanished_count': sum(1 for k in by_key if k not in now_keys and k not in local_keys), 'not_decided': sum(1 for f in sent if form_key(f) not in by_key),
+                  'local': len(local), 'local_over_saved': sum(1 for k in by_key if k in local_keys),
                   'saved_fingerprint': old.get('fingerprint'), 'fingerprint': fp}
         rec = {**{k: old.get(k) for k in ('schema', 'model', 'prompt_file', 'prompt_sha256', 'started')}, 'response_from': os.path.abspath(src),
                'own_reply': bool(args.reuse) or os.path.abspath(src) == os.path.abspath(run_path), 'replay': replay,
                'decisions': by_key, 'requests': old.get('requests') if args.reuse else [], 'cost_usd': (old.get('cost_usd') or 0) if args.reuse else 0,
-               'original_cost_usd': old.get('cost_usd'), 'candidates': how}
+               'original_cost_usd': old.get('cost_usd'), 'candidates': how, 'reading_rule': rule_rec,
+               'local': {form_key(f): local[f['id']] for f in fs if f['id'] in local}}
         if not args.reuse: json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-        merge(R, wo_path, sent, dec, rec, held=held, contexts=contexts_of(sent, words, reqs))
+        merge(R, wo_path, written, {**dec, **local}, rec, held=held, contexts=contexts_of(written, words, reqs), readings=readings)
         print(f'language step: saved decisions applied by form ({len(dec)} of {len(sent)} forms; {replay["vanished_count"]} no longer found; '
-              f'{replay["not_decided"]} not decided) · no AI request'); return
+              f'{replay["not_decided"]} not decided) · {len(local)} decided by the reading rule · no AI request'); return
+    if not ai_fs:                                      # every form decided by the reading rule (#123): nothing to send, no network
+        if args.dry_run:
+            json.dump({'schema': 'language-estimate/1', 'model': None, 'prompt_sha256': prompt_sha, 'forms': len(fs), 'local': len(local), 'sent': 0,
+                       'held_back': 0, 'requests': 0, 'to_send': 0, 'reused': 0, 'worst_case_usd': 0.0, 'per_call_worst_usd': 0.0, 'cap_usd': args.max_usd,
+                       'max_tokens': [], 'words_sent': 0}, open(est_path, 'w', encoding='utf-8'), indent=1)
+            print(f'language step: {len(fs)} forms, all decided by the reading rule · nothing to send'); print('dry run: nothing sent'); return
+        rec = {'schema': 'language-run/1', 'model': None, 'prompt_file': os.path.basename(prompt_file), 'prompt_sha256': prompt_sha,
+               'started': time.strftime('%Y-%m-%dT%H:%M:%S'), 'fingerprint': fp, 'candidates': how, 'options': {'grow': bool(args.grow), 'group': bool(args.group)},
+               'reading_rule': rule_rec, 'local': {form_key(f): local[f['id']] for f in fs if f['id'] in local},
+               'requests': [], 'decisions': {}, 'cost_usd': 0, 'not_decided': 0}
+        json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        merge(R, wo_path, written, dict(local), rec, contexts=contexts_of(written, words, reqs), readings=readings)
+        print(f'language step: {len(local)} of {len(fs)} forms decided by the reading rule · no AI request · $0.0000 spent on this step'); return
     # --- the model, its price and parameters (any model is capped: M7)
     load_env()
     model = args.model or os.environ.get('LANGUAGE_MODEL') or DEFAULT_MODEL     # its own default, never the work order's (Patrick, 2026-11-14)
@@ -158,7 +201,7 @@ def main():
         todo.append({'n': n, 'req': r, 'sha256': sha, 'max_tokens': mt, 'input_est': ins, 'worst': ins * pin + mt * pout, 'reused': sha in answered})
     send = [t for t in todo if not t['reused']]
     worst = sum(t['worst'] for t in send)
-    est = {'forms': len(fs), 'sent': len(sent), 'held_back': len(held), 'requests': len(todo), 'to_send': len(send), 'reused': len(todo) - len(send),
+    est = {'forms': len(fs), 'local': len(local), 'sent': len(sent), 'held_back': len(held), 'requests': len(todo), 'to_send': len(send), 'reused': len(todo) - len(send),
            'worst_case_usd': round(worst, 4), 'per_call_worst_usd': round(max((t['worst'] for t in send), default=0), 4), 'cap_usd': args.max_usd,
            'price_per_million': [round(pin * 1e6, 4), round(pout * 1e6, 4)], 'max_tokens': [t['max_tokens'] for t in send], 'words_sent': sum(len(s['text'].split()) for r in reqs for s in r['snippets'])}
     if send:
@@ -171,7 +214,8 @@ def main():
         kept = {} if over_cap else costs.kept_refusal(R, 'language', new)      # decide.py's "left out" survives this dry run
         json.dump({**new, **({'refused': {'why': 'cap', 'words': f'The language step could cost up to ${worst:.2f}, more than its limit of ${args.max_usd:.2f}.'}} if over_cap else kept)},
                   open(est_path, 'w', encoding='utf-8'), indent=1)
-    print(f'language step: {len(fs)} forms ({len(held)} held back by LANGUAGE_MAX_FORMS) in {len(todo)} requests ({len(todo) - len(send)} answered before) · {model}')
+    print(f'language step: {len(fs)} forms ({len(local)} decided by the reading rule; {len(held)} held back by LANGUAGE_MAX_FORMS); '
+          f'{len(sent)} in {len(todo)} requests ({len(todo) - len(send)} answered before) · {model}')
     if send: print('language step: ' + costhistory.terminal_line(est['expected']))
     print(f'language step: Max Estimated Cost: ${worst:.2f} · Limit: ${args.max_usd:.2f}')
     if over_cap:
@@ -189,7 +233,8 @@ def main():
     if args.dry_run: print('dry run: nothing sent'); return
     rec = {'schema': 'language-run/1', 'model': model, 'prompt_file': os.path.basename(prompt_file), 'prompt_sha256': prompt_sha,
            'started': time.strftime('%Y-%m-%dT%H:%M:%S'), 'estimate': est, 'fingerprint': fp, 'candidates': how,
-           'options': {'grow': bool(args.grow), 'group': bool(args.group)},
+           'options': {'grow': bool(args.grow), 'group': bool(args.group)}, 'reading_rule': rule_rec,
+           'local': {form_key(f): local[f['id']] for f in fs if f['id'] in local},
            'requests': [answered[t['sha256']] for t in todo if t['reused']], 'decisions': {}, 'cost_usd': round(done.get('cost_usd') or 0, 6) if reuse_ok else 0}
     if send:
         key = os.environ.get('OPENROUTER_API_KEY') or sys.exit('no OPENROUTER_API_KEY: put it in .env or export it')
@@ -227,12 +272,13 @@ def main():
     by_id = {f['id']: f for f in sent}
     for x in rec['requests']:                        # a reply cut off (finish 'length') keeps every decision it finished
         d, dr = langreq.parse(x.get('text') or '', set(x['ids']), forms={i: by_id[i]['form'] for i in x['ids'] if i in by_id}); dec.update(d); dropped += dr
-    rec['decisions'] = {form_key(by_id[i]): v for i, v in dec.items() if i in by_id}
+    rec['decisions'] = {form_key(by_id[i]): v for i, v in dec.items() if i in by_id}     # the AI's only: the rule's are under `local`
     rec['dropped'] = dropped[:200]
     rec['not_decided'] = sum(1 for f in sent if f['id'] not in dec)          # cut off, invalid, or never sent: listed for a person
     json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    merge(R, wo_path, sent, dec, rec, held=held, contexts=contexts_of(sent, words, reqs))
-    print(f'language step: {len(dec)} of {len(sent)} forms decided ({rec["not_decided"]} not decided) · ${rec["cost_usd"]:.4f} spent on this step')
+    merge(R, wo_path, written, {**dec, **local}, rec, held=held, contexts=contexts_of(written, words, reqs), readings=readings)
+    print(f'language step: {len(dec)} of {len(sent)} forms decided by the AI ({rec["not_decided"]} not decided), {len(local)} by the reading rule'
+          f' · ${rec["cost_usd"]:.4f} spent on this step')
 
 CONTEXT_CUT = 2000                 # characters: well above the longest adopted context (sentence mode caps each side)
 def contexts_of(fs, words, reqs=None):
@@ -248,14 +294,14 @@ def contexts_of(fs, words, reqs=None):
         out[f['id']] = langreq.place_text(p, words)[:CONTEXT_CUT]
     return out
 
-def merge(R, wo_path, fs, dec, rec, held=(), note=None, contexts=None):
+def merge(R, wo_path, fs, dec, rec, held=(), note=None, contexts=None, readings=None):
     """workorder.json's language_parts from the decisions (checked as every work order is), and, beside them in
     language_run.json, what a person must decide: non-Latin places the AI left untagged (review 02, M6) and every
     existing tag's answer. Always written, on every path (a fresh call, a reuse, a saved reply), so a later rebuild of
     workorder.json (decide.py --response-file) can put them back (review 02, M8)."""
     if not os.path.exists(wo_path): return
     wo = json.load(open(wo_path, encoding='utf-8'))
-    lp = langreq.to_rows(fs, dec)
+    lp = langreq.to_rows(fs, dec, readings=readings)
     pages = max([p['page'] for f in fs for p in f['places']] + [1])
     tmp = {'language_parts': lp}; dropped = workorder_check.check_language_parts(tmp, 10 ** 6)
     if tmp.get('language_parts', {}).get('parts'): wo['language_parts'] = tmp['language_parts']
@@ -280,6 +326,7 @@ def merge(R, wo_path, fs, dec, rec, held=(), note=None, contexts=None):
     for f in fs:
         if f['id'] not in dec: nd[f['group']].append(f['form'])
     rec['not_decided_forms'] = {g: v[:200] for g, v in nd.items()}; rec['not_decided'] = sum(len(v) for v in nd.values())
+    rec['parts_local'] = sum(1 for f in (wo.get('language_parts') or {}).get('forms') or [] if f.get('rule'))       # #123
     if note: rec['note'] = note
     json.dump(rec, open(os.path.join(R, 'language_run.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 

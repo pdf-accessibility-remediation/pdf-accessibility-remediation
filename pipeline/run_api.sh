@@ -286,7 +286,9 @@ if [[ ( $LANG_TAGS != off || -n ${LANG_REPLY:-} ) && -z $REVIEWED && ${DECIDE:-}
   else
     lt_ok=n
     if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
-      if [[ -n ${AUTO:-} ]]; then lt_ok=y; echo "AUTO=1: naming languages without asking (still refused over the language step's limit or your credit)"
+      if python3 -c 'import json,sys; e=json.load(open(sys.argv[1])); sys.exit(0 if not e.get("to_send") and e.get("local") else 1)' "$R/language_estimate.json" 2>/dev/null; then
+        lt_ok=y; echo "language tags: every word form is decided by the reading printed beside it (#123): no AI request, nothing to ask"
+      elif [[ -n ${AUTO:-} ]]; then lt_ok=y; echo "AUTO=1: naming languages without asking (still refused over the language step's limit or your credit)"
       else read -r -p "Name the languages of these words and passages with the AI now? [y/N] " lt_ok || lt_ok=n; fi
     else echo "language tags not done (above): the PDF goes on without them"; fi
     if [[ ${lt_ok:-n} == [yY]* ]]; then stage "3c/5 language tags via OpenRouter" lang_step
