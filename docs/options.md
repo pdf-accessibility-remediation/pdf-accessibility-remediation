@@ -98,9 +98,16 @@ At the review stop, the pipeline runs `apply.py` once as a trial. It works out w
 By default (`PAGE_READS=1`), the scanned pages the audit finds mostly Hawaiian are read whole by the AI (`read_pages.py`). They have their own estimate and question; `AUTO=1` skips the question. A PDF with no such pages costs nothing. If the readings are refused (over their limit or your credit), the step is skipped and the PDF goes on without them.
 
 No pages are read:
-- with a saved reply (`REPLY=…`)
+- with a saved reply from elsewhere (`REPLY=…` of another run, or a batch's `FROM=`)
 - with no AI request (`DECIDE=none`)
 - in command-line batches, unless you turn it on with `PAGE_READS=1 bash batch_api.sh …`. `BATCH_MAX_USD` then counts it.
+
+**A retry keeps the pages already read (#95).** When a later step fails and the same command runs again (or the app's
+"Try Again"), the run reuses its own reply, and the pages it already read come back from `page_reads_run.json` at no
+cost, with no AI request and no network. When every page was read, the step says so and asks nothing. Pages an
+interruption left unread are read then, under the step's own estimate, limit and credit, as on a first run. The app's
+"Try Again" runs with `PAGE_READS=off` (it shows no new estimate), so there they are not read: review.md lists them for a
+person. Pages read and paid for whose readings were not applied are reported as such, never as "not read".
 
 `PAGE_READS=all` is for an English PDF with Hawaiian words on most pages. The audit lists the pages to read, so a run already audited without it needs a fresh audit. See [OCR words](ocr-words.md#pages-read-whole).
 
