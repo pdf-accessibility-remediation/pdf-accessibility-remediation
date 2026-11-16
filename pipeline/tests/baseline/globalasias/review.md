@@ -2,13 +2,13 @@
 
 Result: `globalasias_remediated.pdf`
 
-393 pages · run November 15, 2026, at 10:04 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.231 ($0.0006 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+393 pages · run November 16, 2026, at 2:31 AM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.231 ($0.0006 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
-Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
+Libraries: python 3.14.4 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.7s · audit 52.8s · reuse saved reply 1.6s · apply 104.1s · verify 80.7s · total 240.9s
+Time: intake 0.6s · audit 59.2s · reuse saved reply 1.1s · apply 64.3s · verify 68.8s · total 194.0s
 
 ## Overview
 
@@ -24,7 +24,7 @@ Time: intake 1.7s · audit 52.8s · reuse saved reply 1.6s · apply 104.1s · ve
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 6 (5 deferred by the AI · 1 deferred by the executor · 0 CHECK rows)  
+**Needs a person:** 7 (5 deferred by the AI · 1 deferred by the executor · 1 CHECK row)  
 **AI decisions:** 34 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 4,247 · tag-tree index entries 242 · note IDs 57 · link descriptions that were only a URL 19 · Document root 1 · title shown in the window 1 · empty tags removed 1  
 **veraPDF (WCAG 2.2 machine checks):** 0 WCAG rules failing before (0 checks) → 0 after (0 checks) · 0 newly failing
@@ -33,12 +33,12 @@ Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
+| Figures: none below 150 ppi: 20 figures below 150 ppi, likely to look blurry: 96 ppi on PDF 25 (printed 10); 96 ppi on PDF 42 (printed 27); 96 ppi on PDF 67 (printed 52); 96 ppi on PDF 72 (printed 57); 96 ppi on PDF 74 (printed 59); 96 ppi on PDF 86 (printed 71); 96 ppi on PDF 88 (printed 73); 96 ppi on PDF 119 (printed 104); 96 ppi on PDF 138 (printed 123); 96 ppi on PDF 177 (printed 162); 96 ppi on PDF 178 (printed 163); 96 ppi on PDF 241 (printed 226); 96 ppi on PDF 297 (printed 282); 96 ppi on PDF 313 (printed 298); 96 ppi on PDF 313 (printed 298); 96 ppi on PDF 313 (printed 298); 96 ppi on PDF 318 (printed 303); 96 ppi on PDF 334 (printed 319); 96 ppi on PDF 336 (printed 321); 96 ppi on PDF 336 (printed 321) · a person puts in a sharper copy by hand, where one exists | 17 pages, PDF 25 (printed 10) to PDF 336 (printed 321) | [Automated Checks](#automated-checks) |
 | 35 Han-only runs need Japanese or Chinese (han_review.csv) | 18 pages, PDF 52 (printed 37) to PDF 363 (printed 348) | [§11](#11-deferred-by-the-executor) |
 | Cover figure (obj 21024 0) is the last container in the reading order (Article on PDF 1, after the Index) | PDF 1 (printed Cover) | [§10](#10-deferred-by-the-ai) |
 | Caption of Figure 5.2 (map of Afro-Asian conferences) has reversed, garbled text in the text layer (e.g. 'y… | PDF 318 (printed 303) | [§10](#10-deferred-by-the-ai) |
 | Index text layer: page numbers are missing or out of order in many entries (e.g. 'Aboriginal Australians, ,… | PDF 368 (printed 353), PDF 386 (printed 371) | [§10](#10-deferred-by-the-ai) |
-| Single-item and bibliography-style lists in the pedagogy forums (e.g. PDF 345–359) were kept as lists | PDF 345 (printed 330), PDF 359 (printed 344) | [§10](#10-deferred-by-the-ai) |
-| … and 1 more | | §10 |
+| … and 2 more | | §10 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -52,6 +52,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Untagged paths: none left | OK | 0 untagged paths |
 | Invisible OCR text: every glyph defined | OK | no undefined glyphs in invisible text |
 | Page-level figure wrap | OK | no page with only an untagged drawing |
+| Figures: none below 150 ppi | **CHECK** | 20 figures below 150 ppi, likely to look blurry: 96 ppi on PDF 25 (printed 10); 96 ppi on PDF 42 (printed 27); 96 ppi on PDF 67 (printed 52); 96 ppi on PDF 72 (printed 57); 96 ppi on PDF 74 (printed 59); 96 ppi on PDF 86 (printed 71); 96 ppi on PDF 88 (printed 73); 96 ppi on PDF 119 (printed 104); 96 ppi on PDF 138 (printed 123); 96 ppi on PDF 177 (printed 162); 96 ppi on PDF 178 (printed 163); 96 ppi on PDF 241 (printed 226); 96 ppi on PDF 297 (printed 282); 96 ppi on PDF 313 (printed 298); 96 ppi on PDF 313 (printed 298); 96 ppi on PDF 313 (printed 298); 96 ppi on PDF 318 (printed 303); 96 ppi on PDF 334 (printed 319); 96 ppi on PDF 336 (printed 321); 96 ppi on PDF 336 (printed 321) · a person puts in a sharper copy by hand, where one exists |
 | Empty tags removed when proven empty | OK | 1 removed |
 | Tag-tree index points only into the tree | OK | 0 dangling entries · 0 stale entries (marked content no longer drawn) |
 | No empty tables | OK | none |

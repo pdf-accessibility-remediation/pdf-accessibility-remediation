@@ -2,7 +2,7 @@
 
     PL = plpages.Pages(path)     PL.pages[pno - 1].chars / .images / .vis / .width / .height
 
-Keeps the characters (only KEEP_KEYS), image boxes, size and visible area (CropBox) of each page; every pdfplumber
+Keeps the characters (only KEEP_KEYS), image boxes (with each image's stored pixel size, srcsize: lib/lowres.py), size and visible area (CropBox) of each page; every pdfplumber
 page is released after reading, so a long book does not hold its full layout in memory. Import plumb_fix first, so
 each character carries the nearest enclosing MCID.
 """
@@ -15,7 +15,7 @@ class Page:
         mb, cb = p.mediabox, p.cropbox                 # the visible area (CropBox), in the reader's top-left coordinates
         self.vis = (max(cb[0], mb[0]) - mb[0], mb[3] - min(cb[3], mb[3]), min(cb[2], mb[2]) - mb[0], mb[3] - max(cb[1], mb[1]))
         self.chars = [{k: c.get(k) for k in KEEP_KEYS} for c in p.chars]
-        self.images = [{k: i.get(k) for k in ('x0', 'x1', 'top', 'bottom', 'mcid', 'tag')} for i in p.images]
+        self.images = [{k: i.get(k) for k in ('x0', 'x1', 'top', 'bottom', 'mcid', 'tag', 'srcsize')} for i in p.images]
 class Pages:
     def __init__(self, path):
         self.pages = []

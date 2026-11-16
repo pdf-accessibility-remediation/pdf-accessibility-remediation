@@ -50,6 +50,13 @@ def load(p): return json.load(open(p, encoding='utf-8'))
 def cut_second(b, n): return stop(b, cost=0.3, finish='length', tokens=32000, text='```json\n{"alt": [') if n == 2 else stop(b)
 
 # ------------------------------------------------------------------ the whole request
+def test_the_low_resolution_list_is_never_sent(book, tmp_path, monkeypatch):
+    # issue #97: every figure in this book is 12x10 px over 120x100 pt, so the audit lists all of them; it is for a person
+    assert len(book[2]['low_resolution']) == 130 and book[2]['low_resolution_rule']
+    calls, code = live(book[1], tmp_path / 'r', monkeypatch)
+    assert code is None and len(calls) == 2
+    assert not any(b'low_resolution' in c or b' ppi' in c for c in calls)
+
 def test_every_request_is_sent_with_its_usual_max_tokens(book, tmp_path, monkeypatch):
     calls, code = live(book[1], tmp_path / 'r', monkeypatch)
     assert code is None and [json.loads(c)['max_tokens'] for c in calls] == [48000, 32000]
