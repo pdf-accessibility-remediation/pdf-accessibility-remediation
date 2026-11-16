@@ -92,12 +92,64 @@ def test_a_tagger_that_outlives_its_intake_keeps_the_slot(tmp_path, monkeypatch)
             except ProcessLookupError: pass
 
 
+def wait_for(cond, limit=5.0):
+    """Polls cond until it is true or limit seconds pass (a condition, not a fixed sleep); returns its last value."""
+    t = time.time()
+    while not (v := cond()) and time.time() - t < limit: time.sleep(0.02)
+    return v
+
+
 def test_the_watcher_records_the_taggers_process(tmp_path, monkeypatch):
-    import os
     monkeypatch.setattr(intake, 'TAGGER_LOCKS', str(tmp_path)); monkeypatch.setattr(intake, 'TAGGER_SLOTS', 1)
     with intake.tagger_slot() as s:
         stop = threading.Event(); w = threading.Thread(target=intake._tagger_children, args=(stop, s), daemon=True); w.start()
-        kid = subprocess.Popen(['sleep', '5']); time.sleep(1.6)
-        assert f'{kid.pid} sleep' in (tmp_path / 'slot0.lock').read_text()
+        kid = subprocess.Popen(['sleep', '5']); t0 = time.time()
+        assert wait_for(lambda: f'{kid.pid} sleep' in (tmp_path / 'slot0.lock').read_text())
+        assert time.time() - t0 < 1.0                                             # review 06 M1: within the fast polling, not a second later
         stop.set(); w.join(3); kid.kill(); kid.wait()
     assert (tmp_path / 'slot0.lock').read_text() == ''                            # cleared when the slot is given back
+
+
+def test_a_kill_within_half_a_second_leaves_the_slot_busy(tmp_path, monkeypatch):
+    """Review 06 M1 (W1): intake SIGKILLed 0.3 s after its tagger child started: the child was already recorded, so the slot
+    stays busy while the child lives (before, the watcher recorded once a second and the slot was free)."""
+    import os, signal, sys
+    monkeypatch.setattr(intake, 'TAGGER_LOCKS', str(tmp_path)); monkeypatch.setattr(intake, 'TAGGER_SLOTS', 1)
+    holder = subprocess.Popen([sys.executable, '-c', (
+        'import sys, subprocess, threading, time; sys.path.insert(0, %r); import intake\n'
+        'intake.TAGGER_LOCKS = %r; intake.TAGGER_SLOTS = 1\n'
+        'with intake.tagger_slot() as s:\n'
+        '    stop = threading.Event(); threading.Thread(target=intake._tagger_children, args=(stop, s), daemon=True).start()\n'
+        '    kid = subprocess.Popen(["sleep", "30"]); print(kid.pid, flush=True); time.sleep(60)\n'
+    ) % (os.path.dirname(os.path.dirname(os.path.abspath(__file__))), str(tmp_path))], stdout=subprocess.PIPE, text=True)
+    kid = int(holder.stdout.readline())
+    try:
+        time.sleep(0.3); holder.send_signal(signal.SIGKILL); holder.wait(5)
+        assert intake._proc_command(kid) == 'sleep'                               # its child still runs
+        assert intake._take_slot(str(tmp_path / 'slot0.lock')) is None            # recorded in time: the slot is busy
+        assert 'process' in intake.BUSY[str(tmp_path / 'slot0.lock')] and str(kid) in intake.BUSY[str(tmp_path / 'slot0.lock')]   # L8: named
+    finally:
+        for p in (holder.pid, kid):
+            try: os.kill(p, signal.SIGKILL)
+            except ProcessLookupError: pass
+
+
+def test_a_failing_pgrep_does_not_end_the_watcher(tmp_path, monkeypatch):
+    """Review 06 M1 (W3): one pass that raises is logged and the loop goes on, so the child is still recorded."""
+    monkeypatch.setattr(intake, 'TAGGER_LOCKS', str(tmp_path)); monkeypatch.setattr(intake, 'TAGGER_SLOTS', 1)
+    real, calls, said = subprocess.run, [], []
+    def flaky(argv, *a, **k):
+        if argv and argv[0] == 'pgrep':
+            calls.append(1)
+            if len(calls) <= 2: raise OSError('pgrep is not available')
+        return real(argv, *a, **k)
+    monkeypatch.setattr(intake.subprocess, 'run', flaky)
+    with intake.tagger_slot() as s:
+        stop = threading.Event(); w = threading.Thread(target=intake._tagger_children, args=(stop, s, said.append), daemon=True); w.start()
+        kid = subprocess.Popen(['sleep', '5'])
+        try:
+            assert wait_for(lambda: f'{kid.pid} sleep' in (tmp_path / 'slot0.lock').read_text())
+            assert w.is_alive() and len(calls) >= 3
+            assert len(said) == 1 and 'OSError' in said[0]                        # logged once, not once a pass
+        finally:
+            stop.set(); w.join(3); kid.kill(); kid.wait()

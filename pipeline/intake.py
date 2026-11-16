@@ -885,6 +885,7 @@ def _proc_command(pid):
     except PermissionError: pass
     r = subprocess.run(['ps', '-p', str(pid), '-o', 'comm='], capture_output=True, text=True)
     return r.stdout.strip() or None
+BUSY = {}                                       # review 06 L8: why each slot file was last found busy, for the waiting message
 def _take_slot(path, wait=False):
     """The slot's lock file, locked, or None when another process holds it or a tagger recorded in it still runs. The lock
     is released by the OS when its process dies, but the Java tagger is a child process that can outlive it (a direct kill
@@ -893,26 +894,32 @@ def _take_slot(path, wait=False):
     import fcntl
     f = open(path, 'a+')
     try: fcntl.flock(f, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
-    except OSError: f.close(); return None
+    except OSError: f.close(); BUSY[path] = 'held by another intake'; return None
     f.seek(0)
     for line in f.read().splitlines():
         pid, _, comm = line.partition(' ')
         if pid.isdigit() and comm and _proc_command(int(pid)) == comm:
-            fcntl.flock(f, fcntl.LOCK_UN); f.close(); return None
-    f.seek(0); f.truncate(); return f
+            fcntl.flock(f, fcntl.LOCK_UN); f.close(); BUSY[path] = f'a tagger left running by an intake that ended: process {pid} ({comm})'; return None
+    BUSY.pop(path, None); f.seek(0); f.truncate(); return f
 def tagger_record(slot, pids):
     """Write the running tagger's processes (pid and command) into every slot file held (see _take_slot)."""
     lines = ''.join(f'{p} {c}\n' for p in pids for c in [_proc_command(p)] if c)
     for f in slot.get('files') or []:
         try: f.seek(0); f.truncate(); f.write(lines); f.flush()
         except (OSError, ValueError): pass
-def _tagger_children(stop, slot):
-    """Thread: while the tagger runs, record intake's child processes in the slot files (pgrep -P), once a second."""
-    seen = set()
-    while not stop.wait(1):
-        r = subprocess.run(['pgrep', '-P', str(os.getpid())], capture_output=True, text=True)
-        kids = {int(x) for x in r.stdout.split() if x.isdigit()}
-        if kids and kids != seen: tagger_record(slot, sorted(kids)); seen = kids
+WATCH_FAST, WATCH_SLOW = 0.1, 1.0               # review 06 M1: the tagger's process is recorded within 0.1 s of its start, then
+def _tagger_children(stop, slot, say=None):     #   checked once a second (a fast loop for an hour would start 36,000 pgreps)
+    """Thread: while the tagger runs, record intake's child processes in the slot files (pgrep -P): every WATCH_FAST seconds
+    until the first is recorded, then every WATCH_SLOW. A pass that fails (pgrep missing, a file error) is logged once by
+    its kind and the loop goes on, so one failure never leaves the slot unprotected for the rest of the run (review 06 M1)."""
+    seen, told = set(), set(); say = say or (lambda m: print(m, file=sys.stderr, flush=True))
+    while not stop.wait(WATCH_SLOW if seen else WATCH_FAST):
+        try:
+            r = subprocess.run(['pgrep', '-P', str(os.getpid())], capture_output=True, text=True)
+            kids = {int(x) for x in r.stdout.split() if x.isdigit()}
+            if kids and kids != seen: tagger_record(slot, sorted(kids)); seen = kids
+        except Exception as e:                 # noqa: BLE001: the watcher must outlive any one pass
+            if type(e).__name__ not in told: told.add(type(e).__name__); say(f'intake: the auto-tagger watcher could not check its processes ({type(e).__name__}: {e}); it goes on')
 @contextlib.contextmanager
 def tagger_slot(pages=0):
     """#129: hold one of TAGGER_SLOTS machine-wide slots (file locks, released by the OS if the process dies; a tagger child
@@ -928,7 +935,9 @@ def tagger_slot(pages=0):
             for k in range(TAGGER_SLOTS):
                 p_ = os.path.join(TAGGER_LOCKS, f'slot{k}.lock'); f = _take_slot(p_)
                 while f is None:
-                    if not told: print(f'intake: waiting for the auto-tagger to be free (a book over {TAGGER_LONG} pages runs alone)', flush=True); told = True
+                    if told != BUSY.get(p_):
+                        told = BUSY.get(p_)
+                        print(f'intake: waiting for the auto-tagger to be free (a book over {TAGGER_LONG} pages runs alone; slot {k + 1}: {told or "busy"})', flush=True)
                     time.sleep(2); f = _take_slot(p_)
                 fs.append(f)
             yield {'slot': 'all', 'waited': round(time.time() - t0, 1), 'files': fs}
@@ -948,7 +957,9 @@ def tagger_slot(pages=0):
                 except (OSError, ValueError): pass
                 f.close()
             return
-        if not told: print(f'intake: waiting for a free auto-tagger slot ({TAGGER_SLOTS} in use)', flush=True); told = True
+        why = '; '.join(sorted({v for k_, v in BUSY.items() if k_.startswith(TAGGER_LOCKS)} - {'held by another intake'}))
+        if told is False or told != why:
+            print(f'intake: waiting for a free auto-tagger slot ({TAGGER_SLOTS} in use' + (f'; {why}' if why else '') + ')', flush=True); told = why
         time.sleep(2)
 def tagger_error(e):
     """(the error's last 600 characters, ran out of memory?) for an exception from opendataloader_pdf.convert. The JVM's own
