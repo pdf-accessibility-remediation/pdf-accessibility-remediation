@@ -2,13 +2,13 @@
 
 Result: `ilokano_remediated.pdf`
 
-49 pages · run November 1, 2026, at 7:41 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v10.md` (15b5aa0ade9c6549) · AI cost not recorded · this run: no new call · tokens: saved reply reused, not counted
+49 pages · run November 15, 2026, at 10:10 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.088 ($0.0018 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: 1 picture page without OCR text · auto-tagged · tagged by OpenDataLoader 2.5.12 · the pipeline worked on `_intake/intake.pdf`; the original was not changed
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.1s · audit 3.3s · reuse saved reply 1.3s · apply 4.4s · verify 10.2s · total 19.3s
+Time: intake 0.3s · audit 4.7s · reuse saved reply 1.3s · apply 7.4s · verify 9.8s · total 23.5s
 
 ## Overview
 
@@ -20,11 +20,12 @@ Time: intake 0.1s · audit 3.3s · reuse saved reply 1.3s · apply 4.4s · verif
 - Work Order Approval: Not Approved (applied without a review)
 - ✓ OCR Text Approval: Not Applicable
 - ✓ Safety Checks: Passed
+- Language Tags: Not Done (the language step was not run)
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 5 (5 deferred by the AI · 0 deferred by the executor · 0 CHECK rows)  
-**AI decisions:** 33 in the work order, applied without review by a person  
+**Needs a person:** 6 (6 deferred by the AI · 0 deferred by the executor · 0 CHECK rows)  
+**AI decisions:** 34 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 17 · one-item lists turned into paragraphs 15 · pages given tab order 3 · title shown in the window 2 · link descriptions that were only a URL 2 · marked as tagged 1  
 **veraPDF (WCAG 2.2 machine checks):** 4 WCAG rules failing before (9 checks) → 0 after (0 checks) · 0 newly failing
 
@@ -32,11 +33,12 @@ Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
-| Poor OCR text layer | 8 pages, PDF 18 to PDF 47 | [§8](#8-deferred-by-the-ai) |
-| Reading order and heading placement on chapter opener pages | 14 pages, PDF 15 to PDF 49 | [§8](#8-deferred-by-the-ai) |
-| Contents list structure and page numbers | PDF 6 | [§8](#8-deferred-by-the-ai) |
-| Language tagging of Ilokano example words | PDF 10, PDF 49 | [§8](#8-deferred-by-the-ai) |
-| Example sentence lists and (a)/(b) definition lists | PDF 14, PDF 49 | [§8](#8-deferred-by-the-ai) |
+| Text layer quality | 8 pages, PDF 18 to PDF 47 | [§8](#8-deferred-by-the-ai) |
+| Contents page (PDF 6) | PDF 6 | [§8](#8-deferred-by-the-ai) |
+| Running heads and page numbers | PDF 10, PDF 46 | [§8](#8-deferred-by-the-ai) |
+| Chapter heading layout on PDF 15–19, 21 and 31–35 | 13 pages, PDF 15 to PDF 45 | [§8](#8-deferred-by-the-ai) |
+| Remaining lists (numbered examples and (a)/(b) enumerations) | 27 pages, PDF 14 to PDF 49 | [§8](#8-deferred-by-the-ai) |
+| … and 1 more | | §8 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -133,9 +135,9 @@ Text-layer test (checklist 1.2): each sample page was OCR'd at 300 dpi and compa
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 | — | Front cover of Ilokano Reference Grammar by Ernesto Constantino. A tan upper panel holds the University of Hawaiʻi Press logo, with a green HAWAI stylized mark. The author's name sits on the dividing line, and the title ILOKANO REFERENCE GRAMMAR is in white capitals on a black lower panel. |
+| PDF 1 | — | Front cover of Ilokano Reference Grammar by Ernesto Constantino. The University of Hawaiʻi Press logo sits at the top on a tan background. The author's name appears above the title, which is set in white capitals on a black band. |
 | PDF 4 | — | University of Hawaiʻi Press Open Access logo |
-| PDF 4 | — | Humanities Open Book logo, with the National Endowment for the Humanities and Andrew W. Mellon Foundation marks |
+| PDF 4 | — | Humanities Open Book Program logo, from the National Endowment for the Humanities and the Andrew W. Mellon Foundation |
 | PDF 4 | — | Creative Commons Attribution-NonCommercial-ShareAlike (CC BY-NC-SA) license logo |
 
 ### 3. Elements Retyped by the AI (14)
@@ -162,16 +164,16 @@ Check each one is (or is not) a heading as decided.
 ### 4. Lists and Tables
 
 - Flattened list on PDF 9: "2.0. Introduction. The minimal phonological units of Ilokano described in this chapter consist of…" (numbered section paragraphs (2.0, 2.1), not a list)
-- Flattened list on PDF 14: "2.7. Pitch and intonation. The pitch of a normal Ilokano sen-tence or utterance generally stays on…" (numbered section paragraphs (2.7, 2.8))
-- Flattened list on PDF 15: "3.0. Introduction. Our principal aim in this grammar of Ilokano is to present a simple and…" (numbered section paragraphs (3.0, 3.1))
-- Flattened list on PDF 18: "4.0. Introduction. The sentence is the largest grammatical unit treated in this grammar. We may…" (numbered section paragraphs (4.0, 4.1))
-- Flattened list on PDF 23: "5.1.5. Direction complement. The direction complement refers to the person or thing toward which the…" (numbered section paragraphs (5.1.5, 5.1.6))
-- Flattened list on PDF 29: "5.8.2. Temporal sentences. A temporal sentence is an imper-sonal sentence with a temporal verb as…" (numbered section paragraphs (5.8.2, 5.8.3))
-- Flattened list on PDF 32: "6.4. Topicless adjectival sentences. Some adjectival sen-tences consist of an adjective without a…" (numbered section paragraphs (6.4, 6.5))
-- Flattened list on PDF 34: "7.0. Introduction. The sentences described in this chapter are the existential, the exclamatory, the…" (numbered section paragraphs (7.0, 7.1))
-- Flattened list on PDF 35: "7.2. Exclamatory sentences. Exclamatory sentences consist of interjections. Some of them express…" (numbered section paragraphs (7.2, 7.3))
-- Flattened list on PDF 43: "9.1.3. Adjectival complex sentences. An adjectival complex sentence is one whose predicate is an…" (numbered section paragraphs (9.1.3, 9.1.4))
-- Flattened list on PDF 45: "10.2.2. Suppletive questions. A suppletive question is a sen-tence whose subject is an interrogative…" (numbered section paragraphs (10.2.2, 10.3))
+- Flattened list on PDF 14: "2.7. Pitch and intonation. The pitch of a normal Ilokano sen-tence or utterance generally stays on…" (numbered section paragraphs (2.7, 2.8), not a list)
+- Flattened list on PDF 15: "3.0. Introduction. Our principal aim in this grammar of Ilokano is to present a simple and…" (numbered section paragraphs (3.0, 3.1), not a list)
+- Flattened list on PDF 18: "4.0. Introduction. The sentence is the largest grammatical unit treated in this grammar. We may…" (numbered section paragraphs (4.0, 4.1), not a list)
+- Flattened list on PDF 23: "5.1.5. Direction complement. The direction complement refers to the person or thing toward which the…" (numbered section paragraphs (5.1.5, 5.1.6), not a list)
+- Flattened list on PDF 29: "5.8.2. Temporal sentences. A temporal sentence is an imper-sonal sentence with a temporal verb as…" (numbered section paragraphs (5.8.2, 5.8.3), not a list)
+- Flattened list on PDF 32: "6.4. Topicless adjectival sentences. Some adjectival sen-tences consist of an adjective without a…" (numbered section paragraphs (6.4, 6.5), not a list)
+- Flattened list on PDF 34: "7.0. Introduction. The sentences described in this chapter are the existential, the exclamatory, the…" (numbered section paragraphs (7.0, 7.1), not a list)
+- Flattened list on PDF 35: "7.2. Exclamatory sentences. Exclamatory sentences consist of interjections. Some of them express…" (numbered section paragraphs (7.2, 7.3), not a list)
+- Flattened list on PDF 43: "9.1.3. Adjectival complex sentences. An adjectival complex sentence is one whose predicate is an…" (numbered section paragraphs (9.1.3, 9.1.4), not a list)
+- Flattened list on PDF 45: "10.2.2. Suppletive questions. A suppletive question is a sen-tence whose subject is an interrogative…" (numbered section paragraphs (10.2.2, 10.3), not a list)
 
 ### 5. One-item Lists Turned Into Paragraphs by Rule (15)
 
@@ -215,13 +217,14 @@ veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 
 ### 8. Deferred by the AI
 
-- **Poor OCR text layer**: The file is an OCR'd scan (OCRmyPDF/Tesseract) with a high suspect-token rate (about 393 per 1000). The worst pages are PDF 47, 44, 42, 37, 34, 31, 21 and 18. Running heads appear as garbled fragments such as '#hapter'. repeated_lines shows only first words of body lines, not real running heads, so no artifact rules were written. A person should check the text layer and decide whether to re-OCR. [PDF 18, PDF 21, PDF 31, PDF 34, PDF 37, PDF 42, PDF 44, PDF 47]
-- **Reading order and heading placement on chapter opener pages**: page_map shows chapter labels and titles split across pages (for example CHAPTER 3 on PDF 15 and PARTS OF SPEECH on PDF 17; CHAPTER 4 on PDF 18 and SENTENCE CLASSIFICATION on PDF 19; similar for chapters 6 to 11). The digest has no reading_order data, so I could not confirm the order or decide a move_section. A person should check that each chapter label and title reads in sequence. Some chapter headings (PDF 8, 9) carry no chapter number. [PDF 15, PDF 17, PDF 18, PDF 19, PDF 31, PDF 33, PDF 34, PDF 35, PDF 42, PDF 43, PDF 44, PDF 45, PDF 47, PDF 49]
-- **Contents list structure and page numbers**: The contents on PDF 6 is a list with links, kept as is. Its printed page numbers (Preface vi, Introduction 1 and so on) do not match the PDF page numbers. A person should check that the link targets are right. [PDF 6]
-- **Language tagging of Ilokano example words**: The book prints Ilokano examples in Latin script mixed with English. Tagging them (lang 'ilo') is beyond what this work order can do reliably. A reviewer should decide whether to tag them. [PDF 10, PDF 49]
-- **Example sentence lists and (a)/(b) definition lists**: Lists of numbered examples such as '(4) ...' and lettered definitions were kept as real lists. Some items wrap across pages and some lists are split in two, so a person should check the grouping. [PDF 14, PDF 49]
+- **Text layer quality**: The text layer is OCR output with a high suspect-token rate (about 393 per 1000). Running text and diacritics (Ilokano accents) are likely misread. The text cannot be changed here, and no OCR word sheets were supplied. A person should check the text layer, especially on the worst pages. [PDF 18, PDF 21, PDF 31, PDF 34, PDF 37, PDF 42, PDF 44, PDF 47]
+- **Contents page (PDF 6)**: The entries are already tagged L/LI/Lbl/LBody and carry links. They were not converted to TOC/TOCI. A person should decide whether to convert them. The printed page numbers in the contents (for example Introduction 1, Phonology 2) do not match the PDF page numbers. [PDF 6]
+- **Running heads and page numbers**: The repeated_lines entries are OCR garbage from the first words of lines, not real running heads. No pagination text was identified, so no artifact rules were made. [PDF 10, PDF 46]
+- **Chapter heading layout on PDF 15–19, 21 and 31–35**: The page map shows the 'CHAPTER n' label and the chapter title on separate PDF pages (for example PDF 15 and PDF 17). The digest has a single heading element reading 'CHAPTER 3 PARTS OF SPEECH', so the OCR reading order may be wrong. A person should check the reading order. [PDF 15, PDF 16, PDF 17, PDF 18, PDF 19, PDF 31, PDF 33, PDF 34, PDF 35, PDF 42, PDF 43, PDF 44, PDF 45]
+- **Remaining lists (numbered examples and (a)/(b) enumerations)**: Left as lists. A person should check that the OCR-split items, which sometimes continue on the next page, are grouped correctly. [PDF 14, PDF 15, PDF 16, PDF 19, PDF 22, PDF 23, PDF 24, PDF 25, PDF 27, PDF 28, PDF 29, PDF 31, PDF 32, PDF 34, PDF 35, PDF 36, PDF 38, PDF 39, PDF 40, PDF 41, PDF 43, PDF 44, PDF 45, PDF 46, PDF 47, PDF 48, PDF 49]
+- **Consonant and vowel charts (Chart 1 and the vowel chart)**: These are not tagged as tables. They appear as loose text on PDF 9 and PDF 11. A person should decide whether to build tables. [PDF 9, PDF 11]
 
-Reviewer note from the AI: PDF 3 holds the single H1 (the book title). All other former H1 elements (contents, preface, chapters) became H2, and the copyright line on PDF 5 became P. The book has no section-level headings in the tags, so there is no H3 or below. The cover on PDF 1 is a real figure and was kept with alt text, not artifacted. The three logos on PDF 4 got alt text. Section paragraphs numbered like 2.0 or 3.1 that had been tagged as lists were flattened to paragraphs.
+Reviewer note from the AI: The book is an OCR'd scan with a cover Figure on PDF 1. Chapter and front-matter headings were all H1 and are now H2. The book title (obj 137 0) stays the only H1. The copyright line on PDF 5 was a false heading and is now P. Section-numbered paragraphs that had been tagged as lists were flattened to paragraphs. Example lists were kept. Single-item lists are flattened by the executor itself.
 
 ## What Was Changed
 

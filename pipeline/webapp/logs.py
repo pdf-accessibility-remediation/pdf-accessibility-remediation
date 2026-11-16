@@ -36,24 +36,44 @@ def steps(text):
             else: out.append({'label': m.group(1), 'state': 'done', 'time': m.group(2)})
     return out
 
-PLAIN = {'apply': 'applying the reviewed decisions', 'verify': 'checking the result', 'report': 'writing the report',
+PLAIN = {'apply': 'applying the decisions',   # also a run with no review (review 25, Note 1)
+         'verify': 'checking the result', 'report': 'writing the report',
          'intake': 'reading and tagging the PDF', 'audit': 'auditing the PDF', 'cost estimate': 'estimating the cost',
-         'reuse saved reply': 'reading the saved reply'}
-NUMBERED = re.compile(r'^(\d+)/(\d+) ')
+         'reuse saved reply': 'reading the saved reply',
+         # every other stage label run_api.sh and review/sessions.py write (Patrick's dakine test, 2026-11-14)
+         'OCR language check': 'checking the OCR language', 'veraPDF on the original': 'checking the original with veraPDF',
+         'no AI call': 'no AI request (a person decides)', 'page readings via OpenRouter': 'sending to the AI: Hawaiian page readings',
+         'language tags via OpenRouter': 'sending to the AI: language tags', 'review': 'preparing the review page',
+         "the previous attempt's reply was complete but could not be read": 'reading the saved reply again',
+         'the work order was reviewed by a person': 'starting from the reviewed decisions',
+         'every AI request of the previous attempt finished (a later step failed)': 'reusing the finished AI answers',
+         "the previous attempt's reply was complete (a later step failed)": 'reusing the finished AI answer',
+         'the previous attempt was stopped while its figure requests were being sent': 'resuming the figure requests',
+         'previous attempt logged': 'starting a new AI request after the previous one'}
+SAVED_LANG = re.compile(r'^language tags: (?:saved decisions|this run\'s own decisions)')       # a replay: no request
+FIGURES = re.compile(r'^figure request (\d+)(?: of (\d+))?$')                                 # pass 2 is figure request 1
+NUMBERED = re.compile(r'^(\d+)[a-z]?/(\d+) ')               # 3/5, and 3b/5 or 3c/5 (the optional steps)
 
 AI_STEP = re.compile(r'^(\S+) via OpenRouter$')
 
 def plain(label):
-    """A step's label in plain words: "apply (no model)" → "applying the reviewed decisions"; others without their notes
+    """A step's label in plain words: "apply (no model)" → "applying the decisions"; others without their notes
     (a step run_api.sh did not run again reads as the step itself: P13). The AI step names the model the run itself used
     (run_api.sh writes it in the label) by its display name: "3/5 anthropic/claude-sonnet-5.5 via OpenRouter" →
     "sending to the AI (Claude Sonnet 5.5)" (V2, Patrick 2026-11-07)."""
-    core = re.sub(r'\s*\((?:no model|local, no model|no cost)\)', '', NUMBERED.sub('', label)).split(':')[0].strip()
+    bare = re.sub(r'\s*\((?:no model|local, no model|no cost)\)', '', NUMBERED.sub('', label)).strip()
+    if SAVED_LANG.match(bare): return 'using the saved language tags (no AI request)'   # review 25, Low 1
+    core = bare.split(':')[0].strip()
+    f = FIGURES.match(core)
+    if f:                                              # "figure request 3 of 4" (passes) → "request 2 of 3" (figure requests)
+        n = int(f.group(1)) - 1
+        return f'sending to the AI: figures, request {n} of {int(f.group(2)) - 1}' if f.group(2) else f'sending to the AI: figures, request {n}'
     m = AI_STEP.match(core)
     if m:
         from .runs import model_words
         return f'sending to the AI ({model_words(m.group(1))})'
-    return PLAIN.get(core, core)                                  # P13: a reused step reads as the step itself
+    if core in PLAIN: return PLAIN[core]
+    return PLAIN.get(re.sub(r'\s*\(.*\)\s*$', '', core), core)       # P13: a reused step reads as the step itself; a note in parentheses left out
 
 STEPS_OF = {'apply': 3, 'review': 3}                    # a re-apply's steps: apply, verify, report (review/sessions.py reapply)
 

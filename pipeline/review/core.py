@@ -21,11 +21,11 @@ The formats a front end needs (also in docs/review-page.md):
                  late: [{i, first, last, after, hidden_by?, hidden_by_rules?}],
                  flat, detail, page_jumps}
 """
-import os, re, sys, copy, json, time, shutil, datetime, tempfile, subprocess, threading, unicodedata
+import os, re, sys, copy, json, time, shutil, datetime, tempfile, subprocess, threading, unicodedata, collections
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
-from lib import workorder_check, readorder, gaptext  # noqa: E402
+from lib import workorder_check, readorder, gaptext, langtag, langreq, keptscans  # noqa: E402
 
 LEVELS = sorted(workorder_check.ALLOWED - {'Figure'}, key=lambda t: (not t.startswith('H'), t))
 HEADING = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6'}
@@ -208,12 +208,33 @@ def build_items(wo, digest, order=None, ro=None):
                 for u in digest.get('unowned_content') or [] if ps and ps[0] <= u.get('page', 0) <= ps[1] and u.get('orphan_runs')]
         add(f'adopt_orphans:{i}', 'adopt_orphans', 'Reading order', ['adopt_orphans', i], r, (r or {}).get('label') or 'Orphan text',
             page=ps[0] if ps else None, pages=ps, orphans=runs[:6])
+    lp = wo.get('language_parts') or {}
+    if lp.get('version') == 2:                                   # #118: one row per word form a person decides (review 06, stage D)
+        pages_of = collections.defaultdict(set)
+        for r in lp.get('parts') or []:
+            if isinstance(r, list) and len(r) == 5: pages_of[r[4]].add(r[0])
+        rows = set(langreq.to_decide(lp.get('forms')))            # Latin-script names and English words left untagged: listed, not decided,
+        for i, f in enumerate(lp.get('forms') or []):              # unless the AI tagged nothing at all (then every form is a row)
+            if i not in rows: continue
+            ps = sorted(pages_of.get(i) or [])
+            han_only = 'cjk:han_only' in (f.get('class') or [])
+            bulk = bool(f.get('tag') and f.get('confidence') == 'high' and not han_only and f.get('group') != 'existing' and f.get('why') != 'varies')
+            rd = f.get('reading') if isinstance(f.get('reading'), dict) else None
+            reading_bulk = reading_match(f, rd) if han_only else False      # #124: the printed reading names the row's language
+            add(f'language:{f.get("key") or i}', 'language_parts', 'Languages', ['language_parts', 'forms', i], f.get('lang') if f.get('tag') else None,
+                f.get('form') or '', page=ps[0] if ps else None, pages=[ps[0], ps[-1]] if ps else None, edit='lang', field='lang',
+                lang_name=langtag.name(f.get('lang')) if f.get('tag') and f.get('lang') else None, group=f.get('group'), why=f.get('why'),
+                evidence=f.get('evidence'), current=f.get('current'), carried=f.get('carried'), places=f.get('places'), page_list=ps[:30],
+                form_key=f.get('key'), bulk=bulk or None, needs_person=bool(f.get('person')) or None, confidence=f.get('confidence'),
+                guess=f.get('lang') if not f.get('tag') and f.get('lang') else None,   # an untagged answer's language (review 14, 2)
+                rule=f.get('rule'), reading=rd, reading_bulk=reading_bulk or None)     # #123 (decided by the printed reading), #124
     if wo.get('notes_for_reviewer'):
         refs = sorted({int(m.group(1)) for m in PAGE_REF.finditer(wo['notes_for_reviewer']) if 1 <= int(m.group(1)) <= N})
         add('notes_for_reviewer', 'notes_for_reviewer', 'Deferred by the AI', ['notes_for_reviewer'], wo['notes_for_reviewer'],
             'Note to the reviewer from the AI', page=refs[0] if refs else None, page_refs=refs)
     listed = {'retype', 'rolemap', 'actual_text', 'merges', 'document', 'alt', 'page_figures', 'tables', 'flatten', 'keep_lists',
               'artifacts', 'ocr_words', 'page_readings', 'deferrals', 'notes_for_reviewer', 'schema', *READING} | workorder_check.META
+    if lp.get('version') == 2: listed.add('language_parts')
     if figures_card(ro): listed.add('fix_figure_order')            # the Figures Moved card is that decision
     for k, v in wo.items():
         if k not in listed:
@@ -303,6 +324,15 @@ def reading_order_for(audit_dir, digest, wo):
     ro['dryrun'] = {k: v for k, v in dr.items() if k not in ('key', 'made')} if isinstance(dr, dict) else dr
     return ro
 
+TREE_STALE_MARK = 'TREE INDEX STALE:'     # apply.py's check mode (APPLY_TREE_CHECK=1) prints it when its kept tag-tree index is wrong
+class TreeIndexStale(RuntimeError):
+    """apply.py stopped in its check mode (#93 Part 3, C2). Not an OSError, ValueError or SubprocessError, so dry_run() and
+    the draft don't turn it into a soft "the trial run stopped": in tests it fails loudly (review 12 M3). One place does
+    catch it: the draft's build thread in review/server.py (its `except Exception`, about line 427) reports a stop there as a
+    failed draft ("The draft could not be built (TreeIndexStale)."). The stop is still written to APPLY_TREE_STALE_LOG, and
+    tests/conftest.py fails the test and, at the end, the whole session on any line in it: that log is the backstop
+    (review 14 L3)."""
+
 def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
     """apply.py on pdf with the work order wo (a dict, written beside out), into out. Returns (exit code, out's log, or
     None when it wrote none). low: at a lower priority (nice 10, where there is nice), so the review page stays quick
@@ -314,17 +344,20 @@ def run_apply(pdf, wo, out, timeout=1800, env=None, low=False, on_start=None):
     if low and shutil.which('nice'): cmd = ['nice', '-n', '10'] + cmd
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
     if on_start: on_start(p)
-    try: p.communicate(timeout=timeout)
+    try: so, se = p.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         p.kill(); p.communicate(); raise
+    if (env if env is not None else os.environ).get('APPLY_TREE_CHECK') == '1' and TREE_STALE_MARK in (so or '') + (se or ''):
+        raise TreeIndexStale(next(l for l in ((so or '') + '\n' + (se or '')).splitlines() if TREE_STALE_MARK in l))
     return p.returncode, load(out + '.log.json')
 
-DRYRUN_ENV = ('APPLY_DRAFT', 'ALLOW_PDF20')            # every variable apply.py and lib/ read (a test keeps this list whole)
+TREE_CHECK_ENV = ('APPLY_TREE_CHECK', 'APPLY_TREE_STALE_LOG', 'APPLY_TEST_LOSE_ENTRY', 'APPLY_FAIL_LANG_PAGE')   # set by the tests only, never in production (#93 C2; #118 review 06 M6, review 08 L1)
+DRYRUN_ENV = ('APPLY_DRAFT', 'ALLOW_PDF20') + TREE_CHECK_ENV            # every variable apply.py and lib/ read (a test keeps this list whole)
 DRYRUN_PKGS = ('pikepdf', 'pdfplumber', 'pypdfium2', 'pillow', 'fonttools')   # as apply.py's _versions()
 
 def dryrun_code():
-    """The files whose code makes the trial run's result: apply.py, every lib/*.py, and this module's dry_run and
-    section_moves. More than strictly needed, on purpose: too much costs a trial run, too little a wrong preview."""
+    """The files whose code makes the trial run's result: apply.py, every lib/*.py, and this module's dry_run,
+    section_moves, trial_order and trial_result. More than strictly needed, on purpose: too much costs a trial run, too little a wrong preview."""
     return [os.path.join(HERE, 'apply.py')] + sorted(os.path.join(HERE, 'lib', n) for n in os.listdir(os.path.join(HERE, 'lib')) if n.endswith('.py'))
 
 def dryrun_key(pdf, wo):
@@ -335,7 +368,7 @@ def dryrun_key(pdf, wo):
     h = hashlib.sha256()
     for f in dryrun_code():
         h.update(os.path.basename(f).encode() + b'\0'); h.update(open(f, 'rb').read()); h.update(b'\0')
-    h.update(inspect.getsource(dry_run).encode()); h.update(inspect.getsource(section_moves).encode())
+    for f in (dry_run, section_moves, trial_order, trial_result): h.update(inspect.getsource(f).encode())   # #93: the result's builders
     vs = {'python': sys.version.split()[0], 'executable': sys.executable}
     for pkg in DRYRUN_PKGS:
         try: vs[pkg] = version(pkg)
@@ -359,20 +392,20 @@ def dry_run(R, pdf):
     there is none). No model, nothing kept but the result: {figure_moves: [{page, label, was_after_page, now_after_page}],
     section_moves, section_move, seconds, key, made}, or {figure_moves: None, why}.
     The result saved in R/_audit/dryrun.json is returned as it is when its key (dryrun_key) still matches: nothing it
-    depends on has changed. A result that failed or was skipped has no key, so it is never reused (issue #52).
+    depends on has changed. It is a trial run's, or (#93) the run's own apply's, kept by keep_trial(). A result that failed or was skipped has no key, so it is never reused (issue #52).
     REVIEW_DRYRUN=off skips it; REVIEW_DRYRUN=fresh runs it even when a saved result matches."""
     if os.environ.get('REVIEW_DRYRUN') == 'off': return {'figure_moves': None, 'why': 'skipped: REVIEW_DRYRUN=off'}
     t, tmp = time.time(), None
     try:
         ai = load(os.path.join(R, 'workorder.ai.json'))
-        wo = {k: v for k, v in (ai or {}).items() if not (k == 'fix_figure_order' and v is False)}
+        wo = trial_order(ai)
         try: key = dryrun_key(pdf, wo)
         except OSError: key = None                         # e.g. the PDF is gone: run as before (apply.py says why), keep no key
         try: old = load(os.path.join(R, '_audit', 'dryrun.json'))
         except ValueError: old = None                      # a cut-short or hand-edited file: run it again
         if (key and os.environ.get('REVIEW_DRYRUN') != 'fresh' and isinstance(old, dict) and old.get('key') == key
                 and isinstance(old.get('figure_moves'), list)):
-            print(f'  figure moves and section moves: the trial run of apply.py made {old.get("made") or "earlier"} is reused '
+            print(f'  figure moves and section moves: the apply.py result made {old.get("made") or "earlier"} is reused '
                   '(nothing it depends on has changed)', flush=True)
             return old
         print('  working out the figure moves and the section move: a trial run of apply.py on a copy (no model)…', flush=True)
@@ -380,16 +413,70 @@ def dry_run(R, pdf):
         code, log = run_apply(pdf, wo, os.path.join(tmp, 'out.pdf'))
         if code != 0 or log is None:
             return {'figure_moves': None, 'why': f'the trial run of apply.py stopped (exit {code})'}
-        sm = section_moves(log)
-        res = {'figure_moves': log.get('figure_moves') or [], 'seconds': round(time.time() - t, 1),
-               'section_moves': sm, 'section_move': sm[0] if sm else None,
-               **({'key': key, 'made': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} if key else {})}
+        res = trial_result(log, round(time.time() - t, 1), key)
         print(f'  figure moves: {len(res["figure_moves"])} ({res["seconds"]}s)', flush=True)
         return res
     except (OSError, ValueError, subprocess.SubprocessError) as e:
         return {'figure_moves': None, 'why': f'the trial run of apply.py could not run ({type(e).__name__})'}
     finally:
         if tmp: shutil.rmtree(tmp, ignore_errors=True)
+
+def trial_order(ai):
+    """The order the trial run gives apply.py: the AI's own, with the figure step on even when the AI turned it off (the
+    card shows what turning it on or off changes). Its source is part of dryrun_key()."""
+    return {k: v for k, v in (ai or {}).items() if not (k == 'fix_figure_order' and v is False)}
+
+def trial_result(log, seconds, key):
+    """The saved result of a trial run, from an apply.py log: one builder for dry_run() and keep_trial() (review 02 M2), so a
+    kept result has exactly a trial run's form. Its source is part of dryrun_key()."""
+    sm = section_moves(log)
+    return {'figure_moves': log.get('figure_moves') or [], 'seconds': seconds, 'section_moves': sm, 'section_move': sm[0] if sm else None,
+            **({'key': key, 'made': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')} if key else {})}
+
+def save_key(pdf, wo_path, out):
+    """run_api.sh, just before its apply (#93): the trial-run key of the order it is about to apply, for keep_trial() to
+    check after the apply. Never fails the run: any error prints one plain line, and nothing is kept for that run."""
+    try:
+        if os.path.exists(out): os.remove(out)
+        save(out, dryrun_key(pdf, trial_order(load(wo_path))))
+    except Exception as e:
+        print(f'note: the figure moves of this apply will not be kept for a later review ({type(e).__name__})', flush=True)
+
+KEEP_WORDS = 'figure moves and section moves'
+
+def keep_trial(R, A, pdf_name, inp, from_record=False):
+    """#93 Part 2: a run that applied the AI's own order keeps its apply's figure and section moves as the trial run's
+    result (A/dryrun.json, in dry_run()'s form, under the key run_api.sh worked out before the apply), so the first
+    "Review Again" reuses them through dry_run()'s check instead of running apply.py again. The apply and the trial run are
+    the same apply.py on the same PDF and order, so they find the same moves. Nothing is kept, and the line says why, when
+    any of these holds: A is not the run's own _audit (a re-apply's report runs with reviews/_audit: review 02 M3); a
+    reviewed run or a re-apply (another order was applied); the AI turned the figure step off (the key leaves that out on
+    purpose: the trial run has it on); no key from before the apply, or no apply log; anything the key covers changed
+    during the run; the order Review Again will rebuild from the record is not the one applied. Returns the job log's line
+    (never "refused: " or "done: ", which the app reads as a job's outcome)."""
+    no = lambda why: f'{KEEP_WORDS} not kept for a later review: {why}'
+    if os.path.abspath(A) != os.path.abspath(os.path.join(R, '_audit')): return no('not the run\'s own audit folder')
+    if from_record or os.path.exists(os.path.join(R, 'review_session.json')): return no('a re-apply')
+    if os.path.exists(os.path.join(R, 'review.json')): return no('the order applied was reviewed')
+    kp = os.path.join(A, 'dryrun.key.json')
+    try:
+        before, wo, log = load(kp), load(os.path.join(R, 'workorder.json')), load(os.path.join(R, pdf_name + '.log.json'))
+        rec = load(os.path.join(R, 'record.json'))
+    except ValueError: return no('a file could not be read')
+    if not isinstance(before, dict): return no('no key from before the apply')
+    if not isinstance(wo, dict) or not isinstance(log, dict) or not isinstance(rec, dict): return no('no work order, apply log or record')
+    if wo.get('fix_figure_order') is False or log.get('figure_order_off'): return no('the AI turned the figure step off for this book')
+    if log.get('figure_moves') is not None and not isinstance(log.get('figure_moves'), list): return no('the apply log has no figure moves')
+    key = dryrun_key(inp, trial_order(wo))
+    if key != before: return no('something the trial run depends on changed during the run')
+    from review import sessions as RS
+    ai = RS.ai_order(rec)
+    if ai is None or sha_json(trial_order(ai)) != key['workorder_sha256']: return no('the record\'s order is not the one applied')
+    t = load(os.path.join(R, 'timing.json')) or {}
+    res = trial_result(log, t.get('4/5 apply (no model)'), key)
+    save(os.path.join(A, 'dryrun.json'), res)
+    n, m = len(res['figure_moves']), len(res['section_moves'])
+    return f'{KEEP_WORDS} kept for a later review ({n} figure move{"" if n == 1 else "s"}, {m} section move{"" if m == 1 else "s"})'
 
 def section_moves(log):
     """What became of each section move in an apply.py log, in order: [{made: where it went} or {refused: why}]."""
@@ -833,6 +920,120 @@ def earlier_review(he_raw):
     return {'reviewed_by': wr.get('reviewer') or None, 'reviewed_on': wr.get('date') or None,
             'items': sorted(out, key=lambda x: (str(x['kind']), x['page'] if isinstance(x['page'], int) else 10 ** 9))}
 
+LANG_KIND = 'Languages'
+LANG_UNTAGGED, LANG_EXISTING = 'Left Untagged by the AI', 'Existing Language Tags'
+LANG_PAGE = 100                                    # rows the review page asks for at a time
+
+# ---- #124: group approval. Two buttons per language fold: "Approve All Shown" (`bulk`: one language, high confidence,
+#      not Chinese characters alone, not a publisher's tag, not tagged differently in different places) and "Approve
+#      Characters with Matching Readings" (`reading_bulk`). The page marks each decision it makes with its button
+#      (`bulk`: 'all_shown' or 'readings'; true in a draft saved before #124 is 'all_shown'); the server counts it only
+#      when the row qualifies for that button, so no group approval reaches a row the rules leave out.
+GROUP_BUTTONS = ('all_shown', 'readings')
+
+def reading_match(f, rd):
+    """#124: a row written only in Chinese characters qualifies for "Approve Characters with Matching Readings" when its
+    tag (high or medium confidence, one language, never a publisher's tag) has the language the reading printed beside
+    the characters names (lib/hanreading.py: computed from the text, never from the AI's evidence; bibliography entries
+    are not evidence), and no reading names another language."""
+    if not (isinstance(rd, dict) and f.get('tag') and f.get('lang') and f.get('confidence') in ('high', 'medium')): return False
+    if f.get('group') == 'existing' or f.get('current') or f.get('why') == 'varies': return False
+    if not rd.get('lang') or list(rd.get('langs') or []) != [rd['lang']]: return False          # none, or mixed
+    from lib import scripts
+    return scripts.primary(rd['lang']) == scripts.primary(f['lang'])
+
+def group_button(d):
+    """The group-approval button a decision came from, or None (a single decision)."""
+    b = (d or {}).get('bulk')
+    return b if b in GROUP_BUTTONS else 'all_shown' if b is True else None
+
+def group_ok(it, d):
+    """True when the decision is not a group approval, or the row qualifies for the button it came from."""
+    b = group_button(d)
+    if b is None: return True
+    c = it.get('context') or {}
+    return bool(c.get('reading_bulk')) if b == 'readings' else bool(c.get('bulk'))
+
+def group_evidence(f, button):
+    """What a group approval rested on, as recorded on its form (#124): the reading printed beside the characters, or the
+    AI's answer at high confidence."""
+    if button == 'readings':
+        rd = f.get('reading') or {}
+        return f'the reading printed beside it: {rd.get("text") or ""}'.strip()[:160]
+    return ('the AI at high confidence' + (f': {f["evidence"]}' if f.get('evidence') else ''))[:160]
+
+def lang_group(it):
+    """The fold a language row sits in on the review page: its language's name, or one of the two folds for rows the AI
+    left untagged and for the PDF's own tags."""
+    c = it.get('context') or {}
+    if c.get('current') is not None or c.get('group') == 'existing': return LANG_EXISTING
+    if it.get('ai') is None: return LANG_UNTAGGED
+    return langtag.name(it['ai']) or 'Another Language'
+
+def lang_written(it):
+    """The value a row writes into the PDF as it stands (review 12, C; Patrick, 2026-11-13: shown in the "Languages" section
+    only): the AI's tag as checked (langtag.valid_part keeps it in its shortest form); for the PDF's own tag kept, what
+    apply.py leaves: on an element, fix_lang_values's tidied value (langtag.kept_value, worked out on the word form's text),
+    in the marks alone, the value as written; both values when its places differ. None when nothing is written."""
+    c = it.get('context') or {}; cur = c.get('current')
+    if not cur: return it.get('ai')
+    el, raw = langtag.kept_value(cur, it.get('label') or ''), str(cur)
+    vals = {'marks': [raw], 'mixed': [el, raw]}.get(c.get('carried'), [el])       # no `carried` (made before it): on an element
+    return ', '.join(dict.fromkeys(vals))
+
+def language_summary(items):
+    """The Languages section's folds, for the page's first load (the rows themselves come by language_rows). `code`: the
+    one value the fold's rows write, when they all write the same (review 12, C), else None. `reading_ids`: the fold's
+    rows that "Approve Characters with Matching Readings" may approve (#124), whether their rows are loaded or not."""
+    g = collections.OrderedDict(); codes = collections.defaultdict(set)
+    for it in items:
+        if it.get('kind') != LANG_KIND: continue
+        k = lang_group(it); x = g.setdefault(k, {'group': k, 'count': 0, 'bulk': 0, 'places': 0, 'reading_ids': []})
+        c = it.get('context') or {}
+        x['count'] += 1; x['bulk'] += bool(c.get('bulk')); x['places'] += c.get('places') or 0
+        if c.get('reading_bulk'): x['reading_ids'].append(it['id'])      # #124: every qualifying row of the fold, loaded or not
+        codes[k].add(lang_written(it))
+    for k, x in g.items(): x['code'] = next(iter(codes[k])) if len(codes[k]) == 1 and k != LANG_UNTAGGED else None
+    order = sorted(g.values(), key=lambda x: (x['group'] in (LANG_UNTAGGED, LANG_EXISTING), x['group']))
+    names = sorted({(code, name) for code, name in langtag.NAMES.items() if code != 'qaa'}, key=lambda x: x[1])
+    return {'groups': order, 'total': sum(x['count'] for x in order), 'names': [{'code': c, 'name': n} for c, n in names]}
+
+def language_contexts(R):
+    """{form key: the words around its first place}: the language step's own file while the run waits for review, else the
+    copy report.py keeps beside the digest. {} when neither is there (the rows then show no sentence)."""
+    for p in (os.path.join(R, 'language_run.json'), os.path.join(R, 'reviews', '_audit', 'language_contexts.json')):
+        x = load(p)
+        if isinstance(x, dict): return x.get('contexts') if p.endswith('language_run.json') else x
+    return {}
+
+def language_rows(items, group, start=0, n=LANG_PAGE, contexts=None):
+    """One page of a fold's rows: what the review page shows per word form."""
+    rows = [it for it in items if it.get('kind') == LANG_KIND and lang_group(it) == group]
+    out = []
+    for it in rows[start:start + n]:
+        c = it.get('context') or {}
+        rd = c.get('reading') if isinstance(c.get('reading'), dict) else None
+        out.append({'id': it['id'], 'form': it['label'], 'ai': it['ai'], 'lang_name': c.get('lang_name'), 'confidence': c.get('confidence'),
+                    'evidence': c.get('evidence'), 'why': c.get('why'), 'current': c.get('current'), 'places': c.get('places'),
+                    'pages': c.get('page_list'), 'snippet': c.get('snippet') or (contexts or {}).get(c.get('form_key')),
+                    'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person')), 'written': lang_written(it), 'guess': c.get('guess'), 'guess_name': langtag.name(c['guess']) if c.get('guess') else None,
+                    'rule': c.get('rule'), 'reading_bulk': bool(c.get('reading_bulk')),
+                    **({'reading': {'text': rd.get('text'), 'lang': rd.get('lang'), 'langs': rd.get('langs') or [],
+                                    'names': [langtag.name(x) or x for x in rd.get('langs') or []], 'with': rd.get('with'), 'places': rd.get('places')}} if rd else {}),
+                    **current_words(c.get('current'))})
+    return {'group': group, 'start': start, 'total': len(rows), 'rows': out}
+
+def current_words(cur):
+    """A publisher's /Lang value as staff read it (review 08, L4, M4): the language's name; the value as written too when it
+    is a name rather than a code ("Hawaii"); a value that is neither is marked so. {} when there is none."""
+    if not cur: return {}
+    from lib import langtag
+    code = langtag.norm(cur)
+    if code: return {'current_name': langtag.name(langtag.shortest(code)) or langtag.name(code) or cur, 'current_written': None}
+    code = langtag.from_name(cur)
+    if code: return {'current_name': langtag.name(code) or code, 'current_written': str(cur).strip()}
+    return {'current_name': None, 'current_written': str(cur).strip()}
+
 def prepare(R, pdf):
     """Write review_items.json, and render the pages of the first group so the page opens with them. Runs when run_api.sh
     stops for review. Every other page image is rendered by the server as the reviewer scrolls to it."""
@@ -872,6 +1073,10 @@ def prepare(R, pdf):
     return data
 
 # ------------------------------------------------------------------ decisions
+def _ws(x):
+    """Text with its white space collapsed (review 11 L3): an added space or line break leaves the AI's alt text the AI's."""
+    return ' '.join(x.split()) if isinstance(x, str) else x
+
 def apply_decisions(ai_wo, items, decisions):
     """A copy of the AI's work order with a person's decisions applied. Unreviewed and approved items stay as the AI wrote them."""
     wo = copy.deepcopy(ai_wo)
@@ -885,6 +1090,15 @@ def apply_decisions(ai_wo, items, decisions):
                 else: wo['fix_figure_order'] = False
             continue
         if it['key'] == 'fix_figure_order' and st == 'rejected': wo['fix_figure_order'] = False; continue   # on unless false
+        if it['key'] == 'language_parts':                # a form's tag, for all its places at once: never removed from the list
+            f = wo['language_parts']['forms'][it['loc'][2]]
+            if not group_ok(it, d): continue              # #124: a group approval the row doesn't qualify for decides nothing
+            if st == 'approved' and group_button(d) and f.get('tag'):
+                f['group_approval'] = {'button': group_button(d), 'lang': f.get('lang'), 'evidence': group_evidence(f, group_button(d))}
+            if st == 'rejected': f['tag'] = False; f['decided'] = 'remove' if f.get('current') else 'untagged'   # the PDF's own tag: removed
+            elif st == 'changed' and d.get('value'): f['lang'] = str(d['value']).strip(); f['tag'] = True; f['decided'] = 'changed'
+            elif st in ('approved', 'changed'): f['decided'] = 'tagged' if f.get('tag') else 'kept' if f.get('current') else 'untagged'   # "Keep the Tag" (review 08, M5)
+            continue
         if it['loc'] is None: continue                   # a reading-order finding: not in the work order
         if st == 'rejected' and it['key'] not in SEEN_ONLY: drop.append(it['loc'])
         elif st == 'changed' and it['edit']:
@@ -903,7 +1117,11 @@ def apply_decisions(ai_wo, items, decisions):
                     except (TypeError, ValueError): return x
                 ps = v.get('pages') if isinstance(v.get('pages'), list) else parent[last].get('pages')
                 parent[last] = {**parent[last], 'pages': [num(x) for x in ps], 'before_page': num(v.get('before_page', parent[last].get('before_page')))}
-            elif it['field']: parent[last][it['field']] = v
+            elif it['field']:
+                parent[last][it['field']] = v
+                if it['key'] == 'alt' and it['field'] == 'alt' and isinstance(parent[last], dict) and _ws(v) != _ws(it.get('ai')):   # review 11 L3
+                    parent[last]['changed_by'] = 'person'   # review 08, decision 2: a person's alt text; apply.py's alt-text guard
+                                                            #   (lib/keptscans.py) checks the AI's, never a person's
             else: parent[last] = v
     for loc in sorted(drop, key=lambda l: [str(x) if not isinstance(x, int) else f'{x:09d}' for x in l], reverse=True):
         parent = wo
@@ -961,7 +1179,8 @@ def add_entries(wo, additions, adds, reviewer='', mark=False):
     return refused
 
 def unreviewed(items, decisions):
-    return [it['id'] for it in items if not (decisions.get(it['id']) or {}).get('status')]
+    return [it['id'] for it in items if not (decisions.get(it['id']) or {}).get('status')
+            or (it.get('kind') == LANG_KIND and not group_ok(it, decisions.get(it['id'])))]     # #124: a group approval it doesn't qualify for
 
 # ------------------------------------------------------------------ gaps
 def _level(style, wo, styles):
@@ -992,14 +1211,16 @@ def gaps(wo, digest):
     deco = {it.get('obj') for it in (wo.get('artifacts') or {}).get('elements') or []}
     bare = [o for o, f in figs.items() if not str(f.get('alt') or '').strip() and o not in alt and o not in deco]
     if bare:
+        # pages, not object numbers (round 24): a person finds a figure by its page; the objects stay in 'objs' for the add form
+        pages = sorted({figs[o].get('page') for o in bare if isinstance(figs[o].get('page'), int)})
+        on = (', on PDF ' + ', '.join(map(str, pages[:12])) + (f' and {len(pages) - 12} more pages' if len(pages) > 12 else '')) if pages else ''
         out.append({'id': 'figures_without_alt', 'what': f'{len(bare)} figure{"s" if len(bare) != 1 else ""} with no alt text '
-                    'and not marked as decoration: ' + ', '.join(f'{o} (PDF p. {figs[o].get("page")})' for o in bare[:12])
-                    + (f' and {len(bare) - 12} more' if len(bare) > 12 else ''), 'add': {'kind': 'alt', 'target': bare[0]}, 'objs': bare})
+                    'and not marked as decoration' + on, 'add': {'kind': 'alt', 'target': bare[0]}, 'objs': bare})
     done = {it.get('page') for it in wo.get('page_figures') or [] if str(it.get('alt') or '').strip()}
     left = [p for p in pfigs if p not in done]
     if left:
         out.append({'id': 'page_figures_without_alt', 'what': f'{len(left)} whole-page figure{"s" if len(left) != 1 else ""} '
-                    'with no alt text: PDF p. ' + ', '.join(map(str, left[:12])) + (f' and {len(left) - 12} more' if len(left) > 12 else ''),
+                    'with no alt text, on PDF ' + ', '.join(map(str, left[:12])) + (f' and {len(left) - 12} more pages' if len(left) > 12 else ''),
                     'add': {'kind': 'page_figures', 'target': left[0]}})
     return out
 
@@ -1011,11 +1232,13 @@ def _ident(x):
     return json.dumps(x, ensure_ascii=False, sort_keys=True)
 
 def diff(ai, final, where=''):
-    """What changed from the AI's order to the reviewed one: [{where, id, change: changed|removed|added, ai, person}]."""
+    """What changed from the AI's order to the reviewed one: [{where, id, change: changed|removed|added, ai, person}]. The
+    language step's word forms are left out: the "Languages" section's decisions are counted in language_review, and a
+    form's decision would otherwise count as one removed and one added (review 12, M2)."""
     out = []
     if isinstance(ai, dict) and isinstance(final, dict):
         for k in list(ai) + [k for k in final if k not in ai]:
-            if not where and k in workorder_check.META: continue
+            if not where and (k in workorder_check.META or k == 'language_parts'): continue
             w = f'{where}.{k}' if where else k
             if k not in final: out.append({'where': w, 'change': 'removed', 'ai': ai[k]})
             elif k not in ai: out.append({'where': w, 'change': 'added', 'person': final[k]})
@@ -1068,6 +1291,14 @@ def preview(R, wo):
 # What to do about each reason the check (lib/workorder_check.py) or add_entries gives, for the page: sentence case, no
 # file names. Keyed by the reason with its numbers as N (_key); {pages} is the book's page count, {moves} the most
 # section moves a work order may hold. A reason with no entry is shown as it is (test_review_core pins that none is missing).
+# review 11 M2 (Patrick's wording): one text per finding, each opening with what was found; shown without the generic
+# "This is the AI's choice" tail ('tail': False), which repeated its last sentence
+ALT_COPIES_FIX = ('This alt text repeats the page\'s own printed text. This page is a scan kept as a picture: its alt text should '
+                  'describe the picture, since a screen reader already reads the page\'s OCR text and the AI must not write the '
+                  'book\'s text. Select "Change" and describe the picture, or select "Reject" when the image is only printed text.')
+ALT_CJK_FIX = ('This alt text holds Chinese, Japanese or Korean characters that the page\'s OCR text lacks. The AI must not write '
+               'the book\'s text, so the alt text can\'t carry them. Select "Change" and describe the picture, or select "Reject" '
+               'when the image is only printed text.')
 FIX = {
     'unknown key': 'The pipeline does not know this decision, so it cannot be applied. Reject it.',
     'unknown obj': 'This points at something the audit did not find in the book. Reject it.',
@@ -1203,6 +1434,18 @@ def problems(R, ai_wo, items, decisions, additions, adds, reviewer='', set_in=No
             ps = d['item'].get('pages') if isinstance(d['item'].get('pages'), list) and len(d['item']['pages']) == 2 else None
             p['parts'] = ([f for f, v in zip(('a', 'b'), ps) if not page_ok(v)] if ps else ['a', 'b']) + ([] if page_ok(d['item'].get('before_page')) else ['before_page'])
         out['fields'].append(p)
+    kt = (load(os.path.join(R, '_audit', 'fulltext.json')) or {}).get('kept_page_text') or {}
+    if kt:                                             # review 09 M-B: apply.py's alt-text guard, shown on the card before "Finish Review"
+        kf = {f['obj']: f for f in digest.get('figures') or [] if f.get('kept_by_picture_test')}
+        for a in wo.get('alt') or []:
+            f, c = kf.get(a.get('obj')) if isinstance(a, dict) else None, a.get('_card') if isinstance(a, dict) else None
+            if not f or not c or c not in ids or a.get('changed_by') or str(a.get('why') or '').startswith(('added by ', 'added in review')): continue
+            w_ = keptscans.copied_text(a.get('alt'), kt.get(str(f.get('page')), ''))
+            if w_:
+                rep = w_.startswith('it repeats')
+                out['fields'].append({'card': c, 'origin': origin(c), 'tail': False, 'fix': ALT_COPIES_FIX if rep else ALT_CJK_FIX,
+                                      'why': ('this alt text repeats the page\'s own printed text' if rep else
+                                              'this alt text holds Chinese, Japanese or Korean characters that the page\'s OCR text lacks')})
     for r in refused:
         aid, why = r['id'], r['why']
         kind, _, target = aid[4:].partition(':')
@@ -1213,8 +1456,24 @@ def problems(R, ai_wo, items, decisions, additions, adds, reviewer='', set_in=No
         else: out['fields'].append({'card': aid, 'why': why, 'fix': fix(why, N), 'origin': 'review'})
     return out, gaps(wo, digest)
 
+def language_review(items, decisions):
+    """The Languages section's decisions, counted for the record (record language_review; lib/glance.py's Language Tags
+    line reads it): every word form a person had to decide, how many were tagged, left untagged or changed, how many in a
+    group approval (and by which button, #124), how many the reading rule had decided (#123), and how many were left
+    without a decision. None when the work order has no language rows."""
+    ls = [it for it in items if it.get('kind') == LANG_KIND]
+    if not ls: return None
+    c = collections.Counter(_status(it, decisions.get(it['id'])) for it in ls)
+    grp = collections.Counter(group_button(decisions.get(it['id'])) for it in ls
+                              if group_button(decisions.get(it['id'])) and _status(it, decisions.get(it['id'])) == 'approved')
+    return {'forms': len(ls), 'approved': c['approved'], 'changed': c['changed'], 'rejected': c['rejected'],
+            'not_reviewed': c['accepted_unreviewed'] + c['seen'],
+            'bulk': sum(grp.values()), 'bulk_by': {b: grp[b] for b in GROUP_BUTTONS},
+            'local': sum(1 for it in ls if (it.get('context') or {}).get('rule'))}
+
 def _status(it, d):
     st = (d or {}).get('status') or 'accepted_unreviewed'
+    if it.get('kind') == LANG_KIND and not group_ok(it, d): return 'accepted_unreviewed'   # #124: a group approval the row doesn't qualify for
     if st == 'changed' and (d.get('value') == it['ai'] or not it['edit']): return 'approved'   # "changed" to the AI's own value
     return st
 
@@ -1231,13 +1490,17 @@ def finish(R, ai_wo, wo, reviewer, date, method, decisions=None, items=None, not
         if not reason: raise ValueError(f'say why this is left open, or add what is missing: {g["what"]}')
         open_gaps.append({'id': g['id'], 'what': g['what'], 'reason': reason})
     decisions = decisions or {}
-    statuses = [_status(it, decisions.get(it['id'])) for it in items or []]
+    # the work order's own cards only: the Languages section's word forms are counted in language_review, and the Language
+    # Tags line owns them (review 08, M2)
+    statuses = [_status(it, decisions.get(it['id'])) for it in items or [] if it.get('kind') != LANG_KIND]
     counts = {s: statuses.count(s) for s in ('approved', 'changed', 'rejected', 'seen', 'accepted_unreviewed')} if items else None
     if counts is not None and additions: counts['added'] = len(additions)
     notes = {k: d['note'] for k, d in decisions.items() if (d or {}).get('note')}
     notes.update({f'add:{a["kind"]}:{a["target"]}': a['note'] for a in additions or [] if a.get('note')})
     changes = diff(ai_wo, wo)
+    lang = language_review(items, decisions) if items else None
     v = {'reviewer': reviewer.strip(), 'date': date, 'recorded': datetime.datetime.now().isoformat(timespec='seconds'), 'method': method,
+         **({'language': {**lang, 'reviewer': reviewer.strip(), 'date': date}} if lang else {}),
          'changes': changes, 'dropped_on_check': dropped,
          **({'counts': counts} if counts else {}),
          **({'gaps': open_gaps} if open_gaps else {}),

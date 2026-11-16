@@ -10,7 +10,8 @@ The audit lists such figures in the digest (low_resolution); the report and the 
 knows which images to replace by hand. Never sent to the AI: decide.py removes it from what it sends.
 
 Only the stored size is measured: an image enlarged before it was put in the PDF passes, and JPEG quality is not
-judged. Scanned PDFs and whole-page figures are left out by the audit (intake flags scans under 300 dpi).
+judged. Scanned PDFs, whole-page figures and the page scans intake kept as figures (kept_by_picture_test, #128) are
+left out: intake flags scans under 300 dpi.
 """
 
 LOW_PPI = 150              # below this a photo looks soft in print (the issue's suggestion, chosen by the team)
@@ -34,10 +35,11 @@ def figure_ppi(images):
 
 def flag(figures, images_by_obj, threshold=LOW_PPI):
     """figures: the digest's figures; images_by_obj: {obj: [its pdfplumber images]}. The figures below threshold,
-    leaving out whole-page crops (image_is_whole_page) and figures drawn outside the visible page."""
+    leaving out whole-page crops (image_is_whole_page), page scans intake kept as figures (kept_by_picture_test: their
+    resolution is the scan's, which intake checks) and figures drawn outside the visible page."""
     out = []
     for f in figures:
-        if f.get('image_is_whole_page') or f.get('outside_visible_area') or not f.get('page'): continue
+        if f.get('image_is_whole_page') or f.get('kept_by_picture_test') or f.get('outside_visible_area') or not f.get('page'): continue
         v = figure_ppi(images_by_obj.get(f['obj']))
         if v is None: continue
         v = round(v)                       # whole ppi: an image made at 150 ppi measures 149.9 when its box is a fraction of a point wide

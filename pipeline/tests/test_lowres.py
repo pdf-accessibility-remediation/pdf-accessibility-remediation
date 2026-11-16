@@ -43,6 +43,12 @@ def test_flag_threshold_and_what_is_left_out():
     assert lowres.flag(figs, ims) == [{'obj': '1 0', 'page': 2, 'ppi': 149}]
     assert [x['obj'] for x in lowres.flag(figs, ims, threshold=200)] == ['2 0', '1 0']   # by page
 
+def test_a_page_scan_intake_kept_as_a_figure_is_left_to_intake():
+    # #128: a plate scanned at 100 dpi in a mostly born-digital PDF; intake already flags scans under 300 dpi
+    figs = [{'obj': '1 0', 'page': 5, 'kept_by_picture_test': {'ink_outside_text': 0.4}}, {'obj': '2 0', 'page': 6}]
+    ims = {'1 0': [img(850, 1100, 612, 792)], '2 0': [img(850, 1100, 612, 792)]}
+    assert lowres.flag(figs, ims) == [{'obj': '2 0', 'page': 6, 'ppi': 100}]
+
 def test_an_image_made_at_the_threshold_is_not_flagged_for_a_rounding_slip():
     # hawaii3: 639 px drawn 306.911 pt wide measures 149.9 ppi; made at 150
     figs = [{'obj': '1 0', 'page': 1}, {'obj': '2 0', 'page': 1}]

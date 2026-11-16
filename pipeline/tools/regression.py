@@ -14,6 +14,8 @@ Each book is run again with run_api.sh REPLY= (the saved reply, so no API call) 
     (whatever veraPDF is installed; its profile hash is still compared);
   - checks that hold whatever the baseline says: veraPDF ran, no more WCAG rules fail after than before, nothing failed
     in apply, no page looks different, no page's text changed, the original is unchanged.
+Every run's apply.py runs in its check mode (APPLY_TREE_CHECK=1, #93 Part 3 C2): wherever it would use its kept tag-tree
+index it walks again and compares; a stop (the line "TREE INDEX STALE: …" in the run's log) fails the book.
 An untagged book's folder also holds _intake/ (intake.json, intake.pdf): the intake result its reply was written for,
 reused with INTAKE_REUSE=1, so OCR and auto-tagging (which vary with the Tesseract and OpenDataLoader versions) are not
 rerun; tools/intake_cases.py tests intake itself.
@@ -78,10 +80,13 @@ def diff(a, b, path=''):
         return [d for k in sorted(set(a) | set(b), key=str) for d in diff(a.get(k), b.get(k), f'{path}.{k}' if path else str(k))]
     return [] if a == b else [(path, a, b)]
 
+STALE_MARK = 'TREE INDEX STALE:'                 # printed by apply.py's check mode (APPLY_TREE_CHECK=1)
+
 def run_book(book, run_dir):
     """run_api.sh on the sample with the saved reply: None when it finished, else why not (with the end of its log).
     Runs in a worker thread with --jobs, so it reports instead of exiting."""
-    env = dict(os.environ, REPLY=os.path.join(BASE, book, 'reply.txt'), RUN_DIR=run_dir, AUTO='1')
+    env = dict(os.environ, REPLY=os.path.join(BASE, book, 'reply.txt'), RUN_DIR=run_dir, AUTO='1',
+               APPLY_TREE_CHECK='1')     # always: apply.py checks its kept tag-tree index against a new walk (#93 C2, review 12 M3)
     frozen = os.path.join(BASE, book, '_intake')
     if os.path.exists(os.path.join(frozen, 'intake.json')):    # an untagged book: reuse the intake result the reply was written for
         shutil.copytree(frozen, os.path.join(run_dir, '_intake')); env['INTAKE_REUSE'] = '1'   # (as batch_api.sh FROM= does)
@@ -89,6 +94,9 @@ def run_book(book, run_dir):
     log = run_dir + '.log'
     with open(log, 'w') as f:
         rc = subprocess.run(['bash', os.path.join(PIPE, 'run_api.sh'), sample(book), book, 'regression'], env=env, stdout=f, stderr=subprocess.STDOUT).returncode
+    text = open(log, encoding='utf-8', errors='replace').read()
+    if STALE_MARK in text:                       # apply.py's check mode stopped: fails the book, whatever else happened
+        return '\n'.join(l for l in text.splitlines() if STALE_MARK in l) + f'\napply.py stopped in its check mode; log: {log}'
     if rc != 0 or not os.path.exists(os.path.join(run_dir, 'record.json')):
         return ''.join(open(log).readlines()[-30:]) + f'run_api.sh failed (exit {rc}); log: {log}'
     return None

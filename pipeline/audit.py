@@ -9,6 +9,8 @@ Reads the original PDF and writes the compact view Claude decides from:
     OUT_DIR/verapdf.json        veraPDF (WCAG 2.2 machine profile) on the original: the "before" for review.md.
                                 digest.json carries only its pdfua_check view (failed rules and who fixes them).
     OUT_DIR/page_reads.json     scanned pages that are mostly Hawaiian, for read_pages.py (images in page_reads/)
+    OUT_DIR/lang_candidates.json  words and passages that may be in another language (lib/langcands.py), for the
+                                language step (#118); local only, never in the digest
 
 Every element Claude may refer to is listed with its object number in the ORIGINAL file
 ("1234 0"); apply.py resolves those numbers against the same file. Text from the book is
@@ -16,7 +18,7 @@ included as data for Claude to read, never as instructions.
 """
 import sys, os, re, json, hashlib, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import vera
-from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads, lowres  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, support, plpages, readorder, scripts, ocrwords, tablegrid, pagereads, langcands, keptscans, lowres  # plumb_fix first: it patches pdfplumber
 import pikepdf, pypdfium2 as pdfium
 
 SRC, OUT = sys.argv[1], sys.argv[2]
@@ -195,6 +197,7 @@ def crop(pg, box, name):
     c = im.crop((max(0, x0 - 4), max(0, t - 4), min(im.width, x1 + 4), min(im.height, b + 4)))
     if max(c.size) > 800: c.thumbnail((800, 800))
     c.convert('RGB').save(os.path.join(OUT, 'figures', name)); return c.size
+KEPT = keptscans.from_intake(SRC)                 # page scans intake kept as figures: {page: {ink_outside_text, reason?}}
 figures = []; fig_images = {}       # obj -> the figure's own images, for lib/lowres.py (kept out of the digest's figures)
 for e in elems:
     if mapped(e['style']) != 'Figure': continue
@@ -215,6 +218,8 @@ for e in elems:
         else: f['outside_visible_area'] = True            # drawn only outside the visible page area: no crop
     if box and pg: fig_images[f['obj']] = ims
     if f['alt'] and '\x00' in f['alt']: f['alt_has_nul'] = True; f['alt'] = f['alt'].replace('\x00', '\\x00')
+    if pg in KEPT and (f.get('area_pct') or 0) >= 100 * keptscans.PAGE_SCAN_AREA:   # review 06: the page scan intake's picture test kept (a plate, a map, a photo page)
+        f['kept_by_picture_test'] = dict(KEPT[pg])
     figures.append(f)
 
 # ---- pages with no tags at all that hold a drawing (a full-page map, plate or cover): the executor wraps each
@@ -476,16 +481,23 @@ if is_scan:
 page_reads, read_all = [], os.environ.get('PAGE_READS') == 'all'
 if is_scan:
     for pno, p in enumerate(PL.pages, 1):
-        share = pagereads.hawaiian_share([''.join(c['text'] for c in w) for w in ocrwords.words(p.chars, page_chars)])
-        if share is not None and (read_all or share >= pagereads.SHARE_MIN): page_reads.append({'page': pno, 'label': labels.get(pno), 'share': round(share, 2)})
+        share, foreign = pagereads.hawaiian_page([''.join(c['text'] for c in w) for w in ocrwords.words(p.chars, page_chars)])
+        hawaiian = share is not None and share >= pagereads.SHARE_MIN and (foreign or 0) < pagereads.FOREIGN_MAX   # the letter guard (review 08, H2): not Māori, Tongan …
+        if share is not None and (read_all or hawaiian): page_reads.append({'page': pno, 'label': labels.get(pno), 'share': round(share, 2), 'foreign': round(foreign or 0, 3)})
     if page_reads:
         os.makedirs(os.path.join(OUT, 'page_reads'), exist_ok=True)
         for r in page_reads:
             w_, h_ = docs[r['page'] - 1].get_size(); im = docs[r['page'] - 1].render(scale=PAGE_READ_SIDE / max(w_, h_)).to_pil().convert('L')
             r['image'] = f'page_reads/page_{r["page"]:04d}.png'; im.save(os.path.join(OUT, r['image']), optimize=True); im.close()
 json.dump({'rule': f'every scanned page with {pagereads.WORDS_MIN}+ words of {pagereads.LONG}+ letters (PAGE_READS=all)' if read_all else
-           f'scanned pages where at least {pagereads.SHARE_MIN:.0%} of the words of {pagereads.LONG}+ letters have Hawaiian shape',
+           f'scanned pages where at least {pagereads.SHARE_MIN:.0%} of the words of {pagereads.LONG}+ letters have Hawaiian shape, '
+           f'and under {pagereads.FOREIGN_MAX:.0%} of the words use a letter Hawaiian lacks',
            'pages': page_reads}, open(os.path.join(OUT, 'page_reads.json'), 'w'), ensure_ascii=False, indent=1)
+
+# ---- words and passages that may be in another language (#118, language tagging; WCAG 3.1.2): found locally, written
+#      beside the digest, never into it (the work-order call doesn't see them). Places are character positions within
+#      their marked-content run (lib/langcands.py), so apply.py can find them without reading the text again.
+json.dump(langcands.book(PL, doc_lang=str(pdf.Root.get('/Lang', '') or '')), open(os.path.join(OUT, 'lang_candidates.json'), 'w', encoding='utf-8'), ensure_ascii=False)
 
 # ---- the same validator before and after: veraPDF on the original (started at the top; verify.py runs it on the result).
 #      The full summary goes to verapdf.json for the before/after comparison; the digest gets every failed rule with
@@ -543,6 +555,9 @@ digest = {
     'lists': lists[:200],
     'tables': tables_sent,
     'figures': figures,
+    **({'kept_page_scans_format': 'figures marked kept_by_picture_test are whole-page scans that intake kept because the image holds more than '
+                                  'text (a plate, a map, a photo page): ink_outside_text is the share of the page inked outside the OCR text. '
+                                  'Describe the picture; never copy the page\'s printed text into the alt text'} if any(f.get('kept_by_picture_test') for f in figures) else {}),
     'page_figures_format': 'pages with no tags at all that hold a drawing (map, plate, cover); the executor wraps each whole page in one Figure. Its letters are labels, not body text. Write page_figures alt text from the page image.',
     'page_figures': page_figures,
     'unowned_content_format': 'per page: counts of orphan runs (marked, no tag owns them) and untagged runs (not marked), by band; runs inside figures; up to 6 runs, top to bottom, EACH ITEM ONE SEPARATE RUN',
@@ -572,6 +587,8 @@ digest = {
               'per_page_top': [[p, n] for p, n in sorted(link_pages.items(), key=lambda x: -x[1])[:15]]},
 }
 json.dump(digest, open(os.path.join(OUT, 'digest.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+kp_ = sorted({f['page'] for f in figures if f.get('kept_by_picture_test')})   # review 09 M-B: the kept page scans' OCR text, for the
+if kp_: FULL['kept_page_text'] = {str(p_): ''.join(c['text'] for c in page_chars(p_)) for p_ in kp_}   #   review page's alt-text check
 json.dump(FULL, open(os.path.join(OUT, 'fulltext.json'), 'w', encoding='utf-8'), ensure_ascii=False)   # local only, never sent
 print(f'digest: {len(styles)} styles · {len(headings)} headings + {len(candidates)} candidates · {len(lists)} lists · {len(tables)} tables · '
       f'unowned {dict(unowned_tot)} · {len(rare)} other listed · {len(figures)} figures ({sum(1 for f in figures if f["image"])} crops) · '

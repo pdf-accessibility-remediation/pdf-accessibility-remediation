@@ -12,7 +12,8 @@ What a Spend checks, in this order, at the click:
      checks its caps for Claude models only: 02 B6). The job then also gets MODEL=<that model>, so a change while it waits
      in the queue cannot lift the cap;
   3. the estimate fits the limits and the credit (lib/costs.py `blocked`);
-  4. the book's file is still the one the estimate was made from (its sha256).
+  4. the book's file is still the one the estimate was made from (its sha256); after a person moved it to the Trash and
+     uploaded it again, under any name, the copy found by its content (uploaded_again, #93) is sent instead.
 Then the job: AUTO=1, MAX_USD, BOOK_MAX_USD (BATCH_MAX_USD for a batch) bound to the estimate shown, PAGE_READS=1 with
 PAGE_READS_MAX_USD when the estimate included page readings (#49), and the person's real limits for
 a figure request's doubled retry only (FIGURE_RETRY_MAX_USD, FIGURE_RETRY_BOOK_MAX_USD; docs/options.md),
@@ -48,6 +49,30 @@ def current_model_and_prompt():
                 sha = hashlib.sha256(open(p, encoding='utf-8').read().encode()).hexdigest()[:16]; break
     return (m.group(1) if m else None), sha
 
+def current_language_prompt():
+    """The language step's prompt sha256[:16] as name_languages.py computes it (issue 118), or None."""
+    try: src = open(os.path.join(config.PIPELINE, 'name_languages.py'), encoding='utf-8').read()
+    except OSError: return None
+    pn = re.search(r"^PROMPT_NAME = '([^']+)'", src, re.M)
+    if not pn: return None
+    import hashlib
+    for d in (os.path.join(config.PIPELINE, 'prompts'), os.path.join(config.ROOT, 'prompts')):
+        p = os.path.join(d, pn.group(1))
+        if os.path.isfile(p): return hashlib.sha256(open(p, encoding='utf-8').read().encode()).hexdigest()[:16]
+    return None
+
+def language_env(est):
+    """The language step as the estimate showed it (issue 118): its cap and model when it was in the estimate, else off, so a
+    job never sends what the person was not shown (config.child_env keeps it off otherwise)."""
+    lg = est.get('language') if isinstance(est, dict) else None
+    if not lg or est['bounds'].get('LANGUAGE_MAX_USD') is None:                    # config.child_env: off unless set here
+        # #123: every word form decided by the reading printed beside it: the step runs with a $0 cap, so it sends nothing
+        # (any form it would send is refused); never when the estimate left the language step out
+        if isinstance(est, dict) and est.get('language_local') and not any((x or {}).get('kind') == 'language' for x in est.get('left_out') or []):
+            return {'LANG_TAGS': 'on', 'LANGUAGE_MAX_USD': '0.00'}
+        return {}
+    return {'LANG_TAGS': 'on', 'LANGUAGE_MAX_USD': f'{est["bounds"]["LANGUAGE_MAX_USD"]:.2f}', 'LANGUAGE_MODEL': lg['model']}
+
 def last_estimate_job(s, run):
     """The run's newest estimate job that finished: its settings are the ones Spend uses."""
     ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] == 'estimate' and j['status'] == 'done']   # a single run's (a batch's book: the batch's Spend)
@@ -60,6 +85,8 @@ def check_estimate(s, R, fingerprint, test, limits):
     if fingerprint != est['fingerprint']: raise Refused(CHANGED)
     model, prompt = current_model_and_prompt()
     if not est['claude'] or model != est['model'] or not prompt or prompt != est['prompt_sha256']: raise Refused(OUT_OF_DATE)   # fails closed (05 M5)
+    lg = est.get('language')
+    if lg and (not str(lg.get('model') or '').startswith('anthropic/') or lg.get('prompt_sha256') != current_language_prompt()): raise Refused(OUT_OF_DATE)
     b = est['blocked']
     if b and not (test and b['code'] in ('offline', 'no_credit')): raise Refused(b['words'])
     return est
@@ -104,6 +131,31 @@ def credit_words(s):
     d = credit_now(s)
     return CREDIT_WHY.get(d.get('why'), CREDIT_WHY['error']) if d else CREDIT_WHY[None]
 
+MOVED = 'This PDF was moved to the Trash. To continue, upload the same PDF again with "Choose PDFs" on the home page, then try again.'
+
+def _sha_now(p):
+    """The file's sha256 read now, never from the shared cache (a copy found again is checked afresh before it is used)."""
+    import hashlib
+    h = hashlib.sha256()
+    try:
+        with open(p, 'rb') as f:
+            for b in iter(lambda: f.read(1 << 20), b''): h.update(b)
+    except OSError: return None
+    return h.hexdigest()
+
+def uploaded_again(s, ej):
+    """An estimate job's PDF that a person moved to the Trash (#45 D8) and uploaded again, under any file name (#93, review
+    09 M1): the copy found by its content in samples/ or uploads/, its sha256 checked afresh, or None (the job's own file is
+    still there, it was not moved by the app, or no copy is back). Its content is the estimate's, byte for byte, and the
+    estimate's fingerprint covers only the run folder's files (lib/costs.py), so the estimate stays valid for it."""
+    src = ej['argv'][2] if len(ej.get('argv') or []) > 2 else None
+    sha = ej.get('book_sha')
+    if not src or not sha or os.path.isfile(src): return None
+    from . import runs as RN
+    if not RN.moved_words(s, sha): return None
+    p = RN.find_original(s, sha, os.path.basename(src))
+    return p if p and _sha_now(p) == sha else None
+
 def authorize(s, kind, run, R, fingerprint):
     """A single run's Spend (kind 'workorder'). Returns {argv, env_set, extra} for jobs.create(kind='spend', paid=True)."""
     if kind != 'workorder': raise Refused('This kind of AI step can\'t be sent from here yet.')
@@ -112,13 +164,16 @@ def authorize(s, kind, run, R, fingerprint):
     est = check_estimate(s, R, fingerprint, test, L)
     ej = last_estimate_job(s, run)
     if not ej: raise Refused('There is no estimate for this run yet: select "Get a New Estimate".')
-    src = ej['argv'][2] if len(ej['argv']) > 2 else None
+    argv = list(ej['argv'])
+    src = argv[2] if len(argv) > 2 else None
     if not src or not os.path.isfile(src) or BK.hashes(s, [src]).get(src) != ej.get('book_sha'):
-        from . import runs as RN
-        if RN.moved_words(s, ej.get('book_sha')) and not (src and os.path.isfile(src)):   # D8: a person moved it to the Trash
-            raise Refused('This PDF was moved to the Trash. To go on, drag it from the Trash back into the app\'s folder of added PDFs (where it was).')
-        raise Refused('This PDF\'s file has changed or is gone since the estimate. Go back to the home page and start a new run.')
-    keep = {k: v for k, v in (ej.get('env_set') or {}).items() if k in ('OCR_LANG',)}
+        back = uploaded_again(s, ej)                         # moved to the Trash, then uploaded again: the copy is used
+        if back: argv[2] = back
+        else:
+            from . import runs as RN
+            if RN.moved_words(s, ej.get('book_sha')) and not (src and os.path.isfile(src)): raise Refused(MOVED)   # D8: no copy back yet
+            raise Refused('This PDF\'s file has changed or is gone since the estimate. Go back to the home page and start a new run.')
+    keep = {k: v for k, v in (ej.get('env_set') or {}).items() if k in ('OCR_LANG', 'REOCR', 'KEEP_CJK_PAGES')}   # #121, review 06: the intake it was estimated on
     keep['REVIEW'] = '1'                                     # every app run stops for review (D2, Patrick 2026-11-06), whatever an older job file says
     if test:
         reply = os.path.join(s['test_reply_dir'], f'{ej["argv"][3]}.txt')
@@ -130,12 +185,13 @@ def authorize(s, kind, run, R, fingerprint):
         env.update(costs.retry_env(L))
         if est['bounds'].get('PAGE_READS_MAX_USD') is not None:   # #49: the pages read whole, as the estimate showed them
             env.update(PAGE_READS='1', PAGE_READS_MAX_USD=f'{est["bounds"]["PAGE_READS_MAX_USD"]:.2f}')
+        env.update(language_env(est))                       # #118: the language step only as the estimate showed it
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
              'shown': {'ceiling_usd': est['ceiling_usd'], 'per_call_ceiling_usd': est['per_call_ceiling_usd'], 'expected_usd': (est['expected'] or {}).get('usd'),
                        'bounds': est['bounds'], 'model': est['model']},
              'test': test,
              **{k: ej.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name')}}
-    return {'argv': list(ej['argv']), 'env_set': env, 'extra': extra}
+    return {'argv': argv, 'env_set': env, 'extra': extra}
 
 def authorize_batch(s, label, books_list, total, fingerprint):
     """A batch's Spend: books_list is the app's book list file, total the costs.batch() shown (its fingerprint checked by
@@ -159,6 +215,10 @@ def authorize_batch(s, label, books_list, total, fingerprint):
         env.update(costs.retry_env(costs.limits_of(s)))
         if total['bounds'].get('PAGE_READS_MAX_USD'):            # #49: some books have pages read whole; each is held to the largest's cap
             env.update(PAGE_READS='1', PAGE_READS_MAX_USD=f'{total["bounds"]["PAGE_READS_MAX_USD"]:.2f}')
+        if total['bounds'].get('LANGUAGE_MAX_USD'):              # #118: each book's language step held to the largest's cap
+            env.update(LANG_TAGS='on', LANGUAGE_MAX_USD=f'{total["bounds"]["LANGUAGE_MAX_USD"]:.2f}')
+        elif total.get('language_local'):                       # #123: only forms decided by a printed reading: the step, sending nothing
+            env.update(LANG_TAGS='on', LANGUAGE_MAX_USD='0.00')
     env['REVIEW'] = '1'                                    # every book stops for review (D2a, Patrick 2026-11-06)
     x = total.get('expected') or {}                         # a figure only when every PDF to send has one: a part of them would mislead after the run
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),

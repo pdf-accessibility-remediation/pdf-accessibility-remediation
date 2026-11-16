@@ -138,7 +138,8 @@ def listed_pages(intake):
     """The pages the section lists: OCR text intake added, and the pages the OCR-layer test scored when it flagged the layer."""
     added = ((intake.get('ocr') or {}).get('pages_with_ocr_text')) or []
     tested = [p.get('page') for p in (intake.get('ocr_layer_test') or {}).get('pages') or [] if p.get('page')]
-    return sorted(set(added) | (set(tested) if ocr_layer_flagged(intake) else set()))
+    kept = [p for p in ((intake.get('ocr_layer_test') or {}).get('cjk_kept') or {}).get('pages') or [] if isinstance(p, int)]   # review 09 M-A
+    return sorted(set(added) | set(kept) | (set(tested) if ocr_layer_flagged(intake) else set()))
 
 def showable_pages(intake):
     """Every page Show Another Page can ask for: the listed ones, and with a flagged layer every page intake found an OCR
@@ -262,7 +263,21 @@ def layer_words(ol):
              + (f'only {scored} of {sample} sample pages could be compared with a new OCR reading.' if scored is not None and sample else 'too few sample pages could be compared with a new OCR reading.'))
     else: s = 'The book came with its own OCR text.'
     if ol.get('diacritics'): s += ' It is missing accent marks on letters (ex. ā, ō) that a new OCR reading found.'
+    ck = ol.get('cjk_kept') or {}
+    if ck.get('pages'):                                  # review 09 M-A: a Keep at the CJK stop is not an approval of the text
+        ps = ck['pages']; one = len(ps) == 1
+        who = (f'{ck["by"]} kept' if ck.get('by') else 'A person kept') + (f' it on {_day(ck.get("at"))}' if one and ck.get('at') else
+                                                                          f' them on {_day(ck.get("at"))}' if ck.get('at') else (' it' if one else ' them'))
+        s += (f' On PDF {and_list([str(p) for p in ps])}, a check read Chinese, Japanese or Korean characters on the page '
+              f'{"image" if one else "images"} that the book\'s OCR text lacks. {who} as {"it is" if one else "they are"}, before '
+              f'this review ("Keep the Existing OCR Text"). Compare {"this page" if one else "these pages"} with {"its image" if one else "their images"}: '
+              f'if {"it holds" if one else "they hold"} such text, it is not in the OCR text, and the page reaches the AI as a picture.')
     return s
+
+def _day(v):
+    """An ISO date and time as people read it ("November 15, 2026"); lib/dates.py."""
+    from lib import dates
+    return dates.day(v)
 
 def ship_line(rec):
     """What "Ready to ship?" says now, and its OCR line, from a record's glance; None without a record."""
@@ -311,6 +326,10 @@ def section(R, digest=None, wo=None):
             if t.get('confident_words_missing'): f.append(f'{t["confident_words_missing"]:.0%} of the words a new OCR reading was sure of are missing from the book\'s OCR text')
             if t.get('layer_read_with') == 'pdfium':
                 f.append('the check read this page\'s text with a different tool from the one that shows it here, so the two can differ slightly')
+        kc = ((ol.get('cjk_kept') or {}).get('counts') or {}).get(str(p))
+        if p in ((ol.get('cjk_kept') or {}).get('pages') or []):
+            f.append('kept at the Chinese, Japanese or Korean check' + (f': {kc["cjk_characters"]} such characters read on the image, '
+                     f'none in the book\'s OCR text' if isinstance(kc, dict) and kc.get('cjk_characters') is not None else ''))
         if p in vertical: f.append('text set vertically')
         if p in spreads: f.append('two printed pages on this PDF page')
         return f

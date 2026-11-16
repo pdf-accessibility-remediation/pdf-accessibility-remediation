@@ -150,17 +150,29 @@ def start_estimate(s, setup, key, plain, from_run=None):
         except OSError: pass
         raise
 
-def answer_language(s, run, R, lang):
-    """"Language of the Scanned Pages" answered (D4): the estimate again, with that OCR language (English: unset)."""
+def answer_language(s, run, R, lang, by=''):
+    """"Language of the Scanned Pages" answered (D4): the estimate again, with that OCR language (English: unset).
+    by: the person's name, needed for "Keep the Existing OCR Text" at intake's CJK stop (review 06 H1)."""
     from . import lang as LG
+    q = LG.question(s, R) or {}
     name = LG.check(s, R, lang)
+    if q.get('kind') == 'reocr' and lang == LG.KEEP and not q.get('stopped'):   # #121: nothing to run; the estimate already shown stands
+        LG.keep_layer(R); return None
     ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] == 'estimate']
     if not ej: raise ValueError('This run wasn\'t started from the home page, so its settings aren\'t known here. Start a new run from the home page.')
     e = ej[-1]
-    env = LG.env_for(lang)
+    if lang == LG.KEEP:                                  # review 06 H1: intake's CJK stop, kept: intake again, skipping those pages
+        pages = LG.keep_cjk(R, by)
+        env = {'ESTIMATE': '1', 'KEEP_CJK_PAGES': ','.join(map(str, pages)),
+               **{k: v for k, v in (e.get('env_set') or {}).items() if k == 'OCR_LANG'}}
+        keep = {k: e.get(k) for k in ('book_sha', 'book_file')}
+        return jobs.create(s['jobs'], 'estimate', run, e['argv'], config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
+                           what=f'Get the estimate (existing OCR text kept on {"page" if len(pages) == 1 else "pages"} {", ".join(map(str, pages))})', **keep)
+    env = {**LG.env_for(lang, reocr=q.get('kind') == 'reocr'),            # review 08 M1: pages kept before stay kept
+           **{k: v for k, v in (e.get('env_set') or {}).items() if k == 'KEEP_CJK_PAGES'}}
     keep = {k: e.get(k) for k in ('book_sha', 'book_file')}
     return jobs.create(s['jobs'], 'estimate', run, e['argv'], config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
-                       what=f'Get the estimate ({name})', ocr_name=name, **keep)
+                       what=f'Get the estimate ({"OCR text read again: " if q.get("kind") == "reocr" else ""}{name})', ocr_name=name, **keep)
 
 def again_estimate(s, run, R):
     """"Get a New Estimate": the same settings as the run's last estimate job (never a form again)."""
@@ -169,9 +181,16 @@ def again_estimate(s, run, R):
     if os.path.isfile(os.path.join(R, 'record.json')): raise ValueError('This run has finished.')
     if os.path.isfile(os.path.join(R, 'workorder.ai.json')): raise ValueError('The AI\'s decisions are waiting for a review: "Open the Review Page".')
     e = ej[-1]
-    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('ESTIMATE', 'OCR_LANG', 'ASK_LANG')}
+    argv = list(e['argv'])
+    if len(argv) > 2 and not os.path.isfile(argv[2]):       # #93 (review 09 M1): moved to the Trash, then uploaded again
+        back = SP.uploaded_again(s, e)
+        if back: argv[2] = back
+        else:
+            from . import runs as RN
+            if RN.moved_words(s, e.get('book_sha')): raise ValueError(SP.MOVED)
+    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('ESTIMATE', 'OCR_LANG', 'ASK_LANG', 'REOCR', 'KEEP_CJK_PAGES')}
     keep = {k: e.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name', 'ocr_name')}
-    return jobs.create(s['jobs'], 'estimate', run, e['argv'], config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
+    return jobs.create(s['jobs'], 'estimate', run, argv, config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
                        what='Get a new estimate', **keep)
 
 # ------------------------------------------------------------------ Try Again, decided from disk (03 §2)
@@ -193,7 +212,7 @@ def start_rerun(s, run, R):
     ej = [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run and j['kind'] in ('estimate', 'spend', 'rerun')]
     if not ej: raise ValueError('This run wasn\'t started from the home page, so its settings aren\'t known here.')
     e = ej[-1]
-    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('OCR_LANG',)}
+    env = {k: v for k, v in (e.get('env_set') or {}).items() if k in ('OCR_LANG', 'REOCR', 'KEEP_CJK_PAGES')}   # #121, review 06: the intake it was estimated on
     env['REVIEW'] = '1'                                  # every app run stops for review (D2), whatever an older job file says
     keep = {k: e.get(k) for k in ('book_sha', 'book_name', 'book_file', 'run_name', 'ocr_name')}
     return jobs.create(s['jobs'], 'rerun', run, e['argv'], config.child_env(s, env), env_set=env, R=R, what='Try again (the saved reply is reused)', **keep)

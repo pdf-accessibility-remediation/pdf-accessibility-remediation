@@ -18,7 +18,7 @@ This page lists what each script, module and data file in the repository does. I
 | `audit.py` | Original → digest, the summary the AI reads. No AI (see [audit.py](#auditpy)) |
 | `decide.py` | The AI request: estimates cost, checks credit, sends the digest and crops, parses and validates the reply (see [decide.py](#decidepy)) |
 | `read_pages.py` | Scanned PDFs with mostly Hawaiian pages only: sends each such page image to the AI to transcribe as printed. Paid (see [read_pages.py](#read_pagespy)) |
-| `apply.py` | The executor. Original + work order → `<original>_remediated.pdf`. pikepdf only; checks each target first and rejects what doesn't fit |
+| `apply.py` | The executor. Original + work order → `<original>_remediated.pdf`. pikepdf only; checks each target first and rejects what doesn't fit. Keeps its tag-tree index between steps and walks the tree again only after a write through `tree_set()`; `APPLY_TREE_CHECK=1` (tests and `tools/regression.py` only) checks that kept index against a new walk ([Testing](testing.md#applypys-kept-tag-tree-index-and-its-check-mode)) |
 | `verify.py` | Checks the result against the original, adds the WCAG checks veraPDF does not make, and runs veraPDF on the result |
 | `report.py` | Writes `review.md`, `record.json`, `han_review.csv` and `review.html`, then removes the working files (see [report.py](#reportpy)) |
 | `report_html.py` | The offline dashboards: `review.html` for a run (`report.py` runs it) and, with `--summary <batch>`, `summary.html` for a batch (`batch_api.sh` runs it). Also rebuilds them for any finished run. See [Output files](output-files.md) |
@@ -35,6 +35,8 @@ The digest holds styles, listed elements, figures with crops, a page map, the re
 Positions are measured in the visible page area (CropBox): running-head bands (top 70 pt, bottom 60 pt), figure sizes and crops. A figure drawn only outside it gets no crop, and is marked `outside_visible_area`.
 
 The whole texts the digest shortens (elements, first list items, first table rows), and the full reading order of the containers for the review page (with each container's child styles), go to `fulltext.json` beside it. That file is for review.md, review.html and the review page only: never sent to the AI. It is kept in the run's `reviews/_audit/` with the digest (not the crops), for a later review.
+
+Words and passages that may be in another language go to `lang_candidates.json` beside it (`lib/langcands.py`, #118). Each place is a page, a marked-content run and the first and last character within it, with its text, its classes and the page's words for context. Nothing in it is sent anywhere yet, and it is not in the digest. A word in the offline English list (`pipeline/data/english-words.txt`, SCOWL) is not a candidate on its own. The file is a working file, removed with the audit folder when the report is written.
 
 ### decide.py
 
@@ -236,6 +238,7 @@ It takes the result of a run from its saved reply, replaces one figure's image i
 | `lib/glance.py` | The "Overview" numbers for a finished run, from `record.json` and `review.md`; shared by `report.py`, `report_html.py` and `review_ocr.py` (see [lib/glance.py](#libglancepy)) |
 | `lib/plpages.py` | Reads each page once with pdfplumber, and keeps only what `audit.py` and `apply.py` use: characters, image boxes, size and the visible area (CropBox) |
 | `lib/handedit.py` | What changed in a PDF edited by hand, for `handedit.py import`: the images on each page by their data's sha256, each Figure and the images it holds, the figures whose image is new, and a copy with their old alt text removed |
+| `lib/contentops.py` | The content-stream operators `verify.py`'s untagged-content loop acts on, and the filter that asks pikepdf for those only (an inline image named `BI ID EI`, all three); the loop and the filter share this one list |
 | `lib/plumb_fix.py` | Fix for pdfplumber's nested marked-content bug. Required; imported before pdfplumber reads a page |
 
 ### lib/sections.py
@@ -270,14 +273,17 @@ The numbers: status, ready to ship, the five safety checks, the veraPDF finding,
 
 | File | Role |
 |---|---|
-| `prompts/workorder_v10.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run (see [Prompt versions](#prompt-versions)) |
-| `prompts/figures_v1.md` | The figure requests' system prompt (PDFs with more than 100 images, below): the figure rules of `workorder_v10.md`, copied word for word, and what a figure request may return. Its hash is recorded in `run.figure_passes` |
+| `prompts/workorder_v12.md` | The system prompt: rules and the work-order format. Its hash is recorded in every run (see [Prompt versions](#prompt-versions)) |
+| `prompts/figures_v2.md` | The figure requests' system prompt (PDFs with more than 100 images, below): the figure rules of `workorder_v12.md`, copied word for word, and what a figure request may return. Its hash is recorded in `run.figure_passes` |
 | `prompts/page_reading_v1.md` | The page readings' prompt (`read_pages.py`): transcribe the page exactly as printed, with ʻokina and kahakō only where the page prints them. Its hash is recorded in `record.json` under `page_reads` |
 | `verapdf/` | `WCAG-2-2-Machine.xml` (the pinned profile), `rules.json` (each rule's WCAG success criteria, or why it is PDF/UA-only), `install.sh` |
 
 ### Prompt versions
 
 Older prompt versions are kept as a record; v8 and older are no longer used.
+
+- **v12** (with `figures_v2.md`, review 06): in a scanned book, a whole-page Figure marked `kept_by_picture_test` (a page scan intake kept because its image holds more than text) is described, not artifacted, and its alt text never copies the page's printed text; other page scans are still artifacted. The executor refuses alt text that does (see [Intake](intake.md)). Work orders from v11 are still read.
+- **v11** moves language tags out of the work order into the language step (#118).
 
 - **v10** reads a table's rows from the digest's `row_shapes` (`title_rows`, `note_rows`, `group_rows`, `repeat_rows`), and stops counting a title row as a header. Work orders from v9 are still read.
 - **v9** (schema `workorder/0.2`) makes `move_section` a list of up to 3 moves, made in order. It lets the AI turn the figure-order step off for a PDF (`fix_figure_order: false`, for figures meant to be read apart from their page). Work orders from v8 (one move) are still read.
@@ -299,7 +305,7 @@ Each figure request sees:
 - the veraPDF failures that name those figures
 - ten alt texts the first request wrote, as style examples, picked evenly through the PDF from the ones that passed the checks
 
-Its instructions are `prompts/figures_v1.md`: the figure rules of `workorder_v10.md`, copied word for word (a test keeps the two in step). A figure request may decide only alt text, decoration and deferrals, and only for its own figures; anything else is dropped.
+Its instructions are `prompts/figures_v2.md`: the figure rules of `workorder_v12.md`, copied word for word (a test keeps the two in step). A figure request may decide only alt text, decoration and deferrals, and only for its own figures; anything else is dropped.
 
 The first request is told, in a note after the digest, which figures another request will answer. Any decision it still makes about them is dropped: each figure has one decision, from the request that saw it. Then the answers are merged into one work order, which goes through the same checks as always.
 
@@ -316,7 +322,7 @@ A PDF whose images fit by count but not within 20 MB keeps one request: the figu
 **One retry:** a figure request that fails without being charged (OpenRouter 429 or 5xx, no connection) is sent once more after a pause: 60 s after a 429, 20 s otherwise. So is one whose reply could not be read, or that got no reply in time, when the PDF's limit still has room for it. A request that still fails leaves its figures to a reviewer, as one deferral ("Alt text for N figures"), and the run goes on; its cost is recorded.
 
 **After a cut-off:** a reply cut off at its output limit (32,000) is sent once more, automatically and with no pause, with twice the room (64,000, trimmed to the model's maximum). So every image gets its alt text whenever it can. Only that request's `max_tokens` changes; a request not cut off is sent byte for byte as before.
-- It must fit the real limits ($2 per AI request, and $5 per PDF with what is spent and what the other requests still planned), not the estimate shown, and the model's maximum and context.
+- It must fit the real limits ($2 per AI request, and $8 per PDF with what is spent and what the other requests still planned), not the estimate shown, and the model's maximum and context.
 - A request is never charged more than twice, and the doubled call isn't retried.
 - If it can't be sent or is cut off again, its figures go to a reviewer as above, and the reason says why.
 - A replay uses the final answer, free. The cost line says when a retry was paid for (see [What a run may cost](options.md#what-a-run-may-cost)).

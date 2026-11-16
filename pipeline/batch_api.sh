@@ -46,6 +46,7 @@
 # all finished just rewrites it (no cost). A missing library stops the batch before any paid call.
 set -euo pipefail
 [[ -n ${AUTO:-} || -n ${SUMMARY_ONLY:-} ]] || { echo "batch runs call the API without asking: start with  AUTO=1 bash batch_api.sh <run-label> [folder | books.txt] …"; exit 1; }
+[[ -z ${KEEP_CJK_PAGES:-} ]] || { echo "KEEP_CJK_PAGES names pages of one book: run that book alone (KEEP_CJK_PAGES=… bash run_api.sh <the book> <name> <run name>), not a batch"; exit 1; }
 LABEL=${1:?run label used for every book, e.g. batch1}; shift
 SOURCES=("$@")
 START_DIR=$(pwd)
@@ -68,6 +69,10 @@ T0=$(now); STARTED=$(date '+%Y-%m-%d %H:%M')
 DEFAULT_MODEL=$(python3 -c "import re; print(re.search(r\"^DEFAULT_MODEL = '([^']+)'\", open('decide.py').read(), re.M).group(1))")
 export MODEL=${MODEL:-}
 export PAGE_READS=${PAGE_READS:-off}   # page readings (#49) are off in a batch unless PAGE_READS=1 or all
+export LANG_TAGS=${LANG_TAGS:-off}     # the language step (#118) is off in a batch unless LANG_TAGS=on (a FROM= rerun still applies saved decisions)
+if [[ $LANG_TAGS == off || $LANG_TAGS == 0 || $LANG_TAGS == no ]]; then   # Patrick, 2026-11-14: said at the start of every such batch
+  echo "Language tags are off for this batch: books with words in other languages will read 'Language Tags: Not Done' and can't be Ready. Add LANG_TAGS=on to include them."
+fi
 
 # ---- summary.md: written at the end, when a RETRY finds nothing left to run, and when a batch stops early
 SUMMARY_DONE=; RUNNING=; FAILED_AT=
@@ -191,7 +196,7 @@ PY
   SUMMARY_DONE=1
 }
 tidy() {   # the book lists and copied replies were only working files
-  [[ -n ${KEEP:-} ]] || rm -f "$B/books.tsv" "$B/todo.tsv" "$B"/*.reply.txt "$B"/*.reply.txt.meta.json "$B"/*.reply.txt.passes.json
+  [[ -n ${KEEP:-} ]] || rm -f "$B/books.tsv" "$B/todo.tsv" "$B"/*.reply.txt "$B"/*.reply.txt.meta.json "$B"/*.reply.txt.passes.json "$B"/*.language.json
 }
 finish() {
   local rc=$?; trap - EXIT
@@ -281,7 +286,8 @@ each() {   # each <step: estimate|run>
       RUN_DIR=$B/$name ESTIMATE=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
       st="FAILED (see $name.estimate.log)"
     else
-      if [[ -n ${FROM:-} ]]; then export REPLY="$B/$name.reply.txt" INTAKE_REUSE=1; fi
+      unset LANG_REPLY                                 # never from the caller: only this book own saved decisions (review 06, L2)
+      if [[ -n ${FROM:-} ]]; then export REPLY="$B/$name.reply.txt" INTAKE_REUSE=1; [[ -f $B/$name.language.json ]] && export LANG_REPLY="$B/$name.language.json"; fi
       log=$B/$name.log
       RUN_DIR=$B/$name AUTO=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
       st="FAILED (see $name.log)"
@@ -320,6 +326,8 @@ for line in open(books):
         for f in ('intake.json', 'intake.pdf'):
             if os.path.exists(os.path.join(old_in, f)): shutil.copyfile(os.path.join(old_in, f), os.path.join(new_in, f))
     open(os.path.join(B, f'{name}.reply.txt'), 'w', encoding='utf-8').write(r['raw_reply'])
+    if r.get('language_run', {}).get('decisions'):       # its language decisions (#118), applied by form on the rerun, never a new request
+        json.dump(r['language_run'], open(os.path.join(B, f'{name}.language.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     json.dump({**{k: r['run'][k] for k in ('model', 'temperature') if k in r['run']},      # the new record keeps the original's
                **ocrwords.carried(r['run']),       # the OCR-word list the reply was written for (never the one it was replayed against)
                **origin.carried(r),                # the original call's cost, model, prompt and date (sponsor checklist 11.5)

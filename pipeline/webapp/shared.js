@@ -136,7 +136,9 @@ async function fill(url) {
   const f = dlg.querySelector('[data-field=name]') || dlg.querySelector('button, input');
   if (f) { f.focus(); if (f.select) f.select(); }
 }
-async function openDialog(url, from) {
+// html: the pop-up's contents when the page already carries them (15: a saved batch's address opens its pop-up with the
+// page, filled at once, never "Loading…"); otherwise they are asked for, as before
+async function openDialog(url, from, html) {
   if (!dlg) {
     dlg = document.createElement('dialog'); dlg.className = 'pp-dlg pp-form-dlg'; dlg.id = 'pp-form-dlg'; dlg.setAttribute('aria-labelledby', 'dlg-h');
     document.body.appendChild(dlg);
@@ -146,6 +148,11 @@ async function openDialog(url, from) {
     dlg.addEventListener('click', remove);
   }
   opener = from || document.activeElement; dlgUrl = url;
+  if (html) {
+    dlg.innerHTML = html; if (!dlg.open) dlg.showModal();
+    const f = dlg.querySelector('[data-field=name]') || dlg.querySelector('button, input'); if (f) { f.focus(); if (f.select) f.select(); }
+    return;
+  }
   dlg.innerHTML = '<h2 id="dlg-h">Loading…</h2>';
   if (!dlg.open) dlg.showModal();
   try { await fill(url); }
@@ -193,5 +200,5 @@ document.addEventListener('click', e => {                         // a button th
   openDialog(b.dataset.dialog, b);
 });
 
-window.Pdfrem = { edit, closeMenu, openDialog, live };
+Object.assign(window.Pdfrem = window.Pdfrem || {}, { edit, closeMenu, openDialog, live });   // the page scripts add theirs (15)
 })();

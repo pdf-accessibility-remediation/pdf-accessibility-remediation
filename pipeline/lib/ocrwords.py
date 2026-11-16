@@ -44,6 +44,18 @@ def hawaiian_shape(w):
     letters = [ch for ch in w if ch not in OKINA_LIKE and ch != OKINA]
     return len(letters) >= 2 and all(ch in HAW_LETTERS for ch in letters) and letters[-1] in HAW_VOWELS
 
+NOT_HAW_LETTERS = set('bcdfgjqrstvxyz')       # letters the Hawaiian alphabet lacks (review 08, H2)
+def not_hawaiian_letters(w):
+    """A word outside the English list that uses a letter Hawaiian lacks: te, ko te, fiefia, ngangi, whare (Māori,
+    Tongan, Samoan, Marquesan …). Marks are folded first, so a kahakō the OCR read as ä still counts as a, never as a
+    foreign letter. Hawaiian has none of these words; other Pacific languages that pass the shape test have many."""
+    from lib import langcands
+    w = re.sub(r"[’']s$", '', core(w))                   # ʻāina’s: an English possessive on a Hawaiian word
+    def bad(part):
+        c = ''.join(ch for ch in unicodedata.normalize('NFD', part.lower()) if not unicodedata.combining(ch))
+        return len(c) >= 2 and any(ch in NOT_HAW_LETTERS for ch in c) and not langcands.in_english(part)
+    return any(bad(p) for p in re.split(r'[-‐‑]', w))      # ʻāina-based: an English part is English, never a foreign letter
+
 def okina_lookalike(w):
     """A quote mark standing for an ʻokina inside a word of Hawaiian shape (Hawai‘i, Lili‘uokalani)."""
     return hawaiian_shape(w) and any(ch in OKINA_LIKE for ch in w)

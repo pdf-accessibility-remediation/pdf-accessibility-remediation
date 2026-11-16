@@ -380,6 +380,6 @@ def test_a_run_with_no_ai_call_never_credits_the_ai(tmp_path):
 # ---- no AI call means none at all: main's page readings (#49, read_pages.py) are never offered with DECIDE=none
 def test_a_run_with_no_ai_call_reads_no_pages():
     sh_ = open(os.path.join(PIPE, 'run_api.sh'), encoding='utf-8').read()
-    gate = next(l for l in sh_.splitlines() if l.startswith('if [[ ${PAGE_READS} != off'))
+    gate = next(l for l in sh_.splitlines() if l.startswith(('if [[ ${PAGE_READS} != off', 'elif [[ ${PAGE_READS} != off')))   # an elif since #95
     assert '${DECIDE:-} != none' in gate
     assert "'DECIDE': 'none', 'REVIEW': '1', 'PAGE_READS': 'off'" in open(os.path.join(PIPE, 'handedit.py'), encoding='utf-8').read()

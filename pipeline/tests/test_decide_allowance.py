@@ -268,7 +268,7 @@ CUT = {'cost_usd': 0.5, 'finish_reason': 'length', 'max_tokens': 48000}
     ([dict(CUT, **{'pass': '1'})], 96000, 5.0)])
 def test_only_a_work_order_cut_off_doubles_the_next_attempt(book, tmp_path, rows, want, book_cap):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'; attempts(R, *rows)
-    assert decide(A, R, '--dry-run').returncode == 0
+    assert decide(A, R, '--dry-run', '--book-max-usd', '5').returncode == 0          # the $5 these were written for
     e = load(R / 'run.json')['estimate']; assert e['max_tokens'] == want and e['spent_before_usd'] and e['book_cap_usd'] == book_cap
 
 def test_max_tokens_beats_the_doubling(book, tmp_path):
@@ -328,7 +328,7 @@ def small_with_expected(book, tmp_path, *extra, **kw):
 def test_the_estimate_stores_the_expected_figure_and_the_terminal_prints_both(book, tmp_path):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'; r = decide(A, R, '--dry-run')
     x = load(R / 'run.json')['estimate']['expected']; assert x['usd'] > 0 and x['low'] <= x['usd'] <= x['high'] and x['basis']['calls'] == 80
-    assert 'Expected Cost: $' in r.stdout and '(usually $' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'Limits: $2.00 per AI request, $5.00 per PDF' in r.stdout
+    assert 'Expected Cost: $' in r.stdout and '(usually $' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'Limits: $2.00 per AI request, $8.00 per PDF' in r.stdout
 
 def stored(R, value, **changes):
     run = load(R / 'run.json'); run['estimate']['expected'] = value; run.update(changes); (R / 'run.json').write_text(json.dumps(run))
@@ -373,3 +373,30 @@ def test_a_model_other_than_claude_says_so(book, tmp_path, monkeypatch):
     out = buf.getvalue()
     assert 'Expected Cost: Not Available Yet (0 past requests of this kind, from 0 PDFs; needs 12 from 6)' in out
     assert 'Max Estimated Cost: about $' in out and 'approximate and not a limit: the dollar limits apply to Claude models only' in out
+
+# ---- review 02 M8 (handoff/cost-estimates/issue-page-readings-retry.md): a retry that reuses this folder's own reply
+#      rebuilds workorder.json; the page readings and language tags paid for after it must come back, and a reply from
+#      anywhere else must never bring them
+PAGES_RUN = {'schema': 'page-reads/1', 'cost_usd': 0.08, 'pages': [{'page': 1, 'text': 'He mau hua ʻōlelo.', 'finish': 'stop', 'cost_usd': 0.08},
+                                                                   {'page': 2, 'text': 'cut', 'finish': 'length', 'cost_usd': 0.0}]}
+LANG_RUN = {'schema': 'language-run/1', 'cost_usd': 0.02, 'language_parts': {'parts': [{'page': 1, 'mcid': 0, 'first': 0, 'last': 3, 'lang': 'haw'}]}}
+
+def test_a_retry_on_its_own_reply_keeps_the_page_readings_and_language_tags(book, tmp_path):
+    A, R = paid_folder(book, tmp_path)
+    (R / 'page_reads_run.json').write_text(json.dumps(PAGES_RUN)); (R / 'language_run.json').write_text(json.dumps(LANG_RUN))
+    assert decide(A, R, '--response-file', R / 'response.json').returncode == 0
+    wo = load(R / 'workorder.json')
+    assert wo['page_readings'] == [{'page': 1, 'text': 'He mau hua ʻōlelo.'}]          # a cut-off page is never put in
+    assert wo['language_parts'] == LANG_RUN['language_parts']
+
+def test_a_reply_from_elsewhere_brings_no_readings_or_tags(book, tmp_path):
+    A, R = paid_folder(book, tmp_path)
+    (R / 'page_reads_run.json').write_text(json.dumps(PAGES_RUN)); (R / 'language_run.json').write_text(json.dumps(LANG_RUN))
+    O = tmp_path / 'other'; O.mkdir()
+    (O / 'page_reads_run.json').write_text(json.dumps(PAGES_RUN)); (O / 'language_run.json').write_text(json.dumps(LANG_RUN))
+    assert decide(A, O, '--response-file', R / 'response.json').returncode == 0
+    wo = load(O / 'workorder.json'); assert 'page_readings' not in wo and 'language_parts' not in wo
+
+@pytest.fixture(autouse=True)
+def _limits(limits_of_2026_11):
+    """These scenarios were written for $5 per PDF and $4 for the language step (conftest.py)."""

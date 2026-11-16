@@ -223,9 +223,13 @@ def test_decides_terminal_lines_include_the_pages(book, tmp_path):
     assert f"Max Estimated Cost: ${e['worst_case_total_usd'] + 0.4:.2f} for 6 AI requests" in out and e['expected'].get('kind') != 'page'
 
 def test_the_run_page_names_the_pages_on_the_max_line_only():
-    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read().split('function costLines')[1].split('const NEXT')[0]
-    assert "', including ' + usd(e.page_reads.ceiling_usd) + ' for ' + e.page_reads.pages + ' Hawaiian page'" in js and '<b>' not in js
-    assert js.index("'Max Estimated Cost: '") < js.index("', including '") < js.index('Counted Toward')
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read().split('function including')[1].split('const NEXT')[0]
+    inc = js.split('function costLines')[0]   # round 24: the parts in one list, "including A, B and C"
+    assert "usd(e.page_reads.ceiling_usd) + ' for ' + esc(e.page_reads.pages) + ' Hawaiian page'" in inc and '<b>' not in js
+    assert "' for the extra alt-text request'" in inc and "' for the language tags'" in inc
+    assert inc.index('e.figures') < inc.index('e.page_reads') < inc.index('e.language') and "', including '" in inc and "' and '" in inc
+    assert "' for ' + esc(e.requests) + ' AI requests'" in js and "(e.page_reads.pages === 1 ? '' : 's')" in inc   # review 09 L2: printed escaped, counted raw
+    assert js.index("'Max Estimated Cost: '") < js.index('including(e)') < js.index('Counted Toward')
 
 def test_run_api_prices_the_pages_before_the_cost_lines():
     sh = open(os.path.join(HERE, 'run_api.sh'), encoding='utf-8').read()

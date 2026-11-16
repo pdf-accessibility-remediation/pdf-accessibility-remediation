@@ -11,10 +11,10 @@
     "display_doc_title": true
   },
   "retype": [
-    {"obj": "2855 0", "type": "P", "why": "half-title repeat of the book title, not a heading"},
-    {"obj": "3332 0", "type": "P", "why": "half-title repeat before the Introduction, not a heading"},
-    {"obj": "3216 0", "type": "H2"},
-    {"obj": "3318 0", "type": "H2"},
+    {"obj": "2855 0", "type": "P", "why": "half-title repeat of the book title on PDF 2 (printed i); only one H1 should remain"},
+    {"obj": "3332 0", "type": "P", "why": "half-title repeat of the book title on PDF 12 (printed xi)"},
+    {"obj": "3216 0", "type": "H2", "why": "front matter title: Contents"},
+    {"obj": "3318 0", "type": "H2", "why": "front matter title: Acknowledgments"},
     {"obj": "3333 0", "type": "H2"},
     {"obj": "3349 0", "type": "H2"},
     {"obj": "3277 0", "type": "H2"},
@@ -24,6 +24,7 @@
     {"obj": "4046 0", "type": "H2"},
     {"obj": "4304 0", "type": "H2"},
     {"obj": "4594 0", "type": "H2"},
+
     {"obj": "3441 0", "type": "H3"},
     {"obj": "3423 0", "type": "H3"},
     {"obj": "3393 0", "type": "H3"},
@@ -51,8 +52,7 @@
     {"obj": "3997 0", "type": "H3"},
     {"obj": "4012 0", "type": "H3"},
     {"obj": "4037 0", "type": "H3"},
-    {"obj": "3723 0", "type": "Caption", "why": "Table 1 title, tagged H2 at 9 pt"},
-    {"obj": "12107 0", "type": "Caption", "why": "Table 2 title, tagged H2 at 9 pt"},
+
     {"obj": "3809 0", "type": "H4"},
     {"obj": "3816 0", "type": "H4"},
     {"obj": "3828 0", "type": "H4"},
@@ -68,28 +68,37 @@
     {"obj": "3965 0", "type": "H4"},
     {"obj": "3972 0", "type": "H4"},
     {"obj": "3975 0", "type": "H4"},
-    {"obj": "3979 0", "type": "H4"}
+    {"obj": "3979 0", "type": "H4"},
+
+    {"obj": "3723 0", "type": "Caption", "why": "Table 1 title (9 pt, not bold) tagged as a heading; it is a table caption"},
+    {"obj": "12107 0", "type": "Caption", "why": "Table 2 title tagged as a heading; it is a table caption"}
   ],
   "flatten": [
-    {"obj": "4166 0", "why": "bibliography entries (publisher lines of References) tagged as a numbered list, not a real list"}
+    {"obj": "4166 0", "why": "PDF 216 (printed 203): bibliography entries (publisher lines and '———' repeats) mis-tagged as a numbered list"}
   ],
   "tables": [
-    {"obj": "12035 0", "title_rows": 0, "header_rows": 1, "header_cols": 0, "why": "Table 1 dialect word list; row 0 names the columns; title is a separate Caption before the table"},
-    {"obj": "12180 0", "title_rows": 0, "header_rows": 1, "header_cols": 0, "why": "Table 2 dialect word list; row 0 names the columns; title is a separate Caption before the table"}
+    {"obj": "12035 0", "title_rows": 0, "header_rows": 1, "header_cols": 0},
+    {"obj": "12180 0", "title_rows": 0, "header_rows": 1, "header_cols": 0}
   ],
   "alt": [
-    {"obj": "10770 0", "alt": "Book cover of Language and Truth in North Korea by Sonia Ryang. A map of the Korean peninsula, with the north colored blue and red-and-white like the North Korean flag with its red star, and a bronze statue of a man in a long coat with one arm raised in front. Faint Korean characters fill the beige background. The title is printed in red at the top and the author's name at the bottom."},
+    {"obj": "10770 0", "alt": "Book cover: a bronze-coloured statue of a man in a long coat, one arm raised, stands over a map of the Korean peninsula whose northern part is filled with the North Korean flag (red field, white circle and red star, blue stripes) against a beige background with faint Korean characters. The title 'Language and Truth in North Korea' is at the top and the author's name, Sonia Ryang, at the bottom."},
     {"obj": "3200 0", "alt": "University of Hawai‘i Press logo"},
-    {"obj": "18134 0", "alt": "Creative Commons Attribution-NonCommercial-NoDerivatives (CC BY-NC-ND) license logo"}
+    {"obj": "18134 0", "alt": "Creative Commons logo: Attribution, NonCommercial, NoDerivatives (CC BY-NC-ND)"}
   ],
   "move_to_document_start": ["10770 0"],
+  "remove_empty_containers": true,
   "deferrals": [
-    {"what": "Reading position of the Index section (Sect, PDF 228–236) and of the copyright-page Article (PDF 5)", "why": "The digest's reading_order lists the Index Sect first, before the front matter, so it may be read out of printed order. The listing is truncated and I can't confirm where the container sits after the executor moves it into the Document.", "pages": [5, 228, 236]},
-    {"what": "Drop caps split from their words in the text layer (e.g. 'W riting' on PDF 8, 'S onia' on PDF 238)", "why": "These are ActualText candidates, but the digest gives no obj for the paragraphs concerned, so I can't target them.", "pages": [8, 238]},
-    {"what": "Pages with no tagged text (PDF 3, 7, 13, 194, 214, 224, 226)", "why": "They are probably blank pages. A person should confirm they have no untagged content.", "pages": [3, 7, 13, 194, 214, 224, 226]},
-    {"what": "page_map ends at PDF 226 although the file has 239 pages, and its labels (e.g. 'About the Author' at PDF 225) don't match the headings list (PDF 238)", "why": "The digest's page numbering is inconsistent in the back matter. I cited page numbers from the headings list.", "pages": [225, 226, 238, 239]},
-    {"what": "veraPDF reports 1 failed rule that no work-order key can fix", "why": "It is not listed in pdfua_check.rules, so I can't tell what it is. A person should review it.", "pages": []}
+    {
+      "what": "Reading order of the copyright container and the Index",
+      "why": "The digest shows the copyright page (Document > Article > Story) and the Index (Sect, PDF 228–236) as separate containers apart from the main run of headings and paragraphs. I can't tell from the digest whether the copyright page will be read first, in place, or last once the executor gathers root elements into the Document, so I made no move_section. A person should check where they fall.",
+      "pages": [5, 228, 229, 230, 231, 232, 233, 234, 235, 236]
+    },
+    {
+      "what": "Split drop-cap words in the text layer",
+      "why": "Text extraction shows 'W riting' (Acknowledgments) and 'S onia Ryang' (About the Author) with a stray space after the initial letter. Those paragraphs are not listed in the digest, so I have no obj to target with ActualText. A person should check how a screen reader speaks them.",
+      "pages": [8, 238]
+    }
   ],
-  "notes_for_reviewer": "Heading outline is rebuilt by per-element retype: the book title on PDF 4 (printed iii) stays the only H1. The half-title repeats on PDF 2 (printed i) and PDF 12 (printed xi) became P. Contents, Acknowledgments, Introduction, chapters, References, Index and About the Author are H2. The former H2 sections are H3 and the former H3 subsections are H4. The publisher's Table 1 and 2 titles on PDF 75 (printed 62) were tagged H2 at 9 pt and are now Captions. Chapter headings already combine the number and title in one element, so no merges are needed. The bibliography 'list' on PDF 216 (printed 203) was flattened. The three numbered lists on PDF 86–88 (printed 73–75) are kept. Figure alt texts contained NUL characters and were replaced. The TOC is already tagged TOC/TOCI. Language stays en-US. Romanized Korean is not language-tagged."
+  "notes_for_reviewer": "The publisher's tags had 13 elements typed H1. I kept one H1, the title on the title page (PDF 4, printed iii), and demoted the half-title repeats on PDF 2 (printed i) and PDF 12 (printed xi) to P. Chapters, the Introduction, Conclusion and the front and back matter titles are now H2. Former H2 section heads are H3 and former H3 heads are H4, so there are no level skips. The two 'Table n.' titles on PDF 75 (printed 62) were typed H2 and are now Caption. The three figures had alt text ending in a NUL character; I replaced it with clean alt text. The two dialect tables each have one header row. Their first column (English) could be a row header, but I left it as data. The three numbered lists on PDF 86–88 (printed 73–75) look like real lists and are kept. This is a born-digital file (Aspose), not an OCR scan. The suspect-token rate probably reflects romanized Korean, not recognition errors. I found no running heads or page-number artifacts in the digest. Foreign-language runs are left for the language step."
 }
 ```

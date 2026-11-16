@@ -18,7 +18,8 @@ Each run writes its results to its own folder, beside `pipeline/`. This page lis
 | `record.json` | the archive | Everything vital about the run in one file (see [record.json](#recordjson)) |
 | `reviews/` | a later review | What is needed to review the run again after code changes (see [The reviews folder](#the-reviews-folder)) |
 | `release/` | the archive | The accessibility evaluation's results and each shipment (see [The release folder](#the-release-folder)) |
-| `han_review.csv` | a Japanese / Chinese reader | Only when the PDF has Han-only CJK runs: one row per run, with a blank decision column |
+| `han_review.csv` | a Japanese / Chinese reader | Only when the PDF has Han-only CJK runs the language step left untagged: one row per run, with a blank decision column |
+| `language_run.json` | the archive | The language step's requests, replies, cost and decisions (see [Language tags](languages.md)) |
 | `_intake/intake.md` | a reviewer | Untagged originals only: the intake record in plain words (see [Intake files](#intake-files)) |
 | `_intake/intake.json` | the archive | Untagged originals only: what intake measured and did (see [Intake files](#intake-files)) |
 | `_intake/intake.pdf` | the pipeline | Untagged originals only, when intake changed anything: the OCR'd and auto-tagged copy the rest of the run worked on |
@@ -78,6 +79,8 @@ The strip has one cell per page of the PDF, shaded by its most serious issue. It
 
 Every page reference in the report ("PDF 152 (printed 143)") links to that page in the strip and pins it there. It shows what needs a person on that page and every section that mentions it, each linked to the exact item. A page reference counts only as a whole word: not "veraPDF 1.30.3" or "PDF 2.0".
 
+A link written in review.md's text (`[text](address)`) becomes a link only to "#…", http:, https: or a relative path. Any other kind (javascript:, data:, mailto:, …) stays as the text it was. The strip's data (which sections mention each page) is written so that no text in it can end it early or hide the page's script (<, > and & as \u escapes).
+
 ### Sections and their counts
 
 A "§N Details" link opens the folded section at the very item, and outlines it in blue until the next click elsewhere (one at a time).
@@ -124,7 +127,7 @@ review.md keeps them all as the record.
 - **Ready to ship?** Four requirements: **Work Order Approval**, **OCR Text Approval**, **Safety Checks** and **Accessibility Evaluation** (see [The four requirements](#the-four-requirements)).
 - **Safety checks:** pages look the same, text unchanged, all content tagged or decoration, the tag-tree index points into the tree, every font readable. Each reads "OK ✔" or "FAILED ✘", never color alone.
 - **Needs a person:** the AI's deferrals, plus the executor's deferrals, plus CHECK rows (see [What "needs a person" counts](#what-needs-a-person-counts)).
-- **AI decisions:** every entry in the work order. Deferrals and the note to the reviewer are not decisions. It reads "approved by NAME on DATE" once the review page has approved it.
+- **AI decisions:** every entry in the work order. Deferrals and the note to the reviewer are not decisions. The language step's word forms are not in this count: they are decided under "Languages" on the review page and counted by the **Language Tags** requirement, and the line adds them after the count ("67 in the work order · 2,190 word forms under "Languages""). The "N changed" figure leaves them out too. It reads "approved by NAME on DATE" once the review page has approved it. A run reported before this rule keeps its stored count until it is reported again.
 - **Fixed automatically (no AI):** the executor's own fixes, by kind: links tied and described, note IDs, tag-tree index entries, standard tags un-remapped, empty tags, decorative lines, tab order, font maps, and others. There is no total, because several touch the same link.
 - **Top issues:** safety failures first, then the ship conditions (OCR text, the review), CHECK rows, the executor's deferrals and the AI's. review.md shows five and "… and N more"; the dashboard shows all of them. Each points to its review.md section.
 
@@ -220,10 +223,10 @@ Every run keeps `reviews/`, so the run can be reviewed again after code changes:
   - `digest.json` (46–355 KB in the 19 test books). Its `low_resolution` list (figures under 150 ppi) is for the report and the review page only; the AI never sees it (see [Editing the PDF by hand](hand-edits.md#for-developers))
   - `fulltext.json`: the whole texts review.md quotes, local only, 4–186 KB
   - the OCR word sheets of a scanned PDF
-  - for a reviewed run, `dryrun.json` (below)
+  - for a reviewed run, or a run applied from the AI's own decisions with the figure step on (#93), `dryrun.json` (below)
   - never the figure crops
 
-**`dryrun.json`** records the figure moves a trial run of `apply.py` found at the review stop, and what it did with the AI's section move (`section_move`: made, with where, or refused, with why). It carries the fingerprint of what it depended on (`key`: the input PDF's sha256, the order's, the code's, the package versions and the settings), so a later review reuses it while that still matches.
+**`dryrun.json`** records the figure moves a trial run of `apply.py` found at the review stop (a reviewed run), or that the run's own apply made (a run applied from the AI's own decisions with the figure step on, #93), and what it did with the AI's section move (`section_move`: made, with where, or refused, with why). It carries the fingerprint of what it depended on (`key`: the input PDF's sha256, the order's, the code's, the package versions and the settings), so a later review reuses it while that still matches.
 
 Reviewed runs also keep:
 - `workorder.ai.json`
@@ -295,7 +298,7 @@ The first request's entry carries the note it was given (`note`: version and has
 #### run.figure_passes
 
 - `requests`, and `figures`: how many went to figure requests
-- `prompt_file` and `prompt_sha256` (`figures_v1.md`), and `note`
+- `prompt_file` and `prompt_sha256` (`figures_v2.md`; `figures_v1.md` in runs before review 06), and `note`
 - `state`: `calling` while they are sent, `merged` when done
 - `fingerprint`: of the saved split
 - `cut_off_retries`: each request sent again with twice the room after a cut-off (`pass`, `max_tokens`, `cost_usd`, `outcome`)

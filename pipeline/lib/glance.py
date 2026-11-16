@@ -20,11 +20,13 @@ Definitions (docs/output-files.md, docs/release.md, docs/evaluation.md):
                      near the top of `issues` (rank 1), not a safety check (2026-10-31).
   needs a person     the AI's deferrals + the executor's deferrals (counted by kind and page) + CHECK rows, leaving out
                      the "Nothing deferred by the executor" row, which only points at that list.
-  AI decisions       every entry in the work order (deferrals and notes are not decisions).
+  AI decisions       every entry in the work order (deferrals and notes are not decisions), leaving out the language
+                     step's word forms (`language_parts`): a person decides those under "Languages" on the review page,
+                     and the Language Tags requirement counts them (review 12, M2).
   fixed automatically  the executor's own fixes, by kind, with no total (several touch the same links).
 """
 import re
-from lib import dates as D
+from lib import dates as D, langreq
 
 SCHEMA = 'glance/0.5'                 # 0.5 (2026-11): five safety checks, the accessibility evaluation, four statuses
 READY_SCHEMAS = ('glance/0.4', 'glance/0.5')   # written under every current base rule; 0.3 predates three of them (review 14 H1)
@@ -38,10 +40,13 @@ def with_spread_labels(labels, intake):
 def ocr_layer_flagged(intake):
     """Intake's test of an existing OCR layer on scanned pages found it doubtful, unusable or missing diacritics, or could
     not check it (no sample page scored: an unknown layer is not "not needed"): then its OCR text needs a person's
-    approval before the book ships, as added OCR text does (decided 2026-10-25). A book with no existing OCR layer has no
-    `ocr_layer_test` and is not flagged."""
+    approval before the book ships, as added OCR text does (decided 2026-10-25); so does a layer over page images that show
+    Chinese, Japanese or Korean text the layer lacks (#121), and one whose such pages a person kept at the CJK stop
+    (`cjk_kept`, review 09 M-A: the Keep is a typed name before any review, not an approval of the text). A book with no
+    existing OCR layer has no `ocr_layer_test` and is not flagged."""
     ol = (intake or {}).get('ocr_layer_test') or {}
-    return ol.get('verdict') in ('doubtful', 'unusable', 'not enough pages scored') or bool(ol.get('diacritics'))
+    return (ol.get('verdict') in ('doubtful', 'unusable', 'not enough pages scored') or bool(ol.get('diacritics')) or bool(ol.get('cjk_on_images'))
+            or bool((ol.get('cjk_kept') or {}).get('pages')))
 def ocr_review_needed(intake):
     """The OCR-text gate's condition, in one place (review.md, review_ocr.py, the review page): intake added OCR text, or
     flagged the book's existing OCR layer."""
@@ -71,11 +76,44 @@ SAFETY = [('Every page looks the same as the original', 'pages look the same'),
           ('Fonts: every embedded font program could be read', 'every font readable')]
 POINTER_ROWS = {'Nothing deferred by the executor'}        # a CHECK row that only points at a list counted separately
 SAFETY_VERA = 'no WCAG rule newly failing (veraPDF)'   # the sixth safety check of glance/0.4 (a finding from 0.5): dropped on read
-SHIP_BASE = ('Work order approved on the review page', 'OCR text approved', 'Safety checks')   # from the run; the rest from release/
+SHIP_LANG = 'Language tags'             # #118: the language step's tags, approved one by one (review 06, H2)
+SHIP_BASE = ('Work order approved on the review page', 'OCR text approved', 'Safety checks', SHIP_LANG)   # from the run; the rest from release/
 SHIP_EVAL = 'Accessibility evaluation'
 # the names a person reads (the card, review.md, the page, the strip); the keys above stay as stored (decided 2026-10-31)
 SHIP_NAMES = {'Work order approved on the review page': 'Work Order Approval', 'OCR text approved': 'OCR Text Approval',
-              'Safety checks': 'Safety Checks', SHIP_EVAL: 'Accessibility Evaluation'}
+              SHIP_LANG: 'Language Tags', 'Safety checks': 'Safety Checks', SHIP_EVAL: 'Accessibility Evaluation'}
+
+# Why the language step decided nothing although the audit found word forms for it (record language_status, report.py):
+# the Language Tags line then reads "Not Done (…)" and blocks Ready (Patrick, 2026-11-14)
+LANG_NOT_DONE = {'off': 'the language step was turned off', 'left_out_book': 'the language step was left out: over the limit per PDF',
+                 'left_out_cap': 'the language step was left out: over its own limit', 'failed': 'the language step did not finish',
+                 'not_run': 'the language step was not run'}
+def language_line(record):
+    """(ok, text) of the Language Tags requirement (#118). Not Applicable only when the audit found no word forms for
+    the language step (record language_status.candidates 0, the PDF's own language tags counted too; a record made
+    before round 18 has no status and keeps the old reading); forms found but none decided: Not Done (why); the count
+    not made (candidates None): Not Done (not checked). Both block Ready. Tags: Approved
+    only when a person decided every one on the review page (record['language_review'], written by the review step's
+    Languages section); otherwise Not Reviewed, with what is left. Until that section exists every such book reads Not
+    Reviewed (review 06, H2: approving the work order as one item must not approve its language tags)."""
+    lp = (record.get('workorder') or {}).get('language_parts') or {}
+    none_tagged = lp.get('version') == 2 and bool(lp.get('forms')) and not any(isinstance(f, dict) and (f.get('tag') or f.get('person')) for f in lp['forms'])
+    if lp.get('version') == 2: todo = [lp['forms'][i] for i in langreq.to_decide(lp.get('forms'))]   # what a person decides
+    else: todo = list({(p.get('form') or p.get('text')) for p in lp.get('parts') or []})
+    lr = record.get('language_review') or {}
+    st = record.get('language_status')
+    if not lp and isinstance(st, dict) and st.get('state') != 'decided':
+        if st.get('candidates') is None: return False, 'Not Done (not checked)'       # the count couldn't be made: fail closed
+        if st['candidates']:
+            return False, f'Not Done ({LANG_NOT_DONE.get(st.get("state"), LANG_NOT_DONE["not_run"])})'     # round 18: never Not Applicable
+    if not todo and not lr.get('forms'): return True, 'Not Applicable'
+    left = lr.get('not_reviewed') if lr else None
+    if lr and left == 0:
+        return True, f'Approved ({lr.get("reviewer")} on {D.day(lr.get("date"))})'
+    n = len(todo) if left is None else left
+    if none_tagged:                                    # the AI proposed no tag: a person confirms what it left untagged
+        return False, f'Not Reviewed ({n:,} word form{"" if n == 1 else "s"} the AI left untagged to confirm on the review page)'
+    return False, f'Not Reviewed ({n:,} word form{"" if n == 1 else "s"} to decide on the review page)'
 def ship_name(s): return SHIP_NAMES.get(s['what'], s['what'])
 
 def safety_line(five):
@@ -139,11 +177,20 @@ def pages_text(ps, labels=None):
 def n_decisions(wo):
     n = 0
     for k, v in (wo or {}).items():
-        if k in META or v in (None, False, {}, []): continue
+        if k in META or k == 'language_parts' or v in (None, False, {}, []): continue
         if isinstance(v, list): n += len(v)
         elif isinstance(v, dict): n += sum(len(x) if isinstance(x, (list, dict)) else 1 for x in v.values() if x not in (None, False, {}, []))
         else: n += 1
     return n
+
+def n_forms(wo):
+    """The word forms the "Languages" section lists: version 2's forms a person decides (`tag` or `person`, as
+    review/core.py build_items and language_line), or version 1's distinct words."""
+    lp = (wo or {}).get('language_parts') or {}
+    if not isinstance(lp, dict): return 0
+    if lp.get('version') == 2: return len(langreq.to_decide(lp.get('forms')))
+    return len({(p.get('form') or p.get('text')) for p in lp.get('parts') or [] if isinstance(p, dict)})
+def forms_text(n): return f'{n:,} word form{"" if n == 1 else "s"} under "Languages"'
 
 def from_sections(secs):
     """rows and sections as parse_md gives them, read from record.json `sections` instead of review.md's text."""
@@ -175,10 +222,15 @@ def with_release(g, record, release=None, cur=None):
         if s['what'] not in SHIP_BASE: continue
         s = dict(s)
         if s['what'] == 'Safety checks': s['ok'], s['text'] = safety_line(five)
+        if s['what'] == SHIP_LANG: s['ok'], s['text'] = language_line(record)          # always from the record as it is now
         ship.append(s)
+    if SHIP_LANG not in [s['what'] for s in ship]:     # a glance stored before #118: the line from the record (Not Applicable without tags)
+        ok_, txt_ = language_line(record)
+        ship.insert(min(3, len(ship)), {'what': SHIP_LANG, 'ok': ok_, 'text': txt_})
     ok, txt = REL.evaluation_line(rel, cur)
     ship.append({'what': SHIP_EVAL, 'ok': ok, 'text': txt})
-    base_ok = g.get('schema') in READY_SCHEMAS and [s['what'] for s in ship[:3]] == list(SHIP_BASE) and all(s['ok'] is True for s in ship[:3])
+    nb = len(SHIP_BASE)
+    base_ok = g.get('schema') in READY_SCHEMAS and [s['what'] for s in ship[:nb]] == list(SHIP_BASE) and all(s['ok'] is True for s in ship[:nb])
     st = REL.status(rel, cur, base_ok, rel.get('newer'), (record.get('review') or {}).get('session'))
     p = REL.part(rel, 'pac', cur); it = ((p['check'] or {}).get('items') or {}).get('needs_person') or {} if p['state'] != 'earlier version' else {}
     looked = {'result': it.get('result'), 'by': p['check'].get('by'), 'recorded': p['check'].get('recorded')} if it.get('result') else None
@@ -211,7 +263,7 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
     # ---- ready to ship
     if rv and rv.get('method') == 'page':
         unexpl = [x for x in rv.get('gaps') or [] if str(x.get('reason') or '').startswith('hand edit: no reason asked for')]
-        why = ([f'{(rv.get("counts") or {}).get("accepted_unreviewed")} decisions not reviewed'] if (rv.get('counts') or {}).get('accepted_unreviewed') else []) \
+        why = ([f'{(rv.get("counts") or {}).get("accepted_unreviewed"):,} decisions not reviewed'] if (rv.get('counts') or {}).get('accepted_unreviewed') else []) \
             + ([f'{len(rv["dropped_on_check"])} edits dropped by the check'] if rv.get('dropped_on_check') else []) \
             + ([f'{len(unexpl)} gaps left without a reason'] if unexpl else [])
         wo_ok = not why
@@ -248,9 +300,11 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
     else: newly, vera_safe = None, {'what': SAFETY_VERA, 'ok': False, 'state': 'not checked', 'detail': 'veraPDF did not run on both files'}
     saf = [{'what': label, 'ok': byname[name]['ok']} for name, label in SAFETY if name in byname]   # the five damage checks only
     saf_ok = safety_line(saf)[0]                                   # the line, the Safety card and summary.html: one rule
+    lang_ok, lang_txt = language_line(record)
     ship = [{'what': 'Work order approved on the review page', 'ok': wo_ok, 'text': wo_txt},
             {'what': 'OCR text approved', 'ok': ocr_ok, 'text': ocr_txt},
-            {'what': 'Safety checks', 'ok': safety_line(saf)[0], 'text': safety_line(saf)[1]}]
+            {'what': 'Safety checks', 'ok': safety_line(saf)[0], 'text': safety_line(saf)[1]},
+            {'what': SHIP_LANG, 'ok': lang_ok, 'text': lang_txt}]
 
     # ---- issues: everything that needs a person, ranked (0 safety, 1 ship conditions, 2 CHECK rows, 3 executor, 4 AI)
     issues = []
@@ -277,6 +331,9 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
             add(1, 'ship', 'OCR text ' + (('waiting for a language reader' if v.get('verdict') == SENT else 'not approved') if isinstance(v, dict) else 'not yet reviewed'),
                 ocr_pages, sec('Intake'), find='- OCR text added', key='intake:ocr')
         elif name in GATE_ROWS: add(1, 'ship', f'{name}: {det}', [], sec('Work order reviewed'))
+        elif name == 'Language tags hold their words':          # #118: a tag on other words or under another language (review 06, stage D)
+            add(1, 'check', f'{name}: {det}', [x['page'] for x in (ve.get('language') or {}).get('mismatch_examples') or [] if isinstance(x.get('page'), int)],
+                sec('Language Tags'), key='check:language')
         elif name.startswith('veraPDF WCAG'):
             wr = [x for x in vrules.values() if x.get('scope') == 'wcag']
             for x in wr or [None]:
@@ -371,6 +428,7 @@ def glance(record, md, labels=None, han_pages=None, sections=None, release=None)
     return with_release({'schema': SCHEMA, 'ready': None, 'ship': ship, 'safety': saf, 'safety_ok': saf_ok,
             'needs_person': {'total': len(d_ai) + n_exec + n_check, 'ai_deferrals': len(d_ai), 'executor_deferrals': n_exec, 'check_rows': n_check},
             'ai_decisions': {'count': n_decisions(wo), 'reviewed': reviewed,
+                             **({'word_forms': n_forms(wo)} if n_forms(wo) else {}),
                              **({'no_model': True} if (record.get('run') or {}).get('no_model') else {})},   # a PDF edited by hand: no AI call
             'fixed_automatically': [{'what': k, 'count': c} for k, c in fixed.items()],
             'verapdf': vg, 'issues': issues, 'sections': secs, 'checks': rows,
@@ -400,7 +458,8 @@ def glance_md(g, html_name='review.html', top=5):
     L.append(f'**Needs a person:** {np_["total"]} ({np_["ai_deferrals"]} deferred by the AI · {np_["executor_deferrals"]} deferred by the executor · '
              f'{np_["check_rows"]} CHECK row{"" if np_["check_rows"] == 1 else "s"})' + (f' · {needs_looked_text(g)}' if needs_looked_text(g) else '') + '  ')
     ad = g['ai_decisions']; r = ad.get('reviewed')
-    L.append(f'**{"Decisions (no AI call)" if ad.get("no_model") else "AI decisions"}:** {_n(ad["count"])} in the work order, ' + (
+    L.append(f'**{"Decisions (no AI call)" if ad.get("no_model") else "AI decisions"}:** {_n(ad["count"])} in the work order'
+             + (f' · {forms_text(ad["word_forms"])}' if ad.get('word_forms') else '') + ', ' + (
         f'approved by {r["reviewer"]} on {D.day(r["date"])} ({r["changed"]} changed)' if r and g['ship'][0]['ok'] else
         f'reviewed by {r["reviewer"]} on {D.day(r["date"])} ({r["changed"]} changed), not signed off (see "Ready to ship?")' if r else
         'applied without review by a person') + '  ')

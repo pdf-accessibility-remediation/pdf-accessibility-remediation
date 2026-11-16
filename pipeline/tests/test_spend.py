@@ -63,7 +63,7 @@ def test_expected_is_shown_when_present(setup, monkeypatch):
     monkeypatch.setattr(costs, '_expected', lambda x: {'usd': 0.25, 'low': 0.18, 'high': 0.36, 'basis': 'test'})
     assert costs.estimate(str(run_folder(setup)))['expected']['usd'] == 0.25
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
-    assert "'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet') + '<br>'" in js and "'Max Estimated Cost: ' + usd(e.ceiling_usd)" in js
+    assert "'Expected Cost: ' + (x.usd != null ? usd(x.usd) : 'Not Available Yet' + noneWhy(x)) + '<br>'" in js and "'Max Estimated Cost: ' + usd(e.ceiling_usd)" in js
     assert 'usually' not in js.split('function costLines')[1].split('const NEXT')[0] and 'Worst-case' not in js and 'About ' not in js.split('function costLines')[1].split('const NEXT')[0]
 
 def line_of(js, start):
@@ -73,7 +73,7 @@ def line_of(js, start):
 def test_the_run_pages_cost_wording():
     """The wording Patrick decided (handoff/cost-estimates/03's brief): every state the run page can show, in its source."""
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
-    for w in ("' for ' + e.requests + ' AI requests'", "' · Counted Toward This PDF\\'s Limit So Far: '", "' · Credit: '", "' · Credit: Not Checked'",
+    for w in ("' for ' + esc(e.requests) + ' AI requests'", "' · Counted Toward This PDF\\'s Limit So Far: '", "' · Credit: '", "' · Credit: Not Checked'",
               '"Start Remediation" sends the PDF to the AI service. "Expected Cost" is based on the PDF\\\'s content and may vary. "Max Estimated Cost" is the estimated cost ceiling; it must fit within your spending limits and available credit. The actual cost is usually much lower.'):
         assert w in js, w
 
@@ -105,8 +105,31 @@ def test_page_readings_count_toward_the_credit_and_the_book(setup):
     R = run_folder(setup, credit=0.9); page_reads_estimate(R)
     assert costs.estimate(str(R))['blocked']['code'] == 'credit'           # 0.62 fits, 1.04 does not
     R = run_folder(setup, label='l2', worst=1.9, passes=[{'pass': '1', 'worst_case_usd': 1.9}], book_cap_usd=5.0); page_reads_estimate(R, worst=3.5)
+    e = costs.estimate(str(R))                                              # the readings don't fit with the work order: they alone are left out (review 08, H1)
+    assert e['blocked'] is None and e['page_reads'] is None and e['bounds']['BOOK_MAX_USD'] == 1.91 and 'PAGE_READS_MAX_USD' not in e['bounds']
+    assert [x['kind'] for x in e['left_out']] == ['page_reads'] and 'left out of this run' in e['left_out'][0]['words']
+    page_reads_estimate(R, worst=1.0)                                       # fits: counted, and the PDF's bound includes it
     e = costs.estimate(str(R))
-    assert e['blocked']['code'] == 'per_book' and e['bounds']['BOOK_MAX_USD'] == 1.91
+    assert e['left_out'] == [] and e['ceiling_usd'] == 2.9 and e['bounds']['BOOK_MAX_USD'] == 2.91
+
+def language_estimate(R, worst, **kw):
+    (R / 'language_estimate.json').write_text(json.dumps({'schema': 'language-estimate/1', 'model': MODEL, 'prompt_sha256': 'p',
+        'sent': 40, 'to_send': 2, 'worst_case_usd': worst, 'per_call_worst_usd': worst / 2, **kw}))
+
+def test_the_language_step_never_blocks_spend(setup):
+    """review 08, H1, for the app: over its own cap it is never counted; over the PDF's limit with the work order it alone is
+    left out, and Spend runs the work order without it."""
+    R = run_folder(setup, label='l3', worst=0.62, passes=[{'pass': '1', 'worst_case_usd': 0.62}], book_cap_usd=5.0)
+    language_estimate(R, 4.50, refused={'why': 'cap', 'words': 'over its limit'})
+    e = costs.estimate(str(R))
+    assert e['blocked'] is None and e['language'] is None and e['left_out'] == [] and e['ceiling_usd'] == 0.62
+    language_estimate(R, 4.39)                                              # fits its own cap, not the PDF with the work order
+    e = costs.estimate(str(R))
+    assert e['blocked'] is None and e['language'] is None and [x['kind'] for x in e['left_out']] == ['language']
+    assert SP.language_env(e) == {} and e['bounds']['BOOK_MAX_USD'] == 0.63
+    language_estimate(R, 4.39, refused={'why': 'book', 'words': 'decide.py, at $5'})   # decide.py's refusal is fitted again against the app's limit
+    e = costs.estimate(str(R), limits=costs.limits_of({'limits': {'per_book_usd': 6.0}}))
+    assert e['language']['ceiling_usd'] == 4.39 and e['bounds']['BOOK_MAX_USD'] == 5.02 and SP.language_env(e)['LANGUAGE_MAX_USD'] == '4.40'
 
 def test_batch_binds_the_largest_books_page_readings(setup):
     a, b = run_folder(setup, label='a'), run_folder(setup, label='b')
@@ -284,6 +307,62 @@ def test_spend_refusals(setup, change, words):
     finally:
         if change in ('model', 'prompt'): SP.current_model_and_prompt = orig
 
+def moved_to_trash(s, setup):
+    """bk.pdf moved to the Trash by the app (its move log names its sha256): (its bytes, its sha256)."""
+    from webapp import trash as TR
+    src = setup / 'samples' / 'bk.pdf'
+    data = src.read_bytes(); sha = hashlib.sha256(data).hexdigest()
+    src.unlink()
+    TR.log(s, {'what': 'pdf', 'sha256': sha, 'file': 'bk.pdf', 'from': str(src), 'to': 'x'})
+    return data, sha
+
+def test_spend_goes_on_with_the_pdf_uploaded_again_under_another_name(setup):
+    """#93 (review 09 M1): after "Move to Trash", the same PDF uploaded again under another name ("bk 2.pdf", the name the
+    Trash gives on a clash) is found by its content and sent; the instruction is never given twice."""
+    s, R, est = spend_setup(setup)
+    data, sha = moved_to_trash(s, setup)
+    with pytest.raises(SP.Refused) as e: SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    assert str(e.value) == SP.MOVED
+    os.makedirs(s['uploads'], exist_ok=True)
+    back = os.path.join(s['uploads'], 'bk 2.pdf'); open(back, 'wb').write(data)
+    a = SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    assert a['argv'][1:] == ['run_api.sh', back, 'bk', 'l1'] and a['extra']['fingerprint'] == est['fingerprint'] and a['extra']['book_sha'] == sha
+    j = NR.start_spend(s, 'bk/l1', str(R), {'kind': 'workorder', 'fingerprint': est['fingerprint']})
+    assert j['paid'] and j['argv'][2] == back
+    assert last_estimate_argv(s) == str(setup / 'samples' / 'bk.pdf')        # the estimate job itself is never changed
+
+def last_estimate_argv(s):
+    return SP.last_estimate_job(s, 'bk/l1')['argv'][2]
+
+def test_spend_goes_on_with_the_pdf_back_under_its_own_name(setup):
+    s, R, est = spend_setup(setup)
+    data, sha = moved_to_trash(s, setup)
+    with pytest.raises(SP.Refused): SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    (setup / 'samples' / 'bk.pdf').write_bytes(data)                          # back at the estimate's own path
+    assert SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])['argv'][2] == str(setup / 'samples' / 'bk.pdf')
+
+def test_spend_never_takes_another_pdf_for_the_one_moved(setup, monkeypatch):
+    """A file with other content is never used, and a copy found through a stale cached hash is checked afresh."""
+    s, R, est = spend_setup(setup)
+    data, sha = moved_to_trash(s, setup)
+    os.makedirs(s['uploads'], exist_ok=True)
+    other = os.path.join(s['uploads'], 'bk 2.pdf'); open(other, 'wb').write(b'%PDF-1.4 another book')
+    with pytest.raises(SP.Refused) as e: SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    assert str(e.value) == SP.MOVED
+    monkeypatch.setattr(RN, 'find_original', lambda s_, sha_, name=None: other)   # as if the cache said it matched
+    with pytest.raises(SP.Refused) as e: SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    assert str(e.value) == SP.MOVED and not [j for j in jobs.all_jobs(s['jobs']) if j['kind'] == 'spend']
+
+def test_a_new_estimate_uses_the_pdf_uploaded_again(setup):
+    """"Get a New Estimate" after the move: refused in the same words until the PDF is back, then made from the copy."""
+    s, R, est = spend_setup(setup)
+    data, sha = moved_to_trash(s, setup)
+    with pytest.raises(ValueError) as e: NR.again_estimate(s, 'bk/l1', str(R))
+    assert str(e.value) == SP.MOVED
+    os.makedirs(s['uploads'], exist_ok=True)
+    back = os.path.join(s['uploads'], 'bk 2.pdf'); open(back, 'wb').write(data)
+    assert NR.again_estimate(s, 'bk/l1', str(R))['argv'][2] == back
+
 def test_model_and_prompt_come_from_decides_source():
     src = open(os.path.join(HERE, 'decide.py'), encoding='utf-8').read()
     assert f"DEFAULT_MODEL = '{MODEL}'" in src and MODEL.startswith('anthropic/') and len(PROMPT) == 16
@@ -304,7 +383,7 @@ def test_test_mode_spend_is_a_saved_reply(setup):
 def test_run_api_wires_each_cap_once():
     """#63 (figure requests past 100 images): MAX_USD and BOOK_MAX_USD are checked as numbers and passed on, once each."""
     sh = open(os.path.join(HERE, 'run_api.sh'), encoding='utf-8').read()
-    assert sh.count('--max-usd "$MAX_USD"') == 1 and sh.count('--book-max-usd "$BOOK_MAX_USD"') == 1
+    assert sh.count('--max-usd "$MAX_USD"') == 1 and sh.count('--book-max-usd "$BOOK_MAX_USD"') == 3   # decide.py, read_pages.py, name_languages.py (review 06 M2)
     assert sh.count('--figure-retry-max-usd "$FIGURE_RETRY_MAX_USD"') == 1 and sh.count('--figure-retry-book-max-usd "$FIGURE_RETRY_BOOK_MAX_USD"') == 1
     assert 'for v in MAX_USD BOOK_MAX_USD FIGURE_RETRY_MAX_USD FIGURE_RETRY_BOOK_MAX_USD; do' in sh and '$v must be a number of dollars' in sh
     assert "# MAX_USD=3 bash run_api.sh …   the limit on what one AI request could cost, in dollars (default 2, lib/costs.py; Claude models only)" in sh
@@ -511,5 +590,9 @@ def test_try_again_with_figure_requests(tmp_path, files, run, want):
 
 def test_the_pages_name_the_number_of_requests():
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
-    assert "' for ' + e.requests + ' AI requests'" in js
-    assert "T.requests + ' AI requests" in open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "' for ' + esc(e.requests) + ' AI requests'" in js
+    assert "esc(T.requests) + ' AI requests" in open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()   # escaped (#93, CodeQL)
+
+@pytest.fixture(autouse=True)
+def _limits(limits_of_2026_11):
+    """These scenarios were written for $5 per PDF and $4 for the language step (conftest.py)."""

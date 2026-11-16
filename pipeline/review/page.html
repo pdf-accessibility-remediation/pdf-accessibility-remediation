@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Work Order Review</title>
 <style>
 :root {
@@ -18,6 +19,7 @@
 /* a jump to a card or section lands below the sticky header. On the targets, not as html's scroll-padding: that padding
    also covered the header's own reviewer field, so the browser scrolled the list on every key typed there */
 main [id] { scroll-margin-top: calc(var(--top, 0px) + 8px); }
+html { background: var(--bg); }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 header.top { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; }
 .top h1 { font-size: 17px; margin: 0 0 6px; }
@@ -104,6 +106,32 @@ dialog .buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: fl
 #gapErr { color: var(--reject); }
 section > h2 { font-size: 16px; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
 .card { background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 10px; }
+/* #118: the Languages section, one fold per language, one row per word form */
+#languages details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; padding: 6px 12px; }
+#languages summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+/* one row per word form (round 24, Patrick's correction of round 23): the fold's rows share two columns (a subgrid), so
+   rows within a fold line up. Column 1 is as wide as the fold's widest set of buttons; "Change Language" sits beside the
+   last button and the text block starts at the same edge; the edge may differ from fold to fold. The word form and its
+   status don't widen column 1 (contain: inline-size): they wrap within it. */
+.lang-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 6px; }
+.lang-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: 6px; align-items: start;
+            border-top: 1px solid var(--line); border-left: 4px solid transparent; padding: 8px 0 8px 8px; }
+.lang-row[data-status] { border-left-color: var(--accent); }                     /* marked without moving the content */
+.lang-left { grid-column: 1; grid-row: 1; min-width: 0; contain: inline-size; }
+.lang-info { grid-column: 2; grid-row: 1; min-width: 0; }
+.lang-status { margin-top: 4px; }
+.lang-form { font-weight: 600; overflow-wrap: anywhere; }
+.lang-ctx, .lang-meta { color: var(--muted, #555); font-size: .92em; overflow-wrap: anywhere; }
+.lang-code { color: var(--muted, #555); font-weight: 400; font-size: .92em; }
+.lang-btns { grid-column: 1; grid-row: 2; display: flex; gap: 6px; align-self: center; }
+.lang-btns button { white-space: nowrap; }
+.lang-acts { grid-column: 2; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.lang-acts select { width: 15em; max-width: 100%; }
+.lang-clear { margin-left: auto; white-space: nowrap; }        /* bottom right of a decided row */
+.lang-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+@media (max-width: 600px) {                                   /* stacked: form, text, buttons, then the list and "Clear Choice" */
+  .lang-list { display: block; } .lang-row { display: flex; flex-direction: column; align-items: stretch; }
+  .lang-left { contain: none; } .lang-btns { flex-wrap: wrap; align-self: flex-start; } }
 .card[data-status=approved] { border-left-color: var(--ok); }
 .card[data-status=changed] { border-left-color: var(--change); }
 .card[data-status=rejected] { border-left-color: var(--reject); }
@@ -195,6 +223,7 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 @media (max-width: 800px) {
   main { flex-direction: column; padding: 16px; }
   header.top { position: static; }
+  .actions { flex-wrap: wrap; }       /* no sideways scroll at 375 px (round 24); desktop keeps one line */
   .navbar { display: block; position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); padding: 8px 16px; }
   /* the side list becomes a drawer over the page: the cards never move */
   /* align-self: stretch, or the desktop flex-start makes the drawer as tall as its list and nothing scrolls */
@@ -206,58 +235,11 @@ button.clear { padding: 1px 8px; font-size: 13px; color: var(--muted); }
 }
 @media (prefers-reduced-motion: reduce) { nav { transition: none !important; } }
 </style>
-</head>
-<body>
-<button type="button" id="showHdr" class="hdr-toggle" aria-expanded="false" aria-controls="top" hidden>Show Header</button>
-<header class="top" id="top">
-  <h1 id="title" tabindex="-1">Work Order Review</h1>
-  <div class="row">
-    <span class="who"><label>Reviewer <input type="text" id="reviewer" placeholder="Your Name" size="18"></label>
-    <span class="sname"><label for="sessionName">Session Name</label><input type="text" id="sessionName" maxlength="80" size="18"><button type="button" id="notesBtn" aria-expanded="false" aria-controls="notepad">Session Notes</button></span></span>
-    <span><span class="bar"><i id="bar"></i></span> <span id="progress"></span></span>
-    <span class="show" role="radiogroup" aria-label="Show">Show:
-      <label><input type="radio" name="view" value="priority" checked> Check First</label>
-      <label><input type="radio" name="view" value="all"> All</label>
-      <label><input type="radio" name="view" value="left"> Not Reviewed</label>
-    </span>
-    <span class="actions"><button id="addBtn" type="button">Add a Decision</button>
-    <button id="draftBtn" type="button">Build a Draft PDF</button>
-    <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close Without a Verdict</button>
-    <span id="saveState" class="save-state">All changes saved</span><span id="checkLine" class="check-line" role="status"></span><button type="button" id="checkBtn" hidden>Show Details</button></span>
-  </div>
-  <div id="saveAlert" role="alert" class="save-alert"></div>
-  <div id="draftLine" class="draft-line" aria-live="polite" hidden></div>
-  <div id="msg" role="status"></div>
-  <div id="session" hidden></div>
-  <div class="hdr-foot"><p id="back" hidden><a href="" class="btnlink">Back to the Run Page</a> (this review stays open; continue it from there)</p>
-  <button type="button" id="hideHdr" class="hdr-toggle" aria-expanded="true" aria-controls="top">Hide Header</button></div>
-</header>
-<!-- the session's notes as a notepad beside the page: the same note as the Session Notes box (typing in either updates both) -->
-<dialog id="notepad" class="npad" aria-labelledby="npadTitle">
-  <div class="npad-bar"><h2 id="npadTitle">Session Notes</h2>
-    <button type="button" id="npadMin" aria-label="Minimize Session Notes"><span aria-hidden="true">–</span></button>
-    <button type="button" id="npadX" aria-label="Close Session Notes"><span aria-hidden="true">×</span></button></div>
-  <textarea id="padNotes" maxlength="4000" aria-labelledby="npadTitle"></textarea>
-</dialog>
-<button type="button" id="npadRestore" class="npad-restore" hidden>Session Notes</button>
-<div class="navbar"><button id="navToggle" type="button" aria-expanded="false" aria-controls="nav">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>Sections</button></div>
-<div id="navBackdrop" hidden></div>
-<main>
-  <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close Sections"><span aria-hidden="true">×</span></button></div><div id="navList"></div></nav>
-  <div class="col">
-    <section id="this-session" aria-labelledby="tsTitle"><h2 id="tsTitle"><label for="sessionNotes">Session Notes (optional)</label></h2>
-      <textarea id="sessionNotes" maxlength="4000"></textarea>
-      <div id="fromNotes"></div>
-    </section>
-    <section id="ocr-text" aria-labelledby="ocrTitle" hidden></section>
-    <div id="addPanel" hidden></div><div id="roPark" hidden><div id="readingOrder"></div></div><div id="cards"></div></div>
-</main>
-<div id="zoom"><img alt=""></div>
-<dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>
-<dialog id="finishDialog" aria-labelledby="finTitle" aria-describedby="finCtx"></dialog>
-<dialog id="checkDialog" aria-labelledby="chkTitle"></dialog>
 <script>
+// 15 (Patrick, 2026-11-11: page changes in one step): the whole script, with the page's data, is read in the head, where
+// nothing of the page can be shown yet, and it only defines; the call at the end of the body (bootReview()) draws the
+// page while it is read, so the first frame shown is the whole page, never its header with empty sections.
+function bootReview() {
 const DATA = /*REVIEW_DATA*/null;
 // the browser draft belongs to one run and one session (the run id is written once, in reviews/basis.json)
 const SESSION = DATA.session || null;
@@ -395,6 +377,7 @@ const cardName = id => { const t = byId[id] || addById[id]; return t ? (t.kind |
 const probLink = id => byId[id] || addById[id] ? '<a href="#card-' + esc(id) + '" data-card="card-' + esc(id) + '">' + esc(cardName(id)) + '</a>' : esc(cardName(id));   // in a card: goCard
 const NOT_YOURS = { ai: ' This is the AI\'s choice: reject it to continue, or change it.',
                     earlier: ' This choice was carried over from an earlier session: reject it to continue, or change it.' };
+const tailOf = p => p.tail === false ? '' : (NOT_YOURS[p.origin] || '');   // review 11 M2: a text that says it already has no tail
 function gotCheck(b, at) {
   if (!b || at !== state.saved_at) return;
   if (Array.isArray(b.gaps)) GAPS = b.gaps;
@@ -404,7 +387,7 @@ function gotCheck(b, at) {
 function wanted() {                                    // card id → {html, parts, whole} the latest problems ask for
   const w = {}, P = PROBS || {};
   const put = (id, html, parts) => { const m = w[id] || (w[id] = { html: [], parts: [], whole: false }); m.html.push(html); if (parts) m.parts.push(...parts); else m.whole = true; };
-  for (const p of P.fields || []) put(p.card, esc(p.fix) + (NOT_YOURS[p.origin] || ''), p.parts);
+  for (const p of P.fields || []) put(p.card, esc(p.fix) + tailOf(p), p.parts);
   for (const c of P.conflicts || []) for (const id of c.cards)
     put(id, esc(c.fix) + (c.cards.length > 1 ? ' It conflicts with ' + c.cards.filter(x => x !== id).map(probLink).join(' and ') + '.' : '') + (NOT_YOURS[c.origin] || ''));
   return w;
@@ -452,7 +435,7 @@ function checkLine() {
   const n = (k, one, many) => k + ' ' + (k === 1 ? one : many);
   const parts = [f && n(f, 'choice needs fixing', 'choices need fixing'), c && n(c, 'conflict', 'conflicts'),
                  g && n(g, 'gap open', 'gaps open'), u && n(u, 'choice left out', 'choices left out')].filter(Boolean);
-  const t = parts.length ? parts.join(' · ') : 'All choices can be applied';
+  const t = parts.length ? parts.join(' · ') : '';                   // nothing to say when nothing needs a person (2026-11-14)
   if (t !== lineText) { lineText = t; el.textContent = t; }   // the same words again: not announced again
   el.classList.toggle('bad', f + c > 0);
   document.getElementById('checkBtn').hidden = !parts.length;
@@ -555,6 +538,7 @@ if (SESSION && /^\d+$/.test(String(SESSION.from || ''))) {   // the session this
 // section alone.
 const OCR_ONLY = DATA.mode === 'ocr';
 let OCR = DATA.ocr || null, ocrPagesOpen = null;
+const OCR_TEXT = DATA.ocr_text || {};                  // 15: the first pages' text, with the page ({page: text}); the rest asked for
 const ocrBox = document.getElementById('ocr-text');
 const VERDICT_LABEL = { 'approved': 'Approved', 'not approved': 'Not Approved', 'sent to a language reader': 'Sent to a Language Reader' };
 const png = n => '/review_pages/page_' + String(n).padStart(3, '0') + '.png';
@@ -578,8 +562,8 @@ function ocrWord(w) {                                  // an OCR-word reading: t
 }
 function ocrCard(p) {
   return '<article class="card ocr-card" id="ocr-page-' + p.page + '"><h3>PDF ' + p.page + ' · ' + esc(p.source === 'intake OCR' ? 'OCR Text Added during Intake' : 'The Book\'s Own OCR Text') + '</h3>' +
-    '<div class="ocr-pair"><div class="imgs"><img loading="lazy" src="' + png(p.page) + '" alt="PDF ' + p.page + ', the page as scanned"></div>' +
-    '<div><div class="edit-label">Text in the PDF</div><pre class="ocrtext" data-page="' + p.page + '"' + (OCR.lang ? ' lang="' + esc(OCR.lang) + '"' : '') + '>Loading the text…</pre></div></div>' +
+    '<div class="ocr-pair"><div class="imgs"><img loading="lazy" src="' + png(p.page) + '"' + box(png(p.page).slice(1), 0) + ' alt="PDF ' + p.page + ', the page as scanned"></div>' +
+    '<div><div class="edit-label">Text in the PDF</div><pre class="ocrtext" data-page="' + p.page + '"' + (OCR.lang ? ' lang="' + esc(OCR.lang) + '"' : '') + '>' + (OCR_TEXT[p.page] != null ? esc(OCR_TEXT[p.page]) : 'Loading the text…') + '</pre></div></div>' +
     ((p.findings || []).length ? '<ul>' + p.findings.map(f => '<li>' + esc(f) + '</li>').join('') + '</ul>' : '') +
     ((p.words || []).length ? '<div class="ctx">OCR words on this page: ' + p.words.map(ocrWord).join(' · ') + '</div>' : '') + '</article>';
 }
@@ -619,7 +603,7 @@ function renderOcr() {
     (OCR.flagged && (OCR.showable || []).length > OCR.pages.length ? '<div class="field"><label for="ocrMore">Show Another Page</label><input type="text" inputmode="numeric" id="ocrMore" size="6"> <button type="button" id="ocrMoreBtn">Show Page</button><div class="ctx">' +
       (OCR.showable.length) + ' pages have the book\'s own OCR text.</div></div>' : '') + '</details>';
   ocrBox.innerHTML = h;
-  ocrBox.querySelectorAll('pre.ocrtext').forEach(x => textSeen.observe(x));
+  ocrBox.querySelectorAll('pre.ocrtext').forEach(x => { if (OCR_TEXT[x.dataset.page] == null) textSeen.observe(x); });
   document.getElementById('ocrPagesFold').addEventListener('toggle', e => { ocrPagesOpen = e.target.open; });
 }
 function ocrSay(t, err) { const m = document.getElementById('ocrMsg'); m.innerHTML = t; m.className = err ? 'err' : ''; m.focus({ preventScroll: false }); }
@@ -689,7 +673,7 @@ function draftShow(d) {
   const list = (n, one, many, rows) => n ? '<div><b>' + n + ' ' + (n === 1 ? one : many) + '</b>:<ul>' + rows.join('') + '</ul></div>' : '';
   const why = t => ' <details><summary>' + tc('details') + '</summary>' + esc(t) + '</details>';   // the executor's own words, folded away
   // the check's verdict on this draft, worded as on the cards (core.problems: the same fix, the same links)
-  const left = (P.fields || []).map(p => '<li>' + probLink(p.card) + ': ' + esc(p.fix) + (NOT_YOURS[p.origin] || '') + '</li>')
+  const left = (P.fields || []).map(p => '<li>' + probLink(p.card) + ': ' + esc(p.fix) + tailOf(p) + '</li>')
     .concat((P.conflicts || []).map(c => '<li>' + c.cards.map(probLink).join(' and ') + ': ' + esc(c.fix) + (NOT_YOURS[c.origin] || '') + '</li>'))
     .concat((P.unplaced || []).map(u => '<li>' + esc(u.fix) + '</li>'));
   h += list(left.length, 'choice left out of this draft', 'choices left out of this draft', left);
@@ -723,11 +707,12 @@ draftBtn.addEventListener('click', async () => {
   } catch (e) { draftBtn.disabled = false; draftShow({ state: 'failed', error: 'This page can\'t reach its server: the review was closed, or the app stopped.' }); }
 });
 draftLine.addEventListener('click', e => { const a = e.target.closest('a[data-card]'); if (a) { e.preventDefault(); goCard(a.dataset.card); } });
-if (!OCR_ONLY) fetch('/draft').then(r => r.json()).then(d => {   // a reload while a draft is being built, or after: show it
+const firstDraft = d => {                                // a reload while a draft is being built, or after: show it
   if (!d || d.state === 'idle') return;
   draftBasis = choicesNow(); draftStale = !!(state.saved_at && d.basis && state.saved_at > d.basis);
   draftShow(d); if (d.state === 'building') draftPoll = setTimeout(draftWatch, 2000);
-}).catch(() => {});
+};
+if (!OCR_ONLY) { if (DATA.draft) firstDraft(DATA.draft); else fetch('/draft').then(r => r.json()).then(firstDraft).catch(() => {}); }   // 15: with the page
 if (OCR_ONLY) {                                        // the OCR section alone: no session, no decisions
   document.getElementById('title').textContent = 'OCR Text Review · ' + DATA.book + ' · ' + DATA.pages + ' pages';
   document.title = 'OCR Text Review';
@@ -912,7 +897,7 @@ function editor(it, d) {
     (it.key === 'rolemap' && it.context.count ? ' <span class="flag">changes all ' + it.context.count + ' elements of this style</span>' : '');
   if (it.edit === 'text') return '<textarea data-act="value" aria-label="New value">' + esc(v) + '</textarea>';
   if (it.edit === 'lang') {                            // a language from the list, or Other: the tag typed (kept as it is, never swapped for a near one)
-    const L = DATA.languages || [], known = L.some(([t]) => t === v);
+    const L = DATA.language_list || [], known = L.some(([t]) => t === v);     // not DATA.languages: the Languages section's summary
     return '<select data-act="langpick" aria-label="Language">' + L.map(([t, n]) => '<option value="' + esc(t) + '"' + (t === v ? ' selected' : '') + '>' + esc(n) + '</option>').join('') +
       '<option value=""' + (known ? '' : ' selected') + '>Other</option></select> <input type="text" data-act="value" aria-label="Language tag" value="' + esc(v) + '" size="12"' + (known ? ' hidden' : '') + '>' +
       ' <span class="ctx">Under Other, type a language tag such as en-AU, ja, haw.</span>';
@@ -935,14 +920,23 @@ const FINDING_WHAT = { away: 'Section', jump: 'Finding', late: 'Finding', figure
 // a figure the audit found drawn at a low resolution (issue #97): a person replaces it by hand, after the review
 const lowPpiWords = n => '<span class="flag">' + esc(n) + ' ppi: low resolution, likely to look blurry when printed or zoomed</span> ' +
   'A sharper copy of this image can be put in by hand after the review.';
+// 15 (page changes in one step): each image's box is set before the image arrives, from its size in the page's data
+// (DATA.img_sizes: the page images from the PDF, the figure crops and word sheets from their files), so a card never
+// grows when its images load: the page is laid out at its first frame
+const SIZES = DATA.img_sizes || {};
+function box(src, maxH) {
+  const s = SIZES[src]; if (!s || !(s[0] > 0 && s[1] > 0)) return '';
+  const h = maxH ? Math.min(s[1], maxH) : s[1];
+  return ' style="width:' + (Math.round(s[0] * h / s[1] * 100) / 100) + 'px;aspect-ratio:' + s[0] + ' / ' + s[1] + '"';
+}
 function imagesHtml(it) {
   const c = it.context, imgs = [];
   if (c.word) imgs.push('<figure class="word"><img loading="lazy" src="' + esc(c.word) + '" alt="The word in the scan"><figcaption>the word in the scan (as the AI saw it)</figcaption></figure>');
-  else if (c.sheet) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.sheet) + '" alt="OCR word sheet"><figcaption>word sheet: find word ' + esc(c.word_id) + '</figcaption></figure>');
-  if (c.figure) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.figure) + '" alt="The figure"><figcaption>figure</figcaption></figure>');
+  else if (c.sheet) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.sheet) + '"' + box('_audit/' + c.sheet, 220) + ' alt="OCR word sheet"><figcaption>word sheet: find word ' + esc(c.word_id) + '</figcaption></figure>');
+  if (c.figure) imgs.push('<figure><img loading="lazy" src="_audit/' + esc(c.figure) + '"' + box('_audit/' + c.figure, 220) + ' alt="The figure"><figcaption>figure</figcaption></figure>');
   for (const src of it.images || []) {
     const p = +src.match(/(\d+)\.png$/)[1];
-    imgs.push('<figure' + (p === it.page ? ' class="here"' : '') + '><img loading="lazy" src="' + esc(src) + '" alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure>');
+    imgs.push('<figure' + (p === it.page ? ' class="here"' : '') + '><img loading="lazy" src="' + esc(src) + '"' + box(src, 220) + ' alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure>');
   }
   return imgs.length ? '<div class="imgs">' + imgs.join('') + '</div>' : '';
 }
@@ -1216,7 +1210,7 @@ document.getElementById('readingOrder').addEventListener('click', e => {        
   const b = e.target.closest('.ro-row'); if (!b) return;
   const li = b.parentElement, had = li.querySelector('.imgs'); if (had) { had.remove(); return; }
   const p = RO.entries[+b.dataset.ro].first;
-  li.insertAdjacentHTML('beforeend', '<div class="imgs"><figure><img loading="lazy" src="review_pages/page_' + String(p).padStart(3, '0') + '.png" alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure></div>');
+  li.insertAdjacentHTML('beforeend', '<div class="imgs"><figure><img loading="lazy" src="review_pages/page_' + String(p).padStart(3, '0') + '.png"' + box('review_pages/page_' + String(p).padStart(3, '0') + '.png', 220) + ' alt="PDF page ' + p + '"><figcaption>p. ' + p + '</figcaption></figure></div>');
 });
 
 function card(it) {
@@ -1328,6 +1322,7 @@ function nav() {
     '</span><span>' + (s.hand ? todo : s.count) + '</span></a>').join('');
   h += state.additions.length ? '<h2>Your Additions</h2><a href="#added" data-view="' + esc(view === 'left' ? 'priority' : view) + '"><span>Added by You</span><span>' + state.additions.length + '</span></a>' : '';
   h += '<h2>Check First</h2>' + g.map(([n, c]) => '<a href="#grp-' + n + '" data-view="priority"><span>' + esc(tc(DATA.groups[n])) + '</span><span>' + c + '</span></a>').join('');
+  if ((DATA.languages || {}).total) h += '<h2>Languages</h2><a href="#languages"><span>Word Forms</span><span id="navLangLeft">' + fmtN(langLeft()) + '</span></a>';   // review 08, L4
   h += '<h2>All Decisions</h2>' + kinds.map(k => '<a href="#kind-' + k.replace(/\W+/g, '-') + '" data-view="all"><span>' + esc(tc(k)) + '</span><span>' + items.filter(it => it.kind === k).length + '</span></a>').join('');
   h += '<h2>Page Index</h2>' + Object.keys(pages).map(Number).sort((a, b) => a - b).map(p =>
     '<a href="#card-' + esc(pages[p][0]) + '" data-view="priority"><span>p. ' + p + '</span><span>' + pages[p].length + '</span></a>').join('');
@@ -1339,7 +1334,9 @@ function progress() {
   const n = items.filter(it => (state.decisions[it.id] || {}).status).length;
   document.getElementById('progress').textContent = n + ' of ' + items.length + ' reviewed' + (state.additions.length ? ' · ' + state.additions.length + ' added' : '');
   document.getElementById('bar').style.width = (items.length ? 100 * n / items.length : 0) + '%';
+  if (typeof progressLang === 'function' && LANG_READY) progressLang();
 }
+let LANG_READY = false;
 
 const cards = document.getElementById('cards');
 function clearChoice(art) {
@@ -1615,7 +1612,7 @@ function checkHtml(c) {
   let h = '';
   if (bad) h += '<div class="fin-check err" id="finBad"><b>' + bad + (bad === 1 ? ' choice needs' : ' choices need') + ' fixing before the review can finish</b>: the check doesn\'t accept ' +
     (bad === 1 ? 'it' : 'them') + ', so ' + (bad === 1 ? 'it' : 'they') + ' would not be applied at all. Each is marked on its card.<ul>' +
-    fl.map(p => '<li>' + link(p.card, cardName(p.card)) + ': ' + esc(p.fix) + (NOT_YOURS[p.origin] || '') + '</li>').join('') +
+    fl.map(p => '<li>' + link(p.card, cardName(p.card)) + ': ' + esc(p.fix) + tailOf(p) + '</li>').join('') +
     cf.map(x => '<li>' + x.cards.map(id => link(id, cardName(id))).join(' and ') + ': ' + esc(x.fix) + '</li>').join('') + '</ul></div>';
   if (up.length) h += '<div class="fin-check"><b>' + up.length + (up.length === 1 ? ' choice is' : ' choices are') + ' left out</b>: the check doesn\'t accept ' +
     (up.length === 1 ? 'it, and it has' : 'them, and they have') + ' no card to change here, so ' + (up.length === 1 ? 'it is' : 'they are') + ' not applied.<ul>' +
@@ -1635,6 +1632,9 @@ async function askFinish() {
   dlg.innerHTML = '<h2 id="finTitle" tabindex="-1">Finish Review</h2>' + checkHtml(chk) + '<div class="ctx" id="finCtx">' +
     (n ? n + (one ? ' decision is' : ' decisions are') + ' not reviewed: "Finish Review" records ' + (one ? 'it' : 'them') + ' as the AI wrote ' + (one ? 'it' : 'them') +
          ', marked "accepted without review", and "Ready to Ship?" stays No.' : 'Every decision has a choice.') +
+    ((DATA.languages || {}).total && !OCR_ONLY ? (langLeft() ? ' ' + fmtN(langLeft()) + (langLeft() === 1 ? ' word form' : ' word forms') + ' under "Languages" ' + (langLeft() === 1 ? 'is' : 'are') +
+         ' not decided: "Finish Review" applies ' + (langLeft() === 1 ? 'it' : 'them') + ' as the AI decided (the PDF\'s own tags stay as they are), and "Language Tags" in "Ready to Ship?" stays Not Reviewed.'
+         : ' Every word form under "Languages" is decided.') : '') +
     (SESSION && SESSION.reopened ? ' "Finish Review" re-applies the reviewed order (no AI request).' : '') + ' The name and notes go to "Session History."' +
     (OCR ? ' "OCR Text": ' + esc(ov) + '. An OCR verdict is recorded on its own under "OCR Text", not with "Finish Review."' : '') + '</div>' +
     '<label for="finName">Session Name</label><input type="text" id="finName" maxlength="80">' +
@@ -1701,9 +1701,213 @@ finBtn.addEventListener('click', async () => {
   } catch (e) { msg('This page can\'t reach its server: the review was closed, or the app stopped. Your choices are kept in this browser.', true); }
 });
 renderOcr();
+
+// ---------------------------------------------------------------- #118: the Languages section
+// One fold per language (and one for words the AI left untagged, one for the PDF's own tags). A fold's rows come from
+// /languages.json when it opens, 100 at a time. A choice is stored like any card's (state.decisions[id]), so auto-save,
+// "Finish Review" and the count of what is left treat it the same way. Group approval (#124, on again after Patrick
+// turned it off on 2026-11-13; LANG_BULK turns both buttons off): "Approve All Shown" approves the shown rows that
+// qualify (one language, high confidence, never Chinese characters alone, an existing tag or a mixed answer);
+// "Approve Characters with Matching Readings" approves every row of the fold written only in Chinese characters whose
+// reading printed beside them names the row's language (the server's list, review/core.py reading_match), loaded or not.
+// Each choice records its button (d.bulk: 'all_shown' or 'readings'); the server counts it only where the row qualifies.
+const LANG_BULK = true;                                   // group approval: on (#124)
+const LANGS = DATA.languages || { groups: [], total: 0, names: [] };
+const langBox = document.getElementById('languages');
+const langRows = {};                                     // group -> the rows loaded so far
+// The section's introduction, one paragraph, the same on every PDF (Patrick, 2026-11-13): plain text, no markup
+const LANG_INTRO = 'Words and passages in another language found in the PDF. A screen reader switches to a language\'s voice for the words tagged with it. Decide each word form: the choice applies to every place it appears. Words in Chinese characters alone are decided one by one, because the same characters are used in Chinese and Japanese, unless the reading printed beside them (kana, a Hepburn or pinyin reading, hangul) names the same language: those can be approved together. Language tags already in the PDF are also decided one by one, so a person confirms each of them. For Hawaiian, most screen readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.';
+// The status under the word form, as "label: value" (review 14, 4; Patrick, 2026-11-13): HTML, the code in grey
+function langStatusHtml(r, d) {
+  const nameOf = c => (LANGS.names.find(x => x.code === c) || {}).name || c;
+  const val = (name, code) => esc(name || code || '') + langCode(name ? code : '');
+  if (!d || !d.status) return 'Not reviewed';
+  if (d.status === 'changed') return 'Tagged: ' + val(nameOf(d.value), d.value);
+  if (r.current) return (d.status === 'rejected' ? 'Removed: ' : 'Kept: ') + val(r.current_name, r.written || r.current_written || r.current);
+  if (d.status === 'rejected' || !r.ai) return 'Left untagged';
+  return 'Approved: ' + val(r.lang_name || nameOf(r.ai), r.written || r.ai) + (LANG_BULK && d.bulk ? (d.bulk === 'readings' ? ' (in a group approval: matching reading)' : ' (in a group approval)') : '');
+}
+// #123, #124: the reading printed beside a form in Chinese characters alone, in staff words
+function langReading(r) {
+  const rd = r.reading; if (!rd || !rd.text) return '';
+  const names = (rd.names || []).map(esc);
+  const said = rd.lang ? names[0] : names.join(' and ');
+  const prim = x => String(x || '').split('-')[0].toLowerCase();
+  const agree = !r.ai || !rd.lang || prim(rd.lang) === prim(r.ai) ? '' : ', not the language of the tag';
+  return 'Reading printed beside it: "' + esc(rd.text) + '" (' + said + agree + ')' + (rd.places > 1 ? ', at ' + esc(rd.with) + ' of ' + esc(rd.places) + ' places' : '');
+}
+// Why the AI left a form untagged, in staff words (review 14, 2): a low-confidence guess named with its code; a reason
+// word with no wording here never prints; no reason, no parentheses
+const LANG_WHY = { name: 'a name', english: 'part of English', indeterminate: 'not a word of a known language', unsure: 'not sure', varies: 'it varies' };
+function langUntagged(r) {
+  const bits = [];
+  if (LANG_WHY[r.why]) bits.push(LANG_WHY[r.why]);
+  if (r.guess && r.confidence === 'low') bits.push('low confidence; its guess: ' + esc(r.guess_name || r.guess));
+  return 'The AI left it untagged' + (bits.length ? ' (' + bits.join('; ') + ')' : '');
+}
+function langRowHtml(r) {
+  const d = state.decisions[r.id] || {};
+  const opts = '<option value="">Change Language</option>' + LANGS.names.map(x => '<option value="' + esc(x.code) + '"' + (d.value === x.code ? ' selected' : '') + '>' + esc(x.name) + ' · ' + esc(x.code) + '</option>').join('');   // the value written (review 12, C)
+  const pagesTxt = (r.pages || []).slice(0, 8).map(p => 'PDF ' + p).join(', ') + ((r.pages || []).length > 8 ? ', …' : '');
+  const cur = r.current_name ? esc(r.current_name) + (r.current_written ? ' (written "' + esc(r.current_written) + '")' : '')   // review 08, L4: a name, never a code
+            : '"' + esc(r.current_written || r.current) + '", which is not a known language';
+  const what = r.current ? 'The PDF tags it as ' + cur + (r.ai ? '; the AI suggests ' + esc(r.lang_name || r.ai) : '')
+             : r.ai && r.rule ? 'The reading printed beside it tags it as <b>' + esc(r.lang_name || r.ai) + '</b> (a fixed rule, not the AI: every place has the reading)'   // #123
+             : r.ai ? 'The AI tags it as <b>' + esc(r.lang_name || r.ai) + '</b>' + (r.confidence ? ' (' + esc(r.confidence) + ' confidence)' : '')
+             : langUntagged(r);
+  const reading = langReading(r);
+  const keep = r.current ? 'Keep the Tag' : r.ai ? 'Approve' : 'Leave Untagged';
+  const drop = r.current ? 'Remove the Tag' : r.ai ? 'Leave Untagged' : null;
+  return '<div class="lang-row" id="lang-' + esc(r.id) + '" data-id="' + esc(r.id) + '"' + (d.status ? ' data-status="' + esc(d.status) + '"' : '') + '>' +
+    '<div class="lang-left"><div class="lang-form" lang="' + esc(r.ai || '') + '">' + esc(r.form) + '</div>' +   // the status outside the lang element
+    '<div class="lang-meta lang-status" role="status">' + langStatusHtml(r, d) + '</div></div>' +
+    '<div class="lang-info"><div>' + what + '</div>' + (r.snippet ? '<div class="lang-ctx">' + esc(r.snippet) + '</div>' : '') +
+    (reading ? '<div class="lang-meta">' + reading + '</div>' : '') +
+    '<div class="lang-meta">' + esc(r.places || 0) + ' place' + (r.places === 1 ? '' : 's') + (pagesTxt ? ' · ' + esc(pagesTxt) : '') +
+    (r.evidence && !(r.rule && reading) ? ' · Evidence: ' + esc(r.evidence) : '') + '</div></div>' +   // #123: a rule row's reading, shown once
+    '<div class="lang-btns"><button type="button" data-lang="keep">' + keep + '</button>' + (drop ? '<button type="button" data-lang="drop">' + drop + '</button>' : '') + '</div>' +
+    '<div class="lang-acts">' +
+    '<select data-lang="change" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select>' +
+    (d.status ? '<button type="button" class="lang-clear" data-lang="clear" aria-label="Clear Choice for ' + esc(r.form) + '">Clear Choice</button>' : '') +   // back to "Not reviewed"
+    '</div></div>';
+}
+// The tag written into the PDF, beside a language's name: only in each row's status and the "Change Language" list
+// (review 12, C; Patrick, 2026-11-13, revised 2026-11-14). The server sends the value that becomes /Lang (core.lang_written), never one worked out from the name.
+function langCode(v) { return v ? ' <span class="lang-code">· ' + esc(v) + '</span>' : ''; }
+function fmtN(x) { return Number(x || 0).toLocaleString('en-US'); }      // review 08, L4: 1,130 word forms, never 1130
+function langLeft() {                                    // word forms under "Languages" with no choice yet (declared, not const: nav() runs before LANGS is set)
+  return Math.max(0, ((DATA.languages || {}).total || 0) - Object.keys(state.decisions).filter(k => k.startsWith('language:') && (state.decisions[k] || {}).status).length);
+}
+function langFold(g) {
+  const rows = langRows[g.group] || [], left = rows.filter(r => !(state.decisions[r.id] || {}).status).length;
+  const bulk = rows.filter(r => r.bulk && !(state.decisions[r.id] || {}).status).length;
+  const rdg = langReadingLeft(g).length;                   // #124: every qualifying row of the fold, loaded or not
+  return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
+    ' (' + fmtN(g.places) + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
+    '<div class="lang-bar">' + (LANG_BULK && g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + fmtN(bulk) + ')</button>' : '') +
+    (LANG_BULK && (g.reading_ids || []).length ? '<button type="button" data-lang="readings"' + (rdg ? '' : ' disabled') + '>Approve Characters with Matching Readings (' + fmtN(rdg) + ')</button>' : '') +
+    '<span class="lang-meta">' + (rows.length ? fmtN(rows.length) + ' of ' + fmtN(g.count) + ' shown' + (left ? ' · ' + fmtN(left) + ' not reviewed' : '') : '') + '</span></div>' +
+    '<div class="lang-list">' + rows.map(langRowHtml).join('') + '</div>' +
+    (rows.length < g.count ? '<button type="button" data-lang="more">Show More</button>' : '') + '</details>';
+}
+function renderLanguages() {
+  if (!LANGS.total || OCR_ONLY) { langBox.hidden = true; return; }
+  const open = new Set([...langBox.querySelectorAll('details[open]')].map(d => d.dataset.group));
+  langBox.hidden = false;
+  langBox.innerHTML = '<h2 id="langTitle">Languages (' + fmtN(LANGS.total) + ')</h2>' +
+    '<p>' + LANG_INTRO + '</p>' +
+    LANGS.groups.map(langFold).join('');
+  langBox.querySelectorAll('details').forEach(d => { if (open.has(d.dataset.group)) d.open = true; });
+}
+async function langLoad(group) {
+  const have = langRows[group] || [];
+  try {
+    const r = await fetch('/languages.json?group=' + encodeURIComponent(group) + '&start=' + have.length), b = await r.json();
+    langRows[group] = have.concat(b.rows || []);
+  } catch (e) { saveAlert('The rows could not be loaded. Reload the page.'); return; }
+  renderLanguages();
+  const d = [...langBox.querySelectorAll('details')].find(x => x.dataset.group === group); if (d) d.open = true;
+}
+function langSet(id, st, value, bulk) {                  // bulk: the group-approval button ('all_shown' or 'readings'), else none
+  const d = dec(id); d.status = st; if (value !== undefined) d.value = value; else delete d.value;
+  if (bulk) d.bulk = bulk; else delete d.bulk;
+}
+function langReadingLeft(g) { return (g.reading_ids || []).filter(id => !(state.decisions[id] || {}).status); }
+langBox.addEventListener('toggle', e => {
+  const d = e.target; if (d.tagName !== 'DETAILS' || !d.open) return;
+  if (!langRows[d.dataset.group]) langLoad(d.dataset.group);
+}, true);
+langBox.addEventListener('click', e => {
+  const b = e.target.closest('button[data-lang]'); if (!b || finished) return;
+  const fold = b.closest('details'), group = fold && fold.dataset.group, act = b.dataset.lang;
+  if (act === 'more') { langLoad(group); return; }
+  if (act === 'bulk') { if (LANG_BULK) for (const r of langRows[group] || []) if (r.bulk && !(state.decisions[r.id] || {}).status) langSet(r.id, 'approved', undefined, 'all_shown'); }
+  else if (act === 'readings') {                                   // #124: the fold's rows with a matching reading, loaded or not
+    const g = LANGS.groups.find(x => x.group === group);
+    if (LANG_BULK && g) for (const id of langReadingLeft(g)) langSet(id, 'approved', undefined, 'readings');
+  }
+  else if (act === 'clear') {                                      // the row as if never decided (2026-11-14): "Not reviewed", the counts again
+    delete state.decisions[b.closest('.lang-row').dataset.id];
+  }
+  else if (act === 'keep' || act === 'drop') {                     // review 14, Note 1: no other act reaches a row
+    const row = b.closest('.lang-row'), id = row.dataset.id;
+    langSet(id, act === 'keep' ? 'approved' : 'rejected');
+  }
+  persist(); renderLanguages(); progressLang();
+});
+langBox.addEventListener('change', e => {
+  const sel = e.target.closest('select[data-lang=change]'); if (!sel || finished || !sel.value) return;
+  langSet(sel.closest('.lang-row').dataset.id, 'changed', sel.value);
+  persist(); renderLanguages(); progressLang();
+});
+function progressLang() {
+  const n = Object.entries(state.decisions).filter(([k, d]) => k.startsWith('language:') && d && d.status).length;
+  const el = document.getElementById('progress');
+  if (el && LANGS.total) el.textContent = el.textContent.replace(/ · languages: .*$/, '') + ' · languages: ' + fmtN(n) + ' of ' + fmtN(LANGS.total) + ' decided';
+  const nl = document.getElementById('navLangLeft'); if (nl) nl.textContent = fmtN(langLeft());     // the sidebar's count (review 08, L4)
+}
+LANG_READY = true; renderLanguages(); progressLang();
+
 render();
+// 15: the check of the saved choices (what /keep answers for them) comes with the page, so the line beside Finish and each
+// card's marks are drawn now; the quiet save below then finds the same
+if (DATA.check && !(state.saved_at && state.saved_at !== (srv.saved_at || ''))) { gotCheck(DATA.check, state.saved_at); refreshMoves(DATA.check.move_previews); }
 if (state.saved_at && state.saved_at !== (srv.saved_at || '')) saveSoon();   // this browser's copy is newer than the run's: save it
 else if (DATA.mode !== 'ocr') saveNow();               // nothing new: one quiet save, which also brings the count of open gaps
+}
 </script>
+</head>
+<body>
+<button type="button" id="showHdr" class="hdr-toggle" aria-expanded="false" aria-controls="top" hidden>Show Header</button>
+<header class="top" id="top">
+  <h1 id="title" tabindex="-1">Work Order Review</h1>
+  <div class="row">
+    <span class="who"><label>Reviewer <input type="text" id="reviewer" placeholder="Your Name" size="18"></label>
+    <span class="sname"><label for="sessionName">Session Name</label><input type="text" id="sessionName" maxlength="80" size="18"><button type="button" id="notesBtn" aria-expanded="false" aria-controls="notepad">Session Notes</button></span></span>
+    <span><span class="bar"><i id="bar"></i></span> <span id="progress"></span></span>
+    <span class="show" role="radiogroup" aria-label="Show">Show:
+      <label><input type="radio" name="view" value="priority" checked> Check First</label>
+      <label><input type="radio" name="view" value="all"> All</label>
+      <label><input type="radio" name="view" value="left"> Not Reviewed</label>
+    </span>
+    <span class="actions"><button id="addBtn" type="button">Add a Decision</button>
+    <button id="draftBtn" type="button">Build a Draft PDF</button>
+    <button id="finish" class="primary">Finish Review</button><button id="closeOcr" type="button" hidden>Close Without a Verdict</button>
+    <span id="saveState" class="save-state">All changes saved</span><span id="checkLine" class="check-line" role="status"></span><button type="button" id="checkBtn" hidden>Show Details</button></span>
+  </div>
+  <div id="saveAlert" role="alert" class="save-alert"></div>
+  <div id="draftLine" class="draft-line" aria-live="polite" hidden></div>
+  <div id="msg" role="status"></div>
+  <div id="session" hidden></div>
+  <div class="hdr-foot"><p id="back" hidden><a href="" class="btnlink">Back to the Run Page</a> (this review stays open; continue it from there)</p>
+  <button type="button" id="hideHdr" class="hdr-toggle" aria-expanded="true" aria-controls="top">Hide Header</button></div>
+</header>
+<!-- the session's notes as a notepad beside the page: the same note as the Session Notes box (typing in either updates both) -->
+<dialog id="notepad" class="npad" aria-labelledby="npadTitle">
+  <div class="npad-bar"><h2 id="npadTitle">Session Notes</h2>
+    <button type="button" id="npadMin" aria-label="Minimize Session Notes"><span aria-hidden="true">–</span></button>
+    <button type="button" id="npadX" aria-label="Close Session Notes"><span aria-hidden="true">×</span></button></div>
+  <textarea id="padNotes" maxlength="4000" aria-labelledby="npadTitle"></textarea>
+</dialog>
+<button type="button" id="npadRestore" class="npad-restore" hidden>Session Notes</button>
+<div class="navbar"><button id="navToggle" type="button" aria-expanded="false" aria-controls="nav">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>Sections</button></div>
+<div id="navBackdrop" hidden></div>
+<main>
+  <nav id="nav" aria-label="Sections"><div class="nav-head"><span>Sections</span><button id="navClose" type="button" aria-label="Close Sections"><span aria-hidden="true">×</span></button></div><div id="navList"></div></nav>
+  <div class="col">
+    <section id="this-session" aria-labelledby="tsTitle"><h2 id="tsTitle"><label for="sessionNotes">Session Notes (optional)</label></h2>
+      <textarea id="sessionNotes" maxlength="4000"></textarea>
+      <div id="fromNotes"></div>
+    </section>
+    <section id="ocr-text" aria-labelledby="ocrTitle" hidden></section>
+    <div id="addPanel" hidden></div><div id="roPark" hidden><div id="readingOrder"></div></div><div id="cards"></div>
+    <section id="languages" aria-labelledby="langTitle" hidden></section></div>
+</main>
+<div id="zoom"><img alt=""></div>
+<dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>
+<dialog id="finishDialog" aria-labelledby="finTitle" aria-describedby="finCtx"></dialog>
+<dialog id="checkDialog" aria-labelledby="chkTitle"></dialog>
+<script>bootReview()</script>
 </body>
 </html>

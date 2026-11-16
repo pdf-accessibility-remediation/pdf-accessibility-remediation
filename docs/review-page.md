@@ -183,6 +183,81 @@ The header says **All changes saved** or **Saving…**, right of **Finish Review
 
 **Leaving the page.** While a change hasn't reached the run yet, closing the tab or leaving the page first shows the browser's leave-page prompt. If you leave anyway, the last edits are sent as the page goes. A browser sends at most 64 KiB that way, so a very large draft (a big PDF fully decided, with long notes) may not be sent then. The browser's own copy still has it, and the review picks it up when opened again in the same browser at the same address.
 
+## Languages
+
+The "Languages" section lists every word form the language step found in another language, one row per form, with
+its places and a line of context. One choice covers every place the form occurs (#118, see [Language tags](languages.md)).
+
+It opens with one paragraph, the same on every PDF:
+
+> Words and passages in another language found in the PDF. A screen reader switches to a language's voice for the
+> words tagged with it. Decide each word form: the choice applies to every place it appears. Words in Chinese
+> characters alone are decided one by one, because the same characters are used in Chinese and Japanese, unless the
+> reading printed beside them (kana, a Hepburn or pinyin reading, hangul) names the same language: those can be
+> approved together. Language tags already in the PDF are also decided one by one, so a person confirms each of them.
+> For Hawaiian, most screen readers have no Hawaiian voice, so those words are read with the default voice; the tag is
+> still required.
+
+- **Folds by language** (for example "Japanese (Romanized)", "Hawaiian"), plus "Left Untagged by the AI" (non-Latin
+  text the AI left untagged) and "Existing Language Tags" (the publisher's own tags).
+- **Each row:** the word form on the left with its status under it, and beside them the text block: the AI's answer,
+  a line of context, its places and evidence. The bottom line holds the buttons, then "Change Language": "Approve",
+  "Leave Untagged", "Change Language" (a publisher's tag: "Keep the Tag", "Remove the Tag", "Change Language"; a form
+  the AI left untagged: "Leave Untagged", "Change Language"). "Change Language" sits right after the last button, and
+  the text block starts at the list's edge. The rows of one fold line up on that edge; it may differ from fold to fold,
+  since the buttons differ. A decided row has "Clear Choice" at its bottom right. At phone width the row stacks, with no
+  sideways scroll.
+- **"Clear Choice"**, at the bottom right of a row that has a choice, puts the row back as if never decided ("Not
+  reviewed"), and the counts update. An undecided row doesn't show it.
+- **The status** reads "Not reviewed", "Approved: Chinese · zh", "Tagged: Chinese · zh" (after "Change Language"),
+  "Kept: Hawaiian · haw" or "Removed: Hawaiian · haw" (a publisher's tag), or "Left untagged".
+- **A form the AI left untagged** says why in plain words: "a name", "part of English", "not a word of a known
+  language", "not sure", "it varies", or, for a low-confidence answer (never tagged), "low confidence; its guess:
+  Japanese · ja". A reason with no such wording is not shown, and no reason shows no parentheses.
+- **A form decided by the reading rule** (#123: Chinese characters alone with a reading printed beside every place)
+  says "The reading printed beside it tags it as Japanese (a fixed rule, not the AI: every place has the reading)". A
+  person approves it like the AI's.
+- **The reading printed beside the characters**, for a form in Chinese characters alone that has one outside a
+  bibliography, is shown under the text block: 'Reading printed beside it: "fujō" (Japanese)', with ", not the language
+  of the tag" when it names another language, both languages when its readings disagree, and "at 1 of 3 places" when
+  not every place has it. It is worked out from the text around the characters (`lib/hanreading.py`), never from the AI.
+- **The tag written into the PDF** is shown beside a language's name, in grey, in two places only: each row's status
+  under the word form ("Tagged: Chinese (Traditional) · zh-Hant", "Approved: …", "Kept: …", "Removed: …") and the
+  "Change Language" list ("Chinese (Traditional) · zh-Hant"). Fold headings ("Chinese (Romanized): 110 word forms (241
+  places)"), the AI's line ("The AI tags it as Chinese (Romanized) (high confidence)"), the low-confidence guess
+  ("low confidence; its guess: Japanese") and the PDF's own tags line show names only.
+  It is the value that becomes the PDF's /Lang, never one worked out from the name. For a tag already in the PDF it is
+  what "Keep the Tag" leaves: a code tidied to its shortest form, a language's name replaced by its code when its words
+  fit ("Hawaiian" → haw), or the value as written when it is left for a person ("Hawaii" on mostly English words) or
+  sits in the page's marked content alone. A name's fit is checked on the word form's text; apply.py checks the whole
+  tag's text, so the two could differ for a tag that holds more than one run. The OCR language choice, the "Finish
+  Review" dialog and the run page show names only.
+- Rows load 100 at a time ("Show More").
+- "Language Tags" on "Ready to Ship?" reads "Approved" once every form is decided.
+
+### Group approval
+
+Each language fold has up to two buttons (#124). Neither touches a low-confidence row, a row whose answer varies from
+place to place, or a publisher's tag, and a single decision is the same as before.
+
+- **"Approve All Shown (N)"** approves the rows shown so far that the AI tagged with high confidence, never words in
+  Chinese characters alone.
+- **"Approve Characters with Matching Readings (N)"** approves every undecided row of the fold, shown or not, that is
+  written in Chinese characters alone and whose reading printed beside the characters names the row's language: kana
+  or a Hepburn word (Japanese), real pinyin syllables (Chinese), hangul or a Korean romanization (Korean), or kana in
+  the same phrase as the characters (大福もち). The tag must
+  be high or medium confidence; a row with no reading, readings of two languages, or a reading of another language is
+  never included. A reading in a bibliography is not counted (there it often belongs to the next entry); one in a
+  glossary or index is, since the AI's language must match it too. Rows the reading rule decided (#123) qualify when a
+  reading outside a bibliography names their language; one decided only from bibliography entries is approved on its own.
+
+Each row approved this way says "Approved: Japanese · ja (in a group approval: matching reading)" (or "(in a group
+approval)"). The server counts a group approval only when the row qualifies for that button, so a draft saved under
+other rules, or an edited page, can't approve a row the rules leave out: such a row stays to decide. The work order
+records each one on its form (`group_approval`: the button, the language and the evidence), the review record counts
+them by button (`language_review.bulk_by`), and review.md lists them under "Language Tags". Both buttons are turned
+off with one line in `review/page.html`: `const LANG_BULK = false;`.
+
 ## Checks as you go
 
 Every save also runs the check: the same rules `decide.py` uses on the AI's reply (`lib/workorder_check.py`), on the order your choices make so far. Anything it would drop is shown on the card it belongs to.
@@ -192,9 +267,11 @@ Every save also runs the check: the same rules `decide.py` uses on the AI's repl
 - **Not while you type.** A new message waits until you leave the card, or stop typing for about a second, so a half-typed page number is not flagged. Leaving the card (Tab, or a click elsewhere) saves your change at once, so its message shows almost immediately. A problem you fix clears at once.
 - **Choices that clash** are a conflict: each card involved shows the message, with links to the others. Examples: two section moves whose pages overlap, a table that is both given headers and flattened, an addition the AI already decided.
 - **Choices you didn't make.** The check can flag one of the AI's choices that you never touched (it judges section moves against the full reading order), or a choice carried over from an earlier session that is no longer accepted. Its message adds "reject it to continue, or change it". **Reject** is on the card.
+- **Alt text on a page scan kept as a picture.** For a figure intake kept because its scan holds more than text, the AI's alt text may not repeat the page's own printed text (20 or more characters), or hold Chinese, Japanese or Korean characters the page's text lacks. The card says which, in one of two texts, each opening with what was found: "This alt text repeats the page's own printed text. This page is a scan kept as a picture: its alt text should describe the picture…", or "This alt text holds Chinese, Japanese or Korean characters that the page's OCR text lacks. The AI must not write the book's text…"; both end with what to do ("Select "Change" and describe the picture, or select "Reject" when the image is only printed text."), with no further line after it. **Finish Review** waits until the alt text is changed or rejected. Alt text you write or change yourself is not checked: the rule limits the AI, not a person (apply.py's check skips it too).
 - **Choices left out.** A choice the check doesn't accept but that no card holds (for example a page number in one of the AI's deferrals) is listed as left out. It is not applied, as before, and it never stops **Finish Review**.
 
-**The line beside Finish Review** counts what the cards show and the gaps, for example "2 choices need fixing · 1 conflict · 1 gap open", or "All choices can be applied". Screen readers announce it only when its words change. **Show Details** beside it lists everything, each with a link to its card (or the **Add** form, for a gap).
+**The line beside Finish Review** counts what the cards show and the gaps, for example "2 choices need fixing · 1 conflict · 1 gap open". When nothing needs fixing it shows nothing, and
+**Show Details** is hidden. Screen readers announce it only when its words change. It comes with the page, already counted for your saved choices, so the page opens complete ([Page changes](app-run-page.md#page-changes-in-one-step)). **Show Details** beside it lists everything, each with a link to its card (or the **Add** form, for a gap).
 
 **Finish Review refuses** while any choice needs fixing or conflicts: the dialog's button is off. If a choice changed after the dialog opened, Finish says so and leaves the page as it was. Fix the value, or reject the choice.
 
@@ -227,7 +304,7 @@ For example, after changing a half-title (PDF 2) from H1 to P on its card, add a
 In the Finish dialog and at **Finish**, the work order as it would be applied is checked for things that are still missing. Gaps don't block the review: you can add what is missing, or finish and give a reason.
 
 - **H1:** no element would be an H1, or more than one would. The count combines style mappings and single-element retypes. It is approximate, because the audit lists element counts per style; `review.md` has the exact count after the run.
-- **Figures without alt text** that are not marked as decoration. A figure past the first request's 100 images gets its alt text from a figure request (see [Files](files.md)). What is left are figures whose figure request did not finish, or every figure past 100 with `FIGURE_PASSES=off` (in an earlier test book that was 443 of 543 figures). The alt texts the figure requests wrote are decisions on the page like any other.
+- **Figures without alt text** that are not marked as decoration. A figure past the first request's 100 images gets its alt text from a figure request (see [Files](files.md)). What is left are figures whose figure request did not finish, or every figure past 100 with `FIGURE_PASSES=off` (in an earlier test book that was 443 of 543 figures). The alt texts the figure requests wrote are decisions on the page like any other. The line names the pages, not the objects ("90 figures with no alt text and not marked as decoration, on PDF 26, 27, 34, …"); the object numbers stay in the review record and the logs.
 - **Whole-page figures without alt text.**
 
 The line beside **Finish Review** counts the open gaps ("1 gap open"). The Finish dialog lists each gap with an **Add** link that closes the dialog and opens the form at the right kind.

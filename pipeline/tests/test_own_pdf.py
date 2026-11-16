@@ -289,7 +289,7 @@ def test_a_batch_pdfs_menu_edit_name_and_new_run(app):
 def test_the_pop_ups(app):
     """T4: New Run and New Batch are pop-ups: their contents from /api/form (a heading, the fields, "Cancel"); the old pages
     go home; the dialog is a native <dialog> (Tab stays inside), Esc and Cancel close it and give focus back."""
-    from test_webapp import get
+    from test_webapp import get, unver
     t = app['t']; s = settings(t); (t / 'uploads').mkdir(exist_ok=True)
     for n in ('a', 'b'): (t / 'uploads' / f'{n}.pdf').write_bytes(pdf_bytes(1, f'Book {n}'))
     keys = [b['key'] for b in BK.listing(s)]
@@ -303,7 +303,7 @@ def test_the_pop_ups(app):
               "if (o && document.body.contains(o) && !o.closest('[hidden]')) o.focus({ preventScroll: true });", "if (o && !document.body.contains(o) && o.id) o = $(o.id);", "nameIn.setAttribute('aria-invalid', 'true')"):
         assert x in js, x
     home = get(app['port'], '/')[1].decode()
-    assert '<script src="/app/shared.js" defer></script><script src="/app/home.js" defer></script>' in home and get(app['port'], '/app/shared.js')[0] == 200
+    assert '<script src="/app/shared.js"></script><script src="/app/home.js"></script>' in unver(home).split('</head>')[0] and get(app['port'], '/app/shared.js')[0] == 200
 
 # ------------------------------------------------------------------ U1, U2, U5, U6, U7
 def test_new_run_of_this_pdf_says_what_it_does(setup):

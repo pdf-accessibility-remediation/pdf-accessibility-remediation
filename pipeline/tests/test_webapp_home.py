@@ -9,7 +9,7 @@ import pytest
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # pipeline/
 sys.path.insert(0, HERE)
 from webapp import books as BK, home as HM, runs as RN, server as W  # noqa: E402
-from test_webapp import setup, settings, get, app, wait, free_port  # noqa: E402,F401  (fixtures)
+from test_webapp import setup, settings, get, app, wait, free_port, unver  # noqa: E402,F401  (fixtures)
 
 def pdf_bytes(pages=1, title=None, password=None):
     import pikepdf
@@ -135,10 +135,11 @@ def test_upload_route_checks(app):
 def test_home_page_lists_books_and_runs(app):
     t = app['t']; (t / 'uploads').mkdir(exist_ok=True); (t / 'uploads' / 's.pdf').write_bytes(pdf_bytes(4, 'Sample Title'))
     st, b, h = get(app['port'], '/')
-    page = b.decode()
+    page = unver(b)
     assert st == 200 and 'Sample Title' in page and 'Source PDF: s.pdf' in page and 'data-dialog="/api/form?what=run&amp;book=' in page
     assert 'aria-label="App"' not in page and '>Home Page<' not in page                # P1: no way home on the home page itself
-    assert '<script src="/app/home.js" defer></script>' in page and "script-src 'self'" in h['Content-Security-Policy']
+    assert '<script src="/app/home.js"></script>' in page.split('</head>')[0] and "script-src 'self'" in h['Content-Security-Policy']   # 15: in the head
+    assert page.index('id="hm-first"') < page.index('<script>Pdfrem.homeActive()</script>') < page.index('id="hm-books-h"')   # drawn right there
     assert 'My Workspace' in page and '/run/book/r1/' in page and 'None' not in page.replace('None yet', '')
     assert get(app['port'], '/app/home.js')[0] == 200
     st, b, _ = get(app['port'], '/?q=nothing-matches-this')
@@ -148,7 +149,40 @@ def test_home_page_lists_books_and_runs(app):
 def test_every_app_page_has_the_way_home(app, path):
     st, b, _ = get(app['port'], path)
     page = b.decode()
+    if path.endswith('review.md'):                       # in the page's own bar (Patrick, 2026-11-11), nothing in the app bar's place
+        assert page.count('>Home Page</a>') == 1 and 'aria-label="App"' not in page and 'pp-appbar-gap' not in page, path
+        assert W.SKIP + '<header>' in page, path
+        return
     assert page.count('<nav class="pp-appbar" aria-label="App"><a class="pp-btn" href="/">Home Page</a>') == 1, path
+
+def test_home_page_sits_in_the_bar_of_three_pages(app):
+    """Patrick, 2026-11-11: on review.md in a page (current or previous result) and a previous result's dashboard, "Home
+    Page" is in the page's own bar, after the bar's other buttons (on review.md's page: before "The Plain File"), not
+    above the title, and nothing takes the app bar's place (review 18 R1): the skip link is followed by the page's own
+    header. A report whose text holds the bar's marker still gets the app bar: the marker counts only inside a tag."""
+    port, R = app['port'], app['R']
+    page = get(port, '/run/book/r1/review.md')[1].decode()
+    bar = page[page.index('<nav class="pp-wrap" aria-label="Pages of this run" data-appbar="bar">'):]
+    bar = bar[:bar.index('</nav>')]
+    assert bar.index('>Back to the Run Page</a>') < bar.index('<a class="pp-btn" href="/">Home Page</a>') < bar.index('>The Plain File</a>')
+    assert W.SKIP + '<header>' in page and 'pp-appbar-gap' not in page
+    (R / 'reviews' / 'versions' / '001').mkdir(parents=True, exist_ok=True)
+    (R / 'reviews' / 'versions' / '001' / 'review.md').write_text('# Review')
+    page = get(port, '/run/book/r1/reviews/versions/001/review.md')[1].decode()
+    assert page.index("This Previous Result's Dashboard</a>") < page.index('>Home Page</a>') < page.index('>The Plain File</a>')
+    (R / 'reviews' / 'versions' / '001' / 'review.html').write_text('<html><body>' + W.SKIP + '<header><h1>r1</h1></header><main>x</main></body></html>')
+    page = get(port, '/run/book/r1/reviews/versions/001/review.html')[1].decode()
+    assert 'aria-label="App"' not in page and '>Home Page<' not in page and 'pp-appbar-gap' not in page   # panel.js draws it in the bar
+    assert W.SKIP + '<header>' in page
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert ('Back to the Current Result</a> <span id="pp-vact"></span> \' +\n    \'<a class="pp-btn" id="pp-vhome" href="/">Home Page</a></p>\'') in js   # a space before each
+    css = open(os.path.join(HERE, 'webapp', 'panel.css'), encoding='utf-8').read()
+    assert 'pp-appbar-gap' not in css and '@media (min-width: 601px) { #pp-vback { margin-left: 3px; } }' in css
+    assert '@media (min-width: 601px) { #pp-vreview, #pp-vhome, .pp-vbusy { margin-left: 9px; } }' in css   # the busy sentence too (review 20 L1)
+    assert '<span class="pp-vbusy">· A job for this run is running or waiting: see the current result.</span>' in js
+    assert '@media (min-width: 601px) { .mc-nav a.pp-btn[href="/"] { margin-left: -3px; } }' in css   # the evaluation page's, 3 px closer
+    text = W.with_appbar('<body>' + W.SKIP + '<main><p>a note: data-appbar="bar"</p></main></body>')        # escaped book text
+    assert 'aria-label="App"' in text
 
 def test_appbar_follows_the_skip_link():
     p = W.with_appbar('<body>' + W.SKIP + '<main>x</main></body>')
@@ -230,7 +264,7 @@ def test_a_job_recorded_before_the_wording_changed_reads_the_new_way():
 
 def test_the_home_page_button_moves_on_the_run_page_only():
     css = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'webapp', 'panel.css'), encoding='utf-8').read()
-    assert '.pp-run-hd .pp-appbar { position: relative; left: -2px; }' in css
+    assert '.pp-run-hd .pp-appbar { position: relative; left: -4px; }' in css   # 2 px more (Patrick, 2026-11-11)
 
 def test_run_details_in_plain_words(setup):
     """Q6: Run Name, pages, when it ran, the AI by its plain name and the AI cost with the max estimated cost; a saved

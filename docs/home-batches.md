@@ -47,7 +47,7 @@ The batch dashboard is drawn in the page: no separate page to open.
 - **Edit Name** changes the PDF's display name in place. It is kept by sha256, so it shows on the dashboard, the side list, its run page and any other run of the same file. It is never a file, folder or run name: a batch's PDFs are named by the batch.
 - **New Run of This PDF** opens New Run's pop-up.
 
-The "This Batch" panel joins the header, and the side list when it is shown.
+The "This Batch" panel joins the header, and the side list when it is shown. Its first answer comes with the page (#93: a JSON data block, `bt-first`, what `/api/batch/<label>` returns), so it is drawn on first load with no "Loading…"; later answers are asked for as before.
 
 ### The side list
 
@@ -61,9 +61,11 @@ The side column ("PDFs in This Batch") is on the batch page and on every PDF's p
 
 The current PDF has the darker background and bold text; hovering gives a lighter shade. "Batch: <name>" (the way to the batch page) is styled like the PDFs (no underline, the same hover shade and focus ring), only larger, with "(N PDFs)" smaller under it. Both start where the PDFs' names do, the list starts near the top, and on a wide screen the page's header and panels sit right against the list.
 
-**Hide the PDF List** / **Show the PDF List (N)**, beside **Home Page**, closes and opens it. The choice is remembered in this browser, and the server lays the page out with it, so moving from PDF to PDF doesn't shift the page. The panel also keeps its height until it is drawn, the list keeps its scroll place, and pages cross-fade.
+**Hide the PDF List** / **Show the PDF List (N)**, beside **Home Page**, closes and opens it. The choice is remembered in this browser, and the server lays the page out with it, so moving from PDF to PDF doesn't shift the page. The list keeps its scroll place, set before the page's first frame; pages switch in one step, with no fade ([Page changes in one step](app-run-page.md#page-changes-in-one-step)).
 
 Below 48em (a phone, 320 px included) the list starts closed, in the page's flow, so nothing scrolls sideways. "Skip to the content" skips it.
+
+On a PDF's page the list needs only the PDFs' statuses, so the page and its check of the batch (`/api/batch/<label>?nav=1`) never build the batch dashboard (#93). For a batch made before this month's record format, building it opens every finished PDF to read its page labels, which made the first open of such a PDF's page after the app started take up to two seconds. The batch page itself still builds it.
 
 ### Runs at once
 

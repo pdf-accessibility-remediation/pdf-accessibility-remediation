@@ -13,7 +13,7 @@ This page explains the home page's lists of PDFs, runs and batches, how to move 
 
 The page is titled "PDF Accessibility Remediation". Its sections are cards like the run page's; each card's top border is the accent blue, and the status pills keep their colors. The review page's "seen" cards use the same blue.
 
-- **Runs in Progress:** shown only while a job runs or waits to start. Each has its PDF, its run name, its step or "Waiting to Start", and **Open**, kept current while the page is open. A job that ends is announced; focus never moves by itself.
+- **Runs in Progress:** shown only while a job runs or waits to start. Each has its PDF, its run name, its step or "Waiting to Start", and **Open**, kept current while the page is open. A job that ends is announced; focus never moves by itself. To keep this light as the jobs add up (#93), the page asks the app only about jobs whose status can still change (waiting, running, waiting for a new estimate, or stopped without finishing while it may still be running) and about the ones it last saw (`/api/jobs?active=1&seen=…`): every 2 seconds while a job runs, else every 5, as before. Its first answer comes with the page (a JSON data block, `hm-first`: what that request would return for a page that has seen no job), so the list is drawn on first load with no "Loading…" (#93); later answers are asked for as before.
 - **Upload a PDF:** a drop zone to add PDFs, and the list of PDFs added (see [Upload a PDF](home-runs.md#upload-a-pdf)).
 - **My Workspace:** your single runs and batches (below).
 
@@ -26,7 +26,7 @@ A switch between **Single Runs** and **Batches**, a search (by PDF or run name; 
 
 There is no AI Cost column: a run's cost is in its run page's header, a batch's on the batch page. Rows come 25 at a time (**Show More Runs** / **Show More Batches**). Listing a run never changes it.
 
-The switch, a filter, a search and **Show More** swap the table in place, with no reload and no jump to the top. The address keeps the choice, so refreshing keeps it. Focus stays on the control used, and the new count ("3 batches · In Progress") is announced. Enter in the search box keeps the view shown.
+The switch, a filter, a search and **Show More** swap the table in place, with no reload and no jump to the top. The address keeps the choice, so refreshing keeps it. Focus stays on the control used, and the new count ("3 batches · In Progress") is announced. Enter in the search box keeps the view shown, and after the table is swapped the caret is at the end of the search text, so typing goes on where it stopped (#93).
 
 ### The "⋯" menus
 
@@ -73,6 +73,7 @@ Under the name, everywhere a PDF is named (the home page, a run page's header, t
 - On the batch page, **Hide the PDF List** / **Show the PDF List (N)** comes first, then **Home Page**.
 - On a batch PDF's page, both are on its "Assigned to the batch" line, in that order.
 - On the review page and the OCR-only page, it follows the page count in the header line, spaced so it touches nothing else.
+- Three pages have it in their own bar, after the bar's other buttons, instead: the Accessibility Evaluation page (after "Back to the Run Page"), a previous result's dashboard (after "Review Again from This Session") and review.md in a page (before "The Plain File"). Those pages have nothing above the title, which starts at the top.
 
 "Home Page" and "Show/Hide the PDF List" are the same size wherever they sit together.
 
@@ -96,6 +97,8 @@ Run Actions meets the header with no gap, and doesn't repeat the cost. Run Actio
 
 **Move to Trash** is in the "⋯" menu of each single run and batch in My Workspace, and of each PDF in the PDF list. It is also on the batch page, for the whole batch or the PDFs ticked in its dashboard (**Move Selected to Trash**). Every move asks first, naming what goes in plain words.
 
+Each confirmation ends with what happens (#93): "This PDF will be moved to the Trash on this computer and cannot be restored through the app." (for a run or a batch: "This folder will be moved to …"; for several PDFs ticked in a batch: "These folders will be moved to …"). After the move the home page says "Moved to the Trash: <name>." (the PDF's, run's or batch's name). After **Move Selected to Trash** moves only some of a batch's PDFs, the batch page says it instead, naming each PDF moved: up to three, then "and N more" ("Moved to the Trash: A, B, C and 2 more."); the message takes focus, as the home page's does. The app restores nothing: a PDF is used again by uploading the same PDF again with **Choose PDFs**, where the app finds it by its content (sha256).
+
 **A run:** its run name and PDF, and "The remediated PDF, its report and its review go with it." A shipped run adds "This run was shipped. Its record of what was shipped and who approved it goes with it."
 
 **A batch, or PDFs in it:** each PDF is named. After a partial move:
@@ -108,16 +111,16 @@ Run Actions meets the header with no gap, and doesn't repeat the cost. Run Actio
 - ""Review Again" still works: the run kept its own copy" (its intake made one)
 - "…the run uses another copy of the PDF" (its review reads a different file with the same content, e.g. in samples/)
 - "…another copy of the PDF is in the app's folders" (found by sha256)
-- ""Review Again" will need it back" (a tagged PDF whose review reads this very file: its review record names the original itself)
+- ""Review Again" will require this PDF: it can be uploaded again with "Choose PDFs" on the home page." (a tagged PDF whose review reads this very file: its review record names the original itself)
 - ""Review Again" already doesn't work for this run: … Moving this PDF doesn't change that" (its own intake copy is missing, or its record doesn't say which PDF it was made from, so putting the PDF back wouldn't help)
-- "Applying its reviewed decisions will need it back" (waiting for its first apply)
+- "Applying its reviewed decisions will require this PDF: it can be uploaded again with …" (waiting for its first apply)
 - a run before its result gets no line
 
-Those runs stay. A run that needs the PDF says on its page that the original PDF was moved to the Trash, and how to put it back. The samples folder is never offered.
+Those runs stay. A run that needs the PDF says on its page: "The original PDF was moved to the Trash. "Review Again" requires it: to continue, upload the same PDF again with "Choose PDFs" on the home page." "Start Remediation", refused for a PDF moved to the Trash, says the same, ending "then try again". The samples folder is never offered.
 
 **A move is refused,** and nothing moves, while anything affected is processing, waiting to start or for a new estimate, has a review page open, or sits between "Finish Review" and its apply. A PDF is also refused while any job's command names it.
 
-Where the items go and how to put them back: [The app](app-setup.md#move-to-trash).
+Where the items go, and how whoever looks after the app can put one back by hand: [The app](app-setup.md#move-to-trash).
 
 ## Clearing a shipped PDF
 

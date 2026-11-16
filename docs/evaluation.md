@@ -35,7 +35,7 @@ When the run has no "Ready to Ship?" card, the strip goes at the end of the pane
 
 ### The page
 
-The page (`/run/<run>/checks`) has the same heading as the strip. It names the PDF as "PDF Title": the remediated PDF's own title, else the original's name without ".pdf". Right after "Back to the Run Page" come, as consecutive lines with no gap:
+The page (`/run/<run>/checks`) has the same heading as the strip. It names the PDF as "PDF Title": the remediated PDF's own title, else the original's name without ".pdf". Right after the bar ("Back to the Run Page", then "Home Page") come, as consecutive lines with no gap:
 - the **Overall Status**, with the unsatisfied requirements when it is Not Ready: "Overall Status: Not Ready · Unsatisfied Requirements: Work Order Approval, OCR Text Approval"
 - the version the results are for: "the version from Session 6, applied on October 30, 2026, at 2:02 PM"
 - two help lines: when to complete the evaluation, and 'Every item needs a result, and a "Fail" needs a note. A "Fail" does not hold the book back; it is kept in the report with its note for future reference and further review.'

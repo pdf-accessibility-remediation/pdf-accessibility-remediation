@@ -18,13 +18,15 @@ The API key comes from OPENROUTER_API_KEY or the nearest .env, as for decide.py.
 """
 import sys, os, re, json, time, base64, hashlib, argparse, urllib.request, urllib.error
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-from lib import pagereads, costhistory
+from lib import pagereads, costhistory, costs
 
 ap = argparse.ArgumentParser()
 ap.add_argument('audit_dir'); ap.add_argument('run_dir')
 ap.add_argument('--dry-run', action='store_true')
 ap.add_argument('--model', default=None, help="OpenRouter model id (default: the run's work-order model, else decide.py's DEFAULT_MODEL)")
 ap.add_argument('--max-usd', type=float, default=float(os.environ.get('PAGE_READS_MAX_USD') or 3), help='the limit on what this step could cost, in dollars')
+ap.add_argument('--book-max-usd', type=float, default=float(os.environ.get('BOOK_MAX_USD') or costs.DEFAULT_LIMITS['per_book_usd']),
+                help="the PDF's limit, shared with the work order and the language step (review 06, M2)")
 ap.add_argument('--max-tokens', type=int, default=8000, help='output limit per page (a dense Hawaiian page took 2,300–3,400)')
 args = ap.parse_args()
 
@@ -88,14 +90,26 @@ if todo:                                           # the expected cost (#65): le
     try: est['expected'] = costhistory.expected([{'kind': 'page', 'input_est': t['input_est'], 'max_tokens': args.max_tokens} for t in todo], model, pin, pout, worst,
                                                 cut_off=any(x.get('finish') == 'length' for x in done.get('pages') or []))
     except Exception as ex: est['expected'] = {'none': 'error'}; print(f'note: the expected cost could not be worked out ({type(ex).__name__})')
-if args.dry_run:
-    json.dump({'schema': 'page-reads-estimate/1', 'model': model, 'prompt_sha256': prompt_sha, **est,
-               'images': {str(t['page']): t['image_sha256'] for t in todo}}, open(EST_PATH, 'w', encoding='utf-8'), indent=1)
+_kept = {}
+if args.dry_run:                                   # one over its own cap is marked refused: never counted toward the PDF (review 08, H1)
+    _new = {'schema': 'page-reads-estimate/1', 'model': model, 'prompt_sha256': prompt_sha, **est, 'images': {str(t['page']): t['image_sha256'] for t in todo}}
+    _kept = {} if worst > args.max_usd else costs.kept_refusal(args.run_dir, 'page_reads', _new)   # decide.py's "left out" survives this dry run
+    json.dump({**_new, **({'refused': {'why': 'cap', 'words': f'The page readings could cost up to ${worst:.2f}, more than their limit of ${args.max_usd:.2f}.'}} if worst > args.max_usd else _kept)},
+              open(EST_PATH, 'w', encoding='utf-8'), indent=1)
 print(f'page readings: {len(pages)} Hawaiian page{"s" if len(pages) != 1 else ""} ({len(reused)} already read) · {model}')
 if todo: print('page readings: ' + costhistory.terminal_line(est['expected']))
 print(f'page readings: Max Estimated Cost: ${worst:.2f} · Limit: ${args.max_usd:.2f}')
 if worst > args.max_usd:
     sys.exit(f'refusing before any AI request: the page readings could cost up to ${worst:.2f}, more than the limit of ${args.max_usd:.2f}. To run it, raise the limit for this run: PAGE_READS_MAX_USD={int(worst) + 1}')
+if _kept and os.path.exists(os.path.join(args.run_dir, 'response.json')):   # the work order has run: the readings stay left out
+    sys.exit(f'refusing before any AI request: {_kept["refused"].get("words")}')
+_ref = costs.refused(args.run_dir, 'page_reads') if not args.dry_run and todo else None
+if _ref and _ref.get('why') == 'book':             # decide.py left them out of the PDF's estimate: they stay out (review 08, H1)
+    sys.exit(f'refusing before any AI request: {_ref.get("words") or "the page readings were left out of this PDF\'s estimate"}')
+_spent = costs.book_spent(args.run_dir)
+if not args.dry_run and _spent + worst > args.book_max_usd:
+    sys.exit(f'refusing before any AI request: this PDF has spent ${_spent:.2f} and the page readings could add ${worst:.2f}, more than the '
+             f'limit of ${args.book_max_usd:.2f} per PDF. To run it, raise the limit for this run: BOOK_MAX_USD={int(_spent + worst) + 1}')
 # cost_usd is the step's running total: a page read again after a cut-off keeps the first charge, a page reused adds nothing
 rec = {'schema': 'page-reads/1', 'model': model, 'prompt_file': os.path.basename(PROMPT_FILE), 'prompt_sha256': prompt_sha, 'estimate': est,
        'pages': sorted(reused, key=lambda x: x['page']), 'cost_usd': round(max(done.get('cost_usd') or 0, sum(x.get('cost_usd') or 0 for x in done.get('pages') or [])), 6)}

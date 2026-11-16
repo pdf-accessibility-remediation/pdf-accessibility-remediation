@@ -114,6 +114,8 @@ At the review stop, the pipeline runs `apply.py` once on a copy, with the AI's d
 
 A later review of the same PDF (**Review Again**) reuses that trial run's result while nothing it depends on has changed, so the page opens without the wait and shows exactly the same. It depends on the PDF, the AI's decisions, the pipeline's code, the Python packages and Tesseract it runs with, and the settings `apply.py` reads.
 
+A run applied from the AI's own decisions without a review stop keeps its apply's own figure and section moves the same way (#93): its apply is the same `apply.py` on the same PDF and decisions, so it found exactly what the trial run would. Its first **Review Again** opens without the trial run too. Not when the AI turned the figure step off for the PDF (the trial run has it on, the apply had it off), and not for a run applied after a review or re-applied (they applied other decisions).
+
 After any of these changes, for example after updating the pipeline, the trial run is made again; one that failed or was skipped is always made again. `REVIEW_DRYRUN=fresh` makes it again regardless.
 
 ## Fixing the reading order by hand

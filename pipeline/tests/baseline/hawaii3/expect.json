@@ -5,16 +5,14 @@
    "document: DisplayDocTitle": 1,
    "document: title": 1,
    "figure: alt text": 11,
-   "heading: standard tag H1 → H3 (retyped)": 76,
-   "heading: standard tag H2 → H4 (retyped)": 113,
+   "heading: standard tag H2 → H3 (retyped)": 113,
+   "language: a language name written as /Lang replaced by its code": 401,
    "links: /Contents set": 186,
    "links: URL-only description replaced by the sentence around it": 62,
    "links: joined existing Link": 186,
-   "retype → H1": 1,
-   "retype → H2": 10,
-   "retype → H3": 1,
-   "retype → H5": 8,
-   "retype → P": 1,
+   "retype → H2": 73,
+   "retype → H4": 8,
+   "retype → P": 2,
    "tag tree index: entries pointing outside the tree cleared (ParentTree)": 6
   },
   "deferred": 22,
@@ -26,14 +24,14 @@
  "verapdf": {
   "after": {
    "failed": {
-    "7.2-29": 7,
+    "7.2-29": 1,
     "7.21.5-1": 48
    },
    "totals": {
     "ua_only_failed_checks": 48,
     "ua_only_failed_rules": 1,
     "unclassified": [],
-    "wcag_failed_checks": 7,
+    "wcag_failed_checks": 1,
     "wcag_failed_rules": 1
    }
   },
@@ -60,10 +58,9 @@
   },
   "headings": {
    "H1": 1,
-   "H2": 10,
-   "H3": 65,
-   "H4": 112,
-   "H5": 8
+   "H2": 73,
+   "H3": 113,
+   "H4": 8
   },
   "pixel_pages_differing": [],
   "skipped_levels": [],
@@ -81,17 +78,16 @@
    "Document": 1,
    "Figure": 11,
    "H1": 1,
-   "H2": 10,
-   "H3": 65,
-   "H4": 112,
-   "H5": 8,
+   "H2": 73,
+   "H3": 113,
+   "H4": 8,
    "L": 6,
    "LBody": 26,
    "LI": 26,
    "Lbl": 26,
    "Link": 136,
    "Note": 11,
-   "P": 2017,
+   "P": 2018,
    "Reference": 83,
    "Sect": 76,
    "Span": 448,

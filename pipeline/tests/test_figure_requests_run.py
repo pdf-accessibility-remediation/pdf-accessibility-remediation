@@ -203,7 +203,7 @@ def test_a_live_run_sends_the_figure_requests_and_merges_them(book, tmp_path, mo
     assert len(run['passes'][2]['overlap']) == 5 and all(v['probe'].startswith('Figure: ') for v in run['passes'][2]['overlap'].values())
     alts = [a['alt'] for a in wo['alt']]
     assert len(alts) == 130 and sum(a.startswith('Figure: ') for a in alts) == 30   # the probe's answers are never used
-    assert len(val['context']['figure_pass']) == 30 and ' with note later-figures/1 + figures_v1.md' in wo['decided_by']
+    assert len(val['context']['figure_pass']) == 30 and ' with note later-figures/1 + figures_v2.md' in wo['decided_by']
     side = json.load(open(R / 'passes.json'))
     assert side['format'] == F.FORMAT and [p['pass'] for p in side['passes']] == ['2'] and F.side_fingerprint(side) == fp['fingerprint']
     assert side['passes'][0]['call']['retry'] is True

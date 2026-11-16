@@ -133,20 +133,36 @@ def read_meta(p):
         except pikepdf.PasswordError: return {'pages': None, 'title': None, 'locked': True, 'unreadable': False}
     except Exception: return {'pages': None, 'title': None, 'locked': False, 'unreadable': True}
 
-def meta(s, sha, path):
+def meta(s, sha, path, nm=None):
+    """A PDF's cached {title, pages, …}, read once per sha256 into books-cache.json. nm: the request's names snapshot
+    (webapp/names.py): the cache is read through it, and an entry written here is written into it too (review 02 M1), so
+    a row drawn later in the same request sees it."""
     cp = os.path.join(s['jobs'], 'books-cache.json')
-    with _lock: c = _load(cp) or {}
+    if nm is not None: c = nm.cache()
+    else:
+        with _lock: c = _load(cp) or {}
     if sha in c: return c[sha]
     m = read_meta(path)
     with _lock:
         cur = _load(cp) or {}; cur[sha] = m; _save(cp, cur)
+    if nm is not None: nm.put(sha, m)
     return m
 
+def cached_pages(s, sha, nm=None):
+    """A book's page count as read at upload (the books cache), or None; never opens the PDF."""
+    if not sha: return None
+    if nm is not None: c = nm.cache()
+    else:
+        with _lock: c = _load(os.path.join(s['jobs'], 'books-cache.json')) or {}
+    return (c.get(sha) or {}).get('pages')
+
 # ------------------------------------------------------------------ the list
-def listing(s):
+def listing(s, nm=None):
     """Every PDF added through "Upload a PDF" (the uploads folder), in folder order; a content listed twice is shown once.
     samples/ is never listed (Patrick, 2026-11-06, P3): runs.find_original still looks there by sha256, read only, so
-    "Review Again" and the first apply of a run made from samples/ keep working."""
+    "Review Again" and the first apply of a run made from samples/ keep working. nm: the request's names snapshot."""
+    from . import names as NM
+    nm = nm or NM.snapshot(s)
     out, seen = [], set()
     for group, root in (('added', s['uploads']),):
         ps = pdfs_in(root)
@@ -155,12 +171,11 @@ def listing(s):
             sha = hs.get(p)
             if not sha or sha in seen: continue
             seen.add(sha)
-            m = meta(s, sha, p)
+            m = meta(s, sha, p, nm)
             f = os.path.basename(p)
             try: size = os.path.getsize(p)
             except OSError: continue
-            from . import names as NM
-            out.append({'key': sha, 'name': NM.book_name(s, sha, f, m.get('title')), 'auto': NM.auto_name(m.get('title'), f), 'file': shown_file(f), 'group': group, 'pages': m.get('pages'),
+            out.append({'key': sha, 'name': nm.book_name(sha, f, m.get('title')), 'auto': NM.auto_name(m.get('title'), f), 'file': shown_file(f), 'group': group, 'pages': m.get('pages'),
                         'size': size, 'locked': bool(m.get('locked')), 'unreadable': bool(m.get('unreadable')), 'path': p,
                         'folder': os.path.relpath(os.path.dirname(p), root)})
     return out
@@ -169,11 +184,12 @@ def by_key(s, key):
     if not isinstance(key, str) or not re.fullmatch(r'[0-9a-f]{64}', key): return None
     return next((b for b in listing(s) if b['key'] == key), None)
 
-def name_of_sha(s, sha, file=None):
-    """A book's name (webapp/names.py book_name: a person's name, else the cleaned Title, else the stem), or None."""
+def name_of_sha(s, sha, file=None, nm=None):
+    """A book's name (webapp/names.py book_name: a person's name, else the cleaned Title, else the stem), or None. nm: the
+    request's names snapshot."""
     if not sha and not file: return None
     from . import names as NM
-    return NM.book_name(s, sha, file or '')
+    return (nm or NM.snapshot(s)).book_name(sha, file or '')
 
 def size_words(n):
     return f'{n / 1e6:.1f} MB' if n >= 1e5 else f'{max(1, round(n / 1e3))} KB'
@@ -303,6 +319,7 @@ def take_back(s, p):
 # Each choice is shown only when every Tesseract pack it names is installed. English is the default; nothing is guessed.
 OCR_CHOICES = [('eng', 'English'), ('chi_tra+eng', 'Chinese (Traditional) and English'), ('chi_sim+eng', 'Chinese (Simplified) and English'),
                ('jpn+eng', 'Japanese and English'), ('jpn_vert+jpn+eng', 'Japanese (vertical text) and English'), ('kor+eng', 'Korean and English'),
+               ('mri+eng', 'Hawaiian or Māori and English'),   # #121: Tesseract has no Hawaiian pack; Māori's reads the kahakō
                ('vie+eng', 'Vietnamese and English'), ('tgl+eng', 'Tagalog and English'), ('fra+eng', 'French and English'),
                ('deu+eng', 'German and English'), ('spa+eng', 'Spanish and English')]
 

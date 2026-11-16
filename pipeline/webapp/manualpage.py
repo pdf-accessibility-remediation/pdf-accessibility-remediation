@@ -16,6 +16,7 @@ import os, json, html, threading, urllib.parse
 from lib import release as REL, glance as G, langtag, dates as D
 from lib.titles import title_case as TC
 from review import sessions as S, manual as M            # imported at the app's start: manual.CODE is the running code's
+from . import home as HM
 
 def E(x): return html.escape('' if x is None else str(x))   # every value escaped, whatever its type
 _cache, _cache_lock = {}, threading.Lock()
@@ -348,7 +349,8 @@ def page(R, run, recorded=None):
     b = st['book']; lang = f' lang="{E(b["lang"])}"' if b['lang'] else ''
     ready = st['ready']; why = [x for x in ready['lines'] if not x['ok']]
     B = [f'<header><h1>Accessibility Evaluation (PAC 2026 &amp; Screen-Reader Test)</h1><p class="mc-book">PDF Title: <span{lang}>{E(b["title"])}</span></p></header>',
-         f'<nav class="pp-wrap" aria-label="This page"><p class="pp pp-bar mc-nav"><a class="pp-btn" href="{E(st["base"])}">Back to the Run Page</a></p></nav>',
+         f'<nav class="pp-wrap" aria-label="This page" {HM.HOME_IN_BAR}><p class="pp pp-bar mc-nav"><a class="pp-btn" href="{E(st["base"])}">Back to the Run Page</a>'
+         '<a class="pp-btn" href="/">Home Page</a></p></nav>',   # Home Page right after it, not above the title (Patrick, 2026-11-11)
          '<main id="main" tabindex="-1"><div class="pp mc">',
          f'<p class="mc-status">Overall Status: <strong>{E(st["status"])}</strong>' + (f' · {E(st["newer"])}' if st.get('newer') else '')   # right after "Back to the Run Page" (Patrick, 2026-11-01)
          + (f' · Unsatisfied Requirements: {E(", ".join(x["name"] for x in why))}' if st.get('status_name') == REL.NOT_READY and why else '') + '</p>']
@@ -362,6 +364,7 @@ def page(R, run, recorded=None):
     if st['refusal']: B.append(f'<p id="mc-refusal" class="mc-refusal">{E(st["refusal"])} Your answers are still saved as you type.</p>')
     dl = downloads_form(st['base'], st['downloads'], 'mc', 'h2')     # the PDF to take to PAC 2026 and the screen reader (stage 3)
     if dl: B.append(f'<section id="downloads" class="mc-sec" aria-labelledby="mc-dl-h">{dl}</section>')
+    first_sec = len(B)                                                  # 15: the page's data goes here, before the forms
     for key in REL.SECTIONS:
         s = st['sections'][key]; p = p_of[key]
         B.append(f'<section id="{s["id"]}" class="mc-sec" aria-labelledby="{p}-h"><h2 id="{p}-h" tabindex="-1">{E(s["name"])}</h2>')
@@ -383,7 +386,7 @@ def page(R, run, recorded=None):
                      f'<button type="button" data-start="{E(key)}:draft">Start from These Notes</button></p>')
         B.append(f'<h3>{"Record New Results" if c else "Record the Results"}</h3>'
                  + ('<p class="mc-help">New results for this version replace the current ones as the ones that count; the previous ones stay in the record.</p>' if c else '')
-                 + _form(st, s, p) + '</section>')
+                 + _form(st, s, p) + '</section>' + HM.call('checks'))    # 15: this form filled right here
     B.append('</div></main><div id="mc-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>'
              '<div id="mc-alert" class="pp-sr" role="alert"></div>')
     data = {k: st[k] for k in ('run', 'base', 'sha')}
@@ -392,7 +395,8 @@ def page(R, run, recorded=None):
                             'starts': [{'fields': e.get('fields') or {}, 'items': {ik: {'note': (iv or {}).get('note') or ''} for ik, iv in (e.get('items') or {}).items()},
                                         'notes': e.get('notes') or ''} for e in v['earlier']],
                             'start_draft': (v['draft_earlier'] or {}).get('data'), 'has_draft': bool(v['draft'])} for k, v in st['sections'].items()}
+    B.insert(first_sec, f'<script type="application/json" id="mc-data">{_json_block(data)}</script>')
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<title>Accessibility Evaluation: {E(b["title"])}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css"></head>'
-            '<body class="pp-page mc-page"><a class="skip" href="#main">Skip to the content</a>' + ''.join(B) +
-            f'<script type="application/json" id="mc-data">{_json_block(data)}</script><script src="/app/manual.js" defer></script></body></html>')
+            f'<title>Accessibility Evaluation: {E(b["title"])}</title><link rel="stylesheet" href="/app/palette.css"><link rel="stylesheet" href="/app/panel.css">'
+            '<script src="/app/manual.js"></script></head>'                    # 15: in the head; a call after each form draws it
+            '<body class="pp-page mc-page"><a class="skip" href="#main">Skip to the content</a>' + ''.join(B) + '</body></html>')

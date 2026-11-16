@@ -13,6 +13,8 @@ Every pipeline step the app starts runs as a job. This page explains how jobs wa
 
 **Every button queues a job,** with its own job file and log.
 
+**The jobs check** has two forms (#93): `GET /api/jobs?limit=N` (the newest N, at most 500; 50 by default) and `GET /api/jobs?active=1&seen=<id>,<id>,…`, the home page's. The second returns every job whose status can still change (queued, running, needs-spend, and interrupted while it may be alive after all: no exit recorded and a process group) and every job named in `seen` (job-id characters only, at most 500 ids; unknown ids are ignored), newest first, in the same shape. Both read the job files once per answer, and a job's place in line counts every queued job, not only the ones shown. A page reads each names file (`book-names.json`, `run-names.json`, `books-cache.json`) and each job file at most once, and asks Tesseract for its installed languages (`tesseract --list-langs`) at most once, only when a PDF on it is waiting for its language.
+
 **Runs at once:**
 - Up to `max_jobs` (3) single runs go at once, oldest first.
 - A batch's estimates have their own `batch_jobs` (10) places, like its paid step, so a batch of ten PDFs is estimated at once while single runs keep their three.

@@ -151,3 +151,86 @@ def test_keep_marks_and_finish_refuses_until_fixed(tmp_path):
     assert b['finished'] and b['dropped'] == []
     t.join(5)
     assert core.load(os.path.join(R, 'workorder.json'))['alt'][0]['alt'] == 'A map of Oʻahu'
+
+def test_the_document_language_card_and_the_languages_section_keep_their_own_data(tmp_path):
+    """Patrick's dakine test (2026-11-14): with a document-language card and language rows in one order, the page's data
+    holds the card's list under `language_list` ([tag, name] pairs, which the card's editor reads with .some) and the
+    Languages section's summary under `languages` (an object). Both under `languages` crashed the All and Not Reviewed
+    views ("L.some is not a function")."""
+    import re, test_review_languages as TL
+    ai = {**ai_order(), 'document': {'title': 'The Book', 'lang': 'en-US'}, 'language_parts': TL.wo()['language_parts']}
+    R, ai, items, adds = run(tmp_path, ai)
+    assert any(it.get('edit') == 'lang' and it['kind'] != core.LANG_KIND for it in items)       # the document-language card
+    core.save(os.path.join(R, 'review_items.json'), {'book': 'book.pdf', 'run': 'run', 'pages': 80, 'pdf': '', 'groups': core.GROUPS,
+                                                   'levels': core.LEVELS, 'add_kinds': core.ADD_KINDS, 'items': items, 'addable': adds})
+    port = free_port()
+    threading.Thread(target=lambda: __import__('review.server', fromlist=['serve']).serve(R, '2026-11-14', port, open_browser=False), daemon=True).start(); up(port)
+    req = urllib.request.Request(f'http://127.0.0.1:{port}/', headers={'Host': f'127.0.0.1:{port}'})
+    with urllib.request.urlopen(req, timeout=20) as r: page = r.read().decode('utf-8')
+    data = json.loads(re.search(r'const DATA = (.*?);\n', page, re.S).group(1))
+    assert isinstance(data['language_list'], list) and all(isinstance(x, list) and len(x) == 2 for x in data['language_list'])
+    assert isinstance(data['languages'], dict) and data['languages']['total'] == 4
+    assert "const L = DATA.language_list || [], known = L.some(" in page
+
+
+def test_the_figure_gap_lists_pages_not_object_numbers():        # round 24: object numbers stay in the docs and logs
+    from review import core
+    figs = [{'obj': f'{100 + i} 0', 'page': p} for i, p in enumerate([34, 26, 27, 26] + list(range(40, 53)))]
+    g = next(x for x in core.gaps({}, {'figures': figs, 'page_figures': [{'page': 7}]}) if x['id'] == 'figures_without_alt')
+    assert g['what'] == ('17 figures with no alt text and not marked as decoration, on PDF 26, 27, 34, 40, 41, 42, 43, 44, 45, '
+                         '46, 47, 48 and 4 more pages') and ' 0' not in g['what'] and g['objs'][0] == '100 0'
+    p = next(x for x in core.gaps({}, {'figures': [], 'page_figures': [{'page': 7}]}) if x['id'] == 'page_figures_without_alt')
+    assert p['what'] == '1 whole-page figure with no alt text, on PDF 7'
+
+
+# ------------------------------------------------------------------ review 09 M-B: the alt-text guard on the card
+def kept_run(tmp_path, alt):
+    """The same synthetic book, its figure 20 0 a page scan kept as a picture (the audit's marker, and the page's OCR text in
+    fulltext.json, as audit.py writes them)."""
+    R = str(tmp_path); os.makedirs(os.path.join(R, '_audit'), exist_ok=True)
+    dg = digest(); dg['figures'][0].update(area_pct=99.0, kept_by_picture_test={'ink_outside_text': 0.04})
+    core.save(os.path.join(R, '_audit', 'digest.json'), dg)
+    core.save(os.path.join(R, '_audit', 'fulltext.json'), {'reading_order': order(), 'kept_page_text': {'2': 'The harvest festival was held each autumn in the village square.'}})
+    ai = ai_order(); ai['alt'] = [{'obj': '20 0', 'alt': alt}]; core.save(os.path.join(R, 'workorder.ai.json'), ai)
+    ro = core.reading_order(dg, {'reading_order': order()}, ai)
+    return R, ai, core.build_items(ai, dg, ro['entries'], ro), core.addable(ai, dg, ro)
+
+def test_an_ai_alt_copying_a_kept_page_lands_on_its_card(tmp_path):
+    R, ai, items, adds = kept_run(tmp_path, 'Page: the harvest festival was held each autumn in the village square.')
+    for d in ({}, {'alt:20 0': {'status': 'approved'}}):                    # untouched or approved: the AI's text, checked
+        p = core.problems(R, ai, items, d, [], adds, 'Kim')[0]
+        assert [(x['card'], x['why'], x['origin']) for x in p['fields']] == [('alt:20 0', 'this alt text repeats the page\'s own printed text', 'ai')]
+        assert p['fields'][0]['fix'] == core.ALT_COPIES_FIX and p['fields'][0]['tail'] is False   # review 11 M2: no generic tail after it
+    p = core.problems(R, ai, items, {'alt:20 0': {'status': 'changed', 'value': 'The harvest festival was held each autumn in the village square, said the page.'}}, [], adds, 'Kim')[0]
+    assert p['fields'] == []                                                  # a person's own wording: not checked (decision 2)
+    p = core.problems(R, ai, items, {'alt:20 0': {'status': 'changed', 'value': ' Page: the harvest festival was held each autumn in the\nvillage square. '}}, [], adds, 'Kim')[0]
+    assert [x['card'] for x in p['fields']] == ['alt:20 0']                   # review 11 L3: spaces added only: still checked
+    R2, ai2, items2, adds2 = kept_run(tmp_path / 'b', 'A crowded square with long tables of food.')
+    assert core.problems(R2, ai2, items2, {}, [], adds2, 'Kim')[0]['fields'] == []   # a description: nothing to fix
+
+def test_each_alt_finding_gets_its_own_text(tmp_path):
+    """Review 11 M2: the copied-text and the CJK findings each get a text that opens with what was found, and neither
+    repeats the other's reason."""
+    R, ai, items, adds = kept_run(tmp_path, 'Page: the harvest festival was held each autumn in the village square.')
+    f = core.problems(R, ai, items, {}, [], adds, 'Kim')[0]['fields'][0]
+    assert f['fix'].startswith('This alt text repeats the page\'s own printed text.') and 'Chinese' not in f['fix']
+    R2, ai2, items2, adds2 = kept_run(tmp_path / 'c', 'A festival banner reading 秋祭村広場祭典 above the tables.')
+    f2 = core.problems(R2, ai2, items2, {}, [], adds2, 'Kim')[0]['fields'][0]
+    assert f2['why'] == 'this alt text holds Chinese, Japanese or Korean characters that the page\'s OCR text lacks'
+    assert f2['fix'] == core.ALT_CJK_FIX and f2['fix'].startswith('This alt text holds Chinese, Japanese or Korean characters that the '
+                                                                    'page\'s OCR text lacks.') and 'repeats' not in f2['fix'] and f2['tail'] is False
+    for t in (core.ALT_COPIES_FIX, core.ALT_CJK_FIX):               # the card's own advice, once: no "Finish Review" or "AI's choice" line
+        assert t.endswith('select "Reject" when the image is only printed text.') and 'Finish Review' not in t
+    src = open(os.path.join(os.path.dirname(core.__file__), 'page.html'), encoding='utf-8').read()
+    assert "p.tail === false ? ''" in src and src.count('tailOf(p)') == 3 and src.count('NOT_YOURS[p.origin]') == 1   # only in tailOf
+
+def test_a_persons_change_to_an_ai_alt_is_marked(tmp_path):
+    """Review 08, decision 2: apply_decisions marks a changed alt changed_by; an approved one, or one changed to the AI's own
+    text, is not."""
+    R, ai, items, adds = run(tmp_path)
+    assert core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': 'A new map'}})['alt'][0]['changed_by'] == 'person'
+    assert 'changed_by' not in core.apply_decisions(ai, items, {'alt:20 0': {'status': 'approved'}})['alt'][0]
+    assert 'changed_by' not in core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': 'A map of the island'}})['alt'][0]
+    for v in ('A map of the island ', ' A map  of the\nisland'):          # review 11 L3: white space only: still the AI's text
+        assert 'changed_by' not in core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': v}})['alt'][0], v
+    assert core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': 'A map of the islands'}})['alt'][0]['changed_by'] == 'person'

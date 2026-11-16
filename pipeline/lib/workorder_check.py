@@ -4,6 +4,7 @@ decide.py runs them on the model's reply; review_workorder.py runs the same chec
 reviewed, so an edit is held to the same rules as the AI's decision.
 
     dropped = check(wo, digest, not_sent, words_sent, order=None)
+    dropped = check_language_parts(wo, pages, places=None)     (also run by check(); #118, language tagging)
 
 wo is changed in place: items that fail are removed and listed in `dropped` as {where, item, why}.
 not_sent: figure objs (and "page N" for page figures) whose image was not sent to the model.
@@ -14,13 +15,13 @@ digest's reading_order lines are used. A move is kept only when the audit finds 
 flagged): a move the audit gives no reason for only re-nests a section or leaves it where it is.
 """
 import re, unicodedata
-from lib import readorder
+from lib import readorder, langtag
 
 ALLOWED = {'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'Span', 'Caption', 'Note', 'Div', 'Figure'}
 KNOWN = {'schema', 'sections', 'artifacts', 'document', 'rolemap', 'merges', 'actual_text', 'retype', 'flatten', 'alt',
          'move_to_document_start', 'captions', 'lists', 'toc', 'notes', 'language', 'links', 'move_section',
          'fix_figure_order', 'remove_empty_containers', 'deferrals', 'notes_for_reviewer', 'adopt_orphans', 'page_figures',
-         'keep_lists', 'ocr_words', 'tables', 'page_readings'}
+         'keep_lists', 'ocr_words', 'tables', 'page_readings', 'language_parts'}
 META = {'source', 'decided_by', 'reviewed_by'}       # written by the pipeline, not by the model: never checked or dropped
 
 JUNK = set("il1jtfrz;:'./|_~()¢£")           # what OCR turns unknown letters into: ñ → "ii", ṇ → "l;l" / "lJ" / "t:J."
@@ -196,4 +197,90 @@ def check(wo, digest, not_sent, words_sent, order=None):
         for f_, r_ in wo['links'].get('toc_text_fixes', []):
             try: re.compile(f_)
             except Exception: drop('links', [f_, r_], 'bad regex'); wo['links']['toc_text_fixes'].remove([f_, r_])
+    dropped += check_language_parts(wo, N)
+    return dropped
+
+
+LANG_PART_KEYS = {'page', 'mcid', 'first', 'last', 'lang', 'text', 'form', 'class', 'confidence', 'whole', 'source', 'why', 'note'}
+
+def check_language_parts(wo, pages, places=None):
+    """wo['language_parts'] = {'parts': [{page, mcid, first, last, lang, text?, form?, …}]}: language tags on words and
+    passages, each a place in one marked-content run (first and last: character indexes within it, lib/langcands.py).
+    A part is dropped when its page, run or indexes are not whole numbers in range, its language is not one the step may
+    write (langtag.valid_part: shortest form, a named language, never 'jp', 'cn', 'eng' or a deprecated code), it
+    overlaps another part in the same run, or (places given: the audit's candidate places, as (page, mcid, first, last))
+    it is not one of them. Changes wo in place; returns the dropped parts as {where, item, why}."""
+    dropped = []
+    lp = wo.get('language_parts')
+    if lp is None: return dropped
+    if isinstance(lp, dict) and lp.get('version') == 2: return _check_rows(lp, pages, dropped)
+    if not isinstance(lp, dict) or not isinstance(lp.get('parts'), list):
+        dropped.append({'where': 'language_parts', 'item': lp, 'why': 'not a {"parts": [...]} object'}); wo.pop('language_parts'); return dropped
+    def whole(v): return isinstance(v, int) and not isinstance(v, bool)
+    keep, seen = [], {}
+    for it in lp['parts']:
+        why = None
+        if not isinstance(it, dict): why = 'not an object'
+        elif set(it) - LANG_PART_KEYS: why = f'unknown keys: {sorted(set(it) - LANG_PART_KEYS)}'
+        elif not (whole(it.get('page')) and 1 <= it['page'] <= pages): why = 'page not in the book'
+        elif not (whole(it.get('mcid')) and it['mcid'] >= 0): why = 'run (MCID) not a whole number'
+        elif not (whole(it.get('first')) and whole(it.get('last')) and 0 <= it['first'] <= it['last']): why = 'character indexes not in order'
+        elif not langtag.valid_part(it.get('lang')):
+            why = f'language tag not allowed: {it.get("lang")!r}' + (f' (shortest form: {langtag.shortest(it.get("lang"))})'
+                                                                        if langtag.shortest(it.get('lang')) not in (None, it.get('lang')) else '')
+        elif places is not None and (it['page'], it['mcid'], it['first'], it['last']) not in places: why = 'not a candidate place found by the audit'
+        else:
+            key = (it['page'], it['mcid'])
+            if any(not (it['last'] < a or it['first'] > b) for a, b in seen.get(key, [])): why = 'overlaps another part in the same run'
+            else: seen.setdefault(key, []).append((it['first'], it['last']))
+        if why: dropped.append({'where': 'language_parts', 'item': it, 'why': why})
+        else: keep.append(it)
+    lp['parts'] = keep
+    return dropped
+
+FORM_KEYS = {'key', 'form', 'group', 'class', 'lang', 'confidence', 'why', 'evidence', 'current', 'tag', 'person', 'places', 'context',
+             'decided', 'note', 'rule', 'reading', 'group_approval'}
+RULES = {'reading'}                                    # lib/hanreading.RULE: the one local rule (#123)
+READING_KEYS = {'lang', 'langs', 'text', 'with', 'places', 'back'}
+GROUP_APPROVALS = {'all_shown', 'readings'}            # the review page's two group-approval buttons (#124)
+
+def _check_rows(lp, pages, dropped):
+    """language_parts version 2 (lib/langreq.to_rows): forms, and rows [page, mcid, first, last, form index]. A form whose
+    language is not one the step may write is not tagged (its `tag` set false, its places kept for a person); a row that is
+    not five whole numbers in range, or that overlaps a row of a tagged form in the same run, is dropped."""
+    forms = lp.get('forms') if isinstance(lp.get('forms'), list) else []
+    lp['forms'] = forms
+    for i, f in enumerate(forms):
+        if not isinstance(f, dict): forms[i] = f = {'tag': False}; dropped.append({'where': 'language_parts.forms', 'item': i, 'why': 'not an object'})
+        extra = set(f) - FORM_KEYS - {'_card'}            # _card: the review page's marker for its own check (review/core.problems; review 08, M1)
+        if extra: dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': f'unknown keys: {sorted(extra)}'})
+        if f.get('lang') is not None and not langtag.valid_part(f.get('lang')):
+            dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': f'language tag not allowed: {f.get("lang")!r}'
+                            + (f' (shortest form: {langtag.shortest(f.get("lang"))})' if langtag.shortest(f.get('lang')) not in (None, f.get('lang')) else '')})
+            f['tag'] = False; f['lang'] = None
+        if f.get('tag') and not f.get('lang'): f['tag'] = False
+        if 'rule' in f and f['rule'] not in RULES:     # #123: only the reading rule decides locally
+            dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': f'not a local rule: {f["rule"]!r}'}); f.pop('rule')
+        r = f.get('reading')
+        if r is not None and not (isinstance(r, dict) and set(r) <= READING_KEYS and (r.get('lang') is None or langtag.valid_part(r.get('lang')))
+                                  and isinstance(r.get('langs', []), list) and all(langtag.valid_part(x) for x in r.get('langs', []))):
+            dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': 'reading not a reading record'}); f.pop('reading')
+        g = f.get('group_approval')
+        if g is not None and not (isinstance(g, dict) and g.get('button') in GROUP_APPROVALS):
+            dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': 'group_approval not one of the two buttons'}); f.pop('group_approval')
+    def whole(v): return isinstance(v, int) and not isinstance(v, bool)
+    keep, seen = [], {}
+    for r in lp.get('parts') if isinstance(lp.get('parts'), list) else []:
+        why = None
+        if not (isinstance(r, list) and len(r) == 5 and all(whole(x) for x in r)): why = 'not five whole numbers'
+        elif not 1 <= r[0] <= pages: why = 'page not in the book'
+        elif r[1] < 0 or not 0 <= r[2] <= r[3]: why = 'run or character indexes not in order'
+        elif not 0 <= r[4] < len(forms): why = 'no such form'
+        elif forms[r[4]].get('tag'):
+            k = (r[0], r[1])
+            if any(not (r[3] < a or r[2] > b) for a, b in seen.get(k, [])): why = 'overlaps another part in the same run'
+            else: seen.setdefault(k, []).append((r[2], r[3]))
+        if why: dropped.append({'where': 'language_parts', 'item': r, 'why': why})
+        else: keep.append(r)
+    lp['parts'] = keep
     return dropped
