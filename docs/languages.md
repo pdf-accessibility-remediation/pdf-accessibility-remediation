@@ -29,7 +29,7 @@ approved.
    adopted after a paid check on the test items, 2026-11-13: 248 and 249 right against 246 and 232, the same one wrong
    medium-confidence answer, no reply cut off.)
 3. **The decisions go into the work order** as `language_parts` (version 2: one row per word form, with its places).
-   The work-order prompt (`workorder_v11.md`) leaves language tags to this step.
+   The work-order prompt (`workorder_v11.md`, and `workorder_v12.md` after it) leaves language tags to this step.
 4. **A person decides every form** on the review page's "Languages" section (see [Review page](review-page.md#languages)).
 5. **The executor applies the tags** (`apply.py`, `op_language`): a tagged word gets its own Span with `/Lang`; a whole
    element gets `/Lang` on itself. A publisher's tag a person removed is taken off the element and its marked content;

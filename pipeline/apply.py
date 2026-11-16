@@ -18,7 +18,7 @@ title, the XMP and the tags are the same as without it); Acrobat shows it under 
 """
 import sys, os, json, re, collections, hashlib, unicodedata
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq  # plumb_fix first: it patches pdfplumber
+from lib import plumb_fix, listrule, gaptext, langtag, support, plpages, readorder, scripts, fontname, tablegrid, pagereads, mcsplit, langreq, keptscans  # plumb_fix first: it patches pdfplumber
 from lib.sections import excerpt
 import pikepdf, pdfplumber
 import fontTools.cffLib, fontTools.ttLib, fontTools.fontBuilder  # noqa: F401  required: reads font programs (no silent skip)
@@ -830,10 +830,19 @@ def op_retype(spec):
         set_attr(it, '/S', pikepdf.Name('/' + it['type'])); ok(f'retype → {it["type"]}')
 
 # ================================================================== 4. figures
+KEPT_SCANS = keptscans.from_intake(SRC)        # review 06 H2: page scans intake kept as figures (lib/keptscans.py)
 def op_alt(spec):
     for it in spec:
         o = obj(it['obj'])
         if S(o) != 'Figure': reject(f'alt {it["obj"]}', 'not a Figure'); continue
+        if KEPT_SCANS and not str(it.get('why') or '').startswith(('added by ', 'added in review')):   # a person's addition stands
+            pg = eff_pg.get(o.objgen) or min((p for p, m in desc_mcids(o) if p), default=None)
+            if pg in KEPT_SCANS:                 # a kept page scan: its alt must not copy the page's text (sponsor rule 1)
+                why = keptscans.copied_text(it['alt'], ''.join(c['text'] for c in PL.pages[pg - 1].chars))
+                if why:
+                    reject(f'alt {it["obj"]}', f'alt text on the page scan of {PG(pg)} refused: {why}; the figure is left without alt text for a person')
+                    log.setdefault('alt_refused_copied_text', []).append({'obj': it['obj'], 'page': pg, 'why': why, 'alt': it['alt']})
+                    continue
         set_attr(it, '/Alt', pikepdf.String(it['alt'])); ok('figure: alt text')
 def op_move_to_document_start(spec):
     for ref in spec:

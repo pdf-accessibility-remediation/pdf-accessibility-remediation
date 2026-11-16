@@ -149,6 +149,7 @@ record = {
               **({'offpage': log['offpage']} if any((log.get('offpage') or {}).get(k) for k in ('artifacted', 'left', 'rejected', 'already')) else {}),
               **({'list_rule': log['list_rule']} if any((log.get('list_rule') or {}).get(k) for k in ('flattened', 'kept', 'skipped')) else {}),
               **({'actual_text_checked': log['actual_text_checked']} if log.get('actual_text_checked') else {}),
+              **({'alt_refused_copied_text': log['alt_refused_copied_text']} if log.get('alt_refused_copied_text') else {}),
               **({'section_move': log['section_move']} if log.get('section_move') else {}),   # where move_section put the section
               **({'section_moves': log['section_moves']} if len(log.get('section_moves') or []) > 1 else {}),   # each, when there are several
               **({'figure_order_off': True} if log.get('figure_order_off') else {}),   # fix_figure_order: false for this book
@@ -923,6 +924,14 @@ if atc.get('accepted_different') or atc.get('rejected'):
                   'Accepted ones that differ are listed so a person can listen to them; rejected ones added or changed words or punctuation.', '']
     L += [xl(lambda X: f'- Accepted, {pg(x["page"])}: printed "{X(x["printed"])}" → spoken "{x["spoken"]}"') for x in by_page(atc.get('accepted_different') or [])]
     L += [xl(lambda X: f'- **Rejected**, {pg(x["page"])}: printed "{X(x["printed"])}" → spoken "{x["spoken"]}"') for x in by_page(atc.get('rejected') or [])] + ['']
+arc = log.get('alt_refused_copied_text') or []
+if arc:                                                # review 06 H2: a kept page scan's alt text that copied the page's text
+    n += 1; L += [f'### {n}. Alt text refused on page scans kept as pictures ({len(arc)})', '',
+                  'These whole-page scans were kept as figures because the image holds more than text (a plate, a map, a photo page). '
+                  'Their alt text repeated the page\'s OCR text, or held Chinese, Japanese or Korean text the OCR text lacks, so it was '
+                  'not written (the AI must not write the book\'s text; sponsor rule 1). Each figure is left without alt text: a person '
+                  'writes it, or marks the figure as decoration when the image is only text.', '']
+    L += [xl(lambda X: f'- **Refused**, {pg(x["page"])}, Figure {x["obj"]}: {x["why"]}; the alt text was "{X(x["alt"])}"') for x in by_page(arc)] + ['']
 tg = log.get('text_rule_guard') or []
 if tg:
     n += 1; L += [f'### {n}. Text a running-head or page-number rule matched but left visible ({len(tg)})', '',

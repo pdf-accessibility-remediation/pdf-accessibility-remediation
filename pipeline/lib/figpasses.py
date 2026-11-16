@@ -2,7 +2,7 @@
 
 One request takes at most 100 images (Anthropic's limit). A book whose figures, whole-page figures and OCR word sheets all
 fit goes as one request, exactly as before. A book with more gets "figure requests" after the first one: each sends up to
-100 of the figures the first request could not take, with the figure rules of the main prompt (prompts/figures_v1.md) and
+100 of the figures the first request could not take, with the figure rules of the main prompt (prompts/figures_v2.md) and
 the part of the digest those rules use, and may decide only alt text, decoration and deferrals for its own figures.
 
     plan(items, sheet_b64, max_images, budget, shrink)   the first request's images and the figure requests' (or Refused)
@@ -123,7 +123,7 @@ def label(f):
     """The text before each image: the same words as the first request's."""
     where = f'PDF {f["page"]}' + (f' (printed {f["label"]})' if f.get('label') and str(f['label']) != str(f['page']) else '')
     return (f'Page figure: {where}, the whole page; nothing on it is tagged. Write its alt text in page_figures.'
-            if is_page(f) else f'Figure obj "{f["obj"]}", {where}, {f.get("area_pct", "?")}% of the page.')
+            if is_page(f) else f'Figure obj "{f["obj"]}", {where}, {f.get("area_pct", "?")}% of the page.' + (' A page scan kept as a picture (kept_by_picture_test): describe the picture, never copy the page\'s text.' if f.get('kept_by_picture_test') else ''))
 
 def messages(prompt, data, items, encoded):
     compact = json.dumps(data, ensure_ascii=False, separators=(',', ':'))
