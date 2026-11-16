@@ -19,7 +19,7 @@ The local rule (#123, strict form) decides a form without the AI only when every
 all of them name the same language. Every other form goes to the AI. The issue also asked to leave out glossary and
 bibliography lines; measured on two books (2026-11-15), that cut the forms decided from 492 to 318 and from 18 to 0 while
 the forms it left out were right, and the bibliography's real trap (a publisher's name before a title's characters,
-"Tokyo: Iwanami Shōten. 自然と文化…") is what the colon guard refuses. So no page is left out (Min, 2026-11-15).
+"Tokyo: Kōdansha. 自然と文化…") is what the colon guard refuses. So no page is left out (Min, 2026-11-15).
 
 The evidence of one form (#124) is the same reading, counted over its places outside bibliographies (a glossary's or an
 index's reading counts there: a group approval needs the AI to name the same language too), plus kana in the same
