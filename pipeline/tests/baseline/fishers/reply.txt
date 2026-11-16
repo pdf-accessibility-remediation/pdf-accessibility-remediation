@@ -7,40 +7,31 @@
   },
   "document": {
     "title": "Fishers, Monks and Cadres: Navigating State, Religion and the South China Sea in Central Vietnam",
-    "lang": "en-GB",
+    "lang": "en",
     "display_doc_title": true
   },
   "rolemap": {
-    "Artifact": "Span"
+    "Artifact": "Div"
   },
   "retype": [
-    {"obj": "9979 0", "type": "P", "why": "Subtitle on the title page was a second H1; only the book title stays H1"},
+    {"obj": "9979 0", "type": "P", "why": "subtitle on the title page; only one H1 (the book title) should remain"},
 
-    {"obj": "11384 0", "type": "H2", "why": "Contents"},
-    {"obj": "11386 0", "type": "H2", "why": "Acknowledgements"},
-    {"obj": "11400 0", "type": "H2", "why": "Note on Transliteration and Translation"},
-    {"obj": "11403 0", "type": "H2", "why": "Glossary"},
-    {"obj": "11422 0", "type": "H2", "why": "Maps"},
-    {"obj": "11434 0", "type": "H2", "why": "Introduction title (see deferral about the INTRODUCTION label)"},
-    {"obj": "11507 0", "type": "H2", "why": "Chapter 1 title"},
-    {"obj": "11586 0", "type": "H2", "why": "Chapter 2 title"},
-    {"obj": "11675 0", "type": "H2", "why": "Chapter 3 title"},
-    {"obj": "11762 0", "type": "H2", "why": "Chapter 4 title, first of four title lines (see deferral)"},
-    {"obj": "11836 0", "type": "H2", "why": "Chapter 5 title"},
-    {"obj": "9990 0", "type": "H2", "why": "Chapter 6 title"},
-    {"obj": "10107 0", "type": "H2", "why": "Conclusion title"},
-    {"obj": "10150 0", "type": "H2", "why": "Bibliography"},
-    {"obj": "10485 0", "type": "H2", "why": "Index"},
+    {"obj": "11384 0", "type": "H2"},
+    {"obj": "11386 0", "type": "H2"},
+    {"obj": "11400 0", "type": "H2"},
+    {"obj": "11403 0", "type": "H2"},
+    {"obj": "11404 0", "type": "H3"},
+    {"obj": "11407 0", "type": "H3"},
+    {"obj": "11422 0", "type": "H2"},
 
-    {"obj": "11404 0", "type": "H3", "why": "Glossary subhead"},
-    {"obj": "11407 0", "type": "H3", "why": "Glossary subhead"},
-
+    {"obj": "11434 0", "type": "H2", "why": "Introduction title (the 'INTRODUCTION' label above it is left as a paragraph)"},
     {"obj": "11450 0", "type": "H3"},
     {"obj": "11462 0", "type": "H3"},
     {"obj": "11471 0", "type": "H3"},
     {"obj": "11485 0", "type": "H3"},
     {"obj": "11493 0", "type": "H3"},
 
+    {"obj": "11507 0", "type": "H2"},
     {"obj": "11514 0", "type": "H3"},
     {"obj": "11530 0", "type": "H3"},
     {"obj": "11540 0", "type": "H3"},
@@ -48,11 +39,13 @@
     {"obj": "11556 0", "type": "H4"},
     {"obj": "11568 0", "type": "H4"},
 
+    {"obj": "11586 0", "type": "H2"},
     {"obj": "11590 0", "type": "H3"},
     {"obj": "11601 0", "type": "H3"},
     {"obj": "11614 0", "type": "H3"},
     {"obj": "11637 0", "type": "H3"},
 
+    {"obj": "11675 0", "type": "H2"},
     {"obj": "11691 0", "type": "H3"},
     {"obj": "11692 0", "type": "H4"},
     {"obj": "11698 0", "type": "H4"},
@@ -61,16 +54,19 @@
     {"obj": "11731 0", "type": "H3"},
     {"obj": "11748 0", "type": "H3"},
 
+    {"obj": "11762 0", "type": "H2", "why": "first line of a four-line chapter title; see deferral", "confidence": 0.6},
     {"obj": "11769 0", "type": "H3"},
     {"obj": "11792 0", "type": "H3"},
     {"obj": "11830 0", "type": "H3"},
 
+    {"obj": "11836 0", "type": "H2"},
     {"obj": "11846 0", "type": "H3"},
     {"obj": "11856 0", "type": "H3"},
     {"obj": "11860 0", "type": "H3"},
     {"obj": "11872 0", "type": "H3"},
     {"obj": "11896 0", "type": "H3"},
 
+    {"obj": "9990 0", "type": "H2"},
     {"obj": "10007 0", "type": "H3"},
     {"obj": "10021 0", "type": "H3"},
     {"obj": "10042 0", "type": "H3"},
@@ -79,62 +75,40 @@
     {"obj": "10090 0", "type": "H3"},
     {"obj": "10101 0", "type": "H3"},
 
+    {"obj": "10107 0", "type": "H2"},
     {"obj": "10120 0", "type": "H3"},
     {"obj": "10129 0", "type": "H3"},
     {"obj": "10135 0", "type": "H3"},
 
+    {"obj": "10150 0", "type": "H2"},
     {"obj": "10151 0", "type": "H3"},
     {"obj": "10169 0", "type": "H3"},
     {"obj": "10177 0", "type": "H3"},
 
-    {"obj": "11372 0", "type": "P", "why": "Text 'UNIVERSITY OF HAWAI‘I PRESS' on the title page, mis-tagged as a Figure"},
-
-    {"obj": "12957 0", "type": "Span", "why": "contents entry text mis-tagged as Figure"},
-    {"obj": "12948 0", "type": "Span", "why": "contents entry text mis-tagged as Figure"},
-    {"obj": "12949 0", "type": "Span", "why": "contents entry text mis-tagged as Figure"},
-    {"obj": "12938 0", "type": "Span", "why": "contents entry text mis-tagged as Figure"},
-    {"obj": "12939 0", "type": "Span", "why": "contents entry text mis-tagged as Figure"},
-    {"obj": "12925 0", "type": "Span", "why": "contents entry text mis-tagged as Figure"},
-    {"obj": "12926 0", "type": "Span", "why": "contents entry text mis-tagged as Figure"},
-    {"obj": "12919 0", "type": "Span", "why": "contents entry text mis-tagged as Figure"},
-
-    {"obj": "12630 0", "type": "Span", "why": "note text mis-tagged as Figure, alt was placeholder 'Illustrations'"},
-    {"obj": "12626 0", "type": "Span", "why": "note text mis-tagged as Figure, alt was placeholder 'Illustrations'"},
-    {"obj": "12473 0", "type": "Span", "why": "note text mis-tagged as Figure, alt was placeholder 'Illustrations'"},
-    {"obj": "12469 0", "type": "Span", "why": "note text mis-tagged as Figure, alt was placeholder 'Illustrations'"},
-
-    {"obj": "12832 0", "type": "Span", "why": "drop capital (letter of the text) tagged as Figure"},
-    {"obj": "12811 0", "type": "Span", "why": "drop capital tagged as Figure"},
-    {"obj": "12791 0", "type": "Span", "why": "drop capital tagged as Figure"},
-    {"obj": "12635 0", "type": "Span", "why": "drop capital tagged as Figure"},
-    {"obj": "12511 0", "type": "Span", "why": "drop capital tagged as Figure"},
-    {"obj": "12328 0", "type": "Span", "why": "drop capital tagged as Figure"},
-    {"obj": "12208 0", "type": "Span", "why": "drop capital tagged as Figure"},
-    {"obj": "12089 0", "type": "Span", "why": "drop capital tagged as Figure"},
-    {"obj": "11369 0", "type": "Span", "why": "drop capital tagged as Figure"},
-    {"obj": "11180 0", "type": "Span", "why": "drop capital tagged as Figure"}
+    {"obj": "10485 0", "type": "H2"}
   ],
   "alt": [
-    {"obj": "9963 0", "alt": "Book cover: colour photograph of a blue fishing boat dressed with flags, balloons, a portrait and a red banner, moving along a river in central Vietnam with a green hill behind. The title 'Fishers, Monks and Cadres: Navigating State, Religion and the South China Sea in Central Vietnam' is printed at the top and the author's name, Edyta Roszko, at the bottom."},
-    {"obj": "12981 0", "alt": "Creative Commons logo: CC BY-NC-ND (Attribution, NonCommercial, NoDerivatives)."},
-    {"obj": "11423 0", "alt": "Map 1: the field sites of Sa Huỳnh and Lý Sơn. Map of the Vietnamese coast and the South China Sea. Sa Huỳnh (Phổ Thạnh commune) is on the central coast and Lý Sơn Island lies just offshore. The Paracel Islands lie further east, Hainan and China to the north, and Laos, Thailand and Cambodia to the west. Hanoi and Phnom Penh are marked."},
-    {"obj": "11425 0", "alt": "Map 2: religious sites in Sa Huỳnh (Phổ Thạnh commune), Quảng Ngãi Province, Central Vietnam. Map of a coastal strip between hills and the South China Sea, crossed by a railway and a road. Villages are shaded by main income source (salt-making, fishing, agriculture, forestry and agriculture). Twelve numbered sacred places and temples are marked, including Thanh Minh temple, the Quan Âm statue, Whale Spirit temples, Thủy Long palace, Thiên Ya Na temple and Từ Phước pagoda."},
-    {"obj": "11426 0", "alt": "Map 3: religious sites in An Hải Commune, Lý Sơn Island. Non-scaled sketch map. A volcanic mountain with a crater sits in the centre, surrounded by fields and forest. The built-up East Village and West Village lie along the south coast, and An Vĩnh Commune is to the west. Seventeen numbered sacred places are marked, including temples, a pagoda, shrines, a cemetery and a palace."},
-    {"obj": "11429 0", "alt": "Map 4: religious sites in An Vĩnh Commune, Lý Sơn Island. Non-scaled sketch map. Pasture and fields fill the interior, and West Village and East Village run along the western and southern coast with a harbour at the west. An Hải Commune is to the east. Twenty-three numbered sacred places are marked, including pagodas, temples, shrines, tombs and the village founders' shrine."},
-    {"obj": "11431 0", "alt": "Black-and-white photograph: a small wooden statue of a seated figure, sheltered by an umbrella and fenced in with chain-link among potted plants. Two men crouch in front of it. This is the statue recovered by fishermen from the South China Sea."},
-    {"obj": "11504 0", "alt": "Black-and-white photograph: view from a hillside over Sa Huỳnh, with rice fields on the left, houses along a sandy beach and a wooded headland reaching into the sea."},
-    {"obj": "11583 0", "alt": "Black-and-white photograph: an altar for the Earth Spirit in a yard in Sa Huỳnh. A concrete pillar topped with an old television casing holds an incense pot and offerings, with palms and a fence behind."},
-    {"obj": "11672 0", "alt": "Black-and-white photograph: men in dark traditional robes and headdresses carry a canopied ceremonial shrine in a procession in front of a tile-roofed temple in An Hải Village, Lý Sơn. Onlookers stand behind."},
-    {"obj": "11759 0", "alt": "Black-and-white photograph: a white statue of the bodhisattva Quan Âm stands on a stepped stone base beside the water in Sa Huỳnh, framed by trees and a stone balustrade."},
-    {"obj": "11833 0", "alt": "Black-and-white photograph: the Paracel (Hoàng Sa) Memorial on Lý Sơn Island. A tall stone slab with sculpted figures of three men stands on a stone base in a paved courtyard, with a tile-roofed building behind."},
-    {"obj": "11844 0", "alt": "Imaginary map of Vietnam's land and the sea, in a circle. Vietnam's long, S-shaped landmass fills the left side. Lý Sơn Island is marked with a star on the central coast, in the middle of the picture. The Paracel Islands lie to the east and the Spratly Islands to the south-east, with open sea between them and the mainland."},
-    {"obj": "9987 0", "alt": "Black-and-white photograph: four women walk towards the camera across a sandy beach in Sa Huỳnh, with boats and a harbour behind them. One carries a pair of sandals and another a bunch of flowers, on their way to the Thiên Y A Na temple."},
-    {"obj": "10104 0", "alt": "Black-and-white photograph: Buddhist monks in robes and local officials gather around an altar with offerings during the 'Celebration for the Peace of the Paracels and Spratlys' on Lý Sơn Island. A man in a white shirt holds out a paper, and a microphone is held at the right."}
+    {"obj": "9963 0", "alt": "Cover of Fishers, Monks and Cadres by Edyta Roszko: a blue Vietnamese fishing boat decked with the red national flag, coloured pennants, balloons and a red banner sails past a green hillside coast. The title, the subtitle 'Navigating State, Religion and the South China Sea in Central Vietnam' and the author's name are printed over the sky and sea."},
+    {"obj": "11372 0", "alt": "University of Hawai‘i Press logo", "confidence": 0.6},
+    {"obj": "12981 0", "alt": "Creative Commons BY-NC-ND (Attribution-NonCommercial-NoDerivatives) licence logo"},
+    {"obj": "11423 0", "alt": "Map 1 of the field sites of Sa Huỳnh and Lý Sơn. It shows the coast of central Vietnam, with Sa Huỳnh (Phổ Thạnh commune) on the mainland and Lý Sơn Island just offshore. The Paracel Islands lie farther out in the South China Sea. Hainan, China, Laos, Thailand, Cambodia, Hanoi and Phnom Penh are marked for orientation."},
+    {"obj": "11425 0", "alt": "Map 2 of the religious sites in Sa Huỳnh (Phổ Thạnh commune), Quảng Ngãi Province, central Vietnam. The coast, railway, road and province border are shown. Villages are marked by main income source: salt-making, fishing, agriculture, or forestry and agriculture. Twelve numbered sacred places and temples are listed in the legend, including Thanh Minh temple, Whale Spirit temples, the Quan Âm statue, Thiên Ya Na temple and Từ Phước pagoda, clustered mostly near the coast."},
+    {"obj": "11426 0", "alt": "Sketch map 3 of the religious sites in An Hải Commune on Lý Sơn Island. It shows fields, forest, beach with garlic and onion fields, built-up areas and a street, with the volcanic mountain crater at the centre, East Village and West Village on the coast, and An Vĩnh commune to the west. Seventeen numbered sacred places are listed in the legend, including the Seafaring Deity temple, Hang pagoda, Từ Quang pagoda, Thiên Y A Na temples, Whale Spirit temple and the cemetery."},
+    {"obj": "11429 0", "alt": "Sketch map 4 of the religious sites in An Vĩnh Commune on Lý Sơn Island. It shows pasture, fields, beach, garlic and onion fields, built-up areas and a street, with West Village and the harbour on the west coast, East Village to the south, and An Hải commune to the east. Twenty-three numbered sacred places are listed in the legend, including Đụn pagoda, Âm Linh Tự temple, Whale Spirit temples, Thiên Y A Na temple, the Village Founders shrine, Lady Roi temple and Vĩnh An pagoda."},
+    {"obj": "11431 0", "alt": "Black-and-white photo of a small wooden statue recovered by fishermen from the South China Sea. It sits in a shrine behind a chain-link fence, under a plaid umbrella among potted plants, while two men crouch in front of it."},
+    {"obj": "11504 0", "alt": "Black-and-white view of Sa Huỳnh from a hillside: fields and a road run down to a village and a curving beach, with a forested headland and the sea beyond."},
+    {"obj": "11583 0", "alt": "Black-and-white photo of an altar for the Earth Spirit in a yard in Sa Huỳnh: an old television casing stands on a concrete pillar and holds small offerings and incense, with palm trees and a fence behind."},
+    {"obj": "11672 0", "alt": "Black-and-white photo of a procession in honour of the village's founders in An Hải Village, Lý Sơn. Men in traditional dark robes and headdresses carry a small ornate palanquin and ritual objects across the yard of a tiled-roof communal house."},
+    {"obj": "11759 0", "alt": "Black-and-white photo of the head of the fishing community worshipping Quan Âm in Sa Huỳnh. A white statue of the bodhisattva stands on a stepped platform beside the water, framed by trees and a stone balustrade, with a figure in the shadows at left."},
+    {"obj": "11833 0", "alt": "Black-and-white photo of the Paracel (Hoàng Sa) Memorial erected by Quảng Ngãi Province on Lý Sơn Island: a large stone monument with a sculpted group of three figures stands before a tiled-roof building on a paved courtyard."},
+    {"obj": "11844 0", "alt": "Imaginary map of Vietnam's land and the sea, in a circle. Vietnam's long coastal silhouette is dark grey on the left. Lý Sơn Island is marked with a star on the coast at the centre of the picture, with the Paracel Islands to its east and the Spratly Islands to the south-east."},
+    {"obj": "9987 0", "alt": "Black-and-white photo of four women on the way to the Thiên Y A Na temple in Sa Huỳnh, walking along a sandy beach with a small boat and moored fishing vessels behind them. One carries flowers and another holds a pair of sandals."},
+    {"obj": "10104 0", "alt": "Black-and-white photo of monks, cadres and fishers during the ‘Celebration for the Peace of the Paracels and Spratlys’ on Lý Sơn Island. Monks in robes stand around an altar with offerings while a man in a white shirt holds up a paper, and onlookers and a microphone are visible."}
   ],
   "move_to_document_start": ["9963 0"],
   "adopt_orphans": [
-    {"label": "contents label", "pages": [8, 8]},
-    {"label": "glossary entries", "pages": [18, 19]},
+    {"label": "contents chapter number label", "pages": [8, 8]},
+    {"label": "glossary terms and definitions", "pages": [18, 19]},
     {"label": "chapter 1 notes", "pages": [54, 54]},
     {"label": "chapter 2 notes", "pages": [86, 86]},
     {"label": "chapter 2 notes", "pages": [94, 94]},
@@ -145,15 +119,18 @@
   ],
   "remove_empty_containers": true,
   "deferrals": [
-    {"what": "Empty L elements (no LI children) holding footnote labels and notes", "why": "The lists on PDF 54 (printed 29), 86 (printed 61), 94 (printed 69), 112 (printed 87), 178 (printed 153), 198 (printed 173) and 209 (printed 184) have no list items. They are footnotes and need a person to check their structure. The two real footnote lists (PDF 37 and 144) are kept.", "pages": [54, 86, 94, 112, 178, 198, 209]},
-    {"what": "Headings 'List of Illustrations', 'Maps', 'Figures' on PDF 9 (printed viii), and 'TERMS FOR ORGANIZATIONS' on PDF 19 (printed xviii)", "why": "They are not clearly identifiable as body-tagged candidates. 'Maps' and 'Figures' (11 pt bold) would need a parent H2 that is not safely identifiable, so no heading level was assigned.", "pages": [9, 19]},
-    {"what": "Chapter 4 title is split over four P lines (11762 0 to 11765 0)", "why": "Only the first line was made H2. A person should merge the four lines into one heading. The other three lines (11763 0, 11764 0, 11765 0) remain P.", "pages": [132]},
-    {"what": "'INTRODUCTION' (PDF 26) and 'CONCLUSION' (PDF 222) labels and 'CHAPTER n' labels on chapter openers", "why": "These sit as separate P lines before the H2 titles. A person should decide whether to fold them into the headings.", "pages": [26, 54, 80, 106, 132, 152, 186, 222]},
-    {"what": "Drop capitals retyped from Figure to Span", "why": "Their letter is part of the first word, but the executor cannot verify that the glyph is text. Check the reading of the first word on each chapter opening.", "pages": [10, 16, 26, 54, 80, 106, 132, 152, 186, 222]},
-    {"what": "veraPDF 7.1-3 (content neither tagged nor artifact)", "why": "Orphan runs on the glossary, contents and notes pages are adopted into the tree. The adopted text sits after the last tagged block on each page, so a person must check the reading order on those pages. Any remaining unmarked content should be re-run after this order is applied.", "pages": [8, 18, 19, 54, 86, 94, 112, 178, 198, 209]},
-    {"what": "Text-layer quality", "why": "Vietnamese diacritic letters are missing or wrong in places (e.g. 'Ph m', 'Th nh', 'Viê.t', 'Hương ưóc'), with 36 suspect tokens per 1000. The text was not changed. The worst pages are listed.", "pages": [240, 241, 242, 243, 244, 151, 185, 18]},
-    {"what": "Figure captions", "why": "Captions are plain P elements directly after each figure. The executor groups captions with figures by itself. A person should confirm they are paired.", "pages": [20, 21, 22, 23, 25, 53, 79, 105, 131, 151, 154, 185, 221]}
+    {"what": "Four-line chapter 4 title ('Discipline, Purification, / and Indiscipline among / State Agents, Religious / Modernizers, and Fishers') is tagged as four separate paragraphs. Only the first line was made H2; the other lines (obj 11763 0, 11764 0, 11765 0) remain P. A person should fold them into one heading.", "why": "Merges work by style and all four lines share style P.", "pages": [132]},
+    {"what": "Subheads 'Maps' and 'Figures' (obj 12852 0, 12858 0) and the 'List of Illustrations' title were left as paragraphs.", "why": "The 'List of Illustrations' title has no obj in the digest, so a heading hierarchy cannot be built safely.", "pages": [9]},
+    {"what": "Figures with placeholder alt 'Illustrations' and no image, sitting inside Link elements on the contents page (obj 12957 0, 12948 0, 12949 0, 12938 0, 12939 0, 12925 0, 12926 0, 12919 0) and inside Note elements on PDF 54 and PDF 86 (obj 12630 0, 12626 0, 12473 0, 12469 0). They look like contents entries or note text mis-tagged as Figure.", "why": "No image to describe; a person should retype them (probably Span) or confirm.", "pages": [8, 54, 86]},
+    {"what": "Single-letter drop-cap or initial Figures: alt is null at obj 12832 0, 12811 0, 12511 0, 12328 0, 12208 0, 12089 0 and 11369 0; alt is a bare letter at obj 12791 0, 12635 0 and 11180 0. A person should check that the initial is read once and in the right order with the hyphenated text that follows.", "why": "The letters cannot be confirmed from the digest.", "pages": [10, 16, 26, 54, 80, 106, 132, 152, 186, 222]},
+    {"what": "Chapter-opener labels ('CHAPTER 1' … 'CHAPTER 6', 'INTRODUCTION', 'CONCLUSION') are separate paragraphs above the H2 titles, and the repeated 'CHAPTER #' lines were not artifacted because they are content. A person may wish to fold each label into its title.", "why": "Label and title share style P, so no style merge is possible.", "pages": [26, 54, 80, 106, 132, 152, 186, 222]},
+    {"what": "Unlisted subheads such as 'The centrality of the maritime periphery', 'A local heroine or ghostly spirit?', 'Ancestors and ghosts of Lý Sơn' and 'TERMS FOR ORGANIZATIONS' were not in heading_candidates and so are not tagged as headings. The heading 'Cham and Viê.t legacies' has a stray dot in its text layer; no ActualText was set.", "why": "No obj in the digest, or the printed form is uncertain.", "pages": [19, 56, 145, 154, 198]},
+    {"what": "Reading order of the adopted orphan text should be checked: glossary terms and definitions, and note paragraphs that sit apart from their empty L elements.", "why": "adopt_orphans places them after the last tagged block of each page.", "pages": [8, 18, 19, 54, 86, 94, 112, 178, 198, 209]},
+    {"what": "Index (PDF 266–285) is tagged in two-column runs that appear merged (e.g. 'ladies’) Christianity n2, Chúa Ngu Ma Nương'), and the bibliography and index text layer has dropped diacritics (e.g. 'Th nh'). A person should check reading order and spelling.", "why": "Suspect-token rate is highest on PDF 240–244; the text must not be changed here.", "pages": [240, 241, 242, 243, 244, 266, 267, 268]},
+    {"what": "The page 4 Figure (obj 11372 0) was given 'University of Hawai‘i Press logo' from its text sample alone, with no image attached.", "why": "Low confidence; please confirm.", "pages": [4]},
+    {"what": "Document language was set to plain 'en' (the file said fr-FR). The text uses British spelling and the publisher's locale is not clear.", "why": "A person may prefer en-GB.", "pages": [1]},
+    {"what": "veraPDF 7.1-3: the unmarked content on PDF 8, 18 and 19 is treated as orphan runs and adopted into the tag tree. Any content still unmarked after this should be re-checked.", "why": "The rule's objs list is empty, so the targets come from unowned_content.", "pages": [8, 18, 19]}
   ],
-  "notes_for_reviewer": "The title page had two H1s; the book title stays H1 and the subtitle became P. Chapter titles, front/back-matter titles and the Introduction/Conclusion titles are H2, 14 pt bold section heads are H3 and 11 pt bold sub-heads are H4. Language was fr-FR; it is now en-GB (British spelling). The 'Figure' tag on 22 elements was a misuse: they hold contents-page text, note text, the title-page publisher line or drop capitals, so they were retyped (Span or P). The 16 real images got new alt text, which replaces alt text containing stray NUL characters. The existing TOC/TOCI tags were kept, so no toc key is given. The reading order of the large nested Part/Sect/Div containers looks to be in page order, so no move_section was made."
+  "notes_for_reviewer": "Headings were retyped one element at a time because the book's chapter and section titles are all tagged P: H1 is the book title, H2 chapter and matter titles, H3 sections, H4 the 11-pt bold subsections. The subtitle H1 on the title page became a paragraph so one H1 remains. veraPDF 7.1-5 (the non-standard 'Artifact' structure type, obj 9981 0) is fixed by mapping it to Div. Empty L elements on note pages are removed by remove_empty_containers. No running heads were found, so there are no text rules. The footnote lists on PDF 37 and PDF 144 are kept as real lists. No table is present. No section is read out of order, so there is no move_section."
 }
 ```

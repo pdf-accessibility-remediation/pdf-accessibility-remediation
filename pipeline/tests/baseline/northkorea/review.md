@@ -2,13 +2,13 @@
 
 Result: `northkorea_remediated.pdf`
 
-239 pages · run November 14, 2026, at 3:32 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.109 ($0.0005 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+239 pages · run November 15, 2026, at 10:07 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.131 ($0.0005 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.6s · audit 19.6s · reuse saved reply 1.2s · apply 36.5s · verify 33.6s · total 91.5s
+Time: intake 0.9s · audit 19.4s · reuse saved reply 1.5s · apply 39.6s · verify 40.6s · total 102.0s
 
 ## Overview
 
@@ -25,7 +25,7 @@ Time: intake 0.6s · audit 19.6s · reuse saved reply 1.2s · apply 36.5s · ver
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
 **Needs a person:** 7 (2 deferred by the AI · 1 deferred by the executor · 4 CHECK rows)  
-**AI decisions:** 70 in the work order, applied without review by a person  
+**AI decisions:** 71 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** tag-tree index entries 1,994 · links tied and described 1,963 · link descriptions that were only a URL 14 · empty tags removed 13 · title shown in the window 1 · Document root 1  
 **veraPDF (WCAG 2.2 machine checks):** 0 WCAG rules failing before (0 checks) → 0 after (0 checks) · 0 newly failing
 
@@ -97,9 +97,9 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 |---|---|---|
 | PDF 1 (printed Cover) | Cover Page of Language and Truth in North Korea
 
-Author: Sonia Ryang\x00 | Cover of Language and Truth in North Korea by Sonia Ryang. A bronze statue of a standing man with one arm raised stands over a map of the Korean peninsula. The northern half is coloured in the blue, red and white of the North Korean flag, and faint Korean script covers the beige background. The title appears at the top and the author's name at the bottom. |
-| PDF 4 (printed iii) | Logo of University of Hawai‘i Press\x00 | University of Hawaiʻi Press logo |
-| PDF 5 (printed iv) | Creative Commons logo\x00 | Creative Commons logo with the Attribution, NonCommercial and NoDerivatives icons (CC BY-NC-ND) |
+Author: Sonia Ryang\x00 | Book cover: a bronze-coloured statue of a man in a long coat, one arm raised, stands over a map of the Korean peninsula whose northern part is filled with the North Korean flag (red field, white circle and red star, blue stripes) against a beige background with faint Korean characters. The title 'Language and Truth in North Korea' is at the top and the author's name, Sonia Ryang, at the bottom. |
+| PDF 4 (printed iii) | Logo of University of Hawai‘i Press\x00 | University of Hawai‘i Press logo |
+| PDF 5 (printed iv) | Creative Commons logo\x00 | Creative Commons logo: Attribution, NonCommercial, NoDerivatives (CC BY-NC-ND) |
 
 ### 2. Elements Retyped by the AI (58)
 
@@ -168,7 +168,7 @@ Check each one is (or is not) a heading as decided.
 
 ### 3. Lists and Tables
 
-- Flattened list on PDF 216 (printed 203): "1. Pyongyang: Joseon rodongdang chulpansa. ———. 1992b. Hoegorok: Segiwa deobureo (With the Century…" (Bibliography entries (PDF 216, printed 203) tagged as a numbered list; the '1.' and '2.' are not list markers)
+- Flattened list on PDF 216 (printed 203): "1. Pyongyang: Joseon rodongdang chulpansa. ———. 1992b. Hoegorok: Segiwa deobureo (With the Century…" (PDF 216 (printed 203): bibliography entries (publisher lines and '———' repeats) mis-tagged as a numbered list)
 - Header cells marked by the AI on PDF 75 (printed 62): 1 header row(s), 0 header column(s), 0 cells changed to header cells. Check they are the real headers.
 - Header cells marked by the AI on PDF 75 (printed 62): 1 header row(s), 0 header column(s), 0 cells changed to header cells. Check they are the real headers.
 
@@ -245,10 +245,10 @@ Each item is something to look at, not a proven failure.
 
 ### 12. Deferred by the AI
 
-- **Drop-cap spacing at the start of paragraphs, e.g. 'W riting books' on the Acknowledgments page and 'S onia Ryang is the T. T. and W. F. Chao Professor' in About the Author**: The initial letter is separated from the rest of the word in the text layer. ActualText would have to cover the whole paragraph; a person should decide whether that is worth doing. [PDF 8 (printed vii), PDF 238 (printed 225)]
-- **Reading order of the container holding the copyright page (Document > Article > Story) and the Index Sect**: The digest's reading_order lists the Index Sect (PDF 228–236) first, and the page 5 container is nested separately. Check that after the executor's Document-root step the order is cover, title page, copyright, contents, front matter, chapters, references, index. The logo Figure on PDF 4 (printed iii) is also at the tree root and may land out of place. [PDF 4 (printed iii), PDF 5 (printed iv), PDF 228 (printed 215), PDF 236 (printed 223)]
+- **Reading order of the copyright container and the Index**: The digest shows the copyright page (Document > Article > Story) and the Index (Sect, PDF 228–236) as separate containers apart from the main run of headings and paragraphs. I can't tell from the digest whether the copyright page will be read first, in place, or last once the executor gathers root elements into the Document, so I made no move_section. A person should check where they fall. [PDF 5 (printed iv), PDF 228 (printed 215), PDF 229 (printed 216), PDF 230 (printed 217), PDF 231 (printed 218), PDF 232 (printed 219), PDF 233 (printed 220), PDF 234 (printed 221), PDF 235 (printed 222), PDF 236 (printed 223)]
+- **Split drop-cap words in the text layer**: Text extraction shows 'W riting' (Acknowledgments) and 'S onia Ryang' (About the Author) with a stray space after the initial letter. Those paragraphs are not listed in the digest, so I have no obj to target with ActualText. A person should check how a screen reader speaks them. [PDF 8 (printed vii), PDF 238 (printed 225)]
 
-Reviewer note from the AI: The tagger gave all chapter-level titles H1 and section titles H2/H3. I retyped per element so the outline is one H1 (the title page, PDF 4 (printed iii)), then H2 for the contents, acknowledgments, introduction, chapters, conclusion, references, index and About the Author. Sections are H3 and subsections are H4. The half-title repeats on PDF 2 (printed i) and PDF 12 (printed xi) became paragraphs. The Table 1 and Table 2 titles became captions; the tables themselves are real, with a header row. The three numbered lists on PDF 86–88 (printed 73–75) are real lists and are kept. Figure alt texts in the file contained stray NUL characters and are replaced. Contents, links and index are already tagged as TOC/TOCI and Link and need no work-order changes. The veraPDF check listed no failures a work order can fix.
+Reviewer note from the AI: The publisher's tags had 13 elements typed H1. I kept one H1, the title on the title page (PDF 4, printed iii), and demoted the half-title repeats on PDF 2 (printed i) and PDF 12 (printed xi) to P. Chapters, the Introduction, Conclusion and the front and back matter titles are now H2. Former H2 section heads are H3 and former H3 heads are H4, so there are no level skips. The two 'Table n.' titles on PDF 75 (printed 62) were typed H2 and are now Caption. The three figures had alt text ending in a NUL character; I replaced it with clean alt text. The two dialect tables each have one header row. Their first column (English) could be a row header, but I left it as data. The three numbered lists on PDF 86–88 (printed 73–75) look like real lists and are kept. This is a born-digital file (Aspose), not an OCR scan. The suspect-token rate probably reflects romanized Korean, not recognition errors. I found no running heads or page-number artifacts in the digest. Foreign-language runs are left for the language step.
 
 ### 13. Deferred by the Executor
 

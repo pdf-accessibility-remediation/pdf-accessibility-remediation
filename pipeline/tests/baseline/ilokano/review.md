@@ -2,13 +2,13 @@
 
 Result: `ilokano_remediated.pdf`
 
-49 pages · run November 14, 2026, at 3:34 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.088 ($0.0018 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+49 pages · run November 15, 2026, at 10:10 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.088 ($0.0018 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: 1 picture page without OCR text · auto-tagged · tagged by OpenDataLoader 2.5.12 · the pipeline worked on `_intake/intake.pdf`; the original was not changed
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.1s · audit 4.2s · reuse saved reply 1.2s · apply 7.0s · verify 13.1s · total 25.6s
+Time: intake 0.3s · audit 4.7s · reuse saved reply 1.3s · apply 7.4s · verify 9.8s · total 23.5s
 
 ## Overview
 
@@ -24,8 +24,8 @@ Time: intake 0.1s · audit 4.2s · reuse saved reply 1.2s · apply 7.0s · verif
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 4 (4 deferred by the AI · 0 deferred by the executor · 0 CHECK rows)  
-**AI decisions:** 33 in the work order, applied without review by a person  
+**Needs a person:** 6 (6 deferred by the AI · 0 deferred by the executor · 0 CHECK rows)  
+**AI decisions:** 34 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 17 · one-item lists turned into paragraphs 15 · pages given tab order 3 · title shown in the window 2 · link descriptions that were only a URL 2 · marked as tagged 1  
 **veraPDF (WCAG 2.2 machine checks):** 4 WCAG rules failing before (9 checks) → 0 after (0 checks) · 0 newly failing
 
@@ -33,10 +33,12 @@ Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
-| Contents list on the contents page (list 153 0) and the separate 'Preface vi' paragraph | PDF 6 | [§8](#8-deferred-by-the-ai) |
-| Poor OCR text layer (about 393 suspect tokens per 1000, worst on PDF 47, 44, 42, 37, 34, 31, 21, 18). The ga… | 8 pages, PDF 18 to PDF 47 | [§8](#8-deferred-by-the-ai) |
-| Chapter heading placement: some chapter titles are split across pages in page_map (e.g. 'CHAPTER 3' at PDF 1… | 14 pages, PDF 15 to PDF 49 | [§8](#8-deferred-by-the-ai) |
-| Lists of numbered example sentences, (1), (2) …, and (a)–(d) item lists, were kept as lists. | 28 pages, PDF 14 to PDF 49 | [§8](#8-deferred-by-the-ai) |
+| Text layer quality | 8 pages, PDF 18 to PDF 47 | [§8](#8-deferred-by-the-ai) |
+| Contents page (PDF 6) | PDF 6 | [§8](#8-deferred-by-the-ai) |
+| Running heads and page numbers | PDF 10, PDF 46 | [§8](#8-deferred-by-the-ai) |
+| Chapter heading layout on PDF 15–19, 21 and 31–35 | 13 pages, PDF 15 to PDF 45 | [§8](#8-deferred-by-the-ai) |
+| Remaining lists (numbered examples and (a)/(b) enumerations) | 27 pages, PDF 14 to PDF 49 | [§8](#8-deferred-by-the-ai) |
+| … and 1 more | | §8 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -133,10 +135,10 @@ Text-layer test (checklist 1.2): each sample page was OCR'd at 300 dpi and compa
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 | — | Book cover: Ilokano Reference Grammar by Ernesto Constantino. A tan upper panel carries the University of Hawaiʻi Press logo; the title and author are printed on the cover in a tan and black layout. |
+| PDF 1 | — | Front cover of Ilokano Reference Grammar by Ernesto Constantino. The University of Hawaiʻi Press logo sits at the top on a tan background. The author's name appears above the title, which is set in white capitals on a black band. |
 | PDF 4 | — | University of Hawaiʻi Press Open Access logo |
-| PDF 4 | — | Humanities Open Book Program logo, with the National Endowment for the Humanities and Andrew W. Mellon Foundation marks |
-| PDF 4 | — | Creative Commons license icons: Attribution, NonCommercial, ShareAlike (CC BY-NC-SA) |
+| PDF 4 | — | Humanities Open Book Program logo, from the National Endowment for the Humanities and the Andrew W. Mellon Foundation |
+| PDF 4 | — | Creative Commons Attribution-NonCommercial-ShareAlike (CC BY-NC-SA) license logo |
 
 ### 3. Elements Retyped by the AI (14)
 
@@ -215,12 +217,14 @@ veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 
 ### 8. Deferred by the AI
 
-- **Contents list on the contents page (list 153 0) and the separate 'Preface vi' paragraph**: Entries are tagged as an L/LI list plus one P, not as contents entry styles, so the toc key cannot take them cleanly. A person should convert them to TOC/TOCI. [PDF 6]
-- **Poor OCR text layer (about 393 suspect tokens per 1000, worst on PDF 47, 44, 42, 37, 34, 31, 21, 18). The garbled top-of-page patterns in repeated_lines (e.g. '#hapter', 'senten#es.') are OCR errors in body text or headings, not running heads, so no text rules were made.**: The text cannot be changed here. A person should check the text layer and reading order. [PDF 18, PDF 21, PDF 31, PDF 34, PDF 37, PDF 42, PDF 44, PDF 47]
-- **Chapter heading placement: some chapter titles are split across pages in page_map (e.g. 'CHAPTER 3' at PDF 15 and 'PARTS OF SPEECH' at PDF 17), and the page_map ordering suggests the tag order does not match the visual order.**: The digest does not show enough to choose a move_section safely. A person should verify heading text and reading order for chapters 3, 4, 6, 7, 9, 10 and 11. [PDF 15, PDF 17, PDF 18, PDF 19, PDF 31, PDF 33, PDF 34, PDF 35, PDF 42, PDF 43, PDF 44, PDF 45, PDF 47, PDF 49]
-- **Lists of numbered example sentences, (1), (2) …, and (a)–(d) item lists, were kept as lists.**: They look like real numbered or lettered lists, but a person should confirm they are not continuations of body paragraphs. [PDF 14, PDF 15, PDF 16, PDF 19, PDF 22, PDF 23, PDF 24, PDF 25, PDF 27, PDF 28, PDF 29, PDF 31, PDF 32, PDF 34, PDF 35, PDF 36, PDF 38, PDF 39, PDF 40, PDF 41, PDF 42, PDF 43, PDF 44, PDF 45, PDF 46, PDF 47, PDF 48, PDF 49]
+- **Text layer quality**: The text layer is OCR output with a high suspect-token rate (about 393 per 1000). Running text and diacritics (Ilokano accents) are likely misread. The text cannot be changed here, and no OCR word sheets were supplied. A person should check the text layer, especially on the worst pages. [PDF 18, PDF 21, PDF 31, PDF 34, PDF 37, PDF 42, PDF 44, PDF 47]
+- **Contents page (PDF 6)**: The entries are already tagged L/LI/Lbl/LBody and carry links. They were not converted to TOC/TOCI. A person should decide whether to convert them. The printed page numbers in the contents (for example Introduction 1, Phonology 2) do not match the PDF page numbers. [PDF 6]
+- **Running heads and page numbers**: The repeated_lines entries are OCR garbage from the first words of lines, not real running heads. No pagination text was identified, so no artifact rules were made. [PDF 10, PDF 46]
+- **Chapter heading layout on PDF 15–19, 21 and 31–35**: The page map shows the 'CHAPTER n' label and the chapter title on separate PDF pages (for example PDF 15 and PDF 17). The digest has a single heading element reading 'CHAPTER 3 PARTS OF SPEECH', so the OCR reading order may be wrong. A person should check the reading order. [PDF 15, PDF 16, PDF 17, PDF 18, PDF 19, PDF 31, PDF 33, PDF 34, PDF 35, PDF 42, PDF 43, PDF 44, PDF 45]
+- **Remaining lists (numbered examples and (a)/(b) enumerations)**: Left as lists. A person should check that the OCR-split items, which sometimes continue on the next page, are grouped correctly. [PDF 14, PDF 15, PDF 16, PDF 19, PDF 22, PDF 23, PDF 24, PDF 25, PDF 27, PDF 28, PDF 29, PDF 31, PDF 32, PDF 34, PDF 35, PDF 36, PDF 38, PDF 39, PDF 40, PDF 41, PDF 43, PDF 44, PDF 45, PDF 46, PDF 47, PDF 48, PDF 49]
+- **Consonant and vowel charts (Chart 1 and the vowel chart)**: These are not tagged as tables. They appear as loose text on PDF 9 and PDF 11. A person should decide whether to build tables. [PDF 9, PDF 11]
 
-Reviewer note from the AI: The book title (137 0) is the only H1. Chapter and front-matter titles are H2 (set per element with retype, because the style H1 is a standard tag). Single-item lists are flattened by the executor. Section-numbered paragraph lists were flattened by this order. Example-sentence and lettered lists were kept. There are no tables.
+Reviewer note from the AI: The book is an OCR'd scan with a cover Figure on PDF 1. Chapter and front-matter headings were all H1 and are now H2. The book title (obj 137 0) stays the only H1. The copyright line on PDF 5 was a false heading and is now P. Section-numbered paragraphs that had been tagged as lists were flattened to paragraphs. Example lists were kept. Single-item lists are flattened by the executor itself.
 
 ## What Was Changed
 

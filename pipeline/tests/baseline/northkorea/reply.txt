@@ -11,10 +11,10 @@
     "display_doc_title": true
   },
   "retype": [
-    {"obj": "2855 0", "type": "P", "why": "half-title repeat of the book title (PDF 2, printed i); the title page on PDF 4 carries the single H1"},
-    {"obj": "3332 0", "type": "P", "why": "half-title repeat before the Introduction (PDF 12, printed xi)"},
-    {"obj": "3216 0", "type": "H2"},
-    {"obj": "3318 0", "type": "H2"},
+    {"obj": "2855 0", "type": "P", "why": "half-title repeat of the book title on PDF 2 (printed i); only one H1 should remain"},
+    {"obj": "3332 0", "type": "P", "why": "half-title repeat of the book title on PDF 12 (printed xi)"},
+    {"obj": "3216 0", "type": "H2", "why": "front matter title: Contents"},
+    {"obj": "3318 0", "type": "H2", "why": "front matter title: Acknowledgments"},
     {"obj": "3333 0", "type": "H2"},
     {"obj": "3349 0", "type": "H2"},
     {"obj": "3277 0", "type": "H2"},
@@ -70,34 +70,35 @@
     {"obj": "3975 0", "type": "H4"},
     {"obj": "3979 0", "type": "H4"},
 
-    {"obj": "3723 0", "type": "Caption", "why": "Table 1 title, 9 pt, not a section heading"},
-    {"obj": "12107 0", "type": "Caption", "why": "Table 2 title, 9 pt, not a section heading"}
+    {"obj": "3723 0", "type": "Caption", "why": "Table 1 title (9 pt, not bold) tagged as a heading; it is a table caption"},
+    {"obj": "12107 0", "type": "Caption", "why": "Table 2 title tagged as a heading; it is a table caption"}
   ],
   "flatten": [
-    {"obj": "4166 0", "why": "Bibliography entries (PDF 216, printed 203) tagged as a numbered list; the '1.' and '2.' are not list markers"}
+    {"obj": "4166 0", "why": "PDF 216 (printed 203): bibliography entries (publisher lines and '———' repeats) mis-tagged as a numbered list"}
   ],
   "tables": [
     {"obj": "12035 0", "title_rows": 0, "header_rows": 1, "header_cols": 0},
     {"obj": "12180 0", "title_rows": 0, "header_rows": 1, "header_cols": 0}
   ],
   "alt": [
-    {"obj": "10770 0", "alt": "Cover of Language and Truth in North Korea by Sonia Ryang. A bronze statue of a standing man with one arm raised stands over a map of the Korean peninsula. The northern half is coloured in the blue, red and white of the North Korean flag, and faint Korean script covers the beige background. The title appears at the top and the author's name at the bottom."},
-    {"obj": "3200 0", "alt": "University of Hawaiʻi Press logo"},
-    {"obj": "18134 0", "alt": "Creative Commons logo with the Attribution, NonCommercial and NoDerivatives icons (CC BY-NC-ND)"}
+    {"obj": "10770 0", "alt": "Book cover: a bronze-coloured statue of a man in a long coat, one arm raised, stands over a map of the Korean peninsula whose northern part is filled with the North Korean flag (red field, white circle and red star, blue stripes) against a beige background with faint Korean characters. The title 'Language and Truth in North Korea' is at the top and the author's name, Sonia Ryang, at the bottom."},
+    {"obj": "3200 0", "alt": "University of Hawai‘i Press logo"},
+    {"obj": "18134 0", "alt": "Creative Commons logo: Attribution, NonCommercial, NoDerivatives (CC BY-NC-ND)"}
   ],
   "move_to_document_start": ["10770 0"],
+  "remove_empty_containers": true,
   "deferrals": [
     {
-      "what": "Drop-cap spacing at the start of paragraphs, e.g. 'W riting books' on the Acknowledgments page and 'S onia Ryang is the T. T. and W. F. Chao Professor' in About the Author",
-      "why": "The initial letter is separated from the rest of the word in the text layer. ActualText would have to cover the whole paragraph; a person should decide whether that is worth doing.",
-      "pages": [8, 238]
+      "what": "Reading order of the copyright container and the Index",
+      "why": "The digest shows the copyright page (Document > Article > Story) and the Index (Sect, PDF 228–236) as separate containers apart from the main run of headings and paragraphs. I can't tell from the digest whether the copyright page will be read first, in place, or last once the executor gathers root elements into the Document, so I made no move_section. A person should check where they fall.",
+      "pages": [5, 228, 229, 230, 231, 232, 233, 234, 235, 236]
     },
     {
-      "what": "Reading order of the container holding the copyright page (Document > Article > Story) and the Index Sect",
-      "why": "The digest's reading_order lists the Index Sect (PDF 228–236) first, and the page 5 container is nested separately. Check that after the executor's Document-root step the order is cover, title page, copyright, contents, front matter, chapters, references, index. The logo Figure on PDF 4 (printed iii) is also at the tree root and may land out of place.",
-      "pages": [4, 5, 228, 236]
+      "what": "Split drop-cap words in the text layer",
+      "why": "Text extraction shows 'W riting' (Acknowledgments) and 'S onia Ryang' (About the Author) with a stray space after the initial letter. Those paragraphs are not listed in the digest, so I have no obj to target with ActualText. A person should check how a screen reader speaks them.",
+      "pages": [8, 238]
     }
   ],
-  "notes_for_reviewer": "The tagger gave all chapter-level titles H1 and section titles H2/H3. I retyped per element so the outline is one H1 (the title page, PDF 4 (printed iii)), then H2 for the contents, acknowledgments, introduction, chapters, conclusion, references, index and About the Author. Sections are H3 and subsections are H4. The half-title repeats on PDF 2 (printed i) and PDF 12 (printed xi) became paragraphs. The Table 1 and Table 2 titles became captions; the tables themselves are real, with a header row. The three numbered lists on PDF 86–88 (printed 73–75) are real lists and are kept. Figure alt texts in the file contained stray NUL characters and are replaced. Contents, links and index are already tagged as TOC/TOCI and Link and need no work-order changes. The veraPDF check listed no failures a work order can fix."
+  "notes_for_reviewer": "The publisher's tags had 13 elements typed H1. I kept one H1, the title on the title page (PDF 4, printed iii), and demoted the half-title repeats on PDF 2 (printed i) and PDF 12 (printed xi) to P. Chapters, the Introduction, Conclusion and the front and back matter titles are now H2. Former H2 section heads are H3 and former H3 heads are H4, so there are no level skips. The two 'Table n.' titles on PDF 75 (printed 62) were typed H2 and are now Caption. The three figures had alt text ending in a NUL character; I replaced it with clean alt text. The two dialect tables each have one header row. Their first column (English) could be a row header, but I left it as data. The three numbered lists on PDF 86–88 (printed 73–75) look like real lists and are kept. This is a born-digital file (Aspose), not an OCR scan. The suspect-token rate probably reflects romanized Korean, not recognition errors. I found no running heads or page-number artifacts in the digest. Foreign-language runs are left for the language step."
 }
 ```

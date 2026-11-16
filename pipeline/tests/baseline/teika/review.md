@@ -2,13 +2,13 @@
 
 Result: `teika_remediated.pdf`
 
-281 pages · run November 14, 2026, at 3:32 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.250 ($0.0009 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+281 pages · run November 15, 2026, at 10:10 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.232 ($0.0008 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 0.6s · audit 27.0s · reuse saved reply 1.4s · apply 104.9s · verify 46.5s · total 180.4s
+Time: intake 1.3s · audit 37.5s · reuse saved reply 1.4s · apply 100.9s · verify 42.7s · total 183.8s
 
 ## Overview
 
@@ -24,9 +24,9 @@ Time: intake 0.6s · audit 27.0s · reuse saved reply 1.4s · apply 104.9s · ve
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · FAILED ✘ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 16 (6 deferred by the AI · 6 deferred by the executor · 4 CHECK rows)  
-**AI decisions:** 48 in the work order, applied without review by a person  
-**Fixed automatically (no AI):** links tied and described 1,648 · note IDs 411 · pages given tab order 194 · decorative lines marked 47 · title shown in the window 2 · whole-page figures wrapped 2 · tag-tree index entries 2 · marked as tagged 1 · empty tags removed 1  
+**Needs a person:** 15 (7 deferred by the AI · 4 deferred by the executor · 4 CHECK rows)  
+**AI decisions:** 56 in the work order, applied without review by a person  
+**Fixed automatically (no AI):** links tied and described 1,648 · note IDs 407 · pages given tab order 194 · decorative lines marked 47 · title shown in the window 2 · whole-page figures wrapped 2 · tag-tree index entries 2 · marked as tagged 1 · empty tags removed 1  
 **veraPDF (WCAG 2.2 machine checks):** 9 WCAG rules failing before (3,433 checks) → 1 after (251 checks) · 0 newly failing
 
 Automated checks are evidence, not sign-off.
@@ -35,10 +35,10 @@ Automated checks are evidence, not sign-off.
 |---|---|---|
 | All content tagged or marked as decoration: 6846 untagged characters · 251 untagged objects (251 text) | see Automated Checks | [Automated Checks](#automated-checks) |
 | Page-level figure wrap: PDF 1 (printed Cover), PDF 5 (printed iv) wrapped as one Figure · not wrapped: PDF 85 (printed 72) (has 2 annotation(s) (links)); PDF 157 (printed 144) (has 2 annotation(s) (links)); PDF 158 (printed 145) (has 2 annotation(s) (links)) | 5 pages, PDF 1 (printed Cover) to PDF 158 (printed 145) | [Automated Checks](#automated-checks) |
-| Executor applied every decision: 33 rejected · 0 failed (listed under "Decisions not applied") | see §16 | [§16](#16-decisions-not-applied-36) |
+| Executor applied every decision: 117 rejected · 0 failed (listed under "Decisions not applied") | see §16 | [§16](#16-decisions-not-applied-117) |
 | Content neither tagged nor marked as decoration (veraPDF 7.1-3, 251 checks) | PDF 85 (printed 72) | [§12](#12-verapdf-wcag-22-machine-profile-before-and-after) |
 | 68 Han-only runs need Japanese or Chinese (han_review.csv) | 19 pages, PDF 60 (printed 47) to PDF 247 (printed 234) | [§15](#15-deferred-by-the-executor) |
-| … and 9 more | | §14, §15 |
+| … and 8 more | | §14, §15 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -67,11 +67,11 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Headings: no skipped levels | OK | H1 1 · H2 14 · H3 64 |
 | Headings: exactly one H1 (the title) | OK | 1 H1 (several H1s usually mean parts or chapters were not demoted) |
 | Figures: none with empty or placeholder alt | OK | 3 figures, 0 placeholder |
-| Every Note has a unique ID | OK | 411 notes · 0 without ID · 0 duplicate · 0 not in the ID tree |
+| Every Note has a unique ID | OK | 407 notes · 0 without ID · 0 duplicate · 0 not in the ID tree |
 | Bookmarks present (documents over 9 pages) | OK | 36 bookmarks |
 | Model reply held one work order | OK | one |
-| Executor applied every decision | **CHECK** | 33 rejected · 0 failed (listed under "Decisions not applied") |
-| Nothing deferred by the executor | **CHECK** | 9 deferred (listed under "Deferred by the executor") |
+| Executor applied every decision | **CHECK** | 117 rejected · 0 failed (listed under "Decisions not applied") |
+| Nothing deferred by the executor | **CHECK** | 7 deferred (listed under "Deferred by the executor") |
 | Fonts: every glyph defined (no .notdef) | OK | none found |
 | Fonts: every embedded font program could be read | OK | all read |
 | Fonts: embedded and mapped to Unicode | OK | 0 not embedded · 0 without ToUnicode (5 more have none and need none: standard encoding, non-symbolic) |
@@ -84,7 +84,7 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | Alt text: none like a file name or repeated on many figures (1.1.1) | OK | 0 of 3 figures flagged |
 | Tables: every table has header cells (1.3.1) | OK | none without |
 | Reading order: no page jumps back up a column (1.3.2) | OK | 0 of 267 pages flagged |
-| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 9 already in the original, of 47 sections and blocks |
+| Reading order: no section moved away from its printed place by this run (1.3.2) | OK | 0 new · 9 already in the original, of 46 sections and blocks |
 | Title is not a file name or placeholder (2.4.2) | OK | "Teika: The Life and Works of a Medieval Japanese Poet" |
 | Link text: none like "click here" (2.4.4) | OK | 0 generic |
 | Headings: none empty, very long or repeated in a row (2.4.6) | OK | 0 empty · 0 long · 0 repeated |
@@ -95,8 +95,8 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 Pages with nothing tagged and nothing marked as decoration that hold a drawing (a full-page map, plate or cover). Each page was wrapped whole in one Figure; nothing on it was changed or removed.
 
-- PDF 1 (printed Cover): read first in the document. Alt text from the AI: "Book cover: white, gray and dark-gray Japanese maple leaves on a black background. The title TEIKA appears in large white capitals, with the subtitle “The Life and Works of a Medieval Japanese Poet” in gold below it, and the author’s name, Paul S. Atkins, near the bottom."
-- PDF 5 (printed iv): read after "" on PDF 4 (printed iii). Alt text from the AI: "Copyright page. © 2017 University of Hawai‘i Press, all rights reserved, printed in the United States of America. Library of Congress Cataloging-in-Publication Data: Atkins, Paul S. (Paul Stephen). Teika: the life and works of a medieval Japanese poet. Honolulu: University of Hawai‘i Press, 2017. Includes bibliographical references and index. LCCN 2016032550; ISBN 9780824858506 (hardcover, alk. paper). Subject: Fujiwara, Sadaie, 1162–1241; Poets, Japanese, 1185–1600, Biography. LCC PL791.Z5 A85 2017; DDC 895.61/22 [B]. The Open Access edition is licensed under Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0), so digital editions may be freely downloaded and shared for non-commercial purposes with credit to the author; commercial uses and derivative publications require permission from the publisher. The license does not apply to separately copyrighted material. ISBN 9798880702541 (OA PDF), 9798880702558 (OA EPUB). The Open Access edition was funded by the National Endowment for the Humanities Fellowships Open Book Program. University of Hawai‘i Press books are printed on acid-free paper and meet the guidelines for permanence and durability of the Council on Library Resources."
+- PDF 1 (printed Cover): read first in the document. Alt text from the AI: "Book cover: against a black background, three maple leaves, two in grey and one in white in the foreground. The title "Teika" is in large white capitals, with the subtitle "The Life and Works of a Medieval Japanese Poet" and the author's name, Paul S. Atkins."
+- PDF 5 (printed iv): read after "" on PDF 4 (printed iii). Alt text from the AI: "Copyright page. © 2017 University of Hawai‘i Press, all rights reserved, printed in the United States of America. Library of Congress Cataloging-in-Publication data: Atkins, Paul S. (Paul Stephen), Teika: the life and works of a medieval Japanese poet, Honolulu: University of Hawai‘i Press, 2017; includes bibliographical references and index; LCCN 2016032550; hardcover ISBN 9780824858506; subject: Fujiwara, Sadaie, 1162–1241; Poets, Japanese, 1185–1600, Biography; LC PL791.Z5 A85 2017; DDC 895.61/22 [B]. The Open Access edition is licensed under Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0): digital editions may be freely downloaded and shared for non-commercial purposes with credit to the author; commercial uses and derivatives require publisher permission (https://creativecommons.org/licenses/by-nc-nd/4.0/). The license does not apply to separately copyrighted material. OA PDF ISBN 9798880702541; OA EPUB ISBN 9798880702558. The Open Access edition was funded by the National Endowment for the Humanities Fellowships Open Book Program. University of Hawai‘i Press books are printed on acid-free paper and meet the guidelines of the Council on Library Resources."
 - PDF 85 (printed 72): not wrapped, left as it is (has 2 annotation(s) (links)).
 - PDF 157 (printed 144): not wrapped, left as it is (has 2 annotation(s) (links)).
 - PDF 158 (printed 145): not wrapped, left as it is (has 2 annotation(s) (links)).
@@ -113,7 +113,6 @@ Heading levels by style (as applied):
 
 | Style | Level | How | Elements |
 |---|---|---|---:|
-| TPT | H1 | RoleMap | 1 |
 | CT | H2 | RoleMap | 7 |
 | FMH | H2 | RoleMap | 2 |
 | BMH | H2 | RoleMap | 4 |
@@ -121,23 +120,39 @@ Heading levels by style (as applied):
 | BMH1 | H3 | RoleMap | 6 |
 | H1 | H3 | retype (standard tag) | 58 |
 
-Merged: `CN` into the next `CT`; `CST` into the prev `CT`
+Merged: `CN` into the next `CT`
 
 Spoken text set by the AI (should match what is printed):
 
 | Page | Text |
 |---|---|
+| PDF 4 (printed iii) | The Life and Works of a Medieval Japanese Poet |
+| PDF 8 (printed vii) | Acknowledgments ix |
+| PDF 10 (printed ix) | Acknowledgments |
 | PDF 22 (printed 9) | Chapter One A Documentary Biography |
 | PDF 56 (printed 43) | Chapter Two The Bodhidharma Style and the Poetry Contest in Six Hundred Rounds |
+| PDF 80 (printed 67) | Taste and Judgment in Medieval Japanese Poetry |
 | PDF 101 (printed 88) | Chapter Three Teika’s Poetics |
+| PDF 114 (printed 101) | Revisiting Maigetsushō and Teika jittei |
+| PDF 125 (printed 112) | Teika’s Judgments at Sengohyakuban utaawase |
 | PDF 137 (printed 124) | Chapter Four Spirit of Han, Genius of Yamato |
-| PDF 177 (printed 164) | Chapter Five Teika after Teika A History of Reception |
+| PDF 169 (printed 156) | China in The Tale of Matsura |
+| PDF 177 (printed 164) | Chapter Five Teika after Teika |
+| PDF 184 (printed 171) | Another Contemporary View: Kenreimon-in Ukyō no Daibu |
 
-### 4. Lists and Tables
+### 4. Elements Retyped by the AI (1)
 
-- Header cells marked by the AI on PDF 94 (printed 81): 1 header row(s), 1 header column(s), 10 cells changed to header cells; 1 title row(s) made the caption, 1 note row(s) moved after the table. Check they are the real headers.
-- Header cells marked by the AI on PDF 95 (printed 82): 1 header row(s), 1 header column(s), 15 cells changed to header cells; 1 title row(s) made the caption. Check they are the real headers.
-- Header cells marked by the AI on PDF 96 (printed 83): 1 header row(s), 1 header column(s), 20 cells changed to header cells; 1 title row(s) made the caption. Check they are the real headers.
+Check each one is (or is not) a heading as decided.
+
+| Page | Text | Before | After |
+|---|---|---|---|
+| PDF 4 (printed iii) | Teika | TPT | H1 |
+
+### 5. Lists and Tables
+
+- Header cells marked by the AI on PDF 94 (printed 81): 1 header row(s), 0 header column(s), 2 cells changed to header cells; 1 title row(s) made the caption, 1 note row(s) moved after the table. Check they are the real headers.
+- Header cells marked by the AI on PDF 95 (printed 82): 1 header row(s), 0 header column(s), 3 cells changed to header cells; 1 title row(s) made the caption. Check they are the real headers.
+- Header cells marked by the AI on PDF 96 (printed 83): 1 header row(s), 0 header column(s), 3 cells changed to header cells; 1 title row(s) made the caption. Check they are the real headers.
 
 Tables kept as tables (3): check header cells and reading order.
 
@@ -145,27 +160,28 @@ Tables kept as tables (3): check header cells and reading order.
 - PDF 95 (printed 82): 14 rows × 5 columns, 0 header cells. "Table 2. Frequency of taigen- dome at Roppyakuban utaawase"
 - PDF 96 (printed 83): 19 rows × 5 columns, 0 header cells. "Table 3. Frequency of taigen- dome in Omuro gojisshu"
 
-### 5. Text a Screen Reader Could Not Reach (before this run)
+### 6. Text a Screen Reader Could Not Reach (before this run)
 
 4 pages had text outside the tag tree: 0 orphan runs (marked, but no tag owns them) and 154 untagged runs. Running heads and page numbers among them can be hidden as decoration; real content must be added to the tag tree by a person. After this run: 6846 untagged characters, 0 orphan runs remain.
 
 Pages: PDF 5 (printed iv), PDF 85 (printed 72), PDF 157–158 (printed 144–145)
 
-### 6. Hidden from Screen Readers (artifacts)
+### 7. Hidden from Screen Readers (artifacts)
 
-- "running head, Acknowledgments": text matching `(\d+ |x )?Acknowl edgments( \d+| x)?|x` on PDF 11 (printed x)
-- "running head, Introduction": text matching `(\d+ )?Introduction( \d+)?|\d+` on PDF 15–16 (printed 2–3)
-- "running head, Chapter One": text matching `(\d+ )?(Chapter One|A Documentary Biography)( \d+)?|\d+` on PDF 23–24 (printed 10–11)
-- "running head, Notes": text matching `(\d+ )?Notes to Pages \d+–\d+( \d+)?` on PDF 229–256 (printed 216–243)
-- "page number, Notes": text matching `\d+` on PDF 229–256 (printed 216–243)
-- "running head, Index": text matching `(\d+ )?Index( \d+)?` on PDF 271–275 (printed 258–262)
-- "running head, Index of Poems Cited": text matching `(\d+ )?Index of Poems Cited( \d+)?` on PDF 277–278 (printed 264–265)
-- "folio, contents page": text matching `[ivxlc]+` on PDF 8 (printed vii)
-- "folio, Introduction opener": text matching `\d+` on PDF 14 (printed 1)
-- "folio, Chapter Three opener": text matching `\d+` on PDF 101 (printed 88)
-- "folio, Notes opener": text matching `\d+` on PDF 228 (printed 215)
+- "running head and page number (Acknowledgments)": every run in the top band on PDF 11 (printed x)
+- "running head and page number (Introduction)": every run in the top band on PDF 15–16 (printed 2–3)
+- "running head and page number (Chapter One)": every run in the top band on PDF 23–24 (printed 10–11)
+- "running head and page number (Notes to Pages)": every run in the top band on PDF 229–256 (printed 216–243)
+- "running head and page number (Index)": every run in the top band on PDF 271–272 (printed 258–259)
+- "running head and page number (Index of Poems Cited)": every run in the top band on PDF 277–278 (printed 264–265)
+- "folio on opening page": text matching `[ivxl]+|\d+` on PDF 8 (printed vii)
+- "folio on opening page": text matching `[ivxl]+|\d+` on PDF 14 (printed 1)
+- "folio on opening page": text matching `[ivxl]+|\d+` on PDF 101 (printed 88)
+- "folio on opening page": text matching `[ivxl]+|\d+` on PDF 228 (printed 215)
+- "folio on opening page": text matching `[ivxl]+|\d+` on PDF 270 (printed 257)
+- "title-page ornament glyph": text matching `P` on PDF 4 (printed iii)
 
-### 7. Untagged Paths (rules, borders, lines)
+### 8. Untagged Paths (rules, borders, lines)
 
 47 paths drawn outside any tag were marked as decoration: none of them carries text, an image or a link, and none touches untagged text or images.
 
@@ -173,7 +189,7 @@ Strokes directly under text, marked as decoration. An underline can carry meanin
 
 - PDF 132 (printed 119): 8
 
-### 8. Untagged Content (251 objects)
+### 9. Untagged Content (251 objects)
 
 Drawn content that is neither tagged nor marked as decoration (content reused on several pages counts once). Not changed by the pipeline; a person decides whether each is real content (tag it) or decoration (artifact it). Pages with the most:
 
@@ -181,24 +197,23 @@ Drawn content that is neither tagged nor marked as decoration (content reused on
 - PDF 158 (printed 145): 86 text
 - PDF 85 (printed 72): 78 text
 
-### 9. Spoken Text (ActualText) Checked Against the Print (5 accepted with differences, 0 rejected)
+### 10. Spoken Text (ActualText) Checked Against the Print (13 accepted with differences, 0 rejected)
 
 A spoken text may differ from the printed characters only in spacing, letter case and line-end hyphens (sponsor rule 1). Accepted ones that differ are listed so a person can listen to them; rejected ones added or changed words or punctuation.
 
+- Accepted, PDF 4 (printed iii): printed "The Life and Works of a Medieval Japa nese Poet" → spoken "The Life and Works of a Medieval Japanese Poet"
+- Accepted, PDF 8 (printed vii): printed "Acknowl edgments ix" → spoken "Acknowledgments ix"
+- Accepted, PDF 10 (printed ix): printed "Acknowl edgments" → spoken "Acknowledgments"
 - Accepted, PDF 22 (printed 9): printed "Chapter One A Documentary Biography" → spoken "Chapter One A Documentary Biography"
 - Accepted, PDF 56 (printed 43): printed "Chapter Two The Bodhidharma Style and the Poetry Contest in Six Hundred Rounds" → spoken "Chapter Two The Bodhidharma Style and the Poetry Contest in Six Hundred Rounds"
+- Accepted, PDF 80 (printed 67): printed "Taste and Judgment in Medieval Japa nese Poetry" → spoken "Taste and Judgment in Medieval Japanese Poetry"
 - Accepted, PDF 101 (printed 88): printed "Chapter Three Teika’s Poetics" → spoken "Chapter Three Teika’s Poetics"
+- Accepted, PDF 114 (printed 101): printed "Revisiting MAIGETSUSHŌ and T EIKA JITTEI" → spoken "Revisiting Maigetsushō and Teika jittei"
+- Accepted, PDF 125 (printed 112): printed "Teika’s Judgments at S ENGOHYAKUBAN UTAAWASE" → spoken "Teika’s Judgments at Sengohyakuban utaawase"
 - Accepted, PDF 137 (printed 124): printed "Chapter Four Spirit of Han, Genius of Yamato" → spoken "Chapter Four Spirit of Han, Genius of Yamato"
-- Accepted, PDF 177 (printed 164): printed "Chapter Five Teika after Teika A History of Reception" → spoken "Chapter Five Teika after Teika A History of Reception"
-
-### 10. Text a Running-head or Page-number Rule Matched But Left Visible (4)
-
-A rule for the top or bottom band hides a run only when everything else on that line is matched too. These runs matched the rule but share their line with other text (for example a note number in the first line of body text), so they were left as they are.
-
-- PDF 271 (printed 258): rule "running head, Index" matched "Index" on the line "258 Index"
-- PDF 272 (printed 259): rule "running head, Index" matched "Index" on the line "Index 259"
-- PDF 277 (printed 264): rule "running head, Index of Poems Cited" matched "Index of Poems Cited" on the line "264 Index of Poems Cited"
-- PDF 278 (printed 265): rule "running head, Index of Poems Cited" matched "Index of Poems Cited" on the line "Index of Poems Cited 265"
+- Accepted, PDF 169 (printed 156): printed "China in T HE TALE OF MATSURA" → spoken "China in The Tale of Matsura"
+- Accepted, PDF 177 (printed 164): printed "Chapter Five Teika after Teika" → spoken "Chapter Five Teika after Teika"
+- Accepted, PDF 184 (printed 171): printed "Another Con temporary View: Kenreimon-in Ukyō no Daibu" → spoken "Another Contemporary View: Kenreimon-in Ukyō no Daibu"
 
 ### 11. Empty Tags (1 removed, 0 kept)
 
@@ -226,34 +241,33 @@ veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Co
 
 Each item is something to look at, not a proven failure.
 
-- 1.3.2 32 small sections are read more than 5 pages after their printed page, after a longer section that covers them. Not a failure (long stories overlap in InDesign books), but a screen reader hears them far from where they are printed: PDF 94 (printed 81) read after PDF 269 (printed 256); PDF 95 (printed 82) read after PDF 269 (printed 256); PDF 96 (printed 83) read after PDF 269 (printed 256); PDF 229 (printed 216) read after PDF 269 (printed 256); PDF 230 (printed 217) read after PDF 269 (printed 256); PDF 231 (printed 218) read after PDF 269 (printed 256); PDF 232 (printed 219) read after PDF 269 (printed 256); PDF 233 (printed 220) read after PDF 269 (printed 256); PDF 234 (printed 221) read after PDF 269 (printed 256); PDF 235 (printed 222) read after PDF 269 (printed 256); PDF 236 (printed 223) read after PDF 269 (printed 256); PDF 237 (printed 224) read after PDF 269 (printed 256) and 20 more
+- 1.3.2 31 small sections are read more than 5 pages after their printed page, after a longer section that covers them. Not a failure (long stories overlap in InDesign books), but a screen reader hears them far from where they are printed: PDF 94 (printed 81) read after PDF 269 (printed 256); PDF 95 (printed 82) read after PDF 269 (printed 256); PDF 96 (printed 83) read after PDF 269 (printed 256); PDF 229 (printed 216) read after PDF 269 (printed 256); PDF 230 (printed 217) read after PDF 269 (printed 256); PDF 231 (printed 218) read after PDF 269 (printed 256); PDF 232 (printed 219) read after PDF 269 (printed 256); PDF 233 (printed 220) read after PDF 269 (printed 256); PDF 234 (printed 221) read after PDF 269 (printed 256); PDF 235 (printed 222) read after PDF 269 (printed 256); PDF 236 (printed 223) read after PDF 269 (printed 256); PDF 237 (printed 224) read after PDF 269 (printed 256) and 19 more
 - 1.3.2 9 sections read away from their printed place, as in the original (this run did not move them). Listen through each where it is read, or move it with move_section:
   - PDF 11 (printed x): Story "Acknowl edgments", read before PDF 2 (printed i)
   - PDF 15 (printed 2): Story "Introduction", read between PDF 12 (printed xi) and PDF 14 (printed 1)
   - PDF 16 (printed 3): Story "Introduction", read between PDF 12 (printed xi) and PDF 14 (printed 1)
   - PDF 23 (printed 10): Story "Chapter One", read between PDF 12 (printed xi) and PDF 14 (printed 1)
   - PDF 24 (printed 11): Story "A Documentary Biography", read between PDF 12 (printed xi) and PDF 14 (printed 1)
-  - PDF 271 (printed 258): Story "258 Index", read between PDF 256 (printed 243) and PDF 270 (printed 257)
-  - PDF 272 (printed 259): Story "Index 259", read between PDF 256 (printed 243) and PDF 270 (printed 257)
-  - PDF 277 (printed 264): Story "264 Index of Poems Cited", read between PDF 256 (printed 243) and PDF 270 (printed 257)
-  - PDF 278 (printed 265): Story "Index of Poems Cited 265", read between PDF 256 (printed 243) and PDF 270 (printed 257)
+  - PDF 271 (printed 258): Story "Index", read between PDF 256 (printed 243) and PDF 270 (printed 257)
+  - PDF 272 (printed 259): Story "Index", read between PDF 256 (printed 243) and PDF 270 (printed 257)
+  - PDF 277 (printed 264): Story "Index of Poems Cited", read between PDF 256 (printed 243) and PDF 270 (printed 257)
+  - PDF 278 (printed 265): Story "Index of Poems Cited", read between PDF 256 (printed 243) and PDF 270 (printed 257)
 
 ### 14. Deferred by the AI
 
-- **Body text that is not tagged at all (running heads, poem lines, and paragraphs of the chapter text)**: veraPDF 7.1-3: about 154 untagged runs on these pages. The text is real content, so it cannot be artifacted and no work-order key can tag it. A person must tag these pages in the source or in Acrobat. [PDF 85 (printed 72), PDF 157 (printed 144), PDF 158 (printed 145)]
-- **Numbered and lettered paragraph runs in styles NLF/NL/NLL (e.g. “1. Biography…”, “A. Kindai shūka…”)**: There are 6 NLF starts but only 5 NLL ends, and the runs are interrupted by headings. The grouping cannot be checked from the digest, so they are left as paragraphs for review. [PDF 20 (printed 7), PDF 21 (printed 8), PDF 102 (printed 89), PDF 103 (printed 90), PDF 104 (printed 91), PDF 188 (printed 175), PDF 189 (printed 176)]
-- **Heading levels below chapter title and section heads**: All style “H1” section heads were mapped to H3 under the chapter H2. Some may really be subsections of other section heads (e.g. “Plot Summary” and “Framing Devices” under “China and THE TALE OF MATSURA”; “I./II./III. Texts…” under “Limits of Teika’s Theoretical Oeuvre”), but the digest cannot show this. A reviewer should check the outline. [PDF 58 (printed 45), PDF 102 (printed 89), PDF 104 (printed 91), PDF 163 (printed 150), PDF 164 (printed 151), PDF 165 (printed 152), PDF 167 (printed 154), PDF 169 (printed 156)]
-- **Two tagged elements with the text “P” on the title page (styles TPTORNF and TPTORNL, obj 10867 0 and 10869 0)**: They look like ornament glyphs mapped to the letter P and would be read aloud as “P”. I cannot confirm they are single marked-content runs, so I left them out of the artifact list. [PDF 4 (printed iii)]
-- **Index: page numbers and folios**: The extracted index entries have page numbers detached from their entries or missing (e.g. “Ariwara no Narihira, , , ;”). A bare-number artifact rule could hit real page references, so the folios on the index pages (PDF 270 and the numeric running-head runs on PDF 271–278) were left tagged. A person should check the text layer of the index and these folios. [PDF 270 (printed 257), PDF 271 (printed 258), PDF 272 (printed 259), PDF 273 (printed 260), PDF 274 (printed 261), PDF 275 (printed 262), PDF 276 (printed 263), PDF 277 (printed 264), PDF 278 (printed 265)]
-- **veraPDF 7.1-3 on the cover and copyright pages**: Handled by wrapping PDF 1 and PDF 5 as page figures. Any remaining failures are on the untagged pages listed above. [PDF 1 (printed Cover), PDF 5 (printed iv)]
+- **Pages whose whole text is untagged (body text, poems, quotations and running heads): PDF 85 (printed 72), PDF 157 (printed 144), PDF 158 (printed 145)**: veraPDF 7.1-3. This is real content in no tag, so it can't be fixed with artifacts or a page figure. A person must tag it in reading order. [PDF 85 (printed 72), PDF 157 (printed 144), PDF 158 (printed 145)]
+- **Chapter-opening paragraphs (style CO) lack their first letter: 't is the middle of the night…', 'his chapter consists…', 'mong Teika's…', 'hat did Japanese poetry…', 't is impossible…', 'he field of classical…', 'ho was Fujiwara no Teika?'**: The drop-cap letter is missing from the text layer, so a screen reader hears the words wrongly. Fixing it needs ActualText for the whole paragraph, or the drop cap tagged by a person. [PDF 14 (printed 1), PDF 22 (printed 9), PDF 56 (printed 43), PDF 101 (printed 88), PDF 137 (printed 124), PDF 177 (printed 164), PDF 223 (printed 210)]
+- **Reading order of Tables 1–3, tagged as separate Story containers that the tree reads after the main body story (PDF 14–269)**: move_section is not certain to place them correctly: I can't tell from the digest what else sits on those pages. A person should check where each table falls in the reading order. [PDF 94 (printed 81), PDF 95 (printed 82), PDF 96 (printed 83)]
+- **Numbered/lettered lists in styles NLF/NL/NLL (Introduction page 20–21, the Chapter Three classification of texts, and the list of reception topics)**: The styles are shared by lists with different numbering (1., I., A.) and the labels are in the text. The lists() mapping can't set the numbering per list, so a person should review them. [PDF 20 (printed 7), PDF 21 (printed 8), PDF 102 (printed 89), PDF 103 (printed 90), PDF 104 (printed 91), PDF 105 (printed 92), PDF 188 (printed 175), PDF 189 (printed 176)]
+- **Index (styles IX/IXA) page references look garbled or missing in the text layer (for example 'Ariwara no Narihira, , , ;' and run-together digits)**: Page numbers sit partly in link annotations or other runs. A person must check how the entries read. [PDF 270 (printed 257), PDF 271 (printed 258), PDF 272 (printed 259), PDF 273 (printed 260), PDF 274 (printed 261), PDF 275 (printed 262), PDF 276 (printed 263), PDF 277 (printed 264), PDF 278 (printed 265)]
+- **Body text contains hyphenation artifacts with stray spaces ('Japa nese', 'vari ous', 'pos si ble', 'Acknowl edgments')**: These sit throughout 400+ paragraphs and need a text-layer repair or a per-paragraph decision. I fixed only headings and the title with ActualText. [PDF 14 (printed 1), PDF 228 (printed 215)]
+- **Copyright page (PDF 5, printed iv) is handled as a page figure with long alt text**: Its text is untagged. Tagging it as real text would be better for reading, so a person should decide. [PDF 5 (printed iv)]
 
-Reviewer note from the AI: Book title (TPT on PDF 4) is the only H1; chapter, front-matter, back-matter and index titles are H2; the section heads (style H1 in the file) become H3 and the per-chapter heads in the Notes (BMH1) become H3. “Chapter N” labels and the subtitle “A History of Reception” are merged into their chapter titles, with ActualText giving the combined reading. The empty CN elements for the Introduction and Conclusion fold into their titles. Running heads and folios are artifacted with rules limited to the pages where they are tagged, and body-page running heads appear to be untagged already. Tables 1–3 have a title row, a header row and a row-header column; Table 1 also has a note row (the Takeuchi source line). The three tables sit in Stories read after the end of the book, and move_section returns each to its own page. If the executor rejects a move, they need a manual reading-order fix. Japanese and other-language runs are left for the language step.
+Reviewer note from the AI: The original H1 style (58 section headings inside chapters) is remapped to H3, the chapter title style CT to H2, front/back-matter headings (FMH, BMH, ATAH) to H2 and BMH1 (chapter names inside Notes) to H3. The only H1 is the book title (title page, PDF 4 (printed iii)). Heading levels inside chapters are uniform: small-caps headings reported at size 8 are treated as the same level, because the digest size is unreliable for mixed-case small caps. Each chapter number (CN) is merged into its title (CT), and ActualText gives the combined heading. 'A History of Reception' (CST) stays a plain paragraph beneath the Chapter Five title. Running heads and folios are artifacted by band. In page 229–256 the top band holds only the running head. veraPDF language rules (7.2-2, 7.2-30, 7.2-33, 7.2-34) are addressed by setting the document language to en-US; foreign-language runs go to the language step. Rule 7.3-1 is addressed by alt text for the logo. Rule 7.1-3 is addressed for PDF 1 and 5 by page figures; PDF 85, 157 and 158 remain deferred. The text layer has OCR-like spacing problems on some worst pages (4, 244, 261–269).
 
 ### 15. Deferred by the Executor
 
 - **68 Han-only CJK runs** need a Japanese / Chinese decision: fill in `han_review.csv`.
-- text rule "running head, Index" matched no text on PDF 271–275 (printed 258–262): nothing was hidden by this rule; check its pattern against the page (spacing, split runs)
-- text rule "running head, Index of Poems Cited" matched no text on PDF 277–278 (printed 264–265): nothing was hidden by this rule; check its pattern against the page (spacing, split runs)
 - link on a page with no tagged text (PDF 85 (printed 72)): tied to tagged text on PDF 84 (printed 71)
 - link on a page with no tagged text (PDF 85 (printed 72)): tied to tagged text on PDF 84 (printed 71)
 - link on a page with no tagged text (PDF 157 (printed 144)): tied to tagged text on PDF 156 (printed 143)
@@ -261,56 +275,133 @@ Reviewer note from the AI: Book title (TPT on PDF 4) is the only H1; chapter, fr
 - link on a page with no tagged text (PDF 158 (printed 145)): tied to tagged text on PDF 159 (printed 146)
 - link on a page with no tagged text (PDF 158 (printed 145)): tied to tagged text on PDF 159 (printed 146)
 
-### 16. Decisions Not Applied (36)
+### 16. Decisions Not Applied (117)
 
 Rejected by validation or by the executor; nothing was half-applied.
 
 | What | Why | Count |
 |---|---|---:|
-| artifact running head, Notes | element is not a single marked-content run | 28 |
-| move_section | the audit finds no section read out of place in these pages or where it lands | 3 |
-| artifact running head, Introduction | element is not a single marked-content run | 2 |
-| artifact running head, Chapter One | element is not a single marked-content run | 2 |
-| artifact running head, Acknowledgments | element is not a single marked-content run | 1 |
+| artifact running head and page number | element is not a single marked-content run | 117 |
 
 Each one:
 
-- {"op": "artifact running head, Acknowledgments (10916, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Introduction (10863, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Introduction (10861, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Chapter One (10859, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Chapter One (10857, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5344, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5342, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5340, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5338, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5336, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5334, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5332, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5330, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5328, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5326, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5324, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5322, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5320, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5318, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5316, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5314, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5312, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5310, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5308, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5306, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5304, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5302, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5300, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5298, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5296, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5294, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5292, 0)", "why": "element is not a single marked-content run"}
-- {"op": "artifact running head, Notes (5290, 0)", "why": "element is not a single marked-content run"}
-- {"where": "move_section", "item": {"pages": [94, 94], "before_page": 95, "why": "Table 1 sits in a separate Story read after the whole main flow (after the Index); return it to its printed position."}, "why": "the audit finds no section read out of place in these pages or where it lands"}
-- {"where": "move_section", "item": {"pages": [95, 95], "before_page": 96, "why": "Table 2 is read after the main flow; return it to its printed position."}, "why": "the audit finds no section read out of place in these pages or where it lands"}
-- {"where": "move_section", "item": {"pages": [96, 96], "before_page": 97, "why": "Table 3 is read after the main flow; return it to its printed position."}, "why": "the audit finds no section read out of place in these pages or where it lands"}
+- {"op": "artifact running head and page number (Acknowledgments) (10916, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Acknowledgments) (10893, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Introduction) (10863, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Introduction) (5707, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Introduction) (10861, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Introduction) (10861, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Introduction) (5710, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Chapter One) (10859, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Chapter One) (10857, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Chapter One) (10857, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Chapter One) (5738, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5344, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7135, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5342, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5340, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7167, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7167, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5338, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7180, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5336, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7193, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5334, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7201, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5332, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7209, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7209, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7209, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5330, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7223, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5328, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5326, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5324, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7275, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7275, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7275, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5322, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7284, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7284, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5320, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7295, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5318, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7307, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7307, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7307, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5316, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5314, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7340, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7340, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7340, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5312, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7355, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7355, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7355, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5310, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7369, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7369, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7369, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7369, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5308, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7381, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7381, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7381, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5306, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7392, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5304, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7405, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7405, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7405, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7405, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7405, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7405, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7405, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5302, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7428, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7428, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5300, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7444, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5298, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7462, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7462, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7462, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7462, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7462, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5296, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7480, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5294, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7499, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7499, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7499, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5292, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7513, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (5290, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7530, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Notes to Pages) (7530, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (5288, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (5288, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (3836, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (3836, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (3836, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (3850, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (3850, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (3850, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (5286, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (5286, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (5286, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (3875, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (3875, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (3891, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (3891, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index) (3891, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index of Poems Cited) (5284, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index of Poems Cited) (4008, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index of Poems Cited) (4027, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index of Poems Cited) (5282, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index of Poems Cited) (5282, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index of Poems Cited) (4046, 0)", "why": "element is not a single marked-content run"}
+- {"op": "artifact running head and page number (Index of Poems Cited) (4062, 0)", "why": "element is not a single marked-content run"}
 
 ## What Was Changed
 
@@ -318,38 +409,38 @@ Each one:
 |---|---:|
 | document: marked as tagged | 1 |
 | document: DisplayDocTitle | 2 |
-| artifact: "folio, contents page" | 1 |
-| artifact: "running head, Acknowledgments" | 1 |
-| artifact: "folio, Introduction opener" | 1 |
-| artifact: "running head, Introduction" | 2 |
-| artifact: "running head, Chapter One" | 2 |
-| artifact: "folio, Chapter Three opener" | 1 |
-| artifact: "folio, Notes opener" | 1 |
-| artifact: "page number, Notes" | 28 |
+| artifact: "title-page ornament glyph" | 2 |
+| artifact: "folio on opening page" | 5 |
+| artifact: "running head and page number (Acknowledgments)" | 1 |
+| artifact: "running head and page number (Introduction)" | 2 |
+| artifact: "running head and page number (Chapter One)" | 3 |
+| artifact: "running head and page number (Notes to Pages)" | 42 |
+| artifact: "running head and page number (Index)" | 8 |
+| artifact: "running head and page number (Index of Poems Cited)" | 3 |
 | document: title | 1 |
 | document: /Lang | 1 |
-| heading: RoleMap level | 6 |
+| heading: RoleMap level | 5 |
 | heading: merged into next | 7 |
-| heading: merged into prev | 1 |
-| heading: ActualText | 5 |
+| heading: ActualText | 13 |
 | heading: standard tag H1 → H3 (retyped) | 58 |
-| table: header cells marked (work order) | 45 |
+| retype → H1 | 1 |
+| table: header cells marked (work order) | 8 |
 | table: caption made from the title rows | 3 |
 | table: note row → paragraph after the table | 1 |
 | figure: alt text | 1 |
 | list: built | 2 |
 | contents: TOC entries | 11 |
 | contents: TOC built | 1 |
-| notes: Note with /ID | 411 |
+| notes: Note with /ID | 407 |
 | links: /Contents set | 1648 |
-| links: new Link element created | 31 |
-| links: wraps its text | 19 |
-| links: placed after shared text | 5 |
+| links: new Link element created | 37 |
+| links: wraps its text | 18 |
+| links: placed after shared text | 6 |
 | links: note reference wrapped | 1 |
-| links: joined existing Link | 1617 |
-| links: placed beside nearest text | 6 |
+| links: joined existing Link | 1611 |
+| links: placed beside nearest text | 12 |
 | contents: entry wrapped in Reference | 10 |
-| order: empty container removed | 4 |
+| order: empty container removed | 5 |
 | figure: whole page wrapped as one Figure | 2 |
 | figure: alt text from the work order (page figure) | 2 |
 | structure: empty tag removed (proven empty) | 1 |

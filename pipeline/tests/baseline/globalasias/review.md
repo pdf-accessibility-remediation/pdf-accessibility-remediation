@@ -2,13 +2,13 @@
 
 Result: `globalasias_remediated.pdf`
 
-393 pages · run November 14, 2026, at 3:29 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v11.md` (3fd29e7f3ef071ec) · AI cost $0.244 ($0.0006 per page), from the original AI request on November 13, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
+393 pages · run November 15, 2026, at 10:04 PM · model `anthropic/claude-sonnet-5.5` · prompt `workorder_v12.md` (762395b72330c407) · AI cost $0.231 ($0.0006 per page), from the original AI request on November 15, 2026 · this run: no new AI request · tokens: saved reply reused, not counted
 
 Intake: none (already tagged)
 
 Libraries: python 3.13.9 · pikepdf 10.5.1 · pdfplumber 0.11.9 · pypdfium2 5.7.1 · pillow 13.0.0 · fonttools 4.62.1
 
-Time: intake 1.3s · audit 30.6s · reuse saved reply 1.4s · apply 104.0s · verify 61.9s · total 199.2s
+Time: intake 1.7s · audit 52.8s · reuse saved reply 1.6s · apply 104.1s · verify 80.7s · total 240.9s
 
 ## Overview
 
@@ -24,8 +24,8 @@ Time: intake 1.3s · audit 30.6s · reuse saved reply 1.4s · apply 104.0s · ve
 - Accessibility Evaluation: Not Completed
 
 **Safety checks:** OK ✔ pages look the same · OK ✔ text unchanged · OK ✔ all content tagged or decoration · OK ✔ tag-tree index points into the tree · OK ✔ every font readable  
-**Needs a person:** 9 (7 deferred by the AI · 1 deferred by the executor · 1 CHECK row)  
-**AI decisions:** 44 in the work order, applied without review by a person  
+**Needs a person:** 6 (5 deferred by the AI · 1 deferred by the executor · 0 CHECK rows)  
+**AI decisions:** 34 in the work order, applied without review by a person  
 **Fixed automatically (no AI):** links tied and described 4,247 · tag-tree index entries 242 · note IDs 57 · link descriptions that were only a URL 19 · Document root 1 · title shown in the window 1 · empty tags removed 1  
 **veraPDF (WCAG 2.2 machine checks):** 0 WCAG rules failing before (0 checks) → 0 after (0 checks) · 0 newly failing
 
@@ -33,12 +33,12 @@ Automated checks are evidence, not sign-off.
 
 | Top issues | Pages | Where |
 |---|---|---|
-| Executor applied every decision: 6 rejected · 0 failed (listed under "Decisions not applied") | see §13 | [§13](#13-decisions-not-applied-6) |
-| 35 Han-only runs need Japanese or Chinese (han_review.csv) | 18 pages, PDF 52 (printed 37) to PDF 363 (printed 348) | [§12](#12-deferred-by-the-executor) |
-| Index entries have garbled page-number text: the page numbers appear separated from their entries, dropped o… | PDF 368 (printed 353), PDF 386 (printed 371) | [§11](#11-deferred-by-the-ai) |
-| Caption of Figure 5.2 on PDF 318 (printed 303) extracts as reversed or rotated text (“y la p ia dem . n ia a… | PDF 318 (printed 303) | [§11](#11-deferred-by-the-ai) |
-| Pages with no tagged text: PDF 7, 15, 103, 352 and 372–378. | 11 pages, PDF 7 (printed vi) to PDF 378 (printed 363) | [§11](#11-deferred-by-the-ai) |
-| … and 4 more | | §11 |
+| 35 Han-only runs need Japanese or Chinese (han_review.csv) | 18 pages, PDF 52 (printed 37) to PDF 363 (printed 348) | [§11](#11-deferred-by-the-executor) |
+| Cover figure (obj 21024 0) is the last container in the reading order (Article on PDF 1, after the Index) | PDF 1 (printed Cover) | [§10](#10-deferred-by-the-ai) |
+| Caption of Figure 5.2 (map of Afro-Asian conferences) has reversed, garbled text in the text layer (e.g. 'y… | PDF 318 (printed 303) | [§10](#10-deferred-by-the-ai) |
+| Index text layer: page numbers are missing or out of order in many entries (e.g. 'Aboriginal Australians, ,… | PDF 368 (printed 353), PDF 386 (printed 371) | [§10](#10-deferred-by-the-ai) |
+| Single-item and bibliography-style lists in the pedagogy forums (e.g. PDF 345–359) were kept as lists | PDF 345 (printed 330), PDF 359 (printed 344) | [§10](#10-deferred-by-the-ai) |
+| … and 1 more | | §10 |
 
 Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and everything under "For a person to check", need a human.
 
@@ -64,13 +64,13 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 | One Document root | OK | Document 1 |
 | Every link tied to its text and described | OK | 0 unresolved · 0 without description · 0 pointing to no annotation |
 | No link nested inside another | OK | 0 |
-| Headings: no skipped levels | OK | H1 1 · H2 17 · H3 30 · H4 53 · H5 47 |
+| Headings: no skipped levels | OK | H1 1 · H2 17 · H3 23 · H4 56 · H5 51 |
 | Headings: exactly one H1 (the title) | OK | 1 H1 (several H1s usually mean parts or chapters were not demoted) |
 | Figures: none with empty or placeholder alt | OK | 22 figures, 0 placeholder |
 | Every Note has a unique ID | OK | 57 notes · 0 without ID · 0 duplicate · 0 not in the ID tree |
 | Bookmarks present (documents over 9 pages) | OK | 84 bookmarks |
 | Model reply held one work order | OK | one |
-| Executor applied every decision | **CHECK** | 6 rejected · 0 failed (listed under "Decisions not applied") |
+| Executor applied every decision | OK | 0 rejected · 0 failed (listed under "Decisions not applied") |
 | Language tags hold their words | OK | 12 tags checked · 0 not matching their words or language · 32 of the PDF's own tags say another language in their text |
 | Nothing deferred by the executor | **CHECK** | 2 deferred (listed under "Deferred by the executor") |
 | Fonts: every glyph defined (no .notdef) | OK | none found |
@@ -92,78 +92,59 @@ Automated checks are evidence, not legal sign-off. Items marked **CHECK**, and e
 
 ## For a Person to Check
 
-### 1. Alt Text Written or Changed by the AI (20)
+### 1. Alt Text Written or Changed by the AI (21)
 
 | Page | Before | After |
 |---|---|---|
-| PDF 1 (printed Cover) | Global Asias: Tactics & Theories, edited by Tina Chen and Charlotte Eubanks. Cover image shows a Mattang navigation chart, a stick chart made by a Marshallese creator. The chart is in the shape of a square, with interwoven sticks in both straight and curved lines.\x00 | Cover of Global Asias: Tactics & Theories, edited by Tina Chen and Charlotte Eubanks. A Marshallese mattang navigation chart of woven straight and curved sticks on a black background sits above a blue band bearing the title and editors' names, with blue concentric curves and green stripes at the right edge. |
+| PDF 1 (printed Cover) | Global Asias: Tactics & Theories, edited by Tina Chen and Charlotte Eubanks. Cover image shows a Mattang navigation chart, a stick chart made by a Marshallese creator. The chart is in the shape of a square, with interwoven sticks in both straight and curved lines.\x00 | Cover of Global Asias: Tactics & Theories, edited by Tina Chen and Charlotte Eubanks. A Marshallese mattang navigation chart, a square lattice of interwoven straight and curved sticks, sits on a black background above a blue band bearing the title and editors' names. Blue concentric curves and green stripes fill the right and lower corners. |
 | PDF 5 (printed iv) | Logo\x00 | Creative Commons Attribution-NonCommercial-NoDerivatives (CC BY-NC-ND) license logo |
-| PDF 25 (printed 10) | black text on white background, detailing time zones, and daily shedule for conference | Project timeline titled with time zones GMT+8, GMT+1, GMT, GMT-5, GMT-6, GMT-8. A wavy line passes through eight stages from summer 2021 to fall 2022: Make Craft, Embarking, Waypoint: Sounding, Waypoint: Bearing, Waypoint: Deviation, Drifting/Drafting, Parallax and Voyaging. Each stage has a short description of the team's work, from setting keywords and assembling teams to drafting research forums and pedagogical materials and submitting final drafts to the press. |
-| PDF 42 (printed 27) | long banner with white background and random patches of black, purple, brown, and red runnning its length | Rirkrit Tiravanija, Untitled 2008–2011 (the map of the land of feeling) I. Three long horizontal strips of paper, each covered with map-like drawings, mazes, grids and dense black ink marks with accents of red and purple. |
-| PDF 67 (printed 52) | Spilhaus World Ocean Map based on the Spilhause projection world oceans form a singular, contiguous and connected body of water | Oceanic Transits: a Spilhaus World Ocean Map in which the world's oceans form one continuous, connected body of blue water. Continents appear as separate pale landmasses around its edge. Labels mark the Arctic, Atlantic, Pacific and Southern Oceans and places discussed in the forum, including the US South, Kochi, Palestine, Việt Nam, Guåhan, Tokyo, Hawai‘i, South Korea, Alaska, British Columbia and Tulare County. |
-| PDF 72 (printed 57) | flyer format for meeting notes, green, blue, and white text on grey background | Slide of meeting notes titled “Meeting 2: Feb 22 at noon PT (3pm ET)”, light text on a dark grey background. The task is to work out what pedagogical resources the team wants to develop. Sections are headed “Questions and conversations”, “What are we hoping to disrupt?” and “What does it look like?”. Bullet points discuss using transits to rethink syllabi and courses, including mapping exercises, student choice in readings, and linearity versus multiplicity. |
-| PDF 74 (printed 59) | definition of transire in black and white text | Graphic on the etymology of “transit”: Latin trans (across, beyond) plus ire (to go) gives transire (cross over, pass away), then transitus (going over, a passage), then transit (n), mid-15th c., the act of passing across or through. The verb transit lists two senses: 1. To be in motion (transplant, transgress, transfer; translate, transpose, transect; transfuse, transpire; transmigrate, transmute, transmogrify) and 2. To be motionless (transfix: to be still with shock, horror, or awe). |
-| PDF 86 (printed 71) | Confederate flags juxtaposed with South Vietnamese flags at the January 6 insurrection. | Evelyn Hockstein, Storm the Capitol, 2021. A huge US flag hangs over scaffolding in front of the US Capitol dome on January 6, 2021. Among the other flags in the crowd are Confederate and South Vietnamese flags. |
-| PDF 88 (printed 73) | white and purple sheets of paper with text hanging on wires in wooden room | Hương Ngô, And we are still here . . . but we are still here, 2021. Sheets of white and purple paper hang from wires in a wooden-beamed room. Some carry fragmentary printed words, including “We are still here” and a Vietnamese phrase of the same meaning. |
-| PDF 119 (printed 104) | Illustration of adult man in red shirt and short pants smiling at woman in purple gown on a white background with floral design border. | Naturales tagalos (Tagalog natives), a painted page from the “Sino-Spanish Codex” (Boxer Codex) c. 1590. A man in a red tunic and short trousers with gold chains and a dagger stands beside a woman in a purple and gold gown. A floral border with birds and animals frames them. |
-| PDF 138 (printed 123) | Middle aged woman in blue suit stands behind next to middle aged man behind a second podium against a background of text  | Apology ceremony at the Taiwan Presidential Office. A woman in a grey jacket at one podium and an Indigenous elder in a headband and striped shirt at another face each other. The backdrop is covered with the names of Indigenous peoples and the large Chinese characters 真相 和解 (truth, reconciliation) with the year 2016. |
-| PDF 177 (printed 162) | Black text on white background in two columns. One column in Japanese script, one in English. On second page same design, one column in English the other in Arabic. Final column beneath these in English. | Page of a bilingual poem by Lee Chonghwa, “Murmurs as Political Thought (or, A Political Theory of Murmurs): In Search of Ways to See the Sorrow and Things Hidden”, with the English text in the left column and a Japanese translation in the right column. The poem, “Bē/Boat”, is about things we cannot know or consume, interpretation and the frame in which we live, and ends “Nation-state • Ethnos/Race • Man • Woman”. The full text is in the figure image. |
-| PDF 178 (printed 163) | Black text on white background in two columns. One column in Japanese script, one in English. On second page same design, one column in English the other in Arabic. Final column beneath these in English. | Page with two texts. At the top, “The Passport” by Mahmoud Darwish in English (left) and Arabic (right), a poem about not being recognized in a passport and about birds, fields, prisons and eyes. Below it, “Mirror Words” by Don Mee Choi, a prose paragraph in English on translation as an anti-neocolonial mode that creates words which compel disobedience and resistance. |
-| PDF 241 (printed 226) | Black text on white background split into columns on left and right side of page. Divided by dotted black line running down the middle of the page. | Two-page spread of the poem “Beyond English” by Agha Shahid Ali (1949–2001), split by a dotted vertical line. Short couplets each end in “beyond English”, for example “No language is old—or young—beyond English. So what of a common tongue beyond English?”, with blank spaces between them. |
-| PDF 313 (printed 298) | Three maps depict the territory of Kashmir, each showing Kashmir as an extension of either China, Pakistan, or India. | Map titled “The Kashmir region from a Chinese perspective”. China is shown in brown and extends over Aksai Chin and the Shaksgam Valley. The Line of Control is marked, with areas labeled Pakistan-administered Kashmir and Indian-administered Kashmir, bordered by Afghanistan, Pakistan and India. |
-| PDF 313 (printed 298) | Three maps depict the territory of Kashmir, each showing Kashmir as an extension of either China, Pakistan, or India. | Map titled “The Kashmir region from a Pakistani perspective”. Pakistan and the whole Kashmir region, including Gilgit-Baltistan and Azad Jammu and Kashmir, are shaded brown. The Indian-held part is hatched and labeled “Indian illegally occupied Jammu and Kashmir”. The Line of Control and the Siachen Glacier are marked. |
-| PDF 313 (printed 298) | Three maps depict the territory of Kashmir, each showing Kashmir as an extension of either China, Pakistan, or India. | Map titled “The Kashmir region from an Indian perspective”. The Indian Union is shaded brown and includes Ladakh and Jammu and Kashmir (both Union territories), with the Line of Actual Control, Daulat Beg Oldie, the Siachen Glacier and Aksai Chin marked, between China and Pakistan. |
-| PDF 334 (printed 319) | A brick building at night illuminated by neon lights. Beside the entrace a neon sign reads "Pizza Hut." | Pizza Hut sign glowing beside the entrance of a traditional Chinese brick courtyard building at night, with red lanterns and an illuminated wooden signboard in Chinese characters. |
-| PDF 336 (printed 321) | A busy intesection with numerous cars and pedestrians crossing at a crosswalk in the foreground, a city scape in the background. | Busy street intersection in Flushing, Queens, with many pedestrians crossing at a crosswalk in the foreground and storefronts with Chinese and English signs and a green street sign in the background. |
-| PDF 336 (printed 321) | Beige brick building with three signs, one on top of the other, reading "Goon's 1 Stop", "Grocery and Sunderies", "Thank You Come Again." | Goon's Grocery Store, Clarksdale, Mississippi: a beige brick building with a roadside sign reading “Goon's 1 Stop”, “Grocery and Sundries” and “Thank You Come Again”, and a sign above the windows reading “Goon's Package Store”. |
+| PDF 25 (printed 10) | black text on white background, detailing time zones, and daily shedule for conference | Timeline of the project's collaborative journey, from summer 2021 to fall 2022, with time zones GMT+8 to GMT-8 shown above a tangle of lines. Eight stages follow in order: Make Craft (conceptualize the project and recruit colleagues); Embarking (assemble teams and set up infrastructure); Waypoint: Sounding (keyword team meetings); Waypoint: Bearing (research questions); Waypoint: Deviation (imagine pedagogical materials); Drifting/Drafting (draft forum materials); Parallax (hybrid summer institute); Voyaging (final drafts submitted to the press). |
+| PDF 42 (printed 27) | long banner with white background and random patches of black, purple, brown, and red runnning its length | Rirkrit Tiravanija's artwork Untitled 2008–2011 (the map of the land of feeling): three stacked horizontal strips of paper covered in map-like drawings, labyrinths and grid patterns in black and red ink, each crossed by a pale purple band. |
+| PDF 67 (printed 52) | Spilhaus World Ocean Map based on the Spilhause projection world oceans form a singular, contiguous and connected body of water | Spilhaus World Ocean Map, which shows the world's oceans as one continuous body of water, with the continents split apart around it. Labeled areas include the Atlantic, Pacific, Southern and Arctic Oceans, Africa, Europe, Asia, Australia, Antarctica, the Americas, and sites discussed in the book such as Kochi, Tokyo, Hawai‘i, Guåhan, Viêt Nam, South Korea, Palestine and Tulare County. |
+| PDF 72 (printed 57) | flyer format for meeting notes, green, blue, and white text on grey background | Screenshot of meeting notes titled 'Meeting 2: Feb 22 at noon PT (3pm ET)', in green and white text on a dark gray background. The task is to decide what pedagogical resources the team wants to develop. Sections are 'Questions and Conversations', 'What Are We Hoping to Disrupt?' (linearity, singularity, rigid structure) and 'What Does It Look Like?'. Bullets discuss using transits to rethink syllabi, readings, exercises and courses. |
+| PDF 74 (printed 59) | definition of transire in black and white text | Typed word-origin diagram titled 'Interlude'. The Latin roots trans (across, beyond) and ire (to go) give transire (cross over, pass away) and transitus (going over, a passage), then the English noun transit (mid-15th century: the act of passing across or through). The verb transit has two sets of senses: 1. To be in motion (transplant, translate, transfuse, transmigrate and others), and 2. To be motionless (transfix: to be still with shock, horror or awe). |
+| PDF 86 (printed 71) | Confederate flags juxtaposed with South Vietnamese flags at the January 6 insurrection. | Photograph of the January 6, 2021 attack on the US Capitol: a rioters' scaffold in front of the Capitol dome is draped with a giant American flag. Among the many flags flying are a Confederate battle flag and the yellow-and-red South Vietnamese flag. |
+| PDF 88 (printed 73) | white and purple sheets of paper with text hanging on wires in wooden room | Art installation by Hương Ngô: white and purple sheets of printed paper hang from wires beneath a wooden-beamed ceiling. The text on them, in English and Vietnamese, reads 'we are still here'. |
+| PDF 119 (printed 104) | Illustration of adult man in red shirt and short pants smiling at woman in purple gown on a white background with floral design border. | Painted illustration labeled 'Naturales Tagalos' from the Sino-Spanish (Boxer) Codex, c. 1590: a Tagalog man in a red tunic and shorts with a red headband, gold chains and a dagger stands beside a woman in a long purple gown with gold trim. A floral border with birds surrounds them. |
+| PDF 138 (printed 123) | Middle aged woman in blue suit stands behind next to middle aged man behind a second podium against a background of text  | Photograph of the 2016 apology ceremony at the Taiwan Presidential Office. A woman in a gray jacket and an older Indigenous man in a striped shirt, headband and loincloth speak at separate podiums. Behind them, large gold characters meaning 'truth and reconciliation 2016' are set against a field of names of Taiwan's Indigenous peoples. |
+| PDF 177 (printed 162) | Black text on white background in two columns. One column in Japanese script, one in English. On second page same design, one column in English the other in Arabic. Final column beneath these in English. | Page of bilingual poetry. The left column is in English: 'Murmurs as Political Thought (or, A Political Theory of Murmurs): In Search of Ways to See the Sorrow and Things Hidden' by Lee Chonghwa, a poem about 'Bē/Boat' that reflects on things we don't know and cannot consume, and on the word 'bē', which means stomach in Korean and boat in Japanese. The right column gives the same text in Japanese. |
+| PDF 178 (printed 163) | Black text on white background in two columns. One column in Japanese script, one in English. On second page same design, one column in English the other in Arabic. Final column beneath these in English. | Page of bilingual poetry. At the top is Mahmoud Darwish's poem 'The Passport', in English on the left and Arabic on the right, about not being recognized, with the lines 'Drop them from this passport!'. Below it, centered, is Don Mee Choi's short prose piece 'Mirror Words', on translation as an anti-neocolonial mode and on 'mirror words' that compel disobedience. |
+| PDF 241 (printed 226) | Black text on white background split into columns on left and right side of page. Divided by dotted black line running down the middle of the page. | Two facing pages divided by a dotted vertical line, with Agha Shahid Ali's 'Beyond English' as short couplets ending with 'beyond English' and gaps between the pairs, for example 'No language is old—or young—beyond English. So what of a common tongue beyond English?' and 'Snowflakes on my lips, silence stung beyond English.' The poem is signed at lower right: 'Beyond English', Agha Shahid Ali (1949–2001). |
+| PDF 313 (printed 298) | Three maps depict the territory of Kashmir, each showing Kashmir as an extension of either China, Pakistan, or India. | Map titled 'The Kashmir region from a Chinese perspective'. China and the Aksai Chin and Shaksgam Valley areas are shaded; Pakistan-administered and Indian-administered Kashmir are shown unshaded, separated by the Line of Control, near the Siachen Glacier. Afghanistan, Pakistan and India are labeled, with a small inset showing China. |
+| PDF 313 (printed 298) | Three maps depict the territory of Kashmir, each showing Kashmir as an extension of either China, Pakistan, or India. | Map titled 'The Kashmir region from a Pakistani perspective'. Pakistan, including Gilgit-Baltistan and Azad Jammu and Kashmir, is shaded, and the Line of Control is marked. A hatched area is labeled 'Indian illegally occupied Jammu and Kashmir', and the frontier with China is marked 'Frontier undefined'. An inset shows Pakistan. |
+| PDF 313 (printed 298) | Three maps depict the territory of Kashmir, each showing Kashmir as an extension of either China, Pakistan, or India. | Map titled 'The Kashmir region from an Indian perspective'. The whole region, with Ladakh and Jammu and Kashmir as Union territories, is shaded as part of the Indian Union. The Line of Actual Control, Daulat Beg Oldie, Siachen Glacier and Aksai Chin are marked. An inset shows India. |
+| PDF 318 (printed 303) | Map of the world showing Afro-Asian connections, with multiple lines indicating individuals who traveled to attend conferences.  | World map, rotated sideways, covered with green, yellow and red lines that converge on black dots marking conference sites: Asian Women's Conference, Asian Socialist Conference, Asian-African Conference, Afro-Asian Writers' Conference, Afro-Asian People's Solidarity Organisation Conference, Second Afro-Asian People's Solidarity Organisation Conference, and All-Africa People's Conference. The lines show the routes of people who traveled to attend them, linking Asia and Africa. |
+| PDF 334 (printed 319) | A brick building at night illuminated by neon lights. Beside the entrace a neon sign reads "Pizza Hut." | Night photograph of a traditional Chinese-style brick gatehouse in a historic Beijing hutong, lit by white lights and hung with red lanterns. Beside the entrance, a neon sign reads 'Pizza Hut'. |
+| PDF 336 (printed 321) | A busy intesection with numerous cars and pedestrians crossing at a crosswalk in the foreground, a city scape in the background. | Busy intersection in Flushing, Queens, seen from above: pedestrians cross at a crosswalk in the foreground, cars wait at the light, and shopfronts with Chinese and English signs line the far side of the street. |
+| PDF 336 (printed 321) | Beige brick building with three signs, one on top of the other, reading "Goon's 1 Stop", "Grocery and Sunderies", "Thank You Come Again." | Beige brick storefront with a sign reading 'Goon's Package Store' and a pole sign reading 'Goon's 1 Stop', 'Grocery and Sundries' and 'Thank You Come Again', next to utility poles and wires under a blue sky. |
 
-### 2. Figures That Kept Their Existing Alt Text (2)
+### 2. Figures That Kept Their Existing Alt Text (1)
 
 Not changed by the AI. Check they are adequate.
 
 | Page | Alt text |
 |---|---|
 | PDF 297 (printed 282) | A blue orb with yellow flecks and an orange orb rest against a grey background, bordered in yellow. |
-| PDF 318 (printed 303) | Map of the world showing Afro-Asian connections, with multiple lines indicating individuals who traveled to attend conferences.  |
 
 ### 3. Headings
 
-Merged: `TPST` into the prev `TPT`
+Heading levels by style (as applied):
 
-Spoken text set by the AI (should match what is printed):
+| Style | Level | How | Elements |
+|---|---|---|---:|
+| TPST | P | RoleMap | 1 |
 
-| Page | Text |
-|---|---|
-| PDF 4 (printed iii) | Global Asias Tactics & Theories |
-| PDF 28 (printed 13) | Editors’ Introduction Acts of Suspension |
-| PDF 67 (printed 52) | Interleaf—Oceanic Transits |
-| PDF 119 (printed 104) | Interleaf—“Naturales tagalos” |
-| PDF 241 (printed 226) | Interleaf—“Beyond English” |
-| PDF 297 (printed 282) | Interleaf—New Roots/New Routes |
-
-### 4. Elements Retyped by the AI (4)
+### 4. Elements Retyped by the AI (3)
 
 Check each one is (or is not) a heading as decided.
 
 | Page | Text | Before | After |
 |---|---|---|---|
-| PDF 117 (printed 102) | Notes to Convergence 1 | H5 | H3 |
-| PDF 175 (printed 160) | Notes to Convergence 2 | H5 | H3 |
-| PDF 295 (printed 280) | Notes to Convergence 4 | H5 | H3 |
-| PDF 360 (printed 345) | Notes to Convergence 5 | H5 | H3 |
+| PDF 37 (printed 22) | Concept 1: Relational Nonalignment | H3 | H4 |
+| PDF 39 (printed 24) | Concept 2: Structural Dissonance | H3 | H4 |
+| PDF 40 (printed 25) | Concept 3: Imaginable Ageography | H3 | H4 |
 
-### 5. Spoken Text (ActualText) Checked Against the Print (1 accepted with differences, 5 rejected)
-
-A spoken text may differ from the printed characters only in spacing, letter case and line-end hyphens (sponsor rule 1). Accepted ones that differ are listed so a person can listen to them; rejected ones added or changed words or punctuation.
-
-- Accepted, PDF 4 (printed iii): printed "Global Asias Tactics & Theories" → spoken "Global Asias Tactics & Theories"
-- **Rejected**, PDF 28 (printed 13): printed "Editors’­Introduction Acts of Suspension" → spoken "Editors’ Introduction Acts of Suspension"
-- **Rejected**, PDF 67 (printed 52): printed "Interleaf—O­ceanic­Transits" → spoken "Interleaf—Oceanic Transits"
-- **Rejected**, PDF 119 (printed 104): printed "Interleaf–­“Naturales­tagalos”" → spoken "Interleaf—“Naturales tagalos”"
-- **Rejected**, PDF 241 (printed 226): printed "Interleaf—­“Beyond­­English”" → spoken "Interleaf—“Beyond English”"
-- **Rejected**, PDF 297 (printed 282): printed "Interleaf—New ­ ­Roots/New­Routes" → spoken "Interleaf—New Roots/New Routes"
-
-### 6. Links Whose Description Was Only a URL (19)
+### 5. Links Whose Description Was Only a URL (19)
 
 The description (what a screen reader announces) was set to the book's own sentence around the link, with the URL removed. No words were added and the visible URL is unchanged. Replace any of these with a better description if needed.
 
@@ -189,13 +170,13 @@ The description (what a screen reader announces) was set to the book's own sente
 | PDF 359 (printed 344) | https://digital.library.cornell.edu/catalog/ss:3293857 | Cornell University Library. |
 | PDF 359 (printed 344) | https://fordschool.umich.edu/news/2021/anti-asian-hate-poverty-solutions-supports-u-m-chronicle-location-nature-more-1000 | Map of anti- Asian racism incidents since the COVID-19 pandemic. |
 
-### 7. Empty Tags (1 removed, 0 kept)
+### 6. Empty Tags (1 removed, 0 kept)
 
 A tag is removed only when proven empty: nothing under it holds content, it carries no Alt, ActualText, E or ID, and nothing in the file refers to it except its parent. Table cells are never removed one by one; a table goes only when every part is empty.
 
 - Removed: 1 IX
 
-### 8. Tag-tree Index Entries Cleared (242)
+### 7. Tag-tree Index Entries Cleared (242)
 
 Entries that pointed at a tag no longer in the tag tree (left by the source file, or by a tag the run removed). Nothing reads such a tag; no page, text or reachable tag changed.
 
@@ -277,7 +258,7 @@ Entries that pointed at a tag no longer in the tag tree (left by the source file
 - ParentTree, PDF 359 (printed 344): MCID 19383 (Span)
 - ParentTree, entries not tied to page content (annotations, forms, or keys nothing uses): key 152 MCID 5805 (Span), key 152 MCID 5806 (CT), key 152 MCID 5808 (CST), key 152 MCID 5810 (Span), key 434 MCID 12892 (Span), key 434 MCID 12893 (CT), key 434 MCID 12894 (CST), key 434 MCID 12896 (Span), key 514 MCID 16132 (Span), key 514 MCID 16133 (CT), key 514 MCID 16135 (CST)
 
-### 9. veraPDF (WCAG 2.2 machine profile), Before and After
+### 8. veraPDF (WCAG 2.2 machine profile), Before and After
 
 veraPDF 1.30.3, profile "WCAG 2.2 machine validation profile" (7da399cf5baa). Counts are failed checks; pages are from the first checks veraPDF lists for each rule, so a rule may fail on more pages. Rules that only PDF/UA requires are listed apart and do not count. "Who fixes" is who can act on the rule: the pipeline by itself, the AI through the work order, or only a person. **Newly failing** means this run broke something the original passed. Before: 0 rules failing (the AI can act on 0, the pipeline on 0, only a person on 0). After: 0.
 
@@ -285,42 +266,29 @@ PDF/UA-only, not required for WCAG (not counted):
 
 - 7.21.5-1: glyph width consistency (2 checks, PDF 25 (printed 10), PDF 74 (printed 59)), still failing
 
-### 10. WCAG Checks veraPDF Does Not Make
+### 9. WCAG Checks veraPDF Does Not Make
 
 Each item is something to look at, not a proven failure.
 
 - 1.3.2 1 section read away from its printed place, as in the original (this run did not move it). Listen through each where it is read, or move it with move_section:
   - PDF 1 (printed Cover): Article, read after PDF 386 (printed 371)
 
-### 11. Deferred by the AI
+### 10. Deferred by the AI
 
-- **Index entries have garbled page-number text: the page numbers appear separated from their entries, dropped or run together, e.g. “Aboriginal Australians, , , –, , 148 151 155156 300 301”. Reading order of the index columns is also doubtful.**: A person must check the index text layer. This work order can't safely repair the text. [PDF 368 (printed 353), PDF 386 (printed 371)]
-- **Caption of Figure 5.2 on PDF 318 (printed 303) extracts as reversed or rotated text (“y la p ia dem . n ia as ro f a//:spt …”).**: The printed caption can't be reliably read from the digest, so no ActualText was written. A person should supply the caption text. [PDF 318 (printed 303)]
-- **Pages with no tagged text: PDF 7, 15, 103, 352 and 372–378.**: These are probably blank pages or end matter; a person should confirm they hold no real content. [PDF 7 (printed vi), PDF 15 (printed xiv), PDF 103 (printed 88), PDF 352 (printed 337), PDF 372 (printed 357), PDF 373 (printed 358), PDF 374 (printed 359), PDF 375 (printed 360), PDF 376 (printed 361), PDF 377 (printed 362), PDF 378 (printed 363)]
-- **Interleaf page PDF 27 (printed 12) has three arrangements of the same phrases (“Where to begin?” with five-line lists, styles TXCL/TXCR/TXCF/TXCLL).**: The reading order and meaning of this visual layout need human review. [PDF 27 (printed 12)]
-- **Text layer has spurious spaces and breaks inside words (e.g. “pro cesses”, “Amer i ca”, “Lite r a ture”) and soft hyphens.**: This comes from the layout font and may be read letter by letter. The text can't be changed here; a person should check with a screen reader. [PDF 12 (printed xi), PDF 13 (printed xii), PDF 14 (printed xiii), PDF 16 (printed 1), PDF 28 (printed 13)]
-- **Several single-item bulleted lists in the Pedagogy Forum of Convergence 5, and bibliographic bullet lists.**: They were kept as lists; a reviewer may prefer paragraphs. [PDF 345 (printed 330), PDF 346 (printed 331), PDF 347 (printed 332), PDF 348 (printed 333), PDF 349 (printed 334), PDF 350 (printed 335)]
-- **Poem with Japanese text at the top of PDF 290 (printed 275) shows “()” in the extracted text, and other CJK passages.**: Language tagging is handled by the language step; the odd “()” glyphs need a person's check. [PDF 290 (printed 275), PDF 291 (printed 276)]
+- **Cover figure (obj 21024 0) is the last container in the reading order (Article on PDF 1, after the Index)**: The cover should be read first. It sits inside the Document in an Article rather than at the tree root, so move_to_document_start does not clearly apply. A person should move it to the start. [PDF 1 (printed Cover)]
+- **Caption of Figure 5.2 (map of Afro-Asian conferences) has reversed, garbled text in the text layer (e.g. 'y la p ia dem . n ia as ro f a//:spt …')**: The caption is set rotated and extracts in reverse order. ActualText would be needed, but the caption's obj is not in the digest and the printed text can't be read here. [PDF 318 (printed 303)]
+- **Index text layer: page numbers are missing or out of order in many entries (e.g. 'Aboriginal Australians, , , –, , 148 151 155156 300 301'), and the two-column layout runs together in places (e.g. 'Asian futurisms, 294 Berry, Michael, 147')**: Fixing this would change or reorder the published text, which this work order cannot do. A person needs to review the index tagging and reading order. [PDF 368 (printed 353), PDF 386 (printed 371)]
+- **Single-item and bibliography-style lists in the pedagogy forums (e.g. PDF 345–359) were kept as lists**: The bullets and items are real, but some one-item lists may be better as plain paragraphs. A reviewer can decide. [PDF 345 (printed 330), PDF 359 (printed 344)]
+- **Check the reading order of the two-column bilingual poem pages and the rotated map page**: Pages 177–178 and 241 are figures that hold text; pages 290–291 and 303 hold Japanese text or rotated content. The text layer there looked unusual (e.g. '()' on PDF 275 and a lone 'y' on PDF 303). [PDF 177 (printed 162), PDF 178 (printed 163), PDF 241 (printed 226), PDF 275 (printed 260), PDF 290 (printed 275), PDF 291 (printed 276), PDF 303 (printed 288)]
 
-Reviewer note from the AI: The publisher's tagging is already good. The roles are H1 title, H2 front matter, chapters and interleaves, H3 forums and sections, H4 essays and H5 sub-sections. The work order merges the subtitle into the H1 and sets ActualText on several headings whose soft hyphens drop word spaces. The per-chapter endnote headings (“Notes to Convergence n”) are retyped from H5 to H3. The NUL-corrupted alt text on the cover and the Creative Commons logo is replaced. Alt text is rewritten for most images; Figure obj 1847 0, 1848 0 and 1849 0 each get a distinct map description. The cover figure is moved to the start of the reading order. The executor handles Document root, links and bookmarks. The TOC and Notes tags already exist; only the notes styles are marked as Note. veraPDF reported no fixable rules.
+Reviewer note from the AI: The tree is already well tagged by InDesign, with a clean heading hierarchy: H1 title, H2 chapters and front/back matter, H3 forums and sections, H4 essays, H5 subsections. Changes made: the subtitle 'Tactics & Theories' (TPST) is mapped to P so only one H1 and no stray H2 sits on the title page; Concept 1–3 headings (PDF 37, 39, 40) are demoted to H4 under 'Orientation'; alt text is written or replaced for all figures, including two with NUL characters and three Kashmir maps and two poetry pages that shared identical alt text; and the endnote style NTX is set to Note. The executor handles links, bookmarks and the TOC, which is already tagged TOC/TOCI. No running heads were found in the digest, so none are artifacted. CJK and other-language passages are left to the language step.
 
-### 12. Deferred by the Executor
+### 11. Deferred by the Executor
 
 - **35 Han-only CJK runs** need a Japanese / Chinese decision: fill in `han_review.csv`.
 - the source file already claims PDF/UA conformance: not verified by this pipeline; check it with PAC before relying on it
 
-### 13. Decisions Not Applied (6)
-
-Rejected by validation or by the executor; nothing was half-applied.
-
-- {"op": "actual_text 18548 0", "why": "the spoken text adds or changes words or punctuation (sponsor rule 1): printed \"Editors’­Introduction Acts of Suspension\", spoken \"Editors’ Introduction Acts of Suspension\""}
-- {"op": "actual_text 16322 0", "why": "the spoken text adds or changes words or punctuation (sponsor rule 1): printed \"Interleaf—O­ceanic­Transits\", spoken \"Interleaf—Oceanic Transits\""}
-- {"op": "actual_text 18516 0", "why": "the spoken text adds or changes words or punctuation (sponsor rule 1): printed \"Interleaf–­“Naturales­tagalos”\", spoken \"Interleaf—“Naturales tagalos”\""}
-- {"op": "actual_text 16459 0", "why": "the spoken text adds or changes words or punctuation (sponsor rule 1): printed \"Interleaf—­“Beyond­­English”\", spoken \"Interleaf—“Beyond English”\""}
-- {"op": "actual_text 14996 0", "why": "the spoken text adds or changes words or punctuation (sponsor rule 1): printed \"Interleaf—New ­ ­Roots/New­Routes\", spoken \"Interleaf—New Roots/New Routes\""}
-- {"op": "move_section", "why": "1 candidate sections, host found: False"}
-
-### 14. Language Tags
+### 12. Language Tags
 
 Words and passages in another language get a language tag, so a screen reader switches to that language's voice (WCAG 3.1.2). Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.
 
@@ -332,10 +300,9 @@ Words and passages in another language get a language tag, so a screen reader sw
 | document: title | 1 |
 | document: DisplayDocTitle | 1 |
 | document: /Lang | 1 |
-| heading: merged into prev | 1 |
-| heading: ActualText | 1 |
-| retype → H3 | 4 |
-| figure: alt text | 20 |
+| heading: RoleMap level | 1 |
+| retype → H4 | 3 |
+| figure: alt text | 21 |
 | notes: Note with /ID | 57 |
 | language: ja on existing Span | 10 |
 | language: ko on existing Span | 2 |

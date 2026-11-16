@@ -5,9 +5,8 @@
    "document: DisplayDocTitle": 1,
    "document: second Document root merged": 1,
    "document: title": 1,
-   "figure: alt text": 20,
-   "heading: ActualText": 1,
-   "heading: merged into prev": 1,
+   "figure: alt text": 21,
+   "heading: RoleMap level": 1,
    "language: /Lang spelling tidied": 32,
    "language: ja on existing Span": 10,
    "language: ko on existing Span": 2,
@@ -16,14 +15,14 @@
    "links: already tied to a Link inside the document": 218,
    "links: joined existing Link": 4029,
    "notes: Note with /ID": 57,
-   "retype → H3": 4,
+   "retype → H4": 3,
    "structure: empty tag removed (proven empty)": 1,
    "tag tree index: entries pointing outside the tree cleared (ParentTree)": 242
   },
   "deferred": 2,
   "empty_notes_removed": 0,
   "failed": 0,
-  "rejected": 6
+  "rejected": 0
  },
  "validation_dropped": [],
  "verapdf": {
@@ -62,9 +61,9 @@
   "headings": {
    "H1": 1,
    "H2": 17,
-   "H3": 30,
-   "H4": 53,
-   "H5": 47
+   "H3": 23,
+   "H4": 56,
+   "H5": 51
   },
   "pixel_pages_differing": [],
   "skipped_levels": [],
@@ -84,16 +83,16 @@
    "Figure": 22,
    "H1": 1,
    "H2": 17,
-   "H3": 30,
-   "H4": 53,
-   "H5": 47,
+   "H3": 23,
+   "H4": 56,
+   "H5": 51,
    "L": 40,
    "LBody": 161,
    "LI": 160,
    "Lbl": 160,
    "Link": 4019,
    "Note": 57,
-   "P": 2288,
+   "P": 2289,
    "Span": 1965,
    "TOC": 10,
    "TOCI": 78

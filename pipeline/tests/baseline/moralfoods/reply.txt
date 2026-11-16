@@ -7,16 +7,12 @@
   },
   "artifacts": {
     "text_rules": [
-      {"label": "running head p7", "pages": [7, 7], "regex": "vi|Contents|vi Contents", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "running head p8", "pages": [8, 8], "regex": "vii|Contents|Contents vii", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "running head p15", "pages": [15, 15], "regex": "2|Introduction|2 Introduction", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "running head p16", "pages": [16, 16], "regex": "3|Caldwell and Leung|Caldwell and Leung 3", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "running head p349", "pages": [349, 349], "regex": "336|Index|336 Index", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "running head p350", "pages": [350, 350], "regex": "337|Index|Index 337", "band": "top", "type": "Pagination", "subtype": "Header"},
-      {"label": "folio p6", "pages": [6, 6], "regex": "v", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
-      {"label": "folio p14", "pages": [14, 14], "regex": "1", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
-      {"label": "folio p79", "pages": [79, 79], "regex": "66", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
-      {"label": "folio p348", "pages": [348, 348], "regex": "335", "band": "bottom", "type": "Pagination", "subtype": "Footer"}
+      {"label": "front matter running heads and folios", "pages": [6, 8], "regex": "(?:Contents )?[ivx]+(?: Contents)?", "band": "any", "type": "Pagination"},
+      {"label": "introduction running heads and folios (top)", "pages": [14, 16], "regex": "(?:Caldwell and Leung )?\\d+(?: Introduction)?", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "introduction running heads and folios (bottom)", "pages": [14, 16], "regex": "(?:Caldwell and Leung )?\\d+(?: Introduction)?", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "chapter 3 opening folio", "pages": [79, 79], "regex": "\\d+", "band": "bottom", "type": "Pagination", "subtype": "Footer"},
+      {"label": "index running heads and folios (top)", "pages": [348, 350], "regex": "(?:Index )?\\d+(?: Index)?", "band": "top", "type": "Pagination", "subtype": "Header"},
+      {"label": "index running heads and folios (bottom)", "pages": [348, 350], "regex": "(?:Index )?\\d+(?: Index)?", "band": "bottom", "type": "Pagination", "subtype": "Footer"}
     ]
   },
   "document": {
@@ -25,29 +21,23 @@
     "display_doc_title": true
   },
   "rolemap": {
-    "TPT": "H1",
     "TPHT": "P",
     "TPST": "P",
     "FMH": "H2",
-    "BMH": "H2",
     "CT": "H2",
     "CST": "P",
     "PN": "P",
     "PT": "H2",
     "_H1_": "H3",
+    "H2": "H4",
     "ENH": "H3",
-    "H2": "H4"
+    "BMH": "H2"
   },
   "merges": [
-    {"style": "PN", "direction": "next", "with": ["PT"]},
     {"style": "CST", "direction": "prev", "with": ["CT"]},
-    {"style": "TPST", "direction": "prev", "with": ["TPT"]}
+    {"style": "PN", "direction": "next", "with": ["PT"]}
   ],
   "actual_text": [
-    {"obj": "12407 0", "text": "Moral Foods THE CONSTRUCTION OF NUTRITION AND HEALTH IN MODERN ASIA"},
-    {"obj": "7601 0", "text": "Part I GOOD FOODS"},
-    {"obj": "8061 0", "text": "Part II BAD FOODS"},
-    {"obj": "8574 0", "text": "Part III MORAL FOODS"},
     {"obj": "7509 0", "text": "Introduction Food and Health: Fortification and Modern Asian State Making"},
     {"obj": "7603 0", "text": "1 Health, Wealth, and Solidarity Rice as Self in Japan and Malaysia"},
     {"obj": "7739 0", "text": "2 Confronting the Cow Soybean Milk and the Fashioning of a Chinese Dairy Alternative"},
@@ -61,30 +51,33 @@
     {"obj": "8674 0", "text": "10 To Build or to Transform Vegetarian China Two Republican Projects"},
     {"obj": "8791 0", "text": "11 From Civilizing Foods for Nourishing Life to a Global Traditional Chinese Medicine Dietetics Changing Perceptions of Foods in Chinese Medicine"},
     {"obj": "8899 0", "text": "12 Good Food, Bad Bodies Lactose Intolerance and the Rise of Milk Culture in China"},
-    {"obj": "12431 0", "text": "Acknowledgments ix"}
+    {"obj": "7601 0", "text": "Part I GOOD FOODS"},
+    {"obj": "8061 0", "text": "Part II BAD FOODS"},
+    {"obj": "8574 0", "text": "Part III MORAL FOODS"}
   ],
   "alt": [
-    {"obj": "7439 0", "alt": "Map of China in the 1940s showing Japanese-occupied areas. Areas under Japanese occupation are shaded gray along the northeast and east coast, covering parts of Hebei, Shanxi, Shandong, Henan, Jiangsu and Anhui, with Shanghai marked on the coast. Korea and Taiwan are shown in black as Japanese colonies. Chongqing, the wartime capital, is marked in the southwest within territory under Chinese rule. Outer Mongolia, and territory held by Britain (India, Burma) and France (Indochina), are shown as western-power or neighboring areas. The legend also marks railroads, Great Walls, lakes and rivers. Source: GIS Center, Academia Sinica, Taipei."},
-    {"obj": "7441 0", "alt": "Line chart of annual per capita consumption of rice, wheat, and barley in South Korea, 1970–2016. Rice falls steadily from 136.4 to 71.2. Wheat stays roughly level at 26 to 37, ending at 35.0. Barley falls sharply from about 37 in the early 1970s to 1.3 at the end. Wheat overtakes barley by the late 1970s and approaches rice by the end. Drawn by the author from Korean Statistical Information Service data."},
-    {"obj": "7443 0", "alt": "Black-and-white photograph of the interior of the Central Market, Hong Kong, 1895 (upper floor shops). A long empty hall with an exposed pitched roof truss ceiling and a central aisle, lined on both sides with open wooden stalls and benches. The mount is labeled \"City of Victoria Hong Kong, Central Market 1895\" and \"Shops, Upper Floor.\" The National Archives of the UK, Colonial Office Records."},
-    {"obj": "7445 0", "alt": "Black-and-white photograph of the interior of the cattle slaughter house, Hong Kong, 1894. An empty hall with timber roof beams, a wet concrete floor, iron posts and winch wheels, and dark stalls along the back wall. The mount is labeled \"City of Victoria Hong Kong\" and \"Cattle Slaughter House (Interior).\" The National Archives of the UK, Colonial Office Records."},
-    {"obj": "7447 0", "alt": "The Chinese Food Pagoda, 2016, titled in Chinese \"Chinese Residents' Balanced Diet Pagoda (2016).\" A five-tier pagoda illustration with the broadest tier at the bottom holding grains and staple foods, then vegetables and fruits, then fish, meat and eggs. The second-highest tier, with milk, cheese and other dairy products on its left side, sits below a small top tier with oil and seasonings. A running figure and a glass of water at the left carry the note \"6,000 steps a day.\" Used with permission from the Chinese Nutrition Society."},
-    {"obj": "7449 0", "alt": "The Food Guide Pyramid of the United States Department of Agriculture, 1992, titled \"A Guide to Daily Food Choices.\" The pyramid has four levels. The base is the Bread, Cereal, Rice and Pasta group, 6 to 11 servings. Above it are the Vegetable group (3 to 5 servings) and the Fruit group (2 to 4 servings). Above those are the Milk, Yogurt and Cheese group (2 to 3 servings) on the left and the Meat, Poultry, Fish, Dry Beans, Eggs and Nuts group (2 to 3 servings) on the right. At the tip are Fats, Oils and Sweets, \"use sparingly.\" Dairy sits on the left of the second-highest tier, as in the later Chinese pagoda. Courtesy of the U.S. Department of Agriculture."},
-    {"obj": "7451 0", "alt": "The 2016 Balanced Diet Plate for Chinese, titled in Chinese \"Chinese Residents' Balanced Diet Plate (2016).\" A round plate is divided by a curved yin-yang-like line into four sections: grains and tubers (the largest), fish, meat, eggs and beans, vegetables, and fruits. Beside the plate are a cup marked \"milk,\" chopsticks and a spoon. Used with permission from the Chinese Nutrition Society."}
+    {"obj": "7439 0", "alt": "Map of China in the 1940s showing Japanese-occupied areas. Japanese-occupied territory (gray) covers the north and east, from the Inner Mongolia border and Hebei through Shanxi, Shandong, Henan, Jiangsu and Anhui to Shanghai and Zhejiang. Korea and Taiwan are shown in black as Japanese colonies, and India, Burma and Indochina as territories under western powers. Territories under Chinese rule, white, lie in the west and southwest, with the wartime capital Chongqing marked. Railroads, Great Walls, lakes and rivers are also drawn."},
+    {"obj": "7441 0", "alt": "Line chart of annual per capita consumption of rice, wheat and barley in South Korea, 1970–2016. Rice falls steadily from 136.4 to 71.2. Wheat stays almost flat at about 30 to 37, ending at 35.0. Barley drops sharply from 37.3 to 1.3 by the late 1980s."},
+    {"obj": "7443 0", "alt": "Photograph from 1895 of the upper floor of the Central Market, Hong Kong: a long, empty hall under a timber-trussed pitched roof, with rows of wooden shop stalls and benches on both sides of a central aisle."},
+    {"obj": "7445 0", "alt": "Photograph from 1894 of the interior of the cattle slaughterhouse in Hong Kong: an empty, wet-floored hall with exposed roof beams, iron columns and winch machinery along the back wall."},
+    {"obj": "7447 0", "alt": "The Chinese Food Pagoda, 2016, titled in Chinese as the Chinese Residents' Balanced Diet Pagoda. A five-tier pagoda shows food groups from top to bottom: a cup and spoon at the peak; dairy products, with milk on the left, and soy products; fish, meat and eggs; vegetables and fruit; and grains and tubers at the base. A jogger and a glass of water are beside it, with the note to walk 6,000 steps daily."},
+    {"obj": "7449 0", "alt": "The US Department of Agriculture Food Guide Pyramid, 1992, titled 'A Guide to Daily Food Choices'. From the tip down: fats, oils and sweets (use sparingly); the milk, yogurt and cheese group (2–3 servings) beside the meat, poultry, fish, dry beans, eggs and nuts group (2–3 servings); the vegetable group (3–5 servings) beside the fruit group (2–4 servings); and the bread, cereal, rice and pasta group (6–11 servings) at the base. Dairy sits on the left of the second-highest tier."},
+    {"obj": "7451 0", "alt": "The 2016 Balanced Diet Plate for Chinese, with Chinese labels. A round plate is divided into four sections: grains and tubers (largest), fish, meat, eggs and beans, vegetables, and fruit. Beside it are a cup of milk, chopsticks and a spoon."}
   ],
   "page_figures": [
-    {"page": 1, "alt": "Cover of Moral Foods: The Construction of Nutrition and Health in Modern Asia, edited by Angela Ki Che Leung and Melissa L. Caldwell. On a dark background, one photograph shows a green rice stalk heavy with grain and another shows a bowl of white cooked rice sprinkled with seeds. The title \"Moral Foods\" appears in large yellow-green capitals, with the subtitle in pale yellow beneath the editors' names."}
+    {"page": 1, "alt": "Book cover: two photographs, a green rice plant on the left and a bowl of white rice sprinkled with seeds on the right, on a dark background. Title: Moral Foods: The Construction of Nutrition and Health in Modern Asia. Edited by Angela Ki Che Leung and Melissa L. Caldwell."}
   ],
   "captions": {"style": "CAP"},
-  "toc": {"item_styles": ["CFMHF", "CPT", "CCT", "CCT1", "CCA", "CBMH"], "pages": [6, 8]},
-  "notes": {"styles": ["NTX_Single", "NTX"], "id_prefix": "note-"},
+  "toc": {"item_styles": ["CFMHF", "CCT", "CCT1", "CBMH", "CPT", "CCA"], "pages": [6, 8]},
+  "notes": {"styles": ["NTX", "NTX_Single"], "id_prefix": "note-"},
+  "language": {"kana_runs": "ja"},
+  "links": {"toc_text_fixes": [["Acknowl edgments", "Acknowledgments"]]},
   "remove_empty_containers": true,
   "deferrals": [
-    {"what": "Copyright page text and Library of Congress CIP data are untagged (26 runs)", "why": "veraPDF 7.1-3 (content neither tagged nor artifact). This is real content, not decoration, so it cannot be hidden. A person must tag it as paragraphs. The cover page (PDF 1) is handled by page_figures.", "pages": [5]},
-    {"what": "Contents entries for Glossary, Bibliography and Index have garbled text (\"5 Glossary 28\", \"3 Bibliography 29\", \"335 Index\"); printed forms are \"Glossary 285\", \"Bibliography 293\", \"Index 335\"", "why": "The text layer's digit order does not match the printed order, so ActualText would likely be rejected. A person should fix it.", "pages": [8]},
-    {"what": "First paragraph of each chapter (style CO) begins without its drop-cap letter (\"n today’s world…\", \"apan and Malaysia…\")", "why": "The initial letter is missing from the tag text. The tag text can't be changed here and ActualText for whole paragraphs is impractical, so a person should check how a screen reader reads these.", "pages": [14, 36, 60, 79, 102, 124, 143, 163, 186, 214, 234, 254, 275]},
-    {"what": "Endnotes sit at the end of each chapter, so sections.notes_pages is not set", "why": "There is no single notes section; notes are tagged Note by style.", "pages": [28, 57, 74, 98, 116, 139, 159, 183, 206, 231, 248, 272, 293]}
+    {"what": "Copyright page text and Library of Congress CIP data are untagged real content (veraPDF 7.1-3, 26 untagged runs). The remaining 7.1-3 failures are the untagged cover (handled by page_figures).", "why": "Real content cannot be artifacted. A person must tag it as paragraphs.", "pages": [5]},
+    {"what": "Index pages appear to read the two columns merged line by line (for example, PDF 338 starts 'Hani Motoko, 80–81 infectious diseases and epidemics: animal'). Check the reading order of the index text.", "why": "Cannot be fixed with the available work-order keys; a person must review.", "pages": [351, 352, 353, 354, 355, 356]},
+    {"what": "Pages 344–348 show no tagged text in the page map (Contributors and the first Index page). Check that this content is tagged and in order.", "why": "The page map does not show enough to decide.", "pages": [344, 345, 346, 347, 348]}
   ],
-  "notes_for_reviewer": "Outline: one H1 (book title, with subtitle merged in); front/back matter, part titles and chapter titles are H2 (part number merged into part name, chapter subtitle merged into chapter title); chapter sections and chapter Notes headings are H3; subsections are H4. Half-title lines on PDF 2 and PDF 12 are demoted to paragraphs. Running heads and folios (only 10 tagged ones) are artifacted by page-specific rules. Figure alt text was rewritten because the publisher alt text only repeated the captions. CJK, Korean and Japanese runs are left for the language step."
+  "notes_for_reviewer": "Headings: the book title (TPT, PDF 4) is the only H1. Half-title (TPHT) and subtitle (TPST) lines are demoted to P. Front and back matter titles, chapter titles and part titles are H2. Chapter subtitles (CST) are merged into their chapter title (CT), and 'Part N' is merged into its part title. In-chapter section heads (_H1_) are H3, the bold sub-heads in the Korean grains chapter (style H2) are H4, and each chapter's 'Notes' heading is H3. The merged heading texts were typed from the digest; check them against the page. Running heads and folios (RHR, RHV, DFOL) on the sampled pages are artifacted by band and regex. Figure captions (CAP) are tied to their figures."
 }
 ```

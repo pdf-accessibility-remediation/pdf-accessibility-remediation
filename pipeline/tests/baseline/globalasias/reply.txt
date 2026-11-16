@@ -2,7 +2,7 @@
 {
   "schema": "workorder/0.2",
   "sections": {
-    "toc_pages": [8, 9, 10, 11],
+    "toc_pages": [8, 11],
     "index_from": 368
   },
   "document": {
@@ -10,60 +10,71 @@
     "lang": "en-US",
     "display_doc_title": true
   },
-  "merges": [
-    {"style": "TPST", "direction": "prev", "with": ["TPT"]}
-  ],
-  "actual_text": [
-    {"obj": "20082 0", "text": "Global Asias Tactics & Theories"},
-    {"obj": "18548 0", "text": "Editors’ Introduction Acts of Suspension"},
-    {"obj": "16322 0", "text": "Interleaf—Oceanic Transits"},
-    {"obj": "18516 0", "text": "Interleaf—“Naturales tagalos”"},
-    {"obj": "16459 0", "text": "Interleaf—“Beyond English”"},
-    {"obj": "14996 0", "text": "Interleaf—New Roots/New Routes"}
-  ],
+  "rolemap": {
+    "TPST": "P"
+  },
   "retype": [
-    {"obj": "15959 0", "type": "H3", "why": "Endnotes of Convergence 1 (PDF 117, printed 102) belong at section level under the chapter H2, not H5."},
-    {"obj": "17896 0", "type": "H3", "why": "Endnotes of Convergence 2 (PDF 175, printed 160)."},
-    {"obj": "15220 0", "type": "H3", "why": "Endnotes of Convergence 4 (PDF 295, printed 280)."},
-    {"obj": "2125 0", "type": "H3", "why": "Endnotes of Convergence 5 (PDF 360, printed 345)."}
+    {"obj": "18577 0", "type": "H4", "why": "Concept 1 is a subsection of the H3 'Orientation' section, not a peer of it"},
+    {"obj": "18582 0", "type": "H4", "why": "Concept 2, same reason"},
+    {"obj": "18586 0", "type": "H4", "why": "Concept 3, same reason"}
   ],
   "alt": [
     {"obj": "1746 0", "alt": "Creative Commons Attribution-NonCommercial-NoDerivatives (CC BY-NC-ND) license logo", "confidence": 0.95},
-    {"obj": "21024 0", "alt": "Cover of Global Asias: Tactics & Theories, edited by Tina Chen and Charlotte Eubanks. A Marshallese mattang navigation chart of woven straight and curved sticks on a black background sits above a blue band bearing the title and editors' names, with blue concentric curves and green stripes at the right edge.", "confidence": 0.9},
-    {"obj": "16353 0", "alt": "Project timeline titled with time zones GMT+8, GMT+1, GMT, GMT-5, GMT-6, GMT-8. A wavy line passes through eight stages from summer 2021 to fall 2022: Make Craft, Embarking, Waypoint: Sounding, Waypoint: Bearing, Waypoint: Deviation, Drifting/Drafting, Parallax and Voyaging. Each stage has a short description of the team's work, from setting keywords and assembling teams to drafting research forums and pedagogical materials and submitting final drafts to the press.", "confidence": 0.8},
-    {"obj": "18590 0", "alt": "Rirkrit Tiravanija, Untitled 2008–2011 (the map of the land of feeling) I. Three long horizontal strips of paper, each covered with map-like drawings, mazes, grids and dense black ink marks with accents of red and purple.", "confidence": 0.75},
-    {"obj": "16324 0", "alt": "Oceanic Transits: a Spilhaus World Ocean Map in which the world's oceans form one continuous, connected body of blue water. Continents appear as separate pale landmasses around its edge. Labels mark the Arctic, Atlantic, Pacific and Southern Oceans and places discussed in the forum, including the US South, Kochi, Palestine, Việt Nam, Guåhan, Tokyo, Hawai‘i, South Korea, Alaska, British Columbia and Tulare County.", "confidence": 0.85},
-    {"obj": "15730 0", "alt": "Slide of meeting notes titled “Meeting 2: Feb 22 at noon PT (3pm ET)”, light text on a dark grey background. The task is to work out what pedagogical resources the team wants to develop. Sections are headed “Questions and conversations”, “What are we hoping to disrupt?” and “What does it look like?”. Bullet points discuss using transits to rethink syllabi and courses, including mapping exercises, student choice in readings, and linearity versus multiplicity.", "confidence": 0.8},
-    {"obj": "15741 0", "alt": "Graphic on the etymology of “transit”: Latin trans (across, beyond) plus ire (to go) gives transire (cross over, pass away), then transitus (going over, a passage), then transit (n), mid-15th c., the act of passing across or through. The verb transit lists two senses: 1. To be in motion (transplant, transgress, transfer; translate, transpose, transect; transfuse, transpire; transmigrate, transmute, transmogrify) and 2. To be motionless (transfix: to be still with shock, horror, or awe).", "confidence": 0.85},
-    {"obj": "15771 0", "alt": "Evelyn Hockstein, Storm the Capitol, 2021. A huge US flag hangs over scaffolding in front of the US Capitol dome on January 6, 2021. Among the other flags in the crowd are Confederate and South Vietnamese flags.", "confidence": 0.85},
-    {"obj": "15797 0", "alt": "Hương Ngô, And we are still here . . . but we are still here, 2021. Sheets of white and purple paper hang from wires in a wooden-beamed room. Some carry fragmentary printed words, including “We are still here” and a Vietnamese phrase of the same meaning.", "confidence": 0.8},
-    {"obj": "18518 0", "alt": "Naturales tagalos (Tagalog natives), a painted page from the “Sino-Spanish Codex” (Boxer Codex) c. 1590. A man in a red tunic and short trousers with gold chains and a dagger stands beside a woman in a purple and gold gown. A floral border with birds and animals frames them.", "confidence": 0.9},
-    {"obj": "17730 0", "alt": "Apology ceremony at the Taiwan Presidential Office. A woman in a grey jacket at one podium and an Indigenous elder in a headband and striped shirt at another face each other. The backdrop is covered with the names of Indigenous peoples and the large Chinese characters 真相 和解 (truth, reconciliation) with the year 2016.", "confidence": 0.8},
-    {"obj": "17687 0", "alt": "Page of a bilingual poem by Lee Chonghwa, “Murmurs as Political Thought (or, A Political Theory of Murmurs): In Search of Ways to See the Sorrow and Things Hidden”, with the English text in the left column and a Japanese translation in the right column. The poem, “Bē/Boat”, is about things we cannot know or consume, interpretation and the frame in which we live, and ends “Nation-state • Ethnos/Race • Man • Woman”. The full text is in the figure image.", "confidence": 0.8},
-    {"obj": "17688 0", "alt": "Page with two texts. At the top, “The Passport” by Mahmoud Darwish in English (left) and Arabic (right), a poem about not being recognized in a passport and about birds, fields, prisons and eyes. Below it, “Mirror Words” by Don Mee Choi, a prose paragraph in English on translation as an anti-neocolonial mode that creates words which compel disobedience and resistance.", "confidence": 0.8},
-    {"obj": "16461 0", "alt": "Two-page spread of the poem “Beyond English” by Agha Shahid Ali (1949–2001), split by a dotted vertical line. Short couplets each end in “beyond English”, for example “No language is old—or young—beyond English. So what of a common tongue beyond English?”, with blank spaces between them.", "confidence": 0.8},
-    {"obj": "1847 0", "alt": "Map titled “The Kashmir region from a Chinese perspective”. China is shown in brown and extends over Aksai Chin and the Shaksgam Valley. The Line of Control is marked, with areas labeled Pakistan-administered Kashmir and Indian-administered Kashmir, bordered by Afghanistan, Pakistan and India.", "confidence": 0.85},
-    {"obj": "1848 0", "alt": "Map titled “The Kashmir region from a Pakistani perspective”. Pakistan and the whole Kashmir region, including Gilgit-Baltistan and Azad Jammu and Kashmir, are shaded brown. The Indian-held part is hatched and labeled “Indian illegally occupied Jammu and Kashmir”. The Line of Control and the Siachen Glacier are marked.", "confidence": 0.85},
-    {"obj": "1849 0", "alt": "Map titled “The Kashmir region from an Indian perspective”. The Indian Union is shaded brown and includes Ladakh and Jammu and Kashmir (both Union territories), with the Line of Actual Control, Daulat Beg Oldie, the Siachen Glacier and Aksai Chin marked, between China and Pakistan.", "confidence": 0.85},
-    {"obj": "1923 0", "alt": "Pizza Hut sign glowing beside the entrance of a traditional Chinese brick courtyard building at night, with red lanterns and an illuminated wooden signboard in Chinese characters.", "confidence": 0.85},
-    {"obj": "1927 0", "alt": "Busy street intersection in Flushing, Queens, with many pedestrians crossing at a crosswalk in the foreground and storefronts with Chinese and English signs and a green street sign in the background.", "confidence": 0.8},
-    {"obj": "1929 0", "alt": "Goon's Grocery Store, Clarksdale, Mississippi: a beige brick building with a roadside sign reading “Goon's 1 Stop”, “Grocery and Sundries” and “Thank You Come Again”, and a sign above the windows reading “Goon's Package Store”.", "confidence": 0.85}
+    {"obj": "21024 0", "alt": "Cover of Global Asias: Tactics & Theories, edited by Tina Chen and Charlotte Eubanks. A Marshallese mattang navigation chart, a square lattice of interwoven straight and curved sticks, sits on a black background above a blue band bearing the title and editors' names. Blue concentric curves and green stripes fill the right and lower corners.", "confidence": 0.9},
+    {"obj": "16353 0", "alt": "Timeline of the project's collaborative journey, from summer 2021 to fall 2022, with time zones GMT+8 to GMT-8 shown above a tangle of lines. Eight stages follow in order: Make Craft (conceptualize the project and recruit colleagues); Embarking (assemble teams and set up infrastructure); Waypoint: Sounding (keyword team meetings); Waypoint: Bearing (research questions); Waypoint: Deviation (imagine pedagogical materials); Drifting/Drafting (draft forum materials); Parallax (hybrid summer institute); Voyaging (final drafts submitted to the press).", "confidence": 0.85},
+    {"obj": "18590 0", "alt": "Rirkrit Tiravanija's artwork Untitled 2008–2011 (the map of the land of feeling): three stacked horizontal strips of paper covered in map-like drawings, labyrinths and grid patterns in black and red ink, each crossed by a pale purple band.", "confidence": 0.8},
+    {"obj": "16324 0", "alt": "Spilhaus World Ocean Map, which shows the world's oceans as one continuous body of water, with the continents split apart around it. Labeled areas include the Atlantic, Pacific, Southern and Arctic Oceans, Africa, Europe, Asia, Australia, Antarctica, the Americas, and sites discussed in the book such as Kochi, Tokyo, Hawai‘i, Guåhan, Viêt Nam, South Korea, Palestine and Tulare County.", "confidence": 0.85},
+    {"obj": "15730 0", "alt": "Screenshot of meeting notes titled 'Meeting 2: Feb 22 at noon PT (3pm ET)', in green and white text on a dark gray background. The task is to decide what pedagogical resources the team wants to develop. Sections are 'Questions and Conversations', 'What Are We Hoping to Disrupt?' (linearity, singularity, rigid structure) and 'What Does It Look Like?'. Bullets discuss using transits to rethink syllabi, readings, exercises and courses.", "confidence": 0.85},
+    {"obj": "15741 0", "alt": "Typed word-origin diagram titled 'Interlude'. The Latin roots trans (across, beyond) and ire (to go) give transire (cross over, pass away) and transitus (going over, a passage), then the English noun transit (mid-15th century: the act of passing across or through). The verb transit has two sets of senses: 1. To be in motion (transplant, translate, transfuse, transmigrate and others), and 2. To be motionless (transfix: to be still with shock, horror or awe).", "confidence": 0.85},
+    {"obj": "15771 0", "alt": "Photograph of the January 6, 2021 attack on the US Capitol: a rioters' scaffold in front of the Capitol dome is draped with a giant American flag. Among the many flags flying are a Confederate battle flag and the yellow-and-red South Vietnamese flag.", "confidence": 0.85},
+    {"obj": "15797 0", "alt": "Art installation by Hương Ngô: white and purple sheets of printed paper hang from wires beneath a wooden-beamed ceiling. The text on them, in English and Vietnamese, reads 'we are still here'.", "confidence": 0.8},
+    {"obj": "18518 0", "alt": "Painted illustration labeled 'Naturales Tagalos' from the Sino-Spanish (Boxer) Codex, c. 1590: a Tagalog man in a red tunic and shorts with a red headband, gold chains and a dagger stands beside a woman in a long purple gown with gold trim. A floral border with birds surrounds them.", "confidence": 0.85},
+    {"obj": "17730 0", "alt": "Photograph of the 2016 apology ceremony at the Taiwan Presidential Office. A woman in a gray jacket and an older Indigenous man in a striped shirt, headband and loincloth speak at separate podiums. Behind them, large gold characters meaning 'truth and reconciliation 2016' are set against a field of names of Taiwan's Indigenous peoples.", "confidence": 0.8},
+    {"obj": "17687 0", "alt": "Page of bilingual poetry. The left column is in English: 'Murmurs as Political Thought (or, A Political Theory of Murmurs): In Search of Ways to See the Sorrow and Things Hidden' by Lee Chonghwa, a poem about 'Bē/Boat' that reflects on things we don't know and cannot consume, and on the word 'bē', which means stomach in Korean and boat in Japanese. The right column gives the same text in Japanese.", "confidence": 0.8},
+    {"obj": "17688 0", "alt": "Page of bilingual poetry. At the top is Mahmoud Darwish's poem 'The Passport', in English on the left and Arabic on the right, about not being recognized, with the lines 'Drop them from this passport!'. Below it, centered, is Don Mee Choi's short prose piece 'Mirror Words', on translation as an anti-neocolonial mode and on 'mirror words' that compel disobedience.", "confidence": 0.8},
+    {"obj": "16461 0", "alt": "Two facing pages divided by a dotted vertical line, with Agha Shahid Ali's 'Beyond English' as short couplets ending with 'beyond English' and gaps between the pairs, for example 'No language is old—or young—beyond English. So what of a common tongue beyond English?' and 'Snowflakes on my lips, silence stung beyond English.' The poem is signed at lower right: 'Beyond English', Agha Shahid Ali (1949–2001).", "confidence": 0.8},
+    {"obj": "1847 0", "alt": "Map titled 'The Kashmir region from a Chinese perspective'. China and the Aksai Chin and Shaksgam Valley areas are shaded; Pakistan-administered and Indian-administered Kashmir are shown unshaded, separated by the Line of Control, near the Siachen Glacier. Afghanistan, Pakistan and India are labeled, with a small inset showing China.", "confidence": 0.85},
+    {"obj": "1848 0", "alt": "Map titled 'The Kashmir region from a Pakistani perspective'. Pakistan, including Gilgit-Baltistan and Azad Jammu and Kashmir, is shaded, and the Line of Control is marked. A hatched area is labeled 'Indian illegally occupied Jammu and Kashmir', and the frontier with China is marked 'Frontier undefined'. An inset shows Pakistan.", "confidence": 0.85},
+    {"obj": "1849 0", "alt": "Map titled 'The Kashmir region from an Indian perspective'. The whole region, with Ladakh and Jammu and Kashmir as Union territories, is shaded as part of the Indian Union. The Line of Actual Control, Daulat Beg Oldie, Siachen Glacier and Aksai Chin are marked. An inset shows India.", "confidence": 0.85},
+    {"obj": "1861 0", "alt": "World map, rotated sideways, covered with green, yellow and red lines that converge on black dots marking conference sites: Asian Women's Conference, Asian Socialist Conference, Asian-African Conference, Afro-Asian Writers' Conference, Afro-Asian People's Solidarity Organisation Conference, Second Afro-Asian People's Solidarity Organisation Conference, and All-Africa People's Conference. The lines show the routes of people who traveled to attend them, linking Asia and Africa.", "confidence": 0.8},
+    {"obj": "1923 0", "alt": "Night photograph of a traditional Chinese-style brick gatehouse in a historic Beijing hutong, lit by white lights and hung with red lanterns. Beside the entrance, a neon sign reads 'Pizza Hut'.", "confidence": 0.9},
+    {"obj": "1927 0", "alt": "Busy intersection in Flushing, Queens, seen from above: pedestrians cross at a crosswalk in the foreground, cars wait at the light, and shopfronts with Chinese and English signs line the far side of the street.", "confidence": 0.8},
+    {"obj": "1929 0", "alt": "Beige brick storefront with a sign reading 'Goon's Package Store' and a pole sign reading 'Goon's 1 Stop', 'Grocery and Sundries' and 'Thank You Come Again', next to utility poles and wires under a blue sky.", "confidence": 0.85}
   ],
-  "notes": {"styles": ["NTX"], "id_prefix": "note-"},
-  "language": {"kana_runs": "ja"},
-  "move_section": [
-    {"pages": [1, 1], "before_page": 2, "why": "The cover (PDF 1, printed Cover) is read last in the reading order; it should come first."}
-  ],
-  "remove_empty_containers": true,
+  "notes": {
+    "styles": ["NTX"],
+    "id_prefix": "note-"
+  },
+  "language": {
+    "kana_runs": "ja"
+  },
   "deferrals": [
-    {"what": "Index entries have garbled page-number text: the page numbers appear separated from their entries, dropped or run together, e.g. “Aboriginal Australians, , , –, , 148 151 155156 300 301”. Reading order of the index columns is also doubtful.", "why": "A person must check the index text layer. This work order can't safely repair the text.", "pages": [368, 386]},
-    {"what": "Caption of Figure 5.2 on PDF 318 (printed 303) extracts as reversed or rotated text (“y la p ia dem . n ia as ro f a//:spt …”).", "why": "The printed caption can't be reliably read from the digest, so no ActualText was written. A person should supply the caption text.", "pages": [318]},
-    {"what": "Pages with no tagged text: PDF 7, 15, 103, 352 and 372–378.", "why": "These are probably blank pages or end matter; a person should confirm they hold no real content.", "pages": [7, 15, 103, 352, 372, 373, 374, 375, 376, 377, 378]},
-    {"what": "Interleaf page PDF 27 (printed 12) has three arrangements of the same phrases (“Where to begin?” with five-line lists, styles TXCL/TXCR/TXCF/TXCLL).", "why": "The reading order and meaning of this visual layout need human review.", "pages": [27]},
-    {"what": "Text layer has spurious spaces and breaks inside words (e.g. “pro cesses”, “Amer i ca”, “Lite r a ture”) and soft hyphens.", "why": "This comes from the layout font and may be read letter by letter. The text can't be changed here; a person should check with a screen reader.", "pages": [12, 13, 14, 16, 28]},
-    {"what": "Several single-item bulleted lists in the Pedagogy Forum of Convergence 5, and bibliographic bullet lists.", "why": "They were kept as lists; a reviewer may prefer paragraphs.", "pages": [345, 346, 347, 348, 349, 350]},
-    {"what": "Poem with Japanese text at the top of PDF 290 (printed 275) shows “()” in the extracted text, and other CJK passages.", "why": "Language tagging is handled by the language step; the odd “()” glyphs need a person's check.", "pages": [290, 291]}
+    {
+      "what": "Cover figure (obj 21024 0) is the last container in the reading order (Article on PDF 1, after the Index)",
+      "why": "The cover should be read first. It sits inside the Document in an Article rather than at the tree root, so move_to_document_start does not clearly apply. A person should move it to the start.",
+      "pages": [1]
+    },
+    {
+      "what": "Caption of Figure 5.2 (map of Afro-Asian conferences) has reversed, garbled text in the text layer (e.g. 'y la p ia dem . n ia as ro f a//:spt …')",
+      "why": "The caption is set rotated and extracts in reverse order. ActualText would be needed, but the caption's obj is not in the digest and the printed text can't be read here.",
+      "pages": [318]
+    },
+    {
+      "what": "Index text layer: page numbers are missing or out of order in many entries (e.g. 'Aboriginal Australians, , , –, , 148 151 155156 300 301'), and the two-column layout runs together in places (e.g. 'Asian futurisms, 294 Berry, Michael, 147')",
+      "why": "Fixing this would change or reorder the published text, which this work order cannot do. A person needs to review the index tagging and reading order.",
+      "pages": [368, 386]
+    },
+    {
+      "what": "Single-item and bibliography-style lists in the pedagogy forums (e.g. PDF 345–359) were kept as lists",
+      "why": "The bullets and items are real, but some one-item lists may be better as plain paragraphs. A reviewer can decide.",
+      "pages": [345, 359]
+    },
+    {
+      "what": "Check the reading order of the two-column bilingual poem pages and the rotated map page",
+      "why": "Pages 177–178 and 241 are figures that hold text; pages 290–291 and 303 hold Japanese text or rotated content. The text layer there looked unusual (e.g. '()' on PDF 275 and a lone 'y' on PDF 303).",
+      "pages": [177, 178, 241, 275, 290, 291, 303]
+    }
   ],
-  "notes_for_reviewer": "The publisher's tagging is already good. The roles are H1 title, H2 front matter, chapters and interleaves, H3 forums and sections, H4 essays and H5 sub-sections. The work order merges the subtitle into the H1 and sets ActualText on several headings whose soft hyphens drop word spaces. The per-chapter endnote headings (“Notes to Convergence n”) are retyped from H5 to H3. The NUL-corrupted alt text on the cover and the Creative Commons logo is replaced. Alt text is rewritten for most images; Figure obj 1847 0, 1848 0 and 1849 0 each get a distinct map description. The cover figure is moved to the start of the reading order. The executor handles Document root, links and bookmarks. The TOC and Notes tags already exist; only the notes styles are marked as Note. veraPDF reported no fixable rules."
+  "notes_for_reviewer": "The tree is already well tagged by InDesign, with a clean heading hierarchy: H1 title, H2 chapters and front/back matter, H3 forums and sections, H4 essays, H5 subsections. Changes made: the subtitle 'Tactics & Theories' (TPST) is mapped to P so only one H1 and no stray H2 sits on the title page; Concept 1–3 headings (PDF 37, 39, 40) are demoted to H4 under 'Orientation'; alt text is written or replaced for all figures, including two with NUL characters and three Kashmir maps and two poetry pages that shared identical alt text; and the endnote style NTX is set to Note. The executor handles links, bookmarks and the TOC, which is already tagged TOC/TOCI. No running heads were found in the digest, so none are artifacted. CJK and other-language passages are left to the language step."
 }
 ```
