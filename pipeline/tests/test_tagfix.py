@@ -191,3 +191,18 @@ def test_text_in_a_tiling_pattern_is_a_misfit_not_a_pass(tmp_path):
     s, t = pattern_pdf(str(tmp_path / 's.pdf'), b'Hello', actualtext=True), pattern_pdf(str(tmp_path / 't.pdf'), b'Hello')
     rep = TF.restore(s, t)
     assert rep['spans'] == 0 and rep['misfits'] and 'tiling pattern' in rep['misfits'][0][2]
+
+
+def test_a_tiling_patterns_path_or_colour_change_is_seen():
+    """Review 06 M3 (probe Q): a tiling pattern that fills with another grey, or draws another path, is not the same drawing;
+    the same pattern again is."""
+    def build(pat, name='P1'):
+        pdf = pikepdf.new()
+        st = pdf.make_stream(pat, PatternType=1, PaintType=1, TilingType=1, BBox=[0, 0, 50, 50], XStep=50, YStep=50, Resources=pikepdf.Dictionary())
+        pg = pdf.add_blank_page(page_size=(300, 100))
+        pg.Resources = pikepdf.Dictionary(Pattern=pikepdf.Dictionary({'/' + name: st}))
+        pg.Contents = pdf.make_stream(b'/Pattern cs /' + name.encode() + b' scn 10 10 200 80 re f\n')
+        return pdf
+    base = build(b'0.2 g 0 0 20 20 re f\n')
+    for other, same_ in ((build(b'0.9 g 0 0 20 20 re f\n'), False), (build(b'0.2 g 0 0 30 20 re f\n'), False), (build(b'0.2 g 0 0 20 20 re f\n'), True)):
+        assert TF.same_drawing(base, other, 1)[0] is same_

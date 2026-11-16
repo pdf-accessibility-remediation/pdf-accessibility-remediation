@@ -18,8 +18,10 @@ same_drawing(a, b, n)  page n draws exactly the same in both files: the operator
                        run is neutral in PDF: character spacing applies per glyph, word spacing per space byte, numbers in
                        order); operands compared to four decimals, TJ numbers of 0 dropped; each font compared by its
                        fingerprint (program, widths, encoding, ToUnicode), not by its resource name. A form deeper than
-                       FORM_DEPTH, or a tiling pattern that shows text or draws a form (its content is not walked),
-                       makes the page a misfit, never a pass. Annotation appearance streams are not walked.
+                       FORM_DEPTH, or a tiling pattern that shows text or draws a form, makes the page a misfit, never
+                       a pass; any other tiling pattern's operators (paths, colours), matrix, box and steps are compared
+                       (review 06 M3). Not compared: shadings, images' pixels, annotation appearance streams (intake's
+                       pixel check covers them).
 Pure pikepdf: no Java, no OCR."""
 import hashlib, collections
 import pikepdf
@@ -246,12 +248,19 @@ def font_fingerprint(font, cache):
 
 
 def drawing(page):
-    """(normalised operator list, RESTORE_KEYS values in order) for a page and its forms. TooDeep past FORM_DEPTH,
-    PatternText for a tiling pattern that shows text or draws a form."""
+    """(normalised operator list, RESTORE_KEYS values in order) for a page and its forms, with each tiling pattern's own
+    operators, matrix, box and steps (review 06 M3). TooDeep past FORM_DEPTH, PatternText for a tiling pattern that shows
+    text or draws a form. Not compared: shading patterns and shadings (dictionaries, named only), images' pixels (the image
+    XObject's name only), annotation appearance streams; intake's pixel check covers those."""
     out, props, cache = [], [], {}
 
     def walk(owner, res, d):
         _patterns(res)
+        for nm, pt in sorted((((res or {}).get('/Pattern') or {}).items()), key=lambda kv: str(kv[0])):   # review 06 M3: a tiling
+            if isinstance(pt, pikepdf.Stream) and int(pt.get('/PatternType', 0)) == 1:   # pattern's paths and colours count too
+                out.append(('PATTERN', (str(nm), _v(pt.get('/Matrix')) if '/Matrix' in pt else None, _v(pt.get('/BBox')),
+                                        _v(pt.get('/XStep')), _v(pt.get('/YStep')), int(pt.get('/PaintType', 1)),
+                                        tuple((str(i.operator), tuple(_v(x) for x in i.operands)) for i in pikepdf.parse_content_stream(pt)))))
         for ins in _parse(owner):
             op, a = str(ins.operator), list(ins.operands)
             if op in MC:
