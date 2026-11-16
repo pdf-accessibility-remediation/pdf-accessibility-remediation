@@ -168,7 +168,8 @@ def answer_language(s, run, R, lang, by=''):
         keep = {k: e.get(k) for k in ('book_sha', 'book_file')}
         return jobs.create(s['jobs'], 'estimate', run, e['argv'], config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
                            what=f'Get the estimate (existing OCR text kept on {"page" if len(pages) == 1 else "pages"} {", ".join(map(str, pages))})', **keep)
-    env = LG.env_for(lang, reocr=q.get('kind') == 'reocr')
+    env = {**LG.env_for(lang, reocr=q.get('kind') == 'reocr'),            # review 08 M1: pages kept before stay kept
+           **{k: v for k, v in (e.get('env_set') or {}).items() if k == 'KEEP_CJK_PAGES'}}
     keep = {k: e.get(k) for k in ('book_sha', 'book_file')}
     return jobs.create(s['jobs'], 'estimate', run, e['argv'], config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
                        what=f'Get the estimate ({"OCR text read again: " if q.get("kind") == "reocr" else ""}{name})', ocr_name=name, **keep)

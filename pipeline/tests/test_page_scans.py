@@ -122,3 +122,16 @@ def test_compare_only_reads_the_pages_asked_for(tmp_path):
     a, b = two(str(tmp_path / 'a.pdf'), b'page two'), two(str(tmp_path / 'b.pdf'), b'page 2!!')
     assert intake.compare(a, b, near=True)['text'] == [2]
     assert intake.compare(a, b, near=True, only={1})['text'] == [] and intake.compare(a, b, near=True, only={2})['text'] == [2]
+
+
+def test_a_page_kept_at_the_cjk_stop_keeps_its_figure_whatever_its_ink(tmp_path):
+    """Review 08, decision 5: a page in KEEP_CJK_PAGES keeps its scan as a Figure, even a page of text (no ink outside the
+    text), so it reaches the AI as a picture, as the Keep note says; recorded as kept by a person."""
+    p = scan_pdf(str(tmp_path / 'a.pdf'), ink=255)
+    out = intake.artifact_page_scans(p, [1], picture_test=[1], keep=[1])
+    assert out['pages'] == [] and figures(p) == 1 and 1 in out['kept'] and out['kept_by_person'] == [1]
+    q = scan_pdf(str(tmp_path / 'b.pdf'), ink=255)
+    assert intake.artifact_page_scans(q, [1], picture_test=[1])['pages'] == [1]   # the same page, not kept: decorated
+    r = scan_pdf(str(tmp_path / 'c.pdf'), ink=255)
+    out = intake.artifact_page_scans(r, [1], keep=[1])                         # a page intake OCR'd (no picture test): kept too
+    assert out['pages'] == [] and out['kept'] == {1: None} and out['kept_by_person'] == [1]

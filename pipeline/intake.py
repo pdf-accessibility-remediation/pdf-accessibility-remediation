@@ -156,8 +156,8 @@ PAGE_FIGURE_TREE, PAGE_FIGURE_TEXT = 0.5, 0.1   # such Figures on half its pages
                                            #   0-0.8%) against every tagged sample (figures on 0-4.2%, text on 89-99%; 03-builder-report.md)
 LAYER_CJK_SAMPLE = 3                       # #121: existing Latin OCR layer: up to 3 sample page images probed for CJK
 LAYER_FIGURE_CJK_SAMPLE = 8                # #121 with #128 (review 04 H2): and up to 8 spread pages whose scan looks like a picture
+                                           #   (more than SCAN_TEXT_INK ink outside the layer's text); both samples read in full (review 08 M2)
 CJK_STOP_IMAGES = 8                        # review 06 H1: page images written for the run page's question (60 dpi, _intake/cjk_page_N.png)
-                                           #   (more than SCAN_TEXT_INK ink outside the layer's text), stopping at the first with CJK
 SCAN_TEXT_INK = 0.01                       # #128: a whole-page scan under OCR text becomes decoration only when ink outside the
 SCAN_INK_DPI, SCAN_INK_GRAY, SCAN_INK_PAD = 100, 200, 3   # text boxes is 1% of the page or less (100 dpi, gray < 200, boxes
                                            #   padded 3 px); above, the Figure stays. Interim: on 96 labelled existing-layer pages
@@ -748,22 +748,24 @@ def cjk_probe(img, langs, distinct=False):
     return (len(cj), len(set(cj))) if distinct else len(cj)
 def layer_cjk_hits(pick, pictures, keep, probe):
     """#121, review 04 H2, review 06 H1: the pages of an existing OCR layer whose image holds CJK text the layer lacks.
-    First up to LAYER_CJK_SAMPLE spread pages of pick (the layer test's sample), stopping at the first that holds CJK; if
-    none does and pictures (a callable: the layer's pages whose scan looks like a picture; None with REOCR) is given, up to
-    LAYER_FIGURE_CJK_SAMPLE spread pages of those, every one probed, so all hits are shown at once (one "Keep" covers the
-    book). Pages in keep (KEEP_CJK_PAGES: kept by a person) are skipped; both samples are drawn as before, the kept pages
+    Up to LAYER_CJK_SAMPLE spread pages of pick (the layer test's sample) and, when pictures (a callable: the layer's pages
+    whose scan looks like a picture; None with REOCR) is given, up to LAYER_FIGURE_CJK_SAMPLE spread pages of those: every
+    one probed, so all hits are shown at once and one "Keep" covers what the check reads (review 08 M2; with REOCR, the
+    sample stops at its first hit, which is all the redo needs). Pages in keep (KEEP_CJK_PAGES: kept by a person) are skipped; both samples are drawn as before, the kept pages
     then left out, so no other page is probed in their place. probe(page) -> (CJK characters, different ones).
     Returns ({page: (n, nd)}, {page: 'sample page' | 'picture-like page'}, record)."""
     t2 = time.time(); hit, by_ = {}, {}; checked = 0
     for i in pick[:: max(1, len(pick) // LAYER_CJK_SAMPLE)][:LAYER_CJK_SAMPLE]:
         if i in keep: continue
         n, nd = probe(i); checked += 1
-        if cjk_page(n, nd): hit[i] = (n, nd); by_[i] = 'sample page'; break
+        if cjk_page(n, nd):
+            hit[i] = (n, nd); by_[i] = 'sample page'
+            if pictures is None: break
     rec_ = {'pages_checked': checked, 'seconds': round(time.time() - t2, 1)}
-    if not hit and pictures is not None:   # a page whose scan looks like a picture may be CJK text the layer lacks (its
+    if pictures is not None:   # a page whose scan looks like a picture may be CJK text the layer lacks (its
         t3 = time.time(); pics = pictures(); checked = 0   #   glyphs lie outside the layer's boxes)
         for i in pics[:: max(1, len(pics) // LAYER_FIGURE_CJK_SAMPLE)][:LAYER_FIGURE_CJK_SAMPLE]:
-            if i in keep: continue
+            if i in keep or i in hit: continue
             n, nd = probe(i); checked += 1
             if cjk_page(n, nd): hit[i] = (n, nd); by_[i] = 'picture-like page'
         rec_.update({'picture_like_pages': len(pics), 'picture_like_checked': checked, 'picture_like_seconds': round(time.time() - t3, 1)})
@@ -1120,15 +1122,18 @@ def _form_pages(pdf):
                 if isinstance(x, pikepdf.Stream) and x.get('/Subtype') == '/Form' and x.objgen not in seen:
                     seen.add(x.objgen); use[x.objgen].add(n); todo.append(x.get('/Resources'))
     return use
-def artifact_page_scans(path, pages, picture_test=()):
+def artifact_page_scans(path, pages, picture_test=(), keep=()):
     """A Figure that is only the whole-page scan image becomes decoration (checklist 5.1: an image covering the whole page
     is the scan itself, not a figure), on the given pages. The image may be drawn in the page or inside a form (the
     sponsors' scans wrap each page in one form; the tagger then numbers the form's own marked content through its
     /StructParents). picture_test: pages with an existing OCR layer, where the scan becomes decoration only on a page of
     text (scan_page_is_text); any other page keeps its Figure (pictures, plates, pages with photos, and unclear pages).
-    A form shared with another page, or one nested deeper than FORM_DEPTH, is a misfit (left as tagged).
-    Returns {'pages': changed pages, 'kept': {page: ink share}, 'measured': {page: ink share}, 'misfits': [[page, why]]}."""
-    out = {'pages': [], 'kept': {}, 'measured': {}, 'misfits': []}
+    keep (review 08, decision 5): pages a person kept at the CJK stop (KEEP_CJK_PAGES): their scan always keeps its Figure,
+    whatever its ink, so the page reaches the AI as a picture, as the Keep note says. A form shared with another page, or one
+    nested deeper than FORM_DEPTH, is a misfit (left as tagged).
+    Returns {'pages': changed pages, 'kept': {page: ink share}, 'kept_by_person': [pages], 'measured': {page: ink share},
+    'misfits': [[page, why]]}."""
+    out = {'pages': [], 'kept': {}, 'kept_by_person': [], 'measured': {}, 'misfits': []}; keep = set(keep)
     picture_test = set(picture_test); doc = pdfium.PdfDocument(path) if picture_test else None
     try:
         with pikepdf.open(path, allow_overwriting_input=True) as p:
@@ -1182,7 +1187,11 @@ def artifact_page_scans(path, pages, picture_test=()):
                 if not hits: continue
                 if n in picture_test:
                     is_text, share = scan_page_is_text(doc, n); out['measured'][n] = share
-                    if not is_text: out['kept'][n] = share; continue
+                    if not is_text or n in keep:
+                        out['kept'][n] = share
+                        if n in keep and is_text: out['kept_by_person'].append(n)
+                        continue
+                elif n in keep: out['kept'][n] = None; out['kept_by_person'].append(n); continue
                 if any(len(shared.get(k[-1], ())) > 1 for k, _, _, _ in hits if k != ('page',)):
                     out['misfits'].append([n, 'the scan sits in a form another page uses too']); continue
                 changed = set()
@@ -1497,9 +1506,11 @@ def main():
                                'tile_dpi': TILE_DPI, 'tile_px': TILE_PX, 'tile_max': TILE_MAX}}
     J = os.path.join(OUTD, 'intake.json'); PDF_OUT = os.path.join(OUTD, 'intake.pdf')
     src_sha = sha256(SRC)
-    prior_cjk = {}                                      # review 06 H1: the stop's counts for pages a person keeps (KEEP_CJK_PAGES)
-    try: prior_cjk = (json.load(open(J)).get('ocr_layer_test') or {}).get('cjk_on_images') or {}
-    except (OSError, ValueError): pass
+    prior_cjk, prior_kept = {}, []                      # review 06 H1: the stop's counts for pages a person keeps (KEEP_CJK_PAGES)
+    try:
+        ol_ = json.load(open(J)).get('ocr_layer_test') or {}
+        prior_cjk, prior_kept = ol_.get('cjk_on_images') or {}, (ol_.get('cjk_kept') or {}).get('pages') or []
+    except (OSError, ValueError, AttributeError): pass
     # an earlier finished intake for the same file and settings is reused (batch estimate → run, FROM= reruns)
     if os.path.exists(J) and not PLAN_ONLY:
         old = json.load(open(J))
@@ -1540,6 +1551,15 @@ def main():
     except pikepdf.PasswordError: return stop('stopped', support.LOCKED, 3)      # the same words as audit.py / apply.py
     except Exception as e: return stop('failed', support.cannot_open(e), 1)
     rec['original']['pages'] = len(pdf.pages); rec['original']['encrypted'] = pdf.is_encrypted
+    kraw = os.environ.get('KEEP_CJK_PAGES') or ''          # review 09 L-B: a comma list of pages the last CJK stop named (or kept before)
+    if kraw.strip():
+        named = set(prior_cjk.get('pages') or []) | set(prior_kept)
+        if not re.fullmatch(r'\s*\d+(\s*,\s*\d+)*\s*', kraw):
+            return stop('stopped', f'KEEP_CJK_PAGES must be a comma list of page numbers, such as 35,41 (given: {kraw[:60]!r})', 3)
+        bad = [p_ for p_ in settings['KEEP_CJK_PAGES'] if not 1 <= p_ <= len(pdf.pages) or p_ not in named]
+        if bad: return stop('stopped', f'KEEP_CJK_PAGES names {"page" if len(bad) == 1 else "pages"} {", ".join(map(str, bad))}, which the last CJK '
+                            f'stop of this run did not name' + (f' (it named {", ".join(map(str, sorted(named)))})' if named else ' (no CJK stop is recorded in this run folder)')
+                            + ': only pages the check stopped on can be kept', 3)
     if '/PageLabels' in pdf.Root:
         try: page_labels.update({i: str(pg.label) for i, pg in enumerate(pdf.pages, 1)})
         except Exception: pass
@@ -2175,7 +2195,7 @@ def main():
         ocr_done = [p_ for p_ in (rec['ocr']['pages_with_ocr_text'] if plan['ocr_mode'] else []) if p_ not in layer_pages]
         if ocr_done or layer_pages:
             both = sorted(set(ocr_done) | set(layer_pages))
-            art = artifact_page_scans(tagged_out, both, picture_test=both)
+            art = artifact_page_scans(tagged_out, both, picture_test=both, keep=settings['KEEP_CJK_PAGES'])
             rule_ = f'ink outside the OCR text boxes at most {SCAN_TEXT_INK:.0%} of the page'
             if plan['ocr_mode']:
                 rec['ocr']['scan_images_marked_decoration'] = [p_ for p_ in art['pages'] if p_ in ocr_done]
@@ -2183,6 +2203,7 @@ def main():
             if layer_pages:
                 rec['page_scans'] = {'layer_pages': len(layer_pages), 'marked_decoration': [p_ for p_ in art['pages'] if p_ in layer_pages],
                                      'kept_as_figure': {str(k): v for k, v in sorted(art['kept'].items()) if k in layer_pages},
+                                     **({'kept_by_person': [p_ for p_ in art['kept_by_person'] if p_ in layer_pages]} if art['kept_by_person'] else {}),
                                      'ink_outside_text': {str(k): v for k, v in sorted(art['measured'].items()) if k in layer_pages},
                                      'rule': rule_, 'misfits': art['misfits'][:30]}
             if art['kept']:

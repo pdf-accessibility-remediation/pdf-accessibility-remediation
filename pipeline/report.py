@@ -294,7 +294,7 @@ def intake_rows():
                 return (f'{pgs([p_])}: {c_["cjk_characters"]} CJK characters read' + (f', {c_["cjk_distinct"]} different' if c_.get('cjk_distinct') is not None else '')
                         if c_.get('cjk_characters') is not None else pgs([p_]))
             rows.append(('CJK text not in the layer (checklist 3.7)', 'CHECK',
-                         f'kept by a person on {pgs(ck["pages"])} (' + (f'{ck["by"]}, {DT.day(ck.get("at"))}' if ck.get('by') else 'set with KEEP_CJK_PAGES, no name recorded')
+                         f'kept by a person on {pgs(ck["pages"])} (' + (f'{str(ck["by"]).replace("|", "/")}, {DT.day(ck.get("at"))}' if ck.get('by') else 'set with KEEP_CJK_PAGES, no name recorded')
                          + '): ' + '; '.join(cnt_(p_) for p_ in ck['pages']) + '. These pages go to the AI as pictures; any Chinese, Japanese or Korean text '
                          'on them is not in the text layer'))
     sp = intake.get('spreads')

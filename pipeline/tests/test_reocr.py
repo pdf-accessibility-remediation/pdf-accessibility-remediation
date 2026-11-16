@@ -172,8 +172,11 @@ def test_kept_pages_are_skipped_by_the_cjk_check():
     assert hit == {} and seen == [1, 11, 21, 5, 50, 60, 70, 80, 90] and r['kept_pages_skipped'] == [35, 41]
     seen.clear(); hit, _, r = intake.layer_cjk_hits(pick, None, set(), probe)  # REOCR: the sample pages only
     assert seen == [1, 11, 21] and 'picture_like_pages' not in r
-    seen.clear(); hit, by_, _ = intake.layer_cjk_hits([35, 40, 45], pics, set(), probe)   # a sample-page hit stops at once
-    assert hit == {35: (14, 12)} and by_ == {35: 'sample page'} and seen == [35]
+    seen.clear(); hit, by_, _ = intake.layer_cjk_hits([35, 40, 45], pics, set(), probe)   # review 08 M2: a sample hit and a
+    assert hit == {35: (14, 12), 41: (30, 21)} and by_ == {35: 'sample page', 41: 'picture-like page'}   # picture-like hit: one stop
+    assert seen == [35, 40, 45, 5, 41, 50, 60, 70, 80, 90]                     # lists both; 35 is not read twice
+    seen.clear(); hit, _, _ = intake.layer_cjk_hits([35, 40, 45], None, set(), probe)     # REOCR: the sample stops at its first hit
+    assert hit == {35: (14, 12)} and seen == [35]
 
 
 def test_the_cjk_page_rule():
@@ -181,3 +184,57 @@ def test_the_cjk_page_rule():
     assert intake.cjk_page(12, 12) and intake.cjk_page(19, 17) and intake.cjk_page(560, 86)
     assert not intake.cjk_page(40, 11) and not intake.cjk_page(30, 11) and not intake.cjk_page(16, 8) and not intake.cjk_page(7, 5)
     assert not intake.cjk_page(9, 9)                                           # under CJK_PROBE_MIN characters
+
+
+
+def test_a_language_answer_after_a_keep_keeps_the_pages(setup, monkeypatch):
+    """Review 08 M1: after a Keep, the run asks "Language of the Scanned Pages" again; the answer's estimate still names
+    the kept pages, so the CJK check doesn't stop on them again."""
+    monkeypatch.setattr(BK, 'installed_langs', lambda s: ['eng', 'chi_tra'])
+    s = settings(setup)
+    (setup / 'uploads' / 'bk.pdf').write_bytes(pdf_bytes(1, 'A Book'))
+    key = BK.listing(s)[0]['key']
+    j = NR.start_estimate(s, [], key, 'First'); jobs.update(s['jobs'], j['id'], status='failed', exit=3)
+    R = setup / 'runs' / 'bk' / 'First'; stopped_json(R)
+    a = NR.answer_language(s, 'bk/First', str(R), LG.KEEP, 'Kim'); jobs.update(s['jobs'], a['id'], status='failed', exit=3)
+    stopped_json(R, settings={'REOCR': False, 'KEEP_CJK_PAGES': [3]}, ocr_layer_test={'cjk_kept': {'pages': [3]}})   # stopped on the
+    q = LG.question(s, str(R))                                                          # diacritics question instead
+    b = NR.answer_language(s, 'bk/First', str(R), 'chi_tra+eng')
+    assert b['env_set']['KEEP_CJK_PAGES'] == '3' and b['env_set'].get('REOCR') == '1' and q['kind'] == 'reocr'
+
+
+def test_keep_cjk_pages_takes_only_pages_the_stop_named(tmp_path):
+    """Review 09 L-B: a comma list only, of pages the last CJK stop named (or kept before); anything else stops with a plain
+    message. Checked before any OCR or tagging, so no Tesseract is needed here."""
+    import subprocess
+    pdf = tmp_path / 'b.pdf'; pdf.write_bytes(pdf_bytes(5, 'A Book'))
+    out = tmp_path / 'o'; out.mkdir()
+    def run(v, prior=None):
+        if prior is not None: (out / 'intake.json').write_text(json.dumps(prior))
+        env = {**os.environ, 'KEEP_CJK_PAGES': v}; env.pop('REOCR', None)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'intake.py'), str(pdf), str(out)],
+                       env=env, capture_output=True, text=True)
+        return json.loads((out / 'intake.json').read_text())
+    stop_ = {'status': 'stopped', 'ocr_layer_test': {'cjk_on_images': {'pages': [2, 4]}, 'cjk_kept': {'pages': [1]}}}
+    assert 'comma list' in run('2-4', stop_)['summary']
+    j = run('3', stop_); assert j['status'] == 'stopped' and 'page 3, which the last CJK stop of this run did not name (it named 1, 2, 4)' in j['summary']
+    assert 'pages 9' not in run('9', stop_)['summary'] and 'page 9' in run('9', stop_)['summary']   # outside the book
+    j = run('2, 4,1', stop_); assert 'KEEP_CJK_PAGES' not in (j.get('summary') or '')              # named or kept before: accepted
+
+
+def test_a_keep_keeps_ocr_text_approval_required(tmp_path):
+    """Review 09 M-A: pages kept at the CJK stop leave the OCR gate open (a typed name is not an approval of the text), and
+    the review page's OCR Text section names them, who kept them and when."""
+    from review import ocr as RO
+    ck = {'pages': [35], 'by': 'Kim Lee', 'at': '2026-11-15T10:00:00', 'counts': {'35': {'cjk_characters': 14, 'cjk_distinct': 12}}}
+    it = {'status': 'done', 'ocr_layer_test': {'verdict': 'usable', 'pages': [{'page': 20, 'verdict': 'usable', 'cer': 0.01}], 'cjk_kept': ck},
+          'triage': {'pages': {'ocr-layer': [20, 35]}}}
+    assert glance.ocr_layer_flagged(it) and glance.ocr_review_needed(it)
+    assert not glance.ocr_layer_flagged({'ocr_layer_test': {'verdict': 'usable'}})
+    assert 35 in RO.listed_pages(it)
+    w = RO.layer_words(it['ocr_layer_test'])
+    assert 'On PDF 35, a check read Chinese, Japanese or Korean characters' in w and 'Kim Lee kept it on November 15, 2026' in w
+    R = tmp_path / 'r'; (R / '_intake').mkdir(parents=True); (R / '_intake' / 'intake.json').write_text(json.dumps(it))
+    sec = RO.section(str(R))
+    f35 = next(p for p in sec['pages'] if p['page'] == 35)['findings']
+    assert any('kept at the Chinese, Japanese or Korean check: 14 such characters' in x for x in f35)
