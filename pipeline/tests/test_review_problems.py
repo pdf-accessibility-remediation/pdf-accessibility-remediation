@@ -200,11 +200,27 @@ def test_an_ai_alt_copying_a_kept_page_lands_on_its_card(tmp_path):
     for d in ({}, {'alt:20 0': {'status': 'approved'}}):                    # untouched or approved: the AI's text, checked
         p = core.problems(R, ai, items, d, [], adds, 'Kim')[0]
         assert [(x['card'], x['why'], x['origin']) for x in p['fields']] == [('alt:20 0', 'this alt text repeats the page\'s own printed text', 'ai')]
-        assert '"Change"' in p['fields'][0]['fix'] and '"Reject"' in p['fields'][0]['fix'] and '"Finish Review"' in p['fields'][0]['fix']
+        assert p['fields'][0]['fix'] == core.ALT_COPIES_FIX and p['fields'][0]['tail'] is False   # review 11 M2: no generic tail after it
     p = core.problems(R, ai, items, {'alt:20 0': {'status': 'changed', 'value': 'The harvest festival was held each autumn in the village square, said the page.'}}, [], adds, 'Kim')[0]
     assert p['fields'] == []                                                  # a person's own wording: not checked (decision 2)
     R2, ai2, items2, adds2 = kept_run(tmp_path / 'b', 'A crowded square with long tables of food.')
     assert core.problems(R2, ai2, items2, {}, [], adds2, 'Kim')[0]['fields'] == []   # a description: nothing to fix
+
+def test_each_alt_finding_gets_its_own_text(tmp_path):
+    """Review 11 M2: the copied-text and the CJK findings each get a text that opens with what was found, and neither
+    repeats the other's reason."""
+    R, ai, items, adds = kept_run(tmp_path, 'Page: the harvest festival was held each autumn in the village square.')
+    f = core.problems(R, ai, items, {}, [], adds, 'Kim')[0]['fields'][0]
+    assert f['fix'].startswith('This alt text repeats the page\'s own printed text.') and 'Chinese' not in f['fix']
+    R2, ai2, items2, adds2 = kept_run(tmp_path / 'c', 'A festival banner reading 秋祭村広場祭典 above the tables.')
+    f2 = core.problems(R2, ai2, items2, {}, [], adds2, 'Kim')[0]['fields'][0]
+    assert f2['why'] == 'this alt text holds Chinese, Japanese or Korean characters that the page\'s OCR text lacks'
+    assert f2['fix'] == core.ALT_CJK_FIX and f2['fix'].startswith('This alt text holds Chinese, Japanese or Korean characters that the '
+                                                                    'page\'s OCR text lacks.') and 'repeats' not in f2['fix'] and f2['tail'] is False
+    for t in (core.ALT_COPIES_FIX, core.ALT_CJK_FIX):               # the card's own advice, once: no "Finish Review" or "AI's choice" line
+        assert t.endswith('select "Reject" when the image is only printed text.') and 'Finish Review' not in t
+    src = open(os.path.join(os.path.dirname(core.__file__), 'page.html'), encoding='utf-8').read()
+    assert "p.tail === false ? ''" in src and src.count('tailOf(p)') == 3 and src.count('NOT_YOURS[p.origin]') == 1   # only in tailOf
 
 def test_a_persons_change_to_an_ai_alt_is_marked(tmp_path):
     """Review 08, decision 2: apply_decisions marks a changed alt changed_by; an approved one, or one changed to the AI's own

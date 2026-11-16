@@ -1280,10 +1280,14 @@ def preview(R, wo):
 # What to do about each reason the check (lib/workorder_check.py) or add_entries gives, for the page: sentence case, no
 # file names. Keyed by the reason with its numbers as N (_key); {pages} is the book's page count, {moves} the most
 # section moves a work order may hold. A reason with no entry is shown as it is (test_review_core pins that none is missing).
-ALT_COPIES_FIX = ('This page is a scan kept as a picture. Its alt text should describe the picture, not copy the page\'s printed '
-                  'words: the AI must not write the book\'s text, and a screen reader already reads the page\'s OCR text. Select '
-                  '"Change" and describe the picture, or select "Reject" when the image is only printed text. "Finish Review" waits '
-                  'until this card is changed or rejected.')
+# review 11 M2 (Patrick's wording): one text per finding, each opening with what was found; shown without the generic
+# "This is the AI's choice" tail ('tail': False), which repeated its last sentence
+ALT_COPIES_FIX = ('This alt text repeats the page\'s own printed text. This page is a scan kept as a picture: its alt text should '
+                  'describe the picture, since a screen reader already reads the page\'s OCR text and the AI must not write the '
+                  'book\'s text. Select "Change" and describe the picture, or select "Reject" when the image is only printed text.')
+ALT_CJK_FIX = ('This alt text holds Chinese, Japanese or Korean characters that the page\'s OCR text lacks. The AI must not write '
+               'the book\'s text, so the alt text can\'t carry them. Select "Change" and describe the picture, or select "Reject" '
+               'when the image is only printed text.')
 FIX = {
     'unknown key': 'The pipeline does not know this decision, so it cannot be applied. Reject it.',
     'unknown obj': 'This points at something the audit did not find in the book. Reject it.',
@@ -1426,9 +1430,11 @@ def problems(R, ai_wo, items, decisions, additions, adds, reviewer='', set_in=No
             f, c = kf.get(a.get('obj')) if isinstance(a, dict) else None, a.get('_card') if isinstance(a, dict) else None
             if not f or not c or c not in ids or a.get('changed_by') or str(a.get('why') or '').startswith(('added by ', 'added in review')): continue
             w_ = keptscans.copied_text(a.get('alt'), kt.get(str(f.get('page')), ''))
-            if w_: out['fields'].append({'card': c, 'origin': origin(c), 'fix': ALT_COPIES_FIX,
-                                         'why': ('this alt text repeats the page\'s own printed text' if w_.startswith('it repeats') else
-                                                 'this alt text holds Chinese, Japanese or Korean characters that the page\'s text lacks')})
+            if w_:
+                rep = w_.startswith('it repeats')
+                out['fields'].append({'card': c, 'origin': origin(c), 'tail': False, 'fix': ALT_COPIES_FIX if rep else ALT_CJK_FIX,
+                                      'why': ('this alt text repeats the page\'s own printed text' if rep else
+                                              'this alt text holds Chinese, Japanese or Korean characters that the page\'s OCR text lacks')})
     for r in refused:
         aid, why = r['id'], r['why']
         kind, _, target = aid[4:].partition(':')
