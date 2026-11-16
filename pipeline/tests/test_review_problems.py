@@ -203,6 +203,8 @@ def test_an_ai_alt_copying_a_kept_page_lands_on_its_card(tmp_path):
         assert p['fields'][0]['fix'] == core.ALT_COPIES_FIX and p['fields'][0]['tail'] is False   # review 11 M2: no generic tail after it
     p = core.problems(R, ai, items, {'alt:20 0': {'status': 'changed', 'value': 'The harvest festival was held each autumn in the village square, said the page.'}}, [], adds, 'Kim')[0]
     assert p['fields'] == []                                                  # a person's own wording: not checked (decision 2)
+    p = core.problems(R, ai, items, {'alt:20 0': {'status': 'changed', 'value': ' Page: the harvest festival was held each autumn in the\nvillage square. '}}, [], adds, 'Kim')[0]
+    assert [x['card'] for x in p['fields']] == ['alt:20 0']                   # review 11 L3: spaces added only: still checked
     R2, ai2, items2, adds2 = kept_run(tmp_path / 'b', 'A crowded square with long tables of food.')
     assert core.problems(R2, ai2, items2, {}, [], adds2, 'Kim')[0]['fields'] == []   # a description: nothing to fix
 
@@ -229,3 +231,6 @@ def test_a_persons_change_to_an_ai_alt_is_marked(tmp_path):
     assert core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': 'A new map'}})['alt'][0]['changed_by'] == 'person'
     assert 'changed_by' not in core.apply_decisions(ai, items, {'alt:20 0': {'status': 'approved'}})['alt'][0]
     assert 'changed_by' not in core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': 'A map of the island'}})['alt'][0]
+    for v in ('A map of the island ', ' A map  of the\nisland'):          # review 11 L3: white space only: still the AI's text
+        assert 'changed_by' not in core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': v}})['alt'][0], v
+    assert core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': 'A map of the islands'}})['alt'][0]['changed_by'] == 'person'

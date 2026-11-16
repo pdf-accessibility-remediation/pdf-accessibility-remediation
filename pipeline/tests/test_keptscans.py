@@ -195,3 +195,59 @@ def test_a_persons_change_is_not_checked(tmp_path, monkeypatch):
     the same alt without it is still checked."""
     log, alts = run_two(tmp_path, monkeypatch, [(0, {'alt': 'Page of text: ' + LINE, 'changed_by': 'person'})])
     assert alts[0] == 'Page of text: ' + LINE and not log.get('alt_refused_copied_text')
+
+
+def small_image_wide_text_pdf(path, text):
+    """Review 11 L1: a kept page whose Figure (MCID 0) holds a small image and visible page-wide text (a tagger wrapping
+    text into a Figure), with the page's invisible OCR text in a P (MCID 1). Its images cover about 2% of the page."""
+    pdf = pikepdf.new()
+    img = pikepdf.Stream(pdf, b'\x80' * 16, Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Image, Width=4, Height=4,
+                         ColorSpace=pikepdf.Name.DeviceGray, BitsPerComponent=8)
+    font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica, Encoding=pikepdf.Name.WinAnsiEncoding)
+    wide = b'M' * 23                                       # about 575 pt at 30 pt: the text spans the page, top to bottom
+    c = (b'/Figure <</MCID 0>> BDC q 100 0 0 100 256 346 cm /Im0 Do Q BT /F1 30 Tf 20 755 Td (' + wide + b') Tj ET '
+         b'BT /F1 30 Tf 20 12 Td (' + wide + b') Tj ET EMC\n/P <</MCID 1>> BDC BT 3 Tr /F1 10 Tf 72 300 Td ('
+         + text.encode('latin-1') + b') Tj ET EMC\n')
+    pdf.pages.append(pikepdf.Page(pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 612, 792], StructParents=0,
+                                                     Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font), XObject=pikepdf.Dictionary(Im0=img)),
+                                                     Contents=pdf.make_stream(c))))
+    pg = pdf.pages[0].obj
+    root = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+    doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
+    fig = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Figure, P=doc, Pg=pg, K=0))
+    para = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P, P=doc, Pg=pg, K=1))
+    doc.K = pikepdf.Array([fig, para]); root.K = doc
+    root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=[0, pikepdf.Array([fig, para])]))
+    pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
+    pdf.save(path, deterministic_id=True)
+    with pikepdf.open(path) as p:
+        f = p.Root.StructTreeRoot.K.K[0]
+        return f'{f.objgen[0]} {f.objgen[1]}'
+
+
+def test_a_figure_of_a_small_image_and_page_wide_text_is_not_the_page_scan(tmp_path, monkeypatch):
+    """Review 11 L1: apply.py measures the Figure's images only, as the audit does, so this Figure (page-wide text, a small
+    image) is not checked: its copied alt is written, as the audit would not mark it either."""
+    d = tmp_path / '_intake'; d.mkdir(); src = str(d / 'intake.pdf')
+    ref = small_image_wide_text_pdf(src, LINE)
+    sha = hashlib.sha256(open(src, 'rb').read()).hexdigest()
+    (d / 'intake.json').write_text(json.dumps({'result': {'sha256': sha}, 'page_scans': {'kept_as_figure': {'1': 0.05}}}))
+    alt = 'A page of text: ' + LINE
+    wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'schema': 'workorder/0.2', 'alt': [{'obj': ref, 'alt': alt}]}))
+    monkeypatch.setenv('VERAPDF', 'off')
+    monkeypatch.setattr(sys, 'argv', ['apply.py', src, str(wo), str(tmp_path / 'out.pdf')])
+    monkeypatch.syspath_prepend(PIPE)
+    with contextlib.redirect_stdout(io.StringIO()):
+        runpy.run_path(os.path.join(PIPE, 'apply.py'), run_name='__main__')
+    log = json.load(open(str(tmp_path / 'out.pdf') + '.log.json'))
+    with pikepdf.open(str(tmp_path / 'out.pdf')) as p:
+        assert str(p.get_object(tuple(int(x) for x in ref.split())).get('/Alt')) == alt
+    assert not log.get('alt_refused_copied_text')
+
+
+def test_covers_page_rounds_as_the_audit_does():
+    """Review 11 L1: 79.96% of the visible page rounds to 80.0, so the audit marks the Figure and apply.py checks it;
+    79.94% rounds to 79.9: neither does. The box is clipped to the visible area first."""
+    vis = (0, 0, 100, 100)
+    assert K.covers_page((0, 0, 100, 79.96), vis) and not K.covers_page((0, 0, 100, 79.94), vis)
+    assert K.covers_page((-50, -50, 150, 150), vis) and not K.covers_page((50, 0, 150, 100), vis)   # half of it off the page

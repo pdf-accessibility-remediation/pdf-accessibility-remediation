@@ -832,13 +832,15 @@ def op_retype(spec):
 # ================================================================== 4. figures
 KEPT_SCANS = keptscans.from_intake(SRC)        # review 06 H2: page scans intake kept as figures (lib/keptscans.py)
 def page_scan_figure(o, pg):
-    """The Figure covers PAGE_SCAN_AREA or more of the visible page: the audit's test for the figure it marks
-    kept_by_picture_test (audit.py), so the guard applies to that figure only, not to another figure on the page."""
-    b = box_of(o, pg)
-    if b is None: return False
-    vx0, vt, vx1, vb = PL.pages[pg - 1].vis
-    w, h = max(0.0, min(b[2], vx1) - max(b[0], vx0)), max(0.0, min(b[3], vb) - max(b[1], vt))
-    return w * h >= keptscans.PAGE_SCAN_AREA * max((vx1 - vx0) * (vb - vt), 1e-9)
+    """The Figure's images cover PAGE_SCAN_AREA or more of the visible page: the audit's test for the figure it marks
+    kept_by_picture_test (audit.py), so the guard applies to that figure only, not to another figure on the page. Images
+    only, at the audit's rounding (keptscans.covers_page, review 11 L1): a Figure of a small image and page-wide text is
+    not the page scan."""
+    ms = {m for p, m in desc_mcids(o, eff_pg.get(o.objgen)) if p == pg}
+    ims = [i for i in PL.pages[pg - 1].images if i.get('mcid') in ms]
+    if not ims: return False
+    return keptscans.covers_page((min(i['x0'] for i in ims), min(i['top'] for i in ims), max(i['x1'] for i in ims),
+                                  max(i['bottom'] for i in ims)), PL.pages[pg - 1].vis)
 def op_alt(spec):
     for it in spec:
         o = obj(it['obj'])

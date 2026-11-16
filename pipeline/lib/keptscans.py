@@ -18,6 +18,17 @@ import os, re, json, hashlib
 ALT_SHARED_RUN = 20
 ALT_CJK_RUN = 6
 PAGE_SCAN_AREA = 0.8              # a Figure covering this share of the visible page or more is the page scan (audit.py marks it)
+
+
+def covers_page(box, vis):
+    """box (x0, top, x1, bottom: the Figure's images on its page) covers PAGE_SCAN_AREA or more of the visible area vis,
+    measured as audit.py measures area_pct (clipped to vis, rounded to 0.1%), so apply.py's guard and the audit's marker
+    agree on which Figure is the page scan (review 11 L1)."""
+    vx0, vt, vx1, vb = vis
+    part = max(min(box[2], vx1) - max(box[0], vx0), 0) * max(min(box[3], vb) - max(box[1], vt), 0)
+    return round(100 * part / max(max(vx1 - vx0, 0) * max(vb - vt, 0), 1), 1) >= 100 * PAGE_SCAN_AREA
+
+
 _CJK = re.compile(r'[぀-ヿ㐀-䶿一-鿿가-힯豈-﫿\U00020000-\U0002fa1f]')
 
 

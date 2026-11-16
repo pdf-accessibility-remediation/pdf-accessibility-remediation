@@ -1066,6 +1066,10 @@ def prepare(R, pdf):
     return data
 
 # ------------------------------------------------------------------ decisions
+def _ws(x):
+    """Text with its white space collapsed (review 11 L3): an added space or line break leaves the AI's alt text the AI's."""
+    return ' '.join(x.split()) if isinstance(x, str) else x
+
 def apply_decisions(ai_wo, items, decisions):
     """A copy of the AI's work order with a person's decisions applied. Unreviewed and approved items stay as the AI wrote them."""
     wo = copy.deepcopy(ai_wo)
@@ -1108,7 +1112,7 @@ def apply_decisions(ai_wo, items, decisions):
                 parent[last] = {**parent[last], 'pages': [num(x) for x in ps], 'before_page': num(v.get('before_page', parent[last].get('before_page')))}
             elif it['field']:
                 parent[last][it['field']] = v
-                if it['key'] == 'alt' and it['field'] == 'alt' and isinstance(parent[last], dict) and v != it.get('ai'):
+                if it['key'] == 'alt' and it['field'] == 'alt' and isinstance(parent[last], dict) and _ws(v) != _ws(it.get('ai')):   # review 11 L3
                     parent[last]['changed_by'] = 'person'   # review 08, decision 2: a person's alt text; apply.py's alt-text guard
                                                             #   (lib/keptscans.py) checks the AI's, never a person's
             else: parent[last] = v
