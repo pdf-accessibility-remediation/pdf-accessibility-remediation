@@ -85,7 +85,10 @@ def test_from_intake_reads_the_record_only_for_its_own_result(tmp_path):
     sha = hashlib.sha256(open(src, 'rb').read()).hexdigest()
     (d / 'intake.json').write_text(json.dumps({'result': {'sha256': sha}, 'page_scans': {'kept_as_figure': {'3': 0.02}},
                                                'ocr': {'scan_images_kept_as_figure': {'7': 0.3}}}))
-    assert K.from_intake(src) == {3: 0.02, 7: 0.3}
+    assert K.from_intake(src) == {3: {'ink_outside_text': 0.02}, 7: {'ink_outside_text': 0.3}}
+    (d / 'intake.json').write_text(json.dumps({'result': {'sha256': sha}, 'page_scans': {'kept_as_figure': {'3': 0.004}},
+                                               'ocr_layer_test': {'cjk_kept': {'pages': [3]}}}))
+    assert K.from_intake(src) == {3: {'ink_outside_text': 0.004, 'reason': 'kept by a person'}}   # decision 5
     (d / 'intake.json').write_text(json.dumps({'result': {'sha256': '0' * 64}, 'page_scans': {'kept_as_figure': {'3': 0.02}}}))
     assert K.from_intake(src) == {}                                             # another file: nothing
     other = tmp_path / 'book.pdf'; other.write_bytes(open(src, 'rb').read())
@@ -133,3 +136,62 @@ def test_the_audit_marks_a_kept_page_scan(tmp_path):
         dg = json.load(open(out / 'digest.json'))
         assert [f.get('kept_by_picture_test') for f in dg['figures']] == [want]
         assert ('kept_page_scans_format' in dg) == bool(kept)                  # no new key in a digest without kept scans
+
+
+
+def two_figure_pdf(path, text):
+    """A kept page with the whole-page scan (Figure, MCID 0) and a second, smaller figure (a photo over 30% of the page,
+    MCID 2) whose caption is in the OCR text (MCID 1). Review 08 H1: only the page scan is guarded."""
+    pdf = pikepdf.new()
+    img = pikepdf.Stream(pdf, b'\x80' * 16, Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Image, Width=4, Height=4,
+                         ColorSpace=pikepdf.Name.DeviceGray, BitsPerComponent=8)
+    font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica, Encoding=pikepdf.Name.WinAnsiEncoding)
+    c = (b'/Figure <</MCID 0>> BDC q 612 0 0 792 0 0 cm /Im0 Do Q EMC\n/P <</MCID 1>> BDC BT 3 Tr /F1 10 Tf 72 300 Td ('
+         + text.encode('latin-1') + b') Tj ET EMC\n/Figure <</MCID 2>> BDC q 400 0 0 300 100 400 cm /Im0 Do Q EMC\n')
+    pdf.pages.append(pikepdf.Page(pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox=[0, 0, 612, 792], StructParents=0,
+                                                     Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font), XObject=pikepdf.Dictionary(Im0=img)),
+                                                     Contents=pdf.make_stream(c))))
+    pg = pdf.pages[0].obj
+    root = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+    doc = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Document, P=root))
+    els = [pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name(n), P=doc, Pg=pg, K=k))
+           for n, k in (('/Figure', 0), ('/P', 1), ('/Figure', 2))]
+    doc.K = pikepdf.Array(els); root.K = doc
+    root.ParentTree = pdf.make_indirect(pikepdf.Dictionary(Nums=[0, pikepdf.Array(els)]))
+    pdf.Root.StructTreeRoot = root; pdf.Root.MarkInfo = pikepdf.Dictionary(Marked=True); pdf.Root.Lang = pikepdf.String('en')
+    pdf.save(path, deterministic_id=True)
+    with pikepdf.open(path) as p:
+        return [f'{e.objgen[0]} {e.objgen[1]}' for e in (p.Root.StructTreeRoot.K.K[0], p.Root.StructTreeRoot.K.K[2])]
+
+
+def run_two(tmp_path, monkeypatch, items):
+    d = tmp_path / '_intake'; d.mkdir(exist_ok=True); src = str(d / 'intake.pdf')
+    refs = two_figure_pdf(src, LINE)
+    sha = hashlib.sha256(open(src, 'rb').read()).hexdigest()
+    (d / 'intake.json').write_text(json.dumps({'result': {'sha256': sha}, 'page_scans': {'kept_as_figure': {'1': 0.05}}}))
+    wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'schema': 'workorder/0.2', 'alt': [{'obj': refs[i], **it} for i, it in items]}))
+    monkeypatch.setenv('VERAPDF', 'off')
+    monkeypatch.setattr(sys, 'argv', ['apply.py', src, str(wo), str(tmp_path / 'out.pdf')])
+    monkeypatch.syspath_prepend(PIPE)
+    with contextlib.redirect_stdout(io.StringIO()):
+        runpy.run_path(os.path.join(PIPE, 'apply.py'), run_name='__main__')
+    log = json.load(open(str(tmp_path / 'out.pdf') + '.log.json'))
+    with pikepdf.open(str(tmp_path / 'out.pdf')) as p:
+        alts = [str(p.get_object(tuple(int(x) for x in r.split())).get('/Alt')) if '/Alt' in p.get_object(tuple(int(x) for x in r.split())) else None for r in refs]
+    return log, alts
+
+
+def test_only_the_page_scan_is_guarded_not_another_figure_on_the_page(tmp_path, monkeypatch):
+    """Review 08 H1: the photo's alt quotes 25+ characters of its caption (in the OCR text) and is written; the page scan's
+    copied alt is still refused."""
+    photo = 'Photo: the harvest festival was held each autumn in the village square.'
+    log, alts = run_two(tmp_path, monkeypatch, [(0, {'alt': 'Page of text: ' + LINE}), (1, {'alt': photo})])
+    assert alts == [None, photo]
+    assert [r['page'] for r in log['alt_refused_copied_text']] == [1] and len(log['alt_refused_copied_text']) == 1
+
+
+def test_a_persons_change_is_not_checked(tmp_path, monkeypatch):
+    """Review 08, decision 2: an AI alt a person changed on the review page carries changed_by and is written as given;
+    the same alt without it is still checked."""
+    log, alts = run_two(tmp_path, monkeypatch, [(0, {'alt': 'Page of text: ' + LINE, 'changed_by': 'person'})])
+    assert alts[0] == 'Page of text: ' + LINE and not log.get('alt_refused_copied_text')

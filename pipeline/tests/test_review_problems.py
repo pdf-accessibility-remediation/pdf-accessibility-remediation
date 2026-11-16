@@ -181,3 +181,35 @@ def test_the_figure_gap_lists_pages_not_object_numbers():        # round 24: obj
                          '46, 47, 48 and 4 more pages') and ' 0' not in g['what'] and g['objs'][0] == '100 0'
     p = next(x for x in core.gaps({}, {'figures': [], 'page_figures': [{'page': 7}]}) if x['id'] == 'page_figures_without_alt')
     assert p['what'] == '1 whole-page figure with no alt text, on PDF 7'
+
+
+# ------------------------------------------------------------------ review 09 M-B: the alt-text guard on the card
+def kept_run(tmp_path, alt):
+    """The same synthetic book, its figure 20 0 a page scan kept as a picture (the audit's marker, and the page's OCR text in
+    fulltext.json, as audit.py writes them)."""
+    R = str(tmp_path); os.makedirs(os.path.join(R, '_audit'), exist_ok=True)
+    dg = digest(); dg['figures'][0].update(area_pct=99.0, kept_by_picture_test={'ink_outside_text': 0.04})
+    core.save(os.path.join(R, '_audit', 'digest.json'), dg)
+    core.save(os.path.join(R, '_audit', 'fulltext.json'), {'reading_order': order(), 'kept_page_text': {'2': 'The harvest festival was held each autumn in the village square.'}})
+    ai = ai_order(); ai['alt'] = [{'obj': '20 0', 'alt': alt}]; core.save(os.path.join(R, 'workorder.ai.json'), ai)
+    ro = core.reading_order(dg, {'reading_order': order()}, ai)
+    return R, ai, core.build_items(ai, dg, ro['entries'], ro), core.addable(ai, dg, ro)
+
+def test_an_ai_alt_copying_a_kept_page_lands_on_its_card(tmp_path):
+    R, ai, items, adds = kept_run(tmp_path, 'Page: the harvest festival was held each autumn in the village square.')
+    for d in ({}, {'alt:20 0': {'status': 'approved'}}):                    # untouched or approved: the AI's text, checked
+        p = core.problems(R, ai, items, d, [], adds, 'Kim')[0]
+        assert [(x['card'], x['why'], x['origin']) for x in p['fields']] == [('alt:20 0', 'this alt text repeats the page\'s own printed text', 'ai')]
+        assert '"Change"' in p['fields'][0]['fix'] and '"Reject"' in p['fields'][0]['fix'] and '"Finish Review"' in p['fields'][0]['fix']
+    p = core.problems(R, ai, items, {'alt:20 0': {'status': 'changed', 'value': 'The harvest festival was held each autumn in the village square, said the page.'}}, [], adds, 'Kim')[0]
+    assert p['fields'] == []                                                  # a person's own wording: not checked (decision 2)
+    R2, ai2, items2, adds2 = kept_run(tmp_path / 'b', 'A crowded square with long tables of food.')
+    assert core.problems(R2, ai2, items2, {}, [], adds2, 'Kim')[0]['fields'] == []   # a description: nothing to fix
+
+def test_a_persons_change_to_an_ai_alt_is_marked(tmp_path):
+    """Review 08, decision 2: apply_decisions marks a changed alt changed_by; an approved one, or one changed to the AI's own
+    text, is not."""
+    R, ai, items, adds = run(tmp_path)
+    assert core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': 'A new map'}})['alt'][0]['changed_by'] == 'person'
+    assert 'changed_by' not in core.apply_decisions(ai, items, {'alt:20 0': {'status': 'approved'}})['alt'][0]
+    assert 'changed_by' not in core.apply_decisions(ai, items, {'alt:20 0': {'status': 'changed', 'value': 'A map of the island'}})['alt'][0]

@@ -831,16 +831,24 @@ def op_retype(spec):
 
 # ================================================================== 4. figures
 KEPT_SCANS = keptscans.from_intake(SRC)        # review 06 H2: page scans intake kept as figures (lib/keptscans.py)
+def page_scan_figure(o, pg):
+    """The Figure covers PAGE_SCAN_AREA or more of the visible page: the audit's test for the figure it marks
+    kept_by_picture_test (audit.py), so the guard applies to that figure only, not to another figure on the page."""
+    b = box_of(o, pg)
+    if b is None: return False
+    vx0, vt, vx1, vb = PL.pages[pg - 1].vis
+    w, h = max(0.0, min(b[2], vx1) - max(b[0], vx0)), max(0.0, min(b[3], vb) - max(b[1], vt))
+    return w * h >= keptscans.PAGE_SCAN_AREA * max((vx1 - vx0) * (vb - vt), 1e-9)
 def op_alt(spec):
     for it in spec:
         o = obj(it['obj'])
         if S(o) != 'Figure': reject(f'alt {it["obj"]}', 'not a Figure'); continue
-        if KEPT_SCANS and not str(it.get('why') or '').startswith(('added by ', 'added in review')):   # a person's addition stands
-            pg = eff_pg.get(o.objgen) or min((p for p, m in desc_mcids(o) if p), default=None)
-            if pg in KEPT_SCANS:                 # a kept page scan: its alt must not copy the page's text (sponsor rule 1)
-                why = keptscans.copied_text(it['alt'], ''.join(c['text'] for c in PL.pages[pg - 1].chars))
-                if why:
-                    reject(f'alt {it["obj"]}', f'alt text on the page scan of {PG(pg)} refused: {why}; the figure is left without alt text for a person')
+        if KEPT_SCANS and not it.get('changed_by') and not str(it.get('why') or '').startswith(('added by ', 'added in review')):
+            pg = eff_pg.get(o.objgen) or min((p for p, m in desc_mcids(o) if p), default=None)   # a person's addition or change stands
+            if pg in KEPT_SCANS and page_scan_figure(o, pg):   # the kept page scan itself (review 08 H1: not another figure on the
+                why = keptscans.copied_text(it['alt'], ''.join(c['text'] for c in PL.pages[pg - 1].chars))   # page): its alt must
+                if why:                                                                                      # not copy the page's text (rule 1)
+                    reject(f'alt {it["obj"]}', f'alt text on the page scan of {PG(pg)} (Figure {it["obj"]}) refused: {why}; the figure is left without alt text for a person')
                     log.setdefault('alt_refused_copied_text', []).append({'obj': it['obj'], 'page': pg, 'why': why, 'alt': it['alt']})
                     continue
         set_attr(it, '/Alt', pikepdf.String(it['alt'])); ok('figure: alt text')

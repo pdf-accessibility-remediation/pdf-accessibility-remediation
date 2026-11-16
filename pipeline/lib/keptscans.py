@@ -17,27 +17,31 @@ import os, re, json, hashlib
 
 ALT_SHARED_RUN = 20
 ALT_CJK_RUN = 6
+PAGE_SCAN_AREA = 0.8              # a Figure covering this share of the visible page or more is the page scan (audit.py marks it)
 _CJK = re.compile(r'[぀-ヿ㐀-䶿一-鿿가-힯豈-﫿\U00020000-\U0002fa1f]')
 
 
 def from_intake(src):
-    """{page: ink outside the OCR text (share of the page)} of the page scans intake kept as figures, read from the
-    intake.json beside src (run_api.sh's _intake/intake.pdf) only when that record's result is this file (its sha256);
-    {} otherwise (a tagged book, INTAKE=off, a file edited since)."""
+    """{page: {ink_outside_text, reason?}} of the page scans intake kept as figures, read from the intake.json beside src
+    (run_api.sh's _intake/intake.pdf) only when that record's result is this file (its sha256); {} otherwise (a tagged
+    book, INTAKE=off, a file edited since). ink_outside_text is None for a page kept without being measured; reason is
+    "kept by a person" for a page in KEEP_CJK_PAGES (review 08, decision 5: kept whatever its ink). The PDF is hashed only
+    when the record names kept page scans (review 08 L8)."""
     if os.path.basename(src) != 'intake.pdf': return {}
     try: j = json.load(open(os.path.join(os.path.dirname(os.path.abspath(src)), 'intake.json'), encoding='utf-8'))
     except (OSError, ValueError): return {}
+    out = {}
+    for d in ((j.get('page_scans') or {}).get('kept_as_figure') or {}, (j.get('ocr') or {}).get('scan_images_kept_as_figure') or {}):
+        for k, v in d.items():
+            if str(k).isdigit(): out[int(k)] = {'ink_outside_text': v}
     want = (j.get('result') or {}).get('sha256')
-    if not want:
-        return {}
+    if not out or not want: return {}
     h = hashlib.sha256()
     with open(src, 'rb') as f:
         for b in iter(lambda: f.read(1 << 20), b''): h.update(b)
     if h.hexdigest() != want: return {}
-    out = {}
-    for d in ((j.get('page_scans') or {}).get('kept_as_figure') or {}, (j.get('ocr') or {}).get('scan_images_kept_as_figure') or {}):
-        for k, v in d.items():
-            if str(k).isdigit(): out[int(k)] = v
+    for p in ((j.get('ocr_layer_test') or {}).get('cjk_kept') or {}).get('pages') or []:
+        if isinstance(p, int) and p in out: out[p]['reason'] = 'kept by a person'
     return out
 
 
