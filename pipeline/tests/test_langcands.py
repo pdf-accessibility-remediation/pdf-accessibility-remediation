@@ -41,6 +41,41 @@ def test_places_on_a_page(tmp_path):
     assert (p['first'], p['last'], p['n'], p['whole']) == (9, 13, 30, False)
     assert words[p['w0']].startswith('mapp')
 
+def test_hyphen_english_rule():
+    """#140 (hyphen at a line end): the form with its hyphen counts as English only for halves of 3+ plain letters whose
+    joined form has no romanized shape (Hepburn or pinyin, a doubled consonant read as one)."""
+    h = langcands.hyphen_english
+    assert h('long', 'standing') and h('highest', 'ranking') and h('white', 'robed')
+    assert not h('keg', 'are') and not h('ship', 'pei')          # kegare, shippei: Japanese split into English-looking halves
+    assert not h('Kō', 'dan') and not h('ho', 'jo')              # marks, short halves
+    assert not h('infor', 'mation')                              # no hyphen form: classify's joined check decides it
+
+def test_english_compound_broken_at_its_hyphen(tmp_path):
+    """#140: "long-" / "standing" across two runs (and two lines) is no candidate; "infor-" / "mation" neither."""
+    runs = [{'text': 'A long-'}, {'text': 'standing rule, and infor-'}, {'text': 'mation here.'}]
+    places, _ = langcands.page_places(1, plpages.Pages(langpdf.build(str(tmp_path / 'h.pdf'), runs)).pages[0].chars)
+    assert places == []
+
+def test_romanized_word_broken_across_runs(tmp_path):
+    """#140: a romanized word broken across two runs is one form with two places, the second half's place with the form
+    and classes of its first half's phrase; the phrase ends at the second half ("pusa" is a phrase of its own)."""
+    runs = [{'text': 'The sutra qianyan guanshi-'}, {'text': 'yin pusa here.'}, {'text': 'A keg-'}, {'text': 'are rite.'}]
+    places, _ = langcands.page_places(1, plpages.Pages(langpdf.build(str(tmp_path / 'r.pdf'), runs)).pages[0].chars)
+    by = {(p['mcid'], p['text']): p for p in places}
+    first, second = by[(0, 'qianyan guanshi')], by[(1, 'yin')]
+    assert first['form'] == second['form'] == 'qianyan guanshiyin'
+    assert first['class'] == second['class']
+    assert (1, 'pusa') in by and by[(1, 'pusa')]['form'] == 'pusa'
+    assert by[(2, 'keg')]['form'] == by[(3, 'are')]['form'] == 'kegare'   # English-looking halves of a Hepburn word stay a candidate
+
+def test_romanized_word_broken_in_one_run(tmp_path):
+    """#140: both halves in the same run: one place covering them, with the joined form."""
+    runs = [{'body': ['(The sutra qianyan guanshi-) Tj', 'T*', '(yin pusa here.) Tj']}]
+    places, _ = langcands.page_places(1, plpages.Pages(langpdf.build(str(tmp_path / 'o.pdf'), runs)).pages[0].chars)
+    p = next(p for p in places if p['form'] == 'qianyan guanshiyin')
+    assert p['text'].endswith('yin') and 'pusa' not in p['text']
+    assert any(q['form'] == 'pusa' for q in places)
+
 def test_cjk_document_reverse_direction(tmp_path):
     """In a Chinese, Japanese or Korean document, Latin-script words are candidates even when English ('latin'), and
     CJK text in the document's own language is not."""

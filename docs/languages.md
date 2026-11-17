@@ -10,6 +10,12 @@ approved.
    use (kahakō, macrons, ʻokina), runs in another script (Chinese characters, kana, hangul, Greek, Cyrillic, …) and
    words outside the English word list (SCOWL 2020.12.07). Each printed form is one candidate, with every place it
    occurs. A publisher's own `/Lang` tags are listed too ("existing").
+   - **A word broken by a hyphen at a line end** is checked joined, both without its hyphen ("infor-" + "mation") and
+     with it ("long-" + "standing"); English either way, it is no candidate. The form with the hyphen counts only when
+     each half has three or more plain letters and the joined word does not have the shape of romanized Japanese or
+     Chinese, so a romanized word split into English-looking syllables ("keg-" + "are" for *kegare*) stays a candidate.
+   - **Both halves of a broken candidate are tagged:** in one run, one place covers them; in two runs, the second half
+     is a place of its own with the same word form, so one decision tags both lines.
 2. **The language step asks the AI** (`name_languages.py`, prompt `prompts/language_v3.md`): each word form with its
    context, each snippet once per request, through OpenRouter with `data_collection: deny`. The context
    (`lib/langreq.py` `CTX`) is 10 words on each side of up to two places per form (a word is a piece with a letter or

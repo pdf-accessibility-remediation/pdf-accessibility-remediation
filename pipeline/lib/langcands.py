@@ -28,7 +28,11 @@ scripts are never exempt).
 
 Words are split as the OCR-word sheets split them (lib/ocrwords.words: spaces, gaps, new lines), then at dashes, slashes
 and quotes, and where the script changes between CJK and Latin. A word broken by a hyphen at a line end is rejoined for the
-list check ("oppor-" + "tunities"); when its two halves are in different runs it becomes two places of one form.
+list check, without its hyphen ("oppor-" + "tunities") and with it ("long-" + "standing", halves of three or more plain
+letters: hyphen_english); English either way, it is no candidate. A candidate's second half is classed with its first and
+ends the phrase it is in (#140): when both halves are in the same run, one place covers them; when they are in different
+runs, the second half is a place of its own with the form and classes of the place its first half ended in, so the two
+places are one form and one decision.
 Consecutive candidate words in one run form one phrase. A run in which most words are candidates (PASSAGE_SHARE, at least
 PASSAGE_MIN words) is one place for the whole run.
 """
@@ -121,6 +125,19 @@ def in_english(word):
     if w in L or w.replace("'", '') in L or unicodedata.normalize('NFC', word).lower() in L: return True    # café is listed with its accent
     parts = [p for p in re.split(r"[-‐‑]", w) if p]
     return len(parts) > 1 and all(p in L for p in parts)
+
+PLAIN_HALF = re.compile(r'[A-Za-z]{3,}')
+def hyphen_english(a, b):
+    """#140 (hyphen at a line end): a word broken at a line end at its own hyphen ("long-" / "standing") is English when the
+    form with the hyphen is (in_english: every part between hyphens is listed), as well as when the form without it is
+    ("infor-" / "mation", checked by classify). Only halves of three or more plain letters count, and never a word whose
+    joined form has a romanized shape (Hepburn or pinyin syllables): a romanized word split into syllables that happen to be
+    English ("keg-" / "are" for kegare, "ship-" / "pei" for shippei) or carrying marks ("Kō-" / "dan") stays a candidate."""
+    if not (PLAIN_HALF.fullmatch(a or '') and PLAIN_HALF.fullmatch(b or '')): return False
+    w = (a + b).lower()
+    if romanized_shape(w) or romanized_shape(GEMINATE.sub(r'\1', w.replace('tch', 'ch'))): return False   # shippei, gakkō, kitte
+    return in_english(f'{a}-{b}')
+GEMINATE = re.compile(r'([kgsztdbpfhmr])\1')         # Hepburn's doubled consonant (a small tsu), read as one for the shape test
 
 def other_script(t):
     return next((n for n, rx in SCRIPTS if rx.search(t)), None)
@@ -222,10 +239,11 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
     for w in words:
         t = w['text']
         if not t or _is_cjk(t): w['cls'] = []; continue
-        if 'joined_from' in w: w['cls'] = []; continue                 # the second half: classified with the first
+        if 'joined_from' in w: w.setdefault('cls', []); continue       # the second half: classified with the first, on its turn (#140)
         form = w.get('joined', t)
         it = all(italic(c.get('fontname')) for c in w['chars'] if c['text'].strip())
         w['italic'] = it; w['cls'] = classify(form, it); w['form'] = form
+        if w['cls'] and 'hy_to' in w and hyphen_english(t, w['hy_to']['text']): w['cls'] = []      # "long-" / "standing" (#140)
         if cjk_doc and not w['cls'] and LATIN.search(form) and sum(ch.isalpha() for ch in form) >= 2 and not NUMERAL.fullmatch(form) \
                 and not ocrwords.URL.search(form):
             w['cls'] = ['latin']                     # in a CJK document every Latin-script word is in another language (English, …)
@@ -283,8 +301,8 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         w = words[k]
         if not w.get('cls') or w['mcid'] is None: k += 1; continue
         j = k
-        while j + 1 < len(words) and words[j + 1].get('cls') and words[j + 1]['mcid'] == w['mcid']:
-            j += 1
+        while j + 1 < len(words) and words[j + 1].get('cls') and words[j + 1]['mcid'] == w['mcid'] and 'joined_from' not in words[j]:
+            j += 1                                   # a phrase ends at the second half of a broken word (#140): its form stays the first half's
         if grow:                                     # a title's whole extent (review 06, M4): the voice switches once, not mid-title
             m0 = w['mcid']
             def same(i, step=0):
@@ -310,7 +328,10 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         grp = words[k:j + 1]
         f = idx[id(grp[0]['chars'][0])][1]; l = idx[id(grp[-1]['chars'][-1])][1]
         form = ' '.join(x.get('form', x['text']) for n_, x in enumerate(grp) if n_ == 0 or 'joined_from' not in x)   # a rejoined half once
-        place(w['mcid'], f, l, [c for x in grp for c in x['cls']], form, all(x.get('italic') for x in grp), (k, j))
+        cls = [c for x in grp for c in x['cls']]
+        if 'joined_from' in grp[0] and grp[0].get('phrase'): form, cls = grp[0]['phrase']    # a second half in its own run: its first half's
+        if 'hy_to' in grp[-1]: grp[-1]['hy_to']['phrase'] = (form, cls)                     # form and classes (#140): one form, two places
+        place(w['mcid'], f, l, cls, form, all(x.get('italic') for x in grp), (k, j))
         k = j + 1
     # 5. passages: a run where most words are candidates becomes one place for the whole run
     by_run = collections.defaultdict(list)
