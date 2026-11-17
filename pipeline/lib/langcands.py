@@ -40,7 +40,7 @@ across two runs); one that is a candidate on its own (in a run of Hawaiian-shape
 Consecutive candidate words in one run form one phrase. A run in which most words are candidates (PASSAGE_SHARE, at least
 PASSAGE_MIN words) is one place for the whole run.
 """
-import os, re, json, hashlib, unicodedata, collections
+import os, re, json, bisect, hashlib, unicodedata, collections
 from lib import scripts, ocrwords
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -130,6 +130,23 @@ def in_english(word):
     parts = [p for p in re.split(r"[-‐‑]", w) if p]
     return len(parts) > 1 and all(p in L for p in parts)
 
+class LineIndex:
+    """A page's visible characters sorted by their vertical midpoint (review 06, L1): near(ref) gives the characters whose
+    midpoint lies within half an em of ref's, a superset of those line_end's same-line test accepts, so line_end reads
+    two lines instead of the page and decides exactly as it does on the page's characters."""
+    def __init__(self, chars):
+        vis = sorted(((c['top'] + c['bottom']) / 2, i, c) for i, c in enumerate(chars) if c['text'].strip())
+        self.mids, self.chars = [v[0] for v in vis], [v[2] for v in vis]
+    def near(self, *refs):
+        out = []
+        for r in refs:
+            if not r: continue
+            mid, h = (r['top'] + r['bottom']) / 2, _em(r) / 2 + 1e-6          # a hair wider: line_end's own test decides
+            out += self.chars[bisect.bisect_left(self.mids, mid - h):bisect.bisect_right(self.mids, mid + h)]
+        return out
+
+def _em(c): return max(float(c.get('size') or 0), float(c['bottom']) - float(c['top']), 1.0)
+
 def line_end(hy, first, chars):
     """#140 (review 04, H1): True when a hyphen ends its line and the word joined to it starts its own: (a) no visible
     character to the hyphen's right on its line within one em (the hyphen's font size), measured from its right edge;
@@ -138,7 +155,7 @@ def line_end(hy, first, chars):
     Western" or "neo- Tahiti" with a wide gap) fails (a); a word inside its line fails (b). hy: the hyphen's char (None:
     False); first: the joined word's first char; chars: the page's characters."""
     if not hy or not first or hy.get('text') not in HYPHENS: return False
-    def em(c): return max(float(c.get('size') or 0), float(c['bottom']) - float(c['top']), 1.0)
+    em = _em
     def same_line(c, ref): return abs((c['top'] + c['bottom']) / 2 - (ref['top'] + ref['bottom']) / 2) <= em(ref) / 2
     for c in chars:
         if c is hy or c is first or not c['text'].strip(): continue
@@ -252,12 +269,14 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
             if 'spoken' in w:
                 w['printed'] = w['text']; w['all'] = w['all'].replace(w['text'], w['spoken'], 1) if w['text'] else w['all']; w['text'] = w['spoken']
     # 2. rejoin a word broken by a hyphen at a line end, for the list check only
+    lines = None                                         # the page's characters by line, made at the first join (review 06, L1)
     for a, b in zip(words, words[1:]):
         if a['all'][-1:] in HYPHENS and a['chars'] and b['chars'] and abs(a['chars'][-1]['top'] - b['chars'][0]['top']) > 3 \
                 and b['text'][:1].islower():
             a['joined'] = b['joined_from'] = a['text'] + b['text']
             a['hy_to'] = b
-            a['line_end'] = line_end(a.get('tail'), b['chars'][0], chars)   # #140: only then is the second half a place
+            lines = lines or LineIndex(chars)
+            a['line_end'] = line_end(a.get('tail'), b['chars'][0], lines.near(a.get('tail'), b['chars'][0]))   # #140: only then is the second half a place
     # 3. classify Latin and other-script words
     for w in words:
         t = w['text']
