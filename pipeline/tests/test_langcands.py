@@ -76,6 +76,15 @@ def test_romanized_word_broken_in_one_run(tmp_path):
     assert p['text'].endswith('yin') and 'pusa' not in p['text']
     assert any(q['form'] == 'pusa' for q in places)
 
+def test_a_second_half_after_a_passage_takes_the_passages_form(tmp_path):
+    """#140: when the first half's run is a passage, the second half (in its own run) is a place of the passage's form;
+    a second half counts toward no passage on its own."""
+    runs = [{'text': 'qianyan zhibing heyao pusa jingdian nangajuk-'}, {'text': 'wama is a word.'}]
+    places, _ = langcands.page_places(1, plpages.Pages(langpdf.build(str(tmp_path / 'p.pdf'), runs)).pages[0].chars)
+    by = {(p['mcid'], p['text']): p for p in places}
+    first = next(p for p in places if p['mcid'] == 0)
+    assert first['class'][0] == 'passage' and by[(1, 'wama')]['form'] == first['form'] and by[(1, 'wama')]['class'] == first['class']
+
 def test_cjk_document_reverse_direction(tmp_path):
     """In a Chinese, Japanese or Korean document, Latin-script words are candidates even when English ('latin'), and
     CJK text in the document's own language is not."""

@@ -68,7 +68,9 @@ def forms(places, skip=LOCAL, unknown_italic_only=False, group=False):
     one-character Han places become one form first (group_han)."""
     by = collections.OrderedDict()
     if group: places = group_han(places)
-    for p in places:
+    # a second half's place (#140, `half`) may come before its first half's (a lower MCID on the page): forms are met, and
+    # so numbered, by their other places first, as before second halves were places
+    for p in sorted(places, key=lambda p: bool(p.get('half'))):
         if any(c in skip for c in p['class']) and len(p['class']) == 1: continue
         g = group_of([c for c in p['class'] if c != 'passage'] or p['class'])
         if 'passage' in p['class']: g = 'passage'

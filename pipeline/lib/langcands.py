@@ -31,8 +31,10 @@ and quotes, and where the script changes between CJK and Latin. A word broken by
 list check, without its hyphen ("oppor-" + "tunities") and with it ("long-" + "standing", halves of three or more plain
 letters: hyphen_english); English either way, it is no candidate. A candidate's second half is classed with its first and
 ends the phrase it is in (#140): when both halves are in the same run, one place covers them; when they are in different
-runs, the second half is a place of its own with the form and classes of the place its first half ended in, so the two
-places are one form and one decision.
+runs, the second half is a place of its own with the form and classes of the place its first half ended in (a passage's,
+when the first half's run is one), so the two places are one form and one decision. A second half classed only through
+its first half (`half_cls`) counts toward no passage, and gets no place when its first half has none (drawn across two
+runs); one that is a candidate on its own (in a run of Hawaiian-shape words) is treated as before.
 Consecutive candidate words in one run form one phrase. A run in which most words are candidates (PASSAGE_SHARE, at least
 PASSAGE_MIN words) is one place for the whole run.
 """
@@ -249,6 +251,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
             w['cls'] = ['latin']                     # in a CJK document every Latin-script word is in another language (English, …)
         if w['cls'] and 'hy_to' in w:
             b = w['hy_to']; b['cls'] = list(w['cls']); b['form'] = form; b['italic'] = it
+            b['half_cls'] = True                     # #140: a candidate only through its first half (main gave it no classes)
     # a run of HAW_RUN or more Hawaiian-shape words of 2+ letters in one run (single vowels between them allowed: "E iho
     # ana o luna"), at least one of them not in the English list ("we make a home" stays English), is Hawaiian
     def hw(w): return bool(w['text']) and w['mcid'] is not None and not _is_cjk(w['text']) and ocrwords.hawaiian_shape(w['text'])
@@ -262,6 +265,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         chain = words[i:j + 1]; real = [w for w in chain if hw(w)]
         if len(real) >= HAW_RUN and any(not in_english(w['text']) for w in real):
             for w in chain:
+                if w.get('half_cls'): w['cls'] = []; w['half_cls'] = False     # #140: in a chain, a second half is a candidate of its own
                 if 'hawaiian' not in w['cls']: w['cls'] = w['cls'] + ['hawaiian']; w.setdefault('form', w['text']); w.setdefault('italic', False)
         i = j + 1
     # 4. places: CJK stretches per run, then phrases of candidate words
@@ -301,7 +305,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         w = words[k]
         if not w.get('cls') or w['mcid'] is None: k += 1; continue
         j = k
-        while j + 1 < len(words) and words[j + 1].get('cls') and words[j + 1]['mcid'] == w['mcid'] and 'joined_from' not in words[j]:
+        while j + 1 < len(words) and words[j + 1].get('cls') and words[j + 1]['mcid'] == w['mcid'] and not words[j].get('half_cls'):
             j += 1                                   # a phrase ends at the second half of a broken word (#140): its form stays the first half's
         if grow:                                     # a title's whole extent (review 06, M4): the voice switches once, not mid-title
             m0 = w['mcid']
@@ -329,9 +333,14 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         f = idx[id(grp[0]['chars'][0])][1]; l = idx[id(grp[-1]['chars'][-1])][1]
         form = ' '.join(x.get('form', x['text']) for n_, x in enumerate(grp) if n_ == 0 or 'joined_from' not in x)   # a rejoined half once
         cls = [c for x in grp for c in x['cls']]
-        if 'joined_from' in grp[0] and grp[0].get('phrase'): form, cls = grp[0]['phrase']    # a second half in its own run: its first half's
-        if 'hy_to' in grp[-1]: grp[-1]['hy_to']['phrase'] = (form, cls)                     # form and classes (#140): one form, two places
+        if grp[0].get('half_cls') and not grp[0].get('phrase'):     # its first half has no place (drawn across two runs: no mcid):
+            k = j + 1; continue                                     # neither has, as before #140, never half a word tagged
+        first_m = None
+        if grp[0].get('half_cls'): form, cls, first_m = grp[0]['phrase']   # a second half in its own run: its first half's
+        if 'hy_to' in grp[-1]: grp[-1]['hy_to']['phrase'] = (form, cls, grp[-1]['mcid'])    # form and classes (#140): one form, two places
         place(w['mcid'], f, l, cls, form, all(x.get('italic') for x in grp), (k, j))
+        if first_m is not None: places[-1].update(_first_mcid=first_m, half=True)   # step 5: its first half's run may become a passage;
+                                                                                # half: lib/langreq.forms numbers forms by their other places
         k = j + 1
     # 5. passages: a run where most words are candidates becomes one place for the whole run
     by_run = collections.defaultdict(list)
@@ -340,22 +349,26 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
     out = []
     passage = set()
     for m, ws in by_run.items():
-        cand = sum(1 for w in ws if w.get('cls'))
+        cand = sum(1 for w in ws if w.get('cls') and not w.get('half_cls'))   # #140: a second half counts only on its own
         if len(ws) >= PASSAGE_MIN and cand / len(ws) >= PASSAGE_SHARE:
             passage.add(m)
-    for p in places:
-        if p['mcid'] in passage and not p['class'][0].startswith('cjk:'): continue
-        out.append(p)
+    pas = {}
     for m in sorted(passage):
         cs = runs[m]; ws = by_run[m]
         f = idx[id(ws[0]['chars'][0])][1]; l = idx[id(ws[-1]['chars'][-1])][1]
-        cls = sorted({c for w in ws for c in w.get('cls', [])}) or ['unknown']
+        cls = sorted({c for w in ws if not w.get('half_cls') for c in w.get('cls', [])}) or ['unknown']
         wi = [wix[id(w['chars'][0])] for w in ws if w['chars'] and id(w['chars'][0]) in wix]
-        out.append({'page': pno, 'mcid': m, 'first': f, 'last': l, 'n': len(cs), 'text': ''.join(c['text'] for c in cs[f:l + 1]),
+        pas[m] = ({'page': pno, 'mcid': m, 'first': f, 'last': l, 'n': len(cs), 'text': ''.join(c['text'] for c in cs[f:l + 1]),
                     'form': ' '.join(w.get('form', w['text']) for w in ws), 'class': ['passage'] + cls,
-                    'italic': all(w.get('italic') for w in ws if w.get('cls')),
+                    'italic': all(w.get('italic') for w in ws if w.get('cls') and not w.get('half_cls')),
                     'whole': not re.search(r'[^\W_]', ''.join(c['text'] for k_, c in enumerate(cs) if k_ < f or k_ > l)),
                     'w0': min(wi) if wi else None, 'w1': max(wi) if wi else None})
+    for p in places:
+        fm = p.pop('_first_mcid', None)
+        if p['mcid'] in passage and not p['class'][0].startswith('cjk:'): continue
+        if fm in pas: p['form'], p['class'] = pas[fm]['form'], list(pas[fm]['class'])   # #140: a second half of a passage's last word
+        out.append(p)
+    out += [pas[m] for m in sorted(pas)]
     out.sort(key=lambda p: (p['mcid'], p['first']))
     return out, [w['all'] for w in words]
 

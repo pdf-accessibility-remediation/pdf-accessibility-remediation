@@ -205,3 +205,11 @@ def test_dropped_answers_carry_a_code_and_each_form_a_reason():
     rows = langreq.to_rows([{'id': i, 'form': f, 'group': 'marks', 'class': ['marks'], 'places': []} for i, f in (('1', 'mappō'), ('3', 'kami'), ('4', 'shinkō'))],
                            dec, reasons={'1': 'tag', '3': 'echo', '4': 'nonsense'})
     assert [f.get('no_answer') for f in rows['forms']] == ['tag', None, None]     # a decided form, and a value not in the set, get none
+
+def test_a_second_halfs_place_does_not_renumber_the_forms():
+    """#140 (hyphen at a line end): a second half's place (`half`) that comes first on its page (a lower MCID) does not move
+    its form ahead of others: forms are numbered as before second halves were places."""
+    a = place(1, 5, 0, 3, 'kiore', ['unknown'], 0); b = place(1, 9, 0, 6, 'twentyexploitation', ['unknown'], 3)
+    h = {**place(1, 2, 0, 5, 'exploitation', ['unknown'], 1), 'form': 'twentyexploitation', 'half': True}
+    assert [f['form'] for f in langreq.forms([h, a, b])] == ['kiore', 'twentyexploitation'] == [f['form'] for f in langreq.forms([a, b])]
+    assert len(langreq.forms([h, a, b])[1]['places']) == 2

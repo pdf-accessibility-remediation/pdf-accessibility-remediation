@@ -175,6 +175,17 @@ def test_no_answer_reasons_are_checked():
     assert [f.get('no_answer') for f in wo['language_parts']['forms']] == ['echo', None]
     assert [d['why'] for d in dropped] == ["not a no-answer reason: 'because'"]
 
+def test_both_halves_of_a_broken_word_are_tagged(tmp_path):
+    """#140 (hyphen at a line end), review 02 H2: the finder gives a romanized word broken across two runs two places of one
+    form; the executor tags each on its own characters (the second half's Span holds "yin", nothing else)."""
+    runs = [{'text': 'The sutra qianyan guanshi-'}, {'text': 'yin pusa here.'}]
+    src = langpdf.build(str(tmp_path / 'b.pdf'), runs)
+    places, _ = langcands.page_places(1, plpages.Pages(src).pages[0].chars)
+    mine = [p for p in places if p['form'] == 'qianyan guanshiyin']
+    assert [p['text'] for p in mine] == ['qianyan guanshi', 'yin']
+    _, _, log, v = apply_verify(tmp_path, runs, [part(1, p['mcid'], p['first'], p['last'], 'zh-Latn') for p in mine])
+    assert sorted(s['text'] for s in log['language_parts']['spans']) == ['qianyan guanshi', 'yin'] and v['language']['all_match']
+
 def test_candidates_line_up_with_runs(tmp_path):
     """The audit's places are character indexes that apply.py's split uses as they are."""
     runs = [{'lang': 'en-US', 'font': 'F3', 'text': 'The city of Heiankyo saw ryōgen begin.'},
