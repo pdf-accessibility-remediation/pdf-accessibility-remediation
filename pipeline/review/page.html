@@ -1744,7 +1744,7 @@ function langReading(r) {
 const LANG_WHY = { name: 'a name', english: 'part of English', indeterminate: 'not a word of a known language', unsure: 'not sure', varies: 'it varies' };
 // A form with no AI answer at all (#137): not the AI's choice, so never "The AI left it untagged"; the reason in staff
 // words when the run recorded one (review 02, L3)
-const LANG_NO_ANSWER = { echo: 'its reply could not be matched to this word', tag: 'the AI gave a language the pipeline cannot write',
+const LANG_NO_ANSWER = { echo: 'its reply could not be matched to this word', tag: 'the AI gave a language that cannot be written into the PDF',
   invalid: 'its answer was not in the expected form', not_answered: 'the reply skipped this word',
   cut_off: 'the AI’s reply stopped before this word', failed: 'its request did not finish' };
 function langUntagged(r) {

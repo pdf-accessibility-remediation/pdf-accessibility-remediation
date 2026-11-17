@@ -278,7 +278,7 @@ def test_a_form_with_no_ai_answer_says_so():
     out = subprocess.run(run + [code], capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr
     assert json.loads(out.stdout) == [
-        'No AI answer (its reply could not be matched to this word)', 'No AI answer (the AI gave a language the pipeline cannot write)',
+        'No AI answer (its reply could not be matched to this word)', 'No AI answer (the AI gave a language that cannot be written into the PDF)',
         'No AI answer (its answer was not in the expected form)', 'No AI answer (the reply skipped this word)',
         'No AI answer (the AI’s reply stopped before this word)', 'No AI answer (its request did not finish)', 'No AI answer',
         'The AI left it untagged (a name)', 'The AI left it untagged (low confidence; its guess: Japanese)']

@@ -55,7 +55,7 @@ log = load(PDF + '.log.json', default={}); ver = load(PDF + '.verify.json', defa
 lang_log = log.get('language_parts') or {}; ver_lang = ver.get('language') or {}            # #118: the language step's tags
 lang_refused = sum((lang_log.get('refused') or {}).values())
 LANG_REFUSED_SHOWN = 20                       # refused language-tag places listed in review.md under each reason; the rest are in the record
-NO_ANSWER_WORDS = {'echo': 'the reply could not be matched to the word', 'tag': 'the AI gave a language the pipeline cannot write',   # #137
+NO_ANSWER_WORDS = {'echo': 'the reply could not be matched to the word', 'tag': 'the AI gave a language that cannot be written into the PDF',   # #137
                    'invalid': 'the answer was not in the expected form', 'not_answered': 'the reply skipped the word',
                    'cut_off': "the AI's reply stopped before the word", 'failed': 'the request did not finish'}
 digest = load('digest.json', base=A, default={})

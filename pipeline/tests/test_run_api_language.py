@@ -67,7 +67,7 @@ def test_an_answer_the_reply_check_drops_is_kept_and_counted(tmp_path):
     forms = {f['form']: f for f in rec['workorder']['language_parts']['forms']}
     assert forms['Onjōji'].get('no_answer') == 'tag' and 'no_answer' not in forms['mappō']
     md = open(R / 'review.md', encoding='utf-8').read()
-    assert '**No AI answer (1 word form):** the AI gave a language the pipeline cannot write 1.' in md and 'xx-Zzzz' not in md
+    assert '**No AI answer (1 word form):** the AI gave a language that cannot be written into the PDF 1.' in md and 'xx-Zzzz' not in md
 
 def test_hawaiian_lines_are_listed_for_the_hawaiian_reader(tmp_path):
     """review 08, H2: a line tagged Hawaiian by the fixed rule on a page read by the AI is listed in review.md's Language
