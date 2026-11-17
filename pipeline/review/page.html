@@ -1709,8 +1709,11 @@ renderOcr();
 // turned it off on 2026-11-13; LANG_BULK turns both buttons off): "Approve All Shown" approves the shown rows that
 // qualify (one language, high confidence, never Chinese characters alone, an existing tag or a mixed answer);
 // "Approve Characters with Matching Readings" approves every row of the fold written only in Chinese characters whose
-// reading printed beside them names the row's language (the server's list, review/core.py reading_match), loaded or not.
-// Each choice records its button (d.bulk: 'all_shown' or 'readings'); the server counts it only where the row qualifies.
+// reading printed beside them names the row's language (the server's list, review/core.py reading_match), loaded or not;
+// "Approve Forms Decided by Their Printed Reading" (#132) approves the fold's rows the reading rule decided, with no AI
+// answer behind them (rule_match), loaded or not.
+// Each choice records its button (d.bulk: 'all_shown', 'readings' or 'printed_reading'); the server counts it only where
+// the row qualifies.
 const LANG_BULK = true;                                   // group approval: on (#124)
 const LANGS = DATA.languages || { groups: [], total: 0, names: [] };
 const langBox = document.getElementById('languages');
@@ -1725,7 +1728,7 @@ function langStatusHtml(r, d) {
   if (d.status === 'changed') return 'Tagged: ' + val(nameOf(d.value), d.value);
   if (r.current) return (d.status === 'rejected' ? 'Removed: ' : 'Kept: ') + val(r.current_name, r.written || r.current_written || r.current);
   if (d.status === 'rejected' || !r.ai) return 'Left untagged';
-  return 'Approved: ' + val(r.lang_name || nameOf(r.ai), r.written || r.ai) + (LANG_BULK && d.bulk ? (d.bulk === 'readings' ? ' (in a group approval: matching reading)' : ' (in a group approval)') : '');
+  return 'Approved: ' + val(r.lang_name || nameOf(r.ai), r.written || r.ai) + (LANG_BULK && d.bulk ? (d.bulk === 'readings' ? ' (in a group approval: matching reading)' : d.bulk === 'printed_reading' ? ' (in a group approval: printed reading)' : ' (in a group approval)') : '');
 }
 // #123, #124: the reading printed beside a form in Chinese characters alone, in staff words
 function langReading(r) {
@@ -1788,10 +1791,12 @@ function langFold(g) {
   const rows = langRows[g.group] || [], left = rows.filter(r => !(state.decisions[r.id] || {}).status).length;
   const bulk = rows.filter(r => r.bulk && !(state.decisions[r.id] || {}).status).length;
   const rdg = langReadingLeft(g).length;                   // #124: every qualifying row of the fold, loaded or not
+  const rul = langRuleLeft(g).length;                      // #132: the rows the reading rule decided
   return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
     ' (' + fmtN(g.places) + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
     '<div class="lang-bar">' + (LANG_BULK && g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + fmtN(bulk) + ')</button>' : '') +
     (LANG_BULK && (g.reading_ids || []).length ? '<button type="button" data-lang="readings"' + (rdg ? '' : ' disabled') + '>Approve Characters with Matching Readings (' + fmtN(rdg) + ')</button>' : '') +
+    (LANG_BULK && (g.rule_ids || []).length ? '<button type="button" data-lang="printed_reading"' + (rul ? '' : ' disabled') + '>Approve Forms Decided by Their Printed Reading (' + fmtN(rul) + ')</button>' : '') +
     '<span class="lang-meta">' + (rows.length ? fmtN(rows.length) + ' of ' + fmtN(g.count) + ' shown' + (left ? ' · ' + fmtN(left) + ' not reviewed' : '') : '') + '</span></div>' +
     '<div class="lang-list">' + rows.map(langRowHtml).join('') + '</div>' +
     (rows.length < g.count ? '<button type="button" data-lang="more">Show More</button>' : '') + '</details>';
@@ -1814,11 +1819,12 @@ async function langLoad(group) {
   renderLanguages();
   const d = [...langBox.querySelectorAll('details')].find(x => x.dataset.group === group); if (d) d.open = true;
 }
-function langSet(id, st, value, bulk) {                  // bulk: the group-approval button ('all_shown' or 'readings'), else none
+function langSet(id, st, value, bulk) {                  // bulk: the group-approval button ('all_shown', 'readings', 'printed_reading'), else none
   const d = dec(id); d.status = st; if (value !== undefined) d.value = value; else delete d.value;
   if (bulk) d.bulk = bulk; else delete d.bulk;
 }
 function langReadingLeft(g) { return (g.reading_ids || []).filter(id => !(state.decisions[id] || {}).status); }
+function langRuleLeft(g) { return (g.rule_ids || []).filter(id => !(state.decisions[id] || {}).status); }
 langBox.addEventListener('toggle', e => {
   const d = e.target; if (d.tagName !== 'DETAILS' || !d.open) return;
   if (!langRows[d.dataset.group]) langLoad(d.dataset.group);
@@ -1831,6 +1837,10 @@ langBox.addEventListener('click', e => {
   else if (act === 'readings') {                                   // #124: the fold's rows with a matching reading, loaded or not
     const g = LANGS.groups.find(x => x.group === group);
     if (LANG_BULK && g) for (const id of langReadingLeft(g)) langSet(id, 'approved', undefined, 'readings');
+  }
+  else if (act === 'printed_reading') {                            // #132: the fold's rows the reading rule decided, loaded or not
+    const g = LANGS.groups.find(x => x.group === group);
+    if (LANG_BULK && g) for (const id of langRuleLeft(g)) langSet(id, 'approved', undefined, 'printed_reading');
   }
   else if (act === 'clear') {                                      // the row as if never decided (2026-11-14): "Not reviewed", the counts again
     delete state.decisions[b.closest('.lang-row').dataset.id];

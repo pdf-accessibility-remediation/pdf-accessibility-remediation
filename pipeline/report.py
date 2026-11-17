@@ -1235,9 +1235,9 @@ if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the langu
     if grp_:
         by_btn = collections.Counter(f['group_approval'].get('button') for _, f in grp_)
         L += [f'**Approved in a group approval ({len(grp_)} word forms):** '
-              + ' · '.join(f'{ {"all_shown": "Approve All Shown", "readings": "Approve Characters with Matching Readings"}.get(b, b)}: {c}' for b, c in by_btn.most_common()), '']
+              + ' · '.join(f'{ {"all_shown": "Approve All Shown", "readings": "Approve Characters with Matching Readings", "printed_reading": "Approve Forms Decided by Their Printed Reading"}.get(b, b)}: {c}' for b, c in by_btn.most_common()), '']
         L += [line(f'- "{excerpt(f.get("form"))}": {LT.name(f["group_approval"].get("lang") or f["lang"]) or f["lang"]}'
-                   f' · {({"all_shown": "Approve All Shown", "readings": "Matching Readings"}).get(f["group_approval"].get("button"), "group approval")}'
+                   f' · {({"all_shown": "Approve All Shown", "readings": "Matching Readings", "printed_reading": "Printed Reading"}).get(f["group_approval"].get("button"), "group approval")}'
                    f' · {excerpt(f["group_approval"].get("evidence") or "")}'
                    + f' · {", ".join(pg(p) for p in sorted(pages_of_.get(i) or [])[:4])}',
                    key=f'lang:group:{f.get("key")}', pages=sorted(pages_of_.get(i) or [])[:4]) for i, f in grp_]

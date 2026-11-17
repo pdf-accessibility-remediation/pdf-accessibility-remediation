@@ -221,13 +221,14 @@ def build_items(wo, digest, order=None, ro=None):
             bulk = bool(f.get('tag') and f.get('confidence') == 'high' and not han_only and f.get('group') != 'existing' and f.get('why') != 'varies')
             rd = f.get('reading') if isinstance(f.get('reading'), dict) else None
             reading_bulk = reading_match(f, rd) if han_only else False      # #124: the printed reading names the row's language
+            rule_bulk = rule_match(f)                                       # #132: the row the reading rule decided
             add(f'language:{f.get("key") or i}', 'language_parts', 'Languages', ['language_parts', 'forms', i], f.get('lang') if f.get('tag') else None,
                 f.get('form') or '', page=ps[0] if ps else None, pages=[ps[0], ps[-1]] if ps else None, edit='lang', field='lang',
                 lang_name=langtag.name(f.get('lang')) if f.get('tag') and f.get('lang') else None, group=f.get('group'), why=f.get('why'),
                 evidence=f.get('evidence'), current=f.get('current'), carried=f.get('carried'), places=f.get('places'), page_list=ps[:30],
                 form_key=f.get('key'), bulk=bulk or None, needs_person=bool(f.get('person')) or None, confidence=f.get('confidence'),
                 guess=f.get('lang') if not f.get('tag') and f.get('lang') else None,   # an untagged answer's language (review 14, 2)
-                rule=f.get('rule'), reading=rd, reading_bulk=reading_bulk or None,     # #123 (decided by the printed reading), #124
+                rule=f.get('rule'), reading=rd, reading_bulk=reading_bulk or None, rule_bulk=rule_bulk or None,   # #123, #124, #132
                 no_answer=f.get('no_answer'))                                           # #137: why there is no AI answer
     if wo.get('notes_for_reviewer'):
         refs = sorted({int(m.group(1)) for m in PAGE_REF.finditer(wo['notes_for_reviewer']) if 1 <= int(m.group(1)) <= N})
@@ -925,12 +926,15 @@ LANG_KIND = 'Languages'
 LANG_UNTAGGED, LANG_EXISTING = 'Left Untagged by the AI', 'Existing Language Tags'
 LANG_PAGE = 100                                    # rows the review page asks for at a time
 
-# ---- #124: group approval. Two buttons per language fold: "Approve All Shown" (`bulk`: one language, high confidence,
-#      not Chinese characters alone, not a publisher's tag, not tagged differently in different places) and "Approve
-#      Characters with Matching Readings" (`reading_bulk`). The page marks each decision it makes with its button
-#      (`bulk`: 'all_shown' or 'readings'; true in a draft saved before #124 is 'all_shown'); the server counts it only
-#      when the row qualifies for that button, so no group approval reaches a row the rules leave out.
-GROUP_BUTTONS = ('all_shown', 'readings')
+# ---- #124: group approval. Three buttons per language fold: "Approve All Shown" (`bulk`: one language, high confidence,
+#      not Chinese characters alone, not a publisher's tag, not tagged differently in different places), "Approve
+#      Characters with Matching Readings" (`reading_bulk`: rows the AI decided whose printed reading agrees) and, #132
+#      (reading-rule follow-up), "Approve Forms Decided by Their Printed Reading" (`rule_bulk`: rows the reading rule decided,
+#      with no AI answer behind them). The page marks each decision it makes with its button (`bulk`: one of GROUP_BUTTONS;
+#      true in a draft saved before #124 is 'all_shown'); the server counts it only when the row qualifies for that button,
+#      so no group approval reaches a row the rules leave out, and any other value is refused (review 02, L4).
+GROUP_BUTTONS = ('all_shown', 'readings', 'printed_reading')
+GROUP_KEYS = {'all_shown': 'bulk', 'readings': 'reading_bulk', 'printed_reading': 'rule_bulk'}   # each button's row flag
 
 def reading_match(f, rd):
     """#124: a row written only in Chinese characters qualifies for "Approve Characters with Matching Readings" when its
@@ -938,28 +942,39 @@ def reading_match(f, rd):
     the characters names (lib/hanreading.py: computed from the text, never from the AI's evidence; bibliography entries
     are not evidence), and no reading names another language."""
     if not (isinstance(rd, dict) and f.get('tag') and f.get('lang') and f.get('confidence') in ('high', 'medium')): return False
+    if f.get('rule'): return False                     # #132: the rule's language is the reading itself: compared with itself
     if f.get('group') == 'existing' or f.get('current') or f.get('why') == 'varies': return False
     if not rd.get('lang') or list(rd.get('langs') or []) != [rd['lang']]: return False          # none, or mixed
     from lib import scripts
     return scripts.primary(rd['lang']) == scripts.primary(f['lang'])
 
+def rule_match(f):
+    """#132 (reading-rule follow-up): a row the reading rule decided (`rule`: reading) with a tag, never a publisher's tag
+    or a mixed answer, qualifies for "Approve Forms Decided by Their Printed Reading": only the printed reading stands
+    behind it, and the button says so."""
+    return bool(f.get('rule') == 'reading' and f.get('tag') and f.get('lang') and f.get('group') != 'existing' and not f.get('current')
+                and f.get('why') != 'varies')
+
 def group_button(d):
-    """The group-approval button a decision came from, or None (a single decision)."""
+    """The group-approval button a decision came from: one of GROUP_BUTTONS, 'all_shown' for true (a draft saved before
+    #124), the value as given for anything else (group_ok refuses it), or None (a single decision)."""
     b = (d or {}).get('bulk')
-    return b if b in GROUP_BUTTONS else 'all_shown' if b is True else None
+    if b is True: return 'all_shown'
+    return b if b else None
 
 def group_ok(it, d):
-    """True when the decision is not a group approval, or the row qualifies for the button it came from."""
+    """True when the decision is not a group approval, or the row qualifies for the button it came from (each button
+    mapped to its own row flag, review 02 L4; an unknown button qualifies nothing)."""
     b = group_button(d)
     if b is None: return True
-    c = it.get('context') or {}
-    return bool(c.get('reading_bulk')) if b == 'readings' else bool(c.get('bulk'))
+    return b in GROUP_KEYS and bool((it.get('context') or {}).get(GROUP_KEYS[b]))
 
 def group_evidence(f, button):
     """What a group approval rested on, as recorded on its form (#124): the reading printed beside the characters, or the
     AI's answer at high confidence."""
-    if button == 'readings':
+    if button in ('readings', 'printed_reading'):
         rd = f.get('reading') or {}
+        if not rd.get('text') and button == 'printed_reading': return str(f.get('evidence') or 'the reading printed beside it')[:160]
         return f'the reading printed beside it: {rd.get("text") or ""}'.strip()[:160]
     return ('the AI at high confidence' + (f': {f["evidence"]}' if f.get('evidence') else ''))[:160]
 
@@ -989,10 +1004,11 @@ def language_summary(items):
     g = collections.OrderedDict(); codes = collections.defaultdict(set)
     for it in items:
         if it.get('kind') != LANG_KIND: continue
-        k = lang_group(it); x = g.setdefault(k, {'group': k, 'count': 0, 'bulk': 0, 'places': 0, 'reading_ids': []})
+        k = lang_group(it); x = g.setdefault(k, {'group': k, 'count': 0, 'bulk': 0, 'places': 0, 'reading_ids': [], 'rule_ids': []})
         c = it.get('context') or {}
         x['count'] += 1; x['bulk'] += bool(c.get('bulk')); x['places'] += c.get('places') or 0
         if c.get('reading_bulk'): x['reading_ids'].append(it['id'])      # #124: every qualifying row of the fold, loaded or not
+        if c.get('rule_bulk'): x['rule_ids'].append(it['id'])            # #132: the rows the reading rule decided
         codes[k].add(lang_written(it))
     for k, x in g.items(): x['code'] = next(iter(codes[k])) if len(codes[k]) == 1 and k != LANG_UNTAGGED else None
     order = sorted(g.values(), key=lambda x: (x['group'] in (LANG_UNTAGGED, LANG_EXISTING), x['group']))
@@ -1018,7 +1034,7 @@ def language_rows(items, group, start=0, n=LANG_PAGE, contexts=None):
                     'evidence': c.get('evidence'), 'why': c.get('why'), 'current': c.get('current'), 'places': c.get('places'),
                     'pages': c.get('page_list'), 'snippet': c.get('snippet') or (contexts or {}).get(c.get('form_key')),
                     'bulk': bool(c.get('bulk')), 'needs_person': bool(c.get('needs_person')), 'written': lang_written(it), 'guess': c.get('guess'), 'guess_name': langtag.name(c['guess']) if c.get('guess') else None,
-                    'rule': c.get('rule'), 'reading_bulk': bool(c.get('reading_bulk')), 'no_answer': c.get('no_answer'),
+                    'rule': c.get('rule'), 'reading_bulk': bool(c.get('reading_bulk')), 'rule_bulk': bool(c.get('rule_bulk')), 'no_answer': c.get('no_answer'),
                     **({'reading': {'text': rd.get('text'), 'lang': rd.get('lang'), 'langs': rd.get('langs') or [],
                                     'names': [langtag.name(x) or x for x in rd.get('langs') or []], 'with': rd.get('with'), 'places': rd.get('places')}} if rd else {}),
                     **current_words(c.get('current'))})

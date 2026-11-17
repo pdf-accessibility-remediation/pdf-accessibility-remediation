@@ -53,7 +53,7 @@ def test_decisions_apply_to_the_form_and_are_counted():
     assert sorted((p['form'], p['lang']) for p in langreq.expand(out['language_parts'])) == [('mappō', 'ja-Latn'), ('地獄', 'zh'), ('極楽', 'ja')]
     lr = core.language_review(items, dec)
     assert lr == {'forms': 4, 'approved': 1, 'changed': 2, 'rejected': 1, 'not_reviewed': 0, 'bulk': 1,
-                  'bulk_by': {'all_shown': 1, 'readings': 0}, 'local': 0}
+                  'bulk_by': {'all_shown': 1, 'readings': 0, 'printed_reading': 0}, 'local': 0}
     lr2 = core.language_review(items, {by['mappō']: {'status': 'approved'}})
     assert lr2['not_reviewed'] == 3
 

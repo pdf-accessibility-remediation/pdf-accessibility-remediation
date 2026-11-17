@@ -241,7 +241,7 @@ It opens with one paragraph, the same on every PDF:
 
 ### Group approval
 
-Each language fold has up to two buttons (#124). Neither touches a low-confidence row, a row whose answer varies from
+Each language fold has up to three buttons (#124, #132). None touches a low-confidence row, a row whose answer varies from
 place to place, or a publisher's tag, and a single decision is the same as before.
 
 - **"Approve All Shown (N)"** approves the rows shown so far that the AI tagged with high confidence, never words in
@@ -252,14 +252,21 @@ place to place, or a publisher's tag, and a single decision is the same as befor
   the same phrase as the characters (大福もち). The tag must
   be high or medium confidence; a row with no reading, readings of two languages, or a reading of another language is
   never included. A reading in a bibliography is not counted (there it often belongs to the next entry); one in a
-  glossary or index is, since the AI's language must match it too. Rows the reading rule decided (#123) qualify when a
-  reading outside a bibliography names their language; one decided only from bibliography entries is approved on its own.
+  glossary or index is, since the AI's language must match it too. Only rows the AI decided are included: the reading
+  stands as a second check on the AI's language.
+- **"Approve Forms Decided by Their Printed Reading (N)"** (#132) approves every undecided row of the fold, shown or not,
+  that the reading rule decided (#123): Chinese characters alone with the same reading printed beside every place, and
+  no AI answer behind them. Its name says what stands behind it: only the printed reading. A rule decision can be wrong
+  (a Korean name whose romanization looks like pinyin was decided Chinese on a test book), and it stays one click
+  away here, so a reviewer who doubts a row decides it on its own first.
 
-Each row approved this way says "Approved: Japanese · ja (in a group approval: matching reading)" (or "(in a group
-approval)"). The server counts a group approval only when the row qualifies for that button, so a draft saved under
-other rules, or an edited page, can't approve a row the rules leave out: such a row stays to decide. The work order
+Each row approved this way says "Approved: Japanese · ja (in a group approval: matching reading)", "(in a group
+approval: printed reading)" or "(in a group approval)". The server counts a group approval only when the row qualifies for that button, so a draft saved under
+other rules, or an edited page, can't approve a row the rules leave out: such a row stays to decide. An earlier "Matching Readings" approval of a row
+the reading rule decided no longer counts (it reads "Not reviewed" on "Review Again"), and a button the server doesn't
+know approves nothing. The work order
 records each one on its form (`group_approval`: the button, the language and the evidence), the review record counts
-them by button (`language_review.bulk_by`), and review.md lists them under "Language Tags". Both buttons are turned
+them by button (`language_review.bulk_by`), and review.md lists them under "Language Tags". The group buttons are turned
 off with one line in `review/page.html`: `const LANG_BULK = false;`.
 
 ## Checks as you go

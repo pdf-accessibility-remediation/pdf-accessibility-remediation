@@ -243,7 +243,7 @@ FORM_KEYS = {'key', 'form', 'group', 'class', 'lang', 'confidence', 'why', 'evid
 RULES = {'reading'}                                    # lib/hanreading.RULE: the one local rule (#123)
 NO_ANSWER = {'echo', 'tag', 'invalid', 'not_answered', 'cut_off', 'failed'}   # lib/langreq.NO_ANSWER: why a form has no AI answer (#137)
 READING_KEYS = {'lang', 'langs', 'text', 'with', 'places', 'back'}
-GROUP_APPROVALS = {'all_shown', 'readings'}            # the review page's two group-approval buttons (#124)
+GROUP_APPROVALS = {'all_shown', 'readings', 'printed_reading'}   # the review page's group-approval buttons (#124; #132 the third)
 
 def _check_rows(lp, pages, dropped):
     """language_parts version 2 (lib/langreq.to_rows): forms, and rows [page, mcid, first, last, form index]. A form whose
@@ -270,7 +270,7 @@ def _check_rows(lp, pages, dropped):
             dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': 'reading not a reading record'}); f.pop('reading')
         g = f.get('group_approval')
         if g is not None and not (isinstance(g, dict) and g.get('button') in GROUP_APPROVALS):
-            dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': 'group_approval not one of the two buttons'}); f.pop('group_approval')
+            dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': 'group_approval not one of the group-approval buttons'}); f.pop('group_approval')
     def whole(v): return isinstance(v, int) and not isinstance(v, bool)
     keep, seen = [], {}
     for r in lp.get('parts') if isinstance(lp.get('parts'), list) else []:
