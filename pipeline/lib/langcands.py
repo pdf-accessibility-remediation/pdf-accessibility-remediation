@@ -142,8 +142,10 @@ def line_end(hy, first, chars):
     def same_line(c, ref): return abs((c['top'] + c['bottom']) / 2 - (ref['top'] + ref['bottom']) / 2) <= em(ref) / 2
     for c in chars:
         if c is hy or c is first or not c['text'].strip(): continue
-        if same_line(c, hy) and c['x0'] >= hy['x1'] - 0.5 and c['x0'] - hy['x1'] < em(hy): return False
-        if same_line(c, first) and c['x1'] <= first['x0'] + 0.5 and first['x0'] - c['x1'] < em(first): return False
+        # (a) anything that reaches right of the hyphen, a letter kerned under it included (review 06, M1: the "W" of
+        # "non-Western" starts 0.9 pt inside the hyphen's right edge); (b) the mirror on the joined word's line
+        if same_line(c, hy) and c['x1'] > hy['x1'] + 0.5 and c['x0'] - hy['x1'] < em(hy): return False
+        if same_line(c, first) and c['x0'] < first['x0'] - 0.5 and first['x0'] - c['x1'] < em(first): return False
     return True
 
 PLAIN_HALF = re.compile(r'[A-Za-z]{3,}')

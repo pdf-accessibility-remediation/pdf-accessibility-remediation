@@ -90,6 +90,9 @@ def test_line_end_on_its_own():
     assert langcands.line_end(hy, first, base + [_c('X', 130, 136, 0)])                # another column, 26 pt away
     assert langcands.line_end(hy, first, base + [_c(' ', 105, 107, 0)])                # a space is not visible
     assert not langcands.line_end(hy, first, base + [_c('o', 64, 69, 13)])             # the joined word is inside its line
+    # review 06, M1: a "W" kerned 1 pt under the hyphen, the next letter past one em: the "W" counts
+    assert not langcands.line_end(hy, first, base + [_c('W', 103, 114.5, 0), _c('e', 115, 120, 0)])
+    assert not langcands.line_end(hy, first, base + [_c('o', 68, 73, 13)])             # the mirror: a letter kerned under the first
     assert not langcands.line_end(None, first, base) and not langcands.line_end(_c('a', 100, 104, 0), first, base)
 
 MIDLINE = {   # review 04, H1 (migrant's cases, synthetic): the second part is drawn after the next line's first word
