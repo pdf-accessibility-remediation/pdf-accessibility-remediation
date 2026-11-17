@@ -55,6 +55,9 @@ log = load(PDF + '.log.json', default={}); ver = load(PDF + '.verify.json', defa
 lang_log = log.get('language_parts') or {}; ver_lang = ver.get('language') or {}            # #118: the language step's tags
 lang_refused = sum((lang_log.get('refused') or {}).values())
 LANG_REFUSED_SHOWN = 20                       # refused language-tag places listed in review.md under each reason; the rest are in the record
+NO_ANSWER_WORDS = {'echo': 'the reply could not be matched to the word', 'tag': 'the AI gave a language the pipeline cannot write',   # #137
+                   'invalid': 'the answer was not in the expected form', 'not_answered': 'the reply skipped the word',
+                   'cut_off': "the AI's reply stopped before the word", 'failed': 'the request did not finish'}
 digest = load('digest.json', base=A, default={})
 fulltext = load('fulltext.json', base=A, default={}) or {}   # the whole texts the digest shortens (local only, never sent)
 vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the original, from the audit
@@ -1177,6 +1180,11 @@ if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the langu
                                                                               for k, v in by_lang.most_common()] + ['']
     if exempt_: L += [line('Left untagged by the AI: ' + ' · '.join(f'{c} {({"name": "names", "english": "part of English", "indeterminate": "not words of a known language", "unsure": "not sure", "varies": "mixed"}).get(w, w or "no answer")}'
                                                             for w, c in exempt_.most_common()) + ' (Latin script: no decision needed).', entry=False), '']
+    noans_ = collections.Counter(f.get('no_answer') for f in forms_ if f.get('no_answer') in NO_ANSWER_WORDS)   # #137: no AI answer, by reason
+    if noans_:
+        L += [line(f'**No AI answer ({sum(noans_.values())} word form{"" if sum(noans_.values()) == 1 else "s"}):** '
+                   + ' · '.join(f'{NO_ANSWER_WORDS[k]} {c}' for k, c in noans_.most_common())
+                   + '. A person decides each of these with no suggestion from the AI.', entry=False), '']
     if person_:
         L += [f'**Not tagged, for a person to decide ({len(person_)}):**', '']
         L += [line(f'- "{excerpt(f.get("form"))}"' + (f' (the PDF tags it "{f["current"]}")' if f.get('current') else '')

@@ -60,6 +60,24 @@ def get(url, key=None):
 
 def form_key(f): return f'{f["group"]}|{f["form"]}' + (f'|{f["current"]}' if f.get('current') else '')
 
+DROPPED_KEPT = 2000                 # dropped answers kept in the record (#137; was 200), with dropped_count for the rest
+
+def keyed(dropped, id_keys, form_of):
+    """Dropped entries with the form key and the item's form beside the id as sent (#137): the record names the word."""
+    out = []
+    for e in dropped:
+        k = id_keys.get(e.get('id')) if e.get('id') is not None else None
+        out.append({**e, **({'key': k, 'form': form_of.get(k, k.split('|')[1] if '|' in k else k)} if k else {})})
+    return out
+
+def code_of(why):
+    """A dropped entry's code from its `why`, for a record made before codes (#137)."""
+    w = str(why or '')
+    return ('echo' if w.startswith('its form does not match') else 'tag' if w.startswith('tag not allowed') else
+            'invalid' if w.startswith(('confidence not allowed', 'reason not allowed', 'not an object')) else
+            'not_answered' if w == 'not answered' else 'unknown_id' if w == 'unknown id' else 'twice' if w == 'answered twice' else
+            'unreadable' if w.startswith('reply is not') else 'partial' if w.startswith('reply not valid JSON') else None)
+
 def marks_for(x, folder, prompt_sha):
     """The marks a saved request entry carried ({sent id: marked texts}, #137): its own `id_marks`, or for a run made
     before them, its request file in the run folder that sent it (language_requests/NNN.request.json), used only when the
@@ -156,6 +174,7 @@ def main():
             # the saved replies themselves, read again (review 06, M3): a step that stopped after paying and before parsing
             # left decisions {} beside complete replies; reading them costs nothing
             found = dict(old.get('decisions') or {})
+            drops, why_by_key = [], {}                                # #137: what the saved replies threw away, by form key
             form_of = {form_key(f): f['form'] for f in fs}
             src_dir = os.path.dirname(os.path.abspath(src))          # the run that sent these requests (review 02, M5)
             for x in old['requests']:
@@ -163,10 +182,16 @@ def main():
                 idk = x.get('id_keys') or dict(zip(x.get('ids') or [], x.get('keys') or []))
                 # with the forms and the marks as sent, as the first parse: a decision whose form echo names another item stays
                 # dropped (review 12, M1; #137 rule U)
-                d, _ = langreq.parse(x['text'], set(idk), forms={i: form_of.get(k, k.split('|')[1] if '|' in k else k) for i, k in idk.items()},
-                                     marks=marks_for(x, src_dir, old.get('prompt_sha256')))
+                d, dr = langreq.parse(x['text'], set(idk), forms={i: form_of.get(k, k.split('|')[1] if '|' in k else k) for i, k in idk.items()},
+                                      marks=marks_for(x, src_dir, old.get('prompt_sha256')))
                 for i, v in d.items(): found.setdefault(idk[i], v)
-            old['decisions'] = found
+                drops += keyed(dr, idk, form_of)                          # review 02, M5: the codes on the replay path too
+                for i, c in langreq.no_answer([i for i in idk if i not in d], dr, x.get('finish')).items(): why_by_key.setdefault(idk[i], c)
+            if not any(x.get('text') for x in old['requests']):      # a finished run's record keeps no reply text: its own list
+                ik = {i: k for x in old['requests'] for i, k in (x.get('id_keys') or {}).items()}
+                drops = keyed([{**e, 'code': e.get('code') or code_of(e.get('why'))} for e in old.get('dropped') or [] if isinstance(e, dict)], ik, form_of)
+                why_by_key = {e['key']: e['code'] for e in drops if e.get('key') and e.get('code') in langreq.NO_ANSWER}
+            old['decisions'] = found; old['_drops'], old['_why'] = drops, why_by_key
         if not isinstance(old, dict) or not (old.get('decisions') or (local and not ai_fs)):   # #123: a book decided wholly by the rule
             print(f'language step: no saved decisions in {src}: not run')
             merge(R, wo_path, fs, {}, {'schema': 'language-run/1', 'decisions': {}, 'requests': [], 'cost_usd': 0, 'response_from': os.path.abspath(src)},
@@ -183,9 +208,11 @@ def main():
                'own_reply': bool(args.reuse) or os.path.abspath(src) == os.path.abspath(run_path), 'replay': replay,
                'decisions': by_key, 'requests': old.get('requests') if args.reuse else [], 'cost_usd': (old.get('cost_usd') or 0) if args.reuse else 0,
                'original_cost_usd': old.get('cost_usd'), 'candidates': how, 'reading_rule': rule_rec,
-               'local': {form_key(f): local[f['id']] for f in fs if f['id'] in local}}
+               'local': {form_key(f): local[f['id']] for f in fs if f['id'] in local},
+               **({'dropped': old['_drops'][:DROPPED_KEPT], 'dropped_count': len(old['_drops'])} if old.get('_drops') else {})}
+        reasons = {f['id']: old.get('_why', {})[form_key(f)] for f in sent if f['id'] not in dec and form_key(f) in old.get('_why', {})}
         if not args.reuse: json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-        merge(R, wo_path, written, {**dec, **local}, rec, held=held, contexts=contexts_of(written, words, reqs), readings=readings)
+        merge(R, wo_path, written, {**dec, **local}, rec, held=held, contexts=contexts_of(written, words, reqs), readings=readings, reasons=reasons)
         print(f'language step: saved decisions applied by form ({len(dec)} of {len(sent)} forms; {replay["vanished_count"]} no longer found; '
               f'{replay["not_decided"]} not decided) · {len(local)} decided by the reading rule · no AI request'); return
     if not ai_fs:                                      # every form decided by the reading rule (#123): nothing to send, no network
@@ -286,16 +313,21 @@ def main():
                                          'book': costhistory.book_id(R, digest), 'pass': str(t['n']), 'attempt': 1})
                 except Exception: pass
     # decisions by form, from every complete reply
-    dec, dropped = {}, []
+    dec, dropped, reasons = {}, [], {}
     by_id = {f['id']: f for f in sent}
     for x in rec['requests']:                        # a reply cut off (finish 'length') keeps every decision it finished
         d, dr = langreq.parse(x.get('text') or '', set(x['ids']), forms={i: by_id[i]['form'] for i in x['ids'] if i in by_id},
-                              marks=marks_for(x, R, rec.get('prompt_sha256'))); dec.update(d); dropped += dr
+                              marks=marks_for(x, R, rec.get('prompt_sha256'))); dec.update(d)
+        dropped += keyed(dr, x.get('id_keys') or {}, {form_key(f): f['form'] for f in sent})
+        reasons.update(langreq.no_answer([i for i in x['ids'] if i not in d], dr, x.get('finish')))
+    for f in sent:                                   # #137: a form whose request has no reply at all (an error, no reply in time)
+        if f['id'] not in dec and f['id'] not in reasons: reasons[f['id']] = 'failed'
+    reasons = {i: c for i, c in reasons.items() if i not in dec}
     rec['decisions'] = {form_key(by_id[i]): v for i, v in dec.items() if i in by_id}     # the AI's only: the rule's are under `local`
-    rec['dropped'] = dropped[:200]
+    rec['dropped'] = dropped[:DROPPED_KEPT]; rec['dropped_count'] = len(dropped)
     rec['not_decided'] = sum(1 for f in sent if f['id'] not in dec)          # cut off, invalid, or never sent: listed for a person
     json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    merge(R, wo_path, written, {**dec, **local}, rec, held=held, contexts=contexts_of(written, words, reqs), readings=readings)
+    merge(R, wo_path, written, {**dec, **local}, rec, held=held, contexts=contexts_of(written, words, reqs), readings=readings, reasons=reasons)
     print(f'language step: {len(dec)} of {len(sent)} forms decided by the AI ({rec["not_decided"]} not decided), {len(local)} by the reading rule'
           f' · ${rec["cost_usd"]:.4f} spent on this step')
 
@@ -313,14 +345,14 @@ def contexts_of(fs, words, reqs=None):
         out[f['id']] = langreq.place_text(p, words)[:CONTEXT_CUT]
     return out
 
-def merge(R, wo_path, fs, dec, rec, held=(), note=None, contexts=None, readings=None):
+def merge(R, wo_path, fs, dec, rec, held=(), note=None, contexts=None, readings=None, reasons=None):
     """workorder.json's language_parts from the decisions (checked as every work order is), and, beside them in
     language_run.json, what a person must decide: non-Latin places the AI left untagged (review 02, M6) and every
     existing tag's answer. Always written, on every path (a fresh call, a reuse, a saved reply), so a later rebuild of
     workorder.json (decide.py --response-file) can put them back (review 02, M8)."""
     if not os.path.exists(wo_path): return
     wo = json.load(open(wo_path, encoding='utf-8'))
-    lp = langreq.to_rows(fs, dec, readings=readings)
+    lp = langreq.to_rows(fs, dec, readings=readings, reasons=reasons)
     pages = max([p['page'] for f in fs for p in f['places']] + [1])
     tmp = {'language_parts': lp}; dropped = workorder_check.check_language_parts(tmp, 10 ** 6)
     if tmp.get('language_parts', {}).get('parts'): wo['language_parts'] = tmp['language_parts']

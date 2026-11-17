@@ -39,7 +39,12 @@ approved.
    printed one. So an echo is used when it matches the item's form with spacing and case ignored, or when its letters
    and digits alone match the item's form or one of its marked texts and no other item's in the same request (#137);
    otherwise it is not used. Each request's marked texts are kept in `language_run.json` (`id_marks`, not in the
-   record), so a replay compares them as sent. Phrases English dictionaries
+   record), so a replay compares them as sent. An answer the check throws away is kept in the record
+   (`language_run.dropped`: the word form, what the answer echoed, its tag and confidence, and a `code`: `echo`, `tag`,
+   `invalid`, …; up to 2,000, with `dropped_count`). Each word form with no AI decision carries why in its
+   `language_parts` entry (`no_answer`: `echo`, `tag`, `invalid`, `not_answered`, `cut_off` or `failed`), which the
+   review page words as "No AI answer (…)" and review.md counts in its Language Tags section ("No AI answer (N word
+   forms): …", in plain words). Phrases English dictionaries
    list (*a priori*, *ad hoc*) count as English. (language_v3 is language_v1 with these two lines from language_v2,
    adopted after a paid check on the test items, 2026-11-13: 248 and 249 right against 246 and 232, the same one wrong
    medium-confidence answer, no reply cut off.)

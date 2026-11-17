@@ -49,6 +49,26 @@ def test_saved_language_decisions_are_applied_at_no_cost(tmp_path):
     g = rec['glance']; lang_line = next(x for x in g['ship'] if x['what'] == 'Language tags')
     assert lang_line['ok'] is False and lang_line['text'].startswith('Not Reviewed (')          # not reviewed: never Ready
 
+def test_an_answer_the_reply_check_drops_is_kept_and_counted(tmp_path):
+    """#137 (dropped language answers): a saved reply whose answer for Onjōji gives a tag the pipeline cannot write. The
+    replay keeps the dropped answer with its code and form in the record, the form carries its reason, and review.md
+    counts it in plain words (review 02, L1: no codes)."""
+    reply = {'decisions': [{'id': '1', 'form': 'Onjōji', 'lang': 'xx-Zzzz', 'confidence': 'high', 'why': 'language'},
+                           {'id': '2', 'form': 'mappō', 'lang': 'ja-Latn', 'confidence': 'high', 'why': 'language'}]}
+    saved = {'schema': 'language-run/1', 'model': 'anthropic/claude-sonnet-5.5', 'cost_usd': 0.05, 'decisions': {},
+             'requests': [{'n': 1, 'sha256': 'x', 'ids': ['1', '2'], 'id_keys': {'1': 'marks|Onjōji', '2': 'hawaiian|mappō'},
+                           'text': json.dumps(reply), 'finish': 'stop'}]}
+    (tmp_path / 'book.language.json').write_text(json.dumps(saved))
+    r, R = run_api(tmp_path, LANG_REPLY=str(tmp_path / 'book.language.json'), LANG_TAGS='off')
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    rec = json.load(open(R / 'record.json'))
+    d = [x for x in rec['language_run']['dropped'] if x.get('code') == 'tag']
+    assert d and d[0]['key'] == 'marks|Onjōji' and d[0]['form'] == 'Onjōji' and d[0]['lang'] == 'xx-Zzzz' and d[0]['echo'] == 'Onjōji'
+    forms = {f['form']: f for f in rec['workorder']['language_parts']['forms']}
+    assert forms['Onjōji'].get('no_answer') == 'tag' and 'no_answer' not in forms['mappō']
+    md = open(R / 'review.md', encoding='utf-8').read()
+    assert '**No AI answer (1 word form):** the AI gave a language the pipeline cannot write 1.' in md and 'xx-Zzzz' not in md
+
 def test_hawaiian_lines_are_listed_for_the_hawaiian_reader(tmp_path):
     """review 08, H2: a line tagged Hawaiian by the fixed rule on a page read by the AI is listed in review.md's Language
     Tags section, and counted by the check row. The page reading comes with the saved reply's work order here."""

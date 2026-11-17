@@ -167,6 +167,14 @@ def test_check_language_parts():
     assert any('page not in the book' in w for w in whys) and any('not in order' in w for w in whys)
     assert any("'iw'" in w for w in whys) and any('unknown keys' in w for w in whys)
 
+def test_no_answer_reasons_are_checked():
+    """#137 (review 02, L2): a version-2 form's `no_answer` passes only with a reason the review page can word."""
+    forms = [{'key': 'marks|a', 'form': 'a', 'lang': None, 'no_answer': 'echo'}, {'key': 'marks|b', 'form': 'b', 'lang': None, 'no_answer': 'because'}]
+    wo = {'language_parts': {'version': 2, 'forms': forms, 'parts': [[1, 0, 0, 1, 0], [1, 1, 0, 1, 1]]}}
+    dropped = workorder_check.check_language_parts(wo, 2)
+    assert [f.get('no_answer') for f in wo['language_parts']['forms']] == ['echo', None]
+    assert [d['why'] for d in dropped] == ["not a no-answer reason: 'because'"]
+
 def test_candidates_line_up_with_runs(tmp_path):
     """The audit's places are character indexes that apply.py's split uses as they are."""
     runs = [{'lang': 'en-US', 'font': 'F3', 'text': 'The city of Heiankyo saw ryōgen begin.'},

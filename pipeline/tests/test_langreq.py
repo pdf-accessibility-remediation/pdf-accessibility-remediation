@@ -58,7 +58,8 @@ def test_parse_salvages_decisions_from_broken_json():
     t = ('{"decisions":[{"id":"1","lang":"haw","confidence":"high","why":"language","evidence":"okina"}},'
          '{"id":"2","lang":"ja","confidence":"medium","why":"language"},{"id":"3","lang":"zh","conf')
     dec, dropped = langreq.parse(t, {'1', '2', '3'})
-    assert set(dec) == {'1', '2'} and 'not valid JSON' in dropped[0]['why'] and dropped[-1] == {'id': '3', 'why': 'not answered'}
+    assert set(dec) == {'1', '2'} and 'not valid JSON' in dropped[0]['why'] and dropped[-1] == {'id': '3', 'code': 'not_answered', 'why': 'not answered'}
+    assert dropped[0]['code'] == 'partial' and langreq.no_answer(['3'], dropped) == {'3': 'invalid'}     # #137: the reply's form
 
 def test_one_character_han_places_on_a_line_form_one_word():
     ps = [place(5, i, 0, 0, ch, ['cjk:han_only'], 10 + i) for i, ch in enumerate('日本考古')] + [place(5, 9, 0, 0, '年', ['cjk:han_only'], 30)]
@@ -72,7 +73,8 @@ def test_a_form_echo_that_does_not_match_drops_the_decision():
                                   {'id': '2', 'form': 'mappō', 'lang': 'ja', 'confidence': 'high', 'why': 'language'},
                                   {'id': '3', 'form': ' ONRYŌ ', 'lang': 'ja-Latn', 'confidence': 'high', 'why': 'language'}]})
     dec, dropped = langreq.parse(t, {'1', '2', '3'}, forms={'1': 'mappō', '2': '源信', '3': 'onryō'})
-    assert set(dec) == {'1', '3'} and dropped[0] == {'id': '2', 'why': 'its form does not match the item'}
+    assert set(dec) == {'1', '3'} and dropped[0] == {'id': '2', 'code': 'echo', 'why': 'its form does not match the item',
+                                                     'echo': 'mappō', 'lang': 'ja', 'confidence': 'high'}     # #137: the answer is kept
 
 # ---- #137 (dropped language answers): the echo's rule U (review 02, H1)
 def _answer(i, form, lang='ja-Latn'):
@@ -190,3 +192,16 @@ def test_the_page_sentence_is_the_sent_text():
     assert page['1'] == '[X] a b …' + '甲' * 10 + '乙' * 30 + ' Y c'                              # the same cut on the page
     assert page['2'] == 'X a b …' + '甲' * 10 + '乙' * 30 + ' [Y] c'
     assert L.place_text(fs[0]['places'][0], words) != page['1']                                   # the old way cut it the other side
+
+def test_dropped_answers_carry_a_code_and_each_form_a_reason():
+    """#137: every dropped entry has a code; each id with no decision gets one NO_ANSWER reason."""
+    t = json.dumps({'decisions': [_answer('1', 'mappō', 'tpx'), _answer('2', 'onryō', None) | {'confidence': 'sure'},
+                                  _answer('9', 'x'), _answer('3', 'kami'), _answer('3', 'kami')]})
+    dec, dropped = langreq.parse(t, {'1', '2', '3', '4'}, forms={'1': 'mappō', '2': 'onryō', '3': 'kami', '4': 'shinkō'})
+    assert set(dec) == {'3'}
+    assert {d['code'] for d in dropped} == {'tag', 'invalid', 'unknown_id', 'twice', 'not_answered'} <= set(langreq.DROP_CODES)
+    assert langreq.no_answer(['1', '2', '4'], dropped) == {'1': 'tag', '2': 'invalid', '4': 'not_answered'}
+    assert langreq.no_answer(['4'], dropped, finish='length') == {'4': 'cut_off'}
+    rows = langreq.to_rows([{'id': i, 'form': f, 'group': 'marks', 'class': ['marks'], 'places': []} for i, f in (('1', 'mappō'), ('3', 'kami'), ('4', 'shinkō'))],
+                           dec, reasons={'1': 'tag', '3': 'echo', '4': 'nonsense'})
+    assert [f.get('no_answer') for f in rows['forms']] == ['tag', None, None]     # a decided form, and a value not in the set, get none
