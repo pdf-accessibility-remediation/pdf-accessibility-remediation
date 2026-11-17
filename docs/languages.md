@@ -20,10 +20,12 @@ approved.
      in two runs, the second half is a place of its own with the same word form, so one decision tags both lines.
      Otherwise the hyphen is inside a line ("homes-abroad", "non- Western", whose second part some PDFs draw after the
      next line's first word): the word that follows in the text keeps no tag of the first part's, as before.
-   - **Known misses of the hyphen check:** it takes a broken word for English when both halves are English words and
-     the word has no romanized Japanese or Chinese shape: Javanese *madjoe* (an old spelling of *maju*) broken as
-     "mad-" + "joe", and Dutch suspended hyphens such as "taal-, land- en volkenkunde" ("taal-" + "land"), so *taal* at
-     a line end is no candidate there. A person still sees the rest of the passage; these words go untagged.
+   - **Known misses of the hyphen check:** a non-English word broken at a line end whose two halves are both English
+     words, and that has no romanized Japanese or Chinese shape, is taken for English, so that place goes untagged. It
+     happens in any language (Javanese, Indonesian, Hawaiʻi Pidgin, Dutch, …). Two examples: Javanese *madjoe* (an old
+     spelling of *maju*) broken as "mad-" + "joe", and the Dutch suspended hyphen in "taal-, land- en volkenkunde"
+     ("taal-" + "land"), where *taal* is no candidate. Where the book prints such a word whole, those places are still
+     found, unless the word itself is in the English word list (as *taal* is).
 2. **The language step asks the AI** (`name_languages.py`, prompt `prompts/language_v3.md`): each word form with its
    context, each snippet once per request, through OpenRouter with `data_collection: deny`. The context
    (`lib/langreq.py` `CTX`) is 10 words on each side of up to two places per form (a word is a piece with a letter or
