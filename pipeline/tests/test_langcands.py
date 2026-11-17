@@ -128,6 +128,35 @@ def test_a_second_half_after_a_passage_takes_the_passages_form(tmp_path):
     first = next(p for p in places if p['mcid'] == 0)
     assert first['class'][0] == 'passage' and by[(1, 'wama')]['form'] == first['form'] and by[(1, 'wama')]['class'] == first['class']
 
+def _two_pages(tmp_path, first_runs, second_runs):
+    import pikepdf
+    a = langpdf.build(str(tmp_path / 'p1.pdf'), first_runs); b = langpdf.build(str(tmp_path / 'p2.pdf'), second_runs)
+    out = tmp_path / 'book.pdf'
+    with pikepdf.open(a) as pa, pikepdf.open(b) as pb:
+        pa.pages.extend(pb.pages); pa.save(out)
+    return str(out)
+
+def test_a_word_the_book_prints_whole_stays_a_candidate_when_broken(tmp_path):
+    """#140, the printed-whole check: "bum-" / "bye" at a line end on page 2 would be taken for English (both halves
+    are English words), but page 1 prints "bumbye" whole, so both halves stay places of the form "bumbye". Without page
+    1 they are no candidate. page_places reports what it removed through `removed`, and keeps what `keep` names."""
+    broken = [{'text': 'The word bum-'}, {'text': 'bye here.'}]
+    src = _two_pages(tmp_path, [{'text': 'He said bumbye we go.'}], broken)
+    c = langcands.book(plpages.Pages(src))
+    got = sorted((p['page'], p['text']) for p in c['places'] if p['form'] == 'bumbye')
+    assert got == [(1, 'bumbye'), (2, 'bum'), (2, 'bye')], c['places']
+    alone = langcands.book(plpages.Pages(langpdf.build(str(tmp_path / 'b.pdf'), broken)))
+    assert not any(p['form'] == 'bumbye' for p in alone['places'])
+    chars = plpages.Pages(src).pages[1].chars; rm = []
+    places, words = langcands.page_places(2, chars, removed=rm)
+    assert rm == ['bumbye'] and not places and words                          # the return shape is unchanged
+    kept, _ = langcands.page_places(2, chars, keep={'bumbye'})
+    assert [p['form'] for p in kept] == ['bumbye', 'bumbye']
+
+def test_whole_spellings_skip_line_end_breaks_and_count_urls():
+    ws = langcands.whole_spellings({'1': ['He', 'said', 'bumbye,', 'www.smalltown.com', 'bum-', 'O‘ahu']})
+    assert {'bumbye', 'smalltown', 'o‘ahu', 'he'} <= ws and 'bum' not in ws
+
 def test_cjk_document_reverse_direction(tmp_path):
     """In a Chinese, Japanese or Korean document, Latin-script words are candidates even when English ('latin'), and
     CJK text in the document's own language is not."""

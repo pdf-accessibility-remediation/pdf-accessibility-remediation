@@ -18,6 +18,9 @@ approved.
      with it ("long-" + "standing"); English either way, it is no candidate. The form with the hyphen counts only when
      each half has three or more plain letters and the joined word does not have the shape of romanized Japanese or
      Chinese, so a romanized word split into English-looking syllables ("keg-" + "are" for *kegare*) stays a candidate.
+     And a broken word the book also prints whole somewhere stays a candidate ("bum-" + "bye" where *bumbye* is printed
+     whole; `langcands.book` reads the book twice, the second time only on the pages concerned). Any whole spelling
+     counts, including those inside URLs and bibliography entries.
    - **Both halves of a broken candidate are tagged** when the break is a real line end: the hyphen is the last visible
      character on its line (nothing visible to its right within about one em, its font size) and the second half
      starts its own line (nothing visible to its left within one em). Then, in one run, one place covers both halves;
@@ -25,11 +28,10 @@ approved.
      Otherwise the hyphen is inside a line ("homes-abroad", "non- Western", whose second part some PDFs draw after the
      next line's first word): the word that follows in the text keeps no tag of the first part's, as before.
    - **Known misses of the hyphen check:** a non-English word broken at a line end whose two halves are both English
-     words, and that has no romanized Japanese or Chinese shape, is taken for English, so that place goes untagged. It
-     happens in any language (Javanese, Indonesian, Hawaiʻi Pidgin, Dutch, …). Two examples: Javanese *madjoe* (an old
-     spelling of *maju*) broken as "mad-" + "joe", and the Dutch suspended hyphen in "taal-, land- en volkenkunde"
-     ("taal-" + "land"), where *taal* is no candidate. Where the book prints such a word whole, those places are still
-     found, unless the word itself is in the English word list (as *taal* is).
+     words, that has no romanized Japanese or Chinese shape, and that the book never prints whole, is taken for
+     English, so that place goes untagged. It happens in any language (Javanese, Indonesian, Hawaiʻi Pidgin, Dutch, …).
+     Javanese *madjoe* broken as "mad-" + "joe" was one; it is found now, since its book prints *madjoe* whole elsewhere.
+     The Dutch suspended hyphen in "taal-, land- en volkenkunde" stays one: *taal* is itself in the English word list.
      A second pattern: a word hyphenated inside its line whose real continuation the PDF draws elsewhere in the text,
      and whose first part alone is short (under four letters), capitalized without marks, or English, is no candidate.
      Examples: the Anindilyakwa morphemes on an interlinear page ("ki-", "ku-", "na-"), and Hawaiian "uka-".

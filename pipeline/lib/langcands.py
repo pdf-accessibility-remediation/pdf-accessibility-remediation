@@ -224,9 +224,11 @@ def _core_span(cs):
     if i1 - i0 >= 2 and cs[i1]['text'] in ('s', 'S') and cs[i1 - 1]['text'] in "’'": i1 -= 2
     return i0, i1
 
-def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=None, grow=False):
+def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=None, grow=False, keep=None, removed=None):
     """chars: one page's pdfplumber characters in content order (plpages). Returns (places, words): the page's candidate
-    places, and the page's words in reading order (for context: each place names its words by index)."""
+    places, and the page's words in reading order (for context: each place names its words by index). keep: joined
+    spellings (lower case) the hyphen check must not take for English, because the book prints them whole (#140, book());
+    removed: a list the caller supplies, to which the spellings the hyphen check took for English are appended."""
     italic = italic or (lambda fn: bool(ITALIC.search((fn or '').split('+')[-1])))
     cjk_doc = scripts.primary(doc_lang) in scripts.CJK_DOC          # a Chinese, Japanese or Korean document
     idx, runs = {}, collections.defaultdict(list)           # id(char) -> (mcid, index in its run); mcid -> chars
@@ -290,7 +292,11 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         form = w.get('joined', t)
         it = all(italic(c.get('fontname')) for c in w['chars'] if c['text'].strip())
         w['italic'] = it; w['cls'] = classify(form, it); w['form'] = form
-        if w['cls'] and 'hy_to' in w and hyphen_english(t, w['hy_to']['text']): w['cls'] = []      # "long-" / "standing" (#140)
+        if w['cls'] and 'hy_to' in w and hyphen_english(t, w['hy_to']['text']):                   # "long-" / "standing" (#140)
+            spelling = (t + w['hy_to']['text']).lower()
+            if not (keep and spelling in keep):      # a spelling the book prints whole stays a candidate: madjoe, bumbye (#140)
+                w['cls'] = []
+                if removed is not None: removed.append(spelling)
         if cjk_doc and not w['cls'] and LATIN.search(form) and sum(ch.isalpha() for ch in form) >= 2 and not NUMERAL.fullmatch(form) \
                 and not ocrwords.URL.search(form):
             w['cls'] = ['latin']                     # in a CJK document every Latin-script word is in another language (English, …)
@@ -419,17 +425,44 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
     out.sort(key=lambda p: (p['mcid'], p['first']))
     return out, [w['all'] for w in words]
 
+_TOKEN = re.compile(r"[^\W\d_](?:[^\W\d_]|['’ʻ‘])*[^\W\d_]|[^\W\d_]")
+def whole_spellings(words):
+    """The spellings a book prints whole (#140): every word-shaped token, lower case, of its pages' words ({page: [word
+    as shown]}) that doesn't end in a hyphen (a line-end break is not a printed-whole spelling). Tokens inside URLs and
+    bibliography entries count too ("www.smalltown…" for "smalltown"): at worst an English compound broken at a line end
+    stays a candidate, a place of a form the language step calls English."""
+    out = set()
+    for ws in words.values():
+        for w in ws:
+            if w.rstrip()[-1:] in HYPHENS: continue
+            out.update(x.lower() for x in _TOKEN.findall(w))
+    return out
+
 def book(PL, pages=None, doc_lang=None, spoken=None, grow=False):
     """Every page's places, the page word lists (for context), and counts. PL: plpages.Pages. doc_lang: the document's
     language (its /Lang, or the work order's): in a Chinese, Japanese or Korean document, Latin-script words are
     candidates ('latin') and CJK text in the document's own language is not. spoken: {'forms': {OCR form: reading},
-    'pages': {page: reading}} for a scanned book's readings (M5), else None."""
-    allp, words, C = [], {}, collections.Counter()
+    'pages': {page: reading}} for a scanned book's readings (M5), else None.
+    Two passes (#140, the printed-whole check): a word broken at a line end that the hyphen check would take for English
+    ("mad-" + "joe") stays a candidate when the book prints the joined spelling whole elsewhere (madjoe). Pass 1 reads
+    every page and collects the spellings the check removed; the book's whole spellings are the word-shaped tokens of its
+    pages' words that don't end in a hyphen (whole_spellings: URLs and bibliography entries count); pass 2 reads again
+    only the pages with a removed spelling the book prints whole. With pages=…, the whole spellings come from those pages
+    only."""
+    C = collections.Counter()
+    def read(pno, pg, keep=None, removed=None):
+        return page_places(pno, pg.chars, lambda p, _c=pg.chars: _c, doc_lang=doc_lang, grow=grow, keep=keep, removed=removed,
+                           spoken={'forms': (spoken or {}).get('forms') or {}, 'reading': ((spoken or {}).get('pages') or {}).get(pno)} if spoken else None)
+    by_page, words, gone = {}, {}, {}
     for pno, pg in enumerate(PL.pages, 1):
         if pages and pno not in pages: continue
-        pls, ws = page_places(pno, pg.chars, lambda p, _c=pg.chars: _c, doc_lang=doc_lang, grow=grow,
-                              spoken={'forms': (spoken or {}).get('forms') or {}, 'reading': ((spoken or {}).get('pages') or {}).get(pno)} if spoken else None)
-        allp += pls; words[str(pno)] = ws
+        rm = []; by_page[pno], words[str(pno)] = read(pno, pg, removed=rm)
+        if rm: gone[pno] = set(rm)
+    if gone:
+        whole = whole_spellings(words)
+        for pno, rm in gone.items():
+            if rm & whole: by_page[pno], words[str(pno)] = read(pno, PL.pages[pno - 1], keep=rm & whole)
+    allp = [p for pno in sorted(by_page) for p in by_page[pno]]
     forms = collections.defaultdict(set)
     for p in allp:
         for c in p['class']:
