@@ -76,6 +76,38 @@ def test_romanized_word_broken_in_one_run(tmp_path):
     assert p['text'].endswith('yin') and 'pusa' not in p['text']
     assert any(q['form'] == 'pusa' for q in places)
 
+def _c(text, x0, x1, top, size=10.0):
+    return {'text': text, 'x0': x0, 'x1': x1, 'top': top, 'bottom': top + size, 'size': size}
+
+def test_line_end_on_its_own():
+    """review 04, H1: a hyphen ends its line when nothing visible sits to its right within one em, and the joined word
+    starts its own line when nothing visible sits to its left within one em."""
+    hy, first = _c('-', 100, 104, 0), _c('y', 72, 77, 13)
+    base = [_c('a', 90, 95, 0), _c('b', 95, 100, 0), hy, first, _c('i', 77, 80, 13)]
+    assert langcands.line_end(hy, first, base)
+    assert not langcands.line_end(hy, first, base + [_c('W', 104.3, 112, 0)])          # "homes-abroad": the next part right after
+    assert not langcands.line_end(hy, first, base + [_c('W', 108, 116, 0)])            # "non- Western": a 4 pt gap, inside one em
+    assert langcands.line_end(hy, first, base + [_c('X', 130, 136, 0)])                # another column, 26 pt away
+    assert langcands.line_end(hy, first, base + [_c(' ', 105, 107, 0)])                # a space is not visible
+    assert not langcands.line_end(hy, first, base + [_c('o', 64, 69, 13)])             # the joined word is inside its line
+    assert not langcands.line_end(None, first, base) and not langcands.line_end(_c('a', 100, 104, 0), first, base)
+
+MIDLINE = {   # review 04, H1 (migrant's cases, synthetic): the second part is drawn after the next line's first word
+    'homes-abroad': ['(The homes-) Tj', 'T*', '(are here.) Tj', '1 0 0 1 130.7 740 Tm', '(abroad) Tj'],
+    'non- Western': ['(We use non-) Tj', 'T*', '(to the end.) Tj', '1 0 0 1 138.4 740 Tm', '(Western) Tj'],
+    'neo- Tahiti': ['(the \\223neo-) Tj', 'T*', '(continuation of it.) Tj', '1 0 0 1 120 740 Tm', '(Tahiti,\\224) Tj'],
+}
+
+def test_a_mid_line_compound_gives_the_next_lines_word_no_place(tmp_path):
+    """review 04, H1: step 2 still pairs "homes-" with the next line's "are" for the list check (the form as on main), but
+    "are", "to" and "continuation" get no place, and the first part's place doesn't grow over them in its run: the hyphen
+    is not at a line end."""
+    for name, body in MIDLINE.items():
+        src = langpdf.build(str(tmp_path / f'{name[:4]}.pdf'), [{'body': body}])
+        places, _ = langcands.page_places(1, plpages.Pages(src).pages[0].chars)
+        assert not any(p.get('half') for p in places), (name, places)
+        assert [p['text'] for p in places] == [name.split('-')[0].lstrip('“')], (name, places)    # never "homes-are", "non-to"
+
 def test_a_second_half_after_a_passage_takes_the_passages_form(tmp_path):
     """#140: when the first half's run is a passage, the second half (in its own run) is a place of the passage's form;
     a second half counts toward no passage on its own."""

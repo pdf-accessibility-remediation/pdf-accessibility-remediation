@@ -32,9 +32,11 @@ list check, without its hyphen ("oppor-" + "tunities") and with it ("long-" + "s
 letters: hyphen_english); English either way, it is no candidate. A candidate's second half is classed with its first and
 ends the phrase it is in (#140): when both halves are in the same run, one place covers them; when they are in different
 runs, the second half is a place of its own with the form and classes of the place its first half ended in (a passage's,
-when the first half's run is one), so the two places are one form and one decision. A second half classed only through
-its first half (`half_cls`) counts toward no passage, and gets no place when its first half has none (drawn across two
-runs); one that is a candidate on its own (in a run of Hawaiian-shape words) is treated as before.
+when the first half's run is one), so the two places are one form and one decision. All this only at a real line end
+(line_end, review 04 H1): a hyphen inside its line whose second part the PDF draws after the next line's first word
+("homes-" then "are") leaves that word as before (the join still serves the list check). A second half classed only
+through its first half (`half_cls`) counts toward no passage, and gets no place when its first half has none (drawn
+across two runs); one that is a candidate on its own (in a run of Hawaiian-shape words) is treated as before.
 Consecutive candidate words in one run form one phrase. A run in which most words are candidates (PASSAGE_SHARE, at least
 PASSAGE_MIN words) is one place for the whole run.
 """
@@ -128,6 +130,22 @@ def in_english(word):
     parts = [p for p in re.split(r"[-‐‑]", w) if p]
     return len(parts) > 1 and all(p in L for p in parts)
 
+def line_end(hy, first, chars):
+    """#140 (review 04, H1): True when a hyphen ends its line and the word joined to it starts its own: (a) no visible
+    character to the hyphen's right on its line within one em (the hyphen's font size), measured from its right edge;
+    (b) no visible character to the left of the joined word's first character on its line within one em. A mid-line
+    compound whose second part comes later in content order ("homes-abroad" with "are" from the next line next; "non-
+    Western" or "neo- Tahiti" with a wide gap) fails (a); a word inside its line fails (b). hy: the hyphen's char (None:
+    False); first: the joined word's first char; chars: the page's characters."""
+    if not hy or not first or hy.get('text') not in HYPHENS: return False
+    def em(c): return max(float(c.get('size') or 0), float(c['bottom']) - float(c['top']), 1.0)
+    def same_line(c, ref): return abs((c['top'] + c['bottom']) / 2 - (ref['top'] + ref['bottom']) / 2) <= em(ref) / 2
+    for c in chars:
+        if c is hy or c is first or not c['text'].strip(): continue
+        if same_line(c, hy) and c['x0'] >= hy['x1'] - 0.5 and c['x0'] - hy['x1'] < em(hy): return False
+        if same_line(c, first) and c['x1'] <= first['x0'] + 0.5 and first['x0'] - c['x1'] < em(first): return False
+    return True
+
 PLAIN_HALF = re.compile(r'[A-Za-z]{3,}')
 def hyphen_english(a, b):
     """#140 (hyphen at a line end): a word broken at a line end at its own hyphen ("long-" / "standing") is English when the
@@ -212,7 +230,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
             core = ''.join(c['text'] for c in w[i0:i1 + 1]) if i0 <= i1 else ''
             ms = {idx[id(c)][0] for c in w[i0:i1 + 1]} if core else set()
             words.append({'chars': w[i0:i1 + 1] if core else [], 'text': unicodedata.normalize('NFC', core),
-                          'all': shown, 'mcid': next(iter(ms)) if len(ms) == 1 else None})
+                          'all': shown, 'mcid': next(iter(ms)) if len(ms) == 1 else None, 'tail': w0[end]})   # tail: a hyphen's char (#140)
     # 1b. scanned books (review 02, M5): the text a screen reader speaks, where the OCR text was given a reading. spoken =
     #     {'forms': {OCR form: reading}} (the work order's ocr_words) and/or {'reading': the page's AI reading} (page_readings,
     #     paired word by word as apply.py pairs them). The reading decides the class and the form; the place stays the OCR
@@ -237,6 +255,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                 and b['text'][:1].islower():
             a['joined'] = b['joined_from'] = a['text'] + b['text']
             a['hy_to'] = b
+            a['line_end'] = line_end(a.get('tail'), b['chars'][0], chars)   # #140: only then is the second half a place
     # 3. classify Latin and other-script words
     for w in words:
         t = w['text']
@@ -250,8 +269,10 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
                 and not ocrwords.URL.search(form):
             w['cls'] = ['latin']                     # in a CJK document every Latin-script word is in another language (English, …)
         if w['cls'] and 'hy_to' in w:
-            b = w['hy_to']; b['cls'] = list(w['cls']); b['form'] = form; b['italic'] = it
-            b['half_cls'] = True                     # #140: a candidate only through its first half (main gave it no classes)
+            b = w['hy_to']; b['form'] = form; b['italic'] = it
+            if w.get('line_end'):                    # #140 (review 04, H1): a genuine line break; else the join paired a mid-line
+                b['cls'] = list(w['cls'])            # compound's first part with the next line's word: that word stays as on main
+                b['half_cls'] = True                 # a candidate only through its first half (main gave it no classes)
     # a run of HAW_RUN or more Hawaiian-shape words of 2+ letters in one run (single vowels between them allowed: "E iho
     # ana o luna"), at least one of them not in the English list ("we make a home" stays English), is Hawaiian
     def hw(w): return bool(w['text']) and w['mcid'] is not None and not _is_cjk(w['text']) and ocrwords.hawaiian_shape(w['text'])
@@ -337,7 +358,7 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
             k = j + 1; continue                                     # neither has, as before #140, never half a word tagged
         first_m = None
         if grp[0].get('half_cls'): form, cls, first_m = grp[0]['phrase']   # a second half in its own run: its first half's
-        if 'hy_to' in grp[-1]: grp[-1]['hy_to']['phrase'] = (form, cls, grp[-1]['mcid'])    # form and classes (#140): one form, two places
+        if grp[-1].get('hy_to', {}).get('half_cls'): grp[-1]['hy_to']['phrase'] = (form, cls, grp[-1]['mcid'])    # form and classes (#140): one form, two places
         place(w['mcid'], f, l, cls, form, all(x.get('italic') for x in grp), (k, j))
         if first_m is not None: places[-1].update(_first_mcid=first_m, half=True)   # step 5: its first half's run may become a passage;
                                                                                 # half: lib/langreq.forms numbers forms by their other places
