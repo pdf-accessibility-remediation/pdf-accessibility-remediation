@@ -46,6 +46,8 @@ NAMES = {'en': 'English', 'fr': 'French', 'de': 'German', 'es': 'Spanish', 'pt':
          'no': 'Norwegian', 'pl': 'Polish', 'cs': 'Czech', 'hu': 'Hungarian', 'fi': 'Finnish', 'grc': 'Ancient Greek',
          # #137 (dropped language answers): tags the prompt names or the AI gave with good reason, once refused
          'yue-Latn': 'Cantonese (Romanized)', 'grc-Latn': 'Ancient Greek (Romanized)', 'tpi': 'Tok Pisin',
+         # #137, #140: words the stricter line-end join gives back as candidates (Javanese on performing, Anindilyakwa on translation)
+         'jv': 'Javanese', 'aoi': 'Anindilyakwa',
          'qaa': 'Placeholder (local use)'}
 
 # ISO 639-2 three-letter codes whose language has a two-letter ISO 639-1 code: BCP 47 uses the shortest (jpn → ja). The
@@ -57,7 +59,7 @@ SHORT = {'eng': 'en', 'fra': 'fr', 'fre': 'fr', 'deu': 'de', 'ger': 'de', 'spa':
          'ell': 'el', 'gre': 'el', 'tha': 'th', 'san': 'sa', 'pli': 'pi', 'mah': 'mh', 'cha': 'ch', 'tah': 'ty', 'fij': 'fj',
          'bod': 'bo', 'tib': 'bo', 'mon': 'mn', 'hin': 'hi', 'urd': 'ur', 'fas': 'fa', 'per': 'fa', 'tur': 'tr', 'khm': 'km',
          'mya': 'my', 'bur': 'my', 'lao': 'lo', 'uig': 'ug', 'swe': 'sv', 'dan': 'da', 'nor': 'no', 'pol': 'pl', 'ces': 'cs',
-         'cze': 'cs', 'hun': 'hu', 'fin': 'fi'}
+         'cze': 'cs', 'hun': 'hu', 'fin': 'fi', 'jav': 'jv'}
 DEPRECATED = {'iw', 'in', 'jw', 'ji', 'mo'}      # replaced by he, id, jv, yi, ro
 
 def shortest(tag):

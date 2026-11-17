@@ -49,6 +49,8 @@ def test_every_tag_the_language_prompt_names_is_allowed():
 def test_tags_once_refused_are_named():
     """#137: romanized Cantonese and Ancient Greek, and Tok Pisin (Patrick, 2026-11-17); Hawaiʻi Creole English is not
     in this branch."""
-    for t, n in (('yue-Latn', 'Cantonese (Romanized)'), ('grc-Latn', 'Ancient Greek (Romanized)'), ('tpi', 'Tok Pisin')):
+    for t, n in (('yue-Latn', 'Cantonese (Romanized)'), ('grc-Latn', 'Ancient Greek (Romanized)'), ('tpi', 'Tok Pisin'),
+                 ('jv', 'Javanese'), ('aoi', 'Anindilyakwa')):            # #140's stricter join gives these words back
         assert langtag.valid_part(t) and langtag.name(t) == n
+    assert langtag.shortest('jav') == 'jv' and not langtag.valid_part('jav')   # the shortest form only
     assert not langtag.valid_part('hwc')
