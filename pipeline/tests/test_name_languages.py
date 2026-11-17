@@ -154,3 +154,46 @@ def test_the_estimate_follows_the_language_allowance(tmp_path, monkeypatch):
     assert e['max_tokens'] == [costs.allowance('language', 3)] == [1400]
     pin, pout = (x / 1e6 for x in e['price_per_million'])
     assert e['worst_case_usd'] > 1400 * pout and e['worst_case_usd'] == round(e['worst_case_usd'], 4)
+
+# ---- #137 (dropped language answers): an echo of the printed spelling, with the marks as sent (review 02, H1 and M5)
+TITLE = [{'font': 'F3', 'text': 'The year Tenpyō hōji ninen: Naishōsen here.'}, {'font': 'F3', 'text': 'Later ryōgen wrote.'}]
+
+def echo_marked(body, n):
+    """Each answer copies the text marked for its id (the printed spelling), not the item's form."""
+    req = json.loads(body['messages'][1]['content'])
+    marks = langreq.marks_of(req)
+    dec = [{'id': it['id'], 'form': (marks.get(it['id']) or [it['form']])[0], 'lang': 'ja-Latn', 'confidence': 'high', 'why': 'language'}
+           for it in req['items']]
+    return {'choices': [{'message': {'content': json.dumps({'decisions': dec})}, 'finish_reason': 'stop'}],
+            'usage': {'prompt_tokens': 900, 'completion_tokens': 60, 'cost': 0.004}}
+
+def test_an_echo_of_the_printed_spelling_is_used(tmp_path, monkeypatch):
+    src, A, R = folders(tmp_path, TITLE)
+    run(src, A, R, monkeypatch, reply=echo_marked)
+    lr = load(R / 'language_run.json')
+    assert 'cjk|x' not in lr and any(k.endswith('|Tenpyō hōji ninen Naishōsen') for k in lr['decisions'])
+    assert not [d for d in lr.get('dropped') or [] if 'form' in d['why']]
+    marks = lr['requests'][0]['id_marks']
+    assert any('Tenpyō hōji ninen: Naishōsen' in v for v in marks.values())
+
+def test_a_replay_reads_marks_from_the_request_it_answered(tmp_path, monkeypatch):
+    """A run made before `id_marks` (stripped here): --reuse reads the marks from language_requests/ only while that file's
+    sha256 matches the entry's; another request under the same number leaves the echo to the forms alone."""
+    src, A, R = folders(tmp_path, TITLE)
+    run(src, A, R, monkeypatch, reply=echo_marked)
+    def strip():
+        lr = load(R / 'language_run.json'); lr['decisions'] = {}
+        for x in lr['requests']: x.pop('id_marks', None)
+        (R / 'language_run.json').write_text(json.dumps(lr))
+        wo = load(R / 'workorder.json'); wo.pop('language_parts', None); (R / 'workorder.json').write_text(json.dumps(wo))
+    strip()
+    assert run(src, A, R, monkeypatch, '--reuse') == []
+    assert any(k.endswith('|Tenpyō hōji ninen Naishōsen') for k in load(R / 'language_run.json')['decisions'])
+    lr = load(R / 'language_run.json'); x = lr['requests'][0]; nl = runpy.run_path(os.path.join(HERE, 'name_languages.py'))
+    assert x.get('id_marks') is None
+    got = nl['marks_for'](x, str(R), lr['prompt_sha256'])
+    assert any('Tenpyō hōji ninen: Naishōsen' in v for v in got.values())
+    f = R / 'language_requests' / '001.request.json'
+    body = load(f); body['messages'][1]['content'] = body['messages'][1]['content'].replace('here', 'there'); f.write_text(json.dumps(body))
+    assert nl['marks_for'](x, str(R), lr['prompt_sha256']) is None                # another request under that number: not read
+    assert nl['marks_for']({**x, 'id_marks': {'1': ['a']}}, str(R), lr['prompt_sha256']) == {'1': ['a']}

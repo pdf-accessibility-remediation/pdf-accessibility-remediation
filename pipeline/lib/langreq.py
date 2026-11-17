@@ -264,10 +264,42 @@ def body(req, model, prompt, max_tokens, supported=None):
 def _same_form(a, b):
     return unicodedata.normalize('NFC', ' '.join(str(a or '').split())).casefold() == unicodedata.normalize('NFC', ' '.join(str(b or '').split())).casefold()
 
-def parse(text, ids, forms=None):
+def _loose(s):
+    """An echo's loose key (#137, review 02 H1): letters and digits only, NFC, case folded."""
+    return ''.join(ch for ch in unicodedata.normalize('NFC', str(s or '')).casefold() if ch.isalnum())
+
+def marks_of(req):
+    """{item id: the texts marked [[id|…]] with it in this request's snippets}, sorted: what the reply may echo besides
+    the item's form. Read from the request as sent, so nothing new is sent (#137)."""
+    out = collections.defaultdict(set)
+    for sn in (req or {}).get('snippets') or []:
+        for m in _MARK.finditer(sn.get('text') or ''): out[m.group(1)].add(m.group(2))
+    return {i: sorted(v) for i, v in out.items()}
+
+def echo_owners(forms, marks):
+    """{loose key: the ids of this request whose form or a mark has it}: rule U's ownership test."""
+    own = collections.defaultdict(set)
+    for i, f in (forms or {}).items():
+        for t in [f, *((marks or {}).get(i) or [])]:
+            k = _loose(t)
+            if k: own[k].add(i)
+    return own
+
+def echo_ok(e, i, forms, owners):
+    """Rule U (#137, review 02 H1): the echo matches the item's form with spacing and case ignored (the rule before), or
+    its loose key is the loose key of the item's form or of a text marked with its id, and of no other item's in the same
+    request. A reply that copied the printed spelling ("Tenpyō hōji ninen:", a line's half of a broken word) is kept; an
+    answer that landed on another item (two items differing only by an ʻokina or punctuation, a mark that is another
+    item's whole form) is not."""
+    if _same_form(e, forms.get(i)): return True
+    k = _loose(e)
+    return bool(k) and owners.get(k) == {i}
+
+def parse(text, ids, forms=None, marks=None):
     """The model's reply text → ({id: decision}, dropped). A decision: {lang (or None), confidence, why, note?}. A
-    decision is dropped when its id is unknown or repeated, its tag is not one the step may write (langtag.valid_part),
-    or its confidence or reason is not one of the listed words."""
+    decision is dropped when its id is unknown or repeated, its form echo fits no item or another (echo_ok; marks: the
+    request's marks_of, None to compare forms only), its tag is not one the step may write (langtag.valid_part), or its
+    confidence or reason is not one of the listed words."""
     m = re.search(r'\{.*\}', text or '', re.S)
     try: data = json.loads(m.group(0)) if m else None
     except ValueError: data = None
@@ -281,13 +313,14 @@ def parse(text, ids, forms=None):
         if not found: return {}, [{'id': None, 'why': 'reply is not a decisions object'}]
         dropped.append({'id': None, 'why': f'reply not valid JSON: {len(found)} decisions read one by one'})
         data = {'decisions': found}
+    owners = echo_owners(forms, marks) if forms else {}
     for d in data['decisions']:
         if not isinstance(d, dict): dropped.append({'id': None, 'why': 'not an object'}); continue
         i = str(d.get('id'))
         lang = d.get('lang'); conf = d.get('confidence'); why = d.get('why')
         if i not in ids: dropped.append({'id': i, 'why': 'unknown id'}); continue
         if i in out: dropped.append({'id': i, 'why': 'answered twice'}); continue
-        if forms and 'form' in d and not _same_form(d['form'], forms.get(i)):        # the form echo (review 06, L1): an id off by one
+        if forms and 'form' in d and not echo_ok(d['form'], i, forms, owners):     # the form echo (review 06, L1): an id off by one
             dropped.append({'id': i, 'why': 'its form does not match the item'}); continue
         if lang is not None and not langtag.valid_part(lang): dropped.append({'id': i, 'why': f'tag not allowed: {lang!r}'}); continue
         if conf not in CONF: dropped.append({'id': i, 'why': f'confidence not allowed: {conf!r}'}); continue

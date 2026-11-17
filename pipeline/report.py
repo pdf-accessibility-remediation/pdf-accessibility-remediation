@@ -166,7 +166,7 @@ record = {
     **({'raw_reply_passes': passes} if passes else {}), 'environment': log.get('environment'),
     'earlier_attempts': attempts, 'cost_total_usd': round(cost_this + cost_earlier + cost_pages + cost_lang, 6),
     **({'language_run': {k: v for k, v in lr_run.items() if k not in ('requests', 'language_parts', 'contexts')}       # the parts are in workorder.language_parts
-                        | {'requests': [{k: v for k, v in x.items() if k not in ('text', 'keys', 'ids')} for x in lr_run.get('requests') or []]}} if lr_run else {}),
+                        | {'requests': [{k: v for k, v in x.items() if k not in ('text', 'keys', 'ids', 'id_marks')} for x in lr_run.get('requests') or []]}} if lr_run else {}),
     **({'page_reads': {k: v for k, v in pr_run.items() if k != 'pages'} | {'pages': [{k: v for k, v in x.items() if k != 'text'} for x in pr_run.get('pages') or []]}}
        if pr_run else {}),
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),

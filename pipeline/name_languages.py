@@ -60,6 +60,20 @@ def get(url, key=None):
 
 def form_key(f): return f'{f["group"]}|{f["form"]}' + (f'|{f["current"]}' if f.get('current') else '')
 
+def marks_for(x, folder, prompt_sha):
+    """The marks a saved request entry carried ({sent id: marked texts}, #137): its own `id_marks`, or for a run made
+    before them, its request file in the run folder that sent it (language_requests/NNN.request.json), used only when the
+    file is the request that entry answered: sha256(prompt + its user content) equals the entry's `sha256` (review 02, M5:
+    a later run may have written another request under the same number). None: the echo is compared with forms alone."""
+    if isinstance(x.get('id_marks'), dict): return x['id_marks']
+    if not (folder and prompt_sha and x.get('sha256') and x.get('n') is not None): return None
+    try:
+        body = json.load(open(os.path.join(folder, 'language_requests', f'{int(x["n"]):03d}.request.json'), encoding='utf-8'))
+        text = body['messages'][1]['content']
+    except (OSError, ValueError, KeyError, IndexError, TypeError): return None
+    if hashlib.sha256((prompt_sha + text).encode()).hexdigest()[:16] != x['sha256']: return None
+    return langreq.marks_of(json.loads(text))
+
 def spoken_of(wo, digest):
     """What a screen reader speaks on a scanned book: {'forms': {OCR form: reading}, 'pages': {page: reading}}, or None."""
     forms = {it['text']: it['reads'] for it in wo.get('ocr_words') or [] if isinstance(it, dict) and it.get('text') and it.get('reads')}
@@ -143,11 +157,14 @@ def main():
             # left decisions {} beside complete replies; reading them costs nothing
             found = dict(old.get('decisions') or {})
             form_of = {form_key(f): f['form'] for f in fs}
+            src_dir = os.path.dirname(os.path.abspath(src))          # the run that sent these requests (review 02, M5)
             for x in old['requests']:
                 if not x.get('text'): continue
                 idk = x.get('id_keys') or dict(zip(x.get('ids') or [], x.get('keys') or []))
-                # with the forms, as the first parse: a decision whose form echo names another item stays dropped (review 12, M1)
-                d, _ = langreq.parse(x['text'], set(idk), forms={i: form_of.get(k, k.split('|')[1] if '|' in k else k) for i, k in idk.items()})
+                # with the forms and the marks as sent, as the first parse: a decision whose form echo names another item stays
+                # dropped (review 12, M1; #137 rule U)
+                d, _ = langreq.parse(x['text'], set(idk), forms={i: form_of.get(k, k.split('|')[1] if '|' in k else k) for i, k in idk.items()},
+                                     marks=marks_for(x, src_dir, old.get('prompt_sha256')))
                 for i, v in d.items(): found.setdefault(idk[i], v)
             old['decisions'] = found
         if not isinstance(old, dict) or not (old.get('decisions') or (local and not ai_fs)):   # #123: a book decided wholly by the rule
@@ -257,6 +274,7 @@ def main():
             except (urllib.error.URLError, TimeoutError) as e: print(f'  request {t["n"]}: no reply ({e}); not retried'); continue
             u = d.get('usage') or {}; ch = (d.get('choices') or [{}])[0]
             x = {'n': t['n'], 'sha256': t['sha256'], 'ids': [it['id'] for it in t['req']['items']], 'id_keys': {f['id']: form_key(f) for f in sent if f['id'] in {it['id'] for it in t['req']['items']}},
+                 'id_marks': langreq.marks_of(t['req']),          # #137: what the reply may echo, by the ids as sent (review 02, M5)
                  'text': (ch.get('message') or {}).get('content') or '', 'finish': ch.get('finish_reason'), 'input_tokens': u.get('prompt_tokens'),
                  'output_tokens': u.get('completion_tokens'), 'cost_usd': u.get('cost'), 'seconds': round(time.time() - t0, 1)}
             rec['requests'].append(x); rec['cost_usd'] = round(rec['cost_usd'] + (x['cost_usd'] or 0), 6)
@@ -271,7 +289,8 @@ def main():
     dec, dropped = {}, []
     by_id = {f['id']: f for f in sent}
     for x in rec['requests']:                        # a reply cut off (finish 'length') keeps every decision it finished
-        d, dr = langreq.parse(x.get('text') or '', set(x['ids']), forms={i: by_id[i]['form'] for i in x['ids'] if i in by_id}); dec.update(d); dropped += dr
+        d, dr = langreq.parse(x.get('text') or '', set(x['ids']), forms={i: by_id[i]['form'] for i in x['ids'] if i in by_id},
+                              marks=marks_for(x, R, rec.get('prompt_sha256'))); dec.update(d); dropped += dr
     rec['decisions'] = {form_key(by_id[i]): v for i, v in dec.items() if i in by_id}     # the AI's only: the rule's are under `local`
     rec['dropped'] = dropped[:200]
     rec['not_decided'] = sum(1 for f in sent if f['id'] not in dec)          # cut off, invalid, or never sent: listed for a person

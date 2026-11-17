@@ -33,7 +33,13 @@ approved.
    A decision's tag must be one the pipeline can name (`lib/langtag.py` `NAMES`): every tag the prompt asks for is
    there (a test checks it), as are romanized Ancient Greek (`grc-Latn`) and Tok Pisin (`tpi`), added after the AI gave
    them with good reason (#137); a tag outside the table is not used, and its word goes to a person.
-   Each decision echoes its word form; one whose form doesn't match its item is not used. Phrases English dictionaries
+   Each decision echoes its word form, as a guard against an answer landing on the wrong word. A request shows a form
+   twice: cleaned in its item ("Tenpyō hōji ninen Naishōsen") and as printed where it is marked in the text
+   ("Tenpyō hōji ninen: Naishōsen", or one line's half of a word broken at a line end), and the AI sometimes copies the
+   printed one. So an echo is used when it matches the item's form with spacing and case ignored, or when its letters
+   and digits alone match the item's form or one of its marked texts and no other item's in the same request (#137);
+   otherwise it is not used. Each request's marked texts are kept in `language_run.json` (`id_marks`, not in the
+   record), so a replay compares them as sent. Phrases English dictionaries
    list (*a priori*, *ad hoc*) count as English. (language_v3 is language_v1 with these two lines from language_v2,
    adopted after a paid check on the test items, 2026-11-13: 248 and 249 right against 246 and 232, the same one wrong
    medium-confidence answer, no reply cut off.)
