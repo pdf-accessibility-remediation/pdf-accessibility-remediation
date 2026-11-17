@@ -214,6 +214,10 @@ It opens with one paragraph, the same on every PDF:
 - **A form the AI left untagged** says why in plain words: "a name", "part of English", "not a word of a known
   language", "not sure", "it varies", or, for a low-confidence answer (never tagged), "low confidence; its guess:
   Japanese · ja". A reason with no such wording is not shown, and no reason shows no parentheses.
+- **A form with no AI answer at all** (#137) says "No AI answer", never that the AI left it untagged, with the reason
+  the run recorded: "its reply could not be matched to this word", "the AI gave a language the pipeline cannot write",
+  "its answer was not in the expected form", "the reply skipped this word", "the AI’s reply stopped before this word"
+  or "its request did not finish". A run made before these reasons were recorded shows "No AI answer" alone.
 - **A form decided by the reading rule** (#123: Chinese characters alone with a reading printed beside every place)
   says "The reading printed beside it tags it as Japanese (a fixed rule, not the AI: every place has the reading)". A
   person approves it like the AI's.

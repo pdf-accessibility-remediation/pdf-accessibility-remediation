@@ -255,6 +255,33 @@ def test_untagged_rows_say_why_in_staff_words():
     assert "if (LANG_WHY[r.why]) bits.push(LANG_WHY[r.why]);" in page and "|| r.why)" not in page           # never the raw word
     assert "'The AI left it untagged' + (bits.length ? ' (' + bits.join('; ') + ')' : '')" in page
 
+def test_a_form_with_no_ai_answer_says_so():
+    """#137 (dropped language answers): a form with no AI decision reads "No AI answer (…)", with the run's reason in staff
+    words (review 02, L3), never "The AI left it untagged"; a deliberate null keeps that wording. The page's own function
+    is run through a JavaScript engine (as test_dates.py does)."""
+    import json, subprocess
+    from test_dates import js_runner
+    forms = [form('mappō', 'marks', ['marks'], None, None, why=None, person=True), form('如来', 'cjk', ['cjk:han_only'], None, None, why=None, person=True)]
+    forms[0]['no_answer'] = 'echo'
+    w = {'language_parts': {'version': 2, 'forms': forms, 'parts': [[1, 0, 0, 1, 0], [1, 1, 0, 1, 1]]}}
+    rows = {r['form']: r for r in core.language_rows(core.build_items(w, DIGEST), core.LANG_UNTAGGED)['rows']}
+    assert rows['mappō']['no_answer'] == 'echo' and rows['如来']['no_answer'] is None
+    run = js_runner()
+    if run is None: pytest.skip('no JavaScript engine (node or jsc) runs here')
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    def chunk(start, end): i = page.index(start); return page[i:page.index(end, i)]
+    code = (chunk('const esc = ', '\n') + '\n' + chunk('const LANG_WHY = ', 'function langRowHtml(')
+            + '\nconst cases = ' + json.dumps([{'no_answer': c} for c in ('echo', 'tag', 'invalid', 'not_answered', 'cut_off', 'failed')]
+                                              + [{}, {'confidence': 'medium', 'why': 'name'}, {'confidence': 'low', 'why': 'language', 'guess': 'ja', 'guess_name': 'Japanese'}])
+            + ';\n(typeof print === "function" ? print : console.log)(JSON.stringify(cases.map(langUntagged)));')
+    out = subprocess.run(run + [code], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout) == [
+        'No AI answer (its reply could not be matched to this word)', 'No AI answer (the AI gave a language the pipeline cannot write)',
+        'No AI answer (its answer was not in the expected form)', 'No AI answer (the reply skipped this word)',
+        'No AI answer (the AI’s reply stopped before this word)', 'No AI answer (its request did not finish)', 'No AI answer',
+        'The AI left it untagged (a name)', 'The AI left it untagged (low confidence; its guess: Japanese)']
+
 def test_the_status_sits_under_the_form_outside_its_language():
     """review 14, 4-6: "label: value" under the word form, outside the lang-attributed element, with role status; Kept and
     Removed for a publisher's tag; "Change Language" with no ellipsis; the same column edge on every row."""
