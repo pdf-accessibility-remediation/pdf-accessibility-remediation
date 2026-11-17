@@ -44,6 +44,8 @@ NAMES = {'en': 'English', 'fr': 'French', 'de': 'German', 'es': 'Spanish', 'pt':
          'bo': 'Tibetan', 'mn': 'Mongolian', 'hi': 'Hindi', 'ur': 'Urdu', 'fa': 'Persian', 'tr': 'Turkish', 'km': 'Khmer',
          'my': 'Burmese', 'lo': 'Lao', 'ug': 'Uyghur', 'ain': 'Ainu', 'ryu': 'Okinawan', 'sv': 'Swedish', 'da': 'Danish',
          'no': 'Norwegian', 'pl': 'Polish', 'cs': 'Czech', 'hu': 'Hungarian', 'fi': 'Finnish', 'grc': 'Ancient Greek',
+         # #137 (dropped language answers): tags the prompt names or the AI gave with good reason, once refused
+         'yue-Latn': 'Cantonese (Romanized)', 'grc-Latn': 'Ancient Greek (Romanized)', 'tpi': 'Tok Pisin',
          'qaa': 'Placeholder (local use)'}
 
 # ISO 639-2 three-letter codes whose language has a two-letter ISO 639-1 code: BCP 47 uses the shortest (jpn → ja). The

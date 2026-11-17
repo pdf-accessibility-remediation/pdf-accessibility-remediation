@@ -30,6 +30,9 @@ approved.
    place exactly as it is sent; rows of runs made before this keep the context stored when their language step ran. The AI names
    a language and a confidence, or says it is a name or English. Nothing else of the book is sent for this step. A book
    flagged for personal information (1.1) is never sent. Requests and replies are kept in `language_run.json`.
+   A decision's tag must be one the pipeline can name (`lib/langtag.py` `NAMES`): every tag the prompt asks for is
+   there (a test checks it), as are romanized Ancient Greek (`grc-Latn`) and Tok Pisin (`tpi`), added after the AI gave
+   them with good reason (#137); a tag outside the table is not used, and its word goes to a person.
    Each decision echoes its word form; one whose form doesn't match its item is not used. Phrases English dictionaries
    list (*a priori*, *ad hoc*) count as English. (language_v3 is language_v1 with these two lines from language_v2,
    adopted after a paid check on the test items, 2026-11-13: 248 and 249 right against 246 and 232, the same one wrong

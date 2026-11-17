@@ -32,3 +32,23 @@ def test_kept_value_is_what_fix_lang_values_leaves():
     import os
     src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'apply.py'), encoding='utf-8').read()
     assert 'def name_misfit' not in src and 'langtag.name_misfit(code, text)' in src                # one copy, in lib/langtag.py
+
+def test_every_tag_the_language_prompt_names_is_allowed():
+    """#137 (dropped language answers): a tag the language prompt asks for is one the step may write. Every BCP 47-shaped
+    word in the prompt's backticks is checked, except the ones it forbids and the reply's field names."""
+    import os, re
+    import name_languages
+    prompt = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'prompts',
+                               name_languages.PROMPT_NAME), encoding='utf-8').read()
+    forbidden, fields = {'jp', 'cn', 'eng', 'jpn'}, {'id', 'low', 'why'}
+    tags = set(re.findall(r'`([a-z]{2,3}(?:-[A-Za-z]{2,4})?)`', prompt)) - forbidden - fields
+    assert {'yue-Latn', 'ja-Latn', 'zh', 'haw'} <= tags                      # the scan finds the tags it should
+    assert [t for t in sorted(tags) if not langtag.valid_part(t)] == []
+    assert not any(langtag.valid_part(t) for t in forbidden)
+
+def test_tags_once_refused_are_named():
+    """#137: romanized Cantonese and Ancient Greek, and Tok Pisin (Patrick, 2026-11-17); Hawaiʻi Creole English is not
+    in this branch."""
+    for t, n in (('yue-Latn', 'Cantonese (Romanized)'), ('grc-Latn', 'Ancient Greek (Romanized)'), ('tpi', 'Tok Pisin')):
+        assert langtag.valid_part(t) and langtag.name(t) == n
+    assert not langtag.valid_part('hwc')
