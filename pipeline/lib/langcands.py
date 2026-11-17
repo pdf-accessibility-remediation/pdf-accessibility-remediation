@@ -268,15 +268,20 @@ def page_places(pno, chars, page_chars=None, italic=None, doc_lang=None, spoken=
         for w in words:
             if 'spoken' in w:
                 w['printed'] = w['text']; w['all'] = w['all'].replace(w['text'], w['spoken'], 1) if w['text'] else w['all']; w['text'] = w['spoken']
-    # 2. rejoin a word broken by a hyphen at a line end, for the list check only
+    # 2. rejoin a word broken by a hyphen at a line end, for the list check only: only at a real line end (line_end), or
+    #    when the rejoined word is English (a real break the line-end test misjudges: "prac-" / "tices" beside a drop cap or
+    #    a narrow gutter). A hyphen inside its line whose second part the PDF draws later in content order is no join
+    #    (#140, review 06/08): each half stays a word of its own, as an unbroken word
     lines = None                                         # the page's characters by line, made at the first join (review 06, L1)
     for a, b in zip(words, words[1:]):
         if a['all'][-1:] in HYPHENS and a['chars'] and b['chars'] and abs(a['chars'][-1]['top'] - b['chars'][0]['top']) > 3 \
                 and b['text'][:1].islower():
+            lines = lines or LineIndex(chars)
+            le = line_end(a.get('tail'), b['chars'][0], lines.near(a.get('tail'), b['chars'][0]))
+            if not le and not in_english(a['text'] + b['text']): continue
             a['joined'] = b['joined_from'] = a['text'] + b['text']
             a['hy_to'] = b
-            lines = lines or LineIndex(chars)
-            a['line_end'] = line_end(a.get('tail'), b['chars'][0], lines.near(a.get('tail'), b['chars'][0]))   # #140: only then is the second half a place
+            a['line_end'] = le                       # #140: only then is the second half a place
     # 3. classify Latin and other-script words
     for w in words:
         t = w['text']

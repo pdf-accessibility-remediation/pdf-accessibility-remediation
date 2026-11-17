@@ -10,6 +10,10 @@ approved.
    use (kahakō, macrons, ʻokina), runs in another script (Chinese characters, kana, hangul, Greek, Cyrillic, …) and
    words outside the English word list (SCOWL 2020.12.07). Each printed form is one candidate, with every place it
    occurs. A publisher's own `/Lang` tags are listed too ("existing").
+   - **A word that ends in a hyphen is joined with the next word** only when the hyphen is at a real line end (the
+     line-end test below), or when the joined word is English (a real break the test misjudges, beside a drop cap or a
+     narrow gutter: "prac-" + "tices"). A hyphen inside its line ("homes-abroad", whose second part some PDFs draw
+     after the next line's first word) is no join: each part is a word of its own, as an unbroken word is.
    - **A word broken by a hyphen at a line end** is checked joined, both without its hyphen ("infor-" + "mation") and
      with it ("long-" + "standing"); English either way, it is no candidate. The form with the hyphen counts only when
      each half has three or more plain letters and the joined word does not have the shape of romanized Japanese or
@@ -26,6 +30,9 @@ approved.
      spelling of *maju*) broken as "mad-" + "joe", and the Dutch suspended hyphen in "taal-, land- en volkenkunde"
      ("taal-" + "land"), where *taal* is no candidate. Where the book prints such a word whole, those places are still
      found, unless the word itself is in the English word list (as *taal* is).
+     A second pattern: a word hyphenated inside its line whose real continuation the PDF draws elsewhere in the text,
+     and whose first part alone is short (under four letters), capitalized without marks, or English, is no candidate.
+     Examples: the Anindilyakwa morphemes on an interlinear page ("ki-", "ku-", "na-"), and Hawaiian "uka-".
 2. **The language step asks the AI** (`name_languages.py`, prompt `prompts/language_v3.md`): each word form with its
    context, each snippet once per request, through OpenRouter with `data_collection: deny`. The context
    (`lib/langreq.py` `CTX`) is 10 words on each side of up to two places per form (a word is a piece with a letter or

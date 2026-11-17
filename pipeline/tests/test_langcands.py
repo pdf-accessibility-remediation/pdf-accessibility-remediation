@@ -102,14 +102,22 @@ MIDLINE = {   # review 04, H1 (migrant's cases, synthetic): the second part is d
 }
 
 def test_a_mid_line_compound_gives_the_next_lines_word_no_place(tmp_path):
-    """review 04, H1: step 2 still pairs "homes-" with the next line's "are" for the list check (the form as on main), but
-    "are", "to" and "continuation" get no place, and the first part's place doesn't grow over them in its run: the hyphen
-    is not at a line end."""
+    """review 04, H1, and the stricter join (#140, 07 §5.1): a hyphen inside its line is no join, so "homes-" is not
+    paired with the next line's "are": no garbage form ("homesare", "nonto", "neocontinuation"), no second-half place,
+    and each half is a word of its own (here all English: no candidate)."""
     for name, body in MIDLINE.items():
         src = langpdf.build(str(tmp_path / f'{name[:4]}.pdf'), [{'body': body}])
         places, _ = langcands.page_places(1, plpages.Pages(src).pages[0].chars)
         assert not any(p.get('half') for p in places), (name, places)
-        assert [p['text'] for p in places] == [name.split('-')[0].lstrip('“')], (name, places)    # never "homes-are", "non-to"
+        assert not any(p['form'] in ('homesare', 'nonto', 'neocontinuation') for p in places), (name, places)
+        assert not any(set(p['text'].split()) & {'are', 'to', 'continuation'} for p in places), (name, places)
+
+def test_a_real_break_the_line_end_test_misjudges_joins_when_english(tmp_path):
+    """#140 (07 §5.1): "prac-" at a line end with another column's text 5 pt to its right fails the line-end test, but
+    "practices" is English, so the halves are joined and neither is a candidate (no fragment "prac")."""
+    body = ['(Old prac-) Tj', 'T*', '(tices here.) Tj', '1 0 0 1 122.2 740 Tm', '(Upper) Tj']
+    places, _ = langcands.page_places(1, plpages.Pages(langpdf.build(str(tmp_path / 'g.pdf'), [{'body': body}])).pages[0].chars)
+    assert not any('prac' in p['text'] or 'tices' in p['text'] for p in places), places
 
 def test_a_second_half_after_a_passage_takes_the_passages_form(tmp_path):
     """#140: when the first half's run is a passage, the second half (in its own run) is a place of the passage's form;
