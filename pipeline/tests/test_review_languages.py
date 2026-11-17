@@ -6,6 +6,7 @@ Tags line; a publisher's tag a person removed. Synthetic work orders and pages o
 """
 import os, sys, json, copy
 import pikepdf
+import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import langpdf  # noqa: E402
 from test_language_parts import run, marks  # noqa: E402
