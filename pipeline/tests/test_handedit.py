@@ -137,6 +137,8 @@ def test_a_hand_edited_pdf_comes_back_for_review_and_is_recorded(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     C = os.path.join(os.path.dirname(P), 'he1')
     assert 'stopped for review' in r.stdout and not os.path.exists(os.path.join(C, 'record.json'))
+    page = open(os.path.join(P, 'review.html'), encoding='utf-8').read()              # #98: the parent's dashboard names the copy
+    assert '<strong>he1</strong>: edited by Pat on' in page and 'Waiting for its review (no dashboard yet).' in page
     items = json.load(open(os.path.join(C, 'review_items.json'), encoding='utf-8'))
     assert items['hand_edit']['alt_removed'] == 1 and items['hand_edit']['figure_pages'] == [1]
     assert items['hand_edit']['text_differs'] == [1] and items['hand_edit']['text_same'] == 0 and items['hand_edit']['lost'] == []
@@ -161,6 +163,9 @@ def test_a_hand_edited_pdf_comes_back_for_review_and_is_recorded(tmp_path):
     assert rec['document']['sha256'] == ed_sha and rec['document']['pipeline_input']['file'] == '_handedit/input.pdf'
     assert {p: sha(p) for p in keep} == keep and sha(edited) == ed_sha                    # nothing it came from was written to
     assert json.load(open(os.path.join(P, 'hand_edits.json')))['children'][0]['run'] == C
+    page = open(os.path.join(P, 'review.html'), encoding='utf-8').read()              # finished now: linked, relative
+    assert '<a href="../he1/review.html">he1</a>' in page and 'Finished.' in page and str(tmp_path) not in page
+    assert 'Made from a hand edit of <a href="../parent/review.html">book/parent</a>.' in open(os.path.join(C, 'review.html'), encoding='utf-8').read()
     md = open(os.path.join(C, 'review.md'), encoding='utf-8').read()
     assert 'Edited by Hand' in md and '"A red square" | "A green square"' in md and 'None' not in md
     assert 'CHECK: the text reads differently after the edit on PDF 1' in md and 'lost' not in md
@@ -344,10 +349,14 @@ def test_a_new_image_that_no_figure_holds_is_listed(tmp_path):
 def test_a_batch_books_edited_copy_lands_in_runs_name_label(tmp_path):
     src, P = parent_run(tmp_path)
     B = tmp_path / 'runs' / 'batches' / 'b1' / 'book'; shutil.copytree(P, B)
+    (B.parent / 'summary.html').write_text('old')                                   # a batch dashboard, rebuilt with the copy (#98)
     out = os.path.join(B, json.load(open(B / 'record.json'))['document']['output'])
     assert no_run(str(B), swap_image(out, tmp_path / 'e.pdf'), label='fromb').returncode == 0
     assert (tmp_path / 'runs' / 'book' / 'fromb' / '_handedit' / 'hand_edit.json').exists()
     assert not (tmp_path / 'runs' / 'batches' / 'b1' / 'fromb').exists()
+    summ = (B.parent / 'summary.html').read_text(encoding='utf-8')
+    assert 'Edited copy: fromb (not started)' in summ
+    assert '<strong>fromb</strong>' in (B / 'review.html').read_text(encoding='utf-8')
 
 def test_the_same_import_again_carries_on_and_another_file_is_refused(tmp_path):
     src, P = parent_run(tmp_path)

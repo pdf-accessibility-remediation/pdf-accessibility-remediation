@@ -127,6 +127,16 @@ The edited PDF already holds every decision of the run it came from: alt text, h
 
 Don't use `--reopen` on the earlier run for this: it rebuilds that run's PDF from the original and its work order, so the hand edit isn't in that result.
 
+## Seeing the link in review.html and summary.html
+
+Once an edited PDF is brought back, two runs of the same PDF exist. The offline dashboards say which is which, so the wrong one isn't evaluated or shipped by mistake. The app's run page lists the same copies under Edited Copies.
+
+- **The earlier run's `review.html`** opens with an **Edited Copies** note, above "Ready to Ship?". It lists each copy brought back from it: who edited it, when, their note, and its state (finished, waiting for its review, not started, or its folder is no longer there). A finished copy links to its own `review.html`.
+- **The copy's `review.html`** says "Made from a hand edit of" the earlier run, with a link to that run's dashboard.
+- **A batch's `summary.html`** marks a PDF with an edited copy in its Status column ("Edited copy: handedit-… (finished)"). The copy itself is a run of its own, outside the batch folder.
+
+The links are relative, so they work when the files are opened directly and in the app. The earlier run's pages are drawn again when the copy is brought back, when its review stops, and when it finishes. The note says the day it was drawn ("as of"), because a copy removed later shows only on the next rebuild (`report_html.py RUN_DIR`).
+
 ## Starting from the original
 
 To edit the original instead of the remediated result:
@@ -152,8 +162,11 @@ The original is checked against `record.json` (`document.sha256`). The run's ear
 | `<new run>/_handedit/<edited file>` | A copy of the file you edited: the new run's source (`record.json` `document.sha256`). Your own file is never written to |
 | `<new run>/_handedit/input.pdf` | Only when a figure's alt text was removed: what the run worked on (`document.pipeline_input`) |
 | `<new run>/_handedit/hand_edit.json`, and `record.json` `hand_edit` | The edit's record (see below) |
-| `<parent run>/hand_edits.json` | `exports` (who, when, which file, its sha256, where it went) and `children` (each run made from an edit: its folder, who, the note, the edited sha256). The only file `handedit.py` writes in the parent run |
-| `review.md` and `review.html` | The "Edited by hand" section, and the wording of a run with no AI call (see below) |
+| `<parent run>/hand_edits.json` | `exports` (who, when, which file, its sha256, where it went) and `children` (each run made from an edit: its folder, who, the note, the edited sha256). The only record `handedit.py` writes in the parent run |
+| `<parent run>/review.html`, and its batch's `summary.html` | Drawn again from `hand_edits.json` (`report_html.refresh_parent`): after the import, when `run_api.sh` returns, and by the copy's `report.py` when it finishes. Under the parent's record lock; a busy run is a note, never a failure |
+| `review.md` and `review.html` | The "Edited by hand" section, and the wording of a run with no AI call (see below). `review.html` also carries the parent and copy notes; `review.md` doesn't change |
+
+**The link's states** come from `lib/editlinks.py`, which both the app (`webapp/runs.py` `hand_edits`) and `report_html.py` read. `copies(R)` gives each child of `hand_edits.json` a state: `removed` (no folder), `finished` (`record.json`), `waiting for its review` (`workorder.ai.json` and no record) or `not started`. The app adds `being prepared` from its own jobs. `parent(R, rec)` reads `record.json` `hand_edit`, or `_handedit/hand_edit.json` before the first record. Links are `os.path.relpath` from the page's folder; a previous version under `reviews/versions/` shows no note.
 
 **`hand_edit.json`** holds:
 - `by`, `when`, `note`, `to`, `base` (`output` or `original`) and `base_sha256`

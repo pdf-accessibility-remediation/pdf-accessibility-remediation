@@ -331,26 +331,21 @@ def run_url(s, P):
 
 def hand_edits(s, R, rec, al=None):
     """The runs made from edited copies of this one (its hand_edits.json children), and the run this one was made from (its
-    hand_edit), each with its page; None for a run with neither. al: the jobs as the caller already read them (#93)."""
+    hand_edit), each with its page; None for a run with neither. al: the jobs as the caller already read them (#93). The
+    states are lib/editlinks.py's, as review.html shows them; "being prepared" (a queued or running job) is the app's own."""
+    from lib import editlinks as EL
     kids = []
     busy = {str(j.get('child')) for j in (al if al is not None else jobs.all_jobs(s['jobs'])) if j['kind'] == 'bring_back' and j['status'] in ('queued', 'running')}
-    for c in (load(os.path.join(R, 'hand_edits.json')) or {}).get('children') or []:
-        P = c.get('run') or ''
+    for c in EL.copies(R):
+        P = c['run'] or ''; st = c['state']
         rel = os.path.relpath(os.path.abspath(P), os.path.abspath(s['runs'])).replace(os.sep, '/') if P else ''
-        if not P or not os.path.isdir(P): st = 'removed'
-        elif os.path.isfile(os.path.join(P, 'record.json')): st = 'finished'
-        elif waiting(P): st = 'waiting for its review'
-        elif rel in busy: st = 'being prepared'
-        else: st = 'not started'                       # brought back with --no-run, or its job failed or was stopped
+        if st == 'not started' and rel in busy: st = 'being prepared'
         to = (load(os.path.join(P, '_handedit', 'hand_edit.json')) or {}).get('to') if st == 'not started' else None
-        kids.append({'label': os.path.basename(os.path.normpath(P)) or 'run not recorded', 'when': c.get('when'), 'by': c.get('by'),
-                     'note': c.get('note'), 'state': st, 'url': run_url(s, P) if st in ('finished', 'waiting for its review') else None,
+        kids.append({'label': c['label'], 'when': c['when'], 'by': c['by'],
+                     'note': c['note'], 'state': st, 'url': run_url(s, P) if st in ('finished', 'waiting for its review') else None,
                      'startable': st == 'not started' and to == 'review'})
-    he = rec.get('hand_edit') or load(os.path.join(R, '_handedit', 'hand_edit.json'))
-    parent = None
-    if isinstance(he, dict) and (he.get('parent') or {}).get('run'):
-        P = he['parent']['run']
-        parent = {'label': '/'.join(os.path.normpath(P).split(os.sep)[-2:]), 'url': run_url(s, P) if os.path.isdir(P) else None}
+    par = EL.parent(R, rec)
+    parent = {'label': par['label'], 'url': run_url(s, par['run']) if par['state'] != 'removed' else None} if par else None
     return {'children': kids, 'parent': parent} if kids or parent else None
 
 def resume_bring_back(s, run, R, label):
@@ -648,7 +643,8 @@ def pending_state(s, run, R, nm=None):
 # ------------------------------------------------------------------ a run stopped for its first review (REVIEW=1)
 def waiting(R):
     """A run run_api.sh stopped for its first review (REVIEW=1): the AI's decisions kept, nothing applied, no record yet."""
-    return not os.path.isfile(os.path.join(R, 'record.json')) and os.path.isfile(os.path.join(R, 'workorder.ai.json'))
+    from lib import editlinks as EL
+    return EL.waiting(R)
 
 def first_original(s, R):
     """(the original PDF, None) for a waiting run's first apply, or (None, refusal). The path run_api.sh kept at the stop
