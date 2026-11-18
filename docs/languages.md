@@ -163,11 +163,35 @@ page readings and this step. The step never stops the work order: when it doesn'
 or passes its own limit, it alone is left out and the PDF goes on without language tags (see
 [The limit per PDF](options.md#the-limit-per-pdf)).
 
+### Sending, retries and interruptions
+
+#135 (parallel requests):
+- **Several requests at once:** up to `AI_PARALLEL` (default 4, per PDF; see [Options](options.md#model-and-cost)).
+  `AI_PARALLEL=1` sends them one after another, in order. The replies are kept in request order, whatever order they
+  come back in. The log prints one line per request as it finishes ("request 3 of 15: …, done in 41 s (5 of 15 done)").
+- **One retry:** a request that fails (an error from OpenRouter, no connection, no reply in time, or a reply with no
+  decisions that can be read) is sent once more, 60 s after "too many requests" (429) and 20 s after anything else. It is
+  sent only when its worst case still fits both the step's limit (`LANGUAGE_MAX_USD`) and the PDF's (`BOOK_MAX_USD`, with
+  what the PDF has spent); otherwise the record says which limit had no room. A request that still fails leaves its word
+  forms to a person ("No AI answer", `failed`).
+- **A reply cut off, or read only in pieces** (not valid JSON as a whole, its decisions read one by one), keeps every
+  decision it finished. The word forms it never reached (`not_answered`) are sent once more, as one smaller request
+  (`language_requests/NNNr.request.json`; its entry in `language_run.json` has `resend_of`). That resend is never resent
+  itself. Answers the check refused (`echo`, `tag`, `invalid`) are never sent again: the same answer would most likely
+  come back, and it would be paid for twice. A rerun with the same model and prompt reuses the pair, with no new request.
+- **An interruption** (Ctrl+C in a terminal run of `run_api.sh`, `batch_api.sh` or `name_languages.py`, or an error
+  while requests are out) sends nothing more: no waiting request starts, and the step does not wait for the requests
+  already sent. Those may still be charged. Each is kept in `language_run.json` under `stopped_in_flight` at its worst
+  case, since its charge isn't known, and counts toward the PDF's limit (never as money spent). So an interruption can
+  cost what the requests already sent cost, at most their worst cases. A rerun keeps these, and what an earlier attempt
+  paid (`earlier_cost_usd`), even with another model or prompt. review.md's run line names any such worst case apart
+  from the cost ("up to $X more for N AI request(s) … whose charge is not known").
+
 | File | What it holds |
 |---|---|
 | `audit/lang_candidates.json` | every candidate form and its places |
 | `language_estimate.json` | the expected and worst-case cost, before any request |
-| `language_run.json` | model, prompt, each request's reply, usage, cost, the AI's decisions by form, the reading rule's (`local`, `reading_rule`) |
+| `language_run.json` | model, prompt, each request's reply, usage, cost, the AI's decisions by form, the reading rule's (`local`, `reading_rule`); while requests are out, `in_flight` (each one's worst case); after an interruption, `stopped_in_flight` |
 | `reviews/_audit/language_contexts.json` | the context lines the review page shows |
 
 ## The Ready rule

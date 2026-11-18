@@ -197,3 +197,93 @@ def test_a_replay_reads_marks_from_the_request_it_answered(tmp_path, monkeypatch
     body = load(f); body['messages'][1]['content'] = body['messages'][1]['content'].replace('here', 'there'); f.write_text(json.dumps(body))
     assert nl['marks_for'](x, str(R), lr['prompt_sha256']) is None                # another request under that number: not read
     assert nl['marks_for']({**x, 'id_marks': {'1': ['a']}}, str(R), lr['prompt_sha256']) == {'1': ['a']}
+
+# ------------------------------------------------------------------ #135 (parallel requests): the retry, the resend, the stops
+def dec(it, lang='ja-Latn'): return {'id': it['id'], 'lang': lang, 'confidence': 'high', 'why': 'language'}
+def answer(items, text=None, finish='stop', cost=0.004):
+    return {'choices': [{'message': {'content': text if text is not None else json.dumps({'decisions': [dec(it) for it in items]})}, 'finish_reason': finish}],
+            'usage': {'prompt_tokens': 900, 'completion_tokens': 100, 'cost': cost}}
+def items_of(body): return json.loads(body['messages'][1]['content'])['items']
+
+def test_a_cut_off_reply_resends_only_its_not_answered_forms(tmp_path, monkeypatch):
+    """01 §4.3, §5: the first item decided, the second's answer refused (a tag the step may not write), the third never
+    reached. Only the third is sent again, once, as a smaller request; the refused answer is never resent."""
+    src, A, R = folders(tmp_path); seen = []
+    def reply(body, n):
+        its = items_of(body); seen.append([it['form'] for it in its])
+        if n > 1: return answer(its)
+        text = json.dumps({'decisions': [dec(its[0]), dec(its[1], lang='xx-notalang'), dec(its[2])]})
+        return answer(its, text=text[:text.rfind('{"id"') + 12], finish='length')
+    calls = run(src, A, R, monkeypatch, reply=reply)
+    assert len(calls) == 2 and len(seen[1]) == 1 and seen[1][0] == seen[0][2]
+    lr = load(R / 'language_run.json')
+    assert [(x['n'], x.get('resend_of')) for x in lr['requests']] == [(1, None), (1, 1)] and lr['requests'][0]['resend'] == '1 undecided forms sent once more'
+    assert lr['requests'][1]['resend_of_sha256'] == lr['requests'][0]['sha256'] and (R / 'language_requests' / '001r.request.json').exists()
+    assert len(lr['decisions']) == 2 and lr['cost_usd'] == 0.008 and 'in_flight' not in lr
+    no = {p['form']: p.get('no_answer') for p in load(R / 'workorder.json')['language_parts']['forms']}
+    assert no[seen[0][1]] == 'tag'
+    assert run(src, A, R, monkeypatch, reply=reply) == []                 # a rerun reuses the pair: nothing is paid again
+    assert len(load(R / 'language_run.json')['decisions']) == 2
+
+def test_a_reply_read_only_in_pieces_resends_its_unreached_forms_once(tmp_path, monkeypatch):
+    src, A, R = folders(tmp_path)
+    def reply(body, n):
+        its = items_of(body)
+        good = json.dumps(dec(its[0]))
+        return answer(its, text='{"decisions": [' + good + ', {"id": oops' if n == 1 else '{"decisions": [' + good + ', {"id": oops')
+    calls = run(src, A, R, monkeypatch, reply=reply)
+    lr = load(R / 'language_run.json')
+    assert len(calls) == 2 and len(json.loads(json.loads(calls[1])['messages'][1]['content'])['items']) == 2    # sent once, not again
+    assert len(lr['decisions']) == 2 and lr['requests'][1]['resend_of'] == 1
+
+def test_an_unreadable_reply_is_retried_whole_once(tmp_path, monkeypatch):
+    src, A, R = folders(tmp_path)
+    monkeypatch.setattr('time.sleep', lambda s: None)
+    calls = run(src, A, R, monkeypatch, reply=lambda b, n: answer(items_of(b), text='no decisions here') if n == 1 else answer(items_of(b)))
+    lr = load(R / 'language_run.json')
+    assert len(calls) == 2 and calls[0] == calls[1] and len(lr['decisions']) == 3 and lr['cost_usd'] == 0.008
+    assert lr['requests'][0]['calls'][0]['why'] == 'the reply could not be read; sent once more after 20 s'
+
+def test_a_resend_with_no_room_under_the_step_limit_is_not_sent(tmp_path, monkeypatch):
+    src, A, R = folders(tmp_path)
+    def reply(body, n):
+        its = items_of(body); text = json.dumps({'decisions': [dec(it) for it in its]})
+        return answer(its, text=text[:text.rfind('{"id"') + 12], finish='length', cost=0.5)
+    est = run(src, A, R, monkeypatch, '--dry-run')                         # the worst case of the one request
+    worst = load(R / 'language_estimate.json')['worst_case_usd']
+    calls = run(src, A, R, monkeypatch, '--max-usd', worst + 0.01, reply=reply)
+    lr = load(R / 'language_run.json')
+    assert est == [] and len(calls) == 1 and 'the language step limit has no room' in lr['requests'][0]['resend']
+
+def test_a_stopped_step_counts_what_was_in_flight_and_a_new_model_keeps_it(tmp_path, monkeypatch):
+    """review 02 M2: between steps an entry in flight means the step stopped; it counts at its worst case toward the PDF, and
+    a rerun with another model keeps it (stopped_in_flight) and what the earlier attempt paid (earlier_cost_usd)."""
+    from lib import costs
+    src, A, R = folders(tmp_path)
+    (R / 'language_run.json').write_text(json.dumps({'schema': 'language-run/1', 'model': 'other/model', 'prompt_sha256': 'x', 'cost_usd': 0.2,
+                                                     'requests': [{'n': 2, 'sha256': 'y', 'finish': None, 'error': {'code': 'timeout'}, 'cost_usd': 0, 'worst_usd': 0.3}],
+                                                     'in_flight': [{'n': 1, 'worst_usd': 0.5}]}))
+    assert costs.language_paid(str(R)) == 1.0 and costs.book_spent(str(R)) == 1.0       # 0.2 known, 0.5 and 0.3 not known
+    run(src, A, R, monkeypatch)
+    lr = load(R / 'language_run.json')
+    assert lr['earlier_cost_usd'] == 0.2 and lr['cost_usd'] == 0.004
+    assert sorted((e['n'], e['worst_usd']) for e in lr['stopped_in_flight']) == [(1, 0.5), (2, 0.3)]
+    assert costs.language_paid(str(R)) == 1.004 and costs.actual(str(R))['usd'] == 0.204    # the worst cases count toward the limit, never as money spent
+
+def test_an_interruption_during_a_resend_keeps_the_first_call_and_counts_the_resend_at_its_worst(tmp_path, monkeypatch):
+    """review 02 H3, with the language step: the first call's known cost is stored as it comes back; the resend in flight
+    when the run stops is kept in stopped_in_flight at its worst case, and the interruption is raised again."""
+    from lib import costs
+    src, A, R = folders(tmp_path)
+    def reply(body, n):
+        its = items_of(body)
+        if n > 1: raise KeyboardInterrupt                 # Ctrl+C reaches the run while the resend is out
+        text = json.dumps({'decisions': [dec(it) for it in its]})
+        return answer(its, text=text[:text.rfind('{"id"') + 12], finish='length')
+    with pytest.raises(KeyboardInterrupt):
+        run(src, A, R, monkeypatch, reply=reply)
+    lr = load(R / 'language_run.json')
+    st, = lr['stopped_in_flight']
+    assert st['n'] == 1 and st['resend'] and st['stopped'] and st['worst_usd'] > 0 and 'in_flight' not in lr
+    assert lr['cost_usd'] == 0.004 and len(lr['requests']) == 1
+    assert costs.language_paid(str(R)) == pytest.approx(0.004 + st['worst_usd'])

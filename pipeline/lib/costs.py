@@ -149,10 +149,19 @@ def refused(R, kind):
     r = e.get('refused') if isinstance(e, dict) else None
     return r if isinstance(r, dict) else None
 
+def not_known(rec, entries='requests'):
+    """The worst cases a step's record counts for charges that are not known (#135 (parallel requests), review 02 M2): its
+    requests in flight (between steps, an entry still in flight means the step stopped), those an interruption stopped or an
+    earlier attempt left, and its calls with no reply in time. Counted toward the limits, never shown as money spent."""
+    if not isinstance(rec, dict): return 0.0
+    xs = list(rec.get('in_flight') or []) + list(rec.get('stopped_in_flight') or []) + list(rec.get(entries) or [])
+    return round(sum(x.get('worst_usd') or 0 for x in xs if isinstance(x, dict)), 6)
+
 def pages_paid(R):
-    """What the page readings of an unfinished run have cost so far (page_reads_run.json); report.py moves it into the record."""
+    """What the page readings of an unfinished run have cost so far (page_reads_run.json), with every charge not known at
+    its worst case (not_known); report.py moves it into the record."""
     pr = _load(os.path.join(R, 'page_reads_run.json'))
-    return (pr.get('cost_usd') or 0) if isinstance(pr, dict) else 0
+    return round((pr.get('cost_usd') or 0) + not_known(pr, 'pages'), 6) if isinstance(pr, dict) else 0
 
 def language_estimate(R, book=True):
     """name_languages.py's estimate in run folder R when it has requests to send (#118) and was not refused, else None."""
@@ -169,10 +178,12 @@ def language_local(R):
 
 def language_paid(R):
     """What the language step of an unfinished run has cost so far (language_run.json; a saved reply from elsewhere
-    costs nothing here); report.py moves it into the record."""
+    costs nothing here), with what an earlier attempt in this folder paid (earlier_cost_usd) and every charge not known at
+    its worst case (not_known, counted whatever the record's origin); report.py moves it into the record."""
     lr = _load(os.path.join(R, 'language_run.json'))
-    if not isinstance(lr, dict) or (lr.get('response_from') and not lr.get('own_reply')): return 0
-    return lr.get('cost_usd') or 0
+    if not isinstance(lr, dict): return 0
+    own = not (lr.get('response_from') and not lr.get('own_reply'))
+    return round((lr.get('cost_usd') or 0 if own else 0) + (lr.get('earlier_cost_usd') or 0) + not_known(lr), 6)
 
 def book_spent(R):
     """What this run folder has spent toward the PDF's limit so far, for every paid step's book check (review 06, M2):
@@ -297,8 +308,10 @@ def _estimate_usd(run, pr=None):
 def _language_money(lr):
     """(paid, requests paid for) of the language step: the record's language_run or language_run.json. A saved reply from
     elsewhere costs nothing here."""
-    if not isinstance(lr, dict) or (lr.get('response_from') and not lr.get('own_reply')): return 0.0, 0
-    return round(lr.get('cost_usd') or 0, 6), sum(1 for r in lr.get('requests') or [] if isinstance(r, dict) and r.get('cost_usd'))
+    if not isinstance(lr, dict): return 0.0, 0
+    earlier = lr.get('earlier_cost_usd') or 0                   # what an earlier attempt here paid (a model or prompt change since)
+    if lr.get('response_from') and not lr.get('own_reply'): return round(earlier, 6), 0
+    return round((lr.get('cost_usd') or 0) + earlier, 6), sum(1 for r in lr.get('requests') or [] if isinstance(r, dict) and r.get('cost_usd'))
 
 def _page_money(pr):
     """(paid, requests paid for, the estimate shown) of the page readings: the record's page_reads or page_reads_run.json. cost_usd

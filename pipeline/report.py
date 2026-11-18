@@ -34,6 +34,7 @@ from lib import glance as G0
 from lib import dates as DT
 from lib import readorder
 from lib import origin
+from lib import costs
 from lib.lowres import LOW_PPI
 
 COUNT_WORDS = {'accepted_unreviewed': 'accepted without review'}   # the stored key stays; these are review.html's and the review page's words
@@ -85,6 +86,12 @@ pr_listed = (load('page_reads.json', base=A) or {}).get('pages') or []
 # the language step (name_languages.py, #118): its own paid step; a saved reply from elsewhere costs nothing here
 lr_run = load('language_run.json') or ((prev or {}).get('language_run') if prev is not None else None)
 cost_lang = 0 if not lr_run or (lr_run.get('response_from') and not lr_run.get('own_reply')) else round(lr_run.get('cost_usd') or 0, 6)
+cost_lang = round(cost_lang + ((lr_run or {}).get('earlier_cost_usd') or 0), 6)     # paid by an earlier attempt here (#135)
+# charges not known (#135 (parallel requests)): requests in flight when a step was interrupted, or with no reply in time;
+# kept apart from the money above, at their worst case (review 02 M2)
+cost_unknown = round(costs.not_known(lr_run) + costs.not_known(pr_run, 'pages'), 6)
+n_unknown = sum(1 for r_ in (lr_run, pr_run) if isinstance(r_, dict) for x in list(r_.get('in_flight') or []) + list(r_.get('stopped_in_flight') or [])
+                + list(r_.get('requests' if r_ is lr_run else 'pages') or []) if isinstance(x, dict) and x.get('worst_usd'))
 def language_status():
     """What became of the language step (#118, round 18), for the Language Tags line (lib/glance.py language_line):
     {candidates: the word forms the audit found for it, state: decided | off | left_out_book | left_out_cap | failed |
@@ -543,7 +550,10 @@ L = [f'# Remediation Review: {src.get("file") or "file name not recorded"}', '',
         else 'tokens: saved reply reused, not counted' if run.get('response_from') else 'tokens: AI request did not finish')
      + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_bad):.3f} for {len(a_bad)} previous AI request(s) whose reply was cut off or unusable' if a_bad else '')
      + (f' · plus ${sum(a.get("cost_usd") or 0 for a in a_stop):.3f} for {len([a for a in a_stop if a.get("cost_usd") is not None])} AI request(s) from a run '
-        'that was stopped before it finished' + (' (one more was in flight: any charge is not known)' if any(a.get('cost_usd') is None for a in a_stop) else '') if a_stop else '')
+        'that was stopped before it finished' + ((lambda k: f' ({k} more {"was" if k == 1 else "were"} in flight: any charge is not known)')(sum(1 for a in a_stop if a.get('cost_usd') is None))
+                                                 if any(a.get('cost_usd') is None for a in a_stop) else '') if a_stop else '')
+     + (f' · up to ${cost_unknown:.3f} more for {n_unknown} AI request(s) of the language step or the page readings whose charge is not known '
+        '(in flight when the step was interrupted, or no reply in time)' if cost_unknown else '')
      + (f' (total ${cost_this + cost_earlier:.3f})' if attempts else ''), '',
      *(fig_block() if fpr else []),
      *([f'Intake: {intake.get("summary")}' + (f' · tagged by OpenDataLoader {intake["tools"].get("opendataloader_pdf")}' if intake.get('status') == 'done' else '')

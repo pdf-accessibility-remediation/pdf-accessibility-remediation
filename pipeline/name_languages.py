@@ -33,7 +33,7 @@ extent (lib/langcands.book grow=True), and LANG_GROUP=on (--group) makes adjacen
 """
 import sys, os, re, json, time, hashlib, argparse, urllib.request, urllib.error, collections
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-from lib import plumb_fix, plpages, langcands, langreq, costhistory, costs, workorder_check, hanreading  # noqa: F401
+from lib import plumb_fix, plpages, langcands, langreq, costhistory, costs, workorder_check, hanreading, aisend  # noqa: F401
 
 RULE_NAME = hanreading.RULE
 PROMPT_NAME = 'language_v3.md'                   # v1 with v2's form echo and dictionary-phrase line (adopted 2026-11-13, 11 §2)
@@ -127,6 +127,119 @@ def local_rule(args, fs, words, doc_lang, places):
     if os.environ.get('LANG_READING_RULE', 'on').lower() in ('0', 'off', 'no', 'false'):
         local, stats = {}, {**stats, 'decided': 0, 'by_language': {}, 'off': 'LANG_READING_RULE=off'}
     return local, {i: hanreading.compact(e) for i, e in evid.items()}, stats
+
+def reusable(done):
+    """{request sha256: [entries]} of a finished language_run.json that a rerun with the same model and prompt reuses: a
+    request that finished (finish 'stop'), with its resend when it had one, and a request cut off whose resend finished
+    (01 §4.6: the pair is reused together, and both replies are read)."""
+    reqs = [r for r in done.get('requests') or [] if isinstance(r, dict)]
+    resend = {r['resend_of_sha256']: r for r in reqs if r.get('resend_of_sha256') and r.get('finish') == 'stop'}
+    out = {}
+    for r in reqs:
+        if r.get('resend_of_sha256') or not r.get('sha256') or r.get('error'): continue
+        if r.get('finish') == 'stop' or r['sha256'] in resend:
+            out[r['sha256']] = [r] + ([resend[r['sha256']]] if r['sha256'] in resend else [])
+    return out
+
+def carried(done, reuse_ok, answered):
+    """What an earlier attempt in this folder leaves that the new record keeps whatever reuse says (review 02, M2):
+    (requests whose charge is not known, at their worst case: those it left in flight or that an interruption stopped,
+    and its timed-out requests that are not reused; what it paid that the new record's cost_usd does not carry)."""
+    if not isinstance(done, dict) or not done: return [], 0
+    kept = {id(x) for xs in answered.values() for x in xs}
+    st = list(done.get('stopped_in_flight') or []) + aisend.stopped(done.get('in_flight') or [], 'in flight when the step stopped; any charge is not known')
+    st += [{'n': r.get('n'), 'worst_usd': r['worst_usd'], 'stopped': False, 'note': 'no reply in time in an earlier attempt; any charge is not known'}
+           for r in done.get('requests') or [] if isinstance(r, dict) and r.get('worst_usd') and (not reuse_ok or id(r) not in kept)]
+    own = not done.get('response_from') or done.get('own_reply')
+    paid = (done.get('earlier_cost_usd') or 0) + (0 if reuse_ok or not own else (done.get('cost_usd') or 0))
+    return st, round(paid, 6)
+
+def send_live(R, rec_d, send, todo, sent, words, title, doc_lang, model, prompt, prompt_file, supported, pin, pout, key, digest,
+              max_usd, book_spent, book_max_usd):
+    """The requests, AI_PARALLEL at a time (lib/aisend.py, #135 (parallel requests)). Each failure is sent once more after a
+    pause, when its worst case still fits the step's limit and the PDF's (one locked step). A reply cut off or read only in
+    pieces keeps the decisions it finished, and its undecided forms (`not_answered`: those it never reached) are sent once
+    more as one smaller request (01 §4.3, §5); answers refused as echo, tag or invalid are never resent. language_run.json
+    is changed only through one lock and written whole each time (each call stored as it comes back), and keeps the
+    requests in their order. An interruption: nothing queued starts, and every request in flight is kept in
+    stopped_in_flight at its worst case."""
+    rec = aisend.Record(os.path.join(R, 'language_run.json'), rec_d)
+    by_id = {f['id']: f for f in sent}
+    budget = aisend.Budget({'language step': (max_usd, 0.0), 'per-PDF': (book_max_usd, book_spent)}, {str(t['n']): t['worst'] for t in send})
+    http = aisend.openrouter(key, 900)
+    say = aisend.locked(print); fin = [0]
+    def path(n, resend): return os.path.join(R, 'language_requests', f'{n:03d}{"r" if resend else ""}.request.json')
+    def entry(t, r, req):
+        f = r['final']; ids = [it['id'] for it in req['items']]
+        x = {'n': t['n'], 'sha256': t['sha256'], 'ids': ids, 'id_keys': {i: form_key(by_id[i]) for i in ids if i in by_id},
+             'id_marks': langreq.marks_of(req),          # #137: what the reply may echo, by the ids as sent (review 02, M5)
+             'text': f.get('text') or '', 'finish': f.get('finish'), 'input_tokens': f.get('input_tokens'), 'output_tokens': f.get('output_tokens'),
+             'cost_usd': r['cost_usd'], 'seconds': round(sum(c.get('seconds') or 0 for c in r['calls']), 1)}
+        if r['worst_usd']: x['worst_usd'] = r['worst_usd']          # a call with no reply in time: its charge is not known
+        if len(r['calls']) > 1 or r['calls'][0].get('why'): x['calls'] = [{k: c.get(k) for k in ('attempt', 'seconds', 'cost', 'finish', 'error', 'why', 'worst_usd') if c.get(k) is not None} for c in r['calls']]
+        if 'error' in f: x['error'] = f['error']; x.pop('text')
+        if t.get('resend_of'): x.update(resend_of=t['resend_of'], resend_of_sha256=t['resend_of_sha256'])
+        return x
+    def flying(d): return d.setdefault('in_flight', [])
+    def call(t, req, keyname, worst, label):
+        body = langreq.body(req, model, prompt, t['max_tokens'], supported); body['usage'] = {'include': True}
+        json.dump(body, open(path(t['n'], t.get('resend_of')), 'w', encoding='utf-8'), ensure_ascii=False)
+        tag = {'n': t['n'], **({'resend': True} if t.get('resend_of') else {})}
+        rec.change(lambda d: flying(d).append({**tag, 'worst_usd': round(worst, 4)}))
+        def on_retry(k, known, w):
+            def f(d):
+                e = next((e for e in flying(d) if e['n'] == t['n'] and e.get('resend') == tag.get('resend')), None)
+                if e is not None: e.update(paid_usd=round(known, 6), worst_usd=round(w, 4))
+            rec.change(f)
+        ids = [it['id'] for it in req['items']]
+        return aisend.call(http, body, keyname, worst, budget, label=label, say=say, on_retry=on_retry,
+                           readable=lambda text: not any(e.get('code') == 'unreadable' for e in langreq.parse(text, set(ids))[1]))
+    def store(x):                                    # a call came back: its entry joins the requests, in order, and leaves in_flight
+        def f(d):
+            d['in_flight'] = [e for e in d.get('in_flight') or [] if not (e['n'] == x['n'] and bool(e.get('resend')) == bool(x.get('resend_of')))]
+            if not d['in_flight']: d.pop('in_flight')
+            d['requests'] = sorted(d['requests'] + [x], key=lambda y: (y.get('n') or 0, 1 if y.get('resend_of') else 0))
+            d['cost_usd'] = round(d['cost_usd'] + (x['cost_usd'] or 0), 6)
+        rec.change(f)
+    def job(t):
+        n = t['n']; r = call(t, t['req'], str(n), t['worst'], f'request {n}'); out = [entry(t, r, t['req'])]
+        x = out[0]; store(x)
+        if 'error' in x: return out
+        d, dr = langreq.parse(x['text'], set(x['ids']))
+        pieces = any(e.get('code') == 'partial' for e in dr)
+        again = [i for i in x['ids'] if i not in d and any(e.get('id') == i and e.get('code') == 'not_answered' for e in dr)]
+        if not again or not (x['finish'] == 'length' or pieces): return out
+        req2 = langreq.requests({'title': title, 'language': doc_lang}, [by_id[i] for i in again if i in by_id], words)[0]
+        mt2 = costs.allowance('language', len(req2['items'])); ins2 = langreq.size(req2, prompt); w2 = ins2 * pin + mt2 * pout
+        t2 = {'n': n, 'resend_of': n, 'resend_of_sha256': t['sha256'], 'max_tokens': mt2, 'input_est': ins2,
+              'sha256': hashlib.sha256((rec_d['prompt_sha256'] + langreq.user_text(req2)).encode()).hexdigest()[:16]}
+        why = 'cut off' if x['finish'] == 'length' else 'read only in pieces'
+        ok, no = budget.try_reserve(f'{n}r', w2)
+        if not ok:
+            rec.change(lambda d: x.update(resend=f'{len(req2["items"])} undecided forms not sent again: the {no} limit has no room for them'))
+            say(f'  request {n}: {why}; {x["resend"]}'); return out
+        say(f'  request {n}: {why}; its {len(req2["items"])} undecided forms are sent once more')
+        rec.change(lambda d: x.update(resend=f'{len(req2["items"])} undecided forms sent once more'))
+        r2 = call(t2, req2, f'{n}r', w2, f'request {n} (its undecided forms)'); out.append(entry(t2, r2, req2)); store(out[-1])
+        return out
+    def on_done(t, xs):                             # the calling thread: the progress line and the cost history
+        fin[0] += 1
+        for x in xs:
+            ok_ = x.get('finish') == 'stop'
+            say(f'  request {x["n"]}{" (its undecided forms)" if x.get("resend_of") else ""} of {len(todo)}: '
+                + (f'no reply: {x["error"]["message"] or x["error"]["code"]}' if 'error' in x else f'{x["output_tokens"]} tokens, ${x["cost_usd"] or 0:.4f}')
+                + f', done in {x["seconds"]:.0f} s' + ('' if ok_ or 'error' in x else f' · cut off ({x["finish"]}): its finished decisions are kept')
+                + (f' ({fin[0]} of {len(send)} done)' if x is xs[-1] else ''))
+            if ok_ and x['input_tokens'] and x['output_tokens']:
+                try: costhistory.append({'kind': 'language', 'model': model, 'prompt': os.path.basename(prompt_file),
+                                         'input_est': next((y['input_est'] for y in todo if y['n'] == x['n']), None) if not x.get('resend_of') else None,
+                                         'input_billed': x['input_tokens'], 'output': x['output_tokens'], 'images': 0, 'forms': len(x['ids']), 'date': rec_d['started'],
+                                         'book': costhistory.book_id(R, digest), 'pass': str(x['n']) + ('r' if x.get('resend_of') else ''), 'attempt': len(x.get('calls') or [1])})
+                except Exception: pass
+    def on_stop(started):                            # an interruption: nothing queued starts; what was in flight is counted at its worst case
+        rec.close(lambda d: d.update(stopped_in_flight=list(d.get('stopped_in_flight') or []) + aisend.stopped(d.pop('in_flight', None) or [])))
+    rec.change()
+    aisend.run(send, job, aisend.cap(), on_done=on_done, on_stop=on_stop)
 
 def main():
     ap = argparse.ArgumentParser()
@@ -237,7 +350,7 @@ def main():
     pin, pout = float(m['pricing']['prompt']), float(m['pricing']['completion']); supported = m.get('supported_parameters')
     done = json.load(open(run_path, encoding='utf-8')) if os.path.exists(run_path) else {}
     reuse_ok = done.get('model') == model and done.get('prompt_sha256') == prompt_sha and not done.get('response_from')
-    answered = {r['sha256']: r for r in done.get('requests') or [] if reuse_ok and r.get('finish') == 'stop'}
+    answered = reusable(done) if reuse_ok else {}
     todo = []
     for n, r in enumerate(reqs, 1):
         text = langreq.user_text(r); sha = hashlib.sha256((prompt_sha + text).encode()).hexdigest()[:16]
@@ -275,11 +388,14 @@ def main():
         sys.exit(f'refusing before any AI request: this PDF has spent ${spent:.2f} and the language step could add ${worst:.2f}, more than the '
                  f'limit of ${args.book_max_usd:.2f} per PDF. To run it, raise the limit for this run: BOOK_MAX_USD={int(spent + worst) + 1}')
     if args.dry_run: print('dry run: nothing sent'); return
+    stopped_before, earlier_usd = carried(done, reuse_ok, answered)    # review 02 M2: kept whatever reuse says
     rec = {'schema': 'language-run/1', 'model': model, 'prompt_file': os.path.basename(prompt_file), 'prompt_sha256': prompt_sha,
            'started': time.strftime('%Y-%m-%dT%H:%M:%S'), 'estimate': est, 'fingerprint': fp, 'candidates': how,
            'options': {'grow': bool(args.grow), 'group': bool(args.group)}, 'reading_rule': rule_rec,
            'local': {form_key(f): local[f['id']] for f in fs if f['id'] in local},
-           'requests': [answered[t['sha256']] for t in todo if t['reused']], 'decisions': {}, 'cost_usd': round(done.get('cost_usd') or 0, 6) if reuse_ok else 0}
+           'requests': [x for t in todo if t['reused'] for x in answered[t['sha256']]], 'decisions': {},
+           'cost_usd': round(done.get('cost_usd') or 0, 6) if reuse_ok else 0,
+           **({'earlier_cost_usd': earlier_usd} if earlier_usd else {}), **({'stopped_in_flight': stopped_before} if stopped_before else {})}
     if send:
         key = os.environ.get('OPENROUTER_API_KEY') or sys.exit('no OPENROUTER_API_KEY: put it in .env or export it')
         try:
@@ -289,33 +405,12 @@ def main():
         os.makedirs(os.path.join(R, 'language_requests'), exist_ok=True)
         try: digest = json.load(open(os.path.join(args.audit_dir, 'digest.json'), encoding='utf-8'))
         except (OSError, ValueError): digest = None
-        for t in send:
-            body = langreq.body(t['req'], model, prompt, t['max_tokens'], supported); body['usage'] = {'include': True}
-            json.dump(body, open(os.path.join(R, 'language_requests', f'{t["n"]:03d}.request.json'), 'w', encoding='utf-8'), ensure_ascii=False)
-            req = urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', data=json.dumps(body).encode(),
-                                         headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json', 'X-Title': 'UH PDF remediation prototype'})
-            t0 = time.time()
-            try:
-                with urllib.request.urlopen(req, timeout=900) as r: d = json.load(r)
-            except urllib.error.HTTPError as e: print(f'  request {t["n"]}: OpenRouter error {e.code}: {e.read().decode("utf-8", "replace")[:300]} (not retried)'); continue
-            except (urllib.error.URLError, TimeoutError) as e: print(f'  request {t["n"]}: no reply ({e}); not retried'); continue
-            u = d.get('usage') or {}; ch = (d.get('choices') or [{}])[0]
-            x = {'n': t['n'], 'sha256': t['sha256'], 'ids': [it['id'] for it in t['req']['items']], 'id_keys': {f['id']: form_key(f) for f in sent if f['id'] in {it['id'] for it in t['req']['items']}},
-                 'id_marks': langreq.marks_of(t['req']),          # #137: what the reply may echo, by the ids as sent (review 02, M5)
-                 'text': (ch.get('message') or {}).get('content') or '', 'finish': ch.get('finish_reason'), 'input_tokens': u.get('prompt_tokens'),
-                 'output_tokens': u.get('completion_tokens'), 'cost_usd': u.get('cost'), 'seconds': round(time.time() - t0, 1)}
-            rec['requests'].append(x); rec['cost_usd'] = round(rec['cost_usd'] + (x['cost_usd'] or 0), 6)
-            print(f'  request {t["n"]}/{len(todo)}: {x["output_tokens"]} tokens, ${x["cost_usd"] or 0:.4f}' + ('' if x['finish'] == 'stop' else f' · cut off ({x["finish"]}): its finished decisions are kept'))
-            json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-            if x['finish'] == 'stop' and x['input_tokens'] and x['output_tokens']:
-                try: costhistory.append({'kind': 'language', 'model': model, 'prompt': os.path.basename(prompt_file), 'input_est': t['input_est'], 'input_billed': x['input_tokens'],
-                                         'output': x['output_tokens'], 'images': 0, 'forms': len(x['ids']), 'date': rec['started'],
-                                         'book': costhistory.book_id(R, digest), 'pass': str(t['n']), 'attempt': 1})
-                except Exception: pass
+        send_live(R, rec, send, todo, sent, words, title, doc_lang, model, prompt, prompt_file, supported, pin, pout, key, digest, args.max_usd, spent, args.book_max_usd)
     # decisions by form, from every complete reply
     dec, dropped, reasons = {}, [], {}
     by_id = {f['id']: f for f in sent}
     for x in rec['requests']:                        # a reply cut off (finish 'length') keeps every decision it finished
+        if x.get('error'): continue                  # no reply (an error, no reply in time, after its retry): its forms are `failed`
         d, dr = langreq.parse(x.get('text') or '', set(x['ids']), forms={i: by_id[i]['form'] for i in x['ids'] if i in by_id},
                               marks=marks_for(x, R, rec.get('prompt_sha256'))); dec.update(d)
         dropped += keyed(dr, x.get('id_keys') or {}, {form_key(f): f['form'] for f in sent})

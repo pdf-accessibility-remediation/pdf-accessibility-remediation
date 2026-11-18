@@ -44,7 +44,7 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | `LANG_GROUP=on` | Adjacent single Chinese characters become one word form for the language step and the review page (fewer rows). Off by default |
 | `LANG_READING_RULE=off` | Every word form in Chinese characters goes to the AI, even one with a reading printed beside every place (by default those are decided locally, #123; see [Language tags](#language-tags)) |
 | `LANG_REPLY=…` | A saved language reply (a `language_run.json`) to apply instead of a request; `FROM=` sets it per book |
-| `AI_PARALLEL=2` | How many AI requests one PDF sends at once, for its figure requests (default 4). `AI_PARALLEL=1` sends them one at a time, in order. In a batch it applies to each PDF (see [Batches](#batches)) |
+| `AI_PARALLEL=2` | How many AI requests one PDF sends at once, for its figure requests and its language step (default 4). `AI_PARALLEL=1` sends them one at a time, in order. In a batch it applies to each PDF (see [Batches](#batches)) |
 | `FIGURE_PASSES=off` | No figure requests: figures past the first request's 100 images go to a reviewer (see [Files](files.md)) |
 
 ## Untagged PDFs (intake)
