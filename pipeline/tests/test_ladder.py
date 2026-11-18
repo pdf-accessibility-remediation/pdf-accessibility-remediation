@@ -71,6 +71,12 @@ def test_the_dry_run_starts_nothing(tmp_path, capsys):
     assert (e, w) == (pytest.approx(0.33), 2.5) and '3 requests at once at most' in out and 'credit left $44.31' in out
     assert not os.path.exists(os.path.join(a['run'], 'language_run.json'))
 
+def test_the_dry_run_counts_each_book_at_most_at_its_cap(tmp_path, capsys):
+    a = book(tmp_path, 'a', [(0, 1, None)] * 12); a['env'] = {'AI_PARALLEL': '8'}
+    b = book(tmp_path, 'b', [(0, 1, None)] * 3); b['env'] = {}                       # the default (8)
+    ladder.dry_run({'levels': [{'name': 'level 3', 'books': [a, b]}]})
+    assert '11 requests at once at most' in capsys.readouterr().out
+
 def test_never_over_an_earlier_run(tmp_path):
     (tmp_path / 'out').mkdir(); (tmp_path / 'out' / 'summary.json').write_text('{}')
     with pytest.raises(SystemExit): ladder.run({'levels': []}, str(tmp_path / 'out'), 'x', True, credit_fn=lambda: 1)

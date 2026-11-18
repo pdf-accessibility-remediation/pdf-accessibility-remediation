@@ -27,6 +27,7 @@ Writes DIR/<level>/<book>.log, DIR/<level>/summary.json and DIR/summary.json. Re
 import sys, os, json, time, math, shlex, statistics, argparse, subprocess, urllib.request
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))      # pipeline/
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, 'tools'))
+from lib import aisend
 
 def estimate(book):
     try: return json.load(open(os.path.join(book['run'], 'language_estimate.json'), encoding='utf-8'))
@@ -52,7 +53,8 @@ def credit_left():
 def dry_run(plan, credit=None):
     tot_e = tot_w = 0.0
     for lv in plan['levels']:
-        rows = amounts(lv); e, w, n = sum(r['expected'] for r in rows), sum(r['worst'] for r in rows), sum(r['requests'] for r in rows)
+        rows = amounts(lv); e, w = sum(r['expected'] for r in rows), sum(r['worst'] for r in rows)
+        n = sum(min(r['requests'], int(r['env'].get('AI_PARALLEL') or aisend.DEFAULT_CAP)) for r in rows)   # each book at most its own cap
         tot_e += e; tot_w += w
         print(f'{lv["name"]}: {len(rows)} book(s), {n} requests at once at most · expected ${e:.2f} · worst case ${w:.2f}')
         for r in rows:
