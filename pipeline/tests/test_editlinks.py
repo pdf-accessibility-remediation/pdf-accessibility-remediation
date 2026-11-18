@@ -1,11 +1,12 @@
 """test_editlinks.py: the link between a run and its hand-edited copies in the offline dashboards (#98): lib/editlinks.py's
-states, the notes on review.html (parent and copy), the mark in summary.html, and report_html.refresh_parent.
+states, the notes on review.html (parent and copy), the mark in summary.html, and report_html.refresh_page.
 
     python -m pytest tests/test_editlinks.py -q
 
 No book, no model: the runs are folders holding only what the rules read (tests/test_handedit.py runs handedit.py itself).
 """
 import os, sys, json, threading
+import pytest
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 import report_html as H  # noqa: E402
@@ -87,18 +88,39 @@ def test_summary_marks_a_book_with_an_edited_copy_and_links_it(tmp_path):
     assert s.count('Edited cop') == 1 and 'Edited copy: <a href="../../book/fromb/review.html">fromb</a> (finished)' in s
     assert '<a href="../../../book/fromb/review.html">fromb</a>' in page(R)    # from the book's own folder, one level down
 
-def test_refresh_parent_redraws_the_page_and_never_stops_the_caller(tmp_path):
+def test_refresh_page_redraws_the_page_and_never_stops_the_caller(tmp_path):
     R = finished(tmp_path / 'runs' / 'book' / 'r1'); child(R, 'cold', 'not started')
     said = []
-    H.refresh_parent(str(R), said.append)
+    H.refresh_page(str(R), said.append)
     assert '<strong>cold</strong>' in (R / 'review.html').read_text(encoding='utf-8') and 'rebuilt' in said[0]
-    H.refresh_parent(str(tmp_path / 'nowhere'), said.append); H.refresh_parent(None, said.append)
+    H.refresh_page(str(tmp_path / 'nowhere'), said.append); H.refresh_page(None, said.append)
     assert len(said) == 1                                                      # no record: nothing to draw, nothing said
     held, done = threading.Event(), threading.Event()
     def hold():
         with runlock.record_lock(str(R)): held.set(); done.wait(30)
     t = threading.Thread(target=hold); t.start(); held.wait(5)
     old, runlock.REQUEST_WAIT = runlock.REQUEST_WAIT, 0.2
-    try: H.refresh_parent(str(R), said.append)
+    try: H.refresh_page(str(R), said.append)
     finally: runlock.REQUEST_WAIT = old; done.set(); t.join()
     assert 'not rebuilt (the run is busy)' in said[-1]
+
+def test_a_previous_version_is_never_drawn_again(tmp_path):
+    R = finished(tmp_path / 'runs' / 'book' / 'r1'); child(R, 'done', 'finished')
+    V = R / 'reviews' / 'versions' / '001'; finished(V, page=False)
+    (V / 'review.html').write_text('<p class="replaced">This result (Session 1) was replaced by Session 2.</p>')
+    said = []
+    H.refresh_page(str(V), said.append)
+    assert 'was replaced by' in (V / 'review.html').read_text() and said == []   # its banner kept, nothing said
+
+@pytest.mark.parametrize('bad', [5, ['x'], {'a': 1}, None, ''])
+def test_a_damaged_hand_edits_file_never_breaks_a_page(tmp_path, bad):
+    R = finished(tmp_path / 'runs' / 'book' / 'r1')
+    (R / 'hand_edits.json').write_text(json.dumps({'children': [{'run': bad, 'by': 'Pat'}, 'not a dict']}))
+    assert [(c['label'], c['state'], c['run']) for c in EL.copies(str(R))] == [('run not recorded', 'removed', None)]
+    assert 'Its folder is no longer there.' in page(R)
+    assert EL.parent(str(R), {'hand_edit': {'parent': {'run': bad}}}) is None
+    assert EL.parent(str(R), {'hand_edit': {'parent': 'x'}}) is None
+
+def test_one_wording_for_each_state():
+    assert EL.words('removed') == 'Its folder is no longer there.' and EL.words('removed', inline=True) == 'its folder is no longer there'
+    assert EL.words('being prepared') == 'being prepared'                   # the app's own state, shown as it is

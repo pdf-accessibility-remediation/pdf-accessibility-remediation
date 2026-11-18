@@ -137,6 +137,7 @@ def test_a_hand_edited_pdf_comes_back_for_review_and_is_recorded(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     C = os.path.join(os.path.dirname(P), 'he1')
     assert 'stopped for review' in r.stdout and not os.path.exists(os.path.join(C, 'record.json'))
+    assert r.stdout.count('rebuilt: it lists the edited copies') == 2               # after the log, and after the stop for review
     page = open(os.path.join(P, 'review.html'), encoding='utf-8').read()              # #98: the parent's dashboard names the copy
     assert '<strong>he1</strong>: edited by Pat on' in page and 'Waiting for its review (no dashboard yet).' in page
     items = json.load(open(os.path.join(C, 'review_items.json'), encoding='utf-8'))
@@ -157,6 +158,7 @@ def test_a_hand_edited_pdf_comes_back_for_review_and_is_recorded(tmp_path):
     he = json.load(open(os.path.join(C, '_handedit', 'hand_edit.json')))
     r = sh(['bash', 'run_api.sh', os.path.join(C, '_handedit', he['edited']['file']), 'book', 'he1'], RUN_DIR=C, OUT=os.path.basename(out))
     assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.count('rebuilt: it lists the edited copies') == 1               # report.py's, once: the copy finished
     rec = json.load(open(os.path.join(C, 'record.json'), encoding='utf-8'))
     h = rec['hand_edit']
     assert h['by'] == 'Pat' and h['base_sha256'] == keep[out] and h['edited']['sha256'] == ed_sha and h['parent']['run'] == P

@@ -13,6 +13,17 @@ handedit.py recorded; a runs folder moved since reads as "removed".
 """
 import os, json
 
+WORDS = {'finished': ('Finished.', 'finished'),             # each state as a sentence (review.html) and inline (summary.html)
+         'waiting for its review': ('Waiting for its review (no dashboard yet).', 'waiting for its review'),
+         'not started': ('Not started (no dashboard yet).', 'not started'),
+         'removed': ('Its folder is no longer there.', 'its folder is no longer there')}
+
+def words(st, inline=False):
+    w = WORDS.get(st)
+    return (w[1] if inline else w[0]) if w else st
+
+def _path(v): return v if isinstance(v, str) and v else None   # a hand-edited or damaged file: anything else is no folder
+
 def _load(p):
     try:
         with open(p, encoding='utf-8') as f: return json.load(f)
@@ -34,15 +45,16 @@ def copies(R):
     out = []
     for c in (d.get('children') if isinstance(d, dict) else None) or []:
         if not isinstance(c, dict): continue
-        P = c.get('run') or ''
-        out.append({'label': os.path.basename(os.path.normpath(P)) if P else 'run not recorded', 'run': P or None,
+        P = _path(c.get('run'))
+        out.append({'label': os.path.basename(os.path.normpath(P)) if P else 'run not recorded', 'run': P,
                     'when': c.get('when'), 'by': c.get('by'), 'note': c.get('note'), 'to': c.get('to'), 'state': state(P)})
     return out
 
 def parent(R, rec=None):
     """The run this one was made from (record.json `hand_edit`, else _handedit/hand_edit.json before the first record), or None."""
     he = (rec or {}).get('hand_edit') or _load(os.path.join(R, '_handedit', 'hand_edit.json'))
-    P = ((he.get('parent') or {}).get('run') if isinstance(he, dict) else None)
+    par = he.get('parent') if isinstance(he, dict) else None
+    P = _path(par.get('run')) if isinstance(par, dict) else None
     if not P: return None
     return {'run': P, 'label': '/'.join(os.path.normpath(P).split(os.sep)[-2:]), 'state': state(P)}
 

@@ -666,6 +666,11 @@ def make(s, setup, code=None):
                                               renamed=(q.get('renamed') or [None])[0], view=(q.get('view') or ['runs'])[0],
                                               group=(q.get('group') or [''])[0], trashed=(q.get('trashed') or [''])[0],
                                               opened=self.saved_form((q.get('open') or [''])[0])), 'text/html; charset=utf-8')
+            fb = segments(p[1:])                                 # summary.html's link to an edited copy (#98): from
+            if fb and len(fb) == 3 and fb[2] == 'review.html' and fb[0] != 'batches':   # /batch/<b>/, ../../<name>/<label>/review.html
+                hit = find_run(s['runs'], fb[:2])                # lands here; the copy's run page, as for any review.html. A run
+                if hit and not hit[2]:                           # folder named run, batch, api or app never gets here (routed above)
+                    return self.redirect('/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in hit[0].split('/')) + '/')
             self.send(404, {'error': 'not found'})
 
         def saved_form(self, label):

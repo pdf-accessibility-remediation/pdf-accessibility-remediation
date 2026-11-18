@@ -494,9 +494,6 @@ def review_card(R, rec):
     B.append('</section>')                                       # the terminal commands are in docs/app-run-page.md and review-again.md
     return B
 
-EDIT_STATE = {'finished': 'Finished.', 'waiting for its review': 'Waiting for its review (no dashboard yet).',
-              'not started': 'Not started (no dashboard yet).', 'removed': 'Its folder is no longer there.'}
-
 def edit_links_html(R, rec, today=None):
     """The link between a run and its hand-edited copies (#98), as notes before "Ready to Ship?": on a parent, each copy
     brought back from it (hand_edits.json), with its state as of this build; on a copy, the run it was made from. Links
@@ -510,7 +507,7 @@ def edit_links_html(R, rec, today=None):
             href = EL.rel_page(R, c['run']) if c['state'] == 'finished' else None
             name = f'<a href="{E(href)}">{E(c["label"])}</a>' if href else f'<strong>{E(c["label"])}</strong>'
             return (f'<li>{name}: edited by {E(c["by"] or "a person (name not given)")} on {E(D.day(c["when"]))}, '
-                    f'note: "{E(c["note"] or "no note given")}". {E(EDIT_STATE.get(c["state"], c["state"]))}</li>')
+                    f'note: "{E(c["note"] or "no note given")}". {E(EL.words(c["state"]))}</li>')
         n = len(kids)
         out.append(f'<div class="edits" role="note"><p><strong>Edited Copies</strong> '
                    f'(as of {E(D.day(today or datetime.date.today().isoformat()))}): this PDF was edited by hand and brought back as '
@@ -953,16 +950,14 @@ def summary_rows(Bdir, build=False):
     rows.sort(key=lambda r: (not r['done'], -(r.get('needs') or 0)))
     return rows
 
-SUMMARY_STATE = {'finished': 'finished', 'waiting for its review': 'waiting for its review', 'not started': 'not started',
-                 'removed': 'its folder is no longer there'}
-
 def edited_mark(r):
     """summary.html's Status cell: the edited copies of this book, each linked when it has a dashboard (#98)."""
     ed = r.get('edited') or []
     if not ed: return ''
+    from lib import editlinks as EL
     return (f'<br><span class="note">Edited cop{"y" if len(ed) == 1 else "ies"}: '
             + ', '.join((f'<a href="{E(c["href"])}">{E(c["label"])}</a>' if c.get('href') else E(c['label']))
-                        + f' ({E(SUMMARY_STATE.get(c["state"], c["state"]))})' for c in ed) + '</span>')
+                        + f' ({E(EL.words(c["state"], inline=True))})' for c in ed) + '</span>')
 
 def _summary_html(Bdir):
     """summary.html for a batch folder: one row per book, most work first; each book's review.html is (re)built."""
@@ -1042,12 +1037,15 @@ def rebuild_batch(R, say=print):
             summary_html(B); say(f'  {os.path.join(B, "summary.html")} rebuilt')
         except Exception as e: say(f'  note: summary.html not rebuilt ({type(e).__name__}: {e})')
 
-def refresh_parent(P, say=print):
-    """The run a hand-edited copy was made from (#98): its review.html drawn again, under its record lock, so it lists the
-    copy and its state; then its batch's summary.html, when it is in one. Never stops the caller: a busy run or a
-    failure is a note, and the next rebuild (report_html.py RUN_DIR) catches up."""
+def refresh_page(P, say=print):
+    """A run linked to a hand-edited copy (#98): the parent a copy was made from, or a copy whose parent moved. Its
+    review.html drawn again, under its record lock, so the link and the copy's state are current; then its batch's
+    summary.html, when it is in one. A previous result (reviews/versions/<id>/) is never drawn again: its own page keeps
+    its "replaced by" note, and it lists no copies. Never stops the caller: a busy run or a failure is a note, and the
+    next rebuild (report_html.py RUN_DIR) catches up."""
     if not P or not os.path.isfile(os.path.join(P, 'record.json')): return
-    from lib import runlock
+    from lib import runlock, release as REL
+    if REL.run_dir_of(P) != os.path.abspath(P): return
     try:
         with runlock.record_lock(P, runlock.REQUEST_WAIT): out = review_html(P)
         say(f'  {out} rebuilt: it lists the edited copies')

@@ -1291,10 +1291,10 @@ try:
     import report_html
     report_html.review_html(R, record, md, PLAB)
 except Exception as e: print(f'note: review.html not written ({type(e).__name__}: {e})')
-if he and (he.get('parent') or {}).get('run'):         # a hand-edited copy: the run it came from lists it as finished (#98)
-    try:
+if he and (he.get('parent') or {}).get('run') and not FROM_RECORD:   # a hand-edited copy's first finish: the run it came
+    try:                                                 # from lists it as finished (#98); a re-apply changes nothing there
         import report_html
-        report_html.refresh_parent(he['parent']['run'])
+        report_html.refresh_page(he['parent']['run'])
     except Exception as e: print(f'note: the parent run\'s review.html not rebuilt ({type(e).__name__}: {e})')
 
 # ------------------------------------------------------------------ the apply's moves, kept for the first Review Again (#93)
