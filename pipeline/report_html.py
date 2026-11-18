@@ -23,7 +23,9 @@ CSS = PALETTE + """
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 a { color: var(--accent); }
-.replaced { border: 2px solid var(--change); border-radius: 8px; padding: 8px 12px; margin: 8px 0; background: var(--panel); }
+.replaced, .edits { border: 2px solid var(--change); border-radius: 8px; padding: 8px 12px; margin: 8px 0; background: var(--panel); }
+.linked { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 8px 0; background: var(--panel); }   /* made from a hand edit of … (#98) */
+.edits ul { margin: 4px 0 0; padding-left: 20px; } .edits p { margin: 0; }   /* this PDF's edited copies (#98) */
 .card-review { margin: 0 0 16px; } .card-review pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow-x: auto; }
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .skip { position: absolute; left: -999px; } .skip:focus { left: 8px; top: 8px; background: var(--panel); padding: 4px 8px; z-index: 9; }
@@ -492,6 +494,34 @@ def review_card(R, rec):
     B.append('</section>')                                       # the terminal commands are in docs/app-run-page.md and review-again.md
     return B
 
+def edit_links_html(R, rec, today=None):
+    """The link between a run and its hand-edited copies (#98), as notes before "Ready to Ship?": on a parent, each copy
+    brought back from it (hand_edits.json), with its state as of this build; on a copy, the run it was made from. Links
+    are relative, so they work offline and in the app; a folder that is gone is said in words. [] for neither."""
+    from lib import editlinks as EL
+    import datetime
+    out = []
+    kids = EL.copies(R)
+    if kids:
+        def li(c):
+            href = EL.rel_page(R, c['run']) if c['state'] == 'finished' else None
+            name = f'<a href="{E(href)}">{E(c["label"])}</a>' if href else f'<strong>{E(c["label"])}</strong>'
+            return (f'<li>{name}: edited by {E(c["by"] or "a person (name not given)")} on {E(D.day(c["when"]))}, '
+                    f'note: "{E(c["note"] or "no note given")}". {E(EL.words(c["state"]))}</li>')
+        n = len(kids)
+        out.append(f'<div class="edits" role="note"><p><strong>Edited Copies</strong> '
+                   f'(as of {E(D.day(today or datetime.date.today().isoformat()))}): this PDF was edited by hand and brought back as '
+                   + ('a new run' if n == 1 else f'{n} new runs') + '. Evaluate and ship the version you mean to keep.</p><ul>'
+                   + ''.join(li(c) for c in kids) + '</ul></div>')
+    par = EL.parent(R, rec)
+    if par:
+        href = EL.rel_page(R, par['run'])
+        out.append('<p class="linked" role="note">Made from a hand edit of '
+                   + (f'<a href="{E(href)}">{E(par["label"])}</a>.' if href else f'<strong>{E(par["label"])}</strong>'
+                      + (': that run\'s folder is no longer there.' if par['state'] == 'removed' else ' (that run has no dashboard).'))
+                   + '</p>')
+    return out
+
 def review_html(R, rec=None, md=None, labels=None, banner=None):
     rec = rec or json.load(open(os.path.join(R, 'record.json'), encoding='utf-8'))
     md = md if md is not None else open(os.path.join(R, 'review.md'), encoding='utf-8').read()
@@ -547,6 +577,7 @@ def review_html(R, rec=None, md=None, labels=None, banner=None):
                                        else f'AI cost {origin.words(ai)[0]}' if ai.get('cost_usd') is not None else 'cost: AI request did not finish'),
                                       f'run {D.when(run.get("started"), "start time not recorded")}'])
          + ' · <a href="review.md">review.md</a> (the record, as text)</div></header>', '<main id="main" tabindex="-1">']   # the skip link's target takes focus
+    if REL.run_dir_of(R) == os.path.abspath(R): B += edit_links_html(R, rec)   # the run itself, never a previous version (#98)
     # ---- ready to ship
     st = g.get('status') or {}
     green = (st.get('name') or '') in ('Ready', 'Shipped') and not st.get('warning')   # Shipped has Ready's border, never with a warning (N8)
@@ -892,6 +923,7 @@ def summary_html(Bdir):
 def summary_rows(Bdir, build=False):
     """The batch dashboard's rows, one per book folder, most work first (summary.html, and the app's batch page draws the
     same rows: #45 P8). build: a missing review.html is built (summary.html's own rebuild only)."""
+    from lib import editlinks as EL
     rows = []
     for name in sorted(os.listdir(Bdir)):
         R = os.path.join(Bdir, name)
@@ -909,12 +941,23 @@ def summary_rows(Bdir, build=False):
                          'ai': g['ai_decisions']['count'], 'reviewed': g['ship'][0]['ok'], 'safety': safety_state(g),
                          'status': (g.get('status') or {}).get('text') or ('Ready' if g['ready'] else 'Not Ready'), 'st': (g.get('status') or {}).get('name'),
                          'vb': vg.get('before_rules'), 'va': vg.get('after_rules'), 'new': len(vg.get('newly_failing') or []),
-                         'cost': origin.summary(rec)['cost_usd'], 'pages': (rec.get('document') or {}).get('pages')})   # the AI call's cost (11.5)
+                         'cost': origin.summary(rec)['cost_usd'], 'pages': (rec.get('document') or {}).get('pages'),   # the AI call's cost (11.5)
+                         'edited': [{'label': c['label'], 'state': c['state'], 'href': EL.rel_page(Bdir, c['run']) if c['state'] == 'finished' else None}
+                                    for c in EL.copies(R)]})            # #98: a book with an edited copy, so the right one is shipped
         elif os.path.exists(os.path.join(R, '_intake', 'intake.json')):
             ij = json.load(open(os.path.join(R, '_intake', 'intake.json'), encoding='utf-8'))
             rows.append({'name': name, 'done': False, 'status': f'{ij.get("status") or "not finished"}: {ij.get("summary") or ""}'})
     rows.sort(key=lambda r: (not r['done'], -(r.get('needs') or 0)))
     return rows
+
+def edited_mark(r):
+    """summary.html's Status cell: the edited copies of this book, each linked when it has a dashboard (#98)."""
+    ed = r.get('edited') or []
+    if not ed: return ''
+    from lib import editlinks as EL
+    return (f'<br><span class="note">Edited cop{"y" if len(ed) == 1 else "ies"}: '
+            + ', '.join((f'<a href="{E(c["href"])}">{E(c["label"])}</a>' if c.get('href') else E(c['label']))
+                        + f' ({E(EL.words(c["state"], inline=True))})' for c in ed) + '</span>')
 
 def _summary_html(Bdir):
     """summary.html for a batch folder: one row per book, most work first; each book's review.html is (re)built."""
@@ -936,7 +979,7 @@ def _summary_html(Bdir):
         if not r['done']:
             B.append(f'<tr><td>{E(r["name"])}</td><td colspan="7">{E(r["status"])}</td></tr>'); continue
         B.append(f'<tr><td data-v="{E(r["name"])}"><a href="{E(r["name"])}/review.html">{E(r["name"])}</a></td>'
-                 f'<td data-v="{E(r["status"])}">{E(r["status"])}{"" if r["reviewed"] else " <span class=note>(not reviewed)</span>"}</td>'
+                 f'<td data-v="{E(r["status"])}">{E(r["status"])}{"" if r["reviewed"] else " <span class=note>(not reviewed)</span>"}{edited_mark(r)}</td>'
                  f'<td class="num" data-v="{r["needs"]}">{r["needs"]} <span class="bar" style="display:inline-block;width:80px;vertical-align:middle" aria-hidden="true"><i style="width:{100 * r["needs"] / mx:.0f}%"></i></span>'
                  f'<br><span class="note">{r["np"]["ai_deferrals"]} AI · {r["np"]["executor_deferrals"]} executor · {r["np"]["check_rows"]} automated check{"" if r["np"]["check_rows"] == 1 else "s"}</span></td>'
                  f'<td class="num" data-v="{r["ai"]}">{r["ai"]:,}</td>'
@@ -985,6 +1028,30 @@ def _summary_html(Bdir):
     finally:
         if os.path.exists(tmp): os.remove(tmp)
     return out
+
+def rebuild_batch(R, say=print):
+    """A book in a batch folder: rebuild the batch's summary.html (summary.md stays the batch run's own record)."""
+    B = os.path.dirname(os.path.abspath(R))
+    if os.path.exists(os.path.join(B, 'summary.html')):
+        try:
+            summary_html(B); say(f'  {os.path.join(B, "summary.html")} rebuilt')
+        except Exception as e: say(f'  note: summary.html not rebuilt ({type(e).__name__}: {e})')
+
+def refresh_page(P, say=print):
+    """A run linked to a hand-edited copy (#98): the parent a copy was made from, or a copy whose parent moved. Its
+    review.html drawn again, under its record lock, so the link and the copy's state are current; then its batch's
+    summary.html, when it is in one. A previous result (reviews/versions/<id>/) is never drawn again: its own page keeps
+    its "replaced by" note, and it lists no copies. Never stops the caller: a busy run or a failure is a note, and the
+    next rebuild (report_html.py RUN_DIR) catches up."""
+    if not P or not os.path.isfile(os.path.join(P, 'record.json')): return
+    from lib import runlock, release as REL
+    if REL.run_dir_of(P) != os.path.abspath(P): return
+    try:
+        with runlock.record_lock(P, runlock.REQUEST_WAIT): out = review_html(P)
+        say(f'  {out} rebuilt: it lists the edited copies')
+    except runlock.Busy: say(f'  note: {os.path.join(P, "review.html")} not rebuilt (the run is busy); report_html.py "{P}" rebuilds it')
+    except Exception as e: say(f'  note: {os.path.join(P, "review.html")} not rebuilt ({type(e).__name__}: {e})')
+    rebuild_batch(P, say)
 
 if __name__ == '__main__':
     a = sys.argv[1:]

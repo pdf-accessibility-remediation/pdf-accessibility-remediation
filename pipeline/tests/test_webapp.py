@@ -347,6 +347,10 @@ def test_batch_route_and_a_run_with_no_dashboard(app):
     assert st == 200 and b'x/review.html' in b and b'aria-label="App"' in b
     assert get(app['port'], '/batch/b1/x/review.html')[2].get('Location') == '/run/batches/b1/x/'
     assert get(app['port'], '/run/batches/b1/summary.html')[2].get('Location') == '/batch/b1/summary.html'   # a review.html's ../summary.html
+    assert get(app['port'], '/old/r0/review.html')[2].get('Location') == '/run/old/r0/'   # summary.html's ../../<name>/<label>/ (#98)
+    for bad in ('/old/nope/review.html', '/old/r0/review.md', '/old/r0/x/review.html', '/batches/b1/review.html',
+                '/old/.hidden/review.html', '/link/x/review.html'):
+        assert get(app['port'], bad)[0] == 404, bad                       # only a run's own review.html, never outside the runs folder
     st, b, _ = get(app['port'], '/run/batches/b1/x/')                    # a book's page in a batch: the side column, this book current
     assert st == 200 and b.count(b'aria-label="PDFs in This Batch"') == 1 and b'aria-current="page" data-book="x"' in b
     st, b, _ = get(app['port'], '/run/old/r0/')

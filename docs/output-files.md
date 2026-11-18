@@ -49,6 +49,8 @@ It opens with an Overview (see [The Overview](#the-overview)).
 
 ### What it shows, from the top
 
+A PDF edited by hand and brought back starts with a note above "Ready to Ship?": on the earlier run, its **Edited Copies** and each one's state; on the copy, the run it was made from. Both link to the other's `review.html` (see [Editing the PDF by hand](hand-edits.md#seeing-the-link-in-reviewhtml-and-summaryhtml)).
+
 1. **"Ready to Ship?"**, with the PDF's status and its four requirements (see ["Ready to ship?"](evaluation.md#ready-to-ship)).
 2. **An Accessibility Evaluation section**, once a result is recorded: a summary line per part, its failed items and notes, and "View Full Results" in a pop-up (in place, in print).
 3. **Four status cards** (see [The status cards](#the-status-cards)).
@@ -163,7 +165,7 @@ An OCR text verdict or an evaluation result refreshes all of it, since "Ready to
 
 ## Batch and app files
 
-A batch folder also holds `summary.md` and `summary.html`: one row per PDF (ready to ship, needs a person, AI decisions, safety, veraPDF WCAG rules before → after, cost, pages). Rows are sorted with the most work first, and can be sorted by any column; each PDF's name opens its `review.html`.
+A batch folder also holds `summary.md` and `summary.html`: one row per PDF (ready to ship, needs a person, AI decisions, safety, veraPDF WCAG rules before → after, cost, pages). Rows are sorted with the most work first, and can be sorted by any column; each PDF's name opens its `review.html`. A PDF with an edited copy says so in its Status column, linked to the copy's dashboard.
 
 To rebuild the dashboards of a finished run or batch:
 

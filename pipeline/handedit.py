@@ -22,7 +22,9 @@ Then it runs run_api.sh on it:
                    afterwards, or press Apply in the app
     --to pipeline  the whole pipeline: a new paid AI call (run_api.sh asks y/N first); ESTIMATE=1 and REPLY= work as usual
 --no-run prints the run_api.sh command instead. RUN_DIR's hand_edits.json lists the new run. Nothing in RUN_DIR other than
-hand_edits.json is written, and EDITED.pdf is never written to. Exit 3: the edited file is PDF 2.0 (lib/support.py).
+hand_edits.json is written, except that RUN_DIR's review.html (and its batch's summary.html, in a batch) is drawn again
+from it, so the offline dashboards name the copy (#98): after the import, and again when run_api.sh stops for review. EDITED.pdf
+is never written to. Exit 3: the edited file is PDF 2.0 (lib/support.py).
 """
 import sys, os, json, shutil, hashlib, datetime, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -157,6 +159,8 @@ def bring_back(argv):
               'figures_lost': ch['figures_lost'], 'text_pages': ch['text_pages']}
         with open(os.path.join(H, 'hand_edit.json'), 'w', encoding='utf-8') as f: json.dump(he, f, ensure_ascii=False, indent=1)
         log(R, 'children', {'when': he['when'], 'run': C, 'by': by, 'note': note, 'to': to, 'edited_sha256': ed_sha})
+        import report_html
+        report_html.refresh_page(R)                                   # the parent's dashboards list the copy (#98)
         print(f'  {len(ch["new_images"])} new image(s); {len(ch["figures"])} figure(s) hold a new one'
               + (f', alt text removed from {len(objs) - len(missing)}' if objs else '')
               + (f'; {len(ch["outside_figures"])} new image(s) in no figure' if ch['outside_figures'] else '')
@@ -175,7 +179,11 @@ def bring_back(argv):
     shown = ' '.join(f'{k}={v}' for k, v in env.items() if v) + ' ' + ' '.join(f'"{x}"' if ' ' in x else x for x in cmd)
     if '--no-run' in argv: print(f'next (from {HERE}):\n  {shown}'); return 0
     print(f'▶ {shown}', flush=True)                                   # before run_api.sh's own output
-    return subprocess.call(cmd, cwd=HERE, env={**os.environ, **{k: v for k, v in env.items() if v}})
+    rc = subprocess.call(cmd, cwd=HERE, env={**os.environ, **{k: v for k, v in env.items() if v}})
+    if not os.path.isfile(os.path.join(C, 'record.json')):            # stopped for review, failed or stopped: its state now
+        import report_html                                            # (a finished copy: report.py already drew the parent)
+        report_html.refresh_page(R)
+    return rc
 
 def main():
     a = sys.argv[1:]
