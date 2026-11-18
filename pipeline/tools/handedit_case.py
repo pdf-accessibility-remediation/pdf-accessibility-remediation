@@ -16,7 +16,7 @@ Checks, PASS or FAIL each:
   - the link descriptions are the parent's (apply.py redoes them on every run, from the carried `sections` and `links`);
   - apply.py failed nothing, and the new alt text is in the result while the other figures kept theirs;
   - what apply.py changed again on an already-remediated file (its `applied` counts), printed for a person to read.
-The runs go to DIR (default: a temporary folder, kept when a check fails). veraPDF is off. Exit 1 on any FAIL.
+The runs go to DIR, relative to the folder the tool is run in (default: a temporary folder, kept when a check fails). veraPDF is off. Exit 1 on any FAIL.
 """
 import sys, os, json, shutil, argparse, subprocess, tempfile, hashlib
 HERE = os.path.dirname(os.path.abspath(__file__)); PIPE = os.path.dirname(HERE); ROOT = os.path.dirname(PIPE)
@@ -72,7 +72,8 @@ def main():
     a = ap.parse_args()
     reply = os.path.join(PIPE, 'tests', 'baseline', a.book, 'reply.txt')
     if not os.path.exists(reply): sys.exit(f'no saved reply for {a.book} in tests/baseline/')
-    out = a.out or tempfile.mkdtemp(prefix='handedit-case-'); runs = os.path.join(out, 'runs'); os.makedirs(out, exist_ok=True)
+    out = os.path.abspath(a.out) if a.out else tempfile.mkdtemp(prefix='handedit-case-')   # every command below runs in pipeline/ (#144)
+    runs = os.path.join(out, 'runs'); os.makedirs(out, exist_ok=True)
     fails = []
     def check(ok, what): print(('PASS ' if ok else 'FAIL ') + what); ok or fails.append(what)
 
