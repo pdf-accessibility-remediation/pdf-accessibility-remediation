@@ -495,13 +495,17 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
     if open_browser:
         try: webbrowser.open(url)
         except Exception: pass
-    threading.Thread(target=warm_up, daemon=True).start()
-    t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
-    try:
+    serving, launched = threading.Event(), False
+    def serve_loop(): serving.set(); srv.serve_forever()
+    try:                                               # #147: the threads start inside it, so a Ctrl+C as the page starts
+        threading.Thread(target=warm_up, daemon=True).start()   # takes the same path (it once ended in a traceback, while
+        launched = True                                # a request the server had already taken in was cut off)
+        threading.Thread(target=serve_loop, daemon=True).start()
         while not done.wait(0.5): pass                 # a short wait, so Ctrl+C is seen
     except KeyboardInterrupt:
         close_gate()                                   # a Finish or a verdict under way is written whole first
-        srv.shutdown(); stop_draft()                   # a draft being built is stopped, never waited for
+        if launched and serving.wait(5): srv.shutdown()   # never when serve_forever didn't start: shutdown() would wait forever
+        stop_draft()                                   # a draft being built is stopped, never waited for
         if page_text: page_text.close()
         if not done.is_set() or ocr_only:
             print('\nstopped: ' + ('the OCR review page is closed.' if ocr_only else 'the review is not finished. Run the same command again to carry on.'))

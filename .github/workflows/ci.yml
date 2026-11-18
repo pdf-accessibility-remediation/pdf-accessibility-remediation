@@ -79,7 +79,8 @@ jobs:
         working-directory: pipeline
         run: |                                         # pytest has no --strict for skips: a skip here is a broken install
           set -o pipefail                              # without it, tee would hide a failing test
-          python -m pytest tests/test_lang.py -q -rs -k run_api | tee "$RUNNER_TEMP/ocr-tests.txt"
+          python -m pytest -q -rs tests/test_lang.py::test_run_api_stops_for_the_language_before_any_ocr \
+            tests/test_lang.py::test_run_api_goes_on_when_the_scans_hold_no_text | tee "$RUNNER_TEMP/ocr-tests.txt"
           if grep -q SKIPPED "$RUNNER_TEMP/ocr-tests.txt"; then echo "a test above was skipped: Tesseract or the CJK font is missing"; exit 1; fi
 
       - name: Intake classification cases (synthetic PDFs, plan only)
