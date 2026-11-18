@@ -60,7 +60,7 @@ jobs:
           cache-dependency-path: pipeline/requirements.txt
 
       - name: Install dependencies
-        run: python -m pip install -r pipeline/requirements.txt
+        run: python -m pip install -r pipeline/requirements-dev.txt    # pytest too, for the OCR unit tests below
 
       - name: Install Tesseract with CJK packs and a CJK font
         run: |
@@ -74,6 +74,14 @@ jobs:
           tesseract --version | head -1
           echo "script models Tesseract lists:"; tesseract --list-langs 2>&1 | grep '^script/' || echo "  none"
           echo "where apt put script/Latin:"; dpkg -L tesseract-ocr-script-latn | grep traineddata || echo "  not installed"
+
+      - name: Unit tests that need Tesseract and a CJK font (skipped in validate, which has neither)
+        working-directory: pipeline
+        run: |                                         # pytest has no --strict for skips: a skip here is a broken install
+          set -o pipefail                              # without it, tee would hide a failing test
+          python -m pytest -q -rs tests/test_lang.py::test_run_api_stops_for_the_language_before_any_ocr \
+            tests/test_lang.py::test_run_api_goes_on_when_the_scans_hold_no_text | tee "$RUNNER_TEMP/ocr-tests.txt"
+          if grep -q SKIPPED "$RUNNER_TEMP/ocr-tests.txt"; then echo "a test above was skipped: Tesseract or the CJK font is missing"; exit 1; fi
 
       - name: Intake classification cases (synthetic PDFs, plan only)
         working-directory: pipeline

@@ -258,7 +258,7 @@ It also checks that a spread's reading order is reordered and saved. It prints P
 
 ### Fonts and skipped cases
 
-Several scans are drawn with a font: the Japanese and Korean text, the breves, and the page the full empty-text case OCRs. On macOS that is Arial Unicode, on Linux Noto Sans CJK (`sudo apt install fonts-noto-cjk`); `INTAKE_CASES_FONT=/path/to/font` overrides both. Without such a font, PIL's default font draws no CJK and no breves, and its text is too small to OCR, so those cases are SKIPped.
+Several scans are drawn with a font: the Japanese and Korean text, the breves, and the page the full empty-text case OCRs. On macOS that is Arial Unicode, on Linux Noto Sans CJK (`sudo apt install fonts-noto-cjk`); `INTAKE_CASES_FONT=/path/to/font` overrides both, and also sets the font of the Korean unit test in `test_lang.py`, so it must draw Hangul. Without such a font, PIL's default font draws no CJK and no breves, and its text is too small to OCR, so those cases are SKIPped.
 
 The summary line counts skips separately, so a skip is never mistaken for a pass. With `--strict` (as in CI) any skip counts as a failure and the script exits with 1. The CJK cases also need Tesseract's `osd`, `jpn`, `kor`, `chi_sim` and `chi_tra` packs, each with its `_vert` pack. Two OCR-layer cases need the `script/Latin` model (`tesseract-ocr-script-latn`; see [Setup](setup.md)); without it they are SKIPped.
 
@@ -279,7 +279,7 @@ When an OCR-layer case fails, the script prints intake's OCR-layer test under it
 - **`ci.yml`, on every push and PR:**
   - compile check, shell syntax and `pip-audit` (`pip-audit` on Python 3.14 only)
   - the unit tests, on Python 3.13 and 3.14 (one job each)
-  - a second job that installs Tesseract with its CJK packs, the `script/Latin` model and `fonts-noto-cjk`, then runs the intake cases, then `--full` with Java 17 and OCRmyPDF 17 (installed with pipx). Both steps are blocking and run with `--strict`, so a missing tool fails the job instead of skipping cases
+  - a second job that installs Tesseract with its CJK packs, the `script/Latin` model and `fonts-noto-cjk`, then runs the two unit tests in `test_lang.py` that the unit-test jobs skip (the Korean language stop needs Tesseract and the CJK font, the scan with no text only Tesseract), then the intake cases, then `--full` with Java 17 and OCRmyPDF 17 (installed with pipx). All three steps are blocking, and a skip fails each of them (the intake cases run with `--strict`), so a missing tool fails the job
 - **`pdf-validation.yml`, when `pipeline/`, `prompts/` or `samples/` change:**
   - the existing veraPDF audit of one sample
   - a `regression` job per book on Python 3.14 (9 jobs in parallel, with Java 17 and veraPDF 1.30.3) that runs `tools/regression.py --books <book>`, and uploads the run folders when it fails (`regression-runs-<book>-py<version>`)

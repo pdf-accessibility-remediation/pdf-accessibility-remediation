@@ -58,7 +58,7 @@ On this page, **Finish OCR Review** takes the place of Record Verdict. It record
 
 `review_ocr.py <run> --verdict … --reviewer …` (with `--reads`, `--to`) records a verdict from the terminal, through the same checks. `review_ocr.py` keeps its own wording for refusals, which names its options (`--reads`). `--date` is refused with `--serve`: a verdict on the page is dated the day it is recorded.
 
-**Stopping:** Ctrl+C (or the app's Stop) while a verdict, an automatic save or a Finish is being written waits until it is written whole. A request that comes after that is refused ("The review page is closing"). A request that stalls (it sends no body) gives up after 30 seconds, so a stop never waits longer than that.
+**Stopping:** Ctrl+C (or the app's Stop) while a verdict, an automatic save or a Finish is being written waits until it is written whole. A request that comes after that is refused ("The review page is closing"). This holds from the moment the page starts: a Ctrl+C as it is still starting closes it the same way. A request that stalls (it sends no body) gives up after 30 seconds, so a stop never waits longer than that.
 
 ## For developers
 
