@@ -294,3 +294,37 @@ def test_the_warning_says_per_run_whether_review_again_still_works(setup):
     assert eff == {'tagged': TR.NEEDS_BACK, 'untagged': TR.STILL_WORKS}
     (setup / 'samples' / 'copy.pdf').write_bytes((setup / 'uploads' / 'bk.pdf').read_bytes())   # another copy: found by sha256
     assert 'still works' in {r['name']: r['effect'] for r in TR.plan_pdf(s, key)['runs']}['tagged']
+
+# ------------------------------------------------------------------ a hand-edited copy and its parent (#98)
+def linked_pair(t):
+    """runs/bk/r1 and its edited copy runs/bk/he, each with a report; r1's review.html lists the copy as finished."""
+    import report_html as H
+    P = finished_run(t); C = finished_run(t, label='he')
+    rec = json.loads((C / 'record.json').read_text()); rec['hand_edit'] = {'parent': {'run': str(P)}}
+    (C / 'record.json').write_text(json.dumps(rec))
+    (P / 'hand_edits.json').write_text(json.dumps({'children': [{'when': '2026-11-09T10:00:00', 'run': str(C), 'by': 'Pat', 'note': 'n'}]}))
+    for R in (C, P):                                                         # the copy first: the parent links its page
+        (R / 'review.md').write_text('# Review\n\n## Automated Checks\n\n'); H.review_html(str(R))
+    assert '<a href="../he/review.html">he</a>' in (P / 'review.html').read_text() and 'Finished.' in (P / 'review.html').read_text()
+    return P, C
+
+def test_moving_a_copy_to_the_trash_redraws_its_parents_page(setup):
+    s = S(setup); P, C = linked_pair(setup)
+    TR.move_run(s, 'bk/he')
+    page = (P / 'review.html').read_text()
+    assert '<strong>he</strong>' in page and 'Its folder is no longer there.' in page and '../he/review.html' not in page
+
+def test_moving_a_parent_to_the_trash_redraws_its_copys_page(setup):
+    s = S(setup); P, C = linked_pair(setup)
+    TR.move_run(s, 'bk/r1')
+    page = (C / 'review.html').read_text()
+    assert 'Made from a hand edit of <strong>bk/r1</strong>: that run\'s folder is no longer there.' in page
+
+def test_moving_a_batch_pdf_redraws_its_copys_page(setup):
+    s = S(setup); B = setup / 'runs' / 'batches' / 'b1'
+    P, C = linked_pair(setup)
+    (B).mkdir(parents=True); shutil.move(str(P), str(B / 'bk'))             # the parent is a batch PDF; its copy stays at runs/bk/he
+    rec = json.loads((C / 'record.json').read_text()); rec['hand_edit']['parent']['run'] = str(B / 'bk'); (C / 'record.json').write_text(json.dumps(rec))
+    TR._refresh_linked(TR._linked(str(B / 'bk')))                             # what a move does afterwards, here with the parent in place
+    assert '../../batches/b1/bk/review.html' in (C / 'review.html').read_text()
+    assert TR._linked(str(B / 'bk')) == [str(C)] and TR._linked(str(C)) == [str(B / 'bk')]

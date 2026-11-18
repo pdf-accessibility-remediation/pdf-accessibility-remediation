@@ -806,11 +806,9 @@ def replaced_banner(V, old, new, R):
 
 def rebuild_batch(R, say=say_):
     """A book in a batch folder: rebuild the batch's summary.html (summary.md stays the batch run's own record)."""
-    B = os.path.dirname(R)
-    if os.path.exists(os.path.join(B, 'summary.html')):
-        try:
-            import report_html as H; H.summary_html(B); say(f'  {os.path.join(B, "summary.html")} rebuilt')
-        except Exception as e: say(f'  note: summary.html not rebuilt ({type(e).__name__}: {e})')
+    try: import report_html as H
+    except Exception as e: return say(f'  note: summary.html not rebuilt ({type(e).__name__}: {e})')
+    H.rebuild_batch(R, say)
 
 def mark_pending(R, s):
     """record.json review.pending: a session that is open, or finished and not applied (ready to ship then says No), and the

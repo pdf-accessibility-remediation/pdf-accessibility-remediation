@@ -141,6 +141,25 @@ def _run_dir(s, run):
     if not R.startswith(base + os.sep) or not os.path.isdir(R) or not HM.is_run(R): raise Refused('There is no such run.')
     return R
 
+def _linked(R):
+    """The runs whose dashboards name R (#98): the run it was made from by a hand edit, and its own edited copies whose
+    folders are there. Read before the move: afterwards R's files are in the Trash."""
+    from lib import editlinks as EL
+    try:
+        rec = json.load(open(os.path.join(R, 'record.json'), encoding='utf-8'))
+    except (OSError, ValueError): rec = None
+    par = EL.parent(R, rec if isinstance(rec, dict) else None)
+    return [x for x in ([par['run']] if par else []) + [c['run'] for c in EL.copies(R) if c['state'] != 'removed'] if x]
+
+def _refresh_linked(Rs):
+    """Each linked run's review.html (and its batch's summary.html) drawn again after a move, with every lock of the move
+    released (the record lock is the last in the order): a copy moved to the Trash then reads "Its folder is no longer
+    there" on its parent's page. Best effort: a note in the app's log, never a refused move."""
+    if not Rs: return
+    try: import report_html
+    except Exception: return
+    for P in sorted(set(Rs)): report_html.refresh_page(P, lambda m: None)
+
 # ------------------------------------------------------------------ a single run
 def plan_run(s, run):
     p = run.split('/')
@@ -156,6 +175,7 @@ def move_run(s, run):
     pl = plan_run(s, run)
     if pl['refused']: raise Refused(pl['refused'])
     R = _run_dir(s, run)
+    linked = _linked(R)
     with _locks([R]):
         why = why_busy(s, run, R)
         if why: raise Refused(why)
@@ -163,6 +183,7 @@ def move_run(s, run):
     plain = _drop_name(s, 'runs', run)
     log(s, {'what': 'run', 'run': run, 'from': R, 'to': os.path.join(trash_dir(s), name), 'name': plain, 'shipped': pl['shipped']})
     _drop_home_cache(s)
+    _refresh_linked(linked)
     return {'moved': name}
 
 # ------------------------------------------------------------------ a batch, whole or in part
@@ -205,6 +226,7 @@ def move_batch(s, label, names=None):
     if pl['refused']: raise Refused(pl['refused'])
     B = _batch(s, label)
     picked = [x['name'] for x in pl['pdfs']]
+    linked = {n: _linked(os.path.join(B, n)) for n in picked if os.path.isdir(os.path.join(B, n))}
     if pl['whole']:
         with _locks([os.path.join(B, n) for n in picked if os.path.isdir(os.path.join(B, n))]):
             why = plan_batch(s, label, names)['refused']
@@ -216,6 +238,7 @@ def move_batch(s, label, names=None):
         plain = _drop_name(s, 'batches', label)
         log(s, {'what': 'batch', 'label': label, 'from': B, 'to': os.path.join(trash_dir(s), name), 'name': plain, 'pdfs': picked, 'cost_usd': round(cost, 6)})
         _drop_home_cache(s)
+        _refresh_linked([P for v in linked.values() for P in v])
         return {'moved': name, 'whole': True}
     # All or nothing (review 10 H1): every picked PDF's record lock up front (sorted, folders that exist), every check
     # again under them, then the moves. A picked PDF with no folder (its estimate failed before run_api.sh made one) has
@@ -246,6 +269,7 @@ def move_batch(s, label, names=None):
             for n in (absent if done else []): log(s, {'what': 'batch-pdf', 'label': label, 'pdf': n, 'from': None, 'to': None, 'note': 'no folder: taken out of the batch only'})
             BT.forget_books(s, label, gone, moved)
             _drop_home_cache(s)
+        _refresh_linked([P for m in moved for P in linked.get(m['name'], [])])   # only the PDFs that did move
     return {'moved': [m['name'] for m in moved], 'forgotten': absent, 'whole': False}
 
 # ------------------------------------------------------------------ a PDF added through "Upload a PDF"
