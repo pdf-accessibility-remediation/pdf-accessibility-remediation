@@ -112,6 +112,15 @@ def test_a_mid_line_compound_gives_the_next_lines_word_no_place(tmp_path):
         assert not any(p['form'] in ('homesare', 'nonto', 'neocontinuation') for p in places), (name, places)
         assert not any(set(p['text'].split()) & {'are', 'to', 'continuation'} for p in places), (name, places)
 
+def test_a_non_english_word_after_a_mid_line_hyphen_is_its_own_candidate(tmp_path):
+    """#140 (review 11, L1): what the stricter join gives back. "homes-abroad" is drawn after the next line, which starts
+    with a non-English word: "pendhopo" is a place of its own form, and no "homespendhopo" form is made (on e401caf's
+    finder the word was glued to "homes" and lost its candidacy)."""
+    body = ['(The homes-) Tj', 'T*', '(pendhopo is here.) Tj', '1 0 0 1 130.7 740 Tm', '(abroad) Tj']
+    places, _ = langcands.page_places(1, plpages.Pages(langpdf.build(str(tmp_path / 'j.pdf'), [{'body': body}])).pages[0].chars)
+    assert [(p['text'], p['form']) for p in places] == [('pendhopo', 'pendhopo')], places
+    assert not any(p['form'] == 'homespendhopo' for p in places)
+
 def test_a_real_break_the_line_end_test_misjudges_joins_when_english(tmp_path):
     """#140 (07 §5.1): "prac-" at a line end with another column's text 5 pt to its right fails the line-end test, but
     "practices" is English, so the halves are joined and neither is a candidate (no fragment "prac")."""
