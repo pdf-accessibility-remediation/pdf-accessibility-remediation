@@ -135,7 +135,8 @@ def test_a_stop_during_the_retry_counts_the_cut_off_and_the_retry(book, tmp_path
         if n == 3: seen.update(load(R / 'run.json')['figure_passes'])
         return cut_second(b, n)
     live(book[1], R, monkeypatch, reply=r)
-    assert seen['in_flight'] == '2' and seen['in_flight_paid_usd'] == 0.3 and seen['in_flight_cut_off'] is True and 0.64 < seen['in_flight_worst_usd'] < 0.75   # known and unknown apart
+    e, = seen['in_flight']                                                   # #135 (parallel requests): a list of the requests being sent
+    assert e['pass'] == '2' and e['paid_usd'] == 0.3 and e['cut_off'] is True and 0.64 < e['worst_usd'] < 0.75   # known and unknown apart
 
 def test_the_in_flight_fields_are_gone_once_a_request_is_done(book, tmp_path, monkeypatch):
     R = tmp_path / 'r'; live(book[1], R, monkeypatch, reply=cut_second)

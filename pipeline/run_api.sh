@@ -93,22 +93,28 @@ now = datetime.datetime.now().isoformat(timespec='seconds')
 fp = run.get('figure_passes') or {}
 if fp.get('state') == 'calling' and not run.get('response_from'):   # stopped while its figure requests were being sent:
     p = os.path.join(R, 'attempts.json'); att = json.load(open(p)) if os.path.exists(p) else []   # every request it paid for,
-    for c in run.get('passes') or []:                                # and the one in flight, whose charge is not known
+    for c in run.get('passes') or []:                                # and those in flight, whose charges are not known
         att.append({'started': run.get('started'), 'pass': c['pass'], 'cost_usd': (c.get('usage') or {}).get('cost_usd') or 0,
                     'finish_reason': 'length' if any(x.get('finish_reason') == 'length' for x in c.get('calls') or []) else c.get('finish_reason') or (c.get('calls') or [{}])[-1].get('finish_reason'), 'usage': c.get('usage'),
                     **({'worst_usd': round(sum(x.get('worst_usd') or 0 for x in c['calls']), 4)} if any(x.get('worst_usd') for x in c.get('calls') or []) else {}),   # timed out: charge not known
                     'stopped': True, 'logged': now})
-    if fp.get('in_flight_paid_usd'):                                 # paid for already (a cut-off or an unreadable reply), with its retry in flight
-        att.append({'started': run.get('started'), 'pass': fp['in_flight'], 'cost_usd': fp['in_flight_paid_usd'], 'finish_reason': 'length' if fp.get('in_flight_cut_off') else 'stop', 'stopped': True, 'logged': now})
-    if fp.get('in_flight'):
-        att.append({'started': run.get('started'), 'pass': fp['in_flight'], 'cost_usd': None, 'worst_usd': fp.get('in_flight_worst_usd'), 'stopped': True,
+    fly = fp.get('in_flight')                                        # #135 (parallel requests): a list of the requests being sent,
+    fly = (list(fly) if isinstance(fly, list) else [{'pass': fly, 'worst_usd': fp.get('in_flight_worst_usd'),   # or the older single
+           'paid_usd': fp.get('in_flight_paid_usd'), 'cut_off': fp.get('in_flight_cut_off')}] if fly else [])      # request's fields
+    fly += list(fp.get('stopped_in_flight') or [])                   # recorded by decide.py when it was interrupted
+    for e in fly:
+        if e.get('paid_usd'):                                        # paid for already (a cut-off or an unreadable reply), with its retry in flight
+            att.append({'started': run.get('started'), 'pass': e['pass'], 'cost_usd': e['paid_usd'], 'finish_reason': 'length' if e.get('cut_off') else 'stop', 'stopped': True, 'logged': now})
+        att.append({'started': run.get('started'), 'pass': e['pass'], 'cost_usd': None, 'worst_usd': e.get('worst_usd'), 'stopped': True,
                     'note': 'in flight when the run stopped; any charge is not known', 'logged': now})
     json.dump(att, open(p, 'w'), indent=1)
     for f in ('run.json', 'passes.json', 'workorder.json'):
         if os.path.exists(os.path.join(R, f)): os.remove(os.path.join(R, f))
-    spent = sum((c.get('usage') or {}).get('cost_usd') or 0 for c in run.get('passes') or []) + (fp.get('in_flight_paid_usd') or 0)
+    spent = sum((c.get('usage') or {}).get('cost_usd') or 0 for c in run.get('passes') or []) + sum(e.get('paid_usd') or 0 for e in fly)
+    n = len(fly)
     print(f'▶ the previous attempt was stopped while its figure requests were being sent: ${spent:.3f} it spent on '
-          f'{len(run.get("passes") or [])} request(s) is logged' + (' (and one request was in flight; its charge is not known)' if fp.get('in_flight') else '')
+          f'{len(run.get("passes") or [])} request(s) is logged'
+          + (f' (and {n} request{"s were" if n != 1 else " was"} in flight; {"their charges are" if n != 1 else "its charge is"} not known)' if n else '')
           + '; the run starts over')
     sys.exit(0)
 cost = (run.get('usage') or {}).get('cost_usd')

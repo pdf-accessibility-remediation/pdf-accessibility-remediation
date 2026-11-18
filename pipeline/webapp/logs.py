@@ -51,7 +51,9 @@ PLAIN = {'apply': 'applying the decisions',   # also a run with no review (revie
          'the previous attempt was stopped while its figure requests were being sent': 'resuming the figure requests',
          'previous attempt logged': 'starting a new AI request after the previous one'}
 SAVED_LANG = re.compile(r'^language tags: (?:saved decisions|this run\'s own decisions)')       # a replay: no request
-FIGURES = re.compile(r'^figure request (\d+)(?: of (\d+))?$')                                 # pass 2 is figure request 1
+FIGURES = re.compile(r'^figure request (\d+)(?: of (\d+))?$')         # older logs, one line per send: pass 2 is figure request 1
+FIGURES_DONE = re.compile(r'^figure requests: (\d+) of (\d+) done$')    # #135 (parallel requests): one line as sending starts and
+                                                                         # one as each request finishes, counting requests (not passes)
 NUMBERED = re.compile(r'^(\d+)[a-z]?/(\d+) ')               # 3/5, and 3b/5 or 3c/5 (the optional steps)
 
 AI_STEP = re.compile(r'^(\S+) via OpenRouter$')
@@ -63,6 +65,8 @@ def plain(label):
     "sending to the AI (Claude Sonnet 5.5)" (V2, Patrick 2026-11-07)."""
     bare = re.sub(r'\s*\((?:no model|local, no model|no cost)\)', '', NUMBERED.sub('', label)).strip()
     if SAVED_LANG.match(bare): return 'using the saved language tags (no AI request)'   # review 25, Low 1
+    d = FIGURES_DONE.match(bare)                       # read on the whole label: its count is after the colon (review 02 M4)
+    if d: return f'sending to the AI: figures, {d.group(1)} of {d.group(2)} done'
     core = bare.split(':')[0].strip()
     f = FIGURES.match(core)
     if f:                                              # "figure request 3 of 4" (passes) → "request 2 of 3" (figure requests)

@@ -44,6 +44,7 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | `LANG_GROUP=on` | Adjacent single Chinese characters become one word form for the language step and the review page (fewer rows). Off by default |
 | `LANG_READING_RULE=off` | Every word form in Chinese characters goes to the AI, even one with a reading printed beside every place (by default those are decided locally, #123; see [Language tags](#language-tags)) |
 | `LANG_REPLY=…` | A saved language reply (a `language_run.json`) to apply instead of a request; `FROM=` sets it per book |
+| `AI_PARALLEL=2` | How many AI requests one PDF sends at once, for its figure requests (default 4). `AI_PARALLEL=1` sends them one at a time, in order. In a batch it applies to each PDF (see [Batches](#batches)) |
 | `FIGURE_PASSES=off` | No figure requests: figures past the first request's 100 images go to a reviewer (see [Files](files.md)) |
 
 ## Untagged PDFs (intake)
@@ -60,6 +61,8 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | Before the command | Effect |
 |---|---|
 | `JOBS=1` | PDFs run at the same time (default 3). Use 1 after a rate limit (see [When the AI request fails](troubleshooting.md#when-the-ai-request-fails)) |
+
+`AI_PARALLEL` counts per PDF, so a batch can have `AI_PARALLEL` × `JOBS` requests out at once: 12 with the defaults (4 × 3). A request refused with "too many requests" (429) waits 60 s and is sent once more. If a batch still meets rate limits, rerun it with `JOBS=1` (the batch summary prints the command), or lower `AI_PARALLEL`.
 
 `BATCH_MAX_USD` and the other batch settings are explained in [Batch runs](batch-runs.md).
 

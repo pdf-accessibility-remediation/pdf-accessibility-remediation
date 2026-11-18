@@ -524,7 +524,18 @@ def test_steps_in_plain_words():
     assert len(words) == len(set(words)) and words[0] == 'starting from the reviewed decisions', words
     fig = logs.steps('▶ figure request 2 of 3: 40 figures\n▶ figure request 3 of 3: 12 figures\n▶ 5/5 report\n')
     assert [logs.plain(s['label']) for s in fig][:2] == ['sending to the AI: figures, request 1 of 2', 'sending to the AI: figures, request 2 of 2']
-    for s in logs.steps('▶ 0/5 intake\n▶ 1/5 audit (no model)\n▶ 2/5 veraPDF on the original\n▶ 3/5 decide\n▶ figure request 2 of 3\n'):
+    # #135 (parallel requests): figpasses.run prints one ▶ line as sending starts and one as each request finishes; the count
+    # is of figure requests (pass 2 is the first), finished ones, never a request still being sent (review 02 M4)
+    from lib import figpasses
+    lines = []
+    figpasses.run([{'pass': '2', 'items': [], 'body': {}, 'worst': 0.1, 'max_tokens': 10}, {'pass': '3', 'items': [], 'body': {}, 'worst': 0.1, 'max_tokens': 10}],
+                  lambda b: {'resp': {'choices': [{'message': {'content': '{}'}, 'finish_reason': 'stop'}], 'usage': {'cost': 0.01}}},
+                  figpasses.Budget(None, 0, {'2': 0.1, '3': 0.1}), say=lines.append, cap=1)
+    assert lines == ['▶ figure requests: 0 of 2 done', '▶ figure requests: 1 of 2 done', '▶ figure requests: 2 of 2 done']
+    fig = logs.steps(''.join(l + '\n' for l in lines) + '▶ 5/5 report\n')
+    assert [logs.plain(s['label']) for s in fig][:3] == ['sending to the AI: figures, 0 of 2 done', 'sending to the AI: figures, 1 of 2 done',
+                                                         'sending to the AI: figures, 2 of 2 done']
+    for s in logs.steps('▶ 0/5 intake\n▶ 1/5 audit (no model)\n▶ 2/5 veraPDF on the original\n▶ 3/5 decide\n▶ figure request 2 of 3\n▶ figure requests: 1 of 3 done\n'):
         w = logs.plain(s['label'] if isinstance(s, dict) else s)
         assert not re.search(r'\d/\d|OpenRouter', w), w
     assert "esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? 'Waiting for review' :" in src('webapp/panel.js')

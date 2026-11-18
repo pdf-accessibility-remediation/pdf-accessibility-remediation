@@ -164,13 +164,15 @@ def ok(text='```json\n{"alt": []}\n```', cost=0.01, finish='stop'):
 def req(k='2', worst=0.4): return {'pass': k, 'items': digest(3)['figures'], 'body': {}, 'worst': worst, 'max_tokens': 32000}
 def rq(k='2', worst=0.4, retry_worst=0.8): return dict(req(k, worst), retry_max_tokens=64000, retry_worst=retry_worst, body={'max_tokens': 32000, 'keep': True})
 
-def run_with(outs, cap=5.0, spent=0.0, reqs=None, retry_cap=None, call_cap=None, bodies=None):
+def run_with(outs, cap=5.0, spent=0.0, reqs=None, retry_cap=None, call_cap=None, bodies=None, parallel=None):
+    """parallel: AI_PARALLEL for this run (None: the setting, so the file runs at AI_PARALLEL=1 and at the default). The
+    replies come in call order, so a test with two requests pins parallel=1 (its outcome depends on which is sent first)."""
     reqs = reqs or [req()]; it = iter(outs); waits = []
-    b = F.Budget(cap, spent, [r['worst'] for r in reqs], retry_cap=retry_cap, call_cap=call_cap)
+    b = F.Budget(cap, spent, {r['pass']: r['worst'] for r in reqs}, retry_cap=retry_cap, call_cap=call_cap)
     def send(body):
         if bodies is not None: bodies.append(body)
         return next(it)
-    res = F.run(reqs, send, b, sleep=waits.append, say=lambda *a: None)
+    res = F.run(reqs, send, b, sleep=waits.append, say=lambda *a: None, cap=parallel)
     return res, b, waits
 
 def test_uncharged_429_is_retried_once_after_a_pause():
@@ -201,12 +203,12 @@ def test_the_room_for_the_retry_leaves_out_this_requests_own_plan(planned, limit
 def test_a_finished_requests_plan_is_freed_for_the_next_ones_retry():
     """1.12 − 0.31 spent − nothing still planned ≥ 0.80: it fits only because the first request's 0.40 was freed when it finished."""
     a, b_ = rq('2', worst=0.4), rq('3', worst=0.4)
-    res, _, _ = run_with([ok(cost=0.01), ok(finish='length', cost=0.3), ok()], reqs=[a, b_], retry_cap=1.12, call_cap=2)
+    res, _, _ = run_with([ok(cost=0.01), ok(finish='length', cost=0.3), ok()], reqs=[a, b_], retry_cap=1.12, call_cap=2, parallel=1)
     assert len(res[1]['calls']) == 2 and res[1]['outcome'] == 'done'
 
 def test_the_other_requests_plans_are_held_back():
     a, b_ = rq('2', worst=0.4), rq('3', worst=0.4)
-    res, _, _ = run_with([ok(finish='length', cost=0.3), ok(), ok()], reqs=[a, b_], retry_cap=1.1, call_cap=2)      # 1.1 - 0.3 - 0.4 = 0.4 < 0.8
+    res, _, _ = run_with([ok(finish='length', cost=0.3), ok(), ok()], reqs=[a, b_], retry_cap=1.1, call_cap=2, parallel=1)      # 1.1 - 0.3 - 0.4 = 0.4 < 0.8
     assert len(res[0]['calls']) == 1 and 'limit per PDF' in res[0]['reason']
 
 def test_the_retry_is_held_to_the_limit_per_ai_call():

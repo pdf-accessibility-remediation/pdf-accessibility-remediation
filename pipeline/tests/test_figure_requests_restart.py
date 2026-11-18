@@ -75,6 +75,20 @@ def test_a_stop_during_the_doubled_retry_keeps_the_paid_cut_off(book, tmp_path):
     assert e['spent_before_usd'] == 2.25 and e['max_tokens'] == 48000 and e['expected'] == {'none': 'cut_off'}     # 0.9 + 0.25 + 1.10; a figure request's cut-off doesn't double the work order
     assert costs.actual(str(R))['usd'] == 1.15
 
+def test_several_requests_in_flight_are_each_logged_at_their_worst_case(book, tmp_path):
+    """#135 (parallel requests), review 02 M3: decide.py's list of requests in flight, and those an interruption moved to
+    stopped_in_flight: a row each, a paid cut-off's known cost apart from its retry's worst case, the spend summed, the line
+    plural. The tests above keep the older single request's fields, which log_attempt still reads."""
+    R = stopped_folder(book, tmp_path, 'calling'); run = json.load(open(R / 'run.json'))
+    run['figure_passes']['in_flight'] = [{'pass': '3', 'worst_usd': 0.47}, {'pass': '4', 'paid_usd': 0.25, 'worst_usd': 1.1, 'cut_off': True}]
+    run['figure_passes']['stopped_in_flight'] = [{'pass': '5', 'worst_usd': 0.3, 'stopped': True}]
+    (R / 'run.json').write_text(json.dumps(run))
+    r = run_api(book[0], R, ESTIMATE=1); assert r.returncode == 0, r.stdout + r.stderr
+    assert '$1.150 it spent on 2 request(s) is logged (and 3 requests were in flight; their charges are not known)' in r.stdout, r.stdout
+    rows = [(a['pass'], a['cost_usd'], a.get('worst_usd')) for a in json.load(open(R / 'attempts.json'))]
+    assert rows == [('1', 0.5, None), ('2', 0.4, None), ('3', None, 0.47), ('4', 0.25, None), ('4', None, 1.1), ('5', None, 0.3)]
+    assert json.load(open(R / 'run.json'))['estimate']['spent_before_usd'] == 3.02    # 0.9 + 0.25 known; 0.47 + 1.1 + 0.3 not known
+
 def test_a_finished_request_with_a_cut_off_call_is_logged_as_cut_off(book, tmp_path):
     R = stopped_folder(book, tmp_path, 'calling'); run = json.load(open(R / 'run.json'))
     run['passes'][1]['calls'] = [{'finish_reason': 'length'}, {'finish_reason': 'stop', 'doubled': True}]

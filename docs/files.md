@@ -317,6 +317,12 @@ When it can't, the OCR word sheets are reserved first, the figures fill the rest
 
 A PDF whose images fit by count but not within 20 MB keeps one request: the figures are made one step smaller so that every sheet goes, and there is no note.
 
+### Sending
+
+**Figure requests go out several at a time:** up to `AI_PARALLEL` at once (default 4, per PDF; see [Options](options.md#model-and-cost)). `AI_PARALLEL=1` sends them one after another, in their order, as before. Their answers are stored in request order, whatever order they come back in. The log prints one line as sending starts and one each time a request finishes ("▶ figure requests: 2 of 4 done"); the app shows it as "sending to the AI: figures, 2 of 4 done".
+
+**An interruption** (Ctrl+C in a terminal run, or an error while the requests are out) sends nothing more: no waiting request starts, and the run does not wait for the requests already sent. Those requests may still be charged. Each one is recorded at its worst case, since its charge isn't known, and the rerun counts it toward the limit per PDF. So an interruption can cost what the requests already sent cost, at most their worst cases.
+
 ### Retries
 
 **One retry:** a figure request that fails without being charged (OpenRouter 429 or 5xx, no connection) is sent once more after a pause: 60 s after a 429, 20 s otherwise. So is one whose reply could not be read, or that got no reply in time, when the PDF's limit still has room for it. A request that still fails leaves its figures to a reviewer, as one deferral ("Alt text for N figures"), and the run goes on; its cost is recorded.
@@ -339,7 +345,7 @@ Expected cost: about $0.002–0.003 per figure, plus about $0.05 per request. Th
 
 ### Records, replays and settings
 
-- **Records:** `run.usage` and `cost_total_usd` are the sum of every request. `run.passes` lists each request with its figures, usage, time and outcome; `run.figure_passes` sums them up; `raw_reply_passes` holds each figure request's answer and the figures it was written for (see [Output files](output-files.md)). review.md lists the requests under the run line, with a check row "Figure requests: every figure seen by the AI".
+- **Records:** `run.usage` and `cost_total_usd` are the sum of every request. `run.passes` lists each request with its figures, usage, time and outcome; `run.figure_passes` sums them up, and while requests are being sent `run.figure_passes.in_flight` lists each one (`pass`, `worst_usd`, and after a cut-off or an unreadable reply `paid_usd` and `cut_off`), moved to `stopped_in_flight` by an interruption; `raw_reply_passes` holds each figure request's answer and the figures it was written for (see [Output files](output-files.md)). review.md lists the requests under the run line, with a check row "Figure requests: every figure seen by the AI".
 - **Replays** (`FROM=`, `REPLY=`, "Review Again") use the recorded split, never a new one, and make no call. A saved reply made with figure requests needs its answers file (`reply.txt.passes.json`) beside it; without it, the replay stops. Older single replies replay exactly as before.
 - **`FIGURE_PASSES=off`** sends one request as before: figures past 100 go to a reviewer, listed in the review under the AI's deferrals.
 - **With `REVIEW=1`,** every alt text is a decision on the review page, whichever request wrote it, and every figure left without alt text is a gap at Finish (see [Gaps](review-page.md#gaps)).
