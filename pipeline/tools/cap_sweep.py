@@ -6,9 +6,10 @@ PAID unless --dry-run: it sends a finished run's saved language requests again, 
 
 FOLDER: a finished run folder with language_requests/NNN.request.json and record.json (its language_run). Each file is
 sent as saved (it already carries provider data_collection deny; a file without it is refused, nothing sent), with
-the language step's own retry rule: once more after 60 s for a 429, 20 s otherwise, when its worst case still fits the
-limit (LANGUAGE_MAX_USD, default 6: checked before anything is sent, and each retry reserved against it, as the step
-does). A reply cut off is recorded, not resent: the step's resend of a cut-off reply's undecided forms needs the book's
+the language step's own retry rule: once more after 60 s for a 429, 20 s otherwise (a failure, or a reply with no
+decision that can be read), when its worst case still fits the limit (LANGUAGE_MAX_USD, default 6: checked before
+anything is sent, and each retry reserved against it, as the step does; the per-PDF limit is not checked, since nothing
+else of the book is sent). A reply cut off is recorded, not resent: the step's resend of a cut-off reply's undecided forms needs the book's
 own forms, which this tool doesn't build.
 
 Several folders: each folder is one PDF with its own runner at the cap, all side by side, as a batch's JOBS run them
@@ -144,7 +145,9 @@ def run_one(p, cap, budget_limit, sender, out_dir, say, watch):
     os.makedirs(os.path.join(out_dir, 'replies', p['name']), exist_ok=True)
     def job(item):
         n, path, raw, body = item; log = []
-        r = aisend.call(lambda b: sender(raw, log), body, n, p['worst'][n], budget, label=f'{p["name"]} request {n}', say=say)
+        ids = {it['id'] for it in json.loads(body['messages'][1]['content'])['items']}
+        r = aisend.call(lambda b: sender(raw, log), body, n, p['worst'][n], budget, label=f'{p["name"]} request {n}', say=say,
+                        readable=lambda text: not any(e.get('code') == 'unreadable' for e in langreq.parse(text, ids)[1]))   # as the step reads it
         f = r['final']
         for c, row in zip(r['calls'], log):
             if c.get('why'): row['why'] = c['why']
