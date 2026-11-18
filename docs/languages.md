@@ -52,7 +52,9 @@ approved.
    A decision's tag must be one the pipeline can name (`lib/langtag.py` `NAMES`): every tag the prompt asks for is
    there (a test checks it), as are romanized Ancient Greek (`grc-Latn`) and Tok Pisin (`tpi`), added after the AI gave
    them with good reason (#137), and Javanese (`jv`) and Anindilyakwa (`aoi`), whose words the finder's line-end join
-   gives back (#140); a tag outside the table is not used, and its word goes to a person.
+   gives back (#140); a tag outside the table is not used, and its word goes to a person. As with every language in the
+   table, a publisher's `/Lang` that names Javanese or Anindilyakwa ("Javanese") is now written by the executor as `jv`
+   or `aoi` when its words fit, and the three-letter `jav` is shortened to `jv`.
    Each decision echoes its word form, as a guard against an answer landing on the wrong word. A request shows a form
    twice: cleaned in its item ("Tenpyō hōji ninen Naishōsen") and as printed where it is marked in the text
    ("Tenpyō hōji ninen: Naishōsen", or one line's half of a word broken at a line end), and the AI sometimes copies the
