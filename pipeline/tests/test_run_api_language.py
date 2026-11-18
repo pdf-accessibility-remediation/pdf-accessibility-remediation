@@ -114,3 +114,19 @@ def test_not_applicable_only_when_counted_and_none_and_not_checked_otherwise(tmp
     assert r2.returncode == 0, r2.stdout[-2000:] + r2.stderr[-2000:]
     assert json.load(open(R / 'record.json'))['language_status'] == {'candidates': None, 'state': 'off'}
     assert line_of(R) == '- Language Tags: Not Done (not checked)'
+
+def test_review_md_names_a_charge_not_known_apart_from_the_cost(tmp_path):
+    """#135 (parallel requests), review 02 M2: a language request an interruption left in flight counts at its worst case
+    toward the limit; review.md's run line names it apart, never as money spent."""
+    r, R = run_api(tmp_path, runs=[{'lang': 'en-US', 'text': 'Plain English text stays as it is.'}], LANG_TAGS='off', KEEP='1')
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    (R / 'language_run.json').write_text(json.dumps({'schema': 'language-run/1', 'requests': [], 'decisions': {}, 'cost_usd': 0.25,
+                                                     'stopped_in_flight': [{'n': 2, 'worst_usd': 0.5, 'stopped': True}]}))
+    pdf = next(p for p in R.glob('*_remediated.pdf'))
+    r2 = subprocess.run([sys.executable, 'report.py', str(R), str(R / '_audit'), f'--pdf={pdf}', f'--input={tmp_path / "book.pdf"}', '--lang-tags=off', '--keep'],
+                        cwd=HERE, env=dict(os.environ, VERAPDF='off'), capture_output=True, text=True, timeout=300)
+    assert r2.returncode == 0, r2.stdout[-2000:] + r2.stderr[-2000:]
+    md = open(R / 'review.md', encoding='utf-8').read(); rec = json.load(open(R / 'record.json'))
+    assert ' · up to $0.500 more for 1 AI request(s) of the language step or the page readings whose charge is not known' in md
+    assert rec['language_run']['stopped_in_flight'][0]['worst_usd'] == 0.5
+    assert round(rec['cost_total_usd'] - ((rec['run'].get('usage') or {}).get('cost_usd') or 0), 6) == 0.25        # the known cost only
