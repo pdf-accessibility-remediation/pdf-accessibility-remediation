@@ -63,7 +63,10 @@ approved.
    A collection code (`btk`, "Batak languages") is no language and stays refused. A `-Latn` the registry calls
    redundant for that language (its Suppress-Script is Latn: `ms-Latn`, `vi-Latn`, `tl-Latn`) is left out, so
    `ms-Latn` is written `ms`. A romanization keeps it (`ja-Latn`), and so does a language with no Suppress-Script:
-   Javanese is also written in its own script, so `jv-Latn` stays as written ("Javanese (Latin script)").
+   Javanese is also written in its own script, so `jv-Latn` stays as written ("Javanese (Latin script)"). As for
+   Javanese and Anindilyakwa, a publisher's `/Lang` that names one of these languages ("Central Bikol", "Balinese",
+   "Kazakh", …) is now written by the executor as its code when its words fit. A book may show both "Bikol" and
+   "Central Bikol": a specific language is never mapped to its macrolanguage, so the AI's `bik` and `bcl` stay apart.
    Each decision echoes its word form, as a guard against an answer landing on the wrong word. A request shows a form
    twice: cleaned in its item ("Tenpyō hōji ninen Naishōsen") and as printed where it is marked in the text
    ("Tenpyō hōji ninen: Naishōsen", or one line's half of a word broken at a line end), and the AI sometimes copies the
