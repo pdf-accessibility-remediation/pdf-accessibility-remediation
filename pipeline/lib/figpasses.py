@@ -278,7 +278,7 @@ def one(send, req, budget, sleep, say):
             res['reason'] = why + '; not retried: the book cap had no room left'; break
         retried = True
         if req.get('on_retry'): req['on_retry'](req, known, unknown + worst, cut_off(res))
-        wait = PAUSE.get(str(out.get('code') or ''), 20)
+        wait = PAUSE.get(str((call.get('error') or {}).get('code') or out.get('code') or ''), 20)   # an in-reply 429 waits 60 s too (aisend.call)
         say(f'  figure request {req["pass"]}: {why}; trying once more in {wait} s'); sleep(wait)
     if doubled:
         last = res['calls'][-1]

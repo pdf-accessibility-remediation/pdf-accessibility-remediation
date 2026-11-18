@@ -184,6 +184,13 @@ def test_a_reply_that_reports_an_error_is_retried_and_never_an_answer():
     res, _, waits = run_with([bad, bad])
     assert res[0]['outcome'] == 'failed' and waits == [20] and len(res[0]['calls']) == 2 and res[0]['calls'][0]['error']['code'] == 'error'
 
+def test_a_429_inside_a_200_reply_waits_60_s_as_one_from_the_server():
+    """review 20 L2: the wait comes from the recorded error code, so a "too many requests" inside the reply waits 60 s."""
+    inner = {'resp': {'choices': [{'message': {'content': ''}, 'finish_reason': 'error'}], 'error': {'code': 429, 'message': 'busy'},
+                      'usage': {'prompt_tokens': 10, 'completion_tokens': 0, 'cost': 0}}, 'seconds': 1.0}
+    res, _, waits = run_with([inner, ok()])
+    assert waits == [60] and res[0]['outcome'] == 'done' and res[0]['calls'][0]['error']['code'] == '429'
+
 def test_two_failures_give_a_failed_request_with_its_reason():
     res, _, _ = run_with([{'resp': None, 'code': 429}, {'resp': None, 'code': 429}])
     assert res[0]['outcome'] == 'failed' and res[0]['reason'] == 'OpenRouter 429, twice'
