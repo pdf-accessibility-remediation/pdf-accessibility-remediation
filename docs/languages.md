@@ -175,11 +175,11 @@ or passes its own limit, it alone is left out and the PDF goes on without langua
 ### Sending, retries and interruptions
 
 #135 (parallel requests):
-- **Several requests at once:** up to `AI_PARALLEL` (default 8, per PDF; see [Options](options.md#model-and-cost)).
+- **Several requests at once:** up to `AI_PARALLEL` (default 16, per PDF; see [Options](options.md#model-and-cost)).
   `AI_PARALLEL=1` sends them one after another, in order. The replies are kept in request order, whatever order they
   come back in. The log prints one line per request as it finishes ("request 3 of 15: …, done in 41 s (5 of 15 done)").
-- **One retry:** a request that fails (an error from OpenRouter, no connection, no reply in time, or a reply with no
-  decisions that can be read) is sent once more, 60 s after "too many requests" (429) and 20 s after anything else. It is
+- **One retry:** a request that fails (an error from OpenRouter, no connection, no reply in time, a reply that reports an
+  error (`finish_reason` "error", or an error object beside its answer), or a reply with no decisions that can be read) is sent once more, 60 s after "too many requests" (429) and 20 s after anything else. It is
   sent only when its worst case still fits both the step's limit (`LANGUAGE_MAX_USD`) and the PDF's (`BOOK_MAX_USD`, with
   what the PDF has spent); otherwise the record says which limit had no room. A request that still fails leaves its word
   forms to a person ("No AI answer", `failed`).

@@ -179,6 +179,11 @@ def test_uncharged_429_is_retried_once_after_a_pause():
     res, b, waits = run_with([{'resp': None, 'code': 429, 'message': 'rate limited'}, ok()])
     assert res[0]['outcome'] == 'done' and waits == [60] and len(res[0]['calls']) == 2 and b.spent == pytest.approx(0.01)
 
+def test_a_reply_that_reports_an_error_is_retried_and_never_an_answer():
+    bad = ok(text='```json\n{"alt": []}\n```', finish='error')
+    res, _, waits = run_with([bad, bad])
+    assert res[0]['outcome'] == 'failed' and waits == [20] and len(res[0]['calls']) == 2 and res[0]['calls'][0]['error']['code'] == 'error'
+
 def test_two_failures_give_a_failed_request_with_its_reason():
     res, _, _ = run_with([{'resp': None, 'code': 429}, {'resp': None, 'code': 429}])
     assert res[0]['outcome'] == 'failed' and res[0]['reason'] == 'OpenRouter 429, twice'

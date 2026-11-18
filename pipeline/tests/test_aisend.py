@@ -200,3 +200,14 @@ def test_on_retry_reports_what_a_stop_must_count():
     seen = []
     call([reply('nope', cost=0.3), reply()], readable=lambda t: t.startswith('{'), on_retry=lambda k, known, worst: seen.append((k, known, worst)))
     assert seen == [('r', pytest.approx(0.3), 0.5)]
+
+@pytest.mark.parametrize('resp', [
+    {'choices': [{'message': {'content': ''}, 'finish_reason': 'error'}], 'usage': {'cost': 0}},
+    {'choices': [{'message': {'content': '{"a": 1}'}, 'finish_reason': 'stop'}], 'error': {'code': 502, 'message': 'provider failed'}},
+    {'choices': [{'message': {'content': ''}, 'finish_reason': 'stop', 'error': {'code': 'server_error', 'message': 'x'}}]}])
+def test_a_200_reply_that_reports_an_error_is_a_failure_never_an_answer(resp):
+    """round 11: finish_reason "error", or an error object beside or inside the choices: retried once, then recorded as
+    failed, with its code."""
+    r, _, waits, sent = call([{'resp': resp, 'seconds': 1.0}, {'resp': resp, 'seconds': 1.0}])
+    assert len(sent) == 2 and waits == [20] and all('error' in c for c in r['calls']) and 'finish' not in r['final']
+    assert aisend.failed_reply(resp) is not None and aisend.failed_reply(reply()['resp']) is None

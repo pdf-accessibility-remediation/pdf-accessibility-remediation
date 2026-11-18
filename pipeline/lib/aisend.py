@@ -169,14 +169,25 @@ def openrouter(api_key, timeout):
             return {'resp': None, 'code': 'network', 'message': str(e)[:300], 'seconds': round(time.time() - t0, 1)}
     return send
 
+def failed_reply(resp):
+    """A 200 reply that is a failure, never an answer: an error object beside the choices, one inside the first choice,
+    or finish_reason "error" (OpenRouter's word for a provider failing mid-reply). Returns {code, message}, or None."""
+    if not isinstance(resp, dict) or not resp.get('choices'): return None
+    ch = resp['choices'][0] if isinstance(resp['choices'][0], dict) else {}
+    er = resp.get('error') or ch.get('error')
+    if er or ch.get('finish_reason') == 'error':
+        er = er if isinstance(er, dict) else {'message': str(er or '')}
+        return {'code': str(er.get('code') or 'error'), 'message': str(er.get('message') or 'the AI service reported an error in its reply')}
+    return None
+
 def _read_call(out, worst):
     """One call's outcome: {usage, cost, finish, text, error?, worst_usd?} from a send() result."""
     resp = out.get('resp'); u = (resp or {}).get('usage') or {}
     c = {'seconds': out.get('seconds'), 'cost': u.get('cost'), 'input_tokens': u.get('prompt_tokens'), 'output_tokens': u.get('completion_tokens')}
     if out.get('timeout'):
         c.update(error={'code': 'timeout', 'message': 'no reply in time; any charge is not known'}, worst_usd=round(worst, 4)); return c
-    if resp is None or not (resp.get('choices') or []):
-        er = (resp or {}).get('error') or {}
+    if resp is None or not (resp.get('choices') or []) or failed_reply(resp):
+        er = failed_reply(resp) or (resp or {}).get('error') or {}
         c['error'] = {'code': str(out.get('code') or er.get('code') or '?'), 'message': str(out.get('message') or er.get('message') or '')[:300]}
         return c
     ch = resp['choices'][0]; text = (ch.get('message') or {}).get('content') or ''

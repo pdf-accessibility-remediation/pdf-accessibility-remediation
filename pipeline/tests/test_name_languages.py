@@ -322,3 +322,12 @@ def test_each_request_records_when_it_was_sent_and_finished(tmp_path, monkeypatc
     run(src, A, R, monkeypatch)
     x, = load(R / 'language_run.json')['requests']
     assert t0 - 0.001 <= x['sent_at'] <= x['finished_at'] <= time.time() + 0.001     # rounded to ms
+
+def test_a_reply_that_reports_an_error_leaves_its_forms_failed(tmp_path, monkeypatch):
+    """round 11: a 200 reply with finish_reason "error" is a failed request (sent once more, then recorded with its error),
+    so its forms read "failed", never "invalid"."""
+    src, A, R = folders(tmp_path); monkeypatch.setattr('time.sleep', lambda s: None)
+    calls = run(src, A, R, monkeypatch, reply=lambda b, n: answer(items_of(b), text='', finish='error'))
+    x, = load(R / 'language_run.json')['requests']
+    assert len(calls) == 2 and x['error']['code'] == 'error' and 'text' not in x
+    assert {f.get('no_answer') for f in load(R / 'workorder.json')['language_parts']['forms']} == {'failed'}

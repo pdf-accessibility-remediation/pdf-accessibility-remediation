@@ -245,8 +245,8 @@ def one(send, req, budget, sleep, say):
             call['error'] = {'code': 'timeout', 'message': 'no reply in time; any charge is not known'}
             call['worst_usd'] = round(worst, 4)           # what a restart counts toward the book cap for it
             budget.charge(worst); unknown += worst; why = 'no reply in time'; retry = True
-        elif resp is None or 'choices' not in resp:
-            er = (resp or {}).get('error') or {}
+        elif resp is None or 'choices' not in resp or aisend.failed_reply(resp):
+            er = aisend.failed_reply(resp) or (resp or {}).get('error') or {}
             code = str(out.get('code') or er.get('code') or '?'); call['error'] = {'code': code, 'message': (out.get('message') or er.get('message') or '')[:300]}
             why = f'OpenRouter {code}' if code != 'network' else 'OpenRouter could not be reached'; retry = True
         else:
