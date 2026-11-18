@@ -48,7 +48,29 @@ NAMES = {'en': 'English', 'fr': 'French', 'de': 'German', 'es': 'Spanish', 'pt':
          'yue-Latn': 'Cantonese (Romanized)', 'grc-Latn': 'Ancient Greek (Romanized)', 'tpi': 'Tok Pisin',
          # #137, #140: words the stricter line-end join gives back as candidates (Javanese on performing, Anindilyakwa on translation)
          'jv': 'Javanese', 'aoi': 'Anindilyakwa',
+         # #137, round 11: languages the AI named in the 27 reference books' answers (3 or more word forms each) and the
+         # table lacked, each checked in the IANA language subtag registry (File-Date 2026-09-17). A specific language
+         # stays itself, never its macrolanguage (bcl is Central Bikol, not bik). Not added: btk, a collection code
+         # ("Batak languages"), not a language.
+         'bcl': 'Central Bikol', 'ban': 'Balinese', 'su': 'Sundanese', 'min': 'Minangkabau', 'aly': 'Alyawarr',
+         'bbc': 'Batak Toba', 'mak': 'Makasar', 'rar': 'Rarotongan', 'ks': 'Kashmiri', 'kk': 'Kazakh',
+         'jv-Latn': 'Javanese (Latin script)',            # jv has no Suppress-Script (it has its own script too): kept as written
+         'ryu-Latn': 'Okinawan (Romanized)', 'bo-Latn': 'Tibetan (Romanized)', 'hi-Latn': 'Hindi (Romanized)',
+         'ar-Latn': 'Arabic (Romanized)', 'ks-Latn': 'Kashmiri (Romanized)', 'kk-Latn': 'Kazakh (Romanized)',
          'qaa': 'Placeholder (local use)'}
+
+# The table's languages whose Suppress-Script in the IANA registry is Latn (File-Date 2026-09-17): for them a "-Latn"
+# script subtag says nothing (BCP 47 says to leave it out), so "ms-Latn" is read as "ms" (#137, round 11). Romanizations of
+# languages written in another script keep it (ja-Latn, bo-Latn, ryu-Latn), as does a language with no Suppress-Script.
+SUPPRESS_LATN = {'ch', 'cs', 'da', 'de', 'en', 'es', 'fi', 'fj', 'fr', 'hu', 'id', 'it', 'la', 'mh', 'ms', 'nl', 'no', 'pl',
+                 'pt', 'sm', 'sv', 'tl', 'to', 'tpi', 'tr', 'vi'}
+
+def without_suppressed_script(tag):
+    """'ms-Latn' → 'ms' (the script the registry suppresses for that language); any other value unchanged."""
+    if isinstance(tag, str):
+        parts = tag.split('-')
+        if len(parts) == 2 and parts[1] == 'Latn' and parts[0] in SUPPRESS_LATN: return parts[0]
+    return tag
 
 # ISO 639-2 three-letter codes whose language has a two-letter ISO 639-1 code: BCP 47 uses the shortest (jpn → ja). The
 # languages above and their neighbours; a three-letter code not listed here is left as it is (haw, chk, pon have no

@@ -428,3 +428,17 @@ def test_refused_whole_run_records_its_words(tmp_path):
     t = 'The city of Heiankyo was the capital.'
     src, out, log, v = apply_verify(tmp_path, [{'text': t, 'actual_text': t.replace('Heiankyo', 'Heian-kyo')}], [part(1, 0, 0, len(t) - 1, 'ja-Latn')])
     assert log['language_parts']['refused_places'] == [{'page': 1, 'mcid': 0, 'why': 'under an element with its own spoken or alt text', 'text': t, 'lang': 'ja-Latn'}]
+
+def test_the_new_language_tags_are_written_and_checked(tmp_path):
+    """#137, round 11: tags added to the table (Central Bikol, Balinese, Javanese in Latin script) go through the work-order
+    check, apply.py writes them and verify.py finds each where it was put; the review page names them (no code alone)."""
+    from lib import langtag
+    runs = [{'lang': 'en-US', 'text': 'The word maray means good.'}, {'lang': 'en-US', 'text': 'They sang kidung and tembang.'}]
+    parts = [part(1, 0, 9, 14, 'bcl'), part(1, 1, 9, 15, 'ban'), part(1, 1, 20, 27, 'jv-Latn')]
+    tmp = {'language_parts': {'parts': parts}}; dropped = workorder_check.check_language_parts(tmp, 10)
+    assert dropped == [] and len(tmp['language_parts']['parts']) == 3
+    src, out, log, v = apply_verify(tmp_path, runs, parts)
+    lp = log['language_parts']; lg = v['language']
+    assert not lp['refused'] and sorted(s['lang'] for s in lp['spans']) == ['ban', 'bcl', 'jv-Latn'], lp
+    assert lg['spans_written'] == 3 and lg['all_match'], lg
+    assert [langtag.name(t) for t in ('bcl', 'ban', 'jv-Latn')] == ['Central Bikol', 'Balinese', 'Javanese (Latin script)']

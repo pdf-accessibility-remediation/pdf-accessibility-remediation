@@ -55,6 +55,15 @@ approved.
    gives back (#140); a tag outside the table is not used, and its word goes to a person. As with every language in the
    table, a publisher's `/Lang` that names Javanese or Anindilyakwa ("Javanese") is now written by the executor as `jv`
    or `aoi` when its words fit, and the three-letter `jav` is shortened to `jv`.
+   The languages the AI named in the 27 reference books' answers (round 11 of #137, three or more word forms each) are
+   in the table too, each checked in the IANA language subtag registry: Central Bikol (`bcl`), Balinese (`ban`),
+   Sundanese (`su`), Minangkabau (`min`), Alyawarr (`aly`), Batak Toba (`bbc`), Makasar (`mak`), Rarotongan (`rar`),
+   Kashmiri (`ks`), Kazakh (`kk`), and the romanizations `ryu-Latn`, `bo-Latn`, `hi-Latn`, `ar-Latn`, `ks-Latn`,
+   `kk-Latn`. A specific language is written as itself, never as its macrolanguage: Central Bikol is `bcl`, not `bik`.
+   A collection code (`btk`, "Batak languages") is no language and stays refused. A `-Latn` the registry calls
+   redundant for that language (its Suppress-Script is Latn: `ms-Latn`, `vi-Latn`, `tl-Latn`) is left out, so
+   `ms-Latn` is written `ms`. A romanization keeps it (`ja-Latn`), and so does a language with no Suppress-Script:
+   Javanese is also written in its own script, so `jv-Latn` stays as written ("Javanese (Latin script)").
    Each decision echoes its word form, as a guard against an answer landing on the wrong word. A request shows a form
    twice: cleaned in its item ("Tenpyō hōji ninen Naishōsen") and as printed where it is marked in the text
    ("Tenpyō hōji ninen: Naishōsen", or one line's half of a word broken at a line end), and the AI sometimes copies the

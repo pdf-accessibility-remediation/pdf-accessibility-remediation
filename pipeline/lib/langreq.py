@@ -326,7 +326,7 @@ def parse(text, ids, forms=None, marks=None):
     for d in data['decisions']:
         if not isinstance(d, dict): drop(None, 'invalid', 'not an object'); continue
         i = str(d.get('id'))
-        lang = d.get('lang'); conf = d.get('confidence'); why = d.get('why')
+        lang = langtag.without_suppressed_script(d.get('lang')); conf = d.get('confidence'); why = d.get('why')   # 'ms-Latn' → 'ms' (#137)
         if i not in ids: drop(i, 'unknown_id', 'unknown id', d); continue
         if i in out: drop(i, 'twice', 'answered twice', d); continue
         if forms and 'form' in d and not echo_ok(d['form'], i, forms, owners):     # the form echo (review 06, L1): an id off by one
