@@ -184,20 +184,20 @@ def _read_call(out, worst):
     c.update(finish=ch.get('finish_reason'), text=text)
     return c
 
-def call(send, body, key, worst, budget, *, label, say=print, sleep=None, readable=None, names=None, on_retry=None):
+def call(send, body, key, worst, budget, *, label, say=print, sleep=None, readable=None, names=None, on_retry=None, retry=True):
     """Send body (key: its reservation in budget, reserved before the call by the step's up-front check); once more after a
     failure or an unreadable reply (readable(text) False), after pause(), when budget.try_reserve has room for `worst`
     under every named limit. Each call settles its reservation once: its reported cost, or its worst case when its charge
     is not known (no reply in time). Returns {'calls': [...], 'final': the last call, 'cost_usd': known cost,
-    'worst_usd': unknown charges at their worst case}."""
+    'worst_usd': unknown charges at their worst case}. retry=False: one call, never sent again (a doubled retry)."""
     sleep = sleep or time.sleep; calls = []; known = unknown = 0.0
-    for attempt in (1, 2):
+    for attempt in ((1, 2) if retry else (1,)):
         c = _read_call(send(body), worst); c['attempt'] = attempt
         if c.get('worst_usd'): unknown += worst; budget.settle(key, worst)
         else: known += float(c.get('cost') or 0); budget.settle(key, c.get('cost'))
         calls.append(c)
         failed = 'error' in c or (c.get('finish') != 'length' and readable is not None and not readable(c.get('text') or ''))
-        if not failed or attempt == 2: break
+        if not failed or attempt == 2 or not retry: break
         why = (c['error']['message'] or f'OpenRouter {c["error"]["code"]}') if 'error' in c else 'the reply could not be read'
         ok, no = budget.try_reserve(key, worst, names)
         if not ok:

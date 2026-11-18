@@ -6,7 +6,7 @@ expected cost): paid money counted at every stage and once, the per-PDF limit on
 
 Synthetic files only. read_pages.py runs in this process against a fake OpenRouter (urlopen replaced, the key a dummy).
 """
-import json, os, runpy, sys, urllib.request
+import base64, io, json, os, runpy, sys, urllib.request
 import pytest
 from PIL import Image
 
@@ -42,10 +42,19 @@ def audit_with_pages(tmp_path, n=2):
     return A
 
 LAST = {}
-def read(A, R, monkeypatch, *args, finish=lambda page: 'stop', cost=0.01, ledger=None):
-    """read_pages.py as run_api.sh calls it. Returns the bodies of the AI requests it made."""
+def page_of(body):
+    """The page a request reads: audit_with_pages draws page i's image in colour (i, 10, 10). The pages go out
+    AI_PARALLEL at a time (#135 (parallel requests)), so a reply is chosen by its page, never by the order of the calls."""
+    url = body['messages'][0]['content'][0]['image_url']['url']
+    return Image.open(io.BytesIO(base64.b64decode(url.split(',', 1)[1]))).getpixel((0, 0))[0]
+
+def read(A, R, monkeypatch, *args, finish=lambda page: 'stop', cost=0.01, ledger=None, doubled=None):
+    """read_pages.py as run_api.sh calls it. Returns the bodies of the AI requests it made. finish(page): how the reply
+    for that page ends; doubled(page): how its retry with twice the room ends (default: as finish says)."""
     calls = []
-    def reply(body, n): return {'choices': [{'message': {'content': 'He mau hua ʻōlelo.'}, 'finish_reason': finish(n)}], 'usage': {'prompt_tokens': 1000, 'completion_tokens': 2500, 'cost': cost}}
+    def reply(body, n):
+        p = page_of(body); f = (doubled or finish)(p) if body['max_tokens'] > 8000 else finish(p)
+        return {'choices': [{'message': {'content': 'He mau hua ʻōlelo.'}, 'finish_reason': f}], 'usage': {'prompt_tokens': 1000, 'completion_tokens': 2500, 'cost': cost}}
     monkeypatch.setattr(urllib.request, 'urlopen', fake(calls, reply))
     monkeypatch.setenv('OPENROUTER_API_KEY', 'test-not-a-key')
     if ledger is not None: monkeypatch.setenv('COST_HISTORY', str(ledger))
@@ -113,17 +122,66 @@ def test_an_estimate_with_no_stored_sum_counts_the_pages_too(tmp_path):
 
 # ------------------------------------------------------------------ read_pages.py
 def test_a_page_read_before_is_not_paid_or_counted_twice(tmp_path, monkeypatch):
+    """Page 2 is cut off, and cut off again with twice the room (#135 (parallel requests), L5): both calls paid, in one
+    entry, the reading not used. A rerun reads page 2 again; a third reuses everything, and every charge stays."""
     A, R, L = audit_with_pages(tmp_path), tmp_path / 'r', tmp_path / 'ledger.jsonl'
-    assert len(read(A, R, monkeypatch, ledger=L, finish=lambda n: 'length' if n == 2 else 'stop')) == 2      # page 2 is cut off: paid, not used
-    assert load(R / 'page_reads_run.json')['cost_usd'] == 0.02
+    calls = read(A, R, monkeypatch, ledger=L, finish=lambda p: 'length' if p == 2 else 'stop')
+    assert sorted(json.loads(c)['max_tokens'] for c in calls) == [8000, 8000, 16000]                         # page 2 once more, twice the room
+    pr = load(R / 'page_reads_run.json'); e = next(x for x in pr['pages'] if x['page'] == 2)
+    assert pr['cost_usd'] == 0.03 and [x['page'] for x in pr['pages']] == [1, 2] and e['cost_usd'] == 0.02 and e['finish'] == 'length'
+    assert e['cut_off_retry'] == {'max_tokens': 16000, 'cost_usd': 0.01, 'outcome': 'failed'} and 'in_flight' not in pr
     assert len(read(A, R, monkeypatch, ledger=L)) == 1                                                       # page 2 read again
-    assert load(R / 'page_reads_run.json')['cost_usd'] == 0.03
-    assert len(read(A, R, monkeypatch, ledger=L)) == 0                                                       # all reused: the cut-off's charge is still there
-    assert load(R / 'page_reads_run.json')['cost_usd'] == 0.03 and C.pages_paid(str(R)) == 0.03
+    assert load(R / 'page_reads_run.json')['cost_usd'] == 0.04
+    assert len(read(A, R, monkeypatch, ledger=L)) == 0                                                       # all reused: the cut-offs' charges are still there
+    assert load(R / 'page_reads_run.json')['cost_usd'] == 0.04 and C.pages_paid(str(R)) == 0.04
+
+def test_a_cut_off_page_is_read_with_twice_the_room_and_used(tmp_path, monkeypatch):
+    A, R = audit_with_pages(tmp_path), tmp_path / 'r'; R.mkdir(); w(R / 'workorder.json', {})
+    read(A, R, monkeypatch, finish=lambda p: 'length' if p == 2 else 'stop', doubled=lambda p: 'stop')
+    e = next(x for x in load(R / 'page_reads_run.json')['pages'] if x['page'] == 2)
+    assert e['finish'] == 'stop' and e['cost_usd'] == 0.02 and e['cut_off_retry']['outcome'] == 'done' and [c['attempt'] for c in e['calls']] == [1, 2]
+    assert sorted(x['page'] for x in load(R / 'workorder.json')['page_readings']) == [1, 2]          # one reading per page
+
+def test_the_doubled_room_is_held_to_the_model_and_the_limits(tmp_path, monkeypatch):
+    """L5: twice --max-tokens up to the model's output limit, and only when that worst case fits the step's limit and the
+    PDF's, reserved in one step; otherwise the reason says which."""
+    A, R = audit_with_pages(tmp_path, n=1), tmp_path / 'r'
+    calls = read(A, R, monkeypatch, '--max-tokens', '128000', finish=lambda p: 'length')
+    e = load(R / 'page_reads_run.json')['pages'][0]
+    assert len(calls) == 1 and 'not sent again: the model gives no more than 128,000 output tokens' in e['calls'][0]['why']
+    R2 = tmp_path / 'r2'; worst = 0.0
+    read(A, R2, monkeypatch, '--dry-run'); worst = load(R2 / 'page_reads_estimate.json')['worst_case_usd']
+    calls = read(A, R2, monkeypatch, '--max-usd', str(worst + 0.01), finish=lambda p: 'length')
+    assert len(calls) == 1 and 'the page readings limit has no room for a longer reading' in load(R2 / 'page_reads_run.json')['pages'][0]['calls'][0]['why']
+
+def test_a_failed_page_is_retried_once_after_a_pause(tmp_path, monkeypatch):
+    A, R = audit_with_pages(tmp_path, n=1), tmp_path / 'r'; waits = []
+    monkeypatch.setattr('time.sleep', waits.append)
+    calls = []; seen = []
+    def reply(body, n):
+        seen.append(n)
+        if n == 1: return urllib.error.HTTPError('u', 429, 'busy', {}, io.BytesIO(b'{"error": {"message": "rate limited"}}'))
+        return {'choices': [{'message': {'content': 'He mau hua.'}, 'finish_reason': 'stop'}], 'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'cost': 0.01}}
+    monkeypatch.setattr(urllib.request, 'urlopen', fake(calls, reply)); monkeypatch.setenv('OPENROUTER_API_KEY', 'test-not-a-key')
+    monkeypatch.setattr(sys, 'argv', ['read_pages.py', str(A), str(R)]); monkeypatch.chdir(HERE); R.mkdir()
+    runpy.run_path(os.path.join(HERE, 'read_pages.py'), run_name='__main__')
+    e = load(R / 'page_reads_run.json')['pages'][0]
+    assert waits == [60] and len(calls) == 2 and e['finish'] == 'stop' and e['calls'][0]['why'] == 'rate limited; sent once more after 60 s'
+
+def test_an_interruption_keeps_the_pages_in_flight_at_their_worst_case(tmp_path, monkeypatch):
+    """review 02 H3, with the page readings: Ctrl+C while a page is out. Nothing more is sent, the page is kept in
+    stopped_in_flight at its worst case, and pages_paid counts it toward the PDF's limit."""
+    A, R = audit_with_pages(tmp_path, n=1), tmp_path / 'r'
+    def finish(p): raise KeyboardInterrupt
+    with pytest.raises(KeyboardInterrupt):
+        read(A, R, monkeypatch, finish=finish)
+    pr = load(R / 'page_reads_run.json'); st, = pr['stopped_in_flight']
+    assert st['page'] == 1 and st['stopped'] and st['worst_usd'] > 0 and pr['pages'] == [] and C.pages_paid(str(R)) == st['worst_usd']
+    assert C.actual(str(R))['usd'] == 0                                       # a worst case is never shown as money spent
 
 def test_a_finished_page_teaches_and_a_cut_off_or_reused_one_does_not(tmp_path, monkeypatch):
     A, R, L = audit_with_pages(tmp_path), tmp_path / 'r', tmp_path / 'ledger.jsonl'
-    read(A, R, monkeypatch, ledger=L, finish=lambda n: 'length' if n == 2 else 'stop')
+    read(A, R, monkeypatch, ledger=L, finish=lambda p: 'length' if p == 2 else 'stop')      # cut off twice: not used, nothing taught
     rows = ledger_rows(L); assert [(r['kind'], r['pass'], r['images']) for r in rows] == [('page', '1', 1)] and rows[0]['output'] == 2500 and H._good(rows[0])
     read(A, R, monkeypatch, ledger=L); assert [r['pass'] for r in ledger_rows(L)] == ['1', '2']
     read(A, R, monkeypatch, ledger=L); assert len(ledger_rows(L)) == 2
@@ -156,7 +214,7 @@ def test_enough_history_gives_a_figure(tmp_path, monkeypatch):
 
 def test_a_cut_off_page_in_the_folder_means_no_figure(tmp_path, monkeypatch):
     A, R, L = audit_with_pages(tmp_path), tmp_path / 'r', tmp_path / 'ledger.jsonl'; page_history(L)
-    read(A, R, monkeypatch, ledger=L, finish=lambda n: 'length' if n == 2 else 'stop')
+    read(A, R, monkeypatch, ledger=L, finish=lambda p: 'length' if p == 2 else 'stop')
     read(A, R, monkeypatch, '--dry-run', ledger=L)
     assert load(R / 'page_reads_estimate.json')['expected'] == {'none': 'cut_off'}
 

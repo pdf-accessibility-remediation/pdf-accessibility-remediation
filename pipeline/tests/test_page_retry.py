@@ -98,7 +98,8 @@ def test_a_retry_after_a_later_step_failed_applies_the_pages_with_no_new_request
 
 def test_a_retry_after_an_interruption_reads_only_the_missing_pages(tmp_path):
     run = Run(tmp_path)
-    r = run(FAKE_KILL_ON_PAGE='2')                                            # killed while reading page 2
+    r = run(FAKE_KILL_ON_PAGE='2', AI_PARALLEL='1')                           # killed while reading page 2 (one page at a time: with
+                                                                              # pages sent together, the kill may take page 1's reply too)
     assert r.returncode != 0 and run.requests() == ['workorder', 'page']
     run.mark(); r = run()
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
@@ -111,7 +112,7 @@ def test_try_again_in_the_app_lists_the_unread_pages_for_a_person(tmp_path):
     """The app's "Try Again" is a free rerun job: PAGE_READS=off, no new estimate, so nothing new is read. The page read
     before is applied; the one never read is listed for a person."""
     run = Run(tmp_path)
-    run(FAKE_KILL_ON_PAGE='2')
+    run(FAKE_KILL_ON_PAGE='2', AI_PARALLEL='1')
     run.mark(); r = run(PAGE_READS='off')
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
     assert run.new() == []
