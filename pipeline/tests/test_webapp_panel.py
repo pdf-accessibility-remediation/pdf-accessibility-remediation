@@ -535,6 +535,13 @@ def test_steps_in_plain_words():
     fig = logs.steps(''.join(l + '\n' for l in lines) + '▶ 5/5 report\n')
     assert [logs.plain(s['label']) for s in fig][:3] == ['sending to the AI: figures, 0 of 2 done', 'sending to the AI: figures, 1 of 2 done',
                                                          'sending to the AI: figures, 2 of 2 done']
+    # review 13 L1: while figure requests are out the counter stays at the decide step's own number, 4 of 6, as it is
+    # before them and when the language step (3b/5) starts; the words carry the figures' count
+    head = '▶ 0/5 intake\n▶ 1/5 audit (no model)\n▶ 2/5 veraPDF on the original\n▶ 3/5 anthropic/claude-sonnet-5.5 via OpenRouter\n'
+    for tail_, words in (('▶ figure requests: 0 of 4 done\n▶ figure requests: 1 of 4 done\n▶ figure requests: 2 of 4 done\n', 'sending to the AI: figures, 2 of 4 done'),
+                         ('▶ figure request 2 of 4: 40 figures\n▶ figure request 3 of 4: 40 figures\n', 'sending to the AI: figures, request 2 of 3')):
+        assert logs.now_step('run', logs.steps(head + tail_)) == {'words': words, 'n': 4, 'total': 6}
+    assert logs.now_step('run', logs.steps(head + '▶ figure requests: 4 of 4 done\n▶ 3b/5 page readings via OpenRouter\n'))['n'] == 4
     for s in logs.steps('▶ 0/5 intake\n▶ 1/5 audit (no model)\n▶ 2/5 veraPDF on the original\n▶ 3/5 decide\n▶ figure request 2 of 3\n▶ figure requests: 1 of 3 done\n'):
         w = logs.plain(s['label'] if isinstance(s, dict) else s)
         assert not re.search(r'\d/\d|OpenRouter', w), w

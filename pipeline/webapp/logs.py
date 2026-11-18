@@ -79,6 +79,10 @@ def plain(label):
     if core in PLAIN: return PLAIN[core]
     return PLAIN.get(re.sub(r'\s*\(.*\)\s*$', '', core), core)       # P13: a reused step reads as the step itself; a note in parentheses left out
 
+def _figure_line(label):
+    """Is this ▶ line a figure request's progress ("figure requests: 2 of 4 done", or an older log's "figure request 3 of 4")?"""
+    return bool(FIGURES_DONE.match(label.strip()) or FIGURES.match(label.split(':')[0].strip()))
+
 STEPS_OF = {'apply': 3, 'review': 3}                    # a re-apply's steps: apply, verify, report (review/sessions.py reapply)
 
 def now_step(kind, steps):
@@ -87,6 +91,8 @@ def now_step(kind, steps):
     if kind == 'pin' and not steps: return {'words': 're-auditing the run to pin it (free)', 'n': 1, 'total': 1}
     if not run: return None
     i = run[-1]; m = NUMBERED.match(steps[i]['label'])
+    if not m and _figure_line(steps[i]['label']):     # a figure request line (review 13 L1): the count of the numbered step it
+        m = next((m_ for m_ in (NUMBERED.match(s['label']) for s in reversed(steps[:i])) if m_), None)   # belongs to
     if m: return {'words': plain(steps[i]['label']), 'n': int(m.group(1)) + 1, 'total': int(m.group(2)) + 1}
     return {'words': plain(steps[i]['label']), 'n': i + 1, 'total': max(STEPS_OF.get(kind, len(steps)), len(steps))}
 
