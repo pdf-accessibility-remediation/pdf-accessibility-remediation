@@ -20,7 +20,8 @@ These settings change what one run or batch does. Put them before the command, f
 | `DECIDE=none` | No AI request at all: the work order starts empty and a reviewer fills it in, $0 (see [No AI request](#no-ai-request)) |
 | `KEEP=1` | Keeps the working files (digest, figure crops, raw reply, logs) |
 | `OUT=name.pdf` | Names the result (default: `<original name>_remediated.pdf`) |
-| `RUNS_DIR=/path` | Writes runs somewhere other than `runs/` beside `pipeline/` |
+| `RUNS_DIR=/path` | Writes runs somewhere other than `runs/` beside `pipeline/`. A relative path is taken from the folder you run the command in |
+| `RUN_DIR=/path` | Names the run folder itself, instead of `runs/<short name>/<run label>`. A relative path is taken from the folder you run the command in |
 | `VERAPDF=off` | Runs without veraPDF; review.md says its rows were not run (see [veraPDF settings](#verapdf-settings)) |
 
 To apply a reviewed work order, rerun the same label without `REVIEW=1`.

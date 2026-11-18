@@ -162,7 +162,7 @@ The original is checked against `record.json` (`document.sha256`). The run's ear
 | Where | What |
 |---|---|
 | `<new run>/_handedit/<edited file>` | A copy of the file you edited: the new run's source (`record.json` `document.sha256`). Your own file is never written to |
-| `<new run>/_handedit/input.pdf` | Only when a figure's alt text was removed: what the run worked on (`document.pipeline_input`) |
+| `<new run>/_handedit/input.pdf` | Only when a figure's alt text was removed: what the run worked on (`document.pipeline_input`). `run_api.sh` uses it when the source PDF is in the run's `_handedit/` folder, comparing the two folders with links resolved. A relative `RUN_DIR` is made absolute first, so it is the same folder however it is written (#144) |
 | `<new run>/_handedit/hand_edit.json`, and `record.json` `hand_edit` | The edit's record (see below) |
 | `<parent run>/hand_edits.json` | `exports` (who, when, which file, its sha256, where it went) and `children` (each run made from an edit: its folder, who, the note, the edited sha256). The only record `handedit.py` writes in the parent run |
 | `<parent run>/review.html`, and its batch's `summary.html` | Drawn again from `hand_edits.json` (`report_html.refresh_page`): after the import, when `run_api.sh` stops for review, and by the copy's `report.py` on its first finish (not on a re-apply). `webapp/trash.py` calls it for every run linked to one it moves. A previous version (`reviews/versions/`) is never drawn again |

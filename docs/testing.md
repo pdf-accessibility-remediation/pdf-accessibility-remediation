@@ -72,6 +72,7 @@ The tests in `pipeline/tests/` call one function at a time with hand-made inputs
   - the move preview leaves out what the text rules remove: a move onto or of a removed block is refused and names the rule, and the preview on Save follows the reviewed rules, so rejecting the rule brings the block back. The move card carries the trial run's outcome.
   - several moves: one card each (`move_section`, `move_section:1`), each previewed on the order the earlier ones leave. Changing or rejecting one touches only it; an added move goes after the AI's, up to 3.
   - the Figures Moved card is the `fix_figure_order` decision: Reject turns it off, or on when the AI turned it off
+- `test_run_dirs.py`: a relative `RUNS_DIR` or `RUN_DIR` is taken from the folder the command runs in, for `run_api.sh` and `batch_api.sh` (#144). `test_handedit.py` applies a reviewed hand edit with a relative `RUN_DIR` and checks that it works on `_handedit/input.pdf`.
 - `test_support.py`: the files the pipeline must refuse (#69), on one-page PDFs the test makes:
   - The support rule on its own: a PDF 2.0 file is refused, including a 1.7 header whose catalog says 2.0. So is a 1.7 file whose tag tree declares namespaces. A plain 1.7 file is accepted, and `ALLOW_PDF20=1` lets both refused files through.
   - The real scripts: `intake.py` stops a PDF locked with a password (exit 3, `stopped`), a damaged one (exit 1, `failed`) and a PDF 2.0 one (exit 3, with its flag). `audit.py` and `apply.py`, run with no intake before them, stop the same files with the same words and write nothing.

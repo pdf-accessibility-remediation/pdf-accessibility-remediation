@@ -50,6 +50,7 @@ set -euo pipefail
 LABEL=${1:?run label used for every book, e.g. batch1}; shift
 SOURCES=("$@")
 START_DIR=$(pwd)
+[[ -z ${RUNS_DIR:-} ]] || RUNS_DIR=$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$RUNS_DIR")   # from where it runs (#144)
 cd "$(dirname "$0")"; HERE=$(pwd)
 python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
   echo "missing Python libraries in $(command -v python3): from pipeline/, run  python3 -m pip install -r requirements.txt"; exit 1; }
