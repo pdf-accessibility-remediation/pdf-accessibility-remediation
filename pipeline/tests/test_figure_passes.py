@@ -230,6 +230,23 @@ def test_on_retry_tells_the_caller_what_a_stop_must_count():
     seen.clear(); run_with([ok('no json', cost=0.1), ok()], reqs=[r], retry_cap=5, call_cap=2)      # the unreadable reply's retry too
     assert seen == [(pytest.approx(0.1), 0.4, False)]
 
+def test_two_doubled_retries_racing_for_room_for_one():
+    """review 13 L2: two requests cut off at once, room under the real limit for one doubled worst case. Exactly one gets
+    it; what is held never passes the limit; finish releases each hold once."""
+    import threading
+    a, b_ = rq('2', worst=0.4, retry_worst=0.8), rq('3', worst=0.4, retry_worst=0.8)
+    bud = F.Budget(5.0, 0.6, {'2': 0.4, '3': 0.4}, retry_cap=2.2, call_cap=2)      # 2.2 − 0.6 spent − 0.4 the other's = 1.2: one 0.8
+    gate = threading.Barrier(2); got = {}
+    def go(r): gate.wait(10); got[r['pass']] = bud.doubled_fits(r)
+    ts = [threading.Thread(target=go, args=(r,)) for r in (a, b_)]
+    for t in ts: t.start()
+    for t in ts: t.join(10)
+    assert sorted(ok for ok, _ in got.values()) == [False, True]
+    assert next(why for ok, why in got.values() if not ok) == 'a longer answer could cost more than the limit per PDF'
+    assert sorted(bud.planned.values()) == [0.4, 0.8] and bud.spent + sum(bud.planned.values()) <= 2.2
+    bud.finish(a); bud.finish(b_); bud.finish(a)
+    assert bud.planned == {} and bud.room() == pytest.approx(4.4)
+
 def test_a_429_then_a_cut_off_gets_the_doubled_retry():
     res, _, waits = run_with([{'resp': None, 'code': 429}, ok(finish='length', cost=0.3), ok()], reqs=[rq()], retry_cap=5, call_cap=2)
     assert len(res[0]['calls']) == 3 and res[0]['outcome'] == 'done' and waits == [60]
