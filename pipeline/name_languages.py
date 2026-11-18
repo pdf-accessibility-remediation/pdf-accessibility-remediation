@@ -207,7 +207,11 @@ def send_live(R, rec_d, send, todo, sent, words, title, doc_lang, model, prompt,
         if 'error' in x: return out
         d, dr = langreq.parse(x['text'], set(x['ids']))
         pieces = any(e.get('code') == 'partial' for e in dr)
-        again = [i for i in x['ids'] if i not in d and any(e.get('id') == i and e.get('code') == 'not_answered' for e in dr)]
+        # the forms the reply never reached: no decision and no refused answer of their own (echo, tag, invalid are never
+        # resent). A reply cut off before its first decision closed reads as unreadable, with no code per form: every
+        # form of it is then unreached, and the whole request is sent once more as its resend
+        refused = {e.get('id') for e in dr if e.get('code') in ('echo', 'tag', 'invalid', 'twice')}
+        again = [i for i in x['ids'] if i not in d and i not in refused]
         if not again or not (x['finish'] == 'length' or pieces): return out
         req2 = langreq.requests({'title': title, 'language': doc_lang}, [by_id[i] for i in again if i in by_id], words)[0]
         mt2 = costs.allowance('language', len(req2['items'])); ins2 = langreq.size(req2, prompt); w2 = ins2 * pin + mt2 * pout
@@ -283,6 +287,12 @@ def main():
     if args.response_file or args.reuse:
         src = args.response_file or run_path
         old = json.load(open(src, encoding='utf-8')) if os.path.exists(src) else None
+        # what this folder's own record holds that the replay's record must keep (review 02 M2): a step interrupted here
+        # and replayed with --reuse (run_api.sh, after a later step failed), or overwritten by a saved reply from elsewhere
+        try: here = json.load(open(run_path, encoding='utf-8')) if os.path.exists(run_path) else {}
+        except ValueError: here = {}
+        st_, paid_ = carried(here, True, {'': here.get('requests') or []}) if args.reuse else carried(here, False, {})
+        keep = {**({'earlier_cost_usd': paid_} if paid_ else {}), **({'stopped_in_flight': st_} if st_ else {})}
         if isinstance(old, dict) and old.get('requests'):
             # the saved replies themselves, read again (review 06, M3): a step that stopped after paying and before parsing
             # left decisions {} beside complete replies; reading them costs nothing
@@ -307,7 +317,7 @@ def main():
             old['decisions'] = found; old['_drops'], old['_why'] = drops, why_by_key
         if not isinstance(old, dict) or not (old.get('decisions') or (local and not ai_fs)):   # #123: a book decided wholly by the rule
             print(f'language step: no saved decisions in {src}: not run')
-            merge(R, wo_path, fs, {}, {'schema': 'language-run/1', 'decisions': {}, 'requests': [], 'cost_usd': 0, 'response_from': os.path.abspath(src)},
+            merge(R, wo_path, fs, {}, {'schema': 'language-run/1', 'decisions': {}, 'requests': [], 'cost_usd': 0, 'response_from': os.path.abspath(src), **keep},
                   note='not run (the saved reply has no language decisions)'); return
         by_key = old.get('decisions') or {}
         dec = {f['id']: by_key[form_key(f)] for f in sent if form_key(f) in by_key}
@@ -320,7 +330,7 @@ def main():
         rec = {**{k: old.get(k) for k in ('schema', 'model', 'prompt_file', 'prompt_sha256', 'started')}, 'response_from': os.path.abspath(src),
                'own_reply': bool(args.reuse) or os.path.abspath(src) == os.path.abspath(run_path), 'replay': replay,
                'decisions': by_key, 'requests': old.get('requests') if args.reuse else [], 'cost_usd': (old.get('cost_usd') or 0) if args.reuse else 0,
-               'original_cost_usd': old.get('cost_usd'), 'candidates': how, 'reading_rule': rule_rec,
+               'original_cost_usd': old.get('cost_usd'), 'candidates': how, 'reading_rule': rule_rec, **keep,
                'local': {form_key(f): local[f['id']] for f in fs if f['id'] in local},
                **({'dropped': old['_drops'][:DROPPED_KEPT], 'dropped_count': len(old['_drops'])} if old.get('_drops') else {})}
         reasons = {f['id']: old.get('_why', {})[form_key(f)] for f in sent if f['id'] not in dec and form_key(f) in old.get('_why', {})}

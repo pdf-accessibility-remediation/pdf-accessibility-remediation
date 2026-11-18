@@ -287,3 +287,29 @@ def test_an_interruption_during_a_resend_keeps_the_first_call_and_counts_the_res
     assert st['n'] == 1 and st['resend'] and st['stopped'] and st['worst_usd'] > 0 and 'in_flight' not in lr
     assert lr['cost_usd'] == 0.004 and len(lr['requests']) == 1
     assert costs.language_paid(str(R)) == pytest.approx(0.004 + st['worst_usd'])
+
+def test_a_reply_cut_off_before_its_first_decision_is_resent_whole_once(tmp_path, monkeypatch):
+    """A reply cut off with nothing readable has no code per form: every form is unreached, so the whole request is sent
+    once more as its resend, and that resend, cut off again, is not resent."""
+    src, A, R = folders(tmp_path)
+    calls = run(src, A, R, monkeypatch, reply=lambda b, n: answer(items_of(b), text='', finish='length'))
+    lr = load(R / 'language_run.json')
+    assert len(calls) == 2 and len(items_of(json.loads(calls[1]))) == 3 and [x.get('resend_of') for x in lr['requests']] == [None, 1]
+    assert lr['decisions'] == {} and {p.get('no_answer') for p in load(R / 'workorder.json')['language_parts']['forms']} == {'cut_off'}
+
+def test_a_replay_of_an_interrupted_step_keeps_its_worst_cases_and_earlier_cost(tmp_path, monkeypatch):
+    """review 02 M2 on the replay path: run_api.sh replays this folder's own record with --reuse after a later step failed;
+    the record it writes keeps what an interruption left in flight. A saved reply from elsewhere keeps it too, with this
+    folder's own cost as earlier_cost_usd."""
+    from lib import costs
+    src, A, R = folders(tmp_path)
+    run(src, A, R, monkeypatch)
+    lr = load(R / 'language_run.json'); lr['in_flight'] = [{'n': 2, 'worst_usd': 0.5}]; (R / 'language_run.json').write_text(json.dumps(lr))
+    before = costs.language_paid(str(R))
+    assert run(src, A, R, monkeypatch, '--reuse') == []
+    lr2 = load(R / 'language_run.json')
+    assert lr2['stopped_in_flight'][0]['worst_usd'] == 0.5 and costs.language_paid(str(R)) == before == 0.504
+    other = tmp_path / 'other.json'; other.write_text(json.dumps({**lr, 'in_flight': [], 'cost_usd': 0.9}))
+    assert run(src, A, R, monkeypatch, '--response-file', other) == []
+    lr3 = load(R / 'language_run.json')
+    assert lr3['earlier_cost_usd'] == 0.004 and lr3['stopped_in_flight'][0]['worst_usd'] == 0.5 and costs.language_paid(str(R)) == 0.504

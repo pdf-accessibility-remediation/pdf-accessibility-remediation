@@ -175,7 +175,8 @@ or passes its own limit, it alone is left out and the PDF goes on without langua
   what the PDF has spent); otherwise the record says which limit had no room. A request that still fails leaves its word
   forms to a person ("No AI answer", `failed`).
 - **A reply cut off, or read only in pieces** (not valid JSON as a whole, its decisions read one by one), keeps every
-  decision it finished. The word forms it never reached (`not_answered`) are sent once more, as one smaller request
+  decision it finished. The word forms it never reached (no decision, and no refused answer of their own) are sent once
+  more, as one smaller request
   (`language_requests/NNNr.request.json`; its entry in `language_run.json` has `resend_of`). That resend is never resent
   itself. Answers the check refused (`echo`, `tag`, `invalid`) are never sent again: the same answer would most likely
   come back, and it would be paid for twice. A rerun with the same model and prompt reuses the pair, with no new request.
