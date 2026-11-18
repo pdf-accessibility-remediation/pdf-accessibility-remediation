@@ -2,7 +2,7 @@
 the figure requests (decide.py, lib/figpasses.py), the language step (name_languages.py) and the page readings
 (read_pages.py).
 
-    aisend.cap()                                        AI_PARALLEL: requests in flight at once, per book (default 4; 1 = one at a time)
+    aisend.cap()                                        AI_PARALLEL: requests in flight at once, per book (default 8; 1 = one at a time)
     aisend.run(jobs, one, cap, on_done, on_stop)        one(job) for every job, at most `cap` at a time, results in job order
     aisend.Budget(limits, planned)                      the money limits a step's retries are checked against, under one lock
     aisend.Record(path, data)                           a step's record: every change under one lock, written atomically
@@ -21,7 +21,7 @@ worst case (their charge is not known), and raises the exception again (review 0
 """
 import os, json, time, queue, socket, threading, urllib.request, urllib.error
 
-DEFAULT_CAP = 4
+DEFAULT_CAP = 8                       # set from the cap sweep and the batch test (handoff/137-language-answers-parallel/14, 16)
 PAUSE = {'429': 60}                   # seconds before the one retry, by HTTP status; PAUSE_OTHER otherwise
 PAUSE_OTHER = 20
 

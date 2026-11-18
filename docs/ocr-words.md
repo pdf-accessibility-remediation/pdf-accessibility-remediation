@@ -44,7 +44,7 @@ It is on by default in `run_api.sh`; `PAGE_READS=off` turns it off. In the app, 
 2. **The reading.** `read_pages.py` sends each page image in its own request, asking for a transcription exactly as printed: the ʻokina as U+02BB, a kahakō only where the page prints one, and never a modern spelling the page doesn't show.
    - It prints the Expected Cost and the Max Estimated Cost (a dense page cost about 3–4 cents with Sonnet 5.5), refuses over `PAGE_READS_MAX_USD` (default 3) or the credit, and asks first unless `AUTO=1`. What it costs counts as this PDF's money (see [What a run may cost](options.md#what-a-run-may-cost)).
    - A page read before with the same model, prompt and image is reused at no cost.
-   - Pages are read up to `AI_PARALLEL` at a time (default 4; `AI_PARALLEL=1` one after another, in order; see [Options](options.md#model-and-cost)), and kept in page order (#135 (parallel requests)).
+   - Pages are read up to `AI_PARALLEL` at a time (default 8; `AI_PARALLEL=1` one after another, in order; see [Options](options.md#model-and-cost)), and kept in page order (#135 (parallel requests)).
    - A page that fails (an error from OpenRouter, no connection, no reply in time) is sent once more, 60 s after "too many requests" (429) and 20 s after anything else.
    - A reply cut off at the output limit (8,000 tokens) is sent once more with twice the room (16,000, never past the model's own output limit; with no more room to give, it isn't sent again).
    - Each retry is sent only when its worst case fits both the page readings' limit (`PAGE_READS_MAX_USD`) and the PDF's (`BOOK_MAX_USD`, with what the PDF has spent), checked and reserved in one step; otherwise the record says which limit had no room. A page is never charged more than twice.

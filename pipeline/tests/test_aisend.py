@@ -15,7 +15,7 @@ def wait_for(ev, what):
     assert ev.wait(10), f'timed out waiting for {what}'      # a safety net only: the tests never depend on how long
 
 # ------------------------------------------------------------------ the setting
-@pytest.mark.parametrize('v,n', [(None, 4), ('', 4), ('1', 1), ('8', 8), (' 3 ', 3), ('0', 1), ('-2', 1), ('four', 4)])
+@pytest.mark.parametrize('v,n', [(None, 8), ('', 8), ('1', 1), ('4', 4), (' 3 ', 3), ('0', 1), ('-2', 1), ('eight', 8)])
 def test_ai_parallel_is_read_as_a_whole_number_of_at_least_one(v, n):
     assert aisend.cap({} if v is None else {'AI_PARALLEL': v}) == n
 

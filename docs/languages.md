@@ -166,7 +166,7 @@ or passes its own limit, it alone is left out and the PDF goes on without langua
 ### Sending, retries and interruptions
 
 #135 (parallel requests):
-- **Several requests at once:** up to `AI_PARALLEL` (default 4, per PDF; see [Options](options.md#model-and-cost)).
+- **Several requests at once:** up to `AI_PARALLEL` (default 8, per PDF; see [Options](options.md#model-and-cost)).
   `AI_PARALLEL=1` sends them one after another, in order. The replies are kept in request order, whatever order they
   come back in. The log prints one line per request as it finishes ("request 3 of 15: …, done in 41 s (5 of 15 done)").
 - **One retry:** a request that fails (an error from OpenRouter, no connection, no reply in time, or a reply with no
