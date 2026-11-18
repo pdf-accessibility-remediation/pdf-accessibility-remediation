@@ -4,8 +4,9 @@ PAID unless --dry-run: it sends a finished run's saved language requests again, 
     python3 tools/cap_sweep.py --dry-run --caps 4,8,15 FOLDER [FOLDER …]          nothing sent: the amounts per cap and in all
     python3 tools/cap_sweep.py --cap 8 --out DIR FOLDER [FOLDER …]                one run at cap 8 (asks first unless --yes)
 
-FOLDER: a finished run folder with language_requests/NNN.request.json and record.json (its language_run). Each file is
-sent as saved (it already carries provider data_collection deny; a file without it is refused, nothing sent), with
+FOLDER: a run folder with language_requests/NNN.request.json and its language run (record.json's language_run, or
+language_run.json for a step run alone). Each file is sent as saved; one without provider data_collection deny, or that
+is not the request its record entry answered (sha256), is refused and nothing is sent. Sent with
 the language step's own retry rule: once more after 60 s for a 429, 20 s otherwise (a failure, or a reply with no
 decision that can be read), when its worst case still fits the limit (LANGUAGE_MAX_USD, default 6: checked before
 anything is sent, and each retry reserved against it, as the step does; the per-PDF limit is not checked, since nothing
@@ -25,25 +26,35 @@ Writes, under DIR (refused if DIR already holds a summary.json):
     forms.json                        with --forms FILE (one word form a line): each listed form's answer in these replies
 The API key comes from OPENROUTER_API_KEY or the nearest .env and is never printed.
 """
-import sys, os, json, time, glob, threading, argparse, urllib.request, urllib.error, socket
+import sys, os, json, time, glob, hashlib, threading, argparse, urllib.request, urllib.error, socket
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))      # pipeline/
 sys.path.insert(0, HERE)
 from lib import aisend, langreq, costs
 
-def requests_of(folder):
-    """[(n, path, raw bytes, body)] of a folder's saved first requests, in order (resends, NNNr, are left out)."""
+def requests_of(folder, lr=None):
+    """[(n, path, raw bytes, body)] of a folder's saved first requests, in order (resends, NNNr, are left out). Each must
+    carry data_collection deny and be the request its record entry answered: sha256(prompt sha + its user content) equals
+    the entry's sha256 (review 02 M5: a later run may have written another request under the same number). Otherwise
+    nothing is sent."""
+    lr = lr if lr is not None else record_of(folder)
+    by_n = {r.get('n'): r for r in lr.get('requests') or [] if isinstance(r, dict) and not r.get('resend_of')}
     out = []
     for p in sorted(glob.glob(os.path.join(folder, 'language_requests', '[0-9][0-9][0-9].request.json'))):
-        raw = open(p, 'rb').read(); body = json.loads(raw)
+        raw = open(p, 'rb').read(); body = json.loads(raw); n = int(os.path.basename(p)[:3])
         if (body.get('provider') or {}).get('data_collection') != 'deny': sys.exit(f'refusing: {p} does not carry provider data_collection deny')
-        out.append((int(os.path.basename(p)[:3]), p, raw, body))
+        sha = hashlib.sha256((str(lr.get('prompt_sha256')) + body['messages'][1]['content']).encode()).hexdigest()[:16]
+        if (by_n.get(n) or {}).get('sha256') != sha: sys.exit(f'refusing: {p} is not the request its record entry answered (sha256)')
+        out.append((n, p, raw, body))
     if not out: sys.exit(f'no saved language requests in {folder}/language_requests')
     return out
 
 def record_of(folder):
-    r = json.load(open(os.path.join(folder, 'record.json'), encoding='utf-8'))
-    lr = r.get('language_run') or {}
-    if not lr.get('requests'): sys.exit(f'{folder}/record.json has no language_run requests')
+    """The folder's language run: record.json's language_run (a finished run), else language_run.json (a step run alone)."""
+    rp, lp = os.path.join(folder, 'record.json'), os.path.join(folder, 'language_run.json')
+    lr = (json.load(open(rp, encoding='utf-8')).get('language_run') if os.path.exists(rp) else None) or \
+         (json.load(open(lp, encoding='utf-8')) if os.path.exists(lp) else {})
+    if not lr.get('requests'): sys.exit(f'{folder}: no language run with requests (record.json or language_run.json)')
+    if lr.get('response_from'): sys.exit(f'refusing: {folder}\'s language run was a replay, not requests it sent')
     return lr
 
 def worst_of(body, pin, pout):
@@ -55,7 +66,7 @@ def plan(folders, prices=None):
     """Per folder: its requests, their worst cases (at the record's prices, or `prices`), and what the saved run cost."""
     out = []
     for f in folders:
-        lr = record_of(f); reqs = requests_of(f)
+        lr = record_of(f); reqs = requests_of(f, lr)
         pin, pout = prices or (x / 1e6 for x in lr['estimate']['price_per_million'])
         w = {n: worst_of(b, pin, pout) for n, _, _, b in reqs}
         out.append({'folder': f, 'name': os.path.basename(os.path.normpath(f)), 'reqs': reqs, 'worst': w, 'worst_usd': round(sum(w.values()), 4),
@@ -67,7 +78,7 @@ def dry_run(folders, caps, limit):
     P = plan(folders)
     print(f'dry run: nothing sent · {len(P)} folder(s), {sum(p["n"] for p in P)} requests')
     for p in P:
-        print(f'  {p["name"]}: {p["n"]} requests · {p["model"]} · the saved run cost ${p["saved_usd"]:.2f} in {p["saved_seconds"]:.0f} s of calls (one at a time)'
+        print(f'  {p["name"]}: {p["n"]} requests · {p["model"]} · the saved run cost ${p["saved_usd"]:.2f} ({p["saved_seconds"]:.0f} s of calls, summed)'
               f' · worst case of the first sends ${p["worst_usd"]:.2f} · with every retry, at most the limit, ${limit:.2f}')
         if p['worst_usd'] > limit: print(f'  {p["name"]}: REFUSED at any cap: the worst case passes the limit of ${limit:.2f}')
     exp, worst, ceil = sum(p['saved_usd'] for p in P), sum(p['worst_usd'] for p in P), limit * len(P)

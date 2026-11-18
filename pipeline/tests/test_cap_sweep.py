@@ -2,7 +2,7 @@
 fake OpenRouter (no network, no book content). The dry run sends nothing and prints the amounts; a run sends each saved
 file byte for byte, retries a 429 once after its pause, records every call, and reads the replies with today's parse.
 """
-import io, json, os, sys, urllib.request, urllib.error
+import hashlib, io, json, os, sys, urllib.request, urllib.error
 import pytest
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(HERE, 'tools')); sys.path.insert(0, HERE)
@@ -10,16 +10,20 @@ import cap_sweep  # noqa: E402
 from lib import langreq  # noqa: E402
 MODEL = 'anthropic/claude-sonnet-5.5'
 
-def folder(tmp_path, name='book', deny=True):
-    F = tmp_path / name; (F / 'language_requests').mkdir(parents=True)
+def folder(tmp_path, name='book', deny=True, step_only=False):
+    """A run folder with two saved requests; its language run in record.json, or (step_only) in language_run.json."""
+    F = tmp_path / name; (F / 'language_requests').mkdir(parents=True); shas = {}
     for n, (form, printed) in enumerate([('Kenpo ban', 'Kenpō-ban:'), ('Onjoji', 'Onjōji')], 1):
         req = {'book': {'title': 'T', 'language': 'en'}, 'snippets': [{'s': 1, 'text': f'see [[a{n}|{printed}]] here'}],
                'items': [{'id': f'a{n}', 'form': form, 'class': ['latin'], 'italic': False, 'places': 1}]}
         body = {'model': MODEL, 'max_tokens': 1000, 'messages': [{'role': 'system', 'content': 'prompt ' * 50}, {'role': 'user', 'content': langreq.user_text(req)}],
                 'provider': {'data_collection': 'deny'} if deny else {}, 'usage': {'include': True}}
         (F / 'language_requests' / f'{n:03d}.request.json').write_text(json.dumps(body, ensure_ascii=False))
-    (F / 'record.json').write_text(json.dumps({'language_run': {'model': MODEL, 'cost_usd': 0.02, 'estimate': {'price_per_million': [2.0, 10.0]},
-                                                                'requests': [{'n': 1, 'seconds': 5.0}, {'n': 2, 'seconds': 6.0}]}}))
+        shas[n] = hashlib.sha256(('p1' + body['messages'][1]['content']).encode()).hexdigest()[:16]
+    lr = {'model': MODEL, 'prompt_sha256': 'p1', 'cost_usd': 0.02, 'estimate': {'price_per_million': [2.0, 10.0]},
+          'requests': [{'n': 1, 'sha256': shas[1], 'seconds': 5.0}, {'n': 2, 'sha256': shas[2], 'seconds': 6.0}]}
+    if step_only: (F / 'language_run.json').write_text(json.dumps(lr))
+    else: (F / 'record.json').write_text(json.dumps({'language_run': lr}))
     return F
 
 class Resp(io.BytesIO):
@@ -47,6 +51,17 @@ def test_the_dry_run_sends_nothing_and_prints_the_amounts(tmp_path, monkeypatch,
     assert sent == [] and 'nothing sent' in out and 'expected $0.02' in out and 'in all, 3 run(s): expected $0.06' in out
     w = cap_sweep.plan([str(F)])[0]['worst_usd']
     assert w == pytest.approx(sum(cap_sweep.worst_of(json.load(open(p)), 2e-6, 1e-5) for p in sorted((F / 'language_requests').iterdir())), abs=1e-4)
+
+def test_a_step_run_alone_is_read_from_its_language_run_json(tmp_path):
+    p, = cap_sweep.plan([str(folder(tmp_path, step_only=True))])
+    assert p['n'] == 2 and p['saved_usd'] == 0.02
+
+def test_a_file_that_is_not_the_request_its_entry_answered_is_refused(tmp_path):
+    """review 02 M5: a later run may have written another request under the same number; nothing is sent."""
+    F = folder(tmp_path); p = F / 'language_requests' / '002.request.json'
+    b = json.loads(p.read_text()); b['messages'][1]['content'] = b['messages'][1]['content'].replace('Onjoji', 'Onjoji2'); p.write_text(json.dumps(b))
+    with pytest.raises(SystemExit) as e: cap_sweep.plan([str(F)])
+    assert 'not the request its record entry answered' in str(e.value)
 
 def test_a_file_without_data_collection_deny_is_refused_before_anything_is_sent(tmp_path):
     with pytest.raises(SystemExit) as e: cap_sweep.requests_of(str(folder(tmp_path, deny=False)))
