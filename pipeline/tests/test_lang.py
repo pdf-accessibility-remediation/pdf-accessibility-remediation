@@ -114,7 +114,10 @@ def test_a_batch_pdf_is_asked_on_its_row(setup, monkeypatch):
     assert json.load(open(BT.meta_path(s, 'Spring')))['langs'] == {'a': 'kor+eng', 'b': 'eng'}
     with pytest.raises(ValueError, match='no such PDF'): BT.answer_language(s, 'Spring', 'zz', 'eng')
 
-KOREAN_FONT = '/System/Library/Fonts/AppleSDGothicNeo.ttc'
+# #147: the first CJK font found, as tools/intake_cases.py finds one (INTAKE_CASES_FONT overrides); None when there is none
+KOREAN_FONT = next((p for p in (os.environ.get('INTAKE_CASES_FONT') or '', '/System/Library/Fonts/AppleSDGothicNeo.ttc',
+                                '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+                                '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc') if p and os.path.exists(p)), None)
 
 def scan_pdf(tmp_path, text=None):
     from PIL import Image, ImageDraw, ImageFont
@@ -131,7 +134,7 @@ def run_api(tmp_path, pdf):
     r = subprocess.run(['bash', 'run_api.sh', str(pdf), 'scan', 'l1'], cwd=HERE, env=env, capture_output=True, text=True, timeout=300)
     return r, tmp_path / 'runs' / 'scan' / 'l1'
 
-@pytest.mark.skipif(not shutil.which('tesseract') or not os.path.exists(KOREAN_FONT), reason='Tesseract and a Korean font are needed')
+@pytest.mark.skipif(not shutil.which('tesseract') or not KOREAN_FONT, reason='Tesseract and a Korean font are needed')
 def test_run_api_stops_for_the_language_before_any_ocr(tmp_path):
     """ASK_LANG=1 with no OCR_LANG: intake.py --languages, then exit 4 before the full intake when the language matters."""
     r, R = run_api(tmp_path, scan_pdf(tmp_path, '한국어 문서의 내용입니다 대한민국'))

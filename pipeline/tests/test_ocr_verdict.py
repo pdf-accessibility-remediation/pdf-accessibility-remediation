@@ -206,8 +206,7 @@ def test_ctrl_c_during_a_verdict_write_waits_for_it(tmp_path):
         res = {}
         th = threading.Thread(target=lambda: res.update(r=call(port, '/ocr-verdict', {'verdict': 'not approved', 'reviewer': 'Kim', 'reason': 'garbled'})))
         th.start()
-        lines = [p.stdout.readline() for _ in range(1)]                       # skip the page's second line
-        while 'writing' not in lines[-1]: lines.append(p.stdout.readline())
+        wait_for(p, 'writing')
         p.send_signal(signal.SIGINT)                                           # Ctrl+C in the middle of the write
         th.join(10); rest = p.communicate(timeout=15)[0]
         assert res['r'][0] == 200
@@ -216,8 +215,21 @@ def test_ctrl_c_during_a_verdict_write_waits_for_it(tmp_path):
     finally:
         if p.poll() is None: p.kill()
 
-SLOW_CHECK = SLOW_WRITE.replace('real = O.write', 'real_section = O.section\ndef slow_section(*a, **k):\n'
-                                '    print("checking", flush=True); time.sleep(2); return real_section(*a, **k)\nO.section = slow_section\nreal = O.write')
+# #147: since #117 the server's warm_up() also calls O.section as it starts. Only a request's own call (made in a
+# ThreadingHTTPServer handler thread, named after process_request_thread) is slowed and says "checking", so the test's
+# Ctrl+C always comes after its request is inside the server. The POST checks twice (before and after the write): 4 s.
+SLOW_CHECK = SLOW_WRITE.replace('real = O.write', 'import threading\nreal_section = O.section\ndef slow_section(*a, **k):\n'
+                                '    if "(process_request_thread)" in threading.current_thread().name:\n'
+                                '        print("checking", flush=True); time.sleep(2)\n'
+                                '    return real_section(*a, **k)\nO.section = slow_section\nreal = O.write')
+
+def wait_for(p, word):
+    """Read the server's lines until one holds word; a server that ends first fails the test instead of hanging it."""
+    lines = []
+    while not lines or word not in lines[-1]:
+        lines.append(p.stdout.readline())
+        assert lines[-1], f'the review page ended before it printed "{word}": ' + ''.join(lines)
+    return lines
 
 def test_ctrl_c_before_a_verdict_reaches_its_lock_waits_too(tmp_path):
     """Review 07 L2: a Ctrl+C that comes while the request is still being checked (before the write lock) waits for it too."""
@@ -229,8 +241,7 @@ def test_ctrl_c_before_a_verdict_reaches_its_lock_waits_too(tmp_path):
         res = {}
         th = threading.Thread(target=lambda: res.update(r=call(port, '/ocr-verdict', {'verdict': 'not approved', 'reviewer': 'Kim', 'reason': 'garbled'})))
         th.start()
-        lines = [p.stdout.readline()]
-        while 'checking' not in lines[-1]: lines.append(p.stdout.readline())
+        wait_for(p, 'checking')
         p.send_signal(signal.SIGINT)                                           # Ctrl+C before the handler has taken the write lock
         th.join(15); rest = p.communicate(timeout=20)[0]
         assert res['r'][0] == 200
