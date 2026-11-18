@@ -188,11 +188,13 @@ def call(send, body, key, worst, budget, *, label, say=print, sleep=None, readab
     """Send body (key: its reservation in budget, reserved before the call by the step's up-front check); once more after a
     failure or an unreadable reply (readable(text) False), after pause(), when budget.try_reserve has room for `worst`
     under every named limit. Each call settles its reservation once: its reported cost, or its worst case when its charge
-    is not known (no reply in time). Returns {'calls': [...], 'final': the last call, 'cost_usd': known cost,
+    is not known (no reply in time). Each call records sent_at and finished_at (epoch seconds). Returns {'calls': [...], 'final': the last call, 'cost_usd': known cost,
     'worst_usd': unknown charges at their worst case}. retry=False: one call, never sent again (a doubled retry)."""
     sleep = sleep or time.sleep; calls = []; known = unknown = 0.0
     for attempt in ((1, 2) if retry else (1,)):
-        c = _read_call(send(body), worst); c['attempt'] = attempt
+        t0 = time.time(); out = send(body); t1 = time.time()
+        c = _read_call(out, worst); c.update(attempt=attempt, sent_at=round(t0, 3), finished_at=round(t1, 3))   # wall clock (epoch s):
+        # comparable across processes, so the requests out at once can be counted over several PDFs run side by side
         if c.get('worst_usd'): unknown += worst; budget.settle(key, worst)
         else: known += float(c.get('cost') or 0); budget.settle(key, c.get('cost'))
         calls.append(c)

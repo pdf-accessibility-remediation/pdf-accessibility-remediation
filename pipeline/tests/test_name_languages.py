@@ -313,3 +313,12 @@ def test_a_replay_of_an_interrupted_step_keeps_its_worst_cases_and_earlier_cost(
     assert run(src, A, R, monkeypatch, '--response-file', other) == []
     lr3 = load(R / 'language_run.json')
     assert lr3['earlier_cost_usd'] == 0.004 and lr3['stopped_in_flight'][0]['worst_usd'] == 0.5 and costs.language_paid(str(R)) == 0.504
+
+def test_each_request_records_when_it_was_sent_and_finished(tmp_path, monkeypatch):
+    """#135 (parallel requests): send and finish times (wall clock, epoch seconds) on every request, so the requests out at
+    once can be counted across several PDFs run side by side."""
+    import time
+    src, A, R = folders(tmp_path); t0 = time.time()
+    run(src, A, R, monkeypatch)
+    x, = load(R / 'language_run.json')['requests']
+    assert t0 - 0.001 <= x['sent_at'] <= x['finished_at'] <= time.time() + 0.001     # rounded to ms

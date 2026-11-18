@@ -178,10 +178,11 @@ else:
         budget.release(k_)
         x = {'page': page, 'label': t.get('label'), 'text': f_.get('text') or '', 'finish': f_.get('finish'),
              'model': model, 'prompt_sha256': prompt_sha, 'image_sha256': t['image_sha256'], 'input_tokens': f_.get('input_tokens'),
-             'output_tokens': f_.get('output_tokens'), 'cost_usd': known, 'seconds': round(sum(c.get('seconds') or 0 for c in calls), 1)}
+             'output_tokens': f_.get('output_tokens'), 'cost_usd': known, 'seconds': round(sum(c.get('seconds') or 0 for c in calls), 1),
+             'sent_at': calls[0].get('sent_at'), 'finished_at': calls[-1].get('finished_at')}
         if unknown: x['worst_usd'] = unknown                       # a call with no reply in time: its charge is not known
         if len(calls) > 1 or calls[0].get('why') or f_.get('why'):
-            x['calls'] = [{k: c.get(k) for k in ('attempt', 'seconds', 'cost', 'finish', 'error', 'why', 'worst_usd', 'doubled') if c.get(k) is not None} for c in calls]
+            x['calls'] = [{k: c.get(k) for k in ('attempt', 'seconds', 'sent_at', 'finished_at', 'cost', 'finish', 'error', 'why', 'worst_usd', 'doubled') if c.get(k) is not None} for c in calls]
         if doubled: x['cut_off_retry'] = doubled
         if 'error' in f_: x['error'] = f_['error']
         def store(d):                              # one finished entry per page, in page order; it leaves in_flight

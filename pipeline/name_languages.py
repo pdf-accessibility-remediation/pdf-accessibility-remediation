@@ -174,9 +174,10 @@ def send_live(R, rec_d, send, todo, sent, words, title, doc_lang, model, prompt,
         x = {'n': t['n'], 'sha256': t['sha256'], 'ids': ids, 'id_keys': {i: form_key(by_id[i]) for i in ids if i in by_id},
              'id_marks': langreq.marks_of(req),          # #137: what the reply may echo, by the ids as sent (review 02, M5)
              'text': f.get('text') or '', 'finish': f.get('finish'), 'input_tokens': f.get('input_tokens'), 'output_tokens': f.get('output_tokens'),
-             'cost_usd': r['cost_usd'], 'seconds': round(sum(c.get('seconds') or 0 for c in r['calls']), 1)}
+             'cost_usd': r['cost_usd'], 'seconds': round(sum(c.get('seconds') or 0 for c in r['calls']), 1),
+             'sent_at': r['calls'][0].get('sent_at'), 'finished_at': r['calls'][-1].get('finished_at')}   # epoch s: the peak across PDFs
         if r['worst_usd']: x['worst_usd'] = r['worst_usd']          # a call with no reply in time: its charge is not known
-        if len(r['calls']) > 1 or r['calls'][0].get('why'): x['calls'] = [{k: c.get(k) for k in ('attempt', 'seconds', 'cost', 'finish', 'error', 'why', 'worst_usd') if c.get(k) is not None} for c in r['calls']]
+        if len(r['calls']) > 1 or r['calls'][0].get('why'): x['calls'] = [{k: c.get(k) for k in ('attempt', 'seconds', 'sent_at', 'finished_at', 'cost', 'finish', 'error', 'why', 'worst_usd') if c.get(k) is not None} for c in r['calls']]
         if 'error' in f: x['error'] = f['error']; x.pop('text')
         if t.get('resend_of'): x.update(resend_of=t['resend_of'], resend_of_sha256=t['resend_of_sha256'])
         return x

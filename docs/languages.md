@@ -192,7 +192,7 @@ or passes its own limit, it alone is left out and the PDF goes on without langua
 |---|---|
 | `audit/lang_candidates.json` | every candidate form and its places |
 | `language_estimate.json` | the expected and worst-case cost, before any request |
-| `language_run.json` | model, prompt, each request's reply, usage, cost, the AI's decisions by form, the reading rule's (`local`, `reading_rule`); while requests are out, `in_flight` (each one's worst case); after an interruption, `stopped_in_flight` |
+| `language_run.json` | model, prompt, each request's reply, usage, cost, when it was sent and finished (`sent_at`, `finished_at`, clock seconds, comparable across PDFs run side by side), the AI's decisions by form, the reading rule's (`local`, `reading_rule`); while requests are out, `in_flight` (each one's worst case); after an interruption, `stopped_in_flight` |
 | `reviews/_audit/language_contexts.json` | the context lines the review page shows |
 
 ## The Ready rule

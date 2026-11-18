@@ -166,6 +166,12 @@ def call(outs, budget=None, **kw):
                     sleep=waits.append, **kw)
     return r, b, waits, sent
 
+def test_each_call_records_its_send_and_finish_time():
+    import time
+    t0 = time.time(); r, _, _, _ = call([{'resp': None, 'code': 502}, reply()])
+    a, b = r['calls']
+    assert t0 - 0.001 <= a['sent_at'] <= a['finished_at'] <= b['sent_at'] <= b['finished_at'] <= time.time() + 0.001     # rounded to ms
+
 def test_a_429_is_retried_once_after_60_s():
     r, b, waits, sent = call([{'resp': None, 'code': 429, 'message': 'rate limited'}, reply()])
     assert waits == [60] and len(r['calls']) == 2 and r['final']['finish'] == 'stop' and r['cost_usd'] == 0.01 and b.spent == pytest.approx(0.01)
