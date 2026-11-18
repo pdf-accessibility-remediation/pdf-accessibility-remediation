@@ -138,6 +138,20 @@ def test_a_stop_during_the_retry_counts_the_cut_off_and_the_retry(book, tmp_path
     e, = seen['in_flight']                                                   # #135 (parallel requests): a list of the requests being sent
     assert e['pass'] == '2' and e['paid_usd'] == 0.3 and e['cut_off'] is True and 0.64 < e['worst_usd'] < 0.75   # known and unknown apart
 
+def test_an_interruption_during_a_figure_request_keeps_it_at_its_worst_case(book, tmp_path, monkeypatch):
+    """#135 (parallel requests), review 02 H3: Ctrl+C while a figure request is out. Nothing more is sent, the interruption
+    is raised again, and run.json (still "calling", for run_api.sh's log_attempt) keeps the request in stopped_in_flight
+    with its worst case, and no in_flight list."""
+    R = tmp_path / 'r'
+    def r(b, n):
+        if n == 2: raise KeyboardInterrupt
+        return stop(b)
+    with pytest.raises(KeyboardInterrupt):
+        live(book[1], R, monkeypatch, reply=r)
+    fp = load(R / 'run.json')['figure_passes']
+    st, = fp['stopped_in_flight']
+    assert fp['state'] == 'calling' and 'in_flight' not in fp and st['pass'] == '2' and st['stopped'] is True and 0.3 < st['worst_usd'] < 0.5
+
 def test_the_in_flight_fields_are_gone_once_a_request_is_done(book, tmp_path, monkeypatch):
     R = tmp_path / 'r'; live(book[1], R, monkeypatch, reply=cut_second)
     assert not [k for k in load(R / 'run.json')['figure_passes'] if k.startswith('in_flight')]
