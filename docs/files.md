@@ -322,7 +322,7 @@ A PDF whose images fit by count but not within 20 MB keeps one request: the figu
 
 ### Sending
 
-**Figure requests go out several at a time:** up to `AI_PARALLEL` at once (default 8, per PDF; see [Options](options.md#model-and-cost)). `AI_PARALLEL=1` sends them one after another, in their order, as before. Their answers are stored in request order, whatever order they come back in. The log prints one line as sending starts and one each time a request finishes ("▶ figure requests: 2 of 4 done"); the app shows it as "sending to the AI: figures, 2 of 4 done".
+**Figure requests go out several at a time:** up to `AI_PARALLEL` at once (default 16, per PDF; see [Options](options.md#model-and-cost)). `AI_PARALLEL=1` sends them one after another, in their order, as before. Their answers are stored in request order, whatever order they come back in. The log prints one line as sending starts and one each time a request finishes ("▶ figure requests: 2 of 4 done"); the app shows it as "sending to the AI: figures, 2 of 4 done".
 
 **An interruption** (Ctrl+C in a terminal run, or an error while the requests are out) sends nothing more: no waiting request starts, and the run does not wait for the requests already sent. Those requests may still be charged. Each one is recorded at its worst case, since its charge isn't known, and the rerun counts it toward the limit per PDF. So an interruption can cost what the requests already sent cost, at most their worst cases.
 

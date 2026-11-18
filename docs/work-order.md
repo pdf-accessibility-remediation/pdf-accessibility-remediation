@@ -262,7 +262,7 @@ A figure request's answer (a PDF with more than 100 images, see [Files](files.md
 
 The first request's `alt`, `artifacts.elements`, `retype` and `actual_text` for a figure a figure request was sent are dropped ("decided in figure request K, which saw the image"). Its structural decisions (`captions`, `move_to_document_start`, `fix_figure_order`, `artifacts.untagged`) stay. The answers are merged into one work order before the other checks.
 
-Figure requests go out up to `AI_PARALLEL` at a time (default 8). An interruption (Ctrl+C in a terminal run) sends nothing more and waits for nothing already sent; the requests already sent count at their worst case. When the per-PDF limit has room for only some retries, which request is sent again depends on which asks first; with `AI_PARALLEL=1` it is the order of the requests. See [Sending](files.md#sending).
+Figure requests go out up to `AI_PARALLEL` at a time (default 16). An interruption (Ctrl+C in a terminal run) sends nothing more and waits for nothing already sent; the requests already sent count at their worst case. When the per-PDF limit has room for only some retries, which request is sent again depends on which asks first; with `AI_PARALLEL=1` it is the order of the requests. See [Sending](files.md#sending).
 
 ### A work order a reviewer changed
 
