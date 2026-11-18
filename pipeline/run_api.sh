@@ -35,11 +35,13 @@
 # was fine but a later step failed is reused at no cost.
 # Outputs go to runs/<short-name>/<run-label>/ (beside pipeline/). RUNS_DIR=/some/path overrides it.
 # RUN_DIR=/exact/folder sets the run folder itself (batch_api.sh uses it: runs/batches/<label>/<name>/).
-# A relative RUNS_DIR or RUN_DIR is taken from the folder the command is run in, as the PDF's path is (#144).
+# A relative RUNS_DIR, RUN_DIR, REPLY, LANG_REPLY or COST_HISTORY is taken from the folder the command is run in, as the
+# PDF's path is (#144).
 # ASK_LANG=1 (the app, #45 D4): with no OCR_LANG and no intake yet, intake.py --languages runs first; when pages need OCR
 # and their language matters (not Latin script only, not "no text found") the run stops with exit 4 before any OCR
 # (_intake/languages.json has the suggestion), so a person gives the language. Otherwise it goes on as before.
 set -euo pipefail
+unset CDPATH                                                 # a cd below never prints, nor goes elsewhere
 SRC=${1:?path to the original PDF}; NAME=${2:?short name, e.g. teika}; RUN=${3:-api-$(date +%Y%m%d-%H%M)}
 [[ -f $SRC ]] || { echo "no such PDF: $SRC"; exit 1; }
 SRC=$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")      # absolute, so it works from any folder
@@ -55,8 +57,9 @@ for v in LANG_GROW LANG_GROUP; do
   case ${!v:-off} in on|off|1|0) ;; *) echo "$v is on or off (the default): ${!v}"; exit 1;; esac
 done
 abs_path() { python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$1"; }   # no folder needed; ".." and a final "/" go
-[[ -z ${RUNS_DIR:-} ]] || RUNS_DIR=$(abs_path "$RUNS_DIR")    # absolute, before the cd below: R is compared with other paths (#144)
-[[ -z ${RUN_DIR:-} ]] || RUN_DIR=$(abs_path "$RUN_DIR")
+for v in RUNS_DIR RUN_DIR REPLY LANG_REPLY COST_HISTORY; do   # absolute, before the cd below: R is compared with other paths (#144)
+  [[ -z ${!v:-} ]] || printf -v "$v" '%s' "$(abs_path "${!v}")"
+done
 cd "$(dirname "$0")"
 python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
   echo "missing Python libraries in $(command -v python3): from pipeline/, run  python3 -m pip install -r requirements.txt"; exit 1; }

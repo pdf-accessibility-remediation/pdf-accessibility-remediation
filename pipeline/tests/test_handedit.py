@@ -95,7 +95,8 @@ def test_a_figure_that_cannot_be_found_is_listed_not_guessed(tmp_path):
 # ---- handedit.py, run_api.sh DECIDE=none, report.py: the whole loop at no cost (veraPDF off, no AI call)
 def env(**kw):
     e = dict(os.environ, VERAPDF='off', PATH=os.path.dirname(sys.executable) + os.pathsep + os.environ.get('PATH', ''), **kw)
-    for k in ('INTAKE_REUSE', 'INTAKE', 'REVIEW', 'DECIDE', 'REPLY', 'ESTIMATE', 'RUN_DIR', 'OUT'): e.pop(k, None) if k not in kw else None
+    for k in ('INTAKE_REUSE', 'INTAKE', 'REVIEW', 'DECIDE', 'REPLY', 'ESTIMATE', 'RUN_DIR', 'OUT',     # none from the shell running the tests
+              'RUNS_DIR', 'COST_HISTORY', 'LANG_REPLY', 'AUTO', 'FROM', 'MODEL'): e.pop(k, None) if k not in kw else None
     return e
 
 def sh(args, cwd=PIPE, **kw):
