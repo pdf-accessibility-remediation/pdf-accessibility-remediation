@@ -100,6 +100,8 @@ class KidSets:
     (15,000 P under Document: 122 s of a 379 s apply). drop() keeps a parent's set right after one kid is removed."""
     def __init__(self): self.sets = {}
     def has(self, par, el):
+        if par.objgen == (0, 0) or (isinstance(el, pikepdf.Dictionary) and el.objgen == (0, 0)):   # review 31: a direct object
+            return any(same(k, el) for k in kids(par))                                            #   has no objgen of its own
         s_ = self.sets.get(par.objgen)
         if s_ is None: s_ = self.sets[par.objgen] = {k.objgen for k in kids(par) if isinstance(k, pikepdf.Dictionary)}
         return isinstance(el, pikepdf.Dictionary) and el.objgen in s_
