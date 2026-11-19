@@ -16,6 +16,7 @@ These settings change what one run or batch does. Put them before the command, f
 | `ESTIMATE=1` | Audit and cost estimate only. A later run with the same label reuses the audit |
 | `REPLY=path/to/reply.txt` | Reuses a saved AI reply instead of making an AI request (no cost). A relative path is taken from the folder you run the command in |
 | `REVIEW=1` | Stops after the AI's decisions so a reviewer can approve, change or reject each one before anything is applied. One PDF at a time, not in batches (see [Reviewing the work order](review-step.md)) |
+| `AI_RETRY=1` | A run held at its review stop because AI requests did not finish: asks the AI again for what is missing, then stops for review again (no new work order). The unfinished page readings go first; the language suggestions are estimated again afterward and sent by the next `AI_RETRY=1`. Use the same command as the run, without `REVIEW=1` (see [Missing AI suggestions](review-step.md#missing-ai-suggestions)) |
 | `REVIEW_DRYRUN=off` | With `REVIEW=1`: skips the trial run of the apply step at the review stop (see [The trial run at the review stop](#the-trial-run-at-the-review-stop)) |
 | `DECIDE=none` | No AI request at all: the work order starts empty and a reviewer fills it in, $0 (see [No AI request](#no-ai-request)) |
 | `KEEP=1` | Keeps the working files (digest, figure crops, raw reply, logs) |

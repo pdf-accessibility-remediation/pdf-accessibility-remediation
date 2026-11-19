@@ -59,6 +59,7 @@ It is on by default in `run_api.sh` and in the app's runs and batches, where the
 | File | Role |
 |---|---|
 | `review_workorder.py` | The review step (`REVIEW=1`) and reviewing again (see [review_workorder.py](#review_workorderpy)) |
+| `lib/aistatus.py` | Whether a run's AI steps finished (#151): `ai_outcome.json` (how the page readings and the language step each ended, written by those steps and `run_api.sh`), the one "finished" rule that both holds the review and decides what `AI_RETRY=1` reuses, and `ai_override.json` (a person's choice to review without what is missing). `python3 -m lib.aistatus held RUN_DIR` says why a run is held |
 | `review_ocr.py` | Records a reviewer's verdict on a PDF's OCR text, or opens the OCR-only review page (see [review_ocr.py](#review_ocrpy)) |
 | `manual_checks.py` | The accessibility evaluation from the terminal: `--show`, `--record pac\|screen-reader FILE.json [--for-sha SHA]`, `--refresh`, `--template pac\|screen-reader`; through `review/manual.py` |
 | `handedit.py` | A PDF edited by hand in Acrobat: exports a copy, and brings an edited one back as a new run (see [handedit.py](#handeditpy)) |
