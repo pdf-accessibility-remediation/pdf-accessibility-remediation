@@ -54,6 +54,7 @@ def test_hand_edit_reads_the_record_first_and_is_none_for_any_other_run(tmp_path
     assert EL.hand_edit(str(C), {'hand_edit': {'base_sha256': 'b' * 64}}) == {'base_sha256': 'b' * 64}
     assert EL.hand_edit(str(R), {}) is None and EL.hand_edit(str(R), {'hand_edit': 'damaged'}) is None
     assert EL.parent(str(R), {'hand_edit': ['damaged']}) is None
+    assert EL.parent(str(R), {'hand_edit': {'parent': 'x'}}) is None and EL.parent(str(R), {'hand_edit': {'parent': {'run': 3}}}) is None
 
 def test_the_parents_page_lists_each_copy_and_links_only_a_finished_one(tmp_path):
     R = finished(tmp_path / 'runs' / 'book' / 'r1')

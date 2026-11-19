@@ -59,7 +59,7 @@ def hand_edit(R, rec=None):
 def parent(R, rec=None):
     """The run this one was made from (hand_edit()'s `parent`), or None."""
     he = hand_edit(R, rec)
-    par = he.get('parent') if isinstance(he, dict) else None
+    par = (he or {}).get('parent')
     P = _path(par.get('run')) if isinstance(par, dict) else None
     if not P: return None
     return {'run': P, 'label': '/'.join(os.path.normpath(P).split(os.sep)[-2:]), 'state': state(P)}
