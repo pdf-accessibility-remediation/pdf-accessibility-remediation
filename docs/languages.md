@@ -169,11 +169,32 @@ mid-title), and `LANG_GROUP=on` makes adjacent single Chinese characters one wor
 screen-reader check of a title tagged in pieces (see [Options](options.md#language-tags)).
 
 The step is on by default (`LANG_TAGS=on`, see [Options](options.md#language-tags)). It has its own model
-(`LANGUAGE_MODEL`, default Sonnet 5.5, whatever model the work order uses), limit (`LANGUAGE_MAX_USD`, default $6) and form limit
-(`LANGUAGE_MAX_FORMS`, default 5000). The PDF's limit (`BOOK_MAX_USD`, default $8) is shared by the work order, the
-page readings and this step. The step never stops the work order: when it doesn't fit the PDF's limit with the work order,
-or passes its own limit, it alone is left out and the PDF goes on without language tags (see
+(`LANGUAGE_MODEL`, default Sonnet 5.5, whatever model the work order uses) and limit (`LANGUAGE_MAX_USD`). The PDF's limit
+(`BOOK_MAX_USD`) is shared by the work order, the page readings and this step (see
 [The limit per PDF](options.md#the-limit-per-pdf)).
+
+### Word forms not sent
+
+#159 (Language step: words over the 5,000-form limit are never tagged or shown): the dollar limits alone decide what is
+sent. There is no limit on the number of word forms unless `LANGUAGE_MAX_FORMS` is set (an override).
+
+- **The fill.** Word forms go in their usual order (by kind, then by page: words not in the English word list come last),
+  in requests of up to 150. Whole requests are sent while the step's worst case fits the smaller of its own limit and the
+  room left in the PDF's limit. The work order and the page readings are priced first, so the room is known. Then the
+  part of the next request that fits is sent. A request answered before costs nothing and doesn't count.
+- **What doesn't fit is held back, never refused.** The step is never refused or left out whole for its own cost. The
+  word forms held back are not sent and not tagged.
+- **Said before anything is spent.** The terminal prints the count and the reason just before "Name the languages of
+  these words and passages with the AI now?" (and before the `AUTO=1` line). The app's run page says it beside the cost,
+  and a batch's estimate lists each PDF that holds word forms back with its count. This is a warning, not a refusal.
+- **Shown after the run.** The record keeps them (`language_status.held_back`: the count, the kinds, the first 200 forms,
+  a short hash of their keys). The review page's "Languages" section shows a line and the fold "Word Forms Not Sent", and
+  review.md lists them under "Language Tags".
+- **Ready.** "Language Tags" is not Approved while word forms are held back. "Accept Without the Word Forms Not Sent" on
+  the review page records the reviewer's name with the count and the hash. A later "Review Again" keeps the acceptance
+  while the same forms are held back; a different set needs a new one.
+- **To send more,** raise the limit for that PDF: `LANGUAGE_MAX_USD=…` (or `BOOK_MAX_USD=…` when the PDF's limit is what
+  held them back) for the run, or the limits in the app's settings, then a new estimate.
 
 ### Sending, retries and interruptions
 

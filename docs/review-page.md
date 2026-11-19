@@ -239,6 +239,14 @@ It opens with one paragraph, the same on every PDF:
 - Rows load 100 at a time ("Show More").
 - "Language Tags" on "Ready to Ship?" reads "Approved" once every form is decided.
 
+### Word forms not sent
+
+When the language step held word forms back (they didn't fit the dollar limits, #159), the section opens with a line
+saying how many and why, and the fold "Word Forms Not Sent" lists them by kind (the first 200). They can't be decided
+here: they were never sent, so they have no suggestion. "Accept Without the Word Forms Not Sent" lets the PDF be Ready
+without them: the choice is recorded at "Finish Review" with the reviewer's name, and a later "Review Again" keeps it
+while the same word forms are held back. See [Word forms not sent](languages.md#word-forms-not-sent).
+
 ### Group approval
 
 Each language fold has up to three buttons (#124, #132). None touches a low-confidence row, a row whose answer varies from
