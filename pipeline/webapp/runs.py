@@ -638,6 +638,7 @@ def pending_state(s, run, R, nm=None):
         ok = not b or (test and b['code'] in ('offline', 'no_credit'))
         spend = {'ok': ok, 'why': None if ok else (SP.credit_words(s) if b['code'] == 'no_credit' else b['words']), 'code': None if ok else b['code']}
     if lq: fail = None
+    if est: est = {**est, **held_back_view(R)}               # #159: word forms the limits hold back, said beside the cost
     return {'run': run, 'mode': 'pending', 'title': name, 'file': file, 'run_name': snap.shown_run(run), 'phase': phase, 'language': lq,
             'estimate': est, 'sent': sent_words(est) if est else None, 'spend': spend, 'retry': retry, 'failure': fail, 'test': test,
             'from_app': from_app, 'batch': batch, 'batch_name': snap.shown_run(f'batches/{batch}') if batch else None,
@@ -776,6 +777,20 @@ HELD_STEP = {'Language Suggestions': 'language', 'Page Readings': 'pages'}
 def _held_text(t):
     """aistatus.lines()'s sentence after the colon (its counts already in plain words: "… (2 requests not finished).")."""
     return t.strip()
+
+HELD_BACK_RAISE = 'To send more of them, whoever looks after the app can raise the limit for language suggestions; then select "Get a New Estimate".'
+HELD_BACK_RAISE_BOOK = 'To send more of them, whoever looks after the app can raise the limit per PDF; then select "Get a New Estimate".'
+
+def held_back_view(R):
+    """#159 (Patrick's decision: a warning before money is spent, never a refusal): the estimate's held-back word forms
+    as the run page says them, {held_back_words, held_back_raise}, or {} when none are held back."""
+    from lib import aistatus as AS
+    try: e = json.load(open(os.path.join(R, 'language_estimate.json'), encoding='utf-8'))
+    except (OSError, ValueError): return {}
+    w = AS.held_back_words(e) if isinstance(e, dict) and not e.get('refused') else None
+    if not w: return {}
+    raise_ = None if e.get('held_back_why') == 'forms' else HELD_BACK_RAISE_BOOK if (e.get('held_back_limit') or {}).get('which') == 'book' else HELD_BACK_RAISE
+    return {'held_back_words': w, **({'held_back_raise': raise_} if raise_ else {}), 'held_back_count': int(e.get('held_back') or 0)}
 
 def all_again(R, part, est):
     """review 29 L1: a language retry estimate that reuses nothing although the step had finished requests (the

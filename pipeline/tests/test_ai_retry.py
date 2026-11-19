@@ -278,3 +278,81 @@ def test_a_kept_refused_estimate_never_counts_as_cost(tmp_path):
     a, b = json.loads(without[1]), json.loads(withref[1])
     if a and b:
         assert (a.get('ceiling_usd'), a.get('expected'), a.get('language')) == (b.get('ceiling_usd'), b.get('expected'), b.get('language'))
+
+# ------------------------------------------------------------------ #159: word forms the limits hold back
+EVIL = 'kō<ra&"mi'                                   # a made-up held-back form: escaped wherever it is shown (review 29 L5)
+
+def held_back_run(tmp_path, limit='0.0001'):
+    src = book(tmp_path, n=16)
+    r, R, calls = run(tmp_path, src, REVIEW='1', AUTO='1', PAGE_READS='off', LANGUAGE_MAX_USD=limit)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    return src, r, R, calls
+
+def test_the_terminal_says_what_is_held_back_before_sending(tmp_path):
+    src, r, R, calls = held_back_run(tmp_path)
+    assert 'word forms will not be sent to the AI: they don\'t fit within the limit for language suggestions ($0.00).' in r.stdout
+    assert 'raise the limit for this run: LANGUAGE_MAX_USD=' in r.stdout
+    assert r.stdout.index('will not be sent to the AI') < r.stdout.index('AUTO=1: naming languages without asking')
+    assert not [c for c in calls if c['kind'] == 'language'] and not aistatus.status(str(R))['held']   # never refused, never held
+
+def test_nothing_is_said_when_nothing_is_held_back(tmp_path):
+    src = book(tmp_path, n=16)
+    r, R, _ = run(tmp_path, src, REVIEW='1', AUTO='1', PAGE_READS='off')
+    assert 'will not be sent to the AI' not in r.stdout
+
+def test_held_back_forms_reach_the_record_the_line_and_review_md_and_html(tmp_path):
+    src, r, R, _ = held_back_run(tmp_path)
+    lr = json.load(open(R / 'language_run.json')); lr['held_back'][0] = EVIL; json.dump(lr, open(R / 'language_run.json', 'w'))
+    from review import core
+    hb = core.held_back_info(str(R))                                          # the first review reads language_run.json
+    assert hb['count'] == lr['held_back_count'] and EVIL in hb['forms'] and hb['accepted'] is None
+    rw = subprocess.run([sys.executable, 'review_workorder.py', str(R), '--reviewer', 'Kim'], cwd=HERE, capture_output=True, text=True)
+    assert rw.returncode == 0, rw.stdout + rw.stderr
+    r2, R, _ = run(tmp_path, src, PAGE_READS='off')                          # the apply
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-2000:]
+    rec = json.load(open(R / 'record.json'))
+    st = rec['language_status']['held_back']
+    assert st['count'] == lr['held_back_count'] and st['why'] == 'dollars' and st['sha'] == lr['held_back_sha'] and EVIL in st['forms']
+    line = next(x for x in rec['glance']['ship'] if x['what'] == 'Language tags')
+    assert line['ok'] is False and 'were not sent: more than the limit for language suggestions' in line['text']
+    md = open(R / 'review.md', encoding='utf-8').read()
+    assert f'**Word forms not sent ({st["count"]}):** more than the limit for language suggestions; they are not tagged.' in md and f'"{EVIL}"' in md
+    html = open(R / 'review.html', encoding='utf-8').read()
+    assert EVIL not in html and 'kō&lt;ra&amp;' in html
+    # "Review Again": language_run.json is gone; the list comes from record.json, and an acceptance names these forms
+    assert not os.path.exists(R / 'language_run.json')
+    hb2 = core.held_back_info(str(R))
+    assert hb2['count'] == st['count'] and hb2['sha'] == st['sha'] and EVIL in hb2['forms']
+
+def test_an_acceptance_names_the_forms_and_review_again_keeps_it(tmp_path, monkeypatch):
+    """#159 Part 1, review 29 L2: "Accept Without the Word Forms Not Sent" is recorded with the reviewer's name, the count
+    and the forms' hash; a later session carries it while the same forms are held back, and a different set reopens it."""
+    from review import core
+    from lib import glance as G
+    monkeypatch.setattr(core, 'check', lambda R_, wo: [])
+    R = tmp_path; (R / '_audit').mkdir(); (R / '_audit' / 'digest.json').write_text('{}')
+    hb = {'count': 2, 'sha': 'abcd', 'why': 'dollars', 'limit': {'usd': 25, 'which': 'step'}, 'by_kind': {'unknown': 2}, 'forms': ['a', 'b']}
+    (R / 'record.json').write_text(json.dumps({'language_status': {'candidates': 5, 'state': 'decided', 'held_back': hb}}))
+    wo = {'document': {'lang': 'en', 'title': 'T'}}
+    v = core.finish(str(R), wo, dict(wo), 'Kim', '2026-11-18', 'page', held_back=core.held_back_info(str(R)), accept_held_back=True, gap_default='t')
+    acc = v['language']['held_back_accepted']
+    assert acc == {'by': 'Kim', 'date': '2026-11-18', 'count': 2, 'sha': 'abcd'}
+    rec = {'workorder': {'language_parts': {'version': 2, 'forms': []}}, 'language_status': {'candidates': 5, 'state': 'decided', 'held_back': hb},
+           'language_review': v['language']}
+    assert G.language_line(rec) == (True, 'Approved (Kim on November 18, 2026 · 2 word forms not sent, accepted by Kim)')
+    (R / 'record.json').write_text(json.dumps(rec))                           # the next session ("Review Again") carries it
+    v2 = core.finish(str(R), wo, dict(wo), 'Lee', '2026-11-19', 'page', held_back=core.held_back_info(str(R)), gap_default='t')
+    assert v2['language']['held_back_accepted']['by'] == 'Kim'
+    rec['language_status']['held_back'] = {**hb, 'sha': 'other'}               # another set of the same size: open again
+    assert G.language_line(rec)[0] is False
+    (R / 'record.json').write_text(json.dumps(rec))
+    assert core.held_back_info(str(R))['accepted'] is None
+
+def test_the_line_says_both_when_forms_wait_for_decisions_too():
+    from lib import glance as G
+    rec = {'workorder': {'language_parts': {'version': 2, 'forms': [{'form': 'x', 'lang': 'haw', 'confidence': 'high', 'tag': True}]}},
+           'language_status': {'candidates': 5, 'state': 'decided', 'held_back': {'count': 2400, 'sha': 's', 'why': 'dollars', 'limit': {'which': 'step'}}},
+           'language_review': {'not_reviewed': 3200, 'forms': {}}}
+    assert G.language_line(rec)[1] == 'Not Reviewed (3,200 word forms to decide on the review page; 2,400 not sent: more than the limit for language suggestions)'
+    rec['language_status']['held_back']['why'] = 'forms'
+    assert 'more than the set number of word forms' in G.language_line(rec)[1]

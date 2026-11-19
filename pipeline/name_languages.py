@@ -128,6 +128,54 @@ def local_rule(args, fs, words, doc_lang, places):
         local, stats = {}, {**stats, 'decided': 0, 'by_language': {}, 'off': 'LANG_READING_RULE=off'}
     return local, {i: hanreading.compact(e) for i, e in evid.items()}, stats
 
+def fill_room(args, R, spent):
+    """#159, review 29 M4: the most the language step may add: the smaller of its own limit and the room left in the
+    PDF's limit. In a dry run, the work order's and the page readings' maximum still to be paid count against that room
+    (run_api.sh prices the work order before this step's estimate); once they are paid, book_spent has them."""
+    pending = 0.0
+    if args.dry_run:
+        rj = _load(os.path.join(R, 'run.json')) or {}
+        if not (rj.get('usage') or {}).get('cost_usd'): pending += float((rj.get('estimate') or {}).get('worst_case_total_usd') or 0)
+        pe = _load(os.path.join(R, 'page_reads_estimate.json')) or {}
+        if not pe.get('refused') and not os.path.exists(os.path.join(R, 'page_reads_run.json')): pending += float(pe.get('worst_case_usd') or 0)
+    return {'usd': round(max(0.0, min(args.max_usd, args.book_max_usd - spent - pending)), 6), 'step_usd': args.max_usd,
+            'book_usd': args.book_max_usd, 'by': 'step' if args.max_usd <= args.book_max_usd - spent - pending else 'book'}
+
+def fill(fs, book, words, prompt, prompt_sha, answered, pin, pout, room):
+    """(sent, held) for the dollar fill: whole requests (langreq's chunks, in order) while the running worst case of the
+    requests still to send fits room['usd'] (a request answered before costs nothing), then the largest part of the next
+    request that fits."""
+    per, limit, total, n = langreq.FORMS_PER_REQUEST, room['usd'] + 1e-9, 0.0, 0
+    def cost(chunk):
+        r = langreq.requests(book, chunk, words)[0]
+        if hashlib.sha256((prompt_sha + langreq.user_text(r)).encode()).hexdigest()[:16] in answered: return 0.0
+        return langreq.size(r, prompt) * pin + costs.allowance('language', len(r['items'])) * pout
+    for i in range(0, len(fs), per):
+        chunk = fs[i:i + per]; w = cost(chunk)
+        if total + w <= limit: total += w; n = i + len(chunk); continue
+        lo, hi, best = 1, len(chunk) - 1, 0
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            if total + cost(chunk[:mid]) <= limit: best, lo = mid, mid + 1
+            else: hi = mid - 1
+        n = i + best
+        break
+    return fs[:n], fs[n:]
+
+def held_summary(held, why, room=None):
+    """What the estimate and the record say about forms held back (#159): count, kinds, the first 200, a short hash of
+    their keys (review 29 L2: an acceptance names these forms), and why (the dollar limit, or LANGUAGE_MAX_FORMS)."""
+    keys = sorted(form_key(f) for f in held)
+    return {'held_back_by_kind': dict(collections.Counter(f['group'] for f in held).most_common()),
+            'held_back_sha': hashlib.sha256('\n'.join(keys).encode()).hexdigest()[:16],
+            'held_back_why': why, **({'held_back_limit': {'usd': room['step_usd'] if room['by'] == 'step' else room['book_usd'], 'which': room['by']}}
+                                    if why == 'dollars' and room else {})}
+
+def _load(p):
+    try:
+        with open(p, encoding='utf-8') as f: return json.load(f)
+    except (OSError, ValueError): return None
+
 def reusable(done):
     """{request sha256: [entries]} of a finished language_run.json that a rerun with the same model and prompt reuses: a
     request that finished (finish 'stop'), with its resend when it had one, and a request cut off whose resend finished
@@ -250,7 +298,8 @@ def main():
     ap.add_argument('audit_dir'); ap.add_argument('run_dir'); ap.add_argument('--pdf', required=True)
     ap.add_argument('--dry-run', action='store_true'); ap.add_argument('--model', default=None)
     ap.add_argument('--max-usd', type=float, default=float(os.environ.get('LANGUAGE_MAX_USD') or costs.DEFAULT_LANGUAGE_USD))
-    ap.add_argument('--max-forms', type=int, default=int(os.environ.get('LANGUAGE_MAX_FORMS') or 5000))
+    ap.add_argument('--max-forms', type=int, default=int(os.environ.get('LANGUAGE_MAX_FORMS') or 0) or None,   # #159: off unless set (an override)
+                    help='at most this many word forms sent (LANGUAGE_MAX_FORMS; off by default: the dollar limits decide, #159)')
     ap.add_argument('--book-max-usd', type=float, default=float(os.environ.get('BOOK_MAX_USD') or costs.DEFAULT_LIMITS['per_book_usd']),
                     help="the PDF's limit, shared with the work order and the page readings (review 06, M2)")
     on = lambda k: os.environ.get(k, 'off').lower() in ('1', 'on', 'yes', 'true')
@@ -281,7 +330,8 @@ def main():
         merge(R, wo_path, fs, {}, None); return
     local, readings, rule = local_rule(args, fs, words, doc_lang, places)     # #123: decided here, never sent
     ai_fs = [f for f in fs if f['id'] not in local]
-    sent, held = ai_fs[:args.max_forms], ai_fs[args.max_forms:]
+    sent, held = (ai_fs[:args.max_forms], ai_fs[args.max_forms:]) if args.max_forms else (ai_fs, [])   # #159: a count only when set
+    held_why = 'forms' if held else None
     sent_ids = {x['id'] for x in sent}
     written = [f for f in fs if f['id'] in local or f['id'] in sent_ids]      # the forms written into the work order, in their order
     title = str(((wo.get('document') or {}).get('title')) or '')
@@ -371,6 +421,15 @@ def main():
     done = json.load(open(run_path, encoding='utf-8')) if os.path.exists(run_path) else {}
     reuse_ok = done.get('model') == model and done.get('prompt_sha256') == prompt_sha and (not done.get('response_from') or done.get('own_reply'))   # #151: this folder's own replay too
     answered = reusable(done) if reuse_ok else {}
+    # #159 (Language step: words over the 5,000-form limit are never tagged or shown): the dollar fill. Forms are sent in
+    # their order (kinds, then pages) while the step's worst case fits the smaller of its own limit and the room left in
+    # the PDF's (review 29 M4); the rest is held back and shown, never the step refused or left out whole for its cost.
+    room = fill_room(args, R, spent_now := costs.book_spent(R))
+    sent, more = fill(sent, {'title': title, 'language': doc_lang}, words, prompt, prompt_sha, answered, pin, pout, room)
+    if more: held, held_why = more + held, 'dollars'
+    sent_ids = {x['id'] for x in sent}
+    written = [f for f in fs if f['id'] in local or f['id'] in sent_ids]
+    reqs = langreq.requests({'title': title, 'language': doc_lang}, sent, words)
     todo = []
     for n, r in enumerate(reqs, 1):
         text = langreq.user_text(r); sha = hashlib.sha256((prompt_sha + text).encode()).hexdigest()[:16]
@@ -378,7 +437,9 @@ def main():
         todo.append({'n': n, 'req': r, 'sha256': sha, 'max_tokens': mt, 'input_est': ins, 'worst': ins * pin + mt * pout, 'reused': sha in answered})
     send = [t for t in todo if not t['reused']]
     worst = sum(t['worst'] for t in send)
-    est = {'forms': len(fs), 'local': len(local), 'sent': len(sent), 'held_back': len(held), 'requests': len(todo), 'to_send': len(send), 'reused': len(todo) - len(send),
+    est = {'forms': len(fs), 'local': len(local), 'sent': len(sent), 'held_back': len(held), **(held_summary(held, held_why, room) if held else {}),
+           **({'all_usd_about': round(sum(t['worst'] for t in todo if not t['reused']) * (len(sent) + len(held)) / max(len(sent), 1), 2)} if held and sent else {}),
+           'requests': len(todo), 'to_send': len(send), 'reused': len(todo) - len(send),
            'worst_case_usd': round(worst, 4), 'per_call_worst_usd': round(max((t['worst'] for t in send), default=0), 4), 'cap_usd': args.max_usd,
            'price_per_million': [round(pin * 1e6, 4), round(pout * 1e6, 4)], 'max_tokens': [t['max_tokens'] for t in send], 'words_sent': sum(len(s['text'].split()) for r in reqs for s in r['snippets'])}
     if send:
@@ -391,7 +452,7 @@ def main():
         kept = {} if over_cap else costs.kept_refusal(R, 'language', new)      # decide.py's "left out" survives this dry run
         json.dump({**new, **({'refused': {'why': 'cap', 'words': f'The language step could cost up to ${worst:.2f}, more than its limit of ${args.max_usd:.2f}.'}} if over_cap else kept)},
                   open(est_path, 'w', encoding='utf-8'), indent=1)
-    print(f'language step: {len(fs)} forms ({len(local)} decided by the reading rule; {len(held)} held back by LANGUAGE_MAX_FORMS); '
+    print(f'language step: {len(fs)} forms ({len(local)} decided by the reading rule; {len(held)} held back{" by the dollar limit" if held_why == "dollars" else " by LANGUAGE_MAX_FORMS" if held else ""}); '
           f'{len(sent)} in {len(todo)} requests ({len(todo) - len(send)} answered before) · {model}')
     if send: print('language step: ' + costhistory.terminal_line(est['expected']))
     print(f'language step: Max Estimated Cost: ${worst:.2f} · Limit: ${args.max_usd:.2f}')
@@ -490,6 +551,12 @@ def merge(R, wo_path, fs, dec, rec, held=(), note=None, contexts=None, readings=
         key_of = {f['id']: e['key'] for f, e in zip(fs, (wo.get('language_parts') or {}).get('forms') or [])}
         rec['contexts'] = {key_of[i]: c for i, c in contexts.items() if i in key_of}
     rec['held_back'] = [f['form'] for f in held][:200]; rec['held_back_count'] = len(held)
+    if held:                                           # #159: kinds, the keys' hash, and why (from the step's own estimate when it ran)
+        e_ = rec.get('estimate') or {}
+        rec.update(held_summary(held, e_.get('held_back_why') or 'forms'))
+        if e_.get('held_back_limit'): rec['held_back_limit'] = e_['held_back_limit']
+    else:
+        for k in ('held_back_by_kind', 'held_back_sha', 'held_back_why', 'held_back_limit'): rec.pop(k, None)
     nd = collections.defaultdict(list)                  # forms with no decision (cut off, invalid, a failed request), by group
     for f in fs:
         if f['id'] not in dec: nd[f['group']].append(f['form'])

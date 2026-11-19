@@ -648,7 +648,9 @@ function costLines(e) {                                          // #65 (costs i
     (e.spent_before_usd ? ' · Counted Toward This PDF\'s Limit So Far: ' + usd(e.spent_before_usd) : '') +
     (e.credit_usd != null ? ' · Credit: ' + usd(e.credit_usd) : ' · Credit: Not Checked') +
     (e.left_out || []).map(x => '<br>' + esc(x.words)).join('') +   // review 08, H1: an optional step that doesn't fit is left out, never the PDF
-    localLine(e);
+    localLine(e) +
+    (e.held_back_words ? '</p><p class="pp-warn-t" id="pp-held-back">' + esc(e.held_back_words) +      // #159: a warning before money is spent
+      (e.held_back_raise ? ' ' + esc(e.held_back_raise) : '') : '');
 }
 // #123: word forms in Chinese characters decided by the reading printed beside them are never sent, so they cost nothing
 function localLine(e) {

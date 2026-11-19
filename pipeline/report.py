@@ -130,9 +130,20 @@ def language_status():
     elif opt('lang-tags') == 'off' and not lr_run: state = 'off'
     elif ref == 'book': state = 'left_out_book'
     elif ref == 'cap': state = 'left_out_cap'
+    elif lr_run and lr_run.get('held_back_count') and not lr_run.get('requests'): state = 'held_back'   # #159: every form held back, none sent
     elif lr_run: state = 'failed'                       # it started (its run file exists) and decided nothing
     else: state = 'not_run'
-    return {'candidates': n, 'state': state}
+    out = {'candidates': n, 'state': state}
+    hb = held_back_of(lr_run)
+    if hb: out['held_back'] = hb                       # #159: only when forms were held back (records below the limit stay as they were)
+    return out
+
+def held_back_of(lr):
+    """#159: what the language step held back, from its record (the first report; a re-report keeps the earlier record's
+    language_status): {count, by_kind, forms (the first 200), sha, why, limit}, or None."""
+    if not isinstance(lr, dict) or not lr.get('held_back_count'): return None
+    return {'count': lr['held_back_count'], 'by_kind': lr.get('held_back_by_kind') or {}, 'forms': list(lr.get('held_back') or [])[:200],
+            'sha': lr.get('held_back_sha'), 'why': lr.get('held_back_why') or 'forms', **({'limit': lr['held_back_limit']} if lr.get('held_back_limit') else {})}
 for need, name in ((wo, 'workorder.json'), (log, PDF + '.log.json'), (ver, PDF + '.verify.json')):
     if not need: sys.exit(f'{name} missing in {R}: run the whole pipeline first (nothing was deleted)')
 
@@ -1182,7 +1193,8 @@ if bad:
     L.append('')
 lp_ = (wo or {}).get('language_parts') or {}
 haw_el_ = (log.get('haw_elements') or {}).get('elements') or []     # review 08, H2: whole lines tagged Hawaiian on pages read by the AI
-if lp_.get('version') == 2 or lang_log or haw_el_ or (isinstance(ai_override, dict) and ai_override.get('by')):   # #118 (and #151: an override is always listed)
+_hb = (record.get('language_status') or {}).get('held_back') if isinstance(record.get('language_status'), dict) else None   # #159
+if lp_.get('version') == 2 or lang_log or haw_el_ or (isinstance(ai_override, dict) and ai_override.get('by')) or _hb:   # #118 (#151: an override, #159: forms not sent)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from lib import langtag as LT
     forms_ = lp_.get('forms') or []
     pages_of_ = collections.defaultdict(set)
@@ -1194,6 +1206,15 @@ if lp_.get('version') == 2 or lang_log or haw_el_ or (isinstance(ai_override, di
     n += 1; L += [f'### {n}. Language Tags', '',
                   'Words and passages in another language get a language tag, so a screen reader switches to that language\'s voice (WCAG 3.1.2). '
                   'Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.', '']
+    if _hb:                                                               # #159: word forms the limits held back, never sent and never tagged
+        from lib import langreq as _LQ, glance as _G
+        _acc = ((record.get('language_review') or {}).get('held_back_accepted')) or {}
+        L += [line(f'**Word forms not sent ({_hb["count"]:,}):** {_G.held_back_reason(_hb)}; they are not tagged. '
+                   + ' · '.join(f'{_LQ.KIND_WORDS.get(k, k)} {n:,}' for k, n in (_hb.get('by_kind') or {}).items())
+                   + (f'. Accepted by {_acc["by"]} on {DT.day(_acc.get("date"))}.' if _acc.get('by') and _acc.get('count') == _hb['count'] and _acc.get('sha') == _hb.get('sha') else '.'), entry=False)]
+        if _hb.get('forms'):
+            L += [line(('The first 200: ' if _hb['count'] > len(_hb['forms']) else '') + ' · '.join(f'"{f}"' for f in _hb['forms']), entry=False)]
+        L.append('')
     if isinstance(ai_override, dict) and ai_override.get('by'):          # #151: the person chose to review without what was missing
         L += [line(f'**Reviewed without missing AI suggestions:** {ai_override["by"]} on {DT.day(ai_override.get("date"))}'
                    + (f' ({"; ".join(ai_override["missing"])})' if ai_override.get('missing') else ''), entry=False), '']

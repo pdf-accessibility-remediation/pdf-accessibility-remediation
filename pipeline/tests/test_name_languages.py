@@ -68,8 +68,10 @@ def test_a_live_run_writes_parts_and_its_record(tmp_path, monkeypatch):
 def test_the_estimate_and_the_limit_come_first(tmp_path, monkeypatch):
     src, A, R = folders(tmp_path)
     assert run(src, A, R, monkeypatch, '--dry-run') == [] and load(R / 'language_estimate.json')['to_send'] == 1
-    assert run(src, A, R, monkeypatch, '--max-usd', '0.0001') == [] and 'refusing before any AI request' in str(LAST['exit'])
-    assert tagged(R) == []
+    # #159: the step is never refused for its own cost: what doesn't fit its limit is held back and listed
+    assert run(src, A, R, monkeypatch, '--max-usd', '0.0001') == [] and LAST['exit'] is None
+    lr = load(R / 'language_run.json')
+    assert tagged(R) == [] and lr['held_back_count'] == 3 and lr['held_back_why'] == 'dollars' and lr['held_back_limit'] == {'usd': 0.0001, 'which': 'step'}
 
 def test_a_saved_reply_is_applied_by_form_with_no_request(tmp_path, monkeypatch):
     src, A, R = folders(tmp_path)
@@ -331,3 +333,36 @@ def test_a_reply_that_reports_an_error_leaves_its_forms_failed(tmp_path, monkeyp
     x, = load(R / 'language_run.json')['requests']
     assert len(calls) == 2 and x['error']['code'] == 'error' and 'text' not in x
     assert {f.get('no_answer') for f in load(R / 'workorder.json')['language_parts']['forms']} == {'failed'}
+
+def test_the_fill_sends_the_first_forms_that_fit_and_holds_back_the_rest(tmp_path, monkeypatch):
+    """#159: a limit that admits only part of the one request: the first forms in order are sent (a smaller request),
+    the rest held back, named in the record with their kinds and a hash of their keys; no refusal."""
+    src, A, R = folders(tmp_path)
+    run(src, A, R, monkeypatch, '--dry-run', '--max-usd', '1000')
+    full = load(R / 'language_estimate.json')['worst_case_usd']
+    calls = run(src, A, R, monkeypatch, '--max-usd', str(round(full * 0.85, 6)))
+    lr = load(R / 'language_run.json')
+    sent = json.loads(json.loads(calls[0])['messages'][1]['content'])['items']
+    assert LAST['exit'] is None and len(calls) == 1 and 0 < len(sent) < 3 and lr['held_back_count'] == 3 - len(sent)
+    order = [f['form'] for f in langreq.forms(load(A / 'lang_candidates.json')['places'])]
+    assert [it['form'] for it in sent] == order[:len(sent)] and lr['held_back'] == order[len(sent):]
+    assert lr['held_back_why'] == 'dollars' and sum(lr['held_back_by_kind'].values()) == lr['held_back_count'] and len(lr['held_back_sha']) == 16
+
+def test_the_fill_stops_at_the_room_left_in_the_pdfs_limit(tmp_path, monkeypatch):
+    """review 29 M4: the step's own limit is large, the PDF's room small (a work order still to pay in its estimate):
+    the fill stops at the room, and the estimate says which limit held the forms back."""
+    src, A, R = folders(tmp_path)
+    run(src, A, R, monkeypatch, '--dry-run', '--max-usd', '1000')
+    full = load(R / 'language_estimate.json')['worst_case_usd']
+    (R / 'run.json').write_text(json.dumps({'estimate': {'worst_case_total_usd': 1.0}}))          # the work order, priced, not yet paid
+    run(src, A, R, monkeypatch, '--dry-run', '--max-usd', '1000', '--book-max-usd', str(round(1.0 + full * 0.5, 6)))
+    e = load(R / 'language_estimate.json')
+    assert e['held_back'] >= 1 and e['worst_case_usd'] <= full * 0.5 + 1e-6 and e['held_back_limit']['which'] == 'book' and 'refused' not in e
+
+def test_below_the_limit_nothing_about_held_back_forms_is_written(tmp_path, monkeypatch):
+    """#159: a run under its limits writes no held-back fields (the records of the regression books stay identical)."""
+    src, A, R = folders(tmp_path)
+    run(src, A, R, monkeypatch)
+    lr, e = load(R / 'language_run.json'), load(R / 'language_run.json')['estimate']
+    assert lr['held_back_count'] == 0 and not any(k.startswith('held_back_') and k != 'held_back_count' for k in lr)
+    assert e['held_back'] == 0 and not any(k.startswith('held_back_') for k in e)

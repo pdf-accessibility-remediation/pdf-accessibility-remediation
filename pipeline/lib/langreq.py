@@ -345,6 +345,11 @@ DROP_CODES = ('echo', 'tag', 'invalid', 'unknown_id', 'twice', 'not_answered', '
 # words it. One per form: its own answer's reason when it had one; else what became of its request.
 NO_ANSWER = ('echo', 'tag', 'invalid', 'not_answered', 'cut_off', 'failed', 'unreadable')   # unreadable: #151 (review 22 M3)
 
+KIND_WORDS = {'existing': 'language tags already in the PDF', 'cjk': 'words in Chinese, Japanese or Korean characters',   # #159: plain names
+              'marks': 'words with macrons or other marks', 'hawaiian': 'Hawaiian-looking words', 'script': 'words in other scripts',
+              'passage': 'passages', 'accented': 'words with accents', 'latin': 'other Latin-script words',
+              'unknown': 'words not in the English word list'}
+
 def no_answer(ids, dropped, finish=None):
     """{id: NO_ANSWER code} for one request's ids with no decision: echo, tag or invalid from the id's own dropped answer;
     else, for a reply cut off (finish 'length'), cut_off; for a reply that couldn't be read at all, unreadable (#151); for a

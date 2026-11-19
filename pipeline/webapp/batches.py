@@ -295,7 +295,7 @@ def state(s, label, nm=None, with_dashboard=True):
     bj = [j for j in jl if j['run'] == f'batches/{label}' and j['kind'] == 'batch']
     batch_job = bj[-1] if bj else None
     B = folder(s, label)
-    out, Rs, flagged, missing, est_active, reviewing, asking, held_n = [], [], [], [], False, [], [], 0
+    out, Rs, flagged, missing, est_active, reviewing, asking, held_n, held_back = [], [], [], [], False, [], [], 0, []
     for b in bs:
         R = os.path.join(B, b['name'])
         row = _book_status(s, label, b, R, jl, batch_job, rd, nm)
@@ -310,6 +310,9 @@ def state(s, label, nm=None, with_dashboard=True):
         elif stopped and not row['finished']: flagged.append(b['name'])
         elif not row['finished']:
             Rs.append(R)
+            from . import runs as RN_
+            hb_ = RN_.held_back_view(R)                                           # #159: word forms this PDF's estimate holds back
+            if hb_: held_back.append({'name': b.get('title') or b['name'], 'count': hb_['held_back_count']})
             if not costs.estimate(R) and not (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
                 missing.append(b['name'])
         out.append({'name': b['name'], 'book': nm.book_name(b.get('key'), b.get('file') or '') if b.get('key') else b.get('book'), 'file': BK.shown_file(b.get('file') or ''), 'status': row['words'], 'finished': row['finished'],
@@ -348,7 +351,7 @@ def state(s, label, nm=None, with_dashboard=True):
             'totals': {'ceiling_usd': total['ceiling_usd'], 'limit_usd': total['limit_usd'], 'credit_usd': total['credit_usd'],
                        'spent_usd': spent, 'cost_words': cost_words, 'books_to_send': len(Rs), 'finished': finished, 'expected': total['expected'], 'requests': total['requests'],
                        'estimated': sum(1 for x in total['books'] if x['adds_usd'] is not None), 'to_estimate': len(Rs) + len(asking),   # R14
-                       'shown_ceiling_usd': shown.get('ceiling_usd')},
+                       'shown_ceiling_usd': shown.get('ceiling_usd'), 'held_back': held_back},
             'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary, 'dashboard': dashboard(s, label, out, al=jl) if with_dashboard else None,
             'again': bool(meta) and phase in ('stopped', 'finished') and finished + len(reviewing) < len(out),
             'job': ({k: batch_job.get(k) for k in ('id', 'status', 'exit', 'started', 'ended')} if batch_job else None)}

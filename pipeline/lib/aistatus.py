@@ -178,6 +178,30 @@ def status(R, A=None):
     held = bool(steps or figures) and not (isinstance(ov, dict) and ov.get('by'))
     return {'held': held, 'steps': steps, 'figures': figures, 'override': ov if isinstance(ov, dict) else None, 'marker': marker}
 
+def held_back_words(est, terminal=False):
+    """#159 (Patrick's decision: a warning before money is spent, never a refusal): the sentence for an estimate (or a
+    language record) that holds word forms back; None when nothing is held back. `terminal` adds how to raise the limit
+    for this run in run_api.sh's own words."""
+    n = int((est or {}).get('held_back') if isinstance((est or {}).get('held_back'), int) else (est or {}).get('held_back_count') or 0)
+    if not n: return None
+    total = int(est.get('forms') or 0) - int(est.get('local') or 0)
+    of = f'{n:,} of {total:,} word forms' if total > n else f'{n:,} word form' + ('' if n == 1 else 's')
+    lim = est.get('held_back_limit') or {}
+    def usd(v): v = float(v or 0); return f'${v:,.0f}' if v == int(v) else f'${v:,.2f}'
+    if est.get('held_back_why') == 'forms':
+        why = 'they are more than the set number of word forms'
+    elif lim.get('which') == 'book':
+        why = f"they don't fit within the room left in this PDF's limit ({usd(lim.get('usd'))} per PDF)"
+    else:
+        why = f"they don't fit within the limit for language suggestions ({usd(lim.get('usd'))})"
+    s = (f'{of} will not be sent to the AI: {why}. They will not be tagged, and the PDF can\'t be Ready until someone accepts that.')
+    if terminal:
+        about = est.get('all_usd_about')
+        var = 'LANGUAGE_MAX_FORMS' if est.get('held_back_why') == 'forms' else 'BOOK_MAX_USD' if lim.get('which') == 'book' else 'LANGUAGE_MAX_USD'
+        s += (f' To send them all (about ${about:,.2f} in all at most), raise the limit for this run: {var}=…' if about and var != 'LANGUAGE_MAX_FORMS'
+              else f' To send more, raise the limit for this run: {var}=…')
+    return s
+
 def on_exit(R, step, e):
     """How a step that stops after it started is recorded (review 24 L2), for name_languages.py and read_pages.py: a
     refusal already recorded is never overwritten; a clean exit (SystemExit 0 or None) records nothing; Ctrl-C is an

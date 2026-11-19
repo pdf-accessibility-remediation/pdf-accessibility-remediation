@@ -1473,6 +1473,31 @@ def problems(R, ai_wo, items, decisions, additions, adds, reviewer='', set_in=No
         else: out['fields'].append({'card': aid, 'why': why, 'fix': fix(why, N), 'origin': 'review'})
     return out, gaps(wo, digest)
 
+def held_back_info(R, run_dir=None):
+    """#159: the word forms the language step held back, for the review page: from language_run.json while the run waits for
+    its first review, else from record.json's language_status (a "Review Again": the tidy removed language_run.json;
+    review 29 L5). {count, sha, why, limit, by_kind: [[plain kind, n]], forms: [[plain kind, [forms]]], sentence, accepted}
+    or None. `accepted` is the earlier session's acceptance when it names the same forms (count and hash, review 29 L2)."""
+    from lib import aistatus as AS, langreq as LQ, glance as G
+    run_dir = run_dir or R
+    lr = load(os.path.join(R, 'language_run.json')) or load(os.path.join(run_dir, 'language_run.json'))
+    rec = load(os.path.join(run_dir, 'record.json')) or {}
+    if isinstance(lr, dict) and lr.get('held_back_count'):
+        hb = {'count': lr['held_back_count'], 'sha': lr.get('held_back_sha'), 'why': lr.get('held_back_why') or 'forms',
+              'limit': lr.get('held_back_limit'), 'by_kind': lr.get('held_back_by_kind') or {}, 'forms': list(lr.get('held_back') or [])[:200],
+              'total': int(((lr.get('estimate') or {}).get('forms')) or 0) - int(((lr.get('estimate') or {}).get('local')) or 0)}
+    else:
+        hb = ((rec.get('language_status') or {}).get('held_back')) if isinstance(rec.get('language_status'), dict) else None
+        if not hb: return None
+        hb = dict(hb)
+    est = {'held_back': hb['count'], 'forms': hb.get('total') or 0, 'held_back_why': hb.get('why'), 'held_back_limit': hb.get('limit') or {}}
+    kinds = list((hb.get('by_kind') or {}).items())
+    acc = ((rec.get('language_review') or {}).get('held_back_accepted')) or {}
+    return {'count': hb['count'], 'sha': hb.get('sha'), 'why': hb.get('why'), 'limit': hb.get('limit'),
+            'by_kind': [[LQ.KIND_WORDS.get(k, k), n] for k, n in kinds], 'forms': hb.get('forms') or [],
+            'sentence': AS.held_back_words(est) or '', 'reason': G.held_back_reason(hb),
+            'accepted': acc if acc.get('by') and acc.get('count') == hb['count'] and acc.get('sha') == hb.get('sha') else None}
+
 def language_review(items, decisions):
     """The Languages section's decisions, counted for the record (record language_review; lib/glance.py's Language Tags
     line reads it): every word form a person had to decide, how many were tagged, left untagged or changed, how many in a
@@ -1494,7 +1519,8 @@ def _status(it, d):
     if st == 'changed' and (d.get('value') == it['ai'] or not it['edit']): return 'approved'   # "changed" to the AI's own value
     return st
 
-def finish(R, ai_wo, wo, reviewer, date, method, decisions=None, items=None, note=None, additions=None, gaps_ack=None, gap_default=None):
+def finish(R, ai_wo, wo, reviewer, date, method, decisions=None, items=None, note=None, additions=None, gaps_ack=None, gap_default=None,
+           held_back=None, accept_held_back=False):
     """gaps_ack: {gap id: the reviewer's reason for leaving it open}; gap_default: the reason for any gap not in it."""
     if not (reviewer or '').strip(): raise ValueError('a reviewer name is needed')
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date or ''): raise ValueError('the date must be YYYY-MM-DD')
@@ -1516,6 +1542,11 @@ def finish(R, ai_wo, wo, reviewer, date, method, decisions=None, items=None, not
     notes.update({f'add:{a["kind"]}:{a["target"]}': a['note'] for a in additions or [] if a.get('note')})
     changes = diff(ai_wo, wo)
     lang = language_review(items, decisions) if items else None
+    if held_back:                                      # #159: word forms not sent; accepted now by this reviewer, or earlier for the same forms
+        acc = ({'by': reviewer.strip(), 'date': date, 'count': held_back['count'], 'sha': held_back.get('sha')} if accept_held_back
+               else held_back.get('accepted'))
+        if acc:
+            lang = {**(lang or {'forms': 0, 'approved': 0, 'changed': 0, 'rejected': 0, 'not_reviewed': 0}), 'held_back_accepted': acc}
     v = {'reviewer': reviewer.strip(), 'date': date, 'recorded': datetime.datetime.now().isoformat(timespec='seconds'), 'method': method,
          **({'language': {**lang, 'reviewer': reviewer.strip(), 'date': date}} if lang else {}),
          'changes': changes, 'dropped_on_check': dropped,

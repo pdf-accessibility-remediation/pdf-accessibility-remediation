@@ -1675,6 +1675,7 @@ finBtn.addEventListener('click', async () => {
   clearTimeout(saveTimer);                             // Finish's own save (the server's keep()) carries the whole draft
   try {
     const extra = go.unreviewed ? { accept_unreviewed: true } : {};
+    if (HELD_ACCEPT) extra.held_back_accepted = true;                  // #159: "Accept Without the Word Forms Not Sent"
     let [s, b] = await post('/finish', extra);
     // not finished yet, a normal step (200, needs): decisions not reviewed that the dialog did not count, then the open gaps
     if (s === 200 && b.needs === 'invalid') {          // a choice changed since the dialog's check: marked on its card
@@ -1801,12 +1802,25 @@ function langFold(g) {
     '<div class="lang-list">' + rows.map(langRowHtml).join('') + '</div>' +
     (rows.length < g.count ? '<button type="button" data-lang="more">Show More</button>' : '') + '</details>';
 }
+// #159: word forms the language step held back (they did not fit the limits): read-only, with the list and the acceptance
+let HELD_ACCEPT = false;
+function langHeld(h) {
+  if (!h) return '';
+  const acc = HELD_ACCEPT ? 'Accepted: the PDF can be Ready without these word forms. Your name is recorded with this choice at "Finish Review".'
+    : h.accepted ? 'Accepted by ' + esc(h.accepted.by) + ': the PDF can be Ready without these word forms.' : '';
+  return '<div class="pp-note" id="langHeld"><p>' + esc(h.sentence) + '</p>' +
+    '<details id="langHeldList"><summary>Word Forms Not Sent (' + fmtN(h.count) + ')</summary>' +
+    h.by_kind.map(k => '<p>' + esc(k[0]) + ': ' + fmtN(k[1]) + '</p>').join('') +
+    (h.forms.length ? '<p>' + (h.count > h.forms.length ? 'The first ' + fmtN(h.forms.length) + ': ' : '') + h.forms.map(esc).join(' · ') + '</p>' : '') + '</details>' +
+    (acc ? '<p>' + acc + '</p>' : '') +
+    (h.accepted && !HELD_ACCEPT ? '' : '<button type="button" id="langHeldAccept">' + (HELD_ACCEPT ? 'Undo' : 'Accept Without the Word Forms Not Sent') + '</button>') + '</div>';
+}
 function renderLanguages() {
-  if (!LANGS.total || OCR_ONLY) { langBox.hidden = true; return; }
+  if ((!LANGS.total && !LANGS.held_back) || OCR_ONLY) { langBox.hidden = true; return; }
   const open = new Set([...langBox.querySelectorAll('details[open]')].map(d => d.dataset.group));
   langBox.hidden = false;
   langBox.innerHTML = '<h2 id="langTitle">Languages (' + fmtN(LANGS.total) + ')</h2>' +
-    '<p>' + LANG_INTRO + '</p>' +
+    '<p>' + LANG_INTRO + '</p>' + langHeld(LANGS.held_back) +
     LANGS.groups.map(langFold).join('');
   langBox.querySelectorAll('details').forEach(d => { if (open.has(d.dataset.group)) d.open = true; });
 }
@@ -1825,6 +1839,11 @@ function langSet(id, st, value, bulk) {                  // bulk: the group-appr
 }
 function langReadingLeft(g) { return (g.reading_ids || []).filter(id => !(state.decisions[id] || {}).status); }
 function langRuleLeft(g) { return (g.rule_ids || []).filter(id => !(state.decisions[id] || {}).status); }
+langBox.addEventListener('click', e => {                 // #159: the acceptance, recorded with the name at "Finish Review"
+  if (e.target.id !== 'langHeldAccept') return;
+  HELD_ACCEPT = !HELD_ACCEPT; renderLanguages();
+  const b = document.getElementById('langHeldAccept'); if (b) b.focus();
+});
 langBox.addEventListener('toggle', e => {
   const d = e.target; if (d.tagName !== 'DETAILS' || !d.open) return;
   if (!langRows[d.dataset.group]) langLoad(d.dataset.group);

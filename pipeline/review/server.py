@@ -307,7 +307,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 warmed.wait(WARM_WAIT)
                 oc = ocr_section()
                 light = {**data, 'items': [it for it in data['items'] if it.get('kind') != core.LANG_KIND],   # #118: the language rows come
-                         'languages': core.language_summary(data['items'])}                                     # by /languages.json
+                         'languages': {**core.language_summary(data['items']), 'held_back': None if ocr_only else core.held_back_info(R, run_dir)}}   # by /languages.json; #159
                 boot = json.dumps({**light, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': oc,
                                    'check': first_check(), 'draft': None if ocr_only else draft_state(), 'ocr_text': first_texts(oc),
                                    'img_sizes': img_sizes()},
@@ -473,7 +473,8 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                     finishing.set(); ok = False              # Ctrl+C now waits until the review is recorded (or refused)
                     try:
                         keep(last_word=True)                 # the last word of the page, with the Finish dialog's name and notes
-                        try: v = core.finish(R, ai, wo, reviewer, date, 'page', decisions=decisions, items=items, additions=additions, gaps_ack=ack)
+                        try: v = core.finish(R, ai, wo, reviewer, date, 'page', decisions=decisions, items=items, additions=additions, gaps_ack=ack,
+                                             held_back=core.held_back_info(R, run_dir), accept_held_back=bool(body.get('held_back_accepted')))   # #159
                         except ValueError as e: return self.send(400, {'error': str(e)})
                         result.update(v); ok = True
                         self.send(200, {'finished': True, 'changes': len(v['changes']), 'dropped': v['dropped_on_check'], 'counts': v.get('counts'),

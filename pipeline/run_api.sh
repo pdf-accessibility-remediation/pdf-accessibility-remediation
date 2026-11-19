@@ -291,8 +291,10 @@ else
       rm -f "$R/page_reads_estimate.json"
     fi
   fi
-  # the language step's own estimate too (language_estimate.json, #118): the cost lines and the app's estimate include it
+  # the language step's own estimate too (language_estimate.json, #118): the cost lines and the app's estimate include it.
+  # #159 (review 29 M4): the work order is priced first, so the language step fills to the room left in the PDF's limit
   if [[ $LANG_TAGS != off ]]; then
+    python3 decide.py "$A" "$R" --dry-run ${MT[@]+"${MT[@]}"} > /dev/null 2>&1 || true
     python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} || echo "language tags: no estimate (see the line above)"
   else
     if [[ -n ${ESTIMATE:-} ]] && refused_est "$R/language_estimate.json"; then :
@@ -412,6 +414,11 @@ elif [[ ( $LANG_TAGS != off || -n ${LANG_REPLY:-} ) && -z $REVIEWED && ${DECIDE:
   else
     lt_ok=n
     if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
+      # #159 (Patrick's decision): word forms the limits hold back are said before anything is sent: a warning, not a refusal
+      python3 -c 'import json,sys
+from lib import aistatus
+w = aistatus.held_back_words(json.load(open(sys.argv[1])), terminal=True)
+if w: print("language tags: " + w)' "$R/language_estimate.json" 2>/dev/null || true
       if python3 -c 'import json,sys; e=json.load(open(sys.argv[1])); sys.exit(0 if not e.get("to_send") and e.get("local") else 1)' "$R/language_estimate.json" 2>/dev/null; then
         lt_ok=y; echo "language tags: every word form is decided by the reading printed beside it (#123): no AI request, nothing to ask"
       elif [[ -n ${AUTO:-} ]]; then lt_ok=y; echo "AUTO=1: naming languages without asking (still refused over the language step's limit or your credit)"

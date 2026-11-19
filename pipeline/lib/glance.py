@@ -102,18 +102,31 @@ def language_line(record):
     else: todo = list({(p.get('form') or p.get('text')) for p in lp.get('parts') or []})
     lr = record.get('language_review') or {}
     st = record.get('language_status')
-    if not lp and isinstance(st, dict) and st.get('state') != 'decided':
+    if not lp and isinstance(st, dict) and st.get('state') not in ('decided', 'held_back'):   # #159: held back: the line below says so
         if st.get('candidates') is None: return False, 'Not Done (not checked)'       # the count couldn't be made: fail closed
         if st['candidates']:
             return False, f'Not Done ({LANG_NOT_DONE.get(st.get("state"), LANG_NOT_DONE["not_run"])})'     # round 18: never Not Applicable
-    if not todo and not lr.get('forms'): return True, 'Not Applicable'
+    hb = (st or {}).get('held_back') if isinstance(st, dict) else None        # #159: word forms the limits held back
+    acc = lr.get('held_back_accepted') or {}
+    hb_open = bool(hb) and not (acc.get('by') and acc.get('count') == hb.get('count') and acc.get('sha') == hb.get('sha'))   # review 29 L2
+    if not todo and not lr.get('forms') and not hb: return True, 'Not Applicable'
     left = lr.get('not_reviewed') if lr else None
+    hb_words = (f'{hb["count"]:,} not sent: ' + held_back_reason(hb)) if hb else ''
+    if hb_open and (left == 0 or not todo):
+        return False, f'Not Reviewed ({hb["count"]:,} word form{"" if hb["count"] == 1 else "s"} were not sent: {held_back_reason(hb)})'
     if lr and left == 0:
-        return True, f'Approved ({lr.get("reviewer")} on {D.day(lr.get("date"))})'
+        return True, f'Approved ({lr.get("reviewer")} on {D.day(lr.get("date"))}' + (f' · {hb["count"]:,} word forms not sent, accepted by {acc["by"]})' if hb else ')')
     n = len(todo) if left is None else left
+    if hb_open:                                        # review 29 L3: both open
+        return False, f'Not Reviewed ({n:,} word form{"" if n == 1 else "s"} to decide on the review page; {hb_words})'
     if none_tagged:                                    # the AI proposed no tag: a person confirms what it left untagged
         return False, f'Not Reviewed ({n:,} word form{"" if n == 1 else "s"} the AI left untagged to confirm on the review page)'
     return False, f'Not Reviewed ({n:,} word form{"" if n == 1 else "s"} to decide on the review page)'
+def held_back_reason(hb):
+    """#159: why word forms were held back, in plain words (review 29 L3: a count limit is worded as one)."""
+    if hb.get('why') == 'forms': return 'more than the set number of word forms'
+    if (hb.get('limit') or {}).get('which') == 'book': return "more than the room left in this PDF's limit"
+    return 'more than the limit for language suggestions'
 def ship_name(s): return SHIP_NAMES.get(s['what'], s['what'])
 
 def safety_line(five):

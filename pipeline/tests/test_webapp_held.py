@@ -294,3 +294,26 @@ def test_the_retry_estimate_job_uses_the_current_limit(setup):
     st = json.load(open(W / 'review_stop.json')); st['env']['LANGUAGE_MAX_USD'] = '0.01'; (W / 'review_stop.json').write_text(json.dumps(st))
     j = runs.start_ai_retry_estimate(s, 'book/rv', str(W))
     assert j['env_set'].get('LANGUAGE_MAX_USD') != '0.01'
+
+# ------------------------------------------------------------------ #159: the warning before money is spent
+def held_back_estimate(W, n=2400, total=31127):
+    (W / 'language_estimate.json').write_text(json.dumps({'schema': 'language-estimate/1', 'forms': total, 'local': 0, 'sent': total - n, 'held_back': n,
+                                                          'held_back_why': 'dollars', 'held_back_limit': {'usd': 25, 'which': 'step'}, 'to_send': 3, 'worst_case_usd': 24.9}))
+
+def test_the_run_page_warns_beside_the_cost_when_forms_are_held_back(setup):
+    W = setup / 'runs' / 'book' / 'est'; W.mkdir(parents=True)
+    assert runs.held_back_view(str(W)) == {}
+    held_back_estimate(W)
+    v = runs.held_back_view(str(W))
+    assert v['held_back_words'] == ("2,400 of 31,127 word forms will not be sent to the AI: they don't fit within the limit for language "
+                                    "suggestions ($25). They will not be tagged, and the PDF can't be Ready until someone accepts that.")
+    assert v['held_back_raise'].startswith('To send more of them, whoever looks after the app can raise the limit for language suggestions')
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert "(e.held_back_words ? '</p><p class=\"pp-warn-t\" id=\"pp-held-back\">' + esc(e.held_back_words)" in js
+
+def test_the_batch_estimate_lists_the_pdfs_that_hold_forms_back(setup):
+    from webapp import batches as BT
+    src = open(os.path.join(HERE, 'webapp', 'batches.py'), encoding='utf-8').read()
+    assert "held_back.append({'name': b.get('title') or b['name'], 'count': hb_['held_back_count']})" in src and "'held_back': held_back}" in src
+    js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "word forms back because they don\\'t fit within the limit for language suggestions: '" in js and 'heldBackLine(T.held_back)' in js
