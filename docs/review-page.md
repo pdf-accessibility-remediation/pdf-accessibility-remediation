@@ -245,7 +245,10 @@ When the language step held word forms back (they didn't fit the dollar limits, 
 saying how many and why, and the fold "Word Forms Not Sent" lists them by kind (the first 200). They can't be decided
 here: they were never sent, so they have no suggestion. "Accept Without the Word Forms Not Sent" lets the PDF be Ready
 without them: the choice is recorded at "Finish Review" with the reviewer's name, and a later "Review Again" keeps it
-while the same word forms are held back. See [Word forms not sent](languages.md#word-forms-not-sent).
+while the same word forms are held back. Until then it is kept in the draft with the count and hash of the forms, so a
+reload keeps it; "Undo the Acceptance" takes it back. The line is in the past tense here ("… were not sent to the AI …
+They are not tagged"), since the run is over. When every word form was held back, the heading reads "Languages" with no
+count. See [Word forms not sent](languages.md#word-forms-not-sent).
 
 ### Group approval
 

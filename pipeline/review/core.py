@@ -1494,8 +1494,9 @@ def held_back_info(R, run_dir=None):
     kinds = list((hb.get('by_kind') or {}).items())
     acc = ((rec.get('language_review') or {}).get('held_back_accepted')) or {}
     return {'count': hb['count'], 'sha': hb.get('sha'), 'why': hb.get('why'), 'limit': hb.get('limit'),
-            'by_kind': [[LQ.KIND_WORDS.get(k, k), n] for k, n in kinds], 'forms': hb.get('forms') or [],
-            'sentence': AS.held_back_words(est) or '', 'reason': G.held_back_reason(hb),
+            'by_kind': [[(lambda w: w[:1].upper() + w[1:])(str(LQ.KIND_WORDS.get(k, k))), n] for k, n in kinds],   # review 31 L3: lines of their own, in sentence case
+            'forms': hb.get('forms') or [],
+            'sentence': AS.held_back_words(est, after=True) or '', 'reason': G.held_back_reason(hb),   # review 31 L3: after the run, in the past tense
             'accepted': acc if acc.get('by') and acc.get('count') == hb['count'] and acc.get('sha') == hb.get('sha') else None}
 
 def language_review(items, decisions):

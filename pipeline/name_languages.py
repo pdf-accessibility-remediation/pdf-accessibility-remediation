@@ -18,7 +18,9 @@ No request is ever sent with --response-file (a saved language_run.json: FROM= o
 language_run.json, complete): the saved decisions are applied by printed form (review 02, M4), and forms no longer found
 or not decided are listed. A request already answered with the same model and prompt is reused, never paid for again.
 The step sends what fits its dollar limit (--max-usd: LANGUAGE_MAX_USD, default 25, lib/costs.py; #159) and refuses before any call over the credit, for any
-model (review 02, M7). Forms past LANGUAGE_MAX_FORMS (default 5000) are not sent, and listed.
+model (review 02, M7). The dollar limits decide what is sent (#159): the step's own limit and the room left in the PDF's
+limit (BOOK_MAX_USD); the rest is held back and listed, never the step refused for its own cost. LANGUAGE_MAX_FORMS is an
+override only (off by default): at most that many forms are sent.
 
 Words in Chinese characters alone with a reading printed beside every place (kana or a Hepburn word, pinyin, hangul
 or a Korean romanization), all naming one language, are decided by a local rule (lib/hanreading.py, #123): never sent,

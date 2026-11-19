@@ -312,7 +312,7 @@ def state(s, label, nm=None, with_dashboard=True):
             Rs.append(R)
             from . import runs as RN_
             hb_ = RN_.held_back_view(R)                                           # #159: word forms this PDF's estimate holds back
-            if hb_: held_back.append({'name': b.get('title') or b['name'], 'count': hb_['held_back_count']})
+            if hb_: held_back.append({'name': b.get('title') or b['name'], 'count': hb_['held_back_count'], 'which': hb_['held_back_which']})   # review 31 L4: why
             if not costs.estimate(R) and not (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
                 missing.append(b['name'])
         out.append({'name': b['name'], 'book': nm.book_name(b.get('key'), b.get('file') or '') if b.get('key') else b.get('book'), 'file': BK.shown_file(b.get('file') or ''), 'status': row['words'], 'finished': row['finished'],

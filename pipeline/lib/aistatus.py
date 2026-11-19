@@ -178,10 +178,12 @@ def status(R, A=None):
     held = bool(steps or figures) and not (isinstance(ov, dict) and ov.get('by'))
     return {'held': held, 'steps': steps, 'figures': figures, 'override': ov if isinstance(ov, dict) else None, 'marker': marker}
 
-def held_back_words(est, terminal=False):
+def held_back_words(est, terminal=False, after=False):
     """#159 (Patrick's decision: a warning before money is spent, never a refusal): the sentence for an estimate (or a
-    language record) that holds word forms back; None when nothing is held back. `terminal` adds how to raise the limit
-    for this run in run_api.sh's own words."""
+    language record) that holds word forms back; None when nothing is held back, or when the estimate left the step out
+    (review 31: no warning for a step that is not run). `terminal` adds how to raise the limit for this run in
+    run_api.sh's own words; `after` says it in the past tense, for the review page after the run (review 31 L3)."""
+    if (est or {}).get('refused'): return None
     n = int((est or {}).get('held_back') if isinstance((est or {}).get('held_back'), int) else (est or {}).get('held_back_count') or 0)
     if not n: return None
     total = int(est.get('forms') or 0) - int(est.get('local') or 0)
@@ -189,12 +191,17 @@ def held_back_words(est, terminal=False):
     lim = est.get('held_back_limit') or {}
     def usd(v): v = float(v or 0); return f'${v:,.0f}' if v == int(v) else f'${v:,.2f}'
     if est.get('held_back_why') == 'forms':
-        why = 'they are more than the set number of word forms'
+        why = 'they ' + ('were' if after else 'are') + ' more than the set number of word forms'
     elif lim.get('which') == 'book':
-        why = f"they don't fit within the room left in this PDF's limit ({usd(lim.get('usd'))} per PDF)"
+        why = 'they ' + ('did not' if after else "don't") + f" fit within the room left in this PDF's limit ({usd(lim.get('usd'))} per PDF)"
     else:
-        why = f"they don't fit within the limit for language suggestions ({usd(lim.get('usd'))})"
-    s = (f'{of} will not be sent to the AI: {why}. They will not be tagged, and the PDF can\'t be Ready until someone accepts that.')
+        why = 'they ' + ('did not' if after else "don't") + f" fit within the limit for language suggestions ({usd(lim.get('usd'))})"
+    one = n == 1
+    if after:
+        s = (f'{of} ' + ('was' if one else 'were') + f' not sent to the AI: {why}. ' + ('It is' if one else 'They are')
+             + ' not tagged, and the PDF can\'t be Ready until someone accepts that.')
+    else:
+        s = (f'{of} will not be sent to the AI: {why}. ' + ('It' if one else 'They') + ' will not be tagged, and the PDF can\'t be Ready until someone accepts that.')
     if terminal:
         about = est.get('all_usd_about')
         var = 'LANGUAGE_MAX_FORMS' if est.get('held_back_why') == 'forms' else 'BOOK_MAX_USD' if lim.get('which') == 'book' else 'LANGUAGE_MAX_USD'

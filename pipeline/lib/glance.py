@@ -113,9 +113,9 @@ def language_line(record):
     left = lr.get('not_reviewed') if lr else None
     hb_words = (f'{hb["count"]:,} not sent: ' + held_back_reason(hb)) if hb else ''
     if hb_open and (left == 0 or not todo):
-        return False, f'Not Reviewed ({hb["count"]:,} word form{"" if hb["count"] == 1 else "s"} were not sent: {held_back_reason(hb)})'
+        return False, f'Not Reviewed ({hb["count"]:,} word form{" was" if hb["count"] == 1 else "s were"} not sent: {held_back_reason(hb)})'   # review 31 L4
     if lr and left == 0:
-        return True, f'Approved ({lr.get("reviewer")} on {D.day(lr.get("date"))}' + (f' · {hb["count"]:,} word forms not sent, accepted by {acc["by"]})' if hb else ')')
+        return True, f'Approved ({lr.get("reviewer")} on {D.day(lr.get("date"))}' + (f' · {hb["count"]:,} word form{"" if hb["count"] == 1 else "s"} not sent, accepted by {acc["by"]})' if hb else ')')
     n = len(todo) if left is None else left
     if hb_open:                                        # review 29 L3: both open
         return False, f'Not Reviewed ({n:,} word form{"" if n == 1 else "s"} to decide on the review page; {hb_words})'

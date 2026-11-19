@@ -90,8 +90,12 @@ function body(s) {
   // #159 (Patrick's decision: a warning before money is spent, never a refusal): PDFs whose estimate holds word forms back
   function heldBackLine(hb) {
     if (!hb || !hb.length) return '';
+    // review 31 L4: the reason the estimates give, the PDF's own limit included
+    const lim = { step: 'the limit for language suggestions', book: 'the room left in the limit per PDF' };
+    const fit = [...new Set(hb.filter(b => b.which !== 'forms').map(b => lim[b.which] || lim.step))];
+    const ws = (fit.length ? ['they don\'t fit within ' + fit.join(' or ')] : []).concat(hb.some(b => b.which === 'forms') ? ['they are more than the set number of word forms'] : []);
     return '<p class="pp-warn-t" id="bt-held-back">' + hb.length + ' PDF' + (hb.length === 1 ? ' holds' : 's hold') +
-      ' word forms back because they don\'t fit within the limit for language suggestions: ' +
+      ' word forms back because ' + ws.join(' or ') + ': ' +
       hb.map(b => esc(b.name) + ' (' + Number(b.count).toLocaleString('en-US') + ')').join(', ') +
       '. Those word forms will not be sent to the AI or tagged, and ' + (hb.length === 1 ? 'that PDF' : 'those PDFs') +
       ' can\'t be Ready until someone accepts that.</p>';

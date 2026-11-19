@@ -78,6 +78,16 @@ def round_up(x):
     true 0.62004 stored as 0.6200 gives 0.63, never 0.62 (02 M2)."""
     return math.ceil(round((x + 0.0001) * 100, 6)) / 100
 
+def own_language_bound(est_path, cap=None):
+    """review 31 L4: a batch PDF's language step bound to its own estimate shown (round_up of its worst case, never above
+    the batch's cap or the default), as "$X" text for batch_api.sh; '' when its estimate is missing, refused or sends
+    nothing (the batch's own value stands)."""
+    try: e = json.load(open(est_path, encoding='utf-8'))
+    except (OSError, ValueError): return ''
+    if not isinstance(e, dict) or e.get('refused') or not int(e.get('to_send') or 0): return ''
+    lim = float(cap) if cap not in (None, '') else DEFAULT_LIMITS['language_usd']
+    return f'{bound(float(e.get("worst_case_usd") or 0), lim):.2f}'
+
 def bound(x, limit):
     """The cap passed to the paid step: round_up(x), never above the limit."""
     return min(round_up(x), limit) if limit is not None else round_up(x)

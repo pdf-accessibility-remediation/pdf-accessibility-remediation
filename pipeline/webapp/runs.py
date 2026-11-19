@@ -781,16 +781,18 @@ def _held_text(t):
 HELD_BACK_RAISE = 'To send more of them, the app administrator can raise the limit for language suggestions; then select "Get a New Estimate".'
 HELD_BACK_RAISE_BOOK = 'To send more of them, the app administrator can raise the limit per PDF; then select "Get a New Estimate".'
 
-def held_back_view(R):
+def held_back_view(R, name='language_estimate.json'):
     """#159 (Patrick's decision: a warning before money is spent, never a refusal): the estimate's held-back word forms
-    as the run page says them, {held_back_words, held_back_raise}, or {} when none are held back."""
+    as the run page says them, {held_back_words, held_back_raise}, or {} when none are held back. `name`: the run's
+    estimate, or the retry's (language_retry_estimate.json, review 31 M3)."""
     from lib import aistatus as AS
-    try: e = json.load(open(os.path.join(R, 'language_estimate.json'), encoding='utf-8'))
+    try: e = json.load(open(os.path.join(R, name), encoding='utf-8'))
     except (OSError, ValueError): return {}
     w = AS.held_back_words(e) if isinstance(e, dict) and not e.get('refused') else None
     if not w: return {}
     raise_ = None if e.get('held_back_why') == 'forms' else HELD_BACK_RAISE_BOOK if (e.get('held_back_limit') or {}).get('which') == 'book' else HELD_BACK_RAISE
-    return {'held_back_words': w, **({'held_back_raise': raise_} if raise_ else {}), 'held_back_count': int(e.get('held_back') or 0)}
+    which = 'forms' if e.get('held_back_why') == 'forms' else 'book' if (e.get('held_back_limit') or {}).get('which') == 'book' else 'step'
+    return {'held_back_words': w, **({'held_back_raise': raise_} if raise_ else {}), 'held_back_count': int(e.get('held_back') or 0), 'held_back_which': which}
 
 def all_again(R, part, est):
     """review 29 L1: a language retry estimate that reuses nothing although the step had finished requests (the
@@ -843,7 +845,8 @@ def held_view(s, run, R, js=None):
         elif not est or not n: why = SP.NO_RETRY_ESTIMATE
         else:
             retry = {'part': part, 'cost': retry_cost_words(est), 'fingerprint': SP.retry_fingerprint(R, part),
-                     'note': PAGES_FIRST if part == 'pages' and (st['steps'].get('language') or {}).get('retry') else all_again(R, part, est)}
+                     'note': PAGES_FIRST if part == 'pages' and (st['steps'].get('language') or {}).get('retry') else all_again(R, part, est),
+                     **(held_back_view(R, SP.RETRY_FILES['language']) if part == 'language' else {})}   # review 31 M3: the warning here too
     last = js[-1] if js else None
     fail = failures.explain(s, R, last) if last and last['kind'] in RETRY_JOBS and last['status'] in ('failed', 'interrupted') else None
     return {'intro': HELD_INTRO, 'parts': held_parts(R, st), 'retry': retry, 'why': why, 'estimate': bool(part) and not test,

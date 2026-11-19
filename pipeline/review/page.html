@@ -253,7 +253,8 @@ const aid = a => 'add:' + a.kind + ':' + a.target;
 // the server's saved choices, or this browser's when they are newer (both stamped with the browser's clock)
 const srv = DATA.saved || {};
 let state = { reviewer: srv.reviewer || '', decisions: srv.decisions || {}, additions: srv.additions || [],
-              session_name: srv.session_name || '', session_notes: srv.session_notes || '', saved_at: srv.saved_at || '' };
+              session_name: srv.session_name || '', session_notes: srv.session_notes || '', saved_at: srv.saved_at || '',
+              ...(srv.held_back_draft ? { held_back_draft: srv.held_back_draft } : {}) };   // review 31 L3
 try {
   const s = JSON.parse(localStorage.getItem(KEY) || 'null');
   if (s && s.decisions && (!state.saved_at || (s.saved_at && new Date(s.saved_at) >= new Date(state.saved_at)))) state = Object.assign({ additions: [] }, s);
@@ -1570,7 +1571,8 @@ const gapText = g => (g || []).length ? ' · <b>' + g.length + ' gap' + (g.lengt
 async function post(path, extra) {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(Object.assign({ reviewer: state.reviewer, decisions: state.decisions, additions: state.additions,
-      session_name: state.session_name, session_notes: state.session_notes, saved_at: state.saved_at }, extra || {})) });
+      session_name: state.session_name, session_notes: state.session_notes, saved_at: state.saved_at,
+      held_back_draft: state.held_back_draft || null }, extra || {})) });
   return [r.status, await r.json()];
 }
 // gaps left open at Finish: the reviewer gives a reason for each, or goes back to add what is missing
@@ -1837,7 +1839,10 @@ function langFold(g) {
     (rows.length < g.count ? '<button type="button" data-lang="more">Show More</button>' : '') + '</details>';
 }
 // #159: word forms the language step held back (they did not fit the limits): read-only, with the list and the acceptance
-let HELD_ACCEPT = false;
+// review 31 L3: the choice is kept in the draft (state.held_back_draft, with the count and hash of the forms it was given
+// for), so a reload keeps it; a draft made for other forms is not restored
+function heldDraftOk(h) { const x = state.held_back_draft; return !!(h && x && x.count === h.count && x.sha === h.sha); }
+let HELD_ACCEPT = heldDraftOk((DATA.languages || {}).held_back);
 function langHeld(h) {
   if (!h) return '';
   const acc = HELD_ACCEPT ? 'Accepted: the PDF can be Ready without these word forms. Your name is recorded with this choice at "Finish Review".'
@@ -1847,13 +1852,13 @@ function langHeld(h) {
     h.by_kind.map(k => '<p>' + esc(k[0]) + ': ' + fmtN(k[1]) + '</p>').join('') +
     (h.forms.length ? '<p>' + (h.count > h.forms.length ? 'The first ' + fmtN(h.forms.length) + ': ' : '') + h.forms.map(esc).join(' · ') + '</p>' : '') + '</details>' +
     (acc ? '<p>' + acc + '</p>' : '') +
-    (h.accepted && !HELD_ACCEPT ? '' : '<button type="button" id="langHeldAccept">' + (HELD_ACCEPT ? 'Undo' : 'Accept Without the Word Forms Not Sent') + '</button>') + '</div>';
+    (h.accepted && !HELD_ACCEPT ? '' : '<button type="button" id="langHeldAccept">' + (HELD_ACCEPT ? 'Undo the Acceptance' : 'Accept Without the Word Forms Not Sent') + '</button>') + '</div>';   // review 31 L3: a name with its context
 }
 function renderLanguages() {
   if ((!LANGS.total && !LANGS.held_back) || OCR_ONLY) { langBox.hidden = true; return; }
   const open = new Set([...langBox.querySelectorAll('details[open]')].map(d => d.dataset.group));
   langBox.hidden = false;
-  langBox.innerHTML = '<h2 id="langTitle">Languages (' + fmtN(LANGS.total) + ')</h2>' +
+  langBox.innerHTML = '<h2 id="langTitle">Languages' + (LANGS.total ? ' (' + fmtN(LANGS.total) + ')' : '') + '</h2>' +   // review 31 L3: no "(0)" when every form was held back
     '<p>' + LANG_INTRO + '</p>' + langHeld(LANGS.held_back) +
     LANGS.groups.map(langFold).join('');
   langBox.querySelectorAll('details').forEach(d => { if (open.has(d.dataset.group)) d.open = true; });
@@ -1876,7 +1881,10 @@ function langReadingLeft(g) { return (g.reading_ids || []).filter(id => !(state.
 function langRuleLeft(g) { return (g.rule_ids || []).filter(id => !(state.decisions[id] || {}).status); }
 langBox.addEventListener('click', e => {                 // #159: the acceptance, recorded with the name at "Finish Review"
   if (e.target.id !== 'langHeldAccept') return;
-  HELD_ACCEPT = !HELD_ACCEPT; renderLanguages();
+  HELD_ACCEPT = !HELD_ACCEPT;
+  const h = LANGS.held_back;
+  if (HELD_ACCEPT && h) state.held_back_draft = { count: h.count, sha: h.sha }; else delete state.held_back_draft;
+  persist(); renderLanguages();
   const b = document.getElementById('langHeldAccept'); if (b) b.focus();
 });
 langBox.addEventListener('toggle', e => {

@@ -364,6 +364,9 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             additions = [a for a in body.get('additions') or [] if isinstance(a, dict)] if isinstance(body.get('additions'), list) else []
             reviewer = str(body.get('reviewer') or '').strip()
             saved_at = str(body.get('saved_at') or '') or datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+            hba = body.get('held_back_draft')               # review 31 L3: the draft keeps "Accept Without the Word Forms Not Sent", named
+            hba = ({'count': hba['count'], 'sha': hba['sha'][:64]} if isinstance(hba, dict) and isinstance(hba.get('count'), int)   #   by the forms it was given for
+                   and not isinstance(hba.get('count'), bool) and isinstance(hba.get('sha'), str) else None)
             if self.path == '/ocr-verdict':                # on its own, at once; never during or after Finish
                 if not ocr_section(): return self.send(400, {'error': 'This book has no OCR text to review.'})
                 fields = {k: body.get(k) for k in ('verdict', 'reviewer', 'reason', 'pages', 'to')}
@@ -399,7 +402,8 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                     except (ValueError, TypeError): pass       # a stamp that can't be read or compared: write, as before
                 core.save(os.path.join(R, 'review_decisions.json'),
                           {'reviewer': reviewer, 'decisions': decisions, 'additions': additions,
-                           **({'session_name': name} if name else {}), **({'session_notes': notes} if notes else {}), 'saved_at': saved_at})
+                           **({'session_name': name} if name else {}), **({'session_notes': notes} if notes else {}),
+                           **({'held_back_draft': hba} if hba else {}), 'saved_at': saved_at})
                 return True
             def build():
                 wo = core.apply_decisions(ai, items, decisions)

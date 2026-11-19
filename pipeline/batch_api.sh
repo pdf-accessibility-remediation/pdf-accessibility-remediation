@@ -294,6 +294,10 @@ each() {   # each <step: estimate|run>
       unset LANG_REPLY                                 # never from the caller: only this book own saved decisions (review 06, L2)
       if [[ -n ${FROM:-} ]]; then export REPLY="$B/$name.reply.txt" INTAKE_REUSE=1; [[ -f $B/$name.language.json ]] && export LANG_REPLY="$B/$name.language.json"; fi
       log=$B/$name.log
+      # review 31 L4: each PDF language step bound to its own estimate shown, never the largest PDF cap: a PDF the room in
+      # its own limit held back at the estimate sends no more than the estimate showed
+      own=$(python3 -c "import sys; from lib import costs; print(costs.own_language_bound(*sys.argv[1:3]))" "$B/$name/language_estimate.json" "${LANGUAGE_MAX_USD:-}" 2>/dev/null)
+      [[ -n $own ]] && export LANGUAGE_MAX_USD=$own
       RUN_DIR=$B/$name AUTO=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
       st="FAILED (see $name.log)"
     fi

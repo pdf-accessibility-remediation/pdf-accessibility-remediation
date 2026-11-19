@@ -141,6 +141,12 @@ fig_state() {                  # the state of an earlier attempt's figure reques
 SAVED=; REVIEWED=; MERGED=
 FIG=$(fig_state)
 outcome() { python3 -m lib.aistatus record "$R" "$@" 2>/dev/null || true; }   # #151: how a step ended (ai_outcome.json)
+held_line() {                   # #159 (Patrick's decision): the word forms an estimate holds back, said before anything is sent
+  python3 -c 'import json,sys
+from lib import aistatus
+w = aistatus.held_back_words(json.load(open(sys.argv[1])), terminal=True)
+if w: print("language tags: " + w)' "$1" 2>/dev/null || true
+}
 refused_est() { python3 -c 'import json,sys; e=json.load(open(sys.argv[1])); sys.exit(0 if (e.get("refused") or {}).get("why") in ("cap", "book") else 1)' "$1" 2>/dev/null; }
 # #151 (App: hold the review when AI requests did not finish): AI_RETRY=1 asks the AI again for what a run held at its
 # review stop did not finish ("Ask the AI Again"), in two parts (review 25 §2.4): the unfinished page readings first, else
@@ -295,7 +301,9 @@ else
   # #159 (review 29 M4): the work order is priced first, so the language step fills to the room left in the PDF's limit
   if [[ $LANG_TAGS != off ]]; then
     python3 decide.py "$A" "$R" --dry-run ${MT[@]+"${MT[@]}"} > /dev/null 2>&1 || true
-    python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} || echo "language tags: no estimate (see the line above)"
+    if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
+      held_line "$R/language_estimate.json"       # review 31 L2: before "Send to OpenRouter now?" too, not only at the language question
+    else echo "language tags: no estimate (see the line above)"; fi
   else
     if [[ -n ${ESTIMATE:-} ]] && refused_est "$R/language_estimate.json"; then :
     else
@@ -382,7 +390,7 @@ if [[ -n $RETRY ]]; then
       fi
     fi
   else
-    if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then part_ok=y; fi
+    if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then part_ok=y; held_line "$R/language_estimate.json"; fi   # review 31 M3: before the question, and before an AUTO=1 retry sends
     if [[ $part_ok == y && -z ${AUTO:-} ]]; then read -r -p "Ask the AI again for the unfinished language suggestions now? [y/N] " part_ok || part_ok=n; fi
     if [[ ${part_ok:-n} == [yY]* ]]; then
       stage "retry: language tags via OpenRouter" bash -c 'python3 name_languages.py "$@" || echo "language tags not done (above): the review stays held"' _ "$A" "$R" --pdf "$PSRC" --outcome ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} ${BOOK_MAX_USD:+--book-max-usd "$BOOK_MAX_USD"}
@@ -421,10 +429,7 @@ elif [[ ( $LANG_TAGS != off || -n ${LANG_REPLY:-} ) && -z $REVIEWED && ${DECIDE:
     lt_ok=n
     if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
       # #159 (Patrick's decision): word forms the limits hold back are said before anything is sent: a warning, not a refusal
-      python3 -c 'import json,sys
-from lib import aistatus
-w = aistatus.held_back_words(json.load(open(sys.argv[1])), terminal=True)
-if w: print("language tags: " + w)' "$R/language_estimate.json" 2>/dev/null || true
+      held_line "$R/language_estimate.json"
       if python3 -c 'import json,sys; e=json.load(open(sys.argv[1])); sys.exit(0 if not e.get("to_send") and e.get("local") else 1)' "$R/language_estimate.json" 2>/dev/null; then
         lt_ok=y; echo "language tags: every word form is decided by the reading printed beside it (#123): no AI request, nothing to ask"
       elif [[ -n ${AUTO:-} ]]; then lt_ok=y; echo "AUTO=1: naming languages without asking (still refused over the language step's limit or your credit)"

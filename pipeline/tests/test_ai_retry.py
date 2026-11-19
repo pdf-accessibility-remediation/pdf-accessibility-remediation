@@ -306,6 +306,8 @@ def test_held_back_forms_reach_the_record_the_line_and_review_md_and_html(tmp_pa
     from review import core
     hb = core.held_back_info(str(R))                                          # the first review reads language_run.json
     assert hb['count'] == lr['held_back_count'] and EVIL in hb['forms'] and hb['accepted'] is None
+    assert ' were not sent to the AI: ' in hb['sentence'] and 'They are not tagged' in hb['sentence']      # review 31 L3: past tense after the run
+    assert all(k[0][:1].isupper() for k in hb['by_kind'])                                          # review 31 L3: lines in sentence case
     rw = subprocess.run([sys.executable, 'review_workorder.py', str(R), '--reviewer', 'Kim'], cwd=HERE, capture_output=True, text=True)
     assert rw.returncode == 0, rw.stdout + rw.stderr
     r2, R, _ = run(tmp_path, src, PAGE_READS='off')                          # the apply

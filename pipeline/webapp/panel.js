@@ -597,10 +597,12 @@ function heldBlock(h) {
       (p.detail ? '<details id="pp-held-d' + i + '"><summary>Details</summary><p class="pp-note">' + esc(p.detail) + '</p></details>' : '')).join('') +
     (h.failure ? failureCard(Object.assign({}, h.failure, { next: [] })) : '') +
     (h.restarted ? '<p>' + esc(h.restarted) + '</p>' : '') +
-    (r ? '<p id="pp-retry-cost">' + esc(r.cost) + '</p>' + (r.note ? '<p>' + esc(r.note) + '</p>' : '') : h.why ? '<p class="pp-warn-t">' + esc(h.why) + '</p>' : '') +
+    (r ? '<p id="pp-retry-cost">' + esc(r.cost) + '</p>' + (r.note ? '<p>' + esc(r.note) + '</p>' : '') +
+      (r.held_back_words ? '<p class="pp-warn-t" id="pp-retry-held-back">' + esc(r.held_back_words) + (r.held_back_raise ? ' ' + esc(r.held_back_raise) : '') + '</p>' : '')   // review 31 M3: before money is spent
+      : h.why ? '<p class="pp-warn-t">' + esc(h.why) + '</p>' : '') +
     (h.test ? '<p class="pp-note">' + esc(h.test) + '</p>' : '') +
     '<div class="pp-row">' +
-    (r ? '<button type="button" class="pp-primary" id="pp-ai-retry" data-act="ai-retry" aria-describedby="pp-retry-cost">Ask the AI Again</button>' : '') +
+    (r ? '<button type="button" class="pp-primary" id="pp-ai-retry" data-act="ai-retry" aria-describedby="pp-retry-cost' + (r.held_back_words ? ' pp-retry-held-back' : '') + '">Ask the AI Again</button>' : '') +
     (h.estimate ? '<button type="button" id="pp-ai-est" data-act="ai-retry-estimate">Get a New Estimate</button>' : '') +
     '<button type="button" id="pp-without" data-act="review-without">Review Without the Missing Suggestions</button></div>' +
     '<p class="pp-note">' + esc(h.without) + '</p>';

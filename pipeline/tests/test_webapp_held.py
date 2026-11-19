@@ -331,6 +331,58 @@ def test_the_run_page_warns_beside_the_cost_when_forms_are_held_back(setup):
 def test_the_batch_estimate_lists_the_pdfs_that_hold_forms_back(setup):
     from webapp import batches as BT
     src = open(os.path.join(HERE, 'webapp', 'batches.py'), encoding='utf-8').read()
-    assert "held_back.append({'name': b.get('title') or b['name'], 'count': hb_['held_back_count']})" in src and "'held_back': held_back}" in src
+    assert "held_back.append({'name': b.get('title') or b['name'], 'count': hb_['held_back_count'], 'which': hb_['held_back_which']})" in src and "'held_back': held_back}" in src
     js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
-    assert "word forms back because they don\\'t fit within the limit for language suggestions: '" in js and 'heldBackLine(T.held_back)' in js
+    assert 'heldBackLine(T.held_back)' in js
+    # review 31 L4: the line names the limit that held each PDF's forms back (the page's own function, run through a JS engine)
+    from test_dates import js_runner
+    run = js_runner()
+    if run is None: pytest.skip('no JavaScript engine (node or jsc) runs here')
+    i = js.index('  function heldBackLine(hb) {'); fn = js[i:js.index('\n  }\n', i) + 4]
+    code = ("const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');\n" + fn + '\nconst out = ' + json.dumps(
+        [[{'name': 'A', 'count': 2400, 'which': 'step'}], [{'name': 'B', 'count': 5, 'which': 'book'}], [{'name': 'A', 'count': 2400, 'which': 'step'}, {'name': 'B', 'count': 5, 'which': 'book'}]])
+        + '.map(heldBackLine);\n(typeof print === "function" ? print : console.log)(JSON.stringify(out));')
+    out = subprocess.run(run + [code], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    a, b, both = json.loads(out.stdout)
+    assert "1 PDF holds word forms back because they don't fit within the limit for language suggestions: A (2,400)." in a
+    assert "because they don't fit within the room left in the limit per PDF: B (5)." in b
+    assert ("2 PDFs hold word forms back because they don't fit within the limit for language suggestions or the room left in the "
+            "limit per PDF: A (2,400), B (5).") in both
+
+def test_the_retry_card_warns_when_the_retry_holds_forms_back(setup):
+    """review 31 M3: "Ask the AI Again" shows the retry estimate's held-back sentence and its advice line, before money is
+    spent; none when the retry holds nothing back."""
+    s = settings(setup); W, _ = held_run(setup)
+    assert 'held_back_words' not in runs.held_view(s, 'book/rv', str(W))['retry']
+    e = json.load(open(W / 'language_retry_estimate.json'))
+    e.update(forms=900, local=0, sent=600, held_back=300, held_back_why='dollars', held_back_limit={'usd': 50, 'which': 'book'})
+    (W / 'language_retry_estimate.json').write_text(json.dumps(e))
+    r = runs.held_view(s, 'book/rv', str(W))['retry']
+    assert r['held_back_words'] == ("300 of 900 word forms will not be sent to the AI: they don't fit within the room left in this PDF's "
+                                    "limit ($50 per PDF). They will not be tagged, and the PDF can't be Ready until someone accepts that.")
+    assert r['held_back_raise'] == runs.HELD_BACK_RAISE_BOOK
+    js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
+    assert "(r.held_back_words ? '<p class=\"pp-warn-t\" id=\"pp-retry-held-back\">' + esc(r.held_back_words)" in js
+
+def test_run_api_sh_says_held_back_forms_before_each_question():
+    """review 31 L2, M3: held_line prints the sentence from an estimate (nothing when none is held back, or when the
+    step was left out), and run_api.sh calls it after the first estimate, at the language question and in the retry."""
+    import re
+    sh = open(os.path.join(HERE, 'run_api.sh'), encoding='utf-8').read()
+    fn = re.search(r'^held_line\(\) \{.*?^\}', sh, re.S | re.M).group(0)
+    assert sh.count('held_line "$R/language_estimate.json"') == 3
+    first, ask = sh.index('held_line "$R/language_estimate.json"'), sh.index('Send to OpenRouter now? [y/N]')
+    assert first < ask
+    retry = sh.index('part_ok=y; held_line "$R/language_estimate.json"')
+    assert retry < sh.index('Ask the AI again for the unfinished language suggestions now? [y/N]')
+    def said(est, tmp):
+        f = os.path.join(tmp, 'e.json'); json.dump(est, open(f, 'w'))
+        return subprocess.run(['bash', '-c', fn + '\nheld_line "$1"', '_', f], cwd=HERE, capture_output=True, text=True).stdout.strip()
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        hb = {'forms': 10, 'local': 0, 'held_back': 1, 'held_back_why': 'dollars', 'held_back_limit': {'usd': 25, 'which': 'step'}, 'all_usd_about': 27.5}
+        assert said(hb, tmp) == ("language tags: 1 of 10 word forms will not be sent to the AI: they don't fit within the limit for language "
+                                 "suggestions ($25). It will not be tagged, and the PDF can't be Ready until someone accepts that. To send them all "
+                                 "(about $27.50 in all at most), raise the limit for this run: LANGUAGE_MAX_USD=…")
+        assert said({**hb, 'held_back': 0}, tmp) == '' and said({**hb, 'refused': {'why': 'book'}}, tmp) == ''
