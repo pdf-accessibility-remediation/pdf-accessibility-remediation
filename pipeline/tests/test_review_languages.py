@@ -364,12 +364,14 @@ def test_a_decided_row_has_clear_choice():
     assert "if (act === 'clear') delete state.decisions[id];" in page and "const id = b.closest('.lang-row').dataset.id;" in page
 
 
-def _pager_js(cases):
-    """review 31 (Patrick's pages): the page's own langPager, langNote and langBar run through a JavaScript engine."""
+ARG_MAX_LINUX = 100_000      # under Linux's 128 KB limit on one argument (MAX_ARG_STRLEN): CI runs there
+
+def _pager_js(cases, folder):
+    """review 31 (Patrick's pages): the page's own langPager, langNote and langBar run through a JavaScript engine. The
+    program carries every id of each language (4,722 here), so it is run from a file in `folder`, never as one argument."""
     import subprocess
-    from test_dates import js_runner
-    run = js_runner()
-    if run is None: pytest.skip('no JavaScript engine (node or jsc) runs here')
+    from test_dates import js_runner, js_file_cmd
+    if js_runner() is None: pytest.skip('no JavaScript engine (node or jsc) runs here')
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
     def chunk(start, end): i = page.index(start); return page[i:page.index(end, i)]
     code = (chunk('const esc = ', '\n') + '\n' + chunk('function fmtN(', '\n') + '\n'
@@ -380,17 +382,20 @@ def _pager_js(cases):
             + 'const out = cases.map(c => { langPage[c.g.group] = c.p; langRows[c.g.group] = c.rows || []; Object.assign(state.decisions, c.dec || {}); '
             + 'return {pager: langPager(c.g, "t"), note: langNote(c.g), bar: langBar(c.g)}; });\n'
             + '(typeof print === "function" ? print : console.log)(JSON.stringify(out));')
-    out = subprocess.run(run + [code], capture_output=True, text=True, timeout=30)
+    cmd = js_file_cmd(code, folder)
+    assert len(code) > ARG_MAX_LINUX or len(cases) == 1                     # the cases that broke CI are this large
+    assert max(len(a.encode()) for a in cmd) < ARG_MAX_LINUX and sum(len(a.encode()) + 1 for a in cmd) < ARG_MAX_LINUX
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
 
-def test_pages_come_in_blocks_of_ten_with_arrows_only_where_a_block_is():
+def test_pages_come_in_blocks_of_ten_with_arrows_only_where_a_block_is(tmp_path):
     """review 31, Patrick's pages: numbered buttons in fixed blocks of ten; "<" and ">" only where a block is in that
     direction, opening its first page; ten pages or fewer show their numbers alone; the page shown is aria-current."""
     import re
     def g(name, n, **kw): return {'group': name, 'count': n, 'bulk': 1, 'ids': [f'{name}{i}' for i in range(n)], **kw}
     out = _pager_js([{'g': g('A', 4722), 'p': 45}, {'g': g('B', 4722), 'p': 1}, {'g': g('C', 1000), 'p': 3},
-                     {'g': g('D', 1001), 'p': 11}, {'g': g('E', 4722, reading_ids=['E1'], rule_ids=['E2']), 'p': 12}])
+                     {'g': g('D', 1001), 'p': 11}, {'g': g('E', 4722, reading_ids=['E1'], rule_ids=['E2']), 'p': 12}], tmp_path)
     def shown(h):
         return [(m.group(2) or '') + ('*' if 'aria-current' in m.group(1) else '') for m in re.finditer(r'<button type="button"([^>]*)>([^<]*)</button>', h)]
     a, b, c, d, e = (x['pager'] for x in out)
@@ -407,13 +412,13 @@ def test_pages_come_in_blocks_of_ten_with_arrows_only_where_a_block_is():
     assert out[4]['note'].endswith('"Approve Characters with Matching Readings" and "Approve Forms Decided by Their Printed Reading" '
                                    'approve every matching word form of this language, on every page.</p>')
 
-def test_the_fold_counts_the_whole_language_and_approves_one_page():
+def test_the_fold_counts_the_whole_language_and_approves_one_page(tmp_path):
     """review 31: the bar's "not reviewed" counts every word form of the language (the server's ids), not the page's;
     "Approve All on This Page" counts the page's own rows."""
     ids = [f'language:marks|w{i}' for i in range(250)]
     rows = [{'id': i, 'bulk': True} for i in ids[100:200]]
     dec = {i: {'status': 'approved'} for i in ids[:30]}
-    out = _pager_js([{'g': {'group': 'Pali', 'count': 250, 'bulk': 200, 'ids': ids}, 'p': 2, 'rows': rows, 'dec': dec}])
+    out = _pager_js([{'g': {'group': 'Pali', 'count': 250, 'bulk': 200, 'ids': ids}, 'p': 2, 'rows': rows, 'dec': dec}], tmp_path)
     assert '>Approve All on This Page (100)</button>' in out[0]['bar'] and '220 of 250 not reviewed' in out[0]['bar']
 
 def test_the_summary_sends_every_id_and_the_page_size():
