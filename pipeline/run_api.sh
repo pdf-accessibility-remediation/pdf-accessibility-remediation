@@ -338,6 +338,12 @@ fi
 page_reads_step() {             # each of its failures is reported and skipped, never the end of the run
   python3 read_pages.py "$A" "$R" "$@" ${MODEL:+--model "$MODEL"} ${BOOK_MAX_USD:+--book-max-usd "$BOOK_MAX_USD"} || { echo "page readings not done (above): the PDF goes on without them"; return 0; }
 }
+at_limits() {                   # review 29 M2, review 31 L1: a stop's estimate under the limits, never under a job's bound (the
+  # amount a Spend showed): the app's Settings in an app job (APP_*, config.child_env), else the code's defaults (a step's
+  # limit) and the caller's BOOK_MAX_USD
+  env -u PAGE_READS_MAX_USD -u LANGUAGE_MAX_USD ${APP_PAGE_READS_MAX_USD:+PAGE_READS_MAX_USD=$APP_PAGE_READS_MAX_USD} \
+    ${APP_LANGUAGE_MAX_USD:+LANGUAGE_MAX_USD=$APP_LANGUAGE_MAX_USD} ${APP_BOOK_MAX_USD:+BOOK_MAX_USD=$APP_BOOK_MAX_USD} "$@"
+}
 pages_left() {                  # pages the audit lists that page_reads_run.json holds no complete reading for (#95)
   python3 -c 'import json,os,sys
 listed = {p["page"] for p in json.load(open(sys.argv[1])).get("pages") or []}
@@ -369,7 +375,7 @@ if [[ -n $RETRY ]]; then
     if [[ ${part_ok:-n} == [yY]* ]]; then stage "retry: page readings via OpenRouter" page_reads_step --outcome
     else [[ -z ${AUTO:-} ]] && outcome pages declined; echo "page readings not asked again (above)"; fi
     # the readings change words the language step answered: the language step is estimated again, never sent in this call
-    if [[ -n $LANG_DONE_BEFORE ]] && env -u LANGUAGE_MAX_USD python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome --estimate-to "$R/language_retry_estimate.json" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
+    if [[ -n $LANG_DONE_BEFORE ]] && at_limits python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome --estimate-to "$R/language_retry_estimate.json" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
       if python3 -c 'import json,sys; sys.exit(0 if (json.load(open(sys.argv[1])).get("to_send") or 0) > 0 else 1)' "$R/language_retry_estimate.json" 2>/dev/null; then
         outcome language pages_changed "New page readings changed some words."
         echo "language tags: the new page readings changed some words: their language suggestions are estimated again (ask the AI again to send them)"
@@ -440,9 +446,9 @@ if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews 
     echo; echo "the review will hold: some AI suggestions are missing"; sed 's/^/  /' "$R/.held.txt"
     case $(python3 -m lib.aistatus retry "$R" "$A") in
       # review 29 M2: estimated under the current limits, never under a job's bound (the amount a Spend showed)
-      pages) env -u PAGE_READS_MAX_USD -u LANGUAGE_MAX_USD python3 read_pages.py "$A" "$R" --dry-run --estimate-to "$R/page_reads_retry_estimate.json" ${MODEL:+--model "$MODEL"} > /dev/null 2>&1 || echo "  (the page readings' estimate could not be made now)" ;;
+      pages) at_limits python3 read_pages.py "$A" "$R" --dry-run --estimate-to "$R/page_reads_retry_estimate.json" ${MODEL:+--model "$MODEL"} > /dev/null 2>&1 || echo "  (the page readings' estimate could not be made now)" ;;
       language) [[ -f $R/language_retry_estimate.json && $R/language_retry_estimate.json -nt $R/language_run.json ]] \
-                  || env -u PAGE_READS_MAX_USD -u LANGUAGE_MAX_USD python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --estimate-to "$R/language_retry_estimate.json" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} > /dev/null 2>&1 \
+                  || at_limits python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --estimate-to "$R/language_retry_estimate.json" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} > /dev/null 2>&1 \
                   || echo "  (the language suggestions' estimate could not be made now)" ;;
     esac
     echo "  to ask the AI again: AI_RETRY=1 bash $(pwd)/run_api.sh \"$SRC\" $NAME $(basename "$R")"

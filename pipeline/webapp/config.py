@@ -154,9 +154,17 @@ def child_env(s, job_env=None, environ=None):
     # showed them sends them (PAGE_READS=1 and PAGE_READS_MAX_USD from spend.py); every other job reads no pages
     env['PAGE_READS'] = '1' if 'ESTIMATE' in (job_env or {}) else 'off'
     env['LANG_TAGS'] = 'on' if 'ESTIMATE' in (job_env or {}) else 'off'      # #118: the language step, the same rule
+    L = costs.limits_of(s)
     if 'ESTIMATE' in (job_env or {}):                        # #155: an estimate's dry runs judge the two optional steps by the app's limits,
-        L = costs.limits_of(s)                               #   so a raised limit counts at the next "Get a New Estimate" (a job's own value wins)
+        #   so a raised limit counts at the next "Get a New Estimate" (a job's own value wins); review 31 M1: the per-PDF
+        #   limit too, since the language step fills to the room left in it (#159)
         env['LANGUAGE_MAX_USD'], env['PAGE_READS_MAX_USD'] = f'{L["language_usd"]:.2f}', f'{L["page_reads_usd"]:.2f}'
+        env['BOOK_MAX_USD'] = f'{L["per_book_usd"]:.2f}'
+    # review 31 L1: the app's limits under their own names, for the estimates run_api.sh makes at a review stop ("Ask the
+    # AI Again"'s amount). A paid job's LANGUAGE_MAX_USD, PAGE_READS_MAX_USD and BOOK_MAX_USD are bounds (the amount a
+    # Spend showed), never the limits; these are never a job's to set (not in JOB_ENV) and nothing spends under them
+    env['APP_LANGUAGE_MAX_USD'], env['APP_PAGE_READS_MAX_USD'] = f'{L["language_usd"]:.2f}', f'{L["page_reads_usd"]:.2f}'
+    env['APP_BOOK_MAX_USD'] = f'{L["per_book_usd"]:.2f}'
     for k, v in (job_env or {}).items():
         if k not in JOB_ENV: raise ValueError(f'{k} is not a variable a job may set')
         if k in ('MODEL', 'LANGUAGE_MODEL') and not str(v).startswith('anthropic/'): raise ValueError(f'{k} {v!r}: the app sends only to a Claude model whose cost it can check')

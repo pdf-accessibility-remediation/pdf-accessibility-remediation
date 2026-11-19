@@ -295,6 +295,23 @@ def test_the_retry_estimate_job_uses_the_current_limit(setup):
     j = runs.start_ai_retry_estimate(s, 'book/rv', str(W))
     assert j['env_set'].get('LANGUAGE_MAX_USD') != '0.01'
 
+def test_estimate_jobs_get_the_per_pdf_limit_from_settings(setup):
+    """review 31 M1: an estimate job and "Get a New Estimate" for a retry carry the per-PDF limit from Settings, since the
+    language step fills to the room left in it; L1: every job carries the app's limits under their own names (APP_*), for
+    run_api.sh's estimates at a review stop, and no job may set those."""
+    from webapp import config
+    s = settings(setup)
+    for usd in (80, 20):
+        s['limits'] = {'per_book_usd': usd, 'language_usd': 30}
+        e = config.child_env(s, {'ESTIMATE': '1'})
+        assert e['BOOK_MAX_USD'] == f'{usd:.2f}' and e['LANGUAGE_MAX_USD'] == '30.00'
+        W, _ = held_run(setup, label=f'rv{usd}')
+        j = runs.start_ai_retry_estimate(s, f'book/rv{usd}', str(W))
+        assert j['env_set']['BOOK_MAX_USD'] == f'{usd:.2f}' and j['env']['BOOK_MAX_USD'] == f'{usd:.2f}'
+        a = config.child_env(s, {'AUTO': '1', 'BOOK_MAX_USD': '3.17'})          # a paid job: the bound, and the limits apart
+        assert a['BOOK_MAX_USD'] == '3.17' and a['APP_BOOK_MAX_USD'] == f'{usd:.2f}' and a['APP_LANGUAGE_MAX_USD'] == '30.00'
+    with pytest.raises(ValueError): config.child_env(s, {'APP_BOOK_MAX_USD': '999'})
+
 # ------------------------------------------------------------------ #159: the warning before money is spent
 def held_back_estimate(W, n=2400, total=31127):
     (W / 'language_estimate.json').write_text(json.dumps({'schema': 'language-estimate/1', 'forms': total, 'local': 0, 'sent': total - n, 'held_back': n,

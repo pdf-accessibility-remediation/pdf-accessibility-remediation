@@ -359,6 +359,38 @@ def test_the_fill_stops_at_the_room_left_in_the_pdfs_limit(tmp_path, monkeypatch
     e = load(R / 'language_estimate.json')
     assert e['held_back'] >= 1 and e['worst_case_usd'] <= full * 0.5 + 1e-6 and e['held_back_limit']['which'] == 'book' and 'refused' not in e
 
+def test_the_per_pdf_limit_from_the_environment_sets_the_room(tmp_path, monkeypatch):
+    """review 31 M1: the room comes from BOOK_MAX_USD as the app passes it (Settings): a raised per-PDF limit sends more,
+    a lowered one holds forms back instead of leaving the step out."""
+    src, A, R = folders(tmp_path)
+    run(src, A, R, monkeypatch, '--dry-run', '--max-usd', '1000')
+    full = load(R / 'language_estimate.json')
+    (R / 'run.json').write_text(json.dumps({'estimate': {'worst_case_total_usd': 1.0}}))          # the work order, priced, not yet paid
+    monkeypatch.setenv('BOOK_MAX_USD', str(round(1.0 + full['worst_case_usd'] * 0.5, 6)))         # "lowered": half the step's worst fits
+    run(src, A, R, monkeypatch, '--dry-run', '--max-usd', '1000')
+    low = load(R / 'language_estimate.json')
+    assert low['held_back'] >= 1 and low['held_back_limit']['which'] == 'book' and 'refused' not in low
+    monkeypatch.setenv('BOOK_MAX_USD', '80')                                                      # "raised": everything fits
+    run(src, A, R, monkeypatch, '--dry-run', '--max-usd', '1000')
+    high = load(R / 'language_estimate.json')
+    assert high['held_back'] == 0 and high['sent'] == full['sent'] > low['sent']
+
+def test_run_api_sh_stop_estimates_use_the_apps_limits():
+    """review 31 L1: at_limits (run_api.sh) runs a stop's estimate under the app's limits (APP_*) in an app job, never the
+    job's bounds; with no APP_* (a terminal run) the step limits are the code's defaults and BOOK_MAX_USD the caller's."""
+    import subprocess, re
+    sh = open(os.path.join(HERE, 'run_api.sh'), encoding='utf-8').read()
+    fn = re.search(r'^at_limits\(\) \{.*?^\}', sh, re.S | re.M).group(0)
+    def env_of(**kw):
+        e = {k: v for k, v in os.environ.items() if not k.startswith(('APP_', 'LANGUAGE_MAX', 'PAGE_READS_MAX', 'BOOK_MAX'))}
+        out = subprocess.run(['bash', '-c', fn + '\nat_limits env'], env={**e, **kw}, capture_output=True, text=True).stdout
+        return {k: v for k, v in (l.split('=', 1) for l in out.splitlines() if '=' in l) if k.endswith('_MAX_USD')}
+    app = env_of(LANGUAGE_MAX_USD='3.17', PAGE_READS_MAX_USD='1.02', BOOK_MAX_USD='4.50',
+                 APP_LANGUAGE_MAX_USD='40.00', APP_PAGE_READS_MAX_USD='30.00', APP_BOOK_MAX_USD='80.00')
+    assert (app['LANGUAGE_MAX_USD'], app['PAGE_READS_MAX_USD'], app['BOOK_MAX_USD']) == ('40.00', '30.00', '80.00')
+    term = env_of(LANGUAGE_MAX_USD='3.17', BOOK_MAX_USD='60')
+    assert 'LANGUAGE_MAX_USD' not in term and term['BOOK_MAX_USD'] == '60'
+
 def test_below_the_limit_nothing_about_held_back_forms_is_written(tmp_path, monkeypatch):
     """#159: a run under its limits writes no held-back fields (the records of the regression books stay identical)."""
     src, A, R = folders(tmp_path)

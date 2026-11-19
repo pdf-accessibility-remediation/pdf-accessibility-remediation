@@ -892,8 +892,10 @@ def start_ai_retry_estimate(s, run, R):
         model, cap = se.get('LANGUAGE_MODEL'), 'LANGUAGE_MAX_USD'
     if str(model or '').startswith('anthropic/'): argv += ['--model', model]
     env = {}                                                 # review 29 M2: the step's current limit (Settings, else the code's default),
-    lim = costs.limits_of(s).get('page_reads_usd' if cap == 'PAGE_READS_MAX_USD' else 'language_usd')   # never the bound review_stop.json keeps
+    L = costs.limits_of(s)                                   #   never the bound review_stop.json keeps
+    lim = L.get('page_reads_usd' if cap == 'PAGE_READS_MAX_USD' else 'language_usd')
     if lim: env[cap] = f'{float(lim):.2f}'
+    env['BOOK_MAX_USD'] = f'{L["per_book_usd"]:.2f}'        # review 31 M1: the language step fills to the room left in the PDF's limit
     return jobs.create(s['jobs'], 'ai-retry-estimate', run, argv, config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
                        what='Get a new estimate', part=part)
 

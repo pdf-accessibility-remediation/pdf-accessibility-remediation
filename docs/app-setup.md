@@ -58,7 +58,7 @@ Settings come from one place, read in this order (later wins):
 | `per_book_usd` | $50 | $500 | `BOOK_MAX_USD` (a PDF, every step together) |
 | `per_batch_usd` | $250 | $2,500 | `BATCH_MAX_USD` (a batch, with what it has spent) |
 
-The most accepted is `LIMIT_CEILINGS` in `lib/costs.py`, ten times each default: a value above it, 0 or less, or an unknown key stops the app at start with the reason. An estimate's dry runs get `language_usd` and `page_reads_usd` as `LANGUAGE_MAX_USD` and `PAGE_READS_MAX_USD`, so a raised limit counts from the next "Get a New Estimate".
+The most accepted is `LIMIT_CEILINGS` in `lib/costs.py`, ten times each default: a value above it, 0 or less, or an unknown key stops the app at start with the reason. An estimate's dry runs get `language_usd`, `page_reads_usd` and `per_book_usd` as `LANGUAGE_MAX_USD`, `PAGE_READS_MAX_USD` and `BOOK_MAX_USD` (the language step fills to the room left in the per-PDF limit), so a raised limit counts from the next "Get a New Estimate".
 
 When an estimate is over a limit, the page names the limit, what the PDF or batch could cost, and the amount the limit must be at least (the worst case rounded up to the next dollar), and says the app administrator can raise it. Library staff can't change a limit on the page.
 
