@@ -493,14 +493,30 @@ def test_a_refused_step_differs_only_in_its_limit_and_refusal(book, tmp_path, mo
 
 def test_a_batch_pdfs_language_step_is_bound_to_its_own_estimate(tmp_path):
     """review 31 L4: batch_api.sh binds each PDF's language step to its own estimate shown (round_up, never above the
-    batch's cap), not the largest PDF's; nothing when the estimate is missing, refused or sends nothing."""
-    import os
+    batch's cap), not the largest PDF's. Review 33 F2: a missing, unreadable or empty estimate showed no language cost
+    and binds 0.00; only a refused one leaves the batch's value (the real run refuses on its own)."""
+    import os, subprocess
     f = tmp_path / 'e.json'
-    assert C.own_language_bound(str(f), '30.00') == ''
+    assert C.own_language_bound(str(f), '30.00') == '0.00'                                    # missing
+    f.write_text('{not json'); assert C.own_language_bound(str(f), '30.00') == '0.00'        # unreadable
+    f.write_text('[1, 2]'); assert C.own_language_bound(str(f), '30.00') == '0.00'
+    f.write_text(json.dumps({'to_send': 'x'})); assert C.own_language_bound(str(f), '30.00') == '0.00'
     f.write_text(json.dumps({'to_send': 4, 'worst_case_usd': 12.3401})); assert C.own_language_bound(str(f), '30.00') == '12.35'
     assert C.own_language_bound(str(f), '10.00') == '10.00' and C.own_language_bound(str(f), '') == '12.35'
+    f.write_text(json.dumps({'to_send': 4, 'worst_case_usd': 40})); assert C.own_language_bound(str(f), '') == '25.00'
     f.write_text(json.dumps({'to_send': 4, 'worst_case_usd': 12.3, 'refused': {'why': 'cap'}})); assert C.own_language_bound(str(f), '30') == ''
-    f.write_text(json.dumps({'to_send': 0, 'worst_case_usd': 0})); assert C.own_language_bound(str(f), '30') == ''
-    sh = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'batch_api.sh'), encoding='utf-8').read()
-    assert 'costs.own_language_bound(*sys.argv[1:3])' in sh and '[[ -n $own ]] && export LANGUAGE_MAX_USD=$own' in sh
+    f.write_text(json.dumps({'to_send': 0, 'worst_case_usd': 0})); assert C.own_language_bound(str(f), '30') == '0.00'   # empty
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sh = open(os.path.join(here, 'batch_api.sh'), encoding='utf-8').read()
+    lines = [l.strip() for l in sh.splitlines() if l.strip().startswith(('own=$(python3', '[[ -n $own ]]'))]
+    assert len(lines) == 2 and lines[0].endswith('|| own=0.00')
+    def run(est, cap):                      # the two lines themselves, as batch_api.sh runs them for one PDF
+        script = f'B={tmp_path}; name=p; export LANGUAGE_MAX_USD={cap}\n' + '\n'.join(lines) + '\necho "$LANGUAGE_MAX_USD"'
+        if est is None: (tmp_path / 'p' / 'language_estimate.json').unlink(missing_ok=True)
+        else: (tmp_path / 'p').mkdir(exist_ok=True); (tmp_path / 'p' / 'language_estimate.json').write_text(json.dumps(est))
+        return subprocess.run(['bash', '-c', script], cwd=here, capture_output=True, text=True).stdout.strip()
+    (tmp_path / 'p').mkdir(exist_ok=True)
+    assert run(None, '30.00') == '0.00' and run({'to_send': 0}, '30.00') == '0.00'
+    assert run({'to_send': 4, 'worst_case_usd': 12.3401}, '30.00') == '12.35'
+    assert run({'to_send': 4, 'worst_case_usd': 12.3, 'refused': {'why': 'book'}}, '30.00') == '30.00'
 

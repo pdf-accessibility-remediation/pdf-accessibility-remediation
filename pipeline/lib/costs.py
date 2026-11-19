@@ -80,11 +80,16 @@ def round_up(x):
 
 def own_language_bound(est_path, cap=None):
     """review 31 L4: a batch PDF's language step bound to its own estimate shown (round_up of its worst case, never above
-    the batch's cap or the default), as "$X" text for batch_api.sh; '' when its estimate is missing, refused or sends
-    nothing (the batch's own value stands)."""
+    the batch's cap or the default), as "$X" text for batch_api.sh. '' only for a refused estimate (the real run refuses
+    on its own, and the batch's value stands); a missing, unreadable or empty estimate showed no language cost, so it
+    binds "0.00" (review 33 F2): forms found later are held back, and the run-time check holds the review (F1)."""
     try: e = json.load(open(est_path, encoding='utf-8'))
-    except (OSError, ValueError): return ''
-    if not isinstance(e, dict) or e.get('refused') or not int(e.get('to_send') or 0): return ''
+    except (OSError, ValueError): return '0.00'
+    if not isinstance(e, dict): return '0.00'
+    if e.get('refused'): return ''
+    try: n = int(e.get('to_send') or 0)
+    except (TypeError, ValueError): return '0.00'
+    if not n: return '0.00'
     lim = float(cap) if cap not in (None, '') else DEFAULT_LIMITS['language_usd']
     return f'{bound(float(e.get("worst_case_usd") or 0), lim):.2f}'
 
