@@ -1757,7 +1757,10 @@ function langUntagged(r) {
 }
 function langRowHtml(r) {
   const d = state.decisions[r.id] || {};
-  const opts = '<option value="">Change Language</option>' + LANGS.names.map(x => '<option value="' + esc(x.code) + '"' + (d.value === x.code ? ' selected' : '') + '>' + esc(x.name) + ' · ' + esc(x.code) + '</option>').join('');   // the value written (review 12, C)
+  // #159 (scale check): the full list is built when the control is reached (langFillSelect): 92 options on each of
+  // thousands of rows made every redraw slow. Until then it holds the prompt and the current choice only.
+  const cur0 = d.value ? LANGS.names.find(x => x.code === d.value) : null;
+  const opts = '<option value="">Change Language</option>' + (cur0 ? '<option value="' + esc(cur0.code) + '" selected>' + esc(cur0.name) + ' · ' + esc(cur0.code) + '</option>' : '');   // the value written (review 12, C)
   const pagesTxt = (r.pages || []).slice(0, 8).map(p => 'PDF ' + p).join(', ') + ((r.pages || []).length > 8 ? ', …' : '');
   const cur = r.current_name ? esc(r.current_name) + (r.current_written ? ' (written "' + esc(r.current_written) + '")' : '')   // review 08, L4: a name, never a code
             : '"' + esc(r.current_written || r.current) + '", which is not a known language';
@@ -1777,7 +1780,7 @@ function langRowHtml(r) {
     (r.evidence && !(r.rule && reading) ? ' · Evidence: ' + esc(r.evidence) : '') + '</div></div>' +   // #123: a rule row's reading, shown once
     '<div class="lang-btns"><button type="button" data-lang="keep">' + keep + '</button>' + (drop ? '<button type="button" data-lang="drop">' + drop + '</button>' : '') + '</div>' +
     '<div class="lang-acts">' +
-    '<select data-lang="change" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select>' +
+    '<select data-lang="change" data-lazy="1" aria-label="Change Language for ' + esc(r.form) + '">' + opts + '</select>' +
     (d.status ? '<button type="button" class="lang-clear" data-lang="clear" aria-label="Clear Choice for ' + esc(r.form) + '">Clear Choice</button>' : '') +   // back to "Not reviewed"
     '</div></div>';
 }
@@ -1788,17 +1791,48 @@ function fmtN(x) { return Number(x || 0).toLocaleString('en-US'); }      // revi
 function langLeft() {                                    // word forms under "Languages" with no choice yet (declared, not const: nav() runs before LANGS is set)
   return Math.max(0, ((DATA.languages || {}).total || 0) - Object.keys(state.decisions).filter(k => k.startsWith('language:') && (state.decisions[k] || {}).status).length);
 }
-function langFold(g) {
+function langFillSelect(sel) {                         // #159: the "Change Language" list, built when the control is reached
+  if (!sel || !sel.dataset.lazy) return;
+  const d = state.decisions[sel.closest('.lang-row').dataset.id] || {};
+  sel.innerHTML = '<option value="">Change Language</option>' + LANGS.names.map(x => '<option value="' + esc(x.code) + '"' + (d.value === x.code ? ' selected' : '') + '>' + esc(x.name) + ' · ' + esc(x.code) + '</option>').join('');
+  delete sel.dataset.lazy;
+}
+function langRefocus(group, act) {                       // focus stays where the person was (WCAG 2.4.3): the same button, else the fold
+  const f = group && langFoldEl(group); if (!f) return;
+  const b = f.querySelector('button[data-lang="' + act + '"]');
+  (b && !b.disabled ? b : f.querySelector('summary')).focus();
+}
+function langFoldEl(group) { return [...langBox.querySelectorAll('details[data-group]')].find(x => x.dataset.group === group); }
+function langRedrawFold(group) {                         // #159: one fold only, kept open (not every fold of the section)
+  const g = LANGS.groups.find(x => x.group === group), el = langFoldEl(group);
+  if (!g || !el) { renderLanguages(); return; }
+  const open = el.open, t = document.createElement('div'); t.innerHTML = langFold(g);
+  const nu = t.firstElementChild; nu.open = open; el.replaceWith(nu);
+}
+function langRedrawRow(id) {                             // #159: one row and its fold's bar
+  const row = document.getElementById('lang-' + id), fold = row && row.closest('details[data-group]');
+  if (!row || !fold) { renderLanguages(); return; }
+  const r = (langRows[fold.dataset.group] || []).find(x => x.id === id);
+  if (!r) { langRedrawFold(fold.dataset.group); return; }
+  const t = document.createElement('div'); t.innerHTML = langRowHtml(r); row.replaceWith(t.firstElementChild);
+  const g = LANGS.groups.find(x => x.group === fold.dataset.group), bar = fold.querySelector('.lang-bar');
+  if (g && bar) { const t2 = document.createElement('div'); t2.innerHTML = langBar(g); bar.replaceWith(t2.firstElementChild); }
+}
+function langBar(g) {                                   // #159: the fold's bar alone (a row's choice redraws only it and the row)
   const rows = langRows[g.group] || [], left = rows.filter(r => !(state.decisions[r.id] || {}).status).length;
   const bulk = rows.filter(r => r.bulk && !(state.decisions[r.id] || {}).status).length;
   const rdg = langReadingLeft(g).length;                   // #124: every qualifying row of the fold, loaded or not
   const rul = langRuleLeft(g).length;                      // #132: the rows the reading rule decided
-  return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
-    ' (' + fmtN(g.places) + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
-    '<div class="lang-bar">' + (LANG_BULK && g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + fmtN(bulk) + ')</button>' : '') +
+  return '<div class="lang-bar">' + (LANG_BULK && g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + fmtN(bulk) + ')</button>' : '') +
     (LANG_BULK && (g.reading_ids || []).length ? '<button type="button" data-lang="readings"' + (rdg ? '' : ' disabled') + '>Approve Characters with Matching Readings (' + fmtN(rdg) + ')</button>' : '') +
     (LANG_BULK && (g.rule_ids || []).length ? '<button type="button" data-lang="printed_reading"' + (rul ? '' : ' disabled') + '>Approve Forms Decided by Their Printed Reading (' + fmtN(rul) + ')</button>' : '') +
-    '<span class="lang-meta">' + (rows.length ? fmtN(rows.length) + ' of ' + fmtN(g.count) + ' shown' + (left ? ' · ' + fmtN(left) + ' not reviewed' : '') : '') + '</span></div>' +
+    '<span class="lang-meta">' + (rows.length ? fmtN(rows.length) + ' of ' + fmtN(g.count) + ' shown' + (left ? ' · ' + fmtN(left) + ' not reviewed' : '') : '') + '</span></div>';
+}
+function langFold(g) {
+  const rows = langRows[g.group] || [];
+  return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
+    ' (' + fmtN(g.places) + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
+    langBar(g) +
     '<div class="lang-list">' + rows.map(langRowHtml).join('') + '</div>' +
     (rows.length < g.count ? '<button type="button" data-lang="more">Show More</button>' : '') + '</details>';
 }
@@ -1830,8 +1864,9 @@ async function langLoad(group) {
     const r = await fetch('/languages.json?group=' + encodeURIComponent(group) + '&start=' + have.length), b = await r.json();
     langRows[group] = have.concat(b.rows || []);
   } catch (e) { saveAlert('The rows could not be loaded. Reload the page.'); return; }
-  renderLanguages();
-  const d = [...langBox.querySelectorAll('details')].find(x => x.dataset.group === group); if (d) d.open = true;
+  langRedrawFold(group);                                 // #159: this fold only
+  const d = langFoldEl(group); if (d) d.open = true;
+  langRefocus(group, 'more');
 }
 function langSet(id, st, value, bulk) {                  // bulk: the group-approval button ('all_shown', 'readings', 'printed_reading'), else none
   const d = dec(id); d.status = st; if (value !== undefined) d.value = value; else delete d.value;
@@ -1861,20 +1896,28 @@ langBox.addEventListener('click', e => {
     const g = LANGS.groups.find(x => x.group === group);
     if (LANG_BULK && g) for (const id of langRuleLeft(g)) langSet(id, 'approved', undefined, 'printed_reading');
   }
-  else if (act === 'clear') {                                      // the row as if never decided (2026-11-14): "Not reviewed", the counts again
-    delete state.decisions[b.closest('.lang-row').dataset.id];
+  else if (act === 'clear' || act === 'keep' || act === 'drop') {  // one row (review 14, Note 1: no other act reaches a row)
+    const id = b.closest('.lang-row').dataset.id;
+    if (act === 'clear') delete state.decisions[id];               // the row as if never decided (2026-11-14): "Not reviewed", the counts again
+    else langSet(id, act === 'keep' ? 'approved' : 'rejected');
+    persist(); langRedrawRow(id); progressLang();                  // #159: that row and its fold's bar only
+    const again = document.querySelector('#lang-' + CSS.escape(id) + ' button[data-lang="' + act + '"], #lang-' + CSS.escape(id) + ' button[data-lang="keep"]');
+    if (again) again.focus();                                      // focus stays on the row (WCAG 2.4.3)
+    return;
   }
-  else if (act === 'keep' || act === 'drop') {                     // review 14, Note 1: no other act reaches a row
-    const row = b.closest('.lang-row'), id = row.dataset.id;
-    langSet(id, act === 'keep' ? 'approved' : 'rejected');
-  }
-  persist(); renderLanguages(); progressLang();
+  persist(); if (group) langRedrawFold(group); else renderLanguages(); progressLang();   // #159: a group button redraws its fold only
+  langRefocus(group, act);
 });
 langBox.addEventListener('change', e => {
   const sel = e.target.closest('select[data-lang=change]'); if (!sel || finished || !sel.value) return;
-  langSet(sel.closest('.lang-row').dataset.id, 'changed', sel.value);
-  persist(); renderLanguages(); progressLang();
+  const id = sel.closest('.lang-row').dataset.id;
+  langSet(id, 'changed', sel.value);
+  persist(); langRedrawRow(id); progressLang();
+  const nsel = document.querySelector('#lang-' + CSS.escape(id) + ' select[data-lang=change]'); if (nsel) nsel.focus();
 });
+['mousedown', 'focusin'].forEach(ev => langBox.addEventListener(ev, e => {   // #159: the list is built when the control is reached
+  const sel = e.target.closest && e.target.closest('select[data-lazy]'); if (sel) langFillSelect(sel);
+}));
 function progressLang() {
   const n = Object.entries(state.decisions).filter(([k, d]) => k.startsWith('language:') && d && d.status).length;
   const el = document.getElementById('progress');

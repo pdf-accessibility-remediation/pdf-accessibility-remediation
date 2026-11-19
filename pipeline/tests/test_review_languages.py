@@ -196,7 +196,7 @@ def test_group_approval_is_on_with_its_two_buttons():
     assert '>Approve All Shown (' in page and '>Approve Characters with Matching Readings (' in page
     assert "langSet(r.id, 'approved', undefined, 'all_shown')" in page and "langSet(id, 'approved', undefined, 'readings')" in page
     assert "if (r.bulk && !(state.decisions[r.id] || {}).status)" in page                   # Approve All Shown: its own rows only
-    assert "else if (act === 'keep' || act === 'drop')" in page
+    assert "else if (act === 'clear' || act === 'keep' || act === 'drop') {" in page        # #159: one handler for a row's own choices
     assert "' (in a group approval: matching reading)'" in page and "' (in a group approval)'" in page   # a restored draft says how
 
 def test_the_code_shown_is_the_lang_written(tmp_path):
@@ -361,4 +361,4 @@ def test_a_decided_row_has_clear_choice():
     the same as never decided (the whole draft is saved, so it stays deleted)."""
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
     assert '(d.status ? \'<button type="button" class="lang-clear" data-lang="clear"' in page and '>Clear Choice</button>' in page
-    assert "else if (act === 'clear') {" in page and "delete state.decisions[b.closest('.lang-row').dataset.id];" in page
+    assert "if (act === 'clear') delete state.decisions[id];" in page and "const id = b.closest('.lang-row').dataset.id;" in page
