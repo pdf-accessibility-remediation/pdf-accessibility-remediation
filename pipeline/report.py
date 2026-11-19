@@ -58,7 +58,8 @@ lang_refused = sum((lang_log.get('refused') or {}).values())
 LANG_REFUSED_SHOWN = 20                       # refused language-tag places listed in review.md under each reason; the rest are in the record
 NO_ANSWER_WORDS = {'echo': 'the reply could not be matched to the word', 'tag': 'the AI gave a language that cannot be written into the PDF',   # #137
                    'invalid': 'the answer was not in the expected form', 'not_answered': 'the reply skipped the word',
-                   'cut_off': "the AI's reply stopped before the word", 'failed': 'the request did not finish'}
+                   'cut_off': "the AI's reply stopped before the word", 'failed': 'the request did not finish',
+                   'unreadable': 'the reply could not be read'}                                   # #151 (review 22 M3)
 digest = load('digest.json', base=A, default={})
 fulltext = load('fulltext.json', base=A, default={}) or {}   # the whole texts the digest shortens (local only, never sent)
 vera_before = load('verapdf.json', base=A, default=None)   # veraPDF on the original, from the audit
@@ -92,6 +93,11 @@ cost_lang = round(cost_lang + ((lr_run or {}).get('earlier_cost_usd') or 0), 6) 
 cost_unknown = round(costs.not_known(lr_run) + costs.not_known(pr_run, 'pages'), 6)
 n_unknown = sum(1 for r_ in (lr_run, pr_run) if isinstance(r_, dict) for x in list(r_.get('in_flight') or []) + list(r_.get('stopped_in_flight') or [])
                 + list(r_.get('requests' if r_ is lr_run else 'pages') or []) if isinstance(x, dict) and x.get('worst_usd'))
+# #151 (App: hold the review when AI requests did not finish): how each AI step ended (ai_outcome.json, lib/aistatus.py)
+# and a person's choice to review without what was missing (ai_override.json); a re-apply keeps the earlier record's
+from lib import aistatus as _aistatus
+ai_out = _aistatus.outcomes(R) or ((prev or {}).get('ai_outcome') if prev is not None else None) or {}
+ai_override = load(_aistatus.OVERRIDE) or ((prev or {}).get('ai_override') if prev is not None else None)
 def language_status():
     """What became of the language step (#118, round 18), for the Language Tags line (lib/glance.py language_line):
     {candidates: the word forms the audit found for it, state: decided | off | left_out_book | left_out_cap | failed |
@@ -118,6 +124,8 @@ def language_status():
         except Exception: n = None
     est = load('language_estimate.json') or {}
     ref = (est.get('refused') or {}).get('why') if isinstance(est.get('refused'), dict) else None
+    if ref is None and (ai_out.get('language') or {}).get('why') in ('book', 'cap'):    # #151: kept after run_api.sh removed the estimate
+        ref = ai_out['language']['why']
     if (wo.get('language_parts') or {}).get('forms') or (wo.get('language_parts') or {}).get('parts'): state = 'decided'
     elif opt('lang-tags') == 'off' and not lr_run: state = 'off'
     elif ref == 'book': state = 'left_out_book'
@@ -182,6 +190,8 @@ record = {
     **({'review': {'workorder': rv, **(rv_session or {})}} if rv else {}),
     **({'language_review': rv['language']} if rv and rv.get('language') else {}),     # #118: the Languages section's decisions (lib/glance.py)
     'language_status': language_status(),                                              # round 18: Not Applicable only without candidates
+    **({'ai_outcome': ai_out} if ai_out else {}),                                       # #151: how the AI steps ended
+    **({'ai_override': ai_override} if isinstance(ai_override, dict) and ai_override.get('by') else {}),   # #151: reviewed without what was missing
     **({'workorder_ai': wo_ai} if rv and wo_ai is not None else {}),
 }
 # the AI call behind the work order (sponsor checklist 11.5): a reused reply carries the original call's cost, model, prompt
@@ -1184,6 +1194,9 @@ if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the langu
     n += 1; L += [f'### {n}. Language Tags', '',
                   'Words and passages in another language get a language tag, so a screen reader switches to that language\'s voice (WCAG 3.1.2). '
                   'Tags from the language step are decided by a person; kana and Hangul are tagged by a fixed rule.', '']
+    if isinstance(ai_override, dict) and ai_override.get('by'):          # #151: the person chose to review without what was missing
+        L += [line(f'**Reviewed without missing AI suggestions:** {ai_override["by"]} on {DT.day(ai_override.get("date"))}'
+                   + (f' ({"; ".join(ai_override["missing"])})' if ai_override.get('missing') else ''), entry=False), '']
     by_lang = collections.Counter()
     for i, f in tagged_: by_lang[f['lang']] += f.get('places') or 0
     if by_lang: L += ['| Language | Word forms | Places |', '|---|---:|---:|'] + [line(f'| {LT.name(k) or k} | {sum(1 for _, f in tagged_ if f["lang"] == k)} | {v} |', entry=False)
@@ -1334,7 +1347,7 @@ if not KEEP:
     for name in ('request.json', 'response.json', 'reply.txt', 'run.json', 'validation.json', 'workorder.json', 'passes.json',
                  PDF + '.log.json', PDF + '.verify.json', 'verify.txt', 'error.txt', 'timing.json', 'attempts.json',
                  'workorder.ai.json', 'review.json', 'review_items.json', 'review_decisions.json', 'review_stop.json', 'page_reads_run.json',
-                 'language_run.json', 'language_estimate.json'):
+                 'language_run.json', 'language_estimate.json', _aistatus.NAME, 'language_retry_estimate.json', 'page_reads_retry_estimate.json'):
         p = os.path.join(R, name)
         if os.path.exists(p): os.remove(p)
     if os.path.isdir(A) and os.path.exists(os.path.join(A, 'digest.json')): shutil.rmtree(A)

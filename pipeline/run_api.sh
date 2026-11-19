@@ -140,7 +140,29 @@ fig_state() {                  # the state of an earlier attempt's figure reques
 }
 SAVED=; REVIEWED=; MERGED=
 FIG=$(fig_state)
-if [[ -f $R/workorder.ai.json ]]; then         # stopped for a person's review (REVIEW=1): never decide again over it
+outcome() { python3 -m lib.aistatus record "$R" "$@" 2>/dev/null || true; }   # #151: how a step ended (ai_outcome.json)
+refused_est() { python3 -c 'import json,sys; e=json.load(open(sys.argv[1])); sys.exit(0 if (e.get("refused") or {}).get("why") in ("cap", "book") else 1)' "$1" 2>/dev/null; }
+# #151 (App: hold the review when AI requests did not finish): AI_RETRY=1 asks the AI again for what a run held at its
+# review stop did not finish ("Ask the AI Again"), in two parts (review 25 §2.4): the unfinished page readings first, else
+# the unfinished language step. Intake, audit and the work order are not run again; the call stops for review again.
+RETRY=; RETRY_PART=
+if [[ -n ${AI_RETRY:-} ]]; then
+  RETRY_PART=$(python3 -c 'import json,os,sys
+from lib import aistatus
+R = sys.argv[1]
+if not os.path.exists(os.path.join(R, "workorder.ai.json")): sys.exit("refusing: this run is not waiting for a review, so there is nothing to ask the AI again")
+for f, why in (("record.json", "the run has been applied"), ("review.json", "the review was finished"), ("review_decisions.json", "a review was started"),
+               (aistatus.OVERRIDE, "the review was opened without the missing suggestions")):
+    if os.path.exists(os.path.join(R, f)): sys.exit(f"refusing to ask the AI again: {why}")
+part = aistatus.retry_parts(aistatus.status(R))
+if not part: sys.exit("refusing: nothing that the AI can be asked again is unfinished in this run")
+print(part)' "$R" 2>&1) || { echo "${RETRY_PART:-refusing}"; exit 1; }
+  RETRY=1; REVIEW=1
+  echo "▶ asking the AI again for the unfinished $( [[ $RETRY_PART == pages ]] && echo 'page readings' || echo 'language suggestions' ) (the work order is not decided again)"
+fi
+if [[ -n $RETRY ]]; then
+  :
+elif [[ -f $R/workorder.ai.json ]]; then         # stopped for a person's review (REVIEW=1): never decide again over it
   if [[ ! -f $R/review.json ]]; then
     echo "the AI's work order in $R is waiting for a review. Finish it first:"
     echo "  python3 $(pwd)/review_workorder.py \"$R\" --serve"; exit 1
@@ -175,7 +197,7 @@ stage() {                      # stage "label" command…  → runs it and print
 }
 write_timing() {               # timing.json: this call's steps; applying a reviewed order adds them to the first call's,
   python3 -c "import json,os,sys; p=sys.argv[1]; t=json.load(open(p)) if sys.argv[2] and os.path.exists(p) else {}; t.update({l.split('|')[0]: round(float(l.split('|')[1]), 1) for l in sys.argv[3:]}); json.dump(t, open(p, 'w'), indent=1)" \
-    "$R/timing.json" "${REVIEWED:-}" "${TIMES[@]}"   # kept at the review stop, so the record has the whole run (report.py removes it)
+    "$R/timing.json" "${REVIEWED:-}${RETRY:-}" "${TIMES[@]}"   # kept at the review stop, so the record has the whole run (report.py removes it)
 }
 summary() {
   local total=0 line label d
@@ -192,7 +214,7 @@ summary() {
 # 0. intake (untagged PDFs only): OCR where needed, then auto-tag. Exit 3 = flagged for a person: the book stops here
 PSRC=$SRC                                      # the file the pipeline works on: the original, or the intake result
 if [[ ${INTAKE:-auto} != off ]]; then
-  if [[ -n $REVIEWED && -f $R/_intake/intake.json ]]; then   # applying a reviewed order: the intake it was decided on, never a new one
+  if [[ ( -n $REVIEWED || -n $RETRY ) && -f $R/_intake/intake.json ]]; then   # applying a reviewed order (or asking the AI again, #151): the intake it was decided on, never a new one
     python3 -c "import json,hashlib,sys; o=json.load(open(sys.argv[1])).get('original') or {}; sys.exit(0 if o.get('sha256') == hashlib.sha256(open(sys.argv[2],'rb').read()).hexdigest() else 1)" "$R/_intake/intake.json" "$SRC" \
       || { echo "$SRC is not the original this run's intake was made from (sha256 differs): give the same original PDF"; exit 1; }
     echo "▶ 0/5 intake: not re-run; applying to the intake result saved before the review stop"
@@ -231,21 +253,45 @@ if [[ -n $SAVED ]]; then
   fi
 fi
 if [[ -n ${ESTIMATE:-} && ( -n ${REPLY:-} || -n $REVIEWED || -n $MERGED || ${DECIDE:-} == none ) ]]; then echo "estimate only: no cost, no new AI request will be made"; summary; exit 0; fi
-if [[ -n ${REUSED:-} || -n $REVIEWED || -n $MERGED ]]; then
-  :
+# the folder's own reply, reused after a later step failed (156) or read again (REUSED): computed here, before the branch
+# below, so it keeps this folder's ai_outcome.json (#151, review 26 M1)
+OWN_REPLY=; [[ -n ${REPLY:-} && -f $R/response.json && $(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$REPLY") == $(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$R/response.json") ]] && OWN_REPLY=1
+if [[ -n ${REUSED:-} || -n $REVIEWED || -n $MERGED || -n $RETRY ]]; then
+  :                                              # #151: these keep ai_outcome.json and add to it
 elif [[ ${DECIDE:-} == none ]]; then
+  python3 -m lib.aistatus create "$R"            # #151: a call that decides the work order anew starts a fresh outcome file
   stage "2/5 no AI call (a person decides)" python3 decide.py "$A" "$R" --no-model
 elif [[ -n ${REPLY:-} ]]; then
+  [[ -n $OWN_REPLY ]] || python3 -m lib.aistatus create "$R"   # this folder's own reply keeps its outcomes (26 M1)
   stage "2/5 reuse saved reply (no cost)" python3 decide.py "$A" "$R" --response-file "$REPLY" ${MT[@]+"${MT[@]}"}
 else
+  [[ -n ${ESTIMATE:-} ]] || python3 -m lib.aistatus create "$R"   # an estimate is not a run: it records no outcome
   # the page readings' own estimate first (page_reads_estimate.json): the cost lines below and the app's estimate include it
   if [[ $PAGE_READS != off ]] && pages_listed; then
     python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"} || echo "page readings: no estimate (see the line above)"
-  else rm -f "$R/page_reads_estimate.json"; fi
+  else
+    # #151 (review 24 M2/M3): an estimate in this folder that left the step out for its cost is recorded before it goes.
+    # An estimate-only call (a batch's estimate step) keeps such a file for the run that follows it
+    if [[ -n ${ESTIMATE:-} ]] && refused_est "$R/page_reads_estimate.json"; then :
+    else
+      if left=$(python3 -m lib.aistatus refused "$R" pages "$R/page_reads_estimate.json" 2>/dev/null); then
+        echo "page readings: left out for their cost by an earlier estimate in this folder (${left}): the review will hold until they are included or \"Review Without the Missing Suggestions\" is chosen"
+      fi
+      rm -f "$R/page_reads_estimate.json"
+    fi
+  fi
   # the language step's own estimate too (language_estimate.json, #118): the cost lines and the app's estimate include it
   if [[ $LANG_TAGS != off ]]; then
     python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} || echo "language tags: no estimate (see the line above)"
-  else rm -f "$R/language_estimate.json"; fi
+  else
+    if [[ -n ${ESTIMATE:-} ]] && refused_est "$R/language_estimate.json"; then :
+    else
+      if left=$(python3 -m lib.aistatus refused "$R" language "$R/language_estimate.json" 2>/dev/null); then
+        echo "language tags: left out for their cost by an earlier estimate in this folder (${left}): the review will hold until they are included or \"Review Without the Missing Suggestions\" is chosen"
+      fi
+      rm -f "$R/language_estimate.json"
+    fi
+  fi
   stage "2/5 cost estimate (no model)"  python3 decide.py "$A" "$R" --dry-run ${MT[@]+"${MT[@]}"}
   if [[ -n ${ESTIMATE:-} ]]; then
     echo "estimate only: $R/run.json (audit kept for the real run)"; summary; exit 0
@@ -279,7 +325,6 @@ fi
 page_reads_step() {             # each of its failures is reported and skipped, never the end of the run
   python3 read_pages.py "$A" "$R" "$@" ${MODEL:+--model "$MODEL"} ${BOOK_MAX_USD:+--book-max-usd "$BOOK_MAX_USD"} || { echo "page readings not done (above): the PDF goes on without them"; return 0; }
 }
-OWN_REPLY=; [[ -n ${REPLY:-} && -f $R/response.json && $(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$REPLY") == $(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$R/response.json") ]] && OWN_REPLY=1
 pages_left() {                  # pages the audit lists that page_reads_run.json holds no complete reading for (#95)
   python3 -c 'import json,os,sys
 listed = {p["page"] for p in json.load(open(sys.argv[1])).get("pages") or []}
@@ -296,16 +341,46 @@ pages = [{"page": x["page"], "text": x["text"]} for x in run.get("pages") or [] 
 if pages: wo["page_readings"] = pages; json.dump(wo, open(sys.argv[2], "w", encoding="utf-8"), ensure_ascii=False, indent=1)' "$R/page_reads_run.json" "$R/workorder.json" \
     || echo "page readings: the pages read before could not be put back (see above)"
 fi
-if [[ ( -n $OWN_REPLY || -n $MERGED ) && -f $R/page_reads_run.json && $(pages_left) == 0 ]] && pages_listed; then
+# #151: was the language step finished before a retry's page part? (review 26 M2: only then can new readings be the reason)
+LANG_DONE_BEFORE=
+[[ -n $RETRY && $RETRY_PART == pages && -f $R/language_run.json ]] && python3 -c 'import sys
+from lib import aistatus
+sys.exit(1 if "language" in aistatus.status(sys.argv[1])["steps"] else 0)' "$R" && LANG_DONE_BEFORE=1
+if [[ -n $RETRY ]]; then
+  # #151: "Ask the AI Again", one part per call (review 25 §2.4)
+  part_ok=n
+  if [[ $RETRY_PART == pages ]]; then
+    if python3 read_pages.py "$A" "$R" --dry-run --outcome ${MODEL:+--model "$MODEL"}; then part_ok=y; fi
+    if [[ $part_ok == y && -z ${AUTO:-} ]]; then read -r -p "Read the unfinished pages with the AI now? [y/N] " part_ok || part_ok=n; fi
+    if [[ ${part_ok:-n} == [yY]* ]]; then stage "retry: page readings via OpenRouter" page_reads_step --outcome
+    else [[ -z ${AUTO:-} ]] && outcome pages declined; echo "page readings not asked again (above)"; fi
+    # the readings change words the language step answered: the language step is estimated again, never sent in this call
+    if [[ -n $LANG_DONE_BEFORE ]] && python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome --estimate-to "$R/language_retry_estimate.json" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
+      if python3 -c 'import json,sys; sys.exit(0 if (json.load(open(sys.argv[1])).get("to_send") or 0) > 0 else 1)' "$R/language_retry_estimate.json" 2>/dev/null; then
+        outcome language pages_changed "New page readings changed some words."
+        echo "language tags: the new page readings changed some words: their language suggestions are estimated again (ask the AI again to send them)"
+      fi
+    fi
+  else
+    if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then part_ok=y; fi
+    if [[ $part_ok == y && -z ${AUTO:-} ]]; then read -r -p "Ask the AI again for the unfinished language suggestions now? [y/N] " part_ok || part_ok=n; fi
+    if [[ ${part_ok:-n} == [yY]* ]]; then
+      stage "retry: language tags via OpenRouter" bash -c 'python3 name_languages.py "$@" || echo "language tags not done (above): the review stays held"' _ "$A" "$R" --pdf "$PSRC" --outcome ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} ${BOOK_MAX_USD:+--book-max-usd "$BOOK_MAX_USD"}
+    else [[ -z ${AUTO:-} ]] && outcome language declined; echo "language suggestions not asked again (above)"; fi
+  fi
+elif [[ ( -n $OWN_REPLY || -n $MERGED ) && -f $R/page_reads_run.json && $(pages_left) == 0 ]] && pages_listed; then
   echo "page readings: every page was read before: their readings are kept (no cost, no AI request)"
+  outcome pages saved
 elif [[ ${PAGE_READS} != off && ( -z ${REPLY:-} || -n $OWN_REPLY ) && -z $REVIEWED && ${DECIDE:-} != none ]] && pages_listed; then
   pr_ok=n
-  if python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"}; then
+  if python3 read_pages.py "$A" "$R" --dry-run --outcome ${MODEL:+--model "$MODEL"}; then
     if [[ -n ${AUTO:-} ]]; then pr_ok=y; echo "AUTO=1: reading the pages without asking (still refused over the page readings' limit or your credit)"
     else read -r -p "Read these pages with the AI now? [y/N] " pr_ok || pr_ok=n; fi      # no terminal: no
   else echo "page readings not done (above): the PDF goes on without them"; fi
-  if [[ ${pr_ok:-n} == [yY]* ]]; then stage "3b/5 page readings via OpenRouter" page_reads_step
-  elif [[ -z ${AUTO:-} ]]; then echo "page readings skipped: the report lists the pages for a person"; fi
+  if [[ ${pr_ok:-n} == [yY]* ]]; then stage "3b/5 page readings via OpenRouter" page_reads_step --outcome
+  elif [[ -z ${AUTO:-} ]]; then echo "page readings skipped: the report lists the pages for a person"; outcome pages declined; fi
+elif [[ -z $REVIEWED ]] && pages_listed; then
+  outcome pages not_run                          # #151: a saved reply from elsewhere, DECIDE=none or PAGE_READS=off (a refusal stays)
 fi
 # Language tags (#118; on unless LANG_TAGS=off): name_languages.py names the language of the candidate words and
 # passages the audit found, and writes language_parts into the work order. Its own paid step, with its own model
@@ -315,31 +390,48 @@ fi
 lang_step() {                   # each failure is reported and skipped, never the end of the run
   python3 name_languages.py "$A" "$R" --pdf "$PSRC" "$@" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} ${BOOK_MAX_USD:+--book-max-usd "$BOOK_MAX_USD"} || { echo "language tags not done (above): the PDF goes on without them"; return 0; }
 }
-if [[ ( $LANG_TAGS != off || -n ${LANG_REPLY:-} ) && -z $REVIEWED && ${DECIDE:-} != none && -f $R/workorder.json ]]; then   # saved decisions apply even with the step off: no cost
+if [[ -n $RETRY ]]; then
+  :                                              # #151: the retry's part ran above
+elif [[ ( $LANG_TAGS != off || -n ${LANG_REPLY:-} ) && -z $REVIEWED && ${DECIDE:-} != none && -f $R/workorder.json ]]; then   # saved decisions apply even with the step off: no cost
   if [[ -n ${REPLY:-} || -n $MERGED ]]; then
-    if [[ -n ${LANG_REPLY:-} && -f ${LANG_REPLY:-} ]]; then stage "3c/5 language tags: saved decisions (no cost)" lang_step --response-file "$LANG_REPLY"
-    elif [[ -f $R/language_run.json && ( $REPLY == "$R/response.json" || -n $MERGED ) ]]; then stage "3c/5 language tags: this run's own decisions (no cost)" lang_step --reuse
-    else echo "language tags: not run (a saved reply makes no new AI request, and none of its language decisions was saved)"; fi
+    if [[ -n ${LANG_REPLY:-} && -f ${LANG_REPLY:-} ]]; then stage "3c/5 language tags: saved decisions (no cost)" lang_step --response-file "$LANG_REPLY"; outcome language saved
+    elif [[ -f $R/language_run.json && ( $REPLY == "$R/response.json" || -n $MERGED ) ]]; then stage "3c/5 language tags: this run's own decisions (no cost)" lang_step --reuse; outcome language saved
+    else echo "language tags: not run (a saved reply makes no new AI request, and none of its language decisions was saved)"; outcome language not_run; fi
   else
     lt_ok=n
-    if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
+    if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
       if python3 -c 'import json,sys; e=json.load(open(sys.argv[1])); sys.exit(0 if not e.get("to_send") and e.get("local") else 1)' "$R/language_estimate.json" 2>/dev/null; then
         lt_ok=y; echo "language tags: every word form is decided by the reading printed beside it (#123): no AI request, nothing to ask"
       elif [[ -n ${AUTO:-} ]]; then lt_ok=y; echo "AUTO=1: naming languages without asking (still refused over the language step's limit or your credit)"
       else read -r -p "Name the languages of these words and passages with the AI now? [y/N] " lt_ok || lt_ok=n; fi
     else echo "language tags not done (above): the PDF goes on without them"; fi
-    if [[ ${lt_ok:-n} == [yY]* ]]; then stage "3c/5 language tags via OpenRouter" lang_step
-    elif [[ -z ${AUTO:-} ]]; then echo "language tags skipped: the PDF goes on without them"; fi
+    if [[ ${lt_ok:-n} == [yY]* ]]; then stage "3c/5 language tags via OpenRouter" lang_step --outcome
+    elif [[ -z ${AUTO:-} ]]; then echo "language tags skipped: the PDF goes on without them"; outcome language declined; fi
   fi
+elif [[ -z $REVIEWED ]]; then
+  outcome language not_run                       # #151: the step off, DECIDE=none, or no work order (a refusal recorded at 248 stays)
 fi
 if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews the AI's decisions before anything is applied
   cp "$R/workorder.json" "$R/workorder.ai.json"
-  stage "review: page images (no model)" python3 review_workorder.py "$R" --prepare --pdf "$PSRC"
+  stage "${RETRY:+retry: }review: page images (no model)" python3 review_workorder.py "$R" --prepare --pdf "$PSRC"   # a retry's stages keep their own labels (#151)
   write_timing                                   # intake, audit, the AI call and the page images: the apply adds its own
   python3 -c 'from lib import costs; import sys; print(costs.after_line(sys.argv[1]))' "$R" || true
+  # #151: what did not finish holds the review; "Ask the AI Again" shows the amount of its next part, estimated here (free)
+  if python3 -m lib.aistatus held "$R" "$A" > "$R/.held.txt" 2>/dev/null; then
+    echo; echo "the review will hold: some AI suggestions are missing"; sed 's/^/  /' "$R/.held.txt"
+    case $(python3 -m lib.aistatus retry "$R" "$A") in
+      pages) python3 read_pages.py "$A" "$R" --dry-run --estimate-to "$R/page_reads_retry_estimate.json" ${MODEL:+--model "$MODEL"} > /dev/null 2>&1 || echo "  (the page readings' estimate could not be made now)" ;;
+      language) [[ -f $R/language_retry_estimate.json && $R/language_retry_estimate.json -nt $R/language_run.json ]] \
+                  || python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --estimate-to "$R/language_retry_estimate.json" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} > /dev/null 2>&1 \
+                  || echo "  (the language suggestions' estimate could not be made now)" ;;
+    esac
+    echo "  to ask the AI again: AI_RETRY=1 bash $(pwd)/run_api.sh \"$SRC\" $NAME $(basename "$R")"
+  fi
+  rm -f "$R/.held.txt"
   # what the app's "Apply" needs to run this same script's second call (webapp/runs.py start_first_apply); report.py removes it
-  python3 -c "import json,sys; json.dump({'src': sys.argv[1], 'name': sys.argv[2], 'env': {k: v for k, v in zip(('OCR_LANG', 'INTAKE_REUSE', 'INTAKE', 'OUT'), sys.argv[3:]) if v}}, open(sys.argv[7], 'w'), indent=1)" \
-    "$SRC" "$NAME" "${OCR_LANG:-}" "${INTAKE_REUSE:-}" "${INTAKE:-}" "$USER_OUT" "$R/review_stop.json"
+  # (#151: and what "Ask the AI Again" runs with: the models and the limits this run had)
+  python3 -c "import json,sys; ks=('OCR_LANG', 'INTAKE_REUSE', 'INTAKE', 'OUT', 'MODEL', 'LANGUAGE_MODEL', 'BOOK_MAX_USD', 'LANGUAGE_MAX_USD', 'PAGE_READS_MAX_USD'); json.dump({'src': sys.argv[1], 'name': sys.argv[2], 'env': {k: v for k, v in zip(ks, sys.argv[3:12]) if v}}, open(sys.argv[12], 'w'), indent=1)" \
+    "$SRC" "$NAME" "${OCR_LANG:-}" "${INTAKE_REUSE:-}" "${INTAKE:-}" "$USER_OUT" "${MODEL:-}" "${LANGUAGE_MODEL:-}" "${BOOK_MAX_USD:-}" "${LANGUAGE_MAX_USD:-}" "${PAGE_READS_MAX_USD:-}" "$R/review_stop.json"
   summary
   echo
   echo "stopped for review: nothing has been applied yet"

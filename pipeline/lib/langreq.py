@@ -343,11 +343,12 @@ def parse(text, ids, forms=None, marks=None):
 DROP_CODES = ('echo', 'tag', 'invalid', 'unknown_id', 'twice', 'not_answered', 'unreadable', 'partial')
 # Why a word form has no AI decision (#137), as language_parts version-2 forms carry it (`no_answer`) and the review page
 # words it. One per form: its own answer's reason when it had one; else what became of its request.
-NO_ANSWER = ('echo', 'tag', 'invalid', 'not_answered', 'cut_off', 'failed')
+NO_ANSWER = ('echo', 'tag', 'invalid', 'not_answered', 'cut_off', 'failed', 'unreadable')   # unreadable: #151 (review 22 M3)
 
 def no_answer(ids, dropped, finish=None):
     """{id: NO_ANSWER code} for one request's ids with no decision: echo, tag or invalid from the id's own dropped answer;
-    else, for a reply cut off (finish 'length'), cut_off; for a reply not in the expected form, invalid; otherwise
+    else, for a reply cut off (finish 'length'), cut_off; for a reply that couldn't be read at all, unreadable (#151); for a
+    reply read only in pieces, invalid; otherwise
     not_answered (a complete reply skipped it). `failed` (a request with no reply) is the caller's."""
     whole = {d['code'] for d in dropped if d.get('id') is None}
     out = {}
@@ -355,6 +356,7 @@ def no_answer(ids, dropped, finish=None):
         own = next((d['code'] for d in dropped if d.get('id') == i and d.get('code') in ('echo', 'tag', 'invalid')), None)
         if own: out[i] = own
         elif finish == 'length': out[i] = 'cut_off'
+        elif 'unreadable' in whole and 'partial' not in whole: out[i] = 'unreadable'   # #151: the whole reply couldn't be read
         elif whole & {'unreadable', 'partial'}: out[i] = 'invalid'
         else: out[i] = 'not_answered'
     return out

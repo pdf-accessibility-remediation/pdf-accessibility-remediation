@@ -33,7 +33,7 @@ extent (lib/langcands.book grow=True), and LANG_GROUP=on (--group) makes adjacen
 """
 import sys, os, re, json, time, hashlib, argparse, urllib.request, urllib.error, collections
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-from lib import plumb_fix, plpages, langcands, langreq, costhistory, costs, workorder_check, hanreading, aisend  # noqa: F401
+from lib import aistatus, plumb_fix, plpages, langcands, langreq, costhistory, costs, workorder_check, hanreading, aisend  # noqa: F401
 
 RULE_NAME = hanreading.RULE
 PROMPT_NAME = 'language_v3.md'                   # v1 with v2's form echo and dictionary-phrase line (adopted 2026-11-13, 11 §2)
@@ -132,13 +132,12 @@ def reusable(done):
     """{request sha256: [entries]} of a finished language_run.json that a rerun with the same model and prompt reuses: a
     request that finished (finish 'stop'), with its resend when it had one, and a request cut off whose resend finished
     (01 §4.6: the pair is reused together, and both replies are read)."""
-    reqs = [r for r in done.get('requests') or [] if isinstance(r, dict)]
-    resend = {r['resend_of_sha256']: r for r in reqs if r.get('resend_of_sha256') and r.get('finish') == 'stop'}
+    # #151: the one rule aistatus.finished() also holds the review by (review 22 H1, 24 M1): an unreadable reply, and a
+    # request whose resend was needed but failed or wasn't sent, are not reused: a retry sends them again
     out = {}
-    for r in reqs:
-        if r.get('resend_of_sha256') or not r.get('sha256') or r.get('error'): continue
-        if r.get('finish') == 'stop' or r['sha256'] in resend:
-            out[r['sha256']] = [r] + ([resend[r['sha256']]] if r['sha256'] in resend else [])
+    for r, rs in aistatus.pairs(done):
+        if not r.get('sha256') or not aistatus.finished(r, rs): continue
+        out[r['sha256']] = [r] + ([rs] if rs else [])
     return out
 
 def carried(done, reuse_ok, answered):
@@ -258,20 +257,27 @@ def main():
     ap.add_argument('--grow', action='store_true', default=on('LANG_GROW'), help="a title's whole extent (LANG_GROW=on; off by default, review 08 M6)")
     ap.add_argument('--group', action='store_true', default=on('LANG_GROUP'), help='adjacent one-character Han places as one form (LANG_GROUP=on; off by default)')
     g = ap.add_mutually_exclusive_group(); g.add_argument('--response-file'); g.add_argument('--reuse', action='store_true')
+    ap.add_argument('--outcome', action='store_true', help="record how the step ended in ai_outcome.json (#151; run_api.sh's own calls)")
+    ap.add_argument('--estimate-to', help="a dry run's estimate written here instead of language_estimate.json (#151: the retry's estimate)")
     args = ap.parse_args()
     R = args.run_dir
+    STATE.update(R=R, outcome=args.outcome)
+    def refuse(why, msg, words=''):                    # #151: a refusal recorded (with --outcome), then the step stops
+        out(why, words, msg); sys.exit(msg)
     wo_path = os.path.join(R, 'workorder.json')
     wo = json.load(open(wo_path, encoding='utf-8')) if os.path.exists(wo_path) else {}
     prompt_file = next((p for p in (os.path.join(HERE, 'prompts', PROMPT_NAME), os.path.join(os.path.dirname(HERE), 'prompts', PROMPT_NAME)) if os.path.isfile(p)), None)
-    if not prompt_file: sys.exit(f'no prompt file {PROMPT_NAME}')
+    if not prompt_file: refuse('error', f'no prompt file {PROMPT_NAME}')
     prompt = open(prompt_file, encoding='utf-8').read(); prompt_sha = hashlib.sha256(prompt.encode()).hexdigest()[:16]
     places, words, doc_lang, how, fp = candidates(args, wo)
     fs = langreq.forms(places, group=args.group)      # LANG_GROUP: adjacent one-character Han places as one form (review 08, M6)
-    est_path, run_path = os.path.join(R, 'language_estimate.json'), os.path.join(R, 'language_run.json')
+    est_path, run_path = args.estimate_to or os.path.join(R, 'language_estimate.json'), os.path.join(R, 'language_run.json')
     if not fs:
         for p in (est_path,):
             if os.path.exists(p): os.remove(p)
-        print('language step: no candidates in this PDF, nothing to send'); merge(R, wo_path, fs, {}, None); return
+        print('language step: no candidates in this PDF, nothing to send')
+        if not args.dry_run: out('done')
+        merge(R, wo_path, fs, {}, None); return
     local, readings, rule = local_rule(args, fs, words, doc_lang, places)     # #123: decided here, never sent
     ai_fs = [f for f in fs if f['id'] not in local]
     sent, held = ai_fs[:args.max_forms], ai_fs[args.max_forms:]
@@ -328,7 +334,8 @@ def main():
                   'vanished_count': sum(1 for k in by_key if k not in now_keys and k not in local_keys), 'not_decided': sum(1 for f in sent if form_key(f) not in by_key),
                   'local': len(local), 'local_over_saved': sum(1 for k in by_key if k in local_keys),
                   'saved_fingerprint': old.get('fingerprint'), 'fingerprint': fp}
-        rec = {**{k: old.get(k) for k in ('schema', 'model', 'prompt_file', 'prompt_sha256', 'started')}, 'response_from': os.path.abspath(src),
+        rec = {**{k: old.get(k) for k in ('schema', 'model', 'prompt_file', 'prompt_sha256', 'started') + (('estimate',) if args.reuse else ())},
+               'response_from': os.path.abspath(src),
                'own_reply': bool(args.reuse) or os.path.abspath(src) == os.path.abspath(run_path), 'replay': replay,
                'decisions': by_key, 'requests': old.get('requests') if args.reuse else [], 'cost_usd': (old.get('cost_usd') or 0) if args.reuse else 0,
                'original_cost_usd': old.get('cost_usd'), 'candidates': how, 'reading_rule': rule_rec, **keep,
@@ -351,16 +358,17 @@ def main():
                'requests': [], 'decisions': {}, 'cost_usd': 0, 'not_decided': 0}
         json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         merge(R, wo_path, written, dict(local), rec, contexts=contexts_of(written, words, reqs), readings=readings)
+        out('done')
         print(f'language step: {len(local)} of {len(fs)} forms decided by the reading rule · no AI request · $0.0000 spent on this step'); return
     # --- the model, its price and parameters (any model is capped: M7)
     load_env()
     model = args.model or os.environ.get('LANGUAGE_MODEL') or DEFAULT_MODEL     # its own default, never the work order's (Patrick, 2026-11-14)
     try: m = next((x for x in get('https://openrouter.ai/api/v1/models')['data'] if x['id'] == model), None)
-    except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as e: sys.exit(f'could not reach OpenRouter to look up the model: {e}')
-    if m is None: sys.exit(f'refusing: model "{model}" is not on OpenRouter')
+    except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as e: refuse('lookup', f'could not reach OpenRouter to look up the model: {e}')
+    if m is None: refuse('lookup', f'refusing: model "{model}" is not on OpenRouter')
     pin, pout = float(m['pricing']['prompt']), float(m['pricing']['completion']); supported = m.get('supported_parameters')
     done = json.load(open(run_path, encoding='utf-8')) if os.path.exists(run_path) else {}
-    reuse_ok = done.get('model') == model and done.get('prompt_sha256') == prompt_sha and not done.get('response_from')
+    reuse_ok = done.get('model') == model and done.get('prompt_sha256') == prompt_sha and (not done.get('response_from') or done.get('own_reply'))   # #151: this folder's own replay too
     answered = reusable(done) if reuse_ok else {}
     todo = []
     for n, r in enumerate(reqs, 1):
@@ -387,18 +395,19 @@ def main():
     if send: print('language step: ' + costhistory.terminal_line(est['expected']))
     print(f'language step: Max Estimated Cost: ${worst:.2f} · Limit: ${args.max_usd:.2f}')
     if over_cap:
-        sys.exit(f'refusing before any AI request: the language step could cost up to ${worst:.2f}, more than the limit of ${args.max_usd:.2f}. '
-                 f'To run it, raise the limit for this run: LANGUAGE_MAX_USD={int(worst) + 1}')
+        refuse('cap', f'refusing before any AI request: the language step could cost up to ${worst:.2f}, more than the limit of ${args.max_usd:.2f}. '
+                      f'To run it, raise the limit for this run: LANGUAGE_MAX_USD={int(worst) + 1}', aistatus.WORDS['cap']['language'])
     if kept and os.path.exists(os.path.join(R, 'response.json')):       # the work order has run: the step stays left out
-        sys.exit(f'refusing before any AI request: {kept["refused"].get("words")}')
+        refuse('book', f'refusing before any AI request: {kept["refused"].get("words")}', kept['refused'].get('words') or '')
     ref = costs.refused(R, 'language') if not args.dry_run and send else None
     if ref and ref.get('why') == 'book':               # decide.py left it out of the PDF's estimate: it stays out (review 08, H1)
-        sys.exit(f'refusing before any AI request: {ref.get("words") or "the language step was left out of this PDF's estimate"}')
+        refuse('book', f'refusing before any AI request: {ref.get("words") or "the language step was left out of this PDF's estimate"}', ref.get('words') or '')
     spent = costs.book_spent(R)
     if not args.dry_run and spent + worst > args.book_max_usd:
-        sys.exit(f'refusing before any AI request: this PDF has spent ${spent:.2f} and the language step could add ${worst:.2f}, more than the '
-                 f'limit of ${args.book_max_usd:.2f} per PDF. To run it, raise the limit for this run: BOOK_MAX_USD={int(spent + worst) + 1}')
+        refuse('book', f'refusing before any AI request: this PDF has spent ${spent:.2f} and the language step could add ${worst:.2f}, more than the '
+                       f'limit of ${args.book_max_usd:.2f} per PDF. To run it, raise the limit for this run: BOOK_MAX_USD={int(spent + worst) + 1}', aistatus.WORDS['book']['language'])
     if args.dry_run: print('dry run: nothing sent'); return
+    out('started'); STATE['started'] = True             # #151: from here a crash, a kill or Ctrl-C leaves the step unfinished
     stopped_before, earlier_usd = carried(done, reuse_ok, answered)    # review 02 M2: kept whatever reuse says
     rec = {'schema': 'language-run/1', 'model': model, 'prompt_file': os.path.basename(prompt_file), 'prompt_sha256': prompt_sha,
            'started': time.strftime('%Y-%m-%dT%H:%M:%S'), 'estimate': est, 'fingerprint': fp, 'candidates': how,
@@ -408,10 +417,10 @@ def main():
            'cost_usd': round(done.get('cost_usd') or 0, 6) if reuse_ok else 0,
            **({'earlier_cost_usd': earlier_usd} if earlier_usd else {}), **({'stopped_in_flight': stopped_before} if stopped_before else {})}
     if send:
-        key = os.environ.get('OPENROUTER_API_KEY') or sys.exit('no OPENROUTER_API_KEY: put it in .env or export it')
+        key = os.environ.get('OPENROUTER_API_KEY') or refuse('error', 'no OPENROUTER_API_KEY: put it in .env or export it')
         try:
             credit = get('https://openrouter.ai/api/v1/key', key).get('data', {}).get('limit_remaining')
-            if credit is not None and float(credit) < worst: sys.exit(f'refusing: the language step could cost up to ${worst:.2f}, more than the ${float(credit):.2f} of credit left')
+            if credit is not None and float(credit) < worst: refuse('credit', f'refusing: the language step could cost up to ${worst:.2f}, more than the ${float(credit):.2f} of credit left')
         except (urllib.error.URLError, TimeoutError, ValueError): pass
         os.makedirs(os.path.join(R, 'language_requests'), exist_ok=True)
         try: digest = json.load(open(os.path.join(args.audit_dir, 'digest.json'), encoding='utf-8'))
@@ -434,6 +443,7 @@ def main():
     rec['not_decided'] = sum(1 for f in sent if f['id'] not in dec)          # cut off, invalid, or never sent: listed for a person
     json.dump(rec, open(run_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     merge(R, wo_path, written, {**dec, **local}, rec, held=held, contexts=contexts_of(written, words, reqs), readings=readings, reasons=reasons)
+    out('done')
     print(f'language step: {len(dec)} of {len(sent)} forms decided by the AI ({rec["not_decided"]} not decided), {len(local)} by the reading rule'
           f' · ${rec["cost_usd"]:.4f} spent on this step')
 
@@ -487,4 +497,21 @@ def merge(R, wo_path, fs, dec, rec, held=(), note=None, contexts=None, readings=
     if note: rec['note'] = note
     json.dump(rec, open(os.path.join(R, 'language_run.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
-if __name__ == '__main__': main()
+STATE = {'R': None, 'outcome': False, 'started': False}
+def out(why, words='', detail=''):
+    """#151: how the step ended, in ai_outcome.json (only with --outcome: run_api.sh's own calls; an estimate never records)."""
+    if STATE['outcome'] and STATE['R']: aistatus.record(STATE['R'], 'language', why, words, detail)
+
+def on_exit(e):
+    """#151, review 24 L2: a step that stops after it started, with nothing recorded since, is recorded as an error (Ctrl-C
+    with its own words). A refusal already recorded is never overwritten; a kill runs nothing and leaves `started`."""
+    if not (STATE['outcome'] and STATE['started'] and STATE['R']): return
+    if aistatus.outcome(STATE['R'], 'language').get('why') != 'started': return
+    if isinstance(e, SystemExit) and e.code in (None, 0): return
+    words = 'The step was stopped before it finished.' if isinstance(e, KeyboardInterrupt) else aistatus.WORDS['error']
+    out('error', words, f'{type(e).__name__}: {e}')
+
+if __name__ == '__main__':
+    try: main()
+    except BaseException as e:
+        on_exit(e); raise

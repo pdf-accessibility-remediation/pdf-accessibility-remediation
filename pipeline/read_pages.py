@@ -34,18 +34,39 @@ ap.add_argument('--max-usd', type=float, default=float(os.environ.get('PAGE_READ
 ap.add_argument('--book-max-usd', type=float, default=float(os.environ.get('BOOK_MAX_USD') or costs.DEFAULT_LIMITS['per_book_usd']),
                 help="the PDF's limit, shared with the work order and the language step (review 06, M2)")
 ap.add_argument('--max-tokens', type=int, default=8000, help='output limit per page (a dense Hawaiian page took 2,300–3,400)')
+ap.add_argument('--outcome', action='store_true', help="record how the step ended in ai_outcome.json (#151; run_api.sh's own calls)")
+ap.add_argument('--estimate-to', help="a dry run's estimate written here instead of page_reads_estimate.json (#151: the retry's estimate)")
 args = ap.parse_args()
+
+from lib import aistatus
+STATE = {'started': False, 'exc': None}
+def out(why, words='', detail=''):
+    """#151: how the step ended, in ai_outcome.json (only with --outcome: run_api.sh's own calls; an estimate never records)."""
+    if args.outcome: aistatus.record(args.run_dir, 'pages', why, words, detail)
+def refuse(why, msg, words=''):
+    out(why, words, msg); sys.exit(msg)
+def _hook(t, v, tb):                                # #151, review 24 L2: the exception that ends the script, for on_exit
+    STATE['exc'] = v; sys.__excepthook__(t, v, tb)
+sys.excepthook = _hook
+def on_exit():
+    """A step that stops after it started, with nothing recorded since, is an error (Ctrl-C with its own words); a refusal
+    already recorded is never overwritten; a kill runs nothing and leaves `started`."""
+    if not (args.outcome and STATE['started']) or aistatus.outcome(args.run_dir, 'pages').get('why') != 'started': return
+    e = STATE['exc']
+    out('error', 'The step was stopped before it finished.' if isinstance(e, KeyboardInterrupt) else aistatus.WORDS['error'], f'{type(e).__name__}: {e}' if e else 'stopped')
+import atexit; atexit.register(on_exit)
 
 CHARS_PER_TOKEN, INPUT_MARGIN = 2.2, 1.25          # decide.py's calibration
 PROMPT_FILE = next((p for p in (os.path.join(HERE, 'prompts', pagereads.PROMPT_NAME), os.path.join(os.path.dirname(HERE), 'prompts', pagereads.PROMPT_NAME))
                     if os.path.isfile(p)), None)
-if not PROMPT_FILE: sys.exit(f'no prompt file {pagereads.PROMPT_NAME} in pipeline/prompts/ or prompts/')
+if not PROMPT_FILE: refuse('error', f'no prompt file {pagereads.PROMPT_NAME} in pipeline/prompts/ or prompts/')
 prompt = open(PROMPT_FILE, encoding='utf-8').read(); prompt_sha = hashlib.sha256(prompt.encode()).hexdigest()[:16]
 listing = os.path.join(args.audit_dir, 'page_reads.json')
 pages = (json.load(open(listing, encoding='utf-8')).get('pages') or []) if os.path.exists(listing) else []
-EST_PATH = os.path.join(args.run_dir, 'page_reads_estimate.json')
+EST_PATH = args.estimate_to or os.path.join(args.run_dir, 'page_reads_estimate.json')
 if not pages:
     if os.path.exists(EST_PATH): os.remove(EST_PATH)          # an earlier estimate of pages this audit no longer lists
+    out('not_run')                                            # #151, review 24 L7: nothing to read is never a hold
     print('page readings: no scanned Hawaiian pages in this PDF, nothing to read'); sys.exit(0)
 
 def load_env():
@@ -71,9 +92,9 @@ model = args.model or ((json.load(open(run_json, encoding='utf-8')).get('model')
     or re.search(r"^DEFAULT_MODEL = '([^']+)'", open(os.path.join(HERE, 'decide.py'), encoding='utf-8').read(), re.M).group(1)
 try:
     m = next((x for x in get('https://openrouter.ai/api/v1/models')['data'] if x['id'] == model), None)
-except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as e: sys.exit(f'could not reach OpenRouter to look up the model: {e}')
-if m is None: sys.exit(f'refusing: model "{model}" is not on OpenRouter')
-if 'image' not in ((m.get('architecture') or {}).get('input_modalities') or []): sys.exit(f'refusing: {model} cannot take images')
+except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as e: refuse('lookup', f'could not reach OpenRouter to look up the model: {e}')
+if m is None: refuse('lookup', f'refusing: model "{model}" is not on OpenRouter')
+if 'image' not in ((m.get('architecture') or {}).get('input_modalities') or []): refuse('lookup', f'refusing: {model} cannot take images')
 pin, pout = float(m['pricing']['prompt']), float(m['pricing']['completion'])
 
 out_path = os.path.join(args.run_dir, 'page_reads_run.json')
@@ -106,16 +127,17 @@ print(f'page readings: {len(pages)} Hawaiian page{"s" if len(pages) != 1 else ""
 if todo: print('page readings: ' + costhistory.terminal_line(est['expected']))
 print(f'page readings: Max Estimated Cost: ${worst:.2f} · Limit: ${args.max_usd:.2f}')
 if worst > args.max_usd:
-    sys.exit(f'refusing before any AI request: the page readings could cost up to ${worst:.2f}, more than the limit of ${args.max_usd:.2f}. To run it, raise the limit for this run: PAGE_READS_MAX_USD={int(worst) + 1}')
+    refuse('cap', f'refusing before any AI request: the page readings could cost up to ${worst:.2f}, more than the limit of ${args.max_usd:.2f}. To run it, raise the limit for this run: PAGE_READS_MAX_USD={int(worst) + 1}',
+           aistatus.WORDS['cap']['pages'])
 if _kept and os.path.exists(os.path.join(args.run_dir, 'response.json')):   # the work order has run: the readings stay left out
-    sys.exit(f'refusing before any AI request: {_kept["refused"].get("words")}')
+    refuse('book', f'refusing before any AI request: {_kept["refused"].get("words")}', _kept['refused'].get('words') or '')
 _ref = costs.refused(args.run_dir, 'page_reads') if not args.dry_run and todo else None
 if _ref and _ref.get('why') == 'book':             # decide.py left them out of the PDF's estimate: they stay out (review 08, H1)
-    sys.exit(f'refusing before any AI request: {_ref.get("words") or "the page readings were left out of this PDF\'s estimate"}')
+    refuse('book', f'refusing before any AI request: {_ref.get("words") or "the page readings were left out of this PDF\'s estimate"}', _ref.get('words') or '')
 _spent = costs.book_spent(args.run_dir)
 if not args.dry_run and _spent + worst > args.book_max_usd:
-    sys.exit(f'refusing before any AI request: this PDF has spent ${_spent:.2f} and the page readings could add ${worst:.2f}, more than the '
-             f'limit of ${args.book_max_usd:.2f} per PDF. To run it, raise the limit for this run: BOOK_MAX_USD={int(_spent + worst) + 1}')
+    refuse('book', f'refusing before any AI request: this PDF has spent ${_spent:.2f} and the page readings could add ${worst:.2f}, more than the '
+                   f'limit of ${args.book_max_usd:.2f} per PDF. To run it, raise the limit for this run: BOOK_MAX_USD={int(_spent + worst) + 1}', aistatus.WORDS['book']['pages'])
 # cost_usd is the step's running total: a page read again after a cut-off keeps the first charge, a page reused adds nothing.
 # What an earlier attempt left in flight, or stopped, or a call of it with no reply in time not reused here, is kept at its
 # worst case (review 02 M2).
@@ -127,16 +149,17 @@ rec = {'schema': 'page-reads/1', 'model': model, 'prompt_file': os.path.basename
        'pages': sorted(reused, key=lambda x: x['page']), 'cost_usd': round(max(done.get('cost_usd') or 0, sum(x.get('cost_usd') or 0 for x in done.get('pages') or [])), 6),
        **({'stopped_in_flight': _stopped} if _stopped else {})}
 if args.dry_run: print('dry run: nothing sent'); sys.exit(0)
+out('started'); STATE['started'] = True              # #151: from here a crash, a kill or Ctrl-C leaves the step unfinished
 # the doubled room after a cut-off (L5 of review 02): twice --max-tokens, up to the model's output limit; none when that
 # gives no more room
 MAX_OUT = (m.get('top_provider') or {}).get('max_completion_tokens') or m.get('context_length') or args.max_tokens
 DOUBLED = min(2 * args.max_tokens, int(MAX_OUT))
 if not todo: print('page readings: every page was read before, no cost')
 else:
-    key = os.environ.get('OPENROUTER_API_KEY') or sys.exit('no OPENROUTER_API_KEY: put it in .env or export it')
+    key = os.environ.get('OPENROUTER_API_KEY') or refuse('error', 'no OPENROUTER_API_KEY: put it in .env or export it')
     try:
         k = get('https://openrouter.ai/api/v1/key', key).get('data', {}); credit = k.get('limit_remaining')
-        if credit is not None and float(credit) < worst: sys.exit(f'refusing: the page readings could cost up to ${worst:.2f}, more than the ${float(credit):.2f} of credit left')
+        if credit is not None and float(credit) < worst: refuse('credit', f'refusing: the page readings could cost up to ${worst:.2f}, more than the ${float(credit):.2f} of credit left')
     except (urllib.error.URLError, TimeoutError, ValueError): pass
     started = time.strftime('%Y-%m-%dT%H:%M:%S')
     try: digest = json.load(open(os.path.join(args.audit_dir, 'digest.json'), encoding='utf-8'))
@@ -213,4 +236,5 @@ if os.path.exists(wo_path):
     wo['page_readings'] = [{'page': x['page'], 'text': x['text']} for x in rec['pages'] if x.get('finish') == 'stop' and (x.get('text') or '').strip()]
     if not wo['page_readings']: del wo['page_readings']
     json.dump(wo, open(wo_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+out('done')
 print(f'page readings: {len([x for x in rec["pages"] if x.get("finish") == "stop"])} of {len(pages)} pages read · ${rec["cost_usd"]:.4f} spent on this step')

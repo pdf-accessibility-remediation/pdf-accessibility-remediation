@@ -1523,6 +1523,8 @@ def finish(R, ai_wo, wo, reviewer, date, method, decisions=None, items=None, not
          **({'gaps': open_gaps} if open_gaps else {}),
          **({'notes': notes} if notes else {}),
          **({'note': note} if note else {})}
+    ov = load(os.path.join(R, 'ai_override.json'))   # #151 (review 23 L3): "Review Without the Missing Suggestions", kept in every session
+    if isinstance(ov, dict) and ov.get('by'): v['ai_override'] = ov
     old = load(os.path.join(R, 'review.json'))
     if old: v['history'] = old.pop('history', []) + [old]
     wo['reviewed_by'] = f'{v["reviewer"]} on {date}'

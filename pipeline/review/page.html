@@ -1746,7 +1746,7 @@ const LANG_WHY = { name: 'a name', english: 'part of English', indeterminate: 'n
 // words when the run recorded one (review 02, L3)
 const LANG_NO_ANSWER = { echo: 'its reply could not be matched to this word', tag: 'the AI gave a language that cannot be written into the PDF',
   invalid: 'its answer was not in the expected form', not_answered: 'the reply skipped this word',
-  cut_off: 'the AI’s reply stopped before this word', failed: 'its request did not finish' };
+  cut_off: 'the AI’s reply stopped before this word', failed: 'its request did not finish', unreadable: 'its reply could not be read' };
 function langUntagged(r) {
   if (!r.confidence && !r.rule) return 'No AI answer' + (LANG_NO_ANSWER[r.no_answer] ? ' (' + LANG_NO_ANSWER[r.no_answer] + ')' : '');
   const bits = [];
