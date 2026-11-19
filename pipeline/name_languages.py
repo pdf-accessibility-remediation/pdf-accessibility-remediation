@@ -276,7 +276,8 @@ def main():
         for p in (est_path,):
             if os.path.exists(p): os.remove(p)
         print('language step: no candidates in this PDF, nothing to send')
-        if not args.dry_run: out('done')
+        if args.dry_run: return                         # an estimate writes nothing into the work order (#151: the stop's estimates)
+        out('done')
         merge(R, wo_path, fs, {}, None); return
     local, readings, rule = local_rule(args, fs, words, doc_lang, places)     # #123: decided here, never sent
     ai_fs = [f for f in fs if f['id'] not in local]

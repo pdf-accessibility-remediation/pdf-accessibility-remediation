@@ -350,7 +350,8 @@ if [[ -n $RETRY ]]; then
   # #151: "Ask the AI Again", one part per call (review 25 §2.4)
   part_ok=n
   if [[ $RETRY_PART == pages ]]; then
-    if python3 read_pages.py "$A" "$R" --dry-run --outcome ${MODEL:+--model "$MODEL"}; then part_ok=y; fi
+    # the retry's own dry run records nothing: refused under the bound limit (prices moved), the part keeps its earlier outcome
+    if python3 read_pages.py "$A" "$R" --dry-run ${MODEL:+--model "$MODEL"}; then part_ok=y; fi
     if [[ $part_ok == y && -z ${AUTO:-} ]]; then read -r -p "Read the unfinished pages with the AI now? [y/N] " part_ok || part_ok=n; fi
     if [[ ${part_ok:-n} == [yY]* ]]; then stage "retry: page readings via OpenRouter" page_reads_step --outcome
     else [[ -z ${AUTO:-} ]] && outcome pages declined; echo "page readings not asked again (above)"; fi
@@ -362,7 +363,7 @@ if [[ -n $RETRY ]]; then
       fi
     fi
   else
-    if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then part_ok=y; fi
+    if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then part_ok=y; fi
     if [[ $part_ok == y && -z ${AUTO:-} ]]; then read -r -p "Ask the AI again for the unfinished language suggestions now? [y/N] " part_ok || part_ok=n; fi
     if [[ ${part_ok:-n} == [yY]* ]]; then
       stage "retry: language tags via OpenRouter" bash -c 'python3 name_languages.py "$@" || echo "language tags not done (above): the review stays held"' _ "$A" "$R" --pdf "$PSRC" --outcome ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} ${BOOK_MAX_USD:+--book-max-usd "$BOOK_MAX_USD"}

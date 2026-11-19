@@ -199,13 +199,19 @@ def retry_parts(s):
 
 def lines(s):
     """Plain sentences for the terminal and the review page's refusal: one per held part."""
+    def n_(c, one, many): return f'{c:,} {one if c == 1 else many}'
     out = []
-    names = {'language': ('Language Suggestions', 'word forms'), 'pages': ('Page Readings', 'pages')}
+    names = {'language': ('Language Suggestions', ('request not finished', 'requests not finished')), 'pages': ('Page Readings', ('page not read', 'pages not read'))}
     for k, v in s['steps'].items():
         title, unit = names[k]
         if v['state'] == 'left_out': out.append(f'{title} Not Made: {v["words"]}')
-        else: out.append(f'{title} Not Finished: {v["words"] or "some AI requests did not finish."}'.rstrip() + (f' ({v["count"]:,} {"requests" if k == "language" else unit} to send again)' if v['count'] else ''))
-    if s['figures']: out.append(f'Figure Descriptions Not Finished: {s["figures"]["count"]} figure request(s) did not finish.')
+        else:
+            text = v['words'] or 'Some AI requests did not finish.'
+            if v['count']: text = text.rstrip('.') + f' ({n_(v["count"], *unit)}).'
+            out.append(f'{title} Not Finished: {text}')
+    if s['figures']:
+        c = s['figures']['count']
+        out.append(f'Figure Descriptions Not Finished: {n_(c, "figure request", "figure requests")} did not finish.')
     return out
 
 def _main(argv):
