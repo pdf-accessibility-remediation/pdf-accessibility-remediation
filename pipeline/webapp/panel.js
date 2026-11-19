@@ -573,6 +573,7 @@ function waitingBlock(s) {
     '<p>' + (active[0].status === 'running' ? 'Applying the reviewed decisions. This page follows each step.' :   // U5: the job's card has the one spinner
              'Waiting to Start: the reviewed decisions are applied when ' + esc(active[0].waiting_for || 'the runs before it') + ' end' + (active[0].waiting_for ? 's' : '') + '.') + '</p>' :
     '<p>A job for this run is ' + (active[0].status === 'running' ? 'running' : 'waiting') + ': ' + esc(active[0].title) + '.</p>';
+  if (!w.reviewed && s.held) return heldBlock(s.held);           // #151: some AI suggestions are missing: no review yet
   if (!w.reviewed) return '<p>The AI\'s decisions are waiting for your review. Nothing has been applied yet.</p>' +
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-review" data-act="review">Open the Review Page</button></div>';
   const who = 'Review finished (' + esc(w.reviewer || 'reviewer not recorded') + ', ' + esc(fmtDay(w.date)) + '). ';
@@ -584,6 +585,44 @@ function waitingBlock(s) {
       '<div class="pp-row"><button type="button" class="pp-primary" id="pp-apply" data-act="apply">Try Again</button></div></div>';
   return '<p>' + who + 'Nothing has been applied yet: this review was finished before "Finish Review" applied it by itself.</p>' +   // an older review
     '<div class="pp-row"><button type="button" class="pp-primary" id="pp-apply" data-act="apply">Apply the Reviewed Decisions</button></div>';
+}
+
+// #151: a run held at its review stop because some AI suggestions are missing. Every sentence comes from webapp/runs.py
+// (held_view); the page only escapes it. "Ask the AI Again" is described by its cost line; a tool's own words only under
+// "Details".
+function heldBlock(h) {
+  const r = h.retry;
+  return '<p>' + esc(h.intro) + '</p>' +
+    h.parts.map((p, i) => '<h4>' + esc(p.heading) + '</h4><p>' + esc(p.text) + '</p>' +
+      (p.detail ? '<details id="pp-held-d' + i + '"><summary>Details</summary><p class="pp-note">' + esc(p.detail) + '</p></details>' : '')).join('') +
+    (h.failure ? failureCard(Object.assign({}, h.failure, { next: [] })) : '') +
+    (h.restarted ? '<p>' + esc(h.restarted) + '</p>' : '') +
+    (r ? '<p id="pp-retry-cost">' + esc(r.cost) + '</p>' + (r.note ? '<p>' + esc(r.note) + '</p>' : '') : h.why ? '<p class="pp-warn-t">' + esc(h.why) + '</p>' : '') +
+    (h.test ? '<p class="pp-note">' + esc(h.test) + '</p>' : '') +
+    '<div class="pp-row">' +
+    (r ? '<button type="button" class="pp-primary" id="pp-ai-retry" data-act="ai-retry" aria-describedby="pp-retry-cost">Ask the AI Again</button>' : '') +
+    (h.estimate ? '<button type="button" id="pp-ai-est" data-act="ai-retry-estimate">Get a New Estimate</button>' : '') +
+    '<button type="button" id="pp-without" data-act="review-without">Review Without the Missing Suggestions</button></div>' +
+    '<p class="pp-note">' + esc(h.without) + '</p>';
+}
+function withoutDlg(opener) {                                   // a name (never prefilled); Escape or Cancel closes it
+  return new Promise(res => {
+    const d = $('pp-dlg');
+    d.innerHTML = '<h2 id="pp-dlg-h">Review Without the Missing Suggestions</h2>' +
+      '<p>The review starts without the missing AI suggestions. Your name is recorded with this choice, and the AI can\'t be asked again for this run.</p>' +
+      '<p><label for="pp-without-by">Your Name</label><br><input type="text" id="pp-without-by" autocomplete="name" maxlength="120"></p>' +
+      '<p id="pp-without-err" class="pp-warn-t" role="alert"></p><div><button type="button" class="pp-primary" value="yes">Review Without the Missing Suggestions</button>' +
+      '<button type="button" value="no">Cancel</button></div>';
+    const id = opener.id, done = v => { d.close(); ($(id) || opener).focus(); res(v); };
+    d.querySelector('button[value=no]').addEventListener('click', () => done(null));
+    d.querySelector('button[value=yes]').addEventListener('click', () => {
+      const by = $('pp-without-by').value.trim();
+      if (!by) { $('pp-without-err').textContent = 'Enter your name in "Your Name".'; $('pp-without-by').focus(); return; }
+      done(by);
+    });
+    d.oncancel = ev => { ev.preventDefault(); done(null); };
+    d.showModal(); $('pp-without-by').focus();
+  });
 }
 
 // ---------------------------------------------------------------- a run started from the home page, before its result (#45)
@@ -714,7 +753,7 @@ function render() {
     return;
   }
   if (WAITING) {                                                 // no result, no strip: the review, then the first apply
-    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? 'Waiting for review' :
+    const h = setupBlock() + '<h3 id="pp-cur" tabindex="-1">' + esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? (st.held ? 'AI suggestions missing' : 'Waiting for review') :
       st.waiting.auto && st.waiting.auto.state !== 'starting' ? 'Stopped' : 'Applying the reviewed decisions')) + '</h3>' +
       waitingBlock(st) + jobsBlock(st), body = $('pp-body'), keepFocus = document.activeElement && document.activeElement.id;
     if (body.dataset.h === h) return;
@@ -802,6 +841,27 @@ box.addEventListener('click', async e => {
       const f = $('pp-spend') || $('pp-credit'); if (f) f.focus();
     } catch (err) { msg('The app is not running. ' + START + ' Then try again.', false, true); }
     b.disabled = false;
+    return;
+  }
+  if (act === 'ai-retry' || act === 'ai-retry-estimate') {       // #151: "Ask the AI Again" (with the estimate shown) or its new estimate
+    try {
+      const [s, r] = await api(API + '/' + act, act === 'ai-retry' ? { fingerprint: st.held && st.held.retry ? st.held.retry.fingerprint : '' } : {});
+      if (s !== 202) return msg(r.error || 'The app refused this', false, true);
+      quiet = true;
+      await poll(true);
+      const hd = $('jh-' + r.job.id); if (hd) hd.focus();
+    } catch (err) { msg('The app is not running. ' + START + ' Then try again.', false, true); }
+    return;
+  }
+  if (act === 'review-without') {                                // #151: a name, then the review can start
+    const by = await withoutDlg(b); if (!by) return;
+    try {
+      const [s, r] = await api(API + '/review-without', { by });
+      if (s !== 200) return msg(r.error || 'The app refused this', false, true);
+      await poll(true);
+      live('The review can start without the missing suggestions: "Open the Review Page".');
+      const f = $('pp-review') || $('pp-cur'); if (f) f.focus();
+    } catch (err) { msg('The app is not running. ' + START + ' Then try again.', false, true); }
     return;
   }
   if (['spend', 'estimate', 'dismiss', 'retry', 'replay', 'language'].includes(act)) {

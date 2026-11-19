@@ -19,10 +19,11 @@ def _load(p):
 
 # ------------------------------------------------------------------ the context a row looks at
 STEP_OF = (('0/5 intake', 'intake'), ('1/5 ', 'audit'), ('2/5 cost estimate', 'estimate'), ('2/5 reuse saved reply', 'call'),
-           ('2/5 the earlier', 'call'), ('2/5 the previous', 'call'), ('3/5 ', 'call'), ('review:', 'review'), ('4/5 apply', 'apply'), ('4/5 verify', 'apply'), ('5/5 report', 'apply'))
+           ('2/5 the earlier', 'call'), ('2/5 the previous', 'call'), ('3/5 ', 'call'), ('review:', 'review'), ('4/5 apply', 'apply'), ('4/5 verify', 'apply'), ('5/5 report', 'apply'),
+           ('asking the AI again', 'retry'), ('retry: ', 'retry'), ('retry: review', 'review'))   # #151: "Ask the AI Again" (run_api.sh AI_RETRY=1)
 STEP_WORDS = {'start': 'starting the run', 'intake': 'reading and tagging the PDF (intake)', 'audit': 'auditing the PDF',
               'estimate': 'estimating the cost', 'call': 'the AI request', 'review': 'preparing the review page', 'apply': 'applying, checking or writing the report',
-              'batch': 'the batch', 'app': 'the app'}
+              'batch': 'the batch', 'app': 'the app', 'retry': 'asking the AI again'}
 
 def context(s, R, job):
     text = jobs.read_log(s['jobs'], job['id'], 0, 4 * 1024 * 1024)[0] if job else ''
@@ -63,7 +64,17 @@ WHOEVER = 'Whoever looks after the app can check it: "Details" says what happene
 
 # ------------------------------------------------------------------ the table, in the order rows are tried (first match wins)
 # (code, step, matcher, (source file, pinned text) or None, headline, meaning, todo, next buttons, details' command or None)
+RETRY_TODO = 'Select "Get a New Estimate", then "Ask the AI Again", or select "Review Without the Missing Suggestions".'
 ROWS = [
+    # --- #151: "Ask the AI Again" and its estimate, on a run held at its review stop (the card's own buttons, no `next`)
+    ('R2', 'retry', lambda c: c['job'].get('kind') == 'ai-retry' and c['status'] == 'interrupted', None,
+     'Asking the AI again stopped before it finished.', 'The computer restarted or the job was stopped. The suggestions that finished are kept; '
+     'it isn\'t known whether the request in progress was charged.', RETRY_TODO, [], None),
+    ('R1', 'retry', lambda c: c['job'].get('kind') == 'ai-retry', None,
+     'Asking the AI again stopped with an error.', 'The suggestions that finished are kept. Whether anything was charged is in "Details".', RETRY_TODO, [], None),
+    ('R3', 'retry', lambda c: c['job'].get('kind') == 'ai-retry-estimate', None,
+     'The new estimate couldn\'t be made.', 'Nothing was sent to the AI service.',
+     'Select "Get a New Estimate" to try again. If it stops again, whoever looks after the app can check it.', [], None),
     # --- the run was interrupted (job status): what is left is read from disk
     ('I3', 'interrupted', lambda c: c['status'] == 'interrupted' and _rerun(c['R']), None,      # one source for "costs nothing" (05 M3)
      'The run stopped before it finished.', 'The computer restarted or the run was stopped. The AI\'s reply is saved, so going on costs nothing.',

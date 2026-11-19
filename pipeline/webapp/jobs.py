@@ -39,7 +39,7 @@ def can_change(j):
     good (the app stopped, the machine restarted) drop out of the home page's check (review 04 L-B)."""
     st = j.get('status')
     return st in ('queued', 'running', 'needs-spend') or (st == 'interrupted' and j.get('exit') is None and bool(j.get('pgid')))
-PAID_KINDS = ('spend', 'batch')                     # the only jobs that may send to the AI service (03 §2)
+PAID_KINDS = ('spend', 'batch', 'ai-retry')         # the only jobs that may send to the AI service (03 §2; #151: "Ask the AI Again")
 
 def related(a, b):
     """The same run, or one inside the other (a batch and its books): never two jobs of them at once."""

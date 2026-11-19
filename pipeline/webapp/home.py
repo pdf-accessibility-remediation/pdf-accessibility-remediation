@@ -19,6 +19,8 @@ from . import books as BK, jobs, config, lang as LG
 E = html.escape
 MARKS = ('record.json', 'run.json', 'workorder.ai.json', 'review.json', os.path.join('_intake', 'intake.json'), os.path.join('_intake', 'languages.json'))
 RELEASE = ('checks.json', 'shipped.json', 'cleared.json')
+HELD_MARKS = ('ai_outcome.json', 'ai_override.json', 'language_run.json', 'page_reads_run.json')   # #151: what the hold is read from
+HELD_WORDS = 'AI Suggestions Missing'                    # a waiting run held because AI suggestions are missing (#151)
 _lock = threading.Lock()
 
 def _load(p):
@@ -83,7 +85,7 @@ def run_folders(runs):
     return out
 
 def key_of(R):
-    return [_mt(os.path.join(R, m)) for m in MARKS] + [_mt(os.path.join(R, 'release', f)) for f in RELEASE]
+    return [_mt(os.path.join(R, m)) for m in MARKS + HELD_MARKS] + [_mt(os.path.join(R, 'release', f)) for f in RELEASE]
 
 def _status_of_record(R, rec):
     """A finished run's status words, from its glance and release/ (no PDF hashed)."""
@@ -99,6 +101,13 @@ def _status_of_record(R, rec):
             return st.get('name') or REL.NOT_READY, REL.with_issues(st.get('name') or REL.NOT_READY, st.get('issues') or 0)
         except Exception: pass
     return REL.NOT_READY, REL.NOT_READY
+
+def held(R):
+    """A waiting run held because some AI suggestions are missing (#151, lib/aistatus.py); never raises."""
+    try:
+        from lib import aistatus
+        return aistatus.status(R)['held']
+    except Exception: return False
 
 def row_of(s, run, R, rd=None, nm=None):
     """One run's row (without the jobs laid over it). rd: the request's reader (one read of each file per request: a
@@ -121,7 +130,7 @@ def row_of(s, run, R, rd=None, nm=None):
             p = RN.own_pdf(R); sha = RN.own_sha(s, R); file = file or os.path.basename(p)
         when = runj.get('started') or intake.get('written') or ''
         if os.path.isfile(os.path.join(R, 'workorder.ai.json')):
-            name = words = 'Waiting to Start' if os.path.isfile(os.path.join(R, 'review.json')) else 'Waiting for Review'   # reviewed: its apply comes next (D3)
+            name = words = 'Waiting to Start' if os.path.isfile(os.path.join(R, 'review.json')) else HELD_WORDS if held(R) else 'Waiting for Review'   # reviewed: its apply comes next (D3)
         elif LG.asks(R): name = words = 'Waiting for a Language'                 # D4 (a 'first' one is checked against the jobs in over())
         elif intake.get('status') == 'stopped': name, words = 'Stopped', 'Stopped: Needs a Person'
         elif intake.get('status') == 'failed' or runj.get('error') or runj.get('parse_error'): name = words = 'Failed'
@@ -189,7 +198,8 @@ def warm(s, wait=False):
     else: threading.Thread(target=go, daemon=True).start()
 
 ACTIVE_WORDS = {'estimate': 'Estimating', 'spend': 'Running', 'rerun': 'Running', 'replay': 'Running', 'apply': 'Running',
-                'review': 'Waiting for Review', 'pin': 'Running', 'ocr': 'Waiting for Review', 'discard': 'Running', 'batch': 'Running'}
+                'review': 'Waiting for Review', 'pin': 'Running', 'ocr': 'Waiting for Review', 'discard': 'Running', 'batch': 'Running',
+                'ai-retry': 'Running', 'ai-retry-estimate': 'Estimating'}                       # #151
 
 def over(s, rows, nm=None):
     """The app's jobs laid over the rows: a run with a job queued or running says so; a job's failure the record cannot
@@ -206,8 +216,8 @@ def over(s, rows, nm=None):
         if j['status'] in jobs.ACTIVE:
             r['status'] = r['words'] = ACTIVE_WORDS.get(j['kind'], 'Running') if j['status'] == 'running' else 'Waiting to Start'
             r['active'] = True
-        elif j['status'] == 'needs-spend': r['status'], r['words'] = 'Estimate Ready', 'Waiting: open it and select "Get a New Estimate"'   # 05 M2
-        elif j['status'] in ('failed', 'interrupted') and not r['finished'] and r['status'] not in ('Stopped', 'Waiting for Review') \
+        elif j['status'] == 'needs-spend' and j['kind'] != 'ai-retry': r['status'], r['words'] = 'Estimate Ready', 'Waiting: open it and select "Get a New Estimate"'   # 05 M2
+        elif j['status'] in ('failed', 'interrupted') and not r['finished'] and r['status'] not in ('Stopped', 'Waiting for Review', HELD_WORDS) \
                 and not (r['status'] == 'Waiting for a Language' and (r.get('lang_kind') in ('cjk', 'reocr') or LG.stopped_to_ask(j))):   # a later failure shows
             r['status'] = r['words'] = 'Failed' if j['status'] == 'failed' else 'Stopped before it finished'
 

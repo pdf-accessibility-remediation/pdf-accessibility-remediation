@@ -423,9 +423,10 @@ def make(s, setup, code=None):
             if segs and len(segs) >= 3 and segs[-2] == 'checks' and segs[-1] in ('draft', 'record'):   # two-segment actions: the run is segs[:-2]
                 return self.checks_post(segs[:-2], segs[-1], body)
             PEND = ('spend', 'estimate', 'dismiss', 'retry', 'language')
-            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship', 'replay', 'clear', 'bring-back') + PEND:
+            HELD = ('ai-retry', 'ai-retry-estimate', 'review-without')          # #151: a waiting run held because AI suggestions are missing
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship', 'replay', 'clear', 'bring-back') + PEND + HELD:
                 return self.send(404, {'error': 'not found'})
-            hit = find_run(s['runs'], segs[:-1], waiting=segs[-1] in ('review', 'apply', 'stop'), pending=(lambda d: runs.pending(s, d)) if segs[-1] in PEND else None)
+            hit = find_run(s['runs'], segs[:-1], waiting=segs[-1] in ('review', 'apply', 'stop') + HELD, pending=(lambda d: runs.pending(s, d)) if segs[-1] in PEND else None)
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
             run, R, _ = hit
             if segs[-1] in PEND:                                # a run started from the home page, before its result
@@ -450,10 +451,17 @@ def make(s, setup, code=None):
                 try:
                     if segs[-1] == 'review': j = runs.start_first_review(s, run, R, self.server.server_address[1], app_pid=os.getpid())
                     elif segs[-1] == 'apply': j = runs.start_first_apply(s, run, R)
+                    elif segs[-1] == 'ai-retry': j = runs.start_ai_retry(s, run, R, body)            # #151: "Ask the AI Again" (paid)
+                    elif segs[-1] == 'ai-retry-estimate': j = runs.start_ai_retry_estimate(s, run, R)   # its "Get a New Estimate" (free)
+                    elif segs[-1] == 'review-without':                                            # "Review Without the Missing Suggestions"
+                        d = runs.review_without(s, run, R, body.get('by'))
+                        applog(f'{run}: reviewed without the missing AI suggestions, by {d["by"]}')
+                        return self.send(200, {'override': {'by': d['by'], 'date': d['date']}})
                     else: j = runs.stop_review(s, run, R); return self.send(200, {'stopped': j['id']})
                 except ValueError as e: return self.send(409, {'error': str(e)})
                 jobs.tick(J, s)
                 return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
+            if segs[-1] in HELD: return self.send(409, {'error': 'This run isn\'t waiting for its review, so there is nothing to ask the AI again.'})
             if segs[-1] == 'ship':                              # Mark as Shipped, in this process, through review/manual.py ship()
                 try: e = M.ship(R, str(body.get('by') or ''), str(body.get('note') or ''), shown_sha=body.get('shown_sha256') or None,
                                 via='page', wait=runlock.REQUEST_WAIT, say=lambda *a: applog(f'{run}: ' + ' '.join(str(x) for x in a)), batch=False)

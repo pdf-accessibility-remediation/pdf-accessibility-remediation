@@ -111,7 +111,8 @@ def why_busy(s, run, R):
         if j['status'] == 'running' and j['kind'] in jobs.PERSON: return 'A review page is open for it. Close the review first.'
         if j['status'] == 'running': return 'It is being processed right now. Try again when it stops.'
         if j['status'] == 'queued': return 'It is waiting to start. Try again when it has run, or once it is stopped.'
-        if j['status'] == 'needs-spend': return 'It is waiting for a new estimate. Select "Dismiss" on its page first.'
+        if j['status'] == 'needs-spend':                 # #151: "Ask the AI Again" left waiting by a restart has no "Dismiss"
+            return 'It is waiting for a new estimate. Select ' + ('"Get a New Estimate"' if j['kind'] == 'ai-retry' else '"Dismiss"') + ' on its page first.'
     if R and os.path.isfile(os.path.join(R, 'review.json')) and not os.path.isfile(os.path.join(R, 'record.json')):
         return 'Its review was just finished and its decisions are about to be applied. Try again when the apply is done.'
     return None

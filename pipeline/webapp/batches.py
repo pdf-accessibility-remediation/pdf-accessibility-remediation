@@ -226,7 +226,8 @@ def _book_status(s, label, b, R, jl, batch_job, rd=None, nm=None):
     if mine and mine[-1]['status'] in jobs.ACTIVE:
         k = mine[-1]['kind']
         row['words'] = 'Waiting to Start' if mine[-1]['status'] == 'queued' else 'Applying the Reviewed Decisions' if k == 'apply' else \
-                       'Waiting for Review' if k == 'review' else 'Writing the Batch Summary' if k == 'summary' else 'Estimating'
+                       'Waiting for Review' if k == 'review' else 'Writing the Batch Summary' if k == 'summary' else \
+                       'Running' if k == 'ai-retry' else 'Estimating'                  # #151: "Ask the AI Again" (its estimate: Estimating)
     elif batch_job and batch_job['status'] == 'running' and not row['finished']:
         lp = os.path.join(folder(s, label), f'{b["name"]}.log')
         try: st = logs.now_step('apply', logs.steps(open(lp, encoding='utf-8', errors='replace').read()))
@@ -234,7 +235,7 @@ def _book_status(s, label, b, R, jl, batch_job, rd=None, nm=None):
         row['words'] = 'Running' + (f': {st["words"][:1].upper()}{st["words"][1:]}' if st else '') if os.path.exists(lp) or st else row['words']
     elif not row["finished"] and LG.question(s, R, mine, nm):     # D4: its language is asked on its row
         row['status'] = row['words'] = 'Waiting for a Language'
-    elif mine and mine[-1]['status'] in ('failed', 'interrupted') and not row['finished']:
+    elif mine and mine[-1]['status'] in ('failed', 'interrupted') and not row['finished'] and mine[-1]['kind'] not in ('ai-retry', 'ai-retry-estimate'):   # #151: the held card says why
         it = (rd(os.path.join(R, '_intake', 'intake.json')) or {}).get('status')
         row['words'] = 'Stopped: Needs a Person' if it == 'stopped' else 'Failed'
     return row
@@ -501,7 +502,7 @@ def tone(row, R, rd=None):
     if row.get('active') or w in ('Estimating', 'Waiting to Start') or w.startswith('Running') or w.startswith('Applying'): return 'processing'
     if st == 'Failed' or w == 'Failed': return 'failed'
     if st in ('Ready', 'Shipped', 'Cleared'): return 'done'
-    if w.startswith('Stopped') or w.startswith('Waiting for a Language'): return 'person'
+    if w.startswith('Stopped') or w.startswith('Waiting for a Language') or w == HM.HELD_WORDS: return 'person'   # #151: held for a person's choice
     opened = any(os.path.exists(os.path.join(R, *x)) for x in (('review.json',), ('review_decisions.json',), ('record.json',),
                                                                  ('reviews', 'review_decisions.json'), ('reviews', 'sessions')))
     if os.path.exists(os.path.join(R, 'record.json')):

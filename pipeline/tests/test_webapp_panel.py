@@ -545,7 +545,7 @@ def test_steps_in_plain_words():
     for s in logs.steps('▶ 0/5 intake\n▶ 1/5 audit (no model)\n▶ 2/5 veraPDF on the original\n▶ 3/5 decide\n▶ figure request 2 of 3\n▶ figure requests: 1 of 3 done\n'):
         w = logs.plain(s['label'] if isinstance(s, dict) else s)
         assert not re.search(r'\d/\d|OpenRouter', w), w
-    assert "esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? 'Waiting for review' :" in src('webapp/panel.js')
+    assert "esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? (st.held ? 'AI suggestions missing' : 'Waiting for review') :" in src('webapp/panel.js')   # #151
     assert "(j.first ? 'Stop Reviewing (Your Choices Are Saved)' : 'Stop Reviewing (the Session Stays Open)')" in src('webapp/panel.js')   # no session before Finish
 
 def test_job_titles_say_what_happened(tmp_path):

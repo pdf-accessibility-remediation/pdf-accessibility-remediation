@@ -197,7 +197,8 @@ SESSION_IN = re.compile(r'session (\d+)')
 def action(j):
     """The job's action, as it was asked for: "Review again from session 2"."""
     return shown(j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin', 'ocr': 'Review OCR Text', 'estimate': 'Get the estimate',
-                                    'spend': 'Start remediation: the AI request', 'rerun': 'Try again', 'batch': 'Run the batch'}.get(j['kind'], j['kind']))
+                                    'spend': 'Start remediation: the AI request', 'rerun': 'Try again', 'batch': 'Run the batch',
+                                    'ai-retry': 'Ask the AI again', 'ai-retry-estimate': 'Get a new estimate'}.get(j['kind'], j['kind']))
 
 def heading(j):
     """A job card's heading (Patrick, round 24 of #118): a job that processes the PDF reads "Processing: …"; a person's own
@@ -205,6 +206,8 @@ def heading(j):
     a, k = action(j), j['kind']
     test = ' (test: a saved reply)' if '(test: a saved reply)' in a else ' (test: saved replies)' if '(test: saved replies)' in a else ''
     if k == 'spend': return 'Processing: AI Request' + test
+    if k == 'ai-retry': return 'Processing: Asking the AI Again'                      # #151
+    if k == 'ai-retry-estimate': return 'Processing: New Cost Estimate'
     if k in ('estimate', 'batch-estimate'):
         m = re.match(r'Get the estimate (\(.*\))$', a)      # "Get the estimate (Hawaiian)": the OCR language chosen
         return 'Processing: ' + ('New Cost Estimate' if a == 'Get a new estimate' else 'Cost Estimate') + (f' {m.group(1)}' if m else '')
@@ -243,8 +246,8 @@ def result(R, j, v):
         return 'stopped to ask the language of the scanned pages' + when
     if designed_stop(j) == 'stopped': return 'stopped for a person (see why on this page)' + when
     if st == 'failed': return 'failed' + when
-    if j['kind'] in ('estimate', 'batch-estimate') and st == 'done': return 'estimate ready' + when
-    if j['kind'] in ('spend', 'rerun', 'replay') and st == 'done':
+    if j['kind'] in ('estimate', 'batch-estimate', 'ai-retry-estimate') and st == 'done': return 'estimate ready' + when
+    if j['kind'] in ('spend', 'rerun', 'replay', 'ai-retry') and st == 'done':
         return ('stopped for review' if R and os.path.isfile(os.path.join(R, 'workorder.ai.json')) and not os.path.isfile(os.path.join(R, 'record.json'))
                 else 'finished') + when
     if st == 'interrupted' and not lost: return 'stopped without finishing' + when
@@ -696,12 +699,16 @@ def waiting_state(s, run, R, nm=None):
     return {'run': run, 'mode': 'waiting', 'title': waiting_title(run, R), 'book': name, 'file': file,
             'waiting': {'reviewed': bool(rv), 'reviewer': rv.get('reviewer'), 'date': rv.get('date'), 'auto': auto,
                         'prepared': os.path.isfile(os.path.join(R, 'review_items.json'))},
+            'held': None if rv else held_view(s, run, R, [j for j in al if j['run'] == run]),      # #151
             'live_review': job_view(s, live, ctx=ctx) if live else None,
             'jobs': [job_view(s, j, ctx=ctx) for j in al if j['run'] == run]}
 
 def start_first_review(s, run, R, port, app_pid=None):
-    """Open the Review Page for a waiting run: review_workorder.py <run> --serve, as the terminal's step 1."""
+    """Open the Review Page for a waiting run: review_workorder.py <run> --serve, as the terminal's step 1. Refused while
+    the run is held (#151): some AI suggestions are missing and no one chose to review without them."""
     if os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('The review is finished: its decisions are being applied.')
+    why = held_refusal(s, R)
+    if why: raise ValueError(why)
     if not os.path.isfile(os.path.join(R, 'review_items.json')):
         raise ValueError('The review page was not prepared when this run stopped, so it can\'t be opened. Run the book again.')
     back = f'http://127.0.0.1:{port}/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/?after=finish'
@@ -751,6 +758,137 @@ def start_first_apply(s, run, R):
         then = {'kind': 'summary', 'argv': ['bash', 'batch_api.sh', p_[1]], 'env': config.child_env(s, {'SUMMARY_ONLY': '1'}),
                 'env_set': {'SUMMARY_ONLY': '1'}, 'counted': False, 'extra': {'what': 'Write the batch summary again'}}
     return jobs.create(s['jobs'], 'apply', run, argv, config.child_env(s, env), env_set=env, R=R, what='Apply session 1', first=True, then=then)
+
+# ------------------------------------------------------------------ a run held at its review stop (#151)
+# lib/aistatus.py says which AI steps did not finish; while it holds the run, "Open the Review Page" is refused and the run
+# page shows each missing part, "Ask the AI Again" (through spend.py authorize_retry, bound to the estimate shown), "Get
+# a New Estimate" (free) and "Review Without the Missing Suggestions" (a name, then aistatus.set_override).
+RETRY_JOBS = ('ai-retry', 'ai-retry-estimate')
+HELD_INTRO = 'Some AI suggestions are missing, so the review can\'t start yet.'
+HELD_WITHOUT = '"Review Without the Missing Suggestions" lets the review start without them. Your name is recorded with this choice.'
+HELD_TEST = '"Ask the AI Again" isn\'t available in test mode.'
+HELD_RESTARTED = ('The app restarted before the AI request started, so nothing was sent. Select "Get a New Estimate", then '
+                  '"Ask the AI Again".')
+PAGES_FIRST = ('"Ask the AI Again" requests the page readings first. The language suggestions are estimated again afterward, '
+               'because the readings change some of the words.')
+HELD_STEP = {'Language Suggestions': 'language', 'Page Readings': 'pages'}
+
+def _held_text(t):
+    """aistatus.lines()'s sentence after the colon (its counts already in plain words: "… (2 requests not finished).")."""
+    return t.strip()
+
+def held_parts(R, st):
+    """[{heading, text, detail}] for each held part, from aistatus.lines(); the step's own `detail` (a tool's words) only
+    for the folded "Details"."""
+    from lib import aistatus as AS
+    out = []
+    for line in AS.lines(st):
+        head, _, text = line.partition(': ')
+        step = next((v for k, v in HELD_STEP.items() if head.startswith(k)), None)
+        detail = (AS.outcome(R, step).get('detail') or None) if step else None
+        out.append({'heading': head, 'text': _held_text(text), 'detail': detail})
+    return out
+
+def retry_cost_words(est):
+    """'This uses AI credit: Expected Cost: $0.45 · Max Estimated Cost: $0.83.' (the expected figure only when known); the
+    maximum is the limit the job is bound to (lib/costs.py round_up)."""
+    from lib import costs
+    x = est.get('expected') if isinstance(est.get('expected'), dict) else {}
+    usd = x.get('usd') if isinstance(x.get('usd'), (int, float)) and not isinstance(x.get('usd'), bool) else None
+    return ('This uses AI credit: ' + (f'Expected Cost: ${usd:.2f} · ' if usd is not None else '')
+            + f'Max Estimated Cost: ${costs.round_up(float(est.get("worst_case_usd") or 0)):.2f}.')
+
+def held_view(s, run, R, js=None):
+    """The run page's card for a waiting run that is held, or None (not held)."""
+    from lib import aistatus as AS
+    from . import spend as SP, failures
+    try: st = AS.status(R)
+    except Exception: return None                         # unreadable outcome files never hide the review: the review page checks again
+    if not st['held']: return None
+    js = js if js is not None else [j for j in jobs.all_jobs(s['jobs']) if j['run'] == run]
+    part = AS.retry_parts(st)
+    test = bool(s.get('test_reply_dir') or s.get('test_batch_from'))
+    restarted = any(j['kind'] == 'ai-retry' and j['status'] == 'needs-spend' for j in js)
+    retry, why = None, None
+    if part and not test and not restarted:
+        est = SP.retry_estimate(R, part)
+        n = int((est or {}).get('to_read' if part == 'pages' else 'to_send') or 0)
+        if est and isinstance(est.get('refused'), dict): why = est['refused'].get('words') or 'Asking the AI again was left out for its cost.'
+        elif not est or not n: why = SP.NO_RETRY_ESTIMATE
+        else:
+            retry = {'part': part, 'cost': retry_cost_words(est), 'fingerprint': SP.retry_fingerprint(R, part),
+                     'note': PAGES_FIRST if part == 'pages' and (st['steps'].get('language') or {}).get('retry') else None}
+    last = js[-1] if js else None
+    fail = failures.explain(s, R, last) if last and last['kind'] in RETRY_JOBS and last['status'] in ('failed', 'interrupted') else None
+    return {'intro': HELD_INTRO, 'parts': held_parts(R, st), 'retry': retry, 'why': why, 'estimate': bool(part) and not test,
+            'test': HELD_TEST if part and test else None, 'restarted': HELD_RESTARTED if part and restarted and not test else None,
+            'failure': fail, 'without': HELD_WITHOUT}
+
+def held_refusal(s, R):
+    """Why the first review can't start (#151), in plain words, or None."""
+    from lib import aistatus as AS
+    st = AS.status(R)
+    if not st['held']: return None
+    parts = ' '.join(f'{p["heading"]}: {p["text"]}' for p in held_parts(R, st))
+    can = AS.retry_parts(st) and not (s.get('test_reply_dir') or s.get('test_batch_from'))
+    return ('The review can\'t start yet because some AI suggestions are missing. ' + parts + ' Select '
+            + ('"Ask the AI Again" or ' if can else '') + '"Review Without the Missing Suggestions".')
+
+def start_ai_retry(s, run, R, body):
+    """"Ask the AI Again" (#151): paid, through spend.py's one gate."""
+    from . import spend as SP
+    try: a = SP.authorize(s, 'retry', run, R, str((body or {}).get('fingerprint') or ''))
+    except SP.Refused as e: raise ValueError(str(e))
+    return jobs.create(s['jobs'], 'ai-retry', run, a['argv'], config.child_env(s, a['env_set']), env_set=a['env_set'], R=R, paid=True,
+                       what='Ask the AI again', **a['extra'])
+
+def start_ai_retry_estimate(s, run, R):
+    """"Get a New Estimate" for "Ask the AI Again" (#151, free): the dry run run_api.sh's stop makes, into the part's
+    retry estimate file only. It ends a retry left waiting by a restart (needs-spend), as a run's new estimate does."""
+    from lib import aistatus as AS
+    from . import spend as SP
+    why = SP.retry_refusal(R)
+    if why: raise ValueError(why)
+    st = AS.status(R); part = AS.retry_parts(st)
+    if not st['held'] or not part: raise ValueError(SP.NOTHING_TO_RETRY)
+    stop = load(os.path.join(R, 'review_stop.json')) or {}
+    se = stop.get('env') if isinstance(stop.get('env'), dict) else {}
+    A, out = os.path.join(R, '_audit'), os.path.join(R, SP.RETRY_FILES[part])
+    if part == 'pages':
+        argv = [sys.executable, 'read_pages.py', A, R, '--dry-run', '--estimate-to', out]
+        model, cap = se.get('MODEL'), 'PAGE_READS_MAX_USD'
+    else:
+        psrc = os.path.join(R, '_intake', 'intake.pdf')
+        if not os.path.isfile(psrc):
+            psrc, why = first_original(s, R)
+            if why: raise ValueError(why.replace('Applying the reviewed decisions requires', 'A new estimate requires'))
+        argv = [sys.executable, 'name_languages.py', A, R, '--pdf', psrc, '--dry-run', '--estimate-to', out]
+        model, cap = se.get('LANGUAGE_MODEL'), 'LANGUAGE_MAX_USD'
+    if str(model or '').startswith('anthropic/'): argv += ['--model', model]
+    env = {}
+    try:                                                     # the run's own limit for the step, as run_api.sh's stop estimated it
+        if se.get(cap) and float(se[cap]) > 0: env[cap] = f'{float(se[cap]):.2f}'
+    except (TypeError, ValueError): pass
+    return jobs.create(s['jobs'], 'ai-retry-estimate', run, argv, config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
+                       what='Get a new estimate', part=part)
+
+def review_without(s, run, R, by):
+    """"Review Without the Missing Suggestions" (#151): a person's name, then aistatus.set_override (ai_override.json): the
+    hold is cleared and the review can start. A retry left waiting by a restart ends (superseded)."""
+    from lib import aistatus as AS
+    if os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('The review is finished: its decisions are being applied.')
+    if not AS.status(R)['held']: raise ValueError('No AI suggestions are missing in this run. Reload the page.')
+    by = by.strip() if isinstance(by, str) else ''
+    if not by: raise ValueError('Enter your name in "Your Name".')
+    if '\n' in by or len(by) > 120: raise ValueError('Enter your name in one line of at most 120 characters.')
+    J = s['jobs']
+    with jobs.locked(J):
+        for j in jobs.all_jobs(J):
+            if j['run'] == run and j['kind'] == 'ai-retry' and j['status'] == 'needs-spend':
+                j.update(status='superseded', ended=jobs.now(), superseded_by='review-without', note='dismissed'); jobs.save(J, j)
+        busy = jobs.busy(J, run, R, 'review')
+        if busy: raise ValueError(busy)
+        return AS.set_override(R, by, datetime.date.today().isoformat())
 
 # ------------------------------------------------------------------ starting jobs
 def start_review(s, run, R, port, src=None, discard_open=False, app_pid=None):
