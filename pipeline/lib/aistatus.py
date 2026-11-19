@@ -10,6 +10,8 @@ record() (read, merge, then an atomic replace: the steps run one after another, 
   cap, book      left out for its cost: over its own limit, or the PDF's
   credit         refused for the credit left
   pages_changed  (language) new page readings changed words the language step had answered (a retry's page part)
+  forms_changed  (language) the estimate after the work order holds back more word forms than the one shown before it
+                 (review 33 F1): not sent with nobody at the keyboard (AUTO=1, every app job); the review holds
   declined       a person answered "no" in the terminal
   saved          a saved reply's decisions were applied (no request)
   not_run        not run by design (a saved reply from elsewhere, DECIDE=none, the step off, nothing to read)
@@ -27,6 +29,7 @@ unreadable; and an entry whose resend was needed (`resend` set: its unreached fo
     python3 -m lib.aistatus refused RUN_DIR STEP ESTIMATE_FILE     a kept refusal in an estimate, recorded (exit 0 if one was)
     python3 -m lib.aistatus held RUN_DIR [AUDIT_DIR]               exit 0 when the review is held; prints why
     python3 -m lib.aistatus retry RUN_DIR [AUDIT_DIR]              prints "pages", "language" or nothing: what a retry sends
+    python3 -m lib.aistatus held-count ESTIMATE_FILE              prints how many word forms the estimate holds back (0 if none or unreadable)
 """
 import os, sys, json, time, tempfile
 
@@ -127,6 +130,7 @@ WORDS = {
     'error': 'The step stopped with an error.',
     'started': 'The step did not run to the end.',
     'pages_changed': 'New page readings changed some words.',
+    'forms_changed': 'More word forms were found after the estimate.',
 }
 
 def _listed(A):
@@ -147,6 +151,8 @@ def status(R, A=None):
     elif why == 'credit': st = ('unfinished', len(language_unfinished(run)) or int(est.get('to_send') or 0), True)
     elif why in FAILED: st = ('unfinished', len(language_unfinished(run)) or int(est.get('to_send') or 0), True)
     elif why == 'pages_changed': st = ('unfinished', int((_load(os.path.join(R, 'language_retry_estimate.json')) or {}).get('to_send') or 0), True)
+    elif why == 'forms_changed':                     # review 33 F1: requests to send, by the retry's own estimate when made (the review stop)
+        st = ('unfinished', int((_load(os.path.join(R, 'language_retry_estimate.json')) or est).get('to_send') or 0), True)
     elif why in ('declined', 'not_run'): st = None
     elif why in ('done', 'saved') or (why is None and run):
         left = language_unfinished(run)               # a saved reply from elsewhere has none; this folder's own replay is judged by its entries (26 M1)
@@ -178,13 +184,19 @@ def status(R, A=None):
     held = bool(steps or figures) and not (isinstance(ov, dict) and ov.get('by'))
     return {'held': held, 'steps': steps, 'figures': figures, 'override': ov if isinstance(ov, dict) else None, 'marker': marker}
 
+def held_count(est):
+    """How many word forms an estimate (or a language record) holds back: 0 for a refused one, which sends nothing."""
+    if not isinstance(est, dict) or est.get('refused'): return 0
+    h = est.get('held_back')
+    try: return int(h if isinstance(h, int) else est.get('held_back_count') or 0)
+    except (TypeError, ValueError): return 0
+
 def held_back_words(est, terminal=False, after=False):
     """#159 (Patrick's decision: a warning before money is spent, never a refusal): the sentence for an estimate (or a
     language record) that holds word forms back; None when nothing is held back, or when the estimate left the step out
     (review 31: no warning for a step that is not run). `terminal` adds how to raise the limit for this run in
     run_api.sh's own words; `after` says it in the past tense, for the review page after the run (review 31 L3)."""
-    if (est or {}).get('refused'): return None
-    n = int((est or {}).get('held_back') if isinstance((est or {}).get('held_back'), int) else (est or {}).get('held_back_count') or 0)
+    n = held_count(est)
     if not n: return None
     total = int(est.get('forms') or 0) - int(est.get('local') or 0)
     of = f'{n:,} of {total:,} word forms' if total > n else f'{n:,} word form' + ('' if n == 1 else 's')
@@ -272,6 +284,8 @@ def _main(argv):
     if cmd == 'retry':
         s = status(argv[1], argv[2] if len(argv) > 2 else None)
         print(retry_parts(s) or ''); return 0
+    if cmd == 'held-count':
+        print(held_count(_load(argv[1]))); return 0
     print(__doc__); return 2
 
 if __name__ == '__main__': sys.exit(_main(sys.argv[1:]))

@@ -1,7 +1,7 @@
 """A fake OpenRouter for run_api.sh's subprocesses (#151 tests): on PYTHONPATH with FAKE_OR=<config.json>, every Python
 process replaces urllib.request.urlopen (and time.sleep). Config: {"log": path (one line per chat call), "fail_language":
 [1, 2] and "fail_page": [1] (which calls answer HTTP 500, counted by kind across processes), "language": "ja-Latn",
-"page_text": a page reading}. The work order request
+"page_text": a page reading, "doc_lang": the work order's document language (default en)}. The work order request
 gets a minimal work order; a language request gets every item answered. No network, no key."""
 import os
 if os.environ.get('FAKE_OR'):
@@ -38,7 +38,7 @@ if os.environ.get('FAKE_OR'):
             dec = [{'id': it['id'], 'lang': _cfg.get('language', 'ja-Latn'), 'confidence': 'high', 'why': 'language', 'evidence': 'x'} for it in items]
             text = json.dumps({'decisions': dec})
         elif kind == 'page': text = _cfg.get('page_text', 'Ua hele mai ka wahine i ka hale')      # a whole-page reading
-        else: text = json.dumps({'document': {'lang': 'en', 'title': 'Synthetic retry test'}})
+        else: text = json.dumps({'document': {'lang': _cfg.get('doc_lang', 'en'), 'title': 'Synthetic retry test'}})   # doc_lang: review 33 F1
         return _Resp({'model': MODEL, 'choices': [{'message': {'content': text}, 'finish_reason': 'stop'}],
                       'usage': {'prompt_tokens': 900, 'completion_tokens': 100, 'cost': 0.004}})
     urllib.request.urlopen = _urlopen

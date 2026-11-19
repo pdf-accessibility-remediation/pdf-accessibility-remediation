@@ -27,9 +27,9 @@ def book(tmp_path, n=170):
     lines = [' and '.join(ws[i:i + 5]) for i in range(0, n, 5)]                # each word its own form, never a passage
     return langpdf.build(str(tmp_path / 'book.pdf'), [{'font': 'F3', 'text': t} for t in lines], step=20)
 
-def run(tmp_path, src, fail=(), **extra):
+def run(tmp_path, src, fail=(), fake=None, **extra):
     cfg = tmp_path / 'fake.json'; log = tmp_path / 'calls.jsonl'
-    cfg.write_text(json.dumps({'log': str(log), 'fail_language': list(fail)}))
+    cfg.write_text(json.dumps({'log': str(log), 'fail_language': list(fail), **(fake or {})}))
     if log.exists(): log.unlink()
     env = dict(os.environ, VERAPDF='off', RUN_DIR=str(tmp_path / 'run'), INTAKE='off', OPENROUTER_API_KEY='test-not-a-key', FAKE_OR=str(cfg),
                PYTHONPATH=os.path.join(HERE, 'tests', 'fakeor'), AI_PARALLEL='1', COST_HISTORY=str(tmp_path / 'ledger.jsonl'),
@@ -299,6 +299,43 @@ def test_nothing_is_said_when_nothing_is_held_back(tmp_path):
     src = book(tmp_path, n=16)
     r, R, _ = run(tmp_path, src, REVIEW='1', AUTO='1', PAGE_READS='off')
     assert 'will not be sent to the AI' not in r.stdout
+
+def english_book(tmp_path):
+    """16 made-up candidate words in 4 lines, and 25 lines of ordinary English that are no candidates in an English
+    document; in a Japanese one every Latin-script line is (langcands.py), so the work order's language adds forms."""
+    ws, plain = words(16), ['river', 'house', 'garden', 'morning', 'window', 'table', 'letter', 'market', 'harbor', 'island']
+    lines = [' and '.join(ws[i:i + 4]) for i in range(0, 16, 4)] + [f'the {a} near the {b}' for a in plain[:5] for b in plain[5:]]
+    return langpdf.build(str(tmp_path / 'book.pdf'), [{'font': 'F3', 'text': t} for t in lines], step=20)
+
+def test_more_forms_after_the_estimate_hold_the_review_with_the_warning(tmp_path):
+    """Review 33 F1: an English book whose work order names Japanese finds every Latin word again after the estimate, so
+    more word forms would be held back than were shown. With nobody at the keyboard (AUTO=1, as every app job) nothing is
+    sent: the review holds with forms_changed, and "Ask the AI Again" shows the new estimate with its warning."""
+    src = english_book(tmp_path)
+    r, R, calls = run(tmp_path, src, fake={'doc_lang': 'ja'}, REVIEW='1', AUTO='1', PAGE_READS='off', LANGUAGE_MAX_USD='0.0001',
+                      APP_LANGUAGE_MAX_USD='0.0001')                       # the app's Settings: the stop's retry estimate holds back too
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    assert not [c for c in calls if c['kind'] == 'language']
+    o = aistatus.outcome(str(R), 'language')
+    assert o['why'] == 'forms_changed' and o['words'] == 'More word forms were found after the estimate.'
+    assert 'more word forms would be held back than the estimate showed (29 against 16): nothing sent' in r.stdout
+    s = aistatus.status(str(R))
+    assert s['held'] and s['steps']['language']['retry'] and aistatus.retry_parts(s) == 'language'
+    assert s['steps']['language']['count'] == 0                               # requests: under the Settings limit every form is held back
+    assert aistatus.lines(s) == ['Language Suggestions Not Finished: More word forms were found after the estimate.']
+    sys.path.insert(0, HERE)
+    from webapp import runs as WR
+    v = WR.held_back_view(str(R), 'language_retry_estimate.json')          # the retry card's warning (review 31 M3)
+    assert v['held_back_count'] == 29 and '29 word forms will not be sent to the AI' in v['held_back_words']
+
+def test_the_same_forms_after_the_estimate_send_as_before(tmp_path):
+    """Review 33 F1: when the work order's language finds the same word forms, the run sends as before (no hold)."""
+    src = english_book(tmp_path)
+    r, R, calls = run(tmp_path, src, fake={'doc_lang': 'en-US'}, REVIEW='1', AUTO='1', PAGE_READS='off', LANGUAGE_MAX_USD='0.0001')
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    assert aistatus.outcome(str(R), 'language')['why'] == 'done'           # sent as before: everything held back by the same limit
+    assert 'more word forms would be held back' not in r.stdout and not aistatus.status(str(R))['held']
+    assert 'AUTO=1: naming languages without asking' in r.stdout and json.load(open(R / 'language_run.json'))['held_back_count'] == 16
 
 def test_held_back_forms_reach_the_record_the_line_and_review_md_and_html(tmp_path):
     src, r, R, _ = held_back_run(tmp_path)

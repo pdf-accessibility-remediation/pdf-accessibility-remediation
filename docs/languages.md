@@ -194,6 +194,15 @@ sent. There is no limit on the number of word forms unless `LANGUAGE_MAX_FORMS` 
   costliest), or the PDF's own metadata title when that is longer, and 35 characters for the language. The real run then
   fits the amount shown, and may send a few more word forms than the estimate held back, since a real title is shorter.
   A title longer than the reserve could still hold back the last few forms; the record and the review page then say so.
+- **More word forms after the estimate hold the review.** The estimate is made before the work order, from the words the
+  audit found under the PDF's own language setting. After the work order the step finds its words again, and the set can
+  change: the work order names a different language and one of the two is Chinese, Japanese or Korean (in such a document
+  every Latin-script word is a candidate, and its own script is not); OCR word readings or page readings change the text
+  of a scanned book; a title longer than the reserve; a run bound to $0.00 (a single run whose estimate showed no
+  language cost, or a batch PDF whose language estimate is missing or sends nothing). When more word forms would be held
+  back than the estimate showed and nobody is at the keyboard (`AUTO=1`, every app job), nothing is sent: the outcome is
+  `forms_changed` ("More word forms were found after the estimate."), the review holds, and "Ask the AI Again" shows the
+  new estimate with its warning. An interactive terminal asks its question as before, after the warning (review 33, F1).
 - **Shown after the run.** The record keeps them (`language_status.held_back`: the count, the kinds, the first 200 forms,
   a short hash of their keys). The review page's "Languages" section shows a line and the fold "Word Forms Not Sent", and
   review.md lists them under "Language Tags".

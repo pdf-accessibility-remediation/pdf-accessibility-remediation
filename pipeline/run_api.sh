@@ -427,10 +427,20 @@ elif [[ ( $LANG_TAGS != off || -n ${LANG_REPLY:-} ) && -z $REVIEWED && ${DECIDE:
     else echo "language tags: not run (a saved reply makes no new AI request, and none of its language decisions was saved)"; outcome language not_run; fi
   else
     lt_ok=n
+    # review 33 F1: the estimate made before the work order is the one shown (the run page, the batch line, the terminal's
+    # first question); after the work order the step finds its words again (the work order's language, OCR word and page
+    # readings, the title), and more may be held back than were shown
+    shown_held=$(python3 -m lib.aistatus held-count "$R/language_estimate.json" 2>/dev/null || echo 0)
     if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
       # #159 (Patrick's decision): word forms the limits hold back are said before anything is sent: a warning, not a refusal
       held_line "$R/language_estimate.json"
-      if python3 -c 'import json,sys; e=json.load(open(sys.argv[1])); sys.exit(0 if not e.get("to_send") and e.get("local") else 1)' "$R/language_estimate.json" 2>/dev/null; then
+      now_held=$(python3 -m lib.aistatus held-count "$R/language_estimate.json" 2>/dev/null || echo 0)
+      if [[ -n ${AUTO:-} ]] && (( ${now_held:-0} > ${shown_held:-0} )); then
+        # nobody at the keyboard saw this warning: nothing is sent, the review holds, and "Ask the AI Again" shows the new
+        # estimate with its warning (as pages_changed). An interactive terminal keeps its question: the warning came first
+        lt_ok=hold; outcome language forms_changed "More word forms were found after the estimate."
+        echo "language tags: more word forms would be held back than the estimate showed (${now_held} against ${shown_held}): nothing sent; ask the AI again to see the new estimate"
+      elif python3 -c 'import json,sys; e=json.load(open(sys.argv[1])); sys.exit(0 if not e.get("to_send") and e.get("local") else 1)' "$R/language_estimate.json" 2>/dev/null; then
         lt_ok=y; echo "language tags: every word form is decided by the reading printed beside it (#123): no AI request, nothing to ask"
       elif [[ -n ${AUTO:-} ]]; then lt_ok=y; echo "AUTO=1: naming languages without asking (still refused over the language step's limit or your credit)"
       else read -r -p "Name the languages of these words and passages with the AI now? [y/N] " lt_ok || lt_ok=n; fi
