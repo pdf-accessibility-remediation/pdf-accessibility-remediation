@@ -48,6 +48,14 @@ def test_the_parent_comes_from_the_record_or_before_it_from_handedit(tmp_path):
     assert EL.parent(str(C), None) == {'run': str(R), 'label': 'book/r1', 'state': 'finished'}            # _handedit/hand_edit.json
     assert EL.parent(str(C), {'hand_edit': {'parent': {'run': '/nowhere/book/r0'}}})['state'] == 'removed'   # the record first
 
+def test_hand_edit_reads_the_record_first_and_is_none_for_any_other_run(tmp_path):
+    R = finished(tmp_path / 'runs' / 'book' / 'r1'); C = child(R, 'cold', 'not started')
+    assert EL.hand_edit(str(C))['parent']['run'] == str(R)                                     # _handedit/hand_edit.json (#99)
+    assert EL.hand_edit(str(C), {'hand_edit': {'base_sha256': 'b' * 64}}) == {'base_sha256': 'b' * 64}
+    assert EL.hand_edit(str(R), {}) is None and EL.hand_edit(str(R), {'hand_edit': 'damaged'}) is None
+    assert EL.parent(str(R), {'hand_edit': ['damaged']}) is None
+    assert EL.parent(str(R), {'hand_edit': {'parent': 'x'}}) is None and EL.parent(str(R), {'hand_edit': {'parent': {'run': 3}}}) is None
+
 def test_the_parents_page_lists_each_copy_and_links_only_a_finished_one(tmp_path):
     R = finished(tmp_path / 'runs' / 'book' / 'r1')
     for label, st in (('done', 'finished'), ('wait', 'waiting'), ('cold', 'not started'), ('gone', 'removed')): child(R, label, st)

@@ -52,7 +52,7 @@ Step 3 makes `runs/hawaii3/rv1-edit/` (by default the label is `handedit-<date>-
 
 **Then evaluate the edited run.** The review lists what the edit changed, and the new audit and veraPDF show what is still wrong in the file. But nothing checks that the edit itself is right: for example, that a new reading order follows the print, or that a re-tagged table reads correctly. That is the job of the [accessibility evaluation](evaluation.md).
 
-Record PAC 2026 and the Screen-Reader Test again on the edited run, and look closely at the pages you edited. The earlier run's results don't count here, because the edited PDF is a different file.
+Record PAC 2026 and the Screen-Reader Test again on the edited run, and look closely at the pages you edited. The earlier run's results don't count here, because the edited PDF is a different file. Its evaluation page still shows them, read-only: a line at the top names the Fails they noted, so you check those first, and **Start from These Notes** copies their versions, pages and notes into the form (see [On a run made from an edited PDF](evaluation.md#on-a-run-made-from-an-edited-pdf)).
 
 **Never edit the run's own PDF in place.** Its sha256 is what the [accessibility evaluation](evaluation.md#each-check-belongs-to-one-file) counts. An edited result is evaluated and shipped in its own run.
 
