@@ -158,6 +158,17 @@ part = aistatus.retry_parts(aistatus.status(R))
 if not part: sys.exit("refusing: nothing that the AI can be asked again is unfinished in this run")
 print(part)' "$R" 2>&1) || { echo "${RETRY_PART:-refusing}"; exit 1; }
   RETRY=1; REVIEW=1
+  # review 29 M1: the run's own settings, from its review stop, for each one this call didn't set (a terminal retry gives
+  # none). The step and per-PDF limits are not taken from it: those figures are the first call's bounds, not limits
+  # (review 29 M2); the current limits apply, and the app's Spend binds its job to the amount it showed.
+  while IFS='=' read -r k v; do
+    if [[ $k == OUT ]]; then                     # OUT has its default already (line 48): USER_OUT says whether the caller gave one
+      [[ -z $USER_OUT ]] && USER_OUT=$v && OUT=$v && { [[ $OUT == *.[pP][dD][fF] ]] || OUT=$OUT.pdf; } && echo "  OUT=$v (from this run's review stop)"
+    elif [[ -n $k && -z ${!k:-} ]]; then export "$k=$v"; echo "  $k=$v (from this run's review stop)"; fi
+  done < <(python3 -c 'import json,sys
+e = (json.load(open(sys.argv[1])).get("env") or {}) if __import__("os").path.exists(sys.argv[1]) else {}
+for k in ("OCR_LANG", "INTAKE_REUSE", "INTAKE", "OUT", "MODEL", "LANGUAGE_MODEL"):
+    if e.get(k): print(f"{k}={e[k]}")' "$R/review_stop.json")
   echo "▶ asking the AI again for the unfinished $( [[ $RETRY_PART == pages ]] && echo 'page readings' || echo 'language suggestions' ) (the work order is not decided again)"
 fi
 if [[ -n $RETRY ]]; then
@@ -356,7 +367,7 @@ if [[ -n $RETRY ]]; then
     if [[ ${part_ok:-n} == [yY]* ]]; then stage "retry: page readings via OpenRouter" page_reads_step --outcome
     else [[ -z ${AUTO:-} ]] && outcome pages declined; echo "page readings not asked again (above)"; fi
     # the readings change words the language step answered: the language step is estimated again, never sent in this call
-    if [[ -n $LANG_DONE_BEFORE ]] && python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome --estimate-to "$R/language_retry_estimate.json" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
+    if [[ -n $LANG_DONE_BEFORE ]] && env -u LANGUAGE_MAX_USD python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome --estimate-to "$R/language_retry_estimate.json" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
       if python3 -c 'import json,sys; sys.exit(0 if (json.load(open(sys.argv[1])).get("to_send") or 0) > 0 else 1)' "$R/language_retry_estimate.json" 2>/dev/null; then
         outcome language pages_changed "New page readings changed some words."
         echo "language tags: the new page readings changed some words: their language suggestions are estimated again (ask the AI again to send them)"
@@ -421,9 +432,10 @@ if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews 
   if python3 -m lib.aistatus held "$R" "$A" > "$R/.held.txt" 2>/dev/null; then
     echo; echo "the review will hold: some AI suggestions are missing"; sed 's/^/  /' "$R/.held.txt"
     case $(python3 -m lib.aistatus retry "$R" "$A") in
-      pages) python3 read_pages.py "$A" "$R" --dry-run --estimate-to "$R/page_reads_retry_estimate.json" ${MODEL:+--model "$MODEL"} > /dev/null 2>&1 || echo "  (the page readings' estimate could not be made now)" ;;
+      # review 29 M2: estimated under the current limits, never under a job's bound (the amount a Spend showed)
+      pages) env -u PAGE_READS_MAX_USD -u LANGUAGE_MAX_USD python3 read_pages.py "$A" "$R" --dry-run --estimate-to "$R/page_reads_retry_estimate.json" ${MODEL:+--model "$MODEL"} > /dev/null 2>&1 || echo "  (the page readings' estimate could not be made now)" ;;
       language) [[ -f $R/language_retry_estimate.json && $R/language_retry_estimate.json -nt $R/language_run.json ]] \
-                  || python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --estimate-to "$R/language_retry_estimate.json" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} > /dev/null 2>&1 \
+                  || env -u PAGE_READS_MAX_USD -u LANGUAGE_MAX_USD python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --estimate-to "$R/language_retry_estimate.json" ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"} > /dev/null 2>&1 \
                   || echo "  (the language suggestions' estimate could not be made now)" ;;
     esac
     echo "  to ask the AI again: AI_RETRY=1 bash $(pwd)/run_api.sh \"$SRC\" $NAME $(basename "$R")"
@@ -431,7 +443,7 @@ if [[ -n ${REVIEW:-} && -z $REVIEWED ]]; then     # stop here: a person reviews 
   rm -f "$R/.held.txt"
   # what the app's "Apply" needs to run this same script's second call (webapp/runs.py start_first_apply); report.py removes it
   # (#151: and what "Ask the AI Again" runs with: the models and the limits this run had)
-  python3 -c "import json,sys; ks=('OCR_LANG', 'INTAKE_REUSE', 'INTAKE', 'OUT', 'MODEL', 'LANGUAGE_MODEL', 'BOOK_MAX_USD', 'LANGUAGE_MAX_USD', 'PAGE_READS_MAX_USD'); json.dump({'src': sys.argv[1], 'name': sys.argv[2], 'env': {k: v for k, v in zip(ks, sys.argv[3:12]) if v}}, open(sys.argv[12], 'w'), indent=1)" \
+  [[ -n $RETRY ]] || python3 -c "import json,sys; ks=('OCR_LANG', 'INTAKE_REUSE', 'INTAKE', 'OUT', 'MODEL', 'LANGUAGE_MODEL', 'BOOK_MAX_USD', 'LANGUAGE_MAX_USD', 'PAGE_READS_MAX_USD'); json.dump({'src': sys.argv[1], 'name': sys.argv[2], 'env': {k: v for k, v in zip(ks, sys.argv[3:12]) if v}}, open(sys.argv[12], 'w'), indent=1)" \
     "$SRC" "$NAME" "${OCR_LANG:-}" "${INTAKE_REUSE:-}" "${INTAKE:-}" "$USER_OUT" "${MODEL:-}" "${LANGUAGE_MODEL:-}" "${BOOK_MAX_USD:-}" "${LANGUAGE_MAX_USD:-}" "${PAGE_READS_MAX_USD:-}" "$R/review_stop.json"
   summary
   echo

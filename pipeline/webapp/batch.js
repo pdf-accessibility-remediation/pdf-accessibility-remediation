@@ -116,7 +116,9 @@ function body(s) {
        'Each PDF\'s page says more.') + '</p>';
   }
   if (s.phase === 'review' || (s.reviewing && s.reviewing.length && s.phase !== 'running')) h += '<p>' + s.reviewing.length + ' PDF' + (s.reviewing.length === 1 ? ' is' : 's are') +
-    ' waiting for review. Open each one from the list; its "Finish Review" applies it, and this page and the dashboard follow.</p>';
+    ' waiting for review. Open each one from the list; its "Finish Review" applies it, and this page and the dashboard follow.' +
+    (s.held ? ' ' + s.held + ' of them ' + (s.held === 1 ? 'has' : 'have') + ' missing AI suggestions: open ' + (s.held === 1 ? 'it' : 'each') +
+     ' to ask the AI again or to review without them.' : '') + '</p>';      // #151 (review 29 M3)
   const asking = s.books.filter(b => b.language);                // D4: each PDF that waits for its language, on its own row
   if (asking.length) {
     h += '<h3 id="bt-lang-h">Language of the Scanned Pages</h3><p>' + asking.length + ' PDF' + (asking.length === 1 ? ' has' : 's have') +

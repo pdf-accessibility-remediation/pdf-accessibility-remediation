@@ -12,7 +12,7 @@ and uploads/ (read only; sha256s cached in <jobs>/sha256-cache.json by path, siz
 """
 import os, re, sys, json, signal, hashlib, datetime, urllib.parse
 from review import sessions as S
-from lib import dates as D, release as REL
+from lib import dates as D, release as REL, costs
 from . import config, jobs, logs, books as BK
 
 def load(p):
@@ -777,6 +777,17 @@ def _held_text(t):
     """aistatus.lines()'s sentence after the colon (its counts already in plain words: "… (2 requests not finished).")."""
     return t.strip()
 
+def all_again(R, part, est):
+    """review 29 L1: a language retry estimate that reuses nothing although the step had finished requests (the
+    instructions for language suggestions changed since the run): the card says every request is sent again."""
+    if part != 'language' or int(est.get('reused') or 0) or not int(est.get('to_send') or 0): return None
+    try: run_ = json.load(open(os.path.join(R, 'language_run.json'), encoding='utf-8'))
+    except (OSError, ValueError): return None
+    from lib import aistatus as AS
+    if not any(AS.finished(o, r_) for o, r_ in AS.pairs(run_)): return None
+    n = int(est['to_send'])
+    return (f'All {n:,} requests are' if n != 1 else 'The request is') + ' sent again because the instructions for language suggestions have changed.'
+
 def held_parts(R, st):
     """[{heading, text, detail}] for each held part, from aistatus.lines(); the step's own `detail` (a tool's words) only
     for the folded "Details"."""
@@ -817,7 +828,7 @@ def held_view(s, run, R, js=None):
         elif not est or not n: why = SP.NO_RETRY_ESTIMATE
         else:
             retry = {'part': part, 'cost': retry_cost_words(est), 'fingerprint': SP.retry_fingerprint(R, part),
-                     'note': PAGES_FIRST if part == 'pages' and (st['steps'].get('language') or {}).get('retry') else None}
+                     'note': PAGES_FIRST if part == 'pages' and (st['steps'].get('language') or {}).get('retry') else all_again(R, part, est)}
     last = js[-1] if js else None
     fail = failures.explain(s, R, last) if last and last['kind'] in RETRY_JOBS and last['status'] in ('failed', 'interrupted') else None
     return {'intro': HELD_INTRO, 'parts': held_parts(R, st), 'retry': retry, 'why': why, 'estimate': bool(part) and not test,
@@ -865,10 +876,9 @@ def start_ai_retry_estimate(s, run, R):
         argv = [sys.executable, 'name_languages.py', A, R, '--pdf', psrc, '--dry-run', '--estimate-to', out]
         model, cap = se.get('LANGUAGE_MODEL'), 'LANGUAGE_MAX_USD'
     if str(model or '').startswith('anthropic/'): argv += ['--model', model]
-    env = {}
-    try:                                                     # the run's own limit for the step, as run_api.sh's stop estimated it
-        if se.get(cap) and float(se[cap]) > 0: env[cap] = f'{float(se[cap]):.2f}'
-    except (TypeError, ValueError): pass
+    env = {}                                                 # review 29 M2: the step's current limit (Settings, else the code's default),
+    lim = costs.limits_of(s).get('page_reads_usd' if cap == 'PAGE_READS_MAX_USD' else 'language_usd')   # never the bound review_stop.json keeps
+    if lim: env[cap] = f'{float(lim):.2f}'
     return jobs.create(s['jobs'], 'ai-retry-estimate', run, argv, config.child_env(s, env), env_set=env, R=R, supersede_waiting=True,
                        what='Get a new estimate', part=part)
 

@@ -178,6 +178,16 @@ def status(R, A=None):
     held = bool(steps or figures) and not (isinstance(ov, dict) and ov.get('by'))
     return {'held': held, 'steps': steps, 'figures': figures, 'override': ov if isinstance(ov, dict) else None, 'marker': marker}
 
+def on_exit(R, step, e):
+    """How a step that stops after it started is recorded (review 24 L2), for name_languages.py and read_pages.py: a
+    refusal already recorded is never overwritten; a clean exit (SystemExit 0 or None) records nothing; Ctrl-C is an
+    error with its own words; anything else is an error. A kill runs nothing and leaves `started`. Returns what it recorded."""
+    if outcome(R, step).get('why') != 'started': return None
+    if isinstance(e, SystemExit) and e.code in (None, 0): return None
+    words = 'The step was stopped before it finished.' if isinstance(e, KeyboardInterrupt) else WORDS['error']
+    record(R, step, 'error', words, f'{type(e).__name__}: {e}' if e is not None else 'stopped')
+    return words
+
 def set_override(R, by, date=None):
     """A person's choice to review without what is missing ("Review Without the Missing Suggestions", or
     review_workorder.py --override NAME): ai_override.json, with what was missing in plain words. It stays through the

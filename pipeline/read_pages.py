@@ -51,9 +51,7 @@ sys.excepthook = _hook
 def on_exit():
     """A step that stops after it started, with nothing recorded since, is an error (Ctrl-C with its own words); a refusal
     already recorded is never overwritten; a kill runs nothing and leaves `started`."""
-    if not (args.outcome and STATE['started']) or aistatus.outcome(args.run_dir, 'pages').get('why') != 'started': return
-    e = STATE['exc']
-    out('error', 'The step was stopped before it finished.' if isinstance(e, KeyboardInterrupt) else aistatus.WORDS['error'], f'{type(e).__name__}: {e}' if e else 'stopped')
+    if args.outcome and STATE['started']: aistatus.on_exit(args.run_dir, 'pages', STATE['exc'] or RuntimeError('stopped'))
 import atexit; atexit.register(on_exit)
 
 CHARS_PER_TOKEN, INPUT_MARGIN = 2.2, 1.25          # decide.py's calibration

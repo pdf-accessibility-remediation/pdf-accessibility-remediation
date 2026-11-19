@@ -295,7 +295,7 @@ def state(s, label, nm=None, with_dashboard=True):
     bj = [j for j in jl if j['run'] == f'batches/{label}' and j['kind'] == 'batch']
     batch_job = bj[-1] if bj else None
     B = folder(s, label)
-    out, Rs, flagged, missing, est_active, reviewing, asking = [], [], [], [], False, [], []
+    out, Rs, flagged, missing, est_active, reviewing, asking, held_n = [], [], [], [], False, [], [], 0
     for b in bs:
         R = os.path.join(B, b['name'])
         row = _book_status(s, label, b, R, jl, batch_job, rd, nm)
@@ -303,7 +303,9 @@ def state(s, label, nm=None, with_dashboard=True):
         mine = [j for j in jl if j['run'] == f'batches/{label}/{b["name"]}']
         if mine and mine[-1]['status'] in jobs.ACTIVE and mine[-1]['kind'] == 'batch-estimate': est_active = True
         q = None if row['finished'] or (mine and mine[-1]['status'] in jobs.ACTIVE) else LG.question(s, R, mine, nm)
-        if os.path.isfile(os.path.join(R, 'workorder.ai.json')) and not row['finished']: reviewing.append(b['name'])   # D2a: never sent again
+        if os.path.isfile(os.path.join(R, 'workorder.ai.json')) and not row['finished']:
+            reviewing.append(b['name'])                                                            # D2a: never sent again
+            if HM.held(R): held_n += 1                                                             # #151 (review 29 M3): missing AI suggestions
         elif q: asking.append(b['name'])                                         # D4: waits for its language
         elif stopped and not row['finished']: flagged.append(b['name'])
         elif not row['finished']:
@@ -340,7 +342,7 @@ def state(s, label, nm=None, with_dashboard=True):
             elif total['credit_usd'] is None: why, code = SP_.credit_words(s), 'no_credit'   # U8: why, and "Check Credit Again"
         spend = {'ok': not why, 'why': why, 'code': code, **({'advice': costs.batch_advice(total['fit_n'])} if code == 'limit' else {})}
     meta = _load(meta_path(s, label)) or {}
-    return {'label': label, 'phase': phase, 'books': out, 'flagged': flagged, 'missing': missing, 'test': test, 'reviewing': reviewing, 'asking': asking,
+    return {'label': label, 'phase': phase, 'books': out, 'flagged': flagged, 'missing': missing, 'test': test, 'reviewing': reviewing, 'held': held_n, 'asking': asking,
             'from_app': bool(meta), 'ocr_name': meta.get('ocr_name'),   # a batch made before D4: its one OCR language
             'trashed': {'n': len(trashed(s, label)), 'cost_usd': round(sum(x.get('cost_usd') or 0 for x in trashed(s, label)), 6)},
             'totals': {'ceiling_usd': total['ceiling_usd'], 'limit_usd': total['limit_usd'], 'credit_usd': total['credit_usd'],

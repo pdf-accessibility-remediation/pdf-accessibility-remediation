@@ -265,3 +265,32 @@ def test_the_apps_retry_job_runs_run_api_sh(setup, credit, tmp_path):
     sent = [json.loads(l) for l in open(log, encoding='utf-8')]
     assert [c['kind'] for c in sent] == ['language'] and not AS.status(str(R))['held']
     assert '▶ retry: language tags via OpenRouter' in p.stdout
+
+def test_the_batch_page_counts_held_pdfs_apart(setup):
+    """review 29 M3: a batch's waiting PDFs with missing AI suggestions are counted apart, so the page doesn't tell them
+    to "Finish Review"."""
+    from webapp import batches as BT
+    s = settings(setup); B = setup / 'runs' / 'batches' / 'b1'
+    held_run(setup, name='bk', label='bk', base=B)
+    js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    assert "' missing AI suggestions: open ' + (s.held === 1 ? 'it' : 'each') +" in js and "' to ask the AI again or to review without them.'" in js
+    src = open(os.path.join(HERE, 'webapp', 'batches.py'), encoding='utf-8').read()
+    assert "if HM.held(R): held_n += 1" in src and "'held': held_n" in src
+
+def test_the_card_says_every_request_goes_again_when_the_instructions_changed(setup):
+    """review 29 L1."""
+    W, _ = held_run(setup)
+    (W / 'language_run.json').write_text(json.dumps({'estimate': {'requests': 3}, 'requests': [
+        {'n': 1, 'sha256': 'a', 'ids': ['1'], 'finish': 'stop'}, {'n': 2, 'sha256': 'b', 'ids': ['1'], 'error': {'code': 500}}]}))
+    est = json.load(open(W / 'language_retry_estimate.json')); est.update(to_send=3, reused=0); (W / 'language_retry_estimate.json').write_text(json.dumps(est))
+    assert runs.all_again(str(W), 'language', est) == 'All 3 requests are sent again because the instructions for language suggestions have changed.'
+    est['reused'] = 1
+    assert runs.all_again(str(W), 'language', est) is None
+
+def test_the_retry_estimate_job_uses_the_current_limit(setup):
+    """review 29 M2: "Get a New Estimate" runs under the step's limit from Settings (or the code's default), never the
+    bound review_stop.json keeps."""
+    s = settings(setup); W, _ = held_run(setup)
+    st = json.load(open(W / 'review_stop.json')); st['env']['LANGUAGE_MAX_USD'] = '0.01'; (W / 'review_stop.json').write_text(json.dumps(st))
+    j = runs.start_ai_retry_estimate(s, 'book/rv', str(W))
+    assert j['env_set'].get('LANGUAGE_MAX_USD') != '0.01'

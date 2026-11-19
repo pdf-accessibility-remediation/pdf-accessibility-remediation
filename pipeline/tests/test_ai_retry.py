@@ -34,9 +34,11 @@ def run(tmp_path, src, fail=(), **extra):
     env = dict(os.environ, VERAPDF='off', RUN_DIR=str(tmp_path / 'run'), INTAKE='off', OPENROUTER_API_KEY='test-not-a-key', FAKE_OR=str(cfg),
                PYTHONPATH=os.path.join(HERE, 'tests', 'fakeor'), AI_PARALLEL='1', COST_HISTORY=str(tmp_path / 'ledger.jsonl'),
                HTTPS_PROXY='http://127.0.0.1:9', HTTP_PROXY='http://127.0.0.1:9', https_proxy='http://127.0.0.1:9', http_proxy='http://127.0.0.1:9',
-               RUNS_DIR=str(tmp_path / 'runs'), PATH=os.path.dirname(sys.executable) + os.pathsep + os.environ.get('PATH', ''), **extra)
-    for k in ('FROM', 'REPLY', 'LANG_REPLY', 'LANG_TAGS', 'ESTIMATE'):
+               RUNS_DIR=str(tmp_path / 'runs'), PATH=os.path.dirname(sys.executable) + os.pathsep + os.environ.get('PATH', ''))
+    env.update(extra)
+    for k in ('FROM', 'REPLY', 'LANG_REPLY', 'LANG_TAGS', 'ESTIMATE', 'OUT'):
         if k not in extra: env.pop(k, None)
+    for k in [k for k, v in env.items() if v is None]: env.pop(k)              # None: left unset (a terminal call with no settings)
     r = subprocess.run(['bash', 'run_api.sh', src, 'book', 'r1'], cwd=HERE, env=env, capture_output=True, text=True, timeout=900)
     calls = [json.loads(l) for l in open(log, encoding='utf-8')] if log.exists() else []
     return r, tmp_path / 'run', calls
@@ -212,3 +214,67 @@ def test_the_override_is_listed_in_review_md_and_survives_the_tidy(tmp_path):
     md = open(R / 'review.md', encoding='utf-8').read(); rec = json.load(open(R / 'record.json'))
     assert '**Reviewed without missing AI suggestions:** Kim on ' in md and 'Page Readings Not Made' in md
     assert rec['ai_override']['by'] == 'Kim' and os.path.exists(R / aistatus.OVERRIDE) and not os.path.exists(R / aistatus.NAME)
+
+def test_a_terminal_retry_keeps_the_runs_settings(tmp_path):
+    """review 29 M1: AI_RETRY=1 with no settings, on a run stopped with OUT and INTAKE=off, takes them from review_stop.json:
+    no intake runs, and review_stop.json is left as the first call wrote it."""
+    src = book(tmp_path)
+    r, R, _ = run(tmp_path, src, fail=(1, 2), REVIEW='1', AUTO='1', PAGE_READS='off', OUT='mine.pdf')
+    assert r.returncode == 0 and aistatus.status(str(R))['held'], r.stdout[-2000:]
+    stop = json.load(open(R / 'review_stop.json'))
+    assert stop['env']['OUT'] == 'mine.pdf' and stop['env']['INTAKE'] == 'off'
+    r2, R, calls = run(tmp_path, src, AI_RETRY='1', AUTO='1', INTAKE=None)      # the printed command: no settings
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-2000:]
+    assert 'INTAKE=off (from this run\'s review stop)' in r2.stdout and 'OUT=mine.pdf (from this run\'s review stop)' in r2.stdout
+    assert '0/5 intake' not in r2.stdout and json.load(open(R / 'review_stop.json')) == stop
+
+def test_a_retry_is_estimated_under_the_current_limit_and_can_be_asked_again(tmp_path):
+    """review 29 M2: the app's retry job runs with the language limit bound to the amount shown. When it leaves a request
+    unfinished again and prices have risen, the stop's new estimate is made under the current limit, never that bound,
+    so it isn't refused, and a second retry sends the request."""
+    src = book(tmp_path)
+    r, R, _ = run(tmp_path, src, fail=(1, 2), REVIEW='1', AUTO='1', PAGE_READS='off')
+    first = json.load(open(R / 'language_retry_estimate.json'))
+    bound = f'{first["worst_case_usd"] + 0.01:.2f}'
+    cfg = tmp_path / 'fake.json'
+    r2, R, calls2 = run(tmp_path, src, fail=(1, 2), AI_RETRY='1', AUTO='1', LANGUAGE_MAX_USD=bound)   # fails again
+    assert r2.returncode == 0 and aistatus.status(str(R))['held'], r2.stdout[-3000:]
+    # prices rise by half, then "Get a New Estimate" (the stop's estimate again, with the job's bound still in its env)
+    cfg.write_text(json.dumps({'log': str(tmp_path / 'calls.jsonl'), 'price_mult': 1.5}))
+    env = dict(os.environ, FAKE_OR=str(cfg), PYTHONPATH=os.path.join(HERE, 'tests', 'fakeor'), OPENROUTER_API_KEY='test-not-a-key', LANGUAGE_MAX_USD=bound)
+    p = subprocess.run(['bash', '-c', 'env -u LANGUAGE_MAX_USD python3 name_languages.py "$1" "$2" --pdf "$3" --dry-run --estimate-to "$2/language_retry_estimate.json"',
+                        '_', str(R / '_audit'), str(R), src], cwd=HERE, env=env, capture_output=True, text=True)
+    est = json.load(open(R / 'language_retry_estimate.json'))
+    assert p.returncode == 0 and est['worst_case_usd'] > float(bound) and 'refused' not in est, p.stdout + p.stderr
+    r3, R, calls3 = run(tmp_path, src, AI_RETRY='1', AUTO='1')
+    assert r3.returncode == 0 and [c['kind'] for c in calls3] == ['language'] and not aistatus.status(str(R))['held']
+
+def test_a_model_lookup_that_fails_is_recorded_and_held(tmp_path):
+    """review 29 §3: the run-path dry run records `lookup` (a model the service doesn't list); the run holds with
+    "Ask the AI Again" offered."""
+    src = book(tmp_path, n=16)
+    r, R, calls = run(tmp_path, src, REVIEW='1', AUTO='1', PAGE_READS='off', LANGUAGE_MODEL='anthropic/not-a-model')
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    o = aistatus.outcome(str(R), 'language')
+    assert o['why'] == 'lookup' and 'not on OpenRouter' in o['detail'] and not [c for c in calls if c['kind'] == 'language']
+    s = aistatus.status(str(R))
+    assert s['held'] and aistatus.retry_parts(s) == 'language'
+
+def test_a_kept_refused_estimate_never_counts_as_cost(tmp_path):
+    """review 29 §3 (23 L5): a refused language estimate kept in the folder leaves "Expected Cost" and the cost lines as a
+    folder without it."""
+    from lib import costs
+    src = book(tmp_path, n=16)
+    r, R, _ = run(tmp_path, src, REVIEW='1', AUTO='1', PAGE_READS='off')
+    p = R / 'language_estimate.json'
+    if p.exists(): p.unlink()
+    without = (costs.after_line(str(R)), json.dumps(costs.estimate(str(R), 'workorder'), sort_keys=True, default=str))
+    # a step that still doesn't fit today's per-PDF limit ($20 against $8): costs.estimate works the refusal out again from
+    # today's limits (fit_optional), so a refused step that fits now would count, and would no longer be left out
+    p.write_text(json.dumps({'schema': 'language-estimate/1', 'to_send': 3, 'worst_case_usd': 20.0, 'expected': {'usd': 12.0},
+                             'refused': {'why': 'book', 'words': 'left out'}}))
+    withref = (costs.after_line(str(R)), json.dumps(costs.estimate(str(R), 'workorder'), sort_keys=True, default=str))
+    assert withref[0] == without[0]
+    a, b = json.loads(without[1]), json.loads(withref[1])
+    if a and b:
+        assert (a.get('ceiling_usd'), a.get('expected'), a.get('language')) == (b.get('ceiling_usd'), b.get('expected'), b.get('language'))

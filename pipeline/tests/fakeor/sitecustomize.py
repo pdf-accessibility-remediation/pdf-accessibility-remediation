@@ -18,7 +18,8 @@ if os.environ.get('FAKE_OR'):
     def _urlopen(req, timeout=None, *a, **k):
         url = req.full_url if hasattr(req, 'full_url') else req
         if url.endswith('/models'):
-            return _Resp({'data': [{'id': MODEL, 'pricing': {'prompt': '0.000002', 'completion': '0.00001'}, 'architecture': {'input_modalities': ['text', 'image']},
+            m_ = float(_cfg.get('price_mult', 1))                 # review 29 M2: prices that rose since the run
+            return _Resp({'data': [{'id': MODEL, 'pricing': {'prompt': str(0.000002 * m_), 'completion': str(0.00001 * m_)}, 'architecture': {'input_modalities': ['text', 'image']},
                                     'context_length': 1000000, 'top_provider': {'max_completion_tokens': 128000}, 'supported_parameters': ['max_tokens']}]})
         if url.endswith('/key'): return _Resp({'data': {'limit_remaining': 100}})
         if url.endswith('/credits'): return _Resp({'data': {'total_credits': 100, 'total_usage': 0}})

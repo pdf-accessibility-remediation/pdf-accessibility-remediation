@@ -506,11 +506,7 @@ def out(why, words='', detail=''):
 def on_exit(e):
     """#151, review 24 L2: a step that stops after it started, with nothing recorded since, is recorded as an error (Ctrl-C
     with its own words). A refusal already recorded is never overwritten; a kill runs nothing and leaves `started`."""
-    if not (STATE['outcome'] and STATE['started'] and STATE['R']): return
-    if aistatus.outcome(STATE['R'], 'language').get('why') != 'started': return
-    if isinstance(e, SystemExit) and e.code in (None, 0): return
-    words = 'The step was stopped before it finished.' if isinstance(e, KeyboardInterrupt) else aistatus.WORDS['error']
-    out('error', words, f'{type(e).__name__}: {e}')
+    if STATE['outcome'] and STATE['started'] and STATE['R']: aistatus.on_exit(STATE['R'], 'language', e)
 
 if __name__ == '__main__':
     try: main()

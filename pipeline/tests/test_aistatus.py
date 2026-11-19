@@ -125,3 +125,34 @@ def test_an_unreadable_reply_gives_its_own_no_answer_code():
     assert langreq.no_answer(['1', '2'], [{'id': None, 'code': 'unreadable'}]) == {'1': 'unreadable', '2': 'unreadable'}
     assert langreq.no_answer(['1'], [{'id': None, 'code': 'unreadable'}, {'id': None, 'code': 'partial'}]) == {'1': 'invalid'}
     assert workorder_check.NO_ANSWER is langreq.NO_ANSWER and 'unreadable' in workorder_check.NO_ANSWER
+
+def test_on_exit_for_both_steps(tmp_path):
+    """review 24 L2 (review 29 §3): after `started`, Ctrl-C is an error with its own words, another stop an error; a clean
+    exit records nothing; a refusal already recorded stays. The same function serves name_languages.py and read_pages.py."""
+    R = str(tmp_path); aistatus.create(R)
+    for step in ('language', 'pages'):
+        aistatus.record(R, step, 'started')
+        assert aistatus.on_exit(R, step, SystemExit(0)) is None and aistatus.outcome(R, step)['why'] == 'started'
+        assert aistatus.on_exit(R, step, KeyboardInterrupt()) == 'The step was stopped before it finished.'
+        assert aistatus.outcome(R, step)['why'] == 'error' and aistatus.outcome(R, step)['detail'].startswith('KeyboardInterrupt')
+        aistatus.record(R, step, 'started')
+        assert aistatus.on_exit(R, step, SystemExit('boom')) == aistatus.WORDS['error']
+        aistatus.record(R, step, 'credit', aistatus.WORDS['credit'])
+        assert aistatus.on_exit(R, step, KeyboardInterrupt()) is None and aistatus.outcome(R, step)['why'] == 'credit'
+    import name_languages as NL
+    NL.STATE.update(R=R, outcome=True, started=True); aistatus.record(R, 'language', 'started')
+    NL.on_exit(KeyboardInterrupt()); NL.STATE.update(R=None, outcome=False, started=False)
+    assert aistatus.outcome(R, 'language')['words'] == 'The step was stopped before it finished.'
+
+def test_every_review_session_keeps_the_override(tmp_path, monkeypatch):
+    """review 29 §3: "Review Without the Missing Suggestions" is kept by every session, a "Review Again" included."""
+    from review import core
+    monkeypatch.setattr(core, 'check', lambda R_, wo: [])                      # the work order's own checks: not this test's
+    R = tmp_path; (R / '_audit').mkdir(); (R / '_audit' / 'digest.json').write_text('{}')
+    aistatus.create(str(R)); aistatus.record(str(R), 'language', 'cap', 'left out')
+    aistatus.set_override(str(R), 'Kim', '2026-11-18')
+    wo = {'document': {'lang': 'en', 'title': 'T'}}
+    core.finish(str(R), wo, dict(wo), 'Kim', '2026-11-18', 'hand-edit', gap_default='a test')
+    core.finish(str(R), wo, dict(wo), 'Lee', '2026-11-19', 'hand-edit', gap_default='a test')   # a second session (a "Review Again")
+    v = json.load(open(R / 'review.json'))
+    assert v['reviewer'] == 'Lee' and v['ai_override']['by'] == 'Kim' and v['history'][0]['ai_override']['by'] == 'Kim'
