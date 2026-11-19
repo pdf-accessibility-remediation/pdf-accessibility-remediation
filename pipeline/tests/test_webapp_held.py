@@ -123,7 +123,7 @@ def test_ask_again_starts_a_bound_paid_job(setup, credit):
     fp = runs.held_view(s, 'book/rv', str(W))['retry']['fingerprint']
     j = runs.start_ai_retry(s, 'book/rv', str(W), {'fingerprint': fp})
     assert j['kind'] == 'ai-retry' and j['paid'] and j['fingerprint'] == fp and j['argv'] == ['bash', 'run_api.sh', str(src), 'book', 'rv']
-    assert j['env_set'] == {'RUN_DIR': str(W), 'OCR_LANG': 'eng', 'AI_RETRY': '1', 'AUTO': '1', 'BOOK_MAX_USD': '8.00',
+    assert j['env_set'] == {'RUN_DIR': str(W), 'OCR_LANG': 'eng', 'AI_RETRY': '1', 'AUTO': '1', 'BOOK_MAX_USD': '50.00',
                             'LANGUAGE_MODEL': CLAUDE, 'LANGUAGE_MAX_USD': '0.83', 'MODEL': CLAUDE}
     assert j['env']['AI_RETRY'] == '1' and j['env']['LANGUAGE_MAX_USD'] == '0.83' and j['env']['PAGE_READS'] == 'off'
     v = runs.job_view(s, j)
@@ -161,7 +161,7 @@ def test_test_mode_refuses_ask_again_and_keeps_the_override(setup, credit):
     assert runs.review_without(s, 'book/rv', str(W), 'Kim')['by'] == 'Kim'
 
 def test_a_batch_pdf_must_fit_what_is_left_of_the_batch_limit(setup, credit, monkeypatch):
-    s = settings(setup); B = setup / 'runs' / 'batches' / 'b1'
+    s = settings(setup, limits={'per_batch_usd': 10}); B = setup / 'runs' / 'batches' / 'b1'
     W, _ = held_run(setup, name='bk', label='bk', base=B)
     fp = SP.retry_fingerprint(str(W), 'language')
     monkeypatch.setattr(costs, 'batch_spent', lambda B_, rd=None: {'usd': 9.5})
@@ -307,7 +307,7 @@ def test_the_run_page_warns_beside_the_cost_when_forms_are_held_back(setup):
     v = runs.held_back_view(str(W))
     assert v['held_back_words'] == ("2,400 of 31,127 word forms will not be sent to the AI: they don't fit within the limit for language "
                                     "suggestions ($25). They will not be tagged, and the PDF can't be Ready until someone accepts that.")
-    assert v['held_back_raise'].startswith('To send more of them, whoever looks after the app can raise the limit for language suggestions')
+    assert v['held_back_raise'].startswith('To send more of them, the app administrator can raise the limit for language suggestions')
     js = open(os.path.join(HERE, 'webapp', 'panel.js'), encoding='utf-8').read()
     assert "(e.held_back_words ? '</p><p class=\"pp-warn-t\" id=\"pp-held-back\">' + esc(e.held_back_words)" in js
 

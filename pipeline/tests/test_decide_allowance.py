@@ -343,7 +343,7 @@ def small_with_expected(book, tmp_path, *extra, **kw):
 def test_the_estimate_stores_the_expected_figure_and_the_terminal_prints_both(book, tmp_path):
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'; r = decide(A, R, '--dry-run')
     x = load(R / 'run.json')['estimate']['expected']; assert x['usd'] > 0 and x['low'] <= x['usd'] <= x['high'] and x['basis']['calls'] == 80
-    assert 'Expected Cost: $' in r.stdout and '(usually $' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'Limits: $2.00 per AI request, $8.00 per PDF' in r.stdout
+    assert 'Expected Cost: $' in r.stdout and '(usually $' in r.stdout and 'Max Estimated Cost: $' in r.stdout and 'Limits: $2.00 per AI request, $50.00 per PDF' in r.stdout
 
 def stored(R, value, **changes):
     run = load(R / 'run.json'); run['estimate']['expected'] = value; run.update(changes); (R / 'run.json').write_text(json.dumps(run))

@@ -48,7 +48,19 @@ Settings come from one place, read in this order (later wins):
 
 ### The limits
 
-`limits` sets, in dollars, what the estimates are compared with and the most a "Start Remediation" may bind (`MAX_USD`, `BOOK_MAX_USD`, `BATCH_MAX_USD`). The defaults are `DEFAULT_LIMITS` in `lib/costs.py`, one place for the app and the terminal: `{"per_call_usd": 2, "per_book_usd": 8, "per_batch_usd": 10}`. The language step has its own limit beside them, `DEFAULT_LANGUAGE_USD` ($6; `LANGUAGE_MAX_USD` for one run), which `limits` does not set.
+`limits` sets, in dollars, what the estimates are compared with and the most a "Start Remediation" may bind. The defaults are `DEFAULT_LIMITS` in `lib/costs.py`, one place for the app and the terminal (set from the collection's estimates, #155):
+
+| Key | Default | Most accepted | The terminal's variable |
+|---|---|---|---|
+| `per_call_usd` | $2 | $20 | `MAX_USD` (one AI request) |
+| `language_usd` | $25 | $250 | `LANGUAGE_MAX_USD` (the language step) |
+| `page_reads_usd` | $25 | $250 | `PAGE_READS_MAX_USD` (the page readings) |
+| `per_book_usd` | $50 | $500 | `BOOK_MAX_USD` (a PDF, every step together) |
+| `per_batch_usd` | $250 | $2,500 | `BATCH_MAX_USD` (a batch, with what it has spent) |
+
+The most accepted is `LIMIT_CEILINGS` in `lib/costs.py`, ten times each default: a value above it, 0 or less, or an unknown key stops the app at start with the reason. An estimate's dry runs get `language_usd` and `page_reads_usd` as `LANGUAGE_MAX_USD` and `PAGE_READS_MAX_USD`, so a raised limit counts from the next "Get a New Estimate".
+
+When an estimate is over a limit, the page names the limit, what the PDF or batch could cost, and the amount the limit must be at least (the worst case rounded up to the next dollar), and says the app administrator can raise it. Library staff can't change a limit on the page.
 
 A value here or in `settings.local.json` overrides them. A page to change the limits is a later issue (#87). See [What a run may cost](options.md#what-a-run-may-cost).
 

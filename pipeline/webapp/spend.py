@@ -240,11 +240,10 @@ def retry_check(s, run, R, worst, per_call):
     raises Refused."""
     L = costs.limits_of(s)
     if per_call > L['per_call_usd']:
-        raise Refused(f'One AI request could cost up to ${costs.up(per_call):.2f}, more than the limit of ${L["per_call_usd"]:.2f} per AI request.')
+        raise Refused(costs.over_limit_words('per_call', per_call, L['per_call_usd']))
     spent = costs.book_spent(R)
     if spent + worst > L['per_book_usd']:
-        raise Refused(f'This PDF could cost up to ${costs.up(spent + worst):.2f}' + (f', including ${spent:.2f} already spent' if spent else '')
-                      + f', more than the limit of ${L["per_book_usd"]:.2f} per PDF.')
+        raise Refused(costs.over_limit_words('per_book', worst, L['per_book_usd'], spent))
     p_ = run.split('/')
     if p_[0] == 'batches' and len(p_) == 3:                  # a batch's PDF: what is left of the batch's limit
         left = L['per_batch_usd'] - costs.batch_spent(os.path.dirname(R))['usd']

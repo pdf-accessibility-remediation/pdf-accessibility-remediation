@@ -212,8 +212,9 @@ def test_the_batch_counts_every_pdf_and_the_trash_as_spent(two):
 def test_a_retry_over_the_limit_counts_what_was_spent(two):
     s = settings(two, limits={'per_batch_usd': 1.0}); spent_batch(two, s)
     st = BT.state(s, 'bb')
-    assert st['spend']['ok'] is False and st['spend']['code'] == 'limit' and st['spend']['advice'] == 'The app administrator can raise the limit or you can start a batch with fewer PDFs.'   # none would fit
-    assert st['spend']['why'] == 'This batch could cost up to $1.30, including $0.70 already spent, more than the limit of $1.00 per batch.'
+    assert st['spend']['ok'] is False and st['spend']['code'] == 'limit' and st['spend']['advice'] == 'You can also start a batch with fewer PDFs.'   # none would fit
+    assert st['spend']['why'] == ('This batch could cost up to $1.30, including $0.70 already spent, more than the limit of $1.00 per batch. '
+                                  'To run the whole batch, the limit per batch must be at least $2. The app administrator can raise it.')
     with pytest.raises(ValueError): BT.spend(s, 'bb', {'fingerprint': st['fingerprint']})
 
 def test_batch_api_refuses_on_the_same_money(two, tmp_path):

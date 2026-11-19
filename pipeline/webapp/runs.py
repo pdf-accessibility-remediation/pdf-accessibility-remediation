@@ -778,8 +778,8 @@ def _held_text(t):
     """aistatus.lines()'s sentence after the colon (its counts already in plain words: "… (2 requests not finished).")."""
     return t.strip()
 
-HELD_BACK_RAISE = 'To send more of them, whoever looks after the app can raise the limit for language suggestions; then select "Get a New Estimate".'
-HELD_BACK_RAISE_BOOK = 'To send more of them, whoever looks after the app can raise the limit per PDF; then select "Get a New Estimate".'
+HELD_BACK_RAISE = 'To send more of them, the app administrator can raise the limit for language suggestions; then select "Get a New Estimate".'
+HELD_BACK_RAISE_BOOK = 'To send more of them, the app administrator can raise the limit per PDF; then select "Get a New Estimate".'
 
 def held_back_view(R):
     """#159 (Patrick's decision: a warning before money is spent, never a refusal): the estimate's held-back word forms

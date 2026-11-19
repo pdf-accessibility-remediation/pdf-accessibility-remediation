@@ -84,6 +84,7 @@ Each command starts from a clean environment:
 - **Kept from the shell that started the app:** `PATH`, `HOME`, `LANG`, `LC_*`, `TMPDIR`, `USER`, `LOGNAME`, `SHELL`.
 - **Put first on PATH:** the venv's `bin/` and `path_prepend`.
 - **Added:** `VERAPDF` from the settings, and the variables the job itself sets, from a fixed list: `REVIEW`, `AUTO`, `ESTIMATE`, `OCR_LANG`, `RUN_DIR`, `INTAKE_REUSE`, `REPLY`, `MAX_USD`, `INTAKE`, `OUT`, `JOBS`, `BATCH_MAX_USD`, `BOOK_MAX_USD`, `FIGURE_RETRY_MAX_USD`, `FIGURE_RETRY_BOOK_MAX_USD`, `RETRY`, `MODEL` (only a Claude model, the one the estimate used) and `FROM` (test mode only). Never `FORCE_OCR`.
+- **An estimate job** (`ESTIMATE` set) also gets `LANGUAGE_MAX_USD` and `PAGE_READS_MAX_USD` from the settings' `limits` (`language_usd`, `page_reads_usd`; see [The limits](app-setup.md#the-limits)), so its dry runs judge the language step and the page readings by the app's limits, and a raised limit counts from the next "Get a New Estimate". They are not in the job's `env_set`, only in its `env`; a value the job sets itself wins.
 - **Dropped:** everything else, for example `MODEL`, `REPLY`, `FROM`, `KEEP`, `RUNS_DIR`, `OCR_LANG`, `MAX_TOKENS` or an API key exported in the shell. So no setting meant for one terminal run changes an app job.
 
 The job file records the whole environment each command was given.

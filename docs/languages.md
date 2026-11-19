@@ -270,7 +270,7 @@ title, and showed how much the title matters (Cantonese answers on the book on C
 Each request's answer may run to 800 tokens plus 200 for each of its first 20 word forms and 130 for each further one
 (`lib/costs.py allowance`; raised 2026-11-14 after 58 of 1,040 test replies reached the earlier 300 + 100 per form).
 Output is billed as used, so this raises only the worst case the estimate shows, not what a book costs. On cadaverous (2,722 forms, 19 requests, 10 words of context) the worst case is about $4.84 (expected about $2.90),
-within the language step's default limit of $6; with the work order it is about $5.46, within the default $8 per PDF.
+within the language step's default limit ($6 then, $25 since #155); with the work order it is about $5.46, within the default per PDF ($8 then, $50 since #155).
 
 Sonnet 5.5 stays the language step's model (2026-11-14): Opus 5.5 was no more accurate on the 473 test items and costs
 about 2.2 times as much. Sonnet 5.5, measured on the test books (2026-11-13): about $0.09 per 100 forms. A book with 2,800 forms (cadaverous)

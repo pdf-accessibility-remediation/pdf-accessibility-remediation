@@ -36,7 +36,7 @@ The state is one of: Waiting for a Language, Estimating, Ready to Start, Running
 
 The costs read:
 - "Expected Cost: $4.10 for 14 PDFs"
-- "Max Estimated Cost: $8.80 for 14 PDFs (18 AI requests) · Batch Limit: $10.00 · Credit: …"
+- "Max Estimated Cost: $8.80 for 14 PDFs (18 AI requests) · Batch Limit: $250.00 · Credit: …"
 - "Already Spent in This Batch: $1.20", when something has been spent
 - while the estimates come in: "Max Estimated Cost So Far: $0.42 for 1 of 4 PDFs (estimating)". Nothing is shown before the first one: never "$0.00".
 - **Total Cost:** "$1.20 so far (expected $4.10, max estimated $8.80)". Every PDF's cost counts, also while it waits for review, and so do PDFs moved to the Trash.

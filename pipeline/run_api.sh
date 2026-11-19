@@ -13,7 +13,7 @@
 # MAX_USD=3 bash run_api.sh …   the limit on what one AI request could cost, in dollars (default 2, lib/costs.py; Claude models only)
 # A book with more images than one request takes (100) gets figure requests after the first one, each sending up to 100
 # of the figures the first could not take (issue #63; docs/files.md):
-# BOOK_MAX_USD=6 bash run_api.sh …   the limit on what all of a PDF's requests could cost together, previous attempts included (default 8, lib/costs.py; Claude only)
+# BOOK_MAX_USD=60 bash run_api.sh …   the limit on what all of a PDF's requests could cost together, previous attempts included (default 50, lib/costs.py; Claude only)
 # FIGURE_PASSES=off bash run_api.sh …   no figure requests: figures past 100 go to a person, as before
 # FIGURE_PROBE=20 bash run_api.sh …   test only: also re-send 20 figures the first request answered (recorded, never used)
 # MODEL=openai/gpt-5 bash run_api.sh …   any OpenRouter model id for this run (default: DEFAULT_MODEL in decide.py)
@@ -326,7 +326,7 @@ else
   stage "3/5 $USE_MODEL via OpenRouter" python3 decide.py "$A" "$R" ${MT[@]+"${MT[@]}"}
 fi
 # Page readings (on unless PAGE_READS=off): scanned pages the audit found mostly Hawaiian are read whole by the AI
-# (read_pages.py, issue #49): its own paid step, with its own estimate and limit (PAGE_READS_MAX_USD, default 3). A PDF
+# (read_pages.py, issue #49): its own paid step, with its own estimate and limit (PAGE_READS_MAX_USD, default 25). A PDF
 # with no such pages costs nothing. Pages read before are reused at no cost. A saved reply from elsewhere (FROM=, or
 # REPLY= of another folder) makes no new AI request, so it reads no pages, and neither does a run with no AI request
 # (DECIDE=none: a PDF edited by hand). A retry on this folder's own reply (a later step failed: the same command again,
@@ -398,7 +398,7 @@ elif [[ -z $REVIEWED ]] && pages_listed; then
 fi
 # Language tags (#118; on unless LANG_TAGS=off): name_languages.py names the language of the candidate words and
 # passages the audit found, and writes language_parts into the work order. Its own paid step, with its own model
-# (LANGUAGE_MODEL, default Sonnet 5.5), estimate and limit (LANGUAGE_MAX_USD, default 6). A saved reply (REPLY=, FROM=)
+# (LANGUAGE_MODEL, default Sonnet 5.5), estimate and limit (LANGUAGE_MAX_USD, default 25). A saved reply (REPLY=, FROM=)
 # never starts a request (review 02, M3): its saved language decisions are used (LANG_REPLY=, or this folder's own
 # language_run.json when the reply is this folder's own), else the step is not run and the record says so.
 lang_step() {                   # each failure is reported and skipped, never the end of the run

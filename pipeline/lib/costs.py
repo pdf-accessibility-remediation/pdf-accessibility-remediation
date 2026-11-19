@@ -28,9 +28,17 @@ import os, json, math, hashlib
 from lib import costhistory
 
 SCHEMA = 'cost-estimate/1'
-DEFAULT_LIMITS = {'per_call_usd': 2.0, 'per_book_usd': 8.0, 'per_batch_usd': 10.0}  # the one place: decide.py, run_api.sh, batch_api.sh and the app read these
-                                                         # per PDF $8 (was $5; Patrick, 2026-11-14: room for the language step on a large CJK book)
-DEFAULT_LANGUAGE_USD = 6.0                               # the language step's own limit, LANGUAGE_MAX_USD (was $4; Patrick, 2026-11-14)
+# the one place: decide.py, read_pages.py, name_languages.py, run_api.sh, batch_api.sh and the app read these (#155 (costs:
+# set the default limits from the collection's estimates), Patrick's decision: set from the survey's 107 estimated books;
+# before: $2 per AI request, $6 for the language step, $3 for the page readings, $8 per PDF, $10 per batch)
+DEFAULT_LIMITS = {'per_call_usd': 2.0,         # MAX_USD: one AI request (the survey's largest: $1.05)
+                  'language_usd': 25.0,        # LANGUAGE_MAX_USD: the language step
+                  'page_reads_usd': 25.0,      # PAGE_READS_MAX_USD: the page readings (#49)
+                  'per_book_usd': 50.0,        # BOOK_MAX_USD: a PDF, every step together
+                  'per_batch_usd': 250.0}      # BATCH_MAX_USD: a batch, with what it has spent
+# the most the app's settings accept for each (webapp/config.py): ten times each default, to catch a typo (review 26, M3)
+LIMIT_CEILINGS = {k: v * 10 for k, v in DEFAULT_LIMITS.items()}
+DEFAULT_LANGUAGE_USD = DEFAULT_LIMITS['language_usd']   # an alias for older readers; DEFAULT_LIMITS['language_usd'] is the one to read
 OFFLINE = 'ASSUMED'                                      # decide.py's price_source when OpenRouter could not be reached
 
 def allowance(kind, forms=0):
@@ -59,7 +67,7 @@ def _sha(p):
     except OSError: return None
 
 def limits_of(s=None):
-    """The app's `limits` setting over the defaults; numbers only."""
+    """The app's `limits` setting over the defaults (the five keys of DEFAULT_LIMITS); numbers only."""
     out = dict(DEFAULT_LIMITS)
     for k, v in ((s or {}).get('limits') or {}).items():
         if k in out and isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0: out[k] = float(v)
@@ -231,6 +239,24 @@ def up(x):
     """A dollar figure in a sentence that says "up to": never rounded down."""
     return math.ceil(round(x * 100, 6)) / 100
 
+# over_limit_words: what each limit is called on the pages (the app's names, no variable names), what its sentence
+# calls the thing it limits, and what setting it would allow (#155, proposal 25 §3.2)
+OVER_LIMIT = {'per_call': ('One AI request', 'per AI request', 'To send it'),
+              'per_book': ('This PDF', 'per PDF', 'To run it'),
+              'per_batch': ('This batch', 'per batch', 'To run the whole batch'),
+              'language': ('The language suggestions', 'for language suggestions', 'To include them'),
+              'page_reads': ('The AI reading of Hawaiian pages', 'for the AI reading of Hawaiian pages', 'To include it')}
+
+def over_limit_words(kind, worst, limit, spent=0):
+    """One sentence for a refusal for a limit (#155): which limit, the most it could cost (worst plus what was spent), and
+    the amount to set, the worst case rounded up to the next whole dollar ($31.20 → $32, $25.00 → $25). Staff can't change
+    a limit, so it ends by naming who can (review 26, L2). The terminal keeps its own lines ("refusing …")."""
+    what, name, to = OVER_LIMIT[kind]
+    could = up(worst + (spent or 0))
+    return (f'{what} could cost up to ${could:.2f}' + (f', including ${spent:.2f} already spent' if spent else '')
+            + f', more than the limit of ${limit:.2f} {name}. {to}, the limit {name} must be at least ${math.ceil(could)}. '
+            'The app administrator can raise it.')
+
 def estimate(R, kind='workorder', limits=None, credit_read=None):
     """The estimate of the paid step `kind` in run folder R, or None when there is none yet. limits: limits_of(settings).
     credit_read: a fresher credit read ("Check Credit Again", U8) used when the estimate's own couldn't be read; the same checks
@@ -262,9 +288,8 @@ def estimate(R, kind='workorder', limits=None, credit_read=None):
     blocked = None
     if not claude: blocked = {'code': 'model', 'words': 'The AI model set for the app isn\'t one whose cost the app can check, so it can\'t be sent from here.'}
     elif not prices: blocked = {'code': 'offline', 'words': 'Prices and credit couldn\'t be checked, so the cost isn\'t known yet.'}
-    elif fits['per_call'] is False: blocked = {'code': 'per_call', 'words': f'This run could cost up to ${up(x["per_call"]):.2f}, more than the limit of ${L["per_call_usd"]:.2f} per AI request.'}
-    elif fits['per_book'] is False: blocked = {'code': 'per_book', 'words': f'This PDF could cost up to ${up(total + x["spent_before"]):.2f}'
-                                               + (f', including ${x["spent_before"]:.2f} already spent' if x['spent_before'] else '') + f', more than the limit of ${per_book:.2f} per PDF.'}
+    elif fits['per_call'] is False: blocked = {'code': 'per_call', 'words': over_limit_words('per_call', per_call, L['per_call_usd'])}   # every step's largest request
+    elif fits['per_book'] is False: blocked = {'code': 'per_book', 'words': over_limit_words('per_book', total, per_book, x['spent_before'])}
     elif fits['credit'] is False: blocked = {'code': 'credit', 'words': f'This run could cost up to ${up(total):.2f}, more than the ${credit:.2f} of credit left.'}
     elif credit is None: blocked = {'code': 'no_credit', 'words': 'The credit couldn\'t be checked, so the cost can\'t be compared with it.'}
     fp = hashlib.sha256(json.dumps(x['covered'], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -435,12 +460,12 @@ WORDS = {2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'e
 def batch_advice(fit_n):
     """What a person can do about a batch over its limit. fit_n counts the smallest PDFs first, so the sentence says the smallest."""
     who = '' if not fit_n else 'Only the smallest PDF in this batch' if fit_n == 1 else f'Only the {WORDS.get(fit_n, fit_n)} smallest PDFs in this batch'
-    return 'The app administrator can raise the limit or you can start a batch with fewer PDFs.' + (f' {who} would fit within the current limit.' if who else '')
+    return 'You can also start a batch with fewer PDFs.' + (f' {who} would fit within the current limit.' if who else '')   # after batch_over_words, which names who can raise the limit
 
 def batch_over_words(total):
-    """Why a batch over its limit is refused: the most it could cost (with what it already spent) and the limit named."""
-    return (f'This batch could cost up to ${up(total["could_cost_usd"]):.2f}' + (f', including ${total["spent_usd"]:.2f} already spent' if total['spent_usd'] else '')
-            + f', more than the limit of ${total["limit_usd"]:.2f} per batch.')
+    """Why a batch over its limit is refused: the most it could cost (with what it already spent), the limit named, and the
+    amount to set (over_limit_words)."""
+    return over_limit_words('per_batch', total['ceiling_usd'], total['limit_usd'], total['spent_usd'])
 
 def batch(Rs, limit=None, limits=None, credit_read=None, folder=None, rd=None):
     """The books of a batch added up: the worst case of every book still to send (one with a complete saved reply adds

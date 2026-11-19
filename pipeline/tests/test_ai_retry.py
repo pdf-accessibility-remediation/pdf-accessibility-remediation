@@ -269,9 +269,9 @@ def test_a_kept_refused_estimate_never_counts_as_cost(tmp_path):
     p = R / 'language_estimate.json'
     if p.exists(): p.unlink()
     without = (costs.after_line(str(R)), json.dumps(costs.estimate(str(R), 'workorder'), sort_keys=True, default=str))
-    # a step that still doesn't fit today's per-PDF limit ($20 against $8): costs.estimate works the refusal out again from
-    # today's limits (fit_optional), so a refused step that fits now would count, and would no longer be left out
-    p.write_text(json.dumps({'schema': 'language-estimate/1', 'to_send': 3, 'worst_case_usd': 20.0, 'expected': {'usd': 12.0},
+    # a step that still doesn't fit today's per-PDF limit ($60 against $50 since #155): costs.estimate works the refusal out again
+    # from today's limits (fit_optional), so a refused step that fits now would count, and would no longer be left out
+    p.write_text(json.dumps({'schema': 'language-estimate/1', 'to_send': 3, 'worst_case_usd': 60.0, 'expected': {'usd': 36.0},
                              'refused': {'why': 'book', 'words': 'left out'}}))
     withref = (costs.after_line(str(R)), json.dumps(costs.estimate(str(R), 'workorder'), sort_keys=True, default=str))
     assert withref[0] == without[0]

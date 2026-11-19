@@ -19,7 +19,7 @@ toward the PDF's limit (lib/costs.pages_paid), never as money spent.
 A page already read with the same model, prompt and image is reused, never paid for again. --dry-run prints the
 estimate, writes it to RUN_DIR/page_reads_estimate.json (what the app's cost estimate adds to the book's, lib/costs.py)
 and stops; it writes the file before the cap check, so the app sees an estimate over the default cap and judges it by its
-own limits. The step refuses before any call when the worst case passes --max-usd (default 3) or the credit.
+own limits. The step refuses before any call when the worst case passes --max-usd (PAGE_READS_MAX_USD, default 25, lib/costs.py) or the credit.
 The API key comes from OPENROUTER_API_KEY or the nearest .env, as for decide.py.
 """
 import sys, os, re, json, time, base64, hashlib, argparse, urllib.request, urllib.error
@@ -30,7 +30,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument('audit_dir'); ap.add_argument('run_dir')
 ap.add_argument('--dry-run', action='store_true')
 ap.add_argument('--model', default=None, help="OpenRouter model id (default: the run's work-order model, else decide.py's DEFAULT_MODEL)")
-ap.add_argument('--max-usd', type=float, default=float(os.environ.get('PAGE_READS_MAX_USD') or 3), help='the limit on what this step could cost, in dollars')
+ap.add_argument('--max-usd', type=float, default=float(os.environ.get('PAGE_READS_MAX_USD') or costs.DEFAULT_LIMITS['page_reads_usd']), help='the limit on what this step could cost, in dollars')
 ap.add_argument('--book-max-usd', type=float, default=float(os.environ.get('BOOK_MAX_USD') or costs.DEFAULT_LIMITS['per_book_usd']),
                 help="the PDF's limit, shared with the work order and the language step (review 06, M2)")
 ap.add_argument('--max-tokens', type=int, default=8000, help='output limit per page (a dense Hawaiian page took 2,300–3,400)')

@@ -8,7 +8,7 @@ FOLDER: a run folder with language_requests/NNN.request.json and its language ru
 language_run.json for a step run alone). Each file is sent as saved; one without provider data_collection deny, or that
 is not the request its record entry answered (sha256), is refused and nothing is sent. Sent with
 the language step's own retry rule: once more after 60 s for a 429, 20 s otherwise (a failure, or a reply with no
-decision that can be read), when its worst case still fits the limit (LANGUAGE_MAX_USD, default 6: checked before
+decision that can be read), when its worst case still fits the limit (LANGUAGE_MAX_USD, default 25 from lib/costs.py: checked before
 anything is sent, and each retry reserved against it, as the step does; the per-PDF limit is not checked, since nothing
 else of the book is sent). A reply cut off is recorded, not resent: the step's resend of a cut-off reply's undecided forms needs the book's
 own forms, which this tool doesn't build.
@@ -229,7 +229,7 @@ def main():
     ap.add_argument('--dry-run', action='store_true'); ap.add_argument('--caps', default='4,8,15')
     ap.add_argument('--cap', type=int); ap.add_argument('--out'); ap.add_argument('--yes', action='store_true')
     ap.add_argument('--forms', help='a file of word forms, one a line, whose answers to report (forms.json)')
-    ap.add_argument('--max-usd', type=float, default=float(os.environ.get('LANGUAGE_MAX_USD') or costs.DEFAULT_LANGUAGE_USD))
+    ap.add_argument('--max-usd', type=float, default=float(os.environ.get('LANGUAGE_MAX_USD') or costs.DEFAULT_LIMITS['language_usd']))
     a = ap.parse_args()
     if a.dry_run: return dry_run(a.folders, [int(c) for c in a.caps.split(',')], a.max_usd)
     if not (a.cap and a.out): sys.exit('a paid run needs --cap N and --out DIR (or --dry-run)')

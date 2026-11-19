@@ -696,7 +696,7 @@ function pendingBlock(s) {
     '<button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
   if (!s.spend || !s.spend.ok) return h + '<p class="pp-warn-t">' + esc((s.spend && s.spend.why) || 'This run can\'t be sent yet.') + '</p>' +
     '<p>' + esc(s.spend && s.spend.code === 'credit' ? 'Whoever looks after the app can add credit; then select "Get a New Estimate".' :
-      s.spend && ['per_call', 'per_book'].includes(s.spend.code) ? 'Whoever looks after the app can raise the limit; then select "Get a New Estimate".' :
+      s.spend && ['per_call', 'per_book'].includes(s.spend.code) ? 'When the limit is raised, select "Get a New Estimate".' :
       'Select "Get a New Estimate" to try again.') + '</p>' +
     '<div class="pp-row"><button type="button" id="pp-reest" data-act="estimate">Get a New Estimate</button></div>';
   return h +

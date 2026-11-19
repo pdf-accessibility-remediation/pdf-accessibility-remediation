@@ -13,7 +13,7 @@
 #   result name    <original file name>_remediated.pdf, unless a book list line names it after a |
 #
 #   JOBS=3           books processed at the same time (each needs about 0.5–1.5 GB of memory)
-#   BATCH_MAX_USD=10 refuse to start if what the batch has spent plus what it could cost is higher (default: lib/costs.py)
+#   BATCH_MAX_USD=400 refuse to start if what the batch has spent plus what it could cost is higher (default: lib/costs.py)
 #   KEEP=1           keep each run's working files and every log
 #   MODEL=<id>       any OpenRouter model id for every book in this batch (default: DEFAULT_MODEL in decide.py).
 #                    The batch cap only counts Claude models: for others the estimate is approximate and not capped
@@ -23,7 +23,7 @@
 #                    whose later step failed is reused free
 #   FORCE_OCR=1, OCR_LANG=…, OCR=off, INTAKE=off   passed to every book's intake step (see run_api.sh)
 #   PAGE_READS=1     read each PDF's scanned, mostly Hawaiian pages whole with the AI (off in a batch unless set; counted in
-#                    BATCH_MAX_USD, and each PDF's own PAGE_READS_MAX_USD limit applies, default 3)
+#                    BATCH_MAX_USD, and each PDF's own PAGE_READS_MAX_USD limit applies, default 25 from lib/costs.py)
 #   REVIEW=1         every book stops after the AI's decisions for a person's review (the app's batches, #45 D2): summary.md
 #                    lists it as waiting for review, and RETRY=1 never runs it again ("Finish Review" in the app applies it)
 #   SUMMARY_ONLY=1   no run, no cost: summary.md and summary.html written again from the batch's book folders (the app,
