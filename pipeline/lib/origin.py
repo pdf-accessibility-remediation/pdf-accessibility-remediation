@@ -9,7 +9,9 @@ carries the original call's cost, model, prompt and date, marked as from that ca
     words(ai)                  the call in plain words for a person: (cost line, model and instructions line)
 
 A run with no call at all (decide.py --no-model, run.no_model: a PDF edited by hand, brought back for review) is $0 and
-says so; it has no model or prompt to show.
+says so; it has no model or prompt to show. When the AI checked the hand edit (#100, record `hand_edit.ai_check`), that one call
+is its cost: `cost_usd` and `hand_edit_check` {cost_usd, model, prompt_file, prompt_sha256, date}, still `no_model` (the work
+order was a person's).
 
 Order: run.original_call (written by decide.py from a reply's meta); then a real call's own fields (cost_total_usd, else
 run.usage.cost_usd for records from 2026-10-03); then, for a replay, the reply's meta file and a record beside the reply
@@ -73,9 +75,13 @@ def carried(rec):
 def summary(rec, here=None):
     """record.json `ai_call`: the stored one when the record has it, else worked out now (a record made before)."""
     if isinstance(rec.get('ai_call'), dict): return rec['ai_call']
-    if (rec.get('run') or {}).get('no_model'):           # decide.py --no-model (a PDF edited by hand): there was no call
-        return {'cost_usd': 0, 'cost_per_page_usd': 0, 'model': None, 'prompt_file': None, 'prompt_sha256': None,
-                'date': None, 'reused': False, 'no_model': rec['run']['no_model']}
+    if (rec.get('run') or {}).get('no_model'):           # decide.py --no-model (a PDF edited by hand): there was no work-order call
+        ck = (rec.get('hand_edit') or {}).get('ai_check')            # #100: the AI's check of the hand edit is the one call it made
+        out = {'cost_usd': 0, 'cost_per_page_usd': 0, 'model': None, 'prompt_file': None, 'prompt_sha256': None,
+               'date': None, 'reused': False, 'no_model': rec['run']['no_model']}
+        if isinstance(ck, dict) and ck.get('cost_usd'):
+            out.update(cost_usd=ck['cost_usd'], hand_edit_check={k: ck.get(k) for k in ('cost_usd', 'model', 'prompt_file', 'prompt_sha256', 'date')})
+        return out
     oc = of_record(rec, here) or {}
     pages = (rec.get('document') or {}).get('pages')
     cost = oc.get('cost_usd')
@@ -93,6 +99,10 @@ def words(ai):
     """(cost words, model words) for a person. Cost: "$0.256 ($0.0006 per page)", with "from the original call on October 26,
     2026" when this run reused the reply; "not recorded" when no original cost is known."""
     from lib import dates as D
+    if ai.get('no_model') and ai.get('hand_edit_check'):      # #100
+        c = ai['hand_edit_check']
+        return (f'{money(c["cost_usd"])} for the AI\'s check of the hand edit; no AI call for the work order',
+                f'{c.get("model") or "not recorded"} · Instructions: {(c.get("prompt_file") or "").removesuffix(".md") or "not recorded"} (the check only; ' + ai['no_model'].removeprefix('no AI call: ') + ')')
     if ai.get('no_model'): return '$0: no AI call', 'none: ' + ai['no_model'].removeprefix('no AI call: ')
     if ai.get('cost_usd') is None: cost = 'not recorded'
     else:

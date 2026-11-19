@@ -62,6 +62,7 @@ It is on by default in `run_api.sh` and in the app's runs and batches, where the
 | `review_ocr.py` | Records a reviewer's verdict on a PDF's OCR text, or opens the OCR-only review page (see [review_ocr.py](#review_ocrpy)) |
 | `manual_checks.py` | The accessibility evaluation from the terminal: `--show`, `--record pac\|screen-reader FILE.json [--for-sha SHA]`, `--refresh`, `--template pac\|screen-reader`; through `review/manual.py` |
 | `handedit.py` | A PDF edited by hand in Acrobat: exports a copy, and brings an edited one back as a new run (see [handedit.py](#handeditpy)) |
+| `handedit_check.py` | The AI's check of a PDF edited by hand: drafts for the figures and changed text it touched (see [handedit_check.py](#handedit_checkpy)) |
 | `app.py` | The app: one start command, then a run's page in the browser with buttons that run `review_workorder.py`'s own commands as queued jobs. See [The app](app.md) |
 | `review/` | The review step's code: `core.py` (items, priority groups, decisions, diff, record; no web code), `server.py` (standard-library web server on 127.0.0.1), `page.html` (the page; no external libraries), `palette.css` (see [review/](#review)) |
 | `review/sessions.py` | The review loop's records, with no server and no HTML (see [review/sessions.py](#reviewsessionspy)) |
@@ -103,9 +104,13 @@ For a finished run, it is refused while a review page of the run is open or an a
 ### handedit.py
 
 - `export RUN [--original --pdf FILE] [--to PATH] [--by NAME]` copies the result (or the original) for editing.
-- `import RUN EDITED.pdf --by NAME --note TEXT [--label L] [--to review\|pipeline] [--base output\|original] [--base-pdf FILE] [--no-run]` makes a new run of it, linked to RUN: no AI call and a review stop by default, or the whole pipeline.
+- `import RUN EDITED.pdf --by NAME --note TEXT [--label L] [--to review\|pipeline] [--base output\|original] [--base-pdf FILE] [--no-run] [--ai-check]` makes a new run of it, linked to RUN: no AI call and a review stop by default, or the whole pipeline. `--ai-check` (review path) adds the AI check below.
 
 See [Editing the PDF by hand](hand-edits.md).
+
+### handedit_check.py
+
+`python3 handedit_check.py RUN_DIR [--dry-run] [--reply FILE] [--model ID] [--max-usd N] [--book-max-usd N] [--yes]`. The AI's check of a PDF edited by hand: its estimate, the limits, y/N, one request, and its answers saved in `_handedit/ai_check.json` (see [Asking the AI to check the edit](hand-edits.md#asking-the-ai-to-check-the-edit)). `--reply` uses a saved answer at no cost. `handedit.py import … --ai-check` runs it for you.
 
 ### review/
 
@@ -211,7 +216,7 @@ It swaps one section with the next in a copy of a tagged sample (default hawaii3
 
 It takes the result of a run from its saved reply, replaces one figure's image in an exported copy, brings it back for review (no AI call), writes its alt by hand, and applies it. It checks the figure found, the hashes, the safety checks and the alt texts, and prints what `apply.py` changed again.
 
-`python3 tools/handedit_case.py [--book hawaii3] [--out DIR]`. A relative `DIR` is taken from the folder you run the tool in. PASS/FAIL per check, exit 1 on any FAIL. Local, no AI, veraPDF off.
+`python3 tools/handedit_case.py [--book hawaii3] [--out DIR] [--ai-check]`. A relative `DIR` is taken from the folder you run the tool in. With `--ai-check` it also runs the AI check from a saved reply it writes itself (no cost) and checks that the draft is only a suggestion until it is approved. PASS/FAIL per check, exit 1 on any FAIL. Local, no AI, veraPDF off.
 
 ## Shared helpers (`lib/`)
 
@@ -237,6 +242,7 @@ It takes the result of a run from its saved reply, replaces one figure's image i
 | `lib/runlock.py` | The record lock: one writer at a time of a finished run's record.json, review.md, review.html and release/ (`<run>/.record.lock`, flock, not re-entrant, a bounded wait) |
 | `lib/glance.py` | The "Overview" numbers for a finished run, from `record.json` and `review.md`; shared by `report.py`, `report_html.py` and `review_ocr.py` (see [lib/glance.py](#libglancepy)) |
 | `lib/plpages.py` | Reads each page once with pdfplumber, and keeps only what `audit.py` and `apply.py` use: characters, image boxes, size and the visible area (CropBox) |
+| `lib/hecheck.py` | The AI's check of a hand edit: what is sent, the reply cut to it, the saved answers and the estimate; built on `lib/figpasses.py` |
 | `lib/handedit.py` | What changed in a PDF edited by hand, for `handedit.py import`: the images on each page by their data's sha256, each Figure and the images it holds, the figures whose image is new, and a copy with their old alt text removed |
 | `lib/contentops.py` | The content-stream operators `verify.py`'s untagged-content loop acts on, and the filter that asks pikepdf for those only (an inline image named `BI ID EI`, all three); the loop and the filter share this one list |
 | `lib/plumb_fix.py` | Fix for pdfplumber's nested marked-content bug. Required; imported before pdfplumber reads a page |

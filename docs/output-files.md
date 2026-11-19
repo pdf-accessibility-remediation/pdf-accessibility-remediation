@@ -269,6 +269,7 @@ A run made from a PDF edited by hand (`handedit.py import`) keeps in `_handedit/
 - a copy of the edited file: the run's source
 - `input.pdf`: the same with the old alt text removed from each figure whose image changed. This is what the run worked on.
 - `hand_edit.json`: the link to the run it came from, who, when, the note, and both sha256s. It is also in `record.json` as `hand_edit`.
+- `ai_check.json`, and `ai_check_estimate.json` before it: the AI's check of the edit, when it was asked (see [Asking the AI to check the edit](hand-edits.md#asking-the-ai-to-check-the-edit)). Its answers and cost are also in `record.json` as `hand_edit.ai_check`.
 
 `hand_edits.json` lists each export (who, when, sha256, where to) and each run made from an edit. See [Editing the PDF by hand](hand-edits.md).
 

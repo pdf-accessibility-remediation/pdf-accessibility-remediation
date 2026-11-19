@@ -197,13 +197,15 @@ SESSION_IN = re.compile(r'session (\d+)')
 def action(j):
     """The job's action, as it was asked for: "Review again from session 2"."""
     return shown(j.get('what') or {'apply': 'Apply', 'review': 'Review', 'pin': 'Pin', 'ocr': 'Review OCR Text', 'estimate': 'Get the estimate',
-                                    'spend': 'Start remediation: the AI request', 'rerun': 'Try again', 'batch': 'Run the batch'}.get(j['kind'], j['kind']))
+                                    'spend': 'Start remediation: the AI request', 'ai-estimate': 'Get an estimate for the AI check of the hand edit', 'rerun': 'Try again', 'batch': 'Run the batch'}.get(j['kind'], j['kind']))
 
 def heading(j):
     """A job card's heading (Patrick, round 24 of #118): a job that processes the PDF reads "Processing: …"; a person's own
     action (a review, the OCR page, a discard) keeps its action. The "Last Job:" line and Previous Jobs keep action()."""
     a, k = action(j), j['kind']
     test = ' (test: a saved reply)' if '(test: a saved reply)' in a else ' (test: saved replies)' if '(test: saved replies)' in a else ''
+    if k == 'spend' and 'AI check' in a: return 'Processing: AI Check of the Hand Edit' + test      # #100
+    if k == 'ai-estimate': return 'Processing: Cost Estimate (AI Check of the Hand Edit)'
     if k == 'spend': return 'Processing: AI Request' + test
     if k in ('estimate', 'batch-estimate'):
         m = re.match(r'Get the estimate (\(.*\))$', a)      # "Get the estimate (Hawaiian)": the OCR language chosen
@@ -696,8 +698,40 @@ def waiting_state(s, run, R, nm=None):
     return {'run': run, 'mode': 'waiting', 'title': waiting_title(run, R), 'book': name, 'file': file,
             'waiting': {'reviewed': bool(rv), 'reviewer': rv.get('reviewer'), 'date': rv.get('date'), 'auto': auto,
                         'prepared': os.path.isfile(os.path.join(R, 'review_items.json'))},
+            'ai_check': ai_check_view(s, R),
             'live_review': job_view(s, live, ctx=ctx) if live else None,
             'jobs': [job_view(s, j, ctx=ctx) for j in al if j['run'] == run]}
+
+def ai_check_view(s, R):
+    """What the run page offers for the AI's check of a hand edit (#100): for an edited copy waiting for its first review, the check
+    already made ({words, cost_usd, outcome}) and the estimate on disk ({ceiling_usd, fingerprint, blocked, figures, text_pages}).
+    None for every other run."""
+    from lib import editlinks as EL, hecheck, costs
+    from . import spend as SP
+    if not EL.waiting(R) or not isinstance(EL.hand_edit(R), dict) or os.path.isfile(os.path.join(R, 'review.json')): return None
+    sv = hecheck.saved(R); out = {'done': None, 'estimate': None}
+    if sv: out['done'] = {'words': hecheck.words(sv), 'cost_usd': sv.get('cost_usd'), 'outcome': sv.get('outcome')}
+    try: e = costs.estimate(R, 'handedit_check', costs.limits_of(s), credit_read=SP.credit_read(s))
+    except Exception: e = None
+    if e: out['estimate'] = {'ceiling_usd': costs.up(e['ceiling_usd']), 'fingerprint': e['fingerprint'], 'blocked': (e['blocked'] or {}).get('words'),
+                             'figures': e.get('figures'), 'text_pages': e.get('text_pages'), 'note': e.get('note')}
+    return out
+
+def start_ai_check(s, run, R, step, body=None):
+    """The AI's check of a hand edit (#100). step 'estimate': handedit_check.py --dry-run (free). step 'spend': the one paid job, only
+    through webapp/spend.py with the estimate shown (jobs.paid_rule). Refused, with words for the page, for any other run."""
+    from lib import editlinks as EL
+    from . import spend as SP
+    if not EL.waiting(R) or not isinstance(EL.hand_edit(R), dict): raise ValueError('The AI check is for a PDF brought back from a hand edit that waits for its review.')
+    if os.path.isfile(os.path.join(R, 'review.json')): raise ValueError('The review is finished: the AI check comes before it.')
+    if REL.cleared(R): raise ValueError('This book\'s working files were cleared, so the edit can\'t be checked.')
+    if step == 'estimate':
+        return jobs.create(s['jobs'], 'ai-estimate', run, [sys.executable, 'handedit_check.py', R, '--dry-run'], config.child_env(s), R=R,
+                           what='Get an estimate for the AI check of the hand edit')
+    try: a = SP.authorize(s, 'handedit_check', run, R, str((body or {}).get('fingerprint') or ''))
+    except SP.Refused as e: raise ValueError(str(e))
+    extra = dict(a['extra']); what = extra.pop('what')
+    return jobs.create(s['jobs'], 'spend', run, a['argv'], config.child_env(s, a['env_set']), env_set=a['env_set'], R=R, paid=True, what=what, **extra)
 
 def start_first_review(s, run, R, port, app_pid=None):
     """Open the Review Page for a waiting run: review_workorder.py <run> --serve, as the terminal's step 1."""

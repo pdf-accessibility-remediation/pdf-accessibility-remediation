@@ -423,7 +423,7 @@ def make(s, setup, code=None):
             if segs and len(segs) >= 3 and segs[-2] == 'checks' and segs[-1] in ('draft', 'record'):   # two-segment actions: the run is segs[:-2]
                 return self.checks_post(segs[:-2], segs[-1], body)
             PEND = ('spend', 'estimate', 'dismiss', 'retry', 'language')
-            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship', 'replay', 'clear', 'bring-back') + PEND:
+            if not segs or len(segs) < 2 or segs[-1] not in ('review', 'apply', 'stop', 'stop-other', 'discard', 'ocr', 'remove-older-pdfs', 'ship', 'replay', 'clear', 'bring-back', 'ai-estimate', 'ai-check') + PEND:
                 return self.send(404, {'error': 'not found'})
             hit = find_run(s['runs'], segs[:-1], waiting=segs[-1] in ('review', 'apply', 'stop'), pending=(lambda d: runs.pending(s, d)) if segs[-1] in PEND else None)
             if not hit or hit[2]: return self.send(404, {'error': 'no such run'})
@@ -446,6 +446,11 @@ def make(s, setup, code=None):
                 except (ValueError, S.Refused) as e: return self.send(409, {'error': str(e)})
                 jobs.tick(J, s)
                 return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id'])), 'location': HM.run_href(j['run'])})
+            if segs[-1] in ('ai-estimate', 'ai-check'):         # the AI's check of a hand edit (#100): a free estimate, then its own Spend
+                try: j = runs.start_ai_check(s, run, R, 'estimate' if segs[-1] == 'ai-estimate' else 'spend', body)
+                except ValueError as e: return self.send(409, {'error': str(e)})
+                jobs.tick(J, s)
+                return self.send(202, {'job': runs.job_view(s, jobs.load(J, j['id']))})
             if runs.waiting(R):                                 # stopped for its first review: open the review page, apply, stop
                 try:
                     if segs[-1] == 'review': j = runs.start_first_review(s, run, R, self.server.server_address[1], app_pid=os.getpid())
