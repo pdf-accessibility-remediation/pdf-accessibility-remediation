@@ -131,6 +131,18 @@ def test_the_language_step_never_blocks_spend(setup):
     e = costs.estimate(str(R), limits=costs.limits_of({'limits': {'per_book_usd': 6.0}}))
     assert e['language']['ceiling_usd'] == 4.39 and e['bounds']['BOOK_MAX_USD'] == 5.02 and SP.language_env(e)['LANGUAGE_MAX_USD'] == '4.40'
 
+def test_spend_passes_the_held_back_count_the_run_page_showed(setup):
+    """Review 33 F1: a Spend with the language step passes the count of word forms the run page showed held back
+    (LANG_HELD_SHOWN), so run_api.sh can hold the review when more turn up after the work order."""
+    s, R, est = spend_setup(setup)
+    assert 'LANG_HELD_SHOWN' not in SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])['env_set']   # no language step
+    language_estimate(R, 0.2, held_back=7, forms=40, prompt_sha256=SP.current_language_prompt())
+    est = costs.estimate(str(R), limits=costs.limits_of(s))
+    a = SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    assert a['env_set']['LANG_TAGS'] == 'on' and a['env_set']['LANG_HELD_SHOWN'] == '7'
+    j = NR.start_spend(s, 'bk/l1', str(R), {'kind': 'workorder', 'fingerprint': est['fingerprint']})
+    assert j['env']['LANG_HELD_SHOWN'] == '7'
+
 def test_batch_binds_the_largest_books_page_readings(setup):
     a, b = run_folder(setup, label='a'), run_folder(setup, label='b')
     page_reads_estimate(a, worst=0.3); page_reads_estimate(b, worst=0.55)

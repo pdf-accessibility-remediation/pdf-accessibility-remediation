@@ -41,6 +41,7 @@ JOB_ENV = ('REVIEW', 'AUTO', 'ESTIMATE', 'OCR_LANG', 'RUN_DIR', 'INTAKE_REUSE', 
            'FIGURE_RETRY_MAX_USD', 'FIGURE_RETRY_BOOK_MAX_USD',                # #65: the person's real limits, for a figure request's doubled retry only
            'PAGE_READS', 'PAGE_READS_MAX_USD',                                 # #49: page readings, set by Spend from the estimate shown
            'LANG_TAGS', 'LANGUAGE_MAX_USD', 'LANGUAGE_MODEL',                  # #118: the language step, the same way
+           'LANG_HELD_SHOWN',                                                  # review 33 F1: word forms the estimate shown held back
            'REOCR',                                                            # #121: read the existing OCR text again (keeps the page images)
            'KEEP_CJK_PAGES',                                                   # review 06 H1: pages kept at intake's CJK stop
            'AI_RETRY')                                                         # #151: "Ask the AI Again" (spend.py authorize_retry only)

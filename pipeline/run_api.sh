@@ -427,10 +427,11 @@ elif [[ ( $LANG_TAGS != off || -n ${LANG_REPLY:-} ) && -z $REVIEWED && ${DECIDE:
     else echo "language tags: not run (a saved reply makes no new AI request, and none of its language decisions was saved)"; outcome language not_run; fi
   else
     lt_ok=n
-    # review 33 F1: the estimate made before the work order is the one shown (the run page, the batch line, the terminal's
-    # first question); after the work order the step finds its words again (the work order's language, OCR word and page
-    # readings, the title), and more may be held back than were shown
-    shown_held=$(python3 -m lib.aistatus held-count "$R/language_estimate.json" 2>/dev/null || echo 0)
+    # review 33 F1: the estimate made before the work order is the one shown (the run page and the batch line pass its count
+    # as LANG_HELD_SHOWN; a terminal run, this call's first dry run); after the work order the step finds its words again
+    # (the work order's language, OCR word and page readings, the title), and more may be held back than were shown
+    shown_held=${LANG_HELD_SHOWN:-$(python3 -m lib.aistatus held-count "$R/language_estimate.json" 2>/dev/null || echo 0)}
+    [[ $shown_held =~ ^[0-9]+$ ]] || shown_held=0
     if python3 name_languages.py "$A" "$R" --pdf "$PSRC" --dry-run --outcome ${LANGUAGE_MODEL:+--model "$LANGUAGE_MODEL"}; then
       # #159 (Patrick's decision): word forms the limits hold back are said before anything is sent: a warning, not a refusal
       held_line "$R/language_estimate.json"

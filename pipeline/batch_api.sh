@@ -298,6 +298,8 @@ each() {   # each <step: estimate|run>
       # its own limit held back at the estimate sends no more than the estimate showed
       own=$(python3 -c "import sys; from lib import costs; print(costs.own_language_bound(*sys.argv[1:3]))" "$B/$name/language_estimate.json" "${LANGUAGE_MAX_USD:-}" 2>/dev/null) || own=0.00
       [[ -n $own ]] && export LANGUAGE_MAX_USD=$own      # review 33 F2: no estimate shown, nothing sent
+      # review 33 F1: the word forms the estimate of this PDF showed held back (none shown: 0), for the check after the work order
+      export LANG_HELD_SHOWN=$(python3 -m lib.aistatus held-count "$B/$name/language_estimate.json" 2>/dev/null || echo 0)
       RUN_DIR=$B/$name AUTO=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
       st="FAILED (see $name.log)"
     fi

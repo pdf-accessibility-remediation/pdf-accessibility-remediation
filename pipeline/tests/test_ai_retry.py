@@ -328,6 +328,19 @@ def test_more_forms_after_the_estimate_hold_the_review_with_the_warning(tmp_path
     v = WR.held_back_view(str(R), 'language_retry_estimate.json')          # the retry card's warning (review 31 M3)
     assert v['held_back_count'] == 29 and '29 word forms will not be sent to the AI' in v['held_back_words']
 
+def test_a_batch_pdf_with_no_estimate_shown_holds(tmp_path):
+    """Review 33 F1 with F2: a batch PDF whose language estimate was missing runs bound to $0.00 with LANG_HELD_SHOWN=0.
+    Its own first dry run holds every form back, but none was shown, so the review holds with forms_changed."""
+    src = english_book(tmp_path)
+    r, R, calls = run(tmp_path, src, REVIEW='1', AUTO='1', PAGE_READS='off', LANGUAGE_MAX_USD='0.00', LANG_HELD_SHOWN='0')
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    assert aistatus.outcome(str(R), 'language')['why'] == 'forms_changed' and not [c for c in calls if c['kind'] == 'language']
+    assert '(16 against 0): nothing sent' in r.stdout and aistatus.status(str(R))['held']
+    (tmp_path / 'b').mkdir()                                                # all 16 shown: a fresh run sends as before
+    r, R, calls = run(tmp_path / 'b', src, REVIEW='1', AUTO='1', PAGE_READS='off', LANGUAGE_MAX_USD='0.00', LANG_HELD_SHOWN='16')
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    assert aistatus.outcome(str(R), 'language')['why'] == 'done' and not aistatus.status(str(R))['held']
+
 def test_the_same_forms_after_the_estimate_send_as_before(tmp_path):
     """Review 33 F1: when the work order's language finds the same word forms, the run sends as before (no hold)."""
     src = english_book(tmp_path)

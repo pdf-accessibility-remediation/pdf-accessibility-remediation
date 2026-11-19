@@ -508,15 +508,15 @@ def test_a_batch_pdfs_language_step_is_bound_to_its_own_estimate(tmp_path):
     f.write_text(json.dumps({'to_send': 0, 'worst_case_usd': 0})); assert C.own_language_bound(str(f), '30') == '0.00'   # empty
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sh = open(os.path.join(here, 'batch_api.sh'), encoding='utf-8').read()
-    lines = [l.strip() for l in sh.splitlines() if l.strip().startswith(('own=$(python3', '[[ -n $own ]]'))]
-    assert len(lines) == 2 and lines[0].endswith('|| own=0.00')
-    def run(est, cap):                      # the two lines themselves, as batch_api.sh runs them for one PDF
-        script = f'B={tmp_path}; name=p; export LANGUAGE_MAX_USD={cap}\n' + '\n'.join(lines) + '\necho "$LANGUAGE_MAX_USD"'
+    lines = [l.strip() for l in sh.splitlines() if l.strip().startswith(('own=$(python3', '[[ -n $own ]]', 'export LANG_HELD_SHOWN='))]
+    assert len(lines) == 3 and lines[0].endswith('|| own=0.00')
+    def run(est, cap):                      # the three lines themselves, as batch_api.sh runs them for one PDF
+        script = f'B={tmp_path}; name=p; export LANGUAGE_MAX_USD={cap}\n' + '\n'.join(lines) + '\necho "$LANGUAGE_MAX_USD $LANG_HELD_SHOWN"'
         if est is None: (tmp_path / 'p' / 'language_estimate.json').unlink(missing_ok=True)
         else: (tmp_path / 'p').mkdir(exist_ok=True); (tmp_path / 'p' / 'language_estimate.json').write_text(json.dumps(est))
         return subprocess.run(['bash', '-c', script], cwd=here, capture_output=True, text=True).stdout.strip()
     (tmp_path / 'p').mkdir(exist_ok=True)
-    assert run(None, '30.00') == '0.00' and run({'to_send': 0}, '30.00') == '0.00'
-    assert run({'to_send': 4, 'worst_case_usd': 12.3401}, '30.00') == '12.35'
-    assert run({'to_send': 4, 'worst_case_usd': 12.3, 'refused': {'why': 'book'}}, '30.00') == '30.00'
+    assert run(None, '30.00') == '0.00 0' and run({'to_send': 0}, '30.00') == '0.00 0'           # review 33 F1: none shown held back
+    assert run({'to_send': 4, 'worst_case_usd': 12.3401, 'held_back': 5}, '30.00') == '12.35 5'
+    assert run({'to_send': 4, 'worst_case_usd': 12.3, 'refused': {'why': 'book'}}, '30.00') == '30.00 0'
 

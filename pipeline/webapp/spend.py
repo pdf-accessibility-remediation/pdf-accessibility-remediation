@@ -188,6 +188,12 @@ def authorize(s, kind, run, R, fingerprint):
         if est['bounds'].get('PAGE_READS_MAX_USD') is not None:   # #49: the pages read whole, as the estimate showed them
             env.update(PAGE_READS='1', PAGE_READS_MAX_USD=f'{est["bounds"]["PAGE_READS_MAX_USD"]:.2f}')
         env.update(language_env(est))                       # #118: the language step only as the estimate showed it
+        if env.get('LANG_TAGS') == 'on':                    # review 33 F1: the word forms the run page said were held back
+            from lib import aistatus
+            try:
+                with open(os.path.join(R, 'language_estimate.json'), encoding='utf-8') as f: shown = json.load(f)
+            except (OSError, ValueError): shown = None
+            env['LANG_HELD_SHOWN'] = str(aistatus.held_count(shown))
     extra = {'fingerprint': fingerprint, 'started_by_click': datetime.datetime.now().isoformat(timespec='seconds'),
              'shown': {'ceiling_usd': est['ceiling_usd'], 'per_call_ceiling_usd': est['per_call_ceiling_usd'], 'expected_usd': (est['expected'] or {}).get('usd'),
                        'bounds': est['bounds'], 'model': est['model']},

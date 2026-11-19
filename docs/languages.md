@@ -203,6 +203,8 @@ sent. There is no limit on the number of word forms unless `LANGUAGE_MAX_FORMS` 
   back than the estimate showed and nobody is at the keyboard (`AUTO=1`, every app job), nothing is sent: the outcome is
   `forms_changed` ("More word forms were found after the estimate."), the review holds, and "Ask the AI Again" shows the
   new estimate with its warning. An interactive terminal asks its question as before, after the warning (review 33, F1).
+  The count shown comes from the caller: the app's Spend passes the run page's count and a batch the count of that PDF's
+  own estimate (0 when it had none), as `LANG_HELD_SHOWN`; a terminal run compares with its own first estimate.
 - **Shown after the run.** The record keeps them (`language_status.held_back`: the count, the kinds, the first 200 forms,
   a short hash of their keys). The review page's "Languages" section shows a line and the fold "Word Forms Not Sent", and
   review.md lists them under "Language Tags".
