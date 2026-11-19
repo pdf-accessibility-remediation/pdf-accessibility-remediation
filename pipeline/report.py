@@ -1182,7 +1182,7 @@ if bad:
     L.append('')
 lp_ = (wo or {}).get('language_parts') or {}
 haw_el_ = (log.get('haw_elements') or {}).get('elements') or []     # review 08, H2: whole lines tagged Hawaiian on pages read by the AI
-if lp_.get('version') == 2 or lang_log or haw_el_:        # #118: what the language step tagged, left untagged and could not place
+if lp_.get('version') == 2 or lang_log or haw_el_ or (isinstance(ai_override, dict) and ai_override.get('by')):   # #118 (and #151: an override is always listed)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from lib import langtag as LT
     forms_ = lp_.get('forms') or []
     pages_of_ = collections.defaultdict(set)

@@ -117,3 +117,11 @@ def test_the_command_line(tmp_path):
     assert cli('held', str(R)).returncode == 0
     write(R, 'page_reads_estimate.json', {'to_read': 2})
     assert cli('refused', str(R), 'pages', str(R / 'page_reads_estimate.json')).returncode == 1          # no refusal: nothing recorded
+
+def test_an_unreadable_reply_gives_its_own_no_answer_code():
+    """review 22 M3: a reply that can't be read at all is `unreadable` for each of its forms; one read only in pieces stays
+    `invalid`; workorder_check keeps the code (one list: langreq.NO_ANSWER)."""
+    from lib import langreq, workorder_check
+    assert langreq.no_answer(['1', '2'], [{'id': None, 'code': 'unreadable'}]) == {'1': 'unreadable', '2': 'unreadable'}
+    assert langreq.no_answer(['1'], [{'id': None, 'code': 'unreadable'}, {'id': None, 'code': 'partial'}]) == {'1': 'invalid'}
+    assert workorder_check.NO_ANSWER is langreq.NO_ANSWER and 'unreadable' in workorder_check.NO_ANSWER

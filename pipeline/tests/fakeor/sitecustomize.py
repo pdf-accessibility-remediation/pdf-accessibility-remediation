@@ -1,6 +1,7 @@
 """A fake OpenRouter for run_api.sh's subprocesses (#151 tests): on PYTHONPATH with FAKE_OR=<config.json>, every Python
 process replaces urllib.request.urlopen (and time.sleep). Config: {"log": path (one line per chat call), "fail_language":
-[1, 2] (which language calls answer HTTP 500, counted across processes), "language": "ja-Latn"}. The work order request
+[1, 2] and "fail_page": [1] (which calls answer HTTP 500, counted by kind across processes), "language": "ja-Latn",
+"page_text": a page reading}. The work order request
 gets a minimal work order; a language request gets every item answered. No network, no key."""
 import os
 if os.environ.get('FAKE_OR'):
@@ -24,14 +25,18 @@ if os.environ.get('FAKE_OR'):
         body = json.loads(req.data)
         try: items = json.loads(body['messages'][-1]['content']).get('items') if isinstance(body['messages'][-1]['content'], str) else None
         except (ValueError, AttributeError): items = None
-        kind = 'language' if items else 'workorder'
+        content = body['messages'][-1]['content']
+        page = len(body['messages']) == 1 and isinstance(content, list) and sum(1 for c in content if c.get('type') == 'image_url') == 1 \
+            and body.get('max_tokens') == 8000                    # read_pages.py: one page image and its prompt
+        kind = 'language' if items else 'page' if page else 'workorder'
         with open(_cfg['log'], 'a', encoding='utf-8') as f: f.write(json.dumps({'kind': kind, 'ids': [it['id'] for it in items or []]}) + '\n')
-        n = sum(1 for l in open(_cfg['log'], encoding='utf-8') if '"language"' in l) if kind == 'language' else 0
-        if kind == 'language' and n in (_cfg.get('fail_language') or []):
+        n = sum(1 for l in open(_cfg['log'], encoding='utf-8') if f'"{kind}"' in l)
+        if (kind == 'language' and n in (_cfg.get('fail_language') or [])) or (kind == 'page' and n in (_cfg.get('fail_page') or [])):
             raise urllib.error.HTTPError(url, 500, 'server error', {}, io.BytesIO(b'{"error": {"message": "fake 500"}}'))
         if kind == 'language':
             dec = [{'id': it['id'], 'lang': _cfg.get('language', 'ja-Latn'), 'confidence': 'high', 'why': 'language', 'evidence': 'x'} for it in items]
             text = json.dumps({'decisions': dec})
+        elif kind == 'page': text = _cfg.get('page_text', 'Ua hele mai ka wahine i ka hale')      # a whole-page reading
         else: text = json.dumps({'document': {'lang': 'en', 'title': 'Synthetic retry test'}})
         return _Resp({'model': MODEL, 'choices': [{'message': {'content': text}, 'finish_reason': 'stop'}],
                       'usage': {'prompt_tokens': 900, 'completion_tokens': 100, 'cost': 0.004}})

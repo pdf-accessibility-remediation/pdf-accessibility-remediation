@@ -145,3 +145,70 @@ def test_a_one_book_batch_whose_language_step_was_left_out_stops_held(tmp_path):
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
     s = aistatus.status(str(B / 'book'))
     assert s['held'] and s['steps']['language']['state'] == 'left_out', open(B / 'book.log').read()[-3000:]
+
+def page_held(tmp_path, n=20):
+    """A run whose language step finished and whose one page reading failed (the page listed by hand: a synthetic tagged
+    book has no scanned page)."""
+    from PIL import Image
+    src = book(tmp_path, n=n)
+    r, R, _ = run(tmp_path, src, REVIEW='1', AUTO='1', PAGE_READS='off')
+    assert r.returncode == 0 and not aistatus.status(str(R))['held']
+    A = R / '_audit'; (A / 'page_reads').mkdir(exist_ok=True)
+    Image.new('RGB', (200, 260), 'white').save(A / 'page_reads' / 'p1.png')
+    (A / 'page_reads.json').write_text(json.dumps({'pages': [{'page': 1, 'image': 'page_reads/p1.png'}]}))
+    (R / 'page_reads_run.json').write_text(json.dumps({'schema': 'page-reads/1', 'pages': [{'page': 1, 'error': {'code': 500, 'message': 'x'}}], 'cost_usd': 0}))
+    aistatus.record(str(R), 'pages', 'done')
+    s = aistatus.status(str(R))
+    assert s['held'] and aistatus.retry_parts(s) == 'pages' and 'language' not in s['steps']
+    return src, R
+
+def test_the_page_part_goes_first_and_alone(tmp_path):
+    """review 25 §2.4: the first AI_RETRY reads only the unfinished page and sends no language request. On this tagged
+    page the reading replaces no word the language step read (readings replace words on scanned pages), so its re-estimate
+    reuses every answer: the language step stays `done` and the hold clears."""
+    src, R = page_held(tmp_path)
+    r1, R, calls1 = run(tmp_path, src, AI_RETRY='1', AUTO='1')
+    assert r1.returncode == 0, r1.stdout[-3000:] + r1.stderr[-2000:]
+    assert [c['kind'] for c in calls1] == ['page']
+    assert json.load(open(R / 'workorder.ai.json'))['page_readings'] == [{'page': 1, 'text': 'Ua hele mai ka wahine i ka hale'}]
+    assert json.load(open(R / 'language_retry_estimate.json'))['to_send'] == 0
+    assert aistatus.outcome(str(R), 'language')['why'] == 'done' and not aistatus.status(str(R))['held']
+
+def test_after_the_page_part_changed_words_hold_for_a_second_part(tmp_path):
+    """review 26 M2: when the language step's re-estimate after the page part has requests to send, the outcome is
+    pages_changed and the run stays held for the language part, which the second AI_RETRY sends. On a scanned page the new
+    reading changes the words; here the change is simulated by making the saved answers unusable (another prompt)."""
+    src, R = page_held(tmp_path)
+    lr = json.load(open(R / 'language_run.json')); lr['prompt_sha256'] = 'another-prompt'; json.dump(lr, open(R / 'language_run.json', 'w'))
+    r1, R, calls1 = run(tmp_path, src, AI_RETRY='1', AUTO='1')
+    assert r1.returncode == 0, r1.stdout[-3000:] + r1.stderr[-2000:]
+    assert [c['kind'] for c in calls1] == ['page'] and aistatus.outcome(str(R), 'language')['why'] == 'pages_changed'
+    assert 'the new page readings changed some words' in r1.stdout
+    s = aistatus.status(str(R))
+    assert s['held'] and 'pages' not in s['steps'] and aistatus.retry_parts(s) == 'language'
+    assert aistatus.lines(s) == ['Language Suggestions Not Finished: New page readings changed some words (1 request not finished).']
+    r2, R, calls2 = run(tmp_path, src, AI_RETRY='1', AUTO='1')
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-2000:]
+    assert [c['kind'] for c in calls2] == ['language'] and not aistatus.status(str(R))['held']
+
+def test_a_reply_from_elsewhere_stops_without_a_hold(tmp_path):
+    """23 §3.2: a saved reply from elsewhere (FROM=, the app's test mode) was never to send anything: not_run, never held."""
+    src = book(tmp_path, n=16)
+    (tmp_path / 'reply.txt').write_text(json.dumps({'model': 'anthropic/claude-sonnet-5.5', 'choices': [{'message': {'content': json.dumps(
+        {'document': {'lang': 'en', 'title': 'T'}})}, 'finish_reason': 'stop'}], 'usage': {'prompt_tokens': 1000, 'completion_tokens': 100, 'cost': 0.3}}))
+    r, R, calls = run(tmp_path, src, REVIEW='1', REPLY=str(tmp_path / 'reply.txt'))
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
+    assert calls == [] and aistatus.outcome(str(R), 'language')['why'] == 'not_run' and not aistatus.status(str(R))['held']
+
+def test_the_override_is_listed_in_review_md_and_survives_the_tidy(tmp_path):
+    src = book(tmp_path, n=16)
+    r, R, _ = run(tmp_path, src, REVIEW='1', AUTO='1', PAGE_READS='off')
+    aistatus.record(str(R), 'pages', 'cap', aistatus.WORDS['cap']['pages'])
+    (R / '_audit' / 'page_reads.json').write_text(json.dumps({'pages': [{'page': 1, 'image': 'x.png'}]}))
+    rw = subprocess.run([sys.executable, 'review_workorder.py', str(R), '--reviewer', 'Kim', '--override', 'Kim'], cwd=HERE, capture_output=True, text=True)
+    assert rw.returncode == 0, rw.stdout + rw.stderr
+    r2, R, calls = run(tmp_path, src, PAGE_READS='off')                       # the apply after the review
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-2000:]
+    md = open(R / 'review.md', encoding='utf-8').read(); rec = json.load(open(R / 'record.json'))
+    assert '**Reviewed without missing AI suggestions:** Kim on ' in md and 'Page Readings Not Made' in md
+    assert rec['ai_override']['by'] == 'Kim' and os.path.exists(R / aistatus.OVERRIDE) and not os.path.exists(R / aistatus.NAME)
