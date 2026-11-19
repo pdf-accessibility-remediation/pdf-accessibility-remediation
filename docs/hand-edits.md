@@ -129,14 +129,14 @@ Don't use `--reopen` on the earlier run for this: it rebuilds that run's PDF fro
 
 ## Seeing the link in review.html and summary.html
 
-Once an edited PDF is brought back, two runs of the same PDF exist. The offline dashboards say which is which, so the wrong one isn't evaluated or shipped by mistake. The app's run page lists the same copies under Edited Copies.
+Once an edited PDF is brought back, two runs of the same PDF exist. The offline dashboards say which is which, so the wrong one isn't evaluated or shipped by mistake. The app's run page lists the same copies under Edited Copies, in its Run Actions panel. There the dashboard's own notes are hidden, so each copy is listed once; the file keeps them.
 
 - **The earlier run's `review.html`** opens with an **Edited Copies** note, above "Ready to Ship?". It lists each copy brought back from it: who edited it, when, their note, and its state (finished, waiting for its review, not started, or its folder is no longer there). A finished copy links to its own `review.html`.
 - **The copy's `review.html`** says "Made from a hand edit of" the earlier run, with a link to that run's dashboard.
 - **A batch's `summary.html`** marks a PDF with an edited copy in its Status column ("Edited copy: handedit-… (finished)"). The copy itself is a run of its own, outside the batch folder.
 - **The app's batch page** marks the same PDF in its dashboard's Status column. There a finished copy, or one waiting for its review, links to its run page in the app; see [The batch page](home-batches.md#the-batch-page).
 
-The links are relative, so they work when the files are opened directly and in the app. The earlier run's pages are drawn again when the copy is brought back, when its review stops, and when it finishes.
+The links are relative, so they work when the files are opened directly, and `summary.html`'s links work in the app too. The earlier run's pages are drawn again when the copy is brought back, when its review stops, and when it finishes.
 
 **Move to Trash** in the app draws the linked pages again too, so a copy moved to the Trash reads "its folder is no longer there" on the earlier run's page, and the other way round. The note says the day it was drawn ("as of"): a folder moved or deleted outside the app shows only on the next rebuild (`report_html.py RUN_DIR`).
 
@@ -171,7 +171,7 @@ The original is checked against `record.json` (`document.sha256`). The run's ear
 
 **The link's states** come from `lib/editlinks.py`, which both the app (`webapp/runs.py` `hand_edits`) and `report_html.py` read. `copies(R)` gives each child of `hand_edits.json` a state: `removed` (no folder), `finished` (`record.json`), `waiting for its review` (`workorder.ai.json` and no record) or `not started`. The app adds `being prepared` from its own jobs. `parent(R, rec)` reads `record.json` `hand_edit`, or `_handedit/hand_edit.json` before the first record. `editlinks.WORDS` holds each state's wording for both pages; a `run` that isn't a path (a damaged `hand_edits.json`) reads as removed.
 
-**The links** are `os.path.relpath` from the page's folder; a previous version under `reviews/versions/` shows no note. `refresh_page` redraws a page under the run's record lock; a busy run is a note, never a failure. In the app, `summary.html` is served at `/batch/<label>/summary.html`, so a copy's `../../<name>/<label>/review.html` lands on `/<name>/<label>/review.html`, which the app redirects to that run's page.
+**The links** are `os.path.relpath` from the page's folder; a previous version under `reviews/versions/` shows no note. `refresh_page` redraws a page under the run's record lock; a busy run is a note, never a failure. On the app's run page, `webapp/panel.css` hides the notes (`.edits`, `.linked`) on any page that has the panel (`#pdfrem-panel`), because the panel draws the same list from `runs.hand_edits` (#146). They stay in the page as served and in the file; a previous result's page has no panel and no notes. In the app, `summary.html` is served at `/batch/<label>/summary.html`, so a copy's `../../<name>/<label>/review.html` lands on `/<name>/<label>/review.html`, which the app redirects to that run's page.
 
 **The app's batch page** gives each dashboard row an `edited` list (`webapp/batches.py` `dashboard`), taken from `runs.hand_edits` with the jobs the request already read, so its states and links match the run page. It is read on every check of the batch, outside the cache of the result columns: that cache is keyed on the PDF's own records, and neither `hand_edits.json` nor the copy's folder is among them (#145). `batch.js` escapes every value it prints.
 

@@ -33,6 +33,8 @@
    "Ready to Ship?" to the cards below it (Patrick, 2026-11-11): the bar's own margin only, 14 px as review.html's .cards */
 #pdfrem-version > nav.pp { margin-bottom: 14px; }
 body:has(#pdfrem-version) .replaced { display: none; }          /* the app's bar replaces the file's own "replaced by" note */
+body:has(#pdfrem-panel) .edits, body:has(#pdfrem-panel) .linked { display: none; }   /* #146: the run page's panel lists the
+   edited copies and the run a copy came from, with Open and Start; review.html keeps its own notes (#98) for a reader offline */
 .pp .pp-warn { border-left: 4px solid var(--change); padding-left: 10px; }   /* setup: only shown when a tool is missing */
 .pp .pp-nw { white-space: nowrap; }
 .pp-md { white-space: pre-wrap; word-break: break-word; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
