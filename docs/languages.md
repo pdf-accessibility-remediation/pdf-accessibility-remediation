@@ -184,9 +184,16 @@ sent. There is no limit on the number of word forms unless `LANGUAGE_MAX_FORMS` 
   part of the next request that fits is sent. A request answered before costs nothing and doesn't count.
 - **What doesn't fit is held back, never refused.** The step is never refused or left out whole for its own cost. The
   word forms held back are not sent and not tagged.
-- **Said before anything is spent.** The terminal prints the count and the reason just before "Name the languages of
-  these words and passages with the AI now?" (and before the `AUTO=1` line). The app's run page says it beside the cost,
-  and a batch's estimate lists each PDF that holds word forms back with its count. This is a warning, not a refusal.
+- **Said before anything is spent.** The terminal prints the count and the reason after the first estimate (before "Send
+  to OpenRouter now?"), again just before "Name the languages of these words and passages with the AI now?" (and before
+  the `AUTO=1` line), and in a retry before "Ask the AI again for the unfinished language suggestions now?". The app's run
+  page says it beside the cost and on the "Ask the AI Again" card, and a batch's estimate lists each PDF that holds word
+  forms back with its count and the limit that held them back. This is a warning, not a refusal.
+- **The title is priced in advance.** The estimate is made before the work order names the PDF's title and language,
+  which every request carries. It prices them at a reserve instead: 300 characters at the rate of Chinese characters (the
+  costliest), or the PDF's own metadata title when that is longer, and 35 characters for the language. The real run then
+  fits the amount shown, and may send a few more word forms than the estimate held back, since a real title is shorter.
+  A title longer than the reserve could still hold back the last few forms; the record and the review page then say so.
 - **Shown after the run.** The record keeps them (`language_status.held_back`: the count, the kinds, the first 200 forms,
   a short hash of their keys). The review page's "Languages" section shows a line and the fold "Word Forms Not Sent", and
   review.md lists them under "Language Tags".

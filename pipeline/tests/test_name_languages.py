@@ -391,6 +391,39 @@ def test_run_api_sh_stop_estimates_use_the_apps_limits():
     term = env_of(LANGUAGE_MAX_USD='3.17', BOOK_MAX_USD='60')
     assert 'LANGUAGE_MAX_USD' not in term and term['BOOK_MAX_USD'] == '60'
 
+@pytest.mark.parametrize('title', ['A' * 200, '仏' * 200], ids=['latin', 'cjk'])
+def test_the_estimate_reserves_room_for_the_title_and_language(tmp_path, monkeypatch, title):
+    """review 31 M2 (Patrick: option (a)): an estimate made before the work order prices the title and language at a
+    reserve, so the real run, with a 200-character title and bound to round_up(worst) as a Spend binds it, holds nothing
+    back and sends what the estimate showed. Without the reserve (an empty title priced) the real worst case is higher."""
+    from lib import costs
+    src, A, R = folders(tmp_path, runs=[{'font': 'F3', 'text': f'The temple of Onjōji{i} and mappō{i}, later ryōgen{i}.'} for i in range(40)])
+    (R / 'workorder.json').unlink()
+    run(src, A, R, monkeypatch, '--dry-run')
+    est = load(R / 'language_estimate.json')
+    assert est['held_back'] == 0 and est['sent'] >= 100
+    (R / 'workorder.json').write_text(json.dumps({'document': {'lang': 'en', 'title': ''}}))   # what the estimate priced before the reserve
+    run(src, A, R, monkeypatch, '--dry-run')
+    bare = load(R / 'language_estimate.json')['worst_case_usd']
+    (R / 'workorder.json').write_text(json.dumps({'document': {'lang': 'en', 'title': title}}))
+    run(src, A, R, monkeypatch, '--dry-run')
+    real = load(R / 'language_estimate.json')['worst_case_usd']
+    assert bare < real <= est['worst_case_usd']                                      # the title raises it; the reserve covers it
+    run(src, A, R, monkeypatch, '--max-usd', f'{costs.bound(est["worst_case_usd"], 25):.2f}')
+    lr = load(R / 'language_run.json')
+    assert LAST['exit'] is None and lr['held_back_count'] == 0 and len(lr['decisions']) == est['sent']
+
+def test_the_reserve_takes_a_longer_metadata_title_and_ends_with_the_work_order(tmp_path):
+    import name_languages as NL
+    A, wo = tmp_path / '_audit', tmp_path / 'workorder.json'; A.mkdir()
+    assert NL.price_book(str(A), str(wo)) == {'title': NL.RESERVE_TITLE, 'language': NL.RESERVE_LANG}
+    long = '経' * 320
+    (A / 'digest.json').write_text(json.dumps({'document': {'title': 'Short', 'xmp_title': long}}))
+    assert NL.price_book(str(A), str(wo))['title'] == long
+    (A / 'digest.json').write_text(json.dumps({'document': {'title': 'L' * 900}}))          # 900 Latin characters: fewer tokens than the reserve
+    assert NL.price_book(str(A), str(wo))['title'] == NL.RESERVE_TITLE
+    wo.write_text('{}'); assert NL.price_book(str(A), str(wo)) is None
+
 def test_below_the_limit_nothing_about_held_back_forms_is_written(tmp_path, monkeypatch):
     """#159: a run under its limits writes no held-back fields (the records of the regression books stay identical)."""
     src, A, R = folders(tmp_path)

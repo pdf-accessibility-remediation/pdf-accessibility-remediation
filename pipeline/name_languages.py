@@ -143,15 +143,29 @@ def fill_room(args, R, spent):
     return {'usd': round(max(0.0, min(args.max_usd, args.book_max_usd - spent - pending)), 6), 'step_usd': args.max_usd,
             'book_usd': args.book_max_usd, 'by': 'step' if args.max_usd <= args.book_max_usd - spent - pending else 'book'}
 
-def fill(fs, book, words, prompt, prompt_sha, answered, pin, pout, room):
+RESERVE_TITLE = '中' * 300     # review 31 M2: 300 characters at the costliest rate (one token each, as Chinese characters)
+RESERVE_LANG = 'x' * 35        # the longest language tag the work order could name
+
+def price_book(audit_dir, wo_path):
+    """review 31 M2 (Patrick: option (a)): an estimate made before the work order prices each request's `book` field at
+    a reserve, since the real run carries the AI's title and language in every request: the title at RESERVE_TITLE, or
+    the PDF's own metadata title when that counts more tokens, the language at RESERVE_LANG. None once the work order is
+    there (its own title and language are priced). Only the price changes: the requests and their hashes keep the real
+    field."""
+    if os.path.exists(wo_path): return None
+    d = (_load(os.path.join(audit_dir, 'digest.json')) or {}).get('document') or {}
+    metas = [str(d.get(k)) for k in ('title', 'xmp_title') if isinstance(d.get(k), str) and d.get(k)]
+    return {'title': max([RESERVE_TITLE] + metas, key=langreq.tokens), 'language': RESERVE_LANG}
+
+def fill(fs, book, words, prompt, prompt_sha, answered, pin, pout, room, pbook=None):
     """(sent, held) for the dollar fill: whole requests (langreq's chunks, in order) while the running worst case of the
     requests still to send fits room['usd'] (a request answered before costs nothing), then the largest part of the next
-    request that fits."""
+    request that fits. `pbook`: the book field each request is priced with (price_book), else its own."""
     per, limit, total, n = langreq.FORMS_PER_REQUEST, room['usd'] + 1e-9, 0.0, 0
     def cost(chunk):
         r = langreq.requests(book, chunk, words)[0]
         if hashlib.sha256((prompt_sha + langreq.user_text(r)).encode()).hexdigest()[:16] in answered: return 0.0
-        return langreq.size(r, prompt) * pin + costs.allowance('language', len(r['items'])) * pout
+        return langreq.size(dict(r, book=pbook) if pbook else r, prompt) * pin + costs.allowance('language', len(r['items'])) * pout
     for i in range(0, len(fs), per):
         chunk = fs[i:i + per]; w = cost(chunk)
         if total + w <= limit: total += w; n = i + len(chunk); continue
@@ -427,7 +441,8 @@ def main():
     # their order (kinds, then pages) while the step's worst case fits the smaller of its own limit and the room left in
     # the PDF's (review 29 M4); the rest is held back and shown, never the step refused or left out whole for its cost.
     room = fill_room(args, R, spent_now := costs.book_spent(R))
-    sent, more = fill(sent, {'title': title, 'language': doc_lang}, words, prompt, prompt_sha, answered, pin, pout, room)
+    pbook = price_book(args.audit_dir, wo_path) if args.dry_run else None     # review 31 M2: the title and language reserved
+    sent, more = fill(sent, {'title': title, 'language': doc_lang}, words, prompt, prompt_sha, answered, pin, pout, room, pbook)
     if more: held, held_why = more + held, 'dollars'
     sent_ids = {x['id'] for x in sent}
     written = [f for f in fs if f['id'] in local or f['id'] in sent_ids]
@@ -435,7 +450,7 @@ def main():
     todo = []
     for n, r in enumerate(reqs, 1):
         text = langreq.user_text(r); sha = hashlib.sha256((prompt_sha + text).encode()).hexdigest()[:16]
-        mt = costs.allowance('language', len(r['items'])); ins = langreq.size(r, prompt)
+        mt = costs.allowance('language', len(r['items'])); ins = langreq.size(dict(r, book=pbook) if pbook else r, prompt)
         todo.append({'n': n, 'req': r, 'sha256': sha, 'max_tokens': mt, 'input_est': ins, 'worst': ins * pin + mt * pout, 'reused': sha in answered})
     send = [t for t in todo if not t['reused']]
     worst = sum(t['worst'] for t in send)
