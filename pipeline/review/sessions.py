@@ -460,9 +460,11 @@ def carry(items, src):
         carried[k] = d
     return carried, missed
 
+KEPT = ('status', 'value', 'note', 'bulk')     # review 33 F3: a group approval's button (`bulk`, #124) is kept with its choice
+
 def page_decisions(ds):
-    """The page's own format: {status, value?, note?} (set_in, ai and inferred stay in the session record)."""
-    return {k: {x: d[x] for x in ('status', 'value', 'note') if x in d} for k, d in ds.items()}
+    """The page's own format: {status, value?, note?, bulk?} (set_in, ai and inferred stay in the session record)."""
+    return {k: {x: d[x] for x in KEPT if x in d} for k, d in ds.items()}
 
 def ocr_info(R, rec):
     """The OCR verdict for the page's banner: the current one (one per run, the latest wins) and each session's snapshot."""
@@ -594,7 +596,7 @@ def finish_session(R, s, rec):
             if st: since.append({'id': it['id'], 'was': page_decisions({0: st})[0], 'now': None})
             continue
         same = st is not None and all(st.get(x) == d.get(x) for x in ('status', 'value', 'note'))
-        dec[it['id']] = {**{x: d[x] for x in ('status', 'value', 'note') if x in d}, 'ai': it['ai'],
+        dec[it['id']] = {**{x: d[x] for x in KEPT if x in d}, 'ai': it['ai'],
                          'set_in': st['set_in'] if same and st.get('set_in') else s['id'], **({'inferred': True} if same and st.get('inferred') else {})}
         if not same: since.append({'id': it['id'], 'was': page_decisions({0: st})[0] if st else None, 'now': page_decisions({0: d})[0]})
     adds = draft.get('additions') or []
@@ -628,7 +630,7 @@ def first_session(R, A, PDF):
     s = {'id': sid, 'from': 'ai', 'started': (basis(R) or {}).get('made')}
     got = draft.get('decisions') or {}
     by = {it['id']: it for it in items}
-    dec = {k: {**{x: d[x] for x in ('status', 'value', 'note') if x in d}, 'ai': by[k]['ai'], 'set_in': sid}
+    dec = {k: {**{x: d[x] for x in KEPT if x in d}, 'ai': by[k]['ai'], 'set_in': sid}
            for k, d in got.items() if (d or {}).get('status') and k in by}
     intake = load(os.path.join(R, '_intake', 'intake.json'))
     s.update(name_notes(draft, sid))

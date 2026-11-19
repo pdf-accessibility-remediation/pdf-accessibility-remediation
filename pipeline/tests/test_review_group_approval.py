@@ -79,6 +79,24 @@ def test_each_group_approval_is_recorded_with_its_evidence_and_language():
     lr = core.language_review(items, dec)
     assert lr['bulk'] == 3 and lr['bulk_by'] == {'all_shown': 1, 'readings': 1, 'printed_reading': 1} and lr['local'] == 1 and lr['approved'] == 4
 
+def test_review_again_keeps_each_group_approval_mark():
+    """Review 33 F3: "Review Again" carries a group approval's button with its choice (session record, the next session's
+    draft, the record's count), and a person's own later change still drops it."""
+    from review import sessions as S
+    w = wo(); items, by = items_by(w)
+    first = {by['極楽']['id']: {'status': 'approved', 'bulk': 'readings'}, by['mappō']['id']: {'status': 'approved', 'bulk': 'all_shown'},
+             by['禅宗']['id']: {'status': 'approved'}}
+    rec1 = {k: dict(d, ai=next(it['ai'] for it in items if it['id'] == k), set_in='001') for k, d in first.items()}   # session 001's record
+    start, missed = S.carry(items, rec1)
+    assert not missed and start[by['mappō']['id']]['bulk'] == 'all_shown'
+    draft = S.page_decisions(start)                                     # what "Review Again" opens with
+    assert draft == first
+    lr = core.language_review(items, draft)
+    assert lr['bulk'] == 2 and lr['bulk_by'] == {'all_shown': 1, 'readings': 1, 'printed_reading': 0} and lr['approved'] == 3
+    draft[by['極楽']['id']] = {'status': 'approved'}                     # the page's single "Approve" drops the mark (langSet)
+    assert core.language_review(items, draft)['bulk_by']['readings'] == 0
+
+
 def test_a_group_approval_a_row_does_not_qualify_for_decides_nothing():
     """An edited page, or a draft saved under other rules: the server never counts a group approval the row's rules leave
     out. The row stays to decide; one a person decides on its own is unchanged."""

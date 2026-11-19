@@ -166,6 +166,24 @@ def test_finish_session_records_who_set_each_choice(tmp_path):
     row = S.summary_row(s)
     assert row['carried'] == 4 and row['since_start'] == 1
 
+def test_finish_session_keeps_a_group_approval_mark(tmp_path):
+    """Review 33 F3: the session record keeps a choice's group-approval button (`bulk`) beside its status; an unchanged
+    choice stays carried from the session that set it."""
+    R, rec, ai, dg = run_folder(tmp_path)
+    S.check_basis(R, rec)
+    p = S.P(R); items = core.build_items(ai, dg)
+    S.save(p['items'], {'items': items})
+    marked = dict(ALL, **{'alt:20 0 R': {'status': 'approved', 'bulk': 'all_shown'}})
+    start = {k: dict(v, ai=next(it['ai'] for it in items if it['id'] == k), set_in='001') for k, v in marked.items()}
+    s = {'id': '002', 'from': '001', 'status': 'open', 'start': start, 'start_additions': []}
+    S.save(p['draft'], {'reviewer': 'Kim', 'decisions': S.page_decisions(start), 'additions': []})
+    wo = core.apply_decisions(ai, items, marked); S.save(os.path.join(p['dir'], 'workorder.json'), wo)
+    S.save(os.path.join(p['dir'], 'review.json'), {'reviewer': 'Kim', 'date': '2026-11-19', 'method': 'page', 'changes': core.diff(ai, wo)})
+    os.makedirs(p['sessions'], exist_ok=True)
+    s = S.finish_session(R, s, rec)
+    assert s['decisions']['alt:20 0 R']['bulk'] == 'all_shown' and s['decisions']['alt:20 0 R']['set_in'] == '001'
+    assert 'bulk' not in s['decisions']['retype:10 0 R'] and s['since_start'] == []
+
 def test_reading_order_cards_carry_and_reach_the_record(tmp_path):
     """A reading-order finding is a card like any other: its choice (seen, with a note) carries to the next session, is
     listed in record.json review.decisions, and its note goes to review.json's notes, as review/core.py finish writes them."""
