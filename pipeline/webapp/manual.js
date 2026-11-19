@@ -2,7 +2,8 @@
    form: its answers are saved by themselves about a second after each change (one save at a time; the browser keeps a
    copy too), and "Record …" sends them to review/manual.py, the one writer. The rules are the server's (lib/release.py
    validate()): a refused Record comes back with each problem tied to its field, shown under it and in a summary that
-   takes focus. The page itself only marks a note as required when the choice asks for one.
+   takes focus. The page itself only marks a note as required when the choice asks for one. On a run made from a hand-edited
+   PDF, Start from These Notes also copies from the results of the run it came from (#99), never their results.
 
    Accessibility (WCAG 2.1 AA): real inputs, radio groups in fieldsets with legends, errors tied to their fields
    (aria-describedby, aria-invalid), one polite live region and one alert (a failed save, a refusal); the save status is
@@ -162,7 +163,9 @@ once = true;
 document.addEventListener('click', e => {
   const b = e.target.closest('button[data-start]'); if (!b) return;
   const [key, which] = b.dataset.start.split(':'), sec = secs.find(x => x.key === key); if (!sec) return;
-  const d = which === 'draft' ? sec.cfg.start_draft : sec.cfg.starts[Number(which)]; if (!d) return;
+  // "draft": an unfinished one from a previous version; "p<i>": the run a hand-edited PDF came from (#99); else a previous result
+  const d = which === 'draft' ? sec.cfg.start_draft : which[0] === 'p' ? (sec.cfg.parent_starts || [])[Number(which.slice(1))]
+          : sec.cfg.starts[Number(which)]; if (!d) return;
   sec.fill(d, false); sec.changed();
   live('Versions, pages and notes copied. Enter your name in "Checked By" and choose each result again for this version.');
   const f = sec.form.querySelector('[data-field="by"]'); if (f) f.focus();

@@ -4,6 +4,7 @@ the app's run page and the offline dashboards (review.html, summary.html: #98) b
     from lib import editlinks
     kids = editlinks.copies(R)            # [{'label', 'run', 'when', 'by', 'note', 'to', 'state'}] from R/hand_edits.json
     par  = editlinks.parent(R, rec)       # {'run', 'label', 'state'} from record.json hand_edit (or _handedit/), else None
+    he   = editlinks.hand_edit(R, rec)    # that hand_edit itself (dict), else None
     href = editlinks.rel_page(R, P)       # "../handedit-x/review.html": P's review.html from R's folder, None without one
 
 A copy's state: "removed" (its folder is gone), "finished" (record.json), "waiting for its review" (run_api.sh stopped
@@ -50,9 +51,14 @@ def copies(R):
                     'when': c.get('when'), 'by': c.get('by'), 'note': c.get('note'), 'to': c.get('to'), 'state': state(P)})
     return out
 
-def parent(R, rec=None):
-    """The run this one was made from (record.json `hand_edit`, else _handedit/hand_edit.json before the first record), or None."""
+def hand_edit(R, rec=None):
+    """record.json `hand_edit`, else _handedit/hand_edit.json before the first record; None for any other run."""
     he = (rec or {}).get('hand_edit') or _load(os.path.join(R, '_handedit', 'hand_edit.json'))
+    return he if isinstance(he, dict) else None
+
+def parent(R, rec=None):
+    """The run this one was made from (hand_edit()'s `parent`), or None."""
+    he = hand_edit(R, rec)
     par = he.get('parent') if isinstance(he, dict) else None
     P = _path(par.get('run')) if isinstance(par, dict) else None
     if not P: return None

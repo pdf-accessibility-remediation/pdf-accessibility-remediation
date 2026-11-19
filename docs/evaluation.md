@@ -67,6 +67,15 @@ Recording clears the section's draft, so the answers never come back as a draft.
 - **Refused** while a new version is being made, the PDF has changed, the PDF on disk is not the one the last review produced, or another change is being saved (a page waits at most 5 s). The message says why, before anything is filled in, and drafts are still saved.
 - **An hour-long screen-reader test never holds the run's job slot:** these writes are made in the app's own process, not as a job.
 
+### On a run made from an edited PDF
+
+An edit is often made to fix something the evaluation found. So on a run made from a PDF edited by hand (see [Editing the PDF by hand](hand-edits.md)), the page also shows the results recorded in the run the edit came from (#99):
+- **A line at the top names that run's Fails,** with their notes, so they are checked first: "The run this edit came from noted 2 issues: PAC 2026: Contrast (grey on grey); … Check these first." The Fails come from that run's latest results on the PDF that was edited.
+- **Under Previous Results,** each part has a group headed "From the Run This Edit Came From (rv1)". Each result says which version of that run it was made on, and it is read-only.
+- **Start from These Notes** works on them as on any previous result: it copies versions, pages and notes, never the results or "Checked By".
+
+**They never count for the edited run.** They were made on another file, so "Accessibility Evaluation" stays Not Completed until both parts are recorded on the edited PDF itself. If that run's folder is gone, or its results can't be read, the page says so under Previous Results. A run whose files were cleared after shipping still shows its results, which clearing keeps.
+
 ### From the terminal
 
 ```bash
@@ -120,7 +129,7 @@ Each item is **Pass**, **Fail** or **Not Applicable**, with notes. The list is d
 - a new version is being made (see [When a new version is being made](#when-a-new-version-is-being-made))
 - the record is out of step with the review sessions: an applied session is newer than the session record.json names. No apply leaves this behind; the check is refused rather than filed under the wrong version.
 
-**A PDF edited by hand is evaluated in its own run.** Edit an exported copy and bring it back with `handedit.py import`: it becomes a new run with its own `output_sha256` (see [Editing the PDF by hand](hand-edits.md)). The run it came from keeps its checks, which still count for its own file.
+**A PDF edited by hand is evaluated in its own run.** Edit an exported copy and bring it back with `handedit.py import`: it becomes a new run with its own `output_sha256` (see [Editing the PDF by hand](hand-edits.md)). The run it came from keeps its checks, which still count for its own file. The edited run's evaluation page shows them for reference only (see [On a run made from an edited PDF](#on-a-run-made-from-an-edited-pdf)).
 
 **Offline dashboards** (`review.html` opened as a file, `summary.html`) compare the checks with `document.output_sha256` only. They never hash the PDF.
 
@@ -225,6 +234,7 @@ release/shipped.json    [{n, shipped, by, pdf: {sha256, …}, where, note, withd
 - **`code`** is the git commit the writer ran on. An app started before a `git pull` writes with its old code until it is restarted, and this field shows which code that was.
 - **Reads fail closed:** a missing item, an unknown result or an unknown item (retired ones are known) makes that part "could not be read in full: record it again", never completed. Its Fails still count as issues noted. An `accepted` key (reserved earlier for a "Fail, Accepted with a Note") is no longer needed, and is read by the result alone.
 - **`record.json` keeps copies for the archive,** never read back for a decision: `manual_checks` (each part's latest results with their `state`, which is completed, could not be read, or earlier version, shown as "previous version"; and `issues`) and `release`.
+- **A run made from an edited PDF reads its parent's `release/checks.json`** (from `hand_edit.parent.run`, `lib/editlinks.py`) in `webapp/manualpage.py` `parent_results`, for the page only. They never join the run's own records (`release.load`), so no status, glance, mirror, `review.md` section or Ship reads them. A version is "the version that was edited" (`hand_edit.base_sha256`), "that run's last version" (`parent.output_sha256`, an edit of the original) or "a previous version of that run".
 - **The `release/` folder stays through every re-apply:** a promotion moves only the result files. A copied run folder carries it too, so a test copy of a checked (or, later, shipped) PDF says so, and holds what the original holds.
 
 **A shipment** adds to `release/shipped.json` `{n, shipped (local time, to the second), by, note, pdf: {sha256, file, session}, folder, issues, checks}`. It is written under the record lock; the PDF is hashed while copied. If the folder can't be completed, `shipped.json` is restored. The gate is `webapp/manualpage.py` `ship_gate`, checked again under the lock. **Clean Up Space** goes through `review/prune.py`, hashes each PDF again under the locks, and records each removal (version, sha256, size, who, when) in `release/removed.json`.

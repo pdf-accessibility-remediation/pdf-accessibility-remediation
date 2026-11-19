@@ -4,6 +4,8 @@ serves the page itself; recording and drafts go through review/manual.py (the on
 the app adds no rule of its own: lib/release.py's checklist and validate() are the one source.
 
     state(R, run)        the page's data (what it shows; the disk hash once, as data, for Record's shown_sha256)
+    parent_results(R, rec)  a run made from a hand-edited PDF (#99): the results recorded in the run it came from, read
+                         only, for Previous Results and Start from These Notes; never in `rel`, so they never count here
     page(R, run, msg)    the page's HTML: escaped throughout, its data in a JSON block (<, > and & escaped), /app/manual.js
     strip(R, rec)        the strip's data for /api/run/<run> (webapp/runs.py state(): manual)
     disk_sha(path)       the remediated PDF's sha256 for display only, cached by (path, size, mtime_ns, ino, ctime_ns);
@@ -13,7 +15,7 @@ Plain words for library staff: no file names, hashes, folder or option names on 
 Session 6"; a language is named, never shown as its code.
 """
 import os, json, html, threading, urllib.parse
-from lib import release as REL, glance as G, langtag, dates as D
+from lib import release as REL, glance as G, langtag, dates as D, editlinks
 from lib.titles import title_case as TC
 from review import sessions as S, manual as M            # imported at the app's start: manual.CODE is the running code's
 from . import home as HM
@@ -159,6 +161,49 @@ NONE_FOUND = {'ocr_pages': 'No pages in this book have text from character recog
               'figures': 'No figures were found in this book', 'tables': 'No tables were found in this book',
               'links': 'No links were found in this book', 'lists': 'No lists were found in this book'}
 def none_found(kind): return f'{NONE_FOUND[kind]}, so this check may be marked "Not Applicable."'
+PARENT_GONE = 'The run this edit came from is no longer in its folder, so its results can\'t be shown here.'
+PARENT_UNREADABLE = 'The results recorded in the run this edit came from can\'t be read.'
+PARENT_NONE = 'No results were recorded in the run this edit came from.'
+PARENT_CLEARED = 'That run\'s files were cleared after it shipped; its results are kept.'
+
+def parent_results(R, rec):
+    """A run made from a hand-edited PDF (#99): the results recorded in the run it came from, for this page only. None for
+    any other run. {label, why (plain words when they can't be shown), note (a cleared run), checks: {section: [check with
+    version, failed], newest first}, fails: [(section, item label, note)] from its latest results on the file that was
+    edited}. They are read only and never join this run's own (release.load): they were made on another file, so they
+    can't satisfy "Accessibility Evaluation" here."""
+    par = editlinks.parent(R, rec)
+    if not par: return None
+    P = par['run']; out = {'label': os.path.basename(os.path.normpath(P)), 'why': None, 'note': None,
+                           'checks': {s: [] for s in REL.SECTIONS}, 'fails': []}
+    if par['state'] == 'removed': return dict(out, why=PARENT_GONE)
+    try: prel = REL.load(P)
+    except (OSError, ValueError, TypeError, AttributeError): return dict(out, why=PARENT_UNREADABLE)
+    if not REL.any_recorded(prel): return dict(out, why=PARENT_NONE)
+    if REL.cleared(P): out['note'] = PARENT_CLEARED
+    he = editlinks.hand_edit(R, rec) or {}
+    base, last = he.get('base_sha256'), (he.get('parent') or {}).get('output_sha256')
+    def words(c):
+        s = REL.sha_of(c)
+        if s and s == base: return 'the version that was edited'
+        if s and s == last: return 'that run\'s last version'
+        return 'a previous version of that run'
+    for sec in REL.SECTIONS:
+        xs = [c for c in prel['checks'].get(sec) or [] if isinstance(c, dict)]
+        out['checks'][sec] = [dict(c, version=words(c), failed=REL.issues(c, sec)) for c in reversed(xs)]
+        c = REL.latest(prel, sec, base) or REL.latest(prel, sec, last)
+        for k in REL.issues(c, sec) if c else []:
+            out['fails'].append((sec, REL.label(sec, k), ((c.get('items') or {}).get(k) or {}).get('note') or ''))
+    return out
+
+def parent_line(par):
+    """The line naming the Fails the run this edit came from noted, so they are checked first; None without any."""
+    fs = (par or {}).get('fails') or []
+    if not fs: return None
+    bits = [f'{REL.SECTION_NAMES[s]}: {lab}' + (f' ({note})' if note else '') for s, lab, note in fs]
+    n = len(fs)
+    return f'The run this edit came from noted {n} issue{"" if n == 1 else "s"}: {"; ".join(bits)}. Check these first.'
+
 SECTION_ID = {'pac': 'pac', 'screen_reader': 'screen-reader'}
 RECORD_LABEL = {'pac': 'Record the PAC 2026 Results', 'screen_reader': 'Record the Screen-Reader Test Results'}
 
@@ -170,6 +215,7 @@ def state(R, run):
     try: g = app_glance(R, rec, H.glance_of(R, rec), rel)
     except Exception: g = app_glance(R, rec, rec.get('glance') or {'ship': []}, rel)
     fnd = REL.found(rec); drafts = M.load_drafts(R)
+    par = parent_results(R, rec)                             # read only; never joins rel (#99)
     secs = {}
     for sec in REL.SECTIONS:
         xs = rel['checks'].get(sec) or []
@@ -193,14 +239,16 @@ def state(R, run):
                      'draft': {'data': draft['data'], 'saved_at': draft['saved_at']} if draft else None,
                      'draft_earlier': {'data': draft_earlier['data'], 'from': 'a previous version'} if draft_earlier else None,
                      'tombstone': d.get('cleared'),
-                     'failed_last': REL.issues(current, sec) if current else []}
+                     'failed_last': REL.issues(current, sec) if current else [],
+                     'parent': (par or {}).get('checks', {}).get(sec) or []}
     st = g.get('status') or {}
     base = '/run/' + '/'.join(urllib.parse.quote(x, safe='') for x in run.split('/')) + '/'
     return {'run': run, 'base': base, 'book': book(rec), 'version': version(R, rec), 'sha': disk['sha'], 'disk': {'same': disk['same']},
             'status': st.get('text') or ('Ready' if g.get('ready') else 'Not Ready'), 'status_name': st.get('name'), 'newer': st.get('newer'),
             'ready': {'answer': 'Yes' if g.get('ready') else 'No', 'lines': [{'what': x['what'], 'name': G.ship_name(x), 'ok': x['ok'], 'text': x['text']} for x in g.get('ship') or []]},
             'needs': (g.get('needs_person') or {}).get('total'), 'refusal': refusal(R, rec, disk), 'sections': secs,
-            'downloads': downloads_data(R, rec, g, page=True)}
+            'downloads': downloads_data(R, rec, g, page=True),
+            'parent': {k: par[k] for k in ('label', 'why', 'note')} if par else None, 'parent_line': parent_line(par)}
 
 # ------------------------------------------------------------------ the strip (run page), from /api/run/<run>
 def strip(R, rec):
@@ -361,6 +409,7 @@ def page(R, run, recorded=None):
              '<p class="mc-help">Complete the evaluation after the last review is applied: a new version needs its own evaluation.</p>'
              '<p class="mc-help">Every item needs a result, and a "Fail" needs a note. A "Fail" does not hold the book back; it is kept in the report '
              'with its note for future reference and further review.</p></div>')
+    if st.get('parent_line'): B.append(f'<p class="mc-hint mc-parent-fails">{E(st["parent_line"])}</p>')   # checked first (#99)
     if st['refusal']: B.append(f'<p id="mc-refusal" class="mc-refusal">{E(st["refusal"])} Your answers are still saved as you type.</p>')
     dl = downloads_form(st['base'], st['downloads'], 'mc', 'h2')     # the PDF to take to PAC 2026 and the screen reader (stage 3)
     if dl: B.append(f'<section id="downloads" class="mc-sec" aria-labelledby="mc-dl-h">{dl}</section>')
@@ -374,13 +423,23 @@ def page(R, run, recorded=None):
             words = {'completed': 'Completed for this version' + (f', with {REL.noted(n)}' if n else ''),
                      'could not be read': 'Could not be read in full: record it again'}.get(c['state'], c['state'])
             B.append(f'<h3>Current Results: {E(c.get("by"))}, {E(D.day(c.get("recorded")))}</h3><p>{E(words)}.</p>' + _result_table(key, c))
-        if s['earlier']:                                 # its own h3, so the h4s below sit under it (review 12 G2)
-            ne = len(s['earlier'])
-            B.append(f'<h3>Previous Results ({ne})</h3><details class="mc-earlier"><summary>Show the {ne} Previous Result{"" if ne == 1 else "s"}</summary>')
+        par = st.get('parent')                           # a run made from a hand-edited PDF: the run it came from (#99)
+        show_par = bool(par) and bool(s['parent'] or par.get('why'))   # its results for this part, or why there are none
+        if s['earlier'] or show_par:                     # its own h3, so the h4s below sit under it (review 12 G2)
+            ne = len(s['earlier']) + len(s['parent'])
+            if ne: B.append(f'<h3>Previous Results ({ne})</h3><details class="mc-earlier"><summary>Show the {ne} Previous Result{"" if ne == 1 else "s"}</summary>')
+            else: B.append('<h3>Previous Results</h3>')  # only the words saying why the earlier run's can't be shown
             for i, e in enumerate(s['earlier']):
                 B.append(f'<h4>{E(e.get("by"))}, {E(D.day(e.get("recorded")))}: on {E(e["version"])}</h4>' + _result_table(key, e)
                          + (f'<p><button type="button" data-start="{E(key)}:{i}">Start from These Notes</button></p>' if e['version'] != 'this version' else ''))
-            B.append('</details>')
+            if show_par:                                 # read only: made on another file, they never count here
+                B.append(f'<h4>{E(TC("From the Run This Edit Came From"))} ({E(par["label"])})</h4>'
+                         + ''.join(f'<p>{E(w)}</p>' for w in (par.get('why'), par.get('note')) if w)
+                         + ('<p class="mc-help">These results were recorded on that run\'s PDF, so they don\'t count for this one.</p>' if s['parent'] else ''))
+                for i, e in enumerate(s['parent']):
+                    B.append(f'<h5>{E(e.get("by"))}, {E(D.day(e.get("recorded")))}: on {E(e["version"])}</h5>' + _result_table(key, e)
+                             + f'<p><button type="button" data-start="{E(key)}:p{i}">Start from These Notes</button></p>')
+            if ne: B.append('</details>')
         if s['draft_earlier']:
             B.append(f'<p class="mc-hint">Your unfinished results were started on {E(s["draft_earlier"]["from"])}. Their answers are not used for this version. '
                      f'<button type="button" data-start="{E(key)}:draft">Start from These Notes</button></p>')
@@ -390,10 +449,12 @@ def page(R, run, recorded=None):
     B.append('</div></main><div id="mc-live" class="pp-sr" role="status" aria-live="polite" aria-atomic="true"></div>'
              '<div id="mc-alert" class="pp-sr" role="alert"></div>')
     data = {k: st[k] for k in ('run', 'base', 'sha')}
+    def starts(xs):                                      # versions, pages and notes only: never a result or "Checked By"
+        return [{'fields': e.get('fields') or {}, 'items': {ik: {'note': (iv or {}).get('note') or ''} for ik, iv in (e.get('items') or {}).items()},
+                 'notes': e.get('notes') or ''} for e in xs]
     data['sections'] = {k: {'id': v['id'], 'p': p_of[k], 'draft_saved_at': (v['draft'] or {}).get('saved_at'), 'tombstone': v['tombstone'],
                             'items': [{'key': i['key'], 'found': i['found']} for i in v['items']], 'failed_last': v['failed_last'],
-                            'starts': [{'fields': e.get('fields') or {}, 'items': {ik: {'note': (iv or {}).get('note') or ''} for ik, iv in (e.get('items') or {}).items()},
-                                        'notes': e.get('notes') or ''} for e in v['earlier']],
+                            'starts': starts(v['earlier']), 'parent_starts': starts(v['parent']),
                             'start_draft': (v['draft_earlier'] or {}).get('data'), 'has_draft': bool(v['draft'])} for k, v in st['sections'].items()}
     B.insert(first_sec, f'<script type="application/json" id="mc-data">{_json_block(data)}</script>')
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'

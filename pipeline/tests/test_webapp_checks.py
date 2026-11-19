@@ -329,3 +329,100 @@ def test_the_hints_when_the_pipeline_found_nothing(tmp_path):
     assert 'so this check may be marked "Not Applicable."' in page and 'usually Not Applicable' not in page
     used = {x['found'] for s in REL.CHECKLIST.values() for x in s if x.get('found')}
     assert used <= set(MP.NONE_FOUND), used - set(MP.NONE_FOUND)                     # every item with such a hint has its words
+
+# ------------------------------------------------------------------ #99: a run made from a hand-edited PDF
+def edited_pair(tmp_path, base='output'):
+    """A parent run (rv1) with its result's hash recorded, and a child made from a hand edit of it: record.json hand_edit,
+    as handedit.py import writes it (base: the result, or 'original' for an edit of the original)."""
+    P = make_run(str(tmp_path / 'book' / 'rv1'), record_sha=True)
+    C = make_run(str(tmp_path / 'book' / 'handedit-1'), record_sha=True)
+    psha = S.load(os.path.join(P, 'record.json'))['document']['output_sha256']
+    rec = S.load(os.path.join(C, 'record.json'))
+    rec['hand_edit'] = {'schema': 'hand_edit/1', 'base': base, 'base_sha256': psha if base == 'output' else 'a' * 64,
+                        'parent': {'run': P, 'output': 'sample_remediated.pdf', 'output_sha256': psha}}
+    core.save(os.path.join(C, 'record.json'), rec)
+    return P, C
+
+SAY = dict(say=lambda *a: None, batch=False)
+
+def test_an_edited_run_shows_its_parents_results_read_only(tmp_path):
+    P, C = edited_pair(tmp_path)
+    M.record(P, 'pac', dict(PAC, by='Kim', items=dict(PAC['items'], contrast={'result': 'fail', 'note': 'grey on grey </script>'})), **SAY)
+    st = MP.state(C, 'book/handedit-1')
+    assert st['parent']['label'] == 'rv1' and st['parent']['why'] is None
+    assert st['parent_line'] == 'The run this edit came from noted 1 issue: PAC 2026: Contrast (grey on grey </script>). Check these first.'
+    assert st['sections']['pac']['current'] is None and st['sections']['pac']['earlier'] == []   # nothing of this run's own
+    page = MP.page(C, 'book/handedit-1'); text = re.sub(r'\s+', ' ', html.unescape(visible(page)))
+    assert '<h3>Previous Results (1)</h3>' in page and '<h4>From the Run This Edit Came From (rv1)</h4>' in page
+    assert '<h5>Kim, ' in page and ': on the version that was edited</h5>' in page and 'data-start="pac:p0"' in page
+    assert 'PAC 2026: Contrast (grey on grey </script>). Check these first.' in text
+    assert "so they don't count for this one" in text
+    assert '<script>Pdfrem.checks()</script>' in page and page.count('</script>') == 4      # the note stays text everywhere
+    assert 'None' not in text and 'unknown' not in text.lower() and 'release' not in text and '.json' not in text
+    assert 'Previous Results' not in page.split('id="screen-reader"')[1].split('</section>')[0]   # no results there, no group
+
+def test_start_from_parent_notes_copies_no_results(tmp_path):
+    P, C = edited_pair(tmp_path)
+    sr = {'by': 'Lee', 'fields': {'screen_reader': 'NVDA 2026.1', 'pages_checked': '1'},
+          'items': {x['key']: {'result': 'pass'} for x in REL.CHECKLIST['screen_reader']}, 'notes': 'read twice'}
+    sr['items']['links'] = {'result': 'fail', 'note': 'bare URL'}
+    M.record(P, 'screen_reader', sr, **SAY)
+    page = MP.page(C, 'book/handedit-1')
+    data = json.loads(re.search(r'id="mc-data">(.*?)</script>', page, flags=re.S).group(1))
+    ps = data['sections']['screen_reader']['parent_starts']
+    assert ps == [{'fields': {'screen_reader': 'NVDA 2026.1', 'pages_checked': '1'}, 'notes': 'read twice',
+                   'items': {k: {'note': 'bare URL' if k == 'links' else ''} for k in sr['items']}}]
+    assert 'Lee' not in json.dumps(data) and '"result"' not in json.dumps(data)                # never a result or "Checked By"
+    assert data['sections']['pac']['parent_starts'] == []
+    mj = open(os.path.join(HERE, 'webapp', 'manual.js'), encoding='utf-8').read()
+    assert "(sec.cfg.parent_starts || [])[Number(which.slice(1))]" in mj and mj.count('sec.fill(d, false)') == 1
+
+def test_parent_results_never_count_for_the_child(tmp_path):
+    P, C = edited_pair(tmp_path)
+    M.record(P, 'pac', PAC, **SAY)
+    M.record(P, 'screen_reader', {'by': 'Lee', 'fields': {'screen_reader': 'NVDA'},
+                                  'items': {x['key']: {'result': 'pass'} for x in REL.CHECKLIST['screen_reader']}}, **SAY)
+    rec = S.load(os.path.join(C, 'record.json')); cur = MP.app_sha(C, rec)
+    rel = REL.load(C, rec)
+    assert not REL.any_recorded(rel) and not REL.evaluation(rel, cur)['complete']
+    assert REL.status(rel, cur, True)['name'] == REL.PENDING                                    # with every other requirement met
+    st = MP.state(C, 'book/handedit-1')
+    ev = next(x for x in st['ready']['lines'] if x['name'] == 'Accessibility Evaluation')
+    assert ev['ok'] is False and ev['text'] == 'Not Completed' and st['ready']['answer'] == 'No'
+    assert len(st['sections']['pac']['parent']) == 1 and st['parent_line'] is None              # no Fails, nothing to name
+    assert not MP.ship_gate(C, rec)['ok'] and MP.strip(C, rec)['ship']['ok'] is False
+    assert not os.path.exists(os.path.join(C, 'release'))                                       # nothing written here
+
+def test_a_missing_unreadable_or_cleared_parent_is_said_in_words(tmp_path):
+    P, C = edited_pair(tmp_path)
+    assert MP.state(C, 'c')['parent']['why'] == MP.PARENT_NONE
+    os.makedirs(os.path.join(P, 'release'), exist_ok=True)
+    open(os.path.join(P, 'release', 'checks.json'), 'w').write('{"schema": "manual-checks/9"}')
+    assert MP.state(C, 'c')['parent']['why'] == MP.PARENT_UNREADABLE
+    open(os.path.join(P, 'release', 'checks.json'), 'w').write('[1, 2]')
+    assert MP.state(C, 'c')['parent']['why'] == MP.PARENT_UNREADABLE
+    os.remove(os.path.join(P, 'release', 'checks.json'))
+    M.record(P, 'pac', PAC, **SAY)
+    core.save(os.path.join(P, 'release', 'cleared.json'), {'state': 'done'})
+    st = MP.state(C, 'c')
+    assert st['parent']['note'] == MP.PARENT_CLEARED and len(st['sections']['pac']['parent']) == 1
+    import shutil; shutil.rmtree(P)
+    st = MP.state(C, 'c'); page = MP.page(C, 'c'); text = html.unescape(visible(page))
+    assert st['parent']['why'] == MP.PARENT_GONE and MP.PARENT_GONE in text
+    assert '<h3>Previous Results</h3>' in page and '<details' not in page and 'data-start' not in page
+    assert 'None' not in text and '?' not in text.replace('Ready to Ship?', '')
+
+def test_an_edit_of_the_original_names_the_parents_versions(tmp_path):
+    P, C = edited_pair(tmp_path, base='original')
+    M.record(P, 'pac', dict(PAC, items=dict(PAC['items'], contrast={'result': 'fail', 'note': 'low'})), **SAY)
+    st = MP.state(C, 'c')
+    assert st['sections']['pac']['parent'][0]['version'] == "that run's last version"
+    assert st['parent_line'] == 'The run this edit came from noted 1 issue: PAC 2026: Contrast (low). Check these first.'   # its last version's Fails
+    M.record(P, 'screen_reader', {'by': 'Lee', 'fields': {'screen_reader': 'NVDA'}, 'items': dict(
+        {x['key']: {'result': 'pass'} for x in REL.CHECKLIST['screen_reader']}, links={'result': 'fail', 'note': 'bare URL'})}, **SAY)
+    assert 'noted 2 issues: PAC 2026: Contrast (low); Screen-Reader Test: Links Say Where They Go (bare URL).' in MP.state(C, 'c')['parent_line']
+
+def test_a_run_with_no_hand_edit_has_no_parent_group(tmp_path):
+    R = make_run(str(tmp_path / 'r'), record_sha=True)
+    st = MP.state(R, 'r'); page = MP.page(R, 'r')
+    assert st['parent'] is None and st['parent_line'] is None and 'From the Run' not in page and 'Previous Results' not in page
