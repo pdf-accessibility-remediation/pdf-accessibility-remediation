@@ -240,12 +240,14 @@ def _book_status(s, label, b, R, jl, batch_job, rd=None, nm=None):
     return row
 
 _DASH = {}
-def dashboard(s, label, out, al=None):
-    """The batch dashboard drawn in the batch page (P8): report_html's own rows (summary_rows, one source with summary.html),
-    cached per book by its records' mtimes. A book not applied yet (waiting for review or a language, running, stopped)
-    has no result columns: blank, never 0 or OK (Patrick, 2026-11-06). Each row's `edited`: its hand-edited copies, as the
-    run page lists them (runs.hand_edits; al: the jobs as state() read them, #93), read fresh each time and never cached,
-    since a copy is added in hand_edits.json and changes state in its own folder, neither of them in key_of (#145)."""
+def dashboard(s, label, out, al):
+    """The batch dashboard drawn in the batch page (P8): the result columns are report_html's own (summary_rows' fields, one
+    source with summary.html), cached per book by its records' mtimes. A book not applied yet (waiting for review or a
+    language, running, stopped) has no result columns: blank, never 0 or OK (Patrick, 2026-11-06). Each row's `edited`:
+    its hand-edited copies, as the run page lists them (runs.hand_edits), so a copy waiting for its review links too,
+    unlike summary.html's. It is read fresh each time and never cached, since a copy is added in hand_edits.json and
+    changes state in its own folder, neither of them in key_of (#145). al: the jobs as state() read them, never read
+    again here (#93)."""
     import report_html
     from lib import editlinks as EL
     from . import runs as RN
@@ -268,7 +270,6 @@ def dashboard(s, label, out, al=None):
                 _DASH[k] = r
         he = None
         if os.path.isfile(os.path.join(R, 'hand_edits.json')):     # most PDFs have no copy: one stat
-            if al is None: al = jobs.all_jobs(s['jobs'])
             he = RN.hand_edits(s, R, {}, al=al)
         rows.append({'name': b['name'], 'book': b['book'], 'file': b['file'], 'status': b['status'], 'tone': b.get('tone'), 'href': b['href'], 'result': r,
                      'long': b.get('long'),

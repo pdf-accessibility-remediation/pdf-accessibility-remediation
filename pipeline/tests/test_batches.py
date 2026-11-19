@@ -417,8 +417,14 @@ def test_the_batch_state_carries_the_copies(two):
     assert rows == {'Book_One': [], 'two': [{'label': 'he', 'state': 'waiting for its review', 'words': 'waiting for its review', 'url': '/run/two/he/'}]}
 
 def test_batch_js_escapes_every_edited_copy_value():
+    """Source check (CI has no node): in the whole `edited` helper, every c.<field> is printed through esc(), except the
+    c.url test; a value added on another line, or a second helper line, is caught the same way."""
+    import re
     js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
-    line = next(x for x in js.splitlines() if x.lstrip().startswith('r.edited.map('))
-    assert "'<a href=\"' + esc(c.url) + '\">' + esc(c.label) + '</a>' : esc(c.label)) + ' (' + esc(c.words) + ')'" in line
-    assert line.count('c.') == line.count('esc(c.') + line.count('c => (c.url ?')     # c.url as a test only; every printed value escaped
+    helper = js[js.index('const edited = r =>'):]
+    helper = helper[:helper.index(";\n") + 1]
+    fields = [m for m in re.finditer(r'\bc\.(\w+)', helper)]
+    assert {m.group(1) for m in fields} == {'url', 'label', 'words'}
+    for m in fields:
+        assert helper[:m.start()].endswith('esc(') or helper[m.end():].startswith(' ?'), f'c.{m.group(1)} is printed without esc()'
     assert "+ edited(r) + '</td>'" in js
