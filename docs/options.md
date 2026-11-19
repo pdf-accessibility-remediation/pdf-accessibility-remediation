@@ -41,6 +41,7 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | `LANG_TAGS=off` | No language step: words and passages in other languages are not sent to the AI (see [Language tags](#language-tags)) |
 | `LANGUAGE_MODEL=…` | The model the language step uses (default: Sonnet 5.5, whatever the work order uses) |
 | `LANGUAGE_MAX_USD=30` | The limit on what the language step could cost, in dollars (default 25) |
+| `LANG_HELD_SHOWN=12` | Set by the app's Spend and by `batch_api.sh`, not by hand: how many word forms the estimate shown held back. With `AUTO=1`, more held back after the work order holds the review instead of sending (see [Word forms not sent](languages.md#word-forms-not-sent)). Unset in a terminal run, which compares with its own first estimate |
 | `LANGUAGE_MAX_FORMS=2000` | An override: send at most this many word forms to the language step. Off by default: the dollar limits alone decide (see [Word forms not sent](languages.md#word-forms-not-sent)) |
 | `LANG_GROW=on` | The language step tags a title's whole extent (romanized words around a candidate, inside quotes or italics, or before a Chinese-character gloss), so the voice switches once. Off by default, until the Windows screen-reader check of a title tagged in pieces (see [Language tags](#language-tags)) |
 | `LANG_GROUP=on` | Adjacent single Chinese characters become one word form for the language step and the review page (fewer rows). Off by default |
