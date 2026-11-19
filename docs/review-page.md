@@ -236,7 +236,19 @@ It opens with one paragraph, the same on every PDF:
   sits in the page's marked content alone. A name's fit is checked on the word form's text; apply.py checks the whole
   tag's text, so the two could differ for a tag that holds more than one run. The OCR language choice, the "Finish
   Review" dialog and the run page show names only.
-- Rows load 100 at a time ("Show More").
+- **Pages.** A language with more than 100 word forms is shown one page of 100 at a time (review 31, Patrick's design).
+  Above and below the rows, numbered page buttons come in fixed blocks of ten (1–10, 11–20, …; the last block may be
+  shorter). "<" and ">" open the first page of the previous or next block and show only where there is one; a language of
+  ten pages or fewer shows its numbers alone. The page shown is blue, bold and bordered, and `aria-current="page"`. "..."
+  opens a "Go to Page" field with "Go" (Enter works too); a number outside 1 to the last page gets a message under the field
+  ("Enter a page number from 1 to 48."), never a jump. "Page 45 of 48" stays as a heading above the rows. Every control is
+  a button of at least 44 by 44 px, named "Page 12", "Previous Pages", "Next Pages" and "Go to Page" (the arrows and "..."
+  have the same words as tooltips). After a page change, focus goes to the "Page N of M" heading, and a polite live region
+  says which word forms are shown ("Word forms 4,401 to 4,500 of 4,722 in Pali are shown."). A page is a fixed slice of the
+  server's order: decided rows stay where they were. Pages are not kept: every session, a "Review Again" included, opens
+  each language on page 1, with every decision kept.
+- The fold's bar counts the whole language ("4,542 of 4,722 not reviewed"; `language_summary` sends each fold's row ids),
+  not only the page shown.
 - "Language Tags" on "Ready to Ship?" reads "Approved" once every form is decided.
 
 ### Word forms not sent
@@ -255,8 +267,12 @@ count. See [Word forms not sent](languages.md#word-forms-not-sent).
 Each language fold has up to three buttons (#124, #132). None touches a low-confidence row, a row whose answer varies from
 place to place, or a publisher's tag, and a single decision is the same as before.
 
-- **"Approve All Shown (N)"** approves the rows shown so far that the AI tagged with high confidence, never words in
-  Chinese characters alone.
+- **"Approve All on This Page (N)"** approves the rows on the page shown that the AI tagged with high confidence, never
+  words in Chinese characters alone, and nothing on other pages (it was "Approve All Shown" before pages; a decision keeps
+  the stored value `all_shown`, so older drafts still read "(in a group approval)"). Where a language has more than one
+  page, a line under the bar says that it covers this page only, and that the other two buttons cover every page. A button
+  for a whole language waits for #162 (Language step: decide dictionaries' languages by their entries, and leave catalogs'
+  scientific names untagged).
 - **"Approve Characters with Matching Readings (N)"** approves every undecided row of the fold, shown or not, that is
   written in Chinese characters alone and whose reading printed beside the characters names the row's language: kana
   or a Hepburn word (Japanese), real pinyin syllables (Chinese), hangul or a Korean romanization (Korean), or kana in

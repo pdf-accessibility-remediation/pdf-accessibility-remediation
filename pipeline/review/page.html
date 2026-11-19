@@ -129,6 +129,20 @@ section > h2 { font-size: 16px; margin: 18px 0 8px; padding-bottom: 4px; border-
 .lang-acts select { width: 15em; max-width: 100%; }
 .lang-clear { margin-left: auto; white-space: nowrap; }        /* bottom right of a decided row */
 .lang-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+/* review 31, Patrick's pages: every control a real button of at least 44x44 px; the page shown in blue, bold, with a border */
+.lang-pager { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.lang-pager button { min-width: 44px; min-height: 44px; }
+.lang-pager .lang-arrow { font-size: 1.2em; line-height: 1; }
+.lang-pager button[aria-current="page"] { background: var(--accent); color: #fff; border: 2px solid var(--ink); font-weight: 700; }
+@media (prefers-color-scheme: dark) { .lang-pager button[aria-current="page"] { color: #111; } }
+.lang-go { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-basis: 100%; }
+.lang-go[hidden] { display: none; }
+.lang-go input { min-height: 44px; box-sizing: border-box; font: inherit; }
+.lang-go .field-err { flex-basis: 100%; }
+.lang-page-h { font-size: 1em; margin: 8px 0; }
+.lang-note { margin: 0 0 6px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+button:disabled { opacity: .55; cursor: not-allowed; }   /* review 31: a disabled button looks it */
 @media (max-width: 600px) {                                   /* stacked: form, text, buttons, then the list and "Clear Choice" */
   .lang-list { display: block; } .lang-row { display: flex; flex-direction: column; align-items: stretch; }
   .lang-left { contain: none; } .lang-btns { flex-wrap: wrap; align-self: flex-start; } }
@@ -1707,9 +1721,10 @@ renderOcr();
 
 // ---------------------------------------------------------------- #118: the Languages section
 // One fold per language (and one for words the AI left untagged, one for the PDF's own tags). A fold's rows come from
-// /languages.json when it opens, 100 at a time. A choice is stored like any card's (state.decisions[id]), so auto-save,
+// /languages.json one page at a time (LANG_PAGE, 100 rows; review 31, Patrick's pages): numbered page buttons in blocks of
+// ten, "<" and ">" for the blocks, "..." for "Go to Page". A page is a fixed slice of the server's order, never re-sorted. A choice is stored like any card's (state.decisions[id]), so auto-save,
 // "Finish Review" and the count of what is left treat it the same way. Group approval (#124, on again after Patrick
-// turned it off on 2026-11-13; LANG_BULK turns both buttons off): "Approve All Shown" approves the shown rows that
+// turned it off on 2026-11-13; LANG_BULK turns both buttons off): "Approve All on This Page" approves the page's rows that
 // qualify (one language, high confidence, never Chinese characters alone, an existing tag or a mixed answer);
 // "Approve Characters with Matching Readings" approves every row of the fold written only in Chinese characters whose
 // reading printed beside them names the row's language (the server's list, review/core.py reading_match), loaded or not;
@@ -1720,7 +1735,12 @@ renderOcr();
 const LANG_BULK = true;                                   // group approval: on (#124)
 const LANGS = DATA.languages || { groups: [], total: 0, names: [] };
 const langBox = document.getElementById('languages');
-const langRows = {};                                     // group -> the rows loaded so far
+const langRows = {};                                     // group -> the rows of the page shown (only that page)
+const langPage = {};                                     // group -> the page shown, from 1
+const langSeq = {};                                      // group -> the latest page asked for: an older answer is ignored
+const LANG_PAGE = LANGS.page || 100;                     // rows per page (review/core.py LANG_PAGE)
+function langPages(g) { return Math.max(1, Math.ceil(g.count / LANG_PAGE)); }
+function langIdx(g) { return LANGS.groups.indexOf(g); }  // the fold's number, for its controls' ids (names have spaces)
 // The section's introduction, one paragraph, the same on every PDF (Patrick, 2026-11-13): plain text, no markup
 const LANG_INTRO = 'Words and passages in another language found in the PDF. A screen reader switches to a language\'s voice for the words tagged with it. Decide each word form: the choice applies to every place it appears. Words in Chinese characters alone are decided one by one, because the same characters are used in Chinese and Japanese, unless the reading printed beside them (kana, a Hepburn or pinyin reading, hangul) names the same language: those can be approved together. Language tags already in the PDF are also decided one by one, so a person confirms each of them. For Hawaiian, most screen readers have no Hawaiian voice, so those words are read with the default voice; the tag is still required.';
 // The status under the word form, as "label: value" (review 14, 4; Patrick, 2026-11-13): HTML, the code in grey
@@ -1799,10 +1819,10 @@ function langFillSelect(sel) {                         // #159: the "Change Lang
   sel.innerHTML = '<option value="">Change Language</option>' + LANGS.names.map(x => '<option value="' + esc(x.code) + '"' + (d.value === x.code ? ' selected' : '') + '>' + esc(x.name) + ' · ' + esc(x.code) + '</option>').join('');
   delete sel.dataset.lazy;
 }
-function langRefocus(group, act) {                       // focus stays where the person was (WCAG 2.4.3): the same button, else the fold
-  const f = group && langFoldEl(group); if (!f) return;
+function langRefocus(group, act) {                       // focus stays where the person was (WCAG 2.4.3): the same button, else the
+  const f = group && langFoldEl(group); if (!f) return;  //   page's heading (review 31), else the fold
   const b = f.querySelector('button[data-lang="' + act + '"]');
-  (b && !b.disabled ? b : f.querySelector('summary')).focus();
+  (b && !b.disabled ? b : f.querySelector('.lang-page-h') || f.querySelector('summary')).focus();
 }
 function langFoldEl(group) { return [...langBox.querySelectorAll('details[data-group]')].find(x => x.dataset.group === group); }
 function langRedrawFold(group) {                         // #159: one fold only, kept open (not every fold of the section)
@@ -1821,22 +1841,48 @@ function langRedrawRow(id) {                             // #159: one row and it
   if (g && bar) { const t2 = document.createElement('div'); t2.innerHTML = langBar(g); bar.replaceWith(t2.firstElementChild); }
 }
 function langBar(g) {                                   // #159: the fold's bar alone (a row's choice redraws only it and the row)
-  const rows = langRows[g.group] || [], left = rows.filter(r => !(state.decisions[r.id] || {}).status).length;
-  const bulk = rows.filter(r => r.bulk && !(state.decisions[r.id] || {}).status).length;
-  const rdg = langReadingLeft(g).length;                   // #124: every qualifying row of the fold, loaded or not
+  const rows = langRows[g.group] || [];
+  const bulk = rows.filter(r => r.bulk && !(state.decisions[r.id] || {}).status).length;   // this page's rows only
+  const rdg = langReadingLeft(g).length;                   // #124: every qualifying row of the fold, on every page
   const rul = langRuleLeft(g).length;                      // #132: the rows the reading rule decided
-  return '<div class="lang-bar">' + (LANG_BULK && g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All Shown (' + fmtN(bulk) + ')</button>' : '') +
+  const left = (g.ids || []).filter(id => !(state.decisions[id] || {}).status).length;   // review 31: the whole language
+  return '<div class="lang-bar">' + (LANG_BULK && g.bulk ? '<button type="button" data-lang="bulk"' + (bulk ? '' : ' disabled') + '>Approve All on This Page (' + fmtN(bulk) + ')</button>' : '') +
     (LANG_BULK && (g.reading_ids || []).length ? '<button type="button" data-lang="readings"' + (rdg ? '' : ' disabled') + '>Approve Characters with Matching Readings (' + fmtN(rdg) + ')</button>' : '') +
     (LANG_BULK && (g.rule_ids || []).length ? '<button type="button" data-lang="printed_reading"' + (rul ? '' : ' disabled') + '>Approve Forms Decided by Their Printed Reading (' + fmtN(rul) + ')</button>' : '') +
-    '<span class="lang-meta">' + (rows.length ? fmtN(rows.length) + ' of ' + fmtN(g.count) + ' shown' + (left ? ' · ' + fmtN(left) + ' not reviewed' : '') : '') + '</span></div>';
+    '<span class="lang-meta">' + (left ? fmtN(left) + ' of ' + fmtN(g.count) + ' not reviewed' : 'All ' + fmtN(g.count) + ' reviewed') + '</span></div>';
+}
+// review 31: what each group button covers, said where a language has more than one page
+function langNote(g) {
+  if (!LANG_BULK || !g.bulk || langPages(g) < 2) return '';
+  const all = [(g.reading_ids || []).length ? '"Approve Characters with Matching Readings"' : '', (g.rule_ids || []).length ? '"Approve Forms Decided by Their Printed Reading"' : ''].filter(Boolean);
+  return '<p class="lang-meta lang-note">"Approve All on This Page" approves only the word forms on this page.' +
+    (all.length ? ' ' + all.join(' and ') + (all.length > 1 ? ' approve' : ' approves') + ' every matching word form of this language, on every page.' : '') + '</p>';
+}
+// review 31, Patrick's pages: numbered buttons in fixed blocks of ten, "<" and ">" to the previous or next block (its first
+// page), "..." for a "Go to Page" field; above and below the rows (pos 't', 'b'), so every id carries the fold and the place
+function langPager(g, pos) {
+  const pages = langPages(g), p = langPage[g.group] || 1, i = langIdx(g), k = i + pos;
+  const first = Math.floor((p - 1) / 10) * 10 + 1, last = Math.min(first + 9, pages);
+  let h = '<div class="lang-pager" role="group" aria-label="Pages of ' + esc(g.group) + (pos === 'b' ? ', Below the Word Forms' : '') + '">';
+  if (first > 1) h += '<button type="button" class="lang-arrow" data-lang="page" data-page="' + (first - 10) + '" aria-label="Previous Pages" title="Previous Pages">&lt;</button>';
+  for (let n = first; n <= last; n++)
+    h += '<button type="button" data-lang="page" data-page="' + n + '" aria-label="Page ' + n + '"' + (n === p ? ' aria-current="page"' : '') + '>' + n + '</button>';
+  if (last < pages) h += '<button type="button" class="lang-arrow" data-lang="page" data-page="' + (last + 1) + '" aria-label="Next Pages" title="Next Pages">&gt;</button>';
+  h += '<button type="button" data-lang="goto" aria-expanded="false" aria-controls="lang-go-' + k + '" aria-label="Go to Page" title="Go to Page">...</button>' +
+    '<div class="lang-go" id="lang-go-' + k + '" hidden><label for="lang-gi-' + k + '">Go to Page</label>' +
+    '<input type="text" inputmode="numeric" id="lang-gi-' + k + '" data-lang="gofield" size="5" autocomplete="off" aria-describedby="lang-ge-' + k + '">' +
+    '<button type="button" data-lang="go">Go</button>' +
+    '<div class="field-err" id="lang-ge-' + k + '" hidden></div></div></div>';
+  return h;
 }
 function langFold(g) {
-  const rows = langRows[g.group] || [];
+  const rows = langRows[g.group] || [], pages = langPages(g), p = langPage[g.group] || 1;
   return '<details data-group="' + esc(g.group) + '"><summary>' + esc(g.group) + ': ' + fmtN(g.count) + ' word form' + (g.count === 1 ? '' : 's') +
     ' (' + fmtN(g.places) + ' place' + (g.places === 1 ? '' : 's') + ')</summary>' +
-    langBar(g) +
+    langBar(g) + langNote(g) +
+    (pages > 1 ? langPager(g, 't') + '<h3 class="lang-page-h" id="lang-ph-' + langIdx(g) + '" tabindex="-1">Page ' + fmtN(p) + ' of ' + fmtN(pages) + '</h3>' : '') +
     '<div class="lang-list">' + rows.map(langRowHtml).join('') + '</div>' +
-    (rows.length < g.count ? '<button type="button" data-lang="more">Show More</button>' : '') + '</details>';
+    (pages > 1 && rows.length ? langPager(g, 'b') : '') + '</details>';
 }
 // #159: word forms the language step held back (they did not fit the limits): read-only, with the list and the acceptance
 // review 31 L3: the choice is kept in the draft (state.held_back_draft, with the count and hash of the forms it was given
@@ -1863,15 +1909,35 @@ function renderLanguages() {
     LANGS.groups.map(langFold).join('');
   langBox.querySelectorAll('details').forEach(d => { if (open.has(d.dataset.group)) d.open = true; });
 }
-async function langLoad(group) {
-  const have = langRows[group] || [];
-  try {
-    const r = await fetch('/languages.json?group=' + encodeURIComponent(group) + '&start=' + have.length), b = await r.json();
-    langRows[group] = have.concat(b.rows || []);
-  } catch (e) { saveAlert('The rows could not be loaded. Reload the page.'); return; }
+async function langLoad(group, page) {                  // one page of the fold's rows, in place of the page shown
+  page = page || 1;
+  const seq = (langSeq[group] || 0) + 1; langSeq[group] = seq;
+  let b;
+  try { const r = await fetch('/languages.json?group=' + encodeURIComponent(group) + '&start=' + (page - 1) * LANG_PAGE); b = await r.json(); }
+  catch (e) { if (langSeq[group] === seq) saveAlert('The rows could not be loaded. Reload the page.'); return false; }
+  if (langSeq[group] !== seq) return false;              // a later page was asked for while this one loaded
+  langRows[group] = b.rows || []; langPage[group] = page;
   langRedrawFold(group);                                 // #159: this fold only
   const d = langFoldEl(group); if (d) d.open = true;
-  langRefocus(group, 'more');
+  return true;
+}
+async function langGo(group, page) {                     // a page change: focus on its heading, and the rows said (WCAG 2.4.3, 4.1.3)
+  if (!(await langLoad(group, page))) return;
+  const g = LANGS.groups.find(x => x.group === group); if (!g) return;
+  const h = document.getElementById('lang-ph-' + langIdx(g)); if (h) h.focus();
+  const live = document.getElementById('langLive');
+  if (live) live.textContent = 'Word forms ' + fmtN((page - 1) * LANG_PAGE + 1) + ' to ' + fmtN(Math.min(page * LANG_PAGE, g.count)) + ' of ' + fmtN(g.count) + ' in ' + g.group + ' are shown.';
+}
+function langGoField(field) {                            // "Go" or Enter in "Go to Page": a page from 1 to the last, else a message under the field
+  const fold = field.closest('details'), g = LANGS.groups.find(x => x.group === fold.dataset.group); if (!g) return;
+  const pages = langPages(g), v = field.value.trim(), n = /^[0-9]+$/.test(v) ? Number(v) : NaN;
+  const err = document.getElementById(field.getAttribute('aria-describedby'));
+  if (!(n >= 1 && n <= pages)) {
+    field.setAttribute('aria-invalid', 'true');
+    if (err) { err.textContent = 'Enter a page number from 1 to ' + fmtN(pages) + '.'; err.hidden = false; }
+    field.focus(); return;
+  }
+  langGo(g.group, n);
 }
 function langSet(id, st, value, bulk) {                  // bulk: the group-approval button ('all_shown', 'readings', 'printed_reading'), else none
   const d = dec(id); d.status = st; if (value !== undefined) d.value = value; else delete d.value;
@@ -1892,9 +1958,17 @@ langBox.addEventListener('toggle', e => {
   if (!langRows[d.dataset.group]) langLoad(d.dataset.group);
 }, true);
 langBox.addEventListener('click', e => {
-  const b = e.target.closest('button[data-lang]'); if (!b || finished) return;
+  const b = e.target.closest('button[data-lang]'); if (!b) return;
   const fold = b.closest('details'), group = fold && fold.dataset.group, act = b.dataset.lang;
-  if (act === 'more') { langLoad(group); return; }
+  if (act === 'page') { langGo(group, Number(b.dataset.page)); return; }                    // pages are for reading too, after Finish
+  if (act === 'goto') {                                            // "...": opens or closes its "Go to Page" field
+    const box = document.getElementById(b.getAttribute('aria-controls')), open = box.hidden;
+    box.hidden = !open; b.setAttribute('aria-expanded', String(open));
+    if (open) box.querySelector('input').focus();
+    return;
+  }
+  if (act === 'go') { langGoField(b.parentElement.querySelector('input')); return; }
+  if (finished) return;
   if (act === 'bulk') { if (LANG_BULK) for (const r of langRows[group] || []) if (r.bulk && !(state.decisions[r.id] || {}).status) langSet(r.id, 'approved', undefined, 'all_shown'); }
   else if (act === 'readings') {                                   // #124: the fold's rows with a matching reading, loaded or not
     const g = LANGS.groups.find(x => x.group === group);
@@ -1915,6 +1989,15 @@ langBox.addEventListener('click', e => {
   }
   persist(); if (group) langRedrawFold(group); else renderLanguages(); progressLang();   // #159: a group button redraws its fold only
   langRefocus(group, act);
+});
+langBox.addEventListener('keydown', e => {               // Enter in "Go to Page" works like "Go"
+  if (e.key !== 'Enter' || !e.target.matches('input[data-lang="gofield"]')) return;
+  e.preventDefault(); langGoField(e.target);
+});
+langBox.addEventListener('input', e => {                 // the message goes once the field is changed (as #48's fields)
+  if (!e.target.matches('input[data-lang="gofield"]')) return;
+  e.target.removeAttribute('aria-invalid');
+  const err = document.getElementById(e.target.getAttribute('aria-describedby')); if (err) { err.hidden = true; err.textContent = ''; }
 });
 langBox.addEventListener('change', e => {
   const sel = e.target.closest('select[data-lang=change]'); if (!sel || finished || !sel.value) return;
@@ -1988,7 +2071,8 @@ else if (DATA.mode !== 'ocr') saveNow();               // nothing new: one quiet
     </section>
     <section id="ocr-text" aria-labelledby="ocrTitle" hidden></section>
     <div id="addPanel" hidden></div><div id="roPark" hidden><div id="readingOrder"></div></div><div id="cards"></div>
-    <section id="languages" aria-labelledby="langTitle" hidden></section></div>
+    <section id="languages" aria-labelledby="langTitle" hidden></section>
+    <p id="langLive" class="sr-only" aria-live="polite"></p></div>
 </main>
 <div id="zoom"><img alt=""></div>
 <dialog id="gapDialog" aria-labelledby="gapTitle" aria-describedby="gapCtx"></dialog>

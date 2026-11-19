@@ -182,7 +182,7 @@ def test_the_languages_introduction_is_patricks_paragraph():
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
     assert f"const LANG_INTRO = '{LANG_INTRO}';" in page and "'<p>' + LANG_INTRO + '</p>'" in page
     assert page.count('LANG_INTRO') == 2                                              # defined once, drawn once, on every PDF
-    assert 'data-lang="more">Show More</button>' in page                              # the row-loading button keeps its name
+    assert 'Show More' not in page and 'data-lang="more"' not in page                   # review 31: pages replace "Show More"
 
 def test_group_approval_is_on_with_its_two_buttons():
     """#124: group approval is on again. "Approve All Shown" keeps its rules (the shown rows with `bulk`); "Approve
@@ -193,9 +193,9 @@ def test_group_approval_is_on_with_its_two_buttons():
     assert len(re.findall(r'const LANG_BULK = (true|false);', page)) == 1 and 'const LANG_BULK = true;' in page
     i = page.index('data-lang="bulk"'); assert page.rfind('LANG_BULK && g.bulk ?', 0, i) > i - 120     # each button only under the switch
     i = page.index('data-lang="readings"'); assert page.rfind("LANG_BULK && (g.reading_ids || []).length ?", 0, i) > i - 120
-    assert '>Approve All Shown (' in page and '>Approve Characters with Matching Readings (' in page
+    assert '>Approve All on This Page (' in page and '>Approve Characters with Matching Readings (' in page   # review 31: pages
     assert "langSet(r.id, 'approved', undefined, 'all_shown')" in page and "langSet(id, 'approved', undefined, 'readings')" in page
-    assert "if (r.bulk && !(state.decisions[r.id] || {}).status)" in page                   # Approve All Shown: its own rows only
+    assert "if (r.bulk && !(state.decisions[r.id] || {}).status)" in page                   # Approve All on This Page: its own rows only
     assert "else if (act === 'clear' || act === 'keep' || act === 'drop') {" in page        # #159: one handler for a row's own choices
     assert "' (in a group approval: matching reading)'" in page and "' (in a group approval)'" in page   # a restored draft says how
 
@@ -362,3 +362,67 @@ def test_a_decided_row_has_clear_choice():
     page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
     assert '(d.status ? \'<button type="button" class="lang-clear" data-lang="clear"' in page and '>Clear Choice</button>' in page
     assert "if (act === 'clear') delete state.decisions[id];" in page and "const id = b.closest('.lang-row').dataset.id;" in page
+
+
+def _pager_js(cases):
+    """review 31 (Patrick's pages): the page's own langPager, langNote and langBar run through a JavaScript engine."""
+    import subprocess
+    from test_dates import js_runner
+    run = js_runner()
+    if run is None: pytest.skip('no JavaScript engine (node or jsc) runs here')
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    def chunk(start, end): i = page.index(start); return page[i:page.index(end, i)]
+    code = (chunk('const esc = ', '\n') + '\n' + chunk('function fmtN(', '\n') + '\n'
+            + 'const LANG_BULK = true; const state = {decisions: {}}; const LANGS = {groups: [], page: 100};\n'
+            + 'function langReadingLeft(g) { return g.reading_ids || []; } function langRuleLeft(g) { return g.rule_ids || []; }\n'
+            + chunk('const langRows = {};', '// The section') + chunk('function langBar(g) {', 'function langFold(g) {')
+            + '\nconst cases = ' + json.dumps(cases) + ';\nLANGS.groups = cases.map(c => c.g);\n'
+            + 'const out = cases.map(c => { langPage[c.g.group] = c.p; langRows[c.g.group] = c.rows || []; Object.assign(state.decisions, c.dec || {}); '
+            + 'return {pager: langPager(c.g, "t"), note: langNote(c.g), bar: langBar(c.g)}; });\n'
+            + '(typeof print === "function" ? print : console.log)(JSON.stringify(out));')
+    out = subprocess.run(run + [code], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+def test_pages_come_in_blocks_of_ten_with_arrows_only_where_a_block_is():
+    """review 31, Patrick's pages: numbered buttons in fixed blocks of ten; "<" and ">" only where a block is in that
+    direction, opening its first page; ten pages or fewer show their numbers alone; the page shown is aria-current."""
+    import re
+    def g(name, n, **kw): return {'group': name, 'count': n, 'bulk': 1, 'ids': [f'{name}{i}' for i in range(n)], **kw}
+    out = _pager_js([{'g': g('A', 4722), 'p': 45}, {'g': g('B', 4722), 'p': 1}, {'g': g('C', 1000), 'p': 3},
+                     {'g': g('D', 1001), 'p': 11}, {'g': g('E', 4722, reading_ids=['E1'], rule_ids=['E2']), 'p': 12}])
+    def shown(h):
+        return [(m.group(2) or '') + ('*' if 'aria-current' in m.group(1) else '') for m in re.finditer(r'<button type="button"([^>]*)>([^<]*)</button>', h)]
+    a, b, c, d, e = (x['pager'] for x in out)
+    assert shown(a) == ['&lt;', '41', '42', '43', '44', '45*', '46', '47', '48', '...', 'Go']                    # 41–48: no ">"
+    assert 'data-page="31" aria-label="Previous Pages" title="Previous Pages">&lt;' in a
+    assert shown(b) == ['1*'] + [str(n) for n in range(2, 11)] + ['&gt;', '...', 'Go'] and 'data-page="11" aria-label="Next Pages"' in b
+    assert shown(c) == [str(n) + ('*' if n == 3 else '') for n in range(1, 11)] + ['...', 'Go']               # ten pages: numbers alone
+    assert shown(d) == ['&lt;', '11*', '...', 'Go']
+    assert shown(e)[:2] == ['&lt;', '11'] and '12*' in shown(e) and '&gt;' in shown(e)
+    assert 'aria-label="Page 45" aria-current="page">45<' in a and 'aria-label="Go to Page" title="Go to Page">...<' in a
+    assert '<label for="lang-gi-0t">Go to Page</label>' in a and 'aria-describedby="lang-ge-0t"' in a and 'aria-controls="lang-go-0t"' in a
+    assert 'id="lang-gi-1t"' in b                                                                             # ids per fold
+    assert out[0]['note'] == '<p class="lang-meta lang-note">"Approve All on This Page" approves only the word forms on this page.</p>'
+    assert out[4]['note'].endswith('"Approve Characters with Matching Readings" and "Approve Forms Decided by Their Printed Reading" '
+                                   'approve every matching word form of this language, on every page.</p>')
+
+def test_the_fold_counts_the_whole_language_and_approves_one_page():
+    """review 31: the bar's "not reviewed" counts every word form of the language (the server's ids), not the page's;
+    "Approve All on This Page" counts the page's own rows."""
+    ids = [f'language:marks|w{i}' for i in range(250)]
+    rows = [{'id': i, 'bulk': True} for i in ids[100:200]]
+    dec = {i: {'status': 'approved'} for i in ids[:30]}
+    out = _pager_js([{'g': {'group': 'Pali', 'count': 250, 'bulk': 200, 'ids': ids}, 'p': 2, 'rows': rows, 'dec': dec}])
+    assert '>Approve All on This Page (100)</button>' in out[0]['bar'] and '220 of 250 not reviewed' in out[0]['bar']
+
+def test_the_summary_sends_every_id_and_the_page_size():
+    """review 31: language_summary gives each fold all its row ids, in the order the pages show them, and LANG_PAGE."""
+    forms = [form(f'mapp{i}ō', 'marks', ['marks'], 'ja-Latn', 'high') for i in range(3)]
+    w = {'language_parts': {'version': 2, 'forms': forms, 'parts': [[1, i, 0, 1, i] for i in range(3)]}}
+    items = core.build_items(w, DIGEST)
+    s = core.language_summary(items)
+    g = s['groups'][0]
+    assert s['page'] == core.LANG_PAGE == 100
+    assert g['ids'] == [r['id'] for r in core.language_rows(items, g['group'])['rows']]
+

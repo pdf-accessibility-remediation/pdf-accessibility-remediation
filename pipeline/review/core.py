@@ -1000,20 +1000,23 @@ def lang_written(it):
 def language_summary(items):
     """The Languages section's folds, for the page's first load (the rows themselves come by language_rows). `code`: the
     one value the fold's rows write, when they all write the same (review 12, C), else None. `reading_ids`: the fold's
-    rows that "Approve Characters with Matching Readings" may approve (#124), whether their rows are loaded or not."""
+    rows that "Approve Characters with Matching Readings" may approve (#124), whether their rows are loaded or not. `ids`:
+    every row of the fold, in the order the pages show them, so the fold's "not reviewed" count covers the whole language
+    while one page of LANG_PAGE rows is loaded (review 31, Patrick's pages). `page`: LANG_PAGE."""
     g = collections.OrderedDict(); codes = collections.defaultdict(set)
     for it in items:
         if it.get('kind') != LANG_KIND: continue
-        k = lang_group(it); x = g.setdefault(k, {'group': k, 'count': 0, 'bulk': 0, 'places': 0, 'reading_ids': [], 'rule_ids': []})
+        k = lang_group(it); x = g.setdefault(k, {'group': k, 'count': 0, 'bulk': 0, 'places': 0, 'ids': [], 'reading_ids': [], 'rule_ids': []})
         c = it.get('context') or {}
         x['count'] += 1; x['bulk'] += bool(c.get('bulk')); x['places'] += c.get('places') or 0
+        x['ids'].append(it['id'])                                       # review 31 (pages): the fold counts the whole language
         if c.get('reading_bulk'): x['reading_ids'].append(it['id'])      # #124: every qualifying row of the fold, loaded or not
         if c.get('rule_bulk'): x['rule_ids'].append(it['id'])            # #132: the rows the reading rule decided
         codes[k].add(lang_written(it))
     for k, x in g.items(): x['code'] = next(iter(codes[k])) if len(codes[k]) == 1 and k != LANG_UNTAGGED else None
     order = sorted(g.values(), key=lambda x: (x['group'] in (LANG_UNTAGGED, LANG_EXISTING), x['group']))
     names = sorted({(code, name) for code, name in langtag.NAMES.items() if code != 'qaa'}, key=lambda x: x[1])
-    return {'groups': order, 'total': sum(x['count'] for x in order), 'names': [{'code': c, 'name': n} for c, n in names]}
+    return {'groups': order, 'total': sum(x['count'] for x in order), 'names': [{'code': c, 'name': n} for c, n in names], 'page': LANG_PAGE}
 
 def language_contexts(R):
     """{form key: the words around its first place}: the language step's own file while the run waits for review, else the
