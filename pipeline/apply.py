@@ -94,6 +94,19 @@ def tree_set(n, key, value):
 def set_kids(n, lst): tree_set(n, '/K', pikepdf.Array(lst))
 def is_elem(k): return isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) not in ('/MCR', '/OBJR')
 def same(a, b): return isinstance(a, pikepdf.Dictionary) and isinstance(b, pikepdf.Dictionary) and a.objgen == b.objgen
+class KidSets:
+    """#159 (scale check): "is el one of par's kids?" (`any(same(k, el) for k in kids(par))`) from a set of each parent's
+    kid objgens, made once per parent instead of a list rebuilt and scanned for every element: quadratic on a flat book
+    (15,000 P under Document: 122 s of a 379 s apply). drop() keeps a parent's set right after one kid is removed."""
+    def __init__(self): self.sets = {}
+    def has(self, par, el):
+        if par.objgen == (0, 0) or (isinstance(el, pikepdf.Dictionary) and el.objgen == (0, 0)):   # review 31: a direct object
+            return any(same(k, el) for k in kids(par))                                            #   has no objgen of its own
+        s_ = self.sets.get(par.objgen)
+        if s_ is None: s_ = self.sets[par.objgen] = {k.objgen for k in kids(par) if isinstance(k, pikepdf.Dictionary)}
+        return isinstance(el, pikepdf.Dictionary) and el.objgen in s_
+    def drop(self, par, el):
+        if not any(same(k, el) for k in kids(par)): self.sets.get(par.objgen, set()).discard(el.objgen)
 def S(n): return str(n.get('/S', '')).lstrip('/')
 def is_objr(k): return isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/OBJR'
 def is_mcr(k): return isinstance(k, pikepdf.Dictionary) and str(k.get('/Type')) == '/MCR'
@@ -1997,10 +2010,10 @@ def fix_notes():
     reindex()
     notes = [(el, par) for el, par in all_elems() if mapped(S(el)) == 'Note']
     if not notes: return
-    refs = struct_refs(); removed = 0
+    refs = struct_refs(); removed = 0; ks = KidSets()
     for el, par in notes:
-        if provably_empty(el, refs) and any(same(k, el) for k in kids(par)):
-            set_kids(par, [k for k in kids(par) if not same(k, el)]); removed += 1
+        if provably_empty(el, refs) and ks.has(par, el):
+            set_kids(par, [k for k in kids(par) if not same(k, el)]); removed += 1; ks.drop(par, el)
             log['empty_notes_removed'].append({'obj': f'{el.objgen[0]} {el.objgen[1]}', 'in': S(par)})
             ok('notes: empty Note tag removed (no content; nothing refers to it)')
     seen, added, n = set(), 0, 0
@@ -2133,8 +2146,9 @@ def fix_empty_tags():
     changed = True
     while changed:
         changed = False
+        ks = KidSets()                                     # one set per parent for this pass (the tree is walked again after it)
         for el, par in all_elems():
-            if same(el, DOC) or el.objgen not in parent_of or not any(same(k, el) for k in kids(par)): continue
+            if same(el, DOC) or el.objgen not in parent_of or not ks.has(par, el): continue
             t = mapped(S(el))
             if t in TABLE_PARTS: continue                          # only with their whole table
             if t == 'Table':
@@ -2145,14 +2159,14 @@ def fix_empty_tags():
                                             'why': [f'{S(n)} inside it: {w}' if not same(n, el) else w for n, ws in acc['blocked'] for w in ws][:6]}
                     continue
                 n = count_parts(el); record(el, par); res['tables_removed'].append({'page': eff_pg.get(el.objgen), 'parts': n})
-                set_kids(par, [k for k in kids(par) if not same(k, el)]); changed = True
+                set_kids(par, [k for k in kids(par) if not same(k, el)]); changed = True; ks.drop(par, el)
                 ok('structure: empty table removed (every part proven empty)'); continue
             if kids(el): continue
             b = blockers(el)
             if b:
                 kept_seen[el.objgen] = {'tag': S(el), 'type': t, 'page': eff_pg.get(el.objgen), 'why': b}; continue
             record(el, par)
-            set_kids(par, [k for k in kids(par) if not same(k, el)]); changed = True
+            set_kids(par, [k for k in kids(par) if not same(k, el)]); changed = True; ks.drop(par, el)
             ok('structure: empty tag removed (proven empty)')
         if changed: reindex()
     res['kept'] = [v for og, v in kept_seen.items() if og not in removed_ids]

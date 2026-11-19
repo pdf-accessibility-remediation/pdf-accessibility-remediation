@@ -59,6 +59,7 @@ It is on by default in `run_api.sh` and in the app's runs and batches, where the
 | File | Role |
 |---|---|
 | `review_workorder.py` | The review step (`REVIEW=1`) and reviewing again (see [review_workorder.py](#review_workorderpy)) |
+| `lib/aistatus.py` | Whether a run's AI steps finished (#151): `ai_outcome.json` (how the page readings and the language step each ended, written by those steps and `run_api.sh`), the one "finished" rule that both holds the review and decides what `AI_RETRY=1` reuses, and `ai_override.json` (a person's choice to review without what is missing). `python3 -m lib.aistatus held RUN_DIR` says why a run is held |
 | `review_ocr.py` | Records a reviewer's verdict on a PDF's OCR text, or opens the OCR-only review page (see [review_ocr.py](#review_ocrpy)) |
 | `manual_checks.py` | The accessibility evaluation from the terminal: `--show`, `--record pac\|screen-reader FILE.json [--for-sha SHA]`, `--refresh`, `--template pac\|screen-reader`; through `review/manual.py` |
 | `handedit.py` | A PDF edited by hand in Acrobat: exports a copy, and brings an edited one back as a new run (see [handedit.py](#handeditpy)) |
@@ -168,6 +169,9 @@ Its data and HTML, escaped, with its data in a JSON block with `<`, `>` and `&` 
 | `tools/intake_cases.py` | Synthetic test PDFs for intake's classification (see [tools/intake_cases.py](#toolsintake_casespy)) |
 | `tools/reorder_case.py` | `move_section` on a real book's tag tree (see [tools/reorder_case.py](#toolsreorder_casepy)) |
 | `tools/handedit_case.py` | `handedit.py` on a real book (see [tools/handedit_case.py](#toolshandedit_casepy)) |
+| `tools/cap_sweep.py` | **Paid unless `--dry-run`.** Sends a run's saved language requests again (its `record.json`, or `language_run.json` for a language step run alone), byte for byte, each checked first against its record entry by sha256 and for data collection denied, at a given `AI_PARALLEL` cap, with the language step's retry rule and limit, to measure time, rate limits and cost per cap (#135 (parallel requests)). Several run folders run side by side, one runner each, as a batch's `JOBS` would. `--dry-run` sends nothing and prints the expected cost and the worst case per cap and in all. It asks before sending (`--yes` skips the question) and never writes over an earlier run's folder |
+| `tools/probe_cap.py` | **Paid unless `--dry-run`, a few cents.** How many AI requests OpenRouter takes at once: waves of tiny requests (no book text, 20 output tokens, data collection denied), each wave sent whole (default 50, then 100, then 200), stopping at the first refusal (429) or failure or at its $1 limit, never retrying. Records each request's times, status and cost (#135 (parallel requests)) |
+| `tools/ladder.py` | **Paid unless `--dry-run`.** How many language requests can be out at once across several PDFs: runs the real language step (`name_languages.py`) on prepared run folders, a level at a time, each level's PDFs started together (each with its own `AI_PARALLEL` and limits, raised for the test only through the environment). After each level it counts the true peak from the requests' send and finish times, every 429 and failure, and each request's own time. It holds back the next level after any 429 or failure, a median request time more than 20% above the reference, or a worst case the credit left can't cover (#135 (parallel requests)) |
 | `tools/regression.py` | The regression test: reruns the baseline books (`tests/baseline/`) from their saved replies (no AI request), and compares `record.json` fields and `review.md` with the baseline, plus checks that must always hold. `--update --reason "…"` writes a new baseline; `--seed RUNS_BATCH_DIR` copies the replies after a prompt change. See [Testing](testing.md) |
 | `tests/` | The unit tests (`python -m pytest tests -q`) and `tests/baseline/`: the regression baseline (per book a saved reply, `review.md` and `expect.json`; `meta.json`; `UPDATES.md`, why each update was made). See [Testing](testing.md) |
 | `requirements-dev.txt` | `requirements.txt` plus pytest, pinned: `pip install -r requirements-dev.txt` to run the tests |
@@ -317,12 +321,18 @@ When it can't, the OCR word sheets are reserved first, the figures fill the rest
 
 A PDF whose images fit by count but not within 20 MB keeps one request: the figures are made one step smaller so that every sheet goes, and there is no note.
 
+### Sending
+
+**Figure requests go out several at a time:** up to `AI_PARALLEL` at once (default 16, per PDF; see [Options](options.md#model-and-cost)). `AI_PARALLEL=1` sends them one after another, in their order, as before. Their answers are stored in request order, whatever order they come back in. The log prints one line as sending starts and one each time a request finishes ("▶ figure requests: 2 of 4 done"); the app shows it as "sending to the AI: figures, 2 of 4 done".
+
+**An interruption** (Ctrl+C in a terminal run, or an error while the requests are out) sends nothing more: no waiting request starts, and the run does not wait for the requests already sent. Those requests may still be charged. Each one is recorded at its worst case, since its charge isn't known, and the rerun counts it toward the limit per PDF. So an interruption can cost what the requests already sent cost, at most their worst cases.
+
 ### Retries
 
 **One retry:** a figure request that fails without being charged (OpenRouter 429 or 5xx, no connection) is sent once more after a pause: 60 s after a 429, 20 s otherwise. So is one whose reply could not be read, or that got no reply in time, when the PDF's limit still has room for it. A request that still fails leaves its figures to a reviewer, as one deferral ("Alt text for N figures"), and the run goes on; its cost is recorded.
 
 **After a cut-off:** a reply cut off at its output limit (32,000) is sent once more, automatically and with no pause, with twice the room (64,000, trimmed to the model's maximum). So every image gets its alt text whenever it can. Only that request's `max_tokens` changes; a request not cut off is sent byte for byte as before.
-- It must fit the real limits ($2 per AI request, and $8 per PDF with what is spent and what the other requests still planned), not the estimate shown, and the model's maximum and context.
+- It must fit the real limits ($2 per AI request, and $50 per PDF with what is spent and what the other requests still planned), not the estimate shown, and the model's maximum and context.
 - A request is never charged more than twice, and the doubled call isn't retried.
 - If it can't be sent or is cut off again, its figures go to a reviewer as above, and the reason says why.
 - A replay uses the final answer, free. The cost line says when a retry was paid for (see [What a run may cost](options.md#what-a-run-may-cost)).
@@ -331,7 +341,7 @@ A PDF whose images fit by count but not within 20 MB keeps one request: the figu
 
 Every request is built, and its worst case worked out, before the first one is sent. The run stops before spending anything when:
 - one request's worst case is over the per-call limit (`MAX_USD`, $2), or
-- all of them together, plus what previous attempts in the same run folder spent, are over the limit per PDF (`BOOK_MAX_USD`, $5), or over your credit. Previous attempts are in `attempts.json`; a request whose charge isn't known (in flight when a run stopped or timed out) counts at its worst case.
+- all of them together, plus what previous attempts in the same run folder spent, are over the limit per PDF (`BOOK_MAX_USD`, $50), or over your credit. Previous attempts are in `attempts.json`; a request whose charge isn't known (in flight when a run stopped or timed out) counts at its worst case.
 
 It says the estimate, and how to raise the limit for that run. Both limits apply to Claude models only. There is no limit on the number of figure requests: the per-PDF limit is the limit.
 
@@ -339,7 +349,7 @@ Expected cost: about $0.002–0.003 per figure, plus about $0.05 per request. Th
 
 ### Records, replays and settings
 
-- **Records:** `run.usage` and `cost_total_usd` are the sum of every request. `run.passes` lists each request with its figures, usage, time and outcome; `run.figure_passes` sums them up; `raw_reply_passes` holds each figure request's answer and the figures it was written for (see [Output files](output-files.md)). review.md lists the requests under the run line, with a check row "Figure requests: every figure seen by the AI".
+- **Records:** `run.usage` and `cost_total_usd` are the sum of every request. `run.passes` lists each request with its figures, usage, time and outcome; `run.figure_passes` sums them up, and while requests are being sent `run.figure_passes.in_flight` lists each one (`pass`, `worst_usd`, and after a cut-off or an unreadable reply `paid_usd` and `cut_off`), moved to `stopped_in_flight` by an interruption; `raw_reply_passes` holds each figure request's answer and the figures it was written for (see [Output files](output-files.md)). review.md lists the requests under the run line, with a check row "Figure requests: every figure seen by the AI".
 - **Replays** (`FROM=`, `REPLY=`, "Review Again") use the recorded split, never a new one, and make no call. A saved reply made with figure requests needs its answers file (`reply.txt.passes.json`) beside it; without it, the replay stops. Older single replies replay exactly as before.
 - **`FIGURE_PASSES=off`** sends one request as before: figures past 100 go to a reviewer, listed in the review under the AI's deferrals.
 - **With `REVIEW=1`,** every alt text is a decision on the review page, whichever request wrote it, and every figure left without alt text is a gap at Finish (see [Gaps](review-page.md#gaps)).

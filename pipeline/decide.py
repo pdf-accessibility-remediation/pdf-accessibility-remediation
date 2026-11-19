@@ -134,7 +134,7 @@ run = {'started': datetime.datetime.now().isoformat(timespec='seconds'), 'source
 def save(name, obj):
     with open(os.path.join(args.run_dir, name), 'w', encoding='utf-8') as f:
         f.write(obj if isinstance(obj, str) else json.dumps(obj, ensure_ascii=False, indent=1))
-sys.path.insert(0, HERE); from lib import figpasses
+sys.path.insert(0, HERE); from lib import figpasses, aisend
 # A saved reply whose run made figure requests (issue #63) comes with their answers and the split they were written for
 # (<reply>.passes.json, named in its meta): a replay uses that split as recorded and never cuts it again; without the file
 # it refuses rather than read the reply as an older single one.
@@ -669,7 +669,7 @@ full = os.path.join(args.audit_dir, 'fulltext.json')    # the full reading order
 order = json.load(open(full, encoding='utf-8')).get('reading_order') if os.path.exists(full) else None
 
 # ------------------------------------------------------------------ figure requests (issue #63)
-# Live: each sent in turn (one retry each where it is safe), every cost recorded in run.json as it comes. A replay: the
+# Live: AI_PARALLEL at a time (lib/aisend.py; one retry each where it is safe), every cost recorded in run.json as it comes. A replay: the
 # saved answers, each used only while its figures are still the same in today's digest. Either way each answer is cut
 # to its own figures, the first request's decisions on those figures are dropped, and one work order goes on to the checks.
 fig_dropped, fig_where, fig_results = [], {}, []
@@ -712,22 +712,48 @@ if reqs and not args.response_file:
              'seconds': round(sum(c.get('seconds') or 0 for c in r['calls']), 1), 'calls': r['calls'], 'outcome': r['outcome']}
         if r.get('reason'): e['reason'] = r['reason']
         return e
-    def before(req): run['figure_passes'].update(in_flight=req['pass'], in_flight_worst_usd=round(req['worst'], 4)); save('run.json', run)
+    # Requests run AI_PARALLEL at a time (#135 (parallel requests)): run.json is changed only through rec (one lock, atomic
+    # writes; review 02 M1). in_flight lists every request being sent: {pass, worst_usd, paid_usd?, cut_off?}; a request's
+    # entry leaves the list when it is done, and run.passes keeps request order whatever order the replies come in.
+    rec = aisend.Record(os.path.join(args.run_dir, 'run.json'), run)
+    order_ = {'1': -1, **{r['pass']: i for i, r in enumerate(reqs)}}
+    def flying(fp, k):
+        return next((e for e in fp.setdefault('in_flight', []) if e['pass'] == k), None)
+    def before(req):
+        def f(d):
+            fp = d['figure_passes']; e = flying(fp, req['pass'])
+            if e is None: fp['in_flight'].append({'pass': req['pass'], 'worst_usd': round(req['worst'], 4)})
+        rec.change(f)
     def on_retry(req, known, worst, cut_off):         # run.passes is written only when a request is done: what a stop now must count, known and unknown apart
-        run['figure_passes'].update(in_flight=req['pass'], in_flight_paid_usd=round(known, 6), in_flight_worst_usd=round(worst, 4), in_flight_cut_off=cut_off); save('run.json', run)
-    def on_call(req, call):                           # as soon as its usage has arrived
+        def f(d):
+            fp = d['figure_passes']; e = flying(fp, req['pass'])
+            if e is None: e = {'pass': req['pass']}; fp['in_flight'].append(e)
+            e.update(paid_usd=round(known, 6), worst_usd=round(worst, 4), cut_off=cut_off)
+        rec.change(f)
+    def on_call(req, call):                           # as soon as its usage has arrived (costhistory.append: one O_APPEND write)
         if req['pass'] != 'probe' and call.get('finish_reason') == 'stop':
             note_call('figure', req['pass'], call['attempt'], req['input_tokens'], len(req['items']), 0, call.get('usage') or {}, FIGURE_PROMPT_NAME)
     for r in reqs: r.update(on_retry=on_retry, on_call=on_call)
     def done(res):
-        for k in ('in_flight', 'in_flight_worst_usd', 'in_flight_paid_usd', 'in_flight_cut_off'): run['figure_passes'].pop(k, None)
-        run['passes'].append(entry(res))
-        if res.get('cut_off_retry'): run['figure_passes'].setdefault('cut_off_retries', []).append({'pass': res['pass'], **res['cut_off_retry']})
-        run['usage'] = figpasses.add_usage(run['usage'], res['usage']); save('run.json', run)
-    budget = figpasses.Budget(args.book_max_usd if IS_CLAUDE else None, spent_before + (run['usage'].get('cost_usd') or 0), [r['worst'] for r in reqs if r.get('body')],
+        def f(d):
+            fp = d['figure_passes']
+            fp['in_flight'] = [e for e in fp.get('in_flight') or [] if e['pass'] != res['pass']]
+            if not fp['in_flight']: fp.pop('in_flight')
+            d['passes'].append(entry(res)); d['passes'].sort(key=lambda p: order_.get(p['pass'], len(order_)))
+            if res.get('cut_off_retry'):
+                fp.setdefault('cut_off_retries', []).append({'pass': res['pass'], **res['cut_off_retry']})
+                fp['cut_off_retries'].sort(key=lambda p: order_.get(p['pass'], len(order_)))
+            d['usage'] = figpasses.add_usage(d['usage'], res['usage'])
+        rec.change(f)
+    def on_stop(started):                             # an interruption (Ctrl+C, or an error): no queued request starts, and
+        def f(d):                                     # what was in flight is counted at its worst case by run_api.sh's log_attempt
+            fp = d['figure_passes']
+            fp['stopped_in_flight'] = aisend.stopped(fp.pop('in_flight', None) or [])
+        rec.close(f)
+    budget = figpasses.Budget(args.book_max_usd if IS_CLAUDE else None, spent_before + (run['usage'].get('cost_usd') or 0), {r['pass']: r['worst'] for r in reqs if r.get('body')},
                               retry_cap=(args.book_max_usd if args.figure_retry_book_max_usd is None else args.figure_retry_book_max_usd) if IS_CLAUDE else None,
                               call_cap=(args.max_usd if args.figure_retry_max_usd is None else args.figure_retry_max_usd) if IS_CLAUDE else None)
-    fig_results = figpasses.run([r for r in reqs if r.get('body')], send_fn, budget, before=before, done=done)
+    fig_results = figpasses.run([r for r in reqs if r.get('body')], send_fn, budget, before=before, done=done, on_stop=on_stop)
     probe_res = [x for x in fig_results if x['pass'] == 'probe']; fig_results = [x for x in fig_results if x['pass'] != 'probe']
     for x in fig_results:
         if x['outcome'] == 'done': x['kept'], d_ = figpasses.scope(x['reply'], x['items'], x['pass']); fig_dropped += d_

@@ -229,8 +229,8 @@ def test_run_api_runs_a_step_with_nothing_to_send_without_asking():
     """run_api.sh asks before the paid step; with every form decided locally there is nothing to pay, so it doesn't ask
     (an answer of no would lose free decisions). The condition it runs, on estimate files."""
     sh = open(os.path.join(HERE, 'run_api.sh'), encoding='utf-8').read()
-    cond = sh.split("if python3 -c '", 1)[1].split("'", 1)[0]
-    assert 'to_send' in cond and 'local' in cond
+    conds = [c.split("'", 1)[0] for c in sh.split("if python3 -c '")[1:]]
+    cond = next(c for c in conds if 'to_send' in c and 'local' in c)       # the one condition on local decisions (#151 added others)
     def asks(e, tmp):
         p = os.path.join(tmp, 'e.json'); json.dump(e, open(p, 'w'))
         return subprocess.run([sys.executable, '-c', cond, p]).returncode != 0

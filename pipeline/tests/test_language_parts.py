@@ -167,6 +167,25 @@ def test_check_language_parts():
     assert any('page not in the book' in w for w in whys) and any('not in order' in w for w in whys)
     assert any("'iw'" in w for w in whys) and any('unknown keys' in w for w in whys)
 
+def test_no_answer_reasons_are_checked():
+    """#137 (review 02, L2): a version-2 form's `no_answer` passes only with a reason the review page can word."""
+    forms = [{'key': 'marks|a', 'form': 'a', 'lang': None, 'no_answer': 'echo'}, {'key': 'marks|b', 'form': 'b', 'lang': None, 'no_answer': 'because'}]
+    wo = {'language_parts': {'version': 2, 'forms': forms, 'parts': [[1, 0, 0, 1, 0], [1, 1, 0, 1, 1]]}}
+    dropped = workorder_check.check_language_parts(wo, 2)
+    assert [f.get('no_answer') for f in wo['language_parts']['forms']] == ['echo', None]
+    assert [d['why'] for d in dropped] == ["not a no-answer reason: 'because'"]
+
+def test_both_halves_of_a_broken_word_are_tagged(tmp_path):
+    """#140 (hyphen at a line end), review 02 H2: the finder gives a romanized word broken across two runs two places of one
+    form; the executor tags each on its own characters (the second half's Span holds "yin", nothing else)."""
+    runs = [{'text': 'The sutra qianyan guanshi-'}, {'text': 'yin pusa here.'}]
+    src = langpdf.build(str(tmp_path / 'b.pdf'), runs)
+    places, _ = langcands.page_places(1, plpages.Pages(src).pages[0].chars)
+    mine = [p for p in places if p['form'] == 'qianyan guanshiyin']
+    assert [p['text'] for p in mine] == ['qianyan guanshi', 'yin']
+    _, _, log, v = apply_verify(tmp_path, runs, [part(1, p['mcid'], p['first'], p['last'], 'zh-Latn') for p in mine])
+    assert sorted(s['text'] for s in log['language_parts']['spans']) == ['qianyan guanshi', 'yin'] and v['language']['all_match']
+
 def test_candidates_line_up_with_runs(tmp_path):
     """The audit's places are character indexes that apply.py's split uses as they are."""
     runs = [{'lang': 'en-US', 'font': 'F3', 'text': 'The city of Heiankyo saw ryōgen begin.'},
@@ -409,3 +428,17 @@ def test_refused_whole_run_records_its_words(tmp_path):
     t = 'The city of Heiankyo was the capital.'
     src, out, log, v = apply_verify(tmp_path, [{'text': t, 'actual_text': t.replace('Heiankyo', 'Heian-kyo')}], [part(1, 0, 0, len(t) - 1, 'ja-Latn')])
     assert log['language_parts']['refused_places'] == [{'page': 1, 'mcid': 0, 'why': 'under an element with its own spoken or alt text', 'text': t, 'lang': 'ja-Latn'}]
+
+def test_the_new_language_tags_are_written_and_checked(tmp_path):
+    """#137, round 11: tags added to the table (Central Bikol, Balinese, Javanese in Latin script) go through the work-order
+    check, apply.py writes them and verify.py finds each where it was put; the review page names them (no code alone)."""
+    from lib import langtag
+    runs = [{'lang': 'en-US', 'text': 'The word maray means good.'}, {'lang': 'en-US', 'text': 'They sang kidung and tembang.'}]
+    parts = [part(1, 0, 9, 14, 'bcl'), part(1, 1, 9, 15, 'ban'), part(1, 1, 20, 27, 'jv-Latn')]
+    tmp = {'language_parts': {'parts': parts}}; dropped = workorder_check.check_language_parts(tmp, 10)
+    assert dropped == [] and len(tmp['language_parts']['parts']) == 3
+    src, out, log, v = apply_verify(tmp_path, runs, parts)
+    lp = log['language_parts']; lg = v['language']
+    assert not lp['refused'] and sorted(s['lang'] for s in lp['spans']) == ['ban', 'bcl', 'jv-Latn'], lp
+    assert lg['spans_written'] == 3 and lg['all_match'], lg
+    assert [langtag.name(t) for t in ('bcl', 'ban', 'jv-Latn')] == ['Central Bikol', 'Balinese', 'Javanese (Latin script)']

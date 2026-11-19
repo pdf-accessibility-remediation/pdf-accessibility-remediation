@@ -239,10 +239,11 @@ def check_language_parts(wo, pages, places=None):
     return dropped
 
 FORM_KEYS = {'key', 'form', 'group', 'class', 'lang', 'confidence', 'why', 'evidence', 'current', 'tag', 'person', 'places', 'context',
-             'decided', 'note', 'rule', 'reading', 'group_approval'}
+             'decided', 'note', 'rule', 'reading', 'group_approval', 'no_answer'}
 RULES = {'reading'}                                    # lib/hanreading.RULE: the one local rule (#123)
+from lib.langreq import NO_ANSWER   # why a form has no AI answer (#137); one list, so a new reason is never dropped here (#151, review 22 M3)
 READING_KEYS = {'lang', 'langs', 'text', 'with', 'places', 'back'}
-GROUP_APPROVALS = {'all_shown', 'readings'}            # the review page's two group-approval buttons (#124)
+GROUP_APPROVALS = {'all_shown', 'readings', 'printed_reading'}   # the review page's group-approval buttons (#124; #132 the third)
 
 def _check_rows(lp, pages, dropped):
     """language_parts version 2 (lib/langreq.to_rows): forms, and rows [page, mcid, first, last, form index]. A form whose
@@ -261,13 +262,15 @@ def _check_rows(lp, pages, dropped):
         if f.get('tag') and not f.get('lang'): f['tag'] = False
         if 'rule' in f and f['rule'] not in RULES:     # #123: only the reading rule decides locally
             dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': f'not a local rule: {f["rule"]!r}'}); f.pop('rule')
+        if 'no_answer' in f and f['no_answer'] not in NO_ANSWER:   # #137 (review 02, L2): only the reasons the page can word
+            dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': f'not a no-answer reason: {f["no_answer"]!r}'}); f.pop('no_answer')
         r = f.get('reading')
         if r is not None and not (isinstance(r, dict) and set(r) <= READING_KEYS and (r.get('lang') is None or langtag.valid_part(r.get('lang')))
                                   and isinstance(r.get('langs', []), list) and all(langtag.valid_part(x) for x in r.get('langs', []))):
             dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': 'reading not a reading record'}); f.pop('reading')
         g = f.get('group_approval')
         if g is not None and not (isinstance(g, dict) and g.get('button') in GROUP_APPROVALS):
-            dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': 'group_approval not one of the two buttons'}); f.pop('group_approval')
+            dropped.append({'where': 'language_parts.forms', 'item': f.get('form'), 'why': 'group_approval not one of the group-approval buttons'}); f.pop('group_approval')
     def whole(v): return isinstance(v, int) and not isinstance(v, bool)
     keep, seen = [], {}
     for r in lp.get('parts') if isinstance(lp.get('parts'), list) else []:

@@ -39,10 +39,13 @@ def real_run_passed_the_book_check(r):
     return 'refusing before any request' not in out and 'more than the limit of $5.00 per PDF' not in out
 
 def test_a_language_step_over_its_own_cap_never_counts(book, tmp_path, monkeypatch):
-    """$4.50 of language tags, over LANGUAGE_MAX_USD $4: the step refuses itself, and decide.py runs."""
+    """$4.50 of language tags, over LANGUAGE_MAX_USD $4. #159: the step no longer refuses itself for its own cost: it holds
+    back what doesn't fit (here everything) and sends nothing. An older estimate marked `cap` still never counts, and
+    decide.py runs."""
     src, A2, R2 = TN.folders(tmp_path)
     assert TN.run(src, A2, R2, monkeypatch, '--dry-run', '--max-usd', '0.0001') == []
-    assert C.refused(str(R2), 'language')['why'] == 'cap' and C.language_estimate(str(R2)) is None
+    e = json.load(open(R2 / 'language_estimate.json'))
+    assert C.refused(str(R2), 'language') is None and e['to_send'] == 0 and e['held_back'] == e['forms'] and e['held_back_limit']['which'] == 'step'
     A = small_audit(book, tmp_path, 3); R = tmp_path / 'r'
     w(R / 'language_estimate.json', {'worst_case_usd': 4.50, 'to_send': 3, 'refused': {'why': 'cap', 'words': 'over its limit'}})
     r = decide(A, R, '--dry-run')
@@ -87,10 +90,14 @@ def test_page_readings_refuse_over_the_books_limit(tmp_path, monkeypatch):
     calls = read(A, R, monkeypatch, '--model', TN.MODEL, '--book-max-usd', '9')
     assert len(calls) == 2
 
-def test_the_language_step_refuses_over_the_books_limit(tmp_path, monkeypatch):
+def test_the_language_step_fills_only_the_room_left_in_the_books_limit(tmp_path, monkeypatch):
+    """#159, review 29 M4 (was: the step refuses over the PDF's limit): $4.999 spent of $5 leaves no room, so every form is
+    held back (the PDF's limit named as the reason) and nothing is sent; with $6 the request is sent."""
     src, A, R = TN.folders(tmp_path)
     w(R / 'run.json', {'usage': {'cost_usd': 4.999}})
-    assert TN.run(src, A, R, monkeypatch) == [] and 'per PDF' in str(TN.LAST['exit'])
+    assert TN.run(src, A, R, monkeypatch, '--book-max-usd', '5') == [] and TN.LAST['exit'] is None
+    lr = json.load(open(R / 'language_run.json'))
+    assert lr['held_back_count'] == 3 and lr['held_back_limit']['which'] == 'book' and not lr['requests']
     assert len(TN.run(src, A, R, monkeypatch, '--book-max-usd', '6')) == 1
 
 def test_page_readings_left_out_stay_left_out_through_the_second_dry_run(tmp_path, monkeypatch):

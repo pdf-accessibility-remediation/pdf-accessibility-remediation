@@ -49,7 +49,8 @@ def items_by(w=None):
 def test_rows_qualify_only_where_the_reading_and_the_tag_agree():
     _, by = items_by()
     q = {k for k, it in by.items() if it['context'].get('reading_bulk')}
-    assert q == {'極楽', '中文', '禅宗', '漢文'}                       # never disagreeing, mixed, none, low, a mixed answer or a publisher's tag
+    assert q == {'極楽', '禅宗', '漢文'}                               # never disagreeing, mixed, none, low, a mixed answer or a publisher's tag
+    assert {k for k, it in by.items() if it['context'].get('rule_bulk')} == {'中文'}      # #132: the rule's row has its own button only
     assert {k for k, it in by.items() if it['context'].get('bulk')} == {'mappō'}          # Approve All Shown: its rules, unchanged
     assert by['中文']['context']['rule'] == 'reading' and by['極楽']['context'].get('rule') is None
 
@@ -57,7 +58,8 @@ def test_the_summary_lists_every_qualifying_row_of_a_fold():
     items, by = items_by()
     s = {g['group']: g for g in core.language_summary(items)['groups']}
     assert sorted(s['Japanese']['reading_ids']) == sorted(by[k]['id'] for k in ('極楽', '禅宗'))
-    assert sorted(s['Chinese']['reading_ids']) == sorted([by['中文']['id']]) and s['Chinese']['count'] == 2      # 地獄 shows, never qualifies
+    assert s['Chinese']['reading_ids'] == [] and s['Chinese']['count'] == 2      # 地獄 shows, never qualifies; 中文 is the rule's (#132)
+    assert s['Chinese']['rule_ids'] == [by['中文']['id']] and s['Japanese']['rule_ids'] == []
     assert s['Chinese (Traditional)']['reading_ids'] == [by['漢文']['id']]
     rows = {r['form']: r for g in s for r in core.language_rows(items, g)['rows']}
     assert rows['中文']['rule'] == 'reading' and rows['中文']['reading'] == {'text': 'zhongwen', 'lang': 'zh', 'langs': ['zh'], 'names': ['Chinese'], 'with': 1, 'places': 1}
@@ -65,16 +67,35 @@ def test_the_summary_lists_every_qualifying_row_of_a_fold():
 
 def test_each_group_approval_is_recorded_with_its_evidence_and_language():
     w = wo(); items, by = items_by(w)
-    dec = {by['極楽']['id']: {'status': 'approved', 'bulk': 'readings'}, by['中文']['id']: {'status': 'approved', 'bulk': 'readings'},
+    dec = {by['極楽']['id']: {'status': 'approved', 'bulk': 'readings'}, by['中文']['id']: {'status': 'approved', 'bulk': 'printed_reading'},
            by['mappō']['id']: {'status': 'approved', 'bulk': 'all_shown'}, by['禅宗']['id']: {'status': 'approved'}}
     out = core.apply_decisions(w, items, dec)['language_parts']['forms']
     f = {x['form']: x for x in out}
     assert f['極楽']['group_approval'] == {'button': 'readings', 'lang': 'ja', 'evidence': 'the reading printed beside it: gokuraku'}
-    assert f['中文']['group_approval']['button'] == 'readings' and f['中文']['decided'] == 'tagged'
+    assert f['中文']['group_approval'] == {'button': 'printed_reading', 'lang': 'zh', 'evidence': 'the reading printed beside it: zhongwen'}
+    assert f['中文']['decided'] == 'tagged'
     assert f['mappō']['group_approval'] == {'button': 'all_shown', 'lang': 'ja-Latn', 'evidence': 'the AI at high confidence'}
     assert 'group_approval' not in f['禅宗'] and f['禅宗']['decided'] == 'tagged'                  # a single decision: unchanged
     lr = core.language_review(items, dec)
-    assert lr['bulk'] == 3 and lr['bulk_by'] == {'all_shown': 1, 'readings': 2} and lr['local'] == 1 and lr['approved'] == 4
+    assert lr['bulk'] == 3 and lr['bulk_by'] == {'all_shown': 1, 'readings': 1, 'printed_reading': 1} and lr['local'] == 1 and lr['approved'] == 4
+
+def test_review_again_keeps_each_group_approval_mark():
+    """Review 33 F3: "Review Again" carries a group approval's button with its choice (session record, the next session's
+    draft, the record's count), and a person's own later change still drops it."""
+    from review import sessions as S
+    w = wo(); items, by = items_by(w)
+    first = {by['極楽']['id']: {'status': 'approved', 'bulk': 'readings'}, by['mappō']['id']: {'status': 'approved', 'bulk': 'all_shown'},
+             by['禅宗']['id']: {'status': 'approved'}}
+    rec1 = {k: dict(d, ai=next(it['ai'] for it in items if it['id'] == k), set_in='001') for k, d in first.items()}   # session 001's record
+    start, missed = S.carry(items, rec1)
+    assert not missed and start[by['mappō']['id']]['bulk'] == 'all_shown'
+    draft = S.page_decisions(start)                                     # what "Review Again" opens with
+    assert draft == first
+    lr = core.language_review(items, draft)
+    assert lr['bulk'] == 2 and lr['bulk_by'] == {'all_shown': 1, 'readings': 1, 'printed_reading': 0} and lr['approved'] == 3
+    draft[by['極楽']['id']] = {'status': 'approved'}                     # the page's single "Approve" drops the mark (langSet)
+    assert core.language_review(items, draft)['bulk_by']['readings'] == 0
+
 
 def test_a_group_approval_a_row_does_not_qualify_for_decides_nothing():
     """An edited page, or a draft saved under other rules: the server never counts a group approval the row's rules leave
@@ -83,10 +104,13 @@ def test_a_group_approval_a_row_does_not_qualify_for_decides_nothing():
     bad = {k: {'status': 'approved', 'bulk': 'readings'} for k in (by['地獄']['id'], by['浄土']['id'], by['仏教']['id'], by['念仏']['id'], by['天台']['id'], by['漢字']['id'])}
     bad[by['極楽']['id']] = {'status': 'approved', 'bulk': 'all_shown'}                          # never Chinese characters alone
     bad[by['mappō']['id']] = {'status': 'approved', 'bulk': True}                               # a draft from before #124: Approve All Shown
+    bad[by['中文']['id']] = {'status': 'approved', 'bulk': 'readings'}                          # #132: a rule row under "Matching Readings"
+    bad[by['禅宗']['id']] = {'status': 'approved', 'bulk': 'printed_reading'}                   # the AI's row under the rule's button
+    bad[by['漢文']['id']] = {'status': 'approved', 'bulk': 'everything'}                        # review 02, L4: no other button
     out = core.apply_decisions(w, items, bad)['language_parts']['forms']
     assert [x['form'] for x in out if x.get('decided') or x.get('group_approval')] == ['mappō']
     lr = core.language_review(items, bad)
-    assert lr['approved'] == 1 and lr['bulk_by'] == {'all_shown': 1, 'readings': 0}
+    assert lr['approved'] == 1 and lr['bulk_by'] == {'all_shown': 1, 'readings': 0, 'printed_reading': 0}
     assert sorted(core.unreviewed(items, bad)) == sorted(it['id'] for it in items if it['kind'] == core.LANG_KIND and it['label'] != 'mappō')
     single = {by['地獄']['id']: {'status': 'approved'}, by['浄土']['id']: {'status': 'changed', 'value': 'zh'}}
     out = {x['form']: x for x in core.apply_decisions(w, items, single)['language_parts']['forms']}
@@ -125,27 +149,36 @@ def test_group_approvals_and_reading_rule_tags_are_listed_in_review_md(tmp_path)
     assert '1 decided by the reading rule' in r.stdout
     ai = json.load(open(R / 'workorder.ai.json')); data = json.load(open(R / 'review_items.json'))
     items = data['items']; by = {it['label']: it for it in items if it['kind'] == core.LANG_KIND}
-    assert by['極楽']['context']['rule'] == 'reading' and by['極楽']['context']['reading_bulk']        # the rule's row qualifies
+    assert by['極楽']['context']['rule'] == 'reading' and by['極楽']['context']['rule_bulk']           # the rule's row: its own button (#132)
+    assert not by['極楽']['context'].get('reading_bulk')
     assert by['地獄']['context']['reading']['lang'] == 'zh' and by['地獄']['context']['reading_bulk']  # the AI's zh, the reading zh
     assert by['中文']['context'].get('reading') is None                                                # no reading: one by one
-    dec = {by['極楽']['id']: {'status': 'approved', 'bulk': 'readings'}, by['地獄']['id']: {'status': 'approved', 'bulk': 'readings'},
+    dec = {by['極楽']['id']: {'status': 'approved', 'bulk': 'printed_reading'}, by['地獄']['id']: {'status': 'approved', 'bulk': 'readings'},
            by['中文']['id']: {'status': 'approved'}}
     wo = core.apply_decisions(ai, items, dec)
     core.finish(str(R), ai, wo, 'Kim', '2026-11-15', 'page', decisions=dec, items=items, gap_default='synthetic test book')
     run_api(tmp_path, R)
     rec = json.load(open(R / 'record.json'))
-    assert rec['language_review']['bulk_by'] == {'all_shown': 0, 'readings': 2} and rec['language_review']['local'] == 1
+    assert rec['language_review']['bulk_by'] == {'all_shown': 0, 'readings': 1, 'printed_reading': 1} and rec['language_review']['local'] == 1
     assert rec['language_review']['not_reviewed'] == 0
     f = {x['form']: x for x in rec['workorder']['language_parts']['forms']}
-    assert f['極楽']['group_approval'] == {'button': 'readings', 'lang': 'ja', 'evidence': 'the reading printed beside it: と'}
+    assert f['極楽']['group_approval'] == {'button': 'printed_reading', 'lang': 'ja', 'evidence': 'the reading printed beside it: と'}
     assert sorted((p['form'], p['lang']) for p in langreq.expand(rec['workorder']['language_parts'])) == [('中文', 'zh'), ('地獄', 'zh'), ('地獄', 'zh'), ('極楽', 'ja')]
     md = open(R / 'review.md', encoding='utf-8').read()
     assert 'Decided by the reading printed beside the characters at every place, not by the AI (#123): 1 word form in Chinese characters (Japanese 1)' in md
-    assert '**Approved in a group approval (2 word forms):** Approve Characters with Matching Readings: 2' in md
-    assert '- "極楽": Japanese · Matching Readings · the reading printed beside it: と' in md
+    assert ('**Approved in a group approval (2 word forms):** Approve Characters with Matching Readings: 1 · '
+            'Approve Forms Decided by Their Printed Reading: 1') in md or ('**Approved in a group approval (2 word forms):** '
+            'Approve Forms Decided by Their Printed Reading: 1 · Approve Characters with Matching Readings: 1') in md
+    assert '- "極楽": Japanese · Printed Reading · the reading printed beside it: と' in md
     assert '- "地獄": Chinese · Matching Readings · the reading printed beside it: Zhongwen' in md
     assert '- "極楽": Japanese (by the reading printed beside it) (group approval) · 1 place' in md
     assert '- "地獄": Chinese (group approval) · 2 places' in md
     assert '- "中文": Chinese · 1 place' in md                                                        # a single decision: as before
     g = next(x for x in rec['glance']['ship'] if x['what'] == 'Language tags')
     assert g['ok'] is True and g['text'].startswith('Approved (Kim')
+
+def test_the_page_offers_the_printed_reading_button():
+    """#132: the third button, behind the same switch, with its count of the fold's rule rows; its status line."""
+    page = open(os.path.join(HERE, 'review', 'page.html'), encoding='utf-8').read()
+    assert ">Approve Forms Decided by Their Printed Reading (' + fmtN(rul) + ')</button>" in page
+    assert "langSet(id, 'approved', undefined, 'printed_reading')" in page and "' (in a group approval: printed reading)'" in page

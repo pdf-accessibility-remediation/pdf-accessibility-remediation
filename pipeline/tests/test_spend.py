@@ -131,6 +131,18 @@ def test_the_language_step_never_blocks_spend(setup):
     e = costs.estimate(str(R), limits=costs.limits_of({'limits': {'per_book_usd': 6.0}}))
     assert e['language']['ceiling_usd'] == 4.39 and e['bounds']['BOOK_MAX_USD'] == 5.02 and SP.language_env(e)['LANGUAGE_MAX_USD'] == '4.40'
 
+def test_spend_passes_the_held_back_count_the_run_page_showed(setup):
+    """Review 33 F1: a Spend with the language step passes the count of word forms the run page showed held back
+    (LANG_HELD_SHOWN), so run_api.sh can hold the review when more turn up after the work order."""
+    s, R, est = spend_setup(setup)
+    assert 'LANG_HELD_SHOWN' not in SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])['env_set']   # no language step
+    language_estimate(R, 0.2, held_back=7, forms=40, prompt_sha256=SP.current_language_prompt())
+    est = costs.estimate(str(R), limits=costs.limits_of(s))
+    a = SP.authorize(s, 'workorder', 'bk/l1', str(R), est['fingerprint'])
+    assert a['env_set']['LANG_TAGS'] == 'on' and a['env_set']['LANG_HELD_SHOWN'] == '7'
+    j = NR.start_spend(s, 'bk/l1', str(R), {'kind': 'workorder', 'fingerprint': est['fingerprint']})
+    assert j['env']['LANG_HELD_SHOWN'] == '7'
+
 def test_batch_binds_the_largest_books_page_readings(setup):
     a, b = run_folder(setup, label='a'), run_folder(setup, label='b')
     page_reads_estimate(a, worst=0.3); page_reads_estimate(b, worst=0.55)
@@ -170,12 +182,12 @@ def test_a_paid_job_is_never_a_then(setup):
     assert jobs.load(J, j['id'])['then_job'] == 'refused' and not [x for x in jobs.all_jobs(J) if x['kind'] == 'spend']
 
 def test_every_route_job_keeps_the_rule():
-    """The app's own job makers: only spend.py's (spend, batch) put AUTO in a job, and each passes paid and the tick."""
+    """The app's own job makers: only spend.py's (spend, batch, and #151's ai-retry) put AUTO in a job, and each passes paid and the tick."""
     for f in ('runs.py', 'newrun.py', 'batches.py'):
         p = os.path.join(HERE, 'webapp', f)
         if os.path.exists(p): assert "'AUTO'" not in open(p, encoding='utf-8').read(), f
     sp = open(os.path.join(HERE, 'webapp', 'spend.py'), encoding='utf-8').read()
-    assert sp.count("'AUTO': '1'") == 3 and 'personal' not in sp           # the tick was removed (Patrick, 2026-11-06)
+    assert sp.count("'AUTO': '1'") == 4 and 'personal' not in sp           # the tick was removed (Patrick, 2026-11-06)
 
 # ------------------------------------------------------------------ needs-spend has a way out (03 §1)
 def test_restart_needs_spend_then_a_new_estimate_then_spend(setup):
@@ -383,7 +395,7 @@ def test_test_mode_spend_is_a_saved_reply(setup):
 def test_run_api_wires_each_cap_once():
     """#63 (figure requests past 100 images): MAX_USD and BOOK_MAX_USD are checked as numbers and passed on, once each."""
     sh = open(os.path.join(HERE, 'run_api.sh'), encoding='utf-8').read()
-    assert sh.count('--max-usd "$MAX_USD"') == 1 and sh.count('--book-max-usd "$BOOK_MAX_USD"') == 3   # decide.py, read_pages.py, name_languages.py (review 06 M2)
+    assert sh.count('--max-usd "$MAX_USD"') == 1 and sh.count('--book-max-usd "$BOOK_MAX_USD"') == 4   # decide.py, read_pages.py, name_languages.py (review 06 M2), and #151's retry of the language step
     assert sh.count('--figure-retry-max-usd "$FIGURE_RETRY_MAX_USD"') == 1 and sh.count('--figure-retry-book-max-usd "$FIGURE_RETRY_BOOK_MAX_USD"') == 1
     assert 'for v in MAX_USD BOOK_MAX_USD FIGURE_RETRY_MAX_USD FIGURE_RETRY_BOOK_MAX_USD; do' in sh and '$v must be a number of dollars' in sh
     assert "# MAX_USD=3 bash run_api.sh …   the limit on what one AI request could cost, in dollars (default 2, lib/costs.py; Claude models only)" in sh

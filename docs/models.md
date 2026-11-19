@@ -48,7 +48,7 @@ If your credit is too low, OpenRouter refuses the request (HTTP 402) and nothing
 ```
 Expected Cost: Not Available Yet (1 past request of this kind, from 1 PDF; needs 12 from 6)
 Max Estimated Cost: about $0.27, approximate and not a limit: the dollar limits apply to Claude models only. The OpenRouter bill is the real cost
-AUTO=1: sending without asking (still refused over the $2.00 limit per AI request, the $8.00 limit per PDF, or your credit)
+AUTO=1: sending without asking (still refused over the $2.00 limit per AI request, the $50.00 limit per PDF, or your credit)
 AUTO=1: sending without asking. The dollar limits apply to Claude models only: the openai/gpt-5 estimate is approximate and not a limit; the OpenRouter bill is the real cost
 ```
 

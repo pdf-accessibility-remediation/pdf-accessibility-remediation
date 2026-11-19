@@ -307,7 +307,7 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                 warmed.wait(WARM_WAIT)
                 oc = ocr_section()
                 light = {**data, 'items': [it for it in data['items'] if it.get('kind') != core.LANG_KIND],   # #118: the language rows come
-                         'languages': core.language_summary(data['items'])}                                     # by /languages.json
+                         'languages': {**core.language_summary(data['items']), 'held_back': None if ocr_only else core.held_back_info(R, run_dir)}}   # by /languages.json; #159
                 boot = json.dumps({**light, 'saved': saved, 'date': date, 'return_to': return_to, 'ocr': oc,
                                    'check': first_check(), 'draft': None if ocr_only else draft_state(), 'ocr_text': first_texts(oc),
                                    'img_sizes': img_sizes()},
@@ -364,6 +364,9 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
             additions = [a for a in body.get('additions') or [] if isinstance(a, dict)] if isinstance(body.get('additions'), list) else []
             reviewer = str(body.get('reviewer') or '').strip()
             saved_at = str(body.get('saved_at') or '') or datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+            hba = body.get('held_back_draft')               # review 31 L3: the draft keeps "Accept Without the Word Forms Not Sent", named
+            hba = ({'count': hba['count'], 'sha': hba['sha'][:64]} if isinstance(hba, dict) and isinstance(hba.get('count'), int)   #   by the forms it was given for
+                   and not isinstance(hba.get('count'), bool) and isinstance(hba.get('sha'), str) else None)
             if self.path == '/ocr-verdict':                # on its own, at once; never during or after Finish
                 if not ocr_section(): return self.send(400, {'error': 'This book has no OCR text to review.'})
                 fields = {k: body.get(k) for k in ('verdict', 'reviewer', 'reason', 'pages', 'to')}
@@ -399,7 +402,8 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                     except (ValueError, TypeError): pass       # a stamp that can't be read or compared: write, as before
                 core.save(os.path.join(R, 'review_decisions.json'),
                           {'reviewer': reviewer, 'decisions': decisions, 'additions': additions,
-                           **({'session_name': name} if name else {}), **({'session_notes': notes} if notes else {}), 'saved_at': saved_at})
+                           **({'session_name': name} if name else {}), **({'session_notes': notes} if notes else {}),
+                           **({'held_back_draft': hba} if hba else {}), 'saved_at': saved_at})
                 return True
             def build():
                 wo = core.apply_decisions(ai, items, decisions)
@@ -473,7 +477,8 @@ def serve(R, date, port=8765, open_browser=True, files=None, return_to=None, run
                     finishing.set(); ok = False              # Ctrl+C now waits until the review is recorded (or refused)
                     try:
                         keep(last_word=True)                 # the last word of the page, with the Finish dialog's name and notes
-                        try: v = core.finish(R, ai, wo, reviewer, date, 'page', decisions=decisions, items=items, additions=additions, gaps_ack=ack)
+                        try: v = core.finish(R, ai, wo, reviewer, date, 'page', decisions=decisions, items=items, additions=additions, gaps_ack=ack,
+                                             held_back=core.held_back_info(R, run_dir), accept_held_back=bool(body.get('held_back_accepted')))   # #159
                         except ValueError as e: return self.send(400, {'error': str(e)})
                         result.update(v); ok = True
                         self.send(200, {'finished': True, 'changes': len(v['changes']), 'dropped': v['dropped_on_check'], 'counts': v.get('counts'),

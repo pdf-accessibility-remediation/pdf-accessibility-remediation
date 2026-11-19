@@ -249,7 +249,8 @@ def test_review_needs_the_original_and_then_queues_a_pin_and_the_review(app):
     nxt = j['then']['argv']
     assert nxt[1:] == ['review_workorder.py', str(R), '--reopen', '--from', 'ai', '--pdf', str(orig), '--no-browser', '--return-to',
                        f'http://127.0.0.1:{port}/run/book/r1/?after=finish'] and j['then']['counted'] is False
-    assert set(j['env']) <= set(config.BASE_ENV) | {'VERAPDF', 'PYTHONUNBUFFERED', 'RUNS_DIR', 'PAGE_READS', 'LANG_TAGS', 'LC_ALL', 'LC_CTYPE'}
+    assert set(j['env']) <= set(config.BASE_ENV) | {'VERAPDF', 'PYTHONUNBUFFERED', 'RUNS_DIR', 'PAGE_READS', 'LANG_TAGS', 'LC_ALL', 'LC_CTYPE',
+                                                  'APP_LANGUAGE_MAX_USD', 'APP_PAGE_READS_MAX_USD', 'APP_BOOK_MAX_USD'}   # review 31 L1: the limits, never spent under
     st, b = post(port, '/api/run/book/r1/review')
     assert st == 409 and 'already' in b['error']
     assert wait(lambda: jobs.load(str(t / 'runs' / '.app'), j['id'])['status'] in ('failed', 'done'), 60)
@@ -524,10 +525,28 @@ def test_steps_in_plain_words():
     assert len(words) == len(set(words)) and words[0] == 'starting from the reviewed decisions', words
     fig = logs.steps('▶ figure request 2 of 3: 40 figures\n▶ figure request 3 of 3: 12 figures\n▶ 5/5 report\n')
     assert [logs.plain(s['label']) for s in fig][:2] == ['sending to the AI: figures, request 1 of 2', 'sending to the AI: figures, request 2 of 2']
-    for s in logs.steps('▶ 0/5 intake\n▶ 1/5 audit (no model)\n▶ 2/5 veraPDF on the original\n▶ 3/5 decide\n▶ figure request 2 of 3\n'):
+    # #135 (parallel requests): figpasses.run prints one ▶ line as sending starts and one as each request finishes; the count
+    # is of figure requests (pass 2 is the first), finished ones, never a request still being sent (review 02 M4)
+    from lib import figpasses
+    lines = []
+    figpasses.run([{'pass': '2', 'items': [], 'body': {}, 'worst': 0.1, 'max_tokens': 10}, {'pass': '3', 'items': [], 'body': {}, 'worst': 0.1, 'max_tokens': 10}],
+                  lambda b: {'resp': {'choices': [{'message': {'content': '{}'}, 'finish_reason': 'stop'}], 'usage': {'cost': 0.01}}},
+                  figpasses.Budget(None, 0, {'2': 0.1, '3': 0.1}), say=lines.append, cap=1)
+    assert lines == ['▶ figure requests: 0 of 2 done', '▶ figure requests: 1 of 2 done', '▶ figure requests: 2 of 2 done']
+    fig = logs.steps(''.join(l + '\n' for l in lines) + '▶ 5/5 report\n')
+    assert [logs.plain(s['label']) for s in fig][:3] == ['sending to the AI: figures, 0 of 2 done', 'sending to the AI: figures, 1 of 2 done',
+                                                         'sending to the AI: figures, 2 of 2 done']
+    # review 13 L1: while figure requests are out the counter stays at the decide step's own number, 4 of 6, as it is
+    # before them and when the language step (3b/5) starts; the words carry the figures' count
+    head = '▶ 0/5 intake\n▶ 1/5 audit (no model)\n▶ 2/5 veraPDF on the original\n▶ 3/5 anthropic/claude-sonnet-5.5 via OpenRouter\n'
+    for tail_, words in (('▶ figure requests: 0 of 4 done\n▶ figure requests: 1 of 4 done\n▶ figure requests: 2 of 4 done\n', 'sending to the AI: figures, 2 of 4 done'),
+                         ('▶ figure request 2 of 4: 40 figures\n▶ figure request 3 of 4: 40 figures\n', 'sending to the AI: figures, request 2 of 3')):
+        assert logs.now_step('run', logs.steps(head + tail_)) == {'words': words, 'n': 4, 'total': 6}
+    assert logs.now_step('run', logs.steps(head + '▶ figure requests: 4 of 4 done\n▶ 3b/5 page readings via OpenRouter\n'))['n'] == 4
+    for s in logs.steps('▶ 0/5 intake\n▶ 1/5 audit (no model)\n▶ 2/5 veraPDF on the original\n▶ 3/5 decide\n▶ figure request 2 of 3\n▶ figure requests: 1 of 3 done\n'):
         w = logs.plain(s['label'] if isinstance(s, dict) else s)
         assert not re.search(r'\d/\d|OpenRouter', w), w
-    assert "esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? 'Waiting for review' :" in src('webapp/panel.js')
+    assert "esc(tc(!st.waiting ? 'First result' : !st.waiting.reviewed ? (st.held ? 'AI suggestions missing' : 'Waiting for review') :" in src('webapp/panel.js')   # #151
     assert "(j.first ? 'Stop Reviewing (Your Choices Are Saved)' : 'Stop Reviewing (the Session Stays Open)')" in src('webapp/panel.js')   # no session before Finish
 
 def test_job_titles_say_what_happened(tmp_path):

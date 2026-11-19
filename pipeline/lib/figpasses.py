@@ -9,14 +9,15 @@ the part of the digest those rules use, and may decide only alt text, decoration
     context(digest, pc, items, wo1, examples)            the data a figure request gets
     messages(prompt, data, items, encoded)               the figure request itself
     pick(...), examples(...), probe(...)                  style examples from the first request's validated alt texts
-    run(requests, send, budget)                          sends them in turn, one retry each where it is safe, and one with twice the room after a cut-off
+    run(requests, send, budget)                          sends them, AI_PARALLEL at a time (lib/aisend.py), one retry each where it is safe, and one with twice the room after a cut-off
     scope(reply, items, k) / merge(wo, results, where)   each reply checked against its own figures, then one work order
     record(...) / fingerprint(...) / matches(...)        the saved form (record.json raw_reply_passes, reply.txt.passes.json)
 
 Figure requests are numbered after the first: request 2, 3, …; ids are strings so a request could later be split
 ("3a") without a new format. Nothing here reads the API key or opens a connection: decide.py passes `send`.
 """
-import re, json, time, hashlib
+import re, json, time, hashlib, threading
+from lib import aisend
 
 FORMAT = 'figure-passes/1'
 NOTE_VERSION = 'later-figures/1'
@@ -184,21 +185,37 @@ def add_usage(a, b):
     return out
 
 class Budget:
-    """The book cap: what has been spent (a timed-out call counts its worst case) and the worst case still planned. retry_cap and
-    call_cap: the limits a doubled retry may use (the person's real ones, where the first send of each request stays bound to
-    the estimate shown). None: no limit (a model whose cost the estimate can't vouch for)."""
+    """The book cap: what has been spent (a timed-out call counts its worst case) and the worst case each request still holds
+    (planned: {pass: worst case}). retry_cap and call_cap: the limits a doubled retry may use (the person's real ones, where
+    the first send of each request stays bound to the estimate shown). None: no limit (a model whose cost the estimate can't
+    vouch for). Requests run at once (#135 (parallel requests), review 02 M1): every read and change is under one lock, and a
+    retry's check and its reservation are one locked step. A request's own worst case stays held for its retry until the
+    request finishes (finish), so a charge moves into `spent` once and the hold is released once."""
     def __init__(self, cap, spent, planned, retry_cap=None, call_cap=None):
-        self.cap, self.spent, self.planned, self.retry_cap, self.call_cap = cap, spent, list(planned), retry_cap, call_cap
+        self.cap, self.spent, self.retry_cap, self.call_cap = cap, spent, retry_cap, call_cap
+        self.planned = dict(planned); self.lock = threading.Lock()
+    def _room(self): return None if self.cap is None else self.cap - self.spent - sum(self.planned.values())
     def room(self):
-        return None if self.cap is None else self.cap - self.spent - sum(self.planned)
+        with self.lock: return self._room()
+    def charge(self, amount):
+        with self.lock: self.spent += amount or 0
+    def retry_fits(self):
+        """May a charged failure be sent once more? Its own worst case is still held for it, so the room must not be below 0."""
+        with self.lock: r = self._room(); return r is None or r >= 0
     def doubled_fits(self, req):
         """May this request be sent again with twice the room? (True, None) or (False, why in plain words). What the request
-        itself still had planned is freed for it: only the other requests' worst cases are held back."""
+        itself still holds is freed for it: only the other requests' worst cases are held back. When it fits, the doubled
+        call's worst case is held in its place, in the same locked step."""
         if req.get('retry_max_tokens') is None: return False, req.get('no_retry_why') or 'this request is not sent again'
         if self.call_cap is not None and req['retry_worst'] > self.call_cap: return False, 'a longer answer could cost more than the limit per AI request'
-        if self.retry_cap is not None and self.retry_cap - self.spent - (sum(self.planned) - req['worst']) < req['retry_worst']:
-            return False, 'a longer answer could cost more than the limit per PDF'
-        return True, None
+        with self.lock:
+            others = sum(self.planned.values()) - self.planned.get(req['pass'], 0)
+            if self.retry_cap is not None and self.retry_cap - self.spent - others < req['retry_worst']:
+                return False, 'a longer answer could cost more than the limit per PDF'
+            self.planned[req['pass']] = req['retry_worst']
+            return True, None
+    def finish(self, req):
+        with self.lock: self.planned.pop(req['pass'], None)
 
 def cut_off(res): return any(c.get('finish_reason') == 'length' for c in res['calls'])
 
@@ -221,15 +238,15 @@ def one(send, req, budget, sleep, say):
             call['usage'] = {'prompt_tokens': u.get('prompt_tokens'), 'completion_tokens': u.get('completion_tokens'), 'cost_usd': cost}
             rt = (u.get('completion_tokens_details') or {}).get('reasoning_tokens')
             if rt is not None and u.get('completion_tokens') is not None: call['usage'].update(reasoning_tokens=rt, visible_tokens=u['completion_tokens'] - rt)
-            res['usage'] = add_usage(res['usage'], call['usage']); budget.spent += cost or 0; known += cost or 0
+            res['usage'] = add_usage(res['usage'], call['usage']); budget.charge(cost); known += cost or 0
         if cost or out.get('timeout'): charged += 1
         retry, double, why = False, False, None
         if out.get('timeout'):
             call['error'] = {'code': 'timeout', 'message': 'no reply in time; any charge is not known'}
             call['worst_usd'] = round(worst, 4)           # what a restart counts toward the book cap for it
-            budget.spent += worst; unknown += worst; why = 'no reply in time'; retry = True
-        elif resp is None or 'choices' not in resp:
-            er = (resp or {}).get('error') or {}
+            budget.charge(worst); unknown += worst; why = 'no reply in time'; retry = True
+        elif resp is None or 'choices' not in resp or aisend.failed_reply(resp):
+            er = aisend.failed_reply(resp) or (resp or {}).get('error') or {}
             code = str(out.get('code') or er.get('code') or '?'); call['error'] = {'code': code, 'message': (out.get('message') or er.get('message') or '')[:300]}
             why = f'OpenRouter {code}' if code != 'network' else 'OpenRouter could not be reached'; retry = True
         else:
@@ -257,29 +274,33 @@ def one(send, req, budget, sleep, say):
             say(f'  figure request {req["pass"]}: {why}; sending it once more with room for {max_tokens:,}')
             continue
         if not retry or retried: break
-        if (cost or out.get('timeout')) and budget.room() is not None and budget.room() < 0:
+        if (cost or out.get('timeout')) and not budget.retry_fits():
             res['reason'] = why + '; not retried: the book cap had no room left'; break
         retried = True
         if req.get('on_retry'): req['on_retry'](req, known, unknown + worst, cut_off(res))
-        wait = PAUSE.get(str(out.get('code') or ''), 20)
+        wait = PAUSE.get(str((call.get('error') or {}).get('code') or out.get('code') or ''), 20)   # an in-reply 429 waits 60 s too (aisend.call)
         say(f'  figure request {req["pass"]}: {why}; trying once more in {wait} s'); sleep(wait)
     if doubled:
         last = res['calls'][-1]
         res['cut_off_retry'] = {'max_tokens': max_tokens, 'cost_usd': (last.get('usage') or {}).get('cost_usd'), 'outcome': res['outcome']}
-    budget.planned.remove(req['worst'])
+    budget.finish(req)
     return res
 
-def run(requests, send, budget, sleep=None, say=print, before=None, done=None):
-    """Each request in turn; before(request) and done(result) around each, so the caller can save its state."""
-    out = []; sleep = sleep or time.sleep
-    last = max((int(r['pass']) for r in requests if str(r.get('pass', '')).isdigit()), default=None)
-    for req in requests:
-        of = f' of {last}' if last else ''                             # the app names it "request N of M" (webapp/logs.py)
-        say(f'▶ figure request {req["pass"]}{of}: {len(req["items"])} figures')
+def run(requests, send, budget, sleep=None, say=print, before=None, done=None, cap=None, on_stop=None):
+    """The requests, at most `cap` at a time (AI_PARALLEL, lib/aisend.py; 1 sends them in turn, in their order). before(request)
+    runs as a request is sent, in its worker; done(result) as each finishes, in the calling thread. One ▶ line when sending
+    starts and one each time a request finishes, never at a send ("▶ figure requests: 2 of 4 done": webapp/logs.py), so the
+    app never shows a request done that is still being sent. An interruption: on_stop(the requests in flight), then raised
+    again (aisend.run). Returns the results in request order."""
+    sleep = sleep or time.sleep; say = aisend.locked(say); n = len(requests); fin = [0]
+    if n: say(f'▶ figure requests: 0 of {n} done')
+    def job(req):
         if before: before(req)
-        r = one(send, req, budget, sleep, say); out.append(r)
+        return one(send, req, budget, sleep, say)
+    def finished(req, r):
         if done: done(r)
-    return out
+        fin[0] += 1; say(f'▶ figure requests: {fin[0]} of {n} done')
+    return aisend.run(requests, job, cap or aisend.cap(), on_done=finished, on_stop=on_stop)
 
 # ------------------------------------------------------------------ one work order
 def scope(reply, items, k):

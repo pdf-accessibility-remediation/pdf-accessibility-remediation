@@ -13,7 +13,7 @@
 #   result name    <original file name>_remediated.pdf, unless a book list line names it after a |
 #
 #   JOBS=3           books processed at the same time (each needs about 0.5–1.5 GB of memory)
-#   BATCH_MAX_USD=10 refuse to start if what the batch has spent plus what it could cost is higher (default: lib/costs.py)
+#   BATCH_MAX_USD=400 refuse to start if what the batch has spent plus what it could cost is higher (default: lib/costs.py)
 #   KEEP=1           keep each run's working files and every log
 #   MODEL=<id>       any OpenRouter model id for every book in this batch (default: DEFAULT_MODEL in decide.py).
 #                    The batch cap only counts Claude models: for others the estimate is approximate and not capped
@@ -23,7 +23,7 @@
 #                    whose later step failed is reused free
 #   FORCE_OCR=1, OCR_LANG=…, OCR=off, INTAKE=off   passed to every book's intake step (see run_api.sh)
 #   PAGE_READS=1     read each PDF's scanned, mostly Hawaiian pages whole with the AI (off in a batch unless set; counted in
-#                    BATCH_MAX_USD, and each PDF's own PAGE_READS_MAX_USD limit applies, default 3)
+#                    BATCH_MAX_USD, and each PDF's own PAGE_READS_MAX_USD limit applies, default 25 from lib/costs.py)
 #   REVIEW=1         every book stops after the AI's decisions for a person's review (the app's batches, #45 D2): summary.md
 #                    lists it as waiting for review, and RETRY=1 never runs it again ("Finish Review" in the app applies it)
 #   SUMMARY_ONLY=1   no run, no cost: summary.md and summary.html written again from the batch's book folders (the app,
@@ -294,6 +294,12 @@ each() {   # each <step: estimate|run>
       unset LANG_REPLY                                 # never from the caller: only this book own saved decisions (review 06, L2)
       if [[ -n ${FROM:-} ]]; then export REPLY="$B/$name.reply.txt" INTAKE_REUSE=1; [[ -f $B/$name.language.json ]] && export LANG_REPLY="$B/$name.language.json"; fi
       log=$B/$name.log
+      # review 31 L4: each PDF language step bound to its own estimate shown, never the largest PDF cap: a PDF the room in
+      # its own limit held back at the estimate sends no more than the estimate showed
+      own=$(python3 -c "import sys; from lib import costs; print(costs.own_language_bound(*sys.argv[1:3]))" "$B/$name/language_estimate.json" "${LANGUAGE_MAX_USD:-}" 2>/dev/null) || own=0.00
+      [[ -n $own ]] && export LANGUAGE_MAX_USD=$own      # review 33 F2: no estimate shown, nothing sent
+      # review 33 F1: the word forms the estimate of this PDF showed held back (none shown: 0), for the check after the work order
+      export LANG_HELD_SHOWN=$(python3 -m lib.aistatus held-count "$B/$name/language_estimate.json" 2>/dev/null || echo 0)
       RUN_DIR=$B/$name AUTO=1 bash run_api.sh "$pdf" "$name" "$LABEL" > "$log" 2>&1 && rc=0 || rc=$?
       st="FAILED (see $name.log)"
     fi

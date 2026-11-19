@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib import costs as C, costhistory as H
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools'))
 import cost_backtest as BT
+from test_figure_requests_run import book   # noqa: F401  (a fixture: the audited figure book, for #155's estimate tests)
 
 MODEL = 'anthropic/claude-sonnet-5.5'
 def row(book, i=0, input_est=60000, output=9000, kind='workorder', date=None, billed=None, model=MODEL, **kw):
@@ -39,7 +40,48 @@ def test_a_figure_request_has_32000_and_an_unknown_kind_is_refused():
     with pytest.raises(ValueError): C.allowance('nonsense')
 
 def test_the_default_limits_are_in_one_place():
-    assert C.DEFAULT_LIMITS == {'per_call_usd': 2.0, 'per_book_usd': 8.0, 'per_batch_usd': 10.0} and C.DEFAULT_LANGUAGE_USD == 6.0   # 2026-11-14
+    # #155 (costs: set the default limits from the collection's estimates); before: $2, $6, $3, $8, $10
+    assert C.DEFAULT_LIMITS == {'per_call_usd': 2.0, 'language_usd': 25.0, 'page_reads_usd': 25.0, 'per_book_usd': 50.0, 'per_batch_usd': 250.0}
+    assert C.LIMIT_CEILINGS == {'per_call_usd': 20.0, 'language_usd': 250.0, 'page_reads_usd': 250.0, 'per_book_usd': 500.0, 'per_batch_usd': 2500.0}
+    assert C.DEFAULT_LANGUAGE_USD == C.DEFAULT_LIMITS['language_usd']           # the alias older readers use
+    assert C.limits_of({'limits': {'language_usd': 30, 'page_reads_usd': 40, 'nonsense': 9}}) == {**C.DEFAULT_LIMITS, 'language_usd': 30.0, 'page_reads_usd': 40.0}
+
+@pytest.mark.parametrize('k', list(C.LIMIT_CEILINGS))
+def test_the_settings_accept_each_limit_up_to_its_ceiling(k):
+    from webapp import config as CF
+    top = C.LIMIT_CEILINGS[k]
+    CF.check_limits({k: top})                                                    # at the ceiling: accepted
+    CF.check_limits({k: int(top)})
+    for bad in (top + 0.01, 0, -1, True, '5'):
+        with pytest.raises(CF.Bad, match=f'limits.{k} must be a number of dollars above 0 and at most {top:g}'): CF.check_limits({k: bad})
+    with pytest.raises(CF.Bad, match="unknown key 'per_page_usd'"): CF.check_limits({'per_page_usd': 1})
+
+def test_an_estimate_job_gets_the_apps_language_and_page_limits():
+    """#155: the dry runs of an estimate judge the optional steps by the app's limits; other jobs, and a job's own value, are left alone."""
+    from webapp import config as CF
+    s = {'tools': {'path_prepend': [], 'VERAPDF': None}, 'runs': '.', 'limits': {'language_usd': 40, 'page_reads_usd': 31.5}}
+    e = CF.child_env(s, {'ESTIMATE': '1'}, environ={})
+    assert e['LANGUAGE_MAX_USD'] == '40.00' and e['PAGE_READS_MAX_USD'] == '31.50'
+    assert CF.child_env({**s, 'limits': {}}, {'ESTIMATE': '1'}, environ={})['LANGUAGE_MAX_USD'] == '25.00'           # the default
+    assert CF.child_env(s, {'ESTIMATE': '1', 'LANGUAGE_MAX_USD': '0.00'}, environ={})['LANGUAGE_MAX_USD'] == '0.00'   # the job's own wins
+    assert 'LANGUAGE_MAX_USD' not in CF.child_env(s, {'AUTO': '1'}, environ={}) and 'PAGE_READS_MAX_USD' not in CF.child_env(s, {}, environ={})
+
+@pytest.mark.parametrize('kind,worst,limit,spent,want', [
+    ('language', 31.2, 25, 0, 'The language suggestions could cost up to $31.20, more than the limit of $25.00 for language suggestions. To include them, '
+                               'the limit for language suggestions must be at least $32. The app administrator can raise it.'),
+    ('per_book', 60.9, 50, 7, 'This PDF could cost up to $67.90, including $7.00 already spent, more than the limit of $50.00 per PDF. To run it, '
+                              'the limit per PDF must be at least $68. The app administrator can raise it.'),
+    ('per_batch', 279.11, 250, 0, 'This batch could cost up to $279.11, more than the limit of $250.00 per batch. To run the whole batch, '
+                                  'the limit per batch must be at least $280. The app administrator can raise it.'),
+    ('page_reads', 25.0, 24.5, 0, 'The AI reading of Hawaiian pages could cost up to $25.00, more than the limit of $24.50 for the AI reading of Hawaiian pages. '
+                                  'To include it, the limit for the AI reading of Hawaiian pages must be at least $25. The app administrator can raise it.'),
+    ('per_call', 2.001, 2, 0, 'One AI request could cost up to $2.01, more than the limit of $2.00 per AI request. To send it, '
+                              'the limit per AI request must be at least $3. The app administrator can raise it.'),
+    ('per_batch', 2600, 2500, 0, 'This batch could cost up to $2600.00, more than the limit of $2500.00 per batch. To run the whole batch, '
+                                 'the limit per batch must be at least $2600. The app administrator can raise it.')])
+def test_one_sentence_for_every_refusal_for_a_limit(kind, worst, limit, spent, want):
+    w = C.over_limit_words(kind, worst, limit, spent)
+    assert w == want and '_USD' not in w and '"' not in w
 
 def test_the_retry_limits_are_the_persons_real_limits():
     assert C.retry_env(C.limits_of({'limits': {'per_call_usd': 3, 'per_book_usd': 7}})) == {'FIGURE_RETRY_MAX_USD': '3.00', 'FIGURE_RETRY_BOOK_MAX_USD': '7.00'}
@@ -251,9 +293,9 @@ def test_not_available_is_kept_as_it_is(tmp_path):
     assert C.estimate(str(folder(tmp_path, extra={'expected': {'none': 'too_few'}})))['expected'] == {'none': 'too_few'}
 
 @pytest.mark.parametrize('kw,code,words', [
-    ({'worst': 2.4, 'extra': {}}, 'per_call', 'This run could cost up to $2.40, more than the limit of $2.00 per AI request.'),
-    ({'worst': 5.9, 'extra': {'passes': [{'pass': '1', 'worst_case_usd': 0.9}], 'book_cap_usd': 5}}, 'per_book', 'This PDF could cost up to $5.90, more than the limit of $5.00 per PDF.'),
-    ({'worst': 4.6, 'extra': {'passes': [{'pass': '1', 'worst_case_usd': 0.9}], 'book_cap_usd': 5, 'spent_before_usd': 0.6}}, 'per_book', 'This PDF could cost up to $5.20, including $0.60 already spent, more than the limit of $5.00 per PDF.'),
+    ({'worst': 2.4, 'extra': {}}, 'per_call', 'One AI request could cost up to $2.40, more than the limit of $2.00 per AI request. To send it, the limit per AI request must be at least $3. The app administrator can raise it.'),
+    ({'worst': 5.9, 'extra': {'passes': [{'pass': '1', 'worst_case_usd': 0.9}], 'book_cap_usd': 5}}, 'per_book', 'This PDF could cost up to $5.90, more than the limit of $5.00 per PDF. To run it, the limit per PDF must be at least $6. The app administrator can raise it.'),
+    ({'worst': 4.6, 'extra': {'passes': [{'pass': '1', 'worst_case_usd': 0.9}], 'book_cap_usd': 5, 'spent_before_usd': 0.6}}, 'per_book', 'This PDF could cost up to $5.20, including $0.60 already spent, more than the limit of $5.00 per PDF. To run it, the limit per PDF must be at least $6. The app administrator can raise it.'),
     ({'worst': 0.67, 'extra': {'credit_available_usd': 0.4}}, 'credit', 'This run could cost up to $0.67, more than the $0.40 of credit left.')])
 def test_refusals_name_what_it_could_cost_and_the_limit(tmp_path, kw, code, words, limits_of_2026_11):
     b = C.estimate(str(folder(tmp_path, **kw)))['blocked']; assert b['code'] == code and b['words'] == words
@@ -300,9 +342,11 @@ def test_batch_spent_counts_every_folder_and_the_trash(tmp_path):
 def test_the_batch_refusal_says_when_spent_money_is_part_of_it(tmp_path):
     a = folder(tmp_path, 'a', worst=9.0, attempts=[{'cost_usd': 1.2}])
     t = C.batch([str(a)], limit=10, folder=str(tmp_path))
-    assert C.batch_over_words(t) == 'This batch could cost up to $10.20, including $1.20 already spent, more than the limit of $10.00 per batch.'
+    assert C.batch_over_words(t) == ('This batch could cost up to $10.20, including $1.20 already spent, more than the limit of $10.00 per batch. '
+                                     'To run the whole batch, the limit per batch must be at least $11. The app administrator can raise it.')
     t = C.batch([str(folder(tmp_path / 'x', 'a', worst=33.1))], limit=10)
-    assert C.batch_over_words(t) == 'This batch could cost up to $33.10, more than the limit of $10.00 per batch.'
+    assert C.batch_over_words(t) == ('This batch could cost up to $33.10, more than the limit of $10.00 per batch. '
+                                     'To run the whole batch, the limit per batch must be at least $34. The app administrator can raise it.')
 
 def test_a_batch_adds_up_its_expected_figures_and_counts_the_rest(tmp_path):
     a = folder(tmp_path, 'a', extra={'expected': {'usd': .3, 'low': .2, 'high': .4}}); b = folder(tmp_path, 'b', extra={'expected': {'usd': .4, 'low': .3, 'high': .5}})
@@ -325,11 +369,11 @@ def test_fit_n_counts_how_many_of_these_would_fit(tmp_path):
     assert C.batch(Rs, limit=10)['fit_n'] == 2
 
 @pytest.mark.parametrize('n,want', [
-    (0, 'The app administrator can raise the limit or you can start a batch with fewer PDFs.'),
-    (1, 'The app administrator can raise the limit or you can start a batch with fewer PDFs. Only the smallest PDF in this batch would fit within the current limit.'),
-    (2, 'The app administrator can raise the limit or you can start a batch with fewer PDFs. Only the two smallest PDFs in this batch would fit within the current limit.'),
-    (9, 'The app administrator can raise the limit or you can start a batch with fewer PDFs. Only the nine smallest PDFs in this batch would fit within the current limit.'),
-    (10, 'The app administrator can raise the limit or you can start a batch with fewer PDFs. Only the 10 smallest PDFs in this batch would fit within the current limit.')])
+    (0, 'You can also start a batch with fewer PDFs.'),
+    (1, 'You can also start a batch with fewer PDFs. Only the smallest PDF in this batch would fit within the current limit.'),
+    (2, 'You can also start a batch with fewer PDFs. Only the two smallest PDFs in this batch would fit within the current limit.'),
+    (9, 'You can also start a batch with fewer PDFs. Only the nine smallest PDFs in this batch would fit within the current limit.'),
+    (10, 'You can also start a batch with fewer PDFs. Only the 10 smallest PDFs in this batch would fit within the current limit.')])
 def test_the_advice_on_a_batch_over_its_limit(n, want):
     assert C.batch_advice(n) == want
 
@@ -381,3 +425,98 @@ def test_the_extra_alt_text_requests_are_named_apart(tmp_path):     # round 24: 
     e = C.estimate(str(folder(tmp_path, 'a', worst=0.9847, extra={'passes': [{'pass': '1', 'worst_case_usd': 0.6441}, {'pass': '2', 'worst_case_usd': 0.3406}]})))
     assert e['figures'] == {'requests': 1, 'ceiling_usd': 0.3406} and e['requests'] == 2
     assert C.estimate(str(folder(tmp_path, 'b')))['figures'] is None          # one request: nothing extra
+
+# ------------------------------------------------------------------ #155: the limits don't change the estimate (proposal 25 §3.5, review 26 §3)
+# Each step's own figures don't depend on the limits; the limit enters only cap_usd (and book_cap_usd), the refusal mark,
+# and, through fit_optional, which optional steps the PDF's total counts. The step files record cap_usd, so the estimate's
+# fingerprint changes with a limit: "Start Remediation" then asks for a new estimate, as wanted. Since #159 (the language
+# step's dollar fill) the language step's own figures stay the same only while its limit doesn't bind, as here.
+OLD = {'per_call_usd': 2.0, 'language_usd': 6.0, 'page_reads_usd': 3.0, 'per_book_usd': 8.0, 'per_batch_usd': 10.0}   # the defaults before #155
+
+def _without(d, *keys):
+    return {k: v for k, v in d.items() if k not in keys}
+
+def _estimated(book, t, monkeypatch, L):
+    """One fixture folder estimated under limits L, as run_api.sh's ESTIMATE=1 does it: the page readings' and the language
+    step's dry runs (each with its own --max-usd), then decide.py's dry run with the work order's limits."""
+    import test_name_languages as TN
+    from test_page_costs import audit_with_pages, read
+    from test_figure_requests_run import decide, small_audit
+    Ap = audit_with_pages(t / 'p'); Rp = t / 'p' / 'r'
+    read(Ap, Rp, monkeypatch, '--model', TN.MODEL, '--dry-run', '--max-usd', str(L['page_reads_usd']), '--book-max-usd', str(L['per_book_usd']))
+    (t / 'l').mkdir(parents=True); src, Al, Rl = TN.folders(t / 'l')
+    TN.run(src, Al, Rl, monkeypatch, '--dry-run', '--max-usd', L['language_usd'], '--book-max-usd', L['per_book_usd'])
+    A = small_audit(book, t, 3); R = t / 'r'; R.mkdir()
+    for f, d in (('page_reads_estimate.json', Rp), ('language_estimate.json', Rl)): (R / f).write_bytes((d / f).read_bytes())
+    r = decide(A, R, '--dry-run', '--max-usd', L['per_call_usd'], '--book-max-usd', L['per_book_usd'])
+    assert r.returncode == 0, r.stdout + r.stderr
+    return R
+
+def test_the_limits_dont_change_the_estimate(book, tmp_path, monkeypatch):
+    NEW = dict(C.DEFAULT_LIMITS)
+    Ro, Rn = _estimated(book, tmp_path / 'old', monkeypatch, OLD), _estimated(book, tmp_path / 'new', monkeypatch, NEW)
+    pr = [json.load(open(R / 'page_reads_estimate.json')) for R in (Ro, Rn)]
+    le = [json.load(open(R / 'language_estimate.json')) for R in (Ro, Rn)]
+    wo = [json.load(open(R / 'run.json'))['estimate'] for R in (Ro, Rn)]
+    assert pr[0]['to_read'] and le[0]['to_send'] and not any(x.get('refused') for x in pr + le)
+    assert (pr[0]['cap_usd'], pr[1]['cap_usd'], le[0]['cap_usd'], le[1]['cap_usd']) == (3.0, 25.0, 6.0, 25.0)
+    for k in ('worst_case_usd', 'per_page_worst_usd', 'to_read', 'expected'): assert pr[0].get(k) == pr[1].get(k), k
+    for k in ('worst_case_usd', 'per_call_worst_usd', 'to_send', 'sent', 'expected'): assert le[0].get(k) == le[1].get(k), k
+    assert _without(pr[0], 'cap_usd') == _without(pr[1], 'cap_usd') and _without(le[0], 'cap_usd') == _without(le[1], 'cap_usd')
+    assert wo[0]['worst_case_total_usd'] == wo[1]['worst_case_total_usd'] and wo[0].get('expected') == wo[1].get('expected')
+    assert _without(wo[0], 'book_cap_usd', 'cap_usd', 'expected', 'credit_available_usd') == _without(wo[1], 'book_cap_usd', 'cap_usd', 'expected', 'credit_available_usd')
+    # the PDF's maximum and expected cost: equal while nothing is left out under either; the fingerprint is not
+    eo, en = C.estimate(str(Ro), limits=OLD), C.estimate(str(Rn), limits=NEW)
+    assert eo['left_out'] == en['left_out'] == [] and eo['page_reads'] and eo['language']
+    for k in ('ceiling_usd', 'per_call_ceiling_usd', 'requests', 'page_reads', 'language', 'expected'): assert eo[k] == en[k], k
+    assert eo['fingerprint'] != en['fingerprint']
+
+def test_a_refused_step_differs_only_in_its_limit_and_refusal(book, tmp_path, monkeypatch):
+    import test_name_languages as TN
+    from test_page_costs import audit_with_pages, read
+    A = audit_with_pages(tmp_path); got = []
+    for cap in (0.001, 25):                                  # over its own limit, then within it
+        R = tmp_path / f'r{cap}'; read(A, R, monkeypatch, '--model', TN.MODEL, '--dry-run', '--max-usd', str(cap))
+        got.append(json.load(open(R / 'page_reads_estimate.json')))
+    assert got[0]['refused']['why'] == 'cap' and 'refused' not in got[1]
+    assert _without(got[0], 'cap_usd', 'refused') == _without(got[1], 'cap_usd', 'refused')
+    # a step left out for the PDF's limit (the language step under a small per-PDF limit): its own file is untouched, and only
+    # left_out and the PDF's total differ
+    R = _estimated(book, tmp_path / 'n', monkeypatch, dict(C.DEFAULT_LIMITS))
+    before = (R / 'language_estimate.json').read_bytes()
+    full = C.estimate(str(R), limits=dict(C.DEFAULT_LIMITS))
+    le = json.loads(before)['worst_case_usd']
+    small = C.estimate(str(R), limits={**C.DEFAULT_LIMITS, 'per_book_usd': full['ceiling_usd'] - le / 2})
+    assert (R / 'language_estimate.json').read_bytes() == before
+    assert [x['kind'] for x in small['left_out']] == ['language'] and small['language'] is None and full['language']
+    assert small['ceiling_usd'] == pytest.approx(full['ceiling_usd'] - le, abs=1e-4) and small['page_reads'] == full['page_reads']
+
+def test_a_batch_pdfs_language_step_is_bound_to_its_own_estimate(tmp_path):
+    """review 31 L4: batch_api.sh binds each PDF's language step to its own estimate shown (round_up, never above the
+    batch's cap), not the largest PDF's. Review 33 F2: a missing, unreadable or empty estimate showed no language cost
+    and binds 0.00; only a refused one leaves the batch's value (the real run refuses on its own)."""
+    import os, subprocess
+    f = tmp_path / 'e.json'
+    assert C.own_language_bound(str(f), '30.00') == '0.00'                                    # missing
+    f.write_text('{not json'); assert C.own_language_bound(str(f), '30.00') == '0.00'        # unreadable
+    f.write_text('[1, 2]'); assert C.own_language_bound(str(f), '30.00') == '0.00'
+    f.write_text(json.dumps({'to_send': 'x'})); assert C.own_language_bound(str(f), '30.00') == '0.00'
+    f.write_text(json.dumps({'to_send': 4, 'worst_case_usd': 12.3401})); assert C.own_language_bound(str(f), '30.00') == '12.35'
+    assert C.own_language_bound(str(f), '10.00') == '10.00' and C.own_language_bound(str(f), '') == '12.35'
+    f.write_text(json.dumps({'to_send': 4, 'worst_case_usd': 40})); assert C.own_language_bound(str(f), '') == '25.00'
+    f.write_text(json.dumps({'to_send': 4, 'worst_case_usd': 12.3, 'refused': {'why': 'cap'}})); assert C.own_language_bound(str(f), '30') == ''
+    f.write_text(json.dumps({'to_send': 0, 'worst_case_usd': 0})); assert C.own_language_bound(str(f), '30') == '0.00'   # empty
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sh = open(os.path.join(here, 'batch_api.sh'), encoding='utf-8').read()
+    lines = [l.strip() for l in sh.splitlines() if l.strip().startswith(('own=$(python3', '[[ -n $own ]]', 'export LANG_HELD_SHOWN='))]
+    assert len(lines) == 3 and lines[0].endswith('|| own=0.00')
+    def run(est, cap):                      # the three lines themselves, as batch_api.sh runs them for one PDF
+        script = f'B={tmp_path}; name=p; export LANGUAGE_MAX_USD={cap}\n' + '\n'.join(lines) + '\necho "$LANGUAGE_MAX_USD $LANG_HELD_SHOWN"'
+        if est is None: (tmp_path / 'p' / 'language_estimate.json').unlink(missing_ok=True)
+        else: (tmp_path / 'p').mkdir(exist_ok=True); (tmp_path / 'p' / 'language_estimate.json').write_text(json.dumps(est))
+        return subprocess.run(['bash', '-c', script], cwd=here, capture_output=True, text=True).stdout.strip()
+    (tmp_path / 'p').mkdir(exist_ok=True)
+    assert run(None, '30.00') == '0.00 0' and run({'to_send': 0}, '30.00') == '0.00 0'           # review 33 F1: none shown held back
+    assert run({'to_send': 4, 'worst_case_usd': 12.3401, 'held_back': 5}, '30.00') == '12.35 5'
+    assert run({'to_send': 4, 'worst_case_usd': 12.3, 'refused': {'why': 'book'}}, '30.00') == '30.00 0'
+

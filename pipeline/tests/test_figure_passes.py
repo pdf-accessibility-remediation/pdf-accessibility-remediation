@@ -164,18 +164,32 @@ def ok(text='```json\n{"alt": []}\n```', cost=0.01, finish='stop'):
 def req(k='2', worst=0.4): return {'pass': k, 'items': digest(3)['figures'], 'body': {}, 'worst': worst, 'max_tokens': 32000}
 def rq(k='2', worst=0.4, retry_worst=0.8): return dict(req(k, worst), retry_max_tokens=64000, retry_worst=retry_worst, body={'max_tokens': 32000, 'keep': True})
 
-def run_with(outs, cap=5.0, spent=0.0, reqs=None, retry_cap=None, call_cap=None, bodies=None):
+def run_with(outs, cap=5.0, spent=0.0, reqs=None, retry_cap=None, call_cap=None, bodies=None, parallel=None):
+    """parallel: AI_PARALLEL for this run (None: the setting, so the file runs at AI_PARALLEL=1 and at the default). The
+    replies come in call order, so a test with two requests pins parallel=1 (its outcome depends on which is sent first)."""
     reqs = reqs or [req()]; it = iter(outs); waits = []
-    b = F.Budget(cap, spent, [r['worst'] for r in reqs], retry_cap=retry_cap, call_cap=call_cap)
+    b = F.Budget(cap, spent, {r['pass']: r['worst'] for r in reqs}, retry_cap=retry_cap, call_cap=call_cap)
     def send(body):
         if bodies is not None: bodies.append(body)
         return next(it)
-    res = F.run(reqs, send, b, sleep=waits.append, say=lambda *a: None)
+    res = F.run(reqs, send, b, sleep=waits.append, say=lambda *a: None, cap=parallel)
     return res, b, waits
 
 def test_uncharged_429_is_retried_once_after_a_pause():
     res, b, waits = run_with([{'resp': None, 'code': 429, 'message': 'rate limited'}, ok()])
     assert res[0]['outcome'] == 'done' and waits == [60] and len(res[0]['calls']) == 2 and b.spent == pytest.approx(0.01)
+
+def test_a_reply_that_reports_an_error_is_retried_and_never_an_answer():
+    bad = ok(text='```json\n{"alt": []}\n```', finish='error')
+    res, _, waits = run_with([bad, bad])
+    assert res[0]['outcome'] == 'failed' and waits == [20] and len(res[0]['calls']) == 2 and res[0]['calls'][0]['error']['code'] == 'error'
+
+def test_a_429_inside_a_200_reply_waits_60_s_as_one_from_the_server():
+    """review 20 L2: the wait comes from the recorded error code, so a "too many requests" inside the reply waits 60 s."""
+    inner = {'resp': {'choices': [{'message': {'content': ''}, 'finish_reason': 'error'}], 'error': {'code': 429, 'message': 'busy'},
+                      'usage': {'prompt_tokens': 10, 'completion_tokens': 0, 'cost': 0}}, 'seconds': 1.0}
+    res, _, waits = run_with([inner, ok()])
+    assert waits == [60] and res[0]['outcome'] == 'done' and res[0]['calls'][0]['error']['code'] == '429'
 
 def test_two_failures_give_a_failed_request_with_its_reason():
     res, _, _ = run_with([{'resp': None, 'code': 429}, {'resp': None, 'code': 429}])
@@ -201,12 +215,12 @@ def test_the_room_for_the_retry_leaves_out_this_requests_own_plan(planned, limit
 def test_a_finished_requests_plan_is_freed_for_the_next_ones_retry():
     """1.12 − 0.31 spent − nothing still planned ≥ 0.80: it fits only because the first request's 0.40 was freed when it finished."""
     a, b_ = rq('2', worst=0.4), rq('3', worst=0.4)
-    res, _, _ = run_with([ok(cost=0.01), ok(finish='length', cost=0.3), ok()], reqs=[a, b_], retry_cap=1.12, call_cap=2)
+    res, _, _ = run_with([ok(cost=0.01), ok(finish='length', cost=0.3), ok()], reqs=[a, b_], retry_cap=1.12, call_cap=2, parallel=1)
     assert len(res[1]['calls']) == 2 and res[1]['outcome'] == 'done'
 
 def test_the_other_requests_plans_are_held_back():
     a, b_ = rq('2', worst=0.4), rq('3', worst=0.4)
-    res, _, _ = run_with([ok(finish='length', cost=0.3), ok(), ok()], reqs=[a, b_], retry_cap=1.1, call_cap=2)      # 1.1 - 0.3 - 0.4 = 0.4 < 0.8
+    res, _, _ = run_with([ok(finish='length', cost=0.3), ok(), ok()], reqs=[a, b_], retry_cap=1.1, call_cap=2, parallel=1)      # 1.1 - 0.3 - 0.4 = 0.4 < 0.8
     assert len(res[0]['calls']) == 1 and 'limit per PDF' in res[0]['reason']
 
 def test_the_retry_is_held_to_the_limit_per_ai_call():
@@ -227,6 +241,23 @@ def test_on_retry_tells_the_caller_what_a_stop_must_count():
     assert seen == [(pytest.approx(0.3), 0.8, True)]
     seen.clear(); run_with([ok('no json', cost=0.1), ok()], reqs=[r], retry_cap=5, call_cap=2)      # the unreadable reply's retry too
     assert seen == [(pytest.approx(0.1), 0.4, False)]
+
+def test_two_doubled_retries_racing_for_room_for_one():
+    """review 13 L2: two requests cut off at once, room under the real limit for one doubled worst case. Exactly one gets
+    it; what is held never passes the limit; finish releases each hold once."""
+    import threading
+    a, b_ = rq('2', worst=0.4, retry_worst=0.8), rq('3', worst=0.4, retry_worst=0.8)
+    bud = F.Budget(5.0, 0.6, {'2': 0.4, '3': 0.4}, retry_cap=2.2, call_cap=2)      # 2.2 − 0.6 spent − 0.4 the other's = 1.2: one 0.8
+    gate = threading.Barrier(2); got = {}
+    def go(r): gate.wait(10); got[r['pass']] = bud.doubled_fits(r)
+    ts = [threading.Thread(target=go, args=(r,)) for r in (a, b_)]
+    for t in ts: t.start()
+    for t in ts: t.join(10)
+    assert sorted(ok for ok, _ in got.values()) == [False, True]
+    assert next(why for ok, why in got.values() if not ok) == 'a longer answer could cost more than the limit per PDF'
+    assert sorted(bud.planned.values()) == [0.4, 0.8] and bud.spent + sum(bud.planned.values()) <= 2.2
+    bud.finish(a); bud.finish(b_); bud.finish(a)
+    assert bud.planned == {} and bud.room() == pytest.approx(4.4)
 
 def test_a_429_then_a_cut_off_gets_the_doubled_retry():
     res, _, waits = run_with([{'resp': None, 'code': 429}, ok(finish='length', cost=0.3), ok()], reqs=[rq()], retry_cap=5, call_cap=2)

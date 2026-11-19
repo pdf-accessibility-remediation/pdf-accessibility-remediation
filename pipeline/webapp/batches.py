@@ -226,7 +226,8 @@ def _book_status(s, label, b, R, jl, batch_job, rd=None, nm=None):
     if mine and mine[-1]['status'] in jobs.ACTIVE:
         k = mine[-1]['kind']
         row['words'] = 'Waiting to Start' if mine[-1]['status'] == 'queued' else 'Applying the Reviewed Decisions' if k == 'apply' else \
-                       'Waiting for Review' if k == 'review' else 'Writing the Batch Summary' if k == 'summary' else 'Estimating'
+                       'Waiting for Review' if k == 'review' else 'Writing the Batch Summary' if k == 'summary' else \
+                       'Running' if k == 'ai-retry' else 'Estimating'                  # #151: "Ask the AI Again" (its estimate: Estimating)
     elif batch_job and batch_job['status'] == 'running' and not row['finished']:
         lp = os.path.join(folder(s, label), f'{b["name"]}.log')
         try: st = logs.now_step('apply', logs.steps(open(lp, encoding='utf-8', errors='replace').read()))
@@ -234,7 +235,7 @@ def _book_status(s, label, b, R, jl, batch_job, rd=None, nm=None):
         row['words'] = 'Running' + (f': {st["words"][:1].upper()}{st["words"][1:]}' if st else '') if os.path.exists(lp) or st else row['words']
     elif not row["finished"] and LG.question(s, R, mine, nm):     # D4: its language is asked on its row
         row['status'] = row['words'] = 'Waiting for a Language'
-    elif mine and mine[-1]['status'] in ('failed', 'interrupted') and not row['finished']:
+    elif mine and mine[-1]['status'] in ('failed', 'interrupted') and not row['finished'] and mine[-1]['kind'] not in ('ai-retry', 'ai-retry-estimate'):   # #151: the held card says why
         it = (rd(os.path.join(R, '_intake', 'intake.json')) or {}).get('status')
         row['words'] = 'Stopped: Needs a Person' if it == 'stopped' else 'Failed'
     return row
@@ -294,7 +295,7 @@ def state(s, label, nm=None, with_dashboard=True):
     bj = [j for j in jl if j['run'] == f'batches/{label}' and j['kind'] == 'batch']
     batch_job = bj[-1] if bj else None
     B = folder(s, label)
-    out, Rs, flagged, missing, est_active, reviewing, asking = [], [], [], [], False, [], []
+    out, Rs, flagged, missing, est_active, reviewing, asking, held_n, held_back = [], [], [], [], False, [], [], 0, []
     for b in bs:
         R = os.path.join(B, b['name'])
         row = _book_status(s, label, b, R, jl, batch_job, rd, nm)
@@ -302,11 +303,16 @@ def state(s, label, nm=None, with_dashboard=True):
         mine = [j for j in jl if j['run'] == f'batches/{label}/{b["name"]}']
         if mine and mine[-1]['status'] in jobs.ACTIVE and mine[-1]['kind'] == 'batch-estimate': est_active = True
         q = None if row['finished'] or (mine and mine[-1]['status'] in jobs.ACTIVE) else LG.question(s, R, mine, nm)
-        if os.path.isfile(os.path.join(R, 'workorder.ai.json')) and not row['finished']: reviewing.append(b['name'])   # D2a: never sent again
+        if os.path.isfile(os.path.join(R, 'workorder.ai.json')) and not row['finished']:
+            reviewing.append(b['name'])                                                            # D2a: never sent again
+            if HM.held(R): held_n += 1                                                             # #151 (review 29 M3): missing AI suggestions
         elif q: asking.append(b['name'])                                         # D4: waits for its language
         elif stopped and not row['finished']: flagged.append(b['name'])
         elif not row['finished']:
             Rs.append(R)
+            from . import runs as RN_
+            hb_ = RN_.held_back_view(R)                                           # #159: word forms this PDF's estimate holds back
+            if hb_: held_back.append({'name': b.get('title') or b['name'], 'count': hb_['held_back_count'], 'which': hb_['held_back_which']})   # review 31 L4: why
             if not costs.estimate(R) and not (os.path.isfile(os.path.join(R, 'workorder.json')) and os.path.isfile(os.path.join(R, 'response.json'))):
                 missing.append(b['name'])
         out.append({'name': b['name'], 'book': nm.book_name(b.get('key'), b.get('file') or '') if b.get('key') else b.get('book'), 'file': BK.shown_file(b.get('file') or ''), 'status': row['words'], 'finished': row['finished'],
@@ -339,13 +345,13 @@ def state(s, label, nm=None, with_dashboard=True):
             elif total['credit_usd'] is None: why, code = SP_.credit_words(s), 'no_credit'   # U8: why, and "Check Credit Again"
         spend = {'ok': not why, 'why': why, 'code': code, **({'advice': costs.batch_advice(total['fit_n'])} if code == 'limit' else {})}
     meta = _load(meta_path(s, label)) or {}
-    return {'label': label, 'phase': phase, 'books': out, 'flagged': flagged, 'missing': missing, 'test': test, 'reviewing': reviewing, 'asking': asking,
+    return {'label': label, 'phase': phase, 'books': out, 'flagged': flagged, 'missing': missing, 'test': test, 'reviewing': reviewing, 'held': held_n, 'asking': asking,
             'from_app': bool(meta), 'ocr_name': meta.get('ocr_name'),   # a batch made before D4: its one OCR language
             'trashed': {'n': len(trashed(s, label)), 'cost_usd': round(sum(x.get('cost_usd') or 0 for x in trashed(s, label)), 6)},
             'totals': {'ceiling_usd': total['ceiling_usd'], 'limit_usd': total['limit_usd'], 'credit_usd': total['credit_usd'],
                        'spent_usd': spent, 'cost_words': cost_words, 'books_to_send': len(Rs), 'finished': finished, 'expected': total['expected'], 'requests': total['requests'],
                        'estimated': sum(1 for x in total['books'] if x['adds_usd'] is not None), 'to_estimate': len(Rs) + len(asking),   # R14
-                       'shown_ceiling_usd': shown.get('ceiling_usd')},
+                       'shown_ceiling_usd': shown.get('ceiling_usd'), 'held_back': held_back},
             'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary, 'dashboard': dashboard(s, label, out, al=jl) if with_dashboard else None,
             'again': bool(meta) and phase in ('stopped', 'finished') and finished + len(reviewing) < len(out),
             'job': ({k: batch_job.get(k) for k in ('id', 'status', 'exit', 'started', 'ended')} if batch_job else None)}
@@ -501,7 +507,7 @@ def tone(row, R, rd=None):
     if row.get('active') or w in ('Estimating', 'Waiting to Start') or w.startswith('Running') or w.startswith('Applying'): return 'processing'
     if st == 'Failed' or w == 'Failed': return 'failed'
     if st in ('Ready', 'Shipped', 'Cleared'): return 'done'
-    if w.startswith('Stopped') or w.startswith('Waiting for a Language'): return 'person'
+    if w.startswith('Stopped') or w.startswith('Waiting for a Language') or w == HM.HELD_WORDS: return 'person'   # #151: held for a person's choice
     opened = any(os.path.exists(os.path.join(R, *x)) for x in (('review.json',), ('review_decisions.json',), ('record.json',),
                                                                  ('reviews', 'review_decisions.json'), ('reviews', 'sessions')))
     if os.path.exists(os.path.join(R, 'record.json')):

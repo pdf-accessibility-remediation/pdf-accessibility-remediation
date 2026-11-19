@@ -58,9 +58,11 @@ def real_cost_history_is_never_written():
 @pytest.fixture
 def limits_of_2026_11(monkeypatch):
     """The limits these tests' scenarios were written for: $5 per PDF and $4 for the language step (the defaults until
-    2026-11-14, now $8 and $6, tested in test_costs.py). In this process and, through BOOK_MAX_USD and LANGUAGE_MAX_USD,
-    in every child it starts."""
+    2026-11-14; then $8 and $6; since #155 $50 and $25, tested in test_costs.py). In this process (DEFAULT_LIMITS and its
+    alias DEFAULT_LANGUAGE_USD, a copy taken at import) and, through BOOK_MAX_USD and LANGUAGE_MAX_USD, in every child it
+    starts."""
     from lib import costs
     monkeypatch.setitem(costs.DEFAULT_LIMITS, 'per_book_usd', 5.0)
+    monkeypatch.setitem(costs.DEFAULT_LIMITS, 'language_usd', 4.0)
     monkeypatch.setattr(costs, 'DEFAULT_LANGUAGE_USD', 4.0)
     monkeypatch.setenv('BOOK_MAX_USD', '5'); monkeypatch.setenv('LANGUAGE_MAX_USD', '4')

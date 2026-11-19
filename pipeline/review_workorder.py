@@ -109,6 +109,8 @@ def main():
     ap.add_argument('--serve', action='store_true', help='open the review page on this computer')
     ap.add_argument('--port', type=int, default=8765); ap.add_argument('--no-browser', action='store_true')
     ap.add_argument('--reviewer', help='without --serve: record a review of a hand-edited workorder.json')
+    ap.add_argument('--override', metavar='NAME', help='a run held because AI suggestions are missing (#151): review it without them, '
+                    'recorded under this name ("Review Without the Missing Suggestions")')
     ap.add_argument('--note'); ap.add_argument('--date', default=datetime.date.today().isoformat())
     ap.add_argument('--reopen', action='store_true', help='a finished run: review it again, with the earlier choices preloaded')
     ap.add_argument('--from', dest='src', help='with --reopen: the session to start from (001, 002, …), or ai for the AI\'s decisions')
@@ -173,6 +175,16 @@ def main():
         n = sum(1 for it in d['items'] if it['priority'])
         print(f'review ready: {len(d["items"])} decisions, {n} to check first · page images are made as the reviewer scrolls to them')
         return
+    # #151 (review 23 L4): a run whose AI steps did not finish is held for the review page and the hand-edit path alike
+    from lib import aistatus
+    st = aistatus.status(R)
+    if st['held'] and (a.serve or a.reviewer) and not a.override:
+        sys.exit('this run is held: some AI suggestions are missing.\n  ' + '\n  '.join(aistatus.lines(st))
+                 + ('\nto ask the AI again: AI_RETRY=1 bash run_api.sh <original.pdf> <name> ' + os.path.basename(R) if aistatus.retry_parts(st) else '')
+                 + f'\nto review without them: python3 {os.path.abspath(__file__)} "{R}" --override "Your Name" ' + ('--serve' if a.serve else '--reviewer NAME'))
+    if a.override and st['held']:
+        d = aistatus.set_override(R, a.override, a.date)
+        print(f'recorded: reviewed without the missing AI suggestions, by {d["by"]}')
     if a.serve:
         if not os.path.exists(os.path.join(R, 'review_items.json')): sys.exit('no review_items.json: run with --prepare --pdf <file.pdf> first')
         d = core.load(os.path.join(R, 'review_items.json'))
