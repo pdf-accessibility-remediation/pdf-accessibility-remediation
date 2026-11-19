@@ -351,3 +351,80 @@ def test_a_batch_with_the_language_step_off_says_so_at_the_start(tmp_path):
     off = subprocess.run(['bash', 'batch_api.sh', 'lt-off', str(tmp_path / 'src')], cwd=HERE, env=env, capture_output=True, text=True, timeout=120)
     on = subprocess.run(['bash', 'batch_api.sh', 'lt-on', str(tmp_path / 'src')], cwd=HERE, env=dict(env, LANG_TAGS='on'), capture_output=True, text=True, timeout=120)
     assert line in off.stdout and line not in on.stdout
+
+# ------------------------------------------------------------------ #145: edited copies on the batch dashboard
+def copy_of(t, R, label, state='not started'):
+    """An edited copy of the batch PDF R, where handedit.py import leaves it (runs/<name>/<label>/: child_dir), logged in R's
+    hand_edits.json: its _handedit/ only (not started), stopped for review (waiting) or finished."""
+    C = t / 'runs' / R.name / label; (C / '_handedit').mkdir(parents=True)
+    (C / '_handedit' / 'hand_edit.json').write_text(json.dumps({'to': 'review', 'parent': {'run': str(R)}}))
+    if state == 'waiting': (C / 'workorder.ai.json').write_text('{}')
+    if state == 'finished': (C / 'record.json').write_text('{}')
+    hp = R / 'hand_edits.json'; d = json.loads(hp.read_text()) if hp.exists() else {'exports': [], 'children': []}
+    d['children'].append({'when': '2026-11-18T10:00:00', 'run': str(C), 'by': 'Pat', 'note': 'new photo'}); hp.write_text(json.dumps(d))
+    return C
+
+@pytest.fixture
+def finished_two(setup, monkeypatch):
+    """Two applied PDFs in batch "fb": "low" needs 1 person item, "high" needs 9 (a stub glance, read from record.json)."""
+    import report_html
+    monkeypatch.setattr(report_html, 'glance_of', lambda R, rec: {'needs_person': {'total': rec['needs']}, 'ai_decisions': {'count': 0},
+                                                                  'verapdf': {}, 'ship': [{'ok': True}]})
+    monkeypatch.setattr(report_html, 'safety_state', lambda g: 'ok')
+    out = []
+    for name, needs in (('low', 1), ('high', 9)):
+        R = setup / 'runs' / 'batches' / 'fb' / name; R.mkdir(parents=True)
+        (R / 'record.json').write_text(json.dumps({'needs': needs}))
+        out.append({'name': name, 'book': name, 'file': f'{name}.pdf', 'status': 'Ready', 'href': f'/run/batches/fb/{name}/', 'finished': True})
+    return out
+
+def test_the_dashboard_lists_each_edited_copy_with_its_state(setup, finished_two):
+    s = settings(setup); R = setup / 'runs' / 'batches' / 'fb' / 'low'
+    copy_of(setup, R, 'done', 'finished'); copy_of(setup, R, 'wait', 'waiting'); copy_of(setup, R, 'cold')
+    gone = copy_of(setup, R, 'gone'); (gone / '_handedit' / 'hand_edit.json').unlink(); (gone / '_handedit').rmdir(); gone.rmdir()
+    rows = {r['name']: r for r in BT.dashboard(s, 'fb', finished_two, al=[])}
+    assert [(c['label'], c['state'], c['words'], c['url']) for c in rows['low']['edited']] == [
+        ('done', 'finished', 'finished', '/run/low/done/'), ('wait', 'waiting for its review', 'waiting for its review', '/run/low/wait/'),
+        ('cold', 'not started', 'not started', None), ('gone', 'removed', 'its folder is no longer there', None)]
+    assert rows['high']['edited'] == []
+
+def test_a_copy_added_or_finished_later_shows_on_the_next_build(setup, finished_two):
+    """The copies are read on every build: the result columns' cache (key_of) never sees hand_edits.json or the copy's folder."""
+    s = settings(setup); R = setup / 'runs' / 'batches' / 'fb' / 'low'
+    assert all(r['edited'] == [] and r['result'] for r in BT.dashboard(s, 'fb', finished_two, al=[]))
+    C = copy_of(setup, R, 'he')
+    assert [(c['state'], c['url']) for c in BT.dashboard(s, 'fb', finished_two, al=[])[1]['edited']] == [('not started', None)]
+    (C / 'record.json').write_text('{}')
+    assert [(c['state'], c['url']) for c in BT.dashboard(s, 'fb', finished_two, al=[])[1]['edited']] == [('finished', '/run/low/he/')]
+
+def test_edited_copies_never_change_the_row_order(setup, finished_two):
+    s = settings(setup)
+    before = [r['name'] for r in BT.dashboard(s, 'fb', finished_two, al=[])]
+    copy_of(setup, setup / 'runs' / 'batches' / 'fb' / 'low', 'a', 'finished'); copy_of(setup, setup / 'runs' / 'batches' / 'fb' / 'low', 'b')
+    assert before == [r['name'] for r in BT.dashboard(s, 'fb', finished_two, al=[])] == ['high', 'low']   # most work first, as before
+
+def test_a_copy_being_prepared_is_read_from_the_jobs_already_read(setup, finished_two, monkeypatch):
+    s = settings(setup); copy_of(setup, setup / 'runs' / 'batches' / 'fb' / 'low', 'he')
+    monkeypatch.setattr(jobs, 'all_jobs', lambda *a, **k: pytest.fail('the jobs were read again'))
+    al = [{'kind': 'bring_back', 'status': 'running', 'child': 'low/he'}]
+    assert BT.dashboard(s, 'fb', finished_two, al=al)[1]['edited'][0]['state'] == 'being prepared'
+
+def test_the_batch_state_carries_the_copies(two):
+    s = settings(two, test_batch_from='v8-p7a')
+    ready_batch(two, s)
+    copy_of(two, two / 'runs' / 'batches' / 'bb' / 'two', 'he', 'waiting')
+    rows = {r['name']: r['edited'] for r in BT.state(s, 'bb')['dashboard']}
+    assert rows == {'Book_One': [], 'two': [{'label': 'he', 'state': 'waiting for its review', 'words': 'waiting for its review', 'url': '/run/two/he/'}]}
+
+def test_batch_js_escapes_every_edited_copy_value():
+    """Source check (CI has no node): in the whole `edited` helper, every c.<field> is printed through esc(), except the
+    c.url test; a value added on another line, or a second helper line, is caught the same way."""
+    import re
+    js = open(os.path.join(HERE, 'webapp', 'batch.js'), encoding='utf-8').read()
+    helper = js[js.index('const edited = r =>'):]
+    helper = helper[:helper.index(";\n") + 1]
+    fields = [m for m in re.finditer(r'\bc\.(\w+)', helper)]
+    assert {m.group(1) for m in fields} == {'url', 'label', 'words'}
+    for m in fields:
+        assert helper[:m.start()].endswith('esc(') or helper[m.end():].startswith(' ?'), f'c.{m.group(1)} is printed without esc()'
+    assert "+ edited(r) + '</td>'" in js
