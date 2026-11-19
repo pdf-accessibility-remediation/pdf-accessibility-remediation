@@ -214,7 +214,7 @@ It swaps one section with the next in a copy of a tagged sample (default hawaii3
 
 It takes the result of a run from its saved reply, replaces one figure's image in an exported copy, brings it back for review (no AI call), writes its alt by hand, and applies it. It checks the figure found, the hashes, the safety checks and the alt texts, and prints what `apply.py` changed again.
 
-`python3 tools/handedit_case.py [--book hawaii3] [--out DIR]`. PASS/FAIL per check, exit 1 on any FAIL. Local, no AI, veraPDF off.
+`python3 tools/handedit_case.py [--book hawaii3] [--out DIR]`. A relative `DIR` is taken from the folder you run the tool in. PASS/FAIL per check, exit 1 on any FAIL. Local, no AI, veraPDF off.
 
 ## Shared helpers (`lib/`)
 

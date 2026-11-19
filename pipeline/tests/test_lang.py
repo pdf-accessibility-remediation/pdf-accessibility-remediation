@@ -114,7 +114,11 @@ def test_a_batch_pdf_is_asked_on_its_row(setup, monkeypatch):
     assert json.load(open(BT.meta_path(s, 'Spring')))['langs'] == {'a': 'kor+eng', 'b': 'eng'}
     with pytest.raises(ValueError, match='no such PDF'): BT.answer_language(s, 'Spring', 'zz', 'eng')
 
-KOREAN_FONT = '/System/Library/Fonts/AppleSDGothicNeo.ttc'
+# #147: the first CJK font found, the same search as tools/intake_cases.py (INTAKE_CASES_FONT overrides) with the macOS
+# font this test first used; None when there is none
+KOREAN_FONT = next((p for p in (os.environ.get('INTAKE_CASES_FONT') or '', '/System/Library/Fonts/AppleSDGothicNeo.ttc',
+                                '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+                                '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc') if p and os.path.exists(p)), None)
 
 def scan_pdf(tmp_path, text=None):
     from PIL import Image, ImageDraw, ImageFont
@@ -131,7 +135,7 @@ def run_api(tmp_path, pdf):
     r = subprocess.run(['bash', 'run_api.sh', str(pdf), 'scan', 'l1'], cwd=HERE, env=env, capture_output=True, text=True, timeout=300)
     return r, tmp_path / 'runs' / 'scan' / 'l1'
 
-@pytest.mark.skipif(not shutil.which('tesseract') or not os.path.exists(KOREAN_FONT), reason='Tesseract and a Korean font are needed')
+@pytest.mark.skipif(not shutil.which('tesseract') or not KOREAN_FONT, reason='Tesseract and a Korean font are needed')
 def test_run_api_stops_for_the_language_before_any_ocr(tmp_path):
     """ASK_LANG=1 with no OCR_LANG: intake.py --languages, then exit 4 before the full intake when the language matters."""
     r, R = run_api(tmp_path, scan_pdf(tmp_path, '한국어 문서의 내용입니다 대한민국'))
@@ -145,6 +149,8 @@ def test_run_api_goes_on_when_the_scans_hold_no_text(tmp_path):
     r, R = run_api(tmp_path, scan_pdf(tmp_path))
     d = json.load(open(R / '_intake' / 'languages.json'))
     assert d['needs_ocr'] and not d['ask'] and d['found'] == 'none' and r.returncode != 4
+    assert '▶ 0/5 intake (local, no model)' in r.stdout   # #147: it went on to the full intake (which then fails on this blank
+    # page, finding nothing to tag, or with no OCRmyPDF: the exit code alone can't show it went on)
     assert 'Tesseract gave no orientation reading on any of the 1 sampled scans' in r.stdout   # review 12 N1: said in the log
 
 def test_use_for_all_waiting_pdfs(setup, monkeypatch):

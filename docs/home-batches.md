@@ -47,6 +47,8 @@ The batch dashboard is drawn in the page: no separate page to open.
 - **Edit Name** changes the PDF's display name in place. It is kept by sha256, so it shows on the dashboard, the side list, its run page and any other run of the same file. It is never a file, folder or run name: a batch's PDFs are named by the batch.
 - **New Run of This PDF** opens New Run's pop-up.
 
+**A PDF edited by hand** and brought back (see [Editing the PDF by hand](hand-edits.md)) shows its copies in its Status column, for example "Edited copy: handedit-… (finished)". A finished copy, or one waiting for its review, links to its run page. Any other copy is named with its state: not started, being prepared, or its folder is no longer there. A PDF with no copy shows nothing extra, and the rows keep their order. The state updates without a reload.
+
 The "This Batch" panel joins the header, and the side list when it is shown. Its first answer comes with the page (#93: a JSON data block, `bt-first`, what `/api/batch/<label>` returns), so it is drawn on first load with no "Loading…"; later answers are asked for as before.
 
 ### The side list

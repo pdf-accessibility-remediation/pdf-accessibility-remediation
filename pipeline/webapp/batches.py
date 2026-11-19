@@ -240,11 +240,17 @@ def _book_status(s, label, b, R, jl, batch_job, rd=None, nm=None):
     return row
 
 _DASH = {}
-def dashboard(s, label, out):
-    """The batch dashboard drawn in the batch page (P8): report_html's own rows (summary_rows, one source with summary.html),
-    cached per book by its records' mtimes. A book not applied yet (waiting for review or a language, running, stopped)
-    has no result columns: blank, never 0 or OK (Patrick, 2026-11-06)."""
+def dashboard(s, label, out, al):
+    """The batch dashboard drawn in the batch page (P8): the result columns are report_html's own (summary_rows' fields, one
+    source with summary.html), cached per book by its records' mtimes. A book not applied yet (waiting for review or a
+    language, running, stopped) has no result columns: blank, never 0 or OK (Patrick, 2026-11-06). Each row's `edited`:
+    its hand-edited copies, as the run page lists them (runs.hand_edits), so a copy waiting for its review links too,
+    unlike summary.html's. It is read fresh each time and never cached, since a copy is added in hand_edits.json and
+    changes state in its own folder, neither of them in key_of (#145). al: the jobs as state() read them, never read
+    again here (#93)."""
     import report_html
+    from lib import editlinks as EL
+    from . import runs as RN
     B = folder(s, label)
     rows = []
     for b in out:
@@ -262,8 +268,13 @@ def dashboard(s, label, out):
                          'cost': b.get('cost') or 0, 'pages': (rec.get('document') or {}).get('pages'), 'reviewed': bool(g['ship'][0]['ok'])}
                 except (OSError, ValueError, KeyError, TypeError, IndexError): r = None
                 _DASH[k] = r
+        he = None
+        if os.path.isfile(os.path.join(R, 'hand_edits.json')):     # most PDFs have no copy: one stat
+            he = RN.hand_edits(s, R, {}, al=al)
         rows.append({'name': b['name'], 'book': b['book'], 'file': b['file'], 'status': b['status'], 'tone': b.get('tone'), 'href': b['href'], 'result': r,
-                     'long': b.get('long')})
+                     'long': b.get('long'),
+                     'edited': [{'label': c['label'], 'state': c['state'], 'words': EL.words(c['state'], inline=True), 'url': c['url']}
+                                for c in (he or {}).get('children') or []]})   # #145: linked when finished or waiting for its review
     rows.sort(key=lambda x: (x['result'] is None, -((x['result'] or {}).get('needs') or 0)))
     return rows
 
@@ -335,7 +346,7 @@ def state(s, label, nm=None, with_dashboard=True):
                        'spent_usd': spent, 'cost_words': cost_words, 'books_to_send': len(Rs), 'finished': finished, 'expected': total['expected'], 'requests': total['requests'],
                        'estimated': sum(1 for x in total['books'] if x['adds_usd'] is not None), 'to_estimate': len(Rs) + len(asking),   # R14
                        'shown_ceiling_usd': shown.get('ceiling_usd')},
-            'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary, 'dashboard': dashboard(s, label, out) if with_dashboard else None,
+            'fingerprint': fingerprint(total), 'spend': spend, 'summary': summary, 'dashboard': dashboard(s, label, out, al=jl) if with_dashboard else None,
             'again': bool(meta) and phase in ('stopped', 'finished') and finished + len(reviewing) < len(out),
             'job': ({k: batch_job.get(k) for k in ('id', 'status', 'exit', 'started', 'ended')} if batch_job else None)}
 

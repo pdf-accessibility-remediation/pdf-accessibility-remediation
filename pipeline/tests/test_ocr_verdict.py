@@ -10,7 +10,7 @@ whole, no reviews/ folder left behind) and its lock (review_ocr.py refused while
 the OCR-only page's routes (page text served only for the section's own pages; a verdict recorded; Close); and Ctrl+C
 during a verdict write waiting until it is written.
 """
-import os, sys, json, time, signal, socket, threading, subprocess, urllib.request, urllib.error
+import os, sys, json, time, queue, signal, socket, threading, subprocess, urllib.request, urllib.error
 import pytest
 import pikepdf
 from review import core, ocr as O, sessions as S
@@ -197,27 +197,60 @@ server.serve(sys.argv[3], '2026-10-31', int(sys.argv[4]), open_browser=False, ru
 print('ended', flush=True)
 '''
 
+class Output:
+    """#147: the server's lines, read in a thread, so a test that waits for one gives up after a deadline: a server that
+    ends, or stays up without printing it (a check that never runs), fails the test instead of hanging it."""
+    def __init__(self, p):
+        self.p, self.q, self.seen = p, queue.Queue(), []
+        threading.Thread(target=lambda: [self.q.put(l) for l in iter(p.stdout.readline, '')] + [self.q.put('')], daemon=True).start()
+
+    def next(self, timeout):
+        try: line = self.q.get(timeout=timeout)
+        except queue.Empty: line = None
+        if line: self.seen.append(line)
+        return line
+
+    def wait_for(self, word, timeout=30):
+        end = time.monotonic() + timeout
+        while True:
+            line = self.next(max(0.01, end - time.monotonic()))
+            assert line is not None, f'no "{word}" from the review page within {timeout} s: ' + ''.join(self.seen)
+            assert line, f'the review page ended before it printed "{word}": ' + ''.join(self.seen)
+            if word in line: return
+
+    def rest(self, timeout=20):
+        """Everything the server prints until it ends (it must end within timeout)."""
+        self.p.wait(timeout=timeout); out = []
+        while (line := self.next(5)): out.append(line)
+        return ''.join(out)
+
 def test_ctrl_c_during_a_verdict_write_waits_for_it(tmp_path):
     R = run_folder(tmp_path)
     port = free_port(); img = tmp_path / 'img'; img.mkdir()
     p = subprocess.Popen([sys.executable, '-c', SLOW_WRITE, HERE, R, str(img), str(port)], stdout=subprocess.PIPE, text=True)
     try:
-        assert 'review page:' in p.stdout.readline()
+        out = Output(p); out.wait_for('review page:')
         res = {}
         th = threading.Thread(target=lambda: res.update(r=call(port, '/ocr-verdict', {'verdict': 'not approved', 'reviewer': 'Kim', 'reason': 'garbled'})))
         th.start()
-        lines = [p.stdout.readline() for _ in range(1)]                       # skip the page's second line
-        while 'writing' not in lines[-1]: lines.append(p.stdout.readline())
+        out.wait_for('writing')
         p.send_signal(signal.SIGINT)                                           # Ctrl+C in the middle of the write
-        th.join(10); rest = p.communicate(timeout=15)[0]
+        th.join(10); rest = out.rest(15)
+        assert not th.is_alive(), 'the verdict request did not end within 10 s'
         assert res['r'][0] == 200
         assert rest.index('written') < rest.index('stopped: the OCR review page is closed.') < rest.index('ended')
         assert core.load(os.path.join(R, '_intake', 'intake.json'))['review']['ocr_text_approved']['reason'] == 'garbled'
     finally:
         if p.poll() is None: p.kill()
 
-SLOW_CHECK = SLOW_WRITE.replace('real = O.write', 'real_section = O.section\ndef slow_section(*a, **k):\n'
-                                '    print("checking", flush=True); time.sleep(2); return real_section(*a, **k)\nO.section = slow_section\nreal = O.write')
+# #147: since #117 the server's warm_up() also calls O.section as it starts. Only a request's own call (made in a
+# ThreadingHTTPServer handler thread, named after process_request_thread) is slowed and says "checking", so the test's
+# Ctrl+C always comes after its request is inside the server. The POST checks twice (before and after the 2 s write):
+# about 6 s in all.
+SLOW_CHECK = SLOW_WRITE.replace('real = O.write', 'import threading\nreal_section = O.section\ndef slow_section(*a, **k):\n'
+                                '    if "(process_request_thread)" in threading.current_thread().name:\n'
+                                '        print("checking", flush=True); time.sleep(2)\n'
+                                '    return real_section(*a, **k)\nO.section = slow_section\nreal = O.write')
 
 def test_ctrl_c_before_a_verdict_reaches_its_lock_waits_too(tmp_path):
     """Review 07 L2: a Ctrl+C that comes while the request is still being checked (before the write lock) waits for it too."""
@@ -225,17 +258,48 @@ def test_ctrl_c_before_a_verdict_reaches_its_lock_waits_too(tmp_path):
     port = free_port(); img = tmp_path / 'img'; img.mkdir()
     p = subprocess.Popen([sys.executable, '-c', SLOW_CHECK, HERE, R, str(img), str(port)], stdout=subprocess.PIPE, text=True)
     try:
-        assert 'review page:' in p.stdout.readline()
+        out = Output(p); out.wait_for('review page:')
         res = {}
         th = threading.Thread(target=lambda: res.update(r=call(port, '/ocr-verdict', {'verdict': 'not approved', 'reviewer': 'Kim', 'reason': 'garbled'})))
         th.start()
-        lines = [p.stdout.readline()]
-        while 'checking' not in lines[-1]: lines.append(p.stdout.readline())
+        out.wait_for('checking')
         p.send_signal(signal.SIGINT)                                           # Ctrl+C before the handler has taken the write lock
-        th.join(15); rest = p.communicate(timeout=20)[0]
+        th.join(15); rest = out.rest(20)
+        assert not th.is_alive(), 'the verdict request did not end within 15 s'
         assert res['r'][0] == 200
         assert rest.index('written') < rest.index('stopped: the OCR review page is closed.') < rest.index('ended')
         assert core.load(os.path.join(R, '_intake', 'intake.json'))['review']['ocr_text_approved']['reason'] == 'garbled'
+    finally:
+        if p.poll() is None: p.kill()
+
+# #147: the page's server thread is held for 5 s just after it starts, so the main thread is still starting when the
+# request is written and the test's Ctrl+C comes: the gap a busy CI runner once hit (server.py once started its threads
+# before the try that handles Ctrl+C, and the page ended with a traceback, cutting off the request).
+SLOW_START = SLOW_WRITE.replace('real = O.write', """import threading
+real_start = threading.Thread.start
+def held_start(self):
+    real_start(self)
+    if getattr(self, '_target', None) and self._target.__name__ in ('serve_loop', 'serve_forever'): time.sleep(5)
+threading.Thread.start = held_start
+real = O.write""")
+
+def test_ctrl_c_as_the_page_starts_closes_it_and_waits_for_a_verdict(tmp_path):
+    R = run_folder(tmp_path)
+    port = free_port(); img = tmp_path / 'img'; img.mkdir()
+    p = subprocess.Popen([sys.executable, '-c', SLOW_START, HERE, R, str(img), str(port)], stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE, text=True)
+    try:
+        out = Output(p); out.wait_for('review page:')
+        res = {}
+        th = threading.Thread(target=lambda: res.update(r=call(port, '/ocr-verdict', {'verdict': 'not approved', 'reviewer': 'Kim', 'reason': 'garbled'})))
+        th.start()
+        out.wait_for('writing', timeout=4)                                     # the main thread is still starting
+        p.send_signal(signal.SIGINT)
+        th.join(10); rest = out.rest(15); err = p.stderr.read()
+        assert not th.is_alive(), 'the verdict request did not end within 10 s'
+        assert 'Traceback' not in err, err
+        assert res['r'][0] == 200
+        assert rest.index('written') < rest.index('stopped: the OCR review page is closed.') < rest.index('ended')
     finally:
         if p.poll() is None: p.kill()
 

@@ -75,6 +75,8 @@ The full pipeline with a new AI call is not offered here, because a job cannot a
 
 A run made from an edited copy says which run it came from, with a link.
 
+The dashboard has its own notes for these links, for a reader who opens `review.html` as a file. The run page hides them, because the panel already shows the same list with its buttons (see [Editing the PDF by hand](hand-edits.md#seeing-the-link-in-reviewhtml-and-summaryhtml)).
+
 ### While a review page is open
 
 The job says "Waiting for you: the review page is open", with no spinner: it waits on a person, not the machine. **Open the Review Page** and **Stop Reviewing (the Session Stays Open)** replace the buttons. This holds after the app restarts, and after the review tab was closed without Finish: the review page is still running until Stop.

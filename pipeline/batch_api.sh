@@ -45,11 +45,16 @@
 # summary.md is also written when the batch stops early or is interrupted, and RETRY=1 on a batch whose books have
 # all finished just rewrites it (no cost). A missing library stops the batch before any paid call.
 set -euo pipefail
+unset CDPATH                                    # a cd below never prints, nor goes elsewhere
 [[ -n ${AUTO:-} || -n ${SUMMARY_ONLY:-} ]] || { echo "batch runs call the API without asking: start with  AUTO=1 bash batch_api.sh <run-label> [folder | books.txt] …"; exit 1; }
 [[ -z ${KEEP_CJK_PAGES:-} ]] || { echo "KEEP_CJK_PAGES names pages of one book: run that book alone (KEEP_CJK_PAGES=… bash run_api.sh <the book> <name> <run name>), not a batch"; exit 1; }
 LABEL=${1:?run label used for every book, e.g. batch1}; shift
 SOURCES=("$@")
 START_DIR=$(pwd)
+abs_path() { python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$1"; }   # as in run_api.sh
+for v in RUNS_DIR COST_HISTORY; do               # a relative one is taken from where the batch runs (#144)
+  [[ -z ${!v:-} ]] || printf -v "$v" '%s' "$(abs_path "${!v}")"
+done
 cd "$(dirname "$0")"; HERE=$(pwd)
 python3 -c 'import pikepdf, pdfplumber, pypdfium2, PIL, fontTools.ttLib' 2>/dev/null || {   # stop before any audit or paid call
   echo "missing Python libraries in $(command -v python3): from pipeline/, run  python3 -m pip install -r requirements.txt"; exit 1; }

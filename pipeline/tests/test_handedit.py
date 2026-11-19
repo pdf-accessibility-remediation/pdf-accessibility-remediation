@@ -95,11 +95,12 @@ def test_a_figure_that_cannot_be_found_is_listed_not_guessed(tmp_path):
 # ---- handedit.py, run_api.sh DECIDE=none, report.py: the whole loop at no cost (veraPDF off, no AI call)
 def env(**kw):
     e = dict(os.environ, VERAPDF='off', PATH=os.path.dirname(sys.executable) + os.pathsep + os.environ.get('PATH', ''), **kw)
-    for k in ('INTAKE_REUSE', 'INTAKE', 'REVIEW', 'DECIDE', 'REPLY', 'ESTIMATE', 'RUN_DIR', 'OUT'): e.pop(k, None) if k not in kw else None
+    for k in ('INTAKE_REUSE', 'INTAKE', 'REVIEW', 'DECIDE', 'REPLY', 'ESTIMATE', 'RUN_DIR', 'OUT',     # none from the shell running the tests
+              'RUNS_DIR', 'COST_HISTORY', 'LANG_REPLY', 'AUTO', 'FROM', 'MODEL'): e.pop(k, None) if k not in kw else None
     return e
 
-def sh(args, **kw):
-    return subprocess.run(args, cwd=PIPE, env=env(**kw), capture_output=True, text=True, timeout=300)
+def sh(args, cwd=PIPE, **kw):
+    return subprocess.run(args, cwd=cwd, env=env(**kw), capture_output=True, text=True, timeout=300)
 
 def parent_run(tmp_path):
     """A finished run of the two-figure book (no AI call: an empty work order applied), as the run a person edits."""
@@ -394,3 +395,23 @@ def test_a_run_with_no_ai_call_reads_no_pages():
     gate = next(l for l in sh_.splitlines() if l.startswith(('if [[ ${PAGE_READS} != off', 'elif [[ ${PAGE_READS} != off')))   # an elif since #95
     assert '${DECIDE:-} != none' in gate
     assert "'DECIDE': 'none', 'REVIEW': '1', 'PAGE_READS': 'off'" in open(os.path.join(PIPE, 'handedit.py'), encoding='utf-8').read()
+
+
+# ---- #144: a relative RUN_DIR (taken from where the command runs) applies to the working copy, as an absolute one does
+def test_a_relative_run_dir_applies_to_the_working_copy(tmp_path):
+    src, P = parent_run(tmp_path)
+    out = os.path.join(P, json.load(open(os.path.join(P, 'record.json')))['document']['output'])
+    edited = swap_image(out, tmp_path / 'edited.pdf')
+    r = sh([sys.executable, 'handedit.py', 'import', P, edited, '--by', 'Pat', '--note', 'n', '--label', 'he1'])
+    assert r.returncode == 0 and 'stopped for review' in r.stdout, r.stdout + r.stderr
+    C = os.path.join(os.path.dirname(P), 'he1')
+    assert sh([sys.executable, 'review_workorder.py', C, '--reviewer', 'Pat', '--note', 'n']).returncode == 0
+    he = json.load(open(os.path.join(C, '_handedit', 'hand_edit.json')))
+    rel = os.path.relpath(C, tmp_path) + '/'                                            # relative to the caller, with a trailing /
+    r = sh(['bash', os.path.join(PIPE, 'run_api.sh'), os.path.relpath(os.path.join(C, '_handedit', he['edited']['file']), tmp_path),
+            'book', 'he1'], cwd=str(tmp_path), RUN_DIR=rel, OUT=os.path.basename(out),
+           DECIDE='none')                                                           # never an AI request, even if R were not found
+    assert r.returncode == 0 and 'sha256 mismatch' not in r.stdout + r.stderr, r.stdout + r.stderr
+    assert f'done: {C}\n' in r.stdout                                                    # R is absolute
+    rec = json.load(open(os.path.join(C, 'record.json'), encoding='utf-8'))
+    assert rec['document']['pipeline_input']['file'] == '_handedit/input.pdf'

@@ -754,6 +754,7 @@ def test_fourth_pass_details():
     assert "'The review page is closed. ' + open + ' stays open. Select \"Continue Review\" to pick up where you left off.'" in js
     assert "if (!miss.length) return '';" in js and 'previous result' in js and 'earlier result' not in js
     assert 'body:has(#pdfrem-version) .replaced { display: none; }' in css and '#pp-vreview { margin-left: 12px; }' in css
+    assert 'body:has(#pdfrem-panel) .edits, body:has(#pdfrem-panel) .linked { display: none; }' in css   # #146
     rec = {'review': {'session': '001', 'sessions': [{'id': '001', 'from': 'ai', 'status': 'applied', 'reviewer': 'K', 'date': '2026-10-29',
            'counts': {'approved': 1}}], 'decisions': [{'id': 'x', 'kind': 'retype', 'label': 'A', 'page': 2, 'status': 'approved'}]}}
     out = ''.join(H.review_card('/tmp', rec))
@@ -1244,3 +1245,21 @@ def test_job_card_headings_read_processing():
     assert h('review', "Review the AI's decisions") == "Review the AI's decisions"      # a person's own action keeps its words
     assert h('ocr', 'Review OCR Text') == 'Review OCR Text' and h('discard', 'Discard session 2') == 'Discard Session 2'
     assert runs.action({'kind': 'spend', 'what': 'Start remediation: the AI request'}) == 'Start remediation: the AI request'   # "Last Job:" unchanged
+
+def test_the_run_page_leaves_the_edit_links_to_the_panel(app):
+    """#146: on the run page the panel lists the edited copies and the run a copy came from, so panel.css hides
+    review.html's own notes (.edits, .linked) there; they stay in the served page and in the file, for a reader offline."""
+    from test_editlinks import finished, child, page as draw
+    port, R = app['port'], app['R']
+    P = finished(R.parent / 'p1'); C = child(P, 'he', 'finished'); draw(P)                    # the parent's page, with its copy listed
+    for run, D, cls in (('book/p1', P, 'class="edits"'), ('book/he', C, 'class="linked"')):
+        before = (D / 'review.html').read_bytes()
+        assert cls.encode() in before
+        st, b, hd = get(port, '/run/' + run + '/')
+        page = b.decode()
+        assert st == 200 and cls in page and '<div id="pdfrem-panel" ' in page and '/app/panel.css' in unver(page)
+        assert page.index('id="pdfrem-panel"') < page.index(cls)
+        assert (D / 'review.html').read_bytes() == before                          # the file on disk is not changed
+    css = src('webapp/panel.css')
+    rule = css[css.index('body:has(#pdfrem-panel) .edits'):].split('}')[0]
+    assert '#pdfrem-version' not in rule and 'display: none' in rule              # never the previous result's page

@@ -14,13 +14,14 @@ These settings change what one run or batch does. Put them before the command, f
 |---|---|
 | `AUTO=1` | Sends without the y/N question. The dollar limits and your credit still apply (see [Sending without asking](#sending-without-asking)) |
 | `ESTIMATE=1` | Audit and cost estimate only. A later run with the same label reuses the audit |
-| `REPLY=path/to/reply.txt` | Reuses a saved AI reply instead of making an AI request (no cost) |
+| `REPLY=path/to/reply.txt` | Reuses a saved AI reply instead of making an AI request (no cost). A relative path is taken from the folder you run the command in |
 | `REVIEW=1` | Stops after the AI's decisions so a reviewer can approve, change or reject each one before anything is applied. One PDF at a time, not in batches (see [Reviewing the work order](review-step.md)) |
 | `REVIEW_DRYRUN=off` | With `REVIEW=1`: skips the trial run of the apply step at the review stop (see [The trial run at the review stop](#the-trial-run-at-the-review-stop)) |
 | `DECIDE=none` | No AI request at all: the work order starts empty and a reviewer fills it in, $0 (see [No AI request](#no-ai-request)) |
 | `KEEP=1` | Keeps the working files (digest, figure crops, raw reply, logs) |
 | `OUT=name.pdf` | Names the result (default: `<original name>_remediated.pdf`) |
-| `RUNS_DIR=/path` | Writes runs somewhere other than `runs/` beside `pipeline/` |
+| `RUNS_DIR=/path` | Writes runs somewhere other than `runs/` beside `pipeline/`. A relative path is taken from the folder you run the command in |
+| `RUN_DIR=/path` | Names the run folder itself, instead of `runs/<short name>/<run label>`. A relative path is taken from the folder you run the command in |
 | `VERAPDF=off` | Runs without veraPDF; review.md says its rows were not run (see [veraPDF settings](#verapdf-settings)) |
 
 To apply a reviewed work order, rerun the same label without `REVIEW=1`.
@@ -43,7 +44,7 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | `LANG_GROW=on` | The language step tags a title's whole extent (romanized words around a candidate, inside quotes or italics, or before a Chinese-character gloss), so the voice switches once. Off by default, until the Windows screen-reader check of a title tagged in pieces (see [Language tags](#language-tags)) |
 | `LANG_GROUP=on` | Adjacent single Chinese characters become one word form for the language step and the review page (fewer rows). Off by default |
 | `LANG_READING_RULE=off` | Every word form in Chinese characters goes to the AI, even one with a reading printed beside every place (by default those are decided locally, #123; see [Language tags](#language-tags)) |
-| `LANG_REPLY=…` | A saved language reply (a `language_run.json`) to apply instead of a request; `FROM=` sets it per book |
+| `LANG_REPLY=…` | A saved language reply (a `language_run.json`) to apply instead of a request; `FROM=` sets it per book. A relative path is taken from the folder you run the command in |
 | `AI_PARALLEL=2` | How many AI requests one PDF sends at once, for its figure requests, its page readings and its language step (default 16). `AI_PARALLEL=1` sends them one at a time, in order. In a batch it applies to each PDF (see [Batches](#batches)) |
 | `FIGURE_PASSES=off` | No figure requests: figures past the first request's 100 images go to a reviewer (see [Files](files.md)) |
 
@@ -247,7 +248,7 @@ Money spent by previous attempts in the folder is shown the same way.
 | `FIGURE_PROBE=20` | Test only, terminal only: also re-sends 20 figures the first request answered, to compare the two answers. Recorded in `record.json` (`run.passes`, `overlap`), never used, counted in the cost |
 | `APPLY_DRAFT=1` | Set by the review page's **Build a Draft PDF** for its own run of `apply.py`, not by hand: marks the output as a draft (a RemediationDraft document property). See [Checking a draft PDF while you review](review-finish.md#checking-a-draft-pdf-while-you-review) |
 | `ALLOW_PDF20=1` | Lets a PDF 2.0 file (or one with namespaced tags) through instead of stopping it. Only for building PDF 2.0 support; never on real work (see [Not supported yet: PDF 2.0](troubleshooting.md#not-supported-yet-pdf-20)) |
-| `COST_HISTORY=/path` | Writes the cost history somewhere other than `runs/.cost-history.jsonl` |
+| `COST_HISTORY=/path` | Writes the cost history somewhere other than `runs/.cost-history.jsonl`. A relative path is taken from the folder you run the command in |
 
 ### Where the limits live
 
