@@ -99,6 +99,44 @@ def test_a_page_that_fails_keeps_its_content_and_its_tree(tmp_path):
     assert v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
     P = pikepdf.open(out); els = P.Root.StructTreeRoot.K[0].K
     assert [e.K if not isinstance(e.K, pikepdf.Array) else [int(k) for k in e.K] for e in els] in ([0, 1], [[0], [1]])
+    # review 09 §2: a whole-run place and a split on the failing page. The whole run's Span is written (tag_run, before the
+    # late pass) and its marks lose their /Lang, so the tag holds; the split is refused and counted; verify matches all.
+    runs2 = [{'text': 'velunka', 'lang': 'en-US'}, {'text': 'The city of Heiankyo was the capital.', 'lang': 'en-US'},
+             {'text': 'Plain English text stays as it is.', 'lang': 'en-US'}]
+    src2 = langpdf.build(str(tmp_path / 'src2.pdf'), runs2)
+    wo.write_text(json.dumps({'language_parts': {'parts': [part(1, 0, 0, 6, 'haw'), part(1, 1, 12, 19, 'ja-Latn')]}}))
+    out2 = str(tmp_path / 'out2.pdf')
+    r = subprocess.run([sys.executable, os.path.join(PIPE, 'apply.py'), src2, str(wo), out2], env=dict(os.environ, VERAPDF='off', APPLY_FAIL_LANG_PAGE='1'),
+                       capture_output=True, text=True, cwd=PIPE)
+    assert r.returncode == 0, r.stderr[-2000:]
+    run('verify.py', src2, out2)
+    lp, v = json.load(open(out2 + '.log.json'))['language_parts'], json.load(open(out2 + '.verify.json'))
+    assert [(x['mcid'], x['lang'], x['whole']) for x in lp['spans']] == [(0, 'haw', True)]
+    assert lp['refused'] == {'the page could not be planned': 1}, lp['refused']
+    m = marks(out2)
+    assert '/Lang' not in m[0] and str(m[1]['/Lang']) == 'en-US' and len(m) == 3        # the whole run's tag holds; no split written
+    assert v['language']['all_match'] and v['index']['dangling'] == 0 and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == []
+
+def test_a_page_that_still_looks_different_takes_its_whole_run_tags_back(tmp_path):
+    """review 09, L3: when even the marks-only page looks different (a test hook), the page keeps its original content, and
+    tag_run's whole-run Span on it is taken back out of the tree and listed as refused: no tag left over marks that say
+    otherwise."""
+    runs = [{'text': 'velunka', 'lang': 'en-US'}, {'text': 'The city of Heiankyo was the capital.', 'lang': 'en-US'}]
+    src = langpdf.build(str(tmp_path / 'src.pdf'), runs)
+    wo = tmp_path / 'wo.json'; wo.write_text(json.dumps({'language_parts': {'parts': [part(1, 0, 0, 6, 'haw'), part(1, 1, 12, 19, 'ja-Latn')]}}))
+    out = str(tmp_path / 'out.pdf')
+    r = subprocess.run([sys.executable, os.path.join(PIPE, 'apply.py'), src, str(wo), out], env=dict(os.environ, VERAPDF='off', APPLY_TEST_PIXEL_FAIL_PAGE='1'),
+                       capture_output=True, text=True, cwd=PIPE)
+    assert r.returncode == 0, r.stderr[-2000:]
+    run('verify.py', src, out)
+    lp, v = json.load(open(out + '.log.json'))['language_parts'], json.load(open(out + '.verify.json'))
+    assert lp['spans'] == [] and lp['whole'] == 0 and lp['restored_pages'] == [1]
+    assert sum(lp['refused'].values()) == 2 and set(lp['refused']) == {'the page would look different'}, lp['refused']
+    m = marks(out)
+    assert str(m[0]['/Lang']) == 'en-US' and str(m[1]['/Lang']) == 'en-US'
+    P = pikepdf.open(out); els = P.Root.StructTreeRoot.K[0].K
+    assert [e.K if not isinstance(e.K, pikepdf.Array) else [int(k) for k in e.K] for e in els] in ([0, 1], [[0], [1]])
+    assert v['language']['all_match'] and v['index']['dangling'] == 0
 
 def test_a_persons_decision_wins_over_an_explicit_run(tmp_path):
     """review 08, L2: a v10 work order's explicit run (language.runs) does not tag a run whose form a person decided to leave

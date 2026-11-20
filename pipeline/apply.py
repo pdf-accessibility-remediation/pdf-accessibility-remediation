@@ -1104,6 +1104,8 @@ _LANG_PHRASES = []                                 # #150, #161: places across s
                                                    # fix_language_parts' last step, after their group passed every check (review 04 H3a)
 LANG = log['language_parts'] = {'spans': [], 'whole': 0, 'split': 0, 'refused': collections.Counter(), 'refused_places': [],
                                 'retried_pages': [], 'restored_pages': [], 'marks_lang_removed': 0}
+_LANG_UNDO = {}                                    # (page, mcid) -> how tag_run's tag over that whole run is taken back (review 09, L3)
+_LANG_UNSET = []                                   # (page, mcid, element or None, value, 'remove' or 'kept'): remove_existing's decisions
 def lang_refuse(pno, m, why, part=None):
     LANG['refused'][why] += 1
     if len(LANG['refused_places']) < 200:
@@ -1128,11 +1130,13 @@ def tag_run(pno, m, lang, text=None):
     why = unspoken_owner(o)
     if why: reject(f'lang {PG(pno)} m{m}', why); lang_refuse(pno, m, why, whole_part(pno, m, lang, text)); return
     if S(o) == 'Span' and len(kids(o)) == 1:
+        _LANG_UNDO[(pno, m)] = ('lang', o, str(o.Lang) if '/Lang' in o else None)
         o.Lang = pikepdf.String(lang); ok(f'language: {lang} on existing Span')
     else:
         i = mc_entry_index(o, pno, m)
         if i is None: reject(f'lang {PG(pno)} m{m}', 'entry not found'); return
         ks = kids(o)
+        _LANG_UNDO[(pno, m)] = ('wrap', o, ks[i])
         sp = new_elem('Span', o, [m if isinstance(ks[i], int) else ks[i]], pg=pno if isinstance(ks[i], int) else None, Lang=pikepdf.String(lang))
         if isinstance(ks[i], int) and eff_pg.get(o.objgen) != pno: tree_set(sp, '/K', pikepdf.Array([mcr(pno, m)]))
         ks[i] = sp; set_kids(o, ks); pt_set_mcid(pno, m, sp); owner[(pno, m)] = sp; eff_pg[sp.objgen] = pno
@@ -1172,8 +1176,11 @@ def remove_existing(lp):
                 if '/Lang' in el and str(el.Lang).strip() == str(f['current']).strip(): carrier = el; break
                 el = parent_of.get(el.objgen)
             if f['decided'] == 'kept':
-                if carrier is not None: _LANG_DROP.append((pno, m)); LANG['existing_kept'] = LANG.get('existing_kept', 0) + 1
+                if carrier is not None:
+                    _LANG_DROP.append((pno, m)); LANG['existing_kept'] = LANG.get('existing_kept', 0) + 1
+                    _LANG_UNSET.append((pno, m, None, str(f['current']), 'kept'))
                 continue
+            _LANG_UNSET.append((pno, m, carrier, str(carrier.Lang) if carrier is not None else str(f['current']), 'remove'))
             if carrier is not None: del carrier['/Lang']; ok('language: a tag in the PDF removed')
             _LANG_DROP.append((pno, m)); LANG['existing_removed'] = LANG.get('existing_removed', 0) + 1
 def language_parts(parts):
@@ -3391,6 +3398,29 @@ def fix_language_parts():
             if not bad: return new, plans, dropped, refused, act
             for u in bad: refuse_unit(pno, u, refused[u])
             act -= bad
+    def take_back(pno, why):
+        """The page keeps its original content (review 09, L3): tag_run's whole-run tags on it are taken back out of the tree
+        and listed as refused, and a publisher's /Lang that remove_existing took off an element is put back, since the marks
+        edits they rely on are not written."""
+        for (pg_, m), (kind, o, x) in list(_LANG_UNDO.items()):
+            if pg_ != pno: continue
+            if kind == 'lang':
+                if x is None: del o['/Lang']
+                else: o.Lang = pikepdf.String(x)
+            else:
+                sp = owner.get((pno, m)); ks = kids(o)
+                i = next((j for j, k in enumerate(ks) if is_elem(k) and sp is not None and same(k, sp)), None)
+                if i is None: continue                 # moved since (links, section moves): left as it is, and listed
+                ks[i] = x; set_kids(o, ks); pt_set_mcid(pno, m, o); owner[(pno, m)] = o
+            for sp_ in [r for r in LANG['spans'] if r.get('whole') and r['page'] == pno and r['mcid'] == m]:
+                LANG['spans'].remove(sp_); LANG['whole'] -= 1; lang_refuse(pno, m, why, sp_)
+            del _LANG_UNDO[(pg_, m)]
+        for t in [t for t in _LANG_UNSET if t[0] == pno]:
+            _pg, m, el, val, how = t
+            if el is not None: el.Lang = pikepdf.String(val)
+            key = 'existing_removed' if how == 'remove' else 'existing_kept'
+            LANG[key] = LANG.get(key, 1) - 1
+            lang_refuse(pno, m, why, {'text': mc_text(pno, m), 'lang': val}); _LANG_UNSET.remove(t)
     edited = {}
     for pno in sorted(jobs):
         new, plans, dropped, refused, act = settle(pno)
@@ -3409,7 +3439,9 @@ def fix_language_parts():
     LANG['pages_checked'] = len(changed)
     hook = os.environ.get('APPLY_TEST_PIXEL_FAIL_RUN', '')          # tests only: 'page:mcid', a split of that run "looks different"
     hook = tuple(int(x) for x in hook.split(':')) if re.fullmatch(r'\d+:\d+', hook) else None
+    page_hook = os.environ.get('APPLY_TEST_PIXEL_FAIL_PAGE', '')    # tests only: that page "looks different" whatever is on it (review 09, L3)
     def looks_same(pno, img, plans):
+        if page_hook == str(pno): return False
         return _same_image(before[pno], img) and not (hook and hook[0] == pno and any(m == hook[1] for m, _, _ in plans))
     for pno in changed:
         if looks_same(pno, after[pno], edited[pno][2]): continue
@@ -3427,6 +3459,7 @@ def fix_language_parts():
                 edited[pno] = (old, new, plans2, dropped, act2); break
         else:
             edited[pno] = (old, None, [], 0, set()); LANG['restored_pages'].append(pno)
+            take_back(pno, 'the page would look different')   # even the marks-only page differs: no tag on it may rely on its marks
         for u in act - edited[pno][4]: refuse_unit(pno, u, 'the page would look different')
     lose = {int(x) for x in os.environ.get('APPLY_TEST_LOSE_ENTRY', '').split(',') if x.strip().isdigit()}   # tests only (review 06, M6)
     def group_order_ok(job, g, pno):
@@ -3495,10 +3528,12 @@ def fix_language_parts():
                     if i1 < i0 or any(x is None or x not in allowed for x in inside):
                         raise ValueError(f'phrase on page {pno}: its pieces are not next to each other ({[x for x in inside if x is None or x not in allowed][:5]} between {first} and {last})')
                     phrase_plans.append((ph, inside))
-        except Exception as e:                             # one page's failure stays on that page (review 06, M6): its content and its tree as they were
-            LANG['restored_pages'].append(pno)
-            for u in act: refuse_unit(pno, u, 'the page could not be planned') if u[0] == 'g' else None
+        except Exception as e:                             # one page's failure stays on that page (review 06, M6; review 09 §2): every split and
+            LANG['restored_pages'].append(pno)             # phrase on it refused, and only its marks edits written, as on the lost-entry path,
+            for u in act: refuse_unit(pno, u, 'the page could not be planned')   # so tag_run's and remove_existing's tags hold
             log['failed'].append({'op': f'fix_language_parts page {pno}', 'error': f'{type(e).__name__}: {e}'[:300]})
+            new, _p, dropped, _r = edit(pno, set())
+            if new is not None: pages[pno - 1].obj.Contents = new; LANG['marks_lang_removed'] += dropped
             continue
         if new is not None: pages[pno - 1].obj.Contents = new   # then all of it: the content, each owner's /K, the index, the records
         LANG['marks_lang_removed'] += dropped
