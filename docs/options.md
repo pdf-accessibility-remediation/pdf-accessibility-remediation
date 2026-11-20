@@ -39,7 +39,7 @@ To apply a reviewed work order, rerun the same label without `REVIEW=1`.
 | `PAGE_READS=all` | Page readings for every scanned page with text, not only mostly Hawaiian ones |
 | `PAGE_READS_MAX_USD=30` | The limit on what the page readings together could cost, in dollars (default 25) |
 | `LANG_TAGS=off` | No language step: words and passages in other languages are not sent to the AI (see [Language tags](#language-tags)) |
-| `LANGUAGE_MODEL=…` | The model the language step uses (default: Sonnet 5.5, whatever the work order uses) |
+| `LANGUAGE_MODEL=…` | The model the language step uses (default: Sonnet 5.5, whatever the work order uses). Google's Gemini 3.8 Flash, 4 Hydrogen, 4 Argon and 4 Neon were scored against it on the language test set (#142): see [Scoring another model](languages.md#scoring-another-model) |
 | `LANGUAGE_MAX_USD=30` | The limit on what the language step could cost, in dollars (default 25) |
 | `LANG_HELD_SHOWN=12` | Set by the app's Spend and by `batch_api.sh`, not by hand: how many word forms the estimate shown held back. With `AUTO=1`, more held back after the work order holds the review instead of sending (see [Word forms not sent](languages.md#word-forms-not-sent)). Unset in a terminal run, which compares with its own first estimate |
 | `LANGUAGE_MAX_FORMS=2000` | An override: send at most this many word forms to the language step. Off by default: the dollar limits alone decide (see [Word forms not sent](languages.md#word-forms-not-sent)) |
@@ -151,6 +151,8 @@ Two options change what is sent, both off by default (`language_run.json` record
   of word forms matches what is sent); the language step finds the words again only when its own setting differs from
   the audit's. On a joined OCR page a title grows across the runs of its stretch, never past a stretch's break.
   `LANG_GROW` is a terminal setting: the app can't set it, so what the app does is the code's default.
+  English function words (*of*, *or*, *and*, *the*, *by*, *for*, *with*, *from*, *at*) never join a title, nor does a
+  word that joins its neighbour into an English word (an English word the PDF draws in pieces: "Se lections").
 - `LANG_GROUP=on`: adjacent single Chinese characters are one word form.
 
 ### OCR languages

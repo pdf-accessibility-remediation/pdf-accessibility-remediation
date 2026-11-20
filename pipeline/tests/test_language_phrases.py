@@ -192,3 +192,29 @@ def test_no_module_reads_language_rows_by_their_length_or_version():
                     line = t[:mm.start()].count('\n') + 1
                     if 'language' in t[max(0, mm.start() - 400):mm.end() + 400]: bad.append(f'{f}:{line}')
     assert bad == [], bad
+
+
+def _across(tmp_path, line, form, name):
+    src = langpdf.build_lines(str(tmp_path / ('f-' + name)), [line])
+    with pikepdf.open(src) as pdf: c = langcands.book(plpages.Pages(src), doc_lang='en', pdf=pdf)
+    p = next(p for p in c['places'] if p['form'] == form)
+    assert p.get('segments') and p['source'] == ['cross']
+    return apply_verify(tmp_path, [line], wo_of([(form, 'haw', [[1, p['segments']]])]), name=name)
+
+
+def test_161_a_first_letter_in_its_own_run_is_tagged_across_the_two_runs(tmp_path):
+    line = [{'text': 'These words are all made up and here is ', 'lang': 'en-US'}, {'text': 'v', 'lang': 'en-US'},
+            {'text': 'elunkata and more words come here today.', 'lang': 'en-US'}]
+    src, out, log, v = _across(tmp_path, line, 'velunkata', 'first.pdf')
+    sp = spans(out)
+    assert len(sp) == 1 and sp[0][0] == 'haw' and sp[0][1][0] == 1 and len(sp[0][1]) == 2, sp
+    assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0
+
+
+def test_161_an_accented_last_letter_in_its_own_run_is_tagged_across_the_two_runs(tmp_path):
+    line = [{'text': 'These words are all made up: velunk', 'lang': 'en-US'}, {'text': 'á', 'lang': 'en-US'},
+            {'text': ' and more words come here today.', 'lang': 'en-US'}]
+    src, out, log, v = _across(tmp_path, line, 'velunká', 'last.pdf')
+    sp = spans(out)
+    assert len(sp) == 1 and sp[0][0] == 'haw' and sp[0][1][-1] == 1 and len(sp[0][1]) == 2, sp
+    assert v['language']['all_match'] and v['pixel_pages_differing'] == [] and v['text_pages_changed'] == [] and v['index']['dangling'] == 0

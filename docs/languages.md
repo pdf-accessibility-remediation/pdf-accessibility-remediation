@@ -363,3 +363,20 @@ Paid: each run is approved first, with its amount.
 4. **Score** (free): `python3 tools/lang_exp.py DIR NAME=MODEL/W10 … --ledger spend.json --md DIR/score.md`. Each
    variant shows right, wrong (at high or medium confidence), untagged or low, cut off, and the same answer in every run,
    with 95% ranges, for the everyday and the masked items apart. More runs narrow the range.
+
+**Results (#142, 2026-11-19; 3 runs each; Sonnet 5.5's saved replies scored again with today's reply check):**
+
+| Model | Everyday items right (wrong) | Harder items right (wrong) | Cost a run | Seconds a request |
+|---|---|---|---:|---:|
+| Claude Sonnet 5.5 (the default) | 98.0% (0.8%) | 96.6% (1.8%) | $0.86 | – |
+| Gemini 3.8 Flash | 99.1% (0.7%) | 96.6% (3.4%) | $0.22 | 4.8 |
+| Gemini 4 Hydrogen | 99.2% (0.8%) | 96.6% (3.1%) | $0.76 | 13.4 |
+| Gemini 4 Argon | 97.3% (0.8%) | 96.7% (3.3%) | $0.56 | 11.5 |
+| Gemini 4 Neon | 97.7% (0.8%) | 97.5% (2.5%) | $1.63 | 17.0 |
+
+Every Google model was served by Google under `data_collection: deny`, with reasoning at low effort and `max_tokens`
+12,000; no reply was cut off. The reply check dropped 3 of Flash's 1,419 answers (2 with a language tag the step may not
+write) and none of the others'. The Google models answer nearly every item, so on the harder items (Han with no reading
+nearby) they are wrong about twice as often as Sonnet, which leaves more of those for a person. Sonnet 5.5 stays the
+default. Gemini 3.8 Flash matches it on everyday items at a quarter of the cost; a change of default would need a paid
+run on a test book first.
